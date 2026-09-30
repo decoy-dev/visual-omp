@@ -15,7 +15,7 @@
 omp has subagents, plan mode, model roles, an advisor, MCP servers and skills, and all of it runs in a terminal. visual-omp puts that same omp behind a desktop window, so the chats, plans, subagents and settings become things you can click. People who have never opened a terminal can use omp this way, and people who already work in one get a clearer view of what omp is doing while it works.
 
 > [!NOTE]
-> visual-omp is at version 0.1, its first release build. The Homebrew cask and the Windows installer are published when a version is tagged, and [CHANGELOG.md](CHANGELOG.md) lists what each version contains.
+> visual-omp 0.2 is the first published release. The installers are on the [releases page](https://github.com/decoy-dev/visual-omp/releases), and [CHANGELOG.md](CHANGELOG.md) lists what each version contains.
 
 ## Install
 

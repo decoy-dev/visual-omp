@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-09-30
+
+visual-omp 0.2.0 is the first published release. It includes everything listed under 0.1.0, which was never published on its own, along with the changes below. It needs omp 18.4 or later.
+
 - **Start chat…** in the sidebar asks which folder the chat should run in. You can pick a recent project, browse into any folder on the computer (the equivalent of `cd`), or create a folder inside the one you are viewing, and a chat that hasn't sent anything yet can move to another folder from the chip in the message box. The Projects header in the sidebar gained a menu for opening a folder, creating one and cloning from GitHub.
 - **Settings → Providers** lists every provider omp has credentials for, with its accounts and any credential omp has disabled. Signing in to a new provider, signing in again and adding an account run omp's own `omp login` in a terminal inside the app, and signing out runs `omp auth-broker logout`, so omp performs every sign-in and keeps the credentials in its own store. The model picker links to the same screen.
 - On macOS, a chat that is still open in a terminal omp now updates in the app as the terminal writes to it, and shows when the view has stopped updating. Once no other omp process has the session open, **Continue here** resumes the chat in the app after another ownership check. On Windows the app cannot detect terminal sessions, so saved chats show a notice to close the terminal copy before replying.
