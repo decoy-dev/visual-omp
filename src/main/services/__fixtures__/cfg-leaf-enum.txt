@@ -1,0 +1,6 @@
+tools.approvalMode: "write"
+type: enum
+default: "yolo"
+source: global config
+values: [always-ask, write, yolo]
+description: Default approval behavior for tool calls. 'Always ask' auto-approves read-only tools only. 'Write' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block.

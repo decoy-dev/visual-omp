@@ -1,0 +1,125 @@
+{
+  "models": [
+    {
+      "provider": "anthropic",
+      "kind": "chat",
+      "id": "claude-fable-5",
+      "selector": "anthropic/claude-fable-5",
+      "name": "Claude Fable 5",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "thinking": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "input": [
+        "text",
+        "image"
+      ],
+      "cost": {
+        "input": 10,
+        "output": 50,
+        "cacheRead": 1,
+        "cacheWrite": 12.5
+      }
+    },
+    {
+      "provider": "openai-codex",
+      "kind": "chat",
+      "id": "gpt-5.6-luna",
+      "selector": "openai-codex/gpt-5.6-luna",
+      "name": "GPT-5.6-Luna",
+      "contextWindow": 1000000,
+      "maxTokens": 128000,
+      "reasoning": true,
+      "thinking": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "input": [
+        "text",
+        "image"
+      ],
+      "cost": {
+        "input": 0.2,
+        "output": 1.2,
+        "cacheRead": 0.02,
+        "cacheWrite": 0.25,
+        "longContext": {
+          "inputThreshold": 272000,
+          "input": 0.4,
+          "output": 1.8,
+          "cacheRead": 0.04,
+          "cacheWrite": 0.5
+        }
+      }
+    },
+    {
+      "provider": "local",
+      "kind": "tts",
+      "id": "kokoro",
+      "selector": "local/kokoro",
+      "name": "Kokoro-82M",
+      "contextWindow": null,
+      "maxTokens": null,
+      "reasoning": false,
+      "thinking": null,
+      "input": [
+        "text"
+      ],
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "provider": "web",
+      "kind": "search",
+      "id": "brave",
+      "selector": "web/brave",
+      "name": "Brave",
+      "contextWindow": null,
+      "maxTokens": null,
+      "reasoning": false,
+      "thinking": null,
+      "input": [
+        "text"
+      ],
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    },
+    {
+      "provider": "local",
+      "kind": "tiny",
+      "id": "falcon-h1-90m",
+      "selector": "local/falcon-h1-90m",
+      "name": "Falcon H1 Tiny 90M",
+      "contextWindow": null,
+      "maxTokens": null,
+      "reasoning": false,
+      "thinking": null,
+      "input": [
+        "text"
+      ],
+      "cost": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0
+      }
+    }
+  ]
+}

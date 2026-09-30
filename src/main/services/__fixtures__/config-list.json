@@ -1,0 +1,151 @@
+{
+  "auth.broker.url": {
+    "type": "string",
+    "description": ""
+  },
+  "auth.broker.token": {
+    "redacted": true,
+    "type": "string",
+    "description": ""
+  },
+  "modelRoles": {
+    "value": {
+      "default": "anthropic/claude-opus-5-5:xhigh",
+      "smol": "local/gemma-3-1b"
+    },
+    "type": "record",
+    "description": ""
+  },
+  "cycleOrder": {
+    "value": [
+      "smol",
+      "default",
+      "slow"
+    ],
+    "type": "array",
+    "description": ""
+  },
+  "autoResume": {
+    "value": false,
+    "type": "boolean",
+    "description": "Automatically resume the most recent session in the current directory"
+  },
+  "theme.dark": {
+    "value": "quote: # not a comment",
+    "type": "string",
+    "description": "Theme used when the terminal has a dark background"
+  },
+  "symbolPreset": {
+    "value": "unicode",
+    "type": "enum",
+    "description": "Glyph set for icons and symbols (Unicode, Nerd Font, or ASCII)"
+  },
+  "statusLine.rightSegments": {
+    "value": [
+      "session_name",
+      "token_total",
+      "cost",
+      "context_pct"
+    ],
+    "type": "array",
+    "description": ""
+  },
+  "ask.timeout": {
+    "value": 0,
+    "type": "number",
+    "description": "Auto-select the recommended ask option after this many seconds (0 disables)"
+  },
+  "defaultThinkingLevel": {
+    "value": "high",
+    "type": "enum",
+    "description": "Reasoning depth for thinking-capable models"
+  },
+  "presencePenalty": {
+    "value": -1,
+    "type": "number",
+    "description": "Penalty for introducing already-present tokens (-1 = provider default)"
+  },
+  "advisor.enabled": {
+    "value": false,
+    "type": "boolean",
+    "description": "Pair a second model (assigned to the 'advisor' role) that passively reviews each turn and injects notes."
+  },
+  "advisor.syncBacklog": {
+    "value": "3",
+    "type": "enum",
+    "description": "Pause the main agent for up to 30 seconds if the advisor falls behind by this many turns. Off disables catch-up delays."
+  },
+  "compaction.enabled": {
+    "value": false,
+    "type": "boolean",
+    "description": "Automatically compact context when it gets too large"
+  },
+  "tools.approval": {
+    "value": {
+      "bash": "prompt"
+    },
+    "type": "record",
+    "description": "Per-tool approval policies. Set to 'allow' to auto-approve, 'prompt' to require confirmation, or 'deny' to block. Overrides are honored in every approval mode."
+  },
+  "tools.approvalMode": {
+    "value": "write",
+    "type": "enum",
+    "description": "Default approval behavior for tool calls. 'Always ask' auto-approves read-only tools only. 'Write' auto-approves read and workspace-write tools. 'Yolo' auto-approves all tiers; user policy may still prompt or block."
+  },
+  "bashInterceptor.patterns": {
+    "value": [
+      {
+        "pattern": "^\\s*(cat|head|tail|less|more)\\s+",
+        "tool": "read",
+        "message": "Use the `read` tool instead of cat/head/tail. It provides better context and handles binary files."
+      },
+      {
+        "pattern": "^\\s*(grep|rg|ripgrep|ag|ack)\\s+",
+        "tool": "grep",
+        "message": "Use the `grep` tool instead of grep/rg. It respects .gitignore and provides structured output."
+      },
+      {
+        "pattern": "^\\s*(find|fd|locate)\\s+.*(-name|-iname|-type|--type|-glob)",
+        "tool": "glob",
+        "message": "Use the `glob` tool instead of find/fd. It respects .gitignore and is faster for glob patterns."
+      },
+      {
+        "pattern": "^\\s*sed\\s+(-i|--in-place)",
+        "tool": "edit",
+        "message": "Use the `edit` tool instead of sed -i. It provides diff preview and fuzzy matching."
+      },
+      {
+        "pattern": "^\\s*perl\\s+.*-[pn]?i",
+        "tool": "edit",
+        "message": "Use the `edit` tool instead of perl -i. It provides diff preview and fuzzy matching."
+      },
+      {
+        "pattern": "^\\s*awk\\s+.*-i\\s+inplace",
+        "tool": "edit",
+        "message": "Use the `edit` tool instead of awk -i inplace. It provides diff preview and fuzzy matching."
+      },
+      {
+        "pattern": "^\\s*(echo|printf|cat\\s*<<)\\s+(?:(?:[^\"'>]|\"[^\"]*\"|'[^']*')|(?<!\\|)>{1,2}\\|?\\s*(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&|]|$))*(?<!\\|)>{1,2}\\|?\\s*(?!(?:\"/dev/(?:null|tty|stdout|stderr)\"|'/dev/(?:null|tty|stdout|stderr)'|/dev/(?:null|tty|stdout|stderr))(?:[\\s;&|]|$))[$\\w./~\"'-]",
+        "tool": "write",
+        "message": "Use the `write` tool instead of echo/cat redirection. It handles encoding and provides confirmation."
+      },
+      {
+        "pattern": "^\\s*nohup\\s+|(?<!&)\\&\\s*$",
+        "tool": "bash",
+        "message": "Use `bash` with `name` instead of nohup or background shell syntax so the service stays observable and managed."
+      },
+      {
+        "pattern": "^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?(?:dev|start)(?:\\s|$)|(?:vite|next\\s+dev|nuxt\\s+dev|nodemon|lldb|gdb|tail\\s+-f)(?:\\s|$)|docker\\s+compose\\s+up(?!.*(?:\\s-d(?:\\s|$)|--detach))(?:\\s|$))",
+        "tool": "bash",
+        "message": "Use `bash` with `name` for services, watchers, and debuggers; inspect with `read proc://<name>`."
+      },
+      {
+        "pattern": "^\\s*(?:(?:bun|npm|pnpm|yarn)\\s+(?:run\\s+)?\\S+|cargo\\s+watch|watchexec|pytest|vitest|jest|tsc)(?:.|\\n)*(?:--watch|-w)(?:\\s|$)",
+        "tool": "bash",
+        "message": "Use `bash` with `name` for watch mode so its output, input, and lifecycle stay managed."
+      }
+    ],
+    "type": "array",
+    "description": ""
+  }
+}
