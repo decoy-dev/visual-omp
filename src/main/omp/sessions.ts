@@ -185,7 +185,7 @@ export function readSessionFile(file: string): Promise<string> {
 }
 
 let watcher: FSWatcher | null = null;
-let debounce: NodeJS.Timeout | undefined;
+let pending: NodeJS.Timeout | undefined;
 const changeListeners = new Set<() => void>();
 
 /** Main-process subscribers to session-folder changes (e.g. hosts learning their new session file). */
@@ -193,13 +193,17 @@ export function onSessionsChanged(listener: () => void): void {
 	changeListeners.add(listener);
 }
 
-/** Watch the sessions tree and tell renderers when anything changes (debounced). */
+/**
+ * Watch the sessions tree and tell renderers when anything changes. Throttled, so a session omp
+ * keeps appending to still refreshes the lists every 400ms instead of never.
+ */
 export async function watchSessions(): Promise<void> {
 	const root = sessionsDir(await userEnv());
 	try {
 		watcher = watch(root, { recursive: true }, () => {
-			clearTimeout(debounce);
-			debounce = setTimeout(() => {
+			if (pending) return;
+			pending = setTimeout(() => {
+				pending = undefined;
 				broadcast("sessions:changed", { cwd: null });
 				for (const listener of changeListeners) listener();
 			}, 400);

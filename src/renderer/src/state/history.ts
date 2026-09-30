@@ -12,6 +12,8 @@ export interface SessionHistory {
 	entries: SessionEntry[];
 	/** Title from the physical title slot (newest), falling back to the header title. */
 	title: string | null;
+	/** Every tree entry in file order (all branches); the base for {@link extendSessionHistory}. */
+	all: readonly TreeEntry[];
 }
 
 interface TreeNode {
@@ -44,20 +46,32 @@ interface RawEntry {
 	title?: string;
 }
 
+type TreeEntry = RawEntry & { id: string };
+
 function isRawEntry(value: unknown): value is RawEntry {
 	return typeof value === "object" && value !== null && "type" in value && typeof value.type === "string";
 }
 
+const EMPTY: SessionHistory = { header: null, entries: [], title: null, all: [] };
+
 export function parseSessionHistory(text: string): SessionHistory {
+	return extendSessionHistory(EMPTY, text);
+}
+
+/**
+ * `history` plus the JSONL lines in `text` (what omp appended since). Earlier entries keep their
+ * object identity so rendered rows stay memoized. Returns `history` itself when nothing changed.
+ */
+export function extendSessionHistory(history: SessionHistory, text: string): SessionHistory {
 	// A trailing newline flushes the last line out of the parser's carry.
 	const { items } = parseJsonl(`${text}\n`, "");
-	let header: SessionHeader | null = null;
-	let title: string | null = null;
-	const entries: (RawEntry & { id: string })[] = [];
+	let header = history.header;
+	let slotTitle: string | null = null;
+	const added: TreeEntry[] = [];
 	for (const item of items) {
 		if (!isRawEntry(item)) continue;
 		if (item.type === "title") {
-			title = item.title ?? title;
+			slotTitle = item.title ?? slotTitle;
 			continue;
 		}
 		if (item.type === "session") {
@@ -65,8 +79,12 @@ export function parseSessionHistory(text: string): SessionHistory {
 			header = item as unknown as SessionHeader;
 			continue;
 		}
-		if (item.id) entries.push({ ...item, id: item.id });
+		if (item.id) added.push({ ...item, id: item.id });
 	}
+	const title = slotTitle ?? history.title ?? header?.title ?? null;
+	if (added.length === 0 && header === history.header && title === history.title) return history;
+	const all = added.length > 0 ? [...history.all, ...added] : history.all;
 	// Entries on disk are omp's SessionEntry union; the transcript renderer tolerates unknown kinds.
-	return { header, entries: activeBranch(entries) as unknown as SessionEntry[], title: title ?? header?.title ?? null };
+	const entries = added.length > 0 ? (activeBranch(all) as unknown as SessionEntry[]) : history.entries;
+	return { header, entries, title, all };
 }

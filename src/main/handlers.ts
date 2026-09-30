@@ -7,7 +7,8 @@ import { runOmp } from "./omp/cli";
 import { getHost, listHosts, startHost, stopHost } from "./omp/host";
 import { ompStatus } from "./omp/locate";
 import { findSessionFile, listProjects, listSessions, readSessionFile } from "./omp/sessions";
-import { sessionsOpenElsewhere } from "./omp/elsewhere";
+import { sessionOwnership } from "./omp/elsewhere";
+import { followSessions } from "./omp/follow";
 import { getPrefs, setPrefs } from "./prefs";
 import { killTerminal, resizeTerminal, startTerminal, writeTerminal } from "./terminals";
 
@@ -62,7 +63,8 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 		const artifacts = file.slice(0, -".jsonl".length);
 		if (await pathExists(artifacts)) await shell.trashItem(artifacts);
 	});
-	handle("sessions:openElsewhere", () => sessionsOpenElsewhere());
+	handle("sessions:ownership", async file => (await sessionOwnership([file])).get(file) ?? "unknown");
+	handle("sessions:follow", files => followSessions(files));
 
 	handle("host:start", options => startHost(options));
 	handle("host:stop", hostId => stopHost(hostId));

@@ -52,6 +52,24 @@ export interface SessionSummary {
 	archived: boolean;
 }
 
+/**
+ * Whether an omp process outside this app has a saved session open (src/main/omp/elsewhere.ts).
+ * `unknown`: an observation failed or cannot be made for this file. `unsupported`: no detection
+ * on this platform (Windows). Neither ever means the file is free to write.
+ */
+export type SessionOwnership = "elsewhere" | "free" | "unknown" | "unsupported";
+
+/** Health and ownership of a session file the app follows for a read-only tab. */
+export interface FollowState {
+	file: string;
+	/** The last read succeeded. False keeps the last good transcript but stops live updates. */
+	readable: boolean;
+	/** Why the last read failed (an errno code or message). */
+	error: string | null;
+	/** `free` only after two checks in a row found no other writer. */
+	ownership: SessionOwnership;
+}
+
 /** Live TUI focus snapshot from omp's `OMP_TUI_DEBUG` socket. */
 export interface TuiFocus {
 	/** Open overlays (full-screen menus, Plan Review, pickers). */
@@ -156,8 +174,13 @@ export interface IpcInvokeMap {
 	"sessions:find": { args: [sessionId: string]; result: string | null };
 	/** Move a saved session (and its artifacts folder) to the OS trash. */
 	"sessions:trash": { args: [file: string]; result: void };
-	/** Session files currently open in omp processes outside this app (they open read-only). */
-	"sessions:openElsewhere": { args: []; result: string[] };
+	/** Whether another omp process has this session file open (it then opens read-only). Checked fresh each call. */
+	"sessions:ownership": { args: [file: string]; result: SessionOwnership };
+	/**
+	 * Watch these session files (the read-only tabs): push what omp appends as `sessions:tail` and
+	 * health/ownership changes as `sessions:followState`. Replaces the whole followed set.
+	 */
+	"sessions:follow": { args: [files: string[]]; result: void };
 
 	"host:start": { args: [options: HostStartOptions]; result: HostState };
 	"host:stop": { args: [hostId: string]; result: void };
@@ -191,6 +214,13 @@ export interface IpcEventMap {
 	"term:data": { termId: string; data: string };
 	"term:exit": { termId: string; code: number };
 	"sessions:changed": { cwd: string | null };
+	/**
+	 * New complete JSONL lines of a followed session file. `reset` means `text` is the whole file
+	 * (first read, truncation or replacement); otherwise it continues the previous text.
+	 */
+	"sessions:tail": { file: string; text: string; reset: boolean };
+	/** A followed file's health or ownership changed (first sent after main's first ownership check). */
+	"sessions:followState": FollowState;
 	"app:prefs": AppPreferences;
 	/** Main asks the renderer whether quitting is OK (work in progress?). */
 	"app:quitRequested": { reason: "quit" | "close" };
