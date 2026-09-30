@@ -90,9 +90,8 @@ export function mathSpanAt(source: string, at: number, from = 0): MathSpan | und
 /** The own-line display block starting at offset 0, or `undefined`. */
 export function mathBlockAt(source: string): MathBlock | undefined {
 	const match = MATH_BLOCK_DOLLAR.exec(source) ?? MATH_BLOCK_BRACKET.exec(source);
-	const body = match?.[1];
-	if (!match || body === undefined || body.trim() === "") return undefined;
-	return { raw: match[0], body };
+	if (!match || match[1].trim() === "") return undefined;
+	return { raw: match[0], body: match[1] };
 }
 
 /**

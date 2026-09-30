@@ -6,7 +6,9 @@
     "lib": ["ES2024", "DOM", "DOM.Iterable"],
     "jsx": "react-jsx",
     "strict": true,
-    "noUncheckedIndexedAccess": true,
+    // Off for the renderer only: vendored omp collab-web code (collab/, tool-render/, transcript/)
+    // is written without it and stays byte-identical to upstream for easy syncing. Main keeps it on.
+    "noUncheckedIndexedAccess": false,
     "skipLibCheck": true,
     "isolatedModules": true,
     "resolveJsonModule": true,
