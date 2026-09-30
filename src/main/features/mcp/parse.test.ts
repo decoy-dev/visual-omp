@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { McpDiscoverySettings } from "@shared/contracts/mcp";
 import { SseParser, splitLines } from "./client";
@@ -74,8 +74,10 @@ describe("entry normalization and ${VAR} expansion", () => {
 });
 
 describe("foreign sources", () => {
-	it("translates Codex config.toml like omp", () => {
-		const parsed = parseCodexToml(fixture("codex-config.toml"), "/home/u/.codex/config.toml", {});
+	it("translates Codex config.toml with native path resolution", () => {
+		const configPath = join("profile", ".codex", "config.toml");
+		const serverCwd = resolve(dirname(configPath), "server");
+		const parsed = parseCodexToml(fixture("codex-config.toml"), configPath, {});
 		expect(parsed.error).toBeNull();
 		expect(parsed.servers.map(server => [server.name, server.config])).toEqual([
 			["shadcnio", { url: "https://www.shadcn.io/api/mcp?token=REDACTED", type: "http" }],
@@ -83,13 +85,13 @@ describe("foreign sources", () => {
 		]);
 		const extra = parseCodexToml(
 			'[mcp_servers.x]\ncommand = "./bin/srv"\ncwd = "server"\nenv_vars = ["TOKEN"]\nbearer_token_env_var = "TOKEN"\ntool_timeout_sec = 2\nenabled = false\n',
-			"/p/.codex/config.toml",
+			configPath,
 			{ TOKEN: "t" },
 		).servers[0];
 		expect(extra?.config).toEqual({
 			enabled: false,
-			command: "/p/.codex/server/bin/srv",
-			cwd: "/p/.codex/server",
+			command: resolve(serverCwd, "bin", "srv"),
+			cwd: serverCwd,
 			env: { TOKEN: "t" },
 			headers: { Authorization: "Bearer t" },
 			type: "stdio",

@@ -245,7 +245,7 @@ export function parseUpgrades(stdout: string): PluginUpgrade[] {
 			return changed ? [{ id: upgraded, scope: null, from, to }] : [];
 		}
 	}
-	for (const line of stdout.split("\n")) {
+	for (const line of stdout.split(/\r?\n/)) {
 		const single = /^Upgraded (\S+) \((user|project)\) to (\S+)$/.exec(line.trim());
 		if (single) {
 			const [, id = "", scope, to = ""] = single;
@@ -264,7 +264,7 @@ export function parseUpgrades(stdout: string): PluginUpgrade[] {
 /** `omp plugin marketplace list` (text): `  <name>  <sourceUri>` rows after a header. */
 export function parseMarketplaceList(stdout: string): MarketplaceSource[] {
 	const sources: MarketplaceSource[] = [];
-	for (const line of stdout.split("\n")) {
+	for (const line of stdout.split(/\r?\n/)) {
 		const match = /^ {2}(\S+) {2}(.+)$/.exec(line);
 		if (match) sources.push({ name: match[1] ?? "", sourceUri: (match[2] ?? "").trim() });
 	}
@@ -283,7 +283,7 @@ export function parseDiscover(
 ): AvailablePlugin[] {
 	const plugins: AvailablePlugin[] = [];
 	let inList = false;
-	for (const line of stdout.split("\n")) {
+	for (const line of stdout.split(/\r?\n/)) {
 		if (!inList) {
 			inList = line.startsWith("Available Plugins");
 			continue;

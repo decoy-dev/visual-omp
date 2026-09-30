@@ -83,14 +83,18 @@ describe("doctor", () => {
 });
 
 describe("text output", () => {
-	it("parses marketplace rows under the header", () => {
-		expect(parseMarketplaceList(fixture("marketplace-list.txt"))).toEqual([{ name: "vomp-mp", sourceUri: "/tmp/vomp-fixt/mp" }]);
+	it("parses marketplace rows with LF or CRLF line endings", () => {
+		const output = fixture("marketplace-list.txt");
+		const expected = [{ name: "vomp-mp", sourceUri: "/tmp/vomp-fixt/mp" }];
+		expect(parseMarketplaceList(output)).toEqual(expected);
+		expect(parseMarketplaceList(output.replace(/\n/g, "\r\n"))).toEqual(expected);
 		expect(parseMarketplaceList("No marketplaces configured\n\nAdd one with: omp plugin marketplace add <source>\n")).toEqual([]);
 	});
 
-	it("keeps multi-line descriptions and versionless entries in discover output", () => {
-		const plugins = parseDiscover(fixture("discover.txt"), "vomp-mp", new Map([["other@vomp-mp", ["project" as const]]]));
-		expect(plugins).toEqual([
+	it("keeps multi-line descriptions and versionless entries with LF or CRLF", () => {
+		const output = fixture("discover.txt");
+		const installed = new Map([["other@vomp-mp", ["project" as const]]]);
+		const expected = [
 			{
 				id: "hello@vomp-mp",
 				name: "hello",
@@ -100,7 +104,9 @@ describe("text output", () => {
 				installedScopes: [],
 			},
 			{ id: "other@vomp-mp", name: "other", marketplace: "vomp-mp", version: null, description: null, installedScopes: ["project"] },
-		]);
+		];
+		expect(parseDiscover(output, "vomp-mp", installed)).toEqual(expected);
+		expect(parseDiscover(output.replace(/\n/g, "\r\n"), "vomp-mp", installed)).toEqual(expected);
 	});
 
 	it("parses the marketplace install confirmation", () => {
