@@ -1,0 +1,396 @@
+{
+	"commands": {
+		"mcp": {
+			"title": "Connected tools (MCP)",
+			"hint": "Connect outside tools, like a database or ticket tracker, so omp can use them.",
+			"keywords": "mcp, servers, tools, integrations, connect, plugins"
+		},
+		"skills": {
+			"title": "Skills & plugins",
+			"hint": "Add-on abilities that teach omp new tricks.",
+			"keywords": "skills, plugins, extensions, add-ons, registry, marketplace, install"
+		},
+		"memory": {
+			"title": "Memory",
+			"hint": "See — and delete — what omp has remembered between chats.",
+			"keywords": "memory, remember, forget, lessons, notes, privacy"
+		},
+		"usage": {
+			"title": "Usage & limits",
+			"hint": "See what your chats cost and how close you are to your plan's limits.",
+			"keywords": "usage, cost, spend, money, tokens, limits, quota, billing, stats"
+		}
+	},
+	"common": {
+		"back": "Back",
+		"cancel": "Cancel",
+		"done": "Done",
+		"install": "Install",
+		"remove": "Remove",
+		"retry": "Try again",
+		"save": "Save",
+		"showInFolder": "Show in folder",
+		"undo": "Undo"
+	},
+	"scope": {
+		"user": "All projects",
+		"project": "This project"
+	},
+	"mcp": {
+		"title": "Connected tools",
+		"subtitle": "MCP servers give omp extra powers, like reading a database or filing tickets.",
+		"add": "Add server",
+		"scopeLabel": "Which servers to show",
+		"loadFailed": "Couldn't read your MCP settings.",
+		"projectConfigOff": "omp is set to ignore servers defined in projects (mcp.enableProjectConfig is off), so the servers below aren't used.",
+		"empty": {
+			"userTitle": "No tools connected for all projects",
+			"projectTitle": "No tools connected for this project",
+			"body": "Add a server to let omp use an outside tool, like GitHub, a database or your notes."
+		},
+		"readOnly": "Set up in {{source}} ({{path}}). omp reads it but doesn't change it — edit it there.",
+		"fromSource": "From {{source}}",
+		"noTools": "No tools found — check the command",
+		"toolCount_one": "{{count}} tool",
+		"toolCount_other": "{{count}} tools",
+		"turnOn": "Turn on {{name}}",
+		"turnOff": "Turn off {{name}}",
+		"more": "More actions for {{name}}",
+		"menu": {
+			"test": "Test connection",
+			"tools": "View tools",
+			"edit": "Edit",
+			"remove": "Remove"
+		},
+		"status": {
+			"off": "Turned off",
+			"invalid": "This server's settings aren't valid",
+			"unused": "omp isn't using this server",
+			"unchecked": "Not checked yet",
+			"checking": "Checking the connection…",
+			"connected": "Connected",
+			"slow": "Connected, but slow to start ({{seconds}}s)",
+			"noTools": "Connected, but it offers no tools",
+			"needsSignIn": "Needs sign-in",
+			"failed": "Couldn't connect"
+		},
+		"toast": {
+			"enabled": "Turned on {{name}}",
+			"disabled": "Turned off {{name}}",
+			"toggleFailed": "Couldn't change {{name}}",
+			"removed": "Removed {{name}}",
+			"saved": "Saved {{name}}. New chats will use it.",
+			"signInTitle": "Sign in to {{name}}",
+			"signInBody": "This server signs you in through your browser. In a chat, type /mcp reauth {{name}} to connect."
+		},
+		"remove": {
+			"title": "Remove {{name}}?",
+			"body": "omp will stop using this server. It's deleted from {{path}}.",
+			"confirm": "Remove server"
+		},
+		"tools": {
+			"title": "Tools from {{name}}",
+			"extras": "It also offers {{prompts}} prompt templates and {{resources}} resources."
+		},
+		"test": {
+			"action": "Test connection",
+			"running": "Connecting to the server…",
+			"found_one": "Found {{count}} tool",
+			"found_other": "Found {{count}} tools",
+			"server": "{{name}} {{version}} · answered in {{seconds}}s",
+			"authRequired": "The server wants you to sign in. Save it, then type /mcp reauth {{name}} in a chat — or add an Authorization header.",
+			"unresolved": "These variables aren't set on this computer: {{vars}}",
+			"output": "Server output"
+		},
+		"gallery": {
+			"title": "Add a server",
+			"subtitle": "Pick a popular tool, or set up your own.",
+			"customTitle": "Custom server",
+			"customBody": "Run a program on this computer or connect to a web address.",
+			"customAction": "Set up",
+			"addAction": "Add",
+			"addNamed": "Add {{name}}",
+			"signIn": "Browser sign-in",
+			"needs": "Needs {{bin}}"
+		},
+		"category": {
+			"developer": "Coding",
+			"productivity": "Work apps",
+			"web": "Web & browser",
+			"knowledge": "Docs & knowledge",
+			"reference": "Basics"
+		},
+		"form": {
+			"customTitle": "Custom server",
+			"presetTitle": "Add {{name}}",
+			"editTitle": "Edit {{name}}",
+			"name": "Name",
+			"nameHint": "How omp refers to this server. Letters, numbers and - _ . : work.",
+			"transport": "How omp reaches it",
+			"local": "Runs on this computer",
+			"remote": "Web address",
+			"command": "Command",
+			"commandHint": "The program omp starts, with its options.",
+			"env": "Environment variables",
+			"envHint": "For secrets like API keys. ${NAME} uses a variable already set on this computer.",
+			"addEnv": "Add variable",
+			"url": "Server URL",
+			"sse": "Uses the older SSE connection",
+			"sseHint": "Only if the server's docs say so.",
+			"headers": "Headers",
+			"headersHint": "Sent with every request, e.g. Authorization: Bearer ${API_TOKEN}.",
+			"addHeader": "Add header",
+			"keyLabel": "Name {{index}}",
+			"valueLabel": "Value {{index}}",
+			"removeRow": "Remove this row",
+			"folderLabel": "Folder {{index}}",
+			"addFolder": "Add folder",
+			"choose": "Choose…",
+			"show": "Show",
+			"hide": "Hide",
+			"optional": "{{label}} (optional)",
+			"requires": "This server needs {{bins}} installed on this computer.",
+			"scope": "Where to use it",
+			"scopeHint": "“All projects” saves it to your omp settings; “This project” saves it to the project's .omp folder.",
+			"errors": {
+				"nameRequired": "Give the server a name.",
+				"nameInvalid": "Use letters, numbers, - _ . : and single spaces (up to 100 characters).",
+				"nameTaken": "A server with this name already exists there.",
+				"commandRequired": "Enter the command that starts the server.",
+				"urlRequired": "Enter the server's web address.",
+				"urlInvalid": "The address should start with https:// or http://.",
+				"fieldRequired": "This is required."
+			}
+		}
+	},
+	"skills": {
+		"title": "Skills & plugins",
+		"subtitle": "Add-on abilities that teach omp new tricks.",
+		"tabs": {
+			"skills": "Skills",
+			"plugins": "Plugins"
+		},
+		"search": "Search your skills",
+		"searchRegistry": "Search the skill registry",
+		"filterLabel": "What to show",
+		"filter": {
+			"installed": "Installed",
+			"project": "This project",
+			"registry": "Registry"
+		},
+		"allOff": "Skills are turned off in omp's settings, so none of these are used.",
+		"turnOnAll": "Turn skills on",
+		"empty": "No skills yet",
+		"emptyProject": "This project has no skills of its own",
+		"emptyBody": "Skills are short instruction files that teach omp how to do something. Browse the registry to add some.",
+		"noMatch": "No skills match '{{q}}'.",
+		"noDescription": "No description.",
+		"turnOn": "Turn on {{name}}",
+		"turnOff": "Turn off {{name}}",
+		"invalid_one": "{{count}} skill file has a problem, so omp skips it:",
+		"invalid_other": "{{count}} skill files have problems, so omp skips them:",
+		"reason": {
+			"skillsOff": "All skills are turned off in omp's settings.",
+			"disabled": "Turned off.",
+			"sourceDisabled": "Skills from this source are turned off in omp's settings.",
+			"ignored": "Hidden by an ignore pattern in omp's settings.",
+			"notIncluded": "Not in the list of skills omp's settings allow.",
+			"duplicate": "Another copy of this skill is used instead."
+		},
+		"registryTitle": "From the skill share registry",
+		"offline": "Can't reach the registry — showing installed only",
+		"noRegistryInstalls": "No skills installed from the registry",
+		"weekly_one": "{{formatted}} install/week",
+		"weekly_other": "{{formatted}} installs/week",
+		"deprecated": "Deprecated",
+		"installedUser": "Installed · all projects {{version}}",
+		"installedProject": "Installed · this project {{version}}",
+		"installNamed": "Install {{name}}",
+		"removeNamed": "Remove {{name}}",
+		"installFor": {
+			"user": "Install for all projects",
+			"project": "Install for this project"
+		},
+		"scripts": {
+			"title": "{{name}} includes scripts",
+			"body": "This skill comes with programs omp can run on your computer. Only install it if you trust who published it.",
+			"confirm": "Install anyway"
+		},
+		"toast": {
+			"enabled": "Turned on {{name}}",
+			"disabled": "Turned off {{name}}",
+			"toggleFailed": "Couldn't change {{name}}",
+			"installed": "Installed {{name}}",
+			"removed": "Removed {{name}}"
+		},
+		"drawer": {
+			"enabled": "Use this skill",
+			"enabledHint": "When off, omp won't load it in new chats.",
+			"what": "What it does",
+			"when": "When omp uses it",
+			"whenAuto": "omp reads the description above and uses this skill when your request matches it. You can also ask for it directly:",
+			"whenHidden": "Only when you ask for it by name — omp doesn't pick it on its own:",
+			"source": "Where it comes from",
+			"instructions": "Instructions omp follows",
+			"showFile": "Show file"
+		}
+	},
+	"plugins": {
+		"search": "Search your plugins",
+		"searchRegistry": "Search available plugins",
+		"filter": {
+			"available": "Available"
+		},
+		"empty": "No plugins installed",
+		"emptyProject": "No plugins installed just for this project",
+		"emptyBody": "Plugins add tools, commands and skills to omp. See what's available to install one.",
+		"noMatch": "No plugins match '{{q}}'.",
+		"npmSource": "npm package",
+		"fromMarketplace": "from {{marketplace}}",
+		"shadowed": "A copy installed for this project is used instead.",
+		"updateChip": "v{{from}} → v{{to}}",
+		"update": "Update",
+		"turnOn": "Turn on {{name}}",
+		"turnOff": "Turn off {{name}}",
+		"removeNamed": "Remove {{name}}",
+		"installNamed": "Install {{name}}",
+		"installedUser": "Installed · all projects",
+		"installedProject": "Installed · this project",
+		"installByName": "Install by name",
+		"installByNameHint": "An npm package, a GitHub repo (github:owner/repo), a local folder, or name@marketplace.",
+		"availableTitle": "From your marketplaces",
+		"offline": "Can't reach your plugin marketplaces — showing installed only",
+		"noMarketplaces": "Nothing to browse yet",
+		"noMarketplacesBody": "No plugin marketplaces are set up. You can still install any plugin by name above.",
+		"toast": {
+			"enabled": "Turned on {{name}}",
+			"disabled": "Turned off {{name}}",
+			"toggleFailed": "Couldn't change {{name}}",
+			"installed": "Installed {{name}}",
+			"removed": "Removed {{name}}",
+			"updated": "Updated {{name}}"
+		}
+	},
+	"ops": {
+		"activity": "Activity",
+		"installing": "Installing {{name}}…",
+		"updating": "Updating {{name}}…",
+		"removing": "Removing {{name}}…",
+		"done": "{{name}} — done",
+		"failed": "{{name}} — didn't finish",
+		"dismiss": "Dismiss",
+		"output_one": "Output ({{count}} line)",
+		"output_other": "Output ({{count}} lines)"
+	},
+	"memory": {
+		"title": "What omp remembers",
+		"subtitle": "Notes omp keeps between chats so it doesn't start from scratch.",
+		"backend": {
+			"off": "Off",
+			"local": "Local files",
+			"mnemopi": "Memory database",
+			"sharpshooter": "Decision notes",
+			"hindsight": "Hindsight server"
+		},
+		"kind": {
+			"summary": "Summary omp reads first",
+			"memory": "Memory file",
+			"raw": "Raw notes",
+			"rollout": "Chat summary",
+			"skill": "Learned skill",
+			"lesson": "Lesson",
+			"working": "Recent memory",
+			"episodic": "Consolidated memory",
+			"fact": "Fact",
+			"decisions": "Decisions",
+			"delta": "Decision waiting to be filed"
+		},
+		"scope": {
+			"shared": "Shared by all projects"
+		},
+		"scopeLabel": "Whose memories to show",
+		"search": "Search memories",
+		"listLabel": "Memories",
+		"loadFailed": "Couldn't read omp's memory settings.",
+		"off": "Memory is off, so omp doesn't remember anything between chats right now. You can turn it on in omp's settings (memory.backend). Anything saved earlier is still shown here.",
+		"remote": "Memories are kept on your Hindsight server ({{url}}). They can't be browsed or deleted from here.",
+		"readOnly": "omp maintains these memories itself and rewrites them when it tidies up, so they can't be deleted from here.",
+		"cantDelete": "omp rewrites this one itself when it tidies up its memories, so it can't be deleted here.",
+		"empty": "omp hasn't saved any memories yet. It only remembers what you ask it to.",
+		"noMatch": "No memories match '{{q}}'.",
+		"more_one": "{{count}} more — search to narrow it down",
+		"more_other": "{{count}} more — search to narrow it down",
+		"created": "Saved {{date}}",
+		"updated": "Updated {{date}}",
+		"export": "Export…",
+		"forgetOne": {
+			"action": "Forget this",
+			"title": "Forget “{{name}}”?",
+			"body": "omp won't remember this anymore. This can't be undone.",
+			"confirm": "Forget"
+		},
+		"forgetAll": {
+			"action": "Forget everything",
+			"title": "Forget everything?",
+			"body": "omp will forget the memories it can delete in {{scope}}. This can't be undone.",
+			"keeps": "Summaries omp maintains itself will stay; they're rebuilt from what's left.",
+			"typeLabel": "Type “{{word}}” to confirm",
+			"confirm": "Forget everything",
+			"partial": "{{failed}} of {{count}} memories couldn't be deleted."
+		},
+		"toast": {
+			"forgotOne": "Forgot “{{name}}”",
+			"forgotAll_one": "Forgot {{count}} memory",
+			"forgotAll_other": "Forgot {{count}} memories",
+			"restartHint": "Chats that are already open may keep using it until they restart.",
+			"exported": "Memory exported",
+			"exportFailed": "Couldn't export this memory"
+		}
+	},
+	"usage": {
+		"title": "Usage & limits",
+		"subtitle": "What your chats cost this week, and how much of your plan is left.",
+		"statsLabel": "This week at a glance",
+		"stat": {
+			"today": "Today",
+			"week": "This week",
+			"chats": "Chats",
+			"tokens": "Tokens"
+		},
+		"chartTitle": "Last 7 days",
+		"today": "Today",
+		"barLabel": "{{date}}: {{cost}} ({{requests}} replies)",
+		"empty": "No usage yet this week. Costs appear here after your first chats.",
+		"spendFailed": "Couldn't read your chat history.",
+		"limitsTitle": "Plan limits",
+		"refreshLimits": "Check limits again with your providers",
+		"limitsFailed": "Couldn't check your plan limits.",
+		"asOf": "as of {{time}}",
+		"used": "{{percent}}% used",
+		"resetsIn": "resets in {{time}}",
+		"atLimit": "Limit reached — resets in {{time}}",
+		"noLimits": "No plan limits to show",
+		"noLimitsBody": "Limits appear here when you're signed in to a provider that reports them, like Claude or ChatGPT plans.",
+		"disabledCredential": "omp stopped using a {{provider}} sign-in ({{account}}): {{cause}}",
+		"chatsTitle": "Chats this week",
+		"untitled": "Untitled chat",
+		"column": {
+			"title": "Chat",
+			"model": "Model",
+			"inputTokens": "Tokens in",
+			"outputTokens": "Tokens out",
+			"cost": "Cost",
+			"durationMs": "Time"
+		},
+		"estimateNote": "Costs are estimates at public API prices, as recorded by omp. Plan subscriptions may bill differently.",
+		"exportCsv": "Export CSV",
+		"openStats": "Open omp stats page",
+		"statusText": "{{cost}} today",
+		"statusTooltip": "Estimated cost of today's chats. Click for usage and limits.",
+		"toast": {
+			"exported": "Usage exported",
+			"exportFailed": "Couldn't export usage",
+			"statsFailed": "Couldn't open omp's stats page"
+		}
+	}
+}

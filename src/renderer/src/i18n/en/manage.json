@@ -1,0 +1,506 @@
+{
+	"common": {
+		"cancel": "Cancel",
+		"close": "Close",
+		"undo": "Undo"
+	},
+	"commands": {
+		"settings": {
+			"title": "Settings",
+			"hint": "Change how the app looks and how omp works.",
+			"keywords": "preferences, options, config, theme, permissions, about, version"
+		},
+		"roles": {
+			"title": "Model roles",
+			"hint": "Pick which model does which job — everyday chat, planning, commit messages, and more.",
+			"keywords": "models, presets, thinking, default model, fast model"
+		},
+		"agents": {
+			"title": "Helpers",
+			"hint": "Reusable specialists omp can hand work to, like a reviewer or an explorer.",
+			"keywords": "agents, subagents, specialists, reviewer, scout"
+		}
+	},
+	"thinking": {
+		"inherit": "Same as the chat",
+		"off": "Off",
+		"minimal": "Minimal",
+		"low": "Low",
+		"medium": "Medium",
+		"high": "High",
+		"xhigh": "Extra high",
+		"max": "Max",
+		"auto": "Auto — omp decides"
+	},
+	"settings": {
+		"title": "Settings",
+		"tabs": {
+			"general": "General",
+			"appearance": "Appearance",
+			"permissions": "Permissions",
+			"models": "Models",
+			"alerts": "Sounds & alerts",
+			"shortcuts": "Shortcuts",
+			"about": "About",
+			"advanced": "Advanced"
+		},
+		"scope": {
+			"label": "Save for",
+			"global": "All projects",
+			"project": "This project ({{name}})"
+		},
+		"source": {
+			"project": "This project",
+			"env": "Set by environment",
+			"runtime": "Set for this run",
+			"overlay": "Set by a config overlay"
+		},
+		"saved": "Saved",
+		"saveFailed": "Couldn't save — omp said: {{reason}}",
+		"shadowed": {
+			"project": "This project has its own value, so the change won't show here. Switch to \"This project\" to change it.",
+			"global": "Your all-projects value still applies here.",
+			"env": "An environment variable overrides this setting, so omp keeps using that value.",
+			"runtime": "A value set for this run overrides the saved one.",
+			"overlay": "A config overlay file overrides this setting.",
+			"default": "The built-in default still applies.",
+			"other": "Another settings file for this project still decides this value."
+		},
+		"externalChange": "Settings changed outside the app —",
+		"reload": "Reload",
+		"loadFailed": "Couldn't read omp's settings: {{reason}}",
+		"retry": "Try again"
+	},
+	"general": {
+		"safety": "Safety",
+		"approvalMode": {
+			"label": "Permission mode",
+			"always-ask": "Ask me first",
+			"write": "Edits OK",
+			"yolo": "Auto",
+			"help": {
+				"always-ask": "omp can look around on its own, but asks before it changes a file or runs a command.",
+				"write": "omp can read and edit files on its own, but asks before running commands or starting helpers.",
+				"yolo": "omp works on its own without asking. Only use this in projects you trust.",
+				"none": "How much omp may do on its own before asking you."
+			}
+		},
+		"chats": "Chats",
+		"transcript": {
+			"label": "Transcript view",
+			"description": "Choose how much detail you see: just answers, plus thinking, or every step.",
+			"normal": "Normal",
+			"thinking": "Thinking",
+			"verbose": "Verbose"
+		},
+		"voice": {
+			"label": "Voice input",
+			"description": "Shows a microphone button in the message box so you can talk instead of type. omp turns your speech into text using the Dictation model."
+		},
+		"compaction": {
+			"label": "Summarize long chats automatically",
+			"description": "When a chat gets close to the model's limit, omp condenses the earlier part so you can keep going."
+		},
+		"personality": {
+			"label": "omp's tone",
+			"description": "How omp talks to you in its replies.",
+			"values": {
+				"default": "Standard",
+				"friendly": "Friendly",
+				"pragmatic": "Straight to the point",
+				"none": "No personality"
+			}
+		}
+	},
+	"appearance": {
+		"look": "Look",
+		"theme": {
+			"label": "Theme",
+			"description": "System follows your computer's light or dark setting.",
+			"light": "Light",
+			"dark": "Dark",
+			"system": "System"
+		},
+		"textSize": {
+			"label": "Text size",
+			"description": "Makes all text in the app bigger or smaller.",
+			"preview": "omp fixed the coupon bug and ran the checkout tests — all 12 passed."
+		},
+		"motion": {
+			"title": "Motion",
+			"label": "Reduce motion",
+			"description": "Turns off sliding, pulsing and shimmering effects.",
+			"system": "Match system",
+			"on": "On",
+			"off": "Off"
+		}
+	},
+	"permissions": {
+		"intro": "Choose, tool by tool, whether omp may use it without asking. Tools left on Default follow your permission mode (now: {{mode}}).",
+		"listLabel": "Tool permissions",
+		"rowLabel": "Permission for {{tool}}",
+		"choice": {
+			"default": "Default",
+			"prompt": "Ask",
+			"allow": "Allow",
+			"deny": "Deny"
+		},
+		"defaultHelp": "Ask always checks with you first. Allow never asks. Deny blocks the tool completely.",
+		"unrecognized": "omp ignores these entries because their value isn't Ask, Allow or Deny: {{tools}}",
+		"add": {
+			"label": "Another tool",
+			"placeholder": "Tool name, e.g. mcp_github_create_issue",
+			"button": "Add",
+			"description": "Tools from connected services (MCP) and extensions can be listed here by name."
+		},
+		"tools": {
+			"read": "Read files",
+			"edit": "Edit files",
+			"write": "Create files",
+			"bash": "Run commands",
+			"eval": "Run code",
+			"fetch": "Open web pages",
+			"web_search": "Search the web",
+			"browser": "Control a web browser",
+			"task": "Start helpers",
+			"generate_image": "Create images"
+		}
+	},
+	"models": {
+		"caps": {
+			"vision": "Understands images",
+			"reasoning": "Thinks step by step",
+			"cheap": "Low cost"
+		},
+		"context": "{{size}} context",
+		"alias": "Follows another role",
+		"unavailable": "Not available",
+		"custom": "Custom"
+	},
+	"modelsTab": {
+		"group": "New chats",
+		"title": "Models",
+		"description": "The model that answers in new chats, and how hard it thinks.",
+		"defaultModel": {
+			"label": "Default model",
+			"description": "Used for every chat unless you switch."
+		},
+		"thinking": {
+			"label": "Default thinking",
+			"description": "More thinking gives better answers to hard questions but takes longer and costs more."
+		},
+		"roles": {
+			"title": "Model roles",
+			"description": "Pick which model does which job — everyday chat, planning, commit messages, and more.",
+			"open": "Open model roles"
+		}
+	},
+	"alerts": {
+		"title": "Notifications",
+		"description": "Get a desktop notification when omp needs you while the app is in the background.",
+		"notifications": {
+			"label": "Desktop notifications",
+			"description": "Tells you when a chat finishes or omp is waiting for your answer."
+		},
+		"test": {
+			"description": "Check that notifications show up on this computer.",
+			"button": "Send a test",
+			"title": "visual-omp",
+			"body": "Notifications are working."
+		}
+	},
+	"shortcuts": {
+		"description": "Keyboard shortcuts for the app's commands. Press ⌘K (Ctrl+K on Windows) to find any command by name.",
+		"search": "Search shortcuts",
+		"caption": "Keyboard shortcuts",
+		"action": "Action",
+		"keys": "Keys",
+		"empty": "No shortcuts match your search."
+	},
+	"about": {
+		"tagline": "A friendly window onto omp, the coding agent.",
+		"appVersion": "App version",
+		"ompVersion": "omp version",
+		"ompMissing": "Not found",
+		"ompPath": "omp location",
+		"docs": "omp docs",
+		"reportIssue": "Report an issue",
+		"appCurrent": "visual-omp is up to date.",
+		"appUpdate": "visual-omp {{version}} is available.",
+		"appCheckFailed": "Couldn't check for app updates: {{reason}}",
+		"viewRelease": "View release",
+		"ompCurrent": "omp is up to date.",
+		"ompUpdate": "omp {{version}} is available.",
+		"ompCheckFailed": "Couldn't check for omp updates: {{reason}}"
+	},
+	"advanced": {
+		"search": "Search every omp setting",
+		"editedOnly": "Changed only",
+		"count_one": "{{count}} setting",
+		"count_other": "{{count}} settings",
+		"loading": "Loading settings…",
+		"empty": "No settings match your search.",
+		"listLabel": "All omp settings",
+		"edited": "Changed from the default",
+		"noDescription": "No description",
+		"notSet": "Not set",
+		"default": "default",
+		"secretSaved": "Saved — hidden",
+		"reset": "Reset {{key}} to default",
+		"invalid": {
+			"number": "{{key}} needs a number.",
+			"json": "{{key}} needs a valid value.",
+			"array": "{{key}} needs a list, like [\"a\", \"b\"].",
+			"record": "{{key}} needs key-value pairs, like {\"name\": \"value\"}."
+		},
+		"scopeNote": {
+			"global": "Changes apply to all projects.",
+			"project": "Changes apply to this project only and win over your all-projects values."
+		},
+		"resetAll": {
+			"button": "Reset all to defaults",
+			"title": "Reset all settings?",
+			"body": {
+				"global_one": "This removes {{count}} saved setting from your all-projects settings. Saved passwords and keys are kept.",
+				"global_other": "This removes {{count}} saved settings from your all-projects settings. Saved passwords and keys are kept.",
+				"project_one": "This removes {{count}} saved setting from this project's settings. Saved passwords and keys are kept.",
+				"project_other": "This removes {{count}} saved settings from this project's settings. Saved passwords and keys are kept."
+			},
+			"confirm": "Reset all",
+			"done_one": "Reset {{count}} setting.",
+			"done_other": "Reset {{count}} settings."
+		}
+	},
+	"roles": {
+		"title": "Model roles",
+		"subtitle": "Pick which model does which job — everyday chat, planning, commit messages, and more.",
+		"listTitle": "Roles",
+		"unsaved": "Unsaved changes",
+		"refreshModels": "Refresh the model list",
+		"loadFailed": "Couldn't load model roles",
+		"auto": "Let omp choose",
+		"autoHelp": "omp picks a suitable model for this job automatically.",
+		"model": "Model",
+		"modelFor": "Model for {{role}}",
+		"thinking": "Thinking",
+		"thinkingFor": "Thinking for {{role}}",
+		"thinkingDefault": "Model's default",
+		"clear": "Let omp choose instead",
+		"customChip": "Custom",
+		"usedFor": "Used for:",
+		"missing": "This model isn't available — pick another",
+		"aliasHelp": "This role uses whatever model {{alias}} is set to.",
+		"overridden": "This project sets its own model for this role ({{value}}), so it wins here. Switch to \"This project\" to change it.",
+		"names": {
+			"default": "Default",
+			"smol": "Fast",
+			"slow": "Thinking",
+			"vision": "Vision",
+			"plan": "Architect",
+			"commit": "Commit",
+			"tiny": "Tiny",
+			"memory": "Memory",
+			"task": "Subtask",
+			"advisor": "Advisor",
+			"image": "Image generation",
+			"web": "Web search",
+			"speech": "Speech",
+			"dictation": "Dictation",
+			"judge": "Judge"
+		},
+		"usage": {
+			"default": "Every chat, unless you switch models.",
+			"plan": "Plan mode — working out an approach before any files change.",
+			"commit": "Writing commit messages and summaries of your changes.",
+			"advisor": "A second opinion that watches each step and adds notes when something looks off.",
+			"smol": "Quick, low-cost jobs where speed matters more than depth.",
+			"slow": "Hard problems that deserve slower, more careful thinking.",
+			"vision": "Understanding screenshots and pictures you add to a chat.",
+			"tiny": "Small background chores, like naming your chats. Uses the Fast model when empty.",
+			"memory": "Saving and recalling what omp remembers between chats. Uses the Tiny model when empty.",
+			"task": "Helpers omp starts to split a big job into smaller pieces.",
+			"image": "Creating pictures when you ask for one.",
+			"web": "Searching the web for up-to-date answers.",
+			"speech": "Reading replies aloud.",
+			"dictation": "Turning your voice into text in the message box.",
+			"judge": "Quick yes-or-no calls omp makes about its own work, like how hard to think about a request.",
+			"custom": "A role you added. Helpers and commands use it by writing @{{id}} as their model."
+		},
+		"saveTo": {
+			"global": "Changes apply to all projects.",
+			"project": "Changes apply to this project only."
+		},
+		"pending_one": "{{count}} unsaved change",
+		"pending_other": "{{count}} unsaved changes",
+		"revert": "Revert",
+		"save": "Save",
+		"saved_one": "Saved {{count}} role.",
+		"saved_other": "Saved {{count}} roles.",
+		"presetApplied": "Switched to the {{name}} preset.",
+		"presetShadowed": "Some roles are still decided elsewhere: {{roles}}",
+		"presetFailed": "Couldn't apply the preset: {{reason}}",
+		"presetInProject": "{{name}} is also saved in this project's settings; remove it there to delete it completely.",
+		"presetSaved": "Saved the {{name}} preset.",
+		"presets": {
+			"title": "Presets",
+			"description": "Save your whole set of roles under a name and switch between sets in one click.",
+			"saveNew": "Save as preset",
+			"saveFirst": "Save or revert your changes first",
+			"empty": "No presets yet.",
+			"summary_one": "{{model}} · {{count}} role",
+			"summary_other": "{{model}} · {{count}} roles",
+			"apply": "Use this",
+			"delete": "Delete preset {{name}}",
+			"saveTitle": "Save as preset",
+			"saveBody": "Saves the current model for every role, plus the default thinking level.",
+			"name": "Name",
+			"namePlaceholder": "e.g. fast-and-cheap",
+			"nameInvalid": "Start with a letter; use only letters, numbers, - and _.",
+			"nameTaken": "A preset with this name exists — saving replaces it.",
+			"save": "Save preset",
+			"replace": "Replace preset"
+		},
+		"discard": {
+			"title": "Discard your changes?",
+			"body_one": "You have {{count}} unsaved change to model roles.",
+			"body_other": "You have {{count}} unsaved changes to model roles.",
+			"keep": "Keep editing",
+			"confirm": "Discard"
+		}
+	},
+	"agents": {
+		"title": "Helpers",
+		"subtitle": "Reusable specialists omp can hand work to.",
+		"new": "New helper",
+		"createWithAi": "Create with AI",
+		"refresh": "Reload helpers",
+		"search": "Search helpers",
+		"filter": "Show",
+		"filters": { "all": "All" },
+		"scope": {
+			"bundled": "Built-in",
+			"user": "All projects",
+			"project": "This project"
+		},
+		"customizedChip": "Customized",
+		"brokenChip": "Can't be used",
+		"fix": "Fix",
+		"warnings_one": "{{count}} problem",
+		"warnings_other": "{{count}} problems",
+		"running": "Running now",
+		"runningIn_one": "Running in {{title}}",
+		"runningIn_other": "Running in {{title}} and {{count}} more chats",
+		"untitledChat": "a new chat",
+		"defaultModel": "Default model",
+		"overrideHint": "You picked this model for the helper.",
+		"enable": "Let omp use {{name}}",
+		"more": "More actions for {{name}}",
+		"menu": {
+			"edit": "Edit",
+			"customize": "Customize",
+			"duplicate": "Duplicate",
+			"run": "Run now",
+			"delete": "Delete"
+		},
+		"empty": "No helpers here yet",
+		"emptySearch": "No helpers match your search.",
+		"emptyBody": "Create one to give omp a specialist it can hand work to.",
+		"loadFailed": "Couldn't load helpers",
+		"needsProject": "Open a project first — helpers run inside a chat.",
+		"actionFailed": "That didn't work: {{reason}}",
+		"customized": "Made an editable copy of {{name}} for all projects.",
+		"shadowed": "Saved, but this project's settings still decide whether omp uses {{name}}.",
+		"deleted": "Deleted {{name}}.",
+		"delete": {
+			"title": "Delete {{name}}?",
+			"body": "This removes the helper's file from this computer. This can't be undone.",
+			"confirm": "Delete"
+		},
+		"ai": {
+			"title": "Create a helper with AI",
+			"body": "Describe the specialist you want. omp writes the helper for you in a new chat.",
+			"label": "What should this helper do?",
+			"placeholder": "e.g. Review my changes for accessibility problems and suggest fixes in plain words.",
+			"how": "omp opens a new chat, writes the helper file and tells you its name. It shows up here when it's done.",
+			"needsProject": "Open a project first — omp writes the helper from a chat.",
+			"create": "Create helper",
+			"started": "omp is creating your helper in a new chat.",
+			"startedHint": "Open Helpers again when it's done to see it."
+		},
+		"editor": {
+			"newTitle": "New helper",
+			"editTitle": "Edit {{name}}",
+			"fixTitle": "Fix {{name}}",
+			"fixDescription": "omp can't read this file. Fix the text below and save.",
+			"scope": "Available in",
+			"scopeHelp": {
+				"user": "Saved in {{dir}} and usable in every project.",
+				"project": "Saved in {{dir}} and only used in this project."
+			},
+			"name": "Name",
+			"nameHelp": "Short and without spaces, like test-writer. You call the helper by this name.",
+			"nameReserved": "\"{{name}}\" is reserved by omp. Pick another name.",
+			"nameTaken": "Another helper already uses this name.",
+			"nameSpaces": "Use hyphens instead of spaces.",
+			"description": "When to use it",
+			"descriptionHelp": "One sentence. omp reads this to decide when to hand work to this helper.",
+			"model": "Model",
+			"modelDefault": "Same as the chat's helpers",
+			"modelOwn": "The helper's own choice ({{model}})",
+			"modelHelp": "Pick a model just for this helper, or leave it on the default.",
+			"thinking": "Thinking",
+			"thinkingDefault": "The helper's default",
+			"tools": "Tools",
+			"allTools": "Can use every tool",
+			"allToolsHelp": "Turn off to pick exactly what this helper may do.",
+			"instructions": "Instructions",
+			"instructionsView": "Instructions view",
+			"write": "Write",
+			"preview": "Preview",
+			"previewEmpty": "Nothing to preview yet.",
+			"instructionsPlaceholder": "You are a careful reviewer. You will…",
+			"test": "Test in new chat",
+			"testSaveFirst": "Save your changes first",
+			"create": "Create helper",
+			"save": "Save",
+			"saved": "Saved {{name}}.",
+			"saveFailed": "Couldn't save — {{reason}}",
+			"fixed": "Fixed — omp can use this helper again.",
+			"valid": "omp can read this file.",
+			"invalid": "omp can't use this yet: {{reason}}",
+			"rawLabel": "Helper file"
+		},
+		"tools": {
+			"read": "Read files",
+			"bash": "Run commands",
+			"edit": "Edit files",
+			"ast_grep": "Search code structure",
+			"ast_edit": "Rewrite code structure",
+			"ask": "Ask you questions",
+			"debug": "Use a debugger",
+			"ida": "Inspect programs (IDA)",
+			"eval": "Run code",
+			"github": "Use GitHub",
+			"glob": "List files",
+			"grep": "Search in files",
+			"find": "Find files",
+			"lsp": "Code intelligence",
+			"checkpoint": "Save checkpoints",
+			"rewind": "Rewind to checkpoints",
+			"context_notes": "Keep notes",
+			"new_context": "Start fresh context",
+			"security_scan": "Scan for security issues",
+			"task": "Start other helpers",
+			"wait": "Wait for helpers",
+			"todo": "Keep a checklist",
+			"web_search": "Search the web",
+			"write": "Create files",
+			"memory_edit": "Edit memories",
+			"retain": "Remember things",
+			"recall": "Recall memories",
+			"reflect": "Reflect on memories",
+			"learn": "Learn skills",
+			"manage_skill": "Manage skills"
+		}
+	}
+}
