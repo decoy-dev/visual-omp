@@ -23,7 +23,7 @@ import { mutateDocument, readDocument, readOptional, setServerEnabled, writeRawD
 
 const DEFAULT_TEST_TIMEOUT_MS = 20_000;
 
-const ConfigList = z.record(z.string(), z.looseObject({ value: z.unknown() }));
+const ConfigList = z.record(z.string(), z.looseObject({ value: z.unknown().optional() }));
 const Flag = (fallback: boolean) => z.boolean().catch(fallback);
 const Names = z.array(z.string()).catch([]);
 
