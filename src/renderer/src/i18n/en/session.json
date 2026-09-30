@@ -1,0 +1,151 @@
+{
+  "common": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "loading": "Loading",
+    "unknown": "Unknown"
+  },
+  "errors": {
+    "busy": "omp has a menu open. Close it in the terminal sheet before running another action."
+  },
+  "permission": {
+    "title": "How much omp may do",
+    "tooltip": "How much omp may do on its own before asking you.",
+    "aria": "Permission mode: {{mode}}",
+    "autoNote": "no questions asked",
+    "scopeNote": "Saved for this project. It applies to open chats too.",
+    "modes": {
+      "always-ask": { "label": "Ask me first", "description": "omp asks before editing files or running commands." },
+      "write": { "label": "Edits OK", "description": "omp can edit project files; it asks before running commands." },
+      "yolo": { "label": "Auto", "description": "omp can edit files and run commands without asking." }
+    },
+    "autoConfirm": {
+      "title": "Let omp run on its own?",
+      "description": "Auto lets omp run commands without asking. Only use it in projects you trust.",
+      "confirm": "I understand"
+    }
+  },
+  "model": {
+    "title": "Choose a model",
+    "tooltip": "Choose which AI model answers you.",
+    "aria": "Choose model. Current: {{name}}",
+    "none": "Choose model",
+    "search": "Search models…",
+    "loading": "Finding models…",
+    "empty": "No matching models. Try a shorter search.",
+    "scopeNote": "This chat only. New chats use your default model.",
+    "roles": "Model roles",
+    "switched": "Switched to {{name}} for this chat.",
+    "vision": "Can understand images",
+    "reasoning": "Supports adjustable thinking"
+  },
+  "thinking": {
+    "title": "Thinking",
+    "tooltip": "Choose how much time the model spends thinking before it answers.",
+    "unsupported": "This model has no adjustable thinking levels.",
+    "aria": "Thinking level: {{level}}",
+    "failed": "omp could not switch to that thinking level.",
+    "levels": {
+      "off": { "label": "Off", "description": "Answer without extra reasoning." },
+      "auto": { "label": "Auto", "description": "omp picks the effort for each question." },
+      "minimal": { "label": "Minimal", "description": "Quick answers with a little extra thought." },
+      "low": { "label": "Low", "description": "A light pass for simpler tasks." },
+      "medium": { "label": "Medium", "description": "A balanced amount of reasoning." },
+      "high": { "label": "High", "description": "Think more carefully through harder tasks." },
+      "xhigh": { "label": "Extra high", "description": "Spend longer on difficult problems." },
+      "max": { "label": "Max", "description": "Use the model's highest thinking effort." }
+    }
+  },
+  "modes": {
+    "chip": {
+      "tooltip": "Choose a permission level or turn on a work mode.",
+      "aria": "Mode and permission: {{mode}}",
+      "ways": "Ways to work",
+      "plan": "Plan",
+      "planPaused": "Plan paused",
+      "goal": "Goal",
+      "goalPaused": "Goal paused",
+      "vibe": "Vibe",
+      "loop": "Loop"
+    }
+  },
+  "commands": {
+    "restart": { "title": "Restart omp", "hint": "Start omp's engine over. Your chat history is kept." },
+    "compact": { "title": "Compact this chat", "hint": "Summarize this chat so far to free up working room." },
+    "plan": { "title": "Plan mode", "hint": "Think through an approach and show a plan before changing anything." },
+    "goal": { "title": "Set a goal", "hint": "Describe the finish line; omp plans the steps and works toward it." },
+    "guided": { "title": "Guided goal", "hint": "Let omp interview you and set up a goal." },
+    "vibe": { "title": "Vibe mode", "hint": "Direct quick helper sessions to build things fast." },
+    "loop": { "title": "Repeat a task", "hint": "Repeat a task a set number of times, for a while, or until a check passes." },
+    "advisor": { "title": "Advisor", "hint": "A second model watches each step and adds notes when something looks off." },
+    "handoff": { "title": "Hand off to a new chat", "hint": "Start a fresh chat that picks up from a summary of this one." },
+    "security": { "title": "Security scan", "hint": "Check the project for leaked secrets and common vulnerabilities." },
+    "cleanse": { "title": "Cleanse project", "hint": "Find and fix errors and warnings across the project with parallel helpers." },
+    "export": { "title": "Export chat", "hint": "Save this chat as a web page you can open anywhere." },
+    "rename": { "title": "Rename chat", "hint": "Give this chat a name you'll recognize later." },
+    "stop": { "title": "Stop", "hint": "Stop omp's current turn." },
+    "model": { "title": "Choose model", "hint": "Choose which AI model answers you." },
+    "tree": { "title": "Branch tree", "hint": "See every fork and rewind of this chat as a map." },
+    "fork": { "title": "Fork chat", "hint": "Branch this chat to try a different direction without losing this one." },
+    "rewind": { "title": "Rewind to here", "hint": "Go back to this point and keep the original path as a branch." },
+    "forkFrom": { "title": "Fork from here", "hint": "Try a different direction from this message without losing this chat." }
+  },
+  "compact": { "title": "Summarize this chat", "description": "Summarize the conversation to free up working room. Add a focus if there is something omp should keep in mind.", "label": "What should omp focus on? (optional)", "action": "Summarize" },
+  "handoff": { "title": "Hand off this chat", "description": "omp writes a summary and starts a fresh chat with the same context.", "label": "What should the next chat focus on? (optional)", "action": "Start fresh chat" },
+  "rename": { "title": "Rename this chat", "description": "Choose a short name that's easy to find later.", "label": "Chat name", "action": "Save name" },
+  "guided": { "title": "Set up a guided goal", "description": "Share a rough objective. omp will ask a few questions, then set up a goal.", "label": "What would you like to accomplish? (optional)", "action": "Start interview" },
+  "goal": { "title": "Work toward a goal", "description": "Describe the finish line; omp plans the steps and works toward it.", "objective": "What should omp accomplish?", "budget": "Token budget (optional)", "budgetHint": "A positive number, or leave blank for no limit.", "start": "Start goal", "guided": "Let omp help me shape the goal", "pause": "Pause goal", "resume": "Resume goal", "drop": "Drop goal", "activeBody": "This chat has an active goal. You can pause it or drop it.", "pausedBody": "This chat has a paused goal. Resume it to continue, or drop it." },
+  "loop": { "title": "Repeat a task", "description": "omp repeats your next request until the limit or check is reached. Esc pauses the loop.", "bound": "Stop when", "count": "After a number of repeats", "duration": "After a time limit", "until": "A check succeeds", "while": "While a check succeeds", "check": "Shell command to check", "countLabel": "Number of repeats", "durationLabel": "Time limit (for example 10m)", "prompt": "First request (optional)", "promptHint": "Leave blank to repeat the next request you send.", "start": "Start repeating" },
+  "security": { "disabled": "Security scanning is turned off in omp settings.", "started": "Security scan started." },
+  "export": { "show": "Show file" },
+  "plan": {
+    "aria": "Plan ready for your review",
+    "eyebrow": "Plan ready",
+    "untitled": "Your plan",
+    "missing": "The plan file is not available yet.",
+    "show": "Show plan",
+    "hide": "Hide plan",
+    "continueWith": "Continue with",
+    "freesContext": "Frees context",
+    "working": "Applying your choice",
+    "refinePrefix": "About this plan: ",
+    "off": "Plan mode is off.",
+    "on": "Plan mode is on.",
+    "discarded": "Plan discarded.",
+    "exitTitle": "Leave plan mode?",
+    "exitDescription": "This leaves plan mode without approving the current plan.",
+    "exitConfirm": "Leave plan mode",
+    "actions": { "execute": "Approve & run", "compact": "Approve & summarize first", "more": "Keep planning", "refine": "Refine with a comment", "keep": "Approve & keep context", "auto": "Switch to Auto and run", "discard": "Discard plan", "save": "Save & quit" },
+    "done": { "execute": "Plan approved. omp is starting the work.", "compact": "Plan approved. omp is summarizing the chat first.", "keep": "Plan approved with the full chat context.", "refine": "Plan saved. Add a note in the composer to refine it.", "save": "Plan saved. omp has finished this chat." }
+  },
+  "tree": {
+    "title": "Session tree",
+    "description": "Every branch of this chat, from its first message to the current point.",
+    "empty": "No messages to map yet.",
+    "emptyHint": "Start a chat and its branches will appear here.",
+    "selectHint": "Select a message to preview it.",
+    "noBranches": "No branches yet — fork a chat to explore a different approach.",
+    "summary": "Context checkpoint",
+    "noText": "This entry has no message text.",
+    "rewind": "Rewind to here",
+    "resume": "Resume from here",
+    "fork": "Fork from here",
+    "openTerminal": "Open omp tree",
+    "panHint": "Drag to pan",
+    "zoomHint": "to zoom",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fit": "Fit tree",
+    "nodes": { "aria": "Conversation tree", "user": "Your message", "assistant": "omp reply", "summary": "Context checkpoint" }
+  },
+  "navigate": {
+    "noFile": "This chat does not have a saved session file yet.",
+    "busy": "Wait for the current response to finish before moving to another point.",
+    "missing": "That message is no longer in this chat.",
+    "unsupported": "That entry cannot be opened from the conversation tree.",
+    "notFound": "omp could not find that message in its tree. The original chat is unchanged.",
+    "unconfirmed": "omp did not confirm the tree move. The original chat is unchanged.",
+    "forkTimeout": "omp did not finish switching sessions in time.",
+    "openTree": "Open chat tree"
+  }
+}
