@@ -3,10 +3,10 @@
  * collab guests, so the app recognises it on the painted screen, draws the plan natively and answers
  * the overlay with keys (options 0..4: execute · compact · keep context · refine · save and quit).
  */
-import { Check, ChevronDown, ChevronUp, ClipboardList } from "lucide-react";
+import { CaretDown, Check, ClipboardText } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { BracketLabel, Button, Card, Chip, Menu, MenuContent, MenuItem, MenuTrigger, Segmented, toast } from "@/ui";
+import { Button, Card, Chip, cn, Expand, FadeIn, Menu, MenuContent, MenuItem, MenuTrigger, PresenceSwap, Rise, Segmented, toast } from "@/ui";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import type { ChatSlotProps } from "../../registry/slots";
 import type { SessionController } from "../../state/session";
@@ -93,10 +93,10 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 
 	if (!open && done) {
 		return (
-			<div role="status" className="flex items-center gap-2 py-2 text-sm text-fg-muted">
+			<FadeIn role="status" className="flex items-center gap-2 py-2 text-sm text-fg-muted">
 				<Check className="size-4 text-ok" aria-hidden />
 				{t(`plan.done.${done}`)}
-			</div>
+			</FadeIn>
 		);
 	}
 	if (!review) return null;
@@ -104,6 +104,7 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 	const percent = view.guest?.state?.contextUsage?.percent ?? 0;
 	const keepOffered = review.options.some(option => option.label.startsWith(OPTION_PREFIX.keep)) && percent <= KEEP_CONTEXT_LIMIT;
 	const title = (plan && /^#{1,3}\s+(.+)$/m.exec(plan)?.[1]?.trim()) || t("plan.untitled");
+	const slider = review.slider && review.slider.roles.length > 1 ? review.slider : null;
 
 	const act = async (action: PlanAction, before?: () => Promise<void>) => {
 		if (busy) return;
@@ -139,85 +140,89 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 	};
 
 	return (
-		<Card rail="agent" padding="none" className="my-3 overflow-hidden" aria-label={t("plan.aria")} role="region">
-			<div className="flex items-start gap-3 px-4 pt-4">
-				<ClipboardList className="mt-0.5 size-4 shrink-0 text-agent" aria-hidden />
-				<div className="min-w-0 flex-1">
-					<BracketLabel tone="agent">{t("plan.eyebrow")}</BracketLabel>
-					<h3 className="mt-1 text-base font-semibold text-fg">{title}</h3>
-				</div>
-				<Button
-					size="sm"
-					variant="ghost"
-					aria-expanded={expanded}
-					iconRight={expanded ? <ChevronUp /> : <ChevronDown />}
-					onClick={() => setExpanded(value => !value)}
-				>
-					{expanded ? t("plan.hide") : t("plan.show")}
-				</Button>
-			</div>
-			{expanded && (
-				<div className="mx-4 mt-3 max-h-96 overflow-y-auto rounded-md border border-border bg-inset px-4 py-3 text-md">
-					{plan ? <Markdown text={plan} /> : <p className="text-sm text-fg-muted">{t("plan.missing")}</p>}
-				</div>
-			)}
-			{review.slider && review.slider.roles.length > 1 && (
-				<div className="mx-4 mt-3 flex flex-wrap items-center gap-2">
-					<span className="text-sm text-fg-muted">{t("plan.continueWith")}</span>
-					<Segmented
+		<Rise as="section" className="my-3" aria-label={t("plan.aria")}>
+			<Card padding="none" className="overflow-hidden">
+				<div className="flex items-start gap-3 px-4 pt-4">
+					<ClipboardText className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />
+					<div className="min-w-0 flex-1">
+						<h3 className="text-base font-semibold text-fg">{title}</h3>
+						<p className="mt-0.5 text-sm text-fg-muted">{t("plan.waiting")}</p>
+					</div>
+					<Button
 						size="sm"
-						aria-label={t("plan.continueWith")}
-						value={review.slider.roles[review.slider.selected] ?? ""}
-						options={review.slider.roles.map(role => ({ value: role, label: role }))}
-						onValueChange={role => {
-							const slider = review.slider;
-							if (slider) void slideTo(session, slider.selected, slider.roles.indexOf(role));
-						}}
-					/>
-					{review.slider.model && <span className="text-sm text-fg-faint">{review.slider.model}</span>}
+						variant="ghost"
+						aria-expanded={expanded}
+						iconRight={<CaretDown className={cn("transition-transform duration-(--dur) ease-(--ease-out)", expanded && "rotate-180")} />}
+						onClick={() => setExpanded(value => !value)}
+					>
+						{expanded ? t("plan.hide") : t("plan.show")}
+					</Button>
 				</div>
-			)}
-			<div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
-				<Button variant="primary" loading={busy === "execute"} onClick={() => void act("execute")}>
-					{t("plan.actions.execute")}
-				</Button>
-				<Button variant="secondary" loading={busy === "compact"} onClick={() => void act("compact")}>
-					{t("plan.actions.compact")}
-					{percent >= 60 && (
-						<Chip tone="ok" className="ml-1 h-5">
-							{t("plan.freesContext")}
-						</Chip>
+				<Expand open={expanded}>
+					<div className="mt-3 max-h-96 overflow-y-auto border-t border-border px-4 py-3 text-md">
+						{/* The plan file loads after the card appears; fade from the placeholder to the plan. */}
+						<PresenceSwap swapKey={plan ? "plan" : "missing"}>
+							{plan ? <Markdown text={plan} /> : <p className="text-sm text-fg-muted">{t("plan.missing")}</p>}
+						</PresenceSwap>
+					</div>
+				</Expand>
+				<Expand open={slider !== null}>
+					{slider && (
+						<div className="mx-4 mt-3 flex flex-wrap items-center gap-2">
+							<span className="text-sm text-fg-muted">{t("plan.continueWith")}</span>
+							<Segmented
+								size="sm"
+								aria-label={t("plan.continueWith")}
+								value={slider.roles[slider.selected] ?? ""}
+								options={slider.roles.map(role => ({ value: role, label: role }))}
+								onValueChange={role => void slideTo(session, slider.selected, slider.roles.indexOf(role))}
+							/>
+							{slider.model && <span className="text-sm text-fg-faint">{slider.model}</span>}
+						</div>
 					)}
-				</Button>
-				<Menu>
-					<MenuTrigger asChild>
-						<Button variant="ghost" iconRight={<ChevronDown />} loading={busy === "refine" || busy === "keep" || busy === "discard"}>
-							{t("plan.actions.more")}
-						</Button>
-					</MenuTrigger>
-					<MenuContent className="w-72">
-						<MenuItem onSelect={() => void act("refine")}>{t("plan.actions.refine")}</MenuItem>
-						{keepOffered && <MenuItem onSelect={() => void act("keep")}>{t("plan.actions.keep")}</MenuItem>}
-						<MenuItem
-							onSelect={() =>
-								void act("execute", async () => {
-									acknowledgeAuto();
-									await setApprovalMode(session.projectPath, "yolo");
-								})
-							}
-						>
-							{t("plan.actions.auto")}
-						</MenuItem>
-						<MenuItem danger onSelect={() => void discard()}>
-							{t("plan.actions.discard")}
-						</MenuItem>
-					</MenuContent>
-				</Menu>
-				<span className="flex-1" />
-				<Button variant="ghost" loading={busy === "save"} onClick={() => void act("save")}>
-					{t("plan.actions.save")}
-				</Button>
-			</div>
-		</Card>
+				</Expand>
+				<div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
+					<Button variant="primary" loading={busy === "execute"} onClick={() => void act("execute")}>
+						{t("plan.actions.execute")}
+					</Button>
+					<Button variant="secondary" loading={busy === "compact"} onClick={() => void act("compact")}>
+						{t("plan.actions.compact")}
+						{percent >= 60 && (
+							<Chip tone="ok" className="ml-1 h-5">
+								{t("plan.freesContext")}
+							</Chip>
+						)}
+					</Button>
+					<Menu>
+						<MenuTrigger asChild>
+							<Button variant="ghost" iconRight={<CaretDown />} loading={busy === "refine" || busy === "keep" || busy === "discard"}>
+								{t("plan.actions.more")}
+							</Button>
+						</MenuTrigger>
+						<MenuContent className="w-72">
+							<MenuItem onSelect={() => void act("refine")}>{t("plan.actions.refine")}</MenuItem>
+							{keepOffered && <MenuItem onSelect={() => void act("keep")}>{t("plan.actions.keep")}</MenuItem>}
+							<MenuItem
+								onSelect={() =>
+									void act("execute", async () => {
+										acknowledgeAuto();
+										await setApprovalMode(session.projectPath, "yolo");
+									})
+								}
+							>
+								{t("plan.actions.auto")}
+							</MenuItem>
+							<MenuItem danger onSelect={() => void discard()}>
+								{t("plan.actions.discard")}
+							</MenuItem>
+						</MenuContent>
+					</Menu>
+					<span className="flex-1" />
+					<Button variant="ghost" loading={busy === "save"} onClick={() => void act("save")}>
+						{t("plan.actions.save")}
+					</Button>
+				</div>
+			</Card>
+		</Rise>
 	);
 }

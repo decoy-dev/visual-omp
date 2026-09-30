@@ -2,13 +2,13 @@
  * omp-missing setup screen (DESIGN §4.1). Replaces the whole window while omp is missing, won't
  * start, or is older than visual-omp needs. The installer runs visibly in an inline terminal.
  */
-import { ArrowRight, Check, Copy, Play, RotateCw, Square } from "lucide-react";
-import { type ReactNode, useEffect, useState } from "react";
+import { ArrowClockwise, ArrowRight, Check, Copy, Play, Square } from "@phosphor-icons/react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { OmpStatus } from "@shared/ipc";
 import type { ScreenProps } from "../../registry/slots";
 import { useApp } from "../../state/app";
-import { BracketLabel, Button, cn, Mark, toast } from "../../ui";
+import { Button, cn, Expand, Mark, PresenceSwap, toast } from "../../ui";
 import { focusRing } from "../../ui/styles";
 import { HelpDialog } from "./HelpSheet";
 import { InlineTerminal } from "./InlineTerminal";
@@ -26,7 +26,10 @@ export function SetupScreen(_props: ScreenProps) {
 	const [install, setInstall] = useState<Install>({ state: "idle" });
 	const [copied, setCopied] = useState(false);
 	const [check, setCheck] = useState<Check>("idle");
+	// Help stays mounted after closing until its exit finishes, then unmounts so it opens fresh next time.
 	const [helpOpen, setHelpOpen] = useState(false);
+	const [helpMounted, setHelpMounted] = useState(false);
+	const helpButton = useRef<HTMLButtonElement>(null);
 	const windows = window.vomp.platform === "win32";
 
 	const tooOld = Boolean(omp?.found && !omp.supported);
@@ -99,36 +102,15 @@ export function SetupScreen(_props: ScreenProps) {
 	};
 
 	return (
-		<main
-			className="relative flex min-h-screen w-full items-start justify-center overflow-y-auto bg-bg px-6 pb-16 pt-[max(64px,12vh)]"
-			style={{
-				backgroundImage:
-					"radial-gradient(480px circle at 0% 0%, var(--ambient-a), transparent), radial-gradient(480px circle at 100% 100%, var(--ambient-b), transparent)",
-			}}
-		>
+		<main className="relative flex min-h-screen w-full items-start justify-center overflow-y-auto bg-bg px-6 pb-16 pt-[max(64px,12vh)]">
 			{/* Frameless window: keep the top strip draggable. */}
 			<div aria-hidden className="absolute inset-x-0 top-0 h-10 [-webkit-app-region:drag]" />
-			<div
-				aria-hidden
-				className="pointer-events-none absolute inset-0"
-				style={{
-					backgroundImage:
-						"linear-gradient(var(--grid-line) 1px, transparent 1px), linear-gradient(90deg, var(--grid-line) 1px, transparent 1px)",
-					backgroundSize: "40px 40px",
-					maskImage: "radial-gradient(ellipse at center, black 0%, transparent 70%)",
-				}}
-			/>
 			<div className="relative flex w-full max-w-[560px] flex-col items-center text-center">
-				<div className="relative mb-6 flex size-[160px] items-center justify-center">
-					<span
-						aria-hidden
-						className={cn("absolute inset-0 rounded-full bg-accent-muted blur-2xl", installing && "motion-safe:animate-pulse")}
-					/>
-					<Mark size={96} className="relative" />
-				</div>
-				<BracketLabel as="p">{t("setup.eyebrow")}</BracketLabel>
-				<h1 className="mt-3 text-[32px] font-bold leading-tight tracking-[-0.02em] text-fg">{t(`setup.${heading}.title`)}</h1>
-				<p className="mt-3 max-w-[440px] text-base text-fg-muted">{t(`setup.${heading}.body`)}</p>
+				<Mark size={56} className="mb-6" />
+				<PresenceSwap swapKey={heading} variant="rise" className="flex flex-col items-center">
+					<h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-fg">{t(`setup.${heading}.title`)}</h1>
+					<p className="mt-3 max-w-[440px] text-base text-fg-muted">{t(`setup.${heading}.body`)}</p>
+				</PresenceSwap>
 				{tooOld && omp && !done && (
 					<dl className="mt-4 flex items-center gap-6 font-mono text-sm">
 						<div className="flex gap-2">
@@ -145,7 +127,7 @@ export function SetupScreen(_props: ScreenProps) {
 				{omp && !omp.found && omp.path && !done && (
 					<p className="mt-3 max-w-[440px] font-mono text-sm text-fg-faint">{omp.problem}</p>
 				)}
-				<ol className="mt-8 w-full divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel text-left shadow-(--shadow-card)">
+				<ol className="mt-8 w-full divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel text-left">
 					<StepRow
 						number={1}
 						done={step1Done}
@@ -158,17 +140,22 @@ export function SetupScreen(_props: ScreenProps) {
 								{omp.installCommand}
 							</code>
 						)}
-						{install.state !== "idle" && (
-							<div className="mt-3">
-								<InlineTerminal run={install.run} label={t("setup.step1.terminalLabel")} className="h-60" />
-								<p
-									role="status"
-									className={cn("mt-2 text-sm", install.state === "failed" ? "text-err" : "text-fg-muted")}
-								>
-									{installStatus[install.state]}
-								</p>
-							</div>
-						)}
+						<Expand open={install.state !== "idle"} className="pt-3">
+							{install.state !== "idle" && (
+								<>
+									<InlineTerminal run={install.run} label={t("setup.step1.terminalLabel")} className="h-60" />
+									<p
+										role="status"
+										className={cn(
+											"mt-2 text-sm transition-colors duration-(--dur)",
+											install.state === "failed" ? "text-err" : "text-fg-muted",
+										)}
+									>
+										{installStatus[install.state]}
+									</p>
+								</>
+							)}
+						</Expand>
 						<div className="mt-3 flex flex-wrap items-center gap-2">
 							{installing ? (
 								<Button variant="secondary" icon={<Square aria-hidden />} onClick={cancel}>
@@ -199,7 +186,7 @@ export function SetupScreen(_props: ScreenProps) {
 						<div className="mt-3">
 							<Button
 								variant="secondary"
-								icon={<RotateCw aria-hidden />}
+								icon={<ArrowClockwise aria-hidden />}
 								onClick={() => void runCheck()}
 								loading={check === "checking"}
 								disabled={!step2Ready || installing || done}
@@ -207,20 +194,24 @@ export function SetupScreen(_props: ScreenProps) {
 								{t("setup.step2.check")}
 							</Button>
 						</div>
-						{check === "missing" && (
-							<div role="status" className="mt-3 rounded-md border border-border bg-warn-bg px-3 py-2 text-sm">
+						<Expand open={check === "missing"} className="pt-3">
+							<div role="status" className="rounded-md border border-border bg-warn-bg px-3 py-2 text-sm">
 								<p className="font-medium text-fg">{omp?.problem ?? t("setup.step2.stillMissing")}</p>
 								<p className="mt-0.5 text-fg-muted">{t("setup.step2.stillMissingBody")}</p>
 							</div>
-						)}
+						</Expand>
 					</StepRow>
 				</ol>
 
 				<p className="mt-5 text-md text-fg-muted">
 					{t("setup.trouble")}{" "}
 					<button
+						ref={helpButton}
 						type="button"
-						onClick={() => setHelpOpen(true)}
+						onClick={() => {
+							setHelpMounted(true);
+							setHelpOpen(true);
+						}}
 						className={cn("inline-flex items-center gap-1 rounded-sm font-medium text-accent hover:underline", focusRing)}
 					>
 						{t("setup.openHelp")}
@@ -228,7 +219,17 @@ export function SetupScreen(_props: ScreenProps) {
 					</button>
 				</p>
 			</div>
-			{helpOpen && <HelpDialog limited onClose={() => setHelpOpen(false)} />}
+			{helpMounted && (
+				<HelpDialog
+					limited
+					open={helpOpen}
+					onClose={() => setHelpOpen(false)}
+					onExited={() => {
+						setHelpMounted(false);
+						helpButton.current?.focus();
+					}}
+				/>
+			)}
 		</main>
 	);
 }
@@ -250,14 +251,16 @@ function StepRow({
 }) {
 	const { t } = useTranslation("onboarding");
 	return (
-		<li className={cn("flex gap-4 p-4", disabled && "opacity-60")}>
+		<li className={cn("flex gap-4 p-4 transition-opacity duration-(--dur) ease-(--ease-out-quart)", disabled && "opacity-60")}>
 			<span
 				className={cn(
-					"inline-flex size-7 shrink-0 items-center justify-center rounded-full border font-mono text-sm font-semibold transition-colors duration-(--dur)",
+					"relative inline-flex size-7 shrink-0 items-center justify-center overflow-hidden rounded-full border font-mono text-sm font-semibold tabular-nums transition-colors duration-(--dur)",
 					done ? "border-ok bg-ok text-fg-inverse" : "border-border-strong text-fg-muted",
 				)}
 			>
-				{done ? <Check className="size-4" aria-label={t("setup.stepDone")} /> : number}
+				<PresenceSwap swapKey={done ? "done" : "todo"} variant="rise" className="inline-flex items-center justify-center">
+					{done ? <Check className="size-4" weight="bold" aria-label={t("setup.stepDone")} /> : number}
+				</PresenceSwap>
 			</span>
 			<div className="min-w-0 flex-1">
 				<h2 className="text-md font-semibold text-fg">{title}</h2>

@@ -1,7 +1,8 @@
 /** Hooks and small building blocks shared by the extensions sheets. */
-import { CircleAlert, Info, TriangleAlert } from "lucide-react";
+import { Info, Warning, WarningCircle } from "@phosphor-icons/react";
 import { type DependencyList, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { EventChannel, IpcEventMap } from "@shared/ipc";
+import { useSheetPresence } from "@/registry/sheetPresence";
 import { useApp } from "@/state/app";
 import { Button, cn, Dialog, DialogContent, Input, Sheet, SheetContent } from "@/ui";
 import { errorText } from "./format";
@@ -83,11 +84,12 @@ export interface ExtensionSheetFrameProps {
 	children: ReactNode;
 }
 
-/** Right-docked modal sheet, open while mounted; dismissing it calls `close()`. */
+/** Right-docked modal sheet; dismissing it calls `close()`, and in the sheet host it slides out before unmounting. */
 export function ExtensionSheetFrame({ close, width, children, ...content }: ExtensionSheetFrameProps) {
+	const presence = useSheetPresence();
 	return (
-		<Sheet open onOpenChange={open => !open && close()}>
-			<SheetContent width={width} {...content}>
+		<Sheet open={presence.open} onOpenChange={open => !open && close()}>
+			<SheetContent width={width} onCloseAutoFocus={presence.exited} {...content}>
 				{children}
 			</SheetContent>
 		</Sheet>
@@ -98,8 +100,8 @@ export type NoticeTone = "info" | "warn" | "err";
 
 const noticeTones: Record<NoticeTone, { box: string; icon: ReactNode }> = {
 	info: { box: "border-border bg-inset text-fg-muted", icon: <Info aria-hidden className="size-4 text-info" /> },
-	warn: { box: "border-border bg-warn-bg text-fg", icon: <TriangleAlert aria-hidden className="size-4 text-warn" /> },
-	err: { box: "border-border bg-err-bg text-fg", icon: <CircleAlert aria-hidden className="size-4 text-err" /> },
+	warn: { box: "border-border bg-warn-bg text-fg", icon: <Warning aria-hidden className="size-4 text-warn" /> },
+	err: { box: "border-border bg-err-bg text-fg", icon: <WarningCircle aria-hidden className="size-4 text-err" /> },
 };
 
 /** Inline banner: glyph + message (+ optional actions on the right). Errors are announced. */
@@ -134,7 +136,7 @@ export function LetterTile({ name, className }: { name: string; className?: stri
 		<span
 			aria-hidden
 			className={cn(
-				"inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-accent-2-muted font-mono text-sm font-semibold text-accent-2",
+				"inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-inset font-mono text-sm font-semibold text-fg-muted",
 				className,
 			)}
 		>

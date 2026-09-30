@@ -3,8 +3,9 @@
  * live activity, tokens, Stop / Message / transcript) and background shell jobs.
  */
 import type { AgentProgress, AgentSnapshot, SubagentLifecyclePayload } from "@oh-my-pi/pi-wire";
-import { Check, ChevronDown, ChevronRight, Circle, CircleDot, FileText, ListChecks, MessageSquare, Square, X } from "lucide-react";
-import { type FormEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { CaretRight, ChatCenteredText, Check, CircleIcon, FileText, ListChecks, RadioButton, Square, X } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
+import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { GuestSnapshot } from "../../collab/lib/client";
 import type { PaneProps } from "../../registry/slots";
@@ -14,22 +15,26 @@ import { parseSessionHistory } from "../../state/history";
 import { Markdown } from "../../transcript/Markdown";
 import {
 	Badge,
-	BracketLabel,
 	Button,
 	Chip,
 	cn,
 	Dialog,
 	DialogContent,
 	EmptyState,
+	Expand,
 	IconButton,
 	Popover,
 	PopoverContent,
 	PopoverTrigger,
+	PresenceSwap,
 	Progress,
+	SectionLabel,
 	Spinner,
+	spring,
 	StatusDot,
 	toast,
 } from "../../ui";
+import { listRowMotion } from "./common";
 import { type BackgroundJob, backgroundJobs, latestTodo, type TodoPhase, type TodoStatus } from "./derive";
 
 // ── helpers model ───────────────────────────────────────────────────────────────────────────────
@@ -143,45 +148,87 @@ function Section({ title, count, children }: { title: string; count?: ReactNode;
 }
 
 const TASK_ICON: Record<TodoStatus, ReactNode> = {
-	completed: <Check className="size-3.5 text-ok" aria-hidden />,
-	in_progress: <CircleDot className="size-3.5 text-accent" aria-hidden />,
-	pending: <Circle className="size-3.5 text-fg-faint" aria-hidden />,
+	completed: <Check className="size-3.5 text-ok" weight="bold" aria-hidden />,
+	in_progress: <RadioButton className="size-3.5 text-accent" weight="fill" aria-hidden />,
+	pending: <CircleIcon className="size-3.5 text-fg-faint" aria-hidden />,
 	abandoned: <X className="size-3.5 text-fg-faint" aria-hidden />,
 };
 
+/** Stable keys for rows identified by their text: `text#n` for the nth repeat, so reordered tasks keep their row. */
+function textKeys(texts: readonly string[]): string[] {
+	const seen = new Map<string, number>();
+	return texts.map(text => {
+		const n = seen.get(text) ?? 0;
+		seen.set(text, n + 1);
+		return `${text}#${n}`;
+	});
+}
+
 function Checklist({ phases }: { phases: TodoPhase[] }) {
 	const { t } = useTranslation("panes");
+	const currentId = useId();
 	const tasks = phases.flatMap(phase => phase.tasks);
 	const done = tasks.filter(task => task.status === "completed").length;
 	return (
 		<Section title={t("tasks.checklist")} count={<span className="text-xs font-normal text-fg-faint">{t("tasks.doneOf", { done, total: tasks.length })}</span>}>
 			<Progress value={tasks.length ? (done / tasks.length) * 100 : 0} aria-label={t("tasks.checklistProgress")} className="mb-3" />
 			<ol className="space-y-3">
-				{phases.map((phase, index) => (
-					// biome-ignore lint/suspicious/noArrayIndexKey: phase order is the identity
-					<li key={index}>
-						{phase.name && <p className="mb-1 text-xs font-medium uppercase tracking-wide text-fg-muted">{phase.name}</p>}
-						<ul className="space-y-0.5">
-							{phase.tasks.map((task, taskIndex) => (
-								<li
-									// biome-ignore lint/suspicious/noArrayIndexKey: task order is the identity
-									key={taskIndex}
-									className={cn(
-										"flex items-start gap-2 rounded-sm px-1 py-0.5 text-md",
-										task.status === "in_progress" && "bg-accent-muted text-fg",
-										task.status === "completed" && "text-fg-muted",
-										task.status === "abandoned" && "text-fg-faint line-through",
-										task.status === "pending" && "text-fg",
-									)}
-								>
-									<span className="mt-0.5 shrink-0">{TASK_ICON[task.status]}</span>
-									<span className="sr-only">{t(`tasks.status.${task.status}`)}</span>
-									<span className="min-w-0 flex-1">{task.content}</span>
-								</li>
-							))}
-						</ul>
-					</li>
-				))}
+				{phases.map((phase, index) => {
+					const keys = textKeys(phase.tasks.map(task => task.content));
+					return (
+						// biome-ignore lint/suspicious/noArrayIndexKey: phase order is the identity
+						<li key={index}>
+							{phase.name && (
+								<SectionLabel as="p" className="mb-1">
+									{phase.name}
+								</SectionLabel>
+							)}
+							<ul className="space-y-0.5">
+								<AnimatePresence initial={false}>
+									{phase.tasks.map((task, taskIndex) => (
+										<motion.li
+											key={keys[taskIndex]}
+											layout="position"
+											{...listRowMotion}
+											className={cn(
+												"relative flex items-start gap-2 rounded-sm px-1 py-0.5 text-md transition-colors duration-(--dur)",
+												task.status === "in_progress" && "text-fg",
+												task.status === "completed" && "text-fg-muted",
+												task.status === "abandoned" && "text-fg-faint line-through",
+												task.status === "pending" && "text-fg",
+											)}
+										>
+											{task.status === "in_progress" && (
+												<motion.span
+													aria-hidden
+													layoutId={`${currentId}-current`}
+													transition={spring.snappy}
+													className="absolute inset-0 rounded-sm bg-accent-muted"
+												/>
+											)}
+											<span className="relative mt-0.5 inline-flex size-3.5 shrink-0">
+												<AnimatePresence initial={false} mode="popLayout">
+													<motion.span
+														key={task.status}
+														initial={{ opacity: 0, scale: 0.6 }}
+														animate={{ opacity: 1, scale: 1 }}
+														exit={{ opacity: 0, scale: 0.6 }}
+														transition={spring.snappy}
+														className="inline-flex"
+													>
+														{TASK_ICON[task.status]}
+													</motion.span>
+												</AnimatePresence>
+											</span>
+											<span className="sr-only">{t(`tasks.status.${task.status}`)}</span>
+											<span className="relative min-w-0 flex-1">{task.content}</span>
+										</motion.li>
+									))}
+								</AnimatePresence>
+							</ul>
+						</li>
+					);
+				})}
 			</ol>
 		</Section>
 	);
@@ -202,7 +249,7 @@ function MessageHelper({ helper, session }: { helper: Helper; session: SessionCo
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<PopoverTrigger asChild>
-				<IconButton size="sm" label={t("tasks.message", { name: helper.name })} icon={<MessageSquare />} />
+				<IconButton size="sm" label={t("tasks.message", { name: helper.name })} icon={<ChatCenteredText />} />
 			</PopoverTrigger>
 			<PopoverContent align="end" className="w-72 p-3">
 				<form onSubmit={submit} className="flex flex-col gap-2">
@@ -243,8 +290,8 @@ const HELPER_DOT: Record<HelperStatus, "agent" | "idle" | "ok" | "err"> = {
 function HelperRow({ helper, session, onTranscript }: { helper: Helper; session: SessionController; onTranscript(helper: Helper): void }) {
 	const { t } = useTranslation("panes");
 	return (
-		<li className="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-hover">
-			<span className="relative inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-agent-muted text-xs font-semibold text-agent" aria-hidden>
+		<motion.li layout="position" {...listRowMotion} className="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-hover">
+			<span className="relative inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-inset text-xs font-semibold text-fg-muted" aria-hidden>
 				{helper.name.slice(0, 1).toUpperCase()}
 				<StatusDot status={HELPER_DOT[helper.status]} ringed className="absolute -bottom-0.5 -right-0.5" />
 			</span>
@@ -270,12 +317,12 @@ function HelperRow({ helper, session, onTranscript }: { helper: Helper; session:
 						size="sm"
 						variant="danger-ghost"
 						label={t("tasks.stop", { name: helper.name })}
-						icon={<Square />}
+						icon={<Square weight="fill" />}
 						onClick={() => session.agentCommand("kill", helper.id)}
 					/>
 				)}
 			</div>
-		</li>
+		</motion.li>
 	);
 }
 
@@ -356,8 +403,8 @@ function TranscriptDialog({ helper, session, onClose }: { helper: Helper; sessio
 					<div className="space-y-4 pb-4">
 						{messages.map(message =>
 							message.role === "user" ? (
-								<div key={message.id} className="rounded-lg border-l-2 border-border-strong bg-inset px-4 py-3">
-									<BracketLabel>{t("tasks.assignment")}</BracketLabel>
+								<div key={message.id} className="rounded-md bg-inset px-4 py-3">
+									<SectionLabel as="p">{t("tasks.assignment")}</SectionLabel>
 									<div className="mt-1 whitespace-pre-wrap text-md text-fg">{message.text}</div>
 								</div>
 							) : (
@@ -395,26 +442,29 @@ function JobRow({ job }: { job: BackgroundJob }) {
 	const [open, setOpen] = useState(job.state === "running");
 	const tail = job.output.trimEnd().split("\n").slice(-40).join("\n");
 	return (
-		<li className="rounded-md border border-border bg-panel">
+		<motion.li layout="position" {...listRowMotion} className="rounded-md border border-border bg-panel">
 			<button
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen(!open)}
 				className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
 			>
-				{open ? <ChevronDown className="size-3.5 shrink-0 text-fg-faint" aria-hidden /> : <ChevronRight className="size-3.5 shrink-0 text-fg-faint" aria-hidden />}
+				<CaretRight
+					className={cn("size-3.5 shrink-0 text-fg-faint transition-transform duration-(--dur) ease-(--ease-out-quart)", open && "rotate-90")}
+					aria-hidden
+				/>
 				<StatusDot status={JOB_DOT[job.state]} label={t(`tasks.jobState.${job.state}`)} />
 				<code className="min-w-0 flex-1 truncate font-mono text-xs text-fg" title={job.command}>
 					{job.command || job.jobId}
 				</code>
 				<span className="shrink-0 text-xs text-fg-faint">{t(`tasks.jobState.${job.state}`)}</span>
 			</button>
-			{open && (
+			<Expand open={open}>
 				<pre className="m-0 max-h-60 overflow-auto whitespace-pre-wrap break-all border-t border-border bg-inset px-3 py-2 font-mono text-[11px] leading-4 text-fg-muted">
 					{tail || t("tasks.noOutput")}
 				</pre>
-			)}
-		</li>
+			</Expand>
+		</motion.li>
 	);
 }
 
@@ -434,37 +484,48 @@ export function TasksPane({ session }: PaneProps) {
 	// Keyed on agents/progress/lifecycle, not the whole snapshot, so streaming tokens don't recompute this.
 	const helpers = useMemo(() => helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null), [agents, progress, lifecycle]);
 
-	if (!session || ((!phases || phases.length === 0) && helpers.length === 0 && jobs.length === 0)) {
-		return <EmptyState icon={<ListChecks />} title={t("tasks.emptyTitle")} body={t("tasks.empty")} />;
-	}
+	const hasChecklist = phases !== null && phases.length > 0;
+	const hasContent = hasChecklist || helpers.length > 0 || jobs.length > 0;
 	const runningHelpers = helpers.filter(helper => helper.status === "running").length;
 	const runningJobs = jobs.filter(job => job.state === "running").length;
+	// Presence owners stay mounted while their last row leaves: each section collapses through Expand, and the whole
+	// list fades out before the empty state fades in (PresenceSwap keeps the last rendered list while it exits).
 	return (
-		<div className="min-h-0 flex-1 overflow-y-auto">
-			{phases && phases.length > 0 && <Checklist phases={phases} />}
-			{helpers.length > 0 && (
-				<Section title={t("tasks.helpers")} count={runningHelpers > 0 && <Badge count={runningHelpers} label={t("tasks.runningCount", { count: runningHelpers })} />}>
-					<ul className="-mx-1.5 space-y-0.5">
-						{helpers.map(helper => (
-							<HelperRow key={helper.id} helper={helper} session={session} onTranscript={setTranscriptOf} />
-						))}
-					</ul>
-				</Section>
+		<PresenceSwap swapKey={session && hasContent ? "list" : "empty"} className="flex min-h-0 flex-1 flex-col">
+			{session && hasContent ? (
+				<div className="min-h-0 flex-1 overflow-y-auto">
+					<Expand open={hasChecklist}>{phases && <Checklist phases={phases} />}</Expand>
+					<Expand open={helpers.length > 0}>
+						<Section title={t("tasks.helpers")} count={runningHelpers > 0 && <Badge count={runningHelpers} label={t("tasks.runningCount", { count: runningHelpers })} />}>
+							<ul className="-mx-1.5 space-y-0.5">
+								<AnimatePresence initial={false}>
+									{helpers.map(helper => (
+										<HelperRow key={helper.id} helper={helper} session={session} onTranscript={setTranscriptOf} />
+									))}
+								</AnimatePresence>
+							</ul>
+						</Section>
+					</Expand>
+					<Expand open={jobs.length > 0}>
+						<Section
+							title={t("tasks.background")}
+							count={runningJobs > 0 && <Badge count={runningJobs} label={t("tasks.runningCount", { count: runningJobs })} />}
+						>
+							<ul className="space-y-1.5">
+								<AnimatePresence initial={false}>
+									{jobs.map(job => (
+										<JobRow key={job.jobId} job={job} />
+									))}
+								</AnimatePresence>
+							</ul>
+						</Section>
+					</Expand>
+					{transcriptOf && <TranscriptDialog helper={transcriptOf} session={session} onClose={() => setTranscriptOf(null)} />}
+				</div>
+			) : (
+				<EmptyState icon={<ListChecks />} title={t("tasks.emptyTitle")} body={t("tasks.empty")} />
 			)}
-			{jobs.length > 0 && (
-				<Section
-					title={t("tasks.background")}
-					count={runningJobs > 0 && <Badge count={runningJobs} label={t("tasks.runningCount", { count: runningJobs })} />}
-				>
-					<ul className="space-y-1.5">
-						{jobs.map(job => (
-							<JobRow key={job.jobId} job={job} />
-						))}
-					</ul>
-				</Section>
-			)}
-			{transcriptOf && <TranscriptDialog helper={transcriptOf} session={session} onClose={() => setTranscriptOf(null)} />}
-		</div>
+		</PresenceSwap>
 	);
 }
 

@@ -1,5 +1,5 @@
 import type { AppPreferences, ThemePreference } from "@shared/ipc";
-import { Monitor, Moon, Sun } from "lucide-react";
+import { Monitor, Moon, Sun } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "@/state/app";

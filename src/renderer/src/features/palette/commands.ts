@@ -1,19 +1,5 @@
 /** Core app/view commands the menu and shortcuts send that no other feature owns. */
-import {
-	AArrowDown,
-	AArrowUp,
-	ArrowLeft,
-	ArrowRight,
-	Columns2,
-	PanelLeft,
-	PanelRight,
-	Search,
-	SquarePen,
-	SquareTerminal,
-	SunMoon,
-	Type,
-	X,
-} from "lucide-react";
+import { ArrowLeft, ArrowRight, CircleHalf, Columns, MagnifyingGlass, NotePencil, SidebarSimple, TerminalWindow, TextAa, TextT, X } from "@phosphor-icons/react";
 import { registerCommand } from "../../registry/commands";
 import { confirmTabClose } from "../../registry/guards";
 import { focusedTabId, useApp } from "../../state/app";
@@ -53,7 +39,7 @@ registerCommand({
 	hint: "palette:cmd.palette.hint",
 	keywords: "palette:cmd.palette.keywords",
 	group: "navigation",
-	icon: Search,
+	icon: MagnifyingGlass,
 	shortcut: keys("K"),
 	run() {
 		const { paletteOpen, setPaletteOpen } = useApp.getState();
@@ -67,7 +53,7 @@ registerCommand({
 	hint: "palette:cmd.terminal.hint",
 	keywords: "palette:cmd.terminal.keywords",
 	group: "navigation",
-	icon: SquareTerminal,
+	icon: TerminalWindow,
 	shortcut: keys("J"),
 	when: ctx => ctx.session !== null || useApp.getState().terminalTabId !== null,
 	run(ctx) {
@@ -87,7 +73,7 @@ registerCommand({
 	hint: "palette:cmd.sidebar.hint",
 	keywords: "palette:cmd.sidebar.keywords",
 	group: "navigation",
-	icon: PanelLeft,
+	icon: SidebarSimple,
 	shortcut: keys("B"),
 	run: () => useApp.getState().toggleSidebar(),
 });
@@ -98,7 +84,7 @@ registerCommand({
 	hint: "palette:cmd.panel.hint",
 	keywords: "palette:cmd.panel.keywords",
 	group: "navigation",
-	icon: PanelRight,
+	icon: SidebarSimple,
 	shortcut: keys("B", { alt: true }),
 	run: () => useApp.getState().toggleDock(),
 });
@@ -109,7 +95,7 @@ registerCommand({
 	hint: "palette:cmd.split.hint",
 	keywords: "palette:cmd.split.keywords",
 	group: "navigation",
-	icon: Columns2,
+	icon: Columns,
 	shortcut: keys("\\"),
 	when: () => hasTabs() || useApp.getState().splitTabId !== null,
 	run: () => useApp.getState().toggleSplit(),
@@ -143,7 +129,7 @@ registerCommand({
 	hint: "palette:cmd.theme.hint",
 	keywords: "palette:cmd.theme.keywords",
 	group: "settings",
-	icon: SunMoon,
+	icon: CircleHalf,
 	shortcut: keys("L", { shift: true }),
 	run() {
 		// "system" resolves to whatever <html> shows right now; flipping pins the other one.
@@ -157,7 +143,7 @@ registerCommand({
 	title: "palette:cmd.zoomIn.title",
 	keywords: "palette:cmd.zoomIn.keywords",
 	group: "settings",
-	icon: AArrowUp,
+	icon: TextAa,
 	shortcut: keys("="),
 	when: () => (useApp.getState().prefs?.textScale ?? TEXT_SCALE.default) < TEXT_SCALE.max,
 	run: () => setTextScale(current => current + TEXT_SCALE.step),
@@ -168,7 +154,7 @@ registerCommand({
 	title: "palette:cmd.zoomOut.title",
 	keywords: "palette:cmd.zoomOut.keywords",
 	group: "settings",
-	icon: AArrowDown,
+	icon: TextAa,
 	shortcut: keys("-"),
 	when: () => (useApp.getState().prefs?.textScale ?? TEXT_SCALE.default) > TEXT_SCALE.min,
 	run: () => setTextScale(current => current - TEXT_SCALE.step),
@@ -179,7 +165,7 @@ registerCommand({
 	title: "palette:cmd.zoomReset.title",
 	keywords: "palette:cmd.zoomReset.keywords",
 	group: "settings",
-	icon: Type,
+	icon: TextT,
 	shortcut: keys("0"),
 	run: () => setTextScale(() => TEXT_SCALE.default),
 });
@@ -191,7 +177,7 @@ registerCommand({
 	keywords: "palette:cmd.chatNew.keywords",
 	slash: "/new",
 	group: "chat",
-	icon: SquarePen,
+	icon: NotePencil,
 	shortcut: keys("N"),
 	run(ctx) {
 		if (ctx.projectPath) useApp.getState().newChat(ctx.projectPath);

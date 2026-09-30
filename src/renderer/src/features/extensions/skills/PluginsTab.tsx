@@ -1,8 +1,10 @@
-import { CircleArrowUp, Download, Package, Trash2 } from "lucide-react";
+import { ArrowCircleUp, DownloadSimple, Package, Trash } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AvailablePlugin, MarketplacePlugin, NpmPlugin, PluginOperationResult, PluginScope } from "@shared/contracts/plugins";
-import { BracketLabel, Button, Chip, EmptyState, Input, Menu, MenuContent, MenuItem, MenuTrigger, Skeleton, Switch, toast } from "@/ui";
+import { listRowMotion } from "@/features/manage/listMotion";
+import { Button, Chip, EmptyState, Input, Menu, MenuContent, MenuItem, MenuTrigger, PresenceSwap, Skeleton, Switch, toast } from "@/ui";
 import { compareVersions, errorText } from "../format";
 import { LetterTile, Notice, useIpcEvent, useLoad } from "../shared";
 import { InlineProgress, OperationLog } from "./OperationLog";
@@ -126,12 +128,12 @@ export function PluginsTab({ cwd, projectPath, filter, query }: TabProps) {
 							value={spec}
 							onChange={event => setSpec(event.currentTarget.value)}
 						/>
-						<Button type="submit" variant="primary" icon={<Download />} disabled={!spec.trim() || Boolean(ops.runningFor(spec.trim()))}>
-							{t("common.install")}
+						<Button type="submit" variant="primary" icon={<DownloadSimple />} disabled={!spec.trim() || Boolean(ops.runningFor(spec.trim()))}>
+							{t("plugins.install")}
 						</Button>
 					</form>
 					<section aria-label={t("plugins.availableTitle")} className="flex flex-col gap-3">
-						<BracketLabel as="h3">{t("plugins.availableTitle")}</BracketLabel>
+						<h3 className="text-sm font-medium text-fg-muted">{t("plugins.availableTitle")}</h3>
 						{catalog.error ? (
 							<Notice tone="warn">{t("plugins.offline")}</Notice>
 						) : !catalog.data ? (
@@ -160,22 +162,25 @@ export function PluginsTab({ cwd, projectPath, filter, query }: TabProps) {
 					body={needle ? undefined : t("plugins.emptyBody")}
 				/>
 			) : (
-				<ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-panel">
-					{installed.map(plugin => {
-						const newest = plugin.kind === "marketplace" ? latest.get(plugin.id) : undefined;
-						const update = newest && compareVersions(newest, plugin.version) > 0 ? newest : null;
-						return (
-							<InstalledRow
-								key={plugin.kind === "npm" ? plugin.name : `${plugin.id}#${plugin.scope}`}
-								plugin={plugin}
-								update={update}
-								running={ops.runningFor(plugin.kind === "npm" ? plugin.name : plugin.id)}
-								onToggle={enabled => void toggle(plugin, enabled)}
-								onUpdate={() => plugin.kind === "marketplace" && void upgrade(plugin)}
-								onRemove={() => void remove(plugin)}
-							/>
-						);
-					})}
+				<ul className="relative flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel">
+					<AnimatePresence initial={false} mode="popLayout">
+						{installed.map(plugin => {
+							const newest = plugin.kind === "marketplace" ? latest.get(plugin.id) : undefined;
+							const update = newest && compareVersions(newest, plugin.version) > 0 ? newest : null;
+							return (
+								<motion.li key={plugin.kind === "npm" ? plugin.name : `${plugin.id}#${plugin.scope}`} {...listRowMotion} className="bg-panel">
+									<InstalledRow
+										plugin={plugin}
+										update={update}
+										running={ops.runningFor(plugin.kind === "npm" ? plugin.name : plugin.id)}
+										onToggle={enabled => void toggle(plugin, enabled)}
+										onUpdate={() => plugin.kind === "marketplace" && void upgrade(plugin)}
+										onRemove={() => void remove(plugin)}
+									/>
+								</motion.li>
+							);
+						})}
+					</AnimatePresence>
 				</ul>
 			)}
 
@@ -202,22 +207,24 @@ function InstalledRow({ plugin, update, running, onToggle, onUpdate, onRemove }:
 				? t("plugins.shadowed")
 				: t("plugins.fromMarketplace", { marketplace: plugin.marketplace });
 	return (
-		<li className="flex min-h-14 items-center gap-3 px-3 py-2">
+		<div className="flex min-h-14 items-center gap-3 px-3 py-2">
 			<LetterTile name={plugin.name} />
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<div className="flex min-w-0 items-center gap-2">
-					<span className="truncate text-md font-semibold text-fg">{plugin.name}</span>
+					<span className="truncate text-md font-medium text-fg">{plugin.name}</span>
 					<span className="shrink-0 font-mono text-xs text-fg-faint">v{plugin.version}</span>
 					{plugin.kind === "marketplace" && (
 						<Chip tone={plugin.scope === "project" ? "accent" : "neutral"}>{t(plugin.scope === "project" ? "scope.project" : "scope.user")}</Chip>
 					)}
 					{update && (
-						<Chip tone="blue" icon={<CircleArrowUp />}>
+						<Chip tone="accent" icon={<ArrowCircleUp />}>
 							{t("plugins.updateChip", { from: plugin.version, to: update })}
 						</Chip>
 					)}
 				</div>
-				{running ? <InlineProgress op={running} /> : <p className="truncate text-sm text-fg-muted">{detail}</p>}
+				<PresenceSwap swapKey={running ? "running" : "idle"}>
+					{running ? <InlineProgress op={running} /> : <p className="truncate text-sm text-fg-muted">{detail}</p>}
+				</PresenceSwap>
 			</div>
 			{update && (
 				<Button size="sm" onClick={onUpdate} disabled={Boolean(running)}>
@@ -225,10 +232,10 @@ function InstalledRow({ plugin, update, running, onToggle, onUpdate, onRemove }:
 				</Button>
 			)}
 			<Switch checked={plugin.enabled} onCheckedChange={onToggle} disabled={Boolean(running)} aria-label={t(plugin.enabled ? "plugins.turnOff" : "plugins.turnOn", { name: plugin.name })} />
-			<Button size="sm" variant="danger-ghost" icon={<Trash2 />} onClick={onRemove} disabled={Boolean(running)} aria-label={t("plugins.removeNamed", { name: plugin.name })}>
-				{t("common.remove")}
+			<Button size="sm" variant="danger-ghost" icon={<Trash />} onClick={onRemove} disabled={Boolean(running)} aria-label={t("plugins.removeNamed", { name: plugin.name })}>
+				{t("plugins.remove")}
 			</Button>
-		</li>
+		</div>
 	);
 }
 
@@ -249,7 +256,7 @@ function AvailableRow({
 			<LetterTile name={entry.name} />
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<div className="flex min-w-0 items-center gap-2">
-					<span className="truncate text-md font-semibold text-fg">{entry.name}</span>
+					<span className="truncate text-md font-medium text-fg">{entry.name}</span>
 					{entry.version && <span className="shrink-0 font-mono text-xs text-fg-faint">v{entry.version}</span>}
 					<span className="shrink-0 text-xs text-fg-faint">{t("plugins.fromMarketplace", { marketplace: entry.marketplace })}</span>
 					{entry.installedScopes.map(scope => (
@@ -258,12 +265,14 @@ function AvailableRow({
 						</Chip>
 					))}
 				</div>
-				{running ? <InlineProgress op={running} /> : entry.description && <p className="line-clamp-2 text-sm text-fg-muted">{entry.description}</p>}
+				<PresenceSwap swapKey={running ? "running" : "idle"}>
+					{running ? <InlineProgress op={running} /> : entry.description && <p className="line-clamp-2 text-sm text-fg-muted">{entry.description}</p>}
+				</PresenceSwap>
 			</div>
 			<Menu>
 				<MenuTrigger asChild>
-					<Button size="sm" icon={<Download />} disabled={Boolean(running)} aria-label={t("plugins.installNamed", { name: entry.name })}>
-						{t("common.install")}
+					<Button size="sm" icon={<DownloadSimple />} disabled={Boolean(running)} aria-label={t("plugins.installNamed", { name: entry.name })}>
+						{t("plugins.install")}
 					</Button>
 				</MenuTrigger>
 				<MenuContent align="end">

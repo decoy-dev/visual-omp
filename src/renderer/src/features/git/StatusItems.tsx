@@ -1,14 +1,5 @@
 import type { GhCheck, GitBranches, GitStatus } from "@shared/contracts/git";
-import {
-	ExternalLink,
-	FolderGit2,
-	GitBranchPlus,
-	GitCommitHorizontal,
-	GitPullRequest,
-	GitPullRequestCreate,
-	RefreshCw,
-	Wrench,
-} from "lucide-react";
+import { ArrowSquareOut, ArrowsClockwise, FolderSimple, GitBranch, GitCommit, GitPullRequest, Wrench } from "@phosphor-icons/react";
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PaneProps } from "@/registry/slots";
@@ -32,6 +23,7 @@ import {
 	Popover,
 	PopoverContent,
 	PopoverTrigger,
+	PresenceSwap,
 	Tooltip,
 } from "@/ui";
 import { focusRing } from "@/ui/styles";
@@ -41,7 +33,7 @@ import { refreshGit, useGit } from "./store";
 
 /** Status-bar button: 24px, xs text, ghost, truncates instead of wrapping. */
 const itemClass = cn(
-	"inline-flex h-6 min-w-0 max-w-[240px] shrink items-center gap-1.5 rounded-sm px-1.5 text-xs text-fg-muted",
+	"relative inline-flex h-6 min-w-0 max-w-[240px] shrink items-center gap-1.5 rounded-sm px-1.5 text-xs text-fg-muted",
 	"transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg data-[state=open]:bg-selected data-[state=open]:text-fg",
 	focusRing,
 );
@@ -138,7 +130,7 @@ export function BranchItem({ projectPath }: PaneProps) {
 					</MenuTrigger>
 				</Tooltip>
 				<MenuContent side="top">
-					<MenuItem icon={<FolderGit2 />} onSelect={() => void initGit(cwd)}>
+					<MenuItem icon={<FolderSimple />} onSelect={() => void initGit(cwd)}>
 						{t("branch.initGit")}
 					</MenuItem>
 					<MenuNote>{t("branch.initGitHint")}</MenuNote>
@@ -170,7 +162,9 @@ export function BranchItem({ projectPath }: PaneProps) {
 						<span aria-hidden className="font-mono text-fg-faint">
 							⎇
 						</span>
-						<span className="truncate font-mono">{label}</span>
+						<PresenceSwap swapKey={label} mode="popLayout" className="min-w-0 truncate font-mono">
+							{label}
+						</PresenceSwap>
 						{repo.isLinkedWorktree && <span className="sr-only">{t("branch.worktree")}</span>}
 					</MenuTrigger>
 				</Tooltip>
@@ -205,39 +199,39 @@ export function BranchItem({ projectPath }: PaneProps) {
 						</MenuSub>
 					)}
 					<MenuSeparator />
-					<MenuItem icon={<GitBranchPlus />} onSelect={() => setNewBranchOpen(true)}>
+					<MenuItem icon={<GitBranch />} onSelect={() => setNewBranchOpen(true)}>
 						{t("branch.newBranch")}
 					</MenuItem>
-						<MenuCheckboxItem
-							checked={repo.isLinkedWorktree}
-							disabled={!repo.hasCommits}
-							onCheckedChange={() => void (repo.isLinkedWorktree ? backToMainCopy(cwd) : startWorktree(cwd))}
-						>
-							{repo.isLinkedWorktree ? t("branch.worktreeBack") : t("branch.worktree")}
-						</MenuCheckboxItem>
+					<MenuCheckboxItem
+						checked={repo.isLinkedWorktree}
+						disabled={!repo.hasCommits}
+						onCheckedChange={() => void (repo.isLinkedWorktree ? backToMainCopy(cwd) : startWorktree(cwd))}
+					>
+						{repo.isLinkedWorktree ? t("branch.worktreeBack") : t("branch.worktree")}
+					</MenuCheckboxItem>
 					<MenuNote>{t("branch.worktreeHint")}</MenuNote>
 					<MenuSeparator />
 					<MenuItem
-						icon={<GitCommitHorizontal />}
+						icon={<GitCommit />}
 						disabled={status.totals.files === 0}
 						onSelect={() => openSheet("git-commit", { cwd })}
 					>
 						{t("branch.commit")}
 					</MenuItem>
 					{pr ? (
-						<MenuItem icon={<ExternalLink />} onSelect={() => void window.vomp.invoke("app:openExternal", pr.url)}>
+						<MenuItem icon={<ArrowSquareOut />} onSelect={() => void window.vomp.invoke("app:openExternal", pr.url)}>
 							{t("branch.openPr", { number: pr.number })}
 						</MenuItem>
 					) : (
 						<MenuItem
-							icon={<GitPullRequestCreate />}
+							icon={<GitPullRequest />}
 							disabled={!repo.github || !status.branch || !repo.hasCommits}
 							onSelect={() => openSheet("git-pr", { cwd })}
 						>
 							{t("branch.pr")}
 						</MenuItem>
 					)}
-					<MenuItem icon={<RefreshCw />} onSelect={() => refreshGit(cwd, { pr: true })}>
+					<MenuItem icon={<ArrowsClockwise />} onSelect={() => refreshGit(cwd, { pr: true })}>
 						{t("branch.refresh")}
 					</MenuItem>
 				</MenuContent>
@@ -256,12 +250,14 @@ export function ChangesItem({ projectPath }: PaneProps) {
 	return (
 		<Tooltip content={t("changes.tooltip", { files: totals.files, additions: totals.additions, deletions: totals.deletions })}>
 			<button type="button" className={cn(itemClass, "font-mono tabular-nums")} onClick={() => useApp.getState().showPane("diff")}>
-				<span aria-hidden className="text-diff-add-text">
-					+{totals.additions}
-				</span>
-				<span aria-hidden className="text-diff-del-text">
-					−{totals.deletions}
-				</span>
+				<PresenceSwap swapKey={`${totals.additions}/${totals.deletions}`} mode="popLayout" className="flex items-center gap-1.5">
+					<span aria-hidden className="text-diff-add-text">
+						+{totals.additions}
+					</span>
+					<span aria-hidden className="text-diff-del-text">
+						−{totals.deletions}
+					</span>
+				</PresenceSwap>
 				<span className="sr-only">{t("changes.srLabel", { additions: totals.additions, deletions: totals.deletions })}</span>
 			</button>
 		</Tooltip>
@@ -303,9 +299,9 @@ export function PrItem({ projectPath }: PaneProps) {
 			<Popover>
 				<Tooltip content={t("pr.tooltip", { number: pr.number, title: pr.title, state: stateText })}>
 					<PopoverTrigger className={itemClass}>
-						<span aria-hidden className={cn("font-mono", glyph.tone)}>
-							{glyph.glyph}
-						</span>
+						<PresenceSwap swapKey={glyph.glyph} mode="popLayout" className={cn("font-mono", glyph.tone)}>
+							<span aria-hidden>{glyph.glyph}</span>
+						</PresenceSwap>
 						<span className="font-mono">{t("pr.chip", { number: pr.number })}</span>
 						<span className="sr-only">{stateText}</span>
 					</PopoverTrigger>
@@ -327,7 +323,7 @@ export function PrItem({ projectPath }: PaneProps) {
 								{[...pr.checks].sort((a, b) => CHECK_ORDER[a.bucket] - CHECK_ORDER[b.bucket]).map(check => (
 									<li key={`${check.workflow ?? ""}/${check.name}`} className="flex items-center gap-2 text-sm">
 										<span aria-hidden className={cn("w-3 font-mono", CHECK_TONE[check.bucket])}>
-											{check.bucket === "pass" ? "✓" : check.bucket === "fail" ? "✕" : check.bucket === "pending" ? "▲" : "–"}
+											{check.bucket === "pass" ? "✓" : check.bucket === "fail" ? "✕" : check.bucket === "pending" ? "▲" : "○"}
 										</span>
 										<span className="min-w-0 flex-1 truncate text-fg">
 											{check.workflow ? `${check.workflow} / ${check.name}` : check.name}
@@ -339,7 +335,7 @@ export function PrItem({ projectPath }: PaneProps) {
 						</>
 					)}
 					<div className="mt-3 flex flex-wrap items-center justify-end gap-2">
-						<Button size="sm" variant="ghost" icon={<RefreshCw />} onClick={() => refreshGit(cwd, { pr: true })}>
+						<Button size="sm" variant="ghost" icon={<ArrowsClockwise />} onClick={() => refreshGit(cwd, { pr: true })}>
 							{t("pr.refresh")}
 						</Button>
 						{ci === "fail" && pr.state === "open" && (
@@ -350,7 +346,7 @@ export function PrItem({ projectPath }: PaneProps) {
 						<Button
 							size="sm"
 							variant="primary"
-							icon={<ExternalLink />}
+							icon={<ArrowSquareOut />}
 							onClick={() => void window.vomp.invoke("app:openExternal", pr.url)}
 						>
 							{t("pr.openOnGithub")}

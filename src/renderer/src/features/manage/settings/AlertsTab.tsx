@@ -1,4 +1,4 @@
-import { BellRing } from "lucide-react";
+import { BellRinging } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "@/state/app";
 import { Button, Switch } from "@/ui";
@@ -22,7 +22,7 @@ export function AlertsTab() {
 				<p className="text-sm text-fg-muted">{t("alerts.test.description")}</p>
 				<Button
 					size="sm"
-					icon={<BellRing />}
+					icon={<BellRinging />}
 					disabled={!prefs.notifications}
 					onClick={() => void window.vomp.invoke("app:notify", t("alerts.test.title"), t("alerts.test.body"))}
 				>

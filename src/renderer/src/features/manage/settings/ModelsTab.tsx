@@ -1,5 +1,5 @@
 import type { ModelRolesState } from "@shared/contracts/config";
-import { ArrowRight, Layers } from "lucide-react";
+import { ArrowRight } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "@/state/app";
 import { Button, Select, SelectItem } from "@/ui";
@@ -79,20 +79,16 @@ export function ModelsTab({ omp }: { omp: OmpSettings }) {
 					{models.error ?? roles.error}
 				</p>
 			)}
-			<div className="flex items-center gap-4 rounded-lg border border-border bg-panel p-4">
-				<span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent">
-					<Layers aria-hidden className="size-4" />
-				</span>
-				<div className="min-w-0 flex-1">
-					<p className="text-md font-medium text-fg">{t("modelsTab.roles.title")}</p>
-					<p className="text-sm text-fg-muted">{t("modelsTab.roles.description")}</p>
-				</div>
-				<Button
-					iconRight={<ArrowRight />}
-					onClick={() => useApp.getState().openSheet("model-roles", { projectPath: omp.cwd })}
-				>
-					{t("modelsTab.roles.open")}
-				</Button>
+			<div className="border-t border-border">
+				<SettingRow
+					label={t("modelsTab.roles.title")}
+					description={t("modelsTab.roles.description")}
+					control={
+						<Button iconRight={<ArrowRight />} onClick={() => useApp.getState().openSheet("model-roles", { projectPath: omp.cwd })}>
+							{t("modelsTab.roles.open")}
+						</Button>
+					}
+				/>
 			</div>
 		</>
 	);

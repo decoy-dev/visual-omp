@@ -11,7 +11,7 @@ import {
 	type AgentWritableScope,
 } from "@shared/contracts/agents";
 import type { ModelInfo } from "@shared/contracts/config";
-import { MessageSquarePlus, Save, TriangleAlert } from "lucide-react";
+import { ChatCenteredDots, FloppyDisk, Warning } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Markdown } from "@/transcript/Markdown";
@@ -316,18 +316,18 @@ function FormEditor({ target, cwd, dirs, models, takenNames, onSaved, onTest, on
 				</div>
 				{error && (
 					<p role="alert" className="flex items-start gap-2 rounded-md bg-err-bg px-3 py-2 text-md text-err">
-						<TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0" />
+						<Warning aria-hidden className="mt-0.5 size-4 shrink-0" />
 						{t("agents.editor.saveFailed", { reason: error })}
 					</p>
 				)}
 			</div>
 			<footer className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-4 py-3">
 				{entry && (
-					<Button variant="ghost" icon={<MessageSquarePlus />} disabled={dirty} title={dirty ? t("agents.editor.testSaveFirst") : undefined} onClick={() => onTest(entry.name)}>
+					<Button variant="ghost" icon={<ChatCenteredDots />} disabled={dirty} title={dirty ? t("agents.editor.testSaveFirst") : undefined} onClick={() => onTest(entry.name)}>
 						{t("agents.editor.test")}
 					</Button>
 				)}
-				<Button type="submit" variant="primary" icon={<Save />} loading={saving} disabled={!complete || (entry !== null && !dirty)}>
+				<Button type="submit" variant="primary" icon={<FloppyDisk />} loading={saving} disabled={!complete || (entry !== null && !dirty)}>
 					{target.kind === "create" ? t("agents.editor.create") : t("agents.editor.save")}
 				</Button>
 			</footer>
@@ -413,7 +413,7 @@ function RawEditor({ filePath, onSaved, onClose }: AgentEditorProps & { filePath
 				)}
 			</div>
 			<footer className="flex shrink-0 items-center justify-end gap-2 border-t border-border px-4 py-3">
-				<Button variant="primary" icon={<Save />} loading={saving} disabled={content === null} onClick={() => void save()}>
+				<Button variant="primary" icon={<FloppyDisk />} loading={saving} disabled={content === null} onClick={() => void save()}>
 					{t("agents.editor.save")}
 				</Button>
 			</footer>

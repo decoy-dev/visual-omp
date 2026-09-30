@@ -1,26 +1,7 @@
-import {
-	Archive,
-	Bot,
-	Copy,
-	FolderOpen,
-	GitBranch,
-	Inbox,
-	Moon,
-	MoreHorizontal,
-	Pencil,
-	Play,
-	Plus,
-	RotateCw,
-	Settings,
-	Share2,
-	Sparkles,
-	Sun,
-	Trash2,
-} from "lucide-react";
+import { Archive, ArrowClockwise, Copy, DotsThree, FolderOpen, Gear, GitBranch, Moon, PencilSimple, Play, Plus, Robot, ShareNetwork, Sun, Trash, Tray } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useState } from "react";
 import {
 	Badge,
-	BracketLabel,
 	Button,
 	Card,
 	Checkbox,
@@ -40,7 +21,6 @@ import {
 	DialogTrigger,
 	Divider,
 	EmptyState,
-	GlowBorder,
 	IconButton,
 	Input,
 	Kbd,
@@ -63,6 +43,7 @@ import {
 	RadioGroup,
 	ScrollArea,
 	SearchInput,
+	SectionLabel,
 	Segmented,
 	Select,
 	SelectGroup,
@@ -98,7 +79,7 @@ type Motion = "full" | "reduced";
 function Section({ title, children }: { title: string; children: ReactNode }) {
 	return (
 		<section className="flex flex-col gap-4 border-t border-border py-8">
-			<BracketLabel as="h2">{title}</BracketLabel>
+			<h2 className="text-lg font-semibold text-fg">{title}</h2>
 			{children}
 		</section>
 	);
@@ -146,7 +127,7 @@ export function Gallery() {
 	return (
 		<TooltipProvider>
 			<div className="h-full overflow-y-auto bg-bg text-fg">
-				<header className="sticky top-0 z-(--z-sticky) flex h-14 items-center gap-4 border-b border-border bg-glass px-8 backdrop-blur-xl">
+				<header className="sticky top-0 z-(--z-sticky) flex h-14 items-center gap-4 border-b border-border bg-bg px-8">
 					<Wordmark withMark />
 					<span className="text-sm text-fg-faint">UI primitives</span>
 					<div className="ml-auto flex items-center gap-3">
@@ -183,7 +164,6 @@ export function Gallery() {
 							<Wordmark size="sm" />
 							<Wordmark />
 							<Wordmark size="lg" withMark />
-							<Wordmark size="lg" blink />
 						</Row>
 						<Row label="Working">
 							<WorkingIndicator label="Working… 14s" />
@@ -194,17 +174,10 @@ export function Gallery() {
 							</span>
 						</Row>
 						<Row label="Card working">
-							<Card working={working} rail="agent" padding="sm" className="w-[320px]">
+							<Card working={working} padding="sm" className="w-[320px]">
 								<p className="text-md">Running tests</p>
-								<p className="text-sm text-fg-muted">Signal shimmer replaces the border.</p>
+								<p className="text-sm text-fg-muted">The border turns accent while omp is working.</p>
 							</Card>
-						</Row>
-						<Row label="GlowBorder">
-							<GlowBorder active={working} radiusClassName="rounded-xl" className="w-[420px]">
-								<Card className="rounded-xl shadow-(--shadow-composer)">
-									<p className="text-md text-fg-muted">Composer — GlowBorder while omp is working.</p>
-								</Card>
-							</GlowBorder>
 							<Switch label="Working" checked={working} onCheckedChange={setWorking} />
 						</Row>
 						<Row label="ContextRing">
@@ -250,12 +223,12 @@ export function Gallery() {
 						</Row>
 						<Row label="IconButton">
 							<IconButton size="sm" label="Copy" icon={<Copy />} />
-							<IconButton label="Restart" shortcut="⌘R" icon={<RotateCw />} />
-							<IconButton size="lg" label="Settings" shortcut="⌘," icon={<Settings />} />
-							<IconButton variant="secondary" label="Share" icon={<Share2 />} />
+							<IconButton label="Restart" shortcut="⌘R" icon={<ArrowClockwise />} />
+							<IconButton size="lg" label="Settings" shortcut="⌘," icon={<Gear />} />
+							<IconButton variant="secondary" label="Share" icon={<ShareNetwork />} />
 							<IconButton label="Show hidden files" pressed={showHidden} onClick={() => setShowHidden((v) => !v)} icon={<FolderOpen />} />
-							<IconButton variant="danger-ghost" label="Delete" icon={<Trash2 />} />
-							<IconButton label="Disabled" disabled icon={<Pencil />} />
+							<IconButton variant="danger-ghost" label="Delete" icon={<Trash />} />
+							<IconButton label="Disabled" disabled icon={<PencilSimple />} />
 						</Row>
 						<Row label="Tooltip">
 							<Tooltip content="Plain tooltip">
@@ -276,7 +249,7 @@ export function Gallery() {
 							))}
 						</Row>
 						<Row label="Chip extras">
-							<Chip tone="agent" icon={<Bot />}>
+							<Chip tone="agent" icon={<Robot />}>
 								reviewer
 							</Chip>
 							<Chip tone="neutral" icon={<GitBranch />} onRemove={() => toast({ message: "Removed main" })} removeLabel="Remove main">
@@ -365,11 +338,11 @@ export function Gallery() {
 						<Row>
 							<Menu>
 								<MenuTrigger asChild>
-									<Button iconRight={<MoreHorizontal />}>Dropdown</Button>
+									<Button iconRight={<DotsThree />}>Dropdown</Button>
 								</MenuTrigger>
 								<MenuContent>
 									<MenuLabel>Session</MenuLabel>
-									<MenuItem icon={<Pencil />} shortcut="F2">
+									<MenuItem icon={<PencilSimple />} shortcut="F2">
 										Rename
 									</MenuItem>
 									<MenuItem icon={<Copy />} shortcut="⌘D">
@@ -378,7 +351,7 @@ export function Gallery() {
 									<MenuItem icon={<Archive />} disabled>
 										Archive
 									</MenuItem>
-									<MenuSub label="Share" icon={<Share2 />}>
+									<MenuSub label="Share" icon={<ShareNetwork />}>
 										<MenuItem>Copy link</MenuItem>
 										<MenuItem>Invite…</MenuItem>
 									</MenuSub>
@@ -393,7 +366,7 @@ export function Gallery() {
 										<MenuRadioItem value="name">Name</MenuRadioItem>
 									</MenuRadioGroup>
 									<MenuSeparator />
-									<MenuItem icon={<Trash2 />} danger shortcut="⌘⌫">
+									<MenuItem icon={<Trash />} danger shortcut="⌘⌫">
 										Delete
 									</MenuItem>
 								</MenuContent>
@@ -418,7 +391,7 @@ export function Gallery() {
 										Show hidden
 									</ContextMenuCheckboxItem>
 									<ContextMenuSeparator />
-									<ContextMenuItem icon={<Trash2 />} danger>
+									<ContextMenuItem icon={<Trash />} danger>
 										Delete
 									</ContextMenuItem>
 								</ContextMenuContent>
@@ -476,7 +449,7 @@ export function Gallery() {
 							))}
 							<Dialog>
 								<DialogTrigger asChild>
-									<Button variant="danger-ghost" icon={<Trash2 />}>
+									<Button variant="danger-ghost" icon={<Trash />}>
 										Destructive
 									</Button>
 								</DialogTrigger>
@@ -505,7 +478,7 @@ export function Gallery() {
 									width={420}
 									title="Model roles"
 									description="Which model does what"
-									actions={<IconButton size="sm" label="Reset" icon={<RotateCw />} />}
+									actions={<IconButton size="sm" label="Reset" icon={<ArrowClockwise />} />}
 									footer={
 										<>
 											<SheetClose asChild>
@@ -583,19 +556,19 @@ export function Gallery() {
 								<Input label="Project name" value={name} onChange={(e) => setName(e.currentTarget.value)} description="Lowercase, no spaces." />
 								<Input size="sm" placeholder="Small" icon={<GitBranch />} />
 								<Input size="lg" placeholder="Large" />
-								<Input label="API key" placeholder="sk-…" error="That key didn't work — check for typos." />
+								<Input label="API key" placeholder="sk-…" error="That key didn't work. Check it for typos." />
 								<Input placeholder="Disabled" disabled />
 								<SearchInput value={query} onValueChange={setQuery} placeholder="Search sessions" hint={<Kbd>⌘K</Kbd>} />
 								<Textarea
 									label="Prompt"
-									placeholder="Ask omp anything… (grows 2–6 rows)"
+									placeholder="Ask omp anything… (grows 2-6 rows)"
 									minRows={2}
 									maxRows={6}
 									value={prompt}
 									onChange={(e) => setPrompt(e.currentTarget.value)}
 								/>
 								<div className="flex items-center gap-3">
-									<Select value={model} onValueChange={setModel} aria-label="Model" icon={<Sparkles />} className="w-56">
+									<Select value={model} onValueChange={setModel} aria-label="Model" icon={<Robot />} className="w-56">
 										<SelectGroup>
 											<SelectLabel>Anthropic</SelectLabel>
 											<SelectItem value="sonnet" hint="fast">
@@ -676,10 +649,10 @@ export function Gallery() {
 							<Kbd>Esc</Kbd>
 							<Kbd>⇧⌘P</Kbd>
 						</Row>
-						<Row label="BracketLabel">
-							<BracketLabel>Recent sessions</BracketLabel>
-							<BracketLabel tone="accent">Plan</BracketLabel>
-							<BracketLabel tone="agent">Agent</BracketLabel>
+						<Row label="SectionLabel">
+							<SectionLabel>Recent sessions</SectionLabel>
+							<SectionLabel tone="faint">Archived</SectionLabel>
+							<SectionLabel tone="accent">Plan</SectionLabel>
 						</Row>
 						<Row label="Divider">
 							<div className="flex w-80 flex-col gap-4">
@@ -699,13 +672,9 @@ export function Gallery() {
 							</Card>
 							<Card floating interactive>
 								<p className="font-medium">Floating + interactive</p>
-								<p className="mt-1 text-sm text-fg-muted">Hover lifts.</p>
+								<p className="mt-1 text-sm text-fg-muted">Hover darkens the border.</p>
 							</Card>
-							<Card rail="agent" padding="sm">
-								<p className="font-medium">Agent rail</p>
-								<p className="mt-1 text-sm text-fg-muted">Status rail tone.</p>
-							</Card>
-							{(["accent", "blue", "ok", "warn", "err", "info"] as const).map((rail) => (
+							{(["accent", "ok", "warn", "err", "info"] as const).map((rail) => (
 								<Card key={rail} rail={rail} padding="sm">
 									<p className="text-sm font-medium">rail="{rail}"</p>
 								</Card>
@@ -722,8 +691,7 @@ export function Gallery() {
 						</ScrollArea>
 						<Card>
 							<EmptyState
-								icon={<Inbox />}
-								eyebrow={<BracketLabel>Sessions</BracketLabel>}
+								icon={<Tray />}
 								title="No sessions yet"
 								body="Start a conversation and omp will keep it here."
 								actions={

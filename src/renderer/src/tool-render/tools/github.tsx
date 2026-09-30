@@ -211,7 +211,7 @@ function WatchView({ watch }: { watch: Record<string, unknown> }): ReactNode {
 				const workflow = str(entry.workflowName);
 				const failedRunId = num(entry.runId);
 				const context = workflow ?? "run";
-				const title = `${jobName} — ${context}${failedRunId !== null ? ` #${failedRunId}` : ""}`;
+				const title = `${jobName} · ${context}${failedRunId !== null ? ` #${failedRunId}` : ""}`;
 				const tail = str(entry.tail);
 				if (!tail || entry.available === false) {
 					return (

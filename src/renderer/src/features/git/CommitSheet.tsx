@@ -1,10 +1,10 @@
 import type { GitChangeKind, GitCommitResult, GitFileStatus, GitStatus } from "@shared/contracts/git";
-import { GitCommitHorizontal, Sparkles, Upload, WandSparkles } from "lucide-react";
+import { GitCommit, PencilSimpleLine, UploadSimple } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SheetProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
-import { Button, Checkbox, Chip, type ChipTone, Progress, Sheet, SheetContent, Textarea, Tooltip, toast } from "@/ui";
+import { Button, Checkbox, Chip, type ChipTone, Expand, Progress, Sheet, SheetContent, Textarea, Tooltip, toast } from "@/ui";
 import { shortSha } from "./format";
 import { refreshGit, useGit } from "./store";
 
@@ -191,7 +191,6 @@ export function CommitSheet({ props, close }: SheetProps<GitSheetProps>) {
 				<Button
 					className="mr-auto"
 					variant="secondary"
-					icon={<Sparkles />}
 					loading={busy === "ai"}
 					disabled={!canCommit}
 					onClick={() => void letOmpCommit()}
@@ -211,7 +210,7 @@ export function CommitSheet({ props, close }: SheetProps<GitSheetProps>) {
 			{git?.repo?.hasRemote && (
 				<Button
 					variant="secondary"
-					icon={<Upload />}
+					icon={<UploadSimple />}
 					loading={busy === "push"}
 					disabled={!canCommit || !message.trim()}
 					onClick={() => void commit(true)}
@@ -221,7 +220,7 @@ export function CommitSheet({ props, close }: SheetProps<GitSheetProps>) {
 			)}
 			<Button
 				variant="primary"
-				icon={<GitCommitHorizontal />}
+				icon={<GitCommit />}
 				loading={busy === "commit"}
 				disabled={!canCommit || !message.trim()}
 				onClick={() => void commit(false)}
@@ -293,7 +292,9 @@ export function CommitSheet({ props, close }: SheetProps<GitSheetProps>) {
 								))}
 							</ul>
 						</div>
-						{conflicted && <p className="mt-2 text-sm text-warn">{t("commit.conflicts")}</p>}
+						<Expand open={conflicted}>
+							<p className="pt-2 text-sm text-warn">{t("commit.conflicts")}</p>
+						</Expand>
 					</section>
 				)}
 
@@ -306,7 +307,7 @@ export function CommitSheet({ props, close }: SheetProps<GitSheetProps>) {
 							<Button
 								size="sm"
 								variant="ghost"
-								icon={<WandSparkles />}
+								icon={<PencilSimpleLine />}
 								loading={busy === "generate"}
 								disabled={Boolean(busy) || selected.length === 0}
 								onClick={() => void generate()}
@@ -324,11 +325,13 @@ export function CommitSheet({ props, close }: SheetProps<GitSheetProps>) {
 							disabled={running}
 							onChange={event => setMessage(event.currentTarget.value)}
 						/>
-						{note && <p className="text-sm text-fg-muted">{note}</p>}
+						<Expand open={Boolean(note)}>
+							<p className="text-sm text-fg-muted">{note}</p>
+						</Expand>
 					</section>
 				)}
 
-				{running && (
+				<Expand open={running}>
 					<section aria-live="polite" className="flex flex-col gap-2">
 						<Progress aria-label={busy === "ai" ? t("commit.aiRunning") : t("commit.writing")} />
 						<p className="text-sm text-fg-muted">{busy === "ai" ? t("commit.aiRunning") : t("commit.writing")}</p>
@@ -341,7 +344,7 @@ export function CommitSheet({ props, close }: SheetProps<GitSheetProps>) {
 							</pre>
 						)}
 					</section>
-				)}
+				</Expand>
 			</SheetContent>
 		</Sheet>
 	);

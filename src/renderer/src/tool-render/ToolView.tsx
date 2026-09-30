@@ -49,6 +49,32 @@ function executeXdevDispatch(props: ToolViewProps): XdevDispatch | null {
 	return { tool: xdev.tool, args: isRecord(xdev.args) ? xdev.args : {}, inner: xdev.inner };
 }
 
+type ToolStatus = "run" | "ok" | "err" | "pending";
+
+/**
+ * Status glyph plus screen-reader text, so status never depends on color alone: a pulsing dot while
+ * running, a check when done, a cross when failed, a hollow ring while waiting for a result.
+ * Inline SVG keeps the renderer host-agnostic (no app UI kit, no i18n).
+ */
+function ToolStatusMark({ status }: { status: ToolStatus }): ReactNode {
+	const label = status === "run" ? "Running" : status === "err" ? "Failed" : status === "ok" ? "Done" : "Waiting for result";
+	return (
+		<span className={`tv-status tv-status--${status}`}>
+			{status === "ok" && (
+				<svg viewBox="0 0 12 12" aria-hidden="true">
+					<path d="M2.5 6.3 5 8.6l4.5-5" />
+				</svg>
+			)}
+			{status === "err" && (
+				<svg viewBox="0 0 12 12" aria-hidden="true">
+					<path d="M3 3l6 6M9 3 3 9" />
+				</svg>
+			)}
+			<span className="tv-sr">{label}</span>
+		</span>
+	);
+}
+
 export function ToolView(props: ToolViewProps): ReactNode {
 	const [open, setOpen] = useState(props.defaultOpen ?? false);
 	const xdev = executeXdevDispatch(props);
@@ -68,7 +94,7 @@ export function ToolView(props: ToolViewProps): ReactNode {
 	};
 
 	const isError = props.result?.isError === true;
-	const status = props.running ? "run" : isError ? "err" : props.result ? "ok" : "pending";
+	const status: ToolStatus = props.running ? "run" : isError ? "err" : props.result ? "ok" : "pending";
 	const partial = props.running && !props.result && props.partial ? stripAnsi(replaceTabs(props.partial)) : "";
 
 	return (
@@ -80,11 +106,7 @@ export function ToolView(props: ToolViewProps): ReactNode {
 				onClick={() => setOpen(v => !v)}
 				title={intent || undefined}
 			>
-				{status === "run" ? (
-					<span className="tv-spin" aria-label="running" />
-				) : (
-					<span className={`tv-status tv-status--${status}`} aria-hidden="true" />
-				)}
+				<ToolStatusMark status={status} />
 				<span className="tv-name">{xdev ? `xd://${name}` : name}</span>
 				<span className="tv-sum">
 					<renderer.Summary {...renderProps} />

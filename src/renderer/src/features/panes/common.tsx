@@ -1,7 +1,8 @@
 /** Hooks and small building blocks shared by the dock panes. */
-import { X } from "lucide-react";
-import type { KeyboardEvent, ReactNode } from "react";
-import { cn } from "../../ui";
+import { X } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
+import { type KeyboardEvent, type ReactNode, useId } from "react";
+import { cn, duration, ease, spring } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
 import { useApp } from "../../state/app";
 
@@ -16,6 +17,18 @@ export function relativePath(projectPath: string, path: string): string {
 	if (path === root) return ".";
 	return path.startsWith(`${root}/`) || path.startsWith(`${root}\\`) ? path.slice(root.length + 1).replace(/\\/g, "/") : path;
 }
+
+/**
+ * Props for a `motion.li`/`motion.div` row inside `<AnimatePresence initial={false}>` with `layout="position"`:
+ * rows present when the list mounts stay at rest, inserted rows rise in, removed rows fade out, and the rest slide
+ * into their new places. Reduced motion keeps only the fades.
+ */
+export const listRowMotion = {
+	initial: { opacity: 0, y: 4 },
+	animate: { opacity: 1, y: 0 },
+	exit: { opacity: 0, transition: { duration: duration.fast, ease: "easeIn" } },
+	transition: { layout: spring.snappy, y: spring.gentle, opacity: { duration: duration.base, ease: ease.outQuart } },
+} as const;
 
 /** 36px toolbar at the top of a pane. */
 export function PaneToolbar({ children, className }: { children: ReactNode; className?: string }) {
@@ -52,6 +65,7 @@ export function TabStrip({
 	label: string;
 	trailing?: ReactNode;
 }) {
+	const indicatorId = useId();
 	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
 		if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
 		const index = tabs.findIndex(tab => tab.id === active);
@@ -64,52 +78,63 @@ export function TabStrip({
 	return (
 		<div className="flex h-8 shrink-0 items-stretch border-b border-border bg-inset">
 			<div role="tablist" aria-label={label} className="flex min-w-0 flex-1 items-stretch overflow-x-auto" onKeyDown={onKeyDown}>
-				{tabs.map(tab => {
-					const selected = tab.id === active;
-					return (
-						<div
-							key={tab.id}
-							className={cn(
-								"group relative flex min-w-0 max-w-44 shrink-0 items-center border-r border-border",
-								selected ? "bg-panel text-fg" : "text-fg-muted hover:bg-hover hover:text-fg",
-							)}
-						>
-							<button
-								type="button"
-								role="tab"
-								data-tab-id={tab.id}
-								aria-selected={selected}
-								tabIndex={selected ? 0 : -1}
-								title={tab.title ?? tab.label}
-								onClick={() => onSelect(tab.id)}
-								onAuxClick={event => {
-									if (event.button === 1) onClose(tab.id);
-								}}
+				<AnimatePresence initial={false}>
+					{tabs.map(tab => {
+						const selected = tab.id === active;
+						return (
+							<motion.div
+								key={tab.id}
+								layout="position"
+								{...listRowMotion}
 								className={cn(
-									"flex h-full min-w-0 items-center gap-1.5 pl-2.5 pr-1 text-sm [&_svg]:size-3.5 [&_svg]:shrink-0",
-									focusRingInset,
+									"group relative flex min-w-0 max-w-44 shrink-0 items-center border-r border-border",
+									selected ? "bg-panel text-fg" : "text-fg-muted hover:bg-hover hover:text-fg",
 								)}
 							>
-								{tab.icon}
-								<span className="truncate">{tab.label}</span>
-							</button>
-							<button
-								type="button"
-								aria-label={closeLabel(tab)}
-								title={closeLabel(tab)}
-								onClick={() => onClose(tab.id)}
-								className={cn(
-									"mr-1 inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-fg-faint hover:bg-hover hover:text-fg",
-									selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
-									focusRingInset,
+								<button
+									type="button"
+									role="tab"
+									data-tab-id={tab.id}
+									aria-selected={selected}
+									tabIndex={selected ? 0 : -1}
+									title={tab.title ?? tab.label}
+									onClick={() => onSelect(tab.id)}
+									onAuxClick={event => {
+										if (event.button === 1) onClose(tab.id);
+									}}
+									className={cn(
+										"flex h-full min-w-0 items-center gap-1.5 pl-2.5 pr-1 text-sm [&_svg]:size-3.5 [&_svg]:shrink-0",
+										focusRingInset,
+									)}
+								>
+									{tab.icon}
+									<span className="truncate">{tab.label}</span>
+								</button>
+								<button
+									type="button"
+									aria-label={closeLabel(tab)}
+									title={closeLabel(tab)}
+									onClick={() => onClose(tab.id)}
+									className={cn(
+										"mr-1 inline-flex size-5 shrink-0 items-center justify-center rounded-sm text-fg-faint hover:bg-hover hover:text-fg",
+										selected ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+										focusRingInset,
+									)}
+								>
+									<X className="size-3" aria-hidden />
+								</button>
+								{selected && (
+									<motion.span
+										aria-hidden
+										layoutId={`${indicatorId}-tab`}
+										transition={spring.snappy}
+										className="absolute inset-x-0 top-0 h-0.5 bg-accent"
+									/>
 								)}
-							>
-								<X className="size-3" aria-hidden />
-							</button>
-							{selected && <span aria-hidden className="absolute inset-x-0 top-0 h-0.5 bg-accent" />}
-						</div>
-					);
-				})}
+							</motion.div>
+						);
+					})}
+				</AnimatePresence>
 			</div>
 			{trailing}
 		</div>

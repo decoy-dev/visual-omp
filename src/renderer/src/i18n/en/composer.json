@@ -1,21 +1,21 @@
 {
 	"label": "Message to omp",
-	"readOnly": "This chat is open in another window. You can look, but only that window can type.",
+	"readOnly": "Replies are off here while another omp window may have this chat open.",
 	"placeholder": {
-		"idle": "Ask visual-omp to change something…",
-		"working": "Add a message — it goes out when omp finishes this reply",
+		"idle": "Ask omp to change something…",
+		"working": "Queue a message for when omp finishes this reply",
 		"shell": "Type a shell command to run in the project folder…",
 		"python": "Type Python code to run…",
-		"readOnly": "Only the other window can type in this chat"
+		"readOnly": "Reply from the other window"
 	},
 	"send": {
-		"label": "Send",
+		"label": "Send message",
 		"tip": "Send your message",
-		"queue": "Add to queue",
+		"queue": "Queue message",
 		"queueTip": "Send when omp finishes this reply",
-		"nowTip": "Send now — omp reads it at its next step instead of waiting for the reply to finish.",
+		"nowTip": "Send now. omp reads it at its next step, before this reply finishes.",
 		"nowShort": "send now",
-		"stop": "Stop",
+		"stop": "Stop reply",
 		"stopTip": "Stop omp's current reply (Esc)",
 		"failed": "Couldn't send your message"
 	},
@@ -24,9 +24,9 @@
 		"tip": "Attach files, mention a file, or pick a saved prompt",
 		"attach": "Attach file",
 		"mention": "Mention a file",
-		"library": "Prompt library",
-		"skills": "Skills",
-		"commands": "Custom commands"
+		"library": "Open prompt library",
+		"skills": "Browse skills",
+		"commands": "Browse custom commands"
 	},
 	"attach": {
 		"label": "Attached images",
@@ -37,9 +37,9 @@
 		"unsupported": "That clipboard content can't be attached. Try PNG, JPEG, GIF or WebP."
 	},
 	"mention": {
-		"header": "Mention a file — omp reads it with your message",
+		"header": "Mention a file so omp reads it with your message",
 		"label": "Project files",
-		"loading": "Looking through the project…",
+		"loading": "Loading project files…",
 		"empty": "No files match"
 	},
 	"question": {
@@ -49,56 +49,57 @@
 	"queue": {
 		"label_one": "{{count}} queued message",
 		"label_other": "{{count}} queued messages",
-		"title_one": "{{count}} queued — goes out when omp finishes",
-		"title_other": "{{count}} queued — they go out in order when omp finishes",
-		"sendNow": "Send now",
-		"sendNowTip": "Send this now — omp reads it at its next step instead of waiting for the reply to finish.",
-		"edit": "Edit",
+		"title_one": "{{count}} queued. It sends when omp finishes.",
+		"title_other": "{{count}} queued. They send in order when omp finishes.",
+		"sendNow": "Send message now",
+		"sendNowTip": "Send this now. omp reads it at its next step, before this reply finishes.",
+		"edit": "Edit message",
 		"editLabel": "Edit queued message",
 		"remove": "Remove from queue",
 		"reorder": "Move message {{position}} of {{count}} (use arrow keys, or drag)",
 		"dragHint": "Drag to reorder",
-		"more_one": "{{count}} more",
-		"more_other": "{{count}} more",
-		"less": "Show less"
+		"more_one": "Show {{count}} more",
+		"more_other": "Show {{count}} more",
+		"less": "Show fewer messages"
 	},
 	"modes": {
 		"exit": "Leave {{mode}}",
 		"shell": {
 			"label": "Shell command mode",
 			"short": "Shell",
-			"tip": "Run what you type as a terminal command in the project folder. The output goes into the chat."
+			"tip": "Run what you type as a terminal command in the project folder. The output appears in the chat."
 		},
 		"python": {
 			"label": "Python mode",
 			"short": "Python",
-			"tip": "Run what you type as Python code. The result goes into the chat."
+			"tip": "Run what you type as Python code. The result appears in the chat."
 		}
 	},
 	"context": {
 		"label": "Context used: {{percent}}%",
-		"tip": "{{percent}}% of omp's working memory is used",
-		"title": "Working memory",
-		"body": "How much of this chat omp can keep in mind at once. When it fills up, summarize to free room.",
-		"compact": "Compact now",
-		"compactTip": "Summarize this chat so far to free up working room.",
-		"compactBusy": "Available when omp finishes the current reply."
+		"tip": "{{percent}}% of the context window used",
+		"title": "Context window",
+		"body": "How much of omp's context window this chat fills. When it is full, compact the chat to make room.",
+		"compact": "Compact chat",
+		"compactTip": "Summarize the chat so far to free context.",
+		"compactBusy": "Available when omp finishes the current reply.",
+		"unknown": "Unknown"
 	},
 	"voice": {
-		"start": "Talk instead of typing",
+		"start": "Dictate a message",
 		"stop": "Stop and insert what you said",
-		"starting": "Getting the microphone ready…",
-		"transcribing": "Turning your words into text…",
+		"starting": "Starting the microphone…",
+		"transcribing": "Transcribing…",
 		"listening": "Listening",
 		"failed": "Voice input didn't start",
-		"nothing": "No words came through",
+		"nothing": "No speech detected",
 		"nothingBody": "Check the microphone, or set up voice if this is the first time.",
 		"setUp": "Set up voice",
 		"ready": "Voice input is on. Click the microphone and talk.",
 		"turnOn": "Turn on voice input",
-		"consentTitle": "Talk to omp with your voice",
+		"consentTitle": "Dictate messages to omp",
 		"consentBody": "omp turns what you say into text in this box. You check it, then send.",
-		"consentLocal": "By default the speech model runs on this computer — your voice isn't uploaded.",
+		"consentLocal": "By default the speech model runs on this computer, so your voice isn't uploaded.",
 		"consentDownload": "The first time, omp downloads the speech model (a few hundred MB). \"Set up voice\" lets you pick a model and language.",
 		"consentRestart": "This chat restarts once so omp picks up the change. Nothing is lost.",
 		"clearTuiFirst": "There's an unsent message in omp's editor. Send it or clear it before dictating."
@@ -106,26 +107,26 @@
 	"library": {
 		"title": "Prompt library",
 		"description": "Reuse your saved prompts, the project's custom commands, and omp's skills.",
-		"search": "Filter",
+		"search": "Filter prompts",
 		"tabs": {
 			"saved": "Saved prompts",
 			"commands": "Custom commands",
 			"skills": "Skills"
 		},
-		"new": "New prompt",
+		"new": "Create prompt",
 		"saveDraft": "Save current message",
 		"titleLabel": "Name",
 		"textLabel": "Prompt",
-		"save": "Save",
-		"cancel": "Cancel",
+		"save": "Save prompt",
+		"cancel": "Discard changes",
 		"edit": "Edit prompt",
 		"delete": "Delete prompt",
 		"savedEmptyTitle": "No saved prompts yet",
-		"savedEmptyBody": "Save messages you send often and drop them in with one click.",
+		"savedEmptyBody": "Save messages you send often and insert them with one click.",
 		"commandsEmptyTitle": "No custom commands in this project",
 		"commandsEmptyBody": "Add Markdown files to .omp/commands in the project and they show up here.",
 		"skillsEmptyTitle": "No skills loaded",
-		"skillsEmptyBody": "Skills teach omp new tricks. Add them from Manage → Skills.",
+		"skillsEmptyBody": "Skills give omp extra instructions for specific tasks. Add them from Manage → Skills.",
 		"noMatch": "Nothing matches that filter",
 		"noDescription": "No description",
 		"loadFailed": "Couldn't load this list",

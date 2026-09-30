@@ -50,7 +50,9 @@ export function ResizeHandle({ label, value, min, max, direction, onChange }: Re
 			className={cn(
 				"group relative z-(--z-sticky) -mx-0.5 w-1 shrink-0 cursor-col-resize outline-none",
 				"after:absolute after:inset-y-0 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent after:transition-colors after:duration-(--dur-fast)",
-				"hover:after:bg-accent focus-visible:after:bg-ring",
+				"hover:after:bg-accent",
+				// Keyboard focus: a 2px ring around the handle plus a wider bar, so focus reads by shape as well as color.
+				"focus-visible:rounded-xs focus-visible:outline-2 focus-visible:outline-ring focus-visible:after:w-0.5 focus-visible:after:bg-ring",
 			)}
 		/>
 	);

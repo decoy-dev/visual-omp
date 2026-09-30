@@ -1,34 +1,17 @@
-import {
-	CircleCheck,
-	CircleHelp,
-	FolderOpen,
-	GitBranch,
-	GitFork,
-	History,
-	type LucideIcon,
-	MessageSquareText,
-	MessagesSquare,
-	MousePointerClick,
-	PanelRight,
-	ShieldCheck,
-	Bell,
-	Undo2,
-	Zap,
-	Hand,
-} from "lucide-react";
+import { ArrowUUpLeft, Bell, ChatsCircle, ChatText, CheckCircle, ClockCounterClockwise, CursorClick, FolderOpen, GitBranch, GitFork, Hand, type Icon, Lightning, Question, ShieldCheck, SidebarSimple } from "@phosphor-icons/react";
 
 export interface Guide {
 	id: "firstChat" | "autoMode" | "rewind" | "questions";
-	icon: LucideIcon;
+	icon: Icon;
 	/** Icons for the four illustrated steps (texts are `help.guide.<id>.s1..s4`). */
-	steps: readonly [LucideIcon, LucideIcon, LucideIcon, LucideIcon];
+	steps: readonly [Icon, Icon, Icon, Icon];
 }
 
 export const GUIDES: readonly Guide[] = [
-	{ id: "firstChat", icon: MessageSquareText, steps: [FolderOpen, MessagesSquare, PanelRight, Zap] },
-	{ id: "autoMode", icon: ShieldCheck, steps: [MousePointerClick, Zap, Hand, Undo2] },
-	{ id: "rewind", icon: History, steps: [MousePointerClick, Undo2, GitFork, GitBranch] },
-	{ id: "questions", icon: CircleHelp, steps: [CircleHelp, MessageSquareText, CircleCheck, Bell] },
+	{ id: "firstChat", icon: ChatText, steps: [FolderOpen, ChatsCircle, SidebarSimple, Lightning] },
+	{ id: "autoMode", icon: ShieldCheck, steps: [CursorClick, Lightning, Hand, ArrowUUpLeft] },
+	{ id: "rewind", icon: ClockCounterClockwise, steps: [CursorClick, ArrowUUpLeft, GitFork, GitBranch] },
+	{ id: "questions", icon: Question, steps: [Question, ChatText, CheckCircle, Bell] },
 ];
 
 /** Glossary entries (`help.terms.<key>.term` / `.def`), in reading order. */

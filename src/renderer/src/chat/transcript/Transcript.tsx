@@ -3,7 +3,8 @@
  * collab-web Transcript (transcript/Transcript.tsx); presentation is visual-omp's.
  */
 import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
-import { ArrowDown, Bug, BookOpen, ChevronRight, Copy, GitFork, type LucideIcon, Paintbrush, Sparkles, Undo2 } from "lucide-react";
+import { ArrowDown, ArrowUUpLeft, CaretRight, Copy, GitFork, Warning, XCircle } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { type MouseEvent, memo, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
@@ -13,7 +14,7 @@ import type { SessionController, SessionView } from "../../state/session";
 import { useApp } from "../../state/app";
 import { activeBranch } from "../../state/history";
 import { Markdown } from "../../transcript/Markdown";
-import { Button, cn, IconButton, Mark, toast } from "../../ui";
+import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toast, useMotionReduced } from "../../ui";
 import { useComposerDrafts } from "../composer/drafts";
 import { QuestionCard } from "./QuestionCard";
 import { ToolCard } from "./ToolCard";
@@ -76,14 +77,14 @@ function UserMessage({ entry, session, from }: { entry: SessionEntry; session: S
 	return (
 		<div className="group flex flex-col items-end gap-1">
 			<div className="flex items-center gap-2 text-xs text-fg-faint">
-				<span className="opacity-0 transition-opacity group-hover:opacity-100">{timeOf(entry.timestamp)}</span>
+				<span className="opacity-0 transition-opacity duration-(--dur) group-hover:opacity-100">{timeOf(entry.timestamp)}</span>
 				<span className="font-medium text-fg-muted">{from ? t("from", { name: from }) : t("you")}</span>
 			</div>
-			<div className="max-w-[85%] rounded-lg rounded-br-sm border border-border-strong bg-inset px-4 py-3">
+			<div className="max-w-[85%] rounded-lg border border-border bg-inset px-4 py-3">
 				<UserContent content={content} />
 			</div>
-			<div className="flex gap-0.5 opacity-0 transition-opacity group-focus-within:opacity-100 group-hover:opacity-100">
-				{getCommand("chat.rewindTo") && <IconButton label={t("rewind")} icon={<Undo2 />} size="sm" onClick={() => run("chat.rewindTo")} />}
+			<div className="flex gap-0.5 opacity-0 transition-opacity duration-(--dur) group-focus-within:opacity-100 group-hover:opacity-100">
+				{getCommand("chat.rewindTo") && <IconButton label={t("rewind")} icon={<ArrowUUpLeft />} size="sm" onClick={() => run("chat.rewindTo")} />}
 				{getCommand("chat.forkFrom") && <IconButton label={t("fork")} icon={<GitFork />} size="sm" onClick={() => run("chat.forkFrom")} />}
 				<IconButton
 					label={t("copy")}
@@ -106,14 +107,14 @@ function ThinkingBlock({ text, redacted, open: forcedOpen }: { text: string; red
 				type="button"
 				aria-expanded={visible}
 				onClick={() => setOpen(value => !value)}
-				className="flex items-center gap-1 rounded-sm text-sm text-fg-faint outline-none hover:text-fg-muted focus-visible:outline-2 focus-visible:outline-ring"
+				className="-mx-2 flex h-7 items-center gap-1.5 rounded-md px-2 text-sm text-fg-faint outline-none transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg-muted focus-visible:outline-2 focus-visible:outline-ring"
 			>
-				<ChevronRight className={cn("size-3.5 transition-transform duration-(--dur-fast)", visible && "rotate-90")} aria-hidden />
-				{redacted ? t("redactedThinking") : t("thoughtFor")}
+				<CaretRight className={cn("size-3.5 transition-[rotate] duration-(--dur) ease-(--ease-out)", visible && "rotate-90")} aria-hidden />
+				{redacted ? t("redactedThinking") : t("thoughts")}
 			</button>
-			{visible && !redacted && (
-				<div className="selectable mt-1.5 rounded-md bg-inset py-2 pr-3 pl-3 text-sm whitespace-pre-wrap text-fg-muted shadow-[inset_2px_0_0_var(--agent)]">{text}</div>
-			)}
+			<Expand open={visible && !redacted} className="selectable pt-0.5 pb-2 pl-5 text-sm whitespace-pre-wrap text-fg-muted">
+				{text}
+			</Expand>
 		</div>
 	);
 }
@@ -135,7 +136,7 @@ function AssistantBlocks({
 	const lastText = message.content.reduce((last, block, index) => (block.type === "text" ? index : last), -1);
 	const failed = !pending && (message.stopReason === "error" || message.stopReason === "aborted");
 	return (
-		<div className="flex flex-col gap-2.5">
+		<div className="flex flex-col">
 			{message.content.map((block, index) => {
 				switch (block.type) {
 					case "thinking":
@@ -144,9 +145,8 @@ function AssistantBlocks({
 						return <ThinkingBlock key={index} text="" redacted open={false} />;
 					case "text":
 						return (
-							<div key={index} className="relative">
+							<div key={index} className="py-1.5 first:pt-0 last:pb-0" data-streaming={pending && index === lastText ? "" : undefined}>
 								<Markdown text={block.text} />
-								{pending && index === lastText && <span className="stream-caret" aria-hidden />}
 							</div>
 						);
 					case "toolCall": {
@@ -162,6 +162,7 @@ function AssistantBlocks({
 								running={!result && (live !== undefined || pending)}
 								partialResult={live?.partialResult}
 								verbose={mode === "verbose"}
+								arriving={pending}
 							/>
 						);
 					}
@@ -170,9 +171,22 @@ function AssistantBlocks({
 				}
 			})}
 			{failed && (
-				<div className={cn("rounded-md px-3 py-2 text-md", message.stopReason === "error" ? "bg-err-bg text-err" : "bg-warn-bg text-warn")} role="status">
-					<span className="font-medium">{message.stopReason === "error" ? `✕ ${t("stopped.error")}` : `▲ ${t("stopped.aborted")}`}</span>
-					{message.errorMessage && <span className="selectable ml-2 text-fg-muted">{message.errorMessage}</span>}
+				<div
+					className={cn(
+						"mt-2 flex items-start gap-2 rounded-md px-3 py-2 text-md",
+						message.stopReason === "error" ? "bg-err-bg text-err" : "bg-warn-bg text-warn",
+					)}
+					role="status"
+				>
+					{message.stopReason === "error" ? (
+						<XCircle weight="fill" className="mt-0.5 size-4 shrink-0" aria-hidden />
+					) : (
+						<Warning weight="fill" className="mt-0.5 size-4 shrink-0" aria-hidden />
+					)}
+					<span>
+						<span className="font-medium">{message.stopReason === "error" ? t("stopped.error") : t("stopped.aborted")}</span>
+						{message.errorMessage && <span className="selectable ml-2 text-fg-muted">{message.errorMessage}</span>}
+					</span>
 				</div>
 			)}
 		</div>
@@ -210,6 +224,29 @@ function rowEqual(prev: RowProps, next: RowProps): boolean {
 		if (prev.results.get(block.id) !== next.results.get(block.id) || prev.active.get(block.id) !== next.active.get(block.id)) return false;
 	}
 	return true;
+}
+
+/**
+ * Whether {@link Row} draws anything for `entry`. Hidden entries (tool results, omp's `custom`
+ * bookkeeping such as `tool_execution_start`, setup changes) get no row wrapper: an empty wrapper
+ * still takes a flex gap, and a run of them opened blank space between tool rounds.
+ */
+function rowShown(entry: SessionEntry, mode: TranscriptMode, afterFirstPrompt: boolean): boolean {
+	switch (entry.type) {
+		case "message":
+			return entry.message.role === "user" || entry.message.role === "assistant";
+		case "custom_message":
+			return entry.customType === "collab-prompt" || Boolean(entry.display);
+		case "compaction":
+		case "branch_summary":
+			return true;
+		case "model_change":
+			return afterFirstPrompt || mode === "verbose";
+		case "thinking_level_change":
+			return mode === "verbose";
+		default:
+			return false;
+	}
 }
 
 const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results, active, mode, session }: RowProps): ReactNode {
@@ -252,41 +289,40 @@ const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results,
 	}
 }, rowEqual);
 
-const PROMPT_ICONS: Record<string, LucideIcon> = { bug: Bug, sparkles: Sparkles, book: BookOpen, broom: Paintbrush };
-
 function EmptyChat({ session }: { session: SessionController }): ReactNode {
 	const { t } = useTranslation("chat");
 	// `returnObjects` yields the JSON array as authored in i18n/en/chat.json.
-	const prompts = t("empty.prompts", { returnObjects: true }) as { icon: string; title: string; text: string }[];
+	const prompts = t("empty.prompts", { returnObjects: true }) as { title: string; text: string }[];
 	const returning = useApp(state => state.projects.some(project => project.sessionCount > 1));
 	return (
-		<div className="m-auto flex w-full max-w-[520px] flex-col items-center gap-5 py-16 text-center">
-			<Mark size={44} />
-			<div>
-				<h2 className="text-2xl font-bold tracking-[-0.02em] text-fg">{returning ? t("empty.returning") : t("empty.first")}</h2>
-				{!returning && <p className="mt-1 text-md text-fg-muted">{t("empty.tip")}</p>}
+		<div className="m-auto flex w-full max-w-[520px] flex-col gap-6 py-16">
+			<div className="flex flex-col items-center gap-4 text-center">
+				<Mark size={40} />
+				<div>
+					<h2 className="text-2xl font-bold tracking-[-0.02em] text-fg">{returning ? t("empty.returning") : t("empty.first")}</h2>
+					{!returning && <p className="mt-1 text-md text-fg-muted">{t("empty.tip")}</p>}
+				</div>
 			</div>
-			<div className="grid w-full grid-cols-2 gap-3">
-				{prompts.map(prompt => {
-					const Icon = PROMPT_ICONS[prompt.icon] ?? Sparkles;
-					return (
+			<ul aria-label={t("empty.promptsLabel")} className="flex flex-col">
+				{prompts.map(prompt => (
+					<li key={prompt.title}>
 						<button
-							key={prompt.title}
 							type="button"
 							onClick={() => {
 								useComposerDrafts.getState().setDraft(session.tabId, prompt.text);
 								useComposerDrafts.getState().focus(session.tabId);
 							}}
-							className="flex h-[88px] flex-col items-start gap-1.5 rounded-lg border border-border bg-panel p-3 text-left transition-[translate,box-shadow] duration-(--dur-fast) outline-none hover:-translate-y-0.5 hover:shadow-(--shadow-card) focus-visible:outline-2 focus-visible:outline-ring"
+							className="group/prompt flex w-full items-baseline gap-3 rounded-md px-3 py-2 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
 						>
-							<Icon className="size-5 text-accent" aria-hidden />
-							<span className="text-md font-semibold text-fg">{prompt.title}</span>
-							<span className="line-clamp-1 text-sm text-fg-muted">{prompt.text}</span>
+							<span className="shrink-0 text-md font-medium text-fg">{prompt.title}</span>
+							<span className="min-w-0 flex-1 truncate text-sm text-fg-faint transition-colors duration-(--dur-fast) group-hover/prompt:text-fg-muted">
+								{prompt.text}
+							</span>
 						</button>
-					);
-				})}
-			</div>
-			<p className="text-sm text-fg-faint">{t("empty.hints")}</p>
+					</li>
+				))}
+			</ul>
+			<p className="text-center text-sm text-fg-faint">{t("empty.hints")}</p>
 		</div>
 	);
 }
@@ -297,8 +333,18 @@ export interface TranscriptProps {
 	mode: TranscriptMode;
 }
 
+/** What the previous commit showed, so a render can tell newly arrived rows from history. */
+interface Arrivals {
+	/** The transcript had loaded (messages or the empty state) at the previous commit. Until then nothing rises. */
+	armed: boolean;
+	seen: ReadonlySet<string>;
+	/** A reply was streaming at the previous commit; its saved entry replaces the stream row in place. */
+	streamed: boolean;
+}
+
 export function Transcript({ session, view, mode }: TranscriptProps): ReactNode {
 	const { t } = useTranslation("chat");
+	const reducedMotion = useMotionReduced();
 	const slots = chatSlots.use().filter(slot => slot.placement === "transcriptEnd");
 	const guest = view.guest;
 	const live = guest !== null && guest.phase !== "connecting";
@@ -373,7 +419,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		lockRef.current = true;
 		setUnseen(false);
 		setPinnedStart(null);
-		el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+		el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
 	};
 
 	const onClick = (event: MouseEvent<HTMLDivElement>) => {
@@ -389,6 +435,24 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		entry => (entry.type === "message" && (entry.message.role === "user" || entry.message.role === "assistant")) || entry.type === "custom_message",
 	);
 	const empty = !hasMessages && stream === null && !view.working && !uiRequest && (view.mode === "live" || (view.mode === "starting" && !view.history));
+
+	// Rows that arrive while the chat is open rise in. History (first render, a tab switch, an async load, an
+	// earlier window mounting above) and a streamed reply turning into its saved entry stay at rest.
+	const arrivalsRef = useRef<Arrivals>({ armed: false, seen: new Set(), streamed: false });
+	const streaming = stream !== null;
+	const loaded = hasMessages || empty;
+	useEffect(() => {
+		arrivalsRef.current = { armed: loaded, seen: new Set(visible.map(entry => entry.id)), streamed: streaming };
+	}, [visible, loaded, streaming]);
+	const arrivals = arrivalsRef.current;
+	let lastSeen = -1;
+	for (let index = visible.length - 1; index >= 0; index--) {
+		if (arrivals.seen.has(visible[index]?.id ?? "")) {
+			lastSeen = index;
+			break;
+		}
+	}
+
 	let seenUser = false;
 	let previousAssistant = false;
 
@@ -419,16 +483,17 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 							{t("showEarlier", { count: start })}
 						</Button>
 					)}
-					{visible.map(entry => {
+					{visible.map((entry, index) => {
 						const isUser = (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
-						const isAssistant = entry.type === "message" && entry.message.role === "assistant";
-						const isResult = entry.type === "message" && entry.message.role === "toolResult";
-						const continuesTurn = isAssistant && previousAssistant;
 						if (isUser) seenUser = true;
-						if (!isResult) previousAssistant = isAssistant;
-						if (isResult) return null;
+						if (!rowShown(entry, mode, seenUser)) return null;
+						const isAssistant = entry.type === "message" && entry.message.role === "assistant";
+						const continuesTurn = isAssistant && previousAssistant;
+						previousAssistant = isAssistant;
+						const arrived = arrivals.armed && index > lastSeen && !arrivals.seen.has(entry.id) && !(isAssistant && arrivals.streamed);
 						return (
-							<div key={entry.id} data-row>
+							// Rows of one turn stack without the turn gap, so a run of tool calls reads as one list.
+							<Rise key={entry.id} data-row play={arrived} className={cn(continuesTurn && "-mt-6")}>
 								<Row
 									entry={entry}
 									continuesTurn={continuesTurn}
@@ -438,17 +503,17 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 									mode={mode}
 									session={session}
 								/>
-							</div>
+							</Rise>
 						);
 					})}
 					{stream && (
-						<div data-row className="flex flex-col gap-2">
+						<Rise data-row play={arrivals.armed && !arrivals.streamed} className={cn("flex flex-col gap-2", previousAssistant && "-mt-6")}>
 							{!previousAssistant && <AssistantHeader model={stream.model} />}
 							<AssistantBlocks message={stream} results={results} active={activeTools} pending={!streamDone} mode={mode} />
-						</div>
+						</Rise>
 					)}
 					{tailTools.length > 0 && (
-						<div data-row className="flex flex-col gap-2.5">
+						<div data-row className="-mt-6 flex flex-col">
 							{tailTools.map(tool => (
 								<ToolCard
 									key={tool.toolCallId}
@@ -458,21 +523,44 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 									running
 									partialResult={tool.partialResult}
 									verbose={mode === "verbose"}
+									arriving={arrivals.armed}
 								/>
 							))}
 						</div>
 					)}
-					{uiRequest && <QuestionCard key={uiRequest.reqId} session={session} request={uiRequest} />}
+					<AnimatePresence initial={false} mode="wait">
+						{uiRequest && (
+							<motion.div
+								key={uiRequest.reqId}
+								initial={{ opacity: 0, y: 8 }}
+								animate={{ opacity: 1, y: 0, transition: { y: spring.gentle, opacity: { duration: duration.base, ease: ease.outQuart } } }}
+								exit={{ opacity: 0, y: -4, transition: { duration: duration.fast, ease: "easeIn" } }}
+							>
+								<QuestionCard session={session} request={uiRequest} />
+							</motion.div>
+						)}
+					</AnimatePresence>
 					{slots.map(slot => (
 						<slot.component key={slot.id} session={session} />
 					))}
 				</div>
 			</div>
-			{unseen && (
-				<Button variant="primary" size="sm" icon={<ArrowDown />} className="absolute right-6 bottom-3 shadow-(--shadow-pop)" onClick={jumpToEnd}>
-					{t("newActivity")}
-				</Button>
-			)}
+			<AnimatePresence initial={false}>
+				{unseen && (
+					<motion.div
+						key="new-activity"
+						initial={{ opacity: 0, y: 8 }}
+						animate={{ opacity: 1, y: 0 }}
+						exit={{ opacity: 0, y: 8 }}
+						transition={spring.snappy}
+						className="absolute right-6 bottom-3"
+					>
+						<Button variant="primary" size="sm" icon={<ArrowDown />} className="shadow-(--shadow-pop)" onClick={jumpToEnd}>
+							{t("newActivity")}
+						</Button>
+					</motion.div>
+				)}
+			</AnimatePresence>
 		</div>
 	);
 }

@@ -1,5 +1,5 @@
 import type { SettingInfo } from "@shared/contracts/config";
-import { RotateCcw } from "lucide-react";
+import { ArrowCounterClockwise } from "@phosphor-icons/react";
 import { type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
@@ -168,8 +168,8 @@ function VirtualSettings({ rows, omp }: { rows: readonly AdvancedRow[]; omp: Omp
 					const style = { top: offsets[index], height: row.kind === "group" ? GROUP_HEIGHT : ROW_HEIGHT };
 					return row.kind === "group" ? (
 						<div key={`g:${row.domain}`} role="listitem" style={style} className="absolute inset-x-0 flex items-end pb-1.5">
-							<h4 className="font-mono text-xs uppercase tracking-[0.12em] text-fg-faint">
-								{row.domain} <span className="text-fg-faint">· {row.count}</span>
+							<h4 className="text-sm font-medium text-fg-muted">
+								<span className="font-mono">{row.domain}</span> <span className="tabular-nums text-fg-faint">{row.count}</span>
 							</h4>
 						</div>
 					) : (
@@ -211,7 +211,7 @@ function SettingLine({ setting, omp, style }: { setting: SettingInfo; omp: OmpSe
 				<IconButton
 					size="sm"
 					label={t("advanced.reset", { key: setting.key })}
-					icon={<RotateCcw />}
+					icon={<ArrowCounterClockwise />}
 					disabled={!canReset}
 					className={cn(!canReset && "invisible")}
 					onClick={() => void omp.reset(setting.key)}

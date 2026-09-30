@@ -10,7 +10,7 @@
 		"settings": "Settings",
 		"noMatches": "No matches"
 	},
-	"ask": "Press Enter to ask omp this instead",
+	"ask": "Press Enter to send this to omp as a message",
 	"confirmDanger": "Press {{keys}} to run this",
 	"untitledChat": "Untitled chat",
 	"footer": {
@@ -21,8 +21,8 @@
 	},
 	"terminal": {
 		"title": "omp terminal",
-		"titleWith": "omp terminal — {{screen}}",
-		"hint": "This is omp's own screen — click or type to use it",
+		"titleWith": "omp terminal: {{screen}}",
+		"hint": "This is omp's terminal screen. Click or type to use it.",
 		"readOnly": "This chat is open in another window. You can look, but only that window can type.",
 		"mirrorLabel": "omp's screen. Keys you type go to omp.",
 		"expand": "Expand to full window",
@@ -33,8 +33,8 @@
 		"starting": "Starting omp…",
 		"leaveTitle": "Leave this omp screen?",
 		"leaveBody": "Your choice won't be saved.",
-		"stay": "Stay",
-		"leave": "Leave"
+		"stay": "Stay on this screen",
+		"leave": "Leave screen"
 	},
 	"screens": {
 		"settings": "Settings",
@@ -74,13 +74,13 @@
 	},
 	"cmd": {
 		"palette": {
-			"title": "Command palette",
+			"title": "Open command palette",
 			"hint": "Search every action, chat and file.",
 			"keywords": "search, find, commands, go to"
 		},
 		"terminal": {
 			"title": "Show omp terminal",
-			"hint": "Open omp's own screen for this chat.",
+			"hint": "Open omp's terminal screen for this chat.",
 			"keywords": "terminal, console, tui, raw, menu"
 		},
 		"sidebar": {
@@ -94,37 +94,37 @@
 			"keywords": "dock, panel, right, diff, files, preview"
 		},
 		"split": {
-			"title": "Split view",
+			"title": "Toggle split view",
 			"hint": "Show two chats side by side.",
 			"keywords": "split, side by side, two chats, compare"
 		},
 		"prevTab": {
-			"title": "Previous chat tab",
+			"title": "Go to previous chat tab",
 			"keywords": "tab, previous, left, switch"
 		},
 		"nextTab": {
-			"title": "Next chat tab",
+			"title": "Go to next chat tab",
 			"keywords": "tab, next, right, switch"
 		},
 		"theme": {
-			"title": "Switch light / dark",
-			"hint": "Flip between the light and dark look.",
+			"title": "Switch between light and dark",
+			"hint": "Switch between the light and dark themes.",
 			"keywords": "theme, dark mode, light mode, appearance, colors"
 		},
 		"zoomIn": {
-			"title": "Bigger text",
+			"title": "Increase text size",
 			"keywords": "zoom in, larger, font size, text size"
 		},
 		"zoomOut": {
-			"title": "Smaller text",
+			"title": "Decrease text size",
 			"keywords": "zoom out, smaller, font size, text size"
 		},
 		"zoomReset": {
-			"title": "Default text size",
+			"title": "Reset text size",
 			"keywords": "reset zoom, actual size, font size, text size"
 		},
 		"chatNew": {
-			"title": "New chat",
+			"title": "Start new chat",
 			"hint": "Start a fresh conversation in this project.",
 			"keywords": "new, start, fresh, conversation"
 		},

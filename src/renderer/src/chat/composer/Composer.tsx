@@ -6,11 +6,13 @@
  * the running turn), Esc stops omp when the box is empty. Typing `!` or `$` into an empty box switches
  * to the Shell / Python quick mode, like omp's own editor; Backspace in an empty box leaves it.
  */
-import { ArrowUp, AtSign, BookMarked, ImagePlus, Lock, Paperclip, Plus, Sparkles, Square, SquareSlash, X } from "lucide-react";
+import { ArrowUp, At, BookBookmark, Command, GraduationCap, ImageSquare, Lock, Paperclip, Plus, Square, X } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import {
 	type ClipboardEvent,
 	type KeyboardEvent,
 	type ReactNode,
+	type Ref,
 	useCallback,
 	useEffect,
 	useId,
@@ -24,7 +26,22 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { chatSlots } from "../../registry/slots";
 import type { SessionController } from "../../state/session";
-import { Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger, toast, Tooltip } from "../../ui";
+import {
+	Button,
+	cn,
+	duration,
+	ease,
+	Expand,
+	IconButton,
+	Menu,
+	MenuContent,
+	MenuItem,
+	MenuSeparator,
+	MenuTrigger,
+	spring,
+	toast,
+	Tooltip,
+} from "../../ui";
 import { attachFiles, attachPaths, useThumbnail } from "./attach";
 import { type Attachment, appendWithSpace, registerComposerEditor, takePendingFocus, useComposerDrafts } from "./drafts";
 import { fuzzyFiles, mentionAtCaret, mentionRanges } from "./fuzzy";
@@ -49,7 +66,7 @@ function MentionMirror({ text }: { text: string }) {
 	for (const { start, end } of mentionRanges(text)) {
 		if (start > at) parts.push(text.slice(at, start));
 		parts.push(
-			<span key={start} className="rounded-[4px] bg-accent-2-muted text-accent-2 shadow-[0_0_0_2px_var(--accent-2-muted)]">
+			<span key={start} className="rounded-[4px] bg-accent-muted text-accent shadow-[0_0_0_2px_var(--accent-muted)]">
 				{text.slice(start, end)}
 			</span>,
 		);
@@ -60,23 +77,32 @@ function MentionMirror({ text }: { text: string }) {
 	return <>{parts}{text.endsWith("\n") ? " " : null}</>;
 }
 
-function AttachmentChip({ item, onRemove }: { item: Attachment; onRemove(): void }) {
+/** Sits directly under a popLayout AnimatePresence, which measures a leaving chip through this ref. */
+function AttachmentChip({ item, onRemove, ref }: { item: Attachment; onRemove(): void; ref?: Ref<HTMLLIElement> }) {
 	const { t } = useTranslation("composer");
 	const thumb = useThumbnail(item.path);
 	return (
-		<li className="group relative flex h-10 max-w-56 items-center gap-2 rounded-md border border-border bg-inset py-1 pr-1 pl-1">
+		<motion.li
+			ref={ref}
+			layout="position"
+			initial={{ opacity: 0, scale: 0.92 }}
+			animate={{ opacity: 1, scale: 1 }}
+			exit={{ opacity: 0, scale: 0.92, transition: { duration: duration.fast, ease: "easeIn" } }}
+			transition={{ layout: spring.gentle, scale: spring.snappy, opacity: { duration: duration.base, ease: ease.outQuart } }}
+			className="group relative flex h-10 max-w-56 items-center gap-2 rounded-md border border-border bg-inset py-1 pr-1 pl-1"
+		>
 			{thumb ? (
 				<img src={thumb} alt="" className="size-8 shrink-0 rounded-sm object-cover" />
 			) : (
 				<span className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm bg-hover text-fg-faint">
-					<ImagePlus className="size-4" aria-hidden />
+					<ImageSquare className="size-4" aria-hidden />
 				</span>
 			)}
 			<span className="min-w-0 truncate text-sm text-fg" title={item.path}>
 				{item.name}
 			</span>
 			<IconButton size="sm" label={t("attach.remove", { name: item.name })} icon={<X />} onClick={onRemove} />
-		</li>
+		</motion.li>
 	);
 }
 
@@ -138,6 +164,9 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const attachments = useComposerDrafts(state => state.attachments[tabId] ?? EMPTY);
 	const mode = useComposerDrafts(state => state.modes[tabId] ?? null);
 	const tools = chatSlots.use().filter(slot => slot.placement === "composerTools");
+	// The chip row stays open while the last chips leave, then collapses (see AnimatePresence onExitComplete below).
+	const [chipsHeld, setChipsHeld] = useState(attachments.length > 0);
+	if (attachments.length > 0 && !chipsHeld) setChipsHeld(true);
 
 	const [root, setRoot] = useState<HTMLDivElement | null>(null);
 	const textarea = useRef<HTMLTextAreaElement>(null);
@@ -342,63 +371,78 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		<div ref={setRoot} className="relative mx-auto w-full max-w-[760px]">
 			{dropColumn &&
 				createPortal(
-					<div
-						aria-hidden
-						className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center p-2"
-					>
-						<div className="flex size-full flex-col items-center justify-center gap-2 rounded-xl bg-accent-muted/60 outline-2 -outline-offset-8 outline-accent">
+					<div aria-hidden className="pointer-events-none absolute inset-0 z-40 flex items-center justify-center p-2">
+						<motion.div
+							initial={{ opacity: 0, scale: 0.98 }}
+							animate={{ opacity: 1, scale: 1 }}
+							transition={{ scale: spring.snappy, opacity: { duration: duration.fast, ease: ease.outQuart } }}
+							className="flex size-full flex-col items-center justify-center gap-2 rounded-xl bg-accent-muted outline-2 -outline-offset-8 outline-accent"
+						>
 							<Paperclip className="size-6 text-accent" />
 							<p className="text-base font-semibold text-accent">{t("attach.drop")}</p>
 							<p className="text-sm text-fg-muted">{t("attach.dropHint")}</p>
-						</div>
+						</motion.div>
 					</div>,
 					dropColumn,
 				)}
-			<div
-				data-active={working ? "" : undefined}
-				className={cn(
-					"vo-glow rounded-xl border border-border-strong bg-panel shadow-(--shadow-composer)",
-					readOnly && "bg-inset",
-				)}
-			>
+			<div className={cn("rounded-xl border border-border-strong bg-panel shadow-(--shadow-composer)", readOnly && "bg-inset")}>
 				<QueueTray session={session} queue={view.queue} questionId={questionId} />
-				{attachments.length > 0 && (
-					<ul aria-label={t("attach.label")} className="flex flex-wrap gap-1.5 px-3 pt-3">
-						{attachments.map(item => (
-							<AttachmentChip
-								key={item.path}
-								item={item}
-								onRemove={() => useComposerDrafts.getState().removeAttachment(tabId, item.path)}
-							/>
-						))}
+				<Expand open={chipsHeld}>
+					<ul aria-label={t("attach.label")} className="relative flex flex-wrap gap-1.5 px-3 pt-3">
+						<AnimatePresence
+							initial={false}
+							mode="popLayout"
+							onExitComplete={() => {
+								if ((useComposerDrafts.getState().attachments[tabId] ?? EMPTY).length === 0) setChipsHeld(false);
+							}}
+						>
+							{attachments.map(item => (
+								<AttachmentChip
+									key={item.path}
+									item={item}
+									onRemove={() => useComposerDrafts.getState().removeAttachment(tabId, item.path)}
+								/>
+							))}
+						</AnimatePresence>
 					</ul>
-				)}
-				{readOnly && (
+				</Expand>
+				<Expand open={readOnly}>
 					<p className="flex items-start gap-2 px-4 pt-3 text-sm text-fg-muted">
 						<Lock className="mt-0.5 size-3.5 shrink-0" aria-hidden />
 						{t("readOnly")}
 					</p>
-				)}
+				</Expand>
 				<div className="relative px-4 pt-3 pb-1">
 					{mention && (
 						<MentionPicker id={pickerId} matches={matches} active={activeMatch} onActive={setActiveMatch} onPick={pickMention} />
 					)}
 					<div className="flex items-start gap-2">
-						{mode && (
-							<Tooltip content={t(`modes.${mode}.tip`)}>
-								<button
-									type="button"
-									onClick={() => {
-										useComposerDrafts.getState().setMode(tabId, null);
-										textarea.current?.focus();
-									}}
-									aria-label={t("modes.exit", { mode: t(`modes.${mode}.label`) })}
-									className="mt-0.5 inline-flex h-[22px] shrink-0 items-center rounded-sm bg-accent-2-muted px-1.5 font-mono text-sm font-semibold text-accent-2 outline-none focus-visible:outline-2 focus-visible:outline-ring"
+						<AnimatePresence initial={false}>
+							{mode && (
+								<motion.span
+									key="mode"
+									initial={{ opacity: 0, scale: 0.8 }}
+									animate={{ opacity: 1, scale: 1 }}
+									exit={{ opacity: 0, scale: 0.8, transition: { duration: duration.fast, ease: "easeIn" } }}
+									transition={spring.snappy}
+									className="inline-flex shrink-0"
 								>
-									{mode === "shell" ? "!" : "$"}
-								</button>
-							</Tooltip>
-						)}
+									<Tooltip content={t(`modes.${mode}.tip`)}>
+										<button
+											type="button"
+											onClick={() => {
+												useComposerDrafts.getState().setMode(tabId, null);
+												textarea.current?.focus();
+											}}
+											aria-label={t("modes.exit", { mode: t(`modes.${mode}.label`) })}
+											className="mt-0.5 inline-flex h-[22px] shrink-0 items-center rounded-sm bg-selected px-1.5 font-mono text-sm font-semibold text-fg outline-none focus-visible:outline-2 focus-visible:outline-ring"
+										>
+											{mode === "shell" ? "!" : "$"}
+										</button>
+									</Tooltip>
+								</motion.span>
+							)}
+						</AnimatePresence>
 						<div className="grid min-w-0 flex-1">
 							<div
 								ref={mirror}
@@ -445,7 +489,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 						)}
 					</div>
 				</div>
-				<div className="flex h-10 items-center gap-1 px-2 pb-1.5">
+				<div className="relative flex h-10 items-center gap-1 px-2 pb-1.5">
 					<Menu>
 						<Tooltip content={t("plus.tip")}>
 							<MenuTrigger asChild disabled={readOnly}>
@@ -462,17 +506,17 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 							<MenuItem icon={<Paperclip />} onSelect={() => void pickFiles()}>
 								{t("plus.attach")}
 							</MenuItem>
-							<MenuItem icon={<AtSign />} onSelect={() => requestAnimationFrame(startMention)}>
+							<MenuItem icon={<At />} onSelect={() => requestAnimationFrame(startMention)}>
 								{t("plus.mention")}
 							</MenuItem>
 							<MenuSeparator />
-							<MenuItem icon={<BookMarked />} onSelect={() => setLibrary("saved")}>
+							<MenuItem icon={<BookBookmark />} onSelect={() => setLibrary("saved")}>
 								{t("plus.library")}
 							</MenuItem>
-							<MenuItem icon={<Sparkles />} onSelect={() => setLibrary("skills")}>
+							<MenuItem icon={<GraduationCap />} onSelect={() => setLibrary("skills")}>
 								{t("plus.skills")}
 							</MenuItem>
-							<MenuItem icon={<SquareSlash />} onSelect={() => setLibrary("commands")}>
+							<MenuItem icon={<Command />} onSelect={() => setLibrary("commands")}>
 								{t("plus.commands")}
 							</MenuItem>
 						</MenuContent>
@@ -484,30 +528,46 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					{rightTools.map(slot => (
 						<slot.component key={slot.id} session={session} />
 					))}
-					{working && (
-						<Button
-							size="sm"
-							variant="danger-ghost"
-							icon={<Square className="fill-current" />}
-							title={t("send.stopTip")}
-							onClick={() => session.abort()}
-						>
-							{t("send.stop")}
-						</Button>
-					)}
-					{(!working || canSend) && (
-						<Tooltip content={working ? t("send.queueTip") : t("send.tip")} shortcut="↵">
-							<button
-								type="button"
-								aria-label={working ? t("send.queue") : t("send.label")}
-								disabled={!canSend}
-								onClick={() => submit(false)}
-								className="ml-1 inline-flex size-8 items-center justify-center rounded-md bg-accent text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,translate] duration-(--dur-fast) enabled:hover:-translate-y-px enabled:hover:bg-accent-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45"
+					<AnimatePresence initial={false} mode="popLayout">
+						{working && (
+							<motion.span
+								key="stop"
+								layout="position"
+								initial={{ opacity: 0, scale: 0.9 }}
+								animate={{ opacity: 1, scale: 1 }}
+								exit={{ opacity: 0, scale: 0.9, transition: { duration: duration.fast, ease: "easeIn" } }}
+								transition={spring.snappy}
+								className="inline-flex"
 							>
-								<ArrowUp className="size-4" aria-hidden />
-							</button>
-						</Tooltip>
-					)}
+								<Button size="sm" variant="danger-ghost" icon={<Square weight="fill" />} title={t("send.stopTip")} onClick={() => session.abort()}>
+									{t("send.stop")}
+								</Button>
+							</motion.span>
+						)}
+						{(!working || canSend) && (
+							<motion.span
+								key="send"
+								layout="position"
+								initial={{ opacity: 0, scale: 0.9 }}
+								animate={{ opacity: 1, scale: 1 }}
+								exit={{ opacity: 0, scale: 0.9, transition: { duration: duration.fast, ease: "easeIn" } }}
+								transition={spring.snappy}
+								className="inline-flex"
+							>
+								<Tooltip content={working ? t("send.queueTip") : t("send.tip")} shortcut="↵">
+									<button
+										type="button"
+										aria-label={working ? t("send.queue") : t("send.label")}
+										disabled={!canSend}
+										onClick={() => submit(false)}
+										className="ml-1 inline-flex size-8 items-center justify-center rounded-md bg-accent text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale,opacity] duration-(--dur-fast) enabled:hover:bg-accent-hover enabled:active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45"
+									>
+										<ArrowUp className="size-4" aria-hidden />
+									</button>
+								</Tooltip>
+							</motion.span>
+						)}
+					</AnimatePresence>
 				</div>
 			</div>
 			<PromptLibrary

@@ -2,7 +2,7 @@
  * Git feature: status-bar branch / changes / PR-CI items, the commit and Create PR sheets, and the
  * commands behind them (commit, create PR, work in a separate copy, fix CI).
  */
-import { Copy, GitCommitHorizontal, GitPullRequestCreate, Wrench } from "lucide-react";
+import { Copy, GitCommit, GitPullRequest, Wrench } from "@phosphor-icons/react";
 import { registerCommand } from "@/registry/commands";
 import { sheets, statusItems } from "@/registry/slots";
 import { useApp } from "@/state/app";
@@ -29,7 +29,7 @@ registerCommand({
 	hint: "git:commands.commit.hint",
 	keywords: "git:commands.commit.keywords",
 	group: "actions",
-	icon: GitCommitHorizontal,
+	icon: GitCommit,
 	when: ({ projectPath }) => gitView(projectPath)?.repo?.isRepo !== false && projectPath !== null,
 	run: ({ projectPath }) => useApp.getState().openSheet("git-commit", { cwd: projectPath }),
 });
@@ -40,7 +40,7 @@ registerCommand({
 	hint: "git:commands.pr.hint",
 	keywords: "git:commands.pr.keywords",
 	group: "actions",
-	icon: GitPullRequestCreate,
+	icon: GitPullRequest,
 	when: ({ projectPath }) => gitView(projectPath)?.repo?.isRepo !== false && projectPath !== null,
 	run: ({ projectPath }) => useApp.getState().openSheet("git-pr", { cwd: projectPath }),
 });

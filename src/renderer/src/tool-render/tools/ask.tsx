@@ -181,7 +181,7 @@ function QuestionBlock({ q, answer }: { q: AskQuestion; answer: AskAnswer | unde
 					<Row key={i} k={<span className={isSelected ? "tv-ok-text" : undefined}>{marker}</span>}>
 						<span className={answer && !isSelected ? "tv-muted" : undefined}>{opt.label}</span>
 						{i === q.recommended && <Badge tone="accent">recommended</Badge>}
-						{opt.description && <span className="tv-muted"> — {opt.description}</span>}
+						{opt.description && <span className="tv-muted">: {opt.description}</span>}
 					</Row>
 				);
 			})}
@@ -196,11 +196,11 @@ function QuestionBlock({ q, answer }: { q: AskQuestion; answer: AskAnswer | unde
 				</Row>
 			)}
 			{answer && answer.selectedOptions.length === 0 && answer.customInput === undefined && (
-				<Row k="—">
+				<Row k="answer">
 					<span className="tv-warn-text">no selection</span>
 				</Row>
 			)}
-			{answer?.timedOut && <Note tone="warn">auto-selected after timeout — not a user choice</Note>}
+			{answer?.timedOut && <Note tone="warn">auto-selected after the timeout, so the user did not choose this</Note>}
 		</div>
 	);
 }

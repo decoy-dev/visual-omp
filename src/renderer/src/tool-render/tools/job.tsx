@@ -149,7 +149,7 @@ function JobRow({ job }: { job: JobSnapshotLike }): ReactNode {
 			{showId && <span className="tv-path"> {job.id}</span>}
 			<span> {truncate(label, 80)}</span>
 			{job.durationMs > 0 && <span className="tv-faint"> {formatDuration(job.durationMs)}</span>}
-			{preview && <span className={job.errorText ? "tv-err-text" : "tv-faint"}> — {preview}</span>}
+			{preview && <span className={job.errorText ? "tv-err-text" : "tv-faint"}> · {preview}</span>}
 		</Row>
 	);
 }

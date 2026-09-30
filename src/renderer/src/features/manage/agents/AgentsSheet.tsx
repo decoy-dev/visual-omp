@@ -1,7 +1,8 @@
 /** Helpers hub (DESIGN §4.14): omp task agents — bundled and custom — with toggles, overrides and an editor. */
 import type { AgentEntry, AgentFileError, AgentScope, AgentWritableScope } from "@shared/contracts/agents";
-import { Copy, MoreHorizontal, Pencil, Play, Plus, RefreshCw, Sparkles, Trash2, TriangleAlert, Wrench } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowsClockwise, ChatText, Copy, DotsThree, PencilSimple, Play, Plus, Trash, Warning, Wrench } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
+import { type Ref, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useComposerDrafts } from "@/chat/composer/drafts";
 import type { SheetProps } from "@/registry/slots";
@@ -26,6 +27,7 @@ import {
 	Switch,
 	toast,
 } from "@/ui";
+import { listRowMotion } from "../listMotion";
 import { ModalSheet } from "../ModalSheet";
 import { ipcErrorMessage, useResource, useSheetProject } from "../shared";
 import { AgentEditor, type EditorTarget } from "./AgentEditor";
@@ -172,10 +174,10 @@ export function AgentsSheet({ props, close }: SheetProps<AgentsSheetProps | unde
 				<>
 					<IconButton
 						label={t("agents.refresh")}
-						icon={<RefreshCw />}
+						icon={<ArrowsClockwise />}
 						onClick={() => void guard(async () => list.setData(await window.vomp.invoke("agents:list", cwd, true)))}
 					/>
-					<Button icon={<Sparkles />} onClick={() => setAiOpen(true)}>
+					<Button icon={<ChatText />} onClick={() => setAiOpen(true)}>
 						{t("agents.createWithAi")}
 					</Button>
 					<Button variant="primary" icon={<Plus />} onClick={() => setEditor({ kind: "create" })}>
@@ -202,28 +204,30 @@ export function AgentsSheet({ props, close }: SheetProps<AgentsSheetProps | unde
 				</div>
 				<div className="min-h-0 flex-1 overflow-y-auto px-3 py-2">
 					{list.error && !snapshot ? (
-						<EmptyState icon={<TriangleAlert />} title={t("agents.loadFailed")} body={list.error} actions={<Button onClick={() => void reload()}>{t("settings.retry")}</Button>} />
+						<EmptyState icon={<Warning />} title={t("agents.loadFailed")} body={list.error} actions={<Button onClick={() => void reload()}>{t("settings.retry")}</Button>} />
 					) : !snapshot ? (
 						Array.from({ length: 5 }, (_, index) => <Skeleton key={index} height={56} className="my-2" />)
 					) : visible.length === 0 && errors.length === 0 ? (
 						<EmptyState icon={<Wrench />} title={t(query ? "agents.emptySearch" : "agents.empty")} body={query ? undefined : t("agents.emptyBody")} />
 					) : (
-						<ul aria-label={t("agents.title")}>
-							{errors.map(error => (
-								<ErrorRow key={error.filePath} error={error} onFix={() => setEditor({ kind: "raw", filePath: error.filePath, name: error.name })} />
-							))}
-							{visible.map(agent => (
-								<AgentRow
-									key={agent.id}
-									agent={agent}
-									runningIn={running.get(agent.name) ?? []}
-									onToggle={enabled => void setEnabled(agent, enabled)}
-									onEdit={() => (agent.scope === "bundled" ? void customize(agent) : setEditor({ kind: "edit", entry: agent }))}
-									onDuplicate={() => void duplicate(agent)}
-									onRun={() => runNow(agent.name)}
-									onDelete={() => setDeleting(agent)}
-								/>
-							))}
+						<ul aria-label={t("agents.title")} className="relative">
+							<AnimatePresence initial={false} mode="popLayout">
+								{errors.map(error => (
+									<ErrorRow key={error.filePath} error={error} onFix={() => setEditor({ kind: "raw", filePath: error.filePath, name: error.name })} />
+								))}
+								{visible.map(agent => (
+									<AgentRow
+										key={agent.id}
+										agent={agent}
+										runningIn={running.get(agent.name) ?? []}
+										onToggle={enabled => void setEnabled(agent, enabled)}
+										onEdit={() => (agent.scope === "bundled" ? void customize(agent) : setEditor({ kind: "edit", entry: agent }))}
+										onDuplicate={() => void duplicate(agent)}
+										onRun={() => runNow(agent.name)}
+										onDelete={() => setDeleting(agent)}
+									/>
+								))}
+							</AnimatePresence>
 						</ul>
 					)}
 				</div>
@@ -264,7 +268,11 @@ export function AgentsSheet({ props, close }: SheetProps<AgentsSheetProps | unde
 	);
 }
 
-const SCOPE_TONE: Record<AgentScope, "neutral" | "accent" | "blue"> = { bundled: "neutral", user: "accent", project: "blue" };
+/** Project scope gets the accent, as in the skills and plugins lists; bundled and user read from the label. */
+const SCOPE_TONE: Record<AgentScope, "neutral" | "accent"> = { bundled: "neutral", user: "neutral", project: "accent" };
+
+/** Letter tile standing in for an avatar (same treatment as the skills and plugins lists). */
+const letterTile = "inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-inset font-mono text-sm font-semibold";
 
 function AgentRow({
 	agent,
@@ -274,6 +282,7 @@ function AgentRow({
 	onDuplicate,
 	onRun,
 	onDelete,
+	ref,
 }: {
 	agent: AgentEntry;
 	runningIn: string[];
@@ -282,13 +291,15 @@ function AgentRow({
 	onDuplicate(): void;
 	onRun(): void;
 	onDelete(): void;
+	/** Set by AnimatePresence (`popLayout`) to measure the row as it leaves. */
+	ref?: Ref<HTMLLIElement>;
 }) {
 	const { t } = useTranslation("manage");
 	const model = agent.modelOverride?.[0] ?? agent.model?.[0] ?? null;
 	return (
-		<li className="flex h-16 items-center gap-3 rounded-md px-2 hover:bg-hover">
-			<div className={cn("flex min-w-0 flex-1 items-center gap-3", !agent.enabled && "opacity-40")}>
-				<span aria-hidden className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-agent-muted text-md font-semibold uppercase text-agent">
+		<motion.li ref={ref} {...listRowMotion} className="flex h-16 items-center gap-3 rounded-md bg-overlay px-2 transition-colors duration-(--dur-fast) hover:bg-hover">
+			<div className={cn("flex min-w-0 flex-1 items-center gap-3 transition-opacity duration-(--dur)", !agent.enabled && "opacity-40")}>
+				<span aria-hidden className={cn(letterTile, "uppercase text-fg-muted")}>
 					{agent.name.slice(0, 1)}
 				</span>
 				<div className="min-w-0 flex-1">
@@ -297,7 +308,7 @@ function AgentRow({
 						<Chip tone={SCOPE_TONE[agent.scope]}>{t(`agents.scope.${agent.scope}`)}</Chip>
 						{agent.overrides.includes("bundled") && <Chip tone="neutral">{t("agents.customizedChip")}</Chip>}
 						{agent.warnings.length > 0 && (
-							<Chip tone="warn" icon={<TriangleAlert />} title={agent.warnings.join("\n")}>
+							<Chip tone="warn" icon={<Warning />} title={agent.warnings.join("\n")}>
 								{t("agents.warnings", { count: agent.warnings.length })}
 							</Chip>
 						)}
@@ -321,10 +332,10 @@ function AgentRow({
 			<Switch aria-label={t("agents.enable", { name: agent.name })} checked={agent.enabled} onCheckedChange={onToggle} />
 			<Menu>
 				<MenuTrigger asChild>
-					<IconButton label={t("agents.more", { name: agent.name })} icon={<MoreHorizontal />} />
+					<IconButton label={t("agents.more", { name: agent.name })} icon={<DotsThree />} />
 				</MenuTrigger>
 				<MenuContent align="end">
-					<MenuItem icon={<Pencil />} onSelect={onEdit}>
+					<MenuItem icon={<PencilSimple />} onSelect={onEdit}>
 						{agent.scope === "bundled" ? t("agents.menu.customize") : t("agents.menu.edit")}
 					</MenuItem>
 					<MenuItem icon={<Copy />} onSelect={onDuplicate}>
@@ -336,23 +347,23 @@ function AgentRow({
 					{agent.scope !== "bundled" && (
 						<>
 							<MenuSeparator />
-							<MenuItem icon={<Trash2 />} danger onSelect={onDelete}>
+							<MenuItem icon={<Trash />} danger onSelect={onDelete}>
 								{t("agents.menu.delete")}
 							</MenuItem>
 						</>
 					)}
 				</MenuContent>
 			</Menu>
-		</li>
+		</motion.li>
 	);
 }
 
-function ErrorRow({ error, onFix }: { error: AgentFileError; onFix(): void }) {
+function ErrorRow({ error, onFix, ref }: { error: AgentFileError; onFix(): void; ref?: Ref<HTMLLIElement> }) {
 	const { t } = useTranslation("manage");
 	return (
-		<li className="flex h-16 items-center gap-3 rounded-md px-2">
-			<span aria-hidden className="inline-flex size-9 shrink-0 items-center justify-center rounded-full bg-warn-bg text-warn">
-				<TriangleAlert className="size-4" />
+		<motion.li ref={ref} {...listRowMotion} className="flex h-16 items-center gap-3 rounded-md px-2">
+			<span aria-hidden className={cn(letterTile, "bg-warn-bg text-warn")}>
+				<Warning className="size-4" />
 			</span>
 			<div className="min-w-0 flex-1">
 				<div className="flex items-center gap-2">
@@ -366,6 +377,6 @@ function ErrorRow({ error, onFix }: { error: AgentFileError; onFix(): void }) {
 			<Button size="sm" onClick={onFix}>
 				{t("agents.fix")}
 			</Button>
-		</li>
+		</motion.li>
 	);
 }

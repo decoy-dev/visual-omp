@@ -7,12 +7,12 @@
 		},
 		"skills": {
 			"title": "Skills & plugins",
-			"hint": "Add-on abilities that teach omp new tricks.",
+			"hint": "Install and manage the skills and plugins omp can use.",
 			"keywords": "skills, plugins, extensions, add-ons, registry, marketplace, install"
 		},
 		"memory": {
 			"title": "Memory",
-			"hint": "See — and delete — what omp has remembered between chats.",
+			"hint": "View and delete what omp has remembered between chats.",
 			"keywords": "memory, remember, forget, lessons, notes, privacy"
 		},
 		"usage": {
@@ -25,10 +25,7 @@
 		"back": "Back",
 		"cancel": "Cancel",
 		"done": "Done",
-		"install": "Install",
-		"remove": "Remove",
 		"retry": "Try again",
-		"save": "Save",
 		"showInFolder": "Show in folder",
 		"undo": "Undo"
 	},
@@ -38,7 +35,7 @@
 	},
 	"mcp": {
 		"title": "Connected tools",
-		"subtitle": "MCP servers give omp extra powers, like reading a database or filing tickets.",
+		"subtitle": "MCP servers let omp use outside tools, such as a database or a ticket tracker.",
 		"add": "Add server",
 		"scopeLabel": "Which servers to show",
 		"loadFailed": "Couldn't read your MCP settings.",
@@ -48,9 +45,9 @@
 			"projectTitle": "No tools connected for this project",
 			"body": "Add a server to let omp use an outside tool, like GitHub, a database or your notes."
 		},
-		"readOnly": "Set up in {{source}} ({{path}}). omp reads it but doesn't change it — edit it there.",
+		"readOnly": "Set up in {{source}} ({{path}}). omp reads this file without changing it, so edit it there.",
 		"fromSource": "From {{source}}",
-		"noTools": "No tools found — check the command",
+		"noTools": "No tools found. Check the command.",
 		"toolCount_one": "{{count}} tool",
 		"toolCount_other": "{{count}} tools",
 		"turnOn": "Turn on {{name}}",
@@ -59,8 +56,8 @@
 		"menu": {
 			"test": "Test connection",
 			"tools": "View tools",
-			"edit": "Edit",
-			"remove": "Remove"
+			"edit": "Edit server",
+			"remove": "Remove server"
 		},
 		"status": {
 			"off": "Turned off",
@@ -98,7 +95,7 @@
 			"found_one": "Found {{count}} tool",
 			"found_other": "Found {{count}} tools",
 			"server": "{{name}} {{version}} · answered in {{seconds}}s",
-			"authRequired": "The server wants you to sign in. Save it, then type /mcp reauth {{name}} in a chat — or add an Authorization header.",
+			"authRequired": "The server requires sign-in. Save it, then type /mcp reauth {{name}} in a chat, or add an Authorization header.",
 			"unresolved": "These variables aren't set on this computer: {{vars}}",
 			"output": "Server output"
 		},
@@ -107,8 +104,8 @@
 			"subtitle": "Pick a popular tool, or set up your own.",
 			"customTitle": "Custom server",
 			"customBody": "Run a program on this computer or connect to a web address.",
-			"customAction": "Set up",
-			"addAction": "Add",
+			"customAction": "Set up server",
+			"addAction": "Add server",
 			"addNamed": "Add {{name}}",
 			"signIn": "Browser sign-in",
 			"needs": "Needs {{bin}}"
@@ -145,9 +142,9 @@
 			"removeRow": "Remove this row",
 			"folderLabel": "Folder {{index}}",
 			"addFolder": "Add folder",
-			"choose": "Choose…",
-			"show": "Show",
-			"hide": "Hide",
+			"choose": "Choose folder…",
+			"show": "Show value",
+			"hide": "Hide value",
 			"optional": "{{label}} (optional)",
 			"requires": "This server needs {{bins}} installed on this computer.",
 			"scope": "Where to use it",
@@ -160,12 +157,13 @@
 				"urlRequired": "Enter the server's web address.",
 				"urlInvalid": "The address should start with https:// or http://.",
 				"fieldRequired": "This is required."
-			}
+			},
+			"save": "Save server"
 		}
 	},
 	"skills": {
 		"title": "Skills & plugins",
-		"subtitle": "Add-on abilities that teach omp new tricks.",
+		"subtitle": "Install and manage the skills and plugins omp can use.",
 		"tabs": {
 			"skills": "Skills",
 			"plugins": "Plugins"
@@ -198,7 +196,7 @@
 			"duplicate": "Another copy of this skill is used instead."
 		},
 		"registryTitle": "From the skill share registry",
-		"offline": "Can't reach the registry — showing installed only",
+		"offline": "Can't reach the registry. Showing installed skills only.",
 		"noRegistryInstalls": "No skills installed from the registry",
 		"weekly_one": "{{formatted}} install/week",
 		"weekly_other": "{{formatted}} installs/week",
@@ -229,11 +227,13 @@
 			"what": "What it does",
 			"when": "When omp uses it",
 			"whenAuto": "omp reads the description above and uses this skill when your request matches it. You can also ask for it directly:",
-			"whenHidden": "Only when you ask for it by name — omp doesn't pick it on its own:",
+			"whenHidden": "Only when you ask for it by name. omp doesn't pick it on its own:",
 			"source": "Where it comes from",
 			"instructions": "Instructions omp follows",
 			"showFile": "Show file"
-		}
+		},
+		"install": "Install skill",
+		"remove": "Remove skill"
 	},
 	"plugins": {
 		"search": "Search your plugins",
@@ -243,13 +243,13 @@
 		},
 		"empty": "No plugins installed",
 		"emptyProject": "No plugins installed just for this project",
-		"emptyBody": "Plugins add tools, commands and skills to omp. See what's available to install one.",
+		"emptyBody": "Plugins add tools, commands and skills to omp. Open Available to install one.",
 		"noMatch": "No plugins match '{{q}}'.",
 		"npmSource": "npm package",
 		"fromMarketplace": "from {{marketplace}}",
 		"shadowed": "A copy installed for this project is used instead.",
 		"updateChip": "v{{from}} → v{{to}}",
-		"update": "Update",
+		"update": "Update plugin",
 		"turnOn": "Turn on {{name}}",
 		"turnOff": "Turn off {{name}}",
 		"removeNamed": "Remove {{name}}",
@@ -259,7 +259,7 @@
 		"installByName": "Install by name",
 		"installByNameHint": "An npm package, a GitHub repo (github:owner/repo), a local folder, or name@marketplace.",
 		"availableTitle": "From your marketplaces",
-		"offline": "Can't reach your plugin marketplaces — showing installed only",
+		"offline": "Can't reach your plugin marketplaces. Showing installed plugins only.",
 		"noMarketplaces": "Nothing to browse yet",
 		"noMarketplacesBody": "No plugin marketplaces are set up. You can still install any plugin by name above.",
 		"toast": {
@@ -269,16 +269,18 @@
 			"installed": "Installed {{name}}",
 			"removed": "Removed {{name}}",
 			"updated": "Updated {{name}}"
-		}
+		},
+		"install": "Install plugin",
+		"remove": "Remove plugin"
 	},
 	"ops": {
 		"activity": "Activity",
 		"installing": "Installing {{name}}…",
 		"updating": "Updating {{name}}…",
 		"removing": "Removing {{name}}…",
-		"done": "{{name}} — done",
-		"failed": "{{name}} — didn't finish",
-		"dismiss": "Dismiss",
+		"done": "{{name}}: done",
+		"failed": "{{name}}: didn't finish",
+		"dismiss": "Dismiss entry",
 		"output_one": "Output ({{count}} line)",
 		"output_other": "Output ({{count}} lines)"
 	},
@@ -316,18 +318,18 @@
 		"remote": "Memories are kept on your Hindsight server ({{url}}). They can't be browsed or deleted from here.",
 		"readOnly": "omp maintains these memories itself and rewrites them when it tidies up, so they can't be deleted from here.",
 		"cantDelete": "omp rewrites this one itself when it tidies up its memories, so it can't be deleted here.",
-		"empty": "omp hasn't saved any memories yet. It only remembers what you ask it to.",
+		"empty": "omp hasn't saved any memories yet.",
 		"noMatch": "No memories match '{{q}}'.",
-		"more_one": "{{count}} more — search to narrow it down",
-		"more_other": "{{count}} more — search to narrow it down",
+		"more_one": "{{count}} more. Search to narrow the list.",
+		"more_other": "{{count}} more. Search to narrow the list.",
 		"created": "Saved {{date}}",
 		"updated": "Updated {{date}}",
-		"export": "Export…",
+		"export": "Export memory…",
 		"forgetOne": {
 			"action": "Forget this",
 			"title": "Forget “{{name}}”?",
 			"body": "omp won't remember this anymore. This can't be undone.",
-			"confirm": "Forget"
+			"confirm": "Forget memory"
 		},
 		"forgetAll": {
 			"action": "Forget everything",
@@ -368,7 +370,7 @@
 		"asOf": "as of {{time}}",
 		"used": "{{percent}}% used",
 		"resetsIn": "resets in {{time}}",
-		"atLimit": "Limit reached — resets in {{time}}",
+		"atLimit": "Limit reached. Resets in {{time}}",
 		"noLimits": "No plan limits to show",
 		"noLimitsBody": "Limits appear here when you're signed in to a provider that reports them, like Claude or ChatGPT plans.",
 		"disabledCredential": "omp stopped using a {{provider}} sign-in ({{account}}): {{cause}}",
@@ -391,6 +393,7 @@
 			"exported": "Usage exported",
 			"exportFailed": "Couldn't export usage",
 			"statsFailed": "Couldn't open omp's stats page"
-		}
+		},
+		"noModel": "Unknown"
 	}
 }

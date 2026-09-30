@@ -1,9 +1,9 @@
 /** DESIGN §4.16 — Skills & plugins browser. */
-import { Package, Sparkles } from "lucide-react";
+import { BookOpenText, Package } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SheetProps } from "@/registry/slots";
-import { SearchInput, Segmented, Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui";
+import { PresenceSwap, SearchInput, Segmented, Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui";
 import { type ExtensionSheetProps, ExtensionSheetFrame, useLoad, useSheetProject } from "../shared";
 import { PluginsTab } from "./PluginsTab";
 import { SkillsTab } from "./SkillsTab";
@@ -28,7 +28,7 @@ export function SkillsSheet({ props, close }: SheetProps<SkillsSheetProps>) {
 			<Tabs value={tab} onValueChange={value => setTab(value === "plugins" ? "plugins" : "skills")} className="flex h-full flex-col">
 				<div className="sticky top-0 z-(--z-sticky) flex flex-col gap-3 border-b border-border bg-overlay px-4 pt-2 pb-3">
 					<TabsList>
-						<TabsTrigger value="skills" icon={<Sparkles />}>
+						<TabsTrigger value="skills" icon={<BookOpenText />}>
 							{t("skills.tabs.skills")}
 						</TabsTrigger>
 						<TabsTrigger value="plugins" icon={<Package />}>
@@ -55,12 +55,16 @@ export function SkillsSheet({ props, close }: SheetProps<SkillsSheetProps>) {
 						/>
 					</div>
 				</div>
-				<TabsContent value="skills" className="p-4">
-					{cwd && <SkillsTab cwd={cwd} projectPath={projectPath} filter={filter} query={query} />}
-				</TabsContent>
-				<TabsContent value="plugins" className="p-4">
-					{cwd && <PluginsTab cwd={cwd} projectPath={projectPath} filter={filter} query={query} />}
-				</TabsContent>
+				<PresenceSwap swapKey={tab}>
+					<TabsContent forceMount value={tab} className="p-4">
+						{cwd &&
+							(tab === "skills" ? (
+								<SkillsTab cwd={cwd} projectPath={projectPath} filter={filter} query={query} />
+							) : (
+								<PluginsTab cwd={cwd} projectPath={projectPath} filter={filter} query={query} />
+							))}
+					</TabsContent>
+				</PresenceSwap>
 			</Tabs>
 		</ExtensionSheetFrame>
 	);

@@ -3,7 +3,8 @@
  * syntax colors and inline images. ⌘click or right-click → "Mention in chat" puts `@path` in the
  * composer of the focused chat.
  */
-import { AtSign, ChevronDown, ChevronRight, Copy, File, FileCode2, FileImage, Folder, FolderOpen, FolderSearch, RefreshCw } from "lucide-react";
+import { ArrowsClockwise, At, CaretRight, Copy, FileCode, FileIcon, FileImage, Folder, FolderOpen, FolderSimpleDashed } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, type MouseEvent, memo, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
@@ -20,8 +21,12 @@ import {
 	ContextMenuItem,
 	ContextMenuSeparator,
 	ContextMenuTrigger,
+	duration,
 	EmptyState,
+	ease,
+	Expand,
 	IconButton,
+	PresenceSwap,
 	Spinner,
 	toast,
 } from "../../ui";
@@ -124,11 +129,11 @@ function FileMenu({ entry, projectPath, tabId, children }: RowProps & { children
 		<ContextMenu>
 			<ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
 			<ContextMenuContent>
-				<ContextMenuItem icon={<AtSign />} onSelect={() => mentionInChat(projectPath, entry.path, tabId)} shortcut="⌘click">
+				<ContextMenuItem icon={<At />} onSelect={() => mentionInChat(projectPath, entry.path, tabId)} shortcut="⌘click">
 					{t("files.mention")}
 				</ContextMenuItem>
 				{entry.kind === "file" && (
-					<ContextMenuItem icon={<File />} onSelect={() => useFiles.getState().open(projectPath, entry.path)}>
+					<ContextMenuItem icon={<FileIcon />} onSelect={() => useFiles.getState().open(projectPath, entry.path)}>
 						{t("files.open")}
 					</ContextMenuItem>
 				)}
@@ -142,7 +147,7 @@ function FileMenu({ entry, projectPath, tabId, children }: RowProps & { children
 				>
 					{t("files.copyPath")}
 				</ContextMenuItem>
-				<ContextMenuItem icon={<FolderSearch />} onSelect={() => void window.vomp.invoke("app:showItem", entry.path)}>
+				<ContextMenuItem icon={<FolderSimpleDashed />} onSelect={() => void window.vomp.invoke("app:showItem", entry.path)}>
 					{t(window.vomp.platform === "darwin" ? "files.revealMac" : "files.reveal")}
 				</ContextMenuItem>
 			</ContextMenuContent>
@@ -164,7 +169,7 @@ const TreeRow = memo(function TreeRow({ entry, depth, projectPath, tabId }: RowP
 		if (isDir) useFiles.getState().toggle(projectPath, entry.path);
 		else useFiles.getState().open(projectPath, entry.path);
 	};
-	const Icon = isDir ? (expanded ? FolderOpen : Folder) : IMAGE_EXT.test(entry.name) ? FileImage : languageFor(entry.name) ? FileCode2 : File;
+	const Icon = isDir ? (expanded ? FolderOpen : Folder) : IMAGE_EXT.test(entry.name) ? FileImage : languageFor(entry.name) ? FileCode : FileIcon;
 	return (
 		<li role="none">
 			<FileMenu entry={entry} depth={depth} projectPath={projectPath} tabId={tabId}>
@@ -181,37 +186,40 @@ const TreeRow = memo(function TreeRow({ entry, depth, projectPath, tabId }: RowP
 					title={t("files.rowHint", { name: entry.name })}
 					style={{ paddingLeft: 6 + depth * 12 }}
 					className={cn(
-						"relative flex h-6 w-full items-center gap-1 pr-2 text-left text-sm",
+						"flex h-6 w-full items-center gap-1 pr-2 text-left text-sm",
 						active ? "bg-selected text-fg" : "text-fg-muted hover:bg-hover hover:text-fg",
 						focusRingInset,
 					)}
 				>
-					{active && <span aria-hidden className="absolute inset-y-0.5 left-0 w-0.5 rounded-full bg-accent" />}
 					<span aria-hidden className="inline-flex size-3.5 shrink-0 items-center justify-center text-fg-faint">
-						{isDir && (expanded ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />)}
+						{isDir && (
+							<CaretRight className={cn("size-3.5 transition-transform duration-(--dur) ease-(--ease-out-quart)", expanded && "rotate-90")} />
+						)}
 					</span>
 					<Icon aria-hidden className={cn("size-3.5 shrink-0", isDir ? "text-accent" : "text-fg-faint")} />
 					<span className="truncate">{entry.name}</span>
 				</button>
 			</FileMenu>
-			{isDir && expanded && (
-				<ul role="group">
-					{children === undefined ? (
-						<li role="none" className="h-6 text-xs leading-6 text-fg-faint" style={{ paddingLeft: 30 + depth * 12 }}>
-							{t("files.loading")}
-						</li>
-					) : children === "error" ? (
-						<li role="none" className="h-6 text-xs leading-6 text-err" style={{ paddingLeft: 30 + depth * 12 }}>
-							{t("files.cantOpen")}
-						</li>
-					) : children.length === 0 ? (
-						<li role="none" className="h-6 text-xs leading-6 text-fg-faint" style={{ paddingLeft: 30 + depth * 12 }}>
-							{t("files.emptyFolder")}
-						</li>
-					) : (
-						children.map(child => <TreeRow key={child.path} entry={child} depth={depth + 1} projectPath={projectPath} tabId={tabId} />)
-					)}
-				</ul>
+			{isDir && (
+				<Expand open={expanded}>
+					<ul role="group">
+						{children === undefined ? (
+							<li role="none" className="h-6 text-xs leading-6 text-fg-faint" style={{ paddingLeft: 30 + depth * 12 }}>
+								{t("files.loading")}
+							</li>
+						) : children === "error" ? (
+							<li role="none" className="h-6 text-xs leading-6 text-err" style={{ paddingLeft: 30 + depth * 12 }}>
+								{t("files.cantOpen")}
+							</li>
+						) : children.length === 0 ? (
+							<li role="none" className="h-6 text-xs leading-6 text-fg-faint" style={{ paddingLeft: 30 + depth * 12 }}>
+								{t("files.emptyFolder")}
+							</li>
+						) : (
+							children.map(child => <TreeRow key={child.path} entry={child} depth={depth + 1} projectPath={projectPath} tabId={tabId} />)
+						)}
+					</ul>
+				</Expand>
 			)}
 		</li>
 	);
@@ -345,11 +353,11 @@ function Viewer({ path, projectPath, version }: { path: string; projectPath: str
 					{relativePath(projectPath, path)}
 				</span>
 				{content && <span className="text-xs text-fg-faint">{formatSize(content.size)}</span>}
-				<IconButton size="sm" label={t("files.reload")} icon={<RefreshCw />} onClick={() => setReload(reload + 1)} />
+				<IconButton size="sm" label={t("files.reload")} icon={<ArrowsClockwise />} onClick={() => setReload(reload + 1)} />
 			</PaneToolbar>
 			<div className="min-h-0 flex-1 overflow-auto">
 				{error ? (
-					<EmptyState icon={<File />} title={t("files.cantOpenTitle")} body={error.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "")} />
+					<EmptyState icon={<FileIcon />} title={t("files.cantOpenTitle")} body={error.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, "")} />
 				) : !content ? (
 					<div className="flex items-center justify-center gap-2 py-10 text-sm text-fg-muted" role="status">
 						<Spinner /> {t("files.loading")}
@@ -358,11 +366,11 @@ function Viewer({ path, projectPath, version }: { path: string; projectPath: str
 					<CodeView path={path} text={content.text} />
 				) : content.kind === "image" ? (
 					<div className="flex min-h-full items-center justify-center bg-inset p-4">
-						<img src={content.dataUrl} alt={name} className="max-h-full max-w-full rounded-md border border-border object-contain shadow-(--shadow-card)" />
+						<img src={content.dataUrl} alt={name} className="max-h-full max-w-full rounded-md border border-border object-contain" />
 					</div>
 				) : (
 					<EmptyState
-						icon={<File />}
+						icon={<FileIcon />}
 						title={t(content.kind === "binary" ? "files.binaryTitle" : "files.tooLargeTitle")}
 						body={t(content.kind === "binary" ? "files.binary" : "files.tooLarge", { size: formatSize(content.size) })}
 						actions={
@@ -431,13 +439,13 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 
 	const tabs = state.tabs.map(path => ({ id: path, label: path.slice(path.lastIndexOf("/") + 1), title: relativePath(projectPath, path) }));
 	return (
-		<div className="flex min-h-0 flex-1">
+		<div className="relative flex min-h-0 flex-1">
 			<div className="flex shrink-0 flex-col border-r border-border bg-panel" style={{ width: state.tabs.length ? treeWidth : "100%" }}>
 				<PaneToolbar>
 					<span className="min-w-0 flex-1 truncate text-sm font-medium text-fg" title={projectPath}>
 						{projectPath.slice(projectPath.lastIndexOf("/") + 1)}
 					</span>
-					<IconButton size="sm" label={t("files.refresh")} icon={<RefreshCw />} onClick={() => void useFiles.getState().load(projectPath)} />
+					<IconButton size="sm" label={t("files.refresh")} icon={<ArrowsClockwise />} onClick={() => void useFiles.getState().load(projectPath)} />
 				</PaneToolbar>
 				<ul
 					ref={treeRef}
@@ -456,23 +464,37 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 				</ul>
 				<p className="border-t border-border px-3 py-1.5 text-xs text-fg-faint">{t("files.mentionHint")}</p>
 			</div>
-			{state.tabs.length > 0 && (
-				<>
-					{/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only resize handle; width also fits content */}
-					<div aria-hidden className="w-1 shrink-0 cursor-col-resize hover:bg-accent/40" onPointerDown={startResize} />
-					<div className="flex min-w-0 flex-1 flex-col">
-						<TabStrip
-							label={t("files.openFiles")}
-							tabs={tabs}
-							active={state.active}
-							onSelect={path => useFiles.getState().activate(projectPath, path)}
-							onClose={path => useFiles.getState().close(projectPath, path)}
-							closeLabel={tab => t("files.closeTab", { name: tab.label })}
-						/>
-						{state.active && <Viewer key={state.active} path={state.active} projectPath={projectPath} version={git.version} />}
-					</div>
-				</>
-			)}
+			{/* popLayout: when the last tab closes, the viewer keeps its box and fades out while the tree widens. */}
+			<AnimatePresence initial={false} mode="popLayout">
+				{state.tabs.length > 0 && (
+					<motion.div
+						key="viewer"
+						initial={{ opacity: 0 }}
+						animate={{ opacity: 1 }}
+						exit={{ opacity: 0, transition: { duration: duration.fast, ease: "easeIn" } }}
+						transition={{ duration: duration.base, ease: ease.outQuart }}
+						className="flex min-w-0 flex-1"
+					>
+						{/* biome-ignore lint/a11y/noStaticElementInteractions: pointer-only resize handle; width also fits content */}
+						<div aria-hidden className="w-1 shrink-0 cursor-col-resize hover:bg-accent/40" onPointerDown={startResize} />
+						<div className="flex min-w-0 flex-1 flex-col">
+							<TabStrip
+								label={t("files.openFiles")}
+								tabs={tabs}
+								active={state.active}
+								onSelect={path => useFiles.getState().activate(projectPath, path)}
+								onClose={path => useFiles.getState().close(projectPath, path)}
+								closeLabel={tab => t("files.closeTab", { name: tab.label })}
+							/>
+							{state.active && (
+								<PresenceSwap swapKey={state.active} className="flex min-h-0 flex-1 flex-col">
+									<Viewer path={state.active} projectPath={projectPath} version={git.version} />
+								</PresenceSwap>
+							)}
+						</div>
+					</motion.div>
+				)}
+			</AnimatePresence>
 		</div>
 	);
 }

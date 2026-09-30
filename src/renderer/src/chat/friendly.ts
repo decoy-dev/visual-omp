@@ -1,5 +1,5 @@
 /**
- * Plain-language one-liners for tool calls ("Edited 2 files — +8 −3", "Ran `npm test` — passed").
+ * Plain-language one-liners for tool calls ("Edited 2 files", "Ran `npm test`, passed").
  * Returns an i18n key in the `tools` namespace plus values, so every string stays translatable.
  * Tolerates partial args and missing results: calls stream in before they finish.
  */

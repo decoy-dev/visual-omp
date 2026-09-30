@@ -1,6 +1,8 @@
-import { CircleCheck, CircleX, X } from "lucide-react";
+import { CheckCircle, X, XCircle } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { listRowMotion } from "@/features/manage/listMotion";
 import { Button, IconButton, Progress } from "@/ui";
 import type { Operation } from "./operations";
 
@@ -18,17 +20,31 @@ export function InlineProgress({ op }: { op: Operation }) {
 	);
 }
 
-/** Streamed output of recent operations, newest first; running ones can be cancelled. */
+/** Streamed output of recent operations, newest first; running ones can be cancelled. New ones drop in, dismissed ones fade out. */
 export function OperationLog({ ops, onCancel, onDismiss }: { ops: Operation[]; onCancel(opId: string): void; onDismiss(opId: string): void }) {
 	const { t } = useTranslation("extensions");
-	if (ops.length === 0) return null;
 	return (
-		<section aria-label={t("ops.activity")} className="flex flex-col gap-2">
-			<h3 className="text-sm font-semibold text-fg-muted">{t("ops.activity")}</h3>
-			{ops.map(op => (
-				<OperationCard key={op.opId} op={op} onCancel={() => onCancel(op.opId)} onDismiss={() => onDismiss(op.opId)} />
-			))}
-		</section>
+		<AnimatePresence initial={false}>
+			{ops.length > 0 && (
+				<motion.section
+					key="log"
+					aria-label={t("ops.activity")}
+					initial={{ opacity: 0 }}
+					animate={{ opacity: 1 }}
+					exit={{ opacity: 0 }}
+					className="relative flex flex-col gap-2"
+				>
+					<h3 className="text-sm font-semibold text-fg-muted">{t("ops.activity")}</h3>
+					<AnimatePresence initial={false} mode="popLayout">
+						{ops.map(op => (
+							<motion.div key={op.opId} {...listRowMotion}>
+								<OperationCard op={op} onCancel={() => onCancel(op.opId)} onDismiss={() => onDismiss(op.opId)} />
+							</motion.div>
+						))}
+					</AnimatePresence>
+				</motion.section>
+			)}
+		</AnimatePresence>
 	);
 }
 
@@ -44,9 +60,9 @@ function OperationCard({ op, onCancel, onDismiss }: { op: Operation; onCancel():
 		<div className="rounded-md border border-border bg-panel">
 			<div className="flex items-center gap-2 px-3 py-2 text-sm">
 				{op.running ? null : op.error ? (
-					<CircleX aria-hidden className="size-4 shrink-0 text-err" />
+					<XCircle aria-hidden className="size-4 shrink-0 text-err" />
 				) : (
-					<CircleCheck aria-hidden className="size-4 shrink-0 text-ok" />
+					<CheckCircle aria-hidden className="size-4 shrink-0 text-ok" />
 				)}
 				<span className="min-w-0 flex-1 truncate font-medium text-fg">
 					{op.running ? label : op.error ? t("ops.failed", { name: op.subject }) : t("ops.done", { name: op.subject })}

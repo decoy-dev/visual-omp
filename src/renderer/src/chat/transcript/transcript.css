@@ -1,4 +1,4 @@
-/* Markdown in chat (DESIGN §3.5): 14/22 body, Geist Mono code on the accent tint, syntax tokens. */
+/* Markdown in chat (DESIGN §3.5): 14/22 body, Geist Mono code on a neutral tint, syntax tokens. */
 .tr-md {
 	font-size: var(--text-base);
 	line-height: var(--text-base--line-height);
@@ -75,8 +75,8 @@
 	font-size: 12.5px;
 	padding: 1px 5px;
 	border-radius: var(--radius-sm);
-	background: var(--accent-muted);
-	color: var(--accent);
+	background: var(--selected);
+	color: var(--fg);
 }
 
 .tr-md pre {
@@ -186,4 +186,18 @@
 .tv-card.tv-embedded .tv-body {
 	padding: 0;
 	border-top: 0;
+}
+
+/* Streaming caret (DESIGN §5.16): a 2px accent bar after the reply's last character, not on a line of its own. */
+[data-streaming] .tr-md > :last-child:not(ul, ol, pre, table, hr)::after,
+[data-streaming] .tr-md > :is(ul, ol):last-child > li:last-child::after {
+	content: "";
+	display: inline-block;
+	width: 2px;
+	height: 1em;
+	margin-left: 2px;
+	vertical-align: -0.15em;
+	border-radius: 1px;
+	background: var(--accent);
+	animation: caret-blink 1s steps(1) infinite;
 }

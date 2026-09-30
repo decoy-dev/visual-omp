@@ -3,7 +3,7 @@
  * session-header buttons and keyboard shortcuts all run commands from here, so an action is
  * defined once. Features register commands from `features/<name>/index.ts`.
  */
-import type { LucideIcon } from "lucide-react";
+import type { Icon } from "@phosphor-icons/react";
 import { useSyncExternalStore } from "react";
 import type { SessionController } from "../state/session";
 
@@ -29,7 +29,7 @@ export interface CommandSpec {
 	/** omp slash command shown as the right-hand hint, e.g. `/compact`. */
 	slash?: string;
 	group: CommandGroup;
-	icon?: LucideIcon;
+	icon?: Icon;
 	/** Display shortcut, e.g. "⌘⇧R"; actual accelerators live in the app menu or keymap. */
 	shortcut?: string;
 	/** Shown as a session-header button when set; lower numbers appear first (max 5 visible). */

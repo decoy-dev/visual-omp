@@ -3,13 +3,14 @@
  * `data-tour="sidebar|composer|permission|dock|statusbar"`. A step whose element isn't on screen
  * (e.g. no chat open yet, so no composer) shows its card centered over the dimmed window.
  */
-import { ArrowRight } from "lucide-react";
-import { type KeyboardEvent, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowRight } from "@phosphor-icons/react";
+import { motion } from "motion/react";
+import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import { useApp } from "../../state/app";
-import { BracketLabel, Button, StepDots } from "../../ui";
+import { Button, PresenceSwap, StepDots, spring } from "../../ui";
 
 const STEPS = ["sidebar", "composer", "permission", "dock", "statusbar"] as const;
 type StepId = (typeof STEPS)[number];
@@ -34,9 +35,20 @@ const AUTO_START_DELAY_MS = 800;
 
 const useTour = create<{ step: number | null }>(() => ({ step: null }));
 
+/** What had focus when the tour started, so finishing can put it back. */
+let returnFocusTo: HTMLElement | null = null;
+
 /** Start (or restart) the tour from step 1. */
 export function startTour(): void {
+	if (useTour.getState().step === null) returnFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 	useTour.setState({ step: 0 });
+}
+
+/** After the tour: back to what had focus before it (the Help button, say), else the message box if a chat is open. */
+function restoreFocus(): void {
+	const target = returnFocusTo?.isConnected && returnFocusTo !== document.body ? returnFocusTo : null;
+	returnFocusTo = null;
+	(target ?? document.querySelector<HTMLElement>('[data-tour="composer"] textarea'))?.focus();
 }
 
 let autoStarted = false;
@@ -125,10 +137,27 @@ function TourOverlay({ step, id }: { step: number; id: StepId }) {
 	const next = useRef<HTMLButtonElement>(null);
 	const [cardHeight, setCardHeight] = useState(180);
 	const last = step === STEPS.length - 1;
-
-	useLayoutEffect(() => {
-		if (card.current) setCardHeight(card.current.offsetHeight);
+	// Per-step ids: while the step content swaps, the outgoing and incoming copies are both mounted.
+	const idBase = useId();
+	const titleId = `${idBase}-${id}-title`;
+	const bodyId = `${idBase}-${id}-body`;
+	// Direction of the step change, for the card's content slide: forward slides in from the right.
+	const previous = useRef(step);
+	const direction = step >= previous.current ? 1 : -1;
+	useEffect(() => {
+		previous.current = step;
 	}, [step]);
+
+	// Placement needs the card's real height, which changes as the incoming step's text replaces the outgoing one.
+	useLayoutEffect(() => {
+		const element = card.current;
+		if (!element) return;
+		const measure = () => setCardHeight(element.offsetHeight);
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, []);
 
 	useEffect(() => {
 		next.current?.focus();
@@ -156,6 +185,8 @@ function TourOverlay({ step, id }: { step: number; id: StepId }) {
 	const finish = () => {
 		useTour.setState({ step: null });
 		void useApp.getState().setPrefs({ tourCompleted: true });
+		// The overlay unmounts with this state change; move focus once it is gone.
+		requestAnimationFrame(restoreFocus);
 	};
 	const advance = () => (last ? finish() : useTour.setState({ step: step + 1 }));
 
@@ -185,38 +216,47 @@ function TourOverlay({ step, id }: { step: number; id: StepId }) {
 		height: target.height + SPOT_PAD * 2,
 	};
 	const position = placeCard(spot, cardHeight, PLACEMENT[id]);
-	const motion = "transition-[top,left,width,height,opacity] duration-(--dur-xl) ease-(--ease-out)";
 
 	return createPortal(
 		<div className="fixed inset-0 z-(--z-palette)">
 			{/* Blocks the app underneath; the scrim itself is the spotlight's giant shadow. */}
 			<div className="absolute inset-0" aria-hidden />
 			{spot ? (
-				<div
+				// `layout` moves and resizes the cutout with transforms (FLIP), so top/left/size never animate directly.
+				<motion.div
 					aria-hidden
-					className={`pointer-events-none absolute rounded-lg outline-2 outline-ring shadow-[0_0_0_9999px_var(--backdrop)] ${motion}`}
-					style={spot}
+					layout
+					transition={{ layout: spring.gentle }}
+					className="pointer-events-none absolute outline-2 outline-ring shadow-[0_0_0_9999px_var(--backdrop)]"
+					style={{ ...spot, borderRadius: 12 }}
 				/>
 			) : (
 				<div aria-hidden className="absolute inset-0 bg-backdrop" />
 			)}
-			<div
+			<motion.div
 				ref={card}
 				role="dialog"
 				aria-modal="true"
-				aria-labelledby="tour-title"
-				aria-describedby="tour-body"
+				aria-labelledby={titleId}
+				aria-describedby={bodyId}
 				onKeyDown={onKeyDown}
-				className={`absolute w-[320px] rounded-lg border border-border bg-overlay p-4 text-fg shadow-(--shadow-overlay) ${motion}`}
+				layout="position"
+				initial={{ opacity: 0, y: 8 }}
+				animate={{ opacity: 1, y: 0 }}
+				transition={{ layout: spring.gentle, y: spring.gentle }}
+				className="absolute w-[320px] overflow-hidden rounded-lg border border-border bg-overlay p-4 text-fg shadow-(--shadow-overlay)"
 				style={position}
 			>
-				<BracketLabel tone="accent">{t("tour.eyebrow", { step: step + 1, total: STEPS.length })}</BracketLabel>
-				<h2 id="tour-title" className="mt-2 text-base font-semibold text-fg">
-					{t(`tour.steps.${id}.title`)}
-				</h2>
-				<p id="tour-body" className="mt-1.5 text-md text-fg-muted">
-					{t(`tour.steps.${id}.body`)}
-				</p>
+				<div className="relative">
+					<PresenceSwap swapKey={id} variant="slide" direction={direction} mode="popLayout">
+						<h2 id={titleId} className="text-base font-semibold text-fg">
+							{t(`tour.steps.${id}.title`)}
+						</h2>
+						<p id={bodyId} className="mt-1.5 text-md text-fg-muted">
+							{t(`tour.steps.${id}.body`)}
+						</p>
+					</PresenceSwap>
+				</div>
 				<div className="mt-4 flex items-center gap-3">
 					<Button variant="ghost" size="sm" onClick={finish} className="-ml-2">
 						{t("tour.skip")}
@@ -226,7 +266,7 @@ function TourOverlay({ step, id }: { step: number; id: StepId }) {
 						{last ? t("tour.finish") : t("tour.next")}
 					</Button>
 				</div>
-			</div>
+			</motion.div>
 		</div>,
 		document.body,
 	);

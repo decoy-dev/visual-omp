@@ -1,25 +1,7 @@
 import type { ProjectSummary, SessionSummary } from "@shared/ipc";
-import {
-	Archive,
-	ArchiveRestore,
-	ChevronDown,
-	ChevronRight,
-	Columns2,
-	Folder,
-	FolderOpen,
-	FolderX,
-	HelpCircle,
-	Home,
-	MessageSquarePlus,
-	MoreHorizontal,
-	Pin,
-	PinOff,
-	Plus,
-	Settings,
-	Trash2,
-	X,
-} from "lucide-react";
-import { type MouseEvent, type ReactNode, useEffect, useMemo, useState } from "react";
+import { Archive, BoxArrowUp, CaretRight, ChatCenteredDots, Columns, DotsThree, Folder, FolderMinus, FolderOpen, Gear, House, Plus, PushPin, PushPinSlash, Question, Trash, X } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
+import { createContext, type MouseEvent, type ReactNode, useContext, useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getCommand } from "../registry/commands";
 import { controllerFor, useApp } from "../state/app";
@@ -41,25 +23,45 @@ import {
 	MenuItem,
 	MenuSeparator,
 	MenuTrigger,
-	PulseDot,
+	Expand,
 	ScrollArea,
 	SearchInput,
-	StatusDot,
+	SectionLabel,
+	spring,
 	toast,
 } from "../ui";
-import { type ChatStatus, chatStatus, chatTitle, shortAgo, useNow, useSessionView } from "./hooks";
+import { ChatStatusMark } from "./ChatStatusMark";
+import { chatStatus, chatTitle, shortAgo, useNow, useSessionView } from "./hooks";
 
 const COLLAPSED_LIMIT = 8;
+
+/** Per-sidebar prefix for the active-row indicator's layoutId, so the highlight slides between rows. */
+const IndicatorScope = createContext("sidebar");
+
+/** Session rows slide into their new place on reorder; new rows fade and rise, removed rows fade out. */
+function RowList({ sessions, now }: { sessions: SessionSummary[]; now: number }): ReactNode {
+	return (
+		<AnimatePresence initial={false} mode="popLayout">
+			{sessions.map(session => (
+				<motion.div
+					key={session.file}
+					layout="position"
+					initial={{ opacity: 0, y: -4 }}
+					animate={{ opacity: 1, y: 0 }}
+					exit={{ opacity: 0 }}
+					transition={spring.snappy}
+				>
+					<SessionRow session={session} now={now} />
+				</motion.div>
+			))}
+		</AnimatePresence>
+	);
+}
 
 function runCommand(id: string): void {
 	const command = getCommand(id);
 	const state = useApp.getState();
 	void command?.run({ session: null, projectPath: state.activeProject });
-}
-
-function StatusMark({ status, label }: { status: ChatStatus; label: string }): ReactNode {
-	if (status === "working") return <PulseDot label={label} />;
-	return <StatusDot status={status === "needsInput" ? "warn" : status === "live" ? "ok" : "idle"} label={label} />;
 }
 
 function SessionRow({ session, now }: { session: SessionSummary; now: number }): ReactNode {
@@ -73,7 +75,10 @@ function SessionRow({ session, now }: { session: SessionSummary; now: number }):
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const status = chatStatus(liveView);
 	const title = chatTitle(liveView, session.title) ?? session.preview ?? t("sidebar.untitled");
-	const active = view === "chat" && tab !== null && (tab.id === activeTabId || tab.id === splitTabId);
+	const primary = view === "chat" && tab !== null && tab.id === activeTabId;
+	const secondary = view === "chat" && tab !== null && tab.id === splitTabId;
+	const active = primary || secondary;
+	const scope = useContext(IndicatorScope);
 
 	const open = (event?: MouseEvent) => useApp.getState().openSession(session, { split: event?.metaKey || event?.ctrlKey });
 	const togglePin = () => {
@@ -101,23 +106,23 @@ function SessionRow({ session, now }: { session: SessionSummary; now: number }):
 
 	const items = (Item: typeof MenuItem | typeof ContextMenuItem, Separator: typeof MenuSeparator | typeof ContextMenuSeparator) => (
 		<>
-			<Item icon={<MessageSquarePlus />} onSelect={() => open()}>
+			<Item icon={<ChatCenteredDots />} onSelect={() => open()}>
 				{t("sidebar.open")}
 			</Item>
-			<Item icon={<Columns2 />} shortcut="⌘click" onSelect={() => useApp.getState().openSession(session, { split: true })}>
+			<Item icon={<Columns />} shortcut="⌘click" onSelect={() => useApp.getState().openSession(session, { split: true })}>
 				{t("sidebar.openSplit")}
 			</Item>
-			<Item icon={pinned ? <PinOff /> : <Pin />} onSelect={togglePin}>
-				{pinned ? t("sidebar.unpin") : t("sidebar.pin")}
+			<Item icon={pinned ? <PushPinSlash /> : <PushPin />} onSelect={togglePin}>
+				{pinned ? t("sidebar.unpinChat") : t("sidebar.pinChat")}
 			</Item>
-			<Item icon={session.archived ? <ArchiveRestore /> : <Archive />} onSelect={toggleArchive}>
+			<Item icon={session.archived ? <BoxArrowUp /> : <Archive />} onSelect={toggleArchive}>
 				{session.archived ? t("sidebar.unarchive") : t("sidebar.archive")}
 			</Item>
 			<Item icon={<FolderOpen />} onSelect={() => void window.vomp.invoke("app:showItem", session.file)}>
 				{t("sidebar.reveal")}
 			</Item>
 			<Separator />
-			<Item icon={<Trash2 />} danger onSelect={() => setConfirmDelete(true)}>
+			<Item icon={<Trash />} danger onSelect={() => setConfirmDelete(true)}>
 				{t("sidebar.delete")}
 			</Item>
 		</>
@@ -129,11 +134,19 @@ function SessionRow({ session, now }: { session: SessionSummary; now: number }):
 				<ContextMenuTrigger asChild>
 					<div
 						className={cn(
-							"group relative flex h-8 items-center gap-2 rounded-md pr-1 pl-7 text-md",
-							active ? "bg-selected font-medium text-fg shadow-[inset_2px_0_0_var(--accent)]" : "text-fg-muted hover:bg-hover hover:text-fg",
+							"group relative isolate flex h-8 items-center gap-2 rounded-md pr-1 pl-7 text-md",
+							active ? "font-medium text-fg" : "text-fg-muted hover:bg-hover hover:text-fg",
 						)}
 					>
-						<StatusMark status={status} label={t(`sidebar.status.${status}`)} />
+						{active && (
+							<motion.span
+								aria-hidden
+								layoutId={`${scope}-${primary ? "active" : "split"}`}
+								transition={spring.snappy}
+								className="absolute inset-0 -z-10 rounded-md bg-selected"
+							/>
+						)}
+						<ChatStatusMark status={status} label={t(`sidebar.status.${status}`)} />
 						<button
 							type="button"
 							className="min-w-0 flex-1 truncate text-left outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:outline-2 focus-visible:after:outline-ring"
@@ -142,7 +155,7 @@ function SessionRow({ session, now }: { session: SessionSummary; now: number }):
 						>
 							{title}
 						</button>
-						{pinned && <Pin className="size-3 shrink-0 text-fg-faint" aria-hidden />}
+						{pinned && <PushPin className="size-3 shrink-0 text-fg-faint" aria-hidden />}
 						<span className="shrink-0 font-mono text-xs text-fg-faint group-hover:hidden group-focus-within:hidden">
 							{shortAgo(session.updatedAt, now)}
 						</span>
@@ -151,7 +164,7 @@ function SessionRow({ session, now }: { session: SessionSummary; now: number }):
 								<IconButton
 									className="relative hidden group-hover:inline-flex group-focus-within:inline-flex data-[state=open]:inline-flex"
 									label={t("sidebar.chatMenu")}
-									icon={<MoreHorizontal />}
+									icon={<DotsThree />}
 									size="sm"
 								/>
 							</MenuTrigger>
@@ -208,17 +221,17 @@ function ProjectGroup({ project, sessions, now, forceOpen }: { project: ProjectS
 			<Item icon={<Plus />} onSelect={() => useApp.getState().newChat(project.path)}>
 				{t("sidebar.newChatHere")}
 			</Item>
-			<Item icon={<Home />} onSelect={() => useApp.getState().openProject(project.path)}>
+			<Item icon={<House />} onSelect={() => useApp.getState().openProject(project.path)}>
 				{t("sidebar.projectHome")}
 			</Item>
 			<Item icon={<FolderOpen />} onSelect={() => void window.vomp.invoke("app:showItem", project.path)}>
 				{t("sidebar.reveal")}
 			</Item>
-			<Item icon={pinned ? <PinOff /> : <Pin />} onSelect={togglePin}>
-				{pinned ? t("sidebar.unpin") : t("sidebar.pin")}
+			<Item icon={pinned ? <PushPinSlash /> : <PushPin />} onSelect={togglePin}>
+				{pinned ? t("sidebar.unpinProject") : t("sidebar.pinProject")}
 			</Item>
 			{getCommand("project.settings") && (
-				<Item icon={<Settings />} onSelect={() => useApp.getState().openSheet("project-settings", { projectPath: project.path })}>
+				<Item icon={<Gear />} onSelect={() => useApp.getState().openSheet("project-settings", { projectPath: project.path })}>
 					{t("sidebar.settings")}
 				</Item>
 			)}
@@ -230,13 +243,13 @@ function ProjectGroup({ project, sessions, now, forceOpen }: { project: ProjectS
 	);
 
 	return (
-		<div role="group" aria-label={project.name}>
+		<motion.div role="group" aria-label={project.name} layout="position" transition={spring.gentle}>
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
 					<div className={cn("group flex h-9 items-center gap-1 rounded-md pr-1 pl-1 text-md", active ? "bg-selected" : "hover:bg-hover")}>
 						<IconButton
 							label={expanded ? t("sidebar.collapse", { name: project.name }) : t("sidebar.expand", { name: project.name })}
-							icon={expanded ? <ChevronDown /> : <ChevronRight />}
+							icon={<CaretRight className={cn("transition-transform duration-(--dur) ease-(--ease-out-quart)", expanded && "rotate-90")} />}
 							size="sm"
 							aria-expanded={expanded}
 							onClick={() => useApp.getState().toggleProjectExpanded(project.path)}
@@ -247,16 +260,16 @@ function ProjectGroup({ project, sessions, now, forceOpen }: { project: ProjectS
 							onClick={() => useApp.getState().openProject(project.path)}
 							title={project.exists ? project.path : t("sidebar.missingFolder")}
 						>
-							{project.exists ? <Folder className="size-4 shrink-0 text-fg-muted" /> : <FolderX className="size-4 shrink-0 text-warn" />}
+							{project.exists ? <Folder className="size-4 shrink-0 text-fg-muted" /> : <FolderMinus className="size-4 shrink-0 text-warn" />}
 							<span className="truncate">{project.name}</span>
 						</button>
-						{pinned && <Pin className="size-3 shrink-0 text-fg-faint" aria-hidden />}
+						{pinned && <PushPin className="size-3 shrink-0 text-fg-faint" aria-hidden />}
 						<Menu>
 							<MenuTrigger asChild>
 								<IconButton
 									className="hidden group-hover:inline-flex group-focus-within:inline-flex data-[state=open]:inline-flex"
 									label={t("sidebar.projectMenu")}
-									icon={<MoreHorizontal />}
+									icon={<DotsThree />}
 									size="sm"
 								/>
 							</MenuTrigger>
@@ -266,24 +279,20 @@ function ProjectGroup({ project, sessions, now, forceOpen }: { project: ProjectS
 				</ContextMenuTrigger>
 				<ContextMenuContent>{items(ContextMenuItem, ContextMenuSeparator)}</ContextMenuContent>
 			</ContextMenu>
-			{expanded && (
-				<div className="flex flex-col gap-px pb-1">
-					{visible.map(session => (
-						<SessionRow key={session.file} session={session} now={now} />
-					))}
-					{!forceOpen && ordered.length === 0 && <p className="py-1 pr-2 pl-7 text-sm text-fg-faint">{t("sidebar.noChats")}</p>}
-					{!showAll && !forceOpen && ordered.length > COLLAPSED_LIMIT && (
-						<button
-							type="button"
-							className="h-7 rounded-md pl-7 text-left text-sm text-fg-muted hover:bg-hover hover:text-fg"
-							onClick={() => setShowAll(true)}
-						>
-							{t("sidebar.moreChats", { count: ordered.length - COLLAPSED_LIMIT })}
-						</button>
-					)}
-				</div>
-			)}
-		</div>
+			<Expand open={expanded} className="relative flex flex-col gap-px pb-1">
+				<RowList sessions={visible} now={now} />
+				{!forceOpen && ordered.length === 0 && <p className="py-1 pr-2 pl-7 text-sm text-fg-faint">{t("sidebar.noChats")}</p>}
+				{!showAll && !forceOpen && ordered.length > COLLAPSED_LIMIT && (
+					<button
+						type="button"
+						className="h-7 rounded-md pl-7 text-left text-sm text-fg-muted hover:bg-hover hover:text-fg"
+						onClick={() => setShowAll(true)}
+					>
+						{t("sidebar.moreChats", { count: ordered.length - COLLAPSED_LIMIT })}
+					</button>
+				)}
+			</Expand>
+		</motion.div>
 	);
 }
 
@@ -291,9 +300,34 @@ function matches(session: SessionSummary, query: string): boolean {
 	return `${session.title ?? ""} ${session.preview ?? ""}`.toLowerCase().includes(query);
 }
 
+/** "+" on the Projects header: open a folder, make a new one, or clone from GitHub. */
+function AddProjectMenu(): ReactNode {
+	const { t } = useTranslation("shell");
+	const items = ["project.open", "project.newFolder", "project.clone"].flatMap(id => getCommand(id) ?? []);
+	if (items.length === 0) return null;
+	return (
+		<Menu>
+			<MenuTrigger asChild>
+				<IconButton label={t("projects:sidebar.add")} icon={<Plus />} size="sm" />
+			</MenuTrigger>
+			<MenuContent align="end">
+				{items.map(command => {
+					const Icon = command.icon;
+					return (
+						<MenuItem key={command.id} icon={Icon ? <Icon /> : undefined} shortcut={command.shortcut} onSelect={() => runCommand(command.id)}>
+							{t(command.title)}
+						</MenuItem>
+					);
+				})}
+			</MenuContent>
+		</Menu>
+	);
+}
+
 /** Projects → chats (DESIGN §3.2). */
 export function Sidebar({ width }: { width: number }): ReactNode {
 	const { t } = useTranslation("shell");
+	const scope = useId();
 	const projects = useApp(state => state.projects);
 	const sessionsByProject = useApp(state => state.sessionsByProject);
 	const search = useApp(state => state.search);
@@ -330,6 +364,7 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 		.filter(session => session.archived && (!query || matches(session, query)));
 
 	return (
+		<IndicatorScope.Provider value={scope}>
 		<nav aria-label={t("sidebar.label")} data-tour="sidebar" style={{ width }} className="flex shrink-0 flex-col border-r border-border bg-panel">
 			<div className="flex flex-col gap-1 px-3 pt-3 pb-2">
 				<SearchInput
@@ -340,18 +375,20 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 				/>
 				<button
 					type="button"
+					aria-haspopup="dialog"
 					className="flex h-9 items-center gap-2 rounded-md px-2 text-md font-semibold text-accent hover:bg-accent-muted focus-visible:outline-2 focus-visible:outline-ring"
-					onClick={() => {
-						if (!useApp.getState().newChat()) runCommand("project.new");
-					}}
+					onClick={() => runCommand("chat.startIn")}
 				>
 					<Plus className="size-4" />
 					{t("sidebar.newChat")}
 				</button>
 			</div>
 			<div className="mx-3 h-px bg-border" />
+			<div className="flex items-center justify-between gap-2 pt-3 pr-3 pl-4">
+				<SectionLabel as="h2">{t("sidebar.projects")}</SectionLabel>
+				<AddProjectMenu />
+			</div>
 			<ScrollArea className="min-h-0 flex-1" viewportClassName="px-2 py-2">
-				<p className="bracket-label px-2 pt-1 pb-2">{t("sidebar.projects")}</p>
 				{projects.length === 0 ? (
 					<EmptyState
 						icon={<Folder />}
@@ -377,10 +414,12 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 							className="flex h-8 w-full items-center gap-1 rounded-md px-2 text-sm text-fg-muted hover:bg-hover"
 							onClick={() => setShowArchived(open => !open)}
 						>
-							{showArchived ? <ChevronDown className="size-3.5" /> : <ChevronRight className="size-3.5" />}
+							<CaretRight className={cn("size-3.5 transition-transform duration-(--dur) ease-(--ease-out-quart)", showArchived && "rotate-90")} />
 							{t("sidebar.archived")} · {archived.length}
 						</button>
-						{showArchived && archived.map(session => <SessionRow key={session.file} session={session} now={now} />)}
+						<Expand open={showArchived} className="relative flex flex-col gap-px">
+							<RowList sessions={archived} now={now} />
+						</Expand>
 					</div>
 				)}
 			</ScrollArea>
@@ -390,7 +429,7 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 					className="flex h-9 items-center gap-2 rounded-md px-2 text-md font-medium text-fg-muted hover:bg-hover hover:text-fg"
 					onClick={() => useApp.getState().goHome()}
 				>
-					<Home className="size-4" />
+					<House className="size-4" />
 					{t("sidebar.home")}
 				</button>
 				<button
@@ -398,7 +437,7 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 					className="flex h-9 items-center gap-2 rounded-md px-2 text-md font-medium text-fg-muted hover:bg-hover hover:text-fg"
 					onClick={() => runCommand("app.settings")}
 				>
-					<Settings className="size-4" />
+					<Gear className="size-4" />
 					{t("sidebar.settings")}
 				</button>
 				<button
@@ -406,10 +445,11 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 					className="flex h-9 items-center gap-2 rounded-md px-2 text-md font-medium text-fg-muted hover:bg-hover hover:text-fg"
 					onClick={() => runCommand("app.help")}
 				>
-					<HelpCircle className="size-4" />
+					<Question className="size-4" />
 					{t("sidebar.help")}
 				</button>
 			</div>
 		</nav>
+		</IndicatorScope.Provider>
 	);
 }

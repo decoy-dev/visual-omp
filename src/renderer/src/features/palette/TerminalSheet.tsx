@@ -7,13 +7,13 @@ import "@xterm/xterm/css/xterm.css";
 import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
-import { Maximize2, Minimize2, RotateCcw, SquareTerminal, TriangleAlert } from "lucide-react";
+import { ArrowCounterClockwise, ArrowsIn, ArrowsOut, TerminalWindow, Warning } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSessionView } from "../../shell/hooks";
 import { controllerFor, useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
-import { Button, cn, Dialog, DialogContent, EmptyState, IconButton, Sheet, SheetContent, Spinner } from "../../ui";
+import { Button, cn, Dialog, DialogContent, EmptyState, Expand, IconButton, Sheet, SheetContent, Spinner } from "../../ui";
 import { type ScreenKey, screenName } from "./overlays";
 
 /** Tab whose sheet the overlay watcher opened (so it closes again when omp's screen goes away). */
@@ -238,7 +238,7 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 				height={expanded ? "calc(100vh - var(--titlebar-h) - 16px)" : "80vh"}
 				title={
 					<span className="flex items-center gap-2">
-						<SquareTerminal aria-hidden className="size-4 text-fg-muted" />
+						<TerminalWindow aria-hidden className="size-4 text-fg-muted" />
 						<span className="truncate text-md">{title}</span>
 					</span>
 				}
@@ -246,7 +246,7 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 				actions={
 					<IconButton
 						label={expanded ? t("terminal.shrink") : t("terminal.expand")}
-						icon={expanded ? <Minimize2 /> : <Maximize2 />}
+						icon={expanded ? <ArrowsIn /> : <ArrowsOut />}
 						onClick={() => setExpanded(value => !value)}
 					/>
 				}
@@ -258,22 +258,22 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 				onOpenAutoFocus={event => event.preventDefault()}
 				bodyClassName="flex flex-col gap-2 overflow-hidden bg-inset p-3"
 			>
-				{mode === "reconnecting" && (
+				<Expand open={mode === "reconnecting"}>
 					<div role="status" className="flex h-8 shrink-0 items-center gap-2 rounded-md bg-warn-bg px-3 text-sm text-warn">
 						<Spinner size={12} tone="current" />
 						{t("terminal.reconnecting")}
 					</div>
-				)}
-				{mode === "exited" && (
+				</Expand>
+				<Expand open={mode === "exited"}>
 					<div role="alert" className="flex h-9 shrink-0 items-center gap-2 rounded-md bg-err-bg px-3 text-sm text-err">
-						<TriangleAlert aria-hidden className="size-4" />
+						<Warning aria-hidden className="size-4" />
 						<span className="flex-1">{t("terminal.disconnected")}</span>
-						<Button size="sm" variant="secondary" icon={<RotateCcw />} onClick={() => void controller.restart()}>
+						<Button size="sm" variant="secondary" icon={<ArrowCounterClockwise />} onClick={() => void controller.restart()}>
 							{t("terminal.restart")}
 						</Button>
 					</div>
-				)}
-				<div className={cn("min-h-0 flex-1", mode === "exited" && "opacity-60")}>
+				</Expand>
+				<div className={cn("min-h-0 flex-1 transition-opacity duration-(--dur-slow)", mode === "exited" && "opacity-60")}>
 					{hostId && host ? (
 						<Mirror
 							hostId={hostId}
@@ -283,7 +283,7 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 							overlaysOpen={overlaysOpen}
 						/>
 					) : readOnly ? (
-						<EmptyState icon={<SquareTerminal />} title={t("terminal.readOnly")} />
+						<EmptyState icon={<TerminalWindow />} title={t("terminal.readOnly")} />
 					) : mode !== "exited" ? (
 						<div className="flex h-full items-center justify-center gap-2 text-md text-fg-muted">
 							<Spinner size={14} />

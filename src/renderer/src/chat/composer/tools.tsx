@@ -37,7 +37,7 @@ function ModeToggles({ session }: ChatSlotProps) {
 							className={cn(
 								"inline-flex h-7 items-center gap-1 rounded-md px-2 font-mono text-sm font-semibold outline-none transition-colors duration-(--dur-fast)",
 								"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45",
-								pressed ? "bg-accent-2-muted text-accent-2" : "text-fg-muted enabled:hover:bg-hover enabled:hover:text-fg",
+								pressed ? "bg-accent-muted text-accent" : "text-fg-muted enabled:hover:bg-hover enabled:hover:text-fg",
 							)}
 						>
 							{glyph}
@@ -77,8 +77,8 @@ function ContextTool({ session }: ChatSlotProps) {
 				<p className="mt-1 text-sm text-fg-muted">{t("context.body")}</p>
 				<div className="mt-3 flex items-baseline justify-between text-sm">
 					<span className="font-mono tabular-nums text-fg">
-						{usage.tokens !== null ? formatTokens.format(usage.tokens) : "—"}
-						<span className="text-fg-faint"> / {usage.contextWindow !== null ? formatTokens.format(usage.contextWindow) : "—"}</span>
+						{usage.tokens !== null ? formatTokens.format(usage.tokens) : t("context.unknown")}
+						<span className="text-fg-faint"> / {usage.contextWindow !== null ? formatTokens.format(usage.contextWindow) : t("context.unknown")}</span>
 					</span>
 					<span className={cn("font-mono tabular-nums", zone === "err" ? "text-err" : zone === "warn" ? "text-warn" : "text-fg-muted")}>
 						{percent}%

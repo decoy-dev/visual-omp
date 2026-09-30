@@ -1,6 +1,7 @@
 /** DESIGN §4.15 — MCP servers manager ("Connected tools"). */
-import { Ellipsis, Eye, Lock, Pencil, PlugZap, Plus, Trash2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { DotsThree, Eye, Lock, PencilSimple, PlugsConnected, Plus, Trash } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
+import { type Ref, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { McpServerEntry, McpTarget } from "@shared/contracts/mcp";
 import type { SheetProps } from "@/registry/slots";
@@ -24,6 +25,7 @@ import {
 	toast,
 	Tooltip,
 } from "@/ui";
+import { listRowMotion } from "@/features/manage/listMotion";
 import { errorText } from "../format";
 import { ConfirmDialog, type ExtensionSheetProps, ExtensionSheetFrame, Notice, useIpcEvent, useLoad, useSheetProject } from "../shared";
 import { endpointOf } from "./form";
@@ -180,7 +182,7 @@ export function McpSheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 				</div>
 			) : rows.length === 0 ? (
 				<EmptyState
-					icon={<PlugZap />}
+					icon={<PlugsConnected />}
 					title={t(scope === "user" ? "mcp.empty.userTitle" : "mcp.empty.projectTitle")}
 					body={t("mcp.empty.body")}
 					actions={
@@ -190,23 +192,25 @@ export function McpSheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 					}
 				/>
 			) : (
-				<ul className="flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel">
-					{rows.map(entry => (
-						<ServerRow
-							key={entry.id}
-							entry={entry}
-							check={checks[entry.id]}
-							projectPath={projectPath}
-							onToggle={enabled => void toggle(entry, enabled)}
-							onTest={() => void runCheck(entry)}
-							onEdit={() => setEditor({ kind: "edit", entry })}
-							onViewTools={() => {
-								setToolsFor(entry);
-								if (checks[entry.id]?.state !== "done") void runCheck(entry);
-							}}
-							onRemove={() => setRemoving(entry)}
-						/>
-					))}
+				<ul className="relative flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel">
+					<AnimatePresence initial={false} mode="popLayout">
+						{rows.map(entry => (
+							<ServerRow
+								key={entry.id}
+								entry={entry}
+								check={checks[entry.id]}
+								projectPath={projectPath}
+								onToggle={enabled => void toggle(entry, enabled)}
+								onTest={() => void runCheck(entry)}
+								onEdit={() => setEditor({ kind: "edit", entry })}
+								onViewTools={() => {
+									setToolsFor(entry);
+									if (checks[entry.id]?.state !== "done") void runCheck(entry);
+								}}
+								onRemove={() => setRemoving(entry)}
+							/>
+						))}
+					</AnimatePresence>
 				</ul>
 			)}
 
@@ -233,9 +237,11 @@ interface ServerRowProps {
 	onEdit(): void;
 	onViewTools(): void;
 	onRemove(): void;
+	/** Set by AnimatePresence (`popLayout`) to measure the row as it leaves. */
+	ref?: Ref<HTMLLIElement>;
 }
 
-function ServerRow({ entry, check, projectPath, onToggle, onTest, onEdit, onViewTools, onRemove }: ServerRowProps) {
+function ServerRow({ entry, check, projectPath, onToggle, onTest, onEdit, onViewTools, onRemove, ref }: ServerRowProps) {
 	const { t } = useTranslation("extensions");
 	const status = rowStatus(entry, check);
 	const writable = targetFor(entry, projectPath) !== null;
@@ -248,10 +254,10 @@ function ServerRow({ entry, check, projectPath, onToggle, onTest, onEdit, onView
 				: t(`mcp.status.${status.kind}`, { seconds: result ? (result.durationMs / 1000).toFixed(1) : "" });
 	const endpoint = endpointOf(entry.config);
 	return (
-		<li className="flex min-h-14 items-center gap-3 px-4 py-2 transition-colors duration-(--dur-fast) hover:bg-hover">
+		<motion.li ref={ref} {...listRowMotion} className="flex min-h-14 items-center gap-3 bg-panel px-4 py-2 transition-colors duration-(--dur-fast) hover:bg-hover">
 			<Tooltip content={statusText}>
 				<span tabIndex={0} className="inline-flex size-6 shrink-0 items-center justify-center rounded-sm focus-visible:outline-2 focus-visible:outline-ring">
-					{status.kind === "checking" ? <Spinner size={12} label={statusText} /> : <StatusDot status={status.dot} label={statusText} />}
+					{status.kind === "checking" ? <Spinner size={12} label={statusText} /> : <StatusDot status={status.dot} label={statusText} glyph />}
 				</span>
 			</Tooltip>
 			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -269,12 +275,14 @@ function ServerRow({ entry, check, projectPath, onToggle, onTest, onEdit, onView
 					{status.kind === "needsSignIn" && <Chip tone="warn">{t("mcp.status.needsSignIn")}</Chip>}
 				</div>
 				<div className="flex min-w-0 items-center gap-2">
-					<Chip tone="neutral" className="h-5 px-2 font-mono uppercase">
+					<Chip tone="neutral" className="h-5 px-2 font-mono">
 						{entry.transport}
 					</Chip>
-					<span className="truncate font-mono text-xs text-fg-muted" title={endpoint}>
-						{endpoint || "—"}
-					</span>
+					{endpoint && (
+						<span className="truncate font-mono text-xs text-fg-muted" title={endpoint}>
+							{endpoint}
+						</span>
+					)}
 				</div>
 				{status.kind === "failed" && result?.error && (
 					<span className="truncate text-xs text-err" title={result.error}>
@@ -292,25 +300,25 @@ function ServerRow({ entry, check, projectPath, onToggle, onTest, onEdit, onView
 			/>
 			<Menu>
 				<MenuTrigger asChild>
-					<IconButton label={t("mcp.more", { name: entry.name })} icon={<Ellipsis />} />
+					<IconButton label={t("mcp.more", { name: entry.name })} icon={<DotsThree />} />
 				</MenuTrigger>
 				<MenuContent align="end">
-					<MenuItem icon={<PlugZap />} onSelect={onTest} disabled={check?.state === "running"}>
+					<MenuItem icon={<PlugsConnected />} onSelect={onTest} disabled={check?.state === "running"}>
 						{t("mcp.menu.test")}
 					</MenuItem>
 					<MenuItem icon={<Eye />} onSelect={onViewTools}>
 						{t("mcp.menu.tools")}
 					</MenuItem>
-					<MenuItem icon={<Pencil />} onSelect={onEdit} disabled={!writable}>
+					<MenuItem icon={<PencilSimple />} onSelect={onEdit} disabled={!writable}>
 						{t("mcp.menu.edit")}
 					</MenuItem>
 					<MenuSeparator />
-					<MenuItem icon={<Trash2 />} danger onSelect={onRemove} disabled={!writable}>
+					<MenuItem icon={<Trash />} danger onSelect={onRemove} disabled={!writable}>
 						{t("mcp.menu.remove")}
 					</MenuItem>
 				</MenuContent>
 			</Menu>
-		</li>
+		</motion.li>
 	);
 }
 

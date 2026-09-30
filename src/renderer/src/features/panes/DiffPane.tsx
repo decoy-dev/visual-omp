@@ -3,18 +3,49 @@
  * with syntax colors and word-level emphasis. Hovering a line's gutter shows ＋ to leave a comment;
  * "Send N comments to omp" (⌘↵) turns them into one chat message. "Review code" runs `/review`.
  */
-import { ChevronDown, ChevronRight, FileDiff, GitCompareArrows, MessageSquarePlus, PanelLeftClose, PanelLeftOpen, Pencil, Plus, Send, ShieldCheck, Trash2, Undo2 } from "lucide-react";
-import { type KeyboardEvent, memo, useEffect, useMemo, useRef, useState } from "react";
+import {
+	ArrowUUpLeft,
+	CaretRight,
+	ChatCenteredDots,
+	GitDiff as GitDiffIcon,
+	PaperPlaneRight,
+	PencilSimple,
+	Plus,
+	ShieldCheck,
+	SidebarSimple,
+	Trash,
+} from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
+import { type KeyboardEvent, memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { GitDiff, GitDiffHunk, GitDiffLine, GitFileDiff, GitFileStatus } from "@shared/contracts/git";
 import type { PaneProps } from "../../registry/slots";
 import { controllerFor, useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
-import { Button, cn, Dialog, DialogClose, DialogContent, EmptyState, IconButton, Kbd, Spinner, Textarea, toast } from "../../ui";
+import {
+	Button,
+	cn,
+	Dialog,
+	DialogClose,
+	DialogContent,
+	duration,
+	ease,
+	EmptyState,
+	Expand,
+	IconButton,
+	Kbd,
+	PresenceSwap,
+	Rise,
+	Spinner,
+	spring,
+	Textarea,
+	toast,
+	useMotionReduced,
+} from "../../ui";
 import { focusRingInset } from "../../ui/styles";
 import { composeReviewMessage, type LineComment } from "./comments";
-import { PaneToolbar, usePaneVisible } from "./common";
+import { listRowMotion, PaneToolbar, usePaneVisible } from "./common";
 import { refreshGit, useGit } from "./git-store";
 import { languageFor, SYN_CLASS, type SynToken, tokenizeLines } from "./highlight";
 import { hunkEmphasis, type Range } from "./inline-diff";
@@ -114,8 +145,8 @@ const KIND_TONE: Record<GitFileStatus["kind"], string> = {
 	added: "text-diff-add-text",
 	untracked: "text-diff-add-text",
 	deleted: "text-diff-del-text",
-	renamed: "text-accent-2",
-	copied: "text-accent-2",
+	renamed: "text-fg",
+	copied: "text-fg",
 	typechange: "text-fg-muted",
 	conflicted: "text-err",
 };
@@ -164,7 +195,7 @@ function CommentEditor({
 			<div className="mt-2 flex items-center justify-end gap-2">
 				<span className="mr-auto text-xs text-fg-faint">{t("diff.commentHint")}</span>
 				<Button size="sm" variant="ghost" onClick={onCancel}>
-					{t("common.cancel")}
+					{t("diff.cancelComment")}
 				</Button>
 				<Button size="sm" variant="primary" disabled={!text.trim()} onClick={() => onSave(text)}>
 					{t("diff.addComment")}
@@ -191,12 +222,12 @@ function SavedComment({ comment, projectPath }: { comment: LineComment; projectP
 		);
 	}
 	return (
-		<div className="flex items-start gap-2 border-y border-border bg-accent-muted/60 px-3 py-2 font-ui text-md text-fg">
-			<MessageSquarePlus className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />
+		<Rise distance={4} className="flex items-start gap-2 border-y border-border bg-accent-muted/60 px-3 py-2 font-ui text-md text-fg">
+			<ChatCenteredDots className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />
 			<p className="min-w-0 flex-1 whitespace-pre-wrap break-words">{comment.text}</p>
-			<IconButton size="sm" label={t("diff.editComment")} icon={<Pencil />} onClick={() => setEditing(true)} />
-			<IconButton size="sm" label={t("diff.deleteComment")} icon={<Trash2 />} onClick={() => remove(projectPath, comment.id)} />
-		</div>
+			<IconButton size="sm" label={t("diff.editComment")} icon={<PencilSimple />} onClick={() => setEditing(true)} />
+			<IconButton size="sm" label={t("diff.deleteComment")} icon={<Trash />} onClick={() => remove(projectPath, comment.id)} />
+		</Rise>
 	);
 }
 
@@ -262,7 +293,7 @@ const Hunk = memo(function Hunk({
 											focusRingInset,
 										)}
 									>
-										<Plus className="size-3" strokeWidth={2.5} aria-hidden />
+										<Plus className="size-3" weight="bold" aria-hidden />
 									</button>
 								)}
 							</span>
@@ -294,14 +325,16 @@ const Hunk = memo(function Hunk({
 							<SavedComment key={comment.id} comment={comment} projectPath={projectPath} />
 						))}
 						{drafting && number !== null && (
-							<CommentEditor
-								initial=""
-								onCancel={() => setDraft(null)}
-								onSave={text => {
-									useComments.getState().add(projectPath, { path, line: number, side, excerpt: line.text, text: text.trim() });
-									setDraft(null);
-								}}
-							/>
+							<Rise distance={4}>
+								<CommentEditor
+									initial=""
+									onCancel={() => setDraft(null)}
+									onSave={text => {
+										useComments.getState().add(projectPath, { path, line: number, side, excerpt: line.text, text: text.trim() });
+										setDraft(null);
+									}}
+								/>
+							</Rise>
 						)}
 					</div>
 				);
@@ -340,11 +373,11 @@ function FileSection({
 	let budget = showAll ? Number.POSITIVE_INFINITY : LINE_BUDGET;
 	return (
 		<section ref={element => register(file.path, element)} aria-label={displayPath} className="border-b border-border">
-			<header className="sticky top-0 z-(--z-sticky) flex h-9 items-center gap-1.5 border-b border-border bg-panel/95 pl-1.5 pr-2 backdrop-blur">
+			<header className="sticky top-0 z-(--z-sticky) flex h-9 items-center gap-1.5 border-b border-border bg-panel pl-1.5 pr-2">
 				<IconButton
 					size="sm"
 					label={open ? t("diff.collapseFile") : t("diff.expandFile")}
-					icon={open ? <ChevronDown /> : <ChevronRight />}
+					icon={<CaretRight className={cn("transition-transform duration-(--dur) ease-(--ease-out-quart)", open && "rotate-90")} />}
 					aria-expanded={open}
 					onClick={() => setOpen(!open)}
 				/>
@@ -363,47 +396,45 @@ function FileSection({
 					size="sm"
 					variant="danger-ghost"
 					label={t("diff.discardFile")}
-					icon={<Undo2 />}
+					icon={<ArrowUUpLeft />}
 					onClick={() => onDiscard(file)}
 				/>
 			</header>
-			{open && (
-				<div className="bg-inset">
-					{file.binary ? (
-						<p className="px-4 py-3 text-sm text-fg-muted">{t("diff.binary")}</p>
-					) : file.truncated ? (
-						<p className="px-4 py-3 text-sm text-fg-muted">{t("diff.truncated")}</p>
-					) : file.hunks.length === 0 ? (
-						<p className="px-4 py-3 text-sm text-fg-muted">{t("diff.modeOnly")}</p>
-					) : (
-						file.hunks.map(hunk => {
-							if (budget <= 0) return null;
-							const limit = budget;
-							budget -= hunk.lines.length;
-							return (
-								<Hunk
-									key={hunk.header}
-									hunk={hunk}
-									lang={lang}
-									path={displayPath}
-									projectPath={projectPath}
-									comments={fileComments}
-									draft={draft}
-									setDraft={setDraft}
-									limit={limit}
-								/>
-							);
-						})
-					)}
-					{!showAll && total > LINE_BUDGET && (
-						<div className="flex justify-center py-2">
-							<Button size="sm" variant="secondary" onClick={() => setShowAll(true)}>
-								{t("diff.showAll", { count: total })}
-							</Button>
-						</div>
-					)}
-				</div>
-			)}
+			<Expand open={open} className="bg-inset">
+				{file.binary ? (
+					<p className="px-4 py-3 text-sm text-fg-muted">{t("diff.binary")}</p>
+				) : file.truncated ? (
+					<p className="px-4 py-3 text-sm text-fg-muted">{t("diff.truncated")}</p>
+				) : file.hunks.length === 0 ? (
+					<p className="px-4 py-3 text-sm text-fg-muted">{t("diff.modeOnly")}</p>
+				) : (
+					file.hunks.map(hunk => {
+						if (budget <= 0) return null;
+						const limit = budget;
+						budget -= hunk.lines.length;
+						return (
+							<Hunk
+								key={hunk.header}
+								hunk={hunk}
+								lang={lang}
+								path={displayPath}
+								projectPath={projectPath}
+								comments={fileComments}
+								draft={draft}
+								setDraft={setDraft}
+								limit={limit}
+							/>
+						);
+					})
+				)}
+				{!showAll && total > LINE_BUDGET && (
+					<div className="flex justify-center py-2">
+						<Button size="sm" variant="secondary" onClick={() => setShowAll(true)}>
+							{t("diff.showAll", { count: total })}
+						</Button>
+					</div>
+				)}
+			</Expand>
 		</section>
 	);
 }
@@ -412,7 +443,7 @@ function FileSection({
 
 export function DiffPane({ session, projectPath }: PaneProps) {
 	const { t } = useTranslation("panes");
-	if (!projectPath) return <EmptyState icon={<FileDiff />} title={t("diff.noProjectTitle")} body={t("diff.noProject")} />;
+	if (!projectPath) return <EmptyState icon={<GitDiffIcon />} title={t("diff.noProjectTitle")} body={t("diff.noProject")} />;
 	return <DiffView session={session} projectPath={projectPath} />;
 }
 
@@ -423,12 +454,15 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 	const [diff, setDiff] = useState<GitDiff | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	const [listOpen, setListOpen] = useState(true);
+	const listId = useId();
 	const [selected, setSelected] = useState<string | null>(null);
 	const [draft, setDraft] = useState<Draft | null>(null);
 	const [discarding, setDiscarding] = useState<GitFileDiff | null>(null);
 	const [busy, setBusy] = useState(false);
 	const comments = useComments(state => state.byProject[projectPath] ?? NO_COMMENTS);
 	const sections = useRef(new Map<string, HTMLElement>());
+	const scroller = useRef<HTMLDivElement>(null);
+	const reduced = useMotionReduced();
 	const loaded = useRef(-1);
 	useEffect(() => {
 		loaded.current = -1;
@@ -518,7 +552,13 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 
 	const jumpTo = (path: string) => {
 		setSelected(path);
-		sections.current.get(path)?.scrollIntoView({ block: "start", behavior: "smooth" });
+		// Scroll the diff column only; scrollIntoView would also scroll the dock and push the toolbar out of view.
+		const section = sections.current.get(path);
+		const column = scroller.current;
+		if (section && column) {
+			const top = column.scrollTop + section.getBoundingClientRect().top - column.getBoundingClientRect().top;
+			column.scrollTo({ top, behavior: reduced ? "auto" : "smooth" });
+		}
 	};
 
 	const reviewButton = (
@@ -528,17 +568,17 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 	);
 
 	if (git.notRepo) {
-		return <EmptyState icon={<GitCompareArrows />} title={t("diff.notRepoTitle")} body={t("diff.notRepo")} />;
+		return <EmptyState icon={<GitDiffIcon />} title={t("diff.notRepoTitle")} body={t("diff.notRepo")} />;
 	}
 	if (git.error || loadError) {
 		return (
 			<EmptyState
-				icon={<GitCompareArrows />}
+				icon={<GitDiffIcon />}
 				title={t("diff.errorTitle")}
 				body={git.error ?? loadError}
 				actions={
 					<Button size="sm" variant="secondary" onClick={() => refreshGit(projectPath)}>
-						{t("common.retry")}
+						{t("diff.reload")}
 					</Button>
 				}
 			/>
@@ -551,18 +591,14 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 			</div>
 		);
 	}
-	if (files.length === 0) {
-		return <EmptyState icon={<FileDiff />} title={t("diff.emptyTitle")} body={t("diff.empty")} />;
-	}
-
 	const selectedPath = selected ?? files[0]?.path ?? null;
-	return (
+	const view = (
 		<div className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
 			<PaneToolbar>
 				<IconButton
 					size="sm"
 					label={listOpen ? t("diff.hideList") : t("diff.showList")}
-					icon={listOpen ? <PanelLeftClose /> : <PanelLeftOpen />}
+					icon={<SidebarSimple />}
 					onClick={() => setListOpen(!listOpen)}
 				/>
 				<nav aria-label={t("diff.breadcrumb")} className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted">
@@ -580,37 +616,55 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 				{reviewButton}
 			</PaneToolbar>
 			<div className="flex min-h-0 flex-1">
-				{listOpen && (
-					<ul aria-label={t("diff.fileList")} className="w-[140px] shrink-0 overflow-y-auto border-r border-border bg-panel py-1">
-						{files.map(file => {
-							const kind = statusByPath.get(file.path)?.kind ?? (file.untracked ? "untracked" : file.kind);
-							const active = file.path === selectedPath;
-							return (
-								<li key={file.path}>
-									<button
-										type="button"
-										title={display(file.path)}
-										aria-current={active ? "true" : undefined}
-										onClick={() => jumpTo(file.path)}
-										className={cn(
-											"relative flex h-7 w-full items-center gap-1.5 px-2 text-left text-sm",
-											active ? "bg-selected text-fg" : "text-fg-muted hover:bg-hover hover:text-fg",
-											focusRingInset,
-										)}
-									>
-										{active && <span aria-hidden className="absolute inset-y-1 left-0 w-0.5 rounded-full bg-accent" />}
-										<span className={cn("w-3 shrink-0 font-mono text-xs font-semibold", KIND_TONE[kind])} title={t(`diff.kind.${kind}`)}>
-											{KIND_LETTER[kind]}
-										</span>
-										<span className="sr-only">{t(`diff.kind.${kind}`)}</span>
-										<span className="min-w-0 flex-1 truncate">{baseName(file.path)}</span>
-									</button>
-								</li>
-							);
-						})}
-					</ul>
-				)}
-				<div className="min-w-0 flex-1 overflow-y-auto">
+				<AnimatePresence initial={false}>
+					{listOpen && (
+						<motion.ul
+							key="file-list"
+							aria-label={t("diff.fileList")}
+							initial={{ opacity: 0, x: -12 }}
+							animate={{ opacity: 1, x: 0 }}
+							exit={{ opacity: 0, x: -12, transition: { duration: duration.fast, ease: "easeIn" } }}
+							transition={{ x: spring.snappy, opacity: { duration: duration.base, ease: ease.outQuart } }}
+							className="w-[140px] shrink-0 overflow-y-auto border-r border-border bg-panel py-1"
+						>
+							<AnimatePresence initial={false}>
+								{files.map(file => {
+									const kind = statusByPath.get(file.path)?.kind ?? (file.untracked ? "untracked" : file.kind);
+									const active = file.path === selectedPath;
+									return (
+										<motion.li
+											key={file.path}
+											layout="position"
+											{...listRowMotion}
+										>
+											<button
+												type="button"
+												title={display(file.path)}
+												aria-current={active ? "true" : undefined}
+												onClick={() => jumpTo(file.path)}
+												className={cn(
+													"relative flex h-7 w-full items-center gap-1.5 px-2 text-left text-sm",
+													active ? "text-fg" : "text-fg-muted hover:bg-hover hover:text-fg",
+													focusRingInset,
+												)}
+											>
+												{active && (
+													<motion.span aria-hidden layoutId={`${listId}-selected`} transition={spring.snappy} className="absolute inset-0 bg-selected" />
+												)}
+												<span className={cn("relative w-3 shrink-0 font-mono text-xs font-semibold", KIND_TONE[kind])} title={t(`diff.kind.${kind}`)}>
+													{KIND_LETTER[kind]}
+												</span>
+												<span className="sr-only">{t(`diff.kind.${kind}`)}</span>
+												<span className="relative min-w-0 flex-1 truncate">{baseName(file.path)}</span>
+											</button>
+										</motion.li>
+									);
+								})}
+							</AnimatePresence>
+						</motion.ul>
+					)}
+				</AnimatePresence>
+				<div ref={scroller} className="min-w-0 flex-1 overflow-y-auto">
 					{files.map(file => (
 						<FileSection
 							key={file.path}
@@ -629,18 +683,16 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 					))}
 				</div>
 			</div>
-			{comments.length > 0 && (
-				<div className="flex h-12 shrink-0 items-center gap-2 border-t border-border bg-panel px-3">
-					<span className="min-w-0 flex-1 truncate text-sm text-fg-muted">{t("diff.pending", { count: comments.length })}</span>
-					<Button size="sm" variant="ghost" onClick={() => useComments.getState().clear(projectPath)}>
-						{t("diff.clearComments")}
-					</Button>
-					<Button size="sm" variant="primary" icon={<Send />} loading={busy} onClick={() => void sendComments()}>
-						{t("diff.send", { count: comments.length })}
-						<Kbd className="ml-1">{MOD_KEY}↵</Kbd>
-					</Button>
-				</div>
-			)}
+			<Expand open={comments.length > 0} className="flex h-12 items-center gap-2 border-t border-border bg-panel px-3">
+				<span className="min-w-0 flex-1 truncate text-sm text-fg-muted">{t("diff.pending", { count: comments.length })}</span>
+				<Button size="sm" variant="ghost" onClick={() => useComments.getState().clear(projectPath)}>
+					{t("diff.clearComments")}
+				</Button>
+				<Button size="sm" variant="primary" icon={<PaperPlaneRight />} loading={busy} onClick={() => void sendComments()}>
+					{t("diff.send", { count: comments.length })}
+					<Kbd className="ml-1">{MOD_KEY}↵</Kbd>
+				</Button>
+			</Expand>
 			<Dialog open={discarding !== null} onOpenChange={open => !open && setDiscarding(null)}>
 				{discarding && (
 					<DialogContent
@@ -651,7 +703,7 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 						footer={
 							<>
 								<DialogClose asChild>
-									<Button variant="ghost">{t("common.cancel")}</Button>
+									<Button variant="ghost">{t("diff.keepChanges")}</Button>
 								</DialogClose>
 								<Button variant="danger" onClick={() => void confirmDiscard()}>
 									{t("diff.discardConfirm")}
@@ -662,6 +714,12 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 				)}
 			</Dialog>
 		</div>
+	);
+	// The list stays the presence owner while its last file leaves: the old view fades out, then the empty state fades in.
+	return (
+		<PresenceSwap swapKey={files.length === 0 ? "empty" : "diff"} className="flex min-h-0 flex-1 flex-col">
+			{files.length === 0 ? <EmptyState icon={<GitDiffIcon />} title={t("diff.emptyTitle")} body={t("diff.empty")} /> : view}
+		</PresenceSwap>
 	);
 }
 

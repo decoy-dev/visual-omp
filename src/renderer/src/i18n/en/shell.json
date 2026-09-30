@@ -7,54 +7,60 @@
 	"sidebar": {
 		"label": "Projects and chats",
 		"search": "Search chats…",
-		"newChat": "New chat",
-		"projects": "[ PROJECTS ]",
+		"newChat": "Start chat…",
+		"projects": "Projects",
 		"archived": "Archived",
 		"home": "Home",
 		"settings": "Settings",
 		"help": "Help",
-		"noProjects": "No projects yet. A project is just a folder omp works in.",
-		"newProject": "New project",
-		"noChats": "Nothing here yet — start a chat and it will show up in this list.",
+		"noProjects": "No projects yet. A project is a folder that omp works in.",
+		"newProject": "Create project",
+		"noChats": "No chats yet. New chats in this project appear here.",
 		"noResults": "No chats match '{{q}}'.",
 		"expand": "Show chats in {{name}}",
 		"collapse": "Hide chats in {{name}}",
 		"missingFolder": "This folder no longer exists",
 		"untitled": "Untitled chat",
-		"moreChats": "Show {{count}} more",
 		"chatMenu": "Chat options",
 		"projectMenu": "Project options",
-		"open": "Open",
+		"open": "Open chat",
 		"openSplit": "Open side by side",
-		"pin": "Pin",
-		"unpin": "Unpin",
-		"archive": "Archive",
-		"unarchive": "Restore from archive",
-		"delete": "Delete…",
+		"archive": "Archive chat",
+		"unarchive": "Restore chat",
+		"delete": "Delete chat…",
 		"reveal": "Show in folder",
-		"newChatHere": "New chat here",
-		"projectHome": "Project home",
-		"removeProject": "Remove from list",
+		"newChatHere": "Start chat here",
+		"projectHome": "Open project home",
+		"removeProject": "Remove project from list",
 		"status": {
 			"working": "omp is working",
 			"needsInput": "Waiting for your answer",
 			"live": "Open",
 			"idle": "Saved"
-		}
+		},
+		"pinChat": "Pin chat",
+		"unpinChat": "Unpin chat",
+		"pinProject": "Pin project",
+		"unpinProject": "Unpin project",
+		"moreChats_one": "Show {{count}} more chat",
+		"moreChats_other": "Show {{count}} more chats"
 	},
 	"deleteChat": {
 		"title": "Delete '{{title}}'?",
-		"body": "Delete '{{title}}'? This removes the saved conversation from this computer. This can't be undone.",
+		"body": "This removes the saved conversation from this computer. You can't undo it.",
 		"confirm": "Delete chat",
-		"cancel": "Cancel"
+		"cancel": "Keep chat"
 	},
 	"tabs": {
 		"label": "Open chats",
-		"newChat": "New chat",
+		"newChat": "Start new chat",
 		"close": "Close {{title}}",
-		"split": "Split view",
+		"split": "Open split view",
 		"unsplit": "Close split view",
-		"newChatTitle": "New chat"
+		"newChatTitle": "New chat",
+		"more": "{{count}} more",
+		"moreLabel_one": "Show {{count}} more chat",
+		"moreLabel_other": "Show {{count}} more chats"
 	},
 	"dock": {
 		"label": "Side panel",
@@ -73,7 +79,7 @@
 		"ompStopped": "omp stopped",
 		"ompStarting": "Starting omp…",
 		"ompMenu": "omp status",
-		"openTerminal": "Show omp's own screen",
+		"openTerminal": "Show omp terminal",
 		"restart": "Restart omp",
 		"copyDiagnostics": "Copy diagnostics",
 		"ompUpdateAvailable": "Update omp to {{version}}",
@@ -82,7 +88,7 @@
 	"home": {
 		"noProject": "Open or create a project to get started.",
 		"openFolder": "Open folder…",
-		"newProject": "New project…"
+		"newProject": "Create project…"
 	},
 	"time": {
 		"now": "now"

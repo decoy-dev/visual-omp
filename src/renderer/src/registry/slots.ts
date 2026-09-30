@@ -2,7 +2,7 @@
  * UI slot registries. Features contribute right-dock panes, modal sheets and status-bar items
  * without editing the shell: register from `features/<name>/index.ts`.
  */
-import type { LucideIcon } from "lucide-react";
+import type { Icon } from "@phosphor-icons/react";
 import { type ComponentType, useSyncExternalStore } from "react";
 import type { SessionController } from "../state/session";
 
@@ -17,7 +17,7 @@ export interface PaneSpec {
 	order: number;
 	/** i18n key. */
 	title: string;
-	icon: LucideIcon;
+	icon: Icon;
 	component: ComponentType<PaneProps>;
 	/** Small count/indicator rendered on the tab (e.g. `+12 −3`, running dot). */
 	badge?: ComponentType<PaneProps>;

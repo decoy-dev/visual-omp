@@ -2,7 +2,7 @@
  * The `@` file picker: a listbox above the composer's text box, driven from the textarea (combobox
  * pattern — focus never leaves the text; arrows move, Enter/Tab picks, Esc closes).
  */
-import { FileText } from "lucide-react";
+import { FileText } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../ui";
@@ -39,7 +39,7 @@ function Highlighted({ match }: { match: FuzzyMatch }) {
 		[...match.path.slice(from, to)].map((char, offset) => {
 			const index = from + offset;
 			return hits.has(index) ? (
-				<mark key={index} className="bg-transparent font-semibold text-accent-2">
+				<mark key={index} className="bg-transparent font-semibold text-accent">
 					{char}
 				</mark>
 			) : (
@@ -90,7 +90,7 @@ export function MentionPicker({ id, matches, active, onActive, onPick }: Mention
 								onPick(match.path);
 							}}
 							className={cn(
-								"flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-md",
+								"flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-md transition-colors duration-(--dur-fast)",
 								index === active && "bg-selected",
 							)}
 						>

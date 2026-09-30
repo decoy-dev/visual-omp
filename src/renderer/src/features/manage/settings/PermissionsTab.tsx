@@ -1,38 +1,26 @@
 import type { ApprovalPolicy, ApprovalState } from "@shared/contracts/config";
-import {
-	Bot,
-	FilePen,
-	FilePlus,
-	FileText,
-	Globe,
-	Image,
-	MousePointerClick,
-	Plus,
-	Search,
-	SquareTerminal,
-	Terminal,
-	Wrench,
-	type LucideIcon,
-} from "lucide-react";
+import { CursorClick, FilePlus, FileText, Globe, type Icon, ImageIcon, MagnifyingGlass, PencilSimpleLine, Plus, Robot, Terminal, TerminalWindow, Wrench } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Input, Segmented } from "@/ui";
+import { listRowMotion } from "../listMotion";
 import type { Resource } from "../shared";
 import { SourceChip } from "./parts";
 import type { OmpSettings } from "./useOmpSettings";
 
 /** Tools people most often want to gate, in the order a newcomer thinks about them. */
-const COMMON_TOOLS: readonly { tool: string; icon: LucideIcon }[] = [
+const COMMON_TOOLS: readonly { tool: string; icon: Icon }[] = [
 	{ tool: "read", icon: FileText },
-	{ tool: "edit", icon: FilePen },
+	{ tool: "edit", icon: PencilSimpleLine },
 	{ tool: "write", icon: FilePlus },
 	{ tool: "bash", icon: Terminal },
-	{ tool: "eval", icon: SquareTerminal },
+	{ tool: "eval", icon: TerminalWindow },
 	{ tool: "fetch", icon: Globe },
-	{ tool: "web_search", icon: Search },
-	{ tool: "browser", icon: MousePointerClick },
-	{ tool: "task", icon: Bot },
-	{ tool: "generate_image", icon: Image },
+	{ tool: "web_search", icon: MagnifyingGlass },
+	{ tool: "browser", icon: CursorClick },
+	{ tool: "task", icon: Robot },
+	{ tool: "generate_image", icon: ImageIcon },
 ];
 
 type PolicyChoice = ApprovalPolicy | "default";
@@ -86,12 +74,13 @@ export function PermissionsTab({ omp, approval }: { omp: OmpSettings; approval: 
 					{t("permissions.unrecognized", { tools: state.unrecognized.map(entry => entry.tool).join(", ") })}
 				</p>
 			)}
-			<ul className="mt-4 divide-y divide-border rounded-lg border border-border bg-panel" aria-label={t("permissions.listLabel")}>
+			<ul className="relative mt-4 divide-y divide-border rounded-lg border border-border bg-panel" aria-label={t("permissions.listLabel")}>
+				<AnimatePresence initial={false} mode="popLayout">
 				{rows.map(({ tool, icon: Icon }) => {
 					const policy = state?.policies.find(entry => entry.tool === tool);
 					const plainName = t(`permissions.tools.${tool}`, { defaultValue: "" });
 					return (
-						<li key={tool} className="flex items-center gap-3 px-3 py-2">
+						<motion.li key={tool} {...listRowMotion} className="flex items-center gap-3 px-3 py-2">
 							<Icon aria-hidden className="size-4 shrink-0 text-fg-muted" />
 							<div className="min-w-0 flex-1">
 								<div className="flex items-center gap-2">
@@ -108,9 +97,10 @@ export function PermissionsTab({ omp, approval }: { omp: OmpSettings; approval: 
 								onValueChange={choice => void setPolicy(tool, choice)}
 								options={CHOICES.map(value => ({ value, label: t(`permissions.choice.${value}`) }))}
 							/>
-						</li>
+						</motion.li>
 					);
 				})}
+				</AnimatePresence>
 			</ul>
 			<p className="mt-3 text-sm text-fg-muted">{t("permissions.defaultHelp")}</p>
 			<form onSubmit={addTool} className="mt-5 flex items-end gap-2">

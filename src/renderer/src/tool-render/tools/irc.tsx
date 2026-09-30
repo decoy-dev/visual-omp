@@ -205,7 +205,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					{receipts.map((receipt, i) => (
 						<Row key={i} k={receipt.to}>
 							<Badge tone={outcomeTone(receipt.outcome)}>{receipt.outcome}</Badge>
-							{receipt.error && <span className="tv-err-text"> — {receipt.error}</span>}
+							{receipt.error && <span className="tv-err-text">: {receipt.error}</span>}
 						</Row>
 					))}
 				</div>
@@ -223,7 +223,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					</Row>
 				</div>
 			)}
-			{timedOut && <Note tone="warn">No reply yet — they may answer later; check inbox or wait again.</Note>}
+			{timedOut && <Note tone="warn">No reply yet. They may answer later, so check the inbox or wait again.</Note>}
 			{inbox.length > 0 && (
 				<div className="tv-list">
 					{inbox.map((msg, i) => (

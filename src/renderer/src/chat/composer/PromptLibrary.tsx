@@ -4,7 +4,8 @@
  * entry puts it into the composer — saved prompts as text, commands as `/name `, skills as
  * `/skill:name ` — without sending.
  */
-import { BookMarked, Pencil, Plus, Sparkles, SquareSlash, Trash2 } from "lucide-react";
+import { BookBookmark, Command, GraduationCap, PencilSimple, Plus, Trash } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
@@ -13,7 +14,8 @@ import type { CustomCommand } from "@shared/contracts/composer";
 import type { SkillEntry } from "@shared/contracts/skills";
 import {
 	Button,
-	cn,
+	duration,
+	ease,
 	Dialog,
 	DialogContent,
 	EmptyState,
@@ -21,6 +23,7 @@ import {
 	Input,
 	SearchInput,
 	Skeleton,
+	spring,
 	Tabs,
 	TabsContent,
 	TabsList,
@@ -90,35 +93,28 @@ function onListKey(event: KeyboardEvent<HTMLUListElement>) {
 	}
 }
 
-function Row({
-	icon,
-	title,
-	detail,
-	onPick,
-	actions,
-}: {
-	icon: ReactNode;
-	title: ReactNode;
-	detail: ReactNode;
-	onPick(): void;
-	actions?: ReactNode;
-}) {
+/** One pickable entry. Rows enter, leave and reflow as the filter or the saved list changes. */
+function Row({ title, detail, onPick, actions }: { title: ReactNode; detail: ReactNode; onPick(): void; actions?: ReactNode }) {
 	return (
-		<li className="group flex items-center gap-1 rounded-md pr-1 hover:bg-hover focus-within:bg-hover">
+		<motion.li
+			layout="position"
+			initial={{ opacity: 0, y: 4 }}
+			animate={{ opacity: 1, y: 0 }}
+			exit={{ opacity: 0, transition: { duration: duration.fast, ease: "easeIn" } }}
+			transition={{ layout: spring.gentle, y: spring.gentle, opacity: { duration: duration.base, ease: ease.outQuart } }}
+			className="group flex items-center gap-1 rounded-md pr-1 transition-colors duration-(--dur-fast) hover:bg-hover focus-within:bg-hover"
+		>
 			<button
 				type="button"
 				data-row
 				onClick={onPick}
-				className="flex min-w-0 flex-1 items-start gap-2.5 rounded-md px-2.5 py-2 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+				className="flex min-w-0 flex-1 flex-col rounded-md px-2.5 py-2 text-left outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
 			>
-				<span className="mt-0.5 inline-flex shrink-0 text-fg-faint [&>svg]:size-4">{icon}</span>
-				<span className="flex min-w-0 flex-col">
-					<span className="truncate text-md font-medium text-fg">{title}</span>
-					<span className="line-clamp-2 text-sm text-fg-muted">{detail}</span>
-				</span>
+				<span className="truncate text-md font-medium text-fg">{title}</span>
+				<span className="line-clamp-2 text-sm text-fg-muted">{detail}</span>
 			</button>
 			{actions}
-		</li>
+		</motion.li>
 	);
 }
 
@@ -180,33 +176,34 @@ function SavedTab({ query, draft, onPick }: { query: string; draft: string; onPi
 			</div>
 			{visible.length === 0 ? (
 				<EmptyState
-					icon={<BookMarked />}
+					icon={<BookBookmark />}
 					title={prompts.length === 0 ? t("library.savedEmptyTitle") : t("library.noMatch")}
 					body={prompts.length === 0 ? t("library.savedEmptyBody") : undefined}
 				/>
 			) : (
 				<ul className="flex flex-col" onKeyDown={onListKey}>
-					{visible.map(prompt => (
-						<Row
-							key={prompt.id}
-							icon={<BookMarked />}
-							title={prompt.title}
-							detail={prompt.text}
-							onPick={() => onPick(prompt.text, true)}
-							actions={
-								<span className="flex opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
-									<IconButton size="sm" label={t("library.edit")} icon={<Pencil />} onClick={() => setEditing(prompt)} />
-									<IconButton
-										size="sm"
-										variant="danger-ghost"
-										label={t("library.delete")}
-										icon={<Trash2 />}
-										onClick={() => remove(prompt.id)}
-									/>
-								</span>
-							}
-						/>
-					))}
+					<AnimatePresence initial={false}>
+						{visible.map(prompt => (
+							<Row
+								key={prompt.id}
+								title={prompt.title}
+								detail={prompt.text}
+								onPick={() => onPick(prompt.text, true)}
+								actions={
+									<span className="flex opacity-0 transition-opacity duration-(--dur-fast) group-hover:opacity-100 group-focus-within:opacity-100">
+										<IconButton size="sm" label={t("library.edit")} icon={<PencilSimple />} onClick={() => setEditing(prompt)} />
+										<IconButton
+											size="sm"
+											variant="danger-ghost"
+											label={t("library.delete")}
+											icon={<Trash />}
+											onClick={() => remove(prompt.id)}
+										/>
+									</span>
+								}
+							/>
+						))}
+					</AnimatePresence>
 				</ul>
 			)}
 		</div>
@@ -243,13 +240,13 @@ function LoadingRows() {
 function CommandsTab({ query, projectPath, onPick }: { query: string; projectPath: string; onPick(text: string, replace: boolean): void }) {
 	const { t } = useTranslation("composer");
 	const { data, error } = useLoad(() => window.vomp.invoke("composer:commands", projectPath), [projectPath]);
-	if (error) return <EmptyState icon={<SquareSlash />} title={t("library.loadFailed")} body={error} />;
+	if (error) return <EmptyState icon={<Command />} title={t("library.loadFailed")} body={error} />;
 	if (!data) return <LoadingRows />;
 	const visible = data.filter((command: CustomCommand) => matches(query, command.name, command.description));
 	if (visible.length === 0) {
 		return (
 			<EmptyState
-				icon={<SquareSlash />}
+				icon={<Command />}
 				title={data.length === 0 ? t("library.commandsEmptyTitle") : t("library.noMatch")}
 				body={data.length === 0 ? t("library.commandsEmptyBody") : undefined}
 			/>
@@ -257,20 +254,21 @@ function CommandsTab({ query, projectPath, onPick }: { query: string; projectPat
 	}
 	return (
 		<ul className="flex flex-col pt-3" onKeyDown={onListKey}>
-			{visible.map(command => (
-				<Row
-					key={command.filePath}
-					icon={<SquareSlash />}
-					title={
-						<>
-							<span className="font-mono">/{command.name}</span>
-							{command.argumentHint && <span className="ml-2 font-mono text-sm text-fg-faint">{command.argumentHint}</span>}
-						</>
-					}
-					detail={`${command.description || t("library.noDescription")} · ${t(`library.scope.${command.scope}`)}`}
-					onPick={() => onPick(`/${command.name} `, false)}
-				/>
-			))}
+			<AnimatePresence initial={false}>
+				{visible.map(command => (
+					<Row
+						key={command.filePath}
+						title={
+							<>
+								<span className="font-mono">/{command.name}</span>
+								{command.argumentHint && <span className="ml-2 font-mono text-sm text-fg-faint">{command.argumentHint}</span>}
+							</>
+						}
+						detail={`${command.description || t("library.noDescription")} · ${t(`library.scope.${command.scope}`)}`}
+						onPick={() => onPick(`/${command.name} `, false)}
+					/>
+				))}
+			</AnimatePresence>
 		</ul>
 	);
 }
@@ -278,14 +276,14 @@ function CommandsTab({ query, projectPath, onPick }: { query: string; projectPat
 function SkillsTab({ query, projectPath, onPick }: { query: string; projectPath: string; onPick(text: string, replace: boolean): void }) {
 	const { t } = useTranslation("composer");
 	const { data, error } = useLoad(() => window.vomp.invoke("skills:list", projectPath), [projectPath]);
-	if (error) return <EmptyState icon={<Sparkles />} title={t("library.loadFailed")} body={error} />;
+	if (error) return <EmptyState icon={<GraduationCap />} title={t("library.loadFailed")} body={error} />;
 	if (!data) return <LoadingRows />;
 	const loaded = data.skills.filter((skill: SkillEntry) => skill.enabled);
 	const visible = loaded.filter(skill => matches(query, skill.name, skill.description));
 	if (visible.length === 0) {
 		return (
 			<EmptyState
-				icon={<Sparkles />}
+				icon={<GraduationCap />}
 				title={loaded.length === 0 ? t("library.skillsEmptyTitle") : t("library.noMatch")}
 				body={loaded.length === 0 ? t("library.skillsEmptyBody") : undefined}
 			/>
@@ -293,15 +291,16 @@ function SkillsTab({ query, projectPath, onPick }: { query: string; projectPath:
 	}
 	return (
 		<ul className="flex flex-col pt-3" onKeyDown={onListKey}>
-			{visible.map(skill => (
-				<Row
-					key={skill.filePath}
-					icon={<Sparkles />}
-					title={skill.name}
-					detail={skill.description || t("library.noDescription")}
-					onPick={() => onPick(`/skill:${skill.name} `, false)}
-				/>
-			))}
+			<AnimatePresence initial={false}>
+				{visible.map(skill => (
+					<Row
+						key={skill.filePath}
+						title={skill.name}
+						detail={skill.description || t("library.noDescription")}
+						onPick={() => onPick(`/skill:${skill.name} `, false)}
+					/>
+				))}
+			</AnimatePresence>
 		</ul>
 	);
 }
@@ -319,19 +318,19 @@ export function PromptLibrary({ open, tab, projectPath, draft, onTabChange, onCl
 				<Tabs value={tab} onValueChange={value => onTabChange(value === "commands" || value === "skills" ? value : "saved")}>
 					<div className="flex items-center gap-3">
 						<TabsList className="flex-1">
-							<TabsTrigger value="saved" icon={<BookMarked />}>
+							<TabsTrigger value="saved" icon={<BookBookmark />}>
 								{t("library.tabs.saved")}
 							</TabsTrigger>
-							<TabsTrigger value="commands" icon={<SquareSlash />}>
+							<TabsTrigger value="commands" icon={<Command />}>
 								{t("library.tabs.commands")}
 							</TabsTrigger>
-							<TabsTrigger value="skills" icon={<Sparkles />}>
+							<TabsTrigger value="skills" icon={<GraduationCap />}>
 								{t("library.tabs.skills")}
 							</TabsTrigger>
 						</TabsList>
 						<SearchInput size="sm" className="w-44" value={query} onValueChange={setQuery} placeholder={t("library.search")} />
 					</div>
-					<div className={cn("h-[360px] overflow-y-auto")}>
+					<div className="h-[360px] overflow-y-auto">
 						<TabsContent value="saved">
 							<SavedTab query={query} draft={draft} onPick={pick} />
 						</TabsContent>

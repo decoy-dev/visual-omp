@@ -1,4 +1,4 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { type KeyboardEvent, useEffect, useState, useSyncExternalStore } from "react";
 import type { SessionController, SessionView } from "../state/session";
 
 const noSubscribe = () => () => {};
@@ -54,4 +54,31 @@ export function elapsed(ms: number): string {
 	const minutes = Math.floor(total / 60);
 	const seconds = total % 60;
 	return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+}
+
+/**
+ * Arrow-key focus movement for a WAI-ARIA tablist with manual activation: Left/Right move focus to the previous or
+ * next tab (wrapping), Home/End to the first or last. Enter or Space on the focused tab then activates it.
+ * Returns true when the key was handled.
+ */
+export function moveTabFocus(event: KeyboardEvent<HTMLElement>): boolean {
+	const list = event.currentTarget.closest('[role="tablist"]');
+	if (!list) return false;
+	const tabs = [...list.querySelectorAll<HTMLElement>('[role="tab"]:not([disabled])')];
+	const index = tabs.indexOf(event.currentTarget);
+	if (index < 0) return false;
+	const target =
+		event.key === "ArrowRight"
+			? tabs[(index + 1) % tabs.length]
+			: event.key === "ArrowLeft"
+				? tabs[(index - 1 + tabs.length) % tabs.length]
+				: event.key === "Home"
+					? tabs[0]
+					: event.key === "End"
+						? tabs.at(-1)
+						: undefined;
+	if (!target) return false;
+	event.preventDefault();
+	target.focus();
+	return true;
 }

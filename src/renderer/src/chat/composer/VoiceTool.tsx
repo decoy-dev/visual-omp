@@ -9,13 +9,14 @@
  * TUI to start and stop; omp writes the words into its own editor, which the app reads back through
  * the TUI debug socket, moves into this composer, and clears from omp's editor with one Ctrl+C.
  */
-import { Loader2, Mic, Square } from "lucide-react";
+import { CircleNotch, Microphone, Square } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import type { ChatSlotProps } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
-import { Button, cn, Dialog, DialogContent, toast, Tooltip } from "../../ui";
+import { Button, cn, Dialog, DialogContent, spring, toast, Tooltip } from "../../ui";
 import { runInTerminal } from "../../features/panes/terminal";
 import { useComposerDrafts } from "./drafts";
 import { whenLive } from "./send";
@@ -174,13 +175,24 @@ export function VoiceTool({ session }: ChatSlotProps) {
 					)}
 				>
 					{recording && <span aria-hidden className="vo-ping absolute inset-0 rounded-md ring-2 ring-err" />}
-					{busy ? (
-						<Loader2 className="vo-spin size-4" aria-hidden />
-					) : recording ? (
-						<Square className="size-3.5 fill-current" aria-hidden />
-					) : (
-						<Mic className="size-4" aria-hidden />
-					)}
+					<AnimatePresence initial={false} mode="popLayout">
+						<motion.span
+							key={busy ? "busy" : recording ? "recording" : "idle"}
+							initial={{ opacity: 0, scale: 0.6 }}
+							animate={{ opacity: 1, scale: 1 }}
+							exit={{ opacity: 0, scale: 0.6 }}
+							transition={spring.snappy}
+							className="inline-flex"
+						>
+							{busy ? (
+								<CircleNotch className="vo-spin size-4" aria-hidden />
+							) : recording ? (
+								<Square weight="fill" className="size-3.5" aria-hidden />
+							) : (
+								<Microphone className="size-4" aria-hidden />
+							)}
+						</motion.span>
+					</AnimatePresence>
 				</button>
 			</Tooltip>
 			<span aria-live="polite" className="sr-only">

@@ -1,8 +1,8 @@
-import { FolderOpen, Trash2 } from "lucide-react";
+import { FolderOpen, Trash } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import type { SkillEntry } from "@shared/contracts/skills";
 import { Markdown } from "@/transcript/Markdown";
-import { BracketLabel, Button, Chip, Sheet, SheetContent, Skeleton, Switch } from "@/ui";
+import { Button, Chip, SectionLabel, Sheet, SheetContent, Skeleton, Switch } from "@/ui";
 import { LetterTile, Notice, useLoad } from "../shared";
 import { lockedReason, providerLabel } from "./model";
 
@@ -45,8 +45,8 @@ function DrawerBody({ skill, onToggle, onRemove }: Omit<SkillDrawerProps, "skill
 						{t("skills.drawer.showFile")}
 					</Button>
 					{skill.registry && (
-						<Button variant="danger-ghost" icon={<Trash2 />} onClick={() => onRemove(skill)}>
-							{t("common.remove")}
+						<Button variant="danger-ghost" icon={<Trash />} onClick={() => onRemove(skill)}>
+							{t("skills.remove")}
 						</Button>
 					)}
 				</>
@@ -61,21 +61,21 @@ function DrawerBody({ skill, onToggle, onRemove }: Omit<SkillDrawerProps, "skill
 			/>
 
 			<section className="flex flex-col gap-1.5">
-				<BracketLabel as="h3">{t("skills.drawer.what")}</BracketLabel>
+				<SectionLabel as="h3">{t("skills.drawer.what")}</SectionLabel>
 				<p className="text-md text-fg">{skill.description || t("skills.noDescription")}</p>
 			</section>
 
 			<section className="flex flex-col gap-1.5">
-				<BracketLabel as="h3">{t("skills.drawer.when")}</BracketLabel>
+				<SectionLabel as="h3">{t("skills.drawer.when")}</SectionLabel>
 				<p className="text-md text-fg-muted">{t(skill.hidden ? "skills.drawer.whenHidden" : "skills.drawer.whenAuto")}</p>
 				<code className="self-start rounded-sm bg-inset px-1.5 py-0.5 font-mono text-sm text-fg">/skill:{skill.name}</code>
 			</section>
 
 			<section className="flex flex-col gap-1.5">
-				<BracketLabel as="h3">{t("skills.drawer.source")}</BracketLabel>
+				<SectionLabel as="h3">{t("skills.drawer.source")}</SectionLabel>
 				<div className="flex flex-wrap items-center gap-1.5">
 					<Chip tone="neutral">{providerLabel(skill.provider)}</Chip>
-					{skill.registry && <Chip tone="blue">{`${skill.registry.id}@${skill.registry.version}`}</Chip>}
+					{skill.registry && <Chip tone="neutral" className="font-mono">{`${skill.registry.id}@${skill.registry.version}`}</Chip>}
 				</div>
 				<span className="break-all font-mono text-xs text-fg-faint">{skill.filePath}</span>
 			</section>
@@ -91,7 +91,7 @@ function DrawerBody({ skill, onToggle, onRemove }: Omit<SkillDrawerProps, "skill
 			)}
 
 			<section className="flex flex-col gap-1.5">
-				<BracketLabel as="h3">{t("skills.drawer.instructions")}</BracketLabel>
+				<SectionLabel as="h3">{t("skills.drawer.instructions")}</SectionLabel>
 				{doc.error ? (
 					<Notice tone="err">{doc.error}</Notice>
 				) : doc.data ? (

@@ -1,7 +1,7 @@
 /** Session modes and actions exposed to the palette, header, and menus. */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { ArrowDownToLine, Bot, Brain, CircleStop, Copy, Download, GitBranch, Goal, Repeat2, MessageSquarePlus, RefreshCw, ScanSearch, ShieldCheck, Sparkles, TreeDeciduous, WandSparkles, X } from "lucide-react";
+import { ArrowBendUpRight, ArrowsClockwise, ArrowsIn, Broom, ChatCircleDots, ClipboardText, ClockCounterClockwise, Cpu, Export, Eye, GitFork, Lightning, PencilSimple, Repeat, ShieldCheck, StopCircle, Target, TreeStructure } from "@phosphor-icons/react";
 import { Button, Dialog, DialogContent, Input, Menu, MenuContent, MenuItem, MenuTrigger, Textarea, toast } from "@/ui";
 import { registerCommand } from "../../registry/commands";
 import type { SheetProps } from "../../registry/slots";
@@ -76,7 +76,7 @@ function GoalDialog({ session, close }: { session: SessionController; close(): v
 	return (
 		<Dialog open onOpenChange={open => !open && close()}>
 			<DialogContent title={t("goal.title")} description={t("goal.description")} size="md" footer={<><Button variant="ghost" onClick={close}>{t("common.cancel")}</Button>{active || paused ? <><Button variant="secondary" loading={busy} onClick={() => void run(`/goal ${paused ? "resume" : "pause"}`)}>{t(paused ? "goal.resume" : "goal.pause")}</Button><Button variant="danger-ghost" loading={busy} onClick={() => void run("/goal drop")}>{t("goal.drop")}</Button></> : <Button variant="primary" loading={busy} disabled={!objective.trim()} onClick={() => void start(false)}>{t("goal.start")}</Button>}</>}>
-				{active || paused ? <p className="rounded-md border border-border bg-inset p-3 text-md text-fg-muted">{t(paused ? "goal.pausedBody" : "goal.activeBody")}</p> : <div className="space-y-3"><Textarea autoFocus rows={4} label={t("goal.objective")} value={objective} onChange={event => setObjective(event.currentTarget.value)} /><Input label={t("goal.budget")} description={t("goal.budgetHint")} inputMode="numeric" value={budget} onChange={event => setBudget(event.currentTarget.value)} /><Button variant="ghost" onClick={() => void start(true)}>{t("goal.guided")}</Button></div>}
+				{active || paused ? <p className="text-md text-fg-muted">{t(paused ? "goal.pausedBody" : "goal.activeBody")}</p> : <div className="space-y-3"><Textarea autoFocus rows={4} label={t("goal.objective")} value={objective} onChange={event => setObjective(event.currentTarget.value)} /><Input label={t("goal.budget")} description={t("goal.budgetHint")} inputMode="numeric" value={budget} onChange={event => setBudget(event.currentTarget.value)} /><Button variant="ghost" onClick={() => void start(true)}>{t("goal.guided")}</Button></div>}
 			</DialogContent>
 		</Dialog>
 	);
@@ -136,14 +136,14 @@ function openLoop(session: SessionController): void { useApp.getState().openShee
 
 const sessionWhen = (ctx: { session: SessionController | null }) => ctx.session !== null;
 
-registerCommand({ id: "chat.restart", title: "session:commands.restart.title", hint: "session:commands.restart.hint", slash: "/restart", group: "modes", icon: RefreshCw, header: 10, when: sessionWhen, run: async ({ session }) => { if (session) await session.restart(); } });
-registerCommand({ id: "chat.compact", title: "session:commands.compact.title", hint: "session:commands.compact.hint", slash: "/compact", group: "modes", icon: Copy, header: 20, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "compact"); } });
-registerCommand({ id: "chat.plan", title: "session:commands.plan.title", hint: "session:commands.plan.hint", slash: "/plan", group: "modes", icon: Brain, header: 30, when: sessionWhen, run: async ({ session }) => { if (session) await togglePlan(session); } });
-registerCommand({ id: "chat.goal", title: "session:commands.goal.title", hint: "session:commands.goal.hint", slash: "/goal", group: "modes", icon: Goal, when: sessionWhen, run: ({ session }) => { if (session) openGoal(session); } });
-registerCommand({ id: "chat.guidedGoal", title: "session:commands.guided.title", hint: "session:commands.guided.hint", slash: "/guided-goal", group: "modes", icon: WandSparkles, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "guided"); } });
-registerCommand({ id: "chat.vibe", title: "session:commands.vibe.title", hint: "session:commands.vibe.hint", slash: "/vibe", group: "modes", icon: Sparkles, when: sessionWhen, run: ({ session }) => { if (session) void runAndReport(session, "/vibe"); } });
-registerCommand({ id: "chat.loop", title: "session:commands.loop.title", hint: "session:commands.loop.hint", slash: "/loop", group: "modes", icon: Repeat2, when: sessionWhen, run: ({ session }) => { if (session) openLoop(session); } });
-registerCommand({ id: "chat.advisor", title: "session:commands.advisor.title", hint: "session:commands.advisor.hint", slash: "/advisor on|off|status", group: "modes", icon: Bot, when: sessionWhen, run: async ({ session }) => {
+registerCommand({ id: "chat.restart", title: "session:commands.restart.title", hint: "session:commands.restart.hint", slash: "/restart", group: "modes", icon: ArrowsClockwise, header: 10, when: sessionWhen, run: async ({ session }) => { if (session) await session.restart(); } });
+registerCommand({ id: "chat.compact", title: "session:commands.compact.title", hint: "session:commands.compact.hint", slash: "/compact", group: "modes", icon: ArrowsIn, header: 20, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "compact"); } });
+registerCommand({ id: "chat.plan", title: "session:commands.plan.title", hint: "session:commands.plan.hint", slash: "/plan", group: "modes", icon: ClipboardText, header: 30, when: sessionWhen, run: async ({ session }) => { if (session) await togglePlan(session); } });
+registerCommand({ id: "chat.goal", title: "session:commands.goal.title", hint: "session:commands.goal.hint", slash: "/goal", group: "modes", icon: Target, when: sessionWhen, run: ({ session }) => { if (session) openGoal(session); } });
+registerCommand({ id: "chat.guidedGoal", title: "session:commands.guided.title", hint: "session:commands.guided.hint", slash: "/guided-goal", group: "modes", icon: ChatCircleDots, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "guided"); } });
+registerCommand({ id: "chat.vibe", title: "session:commands.vibe.title", hint: "session:commands.vibe.hint", slash: "/vibe", group: "modes", icon: Lightning, when: sessionWhen, run: ({ session }) => { if (session) void runAndReport(session, "/vibe"); } });
+registerCommand({ id: "chat.loop", title: "session:commands.loop.title", hint: "session:commands.loop.hint", slash: "/loop", group: "modes", icon: Repeat, when: sessionWhen, run: ({ session }) => { if (session) openLoop(session); } });
+registerCommand({ id: "chat.advisor", title: "session:commands.advisor.title", hint: "session:commands.advisor.hint", slash: "/advisor on|off|status", group: "modes", icon: Eye, when: sessionWhen, run: async ({ session }) => {
 	if (!session) return;
 	try {
 		const { output } = await runCommand(session, "/advisor status", { until: (_lines, lines) => lines.some(line => /Advisor is disabled|Advisor Status/.test(line)) });
@@ -151,7 +151,7 @@ registerCommand({ id: "chat.advisor", title: "session:commands.advisor.title", h
 		await runAndReport(session, `/advisor ${enabled ? "off" : "on"}`);
 	} catch (error) { reportFailure(error); }
 } });
-registerCommand({ id: "chat.handoff", title: "session:commands.handoff.title", hint: "session:commands.handoff.hint", slash: "/handoff", group: "modes", icon: ArrowDownToLine, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "handoff"); } });
+registerCommand({ id: "chat.handoff", title: "session:commands.handoff.title", hint: "session:commands.handoff.hint", slash: "/handoff", group: "modes", icon: ArrowBendUpRight, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "handoff"); } });
 registerCommand({ id: "chat.security", title: "session:commands.security.title", hint: "session:commands.security.hint", slash: "/security scan", group: "modes", icon: ShieldCheck, when: sessionWhen, run: async ({ session }) => {
 	if (!session) return;
 	try {
@@ -161,18 +161,18 @@ registerCommand({ id: "chat.security", title: "session:commands.security.title",
 		toast({ message: result.output.at(-1) ?? i18n.t("session:security.started") });
 	} catch (error) { reportFailure(error); }
 } });
-registerCommand({ id: "chat.cleanse", title: "session:commands.cleanse.title", hint: "session:commands.cleanse.hint", slash: "/cleanse", group: "modes", icon: ScanSearch, when: sessionWhen, run: async ({ session }) => { if (session) { const result = await runAndReport(session, "/cleanse"); if (result && !parseStatusLine(result.screen)) useApp.getState().openTerminal(session.tabId); } } });
-registerCommand({ id: "chat.export", title: "session:commands.export.title", hint: "session:commands.export.hint", slash: "/export", group: "modes", icon: Download, when: sessionWhen, run: async ({ session }) => { if (session) { const result = await runCommand(session, "/export", { timeoutMs: 10000, until: (_lines, out) => out.some(line => /Session exported to/i.test(line)) }); const path = result.output.find(line => /Session exported to/i.test(line)); if (path) toast({ tone: "ok", message: path, action: { label: i18n.t("session:export.show"), onClick: () => void window.vomp.invoke("app:showItem", path.split(":").at(-1)?.trim() ?? path) } }); } } });
-registerCommand({ id: "chat.rename", title: "session:commands.rename.title", hint: "session:commands.rename.hint", slash: "/rename", group: "modes", icon: MessageSquarePlus, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "rename"); } });
-registerCommand({ id: "chat.stop", title: "session:commands.stop.title", hint: "session:commands.stop.hint", slash: "Esc", shortcut: "⌘.", group: "chat", icon: CircleStop, when: ctx => Boolean(ctx.session?.getSnapshot().working), run: ({ session }) => session?.abort() });
-registerCommand({ id: "chat.model", title: "session:commands.model.title", hint: "session:commands.model.hint", slash: "/switch", shortcut: "⌘⇧M", group: "modes", icon: Brain, when: sessionWhen, run: ({ session }) => { if (session) usePickerRequests.getState().openModel(session.tabId); } });
-registerCommand({ id: "chat.tree", title: "session:commands.tree.title", hint: "session:commands.tree.hint", slash: "/tree", group: "modes", icon: TreeDeciduous, when: sessionWhen, run: ({ session }) => { if (session) useApp.getState().openSheet("session-tree", { tabId: session.tabId }); } });
-registerCommand({ id: "chat.fork", title: "session:commands.fork.title", hint: "session:commands.fork.hint", slash: "/fork", group: "modes", icon: GitBranch, when: sessionWhen, run: async ({ session }) => { if (session) try { await forkChat(session); } catch (error) { reportFailure(error); } } });
-registerCommand({ id: "chat.rewindTo", title: "session:commands.rewind.title", hint: "session:commands.rewind.hint", slash: "/tree", group: "modes", icon: X, when: ctx => Boolean(ctx.session && ctx.entryId), run: async ctx => {
+registerCommand({ id: "chat.cleanse", title: "session:commands.cleanse.title", hint: "session:commands.cleanse.hint", slash: "/cleanse", group: "modes", icon: Broom, when: sessionWhen, run: async ({ session }) => { if (session) { const result = await runAndReport(session, "/cleanse"); if (result && !parseStatusLine(result.screen)) useApp.getState().openTerminal(session.tabId); } } });
+registerCommand({ id: "chat.export", title: "session:commands.export.title", hint: "session:commands.export.hint", slash: "/export", group: "modes", icon: Export, when: sessionWhen, run: async ({ session }) => { if (session) { const result = await runCommand(session, "/export", { timeoutMs: 10000, until: (_lines, out) => out.some(line => /Session exported to/i.test(line)) }); const path = result.output.find(line => /Session exported to/i.test(line)); if (path) toast({ tone: "ok", message: path, action: { label: i18n.t("session:export.show"), onClick: () => void window.vomp.invoke("app:showItem", path.split(":").at(-1)?.trim() ?? path) } }); } } });
+registerCommand({ id: "chat.rename", title: "session:commands.rename.title", hint: "session:commands.rename.hint", slash: "/rename", group: "modes", icon: PencilSimple, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "rename"); } });
+registerCommand({ id: "chat.stop", title: "session:commands.stop.title", hint: "session:commands.stop.hint", slash: "Esc", shortcut: "⌘.", group: "chat", icon: StopCircle, when: ctx => Boolean(ctx.session?.getSnapshot().working), run: ({ session }) => session?.abort() });
+registerCommand({ id: "chat.model", title: "session:commands.model.title", hint: "session:commands.model.hint", slash: "/switch", shortcut: "⌘⇧M", group: "modes", icon: Cpu, when: sessionWhen, run: ({ session }) => { if (session) usePickerRequests.getState().openModel(session.tabId); } });
+registerCommand({ id: "chat.tree", title: "session:commands.tree.title", hint: "session:commands.tree.hint", slash: "/tree", group: "modes", icon: TreeStructure, when: sessionWhen, run: ({ session }) => { if (session) useApp.getState().openSheet("session-tree", { tabId: session.tabId }); } });
+registerCommand({ id: "chat.fork", title: "session:commands.fork.title", hint: "session:commands.fork.hint", slash: "/fork", group: "modes", icon: GitFork, when: sessionWhen, run: async ({ session }) => { if (session) try { await forkChat(session); } catch (error) { reportFailure(error); } } });
+registerCommand({ id: "chat.rewindTo", title: "session:commands.rewind.title", hint: "session:commands.rewind.hint", slash: "/tree", group: "modes", icon: ClockCounterClockwise, when: ctx => Boolean(ctx.session && ctx.entryId), run: async ctx => {
 	if (!ctx.session || !ctx.entryId) return;
 	try { await navigateTo(ctx.session, ctx.entryId); } catch (error) { toast({ tone: "warn", message: error instanceof Error ? error.message : String(error), action: { label: i18n.t("session:navigate.openTree"), onClick: () => { useApp.getState().openSheet("session-tree", { tabId: ctx.session!.tabId, entryId: ctx.entryId }); } } }); }
 } });
-registerCommand({ id: "chat.forkFrom", title: "session:commands.forkFrom.title", hint: "session:commands.forkFrom.hint", slash: "/fork", group: "modes", icon: GitBranch, when: ctx => Boolean(ctx.session && ctx.entryId), run: async ctx => { if (ctx.session) try { await forkChat(ctx.session, ctx.entryId); } catch (error) { reportFailure(error); } } });
+registerCommand({ id: "chat.forkFrom", title: "session:commands.forkFrom.title", hint: "session:commands.forkFrom.hint", slash: "/fork", group: "modes", icon: GitFork, when: ctx => Boolean(ctx.session && ctx.entryId), run: async ctx => { if (ctx.session) try { await forkChat(ctx.session, ctx.entryId); } catch (error) { reportFailure(error); } } });
 
 export function ComposerTools(props: { session: SessionController }) {
 	const view = useSessionView(props.session);
@@ -184,5 +184,5 @@ export function SessionModeHeader({ session }: { session: SessionController }) {
 	const { t } = useTranslation("session");
 	const { status } = useOmpScreen(session);
 	const view = useSessionView(session);
-	return <div className="flex items-center gap-1">{status && status.plan !== "off" && <Button size="sm" variant="ghost" icon={<Brain />} onClick={() => void togglePlan(session)}>{t(status.plan === "paused" ? "modes.chip.planPaused" : "modes.chip.plan")}</Button>}{view.working && <Button size="sm" variant="danger-ghost" icon={<CircleStop />} onClick={() => session.abort()}>{t("commands.stop.title")}</Button>}</div>;
+	return <div className="flex items-center gap-1">{status && status.plan !== "off" && <Button size="sm" variant="ghost" icon={<ClipboardText />} onClick={() => void togglePlan(session)}>{t(status.plan === "paused" ? "modes.chip.planPaused" : "modes.chip.plan")}</Button>}{view.working && <Button size="sm" variant="danger-ghost" icon={<StopCircle />} onClick={() => session.abort()}>{t("commands.stop.title")}</Button>}</div>;
 }

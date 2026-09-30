@@ -1,5 +1,5 @@
 import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
-import { ChevronRight } from "lucide-react";
+import { CaretRight } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { memo, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ActiveTool, ConnectionPhase } from "../collab/lib/client";
@@ -69,7 +69,7 @@ function ThinkingBlock({ text, redacted }: { text: string; redacted?: boolean })
 	return (
 		<div className="tr-think">
 			<button type="button" className="tr-think-head" onClick={() => setOpen(v => !v)}>
-				<ChevronRight size={11} className={`tr-chev${open ? " tr-chev--open" : ""}`} />
+				<CaretRight size={11} className={`tr-chev${open ? " tr-chev--open" : ""}`} />
 				thinking{redacted ? " · redacted" : ""}
 			</button>
 			{open && <div className="tr-think-body">{redacted ? "(redacted by provider)" : text}</div>}

@@ -3,13 +3,13 @@
  * (`http://localhost:*`, `127.0.0.1`) and `https:` pages load, matching the app's frame CSP.
  * Dev-server addresses printed by omp's commands are offered as one-click suggestions.
  */
-import { ArrowLeft, ArrowRight, ExternalLink, Globe, MonitorPlay, RotateCw } from "lucide-react";
+import { ArrowClockwise, ArrowLeft, ArrowRight, ArrowSquareOut, Globe, MonitorPlay } from "@phosphor-icons/react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { PaneProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
-import { Button, cn, EmptyState, IconButton } from "../../ui";
+import { Button, cn, EmptyState, Expand, IconButton } from "../../ui";
 import { PaneToolbar } from "./common";
 import { devServerUrls } from "./derive";
 import { normalizePreviewUrl } from "./preview-url";
@@ -104,7 +104,7 @@ export function PreviewPane({ session, projectPath }: PaneProps) {
 				<IconButton
 					size="sm"
 					label={t("preview.reload")}
-					icon={<RotateCw />}
+					icon={<ArrowClockwise />}
 					disabled={!current}
 					onClick={() => usePreview.getState().reload(project)}
 				/>
@@ -129,26 +129,24 @@ export function PreviewPane({ session, projectPath }: PaneProps) {
 				<IconButton
 					size="sm"
 					label={t("preview.openExternal")}
-					icon={<ExternalLink />}
+					icon={<ArrowSquareOut />}
 					disabled={!current}
 					onClick={() => current && void window.vomp.invoke("app:openExternal", current)}
 				/>
 			</PaneToolbar>
-			{invalid && (
-				<p role="alert" className="border-b border-border bg-err-bg px-3 py-1.5 text-xs text-err">
+			<Expand open={invalid} className="border-b border-border bg-err-bg px-3 py-1.5">
+				<p role="alert" className="text-xs text-err">
 					{t("preview.invalid")}
 				</p>
-			)}
-			{suggestions.length > 0 && (
-				<div className="flex shrink-0 flex-wrap items-center gap-1.5 border-b border-border bg-panel px-3 py-1.5">
-					<span className="text-xs text-fg-muted">{t("preview.detected")}</span>
-					{suggestions.map(url => (
-						<Button key={url} size="sm" variant="secondary" icon={<Globe />} className="h-6 font-mono text-xs" onClick={() => navigate(url)}>
-							{url.replace(/^https?:\/\//, "")}
-						</Button>
-					))}
-				</div>
-			)}
+			</Expand>
+			<Expand open={suggestions.length > 0} className="flex flex-wrap items-center gap-1.5 border-b border-border bg-panel px-3 py-1.5">
+				<span className="text-xs text-fg-muted">{t("preview.detected")}</span>
+				{suggestions.map(url => (
+					<Button key={url} size="sm" variant="secondary" icon={<Globe />} className="h-6 font-mono text-xs" onClick={() => navigate(url)}>
+						{url.replace(/^https?:\/\//, "")}
+					</Button>
+				))}
+			</Expand>
 			{current ? (
 				<iframe
 					key={`${current}#${history.nonce}`}

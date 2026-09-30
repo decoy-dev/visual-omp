@@ -1,10 +1,10 @@
-/** DESIGN §4.19 — navigable map of every branch in a chat's JSONL entry tree. */
+/** DESIGN §4.19: navigable map of every branch in a chat's JSONL entry tree. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as RD from "@radix-ui/react-dialog";
-import { GitBranch, Minus, Plus, RotateCcw } from "lucide-react";
+import { ArrowCounterClockwise, Minus, Plus, TreeStructure } from "@phosphor-icons/react";
+import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
-import { Button, cn, EmptyState, Mark, toast } from "@/ui";
-import { focusRing } from "@/ui/styles";
+import { Button, cn, EmptyState, Expand, Mark, PresenceSwap, spring, toast } from "@/ui";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import type { SheetProps } from "../../registry/slots";
 import { controllerFor, useApp } from "../../state/app";
@@ -22,13 +22,14 @@ const STEP_X = 240;
 const STEP_Y = 72;
 const PAD = 48;
 
+/** `t` is scoped to `session:tree`. */
 function nodeTitle(node: MapNode, t: (key: string) => string): string {
-	if (node.kind === "summary") return t("summary");
-	return node.label || t(node.kind);
+	if (node.kind === "summary") return t("nodes.summary");
+	return node.label || t(`nodes.${node.kind}`);
 }
 
 function MapCanvas({ map, selected, onSelect }: { map: TreeMap; selected: string | null; onSelect(id: string): void }) {
-	const { t } = useTranslation("session", { keyPrefix: "tree.nodes" });
+	const { t } = useTranslation("session", { keyPrefix: "tree" });
 	const [scale, setScale] = useState(0.82);
 	const [offset, setOffset] = useState({ x: 16, y: 16 });
 	const drag = useRef<{ x: number; y: number; ox: number; oy: number } | null>(null);
@@ -36,6 +37,7 @@ function MapCanvas({ map, selected, onSelect }: { map: TreeMap; selected: string
 	const width = Math.max(800, map.columns * STEP_X + PAD * 2);
 	const height = Math.max(280, map.lanes * STEP_Y + PAD * 2);
 	const byId = useMemo(() => new Map(map.nodes.map(node => [node.id, node])), [map.nodes]);
+	const picked = selected ? byId.get(selected) : undefined;
 
 	useEffect(() => {
 		const element = canvasRef.current;
@@ -70,7 +72,7 @@ function MapCanvas({ map, selected, onSelect }: { map: TreeMap; selected: string
 		>
 			<svg
 				role="tree"
-				aria-label={t("aria")}
+				aria-label={t("nodes.aria")}
 				viewBox={`0 0 ${width} ${height}`}
 				className="h-full w-full"
 				preserveAspectRatio="xMinYMin meet"
@@ -89,24 +91,41 @@ function MapCanvas({ map, selected, onSelect }: { map: TreeMap; selected: string
 					{map.nodes.map(node => {
 						const x = PAD + node.column * STEP_X;
 						const y = PAD + node.lane * STEP_Y;
-						const current = selected === node.id || node.current;
-						const tone = node.kind === "user" ? "fill-panel" : node.kind === "summary" ? "fill-inset" : "fill-panel";
+						const tone = node.kind === "summary" ? "fill-inset" : "fill-panel";
 						const title = nodeTitle(node, t);
 						return (
-							<g key={node.id} role="treeitem" aria-selected={current} aria-label={`${node.kind}: ${title}`} tabIndex={0} onClick={() => onSelect(node.id)} onKeyDown={event => event.key === "Enter" && onSelect(node.id)} className="cursor-pointer">
-								<rect x={x} y={y} width={NODE_W} height={NODE_H} rx={10} className={cn(tone, current ? "stroke-accent" : "stroke-border")} strokeWidth={current ? 2.5 : 1.2} />
-								<text x={x + 12} y={y + 16} className={node.kind === "user" ? "fill-fg-muted text-[9px] font-medium" : "fill-fg-faint text-[9px] font-medium"}>{node.kind === "user" ? "YOU" : node.kind === "summary" ? "CHECKPOINT" : "OMP"}</text>
+							<g key={node.id} role="treeitem" aria-selected={selected === node.id || node.current} aria-label={`${t(`nodes.${node.kind}`)}: ${title}`} tabIndex={0} onClick={() => onSelect(node.id)} onKeyDown={event => event.key === "Enter" && onSelect(node.id)} className="group cursor-pointer outline-none">
+								<rect x={x} y={y} width={NODE_W} height={NODE_H} rx={10} className={cn(tone, node.current ? "stroke-accent" : "stroke-border", "transition-[stroke] duration-(--dur-fast) group-hover:stroke-border-strong group-focus-visible:stroke-ring")} strokeWidth={node.current ? 1.8 : 1.2} />
+								<text x={x + 12} y={y + 16} className={node.kind === "user" ? "fill-fg-muted text-[9px] font-medium" : "fill-fg-faint text-[9px] font-medium"}>{t(`nodes.short.${node.kind}`)}</text>
 								<text x={x + 12} y={y + 31} className="fill-fg text-[11px] font-medium">{title.slice(0, 25)}{title.length > 25 ? "…" : ""}</text>
 							</g>
 						);
 					})}
+					{/* One selection ring that glides to the picked node, so the eye follows the change of selection. */}
+					{picked && (
+						<motion.rect
+							aria-hidden
+							pointerEvents="none"
+							x={0}
+							y={0}
+							width={NODE_W + 8}
+							height={NODE_H + 8}
+							rx={14}
+							fill="none"
+							className="stroke-accent"
+							strokeWidth={2}
+							initial={false}
+							animate={{ x: PAD + picked.column * STEP_X - 4, y: PAD + picked.lane * STEP_Y - 4 }}
+							transition={spring.snappy}
+						/>
+					)}
 				</g>
 			</svg>
 			<div className="absolute bottom-3 right-3 flex items-center gap-1 rounded-md border border-border bg-panel p-1 shadow-(--shadow-card)">
 				<Button size="sm" variant="ghost" aria-label={t("zoomOut")} onClick={() => setScale(value => Math.max(0.35, value - 0.1))}><Minus className="size-3.5" /></Button>
 				<span className="w-10 text-center font-mono text-xs text-fg-muted">{Math.round(scale * 100)}%</span>
 				<Button size="sm" variant="ghost" aria-label={t("zoomIn")} onClick={() => setScale(value => Math.min(2.2, value + 0.1))}><Plus className="size-3.5" /></Button>
-				<Button size="sm" variant="ghost" aria-label={t("fit")} onClick={() => { setScale(0.82); setOffset({ x: 16, y: 16 }); }}><RotateCcw className="size-3.5" /></Button>
+				<Button size="sm" variant="ghost" aria-label={t("fit")} onClick={() => { setScale(0.82); setOffset({ x: 16, y: 16 }); }}><ArrowCounterClockwise className="size-3.5" /></Button>
 			</div>
 		</div>
 	);
@@ -156,18 +175,35 @@ function TreeSheet({ props, close }: SheetProps<TreeProps>) {
 	return (
 		<RD.Root open onOpenChange={open => !open && close()}>
 			<RD.Portal>
-				<RD.Overlay className="vo-scrim fixed inset-0 z-(--z-scrim) bg-backdrop backdrop-blur-[2px]" />
-				<RD.Content className="fixed left-1/2 top-1/2 z-(--z-sheet) flex h-[min(640px,calc(100vh-64px))] w-[min(960px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-xl border border-border bg-overlay text-fg shadow-(--shadow-overlay) outline-none">
+				<RD.Overlay className="vo-scrim fixed inset-0 z-(--z-scrim) bg-backdrop" />
+				<RD.Content className="vo-dialog fixed left-1/2 top-1/2 z-(--z-sheet) flex h-[min(640px,calc(100vh-64px))] w-[min(960px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-overlay text-fg shadow-(--shadow-overlay) outline-none">
 					<header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-5">
 						<Mark size={20} title={title} />
 						<div className="min-w-0 flex-1"><RD.Title className="text-lg font-semibold">{title}</RD.Title><RD.Description className="text-sm text-fg-muted">{t("tree.description")}</RD.Description></div>
 						<Button size="sm" variant="ghost" onClick={close}>{t("common.close")}</Button>
 					</header>
-					{error && <div role="alert" className="border-b border-err/30 bg-err-bg px-4 py-2 text-sm text-err">{error}</div>}
+					<Expand open={error !== null}>
+						<div role="alert" className="border-b border-err/30 bg-err-bg px-4 py-2 text-sm text-err">{error}</div>
+					</Expand>
 					<div className="flex min-h-0 flex-1">
-						{map && map.nodes.length > 0 ? <MapCanvas map={map} selected={selected} onSelect={setSelected} /> : <div className="flex flex-1 items-center justify-center p-6"><EmptyState icon={<GitBranch />} title={error ?? t("tree.empty")} body={t("tree.emptyHint")} /></div>}
+						{map && map.nodes.length > 0 ? <MapCanvas map={map} selected={selected} onSelect={setSelected} /> : <div className="flex flex-1 items-center justify-center p-6"><EmptyState icon={<TreeStructure />} title={error ?? t("tree.empty")} body={t("tree.emptyHint")} /></div>}
 						<aside className="flex w-80 shrink-0 flex-col border-l border-border bg-panel p-4">
-						{node ? <><div className="text-xs font-semibold uppercase tracking-wide text-fg-faint">{t(`tree.nodes.${node.kind}`)}</div><h3 className="mt-1 text-md font-semibold text-fg">{node.label || t("tree.summary")}</h3><p className="mt-1 text-xs text-fg-faint">{node.timestamp}</p><div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-md bg-inset p-3 text-sm"><Markdown text={node.text || t("tree.noText")} /></div><div className="mt-3 flex flex-col gap-2"><Button variant="ghost" disabled={busy} onClick={() => void act(false)}>{t(node.kind === "user" ? "tree.rewind" : "tree.resume")}</Button><Button variant="secondary" disabled={busy} onClick={() => void act(true)}>{t("tree.fork")}</Button></div></> : <p className="text-sm text-fg-muted">{t("tree.selectHint")}</p>}
+							{/* Crossfade the preview when the selection moves, so the swap reads as a new selection. */}
+							<PresenceSwap swapKey={node?.id ?? "none"} className="flex min-h-0 flex-1 flex-col">
+								{node ? (
+									<>
+										<h3 className="text-md font-semibold text-fg">{node.label || t(`tree.nodes.${node.kind}`)}</h3>
+										<p className="mt-1 text-xs text-fg-faint">{[node.label ? t(`tree.nodes.${node.kind}`) : null, node.timestamp].filter(Boolean).join(" · ")}</p>
+										<div className="mt-3 min-h-0 flex-1 overflow-y-auto rounded-md bg-inset p-3 text-sm"><Markdown text={node.text || t("tree.noText")} /></div>
+										<div className="mt-3 flex flex-col gap-2">
+											<Button variant="ghost" disabled={busy} onClick={() => void act(false)}>{t(node.kind === "user" ? "tree.rewind" : "tree.resume")}</Button>
+											<Button variant="secondary" disabled={busy} onClick={() => void act(true)}>{t("tree.fork")}</Button>
+										</div>
+									</>
+								) : (
+									<p className="text-sm text-fg-muted">{t("tree.selectHint")}</p>
+								)}
+							</PresenceSwap>
 							{map && !map.branched && <p className="mt-4 text-xs text-fg-faint">{t("tree.noBranches")}</p>}
 						</aside>
 					</div>

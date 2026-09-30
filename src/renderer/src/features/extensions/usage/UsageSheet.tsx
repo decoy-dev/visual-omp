@@ -1,12 +1,13 @@
 /** DESIGN §4.18 — Usage & limits dashboard. */
-import { ArrowDown, ArrowUp, ChartColumn, Download, ExternalLink, RefreshCw } from "lucide-react";
+import { ArrowDown, ArrowsClockwise, ArrowSquareOut, ArrowUp, ChartBar, DownloadSimple } from "@phosphor-icons/react";
+import { motion } from "motion/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SpendChat, SpendDay } from "@shared/contracts/extensions";
 import type { UsageLimitsSnapshot, UsageReport } from "@shared/contracts/usage";
 import type { SheetProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
-import { Button, Chip, cn, EmptyState, IconButton, Progress, Skeleton, toast, Tooltip } from "@/ui";
+import { Button, Chip, cn, EmptyState, IconButton, Progress, Skeleton, spring, toast, Tooltip } from "@/ui";
 import { focusRing, focusRingInset } from "@/ui/styles";
 import { errorText, formatCount, formatDuration, formatUsd } from "../format";
 import { type ExtensionSheetProps, ExtensionSheetFrame, Notice, useLoad } from "../shared";
@@ -57,10 +58,10 @@ export function UsageSheet({ close }: SheetProps<ExtensionSheetProps>) {
 			bodyClassName="flex flex-col gap-6"
 			footer={
 				<>
-					<Button icon={<Download />} onClick={() => void exportCsv()} disabled={!spend.data?.chats.length} className="mr-auto">
+					<Button icon={<DownloadSimple />} onClick={() => void exportCsv()} disabled={!spend.data?.chats.length} className="mr-auto">
 						{t("usage.exportCsv")}
 					</Button>
-					<Button variant="ghost" iconRight={<ExternalLink />} loading={openingStats} onClick={() => void openStats()}>
+					<Button variant="ghost" iconRight={<ArrowSquareOut />} loading={openingStats} onClick={() => void openStats()}>
 						{t("usage.openStats")}
 					</Button>
 				</>
@@ -68,15 +69,15 @@ export function UsageSheet({ close }: SheetProps<ExtensionSheetProps>) {
 		>
 			{spend.error && <Notice tone="err">{t("usage.spendFailed")} {spend.error}</Notice>}
 
-			<section aria-label={t("usage.statsLabel")} className="grid grid-cols-4 gap-3">
-				<StatCard label={t("usage.stat.today")} value={spend.data ? formatUsd(today?.cost ?? 0) : null} />
-				<StatCard label={t("usage.stat.week")} value={spend.data ? formatUsd(spend.data.totals.cost) : null} />
-				<StatCard label={t("usage.stat.chats")} value={spend.data ? String(spend.data.totals.chats) : null} />
-				<StatCard label={t("usage.stat.tokens")} value={spend.data ? formatCount(spend.data.totals.tokens) : null} />
-			</section>
+			<dl aria-label={t("usage.statsLabel")} className="flex flex-wrap items-baseline gap-x-8 gap-y-2">
+				<Stat label={t("usage.stat.today")} value={spend.data ? formatUsd(today?.cost ?? 0) : null} />
+				<Stat label={t("usage.stat.week")} value={spend.data ? formatUsd(spend.data.totals.cost) : null} />
+				<Stat label={t("usage.stat.chats")} value={spend.data ? String(spend.data.totals.chats) : null} />
+				<Stat label={t("usage.stat.tokens")} value={spend.data ? formatCount(spend.data.totals.tokens) : null} />
+			</dl>
 
 			{spend.data && !hasUsage ? (
-				<EmptyState icon={<ChartColumn />} title={t("usage.empty")} />
+				<EmptyState icon={<ChartBar />} title={t("usage.empty")} />
 			) : (
 				<section aria-labelledby="usage-chart-title" className="flex flex-col gap-2">
 					<h3 id="usage-chart-title" className="text-sm font-semibold text-fg-muted">
@@ -94,20 +95,21 @@ export function UsageSheet({ close }: SheetProps<ExtensionSheetProps>) {
 	);
 }
 
-function StatCard({ label, value }: { label: string; value: string | null }) {
+/** One figure in the summary line: muted label, then the value in tabular figures. */
+function Stat({ label, value }: { label: string; value: string | null }) {
 	return (
-		<div className="flex h-[88px] flex-col justify-center gap-1 rounded-lg border border-border bg-panel px-4">
-			{value === null ? (
-				<Skeleton width={96} height={28} />
-			) : (
-				<span className="text-[28px] font-bold leading-none tracking-[-0.02em] text-fg tabular-nums">{value}</span>
-			)}
-			<span className="text-xs text-fg-muted">{label}</span>
+		<div className="flex items-baseline gap-2">
+			<dt className="text-md text-fg-muted">{label}</dt>
+			<dd className="text-base font-semibold text-fg tabular-nums">{value === null ? <Skeleton width={56} height={16} className="inline-block" /> : value}</dd>
 		</div>
 	);
 }
 
-/** 7-day bars: `--accent-2`, today `--accent`, baseline hairline, exact $ on hover/focus. */
+/**
+ * 7-day bars: past days in neutral ink (`--accent-2`), today in `--accent`, baseline hairline, exact $ on hover/focus.
+ * Each bar is a full-height button whose fill is revealed with `clip-path`, so a data change animates without
+ * animating height; the first render has nothing to transition from and shows at rest.
+ */
 function BarChart({ days, locale }: { days: SpendDay[]; locale: string }) {
 	const { t } = useTranslation("extensions");
 	const max = Math.max(...days.map(day => day.cost), 0);
@@ -119,20 +121,22 @@ function BarChart({ days, locale }: { days: SpendDay[]; locale: string }) {
 				{days.map((day, index) => {
 					const isToday = index === days.length - 1;
 					const text = t("usage.barLabel", { date: longDate.format(day.start), cost: formatUsd(day.cost), requests: day.requests });
+					const fill = max > 0 && day.cost > 0 ? Math.max(3, (day.cost / max) * 100) : 0;
 					return (
 						<li key={day.date} className="flex h-full flex-1 items-end justify-center">
 							<Tooltip content={text}>
-								<button
-									type="button"
-									aria-label={text}
-									className={cn(
-										"w-6 rounded-t-sm transition-[height,filter] duration-(--dur) ease-(--ease-out) hover:brightness-110 motion-reduce:transition-none",
-										isToday ? "bg-accent" : "bg-accent-2",
-										day.cost === 0 && "bg-border-strong",
-										focusRing,
-									)}
-									style={{ height: max > 0 && day.cost > 0 ? `${Math.max(3, (day.cost / max) * 100)}%` : "2px" }}
-								/>
+								<button type="button" aria-label={text} className={cn("group relative h-full w-6 rounded-t-sm", focusRing)}>
+									<span
+										aria-hidden
+										className={cn(
+											"absolute inset-0 rounded-t-sm transition-[clip-path,filter] duration-(--dur-spring-gentle) ease-(--ease-spring) group-hover:brightness-110",
+											isToday ? "bg-accent" : "bg-accent-2",
+											fill === 0 && "bg-border-strong",
+										)}
+										// Zero-cost days keep a 2px stub on the baseline.
+										style={{ clipPath: fill > 0 ? `inset(${100 - fill}% 0 0 0)` : "inset(calc(100% - 2px) 0 0 0)" }}
+									/>
+								</button>
 							</Tooltip>
 						</li>
 					);
@@ -189,7 +193,7 @@ function LimitsSection({ limits, locale }: { limits: LimitsState; locale: string
 					size="sm"
 					className="ml-auto"
 					label={t("usage.refreshLimits")}
-					icon={<RefreshCw className={cn(limits.loading && "vo-spin")} />}
+					icon={<ArrowsClockwise className={cn(limits.loading && "vo-spin")} />}
 					disabled={limits.loading}
 					onClick={limits.refresh}
 				/>
@@ -333,20 +337,21 @@ function ChatTable({ chats, close }: { chats: SpendChat[]; close(): void }) {
 					</thead>
 					<tbody>
 						{rows.map(chat => (
-							<tr key={chat.file} className="border-b border-border last:border-0 hover:bg-hover">
+							// Re-sorting slides rows to their new places; rows never animate on first render.
+							<motion.tr key={chat.file} layout="position" transition={{ layout: spring.gentle }} className="border-b border-border last:border-0 hover:bg-hover">
 								<td className="px-3 py-1.5">
 									<button type="button" onClick={() => void open(chat)} className={cn("block w-full truncate rounded-sm text-left text-fg", focusRingInset)} title={chat.title ?? undefined}>
 										{chat.title ?? t("usage.untitled")}
 									</button>
 								</td>
 								<td className="truncate px-3 py-1.5 font-mono text-xs text-fg-muted" title={chat.model ?? undefined}>
-									{chat.model?.split("/").pop() ?? "—"}
+									{chat.model?.split("/").pop() ?? t("usage.noModel")}
 								</td>
 								<td className="px-3 py-1.5 text-right font-mono text-xs tabular-nums text-fg-muted">{formatCount(promptTokens(chat))}</td>
 								<td className="px-3 py-1.5 text-right font-mono text-xs tabular-nums text-fg-muted">{formatCount(chat.outputTokens)}</td>
 								<td className="px-3 py-1.5 text-right font-mono text-xs tabular-nums text-fg">{formatUsd(chat.cost)}</td>
 								<td className="px-3 py-1.5 text-right font-mono text-xs tabular-nums text-fg-muted">{formatDuration(chat.durationMs)}</td>
-							</tr>
+							</motion.tr>
 						))}
 					</tbody>
 				</table>

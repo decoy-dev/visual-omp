@@ -1,11 +1,13 @@
 /** DESIGN §4.17 — Memory viewer ("What omp remembers"). */
-import { Brain, Download, Lock, Trash2 } from "lucide-react";
+import { Brain, DownloadSimple, Lock, Trash } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MemoryEntrySummary, MemoryScope, MemoryStatus } from "@shared/contracts/memory";
+import { listRowMotion } from "@/features/manage/listMotion";
 import type { SheetProps } from "@/registry/slots";
 import { Markdown } from "@/transcript/Markdown";
-import { Button, Chip, cn, EmptyState, SearchInput, Select, SelectItem, Skeleton, toast, Tooltip } from "@/ui";
+import { Button, Chip, cn, EmptyState, PresenceSwap, SearchInput, Select, SelectItem, Skeleton, toast, Tooltip } from "@/ui";
 import { focusRingInset } from "@/ui/styles";
 import { errorText, formatAge } from "../format";
 import { ConfirmDialog, type ExtensionSheetProps, ExtensionSheetFrame, Notice, useDebounced, useLoad, useSheetProject } from "../shared";
@@ -59,10 +61,14 @@ export function MemorySheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 	}, [places.data, scopeId, props?.scope]);
 
 	const scope = places.data?.scopes.find(entry => entry.id === scopeId) ?? null;
-	const entries = useLoad(
-		async () => (scope?.exists ? window.vomp.invoke("memory:list", scope.id, { query: settled || undefined, limit: LIST_LIMIT }) : { entries: [], total: 0 }),
-		[scope?.id, scope?.exists, settled],
-	);
+	const entries = useLoad(async () => {
+		// Which scope and search this result is for: a new pair is a new list, a reload (after forgetting) is not.
+		const key = `${scope?.id ?? ""}|${settled}`;
+		const result = scope?.exists
+			? await window.vomp.invoke("memory:list", scope.id, { query: settled || undefined, limit: LIST_LIMIT })
+			: { entries: [], total: 0 };
+		return { ...result, key };
+	}, [scope?.id, scope?.exists, settled]);
 	const list = entries.data?.entries ?? [];
 	useEffect(() => {
 		if (list.length && !list.some(entry => entry.id === selectedId)) setSelectedId(list[0]?.id ?? null);
@@ -161,7 +167,7 @@ export function MemorySheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 				<Button
 					size="sm"
 					variant="danger"
-					icon={<Trash2 />}
+					icon={<Trash />}
 					disabled={!scope || deletableCount === 0}
 					onClick={() => setForgetAll(true)}
 				>
@@ -198,12 +204,15 @@ export function MemorySheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 			) : (
 				<div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-panel">
 					<ul
+						// A new scope or search is a new list: remount it so its rows show at rest; only forgotten rows animate out.
+						key={entries.data?.key ?? ""}
 						aria-label={t("memory.listLabel")}
 						onKeyDown={onListKey}
-						className="w-[280px] shrink-0 overflow-y-auto border-r border-border"
+						className="relative w-[280px] shrink-0 overflow-y-auto border-r border-border"
 					>
+						<AnimatePresence initial={false} mode="popLayout">
 						{list.map(entry => (
-							<li key={entry.id}>
+							<motion.li key={entry.id} {...listRowMotion} className="bg-panel">
 								<button
 									type="button"
 									data-id={entry.id}
@@ -212,7 +221,7 @@ export function MemorySheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 									onClick={() => setSelectedId(entry.id)}
 									className={cn(
 										"relative flex w-full flex-col gap-0.5 border-b border-border px-3 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-hover",
-										entry.id === selectedId && "bg-selected before:absolute before:inset-y-0 before:left-0 before:w-0.5 before:bg-accent",
+										entry.id === selectedId && "bg-selected hover:bg-selected",
 										focusRingInset,
 									)}
 								>
@@ -224,19 +233,22 @@ export function MemorySheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 									</span>
 									<span className="line-clamp-1 text-sm text-fg-muted">{entry.preview}</span>
 								</button>
-							</li>
+							</motion.li>
 						))}
+						</AnimatePresence>
 						{entries.data && entries.data.total > list.length && (
 							<li className="px-3 py-2 text-xs text-fg-faint">{t("memory.more", { count: entries.data.total - list.length })}</li>
 						)}
 					</ul>
-					<div className="min-w-0 flex-1 overflow-y-auto">
+					<div className="relative min-w-0 flex-1 overflow-y-auto">
 						{selected && (
-							<Reader
-								entry={selected}
-								onForget={() => setForgetOne(selected)}
-								onExport={() => void exportEntry(selected)}
-							/>
+							<PresenceSwap swapKey={selected.id} mode="popLayout">
+								<Reader
+									entry={selected}
+									onForget={() => setForgetOne(selected)}
+									onExport={() => void exportEntry(selected)}
+								/>
+							</PresenceSwap>
 						)}
 					</div>
 				</div>
@@ -297,17 +309,17 @@ function Reader({ entry, onForget, onExport }: { entry: MemoryEntrySummary; onFo
 						{updated && updated !== created && <span>{t("memory.updated", { date: updated })}</span>}
 					</p>
 				</div>
-				<Button size="sm" variant="ghost" icon={<Download />} onClick={onExport}>
+				<Button size="sm" variant="ghost" icon={<DownloadSimple />} onClick={onExport}>
 					{t("memory.export")}
 				</Button>
 				{entry.deletable ? (
-					<Button size="sm" variant="danger-ghost" icon={<Trash2 />} onClick={onForget}>
+					<Button size="sm" variant="danger-ghost" icon={<Trash />} onClick={onForget}>
 						{t("memory.forgetOne.action")}
 					</Button>
 				) : (
 					<Tooltip content={t("memory.cantDelete")}>
 						<span tabIndex={0} className="inline-flex rounded-md focus-visible:outline-2 focus-visible:outline-ring">
-							<Button size="sm" variant="danger-ghost" icon={<Trash2 />} disabled>
+							<Button size="sm" variant="danger-ghost" icon={<Trash />} disabled>
 								{t("memory.forgetOne.action")}
 							</Button>
 						</span>

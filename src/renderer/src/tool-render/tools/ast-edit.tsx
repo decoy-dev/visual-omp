@@ -106,7 +106,7 @@ function OpCell({ op, lang }: { op: AstEditOp; lang: string | null }): ReactNode
 			{op.out ? (
 				<CodeBlock code={op.out} lang={lang} title="replacement" maxLines={10} />
 			) : (
-				<div className="tv-muted">deletion — matched code is removed</div>
+				<div className="tv-muted">deletion: matched code is removed</div>
 			)}
 		</div>
 	);

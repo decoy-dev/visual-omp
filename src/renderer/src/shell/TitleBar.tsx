@@ -1,11 +1,11 @@
-import { ChevronDown, PanelLeft } from "lucide-react";
+import { CaretDown, SidebarSimple } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { controllerFor, focusedTabId, useApp } from "../state/app";
-import { cn, IconButton, Wordmark } from "../ui";
+import { cn, IconButton, PresenceSwap, Wordmark } from "../ui";
 import { chatTitle, useSessionView } from "./hooks";
 
-/** Frameless window bar (DESIGN §3.1): glass, draggable, breadcrumb centered. */
+/** Frameless window bar (DESIGN §3.1): opaque, draggable, breadcrumb centered. The breadcrumb crossfades when the chat changes. */
 export function TitleBar(): ReactNode {
 	const { t } = useTranslation("shell");
 	const isMac = window.vomp.platform === "darwin";
@@ -31,7 +31,7 @@ export function TitleBar(): ReactNode {
 					className="no-drag"
 					label={t("titlebar.showSidebar")}
 					shortcut="⌘B"
-					icon={<PanelLeft />}
+					icon={<SidebarSimple />}
 					size="sm"
 					onClick={() => useApp.getState().toggleSidebar()}
 				/>
@@ -41,18 +41,20 @@ export function TitleBar(): ReactNode {
 				{project && (
 					<button
 						type="button"
-						className="no-drag pointer-events-auto flex max-w-[40vw] items-center gap-1 rounded-md px-2 py-1 text-md text-fg-muted hover:bg-hover hover:text-fg"
+						className="no-drag pointer-events-auto relative flex max-w-[40vw] items-center gap-1 rounded-md px-2 py-1 text-md text-fg-muted hover:bg-hover hover:text-fg"
 						aria-label={t("titlebar.switchChat")}
 						onClick={() => useApp.getState().setPaletteOpen(true)}
 					>
-						<span className="truncate">{project.name}</span>
-						{title && (
-							<>
-								<span className="text-fg-faint">/</span>
-								<span className="truncate text-fg">{title}</span>
-							</>
-						)}
-						<ChevronDown className="size-3.5 shrink-0" />
+						<PresenceSwap swapKey={`${project.path}\n${title ?? ""}`} mode="popLayout" className="flex min-w-0 items-center gap-1">
+							<span className="truncate">{project.name}</span>
+							{title && (
+								<>
+									<span className="text-fg-faint">/</span>
+									<span className="truncate text-fg">{title}</span>
+								</>
+							)}
+						</PresenceSwap>
+						<CaretDown className="size-3.5 shrink-0" />
 					</button>
 				)}
 			</div>

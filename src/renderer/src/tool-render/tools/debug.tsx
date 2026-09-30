@@ -197,7 +197,7 @@ function Body(props: ToolRenderProps): ReactNode {
 					)}
 					{snapshot.exitCode !== null && <Kv k="exit code">{snapshot.exitCode}</Kv>}
 					{snapshot.needsConfigurationDone && (
-						<Kv k="configuration">pending configurationDone — set breakpoints, then continue</Kv>
+						<Kv k="configuration">pending configurationDone. Set breakpoints, then continue.</Kv>
 					)}
 				</KvGrid>
 			)}

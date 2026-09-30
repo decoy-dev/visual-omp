@@ -7,26 +7,30 @@ import type {
 	SettingScope,
 } from "@shared/contracts/config";
 import * as RT from "@radix-ui/react-tabs";
-import { Plus, RefreshCw, Save, TriangleAlert, Undo2, X } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { ArrowsClockwise, ArrowUUpLeft, FloppyDisk, Plus, Warning, X } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
+import { useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SheetProps } from "@/registry/slots";
 import {
 	Button,
 	Chip,
 	cn,
+	Expand,
 	Dialog,
 	DialogContent,
 	EmptyState,
 	IconButton,
 	Input,
+	PresenceSwap,
 	Segmented,
 	Select,
 	SelectItem,
 	Skeleton,
 	toast,
 } from "@/ui";
-import { focusRingInset } from "@/ui/styles";
+import { focusRing, focusRingInset } from "@/ui/styles";
+import { listRowMotion } from "../listMotion";
 import { ModalSheet } from "../ModalSheet";
 import { folderName, ipcErrorMessage, useExternalConfigChange, useResource, useSheetProject } from "../shared";
 import { ModelCapabilities, ModelSelect } from "./ModelSelect";
@@ -57,6 +61,7 @@ export function ModelRolesSheet({ props, close }: SheetProps<ModelRolesSheetProp
 	const models = useResource(() => window.vomp.invoke("config:models", arg), [arg]);
 	const presets = useResource(() => window.vomp.invoke("config:presets", arg), [arg]);
 	const [externalChange, clearExternalChange] = useExternalConfigChange(cwd);
+	const indicatorId = useId();
 
 	const [drafts, setDrafts] = useState<Record<string, RoleDraft>>({});
 	const [selected, setSelected] = useState(props?.role ?? "default");
@@ -206,7 +211,7 @@ export function ModelRolesSheet({ props, close }: SheetProps<ModelRolesSheetProp
 					)}
 					<IconButton
 						label={t("roles.refreshModels")}
-						icon={<RefreshCw />}
+						icon={<ArrowsClockwise />}
 						onClick={() =>
 							void window.vomp
 								.invoke("config:models:refresh", arg)
@@ -220,7 +225,7 @@ export function ModelRolesSheet({ props, close }: SheetProps<ModelRolesSheetProp
 			{loadError && !roles.data ? (
 				<div className="flex flex-1 items-center justify-center">
 					<EmptyState
-						icon={<TriangleAlert />}
+						icon={<Warning />}
 						title={t("roles.loadFailed")}
 						body={loadError}
 						actions={<Button onClick={reloadAll}>{t("settings.retry")}</Button>}
@@ -229,7 +234,7 @@ export function ModelRolesSheet({ props, close }: SheetProps<ModelRolesSheetProp
 			) : (
 				<RT.Root value={current?.id} onValueChange={setSelected} orientation="vertical" className="flex min-h-0 flex-1">
 					<div className="flex w-[240px] shrink-0 flex-col border-r border-border bg-inset">
-						<p className="px-4 pb-1 pt-3 font-mono text-xs uppercase tracking-[0.12em] text-fg-faint">{t("roles.listTitle")}</p>
+						<p className="px-4 pb-1 pt-3 text-sm font-medium text-fg-muted">{t("roles.listTitle")}</p>
 						<RT.List aria-label={t("roles.listTitle")} className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
 							{!roles.data
 								? Array.from({ length: 8 }, (_, index) => <Skeleton key={index} height={36} className="mb-1" />)
@@ -243,26 +248,28 @@ export function ModelRolesSheet({ props, close }: SheetProps<ModelRolesSheetProp
 												value={role.id}
 												className={cn(
 													"relative flex h-10 w-full items-center gap-2.5 rounded-md px-2.5 text-left",
-													"transition-colors duration-(--dur-fast) hover:bg-hover",
-													"data-[state=active]:bg-selected data-[state=active]:before:absolute data-[state=active]:before:inset-y-2 data-[state=active]:before:left-0 data-[state=active]:before:w-0.5 data-[state=active]:before:rounded-full data-[state=active]:before:bg-accent",
+													"transition-colors duration-(--dur-fast) hover:bg-hover data-[state=active]:hover:bg-transparent",
 													focusRingInset,
 												)}
 											>
+												{role.id === current?.id && (
+													<motion.span layoutId={indicatorId} aria-hidden className="absolute inset-0 rounded-md bg-selected" />
+												)}
 												<span
 													aria-hidden
 													className={cn(
-														"size-2 shrink-0 rounded-full",
+														"relative size-2 shrink-0 rounded-full",
 														status === "missing" ? "bg-warn" : draft.model ? "bg-accent" : "border border-border-strong",
 													)}
 												/>
-												<span className="min-w-0 flex-1">
+												<span className="relative min-w-0 flex-1">
 													<span className="block truncate font-mono text-sm text-fg">{role.id}</span>
 													<span className="block truncate text-xs text-fg-muted">
 														{draft.model ? (model?.name ?? draft.model) : t("roles.auto")}
 													</span>
 												</span>
 												{changed.includes(role.id) && (
-													<span className="shrink-0" title={t("roles.unsaved")}>
+													<span className="relative shrink-0" title={t("roles.unsaved")}>
 														<span aria-hidden className="block size-1.5 rounded-full bg-accent" />
 														<span className="sr-only">{t("roles.unsaved")}</span>
 													</span>
@@ -273,25 +280,27 @@ export function ModelRolesSheet({ props, close }: SheetProps<ModelRolesSheetProp
 						</RT.List>
 					</div>
 					<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-						{externalChange && (
-							<div role="status" className="flex shrink-0 items-center gap-3 border-b border-border bg-info-bg px-6 py-2 text-md text-fg">
+						<Expand open={externalChange}>
+							<div role="status" className="flex items-center gap-3 border-b border-border bg-info-bg px-6 py-2 text-md text-fg">
 								<span className="min-w-0 flex-1">{t("settings.externalChange")}</span>
-								<Button size="sm" icon={<RefreshCw />} onClick={reloadAll}>
+								<Button size="sm" icon={<ArrowsClockwise />} onClick={reloadAll}>
 									{t("settings.reload")}
 								</Button>
 							</div>
-						)}
+						</Expand>
 						<div className="min-h-0 flex-1 overflow-y-auto p-6">
 							{current && roles.data ? (
-								<RT.Content value={current.id} className="outline-none">
-									<RoleEditor
-										role={current}
-										draft={draftFor(current)}
-										models={models.data}
-										scope={effectiveScope}
-										onChange={draft => setDrafts(all => ({ ...all, [current.id]: draft }))}
-									/>
-								</RT.Content>
+								<PresenceSwap swapKey={current.id} variant="rise">
+									<RT.Content forceMount value={current.id} className={cn("rounded-md", focusRing)}>
+										<RoleEditor
+											role={current}
+											draft={draftFor(current)}
+											models={models.data}
+											scope={effectiveScope}
+											onChange={draft => setDrafts(all => ({ ...all, [current.id]: draft }))}
+										/>
+									</RT.Content>
+								</PresenceSwap>
 							) : (
 								<Skeleton height={160} />
 							)}
@@ -307,10 +316,10 @@ export function ModelRolesSheet({ props, close }: SheetProps<ModelRolesSheetProp
 							<p className="mr-auto text-sm text-fg-muted" aria-live="polite">
 								{dirty ? t("roles.pending", { count: changed.length }) : t(`roles.saveTo.${effectiveScope}`)}
 							</p>
-							<Button variant="ghost" icon={<Undo2 />} disabled={!dirty || saving} onClick={() => setDrafts({})}>
+							<Button variant="ghost" icon={<ArrowUUpLeft />} disabled={!dirty || saving} onClick={() => setDrafts({})}>
 								{t("roles.revert")}
 							</Button>
-							<Button variant="primary" icon={<Save />} disabled={!dirty} loading={saving} onClick={() => void save()}>
+							<Button variant="primary" icon={<FloppyDisk />} disabled={!dirty} loading={saving} onClick={() => void save()}>
 								{t("roles.save")}
 							</Button>
 						</footer>
@@ -381,8 +390,8 @@ function RoleEditor({
 				<Chip tone="neutral" className="font-mono">
 					{role.id}
 				</Chip>
-				{!role.builtIn && <Chip tone="agent">{t("roles.customChip")}</Chip>}
-				{role.source === "project" && <Chip tone="blue">{t("settings.source.project")}</Chip>}
+				{!role.builtIn && <Chip tone="accent">{t("roles.customChip")}</Chip>}
+				{role.source === "project" && <Chip tone="neutral">{t("settings.source.project")}</Chip>}
 			</div>
 			<p className="mt-1 text-md text-fg-muted">
 				<span className="font-medium text-fg">{t("roles.usedFor")} </span>
@@ -432,14 +441,18 @@ function RoleEditor({
 				</Select>
 			</div>
 
-			{draft.model === null && <p className="mt-3 text-sm text-fg-muted">{t("roles.autoHelp")}</p>}
-			{status === "missing" && (
-				<p role="alert" className="mt-3 flex items-center gap-2 rounded-md bg-warn-bg px-3 py-2 text-md text-warn">
-					<TriangleAlert aria-hidden className="size-4 shrink-0" />
+			<Expand open={draft.model === null} className="pt-3">
+				<p className="text-sm text-fg-muted">{t("roles.autoHelp")}</p>
+			</Expand>
+			<Expand open={status === "missing"} className="pt-3">
+				<p role="alert" className="flex items-center gap-2 rounded-md bg-warn-bg px-3 py-2 text-md text-warn">
+					<Warning aria-hidden className="size-4 shrink-0" />
 					{t("roles.missing")}
 				</p>
-			)}
-			{status === "alias" && <p className="mt-3 text-sm text-fg-muted">{t("roles.aliasHelp", { alias: draft.model })}</p>}
+			</Expand>
+			<Expand open={status === "alias"} className="pt-3">
+				<p className="text-sm text-fg-muted">{t("roles.aliasHelp", { alias: draft.model })}</p>
+			</Expand>
 			{overridden && (
 				<p className="mt-3 flex items-center gap-2 rounded-md bg-info-bg px-3 py-2 text-md text-fg">
 					{t("roles.overridden", { value: role.projectValue })}
@@ -482,35 +495,33 @@ function PresetsRow({
 				</Button>
 			</div>
 			{presets && presets.length === 0 && <p className="mt-3 text-sm text-fg-faint">{t("roles.presets.empty")}</p>}
-			<ul className="mt-3 grid grid-cols-3 gap-2">
-				{presets?.map(preset => (
-					<li key={`${preset.source}:${preset.name}`} className="group relative rounded-lg border border-border bg-panel p-3">
-						<div className="flex items-center gap-2 pr-6">
-							<span className="truncate text-md font-medium text-fg">{preset.name}</span>
-							{preset.source === "project" && <Chip tone="blue">{t("settings.source.project")}</Chip>}
-						</div>
-						<p className="mt-0.5 truncate text-xs text-fg-muted">
-							{t("roles.presets.summary", { model: presetSummary(preset), count: Object.keys(preset.modelRoles).length })}
-						</p>
-						{preset.problem && (
-							<p className="mt-1 truncate text-xs text-warn" title={preset.problem}>
-								{preset.problem}
-							</p>
-						)}
-						<Button size="sm" className="mt-2" disabled={Boolean(preset.problem)} onClick={() => onApply(preset)}>
-							{t("roles.presets.apply")}
-						</Button>
-						{preset.source === "global" && (
-							<IconButton
-								size="sm"
-								label={t("roles.presets.delete", { name: preset.name })}
-								icon={<X />}
-								className="absolute right-2 top-2"
-								onClick={() => onDelete(preset)}
-							/>
-						)}
-					</li>
-				))}
+			<ul className={cn("relative mt-3 divide-y divide-border", presets && presets.length > 0 && "border-y border-border")}>
+				<AnimatePresence initial={false} mode="popLayout">
+					{presets?.map(preset => (
+						<motion.li key={`${preset.source}:${preset.name}`} {...listRowMotion} className="flex items-center gap-3 bg-overlay py-2.5">
+							<div className="min-w-0 flex-1">
+								<div className="flex items-center gap-2">
+									<span className="truncate text-md font-medium text-fg">{preset.name}</span>
+									{preset.source === "project" && <Chip tone="neutral">{t("settings.source.project")}</Chip>}
+								</div>
+								<p className="truncate text-sm text-fg-muted">
+									{t("roles.presets.summary", { model: presetSummary(preset), count: Object.keys(preset.modelRoles).length })}
+								</p>
+								{preset.problem && (
+									<p className="truncate text-sm text-warn" title={preset.problem}>
+										{preset.problem}
+									</p>
+								)}
+							</div>
+							<Button size="sm" disabled={Boolean(preset.problem)} onClick={() => onApply(preset)}>
+								{t("roles.presets.apply")}
+							</Button>
+							{preset.source === "global" && (
+								<IconButton size="sm" label={t("roles.presets.delete", { name: preset.name })} icon={<X />} onClick={() => onDelete(preset)} />
+							)}
+						</motion.li>
+					))}
+				</AnimatePresence>
 			</ul>
 		</section>
 	);

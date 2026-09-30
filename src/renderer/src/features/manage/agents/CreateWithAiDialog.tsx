@@ -1,5 +1,5 @@
 import type { AgentDirs, AgentWritableScope } from "@shared/contracts/agents";
-import { Sparkles } from "lucide-react";
+import { ChatText } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Dialog, DialogContent, Segmented, Textarea } from "@/ui";
@@ -48,7 +48,7 @@ export function CreateWithAiDialog({
 						<Button variant="ghost" onClick={() => onOpenChange(false)}>
 							{t("common.cancel")}
 						</Button>
-						<Button variant="primary" icon={<Sparkles />} disabled={!ready} loading={busy} onClick={() => void submit()}>
+						<Button variant="primary" icon={<ChatText />} disabled={!ready} loading={busy} onClick={() => void submit()}>
 							{t("agents.ai.create")}
 						</Button>
 					</>

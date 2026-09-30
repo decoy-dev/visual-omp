@@ -61,7 +61,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 			/>
 			{content === null ? (
 				<Note tone="err">
-					<InvalidArg what="content" /> — expected string
+					<InvalidArg what="content" />: expected string
 				</Note>
 			) : (
 				content && <CodeBlock code={content} lang={path ? languageFromPath(path) : null} maxLines={12} />

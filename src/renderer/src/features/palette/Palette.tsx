@@ -5,7 +5,7 @@
 import * as RD from "@radix-ui/react-dialog";
 import type { SessionSummary } from "@shared/ipc";
 import { Command, useCommandState } from "cmdk";
-import { ChevronRight, FileText, type LucideIcon, MessageSquare, Search, Send, Settings2 } from "lucide-react";
+import { CaretRight, ChatCenteredText, FileText, GearSix, type Icon, MagnifyingGlass, PaperPlaneRight } from "@phosphor-icons/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useComposerDrafts } from "../../chat/composer/drafts";
@@ -97,7 +97,7 @@ function mentionFile(path: string, projectPath: string): void {
 
 interface RowProps {
 	value: string;
-	icon: LucideIcon;
+	icon: Icon;
 	title: string;
 	hint?: string | null;
 	slash?: string;
@@ -122,7 +122,7 @@ function Row({ value, icon: Icon, title, hint, slash, shortcut, danger, notice, 
 			<Icon aria-hidden className={cn("size-4 shrink-0", danger ? "text-err" : "text-fg-muted group-data-[selected=true]:text-fg")} />
 			<span className="min-w-0 flex-1 truncate">
 				<span className="font-medium">{title}</span>
-				{hint && <span className="text-fg-muted"> — {hint}</span>}
+				{hint && <span className="ml-2 text-fg-muted">{hint}</span>}
 			</span>
 			{notice ? (
 				<span role="status" className="shrink-0 font-mono text-xs text-err">
@@ -242,7 +242,7 @@ function PaletteBody() {
 			<Row
 				key={value}
 				value={value}
-				icon={spec.icon ?? (spec.group === "settings" ? Settings2 : ChevronRight)}
+				icon={spec.icon ?? (spec.group === "settings" ? GearSix : CaretRight)}
 				title={t(spec.title)}
 				hint={spec.hint ? t(spec.hint) : null}
 				slash={spec.slash}
@@ -257,8 +257,7 @@ function PaletteBody() {
 	const groupClass = cn(
 		"px-1.5 pb-1.5",
 		"**:[[cmdk-group-heading]]:px-2.5 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:pt-2.5",
-		"**:[[cmdk-group-heading]]:font-mono **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:uppercase",
-		"**:[[cmdk-group-heading]]:tracking-[0.12em] **:[[cmdk-group-heading]]:text-fg-faint",
+		"**:[[cmdk-group-heading]]:text-sm **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-fg-muted",
 	);
 
 	return (
@@ -277,7 +276,7 @@ function PaletteBody() {
 			}}
 		>
 			<div className="flex h-12 shrink-0 items-center gap-2.5 border-b border-border px-4">
-				<Search aria-hidden className="size-4 shrink-0 text-fg-faint" />
+				<MagnifyingGlass aria-hidden className="size-4 shrink-0 text-fg-faint" />
 				<Command.Input
 					value={query}
 					onValueChange={next => {
@@ -288,7 +287,8 @@ function PaletteBody() {
 					className="h-full min-w-0 flex-1 bg-transparent text-base text-fg outline-none placeholder:text-fg-faint"
 				/>
 			</div>
-			<Command.List className="min-h-0 flex-1 overflow-y-auto overscroll-contain py-1 scroll-py-2">
+			{/* cmdk measures its results into --cmdk-list-height; easing to it lets the panel grow and shrink with the results. */}
+			<Command.List className="h-(--cmdk-list-height) max-h-[min(484px,calc(70vh-76px))] min-h-0 overflow-y-auto overscroll-contain transition-[height] duration-(--dur) ease-(--ease-out-quart) scroll-py-2 *:[[cmdk-list-sizer]]:py-1">
 				{suggested.length > 0 && (
 					<Command.Group heading={t("groups.suggested")} className={groupClass}>
 						{suggested.map(spec => commandRow(spec, "suggested"))}
@@ -305,7 +305,7 @@ function PaletteBody() {
 							<Row
 								key={chat.file}
 								value={`chat:${chat.file}`}
-								icon={MessageSquare}
+								icon={ChatCenteredText}
 								title={chatTitle(chat)}
 								hint={`${projectName(chat.cwd)} · ${shortAgo(chat.updatedAt, now)}`}
 								onSelect={() => {
@@ -342,7 +342,7 @@ function PaletteBody() {
 					<Command.Group heading={t("groups.noMatches")} className={groupClass}>
 						<Row
 							value="ask"
-							icon={Send}
+							icon={PaperPlaneRight}
 							title={t("ask")}
 							hint={`“${query.trim()}”`}
 							shortcut="⏎"

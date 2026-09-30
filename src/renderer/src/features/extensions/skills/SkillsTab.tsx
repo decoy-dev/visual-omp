@@ -1,11 +1,13 @@
-import { Download, Sparkles, Trash2 } from "lucide-react";
+import { BookOpenText, DownloadSimple, Trash } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { RegistryInstalledSkill, SkillEntry, SkillRegistryResult, SkillSearchHit } from "@shared/contracts/skills";
+import { listRowMotion } from "@/features/manage/listMotion";
 import {
-	BracketLabel,
 	Button,
 	Chip,
+	cn,
 	EmptyState,
 	Menu,
 	MenuContent,
@@ -127,24 +129,26 @@ export function SkillsTab({ cwd, projectPath, filter, query }: TabProps) {
 					onRemove={(id, global) => void uninstall(id, global).catch(err => toast({ tone: "err", message: errorText(err) }))}
 				/>
 			) : !listing.data && listing.loading ? (
-				<div className="grid grid-cols-3 gap-3">
-					{[0, 1, 2, 3, 4, 5].map(i => (
-						<Skeleton key={i} height={120} />
+				<div className="flex flex-col gap-2">
+					{[0, 1, 2, 3].map(i => (
+						<Skeleton key={i} height={56} />
 					))}
 				</div>
 			) : skills.length === 0 ? (
 				<EmptyState
-					icon={<Sparkles />}
+					icon={<BookOpenText />}
 					title={needle ? t("skills.noMatch", { q: query.trim() }) : t(filter === "project" ? "skills.emptyProject" : "skills.empty")}
 					body={needle ? undefined : t("skills.emptyBody")}
 				/>
 			) : (
-				<ul className="grid grid-cols-3 gap-3">
-					{skills.map(skill => (
-						<li key={skill.filePath}>
-							<SkillCard skill={skill} onOpen={() => setOpen(skill)} onToggle={enabled => void toggle(skill, enabled)} />
-						</li>
-					))}
+				<ul className="relative flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel">
+					<AnimatePresence initial={false} mode="popLayout">
+						{skills.map(skill => (
+							<motion.li key={skill.filePath} {...listRowMotion} className="bg-panel">
+								<SkillRow skill={skill} onOpen={() => setOpen(skill)} onToggle={enabled => void toggle(skill, enabled)} />
+							</motion.li>
+						))}
+					</AnimatePresence>
 				</ul>
 			)}
 
@@ -154,7 +158,7 @@ export function SkillsTab({ cwd, projectPath, filter, query }: TabProps) {
 					<ul className="mt-1 list-disc pl-4">
 						{listing.data?.invalid.map(file => (
 							<li key={file.filePath} className="truncate">
-								<span className="font-mono text-xs">{file.dirName}</span> — {file.issues[0]?.message}
+								<span className="font-mono text-xs">{file.dirName}</span>: {file.issues[0]?.message}
 							</li>
 						))}
 					</ul>
@@ -197,37 +201,38 @@ export function SkillsTab({ cwd, projectPath, filter, query }: TabProps) {
 	);
 }
 
-function SkillCard({ skill, onOpen, onToggle }: { skill: SkillEntry; onOpen(): void; onToggle(enabled: boolean): void }) {
+/** One installed skill: the whole row opens the drawer; the switch sits above that hit area. */
+function SkillRow({ skill, onOpen, onToggle }: { skill: SkillEntry; onOpen(): void; onToggle(enabled: boolean): void }) {
 	const { t } = useTranslation("extensions");
 	const locked = lockedReason(skill);
 	const toggleLabel = t(skill.enabled ? "skills.turnOff" : "skills.turnOn", { name: skill.name });
 	return (
-		<div className="vo-card relative flex h-[120px] flex-col gap-1.5 rounded-lg border border-border bg-panel p-3 transition-shadow duration-(--dur-fast) hover:shadow-(--shadow-card)">
-			<div className="flex min-w-0 items-center gap-2">
-				<LetterTile name={skill.name} className="size-7" />
-				<button
-					type="button"
-					onClick={onOpen}
-					className={`min-w-0 flex-1 truncate rounded-sm text-left text-md font-semibold text-fg after:absolute after:inset-0 after:rounded-lg ${focusRing}`}
-					title={skill.name}
-				>
-					{skill.name}
-				</button>
+		<div className="relative flex items-center gap-3 px-3 py-2.5 transition-colors duration-(--dur-fast) hover:bg-hover">
+			<LetterTile name={skill.name} />
+			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+				<div className="flex min-w-0 items-center gap-2">
+					<button
+						type="button"
+						onClick={onOpen}
+						className={`min-w-0 truncate rounded-sm text-left text-md font-medium text-fg after:absolute after:inset-0 ${focusRing}`}
+						title={skill.name}
+					>
+						{skill.name}
+					</button>
+					<Chip tone={skill.level === "project" ? "accent" : "neutral"}>{t(skill.level === "project" ? "scope.project" : "scope.user")}</Chip>
+					<span className="min-w-0 truncate text-xs text-fg-faint">{providerLabel(skill.provider)}</span>
+				</div>
+				<p className="line-clamp-1 text-sm text-fg-muted">{skill.description || t("skills.noDescription")}</p>
 			</div>
-			<p className="line-clamp-2 text-sm text-fg-muted">{skill.description || t("skills.noDescription")}</p>
-			<div className="mt-auto flex items-center gap-1.5">
-				<Chip tone={skill.level === "project" ? "accent" : "neutral"}>{t(skill.level === "project" ? "scope.project" : "scope.user")}</Chip>
-				<span className="min-w-0 flex-1 truncate text-xs text-fg-faint">{providerLabel(skill.provider)}</span>
-				{locked ? (
-					<Tooltip content={t(`skills.reason.${locked}`)}>
-						<span tabIndex={0} className={`relative z-10 rounded-full ${focusRing}`}>
-							<Switch checked={skill.enabled} disabled aria-label={toggleLabel} />
-						</span>
-					</Tooltip>
-				) : (
-					<Switch className="relative z-10" checked={skill.enabled} onCheckedChange={onToggle} aria-label={toggleLabel} />
-				)}
-			</div>
+			{locked ? (
+				<Tooltip content={t(`skills.reason.${locked}`)}>
+					<span tabIndex={0} className={`relative z-10 shrink-0 rounded-full ${focusRing}`}>
+						<Switch checked={skill.enabled} disabled aria-label={toggleLabel} />
+					</span>
+				</Tooltip>
+			) : (
+				<Switch className="relative z-10 shrink-0" checked={skill.enabled} onCheckedChange={onToggle} aria-label={toggleLabel} />
+			)}
 		</div>
 	);
 }
@@ -274,18 +279,18 @@ function RegistryBrowser({ query, installed, projectPath, runningFor, onInstall,
 					<Button
 						size="sm"
 						variant="danger-ghost"
-						icon={<Trash2 />}
+						icon={<Trash />}
 						disabled={Boolean(running)}
 						onClick={() => onRemove(id, records[0]?.scope === "user")}
 						aria-label={t("skills.removeNamed", { name: id })}
 					>
-						{t("common.remove")}
+						{t("skills.remove")}
 					</Button>
 				) : (
 					<Menu>
 						<MenuTrigger asChild>
-							<Button size="sm" icon={<Download />} disabled={Boolean(running)} aria-label={t("skills.installNamed", { name: id })}>
-								{t("common.install")}
+							<Button size="sm" icon={<DownloadSimple />} disabled={Boolean(running)} aria-label={t("skills.installNamed", { name: id })}>
+								{t("skills.install")}
 							</Button>
 						</MenuTrigger>
 						<MenuContent align="end">
@@ -302,11 +307,11 @@ function RegistryBrowser({ query, installed, projectPath, runningFor, onInstall,
 
 	return (
 		<section aria-label={t("skills.registryTitle")} className="flex flex-col gap-3">
-			<BracketLabel as="h3">{t("skills.registryTitle")}</BracketLabel>
+			<h3 className="text-sm font-medium text-fg-muted">{t("skills.registryTitle")}</h3>
 			{search.error && <Notice tone="warn">{t("skills.offline")}</Notice>}
 			{search.error ? (
 				installed.length === 0 ? (
-					<EmptyState icon={<Sparkles />} title={t("skills.noRegistryInstalls")} />
+					<EmptyState icon={<BookOpenText />} title={t("skills.noRegistryInstalls")} />
 				) : (
 					<ul className="flex flex-col divide-y divide-border rounded-lg border border-border bg-panel">
 						{installed.map(entry => row(entry.id, "", entry.version ? `v${entry.version}` : null, null))}
@@ -319,9 +324,14 @@ function RegistryBrowser({ query, installed, projectPath, runningFor, onInstall,
 					))}
 				</div>
 			) : search.data.hits.length === 0 ? (
-				<EmptyState icon={<Sparkles />} title={t("skills.noMatch", { q: settled })} />
+				<EmptyState icon={<BookOpenText />} title={t("skills.noMatch", { q: settled })} />
 			) : (
-				<ul className={`flex flex-col divide-y divide-border rounded-lg border border-border bg-panel ${search.loading ? "opacity-70" : ""}`}>
+				<ul
+					className={cn(
+						"flex flex-col divide-y divide-border rounded-lg border border-border bg-panel transition-opacity duration-(--dur)",
+						search.loading && "opacity-70",
+					)}
+				>
 					{search.data.hits.map((hit: SkillSearchHit) =>
 						row(hit.id, hit.description, t("skills.weekly", { count: hit.weeklyDownloads, formatted: formatCount(hit.weeklyDownloads) }), hit.deprecated),
 					)}

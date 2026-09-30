@@ -3,7 +3,7 @@
  * writes it) rendered as Markdown, re-read every 2s while the pane is visible. When omp's Plan Review
  * screen is open, a bar offers Approve (the review's first option) or the full set of choices.
  */
-import { ClipboardList, ListTree, Play } from "lucide-react";
+import { ClipboardText, Play, TreeView } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PanePlanFile } from "@shared/contracts/panes";
@@ -12,7 +12,7 @@ import { useSessionView } from "../../shell/hooks";
 import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { Markdown } from "../../transcript/Markdown";
-import { BracketLabel, Button, EmptyState, Spinner, toast } from "../../ui";
+import { Button, EmptyState, Expand, Spinner, toast } from "../../ui";
 import { PaneToolbar, usePaneVisible } from "./common";
 
 const POLL_MS = 2000;
@@ -94,7 +94,7 @@ export function PlanPane({ session }: PaneProps) {
 		);
 	};
 
-	if (!session) return <EmptyState icon={<ClipboardList />} title={t("plan.noChatTitle")} body={t("plan.noChat")} />;
+	if (!session) return <EmptyState icon={<ClipboardText />} title={t("plan.noChatTitle")} body={t("plan.noChat")} />;
 	if (sessionFile && !loaded) {
 		return (
 			<div className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted" role="status">
@@ -105,8 +105,7 @@ export function PlanPane({ session }: PaneProps) {
 	if (!plan) {
 		return (
 			<EmptyState
-				icon={<ClipboardList />}
-				eyebrow={<BracketLabel>{t("plan.eyebrow")}</BracketLabel>}
+				icon={<ClipboardText />}
 				title={t("plan.offTitle")}
 				body={t("plan.off")}
 				actions={
@@ -126,17 +125,17 @@ export function PlanPane({ session }: PaneProps) {
 				</span>
 				<span className="text-xs text-fg-faint">{t("plan.updated", { time: new Date(plan.mtime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}</span>
 			</PaneToolbar>
-			{pending && (
-				<div role="status" className="flex shrink-0 items-center gap-2 border-b border-border bg-agent-muted px-3 py-2">
-					<span className="min-w-0 flex-1 text-sm font-medium text-fg">{t("plan.waiting")}</span>
-					<Button size="sm" variant="ghost" icon={<ListTree />} onClick={() => useApp.getState().openTerminal(session.tabId)} title={t("plan.optionsHint")}>
-						{t("plan.options")}
-					</Button>
-					<Button size="sm" variant="primary" icon={<Play />} onClick={() => void session.keys("enter")} title={t("plan.approveHint")}>
-						{t("plan.approve")}
-					</Button>
-				</div>
-			)}
+			<Expand open={pending} className="flex items-center gap-2 border-b border-border bg-accent-muted px-3 py-2">
+				<span role="status" className="min-w-0 flex-1 text-sm font-medium text-fg">
+					{t("plan.waiting")}
+				</span>
+				<Button size="sm" variant="ghost" icon={<TreeView />} onClick={() => useApp.getState().openTerminal(session.tabId)} title={t("plan.optionsHint")}>
+					{t("plan.options")}
+				</Button>
+				<Button size="sm" variant="primary" icon={<Play />} onClick={() => void session.keys("enter")} title={t("plan.approveHint")}>
+					{t("plan.approve")}
+				</Button>
+			</Expand>
 			<div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-md">
 				<Markdown text={plan.text} />
 			</div>
@@ -150,7 +149,7 @@ export function PlanBadge({ session }: PaneProps) {
 	const pending = usePlanReviewPending(session);
 	if (!pending) return null;
 	return (
-		<span className="inline-flex size-4 items-center justify-center rounded-full bg-agent text-[10px] font-bold text-fg-inverse" title={t("plan.waiting")}>
+		<span className="inline-flex size-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-accent-fg" title={t("plan.waiting")}>
 			<span aria-hidden>!</span>
 			<span className="sr-only">{t("plan.waiting")}</span>
 		</span>

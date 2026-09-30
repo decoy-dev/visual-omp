@@ -1,4 +1,4 @@
-import { MessageSquare, MoreHorizontal } from "lucide-react";
+import { ChatCenteredText, DotsThree } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { type CommandSpec, useCommands } from "../registry/commands";
@@ -6,7 +6,20 @@ import { chatSlots } from "../registry/slots";
 import { chatTitle } from "../shell/hooks";
 import { useApp } from "../state/app";
 import type { SessionController, SessionView } from "../state/session";
-import { Button, Menu, MenuContent, MenuItem, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuSeparator, MenuTrigger, IconButton, Tooltip } from "../ui";
+import {
+	Button,
+	IconButton,
+	Menu,
+	MenuContent,
+	MenuItem,
+	MenuLabel,
+	MenuRadioGroup,
+	MenuRadioItem,
+	MenuSeparator,
+	MenuTrigger,
+	PresenceSwap,
+	Tooltip,
+} from "../ui";
 import type { TranscriptMode } from "./transcript/Transcript";
 
 const MAX_HEADER_BUTTONS = 5;
@@ -31,10 +44,12 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 
 	return (
 		<div className="flex h-(--header-h) shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
-			<MessageSquare className="size-4 shrink-0 text-fg-muted" aria-hidden />
-			<h1 className="min-w-0 truncate text-[15px] font-semibold text-fg" title={title}>
-				{title}
-			</h1>
+			<ChatCenteredText className="size-4 shrink-0 text-fg-muted" aria-hidden />
+			<PresenceSwap swapKey={title} variant="rise" className="min-w-0">
+				<h1 className="truncate text-[15px] font-semibold text-fg" title={title}>
+					{title}
+				</h1>
+			</PresenceSwap>
 			<div className="flex shrink-0 items-center gap-1.5">
 				{chips.map(chip => (
 					<chip.component key={chip.id} session={session} />
@@ -54,7 +69,7 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 				})}
 				<Menu>
 					<MenuTrigger asChild>
-						<IconButton label={t("chat:header.more")} icon={<MoreHorizontal />} size="md" />
+						<IconButton label={t("chat:header.more")} icon={<DotsThree weight="bold" />} size="md" />
 					</MenuTrigger>
 					<MenuContent align="end" className="max-h-[70vh] min-w-[240px] overflow-y-auto">
 						<MenuLabel>{t("chat:header.view")}</MenuLabel>

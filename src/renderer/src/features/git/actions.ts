@@ -66,7 +66,7 @@ export async function startWorktree(cwd: string): Promise<void> {
 		toast({
 			tone: "ok",
 			message: t("git:worktree.done"),
-			description: t("git:worktree.doneDescription", { path: worktree.path, branch: worktree.branch ?? "—" }),
+			description: t("git:worktree.doneDescription", { path: worktree.path, branch: worktree.branch ?? t("git:worktree.noBranch") }),
 			sticky: true,
 		});
 	} catch (error) {

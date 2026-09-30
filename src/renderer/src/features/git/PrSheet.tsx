@@ -1,13 +1,16 @@
 import type { GhAuthStatus, GhPrCreateResult } from "@shared/contracts/git";
 import type { GitBranchCommit, GitPrContext } from "@shared/contracts/git-workflow";
-import { Copy, ExternalLink, GitPullRequest, GitPullRequestCreate, KeyRound, TriangleAlert, WandSparkles } from "lucide-react";
+import { ArrowSquareOut, CaretRight, Copy, GitPullRequest, Key, PencilSimpleLine, Warning } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SheetProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
 import {
 	Button,
+	cn,
+	Expand,
 	Input,
+	PresenceSwap,
 	Progress,
 	Select,
 	SelectItem,
@@ -25,12 +28,12 @@ import { refreshGit, useGit } from "./store";
 
 const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** A notice card in the sheet body: icon, message, optional hint and actions. */
+/** A tinted notice in the sheet body: icon, message, optional hint and actions. */
 function Notice({ tone = "info", title, hint, children }: { tone?: "info" | "warn"; title: ReactNode; hint?: ReactNode; children?: ReactNode }) {
 	return (
-		<div className="flex gap-3 rounded-lg border border-border bg-panel p-3" role={tone === "warn" ? "status" : undefined}>
+		<div className={cn("flex gap-3 rounded-md p-3", tone === "warn" ? "bg-warn-bg" : "bg-inset")} role={tone === "warn" ? "status" : undefined}>
 			{tone === "warn" ? (
-				<TriangleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warn" />
+				<Warning aria-hidden className="mt-0.5 size-4 shrink-0 text-warn" />
 			) : (
 				<GitPullRequest aria-hidden className="mt-0.5 size-4 shrink-0 text-fg-muted" />
 			)}
@@ -61,6 +64,7 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 	const [creating, setCreating] = useState(false);
 	const [created, setCreated] = useState<GhPrCreateResult | null>(null);
 	const [authCheck, setAuthCheck] = useState(0);
+	const [showCommits, setShowCommits] = useState(false);
 
 	useEffect(() => {
 		let live = true;
@@ -144,6 +148,8 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 	const branch = status?.branch ?? context?.branch ?? null;
 
 	let content: ReactNode;
+	/** Which state the body shows; switching it crossfades the body. */
+	let stage = "form";
 	let footer: ReactNode = (
 		<Button variant="ghost" onClick={close}>
 			{t("createPr.cancel")}
@@ -151,10 +157,11 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 	);
 
 	if (created) {
+		stage = "created";
 		content = (
 			<div className="flex flex-col items-center gap-3 py-8 text-center">
 				<span className="inline-flex size-10 items-center justify-center rounded-full bg-ok-bg text-ok">
-					<GitPullRequestCreate aria-hidden className="size-5" />
+					<GitPullRequest aria-hidden className="size-5" />
 				</span>
 				<div>
 					<p className="text-lg font-semibold text-fg">{t("createPr.doneTitle", { number: created.number })}</p>
@@ -166,7 +173,7 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 						event.preventDefault();
 						openUrl(created.url);
 					}}
-					className="break-all font-mono text-sm text-accent-2 underline-offset-2 hover:underline"
+					className="break-all font-mono text-sm text-accent underline-offset-2 hover:underline"
 				>
 					{created.url}
 				</a>
@@ -187,12 +194,13 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 				<Button variant="secondary" onClick={close}>
 					{t("createPr.close")}
 				</Button>
-				<Button variant="primary" icon={<ExternalLink />} onClick={() => openUrl(created.url)}>
+				<Button variant="primary" icon={<ArrowSquareOut />} onClick={() => openUrl(created.url)}>
 					{t("createPr.openLink")}
 				</Button>
 			</>
 		);
 	} else if (!auth || !context || !status) {
+		stage = "checking";
 		content = (
 			<div className="flex flex-col gap-3" aria-busy>
 				<p className="text-sm text-fg-muted">{t("createPr.checking")}</p>
@@ -201,9 +209,10 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 			</div>
 		);
 	} else if (!auth.installed) {
+		stage = "noGh";
 		content = (
 			<Notice title={t("createPr.noGh")} hint={t("createPr.noGhHint")}>
-				<Button size="sm" variant="primary" icon={<ExternalLink />} onClick={() => openUrl("https://cli.github.com")}>
+				<Button size="sm" variant="primary" icon={<ArrowSquareOut />} onClick={() => openUrl("https://cli.github.com")}>
 					{t("createPr.installGh")}
 				</Button>
 				<Button size="sm" variant="ghost" onClick={() => setAuthCheck(n => n + 1)}>
@@ -212,12 +221,13 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 			</Notice>
 		);
 	} else if (!auth.loggedIn) {
+		stage = "signIn";
 		content = (
 			<Notice title={t("createPr.notLoggedIn")} hint={t("createPr.notLoggedInHint")}>
 				<Button
 					size="sm"
 					variant="primary"
-					icon={<KeyRound />}
+					icon={<Key />}
 					onClick={() => {
 						close();
 						void connectGitHub(cwd);
@@ -231,16 +241,20 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 			</Notice>
 		);
 	} else if (!context.remote) {
+		stage = "noRemote";
 		content = <Notice tone="warn" title={t("createPr.noRemote")} />;
 	} else if (!branch) {
+		stage = "detached";
 		content = <Notice tone="warn" title={t("createPr.detached")} />;
 	} else if (status.unborn) {
+		stage = "unborn";
 		content = <Notice tone="warn" title={t("createPr.unborn")} />;
 	} else if (git?.pr && git.pr.state === "open") {
 		const existing = git.pr;
+		stage = "existing";
 		content = (
 			<Notice title={t("createPr.existing")} hint={existing.title}>
-				<Button size="sm" variant="primary" icon={<ExternalLink />} onClick={() => openUrl(existing.url)}>
+				<Button size="sm" variant="primary" icon={<ArrowSquareOut />} onClick={() => openUrl(existing.url)}>
 					{t("createPr.openExisting", { number: existing.number })}
 				</Button>
 			</Notice>
@@ -293,7 +307,7 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 						<Button
 							size="sm"
 							variant="ghost"
-							icon={<WandSparkles />}
+							icon={<PencilSimpleLine />}
 							loading={writing}
 							disabled={creating || !commits?.length}
 							onClick={() => void writeWithOmp()}
@@ -314,26 +328,36 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 							edited.current = true;
 						}}
 					/>
-					{writing && (
-						<div aria-live="polite" className="flex flex-col gap-1.5">
+					<Expand open={writing}>
+						<div aria-live="polite" className="flex flex-col gap-1.5 pt-0.5">
 							<Progress aria-label={t("createPr.writing")} />
 							<p className="text-sm text-fg-muted">{t("createPr.writing")}</p>
 						</div>
-					)}
+					</Expand>
 				</div>
 				<Switch label={t("createPr.draft")} description={t("createPr.draftHint")} checked={draft} onCheckedChange={setDraft} />
 				{commits && commits.length > 0 && (
-					<details className="rounded-lg border border-border bg-panel px-3 py-2 text-sm">
-						<summary className="cursor-pointer text-fg-muted">{t("createPr.commitsHeading", { count: commits.length })}</summary>
-						<ul className="mt-2 space-y-1">
-							{commits.map(commit => (
-								<li key={commit.sha} className="flex gap-2">
-									<span className="shrink-0 font-mono text-fg-faint">{shortSha(commit.sha)}</span>
-									<span className="min-w-0 truncate text-fg">{commit.subject}</span>
-								</li>
-							))}
-						</ul>
-					</details>
+					<div className="text-sm">
+						<button
+							type="button"
+							aria-expanded={showCommits}
+							className="-ml-1 flex items-center gap-1 rounded-sm px-1 text-fg-muted outline-none hover:text-fg focus-visible:outline-2 focus-visible:outline-ring"
+							onClick={() => setShowCommits(open => !open)}
+						>
+							<CaretRight aria-hidden className={cn("size-3.5 transition-transform duration-(--dur) ease-(--ease-out-quart)", showCommits && "rotate-90")} />
+							{t("createPr.commitsHeading", { count: commits.length })}
+						</button>
+						<Expand open={showCommits}>
+							<ul className="space-y-1 pt-2 pl-5">
+								{commits.map(commit => (
+									<li key={commit.sha} className="flex gap-2">
+										<span className="shrink-0 font-mono text-fg-faint">{shortSha(commit.sha)}</span>
+										<span className="min-w-0 truncate text-fg">{commit.subject}</span>
+									</li>
+								))}
+							</ul>
+						</Expand>
+					</div>
 				)}
 				{needsPush && <p className="text-sm text-fg-muted">{t("createPr.needsPush")}</p>}
 			</div>
@@ -345,7 +369,7 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 				</Button>
 				<Button
 					variant="primary"
-					icon={<GitPullRequestCreate />}
+					icon={<GitPullRequest />}
 					loading={creating}
 					disabled={!title.trim() || writing}
 					onClick={() => void create()}
@@ -369,7 +393,9 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 				description={branch ? t("createPr.description", { branch }) : undefined}
 				footer={footer}
 			>
-				{content}
+				<PresenceSwap swapKey={stage} variant="rise">
+					{content}
+				</PresenceSwap>
 			</SheetContent>
 		</Sheet>
 	);

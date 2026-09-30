@@ -1,21 +1,5 @@
 /** Add / edit flow of the MCP manager: preset gallery → form → Test connection → Save. */
-import {
-	ArrowLeft,
-	BookOpen,
-	CircleCheck,
-	CircleX,
-	Code,
-	Eye,
-	EyeOff,
-	FolderOpen,
-	Globe,
-	type LucideIcon,
-	Plus,
-	Server,
-	Sparkles,
-	Trash2,
-	Wrench,
-} from "lucide-react";
+import { ArrowLeft, CheckCircle, Eye, EyeSlash, FolderOpen, Plus, Trash, XCircle } from "@phosphor-icons/react";
 import { type ReactNode, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
@@ -28,7 +12,7 @@ import type {
 	McpTarget,
 	McpTestResult,
 } from "@shared/contracts/mcp";
-import { Button, Card, Checkbox, Chip, IconButton, Input, Segmented, Skeleton, Spinner, toast } from "@/ui";
+import { Button, Checkbox, Chip, IconButton, Input, Segmented, Skeleton, Spinner, toast } from "@/ui";
 import { errorText } from "../format";
 import { ExtensionSheetFrame, Notice, useLoad } from "../shared";
 import { configFromForm, emptyForm, formFromConfig, type KeyValueRow, type McpForm, type McpFormErrors, validateForm } from "./form";
@@ -48,14 +32,6 @@ interface ServerEditorProps {
 	/** Called after a successful save with the scope saved to. */
 	onSaved(scope: McpScope | null): void;
 }
-
-const CATEGORY_ICONS: Record<McpPreset["category"], LucideIcon> = {
-	reference: Wrench,
-	developer: Code,
-	knowledge: BookOpen,
-	web: Globe,
-	productivity: Sparkles,
-};
 
 const CATEGORY_ORDER: McpPreset["category"][] = ["developer", "productivity", "web", "knowledge", "reference"];
 
@@ -88,60 +64,51 @@ function PresetGallery({ close, onBack, onPick }: ServerEditorProps & { onPick(m
 				</Button>
 			}
 		>
-			<Card interactive padding="sm" className="flex items-center gap-3">
-				<span className="inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-accent-muted text-accent">
-					<Server aria-hidden className="size-4" />
-				</span>
+			<div className="flex items-center gap-4 border-b border-border pb-4">
 				<div className="min-w-0 flex-1">
-					<p className="text-md font-semibold text-fg">{t("mcp.gallery.customTitle")}</p>
+					<p className="text-md font-medium text-fg">{t("mcp.gallery.customTitle")}</p>
 					<p className="text-sm text-fg-muted">{t("mcp.gallery.customBody")}</p>
 				</div>
 				<Button icon={<Plus />} onClick={() => onPick({ kind: "custom" })}>
 					{t("mcp.gallery.customAction")}
 				</Button>
-			</Card>
+			</div>
 			{presets.error && <Notice tone="err">{presets.error}</Notice>}
 			{!presets.data && presets.loading && (
-				<div className="grid grid-cols-3 gap-3">
+				<div className="flex flex-col gap-2">
 					{[0, 1, 2, 3, 4, 5].map(i => (
-						<Skeleton key={i} height={132} />
+						<Skeleton key={i} height={48} />
 					))}
 				</div>
 			)}
-			{groups.map(({ category, items }) => {
-				const Icon = CATEGORY_ICONS[category];
-				return (
-					<section key={category} aria-labelledby={`mcp-cat-${category}`} className="flex flex-col gap-2">
-						<h3 id={`mcp-cat-${category}`} className="text-sm font-semibold text-fg-muted">
-							{t(`mcp.category.${category}`)}
-						</h3>
-						<div className="grid grid-cols-3 gap-3">
-							{items.map(preset => (
-								<Card key={preset.id} interactive padding="sm" className="flex flex-col gap-2">
-									<div className="flex items-center gap-2">
-										<span className="inline-flex size-7 shrink-0 items-center justify-center rounded-md bg-accent-2-muted text-accent-2">
-											<Icon aria-hidden className="size-3.5" />
-										</span>
-										<span className="min-w-0 flex-1 truncate text-md font-semibold text-fg">{preset.label}</span>
-									</div>
-									<p className="line-clamp-2 min-h-10 text-sm text-fg-muted">{preset.description}</p>
-									<div className="mt-auto flex items-center gap-1.5">
-										{preset.oauth && <Chip tone="blue">{t("mcp.gallery.signIn")}</Chip>}
-										{preset.requires.map(bin => (
-											<Chip key={bin} tone="neutral">
-												{t("mcp.gallery.needs", { bin })}
-											</Chip>
-										))}
-										<Button size="sm" className="ml-auto" onClick={() => onPick({ kind: "preset", preset })} aria-label={t("mcp.gallery.addNamed", { name: preset.label })}>
-											{t("mcp.gallery.addAction")}
-										</Button>
-									</div>
-								</Card>
-							))}
-						</div>
-					</section>
-				);
-			})}
+			{groups.map(({ category, items }) => (
+				<section key={category} aria-labelledby={`mcp-cat-${category}`} className="flex flex-col">
+					<h3 id={`mcp-cat-${category}`} className="mb-1 text-sm font-medium text-fg-muted">
+						{t(`mcp.category.${category}`)}
+					</h3>
+					<ul className="divide-y divide-border">
+						{items.map(preset => (
+							<li key={preset.id} className="flex items-center gap-4 py-2.5">
+								<div className="min-w-0 flex-1">
+									<p className="truncate text-md font-medium text-fg">{preset.label}</p>
+									<p className="line-clamp-2 text-sm text-fg-muted">{preset.description}</p>
+								</div>
+								<div className="flex shrink-0 items-center gap-1.5">
+									{preset.oauth && <Chip tone="neutral">{t("mcp.gallery.signIn")}</Chip>}
+									{preset.requires.map(bin => (
+										<Chip key={bin} tone="neutral">
+											{t("mcp.gallery.needs", { bin })}
+										</Chip>
+									))}
+									<Button size="sm" onClick={() => onPick({ kind: "preset", preset })} aria-label={t("mcp.gallery.addNamed", { name: preset.label })}>
+										{t("mcp.gallery.addAction")}
+									</Button>
+								</div>
+							</li>
+						))}
+					</ul>
+				</section>
+			))}
 		</ExtensionSheetFrame>
 	);
 }
@@ -251,7 +218,7 @@ function ServerForm({ mode, close, projectPath, list, onBack, onSaved }: ServerE
 						{t("mcp.test.action")}
 					</Button>
 					<Button variant="primary" onClick={() => void save()} loading={saving}>
-						{t("common.save")}
+						{t("mcp.form.save")}
 					</Button>
 				</>
 			}
@@ -426,7 +393,7 @@ function KeyValueEditor({ label, hint, addLabel, keyPlaceholder, valuePlaceholde
 						spellCheck={false}
 						onChange={event => set(index, { value: event.currentTarget.value })}
 					/>
-					<IconButton size="sm" label={t("mcp.form.removeRow")} icon={<Trash2 />} onClick={() => onChange(rows.filter((_, i) => i !== index))} />
+					<IconButton size="sm" label={t("mcp.form.removeRow")} icon={<Trash />} onClick={() => onChange(rows.filter((_, i) => i !== index))} />
 				</div>
 			))}
 			<div>
@@ -471,7 +438,7 @@ function PresetFieldInput({
 							value={dir}
 							onChange={event => onChange(list.map((d, i) => (i === index ? event.currentTarget.value : d)))}
 						/>
-						<IconButton size="sm" label={t("mcp.form.removeRow")} icon={<Trash2 />} onClick={() => onChange(list.filter((_, i) => i !== index))} />
+						<IconButton size="sm" label={t("mcp.form.removeRow")} icon={<Trash />} onClick={() => onChange(list.filter((_, i) => i !== index))} />
 					</div>
 				))}
 				<div>
@@ -502,7 +469,7 @@ function PresetFieldInput({
 					<IconButton
 						size="sm"
 						label={t(reveal ? "mcp.form.hide" : "mcp.form.show")}
-						icon={reveal ? <EyeOff /> : <Eye />}
+						icon={reveal ? <EyeSlash /> : <Eye />}
 						onClick={() => setReveal(r => !r)}
 					/>
 				) : field.kind === "path" ? (
@@ -531,7 +498,7 @@ function TestPanel({ check, name }: { check: Check; name: string }) {
 		return (
 			<div role="status" className="flex flex-col gap-1 rounded-md border border-border bg-ok-bg px-3 py-2.5 text-sm text-fg">
 				<span className="flex items-center gap-2 font-medium">
-					<CircleCheck aria-hidden className="size-4 text-ok" />
+					<CheckCircle aria-hidden className="size-4 text-ok" />
 					{result.tools.length > 0 ? t("mcp.test.found", { count: result.tools.length }) : t("mcp.noTools")}
 				</span>
 				{result.serverInfo && (
@@ -545,7 +512,7 @@ function TestPanel({ check, name }: { check: Check; name: string }) {
 	return (
 		<div role="alert" className="flex flex-col gap-2 rounded-md border border-border bg-err-bg px-3 py-2.5 text-sm text-fg">
 			<span className="flex items-start gap-2 font-medium">
-				<CircleX aria-hidden className="mt-0.5 size-4 shrink-0 text-err" />
+				<XCircle aria-hidden className="mt-0.5 size-4 shrink-0 text-err" />
 				<span className="break-words">{result.authRequired ? t("mcp.test.authRequired", { name: name || "server" }) : result.error}</span>
 			</span>
 			{result.unresolvedVars.length > 0 && <span className="pl-6 text-fg-muted">{t("mcp.test.unresolved", { vars: result.unresolvedVars.join(", ") })}</span>}

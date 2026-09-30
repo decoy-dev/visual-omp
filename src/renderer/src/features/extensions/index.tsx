@@ -2,7 +2,7 @@
  * Extensions: MCP servers, skills & plugins, memory, and usage & limits — each a sheet opened by a
  * `manage.*` command — plus the status-bar "today" cost.
  */
-import { Brain, Gauge, PlugZap, Sparkles } from "lucide-react";
+import { BookOpenText, Brain, Gauge, PlugsConnected } from "@phosphor-icons/react";
 import { registerCommand } from "@/registry/commands";
 import { sheets, statusItems } from "@/registry/slots";
 import { useApp } from "@/state/app";
@@ -18,8 +18,8 @@ sheets.register({ id: "memory", component: MemorySheet });
 sheets.register({ id: "usage", component: UsageSheet });
 
 const COMMANDS = [
-	{ id: "manage.mcp", sheet: "mcp", key: "mcp", icon: PlugZap, slash: "/mcp" },
-	{ id: "manage.skills", sheet: "skills", key: "skills", icon: Sparkles, slash: undefined },
+	{ id: "manage.mcp", sheet: "mcp", key: "mcp", icon: PlugsConnected, slash: "/mcp" },
+	{ id: "manage.skills", sheet: "skills", key: "skills", icon: BookOpenText, slash: undefined },
 	{ id: "manage.memory", sheet: "memory", key: "memory", icon: Brain, slash: "/memory" },
 	{ id: "manage.usage", sheet: "usage", key: "usage", icon: Gauge, slash: "/usage" },
 ] as const;

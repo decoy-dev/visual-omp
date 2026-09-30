@@ -57,7 +57,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 						{items.map((item, i) => (
 							<Row key={i}>
 								{item.content}
-								{item.context && <span className="tv-faint"> — {item.context}</span>}
+								{item.context && <span className="tv-faint"> · {item.context}</span>}
 							</Row>
 						))}
 					</div>

@@ -2,7 +2,7 @@
  * Onboarding & system surfaces: setup screen, first-run tour, help, update notices, background
  * notifications and the quit / close-tab warning.
  */
-import { CircleHelp, Compass, Download } from "lucide-react";
+import { Compass, DownloadSimple, Question } from "@phosphor-icons/react";
 import { registerCommand } from "../../registry/commands";
 import { setTabCloseGuard } from "../../registry/guards";
 import { globals, screens, sheets } from "../../registry/slots";
@@ -26,7 +26,7 @@ registerCommand({
 	hint: "onboarding:commands.help.hint",
 	keywords: "onboarding:commands.help.keywords",
 	group: "help",
-	icon: CircleHelp,
+	icon: Question,
 	shortcut: "F1",
 	run: () => useApp.getState().openSheet("help"),
 });
@@ -50,7 +50,7 @@ registerCommand({
 	hint: "onboarding:update.omp.hint",
 	keywords: "onboarding:update.omp.keywords",
 	group: "settings",
-	icon: Download,
+	icon: DownloadSimple,
 	run: () => useApp.getState().openSheet(OMP_UPDATE_SHEET),
 });
 

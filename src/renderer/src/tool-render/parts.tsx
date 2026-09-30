@@ -93,7 +93,7 @@ export interface OutputProps {
 	error?: boolean;
 	/** "code": horizontal scroll, inset bg. "plain": soft-wrapped. */
 	variant?: "code" | "plain";
-	/** Uppercase mini-title above the block. */
+	/** Mini-title above the block; renderers pass lowercase identifiers, shown in sentence case. */
 	title?: string;
 	/** Drop the inset background (inline in flow). */
 	bare?: boolean;
@@ -116,7 +116,7 @@ export function Output({ text, maxLines = 10, lang, error, variant = "plain", ti
 	if (bare) classes.push("tv-pre--bare");
 	return (
 		<div className="tv-out">
-			{title && <div className="tv-out-title">{title}</div>}
+			{title && <div className="tv-out-title">{title.charAt(0).toUpperCase() + title.slice(1)}</div>}
 			{html !== null ? (
 				<pre className={classes.join(" ")} dangerouslySetInnerHTML={{ __html: html }} />
 			) : (
@@ -124,7 +124,7 @@ export function Output({ text, maxLines = 10, lang, error, variant = "plain", ti
 			)}
 			{collapsible && (
 				<button type="button" className="tv-expand" onClick={() => setExpanded(v => !v)}>
-					{expanded ? "collapse" : `⋯ ${lines.length - maxLines} more lines`}
+					{expanded ? "Collapse output" : `Show ${lines.length - maxLines} more lines`}
 				</button>
 			)}
 		</div>
@@ -201,7 +201,7 @@ export function ResultImages({ result }: { result: ToolResultLike | undefined })
 				<button
 					key={i}
 					type="button"
-					style={{ all: "unset", display: "inline-flex" }}
+					className="tv-img-btn"
 					onClick={() => openImage(img)}
 					aria-label={`Open tool result image ${i + 1}`}
 				>
@@ -260,7 +260,7 @@ export function DiffBlock({ diff, maxLines = 80 }: { diff: string; maxLines?: nu
 			</div>
 			{collapsible && (
 				<button type="button" className="tv-expand" onClick={() => setExpanded(v => !v)}>
-					{expanded ? "collapse" : `⋯ ${lines.length - maxLines} more lines`}
+					{expanded ? "Collapse output" : `Show ${lines.length - maxLines} more lines`}
 				</button>
 			)}
 		</div>

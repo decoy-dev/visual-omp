@@ -39,7 +39,7 @@ export function SettingsSection({ title, description, children }: { title: React
 		<section className="mb-6">
 			<h3 className="text-sm font-semibold text-fg">{title}</h3>
 			{description && <p className="mt-0.5 text-sm text-fg-muted">{description}</p>}
-			<div className="mt-1 divide-y divide-border">{children}</div>
+			<div className="relative mt-1 divide-y divide-border">{children}</div>
 		</section>
 	);
 }
@@ -48,5 +48,5 @@ export function SettingsSection({ title, description, children }: { title: React
 export function SourceChip({ source }: { source: SettingSource }) {
 	const { t } = useTranslation("manage");
 	if (source === "global" || source === "default") return null;
-	return <Chip tone={source === "project" ? "blue" : "warn"}>{t(`settings.source.${source}`)}</Chip>;
+	return <Chip tone={source === "project" ? "neutral" : "warn"}>{t(`settings.source.${source}`)}</Chip>;
 }
