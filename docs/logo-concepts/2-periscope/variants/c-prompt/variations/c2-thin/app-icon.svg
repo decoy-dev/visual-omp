@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- visual-omp prompt variation C2, Thin: macOS app icon on the 1024 grid (824 tile at 100, rx 185). -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#141919"/>
+  <path fill="none" stroke="#5fccc8" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" d="M250 591L316 635L250 679"/>
+  <rect fill="#5fccc8" x="366" y="727" width="96" height="56"/>
+  <rect fill="#5fccc8" x="606" y="727" width="96" height="56"/>
+  <path fill="#5fccc8" d="M482 387L582 287H594.4A106 106 0 0 0 594.4 427H586V787H482Z"/>
+  <path fill="#5fccc8" fill-rule="evenodd" d="M554 357A120 120 0 1 0 794 357A120 120 0 1 0 554 357ZM582 357A92 92 0 1 0 766 357A92 92 0 1 0 582 357Z"/>
+  <circle fill="#f5f7f7" cx="674" cy="357" r="70"/>
+</svg>

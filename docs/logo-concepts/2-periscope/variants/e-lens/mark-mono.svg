@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="183.68 189.68 656.64 656.64">
+  <!-- visual-omp periscope variant E, Lens: one-color mark, fills use currentColor. -->
+  <path fill="currentColor" d="M216 402L316 302H418.56A120 120 0 0 0 418.56 462H336V766H216Z"/>
+  <path fill="currentColor" fill-rule="evenodd" d="M372 382A136 136 0 1 0 644 382A136 136 0 1 0 372 382ZM404 382A104 104 0 1 0 612 382A104 104 0 1 0 404 382Z"/>
+  <circle fill="currentColor" cx="508" cy="382" r="80"/>
+  <path fill="none" stroke="currentColor" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" d="M232 766Q267 726 302 766T372 766T442 766T512 766T582 766T652 766T722 766T792 766"/>
+</svg>

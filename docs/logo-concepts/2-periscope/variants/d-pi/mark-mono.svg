@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="205.28 205.28 613.44 613.44">
+  <!-- visual-omp periscope variant D, Pi: one-color mark, fills use currentColor. -->
+  <path fill="currentColor" d="M296 378L432 242H796V378H528V754H400V378Z"/>
+  <rect fill="currentColor" x="624" y="340" width="112" height="220" rx="24"/>
+  <rect fill="currentColor" x="228" y="726" width="568" height="56" rx="28"/>
+</svg>

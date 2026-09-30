@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- visual-omp periscope variant D, Pi: macOS app icon on the 1024 grid (824 tile at 100, rx 185). -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#10726f"/>
+  <path fill="#f5f7f7" d="M296 378L432 242H796V378H528V754H400V378Z"/>
+  <rect fill="#f5f7f7" x="624" y="340" width="112" height="220" rx="24"/>
+  <rect fill="#f5f7f7" x="228" y="726" width="568" height="56" rx="28"/>
+</svg>

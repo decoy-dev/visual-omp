@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="183.36 179.36 665.28 665.28">
+  <!-- visual-omp periscope variant A, Swell: one-color mark, fills use currentColor. -->
+  <path fill="currentColor" d="M400 444L590 254H752V444H520V726H400Z"/>
+  <rect fill="currentColor" x="780" y="272" width="44" height="154" rx="10"/>
+  <path fill="none" stroke="currentColor" stroke-width="48" stroke-linecap="round" stroke-linejoin="round" d="M232 726Q267 686 302 726T372 726T442 726T512 726T582 726T652 726T722 726T792 726"/>
+</svg>

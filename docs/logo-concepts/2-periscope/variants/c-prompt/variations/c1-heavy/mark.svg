@@ -1,6 +1,5 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- visual-omp app icon (macOS 1024 grid: 824 tile at 100, rx 185), periscope C1 "Heavy". docs/DESIGN.md §6. -->
-  <rect x="100" y="100" width="824" height="824" rx="185" fill="#f5f7f7"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="159.92 159.92 704.16 704.16">
+  <!-- visual-omp prompt variation C1, Heavy: mark in the primary colors. -->
   <path fill="none" stroke="#141c1c" stroke-width="88" stroke-linecap="round" stroke-linejoin="round" d="M230 600L342 682L230 764"/>
   <rect fill="#141c1c" x="420" y="712" width="382" height="72"/>
   <path fill="#141c1c" d="M474 392L650 216H762V392H606V748H474Z"/>

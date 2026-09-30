@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- visual-omp periscope variant B, Monoline: macOS app icon on the 1024 grid (824 tile at 100, rx 185). -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#f5f7f7"/>
+  <path fill="none" stroke="#10726f" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" d="M404 683V457L596 265H812V457H596V683M212 749Q249.5 709 287 749T362 749T437 749T512 749T587 749T662 749T737 749T812 749"/>
+</svg>

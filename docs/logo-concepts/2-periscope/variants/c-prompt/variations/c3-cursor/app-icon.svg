@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- visual-omp prompt variation C3, Cursor: macOS app icon on the 1024 grid (824 tile at 100, rx 185). -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#10726f"/>
+  <path fill="none" stroke="#141c1c" stroke-width="72" stroke-linecap="round" stroke-linejoin="round" d="M243 592L347 668L243 744"/>
+  <rect fill="#f5f7f7" x="421" y="532" width="216" height="260"/>
+  <path fill="#f5f7f7" d="M469 392L629 232H753V392H589V542H469Z"/>
+  <rect fill="#141c1c" x="777" y="248" width="40" height="128" rx="8"/>
+</svg>

@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- visual-omp periscope variant F, Rising: macOS app icon on the 1024 grid (824 tile at 100, rx 185). -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#dff4f2"/>
+  <path fill="#10726f" d="M306 470L496 280H650V470H446V924H306Z"/>
+  <rect fill="#10726f" x="678" y="300" width="40" height="150" rx="10"/>
+</svg>

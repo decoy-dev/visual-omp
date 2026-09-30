@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- visual-omp periscope variant C, Prompt: macOS app icon on the 1024 grid (824 tile at 100, rx 185). -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#f5f7f7"/>
+  <path fill="none" stroke="#141c1c" stroke-width="64" stroke-linecap="round" stroke-linejoin="round" d="M226 644L316 704L226 764"/>
+  <path fill="#141c1c" d="M458 404L634 228H746V404H586V756H458Z"/>
+  <rect fill="#141c1c" x="378" y="724" width="408" height="64"/>
+  <rect fill="#10726f" x="774" y="246" width="48" height="140" rx="10"/>
+</svg>

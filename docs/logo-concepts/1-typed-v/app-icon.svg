@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- visual-omp concept 1, Typed v: macOS app icon on the 1024 grid (824 tile at 100, rx 185). -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#141919"/>
+  <path fill="#e9eeee" d="M219 322H337L389 510L441 322H559L454 702H324Z"/>
+  <rect fill="#5fccc8" x="597" y="322" width="208" height="380"/>
+</svg>

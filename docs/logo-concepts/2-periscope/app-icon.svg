@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- visual-omp concept 2, Periscope: macOS app icon on the 1024 grid (824 tile at 100, rx 185). -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#10726f"/>
+  <path fill="#f5f7f7" d="M452 388L562 278H742V388H562V720H452Z"/>
+  <path fill="none" stroke="#f5f7f7" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" d="M262 700Q302 674 342 700T422 700M594 700Q634 674 674 700T754 700"/>
+</svg>

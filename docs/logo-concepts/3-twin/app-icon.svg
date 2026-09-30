@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- visual-omp concept 3, Twin: macOS app icon on the 1024 grid (824 tile at 100, rx 185). -->
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#f5f7f7"/>
+  <path fill="#10726f" d="M252 252H732.4L252 732.4Z"/>
+  <path fill="#10726f" fill-rule="evenodd" d="M772 291.6V772H291.6ZM700 465.4V700H465.4Z"/>
+</svg>

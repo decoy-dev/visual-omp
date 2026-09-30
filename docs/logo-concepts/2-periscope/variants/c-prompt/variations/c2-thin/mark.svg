@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="207.44 207.44 609.12 609.12">
+  <!-- visual-omp prompt variation C2, Thin: mark in the primary colors. -->
+  <path fill="none" stroke="#10726f" stroke-width="40" stroke-linecap="round" stroke-linejoin="round" d="M250 591L316 635L250 679"/>
+  <rect fill="#10726f" x="366" y="727" width="96" height="56"/>
+  <rect fill="#10726f" x="606" y="727" width="96" height="56"/>
+  <path fill="#10726f" d="M482 387L582 287H594.4A106 106 0 0 0 594.4 427H586V787H482Z"/>
+  <path fill="#10726f" fill-rule="evenodd" d="M554 357A120 120 0 1 0 794 357A120 120 0 1 0 554 357ZM582 357A92 92 0 1 0 766 357A92 92 0 1 0 582 357Z"/>
+  <circle fill="#141c1c" cx="674" cy="357" r="70"/>
+</svg>
