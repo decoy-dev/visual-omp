@@ -1,4 +1,4 @@
-import { delimiter, posix } from "node:path";
+import { posix } from "node:path";
 import { z } from "zod";
 import type { CliResult, Platform } from "@shared/ipc";
 import type { AppInstallMethod, AppUpdateStatus, OmpUpdateChannel, ReleaseAsset } from "@shared/contracts/updates";
@@ -227,9 +227,12 @@ export function appBundlePath(exePath: string): string | null {
 	return match?.[1] ?? null;
 }
 
-/** Where brew may be: every PATH entry, then the default prefixes (Apple Silicon, Intel, `~/homebrew`). */
+/**
+ * Where brew may be: every PATH entry, then the default prefixes (Apple Silicon, Intel, `~/homebrew`).
+ * Homebrew only exists on macOS, so PATH is split on the POSIX delimiter on every platform.
+ */
 export function brewCandidates(pathValue: string, home: string): string[] {
-	const dirs = [...pathValue.split(delimiter), "/opt/homebrew/bin", "/usr/local/bin", posix.join(home, "homebrew", "bin")];
+	const dirs = [...pathValue.split(posix.delimiter), "/opt/homebrew/bin", "/usr/local/bin", posix.join(home, "homebrew", "bin")];
 	return [...new Set(dirs.filter(dir => dir.startsWith("/")).map(dir => posix.join(dir, "brew")))];
 }
 
