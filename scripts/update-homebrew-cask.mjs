@@ -13,7 +13,7 @@ const cask = `cask "visual-omp" do
 
   url "https://github.com/decoy-dev/visual-omp/releases/download/v#{version}/visual-omp-#{version}-mac-arm64.dmg"
   name "visual-omp"
-  desc "A friendly desktop app for oh-my-pi"
+  desc "Desktop app for the omp (oh-my-pi) coding agent"
   homepage "https://github.com/decoy-dev/visual-omp"
 
   depends_on macos: ">= :monterey"

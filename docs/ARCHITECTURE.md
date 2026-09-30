@@ -1,4 +1,4 @@
-# visual-omp — Architecture
+# visual-omp architecture
 
 ## Overview
 
@@ -78,5 +78,6 @@ src/
 | Git | `git`, `gh` |
 
 ## Compatibility
-The collab wire protocol is versioned (`COLLAB_PROTO`). The app checks `omp --version` against a
-supported range and shows a clear upgrade/downgrade notice when outside it.
+The collab wire protocol is versioned (`COLLAB_PROTO`). On launch the app reads `omp --version` and
+compares it with `MIN_OMP_VERSION` (`src/main/omp/locate.ts`); an older omp opens the setup screen
+with the install command, and there is no upper bound.

@@ -1,22 +1,23 @@
-# visual-omp — Product Specification
+# visual-omp product specification
 
-visual-omp is a desktop app that puts a friendly, Claude Code–desktop–style interface on top of
-[omp (oh-my-pi)](https://github.com/can1357/oh-my-pi). It must be usable by people who have never
-opened a terminal, while exposing everything that makes omp unique.
+visual-omp is a desktop app that puts an interface modeled on the Claude Code desktop app on top of
+[omp (oh-my-pi)](https://github.com/can1357/oh-my-pi). People who have never opened a terminal must
+be able to use it, and it exposes the features that set omp apart from other coding agents.
 
 ## Audience and platforms
 - **Audience:** public release for anyone, including non-technical users.
 - **Platforms:** macOS (Apple Silicon + Intel) and Windows.
 - **Distribution:** Homebrew cask (`brew install --cask decoy-dev/tap/visual-omp`) on macOS; NSIS
-  installer on GitHub Releases for Windows. Releases are built by GitHub Actions on tag push, which
-  also updates the Homebrew tap.
-- **Signing:** ad-hoc signed (no Apple Developer ID). The cask caveats and README document the
-  one-time *System Settings → Privacy & Security → Open Anyway* step; Windows documents the
-  SmartScreen *More info → Run anyway* step. Nothing strips quarantine or disables Gatekeeper.
+  installer on GitHub Releases for Windows. GitHub Actions builds a release when a `v*` tag is
+  pushed and updates the Homebrew cask for stable versions (see docs/RELEASING.md).
+- **Signing:** ad-hoc signed (no Apple Developer ID). The README documents the macOS
+  *System Settings → Privacy & Security → Open Anyway* step and the Windows SmartScreen
+  *More info → Run anyway* step, which can reappear after an update. Nothing strips quarantine or
+  disables Gatekeeper.
 - **License:** MIT. Code derived from oh-my-pi (MIT) is credited in `NOTICE`.
 - **Language:** English, translation-ready (all UI strings in locale files).
-- **Accessibility:** WCAG 2.2 AA — full keyboard navigation, screen-reader labels, adjustable text
-  size, reduced motion, contrast-safe colors in both themes.
+- **Accessibility:** WCAG 2.2 AA: full keyboard navigation, screen-reader labels, adjustable text
+  size, reduced motion, and contrast-safe colors in both themes.
 
 ## Engine
 - The user installs omp themselves. When omp is missing or too old, the app shows a guided setup
@@ -24,19 +25,22 @@ opened a terminal, while exposing everything that makes omp unique.
   it visibly in the built-in terminal (user-initiated), and **Check again**.
 - Each chat is backed by a **real omp terminal (TUI) running hidden in a pseudo-terminal**. The app
   types messages and commands into it (e.g. the Restart button sends `/restart`), and mirrors its
-  live state — streaming text, thinking, tool calls, subagents, questions — as native UI through
-  omp's collab protocol over a relay bound to 127.0.0.1. Nothing leaves the machine.
+  live state (streaming text, thinking, tool calls, subagents, questions) as native UI through
+  omp's collab protocol over a relay bound to 127.0.0.1, so the app-to-omp connection never leaves
+  the machine.
 - Full-screen TUI menus that are not rebuilt natively open in a **terminal sheet** showing the
   live omp terminal.
 - Default permission mode for new users: **auto-approve everything** (omp `yolo`), changeable next
   to Send.
 
 ## Visual design
-- omp's own identity (π mark, omp accent colors), **light mode by default**, dark mode available.
-- New app icon derived from omp's π mark.
-- Output: **friendly summaries, expandable** — tool steps collapse into plain-language cards
-  ("Edited 3 files", "Ran tests ✓") with raw output/diffs one click away; transcript view toggle
-  Normal / Thinking / Verbose.
+- One teal accent over near-neutral surfaces, **light mode by default**, dark mode available, and
+  none of the gradient, glass or eyebrow patterns of generated UI (docs/DESIGN.md §0).
+- App icon: the "Prompt" periscope (a `>` prompt with a periscope rising from its underscore, ink with
+  a teal lens), chosen from the concepts in docs/logo-concepts/.
+- Output: **friendly summaries, expandable.** Tool steps collapse into plain-language rows
+  ("Edited 3 files", "Ran tests") with raw output and diffs one click away, and a transcript view
+  toggle switches between Normal, Thinking and Verbose.
 
 ## Feature scope (all in scope)
 ### Sessions

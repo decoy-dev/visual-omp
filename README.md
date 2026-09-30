@@ -3,107 +3,101 @@
 </p>
 
 <p align="center">
-  <strong>omp, without the terminal.</strong>
-  <strong><a href="https://github.com/decoy-dev/visual-omp">visual-omp</a></strong>
+  A desktop app for <a href="https://github.com/can1357/oh-my-pi">omp (oh-my-pi)</a>, the coding agent by <a href="https://github.com/can1357">@can1357</a>. Published by <a href="https://decoy.ltd">decoy</a>.
 </p>
 
 <p align="center">
-  <a href="https://github.com/decoy-dev/visual-omp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/decoy-dev/visual-omp?style=flat&colorA=222222&colorB=58A6FF" alt="License"></a>
-  <a href="https://www.typescriptlang.org"><img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat&colorA=222222&logo=typescript&logoColor=white" alt="TypeScript"></a>
-  <a href="https://www.electronjs.org"><img src="https://img.shields.io/badge/Electron-47848F?style=flat&colorA=222222&logo=electron&logoColor=white" alt="Electron"></a>
-  <a href="https://github.com/decoy-dev/visual-omp#install"><img src="https://img.shields.io/badge/platform-macOS%20%C2%B7%20Windows-ed4abf?style=flat&colorA=222222" alt="Platforms"></a>
-  <a href="https://github.com/can1357/oh-my-pi"><img src="https://img.shields.io/badge/engine-omp-5ad8e6?style=flat&colorA=222222" alt="Powered by omp"></a>
+  <a href="https://github.com/decoy-dev/visual-omp/blob/main/LICENSE"><img src="https://img.shields.io/github/license/decoy-dev/visual-omp?style=flat&colorA=222222&colorB=0e7490" alt="License: MIT"></a>
+  <a href="https://github.com/decoy-dev/visual-omp/releases"><img src="https://img.shields.io/github/v/release/decoy-dev/visual-omp?style=flat&colorA=222222&colorB=0e7490&include_prereleases" alt="Latest release"></a>
+  <a href="https://github.com/decoy-dev/visual-omp#install"><img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows-0e7490?style=flat&colorA=222222" alt="Platforms: macOS and Windows"></a>
 </p>
 
-<p align="center">
-  A desktop app for <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a> by <a href="https://github.com/can1357">@can1357</a> · Built by <a href="https://decoy.ltd">decoy</a>
-</p>
-
-Everything that makes omp the most capable coding agent — subagents, plan mode, model roles, the advisor, collab, skills, MCP — in a window anyone can use. No commands to memorize, no terminal to learn. Real omp underneath, every feature within a click.
-
-**Real** omp under every chat · **every** slash command one click away · **light** & **dark** · **macOS** & **Windows**.
+omp has subagents, plan mode, model roles, an advisor, MCP servers and skills, and all of it runs in a terminal. visual-omp puts that same omp behind a desktop window, so the chats, plans, subagents and settings become things you can click. People who have never opened a terminal can use omp this way, and people who already work in one get a clearer view of what omp is doing while it works.
 
 > [!NOTE]
-> visual-omp is in active pre-release development. Features land continuously on `main`; the
-> first tagged release will publish the Homebrew cask and Windows installer below.
+> visual-omp is at version 0.1, its first release build. The Homebrew cask and the Windows installer are published when a version is tagged, and [CHANGELOG.md](CHANGELOG.md) lists what each version contains.
 
 ## Install
 
-visual-omp drives the omp you already have. Install omp first:
+visual-omp runs the omp you already have installed, so install omp first. If it is missing, visual-omp detects that on first launch and offers to run the installer for you.
 
-**macOS · Linux**
+**omp on macOS or Linux**
 
 ```sh
 curl -fsSL https://omp.sh/install | sh
 ```
 
-**Windows (PowerShell)**
+**omp on Windows (PowerShell)**
 
 ```powershell
 irm https://omp.sh/install.ps1 | iex
 ```
 
-Don't have it yet? visual-omp detects that on first launch and walks you through it.
-
 **visual-omp on macOS (Homebrew)**
 
+```sh
 brew tap decoy-dev/tap https://github.com/decoy-dev/visual-omp
 brew install --cask decoy-dev/tap/visual-omp
+```
 
 **visual-omp on Windows**
 
-Download the `visual-omp-<version>-win-x64.exe` installer from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest).
+Download `visual-omp-<version>-win-x64.exe` from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest) and run it.
 
-macOS (Apple Silicon · Intel) · Windows 10+ · omp ≥ 18.4
+visual-omp supports macOS on Apple Silicon and Intel, Windows 10 and later, and omp 18.4 or later.
 
 ### First launch
 
-visual-omp is not yet notarized by Apple or signed for Windows SmartScreen, so the first launch needs one extra click:
+visual-omp is not notarized by Apple or signed for Windows SmartScreen yet, so the operating system asks you to approve it before it opens. Expect the prompt on first launch, and possibly again after an update:
 
-- **macOS** — open visual-omp once, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to the visual-omp message.
-- **Windows** — on the "Windows protected your PC" screen, click **More info → Run anyway**.
+- **macOS:** open visual-omp, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to the message about visual-omp.
+- **Windows:** on the "Windows protected your PC" screen, click **More info**, then **Run anyway**.
 
-## A real omp, _behind glass_.
+## How it works
 
-Every chat is a genuine omp session running out of sight. visual-omp types for you, then reads omp's own live stream — the same encrypted feed omp uses to share sessions — over a relay that never leaves your computer. Every omp feature works because it is omp: nothing re-implemented, nothing emulated, nothing lost in translation.
+Each chat runs a full omp session in a hidden terminal on your computer. visual-omp types your messages into that session and reads omp's own collaboration stream back over a relay bound to 127.0.0.1, which means the connection between the app and omp never leaves your machine. The practical consequence is that visual-omp does not reimplement omp: a slash command works when you type it into the message box whether or not the app has a button for it yet, and the handful of full-screen omp menus without a native screen open in a terminal sheet drawn by omp itself.
 
-### 01 · Chats that read like a conversation
+## What you can do
 
-Replies stream in as formatted text. The work behind them — files read, commands run, edits made — folds into short, plain-language steps ("Edited 3 files", "Ran the tests ✓") that open up to the full output, diff, or reasoning when you want it. Switch between **Normal**, **Thinking**, and **Verbose** at any time.
+### Start a chat in any folder
 
-### 02 · Every command, one click away
+The sidebar's **Start chat…** button asks where the chat should run. You can pick a recent project, browse into any folder on your computer, or create a new folder inside the one you are looking at, and omp starts there, the same as running `omp` after `cd`. Folders you use become projects in the sidebar, next to every session you have run in a terminal.
 
-`/restart`, `/compact`, `/plan`, `/model`, `/agents` — the header puts the everyday ones on buttons, and **⌘K / Ctrl+K** searches all of omp's commands in plain language. Typing `/` in the message box still works. The rare full-screen omp menus open in a terminal sheet, exactly as omp draws them.
+### Follow a chat that is open in a terminal
 
-### 03 · Projects, not paths
+On macOS, a session that is still running in a terminal opens in the app as a view that updates while the terminal works, and replies go through the terminal. Once the app sees that no other omp process has the session open, **Continue here** checks again and lets you resume the chat in the app.
 
-Folders become projects in the sidebar, each with its chats underneath — including every session you ever ran in a terminal. Start a project from an empty folder, an existing one, or a GitHub link. Each project gets a home page with recent chats, git status, and what it cost this week.
+### Read what omp did
 
-### 04 · Plan first, then build
+Replies stream in as formatted text, and the tool calls behind them collapse into short steps such as "Edited 3 files" or "Ran tests". Each step opens to its full output, diff or reasoning, and the transcript switches between Normal, Thinking and Verbose.
 
-Plan mode lets omp investigate read-only and write a plan. Review it in the Plan pane, then **Approve & execute**, approve with a fresh context, or send it back to refine. Goal, Vibe, and Loop modes and the Advisor are toggles, not incantations.
+### Run commands without memorizing them
 
-### 05 · Watch the subagents work
+The chat header holds the commands people use most, such as Restart, Compact and Plan mode. **⌘K** (**Ctrl+K** on Windows) searches the app's commands by what they do, and anything you type after `/` in the message box goes to omp exactly as it would in the terminal.
 
-When omp fans work out to subagents, the Tasks pane shows each one live — what it's doing, what it costs, and its transcript — alongside the todo list and background jobs.
+### Plan before building
 
-### 06 · Review every change
+Plan mode has omp draft a plan for your approval before it implements anything. The Plan pane shows that plan with options to run it, summarize the chat before running it, keep the full chat context, or send it back with a comment. Goal, Vibe and Loop modes and the Advisor are in the chat header's ⋯ menu and the command palette.
 
-The Diff pane collects everything omp changed, file by file. Leave comments on lines and send them back to omp, ask for a code review, commit with a generated message, open a pull request, and watch CI — without leaving the window.
+### Review changes and ship them
 
-### 07 · The agent roles, finally visible
+When omp hands work to subagents, the Tasks pane shows each one while it runs, with its token count and its transcript where omp provides one, next to the todo list and background jobs. The Diff pane collects the project's uncommitted changes file by file, and you can comment on lines and send the comments back to omp, commit with a generated message, open a pull request and check CI from the same window.
 
-omp routes work by role — `default`, `smol`, `slow`, `plan`, `commit`, `advisor`, and more. The Model Roles editor shows which model does what and lets you change it. The Agents hub lists every bundled and custom subagent, its model, and whether it's enabled, and can write a new agent for you.
+### Manage providers, models and agents
 
-### 08 · Everything else omp can do
+Settings lists the model providers omp is signed in to, and connecting a new one or signing in again after a token expires opens omp's own sign-in inside the app. The **Model roles** screen shows which model handles each omp role (default, smol, slow, plan, commit, advisor and the rest), and **Helpers** lists every bundled and custom subagent with the model it uses.
 
-MCP servers, skills and plugins, memory, usage limits and cost, session sharing and live collab, security scans, `omp cleanse`, importing Claude Code and Codex sessions, and a visual session tree — each with its own screen.
+### Everything else omp can do
 
-### 09 · Built for everyone
+MCP servers, skills and plugins, memory, usage limits and cost, session sharing and live collaboration, imports from Claude Code and Codex, and the session tree each have a screen of their own, and omp's security scan and `omp cleanse` run from the command palette.
 
-Light by default, dark when you want it. Keyboard-navigable end to end, labelled for screen readers, adjustable text size, reduced motion, and plain-language tooltips on every button. A first-run tour and a built-in glossary explain the rest.
+### Accessibility
 
----
+Settings has text size, reduced motion and a light or dark theme. The command palette runs any app command from the keyboard, controls carry labels for screen readers, a short tour runs on first launch, and Help includes a glossary of omp's terms.
+
+## Updating
+
+visual-omp checks GitHub for a new release shortly after launch and every six hours after that, and it checks omp the same way through `omp update --check`. **Settings → About** shows both versions and installs either update. A Homebrew install upgrades through `brew upgrade --cask visual-omp`, any other macOS install downloads the new disk image, and Windows downloads and runs the new installer. Open chats keep the omp version they started with until they restart, so after an omp update the app offers to restart them.
 
 ## Development
 
@@ -114,10 +108,8 @@ npm install
 npm run dev
 ```
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for how the app drives omp and [docs/SPEC.md](docs/SPEC.md) for the full product scope.
-
----
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) explains how the app drives omp, [docs/SPEC.md](docs/SPEC.md) covers the product scope, and [docs/RELEASING.md](docs/RELEASING.md) describes how a version is published.
 
 ## License
 
-visual-omp is licensed under the [MIT License](LICENSE). It includes code adapted from [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT); see [NOTICE](NOTICE).
+visual-omp is licensed under the [MIT License](LICENSE). It includes code adapted from [oh-my-pi](https://github.com/can1357/oh-my-pi) (MIT), credited in [NOTICE](NOTICE).
