@@ -1,9 +1,11 @@
+import "./profile";
 import { join } from "node:path";
 import { app, BrowserWindow, nativeTheme, shell } from "electron";
 import { registerHandlers } from "./handlers";
 import { broadcast } from "./ipc";
 import { buildMenu } from "./menu";
 import { stopAllHosts } from "./omp/host";
+import { followSessions } from "./omp/follow";
 import { stopWatchingSessions, watchSessions } from "./omp/sessions";
 import { getPrefs } from "./prefs";
 import { killAllTerminals } from "./terminals";
@@ -23,7 +25,8 @@ function createWindow(): void {
 		minHeight: 620,
 		show: false,
 		title: "visual-omp",
-		backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d0d10" : "#fbfbfc",
+		// Matches --bg in theme/tokens.css (as Chromium renders the OKLCH values) so the first frame doesn't flash.
+		backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d1110" : "#f4f7f7",
 		titleBarStyle: isMac ? "hiddenInset" : "hidden",
 		trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
 		titleBarOverlay: isMac ? undefined : { height: 44, color: "#00000000", symbolColor: "#6c6c74" },
@@ -44,6 +47,11 @@ function createWindow(): void {
 	mainWindow.webContents.on("will-navigate", (event, url) => {
 		if (url !== mainWindow?.webContents.getURL()) event.preventDefault();
 	});
+	// Followed files belong to the renderer's read-only tabs; a reload, crash or closed window drops them.
+	mainWindow.webContents.on("did-start-navigation", details => {
+		if (details.isMainFrame && !details.isSameDocument) followSessions([]);
+	});
+	mainWindow.webContents.on("render-process-gone", () => followSessions([]));
 	mainWindow.on("close", event => {
 		if (quitApproved || process.platform === "darwin") return;
 		event.preventDefault();
@@ -51,6 +59,7 @@ function createWindow(): void {
 	});
 	mainWindow.on("closed", () => {
 		mainWindow = null;
+		followSessions([]);
 	});
 	if (process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
 	else void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
@@ -60,12 +69,12 @@ async function shutdown(): Promise<void> {
 	if (quitting) return;
 	quitting = true;
 	stopWatchingSessions();
+	followSessions([]);
 	killAllTerminals();
 	await stopAllHosts();
 	app.quit();
 }
 
-app.setName("visual-omp");
 if (!app.requestSingleInstanceLock()) app.quit();
 
 app.on("second-instance", () => {
