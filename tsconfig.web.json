@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "resolveJsonModule": true,
+    "types": [],
+    "paths": {
+      "@/*": ["./src/renderer/src/*"],
+      "@shared/*": ["./src/shared/*"],
+      "@oh-my-pi/pi-wire": ["./src/renderer/src/collab/wire/index.ts"],
+      "@oh-my-pi/pi-utils/marked": ["./node_modules/marked"],
+      "@oh-my-pi/pi-utils/math-delimiters": ["./src/renderer/src/collab/math-delimiters.ts"]
+    }
+  },
+  "include": ["src/renderer/**/*", "src/shared/**/*", "src/preload/api.d.ts"]
+}
