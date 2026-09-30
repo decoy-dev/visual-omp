@@ -14,6 +14,7 @@ export function buildMenu(): void {
 						label: app.name,
 						submenu: [
 							{ role: "about" },
+							command("Check for updates…", "app.checkUpdates"),
 							{ type: "separator" },
 							command("Settings…", "app.settings", "CmdOrCtrl+,"),
 							{ type: "separator" },
@@ -74,6 +75,7 @@ export function buildMenu(): void {
 			submenu: [
 				command("visual-omp Help", "app.help", "F1"),
 				command("Take the Tour", "app.tour"),
+				...(isMac ? [] : [command("Check for updates…", "app.checkUpdates")]),
 				{ type: "separator" },
 				{ label: "omp Documentation", click: () => void shell.openExternal("https://omp.sh") },
 				{ label: "Report an Issue", click: () => void shell.openExternal("https://github.com/decoy-dev/visual-omp/issues") },

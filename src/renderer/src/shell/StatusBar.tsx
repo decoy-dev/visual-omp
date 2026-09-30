@@ -1,10 +1,10 @@
-import { Copy, Download, RotateCcw, SquareTerminal } from "lucide-react";
+import { ArrowCounterClockwise, Copy, DownloadSimple, TerminalWindow } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { statusItems } from "../registry/slots";
 import { focusedController, focusedTabId, useApp } from "../state/app";
-import { OMP_UPDATE_SHEET, useOmpUpdateStatus } from "../features/onboarding/updates";
-import { ContextRing, Menu, MenuContent, MenuItem, MenuTrigger, StatusDot, toast } from "../ui";
+import { OMP_UPDATE_SHEET, useOmpUpdateStatus, useUpdates } from "../features/onboarding/updates";
+import { ContextRing, Menu, MenuContent, MenuItem, MenuTrigger, PresenceSwap, StatusDot, toast } from "../ui";
 import { useSessionView } from "./hooks";
 
 function ContextItem(): ReactNode {
@@ -15,11 +15,42 @@ function ContextItem(): ReactNode {
 	if (!usage || usage.percent === null) return null;
 	const percent = Math.round(usage.percent);
 	return (
-		<span className="flex items-center gap-1.5" title={t("status.context", { percent })}>
+		<span className="relative flex items-center gap-1.5" title={t("status.context", { percent })}>
 			<ContextRing value={percent} size={14} />
-			<span aria-hidden>{t("status.contextShort", { percent })}</span>
+			<PresenceSwap swapKey={percent} mode="popLayout">
+				<span aria-hidden>{t("status.contextShort", { percent })}</span>
+			</PresenceSwap>
 			<span className="visually-hidden">{t("status.context", { percent })}</span>
 		</span>
+	);
+}
+
+/** Accent dot marking an available update; the text is for screen readers. */
+function UpdateDot({ label }: { label: string }): ReactNode {
+	return (
+		<span className="inline-flex">
+			<span aria-hidden className="size-1.5 rounded-full bg-accent" />
+			<span className="sr-only">{label}</span>
+		</span>
+	);
+}
+
+/** Shown while a newer visual-omp is published; opens Settings → About, where the update runs. */
+function AppUpdateItem(): ReactNode {
+	const { t } = useTranslation("onboarding");
+	const version = useUpdates(state => (state.app?.updateAvailable ? state.app.latestVersion : null));
+	if (!version) return null;
+	return (
+		<button
+			type="button"
+			className="flex h-6 items-center gap-1.5 rounded-sm px-1.5 text-accent hover:bg-hover"
+			aria-label={t("update.statusBar.appLabel", { version })}
+			title={t("update.statusBar.appLabel", { version })}
+			onClick={() => useApp.getState().openSheet("settings", { tab: "about" })}
+		>
+			<span aria-hidden className="size-1.5 rounded-full bg-accent" />
+			<span aria-hidden>{t("update.statusBar.app", { version })}</span>
+		</button>
 	);
 }
 
@@ -32,6 +63,8 @@ function OmpItem(): ReactNode {
 	const controller = focusedController();
 	const view = useSessionView(controller);
 	const mode = view?.mode;
+	const { t: tUpdate } = useTranslation("onboarding");
+	const updateLabel = tUpdate("update.statusBar.omp", { version: update?.latestVersion ?? "" });
 	const [status, label] =
 		mode === "exited"
 			? (["err", t("status.ompStopped")] as const)
@@ -49,20 +82,23 @@ function OmpItem(): ReactNode {
 	return (
 		<Menu>
 			<MenuTrigger asChild>
-				<button type="button" className="flex h-6 items-center gap-1.5 rounded-sm px-1.5 hover:bg-hover hover:text-fg" aria-label={t("status.ompMenu")}>
+				<button type="button" className="relative flex h-6 items-center gap-1.5 rounded-sm px-1.5 hover:bg-hover hover:text-fg" aria-label={t("status.ompMenu")}>
 					<StatusDot status={status} label={label} />
-					<span aria-hidden>{label}</span>
+					<PresenceSwap swapKey={label} mode="popLayout">
+						<span aria-hidden>{label}</span>
+					</PresenceSwap>
+					{update?.updateAvailable && <UpdateDot label={updateLabel} />}
 				</button>
 			</MenuTrigger>
 			<MenuContent align="end" side="top">
-				<MenuItem icon={<SquareTerminal />} shortcut="⌘J" disabled={!tabId} onSelect={() => useApp.getState().openTerminal(tabId)}>
+				<MenuItem icon={<TerminalWindow />} shortcut="⌘J" disabled={!tabId} onSelect={() => useApp.getState().openTerminal(tabId)}>
 					{t("status.openTerminal")}
 				</MenuItem>
-				<MenuItem icon={<RotateCcw />} disabled={!controller} onSelect={() => void controller?.restart()}>
+				<MenuItem icon={<ArrowCounterClockwise />} disabled={!controller} onSelect={() => void controller?.restart()}>
 					{t("status.restart")}
 				</MenuItem>
 				{update?.updateAvailable && (
-					<MenuItem icon={<Download />} onSelect={() => useApp.getState().openSheet(OMP_UPDATE_SHEET)}>
+					<MenuItem icon={<DownloadSimple />} onSelect={() => useApp.getState().openSheet(OMP_UPDATE_SHEET)}>
 						{t("status.ompUpdateAvailable", { version: update.latestVersion ?? "latest" })}
 					</MenuItem>
 				)}
@@ -102,6 +138,7 @@ export function StatusBar(): ReactNode {
 					.map(item => (
 						<item.component key={item.id} session={session} projectPath={projectPath} />
 					))}
+				<AppUpdateItem />
 				<OmpItem />
 			</div>
 		</footer>

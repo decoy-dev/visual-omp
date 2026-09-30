@@ -38,9 +38,34 @@ export function confirmCloseTab(tabId: string): Promise<boolean> {
 	return ask("tab", controller?.getSnapshot().working ? [controller] : []);
 }
 
+/** Set by {@link quitAfterConfirm}: the next quit request from main is answered without asking again. */
+let preapproved = false;
+
+/**
+ * For app-initiated quits (restarting into an update): asks the quit question first, then runs
+ * `quit`, whose quit request from main is approved without a second dialog. Resolves false when
+ * the user keeps the app open.
+ */
+export async function quitAfterConfirm(quit: () => Promise<void>): Promise<boolean> {
+	if (!(await ask("quit", allControllers().filter(controller => controller.getSnapshot().working)))) return false;
+	preapproved = true;
+	try {
+		await quit();
+	} catch (error) {
+		preapproved = false;
+		throw error;
+	}
+	return true;
+}
+
 /** Answers main's quit request: immediately when nothing is working, otherwise after the dialog. */
 export function installQuitGuard(): void {
 	window.vomp.on("app:quitRequested", () => {
+		if (preapproved) {
+			preapproved = false;
+			void window.vomp.invoke("app:confirmQuit", true);
+			return;
+		}
 		const working = allControllers().filter(controller => controller.getSnapshot().working);
 		void ask("quit", working).then(allow => window.vomp.invoke("app:confirmQuit", allow));
 	});

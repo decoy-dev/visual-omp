@@ -1,6 +1,7 @@
+import { delimiter, posix } from "node:path";
 import { z } from "zod";
 import type { CliResult, Platform } from "@shared/ipc";
-import type { AppUpdateHint, OmpUpdateChannel, ReleaseAsset } from "@shared/contracts/updates";
+import type { AppInstallMethod, AppUpdateStatus, OmpUpdateChannel, ReleaseAsset } from "@shared/contracts/updates";
 
 interface Semver {
 	major: number;
@@ -93,42 +94,214 @@ export function toAssets(release: GitHubRelease): ReleaseAsset[] {
 	return release.assets.map(asset => ({ name: asset.name, url: asset.browser_download_url, size: asset.size }));
 }
 
-const ARCH_ALIASES: Record<string, string[]> = {
-	arm64: ["arm64", "aarch64"],
-	x64: ["x64", "x86_64", "amd64"],
-	ia32: ["ia32", "x86", "win32"],
-};
+/** The GitHub repository that publishes visual-omp releases. */
+export const REPO = "decoy-dev/visual-omp";
 
 /**
- * Pick the installer for this platform/arch: `.dmg` (then `.zip`) on macOS, `.exe` on Windows,
- * `.AppImage`/`.deb` on Linux. Prefers an asset naming this arch, then one naming no arch
- * (universal), never one built for another arch.
+ * The installer file electron-builder publishes for this platform/arch (`dmg`/`nsis` artifactName
+ * in electron-builder.yml), or null where no installer is built.
  */
-export function pickPlatformAsset(assets: ReleaseAsset[], platform: Platform, arch: string): ReleaseAsset | null {
-	const extensions = platform === "darwin" ? [".dmg", ".zip"] : platform === "win32" ? [".exe"] : [".appimage", ".deb"];
-	const mine = ARCH_ALIASES[arch] ?? [arch];
-	const others = Object.entries(ARCH_ALIASES)
-		.filter(([key]) => key !== arch)
-		.flatMap(([, names]) => names);
-	const mentions = (name: string, tokens: string[]) =>
-		tokens.some(token => new RegExp(`(^|[^a-z0-9])${token}([^a-z0-9]|$)`).test(name));
-	for (const extension of extensions) {
-		const candidates = assets.filter(asset => asset.name.toLowerCase().endsWith(extension));
-		const exact = candidates.find(asset => mentions(asset.name.toLowerCase(), mine));
-		if (exact) return exact;
-		const universal = candidates.find(asset => !mentions(asset.name.toLowerCase(), others));
-		if (universal) return universal;
-	}
+export function installerName(version: string, platform: Platform, arch: string): string | null {
+	if (platform === "darwin" && (arch === "arm64" || arch === "x64")) return `visual-omp-${version}-mac-${arch}.dmg`;
+	if (platform === "win32" && arch === "x64") return `visual-omp-${version}-win-${arch}.exe`;
 	return null;
 }
 
-/** Homebrew cask upgrade command shown on macOS. */
-export const BREW_UPGRADE_COMMAND = "brew upgrade --cask visual-omp";
+export interface InstallerTrust {
+	platform: Platform;
+	arch: string;
+	/** Development feeds (`VOMP_UPDATE_FEED`, never packaged builds): any http(s) host is accepted. */
+	anyHost: boolean;
+}
 
-export function updateHint(platform: Platform, releaseUrl: string, asset: ReleaseAsset | null): AppUpdateHint {
-	if (platform === "darwin") return { kind: "command", command: BREW_UPGRADE_COMMAND, url: releaseUrl };
-	if (platform === "win32" && asset) return { kind: "download", url: asset.url, fileName: asset.name };
-	return { kind: "page", url: releaseUrl };
+function parseUrl(raw: string, base?: URL): URL | null {
+	try {
+		return new URL(raw, base);
+	} catch {
+		return null;
+	}
+}
+
+/** `https://github.com/decoy-dev/visual-omp/releases/download/<tag>/<name>`, nothing else. */
+function isReleaseDownload(raw: string, tag: string, name: string, anyHost: boolean): boolean {
+	const url = parseUrl(raw);
+	if (!url) return false;
+	if (anyHost) return url.protocol === "https:" || url.protocol === "http:";
+	if (url.protocol !== "https:" || url.hostname !== "github.com" || url.port || url.username || url.password || url.search) return false;
+	try {
+		return decodeURIComponent(url.pathname) === `/${REPO}/releases/download/${tag}/${name}`;
+	} catch {
+		return false;
+	}
+}
+
+/**
+ * The installer for this computer from release `tag`: only the expected artifact name, and only
+ * when its URL is that release's own GitHub download link. Anything else yields null, so the app
+ * falls back to the release page.
+ */
+export function installerAsset(assets: ReleaseAsset[], tag: string, trust: InstallerTrust): ReleaseAsset | null {
+	const name = installerName(tag.replace(/^v/, ""), trust.platform, trust.arch);
+	const asset = name ? assets.find(candidate => candidate.name === name) : undefined;
+	return asset && name && isReleaseDownload(asset.url, tag, name, trust.anyHost) ? asset : null;
+}
+
+/** Hosts github.com redirects release downloads to. */
+const ASSET_HOSTS: readonly string[] = ["objects.githubusercontent.com", "release-assets.githubusercontent.com"];
+const MAX_REDIRECTS = 5;
+
+/** Where a download redirect leads, or an error when it leaves GitHub's release download servers. */
+export function redirectTarget(from: URL, location: string | null, anyHost: boolean): URL {
+	const next = location ? parseUrl(location, from) : null;
+	if (!next) throw new Error("The download server sent a redirect without a valid location.");
+	const allowed = anyHost
+		? next.protocol === "https:" || next.protocol === "http:"
+		: next.protocol === "https:" && ASSET_HOSTS.includes(next.hostname) && !next.username && !next.password;
+	if (!allowed) throw new Error(`The download was redirected to ${next.host}, which is not GitHub's release download server.`);
+	return next;
+}
+
+/** Fetches an installer, following only the redirects {@link redirectTarget} allows. */
+export async function fetchInstaller(
+	url: URL,
+	init: { signal: AbortSignal; headers: Record<string, string>; anyHost: boolean },
+	fetchImpl: typeof fetch = fetch,
+): Promise<Response> {
+	let current = url;
+	for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+		const response = await fetchImpl(current, { signal: init.signal, headers: init.headers, redirect: "manual" });
+		if (response.status < 300 || response.status >= 400) return response;
+		await response.body?.cancel();
+		current = redirectTarget(current, response.headers.get("location"), init.anyHost);
+	}
+	throw new Error("The download redirected too many times.");
+}
+
+const ReleaseAssetSchema = z.object({ name: z.string(), url: z.string(), size: z.number() });
+export const AppUpdateStatusSchema = z.object({
+	currentVersion: z.string(),
+	latestVersion: z.string().nullable(),
+	updateAvailable: z.boolean(),
+	tag: z.string().nullable(),
+	releaseName: z.string().nullable(),
+	notes: z.string().nullable(),
+	releaseUrl: z.string().nullable(),
+	publishedAt: z.number().nullable(),
+	assets: z.array(ReleaseAssetSchema),
+	platformAsset: ReleaseAssetSchema.nullable(),
+	summary: z.string().nullable(),
+	checkedAt: z.number(),
+	fromCache: z.boolean(),
+	error: z.string().nullable(),
+}) satisfies z.ZodType<AppUpdateStatus>;
+
+/**
+ * update-check.json as an earlier check wrote it, or null when it is unreadable, belongs to another
+ * app version, or does not match what the release metadata vouches for (installer, versions,
+ * release page). The file is plain JSON in the profile, so nothing in it is trusted as written.
+ */
+export function trustedCachedStatus(raw: unknown, currentVersion: string, trust: InstallerTrust): AppUpdateStatus | null {
+	const parsed = AppUpdateStatusSchema.safeParse(raw);
+	if (!parsed.success) return null;
+	const status = parsed.data;
+	if (status.currentVersion !== currentVersion) return null;
+	const latest = status.tag ? status.tag.replace(/^v/, "") : null;
+	if (status.latestVersion !== latest) return null;
+	if (status.updateAvailable !== (latest !== null && compareSemver(latest, currentVersion) > 0)) return null;
+	const expected = status.tag ? installerAsset(status.assets, status.tag, trust) : null;
+	const cached = status.platformAsset;
+	if (expected?.url !== cached?.url || expected?.name !== cached?.name || expected?.size !== cached?.size) return null;
+	const page = status.releaseUrl ? parseUrl(status.releaseUrl) : null;
+	if (status.releaseUrl && !trust.anyHost && (page?.protocol !== "https:" || page.hostname !== "github.com" || !page.pathname.startsWith(`/${REPO}/releases/`))) {
+		return null;
+	}
+	return status;
+}
+
+/** Cask token the release workflow publishes (`decoy-dev/tap/visual-omp`). */
+export const CASK = "visual-omp";
+
+/** The `.app` bundle that contains `exePath` (`…/visual-omp.app/Contents/MacOS/visual-omp`), or null. */
+export function appBundlePath(exePath: string): string | null {
+	const match = /^(.*?\.app)\/Contents\/MacOS\/[^/]+$/.exec(exePath);
+	return match?.[1] ?? null;
+}
+
+/** Where brew may be: every PATH entry, then the default prefixes (Apple Silicon, Intel, `~/homebrew`). */
+export function brewCandidates(pathValue: string, home: string): string[] {
+	const dirs = [...pathValue.split(delimiter), "/opt/homebrew/bin", "/usr/local/bin", posix.join(home, "homebrew", "bin")];
+	return [...new Set(dirs.filter(dir => dir.startsWith("/")).map(dir => posix.join(dir, "brew")))];
+}
+
+/** `<prefix>/Caskroom/visual-omp` for a brew binary at `<prefix>/bin/brew` (symlinks not resolved on purpose). */
+export function caskroomPath(brewPath: string): string {
+	return posix.join(posix.dirname(posix.dirname(brewPath)), "Caskroom", CASK);
+}
+
+export interface InstallProbe {
+	platform: Platform;
+	isPackaged: boolean;
+	/** The running `.app` bundle with symlinks resolved; null when the executable is not inside one. */
+	bundle: string | null;
+	/**
+	 * Where installed casks put visual-omp: the resolved targets of the `.app` links brew keeps in
+	 * `<prefix>/Caskroom/visual-omp/<version>/` for every brew on this machine.
+	 */
+	caskApps: readonly string[];
+}
+
+/**
+ * How this copy was installed, which decides how it updates:
+ * - `brew`: a packaged macOS app whose bundle is the one a visual-omp cask installed (`brew upgrade --cask`).
+ * - `dmg`: any other packaged macOS app, including a second copy beside a cask install.
+ * - `nsis`: packaged Windows app (download and run the installer).
+ * - `manual`: development builds and other platforms (open the release page).
+ */
+export function detectInstallMethod(probe: InstallProbe): AppInstallMethod {
+	if (!probe.isPackaged) return "manual";
+	if (probe.platform === "win32") return "nsis";
+	if (probe.platform !== "darwin" || !probe.bundle) return "manual";
+	return probe.caskApps.includes(probe.bundle) ? "brew" : "dmg";
+}
+
+/**
+ * Refresh taps first: `brew upgrade` only auto-updates when its last update is older than
+ * HOMEBREW_AUTO_UPDATE_SECS, so a release published an hour ago can be invisible to it.
+ * The upgrade still runs if `brew update` fails.
+ */
+export function brewUpgradeCommand(brewPath: string): string {
+	const brew = `'${brewPath.replaceAll("'", `'\\''`)}'`;
+	return `${brew} update; HOMEBREW_NO_AUTO_UPDATE=1 ${brew} upgrade --cask ${CASK}`;
+}
+
+/** `CFBundleShortVersionString` from an Info.plist in XML form (what electron-builder writes). */
+export function plistVersion(xml: string): string | null {
+	return /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/.exec(xml)?.[1]?.trim() ?? null;
+}
+
+const SUMMARY_MAX = 140;
+
+/**
+ * One line for the update toast: the first sentence of the notes' first prose paragraph (the
+ * CHANGELOG section opens with one), else the first bullet. Markdown links, emphasis and code
+ * marks are stripped; long lines are cut at a word boundary.
+ */
+export function releaseSummary(notes: string | null): string | null {
+	if (!notes) return null;
+	const lines = notes.split(/\r?\n/).map(line => line.trim());
+	const isBullet = (line: string) => /^([-*+]|\d+\.)\s+/.test(line);
+	const prose = lines.find(line => line && !line.startsWith("#") && !isBullet(line) && !line.startsWith(">") && !line.startsWith("|"));
+	const raw = prose ?? lines.find(isBullet)?.replace(/^([-*+]|\d+\.)\s+/, "");
+	if (!raw) return null;
+	const plain = raw
+		.replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1")
+		.replace(/(\*\*|\*|`)(.+?)\1/g, "$2")
+		.replace(/\s+/g, " ")
+		.trim();
+	const sentence = /^.+?[.!?](?=\s|$)/.exec(plain)?.[0] ?? plain;
+	if (sentence.length <= SUMMARY_MAX) return sentence;
+	const cut = sentence.slice(0, SUMMARY_MAX - 1);
+	return `${cut.slice(0, Math.max(cut.lastIndexOf(" "), SUMMARY_MAX / 2)).replace(/[,;:]$/, "")}…`;
 }
 
 export interface OmpUpdateCheck {
