@@ -1,0 +1,207 @@
+﻿2026-09-30T14:30:33.6051878Z Current runner version: '2.337.0'
+2026-09-30T14:30:33.6072904Z ##[group]Runner Image Provisioner
+2026-09-30T14:30:33.6073615Z Hosted Compute Agent
+2026-09-30T14:30:33.6074272Z Version: 20260901.588
+2026-09-30T14:30:33.6074802Z Commit: f88ec8081b781fac6c440065ac7ff9e710ce3d0b
+2026-09-30T14:30:33.6075616Z Build Date: 2026-09-01T19:56:44Z
+2026-09-30T14:30:33.6076228Z Worker ID: {0a870197-05da-4e4b-bc63-3fbde7ab81ca}
+2026-09-30T14:30:33.6076817Z Azure Region: westus3
+2026-09-30T14:30:33.6077375Z ##[endgroup]
+2026-09-30T14:30:33.6078497Z ##[group]Operating System
+2026-09-30T14:30:33.6078995Z Ubuntu
+2026-09-30T14:30:33.6079541Z 22.04.5
+2026-09-30T14:30:33.6079984Z LTS
+2026-09-30T14:30:33.6080530Z ##[endgroup]
+2026-09-30T14:30:33.6080999Z ##[group]Runner Image
+2026-09-30T14:30:33.6081501Z Image: ubuntu-22.04
+2026-09-30T14:30:33.6082063Z Version: 20260927.309.1
+2026-09-30T14:30:33.6083108Z Included Software: https://github.com/actions/runner-images/blob/ubuntu22/20260927.309/images/ubuntu/Ubuntu2204-Readme.md
+2026-09-30T14:30:33.6084404Z Image Release: https://github.com/actions/runner-images/releases/tag/ubuntu22%2F20260927.309
+2026-09-30T14:30:33.6085205Z ##[endgroup]
+2026-09-30T14:30:33.6086324Z ##[group]GITHUB_TOKEN Permissions
+2026-09-30T14:30:33.6087875Z Contents: read
+2026-09-30T14:30:33.6088477Z Metadata: read
+2026-09-30T14:30:33.6088966Z ##[endgroup]
+2026-09-30T14:30:33.6090676Z Secret source: None
+2026-09-30T14:30:33.6091507Z Cache mode: write
+2026-09-30T14:30:33.6092117Z Prepare workflow directory
+2026-09-30T14:30:33.6406839Z Prepare all required actions
+2026-09-30T14:30:33.6448309Z Getting action download info
+2026-09-30T14:30:33.9356963Z Download action repository 'actions/checkout@v4' (SHA:11d5960a326750d5838078e36cf38b85af677262)
+2026-09-30T14:30:34.4373597Z Complete job name: Test coding-agent native/unit (TS) 2/3
+2026-09-30T14:31:06.3061995Z ##[group]Run set -euo pipefail
+2026-09-30T14:31:06.3062261Z [36;1mset -euo pipefail[0m
+2026-09-30T14:31:06.3062498Z [36;1mread -r -a targets <<< "$NATIVE_TARGETS"[0m
+2026-09-30T14:31:06.3062804Z [36;1mbun scripts/bazel-natives.ts "${targets[@]}" \[0m
+2026-09-30T14:31:06.3063117Z [36;1m  --source "$RUNNER_TEMP/omp-native-artifacts" \[0m
+2026-09-30T14:31:06.3063384Z [36;1m  --dest "$NATIVE_DEST"[0m
+2026-09-30T14:31:06.3123792Z shell: /usr/bin/bash --noprofile --norc -e -o pipefail {0}
+2026-09-30T14:31:06.3124073Z env:
+2026-09-30T14:31:06.3124268Z   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+2026-09-30T14:31:06.3124590Z   NATIVES_X64_TARGETS: natives-linux-x64-baseline natives-linux-x64-modern
+2026-09-30T14:31:06.3125221Z   NATIVES_CROSS_TARGETS: natives-linux-arm64 natives-linux-musl-arm64 natives-linux-musl-x64-baseline natives-win32-arm64 natives-win32-x64-baseline
+2026-09-30T14:31:06.3125889Z   OMP_TEST_TIMEOUT: 120
+2026-09-30T14:31:06.3126116Z   NATIVE_TARGETS: linux-x64-baseline linux-x64-modern
+2026-09-30T14:31:06.3126386Z   NATIVE_DEST: packages/natives/native
+2026-09-30T14:31:06.3126603Z ##[endgroup]
+2026-09-30T14:31:06.7383233Z installed pi_natives.linux-x64-baseline.node (stamped 18.4.4) → /home/runner/work/oh-my-pi/oh-my-pi/packages/natives/native/pi_natives.linux-x64-baseline.node
+2026-09-30T14:31:07.1456883Z installed pi_natives.linux-x64-modern.node (stamped 18.4.4) → /home/runner/work/oh-my-pi/oh-my-pi/packages/natives/native/pi_natives.linux-x64-modern.node
+2026-09-30T14:31:07.2411073Z ##[end-action id=__self_2.__run;outcome=success;conclusion=success;duration_ms=936]
+2026-09-30T14:31:07.2443031Z ##[group]Run bun run ci:test:coding-agent:native
+2026-09-30T14:31:07.2443356Z [36;1mbun run ci:test:coding-agent:native[0m
+2026-09-30T14:31:07.2504960Z shell: /usr/bin/bash -e {0}
+2026-09-30T14:31:07.2505174Z env:
+2026-09-30T14:31:07.2505487Z   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+2026-09-30T14:31:07.2505807Z   NATIVES_X64_TARGETS: natives-linux-x64-baseline natives-linux-x64-modern
+2026-09-30T14:31:07.2506420Z   NATIVES_CROSS_TARGETS: natives-linux-arm64 natives-linux-musl-arm64 natives-linux-musl-x64-baseline natives-win32-arm64 natives-win32-x64-baseline
+2026-09-30T14:31:07.2506919Z   OMP_TEST_TIMEOUT: 120
+2026-09-30T14:31:07.2507111Z   OMP_TEST_CONCURRENCY: 4
+2026-09-30T14:31:07.2507301Z   OMP_TEST_SHARD: 2/3
+2026-09-30T14:31:07.2507477Z ##[endgroup]
+2026-09-30T14:31:07.3180502Z $ bun scripts/ci-test-ts.ts coding-agent-native
+2026-09-30T14:31:07.4620816Z Running 28 test command(s), up to 4 in parallel (OMP_TEST_CONCURRENCY=<n>|all to change); 4 cores, --parallel=1 per chunk.
+2026-09-30T14:31:10.0128539Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 5/83; 10 files) [2.5s]
+2026-09-30T14:31:11.3936847Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 2/83; 10 files) [3.9s]
+2026-09-30T14:31:13.1853906Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 8/83; 10 files) [5.7s]
+2026-09-30T14:31:13.6599212Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 17/83; 10 files) [2.3s]
+2026-09-30T14:31:18.2285489Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 23/83; 10 files) [4.6s]
+2026-09-30T14:31:18.8930997Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 11/83; 10 files) [11.4s]
+2026-09-30T14:31:19.5076507Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 20/83; 10 files) [6.3s]
+2026-09-30T14:31:26.5466959Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 26/83; 10 files) [8.3s]
+2026-09-30T14:31:26.5877007Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 32/83; 10 files) [7.1s]
+2026-09-30T14:31:31.1377287Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 38/83; 10 files) [4.6s]
+2026-09-30T14:31:31.9676921Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 14/83; 10 files) [22.0s]
+2026-09-30T14:31:35.6146952Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 44/83; 10 files) [3.6s]
+2026-09-30T14:31:36.4062622Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 35/83; 10 files) [9.9s]
+2026-09-30T14:31:42.3221466Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 41/83; 10 files) [11.2s]
+2026-09-30T14:31:43.0178754Z ✗ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 29/83; 10 files) [24.1s] — test/interactive-mode-deferred-command-notice.test.ts > InteractiveMode deferred command preview > shows the panel immediately mid-turn without touching the transcript (+6 more)
+2026-09-30T14:31:43.0218372Z 
+2026-09-30T14:31:43.0223002Z ✗ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 29/83; 10 files) (exit 1)
+2026-09-30T14:31:43.0229892Z $ bun test --only-failures test/input-controller-smart-paste.test.ts test/install-command.test.ts test/interactive-mode-deferred-command-notice.test.ts test/interactive-mode-editor-component.test.ts test/interactive-mode-optimistic-skill-reconcile.test.ts test/interactive-mode-plan-review.test.ts test/interactive-mode-shutdown-write-conflict.test.ts test/interactive-mode-vibe-toggle.test.ts test/interactive-terminal-e2e.test.ts test/internal-urls/caller-root-ab.test.ts --parallel=1 --timeout=120000
+2026-09-30T14:31:43.0239283Z 
+2026-09-30T14:31:43.0242699Z   ✗ test/interactive-mode-deferred-command-notice.test.ts > InteractiveMode deferred command preview > shows the panel immediately mid-turn without touching the transcript
+2026-09-30T14:31:43.0244776Z 1701 | 		subagentEventBus?: EventBus,
+2026-09-30T14:31:43.0245570Z 1702 | 	) {
+2026-09-30T14:31:43.0246076Z 1703 | 		this.session = session;
+2026-09-30T14:31:43.0246673Z 1704 | 		this.sessionManager = session.sessionManager;
+2026-09-30T14:31:43.0247276Z 1705 | 		this.settings = session.settings;
+2026-09-30T14:31:43.0248044Z 1706 | 		this.#goalToolInitiallyEnabled = session.getEnabledToolNames().includes("goal");
+2026-09-30T14:31:43.0248794Z                                                   ^
+2026-09-30T14:31:43.0249778Z TypeError: session.getEnabledToolNames is not a function. (In 'session.getEnabledToolNames()', 'session.getEnabledToolNames' is undefined)
+2026-09-30T14:31:43.0251116Z       at new InteractiveMode (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/src/modes/interactive-mode.ts:1706:44)
+2026-09-30T14:31:43.0252452Z       at createHarness (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:48:15)
+2026-09-30T14:31:43.0254037Z       at async <anonymous> (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:84:40)
+2026-09-30T14:31:43.0254941Z 
+2026-09-30T14:31:43.0256185Z   ✗ test/interactive-mode-deferred-command-notice.test.ts > InteractiveMode deferred command preview > counts commands rather than the components each one queues
+2026-09-30T14:31:43.0257324Z 1701 | 		subagentEventBus?: EventBus,
+2026-09-30T14:31:43.0257852Z 1702 | 	) {
+2026-09-30T14:31:43.0258266Z 1703 | 		this.session = session;
+2026-09-30T14:31:43.0258831Z 1704 | 		this.sessionManager = session.sessionManager;
+2026-09-30T14:31:43.0259425Z 1705 | 		this.settings = session.settings;
+2026-09-30T14:31:43.0260184Z 1706 | 		this.#goalToolInitiallyEnabled = session.getEnabledToolNames().includes("goal");
+2026-09-30T14:31:43.0260964Z                                                   ^
+2026-09-30T14:31:43.0262232Z TypeError: session.getEnabledToolNames is not a function. (In 'session.getEnabledToolNames()', 'session.getEnabledToolNames' is undefined)
+2026-09-30T14:31:43.0263550Z       at new InteractiveMode (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/src/modes/interactive-mode.ts:1706:44)
+2026-09-30T14:31:43.0264889Z       at createHarness (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:48:15)
+2026-09-30T14:31:43.0268708Z       at async <anonymous> (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:101:40)
+2026-09-30T14:31:43.0279795Z 
+2026-09-30T14:31:43.0293029Z   ✗ test/interactive-mode-deferred-command-notice.test.ts > InteractiveMode deferred command preview > caps a tall panel so the prompt stays on screen
+2026-09-30T14:31:43.0313953Z 1701 | 		subagentEventBus?: EventBus,
+2026-09-30T14:31:43.0314551Z 1702 | 	) {
+2026-09-30T14:31:43.0315008Z 1703 | 		this.session = session;
+2026-09-30T14:31:43.0315693Z 1704 | 		this.sessionManager = session.sessionManager;
+2026-09-30T14:31:43.0316271Z 1705 | 		this.settings = session.settings;
+2026-09-30T14:31:43.0316979Z 1706 | 		this.#goalToolInitiallyEnabled = session.getEnabledToolNames().includes("goal");
+2026-09-30T14:31:43.0317699Z                                                   ^
+2026-09-30T14:31:43.0318634Z TypeError: session.getEnabledToolNames is not a function. (In 'session.getEnabledToolNames()', 'session.getEnabledToolNames' is undefined)
+2026-09-30T14:31:43.0320000Z       at new InteractiveMode (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/src/modes/interactive-mode.ts:1706:44)
+2026-09-30T14:31:43.0321379Z       at createHarness (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:48:15)
+2026-09-30T14:31:43.0323124Z       at async <anonymous> (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:114:40)
+2026-09-30T14:31:43.0324056Z 
+2026-09-30T14:31:43.0325260Z   ✗ test/interactive-mode-deferred-command-notice.test.ts > InteractiveMode deferred command preview > clears the preview and mounts the panels once the turn settles
+2026-09-30T14:31:43.0326576Z 1701 | 		subagentEventBus?: EventBus,
+2026-09-30T14:31:43.0327102Z 1702 | 	) {
+2026-09-30T14:31:43.0327540Z 1703 | 		this.session = session;
+2026-09-30T14:31:43.0328119Z 1704 | 		this.sessionManager = session.sessionManager;
+2026-09-30T14:31:43.0328739Z 1705 | 		this.settings = session.settings;
+2026-09-30T14:31:43.0329493Z 1706 | 		this.#goalToolInitiallyEnabled = session.getEnabledToolNames().includes("goal");
+2026-09-30T14:31:43.0330364Z                                                   ^
+2026-09-30T14:31:43.0331354Z TypeError: session.getEnabledToolNames is not a function. (In 'session.getEnabledToolNames()', 'session.getEnabledToolNames' is undefined)
+2026-09-30T14:31:43.0332707Z       at new InteractiveMode (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/src/modes/interactive-mode.ts:1706:44)
+2026-09-30T14:31:43.0334049Z       at createHarness (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:48:15)
+2026-09-30T14:31:43.0342314Z       at async <anonymous> (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:129:40)
+2026-09-30T14:31:43.0343239Z 
+2026-09-30T14:31:43.0344430Z   ✗ test/interactive-mode-deferred-command-notice.test.ts > InteractiveMode deferred command preview > shows no preview when the agent is idle, since output mounts immediately
+2026-09-30T14:31:43.0350508Z 1701 | 		subagentEventBus?: EventBus,
+2026-09-30T14:31:43.0374979Z 1702 | 	) {
+2026-09-30T14:31:43.0375480Z 1703 | 		this.session = session;
+2026-09-30T14:31:43.0375899Z 1704 | 		this.sessionManager = session.sessionManager;
+2026-09-30T14:31:43.0376396Z 1705 | 		this.settings = session.settings;
+2026-09-30T14:31:43.0377337Z 1706 | 		this.#goalToolInitiallyEnabled = session.getEnabledToolNames().includes("goal");
+2026-09-30T14:31:43.0377934Z                                                   ^
+2026-09-30T14:31:43.0378768Z TypeError: session.getEnabledToolNames is not a function. (In 'session.getEnabledToolNames()', 'session.getEnabledToolNames' is undefined)
+2026-09-30T14:31:43.0379921Z       at new InteractiveMode (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/src/modes/interactive-mode.ts:1706:44)
+2026-09-30T14:31:43.0381085Z       at createHarness (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:48:15)
+2026-09-30T14:31:43.0394429Z       at async <anonymous> (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:142:26)
+2026-09-30T14:31:43.0395145Z 
+2026-09-30T14:31:43.0396354Z   ✗ test/interactive-mode-deferred-command-notice.test.ts > InteractiveMode deferred command preview > drops a stale preview when the session is reset while output is queued
+2026-09-30T14:31:43.0397371Z 1701 | 		subagentEventBus?: EventBus,
+2026-09-30T14:31:43.0397711Z 1702 | 	) {
+2026-09-30T14:31:43.0397986Z 1703 | 		this.session = session;
+2026-09-30T14:31:43.0398384Z 1704 | 		this.sessionManager = session.sessionManager;
+2026-09-30T14:31:43.0398833Z 1705 | 		this.settings = session.settings;
+2026-09-30T14:31:43.0399422Z 1706 | 		this.#goalToolInitiallyEnabled = session.getEnabledToolNames().includes("goal");
+2026-09-30T14:31:43.0400011Z                                                   ^
+2026-09-30T14:31:43.0400808Z TypeError: session.getEnabledToolNames is not a function. (In 'session.getEnabledToolNames()', 'session.getEnabledToolNames' is undefined)
+2026-09-30T14:31:43.0401913Z       at new InteractiveMode (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/src/modes/interactive-mode.ts:1706:44)
+2026-09-30T14:31:43.0403280Z       at createHarness (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:48:15)
+2026-09-30T14:31:43.0404547Z       at async <anonymous> (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:151:40)
+2026-09-30T14:31:43.0405241Z 
+2026-09-30T14:31:43.0406300Z   ✗ test/interactive-mode-deferred-command-notice.test.ts > InteractiveMode deferred command preview > starts the queue over after a reset, so a later command previews alone
+2026-09-30T14:31:43.0407303Z 1701 | 		subagentEventBus?: EventBus,
+2026-09-30T14:31:43.0407654Z 1702 | 	) {
+2026-09-30T14:31:43.0407929Z 1703 | 		this.session = session;
+2026-09-30T14:31:43.0408318Z 1704 | 		this.sessionManager = session.sessionManager;
+2026-09-30T14:31:43.0408754Z 1705 | 		this.settings = session.settings;
+2026-09-30T14:31:43.0409352Z 1706 | 		this.#goalToolInitiallyEnabled = session.getEnabledToolNames().includes("goal");
+2026-09-30T14:31:43.0409967Z                                                   ^
+2026-09-30T14:31:43.0410815Z TypeError: session.getEnabledToolNames is not a function. (In 'session.getEnabledToolNames()', 'session.getEnabledToolNames' is undefined)
+2026-09-30T14:31:43.0411958Z       at new InteractiveMode (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/src/modes/interactive-mode.ts:1706:44)
+2026-09-30T14:31:43.0413150Z       at createHarness (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:48:15)
+2026-09-30T14:31:43.0414457Z       at async <anonymous> (/home/runner/work/oh-my-pi/oh-my-pi/packages/coding-agent/test/interactive-mode-deferred-command-notice.test.ts:162:40)
+2026-09-30T14:31:43.9924413Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 50/83; 10 files) [7.6s]
+2026-09-30T14:31:47.9156865Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 53/83; 10 files) [5.6s]
+2026-09-30T14:31:51.3772267Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 56/83; 10 files) [8.4s]
+2026-09-30T14:31:54.8346552Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 59/83; 10 files) [10.8s]
+2026-09-30T14:32:00.7748578Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 68/83; 10 files) [5.9s]
+2026-09-30T14:32:06.1558167Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 71/83; 10 files) [5.4s]
+2026-09-30T14:32:06.8383528Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 74/83; 10 files) [686ms]
+2026-09-30T14:32:09.8487231Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 47/83; 10 files) [34.2s]
+2026-09-30T14:32:16.1243980Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 80/83; 10 files) [6.3s]
+2026-09-30T14:32:16.4069293Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 77/83; 10 files) [9.6s]
+2026-09-30T14:32:18.9139871Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 83/83; 1 files) [2.8s]
+2026-09-30T14:32:22.7422951Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 65/83; 10 files) [31.4s]
+2026-09-30T14:32:38.2176312Z ✓ packages/coding-agent (native/tooling/browser/unit bucket; 821 files; parallel=1 chunk 62/83; 10 files) [50.3s]
+2026-09-30T14:32:38.2176955Z 
+2026-09-30T14:32:38.2178685Z  27 chunks passed
+2026-09-30T14:32:38.2178891Z  1 failed
+2026-09-30T14:32:38.2179079Z Ran 28 test command(s) in 90.8s.
+2026-09-30T14:32:38.2200966Z error: script "ci:test:coding-agent:native" exited with code 1
+2026-09-30T14:32:38.2226380Z ##[error]Process completed with exit code 1.
+2026-09-30T14:32:38.2322512Z Post job cleanup.
+2026-09-30T14:32:38.3069887Z [command]/usr/bin/git version
+2026-09-30T14:32:38.3105751Z git version 2.55.0
+2026-09-30T14:32:38.3136998Z Temporarily overriding HOME='/home/runner/work/_temp/e8faa901-fd78-47b2-940c-2bfafb3b916b' before making global git config changes
+2026-09-30T14:32:38.3138031Z Adding repository directory to the temporary git global config as a safe directory
+2026-09-30T14:32:38.3142365Z [command]/usr/bin/git config --global --add safe.directory /home/runner/work/oh-my-pi/oh-my-pi
+2026-09-30T14:32:38.3178795Z [command]/usr/bin/git config --local --name-only --get-regexp core\.sshCommand
+2026-09-30T14:32:38.3211684Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'core\.sshCommand' && git config --local --unset-all 'core.sshCommand' || :"
+2026-09-30T14:32:38.3454087Z [command]/usr/bin/git config --local --name-only --get-regexp http\.https\:\/\/github\.com\/\.extraheader
+2026-09-30T14:32:38.3479274Z http.https://github.com/.extraheader
+2026-09-30T14:32:38.3488482Z [command]/usr/bin/git config --local --unset-all http.https://github.com/.extraheader
+2026-09-30T14:32:38.3521167Z [command]/usr/bin/git submodule foreach --recursive sh -c "git config --local --name-only --get-regexp 'http\.https\:\/\/github\.com\/\.extraheader' && git config --local --unset-all 'http.https://github.com/.extraheader' || :"
+2026-09-30T14:32:38.3766151Z [command]/usr/bin/git config --local --name-only --get-regexp ^includeIf\.gitdir:
+2026-09-30T14:32:38.3803508Z [command]/usr/bin/git submodule foreach --recursive git config --local --show-origin --name-only --get-regexp remote.origin.url
+2026-09-30T14:32:38.4189197Z Cleaning up orphan processes
+2026-09-30T14:32:38.4471366Z Terminate orphan process: pid (6545) (sleep)
+2026-09-30T14:32:38.4481113Z ##[warning]Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to run on Node.js 24: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830, actions/checkout@v4. For more information see: https://github.blog/changelog/2025-09-19-deprecation-of-node-20-on-github-actions-runners/

@@ -1,0 +1,14 @@
+● Resolving model...
+No staged changes detected, staging all changes...
+  └─ Fake Model
+● Discovering context files...
+  └─ (none found)
+● Forcing fallback commit generation...
+Warnings:
+- Commit generated using fallback due to agent failure
+
+Generated commit message:
+docs: updated documentation for a.txt and 1 other
+
+- Updated a.txt
+- Updated n.txt

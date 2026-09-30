@@ -1,0 +1,274 @@
+{
+  "baseRefName": "main",
+  "headRefName": "feat/goal-tool-default",
+  "isDraft": false,
+  "mergeStateStatus": "DIRTY",
+  "mergeable": "CONFLICTING",
+  "number": 13877,
+  "reviewDecision": "",
+  "state": "OPEN",
+  "statusCheckRollup": [
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:30:12Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935227766",
+      "name": "Resolve release metadata",
+      "startedAt": "2026-09-30T14:30:00Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:32:27Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729557089/job/109935228916",
+      "name": "Evaluate flake",
+      "startedAt": "2026-09-30T14:29:57Z",
+      "status": "COMPLETED",
+      "workflowName": "OMP Nix"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:32:34Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935228235",
+      "name": "Lint, type check & web build",
+      "startedAt": "2026-09-30T14:29:57Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:30:22Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935228130",
+      "name": "Check MODULE.bazel.lock freshness",
+      "startedAt": "2026-09-30T14:29:58Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:29:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935230328",
+      "name": "Validate Rust workspace (bazel)",
+      "startedAt": "2026-09-30T14:29:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:30:28Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935228421",
+      "name": "Build native addons (bazel)",
+      "startedAt": "2026-09-30T14:29:58Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:29:55Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935230060",
+      "name": "Build native addons (bazel, cross targets)",
+      "startedAt": "2026-09-30T14:29:55Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:30:12Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935357870",
+      "name": "Release binary: ${{ matrix.target_id }}",
+      "startedAt": "2026-09-30T14:30:13Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:33:22Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935475095",
+      "name": "Test coding-agent native/unit (TS) 1/3",
+      "startedAt": "2026-09-30T14:30:45Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:32:40Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935475243",
+      "name": "Test coding-agent native/unit (TS) 2/3",
+      "startedAt": "2026-09-30T14:30:32Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:32:24Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935474927",
+      "name": "Test coding-agent native/unit (TS) 3/3",
+      "startedAt": "2026-09-30T14:30:30Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:32:43Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935474731",
+      "name": "Test TS workspace fast",
+      "startedAt": "2026-09-30T14:30:33Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:32:16Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935474897",
+      "name": "Test coding-agent singleton/global-state (TS)",
+      "startedAt": "2026-09-30T14:30:31Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:32:06Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935475135",
+      "name": "Test TS native/integration packages",
+      "startedAt": "2026-09-30T14:31:05Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:33:49Z",
+      "conclusion": "FAILURE",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935474964",
+      "name": "Test coding-agent UI/TUI (TS)",
+      "startedAt": "2026-09-30T14:31:17Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:32:17Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935475213",
+      "name": "Test coding-agent runtime/session (TS)",
+      "startedAt": "2026-09-30T14:30:31Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:31:02Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935474704",
+      "name": "Test CLI smoke (TS)",
+      "startedAt": "2026-09-30T14:30:30Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:32:21Z",
+      "conclusion": "SUCCESS",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935474796",
+      "name": "Install method smoke tests",
+      "startedAt": "2026-09-30T14:30:30Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:30:28Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935478776",
+      "name": "Release binary: ${{ matrix.target_id }}",
+      "startedAt": "2026-09-30T14:30:28Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:33:49Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109936949070",
+      "name": "Release validation gate",
+      "startedAt": "2026-09-30T14:33:49Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:30:28Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109935478155",
+      "name": "Smoke release binary: win32-arm64",
+      "startedAt": "2026-09-30T14:30:28Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:33:49Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109936948893",
+      "name": "Publish native leaf packages",
+      "startedAt": "2026-09-30T14:33:49Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:33:49Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109936951827",
+      "name": "Publish GitHub release",
+      "startedAt": "2026-09-30T14:33:50Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:33:49Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109936950273",
+      "name": "Verify published release (macOS)",
+      "startedAt": "2026-09-30T14:33:49Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:33:49Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109936950907",
+      "name": "Publish to npm",
+      "startedAt": "2026-09-30T14:33:49Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    },
+    {
+      "__typename": "CheckRun",
+      "completedAt": "2026-09-30T14:33:49Z",
+      "conclusion": "SKIPPED",
+      "detailsUrl": "https://github.com/can1357/oh-my-pi/actions/runs/36729556785/job/109936951840",
+      "name": "Update Homebrew tap",
+      "startedAt": "2026-09-30T14:33:50Z",
+      "status": "COMPLETED",
+      "workflowName": "CI"
+    }
+  ],
+  "title": "feat(coding-agent): opt into agent-started goals",
+  "url": "https://github.com/can1357/oh-my-pi/pull/13877"
+}

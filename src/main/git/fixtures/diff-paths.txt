@@ -1,0 +1,52 @@
+diff --git a/link-me b/link-me
+deleted file mode 100644
+index eb5a316..0000000
+--- a/link-me
++++ /dev/null
+@@ -1 +0,0 @@
+-target
+diff --git a/link-me b/link-me
+new file mode 120000
+index 0000000..e0e6347
+--- /dev/null
++++ b/link-me
+@@ -0,0 +1 @@
++run.sh
+\ No newline at end of file
+diff --git a/with space.txt b/moved space.txt
+similarity index 50%
+rename from with space.txt
+rename to moved space.txt
+index 5626abf..814f4a4 100644
+--- a/with space.txt	
++++ b/moved space.txt	
+@@ -1 +1,2 @@
+ one
++two
+diff --git a/nonl.txt b/nonl.txt
+index 20cbb4d..649220f 100644
+--- a/nonl.txt
++++ b/nonl.txt
+@@ -1 +1,2 @@
+-no newline
+\ No newline at end of file
++no newline
++still none
+\ No newline at end of file
+diff --git a/run.sh b/run.sh
+old mode 100644
+new mode 100755
+diff --git "a/tab\tname.txt" "b/tab\tname.txt"
+index 8cc35a3..bac686b 100644
+--- "a/tab\tname.txt"
++++ "b/tab\tname.txt"
+@@ -1 +1 @@
+-tab
++tab2
+diff --git a/ünï.txt b/ünï.txt
+index 4ae8ef0..967e095 100644
+--- a/ünï.txt
++++ b/ünï.txt
+@@ -1 +1 @@
+-u
++u2
