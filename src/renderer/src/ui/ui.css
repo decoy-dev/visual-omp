@@ -1,0 +1,463 @@
+/*
+ * Primitive-library motion + effects that utilities can't express (keyframes, pseudo-element borders,
+ * reduced-motion fallbacks). Colors come only from tokens.css variables (DESIGN.md §1).
+ */
+
+/* lucide icons: 1.75px strokes, round caps/joins (DESIGN §5.2; lucide's own default is 2px). */
+@layer base {
+	svg.lucide {
+		stroke-width: 1.75;
+		stroke-linecap: round;
+		stroke-linejoin: round;
+	}
+}
+
+/* §2.3 wordmark cursor blink (hero/about only). */
+@keyframes vo-cursor-blink {
+	0%,
+	49% {
+		opacity: 1;
+	}
+	50%,
+	100% {
+		opacity: 0;
+	}
+}
+
+.vo-cursor-blink {
+	animation: vo-cursor-blink 1.1s steps(1) infinite;
+}
+
+@keyframes vo-spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* §5.5: opacity 0→1 + scale(0.97→1) + translateY(-2px→0) */
+@keyframes vo-pop-in {
+	from {
+		opacity: 0;
+		transform: translateY(-2px) scale(0.97);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0) scale(1);
+	}
+}
+
+@keyframes vo-pop-out {
+	from {
+		opacity: 1;
+		transform: scale(1);
+	}
+	to {
+		opacity: 0;
+		transform: scale(0.98);
+	}
+}
+
+@keyframes vo-fade-in {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+@keyframes vo-fade-out {
+	from {
+		opacity: 1;
+	}
+	to {
+		opacity: 0;
+	}
+}
+
+@keyframes vo-dialog-in {
+	from {
+		opacity: 0;
+		transform: translate(-50%, calc(-50% + 8px)) scale(0.98);
+	}
+	to {
+		opacity: 1;
+		transform: translate(-50%, -50%) scale(1);
+	}
+}
+
+/* §5.6 sheets and §4.22 toasts both enter with a short upward settle. */
+@keyframes vo-rise-24 {
+	from {
+		opacity: 0;
+		transform: translateY(24px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes vo-rise-8 {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes vo-fade-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.35;
+	}
+}
+
+/* §5.16 gradient pulse dot: 1 → 0.45 → 1 */
+@keyframes vo-dot-pulse {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.45;
+	}
+}
+
+@keyframes vo-ping {
+	0% {
+		transform: scale(1);
+		opacity: 0.55;
+	}
+	80%,
+	100% {
+		transform: scale(2.4);
+		opacity: 0;
+	}
+}
+
+@keyframes vo-shimmer {
+	from {
+		background-position: 200% 0;
+	}
+	to {
+		background-position: -200% 0;
+	}
+}
+
+/* §5.16 signal shimmer: the spectrum travels along the frame. */
+@keyframes vo-signal-shimmer {
+	to {
+		background-position:
+			0% 0%,
+			300% 0%;
+	}
+}
+
+@keyframes vo-signal-shimmer-border {
+	to {
+		background-position: 300% 0%;
+	}
+}
+
+/* §5.14 indeterminate: two segments sliding across the track. */
+@keyframes vo-indeterminate-long {
+	0% {
+		left: -120px;
+	}
+	60%,
+	100% {
+		left: 100%;
+	}
+}
+
+@keyframes vo-indeterminate-short {
+	0%,
+	35% {
+		left: -48px;
+	}
+	100% {
+		left: 100%;
+	}
+}
+
+/* ---- floating surfaces (menus, popovers, select, tooltip) ---- */
+.vo-pop {
+	transform-origin: var(--radix-popper-transform-origin, center);
+}
+.vo-pop[data-state="open"],
+.vo-pop[data-state="delayed-open"],
+.vo-pop[data-state="instant-open"] {
+	animation: vo-pop-in var(--dur) var(--ease-spring);
+}
+.vo-pop[data-state="closed"] {
+	animation: vo-pop-out var(--dur-fast) var(--ease-out);
+}
+
+.vo-scrim[data-state="open"] {
+	animation: vo-fade-in var(--dur) var(--ease-out);
+}
+.vo-scrim[data-state="closed"] {
+	animation: vo-fade-out var(--dur-fast) var(--ease-out);
+}
+
+.vo-dialog[data-state="open"] {
+	animation: vo-dialog-in var(--dur-slow) var(--ease-spring);
+}
+.vo-dialog[data-state="closed"] {
+	animation: vo-fade-out var(--dur-fast) var(--ease-out);
+}
+
+.vo-sheet[data-state="open"] {
+	animation: vo-rise-24 var(--dur-slow) var(--ease-out);
+}
+.vo-sheet[data-state="closed"] {
+	animation: vo-fade-out var(--dur-fast) var(--ease-out);
+}
+
+.vo-toast {
+	animation: vo-rise-8 var(--dur) var(--ease-out);
+}
+
+/* ---- small motion atoms ---- */
+.vo-spin {
+	animation: vo-spin 0.8s linear infinite;
+}
+
+.vo-ping {
+	animation: vo-ping 1.6s var(--ease-out) infinite;
+}
+
+.vo-slow-pulse {
+	animation: vo-fade-pulse 2s var(--ease-in-out) infinite;
+}
+
+.vo-pulse-dot {
+	background-image: var(--mark-gradient);
+	animation: vo-dot-pulse 1.6s var(--ease-in-out) infinite;
+}
+
+.vo-skeleton {
+	background-color: var(--hover);
+	background-image: linear-gradient(
+		90deg,
+		transparent 0%,
+		color-mix(in srgb, var(--fg) 6%, transparent) 50%,
+		transparent 100%
+	);
+	background-size: 200% 100%;
+	background-repeat: no-repeat;
+	animation: vo-shimmer 1.6s var(--ease-in-out) infinite;
+}
+
+.vo-indeterminate-long,
+.vo-indeterminate-short {
+	position: absolute;
+	top: 0;
+	bottom: 0;
+}
+.vo-indeterminate-long {
+	width: 120px;
+	animation: vo-indeterminate-long 1.2s var(--ease-in-out) infinite;
+}
+.vo-indeterminate-short {
+	width: 48px;
+	animation: vo-indeterminate-short 1.2s var(--ease-in-out) infinite;
+}
+
+/* ---- Card status rail + elevation via inset shadow (follows the radius, no clipping) ----
+ * In the components layer so a consumer's `shadow-*` utility still wins. */
+@layer components {
+	.vo-card {
+		--vo-rail: 0 0 transparent;
+		--vo-elev: 0 0 transparent;
+		box-shadow: var(--vo-rail), var(--vo-elev);
+		transition:
+			box-shadow var(--dur) var(--ease-out),
+			transform var(--dur) var(--ease-out);
+	}
+	.vo-card[data-floating] {
+		--vo-elev: var(--shadow-card);
+	}
+	.vo-card[data-interactive]:hover {
+		--vo-elev: var(--shadow-card);
+		transform: translateY(-1px);
+	}
+	.vo-card[data-rail="accent"] {
+		--vo-rail: inset 2px 0 0 var(--accent);
+	}
+	.vo-card[data-rail="blue"] {
+		--vo-rail: inset 2px 0 0 var(--accent-2);
+	}
+	.vo-card[data-rail="agent"] {
+		--vo-rail: inset 2px 0 0 var(--agent);
+	}
+	.vo-card[data-rail="ok"] {
+		--vo-rail: inset 2px 0 0 var(--ok);
+	}
+	.vo-card[data-rail="warn"] {
+		--vo-rail: inset 2px 0 0 var(--warn);
+	}
+	.vo-card[data-rail="err"] {
+		--vo-rail: inset 2px 0 0 var(--err);
+	}
+	.vo-card[data-rail="info"] {
+		--vo-rail: inset 2px 0 0 var(--info);
+	}
+}
+
+/*
+ * §5.16 signal shimmer, surface form (exact spec CSS). Put `.vo-working` on a `--panel` surface whose
+ * 1px border it replaces (Card `working`). The rail + glow compose with the card shadow variables.
+ */
+.vo-working {
+	border: 1px solid transparent;
+	background:
+		linear-gradient(var(--panel), var(--panel)) padding-box,
+		var(--work-gradient) border-box;
+	background-size:
+		100% 100%,
+		300% 100%;
+	background-position:
+		0% 0%,
+		0% 0%;
+	animation: vo-signal-shimmer 2.4s linear infinite;
+}
+.vo-working,
+.vo-card.vo-working {
+	--vo-elev: var(--work-glow);
+	box-shadow: var(--vo-rail, 0 0 transparent), var(--work-glow);
+}
+
+/*
+ * GlowBorder: the same shimmer for arbitrary children (composer, inputs) without touching their background:
+ * a 1px masked overlay drawn exactly over the child's own border, plus the work glow.
+ */
+.vo-glow {
+	position: relative;
+	transition: box-shadow var(--dur-slow) var(--ease-out);
+}
+.vo-glow::before {
+	content: "";
+	position: absolute;
+	inset: 0;
+	z-index: 1;
+	border-radius: inherit;
+	padding: 1px;
+	pointer-events: none;
+	background: var(--work-gradient);
+	background-size: 300% 100%;
+	-webkit-mask:
+		linear-gradient(black 0 0) content-box,
+		linear-gradient(black 0 0);
+	-webkit-mask-composite: xor;
+	mask-composite: exclude;
+	opacity: 0;
+	transition: opacity var(--dur-slow) var(--ease-out);
+	animation: vo-signal-shimmer-border 2.4s linear infinite;
+}
+.vo-glow[data-active] {
+	box-shadow: var(--work-glow);
+}
+.vo-glow[data-active]::before {
+	opacity: 1;
+}
+
+/* ---- Reduced motion: app setting or OS preference (unless the app forces full motion) ----
+ * base.css clamps every animation to one 0.01ms run; these rules pick the §1.12/§5.16 static fallbacks. */
+:root[data-motion="reduced"] .vo-spin,
+:root[data-motion="reduced"] .vo-ping,
+:root[data-motion="reduced"] .vo-skeleton,
+:root[data-motion="reduced"] .vo-pulse-dot,
+:root[data-motion="reduced"] .vo-working,
+:root[data-motion="reduced"] .vo-glow::before {
+	animation: none !important;
+}
+:root[data-motion="reduced"] .vo-ping {
+	opacity: 0;
+}
+:root[data-motion="reduced"] .vo-skeleton {
+	background-image: none;
+}
+:root[data-motion="reduced"] .vo-pulse-dot {
+	opacity: 0.6;
+}
+:root[data-motion="reduced"] .vo-working {
+	background:
+		linear-gradient(var(--panel), var(--panel)) padding-box,
+		linear-gradient(color-mix(in srgb, var(--panel) 50%, transparent), color-mix(in srgb, var(--panel) 50%, transparent))
+			border-box,
+		var(--work-gradient) border-box;
+	box-shadow: var(--vo-rail, 0 0 transparent);
+}
+:root[data-motion="reduced"] .vo-glow[data-active] {
+	box-shadow: none;
+}
+:root[data-motion="reduced"] .vo-glow[data-active]::before {
+	opacity: 0.5;
+}
+:root[data-motion="reduced"] .vo-slow-pulse,
+:root[data-motion="reduced"] .vo-indeterminate-long {
+	animation: vo-fade-pulse 2s ease-in-out infinite !important;
+}
+:root[data-motion="reduced"] .vo-indeterminate-long {
+	left: 0;
+	width: 100%;
+}
+:root[data-motion="reduced"] .vo-indeterminate-short {
+	display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root:not([data-motion="full"]) .vo-spin,
+	:root:not([data-motion="full"]) .vo-ping,
+	:root:not([data-motion="full"]) .vo-skeleton,
+	:root:not([data-motion="full"]) .vo-pulse-dot,
+	:root:not([data-motion="full"]) .vo-working,
+	:root:not([data-motion="full"]) .vo-glow::before {
+		animation: none !important;
+	}
+	:root:not([data-motion="full"]) .vo-ping {
+		opacity: 0;
+	}
+	:root:not([data-motion="full"]) .vo-skeleton {
+		background-image: none;
+	}
+	:root:not([data-motion="full"]) .vo-pulse-dot {
+		opacity: 0.6;
+	}
+	:root:not([data-motion="full"]) .vo-working {
+		background:
+			linear-gradient(var(--panel), var(--panel)) padding-box,
+			linear-gradient(
+					color-mix(in srgb, var(--panel) 50%, transparent),
+					color-mix(in srgb, var(--panel) 50%, transparent)
+				)
+				border-box,
+			var(--work-gradient) border-box;
+		box-shadow: var(--vo-rail, 0 0 transparent);
+	}
+	:root:not([data-motion="full"]) .vo-glow[data-active] {
+		box-shadow: none;
+	}
+	:root:not([data-motion="full"]) .vo-glow[data-active]::before {
+		opacity: 0.5;
+	}
+	:root:not([data-motion="full"]) .vo-slow-pulse,
+	:root:not([data-motion="full"]) .vo-indeterminate-long {
+		animation: vo-fade-pulse 2s ease-in-out infinite !important;
+	}
+	:root:not([data-motion="full"]) .vo-indeterminate-long {
+		left: 0;
+		width: 100%;
+	}
+	:root:not([data-motion="full"]) .vo-indeterminate-short {
+		display: none;
+	}
+}

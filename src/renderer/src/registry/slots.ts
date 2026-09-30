@@ -40,6 +40,24 @@ export interface StatusItemSpec {
 	component: ComponentType<PaneProps>;
 }
 
+export interface ChatSlotProps {
+	session: SessionController;
+}
+
+export interface ChatSlotSpec {
+	id: string;
+	/**
+	 * `transcriptEnd`: cards after the last message (Plan Review, context-full, errors).
+	 * `aboveComposer`: strips pinned above the composer (notices, banners).
+	 * `composerTools`: buttons in the composer's bottom row (voice, prompt library).
+	 * `headerChips`: chips beside the model/mode chips in the session header.
+	 * `watchers`: invisible components that react to session state (auto-open the terminal sheet).
+	 */
+	placement: "transcriptEnd" | "aboveComposer" | "composerTools" | "headerChips" | "watchers";
+	order: number;
+	component: ComponentType<ChatSlotProps>;
+}
+
 function createRegistry<T extends { id: string }>(sort?: (a: T, b: T) => number) {
 	const items = new Map<string, T>();
 	const listeners = new Set<() => void>();
@@ -69,3 +87,4 @@ function createRegistry<T extends { id: string }>(sort?: (a: T, b: T) => number)
 export const panes = createRegistry<PaneSpec>((a, b) => a.order - b.order);
 export const sheets = createRegistry<SheetSpec>();
 export const statusItems = createRegistry<StatusItemSpec>((a, b) => a.order - b.order);
+export const chatSlots = createRegistry<ChatSlotSpec>((a, b) => a.order - b.order);
