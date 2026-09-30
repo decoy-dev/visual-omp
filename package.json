@@ -19,9 +19,8 @@
     "preview": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "test": "vitest run",
-    "postinstall": "electron-builder install-app-deps",
-    "dist:mac": "electron-vite build && electron-builder --mac",
-    "dist:win": "electron-vite build && electron-builder --win"
+    "dist:mac": "electron-vite build && electron-builder --mac dmg --arm64 --x64 --publish never",
+    "dist:win": "electron-vite build && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
     "@xterm/addon-serialize": "^0.14.0",

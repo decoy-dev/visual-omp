@@ -53,7 +53,7 @@ brew install --cask decoy-dev/tap/visual-omp
 
 **visual-omp on Windows**
 
-Download `visual-omp-Setup.exe` from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest).
+Download the `visual-omp-<version>-win-x64.exe` installer from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest).
 
 macOS (Apple Silicon · Intel) · Windows 10+ · omp ≥ 18.4
 

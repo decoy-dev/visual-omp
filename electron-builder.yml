@@ -1,0 +1,41 @@
+appId: ltd.decoy.visualomp
+productName: visual-omp
+asar: true
+directories:
+  buildResources: build
+  output: release
+files:
+  - out/**/*
+  - package.json
+  - LICENSE
+  - NOTICE
+asarUnpack:
+  - node_modules/node-pty/**/*
+artifactName: visual-omp-${version}-${platform}-${arch}.${ext}
+mac:
+  category: public.app-category.developer-tools
+  icon: build/icon.icns
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+  minimumSystemVersion: "12.0"
+dmg:
+  artifactName: visual-omp-${version}-mac-${arch}.${ext}
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  deleteAppDataOnUninstall: false
+  artifactName: visual-omp-${version}-win-${arch}.${ext}
+publish:
+  - provider: github
+    owner: decoy-dev
+    repo: visual-omp
