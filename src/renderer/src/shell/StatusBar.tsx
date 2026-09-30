@@ -1,8 +1,9 @@
-import { Copy, RotateCcw, SquareTerminal } from "lucide-react";
+import { Copy, Download, RotateCcw, SquareTerminal } from "lucide-react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { statusItems } from "../registry/slots";
 import { focusedController, focusedTabId, useApp } from "../state/app";
+import { OMP_UPDATE_SHEET, useOmpUpdateStatus } from "../features/onboarding/updates";
 import { ContextRing, Menu, MenuContent, MenuItem, MenuTrigger, StatusDot, toast } from "../ui";
 import { useSessionView } from "./hooks";
 
@@ -11,7 +12,7 @@ function ContextItem(): ReactNode {
 	useApp(focusedTabId);
 	const view = useSessionView(focusedController());
 	const usage = view?.guest?.state?.contextUsage;
-	if (!usage) return null;
+	if (!usage || usage.percent === null) return null;
 	const percent = Math.round(usage.percent);
 	return (
 		<span className="flex items-center gap-1.5" title={t("status.context", { percent })}>
@@ -27,6 +28,7 @@ function OmpItem(): ReactNode {
 	const { t } = useTranslation("shell");
 	const omp = useApp(state => state.omp);
 	const tabId = useApp(focusedTabId);
+	const update = useOmpUpdateStatus();
 	const controller = focusedController();
 	const view = useSessionView(controller);
 	const mode = view?.mode;
@@ -59,6 +61,11 @@ function OmpItem(): ReactNode {
 				<MenuItem icon={<RotateCcw />} disabled={!controller} onSelect={() => void controller?.restart()}>
 					{t("status.restart")}
 				</MenuItem>
+				{update?.updateAvailable && (
+					<MenuItem icon={<Download />} onSelect={() => useApp.getState().openSheet(OMP_UPDATE_SHEET)}>
+						{t("status.ompUpdateAvailable", { version: update.latestVersion ?? "latest" })}
+					</MenuItem>
+				)}
 				<MenuItem icon={<Copy />} onSelect={() => void copyDiagnostics()}>
 					{t("status.copyDiagnostics")}
 				</MenuItem>

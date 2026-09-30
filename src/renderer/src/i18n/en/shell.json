@@ -76,6 +76,7 @@
 		"openTerminal": "Show omp's own screen",
 		"restart": "Restart omp",
 		"copyDiagnostics": "Copy diagnostics",
+		"ompUpdateAvailable": "Update omp to {{version}}",
 		"copied": "Diagnostics copied"
 	},
 	"home": {

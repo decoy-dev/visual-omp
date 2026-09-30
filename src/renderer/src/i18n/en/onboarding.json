@@ -1,0 +1,192 @@
+{
+	"setup": {
+		"eyebrow": "Welcome",
+		"missing": {
+			"title": "Let's get omp installed",
+			"body": "visual-omp is a friendly window around omp, the AI coding agent. omp isn't on this computer yet — it takes about a minute."
+		},
+		"tooOld": {
+			"title": "Your omp is out of date",
+			"body": "visual-omp needs a newer omp to work. Updating keeps your chats and settings.",
+			"installed": "Installed",
+			"required": "Needs"
+		},
+		"done": {
+			"title": "omp is ready",
+			"body": "Everything is set up. Taking you in…"
+		},
+		"step1": {
+			"install": "Install omp",
+			"update": "Update omp",
+			"body": "One command, runs in a window you can watch.",
+			"bodyWindows": "One PowerShell command, runs in a window you can watch.",
+			"run": "Run installer",
+			"runUpdate": "Run update",
+			"copy": "Copy",
+			"copyHint": "Copy the install command to run it yourself in a terminal.",
+			"copied": "Command copied",
+			"copiedBody": "Paste it into a terminal, then come back and choose Check again.",
+			"cancel": "Cancel",
+			"running": "Installing… this usually takes about a minute.",
+			"succeeded": "The installer finished.",
+			"failed": "The installer stopped with an error (code {{code}}). You can try again, or copy the command and run it yourself.",
+			"cancelled": "Installer cancelled.",
+			"terminalLabel": "Installer output"
+		},
+		"step2": {
+			"title": "Check again",
+			"body": "Once the installer finishes, check that visual-omp can find omp.",
+			"check": "Check again",
+			"stillMissing": "Still can't find omp",
+			"stillMissingBody": "If you just installed it, try quitting and reopening visual-omp so it picks up the new install."
+		},
+		"trouble": "Having trouble?",
+		"openHelp": "Open the help guide",
+		"stepDone": "Done"
+	},
+	"tour": {
+		"eyebrow": "{{step}} of {{total}}",
+		"skip": "Skip",
+		"next": "Next",
+		"finish": "Start chatting",
+		"steps": {
+			"sidebar": {
+				"title": "Projects and chats",
+				"body": "Your projects and chats live here. Everything you ask for becomes a chat you can return to."
+			},
+			"composer": {
+				"title": "Say what you want",
+				"body": "Type what you want in plain words. Enter sends. You never need commands — they're optional shortcuts."
+			},
+			"permission": {
+				"title": "How much omp does on its own",
+				"body": "This controls how much omp does on its own. 'Auto' is a good start: it works by itself and you can always rewind."
+			},
+			"dock": {
+				"title": "Watch the work",
+				"body": "Watch changes happen: files, diffs, previews, and helpers working in parallel."
+			},
+			"statusbar": {
+				"title": "Context and cost",
+				"body": "Keep an eye on context and cost. Click anything here to learn more."
+			}
+		}
+	},
+	"help": {
+		"close": "Close help",
+		"title": "Help",
+		"subtitle": "Short guides and the words we use.",
+		"search": "Search help",
+		"guides": "Guides",
+		"glossary": "Words we use",
+		"back": "All help topics",
+		"stepOf": "Step {{step}}",
+		"noMatches": "No matches — ask omp instead",
+		"noMatchesBody": "omp can answer questions about itself and about your project.",
+		"askOmp": "Ask omp: “{{q}}”",
+		"askNeedsProject": "Open a project first",
+		"askNeedsProjectBody": "Questions go to a new chat, and chats live inside a project folder.",
+		"footer": {
+			"tour": "Show the tour again",
+			"shortcuts": "Keyboard shortcuts",
+			"docs": "omp docs",
+			"report": "Report a problem"
+		},
+		"guide": {
+			"firstChat": {
+				"title": "Your first chat",
+				"summary": "Pick a folder, describe what you want, and watch omp work.",
+				"s1": "Open a project. A project is just a folder on your computer that omp works in.",
+				"s2": "Start a new chat and describe what you want in plain words, the way you'd tell a colleague.",
+				"s3": "Watch it work. Each step shows up as a card; the side panel shows the files and changes as they happen.",
+				"s4": "Keep going. Reply to refine the result, or send another message while omp is busy — it waits in line."
+			},
+			"autoMode": {
+				"title": "Staying safe with Auto mode",
+				"summary": "Choose how much omp may do before asking you.",
+				"s1": "The pill under the message box sets how much omp does on its own: Ask me first, Edits OK, or Auto.",
+				"s2": "Auto lets omp edit files and run commands without asking. It's fast, and a good fit for projects you trust.",
+				"s3": "Want more control? Ask me first makes omp stop before every edit or command so you can approve it.",
+				"s4": "Mistakes are recoverable: you can always rewind a chat, and git keeps a record of every change."
+			},
+			"rewind": {
+				"title": "Rewinding and forking",
+				"summary": "Go back to an earlier point, or try another direction.",
+				"s1": "Hover one of your messages to see Rewind and Fork.",
+				"s2": "Rewind goes back to that point so you can say it differently. Everything after it is set aside, not deleted.",
+				"s3": "Fork copies the chat into a new one, so you can try a different idea without losing this one.",
+				"s4": "The branch tree shows every rewind and fork as a map, so you can jump between versions."
+			},
+			"questions": {
+				"title": "When omp asks questions",
+				"summary": "Answer omp's questions and approvals right in the chat.",
+				"s1": "Sometimes omp needs a decision — which option to pick, or whether it may run something.",
+				"s2": "A question card appears in the chat, and the chat is marked in the sidebar so you don't miss it.",
+				"s3": "Choose an option or type your own answer. omp continues right away.",
+				"s4": "If you're away, visual-omp sends a notification when a chat needs your answer."
+			}
+		},
+		"terms": {
+			"context": { "term": "context", "def": "Everything omp can see at once: your messages, its replies, and the files it has read. It has a size limit." },
+			"token": { "term": "token", "def": "A small chunk of text, about three-quarters of a word. Context size and cost are measured in tokens." },
+			"compaction": { "term": "compaction", "def": "Summarizing the chat so far to free up room in the context, so the conversation can keep going." },
+			"planMode": { "term": "plan mode", "def": "omp thinks through an approach and shows you a plan to approve before it changes anything." },
+			"worktree": { "term": "worktree", "def": "A separate copy of your project for one chat, so experiments never touch your main files." },
+			"mcp": { "term": "MCP", "def": "A standard way to plug outside tools, like a database or ticket tracker, into omp." },
+			"agent": { "term": "agent / helper", "def": "A reusable specialist omp can hand work to, like a reviewer or an explorer." },
+			"skill": { "term": "skill", "def": "An add-on set of instructions that teaches omp how to do a particular kind of task." },
+			"hook": { "term": "hook", "def": "A small script that runs automatically at certain moments, like before a command or after an edit." },
+			"subagent": { "term": "subagent", "def": "A helper omp starts during a chat to work on part of the task in parallel." },
+			"checkpoint": { "term": "checkpoint", "def": "A saved point in a chat that you can rewind to later." },
+			"tui": { "term": "TUI", "def": "omp's own text screen in a terminal. visual-omp drives it for you behind the scenes." },
+			"modelRole": { "term": "model role", "def": "Which AI model does which job — everyday chat, planning, commit messages, and more." }
+		}
+	},
+	"update": {
+		"appTitle": "visual-omp {{version}} is here",
+		"brewBody": "Update with Homebrew: {{command}}",
+		"downloadBody": "Download and run the new installer to update.",
+		"pageBody": "See the release page for what's new and how to update.",
+		"copyCommand": "Copy command",
+		"download": "Download",
+		"openPage": "See what's new",
+		"copied": "Update command copied",
+		"copiedBody": "Paste it into Terminal. Your chats pick up where they left off.",
+		"omp": {
+			"title": "Update omp",
+			"titleTo": "Update omp to {{version}}",
+			"hint": "Install the newest version of the omp engine.",
+			"keywords": "upgrade, engine, new version",
+			"running": "Updating omp…",
+			"done": "omp is up to date",
+			"doneVersion": "omp {{version}} is installed.",
+			"restartNote": "Chats that are already open keep using the old version until you restart them.",
+			"failed": "The update stopped with an error (code {{code}}).",
+			"close": "Close",
+			"outputLabel": "Update output",
+			"waiting": "Starting…"
+		}
+	},
+	"notify": {
+		"finished": "Finished",
+		"finishedWith": "Finished: {{summary}}",
+		"needsInput": "Needs your answer",
+		"untitled": "New chat"
+	},
+	"quit": {
+		"title_other": "omp is still working in {{count}} chats.",
+		"title_one": "omp is still working in 1 chat.",
+		"body": "Your chats pick up where they left off next time.",
+		"keepWaiting": "Keep waiting",
+		"stopAndQuit": "Stop and quit",
+		"dontAsk": "Don't ask again — always stop",
+		"working": "Working",
+		"tabTitle": "omp is still working in this chat.",
+		"tabBody": "Closing stops the current step. The chat is saved and picks up where it left off when you open it again.",
+		"stopAndClose": "Stop and close"
+	},
+	"commands": {
+		"tour": { "title": "Take the tour", "hint": "A quick walk through the main parts of the window.", "keywords": "tutorial, intro, guide, walkthrough" },
+		"help": { "title": "Help", "hint": "Short guides and plain definitions of the words we use.", "keywords": "glossary, guide, docs, how to, support" }
+	}
+}
