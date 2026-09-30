@@ -28,5 +28,9 @@ jobs:
         run: npm run typecheck
       - name: Test
         run: npm test
-      - name: Build
-        run: npx electron-vite build
+      - name: Package macOS installers
+        if: runner.os == 'macOS'
+        run: npm run dist:mac
+      - name: Package Windows installer
+        if: runner.os == 'Windows'
+        run: npm run dist:win
