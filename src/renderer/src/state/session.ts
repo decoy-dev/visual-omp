@@ -44,6 +44,9 @@ export class SessionController {
 	readonly projectPath: string;
 	#sessionFile: string | null;
 	#view: SessionView;
+	#resolvingFile = false;
+	/** Entry count at the last file lookup; lookups rerun only when omp appends entries. */
+	#resolvedAtEntries = 0;
 	#guest: GuestClient | null = null;
 	#guestLink: string | null = null;
 	#unsubscribeGuest: (() => void) | null = null;
@@ -159,11 +162,31 @@ export class SessionController {
 		this.#guestLink = null;
 	}
 
+	/** omp creates a new chat's file lazily with its first entry; look it up once entries exist. */
+	async #resolveSessionFile(): Promise<void> {
+		const sessionId = this.#view.host?.sessionId ?? this.#view.guest?.header?.id;
+		if (!sessionId) return;
+		this.#resolvingFile = true;
+		try {
+			const file = await window.vomp.invoke("sessions:find", sessionId);
+			if (file) {
+				this.#sessionFile = file;
+				this.#set({});
+			}
+		} finally {
+			this.#resolvingFile = false;
+		}
+	}
+
 	#onGuest(snapshot: GuestSnapshot): void {
 		const wasWorking = this.#view.working;
 		const hadRequest = this.#view.guest?.uiRequest?.reqId;
 		const working = snapshot.working;
 		this.#set({ guest: snapshot, working });
+		if (!this.#sessionFile && !this.#resolvingFile && snapshot.entries.length !== this.#resolvedAtEntries) {
+			this.#resolvedAtEntries = snapshot.entries.length;
+			void this.#resolveSessionFile();
+		}
 		if (snapshot.uiRequest && snapshot.uiRequest.reqId !== hadRequest) this.#emit({ kind: "needsInput" });
 		if (wasWorking && !working) {
 			if (this.#view.queue.length > 0) this.#drainOne();
