@@ -4,12 +4,12 @@
  * removing it from the list.
  */
 import type { ApprovalMode, ApprovalState, ModelInfo, ModelRolesState } from "@shared/contracts/config";
-import { Bot, FileText, Plug, X } from "lucide-react";
+import { FileText, Plug, Robot, X } from "@phosphor-icons/react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SheetProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
-import { BracketLabel, Button, Dialog, DialogContent, Divider, EmptyState, Segmented, Sheet, SheetContent, Skeleton, toast } from "@/ui";
+import { Button, Dialog, DialogContent, Divider, EmptyState, PresenceSwap, Segmented, Sheet, SheetContent, Skeleton, toast } from "@/ui";
 import { ModelSelect } from "../manage/roles/ModelSelect";
 import { errorText } from "./actions";
 import { folderName } from "./format";
@@ -125,9 +125,9 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 	return (
 		<>
 			<section className="flex flex-col gap-3" aria-labelledby="ps-model">
-				<BracketLabel as="h3">
-					<span id="ps-model">{t("settings.model.title")}</span>
-				</BracketLabel>
+				<h3 id="ps-model" className="text-base font-semibold text-fg">
+					{t("settings.model.title")}
+				</h3>
 				<p className="text-sm text-fg-muted">{t("settings.model.body")}</p>
 				{data && role ? (
 					<>
@@ -149,9 +149,9 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 			</section>
 
 			<section className="flex flex-col gap-3" aria-labelledby="ps-mode">
-				<BracketLabel as="h3">
-					<span id="ps-mode">{t("settings.mode.title")}</span>
-				</BracketLabel>
+				<h3 id="ps-mode" className="text-base font-semibold text-fg">
+					{t("settings.mode.title")}
+				</h3>
 				{data ? (
 					<>
 						<Segmented<ApprovalMode>
@@ -160,7 +160,9 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 							onValueChange={next => setMode(next)}
 							options={MODES.map(value => ({ value, label: t(`settings.mode.${value}.label`) }))}
 						/>
-						<p className="text-sm text-fg-muted">{t(`settings.mode.${mode}.body`)}</p>
+						<PresenceSwap swapKey={mode} className="text-sm text-fg-muted">
+							<p>{t(`settings.mode.${mode}.body`)}</p>
+						</PresenceSwap>
 						<div className="flex items-center gap-2 text-xs text-fg-faint">
 							<span className="flex-1">{data.approval.modeSource === "project" ? t("settings.mode.projectOnly") : t("settings.mode.usingGlobal")}</span>
 							{data.approval.modeSource === "project" && (
@@ -176,25 +178,28 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 			</section>
 
 			<section className="flex flex-col gap-1" aria-labelledby="ps-more">
-				<BracketLabel as="h3" className="mb-2">
-					<span id="ps-more">{t("settings.more.title")}</span>
-				</BracketLabel>
+				<h3 id="ps-more" className="text-base font-semibold text-fg mb-2">
+					{t("settings.more.title")}
+				</h3>
 				<LinkRow
 					icon={<Plug />}
 					title={t("settings.more.mcp")}
 					body={t("settings.more.mcpBody")}
+					action={t("settings.more.mcpAction")}
 					onOpen={() => openSheet("mcp", { projectPath, scope: "project" })}
 				/>
 				<LinkRow
-					icon={<Bot />}
+					icon={<Robot />}
 					title={t("settings.more.agents")}
 					body={t("settings.more.agentsBody")}
+					action={t("settings.more.agentsAction")}
 					onOpen={() => openSheet("agents", { projectPath, scope: "project" })}
 				/>
 				<LinkRow
 					icon={<FileText />}
 					title={t("settings.more.instructions")}
 					body={t("settings.more.instructionsBody")}
+					action={t("settings.more.instructionsAction")}
 					onOpen={() => openSheet("project-instructions", { projectPath })}
 				/>
 			</section>
@@ -252,19 +257,18 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 	);
 }
 
-function LinkRow({ icon, title, body, onOpen }: { icon: ReactNode; title: string; body: string; onOpen(): void }): ReactNode {
-	const { t } = useTranslation("projects");
+function LinkRow({ icon, title, body, action, onOpen }: { icon: ReactNode; title: string; body: string; action: string; onOpen(): void }): ReactNode {
 	return (
-		<div className="flex items-center gap-3 rounded-md px-1 py-2">
-			<span className="inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-inset text-fg-muted [&>svg]:size-4" aria-hidden>
+		<div className="flex items-center gap-3 py-2">
+			<span className="shrink-0 text-fg-muted [&>svg]:size-4" aria-hidden>
 				{icon}
 			</span>
 			<div className="min-w-0 flex-1">
 				<p className="text-md font-medium text-fg">{title}</p>
 				<p className="text-sm text-fg-muted">{body}</p>
 			</div>
-			<Button size="sm" onClick={onOpen} aria-label={`${t("settings.more.manage")} — ${title}`}>
-				{t("settings.more.manage")}
+			<Button size="sm" onClick={onOpen}>
+				{action}
 			</Button>
 		</div>
 	);

@@ -1,14 +1,5 @@
-import { BookOpen, Brush, Bug, FlaskConical, type LucideIcon, Palette, Sparkles } from "lucide-react";
-
 /** DESIGN §8.3 example prompts; `label` and `text` are keys under `projects:prompts.<id>`. */
-export const EXAMPLE_PROMPTS: readonly { id: string; icon: LucideIcon }[] = [
-	{ id: "fix", icon: Bug },
-	{ id: "build", icon: Sparkles },
-	{ id: "explain", icon: BookOpen },
-	{ id: "cleanup", icon: Brush },
-	{ id: "tests", icon: FlaskConical },
-	{ id: "mobile", icon: Palette },
-];
+export const EXAMPLE_PROMPTS: readonly string[] = ["fix", "build", "explain", "cleanup", "tests", "mobile"];
 
 const dollars = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 

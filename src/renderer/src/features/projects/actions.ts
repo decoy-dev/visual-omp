@@ -1,10 +1,7 @@
 /** Project actions shared by the home screen, wizard, commands and sheets. Failures surface as toasts. */
 import { useComposerDrafts } from "@/chat/composer/drafts";
-import { i18n } from "@/i18n";
 import { controllerFor, useApp } from "@/state/app";
-import { toast } from "@/ui";
-
-const t = i18n.t.bind(i18n);
+import type { FolderChooserProps } from "./folders/FolderChooser";
 
 export const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
@@ -15,15 +12,28 @@ export async function addProject(path: string): Promise<void> {
 	useApp.getState().openProject(path);
 }
 
-/** ⌘O: native folder picker, then open the folder as a project. */
-export async function openFolder(): Promise<void> {
-	const path = await window.vomp.invoke("app:pickFolder", t("projects:open.pickerTitle"));
-	if (!path) return;
-	try {
-		await addProject(path);
-	} catch (error) {
-		toast({ tone: "err", message: t("projects:open.failed"), description: errorText(error) });
-	}
+/** Open the folder chooser ("Start a chat in…"); `options.purpose: "open"` goes straight to the browser. */
+export function chooseFolder(options?: FolderChooserProps): void {
+	useApp.getState().openSheet("folder-chooser", options);
+}
+
+/** ⌘O: browse for a folder in the app (the native picker is one click away), then open it as a project. */
+export function openFolder(): void {
+	chooseFolder({ purpose: "open" });
+}
+
+/**
+ * Register `path` as a project and start a chat there. With `tabId`, that chat moves to `path`
+ * instead when nothing has been sent in it yet; otherwise a new chat opens.
+ */
+export async function startChatIn(path: string, tabId?: string): Promise<void> {
+	await window.vomp.invoke("project:add", path);
+	await useApp.getState().refreshProjects();
+	const state = useApp.getState();
+	if (!state.expandedProjects.includes(path)) state.toggleProjectExpanded(path);
+	if (tabId && state.retargetChat(tabId, path)) return;
+	const newTab = state.newChat(path);
+	if (newTab) useComposerDrafts.getState().focus(newTab);
 }
 
 /** New chat in `projectPath` with `text` waiting in the composer (not sent), focused for editing. */

@@ -4,13 +4,14 @@
  */
 import type { ShareLinkResult } from "@shared/contracts/share";
 import type { Participant } from "@oh-my-pi/pi-wire";
-import { Check, Copy, FileDown, Link2, Radio, Users } from "lucide-react";
+import { Broadcast, Check, Copy, FileArrowDown, LinkSimple, Users } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SheetProps } from "@/registry/slots";
 import { useSessionView } from "@/shell/hooks";
 import { controllerFor, focusedTabId, useApp } from "@/state/app";
-import { Button, Chip, Dialog, DialogContent, IconButton, Input, Segmented, StatusDot, Switch, toast } from "@/ui";
+import { Button, Chip, Dialog, DialogContent, IconButton, Input, PresenceSwap, Segmented, StatusDot, Switch, spring, toast } from "@/ui";
 import { errorText } from "./actions";
 import { useShares } from "./share-store";
 
@@ -24,6 +25,8 @@ export interface ShareProps {
 /** The app's own mirror joins every room as a guest under this name (SessionController). */
 const APP_GUEST_NAME = "visual-omp";
 
+const SHARE_TABS: readonly ShareTab[] = ["link", "file", "invite"];
+
 export function ShareDialog({ props, close }: SheetProps<ShareProps | undefined>): ReactNode {
 	const { t } = useTranslation("projects");
 	const tabId = useApp(state => props?.tabId ?? focusedTabId(state));
@@ -31,6 +34,10 @@ export function ShareDialog({ props, close }: SheetProps<ShareProps | undefined>
 	const view = useSessionView(controller);
 	const [tab, setTab] = useState<ShareTab>(props?.tab ?? "link");
 	const sessionFile = controller?.sessionFile ?? null;
+	// Panels slide toward the tab that was picked, in the order the tabs are shown.
+	const index = SHARE_TABS.indexOf(tab);
+	const [travel, setTravel] = useState<{ index: number; direction: 1 | -1 }>({ index, direction: 1 });
+	if (travel.index !== index) setTravel({ index, direction: index > travel.index ? 1 : -1 });
 
 	return (
 		<Dialog open onOpenChange={open => !open && close()}>
@@ -41,20 +48,22 @@ export function ShareDialog({ props, close }: SheetProps<ShareProps | undefined>
 					value={tab}
 					onValueChange={setTab}
 					options={[
-						{ value: "link", label: t("share.tabs.link"), icon: <Link2 /> },
-						{ value: "file", label: t("share.tabs.file"), icon: <FileDown /> },
+						{ value: "link", label: t("share.tabs.link"), icon: <LinkSimple /> },
+						{ value: "file", label: t("share.tabs.file"), icon: <FileArrowDown /> },
 						{ value: "invite", label: t("share.tabs.invite"), icon: <Users /> },
 					]}
 				/>
-				{!controller ? (
-					<p className="text-md text-fg-muted">{t("share.noChat")}</p>
-				) : tab === "link" ? (
-					<LinkPanel sessionFile={sessionFile} />
-				) : tab === "file" ? (
-					<FilePanel sessionFile={sessionFile} />
-				) : (
-					<InvitePanel hostId={view?.host?.phase === "live" ? view.host.hostId : null} participants={view?.guest?.state?.participants ?? []} />
-				)}
+				<PresenceSwap swapKey={controller ? tab : "none"} variant="slide" direction={travel.direction}>
+					{!controller ? (
+						<p className="text-md text-fg-muted">{t("share.noChat")}</p>
+					) : tab === "link" ? (
+						<LinkPanel sessionFile={sessionFile} />
+					) : tab === "file" ? (
+						<FilePanel sessionFile={sessionFile} />
+					) : (
+						<InvitePanel hostId={view?.host?.phase === "live" ? view.host.hostId : null} participants={view?.guest?.state?.participants ?? []} />
+					)}
+				</PresenceSwap>
 			</DialogContent>
 		</Dialog>
 	);
@@ -91,7 +100,7 @@ function CopyField({ label, value, description }: { label: string; value: string
 
 function NeedsMessage(): ReactNode {
 	const { t } = useTranslation("projects");
-	return <p className="rounded-md border border-border bg-inset px-3 py-2 text-sm text-fg-muted">{t("share.needsMessage")}</p>;
+	return <p className="rounded-md bg-inset px-3 py-2 text-sm text-fg-muted">{t("share.needsMessage")}</p>;
 }
 
 function LinkPanel({ sessionFile }: { sessionFile: string | null }): ReactNode {
@@ -124,7 +133,7 @@ function LinkPanel({ sessionFile }: { sessionFile: string | null }): ReactNode {
 				<>
 					<Switch label={t("share.link.gistToggle")} description={t("share.link.gistHint")} checked={gist} onCheckedChange={setGist} />
 					<div className="flex justify-end">
-						<Button variant="primary" icon={<Link2 />} loading={busy} onClick={() => void create()}>
+						<Button variant="primary" icon={<LinkSimple />} loading={busy} onClick={() => void create()}>
 							{t("share.link.create")}
 						</Button>
 					</div>
@@ -164,7 +173,7 @@ function FilePanel({ sessionFile }: { sessionFile: string | null }): ReactNode {
 			) : (
 				<div className="flex items-center justify-between gap-3">
 					<span className="text-sm text-fg-faint">{t("share.file.note")}</span>
-					<Button variant="primary" icon={<FileDown />} loading={busy} onClick={() => void exportFile()}>
+					<Button variant="primary" icon={<FileArrowDown />} loading={busy} onClick={() => void exportFile()}>
 						{t("share.file.export")}
 					</Button>
 				</div>
@@ -221,9 +230,10 @@ function InvitePanel({ hostId, participants }: { hostId: string | null; particip
 	return (
 		<div className="flex flex-col gap-4">
 			<p className="text-md text-fg-muted">{t("share.invite.explainer")}</p>
+			<PresenceSwap swapKey={on ? "on" : "off"} variant="rise" className="flex flex-col gap-4">
 			{!on ? (
 				<>
-					<div className="flex items-center gap-2 rounded-md border border-border bg-inset px-3 py-2 text-sm text-fg-muted">
+					<div className="flex items-center gap-2 rounded-md bg-inset px-3 py-2 text-sm text-fg-muted">
 						<StatusDot status="idle" label={t("share.invite.off")} />
 						<span className="flex-1">
 							{share?.endedReason === "room-closed" ? t("share.invite.endedRestart") : share?.error ? share.error : t("share.invite.off")}
@@ -231,7 +241,7 @@ function InvitePanel({ hostId, participants }: { hostId: string | null; particip
 					</div>
 					<p className="text-sm text-fg-faint">{t("share.invite.privacy")}</p>
 					<div className="flex justify-end">
-						<Button variant="primary" icon={<Radio />} loading={busy} onClick={() => void start()}>
+						<Button variant="primary" icon={<Broadcast />} loading={busy} onClick={() => void start()}>
 							{t("share.invite.start")}
 						</Button>
 					</div>
@@ -241,7 +251,7 @@ function InvitePanel({ hostId, participants }: { hostId: string | null; particip
 					<div className="flex items-center gap-2 text-sm" role="status">
 						<StatusDot status={share.phase === "live" ? "live" : "warn"} label={t(`share.invite.phase.${share.phase}`)} />
 						<span className="font-medium text-fg">{t(`share.invite.phase.${share.phase}`)}</span>
-						{share.error && share.phase !== "live" && <span className="truncate text-fg-muted">— {share.error}</span>}
+						{share.error && share.phase !== "live" && <span className="truncate text-fg-muted">({share.error})</span>}
 					</div>
 					<CopyField label={t("share.invite.control")} description={t("share.invite.controlHint")} value={share.controlLink} />
 					<CopyField label={t("share.invite.view")} description={t("share.invite.viewHint")} value={share.viewLink} />
@@ -250,19 +260,29 @@ function InvitePanel({ hostId, participants }: { hostId: string | null; particip
 						{guests.length === 0 ? (
 							<p className="text-sm text-fg-muted">{t("share.invite.nobody")}</p>
 						) : (
-							<ul className="flex flex-col gap-1">
+							<ul className="relative flex flex-col gap-1">
+								<AnimatePresence initial={false} mode="popLayout">
 								{guests.map((guest, index) => (
-									<li key={`${guest.name}-${index}`} className="flex h-9 items-center gap-2.5 rounded-md px-1">
+									<motion.li
+										key={`${guest.name}-${index}`}
+										layout="position"
+										initial={{ opacity: 0, y: -4 }}
+										animate={{ opacity: 1, y: 0 }}
+										exit={{ opacity: 0 }}
+										transition={spring.snappy}
+										className="flex h-9 items-center gap-2.5 rounded-md px-1"
+									>
 										<span
-											className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-agent-muted text-xs font-semibold uppercase text-agent"
+											className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-inset text-xs font-semibold text-fg-muted"
 											aria-hidden
 										>
-											{guest.name.slice(0, 1) || "?"}
+											{guest.name.slice(0, 1).toUpperCase() || "?"}
 										</span>
 										<span className="min-w-0 flex-1 truncate text-md text-fg">{guest.name}</span>
-										<Chip tone={guest.readOnly ? "neutral" : "blue"}>{guest.readOnly ? t("share.invite.viewer") : t("share.invite.editor")}</Chip>
-									</li>
+										<Chip tone={guest.readOnly ? "neutral" : "accent"}>{guest.readOnly ? t("share.invite.viewer") : t("share.invite.editor")}</Chip>
+									</motion.li>
 								))}
+								</AnimatePresence>
 							</ul>
 						)}
 					</div>
@@ -273,6 +293,7 @@ function InvitePanel({ hostId, participants }: { hostId: string | null; particip
 					</div>
 				</>
 			)}
+			</PresenceSwap>
 		</div>
 	);
 }

@@ -1,8 +1,9 @@
 /**
- * Projects feature: the project home dashboard, the new-project wizard, the instructions editor,
- * per-project settings, importing Claude Code / Codex chats, and the Share dialog with live invites.
+ * Projects feature: the project home dashboard, the folder chooser and in-app folder browser
+ * ("Start a chat in…"), the new-project wizard, the instructions editor, per-project settings,
+ * importing Claude Code / Codex chats, and the Share dialog with live invites.
  */
-import { FileText, FolderOpen, FolderPlus, Import, Share2, SlidersHorizontal } from "lucide-react";
+import { DownloadSimple, FileText, FolderOpen, FolderPlus, Folders, GitBranch, ShareNetwork, SlidersHorizontal } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { registerCommand } from "@/registry/commands";
@@ -10,7 +11,9 @@ import { type ChatSlotProps, chatSlots, screens, sheets } from "@/registry/slots
 import { useSessionView } from "@/shell/hooks";
 import { useApp } from "@/state/app";
 import { Chip, Tooltip } from "@/ui";
-import { openFolder } from "./actions";
+import { chooseFolder, openFolder } from "./actions";
+import { FolderChip } from "./folders/FolderChip";
+import { FolderChooser } from "./folders/FolderChooser";
 import { HomeScreen } from "./HomeScreen";
 import { ImportDialog } from "./ImportDialog";
 import { InstructionsSheet } from "./InstructionsSheet";
@@ -27,6 +30,9 @@ sheets.register({ id: "project-instructions", component: InstructionsSheet });
 sheets.register({ id: "project-settings", component: ProjectSettingsSheet });
 sheets.register({ id: "project-import", component: ImportDialog });
 sheets.register({ id: "share", component: ShareDialog });
+sheets.register({ id: "folder-chooser", component: FolderChooser });
+
+chatSlots.register({ id: "projects.folder", placement: "composerTools", order: 10, component: FolderChip });
 
 /** Session-header chip while the chat is shared live (DESIGN §4.20); opens the Invite tab. */
 function SharedChip({ session }: ChatSlotProps): ReactNode {
@@ -75,6 +81,36 @@ registerCommand({
 });
 
 registerCommand({
+	id: "chat.startIn",
+	title: "projects:commands.startIn.title",
+	hint: "projects:commands.startIn.hint",
+	keywords: "projects:commands.startIn.keywords",
+	group: "chat",
+	icon: Folders,
+	run: () => chooseFolder(),
+});
+
+registerCommand({
+	id: "project.newFolder",
+	title: "projects:commands.newFolder.title",
+	hint: "projects:commands.newFolder.hint",
+	keywords: "projects:commands.newFolder.keywords",
+	group: "actions",
+	icon: FolderPlus,
+	run: () => useApp.getState().openSheet("project-new", { kind: "empty" }),
+});
+
+registerCommand({
+	id: "project.clone",
+	title: "projects:commands.clone.title",
+	hint: "projects:commands.clone.hint",
+	keywords: "projects:commands.clone.keywords",
+	group: "actions",
+	icon: GitBranch,
+	run: () => useApp.getState().openSheet("project-new", { kind: "clone" }),
+});
+
+registerCommand({
 	id: "project.instructions",
 	title: "projects:commands.instructions.title",
 	hint: "projects:commands.instructions.hint",
@@ -102,7 +138,7 @@ registerCommand({
 	hint: "projects:commands.import.hint",
 	keywords: "projects:commands.import.keywords",
 	group: "actions",
-	icon: Import,
+	icon: DownloadSimple,
 	run: ({ projectPath }) => useApp.getState().openSheet("project-import", { projectPath }),
 });
 
@@ -113,7 +149,7 @@ registerCommand({
 	keywords: "projects:commands.share.keywords",
 	slash: "/share",
 	group: "chat",
-	icon: Share2,
+	icon: ShareNetwork,
 	header: 60,
 	when: ({ session }) => session !== null,
 	run: ({ session }) => useApp.getState().openSheet("share", { tabId: session?.tabId ?? null }),

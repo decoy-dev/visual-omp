@@ -1,6 +1,6 @@
 import { isMap, parseDocument, parse as parseYaml } from "yaml";
 import { z } from "zod";
-import type { InstructionsProvider, ProjectNameProblem, RuleDraft } from "@shared/contracts/project";
+import type { FolderProblem, InstructionsProvider, ProjectNameProblem, RuleDraft } from "@shared/contracts/project";
 
 const INVALID_NAME_CHARS = /[/\\:*?"<>|\u0000-\u001f\u007f]/;
 const WINDOWS_DEVICE_NAME = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i;
@@ -17,6 +17,14 @@ export function projectNameProblem(name: string): ProjectNameProblem | null {
 	if (trimmed === "." || trimmed === ".." || WINDOWS_DEVICE_NAME.test(trimmed)) return "reserved";
 	if (/[. ]$/.test(trimmed)) return "trailingDotOrSpace";
 	return null;
+}
+
+/** Map a filesystem error to the folder browser's stable problem code. */
+export function folderProblem(error: unknown): FolderProblem {
+	const code = error instanceof Error && "code" in error ? error.code : null;
+	if (code === "ENOENT" || code === "ENOTDIR") return "notFound";
+	if (code === "EACCES" || code === "EPERM") return "permissionDenied";
+	return "unreadable";
 }
 
 export interface InstructionCandidate {

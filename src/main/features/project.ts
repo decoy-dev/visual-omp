@@ -1,15 +1,19 @@
 import { mkdir, readdir, readFile, rm, stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
 import { app } from "electron";
 import type { ProjectSummary } from "@shared/ipc";
 import type {
+	FolderCreateResult,
+	FolderEntry,
+	FolderListing,
 	InstructionFile,
 	ProjectCreateResult,
 	ProjectInstructions,
 	ProjectNameCheck,
 	ProjectRule,
+	QuickPlace,
 	RecentFolder,
 	RuleDraft,
 	RuleSource,
@@ -23,6 +27,7 @@ import {
 	DEFAULT_INSTRUCTIONS_REL_PATH,
 	INSTRUCTION_CANDIDATES,
 	activeInstruction,
+	folderProblem,
 	normalizeRuleName,
 	parseRuleMarkdown,
 	projectNameProblem,
@@ -111,6 +116,95 @@ async function createProject(name: string, parentDir?: string): Promise<ProjectC
 	if (!check.ok) return { ok: false, problem: check.problem ?? "empty", path: check.path };
 	await mkdir(check.path, { recursive: true });
 	await addProject(check.path);
+	return { ok: true, path: check.path };
+}
+
+/** Subfolders listed per folder; bigger folders are cut off (sorted by name) and flagged `truncated`. */
+const LIST_CAP = 2000;
+/** macOS bundles are folders on disk, but Finder shows them as files. */
+const MAC_BUNDLE = /\.(app|bundle|framework|photoslibrary|musiclibrary)$/i;
+
+const byName = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+async function isDirectory(path: string): Promise<boolean> {
+	return stat(path).then(
+		info => info.isDirectory(),
+		() => false,
+	);
+}
+
+async function hasGit(path: string): Promise<boolean> {
+	return stat(join(path, ".git")).then(
+		() => true,
+		() => false,
+	);
+}
+
+async function listDir(input: string): Promise<FolderListing> {
+	if (!isAbsolute(input)) return { ok: false, problem: "notAbsolute", path: input };
+	const path = resolve(input);
+	let dirents;
+	try {
+		if (!(await stat(path)).isDirectory()) return { ok: false, problem: "notDirectory", path };
+		dirents = await readdir(path, { withFileTypes: true });
+	} catch (error) {
+		return { ok: false, problem: folderProblem(error), path };
+	}
+	const mac = process.platform === "darwin";
+	const names = dirents
+		.filter(entry => (entry.isDirectory() || entry.isSymbolicLink()) && !(mac && MAC_BUNDLE.test(entry.name)))
+		.sort((a, b) => byName.compare(a.name, b.name));
+	const projects = new Set((await listProjects()).map(project => project.path));
+	const listed = await Promise.all(
+		names.slice(0, LIST_CAP).map(async (entry): Promise<FolderEntry | null> => {
+			const full = join(path, entry.name);
+			if (entry.isSymbolicLink() && !(await isDirectory(full))) return null;
+			return { name: entry.name, path: full, isGitRepo: await hasGit(full), isProject: projects.has(full), hidden: entry.name.startsWith(".") };
+		}),
+	);
+	const parent = dirname(path);
+	return {
+		ok: true,
+		path,
+		parent: parent === path ? null : parent,
+		isGitRepo: await hasGit(path),
+		isProject: projects.has(path),
+		entries: listed.filter((entry): entry is FolderEntry => entry !== null),
+		truncated: names.length > LIST_CAP,
+	};
+}
+
+async function quickPlaces(): Promise<QuickPlace[]> {
+	const home = homedir();
+	const candidates: QuickPlace[] = [
+		{ id: "home", path: home },
+		{ id: "desktop", path: app.getPath("desktop") },
+		{ id: "documents", path: app.getPath("documents") },
+		{ id: "projects", path: join(home, "Projects") },
+		{ id: "developer", path: join(home, "Developer") },
+	];
+	const present = await Promise.all(candidates.map(place => isDirectory(place.path)));
+	return candidates.filter((_, index) => present[index]);
+}
+
+async function makeFolder(parentDir: string, name: string): Promise<FolderCreateResult> {
+	if (!isAbsolute(parentDir)) return { ok: false, problem: "notAbsolute", path: parentDir };
+	const parent = resolve(parentDir);
+	let check: ProjectNameCheck;
+	try {
+		if (!(await stat(parent)).isDirectory()) return { ok: false, problem: "notDirectory", path: parent };
+		check = await checkName(name, parent);
+	} catch (error) {
+		return { ok: false, problem: folderProblem(error), path: parent };
+	}
+	if (!check.ok) return { ok: false, problem: check.problem ?? "empty", path: check.path };
+	if (!check.existsEmpty) {
+		try {
+			await mkdir(check.path);
+		} catch (error) {
+			return { ok: false, problem: folderProblem(error), path: check.path };
+		}
+	}
 	return { ok: true, path: check.path };
 }
 
@@ -296,6 +390,9 @@ export function register(): void {
 	handle("project:defaults", () => ({ parentDir: join(homedir(), "Projects") }));
 	handle("project:checkName", (name, parentDir) => checkName(name, parentDir));
 	handle("project:create", options => createProject(options.name, options.parentDir));
+	handle("project:listDir", path => listDir(path));
+	handle("project:places", () => quickPlaces());
+	handle("project:mkdir", (parentDir, name) => makeFolder(parentDir, name));
 	handle("project:add", path => addProject(path));
 	handle("project:remove", path => removeProject(path));
 	handle("project:recent", limit => recentFolders(limit));

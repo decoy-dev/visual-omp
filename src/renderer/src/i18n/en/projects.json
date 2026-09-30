@@ -1,7 +1,7 @@
 {
 	"commands": {
 		"new": {
-			"title": "New project…",
+			"title": "Create project…",
 			"hint": "Start a project in a new folder, open one you have, or download one from GitHub.",
 			"keywords": "create, folder, clone, github, repository, start"
 		},
@@ -10,14 +10,29 @@
 			"hint": "Pick a folder on this computer and work on it with omp.",
 			"keywords": "open, folder, project, existing, browse"
 		},
+		"startIn": {
+			"title": "Start chat in folder…",
+			"hint": "Choose the folder omp works in, then start a chat there.",
+			"keywords": "new chat, folder, directory, cd, choose, browse, project, open"
+		},
+		"newFolder": {
+			"title": "Create folder…",
+			"hint": "Create an empty folder and add it as a project.",
+			"keywords": "create, folder, directory, mkdir, project, empty"
+		},
+		"clone": {
+			"title": "Clone from GitHub…",
+			"hint": "Download a copy of a GitHub repository and add it as a project.",
+			"keywords": "clone, github, git, repository, download, url"
+		},
 		"instructions": {
 			"title": "Project instructions…",
-			"hint": "Tell omp how this project works — it reads these notes at the start of every chat.",
+			"hint": "Tell omp how this project works. omp reads these notes at the start of every chat.",
 			"keywords": "agents.md, claude.md, rules, context, guidelines, notes"
 		},
 		"settings": {
 			"title": "Project settings…",
-			"hint": "This project's model, permission mode, connected tools and helpers.",
+			"hint": "Set this project's model, permission mode, connected tools and helpers.",
 			"keywords": "project, config, model, permissions, mcp, agents"
 		},
 		"import": {
@@ -26,24 +41,25 @@
 			"keywords": "import, claude, codex, migrate, conversation, history"
 		},
 		"share": {
-			"title": "Share…",
+			"title": "Share chat…",
 			"hint": "Send someone a link or a file of this chat.",
 			"keywords": "share, link, export, invite, collaborate, live, html"
 		}
 	},
 	"home": {
-		"eyebrow": "Project",
-		"noProjects": "No projects yet. A project is just a folder omp works in.",
+		"noProjects": "No projects yet. A project is a folder that omp works in.",
 		"pickProject": "Pick a project on the left, or start a new one.",
-		"newProject": "New project",
+		"newProject": "Create project",
 		"openFolder": "Open folder…",
-		"newChat": "New chat",
+		"newChat": "Start chat",
+		"startIn": "Start chat in folder…",
+		"otherFolder": "Chat in another folder…",
 		"menu": "Project options",
 		"menuSettings": "Project settings…",
 		"menuInstructions": "Project instructions…",
 		"menuImport": "Import a chat…",
 		"menuReveal": "Show in folder",
-		"menuRemove": "Remove from list",
+		"menuRemove": "Remove project from list",
 		"meta": {
 			"clean": "no changes",
 			"changed_one": "{{count}} changed file",
@@ -60,9 +76,9 @@
 		},
 		"recent": {
 			"title": "Recent chats",
-			"all": "See all {{count}}",
-			"fewer": "Show fewer",
-			"empty": "Nothing here yet — start a chat and it will show up in this list.",
+			"all": "Show all {{count}} chats",
+			"fewer": "Show fewer chats",
+			"empty": "No chats in this project yet.",
 			"untitled": "Untitled chat",
 			"readOnly": "read-only",
 			"status": {
@@ -73,16 +89,16 @@
 			}
 		},
 		"start": {
-			"title": "Start something"
+			"title": "Start from an example"
 		},
 		"health": {
-			"title": "Project health",
+			"title": "Git",
 			"openDiff": "Show changes",
 			"detached": "no branch",
 			"lines": "{{add}} lines added, {{del}} removed",
 			"noCommits": "No saved versions (commits) yet",
-			"noUpstream": "Only on this computer — not on GitHub yet",
-			"synced": "Up to date with GitHub",
+			"noUpstream": "No tracking branch configured",
+			"synced": "Up to date with the tracking branch",
 			"ahead_one": "{{count}} commit to push",
 			"ahead_other": "{{count}} commits to push",
 			"behind_one": "{{count}} new commit to pull",
@@ -92,24 +108,23 @@
 				"pending": "Checks running",
 				"fail": "Checks failing"
 			},
-			"noGit": "Not a git project yet. Git keeps a history of your changes so you can always go back.",
-			"initGit": "Initialize git"
+			"noGit": "This folder isn't a git project yet. Git records each version of your files, so you can go back to an earlier one.",
+			"initGit": "Set up git"
 		},
 		"instructions": {
 			"title": "Instructions",
 			"none": "No instructions yet",
-			"edit": "Edit",
+			"edit": "Edit instructions",
 			"write": "Write instructions",
 			"rules_zero": "No rules",
 			"rules_one": "{{count}} rule loaded",
-			"rules_other": "{{count}} rules loaded",
-			"view": "View"
+			"rules_other": "{{count}} rules loaded"
 		}
 	},
 	"prompts": {
 		"fix": {
 			"label": "Fix a bug",
-			"text": "Something on my site is broken — the checkout total is wrong when I apply a coupon. Find out why and fix it."
+			"text": "The checkout total is wrong when I apply a coupon. Find out why and fix it."
 		},
 		"build": {
 			"label": "Build a feature",
@@ -129,8 +144,93 @@
 		},
 		"mobile": {
 			"label": "Fix mobile layout",
-			"text": "Make this page look better on phones — keep the design, fix the layout."
+			"text": "Make this page work better on phones. Keep the design and fix the layout."
 		}
+	},
+	"sidebar": {
+		"add": "Add project"
+	},
+	"chip": {
+		"label": "Folder for this chat: {{name}}. Choose another folder",
+		"tip": "omp runs in {{path}}. You can choose another folder until you send the first message."
+	},
+	"chooser": {
+		"title": "Start a chat in…",
+		"body": "omp reads and changes files inside the folder you choose.",
+		"moveTitle": "Choose a folder for this chat",
+		"moveBody": "Nothing has been sent yet, so the chat can still switch folders. Your unsent text is kept.",
+		"openTitle": "Open a folder",
+		"openBody": "The folder is added to your projects in the sidebar.",
+		"startIn": "Start chat in {{name}}",
+		"openIn": "Open {{name}}",
+		"filter": "Filter projects, or type a path",
+		"filterLabel": "Filter projects or type a folder path",
+		"listLabel": "Projects",
+		"current": "Current",
+		"thisChat": "This chat",
+		"chats_one": "{{count}} chat",
+		"chats_other": "{{count}} chats",
+		"goTo": "Browse {{path}}",
+		"noMatch": "No projects match “{{q}}”. Browse folders to find it.",
+		"empty": "No projects yet. Browse folders to find one.",
+		"browse": "Browse folders…"
+	},
+	"browser": {
+		"places": "Places",
+		"place": {
+			"home": "Home",
+			"desktop": "Desktop",
+			"documents": "Documents",
+			"projects": "Projects",
+			"developer": "Developer"
+		},
+		"projects": "Projects",
+		"path": "Folder path",
+		"root": "Computer root (/)",
+		"up": "Go up one folder",
+		"filter": "Filter this folder",
+		"filterLabel": "Filter folders in {{name}}",
+		"listLabel": "Folders in {{name}}",
+		"showHidden": "Show hidden folders",
+		"badge": {
+			"git": "Git",
+			"project": "Project"
+		},
+		"newFolder": {
+			"button": "Create folder…",
+			"label": "Name of the new folder in {{name}}",
+			"placeholder": "Folder name",
+			"create": "Create folder",
+			"empty": "Type a name for the folder."
+		},
+		"goTo": "Press Enter to go to {{path}}",
+		"noMatch": "No folders match “{{q}}”.",
+		"empty": "This folder has no subfolders.",
+		"onlyHidden_one": "The only subfolder here is hidden. Turn on Show hidden to see it.",
+		"onlyHidden_other": "The {{count}} subfolders here are hidden. Turn on Show hidden to see them.",
+		"truncated": "Only the first 2,000 folders are listed.",
+		"loading": "Loading folders…",
+		"status_one": "{{name}}: {{count}} folder",
+		"status_other": "{{name}}: {{count}} folders",
+		"problem": {
+			"notAbsolute": "Type a full folder path that starts at the drive or at your home folder (~).",
+			"notFound": "That folder doesn't exist. It may have been moved or deleted.",
+			"notDirectory": "That path points to a file. Choose a folder.",
+			"permissionDenied": "This computer doesn't allow visual-omp to open that folder.",
+			"unreadable": "That folder couldn't be read."
+		},
+		"goHome": "Go to Home",
+		"keysMac": "Enter opens a folder. Backspace or ⌘↑ goes up. ⌘↩ chooses the highlighted folder, or this one.",
+		"keysOther": "Enter opens a folder. Backspace or Alt+↑ goes up. Ctrl+Enter chooses the highlighted folder, or this one.",
+		"native": {
+			"mac": "Choose in Finder…",
+			"windows": "Choose in Explorer…",
+			"other": "Use system picker…"
+		},
+		"nativeTitle": "Choose a folder",
+		"back": "Back to projects",
+		"cancel": "Cancel",
+		"useFolder": "Use {{name}}"
 	},
 	"open": {
 		"pickerTitle": "Open a project folder",
@@ -141,7 +241,7 @@
 		"step": {
 			"where": "New project",
 			"details": "Details",
-			"firstChat": "First chat?"
+			"firstChat": "First chat"
 		},
 		"where": {
 			"description": "Where should omp work?"
@@ -177,7 +277,7 @@
 		},
 		"location": {
 			"label": "Location",
-			"change": "Change…",
+			"change": "Change location…",
 			"picker": "Choose where to put the project",
 			"inside": "The project goes inside “{{name}}”."
 		},
@@ -185,7 +285,7 @@
 			"none": "No folder chosen",
 			"choose": "Choose folder…",
 			"recent": "Recent folders",
-			"already": "This folder is already a project — opening it instead"
+			"already": "This folder is already a project, so it opens instead."
 		},
 		"clone": {
 			"url": "GitHub link",
@@ -194,7 +294,7 @@
 			"failed": "The download didn't finish.",
 			"problem": {
 				"invalid": "That doesn't look like a project link. Try something like github.com/owner/repo.",
-				"notFound": "Couldn't find {{label}}. Check the link — if the project is private, sign in to GitHub first.",
+				"notFound": "Couldn't find {{label}}. Check the link. If the project is private, sign in to GitHub first.",
 				"unreachable": "Couldn't reach the server. Check your internet connection and the link."
 			},
 			"phase": {
@@ -224,18 +324,22 @@
 			"hint": "omp starts on this as soon as the project is ready.",
 			"placeholder": "Explain what this project does, in plain language."
 		},
-		"back": "Back",
+		"checkFailed": {
+			"name": "Couldn't check that name: {{reason}}",
+			"link": "Couldn't check that link: {{reason}}"
+		},
+		"back": "Go back",
 		"cancel": "Cancel",
-		"next": "Next",
-		"create": "Create project →",
-		"open": "Open",
+		"next": "Continue setup",
+		"create": "Create project",
+		"open": "Open project",
 		"discard": {
 			"title": "Discard this project?",
 			"body": "What you've filled in so far won't be kept.",
 			"titleBusy": "Stop the download?",
 			"bodyBusy": "The partly downloaded folder will be removed.",
-			"keep": "Keep going",
-			"confirm": "Discard"
+			"keep": "Keep editing",
+			"confirm": "Discard project"
 		}
 	},
 	"instructions": {
@@ -252,26 +356,26 @@
 		"preview": "Preview",
 		"explainer": "omp reads this file at the start of every chat in this project. Describe how the project works, commands to run, and things to avoid.",
 		"shadowed": "omp reads {{active}} instead of this file, because it comes first. Edit {{active}}, or empty it to use this one.",
-		"stickyNote": "Sticky rules: omp keeps these in mind on every single step, not just at the start.",
+		"stickyNote": "Sticky rules: omp applies these on every step of a chat, in addition to the start.",
 		"editorLabel": "Contents of {{file}}",
 		"placeholder": "# About this project\n\n- How to run it: …\n- Please don't change: …",
 		"previewEmpty": "Nothing written yet.",
 		"unsaved": "Unsaved changes",
 		"appliesNext": "Changes apply to new chats.",
 		"revert": "Undo changes",
-		"save": "Save",
+		"save": "Save instructions",
 		"saved": "Instructions saved",
 		"saveFailed": "Couldn't save the instructions",
 		"discard": {
 			"title": "Discard your changes?",
 			"body": "Your edits to the instructions haven't been saved.",
 			"keep": "Keep editing",
-			"confirm": "Discard"
+			"confirm": "Discard changes"
 		}
 	},
 	"rules": {
-		"explainer": "Rules are short notes omp follows only when they matter — for example, only when it touches certain files.",
-		"new": "New rule",
+		"explainer": "Rules are short notes omp follows only when they apply, for example when it changes certain files.",
+		"new": "Add rule",
 		"newTitle": "New rule",
 		"editTitle": "Edit “{{name}}”",
 		"emptyTitle": "No rules yet",
@@ -293,9 +397,9 @@
 		"edit": "Edit rule {{name}}",
 		"delete": "Delete rule {{name}}",
 		"deleteTitle": "Delete “{{name}}”?",
-		"deleteBody": "This removes the rule file from the project. This can't be undone.",
-		"deleteConfirm": "Delete",
-		"keep": "Keep it",
+		"deleteBody": "This removes the rule file from the project. You can't undo it.",
+		"deleteConfirm": "Delete rule",
+		"keep": "Keep rule",
 		"deleted": "Deleted “{{name}}”",
 		"deleteFailed": "Couldn't delete the rule",
 		"name": "Name",
@@ -349,22 +453,24 @@
 			"reset": "Use the all-projects setting",
 			"autoTitle": "Switch this project to Auto?",
 			"autoWarning": "Auto lets omp run commands without asking. Only use it in projects you trust.",
-			"understand": "I understand"
+			"understand": "Switch to Auto"
 		},
 		"more": {
 			"title": "Tools and helpers",
-			"manage": "Manage",
 			"mcp": "Connected tools",
 			"mcpBody": "Outside tools omp can use in this project, like a database or ticket tracker.",
 			"agents": "Helpers",
 			"agentsBody": "Specialists only this project uses, like a reviewer or an explorer.",
 			"instructions": "Instructions",
-			"instructionsBody": "Notes omp reads at the start of every chat here."
+			"instructionsBody": "Notes omp reads at the start of every chat here.",
+			"mcpAction": "Manage tools",
+			"agentsAction": "Manage helpers",
+			"instructionsAction": "Edit instructions"
 		},
 		"remove": {
 			"title": "Remove from list",
 			"body": "Hides the project here. The folder and its files stay on your computer.",
-			"action": "Remove",
+			"action": "Remove project",
 			"confirmTitle": "Remove “{{name}}” from the list?",
 			"confirmBody": "The folder and its files stay on your computer. Chats saved in it still show up until you archive them."
 		}
@@ -389,10 +495,10 @@
 		},
 		"noChat": "Open a chat to share it.",
 		"needsMessage": "Send a message first so there's something to share.",
-		"copy": "Copy",
+		"copy": "Copy link",
 		"copied": "Copied",
 		"link": {
-			"explainer": "Creates an encrypted link — only people with it can read the chat.",
+			"explainer": "Creates an encrypted link. Only people who have the link can read the chat.",
 			"create": "Create link",
 			"ready": "Your link",
 			"gist": "GitHub gist",
@@ -410,11 +516,11 @@
 			"failed": "Couldn't export the chat"
 		},
 		"invite": {
-			"explainer": "Let someone watch or join this chat live",
-			"notLive": "Start the chat first — send a message or wait until omp is ready.",
+			"explainer": "Let someone watch or join this chat live.",
+			"notLive": "Start the chat first: send a message or wait until omp is ready.",
 			"off": "Sharing is off",
 			"endedRestart": "Sharing stopped because the chat restarted. Start it again to get new links.",
-			"privacy": "People join in their browser through omp's public relay (my.omp.sh). Everything is encrypted end to end — the relay can't read it.",
+			"privacy": "People join in their browser through omp's public relay (my.omp.sh). Everything is encrypted end to end, so the relay can't read it.",
 			"start": "Start sharing",
 			"stop": "Stop sharing",
 			"failed": "Couldn't start sharing",

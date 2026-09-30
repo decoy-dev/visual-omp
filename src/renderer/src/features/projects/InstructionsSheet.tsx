@@ -3,7 +3,8 @@
  * (AGENTS.md, CLAUDE.md, …) with a markdown preview, plus the project's rules (`.omp/rules`).
  */
 import type { InstructionFile, ProjectInstructions, ProjectRule, RuleDraft } from "@shared/contracts/project";
-import { CircleAlert, Info, Pencil, Plus, Trash2 } from "lucide-react";
+import { Info, PencilSimple, Plus, Trash, WarningCircle } from "@phosphor-icons/react";
+import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SheetProps } from "@/registry/slots";
@@ -17,12 +18,14 @@ import {
 	EmptyState,
 	IconButton,
 	Input,
+	PresenceSwap,
 	Segmented,
 	Select,
 	SelectItem,
 	SheetContent,
 	Sheet,
 	Skeleton,
+	spring,
 	Switch,
 	Tabs,
 	TabsContent,
@@ -188,16 +191,19 @@ function InstructionsEditor({ projectPath, onDirty }: { projectPath: string; onD
 				/>
 			</div>
 
+			<PresenceSwap swapKey={file?.kind === "sticky" ? "sticky" : activeFile && activeFile.relPath !== relPath ? "shadowed" : "explainer"}>
 			{file?.kind === "sticky" ? (
 				<Notice icon={<Info />}>{t("instructions.stickyNote")}</Notice>
 			) : activeFile && activeFile.relPath !== relPath ? (
-				<Notice icon={<CircleAlert />} tone="warn">
+				<Notice icon={<WarningCircle />} tone="warn">
 					{t("instructions.shadowed", { active: activeFile.relPath })}
 				</Notice>
 			) : (
 				<Notice icon={<Info />}>{t("instructions.explainer")}</Notice>
 			)}
+			</PresenceSwap>
 
+			<PresenceSwap swapKey={mode} className="flex min-h-0 flex-1 flex-col">
 			{mode === "write" ? (
 				<textarea
 					aria-label={t("instructions.editorLabel", { file: relPath })}
@@ -218,6 +224,7 @@ function InstructionsEditor({ projectPath, onDirty }: { projectPath: string; onD
 					{text.trim() ? <Markdown text={text} /> : <p className="text-md text-fg-muted">{t("instructions.previewEmpty")}</p>}
 				</div>
 			)}
+			</PresenceSwap>
 
 			<div className="flex items-center gap-2">
 				<span className="flex-1 text-sm text-fg-muted">{dirty ? t("instructions.unsaved") : t("instructions.appliesNext")}</span>
@@ -234,7 +241,7 @@ function InstructionsEditor({ projectPath, onDirty }: { projectPath: string; onD
 
 function Notice({ icon, tone, children }: { icon: ReactNode; tone?: "warn"; children: ReactNode }): ReactNode {
 	return (
-		<p className={`flex items-start gap-2 rounded-md border border-border px-3 py-2 text-sm ${tone === "warn" ? "bg-warn-bg text-fg" : "bg-inset text-fg-muted"}`}>
+		<p className={`flex items-start gap-2 rounded-md px-3 py-2 text-sm ${tone === "warn" ? "bg-warn-bg text-fg" : "bg-inset text-fg-muted"}`}>
 			<span className={`mt-px inline-flex shrink-0 [&>svg]:size-4 ${tone === "warn" ? "text-warn" : "text-fg-faint"}`} aria-hidden>
 				{icon}
 			</span>
@@ -309,9 +316,17 @@ function RulesPanel({ projectPath }: { projectPath: string }): ReactNode {
 			</div>
 		);
 	}
-	if (form) return <RuleEditor form={form} taken={rules} saving={saving} onCancel={() => setForm(null)} onSave={draft => void save(draft)} />;
+	// The list and the rule editor slide past each other: opening a rule moves forward, closing it moves back.
+	if (form) {
+		return (
+			<PresenceSwap swapKey="editor" variant="slide" direction={1}>
+				<RuleEditor form={form} taken={rules} saving={saving} onCancel={() => setForm(null)} onSave={draft => void save(draft)} />
+			</PresenceSwap>
+		);
+	}
 
 	return (
+		<PresenceSwap swapKey="list" variant="slide" direction={-1}>
 		<div className="flex flex-col gap-3 p-4">
 			<div className="flex items-center gap-3">
 				<p className="flex-1 text-sm text-fg-muted">{t("rules.explainer")}</p>
@@ -322,9 +337,18 @@ function RulesPanel({ projectPath }: { projectPath: string }): ReactNode {
 			{rules.length === 0 ? (
 				<EmptyState title={t("rules.emptyTitle")} body={t("rules.emptyBody")} />
 			) : (
-				<ul className="flex flex-col gap-2">
+				<ul className="relative flex flex-col divide-y divide-border border-y border-border">
+					<AnimatePresence initial={false} mode="popLayout">
 					{rules.map(rule => (
-						<li key={rule.path} className="flex items-start gap-3 rounded-lg border border-border bg-panel p-3">
+						<motion.li
+							key={rule.path}
+							layout="position"
+							initial={{ opacity: 0, y: -4 }}
+							animate={{ opacity: 1, y: 0 }}
+							exit={{ opacity: 0 }}
+							transition={spring.snappy}
+							className="flex items-start gap-3 py-3"
+						>
 							<div className="min-w-0 flex-1">
 								<div className="flex flex-wrap items-center gap-2">
 									<span className="font-mono text-md font-semibold text-fg">{rule.name}</span>
@@ -347,7 +371,7 @@ function RulesPanel({ projectPath }: { projectPath: string }): ReactNode {
 									/>
 									<IconButton
 										label={t("rules.edit", { name: rule.name })}
-										icon={<Pencil />}
+										icon={<PencilSimple />}
 										onClick={() =>
 											setForm({
 												original: rule.name,
@@ -360,15 +384,16 @@ function RulesPanel({ projectPath }: { projectPath: string }): ReactNode {
 											})
 										}
 									/>
-									<IconButton label={t("rules.delete", { name: rule.name })} icon={<Trash2 />} variant="danger-ghost" onClick={() => setDeleting(rule)} />
+									<IconButton label={t("rules.delete", { name: rule.name })} icon={<Trash />} variant="danger-ghost" onClick={() => setDeleting(rule)} />
 								</div>
 							) : (
 								<span className="shrink-0 text-xs text-fg-faint" title={rule.path}>
 									{t("rules.readOnly")}
 								</span>
 							)}
-						</li>
+						</motion.li>
 					))}
+					</AnimatePresence>
 				</ul>
 			)}
 			<Dialog open={deleting !== null} onOpenChange={open => !open && setDeleting(null)}>
@@ -388,6 +413,7 @@ function RulesPanel({ projectPath }: { projectPath: string }): ReactNode {
 				/>
 			</Dialog>
 		</div>
+		</PresenceSwap>
 	);
 }
 

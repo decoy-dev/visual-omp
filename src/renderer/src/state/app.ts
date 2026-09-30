@@ -6,6 +6,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { AppPreferences, OmpStatus, ProjectSummary, SessionSummary } from "@shared/ipc";
+import { useComposerDrafts } from "../chat/composer/drafts";
 import { SessionController } from "./session";
 
 export interface ChatTab {
@@ -57,6 +58,12 @@ interface AppState {
 	toggleProjectExpanded(path: string): void;
 	/** Start a chat; `extraArgs` are omp launch flags for its first start (e.g. `--from-claude`). */
 	newChat(projectPath?: string, options?: { extraArgs?: string[] }): string | null;
+	/**
+	 * Move a chat that has not sent anything yet to another folder: its omp stops and a fresh one
+	 * starts in `projectPath` in the same tab position, keeping the composer draft. Returns the new
+	 * tab id, or null when the chat can no longer move (see `canRetarget`).
+	 */
+	retargetChat(tabId: string, projectPath: string): string | null;
 	openSession(session: SessionSummary, options?: { split?: boolean }): void;
 	activateTab(tabId: string): void;
 	closeTab(tabId: string): Promise<void>;
@@ -90,9 +97,7 @@ function ensureController(tab: ChatTab, extraArgs?: string[]): SessionController
 		controllers.set(tab.id, controller);
 		if (tab.sessionFile) {
 			void controller.loadHistory();
-			const file = tab.sessionFile;
-			const opened = controller;
-			void window.vomp.invoke("sessions:openElsewhere").then(files => opened.setReadOnly(files.includes(file)));
+			void controller.checkOwnership();
 		}
 		const synced = controller;
 		synced.subscribe(() => {
@@ -212,6 +217,34 @@ export const useApp = create<AppState>()(
 				return tab.id;
 			},
 
+			retargetChat(tabId, projectPath) {
+				const old = get().tabs.find(entry => entry.id === tabId);
+				const previous = controllers.get(tabId);
+				if (!old || !previous || !canRetarget(previous)) return null;
+				if (old.projectPath === projectPath) return tabId;
+				const tab: ChatTab = { id: newTabId(), projectPath, sessionFile: null, title: null };
+				const controller = ensureController(tab);
+				controllers.delete(tabId);
+				const drafts = useComposerDrafts.getState();
+				drafts.setDraft(tab.id, drafts.drafts[tabId] ?? "");
+				drafts.addAttachments(tab.id, drafts.attachments[tabId] ?? []);
+				drafts.setMode(tab.id, drafts.modes[tabId] ?? null);
+				drafts.forget(tabId);
+				const swap = (id: string | null) => (id === tabId ? tab.id : id);
+				set(state => ({
+					tabs: state.tabs.map(entry => (entry.id === tabId ? tab : entry)),
+					activeTabId: swap(state.activeTabId),
+					splitTabId: swap(state.splitTabId),
+					terminalTabId: swap(state.terminalTabId),
+					activeProject: projectPath,
+					view: "chat",
+				}));
+				void previous.dispose();
+				void controller.ensureLive();
+				drafts.focus(tab.id);
+				return tab.id;
+			},
+
 			openSession(session, options) {
 				const existing = get().tabs.find(tab => tab.sessionFile === session.file);
 				if (existing) {
@@ -316,7 +349,10 @@ export const useApp = create<AppState>()(
 
 			openTerminal(tabId) {
 				const target = tabId ?? focusedTabId(get());
-				if (target) set({ terminalTabId: target });
+				if (!target) return;
+				// Anything typed in the raw terminal bypasses the composer; treat the chat as used.
+				controllers.get(target)?.markInput();
+				set({ terminalTabId: target });
 			},
 
 			closeTerminal() {
@@ -348,6 +384,12 @@ export const useApp = create<AppState>()(
 	),
 );
 
+// Restored tabs need their controllers before the first render. ChatArea, the tab strip and the
+// sidebar look controllers up while rendering and get no signal when one appears later, so a chat
+// restored into view would otherwise stay blank until the user switched away and back. Hydration
+// from localStorage is synchronous, so the tabs are already here; init() adopts running hosts.
+for (const tab of useApp.getState().tabs) ensureController(tab);
+
 /** The tab that keyboard commands act on: the focused half of a split, else the active tab. */
 export function focusedTabId(state: Pick<AppState, "activeTabId" | "splitTabId" | "focusedSplit" | "view">): string | null {
 	if (state.view !== "chat") return null;
@@ -362,4 +404,15 @@ export function focusedController(): SessionController | null {
 /** Every live controller (quit warnings, notifications). */
 export function allControllers(): SessionController[] {
 	return [...controllers.values()];
+}
+
+/**
+ * A chat can still move to another folder while nothing has been sent: no input sent or on its
+ * way (recorded synchronously by the controller, so delayed collab frames cannot hide it), no saved
+ * session file, no conversation entries, nothing queued, not working, and not read-only.
+ */
+export function canRetarget(controller: SessionController): boolean {
+	const view = controller.getSnapshot();
+	if (controller.inputSent || controller.sessionFile || view.readOnly || view.working || view.queue.length > 0) return false;
+	return !view.guest?.entries.some(entry => entry.type === "message" || entry.type === "custom_message");
 }

@@ -52,6 +52,57 @@ export interface RecentFolder {
 }
 
 /**
+ * Why a folder could not be listed or created in (stable codes for i18n):
+ * - `notAbsolute`: the path is relative; the browser only accepts absolute paths.
+ * - `notFound`: nothing exists at the path.
+ * - `notDirectory`: the path is a file.
+ * - `permissionDenied`: the OS refused access (EACCES / EPERM).
+ * - `unreadable`: any other read or write error.
+ */
+export type FolderProblem = "notAbsolute" | "notFound" | "notDirectory" | "permissionDenied" | "unreadable";
+
+/** A subfolder shown in the in-app folder browser. */
+export interface FolderEntry {
+	name: string;
+	path: string;
+	/** Contains a `.git` folder or file. */
+	isGitRepo: boolean;
+	/** Already a project in the sidebar (registered, or has saved omp sessions). */
+	isProject: boolean;
+	/** Dotfolder, hidden unless the user asks to see hidden folders. */
+	hidden: boolean;
+}
+
+export type FolderListing =
+	| {
+			ok: true;
+			/** Normalized absolute path that was listed. */
+			path: string;
+			/** Parent folder; null at a filesystem root. */
+			parent: string | null;
+			/** The listed folder itself is a git repo / project. */
+			isGitRepo: boolean;
+			isProject: boolean;
+			/** Subfolders sorted by name; files are left out. */
+			entries: FolderEntry[];
+			/** More than the listing cap existed; the rest were left out. */
+			truncated: boolean;
+	  }
+	| { ok: false; problem: FolderProblem; path: string };
+
+/** Standard folders offered as shortcuts in the folder browser. */
+export type QuickPlaceId = "home" | "desktop" | "documents" | "projects" | "developer";
+
+export interface QuickPlace {
+	id: QuickPlaceId;
+	path: string;
+}
+
+export type FolderCreateResult =
+	| { ok: true; path: string }
+	| { ok: false; problem: ProjectNameProblem | FolderProblem; path: string };
+
+/**
  * omp discovery provider that owns a project context file, in omp's priority order
  * (see oh-my-pi docs/context-files.md): native 100 > claude 80 > agents 70 > gemini 60 >
  * github 30 > agents-md 10 = claude-md 10.
@@ -143,6 +194,15 @@ declare module "../ipc" {
 		 * `extraProjects` and in recent folders. Refuses names that fail `project:checkName`.
 		 */
 		"project:create": { args: [options: ProjectCreateOptions]; result: ProjectCreateResult };
+		/** Subfolders of an absolute path, with git/project badges. Never throws for missing or unreadable folders. */
+		"project:listDir": { args: [path: string]; result: FolderListing };
+		/** Home plus Desktop, Documents, ~/Projects and ~/Developer when they exist. */
+		"project:places": { args: []; result: QuickPlace[] };
+		/**
+		 * Create an empty folder inside an existing absolute `parentDir` (adopting an existing empty
+		 * one). Uses the `project:checkName` rules. Does not register it as a project.
+		 */
+		"project:mkdir": { args: [parentDir: string, name: string]; result: FolderCreateResult };
 		/** Register an existing folder as a project (prefs `extraProjects` + recent + OS recent documents). Rejects if not a directory. */
 		"project:add": { args: [path: string]; result: ProjectSummary };
 		/**

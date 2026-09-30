@@ -79,6 +79,8 @@ export async function deliver(
 		else await session.send(text);
 		return;
 	}
+	// The paste goes around the controller's queue, so record the send before waiting for omp.
+	session.markInput();
 	await whenLive(session);
 	const hostId = session.hostId;
 	if (!hostId) throw new Error("omp is not running");
