@@ -11,6 +11,8 @@ import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
 import type { SessionController, SessionView } from "../../state/session";
 import { useApp } from "../../state/app";
+import { activeBranch } from "../../state/history";
+import { Markdown } from "../../transcript/Markdown";
 import { Button, cn, IconButton, Mark, toast } from "../../ui";
 import { useComposerDrafts } from "../composer/drafts";
 import { QuestionCard } from "./QuestionCard";
@@ -300,7 +302,12 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const slots = chatSlots.use().filter(slot => slot.placement === "transcriptEnd");
 	const guest = view.guest;
 	const live = guest !== null && guest.phase !== "connecting";
-	const entries = live ? guest.entries : (view.history?.entries ?? []);
+	// The live stream carries every branch; show the one ending at the leaf (after a rewind, the displayed leaf).
+	const guestEntries = live ? guest.entries : null;
+	const entries = useMemo(
+		() => (guestEntries ? activeBranch(guestEntries, view.displayLeaf) : (view.history?.entries ?? [])),
+		[guestEntries, view.displayLeaf, view.history],
+	);
 	const stream = live ? guest.stream : null;
 	const streamDone = guest?.streamDone ?? true;
 	const activeTools = live ? guest.activeTools : EMPTY_TOOLS;
@@ -377,7 +384,11 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		if (href) void window.vomp.invoke("app:openExternal", href);
 	};
 
-	const empty = entries.length === 0 && stream === null && !view.working && !uiRequest && (view.mode === "live" || (view.mode === "starting" && !view.history));
+	// omp's first entries are session setup (model / thinking level); a chat is empty until someone talks.
+	const hasMessages = entries.some(
+		entry => (entry.type === "message" && (entry.message.role === "user" || entry.message.role === "assistant")) || entry.type === "custom_message",
+	);
+	const empty = !hasMessages && stream === null && !view.working && !uiRequest && (view.mode === "live" || (view.mode === "starting" && !view.history));
 	let seenUser = false;
 	let previousAssistant = false;
 
