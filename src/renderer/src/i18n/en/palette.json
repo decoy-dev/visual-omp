@@ -1,0 +1,137 @@
+{
+	"label": "Command palette",
+	"placeholder": "Type a command or search…",
+	"groups": {
+		"suggested": "Suggested",
+		"actions": "Actions",
+		"chats": "Chats",
+		"recentChats": "Recent chats",
+		"files": "Files",
+		"settings": "Settings",
+		"noMatches": "No matches"
+	},
+	"ask": "Press Enter to ask omp this instead",
+	"confirmDanger": "Press {{keys}} to run this",
+	"untitledChat": "Untitled chat",
+	"footer": {
+		"move": "move",
+		"run": "run",
+		"split": "open side by side",
+		"close": "close"
+	},
+	"terminal": {
+		"title": "omp terminal",
+		"titleWith": "omp terminal — {{screen}}",
+		"hint": "This is omp's own screen — click or type to use it",
+		"readOnly": "This chat is open in another window. You can look, but only that window can type.",
+		"mirrorLabel": "omp's screen. Keys you type go to omp.",
+		"expand": "Expand to full window",
+		"shrink": "Back to normal size",
+		"reconnecting": "Reconnecting to omp…",
+		"disconnected": "omp stopped. Restart it to use this screen again.",
+		"restart": "Restart omp",
+		"starting": "Starting omp…",
+		"leaveTitle": "Leave this omp screen?",
+		"leaveBody": "Your choice won't be saved.",
+		"stay": "Stay",
+		"leave": "Leave"
+	},
+	"screens": {
+		"settings": "Settings",
+		"models": "Model hub",
+		"switchModel": "Switch model",
+		"tree": "Session tree",
+		"summarizeBranch": "Summarize branch",
+		"resume": "Pick a session",
+		"importSession": "Import a session",
+		"deleteSession": "Delete session",
+		"rewind": "Rewind",
+		"copy": "Copy",
+		"login": "Sign in",
+		"logout": "Sign out",
+		"account": "Choose an account",
+		"usage": "Usage",
+		"usageReset": "Rate-limit reset",
+		"extensions": "Extensions",
+		"agentHub": "Agent hub",
+		"agents": "Agents",
+		"advisor": "Advisor",
+		"sessionInfo": "Session info",
+		"planReview": "Plan review",
+		"exitPlan": "Leave plan mode",
+		"plugins": "Plugins",
+		"mcpAdd": "Add a connection",
+		"history": "Message history",
+		"debug": "Debug tools",
+		"git": "Git",
+		"setup": "Provider setup",
+		"pause": "Paused",
+		"move": "Move chat",
+		"btw": "Side questions",
+		"annotate": "Code review",
+		"goal": "Goal",
+		"ask": "Question"
+	},
+	"cmd": {
+		"palette": {
+			"title": "Command palette",
+			"hint": "Search every action, chat and file.",
+			"keywords": "search, find, commands, go to"
+		},
+		"terminal": {
+			"title": "Show omp terminal",
+			"hint": "Open omp's own screen for this chat.",
+			"keywords": "terminal, console, tui, raw, menu"
+		},
+		"sidebar": {
+			"title": "Toggle sidebar",
+			"hint": "Show or hide the projects and chats list.",
+			"keywords": "sidebar, projects, chats list, hide, show"
+		},
+		"panel": {
+			"title": "Toggle side panel",
+			"hint": "Show or hide changes, files, preview and tasks.",
+			"keywords": "dock, panel, right, diff, files, preview"
+		},
+		"split": {
+			"title": "Split view",
+			"hint": "Show two chats side by side.",
+			"keywords": "split, side by side, two chats, compare"
+		},
+		"prevTab": {
+			"title": "Previous chat tab",
+			"keywords": "tab, previous, left, switch"
+		},
+		"nextTab": {
+			"title": "Next chat tab",
+			"keywords": "tab, next, right, switch"
+		},
+		"theme": {
+			"title": "Switch light / dark",
+			"hint": "Flip between the light and dark look.",
+			"keywords": "theme, dark mode, light mode, appearance, colors"
+		},
+		"zoomIn": {
+			"title": "Bigger text",
+			"keywords": "zoom in, larger, font size, text size"
+		},
+		"zoomOut": {
+			"title": "Smaller text",
+			"keywords": "zoom out, smaller, font size, text size"
+		},
+		"zoomReset": {
+			"title": "Default text size",
+			"keywords": "reset zoom, actual size, font size, text size"
+		},
+		"chatNew": {
+			"title": "New chat",
+			"hint": "Start a fresh conversation in this project.",
+			"keywords": "new, start, fresh, conversation"
+		},
+		"chatClose": {
+			"title": "Close chat",
+			"hint": "Close this tab. The chat stays saved.",
+			"keywords": "close, tab, hide"
+		}
+	}
+}
