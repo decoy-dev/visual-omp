@@ -11,6 +11,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    outputs:
+      prerelease: ${{ steps.channel.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,6 +24,26 @@ jobs:
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: node -e 'const expected = `v${require("./package.json").version}`; if (process.env.GITHUB_REF_NAME !== expected) { console.error(`Expected tag ${expected}, received ${process.env.GITHUB_REF_NAME}`); process.exit(1); }'
+      - name: Extract this version's notes from CHANGELOG.md
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: node scripts/release-notes.mjs "$GITHUB_REF_NAME" > release-notes.md
+      - name: Classify the release channel
+        id: channel
+        env:
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          # A semver prerelease has a "-" before any "+build" metadata (1.2.0-beta.1, 1.2.0-next).
+          version="${GITHUB_REF_NAME#v}"
+          case "${version%%+*}" in
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          esac
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
       - run: npm run typecheck
       - run: npm test
 
@@ -60,22 +82,34 @@ jobs:
           if-no-files-found: error
 
   publish:
-    needs: [macos, windows]
+    needs: [verify, macos, windows]
     runs-on: ubuntu-latest
+    # One publish at a time, so overlapping tags cannot interleave their cask commits.
+    concurrency:
+      group: release-publish
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
         with:
           ref: main
       - uses: actions/download-artifact@v4
         with:
+          pattern: "*-installer*"
           path: release-assets
           merge-multiple: true
+      # Notes come from the tagged commit (extracted in verify), whatever main holds by now.
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-notes
+          path: release-notes
       - uses: softprops/action-gh-release@v2
         with:
-          generate_release_notes: true
-          prerelease: ${{ contains(github.ref_name, '-alpha') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-rc') }}
+          body_path: release-notes/release-notes.md
+          prerelease: ${{ needs.verify.outputs.prerelease == 'true' }}
           files: release-assets/*
+      # The cask is the stable channel: prereleases never reach `brew upgrade`.
       - name: Update Homebrew cask from published installers
+        if: needs.verify.outputs.prerelease != 'true'
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
         run: |
