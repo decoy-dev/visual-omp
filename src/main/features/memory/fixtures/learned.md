@@ -1,0 +1,2 @@
+- Never edit package.json without approval.
+- Use Promise.withResolvers instead of new Promise. _(context: project rule)_

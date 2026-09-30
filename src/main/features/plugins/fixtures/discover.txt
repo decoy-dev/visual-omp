@@ -1,0 +1,6 @@
+Available Plugins (vomp-mp):
+
+  hello@0.1.0
+    Hello plugin
+second line
+  other

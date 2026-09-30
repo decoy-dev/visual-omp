@@ -1,0 +1,1 @@
+✔ Installed hello from vomp-mp (0.1.0)

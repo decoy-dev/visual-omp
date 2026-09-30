@@ -1,0 +1,22 @@
+[
+  {
+    "name": "plugins_directory",
+    "status": "ok",
+    "message": "Found at /tmp/vomp-home/.omp/plugins"
+  },
+  {
+    "name": "package_manifest",
+    "status": "warning",
+    "message": "Not created yet"
+  },
+  {
+    "name": "node_modules",
+    "status": "ok",
+    "message": "Found"
+  },
+  {
+    "name": "plugin:vomp-demo-plugin",
+    "status": "ok",
+    "message": "v1.2.3 - Demo plugin"
+  }
+]

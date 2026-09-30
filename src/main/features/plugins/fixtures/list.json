@@ -1,0 +1,76 @@
+{
+  "npm": [
+    {
+      "name": "vomp-demo-plugin",
+      "version": "1.2.3",
+      "path": "/tmp/vomp-home/.omp/plugins/node_modules/vomp-demo-plugin",
+      "manifest": {
+        "description": "Demo plugin for visual-omp",
+        "features": {
+          "alpha": {
+            "description": "Alpha feature",
+            "default": true
+          },
+          "beta": {
+            "description": "Beta feature"
+          }
+        },
+        "settings": {
+          "apiKey": {
+            "type": "string",
+            "secret": true,
+            "description": "API key",
+            "env": "DEMO_KEY"
+          },
+          "level": {
+            "type": "enum",
+            "values": [
+              "low",
+              "high"
+            ],
+            "default": "low"
+          },
+          "count": {
+            "type": "number",
+            "min": 1,
+            "max": 5
+          }
+        },
+        "version": "1.2.3"
+      },
+      "enabledFeatures": [
+        "beta"
+      ],
+      "enabled": true
+    }
+  ],
+  "marketplace": [
+    {
+      "id": "other@vomp-mp",
+      "scope": "project",
+      "entries": [
+        {
+          "scope": "project",
+          "installPath": "/tmp/vomp-home/.omp/plugins/cache/plugins/vomp-mp___other___0.0.0",
+          "version": "0.0.0",
+          "installedAt": "2026-09-30T17:54:57.725Z",
+          "lastUpdated": "2026-09-30T17:54:57.725Z"
+        }
+      ]
+    },
+    {
+      "id": "hello@vomp-mp",
+      "scope": "user",
+      "entries": [
+        {
+          "scope": "user",
+          "installPath": "/tmp/vomp-home/.omp/plugins/cache/plugins/vomp-mp___hello___0.1.0",
+          "version": "0.1.0",
+          "installedAt": "2026-09-30T17:54:57.599Z",
+          "lastUpdated": "2026-09-30T17:54:57.599Z",
+          "enabled": false
+        }
+      ]
+    }
+  ]
+}

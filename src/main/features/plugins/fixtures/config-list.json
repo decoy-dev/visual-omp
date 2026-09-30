@@ -1,0 +1,26 @@
+{
+  "settings": {
+    "level": "high"
+  },
+  "schema": {
+    "apiKey": {
+      "type": "string",
+      "secret": true,
+      "description": "API key",
+      "env": "DEMO_KEY"
+    },
+    "level": {
+      "type": "enum",
+      "values": [
+        "low",
+        "high"
+      ],
+      "default": "low"
+    },
+    "count": {
+      "type": "number",
+      "min": 1,
+      "max": 5
+    }
+  }
+}

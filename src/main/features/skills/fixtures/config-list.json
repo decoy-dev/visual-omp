@@ -1,0 +1,96 @@
+{
+  "disabledExtensions": {
+    "value": [
+      "skill:delta",
+      "ext:other"
+    ],
+    "type": "array",
+    "description": ""
+  },
+  "enabledProviders": {
+    "value": [],
+    "type": "array",
+    "description": ""
+  },
+  "disabledProviders": {
+    "value": [],
+    "type": "array",
+    "description": ""
+  },
+  "skillful": {
+    "value": true,
+    "type": "boolean",
+    "description": "List available skills in the system prompt; disable to save context and toggle per-session with /skillful"
+  },
+  "auth.broker.url": {
+    "type": "string",
+    "description": ""
+  },
+  "skills.registryUrl": {
+    "value": "http://127.0.0.1:47811",
+    "type": "string",
+    "description": "Skillshare registry used by `omp skill` to install, search, and publish skills (https://host[:port])"
+  },
+  "skills.enabled": {
+    "value": true,
+    "type": "boolean",
+    "description": ""
+  },
+  "skills.enableSkillCommands": {
+    "value": true,
+    "type": "boolean",
+    "description": "Register skills as /skill:name commands"
+  },
+  "skills.enableCodexUser": {
+    "value": false,
+    "type": "boolean",
+    "description": ""
+  },
+  "skills.enableClaudeUser": {
+    "value": false,
+    "type": "boolean",
+    "description": ""
+  },
+  "skills.enableClaudeProject": {
+    "value": true,
+    "type": "boolean",
+    "description": ""
+  },
+  "skills.enablePiUser": {
+    "value": true,
+    "type": "boolean",
+    "description": ""
+  },
+  "skills.enablePiProject": {
+    "value": true,
+    "type": "boolean",
+    "description": ""
+  },
+  "skills.enableAgentsUser": {
+    "value": true,
+    "type": "boolean",
+    "description": ""
+  },
+  "skills.enableAgentsProject": {
+    "value": true,
+    "type": "boolean",
+    "description": ""
+  },
+  "skills.customDirectories": {
+    "value": [],
+    "type": "array",
+    "description": ""
+  },
+  "skills.ignoredSkills": {
+    "value": [
+      "gam*"
+    ],
+    "type": "array",
+    "description": ""
+  },
+  "skills.includeSkills": {
+    "value": [],
+    "type": "array",
+    "description": ""
+  }
+}

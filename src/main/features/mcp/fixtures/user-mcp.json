@@ -1,0 +1,20 @@
+{
+  "$schema": "https://raw.githubusercontent.com/can1357/oh-my-pi/main/packages/coding-agent/src/config/mcp-schema.json",
+  "mcpServers": {
+    "storeleads": {
+      "type": "http",
+      "url": "https://storeleads.app/mcp",
+      "headers": {
+        "Authorization": "Bearer REDACTED"
+      }
+    },
+    "instantly": {
+      "type": "http",
+      "url": "https://mcp.instantly.ai/mcp",
+      "instructions": false,
+      "headers": {
+        "Authorization": "Bearer REDACTED"
+      }
+    }
+  }
+}

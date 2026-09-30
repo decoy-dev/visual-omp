@@ -1,0 +1,11 @@
+✔ Updated features for vomp-demo-plugin
+{
+  "plugin": "vomp-demo-plugin",
+  "enabledFeatures": [
+    "beta"
+  ],
+  "availableFeatures": [
+    "alpha",
+    "beta"
+  ]
+}

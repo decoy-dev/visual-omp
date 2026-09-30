@@ -1,0 +1,346 @@
+{
+	"generatedAt": 1790789912980,
+	"reports": [
+		{
+			"provider": "kimi-code",
+			"fetchedAt": 1790789893693,
+			"limits": [
+				{
+					"id": "kimi-code:0",
+					"label": "Weekly limit",
+					"scope": {
+						"provider": "kimi-code",
+						"accountId": "accountid-redacted-1",
+						"windowId": "7d",
+						"shared": true
+					},
+					"window": {
+						"id": "7d",
+						"label": "7 Day",
+						"resetsAt": 1790971053917
+					},
+					"amount": {
+						"unit": "unknown",
+						"limit": 100,
+						"used": 6,
+						"remaining": 94,
+						"usedFraction": 0.06,
+						"remainingFraction": 0.94
+					},
+					"status": "ok"
+				},
+				{
+					"id": "kimi-code:1",
+					"label": "5h limit",
+					"scope": {
+						"provider": "kimi-code",
+						"accountId": "accountid-redacted-1",
+						"windowId": "5h",
+						"shared": true
+					},
+					"window": {
+						"id": "5h",
+						"label": "5h limit",
+						"durationMs": 18000000,
+						"resetsAt": 1790805453917
+					},
+					"amount": {
+						"unit": "unknown",
+						"limit": 100,
+						"used": 16,
+						"remaining": 84,
+						"usedFraction": 0.16,
+						"remainingFraction": 0.84
+					},
+					"status": "ok"
+				},
+				{
+					"id": "kimi-code:2",
+					"label": "limit_7d",
+					"scope": {
+						"provider": "kimi-code",
+						"accountId": "accountid-redacted-1",
+						"windowId": "limit_7d",
+						"shared": true
+					},
+					"window": {
+						"id": "limit_7d",
+						"label": "limit_7d",
+						"resetsAt": 1790971053000
+					},
+					"amount": {
+						"unit": "percent",
+						"limit": 100,
+						"used": 0,
+						"remaining": 100,
+						"usedFraction": 0,
+						"remainingFraction": 1
+					},
+					"status": "ok"
+				}
+			],
+			"metadata": {
+				"accountId": "accountid-redacted-1",
+				"endpoint": "https://api.kimi.com/coding/v1/usages"
+			}
+		},
+		{
+			"provider": "openai-codex",
+			"fetchedAt": 1790789893693,
+			"limits": [
+				{
+					"id": "openai-codex:primary",
+					"label": "7 days",
+					"scope": {
+						"provider": "openai-codex",
+						"windowId": "7d",
+						"shared": true
+					},
+					"window": {
+						"id": "7d",
+						"label": "7 days",
+						"durationMs": 604800000,
+						"resetsAt": 1791217324000
+					},
+					"amount": {
+						"used": 1,
+						"limit": 100,
+						"remaining": 99,
+						"usedFraction": 0.01,
+						"remainingFraction": 0.99,
+						"unit": "percent"
+					},
+					"status": "ok"
+				}
+			],
+			"resetCredits": {
+				"availableCount": 2,
+				"credits": [
+					{
+						"grantedAt": "2026-09-22T20:27:34.150512Z",
+						"expiresAt": "2026-10-22T20:27:34.150512Z",
+						"status": "available"
+					},
+					{
+						"grantedAt": "2026-09-29T18:53:17.936235Z",
+						"expiresAt": "2026-10-29T18:53:17.936235Z",
+						"status": "available"
+					}
+				]
+			},
+			"metadata": {
+				"planType": "self_serve_business_prolite",
+				"allowed": true,
+				"limitReached": false,
+				"email": "user1@example.com",
+				"accountId": "accountid-redacted-2",
+				"meterStates": {
+					"chat": {
+						"allowed": true,
+						"limitReached": false
+					}
+				},
+				"orgId": "orgid-redacted-1",
+				"orgName": "Example Org 1"
+			}
+		},
+		{
+			"provider": "anthropic",
+			"fetchedAt": 1790789907366,
+			"limits": [
+				{
+					"id": "anthropic:5h",
+					"label": "Claude 5 Hour",
+					"scope": {
+						"provider": "anthropic",
+						"windowId": "5h",
+						"shared": true
+					},
+					"window": {
+						"id": "5h",
+						"label": "5 Hour",
+						"durationMs": 18000000,
+						"resetsAt": 1790802600000
+					},
+					"amount": {
+						"used": 28.999999999999996,
+						"limit": 100,
+						"remaining": 71,
+						"usedFraction": 0.29,
+						"remainingFraction": 0.71,
+						"unit": "percent"
+					},
+					"status": "ok"
+				},
+				{
+					"id": "anthropic:7d",
+					"label": "Claude 7 Day",
+					"scope": {
+						"provider": "anthropic",
+						"windowId": "7d",
+						"shared": true
+					},
+					"window": {
+						"id": "7d",
+						"label": "7 Day",
+						"durationMs": 604800000,
+						"resetsAt": 1790816400000
+					},
+					"amount": {
+						"used": 45,
+						"limit": 100,
+						"remaining": 55,
+						"usedFraction": 0.45,
+						"remainingFraction": 0.55,
+						"unit": "percent"
+					},
+					"status": "ok"
+				},
+				{
+					"id": "anthropic:7d:fable",
+					"label": "Claude 7 Day (Fable)",
+					"scope": {
+						"provider": "anthropic",
+						"windowId": "7d",
+						"tier": "fable"
+					},
+					"window": {
+						"id": "7d",
+						"label": "7 Day",
+						"durationMs": 604800000,
+						"resetsAt": 1790816400374
+					},
+					"amount": {
+						"used": 22,
+						"limit": 100,
+						"remaining": 78,
+						"usedFraction": 0.22,
+						"remainingFraction": 0.78,
+						"unit": "percent"
+					},
+					"status": "ok"
+				},
+				{
+					"id": "anthropic:extra",
+					"label": "Claude Extra Usage",
+					"scope": {
+						"provider": "anthropic",
+						"windowId": "extra"
+					},
+					"amount": {
+						"used": 200.03,
+						"unit": "usd",
+						"limit": 200,
+						"remaining": 0,
+						"usedFraction": 1.00015,
+						"remainingFraction": 0
+					},
+					"status": "exhausted"
+				}
+			],
+			"metadata": {
+				"accountId": "accountid-redacted-3",
+				"email": "user1@example.com",
+				"orgId": "orgid-redacted-2",
+				"orgName": "Example Org 2",
+				"endpoint": "https://api.anthropic.com/api/oauth/usage",
+				"headersUpdatedAt": 1790789907366
+			},
+			"resetCredits": {
+				"availableCount": 1,
+				"redeemableCount": 1,
+				"nextCreditId": "opus55-launch-team-20260921",
+				"eligible": true,
+				"credits": [
+					{
+						"id": "opus55-launch-team-20260921",
+						"title": "Claude Opus 5.5 launch: one usage-limit reset for Team members",
+						"program": "cedar_ember",
+						"remainingCount": 1,
+						"usable": true,
+						"requiresLimit": false,
+						"clears": [
+							"anthropic:5h",
+							"anthropic:7d",
+							"anthropic:reset:seven_day_overage_included"
+						],
+						"blocking": [],
+						"usedFractions": {
+							"anthropic:5h": 0.24,
+							"anthropic:7d": 0.44,
+							"anthropic:reset:seven_day_overage_included": 0.22
+						},
+						"grantedAt": "2026-09-22T16:00:00.000Z",
+						"expiresAt": "2026-10-22T16:00:00.000Z",
+						"status": "available"
+					}
+				]
+			}
+		}
+	],
+	"accountsWithoutUsage": [],
+	"disabledCredentials": [],
+	"capacity": {
+		"kimi-code": [
+			{
+				"window": "5h",
+				"durationMs": 18000000,
+				"accounts": 1,
+				"usedAccounts": 0.16,
+				"remainingAccounts": 0.84
+			},
+			{
+				"window": "7 Day",
+				"accounts": 1,
+				"usedAccounts": 0.06,
+				"remainingAccounts": 0.94
+			},
+			{
+				"window": "limit_7d",
+				"accounts": 1,
+				"usedAccounts": 0,
+				"remainingAccounts": 1
+			}
+		],
+		"openai-codex": [
+			{
+				"window": "7d",
+				"durationMs": 604800000,
+				"meter": "chat",
+				"accounts": 1,
+				"usedAccounts": 0.01,
+				"remainingAccounts": 0.99
+			}
+		],
+		"anthropic": [
+			{
+				"window": "5h",
+				"durationMs": 18000000,
+				"accounts": 1,
+				"usedAccounts": 0.29,
+				"remainingAccounts": 0.71
+			},
+			{
+				"window": "7d",
+				"durationMs": 604800000,
+				"accounts": 1,
+				"usedAccounts": 0.45,
+				"remainingAccounts": 0.55
+			},
+			{
+				"window": "7d",
+				"durationMs": 604800000,
+				"meter": "fable",
+				"accounts": 1,
+				"usedAccounts": 0.22,
+				"remainingAccounts": 0.78
+			},
+			{
+				"window": "extra",
+				"accounts": 1,
+				"usedAccounts": 1.00015,
+				"remainingAccounts": 0
+			}
+		]
+	}
+}

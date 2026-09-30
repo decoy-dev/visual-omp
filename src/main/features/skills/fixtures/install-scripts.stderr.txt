@@ -1,0 +1,3 @@
+error @vomp/scripted@1.0.0 ships scripts:
+  scripts/run.sh (executable)
+Refusing to install scripts without confirmation; re-run with --yes to allow them.

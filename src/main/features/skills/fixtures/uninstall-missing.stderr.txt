@@ -1,0 +1,1 @@
+error @vomp/hello is not installed (/private/tmp/vomp-skproj/.omp/skills.json)

@@ -1,0 +1,1 @@
+{"v":1,"kind":"style_decision","statement":"Use zod schemas at every external data boundary.","rationale":"casts hide format drift","source":"explicit_user","evidence":"parse ALL external data with zod","friction":{"corrective":true,"regression":false,"subtle":true},"sessionId":"sess-alpha","ts":1790789000000}

@@ -1,0 +1,9 @@
+# Captured from a real ~/.codex/config.toml (MCP section, token redacted)
+model = "gpt-5"
+
+[mcp_servers.shadcnio]
+url = "https://www.shadcn.io/api/mcp?token=REDACTED"
+
+[mcp_servers.magicui]
+command = "npx"
+args = ["-y", "@magicuidesign/mcp@latest"]

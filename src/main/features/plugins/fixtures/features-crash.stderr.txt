@@ -1,0 +1,15 @@
+439913 |     }
+439914 |     if (t && t.length > 0) {
+439915 |       const n = await this.getPlugin(e, { path: Sa.join(Kh(), e) });
+439916 |       if (n?.manifest.features) {
+439917 |         for (const o of t) {
+439918 |             throw new Error(`Unknown feature "${o}" in ${e}. Available: ${Object.keys(n.manifest.features).join(", ")}`);
+                           ^
+error: Unknown feature "zzz" in vomp-demo-plugin. Available: alpha, beta
+      at setEnabledFeatures (/$bunfs/root/omp-darwin-arm64:439918:19)
+      at async _hu (/$bunfs/root/omp-darwin-arm64:622687:31)
+      at async EZ (/$bunfs/root/omp-darwin-arm64:622219:16)
+      at async run (/$bunfs/root/omp-darwin-arm64:633536:15)
+      at async Jhi (/$bunfs/root/omp-darwin-arm64:2653:16)
+      at async pbn (/$bunfs/root/omp-darwin-arm64:677781:12)
+

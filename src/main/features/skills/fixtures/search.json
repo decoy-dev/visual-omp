@@ -1,0 +1,22 @@
+{
+  "total": 1,
+  "page": 1,
+  "perPage": 20,
+  "hits": [
+    {
+      "scope": "vomp",
+      "name": "hello",
+      "description": "Hello skill for tests",
+      "keywords": [
+        "test"
+      ],
+      "version": "1.1.0",
+      "publisher": {
+        "username": "tester",
+        "avatar": "abcd"
+      },
+      "updatedAt": 1788220800000,
+      "weeklyDownloads": 3
+    }
+  ]
+}

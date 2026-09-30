@@ -1,0 +1,258 @@
+{
+	"memory.backend": {
+		"value": "mnemopi",
+		"type": "enum",
+		"description": "Off, local summary pipeline, Mnemopi SQLite, Hindsight remote memory, or Sharpshooter"
+	},
+	"autolearn.enabled": {
+		"value": false,
+		"type": "boolean",
+		"description": "After the agent stops, nudge it to capture lessons to memory and create/enhance isolated managed skills"
+	},
+	"autolearn.autoContinue": {
+		"value": false,
+		"type": "boolean",
+		"description": "When on, auto-run one private capture turn at stop (uses extra tokens). When off, only standing auto-learn guidance remains."
+	},
+	"autolearn.minToolCalls": {
+		"value": 5,
+		"type": "number",
+		"description": ""
+	},
+	"mnemopi.dbPath": {
+		"type": "string",
+		"description": "Optional SQLite DB path. Defaults to the agent memories directory."
+	},
+	"mnemopi.bank": {
+		"value": "team",
+		"type": "string",
+		"description": "Optional shared bank base name. Per-project modes derive project-local banks from it."
+	},
+	"mnemopi.scoping": {
+		"value": "per-project-tagged",
+		"type": "enum",
+		"description": "global = one shared bank; per-project = isolated bank per cwd; per-project-tagged = project-local writes plus global recall visibility"
+	},
+	"mnemopi.embeddingVariant": {
+		"value": "en",
+		"type": "enum",
+		"description": "Local embedding model family. en = stronger English model; multilingual = cross-language model. Changing this rebuilds existing memory embeddings on next start."
+	},
+	"mnemopi.autoRecall": {
+		"value": true,
+		"type": "boolean",
+		"description": "Recall local memories into the first turn of each session"
+	},
+	"mnemopi.autoRetain": {
+		"value": true,
+		"type": "boolean",
+		"description": "Retain completed conversation turns into local Mnemopi memory"
+	},
+	"mnemopi.polyphonicRecall": {
+		"value": false,
+		"type": "boolean",
+		"description": "Fuse recall with graph, fact, vector and temporal voices so linked memories surface without a keyword match"
+	},
+	"mnemopi.enhancedRecall": {
+		"value": false,
+		"type": "boolean",
+		"description": "Cache recall results for repeated and similar queries with identical options; any memory write clears it"
+	},
+	"mnemopi.proactiveLinking": {
+		"value": false,
+		"type": "boolean",
+		"description": "Ingest new memories into the episodic graph as they are stored, linking them to related entities and memories"
+	},
+	"mnemopi.noEmbeddings": {
+		"value": false,
+		"type": "boolean",
+		"description": "Force deterministic FTS-only recall instead of vector embeddings"
+	},
+	"mnemopi.embeddingModel": {
+		"type": "string",
+		"description": "Advanced: explicit embedding model id that overrides the variant. Leave empty to use mnemopi.embeddingVariant."
+	},
+	"mnemopi.embeddingApiUrl": {
+		"type": "string",
+		"description": "Optional OpenAI-compatible embedding endpoint passed to Mnemopi"
+	},
+	"mnemopi.embeddingApiKey": {
+		"type": "string",
+		"description": "Optional embedding API key passed to Mnemopi"
+	},
+	"mnemopi.llmMode": {
+		"value": "smol",
+		"type": "enum",
+		"description": "Use no LLM, the online tiny model (the TINY role from /models, else @smol), or a remote OpenAI-compatible endpoint"
+	},
+	"mnemopi.llmBaseUrl": {
+		"type": "string",
+		"description": "Optional OpenAI-compatible LLM endpoint for Mnemopi remote mode"
+	},
+	"mnemopi.llmApiKey": {
+		"type": "string",
+		"description": "Optional LLM API key for Mnemopi remote mode"
+	},
+	"mnemopi.llmModel": {
+		"type": "string",
+		"description": "Optional LLM model name for Mnemopi remote mode"
+	},
+	"mnemopi.retainEveryNTurns": {
+		"value": 4,
+		"type": "number",
+		"description": ""
+	},
+	"mnemopi.recallLimit": {
+		"value": 8,
+		"type": "number",
+		"description": ""
+	},
+	"mnemopi.recallContextTurns": {
+		"value": 3,
+		"type": "number",
+		"description": ""
+	},
+	"mnemopi.recallMaxQueryChars": {
+		"value": 4000,
+		"type": "number",
+		"description": ""
+	},
+	"mnemopi.injectionTokenLimit": {
+		"value": 5000,
+		"type": "number",
+		"description": ""
+	},
+	"mnemopi.debug": {
+		"value": false,
+		"type": "boolean",
+		"description": ""
+	},
+	"hindsight.apiUrl": {
+		"value": "http://localhost:8888",
+		"type": "string",
+		"description": "Hindsight server URL (Cloud or self-hosted)"
+	},
+	"hindsight.apiToken": {
+		"type": "string",
+		"description": "Bearer token for authenticated Hindsight servers"
+	},
+	"hindsight.bankId": {
+		"type": "string",
+		"description": "Memory bank identifier (default: project name)"
+	},
+	"hindsight.bankIdPrefix": {
+		"type": "string",
+		"description": ""
+	},
+	"hindsight.scoping": {
+		"value": "per-project-tagged",
+		"type": "enum",
+		"description": "global = one shared bank; per-project = isolated bank per cwd; per-project-tagged = shared bank with project tags so global + project memories merge on recall"
+	},
+	"hindsight.bankMission": {
+		"type": "string",
+		"description": ""
+	},
+	"hindsight.retainMission": {
+		"type": "string",
+		"description": ""
+	},
+	"hindsight.autoRecall": {
+		"value": true,
+		"type": "boolean",
+		"description": "Recall memories on the first turn of each session"
+	},
+	"hindsight.autoRetain": {
+		"value": true,
+		"type": "boolean",
+		"description": "Retain transcript every N turns and at session boundaries"
+	},
+	"hindsight.retainMode": {
+		"value": "full-session",
+		"type": "enum",
+		"description": "full-session = upsert one document per session, last-turn = chunked"
+	},
+	"hindsight.retainEveryNTurns": {
+		"value": 3,
+		"type": "number",
+		"description": ""
+	},
+	"hindsight.retainOverlapTurns": {
+		"value": 2,
+		"type": "number",
+		"description": ""
+	},
+	"hindsight.retainContext": {
+		"value": "omp",
+		"type": "string",
+		"description": ""
+	},
+	"hindsight.recallBudget": {
+		"value": "mid",
+		"type": "enum",
+		"description": ""
+	},
+	"hindsight.recallMaxTokens": {
+		"value": 1024,
+		"type": "number",
+		"description": ""
+	},
+	"hindsight.recallContextTurns": {
+		"value": 1,
+		"type": "number",
+		"description": ""
+	},
+	"hindsight.recallMaxQueryChars": {
+		"value": 800,
+		"type": "number",
+		"description": ""
+	},
+	"hindsight.recallTypes": {
+		"value": [
+			"world",
+			"experience"
+		],
+		"type": "array",
+		"description": ""
+	},
+	"hindsight.debug": {
+		"value": false,
+		"type": "boolean",
+		"description": ""
+	},
+	"hindsight.requestTimeoutMs": {
+		"value": 30000,
+		"type": "number",
+		"description": ""
+	},
+	"hindsight.reflectTimeoutMs": {
+		"value": 120000,
+		"type": "number",
+		"description": ""
+	},
+	"hindsight.recallTimeoutMs": {
+		"value": 30000,
+		"type": "number",
+		"description": ""
+	},
+	"hindsight.retainTimeoutMs": {
+		"value": 60000,
+		"type": "number",
+		"description": ""
+	},
+	"hindsight.mentalModelsEnabled": {
+		"value": true,
+		"type": "boolean",
+		"description": "Read curated reflect summaries (mental models) into developer instructions at boot. Loads existing models on the bank — does not write. Pair with hindsight.mentalModelAutoSeed to also auto-create the built-in seed set."
+	},
+	"hindsight.mentalModelAutoSeed": {
+		"value": true,
+		"type": "boolean",
+		"description": "At session start, create any built-in mental models (project-conventions, project-decisions, user-preferences) that do not yet exist on the bank."
+	},
+	"hindsight.mentalModelMaxRenderChars": {
+		"value": 16000,
+		"type": "number",
+		"description": ""
+	}
+}

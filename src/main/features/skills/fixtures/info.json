@@ -1,0 +1,61 @@
+{
+  "scope": "vomp",
+  "name": "hello",
+  "description": "Hello skill for tests",
+  "keywords": [
+    "test"
+  ],
+  "license": "MIT",
+  "owners": [
+    {
+      "username": "tester",
+      "avatar": "abcd"
+    }
+  ],
+  "distTags": {
+    "latest": "1.1.0"
+  },
+  "versions": {
+    "1.0.0": {
+      "version": "1.0.0",
+      "publishedAt": 1788220800000,
+      "publisher": {
+        "username": "tester",
+        "avatar": "abcd"
+      },
+      "integrity": "sha512-Vzy5HYSuxioDKdJj5hlMsTa/jml8b4KcbRTTmSinVvJ+EA0y3OZq7At0Q3x3xSsfPRa7R4HCNIFmLM4kNmpS5g==",
+      "size": 211,
+      "unpackedSize": 90,
+      "fileCount": 1,
+      "hasScripts": false,
+      "yanked": false
+    },
+    "1.1.0": {
+      "version": "1.1.0",
+      "publishedAt": 1788220800000,
+      "publisher": {
+        "username": "tester",
+        "avatar": "abcd"
+      },
+      "integrity": "sha512-/JHXEh5RjzLuayuqSXkngqdXEXt7BbWxYvd/zWAX00vSC7OzPYvV6yv6dLJdraJLbID2zsOKonUOVCj3xGH3mQ==",
+      "size": 211,
+      "unpackedSize": 90,
+      "fileCount": 1,
+      "hasScripts": false,
+      "yanked": false
+    }
+  },
+  "createdAt": 1788220800000,
+  "updatedAt": 1788220800000,
+  "downloads": {
+    "weekly": 3,
+    "total": 10,
+    "daily": [
+      [
+        "2026-09-01",
+        1
+      ]
+    ]
+  },
+  "canManage": false
+}
