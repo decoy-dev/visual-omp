@@ -47,9 +47,8 @@ Don't have it yet? visual-omp detects that on first launch and walks you through
 
 **visual-omp on macOS (Homebrew)**
 
-```sh
+brew tap decoy-dev/tap https://github.com/decoy-dev/visual-omp
 brew install --cask decoy-dev/tap/visual-omp
-```
 
 **visual-omp on Windows**
 
