@@ -1,4 +1,8 @@
 <p align="center">
+  <img src="https://github.com/decoy-dev/visual-omp/blob/main/assets/hero.png?raw=true" alt="visual-omp">
+</p>
+
+<p align="center">
   <strong>omp, without the terminal.</strong>
   <strong><a href="https://github.com/decoy-dev/visual-omp">visual-omp</a></strong>
 </p>

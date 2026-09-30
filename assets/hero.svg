@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1500 540" width="1500" height="540">
+  <!-- visual-omp README hero — docs/DESIGN.md §7 -->
+  <defs>
+    <pattern id="grid" width="60" height="60" patternUnits="userSpaceOnUse">
+      <path d="M60 0H0V60" fill="none" stroke="#FFFFFF" stroke-opacity="0.035" stroke-width="1"/>
+    </pattern>
+    <radialGradient id="glowPink" cx="750" cy="190" r="360" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F453B4" stop-opacity="0.16"/>
+      <stop offset="100%" stop-color="#F453B4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowCyan" cx="750" cy="420" r="300" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00DBE4" stop-opacity="0.08"/>
+      <stop offset="100%" stop-color="#00DBE4" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mark" x1="232" y1="276" x2="792" y2="724" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F84FCC"/>
+      <stop offset="46%" stop-color="#9362F4"/>
+      <stop offset="100%" stop-color="#00DBE4"/>
+    </linearGradient>
+    <style>
+      .word { font-family: "Space Grotesk", sans-serif; font-size: 64px; letter-spacing: -0.02em; fill: #FAFAFC; }
+      .mono { font-family: "SF Mono", ui-monospace, Menlo, monospace; text-transform: uppercase; }
+    </style>
+  </defs>
+  <rect width="1500" height="540" fill="#07070C"/>
+  <rect width="1500" height="540" fill="url(#grid)"/>
+  <rect width="1500" height="540" fill="url(#glowPink)"/>
+  <rect width="1500" height="540" fill="url(#glowCyan)"/>
+
+  <g fill="none" stroke="#2A2A33" stroke-width="2">
+    <path d="M28 76V28H76"/>
+    <path d="M1424 28H1472V76"/>
+    <path d="M28 464V512H76"/>
+    <path d="M1424 512H1472V464"/>
+  </g>
+  <g fill="none" stroke="#9362F4" stroke-opacity="0.6" stroke-width="2" stroke-linejoin="round">
+    <path d="M42 122 L32 126 V144 L24 154 L32 164 V182 L42 186"/>
+    <path d="M1458 122 L1468 126 V144 L1476 154 L1468 164 V182 L1458 186"/>
+  </g>
+
+  <!-- π-window mark: §6.1 geometry scaled to a 150×132 box at (675, 88) -->
+  <g transform="translate(675 88) scale(0.2679) translate(-232 -276)">
+    <g fill="url(#mark)">
+      <rect x="232" y="276" width="560" height="104" rx="20"/>
+      <rect x="372" y="360" width="88" height="364" rx="18"/>
+      <rect x="588" y="360" width="88" height="256" rx="18"/>
+    </g>
+    <circle cx="284" cy="328" r="15" fill="#FF5F57"/>
+    <circle cx="340" cy="328" r="15" fill="#FEBC2E"/>
+    <circle cx="396" cy="328" r="15" fill="#28C840"/>
+    <rect x="572" y="616" width="120" height="92" rx="20" fill="#F97316"/>
+    <rect x="604" y="634" width="14" height="44" rx="7" fill="#171107"/>
+    <rect x="650" y="634" width="14" height="44" rx="7" fill="#171107"/>
+  </g>
+
+  <text class="word" x="750" y="330" text-anchor="middle"><tspan font-weight="500">visual</tspan><tspan font-weight="700">-omp</tspan></text>
+  <text class="mono" x="750" y="388" text-anchor="middle" font-size="18" letter-spacing="0.35em" fill="#A2A2AB">[ A FRIENDLY FACE FOR OMP ]</text>
+  <g>
+    <circle cx="466" cy="447" r="4" fill="#ED4ABF"/>
+    <text class="mono" x="760" y="452" text-anchor="middle" font-size="14" letter-spacing="0.18em" fill="#8B8B94">LIGHT BY DEFAULT · DARK TOO · EVERY OMP SUPERPOWER</text>
+  </g>
+</svg>

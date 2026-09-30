@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- visual-omp "π-window" icon — docs/DESIGN.md §6.1 (macOS 824px grid) -->
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#191224"/>
+      <stop offset="100%" stop-color="#0A0A10"/>
+    </linearGradient>
+    <radialGradient id="glowPink" cx="360" cy="300" r="420" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F453B4" stop-opacity="0.20"/>
+      <stop offset="100%" stop-color="#F453B4" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="glowCyan" cx="700" cy="760" r="380" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#00DBE4" stop-opacity="0.14"/>
+      <stop offset="100%" stop-color="#00DBE4" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="mark" x1="232" y1="276" x2="792" y2="724" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#F84FCC"/>
+      <stop offset="46%" stop-color="#9362F4"/>
+      <stop offset="100%" stop-color="#00DBE4"/>
+    </linearGradient>
+    <clipPath id="tileShape">
+      <rect x="100" y="100" width="824" height="824" rx="185"/>
+    </clipPath>
+  </defs>
+  <g clip-path="url(#tileShape)">
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#tile)"/>
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#glowPink)"/>
+    <rect x="0" y="0" width="1024" height="1024" fill="url(#glowCyan)"/>
+    <rect x="100" y="100" width="824" height="1" fill="#FFFFFF" fill-opacity="0.08"/>
+  </g>
+  <g fill="url(#mark)">
+    <rect x="232" y="276" width="560" height="104" rx="20"/>
+    <rect x="372" y="360" width="88" height="364" rx="18"/>
+    <rect x="588" y="360" width="88" height="256" rx="18"/>
+  </g>
+  <circle cx="284" cy="328" r="15" fill="#FF5F57"/>
+  <circle cx="340" cy="328" r="15" fill="#FEBC2E"/>
+  <circle cx="396" cy="328" r="15" fill="#28C840"/>
+  <rect x="572" y="616" width="120" height="92" rx="20" fill="#F97316"/>
+  <rect x="604" y="634" width="14" height="44" rx="7" fill="#171107"/>
+  <rect x="650" y="634" width="14" height="44" rx="7" fill="#171107"/>
+</svg>
