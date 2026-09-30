@@ -1,0 +1,322 @@
+/*
+ * visual-omp design tokens — "Signal Grid", docs/DESIGN.md §1 is the source of truth.
+ * The ONLY file allowed to contain raw color values. Light is the default;
+ * `[data-theme="dark"]` on <html> switches to dark.
+ */
+@import "tailwindcss";
+@import "@fontsource-variable/geist";
+@import "@fontsource-variable/geist-mono";
+
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+:root {
+	color-scheme: light;
+
+	/* 1.1 surfaces */
+	--bg: #f5f7fa;
+	--panel: #ffffff;
+	--bg-inset: #f6f8fb;
+	--bg-raised: #ffffff;
+	--bg-overlay: #ffffff;
+	--glass: rgba(245, 247, 250, 0.72);
+	--hover: rgba(16, 24, 40, 0.04);
+	--selected: rgba(16, 24, 40, 0.07);
+	--backdrop: rgba(15, 23, 42, 0.35);
+
+	/* 1.3 text */
+	--fg: #0f1722;
+	--fg-muted: #4b5866;
+	--fg-faint: #67737f;
+	--fg-inverse: #ffffff;
+
+	/* 1.4 accent — the Signal Grid spectrum */
+	--mark-a: #22d3ee;
+	--mark-b: #3b82f6;
+	--mark-c: #e879f9;
+	--mark-gradient: linear-gradient(120deg, var(--mark-a) 0%, var(--mark-b) 50%, var(--mark-c) 100%);
+	--work-gradient: linear-gradient(120deg, var(--mark-a) 0%, var(--mark-b) 33%, var(--mark-c) 66%, var(--mark-a) 100%);
+	--plug: #f97316;
+	--accent: #0e7490;
+	--accent-hover: #155e75;
+	--accent-active: #164e63;
+	--accent-fg: #ffffff;
+	--accent-muted: #e0f2f7;
+	--accent-2: #2563eb;
+	--accent-2-muted: #ebf1fe;
+	--agent: #a21caf;
+	--agent-muted: #fbeffe;
+	--ambient-a: rgba(14, 116, 144, 0.05);
+	--ambient-b: rgba(37, 99, 235, 0.05);
+
+	/* 1.5 status */
+	--ok: #047857;
+	--ok-bg: #e6f6ef;
+	--warn: #b45309;
+	--warn-bg: #fdf3e2;
+	--err: #c81e1e;
+	--err-bg: #fcecec;
+	--err-hover: #b01a1a;
+	--info: #2563eb;
+	--info-bg: #ebf1fe;
+	--live: #047857;
+
+	/* 1.6 diff */
+	--diff-add-bg: #e4f5ec;
+	--diff-add-line: #cfefde;
+	--diff-add-text: #0e6e45;
+	--diff-del-bg: #fdecea;
+	--diff-del-line: #fadad5;
+	--diff-del-text: #c2291f;
+	--diff-hunk-bg: #edf1f5;
+	--diff-hunk-text: #4b5866;
+
+	/* 1.7 syntax */
+	--syn-text: #0f1722;
+	--syn-keyword: #0e7490;
+	--syn-string: #047857;
+	--syn-number: #b45309;
+	--syn-function: #2563eb;
+	--syn-type: #a21caf;
+	--syn-operator: #c81e1e;
+	--syn-comment: #64707d;
+	--syn-punct: #4b5866;
+
+	/* 1.8 borders & focus */
+	--border: rgba(15, 23, 34, 0.08);
+	--border-strong: rgba(15, 23, 34, 0.14);
+	--ring: #0891b2;
+	--ring-soft: rgba(8, 145, 178, 0.16);
+	--grid-line: rgba(15, 35, 60, 0.05);
+
+	/* 1.9 elevation */
+	--shadow-card: 0 1px 2px rgba(15, 35, 60, 0.06);
+	--shadow-pop: 0 4px 12px rgba(15, 35, 60, 0.08), 0 1px 3px rgba(15, 35, 60, 0.06);
+	--shadow-overlay: 0 16px 48px rgba(15, 35, 60, 0.14), 0 4px 12px rgba(15, 35, 60, 0.08);
+	--shadow-composer: 0 1px 2px rgba(15, 35, 60, 0.06), 0 8px 24px rgba(15, 35, 60, 0.08);
+	--shadow-primary: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 1px 2px rgba(15, 35, 60, 0.12);
+	--work-glow: 0 0 16px rgba(34, 211, 238, 0.14);
+
+	/* 1.10 radii (root variables for vendored omp CSS; utilities in @theme) */
+	--radius-sm: 6px;
+	--radius: 8px;
+	--radius-lg: 12px;
+	--radius-xl: 16px;
+	--radius-full: 999px;
+
+	/* terminal (xterm) */
+	--term-bg: #f6f8fb;
+	--term-fg: #0f1722;
+	--term-cursor: #0e7490;
+	--term-selection: rgba(37, 99, 235, 0.18);
+
+	/* platform: Windows caption close hover (DESIGN §3.1, the one allowed off-palette color) */
+	--win-close: #e81123;
+
+	/* 1.12 motion */
+	--dur-fast: 100ms;
+	--dur: 160ms;
+	--dur-slow: 240ms;
+	--dur-xl: 360ms;
+	--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+	--ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+	--ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+
+	/* 1.13 z-index */
+	--z-base: 0;
+	--z-sticky: 10;
+	--z-pane-header: 20;
+	--z-sidebar: 30;
+	--z-titlebar: 40;
+	--z-dropdown: 50;
+	--z-scrim: 60;
+	--z-sheet: 70;
+	--z-dialog: 80;
+	--z-palette: 90;
+	--z-toast: 100;
+	--z-tooltip: 110;
+
+	/* layout (DESIGN §3) */
+	--titlebar-h: 40px;
+	--tabstrip-h: 36px;
+	--header-h: 48px;
+	--statusbar-h: 28px;
+	--chat-max: 760px;
+
+	/* 2.1 families (root variables for vendored CSS; utilities in @theme) */
+	--font-ui: "Geist Variable", "Geist", -apple-system, "Segoe UI Variable Text", Roboto, sans-serif;
+	--font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+
+[data-theme="dark"] {
+	color-scheme: dark;
+
+	--bg: #090d14;
+	--panel: #0f1622;
+	--bg-inset: #0b111b;
+	--bg-raised: #141d2c;
+	--bg-overlay: #16202f;
+	--glass: rgba(15, 22, 34, 0.72);
+	--hover: rgba(226, 236, 248, 0.05);
+	--selected: rgba(226, 236, 248, 0.09);
+	--backdrop: rgba(3, 6, 10, 0.6);
+
+	--fg: #e9eef4;
+	--fg-muted: #9da9b8;
+	--fg-faint: #7b8a9c;
+	--fg-inverse: #0a0f16;
+
+	--accent: #22d3ee;
+	--accent-hover: #67e8f9;
+	--accent-active: #a5f3fc;
+	--accent-fg: #062832;
+	--accent-muted: #10303c;
+	--accent-2: #60a5fa;
+	--accent-2-muted: #152742;
+	--agent: #e879f9;
+	--agent-muted: #34153f;
+	--ambient-a: rgba(34, 211, 238, 0.06);
+	--ambient-b: rgba(96, 165, 250, 0.06);
+
+	--ok: #34d399;
+	--ok-bg: #0f2b1f;
+	--warn: #fbbf24;
+	--warn-bg: #2e2410;
+	--err: #f87171;
+	--err-bg: #311518;
+	--err-hover: #fa8f8f;
+	--info: #60a5fa;
+	--info-bg: #152742;
+	--live: #34d399;
+
+	--diff-add-bg: #0f2b1f;
+	--diff-add-line: #14382a;
+	--diff-add-text: #5bd9a3;
+	--diff-del-bg: #311518;
+	--diff-del-line: #42191d;
+	--diff-del-text: #ff9aa0;
+	--diff-hunk-bg: #141d2c;
+	--diff-hunk-text: #9da9b8;
+
+	--syn-text: #e9eef4;
+	--syn-keyword: #22d3ee;
+	--syn-string: #5bd9a3;
+	--syn-number: #fbbf24;
+	--syn-function: #60a5fa;
+	--syn-type: #e879f9;
+	--syn-operator: #f87171;
+	--syn-comment: #7b8a9c;
+	--syn-punct: #9da9b8;
+
+	--border: rgba(226, 236, 248, 0.08);
+	--border-strong: rgba(226, 236, 248, 0.16);
+	--ring: #22d3ee;
+	--ring-soft: rgba(34, 211, 238, 0.22);
+	--grid-line: rgba(120, 170, 220, 0.07);
+
+	--shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
+	--shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.35);
+	--shadow-overlay: 0 16px 48px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.4);
+	--shadow-composer: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
+	--shadow-primary: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 2px rgba(0, 0, 0, 0.4);
+	--work-glow: 0 0 16px rgba(34, 211, 238, 0.2);
+
+	--term-bg: #0b111b;
+	--term-fg: #e9eef4;
+	--term-cursor: #22d3ee;
+	--term-selection: rgba(96, 165, 250, 0.25);
+}
+
+/* Reduced motion: app setting (`data-motion="reduced"`) or OS preference unless the app forces full. */
+:root[data-motion="reduced"] {
+	--dur-fast: 0.01ms;
+	--dur: 0.01ms;
+	--dur-slow: 0.01ms;
+	--dur-xl: 0.01ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root:not([data-motion="full"]) {
+		--dur-fast: 0.01ms;
+		--dur: 0.01ms;
+		--dur-slow: 0.01ms;
+		--dur-xl: 0.01ms;
+	}
+}
+
+/* Tailwind v4 theme: every token as a utility (bg-panel, text-fg-muted, border-border, rounded-lg, …). */
+@theme inline {
+	--color-bg: var(--bg);
+	--color-panel: var(--panel);
+	--color-inset: var(--bg-inset);
+	--color-raised: var(--bg-raised);
+	--color-overlay: var(--bg-overlay);
+	--color-glass: var(--glass);
+	--color-hover: var(--hover);
+	--color-selected: var(--selected);
+	--color-backdrop: var(--backdrop);
+	--color-fg: var(--fg);
+	--color-fg-muted: var(--fg-muted);
+	--color-fg-faint: var(--fg-faint);
+	--color-fg-inverse: var(--fg-inverse);
+	--color-accent: var(--accent);
+	--color-accent-hover: var(--accent-hover);
+	--color-accent-active: var(--accent-active);
+	--color-accent-fg: var(--accent-fg);
+	--color-accent-muted: var(--accent-muted);
+	--color-accent-2: var(--accent-2);
+	--color-accent-2-muted: var(--accent-2-muted);
+	--color-agent: var(--agent);
+	--color-agent-muted: var(--agent-muted);
+	--color-plug: var(--plug);
+	--color-ok: var(--ok);
+	--color-ok-bg: var(--ok-bg);
+	--color-warn: var(--warn);
+	--color-warn-bg: var(--warn-bg);
+	--color-err: var(--err);
+	--color-err-bg: var(--err-bg);
+	--color-err-hover: var(--err-hover);
+	--color-info: var(--info);
+	--color-info-bg: var(--info-bg);
+	--color-live: var(--live);
+	--color-diff-add-bg: var(--diff-add-bg);
+	--color-diff-add-line: var(--diff-add-line);
+	--color-diff-add-text: var(--diff-add-text);
+	--color-diff-del-bg: var(--diff-del-bg);
+	--color-diff-del-line: var(--diff-del-line);
+	--color-diff-del-text: var(--diff-del-text);
+	--color-diff-hunk-bg: var(--diff-hunk-bg);
+	--color-diff-hunk-text: var(--diff-hunk-text);
+	--color-border: var(--border);
+	--color-border-strong: var(--border-strong);
+	--color-ring: var(--ring);
+	--color-ring-soft: var(--ring-soft);
+	--color-win-close: var(--win-close);
+
+	--font-ui: "Geist Variable", "Geist", -apple-system, "Segoe UI Variable Text", Roboto, sans-serif;
+	--font-mono: "Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+	/* 2.2 type scale in rem so the text-size setting (root font-size) scales it */
+	--text-xs: 0.6875rem;
+	--text-xs--line-height: 0.9375rem;
+	--text-sm: 0.75rem;
+	--text-sm--line-height: 1rem;
+	--text-md: 0.8125rem;
+	--text-md--line-height: 1.125rem;
+	--text-base: 0.875rem;
+	--text-base--line-height: 1.375rem;
+	--text-lg: 1rem;
+	--text-lg--line-height: 1.5rem;
+	--text-xl: 1.25rem;
+	--text-xl--line-height: 1.75rem;
+	--text-2xl: 1.5rem;
+	--text-2xl--line-height: 1.875rem;
+	--text-3xl: 2rem;
+	--text-3xl--line-height: 2.375rem;
+	--text-code: 0.78125rem;
+	--text-code--line-height: 1.125rem;
+
+	--radius-sm: 6px;
+	--radius-md: 8px;
+	--radius-lg: 12px;
+	--radius-xl: 16px;
+}

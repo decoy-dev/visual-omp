@@ -1,0 +1,257 @@
+/* Base element styles, focus, scrollbars, and the signature Signal Grid indicators (DESIGN §2, §5.16). */
+@layer base {
+	html {
+		font-family: var(--font-ui);
+		font-size: 16px;
+		background: var(--bg);
+		color: var(--fg);
+		-webkit-font-smoothing: antialiased;
+		text-rendering: optimizeLegibility;
+		font-feature-settings: "ss01", "cv11";
+	}
+
+	html,
+	body,
+	#root {
+		height: 100%;
+		margin: 0;
+		overflow: hidden;
+	}
+
+	body {
+		font-size: var(--text-md);
+		line-height: var(--text-md--line-height);
+		user-select: none;
+	}
+
+	/* Content the user reads or copies stays selectable. */
+	.selectable,
+	.selectable * {
+		user-select: text;
+	}
+
+	:focus-visible {
+		outline: 2px solid var(--ring);
+		outline-offset: 2px;
+	}
+
+	::selection {
+		background: var(--ring-soft);
+	}
+
+	button {
+		cursor: default;
+	}
+
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: var(--border-strong) transparent;
+	}
+}
+
+@layer components {
+	/* `[ LABEL ]` eyebrow (DESIGN §2.4). */
+	.bracket-label {
+		font-family: var(--font-mono);
+		font-size: var(--text-xs);
+		line-height: var(--text-xs--line-height);
+		text-transform: uppercase;
+		letter-spacing: 0.14em;
+		color: var(--fg-faint);
+	}
+
+	/* Glass title bar / sticky headers (DESIGN §1.1). */
+	.glass {
+		background: var(--glass);
+		backdrop-filter: blur(16px) saturate(1.5);
+		-webkit-backdrop-filter: blur(16px) saturate(1.5);
+	}
+
+	.drag-region {
+		-webkit-app-region: drag;
+	}
+
+	.no-drag {
+		-webkit-app-region: no-drag;
+	}
+
+	.visually-hidden {
+		position: absolute;
+		width: 1px;
+		height: 1px;
+		padding: 0;
+		margin: -1px;
+		overflow: hidden;
+		clip: rect(0, 0, 0, 0);
+		white-space: nowrap;
+		border: 0;
+	}
+
+	/* Signal shimmer: the working-state gradient border (DESIGN §5.16). Pair with visible text. */
+	.signal-working {
+		border: 1px solid transparent;
+		background:
+			linear-gradient(var(--panel), var(--panel)) padding-box,
+			var(--work-gradient) border-box;
+		background-size:
+			100% 100%,
+			300% 100%;
+		background-position:
+			0% 0%,
+			0% 0%;
+		animation: signal-shimmer 2.4s linear infinite;
+		box-shadow: var(--work-glow);
+	}
+
+	/* Gradient pulse dot (DESIGN §5.16 compact form). */
+	.pulse-dot {
+		display: inline-block;
+		width: 8px;
+		height: 8px;
+		flex: none;
+		border-radius: var(--radius-full);
+		background: var(--mark-gradient);
+		animation: pulse-dot 1.6s var(--ease-in-out) infinite;
+	}
+
+	/* Streaming caret (2px, accent). */
+	.stream-caret {
+		display: inline-block;
+		width: 2px;
+		height: 1em;
+		margin-left: 2px;
+		vertical-align: -0.15em;
+		background: var(--accent);
+		animation: caret-blink 1s steps(1) infinite;
+	}
+}
+
+@keyframes signal-shimmer {
+	to {
+		background-position:
+			0% 0%,
+			300% 0%;
+	}
+}
+
+@keyframes pulse-dot {
+	0%,
+	100% {
+		opacity: 1;
+	}
+	50% {
+		opacity: 0.45;
+	}
+}
+
+@keyframes caret-blink {
+	0%,
+	49% {
+		opacity: 1;
+	}
+	50%,
+	100% {
+		opacity: 0;
+	}
+}
+
+@keyframes pop-in {
+	from {
+		opacity: 0;
+		transform: scale(0.96);
+	}
+	to {
+		opacity: 1;
+		transform: scale(1);
+	}
+}
+
+@keyframes sheet-in {
+	from {
+		opacity: 0;
+		transform: translateY(16px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes toast-in {
+	from {
+		opacity: 0;
+		transform: translateY(8px);
+	}
+	to {
+		opacity: 1;
+		transform: translateY(0);
+	}
+}
+
+@keyframes shimmer {
+	0% {
+		background-position: -200% 0;
+	}
+	100% {
+		background-position: 200% 0;
+	}
+}
+
+@keyframes spin {
+	to {
+		transform: rotate(360deg);
+	}
+}
+
+/* Reduced motion (DESIGN §1.12): freeze indicators into static equivalents; no translate/scale. */
+:root[data-motion="reduced"] {
+	.signal-working {
+		animation: none;
+		box-shadow: none;
+		background:
+			linear-gradient(var(--panel), var(--panel)) padding-box,
+			linear-gradient(color-mix(in srgb, var(--panel) 50%, transparent), color-mix(in srgb, var(--panel) 50%, transparent)) border-box,
+			var(--work-gradient) border-box;
+	}
+	.pulse-dot {
+		animation: none;
+		opacity: 0.6;
+	}
+	.stream-caret {
+		animation: none;
+	}
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		animation-iteration-count: 1 !important;
+		transition-duration: 0.01ms !important;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root:not([data-motion="full"]) {
+		.signal-working {
+			animation: none;
+			box-shadow: none;
+			background:
+				linear-gradient(var(--panel), var(--panel)) padding-box,
+				linear-gradient(color-mix(in srgb, var(--panel) 50%, transparent), color-mix(in srgb, var(--panel) 50%, transparent)) border-box,
+				var(--work-gradient) border-box;
+		}
+		.pulse-dot {
+			animation: none;
+			opacity: 0.6;
+		}
+		.stream-caret {
+			animation: none;
+		}
+		*,
+		*::before,
+		*::after {
+			animation-duration: 0.01ms !important;
+			animation-iteration-count: 1 !important;
+			transition-duration: 0.01ms !important;
+		}
+	}
+}

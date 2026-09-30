@@ -1,42 +1,36 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
-  <!-- visual-omp "π-window" icon — docs/DESIGN.md §6.1 -->
+  <!-- visual-omp "Circuit V" app icon (Windows / PNG 960 tile) — docs/DESIGN.md §6.1 -->
   <defs>
-    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="#191224"/>
-      <stop offset="100%" stop-color="#0A0A10"/>
-    </linearGradient>
-    <radialGradient id="glowPink" cx="360" cy="300" r="420" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#F453B4" stop-opacity="0.20"/>
-      <stop offset="100%" stop-color="#F453B4" stop-opacity="0"/>
-    </radialGradient>
-    <radialGradient id="glowCyan" cx="700" cy="760" r="380" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#00DBE4" stop-opacity="0.14"/>
-      <stop offset="100%" stop-color="#00DBE4" stop-opacity="0"/>
-    </radialGradient>
-    <linearGradient id="mark" x1="232" y1="276" x2="792" y2="724" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stop-color="#F84FCC"/>
-      <stop offset="46%" stop-color="#9362F4"/>
-      <stop offset="100%" stop-color="#00DBE4"/>
-    </linearGradient>
-    <clipPath id="tileShape">
-      <rect x="32" y="32" width="960" height="960" rx="220"/>
-    </clipPath>
+    <linearGradient id="tile" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0B1220"/><stop offset="1" stop-color="#090D14"/></linearGradient>
+    <radialGradient id="apexGlow" cx="512" cy="732.0" r="95" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#F97316" stop-opacity="0.30"/><stop offset="1" stop-color="#F97316" stop-opacity="0"/></radialGradient>
+    <linearGradient id="markGrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#22D3EE"/><stop offset="0.5" stop-color="#3B82F6"/><stop offset="1" stop-color="#E879F9"/></linearGradient>
+    <clipPath id="tileClip"><rect x="32" y="32" width="960" height="960" rx="220"/></clipPath>
   </defs>
-  <g clip-path="url(#tileShape)">
-    <rect x="0" y="0" width="1024" height="1024" fill="url(#tile)"/>
-    <rect x="0" y="0" width="1024" height="1024" fill="url(#glowPink)"/>
-    <rect x="0" y="0" width="1024" height="1024" fill="url(#glowCyan)"/>
-    <rect x="32" y="32" width="960" height="1" fill="#FFFFFF" fill-opacity="0.08"/>
+  <g clip-path="url(#tileClip)">
+    <rect x="32" y="32" width="960" height="960" fill="url(#tile)"/>
+    <path d="M32 32V992M32 32H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M96 32V992M32 96H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M160 32V992M32 160H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M224 32V992M32 224H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M288 32V992M32 288H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M352 32V992M32 352H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M416 32V992M32 416H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M480 32V992M32 480H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M544 32V992M32 544H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M608 32V992M32 608H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M672 32V992M32 672H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M736 32V992M32 736H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M800 32V992M32 800H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M864 32V992M32 864H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M928 32V992M32 928H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <path d="M992 32V992M32 992H992" stroke="rgba(120,170,220,0.05)" stroke-width="2"/>
+    <rect x="32" y="32" width="960" height="1" fill="#FFFFFF" fill-opacity="0.06"/>
+    <circle cx="512" cy="732.0" r="95" fill="url(#apexGlow)"/>
   </g>
-  <g fill="url(#mark)">
-    <rect x="232" y="276" width="560" height="104" rx="20"/>
-    <rect x="372" y="360" width="88" height="364" rx="18"/>
-    <rect x="588" y="360" width="88" height="256" rx="18"/>
+  <g transform="translate(512 512) scale(1) translate(-512 -512)">
+    <path d="M302 292 L512 732 L722 292" fill="none" stroke="url(#markGrad)" stroke-width="76" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="302" cy="292" r="52" fill="#22D3EE"/>
+    <circle cx="722" cy="292" r="52" fill="#E879F9"/>
+    <circle cx="512" cy="732" r="64" fill="#F97316"/>
   </g>
-  <circle cx="284" cy="328" r="15" fill="#FF5F57"/>
-  <circle cx="340" cy="328" r="15" fill="#FEBC2E"/>
-  <circle cx="396" cy="328" r="15" fill="#28C840"/>
-  <rect x="572" y="616" width="120" height="92" rx="20" fill="#F97316"/>
-  <rect x="604" y="634" width="14" height="44" rx="7" fill="#171107"/>
-  <rect x="650" y="634" width="14" height="44" rx="7" fill="#171107"/>
 </svg>

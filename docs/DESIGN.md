@@ -1,155 +1,161 @@
 # visual-omp — Design Specification
 
-One opinionated direction. Every value is exact. Implementation stack: React + Tailwind v4 (CSS-variable tokens via `@theme`), Radix primitives, lucide icons, xterm.js.
+One opinionated direction: **Signal Grid**, executed as a polished modern SaaS product (quality bar: Linear, Vercel, Raycast, Supabase). Every value is exact. Implementation stack: React + Tailwind v4 (CSS-variable tokens via `@theme`), Radix primitives, lucide icons, xterm.js.
 
 ---
 
 ## 0. Design direction
 
-**"Paper & π."** visual-omp looks like a calm, well-lit desk with omp's neon mark glowing on it — not a terminal with chrome, not a chat app skin. Light mode is the designed default; dark mode is omp's signature near-black, designed alongside, not inverted.
+**"Signal Grid."** visual-omp looks like a precision SaaS instrument panel: crisp white panels floating on a cool light-gray canvas, one cyan action color carrying every signal, and a thin cyan→blue→fuchsia spectrum reserved for the few moments that deserve ceremony. Light mode is the designed default; dark mode is a deep blue-black with softly lifted panels — related to omp's dark chassis, but bluer, gentler, and never pure black.
 
 Five decisions everything else hangs on:
 
-1. **One accent, three roles.** The mark gradient is magenta → violet → cyan. In UI these become three *solid* tokens with fixed jobs: **Pi Pink** is the only action accent (primary buttons, links, active states). **Cyan** is information + focus (info status, focus rings, @-mentions). **Violet** is agent presence (subagent avatars, AI-attributed UI, Plan surfaces). The full gradient appears *only* on the π mark, the working indicator, the context ring, and first-run/empty-state art — never on text or button fills. This keeps the brand loud in exactly four places and quiet everywhere else.
-2. **Warm-neutral paper chassis (light) / true-black chassis (dark).** Light app background is a cool-neutral `#F5F5F7` with pure-white floating panels, so hierarchy comes from elevation + hairlines, not tints. Dark keeps omp's `#000`-family chassis so collab-web users feel at home.
-3. **Friendly by default, honest on demand.** Every machine event collapses to a plain-language one-liner ("Edited 3 files"); raw diffs/output are one click or one `Ctrl/Cmd+O` away. Jargon never appears on primary surfaces; the mono-caps bracket style (`[ LABEL ]`) is the *only* stylistic nod to the terminal on calm surfaces.
-4. **Structure over decoration.** No accent bars, no gratuitous gradients, no fake data, no icon soup. Emphasis is carried by weight, spacing rhythm (8px grid), and the single pink accent.
+1. **One accent, inverted roles.** omp uses pink for action and cyan for information; visual-omp inverts that. **Signal Cyan** is the only action accent (primary buttons, links, active states). **Electric Blue** is information + secondary actions (@-mentions, info status, update chips). **Fuchsia** is agent presence (subagent avatars, question/plan rails, AI-attributed UI). The full cyan→blue→fuchsia gradient appears in exactly five places: the Circuit V mark, the app icon, the working-state shimmer border, hero/empty-state ambient glows, and the primary-button focus glow — never on text or button fills.
+2. **Modern SaaS surfaces.** Light: `#FFFFFF` panels on a `#F5F7FA` cool-gray canvas; separation comes from 1px low-contrast borders plus soft, cool-tinted layered shadows on anything floating (composer, menus, dialogs, hovering cards). The title bar and sticky headers are glass (backdrop-blur). Dark: deep blue-black `#090D14` ground with panels lifted to `#0F1622`, same border+shadow logic.
+3. **Friendly by default, honest on demand.** Every machine event collapses to a plain-language one-liner ("Edited 3 files"); raw diffs/output are one click or one `Ctrl/Cmd+O` away. Jargon never appears on primary surfaces; the mono-caps bracket style (`[ LABEL ]`) survives only as small section eyebrows — a whisper of the terminal, never a texture.
+4. **Restraint reads as premium.** Emphasis is carried by weight, spacing rhythm (8px grid), and the single cyan accent. No gratuitous gradients, no neon, no icon soup, no fake data. The omp-orange appears exactly once in the brand system: the apex node of the Circuit V mark — the point where the visual layer plugs into omp.
 5. **Status is shape + color, never color alone.** Every status color pairs with an icon or glyph (✓ ▲ ✕ ●), so the UI survives color-blindness and grayscale.
 
 ---
 
 ## 1. Design tokens
 
-All colors are authored in hex (sRGB); the three `--mark-*` gradient stops are authored in oklch (from omp's own tokens) with sRGB fallbacks. Naming follows `--<role>` for theme-flipped tokens and `--<role>-<step>` for ramps. Tailwind v4 mapping: every token below is re-exposed in `@theme inline` as `--color-*`, `--radius-*`, `--spacing-*`, `--font-*` with identical values; the tables below are the source of truth.
+All colors are authored in hex (sRGB); the three `--mark-*` gradient stops are the Signal Grid spectrum. Naming follows `--<role>` for theme-flipped tokens. Tailwind v4 mapping: every token below is re-exposed in `@theme inline` as `--color-*`, `--radius-*`, `--spacing-*`, `--font-*` with identical values; the tables below are the source of truth.
 
 ### 1.1 Surfaces — light (default)
 
 | Token | Value | Used for |
 |---|---|---|
-| `--bg` | `#F5F5F7` | window background, behind everything |
+| `--bg` | `#F5F7FA` | window background, behind everything |
 | `--panel` | `#FFFFFF` | sidebar, panes, cards, composer |
-| `--bg-inset` | `#FAFAFC` | code blocks, terminal sheet padding, sunken inputs |
-| `--bg-raised` | `#FFFFFF` | popovers, menus, dialogs (with shadow) |
+| `--bg-inset` | `#F6F8FB` | code blocks, terminal sheet padding, sunken inputs |
+| `--bg-raised` | `#FFFFFF` | popovers, menus, dialogs (with `--shadow-pop` + 1px `--border`) |
 | `--bg-overlay` | `#FFFFFF` | modal sheets, command palette |
-| `--glass` | `rgba(255,255,255,0.82)` | title bar / sticky headers over scrolled content (12px backdrop-blur) |
-| `--hover` | `rgba(26,26,33,0.04)` | row/control hover wash |
-| `--selected` | `rgba(26,26,33,0.07)` | selected row wash, pressed state |
-| `--backdrop` | `rgba(24,24,30,0.28)` | dialog/sheet scrim |
+| `--glass` | `rgba(245,247,250,0.72)` | title bar / sticky headers over scrolled content (`backdrop-filter: blur(16px) saturate(1.5)`) |
+| `--hover` | `rgba(16,24,40,0.04)` | row/control hover wash |
+| `--selected` | `rgba(16,24,40,0.07)` | selected row wash, pressed state |
+| `--backdrop` | `rgba(15,23,42,0.35)` | dialog/sheet scrim |
 
-*Rationale: one white panel value everywhere keeps light mode airy; alpha washes let one hover value work on every surface step (same trick as omp's own tokens).*
+*Rationale: pure-white panels keep light mode crisp; alpha washes let one hover value work on every surface step; the glass bar is the signature SaaS touch.*
 
 ### 1.2 Surfaces — dark
 
 | Token | Value |
 |---|---|
-| `--bg` | `#060608` |
-| `--panel` | `#0E0E11` |
-| `--bg-inset` | `#0A0A0D` |
-| `--bg-raised` | `#141418` |
-| `--bg-overlay` | `#17171B` |
-| `--glass` | `rgba(14,14,17,0.78)` |
-| `--hover` | `rgba(237,237,240,0.045)` |
-| `--selected` | `rgba(237,237,240,0.09)` |
-| `--backdrop` | `rgba(0,0,0,0.55)` |
+| `--bg` | `#090D14` |
+| `--panel` | `#0F1622` |
+| `--bg-inset` | `#0B111B` |
+| `--bg-raised` | `#141D2C` |
+| `--bg-overlay` | `#16202F` |
+| `--glass` | `rgba(15,22,34,0.72)` |
+| `--hover` | `rgba(226,236,248,0.05)` |
+| `--selected` | `rgba(226,236,248,0.09)` |
+| `--backdrop` | `rgba(3,6,10,0.60)` |
 
 ### 1.3 Text
 
 | Token | Light | Dark | Role |
 |---|---|---|---|
-| `--fg` | `#1A1A21` | `#EDEDF0` | body, titles |
-| `--fg-muted` | `#575761` | `#A2A2AB` | secondary labels, metadata |
-| `--fg-faint` | `#6B6B76` | `#82828C` | placeholders, timestamps, disabled labels |
-| `--fg-inverse` | `#FFFFFF` | `#0A0A0B` | text on accent fills |
+| `--fg` | `#0F1722` | `#E9EEF4` | body, titles |
+| `--fg-muted` | `#4B5866` | `#9DA9B8` | secondary labels, metadata |
+| `--fg-faint` | `#67737F` | `#7B8A9C` | placeholders, timestamps, disabled labels |
+| `--fg-inverse` | `#FFFFFF` | `#0A0F16` | text on accent fills |
 
-Contrast (on `--panel`): light `--fg` 17.3:1, `--fg-muted` 7.1:1, `--fg-faint` 5.3:1 (4.8:1 on `--bg` — still AA). Dark on `--panel`: 16.5:1 / 7.6:1 / 5.1:1. All body-text pairs ≥ 4.5:1. ✓
+Contrast (on `--panel`): light `--fg` 18.0:1, `--fg-muted` 7.3:1, `--fg-faint` 4.8:1 (4.5:1 on `--bg` — AA). Dark on `--panel`: 15.5:1 / 7.6:1 / 5.1:1. All body-text pairs ≥ 4.5:1. ✓
 
-### 1.4 Accent — derived from the mark gradient
+### 1.4 Accent — the Signal Grid spectrum
 
-Mark stops (omp's own, oklch → sRGB): `--mark-a: oklch(0.70 0.24 340)` `#F84FCC` (magenta) · `--mark-b: oklch(0.62 0.21 295)` `#9362F4` (violet) · `--mark-c: oklch(0.81 0.14 200)` `#00DBE4` (cyan).
-`--mark-gradient: linear-gradient(135deg, var(--mark-a) 0%, var(--mark-b) 46%, var(--mark-c) 100%)`.
+Mark stops: `--mark-a: #22D3EE` (cyan) · `--mark-b: #3B82F6` (blue) · `--mark-c: #E879F9` (fuchsia).
+`--mark-gradient: linear-gradient(120deg, var(--mark-a) 0%, var(--mark-b) 50%, var(--mark-c) 100%)`.
+`--work-gradient: linear-gradient(120deg, var(--mark-a) 0%, var(--mark-b) 33%, var(--mark-c) 66%, var(--mark-a) 100%)` — the working-shimmer border gradient (§5.16).
 
 | Token | Light | Dark | Job |
 |---|---|---|---|
-| `--accent` | `#B01E86` | `#F068C8` | Pi Pink — primary action, links, active tab/selection marker |
-| `--accent-hover` | `#97176F` | `#F58BD6` | hover of the above |
-| `--accent-active` | `#7F1360` | `#F9ADE1` | pressed |
-| `--accent-fg` | `#FFFFFF` | `#241021` | text on filled accent (`#241021` on `#F068C8` = 6.4:1; white on `#B01E86` = 6.2:1) |
-| `--accent-muted` | `#FBE9F6` | `#2B1224` | tinted chip/badge background; accent text on it: 5.4:1 (light), 6.2:1 (dark) ✓ |
-| `--accent-2` | `#0E7490` | `#5AD8E6` | Cyan — info, focus-adjacent accents, @-mention chips (5.4:1 / 11.4:1 on panel) |
-| `--accent-2-muted` | `#E4F4F8` | `#10262B` | cyan tint bg (accent-2 text on it: 4.7:1 / 9.3:1) ✓ |
-| `--agent` | `#6D28D9` | `#A78BFA` | Violet — subagents, plan surfaces, AI presence (7.1:1 / 7.1:1) |
-| `--agent-muted` | `#F0EAFB` | `#1D1530` | violet tint bg |
-| `--ambient-a` | `rgba(176,30,134,0.05)` | `rgba(240,104,200,0.07)` | hero/empty-state wash, magenta end |
-| `--ambient-b` | `rgba(14,116,144,0.05)` | `rgba(90,216,230,0.06)` | hero wash, cyan end |
+| `--accent` | `#0E7490` | `#22D3EE` | Signal Cyan — primary action, links, active tab/selection marker (5.4:1 / 10.0:1 on panel) |
+| `--accent-hover` | `#155E75` | `#67E8F9` | hover of the above (white on light hover: 7.4:1) |
+| `--accent-active` | `#164E63` | `#A5F3FC` | pressed (white on light: 9.1:1) |
+| `--accent-fg` | `#FFFFFF` | `#062832` | text on filled accent (5.4:1 light; 8.6:1 dark) |
+| `--accent-muted` | `#E0F2F7` | `#10303C` | tinted chip/badge background; accent text on it: 4.7:1 (light), 7.7:1 (dark) ✓ |
+| `--accent-2` | `#2563EB` | `#60A5FA` | Electric Blue — info, secondary actions, @-mention chips (5.2:1 / 7.0:1 on panel) |
+| `--accent-2-muted` | `#EBF1FE` | `#152742` | blue tint bg (accent-2 text on it: 4.6:1 / 5.9:1) ✓ |
+| `--agent` | `#A21CAF` | `#E879F9` | Fuchsia — subagents, question/plan rails, AI presence (6.3:1 / 7.3:1 on panel) |
+| `--agent-muted` | `#FBEFFE` | `#34153F` | fuchsia tint bg (agent text on it: 5.7:1 / 6.4:1) ✓ |
+| `--ambient-a` | `rgba(14,116,144,0.05)` | `rgba(34,211,238,0.06)` | hero/empty-state wash, cyan end |
+| `--ambient-b` | `rgba(37,99,235,0.05)` | `rgba(96,165,250,0.06)` | hero wash, blue end |
 
-*Light accent choice: the raw magenta stop `#F84FCC` fails AA on white (3.0:1); it is darkened along hue 330° until 6.2:1 → `#B01E86`. Same family, readable. Dark accent is omp collab-web's own `#F068C8` for continuity.*
+*Light accent choice: raw cyan `#22D3EE` fails AA on white (2.1:1); it is deepened along the same hue to cyan-700 `#0E7490` (5.4:1). Dark accent is the raw signal cyan at full brightness. `--agent` light is fuchsia-700 `#A21CAF` so agent text survives on its own tint.*
 
 ### 1.5 Status
 
 | Token | Light | Dark | Pairs with glyph |
 |---|---|---|---|
-| `--ok` | `#0B7A52` | `#3ECF8E` | ✓ check |
-| `--ok-bg` | `#EBF8F1` | `#12291D` | — (text on bg: 4.9:1 / 7.7:1 ✓) |
-| `--warn` | `#9A6200` | `#F5A524` | ▲ triangle |
-| `--warn-bg` | `#FDF3E0` | `#2A2110` | (4.6:1 / 7.8:1 ✓) |
-| `--err` | `#C62F35` | `#FF6166` | ✕ cross |
-| `--err-bg` | `#FDEDEB` | `#2E1518` | (4.8:1 / 5.8:1 ✓) |
-| `--info` | `#0E7490` | `#5AD8E6` | ● dot (= `--accent-2`) |
-| `--info-bg` | `#E4F4F8` | `#10262B` | — |
-| `--live` | `#0B7A52` | `#3ECF8E` | ● pulsing dot — **reserved for real-time presence only** (collab live, session running elsewhere), never for generic success |
+| `--ok` | `#047857` | `#34D399` | ✓ check (5.5:1 / 9.3:1 on panel) |
+| `--ok-bg` | `#E6F6EF` | `#0F2B1F` | — (text on bg: 4.9:1 / 7.9:1 ✓) |
+| `--warn` | `#B45309` | `#FBBF24` | ▲ triangle (5.0:1 / 10.7:1) |
+| `--warn-bg` | `#FDF3E2` | `#2E2410` | (4.6:1 / 9.1:1 ✓) |
+| `--err` | `#C81E1E` | `#F87171` | ✕ cross (5.7:1 / 6.5:1) |
+| `--err-bg` | `#FCECEC` | `#311518` | (5.0:1 / 6.1:1 ✓) |
+| `--info` | `#2563EB` | `#60A5FA` | ● dot (= `--accent-2`) |
+| `--info-bg` | `#EBF1FE` | `#152742` | — (= `--accent-2-muted`) |
+| `--live` | `#047857` | `#34D399` | ● pulsing dot — **reserved for real-time presence only** (collab live, session running elsewhere), never for generic success |
 
 ### 1.6 Diff
 
 | Token | Light | Dark |
 |---|---|---|
-| `--diff-add-bg` | `#E7F6EE` | `#12291D` |
-| `--diff-add-line` | `#D2F0DF` | `#173826` | (stronger line highlight within hunk) |
-| `--diff-add-text` | `#146C43` | `#6FDBA9` | gutter `+`, added-code accents (5.8:1 / 9.1:1 on own bg) |
-| `--diff-del-bg` | `#FDEDEB` | `#2E1518` |
-| `--diff-del-line` | `#FADCD8` | `#3A1B1E` |
-| `--diff-del-text` | `#B42318` | `#FF8A8E` | (5.8:1 / 7.5:1) |
-| `--diff-hunk-bg` | `#F0F0F4` | `#141418` | `@@` header rows |
-| `--diff-hunk-text` | `#575761` | `#A2A2AB` |
+| `--diff-add-bg` | `#E4F5EC` | `#0F2B1F` |
+| `--diff-add-line` | `#CFEFDE` | `#14382A` | (stronger line highlight within hunk) |
+| `--diff-add-text` | `#0E6E45` | `#5BD9A3` | gutter `+`, added-code accents (5.6:1 / 8.6:1 on own bg) |
+| `--diff-del-bg` | `#FDECEA` | `#311518` |
+| `--diff-del-line` | `#FADAD5` | `#42191D` |
+| `--diff-del-text` | `#C2291F` | `#FF9AA0` | (5.1:1 / 8.3:1) |
+| `--diff-hunk-bg` | `#EDF1F5` | `#141D2C` | `@@` header rows |
+| `--diff-hunk-text` | `#4B5866` | `#9DA9B8` |
 
 ### 1.7 Syntax highlighting (code blocks, diffs, file viewer)
 
-Light — base text `#1A1A21` on code bg `#FAFAFC`; dark — `#EDEDF0` on `#0A0A0D`. All pairs ≥ 4.5:1 (measured: worst is light comment 4.6:1, dark comment 4.9:1).
+Light — base text `#0F1722` on code bg `#F6F8FB`; dark — `#E9EEF4` on `#0B111B`. All pairs ≥ 4.5:1 (measured: worst is light number 4.7:1, dark comment 5.4:1).
 
 | Role | Light | Dark |
 |---|---|---|
-| `--syn-text` | `#1A1A21` | `#EDEDF0` |
-| `--syn-keyword` | `#A21C7E` (magenta) | `#F068C8` |
-| `--syn-string` | `#0B7A52` (green) | `#6FDBA9` |
-| `--syn-number` | `#9A6200` (amber) | `#F5A524` |
-| `--syn-function` | `#6D28D9` (violet) | `#A78BFA` |
-| `--syn-type` | `#0E7490` (cyan) | `#5AD8E6` |
-| `--syn-operator` | `#B42318` (red) | `#FF8A8E` |
-| `--syn-comment` | `#71717C` | `#82828C` |
-| `--syn-punct` | `#575761` | `#A2A2AB` |
+| `--syn-text` | `#0F1722` | `#E9EEF4` |
+| `--syn-keyword` | `#0E7490` (cyan) | `#22D3EE` |
+| `--syn-string` | `#047857` (green) | `#5BD9A3` |
+| `--syn-number` | `#B45309` (amber) | `#FBBF24` |
+| `--syn-function` | `#2563EB` (blue) | `#60A5FA` |
+| `--syn-type` | `#A21CAF` (fuchsia) | `#E879F9` |
+| `--syn-operator` | `#C81E1E` (red) | `#F87171` |
+| `--syn-comment` | `#64707D` | `#7B8A9C` |
+| `--syn-punct` | `#4B5866` | `#9DA9B8` |
 
-*The syntax palette reuses the brand triad (keyword=magenta, function=violet, type=cyan) so code "sounds like" omp without any new hues.*
+*The syntax palette reuses the brand spectrum (keyword=cyan, function=blue, type=fuchsia) so code "sounds like" Signal Grid without any new hues.*
 
 ### 1.8 Borders & focus
 
 | Token | Light | Dark |
 |---|---|---|
-| `--border` | `rgba(26,26,33,0.09)` | `rgba(237,237,240,0.08)` | hairlines, separators (decorative, exempt) |
-| `--border-strong` | `rgba(26,26,33,0.16)` | `rgba(237,237,240,0.16)` | interactive component outlines, inputs (≈1.9:1 — always paired with fill/label, and focus adds the ring below) |
-| `--ring` | `#0891B2` | `#5AD8E6` | focus ring (3.7:1 on white, 12.4:1 on `#060608` — ≥3:1 ✓) |
-| `--ring-soft` | `rgba(8,145,178,0.18)` | `rgba(90,216,230,0.22)` | ring halo on tinted surfaces |
+| `--border` | `rgba(15,23,34,0.08)` | `rgba(226,236,248,0.08)` | hairlines, separators (decorative, exempt) |
+| `--border-strong` | `rgba(15,23,34,0.14)` | `rgba(226,236,248,0.16)` | interactive component outlines, inputs (paired with fill/label; focus adds the ring below) |
+| `--ring` | `#0891B2` | `#22D3EE` | focus ring (3.7:1 on white, 10.8:1 on `#090D14` — ≥3:1 ✓) |
+| `--ring-soft` | `rgba(8,145,178,0.16)` | `rgba(34,211,238,0.22)` | ring halo on tinted surfaces |
+| `--grid-line` | `rgba(15,35,60,0.05)` | `rgba(120,170,220,0.07)` | blueprint grid lines (hero, setup, empty states only — never on work surfaces) |
 
 Focus style, everywhere: `outline: 2px solid var(--ring); outline-offset: 2px;` on `:focus-visible`. Never remove; never rely on color change alone.
 
 ### 1.9 Elevation & shadows
 
+Soft, cool-tinted, layered. Light shadows use a slate-blue base (`15,35,60`); dark shadows use pure black at lower opacity, since dark surfaces separate mostly by lift.
+
 | Token | Light | Dark |
 |---|---|---|
-| `--shadow-card` | `0 1px 2px rgba(16,16,20,0.05)` | `0 1px 2px rgba(0,0,0,0.5)` |
-| `--shadow-pop` | `0 8px 24px rgba(16,16,20,0.10), 0 2px 6px rgba(16,16,20,0.05)` | `0 8px 24px rgba(0,0,0,0.5), 0 2px 6px rgba(0,0,0,0.4)` |
-| `--shadow-overlay` | `0 24px 64px rgba(16,16,20,0.16), 0 4px 16px rgba(16,16,20,0.06)` | `0 24px 64px rgba(0,0,0,0.7), 0 1px 0 rgba(255,255,255,0.06) inset` |
-| `--shadow-composer` | `0 1px 2px rgba(16,16,20,0.05), 0 8px 24px rgba(16,16,20,0.06)` | `0 1px 2px rgba(0,0,0,0.5), 0 8px 24px rgba(0,0,0,0.4)` |
+| `--shadow-card` | `0 1px 2px rgba(15,35,60,0.06)` | `0 1px 2px rgba(0,0,0,0.40)` |
+| `--shadow-pop` | `0 4px 12px rgba(15,35,60,0.08), 0 1px 3px rgba(15,35,60,0.06)` | `0 4px 12px rgba(0,0,0,0.40), 0 1px 3px rgba(0,0,0,0.35)` |
+| `--shadow-overlay` | `0 16px 48px rgba(15,35,60,0.14), 0 4px 12px rgba(15,35,60,0.08)` | `0 16px 48px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.40)` |
+| `--shadow-composer` | `0 1px 2px rgba(15,35,60,0.06), 0 8px 24px rgba(15,35,60,0.08)` | `0 1px 2px rgba(0,0,0,0.40), 0 8px 24px rgba(0,0,0,0.35)` |
 
-### 1.10 Radii (role-based, from omp's own scale)
+Primary-button depth (the one allowed inset highlight): light `inset 0 1px 0 rgba(255,255,255,0.16), 0 1px 2px rgba(15,35,60,0.12)`; dark `inset 0 1px 0 rgba(255,255,255,0.22), 0 1px 2px rgba(0,0,0,0.40)`.
+
+### 1.10 Radii (modern rounded scale)
 
 | Token | Value | Role |
 |---|---|---|
@@ -157,26 +163,26 @@ Focus style, everywhere: `outline: 2px solid var(--ring); outline-offset: 2px;` 
 | `--radius` | `8px` | buttons, inputs, menus, tabs |
 | `--radius-lg` | `12px` | cards, tool cards, dialogs |
 | `--radius-xl` | `16px` | composer, sheets, large panels |
-| `--radius-full` | `999px` | pills, toggles, avatars, context ring |
+| `--radius-full` | `999px` | pills, toggles, avatars, status dots, context ring |
 
 ### 1.11 Spacing (4px base, 8px rhythm)
 
 `--s-1:4px · --s-2:8px · --s-3:12px · --s-4:16px · --s-5:20px · --s-6:24px · --s-8:32px · --s-10:40px · --s-12:48px · --s-16:64px · --s-20:80px`.
-Component density: control height sm 28px / md 32px / lg 40px; list row 36px; chat message gap 24px; card padding 16px; pane padding 16–24px.
+Component density (comfortable-compact SaaS): control height sm 28px / md 32px / lg 40px; list row 36px; chat message gap 24px; card padding 16px; pane padding 16–24px.
 
 ### 1.12 Motion
 
 | Token | Value | Use |
 |---|---|---|
-| `--dur-fast` | `120ms` | hovers, presses, toggles |
-| `--dur` | `180ms` | menus, popovers, tab switch |
-| `--dur-slow` | `280ms` | sheets, dialogs, pane resize settle |
-| `--dur-xl` | `420ms` | first-run tour transitions, empty-state art entrance |
+| `--dur-fast` | `100ms` | hovers, presses, toggles |
+| `--dur` | `160ms` | menus, popovers, tab switch |
+| `--dur-slow` | `240ms` | sheets, dialogs, pane resize settle |
+| `--dur-xl` | `360ms` | first-run tour transitions, empty-state art entrance |
 | `--ease-out` | `cubic-bezier(0.16,1,0.3,1)` | default entrance (omp's own) |
-| `--ease-in-out` | `cubic-bezier(0.65,0,0.35,1)` | looped animations (sheen, pulse) |
-| `--ease-spring` | `cubic-bezier(0.34,1.56,0.64,1)` | popover/tooltip pop |
+| `--ease-in-out` | `cubic-bezier(0.65,0,0.35,1)` | looped animations (pulse, sheen) |
+| `--ease-spring` | `cubic-bezier(0.34,1.3,0.64,1)` | popover/tooltip pop — gentle overshoot, never bouncy |
 
-`prefers-reduced-motion` / app "Reduce motion" setting: all durations → `0.01ms`; the π-sheen working indicator freezes to a static gradient π with a slowly-fading (opacity-only, 2s) status dot; skeleton shimmer → static `--hover` fill; no translate/scale ever.
+`prefers-reduced-motion` / app "Reduce motion" setting: all durations → `0.01ms`; the working shimmer freezes to a static gradient border at 50% opacity with no glow; the gradient pulse dot freezes at 60% opacity; the streaming caret stops blinking (solid); skeleton shimmer → static `--hover` fill; no translate/scale ever.
 
 ### 1.13 Z-index layers
 
@@ -190,11 +196,10 @@ Component density: control height sm 28px / md 32px / lg 40px; list row 36px; ch
 
 | Token | Stack | Use |
 |---|---|---|
-| `--font-ui` | `-apple-system, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif` | all UI text |
-| `--font-mono` | `ui-monospace, "SF Mono", "Cascadia Code", "Cascadia Mono", Menlo, Consolas, "Liberation Mono", monospace` | code, diffs, terminal, bracket labels, numbers in status bar |
-| `--font-display` | `"Space Grotesk", var(--font-ui)` | wordmark, setup/empty-state headings, big dashboard numbers |
+| `--font-ui` | `"Geist Variable", "Geist", -apple-system, "Segoe UI Variable Text", Roboto, sans-serif` | all UI text **and** display headings (600/700, tight tracking) |
+| `--font-mono` | `"Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace` | code, diffs, terminal, bracket labels, wordmark, numbers in status bar |
 
-**Space Grotesk** (OFL, bundled as woff2, weights 500+700 only, ≈60 KB) is the single bundled face: its geometric, monoline letterforms are the closest licensed match to omp's geometric "omp" wordmark, and it gives first-run and dashboard moments a distinct voice without renting a font. Everything else is system fonts — zero layout shift, native feel on both OSes.
+Two bundled families, both OFL: **Geist** (`@fontsource-variable/geist`, variable 100–900, ≈95 KB woff2) and **Geist Mono** (`@fontsource-variable/geist-mono`, variable 100–900, ≈90 KB woff2). Geist carries display duties at 700 with −0.02em tracking, so no third display family is needed (Space Grotesk was considered and cut to respect the two-family budget — Geist's engineered grotesque voice *is* the Signal Grid personality). System stacks are fallbacks only.
 
 ### 2.2 Scale (root 16px; user text-size setting scales root 90–130%, i.e. 14.4–20.8px)
 
@@ -206,14 +211,18 @@ Component density: control height sm 28px / md 32px / lg 40px; list row 36px; ch
 | `--text-base` | 14px / 22px | 400 | chat body, markdown, plan text |
 | `--text-lg` | 16px / 24px | 400/600 | section titles, dialog titles |
 | `--text-xl` | 20px / 28px | 600 | pane titles, dashboard cards |
-| `--text-2xl` | 24px / 30px | 700 display | empty-state heading |
-| `--text-3xl` | 32px / 38px | 700 display | setup screen, dashboard numbers |
+| `--text-2xl` | 24px / 30px | 700, −0.02em | empty-state heading |
+| `--text-3xl` | 32px / 38px | 700, −0.02em | setup screen, dashboard numbers |
 | `--text-code` | 12.5px / 18px | 400 mono | code blocks, diffs |
 | `--text-terminal` | 13px / 19px | 400 mono | terminal sheet (user-adjustable ±) |
 
-### 2.3 The bracket style — `[ LABEL ]`
+### 2.3 The wordmark + block cursor
 
-omp's mono-caps signature. Rules: `font-mono`, `--text-xs` (11px), uppercase, `letter-spacing: 0.14em`, `--fg-faint`; brackets included in the string. Used **only** for: (a) section eyebrows on calm surfaces (setup screen `[ WELCOME ]`, settings group labels), (b) the empty-state tagline, (c) the status bar's mode readout `[ AUTO ]`. Never on buttons, never interactive, max one per surface. It is a whisper of the terminal, not a texture.
+`visual-omp`, lowercase, Geist Mono 600, tracking 0, `--fg`, followed by a **solid block cursor** (0.55em wide × 1em tall, `--accent` fill, 4px left gap). The cursor is static in the title bar; it blinks (1.1s `steps(1)`) only in the README hero and the about screen. The block cursor is the app's smallest brand asset and appears **nowhere else** — working states use the shimmer and pulse dot (§5.16), and streaming text uses a thin 2px caret, not the block.
+
+### 2.4 The bracket style — `[ LABEL ]`
+
+omp's mono-caps signature, kept quiet. Rules: `font-mono`, `--text-xs` (11px), uppercase, `letter-spacing: 0.14em`, `--fg-faint`; brackets included in the string. Used **only** for: (a) section eyebrows on calm surfaces (setup screen `[ WELCOME ]`, settings group labels, question/plan card eyebrows), (b) the hero/empty-state tagline, (c) the status bar's mode readout `[ AUTO ]`. Never on buttons, never interactive, max one per surface.
 
 ---
 
@@ -223,8 +232,8 @@ Default window **1440×900**, minimum **1100×700**. Regions (light values shown
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────────┐
-│ TITLE BAR — 40px, --glass over content, --z-titlebar                           │ 40px
-│ ⊙⊙⊙  ≡  visual-omp        ·  my-shop / Fix checkout bug        ⌄    ☐  ✕ (win) │
+│ TITLE BAR — 40px, --glass + backdrop-blur over content, --z-titlebar           │ 40px
+│ ⊙⊙⊙  ≡  visual-omp▌       ·  my-shop / Fix checkout bug        ⌄    ☐  ✕ (win) │
 ├──────────────┬─────────────────────────────────────────────────────────────────┤
 │              │ TAB STRIP — 36px, --bg, bottom hairline                         │ 36px
 │              │ [✚ New] │ Fix checkout bug ● │ Styles pass ○ │ ▦ split │        │
@@ -248,20 +257,20 @@ Default window **1440×900**, minimum **1100×700**. Regions (light values shown
 
 ### 3.1 Title bar (40px)
 
-Frameless window with a custom bar; `-webkit-app-region: drag` on the bar, `no-drag` on controls.
+Frameless window with a custom bar; `-webkit-app-region: drag` on the bar, `no-drag` on controls. The bar is `--glass` with `backdrop-filter: blur(16px) saturate(1.5)` and a bottom 1px `--border` that appears only when content scrolls beneath it.
 
 - **macOS**: traffic lights inset at x=12, vertically centered; content starts at **x=92**. Window controls hidden (native).
 - **Windows**: content starts at x=12; caption buttons (minimize / maximize / close) at right, each **46×40**, lucide icons 14px, close hover `#E81123` + white icon (platform convention — the one allowed off-palette color).
-- Content: sidebar toggle (≡, only when sidebar hidden) · app mark (π, 20px, mark-gradient) + `visual-omp` wordmark (Space Grotesk 600, 15px) · centered: current project / session breadcrumb (`--fg-muted`, 13px, ⌄ opens session switcher) · right (macOS): nothing — right side stays empty so it never collides with traffic-light muscle memory.
+- Content: sidebar toggle (≡, only when sidebar hidden) · app mark (Circuit V, 20px, mark-gradient with orange apex node) + `visual-omp` wordmark lockup (§2.3, 15px) · centered: current project / session breadcrumb (`--fg-muted`, 13px, ⌄ opens session switcher) · right (macOS): nothing — right side stays empty so it never collides with traffic-light muscle memory.
 
 ### 3.2 Sidebar (264px default, drag 200–320px, `Cmd/Ctrl+B` hides)
 
 ```
 ┌────────────────────────────┐
-│ 🔍 Search chats…      ⌘K   │ 40px search field (--bg-inset, radius-md)
+│ 🔍 Search chats…      ⌘K   │ 32px search field (--bg-inset, radius-md, 1px --border)
 │ ＋ New chat                │ 36px primary ghost row, accent text
 │────────────────────────────│
-│ PROJECTS                   │ bracket eyebrow, 11px mono
+│ [ PROJECTS ]               │ bracket eyebrow, 11px mono
 │ ▾ ▣ my-shop           📌   │ project row 36px, chevron + folder icon
 │   ● Fix checkout bug   2m  │ session row 32px indent 28px
 │   ○ Styles pass        1h  │ ● live  ○ idle  ! needs-input(--warn)
@@ -276,14 +285,15 @@ Frameless window with a custom bar; `-webkit-app-region: drag` on the bar, `no-d
 ```
 
 - Sections: search · New chat · projects with nested sessions · Archived · bottom nav (Home / Settings / Help).
-- Session row anatomy: status dot (8px) · title (13px/500, 1-line ellipsis) · relative time (`--text-xs`, `--fg-faint`) · hover reveals ⋯ menu (Rename, Pin, Fork, Archive, Delete).
-- Badges: `needs-input` = warn dot + subtle `--warn-bg` pill on the title; `live elsewhere` = `--live` dot + "read-only" chip; Dispatch/scheduled = violet dot.
+- Session row anatomy: status dot (8px, `--radius-full`) · title (13px/500, 1-line ellipsis) · relative time (`--text-xs`, `--fg-faint`) · hover reveals ⋯ menu (Rename, Pin, Fork, Archive, Delete).
+- Badges: `needs-input` = warn dot + subtle `--warn-bg` pill on the title; `live elsewhere` = `--live` dot + "read-only" chip; Dispatch/scheduled = fuchsia dot.
+- While a session is working, its status dot becomes the **gradient pulse dot** (8px, `--mark-gradient` fill, §5.16).
 - Pinned sessions float to top of their project, pin icon at right.
 - Collapse behavior: `Cmd/Ctrl+B` hides to 0; a slim 16px hover strip remains at the left window edge; hovering it (or pressing the shortcut) slides the sidebar back as an overlay with scrim-free shadow (`--shadow-pop`). No icon-rail intermediate state — two states only, less to learn.
 
 ### 3.3 Tab strip + split view (36px)
 
-- Tabs: min 120px, max 200px, height 28px, `--radius` top-only, active = `--panel` fill + 2px accent underline + title 500; inactive = transparent, `--fg-muted`. Status dot left (8px); close ✕ on hover (16px hit area 24px); spinner-mini (π-sheen 12px) replaces dot while working.
+- Tabs: min 120px, max 200px, height 28px, `--radius` top-only, active = `--panel` fill + 2px accent underline + title 500; inactive = transparent, `--fg-muted`. Status dot left (8px); close ✕ on hover (16px hit area 24px); gradient pulse dot (§5.16) replaces the status dot while working.
 - `＋` button at strip end (28×28 ghost) → new chat in current project.
 - **Split view**: `Cmd/Ctrl+\` splits the focused chat column left/right (equal 50%, divider 4px `--border`, drag 30–70%). Each split has its own header + chat + composer but shares the tab strip, right dock, and status bar (status bar reflects focused split). `Cmd/Ctrl+click` a sidebar session opens it in the second split. Max 2 splits — more is what tabs are for.
 
@@ -294,15 +304,15 @@ Frameless window with a custom bar; `-webkit-app-region: drag` on the bar, `no-d
 │                                                        │  ☰ Plan  🤖 Agents  ⋯  │
 ```
 
-- Left: session icon ◈ (16px, `--fg-muted`), inline-editable title (15px/600; click ✎ or double-click → input), then **model chip** (`--accent-muted`, accent text, ⌄ → model picker, §4.12) and **mode chip** (neutral `--hover` fill; `Plan` mode = `--agent-muted` violet; `Yolo/Auto` = neutral) — chips are 24px tall, `--radius-full`, `--text-xs` 600.
-- Right (icon+label buttons, 28px, ghost): **Restart ↻**, **Compact ⧉**, **Plan ☰** (toggle, violet when on), **Agents 🤖** (opens Agents hub as sheet), **New ＋**, overflow ⋯ (Rewind, Fork, Branch tree, Handoff, Share, Export, Rename, Archive).
+- Left: session icon ◈ (16px, `--fg-muted`), inline-editable title (15px/600; click ✎ or double-click → input), then **model chip** (`--accent-muted`, accent text, ⌄ → model picker, §4.12) and **mode chip** (neutral `--hover` fill; `Plan` mode = `--agent-muted` fuchsia; `Yolo/Auto` = neutral) — chips are 24px tall, `--radius-full`, `--text-xs` 600.
+- Right (icon+label buttons, 28px, ghost): **Restart ↻**, **Compact ⧉**, **Plan ☰** (toggle, fuchsia when on), **Agents 🤖** (opens Agents hub as sheet), **New ＋**, overflow ⋯ (Rewind, Fork, Branch tree, Handoff, Share, Export, Rename, Archive).
 - Contextual rule: Compact shows a tiny `!` badge when context ≥ 75%; Plan button appears only when a plan exists or Plan mode is on, otherwise it lives in ⋯. No more than 5 visible buttons + ⋯ — everything else is in the palette.
 
 ### 3.5 Chat column
 
 - Max width **760px**, horizontally centered, 24px side gutters, top padding 24px, bottom padding 16px above composer. Transcript view toggle (**Normal / Thinking / Verbose**) lives as a segmented control in the ⋯ overflow *and* cycles with `Ctrl/Cmd+O`; Normal is default.
 - **User message**: right-aligned? No — full-width rows for everyone (chat-app bubbles read as consumer messaging; this is a work log). User messages: `--bg-inset` card, `--radius-lg`, 12px/16px padding, left 2px `--border-strong` rail; attachments as 48px thumbnails above text; small "You" label (`--text-xs` muted) + timestamp on hover; hover actions: Rewind ↩, Fork ⑂, Copy.
-- **Assistant message**: no card — bare markdown on the chat background with a 20px π mark (mark-gradient) + model name + time header row; hover actions: Copy, Rewind to here, Read aloud (TTS). Streaming text renders inline with a 2px blinking caret (`--accent`, 1s blink, suppressed in reduced motion).
+- **Assistant message**: no card — bare markdown on the chat background with a 20px Circuit V mark (mark-gradient, orange apex node) + model name + time header row; hover actions: Copy, Rewind to here, Read aloud (TTS). Streaming text renders inline with a 2px blinking caret (`--accent`, 1.1s blink, suppressed in reduced motion).
 - **Thinking block**: collapsed one-liner "Thought for 12s" (`--fg-faint`, italic off, chevron ▸); expanded = `--fg-muted` text on `--bg-inset`, left 2px `--agent` rail. Visible in Normal only after expansion; always visible in Thinking view.
 - **Tool cards**: §4.7.
 - **System notices** (compaction, mode change, restarts): centered `--text-xs` `--fg-faint` line with 24px hairline rules either side — "· Context summarized ·".
@@ -310,7 +320,7 @@ Frameless window with a custom bar; `-webkit-app-region: drag` on the bar, `no-d
 - **Queued messages tray**: §3.6.
 - Day/time dividers: centered `--text-xs` `--fg-faint` "Today 14:32".
 
-### 3.6 Composer (floating card, max 760px, `--radius-xl`, `--shadow-composer`)
+### 3.6 Composer (floating card, max 760px, `--radius-xl`, `--shadow-composer`, 1px `--border-strong`)
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -325,10 +335,11 @@ Frameless window with a custom bar; `-webkit-app-region: drag` on the bar, `no-d
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-One bottom row, 40px tall, contents left→right: **＋** (28px ghost; menu: Attach file, @-mention file, Prompt library, Skills, Custom commands) · **permission-mode selector** (pill, 28px) mapping 1:1 to omp's `tools.approvalMode`: `Ask me first` (`always-ask`: asks before edits and commands) · `Edits OK` (`write`: edits run, commands ask) · `Auto` (`yolo`: runs everything, no questions). Default for new users is **Auto** (spec: auto-approve everything); Auto carries a quiet `--fg-muted` label "no questions asked", no warn dot · mode quick-toggles **!** and **$** (28px ghost, active = `--accent-2-muted` fill + cyan text) · flexible space · **voice 🎤** (28px ghost; recording = `--err` pulse ring) · **context ring** (20px, §5.17) · **model ⌄** (text button, 13px/500) · **thinking ⌄** (text button, `--fg-muted`; hidden if model doesn't support) · **send ➤** (32×32, `--radius`, filled `--accent`; while working becomes **stop ■** `--err`-tinted ghost with same geometry). `Enter` sends, `Shift+Enter` newline, `Cmd/Ctrl+Enter` interrupts-and-sends-now.
-- **@-mention**: typing `@` opens fuzzy picker (§5 menus) listing project files; selected files appear as cyan chips inline.
+One bottom row, 40px tall, contents left→right: **＋** (28px ghost; menu: Attach file, @-mention file, Prompt library, Skills, Custom commands) · **permission-mode selector** (pill, 28px) mapping 1:1 to omp's `tools.approvalMode`: `Ask me first` (`always-ask`: asks before edits and commands) · `Edits OK` (`write`: edits run, commands ask) · `Auto` (`yolo`: runs everything, no questions). Default for new users is **Auto** (spec: auto-approve everything); Auto carries a quiet `--fg-muted` label "no questions asked", no warn dot · mode quick-toggles **!** and **$** (28px ghost, active = `--accent-2-muted` fill + blue text) · flexible space · **voice 🎤** (28px ghost; recording = `--err` pulse ring) · **context ring** (20px, §5.17) · **model ⌄** (text button, 13px/500 `--fg-muted`) · **thinking ⌄** (same styling) · **send/stop** (32px, `--radius`, primary: `--accent` fill + §1.9 primary-button depth, ➤ `--accent-fg`; while working: `--err`-text ghost ■ Stop).
+While the agent works, the composer frame carries the **signal shimmer border** (§5.16).
+- **@-mention**: typing `@` opens fuzzy picker (§5 menus) listing project files; selected files appear as blue chips inline (`--accent-2-muted` fill, `--accent-2` text).
 - **Queued tray** rows: 32px, `--text-sm`, drag-handle to reorder, per-row [Send now] [Edit] [✕]; tray max 3 rows + "N more".
-- **Drag-drop**: files dropped anywhere on the chat column → full-column drop veil (`--accent-2-muted` 60% + dashed `--accent-2` outline, `--radius-xl`).
+- **Drag-drop**: files dropped anywhere on the chat column → full-column drop veil (`--accent-muted` at 60% + 2px solid `--accent` outline inset 8px, `--radius-xl`).
 
 ### 3.7 Right dock (default 420px, drag 320–640px, `Cmd/Ctrl+.` toggles, remembers tab+width per project)
 
@@ -337,7 +348,7 @@ One bottom row, 40px tall, contents left→right: **＋** (28px ghost; menu: Att
 - **Diff**: file list left (140px, collapsible) + per-file unified diff; line-comment `＋` on gutter hover → comment box, `Cmd/Ctrl+Enter` sends all comments to omp; header: file path breadcrumb, "Review code" button (accent), Accept/Reject per hunk in Manual mode.
 - **Files**: tree (24px rows, 12px indent steps) + viewer tabs; click file → viewer; `⌘click` or right-click → "Mention in chat" (@-chip). Syntax colors §1.7; images render inline.
 - **Preview**: address bar (back/fwd/reload, URL, open-external ⧉, select-element ⌖) + webview; empty state: "Start a dev server and it shows up here."
-- **Tasks**: three groups — Checklist (todo phases, checkbox rows), Helpers (subagents: violet avatar, name, one-line status, live token count, Stop), Background (shell jobs, dev servers; live tail on expand).
+- **Tasks**: three groups — Checklist (todo phases, checkbox rows), Helpers (subagents: fuchsia avatar, name, one-line status, live token count, Stop), Background (shell jobs, dev servers; live tail on expand).
 - **Plan**: current plan markdown + Approve / Refine bar (§4.9 when approval pending).
 - **Terminal**: xterm.js, `--bg-inset` padding 8px, font `--text-terminal`; tab `+` for extra shells; this is a plain project shell, distinct from the omp terminal sheet (§4.11).
 
@@ -345,7 +356,7 @@ One bottom row, 40px tall, contents left→right: **＋** (28px ghost; menu: Att
 
 Left: **git branch** (⎇ glyph + name, mono; click → branch menu incl. Worktree toggle) · **changes** `+12 −3` (`--diff-add-text` / `--diff-del-text`; click → Diff dock) · **PR/CI chip** when a PR exists (✓ green / ▲ amber / ✕ red + "Fix CI" on failure).
 Center (absolute-centered): nothing — keep it empty.
-Right: **context ring + %** (§5.17, click → Compact dialog) · **cost today** `$1.24` (mono; click → Usage dashboard; turns `--warn` at 80% of the user's daily cap) · **omp status** (`● omp 18.4.4` — `--ok` dot connected / `--warn` reconnecting / `--err` stopped; click → diagnostics menu: Open terminal sheet, Restart omp, Copy diagnostics).
+Right: **context ring + %** (§5.17, click → Compact dialog) · **cost today** `$1.24` (mono; click → Usage dashboard; turns `--warn` at 80% of the user's daily cap) · **omp status** (`● omp 18.4.4` — `--ok` dot connected / `--warn` reconnecting / `--err` stopped; click → diagnostics menu: Open terminal sheet, Restart omp, Copy diagnostics) · **mode readout** `[ AUTO ]` (bracket style, §2.4) when not in the default mode.
 All status-bar items are buttons with tooltips; bar is 28px exactly, never wraps, items truncate middle with ellipsis.
 
 ---
@@ -356,14 +367,14 @@ Conventions: wireframes are schematic, not to scale; every screen lists its comp
 
 ### 4.1 omp-missing setup screen
 
-Full-window replacement (no sidebar/dock), centered 560px column on `--bg` with ambient wash (radial `--ambient-a` top-left → `--ambient-b` bottom-right, 480px radius each, static).
+Full-window replacement (no sidebar/dock), centered 560px column on `--bg` with ambient wash (radial `--ambient-a` top-left → `--ambient-b` bottom-right, 480px radius each, static) and a faint blueprint grid (`--grid-line`, 40px squares, radially masked to transparent at 70% of the window diagonal).
 
 ```
                  ╭──────╮
-                 │  π   │                       96px π mark, mark-gradient
-                 ╰──────╯
-              [ WELCOME ]                       bracket eyebrow
-        Let's get omp installed                 Space Grotesk 700, 32px
+                 │  ◇   │                       96px Circuit V mark, mark-gradient
+                 ╰──────╯                       (orange apex node, soft cyan glow
+              [ WELCOME ]                       rgba(34,211,238,0.18) Ø160 behind)
+        Let's get omp installed                 Geist 700, 32px, -0.02em
    visual-omp is a friendly window around omp,  15px, --fg-muted, 440px max
    the AI coding agent. omp isn't on this
    computer yet — it takes about a minute.
@@ -380,8 +391,8 @@ Full-window replacement (no sidebar/dock), centered 560px column on `--bg` with 
    Having trouble?  Open the help guide →    13px link, accent
 ```
 
-- Inventory: π mark, bracket label, display heading, 2 step cards (card, `--radius-lg`), primary/secondary/ghost buttons, copy button (toast on copy), footer link.
-- States: **missing** (above) · **installing** (step 1 expands inline into a 240px mini-terminal showing the installer output live — user-initiated, visible, with Cancel) · **too old** (same layout; heading "Your omp is out of date", shows installed vs required version, step 1 becomes "Update omp") · **done** (both steps get ✓ `--ok`, auto-advances to first-run tour after 600ms).
+- Inventory: Circuit V mark, bracket label, display heading, 2 step cards (card, `--radius-lg`), primary/secondary/ghost buttons, copy button (toast on copy), footer link.
+- States: **missing** (above) · **installing** (step 1 expands inline into a 240px mini-terminal showing the installer output live — user-initiated, visible, with Cancel; the mark's glow gently pulses) · **too old** (same layout; heading "Your omp is out of date", shows installed vs required version, step 1 becomes "Update omp") · **done** (both steps get ✓ `--ok`, auto-advances to first-run tour after 600ms).
 
 ### 4.2 First-run guided tour
 
@@ -401,7 +412,7 @@ Shown when a project is selected and no chat is open (or via ⌂ Home). Content 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│ [ PROJECT ]              my-shop                        ⚙ ▾ │ eyebrow + Space Grotesk 700 28px + settings menu
+│ [ PROJECT ]              my-shop                        ⚙ ▾ │ eyebrow + Geist 700 28px + settings menu
 │ ⎇ main · clean · 3 chats this week · $4.10 this week        │ 13px muted meta row, mono numbers
 ├─────────────────────────────────────────────────────────────┤
 │ ┌─ Recent chats ────────────────────────────┐  [ See all → ]│
@@ -411,8 +422,8 @@ Shown when a project is selected and no chat is open (or via ⌂ Home). Content 
 │ └────────────────────────────────────────────┘             │
 │ ┌─ Start something ────────────────────────────────────────┐│
 │ │ [ ✨ Fix a bug ] [ 🧪 Add tests ] [ 📝 Explain this ]    ││ quick-start prompt chips, 40px,
-│ │ [ 🚀 Build a feature ]                                    ││ --panel cards, hover --hover + lift
-│ └──────────────────────────────────────────────────────────┘│
+│ │ [ 🚀 Build a feature ]                                    ││ --panel cards, hover --hover + lift 1px
+│ └──────────────────────────────────────────────────────────┘│   + --shadow-card
 │ ┌─ Project health ──────────┐ ┌─ Instructions ─────────────┐│
 │ │ ⎇ main  +12 −3  2 stashes │ │ AGENTS.md · 1.2 KB  [Edit] ││ two 50% cards, 120px tall
 │ │ ahead 2 · CI ✓ passing    │ │ 3 rules loaded      [View] ││
@@ -436,19 +447,20 @@ Modal dialog 560px (`--bg-overlay`), 3 steps with dot progress header `[ STEP 1 
 Chat column, vertically centered 520px block:
 
 ```
-                      π  (48px, mark-gradient, slow sheen)
-            What should we work on?        Space Grotesk 700, 24px, --fg
+                      ◇  (48px Circuit V, mark-gradient, orange apex,
+            What should we work on?        soft glow rgba(34,211,238,0.14) Ø96)
+              Geist 700, 24px, -0.02em, --fg
    ┌────────────────────┐ ┌────────────────────┐
    │ 🐞 Something's     │ │ ✨ Build something  │  2×2 grid of prompt cards,
    │    broken…         │ │    new…             │  156×88px, --panel, 12px pad,
-   ├────────────────────┤ ├────────────────────┤  icon 20px accent, title 13/600,
-   │ 📖 Explain this    │ │ 🧹 Clean this up…   │  2-line sample text 12px muted
-   │    project…        │ │                     │
+   ├────────────────────┤ ├────────────────────┤  1px --border, icon 20px accent,
+   │ 📖 Explain this    │ │ 🧹 Clean this up…   │  title 13/600, 2-line sample
+   │    project…        │ │                     │  text 12px muted
    └────────────────────┘ └────────────────────┘
         Press / for shortcuts · @ to mention a file     12px --fg-faint hints
 ```
 
-- Each card carries a full example prompt (§8) into the composer on click (not auto-send). Hover: lift 2px + `--shadow-card`; focus: ring.
+- Each card carries a full example prompt (§8) into the composer on click (not auto-send). Hover: lift 1px + `--shadow-card`; focus: ring.
 - States: **first-ever chat in app** → heading "What should we work on?" + hint line under it: "Tip: just describe what you want in plain words."; **returning** → heading "Back to it — what's next?".
 
 ### 4.6 Live chat, mid-stream
@@ -458,7 +470,7 @@ Chat column, vertically centered 520px block:
 │ ┌──────────────────────────────────────────────────────────────────┐ │
 │ │ The checkout total is wrong when a coupon is applied. Fix it?    │ │ user card
 │ └──────────────────────────────────────────────────────────────────┘ │
-│ π  Sonnet 4.5 · 14:32                                                │
+│ ◇  Sonnet 4.5 · 14:32                                                │ Circuit V 20px header
 │ I'll trace how coupons flow into the total.                          │ streamed markdown
 │ ┌──────────────────────────────────────────────────────────────────┐ │
 │ │ ▸ 🔍 Searched for "coupon" — 12 matches                       ✓ │ │ tool card collapsed
@@ -466,18 +478,19 @@ Chat column, vertically centered 520px block:
 │ │ ▾ ✏️ Edited 2 files — cart.ts +8 −3, pricing.ts +1 −1  [View] ✓ │ │ expanded state shown
 │ │   │ diff preview, 2 file blocks, --bg-inset …                    │ │
 │ ├──────────────────────────────────────────────────────────────────┤ │
-│ │ ▸ 🧪 Running tests…                                        ● ◌  │ │ running: π-EQ + live tail
+│ │ ▸ 🧪 Running tests…                                           ◉ │ │ running: shimmer border + dot
 │ └──────────────────────────────────────────────────────────────────┘ │
-│ π◌ Working… 14s                                      ■ Stop          │ working row: π-sheen + elapsed
+│ ◉ Working… 14s — Running tests                       ■ Stop          │ working row: pulse dot + elapsed
 ```
 
 - Streaming caret on text; tool cards stream in-place (no layout jump — cards reserve final height once result arrives via 160ms height animation).
-- Working row pinned just above composer while active: π-sheen mark + "Working… {elapsed}s" + current activity ("Running tests") in `--fg-muted` + Stop. Also mirrored in the session's tab and sidebar row.
+- Running tool cards carry the **signal shimmer border** (§5.16) in place of their static `--border`.
+- Working row pinned just above composer while active: gradient pulse dot + "Working… {elapsed}s" + current activity ("Running tests") in `--fg-muted` + Stop. Also mirrored in the session's tab and sidebar row.
 - Scroll behavior: auto-scroll locks to bottom; scrolling up shows a floating "↓ New activity" pill (accent) bottom-right of the column.
 
 ### 4.7 Tool cards — collapsed & expanded
 
-Anatomy (all tools): full-width card, `--panel`, 1px `--border`, `--radius-lg`, min-height 40px collapsed. Left 2px status rail (running `--accent-2` / ok `--ok` / err `--err`). Header row 40px: chevron ▸/▾ (16px) · tool glyph (16px, `--fg-muted`) · **friendly summary** 13px/500 · flexible space · meta (duration, counts, `--text-xs` `--fg-faint`) · status glyph. Expanded body: 12px pad, `--bg-inset` inner well (`--radius`), raw args/output; footer row with [Copy] [Open in Files/Diff] context actions. Secrets always masked `•••` with eye toggle.
+Anatomy (all tools): full-width card, `--panel`, 1px `--border`, `--radius-lg`, min-height 40px collapsed. Left 2px status rail (running `--accent` / ok `--ok` / err `--err`). Header row 40px: chevron ▸/▾ (16px) · tool glyph (16px, `--fg-muted`) · **friendly summary** 13px/500 · flexible space · meta (duration, counts, `--text-xs` `--fg-faint`) · status glyph. Expanded body: 12px pad, `--bg-inset` inner well (`--radius`), raw args/output; footer row with [Copy] [Open in Files/Diff] context actions. Secrets always masked `•••` with eye toggle.
 
 | Tool | Glyph | Collapsed friendly summary (exact patterns) | Expanded body |
 |---|---|---|---|
@@ -486,15 +499,15 @@ Anatomy (all tools): full-width card, `--panel`, 1px `--border`, `--radius-lg`, 
 | write | ✏️＋ | "Created `README.md` — 84 lines" | full file content, syntax-highlighted |
 | read | 📄 | "Read `pricing.ts` — 212 lines" | file excerpt with line numbers; collapsed again at 200 lines with "Show all" |
 | grep/glob | 🔍 | "Searched for `coupon` — 12 matches in 4 files" | match list grouped by file, each row: line no + context line, click → Files pane |
-| task (subagents) | 🤖 | "Helper: explore-auth — working… 12k tokens" / "…done ✓ — 3 findings" | violet-tinted body: live activity feed (tool one-liners), final report markdown, [Open as chat] |
+| task (subagents) | 🤖 | "Helper: explore-auth — working… 12k tokens" / "…done ✓ — 3 findings" | fuchsia-tinted body: live activity feed (tool one-liners), final report markdown, [Open as chat] |
 | todo | ☑ | "Checklist — 4 of 7 done" | checkbox rows, phase headers; current item accented |
 | web_search | 🌐 | "Searched the web — 5 sources" | source cards: favicon, title link, 2-line snippet, [Open] |
 
-Running state adds π-EQ mini (§5.16) where the status glyph sits. Error state: `--err` rail + "— failed" + [Try again] button in footer. Verbose view: cards start expanded and also show raw JSON args; Thinking view: collapsed as Normal.
+Running state replaces the static border with the signal shimmer (§5.16) and the status glyph with an 8px gradient pulse dot. Error state: `--err` rail + "— failed" + [Try again] button in footer. Verbose view: cards start expanded and also show raw JSON args; Thinking view: collapsed as Normal.
 
 ### 4.8 Ask / approval question card
 
-Appears inline in the transcript when omp asks (`ask`, tool approvals, select/confirm/input UI requests). Card: `--panel`, `--agent` violet 2px left rail, `--radius-lg`, 16px padding, violet `[ QUESTION ]` eyebrow.
+Appears inline in the transcript when omp asks (`ask`, tool approvals, select/confirm/input UI requests). Card: `--panel`, `--agent` fuchsia 2px left rail, `--radius-lg`, 16px padding, fuchsia `[ QUESTION ]` eyebrow.
 
 ```
 ┌──────────────────────────────────────────────────────────┐
@@ -513,7 +526,7 @@ Variants: **approval** (tool permission) → option cards replaced by: command/d
 
 ### 4.9 Plan Review card
 
-Inline card when a plan awaits decision: violet rail, `[ PLAN READY ]` eyebrow, plan title 15/600, collapsible plan body (markdown), footer:
+Inline card when a plan awaits decision: fuchsia rail, `[ PLAN READY ]` eyebrow, plan title 15/600, collapsible plan body (markdown), footer:
 
 ```
 │ [ Approve & run ] [ Approve & summarize first ] [ Keep planning ▾ ] │
@@ -548,7 +561,7 @@ Centered overlay 640px, top-offset 18vh, `--bg-overlay`, `--radius-lg`, `--shado
 
 ### 4.11 Terminal sheet (full-screen omp menus)
 
-Bottom sheet, 80% window height, `--radius-xl` top corners, `--shadow-overlay`, scrim. Header 40px: terminal glyph · title "omp terminal — Settings" (the open omp screen's name, 13px/600) · hint "This is omp's own screen — click or type to use it" (`--fg-muted`) · [⤢ Expand to full] [✕ Close]. Body: xterm.js mirroring the live hidden TUI, `--bg-inset`, 12px padding. Opens automatically whenever omp shows a screen visual-omp doesn't draw natively (detected via omp's TUI focus/overlay state: `/settings` fallback, `/login`, `/tree`, `/resume` picker, `/extensions`, confirm/input prompts); closing with a menu open sends Esc and asks "Leave this omp screen? Your choice won't be saved." States: connected (live mirror), reconnecting (amber banner row inside header), read-only session (input disabled + "This chat is open elsewhere — viewing only" notice bar).
+Bottom sheet, 80% window height, `--radius-xl` top corners, `--shadow-overlay`, scrim. Header 40px: terminal glyph · title "omp terminal — Settings" (the open omp screen's name, 13px/600) · hint "This is omp's own screen — click or type to use it" (`--fg-muted`) · [⤢ Expand to full] [✕ Close]. Body: xterm.js mirroring the live hidden TUI, `--bg-inset`, 12px padding. Opens automatically whenever omp shows a screen visual-omp doesn't draw natively (detected via omp's TUI focus/overlay state: `/settings` fallback, `/login`, `/tree`, `/resume` picker, `/extensions`, confirm/input prompts); closing with a menu open sends Esc and asks "Leave this omp screen? Your choice won't be saved." States: connected (live mirror), reconnecting (amber banner row inside header), disconnected (err banner + [Restart omp]).
 
 ### 4.12 Settings
 
@@ -560,7 +573,7 @@ Modal sheet 880×640, left nav 200px + content 640px (24px padding). Tabs: **Gen
 - **Models**: link-button to Model roles editor (§4.13) + default model picker + thinking default.
 - **Sounds & alerts**: notification toggles (chat finished, needs input, CI finished), sound toggle, do-not-disturb schedule.
 - **Shortcuts**: searchable shortcut table with click-to-rebind (capture pill "Press keys…"), conflict shown `--err` inline, [Reset all].
-- **About**: app + omp versions, π mark, links (omp docs, report issue), [Check for updates].
+- **About**: app + omp versions, Circuit V mark (48px) + wordmark lockup with blinking block cursor, links (omp docs, report issue), [Check for updates].
 - **Advanced**: single searchable list of *every* omp setting (`omp config list`): search field sticky top; rows 40px: setting key (mono 12px) · plain-language description · value control (toggle/input/select by type) · "edited" dot when non-default; footer [Reset all to defaults] danger-ghost. Group headers by domain (collab, model, ui, …). 400+ rows virtualized.
 - States: settings write failures → inline `--err` toast "Couldn't save — omp said: {reason}"; external edits (config.yml changed) → info banner "Settings changed outside the app — [Reload]".
 
@@ -587,8 +600,8 @@ Modal sheet 960×640. Layout: left role list 240px, right editor.
 ### 4.14 Agents hub
 
 Modal sheet 960×640. Header: title "Helpers" + plain subtitle "Reusable specialists omp can hand work to." + [＋ New helper] primary + [✨ Create with AI] secondary (asks for a description, generates the agent file).
-List rows 64px: violet avatar (agent initial on `--agent-muted`) · name 14/600 + scope chip (Built-in / This project / All projects) · one-line description (from frontmatter) · model chip · enable toggle · ⋯ (Edit, Duplicate, Run now, Delete).
-Row states: disabled (40% opacity, toggle off), running now (π-EQ mini + "Running in Fix checkout bug"), error in definition file (warn chip + [Fix] opens editor).
+List rows 64px: fuchsia avatar (agent initial on `--agent-muted`) · name 14/600 + scope chip (Built-in / This project / All projects) · one-line description (from frontmatter) · model chip · enable toggle · ⋯ (Edit, Duplicate, Run now, Delete).
+Row states: disabled (40% opacity, toggle off), running now (gradient pulse dot + "Running in Fix checkout bug"), error in definition file (warn chip + [Fix] opens editor).
 Editor drawer (right, 400px): name, description, model override select, tools checklist (plain names), instructions markdown editor (mono, preview toggle), footer [Save] [Test in new chat]. Built-in agents (scout, reviewer, security-reviewer, task, sonic) are editable-as-copy ("Customize" duplicates to All-projects scope).
 
 ### 4.15 MCP servers manager
@@ -610,7 +623,7 @@ Layout: left list 280px (entries: key/title 13/500 + preview line + age), right 
 
 ### 4.18 Usage & limits dashboard
 
-Modal sheet 880×600. Top stat row: four 160×88 stat cards (Space Grotesk 700 28px number + 12px label): **Today $1.24 · This week $8.90 · Chats 23 · Tokens 1.2M**.
+Modal sheet 880×600. Top stat row: four 160×88 stat cards (Geist 700 28px number, −0.02em + 12px label): **Today $1.24 · This week $8.90 · Chats 23 · Tokens 1.2M**.
 Middle: 7-day bar chart (bars 24px, `--accent-2` fill, today `--accent`; hover tooltip exact $; no gridlines, baseline hairline only).
 Limits section: per-limit rows: label ("5-hour window") + progress bar (thin 6px, `--ok`→`--warn` at 70%→`--err` at 90%) + resets-at text; at-limit row shows "Resets in 1h 12m — queued messages will send then" with auto-continue toggle.
 Per-chat table (virtualized): chat title, model, tokens in/out, cost, duration; sortable columns; footer [Export CSV] [Open omp stats page ↗]. States: no API key / local-only → "Usage tracking needs a provider account — [Set up]" empty state; fetch error → cached data + "as of 14:02" muted chip.
@@ -635,7 +648,7 @@ Modal sheet 720×560. Search field; two groups: **Guides** (rows: "Your first ch
 
 ### 4.22 System surfaces
 
-**Update notice** — toast, bottom-right, 360px: π mark + "visual-omp 1.3 is here" + one-line highlight + [Restart to update] [Later]; also a persistent quiet version: ⋯ menu → "Update ready" accent dot. omp-engine update appears separately: status bar omp chip gets `--info` dot + menu item "Update omp to 18.5".
+**Update notice** — toast, bottom-right, 360px: Circuit V mark + "visual-omp 1.3 is here" + one-line highlight + [Restart to update] [Later]; also a persistent quiet version: ⋯ menu → "Update ready" accent dot. omp-engine update appears separately: status bar omp chip gets `--info` dot + menu item "Update omp to 18.5".
 **Quit-warning dialog** — modal 420px when quitting/closing a tab with work in flight: warn glyph, "omp is still working in 2 chats", list of chat titles with activity, [ Keep waiting ] (ghost) [ Stop and quit ] (danger). "Don't ask again — always stop" checkbox. Sessions auto-resume next launch (stated in one muted line: "Your chats pick up where they left off.").
 **Notifications** — native OS toasts (macOS Notification Center / Windows): title = chat title, body = outcome one-liner ("Finished: Edited 3 files and tests pass ✓" / "Needs your answer"), click focuses window + chat + scrolls to card. In-app mirror: bell-less design — the sidebar `!` badges are the inbox; no notification center chrome.
 **Toast system** (in-app): bottom-right stack (max 3), 320px, `--bg-raised` + `--shadow-pop`, `--radius-lg`, 12px pad: status glyph + 13px message + optional action + ✕; autodismiss 5s (info) / sticky (error); enter `translateY(8px)→0` `--dur` `--ease-out`.
@@ -650,21 +663,21 @@ Geometry is exact; colors always by token. All interactive components: `:focus-v
 
 | Variant | Fill | Text | Border | Use |
 |---|---|---|---|---|
-| Primary | `--accent` (hover `--accent-hover`, active `--accent-active`) | `--accent-fg` | none | one per surface; the only pink rectangle |
-| Secondary | `--panel` | `--fg` | 1px `--border-strong` | default action |
+| Primary | `--accent` (hover `--accent-hover`, active `--accent-active`) + §1.9 primary-button depth | `--accent-fg` | none | one per surface; the only cyan rectangle |
+| Secondary | `--panel` (hover `--bg-inset`) | `--fg` | 1px `--border-strong` | default action |
 | Ghost | transparent (hover `--hover`, active `--selected`) | `--fg-muted` → `--fg` on hover | none | toolbars, headers |
 | Danger | `--err` (hover darkened 8%) | `#FFFFFF` | none | destructive confirm only |
 | Danger-ghost | transparent (hover `--err-bg`) | `--err` | none | destructive in menus/lists |
 
-Sizes: **sm** 28px h / 12px pad-x / `--text-sm` · **md** 32px / 14px / `--text-md` · **lg** 40px / 18px / `--text-md` 600. Radius `--radius`. Icon+label gap 6px, icon 16px (14px in sm). Press feedback: `scale(0.97)` 120ms (off in reduced motion). Loading: label replaced by spinner (§5.15) same width — no layout shift.
+Sizes: **sm** 28px h / 12px pad-x / `--text-sm` · **md** 32px / 14px / `--text-md` · **lg** 40px / 18px / `--text-md` 600. Radius `--radius`. Icon+label gap 6px, icon 16px (14px in sm). Press feedback: `scale(0.98)` 100ms (off in reduced motion). Hover transitions: `background-color/border-color/box-shadow` `--dur-fast` `--ease-out`. Loading: label replaced by spinner (§5.15) same width — no layout shift.
 
 ### 5.2 Icon buttons + tooltips
 
-28px square (sm 24px, lg 32px), `--radius`, ghost styling, icon 16px lucide 1.5px stroke. **Every icon button carries a tooltip**: 11px/500 `--fg` on `--bg-raised` + `--shadow-pop`, `--radius-sm`, 6px pad, 8px offset, 400ms hover intent, includes shortcut in `--fg-faint` mono ("Restart · ⌘R"). Menus/tooltips render in `--z-tooltip`.
+28px square (sm 24px, lg 32px), `--radius`, ghost styling, icon 16px lucide **1.75px stroke, round caps and joins**. **Every icon button carries a tooltip**: 11px/500 `--fg` on `--bg-raised` + `--shadow-pop` + 1px `--border`, `--radius-sm`, 6px pad, 8px offset, 400ms hover intent, includes shortcut in `--fg-faint` mono ("Restart · ⌘R"). Menus/tooltips render in `--z-tooltip`.
 
 ### 5.3 Chips & badges
 
-Chip: 24px h, `--radius-full`, 10px pad-x, `--text-xs` 600; tint variants = the six `*-muted`/`*-bg` tokens with their matching text tokens (accent / cyan / violet / ok / warn / err / neutral `--hover`+`--fg-muted`). Badge (count): 16px min h, 6px pad-x, `--accent` fill + `--accent-fg` text (or `--err` for failures). Status dot: 8px, ringed 2px `--panel` when overlapping avatars.
+Chip: 24px h, `--radius-full`, 10px pad-x, `--text-xs` 600; tint variants = the six `*-muted`/`*-bg` tokens with their matching text tokens (accent / blue / fuchsia / ok / warn / err / neutral `--hover`+`--fg-muted`). Badge (count): 16px min h, 6px pad-x, `--accent` fill + `--accent-fg` text (or `--err` for failures). Status dot: 8px `--radius-full`, ringed 2px `--panel` when overlapping avatars.
 
 ### 5.4 Segmented controls
 
@@ -672,11 +685,11 @@ Container `--bg-inset`, `--radius`, 2px pad, 1px `--border`; segments 26px h, `-
 
 ### 5.5 Menus & popovers
 
-Radix DropdownMenu: min-width 200px, `--bg-raised`, `--shadow-pop`, 1px `--border`, `--radius`, 4px pad; items 30px, 8px pad-x, `--radius-sm`, `--text-md`, icon 16px left, shortcut right `--fg-faint` mono; destructive item `--err` text; separators 1px `--border` with 4px margins; submenu chevron. Enter animation: `opacity 0→1 + scale(0.96→1)` `--dur` `--ease-spring` from anchor point.
+Radix DropdownMenu: min-width 200px, `--bg-raised`, `--shadow-pop`, 1px `--border`, `--radius`, 4px pad; items 30px, 8px pad-x, `--radius-sm`, `--text-md`, icon 16px left, shortcut right `--fg-faint` mono; destructive item `--err` text; separators 1px `--border` with 4px margins; submenu chevron. Enter animation: `opacity 0→1 + scale(0.97→1) + translateY(-2px→0)` `--dur` `--ease-spring` from anchor point.
 
 ### 5.6 Dialogs & sheets
 
-Dialog: centered, max 560px (wizards 560, editors as sheets), `--bg-overlay`, `--radius-lg`, `--shadow-overlay`, scrim `--backdrop` (click-outside = cancel, Esc = cancel; destructive dialogs require button click). Title 16/600, body `--text-md`, footer right-aligned [Cancel][Action] with 8px gap, 20px padding. Sheet: right or bottom docked, `--radius-xl`, width per screen spec; enter `translateY(24px)→0` `--dur-slow`. Focus trapped; return focus on close.
+Dialog: centered, max 560px (wizards 560, editors as sheets), `--bg-overlay`, `--radius-lg`, `--shadow-overlay`, scrim `--backdrop` (click-outside = cancel, Esc = cancel; destructive dialogs require button click). Title 16/600, body `--text-md`, footer right-aligned [Cancel][Action] with 8px gap, 20px padding. Sheet: right or bottom docked, `--radius-xl`, width per screen spec; enter `translateY(24px)→0` `--dur-slow` `--ease-out`. Focus trapped; return focus on close.
 
 ### 5.7 Toasts
 
@@ -692,7 +705,7 @@ Two styles: window tabs (28px, 2px accent underline, per §3.3) and dock tabs (3
 
 ### 5.10 Cards
 
-`--panel`, 1px `--border`, `--radius-lg`, 16px padding, `--shadow-card` only when floating over content (composer, hover-lift). Status-railed variant: 2px left rail in a status token — rail + glyph carries meaning, never full-card tint (tinted cards are reserved for `--accent-muted` question/plan emphasis and empty-state prompt cards).
+`--panel`, 1px `--border`, `--radius-lg`, 16px padding. `--shadow-card` only when floating over content or on hover-lift (composer always floats; prompt cards and dashboard chips lift on hover). Status-railed variant: 2px left rail in a status token — rail + glyph carries meaning, never full-card tint (tinted cards are reserved for `--accent-muted`/`--agent-muted` question/plan emphasis and empty-state prompt cards).
 
 ### 5.11 Inputs
 
@@ -708,69 +721,147 @@ Track 4px `--border-strong`, fill `--accent`, thumb 16px `--panel` + 2px `--acce
 
 ### 5.14 Progress
 
-Determinate bar: 6px, `--radius-full`, `--border-strong` track, `--accent` fill, 300ms width easing. Indeterminate: 120px wide, two-segment slide `--ease-in-out` 1.2s loop. Step progress: dot row `●●○○` 8px dots, done `--accent`, current `--accent` + 8px pulse ring, todo `--border-strong`.
+Determinate bar: 6px, `--radius-full`, `--border-strong` track, `--accent` fill, 240ms width easing. Indeterminate: 120px wide, two-segment slide `--ease-in-out` 1.2s loop. Step progress: dot row `●●○○` 8px dots, done `--accent`, current `--accent` + 8px pulse ring, todo `--border-strong`.
 
 ### 5.15 Spinner
 
-14px arc, 2px stroke, `--accent` on transparent, 0.8s linear rotation. Only for buttons and inline loads ≤2s; anything longer uses π-EQ or a progress bar.
+14px arc, 2px stroke, `--accent` on transparent, 0.8s linear rotation. Only for buttons and inline loads ≤2s; anything longer uses the signal shimmer / pulse dot (§5.16) or a progress bar.
 
-### 5.16 The working indicator — "π-sheen" + π-EQ ⭐
+### 5.16 The working indicator — signal shimmer + gradient pulse dot ⭐
 
-The signature motion of the app, derived from the mark itself.
+The signature motion of the app, drawn from the mark spectrum. Two forms, one rule: **motion is never the only signal** — always paired with text ("Working… 14s", "Running tests").
 
-- **π-sheen (hero form, 20px / 28px):** the π glyph filled with `--mark-gradient`; a 40%-width diagonal sheen band (white at 35% opacity, masked to the glyph) sweeps left→right across the mark every 1.6s `--ease-in-out`. Reads as "the mark is thinking." Used on: chat working row, empty-chat art, setup screen, share/collab presence.
-- **π-EQ (compact form, 12–16px):** inside the π's legs, three 2px-wide vertical bars (gradient-filled) animate heights 20%→100%→20% in a 0.9s staggered loop (0/150/300ms offsets) — a tiny equalizer under the mark's roof. Used in: tool-card running glyph, tab strip, sidebar rows, Tasks pane.
-- **Reduced motion:** sheen/EQ freeze; a 6px `--accent-2` dot next to the mark fades opacity 1→0.35 over 2s instead. No rotation, no translation anywhere.
-- Always paired with text ("Working… 14s", "Running tests") — motion is never the only signal.
+- **Signal shimmer (surface form — running tool cards, composer while working):** the component's static 1px `--border` is replaced by an animated gradient border. Exact CSS:
+  ```css
+  .working {
+    border: 1px solid transparent;
+    background:
+      linear-gradient(var(--panel), var(--panel)) padding-box,
+      var(--work-gradient) border-box;
+    background-size: 100% 100%, 300% 100%;
+    background-position: 0% 0%, 0% 0%;
+    animation: signal-shimmer 2.4s linear infinite;
+    box-shadow: 0 0 16px rgba(34,211,238,0.14); /* dark: rgba(34,211,238,0.20) */
+  }
+  @keyframes signal-shimmer {
+    to { background-position: 0% 0%, 300% 0%; }
+  }
+  ```
+  The spectrum travels along the frame once every 2.4s — "the circuit is live." The glow is the only colored shadow in the app.
+- **Gradient pulse dot (compact form, 8px):** an 8px `--radius-full` dot filled with `--mark-gradient`, opacity pulsing 1 → 0.45 → 1 over 1.6s `--ease-in-out` infinite. Used in: the chat working row, tab strip, sidebar session rows, Tasks pane, Agents hub running rows, tool-card status-glyph slot while running.
+- **Reduced motion:** shimmer freezes to a static `--work-gradient` border at 50% opacity, glow removed; pulse dot freezes at 60% opacity; the streaming caret (2px, `--accent`) stops blinking and stays solid. No translation, no rotation, ever.
 
 ### 5.17 Context-usage ring
 
-20px ring, 2.5px stroke: track `--border-strong`, fill = `--mark-gradient` rotated to start at 12 o'clock, rounded cap. Zones: <60% gradient as-is · 60–80% shifts hue toward `--warn` · >80% `--err` + slow pulse. Click → popover: exact tokens used/limit, per-category breakdown bars, [Compact now] [Change model]. At 100%: ring fills and a "Context full — summarize to continue" card appears above the composer with one-click Compact. Screen reader: `aria-valuenow` + text "62% of context used".
+20px ring, 2.5px stroke: track `--border-strong`, fill `--accent`, round cap, starting at 12 o'clock. Zones: <60% `--accent` · 60–80% `--warn` · >80% `--err` + slow opacity pulse. Click → popover: exact tokens used/limit, per-category breakdown bars, [Compact now] [Change model]. At 100%: ring fills and a "Context full — summarize to continue" card appears above the composer with one-click Compact. Screen reader: `aria-valuenow` + text "62% of context used".
 
 ### 5.18 Skeletons
 
-`--hover`-filled rounded blocks with 1.6s sheen sweep (`--ease-in-out`, opacity-only band); used for dashboard cards, sidebar session list, usage numbers. Reduced motion → static fill. Never skeleton the composer or buttons.
+`--hover`-filled blocks (`--radius-sm`) with 1.6s sheen sweep (`--ease-in-out`, opacity-only band); used for dashboard cards, sidebar session list, usage numbers. Reduced motion → static fill. Never skeleton the composer or buttons.
 
 ---
 
 ## 6. App icon
 
-**"π-window"**: omp's π mark rebuilt as a little window — the top bar of π *is* the window's title bar, complete with traffic-light dots — with omp's signature orange plug still attached to the right leg, now reading as "plugged into omp". Dark tile + full mark gradient so it pops on both macOS and Windows taskbars.
+**"Circuit V"**: a V for *visual*, drawn as a circuit trace with node dots at its vertices — the apex node is omp's plug-orange, the exact point where the visual layer connects to the omp engine. The trace carries the Signal Grid gradient (cyan → blue → fuchsia — omp's magenta→violet→cyan spectrum re-sequenced), so the icon is unmistakably omp-family without copying the π.
 
 ### 6.1 Master artboard — 1024×1024
 
-- **Tile**: full-bleed 1024². macOS supplies the squircle mask — keep all art inside the safe area, a centered **824×824** box (inset 100px all sides). Windows/png export: rounded rect `x=32 y=32 w=960 h=960 rx=220` with same fill.
-- **Tile fill**: vertical linear gradient `#191224` (0%) → `#0A0A10` (100%). Two static glows: radial `rgba(244,83,180,0.20)` centered (360,300) r=420 fading to transparent; radial `rgba(0,219,228,0.14)` centered (700,760) r=380.
-- **Mark gradient** (`userSpaceOnUse`, x1=232 y1=276 → x2=792 y2=724, i.e. 135° across the full mark): `0% #F84FCC` (mark-a) · `46% #9362F4` (mark-b) · `100% #00DBE4` (mark-c).
-- **π geometry** (all fills = mark gradient, shapes unioned so the gradient reads continuously):
-  - Title bar: `rect x=232 y=276 w=560 h=104 rx=20` — the π's top bar, window-height.
-  - Left leg: `rect x=372 y=380 w=88 h=344 rx=18` (bottom edge y=724).
-  - Right leg: `rect x=588 y=380 w=88 h=236 rx=18` (bottom edge y=616).
-  - Leg vertical centers sit at 40% and 62% of the bar — slightly wider stance than type-π, matching omp's icon proportions.
-- **Traffic dots** (the "visual" tell): three `r=15` circles, cy=328, cx=**284 / 340 / 396**, fills `#FF5F57` / `#FEBC2E` / `#28C840` (macOS convention — instantly reads "window"). They sit inside the bar, clear of the legs (legs start y=380).
-- **Plug** (omp's signature, kept): body `rect x=572 y=616 w=120 h=92 rx=20`, fill `#F97316`, centered on the right leg (leg center x=632). Two slot holes: `rect x=604 y=634 w=14 h=44 rx=7` and `rect x=650 y=634 w=14 h=44 rx=7`, fill `#171107` (≈ tile color — reads as cut-out).
-- Optional 4px inner edge light along tile top (`rgba(255,255,255,0.08)`, 1px) for depth on dark docks.
+- **Tile**: full-bleed 1024². macOS supplies the squircle mask — keep all art inside the safe area, a centered **824×824** box (inset 100px all sides, `rx=185` when drawn explicitly). Windows/png export: rounded rect `x=32 y=32 w=960 h=960 rx=220` with same fill.
+- **Tile fill**: vertical linear gradient `#0B1220` (0%) → `#090D14` (100%). Subtle inner top light: 1px `rgba(255,255,255,0.06)` along the top edge. Blueprint grid inside the tile (clipped to the 824 safe area): 1px lines `rgba(120,170,220,0.05)` every 64px both axes. One static glow: radial `rgba(249,115,22,0.30)` Ø190 centered on the apex node (below) — the single point of warmth.
+- **Mark geometry** (`userSpaceOnUse`):
+  ```svg
+  <defs>
+    <linearGradient id="markGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0"   stop-color="#22D3EE"/>
+      <stop offset="0.5" stop-color="#3B82F6"/>
+      <stop offset="1"   stop-color="#E879F9"/>
+    </linearGradient>
+  </defs>
+  <path d="M302 292 L512 732 L722 292" fill="none"
+        stroke="url(#markGrad)" stroke-width="76"
+        stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="302" cy="292" r="52" fill="#22D3EE"/>
+  <circle cx="722" cy="292" r="52" fill="#E879F9"/>
+  <circle cx="512" cy="732" r="64" fill="#F97316"/>
+  ```
+  Trace spans y=292→732 (plus 38px stroke overhang each end); the V's legs sit at 30% and 70% of the width — a confident, open stance. The apex node (r=64, `#F97316`, omp's exact plug orange) is 12px larger than the upper nodes so the eye lands on the connection point.
+- Mark scaled ×0.78 about (512,512) for the macOS tile (occupies ≈540×470px inside the safe area); ×1.0 for the Windows 960 rect.
 
 ### 6.2 Small sizes
 
-- **32px**: drop the tile glows (flat `#100C18` tile), gradient simplifies to 2 stops (`#F84FCC → #00DBE4`), traffic dots shrink to r=1.5px equivalents (keep — they're the distinguishing feature at dock size), plug slots removed (solid orange plug).
-- **16px**: solid dark squircle, π reduced to three solid gradient rectangles (bar + 2 legs, no dots, no rounding below 1px), plug = 3×3 orange block at right-leg foot. Recognizable at a glance: colored roof, two legs, orange foot.
-- Monochrome (Windows tray / macOS menu bar template): single-color mask of bar+legs+plug silhouette (dots become cut-outs).
+- **32px**: flat `#0B1220` tile (drop grid, glow, and top light), gradient simplifies to 2 stops (`#22D3EE → #E879F9`), nodes kept (they are the distinguishing feature at dock size), apex node still orange.
+- **16px**: solid `#0B1220` squircle; V reduced to a single 2px `#22D3EE` polyline (no gradient, no upper nodes); apex = 3×3 `#F97316` square. Recognizable at a glance: cyan trace, orange foot.
+- **Monochrome** (Windows tray / macOS menu bar template): single-color mask of the trace + all three nodes unioned into one silhouette.
 
 ---
 
-## 7. README hero banner — 1500×540 (dark, matches omp's hero)
+## 7. Brand surfaces
 
-GitHub renders the README on both themes, so the banner is intentionally dark like omp's own hero.png — a window-locked asset, not theme-following.
+### 7.1 README hero banner — 1500×540 (dark, window-locked)
 
-- **Background**: `#07070C`. Grid: 60px squares, 1px `rgba(255,255,255,0.035)` lines, full-bleed. Radial glow behind the mark: `rgba(244,83,180,0.16)` center (750,190) r=360 → transparent; faint secondary `rgba(0,219,228,0.08)` center (750,420) r=300.
-- **Corner brackets**: four 48×48 L-brackets, 2px stroke `#2A2A33`, inset 28px from each corner (omp hero signature).
-- **Side braces**: one `{` at left center (x=30, vertically centered on the mark block) and one `}` at right (x=1470), 64px tall, 2px stroke `#9362F4` at 60% opacity (omp hero signature).
-- **Mark**: the π-window icon (§6.1 shapes only, no tile) drawn at 1.5× relative scale: bounding box 150×132 centered at x=750, top y=88 (bar 150×28 equivalent, gradient `135deg #F84FCC 0% #9362F4 46% #00DBE4 100%`, traffic dots r=3.5 kept, plug kept at right-leg foot, `#F97316`).
-- **Wordmark**: `visual-omp` in Space Grotesk 700, 64px, `#FAFAFC`, letter-spacing −0.02em, centered, baseline y=330. (`visual` may render 500 weight, `-omp` 700 — two-tone weight is the product-name lockup.)
-- **Bracket tagline**: `[ A FRIENDLY FACE FOR OMP ]` — mono (JetBrains Mono or SF Mono), 18px, uppercase, letter-spacing 0.35em, `#A2A2AB`, centered, y=388.
-- **Dot feature line**: 8px `#ED4ABF` dot centered-left of the text group + `LIGHT BY DEFAULT · DARK TOO · EVERY OMP SUPERPOWER` — mono 14px, uppercase, letter-spacing 0.18em, `#8B8B94`, centered as one group, y=452.
-- Export: PNG @1x (1500×540) and @2x (3000×1080); no text smaller than 14px so it survives social-card downscaling.
+GitHub renders the README on both themes, so the banner is intentionally dark like omp's own hero.png — a window-locked asset, not theme-following. Modern-SaaS composition: one centered column, soft spectrum glows, a grid that fades out at the edges.
+
+- **Background**: `#090D14`. Blueprint grid: 40px squares, 1px `rgba(120,170,220,0.055)`, full-bleed, radially masked (opaque within r=300 of center (750,270), fading to transparent by r=820).
+- **Glows** (static): radial `rgba(34,211,238,0.10)` center (430,110) r=420 · radial `rgba(59,130,246,0.08)` center (1080,470) r=400 · radial `rgba(232,121,249,0.06)` center (1240,140) r=340.
+- **Wordmark lockup** top-left: `visual-omp` Geist Mono 600, 20px, `#E9EEF4`, baseline y=72, x=64, followed by a static block cursor 11×20px `#22D3EE` with a 6px gap.
+- **Mark**: the Circuit V (§6.1 path, no tile) scaled ×0.20, centered horizontally at x=750, top y=92 (trace occupies ≈y 92–188, upper nodes at (708,96) and (792,96), apex node (750,188) r=13). Behind the apex node only: radial `rgba(249,115,22,0.30)` Ø110, center (750,188).
+- **Eyebrow**: `[ A FRIENDLY FACE FOR OMP ]` — Geist Mono 500, 13px, uppercase, letter-spacing 0.32em, `#67E8F9`, centered, baseline y=252.
+- **Headline**: Geist 700, 64px, letter-spacing −0.02em, `#F2F6FA`, centered, baseline y=324: "The agent stays. The terminal goes."
+- **Subline**: Geist 400, 20px, `#9DA9B8`, centered, baseline y=376: "visual-omp is a friendly desktop window around omp, the AI coding agent."
+- **Feature line**: one centered group, baseline y=444 — 6px `--mark-gradient` dot + 10px gap + Geist Mono 500, 13px, uppercase, letter-spacing 0.18em, `#8B95A5`: "LIGHT BY DEFAULT · DARK TOO · EVERY OMP SUPERPOWER".
+- Export: PNG @1x (1500×540) and @2x (3000×1080); no text smaller than 13px so it survives social-card downscaling.
+
+### 7.2 App-slice mock — 1200×760 (light; dark = token swap)
+
+One representative window slice for preview rendering. Geometry is exact; every color is a §1 token. Content: sidebar (3 projects, 5 chats), session header (title + model chip + 3 buttons), one user message, one assistant markdown reply, two collapsed tool cards, one question card with two options, composer (permission pill + send), status bar.
+
+**Frame & chrome**
+
+- Window 1200×760, `--bg` fill. Title bar (0,0,1200,40): `--glass` + blur over `--bg`, bottom 1px `--border`. Traffic lights Ø12 at (20,14) (36,14) (52,14) fills `#FF5F57` / `#FEBC2E` / `#28C840`. Wordmark at x=84, baseline y=26: `visual-omp` Geist Mono 600 15px `--fg` + block cursor 8×15px `--accent`, 4px gap (static). Breadcrumb centered x=600, baseline y=26: "my-shop / Fix checkout bug ⌄" 13px `--fg-muted`.
+- Status bar (0,732,1200,28): `--panel`, top 1px `--border`. Left x=16, baseline y=746, Geist Mono 11px: "⎇ main" `--fg-muted` · gap 16 · "+8" `--diff-add-text` " −3" `--diff-del-text`. Right group, right edge x=1184, same baseline: "◔ 41%" `--fg-muted` (14px ring, `--accent` fill 41% arc) · gap 16 · "$0.87 today" `--fg-muted` · gap 16 · "●" 8px `--ok` + " omp 18.4.4" `--fg-muted`.
+
+**Sidebar** (0,40,264,692): `--panel`, right 1px `--border`.
+
+- Search field (16,56,232,32): `--bg-inset` fill, 1px `--border`, `--radius`; "🔍 Search chats…" 13px `--fg-faint` at x=28; "⌘K" Geist Mono 11px `--fg-faint` right at x=222.
+- New chat row (16,96,232,36): "＋ New chat" 13px/600 `--accent` at x=28.
+- Divider (16,144,232,1) `--border`.
+- Eyebrow `[ PROJECTS ]` at (16,162): Geist Mono 11px, caps, +0.14em, `--fg-faint`.
+- Project row **my-shop** (8,176,248,36): chevron ▾ 12px `--fg-faint` x=20 · folder icon 16px lucide 1.75px `--fg-muted` x=36 · "my-shop" 13px/600 `--fg` x=60 · pin icon 14px `--fg-faint` right x=236.
+- Chat rows (8,y,248,32), status dot 8px at (30,cy−4), title 13px at x=48, time 11px `--fg-faint` right:
+  - y=216 **Fix checkout bug** — active: row fill `--selected`, `--radius`, 2px `--accent` left inset bar, title `--fg` 500, dot `--ok`, "2m".
+  - y=248 Styles pass — dot `--border-strong`, title `--fg-muted` 400, "1h".
+  - y=280 Copy review — dot `--warn`, title `--fg-muted` 400, "3h".
+- Project row **landing-page** (8,320,248,36), expanded; chat rows: y=360 Hero rework (idle dot, "1d"), y=392 SEO meta (idle dot, "2d").
+- Project row **api-server** (8,432,248,36), collapsed (▸ chevron).
+- Bottom nav: Home (8,648,248,36) and Settings (8,684,248,36): 16px lucide icons + 13px/500 labels, `--fg-muted`.
+
+**Session header** (264,40,936,48): `--panel`, bottom 1px `--border`.
+
+- "◈" 16px `--fg-muted` at (288,56); title "Fix checkout bug" 15px/600 `--fg` at x=312, baseline y=68; "✎" 12px `--fg-faint` at x=452.
+- Model chip (482,52,112,24): `--accent-muted` fill, `--radius-full`, "Sonnet 4.5 ▾" 11px/600 `--accent` centered.
+- Right buttons (28px h, ghost, `--fg-muted`, 13px/500, 6px icon-text gap): "↻ Restart" (964,50,106,28) · "☰ Plan" (1078,50,66,28) · "⋯" (1152,50,28,28). Hover state (not depicted): `--hover` fill, `--radius-sm`.
+
+**Chat column** — content x=352–1112 (760px), scroll region y=88–620:
+
+- User message: "You" label 11px/500 `--fg-muted` at (352,104), baseline y=114. Card (352,128,760,64): `--bg-inset` fill, `--radius-lg`, left 2px `--border-strong` rail, padding 12×16; text 14px/22 `--fg`, two lines: "The checkout total is wrong when a discount code is applied. Can you fix it?"
+- Assistant header at y=216: Circuit V mark 20px at (352,212) + "Sonnet 4.5 · 14:33" 12px `--fg-faint` at x=380, baseline y=226.
+- Assistant markdown (352,244,760,66): 14px/22 `--fg`, three lines: "Found it — the discount was applied *before* tax, so the percentage was computed on the pre-tax subtotal. I've moved the calculation after tax in `checkout/total.ts` and updated the tests." Inline code: Geist Mono 12.5px, `--accent-muted` fill, `--radius-sm`, padding 1×5, text `--accent`.
+- Tool card 1 (352,326,760,40): `--panel`, 1px `--border`, `--radius-lg`, left 2px `--ok` rail. Contents baseline y=350: "▸" 12px `--fg-faint` x=368 · ✏️ 16px x=388 · "Edited 2 files" 13px/500 `--fg` x=414 · right side: "+8" Geist Mono 12px `--diff-add-text` + " −3" `--diff-del-text`, right edge x=1096.
+- Tool card 2 (352,374,760,40): same chrome; "▸" + 🧪 + "Ran tests" 13px/500 `--fg`; right: "passed ✓" 12px `--ok`, right edge x=1096.
+- Question card (352,428,760,188): `--panel`, 1px `--border`, `--radius-lg`, left 2px `--agent` rail, `--shadow-card`, padding 16.
+  - Eyebrow `[ QUESTION ]` at (368,442), baseline y=452: Geist Mono 11px caps +0.14em `--agent`.
+  - Question at (368,466), baseline y=482: "Apply the same fix to the cart page too?" 14px/20 `--fg`.
+  - Option A (368,496,356,56): `--bg-inset` fill, 1px `--accent` border (selected), `--radius`; radio circle Ø16 at (384,516) — `--accent` fill with white check; "Yes — same calculation there" 13px/500 `--fg` at x=412, baseline y=524; `Recommended` chip (584,508,108,20): `--accent` fill, `--radius-full`, 11px/600 `--accent-fg`.
+  - Option B (740,496,356,56): `--panel` fill, 1px `--border-strong`, `--radius`; radio Ø16 at (756,516) — 1.5px `--border-strong` outline, empty; "No — checkout only" 13px/500 `--fg` at x=784, baseline y=524.
+  - Footer: [ Skip ] ghost (940,568,56,32) `--fg-muted` · [ Answer → ] primary (1004,568,92,32): `--accent` fill + §1.9 primary depth, `--accent-fg` 13px/600, `--radius`.
+
+**Composer** (352,620,760,96): `--panel`, 1px `--border-strong`, `--radius-xl`, `--shadow-composer`.
+
+- Placeholder at (368,634), baseline y=650: "Ask visual-omp to change something…" 14px `--fg-faint`; "⌘↵" Geist Mono 11px `--fg-faint` right at x=1052.
+- Bottom row y=676–704: "＋" ghost icon button (368,676,28,28) `--fg-muted` · permission pill (404,676,96,28): `--hover` fill, `--radius-full`, 1px `--border`, "Auto ▾" 12px/500 `--fg` centered · flexible space · context ring 20px at (1000,680) (track `--border-strong`, 41% arc `--accent`) · send button (1056,676,32,32): `--accent` fill + §1.9 primary depth, `--radius`, "➤" 14px `--accent-fg` centered.
+
+**Dark variant**: identical geometry; all fills/borders/text swap to §1 dark tokens; shadows become the dark values; the title-bar glass is `rgba(15,22,34,0.72)`; traffic lights unchanged.
 
 ---
 
