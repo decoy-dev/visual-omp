@@ -3,7 +3,8 @@
  * chips (DESIGN §3.4, §3.6). Each change goes through omp and is confirmed from omp's own state.
  */
 import type { ApprovalMode, ModelInfo } from "@shared/contracts/config";
-import { Brain, Check, ChevronDown, Eye, Sparkles } from "lucide-react";
+import { Brain, CaretDown, Check, Eye } from "@phosphor-icons/react";
+import { motion } from "motion/react";
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
@@ -24,6 +25,7 @@ import {
 	PopoverTrigger,
 	SearchInput,
 	Spinner,
+	spring,
 	toast,
 	Tooltip,
 } from "@/ui";
@@ -50,6 +52,14 @@ export const usePickerRequests = create<PickerRequests>()(set => ({
 	openModel: tabId => set(state => ({ model: { tabId, seq: (state.model?.seq ?? 0) + 1 } })),
 }));
 
+/**
+ * Selected-row fill that slides to the new row when the selection moves. `layoutId` must be unique per
+ * list instance (derive it from `useId()`); the row needs `relative isolate`.
+ */
+function SelectionFill({ layoutId, className }: { layoutId: string; className?: string }) {
+	return <motion.span aria-hidden layoutId={layoutId} transition={spring.snappy} className={cn("absolute inset-0 -z-10 bg-selected", className)} />;
+}
+
 // ─── Permission ────────────────────────────────────────────────────────────
 
 const APPROVAL_MODES: readonly ApprovalMode[] = ["always-ask", "write", "yolo"];
@@ -70,6 +80,7 @@ export async function choosePermission(cwd: string, mode: ApprovalMode, current:
 
 function PermissionOptions({ cwd, mode, onPicked }: { cwd: string; mode: ApprovalMode | null; onPicked(): void }) {
 	const { t } = useTranslation("session");
+	const fillId = `${useId()}-permission`;
 	return (
 		<div role="radiogroup" aria-label={t("permission.title")} className="flex flex-col gap-0.5">
 			{APPROVAL_MODES.map(option => (
@@ -83,11 +94,11 @@ function PermissionOptions({ cwd, mode, onPicked }: { cwd: string; mode: Approva
 						void choosePermission(cwd, option, mode);
 					}}
 					className={cn(
-						"flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-hover",
-						mode === option && "bg-selected",
+						"relative isolate flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-hover",
 						focusRingInset,
 					)}
 				>
+					{mode === option && <SelectionFill layoutId={fillId} className="rounded-md" />}
 					<span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-accent">
 						{mode === option && <Check className="size-4" aria-hidden />}
 					</span>
@@ -120,7 +131,7 @@ export function PermissionPill({ session }: ChatSlotProps) {
 					>
 						{mode ? t(`permission.modes.${mode}.label`) : <Spinner size={12} tone="current" />}
 						{mode === "yolo" && <span className="text-fg-muted">· {t("permission.autoNote")}</span>}
-						<ChevronDown className="size-3.5 text-fg-muted" aria-hidden />
+						<CaretDown className="size-3.5 text-fg-muted" aria-hidden />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
@@ -218,11 +229,9 @@ function ModelList({ session, onDone }: { session: SessionController; onDone(): 
 				data-index={index}
 				onPointerMove={() => setActive(index)}
 				onClick={() => void pick(model)}
-				className={cn(
-					"flex h-9 cursor-default select-none items-center gap-2 rounded-sm px-2 text-md",
-					index === active && "bg-selected",
-				)}
+				className="relative isolate flex h-9 cursor-default select-none items-center gap-2 rounded-sm px-2 text-md"
 			>
+				{index === active && <SelectionFill layoutId={`${listId}-active`} className="rounded-sm" />}
 				<span className="inline-flex size-4 shrink-0 items-center justify-center text-accent">
 					{busy === model.selector ? <Spinner size={12} /> : selected && <Check className="size-4" aria-hidden />}
 				</span>
@@ -248,16 +257,19 @@ function ModelList({ session, onDone }: { session: SessionController; onDone(): 
 				aria-controls={listId}
 				aria-activedescendant={filtered[active] ? `${listId}-${active}` : undefined}
 			/>
-			<div ref={listRef} id={listId} role="listbox" aria-label={t("model.title")} className="mt-2 max-h-80 overflow-y-auto">
+			{/* layoutScroll keeps the sliding highlight aligned while the list scrolls. */}
+			<motion.div layoutScroll ref={listRef} id={listId} role="listbox" aria-label={t("model.title")} className="mt-2 max-h-80 overflow-y-auto">
 				{models === null && !error && (
 					<div className="flex items-center gap-2 px-2 py-3 text-sm text-fg-muted">
 						<Spinner size={12} /> {t("model.loading")}
 					</div>
 				)}
 				{error && <p className="px-2 py-3 text-sm text-err">{error}</p>}
-				{models !== null && filtered.length === 0 && <p className="px-2 py-3 text-sm text-fg-muted">{t("model.empty")}</p>}
+				{models !== null && filtered.length === 0 && (
+					<p className="px-2 py-3 text-sm text-fg-muted">{t(models.length === 0 ? "model.noModels" : "model.empty")}</p>
+				)}
 				{rows}
-			</div>
+			</motion.div>
 			<div className="mt-2 flex items-center gap-2 border-t border-border px-2 pt-2">
 				<p className="min-w-0 flex-1 text-xs text-fg-faint">{t("model.scopeNote")}</p>
 				{getCommand("manage.roles") && (
@@ -270,6 +282,18 @@ function ModelList({ session, onDone }: { session: SessionController; onDone(): 
 						}}
 					>
 						{t("model.roles")}
+					</Button>
+				)}
+				{getCommand("manage.providers") && (
+					<Button
+						size="sm"
+						variant="ghost"
+						onClick={() => {
+							onDone();
+							void getCommand("manage.providers")?.run({ session, projectPath: session.projectPath });
+						}}
+					>
+						{t("model.addProvider")}
 					</Button>
 				)}
 			</div>
@@ -299,7 +323,7 @@ export function ModelButton({ session }: ChatSlotProps) {
 						)}
 					>
 						<span className="truncate">{model?.name ?? t("model.none")}</span>
-						<ChevronDown className="size-3.5 shrink-0" aria-hidden />
+						<CaretDown className="size-3.5 shrink-0" aria-hidden />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
@@ -333,6 +357,7 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 	const choices = thinkingChoices(info);
 	const [open, setOpen] = useState(false);
 	const [busy, setBusy] = useState<ThinkingLevel | null>(null);
+	const thinkingFill = `${useId()}-thinking`;
 	const disabled = info !== undefined && choices.length === 0;
 	const pick = async (target: ThinkingLevel) => {
 		if (busy) return;
@@ -360,9 +385,9 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 							focusRing,
 						)}
 					>
-						<Sparkles className="size-3.5" aria-hidden />
+						<Brain className="size-3.5" aria-hidden />
 						<span>{level ? t(`thinking.levels.${level}.label`) : t("thinking.title")}</span>
-						<ChevronDown className="size-3.5" aria-hidden />
+						<CaretDown className="size-3.5" aria-hidden />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
@@ -377,11 +402,11 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 							aria-checked={choice === level}
 							onClick={() => void pick(choice)}
 							className={cn(
-								"flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-hover",
-								choice === level && "bg-selected",
+								"relative isolate flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-hover",
 								focusRingInset,
 							)}
 						>
+							{choice === level && <SelectionFill layoutId={thinkingFill} className="rounded-sm" />}
 							<span className="inline-flex size-4 shrink-0 items-center justify-center text-accent">
 								{busy === choice ? <Spinner size={12} /> : choice === level && <Check className="size-4" aria-hidden />}
 							</span>
@@ -401,7 +426,7 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 
 const chipButton = cn(
 	"inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-semibold",
-	"transition-[filter,background-color] duration-(--dur-fast) hover:brightness-95 data-[state=open]:brightness-95",
+	"transition-[filter,background-color,color] duration-(--dur-fast) hover:brightness-95 data-[state=open]:brightness-95",
 	focusRing,
 );
 
@@ -413,9 +438,9 @@ function ModelChip({ session }: { session: SessionController }) {
 		<Popover open={open} onOpenChange={setOpen}>
 			<Tooltip content={t("model.tooltip")} shortcut="⌘⇧M">
 				<PopoverTrigger asChild>
-					<button type="button" aria-label={t("model.aria", { name: model?.name ?? t("model.none") })} className={cn(chipButton, "max-w-48 bg-accent-muted text-accent")}>
+					<button type="button" aria-label={t("model.aria", { name: model?.name ?? t("model.none") })} className={cn(chipButton, "max-w-48 bg-hover text-fg")}>
 						<span className="truncate">{model?.name ?? t("model.none")}</span>
-						<ChevronDown className="size-3 shrink-0" aria-hidden />
+						<CaretDown className="size-3 shrink-0" aria-hidden />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
@@ -454,9 +479,9 @@ function ModeChip({ session }: { session: SessionController }) {
 		<Menu>
 			<Tooltip content={t("modes.chip.tooltip")}>
 				<MenuTrigger asChild>
-					<button type="button" aria-label={t("modes.chip.aria", { mode: label })} className={cn(chipButton, special ? "bg-agent-muted text-agent" : "bg-hover text-fg-muted")}>
+					<button type="button" aria-label={t("modes.chip.aria", { mode: label })} className={cn(chipButton, special ? "bg-accent-muted text-accent" : "bg-hover text-fg-muted")}>
 						{label}
-						<ChevronDown className="size-3" aria-hidden />
+						<CaretDown className="size-3" aria-hidden />
 					</button>
 				</MenuTrigger>
 			</Tooltip>

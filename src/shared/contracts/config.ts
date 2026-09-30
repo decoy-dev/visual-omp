@@ -123,7 +123,7 @@ export interface ModelCost extends ModelTokenCost {
 
 /**
  * A model omp can use right now. `omp models` only lists available models (credentials configured
- * or keyless local runners), so every entry is usable; see {@link ProviderAuthStatus} for accounts.
+ * or keyless local runners), so every entry is usable; see `providers:list` for accounts.
  */
 export interface ModelInfo {
 	/** `provider/id`, the value model roles store (before an optional `:thinking` suffix). */
@@ -292,43 +292,6 @@ export interface ApprovalState {
 	unrecognized: { tool: string; value: JsonValue }[];
 }
 
-// ─── Providers ─────────────────────────────────────────────────────────────
-
-export interface ProviderAccount {
-	email: string | null;
-	accountId: string | null;
-	/** Organization/workspace the credential is scoped to. */
-	orgName: string | null;
-	/** omp could fetch usage limits for this account. */
-	usageReported: boolean;
-}
-
-export interface DisabledProviderAccount {
-	email: string | null;
-	accountId: string | null;
-	/** Why omp disabled it (e.g. expired grant); the user must log in again. */
-	cause: string;
-	/** Epoch ms; null when unknown. */
-	disabledAt: number | null;
-}
-
-/**
- * Login status of one provider, merged from available models (`omp models`) and stored accounts
- * (`omp usage --json`). Providers authenticated only through environment API keys or keyless local
- * runners appear with `available: true` and no accounts. `omp usage` only reports accounts of
- * providers that have a usage endpoint, so stored API keys of other providers show up only as
- * `available` (omp has no CLI that lists stored credentials without printing them).
- */
-export interface ProviderAuthStatus {
-	provider: string;
-	/** At least one model of this provider is usable now. */
-	available: boolean;
-	modelCount: number;
-	kinds: ModelKind[];
-	accounts: ProviderAccount[];
-	disabledAccounts: DisabledProviderAccount[];
-}
-
 declare module "../ipc" {
 	interface IpcInvokeMap {
 		/** Every setting with type, default, enum values, effective value and source. */
@@ -388,9 +351,6 @@ declare module "../ipc" {
 			args: [tool: string, policy: ApprovalPolicy | null, scope: SettingScope, cwd?: string];
 			result: ApprovalState;
 		};
-
-		/** Providers that are logged in or otherwise usable, sorted by provider id. */
-		"config:providers": { args: [cwd?: string]; result: ProviderAuthStatus[] };
 	}
 
 	interface IpcEventMap {

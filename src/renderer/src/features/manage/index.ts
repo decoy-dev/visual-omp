@@ -3,7 +3,7 @@
  * (`manage.agents`). Each opens a modal sheet; other features open them directly with
  * `useApp.getState().openSheet("settings" | "model-roles" | "agents", props)`.
  */
-import { Bot, Layers, Settings } from "lucide-react";
+import { Gear, Plug, Robot, Stack } from "@phosphor-icons/react";
 import { registerCommand } from "@/registry/commands";
 import { sheets } from "@/registry/slots";
 import { useApp } from "@/state/app";
@@ -24,9 +24,20 @@ registerCommand({
 	keywords: "manage:commands.settings.keywords",
 	slash: "/settings",
 	group: "settings",
-	icon: Settings,
+	icon: Gear,
 	shortcut: mac ? "⌘," : "Ctrl+,",
 	run: ({ projectPath }) => useApp.getState().openSheet("settings", { projectPath }),
+});
+
+registerCommand({
+	id: "manage.providers",
+	title: "manage:commands.providers.title",
+	hint: "manage:commands.providers.hint",
+	keywords: "manage:commands.providers.keywords",
+	slash: "/login",
+	group: "manage",
+	icon: Plug,
+	run: ({ projectPath }) => useApp.getState().openSheet("settings", { tab: "providers", projectPath }),
 });
 
 registerCommand({
@@ -35,7 +46,7 @@ registerCommand({
 	hint: "manage:commands.roles.hint",
 	keywords: "manage:commands.roles.keywords",
 	group: "manage",
-	icon: Layers,
+	icon: Stack,
 	run: ({ projectPath }) => useApp.getState().openSheet("model-roles", { projectPath }),
 });
 
@@ -46,7 +57,7 @@ registerCommand({
 	keywords: "manage:commands.agents.keywords",
 	slash: "/agents",
 	group: "manage",
-	icon: Bot,
+	icon: Robot,
 	header: 40,
 	run: ({ projectPath }) => useApp.getState().openSheet("agents", { projectPath }),
 });

@@ -1,6 +1,6 @@
 /**
- * `config:*` channels: omp settings, models, model roles/presets, tool approval and provider login
- * status. Contract and data sources: `src/shared/contracts/config.ts`.
+ * `config:*` channels: omp settings, models, model roles/presets and tool approval. Contract and
+ * data sources: `src/shared/contracts/config.ts`.
  */
 import { type Stats, unwatchFile, watchFile } from "node:fs";
 import { join } from "node:path";
@@ -18,7 +18,6 @@ import {
 	type ModelRolesState,
 	type PresetApplyResult,
 	type PresetDeleteResult,
-	type ProviderAuthStatus,
 	type RoleAssignment,
 	type RoleWriteOptions,
 	type SettingInfo,
@@ -58,7 +57,6 @@ import {
 	setDocumentPath,
 	splitRoleValue,
 	type TreeSetting,
-	UsageJsonSchema,
 	valueProblem,
 } from "../services/omp-config";
 
@@ -223,7 +221,7 @@ async function resetSetting(key: string, scope: SettingScope, cwd: string | unde
 const MODELS_TTL_MS = 5 * 60_000;
 const modelsCache = new Map<string, { at: number; models: Promise<ModelInfo[]> }>();
 
-function listModels(cwd: string | undefined, refresh = false): Promise<ModelInfo[]> {
+export function listModels(cwd: string | undefined, refresh = false): Promise<ModelInfo[]> {
 	const cacheKey = cwd ?? "";
 	const cached = modelsCache.get(cacheKey);
 	if (!refresh && cached && Date.now() - cached.at < MODELS_TTL_MS) return cached.models;
@@ -237,8 +235,8 @@ function listModels(cwd: string | undefined, refresh = false): Promise<ModelInfo
 	return models;
 }
 
-/** Config changed (by the app or on disk): project settings can enable/disable providers. */
-function configWritten(): void {
+/** Config or credentials changed: project settings and sign-ins can enable/disable providers. */
+export function configWritten(): void {
 	modelsCache.clear();
 }
 
@@ -503,53 +501,6 @@ async function setApprovalPolicy(
 	return readApproval(cwd);
 }
 
-// ─── Providers ─────────────────────────────────────────────────────────────
-
-async function providerStatus(cwd: string | undefined): Promise<ProviderAuthStatus[]> {
-	const [models, usageJson] = await Promise.all([listModels(cwd), ompJson(["usage", "--json"], cwd, 60_000)]);
-	const usage = UsageJsonSchema.parse(usageJson);
-	const byProvider = new Map<string, ProviderAuthStatus>();
-	const entry = (provider: string): ProviderAuthStatus => {
-		let status = byProvider.get(provider);
-		if (!status) {
-			status = { provider, available: false, modelCount: 0, kinds: [], accounts: [], disabledAccounts: [] };
-			byProvider.set(provider, status);
-		}
-		return status;
-	};
-	for (const model of models) {
-		const status = entry(model.provider);
-		status.available = true;
-		status.modelCount++;
-		if (!status.kinds.includes(model.kind)) status.kinds.push(model.kind);
-	}
-	for (const report of usage.reports) {
-		entry(report.provider).accounts.push({
-			email: report.metadata?.email ?? null,
-			accountId: report.metadata?.accountId ?? null,
-			orgName: report.metadata?.orgName ?? null,
-			usageReported: true,
-		});
-	}
-	for (const account of usage.accountsWithoutUsage) {
-		entry(account.provider).accounts.push({
-			email: account.email ?? null,
-			accountId: account.accountId ?? null,
-			orgName: account.orgName ?? null,
-			usageReported: false,
-		});
-	}
-	for (const disabled of usage.disabledCredentials) {
-		entry(disabled.provider).disabledAccounts.push({
-			email: disabled.email ?? null,
-			accountId: disabled.accountId ?? null,
-			cause: disabled.cause,
-			disabledAt: disabled.disabledAtMs ?? null,
-		});
-	}
-	return [...byProvider.values()].sort((a, b) => a.provider.localeCompare(b.provider));
-}
-
 // ─── Watching ──────────────────────────────────────────────────────────────
 
 const WATCH_INTERVAL_MS = 1000;
@@ -624,6 +575,4 @@ export function register(): void {
 	handle("config:approval", cwd => readApproval(cwd));
 	handle("config:approval:setMode", (mode, scope, cwd) => setApprovalMode(mode, ScopeSchema.parse(scope), cwd));
 	handle("config:approval:setPolicy", (tool, policy, scope, cwd) => setApprovalPolicy(tool, policy, ScopeSchema.parse(scope), cwd));
-
-	handle("config:providers", cwd => providerStatus(cwd));
 }

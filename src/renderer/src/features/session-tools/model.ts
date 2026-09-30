@@ -15,8 +15,10 @@ import { parseStatusLine, THINKING_LEVELS, type ThinkingLevel } from "./screen";
 import { screenPoller } from "./status";
 
 const modelCache = new Map<string, Promise<ModelInfo[]>>();
+// A sign-in or sign-out changes which models omp lists; the picker reloads the next time it opens.
+window.vomp.on("providers:changed", () => modelCache.clear());
 
-/** Usable chat models for a project (cached per project for the app's lifetime; main caches omp's list too). */
+/** Usable chat models for a project (cached per project until credentials change; main caches omp's list too). */
 export function useChatModels(cwd: string): { models: ModelInfo[] | null; error: string | null } {
 	const [state, setState] = useState<{ models: ModelInfo[] | null; error: string | null }>({ models: null, error: null });
 	useEffect(() => {

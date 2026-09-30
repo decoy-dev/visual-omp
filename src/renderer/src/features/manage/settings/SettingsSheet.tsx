@@ -1,22 +1,12 @@
 /** Settings (DESIGN §4.12): app preferences plus omp's own settings, one sheet with a left nav. */
 import type { SettingScope } from "@shared/contracts/config";
 import * as RT from "@radix-ui/react-tabs";
-import {
-	Bell,
-	Info,
-	Keyboard,
-	Layers,
-	type LucideIcon,
-	Palette,
-	RefreshCw,
-	ShieldCheck,
-	SlidersHorizontal,
-	Wrench,
-} from "lucide-react";
-import { useState } from "react";
+import { ArrowsClockwise, Bell, type Icon, Info, Keyboard, Palette, Plug, ShieldCheck, SlidersHorizontal, Stack, Wrench } from "@phosphor-icons/react";
+import { motion } from "motion/react";
+import { useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SheetProps } from "@/registry/slots";
-import { Button, cn, Segmented } from "@/ui";
+import { Button, cn, Expand, PresenceSwap, Segmented } from "@/ui";
 import { focusRingInset } from "@/ui/styles";
 import { ModalSheet } from "../ModalSheet";
 import { folderName, useExternalConfigChange, useResource, useSheetProject } from "../shared";
@@ -27,10 +17,21 @@ import { AppearanceTab } from "./AppearanceTab";
 import { GeneralTab } from "./GeneralTab";
 import { ModelsTab } from "./ModelsTab";
 import { PermissionsTab } from "./PermissionsTab";
+import { ProvidersTab } from "./ProvidersTab";
 import { ShortcutsTab } from "./ShortcutsTab";
 import { useOmpSettings } from "./useOmpSettings";
 
-export const SETTINGS_TABS = ["general", "appearance", "permissions", "models", "alerts", "shortcuts", "about", "advanced"] as const;
+export const SETTINGS_TABS = [
+	"general",
+	"appearance",
+	"permissions",
+	"models",
+	"providers",
+	"alerts",
+	"shortcuts",
+	"about",
+	"advanced",
+] as const;
 export type SettingsTabId = (typeof SETTINGS_TABS)[number];
 
 export interface SettingsSheetProps {
@@ -41,11 +42,12 @@ export interface SettingsSheetProps {
 	scope?: SettingScope;
 }
 
-const TAB_ICONS: Record<SettingsTabId, LucideIcon> = {
+const TAB_ICONS: Record<SettingsTabId, Icon> = {
 	general: SlidersHorizontal,
 	appearance: Palette,
 	permissions: ShieldCheck,
-	models: Layers,
+	models: Stack,
+	providers: Plug,
 	alerts: Bell,
 	shortcuts: Keyboard,
 	about: Info,
@@ -59,10 +61,19 @@ export function SettingsSheet({ props, close }: SheetProps<SettingsSheetProps | 
 	const { t } = useTranslation("manage");
 	const cwd = useSheetProject(props?.projectPath);
 	const [tab, setTab] = useState<SettingsTabId>(props?.tab ?? "general");
+	// Opening Settings again while it is open (e.g. "Add a provider…" from a model picker) switches tab.
+	useEffect(() => {
+		if (props?.tab) setTab(props.tab);
+	}, [props]);
 	const [scope, setScope] = useState<SettingScope>(props?.scope ?? "global");
 	const omp = useOmpSettings(cwd, scope);
 	const approval = useResource(() => window.vomp.invoke("config:approval", cwd ?? undefined), [cwd]);
 	const [externalChange, clearExternalChange] = useExternalConfigChange(cwd);
+	const indicatorId = useId();
+	const loadError =
+		omp.snapshot.error && tab !== "appearance" && tab !== "providers" && tab !== "alerts" && tab !== "shortcuts" && tab !== "about"
+			? omp.snapshot.error
+			: null;
 
 	const reload = () => {
 		clearExternalChange();
@@ -110,59 +121,57 @@ export function SettingsSheet({ props, close }: SheetProps<SettingsSheetProps | 
 								key={id}
 								value={id}
 								className={cn(
-									"flex h-8 items-center gap-2 rounded-md px-2.5 text-left text-md text-fg-muted",
+									"relative flex h-8 items-center gap-2 rounded-md px-2.5 text-left text-md text-fg-muted",
 									"transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg",
-									"data-[state=active]:bg-selected data-[state=active]:font-medium data-[state=active]:text-fg",
+									"data-[state=active]:font-medium data-[state=active]:text-fg data-[state=active]:hover:bg-transparent",
 									focusRingInset,
 								)}
 							>
-								<Icon aria-hidden className="size-4 shrink-0" />
-								{t(`settings.tabs.${id}`)}
+								{id === tab && (
+									<motion.span layoutId={indicatorId} aria-hidden className="absolute inset-0 rounded-md bg-selected" />
+								)}
+								<Icon aria-hidden className="relative size-4 shrink-0" />
+								<span className="relative">{t(`settings.tabs.${id}`)}</span>
 							</RT.Trigger>
 						);
 					})}
 				</RT.List>
 				<div className="flex min-h-0 min-w-0 flex-1 flex-col">
-					{externalChange && (
-						<div role="status" className="flex shrink-0 items-center gap-3 border-b border-border bg-info-bg px-6 py-2 text-md text-fg">
+					<Expand open={externalChange}>
+						<div role="status" className="flex items-center gap-3 border-b border-border bg-info-bg px-6 py-2 text-md text-fg">
 							<span className="min-w-0 flex-1">{t("settings.externalChange")}</span>
-							<Button size="sm" icon={<RefreshCw />} onClick={reload}>
+							<Button size="sm" icon={<ArrowsClockwise />} onClick={reload}>
 								{t("settings.reload")}
 							</Button>
 						</div>
-					)}
-					{omp.snapshot.error && tab !== "appearance" && tab !== "alerts" && tab !== "shortcuts" && tab !== "about" && (
-						<div role="alert" className="flex shrink-0 items-center gap-3 border-b border-border bg-err-bg px-6 py-2 text-md text-err">
-							<span className="min-w-0 flex-1">{t("settings.loadFailed", { reason: omp.snapshot.error })}</span>
+					</Expand>
+					<Expand open={loadError !== null}>
+						<div role="alert" className="flex items-center gap-3 border-b border-border bg-err-bg px-6 py-2 text-md text-err">
+							<span className="min-w-0 flex-1">{t("settings.loadFailed", { reason: loadError ?? "" })}</span>
 							<Button size="sm" onClick={() => void omp.snapshot.reload()}>
 								{t("settings.retry")}
 							</Button>
 						</div>
-					)}
-					{SETTINGS_TABS.map(id => (
+					</Expand>
+					<PresenceSwap swapKey={tab} variant="rise" className="flex min-h-0 flex-1 flex-col">
 						<RT.Content
-							key={id}
-							value={id}
-							className={cn(
-								"min-h-0 flex-1 outline-none data-[state=inactive]:hidden",
-								id === "advanced" ? "flex flex-col" : "overflow-y-auto p-6",
-							)}
+							forceMount
+							value={tab}
+							// Radix makes the panel a tab stop; the inset ring shows where focus is when it lands here.
+							className={cn("min-h-0 flex-1", focusRingInset, tab === "advanced" ? "flex flex-col" : "overflow-y-auto p-6")}
 						>
-							{id === tab && (
-								<>
-									{id !== "advanced" && <h2 className="mb-4 text-xl font-semibold text-fg">{t(`settings.tabs.${id}`)}</h2>}
-									{id === "general" && <GeneralTab omp={omp} approval={approval} />}
-									{id === "appearance" && <AppearanceTab />}
-									{id === "permissions" && <PermissionsTab omp={omp} approval={approval} />}
-									{id === "models" && <ModelsTab omp={omp} />}
-									{id === "alerts" && <AlertsTab />}
-									{id === "shortcuts" && <ShortcutsTab />}
-									{id === "about" && <AboutTab />}
-									{id === "advanced" && <AdvancedTab omp={omp} />}
-								</>
-							)}
+							{tab !== "advanced" && <h2 className="mb-4 text-xl font-semibold text-fg">{t(`settings.tabs.${tab}`)}</h2>}
+							{tab === "general" && <GeneralTab omp={omp} approval={approval} />}
+							{tab === "appearance" && <AppearanceTab />}
+							{tab === "permissions" && <PermissionsTab omp={omp} approval={approval} />}
+							{tab === "models" && <ModelsTab omp={omp} />}
+							{tab === "providers" && <ProvidersTab cwd={cwd} />}
+							{tab === "alerts" && <AlertsTab />}
+							{tab === "shortcuts" && <ShortcutsTab />}
+							{tab === "about" && <AboutTab />}
+							{tab === "advanced" && <AdvancedTab omp={omp} />}
 						</RT.Content>
-					))}
+					</PresenceSwap>
 				</div>
 			</RT.Root>
 		</ModalSheet>

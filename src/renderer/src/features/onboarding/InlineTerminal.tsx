@@ -15,6 +15,23 @@ function terminalTheme(): ITheme {
 		cursor: token("--term-cursor"),
 		cursorAccent: token("--term-bg"),
 		selectionBackground: token("--term-selection"),
+		// ANSI colors from the status tokens so installer and brew output match the app; blue and magenta have their own.
+		black: token("--fg-muted"),
+		brightBlack: token("--fg-faint"),
+		red: token("--err"),
+		brightRed: token("--err"),
+		green: token("--ok"),
+		brightGreen: token("--ok"),
+		yellow: token("--warn"),
+		brightYellow: token("--warn"),
+		blue: token("--term-blue"),
+		brightBlue: token("--term-blue"),
+		magenta: token("--term-magenta"),
+		brightMagenta: token("--term-magenta"),
+		cyan: token("--accent"),
+		brightCyan: token("--accent"),
+		white: token("--fg-muted"),
+		brightWhite: token("--fg"),
 	};
 }
 
@@ -22,10 +39,12 @@ export interface InlineTerminalProps {
 	run: CommandRun;
 	label: string;
 	className?: string;
+	/** Expose terminal output to screen readers (xterm `screenReaderMode`); for flows that need answers. */
+	screenReader?: boolean;
 }
 
 /** Live, typeable view of a {@link CommandRun} (the installer may ask for a password). */
-export function InlineTerminal({ run, label, className }: InlineTerminalProps) {
+export function InlineTerminal({ run, label, className, screenReader = false }: InlineTerminalProps) {
 	const host = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
@@ -39,6 +58,7 @@ export function InlineTerminal({ run, label, className }: InlineTerminalProps) {
 			cursorBlink: false,
 			scrollback: 5000,
 			theme: terminalTheme(),
+			screenReaderMode: screenReader,
 		});
 		const fit = new FitAddon();
 		term.loadAddon(fit);
@@ -68,7 +88,7 @@ export function InlineTerminal({ run, label, className }: InlineTerminalProps) {
 			themeWatch.disconnect();
 			term.dispose();
 		};
-	}, [run]);
+	}, [run, screenReader]);
 
 	return (
 		<div

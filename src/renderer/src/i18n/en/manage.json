@@ -12,13 +12,18 @@
 		},
 		"roles": {
 			"title": "Model roles",
-			"hint": "Pick which model does which job — everyday chat, planning, commit messages, and more.",
+			"hint": "Choose which model handles each job, such as everyday chat, planning and commit messages.",
 			"keywords": "models, presets, thinking, default model, fast model"
 		},
 		"agents": {
 			"title": "Helpers",
 			"hint": "Reusable specialists omp can hand work to, like a reviewer or an explorer.",
 			"keywords": "agents, subagents, specialists, reviewer, scout"
+		},
+		"providers": {
+			"title": "Connect a provider",
+			"hint": "Sign in to a model provider or add an API key.",
+			"keywords": "providers, login, log in, sign in, sign out, api key, account, re-authenticate, credentials"
 		}
 	},
 	"thinking": {
@@ -30,7 +35,7 @@
 		"high": "High",
 		"xhigh": "Extra high",
 		"max": "Max",
-		"auto": "Auto — omp decides"
+		"auto": "Auto (omp decides)"
 	},
 	"settings": {
 		"title": "Settings",
@@ -39,6 +44,7 @@
 			"appearance": "Appearance",
 			"permissions": "Permissions",
 			"models": "Models",
+			"providers": "Providers",
 			"alerts": "Sounds & alerts",
 			"shortcuts": "Shortcuts",
 			"about": "About",
@@ -56,7 +62,7 @@
 			"overlay": "Set by a config overlay"
 		},
 		"saved": "Saved",
-		"saveFailed": "Couldn't save — omp said: {{reason}}",
+		"saveFailed": "Couldn't save. omp reported: {{reason}}",
 		"shadowed": {
 			"project": "This project has its own value, so the change won't show here. Switch to \"This project\" to change it.",
 			"global": "Your all-projects value still applies here.",
@@ -66,8 +72,8 @@
 			"default": "The built-in default still applies.",
 			"other": "Another settings file for this project still decides this value."
 		},
-		"externalChange": "Settings changed outside the app —",
-		"reload": "Reload",
+		"externalChange": "Settings were changed outside the app.",
+		"reload": "Reload settings",
 		"loadFailed": "Couldn't read omp's settings: {{reason}}",
 		"retry": "Try again"
 	},
@@ -124,7 +130,7 @@
 		"textSize": {
 			"label": "Text size",
 			"description": "Makes all text in the app bigger or smaller.",
-			"preview": "omp fixed the coupon bug and ran the checkout tests — all 12 passed."
+			"preview": "omp fixed the coupon bug and ran the checkout tests. All 12 passed."
 		},
 		"motion": {
 			"title": "Motion",
@@ -145,12 +151,12 @@
 			"allow": "Allow",
 			"deny": "Deny"
 		},
-		"defaultHelp": "Ask always checks with you first. Allow never asks. Deny blocks the tool completely.",
+		"defaultHelp": "Ask checks with you before each use, Allow runs the tool without asking, and Deny blocks it.",
 		"unrecognized": "omp ignores these entries because their value isn't Ask, Allow or Deny: {{tools}}",
 		"add": {
 			"label": "Another tool",
 			"placeholder": "Tool name, e.g. mcp_github_create_issue",
-			"button": "Add",
+			"button": "Add tool",
 			"description": "Tools from connected services (MCP) and extensions can be listed here by name."
 		},
 		"tools": {
@@ -175,7 +181,8 @@
 		"context": "{{size}} context",
 		"alias": "Follows another role",
 		"unavailable": "Not available",
-		"custom": "Custom"
+		"custom": "Custom",
+		"addProvider": "Add a provider…"
 	},
 	"modelsTab": {
 		"group": "New chats",
@@ -187,12 +194,77 @@
 		},
 		"thinking": {
 			"label": "Default thinking",
-			"description": "More thinking gives better answers to hard questions but takes longer and costs more."
+			"description": "Higher thinking levels allow more reasoning and may take longer or cost more."
 		},
 		"roles": {
 			"title": "Model roles",
-			"description": "Pick which model does which job — everyday chat, planning, commit messages, and more.",
+			"description": "Choose which model handles each job, such as everyday chat, planning and commit messages.",
 			"open": "Open model roles"
+		}
+	},
+	"providers": {
+		"intro": "What omp reports about the providers it can use. Signing in runs omp's own sign-in, and omp saves the result in its credential store on this computer.",
+		"refresh": "Check again",
+		"signInAny": "Sign in to a provider",
+		"loading": "Asking omp which providers are set up…",
+		"connected": {
+			"title": "Connected",
+			"empty": "omp reports no providers yet. Sign in to one below to start chatting."
+		},
+		"status": {
+			"needsSignIn": "Needs sign-in",
+			"someNeedSignIn_one": "{{count}} account needs sign-in",
+			"someNeedSignIn_other": "{{count}} accounts need sign-in",
+			"accounts": "Signed in",
+			"authenticated": "Credential found",
+			"models": "Models available"
+		},
+		"models_one": "{{count}} model",
+		"models_other": "{{count}} models",
+		"noModels": "No models",
+		"account": {
+			"unnamed": "Signed-in account",
+			"disabled": "omp stopped using {{account}}: {{cause}}",
+			"disabledUnnamed": "omp stopped using an account: {{cause}}"
+		},
+		"actions": {
+			"more": "More actions for {{name}}",
+			"signInAgain": "Sign in again",
+			"addAccount": "Add another account",
+			"signOut": "Sign out of {{name}}"
+		},
+		"signOut": {
+			"title": "Sign out of {{name}}?",
+			"description": "omp removes the saved sign-in for every account of this provider on this computer. Keys from environment variables or omp's config files stay in place, and chats that are already running may keep the credentials they loaded. You can sign in again at any time.",
+			"confirm": "Sign out all accounts",
+			"done": "Signed out of {{name}}.",
+			"failed": "omp could not sign out of {{name}}."
+		},
+		"add": {
+			"title": "Add a provider",
+			"description": "Providers you can set up in omp. Each one opens omp's sign-in in a terminal here.",
+			"search": "Search providers",
+			"noMatch": "No providers match your search.",
+			"action": "Sign in",
+			"envNote": "Some providers read an API key from an environment variable instead of signing in. omp lists them under Environment Variables in the output of omp --help."
+		},
+		"login": {
+			"titleOne": "Sign in to {{name}}",
+			"titleAny": "Sign in to a provider",
+			"hint": "This is omp's own sign-in. Follow its steps below; it opens your browser when the provider needs it.",
+			"exited": "omp finished. The provider list reloads with any changes.",
+			"starting": "Starting omp's sign-in…",
+			"terminalLabel": "omp sign-in",
+			"finished": "omp's sign-in finished."
+		},
+		"restart": {
+			"note": "Chats that are already open may keep the models they started with. Restart a chat to load new ones.",
+			"action_one": "Restart {{count}} idle chat",
+			"action_other": "Restart {{count}} idle chats",
+			"requested_one": "Requested a restart for {{count}} chat.",
+			"requested_other": "Requested a restart for {{count}} chats.",
+			"failed_one": "{{count}} chat could not restart.",
+			"failed_other": "{{count}} chats could not restart."
 		}
 	},
 	"alerts": {
@@ -218,20 +290,48 @@
 		"empty": "No shortcuts match your search."
 	},
 	"about": {
-		"tagline": "A friendly window onto omp, the coding agent.",
-		"appVersion": "App version",
-		"ompVersion": "omp version",
+		"tagline": "A desktop app for omp, the coding agent.",
+		"appVersion": "visual-omp",
+		"ompVersion": "omp",
+		"version": "v{{version}}",
 		"ompMissing": "Not found",
 		"ompPath": "omp location",
-		"docs": "omp docs",
-		"reportIssue": "Report an issue",
-		"appCurrent": "visual-omp is up to date.",
-		"appUpdate": "visual-omp {{version}} is available.",
-		"appCheckFailed": "Couldn't check for app updates: {{reason}}",
-		"viewRelease": "View release",
-		"ompCurrent": "omp is up to date.",
-		"ompUpdate": "omp {{version}} is available.",
-		"ompCheckFailed": "Couldn't check for omp updates: {{reason}}"
+		"lastCheck": "Last check",
+		"justNow": "Just now",
+		"never": "Not checked yet",
+		"method": {
+			"brew": "updates through Homebrew",
+			"dmg": "updates from a downloaded disk image",
+			"nsis": "updates with the Windows installer",
+			"manual": "updates from the release page"
+		},
+		"channel": {
+			"stable": "stable channel",
+			"canary": "canary channel"
+		},
+		"checkUpdates": "Check for updates",
+		"checking": "Checking for updates…",
+		"notChecked": "Not checked yet",
+		"checkFailed": "Couldn't check: {{reason}}",
+		"upToDate": "Up to date",
+		"appUpdate": "v{{version}} is available",
+		"updateApp": "Update visual-omp",
+		"brewRunning": "Homebrew is upgrading visual-omp…",
+		"brewReady": "v{{version}} is installed. Restart to start using it.",
+		"restartApp": "Restart visual-omp",
+		"downloading": "Downloading the installer…",
+		"downloadingPercent": "Downloading the installer ({{percent}}%)",
+		"showProgress": "Show progress",
+		"ompUpdate": "v{{version}} is available",
+		"updateOmp": "Update omp",
+		"staleChats_one": "1 open chat still runs the previous omp",
+		"staleChats_other": "{{count}} open chats still run the previous omp",
+		"restartChats": "Restart open chats",
+		"restartingChats_one": "Requested a restart of 1 chat. Waiting for it to reconnect…",
+		"restartingChats_other": "Requested a restart of {{count}} chats. Waiting for them to reconnect…",
+		"releaseNotes": "Read release notes",
+		"docs": "Read omp docs",
+		"reportIssue": "Report an issue"
 	},
 	"advanced": {
 		"search": "Search every omp setting",
@@ -245,7 +345,7 @@
 		"noDescription": "No description",
 		"notSet": "Not set",
 		"default": "default",
-		"secretSaved": "Saved — hidden",
+		"secretSaved": "Saved (hidden)",
 		"reset": "Reset {{key}} to default",
 		"invalid": {
 			"number": "{{key}} needs a number.",
@@ -266,14 +366,14 @@
 				"project_one": "This removes {{count}} saved setting from this project's settings. Saved passwords and keys are kept.",
 				"project_other": "This removes {{count}} saved settings from this project's settings. Saved passwords and keys are kept."
 			},
-			"confirm": "Reset all",
+			"confirm": "Reset all settings",
 			"done_one": "Reset {{count}} setting.",
 			"done_other": "Reset {{count}} settings."
 		}
 	},
 	"roles": {
 		"title": "Model roles",
-		"subtitle": "Pick which model does which job — everyday chat, planning, commit messages, and more.",
+		"subtitle": "Choose which model handles each job, such as everyday chat, planning and commit messages.",
 		"listTitle": "Roles",
 		"unsaved": "Unsaved changes",
 		"refreshModels": "Refresh the model list",
@@ -288,9 +388,9 @@
 		"clear": "Let omp choose instead",
 		"customChip": "Custom",
 		"usedFor": "Used for:",
-		"missing": "This model isn't available — pick another",
+		"missing": "This model isn't available. Pick another one.",
 		"aliasHelp": "This role uses whatever model {{alias}} is set to.",
-		"overridden": "This project sets its own model for this role ({{value}}), so it wins here. Switch to \"This project\" to change it.",
+		"overridden": "This project sets its own model for this role ({{value}}), so that value applies here. Switch to \"This project\" to change it.",
 		"names": {
 			"default": "Default",
 			"smol": "Fast",
@@ -310,7 +410,7 @@
 		},
 		"usage": {
 			"default": "Every chat, unless you switch models.",
-			"plan": "Plan mode — working out an approach before any files change.",
+			"plan": "Plan mode: working out an approach before any files change.",
 			"commit": "Writing commit messages and summaries of your changes.",
 			"advisor": "A second opinion that watches each step and adds notes when something looks off.",
 			"smol": "Quick, low-cost jobs where speed matters more than depth.",
@@ -332,8 +432,8 @@
 		},
 		"pending_one": "{{count}} unsaved change",
 		"pending_other": "{{count}} unsaved changes",
-		"revert": "Revert",
-		"save": "Save",
+		"revert": "Revert changes",
+		"save": "Save roles",
 		"saved_one": "Saved {{count}} role.",
 		"saved_other": "Saved {{count}} roles.",
 		"presetApplied": "Switched to the {{name}} preset.",
@@ -349,14 +449,14 @@
 			"empty": "No presets yet.",
 			"summary_one": "{{model}} · {{count}} role",
 			"summary_other": "{{model}} · {{count}} roles",
-			"apply": "Use this",
+			"apply": "Apply preset",
 			"delete": "Delete preset {{name}}",
 			"saveTitle": "Save as preset",
 			"saveBody": "Saves the current model for every role, plus the default thinking level.",
 			"name": "Name",
 			"namePlaceholder": "e.g. fast-and-cheap",
 			"nameInvalid": "Start with a letter; use only letters, numbers, - and _.",
-			"nameTaken": "A preset with this name exists — saving replaces it.",
+			"nameTaken": "A preset with this name exists. Saving replaces it.",
 			"save": "Save preset",
 			"replace": "Replace preset"
 		},
@@ -365,18 +465,20 @@
 			"body_one": "You have {{count}} unsaved change to model roles.",
 			"body_other": "You have {{count}} unsaved changes to model roles.",
 			"keep": "Keep editing",
-			"confirm": "Discard"
+			"confirm": "Discard changes"
 		}
 	},
 	"agents": {
 		"title": "Helpers",
 		"subtitle": "Reusable specialists omp can hand work to.",
 		"new": "New helper",
-		"createWithAi": "Create with AI",
+		"createWithAi": "Create helper with omp",
 		"refresh": "Reload helpers",
 		"search": "Search helpers",
 		"filter": "Show",
-		"filters": { "all": "All" },
+		"filters": {
+			"all": "All"
+		},
 		"scope": {
 			"bundled": "Built-in",
 			"user": "All projects",
@@ -384,7 +486,7 @@
 		},
 		"customizedChip": "Customized",
 		"brokenChip": "Can't be used",
-		"fix": "Fix",
+		"fix": "Fix file",
 		"warnings_one": "{{count}} problem",
 		"warnings_other": "{{count}} problems",
 		"running": "Running now",
@@ -396,17 +498,17 @@
 		"enable": "Let omp use {{name}}",
 		"more": "More actions for {{name}}",
 		"menu": {
-			"edit": "Edit",
-			"customize": "Customize",
-			"duplicate": "Duplicate",
-			"run": "Run now",
-			"delete": "Delete"
+			"edit": "Edit helper",
+			"customize": "Customize helper",
+			"duplicate": "Duplicate helper",
+			"run": "Run helper now",
+			"delete": "Delete helper"
 		},
 		"empty": "No helpers here yet",
 		"emptySearch": "No helpers match your search.",
 		"emptyBody": "Create one to give omp a specialist it can hand work to.",
 		"loadFailed": "Couldn't load helpers",
-		"needsProject": "Open a project first — helpers run inside a chat.",
+		"needsProject": "Open a project first. Helpers run inside a chat.",
 		"actionFailed": "That didn't work: {{reason}}",
 		"customized": "Made an editable copy of {{name}} for all projects.",
 		"shadowed": "Saved, but this project's settings still decide whether omp uses {{name}}.",
@@ -414,7 +516,7 @@
 		"delete": {
 			"title": "Delete {{name}}?",
 			"body": "This removes the helper's file from this computer. This can't be undone.",
-			"confirm": "Delete"
+			"confirm": "Delete helper"
 		},
 		"ai": {
 			"title": "Create a helper with AI",
@@ -422,7 +524,7 @@
 			"label": "What should this helper do?",
 			"placeholder": "e.g. Review my changes for accessibility problems and suggest fixes in plain words.",
 			"how": "omp opens a new chat, writes the helper file and tells you its name. It shows up here when it's done.",
-			"needsProject": "Open a project first — omp writes the helper from a chat.",
+			"needsProject": "Open a project first. omp writes the helper from a chat.",
 			"create": "Create helper",
 			"started": "omp is creating your helper in a new chat.",
 			"startedHint": "Open Helpers again when it's done to see it."
@@ -462,10 +564,10 @@
 			"test": "Test in new chat",
 			"testSaveFirst": "Save your changes first",
 			"create": "Create helper",
-			"save": "Save",
+			"save": "Save helper",
 			"saved": "Saved {{name}}.",
-			"saveFailed": "Couldn't save — {{reason}}",
-			"fixed": "Fixed — omp can use this helper again.",
+			"saveFailed": "Couldn't save: {{reason}}",
+			"fixed": "Fixed. omp can use this helper again.",
 			"valid": "omp can read this file.",
 			"invalid": "omp can't use this yet: {{reason}}",
 			"rawLabel": "Helper file"

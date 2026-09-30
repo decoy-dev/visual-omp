@@ -1,11 +1,14 @@
 import type { ModelInfo, ModelKind } from "@shared/contracts/config";
-import { Brain, Eye, Zap } from "lucide-react";
+import { Brain, Eye, Lightning } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
+import { useApp } from "@/state/app";
 import { Select, SelectGroup, SelectItem, SelectLabel, SelectSeparator } from "@/ui";
 import { formatContextWindow, groupModelsByProvider, modelValueStatus } from "./rolesModel";
 
 /** Radix Select forbids "" as an item value. */
 const AUTO = "__auto__";
+/** Last entry: opens Settings → Providers instead of choosing a model. */
+const ADD_PROVIDER = "__add_provider__";
 
 /** Low-cost models get the ⚡ badge: at most $1 per million input tokens. */
 const CHEAP_INPUT_USD_PER_MTOK = 1;
@@ -29,7 +32,7 @@ export function ModelCapabilities({ model }: { model: ModelInfo }) {
 			)}
 			{model.cost && model.cost.input <= CHEAP_INPUT_USD_PER_MTOK && (
 				<span title={t("models.caps.cheap")}>
-					<Zap aria-hidden className="size-3.5" />
+					<Lightning aria-hidden className="size-3.5" />
 					<span className="sr-only">{t("models.caps.cheap")}</span>
 				</span>
 			)}
@@ -61,7 +64,10 @@ export function ModelSelect({ models, accepts, value, onChange, autoLabel, disab
 	return (
 		<Select
 			value={value ?? AUTO}
-			onValueChange={next => onChange(next === AUTO ? null : next)}
+			onValueChange={next => {
+				if (next === ADD_PROVIDER) useApp.getState().openSheet("settings", { tab: "providers" });
+				else onChange(next === AUTO ? null : next);
+			}}
 			invalid={status === "missing"}
 			disabled={disabled}
 			className={className}
@@ -85,6 +91,8 @@ export function ModelSelect({ models, accepts, value, onChange, autoLabel, disab
 					))}
 				</SelectGroup>
 			))}
+			<SelectSeparator />
+			<SelectItem value={ADD_PROVIDER}>{t("models.addProvider")}</SelectItem>
 		</Select>
 	);
 }
