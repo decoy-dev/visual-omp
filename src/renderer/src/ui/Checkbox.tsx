@@ -1,12 +1,12 @@
-import { Check, Minus } from "lucide-react";
+import { Minus } from "@phosphor-icons/react";
 import { type ComponentPropsWithRef, type ReactNode, useEffect, useId, useImperativeHandle, useRef } from "react";
 import { cn } from "./cn";
 import { focusRing } from "./styles";
 
 const boxBase = cn(
-	"peer size-4 shrink-0 appearance-none border border-border-strong bg-panel shadow-(--shadow-card)",
-	"transition-[background-color,border-color] duration-(--dur-fast) ease-(--ease-out)",
-	"hover:border-fg-faint disabled:cursor-not-allowed",
+	"peer relative size-4 shrink-0 appearance-none border border-control bg-panel",
+	"transition-[background-color,border-color,border-width,scale] duration-(--dur-fast) ease-(--ease-out-quart)",
+	"hover:border-fg-muted enabled:active:scale-[0.9] disabled:cursor-not-allowed",
 	focusRing,
 );
 
@@ -28,15 +28,19 @@ function Row({
 	children: ReactNode;
 }) {
 	return (
-		<div className={cn("flex items-start gap-2.5", disabled && "cursor-not-allowed opacity-45", className)}>
-			<span className="relative mt-px inline-flex size-4 shrink-0 items-center justify-center">{children}</span>
+		<div className={cn("flex items-start gap-2", disabled && "cursor-not-allowed opacity-45", className)}>
+			<span className="relative mt-px inline-flex size-4 shrink-0 items-center justify-center">
+				{/* Pads the 16px box to a 24px pointer target; the control stays the only focus stop. */}
+				<label htmlFor={id} aria-hidden className="absolute -inset-1 rounded-sm" />
+				{children}
+			</span>
 			{label && (
-				<div className="min-w-0">
-					<label htmlFor={id} className={cn("block text-md text-fg", disabled && "cursor-not-allowed")}>
+				<div className="-ml-1 min-w-0">
+					<label htmlFor={id} className={cn("block pl-1 text-md text-fg", disabled && "cursor-not-allowed")}>
 						{label}
 					</label>
 					{description && (
-						<p id={descId} className="mt-0.5 text-sm text-fg-muted">
+						<p id={descId} className="mt-0.5 pl-1 text-sm text-fg-muted">
 							{description}
 						</p>
 					)}
@@ -54,7 +58,7 @@ export interface CheckboxProps extends Omit<ComponentPropsWithRef<"input">, "typ
 	onCheckedChange?: (checked: boolean) => void;
 }
 
-/** Native checkbox (keyboard/forms for free) drawn as a 16px box; the label row supplies a ≥24px target. */
+/** Native checkbox (keyboard/forms for free) drawn as a 16px box inside a 24px pointer target; the label is clickable too. */
 export function Checkbox({
 	label,
 	description,
@@ -90,12 +94,19 @@ export function Checkbox({
 				{...rest}
 			/>
 			{indeterminate ? (
-				<Minus aria-hidden className="pointer-events-none absolute size-3 text-accent-fg [stroke-width:2.5]" />
+				<Minus aria-hidden weight="bold" className="pointer-events-none absolute size-3 text-accent-fg" />
 			) : (
-				<Check
-					aria-hidden
-					className="pointer-events-none absolute size-3 text-accent-fg opacity-0 [stroke-width:2.5] peer-checked:opacity-100"
-				/>
+				// Drawn with a stroke so the check can draw itself in (`.vo-check-path` in ui.css).
+				<svg aria-hidden viewBox="0 0 12 12" fill="none" className="vo-check pointer-events-none absolute size-3 text-accent-fg">
+					<path
+						className="vo-check-path"
+						d="M2.5 6.25 L5 8.5 L9.5 3.5"
+						stroke="currentColor"
+						strokeWidth="1.75"
+						strokeLinecap="round"
+						strokeLinejoin="round"
+					/>
+				</svg>
 			)}
 		</Row>
 	);

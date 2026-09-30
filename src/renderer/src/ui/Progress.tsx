@@ -18,7 +18,7 @@ const fills: Record<NonNullable<ProgressProps["tone"]>, string> = {
 	err: "bg-err",
 };
 
-/** 6px pill bar; determinate width eases over 240ms, indeterminate slides two segments (fades under reduced motion). */
+/** 6px pill bar; determinate width follows the value on the gentle spring, indeterminate slides two segments (fades under reduced motion). */
 export function Progress({ value, showValue, tone = "accent", className, ...aria }: ProgressProps) {
 	const determinate = value !== undefined;
 	const pct = determinate ? Math.min(100, Math.max(0, value)) : 0;
@@ -40,7 +40,10 @@ export function Progress({ value, showValue, tone = "accent", className, ...aria
 			>
 				{determinate ? (
 					<div
-						className={cn("h-full rounded-full transition-[width] duration-240 ease-(--ease-out)", fills[tone])}
+						className={cn(
+							"h-full rounded-full transition-[width,background-color] duration-(--dur-spring-gentle) ease-(--ease-spring)",
+							fills[tone],
+						)}
 						style={{ width: `${pct}%` }}
 					/>
 				) : (
@@ -63,7 +66,7 @@ export interface StepDotsProps {
 	className?: string;
 }
 
-/** ●●○○ step progress: done = accent, current = accent + pulse ring, todo = border-strong. */
+/** ●●○○ step progress: done = accent, current = accent + pulse ring, todo = `--control-border` (3:1 on every surface). */
 export function StepDots({ total, current, showLabel, className }: StepDotsProps) {
 	const text = `Step ${current + 1} of ${total}`;
 	return (
@@ -82,7 +85,7 @@ export function StepDots({ total, current, showLabel, className }: StepDotsProps
 						<span
 							className={cn(
 								"relative size-2 rounded-full transition-colors duration-(--dur)",
-								i <= current ? "bg-accent" : "bg-border-strong",
+								i <= current ? "bg-accent" : "bg-control",
 								i === current && "ring-4 ring-accent-muted",
 							)}
 						/>

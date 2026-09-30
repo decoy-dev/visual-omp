@@ -1,7 +1,10 @@
 /*
- * visual-omp design tokens — "Signal Grid", docs/DESIGN.md §1 is the source of truth.
+ * visual-omp design tokens. docs/DESIGN.md §1 is the source of truth.
  * The ONLY file allowed to contain raw color values. Light is the default;
  * `[data-theme="dark"]` on <html> switches to dark.
+ *
+ * Colors are OKLCH. Surfaces are near-neutral with a very small tint toward the accent hue (195);
+ * the accent is one teal (hue 192). Contrast ratios are listed in DESIGN.md §1.3.
  */
 @import "tailwindcss";
 @import "@fontsource-variable/geist";
@@ -12,114 +15,130 @@
 :root {
 	color-scheme: light;
 
-	/* 1.1 surfaces */
-	--bg: #f5f7fa;
-	--panel: #ffffff;
-	--bg-inset: #f6f8fb;
-	--bg-raised: #ffffff;
-	--bg-overlay: #ffffff;
-	--glass: rgba(245, 247, 250, 0.72);
-	--hover: rgba(16, 24, 40, 0.04);
-	--selected: rgba(16, 24, 40, 0.07);
-	--backdrop: rgba(15, 23, 42, 0.35);
+	/* 1.1 surfaces: canvas, panels on it (hairline-separated), inset wells, floating layers */
+	--bg: oklch(0.975 0.003 195);
+	--panel: oklch(0.994 0.0015 195);
+	--bg-inset: oklch(0.963 0.004 195);
+	--bg-raised: oklch(0.997 0.001 195);
+	--bg-overlay: oklch(0.997 0.001 195);
+	/* Title bar and sticky chrome: opaque, same as the canvas (no translucency or backdrop blur). */
+	--glass: var(--bg);
+	--hover: oklch(0.3 0.02 195 / 0.045);
+	--selected: oklch(0.3 0.02 195 / 0.08);
+	--backdrop: oklch(0.22 0.015 195 / 0.32);
 
 	/* 1.3 text */
-	--fg: #0f1722;
-	--fg-muted: #4b5866;
-	--fg-faint: #67737f;
-	--fg-inverse: #ffffff;
+	--fg: oklch(0.22 0.012 195);
+	--fg-muted: oklch(0.45 0.013 195);
+	--fg-faint: oklch(0.535 0.012 195);
+	--fg-inverse: oklch(0.995 0.002 195);
 
-	/* 1.4 accent — the Signal Grid spectrum */
-	--mark-a: #22d3ee;
-	--mark-b: #3b82f6;
-	--mark-c: #e879f9;
-	--mark-gradient: linear-gradient(120deg, var(--mark-a) 0%, var(--mark-b) 50%, var(--mark-c) 100%);
-	--work-gradient: linear-gradient(120deg, var(--mark-a) 0%, var(--mark-b) 33%, var(--mark-c) 66%, var(--mark-a) 100%);
-	--plug: #f97316;
-	--accent: #0e7490;
-	--accent-hover: #155e75;
-	--accent-active: #164e63;
+	/* 1.4 accent: one teal. The old spectrum tokens resolve to the accent so legacy callers stay single-color. */
+	--accent: oklch(0.5 0.082 192);
+	--accent-hover: oklch(0.45 0.076 192);
+	--accent-active: oklch(0.405 0.07 192);
 	--accent-fg: #ffffff;
-	--accent-muted: #e0f2f7;
-	--accent-2: #2563eb;
-	--accent-2-muted: #ebf1fe;
-	--agent: #a21caf;
-	--agent-muted: #fbeffe;
-	--ambient-a: rgba(14, 116, 144, 0.05);
-	--ambient-b: rgba(37, 99, 235, 0.05);
+	--accent-muted: oklch(0.95 0.022 192);
+	--mark-a: var(--accent);
+	--mark-b: var(--accent);
+	--mark-c: var(--accent);
+	--mark-gradient: linear-gradient(var(--accent), var(--accent));
+	--work-gradient: linear-gradient(var(--accent), var(--accent));
+	--plug: var(--warn);
+	/* Secondary emphasis is neutral ink; agent content uses the accent. */
+	--accent-2: oklch(0.4 0.014 195);
+	--accent-2-muted: oklch(0.945 0.005 195);
+	--agent: var(--accent);
+	--agent-muted: var(--accent-muted);
+	--ambient-a: transparent;
+	--ambient-b: transparent;
 
-	/* 1.5 status */
-	--ok: #047857;
-	--ok-bg: #e6f6ef;
-	--warn: #b45309;
-	--warn-bg: #fdf3e2;
-	--err: #c81e1e;
-	--err-bg: #fcecec;
-	--err-hover: #b01a1a;
-	--info: #2563eb;
-	--info-bg: #ebf1fe;
-	--live: #047857;
+	/* 1.5 status (slightly desaturated) */
+	--ok: oklch(0.5 0.1 160);
+	--ok-bg: oklch(0.957 0.022 160);
+	--warn: oklch(0.53 0.11 65);
+	--warn-bg: oklch(0.962 0.028 78);
+	--err: oklch(0.52 0.16 25);
+	--err-bg: oklch(0.955 0.02 20);
+	--err-hover: oklch(0.47 0.15 25);
+	--info: oklch(0.52 0.12 255);
+	--info-bg: oklch(0.955 0.018 255);
+	--live: var(--ok);
 
 	/* 1.6 diff */
-	--diff-add-bg: #e4f5ec;
-	--diff-add-line: #cfefde;
-	--diff-add-text: #0e6e45;
-	--diff-del-bg: #fdecea;
-	--diff-del-line: #fadad5;
-	--diff-del-text: #c2291f;
-	--diff-hunk-bg: #edf1f5;
-	--diff-hunk-text: #4b5866;
+	--diff-add-bg: oklch(0.962 0.025 160);
+	--diff-add-line: oklch(0.925 0.045 160);
+	--diff-add-text: oklch(0.47 0.1 160);
+	--diff-del-bg: oklch(0.958 0.02 22);
+	--diff-del-line: oklch(0.925 0.04 22);
+	--diff-del-text: oklch(0.5 0.15 25);
+	--diff-hunk-bg: oklch(0.95 0.006 195);
+	--diff-hunk-text: var(--fg-muted);
 
-	/* 1.7 syntax */
-	--syn-text: #0f1722;
-	--syn-keyword: #0e7490;
-	--syn-string: #047857;
-	--syn-number: #b45309;
-	--syn-function: #2563eb;
-	--syn-type: #a21caf;
-	--syn-operator: #c81e1e;
-	--syn-comment: #64707d;
-	--syn-punct: #4b5866;
+	/* 1.7 syntax (code keeps a few muted hues so tokens stay distinguishable) */
+	--syn-text: var(--fg);
+	--syn-keyword: oklch(0.48 0.085 192);
+	--syn-string: oklch(0.48 0.1 150);
+	--syn-number: oklch(0.52 0.11 60);
+	--syn-function: oklch(0.5 0.11 255);
+	--syn-type: oklch(0.5 0.11 300);
+	--syn-operator: oklch(0.52 0.13 25);
+	--syn-comment: oklch(0.54 0.01 195);
+	--syn-punct: var(--fg-muted);
 
-	/* 1.8 borders & focus */
-	--border: rgba(15, 23, 34, 0.08);
-	--border-strong: rgba(15, 23, 34, 0.14);
-	--ring: #0891b2;
-	--ring-soft: rgba(8, 145, 178, 0.16);
-	--grid-line: rgba(15, 35, 60, 0.05);
+	/* 1.8 borders & focus: hairlines separate panels from the canvas */
+	--border: oklch(0.3 0.02 195 / 0.1);
+	--border-strong: oklch(0.3 0.02 195 / 0.17);
+	/* Interactive control boundaries and off-state graphics (checkbox/radio outlines, off switch track, input borders).
+	 * At least 3:1 against bg, panel, inset, raised and overlay (WCAG 1.4.11); DESIGN.md §1.8 lists the ratios. */
+	--control-border: oklch(0.62 0.012 195);
+	--ring: oklch(0.56 0.09 192);
+	--ring-soft: oklch(0.56 0.09 192 / 0.18);
+	--grid-line: transparent;
 
-	/* 1.9 elevation */
-	--shadow-card: 0 1px 2px rgba(15, 35, 60, 0.06);
-	--shadow-pop: 0 4px 12px rgba(15, 35, 60, 0.08), 0 1px 3px rgba(15, 35, 60, 0.06);
-	--shadow-overlay: 0 16px 48px rgba(15, 35, 60, 0.14), 0 4px 12px rgba(15, 35, 60, 0.08);
-	--shadow-composer: 0 1px 2px rgba(15, 35, 60, 0.06), 0 8px 24px rgba(15, 35, 60, 0.08);
-	--shadow-primary: inset 0 1px 0 rgba(255, 255, 255, 0.16), 0 1px 2px rgba(15, 35, 60, 0.12);
-	--work-glow: 0 0 16px rgba(34, 211, 238, 0.14);
+	/* 1.9 elevation: tinted and tight. No blur of 16px or more, so any 1px border may pair with any of these. */
+	--shadow-tint: 0.28 0.03 195;
+	--shadow-card: 0 1px 1px oklch(var(--shadow-tint) / 0.05);
+	--shadow-pop: 0 1px 2px oklch(var(--shadow-tint) / 0.06), 0 6px 12px -4px oklch(var(--shadow-tint) / 0.14);
+	--shadow-overlay: 0 2px 4px oklch(var(--shadow-tint) / 0.06), 0 12px 12px -8px oklch(var(--shadow-tint) / 0.2);
+	--shadow-composer: 0 1px 2px oklch(var(--shadow-tint) / 0.05), 0 4px 8px -4px oklch(var(--shadow-tint) / 0.1);
+	--shadow-primary: inset 0 1px 0 oklch(1 0 0 / 0.14), 0 1px 1px oklch(var(--shadow-tint) / 0.18);
+	/* Working state: a 3px accent halo (spread, no blur). */
+	--work-glow: 0 0 0 3px oklch(0.5 0.082 192 / 0.14);
 
-	/* 1.10 radii (root variables for vendored omp CSS; utilities in @theme) */
+	/* 1.10 radii (root variables for vendored omp CSS; utilities in @theme). Cards stay at 12px or less. */
 	--radius-sm: 6px;
 	--radius: 8px;
 	--radius-lg: 12px;
-	--radius-xl: 16px;
+	--radius-xl: 14px;
 	--radius-full: 999px;
 
-	/* terminal (xterm) */
-	--term-bg: #f6f8fb;
-	--term-fg: #0f1722;
-	--term-cursor: #0e7490;
-	--term-selection: rgba(37, 99, 235, 0.18);
+	/* terminal (xterm). ANSI blue/magenta get their own tokens now that --accent-2/--agent are not hues. */
+	--term-bg: var(--bg-inset);
+	--term-fg: var(--fg);
+	--term-cursor: var(--accent);
+	--term-selection: oklch(0.5 0.082 192 / 0.2);
+	--term-blue: oklch(0.5 0.11 255);
+	--term-magenta: oklch(0.5 0.11 320);
 
 	/* platform: Windows caption close hover (DESIGN §3.1, the one allowed off-palette color) */
 	--win-close: #e81123;
 
-	/* 1.12 motion */
+	/* 1.12 motion. CSS mirrors ui/motion.tsx: ease-out-quart / ease-out-expo, and critically damped springs as linear(). */
 	--dur-fast: 100ms;
 	--dur: 160ms;
 	--dur-slow: 240ms;
 	--dur-xl: 360ms;
+	/* Crossfade length that survives reduced motion (opacity only). */
+	--dur-fade: 140ms;
 	--ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+	--ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+	--ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
 	--ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
-	--ease-spring: cubic-bezier(0.34, 1.3, 0.64, 1);
+	/* No overshoot: a critically damped spring sampled into linear(). Pair with --dur-spring / --dur-spring-gentle. */
+	--ease-spring: linear(0, 0.07, 0.213, 0.37, 0.513, 0.633, 0.729, 0.802, 0.858, 0.898, 0.928, 0.949, 0.965, 0.975, 0.983, 0.988, 0.992, 0.994, 0.996, 0.997, 1);
+	--dur-spring: 320ms;
+	--dur-spring-gentle: 520ms;
 
 	/* 1.13 z-index */
 	--z-base: 0;
@@ -150,88 +169,83 @@
 [data-theme="dark"] {
 	color-scheme: dark;
 
-	--bg: #090d14;
-	--panel: #0f1622;
-	--bg-inset: #0b111b;
-	--bg-raised: #141d2c;
-	--bg-overlay: #16202f;
-	--glass: rgba(15, 22, 34, 0.72);
-	--hover: rgba(226, 236, 248, 0.05);
-	--selected: rgba(226, 236, 248, 0.09);
-	--backdrop: rgba(3, 6, 10, 0.6);
+	/* Tinted off-black, not navy. */
+	--bg: oklch(0.172 0.005 195);
+	--panel: oklch(0.2 0.006 195);
+	--bg-inset: oklch(0.158 0.005 195);
+	--bg-raised: oklch(0.232 0.007 195);
+	--bg-overlay: oklch(0.24 0.007 195);
+	--hover: oklch(0.95 0.01 195 / 0.05);
+	--selected: oklch(0.95 0.01 195 / 0.09);
+	--backdrop: oklch(0.08 0.005 195 / 0.6);
 
-	--fg: #e9eef4;
-	--fg-muted: #9da9b8;
-	--fg-faint: #7b8a9c;
-	--fg-inverse: #0a0f16;
+	--fg: oklch(0.945 0.005 195);
+	--fg-muted: oklch(0.745 0.01 195);
+	--fg-faint: oklch(0.645 0.011 195);
+	--fg-inverse: oklch(0.18 0.006 195);
 
-	--accent: #22d3ee;
-	--accent-hover: #67e8f9;
-	--accent-active: #a5f3fc;
-	--accent-fg: #062832;
-	--accent-muted: #10303c;
-	--accent-2: #60a5fa;
-	--accent-2-muted: #152742;
-	--agent: #e879f9;
-	--agent-muted: #34153f;
-	--ambient-a: rgba(34, 211, 238, 0.06);
-	--ambient-b: rgba(96, 165, 250, 0.06);
+	--accent: oklch(0.78 0.1 192);
+	--accent-hover: oklch(0.84 0.09 192);
+	--accent-active: oklch(0.89 0.07 192);
+	--accent-fg: oklch(0.2 0.03 192);
+	--accent-muted: oklch(0.29 0.04 192);
+	--accent-2: oklch(0.83 0.01 195);
+	--accent-2-muted: oklch(0.27 0.008 195);
 
-	--ok: #34d399;
-	--ok-bg: #0f2b1f;
-	--warn: #fbbf24;
-	--warn-bg: #2e2410;
-	--err: #f87171;
-	--err-bg: #311518;
-	--err-hover: #fa8f8f;
-	--info: #60a5fa;
-	--info-bg: #152742;
-	--live: #34d399;
+	--ok: oklch(0.77 0.12 160);
+	--ok-bg: oklch(0.26 0.035 160);
+	--warn: oklch(0.8 0.115 80);
+	--warn-bg: oklch(0.27 0.035 80);
+	--err: oklch(0.72 0.14 25);
+	--err-bg: oklch(0.26 0.04 22);
+	--err-hover: oklch(0.78 0.13 25);
+	--info: oklch(0.75 0.1 255);
+	--info-bg: oklch(0.26 0.035 255);
 
-	--diff-add-bg: #0f2b1f;
-	--diff-add-line: #14382a;
-	--diff-add-text: #5bd9a3;
-	--diff-del-bg: #311518;
-	--diff-del-line: #42191d;
-	--diff-del-text: #ff9aa0;
-	--diff-hunk-bg: #141d2c;
-	--diff-hunk-text: #9da9b8;
+	--diff-add-bg: oklch(0.24 0.035 160);
+	--diff-add-line: oklch(0.29 0.045 160);
+	--diff-add-text: oklch(0.8 0.12 160);
+	--diff-del-bg: oklch(0.245 0.04 22);
+	--diff-del-line: oklch(0.29 0.055 22);
+	--diff-del-text: oklch(0.79 0.12 20);
+	--diff-hunk-bg: oklch(0.232 0.007 195);
 
-	--syn-text: #e9eef4;
-	--syn-keyword: #22d3ee;
-	--syn-string: #5bd9a3;
-	--syn-number: #fbbf24;
-	--syn-function: #60a5fa;
-	--syn-type: #e879f9;
-	--syn-operator: #f87171;
-	--syn-comment: #7b8a9c;
-	--syn-punct: #9da9b8;
+	--syn-keyword: oklch(0.78 0.1 192);
+	--syn-string: oklch(0.8 0.12 155);
+	--syn-number: oklch(0.82 0.11 75);
+	--syn-function: oklch(0.77 0.1 255);
+	--syn-type: oklch(0.76 0.1 305);
+	--syn-operator: oklch(0.73 0.13 25);
+	--syn-comment: oklch(0.645 0.011 195);
 
-	--border: rgba(226, 236, 248, 0.08);
-	--border-strong: rgba(226, 236, 248, 0.16);
-	--ring: #22d3ee;
-	--ring-soft: rgba(34, 211, 238, 0.22);
-	--grid-line: rgba(120, 170, 220, 0.07);
+	--border: oklch(0.95 0.01 195 / 0.09);
+	--border-strong: oklch(0.95 0.01 195 / 0.16);
+	--control-border: oklch(0.54 0.012 195);
+	--ring: oklch(0.78 0.1 192);
+	--ring-soft: oklch(0.78 0.1 192 / 0.24);
 
-	--shadow-card: 0 1px 2px rgba(0, 0, 0, 0.4);
-	--shadow-pop: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.35);
-	--shadow-overlay: 0 16px 48px rgba(0, 0, 0, 0.55), 0 4px 12px rgba(0, 0, 0, 0.4);
-	--shadow-composer: 0 1px 2px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(0, 0, 0, 0.35);
-	--shadow-primary: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 1px 2px rgba(0, 0, 0, 0.4);
-	--work-glow: 0 0 16px rgba(34, 211, 238, 0.2);
+	--shadow-tint: 0.06 0.01 195;
+	--shadow-card: 0 1px 1px oklch(var(--shadow-tint) / 0.4);
+	--shadow-pop: 0 1px 2px oklch(var(--shadow-tint) / 0.4), 0 6px 12px -4px oklch(var(--shadow-tint) / 0.5);
+	--shadow-overlay: 0 2px 4px oklch(var(--shadow-tint) / 0.4), 0 12px 12px -8px oklch(var(--shadow-tint) / 0.6);
+	--shadow-composer: 0 1px 2px oklch(var(--shadow-tint) / 0.4), 0 4px 8px -4px oklch(var(--shadow-tint) / 0.4);
+	--shadow-primary: inset 0 1px 0 oklch(1 0 0 / 0.2), 0 1px 1px oklch(var(--shadow-tint) / 0.4);
+	--work-glow: 0 0 0 3px oklch(0.78 0.1 192 / 0.16);
 
-	--term-bg: #0b111b;
-	--term-fg: #e9eef4;
-	--term-cursor: #22d3ee;
-	--term-selection: rgba(96, 165, 250, 0.25);
+	--term-selection: oklch(0.78 0.1 192 / 0.24);
+	--term-blue: oklch(0.75 0.1 255);
+	--term-magenta: oklch(0.74 0.11 320);
 }
 
-/* Reduced motion: app setting (`data-motion="reduced"`) or OS preference unless the app forces full. */
+/* Reduced motion: app setting (`data-motion="reduced"`) or OS preference unless the app forces full.
+ * Movement durations collapse; --dur-fade stays so surfaces can still crossfade. */
 :root[data-motion="reduced"] {
 	--dur-fast: 0.01ms;
 	--dur: 0.01ms;
 	--dur-slow: 0.01ms;
 	--dur-xl: 0.01ms;
+	--dur-spring: 0.01ms;
+	--dur-spring-gentle: 0.01ms;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -240,6 +254,8 @@
 		--dur: 0.01ms;
 		--dur-slow: 0.01ms;
 		--dur-xl: 0.01ms;
+		--dur-spring: 0.01ms;
+		--dur-spring-gentle: 0.01ms;
 	}
 }
 
@@ -288,6 +304,7 @@
 	--color-diff-hunk-text: var(--diff-hunk-text);
 	--color-border: var(--border);
 	--color-border-strong: var(--border-strong);
+	--color-control: var(--control-border);
 	--color-ring: var(--ring);
 	--color-ring-soft: var(--ring-soft);
 	--color-win-close: var(--win-close);
@@ -318,5 +335,5 @@
 	--radius-sm: 6px;
 	--radius-md: 8px;
 	--radius-lg: 12px;
-	--radius-xl: 16px;
+	--radius-xl: 14px;
 }

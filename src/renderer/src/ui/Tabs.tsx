@@ -1,5 +1,6 @@
 import * as RT from "@radix-ui/react-tabs";
-import { type ComponentPropsWithRef, createContext, type ReactNode, useContext } from "react";
+import { motion } from "motion/react";
+import { type ComponentPropsWithRef, createContext, type ReactNode, useContext, useId, useState } from "react";
 import { cn } from "./cn";
 import { disabledData, focusRing } from "./styles";
 
@@ -9,7 +10,30 @@ export type TabsSize = "sm" | "md";
 
 const TabsStyle = createContext<{ variant: TabsVariant; size: TabsSize }>({ variant: "underline", size: "md" });
 
-export const Tabs = RT.Root;
+/** Active value + a per-instance id for the shared indicator. Null when a trigger is rendered outside `Tabs`. */
+const TabsActive = createContext<{ value: string | undefined; indicatorId: string } | null>(null);
+
+export type TabsProps = ComponentPropsWithRef<typeof RT.Root>;
+
+/** Radix Tabs root that also tracks the active value so the indicator can slide between triggers. */
+export function Tabs({ value, defaultValue, onValueChange, ...rest }: TabsProps) {
+	const [uncontrolled, setUncontrolled] = useState(defaultValue);
+	const current = value ?? uncontrolled;
+	const indicatorId = `vo-tabs-${useId()}`;
+	return (
+		<TabsActive.Provider value={{ value: current, indicatorId }}>
+			<RT.Root
+				value={value}
+				defaultValue={defaultValue}
+				onValueChange={(next) => {
+					setUncontrolled(next);
+					onValueChange?.(next);
+				}}
+				{...rest}
+			/>
+		</TabsActive.Provider>
+	);
+}
 
 export interface TabsListProps extends ComponentPropsWithRef<typeof RT.List> {
 	variant?: TabsVariant;
@@ -37,22 +61,28 @@ export interface TabsTriggerProps extends ComponentPropsWithRef<typeof RT.Trigge
 	trailing?: ReactNode;
 }
 
-export function TabsTrigger({ icon, trailing, className, children, ...rest }: TabsTriggerProps) {
+export function TabsTrigger({ icon, trailing, className, children, value, ...rest }: TabsTriggerProps) {
 	const { variant, size } = useContext(TabsStyle);
+	const active = useContext(TabsActive);
+	// Outside `Tabs` there is no shared indicator; fall back to a static per-trigger one driven by data-state.
+	const staticIndicator = active === null;
+	const underline = variant === "underline";
 	return (
 		<RT.Trigger
+			value={value}
 			className={cn(
 				"relative inline-flex shrink-0 select-none items-center gap-1.5 whitespace-nowrap font-medium text-fg-muted",
-				"transition-colors duration-(--dur-fast) ease-(--ease-out) hover:text-fg data-[state=active]:text-fg [&_svg]:size-3.5",
-				variant === "underline"
+				"transition-[color,background-color,scale] duration-(--dur-fast) ease-(--ease-out) hover:text-fg active:scale-[0.97] data-[state=active]:text-fg [&_svg]:size-3.5",
+				underline
 					? cn(
 							"-mb-px rounded-t-sm",
 							size === "sm" ? "h-7 px-2 text-sm" : "h-8 px-2.5 text-md",
-							"after:absolute after:inset-x-1.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent after:opacity-0 after:transition-opacity after:duration-(--dur-fast)",
-							"data-[state=active]:after:opacity-100",
+							staticIndicator &&
+								"after:absolute after:inset-x-1.5 after:bottom-0 after:h-0.5 after:rounded-full after:bg-accent after:opacity-0 data-[state=active]:after:opacity-100",
 						)
 					: cn(
-							"rounded-full hover:bg-hover data-[state=active]:bg-selected",
+							"rounded-full hover:bg-hover",
+							staticIndicator && "data-[state=active]:bg-selected",
 							size === "sm" ? "h-6 px-2.5 text-sm" : "h-7 px-3 text-md",
 						),
 				focusRing,
@@ -61,9 +91,21 @@ export function TabsTrigger({ icon, trailing, className, children, ...rest }: Ta
 			)}
 			{...rest}
 		>
-			{icon}
-			{children}
-			{trailing}
+			{active !== null && active.value === value && (
+				<motion.span
+					aria-hidden
+					layoutId={active.indicatorId}
+					className={cn(
+						"pointer-events-none absolute",
+						underline ? "inset-x-1.5 bottom-0 h-0.5 rounded-full bg-accent" : "inset-0 rounded-full bg-selected",
+					)}
+				/>
+			)}
+			<span className="relative inline-flex items-center gap-[inherit]">
+				{icon}
+				{children}
+				{trailing}
+			</span>
 		</RT.Trigger>
 	);
 }

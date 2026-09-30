@@ -1,5 +1,5 @@
 import * as RS from "@radix-ui/react-select";
-import { Check, ChevronDown, ChevronUp } from "lucide-react";
+import { CaretDown, CaretUp, Check } from "@phosphor-icons/react";
 import type { ComponentPropsWithRef, ReactNode } from "react";
 import { cn } from "./cn";
 import { disabledNative, floatingSurface, menuItem, menuLabel, menuSeparator } from "./styles";
@@ -49,11 +49,11 @@ export function Select({
 				aria-describedby={ariaDescribedBy}
 				aria-invalid={invalid || undefined}
 				className={cn(
-					"inline-flex min-w-0 select-none items-center gap-2 rounded-md border bg-panel text-left text-fg shadow-(--shadow-card)",
-					"transition-[border-color,box-shadow] duration-(--dur-fast) ease-(--ease-out) hover:border-fg-faint",
+					"group/select inline-flex min-w-0 select-none items-center gap-2 rounded-md border bg-panel text-left text-fg",
+					"transition-[border-color,background-color] duration-(--dur-fast) ease-(--ease-out) hover:border-fg-muted",
 					"focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring data-[state=open]:border-ring",
 					"data-placeholder:text-fg-faint [&_svg]:shrink-0",
-					invalid ? "border-err" : "border-border-strong",
+					invalid ? "border-err" : "border-control",
 					size === "sm" ? "h-7 px-2 text-sm" : "h-8 px-2.5 text-md",
 					disabledNative,
 					className,
@@ -64,7 +64,10 @@ export function Select({
 					<RS.Value placeholder={placeholder} />
 				</span>
 				<RS.Icon className="text-fg-faint">
-					<ChevronDown className="size-4" aria-hidden />
+					<CaretDown
+						className="size-3.5 transition-transform duration-(--dur) ease-(--ease-out-quart) group-data-[state=open]/select:rotate-180"
+						aria-hidden
+					/>
 				</RS.Icon>
 			</RS.Trigger>
 			<RS.Portal>
@@ -79,11 +82,11 @@ export function Select({
 					)}
 				>
 					<RS.ScrollUpButton className="flex h-6 items-center justify-center text-fg-faint">
-						<ChevronUp className="size-4" aria-hidden />
+						<CaretUp className="size-3.5" aria-hidden />
 					</RS.ScrollUpButton>
 					<RS.Viewport className="p-1">{children}</RS.Viewport>
 					<RS.ScrollDownButton className="flex h-6 items-center justify-center text-fg-faint">
-						<ChevronDown className="size-4" aria-hidden />
+						<CaretDown className="size-3.5" aria-hidden />
 					</RS.ScrollDownButton>
 				</RS.Content>
 			</RS.Portal>

@@ -1,188 +1,244 @@
-# visual-omp — Design Specification
+# visual-omp design specification
 
-One opinionated direction: **Signal Grid**, executed as a polished modern SaaS product (quality bar: Linear, Vercel, Raycast, Supabase). Every value is exact. Implementation stack: React + Tailwind v4 (CSS-variable tokens via `@theme`), Radix primitives, lucide icons, xterm.js.
+Every value in this document is exact. Implementation stack: React + Tailwind v4 (CSS-variable tokens via `@theme`), Radix primitives, Phosphor icons (`@phosphor-icons/react`), `motion` for animation, xterm.js.
 
 ---
 
 ## 0. Design direction
 
-**"Signal Grid."** visual-omp looks like a precision SaaS instrument panel: crisp white panels floating on a cool light-gray canvas, one cyan action color carrying every signal, and a thin cyan→blue→fuchsia spectrum reserved for the few moments that deserve ceremony. Light mode is the designed default; dark mode is a deep blue-black with softly lifted panels — related to omp's dark chassis, but bluer, gentler, and never pure black.
+visual-omp is a working tool, so the interface stays quiet until something needs attention. The layout from the first release is unchanged. The finish is what changed: near-neutral surfaces with a faint teal cast, one teal accent for every action and active state, hairline borders between panels, and motion that shows where each surface came from. Light mode is the designed default. Dark mode uses a tinted off-black, which keeps panels distinct from the canvas without a blue cast.
 
 Five decisions everything else hangs on:
 
-1. **One accent, inverted roles.** omp uses pink for action and cyan for information; visual-omp inverts that. **Signal Cyan** is the only action accent (primary buttons, links, active states). **Electric Blue** is information + secondary actions (@-mentions, info status, update chips). **Fuchsia** is agent presence (subagent avatars, question/plan rails, AI-attributed UI). The full cyan→blue→fuchsia gradient appears in exactly five places: the Circuit V mark, the app icon, the working-state shimmer border, hero/empty-state ambient glows, and the primary-button focus glow — never on text or button fills.
-2. **Modern SaaS surfaces.** Light: `#FFFFFF` panels on a `#F5F7FA` cool-gray canvas; separation comes from 1px low-contrast borders plus soft, cool-tinted layered shadows on anything floating (composer, menus, dialogs, hovering cards). The title bar and sticky headers are glass (backdrop-blur). Dark: deep blue-black `#090D14` ground with panels lifted to `#0F1622`, same border+shadow logic.
-3. **Friendly by default, honest on demand.** Every machine event collapses to a plain-language one-liner ("Edited 3 files"); raw diffs/output are one click or one `Ctrl/Cmd+O` away. Jargon never appears on primary surfaces; the mono-caps bracket style (`[ LABEL ]`) survives only as small section eyebrows — a whisper of the terminal, never a texture.
-4. **Restraint reads as premium.** Emphasis is carried by weight, spacing rhythm (8px grid), and the single cyan accent. No gratuitous gradients, no neon, no icon soup, no fake data. The omp-orange appears exactly once in the brand system: the apex node of the Circuit V mark — the point where the visual layer plugs into omp.
-5. **Status is shape + color, never color alone.** Every status color pairs with an icon or glyph (✓ ▲ ✕ ●), so the UI survives color-blindness and grayscale.
+1. **One accent.** Teal (`--accent`) marks primary actions, links, focus and the active tab or selection. Secondary emphasis uses neutral ink (`--accent-2`), and agent-attributed UI uses the accent (`--agent` resolves to it). The mark and app icon are ink with a single teal lens plate, and the working state is drawn in the accent alone. The UI has no gradients.
+2. **Hairlines first, shadows only for floating layers.** Panels sit on the canvas with a 1px `--border` and no shadow. Menus, dialogs, sheets, toasts and the composer cast a shadow, and every shadow is tinted and tight: no blur reaches 16px, so a border and a shadow can share an element without a haze around it.
+3. **Friendly by default, honest on demand.** Every machine event collapses to a plain-language line ("Edited 3 files"); raw diffs and output are one click or `Ctrl/Cmd+O` away. Jargon stays off primary surfaces. Group labels are sentence case (`.section-label`), and there are no bracketed or uppercase eyebrows.
+4. **Motion with a job.** Springs are critically damped, so nothing bounces. Surfaces grow from the control that opened them, indicators slide between the items they mark, and lists cascade in over a fraction of a second. Under reduced motion every entrance becomes a short crossfade and every layout change is instant.
+5. **Status is shape plus color.** Every status color pairs with an icon or glyph (✓ ▲ ✕ ●), so the UI survives color-blindness and grayscale.
 
 ---
 
 ## 1. Design tokens
 
-All colors are authored in hex (sRGB); the three `--mark-*` gradient stops are the Signal Grid spectrum. Naming follows `--<role>` for theme-flipped tokens. Tailwind v4 mapping: every token below is re-exposed in `@theme inline` as `--color-*`, `--radius-*`, `--spacing-*`, `--font-*` with identical values; the tables below are the source of truth.
+All colors are authored in OKLCH in `src/renderer/src/theme/tokens.css`, the only file allowed to hold raw color values. Hex values below are how Chromium renders them, for reference. Surfaces use hue 195 at very low chroma; the accent uses hue 192. Tailwind v4 mapping: every token is re-exposed in `@theme inline` as `--color-*`, `--radius-*` and `--font-*`.
 
-### 1.1 Surfaces — light (default)
+### 1.1 Surfaces, light (default)
 
-| Token | Value | Used for |
+| Token | Value | Hex | Used for |
+|---|---|---|---|
+| `--bg` | `oklch(0.975 0.003 195)` | `#F4F7F7` | canvas, behind everything |
+| `--panel` | `oklch(0.994 0.0015 195)` | `#FCFDFD` | sidebar, panes, cards, composer |
+| `--bg-inset` | `oklch(0.963 0.004 195)` | `#F0F4F3` | code blocks, terminal, sunken inputs, segmented tracks |
+| `--bg-raised` | `oklch(0.997 0.001 195)` | `#FDFEFE` | popovers, menus, tooltips, toasts |
+| `--bg-overlay` | `oklch(0.997 0.001 195)` | `#FDFEFE` | dialogs, sheets, command palette |
+| `--glass` | `var(--bg)` | `#F4F7F7` | title bar and sticky chrome; opaque, no backdrop blur (the name stays for existing callers) |
+| `--hover` | `oklch(0.3 0.02 195 / 0.045)` | | row and control hover wash |
+| `--selected` | `oklch(0.3 0.02 195 / 0.08)` | | selected row, pressed state, skeleton fill |
+| `--backdrop` | `oklch(0.22 0.015 195 / 0.32)` | | dialog and sheet scrim |
+
+Panels differ from the canvas by about two lightness points. The hairline border does the separating, so no panel needs a shadow to stand out.
+
+### 1.2 Surfaces, dark
+
+| Token | Value | Hex |
 |---|---|---|
-| `--bg` | `#F5F7FA` | window background, behind everything |
-| `--panel` | `#FFFFFF` | sidebar, panes, cards, composer |
-| `--bg-inset` | `#F6F8FB` | code blocks, terminal sheet padding, sunken inputs |
-| `--bg-raised` | `#FFFFFF` | popovers, menus, dialogs (with `--shadow-pop` + 1px `--border`) |
-| `--bg-overlay` | `#FFFFFF` | modal sheets, command palette |
-| `--glass` | `rgba(245,247,250,0.72)` | title bar / sticky headers over scrolled content (`backdrop-filter: blur(16px) saturate(1.5)`) |
-| `--hover` | `rgba(16,24,40,0.04)` | row/control hover wash |
-| `--selected` | `rgba(16,24,40,0.07)` | selected row wash, pressed state |
-| `--backdrop` | `rgba(15,23,42,0.35)` | dialog/sheet scrim |
+| `--bg` | `oklch(0.172 0.005 195)` | `#0D1110` |
+| `--panel` | `oklch(0.2 0.006 195)` | `#131717` |
+| `--bg-inset` | `oklch(0.158 0.005 195)` | `#0A0E0D` |
+| `--bg-raised` | `oklch(0.232 0.007 195)` | `#1A1E1E` |
+| `--bg-overlay` | `oklch(0.24 0.007 195)` | `#1C2020` |
+| `--hover` | `oklch(0.95 0.01 195 / 0.05)` | |
+| `--selected` | `oklch(0.95 0.01 195 / 0.09)` | |
+| `--backdrop` | `oklch(0.08 0.005 195 / 0.6)` | |
 
-*Rationale: pure-white panels keep light mode crisp; alpha washes let one hover value work on every surface step; the glass bar is the signature SaaS touch.*
-
-### 1.2 Surfaces — dark
-
-| Token | Value |
-|---|---|
-| `--bg` | `#090D14` |
-| `--panel` | `#0F1622` |
-| `--bg-inset` | `#0B111B` |
-| `--bg-raised` | `#141D2C` |
-| `--bg-overlay` | `#16202F` |
-| `--glass` | `rgba(15,22,34,0.72)` |
-| `--hover` | `rgba(226,236,248,0.05)` |
-| `--selected` | `rgba(226,236,248,0.09)` |
-| `--backdrop` | `rgba(3,6,10,0.60)` |
+The electron window's `backgroundColor` in `src/main/index.ts` matches `--bg` in each theme so the first frame does not flash.
 
 ### 1.3 Text
 
 | Token | Light | Dark | Role |
 |---|---|---|---|
-| `--fg` | `#0F1722` | `#E9EEF4` | body, titles |
-| `--fg-muted` | `#4B5866` | `#9DA9B8` | secondary labels, metadata |
-| `--fg-faint` | `#67737F` | `#7B8A9C` | placeholders, timestamps, disabled labels |
-| `--fg-inverse` | `#FFFFFF` | `#0A0F16` | text on accent fills |
+| `--fg` | `oklch(0.22 0.012 195)` `#141C1C` | `oklch(0.945 0.005 195)` `#E9EEEE` | body, titles |
+| `--fg-muted` | `oklch(0.45 0.013 195)` `#4D5857` | `oklch(0.745 0.01 195)` `#A6AEAE` | secondary labels, metadata, section labels |
+| `--fg-faint` | `oklch(0.535 0.012 195)` `#66706F` | `oklch(0.645 0.011 195)` `#869090` | placeholders, timestamps, shortcuts |
+| `--fg-inverse` | `oklch(0.995 0.002 195)` | `oklch(0.18 0.006 195)` | text on `--err` fills |
 
-Contrast (on `--panel`): light `--fg` 18.0:1, `--fg-muted` 7.3:1, `--fg-faint` 4.8:1 (4.5:1 on `--bg` — AA). Dark on `--panel`: 15.5:1 / 7.6:1 / 5.1:1. All body-text pairs ≥ 4.5:1. ✓
+WCAG contrast, measured from the rendered sRGB values. Every pair passes AA (4.5:1) for body text.
 
-### 1.4 Accent — the Signal Grid spectrum
+| Pair | Light | Dark |
+|---|---|---|
+| `--fg` on `--bg` | 16.1:1 | 16.2:1 |
+| `--fg` on `--panel` | 17.0:1 | 15.4:1 |
+| `--fg-muted` on `--bg` | 6.9:1 | 8.4:1 |
+| `--fg-muted` on `--panel` | 7.3:1 | 8.0:1 |
+| `--fg-faint` on `--bg` | 4.8:1 | 5.8:1 |
+| `--fg-faint` on `--panel` | 5.1:1 | 5.5:1 |
+| `--fg-faint` on `--bg-inset` | 4.6:1 | 5.9:1 |
+| `--fg-faint` on `--bg-overlay` | 5.1:1 | 5.0:1 |
 
-Mark stops: `--mark-a: #22D3EE` (cyan) · `--mark-b: #3B82F6` (blue) · `--mark-c: #E879F9` (fuchsia).
-`--mark-gradient: linear-gradient(120deg, var(--mark-a) 0%, var(--mark-b) 50%, var(--mark-c) 100%)`.
-`--work-gradient: linear-gradient(120deg, var(--mark-a) 0%, var(--mark-b) 33%, var(--mark-c) 66%, var(--mark-a) 100%)` — the working-shimmer border gradient (§5.16).
+### 1.4 Accent
 
 | Token | Light | Dark | Job |
 |---|---|---|---|
-| `--accent` | `#0E7490` | `#22D3EE` | Signal Cyan — primary action, links, active tab/selection marker (5.4:1 / 10.0:1 on panel) |
-| `--accent-hover` | `#155E75` | `#67E8F9` | hover of the above (white on light hover: 7.4:1) |
-| `--accent-active` | `#164E63` | `#A5F3FC` | pressed (white on light: 9.1:1) |
-| `--accent-fg` | `#FFFFFF` | `#062832` | text on filled accent (5.4:1 light; 8.6:1 dark) |
-| `--accent-muted` | `#E0F2F7` | `#10303C` | tinted chip/badge background; accent text on it: 4.7:1 (light), 7.7:1 (dark) ✓ |
-| `--accent-2` | `#2563EB` | `#60A5FA` | Electric Blue — info, secondary actions, @-mention chips (5.2:1 / 7.0:1 on panel) |
-| `--accent-2-muted` | `#EBF1FE` | `#152742` | blue tint bg (accent-2 text on it: 4.6:1 / 5.9:1) ✓ |
-| `--agent` | `#A21CAF` | `#E879F9` | Fuchsia — subagents, question/plan rails, AI presence (6.3:1 / 7.3:1 on panel) |
-| `--agent-muted` | `#FBEFFE` | `#34153F` | fuchsia tint bg (agent text on it: 5.7:1 / 6.4:1) ✓ |
-| `--ambient-a` | `rgba(14,116,144,0.05)` | `rgba(34,211,238,0.06)` | hero/empty-state wash, cyan end |
-| `--ambient-b` | `rgba(37,99,235,0.05)` | `rgba(96,165,250,0.06)` | hero wash, blue end |
+| `--accent` | `oklch(0.5 0.082 192)` `#10726F` | `oklch(0.78 0.1 192)` `#5FCCC8` | primary action, links, active tab and selection marker, the mark's lens plate (5.7:1 / 9.4:1 on panel) |
+| `--accent-hover` | `oklch(0.45 0.076 192)` | `oklch(0.84 0.09 192)` | hover of the above |
+| `--accent-active` | `oklch(0.405 0.07 192)` | `oklch(0.89 0.07 192)` | pressed |
+| `--accent-fg` | `#FFFFFF` | `oklch(0.2 0.03 192)` | text on filled accent (5.8:1 light, 9.4:1 dark; 7.2:1 and 11.4:1 on hover) |
+| `--accent-muted` | `oklch(0.95 0.022 192)` | `oklch(0.29 0.04 192)` | tinted chip and badge background (accent text on it: 5.0:1 / 7.2:1) |
+| `--accent-2` | `oklch(0.4 0.014 195)` | `oklch(0.83 0.01 195)` | neutral ink for secondary emphasis: @-mentions, the `blue` chip tone (9.0:1 / 10.7:1 on panel) |
+| `--accent-2-muted` | `oklch(0.945 0.005 195)` | `oklch(0.27 0.008 195)` | neutral tint behind `--accent-2` text (7.8:1 / 8.9:1) |
+| `--agent`, `--agent-muted` | `var(--accent)`, `var(--accent-muted)` | same | agent-attributed UI uses the accent |
 
-*Light accent choice: raw cyan `#22D3EE` fails AA on white (2.1:1); it is deepened along the same hue to cyan-700 `#0E7490` (5.4:1). Dark accent is the raw signal cyan at full brightness. `--agent` light is fuchsia-700 `#A21CAF` so agent text survives on its own tint.*
+Retired spectrum. `--mark-a`, `--mark-b` and `--mark-c` resolve to `--accent`. `--mark-gradient` and `--work-gradient` resolve to a flat `linear-gradient(var(--accent), var(--accent))` so any remaining `background-image` caller paints solid teal. `--ambient-a`, `--ambient-b` and `--grid-line` are `transparent`, which removes the hero washes and the blueprint grid wherever they are still referenced. `--plug` resolves to `--warn`. These names stay only until the last caller moves off them.
 
 ### 1.5 Status
 
+Slightly desaturated so status colors sit next to the teal accent without competing with it.
+
 | Token | Light | Dark | Pairs with glyph |
 |---|---|---|---|
-| `--ok` | `#047857` | `#34D399` | ✓ check (5.5:1 / 9.3:1 on panel) |
-| `--ok-bg` | `#E6F6EF` | `#0F2B1F` | — (text on bg: 4.9:1 / 7.9:1 ✓) |
-| `--warn` | `#B45309` | `#FBBF24` | ▲ triangle (5.0:1 / 10.7:1) |
-| `--warn-bg` | `#FDF3E2` | `#2E2410` | (4.6:1 / 9.1:1 ✓) |
-| `--err` | `#C81E1E` | `#F87171` | ✕ cross (5.7:1 / 6.5:1) |
-| `--err-bg` | `#FCECEC` | `#311518` | (5.0:1 / 6.1:1 ✓) |
-| `--info` | `#2563EB` | `#60A5FA` | ● dot (= `--accent-2`) |
-| `--info-bg` | `#EBF1FE` | `#152742` | — (= `--accent-2-muted`) |
-| `--live` | `#047857` | `#34D399` | ● pulsing dot — **reserved for real-time presence only** (collab live, session running elsewhere), never for generic success |
+| `--ok` | `oklch(0.5 0.1 160)` | `oklch(0.77 0.12 160)` | ✓ check (5.6:1 / 9.2:1 on panel) |
+| `--ok-bg` | `oklch(0.957 0.022 160)` | `oklch(0.26 0.035 160)` | text on bg: 5.1:1 / 7.8:1 |
+| `--warn` | `oklch(0.53 0.11 65)` | `oklch(0.8 0.115 80)` | ▲ triangle (5.3:1 / 9.6:1) |
+| `--warn-bg` | `oklch(0.962 0.028 78)` | `oklch(0.27 0.035 80)` | 4.9:1 / 8.0:1 |
+| `--err` | `oklch(0.52 0.16 25)` | `oklch(0.72 0.14 25)` | ✕ cross (5.9:1 / 6.9:1) |
+| `--err-bg` | `oklch(0.955 0.02 20)` | `oklch(0.26 0.04 22)` | 5.2:1 / 6.0:1 |
+| `--err-hover` | `oklch(0.47 0.15 25)` | `oklch(0.78 0.13 25)` | danger button hover |
+| `--info` | `oklch(0.52 0.12 255)` | `oklch(0.75 0.1 255)` | ● dot (5.4:1 / 8.1:1) |
+| `--info-bg` | `oklch(0.955 0.018 255)` | `oklch(0.26 0.035 255)` | 4.9:1 / 7.0:1 |
+| `--live` | `var(--ok)` | same | ● pulsing dot, reserved for real-time presence (collab live, session running elsewhere) |
 
 ### 1.6 Diff
 
 | Token | Light | Dark |
 |---|---|---|
-| `--diff-add-bg` | `#E4F5EC` | `#0F2B1F` |
-| `--diff-add-line` | `#CFEFDE` | `#14382A` | (stronger line highlight within hunk) |
-| `--diff-add-text` | `#0E6E45` | `#5BD9A3` | gutter `+`, added-code accents (5.6:1 / 8.6:1 on own bg) |
-| `--diff-del-bg` | `#FDECEA` | `#311518` |
-| `--diff-del-line` | `#FADAD5` | `#42191D` |
-| `--diff-del-text` | `#C2291F` | `#FF9AA0` | (5.1:1 / 8.3:1) |
-| `--diff-hunk-bg` | `#EDF1F5` | `#141D2C` | `@@` header rows |
-| `--diff-hunk-text` | `#4B5866` | `#9DA9B8` |
+| `--diff-add-bg` | `oklch(0.962 0.025 160)` | `oklch(0.24 0.035 160)` |
+| `--diff-add-line` | `oklch(0.925 0.045 160)` | `oklch(0.29 0.045 160)` |
+| `--diff-add-text` | `oklch(0.47 0.1 160)` | `oklch(0.8 0.12 160)` (5.9:1 / 9.1:1 on own bg) |
+| `--diff-del-bg` | `oklch(0.958 0.02 22)` | `oklch(0.245 0.04 22)` |
+| `--diff-del-line` | `oklch(0.925 0.04 22)` | `oklch(0.29 0.055 22)` |
+| `--diff-del-text` | `oklch(0.5 0.15 25)` | `oklch(0.79 0.12 20)` (5.7:1 / 8.1:1) |
+| `--diff-hunk-bg` | `oklch(0.95 0.006 195)` | `oklch(0.232 0.007 195)` |
+| `--diff-hunk-text` | `var(--fg-muted)` | same |
 
 ### 1.7 Syntax highlighting (code blocks, diffs, file viewer)
 
-Light — base text `#0F1722` on code bg `#F6F8FB`; dark — `#E9EEF4` on `#0B111B`. All pairs ≥ 4.5:1 (measured: worst is light number 4.7:1, dark comment 5.4:1).
+Code keeps a few muted hues so tokens stay distinguishable. Measured on `--bg-inset`, the worst pair is the light comment color at 4.5:1; every dark pair is 5.9:1 or higher.
 
 | Role | Light | Dark |
 |---|---|---|
-| `--syn-text` | `#0F1722` | `#E9EEF4` |
-| `--syn-keyword` | `#0E7490` (cyan) | `#22D3EE` |
-| `--syn-string` | `#047857` (green) | `#5BD9A3` |
-| `--syn-number` | `#B45309` (amber) | `#FBBF24` |
-| `--syn-function` | `#2563EB` (blue) | `#60A5FA` |
-| `--syn-type` | `#A21CAF` (fuchsia) | `#E879F9` |
-| `--syn-operator` | `#C81E1E` (red) | `#F87171` |
-| `--syn-comment` | `#64707D` | `#7B8A9C` |
-| `--syn-punct` | `#4B5866` | `#9DA9B8` |
+| `--syn-text` | `var(--fg)` | same |
+| `--syn-keyword` | `oklch(0.48 0.085 192)` teal | `oklch(0.78 0.1 192)` |
+| `--syn-string` | `oklch(0.48 0.1 150)` green | `oklch(0.8 0.12 155)` |
+| `--syn-number` | `oklch(0.52 0.11 60)` amber | `oklch(0.82 0.11 75)` |
+| `--syn-function` | `oklch(0.5 0.11 255)` blue | `oklch(0.77 0.1 255)` |
+| `--syn-type` | `oklch(0.5 0.11 300)` violet | `oklch(0.76 0.1 305)` |
+| `--syn-operator` | `oklch(0.52 0.13 25)` red | `oklch(0.73 0.13 25)` |
+| `--syn-comment` | `oklch(0.54 0.01 195)` | `oklch(0.645 0.011 195)` |
+| `--syn-punct` | `var(--fg-muted)` | same |
 
-*The syntax palette reuses the brand spectrum (keyword=cyan, function=blue, type=fuchsia) so code "sounds like" Signal Grid without any new hues.*
+The terminal gets its own ANSI blue and magenta (`--term-blue`, `--term-magenta`) because `--accent-2` and `--agent` no longer carry those hues.
 
 ### 1.8 Borders & focus
 
-| Token | Light | Dark |
-|---|---|---|
-| `--border` | `rgba(15,23,34,0.08)` | `rgba(226,236,248,0.08)` | hairlines, separators (decorative, exempt) |
-| `--border-strong` | `rgba(15,23,34,0.14)` | `rgba(226,236,248,0.16)` | interactive component outlines, inputs (paired with fill/label; focus adds the ring below) |
-| `--ring` | `#0891B2` | `#22D3EE` | focus ring (3.7:1 on white, 10.8:1 on `#090D14` — ≥3:1 ✓) |
-| `--ring-soft` | `rgba(8,145,178,0.16)` | `rgba(34,211,238,0.22)` | ring halo on tinted surfaces |
-| `--grid-line` | `rgba(15,35,60,0.05)` | `rgba(120,170,220,0.07)` | blueprint grid lines (hero, setup, empty states only — never on work surfaces) |
+| Token | Light | Dark | Role |
+|---|---|---|---|
+| `--border` | `oklch(0.3 0.02 195 / 0.1)` | `oklch(0.95 0.01 195 / 0.09)` | hairlines: panel edges, separators, cards |
+| `--border-strong` | `oklch(0.3 0.02 195 / 0.17)` | `oklch(0.95 0.01 195 / 0.16)` | secondary button outlines, hovered cards, keycaps, progress track |
+| `--control-border` | `oklch(0.62 0.012 195)` `#7E8988` | `oklch(0.54 0.012 195)` `#677171` | boundaries that identify a control or its state: checkbox and radio outlines, the off switch track, input and select borders, slider track, todo step dots |
+| `--ring` | `oklch(0.56 0.09 192)` | `oklch(0.78 0.1 192)` | focus ring (4.4:1 on light panel, 9.4:1 on dark panel) |
+| `--ring-soft` | `oklch(0.56 0.09 192 / 0.18)` | `oklch(0.78 0.1 192 / 0.24)` | text selection, ring halo |
 
-Focus style, everywhere: `outline: 2px solid var(--ring); outline-offset: 2px;` on `:focus-visible`. Never remove; never rely on color change alone.
+Focus style, everywhere: `outline: 2px solid var(--ring); outline-offset: 2px;` on `:focus-visible`. Never removed, never color change alone. Card tone (`Card rail`) tints the hairline toward the tone color, mixed in sRGB; there is no colored left stripe.
+
+Non-text contrast (WCAG 1.4.11). Decorative separators (`--border`, `--border-strong`) stay faint. `--control-border` is at least 3:1 against every surface a control sits on:
+
+| `--control-border` on | Light | Dark |
+|---|---|---|
+| `--bg` | 3.4:1 | 3.8:1 |
+| `--panel` | 3.6:1 | 3.6:1 |
+| `--bg-inset` | 3.3:1 | 3.9:1 |
+| `--bg-raised` | 3.6:1 | 3.3:1 |
+| `--bg-overlay` | 3.6:1 | 3.3:1 |
+
+The switch thumb (`--panel`) against the off track is 3.6:1 in both themes. Checked states use `--accent`, at 5.2:1 or more against every light surface and 8.6:1 or more against every dark one.
 
 ### 1.9 Elevation & shadows
 
-Soft, cool-tinted, layered. Light shadows use a slate-blue base (`15,35,60`); dark shadows use pure black at lower opacity, since dark surfaces separate mostly by lift.
+Shadows are tinted with the surface hue (`--shadow-tint`) and kept tight. No blur is 16px or larger, which is why any 1px border may pair with any shadow token. Panels on the canvas use none of these; they rely on `--border`.
 
-| Token | Light | Dark |
+| Token | Light | Use |
 |---|---|---|
-| `--shadow-card` | `0 1px 2px rgba(15,35,60,0.06)` | `0 1px 2px rgba(0,0,0,0.40)` |
-| `--shadow-pop` | `0 4px 12px rgba(15,35,60,0.08), 0 1px 3px rgba(15,35,60,0.06)` | `0 4px 12px rgba(0,0,0,0.40), 0 1px 3px rgba(0,0,0,0.35)` |
-| `--shadow-overlay` | `0 16px 48px rgba(15,35,60,0.14), 0 4px 12px rgba(15,35,60,0.08)` | `0 16px 48px rgba(0,0,0,0.55), 0 4px 12px rgba(0,0,0,0.40)` |
-| `--shadow-composer` | `0 1px 2px rgba(15,35,60,0.06), 0 8px 24px rgba(15,35,60,0.08)` | `0 1px 2px rgba(0,0,0,0.40), 0 8px 24px rgba(0,0,0,0.35)` |
+| `--shadow-card` | `0 1px 1px` tint / 0.05 | buttons, segmented thumb, cards marked `floating` |
+| `--shadow-pop` | `0 1px 2px` / 0.06, `0 6px 12px -4px` / 0.14 | menus, popovers, tooltips, toasts |
+| `--shadow-overlay` | `0 2px 4px` / 0.06, `0 12px 12px -8px` / 0.2 | dialogs, sheets, palette |
+| `--shadow-composer` | `0 1px 2px` / 0.05, `0 4px 8px -4px` / 0.1 | composer |
+| `--shadow-primary` | `inset 0 1px 0` white / 0.14, `0 1px 1px` / 0.18 | primary and danger buttons |
+| `--work-glow` | `0 0 0 3px` accent / 0.14 | working halo (spread only, no blur) |
 
-Primary-button depth (the one allowed inset highlight): light `inset 0 1px 0 rgba(255,255,255,0.16), 0 1px 2px rgba(15,35,60,0.12)`; dark `inset 0 1px 0 rgba(255,255,255,0.22), 0 1px 2px rgba(0,0,0,0.40)`.
+Light tint is `oklch(0.28 0.03 195)`; dark tint is `oklch(0.06 0.01 195)` at higher opacities (0.4 to 0.6) with the same geometry.
 
-### 1.10 Radii (modern rounded scale)
+### 1.10 Radii
 
 | Token | Value | Role |
 |---|---|---|
 | `--radius-sm` | `6px` | chips, badges, small buttons, inline code |
 | `--radius` | `8px` | buttons, inputs, menus, tabs |
-| `--radius-lg` | `12px` | cards, tool cards, dialogs |
-| `--radius-xl` | `16px` | composer, sheets, large panels |
+| `--radius-lg` | `12px` | cards, tool cards, dialogs, sheets (cards never exceed this) |
+| `--radius-xl` | `14px` | composer, large modal panels |
 | `--radius-full` | `999px` | pills, toggles, avatars, status dots, context ring |
 
 ### 1.11 Spacing (4px base, 8px rhythm)
 
 `--s-1:4px · --s-2:8px · --s-3:12px · --s-4:16px · --s-5:20px · --s-6:24px · --s-8:32px · --s-10:40px · --s-12:48px · --s-16:64px · --s-20:80px`.
-Component density (comfortable-compact SaaS): control height sm 28px / md 32px / lg 40px; list row 36px; chat message gap 24px; card padding 16px; pane padding 16–24px.
+Component density: control height sm 28px / md 32px / lg 40px; list row 36px; chat message gap 24px; card padding 16px; pane padding 16-24px.
 
 ### 1.12 Motion
 
-| Token | Value | Use |
-|---|---|---|
-| `--dur-fast` | `100ms` | hovers, presses, toggles |
-| `--dur` | `160ms` | menus, popovers, tab switch |
-| `--dur-slow` | `240ms` | sheets, dialogs, pane resize settle |
-| `--dur-xl` | `360ms` | first-run tour transitions, empty-state art entrance |
-| `--ease-out` | `cubic-bezier(0.16,1,0.3,1)` | default entrance (omp's own) |
-| `--ease-in-out` | `cubic-bezier(0.65,0,0.35,1)` | looped animations (pulse, sheen) |
-| `--ease-spring` | `cubic-bezier(0.34,1.3,0.64,1)` | popover/tooltip pop — gentle overshoot, never bouncy |
+Motion is expressive and physical, and it never bounces. JavaScript animation uses `motion/react` through the presets and components in `src/renderer/src/ui/motion.tsx`; CSS animation (Radix surfaces, indicators) uses the matching tokens in `tokens.css`.
 
-`prefers-reduced-motion` / app "Reduce motion" setting: all durations → `0.01ms`; the working shimmer freezes to a static gradient border at 50% opacity with no glow; the gradient pulse dot freezes at 60% opacity; the streaming caret stops blinking (solid); skeleton shimmer → static `--hover` fill; no translate/scale ever.
+**Presets**
+
+| Name | Value | Use |
+|---|---|---|
+| `ease.outQuart` / `--ease-out-quart` | `cubic-bezier(0.25, 1, 0.5, 1)` | opacity and color tweens, press feedback |
+| `ease.outExpo` / `--ease-out-expo`, `--ease-out` | `cubic-bezier(0.16, 1, 0.3, 1)` | longer entrances |
+| `spring.snappy` | `{ type: "spring", visualDuration: 0.22, bounce: 0 }` | indicators, toggles, menus, the default transition in `MotionProvider` |
+| `spring.gentle` | `{ type: "spring", visualDuration: 0.4, bounce: 0 }` | dialogs, sheets, list entrances, height changes, toasts |
+| `--ease-spring` + `--dur-spring` (320ms) / `--dur-spring-gentle` (520ms) | critically damped spring sampled into `linear()` | the CSS equivalent of the two springs |
+| `--dur-fast` / `--dur` / `--dur-slow` / `--dur-xl` | 100 / 160 / 240 / 360ms | hovers and presses / menus and tabs / exits and settles / tour transitions |
+| `--dur-fade` | 140ms | the crossfade that remains under reduced motion |
+| `--ease-in-out` | `cubic-bezier(0.65, 0, 0.35, 1)` | looped animations (pulse, breathe) |
+
+Exits are shorter than entrances and use an ease-in (`cubic-bezier(0.4, 0, 1, 1)`), so a closing surface gets out of the way.
+
+**Components** (`import { … } from "@/ui"`)
+
+- `MotionProvider`: mounted once in `App`. Wraps `MotionConfig` and follows `data-motion` on `<html>`: `reduced` → `reducedMotion="always"`, `full` → `"never"`, absent (the app follows the OS) → `"user"`. `useMotionReduced()` returns the resolved answer.
+- `Expand`: animated height-auto disclosure for accordions, tool steps and "show more". Clips overflow only while moving; put padding on its `className` so the collapsed height reaches 0.
+- `Stagger` / `StaggerItem`: list entrance, 25ms between items by default, capped at the eighth item so long lists never wait. A list present at the app's first render shows at rest; a list inserted later cascades in; items added to a resting list rise in one at a time.
+- `Rise` / `FadeIn`: entrances for content inserted after the first render (a new message, a newly opened panel). At rest on first render unless `animateOnMount` is set.
+- `play` on `StaggerItem`, `Rise` and `FadeIn`: when the caller knows better than the automatic rule (a transcript that remounts on tab switch, history loaded after mount), `play={false}` renders at rest and `play={true}` plays the entrance. The value is read at mount.
+- `PresenceSwap`: crossfade (`fade`), `rise` or directional `slide` between keyed children, for tab, pane and screen switches.
+
+**Shared-element transitions.** Give the moving element a `layoutId` that is unique to its component instance, derived from `useId()`, so two instances on screen never trade elements. `Tabs` and `Segmented` do this for their indicators. `<LayoutGroup id>` is the alternative when several components must coordinate one layout animation. Keep `transform` utilities off `layoutId` elements, since motion owns their transform while it animates.
+
+**Primitives**
+
+| Primitive | Motion |
+|---|---|
+| Dialog | scale 0.95 → 1 on the spring with a fade; exit scales to 0.97 and fades |
+| Sheet | slides in from its edge on the gentle spring; exit slides partway back and fades |
+| Menu, Popover, Tooltip, Select | scale 0.96 → 1 from the Radix transform origin, drifting 4px away from the trigger |
+| Tabs, Segmented | one indicator slides between items (`layoutId`) |
+| Switch | thumb travels on the spring and stretches toward its destination while pressed |
+| Toaster | toasts rise in, the stack reflows with layout animation, a rightward swipe throws the toast off |
+| Progress | width follows the value on the gentle spring |
+| Button, IconButton | press scales to 0.98; primary lifts 1px on hover |
+| Checkbox | the check draws itself in; the box presses to 0.9 |
+
+**Reduced motion** (`data-motion="reduced"`, or the OS setting when the app follows it): motion skips transform and layout animations and keeps opacity, so entrances become crossfades and indicators jump. CSS movement durations collapse to 0.01ms, and Radix surfaces switch to a `--dur-fade` crossfade. The working halo stops breathing, the pulse dot freezes at 60%, the streaming caret stops blinking, and skeletons hold a static fill.
+
+**No hidden content.** A reveal never hides content that would be visible without it, and two mechanisms guarantee it. `Stagger`, `Rise` and `FadeIn` read the app-settled flag: `MotionProvider` sets it after its first effect, and those components play an entrance only for content mounted after that, or when a caller passes `animateOnMount`. `Expand` and `PresenceSwap` do not read the flag. Their presence wrappers use `initial={false}` per instance (unless `animateOnMount` is set), so whatever they show when they mount renders at rest, and they animate only later open, close or swap changes. No entrance waits on scroll or viewport triggers.
 
 ### 1.13 Z-index layers
 
@@ -197,11 +253,11 @@ Component density (comfortable-compact SaaS): control height sm 28px / md 32px /
 | Token | Stack | Use |
 |---|---|---|
 | `--font-ui` | `"Geist Variable", "Geist", -apple-system, "Segoe UI Variable Text", Roboto, sans-serif` | all UI text **and** display headings (600/700, tight tracking) |
-| `--font-mono` | `"Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace` | code, diffs, terminal, bracket labels, wordmark, numbers in status bar |
+| `--font-mono` | `"Geist Mono Variable", "Geist Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace` | code, diffs, terminal, wordmark, numbers in the status bar |
 
-Two bundled families, both OFL: **Geist** (`@fontsource-variable/geist`, variable 100–900, ≈95 KB woff2) and **Geist Mono** (`@fontsource-variable/geist-mono`, variable 100–900, ≈90 KB woff2). Geist carries display duties at 700 with −0.02em tracking, so no third display family is needed (Space Grotesk was considered and cut to respect the two-family budget — Geist's engineered grotesque voice *is* the Signal Grid personality). System stacks are fallbacks only.
+Two bundled families, both OFL: **Geist** (`@fontsource-variable/geist`, variable 100-900, ≈95 KB woff2) and **Geist Mono** (`@fontsource-variable/geist-mono`, variable 100-900, ≈90 KB woff2). Geist carries display duties at 700 with −0.02em tracking, so no third display family is needed. System stacks are fallbacks only.
 
-### 2.2 Scale (root 16px; user text-size setting scales root 90–130%, i.e. 14.4–20.8px)
+### 2.2 Scale (root 16px; the text-size setting scales root 90-130%, i.e. 14.4-20.8px)
 
 | Token | Size / line-height | Weight / spacing | Use |
 |---|---|---|---|
@@ -216,719 +272,810 @@ Two bundled families, both OFL: **Geist** (`@fontsource-variable/geist`, variabl
 | `--text-code` | 12.5px / 18px | 400 mono | code blocks, diffs |
 | `--text-terminal` | 13px / 19px | 400 mono | terminal sheet (user-adjustable ±) |
 
-### 2.3 The wordmark + block cursor
+### 2.3 The wordmark and mark
 
-`visual-omp`, lowercase, Geist Mono 600, tracking 0, `--fg`, followed by a **solid block cursor** (0.55em wide × 1em tall, `--accent` fill, 4px left gap). The cursor is static in the title bar; it blinks (1.1s `steps(1)`) only in the README hero and the about screen. The block cursor is the app's smallest brand asset and appears **nowhere else** — working states use the shimmer and pulse dot (§5.16), and streaming text uses a thin 2px caret, not the block.
+`visual-omp`, lowercase, Geist Mono 600, tracking −0.02em, `--fg`, with no cursor or suffix. `Wordmark withMark` places the mark before the text with an 8px gap and the mark box at about 1.3× the text size: sm is 14px text with an 18px mark (the title bar), md 16px with 21px, lg 24px with 31px.
 
-### 2.4 The bracket style — `[ LABEL ]`
+The mark is periscope C1 "Heavy" (§6). With the default `tone="accent"`, the ink shapes use `--fg` and the lens plate uses `--accent`, so the mark follows the theme. With `tone="current"`, every shape uses the surrounding text color. Its geometry lives only in `src/renderer/src/ui/BrandMark.tsx` (exported as both `BrandMark` and `Mark`); the app icon SVGs and the README hero carry copies of the same shapes.
 
-omp's mono-caps signature, kept quiet. Rules: `font-mono`, `--text-xs` (11px), uppercase, `letter-spacing: 0.14em`, `--fg-faint`; brackets included in the string. Used **only** for: (a) section eyebrows on calm surfaces (setup screen `[ WELCOME ]`, settings group labels, question/plan card eyebrows), (b) the hero/empty-state tagline, (c) the status bar's mode readout `[ AUTO ]`. Never on buttons, never interactive, max one per surface.
+Streaming text uses a thin 2px accent caret (`.stream-caret`), and working states use the pulse dot and the working halo (§5.16).
+
+### 2.4 Section labels
+
+`.section-label` (or the `SectionLabel` component): `--font-ui`, `--text-sm` (12px), weight 500, `--fg-muted`, sentence case, no tracking, no brackets. Use it to name a group the heading does not already name, such as a settings group or a sidebar list. A label that repeats the heading under it is removed.
 
 ---
 
 ## 3. App shell layout
 
-Default window **1440×900**, minimum **1100×700**. Regions (light values shown):
+The window opens at 1440×920 and can shrink to 960×620 (`src/main/index.ts`). Regions, with light values shown:
 
 ```
-┌────────────────────────────────────────────────────────────────────────────────┐
-│ TITLE BAR — 40px, --glass + backdrop-blur over content, --z-titlebar           │ 40px
-│ ⊙⊙⊙  ≡  visual-omp▌       ·  my-shop / Fix checkout bug        ⌄    ☐  ✕ (win) │
-├──────────────┬─────────────────────────────────────────────────────────────────┤
-│              │ TAB STRIP — 36px, --bg, bottom hairline                         │ 36px
-│              │ [✚ New] │ Fix checkout bug ● │ Styles pass ○ │ ▦ split │        │
-│  SIDEBAR     ├──────────────────────────────────────────────┬──────────────────┤
-│  264px       │ SESSION HEADER — 48px, --panel               │ RIGHT DOCK       │ 48px
-│  --panel     │ ◈ title ✎  [model chip][mode chip]   buttons │ tabs 32px        │
-│  (200–320,   ├──────────────────────────────────────────────┤ 420px            │
-│   hideable)  │                                              │ (320–640)        │
-│              │   CHAT COLUMN — max 760px centered, 24px     │ ┌──────────────┐ │
-│              │   side gutters, scrolls                      │ │ Diff / Files │ │
-│              │                                              │ │ Preview/Tasks│ │
-│              │                                              │ │ Plan/Terminal│ │
-│              ├──────────────────────────────────────────────┤ │              │ │
-│              │ COMPOSER — max 760px, floating card          │ └──────────────┘ │
-│              │ min 96px, bottom-pinned, 16px bottom margin  │                  │
-├──────────────┴──────────────────────────────────────────────┴──────────────────┤
-│ STATUS BAR — 28px, --panel, top hairline, --text-xs mono accents               │ 28px
-│ ⎇ main  +12 −3   ◔ 62% context   $1.24 today   ● omp 18.4.4 connected          │
-└────────────────────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│ TITLE BAR 40px · opaque --glass (--bg) · bottom hairline                 │
+│ ● ● ●  ›▟ visual-omp            my-shop / Fix checkout bug ⌄             │
+├─────────────┬────────────────────────────────────────────────────────────┤
+│ SIDEBAR     │ TAB STRIP 36px · --bg · bottom hairline                    │
+│ 264px       │ ◌ Fix checkout bug × │ ○ Styles pass │ 2 more ⌄   ＋  ▥    │
+│ --panel     ├───────────────────────────────────────┬────────────────────┤
+│ 200-320     │ SESSION HEADER 48px · --panel         │ RIGHT DOCK 420px   │
+│             │ title [model ⌄][mode ⌄] buttons ⋯     │ 320-640 · closed   │
+│             ├───────────────────────────────────────┤ by default         │
+│             │ CHAT COLUMN · max 760px · scrolls     │ Diff  Files        │
+│             │                                       │ Preview  Tasks     │
+│             ├───────────────────────────────────────┤ Plan  Terminal     │
+│             │ COMPOSER · max 760px card             │                    │
+├─────────────┴───────────────────────────────────────┴────────────────────┤
+│ STATUS BAR 28px · --panel · top hairline · mono --text-xs                │
+│ ⎇ main  +12 −3  PR #4 ✓                 ◔ 62%  $1.24 today  ● omp 18.4.5 │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
+
+The sidebar and dock slide in from their own edge (12px on the gentle spring, with a fade) and fade out when hidden. The main area swaps between the project home and the chat with a `PresenceSwap` rise. Sidebar and dock visibility, widths and the open dock pane are saved app-wide in `localStorage` under `visual-omp:layout`.
 
 ### 3.1 Title bar (40px)
 
-Frameless window with a custom bar; `-webkit-app-region: drag` on the bar, `no-drag` on controls. The bar is `--glass` with `backdrop-filter: blur(16px) saturate(1.5)` and a bottom 1px `--border` that appears only when content scrolls beneath it.
+The window is frameless. The bar is a drag region with `no-drag` controls, filled with the opaque `--glass` (the canvas color) and a bottom 1px `--border`. No translucency or backdrop blur.
 
-- **macOS**: traffic lights inset at x=12, vertically centered; content starts at **x=92**. Window controls hidden (native).
-- **Windows**: content starts at x=12; caption buttons (minimize / maximize / close) at right, each **46×40**, lucide icons 14px, close hover `#E81123` + white icon (platform convention — the one allowed off-palette color).
-- Content: sidebar toggle (≡, only when sidebar hidden) · app mark (Circuit V, 20px, mark-gradient with orange apex node) + `visual-omp` wordmark lockup (§2.3, 15px) · centered: current project / session breadcrumb (`--fg-muted`, 13px, ⌄ opens session switcher) · right (macOS): nothing — right side stays empty so it never collides with traffic-light muscle memory.
+- **macOS**: `hiddenInset`, with the traffic lights at (16, 16). Content starts at 92px.
+- **Windows and Linux**: the caption buttons (minimize, maximize, close) are Electron's native title bar overlay: 44px tall, transparent background, symbol color `#6c6c74`. The renderer draws none of them and keeps 150px clear on the right. `--win-close` is defined in tokens but nothing uses it.
+- **Contents, left to right**:
+  - "Show sidebar" (`SidebarSimple`, ⌘B), an IconButton that appears only while the sidebar is hidden.
+  - The lockup, `Wordmark withMark size="sm"`: the 18px C1 mark and the 14px `visual-omp` wordmark with an 8px gap. It is decorative.
+  - Centered, while a project is active: a breadcrumb button with the project name, "/", the focused chat's title and a `CaretDown`, in `--text-md` `--fg-muted`. It opens the command palette (§4.10) and crossfades when the chat changes.
+  - The right side stays empty on macOS.
 
-### 3.2 Sidebar (264px default, drag 200–320px, `Cmd/Ctrl+B` hides)
+### 3.2 Sidebar (264px, drag 200-320px, ⌘B hides)
 
 ```
 ┌────────────────────────────┐
-│ 🔍 Search chats…      ⌘K   │ 32px search field (--bg-inset, radius-md, 1px --border)
-│ ＋ New chat                │ 36px primary ghost row, accent text
+│ ⌕ Search chats…       ⌘K   │ search field, 32px, --bg-inset
+│ ＋ Start chat…             │ 36px row, accent text
 │────────────────────────────│
-│ [ PROJECTS ]               │ bracket eyebrow, 11px mono
-│ ▾ ▣ my-shop           📌   │ project row 36px, chevron + folder icon
-│   ● Fix checkout bug   2m  │ session row 32px indent 28px
-│   ○ Styles pass        1h  │ ● live  ○ idle  ! needs-input(--warn)
-│   ↺ Terminal session  read │ ↺ = started outside app (read-only chip)
-│ ▸ ▣ landing-page           │ collapsed project
-│ ▸ ▣ api-server             │
-│                            │
-│ [Archived ▾]               │ muted disclosure
+│ Projects               ＋  │ section label and "Add project" menu
+│ › ▭ my-shop            ⋯   │ project row, 36px
+│     ◌ Fix checkout bug  2m │ chat row, 32px, 28px indent
+│     ? Styles pass       1h │
+│     ○ Copy review       3d │
+│ › ▭ landing-page           │
+│ › Archived · 3             │ only when chats are archived
 │────────────────────────────│
-│ ⌂ Home   ⚙ Settings   ?    │ bottom stack, 36px rows, --fg-muted
+│ ⌂ Home                     │ bottom nav, 36px rows
+│ ⚙ Settings                 │
+│ ? Help                     │
 └────────────────────────────┘
 ```
 
-- Sections: search · New chat · projects with nested sessions · Archived · bottom nav (Home / Settings / Help).
-- Session row anatomy: status dot (8px, `--radius-full`) · title (13px/500, 1-line ellipsis) · relative time (`--text-xs`, `--fg-faint`) · hover reveals ⋯ menu (Rename, Pin, Fork, Archive, Delete).
-- Badges: `needs-input` = warn dot + subtle `--warn-bg` pill on the title; `live elsewhere` = `--live` dot + "read-only" chip; Dispatch/scheduled = fuchsia dot.
-- While a session is working, its status dot becomes the **gradient pulse dot** (8px, `--mark-gradient` fill, §5.16).
-- Pinned sessions float to top of their project, pin icon at right.
-- Collapse behavior: `Cmd/Ctrl+B` hides to 0; a slim 16px hover strip remains at the left window edge; hovering it (or pressing the shortcut) slides the sidebar back as an overlay with scrim-free shadow (`--shadow-pop`). No icon-rail intermediate state — two states only, less to learn.
+- The column is a `nav` labelled "Projects and chats" on `--panel` with a right hairline. Its resize handle is keyboard operable: arrow keys move it 16px, or 48px with Shift.
+- **Search** ("Search chats…") matches chat titles, previews and project names across every project, loads collapsed projects to search them, and opens every group that matches. Esc clears it. Its ⌘K hint refers to the command palette, which also finds chats.
+- **Start chat…** is a 36px row in `--accent` semibold text with an `--accent-muted` hover. It opens the "Start a chat in…" folder chooser.
+- **Projects** is a `SectionLabel`. Its + button ("Add project") opens a menu with Open folder… (⌘O), Create folder… and Clone from GitHub….
+- **Project rows** are 36px and sorted with pinned projects first, then by last activity. Each row has:
+  - a disclosure caret that turns 90°
+  - a folder icon (`FolderMinus` in `--warn` when the folder is missing)
+  - the name in semibold
+  - a pin icon when pinned
+  - a "Project options" ⋯ button that shows on hover or focus
+  - The row is `--selected` while that project's home is open.
+  - The options menu and the right-click menu offer Start chat here, Open project home, Show in folder, Pin project or Unpin project, Settings, and Remove project from list.
+- **Chats** open inside `Expand`. A project shows its first eight chats and then "Show N more chats". An empty project reads "No chats yet. New chats in this project appear here."
+- **Chat rows** are 32px: `ChatStatusMark` (below), the title (falling back to "Untitled chat"), a pin icon, and the relative time in mono `--text-xs` `--fg-faint`, which gives way to a ⋯ "Chat options" button on hover.
+  - The active chat's `--selected` fill is one element that slides between rows. Its `layoutId` is unique to the sidebar, and the split partner has its own.
+  - ⌘ or Ctrl-click opens a chat in the split.
+  - The menu offers Open chat, Open side by side, Pin chat or Unpin chat, Archive chat or Restore chat, Show in folder, and Delete chat… (danger). Delete confirms in a destructive dialog: "Delete '{title}'?", with [Keep chat] and [Delete chat].
+- **Motion**: new rows rise 4px on the snappy spring, and groups reflow with layout animation.
+- **Bottom nav**: Home, Settings and Help rows (`House`, `Gear`, `Question`).
+- **Collapse**: ⌘B (Ctrl+B) or View → Toggle Sidebar slides the column away, and the title bar then shows "Show sidebar". There is no hover strip and no overlay mode.
+- **Empty**: with no projects, an empty state reads "No projects yet. A project is a folder that omp works in." with [Create project].
 
-### 3.3 Tab strip + split view (36px)
+**Chat status marks** (`shell/ChatStatusMark.tsx`). Sidebar rows, tabs and the tab overflow menu all use the same 14px shape, and each carries sr-only text. The status comes from `chatStatus()` in `shell/hooks.ts`, checked in this order: a pending omp question, then working, then open, otherwise saved.
 
-- Tabs: min 120px, max 200px, height 28px, `--radius` top-only, active = `--panel` fill + 2px accent underline + title 500; inactive = transparent, `--fg-muted`. Status dot left (8px); close ✕ on hover (16px hit area 24px); gradient pulse dot (§5.16) replaces the status dot while working.
-- `＋` button at strip end (28×28 ghost) → new chat in current project.
-- **Split view**: `Cmd/Ctrl+\` splits the focused chat column left/right (equal 50%, divider 4px `--border`, drag 30–70%). Each split has its own header + chat + composer but shares the tab strip, right dock, and status bar (status bar reflects focused split). `Cmd/Ctrl+click` a sidebar session opens it in the second split. Max 2 splits — more is what tabs are for.
+| Status | Shape | Color | Screen-reader text |
+|---|---|---|---|
+| Working | `CircleNotch`, bold, spinning (static under reduced motion) | `--accent` | "omp is working" |
+| Waiting for an answer | `Question`, bold | `--warn` | "Waiting for your answer" |
+| Open | filled circle, 10px | `--ok` | "Open" |
+| Saved | hollow circle, 10px | `--fg-faint` | "Saved" |
 
-### 3.4 Session header bar (48px, `--panel`, bottom hairline)
+### 3.3 Tab strip and split view (36px)
 
-```
-│ ◈ Fix checkout bug ✎   [ Sonnet 4.5 ▾ ] [ Auto ▾ ]   │  ↻ Restart  ⧉ Compact  │
-│                                                        │  ☰ Plan  🤖 Agents  ⋯  │
-```
+- The strip is hidden while no chats are open. It sits on `--bg` with a bottom hairline, and its `role="tablist"` is labelled "Open chats".
+- **Tabs**: 28px tall, 120-200px wide, with rounded top corners. Each holds a `ChatStatusMark`, the title (falling back to "New chat") and a close button ("Close {title}") that shows on hover or focus. Each title button is `role="tab"` with `aria-selected` and `aria-controls` pointing at the chat panel.
+- **Selected tab**: medium `--fg` text on a `--panel` fill with a 2px accent underline. That fill and underline are one element that slides between tabs; its `layoutId` is unique to the strip, and the split partner has its own. Tabs enter and leave with a 6px rise on the snappy spring.
+- **Keyboard**: a roving tab stop, so the strip is one Tab stop. Left and Right wrap, Home and End jump, Enter and Space activate, and Delete closes; middle-click also closes. Closing a working chat asks first. ⌘1-⌘8 pick a tab, ⌘9 picks the last one, and ⌘⇧[ and ⌘⇧] step through them.
+- **Overflow**: a `ResizeObserver` measures the strip, and tabs that do not fit at the 120px minimum move into an "N more" menu button whose rows show the status mark and title. The active tab and the split partner always stay visible.
+- **End of the strip**: ＋ "Start new chat" (⌘N) and, with two or more tabs, a `Columns` toggle ("Open split view" or "Close split view", ⌘\).
+- **Split view** shows two chats side by side.
+  - The left pane starts at 50%, and the resize handle keeps each pane at least 360px wide.
+  - Each pane has its own header, transcript and composer. The tab strip, dock and status bar are shared.
+  - ⌘ or Ctrl-click in the sidebar, or ⌘⏎ on a chat in the palette, opens a chat in the second pane.
+  - The second pane enters from the right.
+  - The pane without focus drops to 97% opacity.
 
-- Left: session icon ◈ (16px, `--fg-muted`), inline-editable title (15px/600; click ✎ or double-click → input), then **model chip** (`--accent-muted`, accent text, ⌄ → model picker, §4.12) and **mode chip** (neutral `--hover` fill; `Plan` mode = `--agent-muted` fuchsia; `Yolo/Auto` = neutral) — chips are 24px tall, `--radius-full`, `--text-xs` 600.
-- Right (icon+label buttons, 28px, ghost): **Restart ↻**, **Compact ⧉**, **Plan ☰** (toggle, fuchsia when on), **Agents 🤖** (opens Agents hub as sheet), **New ＋**, overflow ⋯ (Rewind, Fork, Branch tree, Handoff, Share, Export, Rename, Archive).
-- Contextual rule: Compact shows a tiny `!` badge when context ≥ 75%; Plan button appears only when a plan exists or Plan mode is on, otherwise it lives in ⋯. No more than 5 visible buttons + ⋯ — everything else is in the palette.
+### 3.4 Session header (48px)
+
+- **Bar**: `--panel` with a bottom hairline and 16px padding. It holds a `ChatCenteredText` icon and the chat title (15px semibold), which rises in when it changes. The title is not edited in place; "Rename chat" in the ⋯ menu opens a rename dialog.
+- **Chips** are 24px pills in `--text-xs` semibold:
+  - The **model chip** (`--hover` fill, `--fg` text) opens the model list (⌘⇧M).
+  - The **mode chip** shows the permission level ("Ask me first", "Edits OK", "Auto") on `--hover` in `--fg-muted`. When a work mode is on it shows that mode on `--accent-muted` in `--accent`: "Plan", "Plan paused", "Goal", "Goal paused", "Vibe" or "Loop". Its menu has a "Permission level" radio group, then "Work modes": Plan mode and Vibe mode checkboxes, Set a goal…, Repeat a task…, and Toggle advisor.
+  - While the chat is shared, a **"Shared" chip** with a dot appears (accent while live, warn otherwise). It opens the share dialog on the Invite tab.
+- **Buttons**: up to five ghost icon-and-label buttons, each with a tooltip that shows its hint and shortcut: Restart omp (`ArrowsClockwise`), Compact this chat (`ArrowsIn`), Plan mode (`ClipboardText`), Helpers (`Robot`) and Share chat… (`ShareNetwork`).
+- **⋯ "More actions"**:
+  - First a "Transcript view" radio group (Normal, Thinking, Verbose).
+  - Then every chat and mode command that is not already a header button, in registration order. Examples: Start new chat, Close chat, Start chat in folder…, Set a goal, Guided goal, Vibe mode, Repeat a task, Toggle advisor, Write a handoff, Run security scan, Cleanse project, Export chat, Rename chat, Stop turn (while working), Choose model, Open session tree and Fork chat.
 
 ### 3.5 Chat column
 
-- Max width **760px**, horizontally centered, 24px side gutters, top padding 24px, bottom padding 16px above composer. Transcript view toggle (**Normal / Thinking / Verbose**) lives as a segmented control in the ⋯ overflow *and* cycles with `Ctrl/Cmd+O`; Normal is default.
-- **User message**: right-aligned? No — full-width rows for everyone (chat-app bubbles read as consumer messaging; this is a work log). User messages: `--bg-inset` card, `--radius-lg`, 12px/16px padding, left 2px `--border-strong` rail; attachments as 48px thumbnails above text; small "You" label (`--text-xs` muted) + timestamp on hover; hover actions: Rewind ↩, Fork ⑂, Copy.
-- **Assistant message**: no card — bare markdown on the chat background with a 20px Circuit V mark (mark-gradient, orange apex node) + model name + time header row; hover actions: Copy, Rewind to here, Read aloud (TTS). Streaming text renders inline with a 2px blinking caret (`--accent`, 1.1s blink, suppressed in reduced motion).
-- **Thinking block**: collapsed one-liner "Thought for 12s" (`--fg-faint`, italic off, chevron ▸); expanded = `--fg-muted` text on `--bg-inset`, left 2px `--agent` rail. Visible in Normal only after expansion; always visible in Thinking view.
-- **Tool cards**: §4.7.
-- **System notices** (compaction, mode change, restarts): centered `--text-xs` `--fg-faint` line with 24px hairline rules either side — "· Context summarized ·".
-- **Questions & approvals**: §4.8. **Errors**: §5 cards, `--err` rail + "Try again" button.
-- **Queued messages tray**: §3.6.
-- Day/time dividers: centered `--text-xs` `--fg-faint` "Today 14:32".
+- **Layout**: up to 760px wide and centered, with 24px side gutters, 24px top padding and 24px between messages. The transcript is a polite `role="log"`. It renders the last 120 entries; "Show N earlier messages" loads more, and does so on its own when you scroll near the top.
+- **Banners** above the transcript:
+  - "omp stopped (exit N)." with [Start omp again]
+  - "Reconnecting to omp…" (warn)
+  - "Showing the saved chat. omp starts when you send a message." (info)
+  - For a chat open in another window, a follow row with a live dot: "Open in another window. This view updates as that window works; reply from there."
+- **Transcript view**: Normal, Thinking or Verbose, chosen in the header ⋯ menu or in Settings → General. Thinking opens every thinking block. Verbose also shows thinking-level notices, starts tool steps expanded and adds their raw JSON arguments.
+- **User message**:
+  - A right-aligned bubble up to 85% of the column: `--bg-inset`, 1px `--border`, `--radius-lg`, 12px by 16px padding, `--text-base`. There is no side rail and no speech tail.
+  - Images show as 48px thumbnails above the text.
+  - A line above the bubble reads "You" (or "From {name}" in shared chats), with the time on hover.
+  - Hover or focus shows Rewind to here, Fork from here and Copy message under the bubble.
+- **Assistant message**:
+  - No card and no hover actions.
+  - Each turn starts with a header row: the 18px C1 mark, then "{model} · {time}" in `--text-sm` `--fg-faint`.
+  - Markdown is 14/22 `--fg`. Inline code sits on `--selected`; code blocks are on `--bg-inset` with a hairline.
+  - While a reply streams, a 2px accent caret follows the last character and blinks every second.
+- **Thinking**: a 28px toggle row, "Thinking" (or "Thinking (hidden by the model)"), in `--text-sm` `--fg-faint`, with a caret that turns when it opens. The text opens with `Expand`, indented 20px, in `--text-sm` `--fg-muted`, with no background and no rail.
+- **Tool steps** (§4.7) are borderless rows, and the steps of one turn stack as one list.
+- **Notices** are a centered `--text-xs` `--fg-faint` line between two hairlines:
+  - "Context summarized"
+  - "Continued from another branch"
+  - "Switched to {model}"
+  - "Thinking set to {level}" (Verbose only)
+  Output from extensions shows in a bordered `--bg-inset` box in `--text-sm` `--fg-muted`.
+- **Errors**: when a turn stops, an inline status follows it. An error shows on `--err-bg` with `XCircle`: "The reply stopped with an error", plus omp's message. A cancelled turn shows on `--warn-bg` with `Warning`: "Stopped".
+- **Questions** are §4.8 and **plan review** is §4.9. The **working row** is §4.6.
+- **Scrolling**: the log follows new content while you are within 48px of the bottom. Scroll further up and new content shows a "Show new activity" pill (primary, `ArrowDown`) at the bottom right.
 
-### 3.6 Composer (floating card, max 760px, `--radius-xl`, `--shadow-composer`, 1px `--border-strong`)
+### 3.6 Composer (card up to 760px, `--radius-xl`, `--shadow-composer`, 1px `--border-strong`)
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│ ⏳ 2 queued: "also update the tests"  [Send now] [Edit] [✕]      │ queued tray (only when non-empty), --warn-bg hairline-tinted rows
+│ ? Question waiting · omp needs your answer to continue           │ only while omp asks
+│ ⧗ 2 queued. They send in order when omp finishes.                │ queued tray
+│ ⠿ also update the tests          Send message now   ✎   ×        │ 32px rows on --bg-inset
 │──────────────────────────────────────────────────────────────────│
-│ 📎 shot.png ×2                                                   │ attachment chips row (when present)
-│ ┌──────────────────────────────────────────────────────────────┐ │
-│ │ Ask visual-omp to change something…                    ⌘↵    │ │ textarea: auto-grow 24→200px, 14px/22
-│ └──────────────────────────────────────────────────────────────┘ │
-│ [＋] [Auto ▾]  [! Shell] [$ Python]   Sonnet 4.5 ▾  Thinking ▾   │ bottom row 1: 32px controls
-│              🎤  ◔ 62%                                    ➤ / ■  │ bottom row 2 overlays right side of row 1 — see below
+│ [▣ shot.png ×]                                                   │ attached images
+│ Ask omp to change something…                                ⌘↵   │ grows 24-200px
+│ ＋ ▭my-shop⌄ (Auto⌄) !Shell $Python      🎙 ◔ Sonnet 4.5⌄ Auto⌄ ↑ │ one 40px row
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-One bottom row, 40px tall, contents left→right: **＋** (28px ghost; menu: Attach file, @-mention file, Prompt library, Skills, Custom commands) · **permission-mode selector** (pill, 28px) mapping 1:1 to omp's `tools.approvalMode`: `Ask me first` (`always-ask`: asks before edits and commands) · `Edits OK` (`write`: edits run, commands ask) · `Auto` (`yolo`: runs everything, no questions). Default for new users is **Auto** (spec: auto-approve everything); Auto carries a quiet `--fg-muted` label "no questions asked", no warn dot · mode quick-toggles **!** and **$** (28px ghost, active = `--accent-2-muted` fill + blue text) · flexible space · **voice 🎤** (28px ghost; recording = `--err` pulse ring) · **context ring** (20px, §5.17) · **model ⌄** (text button, 13px/500 `--fg-muted`) · **thinking ⌄** (same styling) · **send/stop** (32px, `--radius`, primary: `--accent` fill + §1.9 primary-button depth, ➤ `--accent-fg`; while working: `--err`-text ghost ■ Stop).
-While the agent works, the composer frame carries the **signal shimmer border** (§5.16).
-- **@-mention**: typing `@` opens fuzzy picker (§5 menus) listing project files; selected files appear as blue chips inline (`--accent-2-muted` fill, `--accent-2` text).
-- **Queued tray** rows: 32px, `--text-sm`, drag-handle to reorder, per-row [Send now] [Edit] [✕]; tray max 3 rows + "N more".
-- **Drag-drop**: files dropped anywhere on the chat column → full-column drop veil (`--accent-muted` at 60% + 2px solid `--accent` outline inset 8px, `--radius-xl`).
+- **Card**: `--panel` (`--bg-inset` when read-only). The frame does not change while omp works; the working row above it carries that state.
+- **Question chip**: while omp is asking, a "Question waiting" pill heads the card. Clicking it scrolls to the question and focuses it.
+- **Queued tray**: messages sent while omp works queue here, in 32px `--bg-inset` rows. The title reads "{n} queued. They send in order when omp finishes." Each row has a drag handle that also works with arrow keys, "Send message now", an inline edit and "Remove from queue". Three rows show, then "Show N more".
+- **Attachments**: attached images show as 40px chips with a thumbnail, name and remove button.
+- **Text box**: `--text-base`, growing from 24 to 200px.
+  - Placeholders: "Ask omp to change something…" when idle, "Queue a message for when omp finishes this reply" while working, and prompts for Shell and Python mode.
+  - A mono hint shows ⌘↵, or "⌘↵ send now" while working.
+  - `@` mentions are highlighted inline on `--accent-muted` in `--accent`.
+- **Bottom row**, left to right:
+  1. ＋ opens a menu: Attach file, Mention a file, Open prompt library, Browse skills, Browse custom commands.
+  2. The folder chip appears only before the first message; the folder can change until then.
+  3. The permission pill, a 28px pill: "Ask me first", "Edits OK" or "Auto · runs without asking". Its popover explains each level. The first switch to Auto asks for confirmation.
+  4. The Shell (!) and Python ($) toggles show `--accent-muted` fill when pressed.
+  5. Voice (recording shows `--err-bg` with a ping ring).
+  6. The context ring (§5.17).
+  7. The model button (⌘⇧M).
+  8. The thinking-level button (⇧⇥).
+  9. While working, "Stop reply" (danger-ghost).
+  10. Send: a 32px `--accent` square with `ArrowUp`.
+- **Keys**:
+  - Enter sends, or queues while working.
+  - Shift+Enter adds a new line.
+  - ⌘/Ctrl+Enter sends now and steers the running turn.
+  - Esc closes the mention picker, or stops omp when the box is empty.
+  - Typing `!` or `$` in an empty box enters Shell or Python mode, and Backspace in an empty box leaves it.
+- **@-mention picker**: a floating list above the text box: "Mention a file so omp reads it with your message". Rows are 32px, with fuzzy matches in accent semibold. Picking one inserts `@path`.
+- **Drag and drop**: dragging files over the chat column shows a veil (`--accent-muted` with an inset `--accent` outline): "Drop to add to your message". Images attach, and other files are mentioned.
 
-### 3.7 Right dock (default 420px, drag 320–640px, `Cmd/Ctrl+.` toggles, remembers tab+width per project)
+### 3.7 Right dock (420px default, drag 320-640px, ⌥⌘B toggles)
 
-- Tab strip 32px: **Diff · Files · Preview · Tasks · Plan · Terminal** — 13px/500 labels, active = accent text + 2px accent underline; badges: Diff shows `+N −M`, Tasks shows running count dot, Plan shows `!` when awaiting approval, Terminal shows `●` when a command runs.
-- One dock per window (shared across splits; reflects focused session). Pop-out button (⧉ 24px ghost) floats any pane to its own window.
-- **Diff**: file list left (140px, collapsible) + per-file unified diff; line-comment `＋` on gutter hover → comment box, `Cmd/Ctrl+Enter` sends all comments to omp; header: file path breadcrumb, "Review code" button (accent), Accept/Reject per hunk in Manual mode.
-- **Files**: tree (24px rows, 12px indent steps) + viewer tabs; click file → viewer; `⌘click` or right-click → "Mention in chat" (@-chip). Syntax colors §1.7; images render inline.
-- **Preview**: address bar (back/fwd/reload, URL, open-external ⧉, select-element ⌖) + webview; empty state: "Start a dev server and it shows up here."
-- **Tasks**: three groups — Checklist (todo phases, checkbox rows), Helpers (subagents: fuchsia avatar, name, one-line status, live token count, Stop), Background (shell jobs, dev servers; live tail on expand).
-- **Plan**: current plan markdown + Approve / Refine bar (§4.9 when approval pending).
-- **Terminal**: xterm.js, `--bg-inset` padding 8px, font `--text-terminal`; tab `+` for extra shells; this is a plain project shell, distinct from the omp terminal sheet (§4.11).
+- **Frame**: an `aside` labelled "Side panel" on `--panel` with a left hairline. It is closed by default.
+- **Tab strip**: 32px, with 28px tabs: Diff (`GitDiff`), Files (`TreeStructure`), Preview (`MonitorPlay`), Tasks (`ListChecks`), Plan (`ClipboardText`) and Terminal (`TerminalWindow`).
+  - The active tab has `--accent` text and a 2px accent underline that slides between tabs.
+  - Tabs use a roving tab stop with manual activation.
+  - Panes slide in from the side of the chosen tab.
+  - A close button ("Close side panel") ends the strip.
+- **Badges**:
+  - Diff: `+N −M` in the diff colors.
+  - Tasks: an accent count pill of running helpers and jobs.
+  - Plan: an accent "!" while a plan waits for a decision.
+  - Terminal: a live dot while a command runs.
+- **Diff**: changes since the last commit, per file, with a hideable file list. Line comments are sent to omp together. "Review code" asks omp to review the changes (`/review`), and a file's changes can be discarded after a confirmation.
+- **Files**: the project tree and viewer tabs. ⌘-click or right-click mentions a file in chat; there are also Copy path and Show in folder.
+- **Preview**: back, forward, reload, an address field (local addresses and `https://` pages only) and "Open page in your browser". Links found in the chat are offered, and the empty state reads "Nothing to preview".
+- **Tasks**: the checklist, the helpers at work (helper definitions are managed in §4.14) and background jobs:
+  - The checklist has a progress bar, and a highlight slides to the step in progress.
+  - Helper rows use a letter avatar with a status dot.
+  - Background jobs show a live tail.
+- **Plan**: the plan file, polled every 2 seconds while visible. While omp waits for a decision, an `--accent-muted` bar offers [See all options] and [Approve plan].
+- **Terminal**: the project's own shells ("Shell 1", "Shell 2"…), separate from omp's terminal screen (§4.11).
 
-### 3.8 Status bar (28px, `--panel`, top hairline, `--text-xs`)
+### 3.8 Status bar (28px, `--panel`, top hairline, mono `--text-xs`)
 
-Left: **git branch** (⎇ glyph + name, mono; click → branch menu incl. Worktree toggle) · **changes** `+12 −3` (`--diff-add-text` / `--diff-del-text`; click → Diff dock) · **PR/CI chip** when a PR exists (✓ green / ▲ amber / ✕ red + "Fix CI" on failure).
-Center (absolute-centered): nothing — keep it empty.
-Right: **context ring + %** (§5.17, click → Compact dialog) · **cost today** `$1.24` (mono; click → Usage dashboard; turns `--warn` at 80% of the user's daily cap) · **omp status** (`● omp 18.4.4` — `--ok` dot connected / `--warn` reconnecting / `--err` stopped; click → diagnostics menu: Open terminal sheet, Restart omp, Copy diagnostics) · **mode readout** `[ AUTO ]` (bracket style, §2.4) when not in the default mode.
-All status-bar items are buttons with tooltips; bar is 28px exactly, never wraps, items truncate middle with ellipsis.
+Left:
+- **Branch** (⎇ plus the branch name). Its menu switches branches, opens other GitHub branches, creates a branch, turns on "Work in a separate copy", commits changes, opens or creates a pull request, and refreshes git status. Outside git it reads "No git", with "Set up git".
+- **Changes**: `+A −D` in the diff colors, hidden when clean. It opens the Diff pane.
+- **Pull request**: "PR #N" with ✓, ▲ or ✕ for its checks. It opens a checks popover with [Refresh checks], [Fix CI] (when failing) and [Open on GitHub]. A failing check also adds a separate "Fix CI" item.
+
+Right, in order:
+- **Context**: a 14px context ring and "{n}%", shown when the chat reports usage. It is a readout without a click action.
+- **Cost**: "{cost} today". It opens Usage & limits.
+- **App update**: "v{version} available" with an accent dot, only when a newer visual-omp exists. It opens Settings → About.
+- **omp status**: a dot and label. Dot and label pairs: `--ok` "omp {version}"; `--warn` "Starting omp…" or "Reconnecting to omp…"; `--err` "omp stopped". An accent dot marks an available omp update. The menu holds Show omp terminal (⌘J), Restart omp, Update omp to {version} (when there is one) and Copy diagnostics.
+
+Every item is a button with a tooltip, apart from the context readout. The bar never wraps.
 
 ---
 
 ## 4. Screen specs
 
-Conventions: wireframes are schematic, not to scale; every screen lists its component inventory (§5) and states. All screens obey §3 shell unless noted.
+Wireframes are schematic. Every screen uses the §3 shell unless noted, and the strings quoted here come from `src/renderer/src/i18n/en/`, which is authoritative when they differ.
 
 ### 4.1 omp-missing setup screen
 
-Full-window replacement (no sidebar/dock), centered 560px column on `--bg` with ambient wash (radial `--ambient-a` top-left → `--ambient-b` bottom-right, 480px radius each, static) and a faint blueprint grid (`--grid-line`, 40px squares, radially masked to transparent at 70% of the window diagonal).
+A full-window screen on `--bg` with no sidebar or dock. It has a 40px drag strip at the top and a centered 560px column starting at 12vh.
 
 ```
-                 ╭──────╮
-                 │  ◇   │                       96px Circuit V mark, mark-gradient
-                 ╰──────╯                       (orange apex node, soft cyan glow
-              [ WELCOME ]                       rgba(34,211,238,0.18) Ø160 behind)
-        Let's get omp installed                 Geist 700, 32px, -0.02em
-   visual-omp is a friendly window around omp,  15px, --fg-muted, 440px max
-   the AI coding agent. omp isn't on this
-   computer yet — it takes about a minute.
+                         ›▟                    C1 mark, 56px
+                    Install omp                28px semibold, −0.02em
+     visual-omp is a desktop app for omp, the AI coding agent.
+          omp isn't installed on this computer yet.           --text-base, --fg-muted
 
    ┌────────────────────────────────────────┐
-   │ 1  Install omp                         │ step row: 28px number circle
-   │    One command, runs in a window you   │ (--border-strong outline),
-   │    can watch.                          │ title 14/600 + desc 13 muted
-   │    [ ▶ Run installer ]  [ Copy ]       │ primary button + ghost
+   │ ① Install omp                          │ numbered step, 28px badge
+   │   The installer is a single command,   │
+   │   and its output appears in this window│
+   │   [curl -fsSL … | sh]                  │ command in --bg-inset mono
+   │   [▶ Run installer]  [Copy command]    │ primary + ghost
    ├────────────────────────────────────────┤
-   │ 2  Check again                         │ step 2 disabled until step 1 done
-   │    [ ↻ Check again ]                   │ secondary button
+   │ ② Check for omp                        │ dims until step 1 finishes
+   │   [↻ Check for omp]                    │ secondary
    └────────────────────────────────────────┘
-   Having trouble?  Open the help guide →    13px link, accent
+           Having trouble?  Open the help guide →
 ```
 
-- Inventory: Circuit V mark, bracket label, display heading, 2 step cards (card, `--radius-lg`), primary/secondary/ghost buttons, copy button (toast on copy), footer link.
-- States: **missing** (above) · **installing** (step 1 expands inline into a 240px mini-terminal showing the installer output live — user-initiated, visible, with Cancel; the mark's glow gently pulses) · **too old** (same layout; heading "Your omp is out of date", shows installed vs required version, step 1 becomes "Update omp") · **done** (both steps get ✓ `--ok`, auto-advances to first-run tour after 600ms).
+- **States**:
+  - **missing**: as shown.
+  - **installing**: an inline terminal (240px) shows the installer's output, with [Cancel install] and a status line that ends in "The installer finished." or an error with its exit code.
+  - **too old**: "Your omp is out of date" shows the installed and required versions, and step 1 becomes "Update omp".
+  - **still missing after a check**: a `--warn-bg` note suggests reopening the app.
+  - **done**: "omp is ready". Both step badges turn `--ok` with a check, and the app opens after 600ms.
+- The heading and body swap with a rise. [Copy command] shows the toast "Command copied". The help link opens a limited help sheet.
 
 ### 4.2 First-run guided tour
 
-5 steps, spotlight overlay: scrim `--backdrop` over full app, target element gets 8px-padded cutout with `--ring` 2px outline, popover card 320px (`--bg-overlay`, `--shadow-overlay`, `--radius-lg`) with: step eyebrow `[ 1 OF 5 ]`, title 15/600, body 13px, footer [Skip] ····· [Next →] (last step [Start chatting →]). Transitions `--dur-xl` `--ease-out`; reduced motion → instant, no spotlight pan.
+The tour runs 800ms after the first launch, once omp is found. Five steps spotlight their targets: the scrim is `--backdrop` with an 8px-padded cutout (radius 12) and a `--ring` outline, and it glides between targets on the gentle spring.
 
-1. **Sidebar** — "Your projects and chats live here. Everything you ask for becomes a chat you can return to."
-2. **Composer** — "Type what you want in plain words. Enter sends. You never need commands — they're optional shortcuts."
-3. **Permission selector** — "This controls how much omp does on its own. 'Auto' is a good start: it works by itself and you can always rewind."
-4. **Right dock** — "Watch changes happen: files, diffs, previews, and helpers working in parallel."
-5. **Status bar** — "Keep an eye on context and cost. Click anything here to learn more."
+- **Card**: 320px, `--bg-overlay`, `--radius-lg`, `--shadow-overlay`, placed beside the target. Title `--text-base` semibold, body `--text-md` `--fg-muted`.
+- **Footer**: [Skip tour], step dots (screen readers hear "Step N of 5"), and [Show next step →], which becomes [Start chatting] on the last step. Content slides in the direction of travel.
+- **Keys**: Esc finishes, → and ← step, and focus stays in the card.
+- **Steps**:
+  1. **Projects and chats**: "The sidebar lists your projects and chats. Each request becomes a chat you can return to."
+  2. **Say what you want**: "Type what you want in plain words and press Enter to send. Commands are optional shortcuts."
+  3. **How much omp does on its own**: "This setting controls how much omp does before asking you. Auto lets omp edit files and run commands without approval, so commit or back up your work before you use it."
+  4. **Watch the work**: "This panel shows files, diffs, previews and helpers while omp works." The dock opens for this step and closes again afterwards.
+  5. **Context and cost**: "The status bar shows context use and cost. Click an item for details."
+- The tour can be replayed from Help → "Show the tour again".
 
-Tour is skippable at every step, re-runnable from Help → "Show the tour again". A persistent 6th element: the empty chat (§4.5) appears immediately after with example prompts.
+### 4.3 Project home
 
-### 4.3 Project home dashboard
+Shown when a project is selected and no chat is open.
 
-Shown when a project is selected and no chat is open (or via ⌂ Home). Content column max 880px, 24px padding, 3-zone vertical stack.
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ [ PROJECT ]              my-shop                        ⚙ ▾ │ eyebrow + Geist 700 28px + settings menu
-│ ⎇ main · clean · 3 chats this week · $4.10 this week        │ 13px muted meta row, mono numbers
-├─────────────────────────────────────────────────────────────┤
-│ ┌─ Recent chats ────────────────────────────┐  [ See all → ]│
-│ │ ● Fix checkout bug        Sonnet · 2m ago  │             │ rows 44px: status dot, title 14/500,
-│ │ ○ Styles pass             Haiku  · 1h ago  │             │ model + time muted; click resumes
-│ │ ↺ Deploy script (terminal) read-only       │             │
-│ └────────────────────────────────────────────┘             │
-│ ┌─ Start something ────────────────────────────────────────┐│
-│ │ [ ✨ Fix a bug ] [ 🧪 Add tests ] [ 📝 Explain this ]    ││ quick-start prompt chips, 40px,
-│ │ [ 🚀 Build a feature ]                                    ││ --panel cards, hover --hover + lift 1px
-│ └──────────────────────────────────────────────────────────┘│   + --shadow-card
-│ ┌─ Project health ──────────┐ ┌─ Instructions ─────────────┐│
-│ │ ⎇ main  +12 −3  2 stashes │ │ AGENTS.md · 1.2 KB  [Edit] ││ two 50% cards, 120px tall
-│ │ ahead 2 · CI ✓ passing    │ │ 3 rules loaded      [View] ││
-│ └───────────────────────────┘ └────────────────────────────┘│
-└─────────────────────────────────────────────────────────────┘
-```
-
-- States: **no git repo** (health card replaced by "Not a git project yet — [Initialize git]" ghost card) · **no chats** (Recent chats card replaced by example prompts §8) · **loading** (3 skeleton rows per card).
+- **Layout**: a column up to 920px, with a container query that moves Git and Instructions into a side column once it is 46rem wide.
+- **Header**:
+  - The project name as the heading (28px bold, −0.02em).
+  - A meta row joined by "·": branch in mono, "{n} changed files" (or "no changes" or "not a git project"), "{n} chats this week" and "{cost} this week".
+  - Actions: [Chat in another folder…], primary [Start chat] and a "Project options" menu: Project settings…, Project instructions…, Import a chat…, Show in folder, and Remove project from list.
+- **Sections** are a heading row and their content, without boxes:
+  - **Recent chats**: 40px rows with a `ChatStatusMark`, the title, a "read-only" chip when another window has the chat, and the age. After five rows, "Show all {n} chats" opens the rest.
+  - **Start from an example**: a list of example prompts that fill the composer: Fix a bug, Build a feature, Explain this, Clean up, Add tests, Fix mobile layout.
+  - **Git**: branch and `+N −N`, the sync state, a checks chip (passing, running, failing) and "Show changes". A folder outside git reads "This folder isn't a git project yet…" with [Set up git].
+  - **Instructions**: the instructions file and size, or "No instructions yet", with [Edit instructions] or [Write instructions] and the rules count.
+- **Other states**:
+  - With no projects, an empty state shows the 48px mark: "No projects yet. A project is a folder that omp works in." It offers [Open folder…], [Create project] and primary [Start chat in folder…].
+  - A project whose folder is missing reads "Can't find “{name}”" and offers [Find folder…] or [Remove project from list].
 
 ### 4.4 New project wizard
 
-Modal dialog 560px (`--bg-overlay`), 3 steps with dot progress header `[ STEP 1 OF 3 ]`. Enter/⌘↵ advances, Esc cancels (confirm if fields filled).
+A 560px dialog with three steps: "New project", "Details" and "First chat". Step dots sit beside "Step N of 3", and the steps slide in the direction of travel.
 
-1. **Where?** — three full-width option cards (48px, radio-left): **Empty folder** (＋ icon, "Start fresh in a new folder") · **Open existing** (▣, "Use a folder already on this computer") · **Clone from GitHub** (⎇, "Download a project from a GitHub link"). Selected card: `--accent` 2px outline + `--accent-muted` wash.
-2. **Details** — contextual: empty→ name field + location picker (default `~/Projects`); existing→ folder picker + recent folders list (5 rows); clone→ URL field with live validation (✓ "Found: owner/repo" `--ok` / ✕ `--err`) + destination picker.
-3. **First chat?** — toggle row "Start a chat right away" (on) + optional first-message textarea. [Create project →] primary, right-aligned.
-- States: field errors inline below inputs (`--err`, 12px, with ▲); cloning shows determinate progress bar with Cancel; existing folder that's already a project → warn notice "This folder is already a project — opening it instead" + [Open].
+1. **Where?** One bordered list of three options, each with a native radio: "Empty folder" (Start fresh in a new folder), "Open existing" (Use a folder already on this computer) and "Clone from GitHub" (Download a project from a GitHub link). The selected option is filled with `--accent-muted`.
+2. **Details**, depending on the kind:
+  - Empty folder: project name and location.
+  - Open existing: a folder picker and "Recent folders". A folder that is already a project gets a warn note, "This folder is already a project, so it opens instead."
+  - Clone from GitHub: a GitHub link field that confirms "Found: {repo}" in `--ok`, then the folder name.
+3. **First chat**: "Start a chat right away", with an optional first message.
+
+- **Footer**: [Go back], [Cancel] and the primary action: [Continue setup], then [Create project] or [Open project].
+- **Keys**: Enter advances; in a text area, ⌘/Ctrl+Enter does. Esc asks before discarding: "Discard this project?"
+- **States**: errors show inline on `--err-bg`, and cloning shows a progress bar with its phase.
 
 ### 4.5 Empty chat (new session)
 
-Chat column, vertically centered 520px block:
+A centered block up to 520px:
 
-```
-                      ◇  (48px Circuit V, mark-gradient, orange apex,
-            What should we work on?        soft glow rgba(34,211,238,0.14) Ø96)
-              Geist 700, 24px, -0.02em, --fg
-   ┌────────────────────┐ ┌────────────────────┐
-   │ 🐞 Something's     │ │ ✨ Build something  │  2×2 grid of prompt cards,
-   │    broken…         │ │    new…             │  156×88px, --panel, 12px pad,
-   ├────────────────────┤ ├────────────────────┤  1px --border, icon 20px accent,
-   │ 📖 Explain this    │ │ 🧹 Clean this up…   │  title 13/600, 2-line sample
-   │    project…        │ │                     │  text 12px muted
-   └────────────────────┘ └────────────────────┘
-        Press / for shortcuts · @ to mention a file     12px --fg-faint hints
-```
-
-- Each card carries a full example prompt (§8) into the composer on click (not auto-send). Hover: lift 1px + `--shadow-card`; focus: ring.
-- States: **first-ever chat in app** → heading "What should we work on?" + hint line under it: "Tip: just describe what you want in plain words."; **returning** → heading "Back to it — what's next?".
+- The 40px mark.
+- The heading "What should we work on?", or "What should we work on next?" once you have other chats (24px bold).
+- On the first chat only, the tip "Describe the change in plain words, or start from an example."
+- Four example rows, each a title with a one-line example below it:
+  - "Fix a bug"
+  - "Build a page"
+  - "Explain this project"
+  - "Clean up this folder"
+  Clicking one fills the composer without sending.
+- The hint "Type @ to mention a file. Start a message with / to run an omp command."
 
 ### 4.6 Live chat, mid-stream
 
 ```
-│ You · 14:32                                                          │
-│ ┌──────────────────────────────────────────────────────────────────┐ │
-│ │ The checkout total is wrong when a coupon is applied. Fix it?    │ │ user card
-│ └──────────────────────────────────────────────────────────────────┘ │
-│ ◇  Sonnet 4.5 · 14:32                                                │ Circuit V 20px header
-│ I'll trace how coupons flow into the total.                          │ streamed markdown
-│ ┌──────────────────────────────────────────────────────────────────┐ │
-│ │ ▸ 🔍 Searched for "coupon" — 12 matches                       ✓ │ │ tool card collapsed
-│ ├──────────────────────────────────────────────────────────────────┤ │
-│ │ ▾ ✏️ Edited 2 files — cart.ts +8 −3, pricing.ts +1 −1  [View] ✓ │ │ expanded state shown
-│ │   │ diff preview, 2 file blocks, --bg-inset …                    │ │
-│ ├──────────────────────────────────────────────────────────────────┤ │
-│ │ ▸ 🧪 Running tests…                                           ◉ │ │ running: shimmer border + dot
-│ └──────────────────────────────────────────────────────────────────┘ │
-│ ◉ Working… 14s — Running tests                       ■ Stop          │ working row: pulse dot + elapsed
+│                                         You · 14:32 │
+│              ┌────────────────────────────────────┐ │
+│              │ The checkout total is wrong when a │ │ user bubble, right-aligned
+│              │ coupon is applied. Can you fix it? │ │
+│              └────────────────────────────────────┘ │
+│ ›▟ claude-sonnet-4-5 · 14:32                        │ turn header, 18px mark
+│ I'll trace how coupons reach the total.             │ streamed markdown
+│ ⌕ Searched for “coupon”                          ✓  │ tool step rows
+│ ✎ Edited 2 files                          +9 −4  ✓  │
+│ ▭ Running npm test…                              ●  │ running: accent icon, pulse dot
+│                                                     │
+│ ● Working… 14s · Running npm test…      ■ Stop omp  │ working row above the composer
 ```
 
-- Streaming caret on text; tool cards stream in-place (no layout jump — cards reserve final height once result arrives via 160ms height animation).
-- Running tool cards carry the **signal shimmer border** (§5.16) in place of their static `--border`.
-- Working row pinned just above composer while active: gradient pulse dot + "Working… {elapsed}s" + current activity ("Running tests") in `--fg-muted` + Stop. Also mirrored in the session's tab and sidebar row.
-- Scroll behavior: auto-scroll locks to bottom; scrolling up shows a floating "↓ New activity" pill (accent) bottom-right of the column.
+- **Working row**: while omp works it opens (with `Expand`) just above the composer.
+  - It shows the accent pulse dot, "Working… {elapsed}", and the current step's summary, or "Thinking…" when no text is streaming.
+  - [Stop omp] sits on the right.
+  - It is not a live region, and the tab and sidebar row show the working mark.
+- **Streaming**: text streams with the 2px caret. Live tool rows rise in as they start; history renders at rest.
 
-### 4.7 Tool cards — collapsed & expanded
+### 4.7 Tool steps
 
-Anatomy (all tools): full-width card, `--panel`, 1px `--border`, `--radius-lg`, min-height 40px collapsed. Left 2px status rail (running `--accent` / ok `--ok` / err `--err`). Header row 40px: chevron ▸/▾ (16px) · tool glyph (16px, `--fg-muted`) · **friendly summary** 13px/500 · flexible space · meta (duration, counts, `--text-xs` `--fg-faint`) · status glyph. Expanded body: 12px pad, `--bg-inset` inner well (`--radius`), raw args/output; footer row with [Copy] [Open in Files/Diff] context actions. Secrets always masked `•••` with eye toggle.
+Each tool call is a borderless 32px row. Consecutive rows stack with no gap.
 
-| Tool | Glyph | Collapsed friendly summary (exact patterns) | Expanded body |
-|---|---|---|---|
-| bash | `▸_` | "Ran `npm test` — passed ✓" / "Ran `npm test` — failed ✕" / running: "Running `npm test`…" | command line (mono) + live-tail output (last 2,000 lines, ANSI colors mapped to tokens) + exit code chip |
-| edit | ✏️ | "Edited `cart.ts` — +8 −3" / multi: "Edited 3 files — +21 −6" | per-file unified diff (§1.6 colors), file header rows link to Diff dock |
-| write | ✏️＋ | "Created `README.md` — 84 lines" | full file content, syntax-highlighted |
-| read | 📄 | "Read `pricing.ts` — 212 lines" | file excerpt with line numbers; collapsed again at 200 lines with "Show all" |
-| grep/glob | 🔍 | "Searched for `coupon` — 12 matches in 4 files" | match list grouped by file, each row: line no + context line, click → Files pane |
-| task (subagents) | 🤖 | "Helper: explore-auth — working… 12k tokens" / "…done ✓ — 3 findings" | fuchsia-tinted body: live activity feed (tool one-liners), final report markdown, [Open as chat] |
-| todo | ☑ | "Checklist — 4 of 7 done" | checkbox rows, phase headers; current item accented |
-| web_search | 🌐 | "Searched the web — 5 sources" | source cards: favicon, title link, 2-line snippet, [Open] |
+- **Row**: a tool icon (`--fg-faint`, or `--accent` while running), the friendly summary in `--text-md` (`--fg-muted`, or `--fg` on hover and while running), `+N −M` for edits, and a 16px status slot.
+- **Status slot**: the pulse dot while running, a bold check in `--fg-faint` when done, and a bold cross in `--err` ("Failed") on failure. Each status has its own shape.
+- **Caret**: appears on hover and opens the row.
+- **Open row**: shows the model's intent line and omp's own rendering of the call. Verbose adds the raw JSON arguments and starts rows open.
+- **Running output**: a running command's last output shows in a small `--bg-inset` well under its row.
 
-Running state replaces the static border with the signal shimmer (§5.16) and the status glyph with an 8px gradient pulse dot. Error state: `--err` rail + "— failed" + [Try again] button in footer. Verbose view: cards start expanded and also show raw JSON args; Thinking view: collapsed as Normal.
+| Tool | Icon | Summary while running / done / failed |
+|---|---|---|
+| edit | `PencilSimpleLine` | "Editing {file}…" / "Edited {file}" (or "Edited {n} files") / "Couldn't edit {file}" |
+| write | `FilePlus` | "Writing {file}…" / "Wrote {file} ({lines} lines)" / "Couldn't write {file}" |
+| read | `BookOpen` | "Reading {file}…" / "Read {file}" / "Couldn't read {file}" |
+| grep, search | `MagnifyingGlass` | "Searching for “{pattern}”…" / "Searched for “{pattern}”" / "Search for “{pattern}” failed" |
+| glob, find | `FileMagnifyingGlass` | "Looking for files…" / "Listed files matching “{pattern}”" / "Couldn't list files" |
+| bash | `TerminalWindow` | "Running {command}…" / "Ran {command}" / "{command} failed with exit code {code}" |
+| task (helpers) | `Robot` | "Helper “{agent}” is working…" / "Helper “{agent}” finished" / "Helper “{agent}” failed" |
+| todo | `ListChecks` | "Updated the checklist" / "Checklist: {done} of {total} done" |
+| web search, fetch | `Globe` | "Searching the web for “{query}”…" / "Searched the web for “{query}”" / "Web search failed" |
+| eval | `CodeSimple` | "Running Python…" / "Ran Python" / "Python raised an error" |
+| other tools | `Wrench` | "Using {tool}…" / "Used {tool}" / "{tool} failed" |
 
-### 4.8 Ask / approval question card
+The full set of patterns is in `i18n/en/tools.json` and `chat/friendly.ts`.
 
-Appears inline in the transcript when omp asks (`ask`, tool approvals, select/confirm/input UI requests). Card: `--panel`, `--agent` fuchsia 2px left rail, `--radius-lg`, 16px padding, fuchsia `[ QUESTION ]` eyebrow.
+### 4.8 Question and approval card
 
-```
-┌──────────────────────────────────────────────────────────┐
-│ [ QUESTION ]                                             │
-│ I found two coupon code paths. Which should I fix?       │ 14px question
-│ ┌──────────────────────┐ ┌──────────────────────┐        │
-│ │ ○ The cart page one  │ │ ○ The checkout one   │        │ option cards 44px,
-│ │   src/cart/coupon.ts │ │   src/checkout/…     │        │ radio + title + hint
-│ └──────────────────────┘ └──────────────────────┘        │
-│ ☐ Remember this choice for the rest of the chat          │ when omp offers "always"
-│              [ Skip ]                    [ Answer → ]    │ ghost + primary
-└──────────────────────────────────────────────────────────┘
-```
+Shown after the stream whenever omp asks a question or needs approval.
 
-Variants: **approval** (tool permission) → option cards replaced by: command/diff preview well + buttons [ Deny ] [ Allow ] [ Always allow ] (danger-y actions get `--err`-rail + "This can delete data" warn line); **text input** → single input + [Send]; **editor request** → multiline + [Send]. Timeout never auto-answers; unanswered cards persist at top of the queued tray as a `! Question waiting` chip. States: answered (collapses to one-line "You chose: the checkout one ✓", `--fg-muted`), expired/stale (greyed, "superseded by a later question").
+- **Card**: `--panel`, 1px `--border`, `--radius-lg`, 16px padding, `--shadow-card`. It has an 18px icon beside the title and no side rail or eyebrow. It rises in and leaves once the question is answered.
+- **Choice**: `Question` icon in accent, the title and omp's help text (or "Choose any that apply").
+  - Options are 48px bordered tiles in a two-column grid, each with a radio or checkbox that scales in.
+  - For single choice, the `--accent-muted` highlight slides between options.
+  - Arrow keys, Home and End move between options, and a double-click answers a single choice at once.
+  - An "Other" field accepts a typed answer.
+  - Footer: omp's optional "Chat about this", [Skip question], and [Send answer] (or [Send choices]).
+- **Approval**: `ShieldWarning` in `--warn`, "Permission needed", the request in a mono `--bg-inset` well, then [Deny action] and primary [Allow action].
+- **Text answer**: a text area ("Type your answer…"), with [Skip question] and [Send answer].
 
-### 4.9 Plan Review card
+### 4.9 Plan review card
 
-Inline card when a plan awaits decision: fuchsia rail, `[ PLAN READY ]` eyebrow, plan title 15/600, collapsible plan body (markdown), footer:
+Shown at the end of the transcript while a plan waits for a decision.
 
-```
-│ [ Approve & run ] [ Approve & summarize first ] [ Keep planning ▾ ] │
-│                                                    [ Save & quit ]  │
-```
+- **Card**: a 12px-radius card with `ClipboardText` in accent, the plan's first heading as the title (or "Untitled plan") and "omp is waiting for your approval before it starts."
+- **Plan body**: [Hide plan] or [Show plan] toggles the rendered plan (up to 384px, scrolling). With more than one role, "Continue with" offers a role switcher.
+- **Footer**:
+  - primary [Approve and run]
+  - [Approve and compact first], with a "Frees context" chip at 60% context or more
+  - a [More options] menu: Refine with a comment, Approve and keep context, Switch to Auto and run, Discard plan
+  - [Save and stop]
+- **After a decision**, the card gives way to a status line, for example "Plan approved. omp is starting the work." The line clears 8 seconds after the run ends.
 
-- **Approve & run** (primary, accent): executes with current permission mode. **Approve & summarize first** (secondary): compacts context, then runs — recommended chip "Frees context" when context ≥ 60%. **Keep planning ▾** (ghost menu): "Refine with a comment" (focuses composer with `About this plan: ` prefilled) · "Switch to Auto after approval" · "Discard plan". **Save & quit** (ghost): persists plan to the Plan dock, ends turn.
-- States: executing (footer replaced by progress row "Step 2 of 5 — editing files" + Stop), approved (card collapses to "Plan approved ✓ — 5 steps" linking to Plan dock), refined (version chip "v3" appears on title).
+### 4.10 Command palette (⌘K)
 
-### 4.10 Command palette (`Cmd/Ctrl+K`)
-
-Centered overlay 640px, top-offset 18vh, `--bg-overlay`, `--radius-lg`, `--shadow-overlay`, scrim `--backdrop`.
+A centered 640px dialog 18vh from the top, on `--bg-overlay` with `--radius-lg`, `--shadow-overlay` and the `--backdrop` scrim.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│ 🔍 Type a command or search…                                 │ input 16px, 48px row
+│ ⌕ Type a command or search…                                  │ 48px input row
 ├──────────────────────────────────────────────────────────────┤
-│ ACTIONS                                                      │ group eyebrow 11px mono
-│ ▶ Fix a bug…                          Run a helper      ⏎    │ row 36px: glyph 16px,
-│ ⧉ Compact this chat — summarize to free space   ⌘⇧C          │ title 13px, right hint
-│ ↻ Restart omp — start the engine fresh                       │ + shortcut 11px mono muted
+│ Suggested                                                    │ sentence-case group label
+│ ▤ Start new chat                                  /new  ⌘N   │ 36px rows
+│ ⇲ Compact this chat                           /compact  ⌘⇧C  │
+│ Recent chats                                                 │
+│ ▤ Fix checkout bug                                           │
 ├──────────────────────────────────────────────────────────────┤
-│ CHATS                                                        │
-│ ● Fix checkout bug — my-shop · 2m ago                        │
-│ FILES                                   (only while typing)  │
-│ src/cart/coupon.ts — my-shop                                 │
+│ ↑↓ move · ⏎ run · ⌘⏎ open side by side (chats) · esc close   │ footer
 └──────────────────────────────────────────────────────────────┘
 ```
 
-- Every omp command searchable **by plain-language alias first** ("compact" → also matches "summarize", "free space", "shrink"); the omp slash command shows as the right hint (`/compact`). Groups: Actions → Chats → Files → Settings. Footer bar 28px: `↑↓ move · ⏎ run · esc close`.
-- States: empty query → "Suggested" group (5 most-used); no results → "No matches — press Enter to ask omp this instead" (sends query as chat message); destructive commands show `--err` glyph and require `⌘⏎`.
+- **Groups**: with an empty query, "Suggested" (the five most used commands) and "Recent chats". While you type: "Actions", "Chats", "Files" and "Settings".
+- **Scope**: the palette searches the app's registered commands; slash commands typed in the composer still go to omp. With no match, the last row sends the query to omp as a message.
+- **Danger**: danger commands show in `--err` and need ⌘⏎. The first Enter shows "Press ⌘⏎ to run this".
 
-### 4.11 Terminal sheet (full-screen omp menus)
+### 4.11 omp terminal sheet
 
-Bottom sheet, 80% window height, `--radius-xl` top corners, `--shadow-overlay`, scrim. Header 40px: terminal glyph · title "omp terminal — Settings" (the open omp screen's name, 13px/600) · hint "This is omp's own screen — click or type to use it" (`--fg-muted`) · [⤢ Expand to full] [✕ Close]. Body: xterm.js mirroring the live hidden TUI, `--bg-inset`, 12px padding. Opens automatically whenever omp shows a screen visual-omp doesn't draw natively (detected via omp's TUI focus/overlay state: `/settings` fallback, `/login`, `/tree`, `/resume` picker, `/extensions`, confirm/input prompts); closing with a menu open sends Esc and asks "Leave this omp screen? Your choice won't be saved." States: connected (live mirror), reconnecting (amber banner row inside header), disconnected (err banner + [Restart omp]).
+A bottom sheet at 80% of the window height, which can expand to fill the window. It mirrors omp's own terminal screen whenever omp shows a screen the app does not draw natively.
+
+- **Title**: "omp terminal" or "omp terminal: {screen}", with the description "This is omp's terminal screen. Click or type to use it."
+- **States**:
+  - Reconnecting: a warn strip.
+  - Stopped: an error strip with [Restart omp].
+  - Starting: "Starting omp…".
+  - Read-only: when another window owns the chat, "You can look, but only that window can type."
+- **Leaving**: leaving while an omp menu is open asks "Leave this omp screen?", with [Stay on this screen] and [Leave screen].
 
 ### 4.12 Settings
 
-Modal sheet 880×640, left nav 200px + content 640px (24px padding). Tabs: **General · Appearance · Permissions · Models · Sounds & alerts · Shortcuts · About · Advanced**.
+A centered 880×640 sheet with a 200px `--bg-inset` tab list and a slide-in `--selected` indicator.
 
-- **General**: default permission mode (segmented), default transcript view (segmented), auto-compact toggle, restore chats on launch toggle.
-- **Appearance**: theme segmented (Light / Dark / System), text size slider 90–130% (live preview sentence), reduce motion toggle, chat density (Comfortable / Compact).
-- **Permissions**: per-tool allow/ask/deny table backed by omp's `tools.approval.<tool>` (rows: tool glyph + plain name + segmented Ask/Allow/Deny).
-- **Models**: link-button to Model roles editor (§4.13) + default model picker + thinking default.
-- **Sounds & alerts**: notification toggles (chat finished, needs input, CI finished), sound toggle, do-not-disturb schedule.
-- **Shortcuts**: searchable shortcut table with click-to-rebind (capture pill "Press keys…"), conflict shown `--err` inline, [Reset all].
-- **About**: app + omp versions, Circuit V mark (48px) + wordmark lockup with blinking block cursor, links (omp docs, report issue), [Check for updates].
-- **Advanced**: single searchable list of *every* omp setting (`omp config list`): search field sticky top; rows 40px: setting key (mono 12px) · plain-language description · value control (toggle/input/select by type) · "edited" dot when non-default; footer [Reset all to defaults] danger-ghost. Group headers by domain (collab, model, ui, …). 400+ rows virtualized.
-- States: settings write failures → inline `--err` toast "Couldn't save — omp said: {reason}"; external edits (config.yml changed) → info banner "Settings changed outside the app — [Reload]".
+- **Header**: a "Save for" switch between "All projects" and "This project ({name})" appears on the General, Permissions, Models and Advanced tabs.
+- **Tabs**:
+  - **General**: Permission mode, Transcript view, Voice input, Summarize long chats automatically, and omp's tone.
+  - **Appearance**: Theme (Light, Dark, System), a text size slider with a preview sentence, and Reduce motion (Match system, On, Off).
+  - **Permissions**: tool-by-tool Default, Ask, Allow or Deny. Tools on Default follow the permission mode.
+  - **Models**: default models and a link to Model roles (§4.13).
+  - **Providers**: which providers omp can use, and signing in through omp.
+  - **Sounds & alerts**: desktop notifications and a test notification.
+  - **Shortcuts**: a searchable table of the app's shortcuts.
+  - **About**: see below.
+  - **Advanced**: a searchable list of every omp setting, with "Changed only" and per-setting reset.
+- **About**: the 48px mark beside the large wordmark and "A desktop app for omp, the coding agent."
+  - Rows for the visual-omp version (and how it updates), the omp version and channel, the omp location, and the last update check.
+  - Actions: [Check for updates], [Read release notes], [Read omp docs] and [Report an issue].
+  - When a newer version exists, the row offers [Update visual-omp] or [Update omp].
+- **States**:
+  - A change made outside the app shows an info banner with [Reload settings].
+  - A read failure reads "Couldn't read omp's settings: {reason}", with [Try again].
 
-### 4.13 Model roles editor
+### 4.13 Model roles
 
-Modal sheet 960×640. Layout: left role list 240px, right editor.
+A 960×640 sheet titled "Model roles", with an accent dot while changes are unsaved.
 
-```
-│ ROLES                    │  default                             │
-│ ● default    Sonnet 4.5  │  Model        [ Sonnet 4.5      ▾ ]  │ 40px select w/ provider badge
-│ ○ smol       Haiku 4.5   │  Thinking     [ Auto            ▾ ]  │
-│ ○ plan       Opus 4.5    │  Used for                            │
-│ ○ commit     Haiku 4.5   │  Every chat unless you switch.       │ plain-language explainer per role
-│ ○ advisor    Opus 4.5    │  ─────────────────────────           │
-│ … 15 roles, scroll       │  Presets                             │
-│                          │  [ Fast & cheap ] [ Balanced ]       │ preset cards apply a full role set
-│ [+ Add preset]           │  [ Thorough ]                        │
-```
+- **Role list**: 240px. Each row has a status dot: accent when a model is set, hollow for "Let omp choose", warn when the model is missing. Then the role id in mono and the model name.
+- **Editor**: the role name with its id, "Custom" and "This project" chips, a "Used for:" line, a Model picker (with "Let omp choose instead") and a Thinking level. A missing model shows "This model isn't available. Pick another one."
+- **Presets**: "Save as preset" stores the whole set, and each preset can be applied or deleted.
+- **Footer**: the unsaved count or scope note, [Revert changes] and [Save roles]. Leaving with changes asks "Discard your changes?"
 
-- Roles (all 15, fixed order): default · plan · commit · advisor · smol · slow · vision · tiny · memory · task · image · web · speech · dictation · judge. Each row: enable dot, role name (mono 12px) + assigned model (12px muted).
-- Editor per role: model select (grouped by provider, capability icons 👁 🧠 ⚡, context size hint), thinking level select (Off/Low/Medium/High/Max/Auto), one-line "Used for" explainer in plain words.
-- Presets row applies all roles at once with undo toast. Unsaved-changes dot on sheet title; [Save] / [Revert] sticky footer. Invalid model id (from edited yml) → warn row "This model isn't available — pick another".
+### 4.14 Helpers
 
-### 4.14 Agents hub
+A 960×640 sheet: "Helpers", with the subtitle "Reusable specialists omp can hand work to."
 
-Modal sheet 960×640. Header: title "Helpers" + plain subtitle "Reusable specialists omp can hand work to." + [＋ New helper] primary + [✨ Create with AI] secondary (asks for a description, generates the agent file).
-List rows 64px: fuchsia avatar (agent initial on `--agent-muted`) · name 14/600 + scope chip (Built-in / This project / All projects) · one-line description (from frontmatter) · model chip · enable toggle · ⋯ (Edit, Duplicate, Run now, Delete).
-Row states: disabled (40% opacity, toggle off), running now (gradient pulse dot + "Running in Fix checkout bug"), error in definition file (warn chip + [Fix] opens editor).
-Editor drawer (right, 400px): name, description, model override select, tools checklist (plain names), instructions markdown editor (mono, preview toggle), footer [Save] [Test in new chat]. Built-in agents (scout, reviewer, security-reviewer, task, sonic) are editable-as-copy ("Customize" duplicates to All-projects scope).
+- **Header actions**: [Reload helpers], [Create helper with omp] and primary [New helper].
+- **Toolbar**: search, plus a "Show" switch between All, Built-in, All projects and This project.
+- **Rows**: 64px.
+  - A 32px letter tile on `--bg-inset` in `--fg-muted` mono.
+  - The name, scope chip and "Customized" chip. While running, a pulse dot and "Running in {chat}…".
+  - The description, a model chip, an on/off switch, and a menu: Edit helper or Customize helper, Duplicate helper, Run helper now, Delete helper.
+  - A broken definition file shows a warn tile, "Can't be used" and [Fix file].
 
-### 4.15 MCP servers manager
+### 4.15 Connected tools (MCP)
 
-Modal sheet 880×560. Header: "Connected tools" + subtitle "MCP servers give omp extra powers, like reading a database or filing tickets." + [＋ Add server].
-Scope segmented: **All projects / This project**. Rows 56px: status dot (`--ok` connected / `--warn` slow / `--err` failed / grey disabled) · server name 14/600 · transport chip (stdio/http) + command/URL (mono 11px, truncated) · tools count ("12 tools") · enable toggle · ⋯ (Test, Reconnect, Edit, View tools, Remove).
-Add flow = mini-wizard: preset gallery first (common servers with icons + [Add]) → "Custom" → fields (name, command/URL, env vars key-value rows, scope) → [Test connection] (spinner → ✓ "Found 12 tools" / ✕ error verbatim) → [Save]. States: failed test keeps form with `--err` banner; server with 0 tools gets warn chip "No tools found — check the command".
+A right sheet, 880px wide: "Connected tools", with the subtitle "MCP servers let omp use outside tools, such as a database or a ticket tracker." and [Add server].
 
-### 4.16 Skills & plugins browser
+- **Scope**: a switch between "All projects" and "This project", beside the config path.
+- **Rows**: in a bordered list. Each row has:
+  - a `StatusDot` with a glyph ("Connected", "Couldn't connect", "Connected, but slow to start", "Turned off" and others)
+  - the name and transport
+  - the tool count
+  - an on/off switch
+  - a menu: Test connection, View tools, Edit server, Remove server
+  - warn chips for "No tools found. Check the command." and "Needs sign-in"
+- **Empty**: "Add a server to let omp use an outside tool, like GitHub, a database or your notes."
 
-Modal sheet 960×640, two tabs: **Skills · Plugins**. Search field + scope filter chips (Installed / This project / Registry).
-Skills: card grid (3 columns, 200×120 cards): skill icon (first letter tile, `--accent-2-muted`) · name 13/600 · 2-line description · footer: scope chip + toggle. Click → detail drawer (what it does, when omp uses it, source, [Open file], [Remove]).
-Plugins: row list: name, version, author, installed/available state, [Install]/[Update]/[Remove], update-available chip (`--info-bg`, "v1.3 → v1.4"). Registry browse section header `[ FROM THE SKILL SHARE REGISTRY ]` with install counts. States: offline → "Can't reach the registry — showing installed only" banner; installing → inline progress.
+### 4.16 Skills and plugins
 
-### 4.17 Memory viewer
+A right sheet, 960px wide, with Skills and Plugins tabs, search, and a switch between "Installed", "This project" and "Registry" ("Available" for plugins).
 
-Modal sheet 800×560. Header: "What omp remembers" + backend chip (e.g. "Local files") + search.
-Layout: left list 280px (entries: key/title 13/500 + preview line + age), right reader (markdown rendered, meta row: created/updated/accessed count, source session link). Toolbar: [Export…] [Forget this] (danger-ghost per entry) [Forget everything] (danger, type-to-confirm dialog). States: empty → friendly empty state "omp hasn't saved any memories yet. It only remembers what you ask it to."; backend error → banner + raw file path link.
+- **Skills**: rows with a letter tile, name, scope chip, description and switch. Clicking a row opens a detail drawer: What it does, When omp uses it, Show file, Remove skill.
+- **Skill registry**: under "From the skill share registry", rows with install counts and [Install skill].
+- **Plugins**: installed plugins show their version and an update chip ("v1.3 → v1.4"). "Install by name" and "From your marketplaces" list what is available.
+- **Activity**: installs and updates appear in an Activity list with progress.
 
-### 4.18 Usage & limits dashboard
+### 4.17 Memory
 
-Modal sheet 880×600. Top stat row: four 160×88 stat cards (Geist 700 28px number, −0.02em + 12px label): **Today $1.24 · This week $8.90 · Chats 23 · Tokens 1.2M**.
-Middle: 7-day bar chart (bars 24px, `--accent-2` fill, today `--accent`; hover tooltip exact $; no gridlines, baseline hairline only).
-Limits section: per-limit rows: label ("5-hour window") + progress bar (thin 6px, `--ok`→`--warn` at 70%→`--err` at 90%) + resets-at text; at-limit row shows "Resets in 1h 12m — queued messages will send then" with auto-continue toggle.
-Per-chat table (virtualized): chat title, model, tokens in/out, cost, duration; sortable columns; footer [Export CSV] [Open omp stats page ↗]. States: no API key / local-only → "Usage tracking needs a provider account — [Set up]" empty state; fetch error → cached data + "as of 14:02" muted chip.
+A right sheet, 800px wide: "What omp remembers", with a backend chip and the subtitle "Notes omp keeps between chats so it doesn't start from scratch."
 
-### 4.19 Session tree navigator
+- **Toolbar**: a scope select, search and [Forget everything]. Forget everything asks you to type "forget".
+- **List**: 280px, keyboard navigable, beside a reader that shows the entry's kind, dates, tags and content, with [Export memory…] and [Forget this].
+- **Empty**: "omp hasn't saved any memories yet."
 
-Modal sheet 960×640, opened from ⋯ → Branch tree (or `/tree`). Canvas: horizontal tree, main line left→right.
-- Nodes: message pills 180×40 (`--panel`, 1px border): user/assistant glyph + first 6 words; current node 2px `--accent` outline; branch points split vertically with 24px rounded elbow connectors (2px `--border-strong`); rewind checkpoints = small ◇ on the line; compacted ranges collapse into "⋯ 14 messages" pills (`--fg-faint`).
-- Click node → right preview pane 320px (message excerpt + [Resume from here ⑂] ghost + [Rewind to here ↩] danger-ghost). Zoom: ⌘+/−/0 (fit), pan drag, minimap bottom-right 120px. States: single-line history → "No branches yet — fork a chat to explore a different approach" hint overlay; huge trees virtualize beyond 500 nodes with level collapsing.
+### 4.18 Usage and limits
+
+A right sheet, 880px wide: "Usage & limits", with the subtitle "What your chats cost this week, and how much of your plan is left."
+
+- **Summary**: Today, This week, Chats and Tokens.
+- **"Last 7 days"**: bars in `--accent-2` ink, with today in `--accent`. Each bar has a tooltip with the date, cost and reply count.
+- **Plan limits**: provider cards with "{n}% used" and the reset time on bars that turn warn at 70% and err at 90%.
+- **"Chats this week"**: a sortable table.
+- **Footer**: [Export CSV] and [Open omp stats page]. Costs are marked as estimates at public API prices.
+
+### 4.19 Session tree
+
+A 960×640 dialog: "Session tree", with the 20px mark, the description "Every branch of this chat, from the first message to the current point." and [Close].
+
+- **Canvas**: on `--bg-inset`, 180×40 message nodes with 2px `--border-strong` connectors. The current node has an accent outline, and the selection ring glides between nodes.
+- **Navigation**: drag to pan; zoom with ⌘+, ⌘− and ⌘0.
+- **Side panel**: a 320px preview of the selected message, with [Rewind to here] or [Resume from here] and [Fork from here].
+- **Empty**: "No branches yet. Fork or rewind to try another approach."
 
 ### 4.20 Share dialog
 
-Modal 520px. Title "Share this chat". Segmented: **Link · File · Invite**.
-- **Link**: explainer "Creates an encrypted link — only people with it can read the chat." + [Create link] (omp `/share`) → readonly field + [Copy].
-- **File**: [Export as web page…] (omp HTML export, save dialog) — note "Secrets are masked before export."
-- **Invite**: live-collab: "Let someone watch or join this chat live" + [Copy invite link] + active guests list (avatar, name, role chip Viewer/Editor, [Remove]).
-States: sharing on → session header gains a `--live` dot + "Shared" chip; link revoked → dialog shows "Sharing is off" grey state.
+A 520px dialog, "Share this chat", with a Link, File and Invite switch.
 
-### 4.21 Help / glossary
+- **Link**: "Creates an encrypted link. Only people who have the link can read the chat." An optional secret GitHub gist is available. [Create link] returns a link with a copy button.
+- **File**: "Save this chat as a web page you can open anywhere." Secrets are masked before export.
+- **Invite**: "Let someone watch or join this chat live." [Start sharing] produces two invite links, one to join and one to watch, and a list of the people present with Editor and Viewer chips. [Stop sharing] ends it.
+- **While shared**: the session header shows the "Shared" chip (§3.4).
 
-Modal sheet 720×560. Search field; two groups: **Guides** (rows: "Your first chat", "Staying safe with Auto mode", "Rewinding and forking", "When omp asks questions" — each opens a short illustrated article in-place with a 4-step visual) and **Words we use** (glossary table: term (mono 12px chip) → one-sentence plain definition: context, token, compaction, plan mode, worktree, MCP, agent, skill, hook, subagent, checkpoint, TUI). Footer: [Show the tour again] [Keyboard shortcuts] [omp docs ↗] [Report a problem]. Empty search → "No matches — ask omp instead" (sends question to a new chat).
+### 4.21 Help
+
+A 720×560 dialog: "Help", with the subtitle "Short guides and definitions of the terms visual-omp uses."
+
+- **Contents**: search, then "Guides" and "Glossary".
+- **Guides**: Your first chat, Staying safe with Auto mode, Rewinding and forking, and When omp asks questions. Each opens a four-step article.
+- **Glossary**: 13 terms.
+- **No match**: "No matches. Ask omp instead." with [Ask omp].
+- **Footer**: [Show the tour again], [Keyboard shortcuts], [omp docs] and [Report a problem].
 
 ### 4.22 System surfaces
 
-**Update notice** — toast, bottom-right, 360px: Circuit V mark + "visual-omp 1.3 is here" + one-line highlight + [Restart to update] [Later]; also a persistent quiet version: ⋯ menu → "Update ready" accent dot. omp-engine update appears separately: status bar omp chip gets `--info` dot + menu item "Update omp to 18.5".
-**Quit-warning dialog** — modal 420px when quitting/closing a tab with work in flight: warn glyph, "omp is still working in 2 chats", list of chat titles with activity, [ Keep waiting ] (ghost) [ Stop and quit ] (danger). "Don't ask again — always stop" checkbox. Sessions auto-resume next launch (stated in one muted line: "Your chats pick up where they left off.").
-**Notifications** — native OS toasts (macOS Notification Center / Windows): title = chat title, body = outcome one-liner ("Finished: Edited 3 files and tests pass ✓" / "Needs your answer"), click focuses window + chat + scrolls to card. In-app mirror: bell-less design — the sidebar `!` badges are the inbox; no notification center chrome.
-**Toast system** (in-app): bottom-right stack (max 3), 320px, `--bg-raised` + `--shadow-pop`, `--radius-lg`, 12px pad: status glyph + 13px message + optional action + ✕; autodismiss 5s (info) / sticky (error); enter `translateY(8px)→0` `--dur` `--ease-out`.
+**Update notice**: an info toast (§5.7) titled "visual-omp v{version} is available" with the line "The release notes list what changed." Its action row holds [Dismiss notice] (quiet) and [Update visual-omp] (accent). Settings → About lists both versions and updates visual-omp and omp from one place. The strings live in `i18n/en/onboarding.json` (`update.*`) and `manage.json`, which are authoritative over this summary.
+**Quit-warning dialog**: a modal shown when quitting or closing a tab while omp is working. Warn glyph, title "omp is still working in N chats." (or "in 1 chat."), body "Your chats pick up where they left off next time.", actions [Keep waiting] and [Stop and quit] (danger), and the checkbox "Always stop working chats when quitting". The strings live in `i18n/en/onboarding.json` (`quit.*`).
+**Notifications**: native OS notifications (macOS Notification Center, Windows). The title is the chat title and the body a one-line outcome ("Finished: Edited 3 files and tests pass ✓" or "Needs your answer"). Clicking one focuses the window and the chat and scrolls to the card. There is no in-app notification center; the sidebar `!` badges serve as the inbox.
+**In-app toasts**: see §5.7 for geometry, the action row, timing and motion.
 
 ---
 
 ## 5. Component library spec
 
-Geometry is exact; colors always by token. All interactive components: `:focus-visible` ring (§1.8), tooltip where icon-only, `aria-label` matching tooltip text, disabled = 45% opacity + `not-allowed` cursor (never hidden).
+These primitives live in `src/renderer/src/ui/` and are imported from `@/ui`. Colors always come from tokens. Every interactive component has a `:focus-visible` ring (§1.8); icon-only controls carry a tooltip and an `aria-label` that matches it; disabled means 45% opacity and a `not-allowed` cursor, never hidden. Icons are Phosphor (`@phosphor-icons/react`). `App` mounts `IconContext` with size `1em`, regular weight and `currentColor`, so callers size icons with `size-*` classes and pass `weight` only to deviate (`bold` for heavier strokes, `fill` for solid status glyphs).
 
 ### 5.1 Buttons
 
 | Variant | Fill | Text | Border | Use |
 |---|---|---|---|---|
-| Primary | `--accent` (hover `--accent-hover`, active `--accent-active`) + §1.9 primary-button depth | `--accent-fg` | none | one per surface; the only cyan rectangle |
-| Secondary | `--panel` (hover `--bg-inset`) | `--fg` | 1px `--border-strong` | default action |
-| Ghost | transparent (hover `--hover`, active `--selected`) | `--fg-muted` → `--fg` on hover | none | toolbars, headers |
-| Danger | `--err` (hover darkened 8%) | `#FFFFFF` | none | destructive confirm only |
-| Danger-ghost | transparent (hover `--err-bg`) | `--err` | none | destructive in menus/lists |
+| Primary | `--accent`, hover `--accent-hover`, active `--accent-active`, `--shadow-primary` | `--accent-fg` | none | the main action on a surface |
+| Secondary | `--panel`, hover `--bg-inset`, active `--selected`, `--shadow-card` | `--fg` | 1px `--border-strong` | default action |
+| Ghost | transparent, hover `--hover`, active `--selected` | `--fg-muted`, `--fg` on hover | none | toolbars, headers |
+| Danger | `--err`, hover `--err-hover`, `--shadow-primary` | `--fg-inverse` (near-white in light, near-black in dark; 5.9:1 and 7.1:1) | none | destructive confirmation |
+| Danger-ghost | transparent, hover `--err-bg` | `--err` | none | destructive rows in menus and lists |
 
-Sizes: **sm** 28px h / 12px pad-x / `--text-sm` · **md** 32px / 14px / `--text-md` · **lg** 40px / 18px / `--text-md` 600. Radius `--radius`. Icon+label gap 6px, icon 16px (14px in sm). Press feedback: `scale(0.98)` 100ms (off in reduced motion). Hover transitions: `background-color/border-color/box-shadow` `--dur-fast` `--ease-out`. Loading: label replaced by spinner (§5.15) same width — no layout shift.
+Sizes: sm 28px / 12px padding / `--text-sm`; md 32px / 14px / `--text-md`; lg 40px / 18px / `--text-md` 600. Radius `--radius`. Icon gap 6px, icon 16px (14px in sm). Press feedback: `scale(0.98)`; primary lifts 1px on hover. Transitions use `--dur-fast` and `--ease-out-quart`. `loading` sets `aria-busy`, ignores clicks and overlays a spinner; the label turns transparent at the same width, so it stays in the accessibility tree and the button keeps its name.
 
-### 5.2 Icon buttons + tooltips
+### 5.2 Icon buttons and tooltips
 
-28px square (sm 24px, lg 32px), `--radius`, ghost styling, icon 16px lucide **1.75px stroke, round caps and joins**. **Every icon button carries a tooltip**: 11px/500 `--fg` on `--bg-raised` + `--shadow-pop` + 1px `--border`, `--radius-sm`, 6px pad, 8px offset, 400ms hover intent, includes shortcut in `--fg-faint` mono ("Restart · ⌘R"). Menus/tooltips render in `--z-tooltip`.
+`IconButton`: 28px square (sm 24px, lg 32px), `--radius`, ghost or secondary styling, 16px icon, same press feedback as Button. Every icon button carries a tooltip: 11px/500 `--fg` on `--bg-raised`, 1px `--border`, `--shadow-pop`, `--radius-sm`, 6px padding, 8px offset, 400ms hover intent, optional shortcut in `--fg-faint` mono ("Restart · ⌘R"). Programmatic focus does not open the tooltip; keyboard focus does. Menus, popovers and tooltips render in `--z-tooltip`.
 
-### 5.3 Chips & badges
+### 5.3 Chips, badges and status dots
 
-Chip: 24px h, `--radius-full`, 10px pad-x, `--text-xs` 600; tint variants = the six `*-muted`/`*-bg` tokens with their matching text tokens (accent / blue / fuchsia / ok / warn / err / neutral `--hover`+`--fg-muted`). Badge (count): 16px min h, 6px pad-x, `--accent` fill + `--accent-fg` text (or `--err` for failures). Status dot: 8px `--radius-full`, ringed 2px `--panel` when overlapping avatars.
+Chip: 24px tall, `--radius-full`, 10px horizontal padding, `--text-xs` 500. Tones: `accent` and `agent` (`--accent-muted` + `--accent`), `blue` (neutral ink: `--accent-2-muted` + `--accent-2`), `ok`, `warn`, `err` (their `-bg` + text tokens) and `neutral` (`--hover` + `--fg-muted`). Optional 6px dot, 12px icon, and a remove button with a 24px target.
+
+Badge (count): 16px minimum height, 6px padding, `--accent` + `--accent-fg`, `--err` + `--fg-inverse`, or `--selected` + `--fg-muted`.
+
+StatusDot: 8px dot with sr-only text; `live` pings (static under reduced motion). Color alone never carries status: where the dot is the only signal, pass `glyph` (a 14px check, triangle, cross, broadcast, ring or sparkle per status) or `showLabel` (visible text beside the dot).
 
 ### 5.4 Segmented controls
 
-Container `--bg-inset`, `--radius`, 2px pad, 1px `--border`; segments 26px h, `--radius-sm`, `--text-sm` 500 `--fg-muted`; active = `--panel` fill + `--shadow-card` + `--fg`. Used for theme, transcript view, permission presets, share tabs. Keyboard: arrow keys move, follows-focus.
+Track `--bg-inset`, 1px `--border`, `--radius`, 2px padding. Segments 26px (24px in sm), `--radius-sm`, `--text-sm` 500 `--fg-muted`, selected `--fg`. The selected fill is one shared element (`--panel`, 1px `--border`, `--shadow-card`) that slides to the chosen segment; its `layoutId` is unique to the control instance. Arrow keys move between segments; the selected segment cannot be deselected.
 
-### 5.5 Menus & popovers
+### 5.5 Menus and popovers
 
-Radix DropdownMenu: min-width 200px, `--bg-raised`, `--shadow-pop`, 1px `--border`, `--radius`, 4px pad; items 30px, 8px pad-x, `--radius-sm`, `--text-md`, icon 16px left, shortcut right `--fg-faint` mono; destructive item `--err` text; separators 1px `--border` with 4px margins; submenu chevron. Enter animation: `opacity 0→1 + scale(0.97→1) + translateY(-2px→0)` `--dur` `--ease-spring` from anchor point.
+Radix DropdownMenu and ContextMenu share one style: min width 200px, `--bg-raised`, 1px `--border`, `--shadow-pop`, `--radius`, 4px padding. Rows 30px, 8px padding, `--radius-sm`, `--text-md`, 16px leading icon, shortcut right in `--fg-faint` mono, destructive rows `--err`, 1px `--border` separators, group labels in sentence case (`--text-sm` 500 `--fg-muted`). Submenus open with a caret. Popover uses the same surface with `--radius-lg` and 12px padding. Select lists match the trigger width.
 
-### 5.6 Dialogs & sheets
+Motion: open scales 0.96 → 1 on the snappy spring from the Radix transform origin and drifts 4px away from the trigger; close fades and scales to 0.97 over `--dur-fast`.
 
-Dialog: centered, max 560px (wizards 560, editors as sheets), `--bg-overlay`, `--radius-lg`, `--shadow-overlay`, scrim `--backdrop` (click-outside = cancel, Esc = cancel; destructive dialogs require button click). Title 16/600, body `--text-md`, footer right-aligned [Cancel][Action] with 8px gap, 20px padding. Sheet: right or bottom docked, `--radius-xl`, width per screen spec; enter `translateY(24px)→0` `--dur-slow` `--ease-out`. Focus trapped; return focus on close.
+### 5.6 Dialogs and sheets
+
+Dialog: centered with translate utilities, widths 400 / 480 / 560 / 720px, `--bg-overlay`, 1px `--border`, `--radius-lg`, `--shadow-overlay`, 20px padding. The scrim is `--backdrop`, a translucent dimming wash (alpha 0.32 in light, 0.6 in dark) with no blur; only the window chrome is opaque. Click outside or Esc cancels; `destructive` dialogs show a warning glyph and ignore scrim clicks. Title 16/600, body `--text-md`, footer right-aligned with 8px gaps. Opens with a spring scale 0.95 → 1 and fade; closes with a short scale-down.
+
+Sheet: docked right (default width 480px) or bottom (default 60vh), 8px from the window edges, `--bg-overlay`, 1px `--border`, `--radius-lg`, `--shadow-overlay`. 48px header (title, actions, close), scrolling body, optional sticky footer. Slides in from its edge on the gentle spring and slides partway back while fading on close. Both trap focus and return it on close.
 
 ### 5.7 Toasts
 
-See §4.22.
+Bottom-right stack of up to three, 320px wide (never wider than the window minus 32px), `--bg-raised`, 1px `--border`, `--shadow-pop`, `--radius-lg`. Row one holds the tone icon, the message (13px/500) and description (12px `--fg-muted`), and the close button. Message and description wrap anywhere, so long versions and file names never push the close button out. When a toast has actions, they sit in their own right-aligned, wrapping row below: the quiet `secondaryAction` first, then `action` in accent. Both dismiss the toast. info and ok toasts dismiss after 5 seconds unless sticky, and hover or focus pauses the timer; warn and err stay until dismissed. Toasts rise in on the gentle spring, the stack reflows with layout animation, and a rightward swipe (past 80px or 500px/s) throws a toast off.
 
 ### 5.8 Tabs
 
-Two styles: window tabs (28px, 2px accent underline, per §3.3) and dock tabs (32px, same underline, tighter padding, per §3.7). Overflow tabs collapse into a `▾ N more` menu; never scroll horizontally.
+Underline variant: 28px (sm, window tabs) or 32px (md, dock tabs), 1px `--border` baseline, active text `--fg`. Pill variant: 24 or 28px pills, active fill `--selected`. The active marker (2px `--accent` underline, or the pill fill) is one element that slides between triggers; its `layoutId` comes from `useId()` in each `Tabs` instance. Triggers rendered outside `Tabs` fall back to a static marker. Overflowing window tabs collapse into a "N more" menu and never scroll horizontally.
 
 ### 5.9 List rows
 
-36px (comfortable) / 30px (compact); 8px pad-x; hover `--hover`; selected `--selected` + 2px `--accent` left inset bar; leading icon/avatar 16–20px, trailing meta `--text-xs` `--fg-faint`; single-line ellipsis. Right-click = context menu identical to ⋯.
+36px (comfortable) or 30px (compact), 8px padding, hover `--hover`, selected `--selected`. Leading icon or avatar 16-20px, trailing meta `--text-xs` `--fg-faint`, single-line ellipsis. Right-click opens the same menu as the row's overflow button. The fill shows selection; rows do not get colored side bars.
 
 ### 5.10 Cards
 
-`--panel`, 1px `--border`, `--radius-lg`, 16px padding. `--shadow-card` only when floating over content or on hover-lift (composer always floats; prompt cards and dashboard chips lift on hover). Status-railed variant: 2px left rail in a status token — rail + glyph carries meaning, never full-card tint (tinted cards are reserved for `--accent-muted`/`--agent-muted` question/plan emphasis and empty-state prompt cards).
+`--panel`, 1px `--border`, `--radius-lg` (12px, the maximum for cards), 16px padding (12px for `padding="sm"`). No shadow at rest. `floating` adds `--shadow-card`; `interactive` lifts 1px and strengthens the border on hover. `rail` tints the hairline toward a tone (accent, ok, warn, err, info); pair it with a glyph or text. `working` is the working state (§5.16).
 
 ### 5.11 Inputs
 
-Text: 32px h, `--panel`, 1px `--border-strong`, `--radius`, 10px pad-x, `--text-md`; focus → border `--ring` + 2px outline; placeholder `--fg-faint`; error → `--err` border + 12px `--err` message below with ▲. Search variant: 🔍 14px leading icon, `--bg-inset` fill, `esc` clears. Textarea: composer rules §3.6. Number/key-value rows: 28px controls on 32px rhythm.
+Text input: 32px (28 sm, 40 lg), `--panel`, 1px `--control-border`, `--radius`, 10px padding, `--text-md`. Hover `--fg-muted` border; focus `--ring` border plus the 2px outline; placeholder `--fg-faint`; error `--err` border and a 12px `--err` message with ▲. Search input: `--bg-inset` fill, leading magnifier, Esc clears, clear button when filled. Textarea grows between `minRows` and `maxRows`. The Select trigger matches the text input, and its caret turns when the list opens.
 
-### 5.12 Toggles
+### 5.12 Toggles, checkboxes and radios
 
-40×22 track, `--radius-full`; off `--border-strong` fill, on `--accent`; knob 18px `--panel` + `--shadow-card`, slides 18px `--dur-fast` `--ease-out`; label `--text-md` left, description `--text-sm` `--fg-muted` below. Instant apply with undo toast where reversible.
+Switch: 40×22 track, `--radius-full`, off `--control-border`, on `--accent`; 18px `--panel` thumb with `--shadow-card`. The thumb travels 18px on the spring and stretches to 22px toward its destination while pressed. With a label it renders a settings row: label left, description below, switch right.
+
+Checkbox and radio: 16px box (radio round), 1px `--control-border`, `--panel` fill, checked `--accent`. A padded 24px pointer target surrounds the box, and the label text is clickable. The check draws itself in; the box presses to 0.9. Indeterminate shows a bold minus. Radio groups are native, so arrow keys move and select.
 
 ### 5.13 Sliders
 
-Track 4px `--border-strong`, fill `--accent`, thumb 16px `--panel` + 2px `--accent` border + `--shadow-card`; value bubble above thumb while dragging (mono 11px). Text-size slider shows live preview sentence.
+Track 4px `--control-border`, fill `--accent`, thumb 16px `--panel` with a 2px `--accent` border and `--shadow-card` (24px hit area). A mono 11px value bubble shows above the thumb while dragging or keyboard-focused.
 
 ### 5.14 Progress
 
-Determinate bar: 6px, `--radius-full`, `--border-strong` track, `--accent` fill, 240ms width easing. Indeterminate: 120px wide, two-segment slide `--ease-in-out` 1.2s loop. Step progress: dot row `●●○○` 8px dots, done `--accent`, current `--accent` + 8px pulse ring, todo `--border-strong`.
+Determinate bar: 6px, `--radius-full`, `--border-strong` track, `--accent` fill that follows the value on the gentle spring. Indeterminate: a 120px and a 48px segment sliding across in a 1.2s loop; under reduced motion one full-width segment fades instead. Step dots: 8px, done `--accent`, current `--accent` with a ring and ping, todo `--control-border`.
 
 ### 5.15 Spinner
 
-14px arc, 2px stroke, `--accent` on transparent, 0.8s linear rotation. Only for buttons and inline loads ≤2s; anything longer uses the signal shimmer / pulse dot (§5.16) or a progress bar.
+14px arc, 2px stroke, `--accent` (or the current text color inside filled buttons), 0.8s rotation, static under reduced motion. Use it for button and inline loads up to about two seconds; longer work uses the working indicator (§5.16) or a progress bar.
 
-### 5.16 The working indicator — signal shimmer + gradient pulse dot ⭐
+### 5.16 The working indicator
 
-The signature motion of the app, drawn from the mark spectrum. Two forms, one rule: **motion is never the only signal** — always paired with text ("Working… 14s", "Running tests").
+Shown while omp is working. Motion is never the only signal: it always sits beside text ("Working… 14s", "Running tests").
 
-- **Signal shimmer (surface form — running tool cards, composer while working):** the component's static 1px `--border` is replaced by an animated gradient border. Exact CSS:
-  ```css
-  .working {
-    border: 1px solid transparent;
-    background:
-      linear-gradient(var(--panel), var(--panel)) padding-box,
-      var(--work-gradient) border-box;
-    background-size: 100% 100%, 300% 100%;
-    background-position: 0% 0%, 0% 0%;
-    animation: signal-shimmer 2.4s linear infinite;
-    box-shadow: 0 0 16px rgba(34,211,238,0.14); /* dark: rgba(34,211,238,0.20) */
-  }
-  @keyframes signal-shimmer {
-    to { background-position: 0% 0%, 300% 0%; }
-  }
-  ```
-  The spectrum travels along the frame once every 2.4s — "the circuit is live." The glow is the only colored shadow in the app.
-- **Gradient pulse dot (compact form, 8px):** an 8px `--radius-full` dot filled with `--mark-gradient`, opacity pulsing 1 → 0.45 → 1 over 1.6s `--ease-in-out` infinite. Used in: the chat working row, tab strip, sidebar session rows, Tasks pane, Agents hub running rows, tool-card status-glyph slot while running.
-- **Reduced motion:** shimmer freezes to a static `--work-gradient` border at 50% opacity, glow removed; pulse dot freezes at 60% opacity; the streaming caret (2px, `--accent`) stops blinking and stays solid. No translation, no rotation, ever.
+- **Surface form** (`Card working`, `.vo-working`, and `GlowBorder` for components such as the composer): the 1px border turns accent (a 60% mix) and a 3px accent halo with no blur breathes between 8% and 22% strength over 2s. It uses one color and no travelling gradient.
+- **Compact form** (`PulseDot`, `WorkingIndicator`): an 8px solid `--accent` dot pulsing 1 → 0.45 → 1 over 1.6s.
+- **Streaming caret**: a 2px `--accent` bar after streaming text, blinking at 1s.
+- **Reduced motion**: the halo holds still, the dot freezes at 60% opacity, and the caret stops blinking.
 
 ### 5.17 Context-usage ring
 
-20px ring, 2.5px stroke: track `--border-strong`, fill `--accent`, round cap, starting at 12 o'clock. Zones: <60% `--accent` · 60–80% `--warn` · >80% `--err` + slow opacity pulse. Click → popover: exact tokens used/limit, per-category breakdown bars, [Compact now] [Change model]. At 100%: ring fills and a "Context full — summarize to continue" card appears above the composer with one-click Compact. Screen reader: `aria-valuenow` + text "62% of context used".
+20px ring, 2.5px stroke: track `--border-strong`, fill `--accent`, round cap, starting at 12 o'clock. Zones: under 60% `--accent`, 60-80% `--warn`, over 80% `--err` with a slow opacity pulse. The arc eases to new values over `--dur-slow`. Screen readers get `role="meter"` and "62% of context used".
 
 ### 5.18 Skeletons
 
-`--hover`-filled blocks (`--radius-sm`) with 1.6s sheen sweep (`--ease-in-out`, opacity-only band); used for dashboard cards, sidebar session list, usage numbers. Reduced motion → static fill. Never skeleton the composer or buttons.
+`--selected` fill, `--radius-sm`, breathing opacity (1 → 0.55) over 1.6s; static under reduced motion. Decorative (`aria-hidden`). Never skeleton the composer or buttons.
 
 ---
 
 ## 6. App icon
 
-**"Circuit V"**: a V for *visual*, drawn as a circuit trace with node dots at its vertices — the apex node is omp's plug-orange, the exact point where the visual layer connects to the omp engine. The trace carries the Signal Grid gradient (cyan → blue → fuchsia — omp's magenta→violet→cyan spectrum re-sequenced), so the icon is unmistakably omp-family without copying the π.
+The mark is periscope variation C1 "Heavy". The concept files are in `docs/logo-concepts/2-periscope/variants/c-prompt/variations/c1-heavy/` (`mark.svg`, `mark-mono.svg`, `app-icon.svg`, `lockup.svg`, `board.png`). omp runs as a terminal program that visual-omp keeps out of view, and a periscope is the object built for seeing what is out of direct sight. The mark is a shell prompt, `>` and an underscore, with a periscope rising from the underscore. The heavy chevron gives the prompt the same visual mass as the periscope, and the teal lens plate is the only colored part.
 
-### 6.1 Master artboard — 1024×1024
+### 6.1 Geometry (1024 grid)
 
-- **Tile**: full-bleed 1024². macOS supplies the squircle mask — keep all art inside the safe area, a centered **824×824** box (inset 100px all sides, `rx=185` when drawn explicitly). Windows/png export: rounded rect `x=32 y=32 w=960 h=960 rx=220` with same fill.
-- **Tile fill**: vertical linear gradient `#0B1220` (0%) → `#090D14` (100%). Subtle inner top light: 1px `rgba(255,255,255,0.06)` along the top edge. Blueprint grid inside the tile (clipped to the 824 safe area): 1px lines `rgba(120,170,220,0.05)` every 64px both axes. One static glow: radial `rgba(249,115,22,0.30)` Ø190 centered on the apex node (below) — the single point of warmth.
-- **Mark geometry** (`userSpaceOnUse`):
-  ```svg
-  <defs>
-    <linearGradient id="markGrad" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0"   stop-color="#22D3EE"/>
-      <stop offset="0.5" stop-color="#3B82F6"/>
-      <stop offset="1"   stop-color="#E879F9"/>
-    </linearGradient>
-  </defs>
-  <path d="M302 292 L512 732 L722 292" fill="none"
-        stroke="url(#markGrad)" stroke-width="76"
-        stroke-linecap="round" stroke-linejoin="round"/>
-  <circle cx="302" cy="292" r="52" fill="#22D3EE"/>
-  <circle cx="722" cy="292" r="52" fill="#E879F9"/>
-  <circle cx="512" cy="732" r="64" fill="#F97316"/>
-  ```
-  Trace spans y=292→732 (plus 38px stroke overhang each end); the V's legs sit at 30% and 70% of the width — a confident, open stance. The apex node (r=64, `#F97316`, omp's exact plug orange) is 12px larger than the upper nodes so the eye lands on the connection point.
-- Mark scaled ×0.78 about (512,512) for the macOS tile (occupies ≈540×470px inside the safe area); ×1.0 for the Windows 960 rect.
+| Part | Shape | Color |
+|---|---|---|
+| Chevron | `M230 600 L342 682 L230 764`, stroke 88, round caps and joins | ink |
+| Underscore | rect x 420, y 712, 382×72 | ink |
+| Periscope | `M474 392 L650 216 H762 V392 H606 V748 H474 Z` (132px tube, head with a 45° mirror cut) | ink |
+| Lens plate | rect x 790, y 234, 48×140, rx 10 | teal |
 
-### 6.2 Small sizes
+The shapes span x 186-838 and y 216-808 and are centered on (512, 512). In the app the mark uses the square crop `186 186 652 652`.
 
-- **32px**: flat `#0B1220` tile (drop grid, glow, and top light), gradient simplifies to 2 stops (`#22D3EE → #E879F9`), nodes kept (they are the distinguishing feature at dock size), apex node still orange.
-- **16px**: solid `#0B1220` squircle; V reduced to a single 2px `#22D3EE` polyline (no gradient, no upper nodes); apex = 3×3 `#F97316` square. Recognizable at a glance: cyan trace, orange foot.
-- **Monochrome** (Windows tray / macOS menu bar template): single-color mask of the trace + all three nodes unioned into one silhouette.
+| Role | Light | Dark |
+|---|---|---|
+| Ink | `#141C1C` (`--fg`) | `#E9EEEE` |
+| Lens | `#10726F` (`--accent`) | `#5FCCC8` |
+| Icon tile | `#F5F7F7` | same tile in both |
+
+### 6.2 Tiles and small sizes
+
+- macOS (`assets/icon-macos.svg`): the 824×824 tile at (100, 100) with a 185 corner radius on the 1024 grid, with the mark at full size. macOS applies its own squircle mask.
+- Windows and PNG (`assets/icon.svg`): the 960×960 tile at (32, 32) with a 220 corner radius, with the mark scaled ×1.165 (960 / 824) about the center so it fills the tile the same way.
+- At 32px the chevron, the tube and the lens stay distinct. At 16px the drawing reduces to a prompt and a post, with the lens as a single teal point at the top right.
+- One-color uses (menu bar template, favicon, print) use `mark-mono.svg`, which in the app is `tone="current"`.
+
+### 6.3 Packaged icons and how to regenerate them
+
+electron-builder reads `build/icon.icns` (macOS) and `build/icon.ico` (Windows). `build/icon-macos.png` and `build/icon.png` are the 1024px sources for those files. To regenerate them after editing the SVGs:
+
+1. Rasterize `assets/icon-macos.svg` to `build/icon-macos.png` and `assets/icon.svg` to `build/icon.png` at 1024×1024 with a transparent background. Headless Chrome works: load the SVG in a page and take a Puppeteer screenshot with `omitBackground: true`. Quick Look (`qlmanage`) adds a white background, and Chrome's `--screenshot` flag writes the file but never exits.
+2. Build the iconset and the `.icns`:
+   ```sh
+   mkdir icon.iconset
+   for s in 16 32 128 256 512; do
+     sips -z $s $s build/icon-macos.png --out icon.iconset/icon_${s}x${s}.png
+     sips -z $((s*2)) $((s*2)) build/icon-macos.png --out icon.iconset/icon_${s}x${s}@2x.png
+   done
+   iconutil -c icns icon.iconset -o build/icon.icns
+   ```
+3. Resize `build/icon.png` to 256px with `sips` and write it into `build/icon.ico` as a single PNG entry: a 6-byte header (0, type 1, count 1) plus one 16-byte directory entry (width and height 0, 1 plane, 32 bpp, the PNG's byte length, offset 22), followed by the PNG bytes.
+4. Check that the PNG corners are transparent and view the 16px iconset entry.
 
 ---
 
 ## 7. Brand surfaces
 
-### 7.1 README hero banner — 1500×540 (dark, window-locked)
+### 7.1 README hero banner
 
-GitHub renders the README on both themes, so the banner is intentionally dark like omp's own hero.png — a window-locked asset, not theme-following. Modern-SaaS composition: one centered column, soft spectrum glows, a grid that fades out at the edges.
+`assets/hero.svg` (1500×540) is the source and `assets/hero.png` (3000×1080) is the image `README.md` shows. The canvas is flat `#F4F7F7` (`--bg`). The C1 lockup, the title-bar lockup from the concept files scaled ×6 (a 108px mark and the `visual-omp` wordmark outlined in Geist Mono 600), sits at (417, 175). Below it, centered on a baseline at y 365, one line in Geist 400 24px `#4D5857` (`--fg-muted`) reads "A desktop app for omp, the AI coding agent." There is no gradient, grid, glow or eyebrow, and the teal lens is the only accent.
 
-- **Background**: `#090D14`. Blueprint grid: 40px squares, 1px `rgba(120,170,220,0.055)`, full-bleed, radially masked (opaque within r=300 of center (750,270), fading to transparent by r=820).
-- **Glows** (static): radial `rgba(34,211,238,0.10)` center (430,110) r=420 · radial `rgba(59,130,246,0.08)` center (1080,470) r=400 · radial `rgba(232,121,249,0.06)` center (1240,140) r=340.
-- **Wordmark lockup** top-left: `visual-omp` Geist Mono 600, 20px, `#E9EEF4`, baseline y=72, x=64, followed by a static block cursor 11×20px `#22D3EE` with a 6px gap.
-- **Mark**: the Circuit V (§6.1 path, no tile) scaled ×0.20, centered horizontally at x=750, top y=92 (trace occupies ≈y 92–188, upper nodes at (708,96) and (792,96), apex node (750,188) r=13). Behind the apex node only: radial `rgba(249,115,22,0.30)` Ø110, center (750,188).
-- **Eyebrow**: `[ A FRIENDLY FACE FOR OMP ]` — Geist Mono 500, 13px, uppercase, letter-spacing 0.32em, `#67E8F9`, centered, baseline y=252.
-- **Headline**: Geist 700, 64px, letter-spacing −0.02em, `#F2F6FA`, centered, baseline y=324: "The agent stays. The terminal goes."
-- **Subline**: Geist 400, 20px, `#9DA9B8`, centered, baseline y=376: "visual-omp is a friendly desktop window around omp, the AI coding agent."
-- **Feature line**: one centered group, baseline y=444 — 6px `--mark-gradient` dot + 10px gap + Geist Mono 500, 13px, uppercase, letter-spacing 0.18em, `#8B95A5`: "LIGHT BY DEFAULT · DARK TOO · EVERY OMP SUPERPOWER".
-- Export: PNG @1x (1500×540) and @2x (3000×1080); no text smaller than 13px so it survives social-card downscaling.
-
-### 7.2 App-slice mock — 1200×760 (light; dark = token swap)
-
-One representative window slice for preview rendering. Geometry is exact; every color is a §1 token. Content: sidebar (3 projects, 5 chats), session header (title + model chip + 3 buttons), one user message, one assistant markdown reply, two collapsed tool cards, one question card with two options, composer (permission pill + send), status bar.
-
-**Frame & chrome**
-
-- Window 1200×760, `--bg` fill. Title bar (0,0,1200,40): `--glass` + blur over `--bg`, bottom 1px `--border`. Traffic lights Ø12 at (20,14) (36,14) (52,14) fills `#FF5F57` / `#FEBC2E` / `#28C840`. Wordmark at x=84, baseline y=26: `visual-omp` Geist Mono 600 15px `--fg` + block cursor 8×15px `--accent`, 4px gap (static). Breadcrumb centered x=600, baseline y=26: "my-shop / Fix checkout bug ⌄" 13px `--fg-muted`.
-- Status bar (0,732,1200,28): `--panel`, top 1px `--border`. Left x=16, baseline y=746, Geist Mono 11px: "⎇ main" `--fg-muted` · gap 16 · "+8" `--diff-add-text` " −3" `--diff-del-text`. Right group, right edge x=1184, same baseline: "◔ 41%" `--fg-muted` (14px ring, `--accent` fill 41% arc) · gap 16 · "$0.87 today" `--fg-muted` · gap 16 · "●" 8px `--ok` + " omp 18.4.4" `--fg-muted`.
-
-**Sidebar** (0,40,264,692): `--panel`, right 1px `--border`.
-
-- Search field (16,56,232,32): `--bg-inset` fill, 1px `--border`, `--radius`; "🔍 Search chats…" 13px `--fg-faint` at x=28; "⌘K" Geist Mono 11px `--fg-faint` right at x=222.
-- New chat row (16,96,232,36): "＋ New chat" 13px/600 `--accent` at x=28.
-- Divider (16,144,232,1) `--border`.
-- Eyebrow `[ PROJECTS ]` at (16,162): Geist Mono 11px, caps, +0.14em, `--fg-faint`.
-- Project row **my-shop** (8,176,248,36): chevron ▾ 12px `--fg-faint` x=20 · folder icon 16px lucide 1.75px `--fg-muted` x=36 · "my-shop" 13px/600 `--fg` x=60 · pin icon 14px `--fg-faint` right x=236.
-- Chat rows (8,y,248,32), status dot 8px at (30,cy−4), title 13px at x=48, time 11px `--fg-faint` right:
-  - y=216 **Fix checkout bug** — active: row fill `--selected`, `--radius`, 2px `--accent` left inset bar, title `--fg` 500, dot `--ok`, "2m".
-  - y=248 Styles pass — dot `--border-strong`, title `--fg-muted` 400, "1h".
-  - y=280 Copy review — dot `--warn`, title `--fg-muted` 400, "3h".
-- Project row **landing-page** (8,320,248,36), expanded; chat rows: y=360 Hero rework (idle dot, "1d"), y=392 SEO meta (idle dot, "2d").
-- Project row **api-server** (8,432,248,36), collapsed (▸ chevron).
-- Bottom nav: Home (8,648,248,36) and Settings (8,684,248,36): 16px lucide icons + 13px/500 labels, `--fg-muted`.
-
-**Session header** (264,40,936,48): `--panel`, bottom 1px `--border`.
-
-- "◈" 16px `--fg-muted` at (288,56); title "Fix checkout bug" 15px/600 `--fg` at x=312, baseline y=68; "✎" 12px `--fg-faint` at x=452.
-- Model chip (482,52,112,24): `--accent-muted` fill, `--radius-full`, "Sonnet 4.5 ▾" 11px/600 `--accent` centered.
-- Right buttons (28px h, ghost, `--fg-muted`, 13px/500, 6px icon-text gap): "↻ Restart" (964,50,106,28) · "☰ Plan" (1078,50,66,28) · "⋯" (1152,50,28,28). Hover state (not depicted): `--hover` fill, `--radius-sm`.
-
-**Chat column** — content x=352–1112 (760px), scroll region y=88–620:
-
-- User message: "You" label 11px/500 `--fg-muted` at (352,104), baseline y=114. Card (352,128,760,64): `--bg-inset` fill, `--radius-lg`, left 2px `--border-strong` rail, padding 12×16; text 14px/22 `--fg`, two lines: "The checkout total is wrong when a discount code is applied. Can you fix it?"
-- Assistant header at y=216: Circuit V mark 20px at (352,212) + "Sonnet 4.5 · 14:33" 12px `--fg-faint` at x=380, baseline y=226.
-- Assistant markdown (352,244,760,66): 14px/22 `--fg`, three lines: "Found it — the discount was applied *before* tax, so the percentage was computed on the pre-tax subtotal. I've moved the calculation after tax in `checkout/total.ts` and updated the tests." Inline code: Geist Mono 12.5px, `--accent-muted` fill, `--radius-sm`, padding 1×5, text `--accent`.
-- Tool card 1 (352,326,760,40): `--panel`, 1px `--border`, `--radius-lg`, left 2px `--ok` rail. Contents baseline y=350: "▸" 12px `--fg-faint` x=368 · ✏️ 16px x=388 · "Edited 2 files" 13px/500 `--fg` x=414 · right side: "+8" Geist Mono 12px `--diff-add-text` + " −3" `--diff-del-text`, right edge x=1096.
-- Tool card 2 (352,374,760,40): same chrome; "▸" + 🧪 + "Ran tests" 13px/500 `--fg`; right: "passed ✓" 12px `--ok`, right edge x=1096.
-- Question card (352,428,760,188): `--panel`, 1px `--border`, `--radius-lg`, left 2px `--agent` rail, `--shadow-card`, padding 16.
-  - Eyebrow `[ QUESTION ]` at (368,442), baseline y=452: Geist Mono 11px caps +0.14em `--agent`.
-  - Question at (368,466), baseline y=482: "Apply the same fix to the cart page too?" 14px/20 `--fg`.
-  - Option A (368,496,356,56): `--bg-inset` fill, 1px `--accent` border (selected), `--radius`; radio circle Ø16 at (384,516) — `--accent` fill with white check; "Yes — same calculation there" 13px/500 `--fg` at x=412, baseline y=524; `Recommended` chip (584,508,108,20): `--accent` fill, `--radius-full`, 11px/600 `--accent-fg`.
-  - Option B (740,496,356,56): `--panel` fill, 1px `--border-strong`, `--radius`; radio Ø16 at (756,516) — 1.5px `--border-strong` outline, empty; "No — checkout only" 13px/500 `--fg` at x=784, baseline y=524.
-  - Footer: [ Skip ] ghost (940,568,56,32) `--fg-muted` · [ Answer → ] primary (1004,568,92,32): `--accent` fill + §1.9 primary depth, `--accent-fg` 13px/600, `--radius`.
-
-**Composer** (352,620,760,96): `--panel`, 1px `--border-strong`, `--radius-xl`, `--shadow-composer`.
-
-- Placeholder at (368,634), baseline y=650: "Ask visual-omp to change something…" 14px `--fg-faint`; "⌘↵" Geist Mono 11px `--fg-faint` right at x=1052.
-- Bottom row y=676–704: "＋" ghost icon button (368,676,28,28) `--fg-muted` · permission pill (404,676,96,28): `--hover` fill, `--radius-full`, 1px `--border`, "Auto ▾" 12px/500 `--fg` centered · flexible space · context ring 20px at (1000,680) (track `--border-strong`, 41% arc `--accent`) · send button (1056,676,32,32): `--accent` fill + §1.9 primary depth, `--radius`, "➤" 14px `--accent-fg` centered.
-
-**Dark variant**: identical geometry; all fills/borders/text swap to §1 dark tokens; shadows become the dark values; the title-bar glass is `rgba(15,22,34,0.72)`; traffic lights unchanged.
+The PNG is rendered at 2× in headless Chrome with Geist embedded through `@font-face`, since the tagline is live text and GitHub displays the PNG.
 
 ---
 
 ## 8. Microcopy
 
-Voice: plain words, no jargon, no exclamation marks, second person. Buttons are verbs; tooltips are one sentence that says what happens.
+Every string follows the voice guide:
+- Plain words in sentence case, with no exclamation marks and no dashes.
+- Buttons name a verb and an object ("Start chat", "Allow action").
+- A tooltip is one sentence that says what happens.
+- An empty state is a heading and at most one sentence.
 
-### 8.1 Header buttons & major commands
+The strings live in `src/renderer/src/i18n/en/`. Those files are authoritative, and the tables below quote them.
 
-| UI name | One-line tooltip |
+### 8.1 Commands and their hints
+
+| Command | Hint |
 |---|---|
-| New chat | "Start a fresh conversation in this project." |
-| Restart | "Start omp's engine over. Your chat history is kept." |
-| Compact | "Summarize this chat so far to free up working room." |
-| Plan mode | "Ask omp to think through an approach and show you a plan before changing anything." |
-| Model | "Choose which AI model answers you." |
-| Agents | "Reusable specialists omp can hand work to, like a reviewer or an explorer." |
-| Goal | "Describe the finish line; omp plans the steps and works toward it." |
-| Vibe | "omp directs a team of quick helper sessions to build things fast." |
-| Loop | "Repeat a task a set number of times, for a while, or until a check passes." |
-| Advisor | "A second model watches each step and adds notes when something looks off." |
-| Handoff | "Start a fresh chat that picks up from a summary of this one." |
-| Rewind | "Go back to an earlier point — undo changes, the conversation, or both." |
-| Fork | "Branch this chat to try a different direction without losing this one." |
-| Branch tree | "See every fork and rewind of this chat as a map." |
-| Share | "Send someone a link or a file of this chat." |
-| Export | "Save this chat as a web page you can open anywhere." |
-| Model roles | "Pick which model does which job — everyday chat, planning, commit messages, and more." |
-| MCP | "Connect outside tools, like a database or ticket tracker, so omp can use them." |
-| Skills | "Add-on abilities that teach omp new tricks." |
-| Memory | "See — and delete — what omp has remembered between chats." |
-| Worktree | "Give this chat its own copy of the project so experiments never touch your main files." |
-| Commit | "Save the current changes to git; omp writes the message." |
-| Create PR | "Propose these changes on GitHub as a pull request." |
-| Review code | "Have omp check the changes for real problems — bugs, not style." |
-| Security scan | "Check the project for leaked secrets and common vulnerabilities." |
-| Cleanse | "Find and fix errors and warnings across the project with parallel helpers." |
-| Transcript view | "Choose how much detail you see: just answers, plus thinking, or every step." |
-| Send now | "Send this now — omp reads it at its next step instead of waiting for the reply to finish." |
-| Permission mode | "How much omp may do on its own before asking you." |
+| Restart omp | "Restart the omp process for this chat. The chat history is kept." |
+| Compact this chat | "Summarize the chat so far to free context space." |
+| Plan mode | "omp drafts a plan for your approval before it changes anything." |
+| Set a goal | "Describe the outcome you want. omp plans the steps and works toward it." |
+| Guided goal | "omp asks a few questions, then sets up a goal." |
+| Vibe mode | "omp directs background helpers that do the editing and running, then checks their work." |
+| Repeat a task | "Repeat a request a set number of times, for a set time, or until a check passes." |
+| Toggle advisor | "Turn the advisor on or off. It is a second model that reviews each turn and adds notes." |
+| Write a handoff | "Summarize this chat into a handoff document and continue from it with less context." |
+| Rewind to here | "Go back to this point. The original path stays in the tree as a branch." |
+| Fork chat | "Copy this chat into a new one to try another direction." |
+| Fork from here | "Start a new chat from this message and leave this one unchanged." |
+| Open session tree | "Show every branch of this chat as a map." |
+| Share chat… | "Send someone a link or a file of this chat." |
+| Export chat | "Save this chat as an HTML file." |
+| Run security scan | "Start omp's security scan for this project." |
+| Cleanse project | "Find and fix errors and warnings across the project with parallel helpers." |
+| Connected tools | "Connect outside tools, like a database or ticket tracker, so omp can use them." |
+| Skills & plugins | "Install and manage the skills and plugins omp can use." |
+| Memory | "View and delete what omp has remembered between chats." |
+| Usage & limits | "See what your chats cost and how close you are to your plan's limits." |
+| Review code (Diff pane) | "Ask omp to review these changes for bugs (runs /review)." |
+| Permission pill | "How much omp may do before it asks you." |
+| Send now (while omp works) | "Send this now. omp reads it at its next step, before this reply finishes." |
 
 ### 8.2 Empty states
 
-- **No projects**: "No projects yet. A project is just a folder omp works in." + [New project]
-- **No chats in project**: "Nothing here yet — start a chat and it will show up in this list."
-- **Empty chat**: heading "What should we work on?" + hint "Just describe what you want in plain words."
-- **Diff dock empty**: "No changes yet. When omp edits files, the before-and-after shows up here."
-- **Tasks dock empty**: "Nothing running. Helpers and background jobs appear here while they work."
-- **Search no results**: "No chats match '{q}'."
-- **Memory empty**: "omp hasn't saved any memories yet. It only remembers what you ask it to."
-- **Usage empty**: "No usage yet this week. Costs appear here after your first chats."
+- **No projects**: "No projects yet. A project is a folder that omp works in." with [Create project].
+- **No chats in a project** (sidebar): "No chats yet. New chats in this project appear here." On the project home: "No chats in this project yet."
+- **Empty chat**: "What should we work on?" (or "What should we work on next?"). The first chat adds "Describe the change in plain words, or start from an example."
+- **Diff pane**: "No uncommitted changes" and "Edits made since your last commit appear here, whether omp or you made them."
+- **Tasks pane**: "Nothing running" and "omp's checklist, helpers and background jobs appear here while a chat works."
+- **Preview pane**: "Nothing to preview" and "Type a local address above, or start a dev server in this chat to get a link."
+- **Terminal pane**: "No terminal open" and "Run your own commands in this project. These shells are separate from omp's."
+- **Chat search**: "No chats match '{q}'."
+- **Memory**: "omp hasn't saved any memories yet."
+- **Usage**: "No usage yet this week. Costs appear here after your first chats."
 
-### 8.3 Example prompts (empty chat cards)
+### 8.3 Example prompts (empty chat)
 
-1. 🐞 "Something on my site is broken — the checkout total is wrong when I apply a coupon. Find out why and fix it."
-2. ✨ "Build a simple contact page for this project with a form that checks the email looks right."
-3. 📖 "Explain what this project does and how its main parts fit together, in plain language."
-4. 🧹 "Clean up this folder: find unused files and duplicated code, and tell me before deleting anything."
-5. 🧪 "Write tests for the login flow and run them until they pass."
-6. 🎨 "Make this page look better on phones — keep the design, fix the layout."
+Clicking an example fills the composer without sending it.
 
-### 8.4 Confirmations & guardrails (exact strings)
+1. **Fix a bug**: "The checkout total on my site is wrong when a coupon is applied. Find the cause and fix it."
+2. **Build a page**: "Build a contact page for this project with a form that checks the email address is valid."
+3. **Explain this project**: "Explain what this project does and how its main parts fit together, in plain language."
+4. **Clean up this folder**: "Find unused files and duplicated code in this folder. List them and ask me before deleting anything."
 
-- Quit guard: "omp is still working in {n} chats." / sub: "Your chats pick up where they left off next time."
-- Delete chat: "Delete '{title}'? This removes the saved conversation from this computer. This can't be undone."
-- Auto mode (default) needs no confirmation; switching a project to Auto from a stricter mode shows once: "Auto lets omp run commands without asking. Only use it in projects you trust." + [I understand]
-- Detach read-only: "This chat is open in another window. You can look, but only that window can type."
+The project home lists six shorter starters: Fix a bug, Build a feature, Explain this, Clean up, Add tests, Fix mobile layout.
+
+### 8.4 Confirmations and guardrails
+
+- **Quit while working**: "omp is still working in {n} chats." with "Your chats pick up where they left off next time." and [Keep waiting] / [Stop and quit].
+- **Close a working tab**: "Closing stops the current step. The chat is saved and picks up where it left off when you open it again."
+- **Delete chat**: "Delete '{title}'?" with "This removes the saved conversation from this computer. You can't undo it." and [Keep chat] / [Delete chat].
+- **First switch to Auto**: "Turn on Auto?" with "Auto lets omp edit files and run commands without asking. Use it only in projects you trust." and [Turn on Auto].
+- **Discard a file's changes** (Diff pane): "The file goes back to how it was at your last commit. You can't undo this."
+- **Read-only chat**: "Replies are off here while another omp window may have this chat open."
 
 ---
 

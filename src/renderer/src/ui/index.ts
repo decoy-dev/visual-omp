@@ -11,6 +11,7 @@ export * from "./Display";
 export * from "./Input";
 export * from "./Layout";
 export * from "./Menu";
+export * from "./motion";
 export * from "./Popover";
 export * from "./Progress";
 export * from "./Segmented";

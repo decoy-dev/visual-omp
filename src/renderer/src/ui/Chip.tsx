@@ -1,9 +1,9 @@
-import { X } from "lucide-react";
+import { Broadcast, CheckCircle, Circle, Sparkle, Warning, X, XCircle } from "@phosphor-icons/react";
 import type { ComponentPropsWithRef, ReactNode } from "react";
 import { cn } from "./cn";
-import { focusRing } from "./styles";
+import { focusRing, pressSmall } from "./styles";
 
-/** accent = Signal Cyan, blue = Electric Blue (`--accent-2`), agent = fuchsia. */
+/** accent and agent = the teal accent; blue = neutral ink (`--accent-2`, kept for existing callers). */
 export type ChipTone = "accent" | "blue" | "agent" | "ok" | "warn" | "err" | "neutral";
 
 const chipTones: Record<ChipTone, string> = {
@@ -20,7 +20,7 @@ export interface ChipProps extends Omit<ComponentPropsWithRef<"span">, "children
 	tone?: ChipTone;
 	/** Leading 6px dot in the tone color. */
 	dot?: boolean;
-	/** Leading icon (lucide element, rendered 12px). */
+	/** Leading icon (Phosphor element, rendered 12px). */
 	icon?: ReactNode;
 	children: ReactNode;
 	/** Renders a trailing remove button. */
@@ -34,7 +34,7 @@ export function Chip({ tone = "neutral", dot, icon, children, onRemove, removeLa
 	return (
 		<span
 			className={cn(
-				"inline-flex h-6 max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-semibold",
+				"inline-flex h-6 max-w-full shrink-0 items-center gap-1.5 rounded-full px-2.5 text-xs font-medium",
 				chipTones[tone],
 				className,
 			)}
@@ -49,7 +49,8 @@ export function Chip({ tone = "neutral", dot, icon, children, onRemove, removeLa
 					aria-label={removeLabel}
 					onClick={onRemove}
 					className={cn(
-						"-mr-2 inline-flex size-6 shrink-0 items-center justify-center rounded-full opacity-70 transition-opacity duration-(--dur-fast) hover:opacity-100",
+						"-mr-2 inline-flex size-6 shrink-0 items-center justify-center rounded-full opacity-70 transition-[opacity,scale] duration-(--dur-fast) ease-(--ease-out-quart) hover:opacity-100",
+						pressSmall,
 						focusRing,
 					)}
 				>
@@ -115,25 +116,69 @@ const statusLabels: Record<Status, string> = {
 	agent: "Agent working",
 };
 
+const statusText: Record<Status, string> = {
+	ok: "text-ok",
+	warn: "text-warn",
+	err: "text-err",
+	live: "text-live",
+	idle: "text-fg-faint",
+	agent: "text-agent",
+};
+
+/** A distinct shape per status, so meaning never rests on color alone. */
+const statusGlyphs: Record<Status, ReactNode> = {
+	ok: <CheckCircle weight="fill" />,
+	warn: <Warning weight="fill" />,
+	err: <XCircle weight="fill" />,
+	live: <Broadcast weight="bold" />,
+	idle: <Circle weight="bold" />,
+	agent: <Sparkle weight="fill" />,
+};
+
 export interface StatusDotProps {
 	status: Status;
-	/** Screen-reader label; defaults to the status name. */
+	/** Screen-reader label, and the visible text with `showLabel`; defaults to the status name. */
 	label?: string;
 	/** 2px `--panel` ring for dots overlapping avatars/icons. */
 	ringed?: boolean;
+	/** Draw a 14px status glyph (check, triangle, cross…) instead of the plain dot. */
+	glyph?: boolean;
+	/** Show the label as visible text after the dot or glyph. */
+	showLabel?: boolean;
 	className?: string;
 }
 
-/** 8px status dot; `live` pulses (static under reduced motion). Always carries sr-only text. */
-export function StatusDot({ status, label, ringed, className }: StatusDotProps) {
-	return (
-		<span className={cn("relative inline-flex size-2 shrink-0", className)}>
+/**
+ * 8px status dot; `live` pulses (static under reduced motion). Always carries sr-only text. Where color carries the
+ * meaning, pass `glyph` or `showLabel` so the status is also readable without color.
+ */
+export function StatusDot({ status, label, ringed, glyph, showLabel, className }: StatusDotProps) {
+	const text = label ?? statusLabels[status];
+	const mark = glyph ? (
+		<span aria-hidden className={cn("inline-flex size-3.5 shrink-0 [&>svg]:size-3.5", statusText[status])}>
+			{statusGlyphs[status]}
+		</span>
+	) : (
+		<span className="relative inline-flex size-2 shrink-0">
 			{status === "live" && <span aria-hidden className={cn("vo-ping absolute inset-0 rounded-full", statusColors[status])} />}
 			<span
 				aria-hidden
 				className={cn("relative size-2 rounded-full", statusColors[status], ringed && "ring-2 ring-panel")}
 			/>
-			<span className="sr-only">{label ?? statusLabels[status]}</span>
+		</span>
+	);
+	if (!showLabel) {
+		return (
+			<span className={cn("relative inline-flex shrink-0 items-center", className)}>
+				{mark}
+				<span className="sr-only">{text}</span>
+			</span>
+		);
+	}
+	return (
+		<span className={cn("inline-flex shrink-0 items-center gap-1.5 text-xs text-fg-muted", className)}>
+			{mark}
+			<span>{text}</span>
 		</span>
 	);
 }

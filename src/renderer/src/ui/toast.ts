@@ -14,6 +14,8 @@ export interface ToastOptions {
 	description?: string;
 	/** One inline action (e.g. Undo); clicking it also dismisses the toast. */
 	action?: ToastAction;
+	/** A quieter second action placed before `action` (e.g. Later); clicking it also dismisses the toast. */
+	secondaryAction?: ToastAction;
 	/** Keep until dismissed. warn/err toasts are always sticky. */
 	sticky?: boolean;
 }
@@ -24,6 +26,7 @@ export interface ToastRecord {
 	message: string;
 	description?: string;
 	action?: ToastAction;
+	secondaryAction?: ToastAction;
 	/** Auto-dismiss delay, or null when the toast stays until dismissed. */
 	durationMs: number | null;
 }
@@ -42,10 +45,18 @@ function commit(next: readonly ToastRecord[]): void {
 }
 
 /** Shows a toast and returns its id. info/ok auto-dismiss after 5s unless `sticky`; warn/err stay until dismissed. */
-export function toast({ tone = "info", message, description, action, sticky = false }: ToastOptions): string {
+export function toast({ tone = "info", message, description, action, secondaryAction, sticky = false }: ToastOptions): string {
 	const id = `toast-${nextId++}`;
 	const autoDismiss = !sticky && (tone === "info" || tone === "ok");
-	const record: ToastRecord = { id, tone, message, description, action, durationMs: autoDismiss ? TOAST_DURATION_MS : null };
+	const record: ToastRecord = {
+		id,
+		tone,
+		message,
+		description,
+		action,
+		secondaryAction,
+		durationMs: autoDismiss ? TOAST_DURATION_MS : null,
+	};
 	commit([...toasts, record].slice(-MAX_TOASTS));
 	return id;
 }

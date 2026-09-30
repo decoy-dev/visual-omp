@@ -1,4 +1,4 @@
-import { Search, X } from "lucide-react";
+import { MagnifyingGlass, X } from "@phosphor-icons/react";
 import {
 	type ComponentPropsWithRef,
 	type KeyboardEvent,
@@ -26,7 +26,7 @@ function boxClass(invalid: boolean, disabled: boolean | undefined): string {
 		"flex items-center gap-2 rounded-md border text-fg",
 		"transition-[border-color,box-shadow,background-color] duration-(--dur-fast) ease-(--ease-out)",
 		"focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring",
-		invalid ? "border-err" : "border-border-strong hover:border-fg-faint focus-within:border-ring focus-within:hover:border-ring",
+		invalid ? "border-err" : "border-control hover:border-fg-muted focus-within:border-ring focus-within:hover:border-ring",
 		disabled && "cursor-not-allowed opacity-45",
 	);
 }
@@ -88,7 +88,7 @@ function FieldShell({
 
 export interface InputProps extends Omit<ComponentPropsWithRef<"input">, "size">, FieldTextProps {
 	size?: InputSize;
-	/** Leading icon (lucide element). */
+	/** Leading icon (Phosphor element). */
 	icon?: ReactNode;
 	/** Trailing slot inside the field (unit, Kbd, icon button). */
 	trailing?: ReactNode;
@@ -164,7 +164,7 @@ export function SearchInput({
 	};
 	return (
 		<div className={cn(boxClass(false, disabled), "bg-inset", boxSizes[size], className)}>
-			<Search aria-hidden className="size-3.5 shrink-0 text-fg-faint" />
+			<MagnifyingGlass aria-hidden className="size-3.5 shrink-0 text-fg-faint" />
 			<input
 				ref={inner}
 				type="search"

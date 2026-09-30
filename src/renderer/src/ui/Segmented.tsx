@@ -1,5 +1,6 @@
 import * as TG from "@radix-ui/react-toggle-group";
-import type { ReactNode } from "react";
+import { motion } from "motion/react";
+import { type ReactNode, useId } from "react";
 import { cn } from "./cn";
 import { disabledData, focusRing } from "./styles";
 
@@ -23,7 +24,10 @@ export interface SegmentedProps<V extends string> {
 	className?: string;
 }
 
-/** Single-select segmented control; arrow keys move between segments, a segment can't be deselected. */
+/**
+ * Single-select segmented control; arrow keys move between segments, a segment can't be deselected.
+ * The selected fill is one shared element that slides between segments (`layoutId`).
+ */
 export function Segmented<V extends string>({
 	value,
 	onValueChange,
@@ -33,6 +37,7 @@ export function Segmented<V extends string>({
 	className,
 	...aria
 }: SegmentedProps<V>) {
+	const indicatorId = `vo-segmented-${useId()}`;
 	return (
 		<TG.Root
 			type="single"
@@ -57,17 +62,25 @@ export function Segmented<V extends string>({
 					disabled={o.disabled}
 					aria-label={o.ariaLabel}
 					className={cn(
-						"inline-flex select-none items-center justify-center gap-1.5 rounded-sm font-medium text-fg-muted",
-						"transition-[background-color,color,box-shadow] duration-(--dur-fast) ease-(--ease-out)",
-						"hover:text-fg data-[state=on]:bg-panel data-[state=on]:text-fg data-[state=on]:shadow-(--shadow-card)",
+						"relative inline-flex select-none items-center justify-center gap-1.5 rounded-sm font-medium text-fg-muted",
+						"transition-[color,scale] duration-(--dur-fast) ease-(--ease-out) hover:text-fg active:scale-[0.97] data-[state=on]:text-fg",
 						"[&_svg]:size-3.5",
 						size === "sm" ? "h-6 px-2 text-xs" : "h-[26px] px-2.5 text-sm",
 						focusRing,
 						disabledData,
 					)}
 				>
-					{o.icon}
-					{o.label}
+					{o.value === value && (
+						<motion.span
+							aria-hidden
+							layoutId={indicatorId}
+							className="pointer-events-none absolute inset-0 rounded-sm border border-border bg-panel shadow-(--shadow-card)"
+						/>
+					)}
+					<span className="relative inline-flex items-center gap-[inherit]">
+						{o.icon}
+						{o.label}
+					</span>
 				</TG.Item>
 			))}
 		</TG.Root>

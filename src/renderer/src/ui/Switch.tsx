@@ -20,15 +20,22 @@ export function Switch({ label, description, id, className, ...rest }: SwitchPro
 			id={switchId}
 			aria-describedby={descId}
 			className={cn(
-				"group relative inline-flex h-[22px] w-10 shrink-0 items-center rounded-full bg-border-strong p-0.5",
-				"transition-colors duration-(--dur-fast) ease-(--ease-out) data-[state=checked]:bg-accent",
+				"group relative inline-flex h-[22px] w-10 shrink-0 items-center rounded-full bg-control p-0.5",
+				"transition-colors duration-(--dur) ease-(--ease-out) data-[state=checked]:bg-accent",
 				focusRing,
 				disabledNative,
 				!label && className,
 			)}
 			{...rest}
 		>
-			<RS.Thumb className="block size-[18px] rounded-full bg-panel shadow-(--shadow-card) transition-transform duration-(--dur-fast) ease-(--ease-out) data-[state=checked]:translate-x-[18px]" />
+			{/* Spring travel; the thumb stretches toward its destination while pressed. */}
+			<RS.Thumb
+				className={cn(
+					"block h-[18px] w-[18px] rounded-full bg-panel shadow-(--shadow-card)",
+					"transition-[translate,width] duration-(--dur-spring) ease-(--ease-spring)",
+					"data-[state=checked]:translate-x-[18px] group-enabled:group-active:w-[22px] group-enabled:group-active:data-[state=checked]:translate-x-[14px]",
+				)}
+			/>
 		</RS.Root>
 	);
 	if (!label) return control;

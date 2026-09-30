@@ -65,7 +65,7 @@ export function Slider({
 				className,
 			)}
 		>
-			<RS.Track className="relative h-1 grow overflow-hidden rounded-full bg-border-strong">
+			<RS.Track className="relative h-1 grow overflow-hidden rounded-full bg-control">
 				<RS.Range className="absolute h-full rounded-full bg-accent" />
 			</RS.Track>
 			<RS.Thumb

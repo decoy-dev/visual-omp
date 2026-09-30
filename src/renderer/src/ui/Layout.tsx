@@ -79,13 +79,13 @@ export function Divider({ orientation = "horizontal", label, className }: Divide
 export type CardRail = "accent" | "blue" | "agent" | "ok" | "warn" | "err" | "info";
 
 export interface CardProps extends ComponentPropsWithRef<"div"> {
-	/** 2px left status rail (meaning carried by rail + glyph, never full-card tint). */
+	/** Tints the hairline border toward a tone. Pair it with a glyph or text; color is never the only signal. */
 	rail?: CardRail;
 	/** `--shadow-card`, for cards floating over content. */
 	floating?: boolean;
 	/** Hover lift (use for clickable cards; put the click target inside). */
 	interactive?: boolean;
-	/** §5.16 signal shimmer: the 1px border becomes the travelling spectrum + work glow (running tool cards). */
+	/** §5.16 working state: accent border plus a breathing 3px accent halo (running tool cards). */
 	working?: boolean;
 	padding?: "none" | "sm" | "md";
 }
@@ -96,6 +96,17 @@ const cardPadding: Record<NonNullable<CardProps["padding"]>, string> = {
 	md: "p-4",
 };
 
+/** Hairline tinted toward the tone (replaces the old 2px left rail). Mixed in sRGB so the hue doesn't swing toward the border's. */
+const railBorder: Record<CardRail, string> = {
+	accent: "border-[color-mix(in_srgb,var(--accent)_35%,var(--border))]",
+	agent: "border-[color-mix(in_srgb,var(--accent)_35%,var(--border))]",
+	blue: "border-border-strong",
+	ok: "border-[color-mix(in_srgb,var(--ok)_35%,var(--border))]",
+	warn: "border-[color-mix(in_srgb,var(--warn)_40%,var(--border))]",
+	err: "border-[color-mix(in_srgb,var(--err)_40%,var(--border))]",
+	info: "border-[color-mix(in_srgb,var(--info)_35%,var(--border))]",
+};
+
 export function Card({ rail, floating, interactive, working, padding = "md", className, ...rest }: CardProps) {
 	return (
 		<div
@@ -103,7 +114,9 @@ export function Card({ rail, floating, interactive, working, padding = "md", cla
 			data-floating={floating ? "" : undefined}
 			data-interactive={interactive ? "" : undefined}
 			className={cn(
-				"vo-card rounded-lg border border-border bg-panel text-fg",
+				"vo-card rounded-lg border bg-panel text-fg",
+				rail ? railBorder[rail] : "border-border",
+				interactive && "hover:border-border-strong",
 				working && "vo-working",
 				cardPadding[padding],
 				className,

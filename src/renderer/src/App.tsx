@@ -1,8 +1,12 @@
+import { IconContext, type IconProps } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { globals, screens } from "./registry/slots";
 import { Shell } from "./shell/Shell";
 import { useApp } from "./state/app";
-import { Toaster, TooltipProvider } from "./ui";
+import { MotionProvider, Toaster, TooltipProvider } from "./ui";
+
+/** Phosphor defaults: size follows the text (callers size with `size-*` classes), regular weight, inherited color. */
+const iconDefaults: IconProps = { size: "1em", weight: "regular", color: "currentColor", mirrored: false };
 
 /** Applies theme, text size and motion preferences to <html> so tokens and rem sizes follow them. */
 function usePreferenceAttributes(): void {
@@ -40,12 +44,16 @@ export function App(): ReactNode {
 	const needsSetup = omp !== null && (!omp.found || !omp.supported);
 
 	return (
-		<TooltipProvider>
-			{needsSetup && setup ? <setup.component projectPath={activeProject} /> : <Shell />}
-			{globalList.map(global => (
-				<global.component key={global.id} />
-			))}
-			<Toaster />
-		</TooltipProvider>
+		<IconContext.Provider value={iconDefaults}>
+			<MotionProvider>
+				<TooltipProvider>
+					{needsSetup && setup ? <setup.component projectPath={activeProject} /> : <Shell />}
+					{globalList.map(global => (
+						<global.component key={global.id} />
+					))}
+					<Toaster />
+				</TooltipProvider>
+			</MotionProvider>
+		</IconContext.Provider>
 	);
 }

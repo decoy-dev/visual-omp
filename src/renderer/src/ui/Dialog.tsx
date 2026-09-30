@@ -1,8 +1,8 @@
 import * as RD from "@radix-ui/react-dialog";
-import { TriangleAlert, X } from "lucide-react";
+import { Warning, X } from "@phosphor-icons/react";
 import type { ComponentPropsWithRef, ReactNode } from "react";
 import { cn } from "./cn";
-import { focusRing } from "./styles";
+import { closeButton } from "./styles";
 
 export const Dialog = RD.Root;
 export const DialogTrigger = RD.Trigger;
@@ -29,7 +29,11 @@ export interface DialogContentProps extends Omit<ComponentPropsWithRef<typeof RD
 	hideClose?: boolean;
 }
 
-/** Centered modal. Focus is trapped while open and returned to the trigger on close (Radix). */
+/**
+ * Centered modal. Focus is trapped while open and returned to the trigger on close (Radix).
+ * Enters with a spring scale + fade and leaves with a short scale-down (`.vo-dialog` in ui.css); crossfade only under
+ * reduced motion.
+ */
 export function DialogContent({
 	title,
 	description,
@@ -44,7 +48,7 @@ export function DialogContent({
 }: DialogContentProps) {
 	return (
 		<RD.Portal>
-			<RD.Overlay className="vo-scrim fixed inset-0 z-(--z-scrim) bg-backdrop backdrop-blur-[2px]" />
+			<RD.Overlay className="vo-scrim fixed inset-0 z-(--z-scrim) bg-backdrop" />
 			<RD.Content
 				{...(description ? null : { "aria-describedby": undefined })}
 				onPointerDownOutside={(event) => {
@@ -52,8 +56,8 @@ export function DialogContent({
 					onPointerDownOutside?.(event);
 				}}
 				className={cn(
-					"vo-dialog fixed left-1/2 top-1/2 z-(--z-dialog) flex max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)] flex-col",
-					"[transform:translate(-50%,-50%)] rounded-lg border border-border bg-overlay text-fg shadow-(--shadow-overlay) outline-none",
+					"vo-dialog fixed left-1/2 top-1/2 z-(--z-dialog) flex max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col",
+					"rounded-lg border border-border bg-overlay text-fg shadow-(--shadow-overlay) outline-none",
 					dialogWidths[size],
 					className,
 				)}
@@ -62,7 +66,7 @@ export function DialogContent({
 				<div className="flex items-start gap-3 px-5 pt-5">
 					{destructive && (
 						<span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-err-bg text-err">
-							<TriangleAlert className="size-4" aria-hidden />
+							<Warning className="size-4" aria-hidden />
 						</span>
 					)}
 					<div className="min-w-0 flex-1">
@@ -70,13 +74,7 @@ export function DialogContent({
 						{description && <RD.Description className="mt-1 text-md text-fg-muted">{description}</RD.Description>}
 					</div>
 					{!hideClose && (
-						<RD.Close
-							aria-label="Close"
-							className={cn(
-								"-mr-1.5 -mt-1 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-fg-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg",
-								focusRing,
-							)}
-						>
+						<RD.Close aria-label="Close" className={cn("-mr-1.5 -mt-1", closeButton)}>
 							<X className="size-4" aria-hidden />
 						</RD.Close>
 					)}

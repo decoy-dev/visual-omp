@@ -1,8 +1,8 @@
 import * as RD from "@radix-ui/react-dialog";
-import { X } from "lucide-react";
+import { X } from "@phosphor-icons/react";
 import type { ComponentPropsWithRef, ReactNode } from "react";
 import { cn } from "./cn";
-import { focusRing } from "./styles";
+import { closeButton } from "./styles";
 
 export const Sheet = RD.Root;
 export const SheetTrigger = RD.Trigger;
@@ -25,7 +25,10 @@ export interface SheetContentProps extends Omit<ComponentPropsWithRef<typeof RD.
 	bodyClassName?: string;
 }
 
-/** Docked sheet with header (title · actions · close), scrollable body and sticky footer. Focus trapped/returned by Radix. */
+/**
+ * Docked sheet with header (title · actions · close), scrollable body and sticky footer. Focus trapped/returned by Radix.
+ * Slides in from its edge on a spring and slides partway back out on close (`.vo-sheet` in ui.css).
+ */
 export function SheetContent({
 	side = "right",
 	width = 480,
@@ -47,12 +50,13 @@ export function SheetContent({
 			{!noScrim && <RD.Overlay className="vo-scrim fixed inset-0 z-(--z-scrim) bg-backdrop" />}
 			<RD.Content
 				{...(description ? null : { "aria-describedby": undefined })}
+				data-side={side}
 				style={{ ...(right ? { width } : { height }), ...style }}
 				className={cn(
-					"fixed z-(--z-sheet) flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-xl border border-border bg-overlay text-fg shadow-(--shadow-overlay) outline-none",
+					"vo-sheet fixed z-(--z-sheet) flex max-w-[calc(100vw-16px)] flex-col overflow-hidden rounded-lg border border-border bg-overlay text-fg shadow-(--shadow-overlay) outline-none",
 					right
-						? "vo-sheet bottom-2 right-2 top-[calc(var(--titlebar-h)+8px)]"
-						: "vo-sheet bottom-2 left-2 right-2 max-h-[calc(100vh-var(--titlebar-h)-16px)]",
+						? "bottom-2 right-2 top-[calc(var(--titlebar-h)+8px)]"
+						: "bottom-2 left-2 right-2 max-h-[calc(100vh-var(--titlebar-h)-16px)]",
 					className,
 				)}
 				{...rest}
@@ -63,13 +67,7 @@ export function SheetContent({
 						{description && <RD.Description className="truncate text-sm text-fg-muted">{description}</RD.Description>}
 					</div>
 					{actions && <div className="flex shrink-0 items-center gap-1">{actions}</div>}
-					<RD.Close
-						aria-label="Close"
-						className={cn(
-							"inline-flex size-7 shrink-0 items-center justify-center rounded-md text-fg-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg",
-							focusRing,
-						)}
-					>
+					<RD.Close aria-label="Close" className={closeButton}>
 						<X className="size-4" aria-hidden />
 					</RD.Close>
 				</header>

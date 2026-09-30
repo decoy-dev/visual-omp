@@ -1,6 +1,6 @@
 import * as CM from "@radix-ui/react-context-menu";
 import * as DM from "@radix-ui/react-dropdown-menu";
-import { Check, ChevronRight } from "lucide-react";
+import { CaretRight, Check } from "@phosphor-icons/react";
 import type { ComponentPropsWithRef, ReactNode } from "react";
 import { cn } from "./cn";
 import { floatingSurface, menuItem, menuItemDanger, menuLabel, menuSeparator, menuShortcut } from "./styles";
@@ -8,7 +8,7 @@ import { floatingSurface, menuItem, menuItemDanger, menuLabel, menuSeparator, me
 const contentClass = cn(floatingSurface, "min-w-[200px] p-1");
 
 interface ItemExtras {
-	/** Leading icon (lucide element, 16px). */
+	/** Leading icon (Phosphor element, 16px). */
 	icon?: ReactNode;
 	/** Right-aligned shortcut in mono faint, e.g. "⌘⌫". */
 	shortcut?: string;
@@ -121,7 +121,7 @@ export function MenuSub({ label, icon, disabled, children, contentClassName }: M
 		<DM.Sub>
 			<DM.SubTrigger disabled={disabled} className={cn(menuItem, "data-[state=open]:bg-selected")}>
 				<ItemBody icon={icon}>{label}</ItemBody>
-				<ChevronRight className="ml-auto size-4 text-fg-faint" aria-hidden />
+				<CaretRight className="ml-auto size-3.5 text-fg-faint" aria-hidden />
 			</DM.SubTrigger>
 			<DM.Portal>
 				<DM.SubContent sideOffset={6} alignOffset={-5} collisionPadding={8} className={cn(contentClass, contentClassName)}>
@@ -207,7 +207,7 @@ export function ContextMenuSub({ label, icon, disabled, children, contentClassNa
 		<CM.Sub>
 			<CM.SubTrigger disabled={disabled} className={cn(menuItem, "data-[state=open]:bg-selected")}>
 				<ItemBody icon={icon}>{label}</ItemBody>
-				<ChevronRight className="ml-auto size-4 text-fg-faint" aria-hidden />
+				<CaretRight className="ml-auto size-3.5 text-fg-faint" aria-hidden />
 			</CM.SubTrigger>
 			<CM.Portal>
 				<CM.SubContent sideOffset={6} alignOffset={-5} collisionPadding={8} className={cn(contentClass, contentClassName)}>

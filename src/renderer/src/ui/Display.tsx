@@ -9,7 +9,7 @@ export interface SkeletonProps {
 	className?: string;
 }
 
-/** Placeholder block with a 1.6s sheen; static fill under reduced motion. Decorative (aria-hidden). */
+/** Placeholder block with a slow breathing fill; static under reduced motion. Decorative (aria-hidden). */
 export function Skeleton({ width, height, shape = "block", className }: SkeletonProps) {
 	const style: CSSProperties = { width, height };
 	return (
@@ -38,31 +38,28 @@ export function Kbd({ className, ...rest }: ComponentPropsWithRef<"kbd">) {
 	);
 }
 
-export type BracketTone = "faint" | "accent" | "agent";
+export type SectionLabelTone = "muted" | "faint" | "accent";
 
-const bracketTones: Record<BracketTone, string> = {
+const sectionLabelTones: Record<SectionLabelTone, string> = {
+	muted: "text-fg-muted",
 	faint: "text-fg-faint",
 	accent: "text-accent",
-	agent: "text-agent",
 };
 
-export interface BracketLabelProps {
+export interface SectionLabelProps {
 	children: ReactNode;
-	tone?: BracketTone;
+	tone?: SectionLabelTone;
 	/** Render element; defaults to span. */
 	as?: "span" | "h2" | "h3" | "p";
 	className?: string;
 }
 
-/** `[ LABEL ]` mono uppercase eyebrow; brackets are decorative. */
-export function BracketLabel({ children, tone = "faint", as: Tag = "span", className }: BracketLabelProps) {
-	return (
-		<Tag className={cn("font-mono text-xs uppercase tracking-[0.14em]", bracketTones[tone], className)}>
-			<span aria-hidden>[ </span>
-			{children}
-			<span aria-hidden> ]</span>
-		</Tag>
-	);
+/**
+ * Sentence-case group label (`.section-label`: small, medium weight, no tracking). Use it to name a group the
+ * heading does not already name; never as an eyebrow that repeats the heading.
+ */
+export function SectionLabel({ children, tone = "muted", as: Tag = "span", className }: SectionLabelProps) {
+	return <Tag className={cn("section-label", sectionLabelTones[tone], className)}>{children}</Tag>;
 }
 
 export interface EmptyStateProps {

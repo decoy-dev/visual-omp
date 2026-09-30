@@ -9,7 +9,7 @@ export type ButtonSize = "sm" | "md" | "lg";
 
 const base = cn(
 	"relative inline-flex shrink-0 select-none items-center justify-center whitespace-nowrap rounded-md font-medium",
-	"transition-[background-color,color,border-color,box-shadow,translate,scale,filter] duration-(--dur-fast) ease-(--ease-out)",
+	"transition-[background-color,color,border-color,box-shadow,translate,scale,filter] duration-(--dur-fast) ease-(--ease-out-quart)",
 	"enabled:active:scale-[0.98] data-loading:pointer-events-none",
 	focusRing,
 	disabledNative,
@@ -46,11 +46,14 @@ const iconSizes: Record<ButtonSize, string> = {
 export interface ButtonProps extends ComponentPropsWithRef<"button"> {
 	variant?: ButtonVariant;
 	size?: ButtonSize;
-	/** Leading icon (lucide element). */
+	/** Leading icon (Phosphor element). */
 	icon?: ReactNode;
 	/** Trailing icon, e.g. a chevron. */
 	iconRight?: ReactNode;
-	/** Swaps the label for a spinner at the same width; clicks are ignored while set. */
+	/**
+	 * Swaps the label for a spinner at the same width; clicks are ignored while set. The label is only made transparent,
+	 * so it stays in the accessibility tree and the button keeps its name.
+	 */
 	loading?: boolean;
 }
 
@@ -83,7 +86,7 @@ export function Button({
 			onClick={handleClick}
 			{...rest}
 		>
-			<span className={cn("inline-flex items-center gap-[inherit]", loading && "invisible")}>
+			<span className={cn("inline-flex items-center gap-[inherit]", loading && "opacity-0")}>
 				{icon && <span className={cn("inline-flex shrink-0", iconSizes[size])}>{icon}</span>}
 				{children}
 				{iconRight && <span className={cn("inline-flex shrink-0", iconSizes[size])}>{iconRight}</span>}
@@ -111,7 +114,7 @@ export interface IconButtonProps extends Omit<ComponentPropsWithRef<"button">, "
 	label: string;
 	/** Shortcut shown in the tooltip, e.g. "⌘R". */
 	shortcut?: string;
-	/** The icon (lucide element). */
+	/** The icon (Phosphor element). */
 	icon: ReactNode;
 	size?: IconButtonSize;
 	variant?: IconButtonVariant;
