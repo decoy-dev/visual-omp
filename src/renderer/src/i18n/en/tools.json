@@ -1,0 +1,43 @@
+{
+	"edit": {
+		"one": { "running": "Editing {{file}}…", "ok": "Edited {{file}}", "error": "Couldn't edit {{file}}" },
+		"many": { "running": "Editing {{count}} files…", "ok": "Edited {{count}} files", "error": "Couldn't edit {{count}} files" }
+	},
+	"write": { "running": "Writing {{file}}…", "ok": "Wrote {{file}} — {{lines}} lines", "error": "Couldn't write {{file}}" },
+	"read": {
+		"file": { "running": "Reading {{file}}…", "ok": "Read {{file}}", "error": "Couldn't read {{file}}" },
+		"url": { "running": "Reading {{url}}…", "ok": "Read {{url}}", "error": "Couldn't open {{url}}" }
+	},
+	"search": { "running": "Searching for “{{pattern}}”…", "ok": "Searched for “{{pattern}}”", "error": "Search for “{{pattern}}” failed" },
+	"find": { "running": "Looking for files…", "ok": "Found files matching “{{pattern}}”", "error": "Couldn't list files" },
+	"bash": {
+		"running": "Running {{command}}…",
+		"passed": "Ran {{command}} — passed",
+		"failed": "Ran {{command}} — failed (exit {{code}})",
+		"background": "Started {{command}} in the background"
+	},
+	"task": {
+		"one": { "running": "Helper “{{agent}}” is working…", "ok": "Helper “{{agent}}” finished", "error": "Helper “{{agent}}” ran into a problem" },
+		"many": { "running": "{{count}} helpers are working…", "ok": "{{count}} helpers finished", "error": "Some of the {{count}} helpers ran into problems" }
+	},
+	"todo": { "updated": "Updated the checklist", "progress": "Checklist — {{done}} of {{total}} done" },
+	"web": { "running": "Searching the web for “{{query}}”…", "ok": "Searched the web for “{{query}}”", "error": "Web search failed" },
+	"fetch": { "running": "Opening {{url}}…", "ok": "Opened {{url}}", "error": "Couldn't open {{url}}" },
+	"eval": {
+		"py": { "running": "Running Python…", "ok": "Ran Python", "error": "Python hit an error" },
+		"js": { "running": "Running JavaScript…", "ok": "Ran JavaScript", "error": "JavaScript hit an error" },
+		"browser": { "running": "Using the browser…", "ok": "Used the browser", "error": "The browser step failed" },
+		"computer": { "running": "Using your computer…", "ok": "Used your computer", "error": "The desktop step failed" }
+	},
+	"astEdit": { "running": "Rewriting code…", "ok": "Rewrote code", "error": "Couldn't rewrite code" },
+	"lsp": { "running": "Checking the code…", "ok": "Checked the code", "error": "Code check failed" },
+	"ask": { "running": "Waiting for your answer…", "ok": "Asked you a question", "error": "Question was skipped" },
+	"github": { "running": "Working with GitHub…", "ok": "Used GitHub", "error": "GitHub step failed" },
+	"image": { "running": "Creating an image…", "ok": "Created an image", "error": "Couldn't create the image" },
+	"remember": { "running": "Remembering…", "ok": "Remembered something for later", "error": "Couldn't save the memory" },
+	"recall": { "running": "Looking through memories…", "ok": "Looked through memories", "error": "Couldn't read memories" },
+	"checkpoint": { "running": "Saving a checkpoint…", "ok": "Saved a checkpoint", "error": "Couldn't save a checkpoint" },
+	"rewind": { "running": "Tidying up exploratory work…", "ok": "Tidied up exploratory work", "error": "Couldn't tidy up" },
+	"wait": { "running": "Waiting for helpers…", "ok": "Helpers reported back", "error": "Stopped waiting" },
+	"generic": { "running": "Using {{tool}}…", "ok": "Used {{tool}}", "error": "{{tool}} failed {{detail}}" }
+}
