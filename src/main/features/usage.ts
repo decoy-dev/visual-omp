@@ -1,6 +1,7 @@
 import type { UsageStats } from "@shared/contracts/usage";
 import { handle } from "../ipc";
 import { runOmp, runOmpJson } from "../omp/cli";
+import { projectWeek } from "./workspace";
 import { ClientUsageSchema, UsageHistorySchema, UsageLimitsSnapshotSchema, UsageStatsSchema, usageArgv } from "./usage/parse";
 
 /** Provider usage endpoints are network calls; omp's own per-request timeouts are shorter than this. */
@@ -43,4 +44,6 @@ export function register(): void {
 			});
 		return statsInFlight;
 	});
+
+	handle("usage:projectWeek", cwd => projectWeek(cwd));
 }

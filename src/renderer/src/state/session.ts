@@ -29,6 +29,8 @@ export interface SessionView {
 	working: boolean;
 	/** The saved session is open in another omp process; typing is disabled. */
 	readOnly: boolean;
+	/** Leaf to display after a rewind/tree move until omp appends the next entry (omp sends no frame for leaf moves). */
+	displayLeaf: string | null;
 	error: string | null;
 }
 
@@ -70,6 +72,7 @@ export class SessionController {
 			queue: [],
 			working: false,
 			readOnly: options.readOnly ?? false,
+			displayLeaf: null,
 			error: null,
 		};
 	}
@@ -118,6 +121,15 @@ export class SessionController {
 			this.#starting = null;
 		});
 		return this.#starting;
+	}
+
+	/** Adopt an omp that is already running for this chat (renderer reload, window reopened). */
+	attach(host: HostState): void {
+		this.#unsubscribeHost?.();
+		this.#unsubscribeHost = window.vomp.on("host:state", state => {
+			if (state.hostId === host.hostId) this.#onHostState(state);
+		});
+		this.#onHostState(host);
 	}
 
 	async #start(): Promise<void> {
@@ -189,11 +201,17 @@ export class SessionController {
 		}
 	}
 
+	/** Show the branch ending at `entryId` (after omp's /branch or /tree moved the leaf). Cleared by the next entry. */
+	setDisplayLeaf(entryId: string | null): void {
+		this.#set({ displayLeaf: entryId });
+	}
+
 	#onGuest(snapshot: GuestSnapshot): void {
 		const wasWorking = this.#view.working;
 		const hadRequest = this.#view.guest?.uiRequest?.reqId;
 		const working = snapshot.working;
-		this.#set({ guest: snapshot, working });
+		const appended = snapshot.entries.length > (this.#view.guest?.entries.length ?? 0);
+		this.#set({ guest: snapshot, working, ...(appended ? { displayLeaf: null } : {}) });
 		if (!this.#sessionFile && !this.#resolvingFile && snapshot.entries.length !== this.#resolvedAtEntries) {
 			this.#resolvedAtEntries = snapshot.entries.length;
 			void this.#resolveSessionFile();

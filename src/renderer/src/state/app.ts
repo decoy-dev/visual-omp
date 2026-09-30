@@ -148,8 +148,20 @@ export const useApp = create<AppState>()(
 					const { activeProject } = get();
 					if (activeProject) void get().loadSessions(activeProject);
 				});
-				// Controllers for restored tabs; history loads lazily per tab.
-				for (const tab of get().tabs) ensureController(tab);
+				// Controllers for restored tabs. omp processes survive a renderer reload (and a closed
+				// macOS window): adopt the one already running for each tab instead of starting a second
+				// writer on the same session, and stop hosts no tab owns any more.
+				const running = await window.vomp.invoke("host:list");
+				const adopted = new Set<string>();
+				for (const tab of get().tabs) {
+					const controller = ensureController(tab);
+					const host = running.find(entry => entry.phase !== "exited" && entry.sessionFile === tab.sessionFile && !adopted.has(entry.hostId));
+					if (host) {
+						adopted.add(host.hostId);
+						controller.attach(host);
+					}
+				}
+				for (const host of running) if (host.phase !== "exited" && !adopted.has(host.hostId)) void window.vomp.invoke("host:stop", host.hostId);
 				await get().refreshProjects();
 			},
 

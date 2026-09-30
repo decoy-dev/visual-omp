@@ -1,0 +1,442 @@
+{
+	"commands": {
+		"new": {
+			"title": "New project…",
+			"hint": "Start a project in a new folder, open one you have, or download one from GitHub.",
+			"keywords": "create, folder, clone, github, repository, start"
+		},
+		"open": {
+			"title": "Open folder…",
+			"hint": "Pick a folder on this computer and work on it with omp.",
+			"keywords": "open, folder, project, existing, browse"
+		},
+		"instructions": {
+			"title": "Project instructions…",
+			"hint": "Tell omp how this project works — it reads these notes at the start of every chat.",
+			"keywords": "agents.md, claude.md, rules, context, guidelines, notes"
+		},
+		"settings": {
+			"title": "Project settings…",
+			"hint": "This project's model, permission mode, connected tools and helpers.",
+			"keywords": "project, config, model, permissions, mcp, agents"
+		},
+		"import": {
+			"title": "Import from Claude Code or Codex…",
+			"hint": "Bring a conversation from Claude Code or Codex into omp and keep going.",
+			"keywords": "import, claude, codex, migrate, conversation, history"
+		},
+		"share": {
+			"title": "Share…",
+			"hint": "Send someone a link or a file of this chat.",
+			"keywords": "share, link, export, invite, collaborate, live, html"
+		}
+	},
+	"home": {
+		"eyebrow": "Project",
+		"noProjects": "No projects yet. A project is just a folder omp works in.",
+		"pickProject": "Pick a project on the left, or start a new one.",
+		"newProject": "New project",
+		"openFolder": "Open folder…",
+		"newChat": "New chat",
+		"menu": "Project options",
+		"menuSettings": "Project settings…",
+		"menuInstructions": "Project instructions…",
+		"menuImport": "Import a chat…",
+		"menuReveal": "Show in folder",
+		"menuRemove": "Remove from list",
+		"meta": {
+			"clean": "no changes",
+			"changed_one": "{{count}} changed file",
+			"changed_other": "{{count}} changed files",
+			"noGit": "not a git project",
+			"chatsWeek_one": "chat this week",
+			"chatsWeek_other": "chats this week",
+			"costWeek": "this week"
+		},
+		"missing": {
+			"title": "Can't find “{{name}}”",
+			"body": "The folder {{path}} was moved or deleted. Point to where it is now, or remove it from the list.",
+			"locate": "Find folder…"
+		},
+		"recent": {
+			"title": "Recent chats",
+			"all": "See all {{count}}",
+			"fewer": "Show fewer",
+			"empty": "Nothing here yet — start a chat and it will show up in this list.",
+			"untitled": "Untitled chat",
+			"readOnly": "read-only",
+			"status": {
+				"working": "omp is working",
+				"needsInput": "Waiting for your answer",
+				"live": "Open",
+				"idle": "Saved"
+			}
+		},
+		"start": {
+			"title": "Start something"
+		},
+		"health": {
+			"title": "Project health",
+			"openDiff": "Show changes",
+			"detached": "no branch",
+			"lines": "{{add}} lines added, {{del}} removed",
+			"noCommits": "No saved versions (commits) yet",
+			"noUpstream": "Only on this computer — not on GitHub yet",
+			"synced": "Up to date with GitHub",
+			"ahead_one": "{{count}} commit to push",
+			"ahead_other": "{{count}} commits to push",
+			"behind_one": "{{count}} new commit to pull",
+			"behind_other": "{{count}} new commits to pull",
+			"ci": {
+				"pass": "Checks passing",
+				"pending": "Checks running",
+				"fail": "Checks failing"
+			},
+			"noGit": "Not a git project yet. Git keeps a history of your changes so you can always go back.",
+			"initGit": "Initialize git"
+		},
+		"instructions": {
+			"title": "Instructions",
+			"none": "No instructions yet",
+			"edit": "Edit",
+			"write": "Write instructions",
+			"rules_zero": "No rules",
+			"rules_one": "{{count}} rule loaded",
+			"rules_other": "{{count}} rules loaded",
+			"view": "View"
+		}
+	},
+	"prompts": {
+		"fix": {
+			"label": "Fix a bug",
+			"text": "Something on my site is broken — the checkout total is wrong when I apply a coupon. Find out why and fix it."
+		},
+		"build": {
+			"label": "Build a feature",
+			"text": "Build a simple contact page for this project with a form that checks the email looks right."
+		},
+		"explain": {
+			"label": "Explain this",
+			"text": "Explain what this project does and how its main parts fit together, in plain language."
+		},
+		"cleanup": {
+			"label": "Clean up",
+			"text": "Clean up this folder: find unused files and duplicated code, and tell me before deleting anything."
+		},
+		"tests": {
+			"label": "Add tests",
+			"text": "Write tests for the login flow and run them until they pass."
+		},
+		"mobile": {
+			"label": "Fix mobile layout",
+			"text": "Make this page look better on phones — keep the design, fix the layout."
+		}
+	},
+	"open": {
+		"pickerTitle": "Open a project folder",
+		"failed": "Couldn't open that folder"
+	},
+	"new": {
+		"stepOf": "Step {{step}} of {{total}}",
+		"step": {
+			"where": "New project",
+			"details": "Details",
+			"firstChat": "First chat?"
+		},
+		"where": {
+			"description": "Where should omp work?"
+		},
+		"kind": {
+			"empty": {
+				"title": "Empty folder",
+				"body": "Start fresh in a new folder"
+			},
+			"existing": {
+				"title": "Open existing",
+				"body": "Use a folder already on this computer"
+			},
+			"clone": {
+				"title": "Clone from GitHub",
+				"body": "Download a project from a GitHub link"
+			}
+		},
+		"details": {
+			"empty": {
+				"description": "Name the new folder and choose where it goes."
+			},
+			"existing": {
+				"description": "Pick the folder omp should work in."
+			},
+			"clone": {
+				"description": "Paste the project's link. omp downloads a copy to this computer."
+			}
+		},
+		"name": {
+			"label": "Project name",
+			"placeholder": "my-shop"
+		},
+		"location": {
+			"label": "Location",
+			"change": "Change…",
+			"picker": "Choose where to put the project",
+			"inside": "The project goes inside “{{name}}”."
+		},
+		"existing": {
+			"none": "No folder chosen",
+			"choose": "Choose folder…",
+			"recent": "Recent folders",
+			"already": "This folder is already a project — opening it instead"
+		},
+		"clone": {
+			"url": "GitHub link",
+			"found": "Found: {{label}}",
+			"folder": "Folder name",
+			"failed": "The download didn't finish.",
+			"problem": {
+				"invalid": "That doesn't look like a project link. Try something like github.com/owner/repo.",
+				"notFound": "Couldn't find {{label}}. Check the link — if the project is private, sign in to GitHub first.",
+				"unreachable": "Couldn't reach the server. Check your internet connection and the link."
+			},
+			"phase": {
+				"starting": "Starting the download…",
+				"enumerating": "Looking at the project…",
+				"counting": "Looking at the project…",
+				"compressing": "Preparing files…",
+				"receiving": "Downloading…",
+				"resolving": "Putting files together…",
+				"checkout": "Unpacking files…",
+				"done": "Done"
+			}
+		},
+		"problem": {
+			"empty": "Give the project a name.",
+			"tooLong": "That name is too long.",
+			"invalidChars": "Names can't contain / \\ : * ? \" < > |",
+			"reserved": "That name is reserved by the computer. Pick another one.",
+			"trailingDotOrSpace": "Names can't end with a dot or a space.",
+			"notDirectory": "A file with that name is already there.",
+			"notEmpty": "A folder with that name already exists and has files in it."
+		},
+		"firstChat": {
+			"description": "You can start working right away.",
+			"toggle": "Start a chat right away",
+			"message": "First message (optional)",
+			"hint": "omp starts on this as soon as the project is ready.",
+			"placeholder": "Explain what this project does, in plain language."
+		},
+		"back": "Back",
+		"cancel": "Cancel",
+		"next": "Next",
+		"create": "Create project →",
+		"open": "Open",
+		"discard": {
+			"title": "Discard this project?",
+			"body": "What you've filled in so far won't be kept.",
+			"titleBusy": "Stop the download?",
+			"bodyBusy": "The partly downloaded folder will be removed.",
+			"keep": "Keep going",
+			"confirm": "Discard"
+		}
+	},
+	"instructions": {
+		"title": "Project instructions",
+		"subtitle": "What omp should know about {{name}}",
+		"noProject": "Open a project first.",
+		"tabInstructions": "Instructions",
+		"tabRules": "Rules",
+		"file": "Instructions file",
+		"inUse": "in use",
+		"new": "new",
+		"view": "View",
+		"write": "Write",
+		"preview": "Preview",
+		"explainer": "omp reads this file at the start of every chat in this project. Describe how the project works, commands to run, and things to avoid.",
+		"shadowed": "omp reads {{active}} instead of this file, because it comes first. Edit {{active}}, or empty it to use this one.",
+		"stickyNote": "Sticky rules: omp keeps these in mind on every single step, not just at the start.",
+		"editorLabel": "Contents of {{file}}",
+		"placeholder": "# About this project\n\n- How to run it: …\n- Please don't change: …",
+		"previewEmpty": "Nothing written yet.",
+		"unsaved": "Unsaved changes",
+		"appliesNext": "Changes apply to new chats.",
+		"revert": "Undo changes",
+		"save": "Save",
+		"saved": "Instructions saved",
+		"saveFailed": "Couldn't save the instructions",
+		"discard": {
+			"title": "Discard your changes?",
+			"body": "Your edits to the instructions haven't been saved.",
+			"keep": "Keep editing",
+			"confirm": "Discard"
+		}
+	},
+	"rules": {
+		"explainer": "Rules are short notes omp follows only when they matter — for example, only when it touches certain files.",
+		"new": "New rule",
+		"newTitle": "New rule",
+		"editTitle": "Edit “{{name}}”",
+		"emptyTitle": "No rules yet",
+		"emptyBody": "Add a rule to teach omp something about part of this project.",
+		"source": {
+			"omp": "omp",
+			"agents": "Agents",
+			"cursor": "Cursor",
+			"windsurf": "Windsurf",
+			"cline": "Cline",
+			"github": "GitHub Copilot"
+		},
+		"always": "Always on",
+		"off": "Off",
+		"appliesTo": "Applies to {{globs}}",
+		"frontmatterError": "The header of this file has a problem: {{error}}",
+		"readOnly": "From another tool",
+		"toggle": "Use rule {{name}}",
+		"edit": "Edit rule {{name}}",
+		"delete": "Delete rule {{name}}",
+		"deleteTitle": "Delete “{{name}}”?",
+		"deleteBody": "This removes the rule file from the project. This can't be undone.",
+		"deleteConfirm": "Delete",
+		"keep": "Keep it",
+		"deleted": "Deleted “{{name}}”",
+		"deleteFailed": "Couldn't delete the rule",
+		"name": "Name",
+		"nameHint": "Letters, numbers, dots, dashes and underscores.",
+		"nameRequired": "Give the rule a name.",
+		"nameInvalid": "Use only letters, numbers, dots, dashes and underscores.",
+		"nameTaken": "A rule with this name already exists.",
+		"description": "When should omp use it?",
+		"descriptionHint": "One sentence, e.g. “When changing the checkout page”.",
+		"globs": "Only for these files (optional)",
+		"globsHint": "File patterns separated by commas.",
+		"alwaysLabel": "Always use this rule",
+		"alwaysHint": "Otherwise omp decides when it's relevant.",
+		"enabledLabel": "Rule is on",
+		"body": "What omp should do",
+		"bodyPlaceholder": "- Keep prices in cents\n- Run the tests after changing the cart",
+		"cancel": "Cancel",
+		"save": "Save rule",
+		"saved": "Rule saved",
+		"saveFailed": "Couldn't save the rule"
+	},
+	"settings": {
+		"title": "Project settings",
+		"cancel": "Cancel",
+		"saveFailed": "Couldn't save the setting",
+		"removeFailed": "Couldn't remove the project",
+		"model": {
+			"title": "Model",
+			"body": "The AI model new chats in this project start with.",
+			"inherit": "Same as all projects ({{model}})",
+			"auto": "Same as all projects",
+			"projectOnly": "Only this project uses this model.",
+			"usingGlobal": "Following your setting for all projects."
+		},
+		"mode": {
+			"title": "Permission mode",
+			"always-ask": {
+				"label": "Ask me first",
+				"body": "omp can look around on its own, but asks before it changes a file or runs a command."
+			},
+			"write": {
+				"label": "Edits OK",
+				"body": "omp can read and edit files on its own, but asks before running commands or starting helpers."
+			},
+			"yolo": {
+				"label": "Auto",
+				"body": "omp works on its own without asking. Only use this in projects you trust."
+			},
+			"projectOnly": "Only this project uses this mode.",
+			"usingGlobal": "Following your setting for all projects.",
+			"reset": "Use the all-projects setting",
+			"autoTitle": "Switch this project to Auto?",
+			"autoWarning": "Auto lets omp run commands without asking. Only use it in projects you trust.",
+			"understand": "I understand"
+		},
+		"more": {
+			"title": "Tools and helpers",
+			"manage": "Manage",
+			"mcp": "Connected tools",
+			"mcpBody": "Outside tools omp can use in this project, like a database or ticket tracker.",
+			"agents": "Helpers",
+			"agentsBody": "Specialists only this project uses, like a reviewer or an explorer.",
+			"instructions": "Instructions",
+			"instructionsBody": "Notes omp reads at the start of every chat here."
+		},
+		"remove": {
+			"title": "Remove from list",
+			"body": "Hides the project here. The folder and its files stay on your computer.",
+			"action": "Remove",
+			"confirmTitle": "Remove “{{name}}” from the list?",
+			"confirmBody": "The folder and its files stay on your computer. Chats saved in it still show up until you archive them."
+		}
+	},
+	"import": {
+		"title": "Import a chat",
+		"body": "Bring a conversation from another AI coding tool into omp and keep going where it left off.",
+		"from": "From {{label}}",
+		"count_one": "{{count}} conversation · newest {{ago}}",
+		"count_other": "{{count}} conversations · newest {{ago}}",
+		"none": "Nothing found in {{dir}}",
+		"note": "omp opens its own list so you can pick the conversation. The chat continues in the folder it came from.",
+		"failed": "Couldn't look for conversations to import"
+	},
+	"share": {
+		"title": "Share this chat",
+		"kind": "How to share",
+		"tabs": {
+			"link": "Link",
+			"file": "File",
+			"invite": "Invite"
+		},
+		"noChat": "Open a chat to share it.",
+		"needsMessage": "Send a message first so there's something to share.",
+		"copy": "Copy",
+		"copied": "Copied",
+		"link": {
+			"explainer": "Creates an encrypted link — only people with it can read the chat.",
+			"create": "Create link",
+			"ready": "Your link",
+			"gist": "GitHub gist",
+			"gistToggle": "Save it as a secret GitHub gist",
+			"gistHint": "Uses your GitHub account instead of omp's share server.",
+			"truncated": "Some very long parts were shortened to fit.",
+			"failed": "Couldn't create the link"
+		},
+		"file": {
+			"explainer": "Save this chat as a web page you can open anywhere.",
+			"export": "Export as web page…",
+			"note": "Secrets are masked before export.",
+			"saved": "Web page saved",
+			"reveal": "Show in folder",
+			"failed": "Couldn't export the chat"
+		},
+		"invite": {
+			"explainer": "Let someone watch or join this chat live",
+			"notLive": "Start the chat first — send a message or wait until omp is ready.",
+			"off": "Sharing is off",
+			"endedRestart": "Sharing stopped because the chat restarted. Start it again to get new links.",
+			"privacy": "People join in their browser through omp's public relay (my.omp.sh). Everything is encrypted end to end — the relay can't read it.",
+			"start": "Start sharing",
+			"stop": "Stop sharing",
+			"failed": "Couldn't start sharing",
+			"phase": {
+				"connecting": "Connecting…",
+				"live": "Sharing live",
+				"reconnecting": "Reconnecting…",
+				"stopped": "Sharing is off"
+			},
+			"control": "Invite to join",
+			"controlHint": "Can type messages and answer omp's questions.",
+			"view": "Invite to watch",
+			"viewHint": "Can only watch.",
+			"people_zero": "Nobody has joined yet",
+			"people_one": "{{count}} person here",
+			"people_other": "{{count}} people here",
+			"nobody": "Send someone a link. People appear here when they join.",
+			"viewer": "Viewer",
+			"editor": "Editor"
+		},
+		"chip": "Shared",
+		"chipHint_one": "Shared live · {{count}} person watching",
+		"chipHint_other": "Shared live · {{count}} people watching"
+	}
+}

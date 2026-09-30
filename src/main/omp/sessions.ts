@@ -186,6 +186,12 @@ export function readSessionFile(file: string): Promise<string> {
 
 let watcher: FSWatcher | null = null;
 let debounce: NodeJS.Timeout | undefined;
+const changeListeners = new Set<() => void>();
+
+/** Main-process subscribers to session-folder changes (e.g. hosts learning their new session file). */
+export function onSessionsChanged(listener: () => void): void {
+	changeListeners.add(listener);
+}
 
 /** Watch the sessions tree and tell renderers when anything changes (debounced). */
 export async function watchSessions(): Promise<void> {
@@ -193,7 +199,10 @@ export async function watchSessions(): Promise<void> {
 	try {
 		watcher = watch(root, { recursive: true }, () => {
 			clearTimeout(debounce);
-			debounce = setTimeout(() => broadcast("sessions:changed", { cwd: null }), 400);
+			debounce = setTimeout(() => {
+				broadcast("sessions:changed", { cwd: null });
+				for (const listener of changeListeners) listener();
+			}, 400);
 		});
 	} catch {
 		watcher = null;

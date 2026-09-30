@@ -24,7 +24,7 @@ import { getPrefs } from "../prefs";
 import { runOmpJson } from "./cli";
 import { ompPath } from "./locate";
 import { LoopbackRelay } from "./relay";
-import { findSessionFile } from "./sessions";
+import { findSessionFile, onSessionsChanged } from "./sessions";
 import { TuiDebugClient } from "./tui-debug";
 
 const CollabHosts = z.object({
@@ -168,6 +168,13 @@ export class SessionHost {
 		return this.#debug.values();
 	}
 
+	/** Learn the session file once omp creates it (new chats) so reattaching renderers can match it. */
+	async refreshSessionFile(): Promise<void> {
+		if (this.state.sessionFile || !this.state.sessionId || this.state.phase === "exited") return;
+		const file = await findSessionFile(this.state.sessionId);
+		if (file) this.#update({ sessionFile: file });
+	}
+
 	resize(cols: number, rows: number): void {
 		if (cols < 20 || rows < 5) return;
 		this.#pty?.resize(cols, rows);
@@ -260,6 +267,11 @@ export class SessionHost {
 }
 
 const hosts = new Map<string, SessionHost>();
+
+// A new chat's session file appears after omp writes its first entry; keep host state current.
+onSessionsChanged(() => {
+	for (const host of hosts.values()) void host.refreshSessionFile();
+});
 
 export async function startHost(options: HostStartOptions): Promise<HostState> {
 	const host = new SessionHost(options);
