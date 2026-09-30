@@ -4,7 +4,9 @@ Copyright (c) 2026 decoy
 This product includes software adapted from oh-my-pi
 (https://github.com/can1357/oh-my-pi), specifically the collab guest client,
 wire protocol contracts, and tool renderers from packages/collab-web and
-packages/wire, used under the MIT License:
+packages/wire, used under the MIT License. Vendored from oh-my-pi commit
+38bb1aa2 into src/renderer/src/collab/ (and derived renderers under
+src/renderer/src/tool-render/):
 
   MIT License
 
