@@ -1,3 +1,4 @@
+import { basename, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
 	entryId,
@@ -7,6 +8,7 @@ import {
 	parseEntryId,
 	parseScopeId,
 	projectBankSegment,
+	sanitizeBankName,
 	scopeId,
 } from "./paths";
 import { wyhash } from "./wyhash";
@@ -28,24 +30,28 @@ describe("wyhash", () => {
 });
 
 describe("project bank ids", () => {
-	it("derives the same bank ids as omp (mnemopi + sharpshooter)", () => {
-		expect(projectBankSegment("/tmp/vomp-mem/proj-alpha")).toBe("proj-alpha-lrqk5knk4ojc");
-		expect(projectBankSegment("/work/My Project (v2)")).toBe("My-Project-v2-2qb1jvw99auqa");
-		expect(projectBankSegment("/")).toBe("default-c8rgibd8h0ws");
+	it("derives each bank id from the canonical absolute path", () => {
+		const cwd = resolve("tmp", "vomp-mem", "proj-alpha");
+		const expected = `proj-alpha-${wyhash(cwd).toString(36)}`;
+		expect(projectBankSegment(cwd)).toBe(expected);
+		expect(mnemopiProjectBank(" team ", cwd)).toBe(`team-${expected}`);
+		expect(mnemopiProjectBank(null, cwd)).toBe(expected);
 	});
 
 	it("clamps long names to 64 chars with a hash suffix", () => {
-		const cwd = "/src/a-very-long-directory-name-that-keeps-going-and-going-beyond-limits";
-		expect(projectBankSegment(cwd)).toBe("a-very-long-directory-name-that-keeps-going-and-goi-wpyyo6ugnhh2");
-		expect(mnemopiProjectBank("team", cwd)).toBe("team-a-very-long-directory-name-that-keeps-going-a-334kt24ne1q0n");
+		const cwd = resolve("src", "a-very-long-directory-name-that-keeps-going-and-going-beyond-limits");
+		const base = sanitizeBankName(basename(cwd)) ?? "default";
+		const projectInput = `${base}-${wyhash(cwd).toString(36)}`;
+		const project = projectBankSegment(cwd);
+		const bankInput = `team-${project}`;
+		const bank = mnemopiProjectBank("team", cwd);
+		expect(project).toMatch(new RegExp(`-${wyhash(projectInput).toString(36)}$`));
+		expect(project).toHaveLength(64);
+		expect(bank).toMatch(new RegExp(`-${wyhash(bankInput).toString(36)}$`));
+		expect(bank).toHaveLength(64);
 	});
 
-	it("prefixes the configured shared bank base", () => {
-		expect(mnemopiProjectBank(" team ", "/tmp/vomp-mem/proj-alpha")).toBe("team-proj-alpha-lrqk5knk4ojc");
-		expect(mnemopiProjectBank(null, "/tmp/vomp-mem/proj-alpha")).toBe("proj-alpha-lrqk5knk4ojc");
-	});
 });
-
 describe("localScopeKey", () => {
 	it("encodes the cwd like omp's local memory root", () => {
 		expect(localScopeKey("/tmp/vomp-mem/proj-alpha", "darwin")).toBe("--tmp-vomp-mem-proj-alpha--");

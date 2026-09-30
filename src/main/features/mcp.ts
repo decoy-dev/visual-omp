@@ -1,7 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { app } from "electron";
-import { z } from "zod";
 import type {
 	McpDiscoverySettings,
 	McpFileInfo,
@@ -20,37 +19,20 @@ import { discoverServers, ompOwnedPaths, resolveEntries } from "./mcp/discovery"
 import { addServer, overrideList, parseDocument, removeServer, shapeError, updateServer } from "./mcp/document";
 import { MCP_PRESETS, buildPresetConfig } from "./mcp/presets";
 import { mutateDocument, readDocument, readOptional, setServerEnabled, writeRawDocument } from "./mcp/store";
+import { DEFAULT_MCP_DISCOVERY_SETTINGS, parseMcpDiscoverySettings } from "./mcp/settings";
 
 const DEFAULT_TEST_TIMEOUT_MS = 20_000;
 
-const ConfigList = z.record(z.string(), z.looseObject({ value: z.unknown().optional() }));
-const Flag = (fallback: boolean) => z.boolean().catch(fallback);
-const Names = z.array(z.string()).catch([]);
-
-/** The omp settings that shape MCP discovery (`omp config list --json`, which merges project overrides for `cwd`). */
+/** The omp settings that shape MCP discovery (`omp config list --json`, merged for `cwd`). */
 async function discoverySettings(cwd: string | null): Promise<{ settings: McpDiscoverySettings; warning: string | null }> {
-	const defaults: McpDiscoverySettings = {
-		enableProjectConfig: true,
-		browserEnabled: true,
-		enabledProviders: [],
-		disabledProviders: [],
-		disabledExtensions: [],
-	};
 	try {
-		const list = ConfigList.parse(await runOmpJson(["config", "list", "--json"], { cwd: cwd ?? undefined, timeoutMs: 20_000 }));
-		return {
-			settings: {
-				enableProjectConfig: Flag(true).parse(list["mcp.enableProjectConfig"]?.value),
-				browserEnabled: Flag(true).parse(list["browser.enabled"]?.value),
-				enabledProviders: Names.parse(list.enabledProviders?.value),
-				disabledProviders: Names.parse(list.disabledProviders?.value),
-				disabledExtensions: Names.parse(list.disabledExtensions?.value),
-			},
-			warning: null,
-		};
+		const settings = parseMcpDiscoverySettings(
+			await runOmpJson(["config", "list", "--json"], { cwd: cwd ?? undefined, timeoutMs: 20_000 }),
+		);
+		return { settings, warning: null };
 	} catch (error) {
 		const reason = error instanceof Error ? error.message : String(error);
-		return { settings: defaults, warning: `Could not read omp settings (${reason}); assuming defaults` };
+		return { settings: DEFAULT_MCP_DISCOVERY_SETTINGS, warning: `Could not read omp settings (${reason}); assuming defaults` };
 	}
 }
 

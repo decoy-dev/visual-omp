@@ -351,8 +351,10 @@ describe("parseCommitOutput", () => {
 			{ message: "docs: note endpoint", changes: "README.md (lines 3-9)" },
 		]);
 	});
-	it("parses CRLF output from git", () => {
+	it("parses CRLF output from omp commit", () => {
 		const stdout = [
+			"● Starting commit agent...",
+			"",
 			"Split commit plan (dry run):",
 			"Commit 1:",
 			"feat(api): add endpoint",

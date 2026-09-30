@@ -70,13 +70,14 @@ export interface RolloutSummary {
 
 /** `rollout_summaries/<thread>[-slug].md`: `thread_id:` / `updated_at:` header, blank line, summary. */
 export function parseRolloutSummary(text: string): RolloutSummary {
-	const threadMatch = /^thread_id: (.+)$/m.exec(text);
-	const updatedMatch = /^updated_at: (\d+)$/m.exec(text);
-	const split = text.indexOf("\n\n");
+	const normalized = text.replace(/\r\n/g, "\n");
+	const threadMatch = /^thread_id: (.+)$/m.exec(normalized);
+	const updatedMatch = /^updated_at: (\d+)$/m.exec(normalized);
+	const split = normalized.indexOf("\n\n");
 	return {
 		threadId: threadMatch?.[1]?.trim() ?? null,
 		updatedAt: updatedMatch?.[1] ? Number(updatedMatch[1]) : null,
-		body: (split === -1 ? text : text.slice(split + 2)).trim(),
+		body: (split === -1 ? normalized : normalized.slice(split + 2)).trim(),
 	};
 }
 

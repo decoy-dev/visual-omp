@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { parseLearnedLessons, parseRolloutSummary, parseSkillFrontmatter, removeLearnedLesson } from "./local";
 
 /** Files written by omp's `learn` tool / consolidation pipeline in a throwaway agent dir. */
-const fixture = (name: string) => readFileSync(join(__dirname, "fixtures", name), "utf8");
+const fixture = (name: string) => readFileSync(join(__dirname, "fixtures", name), "utf8").replace(/\r\n/g, "\n");
 
 describe("learned.md", () => {
 	const learned = fixture("learned.md");
@@ -16,6 +16,13 @@ describe("learned.md", () => {
 			["Use Promise.withResolvers instead of new Promise.", "project rule"],
 		]);
 		expect(new Set(lessons.map(lesson => lesson.key)).size).toBe(2);
+	});
+
+	it("parses CRLF bullets and removes one without changing the line ending", () => {
+		const text = "- keep this lesson\r\n- remove this lesson\r\n";
+		const [lesson] = parseLearnedLessons(text);
+		expect(lesson?.content).toBe("keep this lesson");
+		expect(removeLearnedLesson(text, lesson?.key ?? "")).toBe("- remove this lesson\r\n");
 	});
 
 	it("removes exactly one lesson and keeps hand-written lines", () => {
@@ -41,6 +48,14 @@ describe("consolidation artifacts", () => {
 			threadId: "019a-thread-1",
 			updatedAt: 1790700000,
 			body: "Session set up IPC contracts and zod parsers.",
+		});
+	});
+
+	it("parses CRLF rollout summaries", () => {
+		expect(parseRolloutSummary("thread_id: 019a-thread-1\r\nupdated_at: 1790700000\r\n\r\nSummary body.\r\n")).toEqual({
+			threadId: "019a-thread-1",
+			updatedAt: 1790700000,
+			body: "Summary body.",
 		});
 	});
 
