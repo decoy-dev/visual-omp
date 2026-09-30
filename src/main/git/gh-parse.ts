@@ -20,7 +20,7 @@ const DETAIL_RE = /^\s*-\s+(.*)$/;
 export function parseGhAuthStatus(text: string): Omit<GhAuthStatus, "installed"> {
 	const accounts: GhAccount[] = [];
 	let account: GhAccount | null = null;
-	for (const line of text.split("\n")) {
+	for (const line of text.replace(/\r\n/g, "\n").split("\n")) {
 		const match = ACCOUNT_RE.exec(line);
 		const tokenOnly = match ? null : TOKEN_RE.exec(line);
 		if (match || tokenOnly) {

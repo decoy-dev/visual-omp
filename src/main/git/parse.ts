@@ -393,7 +393,7 @@ function parseFileChunk(chunk: string[]): GitFileDiff {
  * `typechange` entry.
  */
 export function parseUnifiedDiff(text: string): GitFileDiff[] {
-	const lines = text.split("\n");
+	const lines = text.replace(/\r\n/g, "\n").split("\n");
 	if (lines.at(-1) === "") lines.pop();
 	const chunks: string[][] = [];
 	for (const line of lines) {
@@ -687,6 +687,8 @@ export interface CommitOutput {
 
 /** Interpret `omp commit [--dry-run]` stdout/stderr (the command has no machine-readable mode). */
 export function parseCommitOutput(stdout: string, stderr: string): CommitOutput {
+	stdout = stdout.replace(/\r\n/g, "\n");
+	stderr = stderr.replace(/\r\n/g, "\n");
 	const warnings: string[] = [];
 	const lines = stdout.split("\n");
 	for (let i = 0; i < lines.length; i++) {

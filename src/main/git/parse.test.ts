@@ -173,6 +173,29 @@ describe("parseUnifiedDiff", () => {
 			["add", "still none", true],
 		]);
 	});
+
+	it("parses CRLF git output without retaining carriage returns in paths or hunk content", () => {
+		const diff = [
+			"diff --git a/file.txt b/file.txt",
+			"index 1234567..89abcde 100644",
+			"--- a/file.txt",
+			"+++ b/file.txt",
+			"@@ -1 +1 @@",
+			"-before",
+			"+after",
+			"",
+		].join("\r\n");
+		expect(parseUnifiedDiff(diff)).toMatchObject([
+			{
+				path: "file.txt",
+				kind: "modified",
+				additions: 1,
+				deletions: 1,
+				hunks: [{ header: "@@ -1 +1 @@", lines: [{ text: "before" }, { text: "after" }] }],
+				patch: expect.not.stringContaining("\r"),
+			},
+		]);
+	});
 });
 
 describe("untracked files", () => {
@@ -327,5 +350,22 @@ describe("parseCommitOutput", () => {
 			{ message: "feat(api): add endpoint\n\n- Added route", changes: "src/api.ts (all), src/types.ts (hunks 1, 2)" },
 			{ message: "docs: note endpoint", changes: "README.md (lines 3-9)" },
 		]);
+	});
+	it("parses CRLF output from git", () => {
+		const stdout = [
+			"Split commit plan (dry run):",
+			"Commit 1:",
+			"feat(api): add endpoint",
+			"",
+			"- Added route",
+			"Changes: src/api.ts",
+			"",
+		].join("\r\n");
+		expect(parseCommitOutput(stdout, "No changes to commit.\r\n")).toEqual({
+			commits: [{ message: "feat(api): add endpoint\n\n- Added route", changes: "src/api.ts" }],
+			warnings: [],
+			usedFallback: false,
+			noChanges: true,
+		});
 	});
 });

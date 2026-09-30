@@ -31,6 +31,17 @@ describe("parseGhAuthStatus", () => {
 		]);
 	});
 
+	it("parses CRLF auth status details", () => {
+		const status = parseGhAuthStatus(fixture("gh-auth-ok.txt").replace(/\n/g, "\r\n"));
+		expect(status).toMatchObject({ loggedIn: true, account: "octo-main", problem: null });
+		expect(status.accounts[0]).toMatchObject({
+			login: "octo-main",
+			active: true,
+			protocol: "https",
+			scopes: ["delete_repo", "gist", "read:org", "repo", "workflow"],
+		});
+	});
+
 	it("reports being logged out", () => {
 		const status = parseGhAuthStatus(fixture("gh-auth-none.txt"));
 		expect(status).toMatchObject({ loggedIn: false, account: null, accounts: [] });
