@@ -3,7 +3,11 @@
  *
  * `IpcInvokeMap` lists request/response channels (`ipcRenderer.invoke` → `ipcMain.handle`).
  * `IpcEventMap` lists push channels (main → renderer). Channel names are `<area>:<action>`.
- * Add a feature by adding entries here and a handler in `src/main/ipc/*`.
+ *
+ * Feature areas extend the maps by declaration merging from `src/shared/contracts/<area>.ts`
+ * (`declare module "../ipc" { interface IpcInvokeMap { "git:status": {...} } }`) and register the
+ * handlers in `src/main/features/<area>.ts`, which exports `register(): void` and is discovered
+ * automatically by `src/main/handlers.ts`. Core app/omp/session/host channels live here.
  */
 
 export type Platform = "darwin" | "win32" | "linux";

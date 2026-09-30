@@ -1,8 +1,8 @@
 import { contextBridge, ipcRenderer, webUtils } from "electron";
 import type { EventChannel, InvokeChannel, IpcEventMap, Platform, VompBridge } from "@shared/ipc";
 
-/** Only `<area>:<action>` channels from the shared contract areas may cross the bridge. */
-const CHANNEL_RE = /^(app|omp|sessions|host|term|fs|git|config|agents|mcp|usage|updates):[a-zA-Z:.-]+$/;
+/** Only `<area>:<action>` channels from the shared contract may cross the bridge. */
+const CHANNEL_RE = /^[a-z]+:[a-zA-Z:.-]+$/;
 
 const bridge: VompBridge = {
 	invoke(channel: InvokeChannel, ...args: unknown[]) {

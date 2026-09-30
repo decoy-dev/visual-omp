@@ -15,7 +15,15 @@ function isSafeExternalUrl(url: string): boolean {
 	return /^(https?|mailto):/i.test(url);
 }
 
+interface FeatureModule {
+	register(): void;
+}
+
+/** Feature handler modules (`src/main/features/*.ts`), each registering its own IPC channels. */
+const features = import.meta.glob<FeatureModule>("./features/*.ts", { eager: true });
+
 export function registerHandlers(onQuitDecision: (allow: boolean) => void): void {
+	for (const feature of Object.values(features)) feature.register();
 	handle("app:info", () => ({
 		version: app.getVersion(),
 		platform: process.platform as Platform,
