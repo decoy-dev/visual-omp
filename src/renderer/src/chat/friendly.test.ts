@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import tools from "../i18n/en/tools.json";
-import { type FriendlySummary, friendlySummary, type ToolCallView } from "./friendly";
+import { type FriendlySummary, friendlySummary, resolveToolCall } from "./friendly";
 
 function hasKey(path: string): boolean {
 	let node: unknown = tools;
@@ -13,8 +13,8 @@ function hasKey(path: string): boolean {
 
 const ok = (details: unknown, isError = false) => ({ content: [{ type: "text", text: "" }], details, isError });
 
-function summarize(call: Partial<ToolCallView> & { name: string }): FriendlySummary {
-	const summary = friendlySummary({ args: {}, running: false, ...call });
+function summarize(call: { name: string; args?: unknown; result?: ReturnType<typeof ok>; running?: boolean }): FriendlySummary {
+	const summary = friendlySummary(resolveToolCall({ args: {}, running: false, ...call }));
 	expect(hasKey(summary.key), `missing i18n key tools:${summary.key}`).toBe(true);
 	return summary;
 }

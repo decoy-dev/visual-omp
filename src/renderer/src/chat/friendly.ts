@@ -3,6 +3,7 @@
  * Returns an i18n key in the `tools` namespace plus values, so every string stays translatable.
  * Tolerates partial args and missing results: calls stream in before they finish.
  */
+import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import type { ToolResultLike } from "../tool-render/types";
 import { detailsRecord, isRecord, num, resultTextOf, shortenPath, str } from "../tool-render/util";
 
@@ -23,23 +24,42 @@ export interface ToolCallView {
 	args: Record<string, unknown>;
 	result?: ToolResultLike;
 	running: boolean;
+	/** Model-provided intent (`i` argument), shown atop the expanded body. */
+	intent?: string;
 }
 
-/** `write` to `xd://<tool>` is how omp calls device tools; show the device, not the write. */
-export function unwrapDeviceCall(call: ToolCallView): ToolCallView {
+/**
+ * Normalize a raw tool call the way omp's own renderers do (tool-render/ToolView.tsx): strip the
+ * intent argument, and show `write` → `xd://<tool>` device calls as the device tool. A finished
+ * call carries the dispatch in `result.details.xdev`; a running one only has the JSON write content.
+ */
+export function resolveToolCall(raw: { name: string; args: unknown; result?: ToolResultLike; running: boolean; intent?: string }): ToolCallView {
+	const source = isRecord(raw.args) ? raw.args : {};
+	const args: Record<string, unknown> = {};
+	for (const key in source) if (key !== INTENT_FIELD) args[key] = source[key];
+	const intent = raw.intent?.trim() || (typeof source[INTENT_FIELD] === "string" ? source[INTENT_FIELD].trim() : undefined) || undefined;
+	const call: ToolCallView = { name: raw.name, args, result: raw.result, running: raw.running, intent };
 	if (call.name !== "write") return call;
-	const path = str(call.args.path) ?? "";
-	const match = /^xd:\/\/([a-z0-9_]+)/i.exec(path);
+	const xdev = isRecord(raw.result?.details) ? raw.result.details.xdev : undefined;
+	if (raw.result && !raw.result.isError && isRecord(xdev) && xdev.mode === "execute" && typeof xdev.tool === "string") {
+		return {
+			...call,
+			name: xdev.tool,
+			args: isRecord(xdev.args) ? xdev.args : {},
+			result: { content: raw.result.content, details: xdev.inner, isError: raw.result.isError },
+		};
+	}
+	const match = /^xd:\/\/([a-z0-9_]+)/i.exec(str(args.path) ?? "");
 	if (!match?.[1]) return call;
-	let args: Record<string, unknown> = {};
-	const content = str(call.args.content);
+	let deviceArgs: Record<string, unknown> = {};
+	const content = str(args.content);
 	if (content) {
 		try {
 			const parsed: unknown = JSON.parse(content);
-			if (isRecord(parsed)) args = parsed;
+			if (isRecord(parsed)) deviceArgs = parsed;
 		} catch {}
 	}
-	return { ...call, name: match[1], args };
+	return { ...call, name: match[1], args: deviceArgs };
 }
 
 function baseName(path: string): string {
@@ -143,9 +163,8 @@ function evalSummary(call: ToolCallView, status: ToolStatus): FriendlySummary {
 	return { key: `eval.${/^(js|javascript|ts)$/i.test(language) ? "js" : "py"}.${status}`, values: {}, status };
 }
 
-/** Plain-language summary of one tool call. Unknown tools fall back to "Used <name>". */
-export function friendlySummary(input: ToolCallView): FriendlySummary {
-	const call = unwrapDeviceCall(input);
+/** Plain-language summary of one resolved tool call (see `resolveToolCall`). Unknown tools fall back to "Used <name>". */
+export function friendlySummary(call: ToolCallView): FriendlySummary {
 	const status = statusOf(call);
 	const args = call.args;
 	switch (call.name) {

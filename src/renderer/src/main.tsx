@@ -1,3 +1,7 @@
+import "./theme/tokens.css";
+import "./theme/base.css";
+import "./i18n";
+import "./features";
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { App } from "./App";

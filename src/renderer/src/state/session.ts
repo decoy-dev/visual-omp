@@ -45,6 +45,8 @@ export class SessionController {
 	#sessionFile: string | null;
 	#view: SessionView;
 	#resolvingFile = false;
+	/** omp launch flags for the first start only (Claude Code / Codex import opens omp's picker). */
+	#extraArgs: string[];
 	/** Entry count at the last file lookup; lookups rerun only when omp appends entries. */
 	#resolvedAtEntries = 0;
 	#guest: GuestClient | null = null;
@@ -55,10 +57,11 @@ export class SessionController {
 	#listeners = new Set<() => void>();
 	#eventListeners = new Set<(event: SessionEvent) => void>();
 
-	constructor(options: { tabId: string; projectPath: string; sessionFile: string | null; readOnly?: boolean }) {
+	constructor(options: { tabId: string; projectPath: string; sessionFile: string | null; readOnly?: boolean; extraArgs?: string[] }) {
 		this.tabId = options.tabId;
 		this.projectPath = options.projectPath;
 		this.#sessionFile = options.sessionFile;
+		this.#extraArgs = options.extraArgs ?? [];
 		this.#view = {
 			mode: options.sessionFile ? "history" : "starting",
 			host: null,
@@ -85,6 +88,11 @@ export class SessionController {
 	};
 
 	getSnapshot = (): SessionView => this.#view;
+
+	/** The saved session is open in another omp process: show it, but never type into it. */
+	setReadOnly(readOnly: boolean): void {
+		if (this.#view.readOnly !== readOnly) this.#set({ readOnly });
+	}
 
 	onEvent(listener: (event: SessionEvent) => void): () => void {
 		this.#eventListeners.add(listener);
@@ -125,7 +133,10 @@ export class SessionController {
 		const state = await window.vomp.invoke("host:start", {
 			cwd: this.projectPath,
 			resumeFile: this.#sessionFile ?? undefined,
+			extraArgs: this.#extraArgs.length > 0 ? this.#extraArgs : undefined,
 		});
+		// Launch flags (e.g. --from-claude) apply to the first start only; later starts resume the file.
+		this.#extraArgs = [];
 		hostId = state.hostId;
 		this.#onHostState(state);
 		for (const later of pending) if (later.hostId === hostId) this.#onHostState(later);

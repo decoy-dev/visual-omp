@@ -58,6 +58,25 @@ export interface ChatSlotSpec {
 	component: ComponentType<ChatSlotProps>;
 }
 
+export interface ScreenProps {
+	projectPath: string | null;
+}
+
+export interface ScreenSpec {
+	/**
+	 * `home`: the main area when no chat is focused (project dashboard).
+	 * `setup`: replaces the whole window while omp is missing or too old.
+	 */
+	id: "home" | "setup";
+	component: ComponentType<ScreenProps>;
+}
+
+export interface GlobalSpec {
+	id: string;
+	/** Rendered once at the app root (palette, terminal sheet, tour, quit guard, notifications). */
+	component: ComponentType;
+}
+
 function createRegistry<T extends { id: string }>(sort?: (a: T, b: T) => number) {
 	const items = new Map<string, T>();
 	const listeners = new Set<() => void>();
@@ -88,3 +107,5 @@ export const panes = createRegistry<PaneSpec>((a, b) => a.order - b.order);
 export const sheets = createRegistry<SheetSpec>();
 export const statusItems = createRegistry<StatusItemSpec>((a, b) => a.order - b.order);
 export const chatSlots = createRegistry<ChatSlotSpec>((a, b) => a.order - b.order);
+export const screens = createRegistry<ScreenSpec>();
+export const globals = createRegistry<GlobalSpec>();

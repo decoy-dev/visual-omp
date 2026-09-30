@@ -7,6 +7,7 @@ import { runOmp } from "./omp/cli";
 import { getHost, listHosts, startHost, stopHost } from "./omp/host";
 import { ompStatus } from "./omp/locate";
 import { findSessionFile, listProjects, listSessions, readSessionFile } from "./omp/sessions";
+import { sessionsOpenElsewhere } from "./omp/elsewhere";
 import { getPrefs, setPrefs } from "./prefs";
 import { killTerminal, resizeTerminal, startTerminal, writeTerminal } from "./terminals";
 
@@ -54,6 +55,14 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("sessions:list", cwd => listSessions(cwd));
 	handle("sessions:read", file => readSessionFile(file));
 	handle("sessions:find", sessionId => findSessionFile(sessionId));
+	handle("sessions:trash", async file => {
+		if (!file.endsWith(".jsonl")) throw new Error("not a session file");
+		await shell.trashItem(file);
+		// The artifacts folder (subagent transcripts, plans, local://) sits beside the file.
+		const artifacts = file.slice(0, -".jsonl".length);
+		if (await pathExists(artifacts)) await shell.trashItem(artifacts);
+	});
+	handle("sessions:openElsewhere", () => sessionsOpenElsewhere());
 
 	handle("host:start", options => startHost(options));
 	handle("host:stop", hostId => stopHost(hostId));

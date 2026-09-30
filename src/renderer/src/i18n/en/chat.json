@@ -1,0 +1,70 @@
+{
+	"you": "You",
+	"assistant": "omp",
+	"empty": {
+		"first": "What should we work on?",
+		"returning": "Back to it — what's next?",
+		"tip": "Just describe what you want in plain words.",
+		"hints": "Press / for shortcuts · @ to mention a file",
+		"prompts": [
+			{ "icon": "bug", "title": "Something's broken…", "text": "Something on my site is broken — the checkout total is wrong when I apply a coupon. Find out why and fix it." },
+			{ "icon": "sparkles", "title": "Build something new…", "text": "Build a simple contact page for this project with a form that checks the email looks right." },
+			{ "icon": "book", "title": "Explain this project…", "text": "Explain what this project does and how its main parts fit together, in plain language." },
+			{ "icon": "broom", "title": "Clean this up…", "text": "Clean up this folder: find unused files and duplicated code, and tell me before deleting anything." }
+		]
+	},
+	"loadingHistory": "Loading this chat…",
+	"starting": "Starting omp…",
+	"reconnecting": "Reconnecting to omp…",
+	"exited": "omp stopped{{code}}.",
+	"exitedCode": " (exit {{code}})",
+	"restartOmp": "Start omp again",
+	"readOnly": "This chat is open in another window. You can look, but only that window can type.",
+	"historyNotice": "Showing the saved chat. omp starts when you send a message.",
+	"thoughtFor": "Thought it through",
+	"thinking": "Thinking…",
+	"redactedThinking": "Thinking (hidden by the model)",
+	"working": "Working… {{elapsed}}",
+	"workingActivity": "Working… {{elapsed}} · {{activity}}",
+	"stop": "Stop",
+	"newActivity": "New activity",
+	"showEarlier": "Show {{count}} earlier messages",
+	"compacted": "Context summarized",
+	"branchSummary": "Continued from another branch",
+	"modelChanged": "Switched to {{model}}",
+	"thinkingChanged": "Thinking set to {{level}}",
+	"stopped": {
+		"error": "Something went wrong",
+		"aborted": "Stopped"
+	},
+	"tryAgain": "Try again",
+	"copy": "Copy",
+	"copied": "Copied",
+	"rewind": "Rewind to here",
+	"fork": "Fork from here",
+	"readAloud": "Read aloud",
+	"details": "Show details",
+	"hideDetails": "Hide details",
+	"from": "From {{name}}",
+	"question": {
+		"eyebrow": "[ QUESTION ]",
+		"approval": "[ PERMISSION ]",
+		"allow": "Allow",
+		"deny": "Deny",
+		"skip": "Skip",
+		"answer": "Answer",
+		"send": "Send",
+		"placeholder": "Type your answer…",
+		"chose": "You chose: {{value}}",
+		"skipped": "Skipped",
+		"chooseMany": "Choose any that apply",
+		"done": "Done"
+	},
+	"header": {
+		"rename": "Rename chat",
+		"renamePlaceholder": "Chat name",
+		"more": "More actions",
+		"view": "Transcript view",
+		"views": { "normal": "Normal", "thinking": "Thinking", "verbose": "Verbose" }
+	}
+}

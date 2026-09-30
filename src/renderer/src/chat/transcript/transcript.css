@@ -1,0 +1,189 @@
+/* Markdown in chat (DESIGN §3.5): 14/22 body, Geist Mono code on the accent tint, syntax tokens. */
+.tr-md {
+	font-size: var(--text-base);
+	line-height: var(--text-base--line-height);
+	color: var(--fg);
+	user-select: text;
+	overflow-wrap: anywhere;
+}
+
+.tr-md > :first-child {
+	margin-top: 0;
+}
+
+.tr-md > :last-child {
+	margin-bottom: 0;
+}
+
+.tr-md p {
+	margin: 0 0 10px;
+}
+
+.tr-md h1,
+.tr-md h2,
+.tr-md h3,
+.tr-md h4 {
+	margin: 18px 0 8px;
+	font-weight: 600;
+	letter-spacing: -0.01em;
+	line-height: 1.3;
+}
+
+.tr-md h1 {
+	font-size: 20px;
+}
+
+.tr-md h2 {
+	font-size: 17px;
+}
+
+.tr-md h3 {
+	font-size: 15px;
+}
+
+.tr-md h4 {
+	font-size: 14px;
+}
+
+.tr-md ul,
+.tr-md ol {
+	margin: 0 0 10px;
+	padding-left: 22px;
+}
+
+.tr-md li {
+	margin: 3px 0;
+}
+
+.tr-md li::marker {
+	color: var(--fg-faint);
+}
+
+.tr-md a {
+	color: var(--accent);
+	text-decoration: underline;
+	text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+	text-underline-offset: 2px;
+}
+
+.tr-md a:hover {
+	text-decoration-color: var(--accent);
+}
+
+.tr-md code {
+	font-family: var(--font-mono);
+	font-size: 12.5px;
+	padding: 1px 5px;
+	border-radius: var(--radius-sm);
+	background: var(--accent-muted);
+	color: var(--accent);
+}
+
+.tr-md pre {
+	margin: 0 0 12px;
+	padding: 12px 14px;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	background: var(--bg-inset);
+	overflow-x: auto;
+}
+
+.tr-md pre code {
+	padding: 0;
+	background: none;
+	color: var(--syn-text);
+	font-size: var(--text-code);
+	line-height: var(--text-code--line-height);
+}
+
+.tr-md blockquote {
+	margin: 0 0 10px;
+	padding: 2px 0 2px 12px;
+	border-left: 2px solid var(--border-strong);
+	color: var(--fg-muted);
+}
+
+.tr-md table {
+	margin: 0 0 12px;
+	border-collapse: collapse;
+	font-size: var(--text-md);
+}
+
+.tr-md th,
+.tr-md td {
+	padding: 6px 10px;
+	border: 1px solid var(--border);
+	text-align: left;
+}
+
+.tr-md th {
+	background: var(--bg-inset);
+	font-weight: 600;
+}
+
+.tr-md hr {
+	border: 0;
+	border-top: 1px solid var(--border);
+	margin: 16px 0;
+}
+
+.tr-md img {
+	max-width: 100%;
+	border-radius: var(--radius);
+}
+
+/* highlight.js token classes → syntax tokens (DESIGN §1.7) */
+.tr-md .hljs-keyword,
+.tr-md .hljs-selector-tag,
+.tr-md .hljs-built_in {
+	color: var(--syn-keyword);
+}
+
+.tr-md .hljs-string,
+.tr-md .hljs-attr-value,
+.tr-md .hljs-regexp {
+	color: var(--syn-string);
+}
+
+.tr-md .hljs-number,
+.tr-md .hljs-literal {
+	color: var(--syn-number);
+}
+
+.tr-md .hljs-title,
+.tr-md .hljs-function {
+	color: var(--syn-function);
+}
+
+.tr-md .hljs-type,
+.tr-md .hljs-class,
+.tr-md .hljs-attr {
+	color: var(--syn-type);
+}
+
+.tr-md .hljs-comment {
+	color: var(--syn-comment);
+	font-style: italic;
+}
+
+.tr-md .hljs-operator,
+.tr-md .hljs-deletion {
+	color: var(--syn-operator);
+}
+
+.tr-md .hljs-punctuation {
+	color: var(--syn-punct);
+}
+
+/* omp's tool renderers embedded inside our expanded tool card */
+.tv-card.tv-embedded {
+	border: 0;
+	border-radius: 0;
+	background: transparent;
+	overflow: visible;
+}
+
+.tv-card.tv-embedded .tv-body {
+	padding: 0;
+	border-top: 0;
+}

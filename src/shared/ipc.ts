@@ -48,6 +48,8 @@ export interface SessionSummary {
 	parentSession: string | null;
 	/** First user message text, trimmed, for previews. */
 	preview: string | null;
+	/** Hidden from the main list; shown under "Archived". */
+	archived: boolean;
 }
 
 /** Live TUI focus snapshot from omp's `OMP_TUI_DEBUG` socket. */
@@ -78,6 +80,9 @@ export interface HostState {
 	error: string | null;
 	/** null when the TUI debug socket is unavailable. */
 	tui: TuiFocus | null;
+	/** Current PTY size (the terminal sheet resizes it while open and restores it after). */
+	cols: number;
+	rows: number;
 }
 
 export interface HostStartOptions {
@@ -127,6 +132,8 @@ export interface AppPreferences {
 	/** Extra project folders the user opened that have no sessions yet. */
 	extraProjects: string[];
 	notifications: boolean;
+	/** Enable omp's speech-to-text in each chat's hidden omp (per-process overlay, never the global config). */
+	voiceInput: boolean;
 }
 
 export interface IpcInvokeMap {
@@ -147,6 +154,10 @@ export interface IpcInvokeMap {
 	"sessions:read": { args: [file: string]; result: string };
 	/** Session file for a session id (new sessions get their file after the first message). */
 	"sessions:find": { args: [sessionId: string]; result: string | null };
+	/** Move a saved session (and its artifacts folder) to the OS trash. */
+	"sessions:trash": { args: [file: string]; result: void };
+	/** Session files currently open in omp processes outside this app (they open read-only). */
+	"sessions:openElsewhere": { args: []; result: string[] };
 
 	"host:start": { args: [options: HostStartOptions]; result: HostState };
 	"host:stop": { args: [hostId: string]; result: void };

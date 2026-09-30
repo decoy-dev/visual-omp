@@ -55,7 +55,8 @@ interface AppState {
 	refreshOmp(): Promise<void>;
 	openProject(path: string): void;
 	toggleProjectExpanded(path: string): void;
-	newChat(projectPath?: string): string | null;
+	/** Start a chat; `extraArgs` are omp launch flags for its first start (e.g. `--from-claude`). */
+	newChat(projectPath?: string, options?: { extraArgs?: string[] }): string | null;
 	openSession(session: SessionSummary, options?: { split?: boolean }): void;
 	activateTab(tabId: string): void;
 	closeTab(tabId: string): Promise<void>;
@@ -82,12 +83,17 @@ export function controllerFor(tabId: string | null | undefined): SessionControll
 	return tabId ? (controllers.get(tabId) ?? null) : null;
 }
 
-function ensureController(tab: ChatTab): SessionController {
+function ensureController(tab: ChatTab, extraArgs?: string[]): SessionController {
 	let controller = controllers.get(tab.id);
 	if (!controller) {
-		controller = new SessionController({ tabId: tab.id, projectPath: tab.projectPath, sessionFile: tab.sessionFile });
+		controller = new SessionController({ tabId: tab.id, projectPath: tab.projectPath, sessionFile: tab.sessionFile, extraArgs });
 		controllers.set(tab.id, controller);
-		if (tab.sessionFile) void controller.loadHistory();
+		if (tab.sessionFile) {
+			void controller.loadHistory();
+			const file = tab.sessionFile;
+			const opened = controller;
+			void window.vomp.invoke("sessions:openElsewhere").then(files => opened.setReadOnly(files.includes(file)));
+		}
 		const synced = controller;
 		synced.subscribe(() => {
 			const file = synced.sessionFile;
@@ -183,11 +189,11 @@ export const useApp = create<AppState>()(
 				if (!open) void get().loadSessions(path);
 			},
 
-			newChat(projectPath) {
+			newChat(projectPath, options) {
 				const path = projectPath ?? get().activeProject;
 				if (!path) return null;
 				const tab: ChatTab = { id: newTabId(), projectPath: path, sessionFile: null, title: null };
-				const controller = ensureController(tab);
+				const controller = ensureController(tab, options?.extraArgs);
 				set(state => ({ tabs: [...state.tabs, tab], activeTabId: tab.id, activeProject: path, view: "chat", focusedSplit: "primary" }));
 				// A new chat starts omp right away so the first message is quick.
 				void controller.ensureLive();

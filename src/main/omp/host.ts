@@ -20,6 +20,7 @@ import { z } from "zod";
 import type { HostStartOptions, HostState, TuiFocus } from "@shared/ipc";
 import { ptyEnv, userEnv } from "../env";
 import { broadcast } from "../ipc";
+import { getPrefs } from "../prefs";
 import { runOmpJson } from "./cli";
 import { ompPath } from "./locate";
 import { LoopbackRelay } from "./relay";
@@ -81,6 +82,8 @@ export class SessionHost {
 			exitCode: null,
 			error: null,
 			tui: null,
+			cols,
+			rows,
 		};
 	}
 
@@ -159,10 +162,17 @@ export class SessionHost {
 		return this.#debug.screen();
 	}
 
+	/** TUI component debug state (e.g. the editor's current text) for features that read omp's own UI. */
+	async debugValues(): Promise<Record<string, unknown>> {
+		if (!this.#debug) return {};
+		return this.#debug.values();
+	}
+
 	resize(cols: number, rows: number): void {
 		if (cols < 20 || rows < 5) return;
 		this.#pty?.resize(cols, rows);
 		this.#screen.resize(cols, rows);
+		this.#update({ cols, rows });
 	}
 
 	serializedScreen(): string {

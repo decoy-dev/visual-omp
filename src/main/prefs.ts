@@ -17,6 +17,7 @@ const DEFAULTS: AppPreferences = {
 	archivedSessions: [],
 	extraProjects: [],
 	notifications: true,
+	voiceInput: false,
 };
 
 const file = join(app.getPath("userData"), "preferences.json");

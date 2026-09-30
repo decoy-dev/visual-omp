@@ -28,6 +28,7 @@ const Tree = z.object({
 	tree: z.object({ overlays: z.array(z.object({ hidden: z.boolean().optional(), root: TreeNodeSchema })) }),
 });
 const Text = z.object({ ok: z.literal(true), lines: z.array(z.string()) });
+const Values = z.object({ ok: z.literal(true), values: z.record(z.string(), z.unknown()) });
 const Failure = z.object({ ok: z.literal(false), error: z.string() });
 
 interface Pending {
@@ -61,6 +62,11 @@ export class TuiDebugClient {
 
 	async screen(): Promise<string[]> {
 		return Text.parse(await this.#request({ op: "text" })).lines;
+	}
+
+	/** Component debug state (`debugState()` of each TUI component, keyed by kind/id). */
+	async values(): Promise<Record<string, unknown>> {
+		return Values.parse(await this.#request({ op: "values" })).values;
 	}
 
 	/** Press tmux-style key tokens, e.g. `"escape"`, `"down down enter"`, `"C-q"`. */

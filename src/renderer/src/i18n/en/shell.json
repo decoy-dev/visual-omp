@@ -1,0 +1,89 @@
+{
+	"titlebar": {
+		"showSidebar": "Show sidebar",
+		"hideSidebar": "Hide sidebar",
+		"switchChat": "Switch chat"
+	},
+	"sidebar": {
+		"label": "Projects and chats",
+		"search": "Search chats…",
+		"newChat": "New chat",
+		"projects": "[ PROJECTS ]",
+		"archived": "Archived",
+		"home": "Home",
+		"settings": "Settings",
+		"help": "Help",
+		"noProjects": "No projects yet. A project is just a folder omp works in.",
+		"newProject": "New project",
+		"noChats": "Nothing here yet — start a chat and it will show up in this list.",
+		"noResults": "No chats match '{{q}}'.",
+		"expand": "Show chats in {{name}}",
+		"collapse": "Hide chats in {{name}}",
+		"missingFolder": "This folder no longer exists",
+		"untitled": "Untitled chat",
+		"moreChats": "Show {{count}} more",
+		"chatMenu": "Chat options",
+		"projectMenu": "Project options",
+		"open": "Open",
+		"openSplit": "Open side by side",
+		"pin": "Pin",
+		"unpin": "Unpin",
+		"archive": "Archive",
+		"unarchive": "Restore from archive",
+		"delete": "Delete…",
+		"reveal": "Show in folder",
+		"newChatHere": "New chat here",
+		"projectHome": "Project home",
+		"removeProject": "Remove from list",
+		"status": {
+			"working": "omp is working",
+			"needsInput": "Waiting for your answer",
+			"live": "Open",
+			"idle": "Saved"
+		}
+	},
+	"deleteChat": {
+		"title": "Delete '{{title}}'?",
+		"body": "Delete '{{title}}'? This removes the saved conversation from this computer. This can't be undone.",
+		"confirm": "Delete chat",
+		"cancel": "Cancel"
+	},
+	"tabs": {
+		"label": "Open chats",
+		"newChat": "New chat",
+		"close": "Close {{title}}",
+		"split": "Split view",
+		"unsplit": "Close split view",
+		"newChatTitle": "New chat"
+	},
+	"dock": {
+		"label": "Side panel",
+		"close": "Close side panel",
+		"resize": "Resize side panel",
+		"empty": "Pick a panel above."
+	},
+	"resizeSidebar": "Resize sidebar",
+	"resizeSplit": "Resize split",
+	"status": {
+		"label": "Status",
+		"context": "{{percent}}% of context used",
+		"contextShort": "{{percent}}%",
+		"ompConnected": "omp {{version}}",
+		"ompReconnecting": "Reconnecting to omp…",
+		"ompStopped": "omp stopped",
+		"ompStarting": "Starting omp…",
+		"ompMenu": "omp status",
+		"openTerminal": "Show omp's own screen",
+		"restart": "Restart omp",
+		"copyDiagnostics": "Copy diagnostics",
+		"copied": "Diagnostics copied"
+	},
+	"home": {
+		"noProject": "Open or create a project to get started.",
+		"openFolder": "Open folder…",
+		"newProject": "New project…"
+	},
+	"time": {
+		"now": "now"
+	}
+}

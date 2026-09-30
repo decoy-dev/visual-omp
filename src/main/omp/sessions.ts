@@ -89,6 +89,7 @@ async function summarize(file: string, mtimeMs: number): Promise<SessionSummary 
 		updatedAt: mtimeMs,
 		parentSession: header.parentSession ?? null,
 		preview,
+		archived: false,
 	};
 }
 
@@ -132,7 +133,8 @@ export async function allSessions(): Promise<SessionSummary[]> {
 	const archived = new Set(getPrefs().archivedSessions);
 	return [...cache.values()]
 		.map(entry => entry.summary)
-		.filter((summary): summary is SessionSummary => summary !== null && !archived.has(summary.id))
+		.filter((summary): summary is SessionSummary => summary !== null)
+		.map(summary => ({ ...summary, archived: archived.has(summary.id) }))
 		.sort((a, b) => b.updatedAt - a.updatedAt);
 }
 

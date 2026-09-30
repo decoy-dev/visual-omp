@@ -14,6 +14,8 @@ export interface CommandContext {
 	session: SessionController | null;
 	/** Focused project folder, or null when none is selected. */
 	projectPath: string | null;
+	/** Transcript entry the command targets (message hover actions: rewind to / fork from here). */
+	entryId?: string;
 }
 
 export interface CommandSpec {
