@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-10-01
+
+visual-omp 0.3.1 looks for the PDFs and images that omp's commands write and adds a PDF viewer to the Outputs tab. The title bar now shows the app's version.
+
 - The **Outputs** tab now checks the paths that commands and scripts name for files changed while they ran, so the PDFs and images a script writes show up. Folder scans include PDFs and raster images within fixed limits, and a file a command names directly can be any type. This is best effort: it can miss files a command never names and can include unrelated files changed at the same time.
 - PDFs now open in the side panel in a full PDF viewer, show a first-page thumbnail when the operating system provides one, and can be opened in their default app.
 - The **Outputs** tab now lists what omp made in the chat first, then other files, then the images and PDFs omp only looked at, so finished work stays at the top.
