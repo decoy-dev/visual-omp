@@ -8,13 +8,15 @@ export const Dialog = RD.Root;
 export const DialogTrigger = RD.Trigger;
 export const DialogClose = RD.Close;
 
-export type DialogSize = "sm" | "md" | "lg" | "xl";
+export type DialogSize = "sm" | "md" | "lg" | "xl" | "full";
 
-const dialogWidths: Record<DialogSize, string> = {
-	sm: "w-[400px]",
-	md: "w-[480px]",
-	lg: "w-[560px]",
-	xl: "w-[720px]",
+const dialogSizes: Record<DialogSize, string> = {
+	sm: "w-[400px] max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
+	md: "w-[480px] max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
+	lg: "w-[560px] max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
+	xl: "w-[720px] max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
+	/** Nearly the whole window, for previews of wide content. */
+	full: "h-[calc(100vh-32px)] w-[calc(100vw-32px)]",
 };
 
 export interface DialogContentProps extends Omit<ComponentPropsWithRef<typeof RD.Content>, "title"> {
@@ -22,6 +24,8 @@ export interface DialogContentProps extends Omit<ComponentPropsWithRef<typeof RD
 	description?: ReactNode;
 	/** Right-aligned action row, e.g. [Cancel][Action]. */
 	footer?: ReactNode;
+	/** Icon buttons in the header, before the close button. */
+	actions?: ReactNode;
 	size?: DialogSize;
 	/** Destructive confirmations: warning glyph, and clicking the scrim does not dismiss. */
 	destructive?: boolean;
@@ -38,6 +42,7 @@ export function DialogContent({
 	title,
 	description,
 	footer,
+	actions,
 	size = "md",
 	destructive = false,
 	hideClose = false,
@@ -56,9 +61,9 @@ export function DialogContent({
 					onPointerDownOutside?.(event);
 				}}
 				className={cn(
-					"vo-dialog fixed left-1/2 top-1/2 z-(--z-dialog) flex max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)] -translate-x-1/2 -translate-y-1/2 flex-col",
+					"vo-dialog fixed left-1/2 top-1/2 z-(--z-dialog) flex -translate-x-1/2 -translate-y-1/2 flex-col",
 					"rounded-lg border border-border bg-overlay text-fg shadow-(--shadow-overlay) outline-none",
-					dialogWidths[size],
+					dialogSizes[size],
 					className,
 				)}
 				{...rest}
@@ -73,6 +78,7 @@ export function DialogContent({
 						<RD.Title className="text-lg font-semibold text-fg">{title}</RD.Title>
 						{description && <RD.Description className="mt-1 text-md text-fg-muted">{description}</RD.Description>}
 					</div>
+					{actions && <div className="-mt-1 flex shrink-0 items-center gap-1">{actions}</div>}
 					{!hideClose && (
 						<RD.Close aria-label="Close" className={cn("-mr-1.5 -mt-1", closeButton)}>
 							<X className="size-4" aria-hidden />

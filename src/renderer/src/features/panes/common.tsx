@@ -50,6 +50,11 @@ export function Section({ title, count, children }: { title: string; count?: Rea
 	);
 }
 
+/** A section's count after its title. */
+export function SectionCount({ count }: { count: number }) {
+	return <span className="text-xs font-normal text-fg-faint tabular-nums">{count}</span>;
+}
+
 export interface StripTab {
 	id: string;
 	label: string;
@@ -68,6 +73,7 @@ export function TabStrip({
 	onClose,
 	closeLabel,
 	label,
+	leading,
 	trailing,
 }: {
 	tabs: readonly StripTab[];
@@ -76,6 +82,8 @@ export function TabStrip({
 	onClose(id: string): void;
 	closeLabel(tab: StripTab): string;
 	label: string;
+	/** Before the tabs, for example a toggle for the pane's side list. */
+	leading?: ReactNode;
 	trailing?: ReactNode;
 }) {
 	const indicatorId = useId();
@@ -90,6 +98,7 @@ export function TabStrip({
 	};
 	return (
 		<div className="flex h-8 shrink-0 items-stretch border-b border-border bg-inset">
+			{leading}
 			<div role="tablist" aria-label={label} className="flex min-w-0 flex-1 items-stretch overflow-x-auto" onKeyDown={onKeyDown}>
 				<AnimatePresence initial={false}>
 					{tabs.map(tab => {

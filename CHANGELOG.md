@@ -6,8 +6,11 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [0.3.1] - 2026-10-01
 
-visual-omp 0.3.1 looks for the PDFs and images that omp's commands write and adds a PDF viewer to the Outputs tab. The title bar now shows the app's version.
+visual-omp 0.3.1 lets you open the files omp names in its replies, and looks for and previews the PDFs and images its commands write. The title bar now shows the app's version.
 
+- File and folder names in omp's replies become links once the reply finishes. Clicking one opens it in the side panel's **Files** tab: text and code, images, PDFs, and folders as a grid of previews. Names become links when the app finds them on disk.
+- The **Files** tab can open files and folders outside the project. When you open something from a reply it hides the project's file tree so the file gets the whole panel, and the button at the start of its tabs brings the tree back.
+- **Expand preview** shows an image or PDF over the whole window, which suits wide layouts such as print spreads. PDFs in the side panel open fitted to its width, without the page thumbnails.
 - The **Outputs** tab now checks the paths that commands and scripts name for files changed while they ran, so the PDFs and images a script writes show up. Folder scans include PDFs and raster images within fixed limits, and a file a command names directly can be any type. This is best effort: it can miss files a command never names and can include unrelated files changed at the same time.
 - PDFs now open in the side panel in a full PDF viewer, show a first-page thumbnail when the operating system provides one, and can be opened in their default app.
 - The **Outputs** tab now lists what omp made in the chat first, then other files, then the images and PDFs omp only looked at, so finished work stays at the top.

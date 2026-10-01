@@ -7,9 +7,9 @@
  * file opens it in the Files pane.
  */
 import type { PaneMadeFile } from "@shared/contracts/panes";
-import { ArrowLeft, ArrowSquareOut, Copy, FileCode, FileIcon, FilePdf, FolderSimpleDashed, ImageBroken, Images } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowSquareOut, Copy, FileCode, FileIcon, FolderSimpleDashed, Images } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type KeyboardEvent, type ReactNode, type RefObject, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
@@ -17,14 +17,14 @@ import type { PaneProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
 import { activeBranch, type SavedParents, savedParents } from "../../state/history";
 import { liveEntries, type SessionController, type SessionView } from "../../state/session";
-import { Badge, cn, ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, EmptyState, IconButton, PresenceSwap, Spinner, toast } from "../../ui";
+import { Badge, cn, ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, EmptyState, IconButton, PresenceSwap, toast } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
-import { errorText } from "../extensions/format";
 import { useHomeDir } from "../projects/folders/FolderBrowser";
-import { listRowMotion, PaneToolbar, relativePath, Section, usePaneVisible } from "./common";
+import { listRowMotion, PaneToolbar, relativePath, Section, SectionCount, usePaneVisible } from "./common";
 import { type ChatOutput, chatOutputs, IMAGE_EXT, isIntactBase64, type MadeCandidate, type MadeFiles, madeCandidates, OPENABLE_EXT } from "./derive";
 import { openInFiles } from "./FilesPane";
 import { languageFor } from "./highlight";
+import { ExpandPreview, loadFileImage, openWithDefaultApp, PdfFrame, PreviewImage, revealLabel, ThumbnailFrame, useNearView } from "./media";
 
 // ── files made by commands ──────────────────────────────────────────────────────────────────────
 
@@ -163,10 +163,6 @@ function isOpenable(output: ChatOutput): output is ChatOutput & { path: string }
 
 // ── image loading ───────────────────────────────────────────────────────────────────────────────
 
-const IMAGE_CACHE_LIMIT = 24;
-/** Image sources by `<pane mount>|<key>@<time>`: a reopened pane, or a newer use of the same file, reads it again. */
-const imageCache = new Map<string, Promise<string | null>>();
-
 /**
  * A PDF's thumbnail from the operating system (null when it makes none); for an image, the file on disk first (its
  * current version), then intact inline data, then omp's blob store. Null when none works.
@@ -174,8 +170,8 @@ const imageCache = new Map<string, Promise<string | null>>();
 async function loadImage(output: ChatOutput): Promise<string | null> {
 	if (output.kind === "pdf") return output.path ? window.vomp.invoke("panes:thumbnail", output.path).catch(() => null) : null;
 	if (output.path && IMAGE_EXT.test(output.path)) {
-		const file = await window.vomp.invoke("panes:readFile", output.path).catch(() => null);
-		if (file?.kind === "image") return file.dataUrl;
+		const file = await loadFileImage(output.path);
+		if (file) return file;
 	}
 	const inline = output.inline;
 	if (inline?.kind === "data") return isIntactBase64(inline.data) ? `data:${inline.mimeType};base64,${inline.data}` : null;
@@ -183,63 +179,10 @@ async function loadImage(output: ChatOutput): Promise<string | null> {
 	return null;
 }
 
-function cachedImage(output: ChatOutput, mount: number): Promise<string | null> {
-	const key = `${mount}|${output.key}@${output.time}`;
-	let pending = imageCache.get(key);
-	if (!pending) {
-		pending = loadImage(output);
-		imageCache.set(key, pending);
-		for (const old of imageCache.keys()) {
-			if (imageCache.size <= IMAGE_CACHE_LIMIT) break;
-			imageCache.delete(old);
-		}
-	}
-	return pending;
-}
-
-/** `undefined` while loading (or before `enabled`), null when the image can't be shown. */
-function useImageSource(output: ChatOutput, mount: number, enabled: boolean): string | null | undefined {
-	const [state, setState] = useState<{ key: string; src: string | null } | null>(null);
-	const key = `${mount}|${output.key}@${output.time}`;
-	// Outputs are rebuilt whenever made files arrive; the key, not the object, says when the image changed.
-	const latest = useRef(output);
-	latest.current = output;
-	useEffect(() => {
-		if (!enabled) return;
-		let live = true;
-		void cachedImage(latest.current, mount).then(src => live && setState({ key, src }));
-		return () => {
-			live = false;
-		};
-	}, [mount, enabled, key]);
-	return state?.key === key ? state.src : undefined;
-}
-
-/** Becomes true once the element scrolls near view, so a long grid only reads the thumbnails on screen. */
-function useNearView<T extends Element>(): [RefObject<T | null>, boolean] {
-	const ref = useRef<T>(null);
-	const [seen, setSeen] = useState(false);
-	useEffect(() => {
-		const element = ref.current;
-		if (seen || !element) return;
-		const observer = new IntersectionObserver(entries => entries.some(entry => entry.isIntersecting) && setSeen(true), { rootMargin: "200px" });
-		observer.observe(element);
-		return () => observer.disconnect();
-	}, [seen]);
-	return [ref, seen];
-}
-
-/** Broken-image glyph; `explain` adds the failure as visible text (the larger view), else it is for screen readers. */
-function Unavailable({ message, explain }: { message: string; explain: boolean }) {
-	return (
-		<span className="flex flex-col items-center gap-2 text-center text-fg-faint">
-			<ImageBroken aria-hidden className="size-5" />
-			<span className={explain ? "text-sm text-fg-muted" : "sr-only"}>{message}</span>
-		</span>
-	);
-}
-
-/** `alt` is empty where the surrounding button already names the image; `explain` shows the failure as text. */
+/**
+ * Read once per `<pane mount>|<key>@<time>`: a reopened pane, or a newer use of the same file, reads it again.
+ * `alt` is empty where the surrounding button already names the image; `explain` shows the failure as text.
+ */
 function OutputImage({
 	output,
 	mount,
@@ -248,75 +191,24 @@ function OutputImage({
 	explain = false,
 	className,
 }: { output: ChatOutput; mount: number; enabled: boolean; alt: string; explain?: boolean; className?: string }) {
-	const { t } = useTranslation("panes");
-	const src = useImageSource(output, mount, enabled);
-	const [broken, setBroken] = useState<string | null>(null);
-	if (src === undefined) return <span className="sr-only">{t("outputs.loading")}</span>;
-	if (src === null || broken === src) {
-		// A PDF without a thumbnail still has its page view, so its tile shows the file type instead of a failure.
-		if (output.kind === "pdf") return <FilePdf aria-hidden className="size-6 text-fg-faint" />;
-		return <Unavailable message={t("outputs.unavailable")} explain={explain} />;
-	}
-	return <img src={src} alt={alt} onError={() => setBroken(src)} className={className} />;
-}
-
-/**
- * The PDF's bytes as a Blob URL in Chromium's built-in viewer. A new `revision` (omp made or viewed the file again)
- * reads it again; the shown page stays until the new bytes arrive, and each Blob URL is revoked once it is replaced
- * or the view closes.
- */
-function PdfFrame({ path, revision, name }: { path: string; revision: number; name: string }) {
-	const { t } = useTranslation("panes");
-	const [state, setState] = useState<{ path: string; url: string | null } | null>(null);
-	// biome-ignore lint/correctness/useExhaustiveDependencies: `revision` is a reload trigger
-	useEffect(() => {
-		let live = true;
-		window.vomp
-			.invoke("panes:readPdf", path)
-			.then(bytes => live && setState({ path, url: URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })) }))
-			.catch(() => live && setState({ path, url: null }));
-		return () => {
-			live = false;
-		};
-	}, [path, revision]);
-	const url = state?.url ?? null;
-	useEffect(
-		() => () => {
-			if (url) URL.revokeObjectURL(url);
-		},
-		[url],
+	return (
+		<PreviewImage
+			sourceKey={`${mount}|${output.key}@${output.time}`}
+			load={() => loadImage(output)}
+			pdf={output.kind === "pdf"}
+			enabled={enabled}
+			alt={alt}
+			explain={explain}
+			className={className}
+		/>
 	);
-	const current = state?.path === path ? state : null;
-	if (!current) {
-		return (
-			<div className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted" role="status">
-				<Spinner /> {t("outputs.loadingPdf")}
-			</div>
-		);
-	}
-	if (!current.url) {
-		return (
-			<div className="flex flex-1 items-center justify-center p-4">
-				<Unavailable message={t("outputs.pdfUnavailable")} explain />
-			</div>
-		);
-	}
-	return <iframe src={current.url} title={t("outputs.pdfFrame", { name })} className="min-h-0 w-full flex-1 border-0" />;
 }
 
 // ── actions ─────────────────────────────────────────────────────────────────────────────────────
 
-function revealLabel(t: (key: string) => string): string {
-	return t(window.vomp.platform === "darwin" ? "files.revealMac" : "files.reveal");
-}
-
 function copyPath(path: string, t: (key: string) => string): void {
 	void navigator.clipboard.writeText(path);
 	toast({ tone: "ok", message: t("files.copied") });
-}
-
-function openWithDefaultApp(path: string, t: (key: string) => string): void {
-	window.vomp.invoke("panes:openOutput", path).catch((error: unknown) => toast({ tone: "err", message: t("outputs.openFailed"), description: errorText(error) }));
 }
 
 /** A file opens in the Files pane, which needs the chat's project; without one it is shown in its folder. */
@@ -373,14 +265,9 @@ function PreviewTile({ output, mount, projectPath, onOpen }: { output: ChatOutpu
 					title={output.path ?? name}
 					className={cn("flex w-full flex-col gap-1.5 rounded-md p-1 text-left hover:bg-hover", focusRingInset)}
 				>
-					<span className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-sm border border-border bg-inset">
+					<ThumbnailFrame pdf={output.kind === "pdf"}>
 						<OutputImage output={output} mount={mount} enabled={near} alt="" className="size-full object-contain" />
-						{output.kind === "pdf" && (
-							<span aria-hidden className="absolute bottom-1 left-1 rounded-sm bg-panel px-1 text-[10px] leading-4 font-semibold text-fg-muted">
-								{t("outputs.pdf")}
-							</span>
-						)}
-					</span>
+					</ThumbnailFrame>
 					<span className="truncate px-0.5 text-xs text-fg-muted">{name}</span>
 				</button>
 			</OutputMenu>
@@ -417,10 +304,6 @@ function FileRow({ output, projectPath }: { output: ChatOutput; projectPath: str
 
 /** Viewed images and PDFs shown before "Show N more". */
 const VIEWED_LIMIT = 12;
-
-function SectionCount({ count }: { count: number }) {
-	return <span className="text-xs font-normal text-fg-faint tabular-nums">{count}</span>;
-}
 
 function PreviewGrid({ outputs, mount, projectPath, onOpen }: { outputs: ChatOutput[]; mount: number; projectPath: string | null; onOpen(key: string): void }) {
 	return (
@@ -529,6 +412,18 @@ function OutputViewer({ output, mount, projectPath, onBack }: { output: ChatOutp
 				<span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted" title={path ?? name}>
 					{name}
 				</span>
+				<ExpandPreview
+					name={name}
+					path={path}
+					image={output.kind !== "pdf" || !path}
+					render={className =>
+						output.kind === "pdf" && path ? (
+							<PdfFrame path={path} revision={output.time} name={name} />
+						) : (
+							<OutputImage output={output} mount={mount} enabled explain alt={name} className={className} />
+						)
+					}
+				/>
 				{path && (
 					<>
 						{isOpenable(output) && <IconButton size="sm" label={t("outputs.openDefault")} icon={<ArrowSquareOut />} onClick={() => openWithDefaultApp(path, t)} />}

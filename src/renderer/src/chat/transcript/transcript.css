@@ -70,6 +70,33 @@
 	text-decoration-color: var(--accent);
 }
 
+/* File and folder names in replies (FileLinks.tsx): links that open the Files pane. */
+.tr-md .tr-file {
+	color: var(--accent);
+	cursor: pointer;
+	text-decoration: underline;
+	text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+	text-underline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+
+.tr-md .tr-file:hover {
+	text-decoration-color: var(--accent);
+}
+
+/* A code span keeps its pill; only its text takes the accent, and the underline shows on hover. */
+.tr-md .tr-file:has(> code) {
+	text-decoration-color: transparent;
+}
+
+.tr-md .tr-file:has(> code):hover {
+	text-decoration-color: var(--accent);
+}
+
+.tr-md .tr-file code {
+	color: var(--accent);
+}
+
 .tr-md code {
 	font-family: var(--font-mono);
 	font-size: 12.5px;

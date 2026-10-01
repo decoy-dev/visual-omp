@@ -5,17 +5,19 @@
 import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { ArrowDown, ArrowUUpLeft, CaretRight, Copy, GitFork, Warning, XCircle } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type MouseEvent, memo, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type MouseEvent, memo, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
+import { openInFiles } from "../../features/panes/FilesPane";
 import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
 import { liveEntries, liveGuest, type SessionController, type SessionView } from "../../state/session";
 import { useApp } from "../../state/app";
 import { activeBranch, savedParents } from "../../state/history";
-import { Markdown, StreamingMarkdown } from "../../transcript/Markdown";
+import { StreamingMarkdown } from "../../transcript/Markdown";
 import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toast, useMotionReduced } from "../../ui";
 import { useComposerDrafts } from "../composer/drafts";
+import { FileRefContext, LinkedMarkdown, useFileRefs, writtenFolders } from "./FileLinks";
 import { QuestionCard } from "./QuestionCard";
 import { ToolCard } from "./ToolCard";
 import { type PlayoutBlock, PlayoutRegistry, type Playout, revealedPrefix, synchronizedStream as streamNeedsSync, usePlayout } from "./pace";
@@ -163,6 +165,11 @@ function AssistantBlocks({
 	// The saved entry that replaces the stream row keeps revealing until the reveal catches up.
 	const revealing = pending || playout !== null;
 	let lastText = -1;
+	// A finished reply's file names become links; a growing stream is left alone until it ends.
+	const texts = message.content.flatMap(block => (block.type === "text" ? [block.text] : []));
+	const refs = useFileRefs(revealing ? null : message.timestamp, texts);
+	let textOrdinal = 0;
+	const textOrdinals = message.content.map(block => (block.type === "text" ? textOrdinal++ : -1));
 	for (const [index, block] of message.content.entries()) if (block.type === "text" && shownLength(playout, index, block.text.length) > 0) lastText = index;
 	const failed = !revealing && (message.stopReason === "error" || message.stopReason === "aborted");
 	return (
@@ -182,7 +189,7 @@ function AssistantBlocks({
 						const text = revealedPrefix(block.text, shown);
 						return (
 							<div key={index} className="py-1.5 first:pt-0 last:pb-0" data-streaming={revealing && index === lastText ? "" : undefined}>
-								{revealing ? <StreamingMarkdown text={text} /> : <Markdown text={text} />}
+								{revealing ? <StreamingMarkdown text={text} /> : <LinkedMarkdown text={text} refs={refs?.[textOrdinals[index]]} />}
 							</div>
 						);
 					}
@@ -485,13 +492,41 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
 	};
 
+	// File and folder links in replies (`FileLinks`) open in the Files pane, unless the click ended a text selection in them.
+	const openFileLink = (target: EventTarget) => {
+		const link = target instanceof Element ? target.closest<HTMLElement>("[data-file-path]") : null;
+		const path = link?.dataset.filePath;
+		if (!link || !path) return false;
+		const selection = window.getSelection();
+		if (!selection?.isCollapsed && selection?.containsNode(link, true)) return true;
+		openInFiles(session.projectPath, path, { focus: true });
+		return true;
+	};
+
 	const onClick = (event: MouseEvent<HTMLDivElement>) => {
+		if (openFileLink(event.target)) {
+			event.preventDefault();
+			return;
+		}
 		const anchor = event.target instanceof Element ? event.target.closest("a[href]") : null;
 		if (!anchor) return;
 		event.preventDefault();
 		const href = anchor.getAttribute("href");
 		if (href) void window.vomp.invoke("app:openExternal", href);
 	};
+
+	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+		if ((event.key !== "Enter" && event.key !== " ") || !(event.target instanceof HTMLElement) || !event.target.dataset.filePath) return;
+		event.preventDefault();
+		openFileLink(event.target);
+	};
+
+	// Relative names in replies are looked up in the chat's folder, then in folders omp wrote or edited files in.
+	const written = useMemo(() => writtenFolders(entries, session.projectPath).join("\0"), [entries, session.projectPath]);
+	const fileRefScope = useMemo(
+		() => ({ chat: session.tabId, bases: [session.projectPath, ...(written ? written.split("\0") : [])] }),
+		[session.tabId, session.projectPath, written],
+	);
 
 	// omp's first entries are session setup (model / thinking level); a chat is empty until someone talks.
 	const hasMessages = entries.some(
@@ -524,6 +559,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 			<div
 				ref={rootRef}
 				onClick={onClick}
+				onKeyDown={onKeyDown}
 				onScroll={() => {
 					const el = rootRef.current;
 					if (!el) return;
@@ -540,82 +576,84 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				aria-relevant="additions"
 			>
 				<PlayoutRegistry.Provider value={playouts}>
-					<div ref={contentRef} className="mx-auto flex min-h-full w-full max-w-(--chat-max) flex-col gap-6 px-6 pt-6 pb-4">
-						{empty && <EmptyChat session={session} />}
-						{start > 0 && (
-							<Button variant="ghost" size="sm" className="self-center" onClick={showEarlier}>
-								{t("showEarlier", { count: start })}
-							</Button>
-						)}
-						{visible.map((entry, index) => {
-							const isUser = (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
-							if (isUser) seenUser = true;
-							if (!rowShown(entry, mode, seenUser)) return null;
-							const isAssistant = entry.type === "message" && entry.message.role === "assistant";
-							const continuesTurn = isAssistant && previousAssistant;
-							previousAssistant = isAssistant;
-							const arrived = arrivals.armed && index > lastSeen && !arrivals.seen.has(entry.id) && !(isAssistant && arrivals.streamed);
-							return (
-								// Rows of one turn stack without the turn gap, so a run of tool calls reads as one list.
-								<Rise key={entry.id} data-row play={arrived} className={cn(continuesTurn && "-mt-6")}>
-									<Row
-										entry={entry}
-										continuesTurn={continuesTurn}
-										afterFirstPrompt={seenUser}
+					<FileRefContext.Provider value={fileRefScope}>
+						<div ref={contentRef} className="mx-auto flex min-h-full w-full max-w-(--chat-max) flex-col gap-6 px-6 pt-6 pb-4">
+							{empty && <EmptyChat session={session} />}
+							{start > 0 && (
+								<Button variant="ghost" size="sm" className="self-center" onClick={showEarlier}>
+									{t("showEarlier", { count: start })}
+								</Button>
+							)}
+							{visible.map((entry, index) => {
+								const isUser = (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
+								if (isUser) seenUser = true;
+								if (!rowShown(entry, mode, seenUser)) return null;
+								const isAssistant = entry.type === "message" && entry.message.role === "assistant";
+								const continuesTurn = isAssistant && previousAssistant;
+								previousAssistant = isAssistant;
+								const arrived = arrivals.armed && index > lastSeen && !arrivals.seen.has(entry.id) && !(isAssistant && arrivals.streamed);
+								return (
+									// Rows of one turn stack without the turn gap, so a run of tool calls reads as one list.
+									<Rise key={entry.id} data-row play={arrived} className={cn(continuesTurn && "-mt-6")}>
+										<Row
+											entry={entry}
+											continuesTurn={continuesTurn}
+											afterFirstPrompt={seenUser}
+											results={results}
+											active={activeTools}
+											mode={mode}
+											session={session}
+										/>
+									</Rise>
+								);
+							})}
+							{stream && (
+								<Rise data-row play={arrivals.armed && !arrivals.streamed} className={cn("flex flex-col gap-2", previousAssistant && "-mt-6")}>
+									{!previousAssistant && <AssistantHeader model={stream.model} />}
+									<AssistantBlocks
+										message={stream}
 										results={results}
 										active={activeTools}
+										pending={!streamDone}
 										mode={mode}
-										session={session}
+										revealFromStart={arrivals.armed}
+										synchronized={synchronized}
 									/>
 								</Rise>
-							);
-						})}
-						{stream && (
-							<Rise data-row play={arrivals.armed && !arrivals.streamed} className={cn("flex flex-col gap-2", previousAssistant && "-mt-6")}>
-								{!previousAssistant && <AssistantHeader model={stream.model} />}
-								<AssistantBlocks
-									message={stream}
-									results={results}
-									active={activeTools}
-									pending={!streamDone}
-									mode={mode}
-									revealFromStart={arrivals.armed}
-									synchronized={synchronized}
-								/>
-							</Rise>
-						)}
-						{tailTools.length > 0 && (
-							<div data-row className="-mt-6 flex flex-col">
-								{tailTools.map(tool => (
-									<ToolCard
-										key={tool.toolCallId}
-										name={tool.toolName}
-										args={tool.args}
-										intent={tool.intent}
-										running
-										partialResult={tool.partialResult}
-										verbose={mode === "verbose"}
-										arriving={arrivals.armed}
-									/>
-								))}
-							</div>
-						)}
-						<AnimatePresence initial={false} mode="wait">
-							{uiRequest && (
-								<motion.div
-									key={uiRequest.reqId}
-									initial={{ opacity: 0, y: 8 }}
-									animate={{ opacity: 1, y: 0, transition: { y: spring.gentle, opacity: { duration: duration.base, ease: ease.outQuart } } }}
-									exit={{ opacity: 0, y: -4, transition: { duration: duration.fast, ease: "easeIn" } }}
-								>
-									<QuestionCard session={session} request={uiRequest} />
-								</motion.div>
 							)}
-						</AnimatePresence>
-						{slots.map(slot => (
-							<slot.component key={slot.id} session={session} />
-						))}
-					</div>
+							{tailTools.length > 0 && (
+								<div data-row className="-mt-6 flex flex-col">
+									{tailTools.map(tool => (
+										<ToolCard
+											key={tool.toolCallId}
+											name={tool.toolName}
+											args={tool.args}
+											intent={tool.intent}
+											running
+											partialResult={tool.partialResult}
+											verbose={mode === "verbose"}
+											arriving={arrivals.armed}
+										/>
+									))}
+								</div>
+							)}
+							<AnimatePresence initial={false} mode="wait">
+								{uiRequest && (
+									<motion.div
+										key={uiRequest.reqId}
+										initial={{ opacity: 0, y: 8 }}
+										animate={{ opacity: 1, y: 0, transition: { y: spring.gentle, opacity: { duration: duration.base, ease: ease.outQuart } } }}
+										exit={{ opacity: 0, y: -4, transition: { duration: duration.fast, ease: "easeIn" } }}
+									>
+										<QuestionCard session={session} request={uiRequest} />
+									</motion.div>
+								)}
+							</AnimatePresence>
+							{slots.map(slot => (
+								<slot.component key={slot.id} session={session} />
+							))}
+						</div>
+					</FileRefContext.Provider>
 				</PlayoutRegistry.Provider>
 			</div>
 			<AnimatePresence initial={false}>
