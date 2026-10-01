@@ -4,7 +4,12 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-- The macOS app is now ad-hoc signed as a whole bundle. This fixes the invalid bundle signature in 0.2.0 that caused macOS to report quarantined copies as damaged. The app remains unnotarized; see the README for the **Open Anyway** instructions.
+## [0.2.1] - 2026-10-01
+
+visual-omp 0.2.1 fixes the macOS error that reported downloaded copies as damaged. This release changes nothing on Windows.
+
+- The macOS app is now ad-hoc signed as a whole bundle. 0.2.0 carried only the signature that Electron's linker adds, which fails the signature check macOS runs before a downloaded copy first opens, so copies installed through Homebrew or a browser download reported "visual-omp is damaged and can't be opened". The app is still not notarized, so the first launch asks for approval: open visual-omp, then click **Open Anyway** in **System Settings → Privacy & Security**.
+- If macOS reports your 0.2.0 copy as damaged, it cannot open to update itself. With Homebrew, run `brew update` and then `brew upgrade --cask visual-omp`. Otherwise, download the Apple Silicon or Intel disk image from this release and drag visual-omp to Applications.
 
 ## [0.2.0] - 2026-09-30
 
