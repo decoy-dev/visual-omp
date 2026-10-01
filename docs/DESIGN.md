@@ -238,7 +238,7 @@ Exits are shorter than entrances and use an ease-in (`cubic-bezier(0.4, 0, 1, 1)
 
 **Reduced motion** (`data-motion="reduced"`, or the OS setting when the app follows it): motion skips transform and layout animations and keeps opacity, so entrances become crossfades and indicators jump. CSS movement durations collapse to 0.01ms, and Radix surfaces switch to a `--dur-fade` crossfade. The working halo stops breathing, the pulse dot freezes at 60%, the streaming caret stops blinking, and skeletons hold a static fill.
 
-**No hidden content.** A reveal never hides content that would be visible without it, and two mechanisms guarantee it. `Stagger`, `Rise` and `FadeIn` read the app-settled flag: `MotionProvider` sets it after its first effect, and those components play an entrance only for content mounted after that, or when a caller passes `animateOnMount`. `Expand` and `PresenceSwap` do not read the flag. Their presence wrappers use `initial={false}` per instance (unless `animateOnMount` is set), so whatever they show when they mount renders at rest, and they animate only later open, close or swap changes. No entrance waits on scroll or viewport triggers.
+**No hidden content.** This rule applies to entrance animations. `Stagger`, `Rise` and `FadeIn` read the app-settled flag: `MotionProvider` sets it after its first effect, and those components play an entrance only for content mounted after that, or when a caller passes `animateOnMount`. `Expand` and `PresenceSwap` do not read the flag. Their presence wrappers use `initial={false}` per instance (unless `animateOnMount` is set), so whatever they show when they mount renders at rest, and they animate only later open, close or swap changes. No entrance waits on scroll or viewport triggers. Streaming pacing has an intentional bounded delay, targets 250ms while frames run, catches up immediately after delayed frames, and is bypassed under reduced motion.
 
 ### 1.13 Z-index layers
 
@@ -399,7 +399,7 @@ The window is frameless. The bar is a drag region with `no-drag` controls, fille
   - The **model chip** (`--hover` fill, `--fg` text) opens the model list (⌘⇧M).
   - The **mode chip** shows the permission level ("Ask me first", "Edits OK", "Auto") on `--hover` in `--fg-muted`. When a work mode is on it shows that mode on `--accent-muted` in `--accent`: "Plan", "Plan paused", "Goal", "Goal paused", "Vibe" or "Loop". Its menu has a "Permission level" radio group, then "Work modes": Plan mode and Vibe mode checkboxes, Set a goal…, Repeat a task…, and Toggle advisor.
   - While the chat is shared, a **"Shared" chip** with a dot appears (accent while live, warn otherwise). It opens the share dialog on the Invite tab.
-- **Buttons**: up to five ghost icon-and-label buttons, each with a tooltip that shows its hint and shortcut: Restart omp (`ArrowsClockwise`), Compact this chat (`ArrowsIn`), Plan mode (`ClipboardText`), Helpers (`Robot`) and Share chat… (`ShareNetwork`).
+- **Buttons**: up to five ghost icon-and-label buttons, each with a tooltip that shows its hint and shortcut: Restart omp (`ArrowsClockwise`), Compact this chat (`ArrowsIn`), Plan mode (`ClipboardText`), Helpers (`Robot`) and Share chat… (`ShareNetwork`). The header is a size container: below 66rem (an open dock, a split, a narrow window) the buttons become 32px icon buttons whose tooltip names them, so the header never pushes the chat column under the dock.
 - **⋯ "More actions"**:
   - First a "Transcript view" radio group (Normal, Thinking, Verbose).
   - Then every chat and mode command that is not already a header button, in registration order. Examples: Start new chat, Close chat, Start chat in folder…, Set a goal, Guided goal, Vibe mode, Repeat a task, Toggle advisor, Write a handoff, Run security scan, Cleanse project, Export chat, Rename chat, Stop turn (while working), Choose model, Open session tree and Fork chat.
@@ -444,8 +444,8 @@ The window is frameless. The bar is a drag region with `no-drag` controls, fille
 │ ⠿ also update the tests          Send message now   ✎   ×        │ 32px rows on --bg-inset
 │──────────────────────────────────────────────────────────────────│
 │ [▣ shot.png ×]                                                   │ attached images
-│ Ask omp to change something…                                ⌘↵   │ grows 24-200px
-│ ＋ ▭my-shop⌄ (Auto⌄) !Shell $Python      🎙 ◔ Sonnet 4.5⌄ Auto⌄ ↑ │ one 40px row
+│ Queue a message for when omp finishes this reply   [⌘↵] send now │ grows 24-200px
+│ ＋ ▭my-shop⌄ ⛉Edits OK⌄ !Shell $Python 🎙 ◔ Model name⌄ ✺High⌄ ■ ↑ │ one 40px row
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -455,19 +455,31 @@ The window is frameless. The bar is a drag region with `no-drag` controls, fille
 - **Attachments**: attached images show as 40px chips with a thumbnail, name and remove button.
 - **Text box**: `--text-base`, growing from 24 to 200px.
   - Placeholders: "Ask omp to change something…" when idle, "Queue a message for when omp finishes this reply" while working, and prompts for Shell and Python mode.
-  - A mono hint shows ⌘↵, or "⌘↵ send now" while working.
+  - A keycap hint (`Kbd`) shows ⌘↵, followed by "send now" in `--text-xs` `--fg-faint` while working. Its title explains that the message steers the running reply. A card narrower than 30rem (a container query, so it follows the text size) hides the hint to leave the text box its room.
   - `@` mentions are highlighted inline on `--accent-muted` in `--accent`.
-- **Bottom row**, left to right:
-  1. ＋ opens a menu: Attach file, Mention a file, Open prompt library, Browse skills, Browse custom commands.
-  2. The folder chip appears only before the first message; the folder can change until then.
-  3. The permission pill, a 28px pill: "Ask me first", "Edits OK" or "Auto · runs without asking". Its popover explains each level. The first switch to Auto asks for confirmation.
-  4. The Shell (!) and Python ($) toggles show `--accent-muted` fill when pressed.
+- **Bottom row**: one 40px line at the default text size (2.5rem, so 52px at 130%), with 8px side padding and 4px gaps. Every tool is a 28px ghost control (`--fg-muted`, `--hover` on hover, `--text-sm` 500 labels, 14px icons, 12px carets); the action slot holds the only filled 32px squares. The ＋ button and the action slot sit outside a tool strip that can only clip sideways, so they always keep their room. Left to right:
+  1. ＋ opens a menu: Attach file, Mention a file, Open prompt library, Browse skills, Browse custom commands. On a narrow card it also offers what the row folded away (see below).
+  2. The folder chip appears only before the first message; the folder can change until then. Its name truncates at 208px by design.
+  3. The permission button: a shield (`ShieldCheck`, or `ShieldWarning` for Auto) and the level, "Ask me first", "Edits OK" or "Auto", with "· runs without asking" after Auto while the row has room. Its tooltip is the current level's description and its popover explains each level. The first switch to Auto asks for confirmation.
+  4. The Shell (!) and Python ($) toggles show `--accent-muted` fill when pressed. Their tooltips name the mode with its glyph as the shortcut.
   5. Voice (recording shows `--err-bg` with a ping ring).
   6. The context ring (§5.17).
-  7. The model button (⌘⇧M).
-  8. The thinking-level button (⇧⇥).
-  9. While working, "Stop reply" (danger-ghost).
-  10. Send: a 32px `--accent` square with `ArrowUp`.
+  7. The model button (⌘⇧M). Its name truncates at 176px by design, and the tooltip carries the full name.
+  8. The thinking-level button (⇧⇥), `Brain` plus the level. Its tooltip names the level.
+  9. The action slot. While omp works it holds "Stop reply", a 32px `--err-bg` square with a filled `--err` `Square` glyph; on hover the square turns `--err` with a `--fg-inverse` glyph. Its tooltip reads "Stop reply · Esc". It is the only stop control, and the working row above the card carries status only. Send, a 32px `--accent` square with `ArrowUp`, shows when idle, and also while working once there is something to queue, so the slot never holds more than these two.
+- **Row compaction** (`ROW_TIERS` and `useRowTier` in `Composer.tsx`): the row uses the lowest tier at which every tool ends inside the strip and neither the folder name nor the model name is cut short of its own maximum width. Tiers depend on what the row holds (folder and model names, the permission level, voice, the ring and its label, the working state and draft), so a long model name compacts the row sooner than a short one. Each tier adds to the ones before it:
+  1. The permission button drops "· runs without asking".
+  2. Shell and Python show only their glyph.
+  3. Thinking shows only `Brain`.
+  4. Shell and Python leave the row; the ＋ menu lists them as "Shell command mode" and "Python mode" checkbox items.
+  5. The permission button and the idle mic leave the row; the ＋ menu adds "Dictate a message" and a "Permission level" submenu. The mic stays in the row while dictation is under way.
+  6. Thinking leaves the row; the ＋ menu adds a "Thinking" submenu.
+  7. The model button shows only `Cpu`, with the name in its tooltip.
+  8. Gaps and padding narrow to 2px and 6px, and the context ring drops its percentage label.
+  9. The context ring leaves the row. The status bar still shows context usage.
+  10. The model button leaves the row; the ＋ menu adds "Choose model" (⌘⇧M), and the picker still opens from the end of the row.
+
+  The tier is measured synchronously before paint, on mount, on card resize, and whenever the row's content changes (DOM changes in the tools, the action slot's size, which also follows the text size, and font loads). A card that narrows only climbs; a card that widens retries a lower tier only once it is wider than where that tier last failed, so the tier does not oscillate. At the last tier a long folder name still truncates rather than fold. In the harness checks for v0.3 (Chrome, 100% and 130% text size, cards of 760px and of the narrowest column: 220px at 100% and 206px at 130% for a 960px window with the 264px sidebar and a 420px dock), no tool reached past the strip and no control left the card in any tested state: a working chat with a draft, active dictation, 92% context, a new chat with a long folder name, and an idle chat. The tested states are listed here because combinations beyond them are measured at runtime, not guaranteed by fixed widths.
 - **Keys**:
   - Enter sends, or queues while working.
   - Shift+Enter adds a new line.
@@ -480,19 +492,27 @@ The window is frameless. The bar is a drag region with `no-drag` controls, fille
 ### 3.7 Right dock (420px default, drag 320-640px, ⌥⌘B toggles)
 
 - **Frame**: an `aside` labelled "Side panel" on `--panel` with a left hairline. It is closed by default.
-- **Tab strip**: 32px, with 28px tabs: Diff (`GitDiff`), Files (`TreeStructure`), Preview (`MonitorPlay`), Tasks (`ListChecks`), Plan (`ClipboardText`) and Terminal (`TerminalWindow`).
+- **Tab strip**: 32px, with 28px tabs: Diff (`GitDiff`), Files (`TreeStructure`), Preview (`MonitorPlay`), Outputs (`Images`), Tasks (`ListChecks`), Plan (`ClipboardText`) and Terminal (`TerminalWindow`).
   - The active tab has `--accent` text and a 2px accent underline that slides between tabs.
   - Tabs use a roving tab stop with manual activation.
   - Panes slide in from the side of the chosen tab.
   - A close button ("Close side panel") ends the strip.
 - **Badges**:
   - Diff: `+N −M` in the diff colors.
+  - Outputs: an accent count of outputs added or made again since the pane last showed this chat. Outputs that existed when the dock first listed the chat are not counted.
   - Tasks: an accent count pill of running helpers and jobs.
   - Plan: an accent "!" while a plan waits for a decision.
   - Terminal: a live dot while a command runs.
 - **Diff**: changes since the last commit, per file, with a hideable file list. Line comments are sent to omp together. "Review code" asks omp to review the changes (`/review`), and a file's changes can be discarded after a confirmation.
 - **Files**: the project tree and viewer tabs. ⌘-click or right-click mentions a file in chat; there are also Copy path and Show in folder.
 - **Preview**: back, forward, reload, an address field (local addresses and `https://` pages only) and "Open page in your browser". Links found in the chat are offered, and the empty state reads "Nothing to preview".
+- **Outputs**: the images and files omp made or viewed in the focused chat, read from the same entries as the transcript and listed newest first. A path appears once, at its newest use.
+  - Images come from image blocks in tool results (a `read` image keeps its path), `generate_image` results with their saved paths, and screenshots. A thumbnail with a path is read from disk when the pane opens and again whenever omp uses that file, so a re-rendered file shows its current state. Without a path, or when the file is gone, it uses the data in the tool result (omp's blob store for saved chats). When neither is available the thumbnail shows a broken-image glyph, and the larger view adds "This image could not be displayed."
+  - The images form a grid of 4:3 thumbnails with the file name below. The grid is a contact sheet for scanning renders side by side, which is why it is an intentional exception to the rule against identical card grids. Tiles stay flat: a hairline frame on `--bg-inset`, with no nested cards, shadows, gradients or eyebrow labels.
+  - Clicking a thumbnail opens a larger view in the pane with [Back to outputs] (Esc), Show in folder and Copy path, plus Open in default app for raster images.
+  - Files are the paths `write`, `edit` and `ast_edit` changed (a staged `ast_edit` preview counts once it is applied), in 30px rows with the name, the folder and "Edited 14:32" (the date alone for older outputs). The folder ellipsizes first and then the name; the full path is the row's tooltip. Clicking a row opens the file in the Files pane.
+  - File actions (Show in folder, Copy path and the right-click menu) need a path, so images that came only as data have none. Open in default app also needs an allowed raster image: main resolves symlinks and requires a regular file whose extension and leading bytes are PNG, JPEG, GIF, WebP, AVIF, BMP or ICO. SVG files are shown in the pane and open in the Files pane, never in another app, because SVG can carry script.
+  - The empty state reads "No outputs yet" and "Images and files omp makes or views in this chat appear here."
 - **Tasks**: the checklist, the helpers at work (helper definitions are managed in §4.14) and background jobs:
   - The checklist has a progress bar, and a highlight slides to the step in progress.
   - Helper rows use a letter avatar with a status dot.
@@ -629,14 +649,14 @@ A centered block up to 520px:
 │ ✎ Edited 2 files                          +9 −4  ✓  │
 │ ▭ Running npm test…                              ●  │ running: accent icon, pulse dot
 │                                                     │
-│ ● Working… 14s · Running npm test…      ■ Stop omp  │ working row above the composer
+│ ● Working… 14s · Running npm test…                  │ working row above the composer
 ```
 
 - **Working row**: while omp works it opens (with `Expand`) just above the composer.
   - It shows the accent pulse dot, "Working… {elapsed}", and the current step's summary, or "Thinking…" when no text is streaming.
-  - [Stop omp] sits on the right.
+  - It is status only. Stopping is the composer's action slot (§3.6), so a working chat shows one stop control.
   - It is not a live region, and the tab and sidebar row show the working mark.
-- **Streaming**: text streams with the 2px caret. Live tool rows rise in as they start; history renders at rest.
+- **Streaming**: omp's collab host sends a reply in bursts, so the newest text or thinking block reveals at a steady pace. The reveal targets 250ms per arrival while frames run, spread evenly between frames, and catches up immediately after a delayed frame. A stream that is first seen while the mirror synchronizes shows its current text in full, then paces new text; reduced motion always shows text as it arrives. Streamed Markdown renders one top-level block at a time (`MarkdownBlocks` in `transcript/render.ts`), so unchanged leading blocks keep their DOM nodes and a selection in them survives incremental updates. A later reference definition or math opener can change an earlier block and replace its nodes. Completion switches to the saved message's full-parse renderer, which may replace the stream DOM. A view pinned to the bottom follows growing text, while a view scrolled up holds still and shows "Show new activity". Live tool rows rise in as they start; history renders at rest.
 
 ### 4.7 Tool steps
 
@@ -935,7 +955,7 @@ Shown while omp is working. Motion is never the only signal: it always sits besi
 
 - **Surface form** (`Card working`, `.vo-working`, and `GlowBorder` for components such as the composer): the 1px border turns accent (a 60% mix) and a 3px accent halo with no blur breathes between 8% and 22% strength over 2s. It uses one color and no travelling gradient.
 - **Compact form** (`PulseDot`, `WorkingIndicator`): an 8px solid `--accent` dot pulsing 1 → 0.45 → 1 over 1.6s.
-- **Streaming caret**: a 2px `--accent` bar after streaming text, blinking at 1s.
+- **Streaming caret**: a 2px `--accent` bar after the last revealed character of streaming text, blinking at 1s.
 - **Reduced motion**: the halo holds still, the dot freezes at 60% opacity, and the caret stops blinking.
 
 ### 5.17 Context-usage ring

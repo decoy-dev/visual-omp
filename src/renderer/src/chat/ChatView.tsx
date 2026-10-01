@@ -1,4 +1,3 @@
-import { Square } from "@phosphor-icons/react";
 import { type ReactNode, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { chatSlots } from "../registry/slots";
@@ -105,8 +104,11 @@ function OwnerNotice({ session, view }: { session: SessionController; view: Sess
 	);
 }
 
-/** "Working… 14s · Running tests" pinned above the composer while omp works (DESIGN §4.6). Mounted only while working. */
-function WorkingRow({ session, view }: { session: SessionController; view: SessionView }): ReactNode {
+/**
+ * "Working… 14s · Running tests" pinned above the composer while omp works (DESIGN §4.6). Status only:
+ * stopping is the composer's action slot. Mounted only while working.
+ */
+function WorkingRow({ view }: { view: SessionView }): ReactNode {
 	const { t } = useTranslation(["chat", "tools"]);
 	const since = useRef(Date.now());
 	const now = useNow(1000);
@@ -115,12 +117,8 @@ function WorkingRow({ session, view }: { session: SessionController; view: Sessi
 	const activity = summary ? t(`tools:${summary.key}`, summary.values) : view.guest?.stream ? null : t("chat:thinking");
 	const time = elapsed(now - since.current);
 	return (
-		<div className="mx-auto flex w-full max-w-(--chat-max) items-center gap-3 px-6 pb-2">
+		<div className="mx-auto flex h-9 w-full max-w-(--chat-max) items-center px-6 pb-2">
 			<WorkingIndicator label={activity ? t("chat:workingActivity", { elapsed: time, activity }) : t("chat:working", { elapsed: time })} />
-			<div className="flex-1" />
-			<Button variant="ghost" size="sm" className="text-err" icon={<Square weight="fill" />} onClick={() => session.abort()}>
-				{t("chat:stop")}
-			</Button>
 		</div>
 	);
 }
@@ -151,7 +149,7 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 						<slot.component key={slot.id} session={session} />
 					))}
 				<Expand open={view.working}>
-					<WorkingRow session={session} view={view} />
+					<WorkingRow view={view} />
 				</Expand>
 				<div data-tour="composer" className="mx-auto w-full max-w-[calc(var(--chat-max)+48px)] px-6 pb-4">
 					<Composer session={session} />

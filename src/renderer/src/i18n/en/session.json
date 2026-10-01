@@ -43,7 +43,6 @@
   },
   "thinking": {
     "title": "Thinking",
-    "tooltip": "Choose how long the model reasons before it answers.",
     "unsupported": "This model has no thinking levels.",
     "aria": "Thinking level: {{level}}",
     "failed": "omp could not switch to that thinking level.",

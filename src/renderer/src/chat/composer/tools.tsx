@@ -1,6 +1,7 @@
 /**
  * The composer's own bottom-row tools, contributed through `chatSlots` like any feature's:
  * Shell `!` / Python `$` quick modes (order 30), voice (50, VoiceTool.tsx) and the context ring (60).
+ * They compact with the card's row tiers (Composer.tsx `ROW_TIERS`, DESIGN §3.6).
  */
 import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
@@ -9,7 +10,8 @@ import { Button, cn, ContextRing, contextZone, Popover, PopoverContent, PopoverT
 import { type ComposerMode, useComposerDrafts } from "./drafts";
 import { VoiceTool } from "./VoiceTool";
 
-const MODES: Array<{ mode: ComposerMode; glyph: string }> = [
+/** The quick modes and the glyph that enters each one; the ＋ menu lists them when the row folds them away. */
+export const QUICK_MODES: ReadonlyArray<{ mode: ComposerMode; glyph: string }> = [
 	{ mode: "shell", glyph: "!" },
 	{ mode: "python", glyph: "$" },
 ];
@@ -19,11 +21,11 @@ function ModeToggles({ session }: ChatSlotProps) {
 	const active = useComposerDrafts(state => state.modes[session.tabId] ?? null);
 	const readOnly = useSyncExternalStore(session.subscribe, () => session.getSnapshot().readOnly);
 	return (
-		<div className="flex items-center gap-0.5">
-			{MODES.map(({ mode, glyph }) => {
+		<div className="flex shrink-0 items-center gap-0.5 group-data-fold-modes/composer:hidden">
+			{QUICK_MODES.map(({ mode, glyph }) => {
 				const pressed = active === mode;
 				return (
-					<Tooltip key={mode} content={t(`modes.${mode}.tip`)}>
+					<Tooltip key={mode} content={t(`modes.${mode}.label`)} shortcut={glyph}>
 						<button
 							type="button"
 							aria-pressed={pressed}
@@ -35,13 +37,15 @@ function ModeToggles({ session }: ChatSlotProps) {
 								store.focus(session.tabId);
 							}}
 							className={cn(
-								"inline-flex h-7 items-center gap-1 rounded-md px-2 font-mono text-sm font-semibold outline-none transition-colors duration-(--dur-fast)",
+								"inline-flex h-7 min-w-7 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium outline-none transition-colors duration-(--dur-fast) group-data-compact-modes/composer:px-0",
 								"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45",
 								pressed ? "bg-accent-muted text-accent" : "text-fg-muted enabled:hover:bg-hover enabled:hover:text-fg",
 							)}
 						>
-							{glyph}
-							<span className="font-sans text-xs font-medium">{t(`modes.${mode}.short`)}</span>
+							<span aria-hidden className="font-mono font-semibold">
+								{glyph}
+							</span>
+							<span className="group-data-compact-modes/composer:hidden">{t(`modes.${mode}.short`)}</span>
 						</button>
 					</Tooltip>
 				);
@@ -66,9 +70,9 @@ function ContextTool({ session }: ChatSlotProps) {
 					<button
 						type="button"
 						aria-label={t("context.label", { percent })}
-						className="inline-flex h-7 items-center rounded-md px-1.5 outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+						className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md px-1 outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring group-data-fold-ring/composer:hidden"
 					>
-						<ContextRing value={usage.percent} showLabel={zone !== "normal"} />
+						<ContextRing value={usage.percent} showLabel={zone !== "normal"} className="group-data-tight/composer:[&>span]:hidden" />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>

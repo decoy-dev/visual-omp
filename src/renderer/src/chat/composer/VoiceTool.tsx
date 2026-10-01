@@ -13,6 +13,7 @@ import { CircleNotch, Microphone, Square } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
+import { create } from "zustand";
 import type { ChatSlotProps } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
@@ -20,6 +21,18 @@ import { Button, cn, Dialog, DialogContent, spring, toast, Tooltip } from "../..
 import { runInTerminal } from "../../features/panes/terminal";
 import { useComposerDrafts } from "./drafts";
 import { whenLive } from "./send";
+
+interface VoiceRequests {
+	/** Tab whose dictation should start, bumped per request. */
+	start: { tabId: string; seq: number } | null;
+	requestStart(tabId: string): void;
+}
+
+/** Start requests from the composer's ＋ menu, which offers dictation while the row folds the mic away. */
+export const useVoiceRequests = create<VoiceRequests>()(set => ({
+	start: null,
+	requestStart: tabId => set(state => ({ start: { tabId, seq: (state.start?.seq ?? 0) + 1 } })),
+}));
 
 type VoiceState = "idle" | "starting" | "recording" | "transcribing";
 
@@ -142,6 +155,15 @@ export function VoiceTool({ session }: ChatSlotProps) {
 		}
 	};
 
+	// A ＋ menu request starts dictation here. Requests made before this mic mounted are not replayed.
+	const startRequest = useVoiceRequests(store => store.start);
+	const handled = useRef(startRequest?.seq ?? 0);
+	useEffect(() => {
+		if (!startRequest || startRequest.seq === handled.current) return;
+		handled.current = startRequest.seq;
+		if (startRequest.tabId === session.tabId && state === "idle") onClick();
+	});
+
 	const enable = async () => {
 		setConsent(false);
 		try {
@@ -169,9 +191,11 @@ export function VoiceTool({ session }: ChatSlotProps) {
 					disabled={readOnly || busy}
 					onClick={onClick}
 					className={cn(
-						"relative inline-flex size-7 items-center justify-center rounded-md outline-none transition-colors duration-(--dur-fast)",
+						"relative inline-flex size-7 shrink-0 items-center justify-center rounded-md outline-none transition-colors duration-(--dur-fast)",
 						"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45",
 						recording ? "bg-err-bg text-err" : "text-fg-muted enabled:hover:bg-hover enabled:hover:text-fg",
+						// Folded into the ＋ menu on a narrow card, except while dictation is under way.
+						state === "idle" && "group-data-fold-tools/composer:hidden",
 					)}
 				>
 					{recording && <span aria-hidden className="vo-ping absolute inset-0 rounded-md ring-2 ring-err" />}

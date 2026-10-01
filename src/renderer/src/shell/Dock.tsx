@@ -8,7 +8,7 @@ import { cn, IconButton, PresenceSwap, spring } from "../ui";
 import { moveTabFocus, useSessionView } from "./hooks";
 
 /**
- * Right dock with registered panes: Diff · Files · Preview · Tasks · Plan · Terminal (DESIGN §3.7). The pane tabs are a
+ * Right dock with registered panes: Diff · Files · Preview · Outputs · Tasks · Plan · Terminal (DESIGN §3.7). The pane tabs are a
  * WAI-ARIA tablist with manual activation: arrows, Home and End move focus; Enter or Space shows the pane.
  */
 export function Dock({ width }: { width: number }): ReactNode {

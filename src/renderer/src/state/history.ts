@@ -21,20 +21,66 @@ interface TreeNode {
 	parentId?: string | null;
 }
 
-/** Entries on the branch ending at `leafId` (default: the last entry), root → leaf. Unknown leaf → all entries. */
-export function activeBranch<T extends TreeNode>(entries: readonly T[], leafId?: string | null): T[] {
+/** Parent ids from a saved session file (id → parent id), for crossing entries the live stream leaves out. */
+export type SavedParents = ReadonlyMap<string, string | null>;
+
+const savedParentsCache = new WeakMap<readonly TreeEntry[], SavedParents>();
+
+/** Every saved entry's parent id, cached per loaded history. */
+export function savedParents(history: SessionHistory | null | undefined): SavedParents | undefined {
+	if (!history) return undefined;
+	let parents = savedParentsCache.get(history.all);
+	if (!parents) {
+		parents = new Map(history.all.map(entry => [entry.id, entry.parentId ?? null]));
+		savedParentsCache.set(history.all, parents);
+	}
+	return parents;
+}
+
+/**
+ * Entries on the branch ending at `leafId` (default: the last entry), root → leaf. Unknown leaf → all entries.
+ *
+ * omp's live stream replicates only some entry types, so a parent can be missing: omp's `custom`
+ * bookkeeping (`tool_execution_start` between a tool call and its result, title changes) never
+ * reaches the app. A missing parent is bridged to its nearest ancestor the stream does carry:
+ * - through `saved` (the session file's parent ids) when the missing entry was already saved;
+ * - otherwise by inference. omp appends every entry as a child of the current leaf, so the entry
+ *   that arrived just before the missing entry's first child is that nearest ancestor. This holds
+ *   for a linear chat and for a branch resumed at a missing entry that already had a child. It can
+ *   still pick the wrong branch, for example when omp moved the leaf to a missing entry that was not
+ *   saved yet and had no carried child.
+ */
+export function activeBranch<T extends TreeNode>(entries: readonly T[], leafId?: string | null, saved?: SavedParents): T[] {
 	if (entries.length === 0) return [];
-	const byId = new Map<string, T>();
-	for (const entry of entries) byId.set(entry.id, entry);
-	const leaf = leafId ? byId.get(leafId) : entries.at(-1);
-	if (!leaf) return [...entries];
+	const indexById = new Map<string, number>();
+	entries.forEach((entry, index) => indexById.set(entry.id, index));
+	const firstChild = new Map<string, number>();
+	entries.forEach((entry, index) => {
+		const parent = entry.parentId;
+		if (parent && !indexById.has(parent) && !firstChild.has(parent)) firstChild.set(parent, index);
+	});
+	/** Index of the nearest carried ancestor of the missing entry `id`, reached from `from`; -1 at the root. */
+	const bridge = (id: string, from: number): number => {
+		let cursor: string | null = id;
+		const visited = new Set<string>();
+		while (cursor && saved?.has(cursor) && !visited.has(cursor)) {
+			visited.add(cursor);
+			cursor = saved.get(cursor) ?? null;
+			const carried = cursor ? indexById.get(cursor) : undefined;
+			if (carried !== undefined) return carried;
+		}
+		if (!cursor) return -1;
+		return (firstChild.get(cursor) ?? from) - 1;
+	};
+	let index = leafId ? indexById.get(leafId) : entries.length - 1;
+	if (index === undefined) return [...entries];
 	const path: T[] = [];
-	const seen = new Set<string>();
-	let cursor: T | undefined = leaf;
-	while (cursor && !seen.has(cursor.id)) {
-		seen.add(cursor.id);
-		path.push(cursor);
-		cursor = cursor.parentId ? byId.get(cursor.parentId) : undefined;
+	const seen = new Set<number>();
+	for (let entry = entries[index]; entry && !seen.has(index); entry = entries[index]) {
+		seen.add(index);
+		path.push(entry);
+		if (!entry.parentId) break;
+		index = indexById.get(entry.parentId) ?? bridge(entry.parentId, index);
 	}
 	return path.reverse();
 }

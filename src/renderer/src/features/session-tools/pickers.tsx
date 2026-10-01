@@ -1,9 +1,10 @@
 /**
- * Composer bottom-row pickers (permission pill, model, thinking) and the session-header model + mode
- * chips (DESIGN §3.4, §3.6). Each change goes through omp and is confirmed from omp's own state.
+ * Composer bottom-row pickers (permission button, model, thinking) and the session-header model + mode
+ * chips (DESIGN §3.4, §3.6). Each change goes through omp and is confirmed from omp's own state. The
+ * composer pickers compact with the card's row steps (`group-data-*` variants on `group/composer`).
  */
 import type { ApprovalMode, ModelInfo } from "@shared/contracts/config";
-import { Brain, CaretDown, Check, Eye } from "@phosphor-icons/react";
+import { Brain, CaretDown, Check, Cpu, Eye, ShieldCheck, ShieldWarning } from "@phosphor-icons/react";
 import { motion } from "motion/react";
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,6 +20,7 @@ import {
 	MenuRadioGroup,
 	MenuRadioItem,
 	MenuSeparator,
+	MenuSub,
 	MenuTrigger,
 	Popover,
 	PopoverContent,
@@ -112,26 +114,32 @@ function PermissionOptions({ cwd, mode, onPicked }: { cwd: string; mode: Approva
 	);
 }
 
+/** Ghost 28px control shared by the composer's labelled pickers. */
+const rowPicker = cn(
+	"inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-fg-muted",
+	"transition-colors duration-(--dur-fast) enabled:hover:bg-hover enabled:hover:text-fg data-[state=open]:bg-hover data-[state=open]:text-fg",
+	"disabled:cursor-not-allowed disabled:opacity-45",
+	focusRing,
+);
+
 export function PermissionPill({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
 	const { mode, error } = useApprovalMode(session.projectPath);
 	const [open, setOpen] = useState(false);
+	const Shield = mode === "yolo" ? ShieldWarning : ShieldCheck;
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<Tooltip content={t("permission.tooltip")}>
+			<Tooltip content={mode ? t(`permission.modes.${mode}.description`) : t("permission.tooltip")}>
 				<PopoverTrigger asChild>
 					<button
 						type="button"
 						aria-label={t("permission.aria", { mode: mode ? t(`permission.modes.${mode}.label`) : t("common.loading") })}
-						className={cn(
-							"inline-flex h-7 shrink-0 items-center gap-1.5 rounded-full border border-border bg-hover px-3 text-sm font-medium text-fg",
-							"transition-colors duration-(--dur-fast) hover:border-border-strong data-[state=open]:border-border-strong",
-							focusRing,
-						)}
+						className={cn(rowPicker, "shrink-0 group-data-fold-tools/composer:hidden")}
 					>
-						{mode ? t(`permission.modes.${mode}.label`) : <Spinner size={12} tone="current" />}
-						{mode === "yolo" && <span className="text-fg-muted">· {t("permission.autoNote")}</span>}
-						<CaretDown className="size-3.5 text-fg-muted" aria-hidden />
+						{mode ? <Shield className="size-3.5 shrink-0" aria-hidden /> : <Spinner size={12} tone="current" />}
+						{mode && <span>{t(`permission.modes.${mode}.label`)}</span>}
+						{mode === "yolo" && <span className="text-fg-faint group-data-compact-pill/composer:hidden">· {t("permission.autoNote")}</span>}
+						<CaretDown className="size-3 shrink-0" aria-hidden />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
@@ -142,6 +150,29 @@ export function PermissionPill({ session }: ChatSlotProps) {
 				<p className="mt-2 border-t border-border px-2 pt-2 text-xs text-fg-faint">{error ?? t("permission.scopeNote")}</p>
 			</PopoverContent>
 		</Popover>
+	);
+}
+
+/** The permission levels as a submenu of the composer's ＋ menu, for a card too narrow for the button. */
+export function PermissionSubmenu({ session }: ChatSlotProps) {
+	const { t } = useTranslation("session");
+	const { mode } = useApprovalMode(session.projectPath);
+	return (
+		<MenuSub label={t("permission.title")} icon={mode === "yolo" ? <ShieldWarning /> : <ShieldCheck />}>
+			<MenuRadioGroup
+				value={mode ?? ""}
+				onValueChange={value => {
+					const next = APPROVAL_MODES.find(option => option === value);
+					if (next) void choosePermission(session.projectPath, next, mode);
+				}}
+			>
+				{APPROVAL_MODES.map(option => (
+					<MenuRadioItem key={option} value={option}>
+						{t(`permission.modes.${option}.label`)}
+					</MenuRadioItem>
+				))}
+			</MenuRadioGroup>
+		</MenuSub>
 	);
 }
 
@@ -309,21 +340,27 @@ export function ModelButton({ session }: ChatSlotProps) {
 	useEffect(() => {
 		if (request?.tabId === session.tabId) setOpen(true);
 	}, [request, session.tabId]);
+	const name = model?.name ?? t("model.none");
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<Tooltip content={t("model.tooltip")} shortcut="⌘⇧M">
+			{/* The composer row may truncate the name or show only the icon, so the tooltip carries the name in full. */}
+			<Tooltip content={t("model.aria", { name })} shortcut="⌘⇧M">
 				<PopoverTrigger asChild>
 					<button
 						type="button"
-						aria-label={t("model.aria", { name: model?.name ?? t("model.none") })}
+						aria-label={t("model.aria", { name })}
 						className={cn(
-							"inline-flex h-7 max-w-44 shrink-0 items-center gap-1 rounded-md px-2 text-md font-medium text-fg-muted",
-							"transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg data-[state=open]:bg-hover data-[state=open]:text-fg",
-							focusRing,
+							rowPicker,
+							"min-w-7 max-w-44 group-data-compact-model/composer:w-7 group-data-compact-model/composer:justify-center group-data-compact-model/composer:px-0",
+							// Folded into the ＋ menu: a zero-width, invisible anchor so the picker still opens at the row's end.
+							"group-data-fold-model/composer:invisible group-data-fold-model/composer:-ml-0.5 group-data-fold-model/composer:max-w-0 group-data-fold-model/composer:min-w-0 group-data-fold-model/composer:overflow-hidden",
 						)}
 					>
-						<span className="truncate">{model?.name ?? t("model.none")}</span>
-						<CaretDown className="size-3.5 shrink-0" aria-hidden />
+						<Cpu className="hidden size-4 shrink-0 group-data-compact-model/composer:block" aria-hidden />
+						<span data-row-label className="truncate group-data-compact-model/composer:hidden">
+							{name}
+						</span>
+						<CaretDown className="size-3 shrink-0 group-data-compact-model/composer:hidden" aria-hidden />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
@@ -371,23 +408,22 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 		if (ok) setOpen(false);
 		else toast({ tone: "warn", message: t("thinking.failed") });
 	};
+	const label = t("thinking.aria", { level: level ? t(`thinking.levels.${level}.label`) : t("common.unknown") });
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			<Tooltip content={disabled ? t("thinking.unsupported") : t("thinking.tooltip")} shortcut="⇧⇥">
+			<Tooltip content={disabled ? t("thinking.unsupported") : label} shortcut="⇧⇥">
 				<PopoverTrigger asChild disabled={disabled}>
 					<button
 						type="button"
-						aria-label={t("thinking.aria", { level: level ? t(`thinking.levels.${level}.label`) : t("common.unknown") })}
+						aria-label={label}
 						className={cn(
-							"inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-md font-medium text-fg-muted",
-							"transition-colors duration-(--dur-fast) enabled:hover:bg-hover enabled:hover:text-fg data-[state=open]:bg-hover data-[state=open]:text-fg",
-							"disabled:cursor-not-allowed disabled:opacity-45",
-							focusRing,
+							rowPicker,
+							"shrink-0 group-data-compact-thinking/composer:w-7 group-data-compact-thinking/composer:justify-center group-data-compact-thinking/composer:px-0 group-data-fold-thinking/composer:hidden",
 						)}
 					>
-						<Brain className="size-3.5" aria-hidden />
-						<span>{level ? t(`thinking.levels.${level}.label`) : t("thinking.title")}</span>
-						<CaretDown className="size-3.5" aria-hidden />
+						<Brain className="size-3.5 shrink-0 group-data-compact-thinking/composer:size-4" aria-hidden />
+						<span className="group-data-compact-thinking/composer:hidden">{level ? t(`thinking.levels.${level}.label`) : t("thinking.title")}</span>
+						<CaretDown className="size-3 shrink-0 group-data-compact-thinking/composer:hidden" aria-hidden />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
@@ -419,6 +455,35 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 				</div>
 			</PopoverContent>
 		</Popover>
+	);
+}
+
+/** The thinking levels as a submenu of the composer's ＋ menu, for a row too narrow for the button. */
+export function ThinkingSubmenu({ session }: ChatSlotProps) {
+	const { t } = useTranslation("session");
+	const level = useThinking(session);
+	const info = useCurrentModelInfo(session);
+	const choices = thinkingChoices(info);
+	const options = choices.length > 0 ? choices : level ? [level] : [];
+	return (
+		<MenuSub label={t("thinking.title")} icon={<Brain />} disabled={info !== undefined && choices.length === 0}>
+			<MenuRadioGroup
+				value={level ?? ""}
+				onValueChange={value => {
+					const target = options.find(option => option === value);
+					if (!target || target === level) return;
+					void setThinking(session, target, choices).then(ok => {
+						if (!ok) toast({ tone: "warn", message: t("thinking.failed") });
+					});
+				}}
+			>
+				{options.map(choice => (
+					<MenuRadioItem key={choice} value={choice}>
+						{t(`thinking.levels.${choice}.label`)}
+					</MenuRadioItem>
+				))}
+			</MenuRadioGroup>
+		</MenuSub>
 	);
 }
 

@@ -7,6 +7,7 @@
  * an app-side queue the user can edit; they go out one at a time when omp yields, or immediately
  * (steering the current turn) with "Send now".
  */
+import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { FollowState, HostState, SessionOwnership } from "@shared/ipc";
 import { GuestClient, type GuestSnapshot } from "../collab/lib/client";
 import { extendSessionHistory, parseSessionHistory, type SessionHistory } from "./history";
@@ -35,7 +36,29 @@ export interface SessionView {
 	ownerUnverified: boolean;
 	/** Leaf to display after a rewind/tree move until omp appends the next entry (omp sends no frame for leaf moves). */
 	displayLeaf: string | null;
+	/**
+	 * The previous room's entries while a new room (after /restart, /new or a session switch) downloads
+	 * its snapshot; null once the new room has synced. Display only: questions and running tools always
+	 * come from the current room.
+	 */
+	carryover: readonly SessionEntry[] | null;
 	error: string | null;
+}
+
+/**
+ * The live mirror once it can stand in for what is on screen: its snapshot arrived (possibly empty,
+ * after /new) or it holds entries. A newly joined room holds none until omp's snapshot finishes
+ * downloading (a large chat takes seconds), so until then the previous room's entries or the saved
+ * history stay visible. A mirror that reconnects keeps its entries.
+ */
+export function liveGuest(view: SessionView | null | undefined): GuestSnapshot | null {
+	const guest = view?.guest;
+	return guest && guest.phase !== "connecting" && (guest.phase === "live" || guest.entries.length > 0) ? guest : null;
+}
+
+/** Live entries to show (all branches): the synced mirror's, else the previous room's. Null: show the saved history. */
+export function liveEntries(view: SessionView | null | undefined): readonly SessionEntry[] | null {
+	return liveGuest(view)?.entries ?? view?.carryover ?? null;
 }
 
 export type SessionEvent =
@@ -98,6 +121,7 @@ export class SessionController {
 			follow: null,
 			ownerUnverified: false,
 			displayLeaf: null,
+			carryover: null,
 			error: null,
 		};
 	}
@@ -288,11 +312,14 @@ export class SessionController {
 
 	#openGuest(link: string): void {
 		if (this.#disposed) return;
+		// The new room shows nothing until its snapshot arrives; keep the current entries on screen meanwhile.
+		const carryover = liveEntries(this.#view);
 		this.#closeGuest();
 		this.#guestLink = link;
 		const guest = new GuestClient(link, "visual-omp");
 		this.#guest = guest;
 		this.#unsubscribeGuest = guest.subscribe(() => this.#onGuest(guest.getSnapshot()));
+		if (carryover !== this.#view.carryover) this.#set({ carryover });
 		guest.connect();
 	}
 
@@ -331,7 +358,10 @@ export class SessionController {
 		const hadRequest = this.#view.guest?.uiRequest?.reqId;
 		const working = snapshot.working;
 		const appended = snapshot.entries.length > (this.#view.guest?.entries.length ?? 0);
-		this.#set({ guest: snapshot, working, ...(appended ? { displayLeaf: null } : {}) });
+		const patch: Partial<SessionView> = { guest: snapshot, working, ...(appended ? { displayLeaf: null } : {}) };
+		// The new room has synced, even to an empty chat after /new: stop showing the previous room's entries.
+		if (this.#view.carryover && liveGuest({ ...this.#view, ...patch })) patch.carryover = null;
+		this.#set(patch);
 		if (!this.#sessionFile && !this.#resolvingFile && snapshot.entries.length !== this.#resolvedAtEntries) {
 			this.#resolvedAtEntries = snapshot.entries.length;
 			void this.#resolveSessionFile();

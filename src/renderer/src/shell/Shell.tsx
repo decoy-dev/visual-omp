@@ -143,7 +143,7 @@ export function Shell(): ReactNode {
 						aria-labelledby={showChat && activeTabId ? chatTabId(activeTabId) : undefined}
 						className="flex min-h-0 flex-1"
 					>
-						<PresenceSwap swapKey={showChat ? "chat" : "home"} variant="rise" className="flex min-h-0 flex-1">
+						<PresenceSwap swapKey={showChat ? "chat" : "home"} variant="rise" className="flex min-h-0 min-w-0 flex-1">
 							{showChat ? <ChatArea /> : <HomeView />}
 						</PresenceSwap>
 					</div>

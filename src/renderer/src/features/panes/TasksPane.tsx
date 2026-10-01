@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import type { GuestSnapshot } from "../../collab/lib/client";
 import type { PaneProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
-import type { SessionController } from "../../state/session";
+import { liveEntries, type SessionController } from "../../state/session";
 import { parseSessionHistory } from "../../state/history";
 import { Markdown } from "../../transcript/Markdown";
 import {
@@ -34,7 +34,7 @@ import {
 	StatusDot,
 	toast,
 } from "../../ui";
-import { listRowMotion } from "./common";
+import { listRowMotion, Section } from "./common";
 import { type BackgroundJob, backgroundJobs, latestTodo, type TodoPhase, type TodoStatus } from "./derive";
 
 // ── helpers model ───────────────────────────────────────────────────────────────────────────────
@@ -134,18 +134,6 @@ function formatTokens(tokens: number): string {
 }
 
 // ── sections ────────────────────────────────────────────────────────────────────────────────────
-
-function Section({ title, count, children }: { title: string; count?: ReactNode; children: ReactNode }) {
-	return (
-		<section className="border-b border-border px-3 py-3" aria-label={title}>
-			<h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-fg">
-				{title}
-				{count}
-			</h3>
-			{children}
-		</section>
-	);
-}
 
 const TASK_ICON: Record<TodoStatus, ReactNode> = {
 	completed: <Check className="size-3.5 text-ok" weight="bold" aria-hidden />,
@@ -474,7 +462,7 @@ export function TasksPane({ session }: PaneProps) {
 	const { t } = useTranslation("panes");
 	const view = useSessionView(session);
 	const [transcriptOf, setTranscriptOf] = useState<Helper | null>(null);
-	const entries = view?.guest?.entries ?? view?.history?.entries;
+	const entries = liveEntries(view) ?? view?.history?.entries;
 	const activeTools = view?.guest?.activeTools;
 	const phases = useMemo(() => (entries ? latestTodo(entries) : null), [entries]);
 	const jobs = useMemo(() => (entries ? backgroundJobs(entries, activeTools) : []), [entries, activeTools]);

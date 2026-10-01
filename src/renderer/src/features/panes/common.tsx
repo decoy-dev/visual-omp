@@ -37,6 +37,19 @@ export function PaneToolbar({ children, className }: { children: ReactNode; clas
 	);
 }
 
+/** Titled pane section with a bottom hairline (Tasks, Outputs); `count` follows the title. */
+export function Section({ title, count, children }: { title: string; count?: ReactNode; children: ReactNode }) {
+	return (
+		<section className="border-b border-border px-3 py-3" aria-label={title}>
+			<h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-fg">
+				{title}
+				{count}
+			</h3>
+			{children}
+		</section>
+	);
+}
+
 export interface StripTab {
 	id: string;
 	label: string;

@@ -4,6 +4,13 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- A live chat no longer drops its earlier messages partway through a reply. omp's live stream leaves out the bookkeeping entries it writes between a tool call and its result, and the app treated each gap as the start of the chat, so the transcript often showed only the reply in progress. The app now keeps earlier messages visible when the live stream omits intermediate entries.
+- The transcript no longer goes blank while omp connects. The first message sent into a saved chat, and commands that reconnect the chat to omp such as `/restart`, used to clear the transcript until omp finished sending the chat again; the messages already on screen now stay until the new copy arrives.
+- Replies and thinking now appear at a steady pace while omp streams them, instead of in bursts. Text that has arrived shows within about a quarter of a second, and **Reduce motion** turns the pacing off. Earlier paragraphs of a streaming reply keep their place as it grows, so text in them can be selected while omp is still writing.
+- While omp works there is one stop button, in the composer where the send button sits, and the status row above the composer only reports progress. The composer's bottom row now fits the chat's width: as the chat narrows, controls shorten to an icon first and then move into the ＋ menu, and the send and stop buttons always stay in view.
+- A new **Outputs** tab in the side panel collects the images and files omp made or viewed in the chat, newest first. An image whose file still exists loads from disk, so a file omp rewrote shows its latest version, and the larger view can open an image in its default app, show it in its folder or copy its path. Files open in the **Files** tab.
+- The chat header shows its buttons as icons when the chat is narrow, so opening the side panel no longer pushes the chat underneath it.
+
 ## [0.2.1] - 2026-10-01
 
 visual-omp 0.2.1 fixes the macOS error that reported downloaded copies as damaged. This release changes nothing on Windows.

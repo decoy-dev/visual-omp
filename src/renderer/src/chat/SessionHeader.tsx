@@ -1,5 +1,5 @@
 import { ChatCenteredText, DotsThree } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { type CommandSpec, useCommands } from "../registry/commands";
 import { chatSlots } from "../registry/slots";
@@ -26,7 +26,10 @@ const MAX_HEADER_BUTTONS = 5;
 const OVERFLOW_GROUPS: ReadonlySet<CommandSpec["group"]> = new Set(["chat", "modes"]);
 const TRANSCRIPT_MODES: readonly TranscriptMode[] = ["normal", "thinking", "verbose"];
 
-/** 48px chat header (DESIGN §3.4): title, chips from features, up to 5 command buttons, overflow ⋯. */
+/**
+ * 48px chat header (DESIGN §3.4): title, chips from features, up to 5 command buttons, overflow ⋯. The header
+ * is a size container, so a narrow chat (an open dock, a split) shows the buttons as icons with tooltips.
+ */
 export function SessionHeader({ session, view, fallbackTitle }: { session: SessionController; view: SessionView; fallbackTitle: string | null }): ReactNode {
 	const { t } = useTranslation(["chat", "shell"]);
 	const commands = useCommands();
@@ -43,7 +46,7 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 	const title = chatTitle(view, fallbackTitle) ?? t("shell:tabs.newChatTitle");
 
 	return (
-		<div className="flex h-(--header-h) shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
+		<div className="@container/header flex h-(--header-h) shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
 			<ChatCenteredText className="size-4 shrink-0 text-fg-muted" aria-hidden />
 			<PresenceSwap swapKey={title} variant="rise" className="min-w-0">
 				<h1 className="truncate text-[15px] font-semibold text-fg" title={title}>
@@ -59,12 +62,24 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 			<div className="flex items-center gap-0.5">
 				{buttons.map(command => {
 					const Icon = command.icon;
-					return (
-						<Tooltip key={command.id} content={t(command.hint ?? command.title)} shortcut={command.shortcut}>
-							<Button variant="ghost" size="sm" icon={Icon ? <Icon /> : undefined} onClick={() => void command.run(ctx)}>
-								{t(command.title)}
+					const label = t(command.title);
+					const run = () => void command.run(ctx);
+					const labelled = (
+						<Tooltip content={t(command.hint ?? command.title)} shortcut={command.shortcut}>
+							<Button variant="ghost" size="sm" icon={Icon ? <Icon /> : undefined} onClick={run}>
+								{label}
 							</Button>
 						</Tooltip>
+					);
+					if (!Icon) return <Fragment key={command.id}>{labelled}</Fragment>;
+					// The wrappers own the display switch, so the buttons' own display classes cannot override it.
+					return (
+						<Fragment key={command.id}>
+							<span className="hidden @min-[66rem]/header:contents">{labelled}</span>
+							<span className="contents @min-[66rem]/header:hidden">
+								<IconButton label={label} shortcut={command.shortcut} icon={<Icon />} size="md" onClick={run} />
+							</span>
+						</Fragment>
 					);
 				})}
 				<Menu>

@@ -1,88 +1,45 @@
-import { Marked } from "@oh-my-pi/pi-utils/marked";
 import type { ReactNode } from "react";
-import { memo, useMemo } from "react";
-import { escapeHtml } from "../collab/lib/format";
-import { mathExtension } from "./math";
-
-function unescapeHtml(raw: string): string {
-	const parseCodePoint = (value: number): string => {
-		if (Number.isFinite(value) && value >= 0 && value <= 0x10ffff) {
-			try {
-				return String.fromCodePoint(value);
-			} catch {}
-		}
-		return "";
-	};
-
-	return raw.replace(/&(amp|lt|gt|quot|apos|nbsp|#\d+|#x[0-9a-fA-F]+);/gi, (match, entity) => {
-		const lower = entity.toLowerCase();
-		switch (lower) {
-			case "nbsp":
-				return " ";
-			case "lt":
-				return "<";
-			case "gt":
-				return ">";
-			case "quot":
-				return '"';
-			case "apos":
-				return "'";
-			case "amp":
-				return "&";
-			default: {
-				if (lower.startsWith("#x")) {
-					return parseCodePoint(Number.parseInt(lower.slice(2), 16));
-				}
-				if (lower.startsWith("#")) {
-					return parseCodePoint(Number(lower.slice(1)));
-				}
-				return match;
-			}
-		}
-	});
-}
-function safeHref(href: string): string | null {
-	const trimmed = href.trim();
-	let protocol: string;
-	try {
-		// Resolve the scheme exactly as the browser will: the URL parser strips leading
-		// C0 controls and embedded tab/newline that a text check would carry through.
-		({ protocol } = new URL(trimmed, "https://relative.invalid/"));
-	} catch {
-		return null;
-	}
-	if (protocol === "https:" || protocol === "http:" || protocol === "mailto:") return trimmed;
-	return null; // unknown scheme (javascript:, data:, …)
-}
-
-const md = new Marked({
-	gfm: true,
-	renderer: {
-		// Raw HTML tokens (block + inline both arrive here) are escaped, never emitted.
-		html({ text }) {
-			const cleaned = text.replace(/<\/?(?:advisory|span|text)\b(?:\s[^>]*)?\s*\/?>/gi, "");
-			if (cleaned === "") return "";
-			return escapeHtml(unescapeHtml(cleaned));
-		},
-		link({ href, title, tokens }) {
-			const inner = this.parser.parseInline(tokens);
-			const url = safeHref(href);
-			if (url === null) return inner;
-			const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
-			return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener">${inner}</a>`;
-		},
-	},
-	breaks: true,
-});
-md.use(mathExtension);
+import { memo, useLayoutEffect, useMemo, useRef } from "react";
+import { MarkdownBlocks, renderMarkdown } from "./render";
 
 export const Markdown = memo(function Markdown({ text }: { text: string }): ReactNode {
-	const html = useMemo(() => {
-		try {
-			return md.parse(text, { async: false });
-		} catch {
-			return escapeHtml(text);
-		}
-	}, [text]);
+	const html = useMemo(() => renderMarkdown(text), [text]);
 	return <div className="tr-md" dangerouslySetInnerHTML={{ __html: html }} />;
 });
+
+interface MountedBlock {
+	key: string;
+	nodes: ChildNode[];
+}
+
+/**
+ * Markdown for a message that is still streaming. It renders the same HTML as {@link Markdown},
+ * but each top-level block owns its own DOM nodes: an update replaces only the blocks whose
+ * source changed (usually the last one), so finished blocks keep their layout and any text
+ * selection in them. The nodes sit directly in `.tr-md`, so the transcript CSS and the
+ * streaming caret apply exactly as they do to a saved message.
+ */
+export function StreamingMarkdown({ text }: { text: string }): ReactNode {
+	const ref = useRef<HTMLDivElement | null>(null);
+	const renderer = useRef<MarkdownBlocks | null>(null);
+	const mounted = useRef<MountedBlock[]>([]);
+	useLayoutEffect(() => {
+		const root = ref.current;
+		if (!root) return;
+		renderer.current ??= new MarkdownBlocks();
+		const blocks = renderer.current.render(text);
+		const previous = mounted.current;
+		let kept = 0;
+		while (kept < previous.length && kept < blocks.length && previous[kept]?.key === blocks[kept]?.key) kept++;
+		for (const block of previous.slice(kept)) for (const node of block.nodes) node.remove();
+		const next = previous.slice(0, kept);
+		const template = document.createElement("template");
+		for (const block of blocks.slice(kept)) {
+			template.innerHTML = block.html;
+			next.push({ key: block.key, nodes: [...template.content.childNodes] });
+			root.append(template.content);
+		}
+		mounted.current = next;
+	}, [text]);
+	return <div ref={ref} className="tr-md" />;
+}

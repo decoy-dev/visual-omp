@@ -1,12 +1,13 @@
 /**
  * The chat composer (DESIGN §3.6): a floating card with the queued-messages tray, image attachments,
- * an auto-growing text box with `@file` mentions, and one bottom row of tools.
+ * an auto-growing text box with `@file` mentions, and one bottom row of tools that ends in the action
+ * slot (stop while omp works, send when there is something to send).
  *
  * Keys: Enter sends (queued while omp works), Shift+Enter adds a line, ⌘/Ctrl+Enter sends now (steers
  * the running turn), Esc stops omp when the box is empty. Typing `!` or `$` into an empty box switches
  * to the Shell / Python quick mode, like omp's own editor; Backspace in an empty box leaves it.
  */
-import { ArrowUp, At, BookBookmark, Command, GraduationCap, ImageSquare, Lock, Paperclip, Plus, Square, X } from "@phosphor-icons/react";
+import { ArrowUp, At, BookBookmark, Command, Cpu, GraduationCap, ImageSquare, Lock, Microphone, Paperclip, Plus, Square, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import {
 	type ClipboardEvent,
@@ -24,16 +25,18 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { PermissionSubmenu, ThinkingSubmenu, usePickerRequests } from "../../features/session-tools/pickers";
 import { chatSlots } from "../../registry/slots";
 import type { SessionController } from "../../state/session";
 import {
-	Button,
 	cn,
 	duration,
 	ease,
 	Expand,
 	IconButton,
+	Kbd,
 	Menu,
+	MenuCheckboxItem,
 	MenuContent,
 	MenuItem,
 	MenuSeparator,
@@ -49,12 +52,107 @@ import { MentionPicker, useProjectFiles } from "./MentionPicker";
 import { type LibraryTab, PromptLibrary } from "./PromptLibrary";
 import { applyMode, deliver } from "./send";
 import { QueueTray } from "./QueueTray";
-import "./tools";
+import { QUICK_MODES } from "./tools";
+import { useVoiceRequests } from "./VoiceTool";
 
 const MIN_HEIGHT = 24;
 const MAX_HEIGHT = 200;
 const EMPTY: readonly Attachment[] = [];
 const IS_MAC = window.vomp.platform === "darwin";
+
+/**
+ * Bottom-row compaction tiers (DESIGN §3.6), in the order they apply: tier n sets the first n data
+ * attributes on the card, and the row's tools (including feature slots) read them through
+ * `group-data-<tier>/composer` variants. Tiers change only CSS, never the row's DOM, so measuring a
+ * tier cannot trigger another measurement.
+ */
+const ROW_TIERS = [
+	"data-compact-pill", // the permission button drops "runs without asking"
+	"data-compact-modes", // Shell and Python show only their glyph
+	"data-compact-thinking", // thinking shows only its icon
+	"data-fold-modes", // Shell and Python move into the ＋ menu
+	"data-fold-tools", // permission and the idle mic move into the ＋ menu
+	"data-fold-thinking", // thinking moves into the ＋ menu
+	"data-compact-model", // the model button shows only its icon
+	"data-tight", // narrower gaps and padding; the context ring drops its label
+	"data-fold-ring", // the context ring leaves the row (the status bar still shows usage)
+	"data-fold-model", // the model button moves into the ＋ menu; its picker opens at the row's end
+] as const;
+
+/**
+ * The tools fit when every tool's layout box ends inside the strip's content box and no `data-row-label`
+ * is squeezed below its control's own max width. Layout boxes (offset*) ignore transforms, so the mic's
+ * ping ring and press feedback never count as overflow the way they would in `scrollWidth`.
+ */
+function toolsFit(tools: HTMLElement): boolean {
+	// offset* values are whole pixels; the 1px allowance stays inside the strip's padding, so nothing is clipped.
+	const end = tools.offsetLeft + tools.clientWidth - Number.parseFloat(getComputedStyle(tools).paddingRight) + 1;
+	for (const tool of tools.children) {
+		if (tool instanceof HTMLElement && tool.offsetParent && tool.offsetLeft + tool.offsetWidth > end) return false;
+	}
+	for (const label of tools.querySelectorAll<HTMLElement>("[data-row-label]")) {
+		if (label.scrollWidth <= label.clientWidth) continue;
+		const control = label.closest("button") ?? label;
+		// A label cut at its control's max width is by design; a narrower control means the row is short of room.
+		if (!(control.offsetWidth >= Number.parseFloat(getComputedStyle(control).maxWidth) - 1)) return false;
+	}
+	return true;
+}
+
+/**
+ * Applies the lowest tier at which the tools fit, measuring synchronously so no frame shows a crowded
+ * row. It settles from tier 0 again when the row's content changes (DOM mutations in the tools, the
+ * action slot's size, which also follows the text size, and font loads). When the card narrows it only
+ * climbs; when it widens it retries a lower tier once the card is wider than where that tier last
+ * failed, so the tier cannot oscillate. Returns the tier so the ＋ menu can offer what was folded away.
+ */
+function useRowTier(card: HTMLElement | null, tools: HTMLElement | null, actions: HTMLElement | null): number {
+	const [tier, setTier] = useState(0);
+	useLayoutEffect(() => {
+		if (!card || !tools || !actions) return;
+		/** Card width at which each tier last failed to fit. */
+		let failedAt: number[] = [];
+		let current = 0;
+		let width = card.offsetWidth;
+		const settle = (from: number) => {
+			let next = from;
+			for (;;) {
+				ROW_TIERS.forEach((attr, index) => card.toggleAttribute(attr, index < next));
+				if (next === ROW_TIERS.length || toolsFit(tools)) break;
+				failedAt[next] = width;
+				next++;
+			}
+			current = next;
+			setTier(next);
+		};
+		const restart = () => {
+			failedAt = [];
+			settle(0);
+		};
+		restart();
+		const resize = new ResizeObserver(entries => {
+			if (entries.some(entry => entry.target === actions)) return restart();
+			const next = card.offsetWidth;
+			if (next === width) return;
+			const grew = next > width;
+			width = next;
+			let from = current;
+			while (grew && from > 0 && width > (failedAt[from - 1] ?? 0)) from--;
+			settle(from);
+		});
+		resize.observe(card);
+		resize.observe(actions);
+		const mutations = new MutationObserver(restart);
+		mutations.observe(tools, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class"] });
+		document.fonts.addEventListener("loadingdone", restart);
+		return () => {
+			resize.disconnect();
+			mutations.disconnect();
+			document.fonts.removeEventListener("loadingdone", restart);
+		};
+	}, [card, tools, actions]);
+	return tier;
+}
 
 /** Textarea and its highlight mirror must lay text out identically. */
 const textLayout =
@@ -169,6 +267,10 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	if (attachments.length > 0 && !chipsHeld) setChipsHeld(true);
 
 	const [root, setRoot] = useState<HTMLDivElement | null>(null);
+	const [card, setCard] = useState<HTMLDivElement | null>(null);
+	const [toolRow, setToolRow] = useState<HTMLDivElement | null>(null);
+	const [actions, setActions] = useState<HTMLDivElement | null>(null);
+	const tier = useRowTier(card, toolRow, actions);
 	const textarea = useRef<HTMLTextAreaElement>(null);
 	const mirror = useRef<HTMLDivElement>(null);
 	const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
@@ -366,6 +468,10 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const questionId = view.guest?.uiRequest?.reqId ?? null;
 	const leftTools = tools.filter(slot => slot.order < 50);
 	const rightTools = tools.filter(slot => slot.order >= 50);
+	const foldModes = tier > ROW_TIERS.indexOf("data-fold-modes");
+	const foldTools = tier > ROW_TIERS.indexOf("data-fold-tools");
+	const foldThinking = tier > ROW_TIERS.indexOf("data-fold-thinking");
+	const foldModel = tier > ROW_TIERS.indexOf("data-fold-model");
 
 	return (
 		<div ref={setRoot} className="relative mx-auto w-full max-w-[760px]">
@@ -385,7 +491,13 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					</div>,
 					dropColumn,
 				)}
-			<div className={cn("rounded-xl border border-border-strong bg-panel shadow-(--shadow-composer)", readOnly && "bg-inset")}>
+			<div
+				ref={setCard}
+				className={cn(
+					"group/composer @container/composer rounded-xl border border-border-strong bg-panel shadow-(--shadow-composer)",
+					readOnly && "bg-inset",
+				)}
+			>
 				<QueueTray session={session} queue={view.queue} questionId={questionId} />
 				<Expand open={chipsHeld}>
 					<ul aria-label={t("attach.label")} className="relative flex flex-wrap gap-1.5 px-3 pt-3">
@@ -483,20 +595,24 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 							/>
 						</div>
 						{!readOnly && (
-							<kbd className="mt-0.5 hidden shrink-0 font-mono text-xs leading-[22px] text-fg-faint sm:block" title={t("send.nowTip")}>
-								{working ? `${mod}↵ ${t("send.nowShort")}` : `${mod}↵`}
-							</kbd>
+							<span
+								title={t("send.nowTip")}
+								className="mt-0.5 flex h-[22px] shrink-0 items-center gap-1.5 text-xs text-fg-faint @max-[30rem]/composer:hidden"
+							>
+								<Kbd>{`${mod}↵`}</Kbd>
+								{working && <span>{t("send.nowShort")}</span>}
+							</span>
 						)}
 					</div>
 				</div>
-				<div className="relative flex h-10 items-center gap-1 px-2 pb-1.5">
+				<div className="relative flex h-10 items-center gap-1 px-2 pb-1.5 group-data-tight/composer:gap-0.5 group-data-tight/composer:px-1.5">
 					<Menu>
 						<Tooltip content={t("plus.tip")}>
 							<MenuTrigger asChild disabled={readOnly}>
 								<button
 									type="button"
 									aria-label={t("plus.label")}
-									className="inline-flex size-7 items-center justify-center rounded-md text-fg-muted outline-none transition-colors hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45 data-[state=open]:bg-selected"
+									className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-fg-muted outline-none transition-colors hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45 data-[state=open]:bg-selected"
 								>
 									<Plus className="size-4" aria-hidden />
 								</button>
@@ -509,6 +625,41 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 							<MenuItem icon={<At />} onSelect={() => requestAnimationFrame(startMention)}>
 								{t("plus.mention")}
 							</MenuItem>
+							{foldTools && (
+								<MenuItem icon={<Microphone />} onSelect={() => useVoiceRequests.getState().requestStart(tabId)}>
+									{t("voice.start")}
+								</MenuItem>
+							)}
+							{foldModes && (
+								<>
+									<MenuSeparator />
+									{QUICK_MODES.map(({ mode: quick, glyph }) => (
+										<MenuCheckboxItem
+											key={quick}
+											checked={mode === quick}
+											shortcut={glyph}
+											onSelect={() => {
+												useComposerDrafts.getState().setMode(tabId, mode === quick ? null : quick);
+												requestAnimationFrame(() => textarea.current?.focus());
+											}}
+										>
+											{t(`modes.${quick}.label`)}
+										</MenuCheckboxItem>
+									))}
+								</>
+							)}
+							{(foldTools || foldThinking || foldModel) && <MenuSeparator />}
+							{foldTools && <PermissionSubmenu session={session} />}
+							{foldModel && (
+								<MenuItem
+									icon={<Cpu />}
+									shortcut="⌘⇧M"
+									onSelect={() => requestAnimationFrame(() => usePickerRequests.getState().openModel(tabId))}
+								>
+									{t("plus.model")}
+								</MenuItem>
+							)}
+							{foldThinking && <ThinkingSubmenu session={session} />}
 							<MenuSeparator />
 							<MenuItem icon={<BookBookmark />} onSelect={() => setLibrary("saved")}>
 								{t("plus.library")}
@@ -521,53 +672,73 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 							</MenuItem>
 						</MenuContent>
 					</Menu>
-					{leftTools.map(slot => (
-						<slot.component key={slot.id} session={session} />
-					))}
-					<div className="flex-1" />
-					{rightTools.map(slot => (
-						<slot.component key={slot.id} session={session} />
-					))}
-					<AnimatePresence initial={false} mode="popLayout">
-						{working && (
-							<motion.span
-								key="stop"
-								layout="position"
-								initial={{ opacity: 0, scale: 0.9 }}
-								animate={{ opacity: 1, scale: 1 }}
-								exit={{ opacity: 0, scale: 0.9, transition: { duration: duration.fast, ease: "easeIn" } }}
-								transition={spring.snappy}
-								className="inline-flex"
-							>
-								<Button size="sm" variant="danger-ghost" icon={<Square weight="fill" />} title={t("send.stopTip")} onClick={() => session.abort()}>
-									{t("send.stop")}
-								</Button>
-							</motion.span>
-						)}
-						{(!working || canSend) && (
-							<motion.span
-								key="send"
-								layout="position"
-								initial={{ opacity: 0, scale: 0.9 }}
-								animate={{ opacity: 1, scale: 1 }}
-								exit={{ opacity: 0, scale: 0.9, transition: { duration: duration.fast, ease: "easeIn" } }}
-								transition={spring.snappy}
-								className="inline-flex"
-							>
-								<Tooltip content={working ? t("send.queueTip") : t("send.tip")} shortcut="↵">
-									<button
-										type="button"
-										aria-label={working ? t("send.queue") : t("send.label")}
-										disabled={!canSend}
-										onClick={() => submit(false)}
-										className="ml-1 inline-flex size-8 items-center justify-center rounded-md bg-accent text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale,opacity] duration-(--dur-fast) enabled:hover:bg-accent-hover enabled:active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45"
-									>
-										<ArrowUp className="size-4" aria-hidden />
-									</button>
-								</Tooltip>
-							</motion.span>
-						)}
-					</AnimatePresence>
+					{/*
+					 * Every tool, including feature slots, in one strip that can only clip sideways, so the ＋ button and
+					 * the action slot always keep their room. Its 4px padding (cancelled by the margin) keeps focus rings
+					 * inside the clip. useRowTier makes sure nothing is clipped short of the last tier.
+					 */}
+					<div
+						ref={setToolRow}
+						className="-mx-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-clip px-1 group-data-tight/composer:-mx-0.5 group-data-tight/composer:gap-0.5 group-data-tight/composer:px-0.5"
+					>
+						{leftTools.map(slot => (
+							<slot.component key={slot.id} session={session} />
+						))}
+						{/* The spacer's negative margin cancels one gap, so it costs nothing when the row is full. */}
+						<div className="-ml-1 flex-1 group-data-tight/composer:-ml-0.5" />
+						{rightTools.map(slot => (
+							<slot.component key={slot.id} session={session} />
+						))}
+					</div>
+					<div ref={setActions} className="relative ml-1 flex shrink-0 items-center gap-1 group-data-tight/composer:ml-0.5">
+						<AnimatePresence initial={false} mode="popLayout">
+							{working && (
+								<motion.span
+									key="stop"
+									layout="position"
+									initial={{ opacity: 0, scale: 0.9 }}
+									animate={{ opacity: 1, scale: 1 }}
+									exit={{ opacity: 0, scale: 0.9, transition: { duration: duration.fast, ease: "easeIn" } }}
+									transition={spring.snappy}
+									className="inline-flex"
+								>
+									<Tooltip content={t("send.stop")} shortcut="Esc">
+										<button
+											type="button"
+											aria-label={t("send.stop")}
+											onClick={() => session.abort()}
+											className="inline-flex size-8 items-center justify-center rounded-md bg-err-bg text-err outline-none transition-[background-color,color,scale] duration-(--dur-fast) hover:bg-err hover:text-fg-inverse active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+										>
+											<Square weight="fill" className="size-3.5" aria-hidden />
+										</button>
+									</Tooltip>
+								</motion.span>
+							)}
+							{(!working || canSend) && (
+								<motion.span
+									key="send"
+									layout="position"
+									initial={{ opacity: 0, scale: 0.9 }}
+									animate={{ opacity: 1, scale: 1 }}
+									exit={{ opacity: 0, scale: 0.9, transition: { duration: duration.fast, ease: "easeIn" } }}
+									transition={spring.snappy}
+									className="inline-flex"
+								>
+									<Tooltip content={working ? t("send.queueTip") : t("send.tip")} shortcut="↵">
+										<button
+											type="button"
+											aria-label={working ? t("send.queue") : t("send.label")}
+											disabled={!canSend}
+											onClick={() => submit(false)}
+											className="inline-flex size-8 items-center justify-center rounded-md bg-accent text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale,opacity] duration-(--dur-fast) enabled:hover:bg-accent-hover enabled:active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45"
+										>
+											<ArrowUp className="size-4" aria-hidden />
+										</button>
+									</Tooltip>
+								</motion.span>
+							)}
+						</AnimatePresence>
+					</div>
 				</div>
 			</div>
 			<PromptLibrary

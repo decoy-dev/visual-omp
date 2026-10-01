@@ -5,6 +5,7 @@
 		"preview": "Preview",
 		"tasks": "Tasks",
 		"plan": "Plan",
+		"outputs": "Outputs",
 		"terminal": "Terminal"
 	},
 	"commands": {
@@ -13,6 +14,7 @@
 		"preview": { "title": "Show preview", "hint": "Open your running site or app in a panel beside the chat.", "keywords": "preview, browser, dev server, localhost" },
 		"tasks": { "title": "Show tasks and helpers", "hint": "See omp's checklist, its helpers, and background jobs.", "keywords": "tasks, todo, checklist, subagents, helpers, jobs" },
 		"plan": { "title": "Show plan", "hint": "Read the plan omp wrote for this chat.", "keywords": "plan, plan mode" },
+		"outputs": { "title": "Show outputs", "hint": "See the images and files omp made or viewed in this chat.", "keywords": "outputs, images, screenshots, renders, generated, files, written" },
 		"terminal": { "title": "Show terminal", "hint": "Run your own commands in this project.", "keywords": "terminal, shell, console, command line" },
 		"newShell": { "title": "Open a terminal", "hint": "Start another shell in this project.", "keywords": "terminal, shell, new, console" }
 	},
@@ -164,6 +166,35 @@
 		"approveHint": "omp starts working on this plan.",
 		"options": "See all options",
 		"optionsHint": "Opens omp's terminal to refine the plan, keep or compact the context, or save it for later."
+	},
+	"outputs": {
+		"noChatTitle": "No chat open",
+		"noChat": "Open a chat to see the images and files omp makes in it.",
+		"emptyTitle": "No outputs yet",
+		"empty": "Images and files omp makes or views in this chat appear here.",
+		"images": "Images",
+		"files": "Files",
+		"openImage": "Open {{name}}",
+		"back": "Back to outputs",
+		"openDefault": "Open in default app",
+		"openFailed": "Couldn't open the image",
+		"loading": "Loading image…",
+		"unavailable": "This image could not be displayed.",
+		"inline": {
+			"generated": "Generated image",
+			"browser": "Browser screenshot",
+			"screenshot": "Screenshot",
+			"other": "Image"
+		},
+		"when": {
+			"written": "Written {{time}}",
+			"edited": "Edited {{time}}",
+			"viewed": "Viewed {{time}}",
+			"generated": "Generated {{time}}",
+			"captured": "Captured {{time}}"
+		},
+		"newCount_one": "{{count}} new output",
+		"newCount_other": "{{count}} new outputs"
 	},
 	"terminal": {
 		"emptyTitle": "No terminal open",

@@ -10,20 +10,23 @@ import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
 import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
-import type { SessionController, SessionView } from "../../state/session";
+import { liveEntries, liveGuest, type SessionController, type SessionView } from "../../state/session";
 import { useApp } from "../../state/app";
-import { activeBranch } from "../../state/history";
-import { Markdown } from "../../transcript/Markdown";
+import { activeBranch, savedParents } from "../../state/history";
+import { Markdown, StreamingMarkdown } from "../../transcript/Markdown";
 import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toast, useMotionReduced } from "../../ui";
 import { useComposerDrafts } from "../composer/drafts";
 import { QuestionCard } from "./QuestionCard";
 import { ToolCard } from "./ToolCard";
+import { synchronizedStream as streamNeedsSync, usePacedText } from "./pace";
 import "./transcript.css";
 
 export type TranscriptMode = "normal" | "thinking" | "verbose";
 
 const WINDOW = 120;
 const EARLIER_TRIGGER_PX = 240;
+/** How close to the bottom still counts as pinned there, so the view keeps following new content. */
+const PINNED_PX = 48;
 const EMPTY_TOOLS: ReadonlyMap<string, ActiveTool> = new Map();
 
 function textOfContent(content: string | readonly (TextContent | ImageContent)[]): string {
@@ -97,10 +100,26 @@ function UserMessage({ entry, session, from }: { entry: SessionEntry; session: S
 	);
 }
 
-function ThinkingBlock({ text, redacted, open: forcedOpen }: { text: string; redacted?: boolean; open: boolean }): ReactNode {
+function ThinkingBlock({
+	text,
+	redacted,
+	open: forcedOpen,
+	live = false,
+	revealFromStart = false,
+	synchronized = false,
+}: {
+	text: string;
+	redacted?: boolean;
+	open: boolean;
+	live?: boolean;
+	revealFromStart?: boolean;
+	synchronized?: boolean;
+}): ReactNode {
 	const { t } = useTranslation("chat");
 	const [open, setOpen] = useState(false);
 	const visible = forcedOpen || open;
+	// Collapsed thoughts have nothing to pace, so opening them mid-stream shows what has arrived.
+	const shown = usePacedText(text, live && visible && !synchronized, revealFromStart);
 	return (
 		<div>
 			<button
@@ -113,10 +132,28 @@ function ThinkingBlock({ text, redacted, open: forcedOpen }: { text: string; red
 				{redacted ? t("redactedThinking") : t("thoughts")}
 			</button>
 			<Expand open={visible && !redacted} className="selectable pt-0.5 pb-2 pl-5 text-sm whitespace-pre-wrap text-fg-muted">
-				{text}
+				{shown}
 			</Expand>
 		</div>
 	);
+}
+
+/** A text block of the reply. While the reply streams it renders block by block, and the growing block is paced. */
+function TextBlock({
+	text,
+	pending,
+	live,
+	revealFromStart,
+	synchronized,
+}: {
+	text: string;
+	pending: boolean;
+	live: boolean;
+	revealFromStart: boolean;
+	synchronized: boolean;
+}): ReactNode {
+	const shown = usePacedText(text, live && !synchronized, revealFromStart);
+	return pending ? <StreamingMarkdown text={shown} /> : <Markdown text={shown} />;
 }
 
 function AssistantBlocks({
@@ -125,28 +162,45 @@ function AssistantBlocks({
 	active,
 	pending,
 	mode,
+	revealFromStart = false,
+	synchronized = false,
 }: {
 	message: AssistantMessage;
 	results: ReadonlyMap<string, ToolResultMessage>;
 	active: ReadonlyMap<string, ActiveTool>;
 	pending: boolean;
 	mode: TranscriptMode;
+	/** Where a block that starts streaming while mounted begins its reveal (see `usePacedText`). */
+	revealFromStart?: boolean;
+	/** The live mirror is synchronizing with an existing stream, rather than receiving new text. */
+	synchronized?: boolean;
 }): ReactNode {
 	const { t } = useTranslation("chat");
 	const lastText = message.content.reduce((last, block, index) => (block.type === "text" ? index : last), -1);
+	// Only the newest block is still growing; earlier ones are finished and show in full.
+	const streamingIndex = pending ? message.content.length - 1 : -1;
 	const failed = !pending && (message.stopReason === "error" || message.stopReason === "aborted");
 	return (
 		<div className="flex flex-col">
 			{message.content.map((block, index) => {
 				switch (block.type) {
 					case "thinking":
-						return <ThinkingBlock key={index} text={block.thinking} open={mode !== "normal"} />;
+						return (
+							<ThinkingBlock
+								key={index}
+								text={block.thinking}
+								open={mode !== "normal"}
+								live={index === streamingIndex}
+								revealFromStart={revealFromStart}
+								synchronized={synchronized}
+							/>
+						);
 					case "redactedThinking":
 						return <ThinkingBlock key={index} text="" redacted open={false} />;
 					case "text":
 						return (
 							<div key={index} className="py-1.5 first:pt-0 last:pb-0" data-streaming={pending && index === lastText ? "" : undefined}>
-								<Markdown text={block.text} />
+								<TextBlock text={block.text} pending={pending} live={index === streamingIndex} revealFromStart={revealFromStart} synchronized={synchronized} />
 							</div>
 						);
 					case "toolCall": {
@@ -346,18 +400,25 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const { t } = useTranslation("chat");
 	const reducedMotion = useMotionReduced();
 	const slots = chatSlots.use().filter(slot => slot.placement === "transcriptEnd");
-	const guest = view.guest;
-	const live = guest !== null && guest.phase !== "connecting";
+	const guest = liveGuest(view);
 	// The live stream carries every branch; show the one ending at the leaf (after a rewind, the displayed leaf).
-	const guestEntries = live ? guest.entries : null;
+	const guestEntries = liveEntries(view);
 	const entries = useMemo(
-		() => (guestEntries ? activeBranch(guestEntries, view.displayLeaf) : (view.history?.entries ?? [])),
+		() => (guestEntries ? activeBranch(guestEntries, view.displayLeaf, savedParents(view.history)) : (view.history?.entries ?? [])),
 		[guestEntries, view.displayLeaf, view.history],
 	);
-	const stream = live ? guest.stream : null;
-	const streamDone = guest?.streamDone ?? true;
-	const activeTools = live ? guest.activeTools : EMPTY_TOOLS;
-	const uiRequest = live ? guest.uiRequest : null;
+	const stream = guest?.stream ?? null;
+	const streamDone = view.guest?.streamDone ?? true;
+	const activeTools = guest?.activeTools ?? EMPTY_TOOLS;
+	const uiRequest = guest?.uiRequest ?? null;
+
+	// A stream present at first synchronization, or while reconnecting, is already in progress.
+	// Keep its current text visible, then pace updates once the mirror is live.
+	const previousGuestPhase = useRef<string | null>(null);
+	const synchronized = stream !== null && streamNeedsSync(view.guest?.phase ?? null, previousGuestPhase.current);
+	useEffect(() => {
+		previousGuestPhase.current = view.guest?.phase ?? null;
+	}, [view.guest?.phase]);
 
 	const [pinnedStart, setPinnedStart] = useState<number | null>(null);
 	const tailStart = Math.max(0, entries.length - WINDOW);
@@ -385,6 +446,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	);
 
 	const rootRef = useRef<HTMLDivElement | null>(null);
+	const contentRef = useRef<HTMLDivElement | null>(null);
 	const lockRef = useRef(true);
 	const [unseen, setUnseen] = useState(false);
 	const prependRef = useRef<{ anchor: Element; offset: number } | null>(null);
@@ -396,12 +458,27 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		else setUnseen(true);
 	}, [entries, stream, activeTools, uiRequest, view.working]);
 
+	// A paced reply grows between those updates, and so do expanding cards, so a view pinned to
+	// the bottom also follows the content column's own growth. Scrolled up, it stays put.
+	useEffect(() => {
+		const el = rootRef.current;
+		const content = contentRef.current;
+		if (!el || !content) return;
+		const observer = new ResizeObserver(() => {
+			if (lockRef.current) el.scrollTop = el.scrollHeight;
+		});
+		observer.observe(content);
+		return () => observer.disconnect();
+	}, []);
+
 	useLayoutEffect(() => {
 		const el = rootRef.current;
 		const before = prependRef.current;
 		if (!el || !before) return;
 		prependRef.current = null;
 		if (before.anchor.isConnected) el.scrollTop += before.anchor.getBoundingClientRect().top - el.getBoundingClientRect().top - before.offset;
+		// Settle the pin now, before the content observer sees the taller column and follows it.
+		lockRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PINNED_PX;
 	}, [start]);
 
 	const showEarlier = () => {
@@ -464,7 +541,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				onScroll={() => {
 					const el = rootRef.current;
 					if (!el) return;
-					lockRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= 48;
+					lockRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PINNED_PX;
 					if (lockRef.current) {
 						setUnseen(false);
 						if (pinnedStart !== null) setPinnedStart(null);
@@ -476,7 +553,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				aria-live="polite"
 				aria-relevant="additions"
 			>
-				<div className="mx-auto flex min-h-full w-full max-w-(--chat-max) flex-col gap-6 px-6 pt-6 pb-4">
+				<div ref={contentRef} className="mx-auto flex min-h-full w-full max-w-(--chat-max) flex-col gap-6 px-6 pt-6 pb-4">
 					{empty && <EmptyChat session={session} />}
 					{start > 0 && (
 						<Button variant="ghost" size="sm" className="self-center" onClick={showEarlier}>
@@ -509,7 +586,15 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 					{stream && (
 						<Rise data-row play={arrivals.armed && !arrivals.streamed} className={cn("flex flex-col gap-2", previousAssistant && "-mt-6")}>
 							{!previousAssistant && <AssistantHeader model={stream.model} />}
-							<AssistantBlocks message={stream} results={results} active={activeTools} pending={!streamDone} mode={mode} />
+							<AssistantBlocks
+								message={stream}
+								results={results}
+								active={activeTools}
+								pending={!streamDone}
+								mode={mode}
+								revealFromStart={arrivals.armed}
+								synchronized={synchronized}
+							/>
 						</Rise>
 					)}
 					{tailTools.length > 0 && (

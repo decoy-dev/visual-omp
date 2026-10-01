@@ -32,13 +32,13 @@ import {
 } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
 import { PaneToolbar, relativePath, TabStrip, usePaneVisible } from "./common";
+import { IMAGE_EXT } from "./derive";
 import { useGit } from "./git-store";
 import { languageFor, SYN_CLASS, tokenizeLines } from "./highlight";
 
 const HIDDEN: Record<string, true> = { ".git": true, node_modules: true };
 /** Lines rendered before "Show all" in the viewer. */
 const VIEW_LINE_BUDGET = 4000;
-const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
 
 // ── per-project state (survives pane switches) ──────────────────────────────────────────────────
 

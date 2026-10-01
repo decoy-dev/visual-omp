@@ -16,7 +16,6 @@
 		"nowTip": "Send now. omp reads it at its next step, before this reply finishes.",
 		"nowShort": "send now",
 		"stop": "Stop reply",
-		"stopTip": "Stop omp's current reply (Esc)",
 		"failed": "Couldn't send your message"
 	},
 	"plus": {
@@ -26,7 +25,8 @@
 		"mention": "Mention a file",
 		"library": "Open prompt library",
 		"skills": "Browse skills",
-		"commands": "Browse custom commands"
+		"commands": "Browse custom commands",
+		"model": "Choose model"
 	},
 	"attach": {
 		"label": "Attached images",

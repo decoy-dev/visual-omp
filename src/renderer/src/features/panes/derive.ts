@@ -1,7 +1,7 @@
 /**
  * Pure read-outs of a chat's transcript for the dock: the latest todo checklist, background shell
- * jobs, and dev-server URLs printed by commands. Tolerant of partial/unknown shapes — everything
- * here comes from omp's JSON over the wire.
+ * jobs, dev-server URLs printed by commands, and the images and files omp made. Tolerant of
+ * partial/unknown shapes, since everything here comes from omp's JSON over the wire.
  */
 import type { SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import type { ActiveTool } from "../../collab/lib/client";
@@ -209,4 +209,145 @@ export function devServerUrls(entries: readonly SessionEntry[], activeTools?: Re
 		}
 	}
 	return urls;
+}
+
+// ── outputs ─────────────────────────────────────────────────────────────────────────────────────
+
+/** Image files the Files viewer and Outputs pane show from disk (main's `panes:readFile` image types). */
+export const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
+/** Images main will open in the default app (`panes:openImage` also checks the bytes); SVG stays in-app. */
+export const RASTER_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico)$/i;
+
+/** Image data in a tool result: base64 (the live stream may have cut it short) or a saved session's blob id. */
+export type InlineImage = { kind: "data"; mimeType: string; data: string } | { kind: "blob"; hash: string };
+
+export interface ChatOutput {
+	/** The path for files and image files, else `<toolCallId>#<n>` (one item per image without a file). */
+	key: string;
+	kind: "image" | "file";
+	/** Absolute path, when the tool named one. */
+	path: string | null;
+	/** Tool that made or showed it: `read`, `write`, `edit`, `ast_edit`, `generate_image`, `browser`, `eval`… */
+	tool: string;
+	/** Epoch ms of the tool result. */
+	time: number;
+	/** Image data carried in the result; null for files and for images known only by path. */
+	inline: InlineImage | null;
+}
+
+export interface OutputContext {
+	/** The chat's working directory, for relative paths. */
+	cwd: string | null;
+	/** The home folder, for `~/` paths. */
+	home: string | null;
+}
+
+/** How saved sessions store image data: an id in omp's blob store (`<agentDir>/blobs/<hash>`). */
+const BLOB_REF = /^blob:sha256:([0-9a-f]{64})$/;
+const URL_SCHEME = /^[a-z][a-z0-9+.-]*:\/\//i;
+const WINDOWS_ABSOLUTE = /^(?:[a-z]:[\\/]|\\\\)/i;
+/** `read` selectors after the path: `:50-100`, `:raw`, `:img`, `:conflicts`, video times like `:1h5m42s`. */
+const READ_SELECTOR = /(?::(?:raw|img|conflicts|[\d,+\-hms]+))+$/;
+
+/** Base64 that arrived whole: omp's live stream head-truncates long strings and appends an elision note. */
+export function isIntactBase64(data: string): boolean {
+	return data.length > 0 && data.length % 4 === 0 && !/[^A-Za-z0-9+/=]/.test(data);
+}
+
+/** Absolute form of a path a tool named; null for URLs, omp's internal addresses, or a base that is not known yet. */
+export function resolveOutputPath(raw: string, context: OutputContext): string | null {
+	const path = raw.trim();
+	if (!path || URL_SCHEME.test(path)) return null;
+	if (path === "~" || path.startsWith("~/")) return context.home ? context.home.replace(/[\\/]+$/, "") + path.slice(1) : null;
+	if (path.startsWith("/") || WINDOWS_ABSOLUTE.test(path)) return path;
+	return context.cwd ? `${context.cwd.replace(/[\\/]+$/, "")}/${path.replace(/^\.\//, "")}` : null;
+}
+
+function inlineImage(value: unknown): InlineImage | null {
+	if (!isRecord(value)) return null;
+	const data = str(value.data);
+	const mimeType = str(value.mimeType);
+	if (!data || !mimeType) return null;
+	const blob = BLOB_REF.exec(data);
+	return blob ? { kind: "blob", hash: blob[1] } : { kind: "data", mimeType, data };
+}
+
+/** The file a `read` showed: omp's resolved source, else the argument without its selector. */
+function readPath(details: Record<string, unknown> | null, args: Record<string, unknown>): string | null {
+	const source = details && isRecord(details.meta) && isRecord(details.meta.source) ? details.meta.source : null;
+	return (source?.type === "path" ? str(source.value) : null) ?? str(details?.resolvedPath) ?? str(args.path)?.replace(READ_SELECTOR, "") ?? null;
+}
+
+/** Files an `edit` changed: each successful `perFileResults` entry, else the single `path`. */
+function editPaths(details: Record<string, unknown> | null, args: Record<string, unknown>): string[] {
+	const perFile = Array.isArray(details?.perFileResults) ? details.perFileResults.filter(isRecord) : [];
+	if (perFile.length > 0) return perFile.flatMap(file => (file.isError === true ? [] : (str(file.path) ?? [])));
+	const single = str(details?.path) ?? str(args.path) ?? str(args.file_path);
+	return single ? [single] : [];
+}
+
+function astEditPaths(details: Record<string, unknown> | null): string[] {
+	const files = Array.isArray(details?.fileReplacements) ? details.fileReplacements : [];
+	return files.flatMap(file => (isRecord(file) ? (str(file.path) ?? []) : []));
+}
+
+/**
+ * Images and files omp made or showed in a chat, newest first: image blocks in tool results (with the `read`
+ * path when there is one), `generate_image` results paired with their saved paths, and files written or
+ * changed by `write`, `edit` and `ast_edit` (a staged `ast_edit` preview counts once `resolve` applies it).
+ * A path appears once, at its newest use; images without a path are separate items.
+ */
+export function chatOutputs(entries: readonly SessionEntry[], context: OutputContext): ChatOutput[] {
+	const outputs = new Map<string, ChatOutput>();
+	const add = (output: ChatOutput) => {
+		outputs.delete(output.key);
+		outputs.set(output.key, output);
+	};
+	const addFile = (raw: string, tool: string, time: number, base: OutputContext) => {
+		const path = resolveOutputPath(raw, base);
+		if (path) add({ key: path, kind: IMAGE_EXT.test(path) ? "image" : "file", path, tool, time, inline: null });
+	};
+	let staged: { paths: string[]; base: OutputContext } | null = null;
+	for (const item of transcriptItems(entries)) {
+		if (item.kind !== "result") continue;
+		const { name, args, details, message } = item;
+		const time = message.timestamp;
+		// Null keeps a details image whose data is unreadable aligned with its saved path.
+		const images: (InlineImage | null)[] = [];
+		let paths: (string | null)[] = [];
+		if (name === "generate_image" && details) {
+			// Generated images travel in details (out of model context); `imagePaths[i]` is where image i was saved.
+			if (Array.isArray(details.images)) for (const image of details.images) images.push(inlineImage(image));
+			if (Array.isArray(details.imagePaths)) paths = details.imagePaths.map(path => (typeof path === "string" ? resolveOutputPath(path, context) : null));
+		}
+		for (const block of message.content) if (block.type === "image") images.push(inlineImage(block));
+		if (name === "read" && images.length === 1) {
+			const raw = readPath(details, args);
+			paths = [raw ? resolveOutputPath(raw, context) : null];
+		}
+		for (let n = 0; n < Math.max(images.length, paths.length); n++) {
+			const inline = images[n] ?? null;
+			const path = paths[n] ?? null;
+			if (!inline && !path) continue;
+			// A video frame or PDF page shares its file's path, so only image files merge by path.
+			add({ key: path && IMAGE_EXT.test(path) ? path : `${message.toolCallId}#${n}`, kind: "image", path, tool: name, time, inline });
+		}
+		if (message.isError) continue;
+		if (name === "write") {
+			const raw = str(details?.resolvedPath) ?? str(args.path);
+			if (raw) addFile(raw, "write", time, context);
+		} else if (name === "edit") {
+			for (const raw of editPaths(details, args)) addFile(raw, "edit", time, context);
+		} else if (name === "ast_edit") {
+			const base = { ...context, cwd: str(details?.cwd) ?? context.cwd };
+			if (details?.applied === false) staged = { paths: astEditPaths(details), base };
+			else for (const raw of astEditPaths(details)) addFile(raw, "ast_edit", time, base);
+		} else if (name === "resolve" || name === "reject") {
+			const action = str(details?.action) ?? str(args.action) ?? (name === "reject" ? "discard" : "apply");
+			const source = str(details?.sourceToolName) ?? "ast_edit";
+			if (staged && action === "apply" && source === "ast_edit") for (const raw of staged.paths) addFile(raw, "ast_edit", time, staged.base);
+			staged = null;
+		}
+	}
+	return [...outputs.values()].reverse();
 }

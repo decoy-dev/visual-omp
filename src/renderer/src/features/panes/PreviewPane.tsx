@@ -9,6 +9,7 @@ import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { PaneProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
+import { liveEntries } from "../../state/session";
 import { Button, cn, EmptyState, Expand, IconButton } from "../../ui";
 import { PaneToolbar } from "./common";
 import { devServerUrls } from "./derive";
@@ -60,7 +61,7 @@ export function PreviewPane({ session, projectPath }: PaneProps) {
 	const [address, setAddress] = useState(current ?? "");
 	const [invalid, setInvalid] = useState(false);
 
-	const entries = view?.guest?.entries ?? view?.history?.entries;
+	const entries = liveEntries(view) ?? view?.history?.entries;
 	const activeTools = view?.guest?.activeTools;
 	const detected = useMemo(() => (entries ? devServerUrls(entries, activeTools) : []), [entries, activeTools]);
 
