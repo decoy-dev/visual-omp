@@ -6,8 +6,9 @@ Changes are committed to `main` as conventional commits (`feat`, `fix`, `chore`,
 
 1. Move the entries under `## [Unreleased]` in [CHANGELOG.md](../CHANGELOG.md) into a new `## [X.Y.Z] - YYYY-MM-DD` section, and leave an empty `## [Unreleased]` heading above it. That section becomes the GitHub release notes word for word, so write it for the people installing the update.
 2. Set the version without creating a tag: `npm version X.Y.Z --no-git-tag-version`.
-3. Commit `CHANGELOG.md`, `package.json` and `package-lock.json` as `chore(release): vX.Y.Z` and push `main`.
-4. Tag that commit and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. Commit `CHANGELOG.md`, `package.json` and `package-lock.json` as `chore(release): vX.Y.Z`. Do not push or tag yet.
+4. Give the owner a development build of that release commit: with a clean working tree, start `npm run dev`, which uses its own profile and runs beside an installed copy, and leave it open. Continue only after the owner has tried it and asked for the release. If the release commit changes, restart the development build on the new commit and obtain the owner's approval again.
+5. Push `main`, then tag the exact commit the owner tested and push the tag: `git tag vX.Y.Z <tested-commit-sha> && git push origin vX.Y.Z`.
 
 The tag starts [.github/workflows/release.yml](../.github/workflows/release.yml). It stops before building anything if the tag does not match `package.json` or if CHANGELOG.md has no section for the version, and it takes the release notes from the tagged commit, so later changes to `main` cannot alter them. After typecheck and tests pass, it builds the macOS disk images (Apple Silicon and Intel) and the Windows installer and publishes them as a GitHub release with the CHANGELOG section as the notes. For a stable version it also commits the updated Homebrew cask (`Casks/visual-omp.rb`) to `main`. A version with a semver prerelease part (`1.2.0-beta.1`, `1.2.0-rc.2`) is published as a GitHub prerelease and leaves the cask alone, so `brew upgrade` never installs it, and the in-app check only offers it to copies that are already running a prerelease.
 
