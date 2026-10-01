@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- The macOS app is now ad-hoc signed as a whole bundle. This fixes the invalid bundle signature in 0.2.0 that caused macOS to report quarantined copies as damaged. The app remains unnotarized; see the README for the **Open Anyway** instructions.
+
 ## [0.2.0] - 2026-09-30
 
 visual-omp 0.2.0 is the first published release. It includes everything listed under 0.1.0, which was never published on its own, along with the changes below. It needs omp 18.4 or later.

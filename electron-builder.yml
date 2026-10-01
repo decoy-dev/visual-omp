@@ -14,6 +14,12 @@ asarUnpack:
 artifactName: visual-omp-${version}-${platform}-${arch}.${ext}
 mac:
   category: public.app-category.developer-tools
+  # Ad-hoc sign the whole bundle. Without an identity, electron-builder skips signing and ships only
+  # Electron's linker signature, which macOS rejects as "damaged" once the app is quarantined.
+  # Disable hardened runtime for compatibility with ad-hoc signed native modules.
+  # This also gives up runtime protections against code injection and library loading.
+  identity: "-"
+  hardenedRuntime: false
   icon: build/icon.icns
   target:
     - target: dmg
