@@ -1,6 +1,6 @@
 import { mkdtemp, mkdir, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { findPlanFile, MADE_SCAN, previewablePath, readBlobImage, readPaneFile, readPdfFile, readWhole, scanMadeFiles } from "./panes";
 
@@ -132,7 +132,8 @@ describe("scanMadeFiles", () => {
 	const now = Date.now();
 	const window = { start: now - 10_000, end: now + 10_000 };
 	const past = new Date(now - 3_600_000);
-	const rel = (files: { path: string }[] = []) => files.map(file => file.path.slice(dir.length + 1));
+	// Results use the platform's separator; the expectations are written with "/".
+	const rel = (files: { path: string }[] = []) => files.map(file => file.path.slice(dir.length + 1).split(sep).join("/"));
 	const home = () => join(dir, "home");
 
 	async function put(path: string, data: Buffer | string = PNG): Promise<void> {
