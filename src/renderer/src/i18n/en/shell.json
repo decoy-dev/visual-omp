@@ -2,7 +2,8 @@
 	"titlebar": {
 		"showSidebar": "Show sidebar",
 		"hideSidebar": "Hide sidebar",
-		"switchChat": "Switch chat"
+		"switchChat": "Switch chat",
+		"version": "v{{version}}"
 	},
 	"sidebar": {
 		"label": "Projects and chats",

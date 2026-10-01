@@ -14,7 +14,7 @@
 		"preview": { "title": "Show preview", "hint": "Open your running site or app in a panel beside the chat.", "keywords": "preview, browser, dev server, localhost" },
 		"tasks": { "title": "Show tasks and helpers", "hint": "See omp's checklist, its helpers, and background jobs.", "keywords": "tasks, todo, checklist, subagents, helpers, jobs" },
 		"plan": { "title": "Show plan", "hint": "Read the plan omp wrote for this chat.", "keywords": "plan, plan mode" },
-		"outputs": { "title": "Show outputs", "hint": "See the images and files omp made or viewed in this chat.", "keywords": "outputs, images, screenshots, renders, generated, files, written" },
+		"outputs": { "title": "Show outputs", "hint": "See the images and files omp made or viewed in this chat.", "keywords": "outputs, images, screenshots, renders, generated, pdf, documents, files, written" },
 		"terminal": { "title": "Show terminal", "hint": "Run your own commands in this project.", "keywords": "terminal, shell, console, command line" },
 		"newShell": { "title": "Open a terminal", "hint": "Start another shell in this project.", "keywords": "terminal, shell, new, console" }
 	},
@@ -172,14 +172,21 @@
 		"noChat": "Open a chat to see the images and files omp makes in it.",
 		"emptyTitle": "No outputs yet",
 		"empty": "Images and files omp makes or views in this chat appear here.",
-		"images": "Images",
+		"made": "Made in this chat",
 		"files": "Files",
+		"viewed": "Viewed",
+		"moreViewed_one": "Show {{count}} more",
+		"moreViewed_other": "Show {{count}} more",
 		"openImage": "Open {{name}}",
 		"back": "Back to outputs",
 		"openDefault": "Open in default app",
-		"openFailed": "Couldn't open the image",
+		"openFailed": "Couldn't open the file",
 		"loading": "Loading image…",
 		"unavailable": "This image could not be displayed.",
+		"pdf": "PDF",
+		"pdfFrame": "{{name}} (PDF)",
+		"loadingPdf": "Loading PDF…",
+		"pdfUnavailable": "This PDF could not be displayed.",
 		"inline": {
 			"generated": "Generated image",
 			"browser": "Browser screenshot",
@@ -191,7 +198,8 @@
 			"edited": "Edited {{time}}",
 			"viewed": "Viewed {{time}}",
 			"generated": "Generated {{time}}",
-			"captured": "Captured {{time}}"
+			"captured": "Captured {{time}}",
+			"made": "Made {{time}}"
 		},
 		"newCount_one": "{{count}} new output",
 		"newCount_other": "{{count}} new outputs"

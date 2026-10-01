@@ -4,6 +4,7 @@
  * partial/unknown shapes, since everything here comes from omp's JSON over the wire.
  */
 import type { SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
+import type { PaneMadeFile, PaneMadeQuery } from "@shared/contracts/panes";
 import type { ActiveTool } from "../../collab/lib/client";
 import { resolveToolCall } from "../../chat/friendly";
 import { isRecord, str } from "../../tool-render/util";
@@ -31,11 +32,25 @@ export interface BackgroundJob {
 }
 
 type TranscriptItem =
-	| { kind: "result"; name: string; args: Record<string, unknown>; details: Record<string, unknown> | null; message: ToolResultMessage }
-	| { kind: "custom"; customType: string; details: unknown };
+	| {
+			kind: "result";
+			name: string;
+			args: Record<string, unknown>;
+			details: Record<string, unknown> | null;
+			message: ToolResultMessage;
+			/** Epoch ms the call started, never after the result; the result time when unknown. */
+			start: number;
+	  }
+	| { kind: "custom"; customType: string; details: unknown; time: number };
 
 function resultText(message: ToolResultMessage): string {
 	return message.content.map(block => (block.type === "text" ? block.text : "")).join("");
+}
+
+/** When a call started: omp's `tool_execution_start` entry (saved sessions only) or the assistant message that made it. */
+function startTime(recorded: number | undefined, called: number | undefined, end: number): number {
+	for (const time of [recorded, called]) if (time !== undefined && Number.isFinite(time) && time > 0 && time <= end) return time;
+	return end;
 }
 
 /**
@@ -43,17 +58,28 @@ function resultText(message: ToolResultMessage): string {
  * device calls become the device tool, with the device's own details) and custom messages, in order.
  */
 function transcriptItems(entries: readonly SessionEntry[]): TranscriptItem[] {
-	const calls = new Map<string, { name: string; args: unknown }>();
+	const calls = new Map<string, { name: string; args: unknown; time: number }>();
+	const starts = new Map<string, number>();
 	const items: TranscriptItem[] = [];
 	for (const entry of entries) {
+		// Saved sessions also hold omp's `custom` bookkeeping entries, which the wire types leave out.
+		const type: string = entry.type;
+		if (type === "custom") {
+			const { customType, data } = entry as unknown as { customType?: unknown; data?: unknown };
+			const id = customType === "tool_execution_start" && isRecord(data) ? str(data.toolCallId) : null;
+			if (id && isRecord(data)) starts.set(id, Date.parse(str(data.startedAt) ?? entry.timestamp));
+			continue;
+		}
 		if (entry.type === "custom_message") {
-			items.push({ kind: "custom", customType: entry.customType, details: entry.details });
+			items.push({ kind: "custom", customType: entry.customType, details: entry.details, time: Date.parse(entry.timestamp) });
 			continue;
 		}
 		if (entry.type !== "message") continue;
 		const message = entry.message;
 		if (message.role === "assistant") {
-			for (const block of message.content) if (block.type === "toolCall") calls.set(block.id, { name: block.name, args: block.arguments });
+			for (const block of message.content) {
+				if (block.type === "toolCall") calls.set(block.id, { name: block.name, args: block.arguments, time: message.timestamp });
+			}
 			continue;
 		}
 		if (message.role !== "toolResult") continue;
@@ -65,7 +91,8 @@ function transcriptItems(entries: readonly SessionEntry[]): TranscriptItem[] {
 			running: false,
 		});
 		const details = view.result?.details;
-		items.push({ kind: "result", name: view.name, args: view.args, details: isRecord(details) ? details : null, message });
+		const start = startTime(starts.get(message.toolCallId), call?.time, message.timestamp);
+		items.push({ kind: "result", name: view.name, args: view.args, details: isRecord(details) ? details : null, message, start });
 	}
 	return items;
 }
@@ -215,20 +242,30 @@ export function devServerUrls(entries: readonly SessionEntry[], activeTools?: Re
 
 /** Image files the Files viewer and Outputs pane show from disk (main's `panes:readFile` image types). */
 export const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
-/** Images main will open in the default app (`panes:openImage` also checks the bytes); SVG stays in-app. */
-export const RASTER_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico)$/i;
+export const PDF_EXT = /\.pdf$/i;
+/** Files main opens in the default app and thumbnails (`panes:openOutput` also checks the bytes); SVG stays in-app. */
+export const OPENABLE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|pdf)$/i;
 
 /** Image data in a tool result: base64 (the live stream may have cut it short) or a saved session's blob id. */
 export type InlineImage = { kind: "data"; mimeType: string; data: string } | { kind: "blob"; hash: string };
 
+/** How omp produced an output, for its "Edited 14:32" label. */
+export type OutputAction = "viewed" | "written" | "edited" | "generated" | "captured" | "made";
+
+/** Actions that create or change the file; `viewed` and `captured` only look at it. */
+const PRODUCES: Record<OutputAction, boolean> = { viewed: false, captured: false, written: true, edited: true, generated: true, made: true };
+
 export interface ChatOutput {
-	/** The path for files and image files, else `<toolCallId>#<n>` (one item per image without a file). */
+	/** The path for files, PDFs and image files, else `<toolCallId>#<n>` (one item per image without a file). */
 	key: string;
-	kind: "image" | "file";
+	kind: "image" | "pdf" | "file";
 	/** Absolute path, when the tool named one. */
 	path: string | null;
-	/** Tool that made or showed it: `read`, `write`, `edit`, `ast_edit`, `generate_image`, `browser`, `eval`… */
+	/** Tool that made or showed it: `read`, `write`, `edit`, `ast_edit`, `generate_image`, `bash`, `eval`… */
 	tool: string;
+	action: OutputAction;
+	/** omp made, wrote, generated or edited it in this chat, at this use or an earlier one (a later look keeps it made). */
+	produced: boolean;
 	/** Epoch ms of the tool result. */
 	time: number;
 	/** Image data carried in the result; null for files and for images known only by path. */
@@ -291,21 +328,156 @@ function astEditPaths(details: Record<string, unknown> | null): string[] {
 	return files.flatMap(file => (isRecord(file) ? (str(file.path) ?? []) : []));
 }
 
+function kindOf(path: string): ChatOutput["kind"] {
+	return IMAGE_EXT.test(path) ? "image" : PDF_EXT.test(path) ? "pdf" : "file";
+}
+
+// ── files made by commands ──────────────────────────────────────────────────────────────────────
+
+/** Tools that can make files without naming them as outputs: shells, notebooks and the browser. */
+const COMMAND_TOOLS: Record<string, true> = { bash: true, eval: true, browser: true };
+const PATHS_PER_CALL = 32;
+/** Text read from each source (head and tail); longer outputs rarely name new paths in the middle. */
+const TEXT_HEAD = 48_000;
+const TEXT_TAIL = 16_000;
+
+const UNQUOTED = String.raw`(?:\\.|[^\s"'\`<>|;&()\\])+`;
+const ABSOLUTE = String.raw`(?:~|\.{1,2}|\$\{?[A-Za-z_]\w*\}?)?\/${UNQUOTED}`;
+/** `C:\x`, `C:/x` and `\\server\share\x`, matched before shell escapes since backslashes are separators there. */
+const WINDOWS = String.raw`[A-Za-z]:[\\/][^\s"'\`<>|;&()]*|\\\\[\w.$-]+\\[^\s"'\`<>|;&()]*`;
+const RELATIVE = String.raw`[\w@+-][\w.@+-]*(?:\/[\w.@+-]+)+|[\w@+-][\w.@+-]*\.(?:pdf|png|jpe?g|gif|webp|avif|bmp|ico|svg)\b`;
+const BEFORE = String.raw`(?<![\w.~$/@+\\-])`;
+/** In arguments (commands, code): quoted strings, Windows paths, `/abs`, `~/x`, `./x`, `$VAR/x`, `a/b` and bare `name.pdf`. */
+const ARGUMENT_TOKEN = new RegExp(String.raw`"([^"\n]{1,1024})"|'([^'\n]{1,1024})'|${BEFORE}(${WINDOWS}|${ABSOLUTE}|${RELATIVE})`, "g");
+/** In printed output, where quotes are often apostrophes: rooted paths only. */
+const OUTPUT_TOKEN = new RegExp(String.raw`${BEFORE}(${WINDOWS}|${ABSOLUTE})`, "g");
+const WINDOWS_ROOTED = /^(?:[A-Za-z]:[\\/]|\\\\)/;
+/** Shell assignments (`OUT="/x"`, `export OUT=/x`), so `$OUT/previews` resolves. */
+const ASSIGNMENT = /(?:^|[\s;&|(])(?:export\s+|local\s+)?([A-Za-z_]\w*)=(?:"([^"\n]*)"|'([^'\n]*)'|([^\s;&|)'"]+))/g;
+const SYSTEM_PATH = /^\/(?:dev|proc|sys)(?:\/|$)/;
+
+function clip(text: string): string {
+	return text.length > TEXT_HEAD + TEXT_TAIL ? `${text.slice(0, TEXT_HEAD)}\n${text.slice(-TEXT_TAIL)}` : text;
+}
+
+/** Quoted text that names a path: rooted, or one word with a slash or a file extension (so quoted prose is not). */
+function quotedLooksLikePath(text: string): boolean {
+	if (WINDOWS_ROOTED.test(text) || /^(?:\/|~\/|\.{1,2}\/|\$)/.test(text)) return true;
+	return !/\s/.test(text) && (text.includes("/") || /\.[A-Za-z][A-Za-z0-9]{0,4}$/.test(text));
+}
+
 /**
- * Images and files omp made or showed in a chat, newest first: image blocks in tool results (with the `read`
- * path when there is one), `generate_image` results paired with their saved paths, and files written or
- * changed by `write`, `edit` and `ast_edit` (a staged `ast_edit` preview counts once `resolve` applies it).
- * A path appears once, at its newest use; images without a path are separate items.
+ * A token as a path, or null: known `$VARS` resolved, shell escapes removed (POSIX paths only; in Windows paths a
+ * backslash is a separator, and doubled ones from printed string literals collapse), a trailing `:12:3` or
+ * punctuation dropped, and cut before the first segment that still holds a variable or a glob (`$OUT/*.pdf` names
+ * the folder `$OUT`).
  */
-export function chatOutputs(entries: readonly SessionEntry[], context: OutputContext): ChatOutput[] {
-	const outputs = new Map<string, ChatOutput>();
-	const add = (output: ChatOutput) => {
-		outputs.delete(output.key);
-		outputs.set(output.key, output);
+function cleanToken(raw: string, vars: ReadonlyMap<string, string>): string | null {
+	const windows = WINDOWS_ROOTED.test(raw);
+	const unescaped = windows ? raw.replace(/(?<!^)\\{2,}/g, "\\") : raw.replace(/\\(.)/g, "$1");
+	const expanded = unescaped.replace(/\$\{?([A-Za-z_]\w*)\}?/g, (match, name: string) => vars.get(name) ?? match);
+	const trimmed = expanded.replace(/(?::\d+){1,2}$/, "").replace(windows ? /[.,:;)\]}'"/\\]+$/ : /[.,:;)\]}'"/]+$/, "");
+	const open = trimmed.search(/[$`{}*?[\]]/);
+	const separator = open === -1 ? -1 : windows ? Math.max(trimmed.lastIndexOf("/", open), trimmed.lastIndexOf("\\", open)) : trimmed.lastIndexOf("/", open);
+	const path = open === -1 ? trimmed : separator > 0 ? trimmed.slice(0, separator) : "";
+	if (windows && !WINDOWS_ROOTED.test(path)) return null;
+	return path && path !== "~" && path !== "." && path !== ".." ? path : null;
+}
+
+function argumentStrings(value: unknown, out: string[], depth = 0): void {
+	if (typeof value === "string") out.push(value);
+	else if (depth < 3 && Array.isArray(value)) for (const item of value) argumentStrings(item, out, depth + 1);
+	else if (depth < 3 && isRecord(value)) for (const key in value) argumentStrings(value[key], out, depth + 1);
+}
+
+/** Absolute paths a command call names in its arguments and its printed output, in order, without duplicates. */
+export function commandPaths(args: Record<string, unknown>, output: string, context: OutputContext): string[] {
+	const texts: string[] = [];
+	argumentStrings(args, texts);
+	const vars = new Map<string, string>();
+	for (const text of texts) {
+		for (const match of clip(text).matchAll(ASSIGNMENT)) vars.set(match[1], cleanToken(match[2] ?? match[3] ?? match[4] ?? "", vars) ?? "");
+	}
+	const cwd = str(args.cwd);
+	const base = { ...context, cwd: (cwd && resolveOutputPath(cwd, context)) || context.cwd };
+	const paths = new Set<string>();
+	const take = (raw: string) => {
+		const token = cleanToken(raw, vars);
+		const path = token ? resolveOutputPath(token, base) : null;
+		if (path && path !== "/" && !SYSTEM_PATH.test(path) && paths.size < PATHS_PER_CALL) paths.add(path);
 	};
-	const addFile = (raw: string, tool: string, time: number, base: OutputContext) => {
+	const scanOutput = (text: string) => {
+		for (const match of text.matchAll(OUTPUT_TOKEN)) take(match[1]);
+	};
+	for (const text of texts) {
+		for (const match of clip(text).matchAll(ARGUMENT_TOKEN)) {
+			const quoted = match[1] ?? match[2];
+			if (quoted === undefined) take(match[3]);
+			else if (quotedLooksLikePath(quoted)) take(quoted);
+			// A quoted span that isn't a path may be prose between apostrophes; rooted paths inside it still count.
+			else scanOutput(quoted);
+		}
+	}
+	scanOutput(clip(output));
+	return [...paths];
+}
+
+export interface MadeCandidate extends PaneMadeQuery {
+	/** The tool call's id. */
+	id: string;
+}
+
+/**
+ * Finished `bash`, `eval` and `browser` calls that name paths, with the window they ran in: from the call's start
+ * to its result, or for a background `bash` job to the delivery of its result. Main checks these paths for files
+ * modified inside the window (`panes:scanMade`).
+ */
+export function madeCandidates(entries: readonly SessionEntry[], context: OutputContext): MadeCandidate[] {
+	const candidates: MadeCandidate[] = [];
+	const byJob = new Map<string, MadeCandidate>();
+	for (const item of transcriptItems(entries)) {
+		if (item.kind === "custom") {
+			if (item.customType !== "async-result" || !isRecord(item.details) || !Number.isFinite(item.time)) continue;
+			const jobs = Array.isArray(item.details.jobs) ? item.details.jobs : [item.details];
+			for (const job of jobs) {
+				const candidate = isRecord(job) ? byJob.get(str(job.jobId) ?? "") : undefined;
+				if (candidate) candidate.end = Math.max(candidate.end, item.time);
+			}
+			continue;
+		}
+		if (!Object.hasOwn(COMMAND_TOOLS, item.name)) continue;
+		const paths = commandPaths(item.args, resultText(item.message), context);
+		if (paths.length === 0) continue;
+		const candidate = { id: item.message.toolCallId, paths, start: item.start, end: item.message.timestamp };
+		candidates.push(candidate);
+		const jobId = item.name === "bash" && isRecord(item.details?.async) ? str(item.details.async.jobId) : null;
+		if (jobId) byJob.set(jobId, candidate);
+	}
+	return candidates;
+}
+
+/** Files main found for each candidate (`panes:scanMade`), by tool call id. */
+export type MadeFiles = Readonly<Record<string, readonly PaneMadeFile[]>>;
+
+// ── all outputs ─────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Images, PDFs and files omp made or showed in a chat, newest first: image blocks in tool results (with the `read`
+ * path when there is one), PDFs omp read, `generate_image` results paired with their saved paths, files written or
+ * changed by `write`, `edit` and `ast_edit` (a staged `ast_edit` preview counts once `resolve` applies it), and the
+ * files main found that a command made (`made`). A path appears once, at its newest use; images without a path are
+ * separate items.
+ */
+export function chatOutputs(entries: readonly SessionEntry[], context: OutputContext, made: MadeFiles = {}): ChatOutput[] {
+	const outputs = new Map<string, ChatOutput>();
+	const add = (output: Omit<ChatOutput, "produced">) => {
+		const produced = PRODUCES[output.action] || outputs.get(output.key)?.produced === true;
+		outputs.delete(output.key);
+		outputs.set(output.key, { ...output, produced });
+	};
+	const addFile = (raw: string, tool: string, action: OutputAction, time: number, base: OutputContext) => {
 		const path = resolveOutputPath(raw, base);
-		if (path) add({ key: path, kind: IMAGE_EXT.test(path) ? "image" : "file", path, tool, time, inline: null });
+		if (path) add({ key: path, kind: kindOf(path), path, tool, action, time, inline: null });
 	};
 	let staged: { paths: string[]; base: OutputContext } | null = null;
 	for (const item of transcriptItems(entries)) {
@@ -321,31 +493,40 @@ export function chatOutputs(entries: readonly SessionEntry[], context: OutputCon
 			if (Array.isArray(details.imagePaths)) paths = details.imagePaths.map(path => (typeof path === "string" ? resolveOutputPath(path, context) : null));
 		}
 		for (const block of message.content) if (block.type === "image") images.push(inlineImage(block));
-		if (name === "read" && images.length === 1) {
+		if (name === "read") {
 			const raw = readPath(details, args);
-			paths = [raw ? resolveOutputPath(raw, context) : null];
+			const path = raw ? resolveOutputPath(raw, context) : null;
+			if (path && PDF_EXT.test(path)) {
+				// Rendered pages belong to the PDF, which the pane previews itself.
+				images.length = 0;
+				if (!message.isError) add({ key: path, kind: "pdf", path, tool: name, action: "viewed", time, inline: null });
+			} else if (images.length === 1) paths = [path];
 		}
+		const imageAction: OutputAction = name === "read" ? "viewed" : name === "generate_image" ? "generated" : "captured";
 		for (let n = 0; n < Math.max(images.length, paths.length); n++) {
 			const inline = images[n] ?? null;
 			const path = paths[n] ?? null;
 			if (!inline && !path) continue;
-			// A video frame or PDF page shares its file's path, so only image files merge by path.
-			add({ key: path && IMAGE_EXT.test(path) ? path : `${message.toolCallId}#${n}`, kind: "image", path, tool: name, time, inline });
+			// A video frame shares its file's path, so only image files merge by path.
+			const key = path && IMAGE_EXT.test(path) ? path : `${message.toolCallId}#${n}`;
+			add({ key, kind: "image", path, tool: name, action: imageAction, time, inline });
 		}
+		// Main returns a call's files newest first; adding them oldest first keeps that order in the result.
+		for (const file of [...(made[message.toolCallId] ?? [])].reverse()) addFile(file.path, name, "made", time, context);
 		if (message.isError) continue;
 		if (name === "write") {
 			const raw = str(details?.resolvedPath) ?? str(args.path);
-			if (raw) addFile(raw, "write", time, context);
+			if (raw) addFile(raw, "write", "written", time, context);
 		} else if (name === "edit") {
-			for (const raw of editPaths(details, args)) addFile(raw, "edit", time, context);
+			for (const raw of editPaths(details, args)) addFile(raw, "edit", "edited", time, context);
 		} else if (name === "ast_edit") {
 			const base = { ...context, cwd: str(details?.cwd) ?? context.cwd };
 			if (details?.applied === false) staged = { paths: astEditPaths(details), base };
-			else for (const raw of astEditPaths(details)) addFile(raw, "ast_edit", time, base);
+			else for (const raw of astEditPaths(details)) addFile(raw, "ast_edit", "edited", time, base);
 		} else if (name === "resolve" || name === "reject") {
 			const action = str(details?.action) ?? str(args.action) ?? (name === "reject" ? "discard" : "apply");
 			const source = str(details?.sourceToolName) ?? "ast_edit";
-			if (staged && action === "apply" && source === "ast_edit") for (const raw of staged.paths) addFile(raw, "ast_edit", time, staged.base);
+			if (staged && action === "apply" && source === "ast_edit") for (const raw of staged.paths) addFile(raw, "ast_edit", "edited", time, staged.base);
 			staged = null;
 		}
 	}
