@@ -5,10 +5,12 @@
  */
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { FileRef } from "@shared/contracts/fileRefs";
-import { createContext, memo, type ReactNode, useContext, useEffect, useMemo, useReducer } from "react";
+import { createContext, memo, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { chatOutputs } from "../../features/panes/derive";
 import { renderMarkdown } from "../../transcript/render";
-import { fileRefOf, MAX_BASES, ReplyRefCache, type ReplyRefs, textRefs } from "./fileRefs";
+import { MAX_BASES, ReplyRefCache, type ReplyRefs } from "./fileRefs";
+import { fillThumbnails, linkHtml, occurrences, parse } from "./fileLinkMarkup";
 
 /** The chat a transcript shows and where its relative names are looked up after the folders a reply names. */
 export interface FileRefScope {
@@ -16,73 +18,11 @@ export interface FileRefScope {
 	chat: string;
 	/** The chat's folder, then folders omp wrote or edited files in. */
 	bases: readonly string[];
+	/** The home folder, shown as `~` in file rows; null until known. */
+	home: string | null;
 }
 
 export const FileRefContext = createContext<FileRefScope | null>(null);
-
-/** Links, code blocks, math and links already made hold no references. */
-const SKIP = "a, pre, math, .katex, .tr-file";
-
-interface Occurrence {
-	/** The text node holding the reference, or the inline `code` element that is all reference. */
-	node: Text | Element;
-	start: number;
-	end: number;
-	ref: string;
-}
-
-function occurrences(root: DocumentFragment): Occurrence[] {
-	const found: Occurrence[] = [];
-	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-		const text = node as Text;
-		const parent = text.parentElement;
-		if (!parent || parent.closest(SKIP)) continue;
-		const code = parent.closest("code");
-		if (code) {
-			const ref = code.childNodes.length === 1 ? fileRefOf(text.data, true) : null;
-			if (ref) found.push({ node: code, start: 0, end: 0, ref });
-			continue;
-		}
-		for (const match of textRefs(text.data)) found.push({ node: text, ...match });
-	}
-	return found;
-}
-
-function parse(html: string): DocumentFragment {
-	const template = document.createElement("template");
-	template.innerHTML = html;
-	return template.content;
-}
-
-/** `html` with each resolved occurrence wrapped in a link (`refs` aligned with its occurrences); the original string when none resolved. */
-function linkHtml(html: string, refs: readonly (FileRef | null)[]): string {
-	const root = parse(html);
-	const found = occurrences(root).flatMap((occurrence, index) => {
-		const resolved = refs[index];
-		return resolved ? [{ occurrence, resolved }] : [];
-	});
-	if (found.length === 0) return html;
-	// Last first, so splitting a text node keeps the offsets of earlier references in it.
-	for (const { occurrence, resolved } of found.reverse()) {
-		let target: Node = occurrence.node;
-		if (occurrence.node instanceof Text) {
-			target = occurrence.node.splitText(occurrence.start);
-			(target as Text).splitText(occurrence.end - occurrence.start);
-		}
-		const link = document.createElement("span");
-		link.className = "tr-file";
-		link.setAttribute("role", "link");
-		link.setAttribute("tabindex", "0");
-		link.dataset.filePath = resolved.path;
-		link.title = resolved.path;
-		target.parentNode?.replaceChild(link, target);
-		link.append(target);
-	}
-	const holder = document.createElement("div");
-	holder.append(root);
-	return holder.innerHTML;
-}
 
 const cache = new ReplyRefCache(request => window.vomp.invoke("fs:resolveRefs", request));
 
@@ -112,11 +52,21 @@ export function useFileRefs(reply: number | null, texts: readonly string[]): Rep
 	return key ? cache.read(key, textKey) : null;
 }
 
-/** A finished reply's Markdown with its resolved references linked; the same markup as `Markdown` otherwise. */
+/**
+ * A finished reply's Markdown with its resolved references linked as chips and file rows; the same markup as
+ * `Markdown` otherwise. Row thumbnails are filled into the rendered nodes, so they never change the HTML string.
+ */
 export const LinkedMarkdown = memo(function LinkedMarkdown({ text, refs }: { text: string; refs: readonly (FileRef | null)[] | undefined }): ReactNode {
+	const { t } = useTranslation("chat");
+	const home = useContext(FileRefContext)?.home ?? null;
+	const ref = useRef<HTMLDivElement | null>(null);
 	const html = useMemo(() => renderMarkdown(text), [text]);
-	const linked = useMemo(() => (refs?.some(Boolean) ? linkHtml(html, refs) : html), [html, refs]);
-	return <div className="tr-md" dangerouslySetInnerHTML={{ __html: linked }} />;
+	const linked = useMemo(
+		() => (refs?.some(Boolean) ? linkHtml(html, refs, { home, row: (name, folder) => t("fileRow", { name, folder }) }) : html),
+		[html, refs, home, t],
+	);
+	useLayoutEffect(() => (ref.current ? fillThumbnails(ref.current) : undefined), [linked]);
+	return <div ref={ref} className="tr-md" dangerouslySetInnerHTML={{ __html: linked }} />;
 });
 
 const MAX_WRITTEN = MAX_BASES - 1;

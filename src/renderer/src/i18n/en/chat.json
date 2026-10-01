@@ -39,6 +39,7 @@
 	"working": "Working… {{elapsed}}",
 	"workingActivity": "Working… {{elapsed}} · {{activity}}",
 	"newActivity": "Show new activity",
+	"fileRow": "{{name}}, in {{folder}}",
 	"showEarlier": "Show {{count}} earlier messages",
 	"compacted": "Context summarized",
 	"branchSummary": "Continued from another branch",

@@ -9,6 +9,7 @@ import { type KeyboardEvent, type MouseEvent, memo, type ReactNode, useEffect, u
 import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
 import { openInFiles } from "../../features/panes/FilesPane";
+import { useHomeDir } from "../../features/projects/folders/FolderBrowser";
 import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
 import { liveEntries, liveGuest, type SessionController, type SessionView } from "../../state/session";
@@ -523,9 +524,10 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 
 	// Relative names in replies are looked up in the chat's folder, then in folders omp wrote or edited files in.
 	const written = useMemo(() => writtenFolders(entries, session.projectPath).join("\0"), [entries, session.projectPath]);
+	const home = useHomeDir();
 	const fileRefScope = useMemo(
-		() => ({ chat: session.tabId, bases: [session.projectPath, ...(written ? written.split("\0") : [])] }),
-		[session.tabId, session.projectPath, written],
+		() => ({ chat: session.tabId, bases: [session.projectPath, ...(written ? written.split("\0") : [])], home }),
+		[session.tabId, session.projectPath, written, home],
 	);
 
 	// omp's first entries are session setup (model / thinking level); a chat is empty until someone talks.
