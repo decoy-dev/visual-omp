@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-01
+
+visual-omp 0.3.0 keeps a live chat's earlier messages on screen during a reply and adds an Outputs tab for what omp makes. Buffered text display now smooths pauses in streamed replies, and a working chat has a single stop button. It needs omp 18.4 or later.
+
 - A live chat no longer drops its earlier messages partway through a reply. omp's live stream leaves out the bookkeeping entries it writes between a tool call and its result, and the app treated each gap as the start of the chat, so the transcript often showed only the reply in progress. The app now keeps earlier messages visible when the live stream omits intermediate entries.
 - The transcript no longer goes blank while omp connects. The first message sent into a saved chat, and commands that reconnect the chat to omp such as `/restart`, used to clear the transcript until omp finished sending the chat again; the messages already on screen now stay until the new copy arrives.
 - Replies and thinking now use a short adaptive buffer to smooth pauses between incoming text chunks. This adds a display delay, and the app accelerates the remaining text when omp finishes the message. Collapsed thinking adds no reveal delay, and **Reduce motion** shows text as it arrives. Earlier unchanged paragraphs retain their layout during incremental updates, so their text can be selected while omp is still writing.

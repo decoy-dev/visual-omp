@@ -1,7 +1,7 @@
 {
   "name": "visual-omp",
   "productName": "visual-omp",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Desktop app for the omp (oh-my-pi) coding agent",
   "author": {
     "name": "decoy",
