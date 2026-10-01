@@ -18,7 +18,7 @@ import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toa
 import { useComposerDrafts } from "../composer/drafts";
 import { QuestionCard } from "./QuestionCard";
 import { ToolCard } from "./ToolCard";
-import { synchronizedStream as streamNeedsSync, usePacedText } from "./pace";
+import { type PlayoutBlock, PlayoutRegistry, type Playout, revealedPrefix, synchronizedStream as streamNeedsSync, usePlayout } from "./pace";
 import "./transcript.css";
 
 export type TranscriptMode = "normal" | "thinking" | "verbose";
@@ -100,60 +100,29 @@ function UserMessage({ entry, session, from }: { entry: SessionEntry; session: S
 	);
 }
 
-function ThinkingBlock({
-	text,
-	redacted,
-	open: forcedOpen,
-	live = false,
-	revealFromStart = false,
-	synchronized = false,
-}: {
-	text: string;
-	redacted?: boolean;
-	open: boolean;
-	live?: boolean;
-	revealFromStart?: boolean;
-	synchronized?: boolean;
-}): ReactNode {
+function ThinkingBlock({ text, redacted, open, onToggle }: { text: string; redacted?: boolean; open: boolean; onToggle?: () => void }): ReactNode {
 	const { t } = useTranslation("chat");
-	const [open, setOpen] = useState(false);
-	const visible = forcedOpen || open;
-	// Collapsed thoughts have nothing to pace, so opening them mid-stream shows what has arrived.
-	const shown = usePacedText(text, live && visible && !synchronized, revealFromStart);
 	return (
 		<div>
 			<button
 				type="button"
-				aria-expanded={visible}
-				onClick={() => setOpen(value => !value)}
+				aria-expanded={open}
+				onClick={onToggle}
 				className="-mx-2 flex h-7 items-center gap-1.5 rounded-md px-2 text-sm text-fg-faint outline-none transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg-muted focus-visible:outline-2 focus-visible:outline-ring"
 			>
-				<CaretRight className={cn("size-3.5 transition-[rotate] duration-(--dur) ease-(--ease-out)", visible && "rotate-90")} aria-hidden />
+				<CaretRight className={cn("size-3.5 transition-[rotate] duration-(--dur) ease-(--ease-out)", open && "rotate-90")} aria-hidden />
 				{redacted ? t("redactedThinking") : t("thoughts")}
 			</button>
-			<Expand open={visible && !redacted} className="selectable pt-0.5 pb-2 pl-5 text-sm whitespace-pre-wrap text-fg-muted">
-				{shown}
+			<Expand open={open && !redacted} className="selectable pt-0.5 pb-2 pl-5 text-sm whitespace-pre-wrap text-fg-muted">
+				{text}
 			</Expand>
 		</div>
 	);
 }
 
-/** A text block of the reply. While the reply streams it renders block by block, and the growing block is paced. */
-function TextBlock({
-	text,
-	pending,
-	live,
-	revealFromStart,
-	synchronized,
-}: {
-	text: string;
-	pending: boolean;
-	live: boolean;
-	revealFromStart: boolean;
-	synchronized: boolean;
-}): ReactNode {
-	const shown = usePacedText(text, live && !synchronized, revealFromStart);
-	return pending ? <StreamingMarkdown text={shown} /> : <Markdown text={shown} />;
+/** How much of block `index` (of `length` characters) shows: all of it, a prefix, or none (-1). */
+function shownLength(playout: Playout | null, index: number, length: number): number {
+	return playout ? Math.min(length, playout.visible(index)) : length;
 }
 
 function AssistantBlocks({
@@ -170,40 +139,55 @@ function AssistantBlocks({
 	active: ReadonlyMap<string, ActiveTool>;
 	pending: boolean;
 	mode: TranscriptMode;
-	/** Where a block that starts streaming while mounted begins its reveal (see `usePacedText`). */
+	/** A reply that starts streaming while the chat is open reveals from its first character (see `usePlayout`). */
 	revealFromStart?: boolean;
 	/** The live mirror is synchronizing with an existing stream, rather than receiving new text. */
 	synchronized?: boolean;
 }): ReactNode {
 	const { t } = useTranslation("chat");
-	const lastText = message.content.reduce((last, block, index) => (block.type === "text" ? index : last), -1);
-	// Only the newest block is still growing; earlier ones are finished and show in full.
-	const streamingIndex = pending ? message.content.length - 1 : -1;
-	const failed = !pending && (message.stopReason === "error" || message.stopReason === "aborted");
+	const [openThoughts, setOpenThoughts] = useState<ReadonlySet<number>>(() => new Set());
+	const thoughtOpen = (index: number) => mode !== "normal" || openThoughts.has(index);
+	const toggleThought = (index: number) =>
+		setOpenThoughts(current => {
+			const next = new Set(current);
+			if (!next.delete(index)) next.add(index);
+			return next;
+		});
+	// Visible text and open thoughts take time to reveal; collapsed thoughts and tool calls show when reached.
+	const timeline: PlayoutBlock[] = message.content.map((block, index) => {
+		if (block.type === "text") return { length: block.text.length, timed: true };
+		if (block.type === "thinking") return { length: block.thinking.length, timed: thoughtOpen(index) };
+		return { length: 0, timed: false };
+	});
+	const playout = usePlayout(message.timestamp, timeline, { pending, showExisting: !revealFromStart, synchronized });
+	// The saved entry that replaces the stream row keeps revealing until the reveal catches up.
+	const revealing = pending || playout !== null;
+	let lastText = -1;
+	for (const [index, block] of message.content.entries()) if (block.type === "text" && shownLength(playout, index, block.text.length) > 0) lastText = index;
+	const failed = !revealing && (message.stopReason === "error" || message.stopReason === "aborted");
 	return (
 		<div className="flex flex-col">
 			{message.content.map((block, index) => {
 				switch (block.type) {
-					case "thinking":
-						return (
-							<ThinkingBlock
-								key={index}
-								text={block.thinking}
-								open={mode !== "normal"}
-								live={index === streamingIndex}
-								revealFromStart={revealFromStart}
-								synchronized={synchronized}
-							/>
-						);
+					case "thinking": {
+						const shown = shownLength(playout, index, block.thinking.length);
+						if (shown < 0) return null;
+						return <ThinkingBlock key={index} text={revealedPrefix(block.thinking, shown)} open={thoughtOpen(index)} onToggle={() => toggleThought(index)} />;
+					}
 					case "redactedThinking":
-						return <ThinkingBlock key={index} text="" redacted open={false} />;
-					case "text":
+						return shownLength(playout, index, 0) < 0 ? null : <ThinkingBlock key={index} text="" redacted open={false} />;
+					case "text": {
+						const shown = shownLength(playout, index, block.text.length);
+						if (shown <= 0 && playout) return null;
+						const text = revealedPrefix(block.text, shown);
 						return (
-							<div key={index} className="py-1.5 first:pt-0 last:pb-0" data-streaming={pending && index === lastText ? "" : undefined}>
-								<TextBlock text={block.text} pending={pending} live={index === streamingIndex} revealFromStart={revealFromStart} synchronized={synchronized} />
+							<div key={index} className="py-1.5 first:pt-0 last:pb-0" data-streaming={revealing && index === lastText ? "" : undefined}>
+								{revealing ? <StreamingMarkdown text={text} /> : <Markdown text={text} />}
 							</div>
 						);
+					}
 					case "toolCall": {
+						if (shownLength(playout, index, 0) < 0) return null;
 						const live = active.get(block.id);
 						const result = results.get(block.id);
 						return (
@@ -216,7 +200,7 @@ function AssistantBlocks({
 								running={!result && (live !== undefined || pending)}
 								partialResult={live?.partialResult}
 								verbose={mode === "verbose"}
-								arriving={pending}
+								arriving={revealing}
 							/>
 						);
 					}
@@ -450,6 +434,8 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const lockRef = useRef(true);
 	const [unseen, setUnseen] = useState(false);
 	const prependRef = useRef<{ anchor: Element; offset: number } | null>(null);
+	// Reveal state by message, so a streamed reply's saved entry continues the same reveal (`usePlayout`).
+	const [playouts] = useState(() => new Map<number, Playout>());
 
 	useEffect(() => {
 		const el = rootRef.current;
@@ -553,82 +539,84 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				aria-live="polite"
 				aria-relevant="additions"
 			>
-				<div ref={contentRef} className="mx-auto flex min-h-full w-full max-w-(--chat-max) flex-col gap-6 px-6 pt-6 pb-4">
-					{empty && <EmptyChat session={session} />}
-					{start > 0 && (
-						<Button variant="ghost" size="sm" className="self-center" onClick={showEarlier}>
-							{t("showEarlier", { count: start })}
-						</Button>
-					)}
-					{visible.map((entry, index) => {
-						const isUser = (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
-						if (isUser) seenUser = true;
-						if (!rowShown(entry, mode, seenUser)) return null;
-						const isAssistant = entry.type === "message" && entry.message.role === "assistant";
-						const continuesTurn = isAssistant && previousAssistant;
-						previousAssistant = isAssistant;
-						const arrived = arrivals.armed && index > lastSeen && !arrivals.seen.has(entry.id) && !(isAssistant && arrivals.streamed);
-						return (
-							// Rows of one turn stack without the turn gap, so a run of tool calls reads as one list.
-							<Rise key={entry.id} data-row play={arrived} className={cn(continuesTurn && "-mt-6")}>
-								<Row
-									entry={entry}
-									continuesTurn={continuesTurn}
-									afterFirstPrompt={seenUser}
+				<PlayoutRegistry.Provider value={playouts}>
+					<div ref={contentRef} className="mx-auto flex min-h-full w-full max-w-(--chat-max) flex-col gap-6 px-6 pt-6 pb-4">
+						{empty && <EmptyChat session={session} />}
+						{start > 0 && (
+							<Button variant="ghost" size="sm" className="self-center" onClick={showEarlier}>
+								{t("showEarlier", { count: start })}
+							</Button>
+						)}
+						{visible.map((entry, index) => {
+							const isUser = (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
+							if (isUser) seenUser = true;
+							if (!rowShown(entry, mode, seenUser)) return null;
+							const isAssistant = entry.type === "message" && entry.message.role === "assistant";
+							const continuesTurn = isAssistant && previousAssistant;
+							previousAssistant = isAssistant;
+							const arrived = arrivals.armed && index > lastSeen && !arrivals.seen.has(entry.id) && !(isAssistant && arrivals.streamed);
+							return (
+								// Rows of one turn stack without the turn gap, so a run of tool calls reads as one list.
+								<Rise key={entry.id} data-row play={arrived} className={cn(continuesTurn && "-mt-6")}>
+									<Row
+										entry={entry}
+										continuesTurn={continuesTurn}
+										afterFirstPrompt={seenUser}
+										results={results}
+										active={activeTools}
+										mode={mode}
+										session={session}
+									/>
+								</Rise>
+							);
+						})}
+						{stream && (
+							<Rise data-row play={arrivals.armed && !arrivals.streamed} className={cn("flex flex-col gap-2", previousAssistant && "-mt-6")}>
+								{!previousAssistant && <AssistantHeader model={stream.model} />}
+								<AssistantBlocks
+									message={stream}
 									results={results}
 									active={activeTools}
+									pending={!streamDone}
 									mode={mode}
-									session={session}
+									revealFromStart={arrivals.armed}
+									synchronized={synchronized}
 								/>
 							</Rise>
-						);
-					})}
-					{stream && (
-						<Rise data-row play={arrivals.armed && !arrivals.streamed} className={cn("flex flex-col gap-2", previousAssistant && "-mt-6")}>
-							{!previousAssistant && <AssistantHeader model={stream.model} />}
-							<AssistantBlocks
-								message={stream}
-								results={results}
-								active={activeTools}
-								pending={!streamDone}
-								mode={mode}
-								revealFromStart={arrivals.armed}
-								synchronized={synchronized}
-							/>
-						</Rise>
-					)}
-					{tailTools.length > 0 && (
-						<div data-row className="-mt-6 flex flex-col">
-							{tailTools.map(tool => (
-								<ToolCard
-									key={tool.toolCallId}
-									name={tool.toolName}
-									args={tool.args}
-									intent={tool.intent}
-									running
-									partialResult={tool.partialResult}
-									verbose={mode === "verbose"}
-									arriving={arrivals.armed}
-								/>
-							))}
-						</div>
-					)}
-					<AnimatePresence initial={false} mode="wait">
-						{uiRequest && (
-							<motion.div
-								key={uiRequest.reqId}
-								initial={{ opacity: 0, y: 8 }}
-								animate={{ opacity: 1, y: 0, transition: { y: spring.gentle, opacity: { duration: duration.base, ease: ease.outQuart } } }}
-								exit={{ opacity: 0, y: -4, transition: { duration: duration.fast, ease: "easeIn" } }}
-							>
-								<QuestionCard session={session} request={uiRequest} />
-							</motion.div>
 						)}
-					</AnimatePresence>
-					{slots.map(slot => (
-						<slot.component key={slot.id} session={session} />
-					))}
-				</div>
+						{tailTools.length > 0 && (
+							<div data-row className="-mt-6 flex flex-col">
+								{tailTools.map(tool => (
+									<ToolCard
+										key={tool.toolCallId}
+										name={tool.toolName}
+										args={tool.args}
+										intent={tool.intent}
+										running
+										partialResult={tool.partialResult}
+										verbose={mode === "verbose"}
+										arriving={arrivals.armed}
+									/>
+								))}
+							</div>
+						)}
+						<AnimatePresence initial={false} mode="wait">
+							{uiRequest && (
+								<motion.div
+									key={uiRequest.reqId}
+									initial={{ opacity: 0, y: 8 }}
+									animate={{ opacity: 1, y: 0, transition: { y: spring.gentle, opacity: { duration: duration.base, ease: ease.outQuart } } }}
+									exit={{ opacity: 0, y: -4, transition: { duration: duration.fast, ease: "easeIn" } }}
+								>
+									<QuestionCard session={session} request={uiRequest} />
+								</motion.div>
+							)}
+						</AnimatePresence>
+						{slots.map(slot => (
+							<slot.component key={slot.id} session={session} />
+						))}
+					</div>
+				</PlayoutRegistry.Provider>
 			</div>
 			<AnimatePresence initial={false}>
 				{unseen && (
