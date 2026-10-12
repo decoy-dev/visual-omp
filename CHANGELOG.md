@@ -4,6 +4,9 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- The Homebrew cask now removes quarantine from the installed app bundle after installation, upgrade or reinstallation. macOS reported a Homebrew copy of 0.3.0 as "visual-omp is damaged and can't be opened" although its signature passed `codesign --verify`, and that message offers no way to approve the app. Removing the attribute avoids the approval check that quarantine triggers. Homebrew still verifies the download against the checksum in the cask, and the cask now requires Homebrew 6.0.16 or later. Disk images downloaded from a release are unchanged and still need **Open Anyway** on first launch.
+- If macOS reports a Homebrew-installed copy as damaged, it cannot open to update itself. Open Terminal and run `brew update`. After that succeeds, run `brew upgrade --cask visual-omp`. If Homebrew reports that the latest version is already installed, run `brew reinstall --cask visual-omp` to apply the updated cask to that version.
+
 ## [0.3.1] - 2026-10-01
 
 visual-omp 0.3.1 lets you open the files omp names in its replies, and looks for and previews the PDFs and images its commands write. The title bar now shows the app's version.

@@ -35,6 +35,8 @@ irm https://omp.sh/install.ps1 | iex
 
 **visual-omp on macOS (Homebrew)**
 
+The Homebrew cask requires Homebrew 6.0.16 or later. Run `brew update` before installing or updating visual-omp.
+
 ```sh
 brew tap decoy-dev/tap https://github.com/decoy-dev/visual-omp
 brew install --cask decoy-dev/tap/visual-omp
@@ -48,10 +50,12 @@ visual-omp supports macOS on Apple Silicon and Intel, Windows 10 and later, and 
 
 ### First launch
 
-visual-omp is not notarized by Apple or signed for Windows SmartScreen yet, so the operating system asks you to approve it before it opens. Expect the prompt on first launch, and possibly again after an update:
+visual-omp is not notarized by Apple or signed for Windows SmartScreen yet. The Homebrew cask removes quarantine from the installed app bundle to avoid the approval check that this attribute triggers, and Homebrew still checks each download against the checksum in the cask. Other installs ask you to approve visual-omp before it opens. Expect the prompt on first launch, and possibly again after an update:
 
-- **macOS:** open visual-omp, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to the message about visual-omp.
+- **macOS (disk image):** open visual-omp, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to the message about visual-omp.
 - **Windows:** on the "Windows protected your PC" screen, click **More info**, then **Run anyway**.
+
+If macOS reports a Homebrew-installed copy as damaged, open Terminal and run `brew update`. After that succeeds, run `brew upgrade --cask visual-omp`. If Homebrew reports that the latest version is already installed, run `brew reinstall --cask visual-omp` to apply the updated cask to that version.
 
 ## How it works
 

@@ -1,6 +1,6 @@
 # Releasing visual-omp
 
-Changes are committed to `main` as conventional commits (`feat`, `fix`, `chore`, `docs`, `build`, `ci`, `refactor`, `style`, `test`), and a push to `main` only runs CI: typecheck, tests and an installer build on macOS and Windows, with nothing published. A release happens only when someone pushes a version tag, so choosing when to publish is a separate decision from merging the work.
+Changes are committed to `main` as conventional commits (`feat`, `fix`, `chore`, `docs`, `build`, `ci`, `refactor`, `style`, `test`). A push to `main` runs CI (typecheck, tests and an installer build on macOS and Windows) without publishing application installers. This repository also serves the Homebrew tap, so a push that changes `Casks/visual-omp.rb` becomes available to Homebrew users through `brew update`, including a change for a version that is already released. New installers are published only when someone pushes a version tag, and the owner approves pushes and releases separately.
 
 ## Cutting a release
 

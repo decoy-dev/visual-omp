@@ -11,6 +11,12 @@ cask "visual-omp" do
 
   app "visual-omp.app"
 
+  # visual-omp is ad-hoc signed without notarization, and macOS can reject a quarantined copy as
+  # damaged with no way to approve it. Clearing the quarantine attribute lets the installed app open.
+  postflight_steps do
+    run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{appdir}}/visual-omp.app"]
+  end
+
   on_intel do
     sha256 "b4f0ba50c15fc60f687414babeca54462817ed520b3b4079246955ae44980ccb"
     url "https://github.com/decoy-dev/visual-omp/releases/download/v#{version}/visual-omp-#{version}-mac-x64.dmg"
