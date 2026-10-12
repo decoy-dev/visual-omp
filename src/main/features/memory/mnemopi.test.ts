@@ -18,7 +18,9 @@ beforeEach(() => {
 	dir = mkdtempSync(join(tmpdir(), "vomp-mnemopi-"));
 	dbPath = join(dir, "mnemopi.db");
 	const db = new DatabaseSync(dbPath);
-	db.exec(BANK_SQL);
+	// One transaction for the whole fixture: each of its ~90 statements would otherwise commit and sync on its own,
+	// which took over 10 s on Windows CI runners.
+	db.exec(`BEGIN;\n${BANK_SQL}\nCOMMIT;`);
 	db.close();
 });
 
