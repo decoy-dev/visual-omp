@@ -7,7 +7,7 @@ cask "visual-omp" do
   desc "Desktop app for the omp (oh-my-pi) coding agent"
   homepage "https://github.com/decoy-dev/visual-omp"
 
-  depends_on macos: ">= :monterey"
+  depends_on macos: :monterey
 
   app "visual-omp.app"
 
