@@ -2,7 +2,7 @@ import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
 import type { UsageLimit, UsageLimitsSnapshot, UsageReport } from "@shared/contracts/usage";
 import realSnapshot from "../../../../../main/features/usage/fixtures/usage-limits.json";
-import { chatModel, modelsInUse, parseModelSelector, planUsage } from "./planUsage";
+import { chatModel, modelsInUse, parseModelSelector, parseWindowDuration, planUsage } from "./planUsage";
 
 /** Real `omp usage --json` output: Kimi, Codex and one Claude account with a Fable tier row and spent extra usage. */
 const fixture = realSnapshot as unknown as UsageLimitsSnapshot;
@@ -120,6 +120,47 @@ describe("planUsage", () => {
 		expect(providers[1]?.windows).toHaveLength(3);
 	});
 
+	it("names Kimi's windows by duration and tells its two weekly meters apart by a readable label", () => {
+		const [kimi] = planUsage(fixture, [{ provider: "kimi-code", modelId: "kimi-k3" }]);
+		expect(kimi?.windows.map(window => [window.window, window.fraction, window.detail])).toEqual([
+			["7d", 0.06, "Weekly limit"],
+			["5h", 0.16, undefined],
+			["7d", 0, undefined],
+		]);
+		expect(kimi?.top.window).toBe("5h");
+	});
+
+	it("keeps Claude's shared 7d and Fable 7d apart although they reset together", () => {
+		const [claude] = planUsage(fixture, [{ provider: "anthropic", modelId: "claude-fable-5" }]);
+		expect(claude?.windows.map(window => [window.window, window.fraction, window.detail])).toEqual([
+			["5h", 0.29, undefined],
+			["7d", 0.45, undefined],
+			["7d fable", 0.22, undefined],
+		]);
+	});
+
+	it("keeps independent quotas of one duration and one reset separate", () => {
+		const weekly = (id: string, fraction: number, unit: UsageLimit["amount"]["unit"], label: string) =>
+			limit(id, fraction, { label, window: { id: "7d", label: "7 Day", resetsAt: 1_000_000 }, amount: { usedFraction: fraction, unit } });
+		const rows = (limits: UsageLimit[]) =>
+			planUsage(snapshot([report("synthetic", limits)]), [{ provider: "synthetic", modelId: "s" }])[0]?.windows.map(window => [window.id, window.window, window.fraction, window.detail]);
+		expect(rows([weekly("synthetic:requests", 0.1, "requests", "Weekly requests"), weekly("synthetic:usd", 0.3, "usd", "Weekly spend")])).toEqual([
+			["synthetic:requests", "7d", 0.1, "Weekly requests"],
+			["synthetic:usd", "7d", 0.3, "Weekly spend"],
+		]);
+		expect(rows([weekly("synthetic:a", 0.1, "percent", "Pro models"), weekly("synthetic:b", 0.3, "percent", "7 days")])).toEqual([
+			["synthetic:a", "7d", 0.1, "Pro models"],
+			["synthetic:b", "7d", 0.3, undefined],
+		]);
+	});
+
+	it("falls back to the human window label, then the limit label, when no duration can be read", () => {
+		const monthly = limit("cursor:usd", 0.2, { window: { id: "billing-period", label: "Billing period" } });
+		const bare = limit("cursor:extra", 0.1, { window: undefined, scope: { provider: "cursor", windowId: "extra" }, label: "On-demand spend" });
+		const [cursor] = planUsage(snapshot([report("cursor", [monthly, bare])]), [{ provider: "cursor", modelId: "auto" }]);
+		expect(cursor?.windows.map(window => window.window)).toEqual(["Billing period", "On-demand spend"]);
+	});
+
 	it("ignores limits scoped to another model", () => {
 		const scoped = (modelId: string, fraction: number) => limit(`copilot:${modelId}`, fraction, { scope: { provider: "github-copilot", modelId } });
 		const data = snapshot([report("github-copilot", [limit("github-copilot:monthly", 0.1), scoped("gpt-5", 0.8), scoped("claude-opus-5-5", 0.5)])]);
@@ -202,5 +243,16 @@ describe("planUsage", () => {
 	it("turns warn at 70% and err at 90%", () => {
 		const tone = (fraction: number) => planUsage(snapshot([report("anthropic", [limit("anthropic:5h", fraction)])]), [opus])[0]?.top.tone;
 		expect([tone(0.69), tone(0.7), tone(0.89), tone(0.9)]).toEqual(["ok", "warn", "warn", "err"]);
+	});
+});
+
+describe("parseWindowDuration", () => {
+	it("reads one token-bounded duration", () => {
+		const day = 86_400_000;
+		expect(["limit_7d", "7d", "7 Day", "30 days", "1w", "5h limit", "90 MIN", "2 hrs"].map(parseWindowDuration)).toEqual([7 * day, 7 * day, 7 * day, 30 * day, 7 * day, 5 * 3_600_000, 90 * 60_000, 2 * 3_600_000]);
+	});
+
+	it("ignores digits inside other words, several durations and other units", () => {
+		expect(["gpt5h", "v2day", "7dx", "abc7d", "Weekly limit", "1mo", "5h and 7d", "monthly", "1.5.2h"].map(parseWindowDuration)).toEqual(Array(9).fill(null));
 	});
 });

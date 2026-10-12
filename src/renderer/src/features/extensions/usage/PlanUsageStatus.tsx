@@ -13,8 +13,11 @@ import { chatModel, modelsInUse, planUsage, type ProviderUsage, providerName, ty
 const fills: Record<WindowUsage["tone"], string> = { ok: "bg-ok", warn: "bg-warn", err: "bg-err" };
 const inks: Record<WindowUsage["tone"], string> = { ok: "", warn: "text-warn", err: "text-err" };
 
-/** Fold steps, applied in order while the status bar overflows: other providers, names, then percents. */
-const FOLDS = ["data-fold-more", "data-fold-name", "data-fold-text"] as const;
+/**
+ * Fold steps, applied in order while the status bar overflows: window names first so every provider
+ * stays visible longest, then the other providers ("+N"), then provider names, then percents.
+ */
+const FOLDS = ["data-fold-window", "data-fold-more", "data-fold-name", "data-fold-text"] as const;
 
 /**
  * Folds the item step by step while any status bar column overflows, measuring synchronously so no
@@ -99,7 +102,10 @@ function PlanTooltip({ usage, now }: { usage: ProviderUsage[]; now: number }) {
 						</span>
 						{provider.windows.map(window => (
 							<span key={window.id} className="contents">
-								<span className="font-mono">{window.window}</span>
+								<span>
+									<span className="font-mono">{window.window}</span>
+									{window.detail && <span className="text-fg-muted"> {window.detail}</span>}
+								</span>
 								<span className={cn("font-mono tabular-nums", inks[window.tone])}>
 									{window.fraction === null ? t("usage.plan.unknown") : t("usage.used", { percent: percentOf(window) })}
 								</span>
@@ -179,7 +185,8 @@ export function PlanUsageStatus({ session, projectPath }: PaneProps) {
 								/>
 							</span>
 							<span className={cn("inline-flex gap-1 whitespace-nowrap", inks[provider.top.tone])}>
-								<span className="group-data-[fold-name]/plan:hidden">{t("usage.plan.name", { provider: providerName(provider.provider), window: provider.top.window })}</span>
+								<span className="group-data-[fold-name]/plan:hidden">{providerName(provider.provider)}</span>
+								<span className="group-data-[fold-window]/plan:hidden">{provider.top.window}</span>
 								<span className="tabular-nums group-data-[fold-text]/plan:hidden">{t("usage.plan.percent", { percent: percentOf(provider.top) })}</span>
 							</span>
 						</span>

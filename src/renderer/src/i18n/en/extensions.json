@@ -390,7 +390,6 @@
 		"statusText": "{{cost}} today",
 		"statusTooltip": "Estimated cost of today's chats. Click for usage and limits.",
 		"plan": {
-			"name": "{{provider}} {{window}}",
 			"percent": "{{percent}}%",
 			"more": "+{{count}}",
 			"open": "Show usage and limits",

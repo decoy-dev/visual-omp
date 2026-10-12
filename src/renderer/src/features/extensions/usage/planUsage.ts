@@ -21,6 +21,11 @@ export interface WindowUsage {
 	label: string;
 	/** Compact window name, e.g. `5h`, `7d`, `7d fable`. */
 	window: string;
+	/**
+	 * omp's limit label, set only when another window of the provider has the same compact name and
+	 * this label is readable (Kimi's `Weekly limit` beside its `limit_7d` meter); the tooltip shows it.
+	 */
+	detail?: string;
 	/** 0..1 (above 1 means overage); null when the provider reports nothing usable. */
 	fraction: number | null;
 	status: UsageStatus | undefined;
@@ -142,10 +147,28 @@ export function limitApplies(limit: UsageLimit, modelIds: readonly string[]): bo
 	return tier !== undefined && modelIds.some(id => claudeKind(id) === tier);
 }
 
+const DURATION_UNIT_MS: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000, w: 604_800_000 };
+const DURATION_TOKEN = /(?<![a-z0-9.])(\d+(?:\.\d+)?)\s*(minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w)(?![a-z0-9])/gi;
+
+/**
+ * Duration in ms of a window name that holds exactly one duration token (`7d`, `limit_7d`, `7 Day`,
+ * `30 days`, `1w`); null when it holds none or several, or digits sit inside another word.
+ */
+export function parseWindowDuration(text: string): number | null {
+	const tokens = [...text.matchAll(DURATION_TOKEN)];
+	if (tokens.length !== 1) return null;
+	const [, amount, unit] = tokens[0];
+	return Number(amount) * DURATION_UNIT_MS[unit[0].toLowerCase()];
+}
+
+/** Compact window name: omp's duration, else one read from the window id, scope or label, else the human label. */
 function windowName(limit: UsageLimit): string {
-	const durationMs = limit.window?.durationMs;
-	if (durationMs !== undefined) return formatDuration(durationMs);
-	return limit.window?.id ?? limit.scope.windowId ?? limit.label;
+	const window = limit.window;
+	let durationMs = window?.durationMs ?? null;
+	for (const text of [window?.id, limit.scope.windowId, window?.label]) {
+		if (durationMs === null && text) durationMs = parseWindowDuration(text);
+	}
+	return durationMs !== null ? formatDuration(durationMs) : (window?.label ?? limit.label);
 }
 
 /**
@@ -174,6 +197,8 @@ function pooledStatus(statuses: readonly (UsageStatus | undefined)[]): UsageStat
  * The provider's windows that bind `modelIds`. With one account each limit is read as reported; with
  * several, a limit id's rows across accounts merge into omp's pooled capacity figure (accounts' worth
  * of quota used / accounts), falling back to the mean fraction when omp reports no matching bucket.
+ * Rows that share a compact name stay separate: a tier tells them apart (`7d` and `7d fable`), else a
+ * readable limit label goes into `detail`.
  */
 function providerWindows(reports: readonly UsageReport[], modelIds: readonly string[], stats: readonly ProviderWindowStat[]): WindowUsage[] {
 	const groups = new Map<string, UsageLimit[]>();
@@ -182,8 +207,14 @@ function providerWindows(reports: readonly UsageReport[], modelIds: readonly str
 			if (limitApplies(limit, modelIds)) groups.set(limit.id, [...(groups.get(limit.id) ?? []), limit]);
 		}
 	}
-	const names = [...groups.values()].map(([limit]) => windowName(limit));
-	return [...groups.values()].map((limits, index) => {
+	const firsts = [...groups.values()].map(([limit]) => limit);
+	const durations = firsts.map(windowName);
+	// Rows that share a compact name (`7d` and its Fable tier) keep apart by their tier.
+	const names = durations.map((name, index) => {
+		const tier = firsts[index].scope.tier;
+		return tier && durations.some((other, otherIndex) => otherIndex !== index && other === name) ? `${name} ${tier}` : name;
+	});
+	return [...groups.values()].map((limits, index): WindowUsage => {
 		const first = limits[0];
 		const stat = reports.length > 1 ? capacityStat(stats, first) : undefined;
 		const known = limits.map(usedFraction).filter((fraction): fraction is number => fraction !== null);
@@ -191,13 +222,14 @@ function providerWindows(reports: readonly UsageReport[], modelIds: readonly str
 			stat && stat.accounts > 0 ? stat.usedAccounts / stat.accounts : known.length > 0 ? known.reduce((sum, value) => sum + value, 0) / known.length : null;
 		const status = pooledStatus(limits.map(limit => limit.status));
 		const resets = limits.map(limit => limit.window?.resetsAt).filter((at): at is number => at !== undefined);
-		// Rows that share a compact name (`7d` and its Fable tier) keep apart by their tier.
 		const name = names[index];
 		const clash = names.some((other, otherIndex) => otherIndex !== index && other === name);
+		const readable = /\s/.test(first.label) && parseWindowDuration(first.label) === null;
 		return {
 			id: first.id,
 			label: first.label,
-			window: clash && first.scope.tier ? `${name} ${first.scope.tier}` : name,
+			window: name,
+			detail: clash && readable ? first.label : undefined,
 			fraction,
 			status,
 			tone: limitTone(fraction, status),
