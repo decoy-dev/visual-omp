@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- When omp asks several questions at once, the question card now shows them one at a time with "Question 2 of 3" and a **Previous question** button, so you can go back and change an earlier answer before anything is sent. omp itself takes the answers one question at a time and cannot return to a question it has already received, so the app keeps your answers until you reach the last question and then sends them all with **Send answers**. If omp asks in a way the app does not expect while it sends them, it stops and shows the remaining questions for you to answer one by one. **Chat about this** and **Skip questions** still end the questions right away.
+
 ## [0.4.0] - 2026-10-12
 
 visual-omp 0.4.0 adds plan usage reported by your providers to the status bar, background chat alerts, image zoom and broader SVG previews. While the app window remains open and in the background, alerts tell you when a chat finishes or needs your answer. On macOS, these use a Dock badge and bounce. The Homebrew cask now removes quarantine from the installed app bundle to avoid the macOS approval check that reported it as damaged.

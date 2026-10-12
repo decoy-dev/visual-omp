@@ -19,7 +19,7 @@ import { StreamingMarkdown } from "../../transcript/Markdown";
 import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toast, useMotionReduced } from "../../ui";
 import { useComposerDrafts } from "../composer/drafts";
 import { FileRefContext, LinkedMarkdown, useFileRefs, writtenFolders } from "./FileLinks";
-import { QuestionCard } from "./QuestionCard";
+import { usePendingQuestion } from "./QuestionCard";
 import { ToolCard } from "./ToolCard";
 import { type PlayoutBlock, PlayoutRegistry, type Playout, revealedPrefix, synchronizedStream as streamNeedsSync, usePlayout } from "./pace";
 import "./transcript.css";
@@ -403,6 +403,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const streamDone = view.guest?.streamDone ?? true;
 	const activeTools = guest?.activeTools ?? EMPTY_TOOLS;
 	const uiRequest = guest?.uiRequest ?? null;
+	const pendingQuestion = usePendingQuestion(session, uiRequest);
 
 	// A stream present at first synchronization, or while reconnecting, is already in progress.
 	// Keep its current text visible, then pace updates once the mirror is live.
@@ -640,14 +641,14 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 								</div>
 							)}
 							<AnimatePresence initial={false} mode="wait">
-								{uiRequest && (
+								{pendingQuestion && (
 									<motion.div
-										key={uiRequest.reqId}
+										key={pendingQuestion.key}
 										initial={{ opacity: 0, y: 8 }}
 										animate={{ opacity: 1, y: 0, transition: { y: spring.gentle, opacity: { duration: duration.base, ease: ease.outQuart } } }}
 										exit={{ opacity: 0, y: -4, transition: { duration: duration.fast, ease: "easeIn" } }}
 									>
-										<QuestionCard session={session} request={uiRequest} />
+										{pendingQuestion.node}
 									</motion.div>
 								)}
 							</AnimatePresence>

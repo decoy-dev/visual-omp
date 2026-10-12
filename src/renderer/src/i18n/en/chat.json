@@ -64,7 +64,16 @@
 		"send": "Send answer",
 		"placeholder": "Type your answer…",
 		"chooseMany": "Choose any that apply",
-		"done": "Send choices"
+		"done": "Send choices",
+		"series": {
+			"progress": "Question {{current}} of {{total}}",
+			"previous": "Previous question",
+			"next": "Next question",
+			"send": "Send answers",
+			"skip": "Skip questions",
+			"sending": "Sending your answers to omp…",
+			"fallback": "omp asked in a form the app did not expect, so it stopped sending your saved answers. Answer the rest here."
+		}
 	},
 	"header": {
 		"more": "More actions",
