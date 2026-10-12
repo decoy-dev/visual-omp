@@ -1,6 +1,7 @@
 import "./profile";
 import { join } from "node:path";
 import { app, BrowserWindow, nativeTheme, shell } from "electron";
+import { attachAttentionWindow, setAppUserModelId } from "./attention";
 import { registerHandlers } from "./handlers";
 import { broadcast } from "./ipc";
 import { buildMenu } from "./menu";
@@ -38,6 +39,7 @@ function createWindow(): void {
 			spellcheck: true,
 		},
 	});
+	attachAttentionWindow(mainWindow);
 	mainWindow.once("ready-to-show", () => mainWindow?.show());
 	// Never navigate the app window away; open web links in the user's browser instead.
 	mainWindow.webContents.setWindowOpenHandler(({ url }) => {
@@ -75,6 +77,7 @@ async function shutdown(): Promise<void> {
 	app.quit();
 }
 
+setAppUserModelId();
 if (!app.requestSingleInstanceLock()) app.quit();
 
 app.on("second-instance", () => {

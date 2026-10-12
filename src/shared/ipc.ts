@@ -154,6 +154,19 @@ export interface AppPreferences {
 	voiceInput: boolean;
 }
 
+/** Background attention for chats that finished or need an answer while the window was unfocused (DESIGN §4.22). */
+export interface AttentionState {
+	/** Unseen chats. 0 clears the Dock badge, the taskbar overlay and the taskbar flashing. */
+	count: number;
+	/** A chat just became unseen: bounce the Dock icon once (macOS) or flash the taskbar button (Windows). */
+	alert: boolean;
+	/** Windows taskbar overlay: a PNG data URL and its accessible description. Null removes it. */
+	overlay: { image: string; description: string } | null;
+}
+
+/** Longest strings `app:notify` accepts (main rejects longer ones; the renderer shortens titles and bodies to fit). */
+export const NOTIFY_LIMITS = { title: 256, body: 1024, chatId: 128 } as const;
+
 export interface IpcInvokeMap {
 	"app:info": { args: []; result: { version: string; platform: Platform; arch: string; homeDir: string } };
 	"app:prefs:get": { args: []; result: AppPreferences };
@@ -161,7 +174,9 @@ export interface IpcInvokeMap {
 	"app:openExternal": { args: [url: string]; result: void };
 	"app:showItem": { args: [path: string]; result: void };
 	"app:pickFolder": { args: [title?: string]; result: string | null };
-	"app:notify": { args: [title: string, body: string]; result: void };
+	/** Native notification for the chat `chatId` (a tab id); clicking it focuses the window and sends `app:openChat`. */
+	"app:notify": { args: [title: string, body: string, chatId?: string]; result: void };
+	"app:attention": { args: [state: AttentionState]; result: void };
 	"app:confirmQuit": { args: [allow: boolean]; result: void };
 
 	"omp:status": { args: [refresh?: boolean]; result: OmpStatus };
@@ -226,6 +241,8 @@ export interface IpcEventMap {
 	"app:quitRequested": { reason: "quit" | "close" };
 	/** Menu/accelerator actions routed to the renderer command system. */
 	"app:command": { id: string };
+	/** A notification for this chat (a tab id) was clicked; main already focused the window. */
+	"app:openChat": { chatId: string };
 }
 
 export type InvokeChannel = keyof IpcInvokeMap;

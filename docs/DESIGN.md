@@ -780,7 +780,7 @@ A centered 880×640 sheet with a 200px `--bg-inset` tab list and a slide-in `--s
   - **Permissions**: tool-by-tool Default, Ask, Allow or Deny. Tools on Default follow the permission mode.
   - **Models**: default models and a link to Model roles (§4.13).
   - **Providers**: which providers omp can use, and signing in through omp.
-  - **Sounds & alerts**: desktop notifications and a test notification.
+  - **Sounds & alerts**: the "Alert me in the background" switch, whose description names what this platform does (§4.22). On Windows and Linux a [Send a test] button requests a real notification; on macOS a note replaces it: "The Dock icon shows the count and bounces once for each newly unseen chat. Notification banners are unavailable in the current macOS build."
   - **Shortcuts**: a searchable table of the app's shortcuts.
   - **About**: see below.
   - **Advanced**: a searchable list of every omp setting, with "Changed only" and per-setting reset.
@@ -886,7 +886,14 @@ A 720×560 dialog: "Help", with the subtitle "Short guides and definitions of th
 
 **Update notice**: an info toast (§5.7) titled "visual-omp v{version} is available" with the line "The release notes list what changed." Its action row holds [Dismiss notice] (quiet) and [Update visual-omp] (accent). Settings → About lists both versions and updates visual-omp and omp from one place. The strings live in `i18n/en/onboarding.json` (`update.*`) and `manage.json`, which are authoritative over this summary.
 **Quit-warning dialog**: a modal shown when quitting or closing a tab while omp is working. Warn glyph, title "omp is still working in N chats." (or "in 1 chat."), body "Your chats pick up where they left off next time.", actions [Keep waiting] and [Stop and quit] (danger), and the checkbox "Always stop working chats when quitting". The strings live in `i18n/en/onboarding.json` (`quit.*`).
-**Notifications**: native OS notifications (macOS Notification Center, Windows). The title is the chat title and the body a one-line outcome ("Finished: Edited 3 files and tests pass ✓" or "Needs your answer"). Clicking one focuses the window and the chat and scrolls to the card. There is no in-app notification center; the sidebar `!` badges serve as the inbox.
+**Notifications**: when a chat finishes a turn or starts waiting for an answer while the window is in the background, visual-omp counts it as unseen. The count is per chat, so a chat that finishes twice counts once. It clears when the window gains focus, and the main process also clears the Dock badge, taskbar overlay and flashing itself when the window gains focus, reloads, loses its renderer or closes. The Settings switch (§4.12) turns all of the following on or off. Background alerts work while the app window remains open, including when it is minimized. Closing the macOS window stops these alerts until a window is reopened.
+
+- **macOS**: the Dock icon shows the count as a badge and bounces once (informational) for each newly unseen chat. The app also requests a native banner for each event; macOS denied banners to the tested ad-hoc signed build, so the current build shows none.
+- **Windows**: the app requests a native toast for each event, under the installer's AppUserModelID (`ltd.decoy.visualomp`), and Windows shows it subject to the system notification settings. The taskbar button flashes for each newly unseen chat and shows an overlay with the count: an accent circle with the number, "9+" above nine, described for screen readers as "N chats finished or need your answer".
+- **Toasts and banners**: the title is the chat title and the body a one-line outcome ("Finished: Edited 3 files and tests pass ✓" or "Needs your answer"), shortened with an ellipsis past 256 and 1,024 characters. Clicking one restores and focuses the window and switches to that chat.
+
+There is no in-app notification center; the sidebar `!` badges serve as the inbox. The strings live in `i18n/en/onboarding.json` (`notify.*`) and `manage.json` (`alerts.*`).
+
 **In-app toasts**: see §5.7 for geometry, the action row, timing and motion.
 
 ---

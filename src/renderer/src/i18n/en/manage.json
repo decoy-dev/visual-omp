@@ -268,12 +268,17 @@
 		}
 	},
 	"alerts": {
-		"title": "Notifications",
-		"description": "Get a desktop notification when omp needs you while the app is in the background.",
+		"title": "Background alerts",
+		"description": "Find out when omp needs you while visual-omp is in the background.",
 		"notifications": {
-			"label": "Desktop notifications",
-			"description": "Tells you when a chat finishes or omp is waiting for your answer."
+			"label": "Alert me in the background",
+			"description": {
+				"darwin": "Alerts you when a chat finishes or needs your answer while the window is in the background.",
+				"win32": "Sends a notification, flashes the taskbar button and shows a count on it when a chat finishes or needs your answer while the window is in the background.",
+				"linux": "Sends a desktop notification when a chat finishes or needs your answer while the window is in the background."
+			}
 		},
+		"macNote": "The Dock icon shows the count and bounces once for each newly unseen chat. Notification banners are unavailable in the current macOS build.",
 		"test": {
 			"description": "Check that notifications show up on this computer.",
 			"button": "Send a test",

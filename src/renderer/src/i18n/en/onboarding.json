@@ -120,7 +120,7 @@
 				"s1": "Sometimes omp needs a decision from you, such as which option to pick or whether it may run something.",
 				"s2": "A question card appears in the chat, and the chat is marked in the sidebar so you don't miss it.",
 				"s3": "Select an option or type your own answer, then choose Send answer. omp continues once it has your answer.",
-				"s4": "If you're away, visual-omp sends a notification when a chat needs your answer."
+				"s4": "If you're away, visual-omp shows a count on its Dock or taskbar icon when a chat needs your answer."
 			}
 		},
 		"terms": {
@@ -272,7 +272,9 @@
 		"finished": "Finished",
 		"finishedWith": "Finished: {{summary}}",
 		"needsInput": "Needs your answer",
-		"untitled": "New chat"
+		"untitled": "New chat",
+		"overlay_one": "{{count}} chat finished or needs your answer",
+		"overlay_other": "{{count}} chats finished or need your answer"
 	},
 	"quit": {
 		"title_other": "omp is still working in {{count}} chats.",

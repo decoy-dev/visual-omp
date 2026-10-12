@@ -1,6 +1,7 @@
 import { homedir } from "node:os";
-import { app, BrowserWindow, dialog, Notification, shell } from "electron";
+import { app, BrowserWindow, dialog, shell } from "electron";
 import type { Platform } from "@shared/ipc";
+import { registerAttention } from "./attention";
 import { listDir, pathExists, projectFiles, readText, writeText } from "./files";
 import { handle } from "./ipc";
 import { runOmp } from "./omp/cli";
@@ -44,9 +45,7 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 		const result = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
 		return result.canceled ? null : (result.filePaths[0] ?? null);
 	});
-	handle("app:notify", (title, body) => {
-		if (getPrefs().notifications && Notification.isSupported()) new Notification({ title, body }).show();
-	});
+	registerAttention();
 	handle("app:confirmQuit", allow => onQuitDecision(allow));
 
 	handle("omp:status", refresh => ompStatus(refresh));
