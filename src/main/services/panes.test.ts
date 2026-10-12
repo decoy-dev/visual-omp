@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, realpath, rm, symlink, utimes, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { findPlanFile, MADE_SCAN, previewablePath, readBlobImage, readPaneFile, readPdfFile, readWhole, scanMadeFiles } from "./panes";
+import { findPlanFile, MADE_SCAN, previewablePath, readBlobImage, readPaneFile, readPdfFile, readWhole, scanMadeFiles, svgForImage } from "./panes";
 
 let dir: string;
 beforeEach(async () => {
@@ -40,6 +40,88 @@ describe("readPaneFile", () => {
 
 	it("rejects directories", async () => {
 		await expect(readPaneFile(dir)).rejects.toThrow("Not a file");
+	});
+});
+
+describe("svgForImage", () => {
+	const fix = (text: string) => svgForImage(Buffer.from(text)).toString();
+
+	it("adds the SVG namespace a root without one needs to render as an image", async () => {
+		expect(fix('<svg viewBox="0 0 4 2"><rect/></svg>')).toBe('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 4 2"><rect/></svg>');
+		expect(fix("<svg/>")).toBe('<svg xmlns="http://www.w3.org/2000/svg"/>');
+		// The root is found after a BOM, the XML declaration, comments and a doctype with an internal subset.
+		const prolog = '\uFEFF<?xml version="1.0"?>\n<!-- made by hand -->\n<!DOCTYPE svg [<!ENTITY a "b">]>\n';
+		expect(fix(`${prolog}<svg\n  width="4">`)).toBe(`${prolog}<svg xmlns="http://www.w3.org/2000/svg"\n  width="4">`);
+		const file = join(dir, "bare.svg");
+		await writeFile(file, "<svg width='1' height='1'/>");
+		const result = await readPaneFile(file);
+		expect(result.kind === "image" && Buffer.from(result.dataUrl.split(",")[1] ?? "", "base64").toString()).toBe(
+			"<svg xmlns=\"http://www.w3.org/2000/svg\" width='1' height='1'/>",
+		);
+	});
+
+	it("declares xlink only when the file uses it without declaring it", () => {
+		expect(fix('<svg><use xlink:href="#a"/></svg>')).toBe(
+			'<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><use xlink:href="#a"/></svg>',
+		);
+		const declared = '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"><use xlink:href="#a"/></svg>';
+		expect(fix(declared)).toBe(declared);
+	});
+
+	it("leaves files that already declare the namespace, prefixed roots, other roots and non-UTF-8 bytes unchanged", () => {
+		const declared = [
+			'<svg xmlns="http://www.w3.org/2000/svg"><script>x()</script></svg>',
+			// A `>` inside a quoted value does not end the start tag, so the declaration after it is found.
+			'<svg aria-label="a > b" xmlns="http://www.w3.org/2000/svg"/>',
+		];
+		for (const text of [...declared, '<svg:svg xmlns:svg="http://www.w3.org/2000/svg"/>', "<svgx/>", "<html><svg/></html>"]) {
+			expect(fix(text)).toBe(text);
+		}
+		const latin1 = Buffer.from([0x3c, 0x73, 0x76, 0x67, 0x20, 0xe9, 0x2f, 0x3e]);
+		expect(svgForImage(latin1)).toBe(latin1);
+	});
+
+	it("leaves malformed prologs and start tags unchanged", () => {
+		for (const text of [
+			'<?xml version="1.0"<svg/>',
+			"<!-- never closed <svg/>",
+			"<!DOCTYPE svg [ <!ENTITY a 'b'> <svg/>",
+			"<!DOCTYPE svg <svg/>",
+			'<svg width="1',
+			"<svg width=1 <rect/>",
+			// A second doctype is not valid XML.
+			"<!DOCTYPE svg><!DOCTYPE svg><svg/>",
+		]) {
+			expect(fix(text)).toBe(text);
+		}
+	});
+
+	it("skips quoted ids, quoted entity values, comments and processing instructions inside a doctype", () => {
+		const xmlns = 'xmlns="http://www.w3.org/2000/svg"';
+		const prologs = [
+			'<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://example.com/a>b[c].dtd">',
+			"<!DOCTYPE svg SYSTEM 'odd>[name'>",
+			"<!DOCTYPE svg [<!ENTITY a \"x>]y\"><!ENTITY b 'p[q'><!-- ] > ' --><?pi ] > \" ?>]>",
+		];
+		for (const prolog of prologs) expect(fix(`${prolog}\n<svg/>`)).toBe(`${prolog}\n<svg ${xmlns}/>`);
+	});
+
+	it("scans long whitespace, comments, doctypes and unclosed quotes in linear time", () => {
+		const inputs = [
+			`${" ".repeat(1_000_000)}<html/>`,
+			`${" \n<!-- c -->".repeat(100_000)}<html/>`,
+			`${"<?pi ?>".repeat(100_000)}<svg${' a="1"'.repeat(100_000)}`,
+			`<svg data-x='${" ".repeat(1_000_000)}`,
+			`${"<!DOCTYPE svg>".repeat(100_000)}<html/>`,
+			`${"<!DOCTYPE svg [".repeat(100_000)}<html/>`,
+			`<!DOCTYPE svg [${"<!ENTITY a 'x>]'>".repeat(100_000)}`,
+			`<!DOCTYPE svg>${"[".repeat(1_000_000)}<svg/>`,
+		];
+		const started = performance.now();
+		for (const text of inputs) expect(fix(text)).toBe(text);
+		expect(fix(`${" \n".repeat(500_000)}<svg/>`)).toBe(`${" \n".repeat(500_000)}<svg xmlns="http://www.w3.org/2000/svg"/>`);
+		// A pattern with nested repetition needs seconds for 30 spaces before `<html/>` (twice as long per extra space).
+		expect(performance.now() - started).toBeLessThan(1000);
 	});
 });
 
@@ -141,18 +223,20 @@ describe("scanMadeFiles", () => {
 		await writeFile(join(dir, path), data);
 	}
 
-	it("scans a named folder two levels deep for PDFs and images modified while the call ran", async () => {
+	it("scans a named folder two levels deep for PDFs, images and SVGs modified while the call ran", async () => {
 		await put("out/flyer.pdf", PDF);
 		await put("out/old.pdf", PDF);
 		await utimes(join(dir, "out/old.pdf"), past, past);
 		await put("out/notes.txt", "copy");
 		await put("out/icon.svg", "<svg/>");
+		await put("out/old.svg", "<svg/>");
+		await utimes(join(dir, "out/old.svg"), past, past);
 		await put("out/previews/1.png");
 		await put("out/previews/deep/2.png");
 		await put("out/.cache/3.png");
 		await put("out/node_modules/pkg/4.png");
 		const [found] = await scanMadeFiles([{ paths: [join(dir, "out")], ...window }], home());
-		expect(rel(found).sort()).toEqual(["out/flyer.pdf", "out/previews/1.png"]);
+		expect(rel(found).sort()).toEqual(["out/flyer.pdf", "out/icon.svg", "out/previews/1.png"]);
 	});
 
 	it("keeps a file the command named whatever its type, but only when it changed during the call", async () => {

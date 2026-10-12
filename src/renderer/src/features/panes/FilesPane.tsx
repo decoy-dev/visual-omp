@@ -39,7 +39,7 @@ import { PaneToolbar, relativePath, Section, SectionCount, TabStrip, usePaneVisi
 import { IMAGE_EXT, OPENABLE_EXT, PDF_EXT } from "./derive";
 import { useGit } from "./git-store";
 import { languageFor, SYN_CLASS, tokenizeLines } from "./highlight";
-import { ExpandPreview, loadFileImage, openWithDefaultApp, PdfFrame, PreviewImage, revealLabel, ThumbnailFrame, useNearView } from "./media";
+import { ExpandPreview, loadFileImage, openWithDefaultApp, PdfFrame, PreviewImage, revealLabel, ThumbnailFrame, Unavailable, useNearView, ZoomImage } from "./media";
 
 const HIDDEN: Record<string, true> = { ".git": true, node_modules: true };
 /** Lines rendered before "Show all" in the viewer. */
@@ -446,6 +446,8 @@ function Viewer({ path, projectPath, home, version }: { path: string; projectPat
 	const [content, setContent] = useState<Shown | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [reload, setReload] = useState(0);
+	/** The image source that failed to render (an SVG that isn't well-formed, say); a reload with new bytes tries again. */
+	const [broken, setBroken] = useState<string | null>(null);
 	const listing = useFiles(state => state.children[path]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `version`/`reload` are refetch triggers
 	useEffect(() => {
@@ -490,7 +492,18 @@ function Viewer({ path, projectPath, home, version }: { path: string; projectPat
 				{folder && Array.isArray(listing) && <span className="text-xs text-fg-faint tabular-nums">{t("files.itemCount", { count: listing.length })}</span>}
 				{pdf && <ExpandPreview name={name} path={path} image={false} render={() => <PdfFrame path={path} revision={version + reload} name={name} />} />}
 				{content?.kind === "image" && (
-					<ExpandPreview name={name} path={path} image render={className => <img src={content.dataUrl} alt={name} className={className} />} />
+					<ExpandPreview
+						name={name}
+						path={path}
+						image
+						render={zoom =>
+							broken === content.dataUrl ? (
+								<Unavailable message={t("outputs.unavailable")} explain />
+							) : (
+								<ZoomImage src={content.dataUrl} alt={name} control={zoom} onError={() => setBroken(content.dataUrl)} />
+							)
+						}
+					/>
 				)}
 				{file && OPENABLE_EXT.test(path) && (
 					<IconButton size="sm" label={t("outputs.openDefault")} icon={<ArrowSquareOut />} onClick={() => openWithDefaultApp(path, t)} />
@@ -511,6 +524,14 @@ function Viewer({ path, projectPath, home, version }: { path: string; projectPat
 					{/* Both triggers only grow, so their sum changes whenever either does. */}
 					<PdfFrame path={path} revision={version + reload} name={name} />
 				</div>
+			) : !error && content?.kind === "image" ? (
+				<div className="flex min-h-0 flex-1 items-center justify-center bg-inset">
+					{broken === content.dataUrl ? (
+						<Unavailable message={t("outputs.unavailable")} explain />
+					) : (
+						<ZoomImage src={content.dataUrl} alt={name} className="rounded-md border border-border" onError={() => setBroken(content.dataUrl)} />
+					)}
+				</div>
 			) : (
 				<div className="min-h-0 flex-1 overflow-auto">
 					{error ? (
@@ -523,10 +544,6 @@ function Viewer({ path, projectPath, home, version }: { path: string; projectPat
 						<FolderView dir={path} projectPath={projectPath} revision={version + reload} />
 					) : content.kind === "text" ? (
 						<CodeView path={path} text={content.text} />
-					) : content.kind === "image" ? (
-						<div className="flex min-h-full items-center justify-center bg-inset p-4">
-							<img src={content.dataUrl} alt={name} className="max-h-full max-w-full rounded-md border border-border object-contain" />
-						</div>
 					) : (
 						<EmptyState
 							icon={<FileIcon />}

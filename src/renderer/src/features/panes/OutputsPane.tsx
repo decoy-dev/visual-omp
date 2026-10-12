@@ -24,7 +24,7 @@ import { listRowMotion, PaneToolbar, relativePath, Section, SectionCount, usePan
 import { type ChatOutput, chatOutputs, IMAGE_EXT, isIntactBase64, type MadeCandidate, type MadeFiles, madeCandidates, OPENABLE_EXT } from "./derive";
 import { openInFiles } from "./FilesPane";
 import { languageFor } from "./highlight";
-import { ExpandPreview, loadFileImage, openWithDefaultApp, PdfFrame, PreviewImage, revealLabel, ThumbnailFrame, useNearView } from "./media";
+import { ExpandPreview, loadFileImage, openWithDefaultApp, PdfFrame, PreviewImage, revealLabel, ThumbnailFrame, useNearView, type ZoomControl } from "./media";
 
 // ── files made by commands ──────────────────────────────────────────────────────────────────────
 
@@ -190,7 +190,8 @@ function OutputImage({
 	alt,
 	explain = false,
 	className,
-}: { output: ChatOutput; mount: number; enabled: boolean; alt: string; explain?: boolean; className?: string }) {
+	zoom,
+}: { output: ChatOutput; mount: number; enabled: boolean; alt: string; explain?: boolean; className?: string; zoom?: boolean | ZoomControl }) {
 	return (
 		<PreviewImage
 			sourceKey={`${mount}|${output.key}@${output.time}`}
@@ -200,6 +201,7 @@ function OutputImage({
 			alt={alt}
 			explain={explain}
 			className={className}
+			zoom={zoom}
 		/>
 	);
 }
@@ -416,11 +418,11 @@ function OutputViewer({ output, mount, projectPath, onBack }: { output: ChatOutp
 					name={name}
 					path={path}
 					image={output.kind !== "pdf" || !path}
-					render={className =>
+					render={zoom =>
 						output.kind === "pdf" && path ? (
 							<PdfFrame path={path} revision={output.time} name={name} />
 						) : (
-							<OutputImage output={output} mount={mount} enabled explain alt={name} className={className} />
+							<OutputImage output={output} mount={mount} enabled explain alt={name} zoom={zoom} />
 						)
 					}
 				/>
@@ -437,8 +439,8 @@ function OutputViewer({ output, mount, projectPath, onBack }: { output: ChatOutp
 					<PdfFrame path={path} revision={output.time} name={name} />
 				</div>
 			) : (
-				<div className="flex min-h-0 flex-1 items-center justify-center overflow-auto bg-inset p-4">
-					<OutputImage output={output} mount={mount} enabled explain alt={name} className="max-h-full max-w-full rounded-md border border-border object-contain" />
+				<div className="flex min-h-0 flex-1 items-center justify-center bg-inset">
+					<OutputImage output={output} mount={mount} enabled explain alt={name} zoom className="rounded-md border border-border" />
 				</div>
 			)}
 			<p className="flex gap-2 border-t border-border px-3 py-1.5 text-xs text-fg-faint">

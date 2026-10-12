@@ -186,7 +186,7 @@ export function linkHtml(html: string, refs: readonly (FileRef | null)[], text: 
 			const name = baseName(resolved.path) + (written.startsWith(occurrence.ref) ? written.slice(occurrence.ref.length) : "");
 			const folder = parentLabel(resolved.path, text.home);
 			const tile = span("tr-file-tile", icon(kind, "tr-file-icon"));
-			if (OPENABLE_EXT.test(resolved.path)) tile.dataset.thumb = resolved.path;
+			if (OPENABLE_EXT.test(resolved.path) || SVG_EXT.test(resolved.path)) tile.dataset.thumb = resolved.path;
 			const row = linkElement(resolved, "tr-file-row");
 			row.setAttribute("aria-label", text.row(name, folder));
 			row.append(tile, span("tr-file-text", span("tr-file-name", name), span("tr-file-folder", folder)), icon("open", "tr-file-go"));
@@ -220,6 +220,9 @@ export function linkHtml(html: string, refs: readonly (FileRef | null)[], text: 
 // ── thumbnails ──────────────────────────────────────────────────────────────────────────────────
 
 const THUMB_CACHE_LIMIT = 120;
+const SVG_EXT = /\.svg$/i;
+/** Side of the PNG an SVG row thumbnail is drawn into: three times the 2rem tile, for large text and HiDPI screens. */
+const SVG_THUMB_PIXELS = 96;
 
 interface Thumb {
 	/** undefined while loading. */
@@ -227,15 +230,35 @@ interface Thumb {
 	promise: Promise<string | null>;
 }
 
-/** Row thumbnails by path for the session (the most recent paths), through `panes:thumbnail`. */
+/** Row thumbnails by path for the session (the most recent paths): `panes:thumbnail`, or {@link svgThumbnail}. */
 const thumbs = new Map<string, Thumb>();
+
+/**
+ * An SVG row's thumbnail. Main never hands SVG to the operating system's thumbnailer, because SVG can carry script, so
+ * the renderer reads the file as an image (`panes:readFile`; scripts do not run in an image) and draws it into a small
+ * PNG that fills the square tile like `object-fit: cover`. The cache then holds a few kilobytes instead of the file.
+ */
+async function svgThumbnail(path: string): Promise<string | null> {
+	const file = await window.vomp.invoke("panes:readFile", path);
+	if (file.kind !== "image") return null;
+	const image = new Image();
+	image.src = file.dataUrl;
+	await image.decode();
+	const { naturalWidth: width, naturalHeight: height } = image;
+	if (!width || !height) return null;
+	const scale = SVG_THUMB_PIXELS / Math.min(width, height);
+	const canvas = document.createElement("canvas");
+	canvas.width = SVG_THUMB_PIXELS;
+	canvas.height = SVG_THUMB_PIXELS;
+	canvas.getContext("2d")?.drawImage(image, (SVG_THUMB_PIXELS - width * scale) / 2, (SVG_THUMB_PIXELS - height * scale) / 2, width * scale, height * scale);
+	return canvas.toDataURL("image/png");
+}
 
 function thumbnail(path: string): Thumb {
 	let entry = thumbs.get(path);
 	if (!entry) {
 		const created: Thumb = { value: undefined, promise: Promise.resolve(null) };
-		created.promise = window.vomp
-			.invoke("panes:thumbnail", path)
+		created.promise = (SVG_EXT.test(path) ? svgThumbnail(path) : window.vomp.invoke("panes:thumbnail", path))
 			.catch(() => null)
 			.then(value => (created.value = value));
 		entry = created;

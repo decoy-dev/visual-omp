@@ -52,7 +52,8 @@ export async function readPaneFile(path: string): Promise<PaneFileContent> {
 	const mime = IMAGE_TYPES[extname(path).toLowerCase()];
 	if (mime) {
 		if (size > IMAGE_LIMIT) return { kind: "tooLarge", size, limit: IMAGE_LIMIT };
-		const data = await readFile(path);
+		let data = await readFile(path);
+		if (mime === "image/svg+xml") data = svgForImage(data);
 		return { kind: "image", dataUrl: `data:${mime};base64,${data.toString("base64")}`, size };
 	}
 	if (size > TEXT_LIMIT) return { kind: "tooLarge", size, limit: TEXT_LIMIT };
@@ -63,6 +64,103 @@ export async function readPaneFile(path: string): Promise<PaneFileContent> {
 	} catch {
 		return { kind: "binary", size };
 	}
+}
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+const XLINK_NS = "http://www.w3.org/1999/xlink";
+/** Keeps a byte-order mark in the text, so a repaired file differs from the original only by the added attributes. */
+const svgText = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true });
+
+/**
+ * The attributes of the root `<svg>` start tag, as offsets: `start` just after `<svg`, `end` at the tag's closing `>`.
+ * The XML prolog before it (BOM, whitespace, XML declaration, processing instructions, comments and at most one doctype,
+ * with an optional internal subset) is skipped. Null when the root is another element, the prolog has a second doctype,
+ * or the prolog or tag is malformed. Every search starts where the previous one stopped and either moves past what it
+ * finds or ends the scan, so each character is read a bounded number of times and the work grows linearly with the
+ * file's length.
+ */
+function svgRootAttributes(text: string): { start: number; end: number } | null {
+	let at = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+	let doctype = false;
+	for (;;) {
+		while (at < text.length && " \t\r\n".includes(text.charAt(at))) at++;
+		let next: number;
+		if (text.startsWith("<?", at)) {
+			next = text.indexOf("?>", at + 2);
+			if (next >= 0) next += 2;
+		} else if (text.startsWith("<!--", at)) {
+			next = text.indexOf("-->", at + 4);
+			if (next >= 0) next += 3;
+		} else if (text.startsWith("<!DOCTYPE", at)) {
+			if (doctype) return null;
+			doctype = true;
+			next = doctypeEnd(text, at + "<!DOCTYPE".length);
+		} else break;
+		if (next < 0) return null;
+		at = next;
+	}
+	if (!text.startsWith("<svg", at) || !" \t\r\n/>".includes(text.charAt(at + 4) || "<")) return null;
+	const start = at + 4;
+	for (let i = start; i < text.length; i++) {
+		const char = text.charAt(i);
+		if (char === ">") return { start, end: i };
+		if (char === "<") return null;
+		if (char === '"' || char === "'") {
+			const close = text.indexOf(char, i + 1);
+			if (close < 0) return null;
+			i = close;
+		}
+	}
+	return null;
+}
+
+/**
+ * The offset just after the `>` that closes a doctype whose name starts at `from`, or -1 when it never closes. One
+ * forward pass: quoted system and public ids and quoted values in the internal subset are skipped whole, as are
+ * comments and processing instructions inside the subset, so a `>`, `[` or `]` in any of them does not count.
+ */
+function doctypeEnd(text: string, from: number): number {
+	let depth = 0;
+	for (let i = from; i < text.length; i++) {
+		const char = text.charAt(i);
+		// Each skip lands on the last character of what it skips (or -1 when that never closes); the loop steps past it.
+		if (char === '"' || char === "'") {
+			i = text.indexOf(char, i + 1);
+		} else if (depth > 0 && text.startsWith("<!--", i)) {
+			i = text.indexOf("-->", i + 4);
+			if (i >= 0) i += 2;
+		} else if (depth > 0 && text.startsWith("<?", i)) {
+			i = text.indexOf("?>", i + 2);
+			if (i >= 0) i += 1;
+		} else if (char === "[") depth++;
+		else if (char === "]" && depth > 0) depth--;
+		else if (char === ">" && depth === 0) return i + 1;
+		if (i < 0) return -1;
+	}
+	return -1;
+}
+
+/**
+ * An SVG file's bytes as an `<img>` can show them. Browsers render an SVG image only when its root is in the SVG
+ * namespace, and editors and HTML-inline snippets often omit `xmlns` (and `xmlns:xlink` for `xlink:href`), so main adds
+ * the missing declarations to the root `<svg>` start tag. Nothing else changes, and the renderer only ever shows the
+ * result through `<img>`, where scripts do not run. Bytes that are not UTF-8 or have no `<svg>` root stay as they are.
+ */
+export function svgForImage(data: Buffer<ArrayBuffer>): Buffer<ArrayBuffer> {
+	let text: string;
+	try {
+		text = svgText.decode(data);
+	} catch {
+		return data;
+	}
+	const root = svgRootAttributes(text);
+	if (!root) return data;
+	const attributes = text.slice(root.start, root.end);
+	let added = "";
+	if (!/\sxmlns\s*=/.test(attributes)) added += ` xmlns="${SVG_NS}"`;
+	if (!/\sxmlns:xlink\s*=/.test(attributes) && text.includes("xlink:")) added += ` xmlns:xlink="${XLINK_NS}"`;
+	if (!added) return data;
+	return Buffer.from(text.slice(0, root.start) + added + text.slice(root.start), "utf8");
 }
 
 /** omp's blob ids: saved sessions store image data as `blob:sha256:<hash>`, kept in `<agentDir>/blobs/<hash>`. */
@@ -202,8 +300,11 @@ export const MADE_SCAN: Readonly<MadeScanLimits> = {
 	slackMs: 2000,
 };
 
-/** What a folder scan keeps: deliverables the pane can preview. Files a command names directly are kept whatever their type. */
-const PREVIEW_EXT = /\.(pdf|png|jpe?g|gif|webp|avif|bmp|ico)$/i;
+/**
+ * What a folder scan keeps: deliverables the pane can preview (SVG included; the pane shows it as an image and never
+ * hands it to the OS). Files a command names directly are kept whatever their type.
+ */
+const PREVIEW_EXT = /\.(pdf|png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
 
 /** Folders too broad to scan: the file system root and its direct children, plus `extra` (home and temp folders). */
 function isBroadFolder(real: string, extra: ReadonlySet<string>): boolean {
@@ -222,7 +323,7 @@ function isQuery(value: unknown): value is PaneMadeQuery {
 /**
  * Files a command made, for the Outputs pane. Best effort: for each query (one finished tool call), every absolute
  * path it names is checked; a regular file modified inside the call's window `[start, end]` (plus slack) is kept,
- * and a folder is scanned two levels deep for PDFs and raster images modified inside the window. Dot folders,
+ * and a folder is scanned two levels deep for PDFs, raster images and SVGs modified inside the window. Dot folders,
  * `node_modules`, symlinked folders and folders that are too broad are not scanned. Results are newest first and keep
  * the path as the command named it. `limits` is a test seam.
  */
