@@ -1,6 +1,6 @@
 /**
- * Extensions: MCP servers, skills & plugins, memory, and usage & limits — each a sheet opened by a
- * `manage.*` command — plus the status-bar "today" cost.
+ * Extensions: MCP servers, skills & plugins, memory, and usage & limits, each a sheet opened by a
+ * `manage.*` command, plus the status bar's plan usage and "today" cost.
  */
 import { BookOpenText, Brain, Gauge, PlugsConnected } from "@phosphor-icons/react";
 import { registerCommand } from "@/registry/commands";
@@ -9,6 +9,7 @@ import { useApp } from "@/state/app";
 import { MemorySheet } from "./memory/MemorySheet";
 import { McpSheet } from "./mcp/McpSheet";
 import { SkillsSheet } from "./skills/SkillsSheet";
+import { PlanUsageStatus } from "./usage/PlanUsageStatus";
 import { UsageSheet } from "./usage/UsageSheet";
 import { UsageStatus } from "./usage/UsageStatus";
 
@@ -37,4 +38,5 @@ for (const command of COMMANDS) {
 	});
 }
 
+statusItems.register({ id: "usage-limits", side: "right", order: 10, component: PlanUsageStatus });
 statusItems.register({ id: "usage-today", side: "right", order: 20, component: UsageStatus });

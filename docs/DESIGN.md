@@ -545,9 +545,10 @@ Right, in order:
 - **Context**: a 14px context ring and "{n}%", shown when the chat reports usage. It is a readout without a click action.
 - **Cost**: "{cost} today". It opens Usage & limits.
 - **App update**: "v{version} available" with an accent dot, only when a newer visual-omp exists. It opens Settings → About.
+- **Plan usage**: one button with a segment per provider that the chat and its running subagents use, such as "Claude 5h 12%": a 20×4px bar (`--border-strong` track, fill and text in the Usage & limits tones, warn from 70% and err from 90% or when the provider reports the limit as exhausted) beside the provider and its most-used applicable window (a window the provider reports as exhausted comes first, then the highest used percent). The figures come from `omp usage --json`, read once a minute while the window is visible, after each finished turn and when the chat's providers change. These passive reads do not explicitly invalidate omp's cache; the Usage & limits refresh button requests invalidation and publishes the resulting snapshot to the status bar, and a snapshot omp generated earlier than the one shown is ignored. Only windows that bind the model in use count (a Fable weekly limit only for a Fable model, for example), and providers signed in with several accounts show omp's pooled figure. The tooltip lists every window of each provider with "{n}% used" and the reset time, notes pooled accounts and says when omp last checked the limits. It opens Usage & limits. A saved chat that has not started omp yet uses the model its session file last recorded (the last model change on the active branch, else the last reply's model), so the item shows before the chat runs. It is hidden when the chat has no known model or its provider reports no limits (API keys, for example). Screen readers get a meter per provider with the full sentence. When the bar runs out of room, the item drops the other providers for "+N", then the provider name and window, then the percent, keeping the bar.
 - **omp status**: a dot and label. Dot and label pairs: `--ok` "omp {version}"; `--warn` "Starting omp…" or "Reconnecting to omp…"; `--err` "omp stopped". An accent dot marks an available omp update. The menu holds Show omp terminal (⌘J), Restart omp, Update omp to {version} (when there is one) and Copy diagnostics.
 
-Every item is a button with a tooltip, apart from the context readout. The bar never wraps.
+Every item is a button with a tooltip, apart from the context readout. The bar never wraps: its text stays on one line, and items fold or truncate instead.
 
 ---
 
@@ -847,7 +848,7 @@ A right sheet, 880px wide: "Usage & limits", with the subtitle "What your chats 
 
 - **Summary**: Today, This week, Chats and Tokens.
 - **"Last 7 days"**: bars in `--accent-2` ink, with today in `--accent`. Each bar has a tooltip with the date, cost and reply count.
-- **Plan limits**: provider cards with "{n}% used" and the reset time on bars that turn warn at 70% and err at 90%.
+- **Plan limits**: provider cards with "{n}% used" and the reset time on bars that turn warn at 70% and err at 90%. Checking the limits again here also updates the status bar's plan usage (§3.8).
 - **"Chats this week"**: a sortable table.
 - **Footer**: [Export CSV] and [Open omp stats page]. Costs are marked as estimates at public API prices.
 

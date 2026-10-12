@@ -121,7 +121,7 @@ export function StatusBar(): ReactNode {
 		<footer
 			aria-label={t("status.label")}
 			data-tour="statusbar"
-			className="flex h-(--statusbar-h) shrink-0 items-center gap-4 border-t border-border bg-panel px-3 font-mono text-xs text-fg-muted"
+			className="flex h-(--statusbar-h) shrink-0 items-center gap-4 whitespace-nowrap border-t border-border bg-panel px-3 font-mono text-xs text-fg-muted"
 		>
 			<div className="flex min-w-0 items-center gap-4">
 				{items

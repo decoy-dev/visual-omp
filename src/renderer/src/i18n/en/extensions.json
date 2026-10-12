@@ -389,6 +389,19 @@
 		"openStats": "Open omp stats page",
 		"statusText": "{{cost}} today",
 		"statusTooltip": "Estimated cost of today's chats. Click for usage and limits.",
+		"plan": {
+			"name": "{{provider}} {{window}}",
+			"percent": "{{percent}}%",
+			"more": "+{{count}}",
+			"open": "Show usage and limits",
+			"meterLabel": "{{provider}} plan usage",
+			"meterLabelPooled": "{{provider}} plan usage across {{count}} accounts",
+			"meterValue": "{{percent}}% of the {{window}} limit used",
+			"pooled": "({{count}} accounts, pooled)",
+			"unknown": "no figure",
+			"checked": "omp last checked these limits {{age}}.",
+			"hint": "Click for usage and limits."
+		},
 		"toast": {
 			"exported": "Usage exported",
 			"exportFailed": "Couldn't export usage",

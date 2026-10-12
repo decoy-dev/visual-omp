@@ -11,6 +11,7 @@ import { Button, Chip, cn, EmptyState, IconButton, Progress, Skeleton, spring, t
 import { focusRing, focusRingInset } from "@/ui/styles";
 import { errorText, formatCount, formatDuration, formatUsd } from "../format";
 import { type ExtensionSheetProps, ExtensionSheetFrame, Notice, useLoad } from "../shared";
+import { publishUsageLimits } from "./limitsStore";
 import { type ChatSortKey, chatsCsv, limitTone, promptTokens, type SortDirection, sortChats, usedFraction } from "./model";
 
 const DAYS = 7;
@@ -167,6 +168,7 @@ function useLimits(): LimitsState {
 	const load = useLoad(async () => {
 		const snapshot = await window.vomp.invoke("usage:limits", { refresh: refreshCount > 0 });
 		setLast(snapshot);
+		publishUsageLimits(snapshot);
 		return snapshot;
 	}, [refreshCount]);
 	return { data: load.data ?? last, error: load.error, loading: load.loading, refresh: () => setRefreshCount(n => n + 1) };
