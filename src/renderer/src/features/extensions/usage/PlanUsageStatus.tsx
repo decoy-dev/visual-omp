@@ -124,7 +124,8 @@ function PlanTooltip({ usage, now }: { usage: ProviderUsage[]; now: number }) {
 
 /**
  * Status bar (right, after the context ring): plan usage of the providers the focused chat and its
- * running subagents use, one meter per provider showing its most-used window. Opens Usage & limits.
+ * running subagents use, one meter per provider showing the window `pickTop` in planUsage.ts chooses
+ * (an exhausted window, else 5h, else 7d, else monthly, else the most-used). Opens Usage & limits.
  */
 export function PlanUsageStatus({ session, projectPath }: PaneProps) {
 	const { t } = useTranslation("extensions");

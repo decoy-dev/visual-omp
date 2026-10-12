@@ -1,6 +1,6 @@
 /**
  * Plan usage of the models a chat is using (status bar, DESIGN §3.8): which `omp usage` reports and
- * limit windows apply to those models, pooled across accounts, and each provider's most-used window.
+ * limit windows apply to those models, pooled across accounts, and the window each provider shows.
  */
 import type { SessionEntry, WireModel } from "@oh-my-pi/pi-wire";
 import type { ProviderWindowStat, UsageLimit, UsageLimitsSnapshot, UsageReport, UsageStatus } from "@shared/contracts/usage";
@@ -39,7 +39,7 @@ export interface ProviderUsage {
 	/** Accounts reporting for this provider; above 1 the windows use omp's pooled capacity. */
 	accounts: number;
 	windows: WindowUsage[];
-	/** The most-used window with a known fraction. */
+	/** The window the status bar shows (see {@link pickTop}). */
 	top: WindowUsage;
 	/** Epoch ms of the oldest report behind these figures (omp caches provider reports). */
 	fetchedAt: number;
@@ -161,14 +161,37 @@ export function parseWindowDuration(text: string): number | null {
 	return Number(amount) * DURATION_UNIT_MS[unit[0].toLowerCase()];
 }
 
-/** Compact window name: omp's duration, else one read from the window id, scope or label, else the human label. */
-function windowName(limit: UsageLimit): string {
+/** omp's window duration, else one read from the window id, scope or label; null when none can be read. */
+function windowDurationMs(limit: UsageLimit): number | null {
 	const window = limit.window;
 	let durationMs = window?.durationMs ?? null;
 	for (const text of [window?.id, limit.scope.windowId, window?.label]) {
 		if (durationMs === null && text) durationMs = parseWindowDuration(text);
 	}
-	return durationMs !== null ? formatDuration(durationMs) : (window?.label ?? limit.label);
+	return durationMs;
+}
+
+/** Compact window name: the window's duration, else the human label. */
+function windowName(limit: UsageLimit): string {
+	const durationMs = windowDurationMs(limit);
+	return durationMs !== null ? formatDuration(durationMs) : (limit.window?.label ?? limit.label);
+}
+
+const FIVE_HOURS_MS = 5 * 3_600_000;
+const SEVEN_DAYS_MS = 7 * 86_400_000;
+const MONTHLY_WORD = /(?<![a-z])month(?:ly)?(?![a-z])/i;
+
+/**
+ * Which window kind the status bar prefers: 0 for 5 hours, 1 for 7 days, 2 for a month (28 to 31 days,
+ * or a window without a duration whose id or label says monthly), null for any other window.
+ */
+function windowPreference(limit: UsageLimit): number | null {
+	const durationMs = windowDurationMs(limit);
+	if (durationMs === FIVE_HOURS_MS) return 0;
+	if (durationMs === SEVEN_DAYS_MS) return 1;
+	if (durationMs !== null) return durationMs >= 28 * 86_400_000 && durationMs <= 31 * 86_400_000 ? 2 : null;
+	const texts = [limit.window?.id, limit.scope.windowId, limit.window?.label, limit.label];
+	return texts.some(text => text !== undefined && MONTHLY_WORD.test(text)) ? 2 : null;
 }
 
 /**
@@ -193,39 +216,52 @@ function pooledStatus(statuses: readonly (UsageStatus | undefined)[]): UsageStat
 	return statuses.find(status => status !== undefined);
 }
 
+/** A window with its {@link windowPreference}. */
+interface RankedWindow {
+	usage: WindowUsage;
+	preference: number | null;
+}
+
 /**
  * The provider's windows that bind `modelIds`. With one account each limit is read as reported; with
  * several, a limit id's rows across accounts merge into omp's pooled capacity figure (accounts' worth
  * of quota used / accounts), falling back to the mean fraction when omp reports no matching bucket.
- * Rows that share a compact name stay separate: a tier tells them apart (`7d` and `7d fable`), else a
- * readable limit label goes into `detail`.
+ * A pooled window is exhausted only when every reporting account reports it exhausted; an account
+ * without the row counts as not exhausted. Rows that share a compact name stay separate: a tier tells
+ * them apart (`7d` and `7d fable`), else a readable limit label goes into `detail`.
  */
-function providerWindows(reports: readonly UsageReport[], modelIds: readonly string[], stats: readonly ProviderWindowStat[]): WindowUsage[] {
-	const groups = new Map<string, UsageLimit[]>();
-	for (const report of reports) {
+function providerWindows(reports: readonly UsageReport[], modelIds: readonly string[], stats: readonly ProviderWindowStat[]): RankedWindow[] {
+	// Each limit id's row per account, by report index; undefined where an account has no such row.
+	const groups = new Map<string, (UsageLimit | undefined)[]>();
+	reports.forEach((report, account) => {
 		for (const limit of report.limits) {
-			if (limitApplies(limit, modelIds)) groups.set(limit.id, [...(groups.get(limit.id) ?? []), limit]);
+			if (!limitApplies(limit, modelIds)) continue;
+			const rows = groups.get(limit.id) ?? new Array<UsageLimit | undefined>(reports.length).fill(undefined);
+			rows[account] = limit;
+			groups.set(limit.id, rows);
 		}
-	}
-	const firsts = [...groups.values()].map(([limit]) => limit);
+	});
+	const present = [...groups.values()].map(rows => rows.filter((row): row is UsageLimit => row !== undefined));
+	const firsts = present.map(([limit]) => limit);
 	const durations = firsts.map(windowName);
 	// Rows that share a compact name (`7d` and its Fable tier) keep apart by their tier.
 	const names = durations.map((name, index) => {
 		const tier = firsts[index].scope.tier;
 		return tier && durations.some((other, otherIndex) => otherIndex !== index && other === name) ? `${name} ${tier}` : name;
 	});
-	return [...groups.values()].map((limits, index): WindowUsage => {
+	return [...groups.values()].map((rows, index): RankedWindow => {
+		const limits = present[index];
 		const first = limits[0];
 		const stat = reports.length > 1 ? capacityStat(stats, first) : undefined;
 		const known = limits.map(usedFraction).filter((fraction): fraction is number => fraction !== null);
 		const fraction =
 			stat && stat.accounts > 0 ? stat.usedAccounts / stat.accounts : known.length > 0 ? known.reduce((sum, value) => sum + value, 0) / known.length : null;
-		const status = pooledStatus(limits.map(limit => limit.status));
+		const status = pooledStatus(rows.map(row => row?.status));
 		const resets = limits.map(limit => limit.window?.resetsAt).filter((at): at is number => at !== undefined);
 		const name = names[index];
 		const clash = names.some((other, otherIndex) => otherIndex !== index && other === name);
 		const readable = /\s/.test(first.label) && parseWindowDuration(first.label) === null;
-		return {
+		const usage: WindowUsage = {
 			id: first.id,
 			label: first.label,
 			window: name,
@@ -235,6 +271,7 @@ function providerWindows(reports: readonly UsageReport[], modelIds: readonly str
 			tone: limitTone(fraction, status),
 			resetsAt: resets.length > 0 ? Math.min(...resets) : null,
 		};
+		return { usage, preference: windowPreference(first) };
 	});
 }
 
@@ -242,6 +279,20 @@ function providerWindows(reports: readonly UsageReport[], modelIds: readonly str
 function compareUse(a: WindowUsage, b: WindowUsage): number {
 	const exhausted = Number(b.status === "exhausted") - Number(a.status === "exhausted");
 	return exhausted !== 0 ? exhausted : (b.fraction ?? 0) - (a.fraction ?? 0);
+}
+
+/**
+ * The window the status bar shows, among those with a known fraction: one the provider reports as
+ * exhausted (it blocks the chat), else the 5h window, else 7d, else monthly, else the most-used one.
+ * Several windows of the chosen kind (Claude's `7d` and `7d fable`) yield the most-used.
+ */
+function pickTop(windows: readonly RankedWindow[]): WindowUsage | undefined {
+	const known = windows.filter(window => window.usage.fraction !== null);
+	const exhausted = known.filter(window => window.usage.status === "exhausted");
+	const preferences = known.map(window => window.preference).filter((preference): preference is number => preference !== null);
+	const preferred = preferences.length > 0 ? Math.min(...preferences) : null;
+	const pool = exhausted.length > 0 ? exhausted : preferred !== null ? known.filter(window => window.preference === preferred) : known;
+	return pool.map(window => window.usage).sort(compareUse)[0];
 }
 
 /**
@@ -258,9 +309,9 @@ export function planUsage(snapshot: UsageLimitsSnapshot | null, models: readonly
 		const reports = snapshot.reports.filter(report => report.provider === provider && report.limits.length > 0);
 		if (reports.length === 0) continue;
 		const windows = providerWindows(reports, modelIds, snapshot.capacity[provider] ?? []);
-		const top = windows.filter(window => window.fraction !== null).sort(compareUse)[0];
+		const top = pickTop(windows);
 		if (!top) continue;
-		out.push({ provider, accounts: reports.length, windows, top, fetchedAt: Math.min(...reports.map(report => report.fetchedAt)) });
+		out.push({ provider, accounts: reports.length, windows: windows.map(window => window.usage), top, fetchedAt: Math.min(...reports.map(report => report.fetchedAt)) });
 	}
 	return out;
 }

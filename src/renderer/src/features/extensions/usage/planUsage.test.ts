@@ -97,7 +97,7 @@ describe("planUsage", () => {
 			["5h", 0.29],
 			["7d", 0.45],
 		]);
-		expect(claude?.top).toMatchObject({ window: "7d", fraction: 0.45, tone: "ok", resetsAt: 1790816400000 });
+		expect(claude?.top).toMatchObject({ window: "5h", fraction: 0.29, tone: "ok", resetsAt: 1790802600000 });
 		expect(claude?.fetchedAt).toBe(1790789907366);
 	});
 
@@ -229,10 +229,48 @@ describe("planUsage", () => {
 		expect(planUsage(both, [opus])[0]?.top.tone).toBe("err");
 	});
 
-	it("picks the most-used window, with provider-reported exhaustion first", () => {
-		const most = (limits: UsageLimit[]) => planUsage(snapshot([report("anthropic", limits)]), [opus])[0]?.top.id;
-		expect(most([limit("anthropic:5h", 0.3), limit("anthropic:7d", 0.6)])).toBe("anthropic:7d");
-		expect(most([limit("anthropic:5h", 0.3, { status: "exhausted" }), limit("anthropic:7d", 0.6)])).toBe("anthropic:5h");
+	it("shows the 5h window, else 7d, else monthly, taking the most-used of several", () => {
+		const top = (limits: UsageLimit[]) => planUsage(snapshot([report("synthetic", limits)]), [{ provider: "synthetic", modelId: "s" }])[0]?.top.id;
+		const window = (id: string, fraction: number, durationMs: number | undefined, label = id) =>
+			limit(`synthetic:${id}`, fraction, { window: { id, label, durationMs, resetsAt: 1_000 } });
+		const day = 86_400_000;
+		expect(top([window("7d", 0.6, 7 * day), window("5h", 0.3, 5 * 3_600_000)])).toBe("synthetic:5h");
+		expect(top([window("30d", 0.9, 30 * day), window("7d", 0.2, 7 * day), window("weekly-pro", 0.4, 7 * day)])).toBe("synthetic:weekly-pro");
+		expect(top([window("1d", 0.9, day), window("30d", 0.1, 30 * day)])).toBe("synthetic:30d");
+		expect(top([window("1d", 0.9, day), window("billing", 0.1, undefined, "Monthly")])).toBe("synthetic:billing");
+		expect(top([window("1h", 0.2, 3_600_000), window("30m", 0.5, 1_800_000)])).toBe("synthetic:30m");
+	});
+
+	it("counts 28 to 31 days, or a month-named window without a duration, as monthly", () => {
+		const top = (limits: UsageLimit[]) => planUsage(snapshot([report("synthetic", limits)]), [{ provider: "synthetic", modelId: "s" }])[0]?.top.id;
+		const day = 86_400_000;
+		const versusDaily = (id: string, durationMs: number, label = id) =>
+			top([limit("synthetic:1d", 0.9, { window: { id: "1d", label: "1d", durationMs: day } }), limit(`synthetic:${id}`, 0.1, { window: { id, label, durationMs } })]);
+		expect(versusDaily("28d", 28 * day)).toBe("synthetic:28d");
+		expect(versusDaily("31d", 31 * day)).toBe("synthetic:31d");
+		expect(versusDaily("27d", 27 * day)).toBe("synthetic:1d");
+		expect(versusDaily("32d", 32 * day)).toBe("synthetic:1d");
+		expect(versusDaily("monthly", 14 * day, "Monthly")).toBe("synthetic:1d");
+	});
+
+	it("shows a window the provider reports as exhausted ahead of the 5h window", () => {
+		const top = (limits: UsageLimit[]) => planUsage(snapshot([report("anthropic", limits)]), [opus])[0]?.top.id;
+		expect(top([limit("anthropic:5h", 0.3), limit("anthropic:7d", 1, { status: "exhausted" })])).toBe("anthropic:7d");
+		expect(top([limit("anthropic:5h", 0.3), limit("anthropic:7d", 0.95, { status: "warning" })])).toBe("anthropic:5h");
+		expect(top([limit("anthropic:5h", 1, { status: "exhausted" }), limit("anthropic:7d", 1.05, { status: "exhausted" })])).toBe("anthropic:7d");
+	});
+
+	it("puts a pooled window first only when every account reports it exhausted", () => {
+		const pooled = (second: UsageLimit[]) =>
+			planUsage(snapshot([report("anthropic", [limit("anthropic:5h", 0.2), limit("anthropic:7d", 1, { status: "exhausted" })]), report("anthropic", second)]), [opus])[0];
+		const missing = pooled([limit("anthropic:5h", 0.4)]);
+		expect(missing?.top.id).toBe("anthropic:5h");
+		expect(missing?.windows.find(window => window.id === "anthropic:7d")?.status).toBe("warning");
+		const mixed = pooled([limit("anthropic:5h", 0.4), limit("anthropic:7d", 0.5)]);
+		expect(mixed?.top.id).toBe("anthropic:5h");
+		expect(mixed?.windows.find(window => window.id === "anthropic:7d")?.status).toBe("warning");
+		const unanimous = pooled([limit("anthropic:5h", 0.4), limit("anthropic:7d", 1, { status: "exhausted" })]);
+		expect(unanimous?.top).toMatchObject({ id: "anthropic:7d", status: "exhausted", tone: "err" });
 	});
 
 	it("leaves out a provider whose windows report no usable fraction", () => {
