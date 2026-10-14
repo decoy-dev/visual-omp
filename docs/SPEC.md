@@ -35,8 +35,14 @@ be able to use it, and it exposes the features that set omp apart from other cod
   the machine.
 - Full-screen TUI menus that are not rebuilt natively open in a **terminal sheet** showing the
   live omp terminal.
-- Default permission mode for new users: **auto-approve everything** (omp `yolo`), changeable next
-  to Send.
+- Default permission mode for new users: **Ask me first** (omp `always-ask`), changeable from the
+  permission button next to Send. A fresh profile (no preferences file at first launch) whose omp
+  config has no `tools.approvalMode` gets `always-ask` written to the global config once
+  (`src/main/services/approval-default.ts`, `newUserApproval` in `src/main/prefs.ts`, run from
+  `src/main/features/config.ts` and before each chat's omp starts). While omp cannot be read to
+  check, a fresh profile's chat does not start and shows why, and the next start checks again.
+  Existing users, and anyone whose config or environment already sets a mode, keep their setting;
+  omp's own default stays Auto (`yolo`).
 
 ## Visual design
 - One teal accent over near-neutral surfaces, **light mode by default**, dark mode available, and
@@ -49,7 +55,7 @@ be able to use it, and it exposes the features that set omp apart from other cod
 
 ## Feature scope (all in scope)
 ### Sessions
-- Parallel sessions (tabs + split view)
+- Open chats appear in the sidebar, and split view shows two chats side by side.
 - Git worktree per session toggle
 - Rewind / fork from any message
 - Message queue editing (Send now, Edit, Remove)
@@ -58,11 +64,13 @@ be able to use it, and it exposes the features that set omp apart from other cod
   project and can be resumed; a session still live elsewhere opens read-only.
 
 ### Panes
-- Diff review (per-file, line comments sent to omp, *Review code* via `/review`)
+- The Changes pane reviews edits per file, sends line comments to omp, and runs *Review code* via
+  `/review`.
 - Files (tree + viewer, click to @-mention)
 - Web preview (built-in browser for dev servers)
 - Tasks & subagents (todos, subagents, background jobs)
 - Plan (current plan with Approve / Refine)
+- Outputs groups images, PDFs and files by whether omp created, wrote, changed or viewed them.
 
 ### Git
 - Status bar + commit with AI message (`omp commit`)
@@ -83,42 +91,49 @@ be able to use it, and it exposes the features that set omp apart from other cod
 - Loop mode
 - Advisor
 
-### omp management (native screens)
-- Model roles editor (default/smol/slow/plan/commit/advisor/… + presets)
-- Agents hub (bundled + custom agents, per-agent model, enable/disable, create with AI)
-- MCP servers manager (global + per project)
-- Skills & plugins browser
-- Memory viewer
+### omp management (native screens, as Settings sections)
+- Models & roles edits the model for each role (default/smol/slow/plan/commit/advisor/…) and its
+  presets.
+- Helpers manages bundled and custom agents, with a per-agent model, enable/disable and create
+  with AI.
+- Connected tools manages MCP servers for all projects and per project.
+- Skills & plugins browses, installs and manages skills and plugins.
+- Memory shows what omp remembers and lets you delete it.
 
 ### omp extras
-- Usage, cost & limits dashboard
+- The Usage & limits page shows plan limits, recorded usage and estimated API cost.
 - Share & collaborate (share links, HTML export, live collab invites)
 - Security scan / cleanse
 - Import from Claude Code / Codex
 - Session tree navigator
 
 ### Commands
-- Cmd/Ctrl+K command palette with every omp command searchable in plain language
-- Header bar with the most-used buttons (Restart, Compact, Plan, Model, Agents, New)
-- `/` in the composer also works
+- The Cmd/Ctrl+K command palette makes every omp command searchable in plain language, and the
+  title bar's *Search commands* field also opens it.
+- The session header shows the chat's state, *Review changes*, the side panel toggle and a ⋯ menu
+  of chat commands (Rename, Share, Fork, Compact, Plan, Goal, Restart, Helpers and the rest).
+- `/` in the composer also works.
 
 ### Projects
-- Project sidebar with sessions (search, pin, rename, archive)
+- The project sidebar lists sessions with search, the Active filter, pin, rename and archive.
 - New project wizard (empty folder, open existing, clone from GitHub URL)
-- Project instructions editor (AGENTS.md / rules)
-- Per-project settings (model, permissions, MCP, agents, skills)
-- Project home dashboard (recent chats, git status, weekly cost, quick-start prompts)
+- The Instructions page edits the project's AGENTS.md and rules.
+- The Project settings page sets the project's model and permission mode and links to its
+  connected tools, helpers and instructions.
+- The project overview shows recent chats, an instructions and settings summary, git status and
+  quick-start prompts.
 
 ### Settings
-- Curated common settings + searchable **Advanced** tab listing every omp setting.
+- Settings is a full page with curated common sections and a searchable **Advanced** section that
+  lists every omp setting.
 
 ### Help
 - First-run guided tour
 - Plain-language tooltips on every button
 - Example prompts on empty chats
-- Built-in help / glossary
+- The built-in Help page has guides and a glossary.
 - In-app update notice
 
 ### Lifecycle
-- Quitting or closing a tab while omp is working warns first, then stops cleanly; sessions resume
+- Quitting or closing a chat while omp is working warns first, then stops cleanly; sessions resume
   where they left off.

@@ -24,7 +24,11 @@ flowchart LR
   IDX -- reads --> FS[(~/.omp/agent/sessions)]
 ```
 
-Each chat tab owns one **SessionHost**:
+Each open chat has a **SessionController**. Open chats are the `tabs` list in
+`src/renderer/src/state/app.ts`, and the sidebar lists them with saved chats. A controller starts
+or adopts a **SessionHost** when omp runs for that chat; viewing saved history alone needs no host.
+Closing a chat through `closeChat` disposes its controller and stops any host it owns. Split view
+can show two chats, each with its own controller. Each SessionHost:
 
 1. Allocates a loopback WebSocket relay on a free port (listening on `127.0.0.1` and `::1` only).
 2. Writes a per-session config overlay (`collab.autoStart: control`,
@@ -56,10 +60,15 @@ src/
   main/          Electron main: app lifecycle, windows, menu, quit guard, services
     omp/         locator, session host, relay, CLI wrappers, config files, sessions index
   preload/       contextBridge API
-  renderer/      React app
+  renderer/src/  React app
     collab/      vendored omp collab guest client + wire contracts (MIT, see NOTICE)
     tool-render/ tool call renderers (friendly summary + details)
-    components/  UI
+    shell/       window frame: title bar, sidebar, side panel, status bar
+    chat/        session header, transcript and composer
+    features/    panes, pages (Settings, Usage & limits, Help, project pages) and other features
+    registry/    slots features register into (commands, pages, panes, sheets, status items)
+    state/       app store, session controllers, navigation and the leave guard
+    ui/          component library, including the page frame (`ui/Page.tsx`)
     i18n/        locale files
     theme/       design tokens (light default, dark)
 ```
@@ -74,7 +83,7 @@ src/
 | Models | `omp models --json` |
 | Agents | `~/.omp/agent/agents/*.md`, `<project>/.omp/agents/*.md`, bundled via `omp agents` |
 | MCP | `~/.omp/agent/mcp.json`, `<project>/.omp/mcp.json` |
-| Usage/limits | `omp usage --json`, `omp stats` API |
+| Usage/limits | Provider limits come from omp usage reports. Recorded usage comes from local session and subagent JSONL files (`src/main/features/extensions.ts`). The browser stats link starts `omp stats`. |
 | Git | `git`, `gh` |
 
 ## Compatibility

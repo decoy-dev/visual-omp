@@ -6,11 +6,11 @@ Every value in this document is exact. Implementation stack: React + Tailwind v4
 
 ## 0. Design direction
 
-visual-omp is a working tool, so the interface stays quiet until something needs attention. The layout from the first release is unchanged. The finish is what changed: near-neutral surfaces with a faint teal cast, one teal accent for every action and active state, hairline borders between panels, and motion that shows where each surface came from. Light mode is the designed default. Dark mode uses a tinted off-black, which keeps panels distinct from the canvas without a blue cast.
+visual-omp is a working tool, so the interface stays quiet until something needs attention. Version 0.5 puts the chat first: the sidebar lists each project with its chats, so there is no tab strip, and Settings, Usage & limits, Help and the project screens open as full pages in the main area. The finish keeps near-neutral surfaces with a faint teal cast, one teal accent for every action and active state, hairline borders between panels, and motion that shows where each surface came from. Light mode is the designed default. Dark mode uses a tinted off-black, which keeps panels distinct from the canvas without a blue cast.
 
 Five decisions everything else hangs on:
 
-1. **One accent.** Teal (`--accent`) marks primary actions, links, focus and the active tab or selection. Secondary emphasis uses neutral ink (`--accent-2`), and agent-attributed UI uses the accent (`--agent` resolves to it). The mark and app icon are ink with a single teal lens plate, and the working state is drawn in the accent alone. The UI has no gradients.
+1. **One accent.** Teal (`--accent`) marks primary actions, links, focus and the active row or selection. Secondary emphasis uses neutral ink (`--accent-2`), and agent-attributed UI uses the accent (`--agent` resolves to it). The mark and app icon are ink with a single teal lens plate, and the working state is drawn in the accent alone. The UI has no gradients.
 2. **Hairlines first, shadows only for floating layers.** Panels sit on the canvas with a 1px `--border` and no shadow. Menus, dialogs, sheets, toasts and the composer cast a shadow, and every shadow is tinted and tight: no blur reaches 16px, so a border and a shadow can share an element without a haze around it.
 3. **Friendly by default, honest on demand.** Every machine event collapses to a plain-language line ("Edited 3 files"); raw diffs and output are one click or `Ctrl/Cmd+O` away. Jargon stays off primary surfaces. Group labels are sentence case (`.section-label`), and there are no bracketed or uppercase eyebrows.
 4. **Motion with a job.** Springs are critically damped, so nothing bounces. Surfaces grow from the control that opened them, indicators slide between the items they mark, and lists cascade in over a fraction of a second. Under reduced motion every entrance becomes a short crossfade and every layout change is instant.
@@ -289,30 +289,30 @@ Streaming text uses a thin 2px accent caret (`.stream-caret`), and working state
 
 ## 3. App shell layout
 
-The window opens at 1440×920 and can shrink to 960×620 (`src/main/index.ts`). Regions, with light values shown:
+The window opens at 1440×920 and can shrink to 960×620 (`src/main/index.ts`). The layout is `shell/Shell.tsx`. Regions, with light values shown:
 
 ```
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ TITLE BAR 40px · opaque --glass (--bg) · bottom hairline                 │
-│ ● ● ●  ›▟ visual-omp            my-shop / Fix checkout bug ⌄             │
-├─────────────┬────────────────────────────────────────────────────────────┤
-│ SIDEBAR     │ TAB STRIP 36px · --bg · bottom hairline                    │
-│ 264px       │ ◌ Fix checkout bug × │ ○ Styles pass │ 2 more ⌄   ＋  ▥    │
-│ --panel     ├───────────────────────────────────────┬────────────────────┤
-│ 200-320     │ SESSION HEADER 48px · --panel         │ RIGHT DOCK 420px   │
-│             │ title [model ⌄][mode ⌄] buttons ⋯     │ 320-640 · closed   │
-│             ├───────────────────────────────────────┤ by default         │
-│             │ CHAT COLUMN · max 760px · scrolls     │ Diff  Files        │
-│             │                                       │ Preview  Tasks     │
-│             ├───────────────────────────────────────┤ Plan  Terminal     │
+│ ● ● ●  ›▟ visual-omp v0.5.0      [⌕ Search commands  ⌘K]                 │
+├─────────────┬───────────────────────────────────────┬────────────────────┤
+│ SIDEBAR     │ SESSION HEADER · --panel              │ SIDE PANEL 420px   │
+│ 264px       │ ◌ title / state line   Review ▥ ⋯     │ 320-640 · closed   │
+│ --panel     ├───────────────────────────────────────┤ by default         │
+│ 200-320     │ CHAT COLUMN · max 760px · scrolls     │ [▤ Changes ⌄]  ×   │
+│             │                                       │                    │
+│             ├───────────────────────────────────────┤                    │
 │             │ COMPOSER · max 760px card             │                    │
 ├─────────────┴───────────────────────────────────────┴────────────────────┤
 │ STATUS BAR 28px · --panel · top hairline · mono --text-xs                │
-│ ⎇ main  +12 −3  PR #4 ✓                 ◔ 62%  $1.24 today  ● omp 18.4.5 │
+│ ⎇ main  +12 −3  PR #4 ✓                      Claude 5h 12%  ✓ omp 18.4.5 │
 └──────────────────────────────────────────────────────────────────────────┘
 ```
 
-The sidebar and dock slide in from their own edge (12px on the gentle spring, with a fade) and fade out when hidden. The main area swaps between the project home and the chat with a `PresenceSwap` rise. Sidebar and dock visibility, widths and the open dock pane are saved app-wide in `localStorage` under `visual-omp:layout`.
+The sidebar and side panel slide in from their own edge (12px on the gentle spring, with a fade) and fade out when hidden. The main area swaps between the project overview, the chat, a full page and the expanded side panel with a `PresenceSwap` rise. The chat stays mounted, hidden and inert, under a page it opened, so Back finds it as it was. Sidebar and side panel visibility, widths and the chosen pane are saved app-wide in `localStorage` under `visual-omp:layout`.
+
+- **Narrow windows**: when the side panel would leave the chat less than 480px (`MIN_CHAT_WIDTH` in `state/app.ts`), the panel takes the main area instead, with "Back to chat" at the start of its header. Back to chat shows the chat again and leaves the panel open for when the window widens; opening the panel or choosing a pane shows it again. Opening the panel or choosing a pane moves focus to "Back to chat". Expansion caused by resizing preserves usable focus elsewhere; otherwise it focuses "Back to chat". On exit, usable focus is preserved, or focus returns to the previous control, the composer or the main area.
+- **Pages** hide the side panel while they show (§5.6).
 
 ### 3.1 Title bar (40px)
 
@@ -323,19 +323,19 @@ The window is frameless. The bar is a drag region with `no-drag` controls, fille
 - **Contents, left to right**:
   - "Show sidebar" (`SidebarSimple`, ⌘B), an IconButton that appears only while the sidebar is hidden.
   - The lockup, `Wordmark withMark size="sm"`: the 18px C1 mark and the 14px `visual-omp` wordmark with an 8px gap. It is decorative.
-  - The running version ("v0.3.0") right after the lockup, in `--text-xs` Geist Mono `--fg-faint`, read from `app:info`. It is plain text, not a control.
-  - Centered, while a project is active: a breadcrumb button with the project name, "/", the focused chat's title and a `CaretDown`, in `--text-md` `--fg-muted`. It opens the command palette (§4.10) and crossfades when the chat changes.
+  - The running version ("v0.5.0") right after the lockup, in `--text-xs` Geist Mono `--fg-faint`, read from `app:info`. It is plain text with no action.
+  - Centered: a 28px "Search commands" field, 288px wide at most, on `--bg-inset` with a hairline, a `MagnifyingGlass` and a ⌘K keycap (Ctrl+K elsewhere). It opens the command palette (§4.10).
   - The right side stays empty on macOS.
-- **Layout**: a three-column grid. The side columns split the free space equally, which keeps the breadcrumb centered in the window, and the left column never shrinks below the lockup and version, so at narrow widths or large text the breadcrumb truncates instead of covering them. On Windows the right column keeps at least 138px (150px with the padding) clear for the caption buttons.
+- **Layout**: a three-column grid. The side columns split the free space equally, which keeps the search field centered in the window, and the left column never shrinks below the lockup and version, so at narrow widths or large text the field shortens instead of covering them. On Windows the right column keeps at least 138px (150px with the padding) clear for the caption buttons.
 
 ### 3.2 Sidebar (264px, drag 200-320px, ⌘B hides)
 
 ```
 ┌────────────────────────────┐
-│ ⌕ Search chats…       ⌘K   │ search field, 32px, --bg-inset
-│ ＋ Start chat…             │ 36px row, accent text
+│ ✎ New chat            ⌘N   │ 36px row, accent text
+│ ⌕ Search chats             │ search field, --bg-inset
 │────────────────────────────│
-│ Projects               ＋  │ section label and "Add project" menu
+│ Projects     [Active 2] ＋ │ section label, Active filter, "Add project" menu
 │ › ▭ my-shop            ⋯   │ project row, 36px
 │     ◌ Fix checkout bug  2m │ chat row, 32px, 28px indent
 │     ? Styles pass       1h │
@@ -343,35 +343,40 @@ The window is frameless. The bar is a drag region with `no-drag` controls, fille
 │ › ▭ landing-page           │
 │ › Archived · 3             │ only when chats are archived
 │────────────────────────────│
-│ ⌂ Home                     │ bottom nav, 36px rows
+│ ◔ Usage & limits           │ bottom nav, 36px rows
 │ ⚙ Settings                 │
 │ ? Help                     │
 └────────────────────────────┘
 ```
 
-- The column is a `nav` labelled "Projects and chats" on `--panel` with a right hairline. Its resize handle is keyboard operable: arrow keys move it 16px, or 48px with Shift.
-- **Search** ("Search chats…") matches chat titles, previews and project names across every project, loads collapsed projects to search them, and opens every group that matches. Esc clears it. Its ⌘K hint refers to the command palette, which also finds chats.
-- **Start chat…** is a 36px row in `--accent` semibold text with an `--accent-muted` hover. It opens the "Start a chat in…" folder chooser.
-- **Projects** is a `SectionLabel`. Its + button ("Add project") opens a menu with Open folder… (⌘O), Create folder… and Clone from GitHub….
+- The column (`shell/Sidebar.tsx`) is a `nav` labelled "Projects and chats" on `--panel` with a right hairline. Its resize handle is keyboard operable: arrow keys move it 16px, or 48px with Shift. What it lists, and in which order, comes from `shell/sidebarRows.ts`, so the sidebar and the chat shortcuts agree.
+- **New chat** is a 36px row in `--accent` semibold text with an `--accent-muted` hover and a ⌘N hint. It starts a chat in the active project, or opens the "Start a chat in…" folder chooser when no project is active.
+- **Search** ("Search chats") matches chat titles and previews across every project. When Active is off, a matching project name also keeps that project visible, but its chat rows must still match the search. It loads the chat lists of collapsed projects to search them and opens every group that matches. Esc clears it.
+- **Projects** is a `SectionLabel`, followed by two controls:
+  - **Active**, a 24px pill that keeps only open chats that are working, waiting for an answer or running omp ("Show only chats that are working, waiting for your answer or open"). While on it shows `--accent-muted` with `--accent` text, and it shows the number of such chats in mono. With none it reads "No chats are working, waiting or open right now."
+  - **＋** ("Add project"), a menu with Open folder… (⌘O), Create folder… and Clone from GitHub….
 - **Project rows** are 36px and sorted with pinned projects first, then by last activity. Each row has:
-  - a disclosure caret that turns 90°
+  - a disclosure caret that turns 90° ("Show chats in {name}" or "Hide chats in {name}"), disabled while search or Active is on
   - a folder icon (`FolderMinus` in `--warn` when the folder is missing)
-  - the name in semibold
+  - the name in semibold, which opens the project overview (§4.3)
   - a pin icon when pinned
   - a "Project options" ⋯ button that shows on hover or focus
-  - The row is `--selected` while that project's home is open.
-  - The options menu and the right-click menu offer Start chat here, Open project home, Show in folder, Pin project or Unpin project, Settings, and Remove project from list.
-- **Chats** open inside `Expand`. A project shows its first eight chats and then "Show N more chats". An empty project reads "No chats yet. New chats in this project appear here."
-- **Chat rows** are 32px: `ChatStatusMark` (below), the title (falling back to "Untitled chat"), a pin icon, and the relative time in mono `--text-xs` `--fg-faint`, which gives way to a ⋯ "Chat options" button on hover.
-  - The active chat's `--selected` fill is one element that slides between rows. Its `layoutId` is unique to the sidebar, and the split partner has its own.
-  - ⌘ or Ctrl-click opens a chat in the split.
-  - The menu offers Open chat, Open side by side, Pin chat or Unpin chat, Archive chat or Restore chat, Show in folder, and Delete chat… (danger). Delete confirms in a destructive dialog: "Delete '{title}'?", with [Keep chat] and [Delete chat].
+  - The row is `--selected` while that project's overview is open.
+  - The options menu and the right-click menu offer Start chat here, Open project overview, Project settings, Show in folder, Pin project or Unpin project, and Remove project from list.
+- **Chats** open inside `Expand`. Open chats the saved list does not include yet (a new chat before omp writes its file) come first, then pinned chats, then the rest by last activity. A project shows its first eight chats and then "Show N more chats". An empty project reads "No chats yet. New chats in this project appear here."
+- **Chat rows** are 32px: `ChatStatusMark` (below), the title (falling back to "Untitled chat", or "New chat" for an open chat with no file yet), a pin icon, and the relative time in mono `--text-xs` `--fg-faint`, which gives way to a ⋯ "Chat options" button on hover or focus.
+  - The row of the chat on show has a `--selected` fill that slides between rows. Its `layoutId` is unique to the sidebar, and the split partner has its own.
+  - ⌘ or Ctrl-click opens a chat beside the one on show (split view, §3.3). Middle-click, or Delete on the focused row, closes an open chat.
+  - The menu offers Open chat, Open side by side, Close chat (open chats only), Rename chat…, Pin chat or Unpin chat, Archive chat or Restore chat, Show in folder, and Delete chat… (danger). Delete confirms in a destructive dialog: "Delete '{title}'?", with [Keep chat] and [Delete chat].
+- **Open chats** are the `tabs` list in `state/app.ts`. Opening a saved chat loads its history without starting omp. After another chat replaces it, a history-only chat is released if it has no host, sent input, draft, attachments or open omp terminal. Other chats remain open until closed with Close chat, ⌘W, middle-click or Delete. Closing a working chat asks first (§8.4).
+- **Shortcuts**: ⌘1-⌘9 (Ctrl elsewhere) open the first nine chat rows the sidebar shows, top to bottom, counting rows in expanded projects only. While ⌘ or Ctrl is held, those rows swap their time for a `⌘N` keycap. ⌘⇧[ and ⌘⇧] step through open chats in sidebar order and wrap.
+- **Archived**: archived chats from every loaded project collect under "Archived · N" at the end of the list, collapsed until clicked.
 - **Motion**: new rows rise 4px on the snappy spring, and groups reflow with layout animation.
-- **Bottom nav**: Home, Settings and Help rows (`House`, `Gear`, `Question`).
+- **Bottom nav**: Usage & limits (`Gauge`), Settings (`Gear`) and Help (`Question`). Each opens its page (§5.6); the row whose page is showing is `--selected` and marked `aria-current="page"`.
 - **Collapse**: ⌘B (Ctrl+B) or View → Toggle Sidebar slides the column away, and the title bar then shows "Show sidebar". There is no hover strip and no overlay mode.
 - **Empty**: with no projects, an empty state reads "No projects yet. A project is a folder that omp works in." with [Create project].
 
-**Chat status marks** (`shell/ChatStatusMark.tsx`). Sidebar rows, tabs and the tab overflow menu all use the same 14px shape, and each carries sr-only text. The status comes from `chatStatus()` in `shell/hooks.ts`, checked in this order: a pending omp question, then working, then open, otherwise saved.
+**Chat status marks** (`shell/ChatStatusMark.tsx`). Sidebar rows, the session header and the project overview's recent chats use the same 14px shape, and each carries sr-only text. The status comes from `chatStatus()` in `shell/hooks.ts`, checked in this order: a pending omp question, then working, then open, otherwise saved.
 
 | Status | Shape | Color | Screen-reader text |
 |---|---|---|---|
@@ -380,32 +385,27 @@ The window is frameless. The bar is a drag region with `no-drag` controls, fille
 | Open | filled circle, 10px | `--ok` | "Open" |
 | Saved | hollow circle, 10px | `--fg-faint` | "Saved" |
 
-### 3.3 Tab strip and split view (36px)
+### 3.3 Split view
 
-- The strip is hidden while no chats are open. It sits on `--bg` with a bottom hairline, and its `role="tablist"` is labelled "Open chats".
-- **Tabs**: 28px tall, 120-200px wide, with rounded top corners. Each holds a `ChatStatusMark`, the title (falling back to "New chat") and a close button ("Close {title}") that shows on hover or focus. Each title button is `role="tab"` with `aria-selected` and `aria-controls` pointing at the chat panel.
-- **Selected tab**: medium `--fg` text on a `--panel` fill with a 2px accent underline. That fill and underline are one element that slides between tabs; its `layoutId` is unique to the strip, and the split partner has its own. Tabs enter and leave with a 6px rise on the snappy spring.
-- **Keyboard**: a roving tab stop, so the strip is one Tab stop. Left and Right wrap, Home and End jump, Enter and Space activate, and Delete closes; middle-click also closes. Closing a working chat asks first. ⌘1-⌘8 pick a tab, ⌘9 picks the last one, and ⌘⇧[ and ⌘⇧] step through them.
-- **Overflow**: a `ResizeObserver` measures the strip, and tabs that do not fit at the 120px minimum move into an "N more" menu button whose rows show the status mark and title. The active tab and the split partner always stay visible.
-- **End of the strip**: ＋ "Start new chat" (⌘N) and, with two or more tabs, a `Columns` toggle ("Open split view" or "Close split view", ⌘\).
-- **Split view** shows two chats side by side.
-  - The left pane starts at 50%, and the resize handle keeps each pane at least 360px wide.
-  - Each pane has its own header, transcript and composer. The tab strip, dock and status bar are shared.
-  - ⌘ or Ctrl-click in the sidebar, or ⌘⏎ on a chat in the palette, opens a chat in the second pane.
-  - The second pane enters from the right.
-  - The pane without focus drops to 97% opacity.
+`chat/ChatArea.tsx` shows one chat, or two side by side.
 
-### 3.4 Session header (48px)
+- ⌘ or Ctrl-click in the sidebar, "Open side by side" in a chat row's menu or the session ⋯ menu, or ⌘⏎ on a chat in the palette opens a chat in the second half. ⌘\ also opens the split, and closes it while it is on.
+- The left half starts at 50%, and the resize handle ("Resize split") keeps each half at least 360px wide. A divider the user placed is pulled back in when the area shrinks.
+- Each half has its own header, transcript and composer. The sidebar, side panel and status bar are shared and follow the focused half.
+- The focused half, the one keyboard commands act on, carries a 2px `--accent` line along its top edge that slides across when focus moves. Clicking anywhere in a half focuses it. The halves are groups labelled "Left chat" and "Right chat".
+- The second half enters from the right and fades out when it closes.
+- When the chat area is narrower than two 360px halves, only the focused chat shows; its partner stays mounted, hidden and inert, and comes back as it was once the area widens.
 
-- **Bar**: `--panel` with a bottom hairline and 16px padding. It holds a `ChatCenteredText` icon and the chat title (15px semibold), which rises in when it changes. The title is not edited in place; "Rename chat" in the ⋯ menu opens a rename dialog.
-- **Chips** are 24px pills in `--text-xs` semibold:
-  - The **model chip** (`--hover` fill, `--fg` text) opens the model list (⌘⇧M).
-  - The **mode chip** shows the permission level ("Ask me first", "Edits OK", "Auto") on `--hover` in `--fg-muted`. When a work mode is on it shows that mode on `--accent-muted` in `--accent`: "Plan", "Plan paused", "Goal", "Goal paused", "Vibe" or "Loop". Its menu has a "Permission level" radio group, then "Work modes": Plan mode and Vibe mode checkboxes, Set a goal…, Repeat a task…, and Toggle advisor.
-  - While the chat is shared, a **"Shared" chip** with a dot appears (accent while live, warn otherwise). It opens the share dialog on the Invite tab.
-- **Buttons**: up to five ghost icon-and-label buttons, each with a tooltip that shows its hint and shortcut: Restart omp (`ArrowsClockwise`), Compact this chat (`ArrowsIn`), Plan mode (`ClipboardText`), Helpers (`Robot`) and Share chat… (`ShareNetwork`). The header is a size container: below 66rem (an open dock, a split, a narrow window) the buttons become 32px icon buttons whose tooltip names them, so the header never pushes the chat column under the dock.
-- **⋯ "More actions"**:
-  - First a "Transcript view" radio group (Normal, Thinking, Verbose).
-  - Then every chat and mode command that is not already a header button, in registration order. Examples: Start new chat, Close chat, Start chat in folder…, Set a goal, Guided goal, Vibe mode, Repeat a task, Toggle advisor, Write a handoff, Run security scan, Cleanse project, Export chat, Rename chat, Stop turn (while working), Choose model, Open session tree and Fork chat.
+### 3.4 Session header
+
+`chat/SessionHeader.tsx` renders the session header. The header is `--panel` with a bottom hairline, 16px side padding and at least `--header-h` tall.
+
+- **Left**: a status shape, then the chat title (15px semibold, rising in when it changes) over a one-line state in `--text-sm` `--fg-muted`. The state line is a `role="status"` and names the most urgent state: "Read only. This chat is open in another window, so reply there.", "Read only. You can continue this chat here.", "Read only. The app could not check whether another window has this chat open.", "omp stopped", "Reconnecting to omp…", "Waiting for your answer", "Working… {elapsed}", "Starting omp…", "Saved. omp starts when you send a message." or "Ready for your next message". The shape is the chat's `ChatStatusMark`, or a status glyph for stopped (err), reconnecting (warn) and read-only (live). The title is not edited in place; "Rename chat" in the ⋯ menu opens a rename dialog.
+- **Right**:
+  - **Review changes** (`GitDiff`), a ghost button that opens the Changes pane (§3.7). Its tooltip reads "Show what omp changed in the side panel". The header is a size container, and below 36rem the button becomes an icon button whose tooltip names it.
+  - **Side panel** (`SidebarSimple`, ⌥⌘B), a pressed toggle while the side panel is open.
+  - **⋯ "More actions"**: every command that declares a `header` position, sorted by it, with a separator between each hundred, then a "Transcript view" radio group (Normal, Thinking, Verbose). Commands that do not apply right now are left out. In order: Rename chat, Share chat…, Open session tree, Fork chat, Export chat; Compact this chat, Plan mode, Set a goal, Guided goal, Repeat a task, Vibe mode, Toggle advisor, Write a handoff, Run security scan, Cleanse project, Choose model; Restart omp; Helpers; Open side by side, Close chat.
+- The composer holds the permission level, the model and the work modes (§3.6), and the status bar shows sharing state (§3.8).
 
 ### 3.5 Chat column
 
@@ -448,7 +448,7 @@ The window is frameless. The bar is a drag region with `no-drag` controls, fille
 │──────────────────────────────────────────────────────────────────│
 │ [▣ shot.png ×]                                                   │ attached images
 │ Queue a message for when omp finishes this reply   [⌘↵] send now │ grows 24-200px
-│ ＋ ▭my-shop⌄ ⛉Edits OK⌄ !Shell $Python 🎙 ◔ Model name⌄ ✺High⌄ ■ ↑ │ one 40px row
+│ ＋ ▭my-shop⌄ ⛉Edits OK · Plan mode⌄        🎙 Model name⌄ ✺High⌄ ◔ ↑ │ one 40px row
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -460,29 +460,21 @@ The window is frameless. The bar is a drag region with `no-drag` controls, fille
   - Placeholders: "Ask omp to change something…" when idle, "Queue a message for when omp finishes this reply" while working, and prompts for Shell and Python mode.
   - A keycap hint (`Kbd`) shows ⌘↵, followed by "send now" in `--text-xs` `--fg-faint` while working. Its title explains that the message steers the running reply. A card narrower than 30rem (a container query, so it follows the text size) hides the hint to leave the text box its room.
   - `@` mentions are highlighted inline on `--accent-muted` in `--accent`.
-- **Bottom row**: one 40px line at the default text size (2.5rem, so 52px at 130%), with 8px side padding and 4px gaps. Every tool is a 28px ghost control (`--fg-muted`, `--hover` on hover, `--text-sm` 500 labels, 14px icons, 12px carets); the action slot holds the only filled 32px squares. The ＋ button and the action slot sit outside a tool strip that can only clip sideways, so they always keep their room. Left to right:
-  1. ＋ opens a menu: Attach file, Mention a file, Open prompt library, Browse skills, Browse custom commands. On a narrow card it also offers what the row folded away (see below).
-  2. The folder chip appears only before the first message; the folder can change until then. Its name truncates at 208px by design.
-  3. The permission button: a shield (`ShieldCheck`, or `ShieldWarning` for Auto) and the level, "Ask me first", "Edits OK" or "Auto", with "· runs without asking" after Auto while the row has room. Its tooltip is the current level's description and its popover explains each level. The first switch to Auto asks for confirmation.
-  4. The Shell (!) and Python ($) toggles show `--accent-muted` fill when pressed. Their tooltips name the mode with its glyph as the shortcut.
-  5. Voice (recording shows `--err-bg` with a ping ring).
-  6. The context ring (§5.17).
-  7. The model button (⌘⇧M). Its name truncates at 176px by design, and the tooltip carries the full name.
-  8. The thinking-level button (⇧⇥), `Brain` plus the level. Its tooltip names the level.
-  9. The action slot. While omp works it holds "Stop reply", a 32px `--err-bg` square with a filled `--err` `Square` glyph; on hover the square turns `--err` with a `--fg-inverse` glyph. Its tooltip reads "Stop reply · Esc". It is the only stop control, and the working row above the card carries status only. Send, a 32px `--accent` square with `ArrowUp`, shows when idle, and also while working once there is something to queue, so the slot never holds more than these two.
-- **Row compaction** (`ROW_TIERS` and `useRowTier` in `Composer.tsx`): the row uses the lowest tier at which every tool ends inside the strip and neither the folder name nor the model name is cut short of its own maximum width. Tiers depend on what the row holds (folder and model names, the permission level, voice, the ring and its label, the working state and draft), so a long model name compacts the row sooner than a short one. Each tier adds to the ones before it:
-  1. The permission button drops "· runs without asking".
-  2. Shell and Python show only their glyph.
-  3. Thinking shows only `Brain`.
-  4. Shell and Python leave the row; the ＋ menu lists them as "Shell command mode" and "Python mode" checkbox items.
-  5. The permission button and the idle mic leave the row; the ＋ menu adds "Dictate a message" and a "Permission level" submenu. The mic stays in the row while dictation is under way.
-  6. Thinking leaves the row; the ＋ menu adds a "Thinking" submenu.
-  7. The model button shows only `Cpu`, with the name in its tooltip.
-  8. Gaps and padding narrow to 2px and 6px, and the context ring drops its percentage label.
-  9. The context ring leaves the row. The status bar still shows context usage.
-  10. The model button leaves the row; the ＋ menu adds "Choose model" (⌘⇧M), and the picker still opens from the end of the row.
+- **Bottom row** (`chat/composer/Composer.tsx`): one 40px line at the default text size (2.5rem, so 52px at 130%), with 8px side padding and 4px gaps. Every tool is a 28px ghost control (`--fg-muted`, `--hover` on hover, `--text-sm` 500 labels, 14px icons, 12px carets); the action slot holds the only filled 32px squares. The row has two groups: ＋ with the leading tools on the left, and the trailing tools with the action slot on the right. Features add tools through `chatSlots` (`composerTools`); order below 50 joins the leading group. Left to right:
+  1. ＋ ("Add files, prompts and commands") opens a menu: Attach file, Mention a file; Open prompt library, Browse skills, Browse custom commands; then the "Shell command mode" (`!`) and "Python mode" (`$`) checkbox items and "Dictate a message".
+  2. The folder chip (`projects.folder`, order 10) appears only before the first message; the folder can change until then. Its name truncates at 208px by design.
+  3. The permission button (`session-permission`, order 20, `features/session-tools/pickers.tsx`): a shield (`ShieldCheck`, or `ShieldWarning` for Auto) and the level, "Ask me first", "Edits OK" or "Auto", with "· runs without asking" after Auto and "· {work mode}" in `--accent` while one is on ("Plan mode", "Plan mode paused", "Goal", "Goal paused", "Vibe mode" or "Repeating"). Its tooltip is the current level's description. Its popover has the "Permission level" options with a note that the level is saved for the project, then "Work modes": Plan mode, Vibe mode, Set a goal…, Repeat a task… and Toggle advisor, each with the state omp reports. The first switch to Auto asks for confirmation. The button never drops its words.
+  4. Voice (`composer.voice`, order 50, `VoiceTool.tsx`): the mic is in the row only while voice input is on or dictation is still finishing. Recording shows `--err-bg` with a ping ring.
+  5. The model button (`session-model`, order 70, ⌘⇧M). Its name truncates at 176px by design, and the tooltip carries the full name.
+  6. The thinking-level button (`session-thinking`, order 80, ⇧⇥), `Brain` plus the level. Its tooltip names the level.
+  7. The context ring (`composer.context`, order 90, `chat/composer/tools.tsx`, §5.17).
+  8. The action slot. While omp works it holds "Stop reply", a 32px `--err-bg` square with a filled `--err` `Square` glyph; on hover the square turns `--err` with a `--fg-inverse` glyph. Its tooltip reads "Stop reply · Esc". It is the only stop control, and the working row above the card carries status only. Send, a 32px `--accent` square with `ArrowUp`, shows when idle, and also while working once there is something to queue, so the slot never holds more than these two.
+- **Row states** (`ROW_STATES` and `useRowState` in `Composer.tsx`): the row takes the first state in which the trailing group starts on the leading group's line, so nothing in the row is squeezed.
+  1. Full: every tool shows its words.
+  2. Compact (`data-compact`): the model button shows only `Cpu` and the thinking button only `Brain`, with the names in their tooltips, and the context ring drops its percentage label.
+  3. Stacked (`data-stacked`, still compact): the row wraps, so the trailing tools and the action slot move to a second line, right-aligned, and wrap again on the narrowest cards. Gaps narrow to 2px and side padding to 6px.
 
-  The tier is measured synchronously before paint, on mount, on card resize, and whenever the row's content changes (DOM changes in the tools, the action slot's size, which also follows the text size, and font loads). A card that narrows only climbs; a card that widens retries a lower tier only once it is wider than where that tier last failed, so the tier does not oscillate. At the last tier a long folder name still truncates rather than fold. In the harness checks for v0.3 (Chrome, 100% and 130% text size, cards of 760px and of the narrowest column: 220px at 100% and 206px at 130% for a 960px window with the 264px sidebar and a 420px dock), no tool reached past the strip and no control left the card in any tested state: a working chat with a draft, active dictation, 92% context, a new chat with a long folder name, and an idle chat. The tested states are listed here because combinations beyond them are measured at runtime, not guaranteed by fixed widths.
+  States change only CSS, never the row's DOM, so measuring one cannot trigger another measurement. The state is measured synchronously before paint, on mount, on every change of the card's width (always starting from the full state), and whenever the row's content changes: DOM changes in the row, the action slot's size, which also follows the text size, and font loads.
 - **Keys**:
   - Enter sends, or queues while working.
   - Shift+Enter adds a new line.
@@ -492,66 +484,66 @@ The window is frameless. The bar is a drag region with `no-drag` controls, fille
 - **@-mention picker**: a floating list above the text box: "Mention a file so omp reads it with your message". Rows are 32px, with fuzzy matches in accent semibold. Picking one inserts `@path`.
 - **Drag and drop**: dragging files over the chat column shows a veil (`--accent-muted` with an inset `--accent` outline): "Drop to add to your message". Images attach, and other files are mentioned.
 
-### 3.7 Right dock (420px default, drag 320-640px, ⌥⌘B toggles)
+### 3.7 Side panel (420px default, drag 320-640px, ⌥⌘B toggles)
 
-- **Frame**: an `aside` labelled "Side panel" on `--panel` with a left hairline. It is closed by default.
-- **Tab strip**: 32px, with 28px tabs: Diff (`GitDiff`), Files (`TreeStructure`), Preview (`MonitorPlay`), Outputs (`Images`), Tasks (`ListChecks`), Plan (`ClipboardText`) and Terminal (`TerminalWindow`).
-  - The active tab has `--accent` text and a 2px accent underline that slides between tabs.
-  - Tabs use a roving tab stop with manual activation.
-  - Panes slide in from the side of the chosen tab.
-  - A close button ("Close side panel") ends the strip.
+- **Frame** (`shell/Dock.tsx`): an `aside` labelled "Side panel" on `--panel` with a left hairline. It is closed by default, hides while a page shows, and takes the main area in narrow windows (§3 intro).
+- **Header**: 36px with a bottom hairline. It holds "Back to chat" (only while the panel takes the main area), the pane selector and a close button ("Close side panel", ⌥⌘B).
+- **Pane selector**: a menu button that names the pane on show with its icon, its badge and a caret. Its menu ("Panels") is a radio list of every pane with its icon and badge: Changes (`GitDiff`), Files (`TreeStructure`), Preview (`MonitorPlay`), Outputs (`Images`), Tasks (`ListChecks`), Plan (`ClipboardText`) and Terminal (`TerminalWindow`). Arrow keys, Home, End and typeahead move, and Enter or Space shows the pane. When another pane's badge has something to show, the button adds an accent dot ("Other panels have updates").
+  - Panes slide in from the side of the chosen pane: one lower in the list enters from the right.
+  - "Review changes" in the session header (§3.4) and the status bar's change count open Changes directly.
 - **Badges**:
-  - Diff: `+N −M` in the diff colors.
-  - Outputs: an accent count of outputs added or made again since the pane last showed this chat. Outputs that existed when the dock first listed the chat are not counted.
+  - Changes: `+N −M` in the diff colors.
+  - Outputs: an accent count of outputs added or made again since the pane last showed this chat. Outputs that existed when the side panel first listed the chat are not counted.
   - Tasks: an accent count pill of running helpers and jobs.
   - Plan: an accent "!" while a plan waits for a decision.
   - Terminal: a live dot while a command runs.
-- **Diff**: changes since the last commit, per file, with a hideable file list. Line comments are sent to omp together. "Review code" asks omp to review the changes (`/review`), and a file's changes can be discarded after a confirmation.
+- **Changes** (`DiffPane.tsx`): changes since the last commit, per file, with a hideable file list. Line comments are sent to omp together. "Review code" asks omp to review the changes (`/review`), and a file's changes can be discarded after a confirmation.
 - **Files**: the project tree and viewer tabs. ⌘-click or right-click mentions a file in chat; there are also Copy path and Show in folder.
   - A viewer tab can hold any absolute path, inside the project or not, so a file named in a reply or opened from Outputs shows here. Tabs are kept per project. The header shows the project-relative path inside the project, `~/...` under the home folder, and the absolute path elsewhere.
-  - While tabs are open, a `SidebarSimple` button at the start of the tab strip hides or shows the tree ("Hide project files" or "Show project files"), with the same slide and fade as the Diff pane's file list; the viewer then takes the pane's width. The choice is kept per project until its last tab closes, when the tree fills the pane again. A file link in a reply opens its tab with the tree hidden, so the file gets the whole dock, while "Open in Files" on a tool card leaves the tree as it was.
+  - While tabs are open, a `SidebarSimple` button at the start of the viewer's tab row hides or shows the tree ("Hide project files" or "Show project files"), with the same slide and fade as the Changes pane's file list; the viewer then takes the pane's width. The choice is kept per project until its last tab closes, when the tree fills the pane again. A file link in a reply opens its tab with the tree hidden, so the file gets the whole panel, while "Open in Files" on a tool card leaves the tree as it was.
   - Text and code show with line numbers and syntax colors, images (SVG included) in the zoom view described below, and PDFs in the same built-in PDF viewer as Outputs (the same `blob:` iframe, read again on reload or when the project's files change, each Blob URL revoked once it is replaced or the tab closes). Other files show "Can't preview this file" or "This file is too big to preview" with Show in folder. An image the browser cannot draw (an SVG that is not well-formed XML, for example) shows "This image could not be displayed."
   - Both panes open a PDF with the open parameters `#navpanes=0&view=FitH`, which Chromium's viewer reads from the URL fragment: the page-thumbnail sidebar starts closed and the page fits the frame's width, while the viewer's toolbar (page, zoom, download, print) stays. Without them, a wide spread such as an 18x6 inch bifold opened at about 13% beside the thumbnails in a 535px dock.
   - A folder tab lists the folder one level deep, skipping `.git` and `node_modules` as the tree does, with the first 200 entries and then "Show all N items". Images and PDFs form the Outputs thumbnail grid ("Images and PDFs"), with the PDF glyph when the operating system makes no thumbnail; the other entries are 30px rows ("Folders and files"). Clicking an entry opens it as another tab, folders included. The header has the item count and Show folder in Finder (Show folder in its parent folder elsewhere).
   - Each tab first asks main whether its path is a file, and lists it as a folder when it is not, before it picks a renderer. The extension alone does not decide the kind, so a folder called `archive.pdf` opens as a folder and only a file ending in `.pdf` goes to the PDF viewer.
   - Raster images and PDFs get Open in default app in the header wherever they are, with the same file checks as Outputs. Files outside the project also get Show in folder; inside the project the tree's menu has it.
-  - Images and PDFs also get "Expand preview" (`ArrowsOut`), which opens the same file in a `full` dialog (§5.6) over nearly the whole window, because a dock-wide view still shrinks a wide spread. The layer's header has the file name, "Zoom in" for images, Open in default app for raster images and PDFs, Show in folder and Close. A PDF uses the same frame and open parameters; an image uses the zoom view, and "Zoom in" is a pressed toggle bound to the same zoom state as clicking the image, so the header and the image never disagree. The toggle is disabled while no image is shown, such as while it loads or when it could not be drawn, in which case the layer shows "This image could not be displayed." as the pane does; new bytes for the file try again. Each opening starts fitted. Esc or Close returns focus to the Expand button.
+  - Images and PDFs also get "Expand preview" (`ArrowsOut`), which opens the same file in a `full` dialog (§5.6) over nearly the whole window, because a panel-wide view still shrinks a wide spread. The layer's header has the file name, "Zoom in" for images, Open in default app for raster images and PDFs, Show in folder and Close. A PDF uses the same frame and open parameters; an image uses the zoom view, and "Zoom in" is a pressed toggle bound to the same zoom state as clicking the image, so the header and the image never disagree. The toggle is disabled while no image is shown, such as while it loads or when it could not be drawn, in which case the layer shows "This image could not be displayed." as the pane does; new bytes for the file try again. Each opening starts fitted. Esc or Close returns focus to the Expand button.
   - **Zoom view** (`ZoomImage` in `features/panes/media.tsx`, math in `zoom.ts`), shared by the Files viewer, the Outputs larger view and the Expand layer. The image starts fitted on `--bg-inset` with a 16px margin. A raster image never grows past its actual size when fitted, while an SVG fills the view, which also gives an SVG without a size of its own (only a `viewBox`, or percentage width and height) a useful size instead of 300×150. Clicking zooms in place, keeping the clicked point of the image under the pointer: to actual size when that magnifies at least 1.5 times, otherwise to twice the fitted size. While zoomed, dragging or scrolling moves around the image, and a click without a drag returns to fit; the click that ends a drag does nothing. Ctrl+wheel, ⌘+wheel and trackpad pinches (which Chromium reports as Ctrl+wheel) zoom continuously around the pointer. Zooming in stops at eight times the fitted size or eight times actual size, whichever is larger, and the image's longer side never exceeds 20,000 pixels, a hard ceiling that wins over both; when the ceiling is at or below the fitted size, the image stays fitted. The cursor shows zoom-in while fitted, zoom-out while zoomed and grabbing while dragging. The view is focusable and named "Zoom in on {name}" (a pressed toggle) with a description of the keys. A click from assistive technology toggles the zoom at the view's center, Enter or Space toggles it, + and - change it by a factor of 1.5, 0 fits the image, and arrow keys scroll while zoomed. Esc is left to the surrounding view, so it still closes the Expand layer first and then goes back to the outputs list. The image is laid out at its zoomed size instead of being scaled with a transform, so an SVG is drawn again at each size and stays sharp. A click, a key or the header toggle moves the image from its box on screen to the new one on `spring.snappy`. A wheel or pinch, a drag, a new image, a change of the motion setting or closing the view stops a running move first, so the image returns to its laid-out box before anything is measured. Wheel and pinch zooming follow the input directly, and under reduced motion every change is instant. Thumbnails in grids keep their click behavior and open the larger view.
 - **Preview**: back, forward, reload, an address field (local addresses and `https://` pages only) and "Open page in your browser". Links found in the chat are offered, and the empty state reads "Nothing to preview".
-- **Outputs**: the images, PDFs and files omp made or viewed in the focused chat, read from the same entries as the transcript and listed newest first. A path appears once, at its newest use.
-  - Three sections split them by what omp did, each with its count and hidden when empty: "Made in this chat" (images and PDFs omp made, wrote, generated or edited), "Files" (the other files it made, wrote or edited) and "Viewed" (images and PDFs it only looked at, through `read` or screenshots). A path omp made and later viewed stays in "Made in this chat", so deliverables stay at the top while review renders pile up below. "Viewed" shows the first 12 and then a "Show N more" button that reveals the rest until the pane closes.
+- **Outputs** (`OutputsPane.tsx`): the images, PDFs and files omp created, wrote, changed or viewed in the focused chat, read from the same entries as the transcript and listed newest first. A path appears once, at its newest use.
+  - Sections split them by what the chat's history shows omp did (`OutputRelation` in `derive.ts`), each with a title, a one-line description and its count, and hidden when empty. In order: "Created" (images omp generated and files omp reported adding as new), "Written" (files omp wrote or a command saved, which may be new or may have replaced a file), "Changed" (files that existed before omp edited or wrote them, including files the chat had read first) and "Viewed" (images and PDFs omp only looked at, through `read` or screenshots). The first use that produces a file decides its section, so a created file stays in "Created" when omp edits or views it later, and deliverables stay at the top while review renders collect below. Each section shows its images and PDFs as tiles, then its other files as rows. "Viewed" shows the first 12 tiles and then a "Show N more" button that reveals the rest until the pane closes.
   - Images come from image blocks in tool results (a `read` image keeps its path), `generate_image` results with their saved paths, and screenshots. PDFs come from `read`. A thumbnail with a path is read from disk when the pane opens and again whenever omp uses that file, so a re-rendered file shows its current state. Without a path, or when the file is gone, it uses the data in the tool result (omp's blob store for saved chats). When neither is available the thumbnail shows a broken-image glyph, and the larger view adds "This image could not be displayed."
   - Files made by commands: `bash`, `eval` and `browser` calls often write deliverables without naming them as outputs (a Python script that saves into `$OUTDIR`). For each finished call the renderer collects the paths its arguments and printed output name (absolute, `~/`, Windows drive and UNC paths, quoted, shell variables such as `$OUTDIR` resolved, globs cut back to their folder) and the window the call ran in, from omp's recorded start (or the call) to its result, or to the delivery of a background job's result. Main checks those paths with hard limits: a named file is kept, whatever its type, when it was modified inside the window (2 seconds of slack on each end); a named folder is scanned two levels deep for PDFs, raster images and SVGs modified inside the window, skipping dot folders, `node_modules`, symlinked folders, the home and temp folders and anything directly under the root. Each folder is read entry by entry and left after 500 entries, with at most 48 folder reads and 40 files per call, and the renderer sends one batch of up to 64 calls at a time. Results are kept per call while the pane is open and checked again when it reopens, so deleted files drop out. They show as "Made 14:32".
   - This discovery is best effort. It can include unrelated files changed in the same folders while the call ran, and it cannot tell copied assets from deliverables, so a raster image copied during a command counts as made. It misses files a command never names (directly or through a folder), files deeper than two levels, and anything past the limits.
   - Images and PDFs form grids of 4:3 thumbnails with the file name below. A PDF tile shows the first page when the operating system provides a thumbnail (main's `nativeImage.createThumbnailFromPath`, at most 480px), with a small "PDF" marker; otherwise it shows a PDF glyph. The grid is a contact sheet for scanning renders side by side, which is why it is an intentional exception to the rule against identical card grids. Tiles stay flat: a hairline frame on `--bg-inset`, with no nested cards, shadows, gradients or eyebrow labels.
   - Clicking a thumbnail opens a larger view in the pane with [Back to outputs] (Esc), Show in folder and Copy path, plus Open in default app for raster images and PDFs. A PDF opens in Chromium's built-in PDF viewer inside the pane: main opens the file once, checks through that handle that it is a regular file of at most 64 MB, reads no more than that, and returns the bytes only when they start with `%PDF-`. The renderer shows them through a `blob:` URL in an iframe (the CSP allows `blob:` frames). When omp makes or views the PDF again, the view reads it again and keeps the current page on screen until the new bytes arrive; each Blob URL is revoked once it is replaced or the view closes. When the PDF can't be read the view says "This PDF could not be displayed."
   - An image's larger view is the zoom view, and it also has "Expand preview", which opens the same `full` layer as the Files viewer (images, including those that came only as data, and PDFs). Esc closes the layer first; the next Esc goes back to the list.
-  - Files are the paths `write`, `edit` and `ast_edit` changed (a staged `ast_edit` preview counts once it is applied) and the other files commands made, in 30px rows with the name, the folder and "Edited 14:32" (the date alone for older outputs). The folder ellipsizes first and then the name; the full path is the row's tooltip. Clicking a row opens the file in the Files pane.
+  - File rows are the paths `write`, `edit` and `ast_edit` touched (a staged `ast_edit` preview counts once it is applied) and the other files commands made, in 30px rows with the name, the folder and the action with its time ("Edited 14:32", "Written 14:32" and so on; the date alone for older outputs). The folder ellipsizes first and then the name; the full path is the row's tooltip. Clicking a row opens the file in the Files pane.
   - File actions (Show in folder, Copy path and the right-click menu) need a path, so images that came only as data have none. Open in default app and thumbnails also need an allowed file. Main resolves symlinks, opens the target once and requires a regular file whose leading bytes match its extension: a raster extension (PNG, JPEG, GIF, WebP, AVIF, BMP or ICO) with the leading bytes of any of those formats (the extension and the bytes need not be the same format), or `.pdf` with `%PDF-`. SVG files are shown in the pane and open in the Files pane, never in another app or the operating system's thumbnailer, because SVG can carry script.
   - SVG: the panes show an SVG only through `<img>`, where scripts, event handlers and external loads do not run, from the data URL main builds in `panes:readFile` (up to the same 8 MB as other images; a 0.7 MB slide with embedded fonts renders with its fonts). Browsers refuse to draw an SVG image whose root is not in the SVG namespace, and editors and HTML-inline snippets often leave `xmlns` out, so main adds `xmlns` (and `xmlns:xlink` when the file uses `xlink:` without declaring it) to the root `<svg>` start tag of the copy it sends; nothing else in the file changes and the file on disk is untouched. Grid tiles show the SVG itself. File rows in replies (§4.6) get their thumbnail by drawing the SVG into a 96px PNG in the renderer, since main never hands SVG to the operating system's thumbnailer.
-  - The empty state reads "No outputs yet" and "Images and files omp makes or views in this chat appear here."
-- **Tasks**: the checklist, the helpers at work (helper definitions are managed in §4.14) and background jobs:
+  - The empty state reads "No outputs yet" and "Images and files omp creates, writes, changes or views in this chat appear here."
+- **Tasks** (`TasksPane.tsx`): the checklist, the helpers at work (helper definitions are managed in Settings → Helpers, §4.14) and background jobs:
   - The checklist has a progress bar, and a highlight slides to the step in progress.
-  - Helper rows use a letter avatar with a status dot.
+  - Helper rows show a 28px letter avatar with a status dot, the name, the status ("Working", "Waiting", "Done", "Failed" or "Stopped") with the token count, and the latest activity in up to two lines. Each row offers the helper's transcript when there is one, "Message {name}" while it works or waits, and "Stop {name}" while it works. Running helpers sort first.
   - Background jobs show a live tail.
 - **Plan**: the plan file, polled every 2 seconds while visible. While omp waits for a decision, an `--accent-muted` bar offers [See all options] and [Approve plan].
 - **Terminal**: the project's own shells ("Shell 1", "Shell 2"…), separate from omp's terminal screen (§4.11).
 
 ### 3.8 Status bar (28px, `--panel`, top hairline, mono `--text-xs`)
 
+The bar (`shell/StatusBar.tsx`) is a size container. Features add items through `statusItems`.
+
 Left:
 - **Branch** (⎇ plus the branch name). Its menu switches branches, opens other GitHub branches, creates a branch, turns on "Work in a separate copy", commits changes, opens or creates a pull request, and refreshes git status. Outside git it reads "No git", with "Set up git".
-- **Changes**: `+A −D` in the diff colors, hidden when clean. It opens the Diff pane.
+- **Changes**: `+A −D` in the diff colors, hidden when clean. It opens the Changes pane.
 - **Pull request**: "PR #N" with ✓, ▲ or ✕ for its checks. It opens a checks popover with [Refresh checks], [Fix CI] (when failing) and [Open on GitHub]. A failing check also adds a separate "Fix CI" item.
+- **Shared**: while the focused chat is shared, a dot (accent while live, warn otherwise) and "Shared" or the sharing phase. It opens the share dialog on the Invite tab.
 
 Right, in order:
-- **Context**: a 14px context ring and "{n}%", shown when the chat reports usage. It is a readout without a click action.
 - **Plan usage**: one button with a segment per provider that the chat and its running subagents use, such as "Claude 5h 12%": a 20×4px bar (`--border-strong` track, fill and text in the Usage & limits tones, warn from 70% and err from 90% or when the provider reports the limit as exhausted) beside the provider and one applicable window. A window reported as exhausted takes priority; for pooled accounts, every reporting account must report that window as exhausted. Otherwise the 5h window shows, else the 7d window, else the monthly window (28 to 31 days, or a month-named window with no readable duration), else the most-used window. Among several windows of the chosen length ("7d" and "7d fable"), or several exhausted ones, the most-used one shows. The figures come from `omp usage --json`, read once a minute while the window is visible, after each finished turn and when the chat's providers change. These passive reads do not explicitly invalidate omp's cache; the Usage & limits refresh button requests invalidation and publishes the resulting snapshot to the status bar, and a snapshot omp generated earlier than the one shown is ignored. Only windows that bind the model in use count (a Fable weekly limit only for a Fable model, for example), and providers signed in with several accounts show omp's pooled figure. The tooltip lists every window of each provider with "{n}% used" and the reset time, notes pooled accounts and says when omp last checked the limits. Windows are named by their length ("5h", "7d"); when two of one provider share a name, a tier is added ("7d fable") or, failing that, a readable limit label follows in muted text when one is available ("7d Weekly limit"), and each still shows its own figures. It opens Usage & limits. A saved chat that has not started omp yet uses the model its session file last recorded (the last model change on the active branch, else the last reply's model), so the item shows before the chat runs. It is hidden when the chat has no known model or its provider reports no limits (API keys, for example). Screen readers get a meter per provider with the full sentence. When the bar runs out of room (narrow windows or large text), the item first drops the window names, so every provider stays visible as, for example, "Claude 29% Kimi 16%". It then folds the other providers into "+N", then drops the provider name, then the percent, keeping the bar.
-- **Cost**: "{cost} today". It opens Usage & limits.
-- **App update**: "v{version} available" with an accent dot, only when a newer visual-omp exists. It opens Settings → About.
-- **omp status**: a dot and label. Dot and label pairs: `--ok` "omp {version}"; `--warn` "Starting omp…" or "Reconnecting to omp…"; `--err` "omp stopped". An accent dot marks an available omp update. The menu holds Show omp terminal (⌘J), Restart omp, Update omp to {version} (when there is one) and Copy diagnostics.
+- **App update**: `DownloadSimple` and "v{version} available" in `--accent`, only when a newer visual-omp exists. It opens Settings → About, where the update runs.
+- **omp status**: `StatusDot` with a glyph, so each state reads without color, and a label. The pairs are: ok "omp {version}" while omp runs for the chat; a hollow mark with "omp {version}" for a saved chat whose omp is not running; warn "Starting omp…" or "Reconnecting to omp…"; err "omp stopped". The tooltip says which. An accent dot marks an available omp update. The menu holds Show omp terminal (⌘J), Restart omp, Update omp to {version} (when there is one) and Copy diagnostics.
 
-Every item is a button with a tooltip, apart from the context readout. The bar never wraps: its text stays on one line, and items fold or truncate instead.
+Every item is a button with a tooltip. The bar never wraps: its text stays on one line, and items collapse by width instead of clipping. Below 52rem the update notice and omp status drop their text and keep the glyph, tooltip and accessible name. Below 40rem only the first item of each side stays (the branch on the left, plan usage on the right); the rest stay reachable from the sidebar and the git menu. Context usage is in the composer (§3.6).
 
 ---
 
@@ -588,7 +580,7 @@ A full-window screen on `--bg` with no sidebar or dock. It has a 40px drag strip
   - **too old**: "Your omp is out of date" shows the installed and required versions, and step 1 becomes "Update omp".
   - **still missing after a check**: a `--warn-bg` note suggests reopening the app.
   - **done**: "omp is ready". Both step badges turn `--ok` with a check, and the app opens after 600ms.
-- The heading and body swap with a rise. [Copy command] shows the toast "Command copied". The help link opens a limited help sheet.
+- The heading and body swap with a rise. [Copy command] shows the toast "Command copied". The help link shows the Help content in place of the setup column (`HelpView limited`), without the parts that need omp, and "Back to setup" or Esc returns.
 
 ### 4.2 First-run guided tour
 
@@ -601,24 +593,25 @@ The tour runs 800ms after the first launch, once omp is found. Five steps spotli
   1. **Projects and chats**: "The sidebar lists your projects and chats. Each request becomes a chat you can return to."
   2. **Say what you want**: "Type what you want in plain words and press Enter to send. Commands are optional shortcuts."
   3. **How much omp does on its own**: "This setting controls how much omp does before asking you. Auto lets omp edit files and run commands without approval, so commit or back up your work before you use it."
-  4. **Watch the work**: "This panel shows files, diffs, previews and helpers while omp works." The dock opens for this step and closes again afterwards.
-  5. **Context and cost**: "The status bar shows context use and cost. Click an item for details."
-- The tour can be replayed from Help → "Show the tour again".
+  4. **Watch the work**: "This panel shows changes, files, previews, outputs, running helpers, the plan and a terminal. Choose one from the menu at the top of the panel." The side panel opens for this step and closes again afterwards.
+  5. **Project and usage status**: "The status bar shows git information, available plan usage and omp status. Open Usage & limits for estimated API cost."
+- The tour can be replayed from Help → [Take the tour].
 
-### 4.3 Project home
+### 4.3 Project overview
 
-Shown when a project is selected and no chat is open.
+`features/projects/HomeScreen.tsx` shows the project overview when the home view is selected. The project row's name and "Open project overview" open it.
 
-- **Layout**: a column up to 920px, with a container query that moves Git and Instructions into a side column once it is 46rem wide.
-- **Header**:
-  - The project name as the heading (28px bold, −0.02em).
-  - A meta row joined by "·": branch in mono, "{n} changed files" (or "no changes" or "not a git project"), "{n} chats this week" and "{cost} this week".
-  - Actions: [Chat in another folder…], primary [Start chat] and a "Project options" menu: Project settings…, Project instructions…, Import a chat…, Show in folder, and Remove project from list.
-- **Sections** are a heading row and their content, without boxes:
-  - **Recent chats**: 40px rows with a `ChatStatusMark`, the title, a "read-only" chip when another window has the chat, and the age. After five rows, "Show all {n} chats" opens the rest.
-  - **Start from an example**: a list of example prompts that fill the composer: Fix a bug, Build a feature, Explain this, Clean up, Add tests, Fix mobile layout.
-  - **Git**: branch and `+N −N`, the sync state, a checks chip (passing, running, failing) and "Show changes". A folder outside git reads "This folder isn't a git project yet…" with [Set up git].
-  - **Instructions**: the instructions file and size, or "No instructions yet", with [Edit instructions] or [Write instructions] and the rules count.
+- **Layout**: a column up to 920px with 24px padding. The overview is a size container, and from 46rem wide "Instructions and settings" and Git share one row as two columns.
+- **Header** (`PageHeader`):
+  - The project name as the title.
+  - A meta line with the folder path in mono, then "Copy folder path" and "Show in folder" icon buttons.
+  - Actions: primary [Start chat here] and a "Project options" menu: Project settings…, Project instructions…, Import a chat…, Show in folder, and Remove project from list.
+- **Sections** are a heading row and their content, without boxes, in this order:
+  - **Recent chats**: 40px rows with a `ChatStatusMark`, the title, a "read-only" chip when another window has the chat, and the age. After five rows, "Show all {n} chats" opens the rest and "Show fewer chats" folds them again. With none: "No chats in this project yet."
+  - **Instructions and settings**: a summary list. Instructions names the active instructions file and its size, or "No instructions yet", with the enabled rules count ("{n} rules loaded") as a link to the Rules tab of the Instructions page. "Model for new chats" shows the default role's model, or "Chosen by omp". "Permission mode" shows the level. A value set for this project only adds "· this project only". Below the list, [Edit instructions] or [Write instructions] and [Project settings].
+  - **Git**: branch and `+N −N`, the sync state (commits to push or pull, up to date, no tracking branch, no commits), a checks chip (passing, running, failing) and [Review changes]. A folder outside git reads "This folder isn't a git project yet…" with [Set up git].
+  - **Start from an example**: "Each example opens a new chat with the prompt ready to edit before you send it." The starters are Fix a bug, Build a feature, Explain this, Clean up, Add tests and Fix mobile layout, each with its prompt beside it.
+- The overview shows no cost figures; spend appears only on the Usage & limits page (§4.18).
 - **Other states**:
   - With no projects, an empty state shows the 48px mark: "No projects yet. A project is a folder that omp works in." It offers [Open folder…], [Create project] and primary [Start chat in folder…].
   - A project whose folder is missing reads "Can't find “{name}”" and offers [Find folder…] or [Remove project from list].
@@ -673,7 +666,7 @@ A centered block up to 520px:
 - **Working row**: while omp works it opens (with `Expand`) just above the composer.
   - It shows the accent pulse dot, "Working… {elapsed}", and the current step's summary, or "Thinking…" when no text is streaming.
   - It is status only. Stopping is the composer's action slot (§3.6), so a working chat shows one stop control.
-  - It is not a live region, and the tab and sidebar row show the working mark.
+  - It is not a live region, and the sidebar row and session header show the working mark.
 - **Streaming**: omp's collab host sends a reply in bursts (a measured run of omp 18.4.9 with claude-opus-5-5 delivered roughly 140 characters every 630ms), so showing each burst as it arrives makes the text jump. The reveal therefore runs through a playout buffer (`chat/transcript/pace.ts`): a rate controller moves the text at the rate it comes in and steers toward a target buffer that adapts to how omp delivers it (1.25 times the slow end of the gaps between bursts, kept between 0.4s and 1.5s, about 0.8s in that run), so it keeps moving between bursts. A reply starts showing about 250ms after its first text arrives, a long pause in the reply lets the reveal catch up and stop, and after omp finishes the message the controller targets showing the rest within about 0.6s while frames run, without slowing down. One timeline runs through the message's blocks in order: visible text and open thoughts take time, while collapsed thoughts and tool calls show when the reveal reaches them, so hidden thinking never delays the reply. The saved entry that replaces the stream row continues the same reveal and switches to its full-parse render once the reveal catches up. A stream first seen while the mirror synchronizes shows its current text in full and paces only what arrives after; reduced motion shows text as it arrives. Streamed Markdown renders one top-level block at a time (`MarkdownBlocks` in `transcript/render.ts`), so unchanged leading blocks keep their DOM nodes and a selection in them survives incremental updates. A later reference definition or math opener can change an earlier block and replace its nodes. A view pinned to the bottom follows growing text, while a view scrolled up holds still and shows "Show new activity". Live tool rows rise in as they start; history renders at rest.
 - **File links**: file and folder names in a finished reply open in the Files pane (§3.7). The transcript collects inline code spans and words shaped like paths (absolute, `~/`, `./`, `a/b`, names ending in `/`, and names with an extension that starts with a letter, so `1.2.3` and `e.g.` do not qualify), and skips links, code blocks and math. Main checks them through `fs:resolveRefs`, which only stats and never reads content: an absolute or `~/` name resolves directly, and a relative one is tried in the folders named earlier in the reply, then in the chat's folder, then in the folders omp wrote or edited files in. Each occurrence resolves on its own, so the same name after two different folders can open two different files. Only references found on disk when checked become links. Cached links can become stale if files move or are deleted.
   - **Chip**: a name inside a sentence, or in a code span (which becomes a chip in place of its code pill), is an inline-flex pill on the text baseline: a 14px type icon in `--accent`, then the name as written in the UI font at weight 500 in `--fg`, with 1px 6px 1px 4px padding, `--radius-sm` corners and a `--hover` background. Its height stays inside the line (20px in a 22px line at 100% text size). Hover turns the background `--selected` and the text `--accent`. There is no underline.
@@ -681,7 +674,7 @@ A centered block up to 520px:
   - Type icons: `FilePdf` for PDFs, `FileImage` for raster images and SVG, `FileCode` for code, HTML, CSS, JSON and similar, `FileText` for Markdown, text and CSV, `FileZip` for archives, `Folder` for folders and `File` otherwise. The links are built in a DOM pass over the reply's HTML, so the Phosphor icons are rendered once at module load into SVG markup that each link clones.
   - Both are `role="link"` with the full path as the tooltip. A chip's accessible name is the name as written; a row's is "{name}, in {folder}", with any citation in the name. A click, Enter or Space opens it; a drag that selects text inside it does not.
   - Limits: one request per reply checks at most the first 100 references, with at most eight bases (the chat's folder and seven folders omp wrote in), and a relative name is tried in at most the four folders named most recently before it.
-  - A streaming reply gains its links once its reveal finishes. Results stay in memory for the session, keyed by chat tab and message (the saved entry that replaces a stream row reuses them) and stored with the reply's text and bases. When a write adds a base, the reply is checked again while its previous links stay visible; up to 300 replies are kept.
+  - A streaming reply gains its links once its reveal finishes. Results stay in memory for the session, keyed by open chat and message (the saved entry that replaces a stream row reuses them) and stored with the reply's text and bases. When a write adds a base, the reply is checked again while its previous links stay visible; up to 300 replies are kept.
 
 ### 4.7 Tool steps
 
@@ -748,7 +741,7 @@ Shown at the end of the transcript while a plan waits for a decision.
 
 ### 4.10 Command palette (⌘K)
 
-A centered 640px dialog 18vh from the top, on `--bg-overlay` with `--radius-lg`, `--shadow-overlay` and the `--backdrop` scrim.
+The title bar's "Search commands" field and ⌘K (Ctrl+K) open it: a centered 640px dialog 18vh from the top, on `--bg-overlay` with `--radius-lg`, `--shadow-overlay` and the `--backdrop` scrim.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -782,53 +775,55 @@ A bottom sheet at 80% of the window height, which can expand to fill the window.
 
 ### 4.12 Settings
 
-A centered 880×640 sheet with a 200px `--bg-inset` tab list and a slide-in `--selected` indicator.
+Settings opens as a full page (`features/manage/settings/SettingsPage.tsx`, §5.6) with a `NavRail` of sections. Features add sections through `settingsSections`, and each section renders its own `PageHeader` with a one-sentence description. `openSettings(section, …)` links to a section; the sidebar, the palette commands, the status bar's update notice, Help, project settings and the Tasks pane use it.
 
-- **Header**: a "Save for" switch between "All projects" and "This project ({name})" appears on the General, Permissions, Models and Advanced tabs.
-- **Tabs**:
-  - **General**: Permission mode, Transcript view, Voice input, Summarize long chats automatically, and omp's tone.
+- **Rail groups**: the rail groups sections into App (General, Appearance, Sounds & alerts, Shortcuts), Agent (Models & roles, Permissions, Providers, Helpers), Context & tools (Connected tools, Skills & plugins, Memory), then an unlabelled group with Advanced and About.
+- **Width**: Helpers, Connected tools, Skills & plugins and Memory manage lists and use the 920px column; the other sections are forms in the 680px column.
+- **Scope**: General, Models & roles, Permissions, Connected tools and Advanced are scoped. Their header meta line holds a `ScopeSwitch` ("Where these settings apply": "All projects" or "Project: {name}"). The project is the one active when Settings opened; with no project the scope is all projects.
+- **Sections**:
+  - **General** ("Choose how much omp may do on its own and how your chats look."): under Safety, Permission mode; under Chats, Transcript view, Voice input, Summarize long chats automatically, and omp's tone.
   - **Appearance**: Theme (Light, Dark, System), a text size slider with a preview sentence, and Reduce motion (Match system, On, Off).
-  - **Permissions**: tool-by-tool Default, Ask, Allow or Deny. Tools on Default follow the permission mode.
-  - **Models**: default models and a link to Model roles (§4.13).
-  - **Providers**: which providers omp can use, and signing in through omp.
-  - **Sounds & alerts**: the "Alert me in the background" switch, whose description names what this platform does (§4.22). On Windows and Linux a [Send a test] button requests a real notification; on macOS a note replaces it: "The Dock icon shows the count and bounces once for each newly unseen chat. Notification banners are unavailable in the current macOS build."
+  - **Sounds & alerts** ("Find out when omp needs you while visual-omp is in the background."): the "Alert me in the background" switch, whose description names what this platform does (§4.22). On Windows and Linux a [Send a test] button requests a real notification; on macOS a note replaces it: "The Dock icon shows the count and bounces once for each newly unseen chat. Notification banners are unavailable in the current macOS build."
   - **Shortcuts**: a searchable table of the app's shortcuts.
-  - **About**: see below.
-  - **Advanced**: a searchable list of every omp setting, with "Changed only" and per-setting reset.
-- **About**: the 48px mark beside the large wordmark and "A desktop app for omp, the coding agent."
-  - Rows for the visual-omp version (and how it updates), the omp version and channel, the omp location, and the last update check.
-  - Actions: [Check for updates], [Read release notes], [Read omp docs] and [Report an issue].
-  - When a newer version exists, the row offers [Update visual-omp] or [Update omp].
+  - **Models & roles**: §4.13.
+  - **Permissions** ("Choose, tool by tool, whether omp may use it without asking."): tool-by-tool Default, Ask, Allow or Deny, and a field to add a tool by name. Tools on Default follow the permission mode.
+  - **Providers** ("Sign in to model providers and see what omp reports about them."): which providers omp can use, signing in through omp, and [Check again].
+  - **Helpers**: §4.14. **Connected tools**: §4.15. **Skills & plugins**: §4.16. **Memory**: §4.17.
+  - **Advanced** ("Every omp setting, including the ones other sections don't show."): a searchable list of every omp setting, with "Changed only", per-setting reset and a reset-all action.
+  - **About**: the 48px mark beside the large wordmark and "A desktop app for omp, the coding agent."
+    - Rows for the visual-omp version (and how it updates), the omp version and channel, the omp location, and the last update check.
+    - Actions: [Check for updates], [Read release notes], [Read omp docs] and [Report an issue].
+    - When a newer version exists, the row offers [Update visual-omp] or [Update omp].
+- **Unsaved edits**: sections with drafts (Models & roles, the helper editor) use the leave guard, so switching section or scope asks first (§5.6).
 - **States**:
   - A change made outside the app shows an info banner with [Reload settings].
   - A read failure reads "Couldn't read omp's settings: {reason}", with [Try again].
 
-### 4.13 Model roles
+### 4.13 Models & roles
 
-A 960×640 sheet titled "Model roles", with an accent dot while changes are unsaved.
+The Models & roles section (`features/manage/roles/ModelsSection.tsx`) describes how models are assigned to jobs and offers [Refresh models] in its header. Its description reads "Choose which model handles each job, such as everyday chat, planning and commit messages."
 
-- **Role list**: 240px. Each row has a status dot: accent when a model is set, hollow for "Let omp choose", warn when the model is missing. Then the role id in mono and the model name.
-- **Editor**: the role name with its id, "Custom" and "This project" chips, a "Used for:" line, a Model picker (with "Let omp choose instead") and a Thinking level. A missing model shows "This model isn't available. Pick another one."
-- **Presets**: "Save as preset" stores the whole set, and each preset can be applied or deleted.
-- **Footer**: the unsaved count or scope note, [Revert changes] and [Save roles]. Leaving with changes asks "Discard your changes?"
+- **New chats**: a "Default thinking" select sets the thinking level for new chats and has a chip naming where the value comes from. Its tooltip reads "Higher thinking levels allow more reasoning and may take longer or cost more."
+- **Model roles** ("Changes to roles wait until you save them."): a hairline list shows one row per role. Each row has the role name, its id in mono when the two differ, an accent dot while the row is unsaved, a line saying what the role is used for, a Model picker and a Thinking select. A missing model shows "This model isn't available. Pick another one." in an `Expand`.
+- **Footer**: the footer remains visible at the bottom of the list and shows the pending count or save scope, [Revert changes] and primary [Save roles].
+- **Presets** appear below the roles. "Save as preset" stores the whole set, and each preset can be applied or deleted.
+- Leaving with unsaved roles asks "Discard your changes?"
 
 ### 4.14 Helpers
 
-A 960×640 sheet: "Helpers", with the subtitle "Reusable specialists omp can hand work to."
+The Helpers section (`features/manage/agents/HelpersSection.tsx`) lists reusable helper definitions, with the description "Reusable specialists omp can hand work to." The section holds helper definitions only; running helpers show in the chat and its Tasks pane (§3.7).
 
-- **Header actions**: [Reload helpers], [Create helper with omp] and primary [New helper].
-- **Toolbar**: search, plus a "Show" switch between All, Built-in, All projects and This project.
-- **Rows**: 64px.
-  - A 32px letter tile on `--bg-inset` in `--fg-muted` mono.
-  - The name, scope chip and "Customized" chip. While running, a pulse dot and "Running in {chat}…".
-  - The description, a model chip, an on/off switch, and a menu: Edit helper or Customize helper, Duplicate helper, Run helper now, Delete helper.
-  - A broken definition file shows a warn tile, "Can't be used" and [Fix file].
+- **Header actions** include [Reload helpers], [Create helper with omp] and primary [New helper].
+- **Toolbar**: the toolbar offers search and a "Show" switch between All, Built-in, All projects and This project.
+- **Rows** show a 32px letter tile on `--bg-inset` in mono, the name, scope and "Customized" chips, the description, a model chip and an on/off switch. Each row's menu offers Edit helper or Customize helper, Duplicate helper, Run helper now and Delete helper.
+- **Broken files**: a broken definition file shows a warn tile, "Can't be used" and [Fix file].
+- **Editor**: Edit and New open a 400px right sheet (`AgentEditor.tsx`) that uses the leave guard.
 
 ### 4.15 Connected tools (MCP)
 
-A right sheet, 880px wide: "Connected tools", with the subtitle "MCP servers let omp use outside tools, such as a database or a ticket tracker." and [Add server].
+The Connected tools section (`features/extensions/mcp/McpSection.tsx`) manages MCP servers and offers [Add server]. Its description reads "MCP servers let omp use outside tools, such as a database or a ticket tracker."
 
-- **Scope**: a switch between "All projects" and "This project", beside the config path.
+- **Scope**: the page's scope switch, beside the config path.
 - **Rows**: in a bordered list. Each row has:
   - a `StatusDot` with a glyph ("Connected", "Couldn't connect", "Connected, but slow to start", "Turned off" and others)
   - the name and transport
@@ -838,32 +833,36 @@ A right sheet, 880px wide: "Connected tools", with the subtitle "MCP servers let
   - warn chips for "No tools found. Check the command." and "Needs sign-in"
 - **Empty**: "Add a server to let omp use an outside tool, like GitHub, a database or your notes."
 
-### 4.16 Skills and plugins
+### 4.16 Skills & plugins
 
-A right sheet, 960px wide, with Skills and Plugins tabs, search, and a switch between "Installed", "This project" and "Registry" ("Available" for plugins).
+The Skills & plugins section (`features/extensions/skills/SkillsSection.tsx`) has the description "Install and manage the skills and plugins omp can use." It has Skills and Plugins tabs, search, and a "Show" switch between "Installed", "This project" and "Registry".
 
-- **Skills**: rows with a letter tile, name, scope chip, description and switch. Clicking a row opens a detail drawer: What it does, When omp uses it, Show file, Remove skill.
+- **Skills**: rows with a letter tile, name, scope chip, description and switch. Clicking a row opens a 460px detail sheet (`SkillDrawer.tsx`): What it does, When omp uses it, Show file, Remove skill.
 - **Skill registry**: under "From the skill share registry", rows with install counts and [Install skill].
 - **Plugins**: installed plugins show their version and an update chip ("v1.3 → v1.4"). "Install by name" and "From your marketplaces" list what is available.
 - **Activity**: installs and updates appear in an Activity list with progress.
 
 ### 4.17 Memory
 
-A right sheet, 800px wide: "What omp remembers", with a backend chip and the subtitle "Notes omp keeps between chats so it doesn't start from scratch."
+The Memory section (`features/extensions/memory/MemorySection.tsx`) shows what omp remembers, with a backend chip in the header meta line. Its description reads "Notes omp keeps between chats so it doesn't start from scratch."
 
-- **Toolbar**: a scope select, search and [Forget everything]. Forget everything asks you to type "forget".
-- **List**: 280px, keyboard navigable, beside a reader that shows the entry's kind, dates, tags and content, with [Export memory…] and [Forget this].
+- **Toolbar**: the toolbar offers a 240px scope select, search and [Forget everything]. Forget everything asks you to type "forget".
+- **List**: the keyboard-navigable list is 280px wide and appears beside a reader that shows the entry's kind, dates, tags and content, with [Export memory…] and [Forget this]. The list and reader scroll on their own inside a bordered frame.
+- **Backend off**: a notice links to the memory backend setting in Advanced.
 - **Empty**: "omp hasn't saved any memories yet."
 
-### 4.18 Usage and limits
+### 4.18 Usage & limits
 
-A right sheet, 880px wide: "Usage & limits", with the subtitle "What your chats cost this week, and how much of your plan is left."
+Usage & limits opens as a full page (`features/extensions/usage/UsagePage.tsx`, §5.6) from the sidebar, the status bar's plan usage or the command palette. Its description reads "Provider limits and usage recorded by omp." This page is the only place that shows dollar figures, and every one is labelled "Estimated API cost".
 
-- **Summary**: Today, This week, Chats and Tokens.
-- **"Last 7 days"**: bars in `--accent-2` ink, with today in `--accent`. Each bar has a tooltip with the date, cost and reply count.
-- **Plan limits**: provider cards with "{n}% used" and the reset time on bars that turn warn at 70% and err at 90%. Checking the limits again here also updates the status bar's plan usage (§3.8).
-- **"Chats this week"**: a sortable table.
-- **Footer**: [Export CSV] and [Open omp stats page]. Costs are marked as estimates at public API prices.
+- **Plan limits** ("Limits each provider reports for the accounts omp is signed in to. They can include use outside the chats on this computer."): each provider and account has a block with a `Meter` per limit window ("{n}-hour limit", "Monthly limit" and so on), "{n}% used" and the reset time. The meter turns warn from 70% and err from 90%, or when the provider reports exhaustion. "Near limit" appears for a provider warning or usage from 70% below 100%; "Limit reached" appears at 100% or when the provider reports exhaustion. [Refresh limits] checks again and also updates the status bar's plan usage (§3.8). Accounts omp stopped using link to Settings → Providers.
+- **Recorded usage** ("Usage from omp's session files on this computer."): a Period switch selects "Last 7 days" or "Last 30 days". Both ranges use local time and cover all local projects.
+  - A `StatList` shows Chats, Tokens and Estimated API cost. Tokens include cache reads and writes.
+  - The spend chart (`SpendChart.tsx`), titled "Daily estimated API cost (USD)", shows one bar per day in `--accent-2` ink. Today uses `--accent` and is labelled as the day so far. The 7-day range shows values above the bars. Each bar is a button that names its date, cost and request count, and arrow keys move between days. "Show daily values" opens the same figures as a table.
+  - **Chats**: a sortable table (`ChatsTable.tsx`) lists each chat with Chat, Model, Input tokens, Output tokens, Estimated API cost and Generation time, and offers a search field, project and model filters, paging and [Export chats CSV]. The filters apply to this table and its export only. Below 56rem the model, token and generation-time details move under the chat title, and the toolbar offers Sort by with Ascending and Descending.
+  - "What these figures include" defines tokens, subagent activity, the model column, generation time and days.
+- **Footer**: [Open omp stats in browser] opens omp's stats page. A note explains that the period and filters here do not carry over.
+- **Empty**: "No recorded usage in this period" and "Chats you run with omp appear here with their token use."
 
 ### 4.19 Session tree
 
@@ -881,29 +880,31 @@ A 520px dialog, "Share this chat", with a Link, File and Invite switch.
 - **Link**: "Creates an encrypted link. Only people who have the link can read the chat." An optional secret GitHub gist is available. [Create link] returns a link with a copy button.
 - **File**: "Save this chat as a web page you can open anywhere." Secrets are masked before export.
 - **Invite**: "Let someone watch or join this chat live." [Start sharing] produces two invite links, one to join and one to watch, and a list of the people present with Editor and Viewer chips. [Stop sharing] ends it.
-- **While shared**: the session header shows the "Shared" chip (§3.4).
+- **While shared**: the status bar shows the "Shared" item (§3.8), which opens this dialog on the Invite tab.
 
 ### 4.21 Help
 
-A 720×560 dialog: "Help", with the subtitle "Short guides and definitions of the terms visual-omp uses."
+Help opens as a full page (`features/onboarding/HelpPage.tsx`, §5.6) in the 680px column, titled "Help" with the description "Short guides for common tasks and definitions of the terms visual-omp uses."
 
-- **Contents**: search, then "Guides" and "Glossary".
-- **Guides**: Your first chat, Staying safe with Auto mode, Rewinding and forking, and When omp asks questions. Each opens a four-step article.
-- **Glossary**: 13 terms.
-- **No match**: "No matches. Ask omp instead." with [Ask omp].
-- **Footer**: [Show the tour again], [Keyboard shortcuts], [omp docs] and [Report a problem].
+- **Header actions** include [Take the tour] and [Keyboard shortcuts]. Keyboard shortcuts opens Settings → Shortcuts.
+- **Contents** begin with "Search guides and terms", followed by "Guides" and "Glossary".
+- **Guides** include Your first chat, Staying safe with Auto mode, Rewinding and forking, and When omp asks questions. Each is a disclosure row with an icon, title and summary that opens to its four steps.
+- **Glossary** contains 13 terms defined in `helpContent.ts`.
+- **No match**: "No matches" with "omp can answer questions about itself and about your project." and primary [Ask omp: "{query}"], which opens a new chat with the question. Without a project it asks to open one first.
+- **More help**: omp documentation and Report a problem.
+- The setup screen shows the same content without the parts that need omp (§4.1).
 
 ### 4.22 System surfaces
 
-**Update notice**: an info toast (§5.7) titled "visual-omp v{version} is available" with the line "The release notes list what changed." Its action row holds [Dismiss notice] (quiet) and [Update visual-omp] (accent). Settings → About lists both versions and updates visual-omp and omp from one place. The strings live in `i18n/en/onboarding.json` (`update.*`) and `manage.json`, which are authoritative over this summary.
-**Quit-warning dialog**: a modal shown when quitting or closing a tab while omp is working. Warn glyph, title "omp is still working in N chats." (or "in 1 chat."), body "Your chats pick up where they left off next time.", actions [Keep waiting] and [Stop and quit] (danger), and the checkbox "Always stop working chats when quitting". The strings live in `i18n/en/onboarding.json` (`quit.*`).
+**Update notice**: an info toast (§5.7) titled "visual-omp v{version} is available" with the release summary, or "The release notes list what changed." when no summary is available. Its action row holds [Dismiss notice] (quiet) and [Update visual-omp] (accent). Settings → About lists both versions and updates visual-omp and omp from one place. The strings live in `i18n/en/onboarding.json` (`update.*`) and `manage.json`, which are authoritative over this summary.
+**Quit-warning dialog**: a modal shown when quitting while omp is working. It has a warn glyph and the title "omp is still working in N chats." (or "in 1 chat."). The body explains that saved chats can be resumed next time. The actions are [Keep waiting] and [Stop and quit] (danger), with the checkbox "Always stop working chats when quitting". Closing a single working chat asks with its own dialog (§8.4). The strings live in `i18n/en/onboarding.json` (`quit.*`).
 **Notifications**: when a chat finishes a turn or starts waiting for an answer while the window is in the background, visual-omp counts it as unseen. The count is per chat, so a chat that finishes twice counts once. It clears when the window gains focus, and the main process also clears the Dock badge, taskbar overlay and flashing itself when the window gains focus, reloads, loses its renderer or closes. The Settings switch (§4.12) turns all of the following on or off. Background alerts work while the app window remains open, including when it is minimized. Closing the macOS window stops these alerts until a window is reopened.
 
 - **macOS**: the Dock icon shows the count as a badge and bounces once (informational) for each newly unseen chat. The app also requests a native banner for each event; macOS denied banners to the tested ad-hoc signed build, so the current build shows none.
 - **Windows**: the app requests a native toast for each event, under the installer's AppUserModelID (`ltd.decoy.visualomp`), and Windows shows it subject to the system notification settings. The taskbar button flashes for each newly unseen chat and shows an overlay with the count: an accent circle with the number, "9+" above nine, described for screen readers as "N chats finished or need your answer".
 - **Toasts and banners**: the title is the chat title and the body a one-line outcome ("Finished: Edited 3 files and tests pass ✓" or "Needs your answer"), shortened with an ellipsis past 256 and 1,024 characters. Clicking one restores and focuses the window and switches to that chat.
 
-There is no in-app notification center; the sidebar `!` badges serve as the inbox. The strings live in `i18n/en/onboarding.json` (`notify.*`) and `manage.json` (`alerts.*`).
+There is no in-app notification center; the sidebar's status marks and its Active filter (§3.2) serve as the inbox. The strings live in `i18n/en/onboarding.json` (`notify.*`) and `manage.json` (`alerts.*`).
 
 **In-app toasts**: see §5.7 for geometry, the action row, timing and motion.
 
@@ -949,16 +950,16 @@ Motion: open scales 0.96 → 1 on the snappy spring from the Radix transform ori
 
 ### 5.6 Pages, dialogs and sheets
 
-**Pages** are for sustained management and reading: Settings, Usage & limits, Help and the project screens. A page replaces the main area instead of covering it (`useApp.openPage(id, props)`, `ui/Page.tsx`). The chat it replaced stays mounted, hidden and inert, so Back finds it with the same scroll position, expanded history and split width; the right dock hides while a page shows. Pages are not restored across restarts: the window reopens on the chat or project the page replaced.
+**Pages** are for sustained management and reading: Settings, Usage & limits, Help, Project settings and Instructions. A page replaces the main area instead of covering it (`useApp.openPage(id, props)`, `ui/Page.tsx`). Features register pages in `pages` and open them through `state/navigation.ts` (`openSettings`, `openUsage`, `openHelp`, `openProjectSettings`, `openProjectInstructions`). The chat it replaced stays mounted, hidden and inert, so Back finds it with the same scroll position, expanded history and split width; the side panel hides while a page shows. Pages are not restored across restarts: the window reopens on the chat or project the page replaced.
 
 - **Layout**: `PageFrame` has one vertical scroll region. Its content column is 680px for forms, 920px for lists and 1080px for reports, centered with 24px padding. An optional category rail (`NavRail`, 220px, `--panel`, hairline right border) sits on the left under the back link; when the page is narrower than 42rem the rail becomes a select above the content.
 - **Header**: `PageHeader` shows the title in `--text-page` (it wraps; long names never truncate), a one-sentence description in `--text-md --fg-muted`, an optional meta line (scope, freshness, paths) and actions. The actions sit beside the title when the content column is at least 42rem wide and wrap under it otherwise.
 - **Back**: "Back to chat" or "Back to project", depending on what the page replaced. Switching between pages keeps the original destination. Esc is Back unless it belongs to a field being edited, text composition, an open menu, popover, select or dialog, the palette or the terminal sheet.
 - **Focus**: opening a page, or changing what it shows (a new Settings section, a new deep link), moves focus to the page title. Back returns focus to the control that opened the page, else to the main area.
-- **Unsaved edits**: a page with pending edits calls `useLeaveGuard`. Back, Esc, another page, a chat, a project, a Settings section or a scope change then asks "Discard your changes?" (Keep editing / Discard changes) before leaving.
+- **Unsaved edits**: a page with pending edits calls `useLeaveGuard` (`state/leaveGuard.ts`). Back, Esc, another page, a chat, a project, a Settings section or a scope change then goes through `whenLeaving`, which asks "Discard your changes?" ("This page has edits that haven't been saved.", Keep editing / Discard changes, `shell/LeaveConfirm.tsx`) before leaving. Discarding resets each editor's edits, then navigates.
 - **Settings links** (`openSettings(section, { projectPath, scope, sectionProps })`): every field applies on each link, including while Settings is open. The project is fixed when the link is made; scope falls back to all projects when there is no project.
 
-**Dialogs** are for bounded decisions: confirmations, sharing, short creation flows and wizards. **Sheets** remain for the omp terminal and other edge overlays.
+**Dialogs** are for bounded decisions: confirmations, sharing, short creation flows and wizards. **Sheets** remain for edge overlays that keep their context in view: the omp terminal (§4.11), the commit and pull request forms, the helper editor (§4.14) and the skill detail (§4.16). Overlays that any feature can open, dialogs such as Share included, register in the `sheets` registry and open with `useApp.openSheet`.
 
 Dialog: centered with translate utilities, widths 400 / 480 / 560 / 720px, `--bg-overlay`, 1px `--border`, `--radius-lg`, `--shadow-overlay`, 20px padding. The scrim is `--backdrop`, a translucent dimming wash (alpha 0.32 in light, 0.6 in dark) with no blur; only the window chrome is opaque. Click outside or Esc cancels; `destructive` dialogs show a warning glyph and ignore scrim clicks. Title 16/600, body `--text-md`, footer right-aligned with 8px gaps. Opens with a spring scale 0.95 → 1 and fade; closes with a short scale-down.
 
@@ -974,7 +975,7 @@ Bottom-right stack of up to three, 320px wide (never wider than the window minus
 
 ### 5.8 Tabs
 
-Underline variant: 28px (sm, window tabs) or 32px (md, dock tabs), 1px `--border` baseline, active text `--fg`. Pill variant: 24 or 28px pills, active fill `--selected`. The active marker (2px `--accent` underline, or the pill fill) is one element that slides between triggers; its `layoutId` comes from `useId()` in each `Tabs` instance. Triggers rendered outside `Tabs` fall back to a static marker. Overflowing window tabs collapse into a "N more" menu and never scroll horizontally.
+Underline variant: 28px (sm) or 32px (md), 1px `--border` baseline, active text `--fg`. Pill variant: 24 or 28px pills, active fill `--selected`. The active marker (2px `--accent` underline, or the pill fill) is one element that slides between triggers; its `layoutId` comes from `useId()` in each `Tabs` instance. Triggers rendered outside `Tabs` fall back to a static marker. `Tabs` is used in the prompt library, the Instructions page and Skills & plugins. Chats have no tabs: open chats are sidebar rows (§3.2), and the side panel picks its pane from a menu (§3.7).
 
 ### 5.9 List rows
 
@@ -1018,6 +1019,8 @@ Shown while omp is working. Motion is never the only signal: it always sits besi
 ### 5.17 Context-usage ring
 
 20px ring, 2.5px stroke: track `--border-strong`, fill `--accent`, round cap, starting at 12 o'clock. Zones: under 60% `--accent`, 60-80% `--warn`, over 80% `--err` with a slow opacity pulse. The arc eases to new values over `--dur-slow`. Screen readers get `role="meter"` and "62% of context used".
+
+The ring appears once, in the composer's bottom row (§3.6), while the chat reports context usage. It shows "{n}%" beside it from 60% (hidden in the compact row states), and its tooltip reads "{n}% of the context window used". Clicking it opens a popover, "Context window", with the token count against the window size, a progress bar in the zone's tone and [Compact chat], which is primary from 60% and waits while omp is replying.
 
 ### 5.18 Skeletons
 
@@ -1116,23 +1119,24 @@ The strings live in `src/renderer/src/i18n/en/`. Those files are authoritative, 
 | Connected tools | "Connect outside tools, like a database or ticket tracker, so omp can use them." |
 | Skills & plugins | "Install and manage the skills and plugins omp can use." |
 | Memory | "View and delete what omp has remembered between chats." |
-| Usage & limits | "See what your chats cost and how close you are to your plan's limits." |
-| Review code (Diff pane) | "Ask omp to review these changes for bugs (runs /review)." |
-| Permission pill | "How much omp may do before it asks you." |
-| Send now (while omp works) | "Send this now. omp reads it at its next step, before this reply finishes." |
+| Usage & limits | "Check your plan limits and the usage omp recorded on this computer." |
+| Review code (Changes pane) | "Ask omp to review these changes for bugs (runs /review)." |
+| Permission button | "How much omp may do before it asks you." |
+| Send now (while omp works) | "Send now. omp reads it at its next step, before this reply finishes." |
 
 ### 8.2 Empty states
 
 - **No projects**: "No projects yet. A project is a folder that omp works in." with [Create project].
-- **No chats in a project** (sidebar): "No chats yet. New chats in this project appear here." On the project home: "No chats in this project yet."
+- **No chats in a project** (sidebar): "No chats yet. New chats in this project appear here." On the project overview: "No chats in this project yet."
 - **Empty chat**: "What should we work on?" (or "What should we work on next?"). The first chat adds "Describe the change in plain words, or start from an example."
-- **Diff pane**: "No uncommitted changes" and "Edits made since your last commit appear here, whether omp or you made them."
+- **Changes pane**: "No uncommitted changes" and "Edits made since your last commit appear here, whether omp or you made them."
 - **Tasks pane**: "Nothing running" and "omp's checklist, helpers and background jobs appear here while a chat works."
 - **Preview pane**: "Nothing to preview" and "Type a local address above, or start a dev server in this chat to get a link."
 - **Terminal pane**: "No terminal open" and "Run your own commands in this project. These shells are separate from omp's."
 - **Chat search**: "No chats match '{q}'."
+- **Active filter**: "No chats are working, waiting or open right now."
 - **Memory**: "omp hasn't saved any memories yet."
-- **Usage**: "No usage yet this week. Costs appear here after your first chats."
+- **Usage**: "No recorded usage in this period" and "Chats you run with omp appear here with their token use."
 
 ### 8.3 Example prompts (empty chat)
 
@@ -1143,15 +1147,15 @@ Clicking an example fills the composer without sending it.
 3. **Explain this project**: "Explain what this project does and how its main parts fit together, in plain language."
 4. **Clean up this folder**: "Find unused files and duplicated code in this folder. List them and ask me before deleting anything."
 
-The project home lists six shorter starters: Fix a bug, Build a feature, Explain this, Clean up, Add tests, Fix mobile layout.
+The project overview lists six shorter starters: Fix a bug, Build a feature, Explain this, Clean up, Add tests, Fix mobile layout. Each opens a new chat with its prompt in the composer, ready to edit.
 
 ### 8.4 Confirmations and guardrails
 
-- **Quit while working**: "omp is still working in {n} chats." with "Your chats pick up where they left off next time." and [Keep waiting] / [Stop and quit].
-- **Close a working tab**: "Closing stops the current step. The chat is saved and picks up where it left off when you open it again."
+- **Quit while working**: the title is "omp is still working in {n} chats." The body explains that saved chats can be resumed next time. The actions are [Keep waiting] / [Stop and quit].
+- **Close a working chat**: the title is "omp is still working in this chat." The body explains that closing stops the current step and preserves the saved conversation. The action is [Stop and close].
 - **Delete chat**: "Delete '{title}'?" with "This removes the saved conversation from this computer. You can't undo it." and [Keep chat] / [Delete chat].
 - **First switch to Auto**: "Turn on Auto?" with "Auto lets omp edit files and run commands without asking. Use it only in projects you trust." and [Turn on Auto].
-- **Discard a file's changes** (Diff pane): "The file goes back to how it was at your last commit. You can't undo this."
+- **Discard a file's changes** (Changes pane): "The file goes back to how it was at your last commit. You can't undo this."
 - **Read-only chat**: "Replies are off here while another omp window may have this chat open."
 
 ---
