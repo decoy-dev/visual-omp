@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-14
+
 visual-omp 0.5.0 replaces the tab strip with a sidebar of projects and chats, and opens Settings, Usage & limits and Help as full pages. The chat box groups its controls below the message, and the side panel names its views. New installs use Ask me first when no permission mode has been chosen.
 
 - The sidebar lists each project with its chats, so the tab strip is gone. **Active** narrows the list to chats that are working, waiting for your answer or running omp. ⌘1 to ⌘9 open the first nine chats the sidebar shows, ⌘⇧[ and ⌘⇧] step through open chats, and ⌘W, a middle-click or the row's menu closes a chat. A chat you only looked at returns to being a saved chat when you move on, unless omp is running in it, you sent it a message or its message box holds a draft. **Usage & limits**, **Settings** and **Help** are at the bottom of the sidebar, and the **Search commands** field in the title bar opens the command palette (⌘K).
