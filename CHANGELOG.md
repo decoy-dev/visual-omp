@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- Updating a Homebrew install from **Settings → About** no longer stops at Homebrew's "Do you want to proceed with the upgrade? [y/n]" question, which needed you to click into the terminal and type `y`. Homebrew 6 and later asks it whenever its plan names the cask by its full name (`decoy-dev/tap/visual-omp`) while the app passes the short name, so the app now turns the question off. Clicking the update button is the confirmation.
+
 ## [0.4.1] - 2026-10-12
 
 visual-omp 0.4.1 lets you go back and change an earlier answer when omp asks several questions at once.

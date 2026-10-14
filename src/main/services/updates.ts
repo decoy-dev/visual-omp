@@ -271,10 +271,15 @@ export function detectInstallMethod(probe: InstallProbe): AppInstallMethod {
  * Refresh taps first: `brew upgrade` only auto-updates when its last update is older than
  * HOMEBREW_AUTO_UPDATE_SECS, so a release published an hour ago can be invisible to it.
  * The upgrade still runs if `brew update` fails.
+ *
+ * HOMEBREW_NO_ASK: since Homebrew 6.0, `brew upgrade` in a terminal asks "Do you want to proceed
+ * with the upgrade? [y/n]" when its plan names a package the command did not. The plan names the
+ * cask by its full tap name (`decoy-dev/tap/visual-omp`), so it always asked, and the user had to
+ * type into the terminal. The update button is the consent.
  */
 export function brewUpgradeCommand(brewPath: string): string {
 	const brew = `'${brewPath.replaceAll("'", `'\\''`)}'`;
-	return `${brew} update; HOMEBREW_NO_AUTO_UPDATE=1 ${brew} upgrade --cask ${CASK}`;
+	return `${brew} update; HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_ASK=1 ${brew} upgrade --cask ${CASK}`;
 }
 
 /** `CFBundleShortVersionString` from an Info.plist in XML form (what electron-builder writes). */
