@@ -19,6 +19,7 @@ import {
 import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fmtDuration } from "../../collab/lib/format";
+import { commandSummary } from "../../features/panes/derive";
 import { Markdown } from "../../transcript/Markdown";
 import { cn, Expand, StatusBadge, type StatusBadgeTone } from "../../ui";
 import {
@@ -46,7 +47,8 @@ const cardClass = "rounded-lg border border-border bg-panel px-card py-3";
 /** The expanded well under a step row, indented to the row's text. */
 const wellIndent = "selectable pt-1 pb-3 pl-6.5";
 
-function StatusGlyph({ status }: { status: JobStatus }): ReactNode {
+/** A settled job's mark: check, cross or stop. The Tasks pane's background jobs use it too, so both read alike. */
+export function StatusGlyph({ status }: { status: JobStatus }): ReactNode {
 	const { t } = useTranslation("chat");
 	if (status === "failed") {
 		return (
@@ -157,7 +159,7 @@ function JobRow({ job, verbose }: { job: JobNotice; verbose: boolean }): ReactNo
 		<StepRow
 			icon={job.type === "task" ? Robot : TerminalWindow}
 			title={jobTitle(job, t)}
-			detail={job.type === "task" ? null : firstLine(job.label ?? "")}
+			detail={job.type === "task" ? null : commandSummary(job.label ?? "") || null}
 			meta={job.durationMs !== null ? fmtDuration(job.durationMs) : job.durationText}
 			status={job.status}
 			verbose={verbose}

@@ -29,9 +29,17 @@ export type JobState = "running" | "completed" | "failed" | "cancelled";
 export interface BackgroundJob {
 	jobId: string;
 	command: string;
+	/** What the model said the command is for (the call's `i` intent), the row's title; null for calls without one. */
+	intent: string | null;
 	state: JobState;
-	/** Last output omp saw for this job (start preview or final result). */
+	/** Last output omp saw for this job (start preview, poll snapshot or final result). */
 	output: string;
+	/** Epoch ms the call started; null when unknown. */
+	startedAt: number | null;
+	/** omp's own run time from a delivery or job snapshot, once settled; null while running or when omp gave none. */
+	durationMs: number | null;
+	/** The shell's exit code when the output reports one ("Command exited with code N"). */
+	exitCode: number | null;
 }
 
 type TranscriptItem =
@@ -43,6 +51,8 @@ type TranscriptItem =
 			message: ToolResultMessage;
 			/** Epoch ms the call started, never after the result; the result time when unknown. */
 			start: number;
+			/** The call's intent (omp's `i` argument), when the model gave one. */
+			intent: string | null;
 	  }
 	| { kind: "custom"; customType: string; details: unknown; time: number; entry: Extract<SessionEntry, { type: "custom_message" }> }
 	/**
@@ -62,13 +72,19 @@ function startTime(recorded: number | undefined, called: number | undefined, end
 	return end;
 }
 
+/** A call's intent: omp records it on the call, and the model sends it as the `i` argument. */
+function callIntent(call: { intent?: string; arguments?: unknown }): string | null {
+	const intent = call.intent ?? (isRecord(call.arguments) ? str(call.arguments.i) : null);
+	return intent?.trim() || null;
+}
+
 /**
  * Tool results paired with their calls (normalized like the transcript: `write` → `xd://<tool>`
  * device calls become the device tool, with the device's own details) and custom messages, in order.
  * A call id counts once: a reconnect can deliver the same result again.
  */
 function transcriptItems(entries: readonly SessionEntry[]): TranscriptItem[] {
-	const calls = new Map<string, { name: string; args: unknown; time: number }>();
+	const calls = new Map<string, { name: string; args: unknown; time: number; intent: string | null }>();
 	const starts = new Map<string, number>();
 	const answered = new Set<string>();
 	const items: TranscriptItem[] = [];
@@ -90,7 +106,7 @@ function transcriptItems(entries: readonly SessionEntry[]): TranscriptItem[] {
 		const message = entry.message;
 		if (message.role === "assistant") {
 			for (const block of message.content) {
-				if (block.type === "toolCall") calls.set(block.id, { name: block.name, args: block.arguments, time: message.timestamp });
+				if (block.type === "toolCall") calls.set(block.id, { name: block.name, args: block.arguments, time: message.timestamp, intent: callIntent(block) });
 			}
 			continue;
 		}
@@ -105,7 +121,7 @@ function transcriptItems(entries: readonly SessionEntry[]): TranscriptItem[] {
 		});
 		const details = view.result?.details;
 		const start = startTime(starts.get(message.toolCallId), call?.time, message.timestamp);
-		items.push({ kind: "result", name: view.name, args: view.args, details: isRecord(details) ? details : null, message, start });
+		items.push({ kind: "result", name: view.name, args: view.args, details: isRecord(details) ? details : null, message, start, intent: call?.intent ?? null });
 	}
 	return items;
 }
@@ -234,6 +250,8 @@ interface JobReport {
 	label: string | null;
 	state: JobState;
 	output: string | null;
+	/** omp's run time for the job, when the report carries one. */
+	durationMs: number | null;
 	/** An `async-result` delivery, which ends the job; snapshots may say it still runs. */
 	delivered: boolean;
 }
@@ -244,7 +262,15 @@ function jobReports(item: TranscriptItem): JobReport[] {
 		if (item.customType !== "async-result") return [];
 		const notice = parseNotice(item.entry);
 		if (notice.kind !== "jobs") return [];
-		return notice.jobs.map(job => ({ id: job.id, type: job.type, label: job.label, state: DELIVERED_STATE[job.status], output: null, delivered: true }));
+		return notice.jobs.map(job => ({
+			id: job.id,
+			type: job.type,
+			label: job.label,
+			state: DELIVERED_STATE[job.status],
+			output: job.result,
+			durationMs: job.durationMs,
+			delivered: true,
+		}));
 	}
 	if (item.kind !== "result" || (item.name !== "job" && item.name !== "wait") || !Array.isArray(item.details?.jobs)) return [];
 	return item.details.jobs.flatMap((job): JobReport[] => {
@@ -252,19 +278,48 @@ function jobReports(item: TranscriptItem): JobReport[] {
 		const id = str(job.id);
 		const state = job.status;
 		if (!id || !isJobState(state)) return [];
-		return [{ id, type: str(job.type), label: str(job.agentUrlId) ?? str(job.label), state, output: str(job.resultText) || str(job.errorText), delivered: false }];
+		const durationMs = num(job.durationMs);
+		return [
+			{
+				id,
+				type: str(job.type),
+				label: str(job.agentUrlId) ?? str(job.label),
+				state,
+				output: str(job.resultText) || str(job.errorText),
+				durationMs: durationMs !== null && durationMs >= 0 ? durationMs : null,
+				delivered: false,
+			},
+		];
 	});
+}
+
+/** omp's closing line for a shell command that failed (`Command exited with code N`). */
+const EXIT_LINE = /(?:^|\n)Command exited with code (-?\d+)\s*$/;
+
+function exitCodeOf(output: string): number | null {
+	const code = EXIT_LINE.exec(output.trimEnd())?.[1];
+	return code === undefined ? null : Number(code);
 }
 
 /**
  * Background shell jobs: `bash` calls that went async (details.async), updated by `job` and `wait` results and closed
  * by omp's `async-result` deliveries. A job omp never reported finished before its process ended (a `session_exit`
- * record, or no omp running this chat now) shows as cancelled. Newest first.
+ * record, or no omp running this chat now) shows as cancelled. Running jobs come first, then the rest; newest first
+ * within each, as omp's `/jobs` lists them.
  */
 export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolean, activeTools?: ReadonlyMap<string, ActiveTool>): BackgroundJob[] {
 	const jobs = new Map<string, BackgroundJob>();
 	const upsert = (jobId: string, patch: Partial<BackgroundJob>) => {
-		const existing: BackgroundJob = jobs.get(jobId) ?? { jobId, command: "", state: "running", output: "" };
+		const existing: BackgroundJob = jobs.get(jobId) ?? {
+			jobId,
+			command: "",
+			intent: null,
+			state: "running",
+			output: "",
+			startedAt: null,
+			durationMs: null,
+			exitCode: null,
+		};
 		jobs.set(jobId, { ...existing, ...patch });
 	};
 	const stopRunning = () => {
@@ -278,15 +333,23 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 		if (item.kind === "result" && item.name === "bash" && item.details && isRecord(item.details.async)) {
 			const jobId = str(item.details.async.jobId);
 			const state = item.details.async.state;
-			if (jobId && isJobState(state)) upsert(jobId, { command: str(item.args.command) ?? "", state, output: resultText(item.message) });
+			if (jobId && isJobState(state)) {
+				upsert(jobId, { command: str(item.args.command) ?? "", intent: item.intent, state, output: resultText(item.message), startedAt: item.start });
+			}
 			continue;
 		}
 		for (const report of jobReports(item)) {
 			const job = jobs.get(report.id);
 			if (!job) continue;
-			// A delivery ends a running job; an earlier poll may already have said how.
-			if (report.delivered && job.state !== "running") continue;
-			upsert(report.id, { state: report.state, ...(report.output ? { output: report.output } : {}) });
+			// A delivery ends a running job. When a poll already said how it ended, that outcome stands, but the
+			// delivery still brings the final output, omp's run time and the exit line.
+			const state = report.delivered && job.state !== "running" ? job.state : report.state;
+			const output = report.output ?? job.output;
+			upsert(report.id, {
+				state,
+				output,
+				...(state !== "running" ? { durationMs: report.durationMs ?? job.durationMs, exitCode: exitCodeOf(output) ?? job.exitCode } : {}),
+			});
 		}
 	}
 	for (const tool of activeTools?.values() ?? []) {
@@ -299,12 +362,123 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 		const output = details ? str(details.output) : null;
 		upsert(jobId, {
 			command: str(tool.args.command) ?? "",
+			intent: callIntent({ intent: tool.intent, arguments: tool.args }),
 			state: "running",
+			startedAt: tool.startedAt,
 			...(output ? { output } : {}),
 		});
 	}
 	if (!ompLive) stopRunning();
-	return [...jobs.values()].reverse();
+	const newestFirst = [...jobs.values()].reverse();
+	return [...newestFirst.filter(job => job.state === "running"), ...newestFirst.filter(job => job.state !== "running")];
+}
+
+/** Shell setup and chatter a summary skips: `set -e`, `cd dir`, `export X=1`, `X=$(…)`, `sleep 10`, `echo …`, comments. */
+const SETUP_STEP =
+	/^(?:set\s+[-+]\w+|cd\s+\S+|export\s+\S+|sleep\s+\S+|(?:echo|printf)\b[\s\S]*|true|:|[A-Za-z_][A-Za-z0-9_]*=(?:\$\([\s\S]*\)|"[^"]*"|'[^']*'|\S*)|#[\s\S]*)$/;
+
+/**
+ * A command's top-level steps, split at `;`, newlines, `&&` and `||` outside quotes, backticks, `(…)` and `$(…)`,
+ * with here-document bodies left out. Null when the quoting does not balance, so no fragment is taken for a step.
+ */
+function shellSteps(command: string): string[] | null {
+	const steps: string[] = [];
+	const stack: ("'" | '"' | "`" | "(")[] = [];
+	let step = "";
+	/** An open here-document: its marker, and whether `<<-` lets the closing line start with tabs. */
+	let heredoc: { marker: string; tabs: boolean } | null = null;
+	const end = () => {
+		if (step.trim()) steps.push(step.trim());
+		step = "";
+	};
+	for (let i = 0; i < command.length; i++) {
+		const ch = command[i] ?? "";
+		const top = stack.at(-1);
+		if (top === "'") {
+			if (ch === "'") stack.pop();
+			step += ch;
+			continue;
+		}
+		if (ch === "\\") {
+			step += command.slice(i, i + 2);
+			i++;
+			continue;
+		}
+		if (top === '"' || top === "`") {
+			if (ch === top) stack.pop();
+			else if (top === '"' && ch === "$" && command[i + 1] === "(") {
+				stack.push("(");
+				step += "$(";
+				i++;
+				continue;
+			} else if (top === '"' && ch === "`") stack.push("`");
+			step += ch;
+			continue;
+		}
+		// Outside quotes: at the top level or inside (…) / $(…).
+		if (ch === "#" && /(^|[\s;(])$/.test(step.slice(-1) || " ")) {
+			const newline = command.indexOf("\n", i);
+			i = (newline === -1 ? command.length : newline) - 1;
+			continue;
+		}
+		if (ch === "<" && command[i + 1] === "<" && command[i + 2] !== "<") {
+			const opener = /^<<(-?)\s*(['"]?)([A-Za-z_][\w.-]*)\2/.exec(command.slice(i));
+			if (opener) {
+				heredoc = { marker: opener[3] ?? "", tabs: opener[1] === "-" };
+				step += opener[0];
+				i += opener[0].length - 1;
+				continue;
+			}
+		}
+		if (ch === "'" || ch === '"' || ch === "`" || ch === "(") stack.push(ch);
+		else if (ch === ")") {
+			if (top !== "(") return null;
+			stack.pop();
+		}
+		if (stack.length === 0 && ch === "\n" && heredoc !== null) {
+			// Skip the body through the line that is exactly the marker (after leading tabs, for `<<-`).
+			let at = i + 1;
+			let closed = -1;
+			while (at <= command.length) {
+				const lineEnd = command.indexOf("\n", at);
+				const line = command.slice(at, lineEnd === -1 ? command.length : lineEnd);
+				if ((heredoc.tabs ? line.replace(/^\t+/, "") : line) === heredoc.marker) {
+					closed = lineEnd === -1 ? command.length : lineEnd;
+					break;
+				}
+				if (lineEnd === -1) break;
+				at = lineEnd + 1;
+			}
+			if (closed === -1) return null;
+			i = closed - 1;
+			heredoc = null;
+			continue;
+		}
+		const pair = command.slice(i, i + 2);
+		if (stack.length === 0 && (ch === ";" || ch === "\n" || pair === "&&" || pair === "||")) {
+			end();
+			if (pair === "&&" || pair === "||") i++;
+			continue;
+		}
+		step += ch;
+	}
+	if (stack.length > 0) return null;
+	end();
+	return steps;
+}
+
+/**
+ * A short line for the command under a job's title, and the title itself when the call gave no intent: the first
+ * top-level step that does something, skipping shell setup and chatter so rows stop opening on boilerplate. A
+ * command whose quoting does not parse falls back to its first line.
+ */
+export function commandSummary(command: string): string {
+	const steps = shellSteps(command);
+	const first = steps
+		? (steps.find(step => !SETUP_STEP.test(step)) ?? steps[0] ?? "")
+		: (command.split("\n").find(line => line.trim()) ?? "").trim();
+	const line = first.replace(/\s+/g, " ").trim();
+	return line.length > 120 ? `${line.slice(0, 119)}…` : line;
 }
 
 const LOCAL_URL = /\bhttps?:\/\/(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1?\])(?::\d{2,5})?(?:\/[^\s"'`<>)\]]*)?/gi;

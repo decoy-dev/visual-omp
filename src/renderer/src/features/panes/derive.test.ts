@@ -5,6 +5,7 @@ import {
 	activityOf,
 	backgroundJobs,
 	chatOutputs,
+	commandSummary,
 	devServerUrls,
 	editTotals,
 	fileEdits,
@@ -85,7 +86,7 @@ describe("latestTodo", () => {
 });
 
 describe("backgroundJobs", () => {
-	it("tracks an async bash job from start to delivered result, newest first", () => {
+	it("tracks an async bash job from start to delivered result, running jobs first", () => {
 		const entries: SessionEntry[] = [
 			call("b1", "bash", { command: "npm run dev", async: true }),
 			result("b1", "bash", "started", { async: { state: "running", jobId: "j1", type: "bash" } }),
@@ -93,9 +94,22 @@ describe("backgroundJobs", () => {
 			result("b2", "bash", "started", { async: { state: "running", jobId: "j2", type: "bash" } }),
 			{ ...base(), type: "custom_message", customType: "async-result", content: "done", display: true, details: { jobs: [{ jobId: "j2" }] } },
 		];
-		expect(backgroundJobs(entries, true)).toEqual([
-			{ jobId: "j2", command: "npm test", state: "completed", output: "started" },
+		expect(backgroundJobs(entries, true)).toMatchObject([
 			{ jobId: "j1", command: "npm run dev", state: "running", output: "started" },
+			{ jobId: "j2", command: "npm test", state: "completed" },
+		]);
+	});
+
+	it("titles a job with the intent the model gave its call", () => {
+		const entries: SessionEntry[] = [
+			call("b1", "bash", { command: "npm run dist:mac 2>&1 | tail -25", async: true, i: "Building the macOS installers" }),
+			result("b1", "bash", "started", { async: { state: "running", jobId: "bg_1", type: "bash" } }),
+			call("b2", "bash", { command: "ls", async: true }),
+			result("b2", "bash", "started", { async: { state: "running", jobId: "bg_2", type: "bash" } }),
+		];
+		expect(backgroundJobs(entries, true).map(job => [job.jobId, job.intent])).toEqual([
+			["bg_2", null],
+			["bg_1", "Building the macOS installers"],
 		]);
 	});
 
@@ -106,7 +120,7 @@ describe("backgroundJobs", () => {
 			call("p", "job", { poll: ["j1"] }),
 			result("p", "job", "", { jobs: [{ id: "j1", status: "failed", errorText: "boom" }, { id: "other", status: "running" }] }),
 		];
-		expect(backgroundJobs(entries, true)).toEqual([{ jobId: "j1", command: "make", state: "failed", output: "boom" }]);
+		expect(backgroundJobs(entries, true)).toMatchObject([{ jobId: "j1", command: "make", state: "failed", output: "boom" }]);
 	});
 
 	it("shows streaming output of a job started in the background, not foreground commands", () => {
@@ -121,7 +135,7 @@ describe("backgroundJobs", () => {
 			["a", tool({ command: "vite", async: true }, "ja")],
 			["b", tool({ command: "npm test" }, "jb")],
 		]);
-		expect(backgroundJobs([], true, active)).toEqual([{ jobId: "ja", command: "vite", state: "running", output: "listening" }]);
+		expect(backgroundJobs([], true, active)).toMatchObject([{ jobId: "ja", command: "vite", state: "running", output: "listening" }]);
 	});
 
 	// Shapes from a saved chat: a CI watcher sent to the background, closed only by a later `wait` snapshot.
@@ -141,7 +155,9 @@ describe("backgroundJobs", () => {
 				jobs: [{ id: "bg_42", type: "bash", status: "completed", label: "gh run watch", durationMs: 118131, resultText: "macos-latest success" }],
 			}),
 		];
-		expect(backgroundJobs(entries, true)).toEqual([{ jobId: "bg_42", command: "gh run watch", state: "completed", output: "macos-latest success" }]);
+		expect(backgroundJobs(entries, true)).toMatchObject([
+			{ jobId: "bg_42", command: "gh run watch", state: "completed", output: "macos-latest success", durationMs: 118131 },
+		]);
 	});
 
 	it("takes a delivered failure from the result's exit line", () => {
@@ -156,7 +172,24 @@ describe("backgroundJobs", () => {
 				details: { jobs: [{ jobId: "bg_1", type: "bash", label: "make", durationMs: 40 }] },
 			} as SessionEntry,
 		];
-		expect(backgroundJobs(entries, true)[0]?.state).toBe("failed");
+		expect(backgroundJobs(entries, true)[0]).toMatchObject({ state: "failed", exitCode: 2, durationMs: 40 });
+	});
+
+	it("keeps a poll's outcome but takes the later delivery's output, run time and exit code", () => {
+		const entries = [
+			...started("b1", "bg_7", "make"),
+			call("w1", "wait", { jobs: ["bg_7"] }),
+			result("w1", "wait", "", { op: "wait", jobs: [{ id: "bg_7", type: "bash", status: "failed", errorText: "boom" }] }),
+			{
+				...base(),
+				type: "custom_message",
+				customType: "async-result",
+				content: "<system-notice>\nBackground job bg_7 has completed. Resume your work using the result below.\nbuild log\nboom\nCommand exited with code 3\n</system-notice>",
+				display: true,
+				details: { jobs: [{ jobId: "bg_7", type: "bash", label: "make", durationMs: 2500 }] },
+			} as SessionEntry,
+		];
+		expect(backgroundJobs(entries, true)[0]).toMatchObject({ state: "failed", output: "build log\nboom\nCommand exited with code 3", durationMs: 2500, exitCode: 3 });
 	});
 
 	it("stops jobs nobody reported finished once omp is gone: at a session_exit, or with no omp running now", () => {
@@ -166,6 +199,35 @@ describe("backgroundJobs", () => {
 			["bg_42", "cancelled"],
 		]);
 		expect(backgroundJobs(entries, false).map(job => job.state)).toEqual(["cancelled", "cancelled"]);
+	});
+});
+
+describe("commandSummary", () => {
+	it("skips shell setup to the first step that does something", () => {
+		expect(commandSummary('set -e\nMD5=$(md5 -q wp/elementor_data.json)\ncurl -s https://example.com/api')).toBe("curl -s https://example.com/api");
+		expect(commandSummary('set -e && git add -A && git commit -q -m "How it works"')).toBe("git add -A");
+		expect(commandSummary("cd sites/main && export NODE_ENV=production && npm run build")).toBe("npm run build");
+		// A CI watcher from a saved chat: a pause, a lookup assignment and a status echo come before the real step.
+		expect(
+			commandSummary('sleep 10; id=$(gh run list --workflow Release --limit 1 --json databaseId -q \'.[0].databaseId\'); echo "run=$id"; gh run watch "$id" --exit-status'),
+		).toBe('gh run watch "$id" --exit-status');
+	});
+
+	it("splits only at top-level separators, never inside quotes, substitutions or here-documents", () => {
+		expect(commandSummary('echo "starting; please wait"; npm run build')).toBe("npm run build");
+		expect(commandSummary("ID=$(gh run list --limit 1 \\\n  --json databaseId -q '.[0].databaseId'); gh run watch \"$ID\"")).toBe('gh run watch "$ID"');
+		expect(commandSummary("RUN=$(\n  gh run list --limit 1\n)\ngh run view \"$RUN\" --log-failed | tail -40")).toBe('gh run view "$RUN" --log-failed | tail -40');
+		expect(commandSummary("cat > /tmp/inspect.sh <<'EOF'\ncd sites/main; echo \"it's here\"\nEOF\nbash /tmp/inspect.sh")).toBe("cat > /tmp/inspect.sh <<'EOF'");
+		// The body ends only at a line that is exactly the marker: not a near match, not a space-indented copy.
+		expect(commandSummary("echo ready <<'END.TXT'\nENDxTXT\n  END.TXT\nrm -rf body\nEND.TXT\nbash a.sh")).toBe("bash a.sh");
+		expect(commandSummary("echo ready <<-END\n\tnot yet\n\tEND\nbash b.sh")).toBe("bash b.sh");
+		expect(commandSummary("set -e # stop on the first error\nnpm test 2>&1 | tail -5")).toBe("npm test 2>&1 | tail -5");
+	});
+
+	it("falls back to the first line when the quoting does not balance, keeps setup-only commands, and shortens long steps", () => {
+		expect(commandSummary("case $x in a) npm test ;; esac")).toBe("case $x in a) npm test ;; esac");
+		expect(commandSummary("set -e")).toBe("set -e");
+		expect(commandSummary(`curl ${"x".repeat(200)}`)).toHaveLength(120);
 	});
 });
 
@@ -616,7 +678,7 @@ describe("helpersOf and workSummary", () => {
 				hasTranscript: false,
 			},
 		]);
-		const jobs = [{ jobId: "j", command: "x", state: "running" as const, output: "" }];
+		const jobs = [{ jobId: "j", command: "x", intent: null, state: "running" as const, output: "", startedAt: null, durationMs: null, exitCode: null }];
 		expect(workSummary(latestTodo([]), helpers, jobs)).toEqual({ tasks: null, helpersWorking: 1, jobsRunning: 1 });
 		// A stale mirror after omp is gone: nothing works any more, finished helpers keep their outcome.
 		expect(helpersOf(guest, false).map(helper => `${helper.id}:${helper.status}`)).toEqual(["Atlas:stopped", "Bolt:done"]);

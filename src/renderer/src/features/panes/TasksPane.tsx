@@ -9,9 +9,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDisplayedEntries } from "../../chat/branch";
-import { NoticeRow } from "../../chat/transcript/NoticeRow";
+import { NoticeRow, StatusGlyph } from "../../chat/transcript/NoticeRow";
+import type { JobStatus } from "../../chat/transcript/notices";
+import { fmtDuration } from "../../collab/lib/format";
 import type { PaneProps } from "../../registry/slots";
-import { useSessionView } from "../../shell/hooks";
+import { useNow, useSessionView } from "../../shell/hooks";
 import { openSettings } from "../../state/navigation";
 import { liveEntries, type SessionController } from "../../state/session";
 import { parseSessionHistory } from "../../state/history";
@@ -38,7 +40,7 @@ import {
 	toast,
 } from "../../ui";
 import { listRowMotion, Section } from "./common";
-import { type BackgroundJob, backgroundJobs, type Helper, helpersOf, latestTodo, ompRunning } from "./derive";
+import { type BackgroundJob, backgroundJobs, commandSummary, type Helper, helpersOf, latestTodo, ompRunning } from "./derive";
 import { type HelperTranscriptItem, helperTranscript } from "./helperTranscript";
 
 function MessageHelper({ helper, session }: { helper: Helper; session: SessionController }) {
@@ -225,41 +227,113 @@ function TranscriptDialog({ helper, session, onClose }: { helper: Helper; sessio
 	);
 }
 
-const JOB_DOT: Record<BackgroundJob["state"], "live" | "ok" | "err" | "idle"> = {
-	running: "live",
-	completed: "ok",
-	failed: "err",
-	cancelled: "idle",
-};
+/** How a settled job reads, with the chat's own job marks (NoticeRow's `StatusGlyph`). */
+const SETTLED_STATUS: Record<Exclude<BackgroundJob["state"], "running">, JobStatus> = { completed: "ok", failed: "failed", cancelled: "stopped" };
 
+/** Settled jobs shown before "Show earlier jobs"; omp's `/jobs` lists the five most recent as well. */
+const RECENT_JOBS = 5;
+
+/** How long a running job has run, ticking each second; mounted only while the job runs, so settled rows hold no timer. */
+function RunningFor({ since }: { since: number }) {
+	const now = useNow(1000);
+	return <>{fmtDuration(Math.max(0, now - since))}</>;
+}
+
+/**
+ * One background job, as omp's `/jobs` lists it (status, run time, the command dimmed underneath) but titled by what
+ * the model said the command is for. Opens to the full command and the latest output.
+ */
 function JobRow({ job }: { job: BackgroundJob }) {
 	const { t } = useTranslation("panes");
-	const [open, setOpen] = useState(job.state === "running");
-	const tail = job.output.trimEnd().split("\n").slice(-40).join("\n");
+	const [open, setOpen] = useState(false);
+	const summary = useMemo(() => commandSummary(job.command) || job.jobId, [job.command, job.jobId]);
+	const tail = useMemo(() => job.output.trimEnd().split("\n").slice(-40).join("\n"), [job.output]);
+	const settledMeta = [
+		job.state === "failed" && job.exitCode !== null ? t("tasks.job.exit", { code: job.exitCode }) : null,
+		job.state === "cancelled" ? t("tasks.jobState.cancelled") : null,
+		job.state !== "running" && job.durationMs !== null ? fmtDuration(job.durationMs) : null,
+	].filter((part): part is string => part !== null);
+	const live = job.state === "running" && job.startedAt !== null;
 	return (
-		<motion.li layout="position" {...listRowMotion} className="overflow-hidden rounded-md border border-border bg-panel">
+		<motion.li layout="position" {...listRowMotion} className="border-b border-border last:border-b-0">
 			<button
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen(!open)}
-				className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+				className="flex w-full items-start gap-2.5 px-3 py-2 text-left outline-none hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
 			>
+				<span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center">
+					{job.state === "running" ? (
+						<StatusDot status="live" label={t("tasks.jobState.running")} />
+					) : (
+						<StatusGlyph status={SETTLED_STATUS[job.state]} />
+					)}
+				</span>
+				<span className="flex min-w-0 flex-1 flex-col gap-0.5">
+					{job.intent ? (
+						<>
+							<span className="truncate text-sm text-fg">{job.intent}</span>
+							<code className="truncate font-mono text-xs text-fg-faint">{summary}</code>
+						</>
+					) : (
+						<code className="truncate font-mono text-xs leading-5 text-fg">{summary}</code>
+					)}
+				</span>
+				{(live || settledMeta.length > 0) && (
+					<span className={cn("mt-0.5 shrink-0 text-xs tabular-nums", job.state === "failed" ? "text-err" : "text-fg-faint")}>
+						{live && job.startedAt !== null ? <RunningFor since={job.startedAt} /> : settledMeta.join(" · ")}
+					</span>
+				)}
 				<CaretRight
-					className={cn("size-3.5 shrink-0 text-fg-faint transition-transform duration-(--dur) ease-(--ease-out-quart)", open && "rotate-90")}
+					className={cn(
+						"mt-1 size-3.5 shrink-0 text-fg-faint transition-[rotate] duration-(--dur) ease-(--ease-out)",
+						open && "rotate-90",
+					)}
 					aria-hidden
 				/>
-				<StatusDot status={JOB_DOT[job.state]} label={t(`tasks.jobState.${job.state}`)} />
-				<code className="min-w-0 flex-1 truncate font-mono text-xs text-fg" title={job.command}>
-					{job.command || job.jobId}
-				</code>
-				<span className="shrink-0 text-xs text-fg-faint">{t(`tasks.jobState.${job.state}`)}</span>
 			</button>
 			<Expand open={open}>
-				<pre className="m-0 max-h-60 overflow-auto whitespace-pre-wrap break-all border-t border-border bg-inset px-3 py-2 font-mono text-xs leading-4 text-fg-muted">
-					{tail || t("tasks.noOutput")}
-				</pre>
+				<div className="flex flex-col gap-2 border-t border-border bg-inset px-3 py-2.5">
+					<SectionLabel as="p">{t("tasks.job.command")}</SectionLabel>
+					<pre className="selectable m-0 max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-4 text-fg">{job.command}</pre>
+					<SectionLabel as="p">{t("tasks.job.output")}</SectionLabel>
+					<pre className="selectable m-0 max-h-60 overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-4 text-fg-muted">
+						{tail || t("tasks.noOutput")}
+					</pre>
+					<p className="font-mono text-xs text-fg-faint">{t("tasks.job.id", { id: job.jobId })}</p>
+				</div>
 			</Expand>
 		</motion.li>
+	);
+}
+
+/** Running jobs, then the five most recent settled ones; the rest wait behind "Show earlier jobs". */
+function JobList({ jobs }: { jobs: readonly BackgroundJob[] }) {
+	const { t } = useTranslation("panes");
+	const [all, setAll] = useState(false);
+	const running = jobs.filter(job => job.state === "running");
+	const settled = jobs.filter(job => job.state !== "running");
+	const hidden = all ? 0 : Math.max(0, settled.length - RECENT_JOBS);
+	const shown = [...running, ...settled.slice(0, settled.length - hidden)];
+	return (
+		<>
+			<ul className="overflow-hidden rounded-lg border border-border bg-panel">
+				<AnimatePresence initial={false}>
+					{shown.map(job => (
+						<JobRow key={job.jobId} job={job} />
+					))}
+				</AnimatePresence>
+			</ul>
+			{(hidden > 0 || (all && settled.length > RECENT_JOBS)) && (
+				<button
+					type="button"
+					onClick={() => setAll(!all)}
+					className="mt-2 inline-flex h-7 items-center rounded-md px-1 text-sm text-fg-muted hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+				>
+					{all ? t("tasks.job.fewer") : t("tasks.job.earlier", { count: hidden })}
+				</button>
+			)}
+		</>
 	);
 }
 
@@ -327,13 +401,7 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 							title={t("tasks.background")}
 							count={runningJobs > 0 && <Badge count={runningJobs} label={t("tasks.runningCount", { count: runningJobs })} />}
 						>
-							<ul className="space-y-1.5">
-								<AnimatePresence initial={false}>
-									{jobs.map(job => (
-										<JobRow key={job.jobId} job={job} />
-									))}
-								</AnimatePresence>
-							</ul>
+							<JobList jobs={jobs} />
 						</Section>
 					</Expand>
 					{transcriptOf && <TranscriptDialog helper={transcriptOf} session={session} onClose={() => setTranscriptOf(null)} />}

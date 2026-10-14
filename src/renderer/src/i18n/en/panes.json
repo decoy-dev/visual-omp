@@ -173,6 +173,15 @@
 		"background": "Background jobs",
 		"jobState": { "running": "Running", "completed": "Finished", "failed": "Failed", "cancelled": "Stopped" },
 		"noOutput": "No output yet.",
+		"job": {
+			"exit": "Exit {{code}}",
+			"id": "Job {{id}}",
+			"command": "Command",
+			"output": "Output",
+			"earlier_one": "Show {{count}} earlier job",
+			"earlier_other": "Show {{count}} earlier jobs",
+			"fewer": "Show fewer jobs"
+		},
 		"runningCount_one": "{{count}} running",
 		"runningCount_other": "{{count}} running"
 	},
