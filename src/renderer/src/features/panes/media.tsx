@@ -380,7 +380,7 @@ export function ThumbnailFrame({ pdf, children }: { pdf: boolean; children: Reac
 		<span className="relative flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-sm border border-border bg-inset">
 			{children}
 			{pdf && (
-				<span aria-hidden className="absolute bottom-1 left-1 rounded-sm bg-panel px-1 text-[10px] leading-4 font-semibold text-fg-muted">
+				<span aria-hidden className="absolute bottom-1 left-1 rounded-sm bg-panel px-1 text-xs leading-4 font-semibold text-fg-muted">
 					{t("outputs.pdf")}
 				</span>
 			)}

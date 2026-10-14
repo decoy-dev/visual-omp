@@ -1,5 +1,6 @@
 {
 	"label": "Command palette",
+	"inputLabel": "Search commands, chats and files",
 	"placeholder": "Type a command or search…",
 	"groups": {
 		"suggested": "Suggested",
@@ -74,8 +75,8 @@
 	},
 	"cmd": {
 		"palette": {
-			"title": "Open command palette",
-			"hint": "Search every action, chat and file.",
+			"title": "Search commands",
+			"hint": "Find any action, chat or file.",
 			"keywords": "search, find, commands, go to"
 		},
 		"terminal": {
@@ -94,17 +95,22 @@
 			"keywords": "dock, panel, right, diff, files, preview"
 		},
 		"split": {
-			"title": "Toggle split view",
-			"hint": "Show two chats side by side.",
+			"title": "Close split view",
+			"hint": "Show one chat again.",
+			"keywords": "split, side by side, two chats, close, unsplit"
+		},
+		"openSideBySide": {
+			"title": "Open side by side",
+			"hint": "Show another open chat next to this one, or a new chat when no other chat is open.",
 			"keywords": "split, side by side, two chats, compare"
 		},
-		"prevTab": {
-			"title": "Go to previous chat tab",
-			"keywords": "tab, previous, left, switch"
+		"prevChat": {
+			"title": "Go to previous open chat",
+			"keywords": "previous, back, switch, chat"
 		},
-		"nextTab": {
-			"title": "Go to next chat tab",
-			"keywords": "tab, next, right, switch"
+		"nextChat": {
+			"title": "Go to next open chat",
+			"keywords": "next, forward, switch, chat"
 		},
 		"theme": {
 			"title": "Switch between light and dark",
@@ -130,8 +136,8 @@
 		},
 		"chatClose": {
 			"title": "Close chat",
-			"hint": "Close this tab. The chat stays saved.",
-			"keywords": "close, tab, hide"
+			"hint": "Stop omp for this chat and close it. The chat stays saved.",
+			"keywords": "close, stop, hide"
 		}
 	}
 }

@@ -1,10 +1,10 @@
 /**
- * Outputs pane (DESIGN §3.7): the images, PDFs and files omp made or showed in the focused chat, newest first.
- * Besides the files tools name as outputs, main checks the paths each command named for files modified while it ran
- * (best effort). Images load from disk when they have a path, so a re-rendered file shows its current state; images
- * without a file fall back to the data in the tool result (or omp's blob store for saved chats). PDFs show the
- * operating system's thumbnail when it provides one and open in Chromium's PDF viewer inside the pane. Clicking a
- * file opens it in the Files pane.
+ * Outputs pane (DESIGN §3.7): the images, PDFs and files omp created, wrote, changed or viewed in the focused chat,
+ * newest first, in one section per relationship (`OutputRelation`). Besides the files tools name as outputs, main checks the
+ * paths each command named for files modified while it ran (best effort). Images load from disk when they have a path,
+ * so a re-rendered file shows its current state; images without a file fall back to the data in the tool result (or
+ * omp's blob store for saved chats). PDFs show the operating system's thumbnail when it provides one and open in
+ * Chromium's PDF viewer inside the pane. Clicking a file opens it in the Files pane.
  */
 import type { PaneMadeFile } from "@shared/contracts/panes";
 import { ArrowLeft, ArrowSquareOut, Copy, FileCode, FileIcon, FolderSimpleDashed, Images } from "@phosphor-icons/react";
@@ -20,8 +20,8 @@ import { liveEntries, type SessionController, type SessionView } from "../../sta
 import { Badge, cn, ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, EmptyState, IconButton, PresenceSwap, toast } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
 import { useHomeDir } from "../projects/folders/FolderBrowser";
-import { listRowMotion, PaneToolbar, relativePath, Section, SectionCount, usePaneVisible } from "./common";
-import { type ChatOutput, chatOutputs, IMAGE_EXT, isIntactBase64, type MadeCandidate, type MadeFiles, madeCandidates, OPENABLE_EXT } from "./derive";
+import { FileName, listRowMotion, PaneToolbar, relativePath, Section, SectionCount, usePaneVisible } from "./common";
+import { type ChatOutput, chatOutputs, IMAGE_EXT, isIntactBase64, type MadeCandidate, type MadeFiles, madeCandidates, OPENABLE_EXT, type OutputRelation } from "./derive";
 import { openInFiles } from "./FilesPane";
 import { languageFor } from "./highlight";
 import { ExpandPreview, loadFileImage, openWithDefaultApp, PdfFrame, PreviewImage, revealLabel, ThumbnailFrame, useNearView, type ZoomControl } from "./media";
@@ -251,9 +251,16 @@ function OutputMenu({ output, projectPath, children }: { output: ChatOutput; pro
 
 // ── list ────────────────────────────────────────────────────────────────────────────────────────
 
+/** The path as the pane shows it: project-relative inside the project, else as given; the name for images without one. */
+function displayPath(output: ChatOutput, name: string, projectPath: string | null): string {
+	if (!output.path) return name;
+	return projectPath ? relativePath(projectPath, output.path) : output.path;
+}
+
 function PreviewTile({ output, mount, projectPath, onOpen }: { output: ChatOutput; mount: number; projectPath: string | null; onOpen(key: string): void }) {
 	const { t } = useTranslation("panes");
 	const name = useOutputName(output);
+	const when = useWhen(output);
 	const [ref, near] = useNearView<HTMLButtonElement>();
 	return (
 		<motion.li layout="position" {...listRowMotion}>
@@ -263,14 +270,14 @@ function PreviewTile({ output, mount, projectPath, onOpen }: { output: ChatOutpu
 					type="button"
 					data-output={output.key}
 					onClick={() => onOpen(output.key)}
-					aria-label={t("outputs.openImage", { name })}
+					aria-label={t("outputs.openImage", { name: displayPath(output, name, projectPath), when })}
 					title={output.path ?? name}
 					className={cn("flex w-full flex-col gap-1.5 rounded-md p-1 text-left hover:bg-hover", focusRingInset)}
 				>
 					<ThumbnailFrame pdf={output.kind === "pdf"}>
 						<OutputImage output={output} mount={mount} enabled={near} alt="" className="size-full object-contain" />
 					</ThumbnailFrame>
-					<span className="truncate px-0.5 text-xs text-fg-muted">{name}</span>
+					<FileName name={name} className="px-0.5 text-xs text-fg-muted" />
 				</button>
 			</OutputMenu>
 		</motion.li>
@@ -278,9 +285,11 @@ function PreviewTile({ output, mount, projectPath, onOpen }: { output: ChatOutpu
 }
 
 function FileRow({ output, projectPath }: { output: ChatOutput; projectPath: string | null }) {
+	const { t } = useTranslation("panes");
 	const path = output.path ?? "";
 	const name = baseName(path);
 	const folder = path.slice(0, path.length - name.length - 1);
+	const shownFolder = projectPath ? relativePath(projectPath, folder) : folder;
 	const when = useWhen(output);
 	const Icon = languageFor(name) ? FileCode : FileIcon;
 	return (
@@ -290,14 +299,19 @@ function FileRow({ output, projectPath }: { output: ChatOutput; projectPath: str
 					type="button"
 					data-output={output.key}
 					onClick={() => openFile(path, projectPath)}
+					aria-label={t("outputs.openFile", { path: displayPath(output, name, projectPath), when })}
 					title={path}
-					className={cn("flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-hover", focusRingInset)}
+					className={cn("flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left hover:bg-hover", focusRingInset)}
 				>
-					<Icon aria-hidden className="size-4 shrink-0 text-fg-faint" />
-					{/* The folder takes only leftover space, so it ellipsizes first and the name shrinks after it. */}
-					<span className="min-w-0 truncate text-fg">{name}</span>
-					<span className="min-w-0 flex-1 truncate text-xs text-fg-faint">{projectPath ? relativePath(projectPath, folder) : folder}</span>
-					<span className="shrink-0 text-xs whitespace-nowrap text-fg-faint">{when}</span>
+					<Icon aria-hidden className="mt-px size-4 shrink-0 text-fg-faint" />
+					<span aria-hidden className="min-w-0 flex-1">
+						<FileName name={name} className="text-sm text-fg" />
+						<span className="flex gap-2 text-xs text-fg-faint">
+							{/* Files at the project root have no folder worth showing ("."). */}
+							<span className="min-w-0 flex-1 truncate">{shownFolder === "." ? "" : shownFolder}</span>
+							<span className="shrink-0">{when}</span>
+						</span>
+					</span>
 				</button>
 			</OutputMenu>
 		</motion.li>
@@ -319,9 +333,24 @@ function PreviewGrid({ outputs, mount, projectPath, onOpen }: { outputs: ChatOut
 	);
 }
 
+function FileList({ outputs, projectPath }: { outputs: ChatOutput[]; projectPath: string | null }) {
+	return (
+		<ul className="-mx-2 space-y-px">
+			<AnimatePresence initial={false}>
+				{outputs.map(output => (
+					<FileRow key={output.key} output={output} projectPath={projectPath} />
+				))}
+			</AnimatePresence>
+		</ul>
+	);
+}
+
+const RELATIONS: readonly OutputRelation[] = ["created", "written", "changed", "viewed"];
+
 /**
- * Three sections by what omp did: images and PDFs it made (deliverables), other files it made, and images and PDFs it
- * only looked at, which are capped so a long run of review renders doesn't bury the deliverables.
+ * One section per relationship: created, written (new or replaced, history can't tell), changed, viewed. Each shows its
+ * images and PDFs as tiles, then its other files as rows. Viewed holds only images and PDFs and is capped, so a long
+ * run of review renders doesn't bury the rest.
  */
 function OutputList({
 	outputs,
@@ -342,10 +371,6 @@ function OutputList({
 }) {
 	const { t } = useTranslation("panes");
 	const listRef = useRef<HTMLDivElement>(null);
-	const made = outputs.filter(output => output.kind !== "file" && output.produced);
-	const files = outputs.filter(output => output.kind === "file");
-	const viewed = outputs.filter(output => output.kind !== "file" && !output.produced);
-	const shownViewed = showAllViewed ? viewed : viewed.slice(0, VIEWED_LIMIT);
 	// Back from the viewer: focus returns to the tile that opened it.
 	useEffect(() => {
 		if (!restoreKey) return;
@@ -355,36 +380,32 @@ function OutputList({
 	}, [restoreKey]);
 	return (
 		<div ref={listRef} className="min-h-0 flex-1 overflow-y-auto">
-			{made.length > 0 && (
-				<Section title={t("outputs.made")} count={<SectionCount count={made.length} />}>
-					<PreviewGrid outputs={made} mount={mount} projectPath={projectPath} onOpen={onOpen} />
-				</Section>
-			)}
-			{files.length > 0 && (
-				<Section title={t("outputs.files")} count={<SectionCount count={files.length} />}>
-					<ul className="-mx-2 space-y-px">
-						<AnimatePresence initial={false}>
-							{files.map(output => (
-								<FileRow key={output.key} output={output} projectPath={projectPath} />
-							))}
-						</AnimatePresence>
-					</ul>
-				</Section>
-			)}
-			{viewed.length > 0 && (
-				<Section title={t("outputs.viewed")} count={<SectionCount count={viewed.length} />}>
-					<PreviewGrid outputs={shownViewed} mount={mount} projectPath={projectPath} onOpen={onOpen} />
-					{shownViewed.length < viewed.length && (
-						<button
-							type="button"
-							onClick={onShowAllViewed}
-							className={cn("mt-1 h-7 rounded-md px-1 text-left text-sm text-fg-muted hover:bg-hover hover:text-fg", focusRingInset)}
-						>
-							{t("outputs.moreViewed", { count: viewed.length - shownViewed.length })}
-						</button>
-					)}
-				</Section>
-			)}
+			{RELATIONS.map(relation => {
+				const all = outputs.filter(output => output.relation === relation);
+				if (all.length === 0) return null;
+				const previews = all.filter(output => output.kind !== "file");
+				const shown = relation === "viewed" && !showAllViewed ? previews.slice(0, VIEWED_LIMIT) : previews;
+				const files = all.filter(output => output.kind === "file");
+				return (
+					<Section key={relation} title={t(`outputs.${relation}.title`)} description={t(`outputs.${relation}.description`)} count={<SectionCount count={all.length} />}>
+						{shown.length > 0 && <PreviewGrid outputs={shown} mount={mount} projectPath={projectPath} onOpen={onOpen} />}
+						{shown.length < previews.length && (
+							<button
+								type="button"
+								onClick={onShowAllViewed}
+								className={cn("mt-1 h-7 rounded-md px-1 text-left text-sm text-fg-muted hover:bg-hover hover:text-fg", focusRingInset)}
+							>
+								{t("outputs.moreViewed", { count: previews.length - shown.length })}
+							</button>
+						)}
+						{files.length > 0 && (
+							<div className={shown.length > 0 ? "mt-2" : undefined}>
+								<FileList outputs={files} projectPath={projectPath} />
+							</div>
+						)}
+					</Section>
+				);
+			})}
 		</div>
 	);
 }
@@ -411,8 +432,8 @@ function OutputViewer({ output, mount, projectPath, onBack }: { output: ChatOutp
 		<div ref={rootRef} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
 			<PaneToolbar>
 				<IconButton size="sm" label={t("outputs.back")} shortcut="Esc" icon={<ArrowLeft />} onClick={onBack} />
-				<span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted" title={path ?? name}>
-					{name}
+				<span className="flex min-w-0 flex-1" title={path ?? name}>
+					<FileName name={name} className="font-mono text-xs text-fg-muted" />
 				</span>
 				<ExpandPreview
 					name={name}

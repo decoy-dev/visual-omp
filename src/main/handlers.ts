@@ -11,6 +11,8 @@ import { findSessionFile, listProjects, listSessions, readSessionFile } from "./
 import { sessionOwnership } from "./omp/elsewhere";
 import { followSessions } from "./omp/follow";
 import { getPrefs, setPrefs } from "./prefs";
+import { gateHostStart } from "./services/approval-default";
+import { ensureNewUserApproval } from "./features/config";
 import { killTerminal, resizeTerminal, startTerminal, writeTerminal } from "./terminals";
 
 /** Only web links leave the app; everything else would let content launch local programs. */
@@ -65,7 +67,8 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("sessions:ownership", async file => (await sessionOwnership([file])).get(file) ?? "unknown");
 	handle("sessions:follow", files => followSessions(files));
 
-	handle("host:start", options => startHost(options));
+	// A fresh profile's chats wait for the "Ask me first" default (services/approval-default.ts).
+	handle("host:start", gateHostStart(ensureNewUserApproval, startHost));
 	handle("host:stop", hostId => stopHost(hostId));
 	handle("host:write", (hostId, data) => getHost(hostId).write(data));
 	handle("host:submit", (hostId, text, mode) => getHost(hostId).submit(text, mode));

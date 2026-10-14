@@ -1,6 +1,6 @@
 /**
  * Command registry: the single list of user actions. The command palette, app menu accelerators,
- * session-header buttons and keyboard shortcuts all run commands from here, so an action is
+ * the session ⋯ menu and keyboard shortcuts all run commands from here, so an action is
  * defined once. Features register commands from `features/<name>/index.ts`.
  */
 import type { Icon } from "@phosphor-icons/react";
@@ -32,7 +32,11 @@ export interface CommandSpec {
 	icon?: Icon;
 	/** Display shortcut, e.g. "⌘⇧R"; actual accelerators live in the app menu or keymap. */
 	shortcut?: string;
-	/** Shown as a session-header button when set; lower numbers appear first (max 5 visible). */
+	/**
+	 * Position in the session header's ⋯ "More actions" menu; commands without it stay out of that menu. Lower numbers
+	 * come first, and a separator falls between hundreds: 100s this chat (rename, share, history), 200s work modes,
+	 * 300s the omp process, 400s managers such as Helpers, 500s the chat's place in the window (side by side, close).
+	 */
 	header?: number;
 	/** Destructive: rendered in `--err` and requires ⌘⏎ in the palette. */
 	danger?: boolean;

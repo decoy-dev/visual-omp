@@ -1,58 +1,20 @@
 /**
- * The composer's own bottom-row tools, contributed through `chatSlots` like any feature's:
- * Shell `!` / Python `$` quick modes (order 30), voice (50, VoiceTool.tsx) and the context ring (60).
- * They compact with the card's row tiers (Composer.tsx `ROW_TIERS`, DESIGN §3.6).
+ * The composer's own bottom-row tools, contributed through `chatSlots` like any feature's: voice (order
+ * 50, VoiceTool.tsx) and the context ring (90, right of the model and thinking buttons). The ring drops
+ * its percentage label in the row's compact states (Composer.tsx `useRowState`, DESIGN §3.6).
  */
 import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { type ChatSlotProps, chatSlots } from "../../registry/slots";
 import { Button, cn, ContextRing, contextZone, Popover, PopoverContent, PopoverTrigger, Progress, Tooltip } from "../../ui";
-import { type ComposerMode, useComposerDrafts } from "./drafts";
+import type { ComposerMode } from "./drafts";
 import { VoiceTool } from "./VoiceTool";
 
-/** The quick modes and the glyph that enters each one; the ＋ menu lists them when the row folds them away. */
+/** The quick modes and the glyph that enters each one at the start of an empty box; the ＋ menu lists them. */
 export const QUICK_MODES: ReadonlyArray<{ mode: ComposerMode; glyph: string }> = [
 	{ mode: "shell", glyph: "!" },
 	{ mode: "python", glyph: "$" },
 ];
-
-function ModeToggles({ session }: ChatSlotProps) {
-	const { t } = useTranslation("composer");
-	const active = useComposerDrafts(state => state.modes[session.tabId] ?? null);
-	const readOnly = useSyncExternalStore(session.subscribe, () => session.getSnapshot().readOnly);
-	return (
-		<div className="flex shrink-0 items-center gap-0.5 group-data-fold-modes/composer:hidden">
-			{QUICK_MODES.map(({ mode, glyph }) => {
-				const pressed = active === mode;
-				return (
-					<Tooltip key={mode} content={t(`modes.${mode}.label`)} shortcut={glyph}>
-						<button
-							type="button"
-							aria-pressed={pressed}
-							aria-label={t(`modes.${mode}.label`)}
-							disabled={readOnly}
-							onClick={() => {
-								const store = useComposerDrafts.getState();
-								store.setMode(session.tabId, pressed ? null : mode);
-								store.focus(session.tabId);
-							}}
-							className={cn(
-								"inline-flex h-7 min-w-7 items-center justify-center gap-1.5 rounded-md px-2 text-sm font-medium outline-none transition-colors duration-(--dur-fast) group-data-compact-modes/composer:px-0",
-								"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45",
-								pressed ? "bg-accent-muted text-accent" : "text-fg-muted enabled:hover:bg-hover enabled:hover:text-fg",
-							)}
-						>
-							<span aria-hidden className="font-mono font-semibold">
-								{glyph}
-							</span>
-							<span className="group-data-compact-modes/composer:hidden">{t(`modes.${mode}.short`)}</span>
-						</button>
-					</Tooltip>
-				);
-			})}
-		</div>
-	);
-}
 
 const formatTokens = new Intl.NumberFormat(undefined, { notation: "compact", maximumFractionDigits: 1 });
 
@@ -70,9 +32,9 @@ function ContextTool({ session }: ChatSlotProps) {
 					<button
 						type="button"
 						aria-label={t("context.label", { percent })}
-						className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md px-1 outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring group-data-fold-ring/composer:hidden"
+						className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md px-1 outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 					>
-						<ContextRing value={usage.percent} showLabel={zone !== "normal"} className="group-data-tight/composer:[&>span]:hidden" />
+						<ContextRing value={usage.percent} showLabel={zone !== "normal"} className="group-data-compact/composer:[&>span]:hidden" />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
@@ -110,6 +72,5 @@ function ContextTool({ session }: ChatSlotProps) {
 	);
 }
 
-chatSlots.register({ id: "composer.modes", placement: "composerTools", order: 30, component: ModeToggles });
 chatSlots.register({ id: "composer.voice", placement: "composerTools", order: 50, component: VoiceTool });
-chatSlots.register({ id: "composer.context", placement: "composerTools", order: 60, component: ContextTool });
+chatSlots.register({ id: "composer.context", placement: "composerTools", order: 90, component: ContextTool });

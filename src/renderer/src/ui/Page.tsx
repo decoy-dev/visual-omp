@@ -57,18 +57,40 @@ export interface PageFrameProps {
 	 * title takes focus so a screen reader announces the new content.
 	 */
 	focusKey: string | number;
+	/** Return to where the reader left the page on an earlier visit instead of the top. */
+	scrollMemory?: PageScrollMemory;
 	children: ReactNode;
 }
 
+export interface PageScrollMemory {
+	/** Saved distance from the top, in px. */
+	top: number;
+	/** The content that sets the page's height has rendered; `top` is applied once, at that point. */
+	ready: boolean;
+	/** Receives the position as the page scrolls. */
+	save(top: number): void;
+}
+
 /** The page layout: back link and optional rail on the left, one scrolling content column. */
-export function PageFrame({ back, nav, width = "form", label, focusKey, children }: PageFrameProps) {
+export function PageFrame({ back, nav, width = "form", label, focusKey, scrollMemory, children }: PageFrameProps) {
 	const content = useRef<HTMLDivElement>(null);
+	const memory = useRef(scrollMemory);
+	memory.current = scrollMemory;
+	const restorePending = useRef(false);
 	useEffect(() => {
 		const scroller = content.current;
 		if (!scroller) return;
 		scroller.scrollTop = 0;
+		restorePending.current = (memory.current?.top ?? 0) > 0;
 		scroller.querySelector<HTMLElement>("[data-page-title]")?.focus({ preventScroll: true });
 	}, [focusKey]);
+	const ready = scrollMemory?.ready ?? false;
+	useEffect(() => {
+		const scroller = content.current;
+		if (!scroller || !ready || !restorePending.current) return;
+		restorePending.current = false;
+		scroller.scrollTop = memory.current?.top ?? 0;
+	}, [focusKey, ready]);
 	return (
 		<section aria-label={label} className="@container/page flex min-h-0 min-w-0 flex-1 bg-bg">
 			{nav && (
@@ -79,7 +101,11 @@ export function PageFrame({ back, nav, width = "form", label, focusKey, children
 					<div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">{nav}</div>
 				</div>
 			)}
-			<div ref={content} className="@container/content min-h-0 min-w-0 flex-1 overflow-y-auto">
+			<div
+				ref={content}
+				onScroll={scrollMemory ? event => memory.current?.save(event.currentTarget.scrollTop) : undefined}
+				className="@container/content min-h-0 min-w-0 flex-1 overflow-y-auto"
+			>
 				<div className={cn("mx-auto w-full px-6 pb-16 pt-5", widths[width])}>
 					<div className={cn("mb-4 flex flex-col gap-3", nav ? "@2xl/page:hidden" : undefined)}>
 						<BackLink {...back} className="self-start" />
@@ -109,7 +135,8 @@ export function PageHeader({ title, description, meta, actions, className }: Pag
 	return (
 		<header className={cn("mb-8 flex flex-col gap-4 @2xl/content:flex-row @2xl/content:items-start", className)}>
 			<div className="min-w-0 flex-1">
-				<h1 data-page-title tabIndex={-1} className={cn("text-page font-bold tracking-[-0.02em] text-fg [overflow-wrap:anywhere]", focusRing)}>
+				{/* `w-fit` keeps the keyboard focus ring around the words instead of the whole column. */}
+				<h1 data-page-title tabIndex={-1} className={cn("w-fit max-w-full rounded-sm text-page font-bold tracking-[-0.02em] text-fg [overflow-wrap:anywhere]", focusRing)}>
 					{title}
 				</h1>
 				{description && <p className="mt-1.5 text-md text-fg-muted">{description}</p>}

@@ -4,7 +4,7 @@ import { chatSlots } from "../registry/slots";
 import { elapsed, useNow, useSessionView } from "../shell/hooks";
 import { useApp } from "../state/app";
 import type { SessionController, SessionView } from "../state/session";
-import { Button, cn, Expand, StatusDot, WorkingIndicator } from "../ui";
+import { Button, cn, Expand, WorkingIndicator } from "../ui";
 import { Composer } from "./composer/Composer";
 import { friendlySummary, resolveToolCall } from "./friendly";
 import { SessionHeader } from "./SessionHeader";
@@ -25,10 +25,10 @@ function Banner({ tone, role = "status", children }: { tone: "info" | "warn" | "
 }
 
 /**
- * A read-only chat follows another omp window's file. Shows whether that still works, whether
- * ownership could be checked, and offers "Continue here" only once main reported the file free.
+ * A read-only chat follows another omp window's file; the header says it is read-only. This adds what needs more
+ * than the header line: a file that stopped updating, and "Continue here" once main reported the file free.
  */
-function FollowRow({ session, follow }: { session: SessionController; follow: SessionView["follow"] }): ReactNode {
+function FollowNotice({ session, follow }: { session: SessionController; follow: SessionView["follow"] }): ReactNode {
 	const { t } = useTranslation("chat");
 	const [checking, setChecking] = useState(false);
 	const [refused, setRefused] = useState(false);
@@ -59,17 +59,12 @@ function FollowRow({ session, follow }: { session: SessionController; follow: Se
 			</Banner>
 		);
 	}
-	return (
-		<div role="status" className="mx-auto mt-3 flex w-full max-w-(--chat-max) items-center gap-2.5 px-6 text-sm text-fg-muted">
-			<StatusDot status="live" label={t("followingLabel")} />
-			{follow?.ownership === "unknown" ? t("follow.unknown") : t("readOnly")}
-		</div>
-	);
+	return null;
 }
 
 function StateBanner({ session, view }: { session: SessionController; view: SessionView }): ReactNode {
 	const { t } = useTranslation("chat");
-	if (view.readOnly) return <FollowRow session={session} follow={view.follow} />;
+	if (view.readOnly) return <FollowNotice session={session} follow={view.follow} />;
 	if (view.mode === "exited") {
 		const code = view.host?.exitCode;
 		return (
@@ -84,8 +79,6 @@ function StateBanner({ session, view }: { session: SessionController; view: Sess
 			</Banner>
 		);
 	}
-	if (view.mode === "reconnecting") return <Banner tone="warn">{t("reconnecting")}</Banner>;
-	if (view.mode === "history") return <Banner tone="info">{t("historyNotice")}</Banner>;
 	if (view.error) return <Banner tone="err">{view.error}</Banner>;
 	return null;
 }

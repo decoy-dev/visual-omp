@@ -14,14 +14,10 @@
 			{ "title": "Clean up this folder", "text": "Find unused files and duplicated code in this folder. List them and ask me before deleting anything." }
 		]
 	},
-	"reconnecting": "Reconnecting to omp…",
 	"exited": "omp stopped{{code}}.",
 	"exitedCode": " (exit {{code}})",
 	"restartOmp": "Start omp again",
-	"readOnly": "Open in another window. This view updates as that window works; reply from there.",
-	"followingLabel": "Updating from the other window",
 	"follow": {
-		"unknown": "The app could not check whether another omp window has this chat open, so this view only follows it.",
 		"unreadable": "This view stopped updating because the chat file could not be read ({{error}}). It shows what loaded before that.",
 		"unknownError": "unknown error",
 		"free": "No other omp window appears to have this chat open.",
@@ -32,7 +28,6 @@
 		"text": "visual-omp can't tell on Windows whether a terminal also has this chat open. Close it there before replying here.",
 		"dismiss": "Hide note"
 	},
-	"historyNotice": "Showing the saved chat. omp starts when you send a message.",
 	"thoughts": "Thinking",
 	"thinking": "Thinking…",
 	"redactedThinking": "Thinking (hidden by the model)",
@@ -76,6 +71,22 @@
 		}
 	},
 	"header": {
+		"state": {
+			"saved": "Saved. omp starts when you send a message.",
+			"starting": "Starting omp…",
+			"ready": "Ready for your next message",
+			"working": "Working",
+			"workingFor": "Working… {{elapsed}}",
+			"waiting": "Waiting for your answer",
+			"readOnly": "Read only. This chat is open in another window, so reply there.",
+			"readOnlyFree": "Read only. You can continue this chat here.",
+			"readOnlyUnknown": "Read only. The app could not check whether another window has this chat open.",
+			"reconnecting": "Reconnecting to omp…",
+			"stopped": "omp stopped"
+		},
+		"review": "Review changes",
+		"reviewHint": "Show this project's Git changes in the side panel.",
+		"inspector": "Side panel",
 		"more": "More actions",
 		"view": "Transcript view",
 		"views": { "normal": "Normal", "thinking": "Thinking", "verbose": "Verbose" }

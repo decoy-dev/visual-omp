@@ -41,6 +41,7 @@
 		},
 		"trouble": "Having trouble?",
 		"openHelp": "Open the help guide",
+		"backToSetup": "Back to setup",
 		"stepDone": "Done"
 	},
 	"tour": {
@@ -62,32 +63,36 @@
 			},
 			"dock": {
 				"title": "Watch the work",
-				"body": "This panel shows files, diffs, previews and helpers while omp works."
+				"body": "This panel shows changes, files, previews, outputs, running helpers, the plan and a terminal. Choose one from the menu at the top of the panel."
 			},
 			"statusbar": {
-				"title": "Context and cost",
-				"body": "The status bar shows context use and cost. Click an item for details."
+				"title": "Project and usage status",
+				"body": "The status bar shows git information, available plan usage and omp status. Open Usage & limits for estimated API cost."
 			}
 		}
 	},
 	"help": {
-		"close": "Close help",
 		"title": "Help",
-		"subtitle": "Short guides and definitions of the terms visual-omp uses.",
-		"search": "Search help",
+		"description": "Short guides for common tasks and definitions of the terms visual-omp uses.",
+		"search": "Search guides and terms",
 		"guides": "Guides",
 		"glossary": "Glossary",
-		"back": "All help topics",
-		"noMatches": "No matches. Ask omp instead.",
+		"noMatches": "No matches",
 		"noMatchesBody": "omp can answer questions about itself and about your project.",
+		"noMatchesLimited": "Try other words, or open the omp documentation below.",
 		"askOmp": "Ask omp: “{{q}}”",
 		"askNeedsProject": "Open a project first",
 		"askNeedsProjectBody": "Questions open a new chat, and each chat belongs to a project folder.",
-		"footer": {
-			"tour": "Show the tour again",
-			"shortcuts": "Keyboard shortcuts",
-			"docs": "omp docs",
-			"report": "Report a problem"
+		"actions": {
+			"tour": "Take the tour",
+			"shortcuts": "Keyboard shortcuts"
+		},
+		"more": {
+			"title": "More help",
+			"docs": "omp documentation",
+			"docsBody": "Commands, settings and models for omp, on omp.sh.",
+			"report": "Report a problem",
+			"reportBody": "Opens the visual-omp issue list on GitHub, where you can describe what you did and what happened."
 		},
 		"guide": {
 			"firstChat": {
@@ -101,7 +106,7 @@
 			"autoMode": {
 				"title": "Staying safe with Auto mode",
 				"summary": "Choose how much omp may do before asking you.",
-				"s1": "The pill under the message box sets how much omp does on its own: Ask me first, Edits OK, or Auto.",
+				"s1": "The permission button under the message box sets how much omp does on its own: Ask me first, Edits OK, or Auto.",
 				"s2": "Auto lets omp edit files and run commands without asking for approval. Use it in projects you trust.",
 				"s3": "Want more control? Ask me first makes omp stop before every edit or command so you can approve it.",
 				"s4": "Commit or back up your work before using Auto. Rewinding changes the conversation; it doesn't guarantee that file changes or the effects of commands are undone."

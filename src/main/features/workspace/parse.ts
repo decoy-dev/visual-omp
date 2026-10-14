@@ -1,4 +1,3 @@
-import { z } from "zod";
 import type { RemoteProblem } from "@shared/contracts/workspace";
 
 const OWNER_REPO_RE = /^([A-Za-z0-9](?:[A-Za-z0-9-]{0,38}))\/([A-Za-z0-9._-]{1,100})$/;
@@ -34,29 +33,4 @@ export function classifyRemoteError(stderr: string): RemoteProblem {
 		return "unreachable";
 	}
 	return "notFound";
-}
-
-const CostEntry = z.object({
-	type: z.literal("message"),
-	timestamp: z.string(),
-	message: z.object({
-		role: z.literal("assistant"),
-		usage: z.object({ cost: z.object({ total: z.number() }) }),
-	}),
-});
-
-/** `[epoch ms, USD]` of an assistant reply line in an omp session file; null for any other line. */
-export function replyCost(line: string): [number, number] | null {
-	// Cheap prefilter: only assistant replies carry a usage block.
-	if (!line.includes('"usage"') || !line.includes('"assistant"')) return null;
-	let json: unknown;
-	try {
-		json = JSON.parse(line);
-	} catch {
-		return null;
-	}
-	const parsed = CostEntry.safeParse(json);
-	if (!parsed.success) return null;
-	const at = Date.parse(parsed.data.timestamp);
-	return Number.isFinite(at) ? [at, parsed.data.message.usage.cost.total] : null;
 }

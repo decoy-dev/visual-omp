@@ -1,13 +1,15 @@
 /**
  * The chat composer (DESIGN §3.6): a floating card with the queued-messages tray, image attachments,
- * an auto-growing text box with `@file` mentions, and one bottom row of tools that ends in the action
- * slot (stop while omp works, send when there is something to send).
+ * an auto-growing text box with `@file` mentions, and a bottom row: the ＋ menu (files, prompts, Shell
+ * and Python mode, dictation), the permission button with the work modes, the model and thinking
+ * buttons, the context ring, and the action slot (stop while omp works, send when there is something to
+ * send). The row wraps to two lines before the permission level would lose its words.
  *
  * Keys: Enter sends (queued while omp works), Shift+Enter adds a line, ⌘/Ctrl+Enter sends now (steers
  * the running turn), Esc stops omp when the box is empty. Typing `!` or `$` into an empty box switches
  * to the Shell / Python quick mode, like omp's own editor; Backspace in an empty box leaves it.
  */
-import { ArrowUp, At, BookBookmark, Command, Cpu, GraduationCap, ImageSquare, Lock, Microphone, Paperclip, Plus, Square, X } from "@phosphor-icons/react";
+import { ArrowUp, At, BookBookmark, Command, GraduationCap, ImageSquare, Lock, Microphone, Paperclip, Plus, Square, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import {
 	type ClipboardEvent,
@@ -25,9 +27,9 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { PermissionSubmenu, ThinkingSubmenu, usePickerRequests } from "../../features/session-tools/pickers";
 import { chatSlots } from "../../registry/slots";
 import type { SessionController } from "../../state/session";
+import { useApp } from "../../state/app";
 import {
 	cn,
 	duration,
@@ -61,97 +63,64 @@ const EMPTY: readonly Attachment[] = [];
 const IS_MAC = window.vomp.platform === "darwin";
 
 /**
- * Bottom-row compaction tiers (DESIGN §3.6), in the order they apply: tier n sets the first n data
- * attributes on the card, and the row's tools (including feature slots) read them through
- * `group-data-<tier>/composer` variants. Tiers change only CSS, never the row's DOM, so measuring a
- * tier cannot trigger another measurement.
+ * Bottom-row states (DESIGN §3.6), tried in order until the row fits on one line: `data-compact` turns
+ * the model and thinking buttons into icons and hides the context ring's label; `data-stacked` (which
+ * keeps `data-compact`) lets the row wrap, so the tools and the action slot move to a second line. The
+ * permission button never loses its words in any state. Tools read the states through
+ * `group-data-compact/composer` and `group-data-stacked/composer` variants. States change only CSS,
+ * never the row's DOM, so measuring a state cannot trigger another measurement.
  */
-const ROW_TIERS = [
-	"data-compact-pill", // the permission button drops "runs without asking"
-	"data-compact-modes", // Shell and Python show only their glyph
-	"data-compact-thinking", // thinking shows only its icon
-	"data-fold-modes", // Shell and Python move into the ＋ menu
-	"data-fold-tools", // permission and the idle mic move into the ＋ menu
-	"data-fold-thinking", // thinking moves into the ＋ menu
-	"data-compact-model", // the model button shows only its icon
-	"data-tight", // narrower gaps and padding; the context ring drops its label
-	"data-fold-ring", // the context ring leaves the row (the status bar still shows usage)
-	"data-fold-model", // the model button moves into the ＋ menu; its picker opens at the row's end
-] as const;
+const ROW_STATES: ReadonlyArray<{ compact: boolean; stacked: boolean }> = [
+	{ compact: false, stacked: false },
+	{ compact: true, stacked: false },
+	{ compact: true, stacked: true },
+];
 
 /**
- * The tools fit when every tool's layout box ends inside the strip's content box and no `data-row-label`
- * is squeezed below its control's own max width. Layout boxes (offset*) ignore transforms, so the mic's
- * ping ring and press feedback never count as overflow the way they would in `scrollWidth`.
+ * The row is one flex-wrap line of two groups: ＋ with the leading tools, then the trailing tools with
+ * the action slot. It fits when the trailing group starts on the leading group's line; flex-wrap breaks
+ * lines at each group's unshrunk width, so a fit also means nothing in the row was squeezed.
  */
-function toolsFit(tools: HTMLElement): boolean {
-	// offset* values are whole pixels; the 1px allowance stays inside the strip's padding, so nothing is clipped.
-	const end = tools.offsetLeft + tools.clientWidth - Number.parseFloat(getComputedStyle(tools).paddingRight) + 1;
-	for (const tool of tools.children) {
-		if (tool instanceof HTMLElement && tool.offsetParent && tool.offsetLeft + tool.offsetWidth > end) return false;
-	}
-	for (const label of tools.querySelectorAll<HTMLElement>("[data-row-label]")) {
-		if (label.scrollWidth <= label.clientWidth) continue;
-		const control = label.closest("button") ?? label;
-		// A label cut at its control's max width is by design; a narrower control means the row is short of room.
-		if (!(control.offsetWidth >= Number.parseFloat(getComputedStyle(control).maxWidth) - 1)) return false;
-	}
-	return true;
+function rowFits(lead: HTMLElement, trail: HTMLElement): boolean {
+	return trail.offsetTop < lead.offsetTop + lead.offsetHeight;
 }
 
 /**
- * Applies the lowest tier at which the tools fit, measuring synchronously so no frame shows a crowded
- * row. It settles from tier 0 again when the row's content changes (DOM mutations in the tools, the
- * action slot's size, which also follows the text size, and font loads). When the card narrows it only
- * climbs; when it widens it retries a lower tier once the card is wider than where that tier last
- * failed, so the tier cannot oscillate. Returns the tier so the ＋ menu can offer what was folded away.
+ * Applies the first state at which the row fits, measuring synchronously so no frame shows a crowded
+ * row. It settles again on every card width change (fit only gets easier as the card widens, so it
+ * always starts from the full state) and whenever the row's content changes: DOM mutations in the row,
+ * the action slot's size (which follows the text size) and font loads.
  */
-function useRowTier(card: HTMLElement | null, tools: HTMLElement | null, actions: HTMLElement | null): number {
-	const [tier, setTier] = useState(0);
+function useRowState(card: HTMLElement | null, row: HTMLElement | null, lead: HTMLElement | null, trail: HTMLElement | null, actions: HTMLElement | null): void {
 	useLayoutEffect(() => {
-		if (!card || !tools || !actions) return;
-		/** Card width at which each tier last failed to fit. */
-		let failedAt: number[] = [];
-		let current = 0;
+		if (!card || !row || !lead || !trail || !actions) return;
 		let width = card.offsetWidth;
-		const settle = (from: number) => {
-			let next = from;
-			for (;;) {
-				ROW_TIERS.forEach((attr, index) => card.toggleAttribute(attr, index < next));
-				if (next === ROW_TIERS.length || toolsFit(tools)) break;
-				failedAt[next] = width;
-				next++;
+		const settle = () => {
+			for (const [index, state] of ROW_STATES.entries()) {
+				card.toggleAttribute("data-compact", state.compact);
+				card.toggleAttribute("data-stacked", state.stacked);
+				if (index === ROW_STATES.length - 1 || rowFits(lead, trail)) return;
 			}
-			current = next;
-			setTier(next);
 		};
-		const restart = () => {
-			failedAt = [];
-			settle(0);
-		};
-		restart();
+		settle();
 		const resize = new ResizeObserver(entries => {
-			if (entries.some(entry => entry.target === actions)) return restart();
-			const next = card.offsetWidth;
-			if (next === width) return;
-			const grew = next > width;
-			width = next;
-			let from = current;
-			while (grew && from > 0 && width > (failedAt[from - 1] ?? 0)) from--;
-			settle(from);
+			if (entries.some(entry => entry.target === actions)) return settle();
+			// A stacked row changes the card's height only; that needs no new measurement.
+			if (card.offsetWidth === width) return;
+			width = card.offsetWidth;
+			settle();
 		});
 		resize.observe(card);
 		resize.observe(actions);
-		const mutations = new MutationObserver(restart);
-		mutations.observe(tools, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class"] });
-		document.fonts.addEventListener("loadingdone", restart);
+		const mutations = new MutationObserver(settle);
+		mutations.observe(row, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class"] });
+		document.fonts.addEventListener("loadingdone", settle);
 		return () => {
 			resize.disconnect();
 			mutations.disconnect();
-			document.fonts.removeEventListener("loadingdone", restart);
+			document.fonts.removeEventListener("loadingdone", settle);
 		};
-	}, [card, tools, actions]);
-	return tier;
+	}, [card, row, lead, trail, actions]);
 }
 
 /** Textarea and its highlight mirror must lay text out identically. */
@@ -268,9 +237,11 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 
 	const [root, setRoot] = useState<HTMLDivElement | null>(null);
 	const [card, setCard] = useState<HTMLDivElement | null>(null);
-	const [toolRow, setToolRow] = useState<HTMLDivElement | null>(null);
+	const [row, setRow] = useState<HTMLDivElement | null>(null);
+	const [lead, setLead] = useState<HTMLDivElement | null>(null);
+	const [trail, setTrail] = useState<HTMLDivElement | null>(null);
 	const [actions, setActions] = useState<HTMLDivElement | null>(null);
-	const tier = useRowTier(card, toolRow, actions);
+	useRowState(card, row, lead, trail, actions);
 	const textarea = useRef<HTMLTextAreaElement>(null);
 	const mirror = useRef<HTMLDivElement>(null);
 	const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
@@ -280,6 +251,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 
 	const readOnly = view.readOnly;
 	const working = view.working;
+	const voiceOn = useApp(state => state.prefs?.voiceInput ?? false);
 	const files = useProjectFiles(projectPath, mention !== null);
 	const matches = useMemo(() => (mention && files ? fuzzyFiles(files, mention.query, 40) : null), [mention, files]);
 
@@ -445,6 +417,17 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const pickFiles = async () => {
 		const paths = await window.vomp.invoke("composer:pickFiles", projectPath);
 		if (paths.length > 0) attachPaths(tabId, projectPath, paths);
+		textarea.current?.focus();
+	};
+
+	/**
+	 * ＋ menu items that move focus themselves (to the text box or a dialog) mark the close, so the menu
+	 * skips returning focus to ＋ for them; dismissing the menu (Esc, outside click) still returns it there.
+	 */
+	const menuRedirect = useRef(false);
+	const fromMenu = (action: () => void) => () => {
+		menuRedirect.current = true;
+		action();
 	};
 
 	const startMention = () => {
@@ -466,12 +449,9 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const canSend = !readOnly && (draft.trim().length > 0 || attachments.length > 0);
 	const mod = IS_MAC ? "⌘" : "Ctrl+";
 	const questionId = view.guest?.uiRequest?.reqId ?? null;
-	const leftTools = tools.filter(slot => slot.order < 50);
-	const rightTools = tools.filter(slot => slot.order >= 50);
-	const foldModes = tier > ROW_TIERS.indexOf("data-fold-modes");
-	const foldTools = tier > ROW_TIERS.indexOf("data-fold-tools");
-	const foldThinking = tier > ROW_TIERS.indexOf("data-fold-thinking");
-	const foldModel = tier > ROW_TIERS.indexOf("data-fold-model");
+	// Tools below order 50 lead the row after ＋ (folder, permission); the rest sit before the action slot.
+	const leadTools = tools.filter(slot => slot.order < 50);
+	const trailTools = tools.filter(slot => slot.order >= 50);
 
 	return (
 		<div ref={setRoot} className="relative mx-auto w-full max-w-[760px]">
@@ -605,139 +585,139 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 						)}
 					</div>
 				</div>
-				<div className="relative flex h-10 items-center gap-1 px-2 pb-1.5 group-data-tight/composer:gap-0.5 group-data-tight/composer:px-1.5">
-					<Menu>
-						<Tooltip content={t("plus.tip")}>
-							<MenuTrigger asChild disabled={readOnly}>
-								<button
-									type="button"
-									aria-label={t("plus.label")}
-									className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-fg-muted outline-none transition-colors hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45 data-[state=open]:bg-selected"
+				{/*
+				 * Two groups on one flex-wrap line: ＋ with the leading tools (folder, permission), then the trailing
+				 * tools with the action slot. useRowState picks the state; in the stacked state the trailing group
+				 * wraps to its own line, right-aligned, and wraps again rather than clip on the narrowest cards.
+				 */}
+				<div
+					ref={setRow}
+					className="relative flex min-h-10 flex-wrap items-center gap-1 px-2 pb-1.5 group-data-stacked/composer:gap-x-0.5 group-data-stacked/composer:px-1.5"
+				>
+					<div ref={setLead} className="flex min-w-0 items-center gap-1 group-data-stacked/composer:gap-0.5">
+						<Menu>
+							<Tooltip content={t("plus.tip")}>
+								<MenuTrigger asChild disabled={readOnly}>
+									<button
+										type="button"
+										aria-label={t("plus.label")}
+										className="inline-flex size-7 shrink-0 items-center justify-center rounded-md text-fg-muted outline-none transition-colors hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45 data-[state=open]:bg-selected"
+									>
+										<Plus className="size-4" aria-hidden />
+									</button>
+								</MenuTrigger>
+							</Tooltip>
+							<MenuContent
+								side="top"
+								align="start"
+								onCloseAutoFocus={event => {
+									if (!menuRedirect.current) return;
+									menuRedirect.current = false;
+									event.preventDefault();
+								}}
+							>
+								<MenuItem icon={<Paperclip />} onSelect={fromMenu(() => void pickFiles())}>
+									{t("plus.attach")}
+								</MenuItem>
+								<MenuItem icon={<At />} onSelect={fromMenu(() => requestAnimationFrame(startMention))}>
+									{t("plus.mention")}
+								</MenuItem>
+								<MenuSeparator />
+								<MenuItem icon={<BookBookmark />} onSelect={fromMenu(() => setLibrary("saved"))}>
+									{t("plus.library")}
+								</MenuItem>
+								<MenuItem icon={<GraduationCap />} onSelect={fromMenu(() => setLibrary("skills"))}>
+									{t("plus.skills")}
+								</MenuItem>
+								<MenuItem icon={<Command />} onSelect={fromMenu(() => setLibrary("commands"))}>
+									{t("plus.commands")}
+								</MenuItem>
+								<MenuSeparator />
+								{QUICK_MODES.map(({ mode: quick, glyph }) => (
+									<MenuCheckboxItem
+										key={quick}
+										checked={mode === quick}
+										shortcut={glyph}
+										onSelect={fromMenu(() => {
+											useComposerDrafts.getState().setMode(tabId, mode === quick ? null : quick);
+											requestAnimationFrame(() => textarea.current?.focus());
+										})}
+									>
+										{t(`modes.${quick}.label`)}
+									</MenuCheckboxItem>
+								))}
+								<MenuItem
+									icon={<Microphone />}
+									onSelect={fromMenu(() => {
+										useVoiceRequests.getState().requestStart(tabId);
+										// With voice off the request opens the voice dialog, which takes focus itself.
+										if (voiceOn) requestAnimationFrame(() => textarea.current?.focus());
+									})}
 								>
-									<Plus className="size-4" aria-hidden />
-								</button>
-							</MenuTrigger>
-						</Tooltip>
-						<MenuContent side="top" align="start" onCloseAutoFocus={event => event.preventDefault()}>
-							<MenuItem icon={<Paperclip />} onSelect={() => void pickFiles()}>
-								{t("plus.attach")}
-							</MenuItem>
-							<MenuItem icon={<At />} onSelect={() => requestAnimationFrame(startMention)}>
-								{t("plus.mention")}
-							</MenuItem>
-							{foldTools && (
-								<MenuItem icon={<Microphone />} onSelect={() => useVoiceRequests.getState().requestStart(tabId)}>
 									{t("voice.start")}
 								</MenuItem>
-							)}
-							{foldModes && (
-								<>
-									<MenuSeparator />
-									{QUICK_MODES.map(({ mode: quick, glyph }) => (
-										<MenuCheckboxItem
-											key={quick}
-											checked={mode === quick}
-											shortcut={glyph}
-											onSelect={() => {
-												useComposerDrafts.getState().setMode(tabId, mode === quick ? null : quick);
-												requestAnimationFrame(() => textarea.current?.focus());
-											}}
-										>
-											{t(`modes.${quick}.label`)}
-										</MenuCheckboxItem>
-									))}
-								</>
-							)}
-							{(foldTools || foldThinking || foldModel) && <MenuSeparator />}
-							{foldTools && <PermissionSubmenu session={session} />}
-							{foldModel && (
-								<MenuItem
-									icon={<Cpu />}
-									shortcut="⌘⇧M"
-									onSelect={() => requestAnimationFrame(() => usePickerRequests.getState().openModel(tabId))}
-								>
-									{t("plus.model")}
-								</MenuItem>
-							)}
-							{foldThinking && <ThinkingSubmenu session={session} />}
-							<MenuSeparator />
-							<MenuItem icon={<BookBookmark />} onSelect={() => setLibrary("saved")}>
-								{t("plus.library")}
-							</MenuItem>
-							<MenuItem icon={<GraduationCap />} onSelect={() => setLibrary("skills")}>
-								{t("plus.skills")}
-							</MenuItem>
-							<MenuItem icon={<Command />} onSelect={() => setLibrary("commands")}>
-								{t("plus.commands")}
-							</MenuItem>
-						</MenuContent>
-					</Menu>
-					{/*
-					 * Every tool, including feature slots, in one strip that can only clip sideways, so the ＋ button and
-					 * the action slot always keep their room. Its 4px padding (cancelled by the margin) keeps focus rings
-					 * inside the clip. useRowTier makes sure nothing is clipped short of the last tier.
-					 */}
-					<div
-						ref={setToolRow}
-						className="-mx-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-clip px-1 group-data-tight/composer:-mx-0.5 group-data-tight/composer:gap-0.5 group-data-tight/composer:px-0.5"
-					>
-						{leftTools.map(slot => (
-							<slot.component key={slot.id} session={session} />
-						))}
-						{/* The spacer's negative margin cancels one gap, so it costs nothing when the row is full. */}
-						<div className="-ml-1 flex-1 group-data-tight/composer:-ml-0.5" />
-						{rightTools.map(slot => (
+							</MenuContent>
+						</Menu>
+						{leadTools.map(slot => (
 							<slot.component key={slot.id} session={session} />
 						))}
 					</div>
-					<div ref={setActions} className="relative ml-1 flex shrink-0 items-center gap-1 group-data-tight/composer:ml-0.5">
-						<AnimatePresence initial={false} mode="popLayout">
-							{working && (
-								<motion.span
-									key="stop"
-									layout="position"
-									initial={{ opacity: 0, scale: 0.9 }}
-									animate={{ opacity: 1, scale: 1 }}
-									exit={{ opacity: 0, scale: 0.9, transition: { duration: duration.fast, ease: "easeIn" } }}
-									transition={spring.snappy}
-									className="inline-flex"
-								>
-									<Tooltip content={t("send.stop")} shortcut="Esc">
-										<button
-											type="button"
-											aria-label={t("send.stop")}
-											onClick={() => session.abort()}
-											className="inline-flex size-8 items-center justify-center rounded-md bg-err-bg text-err outline-none transition-[background-color,color,scale] duration-(--dur-fast) hover:bg-err hover:text-fg-inverse active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-										>
-											<Square weight="fill" className="size-3.5" aria-hidden />
-										</button>
-									</Tooltip>
-								</motion.span>
-							)}
-							{(!working || canSend) && (
-								<motion.span
-									key="send"
-									layout="position"
-									initial={{ opacity: 0, scale: 0.9 }}
-									animate={{ opacity: 1, scale: 1 }}
-									exit={{ opacity: 0, scale: 0.9, transition: { duration: duration.fast, ease: "easeIn" } }}
-									transition={spring.snappy}
-									className="inline-flex"
-								>
-									<Tooltip content={working ? t("send.queueTip") : t("send.tip")} shortcut="↵">
-										<button
-											type="button"
-											aria-label={working ? t("send.queue") : t("send.label")}
-											disabled={!canSend}
-											onClick={() => submit(false)}
-											className="inline-flex size-8 items-center justify-center rounded-md bg-accent text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale,opacity] duration-(--dur-fast) enabled:hover:bg-accent-hover enabled:active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45"
-										>
-											<ArrowUp className="size-4" aria-hidden />
-										</button>
-									</Tooltip>
-								</motion.span>
-							)}
-						</AnimatePresence>
+					<div
+						ref={setTrail}
+						className="ml-auto flex min-w-0 items-center justify-end gap-1 group-data-stacked/composer:flex-wrap group-data-stacked/composer:gap-0.5"
+					>
+						{trailTools.map(slot => (
+							<slot.component key={slot.id} session={session} />
+						))}
+						<div ref={setActions} className="relative ml-1 flex shrink-0 items-center gap-1 group-data-stacked/composer:ml-0.5">
+							<AnimatePresence initial={false} mode="popLayout">
+								{working && (
+									<motion.span
+										key="stop"
+										layout="position"
+										initial={{ opacity: 0, scale: 0.9 }}
+										animate={{ opacity: 1, scale: 1 }}
+										exit={{ opacity: 0, scale: 0.9, transition: { duration: duration.fast, ease: "easeIn" } }}
+										transition={spring.snappy}
+										className="inline-flex"
+									>
+										<Tooltip content={t("send.stop")} shortcut="Esc">
+											<button
+												type="button"
+												aria-label={t("send.stop")}
+												onClick={() => session.abort()}
+												className="inline-flex size-8 items-center justify-center rounded-md bg-err-bg text-err outline-none transition-[background-color,color,scale] duration-(--dur-fast) hover:bg-err hover:text-fg-inverse active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+											>
+												<Square weight="fill" className="size-3.5" aria-hidden />
+											</button>
+										</Tooltip>
+									</motion.span>
+								)}
+								{(!working || canSend) && (
+									<motion.span
+										key="send"
+										layout="position"
+										initial={{ opacity: 0, scale: 0.9 }}
+										animate={{ opacity: 1, scale: 1 }}
+										exit={{ opacity: 0, scale: 0.9, transition: { duration: duration.fast, ease: "easeIn" } }}
+										transition={spring.snappy}
+										className="inline-flex"
+									>
+										<Tooltip content={working ? t("send.queueTip") : t("send.tip")} shortcut="↵">
+											<button
+												type="button"
+												aria-label={working ? t("send.queue") : t("send.label")}
+												disabled={!canSend}
+												onClick={() => submit(false)}
+												className="inline-flex size-8 items-center justify-center rounded-md bg-accent text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale,opacity] duration-(--dur-fast) enabled:hover:bg-accent-hover enabled:active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45"
+											>
+												<ArrowUp className="size-4" aria-hidden />
+											</button>
+										</Tooltip>
+									</motion.span>
+								)}
+							</AnimatePresence>
+						</div>
 					</div>
 				</div>
 			</div>

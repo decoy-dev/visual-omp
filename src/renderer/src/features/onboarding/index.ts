@@ -1,21 +1,22 @@
 /**
- * Onboarding & system surfaces: setup screen, first-run tour, help, update notices, background
- * notifications and the quit / close-tab warning.
+ * Onboarding & system surfaces: setup screen, first-run tour, the Help page, update notices,
+ * background notifications and the quit / close-tab warning.
  */
 import { Compass, DownloadSimple, Question } from "@phosphor-icons/react";
 import { registerCommand } from "../../registry/commands";
 import { setTabCloseGuard } from "../../registry/guards";
-import { globals, screens, sheets } from "../../registry/slots";
+import { globals, pages, screens, sheets } from "../../registry/slots";
 import { useApp } from "../../state/app";
-import { HelpSheet } from "./HelpSheet";
+import { openHelp } from "../../state/navigation";
+import { HelpPage } from "./HelpPage";
 import { installNotifications } from "./notifications";
 import { confirmCloseTab, installQuitGuard, QuitDialog } from "./quit";
 import { SetupScreen } from "./SetupScreen";
-import { startTour, TourHost } from "./tour";
+import { startTourFromAnywhere, TourHost } from "./tour";
 import { installUpdateWatchers, OMP_UPDATE_SHEET, OmpUpdateSheet } from "./updates";
 
 screens.register({ id: "setup", component: SetupScreen });
-sheets.register({ id: "help", component: HelpSheet });
+pages.register({ id: "help", component: HelpPage });
 sheets.register({ id: OMP_UPDATE_SHEET, component: OmpUpdateSheet });
 globals.register({ id: "onboarding.tour", component: TourHost });
 globals.register({ id: "onboarding.quit", component: QuitDialog });
@@ -28,7 +29,7 @@ registerCommand({
 	group: "help",
 	icon: Question,
 	shortcut: "F1",
-	run: () => useApp.getState().openSheet("help"),
+	run: openHelp,
 });
 
 registerCommand({
@@ -38,10 +39,7 @@ registerCommand({
 	keywords: "onboarding:commands.tour.keywords",
 	group: "help",
 	icon: Compass,
-	run: () => {
-		useApp.getState().closeSheet();
-		startTour();
-	},
+	run: startTourFromAnywhere,
 });
 
 registerCommand({

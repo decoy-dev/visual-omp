@@ -10,6 +10,7 @@ import type { TFunction } from "i18next";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { SettingsSectionProps } from "@/registry/slots";
 import { controllerFor, useApp } from "@/state/app";
 import type { SessionController } from "@/state/session";
 import {
@@ -24,6 +25,8 @@ import {
 	MenuItem,
 	MenuSeparator,
 	MenuTrigger,
+	Notice,
+	PageHeader,
 	SearchInput,
 	Spinner,
 	toast,
@@ -47,7 +50,7 @@ function idleChats(): SessionController[] {
 	});
 }
 
-export function ProvidersTab({ cwd }: { cwd: string | null }) {
+export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
 	const { t } = useTranslation("manage");
 	const arg = cwd ?? undefined;
 	const state = useResource(() => window.vomp.invoke("providers:list", arg), [arg]);
@@ -123,22 +126,26 @@ export function ProvidersTab({ cwd }: { cwd: string | null }) {
 
 	return (
 		<>
-			<div className="mb-6 flex flex-wrap items-start gap-3">
-				<p className="min-w-60 flex-1 text-md text-fg-muted">{t("providers.intro")}</p>
-				<div className="flex shrink-0 gap-2">
-					<Button size="sm" icon={<ArrowClockwise />} loading={refreshing} disabled={!data} onClick={() => void refresh()}>
-						{t("providers.refresh")}
-					</Button>
-					<Button size="sm" variant="primary" icon={<SignIn />} onClick={() => setLogin({ methodId: null, name: null })}>
-						{t("providers.signInAny")}
-					</Button>
-				</div>
-			</div>
+			<PageHeader
+				title={t("settings.sections.providers")}
+				description={t("providers.description")}
+				actions={
+					<>
+						<Button icon={<ArrowClockwise />} loading={refreshing} disabled={!data} onClick={() => void refresh()}>
+							{t("providers.refresh")}
+						</Button>
+						<Button variant="primary" icon={<SignIn />} onClick={() => setLogin({ methodId: null, name: null })}>
+							{t("providers.signInAny")}
+						</Button>
+					</>
+				}
+			/>
+			<p className="mb-6 text-md text-fg-muted">{t("providers.signInNote")}</p>
 
 			{state.error && (
-				<p role="alert" className="mb-4 text-sm text-err">
+				<Notice tone="err" className="mb-4" actions={<Button size="sm" onClick={() => void state.reload()}>{t("settings.retry")}</Button>}>
 					{state.error}
-				</p>
+				</Notice>
 			)}
 			{!data && !state.error && (
 				<p role="status" className="flex items-center gap-2 text-sm text-fg-muted">
@@ -168,7 +175,7 @@ export function ProvidersTab({ cwd }: { cwd: string | null }) {
 					</SettingsSection>
 
 					<section className="mb-6">
-						<h3 className="text-sm font-semibold text-fg">{t("providers.add.title")}</h3>
+						<h2 className="text-md font-semibold text-fg">{t("providers.add.title")}</h2>
 						<p className="mt-0.5 text-sm text-fg-muted">{t("providers.add.description")}</p>
 						<SearchInput
 							className="mt-3"

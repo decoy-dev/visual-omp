@@ -11,7 +11,7 @@
 			"keywords": "preferences, options, config, theme, permissions, about, version"
 		},
 		"roles": {
-			"title": "Model roles",
+			"title": "Models & roles",
 			"hint": "Choose which model handles each job, such as everyday chat, planning and commit messages.",
 			"keywords": "models, presets, thinking, default model, fast model"
 		},
@@ -39,21 +39,29 @@
 	},
 	"settings": {
 		"title": "Settings",
-		"tabs": {
+		"railLabel": "Settings sections",
+		"groups": {
+			"app": "App",
+			"agent": "Agent",
+			"context": "Context & tools"
+		},
+		"sections": {
 			"general": "General",
 			"appearance": "Appearance",
-			"permissions": "Permissions",
-			"models": "Models",
-			"providers": "Providers",
 			"alerts": "Sounds & alerts",
 			"shortcuts": "Shortcuts",
-			"about": "About",
-			"advanced": "Advanced"
+			"models": "Models & roles",
+			"permissions": "Permissions",
+			"providers": "Providers",
+			"helpers": "Helpers",
+			"advanced": "Advanced",
+			"about": "About"
 		},
 		"scope": {
-			"label": "Save for",
+			"label": "Where these settings apply",
 			"global": "All projects",
-			"project": "This project ({{name}})"
+			"project": "Project: {{name}}",
+			"noProject": "This project"
 		},
 		"source": {
 			"project": "This project",
@@ -78,6 +86,7 @@
 		"retry": "Try again"
 	},
 	"general": {
+		"description": "Choose how much omp may do on its own and how your chats look.",
 		"safety": "Safety",
 		"approvalMode": {
 			"label": "Permission mode",
@@ -119,6 +128,7 @@
 		}
 	},
 	"appearance": {
+		"description": "Change the theme, the text size and the motion in the app.",
 		"look": "Look",
 		"theme": {
 			"label": "Theme",
@@ -142,7 +152,8 @@
 		}
 	},
 	"permissions": {
-		"intro": "Choose, tool by tool, whether omp may use it without asking. Tools left on Default follow your permission mode (now: {{mode}}).",
+		"description": "Choose, tool by tool, whether omp may use it without asking.",
+		"intro": "Tools left on Default follow your permission mode (now: {{mode}}).",
 		"listLabel": "Tool permissions",
 		"rowLabel": "Permission for {{tool}}",
 		"choice": {
@@ -186,24 +197,15 @@
 	},
 	"modelsTab": {
 		"group": "New chats",
-		"title": "Models",
-		"description": "The model that answers in new chats, and how hard it thinks.",
-		"defaultModel": {
-			"label": "Default model",
-			"description": "Used for every chat unless you switch."
-		},
+		"description": "Choose which model handles each job, such as everyday chat, planning and commit messages.",
 		"thinking": {
 			"label": "Default thinking",
 			"description": "Higher thinking levels allow more reasoning and may take longer or cost more."
-		},
-		"roles": {
-			"title": "Model roles",
-			"description": "Choose which model handles each job, such as everyday chat, planning and commit messages.",
-			"open": "Open model roles"
 		}
 	},
 	"providers": {
-		"intro": "What omp reports about the providers it can use. Signing in runs omp's own sign-in, and omp saves the result in its credential store on this computer.",
+		"description": "Sign in to model providers and see what omp reports about them.",
+		"signInNote": "Signing in runs omp's own sign-in, and omp saves the result in its credential store on this computer.",
 		"refresh": "Check again",
 		"signInAny": "Sign in to a provider",
 		"loading": "Asking omp which providers are set up…",
@@ -268,7 +270,6 @@
 		}
 	},
 	"alerts": {
-		"title": "Background alerts",
 		"description": "Find out when omp needs you while visual-omp is in the background.",
 		"notifications": {
 			"label": "Alert me in the background",
@@ -339,6 +340,7 @@
 		"reportIssue": "Report an issue"
 	},
 	"advanced": {
+		"description": "Every omp setting, including the ones other sections don't show.",
 		"search": "Search every omp setting",
 		"editedOnly": "Changed only",
 		"count_one": "{{count}} setting",
@@ -358,10 +360,6 @@
 			"array": "{{key}} needs a list, like [\"a\", \"b\"].",
 			"record": "{{key}} needs key-value pairs, like {\"name\": \"value\"}."
 		},
-		"scopeNote": {
-			"global": "Changes apply to all projects.",
-			"project": "Changes apply to this project only and win over your all-projects values."
-		},
 		"resetAll": {
 			"button": "Reset all to defaults",
 			"title": "Reset all settings?",
@@ -378,41 +376,18 @@
 	},
 	"roles": {
 		"title": "Model roles",
-		"subtitle": "Choose which model handles each job, such as everyday chat, planning and commit messages.",
-		"listTitle": "Roles",
+		"description": "Changes to roles wait until you save them.",
 		"unsaved": "Unsaved changes",
 		"refreshModels": "Refresh the model list",
 		"loadFailed": "Couldn't load model roles",
 		"auto": "Let omp choose",
-		"autoHelp": "omp picks a suitable model for this job automatically.",
-		"model": "Model",
 		"modelFor": "Model for {{role}}",
-		"thinking": "Thinking",
 		"thinkingFor": "Thinking for {{role}}",
 		"thinkingDefault": "Model's default",
-		"clear": "Let omp choose instead",
 		"customChip": "Custom",
-		"usedFor": "Used for:",
 		"missing": "This model isn't available. Pick another one.",
 		"aliasHelp": "This role uses whatever model {{alias}} is set to.",
 		"overridden": "This project sets its own model for this role ({{value}}), so that value applies here. Switch to \"This project\" to change it.",
-		"names": {
-			"default": "Default",
-			"smol": "Fast",
-			"slow": "Thinking",
-			"vision": "Vision",
-			"plan": "Architect",
-			"commit": "Commit",
-			"tiny": "Tiny",
-			"memory": "Memory",
-			"task": "Subtask",
-			"advisor": "Advisor",
-			"image": "Image generation",
-			"web": "Web search",
-			"speech": "Speech",
-			"dictation": "Dictation",
-			"judge": "Judge"
-		},
 		"usage": {
 			"default": "Every chat, unless you switch models.",
 			"plan": "Plan mode: working out an approach before any files change.",
@@ -464,13 +439,6 @@
 			"nameTaken": "A preset with this name exists. Saving replaces it.",
 			"save": "Save preset",
 			"replace": "Replace preset"
-		},
-		"discard": {
-			"title": "Discard your changes?",
-			"body_one": "You have {{count}} unsaved change to model roles.",
-			"body_other": "You have {{count}} unsaved changes to model roles.",
-			"keep": "Keep editing",
-			"confirm": "Discard changes"
 		}
 	},
 	"agents": {
@@ -494,10 +462,6 @@
 		"fix": "Fix file",
 		"warnings_one": "{{count}} problem",
 		"warnings_other": "{{count}} problems",
-		"running": "Running now",
-		"runningIn_one": "Running in {{title}}",
-		"runningIn_other": "Running in {{title}} and {{count}} more chats",
-		"untitledChat": "a new chat",
 		"defaultModel": "Default model",
 		"overrideHint": "You picked this model for the helper.",
 		"enable": "Let omp use {{name}}",

@@ -278,7 +278,7 @@ const Hunk = memo(function Hunk({
 				const commentLabel = t("diff.commentOnLine", { line: number });
 				return (
 					<div key={`${hunk.header}:${index}`}>
-						<div className={cn("group/line flex min-h-5 font-mono text-[12px] leading-5", ROW_BG[line.kind])}>
+						<div className={cn("group/line flex min-h-5 font-mono text-code leading-5", ROW_BG[line.kind])}>
 							<span className="relative w-10 shrink-0 select-none pr-1.5 text-right text-fg-faint tabular-nums">
 								{line.oldLine ?? ""}
 								{number !== null && (
@@ -386,9 +386,13 @@ function FileSection({
 					{displayPath}
 				</span>
 				{fileComments.length > 0 && (
-					<span className="text-xs text-accent">{t("diff.commentCount", { count: fileComments.length })}</span>
+					<span className="inline-flex shrink-0 items-center gap-0.5 text-xs text-accent tabular-nums" title={t("diff.commentCount", { count: fileComments.length })}>
+						<ChatCenteredDots aria-hidden className="size-3.5" />
+						<span aria-hidden>{fileComments.length}</span>
+						<span className="sr-only">{t("diff.commentCount", { count: fileComments.length })}</span>
+					</span>
 				)}
-				<span className="font-mono text-xs tabular-nums">
+				<span className="shrink-0 font-mono text-xs tabular-nums">
 					<span className="text-diff-add-text">+{file.additions}</span>{" "}
 					<span className="text-diff-del-text">−{file.deletions}</span>
 				</span>
@@ -453,7 +457,8 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 	const visible = usePaneVisible("diff");
 	const [diff, setDiff] = useState<GitDiff | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
-	const [listOpen, setListOpen] = useState(true);
+	// The file list starts hidden in a narrow dock, so the diff keeps the width; the path above names the file.
+	const [listOpen, setListOpen] = useState(() => useApp.getState().dockWidth >= 400);
 	const listId = useId();
 	const [selected, setSelected] = useState<string | null>(null);
 	const [draft, setDraft] = useState<Draft | null>(null);
@@ -625,7 +630,7 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 							animate={{ opacity: 1, x: 0 }}
 							exit={{ opacity: 0, x: -12, transition: { duration: duration.fast, ease: "easeIn" } }}
 							transition={{ x: spring.snappy, opacity: { duration: duration.base, ease: ease.outQuart } }}
-							className="w-[140px] shrink-0 overflow-y-auto border-r border-border bg-panel py-1"
+							className="w-[min(40%,11rem)] shrink-0 overflow-y-auto border-r border-border bg-panel py-1"
 						>
 							<AnimatePresence initial={false}>
 								{files.map(file => {
@@ -683,8 +688,8 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 					))}
 				</div>
 			</div>
-			<Expand open={comments.length > 0} className="flex h-12 items-center gap-2 border-t border-border bg-panel px-3">
-				<span className="min-w-0 flex-1 truncate text-sm text-fg-muted">{t("diff.pending", { count: comments.length })}</span>
+			<Expand open={comments.length > 0} className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-panel px-3 py-2">
+				<span className="min-w-0 flex-[1_1_10rem] text-sm text-fg-muted">{t("diff.pending", { count: comments.length })}</span>
 				<Button size="sm" variant="ghost" onClick={() => useComments.getState().clear(projectPath)}>
 					{t("diff.clearComments")}
 				</Button>

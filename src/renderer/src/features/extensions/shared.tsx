@@ -1,23 +1,8 @@
-/** Hooks and small building blocks shared by the extensions sheets. */
+/** Hooks and small building blocks shared by the extensions screens. */
 import { type DependencyList, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import type { EventChannel, IpcEventMap } from "@shared/ipc";
-import { useSheetPresence } from "@/registry/sheetPresence";
-import { useApp } from "@/state/app";
-import { Button, cn, Dialog, DialogContent, Input, Notice, Sheet, SheetContent } from "@/ui";
+import { Button, cn, Dialog, DialogContent, Input, Notice } from "@/ui";
 import { errorText } from "./format";
-
-/** Props every extensions sheet accepts via `openSheet(id, { projectPath, scope })`. */
-export interface ExtensionSheetProps {
-	projectPath?: string | null;
-	/** Land on the all-projects (`global`) or this-project view. */
-	scope?: "global" | "project";
-}
-
-/** The project the sheet is about: the one it was opened for, else the focused project. */
-export function useSheetProject(props: ExtensionSheetProps | undefined): string | null {
-	const active = useApp(state => state.activeProject);
-	return props?.projectPath ?? active;
-}
 
 export interface Loaded<T> {
 	data: T | null;
@@ -72,26 +57,22 @@ export function useDebounced<T>(value: T, ms: number): T {
 	return settled;
 }
 
-export interface ExtensionSheetFrameProps {
-	close(): void;
-	title: ReactNode;
-	description?: ReactNode;
-	width: number;
-	actions?: ReactNode;
-	footer?: ReactNode;
-	bodyClassName?: string;
-	children: ReactNode;
-}
-
-/** Right-docked modal sheet; dismissing it calls `close()`, and in the sheet host it slides out before unmounting. */
-export function ExtensionSheetFrame({ close, width, children, ...content }: ExtensionSheetFrameProps) {
-	const presence = useSheetPresence();
+/**
+ * One view of a Settings section: its list, or a detail view shown in its place (the MCP server
+ * editor). On mount it moves focus to the view's `PageHeader` title so the change is announced,
+ * unless focus is already inside it (an autofocused field).
+ */
+export function SectionView({ className, children }: { className?: string; children: ReactNode }) {
+	const root = useRef<HTMLDivElement>(null);
+	useEffect(() => {
+		const el = root.current;
+		if (!el || el.contains(document.activeElement)) return;
+		el.querySelector<HTMLElement>("[data-page-title]")?.focus();
+	}, []);
 	return (
-		<Sheet open={presence.open} onOpenChange={open => !open && close()}>
-			<SheetContent width={width} onCloseAutoFocus={presence.exited} {...content}>
-				{children}
-			</SheetContent>
-		</Sheet>
+		<div ref={root} className={className}>
+			{children}
+		</div>
 	);
 }
 

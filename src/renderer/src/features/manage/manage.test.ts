@@ -1,7 +1,6 @@
 import type { ModelInfo, ModelRoleInfo, SettingInfo } from "@shared/contracts/config";
 import { describe, expect, it } from "vitest";
-import type { GuestSnapshot } from "@/collab/lib/client";
-import { copyName, runningAgentChats } from "./agents/agentsModel";
+import { copyName } from "./agents/agentsModel";
 import { changedRoleIds, modelValueStatus, orderRoles, thinkingChoices } from "./roles/rolesModel";
 import { buildAdvancedRows, parseSettingInput } from "./settings/advancedModel";
 
@@ -142,27 +141,6 @@ describe("model roles", () => {
 });
 
 describe("helpers hub", () => {
-	function guest(progress: [string, string, string][], lifecycle: [string, string, string][] = []): GuestSnapshot {
-		return {
-			progress: new Map(progress.map(([id, agent, status]) => [id, { progress: { id, agent, status } }])),
-			lifecycle: new Map(lifecycle.map(([id, agent, status]) => [id, { id, agent, status }])),
-		} as unknown as GuestSnapshot;
-	}
-
-	it("lists chats where a helper type is running, including just-started ones", () => {
-		const running = runningAgentChats([
-			{ title: "Fix checkout", guest: guest([["1", "reviewer", "running"], ["2", "scout", "completed"]]) },
-			{ title: "Docs", guest: guest([], [["9", "reviewer", "started"], ["8", "task", "completed"]]) },
-			{ title: "Idle", guest: null },
-		]);
-		expect(Object.fromEntries(running)).toEqual({ reviewer: ["Fix checkout", "Docs"] });
-	});
-
-	it("trusts progress over a stale started lifecycle event", () => {
-		const running = runningAgentChats([{ title: "A", guest: guest([["1", "scout", "completed"]], [["1", "scout", "started"]]) }]);
-		expect(running.size).toBe(0);
-	});
-
 	it("picks the first free copy name", () => {
 		expect(copyName("reviewer", new Set(["reviewer"]))).toBe("reviewer-copy");
 		expect(copyName("reviewer", new Set(["reviewer-copy", "reviewer-copy-2"]))).toBe("reviewer-copy-3");

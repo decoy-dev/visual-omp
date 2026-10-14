@@ -7,15 +7,17 @@ import { listRowMotion } from "@/features/manage/listMotion";
 import { Button, Chip, EmptyState, Input, Menu, MenuContent, MenuItem, MenuTrigger, Notice, PresenceSwap, Skeleton, Switch, toast } from "@/ui";
 import { compareVersions, errorText } from "../format";
 import { LetterTile, useIpcEvent, useLoad } from "../shared";
+import type { BrowseFilter } from "./model";
 import { InlineProgress, OperationLog } from "./OperationLog";
 import { type Operation, useOperations } from "./operations";
-import type { BrowseFilter } from "./SkillsSheet";
 
 interface TabProps {
 	cwd: string;
 	projectPath: string | null;
 	filter: BrowseFilter;
 	query: string;
+	/** Switch the section to what the marketplaces offer, where plugins can be installed. */
+	onBrowse(): void;
 }
 
 type Installed = NpmPlugin | MarketplacePlugin;
@@ -24,7 +26,7 @@ function matches(needle: string, ...fields: (string | null)[]): boolean {
 	return !needle || fields.some(field => field?.toLowerCase().includes(needle));
 }
 
-export function PluginsTab({ cwd, projectPath, filter, query }: TabProps) {
+export function PluginsTab({ cwd, projectPath, filter, query, onBrowse }: TabProps) {
 	const { t } = useTranslation("extensions");
 	const listing = useLoad(() => window.vomp.invoke("plugins:list", cwd), [cwd]);
 	const catalog = useLoad(() => window.vomp.invoke("plugins:discover", undefined, cwd), [cwd]);
@@ -160,6 +162,13 @@ export function PluginsTab({ cwd, projectPath, filter, query }: TabProps) {
 					icon={<Package />}
 					title={needle ? t("plugins.noMatch", { q: query.trim() }) : t(filter === "project" ? "plugins.emptyProject" : "plugins.empty")}
 					body={needle ? undefined : t("plugins.emptyBody")}
+					actions={
+						needle ? undefined : (
+							<Button variant="primary" onClick={onBrowse}>
+								{t("plugins.browse")}
+							</Button>
+						)
+					}
 				/>
 			) : (
 				<ul className="relative flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel">

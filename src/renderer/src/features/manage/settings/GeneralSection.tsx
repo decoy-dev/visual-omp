@@ -1,17 +1,20 @@
 import type { AppPreferences } from "@shared/ipc";
-import type { ApprovalMode, ApprovalState } from "@shared/contracts/config";
+import type { ApprovalMode } from "@shared/contracts/config";
 import { useTranslation } from "react-i18next";
+import type { SettingsSectionProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
-import { Segmented, Select, SelectItem, Switch } from "@/ui";
-import type { Resource } from "../shared";
-import { SettingRow, SettingsSection, SourceChip } from "./parts";
-import type { OmpSettings } from "./useOmpSettings";
+import { PageHeader, Segmented, Select, SelectItem, Switch } from "@/ui";
+import { useResource } from "../shared";
+import { ConfigNotices, SectionScope, SettingRow, SettingsSection, SourceChip } from "./parts";
+import { useOmpSettings } from "./useOmpSettings";
 
-export const APPROVAL_MODES: readonly ApprovalMode[] = ["always-ask", "write", "yolo"];
+const APPROVAL_MODES: readonly ApprovalMode[] = ["always-ask", "write", "yolo"];
 const TRANSCRIPT_MODES: readonly AppPreferences["transcriptMode"][] = ["normal", "thinking", "verbose"];
 
-export function GeneralTab({ omp, approval }: { omp: OmpSettings; approval: Resource<ApprovalState> }) {
+export function GeneralSection({ projectPath, scope, setScope }: SettingsSectionProps) {
 	const { t } = useTranslation("manage");
+	const omp = useOmpSettings(projectPath, scope);
+	const approval = useResource(() => window.vomp.invoke("config:approval", projectPath ?? undefined), [projectPath]);
 	const prefs = useApp(state => state.prefs);
 	const setPrefs = useApp(state => state.setPrefs);
 	const compaction = omp.byKey.get("compaction.enabled");
@@ -28,6 +31,19 @@ export function GeneralTab({ omp, approval }: { omp: OmpSettings; approval: Reso
 
 	return (
 		<>
+			<PageHeader
+				title={t("settings.sections.general")}
+				description={t("general.description")}
+				meta={<SectionScope projectPath={projectPath} scope={scope} setScope={setScope} />}
+			/>
+			<ConfigNotices
+				cwd={projectPath}
+				error={omp.snapshot.error}
+				onReload={() => {
+					void omp.snapshot.reload();
+					void approval.reload();
+				}}
+			/>
 			<SettingsSection title={t("general.safety")}>
 				<SettingRow
 					label={t("general.approvalMode.label")}

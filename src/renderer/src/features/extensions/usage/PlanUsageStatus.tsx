@@ -3,7 +3,7 @@ import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PaneProps } from "@/registry/slots";
 import { useNow, useSessionView } from "@/shell/hooks";
-import { useApp } from "@/state/app";
+import { openUsage } from "@/state/navigation";
 import { cn, Tooltip } from "@/ui";
 import { focusRing } from "@/ui/styles";
 import { formatAge, formatDuration } from "../format";
@@ -123,7 +123,7 @@ function PlanTooltip({ usage, now }: { usage: ProviderUsage[]; now: number }) {
 }
 
 /**
- * Status bar (right, after the context ring): plan usage of the providers the focused chat and its
+ * Status bar (right): plan usage of the providers the focused chat and its
  * running subagents use, one meter per provider showing the window `pickTop` in planUsage.ts chooses
  * (an exhausted window, else 5h, else 7d, else monthly, else the most-used). Opens Usage & limits.
  */
@@ -171,7 +171,7 @@ export function PlanUsageStatus({ session, projectPath }: PaneProps) {
 				<button
 					type="button"
 					aria-label={t("usage.plan.open")}
-					onClick={() => useApp.getState().openSheet("usage", { projectPath })}
+					onClick={() => openUsage({ projectPath })}
 					className={cn("inline-flex h-full items-center gap-3 rounded-sm px-1.5 text-fg-muted hover:bg-hover hover:text-fg", focusRing)}
 				>
 					{usage.map((provider, index) => (

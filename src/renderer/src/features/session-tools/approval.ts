@@ -1,10 +1,11 @@
 /**
- * The permission mode shown in the composer pill and the header mode chip.
+ * The permission level shown by the composer's permission button.
  *
  * omp 18.4.4 has no slash command or keybinding that changes approval for a running chat: the mode is
  * the `tools.approvalMode` setting (`--approval-mode` only applies at launch). A running omp watches its
- * config files and applies changes live (config/settings.ts `#syncFileWatchers`), so the pill writes
+ * config files and applies changes live (config/settings.ts `#syncFileWatchers`), so the button writes
  * the setting for this project (`<project>/.omp/config.yml`) and every chat in the project follows.
+ * New profiles start on "Ask me first" through a one-time global default (main/features/approval-default.ts).
  */
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 import type { ApprovalMode, ApprovalState } from "@shared/contracts/config";

@@ -22,10 +22,9 @@ import {
 import { focusRing } from "@/ui/styles";
 import { errorText, formatCount } from "../format";
 import { ConfirmDialog, LetterTile, useDebounced, useIpcEvent, useLoad } from "../shared";
-import { lockedReason, providerLabel } from "./model";
+import { type BrowseFilter, lockedReason, providerLabel } from "./model";
 import { InlineProgress, OperationLog } from "./OperationLog";
 import { type Operations, useOperations } from "./operations";
-import type { BrowseFilter } from "./SkillsSheet";
 import { SkillDrawer } from "./SkillDrawer";
 
 interface TabProps {
@@ -33,9 +32,11 @@ interface TabProps {
 	projectPath: string | null;
 	filter: BrowseFilter;
 	query: string;
+	/** Switch the section to the registry, where skills can be installed. */
+	onBrowse(): void;
 }
 
-export function SkillsTab({ cwd, projectPath, filter, query }: TabProps) {
+export function SkillsTab({ cwd, projectPath, filter, query, onBrowse }: TabProps) {
 	const { t } = useTranslation("extensions");
 	const listing = useLoad(() => window.vomp.invoke("skills:list", cwd), [cwd]);
 	const installed = useLoad(() => window.vomp.invoke("skills:registry:installed", cwd), [cwd]);
@@ -140,6 +141,13 @@ export function SkillsTab({ cwd, projectPath, filter, query }: TabProps) {
 					icon={<BookOpenText />}
 					title={needle ? t("skills.noMatch", { q: query.trim() }) : t(filter === "project" ? "skills.emptyProject" : "skills.empty")}
 					body={needle ? undefined : t("skills.emptyBody")}
+					actions={
+						needle ? undefined : (
+							<Button variant="primary" onClick={onBrowse}>
+								{t("skills.browse")}
+							</Button>
+						)
+					}
 				/>
 			) : (
 				<ul className="relative flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel">

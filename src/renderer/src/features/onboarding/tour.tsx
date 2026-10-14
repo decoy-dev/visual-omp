@@ -10,6 +10,7 @@ import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import { useApp } from "../../state/app";
+import { useLeaveConfirm } from "../../state/leaveGuard";
 import { Button, PresenceSwap, StepDots, spring } from "../../ui";
 
 const STEPS = ["sidebar", "composer", "permission", "dock", "statusbar"] as const;
@@ -42,6 +43,39 @@ let returnFocusTo: HTMLElement | null = null;
 export function startTour(): void {
 	if (useTour.getState().step === null) returnFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null;
 	useTour.setState({ step: 0 });
+}
+
+/**
+ * Start the tour from wherever the user is. The tour points at the chat window, so an open page closes
+ * first; when the page holds unsaved edits the tour waits for the "Discard your changes?" answer and
+ * starts only if the page closed (not after "Keep editing", nor when another navigation replaced it).
+ */
+export function startTourFromAnywhere(): void {
+	const app = useApp.getState();
+	app.closeSheet();
+	if (app.view !== "page") {
+		startTour();
+		return;
+	}
+	const begin = () =>
+		// Checked on the next frame: `resolveLeave` clears the question before it runs the navigation, and by
+		// then the page has gone and the chat or overview has painted.
+		requestAnimationFrame(() => {
+			if (useApp.getState().view !== "page") startTour();
+		});
+	app.closePage();
+	// No unsaved edits: the page closed synchronously.
+	const asked = useLeaveConfirm.getState().pending;
+	if (!asked) {
+		begin();
+		return;
+	}
+	const off = useLeaveConfirm.subscribe(state => {
+		if (state.pending === asked) return;
+		off();
+		// Null means the user answered this question; anything else is a newer navigation request.
+		if (state.pending === null) begin();
+	});
 }
 
 /** After the tour: back to what had focus before it (the Help button, say), else the message box if a chat is open. */

@@ -1,4 +1,5 @@
 /** The custom MCP server form: plain fields ⇄ omp's `McpServerConfig`. */
+import type { SettingScope } from "@shared/contracts/config";
 import type { McpScope, McpServerConfig, McpTransport } from "@shared/contracts/mcp";
 import { joinCommandLine, splitCommandLine } from "../format";
 
@@ -27,6 +28,14 @@ export interface McpFormErrors {
 	name?: McpFormError;
 	command?: McpFormError;
 	url?: McpFormError;
+}
+
+/**
+ * The Settings scope as an MCP config level: "All projects" is omp's user file, "This project" the
+ * project's `.omp` file. With no project open only the user file exists.
+ */
+export function levelForScope(scope: SettingScope, projectPath: string | null): McpScope {
+	return scope === "project" && projectPath ? "project" : "user";
 }
 
 /** omp's server-name rule: letters, digits, `_ - . :`, single inner spaces, at most 100 characters. */

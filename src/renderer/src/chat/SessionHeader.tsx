@@ -1,9 +1,9 @@
-import { ChatCenteredText, DotsThree } from "@phosphor-icons/react";
-import { Fragment, type ReactNode } from "react";
+import { DotsThree, GitDiff, SidebarSimple } from "@phosphor-icons/react";
+import { Fragment, type ReactNode, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { type CommandSpec, useCommands } from "../registry/commands";
-import { chatSlots } from "../registry/slots";
-import { chatTitle } from "../shell/hooks";
+import { ChatStatusMark } from "../shell/ChatStatusMark";
+import { chatStatus, chatTitle, elapsed, useNow } from "../shell/hooks";
 import { useApp } from "../state/app";
 import type { SessionController, SessionView } from "../state/session";
 import {
@@ -18,75 +18,140 @@ import {
 	MenuSeparator,
 	MenuTrigger,
 	PresenceSwap,
+	StatusDot,
 	Tooltip,
 } from "../ui";
 import type { TranscriptMode } from "./transcript/Transcript";
 
-const MAX_HEADER_BUTTONS = 5;
-const OVERFLOW_GROUPS: ReadonlySet<CommandSpec["group"]> = new Set(["chat", "modes"]);
 const TRANSCRIPT_MODES: readonly TranscriptMode[] = ["normal", "thinking", "verbose"];
 
+type HeaderState = "readOnly" | "readOnlyFree" | "readOnlyUnknown" | "stopped" | "reconnecting" | "waiting" | "working" | "starting" | "saved" | "ready";
+
+/** The one state the header line describes, most urgent first. */
+function headerState(view: SessionView): HeaderState {
+	if (view.readOnly) return view.follow?.ownership === "free" ? "readOnlyFree" : view.follow?.ownership === "unknown" ? "readOnlyUnknown" : "readOnly";
+	if (view.mode === "exited") return "stopped";
+	if (view.mode === "reconnecting") return "reconnecting";
+	if (view.guest?.uiRequest) return "waiting";
+	if (view.working) return "working";
+	if (view.mode === "starting") return "starting";
+	if (view.mode === "history") return "saved";
+	return "ready";
+}
+
+/** Status shape beside the title. States the sidebar mark has no shape for use a status glyph. */
+function StateMark({ state, view }: { state: HeaderState; view: SessionView }): ReactNode {
+	// Decorative: the state line beside it says the same in words.
+	return (
+		<span aria-hidden className="inline-flex shrink-0">
+			{state === "stopped" ? (
+				<StatusDot status="err" glyph />
+			) : state === "reconnecting" ? (
+				<StatusDot status="warn" glyph />
+			) : state === "readOnly" || state === "readOnlyFree" || state === "readOnlyUnknown" ? (
+				<StatusDot status="live" glyph />
+			) : (
+				<ChatStatusMark status={chatStatus(view)} label="" />
+			)}
+		</span>
+	);
+}
+
+/** "Working… 14s": mounted only while omp works, so the timer starts with the turn. */
+function WorkingText(): ReactNode {
+	const { t } = useTranslation("chat");
+	const since = useRef(Date.now());
+	const now = useNow(1000);
+	return (
+		<>
+			<span aria-hidden>{t("header.state.workingFor", { elapsed: elapsed(now - since.current) })}</span>
+			<span className="sr-only">{t("header.state.working")}</span>
+		</>
+	);
+}
+
+/** Commands for the ⋯ menu: those that declare `header`, sorted, split into sections by hundreds. */
+function menuSections(commands: readonly CommandSpec[]): CommandSpec[][] {
+	const sorted = commands.filter(command => command.header !== undefined).sort((a, b) => (a.header ?? 0) - (b.header ?? 0));
+	const sections: CommandSpec[][] = [];
+	let band: number | null = null;
+	for (const command of sorted) {
+		const next = Math.floor((command.header ?? 0) / 100);
+		if (next !== band) sections.push([]);
+		band = next;
+		sections.at(-1)?.push(command);
+	}
+	return sections;
+}
+
 /**
- * 48px chat header (DESIGN §3.4): title, chips from features, up to 5 command buttons, overflow ⋯. The header
- * is a size container, so a narrow chat (an open dock, a split) shows the buttons as icons with tooltips.
+ * Chat header (DESIGN §3.4). Left: status mark, title and one line saying what the chat is doing. Right: Review
+ * changes, the inspector toggle and the ⋯ session menu, which lists every command that declares `header`. The header
+ * is a size container; below 36rem "Review changes" becomes an icon with a tooltip, and nothing else collapses.
  */
 export function SessionHeader({ session, view, fallbackTitle }: { session: SessionController; view: SessionView; fallbackTitle: string | null }): ReactNode {
 	const { t } = useTranslation(["chat", "shell"]);
 	const commands = useCommands();
-	const chips = chatSlots.use().filter(slot => slot.placement === "headerChips");
 	const transcriptMode = useApp(state => state.prefs?.transcriptMode ?? "normal");
+	const dockOpen = useApp(state => state.dockOpen);
 	const ctx = { session, projectPath: session.projectPath };
-	const available = commands.filter(command => command.when?.(ctx) ?? true);
-	const buttons = available
-		.filter(command => command.header !== undefined)
-		.sort((a, b) => (a.header ?? 0) - (b.header ?? 0))
-		.slice(0, MAX_HEADER_BUTTONS);
-	const shown = new Set(buttons.map(command => command.id));
-	const overflow = available.filter(command => OVERFLOW_GROUPS.has(command.group) && !shown.has(command.id));
-	const title = chatTitle(view, fallbackTitle) ?? t("shell:tabs.newChatTitle");
+	const sections = menuSections(commands.filter(command => command.when?.(ctx) ?? true));
+	const title = chatTitle(view, fallbackTitle) ?? t("shell:chat.newTitle");
+	const state = headerState(view);
+	const reviewLabel = t("chat:header.review");
 
 	return (
-		<div className="@container/header flex h-(--header-h) shrink-0 items-center gap-3 border-b border-border bg-panel px-4">
-			<ChatCenteredText className="size-4 shrink-0 text-fg-muted" aria-hidden />
-			<PresenceSwap swapKey={title} variant="rise" className="min-w-0">
-				<h1 className="truncate text-[15px] font-semibold text-fg" title={title}>
-					{title}
-				</h1>
-			</PresenceSwap>
-			<div className="flex shrink-0 items-center gap-1.5">
-				{chips.map(chip => (
-					<chip.component key={chip.id} session={session} />
-				))}
+		<div className="@container/header flex min-h-(--header-h) shrink-0 items-center gap-3 border-b border-border bg-panel px-4 py-1.5">
+			<StateMark state={state} view={view} />
+			<div className="flex min-w-0 flex-1 flex-col">
+				<PresenceSwap swapKey={title} variant="rise" className="min-w-0">
+					<h1 className="truncate text-base leading-5 font-semibold text-fg" title={title}>
+						{title}
+					</h1>
+				</PresenceSwap>
+				<p role="status" className="truncate text-sm text-fg-muted">
+					{state === "working" ? <WorkingText /> : t(`chat:header.state.${state}`)}
+				</p>
 			</div>
-			<div className="flex-1" />
-			<div className="flex items-center gap-0.5">
-				{buttons.map(command => {
-					const Icon = command.icon;
-					const label = t(command.title);
-					const run = () => void command.run(ctx);
-					const labelled = (
-						<Tooltip content={t(command.hint ?? command.title)} shortcut={command.shortcut}>
-							<Button variant="ghost" size="sm" icon={Icon ? <Icon /> : undefined} onClick={run}>
-								{label}
-							</Button>
-						</Tooltip>
-					);
-					if (!Icon) return <Fragment key={command.id}>{labelled}</Fragment>;
-					// The wrappers own the display switch, so the buttons' own display classes cannot override it.
-					return (
-						<Fragment key={command.id}>
-							<span className="hidden @min-[66rem]/header:contents">{labelled}</span>
-							<span className="contents @min-[66rem]/header:hidden">
-								<IconButton label={label} shortcut={command.shortcut} icon={<Icon />} size="md" onClick={run} />
-							</span>
-						</Fragment>
-					);
-				})}
+			<div className="flex shrink-0 items-center gap-0.5">
+				{/* The wrappers own the display switch, so the buttons' own display classes cannot override it. */}
+				<span className="hidden @min-[36rem]/header:contents">
+					<Tooltip content={t("chat:header.reviewHint")}>
+						<Button variant="ghost" size="sm" icon={<GitDiff />} onClick={() => useApp.getState().showPane("diff")}>
+							{reviewLabel}
+						</Button>
+					</Tooltip>
+				</span>
+				<span className="contents @min-[36rem]/header:hidden">
+					<IconButton label={reviewLabel} icon={<GitDiff />} size="md" onClick={() => useApp.getState().showPane("diff")} />
+				</span>
+				<IconButton
+					label={t("chat:header.inspector")}
+					shortcut="⌥⌘B"
+					icon={<SidebarSimple mirrored />}
+					size="md"
+					pressed={dockOpen}
+					onClick={() => useApp.getState().toggleDock()}
+				/>
 				<Menu>
 					<MenuTrigger asChild>
 						<IconButton label={t("chat:header.more")} icon={<DotsThree weight="bold" />} size="md" />
 					</MenuTrigger>
 					<MenuContent align="end" className="max-h-[70vh] min-w-[240px] overflow-y-auto">
+						{sections.map((section, index) => (
+							<Fragment key={section[0]?.id}>
+								{index > 0 && <MenuSeparator />}
+								{section.map(command => {
+									const Icon = command.icon;
+									return (
+										<MenuItem key={command.id} icon={Icon ? <Icon /> : undefined} shortcut={command.shortcut} danger={command.danger} onSelect={() => void command.run(ctx)}>
+											{t(command.title)}
+										</MenuItem>
+									);
+								})}
+							</Fragment>
+						))}
+						{sections.length > 0 && <MenuSeparator />}
 						<MenuLabel>{t("chat:header.view")}</MenuLabel>
 						<MenuRadioGroup
 							value={transcriptMode}
@@ -101,15 +166,6 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 								</MenuRadioItem>
 							))}
 						</MenuRadioGroup>
-						{overflow.length > 0 && <MenuSeparator />}
-						{overflow.map(command => {
-							const Icon = command.icon;
-							return (
-								<MenuItem key={command.id} icon={Icon ? <Icon /> : undefined} shortcut={command.shortcut} danger={command.danger} onSelect={() => void command.run(ctx)}>
-									{t(command.title)}
-								</MenuItem>
-							);
-						})}
 					</MenuContent>
 				</Menu>
 			</div>

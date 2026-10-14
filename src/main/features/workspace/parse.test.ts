@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classifyRemoteError, normalizeRemote, replyCost } from "./parse";
+import { classifyRemoteError, normalizeRemote } from "./parse";
 
 describe("normalizeRemote", () => {
 	it("expands GitHub shorthands and keeps real git URLs", () => {
@@ -25,19 +25,5 @@ describe("classifyRemoteError", () => {
 			"unreachable",
 		);
 		expect(classifyRemoteError("fatal: unable to access 'https://h/a.git/': The requested URL returned error: 404")).toBe("notFound");
-	});
-});
-
-describe("replyCost", () => {
-	it("reads the cost of assistant replies only", () => {
-		const reply = JSON.stringify({
-			type: "message",
-			timestamp: "2026-09-30T16:20:20.628Z",
-			message: { role: "assistant", content: [], usage: { input: 1, output: 2, cost: { total: 0.25 } } },
-		});
-		expect(replyCost(reply)).toEqual([Date.parse("2026-09-30T16:20:20.628Z"), 0.25]);
-		const user = JSON.stringify({ type: "message", timestamp: "2026-09-30T16:20:20.628Z", message: { role: "user", usage: "assistant" } });
-		expect(replyCost(user)).toBeNull();
-		expect(replyCost('{"usage" "assistant" broken')).toBeNull();
 	});
 });

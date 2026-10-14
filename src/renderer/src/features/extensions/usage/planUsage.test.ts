@@ -2,7 +2,7 @@ import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
 import type { UsageLimit, UsageLimitsSnapshot, UsageReport } from "@shared/contracts/usage";
 import realSnapshot from "../../../../../main/features/usage/fixtures/usage-limits.json";
-import { chatModel, modelsInUse, parseModelSelector, parseWindowDuration, planUsage } from "./planUsage";
+import { chatModel, modelsInUse, parseModelSelector, parseWindowDuration, planLimits, planUsage } from "./planUsage";
 
 /** Real `omp usage --json` output: Kimi, Codex and one Claude account with a Fable tier row and spent extra usage. */
 const fixture = realSnapshot as unknown as UsageLimitsSnapshot;
@@ -292,5 +292,67 @@ describe("parseWindowDuration", () => {
 
 	it("ignores digits inside other words, several durations and other units", () => {
 		expect(["gpt5h", "v2day", "7dx", "abc7d", "Weekly limit", "1mo", "5h and 7d", "monthly", "1.5.2h"].map(parseWindowDuration)).toEqual(Array(9).fill(null));
+	});
+});
+
+describe("planLimits", () => {
+	it("puts limit-reached accounts first, then the highest use, and keeps every window apart", () => {
+		const providers = planLimits(fixture);
+		expect(providers.map(provider => provider.provider)).toEqual(["anthropic", "kimi-code", "openai-codex"]);
+
+		const claude = providers[0].accounts[0];
+		expect(claude.rows.map(row => [row.id, row.state])).toEqual([
+			["anthropic:extra", "reached"],
+			["anthropic:5h", "ok"],
+			["anthropic:7d", "ok"],
+			["anthropic:7d:fable", "ok"],
+		]);
+		expect(claude.rows[0]).toMatchObject({ label: "Extra Usage", durationMs: null });
+		expect(claude.rows[3]).toMatchObject({ durationMs: 604_800_000, qualifier: "Fable" });
+
+		// Kimi's two 7-day rows report alike but have no shared identity, so both stay; the readable label tells them apart.
+		const kimi = providers[1].accounts[0].rows;
+		expect(kimi.map(row => [row.id, row.durationMs, row.qualifier])).toEqual([
+			["kimi-code:0", 604_800_000, "Weekly limit"],
+			["kimi-code:1", 18_000_000, null],
+			["kimi-code:2", 604_800_000, null],
+		]);
+	});
+
+	it("names accounts by email and organization and keeps raw plan ids in the technical details", () => {
+		const codex = planLimits(fixture).find(provider => provider.provider === "openai-codex")?.accounts[0];
+		expect(codex).toMatchObject({ name: "user1@example.com", detail: "Example Org 1", kind: "report", fetchedAt: 1790789893693 });
+		expect(codex?.ids).toContainEqual({ key: "plan", value: "self_serve_business_prolite" });
+	});
+
+	it("reads a missing amount as unavailable and a warning status as near the limit", () => {
+		const rows = planLimits(
+			snapshot([report("anthropic", [limit("anthropic:5h", 0.2), { ...limit("anthropic:7d", 0), amount: { unit: "unknown" } }, limit("anthropic:7d:x", 0.5, { status: "warning" })])]),
+		)[0].accounts[0].rows;
+		expect(rows.map(row => [row.id, row.state])).toEqual([
+			["anthropic:7d:x", "near"],
+			["anthropic:5h", "ok"],
+			["anthropic:7d", "unavailable"],
+		]);
+	});
+
+	it("lists disabled credentials first, on their account when it matches, and keeps accounts without a report", () => {
+		const providers = planLimits({
+			...snapshot([
+				{ ...report("anthropic", [limit("anthropic:5h", 0.95)]), metadata: { accountId: "a1" } },
+				{ ...report("openai-codex", [limit("openai-codex:7d", 0.1)]), metadata: { accountId: "c1", email: "me@example.com" } },
+			]),
+			accountsWithoutUsage: [{ provider: "kimi-code", type: "oauth", email: "kimi@example.com" }],
+			disabledCredentials: [
+				{ id: 1, provider: "openai-codex", type: "oauth", accountId: "c1", cause: "revoked" },
+				{ id: 2, provider: "openai-codex", type: "oauth", email: "old@example.com", cause: "expired" },
+			],
+		});
+		expect(providers.map(provider => provider.provider)).toEqual(["openai-codex", "anthropic", "kimi-code"]);
+		expect(providers[0].accounts.map(account => [account.kind, account.name, account.disabled.map(credential => credential.id)])).toEqual([
+			["report", "me@example.com", [1]],
+			["disabled", "old@example.com", [2]],
+		]);
+		expect(providers[2].accounts[0]).toMatchObject({ kind: "unavailable", name: "kimi@example.com", rows: [] });
 	});
 });

@@ -1,6 +1,6 @@
-/** Add / edit flow of the MCP manager: preset gallery → form → Test connection → Save. */
-import { ArrowLeft, CheckCircle, Eye, EyeSlash, FolderOpen, Plus, Trash, XCircle } from "@phosphor-icons/react";
-import { type ReactNode, useMemo, useState } from "react";
+/** Add / edit views of Connected tools: preset gallery → form → Test connection → Save, in place of the list. */
+import { CheckCircle, Eye, EyeSlash, FolderOpen, Plus, Trash, XCircle } from "@phosphor-icons/react";
+import { type ReactNode, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type {
 	McpListResult,
@@ -12,9 +12,10 @@ import type {
 	McpTarget,
 	McpTestResult,
 } from "@shared/contracts/mcp";
-import { Button, Checkbox, Chip, IconButton, Input, Notice, Segmented, Skeleton, Spinner, toast } from "@/ui";
+import { useLeaveGuard, whenLeaving } from "@/state/leaveGuard";
+import { BackLink, Button, Checkbox, Chip, IconButton, Input, Notice, PageHeader, Segmented, Skeleton, Spinner, toast } from "@/ui";
 import { errorText } from "../format";
-import { ExtensionSheetFrame, useLoad } from "../shared";
+import { SectionView, useLoad } from "../shared";
 import { configFromForm, emptyForm, formFromConfig, type KeyValueRow, type McpForm, type McpFormErrors, validateForm } from "./form";
 
 export type EditorMode =
@@ -25,12 +26,14 @@ export type EditorMode =
 
 interface ServerEditorProps {
 	mode: EditorMode;
-	close(): void;
 	projectPath: string | null;
+	/** The level the list was showing; new servers start there. Existing servers keep their own level. */
+	level: McpScope;
 	list: McpListResult | null;
+	/** Back to the list of servers. */
 	onBack(): void;
 	/** Called after a successful save with the scope saved to. */
-	onSaved(scope: McpScope | null): void;
+	onSaved(scope: McpScope): void;
 }
 
 const CATEGORY_ORDER: McpPreset["category"][] = ["developer", "productivity", "web", "knowledge", "reference"];
@@ -41,7 +44,7 @@ export function ServerEditor(props: ServerEditorProps) {
 	return <ServerForm key={mode.kind === "preset" ? mode.preset.id : mode.kind} {...props} mode={mode} onBack={props.mode.kind === "gallery" ? () => setMode({ kind: "gallery" }) : props.onBack} />;
 }
 
-function PresetGallery({ close, onBack, onPick }: ServerEditorProps & { onPick(mode: EditorMode): void }) {
+function PresetGallery({ onBack, onPick }: ServerEditorProps & { onPick(mode: EditorMode): void }) {
 	const { t } = useTranslation("extensions");
 	const presets = useLoad(() => window.vomp.invoke("mcp:presets"), []);
 	const groups = useMemo(
@@ -52,64 +55,57 @@ function PresetGallery({ close, onBack, onPick }: ServerEditorProps & { onPick(m
 		[presets.data],
 	);
 	return (
-		<ExtensionSheetFrame
-			close={close}
-			width={880}
-			title={t("mcp.gallery.title")}
-			description={t("mcp.gallery.subtitle")}
-			bodyClassName="flex flex-col gap-6"
-			footer={
-				<Button variant="ghost" icon={<ArrowLeft />} className="mr-auto" onClick={onBack}>
-					{t("common.back")}
-				</Button>
-			}
-		>
-			<div className="flex items-center gap-4 border-b border-border pb-4">
-				<div className="min-w-0 flex-1">
-					<p className="text-md font-medium text-fg">{t("mcp.gallery.customTitle")}</p>
-					<p className="text-sm text-fg-muted">{t("mcp.gallery.customBody")}</p>
+		<SectionView>
+			<BackLink label={t("mcp.backToList")} onBack={onBack} className="mb-3" />
+			<PageHeader title={t("mcp.gallery.title")} description={t("mcp.gallery.subtitle")} />
+			<div className="flex flex-col gap-6">
+				<div className="flex items-center gap-4 border-b border-border pb-4">
+					<div className="min-w-0 flex-1">
+						<p className="text-md font-medium text-fg">{t("mcp.gallery.customTitle")}</p>
+						<p className="text-sm text-fg-muted">{t("mcp.gallery.customBody")}</p>
+					</div>
+					<Button icon={<Plus />} onClick={() => onPick({ kind: "custom" })}>
+						{t("mcp.gallery.customAction")}
+					</Button>
 				</div>
-				<Button icon={<Plus />} onClick={() => onPick({ kind: "custom" })}>
-					{t("mcp.gallery.customAction")}
-				</Button>
-			</div>
-			{presets.error && <Notice tone="err">{presets.error}</Notice>}
-			{!presets.data && presets.loading && (
-				<div className="flex flex-col gap-2">
-					{[0, 1, 2, 3, 4, 5].map(i => (
-						<Skeleton key={i} height={48} />
-					))}
-				</div>
-			)}
-			{groups.map(({ category, items }) => (
-				<section key={category} aria-labelledby={`mcp-cat-${category}`} className="flex flex-col">
-					<h3 id={`mcp-cat-${category}`} className="mb-1 text-sm font-medium text-fg-muted">
-						{t(`mcp.category.${category}`)}
-					</h3>
-					<ul className="divide-y divide-border">
-						{items.map(preset => (
-							<li key={preset.id} className="flex items-center gap-4 py-2.5">
-								<div className="min-w-0 flex-1">
-									<p className="truncate text-md font-medium text-fg">{preset.label}</p>
-									<p className="line-clamp-2 text-sm text-fg-muted">{preset.description}</p>
-								</div>
-								<div className="flex shrink-0 items-center gap-1.5">
-									{preset.oauth && <Chip tone="neutral">{t("mcp.gallery.signIn")}</Chip>}
-									{preset.requires.map(bin => (
-										<Chip key={bin} tone="neutral">
-											{t("mcp.gallery.needs", { bin })}
-										</Chip>
-									))}
-									<Button size="sm" onClick={() => onPick({ kind: "preset", preset })} aria-label={t("mcp.gallery.addNamed", { name: preset.label })}>
-										{t("mcp.gallery.addAction")}
-									</Button>
-								</div>
-							</li>
+				{presets.error && <Notice tone="err">{presets.error}</Notice>}
+				{!presets.data && presets.loading && (
+					<div className="flex flex-col gap-2">
+						{[0, 1, 2, 3, 4, 5].map(i => (
+							<Skeleton key={i} height={48} />
 						))}
-					</ul>
-				</section>
-			))}
-		</ExtensionSheetFrame>
+					</div>
+				)}
+				{groups.map(({ category, items }) => (
+					<section key={category} aria-labelledby={`mcp-cat-${category}`} className="flex flex-col">
+						<h2 id={`mcp-cat-${category}`} className="mb-1 text-sm font-medium text-fg-muted">
+							{t(`mcp.category.${category}`)}
+						</h2>
+						<ul className="divide-y divide-border">
+							{items.map(preset => (
+								<li key={preset.id} className="flex items-center gap-4 py-2.5">
+									<div className="min-w-0 flex-1">
+										<p className="truncate text-md font-medium text-fg">{preset.label}</p>
+										<p className="line-clamp-2 text-sm text-fg-muted">{preset.description}</p>
+									</div>
+									<div className="flex shrink-0 items-center gap-1.5">
+										{preset.oauth && <Chip tone="neutral">{t("mcp.gallery.signIn")}</Chip>}
+										{preset.requires.map(bin => (
+											<Chip key={bin} tone="neutral">
+												{t("mcp.gallery.needs", { bin })}
+											</Chip>
+										))}
+										<Button size="sm" onClick={() => onPick({ kind: "preset", preset })} aria-label={t("mcp.gallery.addNamed", { name: preset.label })}>
+											{t("mcp.gallery.addAction")}
+										</Button>
+									</div>
+								</li>
+							))}
+						</ul>
+					</section>
+				))}
+			</div>
+		</SectionView>
 	);
 }
 
@@ -117,11 +113,11 @@ type Check = { state: "idle" } | { state: "running" } | { state: "done"; result:
 
 type FormMode = Exclude<EditorMode, { kind: "gallery" }>;
 
-function ServerForm({ mode, close, projectPath, list, onBack, onSaved }: ServerEditorProps & { mode: FormMode }) {
+function ServerForm({ mode, projectPath, level, list, onBack, onSaved }: ServerEditorProps & { mode: FormMode }) {
 	const { t } = useTranslation("extensions");
 	const editing = mode.kind === "edit" ? mode.entry : null;
 	const preset = mode.kind === "preset" ? mode.preset : null;
-	const defaultScope: McpScope = editing?.level ?? (projectPath ? "project" : "user");
+	const defaultScope: McpScope = editing?.level ?? level;
 	const [form, setForm] = useState<McpForm>(() =>
 		editing
 			? formFromConfig(editing.name, editing.config, editing.level)
@@ -134,6 +130,15 @@ function ServerForm({ mode, close, projectPath, list, onBack, onSaved }: ServerE
 	const [check, setCheck] = useState<Check>({ state: "idle" });
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
+	const [saved, setSaved] = useState(false);
+
+	// What the form opened with: edits are anything that differs from it.
+	const initial = useRef({ form, values });
+	const dirty = !saved && (JSON.stringify(form) !== JSON.stringify(initial.current.form) || JSON.stringify(values) !== JSON.stringify(initial.current.values));
+	useLeaveGuard(dirty, () => {
+		setForm(initial.current.form);
+		setValues(initial.current.values);
+	});
 
 	const scopePath = form.scope === "user" ? list?.userPath : list?.projectPath;
 	const takenNames = (list?.servers ?? [])
@@ -193,6 +198,7 @@ function ServerForm({ mode, close, projectPath, list, onBack, onSaved }: ServerE
 			}
 			toast({ tone: "ok", message: t("mcp.toast.saved", { name }) });
 			if (preset?.oauth) toast({ tone: "info", sticky: true, message: t("mcp.toast.signInTitle", { name }), description: t("mcp.toast.signInBody", { name }) });
+			setSaved(true);
 			onSaved(form.scope);
 		} catch (err) {
 			setSaveError(errorText(err));
@@ -203,27 +209,10 @@ function ServerForm({ mode, close, projectPath, list, onBack, onSaved }: ServerE
 
 	const title = editing ? t("mcp.form.editTitle", { name: editing.name }) : preset ? t("mcp.form.presetTitle", { name: preset.label }) : t("mcp.form.customTitle");
 	return (
-		<ExtensionSheetFrame
-			close={close}
-			width={880}
-			title={title}
-			description={preset?.description ?? t("mcp.subtitle")}
-			bodyClassName="flex flex-col gap-5"
-			footer={
-				<>
-					<Button variant="ghost" icon={<ArrowLeft />} className="mr-auto" onClick={onBack}>
-						{t("common.back")}
-					</Button>
-					<Button onClick={() => void test()} loading={check.state === "running"}>
-						{t("mcp.test.action")}
-					</Button>
-					<Button variant="primary" onClick={() => void save()} loading={saving}>
-						{t("mcp.form.save")}
-					</Button>
-				</>
-			}
-		>
-			<div className="mx-auto flex w-full max-w-[600px] flex-col gap-5">
+		<SectionView>
+			<BackLink label={t(mode.kind === "edit" ? "mcp.backToList" : "mcp.backToGallery")} onBack={() => void whenLeaving(onBack)} className="mb-3" />
+			<PageHeader title={title} description={preset?.description ?? t("mcp.subtitle")} />
+			<div className="flex flex-col gap-5">
 				{preset?.note && <Notice tone="info">{preset.note}</Notice>}
 				{preset && preset.requires.length > 0 && <Notice tone="info">{t("mcp.form.requires", { bins: preset.requires.join(", ") })}</Notice>}
 				<Input
@@ -268,7 +257,15 @@ function ServerForm({ mode, close, projectPath, list, onBack, onSaved }: ServerE
 				<TestPanel check={check} name={form.name.trim()} />
 				{saveError && <Notice tone="err">{saveError}</Notice>}
 			</div>
-		</ExtensionSheetFrame>
+			<div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+				<Button onClick={() => void test()} loading={check.state === "running"}>
+					{t("mcp.test.action")}
+				</Button>
+				<Button variant="primary" onClick={() => void save()} loading={saving}>
+					{t("mcp.form.save")}
+				</Button>
+			</div>
+		</SectionView>
 	);
 }
 

@@ -13,13 +13,13 @@ export interface PaneProps {
 
 export interface PaneSpec {
 	id: string;
-	/** Position in the dock tab strip (DESIGN §3.7: Diff 10 · Files 20 · Preview 30 · Tasks 40 · Plan 50 · Terminal 60). */
+	/** Position in the side panel's pane selector (DESIGN §3.7: Changes 10 · Files 20 · Preview 30 · Outputs 35 · Tasks 40 · Plan 50 · Terminal 60). */
 	order: number;
 	/** i18n key. */
 	title: string;
 	icon: Icon;
 	component: ComponentType<PaneProps>;
-	/** Small count/indicator rendered on the tab (e.g. `+12 −3`, running dot). */
+	/** Small count or indicator shown beside the pane's name in the selector (e.g. `+12 −3`, running dot). */
 	badge?: ComponentType<PaneProps>;
 }
 
@@ -95,10 +95,9 @@ export interface ChatSlotSpec {
 	 * `transcriptEnd`: cards after the last message (Plan Review, context-full, errors).
 	 * `aboveComposer`: strips pinned above the composer (notices, banners).
 	 * `composerTools`: buttons in the composer's bottom row (voice, prompt library).
-	 * `headerChips`: chips beside the model/mode chips in the session header.
 	 * `watchers`: invisible components that react to session state (auto-open the terminal sheet).
 	 */
-	placement: "transcriptEnd" | "aboveComposer" | "composerTools" | "headerChips" | "watchers";
+	placement: "transcriptEnd" | "aboveComposer" | "composerTools" | "watchers";
 	order: number;
 	component: ComponentType<ChatSlotProps>;
 }

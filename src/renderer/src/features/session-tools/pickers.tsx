@@ -1,7 +1,9 @@
 /**
- * Composer bottom-row pickers (permission button, model, thinking) and the session-header model + mode
- * chips (DESIGN §3.4, §3.6). Each change goes through omp and is confirmed from omp's own state. The
- * composer pickers compact with the card's row steps (`group-data-*` variants on `group/composer`).
+ * Composer bottom-row pickers (DESIGN §3.6): the permission button with its work modes, the model
+ * button and the thinking button. Each change goes through omp and is confirmed from omp's own state.
+ * The composer measures its row (Composer.tsx `useRowState`); the model and thinking buttons show only
+ * their icon in the compact states (`group-data-compact/composer`), while the permission button always
+ * keeps its words and wraps them instead.
  */
 import type { ApprovalMode, ModelInfo } from "@shared/contracts/config";
 import { Brain, CaretDown, Check, Cpu, Eye, ShieldCheck, ShieldWarning } from "@phosphor-icons/react";
@@ -9,28 +11,7 @@ import { motion } from "motion/react";
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
-import {
-	Button,
-	cn,
-	Menu,
-	MenuCheckboxItem,
-	MenuContent,
-	MenuItem,
-	MenuLabel,
-	MenuRadioGroup,
-	MenuRadioItem,
-	MenuSeparator,
-	MenuSub,
-	MenuTrigger,
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
-	SearchInput,
-	Spinner,
-	spring,
-	toast,
-	Tooltip,
-} from "@/ui";
+import { Button, cn, Popover, PopoverContent, PopoverTrigger, SearchInput, Spinner, spring, toast, Tooltip } from "@/ui";
 import { focusRing, focusRingInset, menuLabel } from "@/ui/styles";
 import { getCommand } from "../../registry/commands";
 import type { ChatSlotProps } from "../../registry/slots";
@@ -38,7 +19,7 @@ import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { autoAcknowledged, setApprovalMode, useApprovalMode } from "./approval";
 import { setThinking, switchModel, thinkingChoices, useChatModels } from "./model";
-import { THINKING_LEVELS, type ThinkingLevel } from "./screen";
+import { type StatusLine, THINKING_LEVELS, type ThinkingLevel } from "./screen";
 import { useOmpScreen, useSessionView } from "./status";
 
 // ─── Open requests (menu accelerator ⌘⇧M → model picker) ───────────────────
@@ -62,7 +43,15 @@ function SelectionFill({ layoutId, className }: { layoutId: string; className?: 
 	return <motion.span aria-hidden layoutId={layoutId} transition={spring.snappy} className={cn("absolute inset-0 -z-10 bg-selected", className)} />;
 }
 
-// ─── Permission ────────────────────────────────────────────────────────────
+/** Ghost 28px-high control shared by the composer's labelled pickers (each adds its own height rule). */
+const rowPicker = cn(
+	"inline-flex items-center gap-1.5 rounded-md px-2 text-sm font-medium text-fg-muted",
+	"transition-colors duration-(--dur-fast) enabled:hover:bg-hover enabled:hover:text-fg data-[state=open]:bg-hover data-[state=open]:text-fg",
+	"disabled:cursor-not-allowed disabled:opacity-45",
+	focusRing,
+);
+
+// ─── Permission and work modes ─────────────────────────────────────────────
 
 const APPROVAL_MODES: readonly ApprovalMode[] = ["always-ask", "write", "yolo"];
 
@@ -80,17 +69,37 @@ export async function choosePermission(cwd: string, mode: ApprovalMode, current:
 	}
 }
 
+/**
+ * The levels as one tab stop with roving focus: arrows, Home and End move between levels; Enter, Space
+ * or a click applies one. Moving focus alone never applies a level, because applying writes the
+ * project config (and Auto asks for confirmation first).
+ */
 function PermissionOptions({ cwd, mode, onPicked }: { cwd: string; mode: ApprovalMode | null; onPicked(): void }) {
 	const { t } = useTranslation("session");
 	const fillId = `${useId()}-permission`;
+	const group = useRef<HTMLDivElement>(null);
+	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+		const radios = [...(group.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])];
+		const from = radios.findIndex(radio => radio === document.activeElement);
+		const count = radios.length;
+		const step = ({ ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 } as Record<string, number>)[event.key];
+		let to: number;
+		if (event.key === "Home") to = 0;
+		else if (event.key === "End") to = count - 1;
+		else if (step !== undefined) to = (from + step + count) % count;
+		else return;
+		event.preventDefault();
+		radios[to]?.focus();
+	};
 	return (
-		<div role="radiogroup" aria-label={t("permission.title")} className="flex flex-col gap-0.5">
+		<div ref={group} role="radiogroup" aria-label={t("permission.title")} onKeyDown={onKeyDown} className="flex flex-col gap-0.5">
 			{APPROVAL_MODES.map(option => (
 				<button
 					key={option}
 					type="button"
 					role="radio"
 					aria-checked={mode === option}
+					tabIndex={option === (mode ?? APPROVAL_MODES[0]) ? 0 : -1}
 					onClick={() => {
 						onPicked();
 						void choosePermission(cwd, option, mode);
@@ -114,31 +123,103 @@ function PermissionOptions({ cwd, mode, onPicked }: { cwd: string; mode: Approva
 	);
 }
 
-/** Ghost 28px control shared by the composer's labelled pickers. */
-const rowPicker = cn(
-	"inline-flex h-7 items-center gap-1.5 rounded-md px-2 text-sm font-medium text-fg-muted",
-	"transition-colors duration-(--dur-fast) enabled:hover:bg-hover enabled:hover:text-fg data-[state=open]:bg-hover data-[state=open]:text-fg",
-	"disabled:cursor-not-allowed disabled:opacity-45",
-	focusRing,
-);
+/** The work mode omp shows in its status line, most specific first (one at a time, like omp's own UI). */
+function activeWorkMode(status: StatusLine | null): string | null {
+	if (!status) return null;
+	if (status.plan === "on") return "plan";
+	if (status.plan === "paused") return "planPaused";
+	if (status.goal === "active") return "goal";
+	if (status.goal === "paused") return "goalPaused";
+	if (status.vibe) return "vibe";
+	if (status.loop) return "loop";
+	return null;
+}
 
-export function PermissionPill({ session }: ChatSlotProps) {
+/**
+ * The work modes as commands (modes.tsx), with the state omp shows for each. Goal and Repeat open a
+ * dialog; the others toggle. The advisor's state is not on omp's status line, so it has none here.
+ */
+const WORK_MODES: ReadonlyArray<{ id: string; dialog?: boolean; state(status: StatusLine | null): "on" | "paused" | "active" | null }> = [
+	{ id: "chat.plan", state: status => (status?.plan === "on" ? "on" : status?.plan === "paused" ? "paused" : null) },
+	{ id: "chat.vibe", state: status => (status?.vibe ? "on" : null) },
+	{ id: "chat.goal", dialog: true, state: status => (status?.goal === "active" ? "active" : status?.goal === "paused" ? "paused" : null) },
+	{ id: "chat.loop", dialog: true, state: status => (status?.loop ? "on" : null) },
+	{ id: "chat.advisor", state: () => null },
+];
+
+function WorkModes({ session, status, disabled, onPicked }: { session: SessionController; status: StatusLine | null; disabled: boolean; onPicked(): void }) {
+	const { t } = useTranslation("session");
+	const labelId = `${useId()}-work-modes`;
+	return (
+		<div role="group" aria-labelledby={labelId} className="flex flex-col gap-0.5">
+			<p id={labelId} className={menuLabel}>
+				{t("modes.title")}
+			</p>
+			{WORK_MODES.map(({ id, dialog, state }) => {
+				const command = getCommand(id);
+				if (!command) return null;
+				const Icon = command.icon;
+				const current = state(status);
+				return (
+					<button
+						key={id}
+						type="button"
+						disabled={disabled}
+						title={command.hint ? t(command.hint) : undefined}
+						aria-haspopup={dialog ? "dialog" : undefined}
+						aria-pressed={dialog || id === "chat.advisor" ? undefined : current !== null}
+						onClick={() => {
+							onPicked();
+							void command.run({ session, projectPath: session.projectPath });
+						}}
+						className={cn(
+							"flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left text-md text-fg transition-colors duration-(--dur-fast) enabled:hover:bg-hover disabled:cursor-not-allowed disabled:opacity-45",
+							focusRingInset,
+						)}
+					>
+						{Icon && <Icon className="size-4 shrink-0 text-fg-muted" aria-hidden />}
+						<span className="min-w-0 flex-1 truncate">
+							{t(command.title)}
+							{dialog && "…"}
+						</span>
+						{current && <span className="shrink-0 text-sm font-medium text-accent">{t(`modes.state.${current}`)}</span>}
+					</button>
+				);
+			})}
+		</div>
+	);
+}
+
+/**
+ * The permission level in words (never icon-only: it says what omp may do on its own), plus the work mode
+ * omp is in. The text wraps inside the button when the composer row is narrow. The popover changes both.
+ */
+export function PermissionButton({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
 	const { mode, error } = useApprovalMode(session.projectPath);
+	const { status } = useOmpScreen(session);
+	const readOnly = useSessionView(session).readOnly;
 	const [open, setOpen] = useState(false);
 	const Shield = mode === "yolo" ? ShieldWarning : ShieldCheck;
+	const level = mode ? t(`permission.modes.${mode}.label`) : t("common.loading");
+	const work = activeWorkMode(status);
+	const workLabel = work ? t(`modes.active.${work}`) : null;
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			<Tooltip content={mode ? t(`permission.modes.${mode}.description`) : t("permission.tooltip")}>
 				<PopoverTrigger asChild>
 					<button
 						type="button"
-						aria-label={t("permission.aria", { mode: mode ? t(`permission.modes.${mode}.label`) : t("common.loading") })}
-						className={cn(rowPicker, "shrink-0 group-data-fold-tools/composer:hidden")}
+						aria-label={t("permission.aria", { mode: workLabel ? `${level}, ${workLabel}` : level })}
+						data-tour="permission"
+						className={cn(rowPicker, "min-h-7 min-w-0 py-1 text-left leading-tight")}
 					>
 						{mode ? <Shield className="size-3.5 shrink-0" aria-hidden /> : <Spinner size={12} tone="current" />}
-						{mode && <span>{t(`permission.modes.${mode}.label`)}</span>}
-						{mode === "yolo" && <span className="text-fg-faint group-data-compact-pill/composer:hidden">· {t("permission.autoNote")}</span>}
+						<span className="min-w-0">
+							{mode && <span>{level}</span>}
+							{mode === "yolo" && <span className="text-fg-faint"> · {t("permission.autoNote")}</span>}
+							{workLabel && <span className="text-accent"> · {workLabel}</span>}
+						</span>
 						<CaretDown className="size-3 shrink-0" aria-hidden />
 					</button>
 				</PopoverTrigger>
@@ -147,32 +228,12 @@ export function PermissionPill({ session }: ChatSlotProps) {
 				<p className={menuLabel}>{t("permission.title")}</p>
 				<p className="px-2 pb-2 text-sm text-fg-muted">{t("permission.tooltip")}</p>
 				<PermissionOptions cwd={session.projectPath} mode={mode} onPicked={() => setOpen(false)} />
-				<p className="mt-2 border-t border-border px-2 pt-2 text-xs text-fg-faint">{error ?? t("permission.scopeNote")}</p>
+				<p className="mt-2 px-2 text-xs text-fg-faint">{error ?? t("permission.scopeNote")}</p>
+				<div className="mt-2 border-t border-border pt-1">
+					<WorkModes session={session} status={status} disabled={readOnly} onPicked={() => setOpen(false)} />
+				</div>
 			</PopoverContent>
 		</Popover>
-	);
-}
-
-/** The permission levels as a submenu of the composer's ＋ menu, for a card too narrow for the button. */
-export function PermissionSubmenu({ session }: ChatSlotProps) {
-	const { t } = useTranslation("session");
-	const { mode } = useApprovalMode(session.projectPath);
-	return (
-		<MenuSub label={t("permission.title")} icon={mode === "yolo" ? <ShieldWarning /> : <ShieldCheck />}>
-			<MenuRadioGroup
-				value={mode ?? ""}
-				onValueChange={value => {
-					const next = APPROVAL_MODES.find(option => option === value);
-					if (next) void choosePermission(session.projectPath, next, mode);
-				}}
-			>
-				{APPROVAL_MODES.map(option => (
-					<MenuRadioItem key={option} value={option}>
-						{t(`permission.modes.${option}.label`)}
-					</MenuRadioItem>
-				))}
-			</MenuRadioGroup>
-		</MenuSub>
 	);
 }
 
@@ -343,7 +404,7 @@ export function ModelButton({ session }: ChatSlotProps) {
 	const name = model?.name ?? t("model.none");
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			{/* The composer row may truncate the name or show only the icon, so the tooltip carries the name in full. */}
+			{/* The name truncates at the button's max width or gives way to the icon, so the tooltip carries it in full. */}
 			<Tooltip content={t("model.aria", { name })} shortcut="⌘⇧M">
 				<PopoverTrigger asChild>
 					<button
@@ -351,16 +412,12 @@ export function ModelButton({ session }: ChatSlotProps) {
 						aria-label={t("model.aria", { name })}
 						className={cn(
 							rowPicker,
-							"min-w-7 max-w-44 group-data-compact-model/composer:w-7 group-data-compact-model/composer:justify-center group-data-compact-model/composer:px-0",
-							// Folded into the ＋ menu: a zero-width, invisible anchor so the picker still opens at the row's end.
-							"group-data-fold-model/composer:invisible group-data-fold-model/composer:-ml-0.5 group-data-fold-model/composer:max-w-0 group-data-fold-model/composer:min-w-0 group-data-fold-model/composer:overflow-hidden",
+							"h-7 min-w-7 max-w-44 shrink-0 group-data-compact/composer:w-7 group-data-compact/composer:justify-center group-data-compact/composer:px-0",
 						)}
 					>
-						<Cpu className="hidden size-4 shrink-0 group-data-compact-model/composer:block" aria-hidden />
-						<span data-row-label className="truncate group-data-compact-model/composer:hidden">
-							{name}
-						</span>
-						<CaretDown className="size-3 shrink-0 group-data-compact-model/composer:hidden" aria-hidden />
+						<Cpu className="hidden size-4 shrink-0 group-data-compact/composer:block" aria-hidden />
+						<span className="truncate group-data-compact/composer:hidden">{name}</span>
+						<CaretDown className="size-3 shrink-0 group-data-compact/composer:hidden" aria-hidden />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
@@ -418,12 +475,12 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 						aria-label={label}
 						className={cn(
 							rowPicker,
-							"shrink-0 group-data-compact-thinking/composer:w-7 group-data-compact-thinking/composer:justify-center group-data-compact-thinking/composer:px-0 group-data-fold-thinking/composer:hidden",
+							"h-7 shrink-0 group-data-compact/composer:w-7 group-data-compact/composer:justify-center group-data-compact/composer:px-0",
 						)}
 					>
-						<Brain className="size-3.5 shrink-0 group-data-compact-thinking/composer:size-4" aria-hidden />
-						<span className="group-data-compact-thinking/composer:hidden">{level ? t(`thinking.levels.${level}.label`) : t("thinking.title")}</span>
-						<CaretDown className="size-3 shrink-0 group-data-compact-thinking/composer:hidden" aria-hidden />
+						<Brain className="size-3.5 shrink-0 group-data-compact/composer:size-4" aria-hidden />
+						<span className="group-data-compact/composer:hidden">{level ? t(`thinking.levels.${level}.label`) : t("thinking.title")}</span>
+						<CaretDown className="size-3 shrink-0 group-data-compact/composer:hidden" aria-hidden />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
@@ -455,139 +512,5 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 				</div>
 			</PopoverContent>
 		</Popover>
-	);
-}
-
-/** The thinking levels as a submenu of the composer's ＋ menu, for a row too narrow for the button. */
-export function ThinkingSubmenu({ session }: ChatSlotProps) {
-	const { t } = useTranslation("session");
-	const level = useThinking(session);
-	const info = useCurrentModelInfo(session);
-	const choices = thinkingChoices(info);
-	const options = choices.length > 0 ? choices : level ? [level] : [];
-	return (
-		<MenuSub label={t("thinking.title")} icon={<Brain />} disabled={info !== undefined && choices.length === 0}>
-			<MenuRadioGroup
-				value={level ?? ""}
-				onValueChange={value => {
-					const target = options.find(option => option === value);
-					if (!target || target === level) return;
-					void setThinking(session, target, choices).then(ok => {
-						if (!ok) toast({ tone: "warn", message: t("thinking.failed") });
-					});
-				}}
-			>
-				{options.map(choice => (
-					<MenuRadioItem key={choice} value={choice}>
-						{t(`thinking.levels.${choice}.label`)}
-					</MenuRadioItem>
-				))}
-			</MenuRadioGroup>
-		</MenuSub>
-	);
-}
-
-// ─── Header chips ──────────────────────────────────────────────────────────
-
-const chipButton = cn(
-	"inline-flex h-6 shrink-0 items-center gap-1 rounded-full px-2.5 text-xs font-semibold",
-	"transition-[filter,background-color,color] duration-(--dur-fast) hover:brightness-95 data-[state=open]:brightness-95",
-	focusRing,
-);
-
-function ModelChip({ session }: { session: SessionController }) {
-	const { t } = useTranslation("session");
-	const model = useSessionView(session).guest?.state?.model;
-	const [open, setOpen] = useState(false);
-	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<Tooltip content={t("model.tooltip")} shortcut="⌘⇧M">
-				<PopoverTrigger asChild>
-					<button type="button" aria-label={t("model.aria", { name: model?.name ?? t("model.none") })} className={cn(chipButton, "max-w-48 bg-hover text-fg")}>
-						<span className="truncate">{model?.name ?? t("model.none")}</span>
-						<CaretDown className="size-3 shrink-0" aria-hidden />
-					</button>
-				</PopoverTrigger>
-			</Tooltip>
-			<PopoverContent side="bottom" align="start" width={340} className="p-2">
-				<ModelList session={session} onDone={() => setOpen(false)} />
-			</PopoverContent>
-		</Popover>
-	);
-}
-
-function runCommandById(id: string, session: SessionController): void {
-	void getCommand(id)?.run({ session, projectPath: session.projectPath });
-}
-
-function ModeChip({ session }: { session: SessionController }) {
-	const { t } = useTranslation("session");
-	const { status } = useOmpScreen(session);
-	const { mode } = useApprovalMode(session.projectPath);
-	const special =
-		status?.plan === "on"
-			? t("modes.chip.plan")
-			: status?.plan === "paused"
-				? t("modes.chip.planPaused")
-				: status?.goal === "active"
-					? t("modes.chip.goal")
-					: status?.goal === "paused"
-						? t("modes.chip.goalPaused")
-						: status?.vibe
-							? t("modes.chip.vibe")
-							: status?.loop
-								? t("modes.chip.loop")
-								: null;
-	const label = special ?? (mode ? t(`permission.modes.${mode}.label`) : null);
-	if (!label) return null;
-	return (
-		<Menu>
-			<Tooltip content={t("modes.chip.tooltip")}>
-				<MenuTrigger asChild>
-					<button type="button" aria-label={t("modes.chip.aria", { mode: label })} className={cn(chipButton, special ? "bg-accent-muted text-accent" : "bg-hover text-fg-muted")}>
-						{label}
-						<CaretDown className="size-3" aria-hidden />
-					</button>
-				</MenuTrigger>
-			</Tooltip>
-			<MenuContent className="w-64">
-				<MenuLabel>{t("permission.title")}</MenuLabel>
-				<MenuRadioGroup
-					value={mode ?? ""}
-					onValueChange={value => {
-						const next = APPROVAL_MODES.find(option => option === value);
-						if (next) void choosePermission(session.projectPath, next, mode);
-					}}
-				>
-					{APPROVAL_MODES.map(option => (
-						<MenuRadioItem key={option} value={option}>
-							{t(`permission.modes.${option}.label`)}
-						</MenuRadioItem>
-					))}
-				</MenuRadioGroup>
-				<MenuSeparator />
-				<MenuLabel>{t("modes.chip.ways")}</MenuLabel>
-				<MenuCheckboxItem checked={status?.plan === "on"} onSelect={() => runCommandById("chat.plan", session)}>
-					{t("commands.plan.title")}
-				</MenuCheckboxItem>
-				<MenuCheckboxItem checked={status?.vibe ?? false} onSelect={() => runCommandById("chat.vibe", session)}>
-					{t("commands.vibe.title")}
-				</MenuCheckboxItem>
-				<MenuItem onSelect={() => runCommandById("chat.goal", session)}>{t("commands.goal.title")}…</MenuItem>
-				<MenuItem onSelect={() => runCommandById("chat.loop", session)}>{t("commands.loop.title")}…</MenuItem>
-				<MenuItem onSelect={() => runCommandById("chat.advisor", session)}>{t("commands.advisor.title")}</MenuItem>
-			</MenuContent>
-		</Menu>
-	);
-}
-
-export function HeaderChips({ session }: ChatSlotProps) {
-	const view = useSessionView(session);
-	if (!view.guest) return null;
-	return (
-		<div className="flex items-center gap-1.5">
-			<ModelChip session={session} />
-			<ModeChip session={session} />
-		</div>
 	);
 }

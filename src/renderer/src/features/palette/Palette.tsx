@@ -281,6 +281,7 @@ function PaletteBody() {
 						setQuery(next);
 						setArmed(null);
 					}}
+					aria-label={t("inputLabel")}
 					placeholder={t("placeholder")}
 					className="h-full min-w-0 flex-1 bg-transparent text-base text-fg outline-none placeholder:text-fg-faint"
 				/>

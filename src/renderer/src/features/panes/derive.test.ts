@@ -170,6 +170,7 @@ describe("chatOutputs", () => {
 			tool: "generate_image",
 			action: "generated",
 			produced: true,
+			relation: "created",
 			time: 5,
 			inline: { kind: "blob", hash: BLOB },
 		});
@@ -194,6 +195,59 @@ describe("chatOutputs", () => {
 		]);
 	});
 
+	const relations = (entries: SessionEntry[], made = {}) => chatOutputs(entries, context, made).map(({ key, relation }) => `${relation} ${key}`);
+
+	it("claims a file is new only when omp reports it: a patch-mode create or a generated image, even when omp edits or views it later", () => {
+		const inner = { imagePaths: ["/var/T/omp-image-2.webp"], images: [{ data: `blob:sha256:${BLOB}`, mimeType: "image/webp" }] };
+		const entries = [
+			...tool("e1", "edit", { input: "" }, 1, { details: { perFileResults: [{ path: "/proj/added.ts", op: "create" }, { path: "/proj/old.ts", op: "update" }] } }),
+			...tool("e2", "edit", { input: "" }, 2, { details: { path: "/proj/added.ts" } }),
+			...tool("g1", "write", { path: "xd://generate_image", content: "{}" }, 3, {
+				details: { xdev: { tool: "generate_image", mode: "execute", args: { subject: "cat" }, inner } },
+			}),
+			...tool("r1", "read", { path: "/var/T/omp-image-2.webp" }, 4, { blocks: [image(PNG)] }),
+		];
+		expect(relations(entries)).toEqual(["created /var/T/omp-image-2.webp", "created /proj/added.ts", "changed /proj/old.ts"]);
+		expect(chatOutputs(entries, context)[2].action).toBe("edited");
+	});
+
+	it("calls a write over a file the chat never opened written, since it may be new or replaced, and keeps that through later edits", () => {
+		const entries = [
+			...tool("w1", "write", { path: "existing-unread.ts" }, 1),
+			...tool("e1", "edit", { input: "" }, 2, { details: { path: "existing-unread.ts" } }),
+			...tool("r1", "read", { path: "missing.ts" }, 3, { isError: true }),
+			...tool("w2", "write", { path: "missing.ts" }, 4),
+		];
+		expect(relations(entries)).toEqual(["written /proj/missing.ts", "written /proj/existing-unread.ts"]);
+	});
+
+	it("calls a file changed once the chat shows it existed: an edit, or a write or command after reading or viewing it", () => {
+		const entries = [
+			...tool("e1", "edit", { input: "" }, 1, { details: { path: "kept.ts" } }),
+			...tool("r1", "read", { path: "old.ts" }, 2),
+			...tool("w1", "write", { path: "old.ts" }, 3),
+			...tool("r2", "read", { path: "/tmp/poster.png" }, 4, { blocks: [image(PNG)] }),
+			...tool("w2", "write", { path: "/tmp/poster.png" }, 5),
+			...tool("r3", "read", { path: "/proj/config.json" }, 6),
+			...tool("b1", "bash", { command: "npm run fmt" }, 7),
+			...tool("r4", "read", { path: "/tmp/shot.png" }, 8, { blocks: [image(PNG)] }),
+		];
+		const made = { b1: [{ path: "/proj/config.json", mtime: 7, size: 1 }] };
+		expect(relations(entries, made)).toEqual([
+			"viewed /tmp/shot.png",
+			"changed /proj/config.json",
+			"changed /tmp/poster.png",
+			"changed /proj/old.ts",
+			"changed /proj/kept.ts",
+		]);
+	});
+
+	it("calls a file a command left modified written when the chat hadn't seen it, since the scan can't tell new from replaced", () => {
+		const entries = tool("b1", "bash", { command: "make" }, 10);
+		const made = { b1: [{ path: "/out/report.pdf", mtime: 9, size: 1 }] };
+		expect(relations(entries, made)).toEqual(["written /out/report.pdf"]);
+	});
+
 	it("counts a staged ast_edit preview only once resolve applies it", () => {
 		const preview = (id: string, time: number, file: string) =>
 			tool(id, "ast_edit", { paths: ["."] }, time, { details: { applied: false, fileReplacements: [{ path: file, count: 1 }] } });
@@ -210,7 +264,7 @@ describe("chatOutputs", () => {
 	it("lists PDFs omp read as viewed, without the page images the read rendered", () => {
 		const entries = tool("p1", "read", { path: "docs/flyer.pdf:2" }, 7, { details: { resolvedPath: "/proj/docs/flyer.pdf" }, blocks: [image(PNG)] });
 		expect(chatOutputs(entries, context)).toEqual([
-			{ key: "/proj/docs/flyer.pdf", kind: "pdf", path: "/proj/docs/flyer.pdf", tool: "read", action: "viewed", produced: false, time: 7, inline: null },
+			{ key: "/proj/docs/flyer.pdf", kind: "pdf", path: "/proj/docs/flyer.pdf", tool: "read", action: "viewed", produced: false, relation: "viewed", time: 7, inline: null },
 		]);
 	});
 

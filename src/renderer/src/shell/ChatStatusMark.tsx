@@ -4,9 +4,9 @@ import { cn } from "../ui";
 import type { ChatStatus } from "./hooks";
 
 /**
- * Chat status for rows and tabs. Each status has its own shape, so it reads without color: a spinning notch while
- * omp works, a question mark while it waits for an answer, a filled circle for a chat open in a tab and a hollow
- * circle for a saved chat. `label` is the screen-reader text.
+ * Chat status for sidebar rows and project overviews. Each status has its own shape, so it reads without color: a
+ * spinning notch while omp works, a question mark while it waits for an answer, a filled circle for a chat open with
+ * omp running and a hollow circle for a saved chat. `label` is the screen-reader text.
  */
 export function ChatStatusMark({ status, label, className }: { status: ChatStatus; label: string; className?: string }): ReactNode {
 	return (

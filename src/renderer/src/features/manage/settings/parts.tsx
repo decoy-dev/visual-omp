@@ -1,7 +1,11 @@
 import type { SettingSource } from "@shared/contracts/config";
+import { ArrowsClockwise } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Chip } from "@/ui";
+import type { SettingsSectionProps } from "@/registry/slots";
+import { Button, Chip, Notice, ScopeSwitch } from "@/ui";
+import { whenLeaving } from "@/state/leaveGuard";
+import { folderName, useExternalConfigChange } from "../shared";
 
 /**
  * One settings row: label + help text on the left, control on the right. Controls carry their own
@@ -33,11 +37,11 @@ export function SettingRow({
 	);
 }
 
-/** Group heading inside a settings tab. */
-export function SettingsSection({ title, description, children }: { title: ReactNode; description?: ReactNode; children: ReactNode }) {
+/** Group of rows inside a Settings section, with an optional heading. */
+export function SettingsSection({ title, description, children }: { title?: ReactNode; description?: ReactNode; children: ReactNode }) {
 	return (
-		<section className="mb-6">
-			<h3 className="text-sm font-semibold text-fg">{title}</h3>
+		<section className="mb-8">
+			{title && <h2 className="text-md font-semibold text-fg">{title}</h2>}
 			{description && <p className="mt-0.5 text-sm text-fg-muted">{description}</p>}
 			<div className="relative mt-1 divide-y divide-border">{children}</div>
 		</section>
@@ -49,4 +53,67 @@ export function SourceChip({ source }: { source: SettingSource }) {
 	const { t } = useTranslation("manage");
 	if (source === "global" || source === "default") return null;
 	return <Chip tone={source === "project" ? "neutral" : "warn"}>{t(`settings.source.${source}`)}</Chip>;
+}
+
+/** The scope switch for a scoped section's `PageHeader` meta line. */
+export function SectionScope({ projectPath, scope, setScope }: Pick<SettingsSectionProps, "projectPath" | "scope" | "setScope">) {
+	const { t } = useTranslation("manage");
+	return (
+		<ScopeSwitch
+			value={scope}
+			onValueChange={setScope}
+			label={t("settings.scope.label")}
+			allLabel={t("settings.scope.global")}
+			projectLabel={projectPath ? t("settings.scope.project", { name: folderName(projectPath) }) : t("settings.scope.noProject")}
+			projectDisabled={!projectPath}
+		/>
+	);
+}
+
+/**
+ * Notices above a section that reads omp's config: edits made outside the app since it loaded, and a
+ * failed load. `onReload` reads everything again and may drop pending edits, so it runs only after
+ * the user agrees to discard them (`whenLeaving`).
+ */
+export function ConfigNotices({ cwd, error, onReload }: { cwd: string | null; error: string | null; onReload(): void }) {
+	const { t } = useTranslation("manage");
+	const [externalChange, clearExternalChange] = useExternalConfigChange(cwd);
+	if (!externalChange && !error) return null;
+	const reload = () =>
+		void whenLeaving(() => {
+			clearExternalChange();
+			onReload();
+		});
+	return (
+		<div className="mb-6 flex flex-col gap-2">
+			{externalChange && (
+				<Notice
+					tone="info"
+					actions={
+						<Button
+							size="sm"
+							icon={<ArrowsClockwise />}
+							onClick={reload}
+						>
+							{t("settings.reload")}
+						</Button>
+					}
+				>
+					{t("settings.externalChange")}
+				</Notice>
+			)}
+			{error && (
+				<Notice
+					tone="err"
+					actions={
+						<Button size="sm" onClick={reload}>
+							{t("settings.retry")}
+						</Button>
+					}
+				>
+					{t("settings.loadFailed", { reason: error })}
+				</Notice>
+			)}
+		</div>
+	);
 }

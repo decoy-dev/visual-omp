@@ -1,6 +1,6 @@
 {
-	"tabs": {
-		"diff": "Diff",
+	"names": {
+		"diff": "Changes",
 		"files": "Files",
 		"preview": "Preview",
 		"tasks": "Tasks",
@@ -8,13 +8,20 @@
 		"outputs": "Outputs",
 		"terminal": "Terminal"
 	},
+	"dock": {
+		"label": "Side panel",
+		"close": "Close side panel",
+		"choose": "Panels",
+		"otherUpdates": "Other panels have updates",
+		"empty": "No panels to show."
+	},
 	"commands": {
 		"diff": { "title": "Show changes", "hint": "See what changed in your files since the last commit.", "keywords": "diff, changes, review, git" },
 		"files": { "title": "Show files", "hint": "Browse and open the files in this project.", "keywords": "files, tree, explorer, browse" },
 		"preview": { "title": "Show preview", "hint": "Open your running site or app in a panel beside the chat.", "keywords": "preview, browser, dev server, localhost" },
 		"tasks": { "title": "Show tasks and helpers", "hint": "See omp's checklist, its helpers, and background jobs.", "keywords": "tasks, todo, checklist, subagents, helpers, jobs" },
 		"plan": { "title": "Show plan", "hint": "Read the plan omp wrote for this chat.", "keywords": "plan, plan mode" },
-		"outputs": { "title": "Show outputs", "hint": "See the images and files omp made or viewed in this chat.", "keywords": "outputs, images, screenshots, renders, generated, pdf, documents, files, written" },
+		"outputs": { "title": "Show outputs", "hint": "See the images and files omp created, wrote, changed or viewed in this chat.", "keywords": "outputs, images, screenshots, renders, generated, pdf, documents, files, written, created, changed, viewed" },
 		"terminal": { "title": "Show terminal", "hint": "Run your own commands in this project.", "keywords": "terminal, shell, console, command line" },
 		"newShell": { "title": "Open a terminal", "hint": "Start another shell in this project.", "keywords": "terminal, shell, new, console" }
 	},
@@ -22,7 +29,7 @@
 		"noProjectTitle": "No project open",
 		"noProject": "Open a project to see its uncommitted changes.",
 		"notRepoTitle": "This folder isn't a git repository",
-		"notRepo": "The Diff pane compares files with your last commit, and that needs git.",
+		"notRepo": "The Changes panel compares files with your last commit, and that needs git.",
 		"errorTitle": "Couldn't read the changes",
 		"reload": "Reload changes",
 		"loading": "Loading changes…",
@@ -144,7 +151,8 @@
 		"doneOf": "{{done}} of {{total}} done",
 		"status": { "pending": "To do", "in_progress": "In progress", "completed": "Done", "abandoned": "Skipped" },
 		"helpers": "Helpers",
-		"helperStatus": { "running": "working", "idle": "waiting", "done": "done", "failed": "failed", "stopped": "stopped" },
+		"manageHelpers": "Manage helpers",
+		"helperStatus": { "running": "Working", "idle": "Waiting", "done": "Done", "failed": "Failed", "stopped": "Stopped" },
 		"tokens_one": "{{formatted}} token",
 		"tokens_other": "{{formatted}} tokens",
 		"tokensHint": "How much text this helper has read and written so far.",
@@ -186,13 +194,15 @@
 		"noChatTitle": "No chat open",
 		"noChat": "Open a chat to see the images and files omp makes in it.",
 		"emptyTitle": "No outputs yet",
-		"empty": "Images and files omp makes or views in this chat appear here.",
-		"made": "Made in this chat",
-		"files": "Files",
-		"viewed": "Viewed",
+		"empty": "Images and files omp creates, writes, changes or views in this chat appear here.",
+		"created": { "title": "Created", "description": "Images omp generated and files omp reported adding as new." },
+		"written": { "title": "Written", "description": "Files omp wrote or a command saved. Each may be new or may have replaced an existing file." },
+		"changed": { "title": "Changed", "description": "Files that existed before omp edited or wrote them." },
+		"viewed": { "title": "Viewed", "description": "Images and PDFs omp opened without changing them." },
 		"moreViewed_one": "Show {{count}} more",
 		"moreViewed_other": "Show {{count}} more",
-		"openImage": "Open {{name}}",
+		"openImage": "Open {{name}}, {{when}}",
+		"openFile": "Open {{path}}, {{when}}",
 		"back": "Back to outputs",
 		"openDefault": "Open in default app",
 		"openFailed": "Couldn't open the file",
@@ -210,6 +220,7 @@
 		},
 		"when": {
 			"written": "Written {{time}}",
+			"created": "Created {{time}}",
 			"edited": "Edited {{time}}",
 			"viewed": "Viewed {{time}}",
 			"generated": "Generated {{time}}",

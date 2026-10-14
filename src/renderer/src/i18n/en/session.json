@@ -11,7 +11,7 @@
   "permission": {
     "title": "Permission level",
     "tooltip": "How much omp may do before it asks you.",
-    "aria": "Permission level: {{mode}}",
+    "aria": "Permission level and work modes: {{mode}}",
     "autoNote": "runs without asking",
     "scopeNote": "Saved for this project, so every open chat in it follows the change.",
     "modes": {
@@ -27,7 +27,6 @@
   },
   "model": {
     "title": "Choose a model",
-    "tooltip": "Choose the model that answers in this chat.",
     "aria": "Choose model. Current: {{name}}",
     "none": "Choose model",
     "search": "Search models…",
@@ -60,17 +59,16 @@
     }
   },
   "modes": {
-    "chip": {
-      "tooltip": "Change the permission level or turn on a work mode.",
-      "aria": "Mode and permission: {{mode}}",
-      "ways": "Work modes",
-      "plan": "Plan",
-      "planPaused": "Plan paused",
+    "title": "Work modes",
+    "active": {
+      "plan": "Plan mode",
+      "planPaused": "Plan mode paused",
       "goal": "Goal",
       "goalPaused": "Goal paused",
-      "vibe": "Vibe",
-      "loop": "Loop"
-    }
+      "vibe": "Vibe mode",
+      "loop": "Repeating"
+    },
+    "state": { "on": "On", "paused": "Paused", "active": "Active" }
   },
   "commands": {
     "restart": { "title": "Restart omp", "hint": "Restart the omp process for this chat. The chat history is kept." },

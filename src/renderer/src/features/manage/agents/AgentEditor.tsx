@@ -14,6 +14,7 @@ import type { ModelInfo } from "@shared/contracts/config";
 import { ChatCenteredDots, FloppyDisk, Warning } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { whenLeaving, useLeaveGuard } from "@/state/leaveGuard";
 import { Markdown } from "@/transcript/Markdown";
 import { Button, Checkbox, Input, Segmented, Select, SelectItem, Sheet, SheetContent, Skeleton, Switch, Textarea, toast } from "@/ui";
 import { ModelSelect } from "../roles/ModelSelect";
@@ -60,6 +61,8 @@ export interface AgentEditorProps {
 	models: readonly ModelInfo[] | null;
 	/** Names already used, for the create/rename check. */
 	takenNames: ReadonlySet<string>;
+	/** Where a new helper is saved unless the user picks the other place. */
+	initialScope: AgentWritableScope;
 	onClose(): void;
 	onSaved(): void;
 	/** Opens a new chat with "Use the <name> agent to " in the composer. */
@@ -75,11 +78,10 @@ export function AgentEditor(props: AgentEditorProps) {
 				? t("agents.editor.editTitle", { name: props.target.entry.name })
 				: t("agents.editor.fixTitle", { name: props.target.name ?? folderName(props.target.filePath) });
 	return (
-		<Sheet open onOpenChange={open => !open && props.onClose()}>
+		// Closing with unsaved edits asks first (`useLeaveGuard` in the editors).
+		<Sheet open onOpenChange={open => !open && void whenLeaving(props.onClose)}>
 			<SheetContent
 				width={400}
-				// The helpers sheet already dims the app; a second scrim would sit underneath it.
-				noScrim
 				title={title}
 				description={props.target.kind === "raw" ? t("agents.editor.fixDescription") : undefined}
 				bodyClassName="p-0"
@@ -90,12 +92,12 @@ export function AgentEditor(props: AgentEditorProps) {
 	);
 }
 
-function FormEditor({ target, cwd, dirs, models, takenNames, onSaved, onTest, onClose }: AgentEditorProps) {
+function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSaved, onTest, onClose }: AgentEditorProps) {
 	const { t } = useTranslation("manage");
 	const entry = target.kind === "edit" ? target.entry : null;
 	const initial = useMemo(() => formFrom(entry), [entry]);
 	const [form, setForm] = useState(initial);
-	const [scope, setScope] = useState<AgentWritableScope>("user");
+	const [scope, setScope] = useState<AgentWritableScope>(initialScope);
 	const [preview, setPreview] = useState<"write" | "preview">("write");
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -122,6 +124,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, onSaved, onTest, on
 		!sameTools(form.tools, initial.tools) ||
 		form.thinkingLevel !== initial.thinkingLevel ||
 		form.modelOverride !== initial.modelOverride;
+	useLeaveGuard(dirty, () => setForm(initial));
 
 	const extraTools = (entry?.tools ?? []).filter(
 		tool => tool !== "yield" && !(AGENT_BUILTIN_TOOLS as readonly string[]).includes(tool),
@@ -338,6 +341,9 @@ function FormEditor({ target, cwd, dirs, models, takenNames, onSaved, onTest, on
 function RawEditor({ filePath, onSaved, onClose }: AgentEditorProps & { filePath: string }) {
 	const { t } = useTranslation("manage");
 	const [content, setContent] = useState<string | null>(null);
+	/** The file's text on disk, to tell whether there are unsaved edits. */
+	const [saved, setSaved] = useState<string | null>(null);
+	useLeaveGuard(content !== saved, () => setContent(saved));
 	const [validation, setValidation] = useState<AgentValidation | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -347,6 +353,7 @@ function RawEditor({ filePath, onSaved, onClose }: AgentEditorProps & { filePath
 			.invoke("agents:read", filePath)
 			.then(file => {
 				setContent(file.content);
+				setSaved(file.content);
 				setValidation(file.validation);
 			})
 			.catch((err: unknown) => setError(ipcErrorMessage(err)));
@@ -366,6 +373,7 @@ function RawEditor({ filePath, onSaved, onClose }: AgentEditorProps & { filePath
 		setSaving(true);
 		try {
 			const file = await window.vomp.invoke("agents:writeRaw", filePath, content);
+			setSaved(content);
 			if (file.validation.ok) {
 				toast({ tone: "ok", message: t("agents.editor.fixed") });
 				onSaved();

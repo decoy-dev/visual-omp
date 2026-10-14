@@ -123,18 +123,21 @@ export function PlanPane({ session }: PaneProps) {
 				<span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted" title={plan.path}>
 					{name}
 				</span>
-				<span className="text-xs text-fg-faint">{t("plan.updated", { time: new Date(plan.mtime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}</span>
+				<span className="shrink-0 text-xs text-fg-faint">{t("plan.updated", { time: new Date(plan.mtime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}</span>
 			</PaneToolbar>
-			<Expand open={pending} className="flex items-center gap-2 border-b border-border bg-accent-muted px-3 py-2">
-				<span role="status" className="min-w-0 flex-1 text-sm font-medium text-fg">
+			{/* The buttons wrap under the message when the dock is narrow. */}
+			<Expand open={pending} className="flex flex-wrap items-center gap-2 border-b border-border bg-accent-muted px-3 py-2">
+				<span role="status" className="min-w-0 flex-[1_1_12rem] text-sm font-medium text-fg">
 					{t("plan.waiting")}
 				</span>
-				<Button size="sm" variant="ghost" icon={<TreeView />} onClick={() => useApp.getState().openTerminal(session.tabId)} title={t("plan.optionsHint")}>
-					{t("plan.options")}
-				</Button>
-				<Button size="sm" variant="primary" icon={<Play />} onClick={() => void session.keys("enter")} title={t("plan.approveHint")}>
-					{t("plan.approve")}
-				</Button>
+				<span className="ml-auto flex flex-wrap justify-end gap-2">
+					<Button size="sm" variant="ghost" icon={<TreeView />} onClick={() => useApp.getState().openTerminal(session.tabId)} title={t("plan.optionsHint")}>
+						{t("plan.options")}
+					</Button>
+					<Button size="sm" variant="primary" icon={<Play />} onClick={() => void session.keys("enter")} title={t("plan.approveHint")}>
+						{t("plan.approve")}
+					</Button>
+				</span>
 			</Expand>
 			<div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-md">
 				<Markdown text={plan.text} />
@@ -149,7 +152,7 @@ export function PlanBadge({ session }: PaneProps) {
 	const pending = usePlanReviewPending(session);
 	if (!pending) return null;
 	return (
-		<span className="inline-flex size-4 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-accent-fg" title={t("plan.waiting")}>
+		<span className="inline-flex size-4 items-center justify-center rounded-full bg-accent text-xs leading-none font-bold text-accent-fg" title={t("plan.waiting")}>
 			<span aria-hidden>!</span>
 			<span className="sr-only">{t("plan.waiting")}</span>
 		</span>

@@ -2,6 +2,7 @@ import type { SettingInfo } from "@shared/contracts/config";
 import { ArrowCounterClockwise } from "@phosphor-icons/react";
 import { type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import type { SettingsSectionProps } from "@/registry/slots";
 import {
 	cn,
 	Button,
@@ -10,6 +11,7 @@ import {
 	EmptyState,
 	IconButton,
 	Input,
+	PageHeader,
 	SearchInput,
 	Select,
 	SelectItem,
@@ -19,17 +21,25 @@ import {
 	Tooltip,
 } from "@/ui";
 import { type AdvancedRow, buildAdvancedRows, parseSettingInput, valueToText } from "./advancedModel";
-import { SourceChip } from "./parts";
-import type { OmpSettings } from "./useOmpSettings";
+import { ConfigNotices, SectionScope, SourceChip } from "./parts";
+import { type OmpSettings, useOmpSettings } from "./useOmpSettings";
 
 const GROUP_HEIGHT = 36;
 const ROW_HEIGHT = 60;
 /** Rows rendered above/below the viewport, so Tab can move into the next rows before they scroll in. */
 const OVERSCAN_PX = 600;
 
-export function AdvancedTab({ omp }: { omp: OmpSettings }) {
+/** Deep-link props (`openSettings("advanced", { sectionProps })`). */
+export interface AdvancedSectionProps {
+	/** Prefills the search, such as "memory.backend". */
+	query?: string;
+}
+
+export function AdvancedSection({ projectPath, scope, setScope, props }: SettingsSectionProps) {
 	const { t } = useTranslation("manage");
-	const [query, setQuery] = useState("");
+	const omp = useOmpSettings(projectPath, scope);
+	// Each deep link remounts the section (SettingsPage), so the linked search applies once here.
+	const [query, setQuery] = useState((props as AdvancedSectionProps | undefined)?.query ?? "");
 	const [editedOnly, setEditedOnly] = useState(false);
 	const [confirmReset, setConfirmReset] = useState(false);
 	const [resetting, setResetting] = useState(false);
@@ -56,8 +66,19 @@ export function AdvancedTab({ omp }: { omp: OmpSettings }) {
 	};
 
 	return (
-		<div className="flex h-full min-h-0 flex-col">
-			<div className="flex shrink-0 items-center gap-2 px-6 pb-3 pt-6">
+		<>
+			<PageHeader
+				title={t("settings.sections.advanced")}
+				description={t("advanced.description")}
+				meta={<SectionScope projectPath={projectPath} scope={scope} setScope={setScope} />}
+				actions={
+					<Button variant="danger-ghost" disabled={resettable.length === 0} onClick={() => setConfirmReset(true)}>
+						{t("advanced.resetAll.button")}
+					</Button>
+				}
+			/>
+			<ConfigNotices cwd={projectPath} error={omp.snapshot.error} onReload={() => void omp.snapshot.reload()} />
+			<div className="sticky top-0 z-(--z-sticky) -mx-1 flex items-center gap-2 bg-bg px-1 pb-2 pt-1">
 				<SearchInput
 					className="flex-1"
 					value={query}
@@ -66,20 +87,15 @@ export function AdvancedTab({ omp }: { omp: OmpSettings }) {
 					aria-label={t("advanced.search")}
 					aria-controls="manage-advanced-list"
 				/>
-				<Button
-					size="md"
-					variant={editedOnly ? "primary" : "secondary"}
-					aria-pressed={editedOnly}
-					onClick={() => setEditedOnly(value => !value)}
-				>
+				<Button variant={editedOnly ? "primary" : "secondary"} aria-pressed={editedOnly} onClick={() => setEditedOnly(value => !value)}>
 					{t("advanced.editedOnly")}
 				</Button>
 			</div>
-			<p className="shrink-0 px-6 pb-2 text-xs text-fg-faint" aria-live="polite">
+			<p className="pb-2 text-xs text-fg-faint" aria-live="polite">
 				{settings ? t("advanced.count", { count: rows.filter(row => row.kind === "setting").length }) : t("advanced.loading")}
 			</p>
 			{!settings ? (
-				<div className="space-y-3 px-6">
+				<div className="space-y-3" aria-busy>
 					{Array.from({ length: 6 }, (_, index) => (
 						<Skeleton key={index} height={44} />
 					))}
@@ -89,12 +105,6 @@ export function AdvancedTab({ omp }: { omp: OmpSettings }) {
 			) : (
 				<VirtualSettings rows={rows} omp={omp} />
 			)}
-			<footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-6 py-3">
-				<p className="text-sm text-fg-muted">{t(`advanced.scopeNote.${omp.scope}`)}</p>
-				<Button variant="danger-ghost" size="sm" disabled={resettable.length === 0} onClick={() => setConfirmReset(true)}>
-					{t("advanced.resetAll.button")}
-				</Button>
-			</footer>
 			<Dialog open={confirmReset} onOpenChange={setConfirmReset}>
 				<DialogContent
 					destructive
@@ -112,23 +122,43 @@ export function AdvancedTab({ omp }: { omp: OmpSettings }) {
 					}
 				/>
 			</Dialog>
-		</div>
+		</>
 	);
 }
 
+/** Nearest scrolling ancestor: the page's scroll region. */
+function scrollParent(element: HTMLElement): HTMLElement | null {
+	for (let node = element.parentElement; node; node = node.parentElement) {
+		const overflow = getComputedStyle(node).overflowY;
+		if (overflow === "auto" || overflow === "scroll") return node;
+	}
+	return null;
+}
+
+/** Renders only the rows near the page's viewport; the list scrolls with the page. */
 function VirtualSettings({ rows, omp }: { rows: readonly AdvancedRow[]; omp: OmpSettings }) {
 	const { t } = useTranslation("manage");
-	const viewport = useRef<HTMLDivElement>(null);
-	const [scrollTop, setScrollTop] = useState(0);
-	const [height, setHeight] = useState(480);
+	const list = useRef<HTMLDivElement>(null);
+	// The page viewport, in list coordinates.
+	const [view, setView] = useState({ top: 0, height: 800 });
 
 	useLayoutEffect(() => {
-		const element = viewport.current;
-		if (!element) return;
-		const observer = new ResizeObserver(() => setHeight(element.clientHeight));
+		const element = list.current;
+		const scroller = element && scrollParent(element);
+		if (!element || !scroller) return;
+		const measure = () => {
+			const offset = element.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+			setView({ top: -offset, height: scroller.clientHeight });
+		};
+		measure();
+		scroller.addEventListener("scroll", measure, { passive: true });
+		const observer = new ResizeObserver(measure);
+		observer.observe(scroller);
 		observer.observe(element);
-		setHeight(element.clientHeight);
-		return () => observer.disconnect();
+		return () => {
+			scroller.removeEventListener("scroll", measure);
+			observer.disconnect();
+		};
 	}, []);
 
 	const offsets = useMemo(() => {
@@ -143,43 +173,32 @@ function VirtualSettings({ rows, omp }: { rows: readonly AdvancedRow[]; omp: Omp
 	}, [rows]);
 	const total = offsets[offsets.length - 1] ?? 0;
 
-	// Filtering can shrink the list below the current scroll position.
-	useEffect(() => {
-		if (viewport.current && viewport.current.scrollTop > total) viewport.current.scrollTop = 0;
-	}, [total]);
-
-	const from = scrollTop - OVERSCAN_PX;
-	const to = scrollTop + height + OVERSCAN_PX;
+	const from = view.top - OVERSCAN_PX;
+	const to = view.top + view.height + OVERSCAN_PX;
 	const visible: number[] = [];
 	for (let index = 0; index < rows.length; index++) {
 		if (offsets[index + 1] >= from && offsets[index] <= to) visible.push(index);
 	}
 
 	return (
-		<div
-			ref={viewport}
-			id="manage-advanced-list"
-			className="relative min-h-0 flex-1 overflow-y-auto px-6"
-			onScroll={event => setScrollTop(event.currentTarget.scrollTop)}
-		>
-			<div role="list" aria-label={t("advanced.listLabel")} style={{ height: total }} className="relative">
-				{visible.map(index => {
-					const row = rows[index];
-					const style = { top: offsets[index], height: row.kind === "group" ? GROUP_HEIGHT : ROW_HEIGHT };
-					return row.kind === "group" ? (
-						<div key={`g:${row.domain}`} role="listitem" style={style} className="absolute inset-x-0 flex items-end pb-1.5">
-							<h4 className="text-sm font-medium text-fg-muted">
-								<span className="font-mono">{row.domain}</span> <span className="tabular-nums text-fg-faint">{row.count}</span>
-							</h4>
-						</div>
-					) : (
-						<SettingLine key={row.setting.key} setting={row.setting} omp={omp} style={style} />
-					);
-				})}
-			</div>
+		<div ref={list} id="manage-advanced-list" role="list" aria-label={t("advanced.listLabel")} style={{ height: total }} className="relative">
+			{visible.map(index => {
+				const row = rows[index];
+				const style = { top: offsets[index], height: row.kind === "group" ? GROUP_HEIGHT : ROW_HEIGHT };
+				return row.kind === "group" ? (
+					<div key={`g:${row.domain}`} role="listitem" style={style} className="absolute inset-x-0 flex items-end pb-1.5">
+						<h2 className="text-sm font-medium text-fg-muted">
+							<span className="font-mono">{row.domain}</span> <span className="tabular-nums text-fg-faint">{row.count}</span>
+						</h2>
+					</div>
+				) : (
+					<SettingLine key={row.setting.key} setting={row.setting} omp={omp} style={style} />
+				);
+			})}
 		</div>
 	);
 }
+
 
 function SettingLine({ setting, omp, style }: { setting: SettingInfo; omp: OmpSettings; style: { top: number; height: number } }) {
 	const { t } = useTranslation("manage");

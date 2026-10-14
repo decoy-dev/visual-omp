@@ -1,8 +1,8 @@
 /** Core app/view commands the menu and shortcuts send that no other feature owns. */
 import { ArrowLeft, ArrowRight, CircleHalf, Columns, MagnifyingGlass, NotePencil, SidebarSimple, TerminalWindow, TextAa, TextT, X } from "@phosphor-icons/react";
 import { registerCommand } from "../../registry/commands";
-import { confirmTabClose } from "../../registry/guards";
-import { focusedTabId, useApp } from "../../state/app";
+import { openChatsInSidebarOrder } from "../../shell/Sidebar";
+import { closeChat, focusedTabId, useApp } from "../../state/app";
 import { runCommand } from "./run";
 import { terminalSheet } from "./TerminalSheet";
 
@@ -22,16 +22,15 @@ function setTextScale(next: (current: number) => number): void {
 	if (scale !== current) void useApp.getState().setPrefs({ textScale: scale });
 }
 
-/** Move focus `delta` tabs along the tab strip, wrapping around. */
-function cycleTab(delta: number): void {
+/** Show the open chat `delta` steps along the sidebar's order from the focused one, wrapping around. */
+function cycleChat(delta: number): void {
 	const state = useApp.getState();
-	if (state.tabs.length < 2) return;
-	const current = state.tabs.findIndex(tab => tab.id === (focusedTabId(state) ?? state.activeTabId));
-	const next = state.tabs[(Math.max(0, current) + delta + state.tabs.length) % state.tabs.length];
-	if (next) state.activateTab(next.id);
+	const order = openChatsInSidebarOrder();
+	if (order.length < 2) return;
+	const current = order.indexOf(focusedTabId(state) ?? state.activeTabId ?? "");
+	const next = order[(Math.max(0, current) + delta + order.length) % order.length];
+	if (next) state.activateTab(next);
 }
-
-const hasTabs = () => useApp.getState().tabs.length > 1;
 
 registerCommand({
 	id: "app.palette",
@@ -97,30 +96,43 @@ registerCommand({
 	group: "navigation",
 	icon: Columns,
 	shortcut: keys("\\"),
-	when: () => hasTabs() || useApp.getState().splitTabId !== null,
+	when: () => useApp.getState().splitTabId !== null,
+	run: () => useApp.getState().toggleSplit(),
+});
+
+registerCommand({
+	id: "chat.openSideBySide",
+	title: "palette:cmd.openSideBySide.title",
+	hint: "palette:cmd.openSideBySide.hint",
+	keywords: "palette:cmd.openSideBySide.keywords",
+	group: "chat",
+	icon: Columns,
+	shortcut: keys("\\"),
+	header: 510,
+	when: ctx => ctx.session !== null && useApp.getState().splitTabId === null,
 	run: () => useApp.getState().toggleSplit(),
 });
 
 registerCommand({
 	id: "view.prevTab",
-	title: "palette:cmd.prevTab.title",
-	keywords: "palette:cmd.prevTab.keywords",
+	title: "palette:cmd.prevChat.title",
+	keywords: "palette:cmd.prevChat.keywords",
 	group: "navigation",
 	icon: ArrowLeft,
 	shortcut: keys("[", { shift: true }),
-	when: hasTabs,
-	run: () => cycleTab(-1),
+	when: () => useApp.getState().tabs.length > 1,
+	run: () => cycleChat(-1),
 });
 
 registerCommand({
 	id: "view.nextTab",
-	title: "palette:cmd.nextTab.title",
-	keywords: "palette:cmd.nextTab.keywords",
+	title: "palette:cmd.nextChat.title",
+	keywords: "palette:cmd.nextChat.keywords",
 	group: "navigation",
 	icon: ArrowRight,
 	shortcut: keys("]", { shift: true }),
-	when: hasTabs,
-	run: () => cycleTab(1),
+	when: () => useApp.getState().tabs.length > 1,
+	run: () => cycleChat(1),
 });
 
 registerCommand({
@@ -193,11 +205,9 @@ registerCommand({
 	group: "chat",
 	icon: X,
 	shortcut: keys("W"),
+	header: 520,
 	when: ctx => ctx.session !== null,
-	async run(ctx) {
-		const tabId = ctx.session?.tabId;
-		if (!tabId) return;
-		if (ctx.session?.getSnapshot().working && !(await confirmTabClose(tabId))) return;
-		await useApp.getState().closeTab(tabId);
+	run: async ctx => {
+		if (ctx.session) await closeChat(ctx.session.tabId);
 	},
 });

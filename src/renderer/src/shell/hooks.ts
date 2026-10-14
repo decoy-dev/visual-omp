@@ -1,4 +1,4 @@
-import { type KeyboardEvent, useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import type { SessionController, SessionView } from "../state/session";
 
 const noSubscribe = () => () => {};
@@ -11,11 +11,12 @@ export function useSessionView(controller: SessionController | null): SessionVie
 
 export type ChatStatus = "working" | "needsInput" | "live" | "idle";
 
+/** Waiting for an answer, then working, then open (omp starting, running or reconnecting), else saved. */
 export function chatStatus(view: SessionView | null): ChatStatus {
 	if (!view) return "idle";
 	if (view.guest?.uiRequest) return "needsInput";
 	if (view.working) return "working";
-	return view.mode === "live" ? "live" : "idle";
+	return view.mode === "history" || view.mode === "exited" ? "idle" : "live";
 }
 
 /** Human title for a chat: omp's live session name, the saved title, the first message, or a fallback. */
@@ -31,6 +32,25 @@ export function useNow(ms = 30_000): number {
 		return () => clearInterval(timer);
 	}, [ms]);
 	return now;
+}
+
+/** True while ⌘ (macOS) or Ctrl (elsewhere) is held down on its own, for showing ⌘1-⌘9 hints. */
+export function useModifierHeld(): boolean {
+	const [held, setHeld] = useState(false);
+	useEffect(() => {
+		const key = window.vomp.platform === "darwin" ? "Meta" : "Control";
+		const update = (event: globalThis.KeyboardEvent) => setHeld(event.key === key && event.type === "keydown" && !event.shiftKey && !event.altKey);
+		const release = () => setHeld(false);
+		window.addEventListener("keydown", update);
+		window.addEventListener("keyup", release);
+		window.addEventListener("blur", release);
+		return () => {
+			window.removeEventListener("keydown", update);
+			window.removeEventListener("keyup", release);
+			window.removeEventListener("blur", release);
+		};
+	}, []);
+	return held;
 }
 
 const relative = new Intl.RelativeTimeFormat(undefined, { numeric: "auto", style: "narrow" });
@@ -54,31 +74,4 @@ export function elapsed(ms: number): string {
 	const minutes = Math.floor(total / 60);
 	const seconds = total % 60;
 	return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
-}
-
-/**
- * Arrow-key focus movement for a WAI-ARIA tablist with manual activation: Left/Right move focus to the previous or
- * next tab (wrapping), Home/End to the first or last. Enter or Space on the focused tab then activates it.
- * Returns true when the key was handled.
- */
-export function moveTabFocus(event: KeyboardEvent<HTMLElement>): boolean {
-	const list = event.currentTarget.closest('[role="tablist"]');
-	if (!list) return false;
-	const tabs = [...list.querySelectorAll<HTMLElement>('[role="tab"]:not([disabled])')];
-	const index = tabs.indexOf(event.currentTarget);
-	if (index < 0) return false;
-	const target =
-		event.key === "ArrowRight"
-			? tabs[(index + 1) % tabs.length]
-			: event.key === "ArrowLeft"
-				? tabs[(index - 1 + tabs.length) % tabs.length]
-				: event.key === "Home"
-					? tabs[0]
-					: event.key === "End"
-						? tabs.at(-1)
-						: undefined;
-	if (!target) return false;
-	event.preventDefault();
-	target.focus();
-	return true;
 }

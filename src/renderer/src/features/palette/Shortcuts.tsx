@@ -1,26 +1,16 @@
 /**
  * App-wide keyboard routing. Menu accelerators arrive as `app:command` ids and run the matching
- * registered command; a few renderer-only shortcuts (split, tab switching, Esc) are handled here.
+ * registered command; a few renderer-only shortcuts (split, chat switching, Esc) are handled here.
  */
 import { useEffect } from "react";
+import { openSidebarChat, sidebarChatAt } from "../../shell/Sidebar";
 import { useApp } from "../../state/app";
 import { runCommand } from "./run";
 
-/** `event.code` → command id for ⌘/Ctrl shortcuts the app menu does not carry. */
-const MOD_SHORTCUTS: Record<string, string> = {
-	Backslash: "view.split",
-};
 const MOD_SHIFT_SHORTCUTS: Record<string, string> = {
 	BracketLeft: "view.prevTab",
 	BracketRight: "view.nextTab",
 };
-
-/** ⌘1…⌘8 pick that tab; ⌘9 always picks the last one (browser convention). */
-function tabAt(digit: number): string | null {
-	const { tabs } = useApp.getState();
-	const tab = digit === 9 ? tabs.at(-1) : tabs[digit - 1];
-	return tab?.id ?? null;
-}
 
 /** Esc that belongs to a field being edited (it clears or cancels there) or to text composition. */
 function editingKey(event: KeyboardEvent): boolean {
@@ -50,18 +40,20 @@ function onKeyDown(event: KeyboardEvent): void {
 	}
 	const mod = window.vomp.platform === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
 	if (!mod || event.altKey || event.repeat) return;
-	const id = event.shiftKey ? MOD_SHIFT_SHORTCUTS[event.code] : MOD_SHORTCUTS[event.code];
+	// ⌘\ closes split view when it is on, otherwise opens another chat beside this one.
+	const id = event.shiftKey ? MOD_SHIFT_SHORTCUTS[event.code] : event.code === "Backslash" ? (useApp.getState().splitTabId ? "view.split" : "chat.openSideBySide") : undefined;
 	if (id) {
 		event.preventDefault();
 		runCommand(id);
 		return;
 	}
+	// ⌘1-⌘9 open the first nine chats the sidebar lists under Projects, top to bottom (holding ⌘ shows the numbers).
 	const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
 	if (digit && !event.shiftKey) {
-		const tabId = tabAt(Number(digit));
-		if (!tabId) return;
+		const chat = sidebarChatAt(Number(digit));
+		if (!chat) return;
 		event.preventDefault();
-		useApp.getState().activateTab(tabId);
+		openSidebarChat(chat);
 	}
 }
 

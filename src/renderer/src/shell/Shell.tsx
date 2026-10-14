@@ -1,19 +1,19 @@
 import { FolderOpen, Plus } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { ChatArea } from "../chat/ChatArea";
+import { useComposerDrafts } from "../chat/composer/drafts";
 import { getCommand } from "../registry/commands";
 import { type SheetPresence, SheetPresenceContext } from "../registry/sheetPresence";
 import { pages, screens, sheets } from "../registry/slots";
-import { MAIN_ID, type OpenPage, useApp } from "../state/app";
+import { dockTooNarrow, focusedTabId, MAIN_ID, type OpenPage, useApp } from "../state/app";
 import { Button, cn, duration, EmptyState, Mark, PresenceSwap, spring } from "../ui";
 import { LeaveConfirm } from "./LeaveConfirm";
 import { Dock } from "./Dock";
 import { ResizeHandle } from "./ResizeHandle";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
-import { CHAT_PANEL_ID, chatTabId, TabStrip } from "./TabStrip";
 import { TitleBar } from "./TitleBar";
 
 /** Longest a sheet that plays an exit may take to report it before the host drops it anyway. */
@@ -121,7 +121,74 @@ function sideEnter(edge: -1 | 1) {
 	} as const;
 }
 
-/** Window layout (DESIGN §3): title bar · sidebar | tabs + chats/home | dock · status bar. */
+function subscribeResize(listener: () => void): () => void {
+	window.addEventListener("resize", listener);
+	return () => window.removeEventListener("resize", listener);
+}
+
+/** Something keyboard focus can land on and see: in the document, not inside an inert region, and laid out. */
+function focusable(element: Element | null): element is HTMLElement {
+	return element instanceof HTMLElement && element.isConnected && !element.closest("[inert]") && element.getClientRects().length > 0;
+}
+
+/**
+ * Focus for the expanded side panel, which replaces the chat at narrow widths. On entry, "Back to chat" takes focus
+ * when the panel was just opened or a pane chosen, or when focus was in the chat (now inert) or the side panel that
+ * gave way; a window resize leaves focus that is still usable elsewhere (sidebar, status bar) alone. On exit, focus
+ * returns to what had it before entry, else the focused chat's composer, else the main area.
+ */
+function useExpandedDockFocus(expanded: boolean): (back: HTMLElement) => void {
+	const lastFocus = useRef<HTMLElement | null>(null);
+	const opener = useRef<HTMLElement | null>(null);
+	const askedAt = useRef(Number.NEGATIVE_INFINITY);
+	const wasExpanded = useRef(expanded);
+
+	useEffect(() => {
+		const track = (event: FocusEvent) => {
+			if (event.target instanceof HTMLElement && !event.target.closest("[data-dock-expanded]")) lastFocus.current = event.target;
+		};
+		document.addEventListener("focusin", track);
+		const off = useApp.subscribe((state, previous) => {
+			const asked = (state.dockOpen && !previous.dockOpen) || (!state.chatOverDock && previous.chatOverDock) || state.dockPane !== previous.dockPane;
+			if (asked) askedAt.current = performance.now();
+		});
+		return () => {
+			document.removeEventListener("focusin", track);
+			off();
+		};
+	}, []);
+
+	useEffect(() => {
+		if (expanded === wasExpanded.current) return;
+		wasExpanded.current = expanded;
+		if (expanded) {
+			opener.current = lastFocus.current;
+			return;
+		}
+		const previous = opener.current;
+		opener.current = null;
+		// After the chat is visible and interactive again; the panel may still be playing its exit.
+		const frame = requestAnimationFrame(() => {
+			const active = document.activeElement;
+			if (focusable(active) && active !== document.body && !active.closest("[data-dock-expanded]")) return;
+			if (focusable(previous)) previous.focus();
+			else {
+				const tabId = focusedTabId(useApp.getState());
+				if (tabId) useComposerDrafts.getState().focus(tabId);
+				else document.getElementById(MAIN_ID)?.focus();
+			}
+		});
+		return () => cancelAnimationFrame(frame);
+	}, [expanded]);
+
+	return useCallback((back: HTMLElement) => {
+		const active = document.activeElement;
+		const lost = !focusable(active) || active === document.body || active.closest(`#${MAIN_ID}, [data-tour="dock"]`) !== null;
+		if (lost || performance.now() - askedAt.current < 1000) back.focus();
+	}, []);
+}
+
+/** Window layout (DESIGN §3): title bar · sidebar | chats/home/page | dock · status bar. */
 export function Shell(): ReactNode {
 	const { t } = useTranslation("shell");
 	const sidebarOpen = useApp(state => state.sidebarOpen);
@@ -132,11 +199,18 @@ export function Shell(): ReactNode {
 	const hasTabs = useApp(state => state.tabs.length > 0);
 	const page = useApp(state => (state.view === "page" ? state.page : null));
 	const pageReturn = useApp(state => state.pageReturn);
-	const showChat = view === "chat" && hasTabs;
+	const windowWidth = useSyncExternalStore(subscribeResize, () => window.innerWidth);
+	const tooNarrow = useApp(state => dockTooNarrow(state, windowWidth));
+	const chatOverDock = useApp(state => state.chatOverDock);
+	const showDock = dockOpen && !page && !tooNarrow;
+	// Too narrow for the chat and the panel side by side: the panel takes the main area, with "Back to chat",
+	// until the user goes back to the chat (the panel then waits for a wider window).
+	const dockExpanded = tooNarrow && !chatOverDock;
+	const onDockEnter = useExpandedDockFocus(dockExpanded);
+	const showChat = view === "chat" && hasTabs && !dockExpanded;
 	// The chat stays mounted (hidden and inert) under a page it opened, so Back finds it as it was:
 	// scroll position, expanded history and split width are component state.
 	const chatMounted = hasTabs && (view === "chat" || (view === "page" && pageReturn === "chat"));
-	const activeTabId = useApp(state => state.activeTabId);
 
 	return (
 		<div className="flex h-full flex-col bg-bg text-fg">
@@ -151,14 +225,9 @@ export function Shell(): ReactNode {
 					)}
 				</AnimatePresence>
 				<main id={MAIN_ID} tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
-					<TabStrip />
 					<div className="relative flex min-h-0 flex-1">
 						{chatMounted && (
-							// While a chat shows, this is the tabpanel for the selected chat tab.
 							<div
-								id={CHAT_PANEL_ID}
-								role="tabpanel"
-								aria-labelledby={activeTabId ? chatTabId(activeTabId) : undefined}
 								inert={!showChat}
 								className={cn("absolute inset-0 flex transition-opacity duration-(--dur-base)", showChat ? "opacity-100" : "invisible opacity-0")}
 							>
@@ -166,17 +235,17 @@ export function Shell(): ReactNode {
 							</div>
 						)}
 						<PresenceSwap
-							swapKey={page ? `page:${page.id}` : showChat ? "chat" : "home"}
+							swapKey={page ? `page:${page.id}` : dockExpanded ? "dock" : showChat ? "chat" : "home"}
 							variant="rise"
 							className={cn("relative flex min-h-0 min-w-0 flex-1", showChat && "pointer-events-none")}
 						>
-							{page ? <PageView page={page} /> : showChat ? null : <HomeView />}
+							{page ? <PageView page={page} /> : dockExpanded ? <Dock width={dockWidth} expanded onEnter={onDockEnter} /> : showChat ? null : <HomeView />}
 						</PresenceSwap>
 					</div>
 				</main>
 				<AnimatePresence initial={false}>
-					{/* The inspector belongs to the chat and project views; full pages take the whole main area. */}
-					{dockOpen && !page && (
+					{/* The side panel belongs to the chat and project views; full pages take the whole main area. */}
+					{showDock && (
 						<motion.div key="dock" className="flex shrink-0" {...sideEnter(1)}>
 							<ResizeHandle label={t("dock.resize")} value={dockWidth} min={320} max={640} direction={-1} onChange={width => useApp.getState().setDockWidth(width)} />
 							<Dock width={dockWidth} />

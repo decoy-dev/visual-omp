@@ -37,16 +37,40 @@ export function PaneToolbar({ children, className }: { children: ReactNode; clas
 	);
 }
 
-/** Titled pane section with a bottom hairline (Tasks, Outputs); `count` follows the title. */
-export function Section({ title, count, children }: { title: string; count?: ReactNode; children: ReactNode }) {
+/** Titled pane section with a bottom hairline (Tasks, Outputs); `count` follows the title, `description` sits under it. */
+export function Section({ title, count, description, children }: { title: string; count?: ReactNode; description?: string; children: ReactNode }) {
 	return (
 		<section className="border-b border-border px-3 py-3" aria-label={title}>
-			<h3 className="mb-2 flex items-center gap-2 text-sm font-semibold text-fg">
+			<h3 className={cn("flex items-center gap-2 text-sm font-semibold text-fg", description ? "mb-0.5" : "mb-2")}>
 				{title}
 				{count}
 			</h3>
+			{description && <p className="mb-2 text-xs text-fg-muted">{description}</p>}
 			{children}
 		</section>
+	);
+}
+
+/** Characters kept before the extension when a file name is cut in the middle. */
+const NAME_TAIL = 8;
+
+/**
+ * A file name cut in the middle when it doesn't fit: the start ellipsizes while the last characters and the extension
+ * stay, so names that share a long prefix stay apart. Assistive technology reads the whole name.
+ */
+export function FileName({ name, className }: { name: string; className?: string }) {
+	const dot = name.lastIndexOf(".");
+	const cut = Math.max(0, (dot > 0 ? dot : name.length) - NAME_TAIL);
+	return (
+		<span className={cn("flex min-w-0", className)}>
+			<span aria-hidden className="truncate whitespace-pre">
+				{name.slice(0, cut)}
+			</span>
+			<span aria-hidden className="shrink-0 whitespace-pre">
+				{name.slice(cut)}
+			</span>
+			<span className="sr-only">{name}</span>
+		</span>
 	);
 }
 
@@ -109,7 +133,7 @@ export function TabStrip({
 								layout="position"
 								{...listRowMotion}
 								className={cn(
-									"group relative flex min-w-0 max-w-44 shrink-0 items-center border-r border-border",
+									"group relative flex min-w-[5.5rem] max-w-44 shrink items-center border-r border-border",
 									selected ? "bg-panel text-fg" : "text-fg-muted hover:bg-hover hover:text-fg",
 								)}
 							>

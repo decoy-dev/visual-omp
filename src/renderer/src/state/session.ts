@@ -298,11 +298,22 @@ export class SessionController {
 			if (hostId === null) pending.push(state);
 			else if (state.hostId === hostId) this.#onHostState(state);
 		});
-		const state = await window.vomp.invoke("host:start", {
-			cwd: this.projectPath,
-			resumeFile: this.#sessionFile ?? undefined,
-			extraArgs: this.#extraArgs.length > 0 ? this.#extraArgs : undefined,
-		});
+		let state: HostState;
+		try {
+			state = await window.vomp.invoke("host:start", {
+				cwd: this.projectPath,
+				resumeFile: this.#sessionFile ?? undefined,
+				extraArgs: this.#extraArgs.length > 0 ? this.#extraArgs : undefined,
+			});
+		} catch (error) {
+			// Main refused to start omp (e.g. the new-install permission check couldn't read omp's settings):
+			// show its message where a failed start shows, with "Start omp again" to retry.
+			const message = (error instanceof Error ? error.message : String(error)).replace(/^Error invoking remote method '[^']+':\s*(?:\w*Error:\s*)?/, "");
+			this.#unsubscribeHost?.();
+			this.#unsubscribeHost = null;
+			if (!this.#disposed) this.#set({ mode: "exited", working: false, error: message });
+			throw new Error(message);
+		}
 		// Closed while omp was starting: this host has no tab, so stop it instead of adopting it.
 		if (this.#disposed) {
 			await this.#stopHost(state.hostId);

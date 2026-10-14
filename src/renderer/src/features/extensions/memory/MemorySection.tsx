@@ -1,16 +1,18 @@
-/** DESIGN §4.17 — Memory viewer ("What omp remembers"). */
+/** DESIGN §4.17: Memory, a Settings section for what omp remembers between chats. */
 import { Brain, DownloadSimple, Lock, Trash } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { MemoryEntrySummary, MemoryScope, MemoryStatus } from "@shared/contracts/memory";
+import type { AdvancedSectionProps } from "@/features/manage/settings/AdvancedSection";
 import { listRowMotion } from "@/features/manage/listMotion";
-import type { SheetProps } from "@/registry/slots";
+import type { SettingsSectionProps } from "@/registry/slots";
+import { openSettings } from "@/state/navigation";
 import { Markdown } from "@/transcript/Markdown";
-import { Button, Chip, cn, EmptyState, Notice, PresenceSwap, SearchInput, Select, SelectItem, Skeleton, toast, Tooltip } from "@/ui";
+import { Button, Chip, cn, EmptyState, Notice, PageHeader, PresenceSwap, SearchInput, Select, SelectItem, Skeleton, toast, Tooltip } from "@/ui";
 import { focusRingInset } from "@/ui/styles";
 import { errorText, formatAge } from "../format";
-import { ConfirmDialog, type ExtensionSheetProps, ExtensionSheetFrame, useDebounced, useLoad, useSheetProject } from "../shared";
+import { ConfirmDialog, useDebounced, useLoad } from "../shared";
 
 const LIST_LIMIT = 200;
 /** Word the user types to confirm "Forget everything". */
@@ -35,19 +37,14 @@ async function loadPlaces(projectPath: string | null): Promise<Places> {
 	return { status, scopes: merged, projectScopeIds: forProject.map(scope => scope.id) };
 }
 
-function defaultScope(places: Places, preferGlobal: boolean): string | null {
-	const { scopes, projectScopeIds } = places;
-	if (preferGlobal) {
-		const shared = scopes.find(scope => scope.global);
-		if (shared) return shared.id;
-	}
+/** The place to show first: this project's memories when it has some, else the active backend's. */
+function defaultScope({ scopes, projectScopeIds }: Places): string | null {
 	const project = scopes.find(scope => projectScopeIds.includes(scope.id) && scope.exists && scope.entryCount > 0);
 	return (project ?? scopes.find(scope => projectScopeIds.includes(scope.id)) ?? scopes.find(scope => scope.active) ?? scopes[0])?.id ?? null;
 }
 
-export function MemorySheet({ props, close }: SheetProps<ExtensionSheetProps>) {
+export function MemorySection({ projectPath }: SettingsSectionProps) {
 	const { t, i18n } = useTranslation("extensions");
-	const projectPath = useSheetProject(props);
 	const places = useLoad(() => loadPlaces(projectPath), [projectPath]);
 	const [scopeId, setScopeId] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
@@ -57,8 +54,8 @@ export function MemorySheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 	const [forgetAll, setForgetAll] = useState(false);
 
 	useEffect(() => {
-		if (places.data && !scopeId) setScopeId(defaultScope(places.data, props?.scope === "global"));
-	}, [places.data, scopeId, props?.scope]);
+		if (places.data && !scopeId) setScopeId(defaultScope(places.data));
+	}, [places.data, scopeId]);
 
 	const scope = places.data?.scopes.find(entry => entry.id === scopeId) ?? null;
 	const entries = useLoad(async () => {
@@ -133,126 +130,124 @@ export function MemorySheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 
 	const status = places.data?.status;
 	return (
-		<ExtensionSheetFrame
-			close={close}
-			width={800}
-			title={
-				<span className="flex items-center gap-2">
-					{t("memory.title")}
-					{status && <Chip tone={status.enabled ? "accent" : "neutral"}>{t(`memory.backend.${status.backend}`)}</Chip>}
-				</span>
-			}
-			description={t("memory.subtitle")}
-			bodyClassName="flex flex-col gap-3 overflow-hidden"
-		>
-			{places.error && (
-				<Notice tone="err" actions={<Button size="sm" onClick={() => void places.reload()}>{t("common.retry")}</Button>}>
-					{t("memory.loadFailed")} {places.error}
-				</Notice>
-			)}
-			{status?.backend === "off" && <Notice tone="info">{t("memory.off")}</Notice>}
-			{status?.backend === "hindsight" && <Notice tone="info">{t("memory.remote", { url: status.hindsight.apiUrl })}</Notice>}
-
-			<div className="flex items-center gap-2">
-				{places.data && places.data.scopes.length > 0 && (
-					<Select value={scopeId ?? undefined} onValueChange={id => setScopeId(id)} aria-label={t("memory.scopeLabel")} className="w-[240px]" size="sm">
-						{places.data.scopes.map(entry => (
-							<SelectItem key={entry.id} value={entry.id} hint={entry.exists ? String(entry.entryCount) : undefined}>
-								{scopeLabel(entry, places.data?.projectScopeIds ?? [], t)}
-							</SelectItem>
-						))}
-					</Select>
+		<>
+			<PageHeader
+				title={t("memory.title")}
+				description={t("memory.subtitle")}
+				meta={status && <Chip tone={status.enabled ? "accent" : "neutral"}>{t(`memory.backend.${status.backend}`)}</Chip>}
+			/>
+			<div className="flex flex-col gap-3">
+				{places.error && (
+					<Notice tone="err" actions={<Button size="sm" onClick={() => void places.reload()}>{t("common.retry")}</Button>}>
+						{t("memory.loadFailed")} {places.error}
+					</Notice>
 				)}
-				<SearchInput size="sm" value={query} onValueChange={setQuery} placeholder={t("memory.search")} aria-label={t("memory.search")} className="flex-1" />
-				<Button
-					size="sm"
-					variant="danger"
-					icon={<Trash />}
-					disabled={!scope || deletableCount === 0}
-					onClick={() => setForgetAll(true)}
-				>
-					{t("memory.forgetAll.action")}
-				</Button>
-			</div>
-
-			{entries.error && (
-				<Notice tone="err">
-					{entries.error}{" "}
-					{scope && (
-						<button type="button" className="font-mono text-xs underline" onClick={() => void window.vomp.invoke("app:showItem", scope.path)}>
-							{scope.path}
-						</button>
-					)}
-				</Notice>
-			)}
-			{scope && list.length > 0 && deletableCount === 0 && (
-				<Notice tone="info">
-					<span className="inline-flex items-center gap-1.5">
-						<Lock aria-hidden className="size-3.5" />
-						{t("memory.readOnly")}
-					</span>
-				</Notice>
-			)}
-
-			{!places.data && places.loading ? (
-				<Skeleton height={320} />
-			) : list.length === 0 && !entries.loading ? (
-				<EmptyState
-					icon={<Brain />}
-					title={settled ? t("memory.noMatch", { q: settled }) : t("memory.empty")}
-				/>
-			) : (
-				<div className="flex min-h-0 flex-1 overflow-hidden rounded-lg border border-border bg-panel">
-					<ul
-						// A new scope or search is a new list: remount it so its rows show at rest; only forgotten rows animate out.
-						key={entries.data?.key ?? ""}
-						aria-label={t("memory.listLabel")}
-						onKeyDown={onListKey}
-						className="relative w-[280px] shrink-0 overflow-y-auto border-r border-border"
+				{status?.backend === "off" && (
+					<Notice
+						tone="info"
+						actions={
+							<Button
+								size="sm"
+								onClick={() => openSettings("advanced", { projectPath, sectionProps: { query: "memory.backend" } satisfies AdvancedSectionProps })}
+							>
+								{t("memory.openAdvanced")}
+							</Button>
+						}
 					>
-						<AnimatePresence initial={false} mode="popLayout">
-						{list.map(entry => (
-							<motion.li key={entry.id} {...listRowMotion} className="bg-panel">
-								<button
-									type="button"
-									data-id={entry.id}
-									aria-current={entry.id === selectedId ? "true" : undefined}
-									tabIndex={entry.id === selectedId ? 0 : -1}
-									onClick={() => setSelectedId(entry.id)}
-									className={cn(
-										"relative flex w-full flex-col gap-0.5 border-b border-border px-3 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-hover",
-										entry.id === selectedId && "bg-selected hover:bg-selected",
-										focusRingInset,
-									)}
-								>
-									<span className="flex items-center gap-2">
-										<span className="min-w-0 flex-1 truncate text-md font-medium text-fg">{entry.title}</span>
-										<span className="shrink-0 text-xs text-fg-faint">
-											{formatAge(entry.updatedAt ?? entry.createdAt ?? Date.now(), Date.now(), i18n.language)}
-										</span>
-									</span>
-									<span className="line-clamp-1 text-sm text-fg-muted">{entry.preview}</span>
-								</button>
-							</motion.li>
-						))}
-						</AnimatePresence>
-						{entries.data && entries.data.total > list.length && (
-							<li className="px-3 py-2 text-xs text-fg-faint">{t("memory.more", { count: entries.data.total - list.length })}</li>
-						)}
-					</ul>
-					<div className="relative min-w-0 flex-1 overflow-y-auto">
-						{selected && (
-							<PresenceSwap swapKey={selected.id} mode="popLayout">
-								<Reader
-									entry={selected}
-									onForget={() => setForgetOne(selected)}
-									onExport={() => void exportEntry(selected)}
-								/>
-							</PresenceSwap>
-						)}
-					</div>
+						{t("memory.off")}
+					</Notice>
+				)}
+				{status?.backend === "hindsight" && <Notice tone="info">{t("memory.remote", { url: status.hindsight.apiUrl })}</Notice>}
+
+				<div className="flex flex-wrap items-center gap-2">
+					{places.data && places.data.scopes.length > 0 && (
+						<Select value={scopeId ?? undefined} onValueChange={id => setScopeId(id)} aria-label={t("memory.scopeLabel")} className="w-[240px]" size="sm">
+							{places.data.scopes.map(entry => (
+								<SelectItem key={entry.id} value={entry.id} hint={entry.exists ? String(entry.entryCount) : undefined}>
+									{scopeLabel(entry, places.data?.projectScopeIds ?? [], t)}
+								</SelectItem>
+							))}
+						</Select>
+					)}
+					<SearchInput size="sm" value={query} onValueChange={setQuery} placeholder={t("memory.search")} aria-label={t("memory.search")} className="min-w-[200px] flex-1" />
+					<Button size="sm" variant="danger" icon={<Trash />} disabled={!scope || deletableCount === 0} onClick={() => setForgetAll(true)}>
+						{t("memory.forgetAll.action")}
+					</Button>
 				</div>
-			)}
+
+				{entries.error && (
+					<Notice tone="err">
+						{entries.error}{" "}
+						{scope && (
+							<button type="button" className="font-mono text-xs underline" onClick={() => void window.vomp.invoke("app:showItem", scope.path)}>
+								{scope.path}
+							</button>
+						)}
+					</Notice>
+				)}
+				{scope && list.length > 0 && deletableCount === 0 && (
+					<Notice tone="info">
+						<span className="inline-flex items-center gap-1.5">
+							<Lock aria-hidden className="size-3.5" />
+							{t("memory.readOnly")}
+						</span>
+					</Notice>
+				)}
+
+				{!places.data && places.loading ? (
+					<Skeleton height={320} />
+				) : list.length === 0 && !entries.loading ? (
+					<EmptyState icon={<Brain />} title={settled ? t("memory.noMatch", { q: settled }) : t("memory.empty")} />
+				) : (
+					// The list and the reader scroll on their own so the selected memory stays beside its row.
+					<div className="flex h-[clamp(360px,calc(100vh-320px),720px)] overflow-hidden rounded-lg border border-border bg-panel">
+						<ul
+							// A new scope or search is a new list: remount it so its rows show at rest; only forgotten rows animate out.
+							key={entries.data?.key ?? ""}
+							aria-label={t("memory.listLabel")}
+							onKeyDown={onListKey}
+							className="relative w-[280px] shrink-0 overflow-y-auto border-r border-border"
+						>
+							<AnimatePresence initial={false} mode="popLayout">
+								{list.map(entry => (
+									<motion.li key={entry.id} {...listRowMotion} className="bg-panel">
+										<button
+											type="button"
+											data-id={entry.id}
+											aria-current={entry.id === selectedId ? "true" : undefined}
+											tabIndex={entry.id === selectedId ? 0 : -1}
+											onClick={() => setSelectedId(entry.id)}
+											className={cn(
+												"relative flex w-full flex-col gap-0.5 border-b border-border px-3 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-hover",
+												entry.id === selectedId && "bg-selected hover:bg-selected",
+												focusRingInset,
+											)}
+										>
+											<span className="flex items-center gap-2">
+												<span className="min-w-0 flex-1 truncate text-md font-medium text-fg">{entry.title}</span>
+												<span className="shrink-0 text-xs text-fg-faint">
+													{formatAge(entry.updatedAt ?? entry.createdAt ?? Date.now(), Date.now(), i18n.language)}
+												</span>
+											</span>
+											<span className="line-clamp-1 text-sm text-fg-muted">{entry.preview}</span>
+										</button>
+									</motion.li>
+								))}
+							</AnimatePresence>
+							{entries.data && entries.data.total > list.length && (
+								<li className="px-3 py-2 text-xs text-fg-faint">{t("memory.more", { count: entries.data.total - list.length })}</li>
+							)}
+						</ul>
+						<div className="relative min-w-0 flex-1 overflow-y-auto">
+							{selected && (
+								<PresenceSwap swapKey={selected.id} mode="popLayout">
+									<Reader entry={selected} onForget={() => setForgetOne(selected)} onExport={() => void exportEntry(selected)} />
+								</PresenceSwap>
+							)}
+						</div>
+					</div>
+				)}
+			</div>
 
 			<ConfirmDialog
 				open={forgetOne !== null}
@@ -276,7 +271,7 @@ export function MemorySheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 			>
 				{list.length > deletableCount && <p className="text-sm text-fg-muted">{t("memory.forgetAll.keeps")}</p>}
 			</ConfirmDialog>
-		</ExtensionSheetFrame>
+		</>
 	);
 }
 

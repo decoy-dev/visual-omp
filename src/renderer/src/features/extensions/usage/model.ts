@@ -1,6 +1,7 @@
-/** Pure helpers for the usage dashboard. */
-import type { SpendChat } from "@shared/contracts/extensions";
+/** Pure helpers for the Usage & limits page. */
+import type { SpendChat, SpendDay } from "@shared/contracts/extensions";
 import type { UsageLimit } from "@shared/contracts/usage";
+import { meterTone } from "@/ui/Meter";
 import { toCsv } from "../format";
 
 /** omp's used-fraction resolution order (see `UsageLimit`); null when the limit reports nothing usable. */
@@ -13,12 +14,15 @@ export function usedFraction(limit: UsageLimit): number | null {
 	return null;
 }
 
-/** DESIGN §4.18: ok below 70%, warn from 70%, err from 90% (or when the provider says exhausted). */
+/** The app's meter thresholds (`meterTone`: warn from 70%, err from 90% or exhausted); a provider-reported warning warns at any level. */
 export function limitTone(fraction: number | null, status: UsageLimit["status"]): "ok" | "warn" | "err" {
-	if (status === "exhausted" || (fraction ?? 0) >= 0.9) return "err";
-	if (status === "warning" || (fraction ?? 0) >= 0.7) return "warn";
-	return "ok";
+	const tone = meterTone(fraction ?? 0, status === "exhausted");
+	if (tone !== "accent") return tone;
+	return status === "warning" ? "warn" : "ok";
 }
+
+/** Trailing local days the page reports on. */
+export type UsageRange = 7 | 30;
 
 export type ChatSortKey = "title" | "model" | "inputTokens" | "outputTokens" | "cost" | "durationMs";
 export type SortDirection = "asc" | "desc";
@@ -43,17 +47,63 @@ export function sortChats(chats: readonly SpendChat[], key: ChatSortKey, directi
 	});
 }
 
+/** Last path segment of a project folder. */
+export function projectName(cwd: string): string {
+	const trimmed = cwd.replace(/[\\/]+$/, "");
+	return trimmed.slice(Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\")) + 1) || cwd;
+}
+
+/** Table-only filters; the summary and chart always cover every chat in the range. */
+export interface ChatFilters {
+	/** Matches the title, project folder or model, ignoring case. */
+	query: string;
+	/** Project folder (`SpendChat.cwd`), or null for every project. */
+	project: string | null;
+	/** `provider/model`, or null for every model. */
+	model: string | null;
+}
+
+export function filterChats(chats: readonly SpendChat[], { query, project, model }: ChatFilters): SpendChat[] {
+	const needle = query.trim().toLocaleLowerCase();
+	return chats.filter(
+		chat =>
+			(project === null || chat.cwd === project) &&
+			(model === null || chat.model === model) &&
+			(!needle || [chat.title, chat.cwd, chat.model].some(field => field?.toLocaleLowerCase().includes(needle))),
+	);
+}
+
+/**
+ * Chats as CSV, in the order given. Token columns say whether cache reads and writes are included,
+ * and the cost column says it is omp's estimate at public API prices.
+ */
 export function chatsCsv(chats: readonly SpendChat[], untitled: string): string {
 	return toCsv(
-		["chat", "project", "model", "input_tokens", "output_tokens", "cache_read_tokens", "cache_write_tokens", "cost_usd", "requests", "duration_s", "first_activity", "last_activity", "session_file"],
+		[
+			"chat",
+			"project",
+			"primary_model",
+			"input_tokens_incl_cache",
+			"fresh_input_tokens",
+			"cache_read_tokens",
+			"cache_write_tokens",
+			"output_tokens",
+			"estimated_api_cost_usd",
+			"requests",
+			"generation_time_s",
+			"first_activity",
+			"last_activity",
+			"session_file",
+		],
 		chats.map(chat => [
 			chat.title ?? untitled,
 			chat.cwd,
 			chat.model ?? "",
+			promptTokens(chat),
 			chat.inputTokens,
-			chat.outputTokens,
 			chat.cacheReadTokens,
 			chat.cacheWriteTokens,
+			chat.outputTokens,
 			chat.cost.toFixed(4),
 			chat.requests,
 			Math.round(chat.durationMs / 1000),
@@ -62,4 +112,41 @@ export function chatsCsv(chats: readonly SpendChat[], untitled: string): string 
 			chat.file,
 		]),
 	);
+}
+
+/** `omp-chats-2026-10-08-to-2026-10-14.csv`: the range's first and last local dates. */
+export function chatsCsvName(days: readonly SpendDay[]): string {
+	const first = days[0]?.date;
+	const last = days.at(-1)?.date;
+	return first && last ? `omp-chats-${first}-to-${last}.csv` : "omp-chats.csv";
+}
+
+/** Y axis of the daily cost chart: zero-based, 2 or 3 equal steps (3 or 4 ticks), the top at or above `max`. */
+export interface ChartScale {
+	top: number;
+	step: number;
+	/** Ascending, starting at 0, ending at `top`. */
+	ticks: number[];
+}
+
+const NICE_STEPS = [1, 2, 2.5, 5, 10];
+/** Below a cent the axis would only repeat "$0.00". */
+const MIN_STEP = 0.01;
+
+export function chartScale(max: number): ChartScale {
+	const raw = Math.max(max, 0) / 3;
+	let step = MIN_STEP;
+	if (raw > MIN_STEP) {
+		const magnitude = 10 ** Math.floor(Math.log10(raw));
+		step = (NICE_STEPS.find(nice => nice * magnitude >= raw * (1 - 1e-9)) ?? 10) * magnitude;
+	}
+	const intervals = Math.max(2, Math.ceil(max / step - 1e-9));
+	const ticks = Array.from({ length: intervals + 1 }, (_, index) => Number((index * step).toPrecision(12)));
+	return { top: ticks.at(-1) ?? step * 2, step, ticks };
+}
+
+/** Axis label: whole dollars when every tick is whole, else cents. */
+export function formatTick(value: number, step: number): string {
+	const digits = Number.isInteger(step) ? 0 : 2;
+	return `$${value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }

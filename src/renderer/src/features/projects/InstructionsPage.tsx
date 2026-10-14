@@ -1,14 +1,17 @@
 /**
- * Project instructions editor: the context file omp reads when a chat starts in this folder
+ * Project instructions page: the context file omp reads when a chat starts in this folder
  * (AGENTS.md, CLAUDE.md, …) with a markdown preview, plus the project's rules (`.omp/rules`).
+ * Unsaved edits go through the app's leave guard (`useLeaveGuard`), including switching files or tabs.
  */
 import type { InstructionFile, ProjectInstructions, ProjectRule, RuleDraft } from "@shared/contracts/project";
-import { Info, PencilSimple, Plus, Trash, WarningCircle } from "@phosphor-icons/react";
+import { PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { SheetProps } from "@/registry/slots";
+import type { PageProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
+import { useLeaveGuard, whenLeaving } from "@/state/leaveGuard";
+import { type ProjectInstructionsPageProps, usePageBack } from "@/state/navigation";
 import { Markdown } from "@/transcript/Markdown";
 import {
 	Button,
@@ -18,12 +21,13 @@ import {
 	EmptyState,
 	IconButton,
 	Input,
+	Notice,
+	PageFrame,
+	PageHeader,
 	PresenceSwap,
 	Segmented,
 	Select,
 	SelectItem,
-	SheetContent,
-	Sheet,
 	Skeleton,
 	spring,
 	Switch,
@@ -37,68 +41,47 @@ import {
 import { errorText } from "./actions";
 import { folderName, formatBytes } from "./format";
 
-export interface InstructionsSheetProps {
-	projectPath?: string | null;
-	tab?: "instructions" | "rules";
-}
-
+type Tab = NonNullable<ProjectInstructionsPageProps["tab"]>;
 type Mode = "write" | "preview";
 
-export function InstructionsSheet({ props, close }: SheetProps<InstructionsSheetProps | undefined>): ReactNode {
+export function InstructionsPage({ props, seq, close }: PageProps<ProjectInstructionsPageProps>): ReactNode {
 	const { t } = useTranslation("projects");
-	const active = useApp(state => state.activeProject);
-	const projectPath = props?.projectPath ?? active;
-	const [tab, setTab] = useState<string>(props?.tab ?? "instructions");
-	const [dirty, setDirty] = useState(false);
-	const [confirmClose, setConfirmClose] = useState(false);
-	const requestClose = () => (dirty ? setConfirmClose(true) : close());
+	const { projectPath } = props;
+	const name = useApp(state => state.projects.find(entry => entry.path === projectPath)?.name ?? folderName(projectPath));
+	const [tab, setTab] = useState<Tab>(props.tab ?? "instructions");
+	// A new link into the open page chooses its tab again (the link already asked about unsaved edits).
+	const [linked, setLinked] = useState(seq);
+	if (linked !== seq) {
+		setLinked(seq);
+		setTab(props.tab ?? "instructions");
+	}
 
 	return (
-		<Sheet open onOpenChange={open => !open && requestClose()}>
-			<SheetContent
-				width={760}
-				title={t("instructions.title")}
-				description={projectPath ? t("instructions.subtitle", { name: folderName(projectPath) }) : undefined}
-				bodyClassName="flex flex-col p-0"
+		<PageFrame back={usePageBack(close)} width="list" label={t("instructions.title")} focusKey={seq}>
+			<PageHeader title={t("instructions.title")} description={t("instructions.subtitle", { name })} />
+			<Tabs
+				key={projectPath}
+				value={tab}
+				// Switching tabs unmounts the editor, so unsaved edits are confirmed first.
+				onValueChange={next => void whenLeaving(() => setTab(next as Tab))}
+				className="flex flex-col"
 			>
-				{!projectPath ? (
-					<EmptyState title={t("instructions.noProject")} />
-				) : (
-					<Tabs value={tab} onValueChange={setTab} className="flex min-h-0 flex-1 flex-col">
-						<TabsList className="px-4">
-							<TabsTrigger value="instructions">{t("instructions.tabInstructions")}</TabsTrigger>
-							<TabsTrigger value="rules">{t("instructions.tabRules")}</TabsTrigger>
-						</TabsList>
-						<TabsContent value="instructions" className="flex min-h-0 flex-1 flex-col">
-							<InstructionsEditor projectPath={projectPath} onDirty={setDirty} />
-						</TabsContent>
-						<TabsContent value="rules" className="min-h-0 flex-1 overflow-y-auto">
-							<RulesPanel projectPath={projectPath} />
-						</TabsContent>
-					</Tabs>
-				)}
-			</SheetContent>
-			<Dialog open={confirmClose} onOpenChange={setConfirmClose}>
-				<DialogContent
-					size="sm"
-					destructive
-					title={t("instructions.discard.title")}
-					description={t("instructions.discard.body")}
-					footer={
-						<>
-							<Button onClick={() => setConfirmClose(false)}>{t("instructions.discard.keep")}</Button>
-							<Button variant="danger" onClick={close}>
-								{t("instructions.discard.confirm")}
-							</Button>
-						</>
-					}
-				/>
-			</Dialog>
-		</Sheet>
+				<TabsList>
+					<TabsTrigger value="instructions">{t("instructions.tabInstructions")}</TabsTrigger>
+					<TabsTrigger value="rules">{t("instructions.tabRules")}</TabsTrigger>
+				</TabsList>
+				<TabsContent value="instructions" className="pt-4">
+					<InstructionsEditor projectPath={projectPath} />
+				</TabsContent>
+				<TabsContent value="rules" className="pt-4">
+					<RulesPanel projectPath={projectPath} />
+				</TabsContent>
+			</Tabs>
+		</PageFrame>
 	);
 }
 
-function InstructionsEditor({ projectPath, onDirty }: { projectPath: string; onDirty(dirty: boolean): void }): ReactNode {
+function InstructionsEditor({ projectPath }: { projectPath: string }): ReactNode {
 	const { t } = useTranslation("projects");
 	const [data, setData] = useState<ProjectInstructions | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -127,14 +110,14 @@ function InstructionsEditor({ projectPath, onDirty }: { projectPath: string; onD
 	}, [projectPath]);
 
 	const dirty = text !== saved;
-	useEffect(() => onDirty(dirty), [dirty, onDirty]);
+	useLeaveGuard(dirty, () => setText(saved));
 
-	if (error) return <p className="m-4 text-sm text-err">{error}</p>;
+	if (error) return <p className="text-sm text-err">{error}</p>;
 	if (!data || relPath === null) {
 		return (
-			<div className="flex flex-col gap-3 p-4" aria-busy>
+			<div className="flex flex-col gap-3" aria-busy>
 				<Skeleton height={32} />
-				<Skeleton height={240} />
+				<Skeleton height={320} />
 			</div>
 		);
 	}
@@ -144,12 +127,14 @@ function InstructionsEditor({ projectPath, onDirty }: { projectPath: string; onD
 	const contextFiles = data.files.filter(entry => entry.kind === "context");
 	const sticky = data.files.filter(entry => entry.kind === "sticky");
 
-	const choose = (next: string) => {
-		const entry = data.files.find(candidate => candidate.relPath === next);
-		setRelPath(next);
-		setText(entry?.content ?? "");
-		setSaved(entry?.content ?? "");
-	};
+	// Opening another file replaces the text, so unsaved edits are confirmed first.
+	const choose = (next: string) =>
+		void whenLeaving(() => {
+			const entry = data.files.find(candidate => candidate.relPath === next);
+			setRelPath(next);
+			setText(entry?.content ?? "");
+			setSaved(entry?.content ?? "");
+		});
 
 	const save = async () => {
 		setSaving(true);
@@ -170,11 +155,12 @@ function InstructionsEditor({ projectPath, onDirty }: { projectPath: string; onD
 			{entry.relPath}
 		</SelectItem>
 	);
+	const notice = file?.kind === "sticky" ? "stickyNote" : activeFile && activeFile.relPath !== relPath ? "shadowed" : "explainer";
 
 	return (
-		<div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+		<div className="flex flex-col gap-3">
 			<div className="flex flex-wrap items-center gap-2">
-				<Select value={relPath} onValueChange={choose} aria-label={t("instructions.file")} className="w-64">
+				<Select value={relPath} onValueChange={choose} aria-label={t("instructions.file")} className="w-64 max-w-full">
 					{contextFiles.map(option)}
 					{sticky.map(option)}
 				</Select>
@@ -191,43 +177,39 @@ function InstructionsEditor({ projectPath, onDirty }: { projectPath: string; onD
 				/>
 			</div>
 
-			<PresenceSwap swapKey={file?.kind === "sticky" ? "sticky" : activeFile && activeFile.relPath !== relPath ? "shadowed" : "explainer"}>
-			{file?.kind === "sticky" ? (
-				<Notice icon={<Info />}>{t("instructions.stickyNote")}</Notice>
-			) : activeFile && activeFile.relPath !== relPath ? (
-				<Notice icon={<WarningCircle />} tone="warn">
-					{t("instructions.shadowed", { active: activeFile.relPath })}
+			<PresenceSwap swapKey={notice}>
+				<Notice tone={notice === "shadowed" ? "warn" : "info"}>
+					{notice === "shadowed" ? t("instructions.shadowed", { active: activeFile?.relPath ?? "" }) : t(`instructions.${notice}`)}
 				</Notice>
-			) : (
-				<Notice icon={<Info />}>{t("instructions.explainer")}</Notice>
-			)}
 			</PresenceSwap>
 
-			<PresenceSwap swapKey={mode} className="flex min-h-0 flex-1 flex-col">
-			{mode === "write" ? (
-				<textarea
-					aria-label={t("instructions.editorLabel", { file: relPath })}
-					value={text}
-					onChange={event => setText(event.currentTarget.value)}
-					onKeyDown={event => {
-						if (event.key === "s" && (event.metaKey || event.ctrlKey)) {
-							event.preventDefault();
-							if (dirty) void save();
-						}
-					}}
-					spellCheck
-					placeholder={t("instructions.placeholder")}
-					className="min-h-0 flex-1 resize-none rounded-md border border-border-strong bg-panel p-3 font-mono text-sm leading-6 text-fg outline-none placeholder:text-fg-faint focus:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-				/>
-			) : (
-				<div className="min-h-0 flex-1 overflow-y-auto rounded-md border border-border bg-panel p-4" tabIndex={0} aria-label={t("instructions.preview")}>
-					{text.trim() ? <Markdown text={text} /> : <p className="text-md text-fg-muted">{t("instructions.previewEmpty")}</p>}
-				</div>
-			)}
+			<PresenceSwap swapKey={mode} className="flex flex-col">
+				{mode === "write" ? (
+					<textarea
+						aria-label={t("instructions.editorLabel", { file: relPath })}
+						value={text}
+						onChange={event => setText(event.currentTarget.value)}
+						onKeyDown={event => {
+							if (event.key === "s" && (event.metaKey || event.ctrlKey)) {
+								event.preventDefault();
+								if (dirty) void save();
+							}
+						}}
+						spellCheck
+						placeholder={t("instructions.placeholder")}
+						className="h-[max(20rem,55vh)] resize-y rounded-md border border-border-strong bg-panel p-3 font-mono text-sm leading-6 text-fg outline-none placeholder:text-fg-faint focus:border-ring focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+					/>
+				) : (
+					<div className="min-h-[max(20rem,55vh)] rounded-md border border-border bg-panel p-4" tabIndex={0} aria-label={t("instructions.preview")}>
+						{text.trim() ? <Markdown text={text} /> : <p className="text-md text-fg-muted">{t("instructions.previewEmpty")}</p>}
+					</div>
+				)}
 			</PresenceSwap>
 
-			<div className="flex items-center gap-2">
-				<span className="flex-1 text-sm text-fg-muted">{dirty ? t("instructions.unsaved") : t("instructions.appliesNext")}</span>
+			<div className="flex flex-wrap items-center gap-2">
+				<span className="min-w-[min(100%,12rem)] flex-1 text-sm text-fg-muted" role="status">
+					{dirty ? t("instructions.unsaved") : t("instructions.appliesNext")}
+				</span>
 				<Button variant="secondary" disabled={!dirty || saving} onClick={() => setText(saved)}>
 					{t("instructions.revert")}
 				</Button>
@@ -236,17 +218,6 @@ function InstructionsEditor({ projectPath, onDirty }: { projectPath: string; onD
 				</Button>
 			</div>
 		</div>
-	);
-}
-
-function Notice({ icon, tone, children }: { icon: ReactNode; tone?: "warn"; children: ReactNode }): ReactNode {
-	return (
-		<p className={`flex items-start gap-2 rounded-md px-3 py-2 text-sm ${tone === "warn" ? "bg-warn-bg text-fg" : "bg-inset text-fg-muted"}`}>
-			<span className={`mt-px inline-flex shrink-0 [&>svg]:size-4 ${tone === "warn" ? "text-warn" : "text-fg-faint"}`} aria-hidden>
-				{icon}
-			</span>
-			<span>{children}</span>
-		</p>
 	);
 }
 
@@ -306,10 +277,10 @@ function RulesPanel({ projectPath }: { projectPath: string }): ReactNode {
 		}
 	};
 
-	if (error) return <p className="m-4 text-sm text-err">{error}</p>;
+	if (error) return <p className="text-sm text-err">{error}</p>;
 	if (!rules) {
 		return (
-			<div className="flex flex-col gap-3 p-4" aria-busy>
+			<div className="flex flex-col gap-3" aria-busy>
 				{[0, 1, 2].map(row => (
 					<Skeleton key={row} height={56} />
 				))}
@@ -327,92 +298,92 @@ function RulesPanel({ projectPath }: { projectPath: string }): ReactNode {
 
 	return (
 		<PresenceSwap swapKey="list" variant="slide" direction={-1}>
-		<div className="flex flex-col gap-3 p-4">
-			<div className="flex items-center gap-3">
-				<p className="flex-1 text-sm text-fg-muted">{t("rules.explainer")}</p>
-				<Button variant="primary" size="sm" icon={<Plus />} onClick={() => setForm(EMPTY_FORM)}>
-					{t("rules.new")}
-				</Button>
+			<div className="flex flex-col gap-3">
+				<div className="flex flex-wrap items-center gap-3">
+					<p className="min-w-[min(100%,16rem)] flex-1 text-sm text-fg-muted">{t("rules.explainer")}</p>
+					<Button variant="primary" size="sm" icon={<Plus />} onClick={() => setForm(EMPTY_FORM)}>
+						{t("rules.new")}
+					</Button>
+				</div>
+				{rules.length === 0 ? (
+					<EmptyState title={t("rules.emptyTitle")} body={t("rules.emptyBody")} />
+				) : (
+					<ul className="relative flex flex-col divide-y divide-border border-y border-border">
+						<AnimatePresence initial={false} mode="popLayout">
+							{rules.map(rule => (
+								<motion.li
+									key={rule.path}
+									layout="position"
+									initial={{ opacity: 0, y: -4 }}
+									animate={{ opacity: 1, y: 0 }}
+									exit={{ opacity: 0 }}
+									transition={spring.snappy}
+									className="flex items-start gap-3 py-3"
+								>
+									<div className="min-w-0 flex-1">
+										<div className="flex flex-wrap items-center gap-2">
+											<span className="font-mono text-md font-semibold text-fg">{rule.name}</span>
+											{rule.source !== "omp" && <Chip>{t(`rules.source.${rule.source}`)}</Chip>}
+											{rule.alwaysApply && <Chip tone="accent">{t("rules.always")}</Chip>}
+											{!rule.enabled && <Chip tone="warn">{t("rules.off")}</Chip>}
+										</div>
+										{rule.description && <p className="mt-1 text-sm text-fg-muted">{rule.description}</p>}
+										{rule.globs.length > 0 && (
+											<p className="mt-1 font-mono text-xs text-fg-faint [overflow-wrap:anywhere]">{t("rules.appliesTo", { globs: rule.globs.join(", ") })}</p>
+										)}
+										{rule.frontmatterError && <p className="mt-1 text-xs text-warn">{t("rules.frontmatterError", { error: rule.frontmatterError })}</p>}
+									</div>
+									{rule.editable ? (
+										<div className="flex shrink-0 items-center gap-1">
+											<Switch
+												aria-label={t("rules.toggle", { name: rule.name })}
+												checked={rule.enabled}
+												onCheckedChange={enabled => void save({ name: rule.name, enabled, body: rule.body })}
+											/>
+											<IconButton
+												label={t("rules.edit", { name: rule.name })}
+												icon={<PencilSimple />}
+												onClick={() =>
+													setForm({
+														original: rule.name,
+														name: rule.name,
+														description: rule.description ?? "",
+														globs: rule.globs.join(", "),
+														alwaysApply: rule.alwaysApply,
+														enabled: rule.enabled,
+														body: rule.body,
+													})
+												}
+											/>
+											<IconButton label={t("rules.delete", { name: rule.name })} icon={<Trash />} variant="danger-ghost" onClick={() => setDeleting(rule)} />
+										</div>
+									) : (
+										<span className="shrink-0 text-xs text-fg-faint" title={rule.path}>
+											{t("rules.readOnly")}
+										</span>
+									)}
+								</motion.li>
+							))}
+						</AnimatePresence>
+					</ul>
+				)}
+				<Dialog open={deleting !== null} onOpenChange={open => !open && setDeleting(null)}>
+					<DialogContent
+						size="sm"
+						destructive
+						title={t("rules.deleteTitle", { name: deleting?.name ?? "" })}
+						description={t("rules.deleteBody")}
+						footer={
+							<>
+								<Button onClick={() => setDeleting(null)}>{t("rules.keep")}</Button>
+								<Button variant="danger" onClick={() => deleting && void remove(deleting)}>
+									{t("rules.deleteConfirm")}
+								</Button>
+							</>
+						}
+					/>
+				</Dialog>
 			</div>
-			{rules.length === 0 ? (
-				<EmptyState title={t("rules.emptyTitle")} body={t("rules.emptyBody")} />
-			) : (
-				<ul className="relative flex flex-col divide-y divide-border border-y border-border">
-					<AnimatePresence initial={false} mode="popLayout">
-					{rules.map(rule => (
-						<motion.li
-							key={rule.path}
-							layout="position"
-							initial={{ opacity: 0, y: -4 }}
-							animate={{ opacity: 1, y: 0 }}
-							exit={{ opacity: 0 }}
-							transition={spring.snappy}
-							className="flex items-start gap-3 py-3"
-						>
-							<div className="min-w-0 flex-1">
-								<div className="flex flex-wrap items-center gap-2">
-									<span className="font-mono text-md font-semibold text-fg">{rule.name}</span>
-									{rule.source !== "omp" && <Chip>{t(`rules.source.${rule.source}`)}</Chip>}
-									{rule.alwaysApply && <Chip tone="accent">{t("rules.always")}</Chip>}
-									{!rule.enabled && <Chip tone="warn">{t("rules.off")}</Chip>}
-								</div>
-								{rule.description && <p className="mt-1 text-sm text-fg-muted">{rule.description}</p>}
-								{rule.globs.length > 0 && (
-									<p className="mt-1 truncate font-mono text-xs text-fg-faint">{t("rules.appliesTo", { globs: rule.globs.join(", ") })}</p>
-								)}
-								{rule.frontmatterError && <p className="mt-1 text-xs text-warn">{t("rules.frontmatterError", { error: rule.frontmatterError })}</p>}
-							</div>
-							{rule.editable ? (
-								<div className="flex shrink-0 items-center gap-1">
-									<Switch
-										aria-label={t("rules.toggle", { name: rule.name })}
-										checked={rule.enabled}
-										onCheckedChange={enabled => void save({ name: rule.name, enabled, body: rule.body })}
-									/>
-									<IconButton
-										label={t("rules.edit", { name: rule.name })}
-										icon={<PencilSimple />}
-										onClick={() =>
-											setForm({
-												original: rule.name,
-												name: rule.name,
-												description: rule.description ?? "",
-												globs: rule.globs.join(", "),
-												alwaysApply: rule.alwaysApply,
-												enabled: rule.enabled,
-												body: rule.body,
-											})
-										}
-									/>
-									<IconButton label={t("rules.delete", { name: rule.name })} icon={<Trash />} variant="danger-ghost" onClick={() => setDeleting(rule)} />
-								</div>
-							) : (
-								<span className="shrink-0 text-xs text-fg-faint" title={rule.path}>
-									{t("rules.readOnly")}
-								</span>
-							)}
-						</motion.li>
-					))}
-					</AnimatePresence>
-				</ul>
-			)}
-			<Dialog open={deleting !== null} onOpenChange={open => !open && setDeleting(null)}>
-				<DialogContent
-					size="sm"
-					destructive
-					title={t("rules.deleteTitle", { name: deleting?.name ?? "" })}
-					description={t("rules.deleteBody")}
-					footer={
-						<>
-							<Button onClick={() => setDeleting(null)}>{t("rules.keep")}</Button>
-							<Button variant="danger" onClick={() => deleting && void remove(deleting)}>
-								{t("rules.deleteConfirm")}
-							</Button>
-						</>
-					}
-				/>
-			</Dialog>
-		</div>
 		</PresenceSwap>
 	);
 }
@@ -433,6 +404,9 @@ function RuleEditor({
 	const { t } = useTranslation("projects");
 	const [form, setForm] = useState(initial);
 	const [preview, setPreview] = useState(false);
+	const dirty = (Object.keys(initial) as (keyof RuleForm)[]).some(key => form[key] !== initial[key]);
+	// Discarding from the leave question closes the editor directly; Cancel asks first when there are edits.
+	useLeaveGuard(dirty, onCancel);
 	const name = form.name.trim().replace(/\.mdc?$/, "");
 	const nameProblem = !name
 		? t("rules.nameRequired")
@@ -458,13 +432,13 @@ function RuleEditor({
 	};
 	return (
 		<form
-			className="flex flex-col gap-4 p-4"
+			className="flex flex-col gap-4"
 			onSubmit={event => {
 				event.preventDefault();
 				submit();
 			}}
 		>
-			<h3 className="text-base font-semibold text-fg">{initial.original ? t("rules.editTitle", { name: initial.original }) : t("rules.newTitle")}</h3>
+			<h2 className="text-lg font-semibold text-fg">{initial.original ? t("rules.editTitle", { name: initial.original }) : t("rules.newTitle")}</h2>
 			<Input
 				autoFocus={!initial.original}
 				label={t("rules.name")}
@@ -521,7 +495,7 @@ function RuleEditor({
 				)}
 			</div>
 			<div className="flex justify-end gap-2">
-				<Button onClick={onCancel}>{t("rules.cancel")}</Button>
+				<Button onClick={() => void whenLeaving(onCancel)}>{t("rules.cancel")}</Button>
 				<Button type="submit" variant="primary" disabled={nameProblem !== null} loading={saving}>
 					{t("rules.save")}
 				</Button>

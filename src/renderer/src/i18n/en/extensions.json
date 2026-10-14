@@ -17,12 +17,11 @@
 		},
 		"usage": {
 			"title": "Usage & limits",
-			"hint": "See what your chats cost and how close you are to your plan's limits.",
+			"hint": "Check your plan limits and the usage omp recorded on this computer.",
 			"keywords": "usage, cost, spend, money, tokens, limits, quota, billing, stats"
 		}
 	},
 	"common": {
-		"back": "Back",
 		"cancel": "Cancel",
 		"done": "Done",
 		"retry": "Try again",
@@ -31,19 +30,30 @@
 	},
 	"scope": {
 		"user": "All projects",
-		"project": "This project"
+		"project": "This project",
+		"projectNamed": "Project: {{name}}"
 	},
 	"mcp": {
 		"title": "Connected tools",
 		"subtitle": "MCP servers let omp use outside tools, such as a database or a ticket tracker.",
 		"add": "Add server",
 		"scopeLabel": "Which servers to show",
+		"listLabel": "Servers",
+		"backToList": "Back to connected tools",
+		"backToGallery": "Back to server choices",
 		"loadFailed": "Couldn't read your MCP settings.",
 		"projectConfigOff": "omp is set to ignore servers defined in projects (mcp.enableProjectConfig is off), so the servers below aren't used.",
 		"empty": {
 			"userTitle": "No tools connected for all projects",
 			"projectTitle": "No tools connected for this project",
 			"body": "Add a server to let omp use an outside tool, like GitHub, a database or your notes."
+		},
+		"config": {
+			"title": "Configuration details",
+			"body": "omp saves the servers above in this file.",
+			"copy": "Copy path",
+			"copied": "Path copied",
+			"copyFailed": "Couldn't copy the path"
 		},
 		"readOnly": "Set up in {{source}} ({{path}}). omp reads this file without changing it, so edit it there.",
 		"fromSource": "From {{source}}",
@@ -181,6 +191,7 @@
 		"empty": "No skills yet",
 		"emptyProject": "This project has no skills of its own",
 		"emptyBody": "Skills are short instruction files that teach omp how to do something. Browse the registry to add some.",
+		"browse": "Browse the registry",
 		"noMatch": "No skills match '{{q}}'.",
 		"noDescription": "No description.",
 		"turnOn": "Turn on {{name}}",
@@ -243,7 +254,8 @@
 		},
 		"empty": "No plugins installed",
 		"emptyProject": "No plugins installed just for this project",
-		"emptyBody": "Plugins add tools, commands and skills to omp. Open Available to install one.",
+		"emptyBody": "Plugins add tools, commands and skills to omp. Browse what your marketplaces offer, or install one by name.",
+		"browse": "Browse available plugins",
 		"noMatch": "No plugins match '{{q}}'.",
 		"npmSource": "npm package",
 		"fromMarketplace": "from {{marketplace}}",
@@ -285,7 +297,7 @@
 		"output_other": "Output ({{count}} lines)"
 	},
 	"memory": {
-		"title": "What omp remembers",
+		"title": "Memory",
 		"subtitle": "Notes omp keeps between chats so it doesn't start from scratch.",
 		"backend": {
 			"off": "Off",
@@ -314,7 +326,8 @@
 		"search": "Search memories",
 		"listLabel": "Memories",
 		"loadFailed": "Couldn't read omp's memory settings.",
-		"off": "Memory is off, so omp doesn't remember anything between chats right now. You can turn it on in omp's settings (memory.backend). Anything saved earlier is still shown here.",
+		"off": "Memory is off, so omp doesn't remember anything between chats right now. Turn it on with the memory.backend setting in Advanced. Anything saved earlier is still shown here.",
+		"openAdvanced": "Open Advanced settings",
 		"remote": "Memories are kept on your Hindsight server ({{url}}). They can't be browsed or deleted from here.",
 		"readOnly": "omp maintains these memories itself and rewrites them when it tidies up, so they can't be deleted from here.",
 		"cantDelete": "omp rewrites this one itself when it tidies up its memories, so it can't be deleted here.",
@@ -351,44 +364,137 @@
 	},
 	"usage": {
 		"title": "Usage & limits",
-		"subtitle": "What your chats cost this week, and how much of your plan is left.",
-		"statsLabel": "This week at a glance",
-		"stat": {
-			"today": "Today",
-			"week": "This week",
-			"chats": "Chats",
-			"tokens": "Tokens"
+		"subtitle": "Provider limits and usage recorded by omp.",
+		"untitled": "Untitled chat",
+		"noModel": "Unknown",
+		"limits": {
+			"title": "Plan limits",
+			"description": "Limits each provider reports for the accounts omp is signed in to. They can include use outside the chats on this computer.",
+			"refresh": "Refresh limits",
+			"checking": "Checking plan limits",
+			"failed": "Couldn't check your plan limits.",
+			"staleFailed": "Couldn't refresh limits. Showing data checked {{age}}.",
+			"none": "No plan limits reported",
+			"noneBody": "Whether limits appear depends on the provider. omp shows them for sign-ins whose provider reports usage, such as Claude and Codex plans.",
+			"thresholds": "Near limit appears from 70% used and turns red from 90%. visual-omp sets these warning levels; each provider sets its own limits.",
+			"pooled_one": "The status bar combines these {{count}} account into one figure.",
+			"pooled_other": "The status bar combines these {{count}} accounts into one figure.",
+			"unnamedAccount": "Signed-in account",
+			"checked": "Checked {{age}}",
+			"disabled": "omp stopped using this sign-in ({{cause}}). Sign in again to use it.",
+			"manageProviders": "Manage providers",
+			"unavailableBody": "omp couldn't get usage for this sign-in.",
+			"noRows": "This account reports no limits.",
+			"technical": "Technical details",
+			"id": {
+				"provider": "Provider id",
+				"account": "Account id",
+				"org": "Organization id",
+				"plan": "Plan id",
+				"limit": "Limit id"
+			},
+			"window": {
+				"minute": "{{n}}-minute limit",
+				"hour": "{{n}}-hour limit",
+				"day": "{{n}}-day limit",
+				"monthly": "Monthly limit"
+			},
+			"used": "{{percent}}% used",
+			"resetsIn": "Resets in {{time}}",
+			"resetVerbIn": "{{verb}} in {{time}}",
+			"resetsAt": "Resets {{date}}",
+			"resetWasDue": "The reset was due {{date}}. omp hasn't reported new figures since.",
+			"awaiting": "Awaiting updated usage",
+			"state": {
+				"near": "Near limit",
+				"reached": "Limit reached",
+				"unavailable": "Usage unavailable"
+			}
 		},
-		"chartTitle": "Last 7 days",
-		"today": "Today",
-		"barLabel": "{{date}}: {{cost}} ({{requests}} replies)",
-		"empty": "No usage yet this week. Costs appear here after your first chats.",
-		"spendFailed": "Couldn't read your chat history.",
-		"limitsTitle": "Plan limits",
-		"refreshLimits": "Check limits again with your providers",
-		"limitsFailed": "Couldn't check your plan limits.",
-		"asOf": "as of {{time}}",
+		"recorded": {
+			"title": "Recorded usage",
+			"description": "Usage from omp's session files on this computer.",
+			"rangeLabel": "Period",
+			"range7": "Last 7 days",
+			"range30": "Last 30 days",
+			"dates": "{{start}} to {{end}}",
+			"localTime": "Local time",
+			"scope": "All local projects",
+			"failed": "Couldn't read your chat history.",
+			"staleFailed": "Couldn't update recorded usage.",
+			"partial_one": "Usage is incomplete. {{count}} session file could not be read.",
+			"partial_other": "Usage is incomplete. {{count}} session files could not be read.",
+			"statsLabel": "Totals for this period",
+			"chats": "Chats",
+			"tokens": "Tokens",
+			"tokensHint": "Includes cache reads and writes.",
+			"cost": "Estimated API cost",
+			"costHint": "Estimated at public API prices from omp's records. Your provider determines subscription charges.",
+			"empty": "No recorded usage in this period",
+			"emptyBody": "Chats you run with omp appear here with their token use.",
+			"definitions": "What these figures include",
+			"definition": {
+				"tokens": "Tokens and input tokens include cache reads and writes.",
+				"subagents": "Subagent activity counts toward the chat that started it.",
+				"model": "Model is the model that handled the most requests in the chat during this period.",
+				"time": "Generation time is the time omp spent writing replies.",
+				"days": "Days are local calendar days, and today covers the day so far."
+			}
+		},
+		"chart": {
+			"title": "Daily estimated API cost (USD)",
+			"label": "Daily estimated API cost. Use the arrow keys to move between days.",
+			"bar_one": "{{date}}: {{cost}}, {{count}} request",
+			"bar_other": "{{date}}: {{cost}}, {{count}} requests",
+			"barToday_one": "{{date}}, today so far: {{cost}}, {{count}} request",
+			"barToday_other": "{{date}}, today so far: {{cost}}, {{count}} requests",
+			"today": "Today",
+			"todayNote": "Today's bar covers the day so far.",
+			"values": "Show daily values",
+			"date": "Date",
+			"cost": "Estimated API cost",
+			"requests": "Requests",
+			"todayDate": "{{date}} (so far)"
+		},
+		"chats": {
+			"title": "Chats",
+			"description": "Search and filters apply to this table and its export only.",
+			"toolbar": "Chat filters",
+			"search": "Search chats",
+			"projectFilter": "Filter by project",
+			"allProjects": "All projects",
+			"modelFilter": "Filter by model",
+			"allModels": "All models",
+			"export": "Export chats CSV",
+			"sortBy": "Sort chats by",
+			"sortByOption": "Sort by {{column}}",
+			"sortDirection": "Sort order",
+			"ascending": "Ascending",
+			"descending": "Descending",
+			"rowDetails": "{{model}} · {{input}} input tokens · {{output}} output tokens · {{time}} generation time",
+			"column": {
+				"title": "Chat",
+				"model": "Model",
+				"inputTokens": "Input tokens",
+				"outputTokens": "Output tokens",
+				"cost": "Estimated API cost",
+				"durationMs": "Generation time"
+			},
+			"noMatch": "No chats match these filters",
+			"clear": "Clear filters",
+			"pages": "Chat pages",
+			"showing_one": "Showing {{from}} to {{to}} of {{count}} chat",
+			"showing_other": "Showing {{from}} to {{to}} of {{count}} chats",
+			"previous": "Previous",
+			"next": "Next",
+			"page": "Page {{page}} of {{total}}",
+			"openFailed": "Couldn't open this chat"
+		},
+		"openStats": "Open omp stats in browser",
+		"openStatsNote": "omp's stats page is a separate tool, so the period and filters here don't carry over.",
 		"used": "{{percent}}% used",
 		"resetsIn": "resets in {{time}}",
 		"atLimit": "Limit reached. Resets in {{time}}",
-		"noLimits": "No plan limits to show",
-		"noLimitsBody": "Limits appear here when you're signed in to a provider that reports them, like Claude or ChatGPT plans.",
-		"disabledCredential": "omp stopped using a {{provider}} sign-in ({{account}}): {{cause}}",
-		"chatsTitle": "Chats this week",
-		"untitled": "Untitled chat",
-		"column": {
-			"title": "Chat",
-			"model": "Model",
-			"inputTokens": "Tokens in",
-			"outputTokens": "Tokens out",
-			"cost": "Cost",
-			"durationMs": "Time"
-		},
-		"estimateNote": "Costs are estimates at public API prices, as recorded by omp. Plan subscriptions may bill differently.",
-		"exportCsv": "Export CSV",
-		"openStats": "Open omp stats page",
-		"statusText": "{{cost}} today",
-		"statusTooltip": "Estimated cost of today's chats. Click for usage and limits.",
 		"plan": {
 			"percent": "{{percent}}%",
 			"more": "+{{count}}",
@@ -402,10 +508,9 @@
 			"hint": "Click for usage and limits."
 		},
 		"toast": {
-			"exported": "Usage exported",
-			"exportFailed": "Couldn't export usage",
+			"exported": "Chats exported",
+			"exportFailed": "Couldn't export chats",
 			"statsFailed": "Couldn't open omp's stats page"
-		},
-		"noModel": "Unknown"
+		}
 	}
 }

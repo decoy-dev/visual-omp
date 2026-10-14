@@ -321,7 +321,7 @@ const CodeView = memo(function CodeView({ path, text }: { path: string; text: st
 	);
 	const gutter = String(lines.length).length;
 	return (
-		<div className="min-h-full bg-inset py-2 font-mono text-[12px] leading-5">
+		<div className="min-h-full bg-inset py-2 font-mono text-code leading-5">
 			<pre className="m-0">
 				<code>
 					{tokens.map((line, index) => (
@@ -483,13 +483,16 @@ function Viewer({ path, projectPath, home, version }: { path: string; projectPat
 	const outside = relativePath(projectPath, path) === path;
 	const reveal = () => void window.vomp.invoke("app:showItem", path);
 	return (
-		<div className="flex min-h-0 flex-1 flex-col">
+		<div className="@container/viewer flex min-h-0 flex-1 flex-col">
 			<PaneToolbar>
 				<span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted" title={path}>
 					{viewerPath(projectPath, path, home)}
 				</span>
-				{content && content.kind !== "folder" && <span className="text-xs text-fg-faint">{formatSize(content.size)}</span>}
-				{folder && Array.isArray(listing) && <span className="text-xs text-fg-faint tabular-nums">{t("files.itemCount", { count: listing.length })}</span>}
+				{/* Size and item count give way first when the viewer column is narrow. */}
+				{content && content.kind !== "folder" && <span className="hidden shrink-0 text-xs text-fg-faint @min-[16rem]/viewer:inline">{formatSize(content.size)}</span>}
+				{folder && Array.isArray(listing) && (
+					<span className="hidden shrink-0 text-xs text-fg-faint tabular-nums @min-[16rem]/viewer:inline">{t("files.itemCount", { count: listing.length })}</span>
+				)}
 				{pdf && <ExpandPreview name={name} path={path} image={false} render={() => <PdfFrame path={path} revision={version + reload} name={name} />} />}
 				{content?.kind === "image" && (
 					<ExpandPreview
@@ -628,7 +631,8 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 						exit={{ opacity: 0, x: -12, transition: { duration: duration.fast, ease: "easeIn" } }}
 						transition={{ x: spring.snappy, opacity: { duration: duration.base, ease: ease.outQuart } }}
 						className="flex shrink-0 flex-col border-r border-border bg-panel"
-						style={{ width: state.tabs.length ? treeWidth : "100%" }}
+						// Next to an open file the tree keeps at most 45% of the pane, so the viewer's toolbar fits a narrow dock.
+						style={{ width: state.tabs.length ? `min(${treeWidth}px, 45%)` : "100%" }}
 					>
 						<PaneToolbar>
 							<span className="min-w-0 flex-1 truncate text-sm font-medium text-fg" title={projectPath}>

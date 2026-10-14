@@ -11,17 +11,19 @@
 	},
 	"titlebar": {
 		"showSidebar": "Show sidebar",
-		"hideSidebar": "Hide sidebar",
-		"switchChat": "Switch chat",
-		"version": "v{{version}}"
+		"version": "v{{version}}",
+		"searchCommands": "Search commands"
 	},
 	"sidebar": {
 		"label": "Projects and chats",
-		"search": "Search chats…",
-		"newChat": "Start chat…",
+		"newChat": "New chat",
+		"search": "Search chats",
 		"projects": "Projects",
+		"active": "Active",
+		"activeHint": "Show only chats that are working, waiting for your answer or have omp running",
+		"noActive": "No chats are working, waiting for you or running omp right now.",
 		"archived": "Archived",
-		"home": "Home",
+		"usage": "Usage & limits",
 		"settings": "Settings",
 		"help": "Help",
 		"noProjects": "No projects yet. A project is a folder that omp works in.",
@@ -36,13 +38,17 @@
 		"projectMenu": "Project options",
 		"open": "Open chat",
 		"openSplit": "Open side by side",
+		"close": "Close chat",
+		"rename": "Rename chat…",
 		"archive": "Archive chat",
 		"unarchive": "Restore chat",
 		"delete": "Delete chat…",
 		"reveal": "Show in folder",
 		"newChatHere": "Start chat here",
-		"projectHome": "Open project home",
+		"projectOverview": "Open project overview",
+		"projectSettings": "Project settings",
 		"removeProject": "Remove project from list",
+		"removedProject": "{{path}} is no longer in your project list. Its open chats stay here until you close them.",
 		"status": {
 			"working": "omp is working",
 			"needsInput": "Waiting for your answer",
@@ -62,34 +68,27 @@
 		"confirm": "Delete chat",
 		"cancel": "Keep chat"
 	},
-	"tabs": {
-		"label": "Open chats",
-		"newChat": "Start new chat",
-		"close": "Close {{title}}",
-		"split": "Open split view",
-		"unsplit": "Close split view",
-		"newChatTitle": "New chat",
-		"more": "{{count}} more",
-		"moreLabel_one": "Show {{count}} more chat",
-		"moreLabel_other": "Show {{count}} more chats"
+	"chat": {
+		"newTitle": "New chat"
+	},
+	"split": {
+		"left": "Left chat",
+		"right": "Right chat"
 	},
 	"dock": {
-		"label": "Side panel",
-		"close": "Close side panel",
-		"resize": "Resize side panel",
-		"empty": "Pick a panel above."
+		"resize": "Resize side panel"
 	},
 	"resizeSidebar": "Resize sidebar",
 	"resizeSplit": "Resize split",
 	"status": {
 		"label": "Status",
-		"context": "{{percent}}% of context used",
-		"contextShort": "{{percent}}%",
-		"ompConnected": "omp {{version}}",
+		"ompVersion": "omp {{version}}",
+		"ompRunning": "omp {{version}} is running for this chat",
+		"ompNotRunning": "omp {{version}} is not running for this chat",
 		"ompReconnecting": "Reconnecting to omp…",
 		"ompStopped": "omp stopped",
 		"ompStarting": "Starting omp…",
-		"ompMenu": "omp status",
+		"ompMenu": "omp status: {{status}}",
 		"openTerminal": "Show omp terminal",
 		"restart": "Restart omp",
 		"copyDiagnostics": "Copy diagnostics",
@@ -100,8 +99,5 @@
 		"noProject": "Open or create a project to get started.",
 		"openFolder": "Open folder…",
 		"newProject": "Create project…"
-	},
-	"time": {
-		"now": "now"
 	}
 }

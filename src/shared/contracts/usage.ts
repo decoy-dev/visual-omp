@@ -378,15 +378,6 @@ export interface UsageStats {
 	costSeries: CostTimeSeriesPoint[];
 }
 
-
-/** Project home activity and API-equivalent cost from saved session usage records. */
-export interface ProjectWeekStats {
-    /** Epoch ms of the window start (7 × 24 hours ago). */
-    since: number;
-    /** Chats with activity in the window. */
-    chats: number;
-    costUsd: number;
-}
 declare module "../ipc" {
 	interface IpcInvokeMap {
 		/**
@@ -405,7 +396,5 @@ declare module "../ipc" {
 		 * concurrent calls share one run.
 		 */
 		"usage:stats": { args: []; result: UsageStats };
-        /** Chats and cost of `cwd` over the last 7 days. */
-        "usage:projectWeek": { args: [cwd: string]; result: ProjectWeekStats };
 	}
 }

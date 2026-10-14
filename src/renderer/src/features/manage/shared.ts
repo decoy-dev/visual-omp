@@ -1,5 +1,4 @@
 import { type DependencyList, type Dispatch, type SetStateAction, useCallback, useEffect, useRef, useState } from "react";
-import { useApp } from "@/state/app";
 
 /** Error text without Electron's `Error invoking remote method '…': Error:` wrapper. */
 export function ipcErrorMessage(error: unknown): string {
@@ -61,12 +60,6 @@ export function useExternalConfigChange(cwd: string | null): [changed: boolean, 
 		};
 	}, [cwd]);
 	return [changed, useCallback(() => setChanged(false), [])];
-}
-
-/** Project a sheet acts on: the one it was opened for, else the focused project. */
-export function useSheetProject(explicit: string | null | undefined): string | null {
-	const active = useApp(state => state.activeProject);
-	return explicit === undefined ? active : explicit;
 }
 
 /** Last path segment, for showing a project folder by name. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { configFromForm, emptyForm, formFromConfig, validateForm } from "./form";
+import { configFromForm, emptyForm, formFromConfig, levelForScope, validateForm } from "./form";
 
 describe("configFromForm", () => {
 	it("splits a quoted command line into command + args and drops empty env rows", () => {
@@ -39,5 +39,16 @@ describe("validateForm", () => {
 			url: "urlInvalid",
 		});
 		expect(validateForm({ ...emptyForm("user"), name: "linear.app:prod v2", transport: "sse", url: "https://x/sse" })).toEqual({});
+	});
+});
+
+// The level the list shows is also where a new server is saved by default.
+describe("levelForScope", () => {
+	it("picks the project file only when the project scope is chosen, even with a project open", () => {
+		expect(levelForScope("project", "/Users/me/shop")).toBe("project");
+		// All projects with a project open: new servers go to the user file, not the project.
+		expect(levelForScope("global", "/Users/me/shop")).toBe("user");
+		// No project open: the project side doesn't exist.
+		expect(levelForScope("project", null)).toBe("user");
 	});
 });

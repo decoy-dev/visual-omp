@@ -1,18 +1,28 @@
-import { X } from "@phosphor-icons/react";
-import { motion } from "motion/react";
-import { type ReactNode, useId, useState } from "react";
+import { CaretDown, CaretLeft, X } from "@phosphor-icons/react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { panes } from "../registry/slots";
+import { type PaneSpec, panes } from "../registry/slots";
 import { focusedController, useApp } from "../state/app";
-import { cn, IconButton, PresenceSwap, spring } from "../ui";
-import { moveTabFocus, useSessionView } from "./hooks";
+import { cn, IconButton, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PresenceSwap } from "../ui";
+import { focusRingInset } from "../ui/styles";
+import { useSessionView } from "./hooks";
+
+function paneTitle(t: (key: string, options?: { ns?: string }) => string, entry: PaneSpec): string {
+	return t(entry.title, { ns: entry.title.includes(":") ? undefined : "panes" });
+}
 
 /**
- * Right dock with registered panes: Diff · Files · Preview · Outputs · Tasks · Plan · Terminal (DESIGN §3.7). The pane tabs are a
- * WAI-ARIA tablist with manual activation: arrows, Home and End move focus; Enter or Space shows the pane.
+ * Right dock with registered panes: Changes · Files · Preview · Outputs · Tasks · Plan · Terminal (DESIGN §3.7). The
+ * header names the pane on show; it is a menu button whose list holds every pane with its badge (arrows, Home, End and
+ * typeahead move; Enter or Space shows the pane). The other panes' badges stay mounted, hidden, so the trigger can show
+ * a dot when one of them has something to say and their "seen" bookkeeping keeps running.
+ *
+ * `expanded`: the window is too narrow for the chat and the panel side by side, so the panel takes the main area and
+ * offers "Back to chat" (which shows the chat and keeps the panel open for a wider window) instead of squeezing the chat.
+ * Shell moves focus to "Back to chat" on entry and back to where it was on the way out.
  */
-export function Dock({ width }: { width: number }): ReactNode {
-	const { t } = useTranslation("shell");
+export function Dock({ width, expanded = false, onEnter }: { width: number; expanded?: boolean; onEnter?: (back: HTMLElement) => void }): ReactNode {
+	const { t } = useTranslation("panes");
 	const list = panes.use();
 	const paneId = useApp(state => state.dockPane);
 	const projectPath = useApp(state => state.activeProject);
@@ -22,57 +32,92 @@ export function Dock({ width }: { width: number }): ReactNode {
 	useSessionView(session);
 	const pane = list.find(entry => entry.id === paneId) ?? list[0];
 	const scope = useId();
-	// Pane switches slide toward the tab that was picked: right of the previous one slides in from the right.
+	// Pane switches slide toward the pane that was picked: one lower in the list slides in from the right.
 	const index = pane ? list.indexOf(pane) : -1;
 	const [nav, setNav] = useState<{ index: number; direction: 1 | -1 }>({ index, direction: 1 });
 	if (nav.index !== index) setNav({ index, direction: index > nav.index ? 1 : -1 });
+	const others = list.filter(entry => entry !== pane && entry.badge);
+	const title = pane ? paneTitle(t, pane) : null;
+	const back = useRef<HTMLButtonElement>(null);
+	// Once, when the expanded panel appears (see Shell's useExpandedDockFocus).
+	const entered = useRef(onEnter);
+	useEffect(() => {
+		if (back.current) entered.current?.(back.current);
+	}, []);
 
 	return (
-		<aside aria-label={t("dock.label")} data-tour="dock" style={{ width }} className="flex shrink-0 flex-col border-l border-border bg-panel">
-			<div className="flex h-8 shrink-0 items-end gap-1 border-b border-border px-2">
-				<div role="tablist" aria-label={t("dock.label")} className="flex min-w-0 flex-1 items-end gap-0.5 overflow-x-auto [scrollbar-width:none]">
-					{list.map(entry => {
-						const active = entry.id === pane?.id;
-						const Icon = entry.icon;
-						return (
+		<aside
+			aria-label={t("dock.label")}
+			data-tour="dock"
+			data-dock-expanded={expanded ? "" : undefined}
+			style={expanded ? undefined : { width }}
+			className={cn("flex flex-col bg-panel", expanded ? "min-w-0 flex-1" : "shrink-0 border-l border-border")}
+		>
+			<div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-1.5">
+				{expanded && (
+					<button
+						ref={back}
+						type="button"
+						onClick={() => useApp.getState().returnToChat()}
+						className={cn("inline-flex h-7 shrink-0 items-center gap-1 rounded-md pl-1 pr-2 text-md font-medium text-accent hover:bg-hover", focusRingInset)}
+					>
+						<CaretLeft className="size-4" aria-hidden />
+						{t("shell:page.backToChat")}
+					</button>
+				)}
+				{pane && (
+					<Menu>
+						<MenuTrigger asChild>
 							<button
-								key={entry.id}
 								type="button"
-								role="tab"
-								id={`${scope}-tab-${entry.id}`}
-								aria-selected={active}
-								aria-controls={active ? `${scope}-panel` : undefined}
-								tabIndex={active ? 0 : -1}
-								onClick={() => useApp.getState().showPane(entry.id)}
-								onKeyDown={moveTabFocus}
+								id={`${scope}-trigger`}
 								className={cn(
-									"relative flex h-7 shrink-0 items-center gap-1.5 rounded-t-md px-2 text-md font-medium whitespace-nowrap outline-none focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
-									active ? "text-accent" : "text-fg-muted hover:text-fg",
+									"flex h-7 min-w-0 items-center gap-1.5 rounded-md px-1.5 text-md font-medium text-fg hover:bg-hover data-[state=open]:bg-selected",
+									focusRingInset,
 								)}
 							>
-								{active && (
-									<motion.span
-										aria-hidden
-										layoutId={`${scope}-pane`}
-										transition={spring.snappy}
-										className="absolute inset-x-1.5 bottom-0 h-0.5 rounded-full bg-accent"
-									/>
+								<pane.icon aria-hidden className="size-4 shrink-0 text-fg-muted" />
+								<span id={`${scope}-title`} className="min-w-0 truncate">
+									{title}
+								</span>
+								{pane.badge && (
+									<span className="inline-flex shrink-0 items-center">
+										<pane.badge session={session} projectPath={projectPath} />
+									</span>
 								)}
-								<Icon className="size-3.5" aria-hidden />
-								{t(entry.title, { ns: entry.title.includes(":") ? undefined : "panes" })}
-								{entry.badge && <entry.badge session={session} projectPath={projectPath} />}
+								<span hidden data-other-badges>
+									{others.map(entry => entry.badge && <entry.badge key={entry.id} session={session} projectPath={projectPath} />)}
+								</span>
+								<span className="hidden shrink-0 items-center [[data-other-badges]:has(>*)+&]:inline-flex">
+									<span aria-hidden className="size-1.5 rounded-full bg-accent" />
+									<span className="sr-only">{t("dock.otherUpdates")}</span>
+								</span>
+								<CaretDown aria-hidden className="size-3.5 shrink-0 text-fg-faint" />
 							</button>
-						);
-					})}
-				</div>
-				<IconButton className="mb-0.5" label={t("dock.close")} shortcut="⌥⌘B" icon={<X />} size="sm" onClick={() => useApp.getState().toggleDock(false)} />
+						</MenuTrigger>
+						<MenuContent aria-label={t("dock.choose")} className="min-w-60">
+							<MenuRadioGroup value={pane.id} onValueChange={id => useApp.getState().showPane(id)}>
+								{list.map(entry => (
+									<MenuRadioItem key={entry.id} value={entry.id}>
+										<span className="flex min-w-0 items-center gap-2">
+											<entry.icon aria-hidden className="size-4 shrink-0 text-fg-muted" />
+											<span className="min-w-0 truncate">{paneTitle(t, entry)}</span>
+											{entry.badge && (
+												<span className="ml-auto inline-flex shrink-0 items-center pl-2">
+													<entry.badge session={session} projectPath={projectPath} />
+												</span>
+											)}
+										</span>
+									</MenuRadioItem>
+								))}
+							</MenuRadioGroup>
+						</MenuContent>
+					</Menu>
+				)}
+				<span className="flex-1" />
+				<IconButton label={t("dock.close")} shortcut="⌥⌘B" icon={<X />} size="sm" onClick={() => useApp.getState().toggleDock(false)} />
 			</div>
-			<div
-				role="tabpanel"
-				id={`${scope}-panel`}
-				aria-labelledby={pane ? `${scope}-tab-${pane.id}` : undefined}
-				className="relative flex min-h-0 flex-1 flex-col overflow-hidden"
-			>
+			<div role="region" aria-labelledby={pane ? `${scope}-title` : undefined} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
 				<PresenceSwap swapKey={pane?.id ?? "none"} variant="slide" direction={nav.direction} className="flex min-h-0 flex-1 flex-col">
 					{pane ? <pane.component session={session} projectPath={projectPath} /> : <p className="p-6 text-md text-fg-faint">{t("dock.empty")}</p>}
 				</PresenceSwap>

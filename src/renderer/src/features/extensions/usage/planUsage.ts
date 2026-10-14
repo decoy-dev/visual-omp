@@ -1,9 +1,10 @@
 /**
- * Plan usage of the models a chat is using (status bar, DESIGN §3.8): which `omp usage` reports and
- * limit windows apply to those models, pooled across accounts, and the window each provider shows.
+ * Plan usage from `omp usage`: per chat for the status bar (DESIGN §3.8: which reports and limit
+ * windows apply to the chat's models, pooled across accounts, and the window each provider shows),
+ * and per provider account for the Usage & limits page ({@link planLimits}).
  */
 import type { SessionEntry, WireModel } from "@oh-my-pi/pi-wire";
-import type { ProviderWindowStat, UsageLimit, UsageLimitsSnapshot, UsageReport, UsageStatus } from "@shared/contracts/usage";
+import type { DisabledCredential, ProviderWindowStat, UsageLimit, UsageLimitsSnapshot, UsageReport, UsageStatus } from "@shared/contracts/usage";
 import { formatDuration } from "../format";
 import { limitTone, usedFraction } from "./model";
 
@@ -314,4 +315,184 @@ export function planUsage(snapshot: UsageLimitsSnapshot | null, models: readonly
 		out.push({ provider, accounts: reports.length, windows: windows.map(window => window.usage), top, fetchedAt: Math.min(...reports.map(report => report.fetchedAt)) });
 	}
 	return out;
+}
+
+/** How a limit row reads on the Usage & limits page. */
+export type LimitState = "ok" | "near" | "reached" | "unavailable";
+
+export interface LimitRow {
+	/** {@link UsageLimit.id}. */
+	id: string;
+	/** Window length for "5-hour limit"; null when omp gives none and the id, scope and label hold none. */
+	durationMs: number | null;
+	/** A window without a duration that omp names monthly. */
+	monthly: boolean;
+	/** omp's label without a leading provider name; names the row when the window has no duration. */
+	label: string;
+	/** Tells rows of one window apart: the tier or model, plus a readable omp label when names still clash. */
+	qualifier: string | null;
+	/** 0..1 (above 1 means overage); null when the provider reports nothing usable. */
+	fraction: number | null;
+	state: LimitState;
+	tone: "ok" | "warn" | "err";
+	resetsAt: number | null;
+	/** Provider verb for the reset (`regen`), when it reports one; omp's default is "resets". */
+	resetLabel: string | null;
+	notes: string[];
+}
+
+export interface AccountId {
+	key: "provider" | "account" | "org" | "plan" | "limit";
+	value: string;
+}
+
+export interface AccountLimits {
+	key: string;
+	/** Email, else organization, else null (an account omp reports without a name). */
+	name: string | null;
+	/** Organization, when `name` is the email. */
+	detail: string | null;
+	/**
+	 * `report`: omp returned a report (possibly without limits); `unavailable`: a usage-capable account
+	 * without a report; `disabled`: known only from a credential omp disabled.
+	 */
+	kind: "report" | "unavailable" | "disabled";
+	/** Epoch ms of omp's cached report. */
+	fetchedAt: number | null;
+	rows: LimitRow[];
+	disabled: DisabledCredential[];
+	notes: string[];
+	/** Raw identifiers for the technical details; plan ids stay here until a verified name mapping exists. */
+	ids: AccountId[];
+}
+
+export interface ProviderLimits {
+	provider: string;
+	accounts: AccountLimits[];
+}
+
+interface Identity {
+	accountId?: string;
+	email?: string;
+	orgId?: string;
+	orgName?: string;
+}
+
+const metaText = (value: unknown): string | undefined => (typeof value === "string" && value ? value : undefined);
+
+/** Same account: equal account ids, else (one side without an id) equal emails in a compatible organization. */
+function sameIdentity(a: Identity, b: Identity): boolean {
+	if (a.accountId !== undefined && b.accountId !== undefined) return a.accountId === b.accountId;
+	return a.email !== undefined && a.email === b.email && (a.orgId === undefined || b.orgId === undefined || a.orgId === b.orgId);
+}
+
+const rowSeverity = (row: LimitRow) => (row.state === "reached" ? 0 : row.state === "near" ? 1 : 2);
+
+function limitRows(report: UsageReport): LimitRow[] {
+	const prefix = `${providerName(report.provider)} `;
+	const rows = report.limits.map((limit): LimitRow => {
+		const fraction = usedFraction(limit);
+		const tone = limitTone(fraction, limit.status);
+		const durationMs = windowDurationMs(limit);
+		const reached = limit.status === "exhausted" || (fraction ?? 0) >= 1;
+		const near = limit.status === "warning" || (fraction !== null && tone !== "ok");
+		const { tier, modelId } = limit.scope;
+		return {
+			id: limit.id,
+			durationMs,
+			monthly: durationMs === null && windowPreference(limit) === 2,
+			label: limit.label.startsWith(prefix) ? limit.label.slice(prefix.length) : limit.label,
+			qualifier: tier ? tier[0].toUpperCase() + tier.slice(1) : modelId ? bareModelId(modelId) : null,
+			fraction,
+			state: reached ? "reached" : near ? "near" : fraction === null ? "unavailable" : "ok",
+			tone,
+			resetsAt: limit.window?.resetsAt ?? null,
+			resetLabel: limit.window?.resetLabel ?? null,
+			notes: limit.notes ?? [],
+		};
+	});
+	// Rows whose names still match (Kimi's `Weekly limit` and `limit_7d`, both 7 days) add omp's label when it reads as words.
+	const nameOf = (row: LimitRow) => `${row.durationMs ?? (row.monthly ? "monthly" : row.label)}|${row.qualifier ?? ""}`;
+	const names = rows.map(nameOf);
+	for (const [index, row] of rows.entries()) {
+		const clash = names.some((name, other) => other !== index && name === names[index]);
+		const named = row.durationMs !== null || row.monthly;
+		if (clash && named && /\s/.test(row.label) && parseWindowDuration(row.label) === null) {
+			row.qualifier = row.qualifier ? `${row.qualifier}, ${row.label}` : row.label;
+		}
+	}
+	return rows.sort((a, b) => rowSeverity(a) - rowSeverity(b));
+}
+
+/** Disabled or limit-reached accounts first, then near-limit ones, then by the highest known use. */
+function compareAccounts(a: AccountLimits, b: AccountLimits): number {
+	const severity = (account: AccountLimits) => (account.disabled.length > 0 ? 0 : Math.min(2, ...account.rows.map(rowSeverity)));
+	const peak = (account: AccountLimits) => Math.max(-1, ...account.rows.map(row => row.fraction ?? -1));
+	return severity(a) - severity(b) || peak(b) - peak(a);
+}
+
+/**
+ * Every account omp knows for the Usage & limits page, grouped by provider: accounts with reports,
+ * usage-capable accounts without one (`accountsWithoutUsage`), and disabled credentials (attached to
+ * their account when the identity matches). Accounts and providers are ordered by
+ * {@link compareAccounts} with stable ties; rows are never merged across accounts or windows, since
+ * equal figures do not show that two quotas are one.
+ */
+export function planLimits(snapshot: UsageLimitsSnapshot): ProviderLimits[] {
+	const groups = new Map<string, { account: AccountLimits; identity: Identity }[]>();
+	const add = (provider: string, account: AccountLimits, identity: Identity) => groups.set(provider, [...(groups.get(provider) ?? []), { account, identity }]);
+	const ids = (provider: string, identity: Identity, plan?: string): AccountId[] => [
+		{ key: "provider", value: provider },
+		...(identity.accountId ? [{ key: "account" as const, value: identity.accountId }] : []),
+		...(identity.orgId ? [{ key: "org" as const, value: identity.orgId }] : []),
+		...(plan ? [{ key: "plan" as const, value: plan }] : []),
+	];
+	const names = (identity: Identity) => ({ name: identity.email ?? identity.orgName ?? null, detail: identity.email ? (identity.orgName ?? null) : null });
+
+	for (const [index, report] of snapshot.reports.entries()) {
+		const meta = report.metadata ?? {};
+		const identity: Identity = { accountId: metaText(meta.accountId), email: metaText(meta.email), orgId: metaText(meta.orgId), orgName: metaText(meta.orgName) };
+		add(report.provider, {
+			key: `report:${report.provider}:${identity.accountId ?? identity.email ?? index}`,
+			...names(identity),
+			kind: "report",
+			fetchedAt: report.fetchedAt,
+			rows: limitRows(report),
+			disabled: [],
+			notes: report.notes ?? [],
+			ids: [...ids(report.provider, identity, metaText(meta.planType)), ...report.limits.map(limit => ({ key: "limit" as const, value: limit.id }))],
+		}, identity);
+	}
+	for (const [index, account] of snapshot.accountsWithoutUsage.entries()) {
+		add(account.provider, {
+			key: `unavailable:${account.provider}:${account.accountId ?? account.email ?? index}`,
+			...names(account),
+			kind: "unavailable",
+			fetchedAt: null,
+			rows: [],
+			disabled: [],
+			notes: [],
+			ids: ids(account.provider, account),
+		}, account);
+	}
+	for (const credential of snapshot.disabledCredentials) {
+		const match = groups.get(credential.provider)?.find(entry => sameIdentity(entry.identity, credential));
+		if (match) {
+			match.account.disabled.push(credential);
+			continue;
+		}
+		add(credential.provider, {
+			key: `disabled:${credential.id}`,
+			...names(credential),
+			kind: "disabled",
+			fetchedAt: null,
+			rows: [],
+			disabled: [credential],
+			notes: [],
+			ids: ids(credential.provider, credential),
+		}, credential);
+	}
+
+	const providers = [...groups].map(([provider, entries]) => ({ provider, accounts: entries.map(entry => entry.account).sort(compareAccounts) }));
+	return providers.sort((a, b) => compareAccounts(a.accounts[0], b.accounts[0]));
 }

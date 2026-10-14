@@ -1,10 +1,11 @@
-/** DESIGN §4.15 — MCP servers manager ("Connected tools"). */
-import { DotsThree, Eye, Lock, PencilSimple, PlugsConnected, Plus, Trash } from "@phosphor-icons/react";
+/** DESIGN §4.15: Connected tools (MCP servers), a scoped Settings section. */
+import { Copy, DotsThree, Eye, Lock, PencilSimple, PlugsConnected, Plus, Trash } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type Ref, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { McpServerEntry, McpTarget } from "@shared/contracts/mcp";
-import type { SheetProps } from "@/registry/slots";
+import type { McpScope, McpServerEntry, McpTarget } from "@shared/contracts/mcp";
+import { listRowMotion } from "@/features/manage/listMotion";
+import type { SettingsSectionProps } from "@/registry/slots";
 import {
 	Button,
 	Chip,
@@ -18,7 +19,8 @@ import {
 	MenuSeparator,
 	MenuTrigger,
 	Notice,
-	Segmented,
+	PageHeader,
+	ScopeSwitch,
 	Skeleton,
 	StatusDot,
 	Switch,
@@ -26,16 +28,13 @@ import {
 	toast,
 	Tooltip,
 } from "@/ui";
-import { listRowMotion } from "@/features/manage/listMotion";
 import { errorText } from "../format";
-import { ConfirmDialog, type ExtensionSheetProps, ExtensionSheetFrame, useIpcEvent, useLoad, useSheetProject } from "../shared";
-import { endpointOf } from "./form";
+import { ConfirmDialog, SectionView, useIpcEvent, useLoad } from "../shared";
+import { endpointOf, levelForScope } from "./form";
 import { ServerEditor, type EditorMode } from "./McpEditor";
 import { type McpCheck, rowStatus } from "./status";
 
-type Scope = "user" | "project";
-
-/** How many servers are checked at once when the sheet opens (each check may spawn a process). */
+/** How many servers are checked at once when the section opens (each check may spawn a process). */
 const CHECK_CONCURRENCY = 3;
 
 export function targetFor(entry: McpServerEntry, cwd: string | null): McpTarget | null {
@@ -44,16 +43,24 @@ export function targetFor(entry: McpServerEntry, cwd: string | null): McpTarget 
 	return cwd ? { scope: "project", cwd } : null;
 }
 
-export function McpSheet({ props, close }: SheetProps<ExtensionSheetProps>) {
+export function McpSection({ projectPath, scope, setScope }: SettingsSectionProps) {
 	const { t } = useTranslation("extensions");
-	const projectPath = useSheetProject(props);
 	const list = useLoad(() => window.vomp.invoke("mcp:list", projectPath), [projectPath]);
 	useIpcEvent("mcp:changed", () => void list.reload());
-	const [scope, setScope] = useState<Scope>(props?.scope === "global" || !projectPath ? "user" : "project");
+	const level = levelForScope(scope, projectPath);
 	const [editor, setEditor] = useState<EditorMode | null>(null);
+	/** Level a server was just saved to; the list switches to it once the editor has closed. */
+	const [savedTo, setSavedTo] = useState<McpScope | null>(null);
 	const [checks, setChecks] = useState<Record<string, McpCheck>>({});
 	const [toolsFor, setToolsFor] = useState<McpServerEntry | null>(null);
 	const [removing, setRemoving] = useState<McpServerEntry | null>(null);
+
+	// Runs after the editor unmounts (and drops its unsaved-edits guard), so the scope change doesn't ask first.
+	useEffect(() => {
+		if (editor || !savedTo) return;
+		setSavedTo(null);
+		setScope(savedTo === "user" ? "global" : "project");
+	}, [editor, savedTo, setScope]);
 
 	const runCheck = useCallback(
 		async (entry: McpServerEntry) => {
@@ -65,7 +72,7 @@ export function McpSheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 		[projectPath],
 	);
 
-	// Check every server omp would use once per sheet session, a few at a time.
+	// Check every server omp would use once per visit, a few at a time.
 	const autoChecked = useRef(new Set<string>());
 	useEffect(() => {
 		const pending = (list.data?.servers ?? []).filter(
@@ -82,7 +89,7 @@ export function McpSheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 		for (let i = 0; i < Math.min(CHECK_CONCURRENCY, pending.length); i++) void worker();
 	}, [list.data, runCheck]);
 
-	const rows = useMemo(() => (list.data?.servers ?? []).filter(entry => entry.level === scope), [list.data, scope]);
+	const rows = useMemo(() => (list.data?.servers ?? []).filter(entry => entry.level === level), [list.data, level]);
 
 	const toggle = async (entry: McpServerEntry, enabled: boolean, undo = true) => {
 		try {
@@ -115,105 +122,100 @@ export function McpSheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 		return (
 			<ServerEditor
 				mode={editor}
-				close={close}
 				projectPath={projectPath}
+				level={level}
 				list={list.data}
 				onBack={() => setEditor(null)}
 				onSaved={saved => {
 					setEditor(null);
-					if (saved) setScope(saved);
+					setSavedTo(saved);
 				}}
 			/>
 		);
 	}
 
+	const empty = list.data !== null && rows.length === 0;
+	const addServer = (
+		<Button variant="primary" icon={<Plus />} onClick={() => setEditor({ kind: "gallery" })}>
+			{t("mcp.add")}
+		</Button>
+	);
+	const configPath = level === "user" ? list.data?.userPath : list.data?.projectPath;
+	const projectName = projectPath?.split(/[\\/]/).filter(Boolean).pop();
 	return (
-		<ExtensionSheetFrame
-			close={close}
-			width={880}
-			title={t("mcp.title")}
-			description={t("mcp.subtitle")}
-			actions={
-				<Button variant="primary" size="sm" icon={<Plus />} onClick={() => setEditor({ kind: "gallery" })}>
-					{t("mcp.add")}
-				</Button>
-			}
-			bodyClassName="flex flex-col gap-4"
-		>
-			<div className="flex items-center justify-between gap-3">
-				<Segmented<Scope>
-					aria-label={t("mcp.scopeLabel")}
-					value={scope}
-					onValueChange={setScope}
-					options={[
-						{ value: "user", label: t("scope.user") },
-						{ value: "project", label: t("scope.project"), disabled: !projectPath },
-					]}
-				/>
-				{list.data && (
-					<span className="truncate font-mono text-xs text-fg-faint" title={scope === "user" ? list.data.userPath : (list.data.projectPath ?? "")}>
-						{scope === "user" ? list.data.userPath : list.data.projectPath}
-					</span>
+		<SectionView>
+			<PageHeader
+				title={t("mcp.title")}
+				description={t("mcp.subtitle")}
+				meta={
+					<ScopeSwitch
+						label={t("mcp.scopeLabel")}
+						value={level === "user" ? "global" : "project"}
+						onValueChange={setScope}
+						allLabel={t("scope.user")}
+						projectLabel={projectName ? t("scope.projectNamed", { name: projectName }) : t("scope.project")}
+						projectDisabled={!projectPath}
+					/>
+				}
+				// The empty state carries the one "Add server" while the list is empty.
+				actions={empty ? undefined : addServer}
+			/>
+
+			<div className="flex flex-col gap-4">
+				{list.error && (
+					<Notice tone="err" actions={<Button size="sm" onClick={() => void list.reload()}>{t("common.retry")}</Button>}>
+						{t("mcp.loadFailed")} {list.error}
+					</Notice>
 				)}
-			</div>
+				{list.data?.warnings.map(warning => (
+					<Notice key={warning} tone="warn">
+						{/* Service warnings can carry raw validation dumps: show the start, keep the rest one click away. */}
+						<details>
+							<summary className="line-clamp-2 cursor-pointer">{warning}</summary>
+							<pre className="mt-1.5 max-h-40 overflow-auto font-mono text-xs whitespace-pre-wrap text-fg-muted">{warning}</pre>
+						</details>
+					</Notice>
+				))}
+				{level === "project" && list.data && !list.data.settings.enableProjectConfig && <Notice tone="warn">{t("mcp.projectConfigOff")}</Notice>}
 
-			{list.error && (
-				<Notice tone="err" actions={<Button size="sm" onClick={() => void list.reload()}>{t("common.retry")}</Button>}>
-					{t("mcp.loadFailed")} {list.error}
-				</Notice>
-			)}
-			{list.data?.warnings.map(warning => (
-				<Notice key={warning} tone="warn">
-					{/* Service warnings can carry raw validation dumps: show the start, keep the rest one click away. */}
-					<details>
-						<summary className="line-clamp-2 cursor-pointer">{warning}</summary>
-						<pre className="mt-1.5 max-h-40 overflow-auto font-mono text-xs whitespace-pre-wrap text-fg-muted">{warning}</pre>
-					</details>
-				</Notice>
-			))}
-			{scope === "project" && list.data && !list.data.settings.enableProjectConfig && (
-				<Notice tone="warn">{t("mcp.projectConfigOff")}</Notice>
-			)}
-
-			{!list.data && list.loading ? (
-				<div className="flex flex-col gap-2">
-					{[0, 1, 2].map(i => (
-						<Skeleton key={i} height={56} />
-					))}
-				</div>
-			) : rows.length === 0 ? (
-				<EmptyState
-					icon={<PlugsConnected />}
-					title={t(scope === "user" ? "mcp.empty.userTitle" : "mcp.empty.projectTitle")}
-					body={t("mcp.empty.body")}
-					actions={
-						<Button variant="primary" icon={<Plus />} onClick={() => setEditor({ kind: "gallery" })}>
-							{t("mcp.add")}
-						</Button>
-					}
-				/>
-			) : (
-				<ul className="relative flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel">
-					<AnimatePresence initial={false} mode="popLayout">
-						{rows.map(entry => (
-							<ServerRow
-								key={entry.id}
-								entry={entry}
-								check={checks[entry.id]}
-								projectPath={projectPath}
-								onToggle={enabled => void toggle(entry, enabled)}
-								onTest={() => void runCheck(entry)}
-								onEdit={() => setEditor({ kind: "edit", entry })}
-								onViewTools={() => {
-									setToolsFor(entry);
-									if (checks[entry.id]?.state !== "done") void runCheck(entry);
-								}}
-								onRemove={() => setRemoving(entry)}
-							/>
+				{!list.data && list.loading ? (
+					<div className="flex flex-col gap-2">
+						{[0, 1, 2].map(i => (
+							<Skeleton key={i} height={56} />
 						))}
-					</AnimatePresence>
-				</ul>
-			)}
+					</div>
+				) : empty ? (
+					<EmptyState
+						icon={<PlugsConnected />}
+						title={t(level === "user" ? "mcp.empty.userTitle" : "mcp.empty.projectTitle")}
+						body={t("mcp.empty.body")}
+						actions={addServer}
+					/>
+				) : (
+					<ul aria-label={t("mcp.listLabel")} className="relative flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel">
+						<AnimatePresence initial={false} mode="popLayout">
+							{rows.map(entry => (
+								<ServerRow
+									key={entry.id}
+									entry={entry}
+									check={checks[entry.id]}
+									projectPath={projectPath}
+									onToggle={enabled => void toggle(entry, enabled)}
+									onTest={() => void runCheck(entry)}
+									onEdit={() => setEditor({ kind: "edit", entry })}
+									onViewTools={() => {
+										setToolsFor(entry);
+										if (checks[entry.id]?.state !== "done") void runCheck(entry);
+									}}
+									onRemove={() => setRemoving(entry)}
+								/>
+							))}
+						</AnimatePresence>
+					</ul>
+				)}
+
+				{configPath && <ConfigDetails path={configPath} />}
+			</div>
 
 			<ToolsDialog entry={toolsFor} check={toolsFor ? checks[toolsFor.id] : undefined} onClose={() => setToolsFor(null)} />
 			<ConfirmDialog
@@ -225,7 +227,36 @@ export function McpSheet({ props, close }: SheetProps<ExtensionSheetProps>) {
 				cancelLabel={t("common.cancel")}
 				onConfirm={() => (removing ? remove(removing) : undefined)}
 			/>
-		</ExtensionSheetFrame>
+		</SectionView>
+	);
+}
+
+/** Where the shown servers are saved, folded away: most people never need the path. */
+function ConfigDetails({ path }: { path: string }) {
+	const { t } = useTranslation("extensions");
+	const copy = async () => {
+		try {
+			await navigator.clipboard.writeText(path);
+			toast({ tone: "ok", message: t("mcp.config.copied") });
+		} catch (err) {
+			toast({ tone: "err", message: t("mcp.config.copyFailed"), description: errorText(err) });
+		}
+	};
+	return (
+		<details className="group text-sm">
+			<summary className="w-fit cursor-pointer rounded-sm text-fg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-ring">
+				{t("mcp.config.title")}
+			</summary>
+			<div className="mt-2 flex flex-col gap-2">
+				<p className="text-fg-muted">{t("mcp.config.body")}</p>
+				<div className="flex min-w-0 items-center gap-2">
+					<code className="min-w-0 flex-1 font-mono text-xs break-all text-fg">{path}</code>
+					<Button size="sm" icon={<Copy />} onClick={() => void copy()}>
+						{t("mcp.config.copy")}
+					</Button>
+				</div>
+			</div>
+		</details>
 	);
 }
 

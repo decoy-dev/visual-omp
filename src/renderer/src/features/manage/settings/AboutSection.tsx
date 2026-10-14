@@ -12,7 +12,7 @@ import {
 	useUpdates,
 } from "@/features/onboarding/updates";
 import { useApp } from "@/state/app";
-import { Button, Mark, PresenceSwap, Spinner, Wordmark } from "@/ui";
+import { Button, Mark, PageHeader, PresenceSwap, Spinner, Wordmark } from "@/ui";
 import { useResource } from "../shared";
 
 const DOCS_URL = "https://omp.sh";
@@ -28,7 +28,7 @@ interface StatusRow {
 	action?: { label: string; primary?: boolean; run(): void };
 }
 
-export function AboutTab() {
+export function AboutSection() {
 	const { t, i18n } = useTranslation("manage");
 	const info = useResource(() => window.vomp.invoke("app:info"), []);
 	const omp = useApp(state => state.omp);
@@ -99,12 +99,10 @@ export function AboutTab() {
 
 	return (
 		<div>
+			<PageHeader title={t("settings.sections.about")} description={t("about.tagline")} />
 			<div className="flex items-center gap-4">
 				<Mark size={48} />
-				<div>
-					<Wordmark size="lg" />
-					<p className="mt-1 text-sm text-fg-muted">{t("about.tagline")}</p>
-				</div>
+				<Wordmark size="lg" />
 			</div>
 
 			<dl className="mt-6 grid grid-cols-[140px_1fr] gap-x-4 gap-y-3 rounded-lg border border-border bg-panel p-4 text-md">

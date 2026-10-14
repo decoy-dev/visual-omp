@@ -20,13 +20,12 @@
 	},
 	"plus": {
 		"label": "Add files, prompts and commands",
-		"tip": "Attach files, mention a file, or pick a saved prompt",
+		"tip": "Attach or mention files, reuse prompts, or switch to Shell or Python mode",
 		"attach": "Attach file",
 		"mention": "Mention a file",
 		"library": "Open prompt library",
 		"skills": "Browse skills",
-		"commands": "Browse custom commands",
-		"model": "Choose model"
+		"commands": "Browse custom commands"
 	},
 	"attach": {
 		"label": "Attached images",
@@ -66,12 +65,10 @@
 		"exit": "Leave {{mode}}",
 		"shell": {
 			"label": "Shell command mode",
-			"short": "Shell",
 			"tip": "Run what you type as a terminal command in the project folder. The output appears in the chat."
 		},
 		"python": {
 			"label": "Python mode",
-			"short": "Python",
 			"tip": "Run what you type as Python code. The result appears in the chat."
 		}
 	},
@@ -126,7 +123,7 @@
 		"commandsEmptyTitle": "No custom commands in this project",
 		"commandsEmptyBody": "Add Markdown files to .omp/commands in the project and they show up here.",
 		"skillsEmptyTitle": "No skills loaded",
-		"skillsEmptyBody": "Skills give omp extra instructions for specific tasks. Add them from Manage → Skills.",
+		"skillsEmptyBody": "Skills give omp extra instructions for specific tasks. Add them in Settings, under Skills & plugins.",
 		"noMatch": "Nothing matches that filter",
 		"noDescription": "No description",
 		"loadFailed": "Couldn't load this list",

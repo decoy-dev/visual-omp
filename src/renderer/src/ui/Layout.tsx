@@ -34,7 +34,14 @@ export function ScrollArea({
 				ref={viewportRef}
 				tabIndex={focusable ? 0 : undefined}
 				aria-label={ariaLabel}
-				className={cn("size-full rounded-[inherit]", focusable && focusRing, viewportClassName)}
+				className={cn(
+					"size-full rounded-[inherit]",
+					// Radix wraps the content in `display: table`, which grows to the longest row and defeats
+					// `truncate`. Without a horizontal scrollbar the content should take the viewport's width instead.
+					orientation === "vertical" && "[&>div]:block!",
+					focusable && focusRing,
+					viewportClassName,
+				)}
 			>
 				{children}
 			</SA.Viewport>

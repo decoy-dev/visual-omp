@@ -1,22 +1,14 @@
-import { CaretDown, SidebarSimple } from "@phosphor-icons/react";
+import { MagnifyingGlass, SidebarSimple } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { controllerFor, focusedTabId, useApp } from "../state/app";
-import { cn, IconButton, PresenceSwap, Wordmark } from "../ui";
-import { chatTitle, useSessionView } from "./hooks";
+import { useApp } from "../state/app";
+import { cn, IconButton, Kbd, Wordmark } from "../ui";
 
-/** Frameless window bar (DESIGN §3.1): opaque, draggable, breadcrumb centered. The breadcrumb crossfades when the chat changes. */
+/** Frameless window bar (DESIGN §3.1): opaque and draggable, with the lockup on the left and "Search commands" centered. */
 export function TitleBar(): ReactNode {
 	const { t } = useTranslation("shell");
 	const isMac = window.vomp.platform === "darwin";
 	const sidebarOpen = useApp(state => state.sidebarOpen);
-	const projects = useApp(state => state.projects);
-	const activeProject = useApp(state => state.activeProject);
-	const tabId = useApp(focusedTabId);
-	const tab = useApp(state => state.tabs.find(entry => entry.id === tabId) ?? null);
-	const view = useSessionView(controllerFor(tabId));
-	const project = projects.find(entry => entry.path === activeProject);
-	const title = tab ? (chatTitle(view, tab.title) ?? t("tabs.newChatTitle")) : null;
 	const [version, setVersion] = useState<string | null>(null);
 
 	useEffect(() => {
@@ -30,8 +22,8 @@ export function TitleBar(): ReactNode {
 	}, []);
 
 	return (
-		// Three columns: the side columns share the free space equally, so the breadcrumb stays centered, but the
-		// lockup column never shrinks below its content, so a long breadcrumb shortens instead of covering it.
+		// Three columns: the side columns share the free space equally, so the search button stays centered, but the
+		// lockup column never shrinks below its content, so a narrow window shortens the button instead of covering it.
 		<header
 			className={cn(
 				"glass drag-region relative z-(--z-titlebar) grid h-(--titlebar-h) shrink-0 items-center gap-2 border-b border-border px-[12px]",
@@ -43,7 +35,7 @@ export function TitleBar(): ReactNode {
 					<IconButton
 						className="no-drag"
 						label={t("titlebar.showSidebar")}
-						shortcut="⌘B"
+						shortcut={isMac ? "⌘B" : "Ctrl+B"}
 						icon={<SidebarSimple />}
 						size="sm"
 						onClick={() => useApp.getState().toggleSidebar()}
@@ -53,25 +45,17 @@ export function TitleBar(): ReactNode {
 				{version && <span className="font-mono text-xs text-fg-faint">{t("titlebar.version", { version })}</span>}
 			</div>
 			<div className="flex min-w-0 justify-center">
-				{project && (
-					<button
-						type="button"
-						className="no-drag relative flex min-w-0 max-w-full items-center gap-1 rounded-md px-2 py-1 text-md text-fg-muted hover:bg-hover hover:text-fg"
-						aria-label={t("titlebar.switchChat")}
-						onClick={() => useApp.getState().setPaletteOpen(true)}
-					>
-						<PresenceSwap swapKey={`${project.path}\n${title ?? ""}`} mode="popLayout" className="flex min-w-0 items-center gap-1">
-							<span className="truncate">{project.name}</span>
-							{title && (
-								<>
-									<span className="text-fg-faint">/</span>
-									<span className="truncate text-fg">{title}</span>
-								</>
-							)}
-						</PresenceSwap>
-						<CaretDown className="size-3.5 shrink-0" />
-					</button>
-				)}
+				<button
+					type="button"
+					aria-haspopup="dialog"
+					aria-keyshortcuts={isMac ? "Meta+K" : "Control+K"}
+					className="no-drag flex h-7 w-72 min-w-0 max-w-full items-center gap-2 rounded-md border border-border bg-inset px-2 text-md text-fg-muted outline-none hover:border-border-strong hover:text-fg focus-visible:outline-2 focus-visible:outline-ring"
+					onClick={() => useApp.getState().setPaletteOpen(true)}
+				>
+					<MagnifyingGlass aria-hidden className="size-3.5 shrink-0 text-fg-faint" />
+					<span className="min-w-0 flex-1 truncate text-left">{t("titlebar.searchCommands")}</span>
+					<Kbd aria-hidden>{isMac ? "⌘K" : "Ctrl+K"}</Kbd>
+				</button>
 			</div>
 			<div />
 		</header>

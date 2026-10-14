@@ -1,13 +1,12 @@
-/** Usage & limits: its command and the status bar's plan usage and "today" cost. */
+/** Usage & limits: its page, its command and the status bar's plan usage. */
 import { Gauge } from "@phosphor-icons/react";
 import { registerCommand } from "@/registry/commands";
-import { sheets, statusItems } from "@/registry/slots";
-import { useApp } from "@/state/app";
+import { pages, statusItems } from "@/registry/slots";
+import { openUsage } from "@/state/navigation";
 import { PlanUsageStatus } from "./PlanUsageStatus";
-import { UsageSheet } from "./UsageSheet";
-import { UsageStatus } from "./UsageStatus";
+import { UsagePage } from "./UsagePage";
 
-sheets.register({ id: "usage", component: UsageSheet });
+pages.register({ id: "usage", component: UsagePage });
 
 registerCommand({
 	id: "manage.usage",
@@ -17,8 +16,7 @@ registerCommand({
 	slash: "/usage",
 	group: "manage",
 	icon: Gauge,
-	run: ({ projectPath }) => useApp.getState().openSheet("usage", { projectPath }),
+	run: ({ projectPath }) => openUsage({ projectPath }),
 });
 
 statusItems.register({ id: "usage-limits", side: "right", order: 10, component: PlanUsageStatus });
-statusItems.register({ id: "usage-today", side: "right", order: 20, component: UsageStatus });

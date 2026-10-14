@@ -27,7 +27,7 @@ interface VoiceRequests {
 	requestStart(tabId: string): void;
 }
 
-/** Start requests from the composer's ＋ menu, which offers dictation while the row folds the mic away. */
+/** Start requests from the composer's ＋ menu ("Dictate a message"), which also explains and turns on voice input while it is off. */
 export const useVoiceRequests = create<VoiceRequests>()(set => ({
 	start: null,
 	requestStart: tabId => set(state => ({ start: { tabId, seq: (state.start?.seq ?? 0) + 1 } })),
@@ -180,44 +180,46 @@ export function VoiceTool({ session }: ChatSlotProps) {
 	const busy = state === "starting" || state === "transcribing";
 	const label = recording ? t("voice.stop") : busy ? t(`voice.${state}`) : t("voice.start");
 
+	// The mic is in the row only while voice input is on (or dictation is still finishing); the dialog and
+	// the ＋ menu's start requests work either way.
 	return (
 		<>
-			<Tooltip content={label}>
-				<button
-					type="button"
-					aria-label={label}
-					aria-pressed={recording}
-					disabled={readOnly || busy}
-					onClick={onClick}
-					className={cn(
-						"relative inline-flex size-7 shrink-0 items-center justify-center rounded-md outline-none transition-colors duration-(--dur-fast)",
-						"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45",
-						recording ? "bg-err-bg text-err" : "text-fg-muted enabled:hover:bg-hover enabled:hover:text-fg",
-						// Folded into the ＋ menu on a narrow card, except while dictation is under way.
-						state === "idle" && "group-data-fold-tools/composer:hidden",
-					)}
-				>
-					{recording && <span aria-hidden className="vo-ping absolute inset-0 rounded-md ring-2 ring-err" />}
-					<AnimatePresence initial={false} mode="popLayout">
-						<motion.span
-							key={busy ? "busy" : recording ? "recording" : "idle"}
-							initial={{ opacity: 0, scale: 0.6 }}
-							animate={{ opacity: 1, scale: 1 }}
-							exit={{ opacity: 0, scale: 0.6 }}
-							transition={spring.snappy}
-							className="inline-flex"
-						>
-							{busy ? (
-								<CircleNotch className="vo-spin size-4" aria-hidden />
-							) : recording ? (
-								<Square weight="fill" className="size-3.5" aria-hidden />
-							) : (
-								<Microphone className="size-4" aria-hidden />
-							)}
-						</motion.span>
-					</AnimatePresence>
-				</button>
-			</Tooltip>
+			{(voiceOn || state !== "idle") && (
+				<Tooltip content={label}>
+					<button
+						type="button"
+						aria-label={label}
+						aria-pressed={recording}
+						disabled={readOnly || busy}
+						onClick={onClick}
+						className={cn(
+							"relative inline-flex size-7 shrink-0 items-center justify-center rounded-md outline-none transition-colors duration-(--dur-fast)",
+							"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45",
+							recording ? "bg-err-bg text-err" : "text-fg-muted enabled:hover:bg-hover enabled:hover:text-fg",
+						)}
+					>
+						{recording && <span aria-hidden className="vo-ping absolute inset-0 rounded-md ring-2 ring-err" />}
+						<AnimatePresence initial={false} mode="popLayout">
+							<motion.span
+								key={busy ? "busy" : recording ? "recording" : "idle"}
+								initial={{ opacity: 0, scale: 0.6 }}
+								animate={{ opacity: 1, scale: 1 }}
+								exit={{ opacity: 0, scale: 0.6 }}
+								transition={spring.snappy}
+								className="inline-flex"
+							>
+								{busy ? (
+									<CircleNotch className="vo-spin size-4" aria-hidden />
+								) : recording ? (
+									<Square weight="fill" className="size-3.5" aria-hidden />
+								) : (
+									<Microphone className="size-4" aria-hidden />
+								)}
+							</motion.span>
+						</AnimatePresence>
+					</button>
+				</Tooltip>
+			)}
 			<span aria-live="polite" className="sr-only">
 				{recording ? t("voice.listening") : ""}
 			</span>

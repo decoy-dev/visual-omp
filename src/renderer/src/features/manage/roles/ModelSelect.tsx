@@ -1,7 +1,7 @@
 import type { ModelInfo, ModelKind } from "@shared/contracts/config";
 import { Brain, Eye, Lightning } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
-import { useApp } from "@/state/app";
+import { openSettings } from "@/state/navigation";
 import { Select, SelectGroup, SelectItem, SelectLabel, SelectSeparator } from "@/ui";
 import { formatContextWindow, groupModelsByProvider, modelValueStatus } from "./rolesModel";
 
@@ -65,7 +65,7 @@ export function ModelSelect({ models, accepts, value, onChange, autoLabel, disab
 		<Select
 			value={value ?? AUTO}
 			onValueChange={next => {
-				if (next === ADD_PROVIDER) useApp.getState().openSheet("settings", { tab: "providers" });
+				if (next === ADD_PROVIDER) openSettings("providers");
 				else onChange(next === AUTO ? null : next);
 			}}
 			invalid={status === "missing"}

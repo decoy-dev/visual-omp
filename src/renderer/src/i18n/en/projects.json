@@ -51,24 +51,17 @@
 		"pickProject": "Pick a project on the left, or start a new one.",
 		"newProject": "Create project",
 		"openFolder": "Open folder…",
-		"newChat": "Start chat",
+		"newChat": "Start chat here",
 		"startIn": "Start chat in folder…",
-		"otherFolder": "Chat in another folder…",
 		"menu": "Project options",
 		"menuSettings": "Project settings…",
 		"menuInstructions": "Project instructions…",
 		"menuImport": "Import a chat…",
 		"menuReveal": "Show in folder",
 		"menuRemove": "Remove project from list",
-		"meta": {
-			"clean": "no changes",
-			"changed_one": "{{count}} changed file",
-			"changed_other": "{{count}} changed files",
-			"noGit": "not a git project",
-			"chatsWeek_one": "chat this week",
-			"chatsWeek_other": "chats this week",
-			"costWeek": "this week"
-		},
+		"copyPath": "Copy folder path",
+		"pathCopied": "Folder path copied",
+		"copyFailed": "Couldn't copy the folder path",
 		"missing": {
 			"title": "Can't find “{{name}}”",
 			"body": "The folder {{path}} was moved or deleted. Point to where it is now, or remove it from the list.",
@@ -89,11 +82,25 @@
 			}
 		},
 		"start": {
-			"title": "Start from an example"
+			"title": "Start from an example",
+			"body": "Each example opens a new chat with the prompt ready to edit before you send it."
+		},
+		"setup": {
+			"title": "Instructions and settings",
+			"instructions": "Instructions",
+			"model": "Model for new chats",
+			"modelAuto": "Chosen by omp",
+			"mode": "Permission mode",
+			"projectOnly": "this project only",
+			"openSettings": "Project settings",
+			"instructionsFailed": "Couldn't read the instructions",
+			"rulesFailed": "Couldn't read the rules",
+			"settingFailed": "Couldn't read this setting"
 		},
 		"health": {
 			"title": "Git",
-			"openDiff": "Show changes",
+			"openDiff": "Review changes",
+			"clean": "No changes",
 			"detached": "no branch",
 			"lines": "{{add}} lines added, {{del}} removed",
 			"noCommits": "No saved versions (commits) yet",
@@ -112,7 +119,6 @@
 			"initGit": "Set up git"
 		},
 		"instructions": {
-			"title": "Instructions",
 			"none": "No instructions yet",
 			"edit": "Edit instructions",
 			"write": "Write instructions",
@@ -344,8 +350,7 @@
 	},
 	"instructions": {
 		"title": "Project instructions",
-		"subtitle": "What omp should know about {{name}}",
-		"noProject": "Open a project first.",
+		"subtitle": "What omp reads in {{name}}: instructions at the start of every chat, and rules when they apply.",
 		"tabInstructions": "Instructions",
 		"tabRules": "Rules",
 		"file": "Instructions file",
@@ -365,13 +370,7 @@
 		"revert": "Undo changes",
 		"save": "Save instructions",
 		"saved": "Instructions saved",
-		"saveFailed": "Couldn't save the instructions",
-		"discard": {
-			"title": "Discard your changes?",
-			"body": "Your edits to the instructions haven't been saved.",
-			"keep": "Keep editing",
-			"confirm": "Discard changes"
-		}
+		"saveFailed": "Couldn't save the instructions"
 	},
 	"rules": {
 		"explainer": "Rules are short notes omp follows only when they apply, for example when it changes certain files.",
@@ -423,6 +422,7 @@
 	},
 	"settings": {
 		"title": "Project settings",
+		"description": "Settings that apply only to chats in {{name}}. Anything you leave unchanged follows your settings for all projects.",
 		"cancel": "Cancel",
 		"saveFailed": "Couldn't save the setting",
 		"removeFailed": "Couldn't remove the project",
@@ -436,6 +436,7 @@
 		},
 		"mode": {
 			"title": "Permission mode",
+			"body": "How much omp may do in this project before asking you.",
 			"always-ask": {
 				"label": "Ask me first",
 				"body": "omp can look around on its own, but asks before it changes a file or runs a command."
@@ -457,6 +458,7 @@
 		},
 		"more": {
 			"title": "Tools and helpers",
+			"body": "Connected tools and helpers open in Settings, showing the ones for this project.",
 			"mcp": "Connected tools",
 			"mcpBody": "Outside tools omp can use in this project, like a database or ticket tracker.",
 			"agents": "Helpers",

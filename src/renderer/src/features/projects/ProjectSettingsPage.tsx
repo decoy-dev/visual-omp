@@ -1,22 +1,20 @@
 /**
- * Per-project settings: this project's default model and permission mode (written to
- * `<project>/.omp/config.yml`), shortcuts to its connected tools, helpers and instructions, and
- * removing it from the list.
+ * Project settings page: this project's default model and permission mode (written to
+ * `<project>/.omp/config.yml`), links to its connected tools, helpers and instructions, and removing
+ * it from the list.
  */
 import type { ApprovalMode, ApprovalState, ModelInfo, ModelRolesState } from "@shared/contracts/config";
 import { FileText, Plug, Robot, X } from "@phosphor-icons/react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { SheetProps } from "@/registry/slots";
+import type { PageProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
-import { Button, Dialog, DialogContent, Divider, EmptyState, PresenceSwap, Segmented, Sheet, SheetContent, Skeleton, toast } from "@/ui";
+import { openProjectInstructions, openSettings, type ProjectPageProps, usePageBack } from "@/state/navigation";
+import { Button, Dialog, DialogContent, Divider, PageFrame, PageHeader, PresenceSwap, SectionHeader, Segmented, Skeleton, toast } from "@/ui";
+import type { HelpersSectionProps } from "../manage/agents/HelpersSection";
 import { ModelSelect } from "../manage/roles/ModelSelect";
 import { errorText } from "./actions";
 import { folderName } from "./format";
-
-export interface ProjectSettingsProps {
-	projectPath?: string | null;
-}
 
 const MODES: readonly ApprovalMode[] = ["always-ask", "write", "yolo"];
 const STRICTNESS: Record<ApprovalMode, number> = { "always-ask": 2, write: 1, yolo: 0 };
@@ -29,21 +27,19 @@ interface Loaded {
 	models: ModelInfo[];
 }
 
-export function ProjectSettingsSheet({ props, close }: SheetProps<ProjectSettingsProps | undefined>): ReactNode {
+export function ProjectSettingsPage({ props, seq, close }: PageProps<ProjectPageProps>): ReactNode {
 	const { t } = useTranslation("projects");
-	const active = useApp(state => state.activeProject);
-	const projectPath = props?.projectPath ?? active;
+	const { projectPath } = props;
+	const name = useApp(state => state.projects.find(entry => entry.path === projectPath)?.name ?? folderName(projectPath));
 	return (
-		<Sheet open onOpenChange={open => !open && close()}>
-			<SheetContent
-				width={560}
+		<PageFrame back={usePageBack(close)} width="form" label={t("settings.title")} focusKey={seq}>
+			<PageHeader
 				title={t("settings.title")}
-				description={projectPath ? folderName(projectPath) : undefined}
-				bodyClassName="flex flex-col gap-6 p-5"
-			>
-				{projectPath ? <SettingsBody projectPath={projectPath} close={close} /> : <EmptyState title={t("instructions.noProject")} />}
-			</SheetContent>
-		</Sheet>
+				description={t("settings.description", { name })}
+				meta={<span className="min-w-0 font-mono text-xs [overflow-wrap:anywhere]">{projectPath}</span>}
+			/>
+			<SettingsBody key={projectPath} projectPath={projectPath} close={close} />
+		</PageFrame>
 	);
 }
 
@@ -53,7 +49,6 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 	const [error, setError] = useState<string | null>(null);
 	const [confirmAuto, setConfirmAuto] = useState(false);
 	const [confirmRemove, setConfirmRemove] = useState(false);
-	const openSheet = useApp(state => state.openSheet);
 
 	const load = useCallback(async () => {
 		try {
@@ -97,7 +92,7 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 			}),
 		);
 
-	const mode = data?.approval.mode ?? "yolo";
+	const mode = data?.approval.mode ?? "always-ask";
 	const setMode = (next: ApprovalMode, confirmed = false) => {
 		if (next === "yolo" && STRICTNESS[mode] > 0 && !confirmed && localStorage.getItem(AUTO_WARNED_KEY) === null) {
 			setConfirmAuto(true);
@@ -123,47 +118,40 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 	if (error) return <p className="text-sm text-err">{error}</p>;
 
 	return (
-		<>
-			<section className="flex flex-col gap-3" aria-labelledby="ps-model">
-				<h3 id="ps-model" className="text-base font-semibold text-fg">
-					{t("settings.model.title")}
-				</h3>
-				<p className="text-sm text-fg-muted">{t("settings.model.body")}</p>
+		<div className="flex flex-col gap-10">
+			<section aria-labelledby="ps-model">
+				<SectionHeader id="ps-model" title={t("settings.model.title")} description={t("settings.model.body")} />
 				{data && role ? (
-					<>
+					<div className="flex flex-col gap-2">
 						<ModelSelect
 							aria-label={t("settings.model.title")}
 							models={data.models}
 							accepts={role.acceptsKinds}
 							value={role.projectValue ? role.projectValue.replace(/:[a-z]+$/, "") : null}
 							onChange={setModel}
-							autoLabel={
-								role.globalValue ? t("settings.model.inherit", { model: role.globalValue }) : t("settings.model.auto")
-							}
+							autoLabel={role.globalValue ? t("settings.model.inherit", { model: role.globalValue }) : t("settings.model.auto")}
 						/>
-						<p className="text-xs text-fg-faint">{role.projectValue ? t("settings.model.projectOnly") : t("settings.model.usingGlobal")}</p>
-					</>
+						<p className="text-sm text-fg-muted">{role.projectValue ? t("settings.model.projectOnly") : t("settings.model.usingGlobal")}</p>
+					</div>
 				) : (
 					<Skeleton height={32} />
 				)}
 			</section>
 
-			<section className="flex flex-col gap-3" aria-labelledby="ps-mode">
-				<h3 id="ps-mode" className="text-base font-semibold text-fg">
-					{t("settings.mode.title")}
-				</h3>
+			<section aria-labelledby="ps-mode">
+				<SectionHeader id="ps-mode" title={t("settings.mode.title")} description={t("settings.mode.body")} />
 				{data ? (
-					<>
+					<div className="flex flex-col gap-3">
 						<Segmented<ApprovalMode>
 							aria-label={t("settings.mode.title")}
 							value={mode}
 							onValueChange={next => setMode(next)}
 							options={MODES.map(value => ({ value, label: t(`settings.mode.${value}.label`) }))}
 						/>
-						<PresenceSwap swapKey={mode} className="text-sm text-fg-muted">
+						<PresenceSwap swapKey={mode} className="text-md text-fg-muted">
 							<p>{t(`settings.mode.${mode}.body`)}</p>
 						</PresenceSwap>
-						<div className="flex items-center gap-2 text-xs text-fg-faint">
+						<div className="flex flex-wrap items-center gap-2 text-sm text-fg-muted">
 							<span className="flex-1">{data.approval.modeSource === "project" ? t("settings.mode.projectOnly") : t("settings.mode.usingGlobal")}</span>
 							{data.approval.modeSource === "project" && (
 								<Button size="sm" variant="ghost" onClick={() => void run(() => window.vomp.invoke("config:reset", "tools.approvalMode", "project", projectPath))}>
@@ -171,43 +159,43 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 								</Button>
 							)}
 						</div>
-					</>
+					</div>
 				) : (
 					<Skeleton height={32} />
 				)}
 			</section>
 
-			<section className="flex flex-col gap-1" aria-labelledby="ps-more">
-				<h3 id="ps-more" className="text-base font-semibold text-fg mb-2">
-					{t("settings.more.title")}
-				</h3>
-				<LinkRow
-					icon={<Plug />}
-					title={t("settings.more.mcp")}
-					body={t("settings.more.mcpBody")}
-					action={t("settings.more.mcpAction")}
-					onOpen={() => openSheet("mcp", { projectPath, scope: "project" })}
-				/>
-				<LinkRow
-					icon={<Robot />}
-					title={t("settings.more.agents")}
-					body={t("settings.more.agentsBody")}
-					action={t("settings.more.agentsAction")}
-					onOpen={() => openSheet("agents", { projectPath, scope: "project" })}
-				/>
-				<LinkRow
-					icon={<FileText />}
-					title={t("settings.more.instructions")}
-					body={t("settings.more.instructionsBody")}
-					action={t("settings.more.instructionsAction")}
-					onOpen={() => openSheet("project-instructions", { projectPath })}
-				/>
+			<section aria-labelledby="ps-more">
+				<SectionHeader id="ps-more" title={t("settings.more.title")} description={t("settings.more.body")} />
+				<ul className="flex flex-col divide-y divide-border">
+					<LinkRow
+						icon={<Plug />}
+						title={t("settings.more.mcp")}
+						body={t("settings.more.mcpBody")}
+						action={t("settings.more.mcpAction")}
+						onOpen={() => openSettings("mcp", { projectPath, scope: "project" })}
+					/>
+					<LinkRow
+						icon={<Robot />}
+						title={t("settings.more.agents")}
+						body={t("settings.more.agentsBody")}
+						action={t("settings.more.agentsAction")}
+						onOpen={() => openSettings("helpers", { projectPath, sectionProps: { filter: "project" } satisfies HelpersSectionProps })}
+					/>
+					<LinkRow
+						icon={<FileText />}
+						title={t("settings.more.instructions")}
+						body={t("settings.more.instructionsBody")}
+						action={t("settings.more.instructionsAction")}
+						onOpen={() => openProjectInstructions(projectPath)}
+					/>
+				</ul>
 			</section>
 
 			<Divider />
-			<section className="flex items-start gap-3">
-				<div className="min-w-0 flex-1">
-					<h3 className="text-md font-medium text-fg">{t("settings.remove.title")}</h3>
+			<section className="flex flex-wrap items-start gap-3">
+				<div className="min-w-[min(100%,16rem)] flex-1">
+					<h2 className="text-md font-medium text-fg">{t("settings.remove.title")}</h2>
 					<p className="mt-0.5 text-sm text-fg-muted">{t("settings.remove.body")}</p>
 				</div>
 				<Button variant="danger-ghost" icon={<X />} onClick={() => setConfirmRemove(true)}>
@@ -253,23 +241,23 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 					}
 				/>
 			</Dialog>
-		</>
+		</div>
 	);
 }
 
 function LinkRow({ icon, title, body, action, onOpen }: { icon: ReactNode; title: string; body: string; action: string; onOpen(): void }): ReactNode {
 	return (
-		<div className="flex items-center gap-3 py-2">
-			<span className="shrink-0 text-fg-muted [&>svg]:size-4" aria-hidden>
+		<li className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
+			<span className="shrink-0 self-start pt-0.5 text-fg-muted [&>svg]:size-4" aria-hidden>
 				{icon}
 			</span>
-			<div className="min-w-0 flex-1">
+			<div className="min-w-[min(100%,14rem)] flex-1">
 				<p className="text-md font-medium text-fg">{title}</p>
 				<p className="text-sm text-fg-muted">{body}</p>
 			</div>
 			<Button size="sm" onClick={onOpen}>
 				{action}
 			</Button>
-		</div>
+		</li>
 	);
 }

@@ -16,6 +16,7 @@ import { registerCommand } from "../../registry/commands";
 import { useSheetPresence } from "../../registry/sheetPresence";
 import { type SheetProps, sheets } from "../../registry/slots";
 import { allControllers, controllerFor, useApp } from "../../state/app";
+import { openSettings } from "../../state/navigation";
 import type { SessionController } from "../../state/session";
 import { Button, Dialog, DialogContent, PresenceSwap, Progress, toast, WorkingIndicator } from "../../ui";
 import { ipcErrorMessage as errorText } from "../manage/shared";
@@ -311,7 +312,7 @@ export function installUpdateWatchers(): void {
 		group: "settings",
 		icon: ArrowsClockwise,
 		run: () => {
-			useApp.getState().openSheet("settings", { tab: "about" });
+			openSettings("about");
 			void checkForUpdates();
 		},
 	});

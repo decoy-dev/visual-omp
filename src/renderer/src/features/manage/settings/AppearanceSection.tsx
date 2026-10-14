@@ -3,7 +3,7 @@ import { Monitor, Moon, Sun } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "@/state/app";
-import { Segmented, Slider } from "@/ui";
+import { PageHeader, Segmented, Slider } from "@/ui";
 import { SettingRow, SettingsSection } from "./parts";
 
 const THEMES: readonly { value: ThemePreference; icon: typeof Sun }[] = [
@@ -13,7 +13,7 @@ const THEMES: readonly { value: ThemePreference; icon: typeof Sun }[] = [
 ];
 const MOTION: readonly AppPreferences["reducedMotion"][] = ["system", "on", "off"];
 
-export function AppearanceTab() {
+export function AppearanceSection() {
 	const { t } = useTranslation("manage");
 	const prefs = useApp(state => state.prefs);
 	const setPrefs = useApp(state => state.setPrefs);
@@ -22,10 +22,12 @@ export function AppearanceTab() {
 	useEffect(() => {
 		if (prefs) setScale(prefs.textScale);
 	}, [prefs]);
-	if (!prefs) return null;
+	const header = <PageHeader title={t("settings.sections.appearance")} description={t("appearance.description")} />;
+	if (!prefs) return header;
 
 	return (
 		<>
+			{header}
 			<SettingsSection title={t("appearance.look")}>
 				<SettingRow
 					label={t("appearance.theme.label")}

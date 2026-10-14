@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { app, BrowserWindow, nativeTheme, shell } from "electron";
 import { attachAttentionWindow, setAppUserModelId } from "./attention";
 import { registerHandlers } from "./handlers";
+import { ensureNewUserApproval } from "./features/config";
 import { broadcast } from "./ipc";
 import { buildMenu } from "./menu";
 import { stopAllHosts } from "./omp/host";
@@ -94,6 +95,8 @@ app.whenReady().then(() => {
 	});
 	buildMenu();
 	createWindow();
+	// Starts the check early; host:start and config:approval wait for it on a fresh profile.
+	void ensureNewUserApproval();
 	void watchSessions();
 	app.on("activate", () => {
 		if (BrowserWindow.getAllWindows().length === 0) createWindow();

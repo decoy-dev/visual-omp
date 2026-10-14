@@ -10,7 +10,7 @@ import type { ScreenProps } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import { Button, cn, Expand, Mark, PresenceSwap, toast } from "../../ui";
 import { focusRing } from "../../ui/styles";
-import { HelpDialog } from "./HelpSheet";
+import { HelpView } from "./HelpPage";
 import { InlineTerminal } from "./InlineTerminal";
 import { CommandRun } from "./terminal";
 
@@ -26,9 +26,8 @@ export function SetupScreen(_props: ScreenProps) {
 	const [install, setInstall] = useState<Install>({ state: "idle" });
 	const [copied, setCopied] = useState(false);
 	const [check, setCheck] = useState<Check>("idle");
-	// Help stays mounted after closing until its exit finishes, then unmounts so it opens fresh next time.
+	// Help replaces the setup steps in place; the steps stay mounted (hidden) so a running install keeps its output.
 	const [helpOpen, setHelpOpen] = useState(false);
-	const [helpMounted, setHelpMounted] = useState(false);
 	const helpButton = useRef<HTMLButtonElement>(null);
 	const windows = window.vomp.platform === "win32";
 
@@ -101,8 +100,19 @@ export function SetupScreen(_props: ScreenProps) {
 		cancelled: t("setup.step1.cancelled"),
 	};
 
+	const closeHelp = () => {
+		setHelpOpen(false);
+		requestAnimationFrame(() => helpButton.current?.focus());
+	};
+
 	return (
-		<main className="relative flex min-h-screen w-full items-start justify-center overflow-y-auto bg-bg px-6 pb-16 pt-[max(64px,12vh)]">
+		<>
+		<main
+			className={cn(
+				"relative min-h-screen w-full items-start justify-center overflow-y-auto bg-bg px-6 pb-16 pt-[max(64px,12vh)]",
+				helpOpen ? "hidden" : "flex",
+			)}
+		>
 			{/* Frameless window: keep the top strip draggable. */}
 			<div aria-hidden className="absolute inset-x-0 top-0 h-10 [-webkit-app-region:drag]" />
 			<div className="relative flex w-full max-w-[560px] flex-col items-center text-center">
@@ -208,10 +218,7 @@ export function SetupScreen(_props: ScreenProps) {
 					<button
 						ref={helpButton}
 						type="button"
-						onClick={() => {
-							setHelpMounted(true);
-							setHelpOpen(true);
-						}}
+						onClick={() => setHelpOpen(true)}
 						className={cn("inline-flex items-center gap-1 rounded-sm font-medium text-accent hover:underline", focusRing)}
 					>
 						{t("setup.openHelp")}
@@ -219,18 +226,22 @@ export function SetupScreen(_props: ScreenProps) {
 					</button>
 				</p>
 			</div>
-			{helpMounted && (
-				<HelpDialog
-					limited
-					open={helpOpen}
-					onClose={() => setHelpOpen(false)}
-					onExited={() => {
-						setHelpMounted(false);
-						helpButton.current?.focus();
-					}}
-				/>
-			)}
 		</main>
+		{helpOpen && (
+			<div
+				className="flex h-screen w-full flex-col bg-bg"
+				onKeyDown={event => {
+					if (event.key === "Escape" && !event.defaultPrevented) closeHelp();
+				}}
+			>
+				{/* Frameless window: keep the top strip draggable. */}
+				<div aria-hidden className="h-10 shrink-0 [-webkit-app-region:drag]" />
+				<div className="flex min-h-0 flex-1">
+					<HelpView limited back={{ label: t("setup.backToSetup"), onBack: closeHelp }} focusKey="setup-help" />
+				</div>
+			</div>
+		)}
+		</>
 	);
 }
 

@@ -28,9 +28,7 @@ export function FolderChip({ session }: ChatSlotProps): ReactNode {
 				className="inline-flex h-7 min-w-0 max-w-52 items-center gap-1.5 overflow-hidden rounded-md px-2 text-sm font-medium text-fg-muted outline-none hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 			>
 				<FolderSimple className="size-3.5 shrink-0" aria-hidden />
-				<span data-row-label className="truncate">
-					{name}
-				</span>
+				<span className="truncate">{name}</span>
 				<CaretDown className="size-3 shrink-0" aria-hidden />
 			</button>
 		</Tooltip>

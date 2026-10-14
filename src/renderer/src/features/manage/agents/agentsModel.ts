@@ -1,39 +1,5 @@
-/** Pure helpers for the Helpers (agents) hub: running detection and chat prompts. */
+/** Pure helpers for the Helpers section: chat prompts and copy names. */
 import type { AgentWritableScope } from "@shared/contracts/agents";
-import type { GuestSnapshot } from "@/collab/lib/client";
-
-/** A live chat for running-now detection. */
-export interface LiveChat {
-	title: string;
-	guest: GuestSnapshot | null;
-}
-
-/**
- * Agent name → titles of the chats where a subagent of that type is running right now. Progress
- * frames carry the live status; lifecycle frames cover subagents that started but have not reported
- * progress yet.
- */
-export function runningAgentChats(chats: readonly LiveChat[]): Map<string, string[]> {
-	const running = new Map<string, string[]>();
-	for (const chat of chats) {
-		if (!chat.guest) continue;
-		const names = new Set<string>();
-		const reported = new Set<string>();
-		for (const payload of chat.guest.progress.values()) {
-			reported.add(payload.progress.id);
-			if (payload.progress.status === "running" || payload.progress.status === "pending") names.add(payload.progress.agent);
-		}
-		for (const event of chat.guest.lifecycle.values()) {
-			if (event.status === "started" && !reported.has(event.id)) names.add(event.agent);
-		}
-		for (const name of names) {
-			const titles = running.get(name);
-			if (titles) titles.push(chat.title);
-			else running.set(name, [chat.title]);
-		}
-	}
-	return running;
-}
 
 /**
  * Chat prompt for "Create with AI". omp's own /agents hub generates the definition with a hidden

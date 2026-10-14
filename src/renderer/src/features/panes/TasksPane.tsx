@@ -1,15 +1,17 @@
 /**
- * Tasks & helpers pane (DESIGN §3.7): omp's checklist (latest `todo` board), helpers (subagents with
- * live activity, tokens, Stop / Message / transcript) and background shell jobs.
+ * Tasks & helpers pane (DESIGN §3.7): omp's checklist (latest `todo` board), helpers at work (subagents with live
+ * activity, tokens, Stop / Message / transcript) and background shell jobs. This is where running work shows;
+ * Settings → Helpers holds only the helper definitions, and the Helpers section links there.
  */
 import type { AgentProgress, AgentSnapshot, SubagentLifecyclePayload } from "@oh-my-pi/pi-wire";
-import { CaretRight, ChatCenteredText, Check, CircleIcon, FileText, ListChecks, RadioButton, Square, X } from "@phosphor-icons/react";
+import { CaretRight, ChatCenteredText, Check, CircleIcon, FileText, GearSix, ListChecks, RadioButton, Square, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, type ReactNode, useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { GuestSnapshot } from "../../collab/lib/client";
 import type { PaneProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
+import { openSettings } from "../../state/navigation";
 import { liveEntries, type SessionController } from "../../state/session";
 import { parseSessionHistory } from "../../state/history";
 import { Markdown } from "../../transcript/Markdown";
@@ -278,23 +280,26 @@ const HELPER_DOT: Record<HelperStatus, "agent" | "idle" | "ok" | "err"> = {
 function HelperRow({ helper, session, onTranscript }: { helper: Helper; session: SessionController; onTranscript(helper: Helper): void }) {
 	const { t } = useTranslation("panes");
 	return (
-		<motion.li layout="position" {...listRowMotion} className="flex items-center gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-hover">
-			<span className="relative inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-inset text-xs font-semibold text-fg-muted" aria-hidden>
+		<motion.li layout="position" {...listRowMotion} className="flex items-start gap-2.5 rounded-md px-1.5 py-1.5 hover:bg-hover">
+			<span className="relative mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-inset text-xs font-semibold text-fg-muted" aria-hidden>
 				{helper.name.slice(0, 1).toUpperCase()}
 				<StatusDot status={HELPER_DOT[helper.status]} ringed className="absolute -bottom-0.5 -right-0.5" />
 			</span>
+			{/* Name, then status and tokens, then activity, each on its own line so a narrow dock only shortens them. */}
 			<div className="min-w-0 flex-1">
-				<p className="flex items-center gap-1.5 text-md font-medium text-fg">
-					<span className="truncate">{helper.name}</span>
-					<span className="shrink-0 text-xs font-normal text-fg-faint">{t(`tasks.helperStatus.${helper.status}`)}</span>
+				<p className="truncate text-md font-medium text-fg" title={helper.name}>
+					{helper.name}
 				</p>
-				{helper.activity && <p className="truncate text-sm text-fg-muted" title={helper.activity}>{helper.activity}</p>}
+				<p className="flex flex-wrap items-center gap-x-1.5 text-xs text-fg-faint">
+					<span>{t(`tasks.helperStatus.${helper.status}`)}</span>
+					{helper.tokens !== null && (
+						<span className="font-mono tabular-nums" title={t("tasks.tokensHint")}>
+							{t("tasks.tokens", { count: helper.tokens, formatted: formatTokens(helper.tokens) })}
+						</span>
+					)}
+				</p>
+				{helper.activity && <p className="line-clamp-2 text-sm text-fg-muted" title={helper.activity}>{helper.activity}</p>}
 			</div>
-			{helper.tokens !== null && (
-				<span className="shrink-0 font-mono text-xs tabular-nums text-fg-faint" title={t("tasks.tokensHint")}>
-					{t("tasks.tokens", { count: helper.tokens, formatted: formatTokens(helper.tokens) })}
-				</span>
-			)}
 			<div className="flex shrink-0 items-center">
 				{helper.hasTranscript && (
 					<IconButton size="sm" label={t("tasks.transcript", { name: helper.name })} icon={<FileText />} onClick={() => onTranscript(helper)} />
@@ -448,7 +453,7 @@ function JobRow({ job }: { job: BackgroundJob }) {
 				<span className="shrink-0 text-xs text-fg-faint">{t(`tasks.jobState.${job.state}`)}</span>
 			</button>
 			<Expand open={open}>
-				<pre className="m-0 max-h-60 overflow-auto whitespace-pre-wrap break-all border-t border-border bg-inset px-3 py-2 font-mono text-[11px] leading-4 text-fg-muted">
+				<pre className="m-0 max-h-60 overflow-auto whitespace-pre-wrap break-all border-t border-border bg-inset px-3 py-2 font-mono text-xs leading-4 text-fg-muted">
 					{tail || t("tasks.noOutput")}
 				</pre>
 			</Expand>
@@ -458,7 +463,7 @@ function JobRow({ job }: { job: BackgroundJob }) {
 
 // ── pane ────────────────────────────────────────────────────────────────────────────────────────
 
-export function TasksPane({ session }: PaneProps) {
+export function TasksPane({ session, projectPath }: PaneProps) {
 	const { t } = useTranslation("panes");
 	const view = useSessionView(session);
 	const [transcriptOf, setTranscriptOf] = useState<Helper | null>(null);
@@ -492,6 +497,14 @@ export function TasksPane({ session }: PaneProps) {
 									))}
 								</AnimatePresence>
 							</ul>
+							<button
+								type="button"
+								onClick={() => openSettings("helpers", { projectPath: projectPath ?? session.projectPath })}
+								className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-1 text-sm text-fg-muted hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+							>
+								<GearSix aria-hidden className="size-4" />
+								{t("tasks.manageHelpers")}
+							</button>
 						</Section>
 					</Expand>
 					<Expand open={jobs.length > 0}>

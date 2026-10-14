@@ -1,13 +1,14 @@
-import type { ApprovalPolicy, ApprovalState } from "@shared/contracts/config";
+import type { ApprovalPolicy } from "@shared/contracts/config";
 import { CursorClick, FilePlus, FileText, Globe, type Icon, ImageIcon, MagnifyingGlass, PencilSimpleLine, Plus, Robot, Terminal, TerminalWindow, Wrench } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Input, Segmented } from "@/ui";
+import type { SettingsSectionProps } from "@/registry/slots";
+import { Button, Input, Notice, PageHeader, Segmented } from "@/ui";
 import { listRowMotion } from "../listMotion";
-import type { Resource } from "../shared";
-import { SourceChip } from "./parts";
-import type { OmpSettings } from "./useOmpSettings";
+import { useResource } from "../shared";
+import { ConfigNotices, SectionScope, SourceChip } from "./parts";
+import { useOmpSettings } from "./useOmpSettings";
 
 /** Tools people most often want to gate, in the order a newcomer thinks about them. */
 const COMMON_TOOLS: readonly { tool: string; icon: Icon }[] = [
@@ -26,8 +27,10 @@ const COMMON_TOOLS: readonly { tool: string; icon: Icon }[] = [
 type PolicyChoice = ApprovalPolicy | "default";
 const CHOICES: readonly PolicyChoice[] = ["default", "prompt", "allow", "deny"];
 
-export function PermissionsTab({ omp, approval }: { omp: OmpSettings; approval: Resource<ApprovalState> }) {
+export function PermissionsSection({ projectPath, scope, setScope }: SettingsSectionProps) {
 	const { t } = useTranslation("manage");
+	const omp = useOmpSettings(projectPath, scope);
+	const approval = useResource(() => window.vomp.invoke("config:approval", projectPath ?? undefined), [projectPath]);
 	const [added, setAdded] = useState<string[]>([]);
 	const [newTool, setNewTool] = useState("");
 	const state = approval.data;
@@ -66,13 +69,26 @@ export function PermissionsTab({ omp, approval }: { omp: OmpSettings; approval: 
 
 	return (
 		<div>
+			<PageHeader
+				title={t("settings.sections.permissions")}
+				description={t("permissions.description")}
+				meta={<SectionScope projectPath={projectPath} scope={scope} setScope={setScope} />}
+			/>
+			<ConfigNotices
+				cwd={projectPath}
+				error={approval.error}
+				onReload={() => {
+					void omp.snapshot.reload();
+					void approval.reload();
+				}}
+			/>
 			<p className="text-md text-fg-muted">
 				{t("permissions.intro", { mode: state ? t(`general.approvalMode.${state.mode}`) : "…" })}
 			</p>
 			{state && state.unrecognized.length > 0 && (
-				<p role="status" className="mt-3 rounded-md border border-border bg-warn-bg px-3 py-2 text-sm text-warn">
+				<Notice tone="warn" className="mt-3">
 					{t("permissions.unrecognized", { tools: state.unrecognized.map(entry => entry.tool).join(", ") })}
-				</p>
+				</Notice>
 			)}
 			<ul className="relative mt-4 divide-y divide-border rounded-lg border border-border bg-panel" aria-label={t("permissions.listLabel")}>
 				<AnimatePresence initial={false} mode="popLayout">

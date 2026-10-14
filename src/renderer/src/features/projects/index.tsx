@@ -1,24 +1,26 @@
 /**
- * Projects feature: the project home dashboard, the folder chooser and in-app folder browser
- * ("Start a chat in…"), the new-project wizard, the instructions editor, per-project settings,
+ * Projects feature: the project overview, the folder chooser and in-app folder browser ("Start a
+ * chat in…"), the new-project wizard, the project instructions and project settings pages,
  * importing Claude Code / Codex chats, and the Share dialog with live invites.
  */
 import { DownloadSimple, FileText, FolderOpen, FolderPlus, Folders, GitBranch, ShareNetwork, SlidersHorizontal } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { registerCommand } from "@/registry/commands";
-import { type ChatSlotProps, chatSlots, screens, sheets } from "@/registry/slots";
+import { chatSlots, pages, type PaneProps, screens, sheets, statusItems } from "@/registry/slots";
 import { useSessionView } from "@/shell/hooks";
 import { useApp } from "@/state/app";
-import { Chip, Tooltip } from "@/ui";
+import { openProjectInstructions, openProjectSettings } from "@/state/navigation";
+import { cn, Tooltip } from "@/ui";
+import { focusRing } from "@/ui/styles";
 import { chooseFolder, openFolder } from "./actions";
 import { FolderChip } from "./folders/FolderChip";
 import { FolderChooser } from "./folders/FolderChooser";
 import { HomeScreen } from "./HomeScreen";
 import { ImportDialog } from "./ImportDialog";
-import { InstructionsSheet } from "./InstructionsSheet";
+import { InstructionsPage } from "./InstructionsPage";
 import { NewProjectWizard } from "./NewProjectWizard";
-import { ProjectSettingsSheet } from "./ProjectSettingsSheet";
+import { ProjectSettingsPage } from "./ProjectSettingsPage";
 import { ShareDialog } from "./ShareDialog";
 import { useShares } from "./share-store";
 
@@ -26,37 +28,40 @@ const MAC = window.vomp.platform === "darwin";
 
 screens.register({ id: "home", component: HomeScreen });
 sheets.register({ id: "project-new", component: NewProjectWizard });
-sheets.register({ id: "project-instructions", component: InstructionsSheet });
-sheets.register({ id: "project-settings", component: ProjectSettingsSheet });
+pages.register({ id: "project-instructions", component: InstructionsPage });
+pages.register({ id: "project-settings", component: ProjectSettingsPage });
 sheets.register({ id: "project-import", component: ImportDialog });
 sheets.register({ id: "share", component: ShareDialog });
 sheets.register({ id: "folder-chooser", component: FolderChooser });
 
 chatSlots.register({ id: "projects.folder", placement: "composerTools", order: 10, component: FolderChip });
 
-/** Session-header chip while the chat is shared live (DESIGN §4.20); opens the Invite tab. */
-function SharedChip({ session }: ChatSlotProps): ReactNode {
+/** Status-bar item while the focused chat is shared live (DESIGN §4.20); opens the Invite tab. */
+function SharedStatus({ session }: PaneProps): ReactNode {
 	const { t } = useTranslation("projects");
 	const view = useSessionView(session);
 	const hostId = view?.host?.hostId;
 	const share = useShares(state => (hostId ? state.byHost[hostId] : undefined));
-	if (!share || share.phase === "stopped") return null;
+	if (!session || !share || share.phase === "stopped") return null;
+	const live = share.phase === "live";
 	return (
 		<Tooltip content={t("share.chipHint", { count: share.remoteGuests })}>
 			<button
 				type="button"
-				className="rounded-full outline-none focus-visible:outline-2 focus-visible:outline-ring"
+				className={cn(
+					"inline-flex h-6 shrink-0 items-center gap-1.5 rounded-sm px-1.5 text-xs text-fg-muted transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg",
+					focusRing,
+				)}
 				onClick={() => useApp.getState().openSheet("share", { tabId: session.tabId, tab: "invite" })}
 			>
-				<Chip tone={share.phase === "live" ? "accent" : "warn"} dot>
-					{t("share.chip")}
-				</Chip>
+				<span aria-hidden className={cn("size-1.5 rounded-full", live ? "bg-accent" : "bg-warn")} />
+				{live ? t("share.chip") : t(`share.invite.phase.${share.phase}`)}
 			</button>
 		</Tooltip>
 	);
 }
 
-chatSlots.register({ id: "projects.shared", placement: "headerChips", order: 80, component: SharedChip });
+statusItems.register({ id: "projects.shared", side: "left", order: 40, component: SharedStatus });
 
 registerCommand({
 	id: "project.new",
@@ -118,7 +123,9 @@ registerCommand({
 	group: "manage",
 	icon: FileText,
 	when: ({ projectPath }) => projectPath !== null,
-	run: ({ projectPath }) => useApp.getState().openSheet("project-instructions", { projectPath }),
+	run: ({ projectPath }) => {
+		if (projectPath) openProjectInstructions(projectPath);
+	},
 });
 
 registerCommand({
@@ -129,7 +136,9 @@ registerCommand({
 	group: "settings",
 	icon: SlidersHorizontal,
 	when: ({ projectPath }) => projectPath !== null,
-	run: ({ projectPath }) => useApp.getState().openSheet("project-settings", { projectPath }),
+	run: ({ projectPath }) => {
+		if (projectPath) openProjectSettings(projectPath);
+	},
 });
 
 registerCommand({
@@ -150,7 +159,7 @@ registerCommand({
 	slash: "/share",
 	group: "chat",
 	icon: ShareNetwork,
-	header: 60,
+	header: 120,
 	when: ({ session }) => session !== null,
 	run: ({ session }) => useApp.getState().openSheet("share", { tabId: session?.tabId ?? null }),
 });

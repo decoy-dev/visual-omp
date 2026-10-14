@@ -26,6 +26,7 @@ import {
 	type SettingWriteResult,
 } from "@shared/contracts/config";
 import { broadcast, handle } from "../ipc";
+import { getPrefs, setPrefs } from "../prefs";
 import { runOmp } from "../omp/cli";
 import {
 	configFile,
@@ -37,6 +38,7 @@ import {
 	readConfig,
 	setConfigPath,
 } from "../omp/config-file";
+import { newUserApprovalRunner, writeApprovalDefaultIfUnset } from "../services/approval-default";
 import {
 	deepMerge,
 	deleteDocumentPath,
@@ -487,6 +489,18 @@ async function setApprovalMode(mode: ApprovalMode, scope: SettingScope, cwd: str
 	return readApproval(cwd);
 }
 
+/** The new-user "Ask me first" check (services/approval-default.ts); app start, approval reads and host starts await it. */
+export const ensureNewUserApproval = newUserApprovalRunner({
+	state: () => getPrefs().newUserApproval,
+	markDone: () => setPrefs({ newUserApproval: "done" }),
+	readSource: async () => (await readLeaf("tools.approvalMode", undefined)).source,
+	writeDefault: async () => {
+		const wrote = await writeApprovalDefaultIfUnset();
+		if (wrote) configWritten();
+		return wrote;
+	},
+});
+
 async function setApprovalPolicy(
 	tool: string,
 	policy: ApprovalPolicy | null,
@@ -572,7 +586,10 @@ export function register(): void {
 	handle("config:presets:apply", (name, cwd) => applyPreset(name, cwd));
 	handle("config:presets:delete", (name, cwd) => deletePreset(name, cwd));
 
-	handle("config:approval", cwd => readApproval(cwd));
+	handle("config:approval", async cwd => {
+		await ensureNewUserApproval();
+		return readApproval(cwd);
+	});
 	handle("config:approval:setMode", (mode, scope, cwd) => setApprovalMode(mode, ScopeSchema.parse(scope), cwd));
 	handle("config:approval:setPolicy", (tool, policy, scope, cwd) => setApprovalPolicy(tool, policy, ScopeSchema.parse(scope), cwd));
 }

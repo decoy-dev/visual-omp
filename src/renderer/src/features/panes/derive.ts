@@ -249,11 +249,37 @@ export const OPENABLE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|pdf)$/i;
 /** Image data in a tool result: base64 (the live stream may have cut it short) or a saved session's blob id. */
 export type InlineImage = { kind: "data"; mimeType: string; data: string } | { kind: "blob"; hash: string };
 
-/** How omp produced an output, for its "Edited 14:32" label. */
-export type OutputAction = "viewed" | "written" | "edited" | "generated" | "captured" | "made";
+/** How omp produced an output, for its "Edited 14:32" label. `created`: an `edit` in patch mode that added the file. */
+export type OutputAction = "viewed" | "written" | "edited" | "created" | "generated" | "captured" | "made";
 
 /** Actions that create or change the file; `viewed` and `captured` only look at it. */
-const PRODUCES: Record<OutputAction, boolean> = { viewed: false, captured: false, written: true, edited: true, generated: true, made: true };
+const PRODUCES: Record<OutputAction, boolean> = { viewed: false, captured: false, written: true, edited: true, created: true, generated: true, made: true };
+/**
+ * What a chat knows about an output, from the evidence its history carries.
+ * - `created`: new for certain. An `edit` in patch mode that reports the `create` operation, or a `generate_image`
+ *   result: omp saves each image to a fresh `omp-image-<id>` file in the temp folder, or keeps it inline with no file.
+ * - `written`: omp wrote it, or a command left it modified, and nothing earlier in the chat shows it existed. `write`
+ *   reports only the path and the bytes, and main's command scan only the modification time, so it may be new or a
+ *   replaced file.
+ * - `changed`: omp edited it, or wrote it after the chat had read or shown it, so it existed first.
+ * - `viewed`: omp only looked at it.
+ * The first producing use decides, so a created file stays created when omp edits or views it later.
+ */
+export type OutputRelation = "created" | "written" | "changed" | "viewed";
+
+/**
+ * The relation a producing action gives a file the chat hasn't seen before. An edit without the `create` operation
+ * works on text that is already in the file, so the file existed.
+ */
+const FIRST_PRODUCED: Record<OutputAction, OutputRelation> = {
+	viewed: "viewed",
+	captured: "viewed",
+	created: "created",
+	generated: "created",
+	written: "written",
+	made: "written",
+	edited: "changed",
+};
 
 export interface ChatOutput {
 	/** The path for files, PDFs and image files, else `<toolCallId>#<n>` (one item per image without a file). */
@@ -266,6 +292,7 @@ export interface ChatOutput {
 	action: OutputAction;
 	/** omp made, wrote, generated or edited it in this chat, at this use or an earlier one (a later look keeps it made). */
 	produced: boolean;
+	relation: OutputRelation;
 	/** Epoch ms of the tool result. */
 	time: number;
 	/** Image data carried in the result; null for files and for images known only by path. */
@@ -315,12 +342,20 @@ function readPath(details: Record<string, unknown> | null, args: Record<string, 
 	return (source?.type === "path" ? str(source.value) : null) ?? str(details?.resolvedPath) ?? str(args.path)?.replace(READ_SELECTOR, "") ?? null;
 }
 
-/** Files an `edit` changed: each successful `perFileResults` entry, else the single `path`. */
-function editPaths(details: Record<string, unknown> | null, args: Record<string, unknown>): string[] {
+/**
+ * Files an `edit` changed: each successful `perFileResults` entry, else the single `path`. `created` is set when patch
+ * mode reports the `create` operation, the one place omp says a file is new.
+ */
+function editPaths(details: Record<string, unknown> | null, args: Record<string, unknown>): { path: string; created: boolean }[] {
 	const perFile = Array.isArray(details?.perFileResults) ? details.perFileResults.filter(isRecord) : [];
-	if (perFile.length > 0) return perFile.flatMap(file => (file.isError === true ? [] : (str(file.path) ?? [])));
+	if (perFile.length > 0) {
+		return perFile.flatMap(file => {
+			const path = file.isError === true ? null : str(file.path);
+			return path ? [{ path, created: file.op === "create" }] : [];
+		});
+	}
 	const single = str(details?.path) ?? str(args.path) ?? str(args.file_path);
-	return single ? [single] : [];
+	return single ? [{ path: single, created: details?.op === "create" }] : [];
 }
 
 function astEditPaths(details: Record<string, unknown> | null): string[] {
@@ -470,10 +505,21 @@ export type MadeFiles = Readonly<Record<string, readonly PaneMadeFile[]>>;
  */
 export function chatOutputs(entries: readonly SessionEntry[], context: OutputContext, made: MadeFiles = {}): ChatOutput[] {
 	const outputs = new Map<string, ChatOutput>();
-	const add = (output: Omit<ChatOutput, "produced">) => {
-		const produced = PRODUCES[output.action] || outputs.get(output.key)?.produced === true;
+	/** Paths the chat read successfully, which shows they existed then (text reads leave no output of their own). */
+	const read = new Set<string>();
+	const add = (output: Omit<ChatOutput, "produced" | "relation">) => {
+		const previous = outputs.get(output.key);
+		const produced = PRODUCES[output.action] || previous?.produced === true;
+		// The first producing use decides; a file seen earlier in the chat existed, so producing it changes it.
+		const relation: OutputRelation = previous?.produced
+			? previous.relation
+			: !PRODUCES[output.action]
+				? "viewed"
+				: previous || read.has(output.key)
+					? "changed"
+					: FIRST_PRODUCED[output.action];
 		outputs.delete(output.key);
-		outputs.set(output.key, { ...output, produced });
+		outputs.set(output.key, { ...output, produced, relation });
 	};
 	const addFile = (raw: string, tool: string, action: OutputAction, time: number, base: OutputContext) => {
 		const path = resolveOutputPath(raw, base);
@@ -496,6 +542,7 @@ export function chatOutputs(entries: readonly SessionEntry[], context: OutputCon
 		if (name === "read") {
 			const raw = readPath(details, args);
 			const path = raw ? resolveOutputPath(raw, context) : null;
+			if (path && !message.isError) read.add(path);
 			if (path && PDF_EXT.test(path)) {
 				// Rendered pages belong to the PDF, which the pane previews itself.
 				images.length = 0;
@@ -518,7 +565,7 @@ export function chatOutputs(entries: readonly SessionEntry[], context: OutputCon
 			const raw = str(details?.resolvedPath) ?? str(args.path);
 			if (raw) addFile(raw, "write", "written", time, context);
 		} else if (name === "edit") {
-			for (const raw of editPaths(details, args)) addFile(raw, "edit", "edited", time, context);
+			for (const file of editPaths(details, args)) addFile(file.path, "edit", file.created ? "created" : "edited", time, context);
 		} else if (name === "ast_edit") {
 			const base = { ...context, cwd: str(details?.cwd) ?? context.cwd };
 			if (details?.applied === false) staged = { paths: astEditPaths(details), base };

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useCommands } from "@/registry/commands";
-import { EmptyState, Kbd, SearchInput } from "@/ui";
+import { Cell, EmptyState, HeaderCell, Kbd, PageHeader, SearchInput, Table, TableHead, TableRow } from "@/ui";
 
 /** Splits "⌘⇧R" / "Ctrl+Shift+R" into keycaps. */
 function keycaps(shortcut: string): string[] {
@@ -9,7 +9,7 @@ function keycaps(shortcut: string): string[] {
 	return [...shortcut];
 }
 
-export function ShortcutsTab() {
+export function ShortcutsSection() {
 	const { t } = useTranslation("manage");
 	const { t: tAny } = useTranslation();
 	const commands = useCommands();
@@ -22,35 +22,25 @@ export function ShortcutsTab() {
 		.sort((a, b) => a.title.localeCompare(b.title));
 
 	return (
-		<div>
-			<p className="text-md text-fg-muted">{t("shortcuts.description")}</p>
-			<SearchInput
-				className="mt-4"
-				value={query}
-				onValueChange={setQuery}
-				placeholder={t("shortcuts.search")}
-				aria-label={t("shortcuts.search")}
-			/>
+		<>
+			<PageHeader title={t("settings.sections.shortcuts")} description={t("shortcuts.description")} />
+			<SearchInput value={query} onValueChange={setQuery} placeholder={t("shortcuts.search")} aria-label={t("shortcuts.search")} />
 			{rows.length === 0 ? (
 				<EmptyState title={t("shortcuts.empty")} />
 			) : (
-				<table className="mt-4 w-full text-md">
+				<Table className="mt-4">
 					<caption className="sr-only">{t("shortcuts.caption")}</caption>
-					<thead>
-						<tr className="text-left text-xs text-fg-faint">
-							<th scope="col" className="pb-2 font-medium">
-								{t("shortcuts.action")}
-							</th>
-							<th scope="col" className="pb-2 text-right font-medium">
-								{t("shortcuts.keys")}
-							</th>
+					<TableHead>
+						<tr>
+							<HeaderCell>{t("shortcuts.action")}</HeaderCell>
+							<HeaderCell align="right">{t("shortcuts.keys")}</HeaderCell>
 						</tr>
-					</thead>
-					<tbody className="divide-y divide-border border-y border-border">
+					</TableHead>
+					<tbody>
 						{rows.map(row => (
-							<tr key={row.id}>
-								<td className="py-2 text-fg">{row.title}</td>
-								<td className="py-2 text-right">
+							<TableRow key={row.id}>
+								<Cell>{row.title}</Cell>
+								<Cell align="right">
 									<span className="sr-only">{row.shortcut}</span>
 									<span className="inline-flex gap-1" aria-hidden>
 										{keycaps(row.shortcut).map((key, index) => (
@@ -58,12 +48,12 @@ export function ShortcutsTab() {
 											<Kbd key={index}>{key}</Kbd>
 										))}
 									</span>
-								</td>
-							</tr>
+								</Cell>
+							</TableRow>
 						))}
 					</tbody>
-				</table>
+				</Table>
 			)}
-		</div>
+		</>
 	);
 }
