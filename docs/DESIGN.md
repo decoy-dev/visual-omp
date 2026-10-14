@@ -173,7 +173,7 @@ The scale is sm 6, md 8, lg 12, xl 14 and full. Use concentric radii: an inset r
 
 Tailwind provides the 4px base scale. Named spacing steps standardize recurring layouts: `menu` 6px for menu insets and separator margins; `row` 8px for row padding; `toolbar` 8px for control gaps; `stack` 12px between a section heading and content; `card` 16px for card padding; `page` 24px for page padding; and `section` 32px between page sections. These values are rem-based and follow the text-size setting.
 
-Compact controls may use half steps, including 2px and 6px. The native traffic-light inset is 80px and does not scale with text. Palette rows use a fixed 36px height. Formula viewport widths remain explicit because they encode viewport layout constraints.
+Compact controls may use half steps, including 2px and 6px. The native traffic-light inset is 92px, which leaves 16px between the green button and the first element with the 14px buttons of current macOS (more with the older 12px buttons), and does not scale with text. Palette rows use a fixed 36px height. Formula viewport widths remain explicit because they encode viewport layout constraints.
 
 ### 1.12 Motion
 
@@ -283,7 +283,7 @@ The sidebar and side panel enter from their own edges and fade when hidden. Main
 
 The frameless title bar is a drag region with no-drag controls. It uses the main sheet surface and a bottom border. It is opaque, without backdrop blur.
 
-- **macOS** uses `hiddenInset` traffic lights with an 80px native inset.
+- **macOS** uses `hiddenInset` traffic lights placed 16px from the window edge, with a 92px inset that leaves 16px after the green button at the current 14px button size.
 - **Windows and Linux** use Electron caption buttons; renderer controls are not drawn over them.
 - The sidebar toggle appears when the sidebar is hidden. The centered Search commands field opens the command palette with ⌘K or Ctrl+K.
 - The sidebar header holds the wordmark and version.

@@ -7,7 +7,7 @@ import { cn, IconButton, Kbd } from "../ui";
 /**
  * Frameless window bar across the top of the main sheet (DESIGN §3.1): opaque and draggable, "Search commands" centered.
  * The lockup lives in the sidebar header. With the sidebar shown, the macOS traffic lights sit on the sidebar; with it
- * hidden they sit here, so the left column reserves their 80px and holds "Show sidebar". On Windows the caption
+ * hidden they sit here, so the left column reserves their 92px (`--spacing-traffic`) and holds "Show sidebar". On Windows the caption
  * buttons overlay the right column, which keeps 138px free.
  */
 export function TitleBar(): ReactNode {

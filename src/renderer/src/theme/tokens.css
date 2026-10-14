@@ -442,7 +442,7 @@
 	--spacing-card: 1rem; /* 16px: card padding */
 	--spacing-page: 1.5rem; /* 24px: page padding (sides and top) */
 	--spacing-section: 2rem; /* 32px: gap between page sections */
-	--spacing-traffic: 80px; /* macOS traffic lights; native, so it ignores the text size */
+	--spacing-traffic: 92px; /* macOS traffic lights (x 16, ending near 76px on macOS 26 and later) plus a 16px gap; native, so it ignores the text size */
 
 	--radius-sm: 6px;
 	--radius-md: 8px;
