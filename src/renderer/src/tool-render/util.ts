@@ -138,7 +138,7 @@ const EXT_TO_LANG: Record<string, string> = {
 };
 
 export function languageFromPath(filePath: string): string | null {
-	const base = filePath.split("/").pop() ?? "";
+	const base = filePath.split(/[\\/]/).pop() ?? "";
 	if (/^dockerfile$/i.test(base)) return "dockerfile";
 	const ext = base.split(".").pop()?.toLowerCase() ?? "";
 	return EXT_TO_LANG[ext] ?? null;

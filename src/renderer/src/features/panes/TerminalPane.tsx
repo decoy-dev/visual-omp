@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { lazyView } from "../../registry/lazy";
 import type { PaneProps } from "../../registry/slots";
 import { Button, EmptyState, IconButton, PresenceSwap, StatusDot, toast } from "../../ui";
+import { folderName } from "../projects/format";
 import { TabStrip } from "./common";
 import { newShell, type TerminalTab, useTerminals } from "./terminal";
 
@@ -43,7 +44,7 @@ export function TerminalPane({ projectPath }: PaneProps) {
 	);
 
 	const label = (tab: TerminalTab) => {
-		const folder = tab.cwd.slice(tab.cwd.lastIndexOf("/") + 1);
+		const folder = folderName(tab.cwd);
 		const base = tab.command ?? t("terminal.shellLabel", { n: tab.seq });
 		return tab.cwd === projectPath ? base : `${base} · ${folder}`;
 	};

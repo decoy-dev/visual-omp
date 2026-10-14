@@ -52,6 +52,9 @@ function viewerPath(projectPath: string, path: string, home: string | null): str
 	return rel === path ? tildePath(path, home) : rel;
 }
 
+/** The modifier that mentions a file on click (`metaKey || ctrlKey`), named as each platform's keyboard labels it. */
+const CLICK_MOD = window.vomp.platform === "darwin" ? "⌘" : "Ctrl";
+
 /** The last path segment, for `/` and `\` paths alike. */
 function fileName(path: string): string {
 	return path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1) || path;
@@ -134,7 +137,7 @@ const TreeRow = memo(function TreeRow({ entry, depth, projectPath, tabId }: RowP
 					data-kind={entry.kind}
 					tabIndex={-1}
 					onClick={onClick}
-					title={t("files.rowHint", { name: entry.name })}
+					title={t("files.rowHint", { name: entry.name, key: CLICK_MOD })}
 					style={{ paddingLeft: 6 + depth * 12 }}
 					className={cn(
 						"flex h-6 w-full items-center gap-1 pr-2 text-left text-sm",
@@ -555,7 +558,7 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 					>
 						<PaneToolbar>
 							<span className="min-w-0 flex-1 truncate text-sm font-medium text-fg" title={projectPath}>
-								{projectPath.slice(projectPath.lastIndexOf("/") + 1)}
+								{fileName(projectPath)}
 							</span>
 							<IconButton size="sm" label={t("files.refresh")} icon={<ArrowsClockwise />} onClick={() => void useFiles.getState().load(projectPath)} />
 						</PaneToolbar>
@@ -574,7 +577,7 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 								roots.map(entry => <TreeRow key={entry.path} entry={entry} depth={0} projectPath={projectPath} tabId={tabId} />)
 							)}
 						</ul>
-						<p className="border-t border-border px-3 py-1.5 text-xs text-fg-faint">{t("files.mentionHint")}</p>
+						<p className="border-t border-border px-3 py-1.5 text-xs text-fg-faint">{t("files.mentionHint", { key: CLICK_MOD })}</p>
 					</motion.div>
 				)}
 			</AnimatePresence>
