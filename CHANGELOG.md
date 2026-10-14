@@ -4,6 +4,14 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-10-14
+
+visual-omp 0.5.1 makes the background jobs in the Tasks panel say what each job is doing.
+
+- Each background job is now titled with the purpose the model gave its command, such as "Building the macOS installers", instead of the start of the raw command. A job whose command came without a stated purpose is titled by its first real step. Under the title is the first step of the command that does something, so lines like `set -e` or `cd folder` no longer open the row. A running job shows how long it has been running. A finished job shows how long it took and a failed job shows its exit code, when omp reports them. Opening a job shows the full command, its latest output and its job id.
+- Running jobs are listed first, followed by the five most recent finished ones, as in omp's own `/jobs` list. Older jobs are behind **Show earlier jobs**, and the jobs share one list in place of a separate box for each.
+- The "Background job finished" rows in the chat show the same command step.
+
 ## [0.5.0] - 2026-10-14
 
 visual-omp 0.5.0 redesigns the app around the chats you have open, with clearer separation between areas, a new Usage & limits page, smoother chat updates and summaries of omp's work.
