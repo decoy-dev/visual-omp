@@ -44,52 +44,50 @@ be able to use it, and it exposes the features that set omp apart from other cod
   Existing users, and anyone whose config or environment already sets a mode, keep their setting;
   omp's own default stays Auto (`yolo`).
 
-## Visual design
-- One teal accent over near-neutral surfaces, **light mode by default**, dark mode available, and
-  none of the gradient, glass or eyebrow patterns of generated UI (docs/DESIGN.md §0).
-- App icon: the "Prompt" periscope (a `>` prompt with a periscope rising from its underscore, ink with
-  a teal lens), chosen from the concepts in docs/logo-concepts/.
-- Output: **friendly summaries, expandable.** Tool steps collapse into plain-language rows
-  ("Edited 3 files", "Ran tests") with raw output and diffs one click away, and a transcript view
-  toggle switches between Normal, Thinking and Verbose.
+The app uses a consistent system with an ink sidebar and status bar in both themes, a light default main sheet, a gray page canvas and a floating side panel. Dark mode preserves the surface hierarchy. One teal accent marks actions and selection; stronger borders define controls and cards. Radii and spacing use shared proportional scales. Motion uses `src/renderer/src/ui/motion.tsx` and respects reduced-motion preferences. The Prompt periscope is the app icon (docs/DESIGN.md §0 and §1).
+
+Output: friendly summaries that expand to details. Normal view groups tool calls, shows omp's current todo board, helper and job activity when known, and lists files from omp edit and write results with clearly labelled edit totals. Plan checklist items appear only when the plan file has checkbox steps. Markdown supports framed tables, disc, circle and decimal list markers, task-list checkboxes, tone callouts and code headers with Copy. A transcript view toggle offers Normal, Thinking and Verbose. Paced transcript updates are excluded from live-region announcements; a polite screen-reader announcement follows a completed assistant reply.
+
+omp's displayed harness notices appear in the chat in all three views, presented the way omp's terminal shows them. The normal presentation removes omp's wrapper tags, and Verbose offers the original text in a "Text sent to the model" disclosure. Finished background jobs and helpers become one tool-style row per job that opens to the result; IRC messages become message cards with the body cut to three lines; process exits, advisor notes, skill invocations and other notices each get their own row or card. Verbose initially expands job results, skill text and other-notice details, while IRC message bodies stay collapsed to three lines in every view. The session tree uses the same one-line summaries.
 
 ## Feature scope (all in scope)
 ### Sessions
-- Open chats appear in the sidebar, and split view shows two chats side by side.
-- Git worktree per session toggle
-- Rewind / fork from any message
-- Message queue editing (Send now, Edit, Remove)
-- Notifications when a chat finishes or needs input
+- Open chats appear in a Current chats sidebar section in open order, alongside their entries in the Projects tree. Current chats carries status and selection; open tree entries have a quiet open marker.
+- ⌘1-⌘9 open the numbered Current chats row; ⌘⇧[ and ⌘⇧] cycle open chats. ⌘⇧T reopens the last eligible closed chat and its text draft without starting omp. ⌘⇧A selects the next chat waiting for an answer.
+- Each chat can run in its own Git worktree.
+- A chat can be rewound or forked from any message.
+- When the user moves to another chat, a saved chat that was only viewed is released: it has no host, no sent input, no draft or attachments and no open omp terminal. It stays open when a chat that was already open appears later in Current chats, so no ⌘ number shifts. Browsing from one saved chat to the next releases the one left behind.
+- Queued messages can be sent now, edited or removed.
+- Notifications report when a chat finishes or needs input.
 - All saved omp sessions (including ones started in a terminal) appear in history grouped by
   project and can be resumed; a session still live elsewhere opens read-only.
 
 ### Panes
 - The Changes pane reviews edits per file, sends line comments to omp, and runs *Review code* via
   `/review`.
-- Files (tree + viewer, click to @-mention)
-- Web preview (built-in browser for dev servers)
-- Tasks & subagents (todos, subagents, background jobs)
-- Plan (current plan with Approve / Refine)
+- The Files pane shows the project tree and a file viewer, and clicking a file can @-mention it.
+- The Preview pane is a built-in browser for dev servers.
+- The Tasks pane shows omp's todo list, its helpers (subagents) and background jobs. Each helper's activity line prefers what it is doing now, then what it did last, then omp's task description and finally its assignment with omp's assignment preamble removed. Its conversation dialog starts with the assignment and labels later messages by sender. A task row shows a success check only when every helper finished; helpers that stopped or are waiting get a neutral "Stopped" or "Waiting" mark, and a mixed batch reads running if any helper runs and failed if any failed. Helper and job outcomes come from omp's async-result notices and `job` and `wait` results. Without omp running for the chat (a saved or exited chat), a helper still marked working or waiting shows Stopped and a running job shows stopped; work still running at an omp `session_exit` entry also shows stopped in a resumed chat. A read-only chat counts as running while another window owns it or its ownership is unknown; once it is found free to continue, its unfinished work shows stopped. The header work chip, the Tasks pane, task rows and helper cards agree. Durations on job rows and helper cards use one style: "847ms", "4.2s", "42s", "4m 05s", "1h 13m".
+- The Plan pane shows the current plan and lets you approve or refine it.
 - Outputs groups images, PDFs and files by whether omp created, wrote, changed or viewed them.
 
 ### Git
-- Status bar + commit with AI message (`omp commit`)
-- Create pull request / draft PR (GitHub CLI)
-- PR & CI status with *Fix CI*
+- The status bar shows Git state, and commits can use an AI-written message (`omp commit`).
+- Pull requests and draft pull requests can be created through the GitHub CLI.
+- Pull request and CI status appear in the status bar, with *Fix CI* for failing checks.
 
 ### Composer
-- @-mention files (fuzzy picker)
-- Drag-drop / paste images and files
-- Voice dictation (omp speech-to-text)
-- Shell (`!`) and Python (`$`) quick modes
-- Prompt library (saved prompts, custom commands, skills)
+- The composer card contains ＋, text, microphone and send or stop actions. Permission, model, thinking and context controls appear in a quieter row beneath it.
+- While omp works, the primary action queues the message; Send now remains available with ⌘↵.
+- Read-only chats explain the reason in the session header and the available action in the placeholder. Composer controls are muted and disabled without repeating a lock banner.
+- At narrow widths, composer actions wrap to a second line so the text box keeps a usable width.
 
 ### omp modes
-- Plan mode + Plan Review
-- Goal mode / guided goal
-- Vibe mode
-- Loop mode
-- Advisor
+- Plan mode is available, with Plan Review for approving plans.
+- Goal mode and guided goals are available.
+- Vibe mode is available.
+- Loop mode is available.
+- The advisor can be turned on to review each turn.
 
 ### omp management (native screens, as Settings sections)
 - Models & roles edits the model for each role (default/smol/slow/plan/commit/advisor/…) and its
@@ -101,11 +99,10 @@ be able to use it, and it exposes the features that set omp apart from other cod
 - Memory shows what omp remembers and lets you delete it.
 
 ### omp extras
-- The Usage & limits page shows plan limits, recorded usage and estimated API cost.
-- Share & collaborate (share links, HTML export, live collab invites)
-- Security scan / cleanse
-- Import from Claude Code / Codex
-- Session tree navigator
+- Usage & limits shows provider limits by account and window, with status and expandable account detail. Unknown values and warnings remain visible. Recorded usage comes from local session and subagent files; its 7- or 30-day period does not filter provider limits. The page has a segmented KPI strip, daily cost chart with average line, cost share bars by project and a chat table with project and model filters, pagination and CSV export. Estimated API cost is labelled.
+- Security scan and cleanse can be run for a project.
+- Chats can be imported from Claude Code and Codex.
+- The session tree navigator shows every branch of a chat.
 
 ### Commands
 - The Cmd/Ctrl+K command palette makes every omp command searchable in plain language, and the
@@ -115,25 +112,29 @@ be able to use it, and it exposes the features that set omp apart from other cod
 - `/` in the composer also works.
 
 ### Projects
-- The project sidebar lists sessions with search, the Active filter, pin, rename and archive.
-- New project wizard (empty folder, open existing, clone from GitHub URL)
+Current chats, navigation shortcuts and preview release are described under Sessions.
+- Project search, pinning, renaming, archiving and project actions are available.
+- The new project wizard creates an empty folder, opens an existing folder or clones from a GitHub URL.
 - The Instructions page edits the project's AGENTS.md and rules.
-- The Project settings page sets the project's model and permission mode and links to its
-  connected tools, helpers and instructions.
-- The project overview shows recent chats, an instructions and settings summary, git status and
-  quick-start prompts.
+- The Project settings page sets the project's model and permission mode and links to its connected tools, helpers and instructions.
+- The project overview shows recent chats, an instructions and settings summary, Git status and quick-start prompts.
+- Settings places Back and section navigation in the sidebar slot when visible. Settings navigation replaces the chat lists; other pages keep them visible beneath Back. With the sidebar hidden, navigation renders inline and page focus moves to the title after lazy content mounts.
+
+### Packaging and loading
+- Main-process pure-JavaScript packages are bundled from devDependencies. Only native runtime packages such as node-pty remain runtime dependencies. Source maps and unused Electron locales are excluded.
+- The renderer's initial JavaScript entry chunk, an uncompressed build-output size, decreased from approximately 4.87 MB to 1.56 MB. Xterm is about 331 KB and KaTeX about 262 KB in separate chunks. Settings sections and feature views are code-split.
 
 ### Settings
 - Settings is a full page with curated common sections and a searchable **Advanced** section that
   lists every omp setting.
 
 ### Help
-- First-run guided tour
-- Plain-language tooltips on every button
-- Example prompts on empty chats
+- A first-run guided tour introduces the app.
+- Every button has a plain-language tooltip.
+- Empty chats offer example prompts.
 - The built-in Help page has guides and a glossary.
-- In-app update notice
+- An in-app notice announces updates.
 
 ### Lifecycle
-- Quitting or closing a chat while omp is working warns first, then stops cleanly; sessions resume
-  where they left off.
+
+Quitting or closing a chat while omp is working warns first, then stops cleanly. Sessions resume where they left off. On restart, a restored chat view takes its project from the focused half of a split, a restored project overview keeps its own project even when an open chat belongs to another project, and a page that was open returns to the chat or overview it came from.

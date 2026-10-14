@@ -30,6 +30,6 @@ Rewrite the sentence when one of these appears; replacing a single word is not e
 - Avoid figurative stand-ins for mechanics ("lands", "lives in", "under the hood", "the plumbing", "sits", "pick up", "surface" as a verb). Name the actor and the action.
 - Avoid AI stock phrases: "the math", "the numbers", "the story", "signals", "real", "actually", "genuinely", "properly", "seamless", "worth noting", "quietly", "the tell", "reads as", "does the heavy lifting", "earns its keep", "table stakes", "here's the thing", "Translation:" and "Full stop." Avoid the marketing family as well (elevate, unleash, supercharge, empower, streamline, effortless, magic, next-gen, game-changer).
 - Do not use exclamation marks in UI or success messages, "Oops", or cutesy filler ("Thought it through", "Let's go").
-- Use sentence case for headings and buttons, never Title Case.
+- Use sentence case for headings and buttons, never Title Case. The one exception is the native application menu (`src/main/menu.ts`), whose items use Title Case to match the operating system's own menu items, as Apple's guidelines ask.
 - Do not use sentence fragments as standalone lines in release notes and docs.
 - Keep user-facing copy brand-first ("visual-omp", with "decoy" as publisher) and free of founder or personal biography.
