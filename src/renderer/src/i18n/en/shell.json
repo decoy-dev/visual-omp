@@ -1,4 +1,14 @@
 {
+	"page": {
+		"backToChat": "Back to chat",
+		"backToProject": "Back to project"
+	},
+	"leave": {
+		"title": "Discard your changes?",
+		"body": "This page has edits that haven't been saved.",
+		"keep": "Keep editing",
+		"discard": "Discard changes"
+	},
 	"titlebar": {
 		"showSidebar": "Show sidebar",
 		"hideSidebar": "Hide sidebar",

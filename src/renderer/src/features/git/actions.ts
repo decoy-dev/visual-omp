@@ -48,7 +48,7 @@ async function openChatIn(path: string): Promise<void> {
 	if (!extra.includes(path) && !app.projects.some(project => project.path === path)) {
 		await app.setPrefs({ extraProjects: [...extra, path] });
 	}
-	app.newChat(path);
+	await app.newChat(path);
 }
 
 /** "Work in a separate copy": `omp worktree add` next to the project, then a new chat inside it. */
@@ -90,7 +90,7 @@ export async function fixCi(cwd: string): Promise<void> {
 	try {
 		const failures = await window.vomp.invoke("gh:ciFailures", cwd);
 		const prompt = t("git:fixCi.prompt", { number: failures.pr, url: failures.url, summary: failures.text.trim() });
-		const session = focusedController() ?? controllerFor(useApp.getState().newChat(cwd));
+		const session = focusedController() ?? controllerFor(await useApp.getState().newChat(cwd));
 		if (!session) throw new Error("No chat to send to");
 		await session.send(prompt);
 		toast({ tone: "ok", message: t("git:fixCi.sent") });

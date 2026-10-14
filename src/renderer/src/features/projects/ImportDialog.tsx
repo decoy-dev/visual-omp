@@ -32,7 +32,7 @@ export function ImportDialog({ props, close }: SheetProps<ImportProps | undefine
 	const start = async (source: ImportSource) => {
 		// omp switches to the imported chat's own folder; the cwd is only a fallback for chats whose folder is gone.
 		const cwd = props?.projectPath ?? active ?? (await window.vomp.invoke("app:info")).homeDir;
-		const tabId = useApp.getState().newChat(cwd, { extraArgs: source.launchArgs });
+		const tabId = await useApp.getState().newChat(cwd, { extraArgs: source.launchArgs });
 		close();
 		if (tabId) useApp.getState().openTerminal(tabId);
 	};

@@ -213,7 +213,8 @@ export function TabStrip(): ReactNode {
 				icon={<Plus />}
 				size="sm"
 				onClick={() => {
-					if (!useApp.getState().newChat()) void getCommand("project.new")?.run({ session: null, projectPath: null });
+					if (useApp.getState().activeProject) void useApp.getState().newChat();
+					else void getCommand("project.new")?.run({ session: null, projectPath: null });
 				}}
 			/>
 			{tabs.length > 1 && (

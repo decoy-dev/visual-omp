@@ -52,13 +52,13 @@ export function HelpDialog({ limited, open, onClose, onExited }: HelpDialogProps
 	);
 	const question = query.trim();
 
-	const askOmp = () => {
-		const tabId = useApp.getState().newChat();
-		const controller = controllerFor(tabId);
-		if (!controller) {
+	const askOmp = async () => {
+		if (!useApp.getState().activeProject) {
 			toast({ tone: "warn", message: t("help.askNeedsProject"), description: t("help.askNeedsProjectBody") });
 			return;
 		}
+		const controller = controllerFor(await useApp.getState().newChat());
+		if (!controller) return;
 		onClose();
 		void controller.send(question);
 	};

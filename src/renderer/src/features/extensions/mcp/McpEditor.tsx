@@ -12,9 +12,9 @@ import type {
 	McpTarget,
 	McpTestResult,
 } from "@shared/contracts/mcp";
-import { Button, Checkbox, Chip, IconButton, Input, Segmented, Skeleton, Spinner, toast } from "@/ui";
+import { Button, Checkbox, Chip, IconButton, Input, Notice, Segmented, Skeleton, Spinner, toast } from "@/ui";
 import { errorText } from "../format";
-import { ExtensionSheetFrame, Notice, useLoad } from "../shared";
+import { ExtensionSheetFrame, useLoad } from "../shared";
 import { configFromForm, emptyForm, formFromConfig, type KeyValueRow, type McpForm, type McpFormErrors, validateForm } from "./form";
 
 export type EditorMode =

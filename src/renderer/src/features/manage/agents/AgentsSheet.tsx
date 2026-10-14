@@ -80,18 +80,18 @@ export function AgentsSheet({ props, close }: SheetProps<AgentsSheetProps | unde
 	);
 	const errors = (snapshot?.errors ?? []).filter(error => filter === "all" || error.scope === filter);
 
-	const startChat = (build: (tabId: string) => void | Promise<void>) => {
+	const startChat = async (build: (tabId: string) => void | Promise<void>) => {
 		if (!cwd) {
 			toast({ tone: "warn", message: t("agents.needsProject") });
 			return false;
 		}
-		const tabId = useApp.getState().newChat(cwd);
+		const tabId = await useApp.getState().newChat(cwd);
 		if (!tabId) return false;
 		void build(tabId);
 		close();
 		return true;
 	};
-	const runNow = (name: string) => startChat(tabId => useComposerDrafts.getState().insert(tabId, `Use the ${name} agent to `));
+	const runNow = (name: string) => void startChat(tabId => useComposerDrafts.getState().insert(tabId, `Use the ${name} agent to `));
 
 	const guard = async (run: () => Promise<unknown>) => {
 		try {
@@ -158,7 +158,7 @@ export function AgentsSheet({ props, close }: SheetProps<AgentsSheetProps | unde
 		});
 
 	const createWithAi = async (description: string, dir: string, scope: AgentWritableScope) => {
-		const started = startChat(tabId => controllerFor(tabId)?.send(createWithAiPrompt(description, dir, scope)));
+		const started = await startChat(tabId => controllerFor(tabId)?.send(createWithAiPrompt(description, dir, scope)));
 		if (started) toast({ tone: "info", message: t("agents.ai.started"), description: t("agents.ai.startedHint") });
 	};
 

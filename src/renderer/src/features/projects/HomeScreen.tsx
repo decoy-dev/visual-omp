@@ -170,7 +170,7 @@ function ProjectHome({ path }: { path: string }): ReactNode {
 						<Button icon={<FolderOpen />} onClick={() => chooseFolder()}>
 							{t("home.otherFolder")}
 						</Button>
-						<Button variant="primary" icon={<ChatCenteredDots />} onClick={() => useApp.getState().newChat(path)}>
+						<Button variant="primary" icon={<ChatCenteredDots />} onClick={() => void useApp.getState().newChat(path)}>
 							{t("home.newChat")}
 						</Button>
 						<ProjectMenu path={path} />
@@ -388,7 +388,7 @@ function PromptStarters({ path }: { path: string }): ReactNode {
 					<li key={prompt}>
 						<button
 							type="button"
-							onClick={() => startDraft(path, t(`prompts.${prompt}.text`))}
+							onClick={() => void startDraft(path, t(`prompts.${prompt}.text`))}
 							title={t(`prompts.${prompt}.text`)}
 							className={cn(
 								"group flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-md outline-none transition-colors duration-(--dur-fast)",

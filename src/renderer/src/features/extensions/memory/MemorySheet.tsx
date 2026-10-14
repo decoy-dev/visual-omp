@@ -7,10 +7,10 @@ import type { MemoryEntrySummary, MemoryScope, MemoryStatus } from "@shared/cont
 import { listRowMotion } from "@/features/manage/listMotion";
 import type { SheetProps } from "@/registry/slots";
 import { Markdown } from "@/transcript/Markdown";
-import { Button, Chip, cn, EmptyState, PresenceSwap, SearchInput, Select, SelectItem, Skeleton, toast, Tooltip } from "@/ui";
+import { Button, Chip, cn, EmptyState, Notice, PresenceSwap, SearchInput, Select, SelectItem, Skeleton, toast, Tooltip } from "@/ui";
 import { focusRingInset } from "@/ui/styles";
 import { errorText, formatAge } from "../format";
-import { ConfirmDialog, type ExtensionSheetProps, ExtensionSheetFrame, Notice, useDebounced, useLoad, useSheetProject } from "../shared";
+import { ConfirmDialog, type ExtensionSheetProps, ExtensionSheetFrame, useDebounced, useLoad, useSheetProject } from "../shared";
 
 const LIST_LIMIT = 200;
 /** Word the user types to confirm "Forget everything". */

@@ -88,7 +88,7 @@ WCAG contrast, measured from the rendered sRGB values. Every pair passes AA (4.5
 | `--accent-2-muted` | `oklch(0.945 0.005 195)` | `oklch(0.27 0.008 195)` | neutral tint behind `--accent-2` text (7.8:1 / 8.9:1) |
 | `--agent`, `--agent-muted` | `var(--accent)`, `var(--accent-muted)` | same | agent-attributed UI uses the accent |
 
-Retired spectrum. `--mark-a`, `--mark-b` and `--mark-c` resolve to `--accent`. `--mark-gradient` and `--work-gradient` resolve to a flat `linear-gradient(var(--accent), var(--accent))` so any remaining `background-image` caller paints solid teal. `--ambient-a`, `--ambient-b` and `--grid-line` are `transparent`, which removes the hero washes and the blueprint grid wherever they are still referenced. `--plug` resolves to `--warn`. These names stay only until the last caller moves off them.
+Retired spectrum. `--mark-a`, `--mark-b` and `--mark-c` resolve to `--accent`. `--mark-gradient` and `--work-gradient` resolve to a flat `linear-gradient(var(--accent), var(--accent))` so any remaining `background-image` caller paints solid teal. `--ambient-a` and `--ambient-b` are `transparent`, which removes the hero washes wherever they are still referenced. `--plug` resolves to `--warn`. These names stay only until the last caller moves off them. `--grid-line` is removed; chart gridlines use `--border`.
 
 ### 1.5 Status
 
@@ -268,6 +268,7 @@ Two bundled families, both OFL: **Geist** (`@fontsource-variable/geist`, variabl
 | `--text-lg` | 16px / 24px | 400/600 | section titles, dialog titles |
 | `--text-xl` | 20px / 28px | 600 | pane titles, dashboard cards |
 | `--text-2xl` | 24px / 30px | 700, −0.02em | empty-state heading |
+| `--text-page` | 28px / 36px | 700, −0.02em | page titles: Settings, Usage & limits, Help, project screens |
 | `--text-3xl` | 32px / 38px | 700, −0.02em | setup screen, dashboard numbers |
 | `--text-code` | 12.5px / 18px | 400 mono | code blocks, diffs |
 | `--text-terminal` | 13px / 19px | 400 mono | terminal sheet (user-adjustable ±) |
@@ -946,13 +947,26 @@ Radix DropdownMenu and ContextMenu share one style: min width 200px, `--bg-raise
 
 Motion: open scales 0.96 → 1 on the snappy spring from the Radix transform origin and drifts 4px away from the trigger; close fades and scales to 0.97 over `--dur-fast`.
 
-### 5.6 Dialogs and sheets
+### 5.6 Pages, dialogs and sheets
+
+**Pages** are for sustained management and reading: Settings, Usage & limits, Help and the project screens. A page replaces the main area instead of covering it (`useApp.openPage(id, props)`, `ui/Page.tsx`). The chat it replaced stays mounted, hidden and inert, so Back finds it with the same scroll position, expanded history and split width; the right dock hides while a page shows. Pages are not restored across restarts: the window reopens on the chat or project the page replaced.
+
+- **Layout**: `PageFrame` has one vertical scroll region. Its content column is 680px for forms, 920px for lists and 1080px for reports, centered with 24px padding. An optional category rail (`NavRail`, 220px, `--panel`, hairline right border) sits on the left under the back link; when the page is narrower than 42rem the rail becomes a select above the content.
+- **Header**: `PageHeader` shows the title in `--text-page` (it wraps; long names never truncate), a one-sentence description in `--text-md --fg-muted`, an optional meta line (scope, freshness, paths) and actions. The actions sit beside the title when the content column is at least 42rem wide and wrap under it otherwise.
+- **Back**: "Back to chat" or "Back to project", depending on what the page replaced. Switching between pages keeps the original destination. Esc is Back unless it belongs to a field being edited, text composition, an open menu, popover, select or dialog, the palette or the terminal sheet.
+- **Focus**: opening a page, or changing what it shows (a new Settings section, a new deep link), moves focus to the page title. Back returns focus to the control that opened the page, else to the main area.
+- **Unsaved edits**: a page with pending edits calls `useLeaveGuard`. Back, Esc, another page, a chat, a project, a Settings section or a scope change then asks "Discard your changes?" (Keep editing / Discard changes) before leaving.
+- **Settings links** (`openSettings(section, { projectPath, scope, sectionProps })`): every field applies on each link, including while Settings is open. The project is fixed when the link is made; scope falls back to all projects when there is no project.
+
+**Dialogs** are for bounded decisions: confirmations, sharing, short creation flows and wizards. **Sheets** remain for the omp terminal and other edge overlays.
 
 Dialog: centered with translate utilities, widths 400 / 480 / 560 / 720px, `--bg-overlay`, 1px `--border`, `--radius-lg`, `--shadow-overlay`, 20px padding. The scrim is `--backdrop`, a translucent dimming wash (alpha 0.32 in light, 0.6 in dark) with no blur; only the window chrome is opaque. Click outside or Esc cancels; `destructive` dialogs show a warning glyph and ignore scrim clicks. Title 16/600, body `--text-md`, footer right-aligned with 8px gaps. Opens with a spring scale 0.95 → 1 and fade; closes with a short scale-down.
 
 The `full` size fills the window less 16px on each side, for previews of wide content (§3.7 "Expand preview"). It uses the same surface, scrim and motion; `actions` puts icon buttons in the header before Close, and the body fills the remaining height.
 
 Sheet: docked right (default width 480px) or bottom (default 60vh), 8px from the window edges, `--bg-overlay`, 1px `--border`, `--radius-lg`, `--shadow-overlay`. 48px header (title, actions, close), scrolling body, optional sticky footer. Slides in from its edge on the gentle spring and slides partway back while fading on close. Both trap focus and return it on close.
+
+**Page building blocks**: `SectionHeader` (title `--text-lg` 600, optional description, actions on the right, 16px above its content); `StatList` (a definition list of figures, label `--text-sm --fg-muted` over value `--text-xl` 600, never a grid of identical cards); `Meter` (`role="meter"`, 6px track, `--accent` below 70%, `--warn` from 70%, `--err` from 90% or when exhausted, with a glyph at warn and error, always beside text that states the value; `Progress` stays for task progress); table chrome (`Table`, 32px header that sticks within the page scroll, 40px rows with hairlines, numeric cells right-aligned in mono, `SortHeaderCell` buttons with `aria-sort`); `ScopeSwitch` ("All projects" / "Project: {name}") in the page header's meta line of scoped Settings sections; `Notice` (glyph, one sentence, optional action; errors are announced).
 
 ### 5.7 Toasts
 

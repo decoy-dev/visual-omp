@@ -79,19 +79,17 @@ function useProjectFiles(projectPath: string | null, enabled: boolean): readonly
 async function askOmp(text: string): Promise<void> {
 	let controller = focusedController();
 	if (!controller) {
-		const tabId = useApp.getState().newChat();
-		controller = controllerFor(tabId);
+		if (!useApp.getState().activeProject) {
+			runCommand("project.new");
+			return;
+		}
+		controller = controllerFor(await useApp.getState().newChat());
 	}
-	if (!controller) {
-		runCommand("project.new");
-		return;
-	}
-	await controller.send(text);
+	await controller?.send(text);
 }
 
-function mentionFile(path: string, projectPath: string): void {
-	let tabId = focusedTabId(useApp.getState());
-	tabId ??= useApp.getState().newChat(projectPath);
+async function mentionFile(path: string, projectPath: string): Promise<void> {
+	const tabId = focusedTabId(useApp.getState()) ?? (await useApp.getState().newChat(projectPath));
 	if (tabId) useComposerDrafts.getState().insert(tabId, `@${path} `);
 }
 
@@ -327,7 +325,7 @@ function PaletteBody() {
 								hint={projectName(ctx.projectPath ?? "")}
 								onSelect={() => {
 									close();
-									mentionFile(path, ctx.projectPath ?? "");
+									void mentionFile(path, ctx.projectPath ?? "");
 								}}
 							/>
 						))}

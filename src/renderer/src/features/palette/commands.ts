@@ -180,7 +180,7 @@ registerCommand({
 	icon: NotePencil,
 	shortcut: keys("N"),
 	run(ctx) {
-		if (ctx.projectPath) useApp.getState().newChat(ctx.projectPath);
+		if (ctx.projectPath) void useApp.getState().newChat(ctx.projectPath);
 		else runCommand("project.new");
 	},
 });

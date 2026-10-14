@@ -2,8 +2,8 @@ import { FolderOpen, Trash } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import type { SkillEntry } from "@shared/contracts/skills";
 import { Markdown } from "@/transcript/Markdown";
-import { Button, Chip, SectionLabel, Sheet, SheetContent, Skeleton, Switch } from "@/ui";
-import { LetterTile, Notice, useLoad } from "../shared";
+import { Button, Chip, Notice, SectionLabel, Sheet, SheetContent, Skeleton, Switch } from "@/ui";
+import { LetterTile, useLoad } from "../shared";
 import { lockedReason, providerLabel } from "./model";
 
 interface SkillDrawerProps {

@@ -139,8 +139,8 @@ function fileName(path: string): string {
 }
 
 /** Put `@relative/path` into the focused chat's composer (a new chat when none is open). */
-export function mentionInChat(projectPath: string, path: string, tabId: string | null): void {
-	const target = tabId ?? useApp.getState().newChat(projectPath);
+export async function mentionInChat(projectPath: string, path: string, tabId: string | null): Promise<void> {
+	const target = tabId ?? (await useApp.getState().newChat(projectPath));
 	if (!target) return;
 	const rel = relativePath(projectPath, path);
 	useComposerDrafts.getState().insert(target, `@${rel} `);
@@ -195,7 +195,7 @@ const TreeRow = memo(function TreeRow({ entry, depth, projectPath, tabId }: RowP
 	const isDir = entry.kind === "dir";
 	const onClick = (event: MouseEvent) => {
 		if (event.metaKey || event.ctrlKey) {
-			mentionInChat(projectPath, entry.path, tabId);
+			void mentionInChat(projectPath, entry.path, tabId);
 			return;
 		}
 		if (isDir) useFiles.getState().toggle(projectPath, entry.path);

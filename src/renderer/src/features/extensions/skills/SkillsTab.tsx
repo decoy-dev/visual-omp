@@ -13,6 +13,7 @@ import {
 	MenuContent,
 	MenuItem,
 	MenuTrigger,
+	Notice,
 	Skeleton,
 	Switch,
 	toast,
@@ -20,7 +21,7 @@ import {
 } from "@/ui";
 import { focusRing } from "@/ui/styles";
 import { errorText, formatCount } from "../format";
-import { ConfirmDialog, LetterTile, Notice, useDebounced, useIpcEvent, useLoad } from "../shared";
+import { ConfirmDialog, LetterTile, useDebounced, useIpcEvent, useLoad } from "../shared";
 import { lockedReason, providerLabel } from "./model";
 import { InlineProgress, OperationLog } from "./OperationLog";
 import { type Operations, useOperations } from "./operations";

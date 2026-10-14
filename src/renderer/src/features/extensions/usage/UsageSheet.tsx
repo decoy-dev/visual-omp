@@ -7,10 +7,10 @@ import type { SpendChat, SpendDay } from "@shared/contracts/extensions";
 import type { UsageLimitsSnapshot, UsageReport } from "@shared/contracts/usage";
 import type { SheetProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
-import { Button, Chip, cn, EmptyState, IconButton, Progress, Skeleton, spring, toast, Tooltip } from "@/ui";
+import { Button, Chip, cn, EmptyState, IconButton, Notice, Progress, Skeleton, spring, toast, Tooltip } from "@/ui";
 import { focusRing, focusRingInset } from "@/ui/styles";
 import { errorText, formatCount, formatDuration, formatUsd } from "../format";
-import { type ExtensionSheetProps, ExtensionSheetFrame, Notice, useLoad } from "../shared";
+import { type ExtensionSheetProps, ExtensionSheetFrame, useLoad } from "../shared";
 import { publishUsageLimits } from "./limitsStore";
 import { type ChatSortKey, chatsCsv, limitTone, promptTokens, type SortDirection, sortChats, usedFraction } from "./model";
 

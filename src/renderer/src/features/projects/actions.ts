@@ -32,21 +32,21 @@ export async function startChatIn(path: string, tabId?: string): Promise<void> {
 	const state = useApp.getState();
 	if (!state.expandedProjects.includes(path)) state.toggleProjectExpanded(path);
 	if (tabId && state.retargetChat(tabId, path)) return;
-	const newTab = state.newChat(path);
+	const newTab = await state.newChat(path);
 	if (newTab) useComposerDrafts.getState().focus(newTab);
 }
 
 /** New chat in `projectPath` with `text` waiting in the composer (not sent), focused for editing. */
-export function startDraft(projectPath: string, text: string): void {
-	const tabId = useApp.getState().newChat(projectPath);
+export async function startDraft(projectPath: string, text: string): Promise<void> {
+	const tabId = await useApp.getState().newChat(projectPath);
 	if (!tabId) return;
 	useComposerDrafts.getState().setDraft(tabId, text);
 	useComposerDrafts.getState().focus(tabId);
 }
 
 /** New chat in `projectPath`; `firstMessage` is sent as soon as omp is ready. */
-export function startChat(projectPath: string, firstMessage?: string): void {
-	const tabId = useApp.getState().newChat(projectPath);
+export async function startChat(projectPath: string, firstMessage?: string): Promise<void> {
+	const tabId = await useApp.getState().newChat(projectPath);
 	const text = firstMessage?.trim();
 	if (tabId && text) void controllerFor(tabId)?.send(text);
 }

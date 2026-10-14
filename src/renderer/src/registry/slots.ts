@@ -1,6 +1,6 @@
 /**
- * UI slot registries. Features contribute right-dock panes, modal sheets and status-bar items
- * without editing the shell: register from `features/<name>/index.ts`.
+ * UI slot registries. Features contribute right-dock panes, pages, settings sections, dialogs and
+ * status-bar items without editing the shell: register from `features/<name>/index.ts`.
  */
 import type { Icon } from "@phosphor-icons/react";
 import { type ComponentType, useSyncExternalStore } from "react";
@@ -23,6 +23,7 @@ export interface PaneSpec {
 	badge?: ComponentType<PaneProps>;
 }
 
+/** Dialogs and edge sheets for bounded tasks (share, commit, wizards, confirmations). */
 export interface SheetProps<P = unknown> {
 	props: P;
 	close(): void;
@@ -31,6 +32,50 @@ export interface SheetProps<P = unknown> {
 export interface SheetSpec {
 	id: string;
 	component: ComponentType<SheetProps<never>>;
+}
+
+export interface PageProps<P = unknown> {
+	props: P;
+	/**
+	 * Changes on every `openPage`, including a new deep link into the page that is already open; apply
+	 * `props` again (and move focus to the new heading) when it changes.
+	 */
+	seq: number;
+	/** Back to where the page was opened from (chat or project); asks first when edits are unsaved. */
+	close(): void;
+}
+
+/** A full page in the main area (Settings, Usage & limits, Help, project screens). See `useApp.openPage`. */
+export interface PageSpec {
+	id: string;
+	component: ComponentType<PageProps<never>>;
+}
+
+/** Settings rail groups, in rail order. */
+export type SettingsGroup = "app" | "agent" | "context" | "advanced";
+
+export interface SettingsSectionProps {
+	/** Project the "This project" scope edits: the one Settings was opened for, else the focused project. */
+	projectPath: string | null;
+	/** Layer to show and edit; sections that are not `scoped` ignore it. */
+	scope: "global" | "project";
+	setScope(scope: "global" | "project"): void;
+	/** Extra props from the deep link that opened this section (`openPage("settings", { section, props })`). */
+	props: unknown;
+}
+
+/** One Settings section. Each renders its own `PageHeader` (and `ScopeSwitch` when `scoped`). */
+export interface SettingsSectionSpec {
+	id: string;
+	group: SettingsGroup;
+	/** Position within the group. */
+	order: number;
+	/** i18n key with namespace, such as `manage:settings.tabs.general`. */
+	title: string;
+	icon: Icon;
+	/** Edits a layer the scope switch chooses (all projects or this project). */
+	scoped?: boolean;
+	component: ComponentType<SettingsSectionProps>;
 }
 
 export interface StatusItemSpec {
@@ -105,6 +150,8 @@ function createRegistry<T extends { id: string }>(sort?: (a: T, b: T) => number)
 
 export const panes = createRegistry<PaneSpec>((a, b) => a.order - b.order);
 export const sheets = createRegistry<SheetSpec>();
+export const pages = createRegistry<PageSpec>();
+export const settingsSections = createRegistry<SettingsSectionSpec>((a, b) => a.order - b.order);
 export const statusItems = createRegistry<StatusItemSpec>((a, b) => a.order - b.order);
 export const chatSlots = createRegistry<ChatSlotSpec>((a, b) => a.order - b.order);
 export const screens = createRegistry<ScreenSpec>();

@@ -22,6 +22,18 @@ function tabAt(digit: number): string | null {
 	return tab?.id ?? null;
 }
 
+/** Esc that belongs to a field being edited (it clears or cancels there) or to text composition. */
+function editingKey(event: KeyboardEvent): boolean {
+	if (event.isComposing) return true;
+	const target = event.target instanceof HTMLElement ? event.target : null;
+	return target !== null && (target.isContentEditable || target.closest("input, textarea, select") !== null);
+}
+
+/** A menu, popover, select list or dialog is open; its own Esc handling wins. */
+function layerOpen(): boolean {
+	return document.querySelector("[data-radix-popper-content-wrapper], [role=dialog][data-state=open]") !== null;
+}
+
 function onKeyDown(event: KeyboardEvent): void {
 	if (event.key === "Escape") {
 		// Radix dialogs/sheets handle their own Esc (and mark it handled); this is the fallback.
@@ -29,6 +41,11 @@ function onKeyDown(event: KeyboardEvent): void {
 		const state = useApp.getState();
 		if (state.paletteOpen) state.setPaletteOpen(false);
 		else if (state.sheet) state.closeSheet();
+		else if (state.view === "page" && state.terminalTabId === null && !editingKey(event) && !layerOpen()) {
+			// Esc on a full page is Back.
+			event.preventDefault();
+			state.closePage();
+		}
 		return;
 	}
 	const mod = window.vomp.platform === "darwin" ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;

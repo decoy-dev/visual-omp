@@ -17,6 +17,7 @@ import {
 	MenuItem,
 	MenuSeparator,
 	MenuTrigger,
+	Notice,
 	Segmented,
 	Skeleton,
 	StatusDot,
@@ -27,7 +28,7 @@ import {
 } from "@/ui";
 import { listRowMotion } from "@/features/manage/listMotion";
 import { errorText } from "../format";
-import { ConfirmDialog, type ExtensionSheetProps, ExtensionSheetFrame, Notice, useIpcEvent, useLoad, useSheetProject } from "../shared";
+import { ConfirmDialog, type ExtensionSheetProps, ExtensionSheetFrame, useIpcEvent, useLoad, useSheetProject } from "../shared";
 import { endpointOf } from "./form";
 import { ServerEditor, type EditorMode } from "./McpEditor";
 import { type McpCheck, rowStatus } from "./status";

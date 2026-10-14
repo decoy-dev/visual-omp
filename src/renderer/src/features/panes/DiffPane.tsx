@@ -83,9 +83,9 @@ const useComments = create<CommentsState>(set => ({
 const NO_COMMENTS: LineComment[] = [];
 
 /** The focused chat, or a new one in this project. */
-function chatFor(session: SessionController | null, projectPath: string): SessionController | null {
+async function chatFor(session: SessionController | null, projectPath: string): Promise<SessionController | null> {
 	if (session) return session;
-	return controllerFor(useApp.getState().newChat(projectPath));
+	return controllerFor(await useApp.getState().newChat(projectPath));
 }
 
 // ── line rendering ──────────────────────────────────────────────────────────────────────────────
@@ -508,7 +508,7 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 		// Read the store, not the render closure: ⌘↵ in a comment box saves that comment first.
 		const pending = useComments.getState().byProject[projectPath] ?? NO_COMMENTS;
 		if (pending.length === 0 || busy) return;
-		const target = chatFor(session, projectPath);
+		const target = await chatFor(session, projectPath);
 		if (!target) return;
 		setBusy(true);
 		try {
@@ -523,8 +523,8 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 		}
 	};
 
-	const review = () => {
-		const target = chatFor(session, projectPath);
+	const review = async () => {
+		const target = await chatFor(session, projectPath);
 		target?.command("/review").catch((error: unknown) =>
 			toast({ tone: "err", message: t("diff.reviewFailed"), description: error instanceof Error ? error.message : String(error) }),
 		);

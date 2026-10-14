@@ -94,7 +94,6 @@
 	--control-border: oklch(0.62 0.012 195);
 	--ring: oklch(0.56 0.09 192);
 	--ring-soft: oklch(0.56 0.09 192 / 0.18);
-	--grid-line: transparent;
 
 	/* 1.9 elevation: tinted and tight. No blur of 16px or more, so any 1px border may pair with any of these. */
 	--shadow-tint: 0.28 0.03 195;
@@ -327,6 +326,9 @@
 	--text-xl--line-height: 1.75rem;
 	--text-2xl: 1.5rem;
 	--text-2xl--line-height: 1.875rem;
+	/* Page titles: project overview, Settings, Usage & limits, Help. */
+	--text-page: 1.75rem;
+	--text-page--line-height: 2.25rem;
 	--text-3xl: 2rem;
 	--text-3xl--line-height: 2.375rem;
 	--text-code: 0.78125rem;

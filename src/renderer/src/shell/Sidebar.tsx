@@ -218,7 +218,7 @@ function ProjectGroup({ project, sessions, now, forceOpen }: { project: ProjectS
 
 	const items = (Item: typeof MenuItem | typeof ContextMenuItem, Separator: typeof MenuSeparator | typeof ContextMenuSeparator) => (
 		<>
-			<Item icon={<Plus />} onSelect={() => useApp.getState().newChat(project.path)}>
+			<Item icon={<Plus />} onSelect={() => void useApp.getState().newChat(project.path)}>
 				{t("sidebar.newChatHere")}
 			</Item>
 			<Item icon={<House />} onSelect={() => useApp.getState().openProject(project.path)}>

@@ -5,9 +5,10 @@ import { useTranslation } from "react-i18next";
 import { ChatArea } from "../chat/ChatArea";
 import { getCommand } from "../registry/commands";
 import { type SheetPresence, SheetPresenceContext } from "../registry/sheetPresence";
-import { screens, sheets } from "../registry/slots";
-import { useApp } from "../state/app";
-import { Button, duration, EmptyState, Mark, PresenceSwap, spring } from "../ui";
+import { pages, screens, sheets } from "../registry/slots";
+import { MAIN_ID, type OpenPage, useApp } from "../state/app";
+import { Button, cn, duration, EmptyState, Mark, PresenceSwap, spring } from "../ui";
+import { LeaveConfirm } from "./LeaveConfirm";
 import { Dock } from "./Dock";
 import { ResizeHandle } from "./ResizeHandle";
 import { Sidebar } from "./Sidebar";
@@ -101,6 +102,16 @@ function HomeView(): ReactNode {
 	);
 }
 
+/** A full page (Settings, Usage & limits, Help, project screens). Takes the page as a prop so an exiting page keeps rendering itself. */
+function PageView({ page }: { page: OpenPage }): ReactNode {
+	const list = pages.use();
+	const spec = list.find(entry => entry.id === page.id);
+	if (!spec) return null;
+	const Component = spec.component;
+	// Page props are defined by each feature; the opener passes the matching shape.
+	return <Component props={page.props as never} seq={page.seq} close={() => useApp.getState().closePage()} />;
+}
+
 /** Side columns slide in from their own edge when toggled and fade out when hidden. */
 function sideEnter(edge: -1 | 1) {
 	return {
@@ -119,7 +130,12 @@ export function Shell(): ReactNode {
 	const dockWidth = useApp(state => state.dockWidth);
 	const view = useApp(state => state.view);
 	const hasTabs = useApp(state => state.tabs.length > 0);
+	const page = useApp(state => (state.view === "page" ? state.page : null));
+	const pageReturn = useApp(state => state.pageReturn);
 	const showChat = view === "chat" && hasTabs;
+	// The chat stays mounted (hidden and inert) under a page it opened, so Back finds it as it was:
+	// scroll position, expanded history and split width are component state.
+	const chatMounted = hasTabs && (view === "chat" || (view === "page" && pageReturn === "chat"));
 	const activeTabId = useApp(state => state.activeTabId);
 
 	return (
@@ -134,22 +150,33 @@ export function Shell(): ReactNode {
 						</motion.div>
 					)}
 				</AnimatePresence>
-				<main className="flex min-w-0 flex-1 flex-col">
+				<main id={MAIN_ID} tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
 					<TabStrip />
-					{/* While a chat shows, this is the tabpanel for the selected chat tab. */}
-					<div
-						id={showChat ? CHAT_PANEL_ID : undefined}
-						role={showChat ? "tabpanel" : undefined}
-						aria-labelledby={showChat && activeTabId ? chatTabId(activeTabId) : undefined}
-						className="flex min-h-0 flex-1"
-					>
-						<PresenceSwap swapKey={showChat ? "chat" : "home"} variant="rise" className="flex min-h-0 min-w-0 flex-1">
-							{showChat ? <ChatArea /> : <HomeView />}
+					<div className="relative flex min-h-0 flex-1">
+						{chatMounted && (
+							// While a chat shows, this is the tabpanel for the selected chat tab.
+							<div
+								id={CHAT_PANEL_ID}
+								role="tabpanel"
+								aria-labelledby={activeTabId ? chatTabId(activeTabId) : undefined}
+								inert={!showChat}
+								className={cn("absolute inset-0 flex transition-opacity duration-(--dur-base)", showChat ? "opacity-100" : "invisible opacity-0")}
+							>
+								<ChatArea />
+							</div>
+						)}
+						<PresenceSwap
+							swapKey={page ? `page:${page.id}` : showChat ? "chat" : "home"}
+							variant="rise"
+							className={cn("relative flex min-h-0 min-w-0 flex-1", showChat && "pointer-events-none")}
+						>
+							{page ? <PageView page={page} /> : showChat ? null : <HomeView />}
 						</PresenceSwap>
 					</div>
 				</main>
 				<AnimatePresence initial={false}>
-					{dockOpen && (
+					{/* The inspector belongs to the chat and project views; full pages take the whole main area. */}
+					{dockOpen && !page && (
 						<motion.div key="dock" className="flex shrink-0" {...sideEnter(1)}>
 							<ResizeHandle label={t("dock.resize")} value={dockWidth} min={320} max={640} direction={-1} onChange={width => useApp.getState().setDockWidth(width)} />
 							<Dock width={dockWidth} />
@@ -159,6 +186,7 @@ export function Shell(): ReactNode {
 			</div>
 			<StatusBar />
 			<SheetHost />
+			<LeaveConfirm />
 		</div>
 	);
 }
