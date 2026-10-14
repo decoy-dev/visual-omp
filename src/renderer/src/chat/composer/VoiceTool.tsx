@@ -20,7 +20,6 @@ import type { SessionController } from "../../state/session";
 import { Button, cn, Dialog, DialogContent, spring, toast, Tooltip } from "../../ui";
 import { runInTerminal } from "../../features/panes/terminal";
 import { useComposerDrafts } from "./drafts";
-import { whenLive } from "./send";
 
 interface VoiceRequests {
 	/** Tab whose dictation should start, bumped per request. */
@@ -104,7 +103,7 @@ export function VoiceTool({ session }: ChatSlotProps) {
 				// omp reads keybindings at startup.
 				await session.restart();
 			}
-			await whenLive(session);
+			await session.whenLive();
 			const hostId = session.hostId;
 			if (!hostId) throw new Error("omp is not running");
 			noticeMark.current = session.getSnapshot().guest?.notices.at(-1)?.id ?? 0;

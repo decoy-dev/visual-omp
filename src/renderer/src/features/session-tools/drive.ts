@@ -46,10 +46,11 @@ export class OmpBusyError extends Error {
 
 /**
  * Wait until omp's prompt editor is on screen (it is hidden while a dialog, picker or full-screen
- * menu is open). Starts omp first when the chat is not live yet.
+ * menu is open). Starts omp first when the chat is not live yet and waits for it to connect, because
+ * a saved chat's omp has no screen to read until its TUI is up.
  */
 export async function readyEditor(session: SessionController): Promise<string[]> {
-	await session.ensureLive();
+	await session.whenLive();
 	const lines = await waitForScreen(session, screen => parseStatusLine(screen) !== null, 8000);
 	if (!lines || (session.getSnapshot().host?.tui?.overlays ?? 0) > 0) throw new OmpBusyError();
 	return lines;

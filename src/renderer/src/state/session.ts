@@ -255,6 +255,26 @@ export class SessionController {
 		return this.#starting;
 	}
 
+	/** Start omp if needed and resolve once it runs and its live mirror is joined; rejects if omp exits first. */
+	async whenLive(): Promise<void> {
+		await this.ensureLive();
+		if (this.#view.mode === "live" && this.#view.guest?.phase === "live") return;
+		// omp can exit while it starts, before anything below subscribes.
+		if (this.#view.mode === "exited") throw new Error(this.#view.error ?? "omp stopped");
+		const { promise, resolve, reject } = Promise.withResolvers<void>();
+		const unsubscribe = this.subscribe(() => {
+			const view = this.#view;
+			if (view.mode === "live" && view.guest?.phase === "live") {
+				unsubscribe();
+				resolve();
+			} else if (view.mode === "exited") {
+				unsubscribe();
+				reject(new Error(view.error ?? "omp stopped"));
+			}
+		});
+		return promise;
+	}
+
 	/** Adopt an omp that is already running for this chat (renderer reload, window reopened). */
 	attach(host: HostState): void {
 		if (this.#disposed) return;
@@ -395,8 +415,7 @@ export class SessionController {
 		this.markInput();
 		if (this.#view.working || this.#view.mode !== "live" || this.#view.queue.length > 0) {
 			this.#set({ queue: [...this.#view.queue, { id: `q${nextQueueId++}`, text: trimmed }] });
-			await this.ensureLive();
-			await this.#whenLive();
+			await this.whenLive();
 			if (!this.#view.working) this.#drainOne();
 			return;
 		}
@@ -431,8 +450,7 @@ export class SessionController {
 	/** Type an omp slash command (e.g. `/restart`, `/compact focus on tests`) into the real TUI. */
 	async command(line: string): Promise<void> {
 		this.markInput();
-		await this.ensureLive();
-		await this.#whenLive();
+		await this.whenLive();
 		await this.#submit(line, "steer");
 	}
 
@@ -513,22 +531,6 @@ export class SessionController {
 		if (!next) return;
 		this.#set({ queue: rest });
 		void this.#submit(next.text, "steer");
-	}
-
-	#whenLive(): Promise<void> {
-		if (this.#view.mode === "live" && this.#view.guest?.phase === "live") return Promise.resolve();
-		const { promise, resolve, reject } = Promise.withResolvers<void>();
-		const unsubscribe = this.subscribe(() => {
-			const view = this.#view;
-			if (view.mode === "live" && view.guest?.phase === "live") {
-				unsubscribe();
-				resolve();
-			} else if (view.mode === "exited") {
-				unsubscribe();
-				reject(new Error(view.error ?? "omp stopped"));
-			}
-		});
-		return promise;
 	}
 
 	#set(patch: Partial<SessionView>): void {

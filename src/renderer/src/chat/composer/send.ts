@@ -8,7 +8,7 @@
  *   and shell metacharacters backslash-escaped). The message text follows in the same write, then
  *   Enter; omp holds keys that arrive after an attaching paste until the images are loaded.
  */
-import type { SessionController, SessionView } from "../../state/session";
+import type { SessionController } from "../../state/session";
 import type { Attachment, ComposerMode } from "./drafts";
 
 /** Extensions omp's editor attaches from a pasted path. */
@@ -40,29 +40,6 @@ export function imageMessageBytes(paths: readonly string[], text: string): strin
 	return `${imagePaste(paths)}${text ? `\x1b[200~${text}\x1b[201~` : ""}\r`;
 }
 
-
-function isLive(view: SessionView): boolean {
-	return view.mode === "live" && view.guest?.phase === "live";
-}
-
-/** Resolve once the chat's omp is running and its live mirror is joined. */
-export async function whenLive(session: SessionController): Promise<void> {
-	await session.ensureLive();
-	if (isLive(session.getSnapshot())) return;
-	const { promise, resolve, reject } = Promise.withResolvers<void>();
-	const unsubscribe = session.subscribe(() => {
-		const view = session.getSnapshot();
-		if (isLive(view)) {
-			unsubscribe();
-			resolve();
-		} else if (view.mode === "exited") {
-			unsubscribe();
-			reject(new Error(view.error ?? "omp stopped"));
-		}
-	});
-	return promise;
-}
-
 /**
  * Send a composed message. Text-only messages go through the chat's queue (they wait while omp works);
  * `now` steers the running turn instead. Messages with images are delivered at once — omp itself holds
@@ -81,7 +58,7 @@ export async function deliver(
 	}
 	// The paste goes around the controller's queue, so record the send before waiting for omp.
 	session.markInput();
-	await whenLive(session);
+	await session.whenLive();
 	const hostId = session.hostId;
 	if (!hostId) throw new Error("omp is not running");
 	await window.vomp.invoke("composer:paste", hostId, imagePathsText(images.map(image => image.path)));

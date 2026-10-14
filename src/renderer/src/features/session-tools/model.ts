@@ -9,8 +9,10 @@
  */
 import { useEffect, useState } from "react";
 import type { ModelInfo } from "@shared/contracts/config";
+import { toast } from "@/ui";
+import { i18n } from "../../i18n";
 import type { SessionController } from "../../state/session";
-import { OmpBusyError, press, readyEditor, reportFailure, runCommand, waitForScreen } from "./drive";
+import { OmpBusyError, press, readyEditor, reportFailure, waitForScreen } from "./drive";
 import { parseStatusLine, THINKING_LEVELS, type ThinkingLevel } from "./screen";
 import { screenPoller } from "./status";
 
@@ -46,17 +48,46 @@ export function thinkingChoices(model: ModelInfo | undefined): ThinkingLevel[] {
 	return ["off", "auto", ...THINKING_LEVELS.filter(level => model.thinkingLevels.some(effort => effort === level))];
 }
 
-/** Switch this chat's model; resolves true when omp confirmed it. */
-export async function switchModel(session: SessionController, selector: string): Promise<boolean> {
+/** How long omp may take to report the new model before the picker warns. */
+const SWITCH_CONFIRM_MS = 8000;
+
+/**
+ * Switch this chat's model; resolves true once omp confirmed it, false after telling the user why not.
+ *
+ * Only omp's collab state confirms the switch. The "Session-only model" line omp prints cannot: during
+ * a turn omp prints it above the working indicator, and it rewrites an earlier status line in place,
+ * so a screen diff either misses it or returns older transcript lines. omp's rejections ("Error:
+ * Unknown model …", "Error: No API key for …") reach only the screen, where a reply can print the
+ * same text, so a rejected switch ends with the unconfirmed warning, which points to the terminal sheet.
+ */
+export async function switchModel(session: SessionController, model: ModelInfo): Promise<boolean> {
+	const switched = () => {
+		const current = session.getSnapshot().guest?.state?.model;
+		return current?.provider === model.provider && current.id === model.id;
+	};
 	try {
-		const { output } = await runCommand(session, `/switch ${selector}`, {
-			until: (_lines, printed) => printed.some(line => /Session-only model|Unknown model|Failed|No API key|error/i.test(line)),
-			timeoutMs: 8000,
-		});
-		const failure = output.find(line => /Unknown model|Failed|No API key|error/i.test(line));
-		if (failure) throw new Error(failure.replace(/^(warning|error):\s*/i, ""));
-		void screenPoller(session).refresh();
-		return true;
+		await readyEditor(session);
+		const tokens = session.getSnapshot().guest?.state?.contextUsage?.tokens ?? 0;
+		const overContext = model.contextWindow !== null && model.contextWindow > 0 && tokens > model.contextWindow;
+		await session.command(`/switch ${model.selector}`);
+		if (!switched()) {
+			const { promise, resolve } = Promise.withResolvers<void>();
+			const timer = setTimeout(resolve, SWITCH_CONFIRM_MS);
+			const unsubscribe = session.subscribe(() => {
+				if (switched()) resolve();
+			});
+			await promise;
+			clearTimeout(timer);
+			unsubscribe();
+		}
+		if (switched()) {
+			void screenPoller(session).refresh();
+			return true;
+		}
+		// A chat longer than the model's window makes omp compact it before switching, which can outlast the wait.
+		const message = overContext ? "session:model.notConfirmedLong" : "session:model.notConfirmed";
+		toast({ tone: "warn", message: i18n.t(message, { name: model.name }) });
+		return false;
 	} catch (error) {
 		reportFailure(error);
 		return false;

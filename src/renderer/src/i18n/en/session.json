@@ -38,6 +38,8 @@
     "scopeNote": "Applies to this chat only. New chats use your default model.",
     "roles": "Edit model roles",
     "switched": "Switched this chat to {{name}}.",
+    "notConfirmed": "omp didn't confirm the switch to {{name}}. Open the terminal sheet to see what omp shows.",
+    "notConfirmedLong": "omp hasn't confirmed the switch to {{name}} yet. This chat is longer than that model's context window, so omp may be compacting it first.",
     "vision": "Reads images",
     "reasoning": "Supports thinking levels"
   },

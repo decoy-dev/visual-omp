@@ -218,7 +218,7 @@ function ModelList({ session, onDone }: { session: SessionController; onDone(): 
 			return;
 		}
 		setBusy(model.selector);
-		const ok = await switchModel(session, model.selector);
+		const ok = await switchModel(session, model);
 		setBusy(null);
 		if (ok) {
 			toast({ tone: "ok", message: t("model.switched", { name: model.name }) });
