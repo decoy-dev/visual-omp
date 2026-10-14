@@ -4,11 +4,27 @@ asar: true
 directories:
   buildResources: build
   output: release
+# Electron's own UI strings (native dialogs, context menus). The app UI is English only. "en" keeps
+# en.lproj on macOS; "en-US" keeps locales/en-US.pak on Windows, where "en" alone matches no file.
+electronLanguages:
+  - en
+  - en-US
 files:
   - out/**/*
+  - "!out/**/*.map"
   - package.json
   - LICENSE
   - NOTICE
+  # node-pty at runtime needs lib/*.js and the addon electron-builder rebuilds for the target
+  # Electron and arch into build/Release, which node-pty loads first: pty.node and spawn-helper on
+  # macOS; pty.node, conpty.node, conpty_console_list.node, winpty.dll and winpty-agent.exe on
+  # Windows. The bundled prebuilds go unused (and their macOS spawn-helper is not executable), as
+  # do sources, build intermediates and the header-only node-addon-api dependency.
+  - "!node_modules/node-pty/{binding.gyp,README.md,deps,node-addon-api,prebuilds,scripts,src,third_party,typings}{,/**/*}"
+  - "!node_modules/node-pty/build/!(Release){,/**/*}"
+  - "!node_modules/node-pty/build/Release/!(*.node|*.dll|*.exe|spawn-helper|conpty){,/**/*}"
+  - "!node_modules/node-pty/lib/**/*.{map,test.js}"
+  - "!node_modules/node-addon-api{,/**/*}"
 asarUnpack:
   - node_modules/node-pty/**/*
 artifactName: visual-omp-${version}-${platform}-${arch}.${ext}
