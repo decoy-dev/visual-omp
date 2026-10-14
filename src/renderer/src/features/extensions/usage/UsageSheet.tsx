@@ -130,12 +130,15 @@ function BarChart({ days, locale }: { days: SpendDay[]; locale: string }) {
 									<span
 										aria-hidden
 										className={cn(
-											"absolute inset-0 rounded-t-sm transition-[clip-path,filter] duration-(--dur-spring-gentle) ease-(--ease-spring) group-hover:brightness-110",
+											"absolute inset-0 transition-[clip-path,filter] duration-(--dur-spring-gentle) ease-(--ease-spring) group-hover:brightness-110",
 											isToday ? "bg-accent" : "bg-accent-2",
 											fill === 0 && "bg-border-strong",
 										)}
+										// The clip shape carries the corner radius: a rounded box would lose its corners to the clip.
 										// Zero-cost days keep a 2px stub on the baseline.
-										style={{ clipPath: fill > 0 ? `inset(${100 - fill}% 0 0 0)` : "inset(calc(100% - 2px) 0 0 0)" }}
+										style={{
+											clipPath: fill > 0 ? `inset(${100 - fill}% 0 0 0 round var(--radius-sm) var(--radius-sm) 0 0)` : "inset(calc(100% - 2px) 0 0 0)",
+										}}
 									/>
 								</button>
 							</Tooltip>
