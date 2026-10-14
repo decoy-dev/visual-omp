@@ -770,10 +770,16 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	// (and on that first loaded commit) the view goes straight to the bottom instead of gliding there.
 	const settledRef = useRef(false);
 	useEffect(() => {
+		const el = rootRef.current;
+		// A view exactly at the bottom (the content shrank, or never overflowed) is pinned whatever unpinned it earlier,
+		// so "Show new activity" never offers a jump to where the reader already is. A reader who scrolled up even a
+		// little stays where they are.
+		if (!pinnedRef.current && el && el.scrollHeight - el.scrollTop - el.clientHeight <= 1) pinnedRef.current = true;
 		if (!pinnedRef.current) {
 			setUnseen(true);
 			return;
 		}
+		setUnseen(false);
 		if (settledRef.current) follow.follow();
 		else {
 			follow.snap();
