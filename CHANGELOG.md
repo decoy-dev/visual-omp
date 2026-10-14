@@ -4,8 +4,12 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-10-14
+
+visual-omp 0.4.2 fixes switching models from the chat box and lets an update through Homebrew finish without typing in its terminal.
+
 - Choosing a model from the chat box now switches the model in a saved chat and while omp is replying. A saved chat showed a connection error because the picker read omp's screen before omp had started, and in a longer chat a reply that mentioned an error could be reported as a failed switch. The app now waits for omp to start and confirms the switch from the model omp reports for the chat. If omp does not confirm it within a few seconds, the app shows a warning and keeps the picker open.
-- Updating a Homebrew install from **Settings → About** no longer stops at Homebrew's "Do you want to proceed with the upgrade? [y/n]" question, which needed you to click into the terminal and type `y`. Homebrew 6 and later asks it whenever its plan names the cask by its full name (`decoy-dev/tap/visual-omp`) while the app passes the short name, so the app now turns the question off. Clicking the update button is the confirmation.
+- Updating a Homebrew install from **Settings → About** no longer stops at Homebrew's "Do you want to proceed with the upgrade? [y/n]" question, which needed you to click into the terminal and type `y`. Homebrew 6 and later asks it whenever its plan names the cask by its full name (`decoy-dev/tap/visual-omp`) while the app passes the short name, so the app now turns the question off. Clicking the update button is the confirmation. The copy you are running decides how it updates, so the update to 0.4.2 from an earlier version still asks once; press `y` in the terminal when it does.
 
 ## [0.4.1] - 2026-10-12
 
