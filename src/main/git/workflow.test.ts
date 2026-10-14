@@ -70,6 +70,7 @@ describe("stageOnly", () => {
 });
 
 describe("branch commits and PR context", () => {
+	// About a dozen git processes: a Windows CI runner took 5.6 s on 0.4.2, past Vitest's 5 s default.
 	it("lists commits since the remote base, and the bases the remote offers", async () => {
 		const remote = mkdtempSync(join(tmpdir(), "vomp-wf-remote-"));
 		try {
@@ -93,7 +94,7 @@ describe("branch commits and PR context", () => {
 		} finally {
 			rmSync(remote, { recursive: true, force: true });
 		}
-	});
+	}, 30_000);
 });
 
 describe("parseBranchLog", () => {
