@@ -23,8 +23,8 @@ const fakes = vi.hoisted(() => {
 		connect(): void {}
 		close(): void {}
 		/** What the real client publishes: `waiting` until omp's snapshot arrives, then `live`. */
-		emit(phase: GuestSnapshot["phase"], entries: readonly SessionEntry[]): void {
-			this.snapshot = { phase, entries, working: false, uiRequest: null } as unknown as GuestSnapshot;
+		emit(phase: GuestSnapshot["phase"], entries: readonly SessionEntry[], working = false): void {
+			this.snapshot = { phase, entries, working, uiRequest: null } as unknown as GuestSnapshot;
 			for (const listener of this.listeners) listener();
 		}
 	}
@@ -126,5 +126,26 @@ describe("SessionController room handoff", () => {
 		expect(liveEntries(session.getSnapshot())).toBeNull();
 		fakes.guests[0]?.emit("live", [u1, a1, u2]);
 		expect(ids(liveEntries(session.getSnapshot()))).toEqual(["u1", "a1", "u2"]);
+	});
+});
+
+describe("SessionController working start", () => {
+	it("times a turn it saw start, keeps the time across updates, and has none for a turn under way at join", () => {
+		vi.spyOn(Date, "now").mockReturnValue(5000);
+		const session = new SessionController({ tabId: "t5", projectPath: "/p", sessionFile: null });
+		session.attach(host({ link: "L1" }));
+		fakes.guests[0]?.emit("live", [u1], true);
+		// Already working when the mirror first synced: the real start is unknown.
+		expect(session.getSnapshot().workingSince).toBeNull();
+		fakes.guests[0]?.emit("live", [u1, a1], false);
+		expect(session.getSnapshot().workingSince).toBeNull();
+		fakes.guests[0]?.emit("live", [u1, a1, u2], true);
+		expect(session.getSnapshot().workingSince).toBe(5000);
+		vi.spyOn(Date, "now").mockReturnValue(9000);
+		fakes.guests[0]?.emit("live", [u1, a1, u2], true);
+		expect(session.getSnapshot().workingSince).toBe(5000);
+		fakes.guests[0]?.emit("live", [u1, a1, u2], false);
+		expect(session.getSnapshot().workingSince).toBeNull();
+		vi.restoreAllMocks();
 	});
 });

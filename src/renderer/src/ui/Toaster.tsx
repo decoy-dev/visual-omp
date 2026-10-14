@@ -79,18 +79,18 @@ function ToastItem({ item, ref }: { item: ToastRecord; ref?: Ref<HTMLLIElement> 
 			dragConstraints={{ left: 0, right: 0 }}
 			dragElastic={{ left: 0.05, right: 0.9 }}
 			onDragEnd={onDragEnd}
-			className="pointer-events-auto flex w-[320px] max-w-[calc(100vw-32px)] touch-pan-y flex-col gap-2 rounded-lg border border-border bg-raised p-3 pr-2 shadow-(--shadow-pop)"
+			className="pointer-events-auto flex w-80 max-w-[calc(100vw-32px)] touch-pan-y flex-col gap-2 rounded-lg border border-border bg-raised p-3 pr-2 shadow-(--shadow-pop)"
 			onPointerEnter={() => setPaused(true)}
 			onPointerLeave={() => setPaused(false)}
 			onFocus={() => setPaused(true)}
 			onBlur={() => setPaused(false)}
 		>
-			<div className="flex items-start gap-2.5">
+			<div className="flex items-start gap-3">
 				<span className={cn("mt-px inline-flex shrink-0", toneColor[item.tone])}>{toneIcon[item.tone]}</span>
 				{/* Long versions and file names break anywhere instead of pushing the close button out. */}
 				<div className="min-w-0 flex-1 select-text [overflow-wrap:anywhere]">
 					<p className="text-md font-medium text-fg">{item.message}</p>
-					{item.description && <p className="mt-0.5 text-sm text-fg-muted">{item.description}</p>}
+					{item.description && <p className="mt-1 text-sm text-fg-muted">{item.description}</p>}
 				</div>
 				<button
 					type="button"

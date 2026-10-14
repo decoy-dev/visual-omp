@@ -40,7 +40,7 @@ export interface ProviderUsage {
 	/** Accounts reporting for this provider; above 1 the windows use omp's pooled capacity. */
 	accounts: number;
 	windows: WindowUsage[];
-	/** The window the status bar shows (see {@link pickTop}). */
+	/** The window the status bar shows (see {@link pickBinding}). */
 	top: WindowUsage;
 	/** Epoch ms of the oldest report behind these figures (omp caches provider reports). */
 	fetchedAt: number;
@@ -276,24 +276,27 @@ function providerWindows(reports: readonly UsageReport[], modelIds: readonly str
 	});
 }
 
-/** Higher first: provider-reported exhaustion, then the used fraction. */
-function compareUse(a: WindowUsage, b: WindowUsage): number {
-	const exhausted = Number(b.status === "exhausted") - Number(a.status === "exhausted");
-	return exhausted !== 0 ? exhausted : (b.fraction ?? 0) - (a.fraction ?? 0);
+/** What {@link pickBinding} reads from a window. */
+interface BindingCandidate {
+	fraction: number | null;
+	/** The window blocks work: reported exhausted (the status bar), or reached (the Usage page). */
+	exhausted: boolean;
+	/** {@link windowPreference}. */
+	preference: number | null;
 }
 
 /**
- * The window the status bar shows, among those with a known fraction: one the provider reports as
- * exhausted (it blocks the chat), else the 5h window, else 7d, else monthly, else the most-used one.
- * Several windows of the chosen kind (Claude's `7d` and `7d fable`) yield the most-used.
+ * The window that binds, among those with a known fraction: an exhausted one (it blocks work), else the
+ * 5h window, else 7d, else monthly, else the most-used one. Several windows of the chosen kind (Claude's
+ * `7d` and `7d fable`) yield the most-used. The status bar and the Usage page's provider rows both use it.
  */
-function pickTop(windows: readonly RankedWindow[]): WindowUsage | undefined {
-	const known = windows.filter(window => window.usage.fraction !== null);
-	const exhausted = known.filter(window => window.usage.status === "exhausted");
-	const preferences = known.map(window => window.preference).filter((preference): preference is number => preference !== null);
+function pickBinding<T>(items: readonly T[], read: (item: T) => BindingCandidate): T | undefined {
+	const known = items.map(item => ({ item, ...read(item) })).filter(candidate => candidate.fraction !== null);
+	const exhausted = known.filter(candidate => candidate.exhausted);
+	const preferences = known.map(candidate => candidate.preference).filter((preference): preference is number => preference !== null);
 	const preferred = preferences.length > 0 ? Math.min(...preferences) : null;
-	const pool = exhausted.length > 0 ? exhausted : preferred !== null ? known.filter(window => window.preference === preferred) : known;
-	return pool.map(window => window.usage).sort(compareUse)[0];
+	const pool = exhausted.length > 0 ? exhausted : preferred !== null ? known.filter(candidate => candidate.preference === preferred) : known;
+	return pool.sort((a, b) => Number(b.exhausted) - Number(a.exhausted) || (b.fraction ?? 0) - (a.fraction ?? 0))[0]?.item;
 }
 
 /**
@@ -310,7 +313,7 @@ export function planUsage(snapshot: UsageLimitsSnapshot | null, models: readonly
 		const reports = snapshot.reports.filter(report => report.provider === provider && report.limits.length > 0);
 		if (reports.length === 0) continue;
 		const windows = providerWindows(reports, modelIds, snapshot.capacity[provider] ?? []);
-		const top = pickTop(windows);
+		const top = pickBinding(windows, window => ({ fraction: window.usage.fraction, exhausted: window.usage.status === "exhausted", preference: window.preference }))?.usage;
 		if (!top) continue;
 		out.push({ provider, accounts: reports.length, windows: windows.map(window => window.usage), top, fetchedAt: Math.min(...reports.map(report => report.fetchedAt)) });
 	}
@@ -327,6 +330,8 @@ export interface LimitRow {
 	durationMs: number | null;
 	/** A window without a duration that omp names monthly. */
 	monthly: boolean;
+	/** Which window kind binds first ({@link windowPreference}). */
+	preference: number | null;
 	/** omp's label without a leading provider name; names the row when the window has no duration. */
 	label: string;
 	/** Tells rows of one window apart: the tier or model, plus a readable omp label when names still clash. */
@@ -397,10 +402,12 @@ function limitRows(report: UsageReport): LimitRow[] {
 		const reached = limit.status === "exhausted" || (fraction ?? 0) >= 1;
 		const near = limit.status === "warning" || (fraction !== null && tone !== "ok");
 		const { tier, modelId } = limit.scope;
+		const preference = windowPreference(limit);
 		return {
 			id: limit.id,
 			durationMs,
-			monthly: durationMs === null && windowPreference(limit) === 2,
+			monthly: durationMs === null && preference === 2,
+			preference,
 			label: limit.label.startsWith(prefix) ? limit.label.slice(prefix.length) : limit.label,
 			qualifier: tier ? tier[0].toUpperCase() + tier.slice(1) : modelId ? bareModelId(modelId) : null,
 			fraction,
@@ -495,4 +502,36 @@ export function planLimits(snapshot: UsageLimitsSnapshot): ProviderLimits[] {
 
 	const providers = [...groups].map(([provider, entries]) => ({ provider, accounts: entries.map(entry => entry.account).sort(compareAccounts) }));
 	return providers.sort((a, b) => compareAccounts(a.accounts[0], b.accounts[0]));
+}
+
+/** A limit window of one account. */
+export interface AccountRow {
+	account: AccountLimits;
+	row: LimitRow;
+}
+
+/** A provider's collapsed row on the Usage & limits page. */
+export interface ProviderSummary {
+	/**
+	 * The binding window across the provider's accounts ({@link pickBinding}, a reached window counting
+	 * as exhausted); null when no window reports a usable figure.
+	 */
+	binding: AccountRow | null;
+	/** Other windows near or at their limit, most severe first; they stay visible while the row is collapsed. */
+	alerts: AccountRow[];
+	/** Accounts with a sign-in omp stopped using. */
+	disabled: AccountLimits[];
+	/** Accounts omp knows that report no usable figure: no report, or only windows without one. */
+	unknown: AccountLimits[];
+}
+
+export function providerSummary(provider: ProviderLimits): ProviderSummary {
+	const rows = provider.accounts.flatMap(account => account.rows.map((row): AccountRow => ({ account, row })));
+	const binding = pickBinding(rows, ({ row }) => ({ fraction: row.fraction, exhausted: row.state === "reached", preference: row.preference })) ?? null;
+	return {
+		binding,
+		alerts: rows.filter(entry => entry !== binding && (entry.row.state === "reached" || entry.row.state === "near")).sort((a, b) => rowSeverity(a.row) - rowSeverity(b.row)),
+		disabled: provider.accounts.filter(account => account.disabled.length > 0),
+		unknown: provider.accounts.filter(account => account.kind !== "disabled" && account.rows.every(row => row.fraction === null)),
+	};
 }

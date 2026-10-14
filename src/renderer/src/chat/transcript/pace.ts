@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useState } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
 import { useMotionReduced } from "../../ui/motion";
 
 /**
@@ -81,6 +81,7 @@ export class Playout {
 	#holdUntil = Number.NEGATIVE_INFINITY;
 	#lastStep: number | null = null;
 	#doneAt: number | null = null;
+	#listeners = new Set<() => void>();
 
 	/** `showExisting`: the text present now shows in full (the chat synchronized mid-reply). Otherwise it counts as arriving at the first `receive`. */
 	constructor(blocks: readonly PlayoutBlock[], showExisting: boolean) {
@@ -126,6 +127,25 @@ export class Playout {
 	/** A key that changes whenever the visible text changes. */
 	get revision(): string {
 		return `${this.#index}:${Math.floor(this.#offset)}`;
+	}
+
+	/**
+	 * A key that changes only when the set of blocks that show changes (the cursor reaches a block, or the current one
+	 * gets its first character). The message row re-renders on this; the text growing inside a block does not.
+	 */
+	get stage(): string {
+		return `${this.#index}:${this.#offset > 0 ? 1 : 0}`;
+	}
+
+	/** Listens for visible-text changes (see {@link notify}); returns the unsubscribe function. */
+	subscribe = (listener: () => void): (() => void) => {
+		this.#listeners.add(listener);
+		return () => this.#listeners.delete(listener);
+	};
+
+	/** Tells subscribers (the paced text of each block) that the visible text may have changed. */
+	notify(): void {
+		for (const listener of this.#listeners) listener();
 	}
 
 	/** Takes the message's blocks as of `now`; `done` once omp has finished the message. */
@@ -271,6 +291,12 @@ export function synchronizedStream(phase: string | null, previousPhase: string |
  */
 export const PlayoutRegistry = createContext<Map<number, Playout> | null>(null);
 
+/**
+ * True while the chat is out of sight (under a page, or the hidden half of a narrow split). Text keeps arriving and
+ * shows in full at once, without per-frame reveal work; pacing resumes with the next text after the chat returns.
+ */
+export const PlayoutPaused = createContext(false);
+
 export interface PlayoutOptions {
 	/** omp is still streaming this message. */
 	pending: boolean;
@@ -283,9 +309,14 @@ export interface PlayoutOptions {
 /**
  * The reveal for message `key`, or null when it renders in full: saved history, reduced motion,
  * or a reveal that has finished. A streaming message starts one; its saved entry picks it up.
+ *
+ * The caller re-renders only when the set of shown blocks changes ({@link Playout.stage}); the
+ * text growing inside a block reaches only the components reading it with {@link useRevealed},
+ * so tool rows and other stable siblings do not re-render on every animation frame.
  */
 export function usePlayout(key: number, blocks: readonly PlayoutBlock[], { pending, showExisting, synchronized }: PlayoutOptions): Playout | null {
 	const registry = useContext(PlayoutRegistry);
+	const paused = useContext(PlayoutPaused);
 	const reduced = useMotionReduced();
 	const [, rerender] = useState(0);
 	let playout = registry?.get(key) ?? null;
@@ -305,24 +336,35 @@ export function usePlayout(key: number, blocks: readonly PlayoutBlock[], { pendi
 
 	useLayoutEffect(() => {
 		if (!playout) return;
-		const before = playout.revision;
+		const revision = playout.revision;
+		const stage = playout.stage;
 		playout.receive(blocks, performance.now(), !pending);
-		if (synchronized) playout.catchUp();
+		if (synchronized || paused) playout.catchUp();
 		// Layout effects run before paint, so this render shows a caught-up or clamped cursor at once.
-		if (playout.revision !== before) rerender(count => count + 1);
+		if (playout.revision !== revision) playout.notify();
+		if (playout.stage !== stage || playout.finished) rerender(count => count + 1);
 		// `signature` stands in for `blocks`, whose identity changes every render.
-	}, [playout, signature, pending, synchronized]);
+	}, [playout, signature, pending, synchronized, paused]);
 
 	useEffect(() => {
-		if (!playout) return;
+		if (!playout || paused) return;
 		let frame = requestAnimationFrame(function tick(now) {
-			const before = playout.revision;
+			const revision = playout.revision;
+			const stage = playout.stage;
 			playout.step(now);
-			if (playout.revision !== before || playout.finished) rerender(count => count + 1);
+			if (playout.revision !== revision) playout.notify();
+			if (playout.stage !== stage || playout.finished) rerender(count => count + 1);
 			frame = playout.moving ? requestAnimationFrame(tick) : 0;
 		});
 		return () => cancelAnimationFrame(frame);
-	}, [playout, signature, pending]);
+	}, [playout, signature, pending, paused]);
 
 	return playout;
+}
+
+const noSubscription = () => () => {};
+
+/** Characters of block `index` (of `length`) that show now: all of it without a reveal, -1 before the reveal reaches it. */
+export function useRevealed(playout: Playout | null, index: number, length: number): number {
+	return useSyncExternalStore(playout?.subscribe ?? noSubscription, () => (playout ? Math.min(length, Math.floor(playout.visible(index))) : length));
 }

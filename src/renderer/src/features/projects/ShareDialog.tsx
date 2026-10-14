@@ -41,7 +41,7 @@ export function ShareDialog({ props, close }: SheetProps<ShareProps | undefined>
 
 	return (
 		<Dialog open onOpenChange={open => !open && close()}>
-			<DialogContent size="md" className="w-[520px]" title={t("share.title")}>
+			<DialogContent size="md" className="w-130" title={t("share.title")}>
 				<Segmented<ShareTab>
 					aria-label={t("share.kind")}
 					className="mb-4"
@@ -256,7 +256,7 @@ function InvitePanel({ hostId, participants }: { hostId: string | null; particip
 					<CopyField label={t("share.invite.control")} description={t("share.invite.controlHint")} value={share.controlLink} />
 					<CopyField label={t("share.invite.view")} description={t("share.invite.viewHint")} value={share.viewLink} />
 					<div>
-						<h3 className="mb-1.5 text-md font-medium text-fg">{t("share.invite.people", { count: guests.length })}</h3>
+						<h3 className="mb-2 text-md font-medium text-fg">{t("share.invite.people", { count: guests.length })}</h3>
 						{guests.length === 0 ? (
 							<p className="text-sm text-fg-muted">{t("share.invite.nobody")}</p>
 						) : (

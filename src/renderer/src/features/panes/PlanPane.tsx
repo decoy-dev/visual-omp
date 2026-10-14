@@ -1,7 +1,8 @@
 /**
  * Plan pane (DESIGN §3.7): the chat's plan file (`<session>/local/*plan*.md`, where omp's plan mode
- * writes it) rendered as Markdown, re-read every 2s while the pane is visible. When omp's Plan Review
- * screen is open, a bar offers Approve (the review's first option) or the full set of choices.
+ * writes it) rendered as Markdown, re-read every 2s while the pane is visible. When the plan has
+ * checkbox steps, a "Plan checklist" lists them first. When omp's Plan Review screen is open, a bar
+ * offers Approve (the review's first option) or the full set of choices.
  */
 import { ClipboardText, Play, TreeView } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
@@ -14,6 +15,7 @@ import type { SessionController } from "../../state/session";
 import { Markdown } from "../../transcript/Markdown";
 import { Button, EmptyState, Expand, Spinner, toast } from "../../ui";
 import { PaneToolbar, usePaneVisible } from "./common";
+import { PlanChecklist } from "./PlanChecklist";
 
 const POLL_MS = 2000;
 /** Option 0 of omp's Plan Review list (interactive-mode `showPlanReview`). */
@@ -140,6 +142,7 @@ export function PlanPane({ session }: PaneProps) {
 				</span>
 			</Expand>
 			<div className="min-h-0 flex-1 overflow-y-auto px-5 py-4 text-md">
+				<PlanChecklist text={plan.text} className="mb-4" />
 				<Markdown text={plan.text} />
 			</div>
 		</div>

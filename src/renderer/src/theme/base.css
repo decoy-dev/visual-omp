@@ -3,7 +3,8 @@
 	html {
 		font-family: var(--font-ui);
 		font-size: 16px;
-		background: var(--bg);
+		/* The window frame color (ink chrome), so the first paint matches the window's backgroundColor. */
+		background: var(--chrome-bg);
 		color: var(--fg);
 		-webkit-font-smoothing: antialiased;
 		text-rendering: optimizeLegibility;
@@ -57,11 +58,6 @@
 		line-height: var(--text-sm--line-height);
 		font-weight: 500;
 		color: var(--fg-muted);
-	}
-
-	/* Title bar / sticky chrome (DESIGN §1.1). Kept as a class name for existing callers; it is an opaque fill. */
-	.glass {
-		background: var(--glass);
 	}
 
 	.drag-region {

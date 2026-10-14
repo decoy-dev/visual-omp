@@ -172,7 +172,7 @@ export function McpSection({ projectPath, scope, setScope }: SettingsSectionProp
 						{/* Service warnings can carry raw validation dumps: show the start, keep the rest one click away. */}
 						<details>
 							<summary className="line-clamp-2 cursor-pointer">{warning}</summary>
-							<pre className="mt-1.5 max-h-40 overflow-auto font-mono text-xs whitespace-pre-wrap text-fg-muted">{warning}</pre>
+							<pre className="mt-2 max-h-40 overflow-auto font-mono text-xs whitespace-pre-wrap text-fg-muted">{warning}</pre>
 						</details>
 					</Notice>
 				))}
@@ -292,7 +292,7 @@ function ServerRow({ entry, check, projectPath, onToggle, onTest, onEdit, onView
 					{status.kind === "checking" ? <Spinner size={12} label={statusText} /> : <StatusDot status={status.dot} label={statusText} glyph />}
 				</span>
 			</Tooltip>
-			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<div className="flex min-w-0 items-center gap-2">
 					<span className="truncate text-base font-semibold text-fg">{entry.name}</span>
 					{!entry.editable && (
@@ -376,7 +376,7 @@ function ToolsDialog({ entry, check, onClose }: { entry: McpServerEntry | null; 
 				) : (
 					<ul className="flex flex-col divide-y divide-border rounded-md border border-border">
 						{result.tools.map(tool => (
-							<li key={tool.name} className="flex flex-col gap-0.5 px-3 py-2">
+							<li key={tool.name} className="flex flex-col gap-1 px-3 py-2">
 								<span className="font-mono text-sm font-medium text-fg">{tool.title ?? tool.name}</span>
 								{tool.description && <span className="line-clamp-3 text-sm text-fg-muted">{tool.description}</span>}
 							</li>

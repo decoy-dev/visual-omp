@@ -1,6 +1,7 @@
-import { type Links, Marked, type Token } from "@oh-my-pi/pi-utils/marked";
+import { type Links, Marked, Renderer, type Token, type Tokens } from "@oh-my-pi/pi-utils/marked";
 import { escapeHtml } from "../collab/lib/format";
-import { mathExtension } from "./math";
+import { i18n } from "../i18n";
+import { MATH_PENDING, mathExtension } from "./math";
 
 function unescapeHtml(raw: string): string {
 	const parseCodePoint = (value: number): string => {
@@ -53,6 +54,15 @@ function safeHref(href: string): string | null {
 	return null; // unknown scheme (javascript:, data:, …)
 }
 
+/** A cell that reads as a number ("1,204", "-3.5%", "$12", "240ms", "2.1 GB"), once inline marks are stripped. */
+const NUMERIC_CELL = /^[-+−~≈]?[$€£¥]?\d[\d,_]*(?:\.\d+)?\s?(?:%|[kKMGT]B?|B|ms|s|x|×)?$/;
+
+/** `> [!NOTE]` and its kin (GitHub alert syntax). Text after the marker on its line becomes the title. */
+const CALLOUT_MARKER = /^\[!(note|tip|important|warning|caution)\][ \t]*/i;
+
+/** marked's own renderer, for the plain code block inside the header frame. */
+const plain = new Renderer();
+
 const md = new Marked({
 	gfm: true,
 	renderer: {
@@ -68,6 +78,47 @@ const md = new Marked({
 			if (url === null) return inner;
 			const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
 			return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener">${inner}</a>`;
+		},
+		// A header row (language, Copy button) over the block. The button is wired by `copyCode` in Markdown.tsx.
+		code(token) {
+			const lang = (token.lang ?? "").match(/^\S*/)?.[0] ?? "";
+			const label = escapeHtml(i18n.t("chat:copyCode"));
+			return `<div class="tr-code"><div class="tr-code-head"><span class="tr-code-lang">${escapeHtml(lang)}</span><button type="button" class="tr-code-copy" data-copy-code aria-label="${label}" title="${label}"></button></div>${plain.code(token)}</div>\n`;
+		},
+		// A scrolling frame around the table; columns of numbers align right in mono.
+		table(token) {
+			const numeric = token.header.map((_, column) => {
+				const texts = token.rows.map(row => row[column]?.text.replace(/[`*_~]/g, "").trim() ?? "");
+				return texts.some(text => NUMERIC_CELL.test(text)) && texts.every(text => text === "" || NUMERIC_CELL.test(text));
+			});
+			const cell = (value: Tokens.TableCell, column: number) => {
+				const tag = value.header ? "th" : "td";
+				const align = value.align ?? (numeric[column] ? "right" : null);
+				return `<${tag}${align ? ` align="${align}"` : ""}${numeric[column] ? ' class="tr-num"' : ""}>${this.parser.parseInline(value.tokens)}</${tag}>`;
+			};
+			const head = `<tr>${token.header.map(cell).join("")}</tr>`;
+			const body = token.rows.map(row => `<tr>${row.map(cell).join("")}</tr>`).join("");
+			return `<div class="tr-table"><table><thead>${head}</thead>${body ? `<tbody>${body}</tbody>` : ""}</table></div>\n`;
+		},
+		// Task items drop the list marker; the checkbox (read-only, as marked renders it) takes its place.
+		listitem(item) {
+			return item.task ? `<li class="tr-task">${this.parser.parse(item.tokens)}</li>\n` : false;
+		},
+		// `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]` become tone cards; other quotes stay quotes.
+		blockquote(token) {
+			const [first, ...rest] = token.tokens;
+			if (first?.type !== "paragraph") return false;
+			const paragraph = first as Tokens.Paragraph;
+			const lead = paragraph.tokens[0];
+			const leadText = lead?.type === "text" ? (lead as Tokens.Text).text : "";
+			const marker = CALLOUT_MARKER.exec(leadText);
+			if (!marker) return false;
+			const tone = (marker[1] ?? "note").toLowerCase();
+			const title = leadText.slice(marker[0].length).trim() || i18n.t(`chat:callout.${tone}`);
+			let inline = paragraph.tokens.slice(1);
+			if (inline[0]?.type === "br") inline = inline.slice(1);
+			const lede = inline.length > 0 ? `<p>${this.parser.parseInline(inline)}</p>\n` : "";
+			return `<div class="tr-callout" data-tone="${tone}" role="note"><p class="tr-callout-title"><span class="tr-callout-icon" aria-hidden="true"></span>${escapeHtml(title)}</p>\n${lede}${this.parser.parse(rest)}</div>\n`;
 		},
 	},
 	breaks: true,
@@ -126,7 +177,10 @@ export class MarkdownBlocks {
 			this.#source = source;
 			blocks = this.#tokens.map(token => {
 				const key = `${this.#links}\u0000${token.raw}`;
-				return { key, html: this.#html.get(key) ?? md.parser([token]) };
+				const html = this.#html.get(key) ?? md.parser([token]);
+				// Math shown as source while KaTeX loads: a key of its own (never a cache hit), so the block
+				// renders again, typeset, on the first update after KaTeX arrives.
+				return { key: html.includes(MATH_PENDING) ? `${key}\u0002` : key, html };
 			});
 		} catch {
 			this.#source = "";

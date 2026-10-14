@@ -1,27 +1,47 @@
 /**
- * The chat transcript (DESIGN §3.5, §4.6). Pairing, windowing and tail-follow follow omp's own
- * collab-web Transcript (transcript/Transcript.tsx); presentation is visual-omp's.
+ * The chat transcript (DESIGN §3.5, §4.6). Pairing and windowing follow omp's own collab-web
+ * Transcript; tail-follow, pacing and presentation are visual-omp's.
  */
 import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
+import type { FileRef } from "@shared/contracts/fileRefs";
 import { ArrowDown, ArrowUUpLeft, CaretRight, Copy, GitFork, Warning, XCircle } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type KeyboardEvent, type MouseEvent, memo, type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type MouseEvent, memo, type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
-import { openInFiles } from "../../features/panes/FilesPane";
+import { type Helper, type HelperStatus, helpersByCall, ompRunning, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
+import { openInFiles } from "../../features/panes/files-store";
 import { useHomeDir } from "../../features/projects/folders/FolderBrowser";
 import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
-import { liveEntries, liveGuest, type SessionController, type SessionView } from "../../state/session";
+import { liveGuest, type SessionController, type SessionView } from "../../state/session";
 import { useApp } from "../../state/app";
-import { activeBranch, savedParents } from "../../state/history";
-import { StreamingMarkdown } from "../../transcript/Markdown";
-import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toast, useMotionReduced } from "../../ui";
+import { copyCode, StreamingMarkdown } from "../../transcript/Markdown";
+import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toast, useScrollFollow } from "../../ui";
+import { useDisplayedEntries } from "../branch";
 import { useComposerDrafts } from "../composer/drafts";
 import { FileRefContext, LinkedMarkdown, useFileRefs, writtenFolders } from "./FileLinks";
 import { usePendingQuestion } from "./QuestionCard";
+import { ReplyAnnouncer } from "./ReplyAnnouncer";
+import { helperRunsSummary, TaskRuns, taskRowContextEqual, taskRuns } from "../../tool-render/tools/task";
+import { TodoBoard, TodoChangeRow } from "../../tool-render/tools/todo";
+import { detailsRecord, isRecord } from "../../tool-render/util";
+import { NoticeRow } from "./NoticeRow";
+import { noticeIsStep, noticeVisible, parseNotice } from "./notices";
 import { ToolCard } from "./ToolCard";
-import { type PlayoutBlock, PlayoutRegistry, type Playout, revealedPrefix, synchronizedStream as streamNeedsSync, usePlayout } from "./pace";
+import { ToolGroup } from "./ToolGroup";
+import { TurnSummary } from "./TurnSummary";
+import { type ContentBlock, type EntryLayout, type TranscriptLayout, transcriptLayout } from "./turns";
+import {
+	type PlayoutBlock,
+	PlayoutPaused,
+	PlayoutRegistry,
+	type Playout,
+	revealedPrefix,
+	synchronizedStream as streamNeedsSync,
+	usePlayout,
+	useRevealed,
+} from "./pace";
 import "./transcript.css";
 
 export type TranscriptMode = "normal" | "thinking" | "verbose";
@@ -103,8 +123,24 @@ function UserMessage({ entry, session, from }: { entry: SessionEntry; session: S
 	);
 }
 
-function ThinkingBlock({ text, redacted, open, onToggle }: { text: string; redacted?: boolean; open: boolean; onToggle?: () => void }): ReactNode {
+function ThinkingBlock({
+	text,
+	playout = null,
+	index = 0,
+	redacted,
+	open,
+	onToggle,
+}: {
+	text: string;
+	/** The reply's reveal; the thought's shown prefix follows it without re-rendering the rest of the reply. */
+	playout?: Playout | null;
+	index?: number;
+	redacted?: boolean;
+	open: boolean;
+	onToggle?: () => void;
+}): ReactNode {
 	const { t } = useTranslation("chat");
+	const shown = useRevealed(open ? playout : null, index, text.length);
 	return (
 		<div>
 			<button
@@ -116,16 +152,139 @@ function ThinkingBlock({ text, redacted, open, onToggle }: { text: string; redac
 				<CaretRight className={cn("size-3.5 transition-[rotate] duration-(--dur) ease-(--ease-out)", open && "rotate-90")} aria-hidden />
 				{redacted ? t("redactedThinking") : t("thoughts")}
 			</button>
-			<Expand open={open && !redacted} className="selectable pt-0.5 pb-2 pl-5 text-sm whitespace-pre-wrap text-fg-muted">
-				{text}
+			<Expand open={open && !redacted} className="selectable pt-1 pb-2 pl-5 text-sm whitespace-pre-wrap text-fg-muted">
+				{revealedPrefix(text, shown)}
 			</Expand>
 		</div>
 	);
 }
 
-/** How much of block `index` (of `length` characters) shows: all of it, a prefix, or none (-1). */
+/**
+ * One text block of a reply. While the reply reveals, only this component re-renders as its text grows; the
+ * reply's tool rows and other blocks stay put.
+ */
+function ReplyText({
+	text,
+	playout,
+	index,
+	revealing,
+	caret,
+	refs,
+}: {
+	text: string;
+	playout: Playout | null;
+	index: number;
+	revealing: boolean;
+	/** The streaming caret follows this block's last character. */
+	caret: boolean;
+	refs: readonly (FileRef | null)[] | undefined;
+}): ReactNode {
+	const shown = useRevealed(playout, index, text.length);
+	const visible = revealedPrefix(text, shown);
+	return (
+		<div className="py-2 first:pt-0 last:pb-0" data-streaming={caret ? "" : undefined}>
+			{revealing ? <StreamingMarkdown text={visible} blockIn /> : <LinkedMarkdown text={visible} refs={refs} />}
+		</div>
+	);
+}
+
+/** Whether block `index` shows yet: -1 before the reveal reaches it, otherwise its shown length (any positive count once passed). */
 function shownLength(playout: Playout | null, index: number, length: number): number {
 	return playout ? Math.min(length, playout.visible(index)) : length;
+}
+
+/** What the turn layout tells a reply's tool blocks (see `turns.ts`). */
+interface WorkView {
+	layout: TranscriptLayout;
+	/** Group keys mounting as their turn finishes in view: they mount open and fold. */
+	settling: ReadonlySet<string>;
+	/** Live helpers by the task call that started them (`helpersByCall`). */
+	helpers: ReadonlyMap<string, readonly Helper[]>;
+	/** Each helper's last state the transcript records (`transcriptHelperStates`), for helpers read from their call. */
+	recorded: ReadonlyMap<string, HelperStatus>;
+	/** An omp process may still run this chat's helpers (`ompRunning`). */
+	ompRunning: boolean;
+}
+
+type ToolCallBlock = Extract<ContentBlock, { type: "toolCall" }>;
+
+/**
+ * One tool call: the turn's latest task board as the full card, an earlier board update as the line of what it
+ * changed, a helper run as its row plus a card per helper, anything else as the quiet tool row.
+ */
+function ToolStep({
+	block,
+	results,
+	active,
+	pending,
+	mode,
+	arriving,
+	work,
+}: {
+	block: ToolCallBlock;
+	results: ReadonlyMap<string, ToolResultMessage>;
+	active: ReadonlyMap<string, ActiveTool>;
+	pending: boolean;
+	mode: TranscriptMode;
+	arriving: boolean;
+	work: WorkView | undefined;
+}): ReactNode {
+	const { t } = useTranslation("tools");
+	const live = active.get(block.id);
+	const result = results.get(block.id);
+	const running = !result && (live !== undefined || pending);
+	const todo = work?.layout.todos.get(block.id);
+	if (todo?.role === "board") {
+		return (
+			<Rise play={arriving} distance={6} tempo="snappy" className="py-2">
+				<TodoBoard phases={todo.update.phases} />
+			</Rise>
+		);
+	}
+	if (todo?.role === "change") return <TodoChangeRow update={todo.update} />;
+	const args = live?.args ?? block.arguments;
+	// A task call's helpers can outlive it (a background spawn returns at once), so its row and cards follow the
+	// helpers' live state when omp reports it, else what the call's own result or progress says, updated by what the
+	// transcript later records. Without a running omp, nothing still works.
+	let runs: readonly Helper[] = [];
+	if (block.name === "task") {
+		const liveRuns = work?.helpers.get(block.id);
+		const partial = isRecord(live?.partialResult) && isRecord(live.partialResult.details) ? live.partialResult.details : null;
+		runs =
+			liveRuns && liveRuns.length > 0
+				? liveRuns
+				: taskRuns(isRecord(args) ? args : {}, detailsRecord(result) ?? partial, running).map(run => settleHelper(run, work?.recorded ?? null, work?.ompRunning ?? true));
+	}
+	const card = (
+		<ToolCard
+			name={block.name}
+			args={args}
+			intent={block.intent ?? live?.intent}
+			result={result}
+			running={running}
+			partialResult={live?.partialResult}
+			verbose={mode === "verbose"}
+			arriving={arriving}
+			summary={helperRunsSummary(runs, (status, count) => t(`task.states.${status}`, { count })) ?? undefined}
+		/>
+	);
+	if (runs.length === 0) return card;
+	return (
+		<div>
+			{card}
+			<div className="pt-1 pb-2 pl-6.5">
+				<TaskRuns runs={runs} />
+			</div>
+		</div>
+	);
+}
+
+/** A thought folded into a step group keeps its own disclosure. */
+function GroupThought({ block }: { block: ContentBlock }): ReactNode {
+	const [open, setOpen] = useState(false);
+	if (block.type === "redactedThinking") return <ThinkingBlock text="" redacted open={false} />;
+	if (block.type !== "thinking") return null;
+	return <ThinkingBlock text={block.thinking} open={open} onToggle={() => setOpen(value => !value)} />;
 }
 
 function AssistantBlocks({
@@ -136,6 +295,8 @@ function AssistantBlocks({
 	mode,
 	revealFromStart = false,
 	synchronized = false,
+	layout,
+	work,
 }: {
 	message: AssistantMessage;
 	results: ReadonlyMap<string, ToolResultMessage>;
@@ -146,6 +307,9 @@ function AssistantBlocks({
 	revealFromStart?: boolean;
 	/** The live mirror is synchronizing with an existing stream, rather than receiving new text. */
 	synchronized?: boolean;
+	/** Blocks this reply hides (drawn in an earlier group) and the step groups it leads. */
+	layout?: EntryLayout;
+	work?: WorkView;
 }): ReactNode {
 	const { t } = useTranslation("chat");
 	const [openThoughts, setOpenThoughts] = useState<ReadonlySet<number>>(() => new Set());
@@ -176,41 +340,52 @@ function AssistantBlocks({
 	return (
 		<div className="flex flex-col">
 			{message.content.map((block, index) => {
+				if (layout?.hidden.has(index)) return null;
 				switch (block.type) {
-					case "thinking": {
-						const shown = shownLength(playout, index, block.thinking.length);
-						if (shown < 0) return null;
-						return <ThinkingBlock key={index} text={revealedPrefix(block.thinking, shown)} open={thoughtOpen(index)} onToggle={() => toggleThought(index)} />;
-					}
-					case "redactedThinking":
-						return shownLength(playout, index, 0) < 0 ? null : <ThinkingBlock key={index} text="" redacted open={false} />;
-					case "text": {
-						const shown = shownLength(playout, index, block.text.length);
-						if (shown <= 0 && playout) return null;
-						const text = revealedPrefix(block.text, shown);
+					case "thinking":
+						if (shownLength(playout, index, block.thinking.length) < 0) return null;
 						return (
-							<div key={index} className="py-1.5 first:pt-0 last:pb-0" data-streaming={revealing && index === lastText ? "" : undefined}>
-								{revealing ? <StreamingMarkdown text={text} /> : <LinkedMarkdown text={text} refs={refs?.[textOrdinals[index]]} />}
-							</div>
-						);
-					}
-					case "toolCall": {
-						if (shownLength(playout, index, 0) < 0) return null;
-						const live = active.get(block.id);
-						const result = results.get(block.id);
-						return (
-							<ToolCard
-								key={block.id}
-								name={block.name}
-								args={live?.args ?? block.arguments}
-								intent={block.intent ?? live?.intent}
-								result={result}
-								running={!result && (live !== undefined || pending)}
-								partialResult={live?.partialResult}
-								verbose={mode === "verbose"}
-								arriving={revealing}
+							<ThinkingBlock
+								key={index}
+								text={block.thinking}
+								playout={playout}
+								index={index}
+								open={thoughtOpen(index)}
+								onToggle={() => toggleThought(index)}
 							/>
 						);
+					case "redactedThinking":
+						return shownLength(playout, index, 0) < 0 ? null : <ThinkingBlock key={index} text="" redacted open={false} />;
+					case "text":
+						if (shownLength(playout, index, block.text.length) <= 0 && playout) return null;
+						return (
+							<ReplyText
+								key={index}
+								text={block.text}
+								playout={playout}
+								index={index}
+								revealing={revealing}
+								caret={revealing && index === lastText}
+								refs={refs?.[textOrdinals[index]]}
+							/>
+						);
+					case "toolCall": {
+						if (shownLength(playout, index, 0) < 0) return null;
+						const group = layout?.groups.get(index);
+						if (group) {
+							return (
+								<ToolGroup key={block.id} plan={group} settling={work?.settling.has(group.key)}>
+									{group.items.map(item =>
+										item.block.type === "toolCall" ? (
+											<ToolStep key={item.block.id} block={item.block} results={results} active={active} pending={false} mode={mode} arriving={false} work={work} />
+										) : (
+											<GroupThought key={`${item.entryId}:${item.index}`} block={item.block} />
+										),
+									)}
+								</ToolGroup>
+							);
+						}
+						return <ToolStep key={block.id} block={block} results={results} active={active} pending={pending} mode={mode} arriving={revealing} work={work} />;
 					}
 					default:
 						return null;
@@ -222,7 +397,6 @@ function AssistantBlocks({
 						"mt-2 flex items-start gap-2 rounded-md px-3 py-2 text-md",
 						message.stopReason === "error" ? "bg-err-bg text-err" : "bg-warn-bg text-warn",
 					)}
-					role="status"
 				>
 					{message.stopReason === "error" ? (
 						<XCircle weight="fill" className="mt-0.5 size-4 shrink-0" aria-hidden />
@@ -259,15 +433,30 @@ interface RowProps {
 	active: ReadonlyMap<string, ActiveTool>;
 	mode: TranscriptMode;
 	session: SessionController;
+	/** Hidden blocks and step groups of this entry; compared by `sig`, so a row re-renders only when its layout does. */
+	layout: EntryLayout | undefined;
+	work: WorkView;
 }
 
 function rowEqual(prev: RowProps, next: RowProps): boolean {
 	if (prev.entry !== next.entry || prev.mode !== next.mode || prev.continuesTurn !== next.continuesTurn || prev.afterFirstPrompt !== next.afterFirstPrompt) return false;
+	if (prev.layout?.sig !== next.layout?.sig) return false;
 	const entry = next.entry;
 	if (entry.type !== "message" || entry.message.role !== "assistant") return true;
 	for (const block of entry.message.content) {
 		if (block.type !== "toolCall") continue;
-		if (prev.results.get(block.id) !== next.results.get(block.id) || prev.active.get(block.id) !== next.active.get(block.id)) return false;
+		const live = next.active.get(block.id);
+		const result = next.results.get(block.id);
+		if (prev.results.get(block.id) !== result || prev.active.get(block.id) !== live) return false;
+		if (block.name !== "task") continue;
+		// A task call's helpers report progress after the call itself returned.
+		const liveRuns = next.work.helpers.get(block.id);
+		if (prev.work.helpers.get(block.id) !== liveRuns) return false;
+		if (liveRuns && liveRuns.length > 0) continue;
+		// Helpers read from the call: later wait results, deliveries and omp's exit change them (see ToolStep).
+		const args = live?.args ?? block.arguments;
+		const partial = isRecord(live?.partialResult) && isRecord(live.partialResult.details) ? live.partialResult.details : null;
+		if (!taskRowContextEqual(isRecord(args) ? args : {}, detailsRecord(result) ?? partial, prev.work, next.work)) return false;
 	}
 	return true;
 }
@@ -282,7 +471,7 @@ function rowShown(entry: SessionEntry, mode: TranscriptMode, afterFirstPrompt: b
 		case "message":
 			return entry.message.role === "user" || entry.message.role === "assistant";
 		case "custom_message":
-			return entry.customType === "collab-prompt" || Boolean(entry.display);
+			return entry.customType === "collab-prompt" || (entry.display && noticeVisible(parseNotice(entry)));
 		case "compaction":
 		case "branch_summary":
 			return true;
@@ -295,7 +484,7 @@ function rowShown(entry: SessionEntry, mode: TranscriptMode, afterFirstPrompt: b
 	}
 }
 
-const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results, active, mode, session }: RowProps): ReactNode {
+const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results, active, mode, session, layout, work }: RowProps): ReactNode {
 	const { t } = useTranslation("chat");
 	switch (entry.type) {
 		case "message": {
@@ -305,7 +494,7 @@ const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results,
 			return (
 				<div className="flex flex-col gap-2">
 					{!continuesTurn && <AssistantHeader model={message.model} timestamp={entry.timestamp} />}
-					<AssistantBlocks message={message} results={results} active={active} pending={false} mode={mode} />
+					<AssistantBlocks message={message} results={results} active={active} pending={false} mode={mode} layout={layout} work={work} />
 				</div>
 			);
 		}
@@ -316,11 +505,7 @@ const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results,
 				return <UserMessage entry={entry} session={session} from={from} />;
 			}
 			if (!entry.display) return null;
-			return (
-				<div className="rounded-md border border-border bg-inset px-3 py-2 text-sm text-fg-muted">
-					<UserContent content={entry.content} />
-				</div>
-			);
+			return <NoticeRow entry={entry} mode={mode} />;
 		}
 		case "compaction":
 			return <Notice>{t("compacted")}</Notice>;
@@ -341,7 +526,7 @@ function EmptyChat({ session }: { session: SessionController }): ReactNode {
 	const prompts = t("empty.prompts", { returnObjects: true }) as { title: string; text: string }[];
 	const returning = useApp(state => state.projects.some(project => project.sessionCount > 1));
 	return (
-		<div className="m-auto flex w-full max-w-[520px] flex-col gap-6 py-16">
+		<div className="m-auto flex w-full max-w-130 flex-col gap-6 py-16">
 			<div className="flex flex-col items-center gap-4 text-center">
 				<Mark size={40} />
 				<div>
@@ -388,17 +573,32 @@ interface Arrivals {
 	streamed: boolean;
 }
 
+/**
+ * True while the chat is out of sight: under a page it opened or the hidden half of a narrow split (both make an
+ * ancestor `inert`), or in a hidden window. Presentation animation pauses then; state keeps arriving.
+ */
+function useOutOfSight(ref: RefObject<HTMLElement | null>): boolean {
+	const [hidden, setHidden] = useState(false);
+	useEffect(() => {
+		const check = () => setHidden(document.hidden || ref.current?.closest("[inert]") != null);
+		check();
+		const observer = new MutationObserver(check);
+		observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["inert"] });
+		document.addEventListener("visibilitychange", check);
+		return () => {
+			observer.disconnect();
+			document.removeEventListener("visibilitychange", check);
+		};
+	}, [ref]);
+	return hidden;
+}
+
 export function Transcript({ session, view, mode }: TranscriptProps): ReactNode {
 	const { t } = useTranslation("chat");
-	const reducedMotion = useMotionReduced();
 	const slots = chatSlots.use().filter(slot => slot.placement === "transcriptEnd");
 	const guest = liveGuest(view);
 	// The live stream carries every branch; show the one ending at the leaf (after a rewind, the displayed leaf).
-	const guestEntries = liveEntries(view);
-	const entries = useMemo(
-		() => (guestEntries ? activeBranch(guestEntries, view.displayLeaf, savedParents(view.history)) : (view.history?.entries ?? [])),
-		[guestEntries, view.displayLeaf, view.history],
-	);
+	const entries = useDisplayedEntries(view);
 	const stream = guest?.stream ?? null;
 	const streamDone = view.guest?.streamDone ?? true;
 	const activeTools = guest?.activeTools ?? EMPTY_TOOLS;
@@ -440,31 +640,15 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 
 	const rootRef = useRef<HTMLDivElement | null>(null);
 	const contentRef = useRef<HTMLDivElement | null>(null);
-	const lockRef = useRef(true);
+	const pinnedRef = useRef(true);
 	const [unseen, setUnseen] = useState(false);
 	const prependRef = useRef<{ anchor: Element; offset: number } | null>(null);
 	// Reveal state by message, so a streamed reply's saved entry continues the same reveal (`usePlayout`).
 	const [playouts] = useState(() => new Map<number, Playout>());
-
-	useEffect(() => {
-		const el = rootRef.current;
-		if (!el) return;
-		if (lockRef.current) el.scrollTop = el.scrollHeight;
-		else setUnseen(true);
-	}, [entries, stream, activeTools, uiRequest, view.working]);
-
-	// A paced reply grows between those updates, and so do expanding cards, so a view pinned to
-	// the bottom also follows the content column's own growth. Scrolled up, it stays put.
-	useEffect(() => {
-		const el = rootRef.current;
-		const content = contentRef.current;
-		if (!el || !content) return;
-		const observer = new ResizeObserver(() => {
-			if (lockRef.current) el.scrollTop = el.scrollHeight;
-		});
-		observer.observe(content);
-		return () => observer.disconnect();
-	}, []);
+	const outOfSight = useOutOfSight(rootRef);
+	// Pinned to the bottom, the view follows new rows and the content column's own growth (a paced reply, an opening
+	// card) in one eased write per frame. Scrolled up, it stays put.
+	const follow = useScrollFollow(rootRef, pinnedRef, { content: contentRef, threshold: PINNED_PX, paused: outOfSight });
 
 	useLayoutEffect(() => {
 		const el = rootRef.current;
@@ -473,7 +657,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		prependRef.current = null;
 		if (before.anchor.isConnected) el.scrollTop += before.anchor.getBoundingClientRect().top - el.getBoundingClientRect().top - before.offset;
 		// Settle the pin now, before the content observer sees the taller column and follows it.
-		lockRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PINNED_PX;
+		pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PINNED_PX;
 	}, [start]);
 
 	const showEarlier = () => {
@@ -486,12 +670,9 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	};
 
 	const jumpToEnd = () => {
-		const el = rootRef.current;
-		if (!el) return;
-		lockRef.current = true;
 		setUnseen(false);
 		setPinnedStart(null);
-		el.scrollTo({ top: el.scrollHeight, behavior: reducedMotion ? "auto" : "smooth" });
+		follow.jumpToEnd();
 	};
 
 	// File and folder links in replies (`FileLinks`) open in the Files pane, unless the click ended a text selection in them.
@@ -506,6 +687,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	};
 
 	const onClick = (event: MouseEvent<HTMLDivElement>) => {
+		if (copyCode(event)) return;
 		if (openFileLink(event.target)) {
 			event.preventDefault();
 			return;
@@ -546,6 +728,58 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		arrivalsRef.current = { armed: loaded, seen: new Set(visible.map(entry => entry.id)), streamed: streaming };
 	}, [visible, loaded, streaming]);
 	const arrivals = arrivalsRef.current;
+
+	// How omp's work lays out turn by turn: step groups (Normal view, finished turns), the board per turn, and the
+	// files each finished turn changed. Groups and summaries that appear as a turn finishes in view settle in: groups
+	// mount open and fold, summaries rise; history renders at rest.
+	const live = view.working || stream !== null;
+	const layout = useMemo(
+		() => transcriptLayout(entries, { live, group: mode === "normal", context: { cwd: session.projectPath, home }, from: start }),
+		[entries, live, mode, session.projectPath, home, start],
+	);
+	const shownWorkRef = useRef<{ live: boolean; keys: ReadonlySet<string> } | null>(null);
+	const shownWork = shownWorkRef.current;
+	const workKeys = useMemo(() => {
+		const keys = new Set<string>();
+		for (const entryLayout of layout.entries.values()) for (const plan of entryLayout.groups.values()) keys.add(plan.key);
+		for (const id of layout.summaries.keys()) keys.add(`summary:${id}`);
+		return keys;
+	}, [layout]);
+	// Only the commit where the turn finishes settles; a window edge moving during a turn re-keys groups at rest.
+	const settling = useMemo(() => {
+		const keys = new Set<string>();
+		if (shownWork?.live && !live && arrivals.armed) for (const key of workKeys) if (!shownWork.keys.has(key)) keys.add(key);
+		return keys;
+	}, [workKeys, shownWork, live, arrivals.armed]);
+	useEffect(() => {
+		shownWorkRef.current = { live, keys: workKeys };
+	}, [live, workKeys]);
+	const agents = guest?.agents;
+	const progress = guest?.progress;
+	const lifecycle = guest?.lifecycle;
+	const helpersMayRun = ompRunning(view);
+	const helpers = useMemo(
+		() => helpersByCall(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, helpersMayRun),
+		[agents, progress, lifecycle, helpersMayRun],
+	);
+	const recorded = useMemo(() => transcriptHelperStates(entries), [entries]);
+	const work = useMemo((): WorkView => ({ layout, settling, helpers, recorded, ompRunning: helpersMayRun }), [layout, settling, helpers, recorded, helpersMayRun]);
+	const openFile = (path: string) => openInFiles(session.projectPath, path, { focus: true });
+
+	// New rows, stream updates and questions: follow when pinned, otherwise offer the jump. Until the chat has loaded
+	// (and on that first loaded commit) the view goes straight to the bottom instead of gliding there.
+	const settledRef = useRef(false);
+	useEffect(() => {
+		if (!pinnedRef.current) {
+			setUnseen(true);
+			return;
+		}
+		if (settledRef.current) follow.follow();
+		else {
+			follow.snap();
+			settledRef.current = loaded;
+		}
+	}, [follow, loaded, entries, stream, activeTools, uiRequest, view.working]);
 	let lastSeen = -1;
 	for (let index = visible.length - 1; index >= 0; index--) {
 		if (arrivals.seen.has(visible[index]?.id ?? "")) {
@@ -556,6 +790,61 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 
 	let seenUser = false;
 	let previousAssistant = false;
+	const rows: ReactNode[] = [];
+	// Consecutive step-style notices share one flex child, so they stack like a tool group's rows instead of taking
+	// the turn gap between each. Keyed by the run's first entry, so a notice joining the run keeps the others mounted.
+	let run: { key: string; rows: ReactNode[] } | null = null;
+	const endRun = () => {
+		if (!run) return;
+		rows.push(
+			<div key={`run:${run.key}`} className="flex flex-col">
+				{run.rows}
+			</div>,
+		);
+		run = null;
+	};
+	visible.forEach((entry, index) => {
+		const isUser = (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
+		if (isUser) seenUser = true;
+		if (!rowShown(entry, mode, seenUser)) return;
+		const isAssistant = entry.type === "message" && entry.message.role === "assistant";
+		const continuesTurn = isAssistant && previousAssistant;
+		previousAssistant = isAssistant;
+		const arrived = arrivals.armed && index > lastSeen && !arrivals.seen.has(entry.id) && !(isAssistant && arrivals.streamed);
+		const summary = layout.summaries.get(entry.id);
+		const row = (
+			<Rise key={entry.id} data-row play={arrived} distance={6} tempo="snappy" className={cn(continuesTurn && "-mt-6")}>
+				<Row
+					entry={entry}
+					continuesTurn={continuesTurn}
+					afterFirstPrompt={seenUser}
+					results={results}
+					active={activeTools}
+					mode={mode}
+					session={session}
+					layout={layout.entries.get(entry.id)}
+					work={work}
+				/>
+			</Rise>
+		);
+		if (entry.type === "custom_message" && entry.customType !== "collab-prompt" && noticeIsStep(parseNotice(entry))) {
+			run ??= { key: entry.id, rows: [] };
+			run.rows.push(row);
+		} else {
+			endRun();
+			// Rows of one turn stack without the turn gap, so a run of tool calls reads as one list.
+			rows.push(row);
+		}
+		if (summary) {
+			endRun();
+			rows.push(
+				<Rise key={`summary:${entry.id}`} play={settling.has(`summary:${entry.id}`)} distance={6} tempo="snappy" className="-mt-4">
+					<TurnSummary totals={summary} projectPath={session.projectPath} onOpen={openFile} />
+				</Rise>,
+			);
+		}
+	});
+	endRun();
 
 	return (
 		<div className="relative min-h-0 flex-1">
@@ -566,99 +855,87 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				onScroll={() => {
 					const el = rootRef.current;
 					if (!el) return;
-					lockRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PINNED_PX;
-					if (lockRef.current) {
+					follow.onScroll();
+					if (pinnedRef.current) {
 						setUnseen(false);
 						if (pinnedStart !== null) setPinnedStart(null);
 					} else if (pinnedStart === null) setPinnedStart(start);
 					if (el.scrollTop <= EARLIER_TRIGGER_PX) showEarlier();
 				}}
 				className="absolute inset-0 overflow-y-auto"
+				// Not live: the paced reveal would reach screen readers in fragments. `ReplyAnnouncer` speaks each finished reply once.
 				role="log"
-				aria-live="polite"
-				aria-relevant="additions"
+				aria-live="off"
 			>
 				<PlayoutRegistry.Provider value={playouts}>
-					<FileRefContext.Provider value={fileRefScope}>
-						<div ref={contentRef} className="mx-auto flex min-h-full w-full max-w-(--chat-max) flex-col gap-6 px-6 pt-6 pb-4">
-							{empty && <EmptyChat session={session} />}
-							{start > 0 && (
-								<Button variant="ghost" size="sm" className="self-center" onClick={showEarlier}>
-									{t("showEarlier", { count: start })}
-								</Button>
-							)}
-							{visible.map((entry, index) => {
-								const isUser = (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
-								if (isUser) seenUser = true;
-								if (!rowShown(entry, mode, seenUser)) return null;
-								const isAssistant = entry.type === "message" && entry.message.role === "assistant";
-								const continuesTurn = isAssistant && previousAssistant;
-								previousAssistant = isAssistant;
-								const arrived = arrivals.armed && index > lastSeen && !arrivals.seen.has(entry.id) && !(isAssistant && arrivals.streamed);
-								return (
-									// Rows of one turn stack without the turn gap, so a run of tool calls reads as one list.
-									<Rise key={entry.id} data-row play={arrived} className={cn(continuesTurn && "-mt-6")}>
-										<Row
-											entry={entry}
-											continuesTurn={continuesTurn}
-											afterFirstPrompt={seenUser}
+					<PlayoutPaused.Provider value={outOfSight}>
+						<FileRefContext.Provider value={fileRefScope}>
+							<div ref={contentRef} className="mx-auto flex min-h-full w-full max-w-(--chat-max) flex-col gap-6 px-6 pt-6 pb-4">
+								{empty && <EmptyChat session={session} />}
+								{start > 0 && (
+									<Button variant="ghost" size="sm" className="self-center" onClick={showEarlier}>
+										{t("showEarlier", { count: start })}
+									</Button>
+								)}
+								{rows}
+								{stream && (
+									<Rise
+										data-row
+										play={arrivals.armed && !arrivals.streamed}
+										distance={6}
+										tempo="snappy"
+										className={cn("flex flex-col gap-2", previousAssistant && "-mt-6")}
+									>
+										{!previousAssistant && <AssistantHeader model={stream.model} />}
+										<AssistantBlocks
+											message={stream}
 											results={results}
 											active={activeTools}
+											pending={!streamDone}
 											mode={mode}
-											session={session}
+											revealFromStart={arrivals.armed}
+											synchronized={synchronized}
+											work={work}
 										/>
 									</Rise>
-								);
-							})}
-							{stream && (
-								<Rise data-row play={arrivals.armed && !arrivals.streamed} className={cn("flex flex-col gap-2", previousAssistant && "-mt-6")}>
-									{!previousAssistant && <AssistantHeader model={stream.model} />}
-									<AssistantBlocks
-										message={stream}
-										results={results}
-										active={activeTools}
-										pending={!streamDone}
-										mode={mode}
-										revealFromStart={arrivals.armed}
-										synchronized={synchronized}
-									/>
-								</Rise>
-							)}
-							{tailTools.length > 0 && (
-								<div data-row className="-mt-6 flex flex-col">
-									{tailTools.map(tool => (
-										<ToolCard
-											key={tool.toolCallId}
-											name={tool.toolName}
-											args={tool.args}
-											intent={tool.intent}
-											running
-											partialResult={tool.partialResult}
-											verbose={mode === "verbose"}
-											arriving={arrivals.armed}
-										/>
-									))}
-								</div>
-							)}
-							<AnimatePresence initial={false} mode="wait">
-								{pendingQuestion && (
-									<motion.div
-										key={pendingQuestion.key}
-										initial={{ opacity: 0, y: 8 }}
-										animate={{ opacity: 1, y: 0, transition: { y: spring.gentle, opacity: { duration: duration.base, ease: ease.outQuart } } }}
-										exit={{ opacity: 0, y: -4, transition: { duration: duration.fast, ease: "easeIn" } }}
-									>
-										{pendingQuestion.node}
-									</motion.div>
 								)}
-							</AnimatePresence>
-							{slots.map(slot => (
-								<slot.component key={slot.id} session={session} />
-							))}
-						</div>
-					</FileRefContext.Provider>
+								{tailTools.length > 0 && (
+									<div data-row className="-mt-6 flex flex-col">
+										{tailTools.map(tool => (
+											<ToolCard
+												key={tool.toolCallId}
+												name={tool.toolName}
+												args={tool.args}
+												intent={tool.intent}
+												running
+												partialResult={tool.partialResult}
+												verbose={mode === "verbose"}
+												arriving={arrivals.armed}
+											/>
+										))}
+									</div>
+								)}
+								<AnimatePresence initial={false} mode="wait">
+									{pendingQuestion && (
+										<motion.div
+											key={pendingQuestion.key}
+											initial={{ opacity: 0, y: 8 }}
+											animate={{ opacity: 1, y: 0, transition: { y: spring.gentle, opacity: { duration: duration.base, ease: ease.outQuart } } }}
+											exit={{ opacity: 0, y: -4, transition: { duration: duration.fast, ease: "easeIn" } }}
+										>
+											{pendingQuestion.node}
+										</motion.div>
+									)}
+								</AnimatePresence>
+								{slots.map(slot => (
+									<slot.component key={slot.id} session={session} />
+								))}
+							</div>
+						</FileRefContext.Provider>
+					</PlayoutPaused.Provider>
 				</PlayoutRegistry.Provider>
 			</div>
+			<ReplyAnnouncer entries={entries} ready={loaded} />
 			<AnimatePresence initial={false}>
 				{unseen && (
 					<motion.div
@@ -667,9 +944,10 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 						animate={{ opacity: 1, y: 0 }}
 						exit={{ opacity: 0, y: 8 }}
 						transition={spring.snappy}
-						className="absolute right-6 bottom-3"
+						// Centered over the reading column, just above the composer, so it stays next to the text it refers to at any width.
+						className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center"
 					>
-						<Button variant="primary" size="sm" icon={<ArrowDown />} className="shadow-(--shadow-pop)" onClick={jumpToEnd}>
+						<Button variant="primary" size="sm" icon={<ArrowDown />} className="pointer-events-auto shadow-(--shadow-pop)" onClick={jumpToEnd}>
 							{t("newActivity")}
 						</Button>
 					</motion.div>

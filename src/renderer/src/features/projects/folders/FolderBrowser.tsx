@@ -38,6 +38,7 @@ import {
 import { useTranslation } from "react-i18next";
 import { useApp } from "@/state/app";
 import { Button, Checkbox, Chip, cn, Dialog, DialogContent, Expand, IconButton, Input, PresenceSwap, SearchInput, Spinner, spring } from "@/ui";
+import { menuItem, menuItemActive } from "@/ui/styles";
 import { CheckFailure } from "../CheckFailure";
 import { folderName } from "../format";
 import { useDebouncedCheck } from "../useDebouncedCheck";
@@ -253,7 +254,7 @@ export function FolderBrowser({ initialPath, confirmLabel, onConfirm, onCancel, 
 
 	return (
 		<div className="flex flex-col">
-			<div className="flex h-[min(440px,calc(100vh-240px))] min-h-[280px] gap-4">
+			<div className="flex h-[min(440px,calc(100vh-240px))] min-h-70 gap-4">
 				<PlaceScope.Provider value={listId}>
 				<nav aria-label={t("browser.places")} className="-ml-2 w-40 shrink-0 overflow-y-auto">
 					<ul className="flex flex-col gap-px">
@@ -339,8 +340,7 @@ export function FolderBrowser({ initialPath, confirmLabel, onConfirm, onCancel, 
 
 					<div
 						className={cn(
-							"relative mt-2 min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-md border border-border bg-panel transition-opacity duration-(--dur)",
-							loading && "opacity-60",
+							"relative mt-2 min-h-0 flex-1 overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-panel transition-opacity duration-(--dur)",
 						)}
 					>
 						<PresenceSwap swapKey={shownPath ?? ""} variant="slide" direction={trail.direction} className="flex min-h-full flex-col">
@@ -355,7 +355,7 @@ export function FolderBrowser({ initialPath, confirmLabel, onConfirm, onCancel, 
 								)}
 							</div>
 						) : (
-							<ul id={listId} role="listbox" aria-label={t("browser.listLabel", { name: listingName })} className="flex flex-col p-1">
+							<ul id={listId} role="listbox" aria-label={t("browser.listLabel", { name: listingName })} className="flex flex-col p-menu">
 								{entries.map((entry, index) => (
 									<li
 										key={entry.path}
@@ -368,9 +368,10 @@ export function FolderBrowser({ initialPath, confirmLabel, onConfirm, onCancel, 
 										}}
 										onDoubleClick={() => void go(entry.path)}
 										className={cn(
-											"flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-md select-none",
-											index === activeIndex ? "bg-selected text-fg" : "text-fg hover:bg-hover",
+											menuItem,
+											index === activeIndex && menuItemActive,
 											entry.hidden && "text-fg-muted",
+											"hover:bg-hover",
 										)}
 									>
 										<Folder className="size-4 shrink-0 text-fg-muted" weight={entry.isProject ? "fill" : "regular"} aria-hidden />
@@ -399,7 +400,7 @@ export function FolderBrowser({ initialPath, confirmLabel, onConfirm, onCancel, 
 							</span>
 						)}
 					</div>
-					<p className="mt-1.5 text-xs text-fg-muted">{t(MAC ? "browser.keysMac" : "browser.keysOther")}</p>
+					<p className="mt-2 text-xs text-fg-muted">{t(MAC ? "browser.keysMac" : "browser.keysOther")}</p>
 					<p className="sr-only" role="status" aria-live="polite">
 						{status}
 					</p>

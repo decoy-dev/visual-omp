@@ -51,7 +51,7 @@ export function Tooltip({ content, shortcut, side = "top", align = "center", chi
 					sideOffset={8}
 					collisionPadding={8}
 					className={cn(
-						"vo-pop z-(--z-tooltip) flex max-w-72 select-none items-center gap-1.5 rounded-sm border border-border bg-raised p-1.5 text-xs leading-none font-medium text-fg shadow-(--shadow-pop)",
+						"vo-pop z-(--z-tooltip) flex max-w-72 select-none items-center gap-1 rounded-sm border border-border bg-raised p-2 text-xs leading-none font-medium text-fg shadow-(--shadow-pop)",
 						className,
 					)}
 				>

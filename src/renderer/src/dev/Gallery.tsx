@@ -174,7 +174,7 @@ export function Gallery() {
 							</span>
 						</Row>
 						<Row label="Card working">
-							<Card working={working} padding="sm" className="w-[320px]">
+							<Card working={working} padding="sm" className="w-80">
 								<p className="text-md">Running tests</p>
 								<p className="text-sm text-fg-muted">The border turns accent while omp is working.</p>
 							</Card>

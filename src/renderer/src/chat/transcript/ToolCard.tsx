@@ -10,6 +10,7 @@ import {
 	type Icon,
 	ListChecks,
 	MagnifyingGlass,
+	Minus,
 	PencilSimpleLine,
 	Question,
 	Robot,
@@ -19,7 +20,7 @@ import {
 } from "@phosphor-icons/react";
 import { memo, type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { friendlySummary, resolveToolCall } from "../friendly";
+import { type FriendlySummary, friendlySummary, resolveToolCall } from "../friendly";
 import { resolveToolRenderer } from "../../tool-render/registry";
 import type { ToolRenderHost, ToolResultLike } from "../../tool-render/types";
 import { replaceTabs, stripAnsi } from "../../tool-render/util";
@@ -66,6 +67,8 @@ export interface ToolCardProps {
 	/** The call arrived while the reply streams in: the row rises into place. Saved rows render at rest. */
 	arriving?: boolean;
 	host?: ToolRenderHost;
+	/** Replaces the call's own one-liner when the caller knows more, such as a task call whose helpers outlive it. */
+	summary?: FriendlySummary;
 }
 
 function partialText(partial: unknown): string {
@@ -85,7 +88,7 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 	const tc = useTranslation("chat").t;
 	const [open, setOpen] = useState(props.verbose);
 	const call = resolveToolCall({ name: props.name, args: props.args, result: props.result, running: props.running, intent: props.intent });
-	const summary = friendlySummary(call);
+	const summary = props.summary ?? friendlySummary(call);
 	const renderer = resolveToolRenderer(call.name);
 	const ToolIcon = ICONS[call.name] ?? Wrench;
 	const running = summary.status === "running";
@@ -115,6 +118,10 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 					) : summary.status === "error" ? (
 						<span className="inline-flex text-err" role="img" aria-label={tc("toolFailed")}>
 							<X weight="bold" className="size-3.5" aria-hidden />
+						</span>
+					) : summary.status === "neutral" ? (
+						<span className="inline-flex text-fg-faint" role="img" aria-label={summary.statusLabel ? t(summary.statusLabel) : undefined}>
+							<Minus weight="bold" className="size-3.5" aria-hidden />
 						</span>
 					) : (
 						<Check weight="bold" className="size-3.5 text-fg-faint" aria-hidden />

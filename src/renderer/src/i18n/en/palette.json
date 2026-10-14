@@ -112,6 +112,18 @@
 			"title": "Go to next open chat",
 			"keywords": "next, forward, switch, chat"
 		},
+		"nextWaiting": {
+			"title": "Go to next chat waiting for you",
+			"hint": "Show the next open chat where omp is waiting for your answer.",
+			"keywords": "waiting, question, answer, needs input, next",
+			"none": "No other chat is waiting for your answer."
+		},
+		"reopenClosed": {
+			"title": "Reopen closed chat",
+			"hint": "Bring back the chat you closed last, with any text you hadn't sent.",
+			"keywords": "reopen, undo close, restore, closed chat",
+			"none": "None of the chats you closed can be reopened. Each one is open again or its saved file was deleted."
+		},
 		"theme": {
 			"title": "Switch between light and dark",
 			"hint": "Switch between the light and dark themes.",

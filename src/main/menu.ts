@@ -35,6 +35,7 @@ export function buildMenu(): void {
 				command("Open Folder…", "project.open", "CmdOrCtrl+O"),
 				{ type: "separator" },
 				command("Close Chat", "chat.close", "CmdOrCtrl+W"),
+				command("Reopen Closed Chat", "chat.reopenClosed", "CmdOrCtrl+Shift+T"),
 				...(isMac ? [] : [{ type: "separator" } as const, command("Settings…", "app.settings", "Ctrl+,"), { role: "quit" } as const]),
 			],
 		},
@@ -60,6 +61,7 @@ export function buildMenu(): void {
 			label: "Chat",
 			submenu: [
 				command("Stop", "chat.stop", "CmdOrCtrl+."),
+				command("Next Chat Waiting for You", "chat.nextWaiting", "CmdOrCtrl+Shift+A"),
 				command("Restart omp", "chat.restart", "CmdOrCtrl+Shift+R"),
 				command("Compact Conversation", "chat.compact"),
 				command("Plan Mode", "chat.plan", "CmdOrCtrl+Shift+P"),

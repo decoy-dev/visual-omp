@@ -4,16 +4,22 @@
  * Open chats keep running while another one shows; the sidebar lists them and switches between them.
  * Layout and open chats persist to localStorage so the window comes back the way it was left.
  */
+import { useSyncExternalStore } from "react";
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { AppPreferences, OmpStatus, ProjectSummary, SessionSummary } from "@shared/ipc";
 import { useComposerDrafts } from "../chat/composer/drafts";
 import { confirmTabClose } from "../registry/guards";
+import { chatTitle } from "../shell/hooks";
+import { type ClosedChat, pushClosed, takeReopenable } from "./closedChats";
+import { normalizeRestoredChatSelection, releaseKeepsNumbers } from "./chatSelection";
 import { whenLeaving } from "./leaveGuard";
 import { SessionController } from "./session";
 
 /** Id of the main area; focus lands here when Back cannot return it to the control that opened a page. */
 export const MAIN_ID = "vo-main";
+/** Id of the sidebar. */
+export const SIDEBAR_ID = "vo-sidebar";
 
 /** An open chat: it has a SessionController and may have omp running, whether or not it is showing. */
 export interface ChatTab {
@@ -69,8 +75,6 @@ export interface AppState {
 	terminalTabId: string | null;
 	/** Sidebar search (filters the sidebar only). */
 	search: string;
-	/** Sidebar "Active" filter: only chats that are working, waiting for an answer or open with omp running. */
-	sidebarFilter: "all" | "active";
 	expandedProjects: string[];
 	/** Projects whose whole chat list shows in the sidebar ("Show N more chats"). */
 	expandedChatLists: string[];
@@ -107,8 +111,16 @@ export interface AppState {
 	 * shows it beside the chat on the left instead.
 	 */
 	activateTab(tabId: string, options?: { split?: boolean }): void;
-	/** Close an open chat and stop its omp. `closeChat` asks first while it is working. */
+	/**
+	 * Close an open chat and stop its omp. `closeChat` asks first while it is working. A saved chat goes on the
+	 * "Reopen closed chat" stack with its unsent text.
+	 */
 	closeTab(tabId: string): Promise<void>;
+	/**
+	 * Show the most recently closed chat that is not open again and whose file still exists, with its unsent text,
+	 * without starting omp. Resolves false when there is none or the user kept editing a page.
+	 */
+	reopenClosedChat(): Promise<boolean>;
 	/**
 	 * Split view on or off. Turning it on shows the most recently viewed other open chat beside the
 	 * focused one, or starts a new chat there when no other chat is open.
@@ -132,7 +144,6 @@ export interface AppState {
 	openTerminal(tabId?: string | null): void;
 	closeTerminal(): void;
 	setSearch(search: string): void;
-	setSidebarFilter(filter: "all" | "active"): void;
 	/** Show every chat of a project in the sidebar. */
 	showMoreChats(projectPath: string): void;
 }
@@ -177,6 +188,8 @@ let pageOpener: HTMLElement | null = null;
 
 /** Open chats, most recently shown first (picks the chat that "Open side by side" puts beside the focused one). */
 let recentTabs: string[] = [];
+/** Chats closed in this window, newest first, for "Reopen closed chat". */
+let closedChats: ClosedChat[] = [];
 /** Set once init() has adopted running omp hosts; before that a restored chat may still have one. */
 let hostsAdopted = false;
 
@@ -187,14 +200,15 @@ function recentOtherTab(tabs: readonly ChatTab[], exclude: (string | null)[]): s
 }
 
 /**
- * Release rule: an open chat that is no longer showing goes back to being a saved row when omp never
- * started for it (it only showed the saved transcript), nothing was sent, and its composer holds no
- * text or files. Chats with omp running, a draft, or an open omp terminal stay open.
+ * Release rule: an open chat the user moved away from goes back to being a saved row when omp never started for
+ * it (it only showed the saved transcript), nothing was sent, its composer holds no text or files, and removing it
+ * renumbers no chat that was already open (`releaseKeepsNumbers`; `before` is the list before this change).
  */
-function releaseIfUnused(tabId: string): void {
+function releaseIfUnused(tabId: string, before: readonly ChatTab[]): void {
 	const state = useApp.getState();
 	const controller = controllers.get(tabId);
 	if (!controller || tabId === state.activeTabId || tabId === state.splitTabId || tabId === state.terminalTabId) return;
+	if (!releaseKeepsNumbers(tabId, state.tabs, before)) return;
 	if (controller.getSnapshot().mode !== "history" || controller.hostId || controller.inputSent) return;
 	const drafts = useComposerDrafts.getState();
 	if (drafts.drafts[tabId]?.trim() || (drafts.attachments[tabId]?.length ?? 0) > 0) return;
@@ -222,11 +236,56 @@ function showTab(tabId: string): void {
 export const MIN_CHAT_WIDTH = 480;
 
 /**
+ * Window layout widths (DESIGN §3), the one definition Shell draws and the fit math reads. The floating side panel
+ * sits on a strip of canvas with `DOCK_INSET` on each side; the sheet has a 1px seam against the sidebar. The resize
+ * handles overlap their neighbours (-mx-0.5 on a 4px handle), so they take no width.
+ */
+export const DOCK_INSET = 8;
+const SHEET_SEAM = 1;
+
+/**
  * The side panel is open but the window is too narrow for it beside the chat, so it takes the main area
  * (with "Back to chat") unless the user went back to the chat (`chatOverDock`). Full pages hide the panel.
+ * Everything beside the chat counts: sidebar and seam, panel and its gutters.
  */
 export function dockTooNarrow(state: Pick<AppState, "dockOpen" | "dockWidth" | "sidebarOpen" | "sidebarWidth" | "view">, windowWidth: number): boolean {
-	return state.dockOpen && state.view !== "page" && windowWidth - (state.sidebarOpen ? state.sidebarWidth : 0) - state.dockWidth < MIN_CHAT_WIDTH;
+	const occupied = (state.sidebarOpen ? state.sidebarWidth + SHEET_SEAM : 0) + state.dockWidth + 2 * DOCK_INSET;
+	return state.dockOpen && state.view !== "page" && windowWidth - occupied < MIN_CHAT_WIDTH;
+}
+
+function subscribeResize(listener: () => void): () => void {
+	window.addEventListener("resize", listener);
+	return () => window.removeEventListener("resize", listener);
+}
+
+/** The window's width in CSS px, re-rendering on resize. */
+export function useWindowWidth(): number {
+	return useSyncExternalStore(subscribeResize, () => window.innerWidth);
+}
+
+/**
+ * Whether the side panel is on screen: open, not hidden by a full page, and, when the window is too narrow for it
+ * beside the chat, not standing aside for the chat. For controls that show or toggle it (header toggle, work chip).
+ */
+export function useDockVisible(): boolean {
+	const width = useWindowWidth();
+	return useApp(state => state.dockOpen && state.view !== "page" && (!state.chatOverDock || !dockTooNarrow(state, width)));
+}
+
+/**
+ * The page's back link or selected section where it shows now inside `scope`: the selected rail item, the narrow
+ * rail's select (NavRail marks both `data-nav-target`), else the back link. Only a visible, non-inert control counts.
+ */
+function pageNavFocusTarget(scope: HTMLElement | null): HTMLElement | null {
+	if (!scope) return null;
+	const usable = (element: HTMLElement | null): element is HTMLElement =>
+		element !== null && element.getClientRects().length > 0 && !element.closest("[inert]");
+	for (const marked of scope.querySelectorAll<HTMLElement>("[data-nav-target]")) {
+		const control = marked.matches("button") ? marked : marked.querySelector<HTMLElement>("button");
+		if (usable(control)) return control;
+	}
+	for (const back of scope.querySelectorAll<HTMLElement>("[data-page-back] button")) if (usable(back)) return back;
+	return null;
 }
 
 export const useApp = create<AppState>()(
@@ -254,7 +313,6 @@ export const useApp = create<AppState>()(
 			terminalTabId: null,
 			search: "",
 			expandedProjects: [],
-			sidebarFilter: "all",
 			expandedChatLists: [],
 			chatOverDock: false,
 
@@ -412,6 +470,13 @@ export const useApp = create<AppState>()(
 			async closeTab(tabId) {
 				const controller = controllers.get(tabId);
 				controllers.delete(tabId);
+				const closing = get().tabs.find(tab => tab.id === tabId);
+				const drafts = useComposerDrafts.getState();
+				if (closing?.sessionFile) {
+					const title = chatTitle(controller?.getSnapshot() ?? null, closing.title);
+					closedChats = pushClosed(closedChats, { projectPath: closing.projectPath, sessionFile: closing.sessionFile, title, draft: drafts.drafts[tabId] ?? "" });
+				}
+				drafts.forget(tabId);
 				set(state => {
 					const tabs = state.tabs.filter(tab => tab.id !== tabId);
 					let activeTabId = state.activeTabId;
@@ -436,6 +501,37 @@ export const useApp = create<AppState>()(
 				await controller?.dispose();
 			},
 
+			async reopenClosedChat() {
+				const { chat, skipped } = await takeReopenable(
+					closedChats,
+					file => get().tabs.some(tab => tab.sessionFile === file),
+					file => window.vomp.invoke("fs:exists", file),
+				);
+				const taken = chat ? [chat, ...skipped] : skipped;
+				closedChats = closedChats.filter(entry => !taken.includes(entry));
+				if (!chat) return false;
+				const result = await whenLeaving(() => {
+					const existing = get().tabs.find(tab => tab.sessionFile === chat.sessionFile);
+					if (existing) {
+						showTab(existing.id);
+						return;
+					}
+					const tab: ChatTab = { id: newTabId(), projectPath: chat.projectPath, sessionFile: chat.sessionFile, title: chat.title };
+					ensureController(tab);
+					if (chat.draft) useComposerDrafts.getState().setDraft(tab.id, chat.draft);
+					set(state => ({
+						tabs: [...state.tabs, tab],
+						activeTabId: tab.id,
+						focusedSplit: "primary",
+						activeProject: chat.projectPath,
+						view: "chat",
+						chatOverDock: true,
+					}));
+				});
+				if (!result.left) closedChats = pushClosed(closedChats, chat);
+				return result.left;
+			},
+
 			toggleSplit() {
 				const { splitTabId, tabs, activeTabId } = get();
 				if (splitTabId) {
@@ -454,7 +550,25 @@ export const useApp = create<AppState>()(
 			},
 
 			toggleSidebar() {
-				set(state => ({ sidebarOpen: !state.sidebarOpen }));
+				const showing = !get().sidebarOpen;
+				// A page's back link and section nav change sides with the sidebar (they render inline while it is hidden).
+				// Focus on them, or anywhere in a sidebar that is going away, follows them to where they show next.
+				const focused = document.activeElement;
+				const inSidebar = focused?.closest(`#${SIDEBAR_ID}`) != null;
+				const onPage = get().view === "page";
+				const onMoving = onPage && focused?.closest(`#${MAIN_ID} :is([data-nav-rail], [data-page-back])`) != null;
+				set({ sidebarOpen: showing });
+				if (showing ? !onMoving : !inSidebar) return;
+				// They move once the sidebar has mounted or played its exit, so look for them for up to a second.
+				const scopeId = showing ? SIDEBAR_ID : MAIN_ID;
+				const until = performance.now() + 1000;
+				const follow = () => {
+					const target = onPage ? pageNavFocusTarget(document.getElementById(scopeId)) : null;
+					if (target) target.focus();
+					else if (onPage && performance.now() < until) requestAnimationFrame(follow);
+					else if (!showing) document.getElementById(MAIN_ID)?.focus();
+				};
+				requestAnimationFrame(follow);
 			},
 
 			setSidebarWidth(width) {
@@ -537,10 +651,6 @@ export const useApp = create<AppState>()(
 				set({ search });
 			},
 
-			setSidebarFilter(sidebarFilter) {
-				set({ sidebarFilter });
-			},
-
 			showMoreChats(projectPath) {
 				set(state => ({ expandedChatLists: state.expandedChatLists.includes(projectPath) ? state.expandedChatLists : [...state.expandedChatLists, projectPath] }));
 			},
@@ -548,22 +658,32 @@ export const useApp = create<AppState>()(
 		{
 			name: "visual-omp:layout",
 			version: 1,
-			partialize: state => ({
-				// Chats that never produced a session file have nothing to restore.
-				tabs: state.tabs.filter(tab => tab.sessionFile !== null),
-				activeTabId: state.activeTabId,
-				splitTabId: state.splitTabId,
-				activeProject: state.activeProject,
-				// A page is not restored; the window reopens on what the page replaced.
-				view: state.view === "page" ? state.pageReturn : state.view,
-				sidebarOpen: state.sidebarOpen,
-				sidebarWidth: state.sidebarWidth,
-				dockOpen: state.dockOpen,
-				dockPane: state.dockPane,
-				dockWidth: state.dockWidth,
-				expandedProjects: state.expandedProjects,
-				sidebarFilter: state.sidebarFilter,
-			}),
+			partialize: state => {
+				const persistedTabs = state.tabs.filter(tab => tab.sessionFile !== null);
+				const normalized = normalizeRestoredChatSelection({ ...state, tabs: persistedTabs });
+				return {
+					// Chats that never produced a session file have nothing to restore.
+					tabs: persistedTabs,
+					activeTabId: normalized.activeTabId,
+					splitTabId: normalized.splitTabId,
+					focusedSplit: normalized.focusedSplit,
+					activeProject: normalized.activeProject,
+					// Pages and transient views are not restored.
+					view: normalized.view,
+					sidebarOpen: state.sidebarOpen,
+					sidebarWidth: state.sidebarWidth,
+					dockOpen: state.dockOpen,
+					dockPane: state.dockPane,
+					dockWidth: state.dockWidth,
+					expandedProjects: state.expandedProjects,
+				};
+			},
+			merge: (persistedState, currentState) => {
+				const persisted = persistedState as Partial<AppState>;
+				const tabs = (persisted.tabs ?? currentState.tabs).filter(tab => tab.sessionFile !== null);
+				const merged = { ...currentState, ...persisted, tabs };
+				return { ...merged, ...normalizeRestoredChatSelection(merged) };
+			},
 		},
 	),
 );
@@ -587,7 +707,7 @@ useApp.subscribe((state, previous) => {
 	}
 	if (!hostsAdopted) return;
 	for (const left of [previous.activeTabId, previous.splitTabId]) {
-		if (left && left !== state.activeTabId && left !== state.splitTabId) releaseIfUnused(left);
+		if (left && left !== state.activeTabId && left !== state.splitTabId) releaseIfUnused(left, previous.tabs);
 	}
 });
 
@@ -600,6 +720,11 @@ export function focusedTabId(state: Pick<AppState, "activeTabId" | "splitTabId" 
 /** Controller for the chat keyboard commands act on. */
 export function focusedController(): SessionController | null {
 	return controllerFor(focusedTabId(useApp.getState()));
+}
+
+/** A closed chat is waiting on the "Reopen closed chat" stack (its file may since have gone). */
+export function canReopenChat(): boolean {
+	return closedChats.length > 0;
 }
 
 /** Every live controller (quit warnings, notifications). */

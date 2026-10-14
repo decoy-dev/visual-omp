@@ -5,7 +5,6 @@ import { type PaneSpec, panes } from "../registry/slots";
 import { focusedController, useApp } from "../state/app";
 import { cn, IconButton, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PresenceSwap } from "../ui";
 import { focusRingInset } from "../ui/styles";
-import { useSessionView } from "./hooks";
 
 function paneTitle(t: (key: string, options?: { ns?: string }) => string, entry: PaneSpec): string {
 	return t(entry.title, { ns: entry.title.includes(":") ? undefined : "panes" });
@@ -17,9 +16,11 @@ function paneTitle(t: (key: string, options?: { ns?: string }) => string, entry:
  * typeahead move; Enter or Space shows the pane). The other panes' badges stay mounted, hidden, so the trigger can show
  * a dot when one of them has something to say and their "seen" bookkeeping keeps running.
  *
+ * Beside the chat it is a floating sheet: rounded on every corner with the pop shadow, on the canvas strip Shell gives it.
+ *
  * `expanded`: the window is too narrow for the chat and the panel side by side, so the panel takes the main area and
  * offers "Back to chat" (which shows the chat and keeps the panel open for a wider window) instead of squeezing the chat.
- * Shell moves focus to "Back to chat" on entry and back to where it was on the way out.
+ * It then fills the sheet edge to edge. Shell moves focus to "Back to chat" on entry and back to where it was on the way out.
  */
 export function Dock({ width, expanded = false, onEnter }: { width: number; expanded?: boolean; onEnter?: (back: HTMLElement) => void }): ReactNode {
 	const { t } = useTranslation("panes");
@@ -29,7 +30,6 @@ export function Dock({ width, expanded = false, onEnter }: { width: number; expa
 	// Subscribe so panes re-render when the focused chat changes.
 	useApp(state => state.activeTabId + (state.splitTabId ?? "") + state.focusedSplit + state.view);
 	const session = focusedController();
-	useSessionView(session);
 	const pane = list.find(entry => entry.id === paneId) ?? list[0];
 	const scope = useId();
 	// Pane switches slide toward the pane that was picked: one lower in the list slides in from the right.
@@ -51,9 +51,12 @@ export function Dock({ width, expanded = false, onEnter }: { width: number; expa
 			data-tour="dock"
 			data-dock-expanded={expanded ? "" : undefined}
 			style={expanded ? undefined : { width }}
-			className={cn("flex flex-col bg-panel", expanded ? "min-w-0 flex-1" : "shrink-0 border-l border-border")}
+			className={cn(
+				"flex flex-col bg-panel",
+				expanded ? "min-w-0 flex-1" : "shrink-0 overflow-hidden rounded-lg border border-border shadow-(--shadow-pop)",
+			)}
 		>
-			<div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-1.5">
+			<div className="flex h-9 shrink-0 items-center gap-1 border-b border-border px-2">
 				{expanded && (
 					<button
 						ref={back}

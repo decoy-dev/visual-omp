@@ -7,7 +7,9 @@
  * - `layoutTree`: a horizontal map of the conversation for the navigator sheet.
  */
 import { z } from "zod";
+import { noticeSummary, parseNotice } from "../../chat/transcript/notices";
 import { parseJsonl } from "../../collab/lib/jsonl";
+import { i18n } from "../../i18n";
 
 export interface TreeEntry {
 	id: string;
@@ -16,8 +18,10 @@ export interface TreeEntry {
 	timestamp: string;
 	/** `user` / `assistant` / `toolResult` / … for `message` entries, else null. */
 	role: string | null;
-	/** Plain text of the entry (message text, compaction summary), trimmed; "" when none. */
+	/** Plain text of the entry (message text, compaction summary, what the user typed for a skill), trimmed; "" when none. */
 	text: string;
+	/** One-line summary of an omp notice (`custom_message`), shown in place of its model-facing text; null otherwise. */
+	summary: string | null;
 	/** A user-authored turn (omp `isUserRequestEntry`): plain prompts, user skill or collab prompts. */
 	userTurn: boolean;
 	/** Assistant message that stopped with an error or abort (kept visible in `/tree`). */
@@ -82,7 +86,13 @@ export function parseSessionTree(jsonl: string): SessionTree {
 			USER_CUSTOM_TYPES[customType] === true &&
 			(raw.attribution ?? message?.attribution) === "user";
 		const stopReason = message?.stopReason;
-		const text = message ? textOf(message.content) : raw.type === "custom_message" ? textOf(raw.content) : (raw.summary ?? "");
+		let text = message ? textOf(message.content) : raw.type === "custom_message" ? textOf(raw.content) : (raw.summary ?? "");
+		let summary: string | null = null;
+		if (raw.type === "custom_message" && customType !== undefined && customType !== "collab-prompt") {
+			const notice = parseNotice({ customType, content: raw.content ?? "", details: raw.details });
+			summary = noticeSummary(notice, (key, values) => i18n.t(key, { ns: "chat", ...values }));
+			text = notice.kind === "skill" ? (notice.args ?? "") : summary;
+		}
 		const entry: TreeEntry = {
 			id: raw.id,
 			parentId: raw.parentId ?? null,
@@ -90,6 +100,7 @@ export function parseSessionTree(jsonl: string): SessionTree {
 			timestamp: raw.timestamp ?? "",
 			role,
 			text: text.trim(),
+			summary,
 			userTurn: role === "user" || userCustom,
 			failed: role === "assistant" && stopReason !== undefined && stopReason !== "stop" && stopReason !== "toolUse",
 		};
@@ -234,7 +245,7 @@ export function layoutTree(tree: SessionTree): TreeMap {
 		nodes.push({
 			id: entry.id,
 			kind,
-			label: kind === "summary" ? "" : firstWords(entry.text, 6),
+			label: kind === "summary" ? "" : (entry.summary ?? firstWords(entry.text, 6)),
 			text: entry.text,
 			timestamp: entry.timestamp,
 			column,

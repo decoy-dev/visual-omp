@@ -7,6 +7,7 @@
  * result preview; we mirror that as rows plus the raw snapshot text.
  */
 import type { ReactNode } from "react";
+import { fmtDuration } from "../../collab/lib/format";
 import type { Tone } from "../parts";
 import { Badge, Badges, Note, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -117,14 +118,6 @@ function statusTone(status: string): Tone | undefined {
 // Running first (what the user is waiting on), then failed, then the rest.
 const STATUS_ORDER: Record<string, number> = { running: 0, failed: 1, cancelled: 2, completed: 3 };
 
-function formatDuration(ms: number): string {
-	if (ms < 1000) return `${Math.round(ms)}ms`;
-	const s = ms / 1000;
-	if (s < 60) return `${s.toFixed(1)}s`;
-	const m = Math.floor(s / 60);
-	return `${m}m ${Math.round(s % 60)}s`;
-}
-
 /**
  * Task job results arrive in the model-facing `<task-result>` envelope; the
  * wrapper markup is noise to a human — preview the inner body instead.
@@ -148,7 +141,7 @@ function JobRow({ job }: { job: JobSnapshotLike }): ReactNode {
 			{job.type && <Badge tone={tone}>{job.type}</Badge>}
 			{showId && <span className="tv-path"> {job.id}</span>}
 			<span> {truncate(label, 80)}</span>
-			{job.durationMs > 0 && <span className="tv-faint"> {formatDuration(job.durationMs)}</span>}
+			{job.durationMs > 0 && <span className="tv-faint"> {fmtDuration(job.durationMs)}</span>}
 			{preview && <span className={job.errorText ? "tv-err-text" : "tv-faint"}> · {preview}</span>}
 		</Row>
 	);

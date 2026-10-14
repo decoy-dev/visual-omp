@@ -1,6 +1,6 @@
 import type { ProjectSummary, SessionSummary } from "@shared/ipc";
 import { describe, expect, it } from "vitest";
-import { archivedChats, openChatOrder, type SidebarInput, sidebarGroups, visibleChats } from "./sidebarRows";
+import { archivedChats, currentChats, nextWaitingChat, type SidebarInput, sidebarGroups, stepChat } from "./sidebarRows";
 
 const project = (path: string, lastActivity: number): ProjectSummary => ({ path, name: path, sessionCount: 0, lastActivity, exists: true });
 const session = (cwd: string, id: string, updatedAt: number, extra: Partial<SessionSummary> = {}): SessionSummary => ({
@@ -33,7 +33,6 @@ function input(patch: Partial<SidebarInput> = {}): SidebarInput {
 		expanded: ["a", "b"],
 		showAll: [],
 		query: "",
-		active: null,
 		openTitle: () => null,
 		...patch,
 	};
@@ -47,18 +46,8 @@ describe("sidebarGroups", () => {
 		expect(groups[0]?.chats[2]?.tabId).toBe("tA1");
 	});
 
-	it("numbers only rows in expanded projects, in sidebar order", () => {
-		const rows = visibleChats(sidebarGroups(input({ expanded: ["b"] })));
-		expect(rows.map(chat => chat.key)).toEqual(["b/b1.jsonl"]);
-	});
-
-	it("keeps only accepted open chats under the Active filter and opens their projects", () => {
-		const groups = sidebarGroups(input({ expanded: [], active: tabId => tabId === "tB1" }));
-		expect(groups.map(group => [group.project.path, group.open, group.chats.map(chat => chat.key)])).toEqual([["b", true, ["b/b1.jsonl"]]]);
-	});
-
 	it("keeps archived chats out of project lists", () => {
-		expect(visibleChats(sidebarGroups(input())).some(chat => chat.key === "a/old.jsonl")).toBe(false);
+		expect(sidebarGroups(input()).some(group => group.chats.some(chat => chat.key === "a/old.jsonl"))).toBe(false);
 		expect(archivedChats(input()).map(chat => chat.key)).toEqual(["a/old.jsonl"]);
 	});
 
@@ -67,14 +56,57 @@ describe("sidebarGroups", () => {
 		const group = sidebarGroups(removed).find(entry => entry.project.path === "a");
 		expect(group).toMatchObject({ removed: true, open: true, project: { name: "a" } });
 		expect(group?.chats.map(chat => chat.key)).toEqual(["open:tNew", "a/a1.jsonl"]);
-		expect(openChatOrder(removed)).toEqual(["tB1", "tNew", "tA1"]);
 		const closed = sidebarGroups({ ...removed, tabs: removed.tabs.filter(tab => tab.projectPath !== "a") });
 		expect(closed.map(entry => entry.project.path)).toEqual(["b"]);
 	});
 });
 
-describe("openChatOrder", () => {
-	it("orders open chats as the sidebar lists them, collapsed projects included", () => {
-		expect(openChatOrder(input({ expanded: [] }))).toEqual(["tNew", "tA1", "tB1"]);
+describe("currentChats", () => {
+	it("lists every open chat in the order it was opened, collapsed and removed projects included, with its project name", () => {
+		const rows = currentChats(input({ projects: [project("b", 2)], expanded: [] }));
+		expect(rows.map(chat => [chat.tabId, chat.kind, chat.projectName])).toEqual([
+			["tNew", "open", "a"],
+			["tA1", "session", "a"],
+			["tB1", "session", "b"],
+		]);
+	});
+
+	it("keeps that order while the saved lists reorder", () => {
+		const recent = input({ sessionsByProject: { a: [session("a", "a1", 99)], b: [session("b", "b1", 100)] } });
+		expect(currentChats(recent).map(chat => chat.tabId)).toEqual(["tNew", "tA1", "tB1"]);
+	});
+
+	it("narrows to chats matching the search by saved title, live title or project name", () => {
+		const rows = (query: string) => currentChats(input({ query, openTitle: tabId => (tabId === "tNew" ? "Fix checkout" : null) })).map(chat => chat.tabId);
+		expect(rows("checkout")).toEqual(["tNew"]);
+		expect(rows("a1")).toEqual(["tA1"]);
+		expect(rows("b")).toEqual(["tB1"]);
+	});
+});
+
+describe("stepChat", () => {
+	const order = ["t1", "t2", "t3"];
+	it("steps along the order and wraps both ways", () => {
+		expect(stepChat(order, "t3", 1)).toBe("t1");
+		expect(stepChat(order, "t1", -1)).toBe("t3");
+		expect(stepChat(order, "t2", 1)).toBe("t3");
+	});
+
+	it("starts at the first chat when no open chat is focused", () => {
+		expect(stepChat(order, null, 1)).toBe("t1");
+		expect(stepChat([], null, 1)).toBeNull();
+	});
+});
+
+describe("nextWaitingChat", () => {
+	const order = ["t1", "t2", "t3", "t4"];
+	it("picks the next waiting chat after the focused one, wrapping around", () => {
+		expect(nextWaitingChat(order, "t2", id => id === "t4" || id === "t1")).toBe("t4");
+		expect(nextWaitingChat(order, "t4", id => id === "t4" || id === "t1")).toBe("t1");
+	});
+
+	it("skips the focused chat and starts from the top without one", () => {
+		expect(nextWaitingChat(order, "t3", id => id === "t3")).toBeNull();
+		expect(nextWaitingChat(order, null, id => id === "t3" || id === "t2")).toBe("t2");
 	});
 });

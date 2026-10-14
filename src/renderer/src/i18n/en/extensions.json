@@ -365,12 +365,13 @@
 	"usage": {
 		"title": "Usage & limits",
 		"subtitle": "Provider limits and usage recorded by omp.",
+		"refresh": "Refresh",
 		"untitled": "Untitled chat",
 		"noModel": "Unknown",
 		"limits": {
 			"title": "Plan limits",
 			"description": "Limits each provider reports for the accounts omp is signed in to. They can include use outside the chats on this computer.",
-			"refresh": "Refresh limits",
+			"scope": "This page lists every account separately. The status bar shows only the models of the focused chat and its running helpers, and when a provider has several accounts it shows their combined use.",
 			"checking": "Checking plan limits",
 			"failed": "Couldn't check your plan limits.",
 			"staleFailed": "Couldn't refresh limits. Showing data checked {{age}}.",
@@ -385,6 +386,14 @@
 			"manageProviders": "Manage providers",
 			"unavailableBody": "omp couldn't get usage for this sign-in.",
 			"noRows": "This account reports no limits.",
+			"noFigure": "No usage figure reported",
+			"unknown": "Unknown",
+			"alert": {
+				"row": "{{window}}: {{state}}, {{percent}}% used",
+				"rowUnknown": "{{window}}: {{state}}; usage unavailable",
+				"disabled": "{{account}}: omp stopped using this sign-in ({{cause}}).",
+				"unknown": "{{account}}: usage unavailable"
+			},
 			"technical": "Technical details",
 			"id": {
 				"provider": "Provider id",
@@ -428,17 +437,24 @@
 			"chats": "Chats",
 			"tokens": "Tokens",
 			"tokensHint": "Includes cache reads and writes.",
+			"costSub": "At public API prices",
 			"cost": "Estimated API cost",
 			"costHint": "Estimated at public API prices from omp's records. Your provider determines subscription charges.",
 			"empty": "No recorded usage in this period",
 			"emptyBody": "Chats you run with omp appear here with their token use.",
 			"definitions": "What these figures include",
+			"kpi": {
+				"chats": "Chats with at least one model request in this period. Subagents count toward the chat that started them.",
+				"tokens": "Input, output, cache read and cache write tokens of every chat and its subagents."
+			},
 			"definition": {
 				"tokens": "Tokens and input tokens include cache reads and writes.",
 				"subagents": "Subagent activity counts toward the chat that started it.",
+				"cost": "Estimated API cost prices each request at public API rates from omp's records. Your provider's bill and subscription plans set their own charges.",
 				"model": "Model is the model that handled the most requests in the chat during this period.",
 				"time": "Generation time is the time omp spent writing replies.",
-				"days": "Days are local calendar days, and today covers the day so far."
+				"days": "Days are local calendar days, and today covers the day so far.",
+				"limits": "Plan limits come from each provider. The period switch applies to recorded usage only."
 			}
 		},
 		"chart": {
@@ -454,16 +470,26 @@
 			"date": "Date",
 			"cost": "Estimated API cost",
 			"requests": "Requests",
-			"todayDate": "{{date}} (so far)"
+			"todayDate": "{{date}} (so far)",
+			"average": "Daily average {{cost}}"
+		},
+		"projects": {
+			"title": "Estimated API cost by project",
+			"description": "Each chat's cost, subagents included, counts toward its project.",
+			"other_one": "{{count}} other project",
+			"other_other": "{{count}} other projects",
+			"show": "Show chats in {{project}}, {{cost}}"
 		},
 		"chats": {
 			"title": "Chats",
 			"description": "Search and filters apply to this table and its export only.",
 			"toolbar": "Chat filters",
 			"search": "Search chats",
-			"projectFilter": "Filter by project",
+			"projectFilter": "Project",
+			"clearProject": "Clear project filter",
 			"allProjects": "All projects",
-			"modelFilter": "Filter by model",
+			"modelFilter": "Model",
+			"clearModel": "Clear model filter",
 			"allModels": "All models",
 			"export": "Export chats CSV",
 			"sortBy": "Sort chats by",

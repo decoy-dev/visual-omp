@@ -176,7 +176,7 @@ export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
 
 					<section className="mb-6">
 						<h2 className="text-md font-semibold text-fg">{t("providers.add.title")}</h2>
-						<p className="mt-0.5 text-sm text-fg-muted">{t("providers.add.description")}</p>
+						<p className="mt-1 text-sm text-fg-muted">{t("providers.add.description")}</p>
 						<SearchInput
 							className="mt-3"
 							size="sm"
@@ -248,7 +248,7 @@ function ConnectedRow({ provider, onSignIn, onSignOut }: { provider: ConnectedPr
 						{chip.label}
 					</Chip>
 				</div>
-				<p className="mt-0.5 break-words text-sm text-fg-muted">{details.join(" · ")}</p>
+				<p className="mt-1 break-words text-sm text-fg-muted">{details.join(" · ")}</p>
 				{provider.disabledAccounts.map((account, index) => {
 					const name = account.email ?? account.accountId;
 					return (

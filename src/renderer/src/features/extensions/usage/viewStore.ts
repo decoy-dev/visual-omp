@@ -1,7 +1,7 @@
 /**
- * What the Usage & limits page shows: range, table sort, table filters, table page, scroll position
- * and the last recorded-usage summary. Kept for the session (not saved to disk), so opening a chat
- * from the table and coming back finds the report as it was left.
+ * What the Usage & limits page shows: open provider rows, range, table sort, table filters, table page,
+ * scroll position and the last recorded-usage summary. Kept for the session (not saved to disk), so
+ * opening a chat from the table and coming back finds the report as it was left.
  */
 import type { SpendSummary } from "@shared/contracts/extensions";
 import { create } from "zustand";
@@ -23,6 +23,9 @@ interface UsageViewState extends ChatFilters {
 	sort: ChatSort;
 	/** Zero-based table page. */
 	page: number;
+	/** Providers whose limits row is open to its account and window detail. */
+	expanded: ReadonlySet<string>;
+	setExpanded(provider: string, open: boolean): void;
 	setRange(range: UsageRange): void;
 	setSort(sort: ChatSort): void;
 	setFilters(filters: Partial<ChatFilters>): void;
@@ -41,6 +44,14 @@ export const useUsageView = create<UsageViewState>()(set => ({
 	project: null,
 	model: null,
 	page: 0,
+	expanded: new Set(),
+	setExpanded: (provider, open) =>
+		set(state => {
+			const expanded = new Set(state.expanded);
+			if (open) expanded.add(provider);
+			else expanded.delete(provider);
+			return { expanded };
+		}),
 	setRange: range => set({ range, page: 0 }),
 	setSort: sort => set({ sort, page: 0 }),
 	setFilters: filters => set({ ...filters, page: 0 }),

@@ -6,7 +6,7 @@
 import type { ApprovalState, ModelRolesState } from "@shared/contracts/config";
 import type { ProjectInstructions, ProjectRule } from "@shared/contracts/project";
 import type { SessionSummary } from "@shared/ipc";
-import { ArrowRight, ChatCenteredDots, Copy, DotsThree, DownloadSimple, FileText, FolderMinus, FolderOpen, FolderPlus, GitBranch, Plus, SlidersHorizontal, WarningCircle, X } from "@phosphor-icons/react";
+import { ArrowRight, ChatCenteredDots, Copy, DotsThree, DownloadSimple, FileText, FolderMinus, FolderOpen, FolderPlus, Plus, SlidersHorizontal, WarningCircle, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, type Ref, useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -134,7 +134,7 @@ function ProjectHome({ path }: { path: string }): ReactNode {
 	return (
 		// Layout follows the overview's own width (a size container), so an open sidebar and inspector narrow it correctly.
 		<div className="@container/content min-h-0 flex-1 overflow-y-auto">
-			<div className="mx-auto w-full max-w-[920px] px-6 pb-16 pt-6">
+			<div className="mx-auto w-full max-w-230 px-page pb-16 pt-page">
 				<PageHeader
 					title={name}
 					meta={
@@ -166,9 +166,9 @@ function ProjectHome({ path }: { path: string }): ReactNode {
 					}
 				/>
 
-				<div className="flex flex-col gap-12">
+				<div className="flex flex-col gap-section">
 					<RecentChats sessions={sessions?.filter(session => !session.archived)} />
-					<div className="grid grid-cols-1 gap-12 @min-[46rem]/content:grid-cols-2 @min-[46rem]/content:gap-10">
+					<div className="grid grid-cols-1 gap-section @min-[46rem]/content:grid-cols-2">
 						<ProjectSetup path={path} />
 						{notRepo ? <NoGit path={path} /> : <Health path={path} />}
 					</div>
@@ -351,7 +351,7 @@ function RecentRow({ session, now, ref }: { session: SessionSummary; now: number
 /** One label and value in the instructions and settings summary. */
 function SummaryRow({ label, children }: { label: string; children: ReactNode }): ReactNode {
 	return (
-		<div className="flex flex-col gap-0.5 py-2">
+		<div className="flex flex-col gap-1 py-2">
 			<dt className="text-sm text-fg-muted">{label}</dt>
 			<dd className="min-w-0 text-md text-fg [overflow-wrap:anywhere]">{children}</dd>
 		</div>
@@ -384,7 +384,7 @@ function ProjectSetup({ path }: { path: string }): ReactNode {
 							)
 						}
 					</LoadedValue>
-					<span className="mt-0.5 block text-sm">
+					<span className="mt-1 block text-sm">
 						<LoadedValue data={rules} failed={t("home.setup.rulesFailed")}>
 							{value => (
 								<button
@@ -456,22 +456,9 @@ function Health({ path }: { path: string }): ReactNode {
 				}
 			>
 				{status && (
+					// The branch and line counts live in the status bar; this section states where the work stands and offers the review.
 					<div className="flex flex-col gap-2 py-2 text-md">
-						<p className="flex flex-wrap items-center gap-x-3 gap-y-1">
-							<span className="inline-flex min-w-0 items-center gap-1.5 font-mono text-sm text-fg">
-								<GitBranch className="size-3.5 shrink-0 text-fg-muted" aria-hidden />
-								<span className="[overflow-wrap:anywhere]">{status.branch ?? t("home.health.detached")}</span>
-							</span>
-							{status.totals.files > 0 ? (
-								<span className="font-mono text-sm tabular-nums">
-									<span className="text-diff-add-text">+{status.totals.additions}</span>{" "}
-									<span className="text-diff-del-text">−{status.totals.deletions}</span>
-									<span className="sr-only">{t("home.health.lines", { add: status.totals.additions, del: status.totals.deletions })}</span>
-								</span>
-							) : (
-								<span className="text-fg-muted">{t("home.health.clean")}</span>
-							)}
-						</p>
+						{status.totals.files === 0 && <p className="text-fg-muted">{t("home.health.clean")}</p>}
 						<p className="text-sm text-fg-muted">
 							{status.unborn
 								? t("home.health.noCommits")
@@ -547,7 +534,7 @@ function PromptStarters({ path }: { path: string }): ReactNode {
 							onClick={() => void startDraft(path, t(`prompts.${prompt}.text`))}
 							title={t(`prompts.${prompt}.text`)}
 							className={cn(
-								"group flex w-full flex-col items-start gap-0.5 rounded-md px-2 py-1.5 text-left text-md outline-none transition-colors duration-(--dur-fast)",
+								"group flex w-full flex-col items-start gap-1 rounded-md px-2 py-2 text-left text-md outline-none transition-colors duration-(--dur-fast)",
 								"hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring",
 								"@min-[32rem]/content:h-9 @min-[32rem]/content:flex-row @min-[32rem]/content:items-center @min-[32rem]/content:gap-4 @min-[32rem]/content:py-0",
 							)}

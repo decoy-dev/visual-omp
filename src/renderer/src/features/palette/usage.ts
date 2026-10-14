@@ -2,15 +2,14 @@
  * How often each command has been run, so the empty palette can suggest the user's favourites.
  * Stored in localStorage; counts only (no timestamps, no arguments).
  */
-import { z } from "zod";
-
 const STORAGE_KEY = "visual-omp:command-usage";
-const usageSchema = z.record(z.string(), z.number());
 
+/** The stored counts; anything else (hand-edited, older format) counts as no history. */
 function load(): Record<string, number> {
 	try {
-		const parsed = usageSchema.safeParse(JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}"));
-		return parsed.success ? parsed.data : {};
+		const parsed: unknown = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? "{}");
+		if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) return {};
+		return Object.values(parsed).every(count => typeof count === "number") ? (parsed as Record<string, number>) : {};
 	} catch {
 		return {};
 	}

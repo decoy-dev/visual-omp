@@ -7,6 +7,7 @@ import { DownloadSimple, FileText, FolderOpen, FolderPlus, Folders, GitBranch, S
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { registerCommand } from "@/registry/commands";
+import { lazyPage, lazyView } from "@/registry/lazy";
 import { chatSlots, pages, type PaneProps, screens, sheets, statusItems } from "@/registry/slots";
 import { useSessionView } from "@/shell/hooks";
 import { useApp } from "@/state/app";
@@ -17,21 +18,23 @@ import { chooseFolder, openFolder } from "./actions";
 import { FolderChip } from "./folders/FolderChip";
 import { FolderChooser } from "./folders/FolderChooser";
 import { HomeScreen } from "./HomeScreen";
-import { ImportDialog } from "./ImportDialog";
-import { InstructionsPage } from "./InstructionsPage";
-import { NewProjectWizard } from "./NewProjectWizard";
-import { ProjectSettingsPage } from "./ProjectSettingsPage";
-import { ShareDialog } from "./ShareDialog";
 import { useShares } from "./share-store";
 
 const MAC = window.vomp.platform === "darwin";
 
 screens.register({ id: "home", component: HomeScreen });
-sheets.register({ id: "project-new", component: NewProjectWizard });
-pages.register({ id: "project-instructions", component: InstructionsPage });
-pages.register({ id: "project-settings", component: ProjectSettingsPage });
-sheets.register({ id: "project-import", component: ImportDialog });
-sheets.register({ id: "share", component: ShareDialog });
+// Pages and dialogs load from their own chunk (`registry/lazy`); a dialog opens as soon as it has loaded.
+sheets.register({ id: "project-new", component: lazyView(() => import("./NewProjectWizard").then(m => m.NewProjectWizard)) });
+pages.register({
+	id: "project-instructions",
+	component: lazyPage(() => import("./InstructionsPage").then(m => m.InstructionsPage), { title: "projects:instructions.title", width: "list" }),
+});
+pages.register({
+	id: "project-settings",
+	component: lazyPage(() => import("./ProjectSettingsPage").then(m => m.ProjectSettingsPage), { title: "projects:settings.title", width: "form" }),
+});
+sheets.register({ id: "project-import", component: lazyView(() => import("./ImportDialog").then(m => m.ImportDialog)) });
+sheets.register({ id: "share", component: lazyView(() => import("./ShareDialog").then(m => m.ShareDialog)) });
 sheets.register({ id: "folder-chooser", component: FolderChooser });
 
 chatSlots.register({ id: "projects.folder", placement: "composerTools", order: 10, component: FolderChip });

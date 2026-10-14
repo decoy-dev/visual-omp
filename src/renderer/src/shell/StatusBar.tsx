@@ -100,7 +100,7 @@ function OmpItem(): ReactNode {
 }
 
 /**
- * 28px status bar (DESIGN §3.8). Left: git items; right: plan usage and other feature items, the app update notice,
+ * 28px status bar (DESIGN §3.8), part of the ink chrome. Left: git items; right: plan usage and other feature items, the app update notice,
  * omp status. Features add items through `statusItems`. The bar is a size container and collapses in order instead
  * of clipping: below 52rem the update notice and omp status drop their text (glyph, tooltip and accessible name stay);
  * below 40rem only the first item of each side stays (branch on the left, plan usage on the right), and the rest
@@ -123,7 +123,7 @@ export function StatusBar(): ReactNode {
 			)),
 	);
 	return (
-		<footer aria-label={t("status.label")} data-tour="statusbar" className="@container/status shrink-0 border-t border-border bg-panel">
+		<footer aria-label={t("status.label")} data-tour="statusbar" data-region="chrome" className="@container/status shrink-0 bg-chrome">
 			<div className="flex h-(--statusbar-h) items-center gap-4 overflow-hidden whitespace-nowrap px-3 font-mono text-xs text-fg-muted">
 				<div className="flex min-w-0 items-center gap-4">{left}</div>
 				<div className="flex-1" />

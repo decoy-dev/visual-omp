@@ -192,7 +192,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 			<div className="min-h-0 flex-1 space-y-5 overflow-y-auto p-4">
 				{target.kind === "create" && cwd && (
 					<div>
-						<span className="mb-1.5 block text-md font-medium text-fg">{t("agents.editor.scope")}</span>
+						<span className="mb-2 block text-md font-medium text-fg">{t("agents.editor.scope")}</span>
 						<Segmented
 							aria-label={t("agents.editor.scope")}
 							value={scope}
@@ -230,7 +230,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 					required
 				/>
 				<div>
-					<span className="mb-1.5 block text-md font-medium text-fg">{t("agents.editor.model")}</span>
+					<span className="mb-2 block text-md font-medium text-fg">{t("agents.editor.model")}</span>
 					<ModelSelect
 						className="w-full"
 						aria-label={t("agents.editor.model")}
@@ -246,7 +246,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 					<p className="mt-1 text-sm text-fg-muted">{t("agents.editor.modelHelp")}</p>
 				</div>
 				<div>
-					<span className="mb-1.5 block text-md font-medium text-fg">{t("agents.editor.thinking")}</span>
+					<span className="mb-2 block text-md font-medium text-fg">{t("agents.editor.thinking")}</span>
 					<Select
 						className="w-full"
 						aria-label={t("agents.editor.thinking")}
@@ -262,7 +262,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 					</Select>
 				</div>
 				<fieldset className="m-0 min-w-0 border-0 p-0">
-					<legend className="mb-1.5 p-0 text-md font-medium text-fg">{t("agents.editor.tools")}</legend>
+					<legend className="mb-2 p-0 text-md font-medium text-fg">{t("agents.editor.tools")}</legend>
 					<Switch
 						label={t("agents.editor.allTools")}
 						description={t("agents.editor.allToolsHelp")}
@@ -284,7 +284,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 					)}
 				</fieldset>
 				<div>
-					<div className="mb-1.5 flex items-center justify-between">
+					<div className="mb-2 flex items-center justify-between">
 						<span className="text-md font-medium text-fg" id="manage-agent-instructions">
 							{t("agents.editor.instructions")}
 						</span>

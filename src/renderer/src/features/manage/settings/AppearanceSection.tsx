@@ -49,7 +49,7 @@ export function AppearanceSection() {
 					<div className="flex items-center justify-between gap-6">
 						<div>
 							<span className="text-md font-medium text-fg">{t("appearance.textSize.label")}</span>
-							<p className="mt-0.5 text-sm text-fg-muted">{t("appearance.textSize.description")}</p>
+							<p className="mt-1 text-sm text-fg-muted">{t("appearance.textSize.description")}</p>
 						</div>
 						<span className="font-mono text-sm text-fg-muted tabular-nums" aria-hidden>
 							{scale}%

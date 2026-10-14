@@ -33,6 +33,8 @@
 	"redactedThinking": "Thinking (hidden by the model)",
 	"working": "Working… {{elapsed}}",
 	"workingActivity": "Working… {{elapsed}} · {{activity}}",
+	"workingUntimed": "Working…",
+	"workingActivityUntimed": "Working · {{activity}}",
 	"newActivity": "Show new activity",
 	"fileRow": "{{name}}, in {{folder}}",
 	"showEarlier": "Show {{count}} earlier messages",
@@ -47,6 +49,15 @@
 	"toolFailed": "Failed",
 	"copy": "Copy message",
 	"copied": "Copied",
+	"copyCode": "Copy code",
+	"callout": {
+		"note": "Note",
+		"tip": "Tip",
+		"important": "Important",
+		"warning": "Warning",
+		"caution": "Caution"
+	},
+	"replied": "omp replied. {{text}}",
 	"rewind": "Rewind to here",
 	"fork": "Fork from here",
 	"from": "From {{name}}",
@@ -76,7 +87,6 @@
 			"starting": "Starting omp…",
 			"ready": "Ready for your next message",
 			"working": "Working",
-			"workingFor": "Working… {{elapsed}}",
 			"waiting": "Waiting for your answer",
 			"readOnly": "Read only. This chat is open in another window, so reply there.",
 			"readOnlyFree": "Read only. You can continue this chat here.",
@@ -90,5 +100,40 @@
 		"more": "More actions",
 		"view": "Transcript view",
 		"views": { "normal": "Normal", "thinking": "Thinking", "verbose": "Verbose" }
+	},
+	"notice": {
+		"job": {
+			"command": { "finished": "Background job finished", "failed": "Background job failed", "stopped": "Background job stopped" },
+			"helper": { "finished": "Helper “{{name}}” finished", "failed": "Helper “{{name}}” failed", "stopped": "Helper “{{name}}” stopped" },
+			"batch_one": "{{count}} background job finished",
+			"batch_other": "{{count}} background jobs finished",
+			"preview": "omp sent a preview of this output. The full output is in the helper's transcript.",
+			"noOutput": "No output"
+		},
+		"irc": {
+			"from": "Message from {{from}}",
+			"autoreply": "Automatic reply to {{to}}",
+			"relay": "{{from}} to {{to}}",
+			"unknown": "an unnamed agent",
+			"more": "Show more",
+			"less": "Show less"
+		},
+		"launch": {
+			"exited": "Process {{name}} exited with code {{code}}",
+			"failed": "Process {{name}} failed with exit code {{code}}",
+			"noCode": "Process {{name}} stopped without an exit code"
+		},
+		"advisor": {
+			"title": "Advisor",
+			"notes_one": "{{count}} note",
+			"notes_other": "{{count}} notes",
+			"severity": { "blocker": "Blocker", "concern": "Concern", "nit": "Nit" }
+		},
+		"skill": { "used": "Used the {{name}} skill" },
+		"other": "Note from omp",
+		"raw": "Text sent to the model",
+		"ok": "Finished",
+		"failed": "Failed",
+		"stopped": "Stopped"
 	}
 }

@@ -62,7 +62,7 @@ function FieldShell({
 	children,
 }: FieldTextProps & { controlId: string; descId?: string; errId?: string; className?: string; children: ReactNode }) {
 	return (
-		<div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
+		<div className={cn("flex min-w-0 flex-col gap-2", className)}>
 			{label && (
 				<label htmlFor={controlId} className="text-md font-medium text-fg">
 					{label}
@@ -75,7 +75,7 @@ function FieldShell({
 				</p>
 			)}
 			{error && (
-				<p id={errId} className="flex items-center gap-1.5 text-sm text-err">
+				<p id={errId} className="flex items-center gap-1 text-sm text-err">
 					<span aria-hidden className="text-[9px] leading-none">
 						▲
 					</span>

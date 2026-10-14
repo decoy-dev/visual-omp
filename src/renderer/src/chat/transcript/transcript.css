@@ -45,10 +45,23 @@
 	font-size: 14px;
 }
 
+/* Tailwind's preflight removes list markers; replies need them back. Task lists and file lists opt out below. */
 .tr-md ul,
 .tr-md ol {
 	margin: 0 0 10px;
-	padding-left: 22px;
+	padding-left: 24px;
+}
+
+.tr-md ul {
+	list-style: disc;
+}
+
+.tr-md ol {
+	list-style: decimal;
+}
+
+.tr-md ul ul {
+	list-style: circle;
 }
 
 .tr-md li {
@@ -221,12 +234,87 @@
 	color: var(--fg);
 }
 
-.tr-md pre {
+/* Code blocks (§8.6): a 28px header (language left, Copy right) over the body, one frame around both. */
+.tr-md .tr-code {
 	margin: 0 0 12px;
-	padding: 12px 14px;
+	overflow: hidden;
 	border: 1px solid var(--border);
 	border-radius: var(--radius);
 	background: var(--bg-inset);
+}
+
+.tr-md .tr-code-head {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	height: 28px;
+	padding: 0 4px 0 12px;
+	user-select: none;
+}
+
+.tr-md .tr-code-lang {
+	color: var(--fg-faint);
+	font-family: var(--font-mono);
+	font-size: 11px;
+}
+
+.tr-md .tr-code-copy {
+	display: grid;
+	place-items: center;
+	width: 24px;
+	height: 24px;
+	border-radius: var(--radius-sm);
+	color: var(--fg-muted);
+	cursor: pointer;
+	opacity: 0;
+	outline: none;
+	transition:
+		opacity var(--dur-fast),
+		background-color var(--dur-fast),
+		color var(--dur-fast);
+}
+
+.tr-md .tr-code-copy::before {
+	content: "";
+	width: 14px;
+	height: 14px;
+	background: currentColor;
+	mask: var(--tr-icon-copy) center / contain no-repeat;
+}
+
+.tr-md .tr-code-copy[data-copied] {
+	color: var(--ok);
+}
+
+.tr-md .tr-code-copy[data-copied]::before {
+	mask-image: var(--tr-icon-check);
+}
+
+.tr-md .tr-code:hover .tr-code-copy,
+.tr-md .tr-code-copy:focus-visible,
+.tr-md .tr-code-copy[data-copied] {
+	opacity: 1;
+}
+
+.tr-md .tr-code-copy:hover {
+	background: var(--hover);
+	color: var(--fg);
+}
+
+.tr-md .tr-code-copy:focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: -2px;
+}
+
+@media (hover: none) {
+	.tr-md .tr-code-copy {
+		opacity: 1;
+	}
+}
+
+.tr-md pre {
+	margin: 0;
+	padding: 0 12px 12px;
 	overflow-x: auto;
 }
 
@@ -245,22 +333,162 @@
 	color: var(--fg-muted);
 }
 
-.tr-md table {
+/* Callouts (`> [!NOTE]` and kin, render.ts): a filled tone card with a tone icon and a bold title. No side stripe. */
+.tr-md .tr-callout {
 	margin: 0 0 12px;
+	padding: 12px;
+	border-radius: var(--radius);
+	background: var(--tr-callout-bg);
+	color: var(--fg);
+}
+
+.tr-md .tr-callout[data-tone="note"] {
+	--tr-callout-bg: var(--info-bg);
+	--tr-callout-fg: var(--info);
+	--tr-callout-icon: var(--tr-icon-info);
+}
+
+.tr-md .tr-callout[data-tone="tip"] {
+	--tr-callout-bg: var(--accent-muted);
+	--tr-callout-fg: var(--accent);
+	--tr-callout-icon: var(--tr-icon-tip);
+}
+
+.tr-md .tr-callout[data-tone="warning"] {
+	--tr-callout-bg: var(--warn-bg);
+	--tr-callout-fg: var(--warn);
+	--tr-callout-icon: var(--tr-icon-warning);
+}
+
+.tr-md .tr-callout:is([data-tone="important"], [data-tone="caution"]) {
+	--tr-callout-bg: var(--err-bg);
+	--tr-callout-fg: var(--err);
+	--tr-callout-icon: var(--tr-icon-octagon);
+}
+
+.tr-md .tr-callout > :last-child {
+	margin-bottom: 0;
+}
+
+.tr-md .tr-callout-title {
+	display: flex;
+	align-items: center;
+	gap: 8px;
+	margin: 0 0 4px;
+	color: var(--tr-callout-fg);
+	font-weight: 600;
+}
+
+.tr-md .tr-callout-icon {
+	flex: none;
+	width: 14px;
+	height: 14px;
+	background: currentColor;
+	mask: var(--tr-callout-icon) center / contain no-repeat;
+}
+
+/* Tables (§8.6): a scrolling frame, header on the inset tint, horizontal rules only, numbers right-aligned in mono. */
+.tr-md .tr-table {
+	max-width: 100%;
+	margin: 0 0 12px;
+	overflow-x: auto;
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+}
+
+.tr-md table {
+	min-width: 100%;
 	border-collapse: collapse;
 	font-size: var(--text-md);
 }
 
 .tr-md th,
 .tr-md td {
-	padding: 6px 10px;
-	border: 1px solid var(--border);
+	padding: 8px 12px;
 	text-align: left;
+	vertical-align: top;
 }
 
 .tr-md th {
 	background: var(--bg-inset);
+	color: var(--fg-muted);
+	font-size: 12px;
 	font-weight: 600;
+	white-space: nowrap;
+}
+
+.tr-md tbody td {
+	border-top: 1px solid var(--border);
+}
+
+.tr-md tbody > tr {
+	transition: background-color var(--dur-fast);
+}
+
+.tr-md tbody > tr:hover {
+	background: var(--hover);
+}
+
+.tr-md :is(th, td)[align="right"] {
+	text-align: right;
+}
+
+.tr-md :is(th, td)[align="center"] {
+	text-align: center;
+}
+
+.tr-md td.tr-num {
+	font-family: var(--font-mono);
+	font-size: var(--text-code);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+/* Task lists: the read-only checkbox replaces the list marker (16px box; filled accent with a check when done). */
+.tr-md li.tr-task {
+	margin-left: -24px;
+	list-style: none;
+}
+
+.tr-md li.tr-task input[type="checkbox"] {
+	appearance: none;
+	display: inline-grid;
+	place-items: center;
+	width: 16px;
+	height: 16px;
+	margin: 0 8px 0 0;
+	vertical-align: -3px;
+	border: 1.5px solid var(--control-border);
+	border-radius: var(--radius-sm);
+	background: transparent;
+	opacity: 1;
+}
+
+.tr-md li.tr-task input[type="checkbox"]:checked {
+	border-color: var(--accent);
+	background: var(--accent);
+}
+
+.tr-md li.tr-task input[type="checkbox"]:checked::before {
+	content: "";
+	width: 11px;
+	height: 11px;
+	background: var(--accent-fg);
+	mask: var(--tr-icon-check) center / contain no-repeat;
+}
+
+.tr-md li.tr-task:has(> input:checked, > p:first-child > input:checked) {
+	color: var(--fg-muted);
+}
+
+/* Icon masks (Phosphor paths, 256 grid). */
+.tr-md {
+	--tr-icon-copy: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cpath d='M216,32H88a8,8,0,0,0-8,8V80H40a8,8,0,0,0-8,8V216a8,8,0,0,0,8,8H168a8,8,0,0,0,8-8V176h40a8,8,0,0,0,8-8V40A8,8,0,0,0,216,32ZM160,208H48V96H160Zm48-48H176V88a8,8,0,0,0-8-8H96V48H208Z'/%3E%3C/svg%3E");
+	--tr-icon-check: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cpath d='M232.49,80.49l-128,128a12,12,0,0,1-17,0l-56-56a12,12,0,1,1,17-17L96,183,215.51,63.51a12,12,0,0,1,17,17Z'/%3E%3C/svg%3E");
+	--tr-icon-info: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cpath d='M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm-4,48a12,12,0,1,1-12,12A12,12,0,0,1,124,72Zm12,112a16,16,0,0,1-16-16V128a8,8,0,0,1,0-16,16,16,0,0,1,16,16v40a8,8,0,0,1,0,16Z'/%3E%3C/svg%3E");
+	--tr-icon-tip: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cpath d='M176,232a8,8,0,0,1-8,8H88a8,8,0,0,1,0-16h80A8,8,0,0,1,176,232Zm40-128a87.55,87.55,0,0,1-33.64,69.21A16.24,16.24,0,0,0,176,186v6a16,16,0,0,1-16,16H96a16,16,0,0,1-16-16v-6a16,16,0,0,0-6.23-12.66A87.59,87.59,0,0,1,40,104.49C39.74,56.83,78.26,17.140,125.88,16A88,88,0,0,1,216,104Zm-32.11-9.34a57.6,57.6,0,0,0-46.56-46.55,8,8,0,0,0-2.66,15.78c16.57,2.79,30.63,16.85,33.44,33.45A8,8,0,0,0,176,104a9,9,0,0,0,1.350-.11A8,8,0,0,0,183.890,94.66Z'/%3E%3C/svg%3E");
+	--tr-icon-warning: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cpath d='M236.8,188.09,149.35,36.22h0a24.76,24.76,0,0,0-42.7,0L19.2,188.09a23.51,23.51,0,0,0,0,23.72A24.35,24.35,0,0,0,40.55,224h174.9a24.35,24.35,0,0,0,21.33-12.19A23.51,23.51,0,0,0,236.8,188.09ZM120,104a8,8,0,0,1,16,0v40a8,8,0,0,1-16,0Zm8,88a12,12,0,1,1,12-12A12,12,0,0,1,128,192Z'/%3E%3C/svg%3E");
+	--tr-icon-octagon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 256 256'%3E%3Cpath d='M227.31,80.23,175.77,28.69A16.13,16.13,0,0,0,164.45,24H91.55a16.13,16.13,0,0,0-11.32,4.69L28.69,80.23A16.13,16.13,0,0,0,24,91.55v72.9a16.13,16.13,0,0,0,4.69,11.32l51.54,51.54A16.130,16.130,0,0,0,91.55,232h72.9a16.13,16.13,0,0,0,11.32-4.69l51.54-51.54A16.13,16.13,0,0,0,232,164.45V91.55A16.13,16.13,0,0,0,227.31,80.23ZM120,80a8,8,0,0,1,16,0v56a8,8,0,0,1-16,0Zm8,104a12,12,0,1,1,12-12A12,12,0,0,1,128,184Z'/%3E%3C/svg%3E");
 }
 
 .tr-md hr {
@@ -331,7 +559,7 @@
 }
 
 /* Streaming caret (DESIGN §5.16): a 2px accent bar after the reply's last character, not on a line of its own. */
-[data-streaming] .tr-md > :last-child:not(ul, ol, pre, table, hr)::after,
+[data-streaming] .tr-md > :last-child:not(ul, ol, pre, table, hr, .tr-code, .tr-table, .tr-callout)::after,
 [data-streaming] .tr-md > :is(ul, ol):last-child > li:last-child::after {
 	content: "";
 	display: inline-block;
@@ -339,7 +567,7 @@
 	height: 1em;
 	margin-left: 2px;
 	vertical-align: -0.15em;
-	border-radius: 1px;
+	border-radius: var(--radius-full);
 	background: var(--accent);
 	animation: caret-blink 1s steps(1) infinite;
 }

@@ -12,7 +12,8 @@ import { useComposerDrafts } from "../../chat/composer/drafts";
 import { type CommandSpec, useCommands } from "../../registry/commands";
 import { shortAgo } from "../../shell/hooks";
 import { controllerFor, focusedController, focusedTabId, useApp } from "../../state/app";
-import { cn, Kbd, toast } from "../../ui";
+import { cn, toast } from "../../ui";
+import { menuShortcut } from "../../ui/styles";
 import { commandContext, runCommand } from "./run";
 import { keywordList, rank, rankFiles } from "./search";
 import { mostUsed } from "./usage";
@@ -106,13 +107,14 @@ interface RowProps {
 	onSelect(): void;
 }
 
+/** Command rows deliberately stay 36px tall for faster scanning; surrounding anatomy follows ui/styles.ts. */
 function Row({ value, icon: Icon, title, hint, slash, shortcut, danger, notice, onSelect }: RowProps) {
 	return (
 		<Command.Item
 			value={value}
 			onSelect={onSelect}
 			className={cn(
-				"group flex h-9 cursor-default select-none items-center gap-2.5 rounded-md px-2.5 text-md text-fg",
+				"group flex h-9 cursor-default select-none items-center gap-2 rounded-sm px-row text-md text-fg",
 				"data-[selected=true]:bg-selected",
 				danger && "text-err",
 			)}
@@ -127,9 +129,9 @@ function Row({ value, icon: Icon, title, hint, slash, shortcut, danger, notice, 
 					{notice}
 				</span>
 			) : (
-				<span className="flex shrink-0 items-center gap-2 font-mono text-xs text-fg-faint">
+				<span className={cn(menuShortcut, "flex items-center gap-2")}>
 					{slash && <span>{slash}</span>}
-					{shortcut && <Kbd>{shortcut}</Kbd>}
+					{shortcut && <span>{shortcut}</span>}
 				</span>
 			)}
 		</Command.Item>
@@ -253,9 +255,10 @@ function PaletteBody() {
 	};
 
 	const groupClass = cn(
-		"px-1.5 pb-1.5",
-		"**:[[cmdk-group-heading]]:px-2.5 **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:pt-2.5",
-		"**:[[cmdk-group-heading]]:text-sm **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-fg-muted",
+		"px-menu pb-menu",
+		"**:[[cmdk-group-heading]]:px-row **:[[cmdk-group-heading]]:pb-1 **:[[cmdk-group-heading]]:pt-1.5",
+		"**:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-semibold **:[[cmdk-group-heading]]:text-fg-faint",
+		"**:[[cmdk-group]:not(:first-child)]:border-t **:[[cmdk-group]:not(:first-child)]:border-border",
 	);
 
 	return (
@@ -371,7 +374,7 @@ export function PaletteHost() {
 				<RD.Content
 					aria-describedby={undefined}
 					className={cn(
-						"vo-dialog fixed left-1/2 top-[18vh] z-(--z-palette) w-[640px] max-w-[calc(100vw-32px)] -translate-x-1/2",
+						"vo-dialog fixed left-1/2 top-[18vh] z-(--z-palette) w-160 max-w-[calc(100vw-32px)] -translate-x-1/2",
 						"overflow-hidden rounded-lg border border-border bg-overlay text-fg shadow-(--shadow-overlay) outline-none",
 					)}
 				>

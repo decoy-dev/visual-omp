@@ -11,6 +11,7 @@ import { useComposerDrafts } from "../../chat/composer/drafts";
 import type { ChatSlotProps } from "../../registry/slots";
 import type { SessionController } from "../../state/session";
 import { Markdown } from "../../transcript/Markdown";
+import { PlanChecklist } from "../panes/PlanChecklist";
 import { acknowledgeAuto, setApprovalMode } from "./approval";
 import { press, readScreen, reportFailure, waitForScreen } from "./drive";
 import { exitPlan, loadPlan } from "./plan";
@@ -146,7 +147,7 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 					<ClipboardText className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />
 					<div className="min-w-0 flex-1">
 						<h3 className="text-base font-semibold text-fg">{title}</h3>
-						<p className="mt-0.5 text-sm text-fg-muted">{t("plan.waiting")}</p>
+						<p className="mt-1 text-sm text-fg-muted">{t("plan.waiting")}</p>
 					</div>
 					<Button
 						size="sm"
@@ -162,7 +163,14 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 					<div className="mt-3 max-h-96 overflow-y-auto border-t border-border px-4 py-3 text-md">
 						{/* The plan file loads after the card appears; fade from the placeholder to the plan. */}
 						<PresenceSwap swapKey={plan ? "plan" : "missing"}>
-							{plan ? <Markdown text={plan} /> : <p className="text-sm text-fg-muted">{t("plan.missing")}</p>}
+							{plan ? (
+								<>
+									<PlanChecklist text={plan} className="mb-3" />
+									<Markdown text={plan} />
+								</>
+							) : (
+								<p className="text-sm text-fg-muted">{t("plan.missing")}</p>
+							)}
 						</PresenceSwap>
 					</div>
 				</Expand>

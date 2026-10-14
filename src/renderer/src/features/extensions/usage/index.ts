@@ -1,12 +1,15 @@
-/** Usage & limits: its page, its command and the status bar's plan usage. */
+/** Usage & limits: its page (own chunk), its command and the status bar's plan usage. */
 import { Gauge } from "@phosphor-icons/react";
 import { registerCommand } from "@/registry/commands";
+import { lazyPage } from "@/registry/lazy";
 import { pages, statusItems } from "@/registry/slots";
 import { openUsage } from "@/state/navigation";
 import { PlanUsageStatus } from "./PlanUsageStatus";
-import { UsagePage } from "./UsagePage";
 
-pages.register({ id: "usage", component: UsagePage });
+pages.register({
+	id: "usage",
+	component: lazyPage(() => import("./UsagePage").then(m => m.UsagePage), { title: "extensions:usage.title", width: "data" }),
+});
 
 registerCommand({
 	id: "manage.usage",

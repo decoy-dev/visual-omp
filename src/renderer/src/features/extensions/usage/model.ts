@@ -73,6 +73,42 @@ export function filterChats(chats: readonly SpendChat[], { query, project, model
 	);
 }
 
+/** One project's share of the period's estimated API cost. */
+export interface ProjectCost {
+	/** Project folder (`SpendChat.cwd`). */
+	cwd: string;
+	cost: number;
+	chats: number;
+}
+
+/**
+ * Estimated API cost per project folder, highest first (ties by folder name). A chat's cost includes
+ * every model and subagent it ran, so it all counts toward the chat's own project.
+ */
+export function costByProject(chats: readonly SpendChat[]): ProjectCost[] {
+	const byCwd = new Map<string, ProjectCost>();
+	for (const chat of chats) {
+		const entry = byCwd.get(chat.cwd) ?? { cwd: chat.cwd, cost: 0, chats: 0 };
+		entry.cost += chat.cost;
+		entry.chats += 1;
+		byCwd.set(chat.cwd, entry);
+	}
+	return [...byCwd.values()].sort((a, b) => b.cost - a.cost || projectName(a.cwd).localeCompare(projectName(b.cwd)));
+}
+
+/** The first `limit` projects, and the rest folded into one figure (null when nothing is left over). */
+export function topProjects(projects: readonly ProjectCost[], limit: number): { shown: ProjectCost[]; rest: { count: number; cost: number } | null } {
+	if (projects.length <= limit) return { shown: [...projects], rest: null };
+	const shown = projects.slice(0, limit - 1);
+	const others = projects.slice(limit - 1);
+	return { shown, rest: { count: others.length, cost: others.reduce((sum, project) => sum + project.cost, 0) } };
+}
+
+/** Mean estimated API cost per day over the range, today so far included. */
+export function dailyAverage(days: readonly SpendDay[]): number {
+	return days.length === 0 ? 0 : days.reduce((sum, day) => sum + day.cost, 0) / days.length;
+}
+
 /**
  * Chats as CSV, in the order given. Token columns say whether cache reads and writes are included,
  * and the cost column says it is omp's estimate at public API prices.

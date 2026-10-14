@@ -10,34 +10,25 @@ export function escapeHtml(s: string): string {
 		.replaceAll("'", "&#39;");
 }
 
-/** "950", "12.3k", "1.2M" — tolerant of non-finite input. */
-export function fmtTokens(n: number): string {
-	if (!Number.isFinite(n) || n <= 0) return "0";
-	if (n < 1000) return String(Math.round(n));
-	if (n < 1_000_000) {
-		const k = n / 1000;
-		return `${k >= 100 ? Math.round(k) : k.toFixed(1)}k`;
-	}
-	const m = n / 1_000_000;
-	return `${m >= 100 ? Math.round(m) : m.toFixed(1)}M`;
-}
-
 /** "$0.004", "$0.42", "$4.20" — tolerant of non-finite input. */
 export function fmtCost(usd: number): string {
 	if (!Number.isFinite(usd) || usd <= 0) return "$0.00";
 	return `$${usd >= 1 ? usd.toFixed(2) : usd.toFixed(3)}`;
 }
 
-/** "847ms", "12.3s", "4m05s", "1h12m". */
+/**
+ * "847ms", "4.2s", "42s", "4m 05s", "1h 12m": the one duration style for rows and cards in the chat, matching
+ * the "Worked for 1m 12s" line. Whole seconds are rounded before splitting, so 119.6s reads "2m 00s", never "1m 60s".
+ */
 export function fmtDuration(ms: number): string {
 	if (!Number.isFinite(ms) || ms < 0) return "0ms";
 	if (ms < 1000) return `${Math.round(ms)}ms`;
-	const s = ms / 1000;
-	if (s < 60) return `${s.toFixed(1)}s`;
-	const min = Math.floor(s / 60);
-	if (min < 60) return `${min}m${String(Math.round(s % 60)).padStart(2, "0")}s`;
-	const h = Math.floor(min / 60);
-	return `${h}h${String(min % 60).padStart(2, "0")}m`;
+	if (ms < 9_950) return `${(ms / 1000).toFixed(1)}s`;
+	const total = Math.round(ms / 1000);
+	if (total < 60) return `${total}s`;
+	const minutes = Math.floor(total / 60);
+	if (minutes < 60) return `${minutes}m ${String(total % 60).padStart(2, "0")}s`;
+	return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
 }
 
 /** "now", "42s ago", "5m ago", "3h ago", "2d ago". Input: epoch ms. */
@@ -67,31 +58,4 @@ export function shortenPath(p: string): string {
 	const segs = out.split("/");
 	if (segs.length > 4) out = `${segs[0]}/…/${segs.slice(-2).join("/")}`;
 	return out;
-}
-
-/** Tolerant text extraction from string | content-block array | message-like objects. */
-export function messageText(m: unknown): string {
-	if (typeof m === "string") return m;
-	if (m === null || m === undefined) return "";
-	if (Array.isArray(m)) {
-		const parts: string[] = [];
-		for (const block of m) {
-			if (typeof block === "string") {
-				parts.push(block);
-				continue;
-			}
-			if (block && typeof block === "object") {
-				const rec = block as Record<string, unknown>;
-				if (typeof rec.text === "string") parts.push(rec.text);
-				else if (typeof rec.thinking === "string") parts.push(rec.thinking);
-			}
-		}
-		return parts.join("\n");
-	}
-	if (typeof m === "object") {
-		const rec = m as Record<string, unknown>;
-		if (typeof rec.text === "string") return rec.text;
-		if ("content" in rec) return messageText(rec.content);
-	}
-	return "";
 }

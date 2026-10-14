@@ -30,7 +30,7 @@ export function Kbd({ className, ...rest }: ComponentPropsWithRef<"kbd">) {
 	return (
 		<kbd
 			className={cn(
-				"inline-flex h-5 min-w-5 items-center justify-center rounded-[5px] border border-border-strong bg-inset px-1 font-mono text-xs font-medium text-fg-muted shadow-[inset_0_-1px_0_var(--border-strong)]",
+				"inline-flex h-5 min-w-5 items-center justify-center rounded-sm border border-border-strong bg-inset px-1 font-mono text-xs font-medium text-fg-muted shadow-[inset_0_-1px_0_var(--border-strong)]",
 				className,
 			)}
 			{...rest}

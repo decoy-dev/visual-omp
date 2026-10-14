@@ -1,7 +1,28 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
 import type { ActiveTool } from "../../collab/lib/client";
-import { backgroundJobs, chatOutputs, devServerUrls, isIntactBase64, latestTodo, madeCandidates } from "./derive";
+import {
+	activityOf,
+	backgroundJobs,
+	chatOutputs,
+	devServerUrls,
+	editTotals,
+	fileEdits,
+	helpersByCall,
+	helpersOf,
+	isIntactBase64,
+	latestTodo,
+	madeCandidates,
+	ompRunning,
+	planChecklist,
+	settleHelper,
+	stripAssignmentPreamble,
+	todoChanges,
+	todoCounts,
+	todoUpdates,
+	transcriptHelperStates,
+	workSummary,
+} from "./derive";
 
 let seq = 0;
 const base = () => ({ id: `e${++seq}`, parentId: null, timestamp: "2026-01-01T00:00:00Z" });
@@ -72,7 +93,7 @@ describe("backgroundJobs", () => {
 			result("b2", "bash", "started", { async: { state: "running", jobId: "j2", type: "bash" } }),
 			{ ...base(), type: "custom_message", customType: "async-result", content: "done", display: true, details: { jobs: [{ jobId: "j2" }] } },
 		];
-		expect(backgroundJobs(entries)).toEqual([
+		expect(backgroundJobs(entries, true)).toEqual([
 			{ jobId: "j2", command: "npm test", state: "completed", output: "started" },
 			{ jobId: "j1", command: "npm run dev", state: "running", output: "started" },
 		]);
@@ -85,7 +106,7 @@ describe("backgroundJobs", () => {
 			call("p", "job", { poll: ["j1"] }),
 			result("p", "job", "", { jobs: [{ id: "j1", status: "failed", errorText: "boom" }, { id: "other", status: "running" }] }),
 		];
-		expect(backgroundJobs(entries)).toEqual([{ jobId: "j1", command: "make", state: "failed", output: "boom" }]);
+		expect(backgroundJobs(entries, true)).toEqual([{ jobId: "j1", command: "make", state: "failed", output: "boom" }]);
 	});
 
 	it("shows streaming output of a job started in the background, not foreground commands", () => {
@@ -100,7 +121,51 @@ describe("backgroundJobs", () => {
 			["a", tool({ command: "vite", async: true }, "ja")],
 			["b", tool({ command: "npm test" }, "jb")],
 		]);
-		expect(backgroundJobs([], active)).toEqual([{ jobId: "ja", command: "vite", state: "running", output: "listening" }]);
+		expect(backgroundJobs([], true, active)).toEqual([{ jobId: "ja", command: "vite", state: "running", output: "listening" }]);
+	});
+
+	// Shapes from a saved chat: a CI watcher sent to the background, closed only by a later `wait` snapshot.
+	const started = (callId: string, jobId: string, command: string) => [
+		call(callId, "bash", { command, async: true }),
+		result(callId, "bash", `run=1\n\nBackgrounded as job ${jobId}`, { async: { state: "running", jobId, type: "bash" }, timeoutSeconds: 1500 }),
+	];
+	const exit = { ...base(), type: "custom", customType: "session_exit", data: { reason: "dispose", kind: "normal", recordedAt: "2026-10-01T00:20:47.661Z" } } as unknown as SessionEntry;
+
+	it("closes a job from a wait snapshot", () => {
+		const entries = [
+			...started("b1", "bg_42", "gh run watch"),
+			call("w1", "wait", { jobs: ["bg_42"] }),
+			result("w1", "wait", "", {
+				op: "wait",
+				meta: { source: { type: "report", value: "background jobs snapshot" } },
+				jobs: [{ id: "bg_42", type: "bash", status: "completed", label: "gh run watch", durationMs: 118131, resultText: "macos-latest success" }],
+			}),
+		];
+		expect(backgroundJobs(entries, true)).toEqual([{ jobId: "bg_42", command: "gh run watch", state: "completed", output: "macos-latest success" }]);
+	});
+
+	it("takes a delivered failure from the result's exit line", () => {
+		const entries = [
+			...started("b1", "bg_1", "make"),
+			{
+				...base(),
+				type: "custom_message",
+				customType: "async-result",
+				content: "<system-notice>\nBackground job bg_1 has completed. Resume your work using the result below.\nboom\nCommand exited with code 2\n</system-notice>",
+				display: true,
+				details: { jobs: [{ jobId: "bg_1", type: "bash", label: "make", durationMs: 40 }] },
+			} as SessionEntry,
+		];
+		expect(backgroundJobs(entries, true)[0]?.state).toBe("failed");
+	});
+
+	it("stops jobs nobody reported finished once omp is gone: at a session_exit, or with no omp running now", () => {
+		const entries = [...started("b1", "bg_42", "old watcher"), exit, ...started("b2", "bg_50", "new watcher")];
+		expect(backgroundJobs(entries, true).map(job => [job.jobId, job.state])).toEqual([
+			["bg_50", "running"],
+			["bg_42", "cancelled"],
+		]);
+		expect(backgroundJobs(entries, false).map(job => job.state)).toEqual(["cancelled", "cancelled"]);
 	});
 });
 
@@ -375,5 +440,301 @@ describe("isIntactBase64", () => {
 		expect(isIntactBase64("iVBORw0KGgo=")).toBe(true);
 		expect(isIntactBase64("iVBORw0KGgo\n…[120 chars elided for collab session]")).toBe(false);
 		expect(isIntactBase64("blob:sha256:abc")).toBe(false);
+	});
+});
+
+describe("todo updates", () => {
+	const phases = (...tasks: [string, string][]) => ({ phases: [{ name: "P", tasks: tasks.map(([content, status]) => ({ content, status })) }] });
+
+	it("pairs each successful board with the one it replaced, counting a repeated result once", () => {
+		const entries = [
+			call("t1", "todo", { op: "init" }),
+			result("t1", "todo", "", phases(["a", "pending"])),
+			result("t1", "todo", "", phases(["a", "pending"])),
+			call("t2", "todo", { op: "bad" }),
+			result("t2", "todo", "error", phases(), true),
+			call("t3", "todo", { op: "done" }),
+			result("t3", "todo", "", phases(["a", "completed"])),
+		];
+		const updates = todoUpdates(entries);
+		expect(updates.map(update => update.callId)).toEqual(["t1", "t3"]);
+		expect(updates[0]?.previous).toBeNull();
+		expect(updates[1]?.previous).toEqual([{ name: "P", tasks: [{ content: "a", status: "pending" }] }]);
+	});
+
+	it("describes what an update changed, status moves first", () => {
+		const before = [{ name: "P", tasks: [{ content: "a", status: "in_progress" as const }, { content: "b", status: "pending" as const }, { content: "gone", status: "pending" as const }] }];
+		const after = [{ name: "P", tasks: [{ content: "new", status: "pending" as const }, { content: "a", status: "completed" as const }, { content: "b", status: "in_progress" as const }] }];
+		expect(todoChanges(before, after)).toEqual([
+			{ kind: "completed", task: "a" },
+			{ kind: "started", task: "b" },
+			{ kind: "added", task: "new" },
+			{ kind: "removed", task: "gone" },
+		]);
+	});
+
+	it("counts abandoned tasks apart from the total", () => {
+		const board = [{ name: "P", tasks: [{ content: "a", status: "completed" as const }, { content: "b", status: "abandoned" as const }, { content: "c", status: "pending" as const }] }];
+		expect(todoCounts(board)).toEqual({ done: 1, total: 2, abandoned: 1 });
+	});
+});
+
+describe("fileEdits and editTotals", () => {
+	const context = { cwd: "/proj", home: "/Users/me" };
+
+	it("counts lines from omp's diffs and skips failed calls, failed files and unapplied previews", () => {
+		const entries = [
+			call("e1", "edit", { path: "a.ts" }),
+			result("e1", "edit", "", { diff: "--- a\n+++ b\n+one\n+two\n-three\n context" }),
+			result("e1", "edit", "", { diff: "+one" }),
+			call("e2", "edit", {}),
+			result("e2", "edit", "", {
+				perFileResults: [
+					{ path: "/proj/a.ts", diff: "+x" },
+					{ path: "/proj/bad.ts", diff: "+x", isError: true },
+					{ path: "new.ts", op: "create", diff: "+1\n+2" },
+				],
+			}),
+			call("e3", "edit", { path: "c.ts" }),
+			result("e3", "edit", "boom", { diff: "+1" }, true),
+			call("s1", "ast_edit", {}),
+			result("s1", "ast_edit", "", { applied: false, fileReplacements: [{ path: "staged.ts" }] }),
+			call("x1", "reject", { action: "discard" }),
+			result("x1", "reject", "", {}),
+			call("w1", "write", { path: "/proj/a.ts" }),
+			result("w1", "write", "", {}),
+		];
+		const edits = fileEdits(entries, context);
+		expect([...edits.keys()]).toEqual(["e1", "e2", "w1"]);
+		expect(edits.get("e1")).toEqual([{ path: "/proj/a.ts", action: "edited", added: 2, removed: 1 }]);
+		expect(edits.get("e2")).toEqual([
+			{ path: "/proj/a.ts", action: "edited", added: 1, removed: 0 },
+			{ path: "/proj/new.ts", action: "created", added: 2, removed: 0 },
+		]);
+
+		expect(editTotals(edits, ["e1", "e2"])).toEqual({
+			files: [
+				{ path: "/proj/a.ts", action: "edited", added: 3, removed: 1 },
+				{ path: "/proj/new.ts", action: "created", added: 2, removed: 0 },
+			],
+			added: 5,
+			removed: 1,
+			partial: false,
+		});
+		// Repeated assistant call ids can appear around transcript replay; the diff for that call counts once.
+		expect(editTotals(edits, ["e1", "e1", "e2"])).toEqual({
+			files: [
+				{ path: "/proj/a.ts", action: "edited", added: 3, removed: 1 },
+				{ path: "/proj/new.ts", action: "created", added: 2, removed: 0 },
+			],
+			added: 5,
+			removed: 1,
+			partial: false,
+		});
+		// A write has no diff, so the file's totals become unknown and leave the sums.
+		expect(editTotals(edits, ["e1", "w1"])).toEqual({ files: [{ path: "/proj/a.ts", action: "edited", added: null, removed: null }], added: 0, removed: 0, partial: true });
+	});
+
+	it("credits an applied ast_edit preview to the resolve call", () => {
+		const entries = [
+			call("s1", "ast_edit", {}),
+			result("s1", "ast_edit", "", { applied: false, fileReplacements: [{ path: "x.ts" }] }),
+			call("r1", "resolve", { action: "apply" }),
+			result("r1", "resolve", "", { action: "apply", sourceToolName: "ast_edit" }),
+		];
+		expect([...fileEdits(entries, context)]).toEqual([["r1", [{ path: "/proj/x.ts", action: "edited", added: null, removed: null }]]]);
+	});
+});
+
+describe("planChecklist", () => {
+	it("reads checkbox steps outside code fences", () => {
+		const plan = ["# Plan", "- [x] Inventory", "1. [ ] Rewrite", "  - [X] nested", "```", "- [ ] not a step", "```", "- plain"].join("\n");
+		expect(planChecklist(plan)).toEqual([
+			{ text: "Inventory", checked: true, depth: 0 },
+			{ text: "Rewrite", checked: false, depth: 0 },
+			{ text: "nested", checked: true, depth: 1 },
+		]);
+	});
+
+	it("is null for prose plans", () => {
+		expect(planChecklist("# Plan\n\n1. Do it\n- then this")).toBeNull();
+	});
+});
+
+describe("helpersOf and workSummary", () => {
+	const progress = {
+		index: 0,
+		id: "Atlas",
+		agent: "task",
+		status: "running" as const,
+		task: "Scan\nthe store",
+		currentToolIntent: "Reading limits",
+		recentTools: [],
+		recentOutput: [],
+		toolCount: 6,
+		requests: 3,
+		tokens: 12_400,
+		contextTokens: 40_000,
+		contextWindow: 0,
+		cost: 0,
+		durationMs: 61_000,
+		resolvedModel: "opus",
+	};
+
+	it("keeps the progress fields omp reports and drops unknown denominators", () => {
+		const guest = {
+			agents: [{ id: "Atlas", displayName: "Atlas", kind: "sub" as const, status: "running" as const, hasSessionFile: true, createdAt: 0, lastActivity: 0 }],
+			progress: new Map([["Atlas", { index: 0, agent: "task", task: "", progress }]]),
+			lifecycle: new Map([["Bolt", { id: "Bolt", agent: "explore", status: "completed" as const, index: 1, description: "Look around" }]]),
+		};
+		const helpers = helpersOf(guest, true);
+		expect(helpers).toEqual([
+			{
+				id: "Atlas",
+				name: "Atlas",
+				status: "running",
+				activity: "Reading limits",
+				tokens: 12_400,
+				toolCount: 6,
+				durationMs: 61_000,
+				contextTokens: 40_000,
+				contextWindow: null,
+				model: "opus",
+				hasTranscript: true,
+			},
+			{
+				id: "Bolt",
+				name: "explore",
+				status: "done",
+				activity: "Look around",
+				tokens: null,
+				toolCount: null,
+				durationMs: null,
+				contextTokens: null,
+				contextWindow: null,
+				model: null,
+				hasTranscript: false,
+			},
+		]);
+		const jobs = [{ jobId: "j", command: "x", state: "running" as const, output: "" }];
+		expect(workSummary(latestTodo([]), helpers, jobs)).toEqual({ tasks: null, helpersWorking: 1, jobsRunning: 1 });
+		// A stale mirror after omp is gone: nothing works any more, finished helpers keep their outcome.
+		expect(helpersOf(guest, false).map(helper => `${helper.id}:${helper.status}`)).toEqual(["Atlas:stopped", "Bolt:done"]);
+	});
+
+	it("groups live helpers under the task call that started them, in the call's order", () => {
+		const byCall = helpersByCall(
+			{
+				agents: [],
+				progress: new Map([
+					["B", { index: 1, agent: "task", task: "", parentToolCallId: "k1", progress: { ...progress, id: "B", index: 1, status: "completed" as const } }],
+					["A", { index: 0, agent: "task", task: "", parentToolCallId: "k1", progress: { ...progress, id: "A" } }],
+					["X", { index: 0, agent: "task", task: "", progress: { ...progress, id: "X" } }],
+				]),
+				lifecycle: new Map([["C", { id: "C", agent: "explore", status: "started" as const, index: 0, parentToolCallId: "k2" }]]),
+			},
+			true,
+		);
+		expect([...byCall.keys()]).toEqual(["k1", "k2"]);
+		expect(byCall.get("k1")?.map(helper => `${helper.id}:${helper.status}`)).toEqual(["A:running", "B:done"]);
+		expect(byCall.get("k2")?.map(helper => helper.status)).toEqual(["running"]);
+	});
+});
+
+describe("transcriptHelperStates and settleHelper", () => {
+	// Shapes from a saved chat: a background spawn returns with pending progress; a wait snapshot and omp's
+	// async-result delivery later report the end.
+	const spawn = (callId: string, id: string) => [
+		call(callId, "task", { tasks: [{ name: id, agent: "astra", task: "Review." }] }),
+		result(callId, "task", `Started ${id}`, {
+			results: [],
+			totalDurationMs: 0,
+			progress: [{ index: 0, id, agent: "astra", status: "pending", task: "Complete assignment thoroughly:\n\nReview.", recentTools: [], recentOutput: [] }],
+			async: { state: "running", jobId: id, type: "task" },
+		}),
+	];
+	const delivered = (jobId: string, id: string, status: string) =>
+		({
+			...base(),
+			type: "custom_message",
+			customType: "async-result",
+			display: true,
+			content: `<system-notice>\nBackground job ${jobId} has completed. Resume your work using the result below.\n<task-result id="${id}" agent="astra" status="${status}" duration="21.1s">\n<meta lines="4" size="53B" />\n<output>\n{ "verdict": "APPROVED" }\n</output>\n</task-result>\n</system-notice>`,
+			details: { meta: { source: { type: "report", value: "background job delivery" } }, jobs: [{ jobId, type: "task", label: id, durationMs: 6 }] },
+		}) as SessionEntry;
+	const exit = { ...base(), type: "custom", customType: "session_exit", data: { reason: "dispose", kind: "normal" } } as unknown as SessionEntry;
+	const pendingRun = { id: "AdvisorContext", name: "AdvisorContext", status: "running" as const, activity: "", tokens: null, toolCount: null, durationMs: null, contextTokens: null, contextWindow: null, model: null, hasTranscript: false };
+
+	it("follows wait snapshots and async-result deliveries, latest last", () => {
+		const states = transcriptHelperStates([
+			...spawn("k1", "AdvisorContext"),
+			...spawn("k2", "Reviewer"),
+			call("w", "wait", {}),
+			result("w", "wait", "", { op: "wait", jobs: [{ id: "Reviewer", type: "task", status: "completed", label: "Reviewer", agentUrlId: "Reviewer" }] }),
+			delivered("AdvisorContext", "AdvisorContext", "failed (exit 1)"),
+			...spawn("k3", "Later"),
+		]);
+		expect(Object.fromEntries(states)).toEqual({ AdvisorContext: "failed", Reviewer: "done", Later: "running" });
+	});
+
+	it("reads a messaged helper's second run by its label", () => {
+		const states = transcriptHelperStates([...spawn("k1", "AdvisorWave1Features"), delivered("AdvisorWave1Features-2", "AdvisorWave1Features", "completed")]);
+		expect(states.get("AdvisorWave1Features")).toBe("done");
+	});
+
+	it("stops helpers still working at a session_exit", () => {
+		const states = transcriptHelperStates([...spawn("k1", "Old"), exit, ...spawn("k2", "New")]);
+		expect(Object.fromEntries(states)).toEqual({ Old: "stopped", New: "running" });
+	});
+
+	it("applies the recorded state, then stops what still works without omp", () => {
+		expect(settleHelper(pendingRun, new Map([["AdvisorContext", "done"]]), false).status).toBe("done");
+		expect(settleHelper(pendingRun, new Map(), true)).toBe(pendingRun);
+		expect(settleHelper(pendingRun, null, false).status).toBe("stopped");
+		expect(settleHelper({ ...pendingRun, status: "idle" }, null, false).status).toBe("stopped");
+		expect(settleHelper({ ...pendingRun, status: "failed" }, null, false).status).toBe("failed");
+	});
+});
+
+describe("ompRunning", () => {
+	const following = (ownership: "elsewhere" | "free" | "unknown") => ({ mode: "history" as const, readOnly: true, follow: { readable: true, error: null, ownership } });
+
+	it("counts this tab's omp and another process following the file, never a plain saved chat or an exited omp", () => {
+		expect(["starting", "live", "reconnecting"].map(mode => ompRunning({ mode: mode as "live", readOnly: false, follow: null }))).toEqual([true, true, true]);
+		expect(ompRunning({ mode: "history", readOnly: false, follow: null })).toBe(false);
+		expect(ompRunning({ mode: "exited", readOnly: false, follow: null })).toBe(false);
+		expect(ompRunning(null)).toBe(false);
+	});
+
+	it("stops counting a read-only follower once the other process lets go of the file", () => {
+		expect(ompRunning(following("elsewhere"))).toBe(true);
+		expect(ompRunning(following("unknown"))).toBe(true);
+		expect(ompRunning({ mode: "history", readOnly: true, follow: null })).toBe(true);
+		// Elsewhere → free: the tab stays read-only until Continue here, but nothing runs the chat's work any more.
+		expect(ompRunning(following("free"))).toBe(false);
+	});
+});
+
+describe("activityOf", () => {
+	// The `task` omp reports for a pending helper: its assignment wrapped in subagent-user-prompt.md.
+	const task = "Complete assignment thoroughly:\n\n# Target\nProve the HOMEBREW_NO_ASK fix with a throwaway cask.\n\n# Change\n1. Build it";
+
+	it("shows the assignment without omp's preamble or a heading before the helper does anything", () => {
+		expect(activityOf({ task, recentTools: [], recentOutput: [] })).toBe("Prove the HOMEBREW_NO_ASK fix with a throwaway cask.");
+		expect(activityOf({ task: "Complete assignment thoroughly:\n\n# Only a heading" })).toBe("Only a heading");
+		expect(activityOf({ task: "Complete assignment thoroughly:\n\n" })).toBe("");
+		expect(stripAssignmentPreamble(task)).toBe("# Target\nProve the HOMEBREW_NO_ASK fix with a throwaway cask.\n\n# Change\n1. Build it");
+	});
+
+	it("prefers omp's generated label to the assignment", () => {
+		expect(activityOf({ task, description: "Prove the Homebrew fix" })).toBe("Prove the Homebrew fix");
+	});
+
+	it("prefers the helper's latest activity once it has some", () => {
+		const base = { task, description: "Prove the Homebrew fix" };
+		expect(activityOf({ ...base, recentOutput: ["Checking the tap formula next.", "Earlier line"] })).toBe("Checking the tap formula next.");
+		expect(activityOf({ ...base, recentTools: [{ intent: null }, { intent: "Reading cask" }], recentOutput: ["text"] })).toBe("Reading cask");
+		expect(activityOf({ ...base, lastIntent: "Running brew audit", recentTools: [{ intent: "Reading cask" }] })).toBe("Running brew audit");
+		expect(activityOf({ ...base, lastIntent: "Running brew audit", currentToolIntent: "Writing test cask\nmore" })).toBe("Writing test cask");
 	});
 });

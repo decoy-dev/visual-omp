@@ -6,6 +6,7 @@ import { FileText } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../../ui";
+import { menuContent, menuIcon, menuItem, menuItemActive, menuLabel } from "../../ui/styles";
 import type { FuzzyMatch } from "./fuzzy";
 
 const CACHE_MS = 30_000;
@@ -69,14 +70,14 @@ export function MentionPicker({ id, matches, active, onActive, onPick }: Mention
 		list.current?.querySelector(`#${CSS.escape(`${id}-${active}`)}`)?.scrollIntoView({ block: "nearest" });
 	}, [id, active]);
 	return (
-		<div className="vo-pop absolute inset-x-2 bottom-full z-10 mb-2 overflow-hidden rounded-lg border border-border bg-raised shadow-(--shadow-pop)">
-			<p className="border-b border-border px-3 py-1.5 text-xs text-fg-faint">{t("mention.header")}</p>
+		<div className={cn(menuContent, "absolute inset-x-2 bottom-full mb-1.5")}>
+			<p className={menuLabel}>{t("mention.header")}</p>
 			{matches === null ? (
-				<p className="px-3 py-3 text-sm text-fg-muted">{t("mention.loading")}</p>
+				<p className="px-row py-3 text-sm text-fg-muted">{t("mention.loading")}</p>
 			) : matches.length === 0 ? (
-				<p className="px-3 py-3 text-sm text-fg-muted">{t("mention.empty")}</p>
+				<p className="px-row py-3 text-sm text-fg-muted">{t("mention.empty")}</p>
 			) : (
-				<ul ref={list} id={id} role="listbox" aria-label={t("mention.label")} className="max-h-64 overflow-y-auto p-1">
+				<ul ref={list} id={id} role="listbox" aria-label={t("mention.label")} className="max-h-64 overflow-y-auto">
 					{matches.map((match, index) => (
 						<li
 							key={match.path}
@@ -89,12 +90,11 @@ export function MentionPicker({ id, matches, active, onActive, onPick }: Mention
 								event.preventDefault();
 								onPick(match.path);
 							}}
-							className={cn(
-								"flex h-8 cursor-default items-center gap-2 rounded-sm px-2 text-md transition-colors duration-(--dur-fast)",
-								index === active && "bg-selected",
-							)}
+							className={cn(menuItem, index === active && menuItemActive)}
 						>
-							<FileText className="size-4 shrink-0 text-fg-faint" aria-hidden />
+							<span className={menuIcon}>
+								<FileText aria-hidden />
+							</span>
 							<Highlighted match={match} />
 						</li>
 					))}

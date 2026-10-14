@@ -4,17 +4,17 @@
  */
 import { Copy, GitCommit, GitPullRequest, Wrench } from "@phosphor-icons/react";
 import { registerCommand } from "@/registry/commands";
+import { lazyView } from "@/registry/lazy";
 import { sheets, statusItems } from "@/registry/slots";
 import { useApp } from "@/state/app";
 import { fixCi, startWorktree } from "./actions";
-import { CommitSheet } from "./CommitSheet";
 import { ciState } from "./format";
-import { PrSheet } from "./PrSheet";
 import { BranchItem, ChangesItem, PrItem } from "./StatusItems";
 import { gitTracker } from "./store";
 
-sheets.register({ id: "git-commit", component: CommitSheet });
-sheets.register({ id: "git-pr", component: PrSheet });
+// The sheets load from their own chunk; a sheet opens as soon as it has loaded (`registry/lazy`).
+sheets.register({ id: "git-commit", component: lazyView(() => import("./CommitSheet").then(m => m.CommitSheet)) });
+sheets.register({ id: "git-pr", component: lazyView(() => import("./PrSheet").then(m => m.PrSheet)) });
 
 statusItems.register({ id: "git.branch", side: "left", order: 10, component: BranchItem });
 statusItems.register({ id: "git.changes", side: "left", order: 20, component: ChangesItem });

@@ -196,7 +196,7 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 			<section className="flex flex-wrap items-start gap-3">
 				<div className="min-w-[min(100%,16rem)] flex-1">
 					<h2 className="text-md font-medium text-fg">{t("settings.remove.title")}</h2>
-					<p className="mt-0.5 text-sm text-fg-muted">{t("settings.remove.body")}</p>
+					<p className="mt-1 text-sm text-fg-muted">{t("settings.remove.body")}</p>
 				</div>
 				<Button variant="danger-ghost" icon={<X />} onClick={() => setConfirmRemove(true)}>
 					{t("settings.remove.action")}
@@ -248,7 +248,7 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 function LinkRow({ icon, title, body, action, onOpen }: { icon: ReactNode; title: string; body: string; action: string; onOpen(): void }): ReactNode {
 	return (
 		<li className="flex flex-wrap items-center gap-x-3 gap-y-2 py-3">
-			<span className="shrink-0 self-start pt-0.5 text-fg-muted [&>svg]:size-4" aria-hidden>
+			<span className="shrink-0 self-start pt-1 text-fg-muted [&>svg]:size-4" aria-hidden>
 				{icon}
 			</span>
 			<div className="min-w-[min(100%,14rem)] flex-1">

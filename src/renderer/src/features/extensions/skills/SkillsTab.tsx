@@ -216,9 +216,9 @@ function SkillRow({ skill, onOpen, onToggle }: { skill: SkillEntry; onOpen(): vo
 	const locked = lockedReason(skill);
 	const toggleLabel = t(skill.enabled ? "skills.turnOff" : "skills.turnOn", { name: skill.name });
 	return (
-		<div className="relative flex items-center gap-3 px-3 py-2.5 transition-colors duration-(--dur-fast) hover:bg-hover">
+		<div className="relative flex items-center gap-3 px-3 py-3 transition-colors duration-(--dur-fast) hover:bg-hover">
 			<LetterTile name={skill.name} />
-			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<div className="flex min-w-0 items-center gap-2">
 					<button
 						type="button"
@@ -269,9 +269,9 @@ function RegistryBrowser({ query, installed, projectPath, runningFor, onInstall,
 		const records = installedById.get(id) ?? [];
 		const running = runningFor(id);
 		return (
-			<li key={id} className="flex items-center gap-3 px-3 py-2.5">
+			<li key={id} className="flex items-center gap-3 px-3 py-3">
 				<LetterTile name={id.split("/").pop() ?? id} />
-				<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+				<div className="flex min-w-0 flex-1 flex-col gap-1">
 					<div className="flex min-w-0 items-center gap-2">
 						<span className="truncate font-mono text-sm font-semibold text-fg">{id}</span>
 						{deprecated && <Chip tone="warn">{t("skills.deprecated")}</Chip>}

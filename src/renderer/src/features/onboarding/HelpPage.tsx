@@ -133,7 +133,7 @@ function GuideRow({ guide }: { guide: Guide }): ReactNode {
 				aria-expanded={open}
 				aria-controls={stepsId}
 				onClick={() => setOpen(value => !value)}
-				className={cn("flex w-full items-start gap-3 rounded-md px-2 py-2.5 text-left transition-colors duration-(--dur-fast) hover:bg-hover", focusRingInset)}
+				className={cn("flex w-full items-start gap-3 rounded-md px-2 py-3 text-left transition-colors duration-(--dur-fast) hover:bg-hover", focusRingInset)}
 			>
 				<guide.icon className="mt-0.5 size-4 shrink-0 text-fg-muted" aria-hidden />
 				<span className="min-w-0 flex-1">
@@ -148,7 +148,7 @@ function GuideRow({ guide }: { guide: Guide }): ReactNode {
 			<Expand open={open} id={stepsId}>
 				<ol className="mb-2 ml-9 mr-2 flex flex-col divide-y divide-border">
 					{guide.steps.map((StepIcon, index) => (
-						<li key={index} className="flex items-start gap-3 py-2.5">
+						<li key={index} className="flex items-start gap-3 py-3">
 							<StepIcon className="mt-0.5 size-4 shrink-0 text-fg-faint" aria-hidden />
 							<p className="min-w-0 text-md text-fg">{t(`help.guide.${guide.id}.s${index + 1}`)}</p>
 						</li>
@@ -167,7 +167,7 @@ function Glossary({ terms }: { terms: readonly (typeof TERMS)[number][] }): Reac
 			<SectionHeader id={id} title={t("help.glossary")} />
 			<dl className="flex flex-col divide-y divide-border">
 				{terms.map(key => (
-					<div key={key} className="flex flex-col gap-0.5 py-2.5 @md/content:flex-row @md/content:items-baseline @md/content:gap-4">
+					<div key={key} className="flex flex-col gap-1 py-3 @md/content:flex-row @md/content:items-baseline @md/content:gap-4">
 						<dt className="shrink-0 font-mono text-sm text-fg @md/content:w-36">{t(`help.terms.${key}.term`)}</dt>
 						<dd className="min-w-0 flex-1 text-md text-fg-muted">{t(`help.terms.${key}.def`)}</dd>
 					</div>
@@ -194,7 +194,7 @@ function MoreHelp(): ReactNode {
 						<button
 							type="button"
 							onClick={() => void window.vomp.invoke("app:openExternal", link.url)}
-							className={cn("flex w-full items-start gap-3 rounded-md px-2 py-2.5 text-left transition-colors duration-(--dur-fast) hover:bg-hover", focusRingInset)}
+							className={cn("flex w-full items-start gap-3 rounded-md px-2 py-3 text-left transition-colors duration-(--dur-fast) hover:bg-hover", focusRingInset)}
 						>
 							<link.icon className="mt-0.5 size-4 shrink-0 text-fg-muted" aria-hidden />
 							<span className="min-w-0 flex-1">

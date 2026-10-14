@@ -2,7 +2,7 @@ import * as RS from "@radix-ui/react-select";
 import { CaretDown, CaretUp, Check } from "@phosphor-icons/react";
 import type { ComponentPropsWithRef, ReactNode } from "react";
 import { cn } from "./cn";
-import { disabledNative, floatingSurface, menuItem, menuLabel, menuSeparator } from "./styles";
+import { disabledNative, floatingSurface, menuCheckSlot, menuIcon, menuItem, menuLabel, menuSeparator } from "./styles";
 
 export type SelectSize = "sm" | "md";
 
@@ -84,7 +84,7 @@ export function Select({
 					<RS.ScrollUpButton className="flex h-6 items-center justify-center text-fg-faint">
 						<CaretUp className="size-3.5" aria-hidden />
 					</RS.ScrollUpButton>
-					<RS.Viewport className="p-1">{children}</RS.Viewport>
+					<RS.Viewport className="p-menu">{children}</RS.Viewport>
 					<RS.ScrollDownButton className="flex h-6 items-center justify-center text-fg-faint">
 						<CaretDown className="size-3.5" aria-hidden />
 					</RS.ScrollDownButton>
@@ -100,15 +100,20 @@ export interface SelectItemProps extends ComponentPropsWithRef<typeof RS.Item> {
 	hint?: ReactNode;
 }
 
+/** Option row in the shared menu anatomy: the check in the leading slot, then the icon, label and hint. */
 export function SelectItem({ icon, hint, className, children, ...rest }: SelectItemProps) {
 	return (
-		<RS.Item className={cn(menuItem, "pr-8", className)} {...rest}>
-			{icon && <span className="inline-flex shrink-0 text-fg-muted [&>svg]:size-4">{icon}</span>}
-			<RS.ItemText>{children}</RS.ItemText>
-			{hint && <span className="ml-auto pl-3 text-xs text-fg-faint">{hint}</span>}
-			<RS.ItemIndicator className="absolute right-2 inline-flex text-accent">
-				<Check className="size-4" aria-hidden />
-			</RS.ItemIndicator>
+		<RS.Item className={cn(menuItem, className)} {...rest}>
+			<span className={menuCheckSlot}>
+				<RS.ItemIndicator>
+					<Check className="size-4" aria-hidden />
+				</RS.ItemIndicator>
+			</span>
+			{icon && <span className={menuIcon}>{icon}</span>}
+			<span className="min-w-0 flex-1 truncate">
+				<RS.ItemText>{children}</RS.ItemText>
+			</span>
+			{hint && <span className="ml-auto pl-4 text-xs text-fg-faint">{hint}</span>}
 		</RS.Item>
 	);
 }

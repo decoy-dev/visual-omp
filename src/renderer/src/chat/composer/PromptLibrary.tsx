@@ -330,7 +330,7 @@ export function PromptLibrary({ open, tab, projectPath, draft, onTabChange, onCl
 						</TabsList>
 						<SearchInput size="sm" className="w-44" value={query} onValueChange={setQuery} placeholder={t("library.search")} />
 					</div>
-					<div className="h-[360px] overflow-y-auto">
+					<div className="h-90 overflow-y-auto">
 						<TabsContent value="saved">
 							<SavedTab query={query} draft={draft} onPick={pick} />
 						</TabsContent>

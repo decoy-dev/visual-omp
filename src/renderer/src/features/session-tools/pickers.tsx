@@ -1,18 +1,34 @@
 /**
- * Composer bottom-row pickers (DESIGN §3.6): the permission button with its work modes, the model
- * button and the thinking button. Each change goes through omp and is confirmed from omp's own state.
- * The composer measures its row (Composer.tsx `useRowState`); the model and thinking buttons show only
- * their icon in the compact states (`group-data-compact/composer`), while the permission button always
- * keeps its words and wraps them instead.
+ * Pickers in the quiet row under the composer card (DESIGN §3.6): the permission button with its work
+ * modes, the model button and the thinking button. Each change goes through omp and is confirmed from
+ * omp's own state. All of them keep their words; the row wraps when the column is narrow, the model name
+ * truncates at the button's max width, and the permission text wraps inside its button.
  */
 import type { ApprovalMode, ModelInfo } from "@shared/contracts/config";
-import { Brain, CaretDown, Check, Cpu, Eye, ShieldCheck, ShieldWarning } from "@phosphor-icons/react";
-import { motion } from "motion/react";
+import { Brain, CaretDown, Check, Eye, ShieldCheck, ShieldWarning } from "@phosphor-icons/react";
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
-import { Button, cn, Popover, PopoverContent, PopoverTrigger, SearchInput, Spinner, spring, toast, Tooltip } from "@/ui";
-import { focusRing, focusRingInset, menuLabel } from "@/ui/styles";
+import {
+	Button,
+	cn,
+	Menu,
+	MenuContent,
+	MenuItem,
+	MenuLabel,
+	MenuRadioGroup,
+	MenuRadioItem,
+	MenuSeparator,
+	MenuTrigger,
+	Popover,
+	PopoverContent,
+	PopoverTrigger,
+	SearchInput,
+	Spinner,
+	toast,
+	Tooltip,
+} from "@/ui";
+import { focusRing, menuCheckSlot, menuItem, menuItemActive, menuLabel, menuSeparator } from "@/ui/styles";
 import { getCommand } from "../../registry/commands";
 import type { ChatSlotProps } from "../../registry/slots";
 import { useApp } from "../../state/app";
@@ -34,14 +50,6 @@ export const usePickerRequests = create<PickerRequests>()(set => ({
 	model: null,
 	openModel: tabId => set(state => ({ model: { tabId, seq: (state.model?.seq ?? 0) + 1 } })),
 }));
-
-/**
- * Selected-row fill that slides to the new row when the selection moves. `layoutId` must be unique per
- * list instance (derive it from `useId()`); the row needs `relative isolate`.
- */
-function SelectionFill({ layoutId, className }: { layoutId: string; className?: string }) {
-	return <motion.span aria-hidden layoutId={layoutId} transition={spring.snappy} className={cn("absolute inset-0 -z-10 bg-selected", className)} />;
-}
 
 /** Ghost 28px-high control shared by the composer's labelled pickers (each adds its own height rule). */
 const rowPicker = cn(
@@ -69,60 +77,6 @@ export async function choosePermission(cwd: string, mode: ApprovalMode, current:
 	}
 }
 
-/**
- * The levels as one tab stop with roving focus: arrows, Home and End move between levels; Enter, Space
- * or a click applies one. Moving focus alone never applies a level, because applying writes the
- * project config (and Auto asks for confirmation first).
- */
-function PermissionOptions({ cwd, mode, onPicked }: { cwd: string; mode: ApprovalMode | null; onPicked(): void }) {
-	const { t } = useTranslation("session");
-	const fillId = `${useId()}-permission`;
-	const group = useRef<HTMLDivElement>(null);
-	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-		const radios = [...(group.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]') ?? [])];
-		const from = radios.findIndex(radio => radio === document.activeElement);
-		const count = radios.length;
-		const step = ({ ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 } as Record<string, number>)[event.key];
-		let to: number;
-		if (event.key === "Home") to = 0;
-		else if (event.key === "End") to = count - 1;
-		else if (step !== undefined) to = (from + step + count) % count;
-		else return;
-		event.preventDefault();
-		radios[to]?.focus();
-	};
-	return (
-		<div ref={group} role="radiogroup" aria-label={t("permission.title")} onKeyDown={onKeyDown} className="flex flex-col gap-0.5">
-			{APPROVAL_MODES.map(option => (
-				<button
-					key={option}
-					type="button"
-					role="radio"
-					aria-checked={mode === option}
-					tabIndex={option === (mode ?? APPROVAL_MODES[0]) ? 0 : -1}
-					onClick={() => {
-						onPicked();
-						void choosePermission(cwd, option, mode);
-					}}
-					className={cn(
-						"relative isolate flex w-full items-start gap-2.5 rounded-md px-2 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-hover",
-						focusRingInset,
-					)}
-				>
-					{mode === option && <SelectionFill layoutId={fillId} className="rounded-md" />}
-					<span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center text-accent">
-						{mode === option && <Check className="size-4" aria-hidden />}
-					</span>
-					<span className="min-w-0 flex-1">
-						<span className="block text-md font-medium text-fg">{t(`permission.modes.${option}.label`)}</span>
-						<span className="block text-sm text-fg-muted">{t(`permission.modes.${option}.description`)}</span>
-					</span>
-				</button>
-			))}
-		</div>
-	);
-}
-
 /** The work mode omp shows in its status line, most specific first (one at a time, like omp's own UI). */
 function activeWorkMode(status: StatusLine | null): string | null {
 	if (!status) return null;
@@ -147,52 +101,38 @@ const WORK_MODES: ReadonlyArray<{ id: string; dialog?: boolean; state(status: St
 	{ id: "chat.advisor", state: () => null },
 ];
 
-function WorkModes({ session, status, disabled, onPicked }: { session: SessionController; status: StatusLine | null; disabled: boolean; onPicked(): void }) {
+/** The work modes as menu rows, each with the state omp shows for it on the right. */
+function WorkModeItems({ session, status }: { session: SessionController; status: StatusLine | null }) {
 	const { t } = useTranslation("session");
-	const labelId = `${useId()}-work-modes`;
-	return (
-		<div role="group" aria-labelledby={labelId} className="flex flex-col gap-0.5">
-			<p id={labelId} className={menuLabel}>
-				{t("modes.title")}
-			</p>
-			{WORK_MODES.map(({ id, dialog, state }) => {
-				const command = getCommand(id);
-				if (!command) return null;
-				const Icon = command.icon;
-				const current = state(status);
-				return (
-					<button
-						key={id}
-						type="button"
-						disabled={disabled}
-						title={command.hint ? t(command.hint) : undefined}
-						aria-haspopup={dialog ? "dialog" : undefined}
-						aria-pressed={dialog || id === "chat.advisor" ? undefined : current !== null}
-						onClick={() => {
-							onPicked();
-							void command.run({ session, projectPath: session.projectPath });
-						}}
-						className={cn(
-							"flex h-8 w-full items-center gap-2.5 rounded-md px-2 text-left text-md text-fg transition-colors duration-(--dur-fast) enabled:hover:bg-hover disabled:cursor-not-allowed disabled:opacity-45",
-							focusRingInset,
-						)}
-					>
-						{Icon && <Icon className="size-4 shrink-0 text-fg-muted" aria-hidden />}
-						<span className="min-w-0 flex-1 truncate">
-							{t(command.title)}
-							{dialog && "…"}
-						</span>
-						{current && <span className="shrink-0 text-sm font-medium text-accent">{t(`modes.state.${current}`)}</span>}
-					</button>
-				);
-			})}
-		</div>
-	);
+	return WORK_MODES.map(({ id, dialog, state }) => {
+		const command = getCommand(id);
+		if (!command) return null;
+		const Icon = command.icon;
+		const current = state(status);
+		return (
+			<MenuItem
+				key={id}
+				title={command.hint ? t(command.hint) : undefined}
+				icon={Icon ? <Icon /> : undefined}
+				onSelect={() => void command.run({ session, projectPath: session.projectPath })}
+			>
+				<span className="flex items-center gap-2">
+					<span className="min-w-0 flex-1 truncate">
+						{t(command.title)}
+						{dialog && "…"}
+					</span>
+					{current && <span className="shrink-0 text-sm font-medium text-accent">{t(`modes.state.${current}`)}</span>}
+				</span>
+			</MenuItem>
+		);
+	});
 }
 
 /**
  * The permission level in words (never icon-only: it says what omp may do on its own), plus the work mode
- * omp is in. The text wraps inside the button when the composer row is narrow. The popover changes both.
+ * omp is in. The text wraps inside the button when the composer row is narrow. Its menu changes both:
+ * arrows move between rows and Enter applies one, so moving alone never writes the project config (and
+ * Auto asks for confirmation first).
  */
 export function PermissionButton({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
@@ -200,14 +140,16 @@ export function PermissionButton({ session }: ChatSlotProps) {
 	const { status } = useOmpScreen(session);
 	const readOnly = useSessionView(session).readOnly;
 	const [open, setOpen] = useState(false);
+	// A chat that turns read-only closes the menu for good rather than reopening it when replies come back.
+	if (readOnly && open) setOpen(false);
 	const Shield = mode === "yolo" ? ShieldWarning : ShieldCheck;
 	const level = mode ? t(`permission.modes.${mode}.label`) : t("common.loading");
 	const work = activeWorkMode(status);
 	const workLabel = work ? t(`modes.active.${work}`) : null;
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
+		<Menu open={open} onOpenChange={setOpen}>
 			<Tooltip content={mode ? t(`permission.modes.${mode}.description`) : t("permission.tooltip")}>
-				<PopoverTrigger asChild>
+				<MenuTrigger asChild disabled={readOnly}>
 					<button
 						type="button"
 						aria-label={t("permission.aria", { mode: workLabel ? `${level}, ${workLabel}` : level })}
@@ -222,18 +164,27 @@ export function PermissionButton({ session }: ChatSlotProps) {
 						</span>
 						<CaretDown className="size-3 shrink-0" aria-hidden />
 					</button>
-				</PopoverTrigger>
+				</MenuTrigger>
 			</Tooltip>
-			<PopoverContent side="top" align="start" width={320} className="p-2">
-				<p className={menuLabel}>{t("permission.title")}</p>
-				<p className="px-2 pb-2 text-sm text-fg-muted">{t("permission.tooltip")}</p>
-				<PermissionOptions cwd={session.projectPath} mode={mode} onPicked={() => setOpen(false)} />
-				<p className="mt-2 px-2 text-xs text-fg-faint">{error ?? t("permission.scopeNote")}</p>
-				<div className="mt-2 border-t border-border pt-1">
-					<WorkModes session={session} status={status} disabled={readOnly} onPicked={() => setOpen(false)} />
-				</div>
-			</PopoverContent>
-		</Popover>
+			<MenuContent side="top" align="start" className="w-80">
+				<MenuLabel>{t("permission.title")}</MenuLabel>
+				<p className="px-row pb-1 text-sm text-fg-muted">{t("permission.tooltip")}</p>
+				<MenuRadioGroup
+					value={mode ?? ""}
+					onValueChange={value => void choosePermission(session.projectPath, value as ApprovalMode, mode)}
+				>
+					{APPROVAL_MODES.map(option => (
+						<MenuRadioItem key={option} value={option} description={t(`permission.modes.${option}.description`)}>
+							{t(`permission.modes.${option}.label`)}
+						</MenuRadioItem>
+					))}
+				</MenuRadioGroup>
+				<p className="px-row pt-1 text-xs text-fg-faint">{error ?? t("permission.scopeNote")}</p>
+				<MenuSeparator />
+				<MenuLabel>{t("modes.title")}</MenuLabel>
+				<WorkModeItems session={session} status={status} />
+			</MenuContent>
+		</Menu>
 	);
 }
 
@@ -321,10 +272,9 @@ function ModelList({ session, onDone }: { session: SessionController; onDone(): 
 				data-index={index}
 				onPointerMove={() => setActive(index)}
 				onClick={() => void pick(model)}
-				className="relative isolate flex h-9 cursor-default select-none items-center gap-2 rounded-sm px-2 text-md"
+				className={cn(menuItem, index === active && menuItemActive)}
 			>
-				{index === active && <SelectionFill layoutId={`${listId}-active`} className="rounded-sm" />}
-				<span className="inline-flex size-4 shrink-0 items-center justify-center text-accent">
+				<span className={menuCheckSlot}>
 					{busy === model.selector ? <Spinner size={12} /> : selected && <Check className="size-4" aria-hidden />}
 				</span>
 				<span className="min-w-0 flex-1 truncate">{model.name}</span>
@@ -349,20 +299,20 @@ function ModelList({ session, onDone }: { session: SessionController; onDone(): 
 				aria-controls={listId}
 				aria-activedescendant={filtered[active] ? `${listId}-${active}` : undefined}
 			/>
-			{/* layoutScroll keeps the sliding highlight aligned while the list scrolls. */}
-			<motion.div layoutScroll ref={listRef} id={listId} role="listbox" aria-label={t("model.title")} className="mt-2 max-h-80 overflow-y-auto">
+			<div ref={listRef} id={listId} role="listbox" aria-label={t("model.title")} className="mt-menu max-h-80 overflow-y-auto">
 				{models === null && !error && (
-					<div className="flex items-center gap-2 px-2 py-3 text-sm text-fg-muted">
+					<div className="flex items-center gap-2 px-row py-3 text-sm text-fg-muted">
 						<Spinner size={12} /> {t("model.loading")}
 					</div>
 				)}
-				{error && <p className="px-2 py-3 text-sm text-err">{error}</p>}
+				{error && <p className="px-row py-3 text-sm text-err">{error}</p>}
 				{models !== null && filtered.length === 0 && (
-					<p className="px-2 py-3 text-sm text-fg-muted">{t(models.length === 0 ? "model.noModels" : "model.empty")}</p>
+					<p className="px-row py-3 text-sm text-fg-muted">{t(models.length === 0 ? "model.noModels" : "model.empty")}</p>
 				)}
 				{rows}
-			</motion.div>
-			<div className="mt-2 flex items-center gap-2 border-t border-border px-2 pt-2">
+			</div>
+			<div role="separator" className={menuSeparator} />
+			<div className="flex items-center gap-2 pl-row">
 				<p className="min-w-0 flex-1 text-xs text-fg-faint">{t("model.scopeNote")}</p>
 				{getCommand("manage.roles") && (
 					<Button
@@ -395,33 +345,32 @@ function ModelList({ session, onDone }: { session: SessionController; onDone(): 
 
 export function ModelButton({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
-	const model = useSessionView(session).guest?.state?.model;
+	const view = useSessionView(session);
+	const model = view.guest?.state?.model;
 	const [open, setOpen] = useState(false);
+	if (view.readOnly && open) setOpen(false);
 	const request = usePickerRequests(state => state.model);
 	useEffect(() => {
-		if (request?.tabId === session.tabId) setOpen(true);
-	}, [request, session.tabId]);
+		// A read-only chat can't switch models; the request is dropped, not replayed once replies are back on.
+		if (request?.tabId === session.tabId && !session.getSnapshot().readOnly) setOpen(true);
+	}, [request, session]);
 	const name = model?.name ?? t("model.none");
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
-			{/* The name truncates at the button's max width or gives way to the icon, so the tooltip carries it in full. */}
+			{/* The name truncates at the button's max width, so the tooltip carries it in full. */}
 			<Tooltip content={t("model.aria", { name })} shortcut="⌘⇧M">
-				<PopoverTrigger asChild>
+				<PopoverTrigger asChild disabled={view.readOnly}>
 					<button
 						type="button"
 						aria-label={t("model.aria", { name })}
-						className={cn(
-							rowPicker,
-							"h-7 min-w-7 max-w-44 shrink-0 group-data-compact/composer:w-7 group-data-compact/composer:justify-center group-data-compact/composer:px-0",
-						)}
+						className={cn(rowPicker, "h-7 min-w-0 max-w-44 shrink-0")}
 					>
-						<Cpu className="hidden size-4 shrink-0 group-data-compact/composer:block" aria-hidden />
-						<span className="truncate group-data-compact/composer:hidden">{name}</span>
-						<CaretDown className="size-3 shrink-0 group-data-compact/composer:hidden" aria-hidden />
+						<span className="truncate">{name}</span>
+						<CaretDown className="size-3 shrink-0" aria-hidden />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
-			<PopoverContent side="top" align="end" width={340} className="p-2">
+			<PopoverContent side="top" align="end" width={340} sideOffset={6} className="p-menu">
 				<ModelList session={session} onDone={() => setOpen(false)} />
 			</PopoverContent>
 		</Popover>
@@ -451,8 +400,10 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 	const choices = thinkingChoices(info);
 	const [open, setOpen] = useState(false);
 	const [busy, setBusy] = useState<ThinkingLevel | null>(null);
-	const thinkingFill = `${useId()}-thinking`;
-	const disabled = info !== undefined && choices.length === 0;
+	const readOnly = useSessionView(session).readOnly;
+	if (readOnly && open) setOpen(false);
+	const unsupported = info !== undefined && choices.length === 0;
+	const disabled = readOnly || unsupported;
 	const pick = async (target: ThinkingLevel) => {
 		if (busy) return;
 		if (target === level) {
@@ -467,50 +418,36 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 	};
 	const label = t("thinking.aria", { level: level ? t(`thinking.levels.${level}.label`) : t("common.unknown") });
 	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<Tooltip content={disabled ? t("thinking.unsupported") : label} shortcut="⇧⇥">
-				<PopoverTrigger asChild disabled={disabled}>
-					<button
-						type="button"
-						aria-label={label}
-						className={cn(
-							rowPicker,
-							"h-7 shrink-0 group-data-compact/composer:w-7 group-data-compact/composer:justify-center group-data-compact/composer:px-0",
-						)}
-					>
-						<Brain className="size-3.5 shrink-0 group-data-compact/composer:size-4" aria-hidden />
-						<span className="group-data-compact/composer:hidden">{level ? t(`thinking.levels.${level}.label`) : t("thinking.title")}</span>
-						<CaretDown className="size-3 shrink-0 group-data-compact/composer:hidden" aria-hidden />
+		<Menu open={open} onOpenChange={setOpen}>
+			<Tooltip content={unsupported ? t("thinking.unsupported") : label} shortcut="⇧⇥">
+				<MenuTrigger asChild disabled={disabled}>
+					<button type="button" aria-label={label} aria-busy={busy !== null} className={cn(rowPicker, "h-7 shrink-0")}>
+						{busy ? <Spinner size={12} tone="current" /> : <Brain className="size-3.5 shrink-0" aria-hidden />}
+						<span>{level ? t(`thinking.levels.${level}.label`) : t("thinking.title")}</span>
+						<CaretDown className="size-3 shrink-0" aria-hidden />
 					</button>
-				</PopoverTrigger>
+				</MenuTrigger>
 			</Tooltip>
-			<PopoverContent side="top" align="end" width={280} className="p-1">
-				<p className={menuLabel}>{t("thinking.title")}</p>
-				<div role="radiogroup" aria-label={t("thinking.title")} className="flex flex-col">
+			{/* The menu stays open until omp confirms the level, so a refused switch is not mistaken for a done one. */}
+			<MenuContent side="top" align="end" className="w-72">
+				<MenuLabel>{t("thinking.title")}</MenuLabel>
+				<MenuRadioGroup value={level ?? ""}>
 					{(choices.length > 0 ? choices : level ? [level] : []).map(choice => (
-						<button
+						<MenuRadioItem
 							key={choice}
-							type="button"
-							role="radio"
-							aria-checked={choice === level}
-							onClick={() => void pick(choice)}
-							className={cn(
-								"relative isolate flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-left hover:bg-hover",
-								focusRingInset,
-							)}
+							value={choice}
+							disabled={busy !== null && busy !== choice}
+							description={t(`thinking.levels.${choice}.description`)}
+							onSelect={event => {
+								event.preventDefault();
+								void pick(choice);
+							}}
 						>
-							{choice === level && <SelectionFill layoutId={thinkingFill} className="rounded-sm" />}
-							<span className="inline-flex size-4 shrink-0 items-center justify-center text-accent">
-								{busy === choice ? <Spinner size={12} /> : choice === level && <Check className="size-4" aria-hidden />}
-							</span>
-							<span className="min-w-0 flex-1">
-								<span className="block text-md text-fg">{t(`thinking.levels.${choice}.label`)}</span>
-								<span className="block text-xs text-fg-muted">{t(`thinking.levels.${choice}.description`)}</span>
-							</span>
-						</button>
+							{t(`thinking.levels.${choice}.label`)}
+						</MenuRadioItem>
 					))}
-				</div>
-			</PopoverContent>
-		</Popover>
+				</MenuRadioGroup>
+			</MenuContent>
+		</Menu>
 	);
 }

@@ -7,7 +7,6 @@ import { ArrowSquareOut, ArrowsClockwise, At, CaretRight, Copy, FileCode, FileIc
 import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, type MouseEvent, memo, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { create } from "zustand";
 import type { PaneFileContent } from "@shared/contracts/panes";
 import type { DirEntry } from "@shared/ipc";
 import { useComposerDrafts } from "../../chat/composer/drafts";
@@ -37,95 +36,15 @@ import { useHomeDir } from "../projects/folders/FolderBrowser";
 import { tildePath } from "../projects/folders/paths";
 import { PaneToolbar, relativePath, Section, SectionCount, TabStrip, usePaneVisible } from "./common";
 import { IMAGE_EXT, OPENABLE_EXT, PDF_EXT } from "./derive";
+import { EMPTY_PROJECT, useFiles } from "./files-store";
 import { useGit } from "./git-store";
 import { languageFor, SYN_CLASS, tokenizeLines } from "./highlight";
 import { ExpandPreview, loadFileImage, openWithDefaultApp, PdfFrame, PreviewImage, revealLabel, ThumbnailFrame, Unavailable, useNearView, ZoomImage } from "./media";
 
-const HIDDEN: Record<string, true> = { ".git": true, node_modules: true };
 /** Lines rendered before "Show all" in the viewer. */
 const VIEW_LINE_BUDGET = 4000;
 /** Folder entries a folder tab lists before "Show all". */
 const FOLDER_LIMIT = 200;
-
-// ── per-project state (survives pane switches) ──────────────────────────────────────────────────
-
-interface ProjectFiles {
-	expanded: string[];
-	tabs: string[];
-	active: string | null;
-	/** The tree is hidden so the viewer takes the pane's width (only while tabs are open). */
-	treeHidden: boolean;
-}
-
-interface FilesState {
-	byProject: Record<string, ProjectFiles>;
-	children: Record<string, DirEntry[] | "error">;
-	toggle(project: string, dir: string, open?: boolean): void;
-	open(project: string, path: string): void;
-	close(project: string, path: string): void;
-	activate(project: string, path: string): void;
-	setTreeHidden(project: string, hidden: boolean): void;
-	load(dir: string): Promise<void>;
-}
-
-const EMPTY_PROJECT: ProjectFiles = { expanded: [], tabs: [], active: null, treeHidden: false };
-
-const useFiles = create<FilesState>((set, get) => {
-	const patch = (project: string, change: (current: ProjectFiles) => ProjectFiles) =>
-		set(state => ({ byProject: { ...state.byProject, [project]: change(state.byProject[project] ?? EMPTY_PROJECT) } }));
-	return {
-		byProject: {},
-		children: {},
-		toggle(project, dir, open) {
-			patch(project, current => {
-				const isOpen = current.expanded.includes(dir);
-				const next = open ?? !isOpen;
-				if (next === isOpen) return current;
-				return { ...current, expanded: next ? [...current.expanded, dir] : current.expanded.filter(entry => entry !== dir) };
-			});
-			if (open !== false && !get().children[dir]) void get().load(dir);
-		},
-		open(project, path) {
-			patch(project, current => ({ ...current, tabs: current.tabs.includes(path) ? current.tabs : [...current.tabs, path], active: path }));
-		},
-		close(project, path) {
-			patch(project, current => {
-				const index = current.tabs.indexOf(path);
-				const tabs = current.tabs.filter(entry => entry !== path);
-				const active = current.active === path ? (tabs[index] ?? tabs[index - 1] ?? null) : current.active;
-				// With no tab left the tree fills the pane again, so it comes back for the next file opened from it.
-				return { ...current, tabs, active, treeHidden: tabs.length > 0 && current.treeHidden };
-			});
-		},
-		activate(project, path) {
-			patch(project, current => ({ ...current, active: path }));
-		},
-		setTreeHidden(project, hidden) {
-			patch(project, current => (current.treeHidden === hidden ? current : { ...current, treeHidden: hidden }));
-		},
-		async load(dir) {
-			try {
-				const entries = await window.vomp.invoke("fs:list", dir);
-				set(state => ({ children: { ...state.children, [dir]: entries.filter(entry => !Object.hasOwn(HIDDEN, entry.name)) } }));
-			} catch {
-				set(state => ({ children: { ...state.children, [dir]: "error" } }));
-			}
-		},
-	};
-});
-
-/**
- * Open a file or folder as a viewer tab in the Files pane (tool cards' "Open in Files", file links in
- * replies). Any absolute path works, inside the project or not; a trailing separator is dropped so
- * `dir/` and `dir` share one tab. `focus` hides the project's tree so the viewer takes the pane's
- * width; without it the tree stays as the user left it.
- */
-export function openInFiles(projectPath: string, path: string, options?: { focus?: boolean }): void {
-	const files = useFiles.getState();
-	files.open(projectPath, path.replace(/(?<=[^\\/:])[\\/]+$/, ""));
-	if (options?.focus) files.setTreeHidden(projectPath, true);
-	useApp.getState().showPane("files");
-}
 
 /** The viewer's path label: project-relative inside the project, else `~/…` under the home folder, else absolute. */
 function viewerPath(projectPath: string, path: string, home: string | null): string {
@@ -393,7 +312,7 @@ function FolderView({ dir, projectPath, revision }: { dir: string; projectPath: 
 										type="button"
 										onClick={() => open(entry)}
 										title={entry.name}
-										className={cn("flex h-[30px] w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-hover", focusRingInset)}
+										className={cn("flex h-7.5 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-hover", focusRingInset)}
 									>
 										<Icon aria-hidden className={cn("size-4 shrink-0", entry.kind === "dir" ? "text-accent" : "text-fg-faint")} />
 										<span className="min-w-0 truncate text-fg">{entry.name}</span>

@@ -21,7 +21,7 @@ export function SectionHeader({ title, description, actions, id, as: Tag = "h2",
 				<Tag id={id} className="text-lg font-semibold text-fg">
 					{title}
 				</Tag>
-				{description && <p className="mt-0.5 text-sm text-fg-muted">{description}</p>}
+				{description && <p className="mt-1 text-sm text-fg-muted">{description}</p>}
 			</div>
 			{actions && <div className="flex shrink-0 flex-wrap items-center gap-2">{actions}</div>}
 		</div>

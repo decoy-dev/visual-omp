@@ -56,7 +56,7 @@ export function ImportDialog({ props, close }: SheetProps<ImportProps | undefine
 									disabled={!source.available}
 									onClick={() => void start(source)}
 									className={cn(
-										"group flex min-h-14 w-full items-center gap-3 px-3 py-2.5 text-left outline-none",
+										"group flex min-h-14 w-full items-center gap-3 px-3 py-3 text-left outline-none",
 										"transition-colors duration-(--dur-fast) enabled:hover:bg-hover",
 										"focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45",
 									)}

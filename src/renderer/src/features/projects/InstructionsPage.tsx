@@ -464,7 +464,7 @@ function RuleEditor({
 			/>
 			<Switch label={t("rules.alwaysLabel")} description={t("rules.alwaysHint")} checked={form.alwaysApply} onCheckedChange={alwaysApply => patch({ alwaysApply })} />
 			<Switch label={t("rules.enabledLabel")} checked={form.enabled} onCheckedChange={enabled => patch({ enabled })} />
-			<div className="flex flex-col gap-1.5">
+			<div className="flex flex-col gap-2">
 				<div className="flex items-center justify-between">
 					<span className="text-md font-medium text-fg">{t("rules.body")}</span>
 					<Segmented<Mode>

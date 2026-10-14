@@ -79,7 +79,7 @@ function OperationCard({ op, onCancel, onDismiss }: { op: Operation; onCancel():
 			{op.error && <p className="px-3 pb-2 text-sm text-err">{op.error}</p>}
 			{op.lines.length > 0 && (
 				<details open={op.running} className="border-t border-border">
-					<summary className="cursor-pointer px-3 py-1.5 text-xs text-fg-muted">{t("ops.output", { count: op.lines.length })}</summary>
+					<summary className="cursor-pointer px-3 py-2 text-xs text-fg-muted">{t("ops.output", { count: op.lines.length })}</summary>
 					<pre
 						ref={pre}
 						tabIndex={0}

@@ -218,7 +218,7 @@ function InstalledRow({ plugin, update, running, onToggle, onUpdate, onRemove }:
 	return (
 		<div className="flex min-h-14 items-center gap-3 px-3 py-2">
 			<LetterTile name={plugin.name} />
-			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<div className="flex min-w-0 items-center gap-2">
 					<span className="truncate text-md font-medium text-fg">{plugin.name}</span>
 					<span className="shrink-0 font-mono text-xs text-fg-faint">v{plugin.version}</span>
@@ -263,7 +263,7 @@ function AvailableRow({
 	return (
 		<li className="flex min-h-14 items-center gap-3 px-3 py-2">
 			<LetterTile name={entry.name} />
-			<div className="flex min-w-0 flex-1 flex-col gap-0.5">
+			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<div className="flex min-w-0 items-center gap-2">
 					<span className="truncate text-md font-medium text-fg">{entry.name}</span>
 					{entry.version && <span className="shrink-0 font-mono text-xs text-fg-faint">v{entry.version}</span>}

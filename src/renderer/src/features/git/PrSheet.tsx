@@ -39,8 +39,8 @@ function Notice({ tone = "info", title, hint, children }: { tone?: "info" | "war
 			)}
 			<div className="min-w-0 flex-1">
 				<p className="text-md text-fg">{title}</p>
-				{hint && <p className="mt-0.5 text-sm text-fg-muted">{hint}</p>}
-				{children && <div className="mt-2.5 flex flex-wrap gap-2">{children}</div>}
+				{hint && <p className="mt-1 text-sm text-fg-muted">{hint}</p>}
+				{children && <div className="mt-3 flex flex-wrap gap-2">{children}</div>}
 			</div>
 		</div>
 	);
@@ -272,7 +272,7 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 						</Button>
 					</Notice>
 				)}
-				<div className="flex flex-col gap-1.5">
+				<div className="flex flex-col gap-2">
 					<label htmlFor="git-pr-base" className="text-sm font-medium text-fg">
 						{t("createPr.baseLabel")}
 					</label>
@@ -299,7 +299,7 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 						edited.current = true;
 					}}
 				/>
-				<div className="flex flex-col gap-1.5">
+				<div className="flex flex-col gap-2">
 					<div className="flex items-center justify-between gap-2">
 						<label htmlFor="git-pr-body" className="text-sm font-medium text-fg">
 							{t("createPr.bodyLabel")}
@@ -329,7 +329,7 @@ export function PrSheet({ props, close }: SheetProps<GitSheetProps>) {
 						}}
 					/>
 					<Expand open={writing}>
-						<div aria-live="polite" className="flex flex-col gap-1.5 pt-0.5">
+						<div aria-live="polite" className="flex flex-col gap-2 pt-1">
 							<Progress aria-label={t("createPr.writing")} />
 							<p className="text-sm text-fg-muted">{t("createPr.writing")}</p>
 						</div>

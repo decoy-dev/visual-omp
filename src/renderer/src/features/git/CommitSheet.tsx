@@ -53,7 +53,7 @@ function FileRow({
 }) {
 	const { t } = useTranslation("git");
 	return (
-		<li className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-hover">
+		<li className="flex items-center gap-2 rounded-sm px-row py-2 hover:bg-hover">
 			<Checkbox
 				checked={checked}
 				disabled={disabled}
@@ -255,7 +255,7 @@ export function CommitSheet({ props, close }: SheetProps<GitSheetProps>) {
 					<p className="py-8 text-center text-fg-muted">{git?.loading ? "…" : t("commit.noChanges")}</p>
 				) : (
 					<section aria-labelledby="git-commit-files" className="flex min-h-0 flex-col">
-						<div className="flex items-center justify-between gap-2 pb-1.5">
+						<div className="flex items-center justify-between gap-2 pb-2">
 							<h3 id="git-commit-files" className="text-sm font-semibold text-fg">
 								{t("commit.filesHeading")}
 							</h3>
@@ -273,7 +273,7 @@ export function CommitSheet({ props, close }: SheetProps<GitSheetProps>) {
 									onCheckedChange={checked => setExcluded(checked ? new Set() : new Set(files.map(file => file.path)))}
 								/>
 							</div>
-							<ul className="max-h-[280px] overflow-y-auto p-1">
+							<ul className="max-h-70 overflow-y-auto p-menu">
 								{files.map(file => (
 									<FileRow
 										key={file.path}

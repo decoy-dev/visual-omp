@@ -1,24 +1,28 @@
 /**
- * Usage & limits page (DESIGN §4.18): plan limits first, then usage omp recorded on this computer over
- * the last 7 or 30 local days (summary, daily estimated API cost, chats), then a link to omp's own
- * stats page. Each section loads and fails on its own, so a slow provider never holds up local usage.
+ * Usage & limits page (DESIGN §4.18), white cards on the gray page canvas: plan limits first, then usage
+ * omp recorded on this computer over the last 7 or 30 local days (key figures, daily estimated API cost
+ * beside its split by project, chats), then what the figures include and a link to omp's own stats
+ * page. Each section loads and fails on its own, so a slow provider never holds up local usage.
  */
-import { ArrowSquareOut, ChartBar } from "@phosphor-icons/react";
+import { ArrowSquareOut, ArrowsClockwise, CaretRight, ChartBar } from "@phosphor-icons/react";
 import type { SpendSummary } from "@shared/contracts/extensions";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PageProps } from "@/registry/slots";
 import { type UsagePageProps, usePageBack } from "@/state/navigation";
-import { Button, cn, EmptyState, Notice, PageFrame, PageHeader, SectionHeader, Segmented, Skeleton, StatList, toast } from "@/ui";
+import { Button, cn, Definition, EmptyState, KpiStrip, Notice, PageFrame, PageHeader, SectionHeader, Segmented, ShareBar, Skeleton, toast } from "@/ui";
 import { focusRing } from "@/ui/styles";
 import { errorText, formatCount, formatUsd } from "../format";
 import { type Loaded, useLoad } from "../shared";
 import { ChatsTable } from "./ChatsTable";
-import { useUsageLimits, useUsageLimitsStatus } from "./limitsStore";
-import type { UsageRange } from "./model";
+import { checkUsageLimits, useUsageLimits, useUsageLimitsStatus } from "./limitsStore";
+import { costByProject, projectName, topProjects, type UsageRange } from "./model";
 import { PlanLimitsSection } from "./PlanLimits";
 import { SpendChart } from "./SpendChart";
 import { usageMemory, useUsageView } from "./viewStore";
+
+/** Project rows before the rest fold into one. */
+const PROJECT_ROWS = 6;
 
 /**
  * The page returns to the scroll position of the last visit once both sections show content (or
@@ -54,11 +58,26 @@ export function UsagePage({ seq, close }: PageProps<UsagePageProps>) {
 				},
 			}}
 		>
-			<PageHeader title={t("usage.title")} description={t("usage.subtitle")} />
-			<div className="flex flex-col gap-12">
+			<PageHeader
+				title={t("usage.title")}
+				description={t("usage.subtitle")}
+				actions={
+					<Button
+						icon={<ArrowsClockwise />}
+						loading={limitsStatus.checking || spend.loading}
+						onClick={() => {
+							void checkUsageLimits();
+							void spend.reload();
+						}}
+					>
+						{t("usage.refresh")}
+					</Button>
+				}
+			/>
+			<div className="flex flex-col gap-section">
 				<PlanLimitsSection />
 				<RecordedUsageSection range={range} spend={spend} data={data} />
-				<StatsLink />
+				<PageFoot />
 			</div>
 		</PageFrame>
 	);
@@ -72,11 +91,32 @@ function RecordedUsageSection({ range, spend, data }: { range: UsageRange; spend
 	const end = data?.days.at(-1)?.start ?? new Date().setHours(0, 0, 0, 0);
 	const start = data?.days[0]?.start ?? new Date(end).setDate(new Date(end).getDate() - (range - 1));
 	const empty = data !== null && data.totals.requests === 0;
+	const period = t(range === 7 ? "usage.recorded.range7" : "usage.recorded.range30");
 	const retry = (
 		<Button size="sm" onClick={() => void spend.reload()} loading={spend.loading}>
 			{t("common.retry")}
 		</Button>
 	);
+	const figures = (totals: SpendSummary["totals"] | null) => [
+		{
+			id: "chats",
+			label: <Definition content={t("usage.recorded.kpi.chats")}>{t("usage.recorded.chats")}</Definition>,
+			value: totals && formatCount(totals.chats),
+			hint: period,
+		},
+		{
+			id: "tokens",
+			label: <Definition content={t("usage.recorded.kpi.tokens")}>{t("usage.recorded.tokens")}</Definition>,
+			value: totals && formatCount(totals.tokens),
+			hint: t("usage.recorded.tokensHint"),
+		},
+		{
+			id: "cost",
+			label: <Definition content={t("usage.recorded.costHint")}>{t("usage.recorded.cost")}</Definition>,
+			value: totals && formatUsd(totals.cost),
+			hint: t("usage.recorded.costSub"),
+		},
+	];
 
 	return (
 		<section aria-labelledby="usage-recorded-title" aria-busy={spend.loading} className="flex flex-col">
@@ -98,7 +138,7 @@ function RecordedUsageSection({ range, spend, data }: { range: UsageRange; spend
 				}
 				className="mb-2"
 			/>
-			<p className="mb-6 flex flex-wrap gap-x-3 gap-y-1 text-sm text-fg-muted">
+			<p className="mb-4 flex flex-wrap gap-x-3 gap-y-1 text-sm text-fg-muted">
 				<span>{t("usage.recorded.dates", { start: dateFormat.format(start), end: dateFormat.format(end) })}</span>
 				<span aria-hidden>·</span>
 				<span>{t("usage.recorded.localTime")}</span>
@@ -124,44 +164,20 @@ function RecordedUsageSection({ range, spend, data }: { range: UsageRange; spend
 
 			{!data ? (
 				!spend.error && (
-					<div className="flex flex-col gap-8">
-						<StatList
-							label={t("usage.recorded.statsLabel")}
-							items={[
-								{ id: "chats", label: t("usage.recorded.chats"), value: null },
-								{ id: "tokens", label: t("usage.recorded.tokens"), value: null },
-								{ id: "cost", label: t("usage.recorded.cost"), value: null },
-							]}
-						/>
-						<Skeleton height={240} />
-						<Skeleton height={160} />
+					<div className="flex flex-col gap-4">
+						<KpiStrip label={t("usage.recorded.statsLabel")} items={figures(null)} />
+						<Skeleton height={300} className="rounded-lg" />
+						<Skeleton height={200} className="rounded-lg" />
 					</div>
 				)
 			) : empty ? (
-				<EmptyState icon={<ChartBar />} title={t("usage.recorded.empty")} body={t("usage.recorded.emptyBody")} className="py-6" />
+				<div className="rounded-lg border border-border bg-panel">
+					<EmptyState icon={<ChartBar />} title={t("usage.recorded.empty")} body={t("usage.recorded.emptyBody")} className="py-10" />
+				</div>
 			) : (
-				<div className="flex flex-col gap-10">
-					<div className="flex flex-col gap-3">
-						<StatList
-							label={t("usage.recorded.statsLabel")}
-							items={[
-								{ id: "chats", label: t("usage.recorded.chats"), value: formatCount(data.totals.chats) },
-								{ id: "tokens", label: t("usage.recorded.tokens"), value: formatCount(data.totals.tokens), hint: t("usage.recorded.tokensHint") },
-								{ id: "cost", label: t("usage.recorded.cost"), value: formatUsd(data.totals.cost), hint: t("usage.recorded.costHint") },
-							]}
-						/>
-						<details className="text-sm">
-							<summary className={cn("w-fit cursor-pointer rounded-sm text-fg-muted hover:text-fg", focusRing)}>{t("usage.recorded.definitions")}</summary>
-							<ul className="mt-2 flex list-disc flex-col gap-1 pl-5 text-fg-muted">
-								<li>{t("usage.recorded.definition.tokens")}</li>
-								<li>{t("usage.recorded.definition.subagents")}</li>
-								<li>{t("usage.recorded.definition.model")}</li>
-								<li>{t("usage.recorded.definition.time")}</li>
-								<li>{t("usage.recorded.definition.days")}</li>
-							</ul>
-						</details>
-					</div>
-					<SpendChart key={range} days={data.days} />
+				<div className="flex flex-col gap-4">
+					<KpiStrip label={t("usage.recorded.statsLabel")} items={figures(data.totals)} />
+					<CostCards data={data} range={range} />
 					<ChatsTable chats={data.chats} days={data.days} />
 				</div>
 			)}
@@ -169,8 +185,59 @@ function RecordedUsageSection({ range, spend, data }: { range: UsageRange; spend
 	);
 }
 
-/** omp's own stats dashboard in the browser; a separate tool, so nothing here carries over. */
-function StatsLink() {
+/** The daily chart, and beside it the period's cost by project when more than one project has a cost. */
+function CostCards({ data, range }: { data: SpendSummary; range: UsageRange }) {
+	const { t } = useTranslation("extensions");
+	const setFilters = useUsageView(state => state.setFilters);
+	const projects = useMemo(() => costByProject(data.chats), [data.chats]);
+	const split = projects.filter(project => project.cost > 0).length > 1;
+	const { shown, rest } = topProjects(projects, PROJECT_ROWS);
+	// Folders that share a name ("api" twice) show their parent folder too.
+	const label = (cwd: string) => {
+		const name = projectName(cwd);
+		const clash = projects.some(other => other.cwd !== cwd && projectName(other.cwd) === name);
+		return clash ? `${projectName(cwd.slice(0, cwd.replace(/[\\/]+$/, "").length - name.length))}/${name}` : name;
+	};
+	const items = [
+		...shown.map(project => ({ id: project.cwd, label: label(project.cwd), title: project.cwd, value: project.cost, display: formatUsd(project.cost) })),
+		...(rest ? [{ id: "rest", label: t("usage.projects.other", { count: rest.count }), value: rest.cost, display: formatUsd(rest.cost), rest: true }] : []),
+	];
+	const showProject = (cwd: string) => {
+		setFilters({ project: cwd });
+		const heading = document.getElementById("usage-chats-title");
+		heading?.focus({ preventScroll: true });
+		heading?.scrollIntoView({ block: "start" });
+	};
+
+	return (
+		<div className={cn("grid grid-cols-1 gap-4", split && "@min-[56rem]/content:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]")}>
+			<section aria-labelledby="usage-chart-title" className="min-w-0 rounded-lg border border-border bg-panel p-card">
+				<h3 id="usage-chart-title" className="text-md font-semibold text-fg">
+					{t("usage.chart.title")}
+				</h3>
+				<SpendChart key={range} days={data.days} titleId="usage-chart-title" />
+			</section>
+			{split && (
+				<section aria-labelledby="usage-projects-title" className="flex min-w-0 flex-col rounded-lg border border-border bg-panel px-row pb-row pt-card">
+					<h3 id="usage-projects-title" className="px-row text-md font-semibold text-fg">
+						{t("usage.projects.title")}
+					</h3>
+					<p className="mt-1 px-row text-sm text-fg-muted">{t("usage.projects.description")}</p>
+					<ShareBar
+						label={t("usage.projects.title")}
+						items={items}
+						onSelect={showProject}
+						selectLabel={item => t("usage.projects.show", { project: item.title ?? "", cost: formatUsd(item.value) })}
+						className="mt-3"
+					/>
+				</section>
+			)}
+		</div>
+	);
+}
+
+/** What the figures include, and omp's own stats dashboard in the browser (a separate tool, so nothing here carries over). */
+function PageFoot() {
 	const { t } = useTranslation("extensions");
 	const [opening, setOpening] = useState(false);
 	const open = async () => {
@@ -184,11 +251,28 @@ function StatsLink() {
 		}
 	};
 	return (
-		<div className="flex flex-col items-start gap-1 border-t border-border pt-6">
-			<Button variant="ghost" iconRight={<ArrowSquareOut />} loading={opening} onClick={() => void open()} className="-ml-2.5">
-				{t("usage.openStats")}
-			</Button>
-			<p className="text-sm text-fg-muted">{t("usage.openStatsNote")}</p>
-		</div>
+		<footer className="flex flex-wrap items-start justify-between gap-x-8 gap-y-4 border-t border-border pt-card">
+			<details className="group min-w-0 flex-1 basis-80 text-sm">
+				<summary className={cn("flex w-fit cursor-pointer list-none items-center gap-2 rounded-sm py-1 text-fg-muted hover:text-fg [&::-webkit-details-marker]:hidden", focusRing)}>
+					<CaretRight aria-hidden className="size-3.5 transition-transform duration-(--dur-fast) group-open:rotate-90" />
+					{t("usage.recorded.definitions")}
+				</summary>
+				<ul className="mt-2 flex list-disc flex-col gap-1 pl-10 text-fg-muted">
+					<li>{t("usage.recorded.definition.tokens")}</li>
+					<li>{t("usage.recorded.definition.subagents")}</li>
+					<li>{t("usage.recorded.definition.cost")}</li>
+					<li>{t("usage.recorded.definition.model")}</li>
+					<li>{t("usage.recorded.definition.time")}</li>
+					<li>{t("usage.recorded.definition.days")}</li>
+					<li>{t("usage.recorded.definition.limits")}</li>
+				</ul>
+			</details>
+			<div className="flex max-w-sm flex-col items-start gap-1 @min-[56rem]/content:items-end @min-[56rem]/content:text-right">
+				<Button variant="ghost" iconRight={<ArrowSquareOut />} loading={opening} onClick={() => void open()} className="-mx-2.5">
+					{t("usage.openStats")}
+				</Button>
+				<p className="text-xs text-fg-faint">{t("usage.openStatsNote")}</p>
+			</div>
+		</footer>
 	);
 }

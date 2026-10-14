@@ -1,7 +1,19 @@
 import { describe, expect, it } from "vitest";
 import type { SpendChat } from "@shared/contracts/extensions";
 import type { UsageLimit } from "@shared/contracts/usage";
-import { chartScale, chatsCsv, chatsCsvName, filterChats, formatTick, limitTone, sortChats, usedFraction } from "./model";
+import {
+	chartScale,
+	chatsCsv,
+	chatsCsvName,
+	costByProject,
+	dailyAverage,
+	filterChats,
+	formatTick,
+	limitTone,
+	sortChats,
+	topProjects,
+	usedFraction,
+} from "./model";
 
 function limit(amount: UsageLimit["amount"]): UsageLimit {
 	return { id: "x", label: "5 Hour", scope: { provider: "anthropic" }, amount };
@@ -108,5 +120,63 @@ describe("chartScale", () => {
 	it("prints whole dollars for whole steps and cents otherwise", () => {
 		expect(formatTick(1000, 500)).toBe("$1,000");
 		expect(formatTick(0.5, 0.25)).toBe("$0.50");
+	});
+});
+
+describe("costByProject", () => {
+	it("sums each project's chats, highest cost first, ties by folder name", () => {
+		const rows = [
+			{ ...chat("a", "A", 1.25), cwd: "/w/app" },
+			{ ...chat("b", "B", 0.5), cwd: "/w/site" },
+			{ ...chat("c", "C", 2), cwd: "/w/app" },
+			{ ...chat("d", "D", 0.5), cwd: "/w/api" },
+		];
+		expect(costByProject(rows)).toEqual([
+			{ cwd: "/w/app", cost: 3.25, chats: 2 },
+			{ cwd: "/w/api", cost: 0.5, chats: 1 },
+			{ cwd: "/w/site", cost: 0.5, chats: 1 },
+		]);
+	});
+
+	it("folds the projects past the limit into one figure", () => {
+		const projects = [5, 4, 3, 2, 1].map((cost, index) => ({ cwd: `/p${index}`, cost, chats: 1 }));
+		expect(topProjects(projects, 5)).toEqual({ shown: projects, rest: null });
+		const { shown, rest } = topProjects(projects, 3);
+		expect(shown.map(project => project.cwd)).toEqual(["/p0", "/p1"]);
+		expect(rest).toEqual({ count: 3, cost: 6 });
+	});
+});
+
+describe("period totals", () => {
+	it("agree across the KPI strip, the daily chart, the project shares and the CSV export", () => {
+		// As the main process reports a period: each request lands in one day and one chat, and the totals sum them all.
+		const calls = [
+			{ chat: "a", cwd: "/w/app", day: 0, cost: 0.1234 },
+			{ chat: "a", cwd: "/w/app", day: 2, cost: 1.005 },
+			{ chat: "b", cwd: "/w/site", day: 2, cost: 0.3333 },
+			{ chat: "c", cwd: "/w/app", day: 6, cost: 2.71828 },
+			{ chat: "d", cwd: "/w/api", day: 6, cost: 0 },
+		];
+		const days = Array.from({ length: 7 }, (_, index) => ({
+			date: `2026-10-0${index + 1}`,
+			start: index,
+			cost: calls.filter(call => call.day === index).reduce((sum, call) => sum + call.cost, 0),
+			tokens: 0,
+			requests: calls.filter(call => call.day === index).length,
+		}));
+		const chats = [...new Set(calls.map(call => call.chat))].map(id => {
+			const own = calls.filter(call => call.chat === id);
+			return { ...chat(id, id, own.reduce((sum, call) => sum + call.cost, 0)), cwd: own[0].cwd, requests: own.length };
+		});
+		const kpi = calls.reduce((sum, call) => sum + call.cost, 0);
+
+		expect(dailyAverage(days) * days.length).toBeCloseTo(kpi, 10);
+		expect(costByProject(chats).reduce((sum, project) => sum + project.cost, 0)).toBeCloseTo(kpi, 10);
+		const [header, ...lines] = chatsCsv(chats, "Untitled chat").trimEnd().split("\r\n");
+		const column = header.split(",").indexOf("estimated_api_cost_usd");
+		const csvTotal = lines.reduce((sum, line) => sum + Number(line.split(",")[column]), 0);
+		// The CSV rounds each chat to 4 decimals, so its sum stays within half a ten-thousandth per chat.
+		expect(Math.abs(csvTotal - kpi)).toBeLessThanOrEqual(0.00005 * chats.length);
+		expect(dailyAverage([])).toBe(0);
 	});
 });

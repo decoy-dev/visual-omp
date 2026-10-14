@@ -3,7 +3,6 @@
  * registered command; a few renderer-only shortcuts (split, chat switching, Esc) are handled here.
  */
 import { useEffect } from "react";
-import { openSidebarChat, sidebarChatAt } from "../../shell/Sidebar";
 import { useApp } from "../../state/app";
 import { runCommand } from "./run";
 
@@ -47,13 +46,14 @@ function onKeyDown(event: KeyboardEvent): void {
 		runCommand(id);
 		return;
 	}
-	// ⌘1-⌘9 open the first nine chats the sidebar lists under Projects, top to bottom (holding ⌘ shows the numbers).
+	// ⌘1-⌘9 open the first nine open chats, in the order "Current chats" lists them (holding ⌘ shows the numbers).
 	const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
 	if (digit && !event.shiftKey) {
-		const chat = sidebarChatAt(Number(digit));
-		if (!chat) return;
+		const state = useApp.getState();
+		const tab = state.tabs[Number(digit) - 1];
+		if (!tab) return;
 		event.preventDefault();
-		openSidebarChat(chat);
+		state.activateTab(tab.id);
 	}
 }
 

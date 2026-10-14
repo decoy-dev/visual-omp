@@ -46,7 +46,7 @@ export function Switch({ label, description, id, className, ...rest }: SwitchPro
 					{label}
 				</label>
 				{description && (
-					<p id={descId} className="mt-0.5 text-sm text-fg-muted">
+					<p id={descId} className="mt-1 text-sm text-fg-muted">
 						{description}
 					</p>
 				)}

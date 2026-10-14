@@ -30,4 +30,35 @@ describe("session tree model", () => {
 		expect(map.nodes.find(node => node.id === "a3")).toMatchObject({ active: true, current: true });
 		expect(map.nodes.find(node => node.id === "a2")).toMatchObject({ active: false, current: false });
 	});
+
+	it("shows omp notices by their summary and a skill turn by what the user typed", () => {
+		const tree = parseSessionTree(
+			[
+				entry("u1", null, "message", "2026-01-01T00:00:00Z", { message: { role: "user", content: "start" } }),
+				entry("n1", "u1", "custom_message", "2026-01-01T00:00:01Z", {
+					customType: "irc:incoming",
+					display: true,
+					content: "<irc>\nIncoming IRC message from agent `Sec05`:\n\nDone with section 5.\n</irc>",
+					details: { from: "Sec05", message: "Done with section 5." },
+				}),
+				entry("s1", "n1", "custom_message", "2026-01-01T00:00:02Z", {
+					customType: "skill-prompt",
+					display: true,
+					attribution: "user",
+					content: '[IMPORTANT: User invoked the "redesign" skill; follow its instructions. Full skill below.]\n\n# Redesign\n\n---\n\n[Skill directory: /s]\nResolve paths.\nUser: tidy the header',
+					details: { name: "redesign", path: "/s/SKILL.md", args: "tidy the header", lineCount: 1 },
+				}),
+			].join("\n"),
+		);
+		const notice = tree.entries.get("n1");
+		expect(notice?.text).toBe(notice?.summary);
+		expect(notice?.text).toContain("Sec05");
+		expect(notice?.text).toContain("Done with section 5.");
+		expect(notice?.text).not.toMatch(/<irc>|Incoming IRC/);
+		const skill = layoutTree(tree).nodes.find(node => node.id === "s1");
+		expect(skill?.kind).toBe("user");
+		expect(skill?.text).toBe("tidy the header");
+		expect(skill?.label).toContain("redesign");
+		expect(skill?.label).not.toContain("IMPORTANT");
+	});
 });

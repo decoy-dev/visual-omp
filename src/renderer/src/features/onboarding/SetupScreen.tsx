@@ -109,17 +109,17 @@ export function SetupScreen(_props: ScreenProps) {
 		<>
 		<main
 			className={cn(
-				"relative min-h-screen w-full items-start justify-center overflow-y-auto bg-bg px-6 pb-16 pt-[max(64px,12vh)]",
+				"relative min-h-screen w-full items-start justify-center overflow-y-auto bg-bg px-page pb-16 pt-[max(64px,12vh)]",
 				helpOpen ? "hidden" : "flex",
 			)}
 		>
 			{/* Frameless window: keep the top strip draggable. */}
 			<div aria-hidden className="absolute inset-x-0 top-0 h-10 [-webkit-app-region:drag]" />
-			<div className="relative flex w-full max-w-[560px] flex-col items-center text-center">
+			<div className="relative flex w-full max-w-140 flex-col items-center text-center">
 				<Mark size={56} className="mb-6" />
 				<PresenceSwap swapKey={heading} variant="rise" className="flex flex-col items-center">
-					<h1 className="text-[28px] font-semibold leading-tight tracking-[-0.02em] text-fg">{t(`setup.${heading}.title`)}</h1>
-					<p className="mt-3 max-w-[440px] text-base text-fg-muted">{t(`setup.${heading}.body`)}</p>
+					<h1 className="text-page font-semibold leading-tight tracking-[-0.02em] text-fg">{t(`setup.${heading}.title`)}</h1>
+					<p className="mt-3 max-w-110 text-base text-fg-muted">{t(`setup.${heading}.body`)}</p>
 				</PresenceSwap>
 				{tooOld && omp && !done && (
 					<dl className="mt-4 flex items-center gap-6 font-mono text-sm">
@@ -135,7 +135,7 @@ export function SetupScreen(_props: ScreenProps) {
 				)}
 
 				{omp && !omp.found && omp.path && !done && (
-					<p className="mt-3 max-w-[440px] font-mono text-sm text-fg-faint">{omp.problem}</p>
+					<p className="mt-3 max-w-110 font-mono text-sm text-fg-faint">{omp.problem}</p>
 				)}
 				<ol className="mt-8 w-full divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel text-left">
 					<StepRow
@@ -207,7 +207,7 @@ export function SetupScreen(_props: ScreenProps) {
 						<Expand open={check === "missing"} className="pt-3">
 							<div role="status" className="rounded-md border border-border bg-warn-bg px-3 py-2 text-sm">
 								<p className="font-medium text-fg">{omp?.problem ?? t("setup.step2.stillMissing")}</p>
-								<p className="mt-0.5 text-fg-muted">{t("setup.step2.stillMissingBody")}</p>
+								<p className="mt-1 text-fg-muted">{t("setup.step2.stillMissingBody")}</p>
 							</div>
 						</Expand>
 					</StepRow>
@@ -275,7 +275,7 @@ function StepRow({
 			</span>
 			<div className="min-w-0 flex-1">
 				<h2 className="text-md font-semibold text-fg">{title}</h2>
-				<p className="mt-0.5 text-md text-fg-muted">{body}</p>
+				<p className="mt-1 text-md text-fg-muted">{body}</p>
 				{children}
 			</div>
 		</li>

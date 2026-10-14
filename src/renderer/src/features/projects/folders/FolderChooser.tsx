@@ -11,6 +11,7 @@ import { useTranslation } from "react-i18next";
 import type { SheetProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
 import { Button, Chip, cn, Dialog, DialogContent, Expand, PresenceSwap, SearchInput } from "@/ui";
+import { menuItem, menuItemActive, menuItemDescribed } from "@/ui/styles";
 import { addProject, errorText, startChatIn } from "../actions";
 import { type EscapeHandler, FolderBrowser, nativePickerLabel, useHomeDir } from "./FolderBrowser";
 import { tildePath, typedPath } from "./paths";
@@ -200,14 +201,11 @@ function ChooserList({ currentPath, currentLabel, escapeRef, busy, onPick, onBro
 				aria-activedescendant={activeIndex >= 0 ? optionId(activeIndex) : undefined}
 				onKeyDown={onKeyDown}
 			/>
-			<div className="mt-3 h-[min(360px,calc(100vh-300px))] min-h-[200px] overflow-y-auto rounded-md border border-border bg-panel">
-				<ul id={listId} role="listbox" aria-label={t("chooser.listLabel")} className="flex flex-col p-1">
+			<div className="mt-3 h-[min(360px,calc(100vh-300px))] min-h-50 overflow-y-auto rounded-lg border border-border bg-panel">
+				<ul id={listId} role="listbox" aria-label={t("chooser.listLabel")} className="flex flex-col p-menu">
 					{options.map((option, index) => {
 						const selected = index === activeIndex;
-						const rowClass = cn(
-							"flex min-h-11 cursor-default items-center gap-3 rounded-sm px-2 py-1.5 select-none",
-							selected ? "bg-selected" : "hover:bg-hover",
-						);
+						const rowClass = cn(menuItem, menuItemDescribed, "gap-3 py-1.5", selected && menuItemActive);
 						if (option.kind === "go") {
 							return (
 								<li key="go" id={optionId(index)} role="option" aria-selected={selected} className={rowClass} onMouseMove={() => setActive(index)} onClick={() => choose(option)}>

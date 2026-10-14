@@ -46,7 +46,7 @@ export function PresetList({
 			<ul className={cn("relative divide-y divide-border", presets && presets.length > 0 && "border-y border-border")}>
 				<AnimatePresence initial={false} mode="popLayout">
 					{presets?.map(preset => (
-						<motion.li key={`${preset.source}:${preset.name}`} {...listRowMotion} className="flex items-center gap-3 bg-bg py-2.5">
+						<motion.li key={`${preset.source}:${preset.name}`} {...listRowMotion} className="flex items-center gap-3 bg-bg py-3">
 							<div className="min-w-0 flex-1">
 								<div className="flex items-center gap-2">
 									<span className="truncate text-md font-medium text-fg">{preset.name}</span>

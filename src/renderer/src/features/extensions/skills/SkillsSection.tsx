@@ -35,7 +35,7 @@ export function SkillsSection({ projectPath, scope, props }: SettingsSectionProp
 					</TabsTrigger>
 				</TabsList>
 				<div className="flex flex-wrap items-center gap-3">
-					<SearchInput value={query} onValueChange={setQuery} placeholder={searchLabel} aria-label={searchLabel} className="min-w-[200px] flex-1" />
+					<SearchInput value={query} onValueChange={setQuery} placeholder={searchLabel} aria-label={searchLabel} className="min-w-50 flex-1" />
 					<Segmented<BrowseFilter>
 						aria-label={t("skills.filterLabel")}
 						value={filter}

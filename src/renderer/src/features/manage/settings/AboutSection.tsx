@@ -105,7 +105,7 @@ export function AboutSection() {
 				<Wordmark size="lg" />
 			</div>
 
-			<dl className="mt-6 grid grid-cols-[140px_1fr] gap-x-4 gap-y-3 rounded-lg border border-border bg-panel p-4 text-md">
+			<dl className="mt-6 grid grid-cols-[2.1875rem_1fr] gap-x-4 gap-y-3 rounded-lg border border-border bg-panel p-4 text-md">
 				<dt className="text-fg-muted">{t("about.appVersion")}</dt>
 				<dd className="min-w-0">
 					<p className="text-fg">
@@ -187,7 +187,7 @@ const DOTS: Record<Tone, string> = { ok: "bg-ok", accent: "bg-accent", err: "bg-
 /** The status text crossfades when it changes (checking → up to date); the live region itself stays mounted. */
 function StatusLine({ row }: { row: StatusRow }): ReactNode {
 	return (
-		<div role="status" className="mt-1.5 min-h-7 text-sm text-fg-muted">
+		<div role="status" className="mt-2 min-h-7 text-sm text-fg-muted">
 			<PresenceSwap swapKey={`${row.tone}:${row.text}`} className="flex min-h-7 items-center gap-2">
 				{row.tone === "busy" ? <Spinner size={12} /> : <span aria-hidden className={`size-2 shrink-0 rounded-full ${DOTS[row.tone]}`} />}
 				<span className={row.tone === "err" ? "min-w-0 flex-1 text-err" : "min-w-0 flex-1"}>{row.text}</span>

@@ -3,9 +3,20 @@ import * as DM from "@radix-ui/react-dropdown-menu";
 import { CaretRight, Check } from "@phosphor-icons/react";
 import type { ComponentPropsWithRef, ReactNode } from "react";
 import { cn } from "./cn";
-import { floatingSurface, menuItem, menuItemDanger, menuLabel, menuSeparator, menuShortcut } from "./styles";
+import {
+	menuCheckSlot,
+	menuContent,
+	menuDescription,
+	menuIcon,
+	menuItem,
+	menuItemDanger,
+	menuItemDescribed,
+	menuLabel,
+	menuSeparator,
+	menuShortcut,
+} from "./styles";
 
-const contentClass = cn(floatingSurface, "min-w-[200px] p-1");
+const contentClass = cn(menuContent, "min-w-50");
 
 interface ItemExtras {
 	/** Leading icon (Phosphor element, 16px). */
@@ -19,15 +30,26 @@ interface ItemExtras {
 function ItemBody({ icon, shortcut, children }: { icon?: ReactNode; shortcut?: string; children: ReactNode }) {
 	return (
 		<>
-			{icon && <span className="inline-flex shrink-0 text-fg-muted [&>svg]:size-4 [[data-danger]_&]:text-err">{icon}</span>}
+			{icon && <span className={cn(menuIcon, "[[data-danger]_&]:text-err")}>{icon}</span>}
 			<span className="min-w-0 flex-1 truncate">{children}</span>
 			{shortcut && <kbd className={menuShortcut}>{shortcut}</kbd>}
 		</>
 	);
 }
 
-/** Left gutter holding the check / radio indicator so labels align with iconned items. */
-const indicatorGutter = "inline-flex size-4 shrink-0 items-center justify-center text-accent";
+/** Label with an optional muted second line. With a description the row grows to 44px and aligns to the top. */
+function ChoiceBody({ shortcut, description, children }: { shortcut?: string; description?: ReactNode; children: ReactNode }) {
+	if (!description) return <ItemBody shortcut={shortcut}>{children}</ItemBody>;
+	return (
+		<>
+			<span className="flex min-w-0 flex-1 flex-col">
+				<span className="truncate">{children}</span>
+				<span className={menuDescription}>{description}</span>
+			</span>
+			{shortcut && <kbd className={menuShortcut}>{shortcut}</kbd>}
+		</>
+	);
+}
 
 // ---------------- Dropdown menu ----------------
 
@@ -70,7 +92,7 @@ export interface MenuCheckboxItemProps extends ComponentPropsWithRef<typeof DM.C
 export function MenuCheckboxItem({ shortcut, className, children, ...rest }: MenuCheckboxItemProps) {
 	return (
 		<DM.CheckboxItem className={cn(menuItem, className)} {...rest}>
-			<span className={indicatorGutter}>
+			<span className={menuCheckSlot}>
 				<DM.ItemIndicator>
 					<Check className="size-4" aria-hidden />
 				</DM.ItemIndicator>
@@ -84,17 +106,22 @@ export const MenuRadioGroup = DM.RadioGroup;
 
 export interface MenuRadioItemProps extends ComponentPropsWithRef<typeof DM.RadioItem> {
 	shortcut?: string;
+	/** Second line under the label in muted 12px, such as what a permission level allows. */
+	description?: ReactNode;
 }
 
-export function MenuRadioItem({ shortcut, className, children, ...rest }: MenuRadioItemProps) {
+/** Single-choice row: the chosen one shows a leading check. */
+export function MenuRadioItem({ shortcut, description, className, children, ...rest }: MenuRadioItemProps) {
 	return (
-		<DM.RadioItem className={cn(menuItem, className)} {...rest}>
-			<span className={indicatorGutter}>
+		<DM.RadioItem className={cn(menuItem, description ? menuItemDescribed : undefined, className)} {...rest}>
+			<span className={menuCheckSlot}>
 				<DM.ItemIndicator>
-					<span className="block size-1.5 rounded-full bg-current" />
+					<Check className="size-4" aria-hidden />
 				</DM.ItemIndicator>
 			</span>
-			<ItemBody shortcut={shortcut}>{children}</ItemBody>
+			<ChoiceBody shortcut={shortcut} description={description}>
+				{children}
+			</ChoiceBody>
 		</DM.RadioItem>
 	);
 }
@@ -124,7 +151,7 @@ export function MenuSub({ label, icon, disabled, children, contentClassName }: M
 				<CaretRight className="ml-auto size-3.5 text-fg-faint" aria-hidden />
 			</DM.SubTrigger>
 			<DM.Portal>
-				<DM.SubContent sideOffset={6} alignOffset={-5} collisionPadding={8} className={cn(contentClass, contentClassName)}>
+				<DM.SubContent sideOffset={6} alignOffset={-7} collisionPadding={8} className={cn(contentClass, contentClassName)}>
 					{children}
 				</DM.SubContent>
 			</DM.Portal>
@@ -165,7 +192,7 @@ export interface ContextMenuCheckboxItemProps extends ComponentPropsWithRef<type
 export function ContextMenuCheckboxItem({ shortcut, className, children, ...rest }: ContextMenuCheckboxItemProps) {
 	return (
 		<CM.CheckboxItem className={cn(menuItem, className)} {...rest}>
-			<span className={indicatorGutter}>
+			<span className={menuCheckSlot}>
 				<CM.ItemIndicator>
 					<Check className="size-4" aria-hidden />
 				</CM.ItemIndicator>
@@ -179,17 +206,20 @@ export const ContextMenuRadioGroup = CM.RadioGroup;
 
 export interface ContextMenuRadioItemProps extends ComponentPropsWithRef<typeof CM.RadioItem> {
 	shortcut?: string;
+	description?: ReactNode;
 }
 
-export function ContextMenuRadioItem({ shortcut, className, children, ...rest }: ContextMenuRadioItemProps) {
+export function ContextMenuRadioItem({ shortcut, description, className, children, ...rest }: ContextMenuRadioItemProps) {
 	return (
-		<CM.RadioItem className={cn(menuItem, className)} {...rest}>
-			<span className={indicatorGutter}>
+		<CM.RadioItem className={cn(menuItem, description ? menuItemDescribed : undefined, className)} {...rest}>
+			<span className={menuCheckSlot}>
 				<CM.ItemIndicator>
-					<span className="block size-1.5 rounded-full bg-current" />
+					<Check className="size-4" aria-hidden />
 				</CM.ItemIndicator>
 			</span>
-			<ItemBody shortcut={shortcut}>{children}</ItemBody>
+			<ChoiceBody shortcut={shortcut} description={description}>
+				{children}
+			</ChoiceBody>
 		</CM.RadioItem>
 	);
 }
@@ -210,7 +240,7 @@ export function ContextMenuSub({ label, icon, disabled, children, contentClassNa
 				<CaretRight className="ml-auto size-3.5 text-fg-faint" aria-hidden />
 			</CM.SubTrigger>
 			<CM.Portal>
-				<CM.SubContent sideOffset={6} alignOffset={-5} collisionPadding={8} className={cn(contentClass, contentClassName)}>
+				<CM.SubContent sideOffset={6} alignOffset={-7} collisionPadding={8} className={cn(contentClass, contentClassName)}>
 					{children}
 				</CM.SubContent>
 			</CM.Portal>

@@ -101,8 +101,6 @@
 			"title": "Git",
 			"openDiff": "Review changes",
 			"clean": "No changes",
-			"detached": "no branch",
-			"lines": "{{add}} lines added, {{del}} removed",
 			"noCommits": "No saved versions (commits) yet",
 			"noUpstream": "No tracking branch configured",
 			"synced": "Up to date with the tracking branch",

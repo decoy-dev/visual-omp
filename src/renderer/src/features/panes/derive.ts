@@ -1,13 +1,16 @@
 /**
- * Pure read-outs of a chat's transcript for the dock: the latest todo checklist, background shell
- * jobs, dev-server URLs printed by commands, and the images and files omp made. Tolerant of
- * partial/unknown shapes, since everything here comes from omp's JSON over the wire.
+ * Pure read-outs of a chat's transcript for the dock and the chat: the todo checklist and its updates, background
+ * shell jobs, dev-server URLs printed by commands, the images and files omp made, the files each call changed, plan
+ * checkbox steps, and helpers at work. Tolerant of partial/unknown shapes, since everything here comes from omp's
+ * JSON over the wire.
  */
-import type { SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
+import type { AgentProgress, AgentSnapshot, SessionEntry, SubagentLifecyclePayload, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import type { PaneMadeFile, PaneMadeQuery } from "@shared/contracts/panes";
-import type { ActiveTool } from "../../collab/lib/client";
+import type { ActiveTool, GuestSnapshot } from "../../collab/lib/client";
 import { resolveToolCall } from "../../chat/friendly";
-import { isRecord, str } from "../../tool-render/util";
+import { type JobStatus, parseNotice } from "../../chat/transcript/notices";
+import type { SessionView } from "../../state/session";
+import { isRecord, num, str } from "../../tool-render/util";
 
 export type TodoStatus = "pending" | "in_progress" | "completed" | "abandoned";
 
@@ -41,7 +44,13 @@ type TranscriptItem =
 			/** Epoch ms the call started, never after the result; the result time when unknown. */
 			start: number;
 	  }
-	| { kind: "custom"; customType: string; details: unknown; time: number };
+	| { kind: "custom"; customType: string; details: unknown; time: number; entry: Extract<SessionEntry, { type: "custom_message" }> }
+	/**
+	 * omp's `session_exit` record (`AgentSession.#recordSessionExit` in session/agent-session.ts, written on normal and
+	 * fatal teardown): the omp process that wrote the entries before it has ended, and its helpers and jobs with it.
+	 * A crash that skips teardown writes none.
+	 */
+	| { kind: "exit" };
 
 function resultText(message: ToolResultMessage): string {
 	return message.content.map(block => (block.type === "text" ? block.text : "")).join("");
@@ -56,22 +65,25 @@ function startTime(recorded: number | undefined, called: number | undefined, end
 /**
  * Tool results paired with their calls (normalized like the transcript: `write` → `xd://<tool>`
  * device calls become the device tool, with the device's own details) and custom messages, in order.
+ * A call id counts once: a reconnect can deliver the same result again.
  */
 function transcriptItems(entries: readonly SessionEntry[]): TranscriptItem[] {
 	const calls = new Map<string, { name: string; args: unknown; time: number }>();
 	const starts = new Map<string, number>();
+	const answered = new Set<string>();
 	const items: TranscriptItem[] = [];
 	for (const entry of entries) {
 		// Saved sessions also hold omp's `custom` bookkeeping entries, which the wire types leave out.
 		const type: string = entry.type;
 		if (type === "custom") {
 			const { customType, data } = entry as unknown as { customType?: unknown; data?: unknown };
+			if (customType === "session_exit") items.push({ kind: "exit" });
 			const id = customType === "tool_execution_start" && isRecord(data) ? str(data.toolCallId) : null;
 			if (id && isRecord(data)) starts.set(id, Date.parse(str(data.startedAt) ?? entry.timestamp));
 			continue;
 		}
 		if (entry.type === "custom_message") {
-			items.push({ kind: "custom", customType: entry.customType, details: entry.details, time: Date.parse(entry.timestamp) });
+			items.push({ kind: "custom", customType: entry.customType, details: entry.details, time: Date.parse(entry.timestamp), entry });
 			continue;
 		}
 		if (entry.type !== "message") continue;
@@ -82,7 +94,8 @@ function transcriptItems(entries: readonly SessionEntry[]): TranscriptItem[] {
 			}
 			continue;
 		}
-		if (message.role !== "toolResult") continue;
+		if (message.role !== "toolResult" || answered.has(message.toolCallId)) continue;
+		answered.add(message.toolCallId);
 		const call = calls.get(message.toolCallId);
 		const view = resolveToolCall({
 			name: call?.name ?? message.toolName,
@@ -103,7 +116,8 @@ function isTodoStatus(value: string): value is TodoStatus {
 	return Object.hasOwn(TODO_STATUSES, value);
 }
 
-function parsePhases(raw: unknown[]): TodoPhase[] {
+/** A `todo` result's `details.phases`, with unknown statuses read as pending. */
+export function parsePhases(raw: unknown[]): TodoPhase[] {
 	const phases: TodoPhase[] = [];
 	for (const phase of raw) {
 		if (!isRecord(phase)) continue;
@@ -125,13 +139,83 @@ function parsePhases(raw: unknown[]): TodoPhase[] {
 
 /** Phases from the newest successful `todo` result; null when omp never made a checklist. */
 export function latestTodo(entries: readonly SessionEntry[]): TodoPhase[] | null {
-	const items = transcriptItems(entries);
-	for (let i = items.length - 1; i >= 0; i--) {
-		const item = items[i];
-		if (item.kind !== "result" || item.name !== "todo" || item.message.isError) continue;
-		if (Array.isArray(item.details?.phases)) return parsePhases(item.details.phases);
+	const updates = todoUpdates(entries);
+	return updates.at(-1)?.phases ?? null;
+}
+
+export interface TodoUpdate {
+	/** The `todo` call's id. */
+	callId: string;
+	phases: TodoPhase[];
+	/** The board before this update; null for the chat's first board. */
+	previous: TodoPhase[] | null;
+}
+
+/** Every successful `todo` result that carries a board, oldest first, each with the board it replaced. */
+export function todoUpdates(entries: readonly SessionEntry[]): TodoUpdate[] {
+	const updates: TodoUpdate[] = [];
+	for (const item of transcriptItems(entries)) {
+		if (item.kind !== "result" || item.name !== "todo" || item.message.isError || !Array.isArray(item.details?.phases)) continue;
+		updates.push({ callId: item.message.toolCallId, phases: parsePhases(item.details.phases), previous: updates.at(-1)?.phases ?? null });
 	}
-	return null;
+	return updates;
+}
+
+export interface TodoCounts {
+	done: number;
+	total: number;
+	abandoned: number;
+}
+
+/** Completed of all tasks; abandoned tasks count apart and stay out of the total, since nobody will finish them. */
+export function todoCounts(phases: readonly TodoPhase[]): TodoCounts {
+	let done = 0;
+	let total = 0;
+	let abandoned = 0;
+	for (const phase of phases) {
+		for (const task of phase.tasks) {
+			if (task.status === "abandoned") abandoned++;
+			else {
+				total++;
+				if (task.status === "completed") done++;
+			}
+		}
+	}
+	return { done, total, abandoned };
+}
+
+export type TodoChangeKind = "completed" | "started" | "abandoned" | "reopened" | "added" | "removed";
+
+export interface TodoChange {
+	kind: TodoChangeKind;
+	task: string;
+}
+
+const CHANGE_ORDER: Record<TodoChangeKind, number> = { completed: 0, started: 1, abandoned: 2, reopened: 3, added: 4, removed: 5 };
+
+/**
+ * What one board update changed, matched by task text (repeats pair up in order): status moves, then new and dropped
+ * tasks. Ordered by kind, then board order.
+ */
+export function todoChanges(previous: readonly TodoPhase[] | null, next: readonly TodoPhase[]): TodoChange[] {
+	const before = new Map<string, TodoStatus[]>();
+	for (const task of previous?.flatMap(phase => phase.tasks) ?? []) before.set(task.content, [...(before.get(task.content) ?? []), task.status]);
+	const changes: TodoChange[] = [];
+	for (const task of next.flatMap(phase => phase.tasks)) {
+		const statuses = before.get(task.content);
+		const was = statuses?.shift();
+		if (was === undefined) {
+			changes.push({ kind: "added", task: task.content });
+			continue;
+		}
+		if (was === task.status) continue;
+		if (task.status === "completed") changes.push({ kind: "completed", task: task.content });
+		else if (task.status === "in_progress") changes.push({ kind: "started", task: task.content });
+		else if (task.status === "abandoned") changes.push({ kind: "abandoned", task: task.content });
+		else changes.push({ kind: "reopened", task: task.content });
+	}
+	for (const [task, statuses] of before) for (let n = 0; n < statuses.length; n++) changes.push({ kind: "removed", task });
+	return changes.map((change, index) => ({ change, index })).sort((a, b) => CHANGE_ORDER[a.change.kind] - CHANGE_ORDER[b.change.kind] || a.index - b.index).map(({ change }) => change);
 }
 
 const JOB_STATES: Record<JobState, true> = { running: true, completed: true, failed: true, cancelled: true };
@@ -140,44 +224,69 @@ function isJobState(value: unknown): value is JobState {
 	return typeof value === "string" && Object.hasOwn(JOB_STATES, value);
 }
 
+/** A delivered result's outcome (chat/transcript/notices.ts reads it from omp's `<task-result status>` or exit line). */
+const DELIVERED_STATE: Record<JobStatus, JobState> = { ok: "completed", failed: "failed", stopped: "cancelled" };
+
+/** One background job's state as one transcript item reports it. `label` is the command, or the helper's id for a task job. */
+interface JobReport {
+	id: string;
+	type: string | null;
+	label: string | null;
+	state: JobState;
+	output: string | null;
+	/** An `async-result` delivery, which ends the job; snapshots may say it still runs. */
+	delivered: boolean;
+}
+
+/** Job states an item reports: omp's `async-result` deliveries and the job lists of `job` polls and `wait` results. */
+function jobReports(item: TranscriptItem): JobReport[] {
+	if (item.kind === "custom") {
+		if (item.customType !== "async-result") return [];
+		const notice = parseNotice(item.entry);
+		if (notice.kind !== "jobs") return [];
+		return notice.jobs.map(job => ({ id: job.id, type: job.type, label: job.label, state: DELIVERED_STATE[job.status], output: null, delivered: true }));
+	}
+	if (item.kind !== "result" || (item.name !== "job" && item.name !== "wait") || !Array.isArray(item.details?.jobs)) return [];
+	return item.details.jobs.flatMap((job): JobReport[] => {
+		if (!isRecord(job)) return [];
+		const id = str(job.id);
+		const state = job.status;
+		if (!id || !isJobState(state)) return [];
+		return [{ id, type: str(job.type), label: str(job.agentUrlId) ?? str(job.label), state, output: str(job.resultText) || str(job.errorText), delivered: false }];
+	});
+}
+
 /**
- * Background shell jobs: `bash` calls that went async (details.async), updated by `job` poll/cancel
- * results and closed by omp's `async-result` delivery messages. Newest first.
+ * Background shell jobs: `bash` calls that went async (details.async), updated by `job` and `wait` results and closed
+ * by omp's `async-result` deliveries. A job omp never reported finished before its process ended (a `session_exit`
+ * record, or no omp running this chat now) shows as cancelled. Newest first.
  */
-export function backgroundJobs(
-	entries: readonly SessionEntry[],
-	activeTools?: ReadonlyMap<string, ActiveTool>,
-): BackgroundJob[] {
+export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolean, activeTools?: ReadonlyMap<string, ActiveTool>): BackgroundJob[] {
 	const jobs = new Map<string, BackgroundJob>();
 	const upsert = (jobId: string, patch: Partial<BackgroundJob>) => {
 		const existing: BackgroundJob = jobs.get(jobId) ?? { jobId, command: "", state: "running", output: "" };
 		jobs.set(jobId, { ...existing, ...patch });
 	};
+	const stopRunning = () => {
+		for (const job of jobs.values()) if (job.state === "running") upsert(job.jobId, { state: "cancelled" });
+	};
 	for (const item of transcriptItems(entries)) {
-		if (item.kind === "custom") {
-			if (item.customType !== "async-result" || !isRecord(item.details)) continue;
-			const list = Array.isArray(item.details.jobs) ? item.details.jobs : [item.details];
-			for (const job of list) {
-				const jobId = isRecord(job) ? str(job.jobId) : null;
-				// A delivered result means the job ended; `job` polls may refine completed vs failed.
-				if (jobId && jobs.get(jobId)?.state === "running") upsert(jobId, { state: "completed" });
-			}
+		if (item.kind === "exit") {
+			stopRunning();
 			continue;
 		}
-		const { name, details, args, message } = item;
-		if (name === "bash" && details && isRecord(details.async)) {
-			const jobId = str(details.async.jobId);
-			const state = details.async.state;
-			if (jobId && isJobState(state)) upsert(jobId, { command: str(args.command) ?? "", state, output: resultText(message) });
-		} else if (name === "job" && details && Array.isArray(details.jobs)) {
-			for (const job of details.jobs) {
-				if (!isRecord(job)) continue;
-				const jobId = str(job.id);
-				const state = job.status;
-				if (!jobId || !isJobState(state) || !jobs.has(jobId)) continue;
-				const text = str(job.resultText) || str(job.errorText);
-				upsert(jobId, { state, ...(text ? { output: text } : {}) });
-			}
+		if (item.kind === "result" && item.name === "bash" && item.details && isRecord(item.details.async)) {
+			const jobId = str(item.details.async.jobId);
+			const state = item.details.async.state;
+			if (jobId && isJobState(state)) upsert(jobId, { command: str(item.args.command) ?? "", state, output: resultText(item.message) });
+			continue;
+		}
+		for (const report of jobReports(item)) {
+			const job = jobs.get(report.id);
+			if (!job) continue;
+			// A delivery ends a running job; an earlier poll may already have said how.
+			if (report.delivered && job.state !== "running") continue;
+			upsert(report.id, { state: report.state, ...(report.output ? { output: report.output } : {}) });
 		}
 	}
 	for (const tool of activeTools?.values() ?? []) {
@@ -194,6 +303,7 @@ export function backgroundJobs(
 			...(output ? { output } : {}),
 		});
 	}
+	if (!ompLive) stopRunning();
 	return [...jobs.values()].reverse();
 }
 
@@ -480,7 +590,7 @@ export function madeCandidates(entries: readonly SessionEntry[], context: Output
 			}
 			continue;
 		}
-		if (!Object.hasOwn(COMMAND_TOOLS, item.name)) continue;
+		if (item.kind !== "result" || !Object.hasOwn(COMMAND_TOOLS, item.name)) continue;
 		const paths = commandPaths(item.args, resultText(item.message), context);
 		if (paths.length === 0) continue;
 		const candidate = { id: item.message.toolCallId, paths, start: item.start, end: item.message.timestamp };
@@ -578,4 +688,399 @@ export function chatOutputs(entries: readonly SessionEntry[], context: OutputCon
 		}
 	}
 	return [...outputs.values()].reverse();
+}
+
+// ── files omp changed ───────────────────────────────────────────────────────────────────────────
+
+/** One file one tool call changed. Counts come from omp's own diff for that call; null when the result carries none. */
+export interface FileEdit {
+	/** Absolute when it could be resolved, else as the tool named it. */
+	path: string;
+	action: "edited" | "created" | "written";
+	added: number | null;
+	removed: number | null;
+}
+
+function diffLineCounts(diff: string | null): { added: number | null; removed: number | null } {
+	if (diff === null) return { added: null, removed: null };
+	let added = 0;
+	let removed = 0;
+	for (const line of diff.split("\n")) {
+		if (line.startsWith("+++") || line.startsWith("---")) continue;
+		if (line.startsWith("+")) added++;
+		else if (line.startsWith("-")) removed++;
+	}
+	return { added, removed };
+}
+
+/**
+ * Files each successful `edit`, `write` and `ast_edit` call changed, by tool call id. Failed calls and failed files are
+ * left out; a staged `ast_edit` preview counts only once `resolve` applies it, under the resolve call. `write` reports
+ * no diff (it may have replaced a file), and `ast_edit` none that can be counted, so their line counts stay unknown.
+ */
+export function fileEdits(entries: readonly SessionEntry[], context: OutputContext): Map<string, FileEdit[]> {
+	const edits = new Map<string, FileEdit[]>();
+	const resolve = (raw: string, base: OutputContext) => resolveOutputPath(raw, base) ?? raw;
+	let staged: { paths: string[]; base: OutputContext } | null = null;
+	for (const item of transcriptItems(entries)) {
+		if (item.kind !== "result" || item.message.isError) continue;
+		const { name, args, details } = item;
+		const id = item.message.toolCallId;
+		const files: FileEdit[] = [];
+		if (name === "write") {
+			const raw = str(details?.resolvedPath) ?? str(args.path) ?? str(args.file_path);
+			if (raw) files.push({ path: resolve(raw, context), action: "written", added: null, removed: null });
+		} else if (name === "edit" || name === "apply_patch") {
+			const perFile = Array.isArray(details?.perFileResults) ? details.perFileResults.filter(isRecord) : [];
+			const sources = perFile.length > 0 ? perFile : details ? [{ ...details, path: str(details.path) ?? str(args.path) ?? str(args.file_path) }] : [];
+			for (const file of sources) {
+				const raw = file.isError === true ? null : str(file.path);
+				if (raw) files.push({ path: resolve(raw, context), action: file.op === "create" ? "created" : "edited", ...diffLineCounts(str(file.diff)) });
+			}
+		} else if (name === "ast_edit") {
+			const base = { ...context, cwd: str(details?.cwd) ?? context.cwd };
+			if (details?.applied === false) staged = { paths: astEditPaths(details), base };
+			else for (const raw of astEditPaths(details)) files.push({ path: resolve(raw, base), action: "edited", added: null, removed: null });
+		} else if (name === "resolve" || name === "reject") {
+			const action = str(details?.action) ?? str(args.action) ?? (name === "reject" ? "discard" : "apply");
+			const source = str(details?.sourceToolName) ?? "ast_edit";
+			if (staged && action === "apply" && source === "ast_edit") {
+				for (const raw of staged.paths) files.push({ path: resolve(raw, staged.base), action: "edited", added: null, removed: null });
+			}
+			staged = null;
+		}
+		if (files.length > 0) edits.set(id, files);
+	}
+	return edits;
+}
+
+/** A file's edit totals over several calls. Counts are null when any of its calls reported none. */
+export interface FileEditTotal {
+	path: string;
+	/** `created` or `written` when the first change made or wrote the file, else `edited`. */
+	action: FileEdit["action"];
+	added: number | null;
+	removed: number | null;
+}
+
+export interface EditTotals {
+	files: FileEditTotal[];
+	/** Sums over the files whose counts are known. Repeated edits to one file all count: this is not a net diff. */
+	added: number;
+	removed: number;
+	/** Some file's counts are unknown, so the sums leave it out. */
+	partial: boolean;
+}
+
+/** Edit totals for a set of calls, one row per file in first-change order. */
+export function editTotals(edits: ReadonlyMap<string, readonly FileEdit[]>, callIds: Iterable<string>): EditTotals {
+	const files = new Map<string, FileEditTotal>();
+	const seen = new Set<string>();
+	for (const id of callIds) {
+		if (seen.has(id)) continue;
+		seen.add(id);
+		for (const edit of edits.get(id) ?? []) {
+			const total = files.get(edit.path);
+			if (!total) {
+				files.set(edit.path, { ...edit });
+				continue;
+			}
+			total.added = total.added === null || edit.added === null ? null : total.added + edit.added;
+			total.removed = total.removed === null || edit.removed === null ? null : total.removed + edit.removed;
+		}
+	}
+	let added = 0;
+	let removed = 0;
+	let partial = false;
+	for (const file of files.values()) {
+		if (file.added === null || file.removed === null) partial = true;
+		else {
+			added += file.added;
+			removed += file.removed;
+		}
+	}
+	return { files: [...files.values()], added, removed, partial };
+}
+
+// ── plan checklist ──────────────────────────────────────────────────────────────────────────────
+
+export interface PlanStep {
+	text: string;
+	checked: boolean;
+	/** Nesting level from the list indent, 0 for top-level steps. */
+	depth: number;
+}
+
+const CHECKBOX = /^(\s*)(?:[-*+]|\d+[.)])\s+\[([ xX])\]\s+(.+)$/;
+
+/** Markdown checkbox steps (`- [ ] step`, `1. [x] step`) in a plan, outside code fences; null when it has none. */
+export function planChecklist(text: string): PlanStep[] | null {
+	const steps: PlanStep[] = [];
+	let fence: string | null = null;
+	for (const line of text.split("\n")) {
+		const marker = /^\s*(```+|~~~+)/.exec(line)?.[1];
+		if (marker) {
+			if (fence === null) fence = marker[0];
+			else if (marker[0] === fence) fence = null;
+			continue;
+		}
+		if (fence !== null) continue;
+		const match = CHECKBOX.exec(line);
+		if (!match) continue;
+		const indent = match[1].replace(/\t/g, "  ").length;
+		steps.push({ text: match[3].trim(), checked: match[2] !== " ", depth: Math.min(3, Math.floor(indent / 2)) });
+	}
+	return steps.length > 0 ? steps : null;
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────────────────────────
+
+export type HelperStatus = "running" | "idle" | "done" | "failed" | "stopped";
+
+/** A subagent as the Tasks pane and the chat header show it. Numbers are null when omp has not reported them. */
+export interface Helper {
+	id: string;
+	name: string;
+	status: HelperStatus;
+	/** What it is doing now, or what it was asked to do. */
+	activity: string;
+	tokens: number | null;
+	toolCount: number | null;
+	/** Run time omp last reported for it. */
+	durationMs: number | null;
+	contextTokens: number | null;
+	contextWindow: number | null;
+	model: string | null;
+	hasTranscript: boolean;
+}
+
+const SNAPSHOT_STATUS: Record<AgentSnapshot["status"], HelperStatus> = { running: "running", idle: "idle", parked: "idle", aborted: "stopped" };
+const PROGRESS_STATUS: Record<AgentProgress["status"], HelperStatus> = { pending: "running", running: "running", completed: "done", failed: "failed", aborted: "stopped" };
+const LIFECYCLE_STATUS: Record<SubagentLifecyclePayload["status"], HelperStatus> = { started: "running", completed: "done", failed: "failed", aborted: "stopped" };
+const HELPER_ORDER: Record<HelperStatus, number> = { running: 0, idle: 1, failed: 2, stopped: 3, done: 4 };
+/** A task job's state in a `job`/`wait` snapshot or a delivery, as the helper's status. */
+const JOB_HELPER_STATUS: Record<JobState, HelperStatus> = { running: "running", completed: "done", failed: "failed", cancelled: "stopped" };
+
+/** A task progress record's status; anything else reads as running, like omp's pending. */
+export function progressStatus(value: unknown): HelperStatus {
+	return value === "completed" || value === "failed" || value === "aborted" ? PROGRESS_STATUS[value] : "running";
+}
+
+/** How a task call's final result record ended, mirroring the TUI's aborted / done / failed split. */
+export function taskResultStatus(result: Record<string, unknown>): HelperStatus {
+	if (result.aborted === true) return "stopped";
+	return num(result.exitCode) === 0 && !str(result.error) ? "done" : "failed";
+}
+
+/**
+ * Whether an omp process may still run this chat's helpers and jobs: this tab's own (starting, live or reconnecting),
+ * or another process that has the saved file open (the read-only follow, unless the follow found the file free: the
+ * tab stays read-only until Continue here, but no other process writes it). A saved chat nobody runs, or one whose
+ * omp exited, runs nothing.
+ */
+export function ompRunning(view: Pick<SessionView, "mode" | "readOnly" | "follow"> | null | undefined): boolean {
+	if (!view) return false;
+	if (view.readOnly) return view.follow?.ownership !== "free";
+	return view.mode === "starting" || view.mode === "live" || view.mode === "reconnecting";
+}
+
+/**
+ * Each helper's last state the transcript records, by helper id: what its `task` call's result said (final results,
+ * else the progress a background spawn returns with), then the task jobs in `job`/`wait` results and `async-result`
+ * deliveries, later reports winning. A delivery for a helper messaged again names the run `<id>-2`; its label is the
+ * helper id, so both keys are set. A helper still working or waiting at a `session_exit` record stopped with omp.
+ */
+export function transcriptHelperStates(entries: readonly SessionEntry[]): ReadonlyMap<string, HelperStatus> {
+	const states = new Map<string, HelperStatus>();
+	for (const item of transcriptItems(entries)) {
+		if (item.kind === "exit") {
+			for (const [id, status] of states) if (status === "running" || status === "idle") states.set(id, "stopped");
+			continue;
+		}
+		if (item.kind === "result" && item.name === "task") {
+			const results = Array.isArray(item.details?.results) ? item.details.results.filter(isRecord) : [];
+			const progress = Array.isArray(item.details?.progress) ? item.details.progress.filter(isRecord) : [];
+			for (const record of results.length > 0 ? results : progress) {
+				const id = str(record.id);
+				if (id) states.set(id, results.length > 0 ? taskResultStatus(record) : progressStatus(record.status));
+			}
+			continue;
+		}
+		for (const report of jobReports(item)) {
+			if (report.type !== "task") continue;
+			states.set(report.id, JOB_HELPER_STATUS[report.state]);
+			if (report.label) states.set(report.label, JOB_HELPER_STATUS[report.state]);
+		}
+	}
+	return states;
+}
+
+/**
+ * A helper's status once the transcript and omp's absence apply. `recorded` (from `transcriptHelperStates`) replaces
+ * the status of a helper read from its task call's own result, which a background spawn writes once, at the start;
+ * pass null for live helpers, whose status omp keeps current. Without a running omp, a helper still marked working or
+ * waiting has stopped.
+ */
+export function settleHelper(helper: Helper, recorded: ReadonlyMap<string, HelperStatus> | null, ompLive: boolean): Helper {
+	const status = recorded?.get(helper.id) ?? helper.status;
+	const settled = !ompLive && (status === "running" || status === "idle") ? "stopped" : status;
+	return settled === helper.status ? helper : { ...helper, status: settled };
+}
+
+/**
+ * omp sends a helper its assignment wrapped in `prompts/system/subagent-user-prompt.md` ("Complete assignment
+ * thoroughly:" then the parent's text) and reports that wrapped text as `progress.task`. omp's own agent views strip
+ * it with this same pattern.
+ */
+const ASSIGNMENT_PREAMBLE = /^\s*Complete assignment thoroughly:\s*/i;
+
+/** The parent's assignment without omp's preamble. */
+export function stripAssignmentPreamble(text: string): string {
+	return text.replace(ASSIGNMENT_PREAMBLE, "");
+}
+
+/** The first line of `text` that says something: blank lines and Markdown heading lines ("# Target") are skipped. */
+function firstLine(text: string | null | undefined): string {
+	if (!text) return "";
+	let heading = "";
+	for (const raw of text.split("\n")) {
+		const line = raw.trim();
+		if (!line) continue;
+		const title = /^#{1,6}\s+(.*)$/.exec(line);
+		if (!title) return line;
+		heading ||= title[1]?.trim() ?? "";
+	}
+	return heading;
+}
+
+/** The fields a helper's activity line is chosen from: live progress, or a task result record, which lacks some. */
+export interface ActivitySource {
+	currentToolIntent?: string | null;
+	lastIntent?: string | null;
+	recentTools?: readonly { intent?: string | null }[];
+	recentOutput?: readonly string[];
+	description?: string | null;
+	task?: string | null;
+}
+
+/**
+ * What a helper is doing, latest first: the intent of its current call, its last intent, the intent of its latest
+ * finished call, its latest line of output; before it has done anything, the label omp generated for the task, then
+ * the first line of its assignment (without omp's preamble).
+ */
+export function activityOf(progress: ActivitySource | undefined): string {
+	if (!progress) return "";
+	return (
+		firstLine(progress.currentToolIntent) ||
+		firstLine(progress.lastIntent) ||
+		firstLine(progress.recentTools?.find(tool => tool.intent)?.intent) ||
+		firstLine(progress.recentOutput?.[0]) ||
+		firstLine(progress.description) ||
+		firstLine(progress.task && stripAssignmentPreamble(progress.task))
+	);
+}
+
+function progressFields(live: AgentProgress | undefined): Pick<Helper, "tokens" | "toolCount" | "durationMs" | "contextTokens" | "contextWindow" | "model"> {
+	const positive = (value: number | undefined) => (value !== undefined && Number.isFinite(value) && value > 0 ? value : null);
+	return {
+		tokens: live ? live.tokens : null,
+		toolCount: live ? live.toolCount : null,
+		durationMs: positive(live?.durationMs),
+		contextTokens: positive(live?.contextTokens),
+		contextWindow: positive(live?.contextWindow),
+		model: live?.resolvedModel ?? null,
+	};
+}
+
+/**
+ * Subagents from the collab `agents` list merged with their task progress and lifecycle, running first. Without a
+ * running omp (`ompLive` false, from `ompRunning`: a stale mirror), none still works (`settleHelper`).
+ */
+export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "lifecycle"> | null | undefined, ompLive: boolean): Helper[] {
+	if (!guest) return [];
+	const progress = new Map<string, AgentProgress>();
+	for (const payload of guest.progress.values()) progress.set(payload.progress.id, payload.progress);
+	const helpers = new Map<string, Helper>();
+	for (const agent of guest.agents) {
+		if (agent.kind !== "sub") continue;
+		const live = progress.get(agent.id);
+		helpers.set(agent.id, {
+			id: agent.id,
+			name: agent.displayName || live?.agent || agent.id,
+			// A finished task reports completed/failed in progress while the registry says idle.
+			status: live && live.status !== "running" && live.status !== "pending" ? PROGRESS_STATUS[live.status] : SNAPSHOT_STATUS[agent.status],
+			activity: activityOf(live),
+			...progressFields(live),
+			hasTranscript: agent.hasSessionFile,
+		});
+	}
+	for (const [id, live] of progress) {
+		if (helpers.has(id)) continue;
+		helpers.set(id, { id, name: live.agent || id, status: PROGRESS_STATUS[live.status], activity: activityOf(live), ...progressFields(live), hasTranscript: false });
+	}
+	for (const [id, event] of guest.lifecycle) {
+		const existing = helpers.get(id);
+		if (existing) {
+			existing.status = LIFECYCLE_STATUS[event.status];
+			if (!existing.activity && event.description) existing.activity = event.description;
+			continue;
+		}
+		helpers.set(id, {
+			id,
+			name: event.agent || id,
+			status: LIFECYCLE_STATUS[event.status],
+			activity: event.description ?? "",
+			...progressFields(undefined),
+			hasTranscript: Boolean(event.sessionFile),
+		});
+	}
+	return [...helpers.values()].map(helper => settleHelper(helper, null, ompLive)).sort((a, b) => HELPER_ORDER[a.status] - HELPER_ORDER[b.status]);
+}
+
+/**
+ * The helpers each `task` call started, by tool call id, in the order the call listed them. omp tags progress and
+ * lifecycle events with the spawning call (`parentToolCallId`); helpers without that tag are left out. This is the
+ * live state: a task call that spawns in the background returns at once while its helpers keep working.
+ */
+export function helpersByCall(
+	guest: Pick<GuestSnapshot, "agents" | "progress" | "lifecycle"> | null | undefined,
+	ompLive: boolean,
+): ReadonlyMap<string, readonly Helper[]> {
+	if (!guest) return new Map();
+	const parents = new Map<string, { call: string; index: number }>();
+	for (const payload of guest.progress.values()) {
+		if (payload.parentToolCallId) parents.set(payload.progress.id, { call: payload.parentToolCallId, index: payload.index });
+	}
+	for (const event of guest.lifecycle.values()) {
+		if (event.parentToolCallId && !parents.has(event.id)) parents.set(event.id, { call: event.parentToolCallId, index: event.index });
+	}
+	if (parents.size === 0) return new Map();
+	const byCall = new Map<string, { helper: Helper; index: number }[]>();
+	for (const helper of helpersOf(guest, ompLive)) {
+		const parent = parents.get(helper.id);
+		if (!parent) continue;
+		byCall.set(parent.call, [...(byCall.get(parent.call) ?? []), { helper, index: parent.index }]);
+	}
+	const result = new Map<string, readonly Helper[]>();
+	for (const [call, list] of byCall) result.set(call, list.sort((a, b) => a.index - b.index).map(item => item.helper));
+	return result;
+}
+
+// ── work summary ────────────────────────────────────────────────────────────────────────────────
+
+export interface WorkSummary {
+	/** Null when omp made no checklist. */
+	tasks: TodoCounts | null;
+	helpersWorking: number;
+	jobsRunning: number;
+}
+
+/** The counts the chat header's work chip shows. */
+export function workSummary(phases: readonly TodoPhase[] | null, helpers: readonly Helper[], jobs: readonly BackgroundJob[]): WorkSummary {
+	const tasks = phases ? todoCounts(phases) : null;
+	return {
+		tasks: tasks && tasks.total + tasks.abandoned > 0 ? tasks : null,
+		helpersWorking: helpers.filter(helper => helper.status === "running").length,
+		jobsRunning: jobs.filter(job => job.state === "running").length,
+	};
 }

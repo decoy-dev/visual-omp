@@ -278,7 +278,7 @@ function TourOverlay({ step, id }: { step: number; id: StepId }) {
 				initial={{ opacity: 0, y: 8 }}
 				animate={{ opacity: 1, y: 0 }}
 				transition={{ layout: spring.gentle, y: spring.gentle }}
-				className="absolute w-[320px] overflow-hidden rounded-lg border border-border bg-overlay p-4 text-fg shadow-(--shadow-overlay)"
+				className="absolute w-80 overflow-hidden rounded-lg border border-border bg-overlay p-4 text-fg shadow-(--shadow-overlay)"
 				style={position}
 			>
 				<div className="relative">

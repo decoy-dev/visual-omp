@@ -92,11 +92,11 @@ function PlanTooltip({ usage, now }: { usage: ProviderUsage[]; now: number }) {
 	const { t, i18n } = useTranslation("extensions");
 	const fetchedAt = Math.min(...usage.map(provider => provider.fetchedAt));
 	return (
-		<span className="flex flex-col gap-2 py-0.5 leading-normal">
-			<span className="grid grid-cols-[auto_auto_1fr] gap-x-3 gap-y-0.5 font-normal">
+		<span className="flex flex-col gap-2 py-1 leading-normal">
+			<span className="grid grid-cols-[auto_auto_1fr] gap-x-3 gap-y-1 font-normal">
 				{usage.map((provider, index) => (
 					<span key={provider.provider} className="contents">
-						<span className={cn("col-span-3 font-semibold", index > 0 && "mt-1.5")}>
+						<span className={cn("col-span-3 font-semibold", index > 0 && "mt-2")}>
 							{providerName(provider.provider)}
 							{provider.accounts > 1 && <span className="font-normal text-fg-muted"> {t("usage.plan.pooled", { count: provider.accounts })}</span>}
 						</span>
@@ -124,7 +124,7 @@ function PlanTooltip({ usage, now }: { usage: ProviderUsage[]; now: number }) {
 
 /**
  * Status bar (right): plan usage of the providers the focused chat and its
- * running subagents use, one meter per provider showing the window `pickTop` in planUsage.ts chooses
+ * running subagents use, one meter per provider showing the window `pickBinding` in planUsage.ts chooses
  * (an exhausted window, else 5h, else 7d, else monthly, else the most-used). Opens Usage & limits.
  */
 export function PlanUsageStatus({ session, projectPath }: PaneProps) {

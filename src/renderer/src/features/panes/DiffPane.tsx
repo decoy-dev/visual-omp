@@ -313,7 +313,7 @@ const Hunk = memo(function Hunk({
 									<span
 										// biome-ignore lint/suspicious/noArrayIndexKey: static render of one line
 										key={i}
-										className={cn(SYN_CLASS[segment.role], segment.emphasis && cn(EMPHASIS_BG[line.kind], "rounded-[2px]"))}
+										className={cn(SYN_CLASS[segment.role], segment.emphasis && cn(EMPHASIS_BG[line.kind], "rounded-sm"))}
 									>
 										{segment.text}
 									</span>
@@ -725,18 +725,5 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 		<PresenceSwap swapKey={files.length === 0 ? "empty" : "diff"} className="flex min-h-0 flex-1 flex-col">
 			{files.length === 0 ? <EmptyState icon={<GitDiffIcon />} title={t("diff.emptyTitle")} body={t("diff.empty")} /> : view}
 		</PresenceSwap>
-	);
-}
-
-/** Tab badge: `+N −M` for the project's uncommitted changes. */
-export function DiffBadge({ projectPath }: PaneProps) {
-	const { t } = useTranslation("panes");
-	const git = useGit(projectPath);
-	const totals = git.status?.totals;
-	if (!totals || totals.files === 0) return null;
-	return (
-		<span className="font-mono text-xs tabular-nums" aria-label={t("diff.badge", { add: totals.additions, del: totals.deletions })}>
-			<span className="text-diff-add-text">+{totals.additions}</span> <span className="text-diff-del-text">−{totals.deletions}</span>
-		</span>
 	);
 }

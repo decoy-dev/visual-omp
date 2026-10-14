@@ -8,6 +8,7 @@ import type { FileRef } from "@shared/contracts/fileRefs";
 import { createContext, memo, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { chatOutputs } from "../../features/panes/derive";
+import { useMarkdownHtml } from "../../transcript/Markdown";
 import { renderMarkdown } from "../../transcript/render";
 import { MAX_BASES, ReplyRefCache, type ReplyRefs } from "./fileRefs";
 import { fillThumbnails, linkHtml, occurrences, parse } from "./fileLinkMarkup";
@@ -60,7 +61,7 @@ export const LinkedMarkdown = memo(function LinkedMarkdown({ text, refs }: { tex
 	const { t } = useTranslation("chat");
 	const home = useContext(FileRefContext)?.home ?? null;
 	const ref = useRef<HTMLDivElement | null>(null);
-	const html = useMemo(() => renderMarkdown(text), [text]);
+	const html = useMarkdownHtml(text);
 	const linked = useMemo(
 		() => (refs?.some(Boolean) ? linkHtml(html, refs, { home, row: (name, folder) => t("fileRow", { name, folder }) }) : html),
 		[html, refs, home, t],

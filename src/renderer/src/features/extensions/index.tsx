@@ -4,16 +4,36 @@
  */
 import { BookOpenText, Brain, PlugsConnected } from "@phosphor-icons/react";
 import { registerCommand } from "@/registry/commands";
+import { lazySection } from "@/registry/lazy";
 import { settingsSections } from "@/registry/slots";
 import { openSettings } from "@/state/navigation";
-import { MemorySection } from "./memory/MemorySection";
-import { McpSection } from "./mcp/McpSection";
-import { SkillsSection } from "./skills/SkillsSection";
 import "./usage";
 
-settingsSections.register({ id: "mcp", group: "context", order: 10, title: "extensions:mcp.title", icon: PlugsConnected, scoped: true, component: McpSection });
-settingsSections.register({ id: "skills", group: "context", order: 20, title: "extensions:skills.title", icon: BookOpenText, component: SkillsSection });
-settingsSections.register({ id: "memory", group: "context", order: 30, title: "extensions:memory.title", icon: Brain, component: MemorySection });
+settingsSections.register({
+	id: "mcp",
+	group: "context",
+	order: 10,
+	title: "extensions:mcp.title",
+	icon: PlugsConnected,
+	scoped: true,
+	component: lazySection(() => import("./mcp/McpSection").then(m => m.McpSection)),
+});
+settingsSections.register({
+	id: "skills",
+	group: "context",
+	order: 20,
+	title: "extensions:skills.title",
+	icon: BookOpenText,
+	component: lazySection(() => import("./skills/SkillsSection").then(m => m.SkillsSection)),
+});
+settingsSections.register({
+	id: "memory",
+	group: "context",
+	order: 30,
+	title: "extensions:memory.title",
+	icon: Brain,
+	component: lazySection(() => import("./memory/MemorySection").then(m => m.MemorySection)),
+});
 
 const COMMANDS = [
 	{ id: "manage.mcp", section: "mcp", icon: PlugsConnected, slash: "/mcp" },

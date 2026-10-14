@@ -23,23 +23,49 @@ export const closeButton = [
 	focusRing,
 ].join(" ");
 
-/** Floating surface used by menus, popovers, select lists. Rendered in the tooltip layer so it stacks above dialogs/sheets. */
-export const floatingSurface =
-	"vo-pop rounded-md border border-border bg-raised text-fg shadow-(--shadow-pop) outline-none z-(--z-tooltip)";
+/*
+ * Menu anatomy (DESIGN §5.5): one container and one row for every menu-like surface (dropdown and context menus,
+ * select lists, comboboxes, mention lists, pickers, filter pill menus). Concentric radii: the 12px container with a
+ * 6px inset holds 6px rows.
+ */
 
-/** Menu / select row. */
+/** Floating surface used by menus, popovers, select lists (12px radius). Rendered in the tooltip layer so it stacks above
+ * dialogs/sheets. Portalled to <body>, so it always takes the sheet palette, even when its trigger sits on the ink chrome. */
+export const floatingSurface =
+	"vo-pop rounded-lg border border-border bg-overlay text-fg shadow-(--shadow-pop) outline-none z-(--z-tooltip)";
+
+/** Menu container: the floating surface with the 6px menu inset. Use for any list that floats (Radix or not). */
+export const menuContent = `${floatingSurface} p-menu`;
+
+/** Menu / select row: 32px, 8px side padding, 16px icon or check slot first, shortcut last. Radix rows highlight via
+ * `data-highlighted`; a hand-driven listbox adds `menuItemActive` to its active option. */
 export const menuItem = [
-	"relative flex h-[30px] w-full cursor-default select-none items-center gap-2 rounded-sm px-2 text-md text-fg",
+	"relative flex min-h-8 w-full cursor-default select-none items-center gap-2 rounded-sm px-row text-left text-md text-fg",
 	"transition-colors duration-(--dur-fast) ease-(--ease-out) data-highlighted:bg-selected",
 	focusRingInset,
 	disabledData,
 ].join(" ");
 
+/** Highlight for the active option of a listbox that is not a Radix menu (combobox, mention list). */
+export const menuItemActive = "bg-selected";
+
+/** A row with a second line: 44px minimum, top-aligned, the icon or check level with the label. */
+export const menuItemDescribed = "min-h-11 items-start py-1.5 [&>span:first-child]:mt-px";
+
 export const menuItemDanger = "text-err data-highlighted:bg-err-bg";
 
-/** Group label inside menus and select lists: sentence case, like `.section-label`. */
-export const menuLabel = "px-2 pb-1 pt-1.5 text-sm font-medium text-fg-muted";
+/** Leading 16px slot for the selected item's check (or the row's icon) so labels align down the list. */
+export const menuCheckSlot = "inline-flex size-4 shrink-0 items-center justify-center text-fg";
 
-export const menuSeparator = "-mx-1 my-1 h-px bg-border";
+/** Leading 16px icon in muted ink. */
+export const menuIcon = "inline-flex size-4 shrink-0 text-fg-muted [&>svg]:size-4";
+
+/** Second line of a described row: 12px muted, wraps. */
+export const menuDescription = "text-sm text-fg-muted";
+
+/** Group label inside menus and select lists: 11px semibold, sentence case. */
+export const menuLabel = "px-row pb-1 pt-1.5 text-xs font-semibold text-fg-faint";
+
+export const menuSeparator = "-mx-menu my-menu h-px bg-border";
 
 export const menuShortcut = "ml-auto pl-4 font-mono text-xs text-fg-faint";

@@ -180,8 +180,8 @@ export function VoiceTool({ session }: ChatSlotProps) {
 	const busy = state === "starting" || state === "transcribing";
 	const label = recording ? t("voice.stop") : busy ? t(`voice.${state}`) : t("voice.start");
 
-	// The mic is in the row only while voice input is on (or dictation is still finishing); the dialog and
-	// the ＋ menu's start requests work either way.
+	// The mic is in the composer card only while voice input is on (or dictation is still finishing); the
+	// dialog and the ＋ menu's start requests work either way.
 	return (
 		<>
 			{(voiceOn || state !== "idle") && (
@@ -193,12 +193,12 @@ export function VoiceTool({ session }: ChatSlotProps) {
 						disabled={readOnly || busy}
 						onClick={onClick}
 						className={cn(
-							"relative inline-flex size-7 shrink-0 items-center justify-center rounded-md outline-none transition-colors duration-(--dur-fast)",
+							"relative inline-flex size-8 shrink-0 items-center justify-center rounded-sm outline-none transition-colors duration-(--dur-fast)",
 							"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45",
 							recording ? "bg-err-bg text-err" : "text-fg-muted enabled:hover:bg-hover enabled:hover:text-fg",
 						)}
 					>
-						{recording && <span aria-hidden className="vo-ping absolute inset-0 rounded-md ring-2 ring-err" />}
+						{recording && <span aria-hidden className="vo-ping absolute inset-0 rounded-sm ring-2 ring-err" />}
 						<AnimatePresence initial={false} mode="popLayout">
 							<motion.span
 								key={busy ? "busy" : recording ? "recording" : "idle"}
@@ -239,7 +239,7 @@ export function VoiceTool({ session }: ChatSlotProps) {
 						</>
 					}
 				>
-					<ul className="flex list-disc flex-col gap-1.5 pl-5 text-sm text-fg-muted">
+					<ul className="flex list-disc flex-col gap-2 pl-5 text-sm text-fg-muted">
 						<li>{t("voice.consentLocal")}</li>
 						<li>{t("voice.consentDownload")}</li>
 						<li>{t("voice.consentRestart")}</li>

@@ -1,13 +1,13 @@
 import { FolderOpen, Plus } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChatArea } from "../chat/ChatArea";
 import { useComposerDrafts } from "../chat/composer/drafts";
 import { getCommand } from "../registry/commands";
 import { type SheetPresence, SheetPresenceContext } from "../registry/sheetPresence";
 import { pages, screens, sheets } from "../registry/slots";
-import { dockTooNarrow, focusedTabId, MAIN_ID, type OpenPage, useApp } from "../state/app";
+import { DOCK_INSET, dockTooNarrow, focusedTabId, MAIN_ID, type OpenPage, useApp, useWindowWidth } from "../state/app";
 import { Button, cn, duration, EmptyState, Mark, PresenceSwap, spring } from "../ui";
 import { LeaveConfirm } from "./LeaveConfirm";
 import { Dock } from "./Dock";
@@ -121,11 +121,6 @@ function sideEnter(edge: -1 | 1) {
 	} as const;
 }
 
-function subscribeResize(listener: () => void): () => void {
-	window.addEventListener("resize", listener);
-	return () => window.removeEventListener("resize", listener);
-}
-
 /** Something keyboard focus can land on and see: in the document, not inside an inert region, and laid out. */
 function focusable(element: Element | null): element is HTMLElement {
 	return element instanceof HTMLElement && element.isConnected && !element.closest("[inert]") && element.getClientRects().length > 0;
@@ -188,7 +183,11 @@ function useExpandedDockFocus(expanded: boolean): (back: HTMLElement) => void {
 	}, []);
 }
 
-/** Window layout (DESIGN §3): title bar · sidebar | chats/home/page | dock · status bar. */
+/**
+ * Window layout (DESIGN §3): the ink chrome (sidebar band, full height, and the status bar) wraps the main sheet
+ * (title bar · chats/home/page | side panel). The sheet's left corners round off against the sidebar and square up
+ * when the sidebar hides; the side panel floats as its own sheet on an 8px strip of canvas.
+ */
 export function Shell(): ReactNode {
 	const { t } = useTranslation("shell");
 	const sidebarOpen = useApp(state => state.sidebarOpen);
@@ -199,7 +198,7 @@ export function Shell(): ReactNode {
 	const hasTabs = useApp(state => state.tabs.length > 0);
 	const page = useApp(state => (state.view === "page" ? state.page : null));
 	const pageReturn = useApp(state => state.pageReturn);
-	const windowWidth = useSyncExternalStore(subscribeResize, () => window.innerWidth);
+	const windowWidth = useWindowWidth();
 	const tooNarrow = useApp(state => dockTooNarrow(state, windowWidth));
 	const chatOverDock = useApp(state => state.chatOverDock);
 	const showDock = dockOpen && !page && !tooNarrow;
@@ -213,45 +212,58 @@ export function Shell(): ReactNode {
 	const chatMounted = hasTabs && (view === "chat" || (view === "page" && pageReturn === "chat"));
 
 	return (
-		<div className="flex h-full flex-col bg-bg text-fg">
-			<TitleBar />
+		<div className="flex h-full flex-col bg-chrome text-fg">
 			<div className="flex min-h-0 flex-1">
 				<AnimatePresence initial={false}>
 					{sidebarOpen && (
-						<motion.div key="sidebar" className="flex shrink-0" {...sideEnter(-1)}>
+						<motion.div key="sidebar" data-region="chrome" className="flex shrink-0 bg-chrome text-fg" {...sideEnter(-1)}>
 							<Sidebar width={sidebarWidth} />
 							<ResizeHandle label={t("resizeSidebar")} value={sidebarWidth} min={200} max={320} direction={1} onChange={width => useApp.getState().setSidebarWidth(width)} />
 						</motion.div>
 					)}
 				</AnimatePresence>
-				<main id={MAIN_ID} tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
-					<div className="relative flex min-h-0 flex-1">
-						{chatMounted && (
-							<div
-								inert={!showChat}
-								className={cn("absolute inset-0 flex transition-opacity duration-(--dur-base)", showChat ? "opacity-100" : "invisible opacity-0")}
-							>
-								<ChatArea />
-							</div>
-						)}
-						<PresenceSwap
-							swapKey={page ? `page:${page.id}` : dockExpanded ? "dock" : showChat ? "chat" : "home"}
-							variant="rise"
-							className={cn("relative flex min-h-0 min-w-0 flex-1", showChat && "pointer-events-none")}
-						>
-							{page ? <PageView page={page} /> : dockExpanded ? <Dock width={dockWidth} expanded onEnter={onDockEnter} /> : showChat ? null : <HomeView />}
-						</PresenceSwap>
-					</div>
-				</main>
-				<AnimatePresence initial={false}>
-					{/* The side panel belongs to the chat and project views; full pages take the whole main area. */}
-					{showDock && (
-						<motion.div key="dock" className="flex shrink-0" {...sideEnter(1)}>
-							<ResizeHandle label={t("dock.resize")} value={dockWidth} min={320} max={640} direction={-1} onChange={width => useApp.getState().setDockWidth(width)} />
-							<Dock width={dockWidth} />
-						</motion.div>
+				<div
+					data-surface="sheet"
+					className={cn(
+						"flex min-w-0 flex-1 flex-col overflow-clip border-l bg-sheet",
+						"transition-[border-radius,border-color] duration-(--dur-slow) ease-(--ease-out-quart)",
+						sidebarOpen ? "rounded-l-lg border-chrome-line" : "rounded-l-none border-transparent",
 					)}
-				</AnimatePresence>
+				>
+					<TitleBar />
+					<div className="flex min-h-0 flex-1">
+						<main id={MAIN_ID} tabIndex={-1} className="flex min-w-0 flex-1 flex-col outline-none">
+							<div className="relative flex min-h-0 flex-1">
+								{chatMounted && (
+									<div
+										inert={!showChat}
+										className={cn("absolute inset-0 flex transition-opacity duration-(--dur-base)", showChat ? "opacity-100" : "invisible opacity-0")}
+									>
+										<ChatArea />
+									</div>
+								)}
+								<PresenceSwap
+									swapKey={page ? `page:${page.id}` : dockExpanded ? "dock" : showChat ? "chat" : "home"}
+									variant="rise"
+									className={cn("relative flex min-h-0 min-w-0 flex-1", showChat && "pointer-events-none")}
+								>
+									{page ? <PageView page={page} /> : dockExpanded ? <Dock width={dockWidth} expanded onEnter={onDockEnter} /> : showChat ? null : <HomeView />}
+								</PresenceSwap>
+							</div>
+						</main>
+						<AnimatePresence initial={false}>
+							{/* The side panel belongs to the chat and project views; full pages take the whole main area. */}
+							{showDock && (
+								<motion.div key="dock" data-surface="canvas" className="flex shrink-0 bg-bg" {...sideEnter(1)}>
+									<ResizeHandle label={t("dock.resize")} value={dockWidth} min={320} max={640} direction={-1} onChange={width => useApp.getState().setDockWidth(width)} />
+									<div className="flex" style={{ padding: DOCK_INSET }}>
+										<Dock width={dockWidth} />
+									</div>
+								</motion.div>
+							)}
+						</AnimatePresence>
+					</div>
+				</div>
 			</div>
 			<StatusBar />
 			<SheetHost />

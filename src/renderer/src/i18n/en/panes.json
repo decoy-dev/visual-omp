@@ -147,8 +147,6 @@
 		"emptyTitle": "Nothing running",
 		"empty": "omp's checklist, helpers and background jobs appear here while a chat works.",
 		"checklist": "Checklist",
-		"checklistProgress": "Checklist progress",
-		"doneOf": "{{done}} of {{total}} done",
 		"status": { "pending": "To do", "in_progress": "In progress", "completed": "Done", "abandoned": "Skipped" },
 		"helpers": "Helpers",
 		"manageHelpers": "Manage helpers",
@@ -169,8 +167,11 @@
 		"transcriptOffline": "omp isn't running for this chat right now.",
 		"transcriptTimeout": "omp didn't answer in time. Try again in a moment.",
 		"assignment": "Assignment",
+		"transcriptMessage": "Message",
+		"transcriptMessageFrom": "Message from {{name}}",
+		"transcriptInterrupted": "Interrupted its wait",
 		"background": "Background jobs",
-		"jobState": { "running": "running", "completed": "finished", "failed": "failed", "cancelled": "stopped" },
+		"jobState": { "running": "Running", "completed": "Finished", "failed": "Failed", "cancelled": "Stopped" },
 		"noOutput": "No output yet.",
 		"runningCount_one": "{{count}} running",
 		"runningCount_other": "{{count}} running"
@@ -188,7 +189,11 @@
 		"approve": "Approve plan",
 		"approveHint": "omp starts working on this plan.",
 		"options": "See all options",
-		"optionsHint": "Opens omp's terminal to refine the plan, keep or compact the context, or save it for later."
+		"optionsHint": "Opens omp's terminal to refine the plan, keep or compact the context, or save it for later.",
+		"checklist": "Plan checklist",
+		"checklistHint": "The checkboxes in omp's plan file, as omp last saved them.",
+		"checked": "Checked",
+		"unchecked": "Not checked"
 	},
 	"outputs": {
 		"noChatTitle": "No chat open",
@@ -244,5 +249,71 @@
 		"exitedOk": "Finished.",
 		"exited": "Stopped with exit code {{code}}.",
 		"startFailed": "Couldn't open a terminal"
+	},
+	"work": {
+		"todo": {
+			"title": "Tasks",
+			"count_one": "{{done}} of {{count}} complete",
+			"count_other": "{{done}} of {{count}} complete",
+			"fraction": "{{done}}/{{total}}",
+			"progress": "Tasks complete",
+			"skipped_one": "{{count}} skipped",
+			"skipped_other": "{{count}} skipped",
+			"completed_one": "{{count}} completed",
+			"completed_other": "{{count}} completed",
+			"hideCompleted": "Hide completed tasks",
+			"more_one": "{{count}} more",
+			"more_other": "{{count}} more",
+			"unchanged": "Checked the task list",
+			"created_one": "Made a task list with {{count}} task",
+			"created_other": "Made a task list with {{count}} tasks",
+			"change": {
+				"completed": "Completed {{task}}",
+				"started": "Started {{task}}",
+				"abandoned": "Skipped {{task}}",
+				"reopened": "Reopened {{task}}",
+				"added": "Added {{task}}",
+				"removed": "Removed {{task}}"
+			}
+		},
+		"helper": {
+			"tools_one": "{{count}} tool call",
+			"tools_other": "{{count}} tool calls",
+			"context": "Context",
+			"contextLabel": "{{name}}'s context use",
+			"contextValue": "{{used}} of {{total}} tokens"
+		},
+		"group": {
+			"worked": "Worked for {{elapsed}}",
+			"calls_one": "{{count}} tool call",
+			"calls_other": "{{count}} tool calls",
+			"failed_one": "{{count}} failed",
+			"failed_other": "{{count}} failed"
+		},
+		"summary": {
+			"files_one": "Changed {{count}} file",
+			"files_other": "Changed {{count}} files",
+			"title": "Files omp changed in this turn",
+			"review": "Review changes",
+			"totals": "Edit totals",
+			"totalsPartial": "Partial edit totals",
+			"totalsHint": "The lines omp's edits added and removed in this turn. Repeated edits to one file all count, so this can differ from the net change.",
+			"totalsHintPartial": "The lines omp's edits added and removed in this turn, leaving out files omp changed without reporting line counts, such as whole-file writes and structural edits. Repeated edits to one file all count, so this can differ from the net change.",
+			"action": {
+				"created": "Created",
+				"written": "Written",
+				"edited": "Edited"
+			}
+		},
+		"chip": {
+			"tasks_one": "{{done}} of {{count}} task",
+			"tasks_other": "{{done}} of {{count}} tasks",
+			"helpers_one": "{{count}} helper working",
+			"helpers_other": "{{count}} helpers working",
+			"jobs_one": "{{count}} job running",
+			"jobs_other": "{{count}} jobs running",
+			"open": "Show tasks and helpers",
+			"close": "Hide tasks and helpers"
+		}
 	}
 }

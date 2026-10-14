@@ -94,7 +94,7 @@ export interface ChatSlotSpec {
 	/**
 	 * `transcriptEnd`: cards after the last message (Plan Review, context-full, errors).
 	 * `aboveComposer`: strips pinned above the composer (notices, banners).
-	 * `composerTools`: buttons in the composer's bottom row (voice, prompt library).
+	 * `composerTools`: controls in the quiet row under the composer card; order below 50 sits left (folder, permission), the rest right (model, thinking, context).
 	 * `watchers`: invisible components that react to session state (auto-open the terminal sheet).
 	 */
 	placement: "transcriptEnd" | "aboveComposer" | "composerTools" | "watchers";

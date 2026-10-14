@@ -60,18 +60,18 @@ function DrawerBody({ skill, onToggle, onRemove }: Omit<SkillDrawerProps, "skill
 				onCheckedChange={enabled => onToggle(skill, enabled)}
 			/>
 
-			<section className="flex flex-col gap-1.5">
+			<section className="flex flex-col gap-2">
 				<SectionLabel as="h3">{t("skills.drawer.what")}</SectionLabel>
 				<p className="text-md text-fg">{skill.description || t("skills.noDescription")}</p>
 			</section>
 
-			<section className="flex flex-col gap-1.5">
+			<section className="flex flex-col gap-2">
 				<SectionLabel as="h3">{t("skills.drawer.when")}</SectionLabel>
 				<p className="text-md text-fg-muted">{t(skill.hidden ? "skills.drawer.whenHidden" : "skills.drawer.whenAuto")}</p>
 				<code className="self-start rounded-sm bg-inset px-1.5 py-0.5 font-mono text-sm text-fg">/skill:{skill.name}</code>
 			</section>
 
-			<section className="flex flex-col gap-1.5">
+			<section className="flex flex-col gap-2">
 				<SectionLabel as="h3">{t("skills.drawer.source")}</SectionLabel>
 				<div className="flex flex-wrap items-center gap-1.5">
 					<Chip tone="neutral">{providerLabel(skill.provider)}</Chip>
@@ -90,7 +90,7 @@ function DrawerBody({ skill, onToggle, onRemove }: Omit<SkillDrawerProps, "skill
 				</Notice>
 			)}
 
-			<section className="flex flex-col gap-1.5">
+			<section className="flex flex-col gap-2">
 				<SectionLabel as="h3">{t("skills.drawer.instructions")}</SectionLabel>
 				{doc.error ? (
 					<Notice tone="err">{doc.error}</Notice>

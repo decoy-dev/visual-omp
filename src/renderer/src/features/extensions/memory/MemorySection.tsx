@@ -161,7 +161,7 @@ export function MemorySection({ projectPath }: SettingsSectionProps) {
 
 				<div className="flex flex-wrap items-center gap-2">
 					{places.data && places.data.scopes.length > 0 && (
-						<Select value={scopeId ?? undefined} onValueChange={id => setScopeId(id)} aria-label={t("memory.scopeLabel")} className="w-[240px]" size="sm">
+						<Select value={scopeId ?? undefined} onValueChange={id => setScopeId(id)} aria-label={t("memory.scopeLabel")} className="w-60" size="sm">
 							{places.data.scopes.map(entry => (
 								<SelectItem key={entry.id} value={entry.id} hint={entry.exists ? String(entry.entryCount) : undefined}>
 									{scopeLabel(entry, places.data?.projectScopeIds ?? [], t)}
@@ -169,7 +169,7 @@ export function MemorySection({ projectPath }: SettingsSectionProps) {
 							))}
 						</Select>
 					)}
-					<SearchInput size="sm" value={query} onValueChange={setQuery} placeholder={t("memory.search")} aria-label={t("memory.search")} className="min-w-[200px] flex-1" />
+					<SearchInput size="sm" value={query} onValueChange={setQuery} placeholder={t("memory.search")} aria-label={t("memory.search")} className="min-w-50 flex-1" />
 					<Button size="sm" variant="danger" icon={<Trash />} disabled={!scope || deletableCount === 0} onClick={() => setForgetAll(true)}>
 						{t("memory.forgetAll.action")}
 					</Button>
@@ -206,7 +206,7 @@ export function MemorySection({ projectPath }: SettingsSectionProps) {
 							key={entries.data?.key ?? ""}
 							aria-label={t("memory.listLabel")}
 							onKeyDown={onListKey}
-							className="relative w-[280px] shrink-0 overflow-y-auto border-r border-border"
+							className="relative w-70 shrink-0 overflow-y-auto border-r border-border"
 						>
 							<AnimatePresence initial={false} mode="popLayout">
 								{list.map(entry => (
@@ -218,7 +218,7 @@ export function MemorySection({ projectPath }: SettingsSectionProps) {
 											tabIndex={entry.id === selectedId ? 0 : -1}
 											onClick={() => setSelectedId(entry.id)}
 											className={cn(
-												"relative flex w-full flex-col gap-0.5 border-b border-border px-3 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-hover",
+												"relative flex w-full flex-col gap-1 border-b border-border px-3 py-2 text-left transition-colors duration-(--dur-fast) hover:bg-hover",
 												entry.id === selectedId && "bg-selected hover:bg-selected",
 												focusRingInset,
 											)}
@@ -298,7 +298,7 @@ function Reader({ entry, onForget, onExport }: { entry: MemoryEntrySummary; onFo
 			<header className="flex items-start gap-2">
 				<div className="min-w-0 flex-1">
 					<h3 className="truncate text-lg font-semibold text-fg">{entry.title}</h3>
-					<p className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-faint">
+					<p className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-fg-faint">
 						<span>{t(`memory.kind.${entry.kind}`)}</span>
 						{created && <span>{t("memory.created", { date: created })}</span>}
 						{updated && updated !== created && <span>{t("memory.updated", { date: updated })}</span>}

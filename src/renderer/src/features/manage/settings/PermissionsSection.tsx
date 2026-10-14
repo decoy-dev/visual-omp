@@ -132,7 +132,7 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 					{t("permissions.add.button")}
 				</Button>
 			</form>
-			<p className="mt-1.5 text-sm text-fg-muted">{t("permissions.add.description")}</p>
+			<p className="mt-2 text-sm text-fg-muted">{t("permissions.add.description")}</p>
 		</div>
 	);
 }

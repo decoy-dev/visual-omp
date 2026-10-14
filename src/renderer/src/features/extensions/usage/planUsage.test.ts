@@ -2,7 +2,7 @@ import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
 import type { UsageLimit, UsageLimitsSnapshot, UsageReport } from "@shared/contracts/usage";
 import realSnapshot from "../../../../../main/features/usage/fixtures/usage-limits.json";
-import { chatModel, modelsInUse, parseModelSelector, parseWindowDuration, planLimits, planUsage } from "./planUsage";
+import { chatModel, modelsInUse, parseModelSelector, parseWindowDuration, planLimits, planUsage, providerSummary } from "./planUsage";
 
 /** Real `omp usage --json` output: Kimi, Codex and one Claude account with a Fable tier row and spent extra usage. */
 const fixture = realSnapshot as unknown as UsageLimitsSnapshot;
@@ -355,4 +355,58 @@ describe("planLimits", () => {
 		]);
 		expect(providers[2].accounts[0]).toMatchObject({ kind: "unavailable", name: "kimi@example.com", rows: [] });
 	});
+});
+
+describe("providerSummary", () => {
+	const summary = (data: UsageLimitsSnapshot) => planLimits(data).map(providerSummary);
+
+	it("shows the status bar's window and keeps other near or reached windows as alerts", () => {
+		const [claude] = summary(snapshot([report("anthropic", [limit("anthropic:7d", 0.95), limit("anthropic:5h", 0.4), limit("anthropic:7d:fable", 0.75)])]));
+		expect(claude.binding?.row.id).toBe("anthropic:5h");
+		expect(claude.alerts.map(alert => [alert.row.id, alert.row.state])).toEqual([
+			["anthropic:7d", "near"],
+			["anthropic:7d:fable", "near"],
+		]);
+	});
+
+	it("binds a reached window first, across accounts, and names its account", () => {
+		const [claude] = summary(
+			snapshot([
+				{ ...report("anthropic", [limit("anthropic:5h", 0.2)]), metadata: { email: "a@example.com" } },
+				{ ...report("anthropic", [limit("anthropic:5h", 0.3), limit("anthropic:7d", 1)]), metadata: { email: "b@example.com" } },
+			]),
+		);
+		expect(claude.binding).toMatchObject({ account: { name: "b@example.com" }, row: { id: "anthropic:7d", state: "reached" } });
+		expect(claude.alerts).toEqual([]);
+	});
+
+	it("reads a provider without a usable figure as unknown, and lists disabled sign-ins", () => {
+		const [codex, kimi] = summary({
+			...snapshot([report("kimi-code", [{ ...limit("kimi-code:5h", 0), amount: { unit: "unknown" } }])]),
+			disabledCredentials: [{ id: 1, provider: "openai-codex", type: "oauth", email: "old@example.com", cause: "expired" }],
+		});
+		expect(kimi).toMatchObject({ binding: null, alerts: [], disabled: [] });
+		expect(kimi.unknown).toHaveLength(1);
+		expect(codex).toMatchObject({ binding: null, unknown: [] });
+		expect(codex.disabled.map(account => account.name)).toEqual(["old@example.com"]);
+	});
+
+	it("keeps a provider-reported warning without a figure as an alert with no fraction", () => {
+		const [claude] = summary(
+			snapshot([report("anthropic", [limit("anthropic:5h", 0.2), { ...limit("anthropic:7d", 0, { status: "exhausted" }), amount: { unit: "unknown" } }])]),
+		);
+		expect(claude.binding?.row.id).toBe("anthropic:5h");
+		expect(claude.alerts.map(alert => [alert.row.id, alert.row.state, alert.row.fraction])).toEqual([["anthropic:7d", "reached", null]]);
+	});
+	it("keeps every account identity visible when no account has a usable window", () => {
+		const [claude] = summary(
+			snapshot([
+				{ ...report("anthropic", [{ ...limit("anthropic:5h", 0), amount: { unit: "unknown" } }]), metadata: { email: "first@example.com" } },
+				{ ...report("anthropic", [{ ...limit("anthropic:7d", 0), amount: { unit: "unknown" } }]), metadata: { email: "second@example.com" } },
+			]),
+		);
+		expect(claude.binding).toBeNull();
+		expect(claude.unknown.map(account => account.name)).toEqual(["first@example.com", "second@example.com"]);
+	});
+
 });

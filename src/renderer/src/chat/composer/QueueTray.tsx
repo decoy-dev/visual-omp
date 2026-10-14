@@ -1,7 +1,8 @@
 /**
- * Messages waiting for omp to finish its current reply (DESIGN §3.6): send one now (steers the
- * running turn), edit it inline, remove it, or drag rows to change the order. Shows at most three
- * rows; the rest collapse into "N more".
+ * Messages waiting for omp to finish its current reply (DESIGN §3.6), in a tray tucked on top of the
+ * composer card so they read as the next things omp gets: send one now (steers the running turn), edit
+ * it inline, remove it, or drag rows to change the order. Shows at most three rows; the rest collapse
+ * into "N more". The tray also carries the chip that points at an unanswered omp question.
  */
 import { DotsSixVertical, Hourglass, PaperPlaneRight, PencilSimple, Question, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
@@ -90,7 +91,8 @@ export function QueueTray({ session, queue, questionId }: QueueTrayProps) {
 	};
 
 	return (
-		<Expand open={held || questionId !== null} className="border-b border-border">
+		<Expand open={held || questionId !== null}>
+			<div className="mx-3 rounded-t-lg border border-b-0 border-border-strong bg-inset">
 			<Expand open={questionId !== null}>
 				<div className="flex items-center gap-2 px-3 pt-2 pb-1.5">
 					<button
@@ -107,7 +109,7 @@ export function QueueTray({ session, queue, questionId }: QueueTrayProps) {
 				</div>
 			</Expand>
 			<Expand open={held}>
-				<section aria-label={t("queue.label", { count })} className="px-1.5 py-1.5">
+				<section aria-label={t("queue.label", { count })} className="p-menu">
 					<p className="flex items-center gap-1.5 px-1.5 pb-1 text-xs font-medium text-fg-muted">
 						<Hourglass className="size-3 text-fg-faint" aria-hidden />
 						{t("queue.title", { count })}
@@ -144,7 +146,7 @@ export function QueueTray({ session, queue, questionId }: QueueTrayProps) {
 										onDragOver={event => onDragOver(event, index)}
 										onDrop={onDrop}
 										className={cn(
-											"group relative flex h-8 items-center gap-1 rounded-md bg-inset pr-1 text-sm transition-opacity duration-(--dur-fast)",
+											"group relative flex h-8 items-center gap-1 rounded-sm bg-panel pr-1 text-sm shadow-(--shadow-card) transition-opacity duration-(--dur-fast)",
 											dragId === item.id && "opacity-50",
 											dropIndex === index && dragId && "before:absolute before:-top-px before:inset-x-1 before:h-0.5 before:rounded-full before:bg-accent",
 											dropIndex === index + 1 && index === rows.length - 1 && dragId &&
@@ -222,6 +224,7 @@ export function QueueTray({ session, queue, questionId }: QueueTrayProps) {
 					)}
 				</section>
 			</Expand>
+			</div>
 		</Expand>
 	);
 }

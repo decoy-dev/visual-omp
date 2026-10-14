@@ -23,7 +23,7 @@ export function Progress({ value, showValue, tone = "accent", className, ...aria
 	const determinate = value !== undefined;
 	const pct = determinate ? Math.min(100, Math.max(0, value)) : 0;
 	return (
-		<div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
+		<div className={cn("flex min-w-0 flex-col gap-2", className)}>
 			{showValue && (
 				<div className="flex items-baseline justify-between text-sm">
 					<span className="truncate text-fg-muted">{aria["aria-label"]}</span>

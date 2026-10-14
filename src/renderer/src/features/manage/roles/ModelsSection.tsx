@@ -295,7 +295,7 @@ function RoleRow({
 					</span>
 				)}
 			</div>
-			<p className="mt-0.5 text-sm text-fg-muted">{usage}</p>
+			<p className="mt-1 text-sm text-fg-muted">{usage}</p>
 
 			<div className="mt-3 flex flex-wrap gap-2">
 				<ModelSelect
@@ -324,7 +324,7 @@ function RoleRow({
 				</Select>
 			</div>
 			{model && (
-				<p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-fg-muted">
+				<p className="mt-2 flex flex-wrap items-center gap-2 text-sm text-fg-muted">
 					<span className="font-mono text-xs">{model.selector}</span>
 					<ModelCapabilities model={model} />
 				</p>

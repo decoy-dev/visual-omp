@@ -72,7 +72,7 @@ export function ModelSelect({ models, accepts, value, onChange, autoLabel, disab
 			disabled={disabled}
 			className={className}
 			aria-label={aria["aria-label"]}
-			contentClassName="max-w-[420px]"
+			contentClassName="max-w-105"
 		>
 			<SelectItem value={AUTO}>{autoLabel}</SelectItem>
 			{unlisted && (

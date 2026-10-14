@@ -30,7 +30,7 @@ export function SettingRow({
 					<span className="text-md font-medium text-fg">{label}</span>
 					{meta}
 				</div>
-				{description && <p className="mt-0.5 text-sm text-fg-muted">{description}</p>}
+				{description && <p className="mt-1 text-sm text-fg-muted">{description}</p>}
 			</div>
 			<div className="flex shrink-0 items-center gap-2">{control}</div>
 		</div>
@@ -42,8 +42,8 @@ export function SettingsSection({ title, description, children }: { title?: Reac
 	return (
 		<section className="mb-8">
 			{title && <h2 className="text-md font-semibold text-fg">{title}</h2>}
-			{description && <p className="mt-0.5 text-sm text-fg-muted">{description}</p>}
-			<div className="relative mt-1 divide-y divide-border">{children}</div>
+			{description && <p className="mt-1 text-sm text-fg-muted">{description}</p>}
+			<div className="relative mt-2 divide-y divide-border">{children}</div>
 		</section>
 	);
 }

@@ -28,6 +28,11 @@ export interface SessionView {
 	queue: readonly QueuedMessage[];
 	/** omp is running a turn. */
 	working: boolean;
+	/**
+	 * When this app saw the current turn start (epoch ms), for "Working… 14s". Null when not working, or when the turn
+	 * was already under way as the chat joined omp's room, since its real start is unknown then.
+	 */
+	workingSince: number | null;
 	/** The saved session is (or may be) open in another omp process: typing is disabled and the transcript follows its file. */
 	readOnly: boolean;
 	/** Health and ownership of the followed file while read-only; null otherwise. */
@@ -117,6 +122,7 @@ export class SessionController {
 			history: null,
 			queue: [],
 			working: false,
+			workingSince: null,
 			readOnly: false,
 			follow: null,
 			ownerUnverified: false,
@@ -390,6 +396,9 @@ export class SessionController {
 		const working = snapshot.working;
 		const appended = snapshot.entries.length > (this.#view.guest?.entries.length ?? 0);
 		const patch: Partial<SessionView> = { guest: snapshot, working, ...(appended ? { displayLeaf: null } : {}) };
+		// A turn seen starting on a synced mirror gets a start time; one already under way when the mirror joined or
+		// reconnected keeps none.
+		if (working && !wasWorking) patch.workingSince = this.#view.guest?.phase === "live" ? Date.now() : null;
 		// The new room has synced, even to an empty chat after /new: stop showing the previous room's entries.
 		if (this.#view.carryover && liveGuest({ ...this.#view, ...patch })) patch.carryover = null;
 		this.#set(patch);
@@ -545,7 +554,7 @@ export class SessionController {
 	}
 
 	#set(patch: Partial<SessionView>): void {
-		this.#view = { ...this.#view, ...patch };
+		this.#view = { ...this.#view, ...patch, ...(patch.working === false ? { workingSince: null } : {}) };
 		for (const listener of this.#listeners) listener();
 	}
 

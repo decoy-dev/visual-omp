@@ -186,7 +186,7 @@ function VirtualSettings({ rows, omp }: { rows: readonly AdvancedRow[]; omp: Omp
 				const row = rows[index];
 				const style = { top: offsets[index], height: row.kind === "group" ? GROUP_HEIGHT : ROW_HEIGHT };
 				return row.kind === "group" ? (
-					<div key={`g:${row.domain}`} role="listitem" style={style} className="absolute inset-x-0 flex items-end pb-1.5">
+					<div key={`g:${row.domain}`} role="listitem" style={style} className="absolute inset-x-0 flex items-end pb-2">
 						<h2 className="text-sm font-medium text-fg-muted">
 							<span className="font-mono">{row.domain}</span> <span className="tabular-nums text-fg-faint">{row.count}</span>
 						</h2>
@@ -225,7 +225,7 @@ function SettingLine({ setting, omp, style }: { setting: SettingInfo; omp: OmpSe
 					{setting.description || t("advanced.noDescription")}
 				</p>
 			</div>
-			<div className="flex w-[228px] shrink-0 items-center justify-end gap-1">
+			<div className="flex w-57 shrink-0 items-center justify-end gap-1">
 				<SettingControl setting={setting} omp={omp} />
 				<IconButton
 					size="sm"

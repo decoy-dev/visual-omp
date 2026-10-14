@@ -5,6 +5,12 @@
  *
  * Colors are OKLCH. Surfaces are near-neutral with a very small tint toward the accent hue (195);
  * the accent is one teal (hue 192). Contrast ratios are listed in DESIGN.md §1.3.
+ *
+ * Frame (DESIGN §3): an ink chrome (sidebar band + status bar, `[data-region="chrome"]`) wraps the main sheet
+ * (`--sheet`: title bar, chat, composer). Pages draw on the gray canvas (`--canvas`): forms and help (Settings, Help)
+ * place bare sections on it, and grouped data (Usage, management lists) sits in white `--panel` cards. The side panel
+ * is a floating `--panel` sheet. `--bg` means "the surface you are on": the sheet, the canvas and the chrome
+ * re-declare it, so sticky headers and row masks painted `bg-bg` always match what is behind them.
  */
 @import "tailwindcss";
 @import "@fontsource-variable/geist";
@@ -15,17 +21,23 @@
 :root {
 	color-scheme: light;
 
-	/* 1.1 surfaces: canvas, panels on it (hairline-separated), inset wells, floating layers */
-	--bg: oklch(0.975 0.003 195);
-	--panel: oklch(0.994 0.0015 195);
-	--bg-inset: oklch(0.963 0.004 195);
-	--bg-raised: oklch(0.997 0.001 195);
-	--bg-overlay: oklch(0.997 0.001 195);
-	/* Title bar and sticky chrome: opaque, same as the canvas (no translucency or backdrop blur). */
-	--glass: var(--bg);
-	--hover: oklch(0.3 0.02 195 / 0.045);
-	--selected: oklch(0.3 0.02 195 / 0.08);
-	--backdrop: oklch(0.22 0.015 195 / 0.32);
+	/* 1.1 surfaces: ink chrome, main sheet, gray canvas with white cards, inset wells, floating layers */
+	--chrome-bg: oklch(0.21 0.008 195);
+	--chrome-line: oklch(0.95 0.01 195 / 0.14);
+	--sheet: oklch(0.998 0.001 195);
+	--canvas: oklch(0.966 0.004 195);
+	--bg: var(--canvas);
+	--panel: oklch(0.997 0.001 195);
+	--bg-inset: oklch(0.953 0.005 195);
+	--bg-raised: oklch(0.998 0.001 195);
+	--bg-overlay: oklch(0.998 0.001 195);
+	--hover: oklch(0.3 0.02 195 / 0.05);
+	--selected: oklch(0.3 0.02 195 / 0.09);
+	/* Raised selected item (nav rail on the canvas, chat row on the ink): a fill plus --shadow-pill. */
+	--pill: var(--panel);
+	/* Scrim under dialogs and the palette: a mid-tone veil, so it dims the white sheet and visibly lifts the ink chrome
+	 * (a darken-only scrim vanishes on ink). */
+	--backdrop: oklch(0.36 0.012 195 / 0.42);
 
 	/* 1.3 text */
 	--fg: oklch(0.22 0.012 195);
@@ -86,26 +98,29 @@
 	--syn-comment: oklch(0.54 0.01 195);
 	--syn-punct: var(--fg-muted);
 
-	/* 1.8 borders & focus: hairlines separate panels from the canvas */
-	--border: oklch(0.3 0.02 195 / 0.1);
-	--border-strong: oklch(0.3 0.02 195 / 0.17);
+	/* 1.8 borders & focus: hairlines separate cards and controls from the surface under them */
+	--border: oklch(0.3 0.02 195 / 0.14);
+	--border-strong: oklch(0.3 0.02 195 / 0.22);
 	/* Interactive control boundaries and off-state graphics (checkbox/radio outlines, off switch track, input borders).
 	 * At least 3:1 against bg, panel, inset, raised and overlay (WCAG 1.4.11); DESIGN.md §1.8 lists the ratios. */
 	--control-border: oklch(0.62 0.012 195);
 	--ring: oklch(0.56 0.09 192);
 	--ring-soft: oklch(0.56 0.09 192 / 0.18);
 
-	/* 1.9 elevation: tinted and tight. No blur of 16px or more, so any 1px border may pair with any of these. */
+	/* 1.9 elevation: tinted and tight. No blur above 16px, so any 1px border may pair with any of these. Shadows are for
+	 * floating layers (menus, dialogs, the side-panel sheet); the one exception is the raised selected pill. */
 	--shadow-tint: 0.28 0.03 195;
 	--shadow-card: 0 1px 1px oklch(var(--shadow-tint) / 0.05);
-	--shadow-pop: 0 1px 2px oklch(var(--shadow-tint) / 0.06), 0 6px 12px -4px oklch(var(--shadow-tint) / 0.14);
+	--shadow-pop: 0 1px 2px oklch(var(--shadow-tint) / 0.06), 0 8px 16px -6px oklch(var(--shadow-tint) / 0.18);
+	--shadow-pill: 0 0 0 1px oklch(0.3 0.02 195 / 0.1), 0 1px 2px oklch(var(--shadow-tint) / 0.08);
 	--shadow-overlay: 0 2px 4px oklch(var(--shadow-tint) / 0.06), 0 12px 12px -8px oklch(var(--shadow-tint) / 0.2);
-	--shadow-composer: 0 1px 2px oklch(var(--shadow-tint) / 0.05), 0 4px 8px -4px oklch(var(--shadow-tint) / 0.1);
 	--shadow-primary: inset 0 1px 0 oklch(1 0 0 / 0.14), 0 1px 1px oklch(var(--shadow-tint) / 0.18);
 	/* Working state: a 3px accent halo (spread, no blur). */
 	--work-glow: 0 0 0 3px oklch(0.5 0.082 192 / 0.14);
 
-	/* 1.10 radii (root variables for vendored omp CSS; utilities in @theme). Cards stay at 12px or less. */
+	/* 1.10 radii (root variables for vendored omp CSS; utilities in @theme). The scale is sm 6 · md 8 · lg 12 · xl 14 ·
+	 * full; nothing else. Concentric rule: an element inset inside a rounded container takes the outer radius minus the
+	 * inset (12px menu, 6px inset, 6px rows). Pills, badges and dots are full. Cards and sheets stay at 12px. */
 	--radius-sm: 6px;
 	--radius: 8px;
 	--radius-lg: 12px;
@@ -167,15 +182,20 @@
 [data-theme="dark"] {
 	color-scheme: dark;
 
-	/* Tinted off-black, not navy. */
-	--bg: oklch(0.172 0.005 195);
-	--panel: oklch(0.2 0.006 195);
-	--bg-inset: oklch(0.158 0.005 195);
-	--bg-raised: oklch(0.232 0.007 195);
-	--bg-overlay: oklch(0.24 0.007 195);
+	/* Tinted off-black, not navy. Same order as light: ink chrome darkest, the page canvas (and the side panel's gap)
+	 * a step up, the sheet above that, then cards and floating layers. Text keeps 4.5:1 on every surface up to the overlay. */
+	--chrome-bg: oklch(0.145 0.005 195);
+	--chrome-line: oklch(0.95 0.01 195 / 0.1);
+	--sheet: oklch(0.21 0.007 195);
+	--canvas: oklch(0.188 0.006 195);
+	--panel: oklch(0.235 0.007 195);
+	--bg-inset: oklch(0.163 0.005 195);
+	--bg-raised: oklch(0.255 0.008 195);
+	--bg-overlay: oklch(0.265 0.008 195);
 	--hover: oklch(0.95 0.01 195 / 0.05);
 	--selected: oklch(0.95 0.01 195 / 0.09);
-	--backdrop: oklch(0.08 0.005 195 / 0.6);
+	/* A flat veil that dims the sheet and lifts the ink alike, so both read as behind a dialog. */
+	--backdrop: oklch(0.2 0.006 195 / 0.62);
 
 	--fg: oklch(0.945 0.005 195);
 	--fg-muted: oklch(0.745 0.01 195);
@@ -216,23 +236,98 @@
 	--syn-operator: oklch(0.73 0.13 25);
 	--syn-comment: oklch(0.645 0.011 195);
 
-	--border: oklch(0.95 0.01 195 / 0.09);
-	--border-strong: oklch(0.95 0.01 195 / 0.16);
-	--control-border: oklch(0.54 0.012 195);
+	--border: oklch(0.95 0.01 195 / 0.12);
+	--border-strong: oklch(0.95 0.01 195 / 0.2);
+	--control-border: oklch(0.56 0.012 195);
 	--ring: oklch(0.78 0.1 192);
 	--ring-soft: oklch(0.78 0.1 192 / 0.24);
 
 	--shadow-tint: 0.06 0.01 195;
 	--shadow-card: 0 1px 1px oklch(var(--shadow-tint) / 0.4);
-	--shadow-pop: 0 1px 2px oklch(var(--shadow-tint) / 0.4), 0 6px 12px -4px oklch(var(--shadow-tint) / 0.5);
+	--shadow-pop: 0 1px 2px oklch(var(--shadow-tint) / 0.4), 0 8px 16px -6px oklch(var(--shadow-tint) / 0.55);
+	--shadow-pill: 0 0 0 1px oklch(0.95 0.01 195 / 0.08), 0 1px 2px oklch(var(--shadow-tint) / 0.4);
 	--shadow-overlay: 0 2px 4px oklch(var(--shadow-tint) / 0.4), 0 12px 12px -8px oklch(var(--shadow-tint) / 0.6);
-	--shadow-composer: 0 1px 2px oklch(var(--shadow-tint) / 0.4), 0 4px 8px -4px oklch(var(--shadow-tint) / 0.4);
 	--shadow-primary: inset 0 1px 0 oklch(1 0 0 / 0.2), 0 1px 1px oklch(var(--shadow-tint) / 0.4);
 	--work-glow: 0 0 0 3px oklch(0.78 0.1 192 / 0.16);
 
 	--term-selection: oklch(0.78 0.1 192 / 0.24);
 	--term-blue: oklch(0.75 0.1 255);
 	--term-magenta: oklch(0.74 0.11 320);
+}
+
+/*
+ * Ink chrome (DESIGN §3): the sidebar band and the status bar, in both themes. Re-declares the semantic tokens, so
+ * everything inside keeps its usual classes (text-fg-muted, bg-hover, border-border, text-ok…) and reads on ink.
+ * Menus, popovers, tooltips and selects portal to <body>, outside this scope, so they keep the sheet palette.
+ * Text on ink (light theme, chrome 0.21): fg 14.4:1, fg-muted 7.6:1, fg-faint 5.1:1; status and diff hues use the
+ * dark-theme values (7.2:1 or more on ink, 5.7:1 or more on their -bg fills), the focus ring the dark-theme teal (9:1).
+ */
+[data-region="chrome"] {
+	color-scheme: dark;
+
+	--bg: var(--chrome-bg);
+	--panel: var(--chrome-bg);
+	--bg-inset: oklch(0.95 0.01 195 / 0.07);
+	--hover: oklch(0.95 0.01 195 / 0.07);
+	--selected: oklch(0.95 0.01 195 / 0.11);
+	--pill: oklch(0.95 0.01 195 / 0.11);
+	--shadow-pill: inset 0 0 0 1px oklch(0.95 0.01 195 / 0.06), 0 1px 2px oklch(0 0 0 / 0.25);
+
+	--fg: oklch(0.93 0.005 195);
+	--fg-muted: oklch(0.735 0.01 195);
+	--fg-faint: oklch(0.63 0.01 195);
+	--fg-inverse: oklch(0.18 0.006 195);
+
+	--accent: oklch(0.78 0.1 192);
+	--accent-hover: oklch(0.84 0.09 192);
+	--accent-active: oklch(0.89 0.07 192);
+	--accent-fg: oklch(0.2 0.03 192);
+	--accent-muted: oklch(0.32 0.05 192);
+	--accent-2: oklch(0.83 0.01 195);
+	--accent-2-muted: oklch(0.3 0.008 195);
+	--agent: var(--accent);
+	--agent-muted: var(--accent-muted);
+
+	--ok: oklch(0.77 0.12 160);
+	--ok-bg: oklch(0.3 0.04 160);
+	--warn: oklch(0.8 0.115 80);
+	--warn-bg: oklch(0.31 0.04 80);
+	--err: oklch(0.74 0.14 25);
+	--err-bg: oklch(0.3 0.045 22);
+	--err-hover: oklch(0.8 0.13 25);
+	--info: oklch(0.76 0.1 255);
+	--info-bg: oklch(0.3 0.04 255);
+	--live: var(--ok);
+	--diff-add-text: oklch(0.8 0.12 160);
+	--diff-del-text: oklch(0.79 0.12 20);
+
+	--border: oklch(0.95 0.01 195 / 0.1);
+	--border-strong: oklch(0.95 0.01 195 / 0.16);
+	--control-border: oklch(0.56 0.012 195);
+	--ring: oklch(0.78 0.1 192);
+	--ring-soft: oklch(0.78 0.1 192 / 0.24);
+}
+
+/* Dark chrome (0.145) only deepens the wells and tones down the fills; text, status and accent already suit it. */
+[data-theme="dark"] [data-region="chrome"] {
+	--bg-inset: oklch(0.12 0.004 195);
+	--hover: oklch(0.95 0.01 195 / 0.06);
+	--selected: oklch(0.95 0.01 195 / 0.1);
+	--pill: oklch(0.95 0.01 195 / 0.1);
+	--ok-bg: oklch(0.26 0.035 160);
+	--warn-bg: oklch(0.27 0.035 80);
+	--err-bg: oklch(0.26 0.04 22);
+	--info-bg: oklch(0.26 0.035 255);
+}
+
+/* The main sheet: title bar, chat, composer. `bg-bg` inside it is the white sheet. Pages and the side-panel gap set
+ * `data-surface="canvas"` to return to the gray canvas. */
+[data-surface="sheet"] {
+	--bg: var(--sheet);
+}
+
+[data-surface="canvas"] {
+	--bg: var(--canvas);
 }
 
 /* Reduced motion: app setting (`data-motion="reduced"`) or OS preference unless the app forces full.
@@ -259,12 +354,16 @@
 
 /* Tailwind v4 theme: every token as a utility (bg-panel, text-fg-muted, border-border, rounded-lg, …). */
 @theme inline {
+	--color-chrome: var(--chrome-bg);
+	--color-chrome-line: var(--chrome-line);
+	--color-sheet: var(--sheet);
+	--color-canvas: var(--canvas);
+	--color-pill: var(--pill);
 	--color-bg: var(--bg);
 	--color-panel: var(--panel);
 	--color-inset: var(--bg-inset);
 	--color-raised: var(--bg-raised);
 	--color-overlay: var(--bg-overlay);
-	--color-glass: var(--glass);
 	--color-hover: var(--hover);
 	--color-selected: var(--selected);
 	--color-backdrop: var(--backdrop);
@@ -332,6 +431,18 @@
 	--text-3xl--line-height: 2.375rem;
 	--text-code: 0.78125rem;
 	--text-code--line-height: 1.125rem;
+
+	/* 1.11 spacing: Tailwind's 4px steps (p-2 = 8px), plus named steps for the recurring gaps, so every page, card,
+	 * list and menu lines up. In rem like the steps, so they follow the text size setting. Half steps (2px, 6px) only
+	 * inside controls and menus. */
+	--spacing-menu: 0.375rem; /* 6px: menu container inset and separator margin */
+	--spacing-row: 0.5rem; /* 8px: side padding of list, menu and nav rows */
+	--spacing-toolbar: 0.5rem; /* 8px: gap between controls in a toolbar or filter row */
+	--spacing-stack: 0.75rem; /* 12px: section header to its content */
+	--spacing-card: 1rem; /* 16px: card padding */
+	--spacing-page: 1.5rem; /* 24px: page padding (sides and top) */
+	--spacing-section: 2rem; /* 32px: gap between page sections */
+	--spacing-traffic: 80px; /* macOS traffic lights; native, so it ignores the text size */
 
 	--radius-sm: 6px;
 	--radius-md: 8px;

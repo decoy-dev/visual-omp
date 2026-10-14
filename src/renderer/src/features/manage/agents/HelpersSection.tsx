@@ -335,7 +335,7 @@ function AgentRow({
 						</Chip>
 					)}
 				</div>
-				<p className="mt-0.5 line-clamp-2 text-sm text-fg-muted" title={agent.description}>
+				<p className="mt-1 line-clamp-2 text-sm text-fg-muted" title={agent.description}>
 					{agent.description}
 				</p>
 			</div>
@@ -389,7 +389,7 @@ function ErrorRow({ error, onFix, ref }: { error: AgentFileError; onFix(): void;
 					<span className="truncate text-md font-semibold text-fg">{error.name ?? error.filePath.split(/[\\/]/).pop()}</span>
 					<Chip tone="warn">{t("agents.brokenChip")}</Chip>
 				</div>
-				<p className="mt-0.5 line-clamp-2 text-sm text-fg-muted" title={error.message}>
+				<p className="mt-1 line-clamp-2 text-sm text-fg-muted" title={error.message}>
 					{error.message}
 				</p>
 			</div>

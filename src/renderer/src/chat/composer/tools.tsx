@@ -1,14 +1,13 @@
 /**
- * The composer's own bottom-row tools, contributed through `chatSlots` like any feature's: voice (order
- * 50, VoiceTool.tsx) and the context ring (90, right of the model and thinking buttons). The ring drops
- * its percentage label in the row's compact states (Composer.tsx `useRowState`, DESIGN §3.6).
+ * The composer's own contribution to the row under its card, through `chatSlots` like any feature's: the
+ * context ring (order 90, right of the model and thinking buttons). The mic lives in the card itself
+ * (Composer.tsx renders VoiceTool beside the send button).
  */
 import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { type ChatSlotProps, chatSlots } from "../../registry/slots";
 import { Button, cn, ContextRing, contextZone, Popover, PopoverContent, PopoverTrigger, Progress, Tooltip } from "../../ui";
 import type { ComposerMode } from "./drafts";
-import { VoiceTool } from "./VoiceTool";
 
 /** The quick modes and the glyph that enters each one at the start of an empty box; the ＋ menu lists them. */
 export const QUICK_MODES: ReadonlyArray<{ mode: ComposerMode; glyph: string }> = [
@@ -34,7 +33,7 @@ function ContextTool({ session }: ChatSlotProps) {
 						aria-label={t("context.label", { percent })}
 						className="inline-flex h-7 min-w-7 shrink-0 items-center justify-center rounded-md px-1 outline-none hover:bg-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 					>
-						<ContextRing value={usage.percent} showLabel={zone !== "normal"} className="group-data-compact/composer:[&>span]:hidden" />
+						<ContextRing value={usage.percent} showLabel={zone !== "normal"} />
 					</button>
 				</PopoverTrigger>
 			</Tooltip>
@@ -72,5 +71,4 @@ function ContextTool({ session }: ChatSlotProps) {
 	);
 }
 
-chatSlots.register({ id: "composer.voice", placement: "composerTools", order: 50, component: VoiceTool });
 chatSlots.register({ id: "composer.context", placement: "composerTools", order: 90, component: ContextTool });

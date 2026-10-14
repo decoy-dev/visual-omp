@@ -33,7 +33,7 @@ import { refreshGit, useGit } from "./store";
 
 /** Status-bar button: 24px, xs text, ghost, truncates instead of wrapping. */
 const itemClass = cn(
-	"relative inline-flex h-6 min-w-0 max-w-[240px] shrink items-center gap-1.5 rounded-sm px-1.5 text-xs text-fg-muted",
+	"relative inline-flex h-6 min-w-0 max-w-60 shrink items-center gap-1.5 rounded-sm px-1.5 text-xs text-fg-muted",
 	"transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg data-[state=open]:bg-selected data-[state=open]:text-fg",
 	focusRing,
 );
@@ -45,7 +45,7 @@ const hasUnsavedChanges = (status: GitStatus) =>
 	status.totals.staged + status.totals.unstaged + status.totals.conflicted > 0;
 
 function MenuNote({ children }: { children: ReactNode }) {
-	return <p className="max-w-[280px] px-2 pb-1.5 pt-0.5 text-sm text-fg-muted">{children}</p>;
+	return <p className="max-w-70 px-2 pb-1.5 pt-0.5 text-sm text-fg-muted">{children}</p>;
 }
 
 function NewBranchDialog({ cwd, open, onOpenChange }: { cwd: string; open: boolean; onOpenChange(open: boolean): void }) {
@@ -168,7 +168,7 @@ export function BranchItem({ projectPath }: PaneProps) {
 						{repo.isLinkedWorktree && <span className="sr-only">{t("branch.worktree")}</span>}
 					</MenuTrigger>
 				</Tooltip>
-				<MenuContent side="top" className="max-h-[70vh] w-[300px] overflow-y-auto">
+				<MenuContent side="top" className="max-h-[70vh] w-75 overflow-y-auto">
 					<MenuLabel>{t("branch.switchTo")}</MenuLabel>
 					{dirty && <MenuNote>{t("branch.dirtyNote")}</MenuNote>}
 					{status.detached && <MenuNote>{t("branch.detachedNote")}</MenuNote>}
@@ -319,7 +319,7 @@ export function PrItem({ projectPath }: PaneProps) {
 					{pr.checks.length > 0 && (
 						<>
 							<p className="mt-3 text-sm text-fg-muted">{t("pr.summary", { passing, failing, pending })}</p>
-							<ul className="mt-1.5 max-h-48 space-y-0.5 overflow-y-auto" aria-label={t("pr.checksHeading")}>
+							<ul className="mt-2 max-h-48 space-y-1 overflow-y-auto" aria-label={t("pr.checksHeading")}>
 								{[...pr.checks].sort((a, b) => CHECK_ORDER[a.bucket] - CHECK_ORDER[b.bucket]).map(check => (
 									<li key={`${check.workflow ?? ""}/${check.name}`} className="flex items-center gap-2 text-sm">
 										<span aria-hidden className={cn("w-3 font-mono", CHECK_TONE[check.bucket])}>

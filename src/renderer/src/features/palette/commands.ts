@@ -1,8 +1,25 @@
 /** Core app/view commands the menu and shortcuts send that no other feature owns. */
-import { ArrowLeft, ArrowRight, CircleHalf, Columns, MagnifyingGlass, NotePencil, SidebarSimple, TerminalWindow, TextAa, TextT, X } from "@phosphor-icons/react";
+import {
+	ArrowCounterClockwise,
+	ArrowLeft,
+	ArrowRight,
+	ChatCircleText,
+	CircleHalf,
+	Columns,
+	MagnifyingGlass,
+	NotePencil,
+	SidebarSimple,
+	TerminalWindow,
+	TextAa,
+	TextT,
+	X,
+} from "@phosphor-icons/react";
+import { i18n } from "../../i18n";
 import { registerCommand } from "../../registry/commands";
-import { openChatsInSidebarOrder } from "../../shell/Sidebar";
-import { closeChat, focusedTabId, useApp } from "../../state/app";
+import { chatStatus } from "../../shell/hooks";
+import { nextWaitingChat, stepChat } from "../../shell/sidebarRows";
+import { canReopenChat, closeChat, controllerFor, focusedTabId, useApp } from "../../state/app";
+import { toast } from "../../ui";
 import { runCommand } from "./run";
 import { terminalSheet } from "./TerminalSheet";
 
@@ -22,13 +39,15 @@ function setTextScale(next: (current: number) => number): void {
 	if (scale !== current) void useApp.getState().setPrefs({ textScale: scale });
 }
 
-/** Show the open chat `delta` steps along the sidebar's order from the focused one, wrapping around. */
+/** Show the open chat `delta` steps along "Current chats" from the focused one, wrapping around. */
 function cycleChat(delta: number): void {
 	const state = useApp.getState();
-	const order = openChatsInSidebarOrder();
-	if (order.length < 2) return;
-	const current = order.indexOf(focusedTabId(state) ?? state.activeTabId ?? "");
-	const next = order[(Math.max(0, current) + delta + order.length) % order.length];
+	if (state.tabs.length < 2) return;
+	const next = stepChat(
+		state.tabs.map(tab => tab.id),
+		focusedTabId(state) ?? state.activeTabId,
+		delta,
+	);
 	if (next) state.activateTab(next);
 }
 
@@ -133,6 +152,41 @@ registerCommand({
 	shortcut: keys("]", { shift: true }),
 	when: () => useApp.getState().tabs.length > 1,
 	run: () => cycleChat(1),
+});
+
+registerCommand({
+	id: "chat.nextWaiting",
+	title: "palette:cmd.nextWaiting.title",
+	hint: "palette:cmd.nextWaiting.hint",
+	keywords: "palette:cmd.nextWaiting.keywords",
+	group: "navigation",
+	icon: ChatCircleText,
+	shortcut: keys("A", { shift: true }),
+	run() {
+		// The open chat after the focused one, along "Current chats", that is waiting for your answer.
+		const state = useApp.getState();
+		const next = nextWaitingChat(
+			state.tabs.map(tab => tab.id),
+			focusedTabId(state),
+			tabId => chatStatus(controllerFor(tabId)?.getSnapshot() ?? null) === "needsInput",
+		);
+		if (next) state.activateTab(next);
+		else toast({ tone: "info", message: i18n.t("palette:cmd.nextWaiting.none") });
+	},
+});
+
+registerCommand({
+	id: "chat.reopenClosed",
+	title: "palette:cmd.reopenClosed.title",
+	hint: "palette:cmd.reopenClosed.hint",
+	keywords: "palette:cmd.reopenClosed.keywords",
+	group: "chat",
+	icon: ArrowCounterClockwise,
+	shortcut: keys("T", { shift: true }),
+	when: canReopenChat,
+	async run() {
+		if (!(await useApp.getState().reopenClosedChat()) && !canReopenChat()) toast({ tone: "info", message: i18n.t("palette:cmd.reopenClosed.none") });
+	},
 });
 
 registerCommand({

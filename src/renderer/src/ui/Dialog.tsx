@@ -11,10 +11,10 @@ export const DialogClose = RD.Close;
 export type DialogSize = "sm" | "md" | "lg" | "xl" | "full";
 
 const dialogSizes: Record<DialogSize, string> = {
-	sm: "w-[400px] max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
-	md: "w-[480px] max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
-	lg: "w-[560px] max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
-	xl: "w-[720px] max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
+	sm: "w-100 max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
+	md: "w-120 max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
+	lg: "w-140 max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
+	xl: "w-180 max-h-[calc(100vh-64px)] max-w-[calc(100vw-32px)]",
 	/** Nearly the whole window, for previews of wide content. */
 	full: "h-[calc(100vh-32px)] w-[calc(100vw-32px)]",
 };
@@ -68,7 +68,7 @@ export function DialogContent({
 				)}
 				{...rest}
 			>
-				<div className="flex items-start gap-3 px-5 pt-5">
+				<div className="flex items-start gap-3 px-card pt-card">
 					{destructive && (
 						<span className="mt-0.5 inline-flex size-8 shrink-0 items-center justify-center rounded-md bg-err-bg text-err">
 							<Warning className="size-4" aria-hidden />
@@ -85,11 +85,11 @@ export function DialogContent({
 						</RD.Close>
 					)}
 				</div>
-				{children && <div className="min-h-0 flex-1 overflow-y-auto px-5 pt-4 text-md">{children}</div>}
+				{children && <div className="min-h-0 flex-1 overflow-y-auto px-card pt-card text-md">{children}</div>}
 				{footer ? (
-					<div className="flex items-center justify-end gap-2 px-5 pb-5 pt-5">{footer}</div>
+					<div className="flex items-center justify-end gap-2 px-card pb-card pt-card">{footer}</div>
 				) : (
-					<div className="pb-5" />
+					<div className="pb-card" />
 				)}
 			</RD.Content>
 		</RD.Portal>

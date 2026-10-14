@@ -83,7 +83,7 @@ function PresetGallery({ onBack, onPick }: ServerEditorProps & { onPick(mode: Ed
 						</h2>
 						<ul className="divide-y divide-border">
 							{items.map(preset => (
-								<li key={preset.id} className="flex items-center gap-4 py-2.5">
+								<li key={preset.id} className="flex items-center gap-4 py-3">
 									<div className="min-w-0 flex-1">
 										<p className="truncate text-md font-medium text-fg">{preset.label}</p>
 										<p className="line-clamp-2 text-sm text-fg-muted">{preset.description}</p>
@@ -275,7 +275,7 @@ function isBlank(value: string | string[] | undefined): boolean {
 
 function FieldGroup({ label, hint, children }: { label: string; hint?: string; children: ReactNode }) {
 	return (
-		<div role="group" aria-label={label} className="flex flex-col gap-1.5">
+		<div role="group" aria-label={label} className="flex flex-col gap-2">
 			<span className="text-md font-medium text-fg">{label}</span>
 			{children}
 			{hint && <p className="text-sm text-fg-muted">{hint}</p>}
@@ -372,7 +372,7 @@ function KeyValueEditor({ label, hint, addLabel, keyPlaceholder, valuePlaceholde
 				<div key={index} className="flex items-center gap-2">
 					<Input
 						size="sm"
-						className="w-[200px]"
+						className="w-50"
 						boxClassName="font-mono"
 						aria-label={t("mcp.form.keyLabel", { index: index + 1 })}
 						placeholder={keyPlaceholder}
@@ -484,7 +484,7 @@ function TestPanel({ check, name }: { check: Check; name: string }) {
 	if (check.state === "idle") return null;
 	if (check.state === "running") {
 		return (
-			<div role="status" className="flex items-center gap-2 rounded-md border border-border bg-inset px-3 py-2.5 text-sm text-fg-muted">
+			<div role="status" className="flex items-center gap-2 rounded-md border border-border bg-inset px-3 py-3 text-sm text-fg-muted">
 				<Spinner /> {t("mcp.test.running")}
 			</div>
 		);
@@ -493,7 +493,7 @@ function TestPanel({ check, name }: { check: Check; name: string }) {
 	const { result } = check;
 	if (result.ok) {
 		return (
-			<div role="status" className="flex flex-col gap-1 rounded-md border border-border bg-ok-bg px-3 py-2.5 text-sm text-fg">
+			<div role="status" className="flex flex-col gap-1 rounded-md border border-border bg-ok-bg px-3 py-3 text-sm text-fg">
 				<span className="flex items-center gap-2 font-medium">
 					<CheckCircle aria-hidden className="size-4 text-ok" />
 					{result.tools.length > 0 ? t("mcp.test.found", { count: result.tools.length }) : t("mcp.noTools")}
@@ -507,7 +507,7 @@ function TestPanel({ check, name }: { check: Check; name: string }) {
 		);
 	}
 	return (
-		<div role="alert" className="flex flex-col gap-2 rounded-md border border-border bg-err-bg px-3 py-2.5 text-sm text-fg">
+		<div role="alert" className="flex flex-col gap-2 rounded-md border border-border bg-err-bg px-3 py-3 text-sm text-fg">
 			<span className="flex items-start gap-2 font-medium">
 				<XCircle aria-hidden className="mt-0.5 size-4 shrink-0 text-err" />
 				<span className="break-words">{result.authRequired ? t("mcp.test.authRequired", { name: name || "server" }) : result.error}</span>

@@ -11,17 +11,15 @@
 	},
 	"titlebar": {
 		"showSidebar": "Show sidebar",
-		"version": "v{{version}}",
 		"searchCommands": "Search commands"
 	},
 	"sidebar": {
 		"label": "Projects and chats",
 		"newChat": "New chat",
 		"search": "Search chats",
+		"version": "v{{version}}",
+		"current": "Current chats",
 		"projects": "Projects",
-		"active": "Active",
-		"activeHint": "Show only chats that are working, waiting for your answer or have omp running",
-		"noActive": "No chats are working, waiting for you or running omp right now.",
 		"archived": "Archived",
 		"usage": "Usage & limits",
 		"settings": "Settings",

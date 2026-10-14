@@ -220,7 +220,7 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 								<label
 									key={option}
 									className={cn(
-										"flex min-h-12 cursor-pointer items-center gap-3 px-3 py-2.5",
+										"flex min-h-12 cursor-pointer items-center gap-3 px-3 py-3",
 										"transition-colors duration-(--dur-fast) hover:bg-hover",
 										"has-[:focus-visible]:outline-2 has-[:focus-visible]:-outline-offset-2 has-[:focus-visible]:outline-ring",
 										kind === option && "bg-accent-muted hover:bg-accent-muted",
@@ -285,8 +285,8 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 							</Expand>
 							{recent && recent.length > 0 && (
 								<div>
-									<h3 className="mb-1.5 text-sm font-medium text-fg-muted">{t("new.existing.recent")}</h3>
-									<ul className="flex flex-col gap-0.5" aria-label={t("new.existing.recent")}>
+									<h3 className="mb-2 text-sm font-medium text-fg-muted">{t("new.existing.recent")}</h3>
+									<ul className="flex flex-col gap-1" aria-label={t("new.existing.recent")}>
 										{recent.slice(0, 5).map(entry => (
 											<li key={entry.path}>
 												<button
@@ -429,7 +429,7 @@ function LocationRow({ parent, onPick }: { parent: string | undefined; onPick():
 	const { t } = useTranslation("projects");
 	const id = useId();
 	return (
-		<div className="flex flex-col gap-1.5">
+		<div className="flex flex-col gap-2">
 			<span id={id} className="text-md font-medium text-fg">
 				{t("new.location.label")}
 			</span>

@@ -7,19 +7,36 @@
  * leave the chat title too little room, so they move onto a second line under the title and a
  * "Sort by" control in the toolbar keeps every sort available.
  */
-import { ArrowDown, ArrowUp, CaretLeft, CaretRight, DownloadSimple, FunnelSimple } from "@phosphor-icons/react";
+import { ArrowDown, ArrowUp, CaretLeft, CaretRight, Cpu, DownloadSimple, Folder, FunnelSimple } from "@phosphor-icons/react";
 import type { SpendChat, SpendDay } from "@shared/contracts/extensions";
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "@/state/app";
-import { Button, Cell, cn, EmptyState, SearchInput, Segmented, Select, SelectItem, SortHeaderCell, Table, TableHead, TableRow, toast } from "@/ui";
+import {
+	Button,
+	Cell,
+	cn,
+	EmptyState,
+	FilterPill,
+	MenuRadioGroup,
+	MenuRadioItem,
+	SearchInput,
+	Segmented,
+	Select,
+	SelectItem,
+	SortHeaderCell,
+	Table,
+	TableHead,
+	TableRow,
+	toast,
+} from "@/ui";
 import { focusRing, focusRingInset } from "@/ui/styles";
 import { errorText, formatCount, formatDuration, formatUsd } from "../format";
 import { type ChatSortKey, chatsCsv, chatsCsvName, filterChats, projectName, promptTokens, type SortDirection, sortChats } from "./model";
 import { useUsageView } from "./viewStore";
 
 const PAGE_SIZE = 25;
-/** Select value for "no filter"; Radix Select items cannot use an empty string. */
+/** Filter menu value for "no filter" (the store keeps null). */
 const ALL = "__all__";
 
 /** Columns that only show in the wide layout. */
@@ -27,11 +44,11 @@ const WIDE_ONLY = "hidden @min-[56rem]/chats:table-cell";
 
 const COLUMNS: { key: ChatSortKey; align: "left" | "right"; className?: string }[] = [
 	{ key: "title", align: "left" },
-	{ key: "model", align: "left", className: `w-[8rem] ${WIDE_ONLY}` },
-	{ key: "inputTokens", align: "right", className: `w-[7rem] ${WIDE_ONLY}` },
-	{ key: "outputTokens", align: "right", className: `w-[7.5rem] ${WIDE_ONLY}` },
-	{ key: "cost", align: "right", className: "w-[9rem]" },
-	{ key: "durationMs", align: "right", className: `w-[8rem] ${WIDE_ONLY}` },
+	{ key: "model", align: "left", className: `w-32 ${WIDE_ONLY}` },
+	{ key: "inputTokens", align: "right", className: `w-28 ${WIDE_ONLY}` },
+	{ key: "outputTokens", align: "right", className: `w-30 ${WIDE_ONLY}` },
+	{ key: "cost", align: "right", className: "w-36" },
+	{ key: "durationMs", align: "right", className: `w-32 ${WIDE_ONLY}` },
 ];
 
 /** First direction when a column becomes the sort: numbers highest first, text A to Z. */
@@ -109,49 +126,55 @@ export function ChatsTable({ chats, days }: { chats: readonly SpendChat[]; days:
 	};
 
 	return (
-		<section aria-labelledby="usage-chats-title" className="@container/chats flex flex-col">
-			<h3 ref={heading} id="usage-chats-title" tabIndex={-1} className={cn("w-fit scroll-mt-4 rounded-sm text-md font-semibold text-fg", focusRing)}>
-				{t("usage.chats.title")}
-			</h3>
-			<p className="mt-0.5 text-sm text-fg-muted">{t("usage.chats.description")}</p>
+		<section aria-labelledby="usage-chats-title" className="@container/chats flex flex-col rounded-lg border border-border bg-panel">
+			<div className="px-card pt-card">
+				<h3 ref={heading} id="usage-chats-title" tabIndex={-1} className={cn("w-fit scroll-mt-4 rounded-sm text-md font-semibold text-fg", focusRing)}>
+					{t("usage.chats.title")}
+				</h3>
+				<p className="mt-1 text-sm text-fg-muted">{t("usage.chats.description")}</p>
+			</div>
 
-			<div role="toolbar" aria-label={t("usage.chats.toolbar")} className="mt-3 flex flex-wrap items-center gap-2">
+			<div role="toolbar" aria-label={t("usage.chats.toolbar")} className="mt-stack flex flex-wrap items-center gap-toolbar px-card">
 				<SearchInput
 					value={query}
 					onValueChange={value => setFilters({ query: value })}
 					placeholder={t("usage.chats.search")}
 					aria-label={t("usage.chats.search")}
 					size="sm"
-					className="w-full max-w-[16rem]"
+					className="w-full max-w-64"
 				/>
-				<Select
-					size="sm"
-					value={project ?? ALL}
-					onValueChange={value => setFilters({ project: value === ALL ? null : value })}
-					aria-label={t("usage.chats.projectFilter")}
-					className="max-w-[14rem]"
+				<FilterPill
+					label={t("usage.chats.projectFilter")}
+					icon={<Folder />}
+					value={project === null ? undefined : projectName(project)}
+					onClear={() => setFilters({ project: null })}
+					clearLabel={t("usage.chats.clearProject")}
 				>
-					<SelectItem value={ALL}>{t("usage.chats.allProjects")}</SelectItem>
-					{projects.map(path => (
-						<SelectItem key={path} value={path} hint={projects.some(other => other !== path && projectName(other) === projectName(path)) ? path : undefined}>
-							{projectName(path)}
-						</SelectItem>
-					))}
-				</Select>
-				<Select
-					size="sm"
-					value={model ?? ALL}
-					onValueChange={value => setFilters({ model: value === ALL ? null : value })}
-					aria-label={t("usage.chats.modelFilter")}
-					className="max-w-[14rem]"
+					<MenuRadioGroup value={project ?? ALL} onValueChange={value => setFilters({ project: value === ALL ? null : value })}>
+						<MenuRadioItem value={ALL}>{t("usage.chats.allProjects")}</MenuRadioItem>
+						{projects.map(path => (
+							<MenuRadioItem key={path} value={path} description={projects.some(other => other !== path && projectName(other) === projectName(path)) ? path : undefined}>
+								{projectName(path)}
+							</MenuRadioItem>
+						))}
+					</MenuRadioGroup>
+				</FilterPill>
+				<FilterPill
+					label={t("usage.chats.modelFilter")}
+					icon={<Cpu />}
+					value={model === null ? undefined : model.split("/").pop()}
+					onClear={() => setFilters({ model: null })}
+					clearLabel={t("usage.chats.clearModel")}
 				>
-					<SelectItem value={ALL}>{t("usage.chats.allModels")}</SelectItem>
-					{models.map(id => (
-						<SelectItem key={id} value={id}>
-							{id.split("/").pop()}
-						</SelectItem>
-					))}
-				</Select>
+					<MenuRadioGroup value={model ?? ALL} onValueChange={value => setFilters({ model: value === ALL ? null : value })}>
+						<MenuRadioItem value={ALL}>{t("usage.chats.allModels")}</MenuRadioItem>
+						{models.map(id => (
+							<MenuRadioItem key={id} value={id} description={id.split("/")[0]}>
+								{id.split("/").pop()}
+							</MenuRadioItem>
+						))}
+					</MenuRadioGroup>
+				</FilterPill>
 				<div className="flex items-center gap-2 @min-[56rem]/chats:hidden">
 					<Select
 						size="sm"
@@ -161,7 +184,7 @@ export function ChatsTable({ chats, days }: { chats: readonly SpendChat[]; days:
 							setSort({ key, direction: firstDirection(key) });
 						}}
 						aria-label={t("usage.chats.sortBy")}
-						className="max-w-[14rem]"
+						className="max-w-56"
 					>
 						{COLUMNS.map(column => (
 							<SelectItem key={column.key} value={column.key}>
@@ -196,12 +219,15 @@ export function ChatsTable({ chats, days }: { chats: readonly SpendChat[]; days:
 							</Button>
 						)
 					}
-					className="py-8"
+					className="py-10"
 				/>
 			) : (
 				<>
-					<Table aria-labelledby="usage-chats-title" className="mt-3">
-						<TableHead>
+					<Table
+						aria-labelledby="usage-chats-title"
+						className="mt-stack [&_td:first-child]:pl-card [&_td:last-child]:pr-card [&_th:first-child]:pl-card [&_th:last-child]:pr-card"
+					>
+						<TableHead className="bg-panel">
 							<tr>
 								{COLUMNS.map(column => (
 									<SortHeaderCell
@@ -235,7 +261,7 @@ export function ChatsTable({ chats, days }: { chats: readonly SpendChat[]; days:
 										<span className="block truncate text-xs text-fg-faint" title={chat.cwd}>
 											{projectName(chat.cwd)}
 										</span>
-										<span className="mt-0.5 block text-xs tabular-nums text-fg-muted @min-[56rem]/chats:hidden">
+										<span className="mt-1 block text-xs tabular-nums text-fg-muted @min-[56rem]/chats:hidden">
 											{t("usage.chats.rowDetails", {
 												model: chat.model?.split("/").pop() ?? t("usage.noModel"),
 												input: formatCount(promptTokens(chat)),
@@ -263,7 +289,7 @@ export function ChatsTable({ chats, days }: { chats: readonly SpendChat[]; days:
 							))}
 						</tbody>
 					</Table>
-					<nav aria-label={t("usage.chats.pages")} className="mt-3 flex flex-wrap items-center justify-between gap-2 text-sm text-fg-muted">
+					<nav aria-label={t("usage.chats.pages")} className="flex flex-wrap items-center justify-between gap-2 px-card py-3 text-sm text-fg-muted">
 						<p aria-live="polite">
 							{t("usage.chats.showing", { from: current * PAGE_SIZE + 1, to: current * PAGE_SIZE + visible.length, count: rows.length })}
 						</p>

@@ -1,20 +1,22 @@
 {
 	"label": "Message to omp",
-	"readOnly": "Replies are off here while another omp window may have this chat open.",
 	"placeholder": {
 		"idle": "Ask omp to change something…",
 		"working": "Queue a message for when omp finishes this reply",
 		"shell": "Type a shell command to run in the project folder…",
 		"python": "Type Python code to run…",
-		"readOnly": "Reply from the other window"
+		"readOnly": "Reply from the other window",
+		"readOnlyFree": "Choose Continue here to reply",
+		"readOnlyUnknown": "Replies are off until the app can check the other window",
+		"readOnlyUnreadable": "Replies are off while the chat file can't be read"
 	},
 	"send": {
 		"label": "Send message",
 		"tip": "Send your message",
 		"queue": "Queue message",
 		"queueTip": "Send when omp finishes this reply",
+		"now": "Send now",
 		"nowTip": "Send now. omp reads it at its next step, before this reply finishes.",
-		"nowShort": "send now",
 		"stop": "Stop reply",
 		"failed": "Couldn't send your message"
 	},

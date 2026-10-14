@@ -114,25 +114,29 @@ export interface ExpandProps {
 	animateOnMount?: boolean;
 }
 
+/** Expand timing: open lets the height lead and the content follow 40ms later; close fades the content first. */
+const expandOpen: Transition = { height: spring.snappy, opacity: { duration: duration.base, ease: ease.outQuart, delay: 0.04 } };
+const expandClose: Transition = { height: { duration: 0.17, ease: [0.4, 0, 0.2, 1] }, opacity: { duration: 0.09, ease: "easeIn" } };
+
 /**
  * Animated height-auto disclosure for accordions, tool steps and "show more" rows. Content is unmounted while
  * closed. Overflow is clipped only while the height moves, so focus rings and shadows inside stay visible at rest.
- * Reduced motion: an opacity crossfade with no height animation.
+ * Opening takes about 230ms with the content fading in just behind the height; closing takes about 170ms with the
+ * content fading out first, so nothing pops. Reduced motion: an opacity crossfade with no height animation.
  */
 export function Expand({ open, children, className, id, animateOnMount = false }: ExpandProps) {
 	const reduced = useMotionReduced();
 	const [moving, setMoving] = useState(false);
-	const closed = reduced ? { opacity: 0 } : { height: 0, opacity: 0 };
+	const closed = reduced ? { opacity: 0, transition: fadeOut } : { height: 0, opacity: 0, transition: expandClose };
 	return (
 		<AnimatePresence initial={animateOnMount}>
 			{open && (
 				<motion.div
 					key="expand"
 					id={id}
-					initial={closed}
-					animate={reduced ? { opacity: 1 } : { height: "auto", opacity: 1 }}
+					initial={reduced ? { opacity: 0 } : { height: 0, opacity: 0 }}
+					animate={reduced ? { opacity: 1, transition: fade } : { height: "auto", opacity: 1, transition: expandOpen }}
 					exit={closed}
-					transition={{ height: spring.gentle, opacity: fade }}
 					onAnimationStart={() => setMoving(true)}
 					onAnimationComplete={() => setMoving(false)}
 					style={{ overflow: moving ? "hidden" : undefined }}
@@ -234,10 +238,12 @@ export interface RiseProps extends MotionDivProps, EntranceProps, PlayOverride {
 	delay?: number;
 	/** Rise distance in px. */
 	distance?: number;
+	/** `gentle` (default) for surfaces and list entrances, `snappy` for chat rows that should settle quickly. */
+	tempo?: "gentle" | "snappy";
 }
 
-/** Entrance for newly inserted content: fade in while rising a few pixels on `spring.gentle`. At rest on first render. */
-export function Rise({ as = "div", delay = 0, distance = 8, animateOnMount = false, play: playProp, children, ...rest }: RiseProps) {
+/** Entrance for newly inserted content: fade in while rising a few pixels on a critically damped spring. At rest on first render. */
+export function Rise({ as = "div", delay = 0, distance = 8, tempo = "gentle", animateOnMount = false, play: playProp, children, ...rest }: RiseProps) {
 	const Tag = motion[as] as typeof motion.div;
 	const auto = useEntrance(animateOnMount);
 	const [play] = useState(playProp ?? auto);
@@ -245,7 +251,7 @@ export function Rise({ as = "div", delay = 0, distance = 8, animateOnMount = fal
 		<Tag
 			initial={play ? { opacity: 0, y: distance } : false}
 			animate={{ opacity: 1, y: 0 }}
-			transition={{ y: { ...spring.gentle, delay }, opacity: { ...fade, delay } }}
+			transition={{ y: { ...spring[tempo], delay }, opacity: { ...fade, delay } }}
 			{...rest}
 		>
 			{children}
@@ -340,4 +346,193 @@ export function PresenceSwap({
 			</motion.div>
 		</AnimatePresence>
 	);
+}
+
+// ---------------- Scroll follow ----------------
+
+/** Share of the remaining distance one follow frame covers at 60fps (about 180ms to settle). */
+const FOLLOW_LERP = 0.3;
+/** Most one follow frame moves at 60fps, in px. */
+const FOLLOW_MAX_STEP = 24;
+/** A gap wider than this (a chat opening, a history load) is jumped, not chased. */
+const FOLLOW_SNAP_PX = 480;
+const FRAME_MS = 1000 / 60;
+
+export interface ScrollFollowOptions {
+	/** The scroller's content: its growth (streamed text, an opening card) is followed while pinned. */
+	content?: RefObject<Element | null>;
+	/** How close to the bottom still counts as pinned there, in px. */
+	threshold?: number;
+	/** The view is hidden: follow without easing, since nobody sees it. */
+	paused?: boolean;
+}
+
+export interface ScrollFollow {
+	/** Follow new content on the next frame, if the view is pinned to the bottom. */
+	follow(): void;
+	/** Go to the bottom now (a chat that just loaded). */
+	snap(): void;
+	/** The explicit "jump to latest" action: pin, then scroll smoothly to the bottom (instantly under reduced motion). */
+	jumpToEnd(): void;
+	/** Call first in the scroller's scroll handler; it settles `pinnedRef` from what moved the view. */
+	onScroll(): void;
+}
+
+/**
+ * Keeps a scroller pinned to its bottom while content grows (DESIGN §1.12). One rAF loop reads the geometry once and
+ * writes `scrollTop` once per frame, easing toward the bottom (30% of the gap per frame, at most 24px) and snapping
+ * when the gap is large or motion is reduced. Scroll events caused by its own writes never unpin; the reader scrolling
+ * up (wheel, keys, scrollbar, touch) unpins at once, and nothing follows until they return within `threshold` of the
+ * bottom or jump there.
+ */
+export function useScrollFollow(
+	ref: RefObject<HTMLElement | null>,
+	pinnedRef: { current: boolean },
+	{ content, threshold = 48, paused = false }: ScrollFollowOptions = {},
+): ScrollFollow {
+	const reduced = useMotionReduced();
+	const instant = useRef(false);
+	instant.current = reduced || paused;
+	const [api] = useState(() => {
+		let frame = 0;
+		let lastFrame = 0;
+		/** The `scrollTop` this hook wrote last; a scroll event reporting it is our own. */
+		let written: number | null = null;
+		/** `scrollTop` at the previous scroll event, to tell scrolling up from scrolling down. */
+		let seen = 0;
+		/** A smooth "jump to latest" is under way; the loop stays out of its way. */
+		let jumping = false;
+		const stop = () => {
+			if (frame) cancelAnimationFrame(frame);
+			frame = 0;
+			lastFrame = 0;
+		};
+		const write = (el: HTMLElement, top: number) => {
+			el.scrollTop = top;
+			written = el.scrollTop;
+			seen = written;
+		};
+		const run = (now: number) => {
+			frame = 0;
+			const el = ref.current;
+			if (!el || !pinnedRef.current || jumping) return stop();
+			const top = el.scrollTop;
+			const target = el.scrollHeight - el.clientHeight;
+			const gap = target - top;
+			if (gap <= 0.5) return stop();
+			if (instant.current || gap > FOLLOW_SNAP_PX) write(el, target);
+			else {
+				const frames = lastFrame ? Math.min(4, (now - lastFrame) / FRAME_MS) : 1;
+				const step = Math.min(gap * (1 - (1 - FOLLOW_LERP) ** frames), FOLLOW_MAX_STEP * frames);
+				write(el, Math.min(target, top + Math.max(1, step)));
+			}
+			lastFrame = now;
+			frame = requestAnimationFrame(run);
+		};
+		const follow = () => {
+			if (!frame && pinnedRef.current && !jumping) frame = requestAnimationFrame(run);
+		};
+		const unpin = () => {
+			pinnedRef.current = false;
+			jumping = false;
+			stop();
+		};
+		return {
+			follow,
+			snap() {
+				const el = ref.current;
+				if (!el || !pinnedRef.current) return;
+				stop();
+				write(el, el.scrollHeight - el.clientHeight);
+			},
+			jumpToEnd() {
+				const el = ref.current;
+				if (!el) return;
+				pinnedRef.current = true;
+				stop();
+				if (instant.current || el.scrollHeight - el.clientHeight - el.scrollTop <= 1) {
+					write(el, el.scrollHeight - el.clientHeight);
+					return;
+				}
+				jumping = true;
+				el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+			},
+			onScroll() {
+				const el = ref.current;
+				if (!el) return;
+				const top = el.scrollTop;
+				if (written !== null && Math.abs(top - written) < 1) return;
+				written = null;
+				const distance = el.scrollHeight - top - el.clientHeight;
+				const up = top < seen - 0.5 && distance > 1;
+				seen = top;
+				if (jumping) {
+					if (!up) return;
+					jumping = false;
+				}
+				if (up) unpin();
+				else pinnedRef.current = distance <= threshold;
+				if (pinnedRef.current) follow();
+			},
+			/** Wheel up states intent before any scroll event; unpin immediately so no frame pulls the view back. */
+			wheel(event: WheelEvent) {
+				if (event.deltaY < 0) unpin();
+			},
+			scrollEnd() {
+				if (!jumping) return;
+				jumping = false;
+				follow();
+			},
+			stop,
+		};
+	});
+
+	useEffect(() => {
+		const el = ref.current;
+		const grown = content?.current;
+		if (!el) return;
+		el.addEventListener("wheel", api.wheel, { passive: true });
+		el.addEventListener("scrollend", api.scrollEnd);
+		// Content growth, and the scroller itself shrinking (a taller composer, a window resize), both open a gap below.
+		const observer = new ResizeObserver(() => api.follow());
+		observer.observe(el);
+		if (grown) observer.observe(grown);
+		return () => {
+			el.removeEventListener("wheel", api.wheel);
+			el.removeEventListener("scrollend", api.scrollEnd);
+			observer.disconnect();
+			api.stop();
+		};
+	}, [api, ref, content]);
+
+	// Coming back into view (or into full motion) settles at the bottom at once.
+	useEffect(() => {
+		if (!paused) api.snap();
+	}, [api, paused]);
+
+	return api;
+}
+
+// ---------------- Block-in ----------------
+
+const BLOCK_IN_MS = 160;
+
+/**
+ * One-shot entrance for a block appended to streaming content: opacity 0→1 while rising 2px over 160ms (opacity
+ * only, 140ms, under reduced motion). `elapsedMs` continues an entrance begun on nodes this element replaces, so a
+ * block whose HTML is re-rendered while it grows keeps one continuous fade. Returns false once the entrance would
+ * already be over, so callers stop carrying it.
+ */
+export function blockIn(element: Element, reduced: boolean, elapsedMs = 0): boolean {
+	const total = reduced ? 140 : BLOCK_IN_MS;
+	if (elapsedMs >= total || typeof element.animate !== "function") return false;
+	const frames: Keyframe[] = reduced
+		? [{ opacity: 0 }, { opacity: 1 }]
+		: [
+				{ opacity: 0, transform: "translateY(2px)" },
+				{ opacity: 1, transform: "none" },
+			];
+	const animation = element.animate(frames, { duration: total, easing: "cubic-bezier(0.25, 1, 0.5, 1)", fill: "backwards" });
+	animation.currentTime = elapsedMs;
+	return true;
 }

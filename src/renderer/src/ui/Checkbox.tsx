@@ -40,7 +40,7 @@ function Row({
 						{label}
 					</label>
 					{description && (
-						<p id={descId} className="mt-0.5 pl-1 text-sm text-fg-muted">
+						<p id={descId} className="mt-1 pl-1 text-sm text-fg-muted">
 							{description}
 						</p>
 					)}
@@ -89,7 +89,7 @@ export function Checkbox({
 				onChange={(event) => onCheckedChange?.(event.currentTarget.checked)}
 				className={cn(
 					boxBase,
-					"rounded-[4px] checked:border-accent checked:bg-accent indeterminate:border-accent indeterminate:bg-accent",
+					"rounded-sm checked:border-accent checked:bg-accent indeterminate:border-accent indeterminate:bg-accent",
 				)}
 				{...rest}
 			/>

@@ -1,36 +1,30 @@
 import { MagnifyingGlass, SidebarSimple } from "@phosphor-icons/react";
-import { type ReactNode, useEffect, useState } from "react";
+import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "../state/app";
-import { cn, IconButton, Kbd, Wordmark } from "../ui";
+import { cn, IconButton, Kbd } from "../ui";
 
-/** Frameless window bar (DESIGN §3.1): opaque and draggable, with the lockup on the left and "Search commands" centered. */
+/**
+ * Frameless window bar across the top of the main sheet (DESIGN §3.1): opaque and draggable, "Search commands" centered.
+ * The lockup lives in the sidebar header. With the sidebar shown, the macOS traffic lights sit on the sidebar; with it
+ * hidden they sit here, so the left column reserves their 80px and holds "Show sidebar". On Windows the caption
+ * buttons overlay the right column, which keeps 138px free.
+ */
 export function TitleBar(): ReactNode {
 	const { t } = useTranslation("shell");
 	const isMac = window.vomp.platform === "darwin";
 	const sidebarOpen = useApp(state => state.sidebarOpen);
-	const [version, setVersion] = useState<string | null>(null);
-
-	useEffect(() => {
-		let live = true;
-		void window.vomp.invoke("app:info").then(info => {
-			if (live) setVersion(info.version);
-		});
-		return () => {
-			live = false;
-		};
-	}, []);
 
 	return (
 		// Three columns: the side columns share the free space equally, so the search button stays centered, but the
-		// lockup column never shrinks below its content, so a narrow window shortens the button instead of covering it.
+		// left column never shrinks below its content, so a narrow window shortens the button instead of covering it.
 		<header
 			className={cn(
-				"glass drag-region relative z-(--z-titlebar) grid h-(--titlebar-h) shrink-0 items-center gap-2 border-b border-border px-[12px]",
+				"drag-region relative z-(--z-titlebar) grid h-(--titlebar-h) shrink-0 items-center gap-2 border-b border-border bg-sheet px-3",
 				isMac ? "grid-cols-[minmax(max-content,1fr)_minmax(0,auto)_minmax(0,1fr)]" : "grid-cols-[minmax(max-content,1fr)_minmax(0,auto)_minmax(138px,1fr)]",
 			)}
 		>
-			<div className={cn("flex items-center gap-2", isMac && "pl-[80px]")}>
+			<div className={cn("flex items-center gap-2", isMac && !sidebarOpen && "pl-traffic")}>
 				{!sidebarOpen && (
 					<IconButton
 						className="no-drag"
@@ -41,8 +35,6 @@ export function TitleBar(): ReactNode {
 						onClick={() => useApp.getState().toggleSidebar()}
 					/>
 				)}
-				<Wordmark withMark size="sm" />
-				{version && <span className="font-mono text-xs text-fg-faint">{t("titlebar.version", { version })}</span>}
 			</div>
 			<div className="flex min-w-0 justify-center">
 				<button

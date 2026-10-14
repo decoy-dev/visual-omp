@@ -1,4 +1,4 @@
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { chatSlots } from "../registry/slots";
 import { elapsed, useNow, useSessionView } from "../shell/hooks";
@@ -98,20 +98,29 @@ function OwnerNotice({ session, view }: { session: SessionController; view: Sess
 }
 
 /**
- * "Working… 14s · Running tests" pinned above the composer while omp works (DESIGN §4.6). Status only:
- * stopping is the composer's action slot. Mounted only while working.
+ * "Working… 14s · Running tests" pinned above the composer while omp works (DESIGN §4.6), the one place the turn's
+ * elapsed time shows. The time counts from the session controller's observed start, so switching chats or remounting
+ * keeps it; a turn already under way when the chat joined shows no time. Status only: stopping is the composer's
+ * action slot. Mounted only while working.
  */
 function WorkingRow({ view }: { view: SessionView }): ReactNode {
 	const { t } = useTranslation(["chat", "tools"]);
-	const since = useRef(Date.now());
 	const now = useNow(1000);
 	const tool = view.guest ? [...view.guest.activeTools.values()].at(-1) : undefined;
 	const summary = tool ? friendlySummary(resolveToolCall({ name: tool.toolName, args: tool.args, running: true, intent: tool.intent })) : null;
 	const activity = summary ? t(`tools:${summary.key}`, summary.values) : view.guest?.stream ? null : t("chat:thinking");
-	const time = elapsed(now - since.current);
+	const time = view.workingSince === null ? null : elapsed(now - view.workingSince);
+	const label =
+		time === null
+			? activity
+				? t("chat:workingActivityUntimed", { activity })
+				: t("chat:workingUntimed")
+			: activity
+				? t("chat:workingActivity", { elapsed: time, activity })
+				: t("chat:working", { elapsed: time });
 	return (
 		<div className="mx-auto flex h-9 w-full max-w-(--chat-max) items-center px-6 pb-2">
-			<WorkingIndicator label={activity ? t("chat:workingActivity", { elapsed: time, activity }) : t("chat:working", { elapsed: time })} />
+			<WorkingIndicator label={label} />
 		</div>
 	);
 }

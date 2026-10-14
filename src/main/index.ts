@@ -27,8 +27,9 @@ function createWindow(): void {
 		minHeight: 620,
 		show: false,
 		title: "visual-omp",
-		// Matches --bg in theme/tokens.css (as Chromium renders the OKLCH values) so the first frame doesn't flash.
-		backgroundColor: nativeTheme.shouldUseDarkColors ? "#0d1110" : "#f4f7f7",
+		// The ink chrome (--chrome-bg in theme/tokens.css, as Chromium renders the OKLCH values), which frames the window
+		// in both themes, so the first frame matches the frame instead of flashing.
+		backgroundColor: nativeTheme.shouldUseDarkColors ? "#080b0b" : "#141919",
 		titleBarStyle: isMac ? "hiddenInset" : "hidden",
 		trafficLightPosition: isMac ? { x: 16, y: 16 } : undefined,
 		titleBarOverlay: isMac ? undefined : { height: 44, color: "#00000000", symbolColor: "#6c6c74" },
