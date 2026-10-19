@@ -391,6 +391,7 @@ The composer card contains ＋, the text box, microphone and send or stop action
 - **Read-only chats**: the header explains why the chat is read-only and the placeholder gives the relevant action. The card has no repeated lock banner. Text, attachments and row controls are muted and disabled.
 - **Queue path**: while omp works, the primary action is Queue message. Send now remains available as the immediate action and uses ⌘↵. The queued tray lists messages, supports editing, reordering and removal.
 - **Idle path**: the primary action sends the message and stays disabled until there is content.
+- **Slash menu**: when the message starts with `/` and the caret is in the command name, a listbox above the text box lists the commands omp accepts in this project, with aliases, a description and a source label for skills, custom, extension, MCP prompt and file commands. After `/name ` it lists that command's subcommands and shows its usage hint. Focus stays in the text box; arrows move, Tab completes, Enter completes a partial name and sends a complete one, and Esc closes the menu until the next keystroke. Commands the app covers natively open their screen instead of reaching omp, and the routing table is documented in `docs/COMMANDS.md`.
 
 ### 3.7 Side panel (420px default, drag 320-640px, ⌥⌘B toggles)
 
@@ -602,6 +603,8 @@ The full set of patterns is in `i18n/en/tools.json` and `chat/friendly.ts`.
 
 A task row's mark follows its helpers. It is running while any helper runs, an error when any failed and none runs, and a success check only when every helper finished. Helpers that are stopped or waiting, with none running or failed, get a neutral dash whose accessible name is "Stopped" or "Waiting"; such a row never shows a success check. Mixed batches name each state with its count, such as "3 helpers: 1 finished · 2 stopped". In a saved or exited chat, and for work that was still running when an earlier omp process ended, a helper still marked working or waiting counts as stopped (§3.7).
 
+**Command results**: what omp printed for a typed slash command shows as a tool-style row after the message that was last on screen when it was sent. The row has the `TerminalWindow` icon (`Warning` or `XCircle` when omp printed a warning or an error), the command in mono `--fg-muted`, and omp's lines in a mono `--bg-inset` well cut to 12 lines with "Show all N lines". A dismiss button shows on hover or focus. Rows are not saved, and a chat that only holds results does not show the empty state.
+
 ### 4.8 Question and approval card
 
 Shown after the stream whenever omp asks a question or needs approval.
@@ -625,6 +628,7 @@ Shown after the stream whenever omp asks a question or needs approval.
   - An `ask` with one question, approvals, extension selects and text answers keep the single-question card.
 - **Approval**: `ShieldWarning` in `--warn`, "Permission needed", the request in a mono `--bg-inset` well, then [Deny action] and primary [Allow action].
 - **Text answer**: a text area ("Type your answer…"), with [Skip question] and [Send answer].
+- **omp dialog**: omp's own option lists, confirmations, one-line inputs and editors, which omp does not mirror over collab, use the same card read from omp's screen. A confirmation shows omp's Yes and No buttons, a list shows option tiles with [Cancel] and [Choose option], and an input or editor shows a text field with [Cancel] and [Send answer] (⌘⏎ sends from the editor). When omp shows only part of a long list, the card says how many options are hidden and offers [Open omp terminal]. While the card shows, the terminal sheet stays closed.
 
 ### 4.9 Plan review card
 
@@ -658,7 +662,7 @@ The title bar's Search commands field and ⌘K (Ctrl+K) open a centered 640px pa
 ```
 
 - **Groups**: an empty query shows starter commands and recent chats. While typing, the palette groups matches as actions, chats, files and settings. The five starter commands are New chat, Compact this chat, Choose model, Show omp terminal and Settings.
-- **Scope**: the palette searches registered commands, chats, project files and settings. Slash commands in the composer still go to omp. With no match, a row offers to send the query to omp.
+- **Scope**: the palette searches registered commands, chats, project files and settings. With no match, a row offers to send the query to omp; a query that starts with `/` goes through the same routing as the composer's slash commands.
 - **Danger**: danger commands show in `--err` and need ⌘⏎. The first Enter shows "Press ⌘⏎ to run this".
 
 ### 4.11 omp terminal sheet

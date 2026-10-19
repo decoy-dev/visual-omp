@@ -10,8 +10,6 @@
  * Chats that are already open keep the credentials and model list their omp loaded at start; they
  * see a change after `/restart`.
  */
-import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
-import { createInterface } from "node:readline";
 import { z } from "zod";
 import type { ModelKind } from "@shared/contracts/config";
 import type {
@@ -21,24 +19,20 @@ import type {
 	ProviderAccount,
 	ProvidersState,
 } from "@shared/contracts/providers";
-import { userEnv } from "../env";
 import { broadcast, handle } from "../ipc";
 import { runOmp } from "../omp/cli";
 import { NEUTRAL_CWD } from "../omp/config-file";
 import { ompPath } from "../omp/locate";
-import { ompStartError } from "../omp/refused";
+import { rpcRequest } from "../omp/rpc";
 import { ompErrorMessage, UsageJsonSchema } from "../services/omp-config";
 import { configWritten, listModels } from "./config";
 
 // ─── Sign-in list (`get_login_providers`) ──────────────────────────────────
 
 /** Flags that keep the listing process light; extensions stay on because they can add providers. */
-const RPC_ARGS = ["--mode", "rpc", "--no-session", "--no-lsp", "--no-title", "--no-tools", "--no-skills", "--no-rules"];
+const RPC_FLAGS = ["--no-session", "--no-lsp", "--no-title", "--no-tools", "--no-skills", "--no-rules"];
 const LIST_TIMEOUT_MS = 30_000;
 
-const RpcResponseSchema = z
-	.object({ type: z.literal("response"), id: z.string(), success: z.boolean(), error: z.string().optional(), data: z.unknown().optional() })
-	.loose();
 const LoginProvidersSchema = z.object({
 	providers: z.array(z.object({ id: z.string(), name: z.string(), available: z.boolean().optional(), authenticated: z.boolean().optional() }).loose()),
 });
@@ -54,44 +48,20 @@ interface OmpLoginProvider {
  * `omp --mode rpc` process. Read-only: nothing is sent that signs in or changes credentials.
  */
 async function readLoginProviders(folder: string): Promise<OmpLoginProvider[]> {
-	const [bin, env] = await Promise.all([ompPath(), userEnv()]);
-	let child: ChildProcessWithoutNullStreams;
-	try {
-		child = spawn(bin, RPC_ARGS, { cwd: folder, env: { ...env, NO_COLOR: "1" }, stdio: "pipe" });
-	} catch (error) {
-		throw await ompStartError(error, bin);
-	}
-	const { promise, resolve, reject } = Promise.withResolvers<unknown>();
-	const timer = setTimeout(() => reject(new Error("omp did not list its sign-in providers in time.")), LIST_TIMEOUT_MS);
-	child.stderr.resume();
-	child.stdin.on("error", () => {});
-	child.on("error", reject);
-	child.on("exit", () => reject(new Error("omp stopped before listing its sign-in providers.")));
-	createInterface({ input: child.stdout }).on("line", line => {
-		let message: unknown;
-		try {
-			message = JSON.parse(line);
-		} catch {
-			return;
-		}
-		const response = RpcResponseSchema.safeParse(message);
-		if (!response.success || response.data.id !== "vomp-login-providers") return;
-		if (response.data.success) resolve(response.data.data);
-		else reject(new Error(response.data.error ?? "omp did not list its sign-in providers."));
+	const data = await rpcRequest(folder, "get_login_providers", {
+		flags: RPC_FLAGS,
+		timeoutMs: LIST_TIMEOUT_MS,
+		messages: {
+			timeout: "omp did not list its sign-in providers in time.",
+			exited: "omp stopped before listing its sign-in providers.",
+			failed: "omp did not list its sign-in providers.",
+		},
 	});
-	child.stdin.write(`${JSON.stringify({ id: "vomp-login-providers", type: "get_login_providers" })}\n`);
-	try {
-		return LoginProvidersSchema.parse(await promise).providers.flatMap(provider =>
-			provider.available === false
-				? []
-				: [
-						{ method: { id: provider.id, name: provider.name }, authenticated: provider.authenticated === true },
-					],
-		);
-	} finally {
-		clearTimeout(timer);
-		child.kill();
-	}
+	return LoginProvidersSchema.parse(data).providers.flatMap(provider =>
+		provider.available === false
+			? []
+			: [{ method: { id: provider.id, name: provider.name }, authenticated: provider.authenticated === true }],
+	);
 }
 
 /** Per project folder: project extensions can add sign-in entries. */

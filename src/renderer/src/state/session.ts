@@ -73,6 +73,21 @@ export type SessionEvent =
 
 let nextQueueId = 0;
 
+/**
+ * Delivers a queued slash command when the queue drains or the user sends it now
+ * (`features/session-tools/typed.ts` registers it): the app's routing first, so guarded commands never
+ * reach omp and native ones open their screen, else typed into omp with its printed result captured.
+ * Resolves once omp is done with it; the queue then continues. Rejects when the line could not be typed
+ * (it goes back to the front of the queue); one that found omp's own screen up holds the queue
+ * (`holdQueue`) until the screen goes.
+ */
+type SlashDelivery = (session: SessionController, line: string) => Promise<void>;
+let slashDelivery: SlashDelivery | null = null;
+
+export function setSlashDelivery(deliver: SlashDelivery): void {
+	slashDelivery = deliver;
+}
+
 /** Session files the read-only tabs follow; main watches exactly this set (and drops it on reload). */
 const followed = new Set<string>();
 
@@ -85,6 +100,12 @@ export class SessionController {
 	readonly projectPath: string;
 	#sessionFile: string | null;
 	#view: SessionView;
+	/** Queued slash commands handed to `slashDelivery` and not yet done (see `#deliverSlash`). */
+	#slashDeliveries = 0;
+	/** Reasons the queue must not drain yet (omp shows a screen of its own); see `holdQueue`. */
+	#queueHolds = 0;
+	/** A hold for omp's full-screen menu is in place. */
+	#overlayHold = false;
 	#resolvingFile = false;
 	/** omp launch flags for the first start only (Claude Code / Codex import opens omp's picker). */
 	#extraArgs: string[];
@@ -408,7 +429,7 @@ export class SessionController {
 		}
 		if (snapshot.uiRequest && snapshot.uiRequest.reqId !== hadRequest) this.#emit({ kind: "needsInput" });
 		if (wasWorking && !working) {
-			if (this.#view.queue.length > 0) this.#drainOne();
+			if (this.#view.queue.length > 0) this.#resumeQueue();
 			else this.#emit({ kind: "finished" });
 		}
 	}
@@ -436,7 +457,7 @@ export class SessionController {
 		if (this.#view.working || this.#view.mode !== "live" || this.#view.queue.length > 0) {
 			this.#set({ queue: [...this.#view.queue, { id: `q${nextQueueId++}`, text: trimmed }] });
 			await this.whenLive();
-			if (!this.#view.working) this.#drainOne();
+			this.#resumeQueue();
 			return;
 		}
 		await this.#submit(trimmed, "steer");
@@ -447,7 +468,8 @@ export class SessionController {
 		const item = this.#view.queue.find(entry => entry.id === id);
 		if (!item) return;
 		this.#set({ queue: this.#view.queue.filter(entry => entry.id !== id) });
-		await this.#submit(item.text, "steer");
+		if (slashDelivery && item.text.startsWith("/")) this.#deliverSlash(item);
+		else await this.#submit(item.text, "steer");
 	}
 
 	editQueued(id: string, text: string): void {
@@ -550,7 +572,69 @@ export class SessionController {
 		const [next, ...rest] = this.#view.queue;
 		if (!next) return;
 		this.#set({ queue: rest });
-		void this.#submit(next.text, "steer");
+		if (slashDelivery && next.text.startsWith("/")) this.#deliverSlash(next);
+		else void this.#submit(next.text, "steer");
+	}
+
+	/**
+	 * Hand a queued slash line to `slashDelivery`. A command that starts no turn never brings a
+	 * working→idle edge, so the queue continues when the delivery is done.
+	 */
+	#deliverSlash(item: QueuedMessage): void {
+		if (!slashDelivery) return;
+		this.#slashDeliveries++;
+		slashDelivery(this, item.text).then(
+			() => {
+				this.#slashDeliveries--;
+				this.#resumeQueue();
+			},
+			() => {
+				this.#slashDeliveries--;
+				// Not typed: keep it first in line. A hold (omp's screen) or the next send or turn end brings it back.
+				if (!this.#disposed) this.#set({ queue: [item, ...this.#view.queue] });
+			},
+		);
+	}
+
+	/**
+	 * Keep the queue from draining until `until` settles, because omp shows a screen of its own (a typed
+	 * command opened it, or a queued one found it open) and anything typed now would land in it. The
+	 * queue continues once the last hold ends and the chat is idle.
+	 */
+	holdQueue(until: Promise<unknown>): void {
+		this.#queueHolds++;
+		void until
+			.catch(() => undefined)
+			.then(() => {
+				this.#queueHolds--;
+				this.#resumeQueue();
+			});
+	}
+
+	/**
+	 * The one place the queue moves on its own: after a turn ends, a send, a slash delivery or a hold.
+	 * Nothing drains while omp works, a slash delivery is still in flight or a hold stands, so no item is
+	 * sent twice; with omp's full-screen menu open it holds until the menu closes instead.
+	 */
+	#resumeQueue(): void {
+		const view = this.#view;
+		if (this.#disposed || view.queue.length === 0 || view.mode !== "live" || view.working) return;
+		if (this.#slashDeliveries > 0 || this.#queueHolds > 0) return;
+		if ((view.host?.tui?.overlays ?? 0) === 0) {
+			this.#drainOne();
+			return;
+		}
+		if (this.#overlayHold) return;
+		this.#overlayHold = true;
+		const { promise, resolve } = Promise.withResolvers<void>();
+		const unsubscribe = this.subscribe(() => {
+			const next = this.#view;
+			if ((next.host?.tui?.overlays ?? 0) > 0 && next.mode !== "exited") return;
+			unsubscribe();
+			this.#overlayHold = false;
+			resolve();
+		});
+		this.holdQueue(promise);
 	}
 
 	#set(patch: Partial<SessionView>): void {

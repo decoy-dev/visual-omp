@@ -2,7 +2,7 @@ import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { HostState } from "@shared/ipc";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { GuestSnapshot } from "../collab/lib/client";
-import { liveEntries, liveGuest, SessionController } from "./session";
+import { liveEntries, liveGuest, SessionController, setSlashDelivery } from "./session";
 
 // vi.mock is hoisted above the imports, so the controller under test builds these fakes.
 const fakes = vi.hoisted(() => {
@@ -147,5 +147,95 @@ describe("SessionController working start", () => {
 		fakes.guests[0]?.emit("live", [u1, a1, u2], false);
 		expect(session.getSnapshot().workingSince).toBeNull();
 		vi.restoreAllMocks();
+	});
+});
+
+describe("SessionController queue around omp's own screens", () => {
+	const tui = (overlays: number) => ({ overlays, focused: "vw", altScreen: false, overlayKinds: [] });
+	/** Let promise callbacks settle (deliveries, holds, whenLive); no timers involved. */
+	const flush = async () => {
+		for (let i = 0; i < 20; i++) await Promise.resolve();
+	};
+	const queued = (session: SessionController) => session.getSnapshot().queue.map(item => item.text);
+	/** Slash deliveries in order; each stays in flight until its `done` is called. */
+	function fakeDelivery() {
+		const calls: { line: string; done: () => void }[] = [];
+		setSlashDelivery((_session, line) => {
+			const { promise, resolve } = Promise.withResolvers<void>();
+			calls.push({ line, done: resolve });
+			return promise;
+		});
+		return calls;
+	}
+	/** A live chat in the middle of a turn. */
+	function working(tabId: string) {
+		const session = new SessionController({ tabId, projectPath: "/p", sessionFile: null });
+		session.attach(host({ link: "L1", tui: tui(0) }));
+		fakes.guests[0]?.emit("live", [u1], true);
+		return session;
+	}
+
+	it("holds a queued command while omp's full-screen report is open at turn end, then sends it once the report closes", async () => {
+		const calls = fakeDelivery();
+		const session = working("q1");
+		await session.send("/fast status");
+		// A command sent now opened a full-screen report; the turn ends behind it.
+		sendHost({ link: "L1", tui: tui(1) });
+		fakes.guests[0]?.emit("live", [u1, a1], false);
+		await flush();
+		expect(calls).toEqual([]);
+		expect(queued(session)).toEqual(["/fast status"]);
+		sendHost({ link: "L1", tui: tui(0) });
+		await flush();
+		expect(calls.map(call => call.line)).toEqual(["/fast status"]);
+		expect(queued(session)).toEqual([]);
+	});
+
+	it("drains once when a slash delivery and a screen hold both end", async () => {
+		const calls = fakeDelivery();
+		const session = working("q2");
+		await session.send("/a");
+		await session.send("/b");
+		await session.send("/c");
+		fakes.guests[0]?.emit("live", [u1, a1], false);
+		await flush();
+		expect(calls.map(call => call.line)).toEqual(["/a"]);
+		// "/a" opened omp's own screen: its watch holds the queue until the editor is back.
+		const screen = Promise.withResolvers<void>();
+		session.holdQueue(screen.promise);
+		calls[0]?.done();
+		await flush();
+		expect(calls.map(call => call.line)).toEqual(["/a"]);
+		screen.resolve();
+		await flush();
+		expect(calls.map(call => call.line)).toEqual(["/a", "/b"]);
+		expect(queued(session)).toEqual(["/c"]);
+	});
+
+	it("puts back a command that found omp's screen open and sends it when the screen closes", async () => {
+		const gate = Promise.withResolvers<void>();
+		const lines: string[] = [];
+		setSlashDelivery(async (session, line) => {
+			lines.push(line);
+			if (lines.length === 1) {
+				session.holdQueue(gate.promise);
+				throw new Error("busy");
+			}
+		});
+		const session = working("q3");
+		await session.send("/a");
+		fakes.guests[0]?.emit("live", [u1, a1], false);
+		await flush();
+		expect(lines).toEqual(["/a"]);
+		expect(queued(session)).toEqual(["/a"]);
+		// Nothing else drains it meanwhile: a turn ending behind the screen leaves it queued.
+		fakes.guests[0]?.emit("live", [u1, a1], true);
+		fakes.guests[0]?.emit("live", [u1, a1, u2], false);
+		await flush();
+		expect(lines).toEqual(["/a"]);
+		gate.resolve();
+		await flush();
+		expect(lines).toEqual(["/a", "/a"]);
+		expect(queued(session)).toEqual([]);
 	});
 });

@@ -52,9 +52,18 @@ Each SessionHost:
 4. The renderer's guest client joins the room and exposes a live snapshot (header, entries,
    streaming message, active tools, subagent progress, model/thinking/context state, pending
    `select`/`editor` UI requests) through `useSyncExternalStore`.
-5. **All user input is typed into the real TUI** (bracketed paste + Enter), so every omp feature,
-   slash command, `!`/`$` prefix and queue behaviour works exactly as in a terminal. The guest
-   channel is used for UI-request answers, abort and subagent commands.
+5. **User input is typed into the real TUI** (bracketed paste + Enter), so prompts, `!`/`$`
+   prefixes, queue behaviour and the slash commands the app passes through behave as they do in
+   a terminal. The guest channel is used for UI-request answers, abort and subagent commands. Slash lines first go
+   through `routeSlash` (`session-tools/slash.ts`), which opens the app's own screen for commands
+   it covers and refuses the few that would break the hosted session (`/collab`, `/move`, `/wt`).
+   The rest go through `sendSlashCommand` (`session-tools/typed.ts`), which types the line and
+   turns what omp prints above its editor into a chat result row. The composer's slash menu lists
+   omp's `get_available_commands` (a short-lived `omp --mode rpc` in the project folder, cached
+   per folder) merged with the builtin catalog in `src/main/services/omp-builtin-commands.ts`.
+   omp's generic dialogs are local to its TUI, so `OmpDialogCard` reads them from the painted
+   screen and answers with keys; it and the Plan Review card register as native overlays so the
+   terminal sheet stays closed for them. `docs/COMMANDS.md` lists every command's handling.
 6. `/restart`, `/new`, `/resume`, branching and forking start a new collab room (new generation);
    SessionHost re-resolves the link and the renderer reconnects.
 

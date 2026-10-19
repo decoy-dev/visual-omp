@@ -14,6 +14,7 @@ import { openInFiles } from "../../features/panes/files-store";
 import { useHomeDir } from "../../features/projects/folders/FolderBrowser";
 import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
+import { type CommandResultRecord, dismissCommandResult, placeResults, roomKey, useCommandResults } from "../../features/session-tools/results";
 import { liveGuest, type SessionController, type SessionView } from "../../state/session";
 import { useApp } from "../../state/app";
 import { copyCode, StreamingMarkdown } from "../../transcript/Markdown";
@@ -26,6 +27,7 @@ import { ReplyAnnouncer } from "./ReplyAnnouncer";
 import { helperRunsSummary, TaskRuns, taskRowContextEqual, taskRuns } from "../../tool-render/tools/task";
 import { TodoBoard, TodoChangeRow } from "../../tool-render/tools/todo";
 import { detailsRecord, isRecord } from "../../tool-render/util";
+import { CommandResultRow } from "./CommandResultRow";
 import { NoticeRow } from "./NoticeRow";
 import { noticeIsStep, noticeVisible, parseNotice } from "./notices";
 import { ToolCard } from "./ToolCard";
@@ -617,6 +619,13 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const tailStart = Math.max(0, entries.length - WINDOW);
 	const start = pinnedStart === null ? tailStart : Math.min(pinnedStart, tailStart);
 	const visible = useMemo(() => entries.slice(start), [entries, start]);
+	// What omp printed for typed slash commands, each after the entry that was last on screen when it was typed.
+	const commandResults = useCommandResults(session);
+	const room = roomKey(view);
+	const placedResults = useMemo(
+		() => placeResults(entries.map(entry => entry.id), start, commandResults, room),
+		[entries, start, commandResults, room],
+	);
 	const results = useMemo(() => {
 		const map = new Map<string, ToolResultMessage>();
 		for (const entry of visible) if (entry.type === "message" && entry.message.role === "toolResult") map.set(entry.message.toolCallId, entry.message);
@@ -717,7 +726,15 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const hasMessages = entries.some(
 		entry => (entry.type === "message" && (entry.message.role === "user" || entry.message.role === "assistant")) || entry.type === "custom_message",
 	);
-	const empty = !hasMessages && stream === null && !view.working && !uiRequest && (view.mode === "live" || (view.mode === "starting" && !view.history));
+	const empty =
+		!hasMessages &&
+		stream === null &&
+		!view.working &&
+		!uiRequest &&
+		placedResults.top.length === 0 &&
+		placedResults.after.size === 0 &&
+		placedResults.end.length === 0 &&
+		(view.mode === "live" || (view.mode === "starting" && !view.history));
 
 	// Rows that arrive while the chat is open rise in. History (first render, a tab switch, an async load, an
 	// earlier window mounting above) and a streamed reply turning into its saved entry stay at rest.
@@ -809,10 +826,26 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		);
 		run = null;
 	};
+	// A result rises in only when it was just recorded, not when the chat remounts.
+	const resultRows = (list: readonly CommandResultRecord[] | undefined) =>
+		(list ?? []).map(result => (
+			<Rise key={`result:${result.id}`} data-row play={Date.now() - result.createdAt < 1000} distance={6} tempo="snappy">
+				<CommandResultRow result={result} onDismiss={() => dismissCommandResult(session, result.id)} />
+			</Rise>
+		));
+	const pushResults = (list: readonly CommandResultRecord[] | undefined) => {
+		if (!list?.length) return;
+		endRun();
+		rows.push(...resultRows(list));
+		previousAssistant = false;
+	};
 	visible.forEach((entry, index) => {
 		const isUser = (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
 		if (isUser) seenUser = true;
-		if (!rowShown(entry, mode, seenUser)) return;
+		if (!rowShown(entry, mode, seenUser)) {
+			pushResults(placedResults.after.get(entry.id));
+			return;
+		}
 		const isAssistant = entry.type === "message" && entry.message.role === "assistant";
 		const continuesTurn = isAssistant && previousAssistant;
 		previousAssistant = isAssistant;
@@ -849,7 +882,9 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				</Rise>,
 			);
 		}
+		pushResults(placedResults.after.get(entry.id));
 	});
+	pushResults(placedResults.end);
 	endRun();
 
 	return (
@@ -883,6 +918,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 										{t("showEarlier", { count: start })}
 									</Button>
 								)}
+								{resultRows(placedResults.top)}
 								{rows}
 								{stream && (
 									<Rise

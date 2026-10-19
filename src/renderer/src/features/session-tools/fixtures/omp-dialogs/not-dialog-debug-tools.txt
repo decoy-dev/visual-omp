@@ -1,0 +1,18 @@
+╭─ /cleanse ───────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│ No supported checker with an available executable was found.                                                         │
+│                                                                                                                      │
+│ ⚠ No runnable checker · ⎋ dismiss                                                                                    │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+╭─ Debug Tools ────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│ ❯ Open: artifact folder           Open session artifacts in file manager                                           █ │
+│   Report: performance issue       Profile CPU, reproduce, then bundle                                              █ │
+│   Profile: work scheduling        Open flamegraph of last 30s                                                      █ │
+│   Report: dump session            Create report bundle immediately                                                 │ │
+│   Report: memory issue            Memory statistics + bundle                                                       │ │
+│   View: recent logs               Show last 50 log entries                                                         │ │
+│   View: system info               Show environment details                                                         │ │
+│   Type to search                                                                                                     │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

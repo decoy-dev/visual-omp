@@ -60,7 +60,7 @@ export function parseStatusLine(lines: readonly string[]): StatusLine | null {
 }
 
 /** Transcript lines above the editor (where omp prints command feedback). */
-function messageLines(lines: readonly string[]): string[] {
+export function messageLines(lines: readonly string[]): string[] {
 	const editorTop = lines.findLastIndex(line => /^\s*╭─/.test(line) && line.includes("⬢"));
 	return (editorTop >= 0 ? lines.slice(0, editorTop) : [...lines]).map(line => line.trimEnd()).filter(line => line.trim() !== "");
 }

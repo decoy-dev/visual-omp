@@ -43,6 +43,36 @@
 		"loading": "Loading project files…",
 		"empty": "No files match"
 	},
+	"slash": {
+		"header": "omp commands",
+		"label": "Slash commands",
+		"subcommands": "Options for /{{name}}",
+		"usage": "Usage: /{{name}} {{hint}}",
+		"aliases": "also {{list}}",
+		"loading": "Loading commands…",
+		"empty": "No command matches",
+		"source": {
+			"skill": "Skill",
+			"extension": "Extension",
+			"custom": "Custom command",
+			"mcp_prompt": "MCP prompt",
+			"file": "Command file"
+		},
+		"guard": {
+			"notSent": "{{command}} wasn't sent to omp",
+			"collab": "visual-omp hosts this chat's live room, so changing the room from omp would disconnect the app from the chat. Invite people from Share instead.",
+			"collabAction": "Open live invite",
+			"join": "Joining another room would replace this chat with someone else's session, and visual-omp can't open another person's chat as a guest yet.",
+			"move": "omp would move this session to another folder while the chat is open here, which visual-omp can't follow. Start a chat in the other folder instead.",
+			"moveAction": "Choose a folder",
+			"worktree": "omp would move this session into a new worktree while the chat is open here, which visual-omp can't follow. A worktree created from visual-omp opens in its own chat.",
+			"worktreeAction": "Create a worktree",
+			"forkTerminal": "omp opens that fork in a terminal multiplexer pane, window or tab, and visual-omp has none. A plain fork opens the copy in a new tab here.",
+			"forkTerminalAction": "Fork in a new tab",
+			"unsaved": "This chat isn't saved yet",
+			"unsavedBody": "omp hasn't written a session file for it, so there's nothing to delete."
+		}
+	},
 	"question": {
 		"chip": "Question waiting",
 		"hint": "omp needs your answer to continue"

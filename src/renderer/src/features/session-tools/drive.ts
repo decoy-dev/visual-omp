@@ -6,6 +6,7 @@
 import { toast } from "@/ui";
 import { i18n } from "../../i18n";
 import type { SessionController } from "../../state/session";
+import { outputTone } from "./results";
 import { newOutput, parseStatusLine } from "./screen";
 
 const POLL_MS = 120;
@@ -92,7 +93,7 @@ export async function runCommand(session: SessionController, line: string, optio
 export function reportOutput(output: readonly string[], fallback?: string): void {
 	const message = output.at(-1) ?? fallback;
 	if (!message) return;
-	const tone = /^(error|failed)/i.test(message) ? "err" : /^warning/i.test(message) ? "warn" : "info";
+	const tone = outputTone(message);
 	toast({ tone, message: message.replace(/^(warning|error):\s*/i, "") });
 }
 

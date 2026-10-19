@@ -10,6 +10,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import { type CommandSpec, useCommands } from "../../registry/commands";
+import { routeSlash } from "../session-tools/slash";
+import { sendSlashCommand } from "../session-tools/typed";
 import { shortAgo } from "../../shell/hooks";
 import { controllerFor, focusedController, focusedTabId, useApp } from "../../state/app";
 import { cn, toast } from "../../ui";
@@ -76,7 +78,10 @@ function useProjectFiles(projectPath: string | null, enabled: boolean): readonly
 	return files;
 }
 
-/** Send the palette text to the focused chat, or start a chat in the current project for it. */
+/**
+ * Send the palette text to the focused chat, or start a chat in the current project for it. A slash
+ * command goes the composer's way: the app's own UI when there is one, else omp runs it.
+ */
 async function askOmp(text: string): Promise<void> {
 	let controller = focusedController();
 	if (!controller) {
@@ -86,7 +91,9 @@ async function askOmp(text: string): Promise<void> {
 		}
 		controller = controllerFor(await useApp.getState().newChat());
 	}
-	await controller?.send(text);
+	if (!controller) return;
+	if (!text.startsWith("/")) await controller.send(text);
+	else if (!(await routeSlash(controller, text))) await sendSlashCommand(controller, text);
 }
 
 async function mentionFile(path: string, projectPath: string): Promise<void> {

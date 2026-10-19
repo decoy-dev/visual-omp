@@ -8,6 +8,12 @@
   "errors": {
     "busy": "omp has a menu open. Close it in the terminal sheet, then try again."
   },
+  "commandResult": {
+    "aria": "What omp printed for {{command}}",
+    "dismiss": "Dismiss result",
+    "more": "Show all {{count}} lines",
+    "less": "Show fewer lines"
+  },
   "permission": {
     "title": "Permission level",
     "tooltip": "How much omp may do before it asks you.",
@@ -154,5 +160,26 @@
     "unconfirmed": "omp did not confirm the move. The original chat is unchanged.",
     "forkTimeout": "omp did not finish switching sessions in time.",
     "openTree": "Open session tree"
+  },
+  "ompDialog": {
+    "aria": "Question from omp",
+    "choose": "Choose option",
+    "send": "Send answer",
+    "cancel": "Cancel",
+    "placeholder": "Type your answer…",
+    "more_one": "omp lists {{count}} more option in its terminal.",
+    "more_other": "omp lists {{count}} more options in its terminal.",
+    "filtered_one": "omp is filtering by \"{{query}}\", so {{count}} option is hidden.",
+    "filtered_other": "omp is filtering by \"{{query}}\", so {{count}} options are hidden.",
+    "openTerminal": "Open omp terminal",
+    "errors": {
+      "closed": "omp closed this question before the app could answer it.",
+      "missing": "omp no longer offers that option.",
+      "unreachable": "The app could not move omp's highlight to that option.",
+      "notAccepted": "omp did not accept that choice. The option may be unavailable.",
+      "notCancelled": "omp did not close the question.",
+      "clear": "The app could not clear the text already in omp's field.",
+      "typed": "omp did not receive the text, so nothing was sent."
+    }
   }
 }

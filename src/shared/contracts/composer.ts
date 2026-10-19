@@ -20,6 +20,30 @@ export interface CustomCommand {
 	filePath: string;
 }
 
+/** Where omp got a slash command (omp's `get_available_commands` source names). */
+export type SlashCommandSource = "builtin" | "skill" | "extension" | "custom" | "mcp_prompt" | "file";
+
+/** One slash command omp accepts in a project, for the composer's slash menu. */
+export interface SlashCommandInfo {
+	/** Invocation name without the slash, e.g. "mcp", "skill:pdf", "review". */
+	name: string;
+	aliases: string[];
+	description: string | null;
+	/** Argument hint omp shows after the name, e.g. "[prompt]". */
+	hint: string | null;
+	subcommands: { name: string; description: string | null; usage: string | null }[];
+	source: SlashCommandSource;
+}
+
+export interface SlashCommandListing {
+	commands: SlashCommandInfo[];
+	/**
+	 * omp answered. False when it couldn't be asked: `commands` then holds only the builtins, without
+	 * the project's skills, custom, extension, MCP prompt and file commands.
+	 */
+	complete: boolean;
+}
+
 /** Text in the hidden omp TUI's prompt editor (where omp's own dictation writes). */
 export interface TuiEditorText {
 	text: string;
@@ -56,5 +80,12 @@ declare module "../ipc" {
 		"composer:voiceKey": { args: []; result: { key: string; changed: boolean } };
 		/** Read the prompt editor of a chat's hidden TUI (debug-socket state; painted screen for long text). */
 		"composer:tuiEditorText": { args: [hostId: string]; result: TuiEditorText | null };
+		/**
+		 * Every slash command omp accepts in `cwd`: omp's `get_available_commands` over a short-lived RPC
+		 * process, plus the builtins that exist only in omp's terminal UI. When omp can't be asked, the
+		 * builtins with `complete: false`. omp's answer is kept per folder until skills, plugins, MCP
+		 * servers, providers or config change; `fresh` asks omp again (after a typed `/mcp` or `/skills`).
+		 */
+		"composer:slashCommands": { args: [cwd: string, fresh?: boolean]; result: SlashCommandListing };
 	}
 }

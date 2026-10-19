@@ -29,6 +29,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { routeSlash } from "../../features/session-tools/slash";
+import { sendSlashCommand } from "../../features/session-tools/typed";
 import { chatSlots } from "../../registry/slots";
 import type { SessionController } from "../../state/session";
 import { useApp } from "../../state/app";
@@ -56,6 +58,7 @@ import { MentionPicker, useProjectFiles } from "./MentionPicker";
 import { type LibraryTab, PromptLibrary } from "./PromptLibrary";
 import { applyMode, deliver } from "./send";
 import { QueueTray } from "./QueueTray";
+import { type SlashContext, type SlashItem, SlashMenu, slashAtCaret, slashOptions, useSlashCommands } from "./SlashMenu";
 import { QUICK_MODES } from "./tools";
 import { useVoiceRequests, VoiceTool } from "./VoiceTool";
 
@@ -197,12 +200,40 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const [activeMatch, setActiveMatch] = useState(0);
 	const [library, setLibrary] = useState<LibraryTab | null>(null);
 	const pickerId = useId();
+	const [slash, setSlash] = useState<SlashContext | null>(null);
+	const [slashActive, setSlashActive] = useState(0);
+	// Whether the arrows moved the slash selection since the menu last changed (see Enter below).
+	const [slashMoved, setSlashMoved] = useState(false);
+	// Esc closes the slash menu until the text changes again (DESIGN §3.6), by typing or otherwise.
+	const [slashClosed, setSlashClosed] = useState(false);
+	const [draftSeen, setDraftSeen] = useState(draft);
+	if (draftSeen !== draft) {
+		setDraftSeen(draft);
+		setSlashClosed(false);
+	}
+	const [slashSeen, setSlashSeen] = useState<SlashContext | null>(null);
+	if (slashSeen !== slash) {
+		setSlashSeen(slash);
+		setSlashActive(0);
+		setSlashMoved(false);
+	}
+	const slashId = useId();
 
 	const readOnly = view.readOnly;
 	const working = view.working;
 	const voiceOn = useApp(state => state.prefs?.voiceInput ?? false);
 	const files = useProjectFiles(projectPath, mention !== null);
 	const matches = useMemo(() => (mention && files ? fuzzyFiles(files, mention.query, 40) : null), [mention, files]);
+	const slashList = useSlashCommands(projectPath, slash !== null && !mode);
+	const slashMenu = useMemo(() => (slash && slashList ? slashOptions(slashList, slash) : null), [slash, slashList]);
+	// The command name always shows the menu (loading, matches or "no match"); after the name it shows
+	// only when there are subcommands to offer, or the argument hint before anything is typed.
+	const slashOpen =
+		slash !== null &&
+		!mode &&
+		!mention &&
+		!slashClosed &&
+		(slash.kind === "name" || (slashMenu !== null && (slashMenu.items.length > 0 || (slash.token === "" && slashMenu.command?.hint != null))));
 
 	const setDraft = useCallback((text: string) => useComposerDrafts.getState().setDraft(tabId, text), [tabId]);
 
@@ -210,6 +241,8 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		const next = mentionAtCaret(text, caret);
 		setMention(current => (current?.start === next?.start && current?.query === next?.query ? current : next));
 		setActiveMatch(0);
+		const nextSlash = slashAtCaret(text, caret);
+		setSlash(current => (JSON.stringify(current) === JSON.stringify(nextSlash) ? current : nextSlash));
 	}, []);
 
 	/** Replace `[from, to)` of the draft and place the caret after the inserted text. */
@@ -284,7 +317,13 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		store.clearAttachments(tabId);
 		store.setMode(tabId, null);
 		setMention(null);
-		deliver(session, text, images, now).catch((error: unknown) => {
+		setSlash(null);
+		// A slash command without attachments opens the app's own UI when there is one, else omp runs it.
+		const sending =
+			!mode && images.length === 0 && text.startsWith("/")
+				? routeSlash(session, text).then(handled => (handled ? undefined : sendSlashCommand(session, text, { now })))
+				: deliver(session, text, images, now);
+		sending.catch((error: unknown) => {
 			// Put the message back so nothing typed is lost.
 			const restore = useComposerDrafts.getState();
 			if (!(restore.drafts[tabId] ?? "")) restore.setDraft(tabId, draft);
@@ -300,6 +339,10 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		const caret = el ? el.selectionStart : mention.start + mention.query.length + 1;
 		setMention(null);
 		replaceRange(mention.start, caret, `@${path} `);
+	};
+
+	const pickSlash = (item: SlashItem) => {
+		if (slash) replaceRange(slash.from, slash.to, item.insert);
 	};
 
 	const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -320,11 +363,34 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 				}
 			}
 		}
+		const slashItems = slashOpen ? (slashMenu?.items ?? []) : [];
+		if (slashItems.length > 0) {
+			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+				event.preventDefault();
+				const delta = event.key === "ArrowDown" ? 1 : -1;
+				setSlashActive(index => (index + delta + slashItems.length) % slashItems.length);
+				setSlashMoved(true);
+				return;
+			}
+			const item = slashItems[slashActive];
+			// Enter sends when the draft already holds the highlighted item, and after `/name ` until the
+			// arrows pick a subcommand, so a bare `/fork` or `/mcp` still sends with one Enter.
+			const sendsAsTyped = item?.typed || (slash?.kind === "args" && slash.token === "" && !slashMoved);
+			if (item && ((event.key === "Tab" && !event.shiftKey) || (event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !sendsAsTyped))) {
+				event.preventDefault();
+				pickSlash(item);
+				return;
+			}
+		}
 		if (event.key === "Escape") {
 			if (mention) {
 				event.preventDefault();
 				event.stopPropagation();
 				setMention(null);
+			} else if (slashOpen) {
+				event.preventDefault();
+				event.stopPropagation();
+				setSlashClosed(true);
 			} else if (working && !draft) {
 				event.preventDefault();
 				session.abort();
@@ -465,8 +531,10 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 				 * as the text grows.
 				 */}
 				<div className="relative flex flex-wrap items-end gap-1 p-2">
-					{mention && (
+					{mention ? (
 						<MentionPicker id={pickerId} matches={matches} active={activeMatch} onActive={setActiveMatch} onPick={pickMention} />
+					) : (
+						slashOpen && <SlashMenu id={slashId} options={slashMenu} active={slashActive} onActive={setSlashActive} onPick={pickSlash} />
 					)}
 					<Menu>
 						<Tooltip content={t("plus.tip")}>
@@ -575,16 +643,25 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 								placeholder={placeholder}
 								aria-label={t("label")}
 								role="combobox"
-								aria-expanded={mention !== null}
-								aria-controls={mention ? pickerId : undefined}
+								aria-expanded={mention !== null || slashOpen}
+								aria-controls={mention ? pickerId : slashOpen ? slashId : undefined}
 								aria-autocomplete="list"
-								aria-activedescendant={mention && matches?.length ? `${pickerId}-${activeMatch}` : undefined}
+								aria-activedescendant={
+									mention && matches?.length
+										? `${pickerId}-${activeMatch}`
+										: slashOpen && slashMenu?.items.length
+											? `${slashId}-${slashActive}`
+											: undefined
+								}
 								onChange={event => {
 									setDraft(event.target.value);
 									refreshMention(event.target.value, event.target.selectionStart);
 								}}
 								onSelect={event => refreshMention(event.currentTarget.value, event.currentTarget.selectionStart)}
-								onBlur={() => setMention(null)}
+								onBlur={() => {
+									setMention(null);
+									setSlash(null);
+								}}
 								onScroll={event => {
 									if (mirror.current) mirror.current.scrollTop = event.currentTarget.scrollTop;
 								}}

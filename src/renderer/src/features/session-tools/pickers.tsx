@@ -39,17 +39,29 @@ import { configuredThinking, setThinking, switchModel, thinkingChoices, useChatM
 import { type StatusLine, THINKING_LEVELS, type ThinkingLevel } from "./screen";
 import { useOmpScreen, useSessionView } from "./status";
 
-// ─── Open requests (menu accelerator ⌘⇧M → model picker) ───────────────────
+// ─── Open requests (⌘⇧M and `/switch` → model picker, `/effort` → thinking picker) ───
 
+/**
+ * One pending request per picker. The picker that opens for it clears it, so a composer that mounts
+ * again later (tab switch, split view) does not open its picker a second time.
+ */
 interface PickerRequests {
-	/** Tab whose composer model picker should open, bumped per request. */
-	model: { tabId: string; seq: number } | null;
+	/** Tab whose composer model picker should open. */
+	model: { tabId: string } | null;
+	/** Tab whose composer thinking picker should open. */
+	thinking: { tabId: string } | null;
 	openModel(tabId: string): void;
+	openThinking(tabId: string): void;
+	/** The request was answered (opened, or dropped for a read-only chat). */
+	handled(picker: "model" | "thinking"): void;
 }
 
 export const usePickerRequests = create<PickerRequests>()(set => ({
 	model: null,
-	openModel: tabId => set(state => ({ model: { tabId, seq: (state.model?.seq ?? 0) + 1 } })),
+	thinking: null,
+	openModel: tabId => set({ model: { tabId } }),
+	openThinking: tabId => set({ thinking: { tabId } }),
+	handled: picker => set({ [picker]: null }),
 }));
 
 /** Ghost 28px-high control shared by the composer's labelled pickers (each adds its own height rule). */
@@ -352,8 +364,10 @@ export function ModelButton({ session }: ChatSlotProps) {
 	if (view.readOnly && open) setOpen(false);
 	const request = usePickerRequests(state => state.model);
 	useEffect(() => {
+		if (request?.tabId !== session.tabId) return;
+		usePickerRequests.getState().handled("model");
 		// A read-only chat can't switch models; the request is dropped, not replayed once replies are back on.
-		if (request?.tabId === session.tabId && !session.getSnapshot().readOnly) setOpen(true);
+		if (!session.getSnapshot().readOnly) setOpen(true);
 	}, [request, session]);
 	const name = model?.name ?? t("model.none");
 	return (
@@ -407,6 +421,17 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 	if (readOnly && open) setOpen(false);
 	const unsupported = info !== undefined && choices.length === 0;
 	const disabled = readOnly || unsupported;
+	const request = usePickerRequests(state => state.thinking);
+	const unsupportedNow = useRef(unsupported);
+	unsupportedNow.current = unsupported;
+	useEffect(() => {
+		if (request?.tabId !== session.tabId) return;
+		usePickerRequests.getState().handled("thinking");
+		// Like the model picker, a request for a read-only chat is dropped.
+		if (session.getSnapshot().readOnly) return;
+		if (unsupportedNow.current) toast({ message: t("thinking.unsupported") });
+		else setOpen(true);
+	}, [request, session, t]);
 	const pick = async (target: ThinkingLevel) => {
 		if (busy) return;
 		if (target === level) {

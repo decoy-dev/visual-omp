@@ -1,0 +1,12 @@
+
+╭─ Consult this session with ──────────────────────────────────────────────────────────────────────────────────────────╮
+│                                                                                                                      │
+│                                                                                                                      │
+│  ❯ Use saved model                                                                                                   │
+│      Use the active role or default model saved with this session                                                    │
+│    Choose another model                                                                                              │
+│      Select a one-off model for this consultation                                                                    │
+│                                                                                                                      │
+│ ↑/↓ navigate  ⏎ select  ⎋ cancel                                                                                     │
+│                                                                                                                      │
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯

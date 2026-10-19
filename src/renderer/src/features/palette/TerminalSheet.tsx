@@ -80,7 +80,10 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 		() => () => {
 			const size = previousSize.current;
 			if (size) void window.vomp.invoke("host:resize", size.hostId, size.cols, size.rows).catch(() => undefined);
-			if (autoOpened.tabId === tabId) autoOpened.tabId = null;
+			// Forget the auto-open only when the sheet closed: a StrictMode remount runs this cleanup with the sheet still open.
+			queueMicrotask(() => {
+				if (autoOpened.tabId === tabId && useApp.getState().terminalTabId !== tabId) autoOpened.tabId = null;
+			});
 		},
 		[tabId],
 	);

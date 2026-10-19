@@ -34,8 +34,6 @@ import {
 	ContextMenuItem,
 	ContextMenuSeparator,
 	ContextMenuTrigger,
-	Dialog,
-	DialogContent,
 	EmptyState,
 	Expand,
 	IconButton,
@@ -52,7 +50,6 @@ import {
 	duration,
 	ease,
 	Mark,
-	toast,
 	useMotionReduced,
 	usePageNavSlot,
 	Wordmark,
@@ -60,10 +57,27 @@ import {
 import { ChatStatusMark } from "./ChatStatusMark";
 import { chatStatus, chatTitle, shortAgo, useModifierHeld, useNow, useSessionView } from "./hooks";
 import { archivedChats, type CurrentChat, currentChats, type SidebarChat, type SidebarGroup, type SidebarInput, sidebarGroups } from "./sidebarRows";
+import { TrashChatDialog } from "./trash";
 
 const MAC = window.vomp.platform === "darwin";
 /** Display prefix for ⌘/Ctrl shortcuts. */
 const MOD = MAC ? "⌘" : "Ctrl+";
+
+/** Show the sidebar if it is hidden and put the caret in its chat search (a typed `/resume`). */
+export function focusChatSearch(): void {
+	if (!useApp.getState().sidebarOpen) useApp.getState().toggleSidebar();
+	// The search field mounts with the sidebar, so look for it for up to a second.
+	const until = performance.now() + 1000;
+	const attempt = () => {
+		const input = document.querySelector<HTMLInputElement>(`#${SIDEBAR_ID} input[data-chat-search]`);
+		if (input) {
+			input.focus();
+			input.select();
+		} else if (performance.now() < until) requestAnimationFrame(attempt);
+	};
+	requestAnimationFrame(attempt);
+}
+
 type SidebarState = Pick<AppState, "projects" | "sessionsByProject" | "tabs" | "prefs" | "expandedProjects" | "expandedChatLists" | "search">;
 
 function sidebarInput(state: SidebarState): SidebarInput {
@@ -151,17 +165,6 @@ function ChatRow(props: ChatRowProps): ReactNode {
 		if (!prefs || !session) return;
 		const list = session.archived ? prefs.archivedSessions.filter(id => id !== session.id) : [...prefs.archivedSessions, session.id];
 		void useApp.getState().setPrefs({ archivedSessions: list }).then(() => useApp.getState().loadSessions(session.cwd));
-	};
-	const remove = async () => {
-		setConfirmDelete(false);
-		if (!session) return;
-		if (tabId) await useApp.getState().closeTab(tabId);
-		try {
-			await window.vomp.invoke("sessions:trash", session.file);
-			await useApp.getState().loadSessions(session.cwd);
-		} catch (error) {
-			toast({ tone: "err", message: error instanceof Error ? error.message : String(error) });
-		}
 	};
 
 	const items = (Item: typeof MenuItem | typeof ContextMenuItem, Separator: typeof MenuSeparator | typeof ContextMenuSeparator) => (
@@ -278,24 +281,12 @@ function ChatRow(props: ChatRowProps): ReactNode {
 				</ContextMenuTrigger>
 				<ContextMenuContent>{items(ContextMenuItem, ContextMenuSeparator)}</ContextMenuContent>
 			</ContextMenu>
-			<Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-				<DialogContent
-					size="sm"
-					destructive
-					title={t("deleteChat.title", { title })}
-					description={t("deleteChat.body", { title })}
-					footer={
-						<>
-							<Button variant="secondary" onClick={() => setConfirmDelete(false)}>
-								{t("deleteChat.cancel")}
-							</Button>
-							<Button variant="danger" onClick={() => void remove()}>
-								{t("deleteChat.confirm")}
-							</Button>
-						</>
-					}
-				/>
-			</Dialog>
+			<TrashChatDialog
+				open={confirmDelete}
+				onOpenChange={setConfirmDelete}
+				title={title}
+				target={session ? { file: session.file, cwd: session.cwd, tabId } : null}
+			/>
 		</>
 	);
 }
@@ -600,6 +591,7 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 								onValueChange={value => useApp.getState().setSearch(value)}
 								placeholder={t("sidebar.search")}
 								aria-label={t("sidebar.search")}
+								data-chat-search
 							/>
 						</div>
 						<div className="mx-3 h-px bg-border" />
