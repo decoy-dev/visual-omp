@@ -29,12 +29,13 @@ import {
 	Tooltip,
 } from "@/ui";
 import { focusRing, menuCheckSlot, menuItem, menuItemActive, menuLabel, menuSeparator } from "@/ui/styles";
+import { useDisplayedEntries } from "../../chat/branch";
 import { getCommand } from "../../registry/commands";
 import type { ChatSlotProps } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { autoAcknowledged, setApprovalMode, useApprovalMode } from "./approval";
-import { setThinking, switchModel, thinkingChoices, useChatModels } from "./model";
+import { configuredThinking, setThinking, switchModel, thinkingChoices, useChatModels } from "./model";
 import { type StatusLine, THINKING_LEVELS, type ThinkingLevel } from "./screen";
 import { useOmpScreen, useSessionView } from "./status";
 
@@ -379,12 +380,14 @@ export function ModelButton({ session }: ChatSlotProps) {
 
 // ─── Thinking ──────────────────────────────────────────────────────────────
 
-/** Configured thinking level: omp's status line (keeps `auto`), else the effective level omp reports. */
+/** Configured thinking level: Auto stays Auto (see `configuredThinking`), else the painted or effective level. */
 function useThinking(session: SessionController): ThinkingLevel | null {
 	const status = useOmpScreen(session).status;
-	const effective = useSessionView(session).guest?.state?.thinkingLevel;
-	if (status?.thinking) return status.thinking;
-	return THINKING_LEVELS.find(level => level === effective) ?? null;
+	const view = useSessionView(session);
+	const entries = useDisplayedEntries(view);
+	const configured = configuredThinking(view.guest?.autoThinking, entries, status?.thinking ?? null);
+	const effective = view.guest?.state?.thinkingLevel;
+	return configured ?? THINKING_LEVELS.find(level => level === effective) ?? null;
 }
 
 function useCurrentModelInfo(session: SessionController): ModelInfo | undefined {

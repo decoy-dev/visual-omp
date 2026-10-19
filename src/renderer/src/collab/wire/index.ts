@@ -156,6 +156,8 @@ export interface ModelChangeEntry extends EntryBase {
 export interface ThinkingLevelChangeEntry extends EntryBase {
 	type: "thinking_level_change";
 	thinkingLevel?: string | null;
+	/** The selector the user configured (`"auto"` in Auto mode, else the level); absent before omp recorded it. */
+	configured?: string | null;
 }
 
 export type SessionEntry =
@@ -195,7 +197,7 @@ export type AgentEvent =
 	| { type: "auto_compaction_end"; aborted: boolean; willRetry: boolean; errorMessage?: string; skipped?: boolean }
 	| { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
 	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string }
-	| { type: "thinking_level_changed"; thinkingLevel?: string };
+	| { type: "thinking_level_changed"; thinkingLevel?: string; configured?: string; resolved?: string };
 
 // ═══════════════════════════════════════════════════════════════════════════
 // State & agents

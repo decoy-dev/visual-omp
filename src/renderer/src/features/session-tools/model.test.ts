@@ -1,8 +1,9 @@
 import type { ModelInfo } from "@shared/contracts/config";
-import type { WireModel } from "@oh-my-pi/pi-wire";
+import type { SessionEntry, WireModel } from "@oh-my-pi/pi-wire";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { displayedEntries } from "../../chat/branch";
 import type { SessionController } from "../../state/session";
-import { switchModel } from "./model";
+import { configuredThinking, setThinking, switchModel } from "./model";
 
 // vi.hoisted runs before the imports: model.ts subscribes to `window.vomp` when it loads.
 const vomp = vi.hoisted(() => {
@@ -125,5 +126,71 @@ describe("switchModel", () => {
 		tokens = 250_000;
 		await expect(switchToSonnet()).resolves.toBe(false);
 		expect(toast).toHaveBeenCalledWith({ tone: "warn", message: expect.stringContaining("omp may be compacting it first") });
+	});
+});
+
+describe("configuredThinking", () => {
+	const change = (thinkingLevel: string, configured?: string) =>
+		({ type: "thinking_level_change", id: thinkingLevel, parentId: null, timestamp: "", thinkingLevel, configured }) as unknown as SessionEntry;
+
+	it("keeps Auto while omp paints the level Auto resolved", () => {
+		expect(configuredThinking(true, [], "high")).toBe("auto");
+		expect(configuredThinking(null, [change("high", "auto")], "high")).toBe("auto");
+	});
+
+	it("trusts omp's latest event over an older entry", () => {
+		expect(configuredThinking(false, [change("high", "auto")], "high")).toBe("high");
+		expect(configuredThinking(null, [change("high", "auto"), change("low", "low")], "low")).toBe("low");
+	});
+
+	it("falls back to the recorded level when nothing is painted", () => {
+		expect(configuredThinking(null, [change("medium")], null)).toBe("medium");
+		expect(configuredThinking(null, [], null)).toBeNull();
+	});
+
+	it("ignores Auto recorded on a branch the chat rewound away from", () => {
+		const at = (id: string, parentId: string | null, extra: object) => ({ id, parentId, timestamp: "", ...extra }) as unknown as SessionEntry;
+		const entries = [
+			at("a", null, { type: "message", message: { role: "user", content: "first" } }),
+			at("b", "a", { type: "thinking_level_change", thinkingLevel: "high", configured: "high" }),
+			at("c", "b", { type: "thinking_level_change", thinkingLevel: "low", configured: "auto" }),
+		];
+		const view = { guest: { phase: "live", entries }, displayLeaf: "b", history: null, carryover: null } as never;
+		expect(configuredThinking(null, displayedEntries(view), "high")).toBe("high");
+	});
+});
+
+describe("setThinking", () => {
+	const choices = ["off", "auto", "low", "medium", "high"] as const;
+	/** omp in Auto, which resolved `low` for the latest turn: the status line paints `low`. */
+	let selected: (typeof choices)[number];
+	let pressed: string[];
+	const paint = () => {
+		vomp.screen = [`╭── π ▶ ⬢ Sonnet 4.5 · ◕ ${selected === "auto" ? "low" : selected} ▶ proj ──╮`];
+	};
+	const autoChat = {
+		hostId: "h1",
+		whenLive: async () => undefined,
+		keys: async (keys: string) => {
+			pressed.push(keys);
+			const steps = keys.split(" ").length;
+			selected = choices[(choices.indexOf(selected) + steps) % choices.length] ?? selected;
+			paint();
+		},
+		getSnapshot: () => ({ host: { tui: { overlays: 0 } }, guest: { autoThinking: selected === "auto", entries: [], state: {} } }),
+	} as unknown as SessionController;
+
+	beforeEach(() => {
+		selected = "auto";
+		pressed = [];
+		paint();
+	});
+
+	it("leaves Auto for the level Auto currently paints", async () => {
+		const result = setThinking(autoChat, "low", choices);
+		await vi.advanceTimersByTimeAsync(10_000);
+		await expect(result).resolves.toBe(true);
+		expect(pressed).toEqual(["S-tab"]);
+		expect(selected).toBe("low");
 	});
 });

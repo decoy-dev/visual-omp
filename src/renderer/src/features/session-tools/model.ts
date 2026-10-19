@@ -5,11 +5,14 @@
  *   TUI ignores its argument and opens the Model Hub, and `/model` over RPC would persist the default.
  * - Thinking: Shift+Tab cycles off → auto → the model's efforts → off (`cycleThinkingLevel`). Unlike
  *   `/switch model:level` it does not reset the provider session (prompt cache), so the app presses it
- *   until omp's status line shows the chosen level.
+ *   until omp shows the chosen level. In Auto, omp paints the level it resolved for the latest turn,
+ *   so Auto itself is read from the selector omp records in `thinking_level_change` entries.
  */
+import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { useEffect, useState } from "react";
 import type { ModelInfo } from "@shared/contracts/config";
 import { toast } from "@/ui";
+import { displayedEntries } from "../../chat/branch";
 import { i18n } from "../../i18n";
 import type { SessionController } from "../../state/session";
 import { OmpBusyError, press, readyEditor, reportFailure, waitForScreen } from "./drive";
@@ -46,6 +49,23 @@ export function useChatModels(cwd: string): { models: ModelInfo[] | null; error:
 export function thinkingChoices(model: ModelInfo | undefined): ThinkingLevel[] {
 	if (!model?.reasoning) return [];
 	return ["off", "auto", ...THINKING_LEVELS.filter(level => model.thinkingLevels.some(effort => effort === level))];
+}
+
+/**
+ * The thinking selector the user chose. omp paints the level Auto resolved for the latest turn, so
+ * Auto comes from omp's latest `thinking_level_changed` event (`autoThinking`), else from the latest
+ * `thinking_level_change` entry on this branch (`configured: "auto"`); otherwise the painted level,
+ * else the recorded one.
+ */
+export function configuredThinking(
+	autoThinking: boolean | null | undefined,
+	entries: readonly SessionEntry[],
+	painted: ThinkingLevel | null,
+): ThinkingLevel | null {
+	const change = entries.findLast(entry => entry.type === "thinking_level_change");
+	const recorded = change?.type === "thinking_level_change" ? (change.configured ?? change.thinkingLevel ?? null) : null;
+	if (autoThinking ?? recorded === "auto") return "auto";
+	return painted ?? THINKING_LEVELS.find(level => level === recorded) ?? null;
 }
 
 /** How long omp may take to report the new model before the picker warns. */
@@ -97,7 +117,11 @@ export async function switchModel(session: SessionController, model: ModelInfo):
 /** Set the thinking level by cycling Shift+Tab until the status line shows it. */
 export async function setThinking(session: SessionController, target: ThinkingLevel, choices: readonly ThinkingLevel[]): Promise<boolean> {
 	try {
-		let current = parseStatusLine(await readyEditor(session))?.thinking ?? null;
+		const read = (screen: readonly string[]) => {
+			const snapshot = session.getSnapshot();
+			return configuredThinking(snapshot.guest?.autoThinking, displayedEntries(snapshot), parseStatusLine(screen)?.thinking ?? null);
+		};
+		let current = read(await readyEditor(session));
 		if (current === null) throw new OmpBusyError();
 		// One jump by the computed distance, then single steps in case omp's list differs from ours.
 		const from = choices.indexOf(current);
@@ -108,10 +132,10 @@ export async function setThinking(session: SessionController, target: ThinkingLe
 			const before = current;
 			await press(session, Array.from({ length: steps }, () => "S-tab").join(" "));
 			const lines = await waitForScreen(session, screen => {
-				const level = parseStatusLine(screen)?.thinking;
-				return level !== undefined && level !== null && (level === target || level !== before);
+				const level = read(screen);
+				return level !== null && (level === target || level !== before);
 			}, 2500);
-			current = (lines && parseStatusLine(lines)?.thinking) ?? current;
+			current = (lines && read(lines)) ?? current;
 		}
 		void screenPoller(session).refresh();
 		return current === target;

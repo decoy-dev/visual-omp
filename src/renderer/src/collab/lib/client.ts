@@ -65,6 +65,8 @@ export interface GuestSnapshot {
 	uiRequest: CollabUiRequest | null;
 	/** Capped at 50, newest last. */
 	notices: readonly Notice[];
+	/** From omp's latest `thinking_level_changed` event: true in Auto, false for a fixed level, null before any. */
+	autoThinking: boolean | null;
 	/** Snapshot download progress between `welcome` and its final chunk, else null. */
 	loading: { received: number; total: number } | null;
 }
@@ -125,6 +127,7 @@ export class GuestClient {
 	#uiRequest: CollabUiRequest | null = null;
 	#uiRequestQueue: CollabUiRequest[] = [];
 	#notices: readonly Notice[] = [];
+	#autoThinking: boolean | null = null;
 	#snapshot: GuestSnapshot;
 	/**
 	 * Published entries array, cached across commits: rebuilt only when
@@ -320,6 +323,8 @@ export class GuestClient {
 				this.#lifecycle = new Map();
 				this.#working = frame.state.isStreaming;
 				this.#readOnly = frame.readOnly === true;
+				// The welcome's snapshot is authoritative again; later events set the flag anew.
+				this.#autoThinking = null;
 				this.#clearUiRequests();
 				this.#welcomed = true;
 				this.#clearWelcomeTimer();
@@ -517,8 +522,11 @@ export class GuestClient {
 					);
 				}
 				break;
+			case "thinking_level_changed":
+				this.#autoThinking = event.configured === "auto";
+				break;
 			default:
-				// turn_start/turn_end/thinking_level_changed/unknown — ignore
+				// turn_start/turn_end/unknown — ignore
 				break;
 		}
 	}
@@ -562,6 +570,7 @@ export class GuestClient {
 			readOnly: this.#readOnly,
 			uiRequest: this.#uiRequest,
 			notices: this.#notices,
+			autoThinking: this.#autoThinking,
 			loading: this.#pendingSnapshot && {
 				received: this.#pendingSnapshot.entries.length,
 				total: this.#pendingSnapshot.total,

@@ -10,9 +10,15 @@ import { liveEntries, type SessionView } from "../state/session";
 
 const NONE: readonly SessionEntry[] = [];
 
+/** The displayed branch for one snapshot (callers outside React render). */
+export function displayedEntries(view: SessionView | null | undefined): readonly SessionEntry[] {
+	const live = liveEntries(view);
+	return live ? activeBranch(live, view?.displayLeaf ?? null, savedParents(view?.history ?? null)) : (view?.history?.entries ?? NONE);
+}
+
 export function useDisplayedEntries(view: SessionView | null | undefined): readonly SessionEntry[] {
 	const live = liveEntries(view);
 	const leaf = view?.displayLeaf ?? null;
 	const history = view?.history ?? null;
-	return useMemo(() => (live ? activeBranch(live, leaf, savedParents(history)) : (history?.entries ?? NONE)), [live, leaf, history]);
+	return useMemo(() => displayedEntries(view), [live, leaf, history]);
 }
