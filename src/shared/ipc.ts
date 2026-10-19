@@ -21,6 +21,8 @@ export interface OmpStatus {
 	minVersion: string;
 	/** Human-readable reason when `found` or `supported` is false. */
 	problem: string | null;
+	/** Windows would not start the omp executable (a security policy is one possible cause); `problem` quotes what Windows reported. */
+	refused: boolean;
 	/** Official install command for this platform. */
 	installCommand: string;
 }

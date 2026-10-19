@@ -23,6 +23,7 @@ import { broadcast } from "../ipc";
 import { getPrefs } from "../prefs";
 import { runOmpJson } from "./cli";
 import { ompPath } from "./locate";
+import { ompStartError } from "./refused";
 import { LoopbackRelay } from "./relay";
 import { findSessionFile, onSessionsChanged } from "./sessions";
 import { TuiDebugClient } from "./tui-debug";
@@ -106,13 +107,17 @@ export class SessionHost {
 			args.push(...(this.#options.extraArgs ?? []));
 			const childEnv: NodeJS.ProcessEnv = { ...env, OMP_SKIP_SETUP: "1", OMP_TUI_DEBUG: debugPath, PI_TUI_NATIVE: "0" };
 			delete childEnv.TERM_PROGRAM;
-			this.#pty = spawn(bin, args, {
-				name: "xterm-256color",
-				cols: this.#screen.cols,
-				rows: this.#screen.rows,
-				cwd: this.#options.cwd,
-				env: ptyEnv(childEnv),
-			});
+			try {
+				this.#pty = spawn(bin, args, {
+					name: "xterm-256color",
+					cols: this.#screen.cols,
+					rows: this.#screen.rows,
+					cwd: this.#options.cwd,
+					env: ptyEnv(childEnv),
+				});
+			} catch (error) {
+				throw await ompStartError(error, bin);
+			}
 			this.#debug = new TuiDebugClient(debugPath);
 			this.#pty.onData(data => {
 				this.#screen.write(data);

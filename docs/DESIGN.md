@@ -475,6 +475,7 @@ A full-window screen on `--bg` with no sidebar or dock. It has a 40px drag strip
   - **missing**: as shown.
   - **installing**: an inline terminal (240px) shows the installer's output, with [Cancel install] and a status line that ends in "The installer finished." or an error with its exit code.
   - **too old**: "Your omp is out of date" shows the installed and required versions, and step 1 becomes "Update omp".
+  - **refused** (Windows only): when Windows does not start omp, "omp can't start" replaces the heading. The reason appears as muted prose under the body, wrapping long paths anywhere. It quotes what Windows reported and names Smart App Control only as a possible cause, when it is on. [Check for omp] becomes the primary button and [Run installer] secondary, step 2 reads "After you allow omp in Windows, check whether it starts." and is available at once, and a failed check shows only "Windows still didn't start omp".
   - **still missing after a check**: a `--warn-bg` note suggests reopening the app.
   - **done**: "omp is ready". Both step badges turn `--ok` with a check, and the app opens after 600ms.
 - The heading and body swap with a rise. [Copy command] shows the toast "Command copied". The help link shows the Help content in place of the setup column (`HelpView limited`), without the parts that need omp, and "Back to setup" or Esc returns.

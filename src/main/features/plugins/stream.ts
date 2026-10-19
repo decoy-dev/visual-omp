@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import type { CliResult } from "@shared/ipc";
+import { ompStartError } from "../../omp/refused";
 
 /** Which pipe a streamed line came from. */
 export type OutputStream = "stdout" | "stderr";
@@ -77,11 +78,20 @@ export function spawnStreaming(
 	options: Partial<StreamRunOptions> = {},
 ): Promise<CliResult> {
 	const { promise, resolve } = Promise.withResolvers<CliResult>();
-	const child = spawn(bin, argv, {
-		cwd: options.cwd,
-		env: { ...env, ...options.env, NO_COLOR: "1" },
-		stdio: ["ignore", "pipe", "pipe"],
-	});
+	let child;
+	try {
+		child = spawn(bin, argv, {
+			cwd: options.cwd,
+			env: { ...env, ...options.env, NO_COLOR: "1" },
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+	} catch (error) {
+		// Windows refusing to start omp throws here instead of emitting "error".
+		void ompStartError(error, bin).then(reason =>
+			resolve({ code: 127, stdout: "", stderr: `${reason instanceof Error ? reason.message : String(reason)}\n` }),
+		);
+		return promise;
+	}
 	let stdout = "";
 	let stderr = "";
 	let settled = false;

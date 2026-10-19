@@ -2,20 +2,25 @@ import { execFile } from "node:child_process";
 import type { CliResult } from "@shared/ipc";
 import { userEnv } from "../env";
 import { ompPath } from "./locate";
+import { ompStartError } from "./refused";
 
 /** Run a non-interactive omp subcommand and capture its output. Never rejects on non-zero exit. */
 export async function runOmp(argv: string[], options: { cwd?: string; timeoutMs?: number } = {}): Promise<CliResult> {
 	const [bin, env] = await Promise.all([ompPath(), userEnv()]);
 	const { promise, resolve } = Promise.withResolvers<CliResult>();
-	execFile(
-		bin,
-		argv,
-		{ cwd: options.cwd, env: { ...env, NO_COLOR: "1" }, timeout: options.timeoutMs ?? 60_000, maxBuffer: 64 * 1024 * 1024 },
-		(error, stdout, stderr) => {
-			const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
-			resolve({ code, stdout, stderr });
-		},
-	);
+	try {
+		execFile(
+			bin,
+			argv,
+			{ cwd: options.cwd, env: { ...env, NO_COLOR: "1" }, timeout: options.timeoutMs ?? 60_000, maxBuffer: 64 * 1024 * 1024 },
+			(error, stdout, stderr) => {
+				const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
+				resolve({ code, stdout, stderr });
+			},
+		);
+	} catch (error) {
+		throw await ompStartError(error, bin);
+	}
 	return promise;
 }
 

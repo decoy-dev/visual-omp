@@ -26,6 +26,7 @@ import { broadcast, handle } from "../ipc";
 import { runOmp } from "../omp/cli";
 import { NEUTRAL_CWD } from "../omp/config-file";
 import { ompPath } from "../omp/locate";
+import { ompStartError } from "../omp/refused";
 import { ompErrorMessage, UsageJsonSchema } from "../services/omp-config";
 import { configWritten, listModels } from "./config";
 
@@ -54,7 +55,12 @@ interface OmpLoginProvider {
  */
 async function readLoginProviders(folder: string): Promise<OmpLoginProvider[]> {
 	const [bin, env] = await Promise.all([ompPath(), userEnv()]);
-	const child: ChildProcessWithoutNullStreams = spawn(bin, RPC_ARGS, { cwd: folder, env: { ...env, NO_COLOR: "1" }, stdio: "pipe" });
+	let child: ChildProcessWithoutNullStreams;
+	try {
+		child = spawn(bin, RPC_ARGS, { cwd: folder, env: { ...env, NO_COLOR: "1" }, stdio: "pipe" });
+	} catch (error) {
+		throw await ompStartError(error, bin);
+	}
 	const { promise, resolve, reject } = Promise.withResolvers<unknown>();
 	const timer = setTimeout(() => reject(new Error("omp did not list its sign-in providers in time.")), LIST_TIMEOUT_MS);
 	child.stderr.resume();

@@ -21,6 +21,7 @@ import { writeText } from "../files";
 import { broadcast, handle } from "../ipc";
 import { runOmp } from "../omp/cli";
 import { ompPath, ompStatus } from "../omp/locate";
+import { ompStartError } from "../omp/refused";
 import {
 	type GitHubRelease,
 	GitHubReleaseList,
@@ -448,13 +449,19 @@ async function spawnOmpUpdate(options: OmpUpdateOptions): Promise<OmpUpdateRun> 
 		output: "",
 		versionAfter: null,
 	};
-	lastRun = run;
 	const [file, argv]: [string, string[]] = feed?.ompUpdateCommand ? ["/bin/sh", ["-c", feed.ompUpdateCommand]] : [bin, args];
-	const child = spawn(file, argv, {
-		env: { ...env, NO_COLOR: "1", FORCE_COLOR: "0" },
-		stdio: ["ignore", "pipe", "pipe"],
-		windowsHide: true,
-	});
+	let child;
+	try {
+		child = spawn(file, argv, {
+			env: { ...env, NO_COLOR: "1", FORCE_COLOR: "0" },
+			stdio: ["ignore", "pipe", "pipe"],
+			windowsHide: true,
+		});
+	} catch (error) {
+		throw await ompStartError(error, bin);
+	}
+	// Recorded after the spawn, so a refused start never leaves a run that looks unfinished forever.
+	lastRun = run;
 	const onData = (stream: "stdout" | "stderr") => (chunk: Buffer) => {
 		const data = chunk.toString("utf8");
 		if (run.output.length < MAX_RUN_OUTPUT) run.output += data;

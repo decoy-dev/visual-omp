@@ -4,6 +4,7 @@ import { delimiter, join } from "node:path";
 import type { OmpStatus } from "@shared/ipc";
 import { userEnv } from "../env";
 import { getPrefs } from "../prefs";
+import { OmpRefusedError, ompStartError } from "./refused";
 
 /** Oldest omp with loopback collab relays and `omp collab list/link --json`. */
 export const MIN_OMP_VERSION = "18.4.0";
@@ -37,11 +38,16 @@ async function findOnPath(env: NodeJS.ProcessEnv): Promise<string | null> {
 	return null;
 }
 
+/** omp's version, or null when it ran and failed or printed none; rejects when it could not start. */
 function readVersion(bin: string, env: NodeJS.ProcessEnv): Promise<string | null> {
-	const { promise, resolve } = Promise.withResolvers<string | null>();
-	execFile(bin, ["--version"], { env, timeout: 15000 }, (error, stdout) => {
-		resolve(error ? null : (/(\d+\.\d+\.\d+)/.exec(stdout)?.[1] ?? null));
-	});
+	const { promise, resolve, reject } = Promise.withResolvers<string | null>();
+	try {
+		execFile(bin, ["--version"], { env, timeout: 15000 }, (error, stdout) => {
+			resolve(error ? null : (/(\d+\.\d+\.\d+)/.exec(stdout)?.[1] ?? null));
+		});
+	} catch (error) {
+		reject(error);
+	}
 	return promise;
 }
 
@@ -52,12 +58,21 @@ export async function ompStatus(refresh = false): Promise<OmpStatus> {
 	const env = await userEnv();
 	const override = getPrefs().ompPath;
 	const path = override ?? (await findOnPath(env));
-	const base = { minVersion: MIN_OMP_VERSION, installCommand: INSTALL_COMMAND };
+	const base = { minVersion: MIN_OMP_VERSION, installCommand: INSTALL_COMMAND, refused: false };
 	if (!path) {
 		cached = { ...base, found: false, path: null, version: null, supported: false, problem: "omp is not installed yet." };
 		return cached;
 	}
-	const version = await readVersion(path, env);
+	let version: string | null = null;
+	try {
+		version = await readVersion(path, env);
+	} catch (error) {
+		const reason = await ompStartError(error, path);
+		if (reason instanceof OmpRefusedError) {
+			cached = { ...base, found: false, path, version: null, supported: false, refused: true, problem: reason.message };
+			return cached;
+		}
+	}
 	if (!version) {
 		cached = { ...base, found: false, path, version: null, supported: false, problem: `omp at ${path} did not start.` };
 		return cached;

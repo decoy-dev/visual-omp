@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- On Windows, when omp can't start, visual-omp now gives guidance and quotes the error Windows reported, where it used to show only "spawn UNKNOWN". omp's Windows builds are unsigned, and Smart App Control, antivirus software or an application control policy can block unsigned programs, so Windows can refuse a new omp release. The setup screen opens with "omp can't start", and settings, chats and other omp actions show the same message. It says whether Windows confirmed a policy block. When Smart App Control is on, the message names it as a possible cause and explains what turning it off would change. **Check for omp** becomes the main action on that screen, so you can check again after allowing omp.
+
 ## [0.5.1] - 2026-10-14
 
 visual-omp 0.5.1 makes the background jobs in the Tasks panel say what each job is doing.

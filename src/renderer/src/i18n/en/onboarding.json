@@ -10,6 +10,10 @@
 			"installed": "Installed",
 			"required": "Needs"
 		},
+		"refused": {
+			"title": "omp can't start",
+			"body": "omp is installed, but Windows didn't start it, and visual-omp needs omp for every chat."
+		},
 		"done": {
 			"title": "omp is ready",
 			"body": "omp is available. Opening visual-omp…"
@@ -35,8 +39,10 @@
 		"step2": {
 			"title": "Check for omp",
 			"body": "Once the installer finishes, check that visual-omp can find omp.",
+			"bodyRefused": "After you allow omp in Windows, check whether it starts.",
 			"check": "Check for omp",
 			"stillMissing": "Still can't find omp",
+			"stillRefused": "Windows still didn't start omp",
 			"stillMissingBody": "If you just installed it, try quitting and reopening visual-omp so it picks up the new install."
 		},
 		"trouble": "Having trouble?",

@@ -8,6 +8,7 @@ import { userEnv } from "../env";
 import { handle } from "../ipc";
 import { ompPath } from "../omp/locate";
 import { sessionsDir } from "../omp/paths";
+import { ompStartError } from "../omp/refused";
 import { type ChatTranscripts, dayStarts, type ParsedTranscript, parseTranscript, summarizeSpend } from "./extensions/spend";
 
 const DEFAULT_DAYS = 7;
@@ -126,10 +127,15 @@ async function openStatsDashboard(): Promise<string> {
 	}
 	statsServer?.kill();
 	const [bin, env] = await Promise.all([ompPath(), userEnv()]);
-	const child = spawn(bin, ["stats", "--port", String(STATS_PORT)], {
-		env: { ...env, NO_COLOR: "1" },
-		stdio: ["ignore", "pipe", "pipe"],
-	});
+	let child;
+	try {
+		child = spawn(bin, ["stats", "--port", String(STATS_PORT)], {
+			env: { ...env, NO_COLOR: "1" },
+			stdio: ["ignore", "pipe", "pipe"],
+		});
+	} catch (error) {
+		throw await ompStartError(error, bin);
+	}
 	statsServer = child;
 	const { promise, resolve, reject } = Promise.withResolvers<string>();
 	let output = "";

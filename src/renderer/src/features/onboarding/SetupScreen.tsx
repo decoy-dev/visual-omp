@@ -1,6 +1,7 @@
 /**
  * omp-missing setup screen (DESIGN §4.1). Replaces the whole window while omp is missing, won't
- * start, or is older than visual-omp needs. The installer runs visibly in an inline terminal.
+ * start (including Windows refusing to run it), or is older than visual-omp needs. The installer
+ * runs visibly in an inline terminal.
  */
 import { ArrowClockwise, ArrowRight, Check, Copy, Play, Square } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
@@ -32,6 +33,7 @@ export function SetupScreen(_props: ScreenProps) {
 	const windows = window.vomp.platform === "win32";
 
 	const tooOld = Boolean(omp?.found && !omp.supported);
+	const refused = Boolean(omp?.refused);
 	const done = check === "done";
 	const installing = install.state === "running";
 
@@ -89,9 +91,9 @@ export function SetupScreen(_props: ScreenProps) {
 		toast({ tone: "ok", message: t("setup.step1.copied"), description: t("setup.step1.copiedBody") });
 	};
 
-	const heading = done ? "done" : tooOld ? "tooOld" : "missing";
+	const heading = done ? "done" : tooOld ? "tooOld" : refused ? "refused" : "missing";
 	const step1Done = done || install.state === "succeeded";
-	const step2Ready = step1Done || copied || install.state === "failed" || install.state === "cancelled" || tooOld;
+	const step2Ready = step1Done || copied || install.state === "failed" || install.state === "cancelled" || tooOld || refused;
 	const installStatus: Record<Install["state"], string | null> = {
 		idle: null,
 		running: t("setup.step1.running"),
@@ -135,7 +137,7 @@ export function SetupScreen(_props: ScreenProps) {
 				)}
 
 				{omp && !omp.found && omp.path && !done && (
-					<p className="mt-3 max-w-110 font-mono text-sm text-fg-faint">{omp.problem}</p>
+					<p className={cn("mt-3 max-w-110 text-sm", refused ? "text-fg-muted [overflow-wrap:anywhere]" : "font-mono text-fg-faint")}>{omp.problem}</p>
 				)}
 				<ol className="mt-8 w-full divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel text-left">
 					<StepRow
@@ -173,7 +175,7 @@ export function SetupScreen(_props: ScreenProps) {
 								</Button>
 							) : (
 								<Button
-									variant="primary"
+									variant={refused ? "secondary" : "primary"}
 									icon={<Play aria-hidden />}
 									onClick={() => void startInstall()}
 									disabled={!omp || done}
@@ -192,10 +194,16 @@ export function SetupScreen(_props: ScreenProps) {
 							</Button>
 						</div>
 					</StepRow>
-					<StepRow number={2} done={done} disabled={!step2Ready} title={t("setup.step2.title")} body={t("setup.step2.body")}>
+					<StepRow
+						number={2}
+						done={done}
+						disabled={!step2Ready}
+						title={t("setup.step2.title")}
+						body={refused ? t("setup.step2.bodyRefused") : t("setup.step2.body")}
+					>
 						<div className="mt-3">
 							<Button
-								variant="secondary"
+								variant={refused ? "primary" : "secondary"}
 								icon={<ArrowClockwise aria-hidden />}
 								onClick={() => void runCheck()}
 								loading={check === "checking"}
@@ -206,8 +214,14 @@ export function SetupScreen(_props: ScreenProps) {
 						</div>
 						<Expand open={check === "missing"} className="pt-3">
 							<div role="status" className="rounded-md border border-border bg-warn-bg px-3 py-2 text-sm">
-								<p className="font-medium text-fg">{omp?.problem ?? t("setup.step2.stillMissing")}</p>
-								<p className="mt-1 text-fg-muted">{t("setup.step2.stillMissingBody")}</p>
+								{refused ? (
+									<p className="font-medium text-fg">{t("setup.step2.stillRefused")}</p>
+								) : (
+									<>
+										<p className="font-medium text-fg">{omp?.problem ?? t("setup.step2.stillMissing")}</p>
+										<p className="mt-1 text-fg-muted">{t("setup.step2.stillMissingBody")}</p>
+									</>
+								)}
 							</div>
 						</Expand>
 					</StepRow>
