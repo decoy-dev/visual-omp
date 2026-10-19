@@ -2,7 +2,9 @@
  * Readers for omp's painted TUI screen (`host:screen` plain-text lines). omp keeps some state only in
  * its own UI — plan/goal/vibe/loop status, the configured thinking level, the Plan Review overlay and
  * command feedback printed with `showStatus` — so the app reads it back from the screen. Formats were
- * taken from omp 18.4.4 (`status-line`, `plan-review-overlay`, `hook-selector`).
+ * taken from omp 18.4.4 (`status-line`, `plan-review-overlay`, `hook-selector`). The status line
+ * style is pinned by the chat's config overlay (main/omp/host.ts), because omp's defaults (thin
+ * separators, thinking level as an icon) do not carry the ` ▶ ` and `⬢` markers read here.
  */
 
 export type PlanState = "off" | "on" | "paused";
@@ -15,7 +17,7 @@ export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
 export interface StatusLine {
 	/** Model display name as painted (e.g. "Opus 5.5"). */
 	model: string | null;
-	/** Configured thinking selector (`auto` stays `auto`); null when the model has no thinking control. */
+	/** Thinking level as painted (Auto may show the level it resolved for the last turn); null when the model has no thinking control. */
 	thinking: ThinkingLevel | null;
 	plan: PlanState;
 	goal: GoalState;

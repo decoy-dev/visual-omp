@@ -39,9 +39,13 @@ Each SessionHost:
 
 1. Allocates a loopback WebSocket relay on a free port (listening on `127.0.0.1` and `::1` only).
 2. Writes a per-session config overlay (`collab.autoStart: control`,
-   `collab.relayUrl: ws://localhost:<port>`, `collab.displayName`) into the app's data directory
-   and spawns `omp --config <overlay> [--resume <file>]` in a node-pty with the project as cwd.
-   The user's own `config.yml` is never modified for this.
+   `collab.relayUrl: ws://localhost:<port>`, `collab.displayName`, plus a fixed status line style:
+   `symbolPreset: unicode` and `statusLine` preset `default`, separator `powerline`, thinking level
+   as a word) into a private temporary directory and spawns
+   `omp --config <overlay> [--resume <file>]` in a node-pty with the project as cwd. Session tools
+   read the status line from the painted screen, so the overlay replaces the user's status line
+   settings. A theme's symbol overrides still apply after the preset and can change the glyphs
+   the parser looks for. The user's own `config.yml` is never modified for this.
 3. When the omp host connects to the relay (`/r/<roomId>?role=host`), SessionHost resolves the
    room key with `omp collab list --json` + `omp collab link <instanceId> --json`, matching the
    link's port and room id, and hands the control link to the renderer.

@@ -140,6 +140,16 @@ export class SessionHost {
 			// A marker-sized paste followed by Enter becomes an attachment chip; never open the local paste menu.
 			paste: { largeMenuThreshold: 0 },
 			marketplace: { autoUpdate: "off" },
+			// The app reads this TUI's status line from the editor border (renderer session-tools/screen.ts),
+			// so it pins the format that parser reads over the user's status line settings. A theme's
+			// symbol overrides still apply after the preset and can change those glyphs.
+			symbolPreset: "unicode",
+			statusLine: {
+				preset: "default",
+				separator: "powerline",
+				compactThinkingLevel: false,
+				segmentOptions: { model: { showThinkingLevel: true } },
+			},
 		};
 	}
 
