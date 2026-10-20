@@ -4,6 +4,12 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.5.8] - 2026-10-20
+
+visual-omp 0.5.8 makes the teal behind Back in the sidebar a little darker.
+
+- The teal that fills the top of the sidebar behind the app name and **Back** while Settings, Usage & limits, Help or a project page is open is a little darker, so the white text on it stands out more.
+
 ## [0.5.7] - 2026-10-20
 
 visual-omp 0.5.7 folds the steps omp has finished into one row while it works, and says in plain words what it is doing.
