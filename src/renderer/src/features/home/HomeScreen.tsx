@@ -47,21 +47,42 @@ export function HomeScreen(_props: ScreenProps): ReactNode {
 					</div>
 					{/*
 					 * Each section is a white card on the gray canvas, the page pattern for grouped content (DESIGN §1.1), so
-					 * the three read as separate places at a glance. Side by side they share one height.
+					 * the three read as separate places at a glance. Side by side, the Usage card sets the row's height and the
+					 * other two keep their own, up to it.
 					 */}
 					<div className="mt-10 grid gap-page @min-[67.5rem]/home:grid-cols-[3fr_2fr_2fr]">
-						<Card className="min-w-0">
+						<CappedCard>
 							<RecentChats limit={wide ? 8 : 6} />
-						</Card>
-						<Card className="min-w-0">
+						</CappedCard>
+						<CappedCard>
 							<Projects />
-						</Card>
+						</CappedCard>
 						<Card className="min-w-0">
 							<UsageGlance />
 						</Card>
 					</div>
 				</div>
 			</div>
+		</div>
+	);
+}
+
+/**
+ * Side by side, a card as tall as its content but never taller than the Usage card: its wrapper holds no in-flow content,
+ * so it adds nothing to the row's height and only stretches to it, and the card inside is positioned at the top with
+ * the row as its maximum, scrolling past that (a list opened with "Show more"). Stacked, it is an ordinary card.
+ */
+function CappedCard({ children }: { children: ReactNode }): ReactNode {
+	return (
+		<div className="min-w-0 @min-[67.5rem]/home:relative">
+			<Card
+				className={cn(
+					"min-w-0",
+					"@min-[67.5rem]/home:absolute @min-[67.5rem]/home:inset-x-0 @min-[67.5rem]/home:top-0 @min-[67.5rem]/home:max-h-full @min-[67.5rem]/home:overflow-y-auto",
+				)}
+			>
+				{children}
+			</Card>
 		</div>
 	);
 }
