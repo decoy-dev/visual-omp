@@ -32,9 +32,9 @@ when the user moves to another chat, a saved chat that was only viewed (no host,
 attachments, no open omp terminal) is released unless a chat that was already open appears later in Current chats,
 which keeps every ⌘ number stable. Closing a saved chat adds it to the reopen stack with its text draft. Reopen
 closed chat restores the last eligible entry without starting omp. `normalizeRestoredChatSelection` in the same file
-repairs the persisted layout on launch: a restored chat view takes its project from the focused half of a split, a
-restored project overview keeps its own project even when an open chat belongs to another project, and a page that
-was open returns to the chat or overview it came from. Split view can show two chats, each with its own controller.
+repairs the persisted layout on launch: it drops chats that can't be restored, keeps a valid split, and keeps the
+project last shown (else the focused chat's). The app then always opens on Home (`features/home`), with the open
+chats back in the sidebar; pages are not restored. Split view can show two chats, each with its own controller.
 Each SessionHost:
 
 1. Allocates a loopback WebSocket relay on a free port (listening on `127.0.0.1` and `::1` only).

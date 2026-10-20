@@ -64,8 +64,8 @@ export const usePickerRequests = create<PickerRequests>()(set => ({
 	handled: picker => set({ [picker]: null }),
 }));
 
-/** Ghost 28px-high control shared by the composer's labelled pickers (each adds its own height rule). */
-const rowPicker = cn(
+/** Ghost 28px-high control shared by the composer's labelled pickers (each adds its own height rule), and Home's. */
+export const rowPicker = cn(
 	"inline-flex items-center gap-1.5 rounded-md px-2 text-sm font-medium text-fg-muted",
 	"transition-colors duration-(--dur-fast) enabled:hover:bg-hover enabled:hover:text-fg data-[state=open]:bg-hover data-[state=open]:text-fg",
 	"disabled:cursor-not-allowed disabled:opacity-45",
@@ -141,28 +141,33 @@ function WorkModeItems({ session, status }: { session: SessionController; status
 	});
 }
 
+export interface PermissionMenuProps {
+	projectPath: string;
+	disabled?: boolean;
+	/** omp's active work mode in words, shown after the level (chats only). */
+	workLabel?: string | null;
+	/** More menu rows after the levels: a chat's work modes. */
+	children?: ReactNode;
+}
+
 /**
- * The permission level in words (never icon-only: it says what omp may do on its own), plus the work mode
- * omp is in. The text wraps inside the button when the composer row is narrow. Its menu changes both:
- * arrows move between rows and Enter applies one, so moving alone never writes the project config (and
- * Auto asks for confirmation first).
+ * The permission level in words (never icon-only: it says what omp may do on its own). The text wraps inside the
+ * button when the row is narrow. Arrows move between rows and Enter applies one, so moving alone never writes the
+ * project config (and Auto asks for confirmation first). The level is a project setting, so Home offers it before
+ * a chat exists.
  */
-export function PermissionButton({ session }: ChatSlotProps) {
+export function PermissionMenu({ projectPath, disabled = false, workLabel = null, children }: PermissionMenuProps) {
 	const { t } = useTranslation("session");
-	const { mode, error } = useApprovalMode(session.projectPath);
-	const { status } = useOmpScreen(session);
-	const readOnly = useSessionView(session).readOnly;
+	const { mode, error } = useApprovalMode(projectPath);
 	const [open, setOpen] = useState(false);
 	// A chat that turns read-only closes the menu for good rather than reopening it when replies come back.
-	if (readOnly && open) setOpen(false);
+	if (disabled && open) setOpen(false);
 	const Shield = mode === "yolo" ? ShieldWarning : ShieldCheck;
 	const level = mode ? t(`permission.modes.${mode}.label`) : t("common.loading");
-	const work = activeWorkMode(status);
-	const workLabel = work ? t(`modes.active.${work}`) : null;
 	return (
 		<Menu open={open} onOpenChange={setOpen}>
 			<Tooltip content={mode ? t(`permission.modes.${mode}.description`) : t("permission.tooltip")}>
-				<MenuTrigger asChild disabled={readOnly}>
+				<MenuTrigger asChild disabled={disabled}>
 					<button
 						type="button"
 						aria-label={t("permission.aria", { mode: workLabel ? `${level}, ${workLabel}` : level })}
@@ -182,10 +187,7 @@ export function PermissionButton({ session }: ChatSlotProps) {
 			<MenuContent side="top" align="start" className="w-80">
 				<MenuLabel>{t("permission.title")}</MenuLabel>
 				<p className="px-row pb-1 text-sm text-fg-muted">{t("permission.tooltip")}</p>
-				<MenuRadioGroup
-					value={mode ?? ""}
-					onValueChange={value => void choosePermission(session.projectPath, value as ApprovalMode, mode)}
-				>
+				<MenuRadioGroup value={mode ?? ""} onValueChange={value => void choosePermission(projectPath, value as ApprovalMode, mode)}>
 					{APPROVAL_MODES.map(option => (
 						<MenuRadioItem key={option} value={option} description={t(`permission.modes.${option}.description`)}>
 							{t(`permission.modes.${option}.label`)}
@@ -193,11 +195,24 @@ export function PermissionButton({ session }: ChatSlotProps) {
 					))}
 				</MenuRadioGroup>
 				<p className="px-row pt-1 text-xs text-fg-faint">{error ?? t("permission.scopeNote")}</p>
-				<MenuSeparator />
-				<MenuLabel>{t("modes.title")}</MenuLabel>
-				<WorkModeItems session={session} status={status} />
+				{children}
 			</MenuContent>
 		</Menu>
+	);
+}
+
+/** A chat's permission level plus the work mode omp is in; its menu changes both. */
+export function PermissionButton({ session }: ChatSlotProps) {
+	const { t } = useTranslation("session");
+	const { status } = useOmpScreen(session);
+	const readOnly = useSessionView(session).readOnly;
+	const work = activeWorkMode(status);
+	return (
+		<PermissionMenu projectPath={session.projectPath} disabled={readOnly} workLabel={work ? t(`modes.active.${work}`) : null}>
+			<MenuSeparator />
+			<MenuLabel>{t("modes.title")}</MenuLabel>
+			<WorkModeItems session={session} status={status} />
+		</PermissionMenu>
 	);
 }
 
@@ -208,10 +223,21 @@ function formatContext(tokens: number | null): string | null {
 	return tokens >= 1_000_000 ? `${Math.round(tokens / 100_000) / 10}M` : `${Math.round(tokens / 1000)}K`;
 }
 
-function ModelList({ session, onDone }: { session: SessionController; onDone(): void }) {
+export interface ModelListProps {
+	projectPath: string;
+	/** The model in use or chosen, checked in the list. */
+	current: { provider: string; id: string } | null;
+	/** Apply a choice; resolves true once it took effect, so the list closes. */
+	onPick(model: ModelInfo): Promise<boolean>;
+	onDone(): void;
+	/** The chat the list belongs to, for the Model roles and Add provider links; null on Home. */
+	session: SessionController | null;
+}
+
+/** Searchable list of the project's chat models, grouped by provider. The chat's model button and Home share it. */
+export function ModelList({ projectPath, current, onPick, onDone, session }: ModelListProps) {
 	const { t } = useTranslation("session");
-	const { models, error } = useChatModels(session.projectPath);
-	const current = useSessionView(session).guest?.state?.model;
+	const { models, error } = useChatModels(projectPath);
 	const [query, setQuery] = useState("");
 	const [active, setActive] = useState(0);
 	const [busy, setBusy] = useState<string | null>(null);
@@ -243,12 +269,9 @@ function ModelList({ session, onDone }: { session: SessionController; onDone(): 
 			return;
 		}
 		setBusy(model.selector);
-		const ok = await switchModel(session, model);
+		const ok = await onPick(model);
 		setBusy(null);
-		if (ok) {
-			toast({ tone: "ok", message: t("model.switched", { name: model.name }) });
-			onDone();
-		}
+		if (ok) onDone();
 	};
 
 	const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
@@ -333,7 +356,7 @@ function ModelList({ session, onDone }: { session: SessionController; onDone(): 
 						variant="ghost"
 						onClick={() => {
 							onDone();
-							void getCommand("manage.roles")?.run({ session, projectPath: session.projectPath });
+							void getCommand("manage.roles")?.run({ session, projectPath });
 						}}
 					>
 						{t("model.roles")}
@@ -345,7 +368,7 @@ function ModelList({ session, onDone }: { session: SessionController; onDone(): 
 						variant="ghost"
 						onClick={() => {
 							onDone();
-							void getCommand("manage.providers")?.run({ session, projectPath: session.projectPath });
+							void getCommand("manage.providers")?.run({ session, projectPath });
 						}}
 					>
 						{t("model.addProvider")}
@@ -386,7 +409,17 @@ export function ModelButton({ session }: ChatSlotProps) {
 				</PopoverTrigger>
 			</Tooltip>
 			<PopoverContent side="top" align="end" width={340} sideOffset={6} className="p-menu">
-				<ModelList session={session} onDone={() => setOpen(false)} />
+				<ModelList
+					projectPath={session.projectPath}
+					current={model ?? null}
+					session={session}
+					onDone={() => setOpen(false)}
+					onPick={async picked => {
+						const ok = await switchModel(session, picked);
+						if (ok) toast({ tone: "ok", message: t("model.switched", { name: picked.name }) });
+						return ok;
+					}}
+				/>
 			</PopoverContent>
 		</Popover>
 	);

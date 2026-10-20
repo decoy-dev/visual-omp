@@ -6,6 +6,7 @@ import {
 	ChatCircleText,
 	CircleHalf,
 	Columns,
+	House,
 	MagnifyingGlass,
 	NotePencil,
 	SidebarSimple,
@@ -63,6 +64,17 @@ registerCommand({
 		const { paletteOpen, setPaletteOpen } = useApp.getState();
 		setPaletteOpen(!paletteOpen);
 	},
+});
+
+registerCommand({
+	id: "view.home",
+	title: "palette:cmd.home.title",
+	hint: "palette:cmd.home.hint",
+	keywords: "palette:cmd.home.keywords",
+	group: "navigation",
+	icon: House,
+	shortcut: keys("H", { shift: true }),
+	run: () => useApp.getState().goHome(),
 });
 
 registerCommand({

@@ -102,8 +102,8 @@ function MentionMirror({ text }: { text: string }) {
 	return <>{parts}{text.endsWith("\n") ? " " : null}</>;
 }
 
-/** Sits directly under a popLayout AnimatePresence, which measures a leaving chip through this ref. */
-function AttachmentChip({ item, onRemove, ref }: { item: Attachment; onRemove(): void; ref?: Ref<HTMLLIElement> }) {
+/** An image waiting to go with the message. Sits directly under a popLayout AnimatePresence, which measures a leaving chip through this ref. */
+export function AttachmentChip({ item, onRemove, ref }: { item: Attachment; onRemove(): void; ref?: Ref<HTMLLIElement> }) {
 	const { t } = useTranslation("composer");
 	const thumb = useThumbnail(item.path);
 	return (

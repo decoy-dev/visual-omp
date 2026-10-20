@@ -349,7 +349,7 @@ interface ProjectGroupProps {
 function ProjectGroup({ group, now, filtering }: ProjectGroupProps): ReactNode {
 	const { t } = useTranslation("shell");
 	const { project } = group;
-	const active = useApp(state => state.activeProject === project.path && state.view === "home");
+	const active = useApp(state => state.activeProject === project.path && state.view === "project");
 	const pinned = useApp(state => state.prefs?.pinnedProjects.includes(project.path) ?? false);
 	const color = useProjectColor(project.path);
 

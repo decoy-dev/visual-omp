@@ -17,15 +17,19 @@ function baseName(path: string): string {
 	return path.split(/[\\/]/).pop() ?? path;
 }
 
-/** `@path` for a file: project-relative inside the project, absolute otherwise. */
-export function mentionFor(path: string, projectPath: string): string {
+/** `@path` for a file: project-relative inside the project, absolute otherwise or with no project (Home). */
+export function mentionFor(path: string, projectPath: string | null): string {
+	if (!projectPath) return `@${path}`;
 	const root = projectPath.replace(/[\\/]+$/, "");
 	const inside = path.startsWith(`${root}/`) || path.startsWith(`${root}\\`);
 	return `@${inside ? path.slice(root.length + 1) : path}`;
 }
 
-/** Route absolute paths: attachable images → chips, the rest → mentions at the caret. */
-export function attachPaths(tabId: string, projectPath: string, paths: readonly string[]): void {
+/**
+ * Route absolute paths: attachable images → chips, the rest → mentions at the caret. With `projectPath` null the
+ * mentions stay absolute, for a draft whose project can still change (Home).
+ */
+export function attachPaths(tabId: string, projectPath: string | null, paths: readonly string[]): void {
 	const store = useComposerDrafts.getState();
 	const images = paths.filter(path => ATTACHABLE_IMAGE.test(path));
 	const others = paths.filter(path => !ATTACHABLE_IMAGE.test(path));
@@ -38,7 +42,7 @@ export function attachPaths(tabId: string, projectPath: string, paths: readonly 
  * Attach dropped or pasted `File`s. Files from disk carry a path; clipboard bitmaps (screenshots)
  * don't, so supported images are saved to a temp file first. Resolves the number of files taken.
  */
-export async function attachFiles(tabId: string, projectPath: string, files: readonly File[]): Promise<number> {
+export async function attachFiles(tabId: string, projectPath: string | null, files: readonly File[]): Promise<number> {
 	const paths: string[] = [];
 	for (const file of files) {
 		const path = window.vomp.pathForFile(file);

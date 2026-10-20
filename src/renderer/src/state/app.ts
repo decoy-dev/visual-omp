@@ -31,8 +31,16 @@ export interface ChatTab {
 	title: string | null;
 }
 
-/** `home`: the project overview. `page`: a full page (`page`), with Back returning to `pageReturn`. */
-export type MainView = "home" | "chat" | "page";
+/**
+ * `home`: the app's Home screen (where the app opens). `project`: a project's overview. `chat`: the open chats.
+ * `page`: a full page (`page`), with Back returning to `pageReturn`.
+ */
+export type MainView = "home" | "project" | "chat" | "page";
+
+/** Home and full pages are not about one chat, so the side panel stands aside while they show. */
+export function viewHidesDock(view: MainView): boolean {
+	return view === "home" || view === "page";
+}
 
 export interface OpenSheet {
 	id: string;
@@ -51,6 +59,8 @@ export interface AppState {
 	omp: OmpStatus | null;
 	projects: ProjectSummary[];
 	sessionsByProject: Record<string, SessionSummary[]>;
+	/** The latest saved chats across every project, newest first, archived ones left out (Home lists them). */
+	recentSessions: SessionSummary[] | null;
 	activeProject: string | null;
 	view: MainView;
 	/** Open chats, in the order they were opened. */
@@ -69,7 +79,7 @@ export interface AppState {
 	/** Full page shown while `view` is `page`. */
 	page: OpenPage | null;
 	/** Where Back on a page returns. */
-	pageReturn: "home" | "chat";
+	pageReturn: Exclude<MainView, "page">;
 	paletteOpen: boolean;
 	/** Chat whose omp terminal sheet is open. */
 	terminalTabId: string | null;
@@ -91,6 +101,8 @@ export interface AppState {
 	setPrefs(patch: Partial<AppPreferences>): Promise<void>;
 	refreshOmp(): Promise<void>;
 	openProject(path: string): void;
+	/** Show the Home screen (leaving a page asks first when it has unsaved edits). */
+	goHome(): void;
 	toggleProjectExpanded(path: string): void;
 	/**
 	 * Start a chat; `extraArgs` are omp launch flags for its first start (e.g. `--from-claude`); `split`
@@ -242,15 +254,17 @@ export const MIN_CHAT_WIDTH = 480;
  */
 export const DOCK_INSET = 8;
 const SHEET_SEAM = 1;
+/** How many recent chats `refreshProjects` keeps for Home: enough to fill its list after chats of missing folders drop out. */
+const RECENT_SESSIONS = 24;
 
 /**
  * The side panel is open but the window is too narrow for it beside the chat, so it takes the main area
- * (with "Back to chat") unless the user went back to the chat (`chatOverDock`). Full pages hide the panel.
+ * (with "Back to chat") unless the user went back to the chat (`chatOverDock`). Home and full pages hide the panel.
  * Everything beside the chat counts: sidebar and seam, panel and its gutters.
  */
 export function dockTooNarrow(state: Pick<AppState, "dockOpen" | "dockWidth" | "sidebarOpen" | "sidebarWidth" | "view">, windowWidth: number): boolean {
 	const occupied = (state.sidebarOpen ? state.sidebarWidth + SHEET_SEAM : 0) + state.dockWidth + 2 * DOCK_INSET;
-	return state.dockOpen && state.view !== "page" && windowWidth - occupied < MIN_CHAT_WIDTH;
+	return state.dockOpen && !viewHidesDock(state.view) && windowWidth - occupied < MIN_CHAT_WIDTH;
 }
 
 function subscribeResize(listener: () => void): () => void {
@@ -269,7 +283,7 @@ export function useWindowWidth(): number {
  */
 export function useDockVisible(): boolean {
 	const width = useWindowWidth();
-	return useApp(state => state.dockOpen && state.view !== "page" && (!state.chatOverDock || !dockTooNarrow(state, width)));
+	return useApp(state => state.dockOpen && !viewHidesDock(state.view) && (!state.chatOverDock || !dockTooNarrow(state, width)));
 }
 
 /**
@@ -295,6 +309,7 @@ export const useApp = create<AppState>()(
 			omp: null,
 			projects: [],
 			sessionsByProject: {},
+			recentSessions: null,
 			activeProject: null,
 			view: "home",
 			tabs: [],
@@ -347,8 +362,11 @@ export const useApp = create<AppState>()(
 			},
 
 			async refreshProjects() {
-				const projects = await window.vomp.invoke("sessions:projects");
-				set(state => ({ projects, activeProject: state.activeProject ?? projects[0]?.path ?? null }));
+				const [projects, recentSessions] = await Promise.all([
+					window.vomp.invoke("sessions:projects"),
+					window.vomp.invoke("sessions:recent", RECENT_SESSIONS),
+				]);
+				set(state => ({ projects, recentSessions, activeProject: state.activeProject ?? projects[0]?.path ?? null }));
 				const expanded = get().expandedProjects;
 				await Promise.all(expanded.map(path => get().loadSessions(path)));
 			},
@@ -370,11 +388,15 @@ export const useApp = create<AppState>()(
 				void whenLeaving(() => {
 					set(state => ({
 						activeProject: path,
-						view: "home",
+						view: "project",
 						expandedProjects: state.expandedProjects.includes(path) ? state.expandedProjects : [...state.expandedProjects, path],
 					}));
 					void get().loadSessions(path);
 				});
+			},
+
+			goHome() {
+				void whenLeaving(() => set({ view: "home" }));
 			},
 
 			toggleProjectExpanded(path) {
@@ -492,9 +514,10 @@ export const useApp = create<AppState>()(
 						splitTabId,
 						focusedSplit: "primary",
 						activeProject: tabs.find(tab => tab.id === activeTabId)?.projectPath ?? state.activeProject,
-						// A page stays open when its last chat closes; Back then returns to the project.
-						view: activeTabId || state.view === "page" ? state.view : "home",
-						pageReturn: activeTabId ? state.pageReturn : "home",
+						// With no chat left to show, the chat view gives way to Home; a page or overview stays, and Back
+						// from a page that replaced a chat then returns Home.
+						view: state.view === "chat" && !activeTabId ? "home" : state.view,
+						pageReturn: state.pageReturn === "chat" && !activeTabId ? "home" : state.pageReturn,
 						terminalTabId: state.terminalTabId === tabId ? null : state.terminalTabId,
 					};
 				});
@@ -620,7 +643,7 @@ export const useApp = create<AppState>()(
 
 			closePage() {
 				void whenLeaving(() => {
-					set(state => ({ page: null, view: state.pageReturn === "chat" && state.tabs.length > 0 ? "chat" : "home", chatOverDock: true }));
+					set(state => ({ page: null, view: state.pageReturn === "chat" && state.tabs.length === 0 ? "home" : state.pageReturn, chatOverDock: true }));
 					const opener = pageOpener;
 					pageOpener = null;
 					// After the chat is visible and interactive again.
@@ -668,8 +691,7 @@ export const useApp = create<AppState>()(
 					splitTabId: normalized.splitTabId,
 					focusedSplit: normalized.focusedSplit,
 					activeProject: normalized.activeProject,
-					// Pages and transient views are not restored.
-					view: normalized.view,
+					// The app opens on Home (see `merge`); pages and other views are not restored.
 					sidebarOpen: state.sidebarOpen,
 					sidebarWidth: state.sidebarWidth,
 					dockOpen: state.dockOpen,
@@ -682,7 +704,8 @@ export const useApp = create<AppState>()(
 				const persisted = persistedState as Partial<AppState>;
 				const tabs = (persisted.tabs ?? currentState.tabs).filter(tab => tab.sessionFile !== null);
 				const merged = { ...currentState, ...persisted, tabs };
-				return { ...merged, ...normalizeRestoredChatSelection(merged) };
+				// Open chats come back in the sidebar, but the app always opens on Home.
+				return { ...merged, ...normalizeRestoredChatSelection(merged), view: "home", pageReturn: "home" };
 			},
 		},
 	),

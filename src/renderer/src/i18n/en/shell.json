@@ -1,7 +1,8 @@
 {
 	"page": {
 		"backToChat": "Back to chat",
-		"backToProject": "Back to project"
+		"backToProject": "Back to project",
+		"backToHome": "Back to Home"
 	},
 	"leave": {
 		"title": "Discard your changes?",
@@ -11,6 +12,7 @@
 	},
 	"titlebar": {
 		"showSidebar": "Show sidebar",
+		"home": "Home",
 		"searchCommands": "Search commands"
 	},
 	"sidebar": {

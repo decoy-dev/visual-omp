@@ -192,6 +192,8 @@ export interface IpcInvokeMap {
 
 	"sessions:projects": { args: []; result: ProjectSummary[] };
 	"sessions:list": { args: [cwd: string]; result: SessionSummary[] };
+	/** The newest `limit` saved chats across every project, archived ones left out (one walk of the sessions folder). */
+	"sessions:recent": { args: [limit: number]; result: SessionSummary[] };
 	"sessions:read": { args: [file: string]; result: string };
 	/** Session file for a session id (new sessions get their file after the first message). */
 	"sessions:find": { args: [sessionId: string]; result: string | null };

@@ -2,7 +2,8 @@
  * "Start a chat in…": pick the folder a chat runs in. The list view shows projects (newest first)
  * with a filter; Browse… opens the in-app folder browser and the last button opens the system
  * picker. With `tabId` the choice moves that unsent chat instead of opening a new one; with
- * `purpose: "open"` the folder is added as a project and its home opens.
+ * `purpose: "open"` the folder is added as a project and its overview opens; with `purpose: "pick"`
+ * it is added and becomes the active project without leaving the screen (Home's project picker).
  */
 import { Folder, FolderOpen, MagnifyingGlass } from "@phosphor-icons/react";
 import type { RecentFolder } from "@shared/contracts/project";
@@ -12,15 +13,18 @@ import type { SheetProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
 import { Button, Chip, cn, Dialog, DialogContent, Expand, PresenceSwap, SearchInput } from "@/ui";
 import { menuItem, menuItemActive, menuItemDescribed } from "@/ui/styles";
-import { addProject, errorText, startChatIn } from "../actions";
+import { addProject, errorText, selectProject, startChatIn } from "../actions";
 import { type EscapeHandler, FolderBrowser, nativePickerLabel, useHomeDir } from "./FolderBrowser";
 import { tildePath, typedPath } from "./paths";
 
 const WINDOWS = window.vomp.platform === "win32";
 
 export interface FolderChooserProps {
-	/** `chat` (default): start a chat in the folder. `open`: add it as a project and show its home. */
-	purpose?: "chat" | "open";
+	/**
+	 * `chat` (default): start a chat in the folder. `open`: add it as a project and show its overview. `pick`: add it
+	 * and make it the active project, staying where you are.
+	 */
+	purpose?: "chat" | "open" | "pick";
 	/** Move this chat (nothing sent yet) to the chosen folder instead of opening a new chat. */
 	tabId?: string;
 	/** Open straight in the folder browser. */
@@ -32,7 +36,8 @@ export function FolderChooser({ props, close }: SheetProps<FolderChooserProps | 
 	const purpose = props?.purpose ?? "chat";
 	const tabId = props?.tabId;
 	const currentPath = useApp(state => (tabId ? state.tabs.find(tab => tab.id === tabId)?.projectPath : state.activeProject) ?? null);
-	const [view, setView] = useState<"list" | "browse">(props?.browse || purpose === "open" ? "browse" : "list");
+	const adding = purpose !== "chat";
+	const [view, setView] = useState<"list" | "browse">(props?.browse || adding ? "browse" : "list");
 	const [browseFrom, setBrowseFrom] = useState<string | undefined>(undefined);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -48,6 +53,7 @@ export function FolderChooser({ props, close }: SheetProps<FolderChooserProps | 
 		setError(null);
 		try {
 			if (purpose === "open") await addProject(path);
+			else if (purpose === "pick") await selectProject(path);
 			else await startChatIn(path, tabId);
 			close();
 		} catch (failure) {
@@ -57,9 +63,9 @@ export function FolderChooser({ props, close }: SheetProps<FolderChooserProps | 
 		}
 	};
 
-	const confirmLabel = (name: string) => (purpose === "open" ? t("chooser.openIn", { name }) : t("chooser.startIn", { name }));
-	const title = purpose === "open" ? t("chooser.openTitle") : tabId ? t("chooser.moveTitle") : t("chooser.title");
-	const description = purpose === "open" ? t("chooser.openBody") : tabId ? t("chooser.moveBody") : t("chooser.body");
+	const confirmLabel = (name: string) => (adding ? t("chooser.openIn", { name }) : t("chooser.startIn", { name }));
+	const title = adding ? t("chooser.openTitle") : tabId ? t("chooser.moveTitle") : t("chooser.title");
+	const description = adding ? t("chooser.openBody") : tabId ? t("chooser.moveBody") : t("chooser.body");
 
 	return (
 		<Dialog open onOpenChange={open => !open && close()}>
@@ -91,7 +97,7 @@ export function FolderChooser({ props, close }: SheetProps<FolderChooserProps | 
 						confirmLabel={confirmLabel}
 						onConfirm={path => void confirm(path)}
 						onCancel={close}
-						onBack={purpose === "open" || props?.browse ? undefined : () => setView("list")}
+						onBack={adding || props?.browse ? undefined : () => setView("list")}
 						busy={busy}
 						escapeRef={escape}
 					/>

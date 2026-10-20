@@ -144,7 +144,7 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 			}
 			await addProject(path);
 			close();
-			if (chatNow) void startChat(path, firstMessage);
+			if (chatNow) void startChat(path, { text: firstMessage });
 		} catch (failure) {
 			setError(errorText(failure));
 		} finally {

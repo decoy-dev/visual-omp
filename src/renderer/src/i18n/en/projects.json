@@ -46,7 +46,7 @@
 			"keywords": "share, link, export, invite, collaborate, live, html"
 		}
 	},
-	"home": {
+	"overview": {
 		"noProjects": "No projects yet. A project is a folder that omp works in.",
 		"pickProject": "Pick a project on the left, or start a new one.",
 		"newProject": "Create project",

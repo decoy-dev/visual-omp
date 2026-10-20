@@ -79,6 +79,11 @@
 			"hint": "Find any action, chat or file.",
 			"keywords": "search, find, commands, go to"
 		},
+		"home": {
+			"title": "Go to Home",
+			"hint": "Show Home: start a chat, resume a recent chat or open a project.",
+			"keywords": "home, start, dashboard, recent, projects, overview"
+		},
 		"terminal": {
 			"title": "Show omp terminal",
 			"hint": "Open omp's terminal screen for this chat.",

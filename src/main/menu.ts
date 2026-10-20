@@ -43,6 +43,7 @@ export function buildMenu(): void {
 		{
 			label: "View",
 			submenu: [
+				command("Home", "view.home", "CmdOrCtrl+Shift+H"),
 				command("Command Palette…", "app.palette", "CmdOrCtrl+K"),
 				command("Toggle Sidebar", "view.sidebar", "CmdOrCtrl+B"),
 				command("Toggle Side Panel", "view.panel", "CmdOrCtrl+Alt+B"),

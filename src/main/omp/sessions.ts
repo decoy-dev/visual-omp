@@ -142,6 +142,10 @@ export async function listSessions(cwd: string): Promise<SessionSummary[]> {
 	return (await allSessions()).filter(session => session.cwd === cwd);
 }
 
+export async function recentSessions(limit: number): Promise<SessionSummary[]> {
+	return (await allSessions()).filter(session => !session.archived).slice(0, Math.max(0, limit));
+}
+
 export async function findSessionFile(sessionId: string): Promise<string | null> {
 	return (await allSessions()).find(session => session.id === sessionId)?.file ?? null;
 }

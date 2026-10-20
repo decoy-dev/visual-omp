@@ -7,7 +7,7 @@ import { useComposerDrafts } from "../chat/composer/drafts";
 import { getCommand } from "../registry/commands";
 import { type SheetPresence, SheetPresenceContext } from "../registry/sheetPresence";
 import { pages, screens, sheets } from "../registry/slots";
-import { DOCK_INSET, dockTooNarrow, focusedTabId, MAIN_ID, type OpenPage, useApp, useWindowWidth } from "../state/app";
+import { DOCK_INSET, dockTooNarrow, focusedTabId, MAIN_ID, type OpenPage, useApp, useWindowWidth, viewHidesDock } from "../state/app";
 import { Button, cn, duration, EmptyState, Mark, PresenceSwap, spring } from "../ui";
 import { LeaveConfirm } from "./LeaveConfirm";
 import { Dock } from "./Dock";
@@ -78,11 +78,12 @@ function SheetHost(): ReactNode {
 	);
 }
 
-function HomeView(): ReactNode {
+/** The main area when no chat or page shows: the Home screen, or the project overview. */
+function MainScreen({ view }: { view: "home" | "project" }): ReactNode {
 	const { t } = useTranslation("shell");
 	const projectPath = useApp(state => state.activeProject);
-	const home = screens.use().find(screen => screen.id === "home");
-	if (home) return <home.component projectPath={projectPath} />;
+	const screen = screens.use().find(entry => entry.id === view);
+	if (screen) return <screen.component projectPath={projectPath} />;
 	return (
 		<EmptyState
 			className="m-auto"
@@ -185,8 +186,8 @@ function useExpandedDockFocus(expanded: boolean): (back: HTMLElement) => void {
 
 /**
  * Window layout (DESIGN §3): the ink chrome (sidebar band, full height, and the status bar) wraps the main sheet
- * (title bar · chats/home/page | side panel). The sheet's left corners round off against the sidebar and square up
- * when the sidebar hides; the side panel floats as its own sheet on an 8px strip of canvas.
+ * (title bar · Home/chats/project/page | side panel). The sheet's left corners round off against the sidebar and square
+ * up when the sidebar hides; the side panel floats as its own sheet on an 8px strip of canvas.
  */
 export function Shell(): ReactNode {
 	const { t } = useTranslation("shell");
@@ -201,7 +202,7 @@ export function Shell(): ReactNode {
 	const windowWidth = useWindowWidth();
 	const tooNarrow = useApp(state => dockTooNarrow(state, windowWidth));
 	const chatOverDock = useApp(state => state.chatOverDock);
-	const showDock = dockOpen && !page && !tooNarrow;
+	const showDock = dockOpen && !viewHidesDock(view) && !tooNarrow;
 	// Too narrow for the chat and the panel side by side: the panel takes the main area, with "Back to chat",
 	// until the user goes back to the chat (the panel then waits for a wider window).
 	const dockExpanded = tooNarrow && !chatOverDock;
@@ -244,16 +245,22 @@ export function Shell(): ReactNode {
 									</div>
 								)}
 								<PresenceSwap
-									swapKey={page ? `page:${page.id}` : dockExpanded ? "dock" : showChat ? "chat" : "home"}
+									swapKey={page ? `page:${page.id}` : dockExpanded ? "dock" : showChat ? "chat" : view === "project" ? "project" : "home"}
 									variant="rise"
 									className={cn("relative flex min-h-0 min-w-0 flex-1", showChat && "pointer-events-none")}
 								>
-									{page ? <PageView page={page} /> : dockExpanded ? <Dock width={dockWidth} expanded onEnter={onDockEnter} /> : showChat ? null : <HomeView />}
+									{page ? (
+										<PageView page={page} />
+									) : dockExpanded ? (
+										<Dock width={dockWidth} expanded onEnter={onDockEnter} />
+									) : showChat ? null : (
+										<MainScreen view={view === "project" ? "project" : "home"} />
+									)}
 								</PresenceSwap>
 							</div>
 						</main>
 						<AnimatePresence initial={false}>
-							{/* The side panel belongs to the chat and project views; full pages take the whole main area. */}
+							{/* The side panel belongs to the chat and project views; Home and full pages take the whole main area. */}
 							{showDock && (
 								<motion.div key="dock" data-surface="canvas" className="flex shrink-0 bg-bg" {...sideEnter(1)}>
 									<ResizeHandle label={t("dock.resize")} value={dockWidth} min={320} max={640} direction={-1} onChange={width => useApp.getState().setDockWidth(width)} />

@@ -17,12 +17,12 @@ import { focusRing } from "@/ui/styles";
 import { chooseFolder, openFolder } from "./actions";
 import { FolderChip } from "./folders/FolderChip";
 import { FolderChooser } from "./folders/FolderChooser";
-import { HomeScreen } from "./HomeScreen";
+import { ProjectOverview } from "./ProjectOverview";
 import { useShares } from "./share-store";
 
 const MAC = window.vomp.platform === "darwin";
 
-screens.register({ id: "home", component: HomeScreen });
+screens.register({ id: "project", component: ProjectOverview });
 // Pages and dialogs load from their own chunk (`registry/lazy`); a dialog opens as soon as it has loaded.
 sheets.register({ id: "project-new", component: lazyView(() => import("./NewProjectWizard").then(m => m.NewProjectWizard)) });
 pages.register({

@@ -1,4 +1,4 @@
-import { MagnifyingGlass, SidebarSimple } from "@phosphor-icons/react";
+import { House, MagnifyingGlass, SidebarSimple } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "../state/app";
@@ -7,13 +7,15 @@ import { cn, IconButton, Kbd } from "../ui";
 /**
  * Frameless window bar across the top of the main sheet (DESIGN §3.1): opaque and draggable, "Search commands" centered.
  * The lockup lives in the sidebar header. With the sidebar shown, the macOS traffic lights sit on the sidebar; with it
- * hidden they sit here, so the left column reserves their 92px (`--spacing-traffic`) and holds "Show sidebar". On Windows the caption
- * buttons overlay the right column, which keeps 138px free.
+ * hidden they sit here, so the left column reserves their 92px (`--spacing-traffic`) and holds "Show sidebar". The left
+ * column always ends with Home, lit while Home shows. On Windows the caption buttons overlay the right column, which
+ * keeps 138px free.
  */
 export function TitleBar(): ReactNode {
 	const { t } = useTranslation("shell");
 	const isMac = window.vomp.platform === "darwin";
 	const sidebarOpen = useApp(state => state.sidebarOpen);
+	const onHome = useApp(state => state.view === "home");
 
 	return (
 		// Three columns: the side columns share the free space equally, so the search button stays centered, but the
@@ -35,6 +37,16 @@ export function TitleBar(): ReactNode {
 						onClick={() => useApp.getState().toggleSidebar()}
 					/>
 				)}
+				<IconButton
+					// `!`: the ghost variant's own background and text colors come later in the stylesheet.
+					className={cn("no-drag", onHome && "bg-selected! text-fg!")}
+					label={t("titlebar.home")}
+					shortcut={isMac ? "⇧⌘H" : "Ctrl+Shift+H"}
+					icon={<House />}
+					size="sm"
+					aria-current={onHome ? "page" : undefined}
+					onClick={() => useApp.getState().goHome()}
+				/>
 			</div>
 			<div className="flex min-w-0 justify-center">
 				<button

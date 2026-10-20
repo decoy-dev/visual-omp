@@ -87,6 +87,10 @@
 	--folder-purple: oklch(0.68 0.17 305);
 	--folder-gray: oklch(0.72 0.01 195);
 
+	/* Home ping field: base dot color and the wavefront's teal answer (read by canvas, see home/PingField.tsx). */
+	--plot-dot: oklch(0.42 0.013 195);
+	--plot-accent: var(--accent);
+
 	/* 1.6 diff */
 	--diff-add-bg: oklch(0.962 0.025 160);
 	--diff-add-line: oklch(0.925 0.045 160);
@@ -263,6 +267,8 @@
 	--term-selection: oklch(0.78 0.1 192 / 0.24);
 	--term-blue: oklch(0.75 0.1 255);
 	--term-magenta: oklch(0.74 0.11 320);
+
+	--plot-dot: oklch(0.78 0.009 195);
 }
 
 /*

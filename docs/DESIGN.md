@@ -98,6 +98,8 @@ Slightly desaturated so status colors sit next to the teal accent without compet
 
 **Project folder colors** are the one place the user picks a color. A project can take one of the seven macOS Finder tag colors, stored per project path in the app preferences (`projectColors`) and painted with `--folder-red`, `--folder-orange`, `--folder-yellow`, `--folder-green`, `--folder-blue`, `--folder-purple` and `--folder-gray`. They are visual-omp's own: they don't set Finder tags or change the folder on disk. One set serves every theme: the folder icons appear on the ink sidebar, where each reads 5.6:1 or more; menu swatches carry a hairline and the color's name, and the wizard's swatches, which are its controls, take the 3:1 control border (§3.2, §4.4).
 
+**Home's ping field** (§4.24) paints with `--plot-dot` (`oklch(0.42 0.013 195)` light, `oklch(0.78 0.009 195)` dark) at low alpha set in the canvas code, and with `--plot-accent` (`var(--accent)`) for the inner band of each ping.
+
 ### 1.6 Diff
 
 | Token | Light | Dark |
@@ -274,12 +276,12 @@ Streaming text uses a thin 2px accent caret (`.stream-caret`), and working state
 
 ## 3. App shell layout
 
-The window opens at 1440×920 and can shrink to 960×620 (`src/main/index.ts`). `shell/Shell.tsx` places a 40px title bar above the main area and a 28px status bar below. The sidebar and status bar use the ink chrome in both themes. A light or dark main sheet has rounded left corners against the chrome; pages use the gray canvas. The side panel is a floating rounded sheet separated from the canvas by a gap.
+The window opens at 1440×920 and can shrink to 960×620 (`src/main/index.ts`). `shell/Shell.tsx` places a 40px title bar above the main area and a 28px status bar below. The sidebar and status bar use the ink chrome in both themes. A light or dark main sheet has rounded left corners against the chrome; pages use the gray canvas. The side panel is a floating rounded sheet separated from the canvas by a gap. The app always opens on Home (§4.24); open chats come back in the sidebar's Current chats.
 
 The sidebar and side panel enter from their own edges and fade when hidden. Main-area changes use `PresenceSwap`. The chat remains mounted and inert while a page is open. Sidebar and side-panel widths and visibility, plus the selected pane, persist in `localStorage`.
 
 - **Narrow windows**: when the side panel leaves less than 480px for chat, it takes the main area. Its header provides Back to chat. Returning to chat leaves the panel open for wider layouts. Opening the panel or choosing a pane focuses Back to chat. Resizing preserves usable focus where possible.
-- **Pages** hide the side panel while open (§5.6).
+- **Home and pages** hide the side panel while open (§4.24, §5.6).
 
 ### 3.1 Title bar (40px)
 
@@ -287,7 +289,7 @@ The frameless title bar is a drag region with no-drag controls. It uses the main
 
 - **macOS** uses `hiddenInset` traffic lights placed 16px from the window edge, with a 92px inset that leaves 16px after the green button at the current 14px button size.
 - **Windows and Linux** use Electron caption buttons; renderer controls are not drawn over them.
-- The sidebar toggle appears when the sidebar is hidden. The centered Search commands field opens the command palette with ⌘K or Ctrl+K.
+- The sidebar toggle appears when the sidebar is hidden. The left column always ends with **Home** (a 24px `House` icon button, tooltip "Home · ⇧⌘H"), which shows Home and carries the `--selected` fill while Home is showing. View → Home and the palette's "Go to Home" do the same. The centered Search commands field opens the command palette with ⌘K or Ctrl+K.
 - The sidebar header holds the wordmark and version.
 
 ### 3.2 Sidebar (264px, drag 200-320px, ⌘B hides)
@@ -501,7 +503,7 @@ The tour runs 800ms after the first launch, once omp is found. Five steps spotli
 
 ### 4.3 Project overview
 
-`features/projects/HomeScreen.tsx` shows the project overview when the home view is selected. The project row's name and "Open project overview" open it.
+`features/projects/ProjectOverview.tsx` shows the project overview when the project view is selected. The project row's name and "Open project overview" open it, and so do the project rows on Home.
 
 - **Layout**: a column up to 920px with 24px padding. The overview is a size container, and from 46rem wide "Instructions and settings" and Git share one row as two columns.
 - **Header** (`PageHeader`):
@@ -513,7 +515,7 @@ The tour runs 800ms after the first launch, once omp is found. Five steps spotli
   - **Instructions and settings**: a summary list. Instructions names the active instructions file and its size, or "No instructions yet", with the enabled rules count ("{n} rules loaded") as a link to the Rules tab of the Instructions page. "Model for new chats" shows the default role's model, or "Chosen by omp". "Permission mode" shows the level. A value set for this project only adds "· this project only". Below the list, [Edit instructions] or [Write instructions] and [Project settings].
   - **Git**: shows whether the folder is clean, its sync state (up to date, commits ahead or behind, no tracking branch, or no commits), and a CI checks chip when available. [Review changes] appears when there are file changes. Branch name and line counts remain in the status bar. A folder outside git reads "This folder isn't a git project yet…" with [Set up git].
   - **Start from an example**: "Each example opens a new chat with the prompt ready to edit before you send it." The starters are Fix a bug, Build a feature, Explain this, Clean up, Add tests and Fix mobile layout, each with its prompt beside it.
-- The overview shows no cost figures; spend appears only on the Usage & limits page (§4.18).
+- The overview shows no cost figures; spend appears on the Usage & limits page (§4.18) and, for the last 7 days, on Home (§4.24).
 - **Other states**:
   - With no projects, an empty state shows the 48px mark: "No projects yet. A project is a folder that omp works in." It offers [Open folder…], [Create project] and primary [Start chat in folder…].
   - A project whose folder is missing reads "Can't find “{name}”" and offers [Find folder…] or [Remove project from list].
@@ -760,7 +762,7 @@ The Memory section (`features/extensions/memory/MemorySection.tsx`) shows what o
 
 ### 4.18 Usage & limits
 
-Usage & limits opens as a full page (`features/extensions/usage/UsagePage.tsx`, §5.6). Dollar figures appear only here and are labelled Estimated API cost.
+Usage & limits opens as a full page (`features/extensions/usage/UsagePage.tsx`, §5.6). Dollar figures appear only here and in Home's usage glance (the last 7 days, §4.24, which the owner asked for), and are always labelled Estimated API cost.
 
 - **Provider limits**: each provider row identifies its account, status and applicable window. It can expand to show all accounts and windows. Unknown values remain unknown, and warnings remain visible when an account is collapsed.
 - **Recorded usage**: a 7- or 30-day period control applies only to local recorded usage, from omp session and subagent files. A segmented KPI strip shows Chats, Tokens and Estimated API cost. The daily chart uses neutral bars except for today's accent bar and includes an average line. A separate share-bar card breaks cost down by project when more than one project has cost. Selecting a project share filters the chat table.
@@ -813,6 +815,19 @@ There is no in-app notification center. The Current chats list shows open chats 
 
 The figures in this section describe the macOS arm64 app directory as measured with `du`, in MiB. The app decreased from 303.9 MiB (0.4.2) to 242.5 MiB (0.5.0), about 61 MiB less. Retaining only `en` and `en-US` removed 48.2 MiB of Electron locale files. The ASAR archive decreased from 14.2 MiB to 3.9 MiB. Pure-JavaScript main-process dependencies are bundled; `node-pty` is the native runtime dependency. Source maps are excluded. The renderer figures are uncompressed build-output sizes of individual chunks. The initial renderer entry chunk decreased from about 4.87 MB to 1.56 MB. Xterm (about 331 KB) and KaTeX (about 262 KB) load as separate chunks, and Settings sections, Usage and other feature views are code-split.
 
+### 4.24 Home
+
+`features/home/HomeScreen.tsx` is where the app opens, and the title bar's Home button shows it. It is not a page: it renders on the main sheet like a chat, the sidebar keeps its lists, and the side panel stands aside. Pages opened from it say "Back to Home". Closing the last open chat also returns to it.
+
+- **Layout**: one scroll region. The content is centered, up to 1040px, with 24px gutters and a top margin of `clamp(3.5rem, 10vh, 7.5rem)`. From 1080px wide (a size container) the sections share two columns, 3fr and 2fr with a 32px gap: Recent chats on the left, Projects then Usage on the right; narrower, they stack in that order.
+- **Hero**: the 40px mark, 16px, then the empty chat's question at `--text-2xl` bold ("What should we work on?", or "…next?" once there are chats), 24px, then the prompt box.
+- **Prompt box** (`HomeComposer.tsx`): the composer card (§3.6) with ＋ (Attach file), the growing text box and Send; Enter sends and Shift+Enter adds a line. While the text box has keyboard focus the card's border and a 1px outline turn `--ring`. Pasted or dropped images become chips and other files become absolute `@path` mentions, since the draft can still move to another project. The text and images are kept in the composer drafts under `home`, so they survive leaving Home and restarting. The quiet row under the card holds the project folder picker (projects pinned first with their color dots, then Open folder… and Create project…; choosing one makes it the active project), the permission level (`PermissionMenu`, a project setting), the model (the chat's `ModelList`) and the thinking level. Model and thinking start from the project's default role and go to omp as `--model` and `--thinking` launch flags only when changed, so the new chat can still move folders before its first message. The thinking button names only a level the chat will start with: a picked level the new model can't take is dropped, and a default the model doesn't offer leaves the button unnamed for omp to decide. Sending starts the chat (`startChat`), which then shows; a `/command` goes where the composer would send it.
+- **Recent chats**: the newest saved chats across every project from `sessions:recent` (one walk of the sessions folder), six rows, or eight in two columns, with "Show more chats" opening the rest. A 40px row holds the status mark, the title, a read-only chip when another window has the chat, and the project's 8px color dot (a hollow ring without a color), its name and the age. Chats of missing folders are left out. With none: "No chats yet. Start one above and it appears here."
+- **Projects**: pinned first, then by activity, six rows with "Show all {n} projects". A 40px row holds the folder (filled in its color, `FolderMinus` in `--warn` when missing), the name, a pin and "{n} chats · {age}"; a colored project's row carries a 10% wash of its color, 16% on hover. [Open folder…] and [Create project] follow the list.
+- **Usage** (`UsageGlance.tsx`): up to three providers closest to a plan limit, each with a `Meter` and its window and reset ("16% of the 5h limit used · Resets in 2h 39m"), with "Near limit" or "Limit reached" in words when it applies, then "Estimated API cost, last 7 days" with the amount and "What this usage would cost at public API prices." It reads the shared limits snapshot and one 7-day spend summary, which it leaves for the Usage & limits page; "Open Usage & limits" links there. Figures kept from an earlier read after a failed refresh say so, as do totals with unreadable session files, each on a line with a `Warning` glyph in `--warn` and the Usage page's own wording, and "No recorded usage in this period" shows only when every read worked.
+- **Ping field** (`PingField.tsx`): a Canvas 2D dot grid behind everything, 28px pitch, `--plot-dot` at 5-12% alpha drifting on two slow sine fields, densest behind the hero and never below 25% of that lower down; the fade is in the alpha math, with no gradient or mask. Every 6-10s a sonar ping sweeps out from a random point at 260px/s to 640px: dots in the 90px band behind its edge brighten and grow up to 2px, and the 30px nearest the edge turn `--plot-accent` (the teal), fading out over the last quarter; three pings in ten send a fainter, faster echo. It renders at about 30fps and pauses while hidden, offscreen or after the window has been in the background for 10s. Under reduced motion it draws one still frame.
+- **Focus**: the text box takes focus when Home mounts. The prompt box carries `data-tour="composer"` and its permission button `data-tour="permission"`, so the first-run tour, which now starts on Home, points at them.
+
 ---
 
 ## 5. Component library spec
@@ -855,11 +870,11 @@ Opening uses the Radix transform origin with a short scale and offset; closing f
 
 ### 5.6 Pages, dialogs and sheets
 
-**Pages** are for sustained management and reading: Settings, Usage & limits, Help, Project settings and Instructions. A page takes over the main area (`useApp.openPage(id, props)`, `ui/Page.tsx`). Features register pages in `pages` and open them through `state/navigation.ts` (`openSettings`, `openUsage`, `openHelp`, `openProjectSettings`, `openProjectInstructions`). The chat it replaced stays mounted, hidden and inert, so Back finds it with the same scroll position, expanded history and split width; the side panel hides while a page shows. After a restart the window reopens on the chat or project overview the page replaced.
+**Pages** are for sustained management and reading: Settings, Usage & limits, Help, Project settings and Instructions. A page takes over the main area (`useApp.openPage(id, props)`, `ui/Page.tsx`). Features register pages in `pages` and open them through `state/navigation.ts` (`openSettings`, `openUsage`, `openHelp`, `openProjectSettings`, `openProjectInstructions`). The chat it replaced stays mounted, hidden and inert, so Back finds it with the same scroll position, expanded history and split width; the side panel hides while a page shows. Pages are not restored: after a restart the window opens on Home (§4.24).
 
 - **Layout**: `PageFrame` uses one vertical scroll region. Content widths are form, list and data variants, centered with 24px page padding. If the sidebar is shown, the page portals Back into its slot; a section navigation such as Settings also occupies the slot and replaces the chat lists. Other page Back links leave those lists visible. If the sidebar is hidden, Back and section navigation render inline. The dock is hidden while a page is open.
 - **Header**: `PageHeader` shows a wrapping title, description, optional metadata and actions. Focus follows a page or section change to the page title after a lazy section mounts, unless the reader has moved focus.
-- **Back**: Back returns to the original chat or project. ⌘B with the sidebar visible controls sidebar visibility. Page navigation preserves its return destination and guards unsaved edits.
+- **Back**: Back returns to the chat, project overview or Home the page replaced ("Back to chat", "Back to project", "Back to Home"). When the chat it replaced has closed meanwhile, Back returns Home. ⌘B with the sidebar visible controls sidebar visibility. Page navigation preserves its return destination and guards unsaved edits.
 - **Settings links** (`openSettings(section, { projectPath, scope, sectionProps })`): every field applies on each link, including while Settings is open. The project is fixed when the link is made; scope falls back to all projects when there is no project.
 
 **Dialogs** are for bounded decisions: confirmations, sharing, short creation flows and wizards. **Sheets** remain for edge overlays that keep their context in view: the omp terminal (§4.11), the commit and pull request forms, the helper editor (§4.14) and the skill detail (§4.16). Overlays that any feature can open, dialogs such as Share included, register in the `sheets` registry and open with `useApp.openSheet`.

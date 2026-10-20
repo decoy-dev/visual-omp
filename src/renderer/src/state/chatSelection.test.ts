@@ -9,31 +9,28 @@ const selection = (tabs: Tab[], patch: Partial<RestoredChatSelection<Tab>> = {})
 	splitTabId: null,
 	focusedSplit: "primary",
 	activeProject: null,
-	view: "home",
-	pageReturn: "home",
 	...patch,
 });
 
 describe("normalizeRestoredChatSelection", () => {
-	it("keeps a valid split and follows the focused half's project", () => {
-		expect(selection([tab("a", "project-a"), tab("b", "project-b")], {
+	it("keeps a valid split", () => {
+		expect(selection([tab("a"), tab("b")], { activeTabId: "a", splitTabId: "b", focusedSplit: "secondary" })).toMatchObject({
 			activeTabId: "a",
 			splitTabId: "b",
 			focusedSplit: "secondary",
-			view: "chat",
-		})).toMatchObject({ activeTabId: "a", splitTabId: "b", focusedSplit: "secondary", activeProject: "project-b", view: "chat" });
+		});
 	});
 
-	it("keeps the project overview the user was on, even with a chat from another project open", () => {
-		expect(selection([tab("a", "project-a")], { activeTabId: "a", activeProject: "project-b", view: "home" })).toMatchObject({
+	it("keeps the project last shown, even with a chat from another project open", () => {
+		expect(selection([tab("a", "project-a")], { activeTabId: "a", activeProject: "project-b" })).toMatchObject({
 			activeTabId: "a",
 			activeProject: "project-b",
-			view: "home",
 		});
-		// A page opened from that overview returns to it.
-		expect(selection([tab("a", "project-a")], { activeTabId: "a", activeProject: "project-b", view: "page", pageReturn: "home" })).toMatchObject({
+	});
+
+	it("takes the focused chat's project when none was saved", () => {
+		expect(selection([tab("a", "project-a"), tab("b", "project-b")], { activeTabId: "a", splitTabId: "b", focusedSplit: "secondary" })).toMatchObject({
 			activeProject: "project-b",
-			view: "home",
 		});
 	});
 
@@ -42,8 +39,7 @@ describe("normalizeRestoredChatSelection", () => {
 			activeTabId: "unsaved",
 			splitTabId: "saved",
 			focusedSplit: "secondary",
-			view: "chat",
-		})).toMatchObject({ activeTabId: "saved", splitTabId: null, focusedSplit: "primary", activeProject: "work", view: "chat" });
+		})).toMatchObject({ activeTabId: "saved", splitTabId: null, focusedSplit: "primary", activeProject: "work" });
 	});
 
 	it("clears stale split ids and chooses a surviving chat when the active id is missing", () => {
@@ -51,22 +47,14 @@ describe("normalizeRestoredChatSelection", () => {
 			activeTabId: "gone",
 			splitTabId: "also-gone",
 			focusedSplit: "secondary",
-			view: "chat",
-		})).toMatchObject({ activeTabId: "b", splitTabId: null, focusedSplit: "primary", view: "chat" });
+		})).toMatchObject({ activeTabId: "b", splitTabId: null, focusedSplit: "primary" });
 	});
 
-	it("returns to the project overview when no saved chat can be restored", () => {
+	it("clears the selection when no saved chat can be restored", () => {
 		expect(selection([], {
 			activeTabId: "unsaved",
 			splitTabId: "gone",
-			view: "chat",
-		})).toMatchObject({ activeTabId: null, splitTabId: null, focusedSplit: "primary", view: "home" });
-	});
-
-	it("does not restore an expired page over the chat or project it replaced", () => {
-		expect(selection([tab("a")], { activeTabId: "a", view: "page", pageReturn: "chat" })).toMatchObject({ view: "chat" });
-		expect(selection([], { view: "page", pageReturn: "chat" })).toMatchObject({ view: "home" });
-		expect(selection([], { view: "page", pageReturn: "home" })).toMatchObject({ view: "home" });
+		})).toMatchObject({ activeTabId: null, splitTabId: null, focusedSplit: "primary" });
 	});
 });
 

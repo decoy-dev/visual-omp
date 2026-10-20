@@ -1,0 +1,34 @@
+{
+	"composer": {
+		"plusTip": "Attach files to your message",
+		"placeholderNoProject": "Choose a project folder below, then ask omp to change something…",
+		"project": {
+			"title": "Projects",
+			"tip": "The folder omp works in for this chat.",
+			"aria": "Project folder: {{name}}",
+			"choose": "Choose a project folder",
+			"open": "Open folder…",
+			"create": "Create project…"
+		}
+	},
+	"recent": {
+		"title": "Recent chats",
+		"more": "Show more chats",
+		"fewer": "Show fewer chats",
+		"empty": "No chats yet. Start one above and it appears here."
+	},
+	"projects": {
+		"title": "Projects",
+		"more": "Show all {{count}} projects",
+		"fewer": "Show fewer projects",
+		"meta_one": "{{count}} chat · {{time}}",
+		"meta_other": "{{count}} chats · {{time}}",
+		"noChats": "No chats yet"
+	},
+	"usage": {
+		"title": "Usage",
+		"open": "Open Usage & limits",
+		"cost": "Estimated API cost, last 7 days",
+		"costNote": "What this usage would cost at public API prices."
+	}
+}

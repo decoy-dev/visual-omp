@@ -43,10 +43,10 @@ import { EXAMPLE_PROMPTS, folderName, formatBytes } from "./format";
 
 const RECENT_LIMIT = 5;
 
-export function HomeScreen({ projectPath }: ScreenProps): ReactNode {
+export function ProjectOverview({ projectPath }: ScreenProps): ReactNode {
 	const hasProjects = useApp(state => state.projects.length > 0);
 	if (!projectPath) return <NoProjects hasProjects={hasProjects} />;
-	return <ProjectHome key={projectPath} path={projectPath} />;
+	return <OverviewOf key={projectPath} path={projectPath} />;
 }
 
 function NoProjects({ hasProjects }: { hasProjects: boolean }): ReactNode {
@@ -55,17 +55,17 @@ function NoProjects({ hasProjects }: { hasProjects: boolean }): ReactNode {
 		<EmptyState
 			className="m-auto"
 			art={<Mark size={48} />}
-			title={t(hasProjects ? "home.pickProject" : "home.noProjects")}
+			title={t(hasProjects ? "overview.pickProject" : "overview.noProjects")}
 			actions={
 				<>
 					<Button icon={<FolderOpen />} onClick={() => openFolder()}>
-						{t("home.openFolder")}
+						{t("overview.openFolder")}
 					</Button>
 					<Button icon={<Plus />} onClick={() => useApp.getState().openSheet("project-new")}>
-						{t("home.newProject")}
+						{t("overview.newProject")}
 					</Button>
 					<Button variant="primary" icon={<ChatCenteredDots />} onClick={() => chooseFolder()}>
-						{t("home.startIn")}
+						{t("overview.startIn")}
 					</Button>
 				</>
 			}
@@ -116,7 +116,7 @@ function LoadedValue<T>({ data, failed, children }: { data: Loadable<T>; failed:
 	);
 }
 
-function ProjectHome({ path }: { path: string }): ReactNode {
+function OverviewOf({ path }: { path: string }): ReactNode {
 	const { t } = useTranslation("projects");
 	const project = useApp(state => state.projects.find(entry => entry.path === path) ?? null);
 	const sessions = useApp(state => state.sessionsByProject[path]);
@@ -143,23 +143,23 @@ function ProjectHome({ path }: { path: string }): ReactNode {
 							<span className="flex items-center gap-1">
 								<IconButton
 									size="sm"
-									label={t("home.copyPath")}
+									label={t("overview.copyPath")}
 									icon={<Copy />}
 									onClick={() =>
 										void navigator.clipboard.writeText(path).then(
-											() => toast({ tone: "ok", message: t("home.pathCopied") }),
-											error => toast({ tone: "err", message: t("home.copyFailed"), description: errorText(error) }),
+											() => toast({ tone: "ok", message: t("overview.pathCopied") }),
+											error => toast({ tone: "err", message: t("overview.copyFailed"), description: errorText(error) }),
 										)
 									}
 								/>
-								<IconButton size="sm" label={t("home.menuReveal")} icon={<FolderOpen />} onClick={() => void window.vomp.invoke("app:showItem", path)} />
+								<IconButton size="sm" label={t("overview.menuReveal")} icon={<FolderOpen />} onClick={() => void window.vomp.invoke("app:showItem", path)} />
 							</span>
 						</>
 					}
 					actions={
 						<>
 							<Button variant="primary" icon={<ChatCenteredDots />} onClick={() => void useApp.getState().newChat(path)}>
-								{t("home.newChat")}
+								{t("overview.newChat")}
 							</Button>
 							<ProjectMenu path={path} />
 						</>
@@ -194,24 +194,24 @@ function ProjectMenu({ path }: { path: string }): ReactNode {
 	return (
 		<Menu>
 			<MenuTrigger asChild>
-				<IconButton variant="secondary" size="lg" icon={<DotsThree weight="bold" />} label={t("home.menu")} />
+				<IconButton variant="secondary" size="lg" icon={<DotsThree weight="bold" />} label={t("overview.menu")} />
 			</MenuTrigger>
 			<MenuContent align="end">
 				<MenuItem icon={<SlidersHorizontal />} onSelect={() => openProjectSettings(path)}>
-					{t("home.menuSettings")}
+					{t("overview.menuSettings")}
 				</MenuItem>
 				<MenuItem icon={<FileText />} onSelect={() => openProjectInstructions(path)}>
-					{t("home.menuInstructions")}
+					{t("overview.menuInstructions")}
 				</MenuItem>
 				<MenuItem icon={<DownloadSimple />} onSelect={() => useApp.getState().openSheet("project-import", { projectPath: path })}>
-					{t("home.menuImport")}
+					{t("overview.menuImport")}
 				</MenuItem>
 				<MenuItem icon={<FolderOpen />} onSelect={() => void window.vomp.invoke("app:showItem", path)}>
-					{t("home.menuReveal")}
+					{t("overview.menuReveal")}
 				</MenuItem>
 				<MenuSeparator />
 				<MenuItem icon={<X />} danger onSelect={() => void remove()}>
-					{t("home.menuRemove")}
+					{t("overview.menuRemove")}
 				</MenuItem>
 			</MenuContent>
 		</Menu>
@@ -233,16 +233,16 @@ function MissingFolder({ path, name }: { path: string; name: string }): ReactNod
 		<EmptyState
 			className="m-auto"
 			icon={<FolderMinus />}
-			title={t("home.missing.title", { name })}
-			body={t("home.missing.body", { path })}
+			title={t("overview.missing.title", { name })}
+			body={t("overview.missing.body", { path })}
 			actions={
 				<>
-					<Button onClick={() => void locate()}>{t("home.missing.locate")}</Button>
+					<Button onClick={() => void locate()}>{t("overview.missing.locate")}</Button>
 					<Button
 						variant="danger-ghost"
 						onClick={() => void window.vomp.invoke("project:remove", path).then(() => useApp.getState().refreshProjects())}
 					>
-						{t("home.menuRemove")}
+						{t("overview.menuRemove")}
 					</Button>
 				</>
 			}
@@ -270,12 +270,12 @@ function RecentChats({ sessions }: { sessions: SessionSummary[] | undefined }): 
 		<section aria-labelledby={id}>
 			<SectionHeader
 				id={id}
-				title={t("home.recent.title")}
+				title={t("overview.recent.title")}
 				className="mb-2"
 				actions={
 					rest.length > 0 && (
 						<Button variant="ghost" size="sm" onClick={() => setAll(value => !value)} aria-expanded={all}>
-							{all ? t("home.recent.fewer") : t("home.recent.all", { count: sessions?.length ?? 0 })}
+							{all ? t("overview.recent.fewer") : t("overview.recent.all", { count: sessions?.length ?? 0 })}
 						</Button>
 					)
 				}
@@ -291,7 +291,7 @@ function RecentChats({ sessions }: { sessions: SessionSummary[] | undefined }): 
 				}
 			>
 				{first.length === 0 ? (
-					<p className="py-1 text-md text-fg-muted">{t("home.recent.empty")}</p>
+					<p className="py-1 text-md text-fg-muted">{t("overview.recent.empty")}</p>
 				) : (
 					<div className="-mx-2">
 						<ul className="relative flex flex-col">
@@ -322,8 +322,8 @@ function RecentRow({ session, now, ref }: { session: SessionSummary; now: number
 	const tab = useApp(state => state.tabs.find(entry => entry.sessionFile === session.file) ?? null);
 	const view = useSessionView(controllerFor(tab?.id));
 	const status = chatStatus(view);
-	const title = chatTitle(view, session.title) ?? session.preview ?? t("home.recent.untitled");
-	const statusLabel = t(`home.recent.status.${status}`);
+	const title = chatTitle(view, session.title) ?? session.preview ?? t("overview.recent.untitled");
+	const statusLabel = t(`overview.recent.status.${status}`);
 	return (
 		<motion.li
 			ref={ref}
@@ -341,7 +341,7 @@ function RecentRow({ session, now, ref }: { session: SessionSummary; now: number
 			>
 				<ChatStatusMark status={status} label={statusLabel} />
 				<span className="min-w-0 flex-1 truncate text-md font-medium text-fg">{title}</span>
-				{view?.readOnly && <Chip>{t("home.recent.readOnly")}</Chip>}
+				{view?.readOnly && <Chip>{t("overview.recent.readOnly")}</Chip>}
 				<span className="shrink-0 font-mono text-xs text-fg-faint">{shortAgo(session.updatedAt, now)}</span>
 			</button>
 		</motion.li>
@@ -369,10 +369,10 @@ function ProjectSetup({ path }: { path: string }): ReactNode {
 	const active = files.state === "ready" ? (files.value.files.find(file => file.relPath === files.value.activeRelPath) ?? null) : null;
 	return (
 		<section aria-labelledby={id}>
-			<SectionHeader id={id} title={t("home.setup.title")} className="mb-2" />
+			<SectionHeader id={id} title={t("overview.setup.title")} className="mb-2" />
 			<dl className="flex flex-col">
-				<SummaryRow label={t("home.setup.instructions")}>
-					<LoadedValue data={files} failed={t("home.setup.instructionsFailed")}>
+				<SummaryRow label={t("overview.setup.instructions")}>
+					<LoadedValue data={files} failed={t("overview.setup.instructionsFailed")}>
 						{() =>
 							active ? (
 								<span>
@@ -380,43 +380,43 @@ function ProjectSetup({ path }: { path: string }): ReactNode {
 									<span className="text-fg-muted"> · {formatBytes(new TextEncoder().encode(active.content ?? "").length)}</span>
 								</span>
 							) : (
-								<span className="text-fg-muted">{t("home.instructions.none")}</span>
+								<span className="text-fg-muted">{t("overview.instructions.none")}</span>
 							)
 						}
 					</LoadedValue>
 					<span className="mt-1 block text-sm">
-						<LoadedValue data={rules} failed={t("home.setup.rulesFailed")}>
+						<LoadedValue data={rules} failed={t("overview.setup.rulesFailed")}>
 							{value => (
 								<button
 									type="button"
 									className="rounded-sm text-fg-muted underline-offset-2 outline-none hover:text-fg hover:underline focus-visible:outline-2 focus-visible:outline-ring"
 									onClick={() => openProjectInstructions(path, "rules")}
 								>
-									{t("home.instructions.rules", { count: value.filter(rule => rule.enabled).length })}
+									{t("overview.instructions.rules", { count: value.filter(rule => rule.enabled).length })}
 								</button>
 							)}
 						</LoadedValue>
 					</span>
 				</SummaryRow>
-				<SummaryRow label={t("home.setup.model")}>
-					<LoadedValue data={roles} failed={t("home.setup.settingFailed")}>
+				<SummaryRow label={t("overview.setup.model")}>
+					<LoadedValue data={roles} failed={t("overview.setup.settingFailed")}>
 						{value => {
 							const role = value.roles.find(entry => entry.id === "default") ?? null;
 							return (
 								<span>
-									{role?.model ? <span className="font-mono text-sm">{role.model}</span> : <span className="text-fg-muted">{t("home.setup.modelAuto")}</span>}
-									{role?.source === "project" && <span className="text-fg-muted"> · {t("home.setup.projectOnly")}</span>}
+									{role?.model ? <span className="font-mono text-sm">{role.model}</span> : <span className="text-fg-muted">{t("overview.setup.modelAuto")}</span>}
+									{role?.source === "project" && <span className="text-fg-muted"> · {t("overview.setup.projectOnly")}</span>}
 								</span>
 							);
 						}}
 					</LoadedValue>
 				</SummaryRow>
-				<SummaryRow label={t("home.setup.mode")}>
-					<LoadedValue data={approval} failed={t("home.setup.settingFailed")}>
+				<SummaryRow label={t("overview.setup.mode")}>
+					<LoadedValue data={approval} failed={t("overview.setup.settingFailed")}>
 						{value => (
 							<span>
 								{t(`settings.mode.${value.mode}.label`)}
-								{value.modeSource === "project" && <span className="text-fg-muted"> · {t("home.setup.projectOnly")}</span>}
+								{value.modeSource === "project" && <span className="text-fg-muted"> · {t("overview.setup.projectOnly")}</span>}
 							</span>
 						)}
 					</LoadedValue>
@@ -424,10 +424,10 @@ function ProjectSetup({ path }: { path: string }): ReactNode {
 			</dl>
 			<div className="mt-3 flex flex-wrap gap-2">
 				<Button size="sm" icon={<FileText />} onClick={() => openProjectInstructions(path)}>
-					{files.state === "ready" && !active ? t("home.instructions.write") : t("home.instructions.edit")}
+					{files.state === "ready" && !active ? t("overview.instructions.write") : t("overview.instructions.edit")}
 				</Button>
 				<Button size="sm" icon={<SlidersHorizontal />} onClick={() => openProjectSettings(path)}>
-					{t("home.setup.openSettings")}
+					{t("overview.setup.openSettings")}
 				</Button>
 			</div>
 		</section>
@@ -442,7 +442,7 @@ function Health({ path }: { path: string }): ReactNode {
 	const ci = git?.pr ? ciState(git.pr) : "none";
 	return (
 		<section aria-labelledby={id}>
-			<SectionHeader id={id} title={t("home.health.title")} className="mb-2" />
+			<SectionHeader id={id} title={t("overview.health.title")} className="mb-2" />
 			<Loaded
 				ready={Boolean(status)}
 				placeholder={
@@ -458,17 +458,17 @@ function Health({ path }: { path: string }): ReactNode {
 				{status && (
 					// The branch and line counts live in the status bar; this section states where the work stands and offers the review.
 					<div className="flex flex-col gap-2 py-2 text-md">
-						{status.totals.files === 0 && <p className="text-fg-muted">{t("home.health.clean")}</p>}
+						{status.totals.files === 0 && <p className="text-fg-muted">{t("overview.health.clean")}</p>}
 						<p className="text-sm text-fg-muted">
 							{status.unborn
-								? t("home.health.noCommits")
+								? t("overview.health.noCommits")
 								: !status.upstream
-									? t("home.health.noUpstream")
+									? t("overview.health.noUpstream")
 									: status.ahead === 0 && status.behind === 0
-										? t("home.health.synced")
+										? t("overview.health.synced")
 										: [
-												status.ahead > 0 ? t("home.health.ahead", { count: status.ahead }) : null,
-												status.behind > 0 ? t("home.health.behind", { count: status.behind }) : null,
+												status.ahead > 0 ? t("overview.health.ahead", { count: status.ahead }) : null,
+												status.behind > 0 ? t("overview.health.behind", { count: status.behind }) : null,
 											]
 												.filter(Boolean)
 												.join(" · ")}
@@ -476,14 +476,14 @@ function Health({ path }: { path: string }): ReactNode {
 						{ci !== "none" && (
 							<p className="text-sm">
 								<Chip tone={ci === "pass" ? "ok" : ci === "pending" ? "warn" : "err"} dot>
-									{t(`home.health.ci.${ci}`)}
+									{t(`overview.health.ci.${ci}`)}
 								</Chip>
 							</p>
 						)}
 						{status.totals.files > 0 && (
 							<div className="mt-1">
 								<Button size="sm" icon={<ArrowRight />} onClick={() => useApp.getState().showPane("diff")}>
-									{t("home.health.openDiff")}
+									{t("overview.health.openDiff")}
 								</Button>
 							</div>
 						)}
@@ -500,9 +500,9 @@ function NoGit({ path }: { path: string }): ReactNode {
 	const [busy, setBusy] = useState(false);
 	return (
 		<section aria-labelledby={id}>
-			<SectionHeader id={id} title={t("home.health.title")} className="mb-2" />
+			<SectionHeader id={id} title={t("overview.health.title")} className="mb-2" />
 			<div className="flex flex-col items-start gap-3 py-2">
-				<p className="text-md text-fg-muted">{t("home.health.noGit")}</p>
+				<p className="text-md text-fg-muted">{t("overview.health.noGit")}</p>
 				<Button
 					size="sm"
 					icon={<FolderPlus />}
@@ -512,7 +512,7 @@ function NoGit({ path }: { path: string }): ReactNode {
 						void initGit(path).finally(() => setBusy(false));
 					}}
 				>
-					{t("home.health.initGit")}
+					{t("overview.health.initGit")}
 				</Button>
 			</div>
 		</section>
@@ -525,7 +525,7 @@ function PromptStarters({ path }: { path: string }): ReactNode {
 	const id = useId();
 	return (
 		<section aria-labelledby={id}>
-			<SectionHeader id={id} title={t("home.start.title")} description={t("home.start.body")} className="mb-2" />
+			<SectionHeader id={id} title={t("overview.start.title")} description={t("overview.start.body")} className="mb-2" />
 			<ul className="-mx-2 flex flex-col">
 				{EXAMPLE_PROMPTS.map(prompt => (
 					<li key={prompt}>

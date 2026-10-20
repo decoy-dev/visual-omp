@@ -118,6 +118,7 @@ Current chats, navigation shortcuts and preview release are described under Sess
 - The Instructions page edits the project's AGENTS.md and rules.
 - The Project settings page sets the project's model and permission mode and links to its connected tools, helpers and instructions.
 - The project overview shows recent chats, an instructions and settings summary, Git status and quick-start prompts.
+- Home is where the app opens and what the title bar's Home button (⇧⌘H) shows: a prompt box that starts a chat in any project with the new chat's choices (project folder, permission level, model, thinking level, attached files), the latest chats across every project, the projects with their folder colors, and plan limits with the last 7 days' estimated API cost. A quiet animated dot field renders behind it and holds still under reduced motion.
 - When the sidebar is visible, a page places Back under the sidebar header, and the header and Back share a teal card while the page is open. Settings places its section navigation under the card, in place of the chat lists; other pages keep the lists visible beneath the card. With the sidebar hidden, Back and navigation render inline and page focus moves to the title after lazy content mounts.
 
 ### Packaging and loading
@@ -137,4 +138,4 @@ Current chats, navigation shortcuts and preview release are described under Sess
 
 ### Lifecycle
 
-Quitting or closing a chat while omp is working warns first, then stops cleanly. Sessions resume where they left off. On restart, a restored chat view takes its project from the focused half of a split, a restored project overview keeps its own project even when an open chat belongs to another project, and a page that was open returns to the chat or overview it came from.
+Quitting or closing a chat while omp is working warns first, then stops cleanly. Sessions resume where they left off. On restart, the app opens on Home with the open chats back in the sidebar; the project last shown stays the active one, and pages are not restored.

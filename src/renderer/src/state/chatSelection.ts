@@ -4,11 +4,12 @@ export interface RestoredChatSelection<T extends { id: string; projectPath: stri
 	splitTabId: string | null;
 	focusedSplit: "primary" | "secondary";
 	activeProject: string | null;
-	view: "home" | "chat" | "page";
-	pageReturn: "home" | "chat";
 }
 
-/** Keep persisted chat selection consistent with the tabs that can actually be restored. */
+/**
+ * Keep persisted chat selection consistent with the tabs that can actually be restored. The app opens on Home, so
+ * the project stays the one last shown (it already follows the focused chat while chats show), else the focused chat's.
+ */
 export function normalizeRestoredChatSelection<T extends { id: string; projectPath: string }>(state: RestoredChatSelection<T>): RestoredChatSelection<T> {
 	const ids = new Set(state.tabs.map(tab => tab.id));
 	let activeTabId = state.activeTabId && ids.has(state.activeTabId) ? state.activeTabId : null;
@@ -21,14 +22,10 @@ export function normalizeRestoredChatSelection<T extends { id: string; projectPa
 	activeTabId ??= state.tabs.at(-1)?.id ?? null;
 
 	const focusedSplit = splitTabId ? state.focusedSplit : "primary";
-	const view = state.view === "page"
-		? state.pageReturn === "chat" && activeTabId ? "chat" : "home"
-		: state.view === "chat" && !activeTabId ? "home" : state.view;
-	// A project overview keeps its own project; a chat view follows the chat that has focus.
 	const focusedId = focusedSplit === "secondary" ? splitTabId : activeTabId;
-	const activeProject = view === "chat" ? (state.tabs.find(tab => tab.id === focusedId)?.projectPath ?? state.activeProject) : state.activeProject;
+	const activeProject = state.activeProject ?? state.tabs.find(tab => tab.id === focusedId)?.projectPath ?? null;
 
-	return { ...state, activeTabId, splitTabId, focusedSplit, activeProject, view };
+	return { ...state, activeTabId, splitTabId, focusedSplit, activeProject };
 }
 
 /**

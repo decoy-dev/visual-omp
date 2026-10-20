@@ -7,7 +7,7 @@ import { handle } from "./ipc";
 import { runOmp } from "./omp/cli";
 import { getHost, listHosts, startHost, stopHost } from "./omp/host";
 import { ompStatus } from "./omp/locate";
-import { findSessionFile, listProjects, listSessions, readSessionFile } from "./omp/sessions";
+import { findSessionFile, listProjects, listSessions, readSessionFile, recentSessions } from "./omp/sessions";
 import { sessionOwnership } from "./omp/elsewhere";
 import { followSessions } from "./omp/follow";
 import { getPrefs, setPrefs } from "./prefs";
@@ -55,6 +55,7 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 
 	handle("sessions:projects", () => listProjects());
 	handle("sessions:list", cwd => listSessions(cwd));
+	handle("sessions:recent", limit => recentSessions(limit));
 	handle("sessions:read", file => readSessionFile(file));
 	handle("sessions:find", sessionId => findSessionFile(sessionId));
 	handle("sessions:trash", async file => {

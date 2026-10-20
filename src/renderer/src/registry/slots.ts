@@ -108,10 +108,11 @@ export interface ScreenProps {
 
 export interface ScreenSpec {
 	/**
-	 * `home`: the main area when no chat is focused (project dashboard).
+	 * `home`: the app's Home screen (where the app opens, and the title bar's Home button).
+	 * `project`: a project's overview (`projectPath` is the project).
 	 * `setup`: replaces the whole window while omp is missing or too old.
 	 */
-	id: "home" | "setup";
+	id: "home" | "project" | "setup";
 	component: ComponentType<ScreenProps>;
 }
 

@@ -7,11 +7,12 @@ import { useTranslation } from "react-i18next";
 import type { PageBack } from "@/ui";
 import { useApp } from "./app";
 
-/** Back link for a page: "Back to chat" or "Back to project", depending on what the page replaced. */
+/** Back link for a page: "Back to chat", "Back to project" or "Back to Home", depending on what the page replaced. */
 export function usePageBack(close: () => void): PageBack {
 	const { t } = useTranslation("shell");
 	const returnTo = useApp(state => state.pageReturn);
-	return { label: t(returnTo === "chat" ? "page.backToChat" : "page.backToProject"), onBack: close };
+	const label = returnTo === "chat" ? "page.backToChat" : returnTo === "project" ? "page.backToProject" : "page.backToHome";
+	return { label: t(label), onBack: close };
 }
 
 /** Settings sections, in rail order within their groups (see `settingsSections`). */
