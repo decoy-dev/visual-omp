@@ -500,12 +500,13 @@ interface HeaderCardProps {
 }
 
 /**
- * The header, then the Back slot a page portals its Back row into. While a page is open the two share one deep teal
+ * The header, then the Back slot a page portals its Back row into. While a page is open the two share one light teal
  * card that runs to the window's top and the sidebar's sides, with 12px bottom corners like the main sheet's. The
  * fill reaches 12px under the sheet at the top, so the notch beside the sheet's rounded top-left corner is teal too
- * (the sheet paints over the rest; see Shell). `data-page-card` turns the card's text, mark, hover and focus white
- * (tokens.css). The fill sweeps in from the left when a page opens. When the page closes, the card keeps its height
- * and white text while the fill sweeps back out, then closes up. Under reduced motion the fill crossfades.
+ * (the sheet paints over the rest; see Shell). `data-page-card` makes the text and mark white, darkens the hover
+ * background and uses an ink focus ring (tokens.css). The fill sweeps in from the left when a page opens. When the
+ * page closes, the card keeps its height and white text while the fill sweeps back out, then closes up. Under reduced
+ * motion the fill crossfades.
  */
 function HeaderCard({ filled, open, onEmptied }: HeaderCardProps): ReactNode {
 	const setBackSlot = usePageNavSlot(state => state.setBackSlot);
