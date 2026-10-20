@@ -12,6 +12,7 @@ import {
 	Gear,
 	House,
 	NotePencil,
+	Palette,
 	PencilSimple,
 	Plus,
 	PushPin,
@@ -32,7 +33,10 @@ import {
 	ContextMenu,
 	ContextMenuContent,
 	ContextMenuItem,
+	ContextMenuRadioGroup,
+	ContextMenuRadioItem,
 	ContextMenuSeparator,
+	ContextMenuSub,
 	ContextMenuTrigger,
 	EmptyState,
 	Expand,
@@ -41,7 +45,10 @@ import {
 	Menu,
 	MenuContent,
 	MenuItem,
+	MenuRadioGroup,
+	MenuRadioItem,
 	MenuSeparator,
+	MenuSub,
 	MenuTrigger,
 	ScrollArea,
 	SearchInput,
@@ -54,6 +61,8 @@ import {
 	usePageNavSlot,
 	Wordmark,
 } from "../ui";
+import { PROJECT_COLOR_CHOICES, ProjectColorDot } from "../features/projects/ProjectColor";
+import { type ProjectColor, projectColorValue, setProjectColor, useProjectColor } from "../state/projectColors";
 import { ChatStatusMark } from "./ChatStatusMark";
 import { chatStatus, chatTitle, shortAgo, useModifierHeld, useNow, useSessionView } from "./hooks";
 import { archivedChats, type CurrentChat, currentChats, type SidebarChat, type SidebarGroup, type SidebarInput, sidebarGroups } from "./sidebarRows";
@@ -103,6 +112,26 @@ function openSidebarChat(chat: SidebarChat, split = false): void {
 
 /** Per-sidebar prefix for the active-row indicator's layoutId, so the highlight slides between rows. */
 const IndicatorScope = createContext("sidebar");
+
+/** A row's menus come in two kinds with the same items: its ⋯ dropdown and its right-click menu. */
+const dropdownKit = { Item: MenuItem, Separator: MenuSeparator, Sub: MenuSub, RadioGroup: MenuRadioGroup, RadioItem: MenuRadioItem };
+const contextKit = {
+	Item: ContextMenuItem,
+	Separator: ContextMenuSeparator,
+	Sub: ContextMenuSub,
+	RadioGroup: ContextMenuRadioGroup,
+	RadioItem: ContextMenuRadioItem,
+};
+type MenuKit = typeof dropdownKit | typeof contextKit;
+
+/*
+ * A row keeps its hover look while its right-click menu (`data-state` on the row) or its ⋯ menu (`data-state` on the
+ * button inside) is open, though the pointer has moved into the menu: the highlight, the ⋯ button in place of the
+ * time or project name.
+ */
+const rowMenuOpen = "data-[state=open]:bg-hover data-[state=open]:text-fg has-[[data-state=open]]:bg-hover has-[[data-state=open]]:text-fg";
+const hideWhileMenuOpen = "group-data-[state=open]:hidden group-has-[[data-state=open]]:hidden";
+const showWhileMenuOpen = "group-data-[state=open]:inline-flex!";
 
 function runCommand(id: string): void {
 	const command = getCommand(id);
@@ -167,41 +196,41 @@ function ChatRow(props: ChatRowProps): ReactNode {
 		void useApp.getState().setPrefs({ archivedSessions: list }).then(() => useApp.getState().loadSessions(session.cwd));
 	};
 
-	const items = (Item: typeof MenuItem | typeof ContextMenuItem, Separator: typeof MenuSeparator | typeof ContextMenuSeparator) => (
+	const items = (kit: MenuKit) => (
 		<>
-			<Item icon={<ChatCenteredDots />} onSelect={() => open()}>
+			<kit.Item icon={<ChatCenteredDots />} onSelect={() => open()}>
 				{t("sidebar.open")}
-			</Item>
+			</kit.Item>
 			{!primary && (
-				<Item icon={<Columns />} shortcut={`${MOD}click`} onSelect={() => openSidebarChat(chat, true)}>
+				<kit.Item icon={<Columns />} shortcut={`${MOD}click`} onSelect={() => openSidebarChat(chat, true)}>
 					{t("sidebar.openSplit")}
-				</Item>
+				</kit.Item>
 			)}
 			{tabId && (
-				<Item icon={<X />} onSelect={() => void closeChat(tabId)}>
+				<kit.Item icon={<X />} onSelect={() => void closeChat(tabId)}>
 					{t("sidebar.close")}
-				</Item>
+				</kit.Item>
 			)}
 			{canRename && renameContext && (
-				<Item icon={<PencilSimple />} onSelect={() => void rename.run(renameContext)}>
+				<kit.Item icon={<PencilSimple />} onSelect={() => void rename.run(renameContext)}>
 					{t("sidebar.rename")}
-				</Item>
+				</kit.Item>
 			)}
 			{session && (
 				<>
-					<Item icon={pinned ? <PushPinSlash /> : <PushPin />} onSelect={togglePin}>
+					<kit.Item icon={pinned ? <PushPinSlash /> : <PushPin />} onSelect={togglePin}>
 						{pinned ? t("sidebar.unpinChat") : t("sidebar.pinChat")}
-					</Item>
-					<Item icon={session.archived ? <BoxArrowUp /> : <Archive />} onSelect={toggleArchive}>
+					</kit.Item>
+					<kit.Item icon={session.archived ? <BoxArrowUp /> : <Archive />} onSelect={toggleArchive}>
 						{session.archived ? t("sidebar.unarchive") : t("sidebar.archive")}
-					</Item>
-					<Item icon={<FolderOpen />} onSelect={() => void window.vomp.invoke("app:showItem", session.file)}>
+					</kit.Item>
+					<kit.Item icon={<FolderOpen />} onSelect={() => void window.vomp.invoke("app:showItem", session.file)}>
 						{t("sidebar.reveal")}
-					</Item>
-					<Separator />
-					<Item icon={<Trash />} danger onSelect={() => setConfirmDelete(true)}>
+					</kit.Item>
+					<kit.Separator />
+					<kit.Item icon={<Trash />} danger onSelect={() => setConfirmDelete(true)}>
 						{t("sidebar.delete")}
-					</Item>
+					</kit.Item>
 				</>
 			)}
 		</>
@@ -215,7 +244,7 @@ function ChatRow(props: ChatRowProps): ReactNode {
 						className={cn(
 							"group relative isolate flex h-8 items-center gap-2 rounded-md pr-1 text-md",
 							current ? "@container/row pl-row" : "pl-7",
-							current && active ? "font-medium text-fg" : "text-fg-muted hover:bg-hover hover:text-fg",
+							current && active ? "font-medium text-fg" : cn("text-fg-muted hover:bg-hover hover:text-fg", rowMenuOpen),
 						)}
 					>
 						{current && active && (
@@ -255,31 +284,38 @@ function ChatRow(props: ChatRowProps): ReactNode {
 						{!current && pinned && <PushPin className="size-3 shrink-0 text-fg-faint" aria-hidden />}
 						{current ? (
 							props.showNumber && props.number ? (
-								<Kbd className="shrink-0 group-hover:hidden group-focus-within:hidden">{`${MOD}${props.number}`}</Kbd>
+								<Kbd className={cn("shrink-0 group-hover:hidden group-focus-within:hidden", hideWhileMenuOpen)}>{`${MOD}${props.number}`}</Kbd>
 							) : (
 								// Up to 72px of project name; hidden when fewer than about six characters would fit beside the title.
-								<span className="max-w-18 min-w-0 truncate font-mono text-xs text-fg-faint group-hover:hidden group-focus-within:hidden @max-[10.875rem]/row:hidden">
+								<span
+									className={cn(
+										"max-w-18 min-w-0 truncate font-mono text-xs text-fg-faint group-hover:hidden group-focus-within:hidden @max-[10.875rem]/row:hidden",
+										hideWhileMenuOpen,
+									)}
+								>
 									{props.chat.projectName}
 								</span>
 							)
 						) : (
-							<span className="shrink-0 font-mono text-xs text-fg-faint group-hover:hidden group-focus-within:hidden">{session ? shortAgo(session.updatedAt, now) : null}</span>
+							<span className={cn("shrink-0 font-mono text-xs text-fg-faint group-hover:hidden group-focus-within:hidden", hideWhileMenuOpen)}>
+								{session ? shortAgo(session.updatedAt, now) : null}
+							</span>
 						)}
 						<Menu>
 							<MenuTrigger asChild>
 								<IconButton
 									// `!` beats the button's own `inline-flex`; `cn` joins classes without resolving conflicts.
-									className="relative hidden! group-hover:inline-flex! group-focus-within:inline-flex! data-[state=open]:inline-flex!"
+									className={cn("relative hidden! group-hover:inline-flex! group-focus-within:inline-flex! data-[state=open]:inline-flex!", showWhileMenuOpen)}
 									label={t("sidebar.chatMenu")}
 									icon={<DotsThree />}
 									size="sm"
 								/>
 							</MenuTrigger>
-							<MenuContent align="end">{items(MenuItem, MenuSeparator)}</MenuContent>
+							<MenuContent align="end">{items(dropdownKit)}</MenuContent>
 						</Menu>
 					</div>
 				</ContextMenuTrigger>
-				<ContextMenuContent>{items(ContextMenuItem, ContextMenuSeparator)}</ContextMenuContent>
+				<ContextMenuContent>{items(contextKit)}</ContextMenuContent>
 			</ContextMenu>
 			<TrashChatDialog
 				open={confirmDelete}
@@ -303,6 +339,7 @@ function ProjectGroup({ group, now, filtering }: ProjectGroupProps): ReactNode {
 	const { project } = group;
 	const active = useApp(state => state.activeProject === project.path && state.view === "home");
 	const pinned = useApp(state => state.prefs?.pinnedProjects.includes(project.path) ?? false);
+	const color = useProjectColor(project.path);
 
 	const togglePin = () => {
 		const prefs = useApp.getState().prefs;
@@ -311,29 +348,44 @@ function ProjectGroup({ group, now, filtering }: ProjectGroupProps): ReactNode {
 		void useApp.getState().setPrefs({ pinnedProjects: list });
 	};
 
-	const items = (Item: typeof MenuItem | typeof ContextMenuItem, Separator: typeof MenuSeparator | typeof ContextMenuSeparator) => (
+	const items = (kit: MenuKit) => (
 		<>
-			<Item icon={<Plus />} onSelect={() => void useApp.getState().newChat(project.path)}>
+			<kit.Item icon={<Plus />} onSelect={() => void useApp.getState().newChat(project.path)}>
 				{t("sidebar.newChatHere")}
-			</Item>
-			<Item icon={<House />} onSelect={() => useApp.getState().openProject(project.path)}>
+			</kit.Item>
+			<kit.Item icon={<House />} onSelect={() => useApp.getState().openProject(project.path)}>
 				{t("sidebar.projectOverview")}
-			</Item>
-			<Item icon={<Gear />} onSelect={() => openProjectSettings(project.path)}>
+			</kit.Item>
+			<kit.Item icon={<Gear />} onSelect={() => openProjectSettings(project.path)}>
 				{t("sidebar.projectSettings")}
-			</Item>
-			<Item icon={<FolderOpen />} onSelect={() => void window.vomp.invoke("app:showItem", project.path)}>
+			</kit.Item>
+			<kit.Item icon={<FolderOpen />} onSelect={() => void window.vomp.invoke("app:showItem", project.path)}>
 				{t("sidebar.reveal")}
-			</Item>
+			</kit.Item>
 			{!group.removed && (
 				<>
-					<Item icon={pinned ? <PushPinSlash /> : <PushPin />} onSelect={togglePin}>
+					<kit.Sub icon={<Palette />} label={t("projects:color.label")}>
+						<kit.RadioGroup
+							value={color ?? "none"}
+							onValueChange={value => void setProjectColor(project.path, value === "none" ? null : (value as ProjectColor))}
+						>
+							{PROJECT_COLOR_CHOICES.map(choice => (
+								<kit.RadioItem key={choice ?? "none"} value={choice ?? "none"}>
+									<span className="flex items-center gap-2">
+										<ProjectColorDot color={choice} />
+										{t(choice ? `projects:color.${choice}` : "projects:color.none")}
+									</span>
+								</kit.RadioItem>
+							))}
+						</kit.RadioGroup>
+					</kit.Sub>
+					<kit.Item icon={pinned ? <PushPinSlash /> : <PushPin />} onSelect={togglePin}>
 						{pinned ? t("sidebar.unpinProject") : t("sidebar.pinProject")}
-					</Item>
-					<Separator />
-					<Item icon={<X />} onSelect={() => void window.vomp.invoke("project:remove", project.path).then(() => useApp.getState().refreshProjects())}>
+					</kit.Item>
+					<kit.Separator />
+					<kit.Item icon={<X />} onSelect={() => void window.vomp.invoke("project:remove", project.path).then(() => useApp.getState().refreshProjects())}>
 						{t("sidebar.removeProject")}
-					</Item>
+					</kit.Item>
 				</>
 			)}
 		</>
@@ -343,7 +395,7 @@ function ProjectGroup({ group, now, filtering }: ProjectGroupProps): ReactNode {
 		<motion.div role="group" aria-label={project.name} layout="position" transition={spring.gentle}>
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
-					<div className={cn("group flex h-9 items-center gap-1 rounded-md pr-1 pl-1 text-md", active ? "bg-selected" : "hover:bg-hover")}>
+					<div className={cn("group flex h-9 items-center gap-1 rounded-md pr-1 pl-1 text-md", active ? "bg-selected" : cn("hover:bg-hover", rowMenuOpen))}>
 						<IconButton
 							label={group.open ? t("sidebar.collapse", { name: project.name }) : t("sidebar.expand", { name: project.name })}
 							icon={<CaretRight className={cn("transition-transform duration-(--dur) ease-(--ease-out-quart)", group.open && "rotate-90")} />}
@@ -359,24 +411,32 @@ function ProjectGroup({ group, now, filtering }: ProjectGroupProps): ReactNode {
 							onClick={() => useApp.getState().openProject(project.path)}
 							title={group.removed ? t("sidebar.removedProject", { path: project.path }) : project.exists ? project.path : t("sidebar.missingFolder")}
 						>
-							{project.exists ? <Folder className="size-4 shrink-0 text-fg-muted" /> : <FolderMinus className="size-4 shrink-0 text-warn" />}
+							{project.exists ? (
+								<Folder
+									weight={color ? "fill" : "regular"}
+									className="size-4 shrink-0 text-fg-muted"
+									style={color ? { color: projectColorValue(color) } : undefined}
+								/>
+							) : (
+								<FolderMinus className="size-4 shrink-0 text-warn" />
+							)}
 							<span className="truncate">{project.name}</span>
 						</button>
 						{pinned && <PushPin className="size-3 shrink-0 text-fg-faint" aria-hidden />}
 						<Menu>
 							<MenuTrigger asChild>
 								<IconButton
-									className="hidden! group-hover:inline-flex! group-focus-within:inline-flex! data-[state=open]:inline-flex!"
+									className={cn("hidden! group-hover:inline-flex! group-focus-within:inline-flex! data-[state=open]:inline-flex!", showWhileMenuOpen)}
 									label={t("sidebar.projectMenu")}
 									icon={<DotsThree />}
 									size="sm"
 								/>
 							</MenuTrigger>
-							<MenuContent align="end">{items(MenuItem, MenuSeparator)}</MenuContent>
+							<MenuContent align="end">{items(dropdownKit)}</MenuContent>
 						</Menu>
 					</div>
 				</ContextMenuTrigger>
-				<ContextMenuContent>{items(ContextMenuItem, ContextMenuSeparator)}</ContextMenuContent>
+				<ContextMenuContent>{items(contextKit)}</ContextMenuContent>
 			</ContextMenu>
 			<Expand open={group.open} className="relative flex flex-col gap-px pb-1">
 				<RowList chats={group.chats} now={now} />

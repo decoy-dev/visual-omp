@@ -11,6 +11,7 @@ import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useR
 import { useTranslation } from "react-i18next";
 import type { SheetProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
+import { type ProjectColor, setProjectColor } from "@/state/projectColors";
 import {
 	Button,
 	cn,
@@ -30,6 +31,7 @@ import { addProject, errorText, startChat } from "./actions";
 import { CheckFailure } from "./CheckFailure";
 import { FolderBrowserDialog } from "./folders/FolderBrowser";
 import { folderName } from "./format";
+import { ProjectColorPicker } from "./ProjectColor";
 import { useDebouncedCheck } from "./useDebouncedCheck";
 
 export interface NewProjectProps {
@@ -53,6 +55,8 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 	const [defaultParent, setDefaultParent] = useState<string | null>(null);
 	const [parentDir, setParentDir] = useState<string | null>(null);
 	const [name, setName] = useState("");
+	/** Folder color for a new empty folder (the other kinds don't offer one). */
+	const [color, setColor] = useState<ProjectColor | null>(null);
 	const [folder, setFolder] = useState<string | null>(null);
 	const [recent, setRecent] = useState<RecentFolder[] | null>(null);
 	const [url, setUrl] = useState("");
@@ -88,7 +92,7 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 				? folder !== null
 				: remote.result?.ok === true && cloneCheck.result?.ok === true;
 	const canAdvance = !busy && (step === 0 || (step === 1 && detailsReady) || step === 2);
-	const dirty = step > 0 || name.trim() !== "" || url.trim() !== "" || folder !== null;
+	const dirty = step > 0 || name.trim() !== "" || url.trim() !== "" || folder !== null || color !== null;
 
 	const requestClose = () => {
 		if (busy || dirty) setConfirmClose(true);
@@ -112,6 +116,8 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 					return;
 				}
 				path = created.path;
+				// Before the project is listed, so its folder shows in color from the start.
+				if (color) await setProjectColor(path, color);
 			} else if (kind === "existing" && folder) {
 				path = folder;
 			} else {
@@ -257,6 +263,7 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 							/>
 							<CheckFailure message={nameCheck.error && t("new.checkFailed.name", { reason: nameCheck.error })} />
 							<LocationRow parent={parent} onPick={() => setBrowsing("parent")} />
+							<ProjectColorPicker value={color} onChange={setColor} />
 						</div>
 					)}
 

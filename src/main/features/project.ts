@@ -211,9 +211,11 @@ async function makeFolder(parentDir: string, name: string): Promise<FolderCreate
 async function removeProject(input: string): Promise<void> {
 	const path = resolve(input);
 	const prefs = getPrefs();
+	const { [path]: _color, ...projectColors } = prefs.projectColors;
 	setPrefs({
 		extraProjects: prefs.extraProjects.filter(p => p !== path),
 		pinnedProjects: prefs.pinnedProjects.filter(p => p !== path),
+		projectColors,
 	});
 	await saveRecent((await loadRecent()).filter(item => item.path !== path));
 }

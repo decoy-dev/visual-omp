@@ -137,6 +137,10 @@ export interface DirEntry {
 
 export type ThemePreference = "light" | "dark" | "system";
 
+/** Colors a project's folder can take in the sidebar, the macOS Finder tag set (DESIGN §3.2, `--folder-*` tokens). */
+export const PROJECT_COLORS = ["red", "orange", "yellow", "green", "blue", "purple", "gray"] as const;
+export type ProjectColor = (typeof PROJECT_COLORS)[number];
+
 export interface AppPreferences {
 	theme: ThemePreference;
 	/** Percent, 90–130. */
@@ -151,6 +155,8 @@ export interface AppPreferences {
 	archivedSessions: string[];
 	/** Extra project folders the user opened that have no sessions yet. */
 	extraProjects: string[];
+	/** Folder color per project path; a project without an entry keeps the plain folder. */
+	projectColors: Record<string, ProjectColor>;
 	notifications: boolean;
 	/** Enable omp's speech-to-text in each chat's hidden omp (per-process overlay, never the global config). */
 	voiceInput: boolean;

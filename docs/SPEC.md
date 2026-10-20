@@ -113,7 +113,7 @@ omp's displayed harness notices appear in the chat in all three views, presented
 
 ### Projects
 Current chats, navigation shortcuts and preview release are described under Sessions.
-- Project search, pinning, renaming, archiving and project actions are available.
+- Project search, pinning, folder colors, renaming, archiving and project actions are available. A project's folder color is set from its sidebar menu or, for a new empty folder, in the new project wizard.
 - The new project wizard creates an empty folder, opens an existing folder or clones from a GitHub URL.
 - The Instructions page edits the project's AGENTS.md and rules.
 - The Project settings page sets the project's model and permission mode and links to its connected tools, helpers and instructions.

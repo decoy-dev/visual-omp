@@ -96,6 +96,8 @@ Slightly desaturated so status colors sit next to the teal accent without compet
 | `--info-bg` | `oklch(0.955 0.018 255)` | `oklch(0.26 0.035 255)` | status background |
 | `--live` | `var(--ok)` | same | ● pulsing dot, reserved for real-time presence (collab live, session running elsewhere) |
 
+**Project folder colors** are the one place the user picks a color. A project can take one of the seven macOS Finder tag colors, stored per project path in the app preferences (`projectColors`) and painted with `--folder-red`, `--folder-orange`, `--folder-yellow`, `--folder-green`, `--folder-blue`, `--folder-purple` and `--folder-gray`. They are visual-omp's own: they don't set Finder tags or change the folder on disk. One set serves every theme: the folder icons appear on the ink sidebar, where each reads 5.6:1 or more; menu swatches carry a hairline and the color's name, and the wizard's swatches, which are its controls, take the 3:1 control border (§3.2, §4.4).
+
 ### 1.6 Diff
 
 | Token | Light | Dark |
@@ -313,7 +315,8 @@ The sidebar has a 40px header containing the wordmark and app version. Its remai
 - `shell/Sidebar.tsx` is the navigation column on the ink chrome. Its resize handle accepts arrow keys in 16px steps, or 48px with Shift.
 - **New chat** starts a chat in the active project or opens the folder chooser when no project is active. Search matches chat titles and previews across projects, and matching project names. It loads unloaded chat lists and opens matching groups; Esc clears the query.
 - **Current chats** lists all open chats in the stable order they were opened, with working and waiting marks and project metadata. The selected row has the raised pill. The section is hidden when no chats are open.
-- **Projects** continues to list the same chats. Open chats have a quiet open marker in the tree, while selection and numbered shortcuts belong to Current chats. Projects sort pinned first, then by last activity. Their menus include start chat, project overview, project settings, show in folder, pinning and removal.
+- **Projects** continues to list the same chats. Open chats have a quiet open marker in the tree, while selection and numbered shortcuts belong to Current chats. Projects sort pinned first, then by last activity. Their menus include start chat, project overview, project settings, show in folder, **Folder color**, pinning and removal. Folder color is a submenu of None and the seven colors (§1.5), each with its swatch; a colored project shows a filled folder in that color, and removing a project from the list forgets its color.
+- **Rows remain highlighted while their menus are open**: while a row's right-click menu or its ⋯ menu is open, the row keeps its hover fill and text color, and the ⋯ button stays in place of the time or project name, although the pointer has moved into the menu.
 - **Chat rows** in the project tree show title, status, pin and relative time. Open chats and saved chats share the tree; row actions include opening, splitting, closing open chats, renaming, pinning, archiving, showing in folder and deleting. The sidebar supports a 200px width and 130% text size by allowing trailing project metadata to ellipsize before the chat title.
 - Opening a saved chat loads its history without starting omp. When the user moves to another chat, a saved chat that was only viewed is released: it has no host, no sent input, no draft or attachments and no open omp terminal. It stays open when a chat that was already open appears later in Current chats, so no ⌘ number shifts. Browsing from one saved chat to the next therefore releases the chat left behind. Closing a chat records it in the reopen stack. Reopen closed chat (⌘⇧T) restores the last eligible chat and its text draft without starting omp.
 - **Shortcuts**: ⌘1-⌘9 (Ctrl elsewhere) open the corresponding Current chats row; ⌘⇧[ and ⌘⇧] cycle through open chats in that order. ⌘⇧A selects the next chat waiting for an answer.
@@ -521,7 +524,7 @@ A 560px dialog with three steps: "New project", "Details" and "First chat". Step
 
 1. **Where?** One bordered list of three options, each with a native radio: "Empty folder" (Start fresh in a new folder), "Open existing" (Use a folder already on this computer) and "Clone from GitHub" (Download a project from a GitHub link). The selected option is filled with `--accent-muted`.
 2. **Details**, depending on the kind:
-  - Empty folder: project name and location.
+  - Empty folder: project name, location and **Folder color**, a row of swatches (None and the seven colors, native radios named for screen readers, with the chosen name beside them). The color is saved before the project is listed, so the folder appears in color.
   - Open existing: a folder picker and "Recent folders". A folder that is already a project gets a warn note, "This folder is already a project, so it opens instead."
   - Clone from GitHub: a GitHub link field that confirms "Found: {repo}" in `--ok`, then the folder name.
 3. **First chat**: "Start a chat right away", with an optional first message.

@@ -77,6 +77,16 @@
 	--info-bg: oklch(0.955 0.018 255);
 	--live: var(--ok);
 
+	/* Project folder colors (DESIGN §3.2), chosen by the user, one set for every theme. The folders sit on the ink
+	 * sidebar (5.6:1 or more on either chrome); menu and wizard swatches carry a hairline and a name. */
+	--folder-red: oklch(0.68 0.19 25);
+	--folder-orange: oklch(0.76 0.16 58);
+	--folder-yellow: oklch(0.86 0.16 95);
+	--folder-green: oklch(0.75 0.16 150);
+	--folder-blue: oklch(0.7 0.15 250);
+	--folder-purple: oklch(0.68 0.17 305);
+	--folder-gray: oklch(0.72 0.01 195);
+
 	/* 1.6 diff */
 	--diff-add-bg: oklch(0.962 0.025 160);
 	--diff-add-line: oklch(0.925 0.045 160);

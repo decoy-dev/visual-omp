@@ -206,7 +206,7 @@ declare module "../ipc" {
 		/** Register an existing folder as a project (prefs `extraProjects` + recent + OS recent documents). Rejects if not a directory. */
 		"project:add": { args: [path: string]; result: ProjectSummary };
 		/**
-		 * Forget a folder: removes it from `extraProjects`, `pinnedProjects` and recent folders.
+		 * Forget a folder: removes it from `extraProjects`, `pinnedProjects`, `projectColors` and recent folders.
 		 * Folders that still have saved omp sessions keep appearing in `sessions:projects` until
 		 * those sessions are archived. Never touches the folder on disk.
 		 */

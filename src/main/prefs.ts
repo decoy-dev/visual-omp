@@ -23,6 +23,7 @@ const DEFAULTS: AppPreferences = {
 	pinnedSessions: [],
 	archivedSessions: [],
 	extraProjects: [],
+	projectColors: {},
 	notifications: true,
 	voiceInput: false,
 };
