@@ -44,7 +44,17 @@ export function HomeScreen(_props: ScreenProps): ReactNode {
 					<div className="mt-page">
 						<HomeComposer />
 					</div>
-					<div className="mt-10 grid gap-section @min-[67.5rem]/home:grid-cols-[3fr_2fr_2fr]">
+					{/*
+					 * Stacked, the sections are 32px apart. Side by side, a hairline rule stands between the columns, each
+					 * column padded 32px from it (the outer edges stay flush with the prompt box's row).
+					 */}
+					<div
+						className={cn(
+							"mt-10 grid gap-section",
+							"@min-[67.5rem]/home:grid-cols-[3fr_2fr_2fr] @min-[67.5rem]/home:gap-0 @min-[67.5rem]/home:divide-x @min-[67.5rem]/home:divide-border",
+							"@min-[67.5rem]/home:[&>*]:px-section @min-[67.5rem]/home:[&>*:first-child]:pl-0 @min-[67.5rem]/home:[&>*:last-child]:pr-0",
+						)}
+					>
 						<RecentChats limit={wide ? 8 : 6} />
 						<Projects />
 						<UsageGlance />
@@ -196,11 +206,12 @@ function Projects(): ReactNode {
 					</Expand>
 				</div>
 			)}
+			{/* Small buttons, so both fit on one line in the narrow column. */}
 			<div className="mt-stack flex flex-wrap justify-end gap-toolbar">
-				<Button icon={<FolderOpen />} onClick={() => openFolder()}>
+				<Button size="sm" icon={<FolderOpen />} onClick={() => openFolder()}>
 					{tp("overview.openFolder")}
 				</Button>
-				<Button icon={<Plus />} onClick={() => useApp.getState().openSheet("project-new")}>
+				<Button size="sm" icon={<Plus />} onClick={() => useApp.getState().openSheet("project-new")}>
 					{tp("overview.newProject")}
 				</Button>
 			</div>
