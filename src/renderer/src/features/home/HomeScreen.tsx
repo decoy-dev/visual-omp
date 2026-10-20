@@ -1,9 +1,10 @@
 /**
  * Home (DESIGN §4.24): where the app opens, and where the title bar's Home button leads. The mark and the empty chat's
  * question, the prompt box (start a chat in any project with the new chat's choices), then the latest chats across
- * every project, the projects themselves and a glance at plan limits and the last week's estimated API cost. One card
- * (the prompt box); the rest are bare sections on the sheet, over the quiet ping field. From 1080px wide the three
- * sections stand side by side, so the whole screen fits without scrolling in a full-size window; narrower, they stack.
+ * every project, the projects themselves and a glance at plan limits and the last week's estimated API cost. Like a
+ * page, it renders on the gray canvas with the ping field behind; the prompt box and each section are panel cards,
+ * white in light mode. From 1080px wide the three section cards stand side by side, and the tested maximized window
+ * (lists collapsed, one-line draft) needed no scrolling. Narrower, they stack.
  */
 import type { ProjectSummary, SessionSummary } from "@shared/ipc";
 import { Folder, FolderMinus, FolderOpen, Plus, PushPin } from "@phosphor-icons/react";
@@ -15,7 +16,7 @@ import { chatStatus, chatTitle, shortAgo, useNow, useSessionView } from "@/shell
 import { sortProjects } from "@/shell/sidebarRows";
 import { controllerFor, useApp } from "@/state/app";
 import { projectColorValue, useProjectColor } from "@/state/projectColors";
-import { Button, Chip, cn, Expand, Mark } from "@/ui";
+import { Button, Card, Chip, cn, Expand, Mark } from "@/ui";
 import { focusRing } from "@/ui/styles";
 import { openFolder } from "../projects/actions";
 import { HomeComposer } from "./HomeComposer";
@@ -33,7 +34,7 @@ export function HomeScreen(_props: ScreenProps): ReactNode {
 	const root = useRef<HTMLDivElement>(null);
 	const wide = useWiderThan(root, WIDE_PX);
 	return (
-		<div ref={root} data-surface="sheet" className="@container/home relative flex min-h-0 min-w-0 flex-1 bg-bg">
+		<div ref={root} data-surface="canvas" className="@container/home relative flex min-h-0 min-w-0 flex-1 bg-bg">
 			<PingField />
 			<div className="relative min-h-0 flex-1 overflow-y-auto">
 				<div className="mx-auto w-full max-w-300 px-page pb-page pt-[clamp(2rem,7vh,5rem)]">
@@ -45,19 +46,19 @@ export function HomeScreen(_props: ScreenProps): ReactNode {
 						<HomeComposer />
 					</div>
 					{/*
-					 * Stacked, the sections are 32px apart. Side by side, a hairline rule stands between the columns, each
-					 * column padded 32px from it (the outer edges stay flush with the prompt box's row).
+					 * Each section is a white card on the gray canvas, the page pattern for grouped content (DESIGN §1.1), so
+					 * the three read as separate places at a glance. Side by side they share one height.
 					 */}
-					<div
-						className={cn(
-							"mt-10 grid gap-section",
-							"@min-[67.5rem]/home:grid-cols-[3fr_2fr_2fr] @min-[67.5rem]/home:gap-0 @min-[67.5rem]/home:divide-x @min-[67.5rem]/home:divide-border",
-							"@min-[67.5rem]/home:[&>*]:px-section @min-[67.5rem]/home:[&>*:first-child]:pl-0 @min-[67.5rem]/home:[&>*:last-child]:pr-0",
-						)}
-					>
-						<RecentChats limit={wide ? 8 : 6} />
-						<Projects />
-						<UsageGlance />
+					<div className="mt-10 grid gap-page @min-[67.5rem]/home:grid-cols-[3fr_2fr_2fr]">
+						<Card className="min-w-0">
+							<RecentChats limit={wide ? 8 : 6} />
+						</Card>
+						<Card className="min-w-0">
+							<Projects />
+						</Card>
+						<Card className="min-w-0">
+							<UsageGlance />
+						</Card>
 					</div>
 				</div>
 			</div>

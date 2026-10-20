@@ -1,5 +1,5 @@
 /**
- * Home → Usage: a bare section with the three providers closest to a plan limit (each provider's
+ * Home → Usage: the section (in its own card on Home) with the three providers closest to a plan limit (each provider's
  * binding window, as Usage & limits shows it) and the last 7 days' estimated API cost. Reads the shared
  * limits snapshot and one 7-day spend summary, which it leaves in `usageMemory` so the Usage page opens
  * with figures already in place.
