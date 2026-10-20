@@ -2,8 +2,8 @@
  * Home (DESIGN §4.24): where the app opens, and where the title bar's Home button leads. The mark and the empty chat's
  * question, the prompt box (start a chat in any project with the new chat's choices), then the latest chats across
  * every project, the projects themselves and a glance at plan limits and the last week's estimated API cost. One card
- * (the prompt box); the rest are bare sections on the sheet, over the quiet ping field. From 1080px wide the sections
- * share two columns: chats on the left, projects and usage on the right.
+ * (the prompt box); the rest are bare sections on the sheet, over the quiet ping field. From 1080px wide the three
+ * sections stand side by side, so the whole screen fits without scrolling in a full-size window; narrower, they stack.
  */
 import type { ProjectSummary, SessionSummary } from "@shared/ipc";
 import { Folder, FolderMinus, FolderOpen, Plus, PushPin } from "@phosphor-icons/react";
@@ -23,20 +23,20 @@ import { PingField } from "./PingField";
 import { HomeSectionHeader } from "./Section";
 import { UsageGlance } from "./UsageGlance";
 
-/** Sheet width from which the sections sit in two columns (matches `@min-[67.5rem]/home`). */
-const TWO_COLUMNS_PX = 1080;
+/** Sheet width from which the sections stand in three columns (matches `@min-[67.5rem]/home`). */
+const WIDE_PX = 1080;
 const PROJECT_LIMIT = 6;
 
 export function HomeScreen(_props: ScreenProps): ReactNode {
 	const { t } = useTranslation("chat");
 	const returning = useApp(state => (state.recentSessions?.length ?? 0) > 0 || state.tabs.length > 0);
 	const root = useRef<HTMLDivElement>(null);
-	const wide = useWiderThan(root, TWO_COLUMNS_PX);
+	const wide = useWiderThan(root, WIDE_PX);
 	return (
 		<div ref={root} data-surface="sheet" className="@container/home relative flex min-h-0 min-w-0 flex-1 bg-bg">
 			<PingField />
 			<div className="relative min-h-0 flex-1 overflow-y-auto">
-				<div className="mx-auto w-full max-w-260 px-page pb-12 pt-[clamp(3.5rem,10vh,7.5rem)]">
+				<div className="mx-auto w-full max-w-300 px-page pb-page pt-[clamp(2rem,7vh,5rem)]">
 					<header className="flex flex-col items-center text-center">
 						<Mark size={40} />
 						<h1 className="mt-card text-2xl font-bold text-fg">{t(returning ? "empty.returning" : "empty.first")}</h1>
@@ -44,12 +44,10 @@ export function HomeScreen(_props: ScreenProps): ReactNode {
 					<div className="mt-page">
 						<HomeComposer />
 					</div>
-					<div className="mt-16 grid gap-section @min-[67.5rem]/home:grid-cols-[3fr_2fr]">
+					<div className="mt-10 grid gap-section @min-[67.5rem]/home:grid-cols-[3fr_2fr_2fr]">
 						<RecentChats limit={wide ? 8 : 6} />
-						<div className="flex min-w-0 flex-col gap-section">
-							<Projects />
-							<UsageGlance />
-						</div>
+						<Projects />
+						<UsageGlance />
 					</div>
 				</div>
 			</div>

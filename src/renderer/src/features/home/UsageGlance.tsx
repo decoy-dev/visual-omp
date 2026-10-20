@@ -5,7 +5,7 @@
  * with figures already in place.
  */
 import type { TFunction } from "i18next";
-import { type ReactNode, useEffect, useId, useMemo } from "react";
+import { Fragment, type ReactNode, useEffect, useId, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Warning } from "@phosphor-icons/react";
 import { formatAge, formatDuration, formatUsd } from "@/features/extensions/format";
@@ -165,7 +165,13 @@ function ProviderRow({ entry, now }: { entry: GlanceRow; now: number }): ReactNo
 			)}
 			<span className="col-start-2 min-w-0 text-sm text-fg-muted tabular-nums @min-[32rem]/usage-glance:col-start-3 @min-[32rem]/usage-glance:text-right">
 				{state && row && <span className={cn("font-medium", stateInks[row.tone])}>{state} · </span>}
-				{meta.join(" · ")}
+				{/* Each phrase wraps as a whole in a narrow column ("Resets in 2h 20m" never splits); lines break at the dots. */}
+				{meta.map((part, index) => (
+					<Fragment key={part}>
+						{index > 0 && " · "}
+						<span className="whitespace-nowrap">{part}</span>
+					</Fragment>
+				))}
 			</span>
 		</div>
 	);
