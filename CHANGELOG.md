@@ -4,7 +4,11 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-- While omp works, the steps it has finished fold into one row as it goes, such as "Worked for 1m 12s · 14 tool calls", instead of filling the chat with a line per command and file. The step still running stays in view below it, and clicking the row opens every step. Finished replies already folded their steps this way. Choose Thinking or Verbose in the chat's **⋯** menu to see every step as its own row.
+## [0.5.7] - 2026-10-20
+
+visual-omp 0.5.7 folds the steps omp has finished into one row while it works, and says in plain words what it is doing.
+
+- While omp works, the steps it has finished fold into one row as it goes, such as "Worked for 1m 12s · 14 tool calls", instead of filling the chat with a line per command and file. The step still running stays in view below it, and clicking the row opens every step. A step or group you have opened, or moved into with the keyboard, stays where it is until you close it and move on. Finished replies already folded their steps this way. Choose Thinking or Verbose in the chat's **⋯** menu to see every step as its own row.
 - The line above the chat box now says what kind of work omp is doing, such as "Working… 1m 17s · Running commands", "Reading files" or "Writing a reply", instead of the full command it is running.
 
 ## [0.5.6] - 2026-10-20
