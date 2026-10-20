@@ -119,7 +119,7 @@ Durations: `fmtDuration` in `collab/lib/format.ts` formats job notice rows (`Not
 | Models | `omp models --json` |
 | Agents | `~/.omp/agent/agents/*.md`, `<project>/.omp/agents/*.md`, bundled via `omp agents` |
 | MCP | `~/.omp/agent/mcp.json`, `<project>/.omp/mcp.json` |
-| Usage/limits | Provider limits come from omp's usage reports. Recorded usage comes from local session and subagent JSONL files through `src/main/features/extensions.ts`; `features/extensions/usage/limitsStore.ts` shares the limits snapshot with the status bar. The browser stats link starts `omp stats`. |
+| Usage/limits | Provider limits come from omp's usage reports. Recorded usage comes from local session and subagent JSONL files through `src/main/features/extensions.ts` (`extensions:spend`, up to 371 days for the activity grid; scans of different ranges run one after another and share a parsed-transcript cache); `features/extensions/usage/limitsStore.ts` shares the limits snapshot with the status bar. The browser stats link starts `omp stats`. |
 | Working state | `SessionController` snapshots expose `workingSince`; tool elapsed time is shown only when a call has known start and result times. |
 | Dock visibility | `state/app.ts` exports `useDockVisible()`, which accounts for pages and narrow layouts where chat takes precedence over the open dock. |
 | Git | `git`, `gh` |

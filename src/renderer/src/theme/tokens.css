@@ -91,6 +91,14 @@
 	--plot-dot: oklch(0.42 0.013 195);
 	--plot-accent: var(--accent);
 
+	/* Activity grid (DESIGN §4.18): an idle day is a faint ink wash on the card, then four steps of the accent. Mixed
+	 * from the theme's own tokens, so one set serves both themes. */
+	--heat-0: color-mix(in oklch, var(--fg) 7%, var(--panel));
+	--heat-1: color-mix(in oklch, var(--accent) 28%, var(--panel));
+	--heat-2: color-mix(in oklch, var(--accent) 50%, var(--panel));
+	--heat-3: color-mix(in oklch, var(--accent) 75%, var(--panel));
+	--heat-4: var(--accent);
+
 	/* 1.6 diff */
 	--diff-add-bg: oklch(0.962 0.025 160);
 	--diff-add-line: oklch(0.925 0.045 160);
@@ -435,6 +443,11 @@
 	--color-control: var(--control-border);
 	--color-ring: var(--ring);
 	--color-ring-soft: var(--ring-soft);
+	--color-heat-0: var(--heat-0);
+	--color-heat-1: var(--heat-1);
+	--color-heat-2: var(--heat-2);
+	--color-heat-3: var(--heat-3);
+	--color-heat-4: var(--heat-4);
 	--color-win-close: var(--win-close);
 
 	--font-ui: "Geist Variable", "Geist", -apple-system, "Segoe UI Variable Text", Roboto, sans-serif;

@@ -12,7 +12,8 @@ import { ompStartError } from "../omp/refused";
 import { type ChatTranscripts, dayStarts, type ParsedTranscript, parseTranscript, summarizeSpend } from "./extensions/spend";
 
 const DEFAULT_DAYS = 7;
-const MAX_DAYS = 90;
+/** The activity grid's year: 53 whole weeks (`ACTIVITY_DAYS` in the renderer's usage model). */
+const MAX_DAYS = 371;
 /** Subagents can spawn subagents; their transcripts nest one folder per level. */
 const MAX_SUBAGENT_DEPTH = 4;
 /** omp's `omp stats` default dashboard address. */
@@ -103,7 +104,13 @@ async function computeSpend(dayCount: number): Promise<SpendSummary> {
 	return summarizeSpend(chats, now, dayCount, skipped);
 }
 
-let spendInFlight: { days: number; promise: Promise<SpendSummary> } | null = null;
+/** Pending scans by range, queued ones included, so a range asked for again joins the scan already on its way. */
+const spendInFlight = new Map<number, Promise<SpendSummary>>();
+/**
+ * Scans of different ranges run one after another: each parses only the transcripts the cache lacks, so a short
+ * range asked for beside the year (Home asks for both) never parses the same files twice.
+ */
+let spendQueue: Promise<unknown> = Promise.resolve();
 
 let statsServer: ChildProcess | null = null;
 
@@ -163,11 +170,16 @@ export function register(): void {
 	handle("extensions:spend", (days = DEFAULT_DAYS) => {
 		const count = Math.min(MAX_DAYS, Math.max(1, Math.round(days)));
 		// The status bar and the dashboard ask at the same time on open; share one scan per range.
-		if (spendInFlight?.days === count) return spendInFlight.promise;
-		const promise = computeSpend(count).finally(() => {
-			if (spendInFlight?.promise === promise) spendInFlight = null;
-		});
-		spendInFlight = { days: count, promise };
+		const pending = spendInFlight.get(count);
+		if (pending) return pending;
+		const promise = spendQueue
+			.catch(() => undefined)
+			.then(() => computeSpend(count))
+			.finally(() => {
+				if (spendInFlight.get(count) === promise) spendInFlight.delete(count);
+			});
+		spendQueue = promise;
+		spendInFlight.set(count, promise);
 		return promise;
 	});
 

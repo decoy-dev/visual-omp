@@ -1,8 +1,8 @@
 /**
- * Usage & limits page (DESIGN §4.18), white cards on the gray page canvas: plan limits first, then usage
- * omp recorded on this computer over the last 7 or 30 local days (key figures, daily estimated API cost
- * beside its split by project, chats), then what the figures include and a link to omp's own stats
- * page. Each section loads and fails on its own, so a slow provider never holds up local usage.
+ * Usage & limits page (DESIGN §4.18), white cards on the gray page canvas: plan limits first, then the activity grid
+ * (requests per day over the last year), then usage omp recorded on this computer over the last 7 or 30 local days
+ * (key figures, daily estimated API cost beside its split by project, chats), then what the figures include and a
+ * link to omp's own stats page. Each section loads and fails on its own, so a slow provider never holds up local usage.
  */
 import { ArrowSquareOut, ArrowsClockwise, CaretRight, ChartBar } from "@phosphor-icons/react";
 import type { SpendSummary } from "@shared/contracts/extensions";
@@ -14,6 +14,7 @@ import { Button, cn, Definition, EmptyState, KpiStrip, Notice, PageFrame, PageHe
 import { focusRing } from "@/ui/styles";
 import { errorText, formatCount, formatUsd } from "../format";
 import { type Loaded, useLoad } from "../shared";
+import { ActivityGrid, useActivity } from "./ActivityGrid";
 import { ChatsTable } from "./ChatsTable";
 import { checkUsageLimits, useUsageLimits, useUsageLimitsStatus } from "./limitsStore";
 import { costByProject, projectName, topProjects, type UsageRange } from "./model";
@@ -43,7 +44,11 @@ export function UsagePage({ seq, close }: PageProps<UsagePageProps>) {
 	const data = latest?.days.length === range ? latest : null;
 	const limits = useUsageLimits(true);
 	const limitsStatus = useUsageLimitsStatus();
-	const ready = (data !== null || spend.error !== null) && (limits !== null || (limitsStatus.error !== null && !limitsStatus.checking));
+	const activity = useActivity();
+	const ready =
+		(data !== null || spend.error !== null) &&
+		(activity.data !== null || activity.error !== null) &&
+		(limits !== null || (limitsStatus.error !== null && !limitsStatus.checking));
 	return (
 		<PageFrame
 			back={back}
@@ -64,10 +69,11 @@ export function UsagePage({ seq, close }: PageProps<UsagePageProps>) {
 				actions={
 					<Button
 						icon={<ArrowsClockwise />}
-						loading={limitsStatus.checking || spend.loading}
+						loading={limitsStatus.checking || spend.loading || activity.loading}
 						onClick={() => {
 							void checkUsageLimits();
 							void spend.reload();
+							void activity.reload();
 						}}
 					>
 						{t("usage.refresh")}
@@ -76,10 +82,49 @@ export function UsagePage({ seq, close }: PageProps<UsagePageProps>) {
 			/>
 			<div className="flex flex-col gap-section">
 				<PlanLimitsSection />
+				<ActivitySection activity={activity} />
 				<RecordedUsageSection range={range} spend={spend} data={data} />
 				<PageFoot />
 			</div>
 		</PageFrame>
+	);
+}
+
+/** Requests per day over the last year, on its own card; the period switch below doesn't apply to it. */
+function ActivitySection({ activity }: { activity: Loaded<SpendSummary> }) {
+	const { t } = useTranslation("extensions");
+	const { data, error, loading } = activity;
+	const retry = (
+		<Button size="sm" onClick={() => void activity.reload()} loading={loading}>
+			{t("common.retry")}
+		</Button>
+	);
+	return (
+		<section aria-labelledby="usage-activity-title" aria-busy={loading} className="flex flex-col">
+			<SectionHeader id="usage-activity-title" title={t("usage.activity.title")} description={t("usage.activity.description")} className="mb-stack" />
+			{error &&
+				(data ? (
+					<Notice tone="warn" actions={retry} className="mb-4">
+						{t("usage.activity.staleFailed")} {error}
+					</Notice>
+				) : (
+					<Notice tone="err" actions={retry}>
+						{t("usage.activity.failed")} {error}
+					</Notice>
+				))}
+			{data && data.skippedFiles > 0 && (
+				<Notice tone="warn" className="mb-4">
+					{t("usage.recorded.partial", { count: data.skippedFiles })}
+				</Notice>
+			)}
+			{data ? (
+				<div className="rounded-lg border border-border bg-panel p-card">
+					<ActivityGrid days={data.days} labelledBy="usage-activity-title" dayLabels />
+				</div>
+			) : (
+				!error && <Skeleton height={168} className="rounded-lg" />
+			)}
+		</section>
 	);
 }
 
@@ -264,6 +309,7 @@ function PageFoot() {
 					<li>{t("usage.recorded.definition.model")}</li>
 					<li>{t("usage.recorded.definition.time")}</li>
 					<li>{t("usage.recorded.definition.days")}</li>
+					<li>{t("usage.recorded.definition.activity")}</li>
 					<li>{t("usage.recorded.definition.limits")}</li>
 				</ul>
 			</details>

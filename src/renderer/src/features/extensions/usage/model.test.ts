@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import type { SpendChat } from "@shared/contracts/extensions";
+import type { SpendChat, SpendDay } from "@shared/contracts/extensions";
 import type { UsageLimit } from "@shared/contracts/usage";
 import {
+	activityWeeks,
 	chartScale,
 	chatsCsv,
 	chatsCsvName,
@@ -178,5 +179,55 @@ describe("period totals", () => {
 		// The CSV rounds each chat to 4 decimals, so its sum stays within half a ten-thousandth per chat.
 		expect(Math.abs(csvTotal - kpi)).toBeLessThanOrEqual(0.00005 * chats.length);
 		expect(dailyAverage([])).toBe(0);
+	});
+});
+
+/** Trailing local days ending on `today`, as the main process reports them, with `requests` per day from the end. */
+function trailingDays(today: Date, count: number, requests: (back: number) => number = () => 0): SpendDay[] {
+	return Array.from({ length: count }, (_, index) => {
+		const back = count - 1 - index;
+		const date = new Date(today.getFullYear(), today.getMonth(), today.getDate() - back);
+		const key = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+		return { date: key, start: date.getTime(), cost: 0, tokens: 0, requests: requests(back) };
+	});
+}
+
+describe("activityWeeks", () => {
+	// Wednesday 21 October 2026, local time.
+	const wednesday = new Date(2026, 9, 21);
+
+	it("ends with the week holding today, top to bottom from the locale's first weekday", () => {
+		const days = trailingDays(wednesday, 30);
+		const sunday = activityWeeks(days, 3, 0);
+		expect(sunday).toHaveLength(3);
+		expect(sunday[2].map(cell => cell?.day.date ?? null)).toEqual(["2026-10-18", "2026-10-19", "2026-10-20", "2026-10-21", null, null, null]);
+		expect(sunday[0][0]?.day.date).toBe("2026-10-04");
+
+		const monday = activityWeeks(days, 1, 1);
+		expect(monday[0].map(cell => cell?.day.date ?? null)).toEqual(["2026-10-19", "2026-10-20", "2026-10-21", null, null, null, null]);
+	});
+
+	it("keeps whole calendar days across a daylight saving change", () => {
+		// US clocks fall back on 1 November 2026; weeks either side still start on Sunday.
+		const days = trailingDays(new Date(2026, 10, 4), 21);
+		const dates = activityWeeks(days, 3, 0).map(week => week[0]?.day.date);
+		expect(dates).toEqual(["2026-10-18", "2026-10-25", "2026-11-01"]);
+	});
+
+	it("leaves days before the summary empty", () => {
+		const grid = activityWeeks(trailingDays(wednesday, 3), 2, 0);
+		expect(grid[0].every(cell => cell === null)).toBe(true);
+		expect(grid[1].map(cell => cell?.day.date ?? null)).toEqual([null, "2026-10-19", "2026-10-20", "2026-10-21", null, null, null]);
+	});
+
+	it("ranks active days in quarters: idle days 0, the busiest quarter 4, equal days alike", () => {
+		const counts = [0, 10, 20, 30, 40, 50, 60, 70, 70];
+		const days = trailingDays(wednesday, counts.length, back => counts[counts.length - 1 - back]);
+		const levels = new Map(activityWeeks(days, 2, 0).flat().flatMap(cell => (cell ? [[cell.day.requests, cell.level] as const] : [])));
+		expect([0, 10, 20, 30, 40, 50, 60, 70].map(count => levels.get(count))).toEqual([0, 1, 1, 2, 2, 3, 3, 4]);
+
+		// One active day is the busiest day.
+		const single = activityWeeks(trailingDays(wednesday, 7, back => (back === 2 ? 3 : 0)), 1, 0).flat();
+		expect(single.find(cell => cell?.day.requests === 3)?.level).toBe(4);
 	});
 });

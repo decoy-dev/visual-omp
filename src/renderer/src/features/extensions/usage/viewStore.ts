@@ -1,6 +1,6 @@
 /**
  * What the Usage & limits page shows: open provider rows, range, table sort, table filters, table page,
- * scroll position and the last recorded-usage summary. Kept for the session (not saved to disk), so
+ * scroll position and the last recorded-usage and activity summaries. Kept for the session (not saved to disk), so
  * opening a chat from the table and coming back finds the report as it was left.
  */
 import type { SpendSummary } from "@shared/contracts/extensions";
@@ -9,9 +9,14 @@ import type { ChatFilters, ChatSortKey, SortDirection, UsageRange } from "./mode
 
 /**
  * Read once when the page opens, so they stay outside the reactive store: saving the position on
- * every scroll event would otherwise re-render the table.
+ * every scroll event would otherwise re-render the table. `activity` is the year the activity grid
+ * draws (`ACTIVITY_DAYS`), which Home also reads.
  */
-export const usageMemory: { scrollTop: number; spend: SpendSummary | null } = { scrollTop: 0, spend: null };
+export const usageMemory: { scrollTop: number; spend: SpendSummary | null; activity: SpendSummary | null } = {
+	scrollTop: 0,
+	spend: null,
+	activity: null,
+};
 
 export interface ChatSort {
 	key: ChatSortKey;

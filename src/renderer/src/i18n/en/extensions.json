@@ -454,6 +454,7 @@
 				"model": "Model is the model that handled the most requests in the chat during this period.",
 				"time": "Generation time is the time omp spent writing replies.",
 				"days": "Days are local calendar days, and today covers the day so far.",
+				"activity": "Activity counts each model request, subagents included. A day's shade ranks its requests among the active days shown, from the lightest quarter to the busiest.",
 				"limits": "Plan limits come from each provider. The period switch applies to recorded usage only."
 			}
 		},
@@ -472,6 +473,19 @@
 			"requests": "Requests",
 			"todayDate": "{{date}} (so far)",
 			"average": "Daily average {{cost}}"
+		},
+		"activity": {
+			"title": "Activity",
+			"description": "Model requests omp recorded on this computer each day, in local time.",
+			"label": "Requests per day. Use the arrow keys to move between days.",
+			"summary_one": "{{total}} request since {{date}}",
+			"summary_other": "{{total}} requests since {{date}}",
+			"none": "No requests since {{date}}",
+			"less": "Less",
+			"more": "More",
+			"legend": "Stronger teal marks days with more requests, compared with the other days shown.",
+			"failed": "Couldn't read your activity.",
+			"staleFailed": "Couldn't update activity."
 		},
 		"projects": {
 			"title": "Estimated API cost by project",

@@ -186,3 +186,71 @@ export function formatTick(value: number, step: number): string {
 	const digits = Number.isInteger(step) ? 0 : 2;
 	return `$${value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits })}`;
 }
+
+/** Calendar weeks the activity grid can show: GitHub's year of 53 columns. */
+export const ACTIVITY_MAX_WEEKS = 53;
+/** Trailing days a summary needs to fill every column of a full grid, whatever weekday today is. */
+export const ACTIVITY_DAYS = ACTIVITY_MAX_WEEKS * 7;
+
+/** Shade of an activity cell: 0 for no requests, then 1 to 4 by the day's rank among the active days shown. */
+export type ActivityLevel = 0 | 1 | 2 | 3 | 4;
+
+export interface ActivityCell {
+	day: SpendDay;
+	level: ActivityLevel;
+}
+
+/** One calendar week, top to bottom from the first day of the week; null for days after today or before the summary. */
+export type ActivityWeek = (ActivityCell | null)[];
+
+/** Local `YYYY-MM-DD`, the key `SpendDay.date` uses. */
+function localDateKey(date: Date): string {
+	return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * The trailing `weeks` calendar weeks of `days` (oldest first, ending today) as the activity grid's columns, the way
+ * GitHub lays out its contribution graph: each column is one week from `firstDay` (0 Sunday to 6 Saturday), and the
+ * last column holds today. Levels rank each active day's requests among the active days shown, in quarters: the
+ * busiest quarter is level 4 (so the busiest day always is), and equal days share a level.
+ */
+export function activityWeeks(days: readonly SpendDay[], weeks: number, firstDay: number): ActivityWeek[] {
+	const latest = days.at(-1);
+	if (!latest || weeks < 1) return [];
+	const byDate = new Map(days.map(day => [day.date, day]));
+	const today = new Date(latest.start);
+	const intoWeek = (today.getDay() - firstDay + 7) % 7;
+	// Date arithmetic on calendar fields, so a daylight saving change never shifts a cell to the wrong day.
+	const first = new Date(today.getFullYear(), today.getMonth(), today.getDate() - intoWeek - (weeks - 1) * 7);
+	const columns: (SpendDay | null)[][] = [];
+	for (let week = 0; week < weeks; week++) {
+		const column: (SpendDay | null)[] = [];
+		for (let row = 0; row < 7; row++) {
+			const date = new Date(first.getFullYear(), first.getMonth(), first.getDate() + week * 7 + row);
+			column.push(byDate.get(localDateKey(date)) ?? null);
+		}
+		columns.push(column);
+	}
+	const active = columns
+		.flat()
+		.flatMap(day => (day && day.requests > 0 ? [day.requests] : []))
+		.sort((a, b) => a - b);
+	const level = (requests: number): ActivityLevel => {
+		if (requests <= 0) return 0;
+		let atOrBelow = 0;
+		while (atOrBelow < active.length && (active[atOrBelow] ?? 0) <= requests) atOrBelow++;
+		return Math.max(1, Math.ceil((4 * atOrBelow) / active.length)) as ActivityLevel;
+	};
+	return columns.map(column => column.map(day => (day ? { day, level: level(day.requests) } : null)));
+}
+
+/** The week's first day for a locale (0 Sunday to 6 Saturday), from its week data; Sunday when the runtime has none. */
+export function weekStart(locale: string): number {
+	try {
+		const info = new Intl.Locale(locale) as Intl.Locale & { getWeekInfo?: () => { firstDay: number } };
+		const firstDay = info.getWeekInfo?.().firstDay;
+		return firstDay === undefined ? 0 : firstDay % 7;
+	} catch {
+		return 0;
+	}
+}

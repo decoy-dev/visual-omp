@@ -74,8 +74,9 @@ export interface SaveTextOptions {
 declare module "../ipc" {
 	interface IpcInvokeMap {
 		/**
-		 * Cost/token totals for the last `days` local calendar days including today (default 7, max 90).
-		 * Unchanged transcripts are served from an in-memory cache, so repeated calls are cheap.
+		 * Cost/token totals for the last `days` local calendar days including today (default 7, max 371, the activity
+		 * grid's 53 weeks). Unchanged transcripts are served from an in-memory cache, so repeated calls are cheap, and
+		 * scans of different ranges run one after another so they share that cache.
 		 */
 		"extensions:spend": { args: [days?: number]; result: SpendSummary };
 		/** Ask where to save `content` and write it; resolves with the path, or null when cancelled. */

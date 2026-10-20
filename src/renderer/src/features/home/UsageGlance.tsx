@@ -1,8 +1,8 @@
 /**
  * Home → Usage: the section (in its own card on Home) with the three providers closest to a plan limit (each provider's
- * binding window, as Usage & limits shows it) and the last 7 days' estimated API cost. Reads the shared
- * limits snapshot and one 7-day spend summary, which it leaves in `usageMemory` so the Usage page opens
- * with figures already in place.
+ * binding window, as Usage & limits shows it), the last 7 days' estimated API cost and the activity grid's last few
+ * months. Reads the shared limits snapshot, one 7-day spend summary and the activity year, which it leaves in
+ * `usageMemory` so the Usage page opens with figures already in place.
  */
 import type { TFunction } from "i18next";
 import { Fragment, type ReactNode, useEffect, useId, useMemo } from "react";
@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { Warning } from "@phosphor-icons/react";
 import { formatAge, formatDuration, formatUsd } from "@/features/extensions/format";
 import { useLoad } from "@/features/extensions/shared";
+import { ActivityGrid, useActivity } from "@/features/extensions/usage/ActivityGrid";
 import { refreshUsageLimits, useUsageLimits, useUsageLimitsStatus } from "@/features/extensions/usage/limitsStore";
 import { type LimitRow, planLimits, providerName, providerSummary } from "@/features/extensions/usage/planUsage";
 import { usageMemory } from "@/features/extensions/usage/viewStore";
@@ -61,6 +62,9 @@ export function UsageGlance(): ReactNode {
 	}, []);
 	const seeded = usageMemory.spend?.days.length === RANGE_DAYS ? usageMemory.spend : null;
 	const summary = spend.data ?? seeded;
+	// Asked for after the week, so the cost line never waits on the year's scan.
+	const activity = useActivity();
+	const activityId = useId();
 
 	const rows = useMemo((): GlanceRow[] => {
 		if (!snapshot) return [];
@@ -79,12 +83,15 @@ export function UsageGlance(): ReactNode {
 	const spendStale = summary !== null && spend.error !== null && !spend.loading;
 	const skipped = summary?.skippedFiles ?? 0;
 	const cost = summary?.totals.cost ?? null;
+	// The year's own warnings: a quiet week says nothing about a failed or partial read of the months before it.
+	const activityStale = activity.data !== null && activity.error !== null && !activity.loading;
+	const activitySkipped = activity.data?.skippedFiles ?? 0;
 	// "No recorded usage" only when every read worked and nothing was skipped; otherwise zero may just be missing data.
 	const empty =
 		snapshot !== null && !status.error && rows.length === 0 && summary !== null && !spend.error && skipped === 0 && summary.totals.cost === 0;
 
 	return (
-		<section aria-labelledby={id} aria-busy={status.checking || spend.loading} className="@container/usage-glance min-w-0">
+		<section aria-labelledby={id} aria-busy={status.checking || spend.loading || activity.loading} className="@container/usage-glance min-w-0">
 			<HomeSectionHeader id={id} title={t("usage.title")} action={{ label: t("usage.open"), onClick: () => openUsage() }} />
 			<div className="flex flex-col">
 				{empty ? (
@@ -114,6 +121,21 @@ export function UsageGlance(): ReactNode {
 							</>
 						)}
 					</>
+				)}
+
+				<h3 id={activityId} className="mt-stack flex min-h-9 items-center text-md font-medium text-fg">
+					{tx("usage.activity.title")}
+				</h3>
+				{activity.data ? (
+					<>
+						<ActivityGrid days={activity.data.days} labelledBy={activityId} />
+						{activityStale && <Qualifier>{tx("usage.activity.staleFailed")}</Qualifier>}
+						{activitySkipped > 0 && <Qualifier>{tx("usage.recorded.partial", { count: activitySkipped })}</Qualifier>}
+					</>
+				) : activity.error ? (
+					<p className="text-sm text-fg-muted">{tx("usage.activity.failed")}</p>
+				) : (
+					<Skeleton height={136} className="rounded-sm" />
 				)}
 			</div>
 		</section>

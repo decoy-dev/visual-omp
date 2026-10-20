@@ -99,7 +99,7 @@ omp's displayed harness notices appear in the chat in all three views, presented
 - Memory shows what omp remembers and lets you delete it.
 
 ### omp extras
-- Usage & limits shows provider limits by account and window, with status and expandable account detail. Unknown values and warnings remain visible. Recorded usage comes from local session and subagent files; its 7- or 30-day period does not filter provider limits. The page has a segmented KPI strip, daily cost chart with average line, cost share bars by project and a chat table with project and model filters, pagination and CSV export. Estimated API cost is labelled.
+- Usage & limits shows provider limits by account and window, with status and expandable account detail. Unknown values and warnings remain visible. An activity grid shows omp's model requests per day over the last year, GitHub style, and Home shows its last few months. Recorded usage comes from local session and subagent files; its 7- or 30-day period does not filter provider limits or the activity grid. The page has a segmented KPI strip, daily cost chart with average line, cost share bars by project and a chat table with project and model filters, pagination and CSV export. Estimated API cost is labelled.
 - Security scan and cleanse can be run for a project.
 - Chats can be imported from Claude Code and Codex.
 - The session tree navigator shows every branch of a chat.
