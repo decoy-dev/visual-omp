@@ -22,7 +22,7 @@ import {
 	X,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { createContext, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useState } from "react";
+import { type CSSProperties, createContext, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getCommand } from "../registry/commands";
 import { type AppState, closeChat, controllerFor, SIDEBAR_ID, useApp } from "../state/app";
@@ -132,6 +132,18 @@ type MenuKit = typeof dropdownKit | typeof contextKit;
 const rowMenuOpen = "data-[state=open]:bg-hover data-[state=open]:text-fg has-[[data-state=open]]:bg-hover has-[[data-state=open]]:text-fg";
 const hideWhileMenuOpen = "group-data-[state=open]:hidden group-has-[[data-state=open]]:hidden";
 const showWhileMenuOpen = "group-data-[state=open]:inline-flex!";
+
+/*
+ * A colored project's row: a wash of its folder color (`--row-tint`, set on the row) in place of the neutral fills,
+ * 16% at rest, 24% on hover or with a menu open, 30% when its overview is showing. Text stays 7:1 or more on ink.
+ */
+const tintedRow = [
+	"bg-[color-mix(in_oklch,var(--row-tint)_16%,transparent)]",
+	"hover:bg-[color-mix(in_oklch,var(--row-tint)_24%,transparent)]",
+	"data-[state=open]:bg-[color-mix(in_oklch,var(--row-tint)_24%,transparent)]",
+	"has-[[data-state=open]]:bg-[color-mix(in_oklch,var(--row-tint)_24%,transparent)]",
+].join(" ");
+const tintedRowActive = "bg-[color-mix(in_oklch,var(--row-tint)_30%,transparent)]";
 
 function runCommand(id: string): void {
 	const command = getCommand(id);
@@ -395,7 +407,13 @@ function ProjectGroup({ group, now, filtering }: ProjectGroupProps): ReactNode {
 		<motion.div role="group" aria-label={project.name} layout="position" transition={spring.gentle}>
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
-					<div className={cn("group flex h-9 items-center gap-1 rounded-md pr-1 pl-1 text-md", active ? "bg-selected" : cn("hover:bg-hover", rowMenuOpen))}>
+					<div
+						style={color ? ({ "--row-tint": projectColorValue(color) } as CSSProperties) : undefined}
+						className={cn(
+							"group flex h-9 items-center gap-1 rounded-md pr-1 pl-1 text-md",
+							color ? (active ? tintedRowActive : tintedRow) : active ? "bg-selected" : cn("hover:bg-hover", rowMenuOpen),
+						)}
+					>
 						<IconButton
 							label={group.open ? t("sidebar.collapse", { name: project.name }) : t("sidebar.expand", { name: project.name })}
 							icon={<CaretRight className={cn("transition-transform duration-(--dur) ease-(--ease-out-quart)", group.open && "rotate-90")} />}
