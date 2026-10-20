@@ -57,12 +57,76 @@ describe("transcriptLayout", () => {
 		expect(layout.entries.has("a4")).toBe(false);
 	});
 
-	it("leaves live turns, single calls and other views alone", () => {
+	it("leaves single calls and other views alone", () => {
 		const entries = [user("go"), assistant([tool("r1", "read"), tool("r2", "read")], 0, "a1"), result("r1", "read"), result("r2", "read")];
-		expect(transcriptLayout(entries, { live: true, group: true, context }).entries.size).toBe(0);
 		expect(transcriptLayout(entries, { live: false, group: false, context }).entries.size).toBe(0);
 		const single = [user("go"), assistant([tool("r1", "read"), text("ok"), tool("r2", "read")], 0, "a1"), result("r1", "read"), result("r2", "read")];
 		expect(transcriptLayout(single, { live: false, group: true, context }).entries.size).toBe(0);
+	});
+
+	it("folds a live turn's finished steps and leaves the step still running, and all after it, as rows", () => {
+		const entries = [
+			user("go"),
+			assistant([tool("r1", "read"), thinking("hm"), tool("r2", "grep")], 0, "a1"),
+			result("r1", "read"),
+			result("r2", "grep"),
+			assistant([thinking("next"), tool("b1", "bash"), tool("r3", "read")], 0, "a2"),
+			result("r3", "read"),
+		];
+		const layout = transcriptLayout(entries, { live: true, group: true, context });
+		expect(layout.entries.get("a1")?.groups.get(0)?.items.map(item => item.index)).toEqual([0, 1, 2]);
+		// b1 has no result yet: the thought before it, b1 and the finished r3 after it all stay as rows.
+		expect(layout.entries.has("a2")).toBe(false);
+
+		// Once b1 finishes, the whole run folds into the same group.
+		const later = transcriptLayout([...entries, result("b1", "bash")], { live: true, group: true, context });
+		expect(later.entries.get("a1")?.groups.get(0)).toMatchObject({ key: "r1", calls: 4 });
+		expect([...(later.entries.get("a2")?.hidden ?? [])]).toEqual([0, 1, 2]);
+
+		// A live turn with one finished call has nothing to fold.
+		const one = [user("go"), assistant([tool("r1", "read"), tool("b1", "bash")], 0, "a1"), result("r1", "read")];
+		expect(transcriptLayout(one, { live: true, group: true, context }).entries.size).toBe(0);
+	});
+
+	it("keeps a step the reader is using as its own row when its run finishes around it, folding the steps either side", () => {
+		// The reader opened or focused b1 while it was the live edge; then b1 and the steps after it finished.
+		const entries = [
+			user("go"),
+			assistant([tool("r1", "read"), tool("r2", "read"), tool("b1", "bash"), tool("r3", "read"), tool("r4", "read")], 0, "a1"),
+			result("r1", "read"),
+			result("r2", "read"),
+			result("b1", "bash"),
+			result("r3", "read"),
+			result("r4", "read"),
+		];
+		const held = transcriptLayout(entries, { live: true, group: true, context, hold: new Set(["b1"]) }).entries.get("a1");
+		expect([...(held?.groups.keys() ?? [])]).toEqual([0, 3]);
+		expect(held?.hidden.has(2)).toBe(false);
+		// The same holds as the turn finishes; once the reader lets go, the run folds into the first group again.
+		expect(transcriptLayout(entries, { live: false, group: true, context, hold: new Set(["b1"]) }).entries.get("a1")?.hidden.has(2)).toBe(false);
+		const released = transcriptLayout(entries, { live: true, group: true, context }).entries.get("a1");
+		expect(released?.groups.get(0)).toMatchObject({ key: "r1", calls: 5 });
+	});
+
+	it("keeps a group the reader is using as its own group when the row before it lets go", () => {
+		const entries = [
+			user("go"),
+			assistant([tool("r1", "read"), tool("r2", "read"), tool("b1", "bash"), tool("r3", "read"), tool("r4", "read")], 0, "a1"),
+			result("r1", "read"),
+			result("r2", "read"),
+			result("b1", "bash"),
+			result("r3", "read"),
+			result("r4", "read"),
+		];
+		// b1 held split the run into groups r1 and r3; the reader moved on into the r3 group, releasing b1.
+		const kept = transcriptLayout(entries, { live: true, group: true, context, holdGroups: new Set(["r3"]) }).entries.get("a1");
+		expect([...(kept?.groups.values() ?? [])].map(plan => [plan.key, plan.calls])).toEqual([
+			["r1", 3],
+			["r3", 2],
+		]);
+		// Once the reader leaves that group too, the whole run folds into one.
+		const merged = transcriptLayout(entries, { live: true, group: true, context }).entries.get("a1");
+		expect([...(merged?.groups.values() ?? [])].map(plan => [plan.key, plan.calls])).toEqual([["r1", 5]]);
 	});
 
 	it("splits runs at text, helper runs and the turn's latest board", () => {

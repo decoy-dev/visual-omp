@@ -29,11 +29,9 @@
 		"dismiss": "Hide note"
 	},
 	"thoughts": "Thinking",
-	"thinking": "Thinking…",
+	"activity": { "thinking": "Thinking", "writing": "Writing a reply" },
 	"redactedThinking": "Thinking (hidden by the model)",
-	"working": "Working… {{elapsed}}",
 	"workingActivity": "Working… {{elapsed}} · {{activity}}",
-	"workingUntimed": "Working…",
 	"workingActivityUntimed": "Working · {{activity}}",
 	"newActivity": "Show new activity",
 	"fileRow": "{{name}}, in {{folder}}",

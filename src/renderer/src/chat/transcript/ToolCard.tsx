@@ -18,7 +18,7 @@ import {
 	Wrench,
 	X,
 } from "@phosphor-icons/react";
-import { memo, type ReactNode, useState } from "react";
+import { memo, type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type FriendlySummary, friendlySummary, resolveToolCall } from "../friendly";
 import { resolveToolRenderer } from "../../tool-render/registry";
@@ -69,6 +69,12 @@ export interface ToolCardProps {
 	host?: ToolRenderHost;
 	/** Replaces the call's own one-liner when the caller knows more, such as a task call whose helpers outlive it. */
 	summary?: FriendlySummary;
+	/**
+	 * Told when the reader starts or stops using the row (it is open, or keyboard focus is inside it), with `engageId`,
+	 * so the transcript keeps the row in place instead of folding it into a step group under the reader.
+	 */
+	onEngage?: (id: string, engaged: boolean) => void;
+	engageId?: string;
 }
 
 function partialText(partial: unknown): string {
@@ -87,6 +93,14 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 	const { t } = useTranslation("tools");
 	const tc = useTranslation("chat").t;
 	const [open, setOpen] = useState(props.verbose);
+	const [focused, setFocused] = useState(false);
+	const engaged = open || focused;
+	const { onEngage, engageId } = props;
+	useEffect(() => {
+		if (!onEngage || engageId === undefined || !engaged) return;
+		onEngage(engageId, true);
+		return () => onEngage(engageId, false);
+	}, [onEngage, engageId, engaged]);
 	const call = resolveToolCall({ name: props.name, args: props.args, result: props.result, running: props.running, intent: props.intent });
 	const summary = props.summary ?? friendlySummary(call);
 	const renderer = resolveToolRenderer(call.name);
@@ -95,7 +109,15 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 	const tail = running ? stripAnsi(replaceTabs(partialText(props.partialResult))) : "";
 
 	return (
-		<Rise play={props.arriving ?? false} distance={4} className="group/tool">
+		<Rise
+			play={props.arriving ?? false}
+			distance={4}
+			className="group/tool"
+			onFocus={() => setFocused(true)}
+			onBlur={event => {
+				if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
+			}}
+		>
 			<button
 				type="button"
 				aria-expanded={open}

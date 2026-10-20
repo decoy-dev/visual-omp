@@ -6,7 +6,7 @@ import { useApp } from "../state/app";
 import type { SessionController, SessionView } from "../state/session";
 import { Button, cn, Expand, WorkingIndicator } from "../ui";
 import { Composer } from "./composer/Composer";
-import { friendlySummary, resolveToolCall } from "./friendly";
+import { activityKey, friendlySummary, resolveToolCall } from "./friendly";
 import { SessionHeader } from "./SessionHeader";
 import { Transcript } from "./transcript/Transcript";
 
@@ -98,26 +98,30 @@ function OwnerNotice({ session, view }: { session: SessionController; view: Sess
 }
 
 /**
- * "Working… 14s · Running tests" pinned above the composer while omp works (DESIGN §4.6), the one place the turn's
- * elapsed time shows. The time counts from the session controller's observed start, so switching chats or remounting
- * keeps it; a turn already under way when the chat joined shows no time. Status only: stopping is the composer's
- * action slot. Mounted only while working.
+ * "Working… 14s · Running commands" pinned above the composer while omp works (DESIGN §4.6), the one place the turn's
+ * elapsed time shows. The activity names the kind of work (`activityKey`), not the command or file itself, which the
+ * step's own row shows: the newest running call, else the call streaming in, else writing a reply or thinking. The
+ * time counts from the session controller's observed start, so switching chats or remounting keeps it; a turn
+ * already under way when the chat joined shows no time. Status only: stopping is the composer's action slot. Mounted
+ * only while working.
  */
 function WorkingRow({ view }: { view: SessionView }): ReactNode {
 	const { t } = useTranslation(["chat", "tools"]);
 	const now = useNow(1000);
 	const tool = view.guest ? [...view.guest.activeTools.values()].at(-1) : undefined;
-	const summary = tool ? friendlySummary(resolveToolCall({ name: tool.toolName, args: tool.args, running: true, intent: tool.intent })) : null;
-	const activity = summary ? t(`tools:${summary.key}`, summary.values) : view.guest?.stream ? null : t("chat:thinking");
+	const last = view.guest?.stream?.content.at(-1);
+	const call = tool
+		? { name: tool.toolName, args: tool.args, intent: tool.intent }
+		: last?.type === "toolCall"
+			? { name: last.name, args: last.arguments }
+			: null;
+	const activity = call
+		? t(`tools:${activityKey(friendlySummary(resolveToolCall({ ...call, running: true })))}`)
+		: last?.type === "text" && last.text.trim() !== ""
+			? t("chat:activity.writing")
+			: t("chat:activity.thinking");
 	const time = view.workingSince === null ? null : elapsed(now - view.workingSince);
-	const label =
-		time === null
-			? activity
-				? t("chat:workingActivityUntimed", { activity })
-				: t("chat:workingUntimed")
-			: activity
-				? t("chat:workingActivity", { elapsed: time, activity })
-				: t("chat:working", { elapsed: time });
+	const label = time === null ? t("chat:workingActivityUntimed", { activity }) : t("chat:workingActivity", { elapsed: time, activity });
 	return (
 		<div className="mx-auto flex h-9 w-full max-w-(--chat-max) items-center px-6 pb-2">
 			<WorkingIndicator label={label} />

@@ -1,7 +1,8 @@
 /**
- * How the transcript lays out omp's work turn by turn: which run of tool steps in a finished turn folds into one
- * ToolGroup row, which `todo` update shows the full board and which shrink to a one-line change, and the files each
- * finished turn changed for its TurnSummary. Pure, so the rules are tested apart from the view.
+ * How the transcript lays out omp's work turn by turn: which runs of tool steps fold into one ToolGroup row, which
+ * `todo` update shows the full board and which shrink to a one-line change, and the files each finished turn changed
+ * for its TurnSummary. A turn still going folds its finished steps too, up to its first call still running, so only
+ * the live edge stays out as single rows. Pure, so the rules are tested apart from the view.
  */
 import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { type EditTotals, editTotals, fileEdits, type OutputContext, type TodoUpdate, todoUpdates } from "../../features/panes/derive";
@@ -51,7 +52,7 @@ export interface TranscriptLayout {
 }
 
 export interface LayoutOptions {
-	/** The last turn is still going (omp works or a reply streams in), so it stays as it is. */
+	/** The last turn is still going (omp works or a reply streams in): it folds only steps that have finished, and gets no summary yet. */
 	live: boolean;
 	/** Fold runs of tool steps (Normal view). */
 	group: boolean;
@@ -62,6 +63,16 @@ export interface LayoutOptions {
 	 * drawn, so no group reaches across that edge: a group whose first step lies above it would hide the rest.
 	 */
 	from?: number;
+	/**
+	 * Calls the reader is using (open, or focus inside), drawn as rows: one ends a run like a helper run does, so
+	 * folding never takes it out from under them. Only rows outside a group report this.
+	 */
+	hold?: ReadonlySet<string>;
+	/**
+	 * Keys (first call ids) of groups the reader is using: each still starts its own group, so releasing a row before
+	 * it never merges it into an earlier group and unmounts it.
+	 */
+	holdGroups?: ReadonlySet<string>;
 }
 
 /** Calls that always stay visible: helper runs and questions. The turn's latest board joins them. */
@@ -140,7 +151,7 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 			const totals = editTotals(edits, current.callIds);
 			if (totals.files.length > 0) summaries.set(current.lastAssistant, totals);
 		}
-		if (!finished || !options.group) continue;
+		if (!options.group) continue;
 
 		let run: BlockRef[] = [];
 		let between: BlockRef[] = [];
@@ -172,11 +183,15 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 			if ((current.positions[slot] ?? 0) < (options.from ?? 0)) continue;
 			const block = ref.block;
 			if (block.type === "toolCall") {
+				// The live edge: a call still running, and everything after it, stays as single rows until it finishes.
+				if (!finished && !results.has(block.id)) break;
 				const name = nameOf(block);
-				if (PROMINENT[name] || todos.get(block.id)?.role === "board") {
+				if (PROMINENT[name] || todos.get(block.id)?.role === "board" || options.hold?.has(block.id)) {
 					flush();
 					continue;
 				}
+				// A group the reader is using keeps its first step, and so its key: the run before it ends there.
+				if (options.holdGroups?.has(block.id)) flush();
 				run.push(...between, ref);
 				between = [];
 			} else if (block.type === "text" && block.text.trim() !== "") {

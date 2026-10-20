@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import tools from "../i18n/en/tools.json";
-import { type FriendlySummary, friendlySummary, resolveToolCall } from "./friendly";
+import { activityKey, type FriendlySummary, friendlySummary, resolveToolCall } from "./friendly";
 
 function hasKey(path: string): boolean {
 	let node: unknown = tools;
@@ -67,5 +67,44 @@ describe("friendlySummary", () => {
 			key: "generic.ok",
 			values: { tool: "linear create issue" },
 		});
+	});
+});
+
+describe("activityKey", () => {
+	it("names the kind of work of every running call with a string that exists", () => {
+		const calls = [
+			{ name: "bash", args: { command: "curl -sS https://example.com" } },
+			{ name: "read", args: { path: "src/a.ts" } },
+			{ name: "grep", args: { pattern: "x" } },
+			{ name: "glob", args: { pattern: "*.ts" } },
+			{ name: "lsp" },
+			{ name: "edit" },
+			{ name: "write", args: { path: "a.ts" } },
+			{ name: "ast_edit" },
+			{ name: "web_search" },
+			{ name: "fetch" },
+			{ name: "python" },
+			{ name: "eval", args: { code: "await computer.screenshot()" } },
+			{ name: "task" },
+			{ name: "todo" },
+			{ name: "ask" },
+			{ name: "github" },
+			{ name: "generate_image" },
+			{ name: "recall" },
+			{ name: "rewind" },
+			{ name: "wait" },
+			{ name: "mcp__linear_search" },
+		];
+		for (const call of calls) {
+			const key = activityKey(summarize({ ...call, running: true }));
+			expect(hasKey(key), `missing i18n key tools:${key} for ${call.name}`).toBe(true);
+		}
+	});
+
+	it("tells reading a web page apart from reading a file, and browser use apart from other code", () => {
+		expect(activityKey(summarize({ name: "read", running: true, args: { path: "https://example.com/a" } }))).toBe("activity.webPages");
+		expect(activityKey(summarize({ name: "read", running: true, args: { path: "src/a.ts" } }))).toBe("activity.reading");
+		expect(activityKey(summarize({ name: "eval", running: true, args: { code: "await browser.open({})" } }))).toBe("activity.browser");
+		expect(activityKey(summarize({ name: "eval", running: true, args: { code: "print(1)" } }))).toBe("activity.code");
 	});
 });

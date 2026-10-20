@@ -65,5 +65,25 @@
 	"checkpoint": { "running": "Saving a checkpoint…", "ok": "Saved a checkpoint", "error": "Couldn't save a checkpoint" },
 	"rewind": { "running": "Returning to the checkpoint…", "ok": "Returned to the checkpoint", "error": "Couldn't return to the checkpoint" },
 	"wait": { "running": "Waiting for background work…", "ok": "Finished waiting", "error": "Stopped waiting" },
-	"generic": { "running": "Using {{tool}}…", "ok": "Used {{tool}}", "error": "{{tool}} failed {{detail}}" }
+	"generic": { "running": "Using {{tool}}…", "ok": "Used {{tool}}", "error": "{{tool}} failed {{detail}}" },
+	"activity": {
+		"commands": "Running commands",
+		"reading": "Reading files",
+		"searching": "Searching files",
+		"editing": "Editing files",
+		"web": "Searching the web",
+		"webPages": "Reading web pages",
+		"code": "Running code",
+		"browser": "Using the browser",
+		"computer": "Using the computer",
+		"helpers": "Working with helpers",
+		"checklist": "Updating the checklist",
+		"question": "Waiting for your answer",
+		"github": "Checking GitHub",
+		"images": "Making an image",
+		"memory": "Using its memory",
+		"checkpoints": "Working with checkpoints",
+		"waiting": "Waiting for background work",
+		"tools": "Using tools"
+	}
 }

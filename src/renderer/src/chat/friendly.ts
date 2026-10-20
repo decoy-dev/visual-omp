@@ -234,3 +234,39 @@ export function friendlySummary(call: ToolCallView): FriendlySummary {
 		}
 	}
 }
+
+/** The kind of work each summary names, by its key's first part; keys under `activity` in `tools.json`. */
+const ACTIVITIES: Record<string, string> = {
+	bash: "commands",
+	read: "reading",
+	search: "searching",
+	find: "searching",
+	lsp: "searching",
+	edit: "editing",
+	write: "editing",
+	astEdit: "editing",
+	web: "web",
+	fetch: "webPages",
+	eval: "code",
+	task: "helpers",
+	todo: "checklist",
+	ask: "question",
+	github: "github",
+	image: "images",
+	remember: "memory",
+	recall: "memory",
+	checkpoint: "checkpoints",
+	rewind: "checkpoints",
+	wait: "waiting",
+};
+
+/**
+ * The kind of work a call is doing, in plain words for the working row ("Running commands", "Reading files"), where
+ * the call's own summary names the command or file. Key in `tools.json`.
+ */
+export function activityKey(summary: FriendlySummary): string {
+	const [kind = "", detail] = summary.key.split(".");
+	if (kind === "read" && detail === "url") return "activity.webPages";
+	if (kind === "eval" && (detail === "browser" || detail === "computer")) return `activity.${detail}`;
+	return `activity.${ACTIVITIES[kind] ?? "tools"}`;
+}

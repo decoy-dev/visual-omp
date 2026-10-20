@@ -6,7 +6,7 @@ import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolRes
 import type { FileRef } from "@shared/contracts/fileRefs";
 import { ArrowDown, ArrowUUpLeft, CaretRight, Copy, GitFork, Warning, XCircle } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type KeyboardEvent, type MouseEvent, memo, type ReactNode, type RefObject, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { type KeyboardEvent, type MouseEvent, memo, type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
 import { type Helper, type HelperStatus, helpersByCall, ompRunning, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
@@ -195,10 +195,25 @@ function shownLength(playout: Playout | null, index: number, length: number): nu
 	return playout ? Math.min(length, playout.visible(index)) : length;
 }
 
+/** Ids the reader is using, with a stable toggle that leaves the set as it is when nothing changes. */
+function useHeldSet(): [ReadonlySet<string>, (id: string, engaged: boolean) => void] {
+	const [held, setHeld] = useState<ReadonlySet<string>>(() => new Set());
+	const toggle = useCallback((id: string, engaged: boolean) => {
+		setHeld(current => {
+			if (current.has(id) === engaged) return current;
+			const next = new Set(current);
+			if (engaged) next.add(id);
+			else next.delete(id);
+			return next;
+		});
+	}, []);
+	return [held, toggle];
+}
+
 /** What the turn layout tells a reply's tool blocks (see `turns.ts`). */
 interface WorkView {
 	layout: TranscriptLayout;
-	/** Group keys mounting as their turn finishes in view: they mount open and fold. */
+	/** Group keys forming while the chat is open (during a turn or as it finishes): they mount open and fold. */
 	settling: ReadonlySet<string>;
 	/** Live helpers by the task call that started them (`helpersByCall`). */
 	helpers: ReadonlyMap<string, readonly Helper[]>;
@@ -206,6 +221,10 @@ interface WorkView {
 	recorded: ReadonlyMap<string, HelperStatus>;
 	/** An omp process may still run this chat's helpers (`ompRunning`). */
 	ompRunning: boolean;
+	/** Marks a step the reader is using (open, or focus inside it), so it stays a row instead of folding (`turns.ts`). */
+	hold: (callId: string, engaged: boolean) => void;
+	/** Marks a group the reader is using, by key, so it keeps its own boundary and key (`turns.ts`). */
+	holdGroup: (key: string, engaged: boolean) => void;
 }
 
 type ToolCallBlock = Extract<ContentBlock, { type: "toolCall" }>;
@@ -222,6 +241,7 @@ function ToolStep({
 	mode,
 	arriving,
 	work,
+	grouped = false,
 }: {
 	block: ToolCallBlock;
 	results: ReadonlyMap<string, ToolResultMessage>;
@@ -230,6 +250,8 @@ function ToolStep({
 	mode: TranscriptMode;
 	arriving: boolean;
 	work: WorkView | undefined;
+	/** Drawn inside a step group, which already holds it: using it there never reshapes the groups. */
+	grouped?: boolean;
 }): ReactNode {
 	const { t } = useTranslation("tools");
 	const live = active.get(block.id);
@@ -268,6 +290,8 @@ function ToolStep({
 			verbose={mode === "verbose"}
 			arriving={arriving}
 			summary={helperRunsSummary(runs, (status, count) => t(`task.states.${status}`, { count })) ?? undefined}
+			onEngage={grouped || mode !== "normal" ? undefined : work?.hold}
+			engageId={block.id}
 		/>
 	);
 	if (runs.length === 0) return card;
@@ -376,10 +400,10 @@ function AssistantBlocks({
 						const group = layout?.groups.get(index);
 						if (group) {
 							return (
-								<ToolGroup key={block.id} plan={group} settling={work?.settling.has(group.key)}>
+								<ToolGroup key={block.id} plan={group} settling={work?.settling.has(group.key)} onEngage={mode === "normal" ? work?.holdGroup : undefined}>
 									{group.items.map(item =>
 										item.block.type === "toolCall" ? (
-											<ToolStep key={item.block.id} block={item.block} results={results} active={active} pending={false} mode={mode} arriving={false} work={work} />
+											<ToolStep key={item.block.id} block={item.block} results={results} active={active} pending={false} mode={mode} arriving={false} work={work} grouped />
 										) : (
 											<GroupThought key={`${item.entryId}:${item.index}`} block={item.block} />
 										),
@@ -746,15 +770,28 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	}, [visible, loaded, streaming]);
 	const arrivals = arrivalsRef.current;
 
-	// How omp's work lays out turn by turn: step groups (Normal view, finished turns), the board per turn, and the
-	// files each finished turn changed. Groups and summaries that appear as a turn finishes in view settle in: groups
-	// mount open and fold, summaries rise; history renders at rest.
+	// How omp's work lays out turn by turn: step groups (Normal view; a turn still going folds its finished steps), the
+	// board per turn, and the files each finished turn changed. Groups and summaries that appear while the chat is open
+	// settle in: groups mount open and fold, summaries rise; history renders at rest.
 	const live = view.working || stream !== null;
+	const grouped = mode === "normal";
+	// Rows and groups the reader is using keep their place until they let go, so a fold never takes one out from under
+	// focus or an open output (`ToolCard` and `ToolGroup` report it).
+	const [heldRows, hold] = useHeldSet();
+	const [heldGroups, holdGroup] = useHeldSet();
 	const layout = useMemo(
-		() => transcriptLayout(entries, { live, group: mode === "normal", context: { cwd: session.projectPath, home }, from: start }),
-		[entries, live, mode, session.projectPath, home, start],
+		() =>
+			transcriptLayout(entries, {
+				live,
+				group: grouped,
+				context: { cwd: session.projectPath, home },
+				from: start,
+				hold: heldRows,
+				holdGroups: heldGroups,
+			}),
+		[entries, live, grouped, session.projectPath, home, start, heldRows, heldGroups],
 	);
-	const shownWorkRef = useRef<{ live: boolean; keys: ReadonlySet<string> } | null>(null);
+	const shownWorkRef = useRef<{ live: boolean; grouped: boolean; start: number; keys: ReadonlySet<string> } | null>(null);
 	const shownWork = shownWorkRef.current;
 	const workKeys = useMemo(() => {
 		const keys = new Set<string>();
@@ -762,15 +799,17 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		for (const id of layout.summaries.keys()) keys.add(`summary:${id}`);
 		return keys;
 	}, [layout]);
-	// Only the commit where the turn finishes settles; a window edge moving during a turn re-keys groups at rest.
+	// Settling covers work forming during a turn and as it finishes. A window edge moving or the view switching to
+	// Normal re-keys groups that were already there, so those commits render at rest.
 	const settling = useMemo(() => {
 		const keys = new Set<string>();
-		if (shownWork?.live && !live && arrivals.armed) for (const key of workKeys) if (!shownWork.keys.has(key)) keys.add(key);
+		const sameView = shownWork !== null && shownWork.grouped === grouped && shownWork.start === start;
+		if (sameView && (shownWork.live || live) && arrivals.armed) for (const key of workKeys) if (!shownWork.keys.has(key)) keys.add(key);
 		return keys;
-	}, [workKeys, shownWork, live, arrivals.armed]);
+	}, [workKeys, shownWork, live, grouped, start, arrivals.armed]);
 	useEffect(() => {
-		shownWorkRef.current = { live, keys: workKeys };
-	}, [live, workKeys]);
+		shownWorkRef.current = { live, grouped, start, keys: workKeys };
+	}, [live, grouped, start, workKeys]);
 	const agents = guest?.agents;
 	const progress = guest?.progress;
 	const lifecycle = guest?.lifecycle;
@@ -780,7 +819,10 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		[agents, progress, lifecycle, helpersMayRun],
 	);
 	const recorded = useMemo(() => transcriptHelperStates(entries), [entries]);
-	const work = useMemo((): WorkView => ({ layout, settling, helpers, recorded, ompRunning: helpersMayRun }), [layout, settling, helpers, recorded, helpersMayRun]);
+	const work = useMemo(
+		(): WorkView => ({ layout, settling, helpers, recorded, ompRunning: helpersMayRun, hold, holdGroup }),
+		[layout, settling, helpers, recorded, helpersMayRun, hold, holdGroup],
+	);
 	const openFile = (path: string) => openInFiles(session.projectPath, path, { focus: true });
 
 	// New rows, stream updates and questions: follow when pinned, otherwise offer the jump. Until the chat has loaded
