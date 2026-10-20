@@ -307,8 +307,8 @@
 	--ring: oklch(0.78 0.1 192);
 	--ring-soft: oklch(0.78 0.1 192 / 0.24);
 
-	/* The sidebar's header card while a page is open (DESIGN §3.2): the light sheet's deeper teal, so white text reads 5.7:1. */
-	--page-card: oklch(0.5 0.082 192);
+	/* The sidebar's header card while a page is open (DESIGN §3.2): a lighter teal on which white text reads about 4.6:1. */
+	--page-card: oklch(0.55 0.09 192);
 }
 
 /* Dark chrome (0.145) only deepens the wells and tones down the fills; text, status and accent already suit it. */
@@ -323,12 +323,13 @@
 	--info-bg: oklch(0.26 0.035 255);
 }
 
-/* Inside the filled header card: white text and mark (fg-faint 4.6:1 on --page-card), a white hover wash and focus ring. */
+/* Inside the filled header card: white text and mark (4.6:1 on --page-card, so the version is white too), a darkening
+ * hover wash like a filled button's (5.7:1 under the text) and a white focus ring. */
 [data-region="chrome"] [data-page-card="filled"] {
 	--fg: #ffffff;
-	--fg-faint: oklch(1 0 0 / 0.85);
+	--fg-faint: #ffffff;
 	--accent: #ffffff;
-	--hover: oklch(1 0 0 / 0.14);
+	--hover: oklch(0 0 0 / 0.12);
 	--ring: #ffffff;
 }
 

@@ -51,7 +51,7 @@ The page canvas is gray, with grouped content on white cards. The main sheet has
 | `--bg-overlay` | `oklch(0.265 0.008 195)` | overlays |
 | `--backdrop` | `oklch(0.2 0.006 195 / 0.62)` | visible veil over sheet and chrome |
 
-The hierarchy progresses from chrome to canvas, sheet, cards and raised layers. `[data-region="chrome"]` re-declares semantic ink tokens, including text, status, border, accent and focus values, so components keep using their normal semantic classes. It also defines `--page-card` (`oklch(0.5 0.082 192)`, the light sheet's accent), the fill of the sidebar's header card while a page is open (§3.2). Inside the filled card, `[data-page-card="filled"]` makes text, the mark, the hover wash and the focus ring white, so text reads 5.7:1 and the version 4.6:1. The Electron window background follows the selected theme.
+The hierarchy progresses from chrome to canvas, sheet, cards and raised layers. `[data-region="chrome"]` re-declares semantic ink tokens, including text, status, border, accent and focus values, so components keep using their normal semantic classes. It also defines `--page-card` (`oklch(0.55 0.09 192)`, `#15827F`), the fill of the sidebar's header card while a page is open (§3.2), a lighter teal on which white text reads about 4.6:1. Inside the filled card, `[data-page-card="filled"]` makes text, the version, the mark and the focus ring white, and the hover wash darkens the fill (12% black) the way a filled button's hover does, so text under it reads 5.7:1. The Electron window background follows the selected theme.
 
 ### 1.3 Text
 
