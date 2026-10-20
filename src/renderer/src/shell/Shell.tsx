@@ -222,10 +222,11 @@ export function Shell(): ReactNode {
 						</motion.div>
 					)}
 				</AnimatePresence>
+				{/* `z-0` paints the sheet over the sidebar's header card, which reaches under its rounded top-left corner. */}
 				<div
 					data-surface="sheet"
 					className={cn(
-						"flex min-w-0 flex-1 flex-col overflow-clip border-l bg-sheet",
+						"z-0 flex min-w-0 flex-1 flex-col overflow-clip border-l bg-sheet",
 						"transition-[border-radius,border-color] duration-(--dur-slow) ease-(--ease-out-quart)",
 						sidebarOpen ? "rounded-l-lg border-chrome-line" : "rounded-l-none border-transparent",
 					)}

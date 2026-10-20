@@ -13,28 +13,36 @@ import { Skeleton } from "./Display";
 import { NavRailPlacementContext } from "./NavRail";
 import { focusRing } from "./styles";
 
-/** What a page put in the sidebar slot: its section nav (the chat lists stand aside), or only its back link. */
+/** What a page put in the sidebar: its section nav (the chat lists stand aside), or only its back link. */
 export type PageNavSlotMode = "nav" | "back";
 
 export interface PageNavSlotState {
-	/** The sidebar's slot element; null while the sidebar is hidden. */
-	slot: HTMLElement | null;
-	/** Ref callback for the sidebar's slot element. Keep the element mounted, also while claimed. */
-	setSlot(slot: HTMLElement | null): void;
-	/** null: no page in the slot. `nav`: hide the chat lists, the slot takes the space. `back`: keep the lists under the back row. */
+	/** The sidebar's Back slot, in its header card; null while the sidebar is hidden. */
+	backSlot: HTMLElement | null;
+	/** The sidebar's section nav slot, above its chat lists; null while the sidebar is hidden. */
+	navSlot: HTMLElement | null;
+	/** Ref callbacks for the two slot elements. Keep both mounted, also while claimed. */
+	setBackSlot(slot: HTMLElement | null): void;
+	setNavSlot(slot: HTMLElement | null): void;
+	/** null: no page in the slots. `nav`: hide the chat lists, the nav slot takes the space. `back`: keep the lists under the header card. */
 	mode: PageNavSlotMode | null;
 }
 
 /**
- * Page nav slot: the sidebar renders `<div ref={setSlot} />` above its chat lists. Every `PageFrame` portals its back
- * link into the slot while one exists, so Back has one place app-wide; a page with a section `nav` (Settings) brings
- * its rail too and the sidebar hides its lists, so the page never shows three columns and only one nav tree exists at
- * a time. Without a slot (sidebar hidden) the page renders both inline.
+ * Page slots: the sidebar renders `<div ref={setBackSlot} />` under its header, inside the card that fills with teal
+ * while a page is open, and `<div ref={setNavSlot} />` above its chat lists. Every `PageFrame` portals its back link
+ * into the Back slot while the slots exist, so Back has one place app-wide; a page with a section `nav` (Settings)
+ * portals its rail into the nav slot and the sidebar hides its lists, so the page never shows three columns and only
+ * one nav tree exists at a time. Without the slots (sidebar hidden) the page renders both inline.
  */
 export const usePageNavSlot = create<PageNavSlotState>((set, get) => ({
-	slot: null,
-	setSlot: slot => {
-		if (get().slot !== slot) set({ slot });
+	backSlot: null,
+	navSlot: null,
+	setBackSlot: backSlot => {
+		if (get().backSlot !== backSlot) set({ backSlot });
+	},
+	setNavSlot: navSlot => {
+		if (get().navSlot !== navSlot) set({ navSlot });
 	},
 	mode: null,
 }));
@@ -120,7 +128,7 @@ export interface PageScrollMemory {
 	save(top: number): void;
 }
 
-/** The back row, in the sidebar slot or in the page's left column. */
+/** The back row, in the sidebar's Back slot or in the page's left column. */
 function BackRow({ back }: { back: PageBack }) {
 	return (
 		<div data-page-back className="shrink-0 px-3 pb-2 pt-3">
@@ -129,19 +137,26 @@ function BackRow({ back }: { back: PageBack }) {
 	);
 }
 
-/** Back link over the rail, in the sidebar slot or in the page's left column. */
+/** The scrolling section rail, in the sidebar's nav slot or under the back link in the page's left column. */
+function RailList({ nav }: { nav: ReactNode }) {
+	return <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">{nav}</div>;
+}
+
+/** Back link over the rail, in the page's left column. */
 function RailColumn({ back, nav }: { back: PageBack; nav: ReactNode }) {
 	return (
 		<>
 			<BackRow back={back} />
-			<div className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">{nav}</div>
+			<RailList nav={nav} />
 		</>
 	);
 }
 
-/** The page layout: back link and optional rail (sidebar slot or left column), one scrolling content column. */
+/** The page layout: back link and optional rail (sidebar slots or left column), one scrolling content column. */
 export function PageFrame({ back, nav, width = "form", tone = "canvas", label, focusKey, scrollMemory, children }: PageFrameProps) {
-	const docked = usePageNavSlot(state => state.slot);
+	const backSlot = usePageNavSlot(state => state.backSlot);
+	const navSlot = usePageNavSlot(state => state.navSlot);
+	const docked = backSlot !== null && navSlot !== null;
 	const mode: PageNavSlotMode = nav ? "nav" : "back";
 	useLayoutEffect(() => {
 		if (!docked) return;
@@ -186,18 +201,15 @@ export function PageFrame({ back, nav, width = "form", tone = "canvas", label, f
 	const inlineNav = docked ? null : nav;
 	return (
 		<section aria-label={label} data-surface={tone} className="@container/page flex min-h-0 min-w-0 flex-1 bg-bg">
-			{docked &&
+			{backSlot && navSlot && createPortal(<BackRow back={back} />, backSlot)}
+			{backSlot &&
+				navSlot &&
+				nav &&
 				createPortal(
-					nav ? (
-						<NavRailPlacementContext.Provider value="sidebar">
-							<div className="flex min-h-0 flex-1 flex-col">
-								<RailColumn back={back} nav={nav} />
-							</div>
-						</NavRailPlacementContext.Provider>
-					) : (
-						<BackRow back={back} />
-					),
-					docked,
+					<NavRailPlacementContext.Provider value="sidebar">
+						<RailList nav={nav} />
+					</NavRailPlacementContext.Provider>,
+					navSlot,
 				)}
 			{inlineNav && (
 				<div className={cn("hidden w-55 shrink-0 flex-col @2xl/page:flex", tone === "sheet" && "border-r border-border")}>

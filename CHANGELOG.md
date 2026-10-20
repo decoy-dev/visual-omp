@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- While Settings, Usage & limits, Help or a project page is open, the top of the sidebar fills with teal behind the app name and **Back**, with the text in white, so the sidebar shows that a page has replaced the chat and where to return. The fill sweeps in from the left when the page opens and back out when it closes, and it fades instead when reduced motion is on.
+
 ## [0.5.5] - 2026-10-19
 
 visual-omp 0.5.5 lists omp's slash commands in the chat box and shows what they print, fixes switching models and thinking levels when omp uses its default status line, and explains when Windows refuses to start omp.

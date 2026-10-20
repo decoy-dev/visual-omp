@@ -306,6 +306,9 @@
 	--control-border: oklch(0.56 0.012 195);
 	--ring: oklch(0.78 0.1 192);
 	--ring-soft: oklch(0.78 0.1 192 / 0.24);
+
+	/* The sidebar's header card while a page is open (DESIGN §3.2): the light sheet's deeper teal, so white text reads 5.7:1. */
+	--page-card: oklch(0.5 0.082 192);
 }
 
 /* Dark chrome (0.145) only deepens the wells and tones down the fills; text, status and accent already suit it. */
@@ -318,6 +321,15 @@
 	--warn-bg: oklch(0.27 0.035 80);
 	--err-bg: oklch(0.26 0.04 22);
 	--info-bg: oklch(0.26 0.035 255);
+}
+
+/* Inside the filled header card: white text and mark (fg-faint 4.6:1 on --page-card), a white hover wash and focus ring. */
+[data-region="chrome"] [data-page-card="filled"] {
+	--fg: #ffffff;
+	--fg-faint: oklch(1 0 0 / 0.85);
+	--accent: #ffffff;
+	--hover: oklch(1 0 0 / 0.14);
+	--ring: #ffffff;
 }
 
 /* The main sheet: title bar, chat, composer. `bg-bg` inside it is the white sheet. Pages and the side-panel gap set
@@ -356,6 +368,7 @@
 @theme inline {
 	--color-chrome: var(--chrome-bg);
 	--color-chrome-line: var(--chrome-line);
+	--color-page-card: var(--page-card);
 	--color-sheet: var(--sheet);
 	--color-canvas: var(--canvas);
 	--color-pill: var(--pill);

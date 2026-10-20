@@ -118,7 +118,7 @@ Current chats, navigation shortcuts and preview release are described under Sess
 - The Instructions page edits the project's AGENTS.md and rules.
 - The Project settings page sets the project's model and permission mode and links to its connected tools, helpers and instructions.
 - The project overview shows recent chats, an instructions and settings summary, Git status and quick-start prompts.
-- Settings places Back and section navigation in the sidebar slot when visible. Settings navigation replaces the chat lists; other pages keep them visible beneath Back. With the sidebar hidden, navigation renders inline and page focus moves to the title after lazy content mounts.
+- When the sidebar is visible, a page places Back under the sidebar header, and the header and Back share a teal card while the page is open. Settings places its section navigation under the card, in place of the chat lists; other pages keep the lists visible beneath the card. With the sidebar hidden, Back and navigation render inline and page focus moves to the title after lazy content mounts.
 
 ### Packaging and loading
 - Main-process pure-JavaScript packages are bundled from devDependencies. Only native runtime packages such as node-pty remain runtime dependencies. Source maps and unused Electron locales are excluded.

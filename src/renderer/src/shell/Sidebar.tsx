@@ -21,7 +21,7 @@ import {
 	X,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { createContext, type MouseEvent, type ReactNode, useContext, useEffect, useId, useMemo, useState } from "react";
+import { createContext, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { getCommand } from "../registry/commands";
 import { type AppState, closeChat, controllerFor, SIDEBAR_ID, useApp } from "../state/app";
@@ -476,8 +476,91 @@ function SidebarHeader(): ReactNode {
 					<Mark size={18} />
 					<span className="sr-only">visual-omp</span>
 				</span>
-				{version && <span className="font-mono text-xs text-fg-faint @max-[10rem]:hidden">{t("sidebar.version", { version })}</span>}
+				{version && (
+					<span className="font-mono text-xs text-fg-faint transition-colors duration-(--dur-slow) ease-(--ease-out-quart) @max-[10rem]:hidden">
+						{t("sidebar.version", { version })}
+					</span>
+				)}
 			</div>
+		</div>
+	);
+}
+
+/** The header card's fill clip: all of it, or none of it (a zero-width strip at its left edge). */
+const CARD_FULL = "inset(0% 0% 0% 0%)";
+const CARD_EMPTY = "inset(0% 100% 0% 0%)";
+
+interface HeaderCardProps {
+	/** A page holds the Back slot. */
+	filled: boolean;
+	/** The card keeps its height and white text: while filled, and while the fill sweeps out after the page closes. */
+	open: boolean;
+	/** The fill finished leaving, so the card can close up. */
+	onEmptied(): void;
+}
+
+/**
+ * The header, then the Back slot a page portals its Back row into. While a page is open the two share one deep teal
+ * card that runs to the window's top and the sidebar's sides, with 12px bottom corners like the main sheet's. The
+ * fill reaches 12px under the sheet at the top, so the notch beside the sheet's rounded top-left corner is teal too
+ * (the sheet paints over the rest; see Shell). `data-page-card` turns the card's text, mark, hover and focus white
+ * (tokens.css). The fill sweeps in from the left when a page opens. When the page closes, the card keeps its height
+ * and white text while the fill sweeps back out, then closes up. Under reduced motion the fill crossfades.
+ */
+function HeaderCard({ filled, open, onEmptied }: HeaderCardProps): ReactNode {
+	const setBackSlot = usePageNavSlot(state => state.setBackSlot);
+	const reduced = useMotionReduced();
+	const [slot, setSlot] = useState<HTMLDivElement | null>(null);
+	const slotRef = useCallback(
+		(element: HTMLDivElement | null) => {
+			setSlot(element);
+			setBackSlot(element);
+		},
+		[setBackSlot],
+	);
+	// The Back slot's height while a page fills it, which the card keeps after the page takes its Back row away.
+	const [height, setHeight] = useState(0);
+	useEffect(() => {
+		if (!slot || !filled) return;
+		const observer = new ResizeObserver(() => setHeight(slot.offsetHeight));
+		observer.observe(slot);
+		return () => observer.disconnect();
+	}, [slot, filled]);
+	const fill = filled
+		? { opacity: 1, clipPath: CARD_FULL }
+		: reduced
+			? { opacity: 0, clipPath: CARD_FULL }
+			: { opacity: 1, clipPath: CARD_EMPTY };
+	const fillTransition = reduced
+		? { opacity: { duration: duration.base, ease: ease.outQuart }, clipPath: { duration: 0 } }
+		: filled
+			? { duration: duration.xl, ease: ease.outExpo }
+			: { duration: duration.slow, ease: ease.outQuart };
+	return (
+		<div data-page-card={open ? "filled" : undefined} className="relative isolate shrink-0">
+			<motion.div
+				aria-hidden
+				initial={false}
+				animate={fill}
+				transition={fillTransition}
+				onAnimationComplete={() => {
+					if (usePageNavSlot.getState().mode === null) onEmptied();
+				}}
+				className="pointer-events-none absolute bottom-2 left-0 right-[calc(-1*var(--radius-lg))] top-0 -z-1"
+			>
+				<div className="absolute inset-y-0 left-0 right-(--radius-lg) rounded-b-lg bg-page-card" />
+				<div className="absolute right-0 top-0 size-(--radius-lg) bg-page-card" />
+			</motion.div>
+			<SidebarHeader />
+			{/* Always mounted so a page can portal its Back row into it; no height while the card is closed. */}
+			<motion.div
+				ref={slotRef}
+				initial={false}
+				animate={{ opacity: filled ? 1 : 0 }}
+				transition={reduced ? { duration: 0 } : { duration: duration.base, ease: ease.outQuart }}
+				style={open && !filled ? { minHeight: height } : undefined}
+				className={open ? "pb-2" : "hidden"}
+			/>
 		</div>
 	);
 }
@@ -508,10 +591,10 @@ function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): Re
 }
 
 /**
- * The 40px header, then New chat, Search chats, Current chats and Projects with their chats, then Usage & limits,
- * Settings and Help. An open page puts its Back link at the top through the page nav slot (`usePageNavSlot`); a page
- * with a section nav (Settings, mode "nav") fills the space with its sections in place of the chat lists, which
- * crossfade with it.
+ * The header card, then New chat, Search chats, Current chats and Projects with their chats, then Usage & limits,
+ * Settings and Help. An open page puts its Back link in the header card, which fills with teal (`HeaderCard`); a page
+ * with a section nav (Settings, mode "nav") also fills the space under it with its sections through the nav slot
+ * (`usePageNavSlot`), in place of the chat lists, which crossfade with it.
  */
 export function Sidebar({ width }: { width: number }): ReactNode {
 	const { t } = useTranslation("shell");
@@ -523,9 +606,12 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 	const expandedProjects = useApp(state => state.expandedProjects);
 	const expandedChatLists = useApp(state => state.expandedChatLists);
 	const search = useApp(state => state.search);
-	const setSlot = usePageNavSlot(state => state.setSlot);
+	const setNavSlot = usePageNavSlot(state => state.setNavSlot);
 	const slotMode = usePageNavSlot(state => state.mode);
 	const takeover = slotMode === "nav";
+	// The header card stays open while its fill sweeps out after a page closes; the lists below then slide up.
+	const [cardOpen, setCardOpen] = useState(slotMode !== null);
+	if (slotMode !== null && !cardOpen) setCardOpen(true);
 	const fade = useMotionReduced() ? { duration: 0 } : { duration: duration.base, ease: ease.outQuart };
 	const [showArchived, setShowArchived] = useState(false);
 	const now = useNow();
@@ -548,20 +634,20 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 	return (
 		<IndicatorScope.Provider value={scope}>
 			<nav id={SIDEBAR_ID} aria-label={t("sidebar.label")} data-tour="sidebar" style={{ width }} className="flex h-full shrink-0 flex-col">
-				<SidebarHeader />
+				<HeaderCard filled={slotMode !== null} open={cardOpen} onEmptied={() => setCardOpen(false)} />
 				<div className="relative flex min-h-0 flex-1 flex-col">
-					{/* Always mounted so a page can portal into it: its Back row ("back"), or Back and its sections ("nav"). */}
+					{/* Always mounted so a page with sections (Settings) can portal its rail into it. */}
 					<motion.div
-						ref={setSlot}
+						ref={setNavSlot}
 						data-page-nav
 						initial={false}
-						animate={{ opacity: slotMode ? 1 : 0 }}
+						animate={{ opacity: takeover ? 1 : 0 }}
 						transition={fade}
-						className={cn("flex-col", takeover ? "flex min-h-0 flex-1" : slotMode ? "flex shrink-0" : "hidden")}
+						className={cn("flex-col", takeover ? "flex min-h-0 flex-1" : "hidden")}
 					/>
 					{/*
 					 * Under a takeover the lists lie under the sections and fade out, then leave the accessibility tree; they stay
-					 * mounted so Back finds them where they were scrolled. Below a Back row they slide down with it.
+					 * mounted so Back finds them where they were scrolled. Under a page's Back row they slide down as the card grows.
 					 */}
 					<motion.div
 						layout="position"
