@@ -294,6 +294,8 @@
 		},
 		"group": {
 			"worked": "Worked for {{elapsed}}",
+			"working": "Working for {{elapsed}}",
+			"workingNow": "Working",
 			"calls_one": "{{count}} tool call",
 			"calls_other": "{{count}} tool calls",
 			"failed_one": "{{count}} failed",

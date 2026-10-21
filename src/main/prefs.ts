@@ -17,6 +17,7 @@ const DEFAULTS: AppPreferences = {
 	textScale: 100,
 	reducedMotion: "system",
 	transcriptMode: "normal",
+	liveThinking: true,
 	ompPath: null,
 	tourCompleted: false,
 	pinnedProjects: [],

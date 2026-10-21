@@ -6,7 +6,20 @@ import type { AssistantMessage, ImageContent, SessionEntry, TextContent, ToolRes
 import type { FileRef } from "@shared/contracts/fileRefs";
 import { ArrowDown, ArrowUUpLeft, CaretRight, Copy, GitFork, Warning, XCircle } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type KeyboardEvent, type MouseEvent, memo, type ReactNode, type RefObject, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+	type KeyboardEvent,
+	type MouseEvent,
+	memo,
+	type ReactNode,
+	type RefObject,
+	useCallback,
+	useEffect,
+	useLayoutEffect,
+	useMemo,
+	useRef,
+	useState,
+	useSyncExternalStore,
+} from "react";
 import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
 import { type Helper, type HelperStatus, helpersByCall, ompRunning, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
@@ -33,7 +46,8 @@ import { noticeIsStep, noticeVisible, parseNotice } from "./notices";
 import { ToolCard } from "./ToolCard";
 import { ToolGroup } from "./ToolGroup";
 import { TurnSummary } from "./TurnSummary";
-import { type ContentBlock, type EntryLayout, type TranscriptLayout, transcriptLayout } from "./turns";
+import { thoughtKey, ThoughtChoices, thoughtOpen, writingThought } from "./thoughtChoices";
+import { type BlockRef, type ContentBlock, type EntryLayout, STREAM_ENTRY, TAIL_ENTRY, type TranscriptLayout, transcriptLayout, liveLayoutEntries, unsavedToolsMessage } from "./turns";
 import {
 	type PlayoutBlock,
 	PlayoutPaused,
@@ -210,11 +224,23 @@ function useHeldSet(): [ReadonlySet<string>, (id: string, engaged: boolean) => v
 	return [held, toggle];
 }
 
+const NO_THOUGHT_CHOICES = new ThoughtChoices();
+
+/** The reader's thought choices (`thoughtChoices.ts`); the component re-renders when one changes. */
+function useThoughtChoices(store: ThoughtChoices | undefined): ReadonlyMap<string, boolean> {
+	const source = store ?? NO_THOUGHT_CHOICES;
+	return useSyncExternalStore(source.subscribe, source.snapshot);
+}
+
 /** What the turn layout tells a reply's tool blocks (see `turns.ts`). */
 interface WorkView {
 	layout: TranscriptLayout;
-	/** Group keys forming while the chat is open (during a turn or as it finishes): they mount open and fold. */
-	settling: ReadonlySet<string>;
+	/** Group keys forming while the chat is open (during a turn): they rise in like new rows. */
+	arriving: ReadonlySet<string>;
+	/** Open groups by key, so a group the reader opened stays open when its row remounts (`ToolGroup`). */
+	openGroups: Map<string, boolean>;
+	/** Thoughts the reader opened or closed, shared by reply rows and step groups. */
+	thoughts: ThoughtChoices;
 	/** Live helpers by the task call that started them (`helpersByCall`). */
 	helpers: ReadonlyMap<string, readonly Helper[]>;
 	/** Each helper's last state the transcript records (`transcriptHelperStates`), for helpers read from their call. */
@@ -305,12 +331,15 @@ function ToolStep({
 	);
 }
 
-/** A thought folded into a step group keeps its own disclosure. */
-function GroupThought({ block }: { block: ContentBlock }): ReactNode {
-	const [open, setOpen] = useState(false);
+/** A thought folded into a step group (Normal view): closed unless the reader opened it, here or before it moved in. */
+function GroupThought({ item, thoughts }: { item: BlockRef; thoughts: ThoughtChoices | undefined }): ReactNode {
+	const choices = useThoughtChoices(thoughts);
+	const block = item.block;
 	if (block.type === "redactedThinking") return <ThinkingBlock text="" redacted open={false} />;
 	if (block.type !== "thinking") return null;
-	return <ThinkingBlock text={block.thinking} open={open} onToggle={() => setOpen(value => !value)} />;
+	const key = thoughtKey(item.messageTime, item.index);
+	const open = thoughtOpen("normal", choices.get(key), false);
+	return <ThinkingBlock text={block.thinking} open={open} onToggle={() => thoughts?.toggle("normal", key, open)} />;
 }
 
 function AssistantBlocks({
@@ -321,6 +350,7 @@ function AssistantBlocks({
 	mode,
 	revealFromStart = false,
 	synchronized = false,
+	liveThinking = false,
 	layout,
 	work,
 }: {
@@ -333,23 +363,24 @@ function AssistantBlocks({
 	revealFromStart?: boolean;
 	/** The live mirror is synchronizing with an existing stream, rather than receiving new text. */
 	synchronized?: boolean;
+	/**
+	 * Normal view shows the thought omp is writing (the last block while the reply still streams) open as it grows,
+	 * and folds it once omp moves on (the "Show thinking as omp thinks" setting).
+	 */
+	liveThinking?: boolean;
 	/** Blocks this reply hides (drawn in an earlier group) and the step groups it leads. */
 	layout?: EntryLayout;
 	work?: WorkView;
 }): ReactNode {
 	const { t } = useTranslation("chat");
-	const [openThoughts, setOpenThoughts] = useState<ReadonlySet<number>>(() => new Set());
-	const thoughtOpen = (index: number) => mode !== "normal" || openThoughts.has(index);
-	const toggleThought = (index: number) =>
-		setOpenThoughts(current => {
-			const next = new Set(current);
-			if (!next.delete(index)) next.add(index);
-			return next;
-		});
+	const choices = useThoughtChoices(work?.thoughts);
+	const writing = writingThought(message, pending, liveThinking);
+	const isOpen = (index: number) => thoughtOpen(mode, choices.get(thoughtKey(message.timestamp, index)), index === writing);
+	const toggleThought = (index: number) => work?.thoughts.toggle(mode, thoughtKey(message.timestamp, index), isOpen(index));
 	// Visible text and open thoughts take time to reveal; collapsed thoughts and tool calls show when reached.
 	const timeline: PlayoutBlock[] = message.content.map((block, index) => {
 		if (block.type === "text") return { length: block.text.length, timed: true };
-		if (block.type === "thinking") return { length: block.thinking.length, timed: thoughtOpen(index) };
+		if (block.type === "thinking") return { length: block.thinking.length, timed: isOpen(index) };
 		return { length: 0, timed: false };
 	});
 	const playout = usePlayout(message.timestamp, timeline, { pending, showExisting: !revealFromStart, synchronized });
@@ -376,7 +407,7 @@ function AssistantBlocks({
 								text={block.thinking}
 								playout={playout}
 								index={index}
-								open={thoughtOpen(index)}
+								open={isOpen(index)}
 								onToggle={() => toggleThought(index)}
 							/>
 						);
@@ -400,12 +431,18 @@ function AssistantBlocks({
 						const group = layout?.groups.get(index);
 						if (group) {
 							return (
-								<ToolGroup key={block.id} plan={group} settling={work?.settling.has(group.key)} onEngage={mode === "normal" ? work?.holdGroup : undefined}>
+								<ToolGroup
+									key={block.id}
+									plan={group}
+									arriving={work?.arriving.has(group.key)}
+									openState={work?.openGroups}
+									onEngage={mode === "normal" ? work?.holdGroup : undefined}
+								>
 									{group.items.map(item =>
 										item.block.type === "toolCall" ? (
-											<ToolStep key={item.block.id} block={item.block} results={results} active={active} pending={false} mode={mode} arriving={false} work={work} grouped />
+											<ToolStep key={item.block.id} block={item.block} results={results} active={active} pending={group.running} mode={mode} arriving={false} work={work} grouped />
 										) : (
-											<GroupThought key={`${item.entryId}:${item.index}`} block={item.block} />
+											<GroupThought key={`${item.entryId}:${item.index}`} item={item} thoughts={work?.thoughts} />
 										),
 									)}
 								</ToolGroup>
@@ -469,7 +506,16 @@ function rowEqual(prev: RowProps, next: RowProps): boolean {
 	if (prev.layout?.sig !== next.layout?.sig) return false;
 	const entry = next.entry;
 	if (entry.type !== "message" || entry.message.role !== "assistant") return true;
-	for (const block of entry.message.content) {
+	// A group this row leads draws steps of later entries and of the reply still streaming in, which keep changing.
+	const calls: ContentBlock[] = [...entry.message.content];
+	for (const [index, plan] of next.layout?.groups ?? []) {
+		const before = prev.layout?.groups.get(index)?.items;
+		for (const [n, item] of plan.items.entries()) {
+			if (before?.[n]?.block !== item.block) return false;
+			calls.push(item.block);
+		}
+	}
+	for (const block of calls) {
 		if (block.type !== "toolCall") continue;
 		const live = next.active.get(block.id);
 		const result = next.results.get(block.id);
@@ -663,13 +709,8 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		}
 		return ids;
 	}, [entries]);
-	const tailTools = useMemo(
-		() =>
-			[...activeTools.values()].filter(
-				tool => !committedToolIds.has(tool.toolCallId) && !stream?.content.some(block => block.type === "toolCall" && block.id === tool.toolCallId),
-			),
-		[activeTools, committedToolIds, stream],
-	);
+	// Tools omp started before their call was saved, as a reply of their own, so they group like any other call.
+	const tailMessage = useMemo(() => unsavedToolsMessage(activeTools.values(), committedToolIds, stream), [activeTools, committedToolIds, stream]);
 
 	const rootRef = useRef<HTMLDivElement | null>(null);
 	const contentRef = useRef<HTMLDivElement | null>(null);
@@ -770,18 +811,21 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	}, [visible, loaded, streaming]);
 	const arrivals = arrivalsRef.current;
 
-	// How omp's work lays out turn by turn: step groups (Normal view; a turn still going folds its finished steps), the
-	// board per turn, and the files each finished turn changed. Groups and summaries that appear while the chat is open
-	// settle in: groups mount open and fold, summaries rise; history renders at rest.
+	// How omp's work lays out turn by turn: step groups (Normal view; a step joins its group the moment it appears),
+	// the board per turn, and the files each finished turn changed. Groups and summaries that appear while the chat is
+	// open rise in; history renders at rest.
 	const live = view.working || stream !== null;
 	const grouped = mode === "normal";
+	const laidOut = useMemo(() => liveLayoutEntries(entries, stream, tailMessage, grouped), [entries, stream, tailMessage, grouped]);
 	// Rows and groups the reader is using keep their place until they let go, so a fold never takes one out from under
 	// focus or an open output (`ToolCard` and `ToolGroup` report it).
 	const [heldRows, hold] = useHeldSet();
 	const [heldGroups, holdGroup] = useHeldSet();
+	const [openGroups] = useState(() => new Map<string, boolean>());
+	const [thoughts] = useState(() => new ThoughtChoices());
 	const layout = useMemo(
 		() =>
-			transcriptLayout(entries, {
+			transcriptLayout(laidOut, {
 				live,
 				group: grouped,
 				context: { cwd: session.projectPath, home },
@@ -789,7 +833,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				hold: heldRows,
 				holdGroups: heldGroups,
 			}),
-		[entries, live, grouped, session.projectPath, home, start, heldRows, heldGroups],
+		[laidOut, live, grouped, session.projectPath, home, start, heldRows, heldGroups],
 	);
 	const shownWorkRef = useRef<{ live: boolean; grouped: boolean; start: number; keys: ReadonlySet<string> } | null>(null);
 	const shownWork = shownWorkRef.current;
@@ -799,9 +843,9 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		for (const id of layout.summaries.keys()) keys.add(`summary:${id}`);
 		return keys;
 	}, [layout]);
-	// Settling covers work forming during a turn and as it finishes. A window edge moving or the view switching to
-	// Normal re-keys groups that were already there, so those commits render at rest.
-	const settling = useMemo(() => {
+	// New work covers groups forming during a turn and summaries as it finishes. A window edge moving or the view
+	// switching to Normal re-keys groups that were already there, so those commits render at rest.
+	const forming = useMemo(() => {
 		const keys = new Set<string>();
 		const sameView = shownWork !== null && shownWork.grouped === grouped && shownWork.start === start;
 		if (sameView && (shownWork.live || live) && arrivals.armed) for (const key of workKeys) if (!shownWork.keys.has(key)) keys.add(key);
@@ -810,6 +854,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	useEffect(() => {
 		shownWorkRef.current = { live, grouped, start, keys: workKeys };
 	}, [live, grouped, start, workKeys]);
+	const liveThinking = useApp(state => state.prefs?.liveThinking ?? true);
 	const agents = guest?.agents;
 	const progress = guest?.progress;
 	const lifecycle = guest?.lifecycle;
@@ -820,8 +865,8 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	);
 	const recorded = useMemo(() => transcriptHelperStates(entries), [entries]);
 	const work = useMemo(
-		(): WorkView => ({ layout, settling, helpers, recorded, ompRunning: helpersMayRun, hold, holdGroup }),
-		[layout, settling, helpers, recorded, helpersMayRun, hold, holdGroup],
+		(): WorkView => ({ layout, arriving: forming, openGroups, thoughts, helpers, recorded, ompRunning: helpersMayRun, hold, holdGroup }),
+		[layout, forming, openGroups, thoughts, helpers, recorded, helpersMayRun, hold, holdGroup],
 	);
 	const openFile = (path: string) => openInFiles(session.projectPath, path, { focus: true });
 
@@ -919,7 +964,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		if (summary) {
 			endRun();
 			rows.push(
-				<Rise key={`summary:${entry.id}`} play={settling.has(`summary:${entry.id}`)} distance={6} tempo="snappy" className="-mt-4">
+				<Rise key={`summary:${entry.id}`} play={forming.has(`summary:${entry.id}`)} distance={6} tempo="snappy" className="-mt-4">
 					<TurnSummary totals={summary} projectPath={session.projectPath} onOpen={openFile} />
 				</Rise>,
 			);
@@ -980,25 +1025,24 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 											mode={mode}
 											revealFromStart={arrivals.armed}
 											synchronized={synchronized}
+											liveThinking={liveThinking}
+											layout={layout.entries.get(STREAM_ENTRY)}
 											work={work}
 										/>
 									</Rise>
 								)}
-								{tailTools.length > 0 && (
-									<div data-row className="-mt-6 flex flex-col">
-										{tailTools.map(tool => (
-											<ToolCard
-												key={tool.toolCallId}
-												name={tool.toolName}
-												args={tool.args}
-												intent={tool.intent}
-												running
-												partialResult={tool.partialResult}
-												verbose={mode === "verbose"}
-												arriving={arrivals.armed}
-											/>
-										))}
-									</div>
+								{tailMessage && (
+									<Rise data-row play={arrivals.armed} distance={4} tempo="snappy" className="-mt-6 flex flex-col">
+										<AssistantBlocks
+											message={tailMessage}
+											results={results}
+											active={activeTools}
+											pending={false}
+											mode={mode}
+											layout={layout.entries.get(TAIL_ENTRY)}
+											work={work}
+										/>
+									</Rise>
 								)}
 								<AnimatePresence initial={false} mode="wait">
 									{pendingQuestion && (

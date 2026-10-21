@@ -80,6 +80,15 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 				{prefs && (
 					<Switch
 						className="py-3"
+						label={t("general.liveThinking.label")}
+						description={t("general.liveThinking.description")}
+						checked={prefs.liveThinking}
+						onCheckedChange={liveThinking => void setPrefs({ liveThinking })}
+					/>
+				)}
+				{prefs && (
+					<Switch
+						className="py-3"
 						label={t("general.voice.label")}
 						description={t("general.voice.description")}
 						checked={prefs.voiceInput}

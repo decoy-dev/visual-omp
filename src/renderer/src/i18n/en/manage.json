@@ -103,10 +103,14 @@
 		"chats": "Chats",
 		"transcript": {
 			"label": "Transcript view",
-			"description": "Choose how much detail you see: just answers, plus thinking, or every step.",
+			"description": "Normal groups tool calls into one row. Thinking lists every step and opens every thought. Verbose also opens each step with its raw arguments.",
 			"normal": "Normal",
 			"thinking": "Thinking",
 			"verbose": "Verbose"
+		},
+		"liveThinking": {
+			"label": "Show thinking as omp thinks",
+			"description": "In Normal view, the thought omp is writing stays open so you can follow it, then folds once omp moves on to a step or a reply."
 		},
 		"voice": {
 			"label": "Voice input",

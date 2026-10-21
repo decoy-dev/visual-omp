@@ -147,6 +147,8 @@ export interface AppPreferences {
 	textScale: number;
 	reducedMotion: "system" | "on" | "off";
 	transcriptMode: "normal" | "thinking" | "verbose";
+	/** Normal view shows the thought omp is writing open while it streams, then folds it once omp moves on. */
+	liveThinking: boolean;
 	/** Explicit omp executable path; null = auto-detect. */
 	ompPath: string | null;
 	tourCompleted: boolean;

@@ -1,11 +1,14 @@
 /**
  * How the transcript lays out omp's work turn by turn: which runs of tool steps fold into one ToolGroup row, which
  * `todo` update shows the full board and which shrink to a one-line change, and the files each finished turn changed
- * for its TurnSummary. A turn still going folds its finished steps too, up to its first call still running, so only
- * the live edge stays out as single rows. Pure, so the rules are tested apart from the view.
+ * for its TurnSummary. A step joins its group from the moment it appears, while it still runs too, so a run never
+ * shows a step as its own row first and nothing changes shape when the turn ends. Pure, so the rules are tested apart
+ * from the view.
  */
 import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
+import type { ActiveTool } from "../../collab/lib/client";
 import { type EditTotals, editTotals, fileEdits, type OutputContext, type TodoUpdate, todoUpdates } from "../../features/panes/derive";
+import { isRecord } from "../../tool-render/util";
 import { resolveToolCall } from "../friendly";
 
 export type ContentBlock = AssistantMessage["content"][number];
@@ -13,6 +16,8 @@ export type ContentBlock = AssistantMessage["content"][number];
 /** One content block of an assistant entry. */
 export interface BlockRef {
 	entryId: string;
+	/** The message's own time, shared by a streamed reply and its saved entry. */
+	messageTime: number;
 	index: number;
 	block: ContentBlock;
 }
@@ -24,6 +29,10 @@ export interface ToolGroupPlan {
 	items: BlockRef[];
 	calls: number;
 	failed: number;
+	/** The turn is still going and a call in the group has no result yet. */
+	running: boolean;
+	/** The first call's message time, when known: a running group counts its time from here. */
+	startedAt: number | null;
 	/** From the first call's message to the last result; null unless every timestamp is known and in order. */
 	elapsedMs: number | null;
 }
@@ -52,7 +61,7 @@ export interface TranscriptLayout {
 }
 
 export interface LayoutOptions {
-	/** The last turn is still going (omp works or a reply streams in): it folds only steps that have finished, and gets no summary yet. */
+	/** The last turn is still going (omp works or a reply streams in): its groups can run, and it gets no summary yet. */
 	live: boolean;
 	/** Fold runs of tool steps (Normal view). */
 	group: boolean;
@@ -84,10 +93,52 @@ interface Turn {
 	positions: number[];
 	callIds: string[];
 	lastAssistant: string | null;
+	/** A prompt follows it, so it is over even while omp works on the next one. */
+	closed: boolean;
 }
 
 function isUserTurnStart(entry: SessionEntry): boolean {
 	return (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
+}
+
+/** Layout ids of the reply streaming in and of tools omp started before their call was saved (`liveLayoutEntries`). */
+export const STREAM_ENTRY = "live:stream";
+export const TAIL_ENTRY = "live:tail";
+
+/**
+ * Tools omp started whose call is neither saved (`committed` call ids) nor in the reply streaming in, as one reply of
+ * their own, so the layout groups them like any other call. Null when there are none.
+ */
+export function unsavedToolsMessage(active: Iterable<ActiveTool>, committed: ReadonlySet<string>, stream: AssistantMessage | null): AssistantMessage | null {
+	const tools = [...active].filter(tool => !committed.has(tool.toolCallId) && !stream?.content.some(block => block.type === "toolCall" && block.id === tool.toolCallId));
+	if (tools.length === 0) return null;
+	return {
+		role: "assistant",
+		content: tools.map(tool => ({ type: "toolCall", id: tool.toolCallId, name: tool.toolName, arguments: isRecord(tool.args) ? tool.args : {}, intent: tool.intent })),
+		model: "",
+		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } },
+		stopReason: "toolUse",
+		timestamp: tools[0]?.startedAt ?? 0,
+	};
+}
+
+/**
+ * What `transcriptLayout` reads in Normal view (`group`): the saved entries, then the reply streaming in
+ * (`STREAM_ENTRY`) and the unsaved tools (`TAIL_ENTRY`), so a call joins its group as soon as omp starts writing or
+ * running it, and keeps its group's key once saved. A reply without calls cannot change a group, so without calls or
+ * unsaved tools the saved entries come back as they are (and the layout is not redone for each burst of text).
+ */
+export function liveLayoutEntries(
+	entries: readonly SessionEntry[],
+	stream: AssistantMessage | null,
+	unsaved: AssistantMessage | null,
+	group: boolean,
+): readonly SessionEntry[] {
+	if (!group || (!unsaved && !stream?.content.some(block => block.type === "toolCall"))) return entries;
+	const extra: SessionEntry[] = [];
+	if (stream) extra.push({ type: "message", id: STREAM_ENTRY, parentId: null, timestamp: "", message: stream });
+	if (unsaved) extra.push({ type: "message", id: TAIL_ENTRY, parentId: null, timestamp: "", message: unsaved });
+	return [...entries, ...extra];
 }
 
 export function transcriptLayout(entries: readonly SessionEntry[], options: LayoutOptions): TranscriptLayout {
@@ -97,6 +148,7 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 	let turn: Turn | null = null;
 	for (const [position, entry] of entries.entries()) {
 		if (isUserTurnStart(entry)) {
+			if (turn) turn.closed = true;
 			turn = null;
 			continue;
 		}
@@ -108,12 +160,12 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 		}
 		if (message.role !== "assistant") continue;
 		if (!turn) {
-			turn = { slots: [], positions: [], callIds: [], lastAssistant: null };
+			turn = { slots: [], positions: [], callIds: [], lastAssistant: null, closed: false };
 			turns.push(turn);
 		}
 		turn.lastAssistant = entry.id;
 		for (const [index, block] of message.content.entries()) {
-			turn.slots.push({ entryId: entry.id, index, block });
+			turn.slots.push({ entryId: entry.id, messageTime: message.timestamp, index, block });
 			turn.positions.push(position);
 			if (block.type === "toolCall") {
 				turn.callIds.push(block.id);
@@ -140,13 +192,13 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 	const groups = new Map<string, Map<number, ToolGroupPlan>>();
 	const summaries = new Map<string, EditTotals>();
 
-	for (const [turnIndex, current] of turns.entries()) {
+	for (const current of turns) {
 		const boards = current.callIds.filter(id => updates.has(id));
 		for (const [n, id] of boards.entries()) {
 			const update = updates.get(id);
 			if (update) todos.set(id, { role: n === boards.length - 1 ? "board" : "change", update });
 		}
-		const finished = turnIndex < turns.length - 1 || !options.live;
+		const finished = current.closed || !options.live;
 		if (finished && current.lastAssistant) {
 			const totals = editTotals(edits, current.callIds);
 			if (totals.files.length > 0) summaries.set(current.lastAssistant, totals);
@@ -157,14 +209,17 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 		let between: BlockRef[] = [];
 		const flush = () => {
 			const calls = run.filter(ref => ref.block.type === "toolCall");
-			if (calls.length >= 2) {
+			if (calls.length > 0) {
 				const ids = calls.map(ref => (ref.block.type === "toolCall" ? ref.block.id : ""));
 				const leader = run[0];
+				const start = messageTime.get(ids[0] ?? "");
 				const plan: ToolGroupPlan = {
 					key: ids[0] ?? leader.entryId,
 					items: run,
 					calls: calls.length,
 					failed: ids.filter(id => results.get(id)?.isError === true).length,
+					running: !finished && ids.some(id => !results.has(id)),
+					startedAt: start !== undefined && Number.isFinite(start) && start > 0 ? start : null,
 					elapsedMs: elapsedOf(ids, messageTime, results),
 				};
 				const leading = groups.get(leader.entryId) ?? new Map<number, ToolGroupPlan>();
@@ -183,8 +238,6 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 			if ((current.positions[slot] ?? 0) < (options.from ?? 0)) continue;
 			const block = ref.block;
 			if (block.type === "toolCall") {
-				// The live edge: a call still running, and everything after it, stays as single rows until it finishes.
-				if (!finished && !results.has(block.id)) break;
 				const name = nameOf(block);
 				if (PROMINENT[name] || todos.get(block.id)?.role === "board" || options.hold?.has(block.id)) {
 					flush();
@@ -217,7 +270,9 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 		const groupMap = groups.get(id) ?? new Map<number, ToolGroupPlan>();
 		const sig = [
 			...[...hiddenSet].map(index => `h${index}`),
-			...[...groupMap].map(([index, plan]) => `g${index}:${plan.key}:${plan.items.length}`),
+			...[...groupMap].map(
+				([index, plan]) => `g${index}:${plan.key}:${plan.items.length}:${plan.failed}:${plan.running ? "r" : ""}:${plan.startedAt ?? ""}:${plan.elapsedMs ?? ""}`,
+			),
 			...(todoMarks.get(id) ?? []),
 		].join(",");
 		layouts.set(id, { hidden: hiddenSet, groups: groupMap, sig });
