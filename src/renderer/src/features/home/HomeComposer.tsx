@@ -166,8 +166,8 @@ export function HomeComposer(): ReactNode {
 					if (projectPath && event.dataTransfer.types.includes("Files")) event.preventDefault();
 				}}
 				onDrop={onDrop}
-				// The text box draws no outline of its own, so the card's border turns to the focus ring while it has focus.
-				className="relative rounded-xl border border-border-strong bg-panel shadow-(--shadow-card) transition-colors duration-(--dur-fast) has-[textarea:focus-visible]:border-ring has-[textarea:focus-visible]:outline-1 has-[textarea:focus-visible]:outline-ring"
+				// The text box draws no outline of its own, so the card shows the focus ring while it has keyboard focus.
+				className="relative rounded-xl border border-border-strong bg-panel shadow-(--shadow-card) transition-colors duration-(--dur-fast) focus-within:border-control-border has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 has-[textarea:focus-visible]:outline-ring"
 			>
 				<Expand open={attachments.length > 0}>
 					<ul aria-label={tc("attach.label")} className="relative flex flex-wrap gap-1.5 px-3 pt-3">
@@ -178,49 +178,54 @@ export function HomeComposer(): ReactNode {
 						</AnimatePresence>
 					</ul>
 				</Expand>
-				<div className="flex items-end gap-1 p-2">
-					<Menu>
-						<Tooltip content={t("composer.plusTip")}>
-							<MenuTrigger asChild disabled={!projectPath}>
-								<button
-									type="button"
-									aria-label={tc("plus.label")}
-									className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm text-fg-muted outline-none transition-colors hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45 data-[state=open]:bg-selected"
-								>
-									<Plus className="size-4" aria-hidden />
-								</button>
-							</MenuTrigger>
+				{/* Two rows, as in the chat composer: the text box at full width, then ＋ and Send in a quiet toolbar. */}
+				<div className="flex flex-col gap-2 p-2">
+					<div className="flex px-1 pt-1">
+						<textarea
+							ref={textarea}
+							// The app opens on Home, and the Home button lands here: the box is where typing goes.
+							autoFocus
+							value={draft}
+							rows={1}
+							placeholder={projectPath ? tc("placeholder.idle") : t("composer.placeholderNoProject")}
+							aria-label={tc("label")}
+							onChange={event => useComposerDrafts.getState().setDraft(HOME, event.target.value)}
+							onKeyDown={onKeyDown}
+							onPaste={onPaste}
+							className="field-sizing-content max-h-50 w-full min-w-0 resize-none overflow-y-auto bg-transparent px-0 py-0.5 text-base leading-(--text-base--line-height) text-fg outline-none [scrollbar-gutter:stable] placeholder:text-fg-faint selection:bg-accent/25"
+						/>
+					</div>
+					<div className="flex items-center gap-1">
+						<Menu>
+							<Tooltip content={t("composer.plusTip")}>
+								<MenuTrigger asChild disabled={!projectPath}>
+									<button
+										type="button"
+										aria-label={tc("plus.label")}
+										className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm text-fg-muted outline-none transition-colors hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45 data-[state=open]:bg-selected"
+									>
+										<Plus className="size-4" aria-hidden />
+									</button>
+								</MenuTrigger>
+							</Tooltip>
+							<MenuContent side="bottom" align="start">
+								<MenuItem icon={<Paperclip />} onSelect={() => void pickFiles()}>
+									{tc("plus.attach")}
+								</MenuItem>
+							</MenuContent>
+						</Menu>
+						<Tooltip content={tc("send.tip")} shortcut="↵">
+							<button
+								type="button"
+								aria-label={tc("send.label")}
+								disabled={!canSend}
+								onClick={() => void send()}
+								className="ml-auto inline-flex size-8 shrink-0 items-center justify-center rounded-sm bg-accent text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale,opacity] duration-(--dur-fast) enabled:hover:bg-accent-hover enabled:active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45"
+							>
+								<ArrowUp className="size-4" aria-hidden />
+							</button>
 						</Tooltip>
-						<MenuContent side="bottom" align="start">
-							<MenuItem icon={<Paperclip />} onSelect={() => void pickFiles()}>
-								{tc("plus.attach")}
-							</MenuItem>
-						</MenuContent>
-					</Menu>
-					<textarea
-						ref={textarea}
-						// The app opens on Home, and the Home button lands here: the box is where typing goes.
-						autoFocus
-						value={draft}
-						rows={1}
-						placeholder={projectPath ? tc("placeholder.idle") : t("composer.placeholderNoProject")}
-						aria-label={tc("label")}
-						onChange={event => useComposerDrafts.getState().setDraft(HOME, event.target.value)}
-						onKeyDown={onKeyDown}
-						onPaste={onPaste}
-						className="field-sizing-content max-h-50 min-h-8 min-w-0 flex-1 resize-none overflow-y-auto bg-transparent px-1 py-1 text-base leading-(--text-base--line-height) text-fg outline-none placeholder:text-fg-faint selection:bg-accent/25"
-					/>
-					<Tooltip content={tc("send.tip")} shortcut="↵">
-						<button
-							type="button"
-							aria-label={tc("send.label")}
-							disabled={!canSend}
-							onClick={() => void send()}
-							className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm bg-accent text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale,opacity] duration-(--dur-fast) enabled:hover:bg-accent-hover enabled:active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45"
-						>
-							<ArrowUp className="size-4" aria-hidden />
-						</button>
-					</Tooltip>
+					</div>
 				</div>
 			</div>
 			{/* The chat's settings before it exists: a quiet row under the card that wraps rather than crowd. */}

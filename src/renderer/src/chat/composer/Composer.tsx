@@ -1,11 +1,12 @@
 /**
  * The chat composer (DESIGN §3.6): the queued-messages tray sits on top of a card that holds image
- * attachments, ＋ (files, prompts, Shell and Python mode, dictation), an auto-growing text box with
- * `@file` mentions, the mic and the action buttons (stop while omp works; send, or "Send now" plus
- * "Queue message" while omp works). The settings for the chat sit in a quiet row under the card: the
- * folder chip and the permission button on the left, the model and thinking buttons and the context
- * ring on the right (every `composerTools` slot; order below 50 goes left). Both the card's line and
- * the row wrap when the column is narrow; nothing measures them.
+ * attachments, an auto-growing text box with `@file` mentions across the card's full width, and under
+ * it a toolbar row: ＋ (files, prompts, Shell and Python mode, dictation) on the left, the mic and the
+ * action buttons on the right (stop while omp works; send, or "Send now" plus "Queue message" while omp
+ * works). The settings for the chat sit in a quiet row under the card: the folder chip and the
+ * permission button on the left, the model and thinking buttons and the context ring on the right
+ * (every `composerTools` slot; order below 50 goes left). The toolbar and the row wrap when the column
+ * is narrow; nothing measures them.
  *
  * Keys: Enter sends (queued while omp works), Shift+Enter adds a line, ⌘/Ctrl+Enter sends now (steers
  * the running turn), Esc stops omp when the box is empty. Typing `!` or `$` into an empty box switches
@@ -288,7 +289,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	}, [tabId]);
 
 	// Auto-grow 24 → 200px.
-	useLayoutEffect(() => {
+	const fitHeight = useCallback(() => {
 		const el = textarea.current;
 		if (!el) return;
 		el.style.height = "0px";
@@ -298,7 +299,28 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 			mirror.current.style.height = `${height}px`;
 			mirror.current.scrollTop = el.scrollTop;
 		}
-	}, [draft]);
+	}, []);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: `draft` is the trigger; the height is read from the element.
+	useLayoutEffect(fitHeight, [draft, fitHeight]);
+	// The same text wraps to a different height when the card's width changes (window, side panel, split view,
+	// the mode chip coming or going) or once the text font has loaded, so refit then too.
+	useEffect(() => {
+		const el = textarea.current;
+		if (!el) return;
+		let width = el.clientWidth;
+		const observer = new ResizeObserver(() => {
+			if (el.clientWidth === width) return;
+			width = el.clientWidth;
+			fitHeight();
+		});
+		observer.observe(el);
+		// Geist and Geist Mono load on first use, after the first fit with a fallback font.
+		document.fonts.addEventListener("loadingdone", fitHeight);
+		return () => {
+			observer.disconnect();
+			document.fonts.removeEventListener("loadingdone", fitHeight);
+		};
+	}, [fitHeight]);
 
 	const dropColumn = useDropVeil(root, dropped => {
 		if (readOnly) return;
@@ -502,7 +524,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 			<QueueTray session={session} queue={view.queue} questionId={questionId} />
 			<div
 				className={cn(
-					"relative rounded-xl border border-border-strong bg-panel shadow-(--shadow-card) transition-colors duration-(--dur-fast) focus-within:border-control-border",
+					"relative rounded-xl border border-border-strong bg-panel shadow-(--shadow-card) transition-colors duration-(--dur-fast) focus-within:border-control-border has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 has-[textarea:focus-visible]:outline-ring",
 					readOnly && "bg-inset",
 				)}
 			>
@@ -526,80 +548,17 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					</ul>
 				</Expand>
 				{/*
-				 * One flex-wrap line: ＋, the text box, then the mic and the actions. The actions move to a second,
-				 * right-aligned line when the text box would drop below its minimum width; buttons stay at the bottom
-				 * as the text grows.
+				 * Two rows: the text box spans the card's full inner width, and a quiet toolbar sits under it with ＋ on
+				 * the left and the mic and the actions on the right, so a busy action set never narrows the text.
+				 * The mention and slash menus anchor above the text row.
 				 */}
-				<div className="relative flex flex-wrap items-end gap-1 p-2">
+				<div className="relative flex flex-col gap-2 p-2">
 					{mention ? (
 						<MentionPicker id={pickerId} matches={matches} active={activeMatch} onActive={setActiveMatch} onPick={pickMention} />
 					) : (
 						slashOpen && <SlashMenu id={slashId} options={slashMenu} active={slashActive} onActive={setSlashActive} onPick={pickSlash} />
 					)}
-					<Menu>
-						<Tooltip content={t("plus.tip")}>
-							<MenuTrigger asChild disabled={readOnly}>
-								<button
-									type="button"
-									aria-label={t("plus.label")}
-									className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm text-fg-muted outline-none transition-colors hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45 data-[state=open]:bg-selected"
-								>
-									<Plus className="size-4" aria-hidden />
-								</button>
-							</MenuTrigger>
-						</Tooltip>
-						<MenuContent
-							side="top"
-							align="start"
-							onCloseAutoFocus={event => {
-								if (!menuRedirect.current) return;
-								menuRedirect.current = false;
-								event.preventDefault();
-							}}
-						>
-							<MenuItem icon={<Paperclip />} onSelect={fromMenu(() => void pickFiles())}>
-								{t("plus.attach")}
-							</MenuItem>
-							<MenuItem icon={<At />} onSelect={fromMenu(() => requestAnimationFrame(startMention))}>
-								{t("plus.mention")}
-							</MenuItem>
-							<MenuSeparator />
-							<MenuItem icon={<BookBookmark />} onSelect={fromMenu(() => setLibrary("saved"))}>
-								{t("plus.library")}
-							</MenuItem>
-							<MenuItem icon={<GraduationCap />} onSelect={fromMenu(() => setLibrary("skills"))}>
-								{t("plus.skills")}
-							</MenuItem>
-							<MenuItem icon={<Command />} onSelect={fromMenu(() => setLibrary("commands"))}>
-								{t("plus.commands")}
-							</MenuItem>
-							<MenuSeparator />
-							{QUICK_MODES.map(({ mode: quick, glyph }) => (
-								<MenuCheckboxItem
-									key={quick}
-									checked={mode === quick}
-									shortcut={glyph}
-									onSelect={fromMenu(() => {
-										useComposerDrafts.getState().setMode(tabId, mode === quick ? null : quick);
-										requestAnimationFrame(() => textarea.current?.focus());
-									})}
-								>
-									{t(`modes.${quick}.label`)}
-								</MenuCheckboxItem>
-							))}
-							<MenuItem
-								icon={<Microphone />}
-								onSelect={fromMenu(() => {
-									useVoiceRequests.getState().requestStart(tabId);
-									// With voice off the request opens the voice dialog, which takes focus itself.
-									if (voiceOn) requestAnimationFrame(() => textarea.current?.focus());
-								})}
-							>
-								{t("voice.start")}
-							</MenuItem>
-						</MenuContent>
-					</Menu>
-					<div className="flex min-w-0 grow basis-48 items-start gap-2 px-1 py-1">
+					<div className="flex min-w-0 items-start gap-2 px-1 pt-1">
 						<AnimatePresence initial={false}>
 							{mode && (
 								<motion.span
@@ -675,70 +634,139 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 							/>
 						</div>
 					</div>
-					<div className="ml-auto flex shrink-0 items-center gap-1">
-						<VoiceTool session={session} />
-						<AnimatePresence initial={false} mode="popLayout">
-							{working && (
-								<motion.span key="stop" layoutDependency={actionSet} {...actionMotion}>
-									<Tooltip content={t("send.stop")} shortcut="Esc">
-										<button
-											type="button"
-											aria-label={t("send.stop")}
-											onClick={() => session.abort()}
-											className="inline-flex size-8 items-center justify-center rounded-sm bg-err-bg text-err outline-none transition-[background-color,color,scale] duration-(--dur-fast) hover:bg-err hover:text-fg-inverse active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-										>
-											<Square weight="fill" className="size-3.5" aria-hidden />
-										</button>
-									</Tooltip>
-								</motion.span>
-							)}
-							{working && canSend && (
-								<motion.span key="now" layoutDependency={actionSet} {...actionMotion}>
-									<Tooltip content={t("send.nowTip")} shortcut={sendNowKeys}>
-										<button
-											type="button"
-											aria-label={t("send.now")}
-											aria-keyshortcuts={IS_MAC ? "Meta+Enter" : "Control+Enter"}
-											onClick={() => submit(true)}
-											className="inline-flex h-8 items-center gap-1.5 rounded-sm px-2 text-sm font-medium text-fg-muted outline-none transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-										>
-											<PaperPlaneRight className="size-4 shrink-0" aria-hidden />
-											<span className="whitespace-nowrap @max-[34rem]/composer:hidden">{t("send.now")}</span>
-											<Kbd className="@max-[34rem]/composer:hidden">{sendNowKeys}</Kbd>
-										</button>
-									</Tooltip>
-								</motion.span>
-							)}
-							{working && canSend && (
-								<motion.span key="queue" layoutDependency={actionSet} {...actionMotion}>
-									<Tooltip content={t("send.queueTip")} shortcut="↵">
-										<button
-											type="button"
-											onClick={() => submit(false)}
-											className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-sm bg-accent px-3 text-sm font-semibold text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale] duration-(--dur-fast) hover:bg-accent-hover active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
-										>
-											<ArrowUp className="size-4 shrink-0" aria-hidden />
-											{t("send.queue")}
-										</button>
-									</Tooltip>
-								</motion.span>
-							)}
-							{!working && (
-								<motion.span key="send" layoutDependency={actionSet} {...actionMotion}>
-									<Tooltip content={t("send.tip")} shortcut="↵">
-										<button
-											type="button"
-											aria-label={t("send.label")}
-											disabled={!canSend}
-											onClick={() => submit(false)}
-											className="inline-flex size-8 items-center justify-center rounded-sm bg-accent text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale,opacity] duration-(--dur-fast) enabled:hover:bg-accent-hover enabled:active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45"
-										>
-											<ArrowUp className="size-4" aria-hidden />
-										</button>
-									</Tooltip>
-								</motion.span>
-							)}
-						</AnimatePresence>
+					{/*
+					 * Too narrow for one line (the largest text size in a narrow split), the actions wrap within their
+					 * group and ＋ stays at the bottom left, level with the primary action.
+					 */}
+					<div className="flex items-end gap-1">
+						<Menu>
+							<Tooltip content={t("plus.tip")}>
+								<MenuTrigger asChild disabled={readOnly}>
+									<button
+										type="button"
+										aria-label={t("plus.label")}
+										className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm text-fg-muted outline-none transition-colors hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45 data-[state=open]:bg-selected"
+									>
+										<Plus className="size-4" aria-hidden />
+									</button>
+								</MenuTrigger>
+							</Tooltip>
+							<MenuContent
+								side="top"
+								align="start"
+								onCloseAutoFocus={event => {
+									if (!menuRedirect.current) return;
+									menuRedirect.current = false;
+									event.preventDefault();
+								}}
+							>
+								<MenuItem icon={<Paperclip />} onSelect={fromMenu(() => void pickFiles())}>
+									{t("plus.attach")}
+								</MenuItem>
+								<MenuItem icon={<At />} onSelect={fromMenu(() => requestAnimationFrame(startMention))}>
+									{t("plus.mention")}
+								</MenuItem>
+								<MenuSeparator />
+								<MenuItem icon={<BookBookmark />} onSelect={fromMenu(() => setLibrary("saved"))}>
+									{t("plus.library")}
+								</MenuItem>
+								<MenuItem icon={<GraduationCap />} onSelect={fromMenu(() => setLibrary("skills"))}>
+									{t("plus.skills")}
+								</MenuItem>
+								<MenuItem icon={<Command />} onSelect={fromMenu(() => setLibrary("commands"))}>
+									{t("plus.commands")}
+								</MenuItem>
+								<MenuSeparator />
+								{QUICK_MODES.map(({ mode: quick, glyph }) => (
+									<MenuCheckboxItem
+										key={quick}
+										checked={mode === quick}
+										shortcut={glyph}
+										onSelect={fromMenu(() => {
+											useComposerDrafts.getState().setMode(tabId, mode === quick ? null : quick);
+											requestAnimationFrame(() => textarea.current?.focus());
+										})}
+									>
+										{t(`modes.${quick}.label`)}
+									</MenuCheckboxItem>
+								))}
+								<MenuItem
+									icon={<Microphone />}
+									onSelect={fromMenu(() => {
+										useVoiceRequests.getState().requestStart(tabId);
+										// With voice off the request opens the voice dialog, which takes focus itself.
+										if (voiceOn) requestAnimationFrame(() => textarea.current?.focus());
+									})}
+								>
+									{t("voice.start")}
+								</MenuItem>
+							</MenuContent>
+						</Menu>
+						<div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
+							<VoiceTool session={session} />
+							<AnimatePresence initial={false} mode="popLayout">
+								{working && (
+									<motion.span key="stop" layoutDependency={actionSet} {...actionMotion}>
+										<Tooltip content={t("send.stop")} shortcut="Esc">
+											<button
+												type="button"
+												aria-label={t("send.stop")}
+												onClick={() => session.abort()}
+												className="inline-flex size-8 items-center justify-center rounded-sm bg-err-bg text-err outline-none transition-[background-color,color,scale] duration-(--dur-fast) hover:bg-err hover:text-fg-inverse active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+											>
+												<Square weight="fill" className="size-3.5" aria-hidden />
+											</button>
+										</Tooltip>
+									</motion.span>
+								)}
+								{working && canSend && (
+									<motion.span key="now" layoutDependency={actionSet} {...actionMotion}>
+										<Tooltip content={t("send.nowTip")} shortcut={sendNowKeys}>
+											<button
+												type="button"
+												aria-label={t("send.now")}
+												aria-keyshortcuts={IS_MAC ? "Meta+Enter" : "Control+Enter"}
+												onClick={() => submit(true)}
+												className="inline-flex h-8 items-center gap-1.5 rounded-sm px-2 text-sm font-medium text-fg-muted outline-none transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+											>
+												<PaperPlaneRight className="size-4 shrink-0" aria-hidden />
+												<span className="whitespace-nowrap @max-[28rem]/composer:hidden">{t("send.now")}</span>
+												<Kbd className="@max-[28rem]/composer:hidden">{sendNowKeys}</Kbd>
+											</button>
+										</Tooltip>
+									</motion.span>
+								)}
+								{working && canSend && (
+									<motion.span key="queue" layoutDependency={actionSet} {...actionMotion}>
+										<Tooltip content={t("send.queueTip")} shortcut="↵">
+											<button
+												type="button"
+												onClick={() => submit(false)}
+												className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-sm bg-accent px-3 text-sm font-semibold text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale] duration-(--dur-fast) hover:bg-accent-hover active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+											>
+												<ArrowUp className="size-4 shrink-0" aria-hidden />
+												{t("send.queue")}
+											</button>
+										</Tooltip>
+									</motion.span>
+								)}
+								{!working && (
+									<motion.span key="send" layoutDependency={actionSet} {...actionMotion}>
+										<Tooltip content={t("send.tip")} shortcut="↵">
+											<button
+												type="button"
+												aria-label={t("send.label")}
+												disabled={!canSend}
+												onClick={() => submit(false)}
+												className="inline-flex size-8 items-center justify-center rounded-sm bg-accent text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale,opacity] duration-(--dur-fast) enabled:hover:bg-accent-hover enabled:active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45"
+											>
+												<ArrowUp className="size-4" aria-hidden />
+											</button>
+										</Tooltip>
+									</motion.span>
+								)}
+							</AnimatePresence>
+						</div>
 					</div>
 				</div>
 			</div>
