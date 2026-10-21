@@ -233,6 +233,17 @@ Exits are shorter than entrances and use an ease-in (`cubic-bezier(0.4, 0, 1, 1)
 
 `--z-base:0 · --z-sticky:10 · --z-pane-header:20 · --z-sidebar:30 · --z-titlebar:40 · --z-dropdown:50 · --z-scrim:60 · --z-sheet:70 · --z-dialog:80 · --z-palette:90 · --z-toast:100 · --z-tooltip:110`.
 
+### 1.14 Scrollbars
+
+The renderer uses CSS-styled native scrollbars, defined in `theme/base.css`: a 10px gutter with a transparent track and a 6px `--radius-full` thumb. The thumb uses `--control-border` at rest (§1.8), `--fg-faint` on hover and `--fg-muted` while it is dragged. Measured against the surface tokens, the resting thumb reaches 3.1:1 to 3.6:1 in light (lowest on `--bg-inset`) and 3.3:1 to 4.2:1 in dark (lowest on `--bg-overlay`), and 3.8:1 or more on the ink chrome. The geometry matches the `ScrollArea` thumb. The style does not animate, so reduced motion needs no exception.
+
+Giving `::-webkit-scrollbar` a size makes Chromium draw a classic scrollbar, which keeps its gutter. Before this style, macOS overlay scrollbars appeared during the transcript's programmatic follow and faded about a second later, so the chat's scrollbar flashed. In the headless Chromium reproduction, the thumb remained visible while content overflowed, including during programmatic transcript scrolling. The change does not replace native scrolling or alter the transcript's follow logic.
+
+- Leave `scrollbar-width` and `scrollbar-color` at `auto`. A non-`auto` value of either property overrides the `::-webkit-scrollbar` styling on that element.
+- Use `scrollbar-gutter: stable` for scrollers whose content changes height while visible, so their content keeps its width when it starts or stops overflowing. The chat log reserves both gutters (`stable both-edges`), which keeps its centered column on the composer's centerline. Each composer textarea and its highlight mirror reserve the same gutter, so their text stays aligned.
+- The sidebar retains its hover-triggered `ScrollArea` overlay scrollbar, with a 600ms hide delay, so the narrow, resizable column does not give up 10px to a gutter.
+- xterm.js terminals draw their own scrollbar, which this style does not change.
+
 ---
 
 ## 2. Typography
@@ -386,7 +397,7 @@ Status text explains read-only access, stopped or reconnecting omp, pending ques
   - "Thinking set to {level}" (Verbose only)
 - **Errors**: when a turn stops, an inline status follows it. An error shows on `--err-bg` with `XCircle`: "The reply stopped with an error", plus omp's message. A cancelled turn shows on `--warn-bg` with `Warning`: "Stopped".
 - **Questions** are §4.8 and **plan review** is §4.9. The **working row** is §4.6.
-- **Scrolling**: the log follows new content while pinned within 48px of the bottom, easing toward the bottom during normal motion. Gaps over 480px and reduced motion snap to the bottom. Reader scrolling unpins the log and preserves its position; programmatic follow does not unpin it. While unpinned, new content shows a "Show new activity" pill, which pins the log again and scrolls smoothly to the bottom (instantly under reduced motion).
+- **Scrolling**: the log follows new content while pinned within 48px of the bottom, easing toward the bottom during normal motion. Gaps over 480px and reduced motion snap to the bottom. Reader scrolling unpins the log and preserves its position; programmatic follow does not unpin it. While unpinned, new content shows a "Show new activity" pill, which pins the log again and scrolls smoothly to the bottom (instantly under reduced motion). The log uses the styled scrollbar (§1.14) with both gutters reserved. In the headless Chromium reproduction, following new content, closing a question card and opening the working row left the thumb visible and the column width unchanged.
 
 ### 3.6 Composer (card up to 760px)
 

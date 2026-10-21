@@ -18,7 +18,7 @@ export interface ScrollAreaProps {
 const scrollbarClass =
 	"flex touch-none select-none p-0.5 transition-opacity duration-(--dur) data-[orientation=horizontal]:h-2.5 data-[orientation=horizontal]:flex-col data-[orientation=vertical]:w-2.5";
 
-/** Overlay scrollbars that appear on hover/scroll. Give the root a bounded height. */
+/** Hover-triggered overlay scrollbars that hide 600ms after the pointer leaves (DESIGN §1.14). Give the root a bounded height. */
 export function ScrollArea({
 	children,
 	orientation = "vertical",

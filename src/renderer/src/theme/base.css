@@ -44,9 +44,38 @@
 		cursor: default;
 	}
 
-	* {
-		scrollbar-width: thin;
-		scrollbar-color: var(--border-strong) transparent;
+	/*
+	 * Scrollbars (DESIGN §1.14). Giving `::-webkit-scrollbar` a size makes Chromium draw a classic scrollbar that keeps
+	 * its gutter and stays visible while the content overflows. Before this, macOS overlay scrollbars appeared during
+	 * the transcript's programmatic follow and faded about a second later, so the chat's scrollbar flashed. Any
+	 * non-`auto` `scrollbar-width` or `scrollbar-color` value overrides these pseudo-elements, so both stay unset. The
+	 * 6px thumb in a 10px gutter matches the `ScrollArea` geometry. The resting thumb uses `--control-border` (DESIGN
+	 * §1.8), which measures at least 3:1 against the surface tokens in both themes.
+	 */
+	::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+
+	::-webkit-scrollbar-track,
+	::-webkit-scrollbar-corner {
+		background: transparent;
+	}
+
+	::-webkit-scrollbar-thumb {
+		min-width: 24px;
+		min-height: 24px;
+		border: 2px solid transparent;
+		border-radius: var(--radius-full);
+		background: var(--control-border) padding-box;
+	}
+
+	::-webkit-scrollbar-thumb:hover {
+		background-color: var(--fg-faint);
+	}
+
+	::-webkit-scrollbar-thumb:active {
+		background-color: var(--fg-muted);
 	}
 }
 

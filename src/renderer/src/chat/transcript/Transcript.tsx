@@ -945,7 +945,8 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 					} else if (pinnedStart === null) setPinnedStart(start);
 					if (el.scrollTop <= EARLIER_TRIGGER_PX) showEarlier();
 				}}
-				className="absolute inset-0 overflow-y-auto"
+				// Both gutters stay reserved, so the column keeps its width and stays centered over the composer as it overflows.
+				className="absolute inset-0 overflow-y-auto [scrollbar-gutter:stable_both-edges]"
 				// Not live: the paced reveal would reach screen readers in fragments. `ReplyAnnouncer` speaks each finished reply once.
 				role="log"
 				aria-live="off"

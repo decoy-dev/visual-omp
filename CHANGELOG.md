@@ -11,6 +11,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Scoop installs for one user can show Windows notifications, subject to the Windows notification settings. Windows shows notifications only for an app ID that a Start menu shortcut carries, and Scoop's shortcut has none, so visual-omp adds its ID to Scoop's shortcut at each launch. A copy Scoop installed for all users keeps its shortcut where visual-omp can't change it, so it shows no notifications.
 - visual-omp checks for new versions of itself and of omp about ten seconds after it opens and every 30 minutes while it stays open. It used to reuse a saved result for up to six hours, even across restarts, so a new release could go unnoticed for up to six hours.
 - The working line above the message box and the "Worked for" line count hours once a turn passes an hour, for example "1h 02m", where they used to show "62m 10s".
+- The chat's scrollbar no longer flashes as the transcript changes height. On macOS, overlay scrollbars appeared while the chat followed new content, for example after a question was answered or the working line opened, and faded about a second later. visual-omp now styles its scrollbars itself, so the thin scrollbar stays visible while the content overflows and uses the theme's colors in light and dark. Scrolling with the wheel, the keyboard and the thumb works as before. The chat also keeps room for the scrollbar on both sides, so its column keeps its width and stays centered over the message box.
 
 ## [0.5.9] - 2026-10-20
 
