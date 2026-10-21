@@ -5,8 +5,9 @@
  *   `$ code` runs Python (the sigil needs a space after it, input-controller.ts).
  * - Images travel the way a terminal delivers a file drag: one bracketed paste made only of absolute
  *   image paths makes omp's editor attach them (custom-editor.ts accepts png/jpg/jpeg/gif/webp; spaces
- *   and shell metacharacters backslash-escaped). The message text follows in the same write, then
- *   Enter; omp holds keys that arrive after an attaching paste until the images are loaded.
+ *   and shell metacharacters backslash-escaped). The message text follows, then Enter; omp holds keys
+ *   that arrive after an attaching paste until the images are loaded. The chat's controller types them
+ *   (`SessionController.send`), so a message with images queues like any other.
  */
 import type { SessionController } from "../../state/session";
 import type { Attachment, ComposerMode } from "./drafts";
@@ -41,9 +42,8 @@ export function imageMessageBytes(paths: readonly string[], text: string): strin
 }
 
 /**
- * Send a composed message. Text-only messages go through the chat's queue (they wait while omp works);
- * `now` steers the running turn instead. Messages with images are delivered at once — omp itself holds
- * a message typed mid-turn until its next step — because attachments must travel with their text.
+ * Send a composed message with its images. It joins the end of the chat's queue while omp is busy
+ * (`SessionController.busy`); `now` (Send now) steers the running turn instead.
  */
 export async function deliver(
 	session: SessionController,
@@ -51,16 +51,6 @@ export async function deliver(
 	images: readonly Attachment[],
 	now: boolean,
 ): Promise<void> {
-	if (images.length === 0) {
-		if (now && session.getSnapshot().working) await session.command(text);
-		else await session.send(text);
-		return;
-	}
-	// The paste goes around the controller's queue, so record the send before waiting for omp.
-	session.markInput();
-	await session.whenLive();
-	const hostId = session.hostId;
-	if (!hostId) throw new Error("omp is not running");
-	await window.vomp.invoke("composer:paste", hostId, imagePathsText(images.map(image => image.path)));
-	if (text) await session.command(text);
+	if (now && session.getSnapshot().working) await session.steer(text, images);
+	else await session.send(text, images);
 }

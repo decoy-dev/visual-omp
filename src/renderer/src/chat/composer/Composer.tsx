@@ -8,9 +8,10 @@
  * (every `composerTools` slot; order below 50 goes left). The toolbar and the row wrap when the column
  * is narrow; nothing measures them.
  *
- * Keys: Enter sends (queued while omp works), Shift+Enter adds a line, ⌘/Ctrl+Enter sends now (steers
- * the running turn), Esc stops omp when the box is empty. Typing `!` or `$` into an empty box switches
- * to the Shell / Python quick mode, like omp's own editor; Backspace in an empty box leaves it.
+ * Keys: Enter sends, or adds the message (images included) to the end of the queue while omp is busy
+ * (`SessionController.busy`); Shift+Enter adds a line, ⌘/Ctrl+Enter sends now (steers the running
+ * turn), Esc stops omp when the box is empty. Typing `!` or `$` into an empty box switches to the Shell /
+ * Python quick mode, like omp's own editor; Backspace in an empty box leaves it.
  */
 import { ArrowUp, At, BookBookmark, Command, GraduationCap, ImageSquare, Microphone, PaperPlaneRight, Paperclip, Plus, Square, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
@@ -521,7 +522,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					</div>,
 					dropColumn,
 				)}
-			<QueueTray session={session} queue={view.queue} questionId={questionId} />
+			<QueueTray session={session} queue={view.queue} questionId={questionId} strandedImages={view.strandedImages} />
 			<div
 				className={cn(
 					"relative rounded-xl border border-border-strong bg-panel shadow-(--shadow-card) transition-colors duration-(--dur-fast) focus-within:border-control-border has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 has-[textarea:focus-visible]:outline-ring",

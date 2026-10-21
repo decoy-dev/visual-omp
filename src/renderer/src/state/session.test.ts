@@ -1,7 +1,9 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { HostState } from "@shared/ipc";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { deliver } from "../chat/composer/send";
 import type { GuestSnapshot } from "../collab/lib/client";
+import { sendSlashCommand } from "../features/session-tools/typed";
 import { liveEntries, liveGuest, SessionController, setSlashDelivery } from "./session";
 
 // vi.mock is hoisted above the imports, so the controller under test builds these fakes.
@@ -28,17 +30,51 @@ const fakes = vi.hoisted(() => {
 			for (const listener of this.listeners) listener();
 		}
 	}
-	return { FakeGuest, guests };
+	/** A typed slash command's watch polls once, after this settles, and then ends (the command is done). */
+	const watch = { end: Promise.withResolvers<void>() };
+	return { FakeGuest, guests, watch };
 });
 vi.mock("../collab/lib/client", () => ({ GuestClient: fakes.FakeGuest }));
+// typed.ts drives omp's painted screen; these stand-ins type the command and let the test end its watch.
+vi.mock("../features/session-tools/drive", () => ({
+	OmpBusyError: class OmpBusyError extends Error {},
+	readScreen: async () => [],
+	readyEditor: async () => [],
+	reportFailure: () => undefined,
+	sleep: () => fakes.watch.end.promise,
+}));
+vi.mock("../features/session-tools/results", () => ({
+	addCommandResult: () => undefined,
+	drawsRow: () => false,
+	linesTone: () => "info",
+	presentLines: (lines: string[]) => lines,
+	roomKey: () => "room",
+	startWatch: () => ({ replaced: false }),
+	supersededResult: () => null,
+	WATCH: { replacedPolls: 2 },
+	watchStep: (state: unknown) => [state, { kind: "stop" }],
+}));
+vi.mock("../features/session-tools/screen", () => ({ parseStatusLine: () => ({}) }));
+vi.mock("../features/session-tools/slash", () => ({ routeSlash: async () => false }));
+vi.mock("../features/palette/overlays", () => ({ isNativeOverlay: () => false }));
+vi.mock("../features/palette/TerminalSheet", () => ({ autoOpened: { tabId: null } }));
+vi.mock("../chat/branch", () => ({ displayedEntries: () => [] }));
+vi.mock("./app", () => ({ useApp: { getState: () => ({ view: "home", terminalTabId: null }) } }));
 
 const hostListeners = new Set<(state: HostState) => void>();
 let savedText = "";
+/** Every `window.vomp.invoke` call after the session-file reads: channel, then arguments. */
+let invoked: unknown[][] = [];
+/** Answers for chosen `invoke` calls (a delayed paste, a failed submit); everything else resolves null. */
+let respond: ((channel: string) => Promise<unknown> | undefined) | null = null;
 
 beforeEach(() => {
 	fakes.guests.length = 0;
+	fakes.watch.end = Promise.withResolvers<void>();
 	hostListeners.clear();
 	savedText = "";
+	invoked = [];
+	respond = null;
 	vi.stubGlobal("window", {
 		vomp: {
 			on: (channel: string, listener: (state: HostState) => void) => {
@@ -46,10 +82,24 @@ beforeEach(() => {
 				hostListeners.add(listener);
 				return () => hostListeners.delete(listener);
 			},
-			invoke: async (channel: string) => (channel === "sessions:read" ? savedText : null),
+			invoke: async (channel: string, ...args: unknown[]) => {
+				if (channel === "sessions:read") return savedText;
+				if (channel !== "sessions:find") invoked.push([channel, ...args]);
+				return (await respond?.(channel)) ?? null;
+			},
 		},
 	});
 });
+
+/** The next `invoke` on `channel` rejects with `message`; later ones resolve as usual. */
+function failOnce(channel: string, message: string): void {
+	let failed = false;
+	respond = asked => {
+		if (asked !== channel || failed) return undefined;
+		failed = true;
+		return Promise.reject(new Error(message));
+	};
+}
 
 const host = (patch: Partial<HostState>): HostState => ({
 	hostId: "h1",
@@ -150,31 +200,41 @@ describe("SessionController working start", () => {
 	});
 });
 
-describe("SessionController queue around omp's own screens", () => {
-	const tui = (overlays: number) => ({ overlays, focused: "vw", altScreen: false, overlayKinds: [] });
-	/** Let promise callbacks settle (deliveries, holds, whenLive); no timers involved. */
-	const flush = async () => {
-		for (let i = 0; i < 20; i++) await Promise.resolve();
-	};
-	const queued = (session: SessionController) => session.getSnapshot().queue.map(item => item.text);
-	/** Slash deliveries in order; each stays in flight until its `done` is called. */
-	function fakeDelivery() {
-		const calls: { line: string; done: () => void }[] = [];
-		setSlashDelivery((_session, line) => {
-			const { promise, resolve } = Promise.withResolvers<void>();
-			calls.push({ line, done: resolve });
-			return promise;
-		});
-		return calls;
-	}
-	/** A live chat in the middle of a turn. */
-	function working(tabId: string) {
-		const session = new SessionController({ tabId, projectPath: "/p", sessionFile: null });
-		session.attach(host({ link: "L1", tui: tui(0) }));
-		fakes.guests[0]?.emit("live", [u1], true);
-		return session;
-	}
+const tui = (overlays: number) => ({ overlays, focused: "vw", altScreen: false, overlayKinds: [] });
+/** Let promise callbacks settle (deliveries, holds, whenLive, a typed command's watch); no timers involved. */
+const flush = async () => {
+	for (let i = 0; i < 50; i++) await Promise.resolve();
+};
+const queued = (session: SessionController) => session.getSnapshot().queue.map(item => item.text);
+/** A live chat in the middle of a turn. */
+function working(tabId: string) {
+	const session = new SessionController({ tabId, projectPath: "/p", sessionFile: null });
+	session.attach(host({ link: "L1", tui: tui(0) }));
+	fakes.guests.at(-1)?.emit("live", [u1], true);
+	return session;
+}
+/** A live chat waiting for the next message; `overlays` > 0 means omp's own full-screen menu is open. */
+function idle(tabId: string, overlays = 0) {
+	const session = new SessionController({ tabId, projectPath: "/p", sessionFile: null });
+	session.attach(host({ link: "L1", tui: tui(overlays) }));
+	fakes.guests.at(-1)?.emit("live", [u1], false);
+	return session;
+}
+/** Slash deliveries in order; each stays in flight until its `done` is called. */
+function fakeDelivery() {
+	const calls: { line: string; done: () => void }[] = [];
+	setSlashDelivery((_session, line) => {
+		const { promise, resolve } = Promise.withResolvers<void>();
+		calls.push({ line, done: resolve });
+		return promise;
+	});
+	return calls;
+}
+const shot = { path: "/tmp/Screen Shot.png", name: "Screen Shot.png" };
+const pasteShot = ["composer:paste", "h1", "/tmp/Screen\\ Shot.png"];
+const submit = (text: string) => ["host:submit", "h1", text, "steer"];
 
+describe("SessionController queue around omp's own screens", () => {
 	it("holds a queued command while omp's full-screen report is open at turn end, then sends it once the report closes", async () => {
 		const calls = fakeDelivery();
 		const session = working("q1");
@@ -237,5 +297,362 @@ describe("SessionController queue around omp's own screens", () => {
 		await flush();
 		expect(lines).toEqual(["/a", "/a"]);
 		expect(queued(session)).toEqual([]);
+	});
+});
+
+describe("SessionController queue with images", () => {
+	it("queues a message with images while omp works and sends it with its images after the turn", async () => {
+		const session = working("m1");
+		await deliver(session, "what is this?", [shot], false);
+		expect(invoked).toEqual([]);
+		expect(session.getSnapshot().queue).toMatchObject([{ text: "what is this?", images: [shot] }]);
+		fakes.guests[0]?.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked).toEqual([pasteShot, submit("what is this?")]);
+		expect(queued(session)).toEqual([]);
+	});
+
+	it("queues a message with images behind waiting messages and sends them one turn at a time", async () => {
+		const session = working("m2");
+		await deliver(session, "first", [], false);
+		await deliver(session, "second", [shot], false);
+		fakes.guests[0]?.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked).toEqual([submit("first")]);
+		// omp has not reported the turn for "first" yet: the new message waits, and "second" stays queued.
+		await deliver(session, "third", [shot], false);
+		await flush();
+		expect(invoked).toEqual([submit("first")]);
+		expect(queued(session)).toEqual(["second", "third"]);
+		fakes.guests[0]?.emit("live", [u1, a1, u2], true);
+		fakes.guests[0]?.emit("live", [u1, a1, u2], false);
+		await flush();
+		expect(invoked).toEqual([submit("first"), pasteShot, submit("second")]);
+		expect(queued(session)).toEqual(["third"]);
+	});
+
+	it("sends a message with images at once with Send now, steering the running turn", async () => {
+		const session = working("m3");
+		await deliver(session, "first", [], false);
+		await deliver(session, "look here", [shot], true);
+		expect(invoked).toEqual([pasteShot, submit("look here")]);
+		expect(queued(session)).toEqual(["first"]);
+	});
+
+	it("submits a queued message that is only images with Enter alone", async () => {
+		const session = working("m4");
+		await deliver(session, "", [shot], false);
+		fakes.guests[0]?.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked).toEqual([pasteShot, ["host:write", "h1", "\r"]]);
+	});
+});
+
+describe("SessionController queue admission and acknowledgement", () => {
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("queues Enter while the last queued slash command is still being delivered", async () => {
+		const calls = fakeDelivery();
+		const session = working("g1");
+		await session.send("/fast status");
+		fakes.guests[0]?.emit("live", [u1, a1], false);
+		await flush();
+		expect(calls.map(call => call.line)).toEqual(["/fast status"]);
+		// The queue is empty and omp is idle, but the command is still being typed and watched.
+		await deliver(session, "hi", [], false);
+		expect(invoked).toEqual([]);
+		expect(queued(session)).toEqual(["hi"]);
+		calls[0]?.done();
+		await flush();
+		expect(invoked).toEqual([submit("hi")]);
+	});
+
+	it("queues Enter while omp's full-screen menu is open or a hold stands, and sends it afterwards", async () => {
+		const session = idle("g2", 1);
+		await deliver(session, "after the menu", [shot], false);
+		expect(invoked).toEqual([]);
+		sendHost({ link: "L1", tui: tui(0) });
+		await flush();
+		expect(invoked).toEqual([pasteShot, submit("after the menu")]);
+
+		const held = idle("g3");
+		const screen = Promise.withResolvers<void>();
+		held.holdQueue(screen.promise);
+		await deliver(held, "after the hold", [], false);
+		expect(queued(held)).toEqual(["after the hold"]);
+		screen.resolve();
+		await flush();
+		expect(invoked.at(-1)).toEqual(submit("after the hold"));
+	});
+
+	it("queues Enter pressed right after an idle slash command until the command's watch ends", async () => {
+		const session = idle("g4");
+		const typing = sendSlashCommand(session, "/fast status");
+		await deliver(session, "hi", [], false);
+		await typing;
+		await flush();
+		expect(invoked).toEqual([submit("/fast status")]);
+		expect(queued(session)).toEqual(["hi"]);
+		fakes.watch.end.resolve();
+		await flush();
+		expect(invoked).toEqual([submit("/fast status"), submit("hi")]);
+	});
+
+	it("waits however long the paste and the turn start take before sending the next message", async () => {
+		vi.useFakeTimers();
+		const paste = Promise.withResolvers<null>();
+		respond = channel => (channel === "composer:paste" ? paste.promise : undefined);
+		const session = idle("g5");
+		const first = deliver(session, "look", [shot], false);
+		await deliver(session, "next", [], false);
+		vi.advanceTimersByTime(60_000);
+		await flush();
+		expect(invoked).toEqual([pasteShot]);
+		paste.resolve(null);
+		await first;
+		vi.advanceTimersByTime(60_000);
+		await flush();
+		expect(invoked).toEqual([pasteShot, submit("look")]);
+		expect(queued(session)).toEqual(["next"]);
+		fakes.guests[0]?.emit("live", [u1, u2], true);
+		fakes.guests[0]?.emit("live", [u1, u2, a1], false);
+		await flush();
+		expect(invoked).toEqual([pasteShot, submit("look"), submit("next")]);
+	});
+
+	/** The entry omp appends when a shell line it ran itself finishes. */
+	const shellResult = (id: string, command: string) =>
+		({
+			type: "message",
+			id,
+			parentId: "u1",
+			timestamp: "",
+			message: { role: "bashExecution", command, output: "", exitCode: 0, cancelled: false, truncated: false, timestamp: 0 },
+		}) as unknown as SessionEntry;
+
+	it("sends the next message once omp appends the shell line's own result, and not for another entry", async () => {
+		const session = idle("g6");
+		await deliver(session, "!ls -la", [], false);
+		await deliver(session, "next", [], false);
+		expect(invoked).toEqual([submit("!ls -la")]);
+		// Unrelated entries arrive first: a reply and the result of another command.
+		fakes.guests[0]?.emit("live", [u1, a1, shellResult("b0", "pwd")], false);
+		await flush();
+		expect(invoked).toEqual([submit("!ls -la")]);
+		expect(queued(session)).toEqual(["next"]);
+		fakes.guests[0]?.emit("live", [u1, a1, shellResult("b0", "pwd"), shellResult("b1", "ls -la")], false);
+		await flush();
+		expect(invoked).toEqual([submit("!ls -la"), submit("next")]);
+	});
+
+	it("moves the queue on when the turn a Send now message steered ends before its write finishes", async () => {
+		const write = Promise.withResolvers<null>();
+		const session = working("g7");
+		await deliver(session, "a", [], false);
+		respond = channel => (channel === "host:submit" ? write.promise : undefined);
+		const steering = deliver(session, "steer this", [], true);
+		await flush();
+		// omp took the message into the turn (its user entry) and the turn ended, all before the write returned.
+		fakes.guests[0]?.emit("live", [u1, u2], true);
+		fakes.guests[0]?.emit("live", [u1, u2, a1], false);
+		await flush();
+		expect(invoked).toEqual([submit("steer this")]);
+		respond = null;
+		write.resolve(null);
+		await steering;
+		await flush();
+		expect(invoked).toEqual([submit("steer this"), submit("a")]);
+	});
+
+	it("drops a write's wait when omp stops or changes rooms before the write finishes", async () => {
+		for (const change of ["exit", "room"] as const) {
+			invoked = [];
+			fakes.guests.length = 0;
+			const write = Promise.withResolvers<null>();
+			respond = channel => (channel === "host:submit" ? write.promise : undefined);
+			const session = idle(`g8-${change}`);
+			const first = deliver(session, "first", [], false);
+			await deliver(session, "next", [], false);
+			await flush();
+			if (change === "exit") sendHost({ phase: "exited", link: null, exitCode: 0 });
+			sendHost({ link: "L2", tui: tui(0), generation: 2 });
+			respond = null;
+			write.resolve(null);
+			await first;
+			fakes.guests.at(-1)?.emit("live", [u1], false);
+			// The old room's counters can't acknowledge "first", so nothing waits for them: the next send moves the queue.
+			await deliver(session, "third", [], false);
+			await flush();
+			expect(invoked.filter(call => call[0] === "host:submit")).toEqual([submit("first"), submit("next")]);
+			expect(queued(session)).toEqual(["third"]);
+			await session.dispose();
+		}
+	});
+
+	it("keeps a queued message first in line when its delivery fails, and delivers it later", async () => {
+		failOnce("host:submit", "pty closed");
+		const session = working("g9");
+		await deliver(session, "a", [], false);
+		fakes.guests[0]?.emit("live", [u1, a1], false);
+		await flush();
+		expect(queued(session)).toEqual(["a"]);
+		await deliver(session, "b", [], false);
+		await flush();
+		expect(invoked).toEqual([submit("a"), submit("a")]);
+		expect(queued(session)).toEqual(["b"]);
+	});
+
+	/** omp's partial failure: the paste of A's images got through, its submit did not; B waits behind A. */
+	async function strandedAfterTurn(tabId: string) {
+		failOnce("host:submit", "pty closed");
+		const session = working(tabId);
+		await deliver(session, "look", [shot], false);
+		await deliver(session, "b", [], false);
+		fakes.guests[0]?.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked).toEqual([pasteShot, submit("look")]);
+		expect(session.getSnapshot().strandedImages).toBe(true);
+		return session;
+	}
+	/** "Restart omp": the app types /restart, and omp comes back in a new room with a new, empty editor. */
+	async function restartOmp(session: SessionController) {
+		await session.restart();
+		sendHost({ link: "L9", tui: tui(0), generation: 9 });
+		await flush();
+	}
+
+	it("writes nothing into omp after a failed submit left images there until omp restarts, even when the message is removed", async () => {
+		const session = await strandedAfterTurn("g10");
+		const [look, b] = session.getSnapshot().queue;
+		await expect(session.sendNow(b?.id ?? "")).rejects.toThrow("Restart omp to clear it");
+		await expect(session.sendNow(look?.id ?? "")).rejects.toThrow("Restart omp to clear it");
+		await expect(session.command("/compact")).rejects.toThrow("Restart omp to clear it");
+		fakes.guests[0]?.emit("live", [u1, a1], true);
+		await deliver(session, "steer", [], true);
+		session.removeQueued(look?.id ?? "");
+		fakes.guests[0]?.emit("live", [u1, a1, u2], false);
+		await flush();
+		// Removing the message did not release the hold: B never reached the editor that may hold the images.
+		expect(invoked).toEqual([pasteShot, submit("look")]);
+		expect(queued(session)).toEqual(["b", "steer"]);
+		expect(session.getSnapshot().strandedImages).toBe(true);
+		await restartOmp(session);
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		expect(invoked).toEqual([pasteShot, submit("look"), submit("/restart"), submit("b")]);
+	});
+
+	it("releases the hold only on a generation after the restart, and then pastes the images exactly once", async () => {
+		const session = await strandedAfterTurn("g11");
+		const typed = () => invoked.filter(call => call[0] === "composer:paste" || call[0] === "host:submit");
+		// A new room without a restart (a new session, say) keeps the editor, so the hold stays.
+		sendHost({ link: "L2", tui: tui(0), generation: 2 });
+		fakes.guests.at(-1)?.emit("live", [u1], false);
+		await deliver(session, "c", [], false);
+		await flush();
+		expect(typed()).toEqual([pasteShot, submit("look")]);
+
+		// A restart that failed to type keeps the hold, even through a later room change.
+		failOnce("host:submit", "pty closed");
+		await expect(session.restart()).rejects.toThrow("pty closed");
+		sendHost({ link: "L3", tui: tui(0), generation: 3 });
+		fakes.guests.at(-1)?.emit("live", [u1], false);
+		await flush();
+		expect(session.getSnapshot().strandedImages).toBe(true);
+
+		// Updates within the generation /restart was typed in keep it too, during and after the write.
+		const write = Promise.withResolvers<null>();
+		respond = channel => (channel === "host:submit" ? write.promise : undefined);
+		const restarting = session.restart();
+		await flush();
+		sendHost({ link: "L3", tui: tui(0), generation: 3 });
+		await flush();
+		respond = null;
+		write.resolve(null);
+		await restarting;
+		sendHost({ link: "L3", tui: tui(0), generation: 3 });
+		await flush();
+		expect(session.getSnapshot().strandedImages).toBe(true);
+		expect(typed()).toEqual([pasteShot, submit("look"), submit("/restart"), submit("/restart")]);
+
+		// The restarted omp's room is the next generation: its editor is empty, so A goes with one fresh paste.
+		sendHost({ link: "L4", tui: tui(0), generation: 4 });
+		await flush();
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		expect(typed()).toEqual([pasteShot, submit("look"), submit("/restart"), submit("/restart"), pasteShot, submit("look")]);
+		expect(queued(session)).toEqual(["b", "c"]);
+		// B waits for omp's turn for A, then goes.
+		fakes.guests.at(-1)?.emit("live", [u1], true);
+		fakes.guests.at(-1)?.emit("live", [u1, u2, a1], false);
+		await flush();
+		expect(invoked.at(-1)).toEqual(submit("b"));
+	});
+
+	it("keeps a composer message whose submit failed after its paste in the queue until omp restarts", async () => {
+		failOnce("host:submit", "pty closed");
+		const session = idle("g13");
+		await deliver(session, "look", [shot], false);
+		expect(queued(session)).toEqual(["look"]);
+		await deliver(session, "next", [], false);
+		await flush();
+		expect(invoked).toEqual([pasteShot, submit("look")]);
+		await restartOmp(session);
+		expect(invoked).toEqual([pasteShot, submit("look"), submit("/restart"), pasteShot, submit("look")]);
+		expect(queued(session)).toEqual(["next"]);
+
+		// Without a paste nothing can be left in omp, so the composer gets the message back.
+		failOnce("host:submit", "pty closed");
+		const plain = idle("g14");
+		await expect(deliver(plain, "hi", [], false)).rejects.toThrow("pty closed");
+		expect(queued(plain)).toEqual([]);
+		expect(plain.getSnapshot().strandedImages).toBe(false);
+	});
+
+	it("waits for the turn of a message sent while idle, even after omp records its user entry", async () => {
+		const session = idle("g18");
+		await deliver(session, "a", [], false);
+		await deliver(session, "b", [], false);
+		fakes.guests[0]?.emit("live", [u1, u2], false);
+		await flush();
+		expect(invoked).toEqual([submit("a")]);
+		expect(queued(session)).toEqual(["b"]);
+		fakes.guests[0]?.emit("live", [u1, u2], true);
+		await flush();
+		expect(invoked).toEqual([submit("a")]);
+		fakes.guests[0]?.emit("live", [u1, u2, a1], false);
+		await flush();
+		expect(invoked).toEqual([submit("a"), submit("b")]);
+	});
+
+	it("puts a message back in its place when Send now fails, and rejects with the reason", async () => {
+		const session = working("g15");
+		await deliver(session, "a", [], false);
+		await deliver(session, "b", [], false);
+		await deliver(session, "c", [], false);
+		failOnce("host:submit", "pty closed");
+		const id = session.getSnapshot().queue[1]?.id ?? "";
+		await expect(session.sendNow(id)).rejects.toThrow("pty closed");
+		expect(queued(session)).toEqual(["a", "b", "c"]);
+	});
+
+	it("puts a slash command back in its place when Send now can't type it, and rejects with the reason", async () => {
+		setSlashDelivery(async () => {
+			throw new Error("omp shows a menu");
+		});
+		const session = working("g16");
+		await deliver(session, "a", [], false);
+		await session.send("/fast on");
+		await deliver(session, "c", [], false);
+		const id = session.getSnapshot().queue[1]?.id ?? "";
+		await expect(session.sendNow(id)).rejects.toThrow("omp shows a menu");
+		expect(queued(session)).toEqual(["a", "/fast on", "c"]);
+	});
+
+	it("leaves exactly one copy, the caller's, when omp fails to start", async () => {
+		respond = channel => (channel === "host:start" ? Promise.reject(new Error("omp is missing")) : undefined);
+		const session = new SessionController({ tabId: "g17", projectPath: "/p", sessionFile: null });
+		await expect(deliver(session, "hi", [shot], false)).rejects.toThrow("omp is missing");
+		expect(session.getSnapshot().queue).toEqual([]);
 	});
 });

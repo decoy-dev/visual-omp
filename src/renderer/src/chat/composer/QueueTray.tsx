@@ -1,15 +1,17 @@
 /**
  * Messages waiting for omp to finish its current reply (DESIGN §3.6), in a tray tucked on top of the
  * composer card so they read as the next things omp gets: send one now (steers the running turn), edit
- * it inline, remove it, or drag rows to change the order. Shows at most three rows; the rest collapse
- * into "N more". The tray also carries the chip that points at an unanswered omp question.
+ * its text inline, remove it, or drag rows to change the order. A message with images carries a chip
+ * with their count, and its images go with it. Shows at most three rows; the rest collapse into
+ * "N more". The tray also carries the chip that points at an unanswered omp question, and the notice
+ * with "Restart omp" while omp's message box may still hold a failed message's images.
  */
-import { DotsSixVertical, Hourglass, PaperPlaneRight, PencilSimple, Question, X } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, DotsSixVertical, Hourglass, ImageSquare, PaperPlaneRight, PencilSimple, Question, Warning, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type DragEvent, type KeyboardEvent, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { QueuedMessage, SessionController } from "../../state/session";
-import { Button, cn, duration, ease, Expand, IconButton, spring, useMotionReduced } from "../../ui";
+import { Button, Chip, cn, duration, ease, Expand, IconButton, spring, toast, useMotionReduced } from "../../ui";
 
 const VISIBLE_ROWS = 3;
 
@@ -18,6 +20,8 @@ interface QueueTrayProps {
 	queue: readonly QueuedMessage[];
 	/** Pending omp question (reqId) not yet answered. */
 	questionId: number | null;
+	/** omp's message box may still hold images from a message that didn't send (`SessionView.strandedImages`). */
+	strandedImages: boolean;
 }
 
 /** Bring the question card into view and put focus on its first control. */
@@ -34,7 +38,7 @@ function revealQuestion(reqId: number, reduced: boolean): void {
  * The tray stays mounted in the composer and opens or closes itself. After the last queued message leaves, the
  * section is held open until that row's exit animation finishes, then collapses.
  */
-export function QueueTray({ session, queue, questionId }: QueueTrayProps) {
+export function QueueTray({ session, queue, questionId, strandedImages }: QueueTrayProps) {
 	const { t } = useTranslation("composer");
 	const [expanded, setExpanded] = useState(false);
 	const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
@@ -51,11 +55,24 @@ export function QueueTray({ session, queue, questionId }: QueueTrayProps) {
 	const count = shownCount.current;
 	const rows = expanded ? queue : queue.slice(0, VISIBLE_ROWS);
 	const hidden = queue.length - rows.length;
+	// "Restart omp" stays disabled from the click until the restart clears the hold, or fails.
+	const [restarting, setRestarting] = useState(false);
+	if (restarting && !strandedImages) setRestarting(false);
+
+	const restart = () => {
+		setRestarting(true);
+		session.restart().catch((error: unknown) => {
+			setRestarting(false);
+			toast({ tone: "err", message: t("queue.restartFailed"), description: error instanceof Error ? error.message : String(error) });
+		});
+	};
 
 	const commitEdit = () => {
 		if (!editing) return;
 		const text = editing.text.trim();
-		if (text) session.editQueued(editing.id, text);
+		// Clearing the text of a message with images keeps the images queued on their own.
+		const images = queue.find(item => item.id === editing.id)?.images.length ?? 0;
+		if (text || images > 0) session.editQueued(editing.id, text);
 		else session.removeQueued(editing.id);
 		setEditing(null);
 	};
@@ -91,7 +108,7 @@ export function QueueTray({ session, queue, questionId }: QueueTrayProps) {
 	};
 
 	return (
-		<Expand open={held || questionId !== null}>
+		<Expand open={held || questionId !== null || strandedImages}>
 			<div className="mx-3 rounded-t-lg border border-b-0 border-border-strong bg-inset">
 			<Expand open={questionId !== null}>
 				<div className="flex items-center gap-2 px-3 pt-2 pb-1.5">
@@ -106,6 +123,22 @@ export function QueueTray({ session, queue, questionId }: QueueTrayProps) {
 						{t("question.chip")}
 					</button>
 					<span className="text-xs text-fg-faint">{t("question.hint")}</span>
+				</div>
+			</Expand>
+			<Expand open={strandedImages}>
+				<div role="status" className="flex items-center gap-2 px-3 pt-2 pb-1.5">
+					<Warning weight="fill" className="size-3.5 shrink-0 text-warn" aria-hidden />
+					<p className="min-w-0 flex-1 text-xs text-fg-muted">{t("queue.stranded")}</p>
+					<Button
+						size="sm"
+						variant="secondary"
+						icon={<ArrowCounterClockwise />}
+						className="h-6 shrink-0 px-2"
+						disabled={restarting}
+						onClick={restart}
+					>
+						{t("queue.restart")}
+					</Button>
 				</div>
 			</Expand>
 			<Expand open={held}>
@@ -170,6 +203,15 @@ export function QueueTray({ session, queue, questionId }: QueueTrayProps) {
 										>
 											<DotsSixVertical weight="bold" className="size-3.5" aria-hidden />
 										</button>
+										{item.images.length > 0 && (
+											// A narrow composer shows only the count, so the message text keeps some room.
+											<Chip icon={<ImageSquare />} title={item.images.map(image => image.name).join("\n")} className="h-5 px-2">
+												<span className="@max-[28rem]/composer:sr-only">{t("queue.images", { count: item.images.length })}</span>
+												<span aria-hidden className="hidden @max-[28rem]/composer:inline">
+													{item.images.length}
+												</span>
+											</Chip>
+										)}
 										{editing?.id === item.id ? (
 											<input
 												// biome-ignore lint/a11y/noAutofocus: inline edit opens on explicit user action.
@@ -192,9 +234,20 @@ export function QueueTray({ session, queue, questionId }: QueueTrayProps) {
 											icon={<PaperPlaneRight />}
 											className="h-6 px-2 text-accent"
 											title={t("queue.sendNowTip")}
-											onClick={() => void session.sendNow(item.id)}
+											// Nothing may be typed into omp until it restarts (the notice above says why).
+											disabled={strandedImages}
+											onClick={() =>
+												session.sendNow(item.id).catch((error: unknown) =>
+													toast({
+														tone: "err",
+														message: t("queue.sendFailed"),
+														description: error instanceof Error ? error.message : String(error),
+													}),
+												)
+											}
 										>
-											{t("queue.sendNow")}
+											{/* A narrow composer keeps only the icon, so the message text keeps its width. */}
+											<span className="@max-[28rem]/composer:sr-only">{t("queue.sendNow")}</span>
 										</Button>
 										<IconButton
 											size="sm"

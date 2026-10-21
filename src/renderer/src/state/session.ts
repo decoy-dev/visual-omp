@@ -3,18 +3,89 @@
  *
  * A chat starts as a read-only view of its saved file (if any). The first time the user interacts,
  * it launches a hidden omp (resuming that file) through main's SessionHost, then mirrors omp's
- * live collab stream through the vendored GuestClient. Messages sent while omp is working wait in
- * an app-side queue the user can edit; they go out one at a time when omp yields, or immediately
- * (steering the current turn) with "Send now".
+ * live collab stream through the vendored GuestClient. Messages sent while omp is busy (see `busy`)
+ * go to an app-side queue the user can edit, images included; they go out one at a time, each after
+ * omp acknowledged the one before, or immediately (steering the current turn) with "Send now".
  */
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { FollowState, HostState, SessionOwnership } from "@shared/ipc";
+import type { Attachment } from "../chat/composer/drafts";
+import { imagePathsText } from "../chat/composer/send";
 import { GuestClient, type GuestSnapshot } from "../collab/lib/client";
 import { extendSessionHistory, parseSessionHistory, type SessionHistory } from "./history";
 
 export interface QueuedMessage {
 	id: string;
+	/** Message text; empty for a message that is only images. */
 	text: string;
+	/** Images omp attaches with the text, in the order they were added. */
+	images: readonly Attachment[];
+}
+
+/** A shell or Python line omp runs itself, without a model turn, and the result entry it appends for it. */
+interface LocalRun {
+	role: "bashExecution" | "pythonExecution";
+	/** The entry's `command` (shell) or `code` (Python), as omp parses it from the line. */
+	source: string;
+}
+
+/**
+ * Recognise a line omp runs itself, following omp's input-controller.ts: `!cmd` and `!!cmd` run `cmd` in
+ * the shell; `$ code` and `$$ code` (the sigil followed by whitespace) run `code` in Python. omp records the
+ * result as a message entry with role `bashExecution` (`command`) or `pythonExecution` (`code`).
+ */
+function localRun(text: string): LocalRun | null {
+	const shell = /^!!?/.exec(text);
+	if (shell) {
+		const source = text.slice(shell[0].length).trim();
+		return source ? { role: "bashExecution", source } : null;
+	}
+	const python = /^\$\$?(?=\s)/.exec(text);
+	if (python) {
+		const source = text.slice(python[0].length).trim();
+		return source ? { role: "pythonExecution", source } : null;
+	}
+	return null;
+}
+
+/** True when `entry` is the result omp appended for `run`. */
+function isRunResult(entry: SessionEntry, run: LocalRun): boolean {
+	if (entry.type !== "message") return false;
+	// The wire types list only the rendered roles; omp also replicates its shell and Python result messages.
+	const message = entry.message as unknown as { role: string; command?: string; code?: string };
+	return message.role === run.role && (run.role === "bashExecution" ? message.command : message.code) === run.source;
+}
+
+/**
+ * What a message delivered into omp waits for before the next one may go (see `#awaitAck`), all within
+ * the room `room`: omp starts a turn for it (a turn start after `turns`), or, for a shell or Python line,
+ * omp appends that line's result entry after the first `entries` entries. `steered`: omp was running a
+ * turn when the message was typed, so the turn may take it in and end without a new one; omp's user
+ * entry for it then acknowledges it too.
+ */
+interface Acknowledgement {
+	room: number;
+	turns: number;
+	entries: number;
+	run: LocalRun | null;
+	steered: boolean;
+}
+
+/** A delivery failed; `pasted` is true when the images were pasted into omp's editor before it did. */
+class DeliveryFailure extends Error {
+	constructor(
+		readonly reason: unknown,
+		readonly pasted: boolean,
+	) {
+		super(reason instanceof Error ? reason.message : String(reason));
+	}
+}
+
+/** Thrown while omp's editor may still hold images from a message that didn't send (see `strandedImages`). */
+class StrandedImagesError extends Error {
+	constructor() {
+		super("omp's message box may still hold images from a message that didn't send. Restart omp to clear it.");
+	}
 }
 
 export type SessionMode = "history" | "starting" | "live" | "reconnecting" | "exited";
@@ -47,6 +118,12 @@ export interface SessionView {
 	 * come from the current room.
 	 */
 	carryover: readonly SessionEntry[] | null;
+	/**
+	 * A message's images were pasted into omp's editor but its text failed to submit, so the images may
+	 * still be there. Nothing is typed into omp until omp restarts (`restart`) or stops, which empties the
+	 * editor; the queue tray offers the restart.
+	 */
+	strandedImages: boolean;
 	error: string | null;
 }
 
@@ -78,10 +155,11 @@ let nextQueueId = 0;
  * (`features/session-tools/typed.ts` registers it): the app's routing first, so guarded commands never
  * reach omp and native ones open their screen, else typed into omp with its printed result captured.
  * Resolves once omp is done with it; the queue then continues. Rejects when the line could not be typed
- * (it goes back to the front of the queue); one that found omp's own screen up holds the queue
- * (`holdQueue`) until the screen goes.
+ * (it goes back to its place in the queue); one that found omp's own screen up holds the queue
+ * (`holdQueue`) until the screen goes. `report`: show other failures itself; false for Send now, whose
+ * caller shows the failure.
  */
-type SlashDelivery = (session: SessionController, line: string) => Promise<void>;
+type SlashDelivery = (session: SessionController, line: string, options: { report: boolean }) => Promise<void>;
 let slashDelivery: SlashDelivery | null = null;
 
 export function setSlashDelivery(deliver: SlashDelivery): void {
@@ -102,10 +180,29 @@ export class SessionController {
 	#view: SessionView;
 	/** Queued slash commands handed to `slashDelivery` and not yet done (see `#deliverSlash`). */
 	#slashDeliveries = 0;
-	/** Reasons the queue must not drain yet (omp shows a screen of its own); see `holdQueue`. */
+	/** Reasons the queue must not drain yet (omp shows a screen of its own, a typed command runs); see `holdQueue`. */
 	#queueHolds = 0;
 	/** A hold for omp's full-screen menu is in place. */
 	#overlayHold = false;
+	/** Messages and commands being written into omp's editor right now (`#deliverMessage`, `command`). */
+	#writing = 0;
+	/** The latest write into omp's editor; the next one starts after it, so two messages never interleave. */
+	#lastWrite: Promise<void> = Promise.resolve();
+	/** A message went to an idle omp and omp has not acknowledged it yet; nothing else drains meanwhile. */
+	#awaiting: Acknowledgement | null = null;
+	/** Turns seen starting (working edges), so an acknowledgement that arrived mid-write is not missed. */
+	#turnStarts = 0;
+	/**
+	 * Counts omp rooms (a new collab room, or omp stopping): a write that finishes in a later room than it
+	 * started in can't be acknowledged by the room's counters, so it waits for nothing.
+	 */
+	#room = 0;
+	/**
+	 * While `strandedImages` holds: `restartFrom` is the host generation when `restart` began typing /restart
+	 * (null until then, or after that attempt failed). Only a later generation clears the hold, because omp
+	 * also opens new rooms without restarting (a new session), and those keep the editor.
+	 */
+	#strandedSince: { restartFrom: number | null } | null = null;
 	#resolvingFile = false;
 	/** omp launch flags for the first start only (Claude Code / Codex import opens omp's picker). */
 	#extraArgs: string[];
@@ -149,6 +246,7 @@ export class SessionController {
 			ownerUnverified: false,
 			displayLeaf: null,
 			carryover: null,
+			strandedImages: false,
 			error: null,
 		};
 	}
@@ -357,8 +455,13 @@ export class SessionController {
 		if (this.#disposed) return;
 		if (host.sessionFile) this.#sessionFile = host.sessionFile;
 		if (host.phase === "exited") {
+			// Nothing typed into the omp that stopped is coming back to acknowledge itself, and its editor is gone:
+			// the next omp starts with an empty one.
+			this.#room++;
+			this.#awaiting = null;
+			this.#strandedSince = null;
 			this.#closeGuest();
-			this.#set({ host, mode: "exited", working: false, error: host.error });
+			this.#set({ host, mode: "exited", working: false, strandedImages: false, error: host.error });
 			this.#emit({ kind: "exited", code: host.exitCode });
 			return;
 		}
@@ -366,12 +469,25 @@ export class SessionController {
 		const mode: SessionMode =
 			host.phase === "live" ? "live" : host.phase === "restarting" ? "reconnecting" : this.#guest ? "reconnecting" : "starting";
 		this.#set({ host, mode, error: host.error });
+		const restartFrom = this.#strandedSince?.restartFrom;
+		if (restartFrom != null && host.generation > restartFrom) {
+			// omp restarted as `restart` asked: its editor starts empty. The queue continues once the new room has synced.
+			this.#strandedSince = null;
+			this.#set({ strandedImages: false });
+			this.whenLive().then(
+				() => this.#resumeQueue(),
+				() => undefined,
+			);
+		}
 	}
 
 	#openGuest(link: string): void {
 		if (this.#disposed) return;
 		// The new room shows nothing until its snapshot arrives; keep the current entries on screen meanwhile.
 		const carryover = liveEntries(this.#view);
+		// The new room counts entries and turns afresh, so a wait begun in the old one can't be acknowledged.
+		this.#room++;
+		this.#awaiting = null;
 		this.#closeGuest();
 		this.#guestLink = link;
 		const guest = new GuestClient(link, "visual-omp");
@@ -419,7 +535,10 @@ export class SessionController {
 		const patch: Partial<SessionView> = { guest: snapshot, working, ...(appended ? { displayLeaf: null } : {}) };
 		// A turn seen starting on a synced mirror gets a start time; one already under way when the mirror joined or
 		// reconnected keeps none.
-		if (working && !wasWorking) patch.workingSince = this.#view.guest?.phase === "live" ? Date.now() : null;
+		if (working && !wasWorking) {
+			patch.workingSince = this.#view.guest?.phase === "live" ? Date.now() : null;
+			this.#turnStarts++;
+		}
 		// The new room has synced, even to an empty chat after /new: stop showing the previous room's entries.
 		if (this.#view.carryover && liveGuest({ ...this.#view, ...patch })) patch.carryover = null;
 		this.#set(patch);
@@ -428,6 +547,11 @@ export class SessionController {
 			void this.#resolveSessionFile();
 		}
 		if (snapshot.uiRequest && snapshot.uiRequest.reqId !== hadRequest) this.#emit({ kind: "needsInput" });
+		if (this.#awaiting && this.#acknowledged(this.#awaiting)) {
+			this.#awaiting = null;
+			// A shell or Python line finished without a turn: no turn end will move the queue on.
+			if (!working) this.#resumeQueue();
+		}
 		if (wasWorking && !working) {
 			if (this.#view.queue.length > 0) this.#resumeQueue();
 			else this.#emit({ kind: "finished" });
@@ -441,7 +565,7 @@ export class SessionController {
 
 	/**
 	 * Record that input is about to go to omp. Every delivery path calls this before its first
-	 * await; paths outside the controller (image paste, the terminal sheet) call it themselves.
+	 * await; paths outside the controller (the terminal sheet) call it themselves.
 	 */
 	markInput(): void {
 		if (this.#inputSent) return;
@@ -449,27 +573,86 @@ export class SessionController {
 		this.#set({});
 	}
 
-	/** Send a message; queued while omp works or starts, delivered when it yields. */
-	async send(text: string): Promise<void> {
-		const trimmed = text.trim();
-		if (!trimmed) return;
+	/**
+	 * A message sent now must wait its turn in the queue: omp is not running yet or runs a turn, messages
+	 * wait, something is being typed into omp, a message sent to omp has not been acknowledged, a slash
+	 * command is being delivered or still runs (a hold), omp's own full-screen menu is open, or omp's editor
+	 * may still hold a failed message's images (`strandedImages`).
+	 */
+	get busy(): boolean {
+		const view = this.#view;
+		return (
+			view.mode !== "live" ||
+			view.working ||
+			view.queue.length > 0 ||
+			view.strandedImages ||
+			this.#writing > 0 ||
+			this.#awaiting !== null ||
+			this.#slashDeliveries > 0 ||
+			this.#queueHolds > 0 ||
+			(view.host?.tui?.overlays ?? 0) > 0
+		);
+	}
+
+	/**
+	 * Send a message and its images. It joins the end of the queue while omp is busy (see `busy`) and goes
+	 * out in order through `#resumeQueue`; otherwise omp gets it at once.
+	 */
+	async send(text: string, images: readonly Attachment[] = []): Promise<void> {
+		const message = { text: text.trim(), images: [...images] };
+		if (!message.text && message.images.length === 0) return;
 		this.markInput();
-		if (this.#view.working || this.#view.mode !== "live" || this.#view.queue.length > 0) {
-			this.#set({ queue: [...this.#view.queue, { id: `q${nextQueueId++}`, text: trimmed }] });
-			await this.whenLive();
+		if (this.busy) {
+			const item: QueuedMessage = { id: `q${nextQueueId++}`, ...message };
+			this.#set({ queue: [...this.#view.queue, item] });
+			try {
+				await this.whenLive();
+			} catch (error) {
+				// omp did not start: the caller gets the message back (the composer restores its draft), so it leaves the queue.
+				if (!this.#disposed) this.#set({ queue: this.#view.queue.filter(entry => entry.id !== item.id) });
+				throw error;
+			}
 			this.#resumeQueue();
 			return;
 		}
-		await this.#submit(trimmed, "steer");
+		await this.#deliverDirect(message);
 	}
 
-	/** Deliver a queued message right away, steering the current turn. */
+	/**
+	 * Deliver a message and its images right away, steering the turn omp is running ("Send now"). While
+	 * omp's editor may still hold another message's images it queues instead, so it can't carry them.
+	 */
+	async steer(text: string, images: readonly Attachment[] = []): Promise<void> {
+		if (this.#view.strandedImages) return this.send(text, images);
+		const message = { text: text.trim(), images: [...images] };
+		if (!message.text && message.images.length === 0) return;
+		this.markInput();
+		await this.whenLive();
+		await this.#deliverDirect(message);
+	}
+
+	/**
+	 * Deliver a queued message right away, steering the current turn. When it can't be delivered it goes
+	 * back to its place in the queue and the promise rejects with the reason. Refused while omp's editor
+	 * may still hold a failed message's images.
+	 */
 	async sendNow(id: string): Promise<void> {
-		const item = this.#view.queue.find(entry => entry.id === id);
+		const index = this.#view.queue.findIndex(entry => entry.id === id);
+		const item = this.#view.queue[index];
 		if (!item) return;
+		if (this.#view.strandedImages) throw new StrandedImagesError();
 		this.#set({ queue: this.#view.queue.filter(entry => entry.id !== id) });
-		if (slashDelivery && item.text.startsWith("/")) this.#deliverSlash(item);
-		else await this.#submit(item.text, "steer");
+		if (this.#isSlash(item)) {
+			await this.#deliverSlash(item, index, false);
+			return;
+		}
+		try {
+			await this.#deliverMessage(item);
+		} catch (error) {
+			const failure = error instanceof DeliveryFailure ? error : new DeliveryFailure(error, false);
+			this.#requeue(item, index);
+			throw failure.reason;
+		}
 	}
 
 	editQueued(id: string, text: string): void {
@@ -489,11 +672,26 @@ export class SessionController {
 		this.#set({ queue });
 	}
 
-	/** Type an omp slash command (e.g. `/restart`, `/compact focus on tests`) into the real TUI. */
+	/**
+	 * Type an omp slash command (e.g. `/restart`, `/compact focus on tests`) into the real TUI. While it is
+	 * typed, sends queue and the queue stays put; the caller holds the queue for longer when the command
+	 * keeps running (see `holdQueue`). A command does not move the queue on when it is done, because it may
+	 * have started a turn the app can't foresee: that turn's end, the caller's hold, the next send or a hold's
+	 * end does. Refused while omp's editor may still hold a failed message's images.
+	 */
 	async command(line: string): Promise<void> {
+		await this.#command(line, false);
+	}
+
+	/** `beforeSubmit` runs inside the serialized write, right before the line is typed. */
+	async #command(line: string, overStrandedImages: boolean, beforeSubmit?: () => void): Promise<void> {
 		this.markInput();
-		await this.whenLive();
-		await this.#submit(line, "steer");
+		await this.#write(async () => {
+			if (this.#view.strandedImages && !overStrandedImages) throw new StrandedImagesError();
+			await this.whenLive();
+			beforeSubmit?.();
+			await this.#submit(line, "steer");
+		});
 	}
 
 	/** Press keys in omp's TUI (tmux-style tokens: "escape", "down down enter"). */
@@ -528,7 +726,18 @@ export class SessionController {
 			await this.ensureLive();
 			return;
 		}
-		await this.command("/restart");
+		// The restart empties omp's editor, so it is the one thing typed while a message's images may be stranded
+		// there. The hold ends only on a generation newer than the one omp had when /restart was typed (see
+		// `#onHostState`); updates in that generation, and a restart that failed to type, keep it.
+		const markRestart = () => {
+			if (this.#strandedSince) this.#strandedSince.restartFrom = this.#view.host?.generation ?? 0;
+		};
+		try {
+			await this.#command("/restart", true, markRestart);
+		} catch (error) {
+			if (this.#strandedSince) this.#strandedSince.restartFrom = null;
+			throw error;
+		}
 	}
 
 	/**
@@ -568,32 +777,177 @@ export class SessionController {
 		await window.vomp.invoke("host:submit", hostId, text, mode);
 	}
 
+	/**
+	 * Run one write into omp's editor after the writes before it have finished, so two messages never
+	 * interleave (one's images pasted into the other). Sends queue and the queue stays put meanwhile.
+	 */
+	async #write<T>(work: () => Promise<T>): Promise<T> {
+		this.#writing++;
+		const previous = this.#lastWrite;
+		const { promise, resolve } = Promise.withResolvers<void>();
+		this.#lastWrite = promise;
+		try {
+			await previous;
+			return await work();
+		} finally {
+			this.#writing--;
+			resolve();
+		}
+	}
+
+	/**
+	 * Type one message into omp's editor and submit it. Images travel the way a terminal delivers a file
+	 * drag: a bracketed paste of their escaped paths makes omp attach them, and omp holds the keys that
+	 * follow until the images are loaded. Refused (before anything is typed) while omp's editor may still
+	 * hold a failed message's images. Once the write is done, `#settle` decides what the queue waits for.
+	 * Rejects with a `DeliveryFailure` that says whether the images were pasted before it failed.
+	 */
+	async #deliverMessage(item: { text: string; images: readonly Attachment[] }): Promise<void> {
+		this.markInput();
+		let pasted = false;
+		let ack: Acknowledgement;
+		try {
+			ack = await this.#write(async () => {
+				if (this.#view.strandedImages) throw new StrandedImagesError();
+				const hostId = this.hostId;
+				if (!hostId) throw new Error("omp is not running");
+				const before: Acknowledgement = {
+					room: this.#room,
+					turns: this.#turnStarts,
+					entries: this.#view.guest?.entries.length ?? 0,
+					run: localRun(item.text),
+					steered: this.#view.working,
+				};
+				if (item.images.length > 0) {
+					await window.vomp.invoke("composer:paste", hostId, imagePathsText(item.images.map(image => image.path)));
+					pasted = true;
+				}
+				// Without text, Enter alone submits the images: an empty paste would make omp attach the clipboard.
+				if (item.text) await this.#submit(item.text, "steer");
+				else await window.vomp.invoke("host:write", hostId, "\r");
+				return before;
+			});
+		} catch (error) {
+			// The paste got through but the submit did not: the images may sit in omp's editor, and anything typed
+			// next would carry them. Hold everything until omp restarts or stops (see `strandedImages`).
+			if (pasted) this.#strandImages();
+			throw new DeliveryFailure(error, pasted);
+		}
+		this.#settle(ack);
+	}
+
+	#strandImages(): void {
+		if (this.#disposed || this.#view.strandedImages) return;
+		this.#strandedSince = { restartFrom: null };
+		this.#set({ strandedImages: true });
+	}
+
+	/**
+	 * Deliver a message from the composer at once. When it fails after its images were pasted, sending it
+	 * again from the composer could attach them twice, so it waits first in the queue instead (going out
+	 * with a fresh paste after omp restarts), and the promise resolves. Any other failure rejects with the
+	 * reason, and the caller gets the message back.
+	 */
+	async #deliverDirect(message: { text: string; images: readonly Attachment[] }): Promise<void> {
+		try {
+			await this.#deliverMessage(message);
+		} catch (error) {
+			if (!(error instanceof DeliveryFailure)) throw error;
+			if (!error.pasted) throw error.reason;
+			console.error("Could not submit a message after pasting its images", error.reason);
+			this.#requeue({ id: `q${nextQueueId++}`, ...message }, 0);
+		}
+	}
+
+	/**
+	 * A write into omp finished: decide what the queue waits for. A write that began in an earlier room
+	 * (omp stopped or moved meanwhile) waits for nothing: that room's counters can't acknowledge it, and
+	 * the next send, turn end or hold end moves the queue. A message that steered the turn still running
+	 * waits for that turn's end. Otherwise (omp idle, including when the turn ended while it was typed)
+	 * it waits for omp to acknowledge it, or the queue moves on at once when omp already did.
+	 */
+	#settle(ack: Acknowledgement): void {
+		if (ack.room !== this.#room) return;
+		if (this.#view.working && !this.#acknowledged(ack)) return;
+		this.#awaitAck(ack);
+	}
+
+	/**
+	 * Nothing else drains until omp acknowledges the message (`#acknowledged`). There is no time limit, so a
+	 * message omp never acknowledges keeps the queue waiting rather than sending the next one into it; Send
+	 * now still delivers a queued message.
+	 */
+	#awaitAck(ack: Acknowledgement): void {
+		if (!this.#acknowledged(ack)) {
+			this.#awaiting = ack;
+			return;
+		}
+		if (!this.#view.working) this.#resumeQueue();
+	}
+
+	/**
+	 * omp acknowledged the message: a turn started after it was typed, or for a shell or Python line omp
+	 * appended that line's result. A message that steered a running turn also counts once omp records it
+	 * as a user message, since the turn may take it in and end without starting another; a message sent to
+	 * an idle omp waits for its own turn.
+	 */
+	#acknowledged(ack: Acknowledgement): boolean {
+		if (ack.room !== this.#room) return false;
+		if (this.#turnStarts > ack.turns) return true;
+		const added = this.#view.guest?.entries.slice(ack.entries) ?? [];
+		const run = ack.run;
+		if (run) return added.some(entry => isRunResult(entry, run));
+		return ack.steered && added.some(entry => entry.type === "message" && entry.message.role === "user" && !entry.message.synthetic);
+	}
+
+	/** Put `item` back at `index` (clamped) after a failed delivery. */
+	#requeue(item: QueuedMessage, index: number): void {
+		if (this.#disposed) return;
+		const queue = [...this.#view.queue];
+		queue.splice(Math.min(index, queue.length), 0, item);
+		this.#set({ queue });
+	}
+
+	/** A queued slash command goes through `slashDelivery`; with images it is a message like any other. */
+	#isSlash(item: QueuedMessage): boolean {
+		return slashDelivery !== null && item.images.length === 0 && item.text.startsWith("/");
+	}
+
 	#drainOne(): void {
 		const [next, ...rest] = this.#view.queue;
 		if (!next) return;
 		this.#set({ queue: rest });
-		if (slashDelivery && next.text.startsWith("/")) this.#deliverSlash(next);
-		else void this.#submit(next.text, "steer");
+		if (this.#isSlash(next)) {
+			// Not typed: it goes back first in line. A hold (omp's screen), the next send or a turn end brings it back.
+			this.#deliverSlash(next, 0, true).catch(() => undefined);
+			return;
+		}
+		this.#deliverMessage(next).catch((error: unknown) => {
+			const failure = error instanceof DeliveryFailure ? error : new DeliveryFailure(error, false);
+			console.error("Could not deliver a queued message", failure.reason);
+			// It goes back first in line; the next send, turn end or hold end tries again (after omp restarts, when
+			// its images were pasted).
+			this.#requeue(next, 0);
+		});
 	}
 
 	/**
-	 * Hand a queued slash line to `slashDelivery`. A command that starts no turn never brings a
-	 * working→idle edge, so the queue continues when the delivery is done.
+	 * Hand a queued slash line to `slashDelivery`. When it was not typed, the line goes back to `index` in
+	 * the queue and the promise rejects. A command that starts no turn never brings a working→idle edge, so
+	 * the queue continues when the delivery is done.
 	 */
-	#deliverSlash(item: QueuedMessage): void {
+	async #deliverSlash(item: QueuedMessage, index: number, report: boolean): Promise<void> {
 		if (!slashDelivery) return;
 		this.#slashDeliveries++;
-		slashDelivery(this, item.text).then(
-			() => {
-				this.#slashDeliveries--;
-				this.#resumeQueue();
-			},
-			() => {
-				this.#slashDeliveries--;
-				// Not typed: keep it first in line. A hold (omp's screen) or the next send or turn end brings it back.
-				if (!this.#disposed) this.#set({ queue: [item, ...this.#view.queue] });
-			},
-		);
+		try {
+			await slashDelivery(this, item.text, { report });
+		} catch (error) {
+			this.#slashDeliveries--;
+			this.#requeue(item, index);
+			throw error;
+		}
+		this.#slashDeliveries--;
+		this.#resumeQueue();
 	}
 
 	/**
@@ -612,14 +966,17 @@ export class SessionController {
 	}
 
 	/**
-	 * The one place the queue moves on its own: after a turn ends, a send, a slash delivery or a hold.
-	 * Nothing drains while omp works, a slash delivery is still in flight or a hold stands, so no item is
-	 * sent twice; with omp's full-screen menu open it holds until the menu closes instead.
+	 * The one place the queue moves on its own: after a turn ends, a send, a message's write, a slash
+	 * delivery, a hold, the acknowledgement of a shell or Python line, or omp's restart clearing stranded
+	 * images. Nothing drains while omp works, something is being typed into omp, a message sent to omp has
+	 * not been acknowledged, a slash delivery is in flight, a hold stands or omp's editor may hold a failed
+	 * message's images, so no item is sent twice and items go one at a time; with omp's full-screen menu
+	 * open it holds until the menu closes instead.
 	 */
 	#resumeQueue(): void {
 		const view = this.#view;
-		if (this.#disposed || view.queue.length === 0 || view.mode !== "live" || view.working) return;
-		if (this.#slashDeliveries > 0 || this.#queueHolds > 0) return;
+		if (this.#disposed || view.queue.length === 0 || view.mode !== "live" || view.working || view.strandedImages) return;
+		if (this.#writing > 0 || this.#awaiting !== null || this.#slashDeliveries > 0 || this.#queueHolds > 0) return;
 		if ((view.host?.tui?.overlays ?? 0) === 0) {
 			this.#drainOne();
 			return;

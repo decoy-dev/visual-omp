@@ -157,32 +157,36 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 }
 
 /**
- * Deliver a pass-through slash command. While omp works (or messages wait), the line joins the chat's
- * queue and is routed and typed when it drains; with `now` (Send now) it is typed at once, steering
- * the running turn, and still watched for a result. Otherwise it is typed now. The promise settles
- * once the line is in omp's editor; the printed result arrives in the chat later. Rejects when the
- * line could not be typed (omp shows a menu of its own, or did not start), so the caller can keep the draft.
+ * Deliver a pass-through slash command. While omp is busy (`SessionController.busy`), the line joins
+ * the end of the chat's queue and is routed and typed when it drains; with `now` (Send now) it is typed
+ * at once, steering the running turn, and still watched for a result. Otherwise it is typed now, and the
+ * chat's queue is held from this call until the command's watch ends (it printed its result, started a
+ * turn or changed the session), so a message sent meanwhile queues behind it. The promise settles once
+ * the line is in omp's editor; the printed result arrives in the chat later. Rejects when the line could
+ * not be typed (omp shows a menu of its own, or did not start), so the caller can keep the draft.
  */
 export async function sendSlashCommand(session: SessionController, line: string, options: { now?: boolean } = {}): Promise<void> {
 	const trimmed = line.trim();
 	if (!trimmed) return;
-	const view = session.getSnapshot();
-	if (!(options.now && view.working) && (view.working || view.queue.length > 0)) {
+	if (!(options.now && session.getSnapshot().working) && session.busy) {
 		await session.send(trimmed);
 		return;
 	}
-	await typeAndWatch(session, trimmed);
+	const typed = typeAndWatch(session, trimmed);
+	session.holdQueue(typed.then(({ watching }) => watching));
+	await typed;
 }
 
 // Queued slash lines (drained or sent now from the queue tray) take the same path as the composer's.
-setSlashDelivery(async (session, line) => {
+setSlashDelivery(async (session, line, { report }) => {
 	let typed: { watching: Promise<void> } | null;
 	try {
 		typed = (await routeSlash(session, line)) ? null : await typeAndWatch(session, line.trim());
 	} catch (error) {
 		// omp shows a screen of its own: the line stays queued and goes once the screen closes.
 		if (error instanceof OmpBusyError) session.holdQueue(editorBack(session));
-		else reportFailure(error);
+		// Send now from the tray shows its own notification for the failure.
+		else if (report) reportFailure(error);
 		throw error;
 	}
 	await typed?.watching;
