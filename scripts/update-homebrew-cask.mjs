@@ -1,5 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
+import { offersNewer } from "./stable-channel.mjs";
 
 const [version, arm64Sha, x64Sha] = process.argv.slice(2);
 if (!version || !/^[0-9A-Za-z.+-]+$/.test(version)) throw new Error("Expected a safe release version");
@@ -7,7 +8,10 @@ for (const [arch, sha] of [["arm64", arm64Sha], ["x64", x64Sha]]) {
 	if (!sha || !/^[a-f0-9]{64}$/i.test(sha)) throw new Error(`Expected a SHA-256 checksum for ${arch}`);
 }
 
-const cask = `cask "visual-omp" do
+const cask = "Casks/visual-omp.rb";
+if (await offersNewer(cask, version, (text) => /^  version "([^"\r\n]+)"[ \t]*\r?$/m.exec(text)?.[1])) process.exit(0);
+
+const contents = `cask "visual-omp" do
   version "${version}"
   sha256 "${arm64Sha.toLowerCase()}"
 
@@ -33,6 +37,6 @@ const cask = `cask "visual-omp" do
 end
 `;
 
-const output = join(process.cwd(), "Casks", "visual-omp.rb");
+const output = join(process.cwd(), cask);
 await mkdir(dirname(output), { recursive: true });
-await writeFile(output, cask, "utf8");
+await writeFile(output, contents, "utf8");

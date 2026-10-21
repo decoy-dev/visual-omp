@@ -108,7 +108,8 @@ jobs:
           prerelease: ${{ needs.verify.outputs.prerelease == 'true' }}
           files: release-assets/*
       # The cask and the Scoop manifest are the stable channel: prereleases never reach
-      # `brew upgrade` or `scoop update`.
+      # `brew upgrade` or `scoop update`. Each script leaves its file alone when it already offers
+      # a newer version (scripts/stable-channel.mjs), so an older tag never moves users back.
       - name: Update Homebrew cask and Scoop manifest from published installers
         if: needs.verify.outputs.prerelease != 'true'
         env:
