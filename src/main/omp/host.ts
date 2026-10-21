@@ -25,6 +25,7 @@ import { runOmpJson } from "./cli";
 import { ompPath } from "./locate";
 import { ompStartError } from "./refused";
 import { LoopbackRelay } from "./relay";
+import { findRoomHost } from "./room-host";
 import { findSessionFile, onSessionsChanged } from "./sessions";
 import { TuiDebugClient } from "./tui-debug";
 
@@ -34,6 +35,7 @@ const CollabHosts = z.object({
 			instanceId: z.string(),
 			generation: z.number(),
 			pid: z.number(),
+			startedAt: z.number().optional(),
 			sessionId: z.string().nullable(),
 			cwd: z.string(),
 		}),
@@ -57,6 +59,7 @@ export class SessionHost {
 	#debug: TuiDebugClient | null = null;
 	#privateDir: string | null = null;
 	#roomId: string | null = null;
+	#spawnedAt = 0;
 	#focusTimer: NodeJS.Timeout | null = null;
 	#exited: Promise<void>;
 	#markExited: () => void;
@@ -108,6 +111,7 @@ export class SessionHost {
 			const childEnv: NodeJS.ProcessEnv = { ...env, OMP_SKIP_SETUP: "1", OMP_TUI_DEBUG: debugPath, PI_TUI_NATIVE: "0" };
 			delete childEnv.TERM_PROGRAM;
 			try {
+				this.#spawnedAt = Date.now();
 				this.#pty = spawn(bin, args, {
 					name: "xterm-256color",
 					cols: this.#screen.cols,
@@ -217,18 +221,25 @@ export class SessionHost {
 
 	async #resolveLink(roomId: string): Promise<void> {
 		this.#roomId = roomId;
-		const pid = this.#pty?.pid;
+		const search = {
+			pid: this.#pty?.pid,
+			spawnedAt: this.#spawnedAt,
+			relayUrl: this.#relay.url,
+			roomId,
+			ruledOut: new Set<string>(),
+			linkFor: async (instanceId: string) => CollabLink.parse(await runOmpJson(["collab", "link", instanceId, "--json"])).url,
+		};
 		for (let attempt = 0; attempt < LINK_RETRY_LIMIT && this.#roomId === roomId; attempt++) {
 			try {
 				const { hosts } = CollabHosts.parse(await runOmpJson(["collab", "list", "--json"]));
-				for (const host of hosts.filter(candidate => candidate.pid === pid)) {
-					const link = CollabLink.parse(await runOmpJson(["collab", "link", host.instanceId, "--json"]));
-					if (!link.url.includes(`/r/${roomId}.`)) continue;
+				const found = await findRoomHost(hosts, search);
+				if (found) {
+					const { host, link } = found;
 					if (this.#roomId !== roomId) return;
 					const sessionFile = host.sessionId ? await findSessionFile(host.sessionId) : null;
 					this.#update({
 						phase: "live",
-						link: link.url,
+						link,
 						generation: this.state.generation + 1,
 						sessionId: host.sessionId,
 						sessionFile: sessionFile ?? this.state.sessionFile,

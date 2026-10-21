@@ -48,7 +48,10 @@ Each SessionHost:
    the parser looks for. The user's own `config.yml` is never modified for this.
 3. When the omp host connects to the relay (`/r/<roomId>?role=host`), SessionHost resolves the
    room key with `omp collab list --json` + `omp collab link <instanceId> --json`, matching the
-   link's port and room id, and hands the control link to the renderer.
+   link's room id, and hands the control link to the renderer. The registry pid is not always the
+   spawned pid: on Windows, a `bun install -g` omp is Bun's `omp.exe` launcher, and its `bun.exe`
+   child hosts the room. So `main/omp/room-host.ts` asks hosts with the spawned pid first, then
+   hosts that connected after the spawn, and skips hosts whose link names another relay.
 4. The renderer's guest client joins the room and exposes a live snapshot (header, entries,
    streaming message, active tools, subagent progress, model/thinking/context state, pending
    `select`/`editor` UI requests) through `useSyncExternalStore`.

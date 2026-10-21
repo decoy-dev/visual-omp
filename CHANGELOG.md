@@ -4,6 +4,12 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.5.9] - 2026-10-20
+
+visual-omp 0.5.9 connects to chats on Windows when omp was installed with Bun.
+
+- On Windows, a chat no longer stays at "Starting omp…" when omp was installed with `bun install -g`. That install starts omp through Bun's `omp.exe` launcher, which runs omp in a second process, and visual-omp looked for the chat only under the launcher's process. omp's terminal worked in the terminal sheet, but the chat never connected. visual-omp now recognizes the chat by its room on the app's own relay, so it finds the chat in either process.
+
 ## [0.5.8] - 2026-10-20
 
 visual-omp 0.5.8 makes the teal behind Back in the sidebar a little darker.
