@@ -103,12 +103,12 @@ async function loadInstall(): Promise<AppInstallInfo> {
 	return install;
 }
 
-/** Checks visual-omp and omp now, bypassing main's 6-hour cache. */
+/** Checks visual-omp and omp now, bypassing main's 30-minute cache. */
 export async function checkForUpdates(): Promise<void> {
 	await Promise.all([checkApp(true), checkOmp(true), loadInstall()]);
 }
 
-/** Loads the last results (main's 6-hour cache), checking only what is stale. */
+/** Loads the last results (main's 30-minute cache), checking only what is stale. */
 export async function loadUpdates(): Promise<void> {
 	await Promise.all([checkApp(false), checkOmp(false), loadInstall()]);
 }
@@ -305,7 +305,7 @@ async function reportOutcome(): Promise<void> {
 	}
 }
 
-/** Registers the update sheet and command and listens for main's checks (main runs them every 6 hours). */
+/** Registers the update sheet and command and listens for main's checks (shortly after launch, then every 30 minutes). */
 export function installUpdateWatchers(): void {
 	sheets.register({ id: APP_UPDATE_SHEET, component: AppUpdateSheet });
 	registerCommand({

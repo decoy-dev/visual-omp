@@ -85,7 +85,7 @@ export interface AppUpdateStatus {
 	summary: string | null;
 	/** Epoch ms of the last successful GitHub fetch; 0 when it never succeeded. */
 	checkedAt: number;
-	/** True when served from the 6-hour cache without contacting GitHub. */
+	/** True when served from the 30-minute cache without contacting GitHub. */
 	fromCache: boolean;
 	/** Last fetch error (network, rate limit); the other fields then hold the last good result. */
 	error: string | null;
@@ -104,7 +104,7 @@ export interface OmpUpdateStatus {
 	packageMovedTo: string | null;
 	/** Epoch ms of the check that produced this result. */
 	checkedAt: number;
-	/** True when served from the 6-hour cache. */
+	/** True when served from the 30-minute cache. */
 	fromCache: boolean;
 	/** Why the check failed (e.g. GitHub rate limit — set GITHUB_TOKEN/GH_TOKEN, omp not installed). */
 	error: string | null;
@@ -137,8 +137,9 @@ export interface OmpUpdateRun {
 declare module "../ipc" {
 	interface IpcInvokeMap {
 		/**
-		 * Latest GitHub release vs the running app. Cached 6 hours (persisted across restarts);
-		 * `force` bypasses the cache (the "Check now" button). Never rejects: failures land in `error`.
+		 * Latest GitHub release vs the running app. A result younger than 30 minutes answers without
+		 * contacting GitHub; `force` bypasses it (the "Check now" button and every background check,
+		 * which runs shortly after launch and every 30 minutes). Never rejects: failures land in `error`.
 		 * Development builds read releases from the JSON file named by `VOMP_UPDATE_FEED` instead.
 		 */
 		"updates:app:check": { args: [force?: boolean]; result: AppUpdateStatus };
@@ -169,7 +170,7 @@ declare module "../ipc" {
 		"updates:app:quit": { args: [relaunch: boolean]; result: void };
 		/** The result of the last in-app update, once per update (the record is deleted when read). */
 		"updates:app:outcome": { args: []; result: AppUpdateOutcome | null };
-		/** `omp update --check`, cached 6 hours; `force` bypasses the cache. Never rejects. */
+		/** `omp update --check`, cached 30 minutes; `force` bypasses the cache. Never rejects. */
 		"updates:omp:check": { args: [force?: boolean]; result: OmpUpdateStatus };
 		/**
 		 * Start `omp update` (omp picks brew/bun/npm/mise/binary itself). Returns immediately with the
@@ -182,7 +183,7 @@ declare module "../ipc" {
 		"updates:omp:lastRun": { args: []; result: OmpUpdateRun | null };
 	}
 	interface IpcEventMap {
-		/** An app release check result: every fresh check, plus the cached result on the 6-hour schedule. */
+		/** An app release check result: every fresh check, including the background check at launch and every 30 minutes. */
 		"updates:app": AppUpdateStatus;
 		/** An `omp update --check` result, on the same terms as `updates:app` (and after each `omp update`). */
 		"updates:omp": OmpUpdateStatus;

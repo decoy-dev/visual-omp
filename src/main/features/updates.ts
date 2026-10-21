@@ -47,9 +47,10 @@ import {
 	trustedCachedStatus,
 } from "../services/updates";
 
-const CACHE_MS = 6 * 60 * 60 * 1000;
-/** First background check shortly after launch, so startup is not slowed by the network. */
-const FIRST_CHECK_DELAY_MS = 30_000;
+/** Background checks run this often while the app is open, and a result younger than this answers other requests. */
+const CACHE_MS = 30 * 60 * 1000;
+/** The launch check waits this long, so the network stays off the startup path. */
+const FIRST_CHECK_DELAY_MS = 10_000;
 const FETCH_TIMEOUT_MS = 20_000;
 const MAX_RUN_OUTPUT = 1024 * 1024;
 const PROGRESS_INTERVAL_MS = 100;
@@ -560,17 +561,13 @@ export function register(): void {
 		});
 	}
 
-	// Fresh results are broadcast by the checks themselves; cached ones are sent here so a window
-	// that just opened still learns about an update found earlier.
-	const scheduledCheck = async () => {
-		const [appResult, ompResult] = await Promise.all([checkApp(false), checkOmp(false)]);
-		if (appResult.fromCache) broadcast("updates:app", appResult);
-		if (ompResult.fromCache) broadcast("updates:omp", ompResult);
-	};
+	// Every background check goes to GitHub and omp, starting shortly after launch: a result saved by an
+	// earlier session never stands in for it. The checks broadcast their own results.
+	const scheduledCheck = () => void Promise.all([checkApp(true), checkOmp(true)]);
 	setTimeout(
 		() => {
-			void scheduledCheck();
-			setInterval(() => void scheduledCheck(), CACHE_MS).unref();
+			scheduledCheck();
+			setInterval(scheduledCheck, CACHE_MS).unref();
 		},
 		devFeedFile ? 3000 : FIRST_CHECK_DELAY_MS,
 	).unref();
