@@ -68,10 +68,10 @@ export function shortAgo(then: number, now: number): string {
 	return new Date(then).toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
-/** Elapsed "14s" / "2m 05s" for the working row. */
+/** Elapsed "14s" / "2m 05s" / "1h 02m" for the working row and "Worked for", like `fmtDuration` past a minute. */
 export function elapsed(ms: number): string {
 	const total = Math.max(0, Math.floor(ms / 1000));
 	const minutes = Math.floor(total / 60);
-	const seconds = total % 60;
-	return minutes > 0 ? `${minutes}m ${String(seconds).padStart(2, "0")}s` : `${seconds}s`;
+	if (minutes >= 60) return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, "0")}m`;
+	return minutes > 0 ? `${minutes}m ${String(total % 60).padStart(2, "0")}s` : `${total}s`;
 }
