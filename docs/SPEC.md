@@ -7,18 +7,21 @@ be able to use it, and it exposes the features that set omp apart from other cod
 ## Audience and platforms
 - **Audience:** public release for anyone, including non-technical users.
 - **Platforms:** macOS (Apple Silicon + Intel) and Windows.
-- **Distribution:** Homebrew cask (`brew install --cask decoy-dev/tap/visual-omp`) on macOS; NSIS
-  installer on GitHub Releases for Windows. GitHub Actions builds a release when a `v*` tag is
-  pushed and updates the Homebrew cask for stable versions (see docs/RELEASING.md). The cask
-  requires Homebrew 6.0.16 or later.
+- **Distribution:** Homebrew cask (`brew install --cask decoy-dev/tap/visual-omp`) on macOS; Scoop
+  bucket (`scoop install decoy-dev/visual-omp`, which unpacks the app from the NSIS installer
+  without running it) and the NSIS installer on GitHub Releases for Windows. GitHub Actions builds
+  a release when a `v*` tag is pushed and updates the Homebrew cask and the Scoop manifest for
+  stable versions (see docs/RELEASING.md). The cask requires Homebrew 6.0.16 or later. Installer
+  copies on Windows suggest switching to Scoop in their update window, because Scoop updates run
+  without the setup wizard.
 - **Signing:** ad-hoc signed (no Apple Developer ID). macOS can report a quarantined ad-hoc signed
   copy as damaged with no way to approve it, so the Homebrew cask removes the quarantine attribute
   from the installed app bundle after installation, upgrade or reinstallation. This bypasses the
   approval check triggered by quarantine, which the owner accepted on 2026-10-12; Homebrew still
   verifies each download against the checksum in the cask. The README documents the macOS
   *System Settings → Privacy & Security → Open Anyway* step for disk-image installs and the Windows
-  SmartScreen *More info → Run anyway* step, which can reappear after an update. Nothing else strips
-  quarantine or disables Gatekeeper.
+  SmartScreen *More info → Run anyway* step for the installer, which can reappear after an update.
+  Nothing else strips quarantine or disables Gatekeeper.
 - **License:** MIT. Code derived from oh-my-pi (MIT) is credited in `NOTICE`.
 - **Language:** English, translation-ready (all UI strings in locale files).
 - **Accessibility:** WCAG 2.2 AA: full keyboard navigation, screen-reader labels, adjustable text

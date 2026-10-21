@@ -9,10 +9,12 @@ import {
 	detectInstallMethod,
 	fetchInstaller,
 	installerAsset,
+	isScoopGlobal,
 	parseOmpUpdateCheck,
 	plistVersion,
 	redirectTarget,
 	releaseSummary,
+	scoopLayout,
 	selectLatestRelease,
 	trustedCachedStatus,
 } from "./updates";
@@ -205,7 +207,13 @@ describe("trustedCachedStatus", () => {
 });
 
 describe("detectInstallMethod", () => {
-	const mac = { platform: "darwin" as const, isPackaged: true, bundle: "/Applications/visual-omp.app", caskApps: ["/Applications/visual-omp.app"] };
+	const mac = {
+		platform: "darwin" as const,
+		isPackaged: true,
+		bundle: "/Applications/visual-omp.app",
+		caskApps: ["/Applications/visual-omp.app"],
+		scoop: false,
+	};
 
 	it("treats the bundle a cask installed as Homebrew, wherever its appdir is", () => {
 		expect(detectInstallMethod(mac)).toBe("brew");
@@ -218,11 +226,39 @@ describe("detectInstallMethod", () => {
 		expect(detectInstallMethod({ ...mac, bundle: "/Volumes/visual-omp 0.1.0/visual-omp.app" })).toBe("dmg");
 	});
 
-	it("uses the installer on Windows and the release page for development builds", () => {
+	it("uses Scoop for a Windows copy Scoop installed, the installer otherwise, and the release page for development builds", () => {
+		expect(detectInstallMethod({ ...mac, platform: "win32", bundle: null, scoop: true })).toBe("scoop");
 		expect(detectInstallMethod({ ...mac, platform: "win32", bundle: null })).toBe("nsis");
+		expect(detectInstallMethod({ ...mac, platform: "win32", bundle: null, scoop: true, isPackaged: false })).toBe("manual");
 		expect(detectInstallMethod({ ...mac, isPackaged: false })).toBe("manual");
 		expect(detectInstallMethod({ ...mac, bundle: null })).toBe("manual");
 		expect(detectInstallMethod({ ...mac, platform: "linux" })).toBe("manual");
+	});
+});
+
+describe("Scoop locations", () => {
+	it("finds the app folder and root around the current link or a version folder, in any letter case", () => {
+		const layout = { root: "C:\\Users\\me\\scoop", appDir: "C:\\Users\\me\\scoop\\apps\\visual-omp" };
+		expect(scoopLayout("C:\\Users\\me\\scoop\\apps\\visual-omp\\current\\visual-omp.exe")).toEqual(layout);
+		expect(scoopLayout("C:\\Users\\me\\scoop\\apps\\visual-omp\\0.6.0\\visual-omp.exe")).toEqual(layout);
+		expect(scoopLayout("C:\\Users\\me\\scoop\\Apps\\Visual-OMP\\current\\visual-omp.exe")).toEqual({
+			root: "C:\\Users\\me\\scoop",
+			appDir: "C:\\Users\\me\\scoop\\Apps\\Visual-OMP",
+		});
+	});
+
+	it("rejects the installer's folders and other apps", () => {
+		expect(scoopLayout("C:\\Users\\me\\AppData\\Local\\Programs\\visual-omp\\visual-omp.exe")).toBeNull();
+		expect(scoopLayout("C:\\Program Files\\visual-omp\\visual-omp.exe")).toBeNull();
+		expect(scoopLayout("C:\\Users\\me\\scoop\\apps\\obsidian\\current\\Obsidian.exe")).toBeNull();
+	});
+
+	it("treats SCOOP_GLOBAL, Scoop's global_path setting and ProgramData as global roots, ignoring case and trailing separators", () => {
+		expect(isScoopGlobal("C:\\ProgramData\\scoop", { ProgramData: "C:\\ProgramData" }, undefined)).toBe(true);
+		expect(isScoopGlobal("c:\\programdata\\Scoop\\", {}, undefined)).toBe(true);
+		expect(isScoopGlobal("D:\\GlobalScoop", { SCOOP_GLOBAL: "D:\\GlobalScoop\\" }, undefined)).toBe(true);
+		expect(isScoopGlobal("E:\\Shared\\Scoop", { ProgramData: "C:\\ProgramData" }, "e:\\shared\\scoop")).toBe(true);
+		expect(isScoopGlobal("C:\\Users\\me\\scoop", { SCOOP_GLOBAL: "D:\\GlobalScoop", ProgramData: "C:\\ProgramData" }, "E:\\Shared\\Scoop")).toBe(false);
 	});
 });
 

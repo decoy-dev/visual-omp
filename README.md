@@ -42,18 +42,30 @@ brew tap decoy-dev/tap https://github.com/decoy-dev/visual-omp
 brew install --cask decoy-dev/tap/visual-omp
 ```
 
-**visual-omp on Windows**
+**visual-omp on Windows (Scoop)**
 
-Download `visual-omp-<version>-win-x64.exe` from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest) and run it.
+Scoop installs visual-omp without the setup wizard, and later updates run from **Settings → About** without it too. Install Scoop by following the instructions on [scoop.sh](https://scoop.sh) if you don't have it, then run these commands in PowerShell. The first installs Git, which Scoop needs to add the visual-omp bucket.
+
+```powershell
+scoop install git
+scoop bucket add decoy-dev https://github.com/decoy-dev/visual-omp
+scoop install decoy-dev/visual-omp
+```
+
+visual-omp then appears under **Scoop Apps** in the Start menu. These commands install it for your user, which is what the in-app update expects. A copy installed for all users with `--global` can only be updated by an administrator, so its update window shows the command to run instead.
+
+**visual-omp on Windows (installer)**
+
+Download `visual-omp-<version>-win-x64.exe` from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest) and run it. To move a copy installed this way to Scoop, run the Scoop commands above, quit visual-omp, and uninstall the installer's copy in Windows Settings under **Apps**. Both copies use the same profile folder, so your chats and settings stay.
 
 visual-omp supports macOS on Apple Silicon and Intel, Windows 10 and later, and omp 18.4 or later.
 
 ### First launch
 
-visual-omp is not notarized by Apple or signed for Windows SmartScreen yet. The Homebrew cask removes quarantine from the installed app bundle to avoid the approval check that this attribute triggers, and Homebrew still checks each download against the checksum in the cask. Other installs ask you to approve visual-omp before it opens. Expect the prompt on first launch, and possibly again after an update:
+visual-omp is not notarized by Apple or signed for Windows SmartScreen yet. The Homebrew cask removes quarantine from the installed app bundle to avoid the approval check that this attribute triggers, and Homebrew still checks each download against the checksum in the cask. Scoop unpacks visual-omp without running the installer and checks each download against the checksum in its manifest, and the copy it installs carries no download mark for SmartScreen to check. Other installs ask you to approve visual-omp before it opens. Expect the prompt on first launch, and possibly again after an update:
 
 - **macOS (disk image):** open visual-omp, then go to **System Settings → Privacy & Security** and click **Open Anyway** next to the message about visual-omp.
-- **Windows:** on the "Windows protected your PC" screen, click **More info**, then **Run anyway**.
+- **Windows (installer):** on the "Windows protected your PC" screen, click **More info**, then **Run anyway**.
 
 If macOS reports a Homebrew-installed copy as damaged, open Terminal and run `brew update`. After that succeeds, run `brew upgrade --cask visual-omp`. If Homebrew reports that the latest version is already installed, run `brew reinstall --cask visual-omp` to apply the updated cask to that version.
 
@@ -101,7 +113,7 @@ Settings has text size, reduced motion and a light or dark theme. The command pa
 
 ## Updating
 
-visual-omp checks GitHub for a new release shortly after launch and every six hours after that, and it checks omp the same way through `omp update --check`. **Settings → About** shows both versions and installs either update. A Homebrew install upgrades through `brew upgrade --cask visual-omp`, any other macOS install downloads the new disk image, and Windows downloads and runs the new installer. Open chats keep the omp version they started with until they restart, so after an omp update the app offers to restart them.
+visual-omp checks GitHub for a new release shortly after launch and every six hours after that, and it checks omp the same way through `omp update --check`. **Settings → About** shows both versions and installs either update. A Homebrew install upgrades through `brew upgrade --cask visual-omp`, and any other macOS install downloads the new disk image. On Windows, a Scoop install closes, updates through `scoop update visual-omp` in a PowerShell window and opens again, and an installer copy downloads and runs the new installer. Open chats keep the omp version they started with until they restart, so after an omp update the app offers to restart them.
 
 ## Development
 

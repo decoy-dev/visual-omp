@@ -2,11 +2,11 @@
  * Update surfaces (DESIGN §4.22). Settings → About is the one place for updates: it shows both
  * versions, runs the checks and starts either update. A toast announces a new visual-omp release.
  * The app update runs in {@link AppUpdateSheet}: `brew upgrade --cask` in a terminal for Homebrew
- * installs, otherwise the installer downloads to ~/Downloads and opens. The omp update streams in
- * {@link OmpUpdateSheet}, after which open chats can be restarted onto the new omp.
+ * installs, a restart through `scoop update` for Scoop installs, otherwise the installer downloads
+ * to ~/Downloads and opens. The omp update streams in {@link OmpUpdateSheet}, after which open chats
+ * can be restarted onto the new omp.
  */
-import { ArrowsClockwise } from "@phosphor-icons/react";
-import { CheckCircle, WarningCircle } from "@phosphor-icons/react";
+import { ArrowsClockwise, ArrowSquareOut, CheckCircle, Copy, WarningCircle } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
@@ -18,7 +18,8 @@ import { type SheetProps, sheets } from "../../registry/slots";
 import { allControllers, controllerFor, useApp } from "../../state/app";
 import { openSettings } from "../../state/navigation";
 import type { SessionController } from "../../state/session";
-import { Button, Dialog, DialogContent, PresenceSwap, Progress, toast, WorkingIndicator } from "../../ui";
+import { Button, Dialog, DialogContent, Expand, PresenceSwap, Progress, toast, WorkingIndicator } from "../../ui";
+import { focusRing } from "../../ui/styles";
 import { ipcErrorMessage as errorText } from "../manage/shared";
 import { formatBytes } from "../projects/format";
 import { InlineTerminal } from "./InlineTerminal";
@@ -114,7 +115,8 @@ export async function loadUpdates(): Promise<void> {
 
 /**
  * Starts the visual-omp update the way this copy was installed: Homebrew upgrade, installer
- * download, or (development builds, other platforms) the release page in the browser.
+ * download, or (development builds, other platforms) the release page in the browser. A Scoop
+ * install only opens the sheet, whose button restarts through Scoop.
  */
 export async function startAppUpdate(): Promise<void> {
 	const t = i18n.getFixedT(null, "onboarding");
@@ -127,7 +129,7 @@ export async function startAppUpdate(): Promise<void> {
 		return;
 	}
 	if (install.method === "brew") void startBrewUpgrade();
-	else {
+	else if (useInstaller) {
 		handledDownload = null;
 		try {
 			onDownload(await window.vomp.invoke("updates:app:download"));
@@ -298,7 +300,9 @@ async function reportOutcome(): Promise<void> {
 	const outcome = await window.vomp.invoke("updates:app:outcome");
 	if (!outcome) return;
 	if (outcome.updated) toast({ tone: "ok", message: t("update.updated", { version: outcome.running }) });
-	else toast({ tone: "warn", message: t("update.notUpdated", { version: outcome.running }), description: t("update.notUpdatedBody") });
+	else {
+		toast({ tone: "warn", message: t("update.notUpdated", { version: outcome.running }), description: t(`update.notUpdatedBody.${outcome.method}`) });
+	}
 }
 
 /** Registers the update sheet and command and listens for main's checks (main runs them every 6 hours). */
@@ -408,6 +412,86 @@ function DownloadProgress({ download, method }: { download: AppDownload; method:
 	);
 }
 
+/** What the switch to Scoop runs in PowerShell once Scoop is installed (README, "visual-omp on Windows"). */
+const SCOOP_COMMANDS = ["scoop install git", "scoop bucket add decoy-dev https://github.com/decoy-dev/visual-omp", "scoop install decoy-dev/visual-omp"].join(
+	"\n",
+);
+
+/** Installer copies: a collapsed suggestion to switch to Scoop, whose updates run without the installer. */
+function ScoopSuggestion() {
+	const { t } = useTranslation("onboarding");
+	const [open, setOpen] = useState(false);
+	const copy = () =>
+		void navigator.clipboard.writeText(SCOOP_COMMANDS).then(
+			() => toast({ tone: "ok", message: t("update.app.scoopSwitch.copied") }),
+			error => toast({ tone: "err", message: t("update.app.scoopSwitch.copyFailed"), description: errorText(error) }),
+		);
+	return (
+		<div className="mt-card border-t border-border pt-stack text-sm">
+			<p className="text-fg-muted">
+				{t("update.app.scoopSwitch.intro")}{" "}
+				<button
+					type="button"
+					aria-expanded={open}
+					className={`rounded-sm text-accent underline-offset-2 hover:underline ${focusRing}`}
+					onClick={() => setOpen(value => !value)}
+				>
+					{t(open ? "update.app.scoopSwitch.hide" : "update.app.scoopSwitch.show")}
+				</button>
+			</p>
+			<Expand open={open}>
+				<ol className="mt-stack flex list-decimal flex-col gap-stack pl-5 text-fg">
+					<li>
+						{t("update.app.scoopSwitch.install")}
+						<Button
+							size="sm"
+							variant="ghost"
+							icon={<ArrowSquareOut aria-hidden />}
+							className="ml-1"
+							onClick={() => void window.vomp.invoke("app:openExternal", "https://scoop.sh")}
+						>
+							{t("update.app.scoopSwitch.openScoop")}
+						</Button>
+					</li>
+					<li>
+						{t("update.app.scoopSwitch.commands")}
+						<code className="mt-2 block select-all whitespace-pre-wrap break-all rounded-md border border-border bg-inset px-3 py-2 font-mono text-sm text-fg">
+							{SCOOP_COMMANDS}
+						</code>
+						<Button size="sm" variant="ghost" icon={<Copy aria-hidden />} className="mt-2" onClick={copy}>
+							{t("update.app.scoopSwitch.copy")}
+						</Button>
+					</li>
+					<li>{t("update.app.scoopSwitch.remove")}</li>
+				</ol>
+			</Expand>
+		</div>
+	);
+}
+
+const SCOOP_GLOBAL_COMMAND = "scoop update visual-omp --global";
+
+/** Scoop installs for all users: updating needs an administrator PowerShell, which the app never starts itself. */
+function ScoopGlobalSteps() {
+	const { t } = useTranslation("onboarding");
+	const copy = () =>
+		void navigator.clipboard.writeText(SCOOP_GLOBAL_COMMAND).then(
+			() => toast({ tone: "ok", message: t("update.app.scoop.globalCopied") }),
+			error => toast({ tone: "err", message: t("update.app.scoop.globalCopyFailed"), description: errorText(error) }),
+		);
+	return (
+		<div className="text-md">
+			<p className="text-fg-muted">{t("update.app.scoop.global")}</p>
+			<code className="mt-2 block select-all break-all rounded-md border border-border bg-inset px-3 py-2 font-mono text-sm text-fg">
+				{SCOOP_GLOBAL_COMMAND}
+			</code>
+			<Button size="sm" variant="ghost" icon={<Copy aria-hidden />} className="mt-2" onClick={copy}>
+				{t("update.app.scoop.globalCopy")}
+			</Button>
+		</div>
+	);
+}
+
 function StatusLine({ text, ok = false }: { text: string; ok?: boolean }) {
 	return (
 		<span className="flex items-center gap-2">
@@ -441,6 +525,15 @@ export function AppUpdateSheet({ close }: SheetProps<undefined>) {
 		} else if (brew.phase === "failed" || brew.phase === "unchanged" || brew.phase === "verifyFailed" || brew.phase === "error") {
 			actions = <Button onClick={() => void startBrewUpgrade()}>{t("update.app.retry")}</Button>;
 		}
+	} else if (method === "scoop" && install?.scoopGlobal) {
+		body = <ScoopGlobalSteps />;
+	} else if (method === "scoop") {
+		body = <p className="text-md text-fg-muted">{t("update.app.scoop.body")}</p>;
+		actions = (
+			<Button variant="primary" onClick={() => void quitForUpdate(true)}>
+				{t("update.app.scoop.restart")}
+			</Button>
+		);
 	} else if ((method === "dmg" || method === "nsis") && download) {
 		body = <DownloadProgress download={download} method={method} />;
 		if (download.state === "downloading") {
@@ -491,6 +584,7 @@ export function AppUpdateSheet({ close }: SheetProps<undefined>) {
 						{t("update.app.releaseNotes")}
 					</button>
 				)}
+				{method === "nsis" && <ScoopSuggestion />}
 			</DialogContent>
 		</Dialog>
 	);

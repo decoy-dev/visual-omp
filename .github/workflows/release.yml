@@ -107,8 +107,9 @@ jobs:
           body_path: release-notes/release-notes.md
           prerelease: ${{ needs.verify.outputs.prerelease == 'true' }}
           files: release-assets/*
-      # The cask is the stable channel: prereleases never reach `brew upgrade`.
-      - name: Update Homebrew cask from published installers
+      # The cask and the Scoop manifest are the stable channel: prereleases never reach
+      # `brew upgrade` or `scoop update`.
+      - name: Update Homebrew cask and Scoop manifest from published installers
         if: needs.verify.outputs.prerelease != 'true'
         env:
           GITHUB_REF_NAME: ${{ github.ref_name }}
@@ -116,11 +117,13 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           arm64_sha="$(sha256sum "release-assets/visual-omp-${version}-mac-arm64.dmg" | cut -d' ' -f1)"
           x64_sha="$(sha256sum "release-assets/visual-omp-${version}-mac-x64.dmg" | cut -d' ' -f1)"
+          win_sha="$(sha256sum "release-assets/visual-omp-${version}-win-x64.exe" | cut -d' ' -f1)"
           node scripts/update-homebrew-cask.mjs "$version" "$arm64_sha" "$x64_sha"
+          node scripts/update-scoop-manifest.mjs "$version" "$win_sha"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Casks/visual-omp.rb
+          git add Casks/visual-omp.rb bucket/visual-omp.json
           if ! git diff --cached --quiet; then
-            git commit -m "chore(homebrew): update cask for v${version}"
+            git commit -m "chore(release): update Homebrew cask and Scoop manifest for v${version}"
             git push origin HEAD:main
           fi

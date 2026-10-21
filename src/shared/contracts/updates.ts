@@ -16,10 +16,12 @@ export interface ReleaseAsset {
  * How this copy of visual-omp was installed, which decides how it updates.
  * - `brew`: Homebrew cask; `brew upgrade --cask visual-omp` runs in a terminal, then the app restarts.
  * - `dmg`: macOS without Homebrew; the disk image downloads to ~/Downloads and opens in Finder.
- * - `nsis`: Windows; the installer downloads to ~/Downloads, runs, and the app quits.
+ * - `scoop`: Windows with Scoop; the app quits, `scoop update visual-omp` runs in a PowerShell
+ *   window, and the updated copy starts.
+ * - `nsis`: other Windows installs; the installer downloads to ~/Downloads, runs, and the app quits.
  * - `manual`: development builds and other platforms; the release page opens in the browser.
  */
-export type AppInstallMethod = "brew" | "dmg" | "nsis" | "manual";
+export type AppInstallMethod = "brew" | "dmg" | "scoop" | "nsis" | "manual";
 
 export interface AppInstallInfo {
 	method: AppInstallMethod;
@@ -27,6 +29,11 @@ export interface AppInstallInfo {
 	appPath: string | null;
 	/** Shell command that upgrades the cask (`brew` only). */
 	command: string | null;
+	/**
+	 * `scoop` only: Scoop installed this copy for all users (`scoop install --global`). Updating it
+	 * needs an administrator PowerShell, so the app shows the command instead of running it.
+	 */
+	scoopGlobal: boolean;
 }
 
 /** One installer download (`dmg` / `nsis`). Progress streams via `updates:app:download`. */
@@ -135,7 +142,7 @@ declare module "../ipc" {
 		 * Development builds read releases from the JSON file named by `VOMP_UPDATE_FEED` instead.
 		 */
 		"updates:app:check": { args: [force?: boolean]; result: AppUpdateStatus };
-		/** How this copy was installed (Homebrew cask, disk image, NSIS installer) and its upgrade command. */
+		/** How this copy was installed (Homebrew cask, disk image, Scoop, NSIS installer) and the cask's upgrade command. */
 		"updates:app:install": { args: []; result: AppInstallInfo };
 		/**
 		 * Download the platform installer of the latest release to ~/Downloads. Returns the current
@@ -155,9 +162,9 @@ declare module "../ipc" {
 		"updates:app:installedVersion": { args: []; result: { version: string | null; newer: boolean } };
 		/**
 		 * Quit (going through the quit guard, which the renderer approves beforehand) and, with
-		 * `relaunch`, open the app again from the same path once this process has exited, so the
-		 * replaced bundle starts. Records the expected version for `updates:app:outcome`.
-		 * Rejects in development builds.
+		 * `relaunch`, open the app again once this process has exited: from the same path, so the
+		 * replaced bundle starts, or for Scoop installs after `scoop update visual-omp` has run.
+		 * Records the expected version for `updates:app:outcome`. Rejects in development builds.
 		 */
 		"updates:app:quit": { args: [relaunch: boolean]; result: void };
 		/** The result of the last in-app update, once per update (the record is deleted when read). */

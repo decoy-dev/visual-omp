@@ -196,7 +196,10 @@
 		"dismiss": "Dismiss notice",
 		"updated": "visual-omp is now v{{version}}",
 		"notUpdated": "visual-omp is still v{{version}}",
-		"notUpdatedBody": "The restart opened the previous copy. Run brew upgrade --cask visual-omp in Terminal to see what Homebrew reports.",
+		"notUpdatedBody": {
+			"brew": "The restart opened the previous copy. Run brew upgrade --cask visual-omp in Terminal to see what Homebrew reports.",
+			"scoop": "Scoop didn't install a newer version, and its PowerShell window shows what it reported. To try again, quit visual-omp, then run scoop update visual-omp in PowerShell, and open visual-omp when the command finishes."
+		},
 		"check": {
 			"title": "Check for updates",
 			"hint": "Check for new versions of visual-omp and omp.",
@@ -250,6 +253,26 @@
 				"ready": "Running the installer quits visual-omp so the installer can replace it.",
 				"starting": "The installer is starting. visual-omp quits so the installer can replace it.",
 				"run": "Run installer"
+			},
+			"scoop": {
+				"body": "visual-omp closes, Scoop updates it in a PowerShell window, and visual-omp opens again when Scoop finishes.",
+				"restart": "Update and restart",
+				"global": "Scoop installed this copy for all users, so only an administrator can update it, and visual-omp doesn't ask for administrator rights itself. Copy the command, quit visual-omp, run the command in PowerShell opened as an administrator, then open visual-omp again.",
+				"globalCopy": "Copy command",
+				"globalCopied": "Command copied",
+				"globalCopyFailed": "Couldn't copy the command"
+			},
+			"scoopSwitch": {
+				"intro": "Scoop can install visual-omp and update it without the installer.",
+				"show": "Show how to switch",
+				"hide": "Hide the steps",
+				"install": "Install Scoop if you don't have it, following the instructions on scoop.sh.",
+				"openScoop": "Open scoop.sh",
+				"commands": "In PowerShell, run these commands. The first installs Git, which Scoop needs to add the visual-omp bucket.",
+				"copy": "Copy commands",
+				"copied": "Commands copied",
+				"copyFailed": "Couldn't copy the commands",
+				"remove": "Quit visual-omp and uninstall this copy in Windows Settings under Apps. Both copies use the same profile folder, so your chats and settings stay. Then open visual-omp from Scoop Apps in the Start menu."
 			}
 		},
 		"omp": {

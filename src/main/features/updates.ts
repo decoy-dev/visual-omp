@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { access, type FileHandle, open, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { app, shell } from "electron";
 import type { CliResult, Platform } from "@shared/ipc";
@@ -16,6 +16,7 @@ import type {
 	OmpUpdateRun,
 	OmpUpdateStatus,
 } from "@shared/contracts/updates";
+import { tagScoopShortcut } from "../attention";
 import { userEnv } from "../env";
 import { writeText } from "../files";
 import { broadcast, handle } from "../ipc";
@@ -35,9 +36,12 @@ import {
 	detectInstallMethod,
 	fetchInstaller,
 	installerAsset,
+	isScoopGlobal,
 	parseOmpUpdateCheck,
 	plistVersion,
 	releaseSummary,
+	scoopLayout,
+	scoopUpdateScript,
 	selectLatestRelease,
 	toAssets,
 	trustedCachedStatus,
@@ -55,19 +59,21 @@ const PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const cacheFile = join(app.getPath("userData"), "update-check.json");
 const pendingFile = join(app.getPath("userData"), "update-pending.json");
 
-const METHODS = ["brew", "dmg", "nsis", "manual"] as const satisfies readonly AppInstallMethod[];
+const METHODS = ["brew", "dmg", "scoop", "nsis", "manual"] as const satisfies readonly AppInstallMethod[];
 
 /**
  * Development-only stand-in for GitHub and the installers (`VOMP_UPDATE_FEED=/path/feed.json`,
  * ignored in packaged builds). `releases` uses the GitHub API shape; the other fields simulate the
- * install method, the brew run, the version brew leaves on disk, and omp's update check and run,
- * so every update state can be exercised without publishing a release or touching real installs.
+ * install method, the brew run, the version brew leaves on disk, a Scoop install for all users,
+ * and omp's update check and run, so every update state can be exercised without publishing a
+ * release or touching real installs.
  */
 const DevFeed = z.object({
 	releases: GitHubReleaseList,
 	method: z.enum(METHODS).optional(),
 	brewCommand: z.string().optional(),
 	installedVersion: z.string().nullable().optional(),
+	scoopGlobal: z.boolean().optional(),
 	ompCheck: z
 		.object({ code: z.number().default(0), stdout: z.string().default(""), stderr: z.string().default("") })
 		.optional(),
@@ -234,11 +240,29 @@ async function detectInstall(): Promise<AppInstallInfo> {
 			}
 		}
 	}
+	// Scoop records each install beside the executable: scoop-install.json, or install.json before Scoop 0.6.
+	const versionDir = dirname(process.execPath);
+	const layout = platform === "win32" ? scoopLayout(process.execPath) : null;
+	const scoop = layout !== null && ((await exists(join(versionDir, "scoop-install.json"))) || (await exists(join(versionDir, "install.json"))));
 	const method =
-		feed?.method ?? detectInstallMethod({ platform, isPackaged: app.isPackaged, bundle, caskApps: brew && bundle ? [bundle] : [] });
+		feed?.method ??
+		detectInstallMethod({ platform, isPackaged: app.isPackaged, bundle, caskApps: brew && bundle ? [bundle] : [], scoop });
 	let command: string | null = null;
 	if (method === "brew") command = feed ? (feed.brewCommand ?? SIMULATED_BREW_COMMAND) : brewUpgradeCommand(brew ?? "brew");
-	return { method, appPath, command };
+	const scoopGlobal = feed?.scoopGlobal ?? (scoop && layout !== null && isScoopGlobal(layout.root, process.env, await scoopGlobalPath()));
+	return { method, appPath, command, scoopGlobal };
+}
+
+/** The `global_path` setting in Scoop's config.json, where Scoop itself reads it; undefined when unset or unreadable. */
+async function scoopGlobalPath(): Promise<string | undefined> {
+	const home = process.env.XDG_CONFIG_HOME || join(homedir(), ".config");
+	try {
+		const config: unknown = JSON.parse(await readFile(join(home, "scoop", "config.json"), "utf8"));
+		const value = typeof config === "object" && config !== null ? (config as Record<string, unknown>).global_path : undefined;
+		return typeof value === "string" && value ? value : undefined;
+	} catch {
+		return undefined;
+	}
 }
 
 /** Packaged builds detect once; development builds re-read the feed so its `method` can change. */
@@ -344,7 +368,8 @@ async function consumeOutcome(): Promise<AppUpdateOutcome | null> {
 	const updated = compareSemver(running, pending.from) > 0;
 	const expired = Date.now() - pending.at > PENDING_TTL_MS;
 	// A disk image or installer the user hasn't run yet is not a failure: stay quiet until it runs.
-	if (!updated && pending.method !== "brew" && !expired) return null;
+	// Homebrew and Scoop update during the restart, so their result is known at the next launch.
+	if (!updated && pending.method !== "brew" && pending.method !== "scoop" && !expired) return null;
 	await rm(pendingFile, { force: true });
 	if (!updated && expired) return null;
 	return { method: pending.method, from: pending.from, to: pending.to, running, updated };
@@ -375,12 +400,35 @@ function relaunchAfterExit(): void {
 	spawn("/bin/sh", ["-c", script, bundle, String(process.pid)], { detached: true, stdio: "ignore" }).unref();
 }
 
+/**
+ * Per-user Scoop installs: Scoop skips an app while it runs, so a PowerShell window started on the
+ * way out runs the update once this app has exited ({@link scoopUpdateScript}) and starts the
+ * updated copy. The window stays visible, so the person sees Scoop working and any error it reports.
+ */
+function updateWithScoopAfterExit(): void {
+	const layout = scoopLayout(process.execPath);
+	if (!layout) return;
+	const script = scoopUpdateScript(layout, app.getVersion());
+	const system = join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+	const powershell = join(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+	// -EncodedCommand takes base64 of the script's UTF-16LE text, so nothing in it needs command-line quoting.
+	const encoded = Buffer.from(script, "utf16le").toString("base64");
+	// A detached powershell.exe gets no console and exits at once (seen on Windows 11), so `start`
+	// opens it in a console window of its own, which is also where Scoop's output appears.
+	spawn(join(system, "cmd.exe"), ["/d", "/c", `start "" "${powershell}" -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`], {
+		detached: true,
+		stdio: "ignore",
+		windowsVerbatimArguments: true,
+	}).unref();
+}
+
 async function quitApp(relaunch: boolean): Promise<void> {
 	if (!app.isPackaged) throw new Error("Development builds don't restart themselves. Quit npm run dev and start it again.");
-	const { method } = await installInfo();
+	const { method, scoopGlobal } = await installInfo();
+	if (method === "scoop" && scoopGlobal) throw new Error("This copy was installed for all users, so Scoop needs an administrator PowerShell to update it.");
 	const to = (method === "brew" ? await installedVersion() : null) ?? download?.version ?? appStatus?.latestVersion;
 	if (to) await recordPending(method, to);
-	if (relaunch) app.once("will-quit", relaunchAfterExit);
+	if (relaunch) app.once("will-quit", method === "scoop" ? updateWithScoopAfterExit : relaunchAfterExit);
 	app.quit();
 }
 
@@ -503,6 +551,14 @@ export function register(): void {
 	handle("updates:omp:check", force => checkOmp(force === true));
 	handle("updates:omp:run", options => startOmpUpdate(options));
 	handle("updates:omp:lastRun", () => (lastRun ? { ...lastRun } : null));
+
+	// Scoop rewrites its Start Menu shortcut on every update, so a per-user Scoop install restores
+	// the ID Windows needs for toasts at every launch.
+	if (process.platform === "win32" && app.isPackaged) {
+		void installInfo().then(({ method, scoopGlobal }) => {
+			if (method === "scoop" && !scoopGlobal) tagScoopShortcut();
+		});
+	}
 
 	// Fresh results are broadcast by the checks themselves; cached ones are sent here so a window
 	// that just opened still learns about an update found earlier.

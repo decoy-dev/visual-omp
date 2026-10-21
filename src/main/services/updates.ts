@@ -1,4 +1,4 @@
-import { posix } from "node:path";
+import { posix, win32 } from "node:path";
 import { z } from "zod";
 import type { CliResult, Platform } from "@shared/ipc";
 import type { AppInstallMethod, AppUpdateStatus, OmpUpdateChannel, ReleaseAsset } from "@shared/contracts/updates";
@@ -251,20 +251,102 @@ export interface InstallProbe {
 	 * `<prefix>/Caskroom/visual-omp/<version>/` for every brew on this machine.
 	 */
 	caskApps: readonly string[];
+	/**
+	 * Windows: the executable is in a {@link scoopLayout} folder with Scoop's record of the install
+	 * beside it (`scoop-install.json`, or `install.json` from Scoop before 0.6).
+	 */
+	scoop: boolean;
 }
 
 /**
  * How this copy was installed, which decides how it updates:
  * - `brew`: a packaged macOS app whose bundle is the one a visual-omp cask installed (`brew upgrade --cask`).
  * - `dmg`: any other packaged macOS app, including a second copy beside a cask install.
- * - `nsis`: packaged Windows app (download and run the installer).
+ * - `scoop`: a packaged Windows app that Scoop installed (`scoop update visual-omp` after quitting).
+ * - `nsis`: any other packaged Windows app (download and run the installer).
  * - `manual`: development builds and other platforms (open the release page).
  */
 export function detectInstallMethod(probe: InstallProbe): AppInstallMethod {
 	if (!probe.isPackaged) return "manual";
-	if (probe.platform === "win32") return "nsis";
+	if (probe.platform === "win32") return probe.scoop ? "scoop" : "nsis";
 	if (probe.platform !== "darwin" || !probe.bundle) return "manual";
 	return probe.caskApps.includes(probe.bundle) ? "brew" : "dmg";
+}
+
+/** Scoop app name; the release workflow publishes its manifest as `bucket/visual-omp.json`. */
+export const SCOOP_APP = "visual-omp";
+
+export interface ScoopLayout {
+	/** Scoop's root folder: `~\scoop`, the folder `$env:SCOOP` names, or the global root. */
+	root: string;
+	/** `<root>\apps\visual-omp`, which holds every installed version and the `current` link to the newest. */
+	appDir: string;
+}
+
+/**
+ * The Scoop folders around `exePath` when it is `<root>\apps\visual-omp\<version or current>\<exe>`,
+ * else null. A custom installer folder can have the same shape, so the caller also checks for
+ * Scoop's record of the install beside the executable.
+ */
+export function scoopLayout(exePath: string): ScoopLayout | null {
+	const appDir = win32.dirname(win32.dirname(exePath));
+	const apps = win32.dirname(appDir);
+	if (win32.basename(appDir).toLowerCase() !== SCOOP_APP || win32.basename(apps).toLowerCase() !== "apps") return null;
+	return { root: win32.dirname(apps), appDir };
+}
+
+/**
+ * Whether `root` is a Scoop global root, the one `scoop install --global` uses: `$env:SCOOP_GLOBAL`,
+ * the `global_path` setting in Scoop's config.json (`configured`), or `%ProgramData%\scoop`. Scoop
+ * uses the first of those that is set; any of them counts here, because treating a global install
+ * as a per-user one would start an update that cannot work without administrator rights.
+ */
+export function isScoopGlobal(root: string, env: Readonly<Record<string, string | undefined>>, configured: string | undefined): boolean {
+	const key = (path: string) => win32.normalize(path).replace(/\\+$/, "").toLowerCase();
+	const roots = [env.SCOOP_GLOBAL, configured, win32.join(env.ProgramData || "C:\\ProgramData", "scoop")];
+	return roots.some(global => global && key(global) === key(root));
+}
+
+/** A single-quoted PowerShell string literal, in which only `'` needs escaping (by doubling it). */
+function psString(value: string): string {
+	return `'${value.replaceAll("'", "''")}'`;
+}
+
+/**
+ * PowerShell that updates a per-user Scoop install after visual-omp quits. Scoop skips an app while
+ * any process runs from its folder, so the script first waits up to a minute for every process
+ * from `appDir` to exit. `scoop update` refreshes Scoop and its buckets first, because
+ * `scoop update visual-omp` refreshes them only when the last refresh is hours old. visual-omp
+ * then starts from `current` either way. The update counts when the installed version is newer
+ * than `from` (the version that quit), the same test the app applies on its next launch, and the
+ * window stays open when it does not count or visual-omp could not start, so the person can read
+ * what went wrong.
+ */
+export function scoopUpdateScript(layout: ScoopLayout, from: string): string {
+	return [
+		"$Host.UI.RawUI.WindowTitle = 'Updating visual-omp'",
+		`$appDir = ${psString(layout.appDir)}`,
+		`$from = ${psString(from)}`,
+		`$env:Path = ${psString(`${win32.join(layout.root, "shims")};`)} + $env:Path`,
+		"$deadline = (Get-Date).AddMinutes(1)",
+		"Write-Host 'Waiting for visual-omp to close...'",
+		'while ((Get-Process | Where-Object { $_.Path -and $_.Path.StartsWith("$appDir\\", [StringComparison]::OrdinalIgnoreCase) }) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }',
+		"scoop update",
+		`scoop update ${SCOOP_APP}`,
+		"$current = Join-Path $appDir 'current'",
+		// Scoop 0.6 renamed manifest.json to scoop-manifest.json.
+		"$manifest = @('scoop-manifest.json', 'manifest.json') | ForEach-Object { Join-Path $current $_ } | Where-Object { Test-Path $_ } | Select-Object -First 1",
+		"$installed = if ($manifest) { (Get-Content -Raw $manifest | ConvertFrom-Json).version }",
+		// The bucket holds stable releases: X.Y.Z, possibly with +build metadata, which semver ignores and [version]
+		// can't parse, so it is dropped first. Anything [version] still can't read counts as not updated.
+		"$core = { param($v) if ($v) { [version]($v -replace '\\+.*$', '') } }",
+		"$updated = try { (& $core $installed) -gt (& $core $from) } catch { $false }",
+		"$started = try { Start-Process -FilePath (Join-Path $current 'visual-omp.exe') -ErrorAction Stop; $true } catch { Write-Host $_; $false }",
+		"Write-Host ''",
+		"if (-not $updated) { Write-Host \"visual-omp is still version $from. The output above shows what Scoop reported.\" } else { Write-Host \"visual-omp $installed is installed.\" }",
+		"if (-not $started) { Write-Host 'visual-omp could not start. Open it from the Start menu.' }",
+		"if (-not $updated -or -not $started) { Read-Host 'Press Enter to close this window' }",
+	].join("\n");
 }
 
 /**

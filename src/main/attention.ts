@@ -10,7 +10,8 @@
  * - Windows: native toast requests (shown subject to the system notification settings), a flashing
  *   taskbar button and a count overlay on the taskbar button.
  */
-import { app, type BrowserWindow, nativeImage, Notification } from "electron";
+import { join } from "node:path";
+import { app, type BrowserWindow, nativeImage, Notification, shell } from "electron";
 import { type AttentionState, NOTIFY_LIMITS } from "@shared/ipc";
 import { broadcast, handle } from "./ipc";
 import { getPrefs } from "./prefs";
@@ -35,11 +36,28 @@ const live = new Set<Notification>();
 
 /**
  * Windows attributes toasts to an AppUserModelID that a Start Menu shortcut carries. Packaged
- * builds use the installer's shortcut; development builds follow Electron's advice to use the
- * executable path (toasts then need a Start Menu shortcut to electron.exe).
+ * builds use the installer's shortcut, or Scoop's ({@link tagScoopShortcut}); development builds
+ * follow Electron's advice to use the executable path (toasts then need a Start Menu shortcut to
+ * electron.exe).
  */
 export function setAppUserModelId(): void {
 	if (process.platform === "win32") app.setAppUserModelId(app.isPackaged ? APP_USER_MODEL_ID : process.execPath);
+}
+
+/**
+ * Scoop's Start Menu shortcut (`Scoop Apps\visual-omp.lnk`) carries no AppUserModelID, so Windows
+ * would show no toasts for a Scoop install. This writes the ID into that shortcut. A global Scoop
+ * install keeps its shortcut in the all-users Start Menu, which needs administrator rights to
+ * change, so its toasts stay unavailable.
+ */
+export function tagScoopShortcut(): void {
+	const link = join(app.getPath("appData"), "Microsoft", "Windows", "Start Menu", "Programs", "Scoop Apps", "visual-omp.lnk");
+	try {
+		const details = shell.readShortcutLink(link);
+		if (details.appUserModelId !== APP_USER_MODEL_ID) shell.writeShortcutLink(link, "update", { ...details, appUserModelId: APP_USER_MODEL_ID });
+	} catch {
+		// No shortcut there (a global install, or the person removed it).
+	}
 }
 
 /** Remove the Dock badge, the taskbar overlay and the taskbar flashing. */

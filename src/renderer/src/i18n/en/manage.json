@@ -308,6 +308,7 @@
 		"method": {
 			"brew": "updates through Homebrew",
 			"dmg": "updates from a downloaded disk image",
+			"scoop": "updates through Scoop",
 			"nsis": "updates with the Windows installer",
 			"manual": "updates from the release page"
 		},

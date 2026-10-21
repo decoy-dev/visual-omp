@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- visual-omp can now be installed on Windows with Scoop, and a copy installed that way updates without the setup wizard. **Update and restart** in the update window closes visual-omp, runs `scoop update visual-omp` in a PowerShell window and opens visual-omp again when Scoop finishes. If Scoop didn't install a newer version, or visual-omp couldn't start, the window stays open with Scoop's output, and the next launch says whether the update took. Scoop unpacks visual-omp from the same release installer, without running it, and checks the download against the checksum in the visual-omp bucket, which each stable release updates. The README lists the commands. A copy Scoop installed for all users needs an administrator to update, so its update window shows the command to run instead of running it.
+- Copies installed with the Windows installer suggest Scoop at the end of their update window, from the update after this one. A link there shows the steps to switch: install Scoop, run three commands in PowerShell, then uninstall the installer's copy. Both copies use the same profile folder, so chats and settings stay. To switch now, follow "visual-omp on Windows (Scoop)" in the README.
+- Scoop installs for one user can show Windows notifications, subject to the Windows notification settings. Windows shows notifications only for an app ID that a Start menu shortcut carries, and Scoop's shortcut has none, so visual-omp adds its ID to Scoop's shortcut at each launch. A copy Scoop installed for all users keeps its shortcut where visual-omp can't change it, so it shows no notifications.
+
 ## [0.5.9] - 2026-10-20
 
 visual-omp 0.5.9 connects to chats on Windows when omp was installed with Bun.
