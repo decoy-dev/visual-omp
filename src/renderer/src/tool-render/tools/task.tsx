@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { FriendlySummary, ToolStatus } from "../../chat/friendly";
 import { fmtDuration } from "../../collab/lib/format";
+import { useNow } from "../../shell/hooks";
 import { activityOf, type Helper, type HelperStatus, progressStatus, taskResultStatus } from "../../features/panes/derive";
 import { cn, Definition, Meter, StatusBadge, StatusDot } from "../../ui";
 import { AgentLink, Badge, Note, Output, ResultText, Row } from "../parts";
@@ -68,6 +69,7 @@ function runOf(record: Record<string, unknown>, status: HelperStatus, activity: 
 		tokens: num(record.tokens),
 		toolCount: num(record.toolCount),
 		durationMs: positive(num(record.durationMs)),
+		durationAt: null,
 		contextTokens: positive(num(record.contextTokens)),
 		contextWindow: positive(num(record.contextWindow)),
 		model: str(record.resolvedModel),
@@ -127,6 +129,15 @@ const BADGE_TONE: Record<HelperStatus, "ok" | "err" | "info" | "neutral"> = { ru
 const DOT: Record<HelperStatus, "agent" | "idle" | "ok" | "err"> = { running: "agent", idle: "idle", done: "ok", failed: "err", stopped: "idle" };
 
 /**
+ * A working helper's run time, counted on each second from omp's last report: omp measures the time only when it
+ * reports progress, and a helper waiting on a long model reply reports nothing.
+ */
+function RunningTime({ durationMs, since }: { durationMs: number; since: number }): ReactNode {
+	const now = useNow(1000);
+	return <>{fmtDuration(durationMs + Math.max(0, now - since))}</>;
+}
+
+/**
  * One helper as a card: letter avatar with a status dot, name and status badge, what it is doing now (or was asked to
  * do), then the numbers omp reported (tool calls, tokens, run time, model) and a context meter when the window is
  * known. `actions` sit at the right of the name row.
@@ -165,7 +176,11 @@ export function SubagentRun({ run, actions, className }: { run: Helper; actions?
 								{t("tasks.tokens", { count: run.tokens, formatted: formatTokens(run.tokens) })}
 							</Definition>
 						),
-						run.durationMs !== null && <span key="time">{fmtDuration(run.durationMs)}</span>,
+						run.durationMs !== null && (
+							<span key="time">
+								{working && run.durationAt !== null ? <RunningTime durationMs={run.durationMs} since={run.durationAt} /> : fmtDuration(run.durationMs)}
+							</span>
+						),
 						run.model && (
 							<span key="model" className="truncate">
 								{run.model}

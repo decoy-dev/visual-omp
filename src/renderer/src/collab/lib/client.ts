@@ -42,6 +42,15 @@ export interface Notice {
 	at: number;
 }
 
+/**
+ * A helper's progress report as it arrived. omp computes `progress.durationMs` only when it sends a report, and a
+ * helper waiting on a long model reply sends none, so the run time since then is measured from `receivedAt`.
+ */
+export interface GuestProgress extends SubagentProgressPayload {
+	/** `Date.now()` when this guest received the report. */
+	receivedAt: number;
+}
+
 export interface GuestSnapshot {
 	phase: ConnectionPhase;
 	endedReason: string | null;
@@ -50,7 +59,7 @@ export interface GuestSnapshot {
 	state: SessionState | null;
 	agents: readonly AgentSnapshot[];
 	/** Keyed by `payload.progress.id`. */
-	progress: ReadonlyMap<string, SubagentProgressPayload>;
+	progress: ReadonlyMap<string, GuestProgress>;
 	/** Keyed by `payload.id`. */
 	lifecycle: ReadonlyMap<string, SubagentLifecyclePayload>;
 	/** Streaming assistant ghost; held until the matching entry lands. */
@@ -117,7 +126,7 @@ export class GuestClient {
 	#pendingSnapshot: { entries: SessionEntry[]; live: SessionEntry[]; total: number } | null = null;
 	#state: SessionState | null = null;
 	#agents: readonly AgentSnapshot[] = [];
-	#progress: ReadonlyMap<string, SubagentProgressPayload> = new Map();
+	#progress: ReadonlyMap<string, GuestProgress> = new Map();
 	#lifecycle: ReadonlyMap<string, SubagentLifecyclePayload> = new Map();
 	#stream: AssistantMessage | null = null;
 	#streamDone = false;
@@ -398,7 +407,7 @@ export class GuestClient {
 			case "bus":
 				if (frame.channel === "task:subagent:progress") {
 					const payload = frame.data as SubagentProgressPayload;
-					this.#progress = new Map(this.#progress).set(payload.progress.id, payload);
+					this.#progress = new Map(this.#progress).set(payload.progress.id, { ...payload, receivedAt: Date.now() });
 				} else if (frame.channel === "task:subagent:lifecycle") {
 					const payload = frame.data as SubagentLifecyclePayload;
 					this.#lifecycle = new Map(this.#lifecycle).set(payload.id, payload);

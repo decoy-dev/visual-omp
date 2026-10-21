@@ -1022,6 +1022,11 @@ export interface Helper {
 	toolCount: number | null;
 	/** Run time omp last reported for it. */
 	durationMs: number | null;
+	/**
+	 * `Date.now()` when the app received `durationMs` from omp's live progress, so a working helper's time can run on
+	 * between reports; null when it came from the transcript, which records a run time that no longer advances.
+	 */
+	durationAt: number | null;
 	contextTokens: number | null;
 	contextWindow: number | null;
 	model: string | null;
@@ -1154,12 +1159,17 @@ export function activityOf(progress: ActivitySource | undefined): string {
 	);
 }
 
-function progressFields(live: AgentProgress | undefined): Pick<Helper, "tokens" | "toolCount" | "durationMs" | "contextTokens" | "contextWindow" | "model"> {
+function progressFields(
+	live: AgentProgress | undefined,
+	receivedAt: number | null,
+): Pick<Helper, "tokens" | "toolCount" | "durationMs" | "durationAt" | "contextTokens" | "contextWindow" | "model"> {
 	const positive = (value: number | undefined) => (value !== undefined && Number.isFinite(value) && value > 0 ? value : null);
+	const durationMs = positive(live?.durationMs);
 	return {
 		tokens: live ? live.tokens : null,
 		toolCount: live ? live.toolCount : null,
-		durationMs: positive(live?.durationMs),
+		durationMs,
+		durationAt: durationMs !== null ? receivedAt : null,
 		contextTokens: positive(live?.contextTokens),
 		contextWindow: positive(live?.contextWindow),
 		model: live?.resolvedModel ?? null,
@@ -1172,25 +1182,32 @@ function progressFields(live: AgentProgress | undefined): Pick<Helper, "tokens" 
  */
 export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "lifecycle"> | null | undefined, ompLive: boolean): Helper[] {
 	if (!guest) return [];
-	const progress = new Map<string, AgentProgress>();
-	for (const payload of guest.progress.values()) progress.set(payload.progress.id, payload.progress);
+	const progress = new Map<string, { live: AgentProgress; receivedAt: number }>();
+	for (const payload of guest.progress.values()) progress.set(payload.progress.id, { live: payload.progress, receivedAt: payload.receivedAt });
 	const helpers = new Map<string, Helper>();
 	for (const agent of guest.agents) {
 		if (agent.kind !== "sub") continue;
-		const live = progress.get(agent.id);
+		const { live, receivedAt } = progress.get(agent.id) ?? { live: undefined, receivedAt: null };
 		helpers.set(agent.id, {
 			id: agent.id,
 			name: agent.displayName || live?.agent || agent.id,
 			// A finished task reports completed/failed in progress while the registry says idle.
 			status: live && live.status !== "running" && live.status !== "pending" ? PROGRESS_STATUS[live.status] : SNAPSHOT_STATUS[agent.status],
 			activity: activityOf(live),
-			...progressFields(live),
+			...progressFields(live, receivedAt),
 			hasTranscript: agent.hasSessionFile,
 		});
 	}
-	for (const [id, live] of progress) {
+	for (const [id, { live, receivedAt }] of progress) {
 		if (helpers.has(id)) continue;
-		helpers.set(id, { id, name: live.agent || id, status: PROGRESS_STATUS[live.status], activity: activityOf(live), ...progressFields(live), hasTranscript: false });
+		helpers.set(id, {
+			id,
+			name: live.agent || id,
+			status: PROGRESS_STATUS[live.status],
+			activity: activityOf(live),
+			...progressFields(live, receivedAt),
+			hasTranscript: false,
+		});
 	}
 	for (const [id, event] of guest.lifecycle) {
 		const existing = helpers.get(id);
@@ -1204,7 +1221,7 @@ export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "li
 			name: event.agent || id,
 			status: LIFECYCLE_STATUS[event.status],
 			activity: event.description ?? "",
-			...progressFields(undefined),
+			...progressFields(undefined, null),
 			hasTranscript: Boolean(event.sessionFile),
 		});
 	}

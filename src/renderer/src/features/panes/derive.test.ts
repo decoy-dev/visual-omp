@@ -643,10 +643,10 @@ describe("helpersOf and workSummary", () => {
 		resolvedModel: "opus",
 	};
 
-	it("keeps the progress fields omp reports and drops unknown denominators", () => {
+	it("keeps the progress fields omp reports, with the time the report arrived, and drops unknown denominators", () => {
 		const guest = {
 			agents: [{ id: "Atlas", displayName: "Atlas", kind: "sub" as const, status: "running" as const, hasSessionFile: true, createdAt: 0, lastActivity: 0 }],
-			progress: new Map([["Atlas", { index: 0, agent: "task", task: "", progress }]]),
+			progress: new Map([["Atlas", { index: 0, agent: "task", task: "", progress, receivedAt: 5_000 }]]),
 			lifecycle: new Map([["Bolt", { id: "Bolt", agent: "explore", status: "completed" as const, index: 1, description: "Look around" }]]),
 		};
 		const helpers = helpersOf(guest, true);
@@ -659,6 +659,7 @@ describe("helpersOf and workSummary", () => {
 				tokens: 12_400,
 				toolCount: 6,
 				durationMs: 61_000,
+				durationAt: 5_000,
 				contextTokens: 40_000,
 				contextWindow: null,
 				model: "opus",
@@ -672,6 +673,7 @@ describe("helpersOf and workSummary", () => {
 				tokens: null,
 				toolCount: null,
 				durationMs: null,
+				durationAt: null,
 				contextTokens: null,
 				contextWindow: null,
 				model: null,
@@ -689,9 +691,9 @@ describe("helpersOf and workSummary", () => {
 			{
 				agents: [],
 				progress: new Map([
-					["B", { index: 1, agent: "task", task: "", parentToolCallId: "k1", progress: { ...progress, id: "B", index: 1, status: "completed" as const } }],
-					["A", { index: 0, agent: "task", task: "", parentToolCallId: "k1", progress: { ...progress, id: "A" } }],
-					["X", { index: 0, agent: "task", task: "", progress: { ...progress, id: "X" } }],
+					["B", { index: 1, agent: "task", task: "", parentToolCallId: "k1", progress: { ...progress, id: "B", index: 1, status: "completed" as const }, receivedAt: 0 }],
+					["A", { index: 0, agent: "task", task: "", parentToolCallId: "k1", progress: { ...progress, id: "A" }, receivedAt: 0 }],
+					["X", { index: 0, agent: "task", task: "", progress: { ...progress, id: "X" }, receivedAt: 0 }],
 				]),
 				lifecycle: new Map([["C", { id: "C", agent: "explore", status: "started" as const, index: 0, parentToolCallId: "k2" }]]),
 			},
@@ -725,7 +727,20 @@ describe("transcriptHelperStates and settleHelper", () => {
 			details: { meta: { source: { type: "report", value: "background job delivery" } }, jobs: [{ jobId, type: "task", label: id, durationMs: 6 }] },
 		}) as SessionEntry;
 	const exit = { ...base(), type: "custom", customType: "session_exit", data: { reason: "dispose", kind: "normal" } } as unknown as SessionEntry;
-	const pendingRun = { id: "AdvisorContext", name: "AdvisorContext", status: "running" as const, activity: "", tokens: null, toolCount: null, durationMs: null, contextTokens: null, contextWindow: null, model: null, hasTranscript: false };
+	const pendingRun = {
+		id: "AdvisorContext",
+		name: "AdvisorContext",
+		status: "running" as const,
+		activity: "",
+		tokens: null,
+		toolCount: null,
+		durationMs: null,
+		durationAt: null,
+		contextTokens: null,
+		contextWindow: null,
+		model: null,
+		hasTranscript: false,
+	};
 
 	it("follows wait snapshots and async-result deliveries, latest last", () => {
 		const states = transcriptHelperStates([

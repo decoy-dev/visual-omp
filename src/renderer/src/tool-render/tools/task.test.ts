@@ -11,6 +11,7 @@ function helper(id: string, status: Helper["status"]): Helper {
 		tokens: null,
 		toolCount: null,
 		durationMs: null,
+		durationAt: null,
 		contextTokens: null,
 		contextWindow: null,
 		model: null,
