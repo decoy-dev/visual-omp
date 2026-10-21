@@ -1,0 +1,16 @@
+{
+    "version": "0.6.0",
+    "description": "Desktop app for the omp (oh-my-pi) coding agent",
+    "homepage": "https://github.com/decoy-dev/visual-omp",
+    "license": "MIT",
+    "url": "https://github.com/decoy-dev/visual-omp/releases/download/v0.6.0/visual-omp-0.6.0-win-x64.exe#/dl.7z",
+    "hash": "ff268ec5b4bfee3acc7fda67f8946630029a46843ab58f08acad759b0fc0076b",
+    "pre_install": "Expand-7zipArchive \"$dir\\`$PLUGINSDIR\\app-64.7z\" \"$dir\"",
+    "post_install": "Remove-Item \"$dir\\`$PLUGINSDIR\", \"$dir\\`$R0\" -Force -Recurse",
+    "shortcuts": [
+        [
+            "visual-omp.exe",
+            "visual-omp"
+        ]
+    ]
+}
