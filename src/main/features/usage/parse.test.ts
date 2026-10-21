@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { ClientUsageSchema, UsageHistorySchema, UsageLimitsSnapshotSchema, UsageStatsSchema, usageArgv } from "./parse";
+import { ClientUsageSchema, parseResetListing, UsageHistorySchema, UsageLimitsSnapshotSchema, UsageStatsSchema, usageArgv } from "./parse";
 
 /** Real omp v18.4.4 outputs with account identities and folder names redacted. */
 const fixture = (name: string): unknown => JSON.parse(readFileSync(join(__dirname, "fixtures", name), "utf8"));
@@ -92,5 +92,73 @@ describe("usageArgv", () => {
 		for (const days of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
 			expect(usageArgv(["usage", "clients", "--json"], { days })).toEqual(["usage", "clients", "--json"]);
 		}
+	});
+});
+
+describe("/usage reset listing", () => {
+	/** omp 18.12.4's printed listing, with identities redacted and two failure lines in omp's format. */
+	const text = readFileSync(join(__dirname, "fixtures", "usage-reset.txt"), "utf8");
+	const { readable, accounts } = parseResetListing(text);
+	const heading = "Saved rate-limit resets:";
+	const hint = "Spend one with `/usage reset <provider>/<credential id>` or `/usage reset <provider>/active`.";
+
+	it("reads each account's target, label, counts and soonest expiry", () => {
+		expect(readable).toBe(true);
+		expect(accounts).toHaveLength(4);
+		expect(accounts.slice(0, 2)).toEqual([
+			{
+				provider: "openai-codex",
+				credentialId: 4,
+				label: "user1@example.com · self_serve_business_prolite",
+				savedCount: 3,
+				usableCount: 3,
+				expiresAt: "2026-10-22T20:27:34.150512Z",
+				unavailable: null,
+			},
+			{
+				provider: "anthropic",
+				credentialId: 6,
+				label: "user1@example.com · Example Org 2",
+				savedCount: 1,
+				usableCount: 1,
+				expiresAt: "2026-10-22T16:00:00.000Z",
+				unavailable: null,
+			},
+		]);
+	});
+
+	it("keeps omp's reason when nothing can be spent now", () => {
+		expect(accounts[2]).toMatchObject({ credentialId: 9, savedCount: 1, usableCount: 0, unavailable: "the provider did not identify a grant that can be safely spent" });
+		expect(accounts[3]).toMatchObject({ credentialId: 12, savedCount: null, usableCount: null, expiresAt: null, unavailable: "token refresh failed" });
+	});
+
+	it("keeps brackets inside a label", () => {
+		expect(parseResetListing(`${heading}\n- Acme [EU] [Claude · anthropic/2]: 2 saved, 2 usable now\n\n${hint}`)).toEqual({
+			readable: true,
+			accounts: [{ provider: "anthropic", credentialId: 2, label: "Acme [EU]", savedCount: 2, usableCount: 2, expiresAt: null, unavailable: null }],
+		});
+	});
+
+	it("reads omp's no-accounts reply as an understood empty listing", () => {
+		expect(parseResetListing("No provider accounts found. Use /login to add one.")).toEqual({ readable: true, accounts: [] });
+	});
+
+	it("fails closed on a format it doesn't know", () => {
+		// An older omp's Codex-only heading and email targets.
+		expect(parseResetListing("Saved Codex rate-limit resets:\n- me@example.com: 2 available (active)")).toEqual({ readable: false, accounts: [] });
+		expect(parseResetListing("")).toEqual({ readable: false, accounts: [] });
+		expect(parseResetListing(`${heading}\n\n${hint}`)).toEqual({ readable: false, accounts: [] });
+	});
+
+	it("fails closed on a malformed credential id or detail", () => {
+		expect(parseResetListing(`${heading}\n- me@example.com [Codex · openai-codex/4a]: 1 saved, 1 usable now`).readable).toBe(false);
+		expect(parseResetListing(`${heading}\n- me@example.com [Codex · openai-codex/1234567890123456]: 1 saved, 1 usable now`).readable).toBe(false);
+		expect(parseResetListing(`${heading}\n- me@example.com [Codex · openai-codex/4]: 1 banked, ready`).readable).toBe(false);
+	});
+
+	it("fails closed on a partly readable listing instead of keeping the lines it understood", () => {
+		const partial = text.replace("- user2@example.com [Claude · anthropic/9]", "- user2@example.com {Claude · anthropic/9}");
+		expect(parseResetListing(partial)).toEqual({ readable: false, accounts: [] });
+		expect(parseResetListing(`${text}\nNote: one account is being refreshed.`).readable).toBe(false);
 	});
 });

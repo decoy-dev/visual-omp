@@ -1,0 +1,7 @@
+Saved rate-limit resets:
+- user1@example.com · self_serve_business_prolite [Codex · openai-codex/4]: 3 saved, 3 usable now, expires 2026-10-22T20:27:34.150512Z
+- user1@example.com · Example Org 2 [Claude · anthropic/6]: 1 saved, 1 usable now, expires 2026-10-22T16:00:00.000Z (active)
+- user2@example.com [Claude · anthropic/9]: 1 saved, 0 usable now, expires 2026-11-02T16:00:00.000Z (the provider did not identify a grant that can be safely spent)
+- user3@example.com [Codex · openai-codex/12]: unavailable (token refresh failed)
+
+Spend one with `/usage reset <provider>/<credential id>` or `/usage reset <provider>/active`.

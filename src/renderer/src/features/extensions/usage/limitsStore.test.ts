@@ -48,12 +48,13 @@ describe("usage limits store", () => {
 
 		const failing = checkUsageLimits();
 		expect(usageLimitsStatus().checking).toBe(true);
-		await failing;
+		// The caller learns the outcome too (the reset dialog says whether the limits were refreshed).
+		expect(await failing).toBe("omp timed out");
 		expect(invoke).toHaveBeenCalledWith("usage:limits", { refresh: true });
 		expect(usageLimitsStatus()).toEqual({ checking: false, error: "omp timed out" });
 		expect(usageLimitsSnapshot()?.generatedAt).toBe(400);
 
-		await checkUsageLimits();
+		expect(await checkUsageLimits()).toBeNull();
 		expect(usageLimitsStatus()).toEqual({ checking: false, error: null });
 		expect(usageLimitsSnapshot()?.generatedAt).toBe(500);
 	});

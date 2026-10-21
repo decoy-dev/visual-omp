@@ -1,5 +1,5 @@
 import type { TFunction } from "i18next";
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import type { PaneProps } from "@/registry/slots";
 import { useNow, useSessionView } from "@/shell/hooks";
@@ -8,7 +8,20 @@ import { cn, Tooltip } from "@/ui";
 import { focusRing } from "@/ui/styles";
 import { formatAge, formatDuration } from "../format";
 import { refreshUsageLimits, useUsageLimits } from "./limitsStore";
-import { chatModel, modelsInUse, planUsage, type ProviderUsage, providerName, type WindowUsage } from "./planUsage";
+import { chatModel, modelsInUse, planUsage, type ProviderUsage, providerName, rememberModels, type SeenModels, type WindowUsage, withSeenProviders } from "./planUsage";
+
+/**
+ * Every model the status bar has shown since this renderer loaded, across all chats. It lives only in
+ * renderer memory, so quitting, reloading the window or opening a new one starts again from the
+ * focused chat's models.
+ */
+let seenModels: SeenModels = new Map();
+const seenListeners = new Set<() => void>();
+
+function subscribeSeen(listener: () => void): () => void {
+	seenListeners.add(listener);
+	return () => seenListeners.delete(listener);
+}
 
 const fills: Record<WindowUsage["tone"], string> = { ok: "bg-ok", warn: "bg-warn", err: "bg-err" };
 const inks: Record<WindowUsage["tone"], string> = { ok: "", warn: "text-warn", err: "text-err" };
@@ -20,10 +33,13 @@ const inks: Record<WindowUsage["tone"], string> = { ok: "", warn: "text-warn", e
 const FOLDS = ["data-fold-window", "data-fold-more", "data-fold-name", "data-fold-text"] as const;
 
 /**
- * Folds the item step by step while any status bar column overflows, measuring synchronously so no
- * frame shows an overlapped bar. It settles from no folds again when the bar's content changes or the
- * text size changes; when the bar widens it unfolds a step only once it is wider than where that step
- * last failed, so the fold cannot oscillate. Folds are attributes read by CSS, so applying one never
+ * Folds the item step by step while the status bar row or any of its columns overflows, measuring
+ * synchronously so no frame shows an overlapped bar. The left column may shrink (`min-w-0`), and its
+ * text then spills under the right column without the row overflowing, so each column counts on its
+ * own: a column whose content is wider than the column has met its neighbour. It settles from no
+ * folds again when the bar's content changes or the text size changes; when the bar widens it
+ * unfolds a step only once it is wider than where that step last failed, so the fold cannot
+ * oscillate. Folds are attributes read by CSS, so applying one never
  * re-renders React, and neither observer watches those attributes.
  *
  * The text-size preference is applied by App's passive effect (`html.style.fontSize`), which runs
@@ -42,7 +58,9 @@ function useStatusBarFit(root: HTMLElement | null): void {
 			let next = from;
 			for (;;) {
 				FOLDS.forEach((attr, index) => root.toggleAttribute(attr, index < next));
-				if (next === FOLDS.length || [...footer.children].every(column => column.scrollWidth <= column.clientWidth)) break;
+				// 1px of slack: scroll and client widths round fractional widths separately.
+				const fits = [...footer.children].every(row => [row, ...row.children].every(box => box.scrollWidth <= box.clientWidth + 1));
+				if (next === FOLDS.length || fits) break;
 				failedAt[next] = width;
 				next++;
 			}
@@ -123,9 +141,10 @@ function PlanTooltip({ usage, now }: { usage: ProviderUsage[]; now: number }) {
 }
 
 /**
- * Status bar (right): plan usage of the providers the focused chat and its
- * running subagents use, one meter per provider showing the window `pickBinding` in planUsage.ts chooses
- * (an exhausted window, else 5h, else 7d, else monthly, else the most-used). Opens Usage & limits.
+ * Status bar (right): plan usage of the providers the focused chat and its running subagents use,
+ * then of every other provider it showed since the window opened (a finished helper's provider stays),
+ * one meter per provider showing the window `pickBinding` in planUsage.ts chooses (an exhausted
+ * window, else 5h, else 7d, else monthly, else the most-used). Opens Usage & limits.
  */
 export function PlanUsageStatus({ session, projectPath }: PaneProps) {
 	const { t } = useTranslation("extensions");
@@ -133,10 +152,18 @@ export function PlanUsageStatus({ session, projectPath }: PaneProps) {
 	const live = view?.guest?.state?.model;
 	const saved = view?.history?.entries;
 	const progress = view?.guest?.progress;
-	const models = useMemo(
+	const inUse = useMemo(
 		() => modelsInUse(chatModel(live, saved ?? []), progress ? [...progress.values()].map(payload => payload.progress) : []),
 		[live, saved, progress],
 	);
+	useEffect(() => {
+		const next = rememberModels(seenModels, inUse);
+		if (next === seenModels) return;
+		seenModels = next;
+		for (const listener of seenListeners) listener();
+	}, [inUse]);
+	const seen = useSyncExternalStore(subscribeSeen, () => seenModels);
+	const models = useMemo(() => withSeenProviders(inUse, seen), [inUse, seen]);
 	const providers = [...new Set(models.map(entry => entry.provider))].join(" ");
 	const snapshot = useUsageLimits(providers !== "");
 	useEffect(() => {

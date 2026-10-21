@@ -1,7 +1,8 @@
 /**
  * One request to a short-lived `omp --mode rpc` process: start omp in a folder, send a single
- * command, resolve its `data`, then stop the process. Used for read-only listings omp offers only
- * over RPC (sign-in providers, available slash commands).
+ * command, resolve its `data`, then stop the process. Used for listings omp offers only over RPC
+ * (sign-in providers, available slash commands) and for builtin slash commands whose printed output
+ * omp sends as `command_output` events before the response (`/usage reset`).
  */
 import { type ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { createInterface } from "node:readline";
@@ -20,6 +21,8 @@ export interface RpcRequestOptions {
 	timeoutMs: number;
 	/** Error messages: no answer in time, omp exited first, omp answered with a failure and no reason. */
 	messages: { timeout: string; exited: string; failed: string };
+	/** Every other JSON line omp writes before the response (events such as `command_output`). */
+	onMessage?: (message: unknown) => void;
 }
 
 /** Send `{ type, ...params }` and resolve the response's `data`. */
@@ -37,8 +40,12 @@ export async function rpcRequest(folder: string, type: string, options: RpcReque
 	child.stderr.resume();
 	child.stdin.on("error", () => {});
 	child.on("error", reject);
-	child.on("exit", () => reject(new Error(options.messages.exited)));
-	createInterface({ input: child.stdout }).on("line", line => {
+	const lines = createInterface({ input: child.stdout });
+	// omp's last lines can still be buffered when the process exits, so the request fails once its
+	// output has ended; a process that exits while something else holds its output open fails shortly after.
+	lines.on("close", () => reject(new Error(options.messages.exited)));
+	child.on("exit", () => setTimeout(() => reject(new Error(options.messages.exited)), EXIT_DRAIN_MS).unref());
+	lines.on("line", line => {
 		let message: unknown;
 		try {
 			message = JSON.parse(line);
@@ -46,7 +53,10 @@ export async function rpcRequest(folder: string, type: string, options: RpcReque
 			return;
 		}
 		const response = RpcResponseSchema.safeParse(message);
-		if (!response.success || response.data.id !== id) return;
+		if (!response.success || response.data.id !== id) {
+			options.onMessage?.(message);
+			return;
+		}
 		if (response.data.success) resolve(response.data.data);
 		else reject(new Error(response.data.error ?? options.messages.failed));
 	});
@@ -61,6 +71,8 @@ export async function rpcRequest(folder: string, type: string, options: RpcReque
 
 /** How long omp gets to exit by itself once its input closes (and to stop the MCP servers it started). */
 const EXIT_GRACE_MS = 3000;
+/** How long after omp exits its remaining output may still arrive. */
+const EXIT_DRAIN_MS = 500;
 
 /** omp in RPC mode exits when stdin closes; kill it only when it is still running after the grace period. */
 function stop(child: ChildProcessWithoutNullStreams): void {

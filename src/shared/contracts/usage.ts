@@ -378,6 +378,55 @@ export interface UsageStats {
 	costSeries: CostTimeSeriesPoint[];
 }
 
+/**
+ * One stored account in omp's `/usage reset` listing, which reads each Codex and Claude sign-in's
+ * saved resets live from the provider. omp spends a reset only through that command.
+ */
+export interface UsageResetAccount {
+	/** Provider id, e.g. `openai-codex`, `anthropic`. */
+	provider: string;
+	/** omp's stored credential id; `<provider>/<credentialId>` is the `/usage reset` target. */
+	credentialId: number;
+	/** omp's label: the email (else the account id), then ` · ` and the organization when it has one. */
+	label: string;
+	/** Saved resets, including ones not usable now; null when omp couldn't read them. */
+	savedCount: number | null;
+	/** Resets omp could spend now; null when omp couldn't read them. */
+	usableCount: number | null;
+	/** ISO timestamp of the soonest expiry, as omp prints it. */
+	expiresAt: string | null;
+	/** omp's reason none can be spent now (`0 usable now (…)`), or why it couldn't read them (`unavailable (…)`). */
+	unavailable: string | null;
+}
+
+/** omp's `/usage reset` listing as visual-omp read it. */
+export interface UsageResetListing {
+	/**
+	 * Whether visual-omp understood every line omp printed. False for a format it doesn't know or any
+	 * account line it can't read; nothing may be spent from such a listing.
+	 */
+	readable: boolean;
+	/** The accounts read; empty when omp reports none or the listing is unreadable. */
+	accounts: UsageResetAccount[];
+}
+
+/** `provider/credentialId`, the `/usage reset` target. */
+export interface UsageResetTarget {
+	provider: string;
+	credentialId: number;
+}
+
+/** What omp printed after `/usage reset <target>`. */
+export interface UsageResetOutcome {
+	/** omp's printed message, verbatim; empty when it printed nothing. */
+	output: string;
+	/**
+	 * False when omp did not answer the command: it timed out, stopped, failed or printed nothing.
+	 * The reset may or may not have been spent then, and the app never retries by itself.
+	 */
+	confirmed: boolean;
+}
+
 declare module "../ipc" {
 	interface IpcInvokeMap {
 		/**
@@ -396,5 +445,16 @@ declare module "../ipc" {
 		 * concurrent calls share one run.
 		 */
 		"usage:stats": { args: []; result: UsageStats };
+		/**
+		 * omp's live saved-reset listing (`/usage reset` in a short-lived `omp --mode rpc --no-session`
+		 * process). Read-only; the provider calls take a second or more.
+		 */
+		"usage:resetAccounts": { args: []; result: UsageResetListing };
+		/**
+		 * Spends one saved reset of `provider/credentialId` through omp's `/usage reset <target>` in a
+		 * short-lived RPC process and returns what omp printed. Irreversible; omp decides whether to
+		 * spend. Rejects without sending anything while a spend for the same target is running.
+		 */
+		"usage:spendReset": { args: [target: UsageResetTarget]; result: UsageResetOutcome };
 	}
 }

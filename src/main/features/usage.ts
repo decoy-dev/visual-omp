@@ -2,6 +2,7 @@ import type { UsageStats } from "@shared/contracts/usage";
 import { handle } from "../ipc";
 import { runOmp, runOmpJson } from "../omp/cli";
 import { ClientUsageSchema, UsageHistorySchema, UsageLimitsSnapshotSchema, UsageStatsSchema, usageArgv } from "./usage/parse";
+import { listResetAccounts, spendReset } from "./usage/resets";
 
 /** Provider usage endpoints are network calls; omp's own per-request timeouts are shorter than this. */
 const LIMITS_TIMEOUT_MS = 90_000;
@@ -43,4 +44,7 @@ export function register(): void {
 			});
 		return statsInFlight;
 	});
+
+	handle("usage:resetAccounts", () => listResetAccounts());
+	handle("usage:spendReset", target => spendReset(target));
 }

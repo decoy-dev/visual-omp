@@ -122,6 +122,35 @@ export function modelsInUse(main: ModelRef | null, subagents: Iterable<{ status:
 	return models;
 }
 
+/** Models the status bar has shown this app session: model ids per provider, providers in first-seen order. */
+export type SeenModels = ReadonlyMap<string, readonly string[]>;
+
+/** `seen` with `models` added; the same map when every model is already in it. */
+export function rememberModels(seen: SeenModels, models: readonly ModelRef[]): SeenModels {
+	let next: Map<string, readonly string[]> | null = null;
+	for (const { provider, modelId } of models) {
+		const known = (next ?? seen).get(provider) ?? [];
+		if (known.includes(modelId)) continue;
+		next ??= new Map(seen);
+		next.set(provider, [...known, modelId]);
+	}
+	return next ?? seen;
+}
+
+/**
+ * What the status bar shows: the models in use now, then, for each provider seen earlier this session
+ * and not in use now, every model it was seen with. A provider in use now keeps only its current
+ * models, so its window follows the chat; one shown before stays after its helper or chat stops.
+ */
+export function withSeenProviders(current: readonly ModelRef[], seen: SeenModels): ModelRef[] {
+	const out = [...current];
+	for (const [provider, modelIds] of seen) {
+		if (current.some(model => model.provider === provider)) continue;
+		for (const modelId of modelIds) out.push({ provider, modelId });
+	}
+	return out;
+}
+
 const bareModelId = (modelId: string) => modelId.slice(modelId.lastIndexOf("/") + 1);
 
 /** Claude family of a model id (`claude-opus-5-5` → `opus`), as omp's `parseAnthropicModel` reads it. */
@@ -351,12 +380,36 @@ export interface AccountId {
 	value: string;
 }
 
+/** Saved rate-limit resets of an account, from its report's `resetCredits`. */
+export interface SavedResets {
+	/** Banked resets, including ones not usable now (omp's `availableCount`). */
+	count: number;
+	/** Resets the provider says are usable now, when it says. */
+	usable: number | null;
+	/** Expiry times of the banked resets in epoch ms, soonest first. */
+	expiries: number[];
+	/**
+	 * {@link UsageLimit.id}s the next reset clears, as omp's last report gives them: only when the report
+	 * names the next credit (`nextCreditId`) and that credit lists them; empty otherwise.
+	 */
+	clears: string[];
+}
+
+/** Who an account is, as omp's report or credential names it. */
+export interface AccountIdentity {
+	accountId?: string;
+	email?: string;
+	orgId?: string;
+	orgName?: string;
+}
+
 export interface AccountLimits {
 	key: string;
 	/** Email, else organization, else null (an account omp reports without a name). */
 	name: string | null;
 	/** Organization, when `name` is the email. */
 	detail: string | null;
+	identity: AccountIdentity;
 	/**
 	 * `report`: omp returned a report (possibly without limits); `unavailable`: a usage-capable account
 	 * without a report; `disabled`: known only from a credential omp disabled.
@@ -365,6 +418,8 @@ export interface AccountLimits {
 	/** Epoch ms of omp's cached report. */
 	fetchedAt: number | null;
 	rows: LimitRow[];
+	/** Saved resets the report lists; null without any. */
+	resets: SavedResets | null;
 	disabled: DisabledCredential[];
 	notes: string[];
 	/** Raw identifiers for the technical details; plan ids stay here until a verified name mapping exists. */
@@ -376,22 +431,38 @@ export interface ProviderLimits {
 	accounts: AccountLimits[];
 }
 
-interface Identity {
-	accountId?: string;
-	email?: string;
-	orgId?: string;
-	orgName?: string;
-}
-
 const metaText = (value: unknown): string | undefined => (typeof value === "string" && value ? value : undefined);
 
 /** Same account: equal account ids, else (one side without an id) equal emails in a compatible organization. */
-function sameIdentity(a: Identity, b: Identity): boolean {
+function sameIdentity(a: AccountIdentity, b: AccountIdentity): boolean {
 	if (a.accountId !== undefined && b.accountId !== undefined) return a.accountId === b.accountId;
 	return a.email !== undefined && a.email === b.email && (a.orgId === undefined || b.orgId === undefined || a.orgId === b.orgId);
 }
 
 const rowSeverity = (row: LimitRow) => (row.state === "reached" ? 0 : row.state === "near" ? 1 : 2);
+
+/** Credit states that no longer count toward the saved resets. */
+const SPENT_CREDIT = /^(redeemed|expired|used|revoked)$/i;
+
+function savedResets(report: UsageReport): SavedResets | null {
+	const credits = report.resetCredits;
+	if (!credits || credits.availableCount <= 0) return null;
+	const list = (credits.credits ?? []).filter(credit => !credit.status || !SPENT_CREDIT.test(credit.status));
+	const next = credits.nextCreditId === undefined ? undefined : list.find(credit => credit.id === credits.nextCreditId);
+	const expiries = list
+		.map(credit => (credit.expiresAt ? Date.parse(credit.expiresAt) : Number.NaN))
+		.filter(Number.isFinite)
+		.sort((a, b) => a - b);
+	return { count: credits.availableCount, usable: credits.redeemableCount ?? null, expiries, clears: next?.clears ?? [] };
+}
+
+/** A saved reset expiring within this long gets a warning on the Usage page; omp's own banner uses 24 hours. */
+export const RESET_EXPIRY_WARN_MS = 86_400_000;
+
+/** The soonest expiry still ahead of `now`, or null. */
+export function soonestExpiry(resets: SavedResets, now: number): number | null {
+	return resets.expiries.find(at => at > now) ?? null;
+}
 
 function limitRows(report: UsageReport): LimitRow[] {
 	const prefix = `${providerName(report.provider)} `;
@@ -446,61 +517,68 @@ function compareAccounts(a: AccountLimits, b: AccountLimits): number {
  * equal figures do not show that two quotas are one.
  */
 export function planLimits(snapshot: UsageLimitsSnapshot): ProviderLimits[] {
-	const groups = new Map<string, { account: AccountLimits; identity: Identity }[]>();
-	const add = (provider: string, account: AccountLimits, identity: Identity) => groups.set(provider, [...(groups.get(provider) ?? []), { account, identity }]);
-	const ids = (provider: string, identity: Identity, plan?: string): AccountId[] => [
+	const groups = new Map<string, AccountLimits[]>();
+	const add = (provider: string, account: AccountLimits) => groups.set(provider, [...(groups.get(provider) ?? []), account]);
+	const ids = (provider: string, identity: AccountIdentity, plan?: string): AccountId[] => [
 		{ key: "provider", value: provider },
 		...(identity.accountId ? [{ key: "account" as const, value: identity.accountId }] : []),
 		...(identity.orgId ? [{ key: "org" as const, value: identity.orgId }] : []),
 		...(plan ? [{ key: "plan" as const, value: plan }] : []),
 	];
-	const names = (identity: Identity) => ({ name: identity.email ?? identity.orgName ?? null, detail: identity.email ? (identity.orgName ?? null) : null });
+	const known = ({ accountId, email, orgId, orgName }: AccountIdentity) => ({
+		identity: { accountId, email, orgId, orgName },
+		name: email ?? orgName ?? null,
+		detail: email ? (orgName ?? null) : null,
+	});
 
 	for (const [index, report] of snapshot.reports.entries()) {
 		const meta = report.metadata ?? {};
-		const identity: Identity = { accountId: metaText(meta.accountId), email: metaText(meta.email), orgId: metaText(meta.orgId), orgName: metaText(meta.orgName) };
+		const identity: AccountIdentity = { accountId: metaText(meta.accountId), email: metaText(meta.email), orgId: metaText(meta.orgId), orgName: metaText(meta.orgName) };
 		add(report.provider, {
 			key: `report:${report.provider}:${identity.accountId ?? identity.email ?? index}`,
-			...names(identity),
+			...known(identity),
 			kind: "report",
 			fetchedAt: report.fetchedAt,
 			rows: limitRows(report),
+			resets: savedResets(report),
 			disabled: [],
 			notes: report.notes ?? [],
 			ids: [...ids(report.provider, identity, metaText(meta.planType)), ...report.limits.map(limit => ({ key: "limit" as const, value: limit.id }))],
-		}, identity);
+		});
 	}
 	for (const [index, account] of snapshot.accountsWithoutUsage.entries()) {
 		add(account.provider, {
 			key: `unavailable:${account.provider}:${account.accountId ?? account.email ?? index}`,
-			...names(account),
+			...known(account),
 			kind: "unavailable",
 			fetchedAt: null,
 			rows: [],
+			resets: null,
 			disabled: [],
 			notes: [],
 			ids: ids(account.provider, account),
-		}, account);
+		});
 	}
 	for (const credential of snapshot.disabledCredentials) {
-		const match = groups.get(credential.provider)?.find(entry => sameIdentity(entry.identity, credential));
+		const match = groups.get(credential.provider)?.find(account => sameIdentity(account.identity, credential));
 		if (match) {
-			match.account.disabled.push(credential);
+			match.disabled.push(credential);
 			continue;
 		}
 		add(credential.provider, {
 			key: `disabled:${credential.id}`,
-			...names(credential),
+			...known(credential),
 			kind: "disabled",
 			fetchedAt: null,
 			rows: [],
+			resets: null,
 			disabled: [credential],
 			notes: [],
 			ids: ids(credential.provider, credential),
-		}, credential);
+		});
 	}
 
-	const providers = [...groups].map(([provider, entries]) => ({ provider, accounts: entries.map(entry => entry.account).sort(compareAccounts) }));
+	const providers = [...groups].map(([provider, accounts]) => ({ provider, accounts: accounts.sort(compareAccounts) }));
 	return providers.sort((a, b) => compareAccounts(a.accounts[0], b.accounts[0]));
 }
 

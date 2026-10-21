@@ -17,6 +17,8 @@ import type {
 	UsageLimit,
 	UsageLimitsSnapshot,
 	UsageReport,
+	UsageResetAccount,
+	UsageResetListing,
 	UsageResetCreditDetail,
 	UsageResetCredits,
 	UsageStats,
@@ -275,4 +277,56 @@ export function usageArgv(base: string[], options: { provider?: string; redact?:
 	const { days } = options;
 	if (days !== undefined && Number.isFinite(days) && days > 0) argv.push("--days", String(Math.ceil(days)));
 	return argv;
+}
+
+/**
+ * omp's `/usage reset` listing (its `reset-usage.ts` helper, omp 18.12): the heading, one line per
+ * account, `- {label} [{provider label} · {provider}/{credential id}]: {detail}` with ` (active)` at
+ * the end for the session's active account, then a hint. The detail is
+ * `{n} saved, {m} usable now[, expires {ISO}][ ({why})]` or `unavailable ({error})`. Without accounts
+ * omp prints one line instead.
+ */
+const HEADING = "Saved rate-limit resets:";
+const NO_ACCOUNTS = /^No provider accounts found\./;
+const HINT = /^Spend one with /;
+const ACCOUNT_LINE = /^- (.+?) \[[^\]]* · ([a-z0-9][a-z0-9._-]*)\/(\d{1,15})\]: (.*)$/;
+const COUNTS = /^(\d+) saved, (\d+) usable now(?:, expires (\S+))?(?: \((.*)\))?$/;
+const UNAVAILABLE = /^unavailable \((.*)\)$/;
+
+function parseAccountLine(text: string): UsageResetAccount | null {
+	const line = ACCOUNT_LINE.exec(text);
+	if (!line) return null;
+	// Every group of ACCOUNT_LINE is required, so a match has all four.
+	const [, label, provider, id, rest] = line as unknown as [string, string, string, string, string];
+	const detail = rest.replace(/ \(active\)$/, "");
+	const base = { provider, credentialId: Number(id), label };
+	const counts = COUNTS.exec(detail);
+	if (counts) {
+		return { ...base, savedCount: Number(counts[1]), usableCount: Number(counts[2]), expiresAt: counts[3] ?? null, unavailable: counts[4] ?? null };
+	}
+	const unavailable = UNAVAILABLE.exec(detail);
+	return unavailable ? { ...base, savedCount: null, usableCount: null, expiresAt: null, unavailable: unavailable[1] ?? "" } : null;
+}
+
+/**
+ * Reads omp's `/usage reset` listing, failing closed: a listing in another format, a heading without
+ * accounts, or any line that isn't the heading, an account or the hint makes the whole listing
+ * unreadable, since spending from a partly read listing could name the wrong account.
+ */
+export function parseResetListing(text: string): UsageResetListing {
+	const unreadable: UsageResetListing = { readable: false, accounts: [] };
+	const lines = text
+		.split("\n")
+		.map(line => line.trimEnd())
+		.filter(line => line !== "");
+	if (lines.length === 1 && NO_ACCOUNTS.test(lines[0] ?? "")) return { readable: true, accounts: [] };
+	if (lines[0] !== HEADING) return unreadable;
+	const accounts: UsageResetAccount[] = [];
+	for (const line of lines.slice(1)) {
+		if (HINT.test(line)) continue;
+		const account = parseAccountLine(line);
+		if (!account) return unreadable;
+		accounts.push(account);
+	}
+	return accounts.length > 0 ? { readable: true, accounts } : unreadable;
 }

@@ -4,17 +4,29 @@
  * its account, meter, percent, reset and state; other windows near or at their limit, stopped sign-ins
  * and accounts without figures stay listed under it. Opening the row shows every account and window.
  */
-import { CaretRight, Gauge, Question, Warning, WarningCircle } from "@phosphor-icons/react";
+import { ArrowCounterClockwise, CaretRight, Gauge, Question, Warning, WarningCircle } from "@phosphor-icons/react";
 import type { TFunction } from "i18next";
-import { type ReactNode, useEffect, useMemo } from "react";
+import { type ReactNode, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNow } from "@/shell/hooks";
 import { openSettings } from "@/state/navigation";
-import { Button, cn, EmptyState, Expand, Meter, Notice, SectionHeader, Skeleton, StatusBadge, type StatusBadgeTone, Tooltip } from "@/ui";
+import { Button, Chip, cn, EmptyState, Expand, Meter, Notice, SectionHeader, Skeleton, StatusBadge, type StatusBadgeTone, Tooltip } from "@/ui";
 import { focusRing, focusRingInset } from "@/ui/styles";
 import { formatAge, formatDuration } from "../format";
 import { checkUsageLimits, refreshUsageLimits, useUsageLimits, useUsageLimitsStatus } from "./limitsStore";
-import { type AccountLimits, type AccountRow, type LimitRow, planLimits, type ProviderLimits, providerName, providerSummary } from "./planUsage";
+import {
+	type AccountLimits,
+	type AccountRow,
+	type LimitRow,
+	planLimits,
+	type ProviderLimits,
+	providerName,
+	providerSummary,
+	RESET_EXPIRY_WARN_MS,
+	type SavedResets,
+	soonestExpiry,
+} from "./planUsage";
+import { ResetDialog } from "./ResetDialog";
 import { useUsageView } from "./viewStore";
 
 const DAY_MS = 86_400_000;
@@ -135,6 +147,12 @@ function ProviderRow({ provider, now }: { provider: ProviderLimits; now: number 
 				: null;
 	const regionId = `usage-limits-${provider.provider}`;
 	const reporting = provider.accounts.filter(account => account.kind === "report").length;
+	const savedResets = provider.accounts.reduce((sum, account) => sum + (account.resets?.count ?? 0), 0);
+	// omp itself warns when a saved reset expires within a day, since an unspent reset is lost.
+	const expiring = provider.accounts.flatMap(account => {
+		const at = account.resets ? soonestExpiry(account.resets, now) : null;
+		return at !== null && at - now <= RESET_EXPIRY_WARN_MS ? [{ account, at }] : [];
+	});
 
 	const alerts: { key: string; tone: "warn" | "err" | "neutral"; text: string }[] = open
 		? []
@@ -146,6 +164,11 @@ function ProviderRow({ provider, now }: { provider: ProviderLimits; now: number 
 						text: t("usage.limits.alert.disabled", { account: accountName(account, t), cause: credential.cause }),
 					})),
 				),
+				...expiring.map(({ account, at }) => ({
+					key: `reset:${account.key}`,
+					tone: "warn" as const,
+					text: t("usage.limits.alert.resetExpires", { account: accountName(account, t), time: formatDuration(at - now) }),
+				})),
 				...summary.alerts.map(alert => ({
 					key: `${alert.account.key}:${alert.row.id}`,
 					tone: alert.row.state === "reached" ? ("err" as const) : ("warn" as const),
@@ -187,7 +210,15 @@ function ProviderRow({ provider, now }: { provider: ProviderLimits; now: number 
 			>
 				<CaretRight aria-hidden className={cn("size-4 text-fg-muted transition-transform duration-(--dur-fast) [grid-area:caret]", open && "rotate-90")} />
 				<span className="flex min-w-0 flex-col [grid-area:name]">
-					<span className="text-md font-semibold text-fg">{name}</span>
+					{/* At larger text sizes the chip moves under the name instead of squeezing it. */}
+					<span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+						<span className="text-md font-semibold text-fg">{name}</span>
+						{savedResets > 0 && (
+							<Chip tone={expiring.length > 0 ? "warn" : "neutral"} icon={<ArrowCounterClockwise aria-hidden />} className="h-5 px-2">
+								{t("usage.limits.resets.count", { count: savedResets })}
+							</Chip>
+						)}
+					</span>
 					<span className="truncate text-sm text-fg-muted">
 						{binding ? windowCaption(binding, named, t) : unknownRow ? windowCaption(unknownRow, named, t) : t("usage.limits.noFigure")}
 					</span>
@@ -220,7 +251,7 @@ function ProviderRow({ provider, now }: { provider: ProviderLimits; now: number 
 					{reporting > 1 && <p className="pb-3 text-sm text-fg-muted">{t("usage.limits.pooled", { count: reporting })}</p>}
 					<div className="flex flex-col divide-y divide-border">
 						{provider.accounts.map(account => (
-							<Account key={account.key} account={account} provider={name} named={provider.accounts.length > 1} now={now} />
+							<Account key={account.key} account={account} providerId={provider.provider} provider={name} named={provider.accounts.length > 1} now={now} />
 						))}
 					</div>
 				</div>
@@ -236,11 +267,28 @@ function AlertGlyph({ tone }: { tone: "warn" | "err" | "neutral" }): ReactNode {
 	return <Question aria-hidden className={cn(className, "text-fg-faint")} />;
 }
 
-function Account({ account, provider, named, now }: { account: AccountLimits; provider: string; named: boolean; now: number }) {
+function Account({ account, providerId, provider, named, now }: { account: AccountLimits; providerId: string; provider: string; named: boolean; now: number }) {
 	const { t, i18n } = useTranslation("extensions");
 	const showIdentity = account.name !== null || named;
+	// The dialog stays mounted with the account, so spending the last reset doesn't close it mid-answer.
+	const [resetOpen, setResetOpen] = useState(false);
+	const clears = (account.resets?.clears ?? []).flatMap(id => {
+		const row = account.rows.find(entry => entry.id === id);
+		return row ? [row.qualifier ? `${rowName(row, t)} (${row.qualifier})` : rowName(row, t)] : [];
+	});
 	return (
 		<div className="flex flex-col gap-3 py-4 first:pt-1 last:pb-0">
+			{account.kind === "report" && (
+				<ResetDialog
+					open={resetOpen}
+					onOpenChange={setResetOpen}
+					provider={providerId}
+					providerName={provider}
+					account={account}
+					accountName={account.detail ? `${accountName(account, t)} · ${account.detail}` : accountName(account, t)}
+					clears={clears}
+				/>
+			)}
 			{(showIdentity || account.fetchedAt !== null) && (
 				<div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
 					{showIdentity ? (
@@ -256,6 +304,8 @@ function Account({ account, provider, named, now }: { account: AccountLimits; pr
 					)}
 				</div>
 			)}
+
+			{account.resets && <SavedResetsLine resets={account.resets} now={now} onSpend={() => setResetOpen(true)} />}
 
 			{account.disabled.map(credential => (
 				<Notice
@@ -304,6 +354,39 @@ function Account({ account, provider, named, now }: { account: AccountLimits; pr
 					))}
 				</dl>
 			</details>
+		</div>
+	);
+}
+
+/** "3 saved resets · The soonest expires in 1d 9h" with [Spend a reset]. */
+function SavedResetsLine({ resets, now, onSpend }: { resets: SavedResets; now: number; onSpend: () => void }) {
+	const { t, i18n } = useTranslation("extensions");
+	const soonest = soonestExpiry(resets, now);
+	const last = resets.expiries.at(-1);
+	const date = (at: number) =>
+		new Intl.DateTimeFormat(i18n.language, { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(at);
+	const soon = soonest !== null && soonest - now <= RESET_EXPIRY_WARN_MS;
+	return (
+		<div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2">
+			<p className="flex min-w-0 flex-wrap items-baseline gap-x-2 text-sm">
+				<span className="inline-flex items-center gap-1.5 self-center font-medium text-fg">
+					<ArrowCounterClockwise aria-hidden className="size-3.5 text-fg-muted" />
+					{t("usage.limits.resets.count", { count: resets.count })}
+				</span>
+				{soonest !== null ? (
+					<Tooltip content={t("usage.limits.resets.expiresAt", { date: date(soonest) })}>
+						<time tabIndex={0} dateTime={new Date(soonest).toISOString()} className={cn("rounded-sm tabular-nums", soon ? "font-medium text-warn" : "text-fg-muted", focusRing)}>
+							{t(resets.count === 1 ? "usage.limits.resets.expiresIn" : "usage.limits.resets.soonestIn", { time: formatDuration(soonest - now) })}
+						</time>
+					</Tooltip>
+				) : (
+					last !== undefined && <span className="text-fg-muted">{t("usage.limits.resets.expired", { date: date(last) })}</span>
+				)}
+				{resets.usable === 0 && <span className="text-fg-muted">{t("usage.limits.resets.noneUsableNow")}</span>}
+			</p>
+			<Button size="sm" onClick={onSpend}>
+				{t("usage.limits.resets.open")}
+			</Button>
 		</div>
 	);
 }

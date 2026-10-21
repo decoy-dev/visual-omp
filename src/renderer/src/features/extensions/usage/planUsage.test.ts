@@ -2,7 +2,7 @@ import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
 import type { UsageLimit, UsageLimitsSnapshot, UsageReport } from "@shared/contracts/usage";
 import realSnapshot from "../../../../../main/features/usage/fixtures/usage-limits.json";
-import { chatModel, modelsInUse, parseModelSelector, parseWindowDuration, planLimits, planUsage, providerSummary } from "./planUsage";
+import { chatModel, modelsInUse, parseModelSelector, parseWindowDuration, planLimits, planUsage, providerSummary, rememberModels, type SeenModels, soonestExpiry, withSeenProviders } from "./planUsage";
 
 /** Real `omp usage --json` output: Kimi, Codex and one Claude account with a Fable tier row and spent extra usage. */
 const fixture = realSnapshot as unknown as UsageLimitsSnapshot;
@@ -53,6 +53,34 @@ describe("modelsInUse", () => {
 			{ status: "running" },
 		]);
 		expect(models).toEqual([opus, { provider: "openai-codex", modelId: "gpt-5.6-luna" }]);
+	});
+});
+
+describe("providers seen this session", () => {
+	const luna = { provider: "openai-codex", modelId: "gpt-5.6-luna" };
+	const fable = { provider: "anthropic", modelId: "claude-fable-5" };
+	const kimi = { provider: "kimi-code", modelId: "kimi-k3" };
+
+	it("keeps a helper's provider after its progress goes away, after the chat's own providers", () => {
+		let seen: SeenModels = new Map();
+		seen = rememberModels(seen, [opus, luna]);
+		// The Codex helper finished: only the chat's Claude model is in use now.
+		expect(withSeenProviders([opus], seen)).toEqual([opus, luna]);
+		// Another chat on Kimi gets focus: Kimi first, then both providers seen earlier.
+		seen = rememberModels(seen, [kimi]);
+		expect(withSeenProviders([kimi], seen)).toEqual([kimi, opus, luna]);
+	});
+
+	it("follows the current models of a provider in use, and keeps every model of one seen before", () => {
+		const seen = rememberModels(new Map(), [opus, fable]);
+		expect(withSeenProviders([fable], seen)).toEqual([fable]);
+		expect(withSeenProviders([luna], seen)).toEqual([luna, opus, fable]);
+	});
+
+	it("returns the same map when nothing new is in use, so the store does not notify", () => {
+		const seen = rememberModels(new Map(), [opus, luna]);
+		expect(rememberModels(seen, [luna, opus])).toBe(seen);
+		expect(rememberModels(seen, [fable])).not.toBe(seen);
 	});
 });
 
@@ -323,6 +351,43 @@ describe("planLimits", () => {
 		const codex = planLimits(fixture).find(provider => provider.provider === "openai-codex")?.accounts[0];
 		expect(codex).toMatchObject({ name: "user1@example.com", detail: "Example Org 1", kind: "report", fetchedAt: 1790789893693 });
 		expect(codex?.ids).toContainEqual({ key: "plan", value: "self_serve_business_prolite" });
+	});
+
+	it("reads saved resets with their expiries and what the next one clears", () => {
+		const providers = planLimits(fixture);
+		const codex = providers.find(provider => provider.provider === "openai-codex")?.accounts[0].resets;
+		expect(codex).toEqual({ count: 2, usable: null, expiries: [Date.parse("2026-10-22T20:27:34.150512Z"), Date.parse("2026-10-29T18:53:17.936235Z")], clears: [] });
+		const claude = providers.find(provider => provider.provider === "anthropic")?.accounts[0].resets;
+		expect(claude).toMatchObject({ count: 1, usable: 1, clears: ["anthropic:5h", "anthropic:7d", "anthropic:reset:seven_day_overage_included"] });
+		expect(providers.find(provider => provider.provider === "kimi-code")?.accounts[0].resets).toBeNull();
+		// After the first expiry passes, the soonest is the next one; after the last, none.
+		expect(soonestExpiry(codex!, Date.parse("2026-10-23T00:00:00Z"))).toBe(Date.parse("2026-10-29T18:53:17.936235Z"));
+		expect(soonestExpiry(codex!, Date.parse("2026-11-01T00:00:00Z"))).toBeNull();
+	});
+
+	it("leaves spent credits out of the expiries and an empty bank out entirely", () => {
+		const providers = planLimits(
+			snapshot([
+				{
+					...report("openai-codex", [limit("openai-codex:7d", 0.1)]),
+					resetCredits: { availableCount: 1, credits: [{ expiresAt: "2026-10-22T00:00:00Z", status: "redeemed" }, { expiresAt: "2026-10-30T00:00:00Z", status: "available" }] },
+				},
+				{ ...report("anthropic", [limit("anthropic:5h", 0.1)]), resetCredits: { availableCount: 0, credits: [] } },
+			]),
+		);
+		const resets = (provider: string) => providers.find(entry => entry.provider === provider)?.accounts[0].resets;
+		expect(resets("openai-codex")?.expiries).toEqual([Date.parse("2026-10-30T00:00:00Z")]);
+		expect(resets("anthropic")).toBeNull();
+	});
+
+	it("names what the next reset clears only when the report identifies the next credit", () => {
+		const credit = { id: "grant-1", usable: true, clears: ["anthropic:5h"] };
+		const clears = (resetCredits: UsageReport["resetCredits"]) =>
+			planLimits(snapshot([{ ...report("anthropic", [limit("anthropic:5h", 0.5)]), resetCredits }]))[0].accounts[0].resets?.clears;
+		expect(clears({ availableCount: 1, nextCreditId: "grant-1", credits: [credit] })).toEqual(["anthropic:5h"]);
+		// Without a named next credit, or naming one the report doesn't list, the coverage is unknown.
+		expect(clears({ availableCount: 1, credits: [credit] })).toEqual([]);
+		expect(clears({ availableCount: 1, nextCreditId: "grant-2", credits: [credit] })).toEqual([]);
 	});
 
 	it("reads a missing amount as unavailable and a warning status as near the limit", () => {

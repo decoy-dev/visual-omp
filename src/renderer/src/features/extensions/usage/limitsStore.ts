@@ -43,7 +43,8 @@ export function publishUsageLimits(next: UsageLimitsSnapshot): void {
 	notify();
 }
 
-async function track(read: Promise<UsageLimitsSnapshot>): Promise<void> {
+/** Runs a read and resolves with why it failed, or null after a success. */
+async function track(read: Promise<UsageLimitsSnapshot>): Promise<string | null> {
 	reads++;
 	status = { checking: true, error: status.error };
 	notify();
@@ -57,6 +58,7 @@ async function track(read: Promise<UsageLimitsSnapshot>): Promise<void> {
 	}
 	status = { checking: reads > 0, error };
 	notify();
+	return error;
 }
 
 /**
@@ -66,14 +68,19 @@ async function track(read: Promise<UsageLimitsSnapshot>): Promise<void> {
 export function refreshUsageLimits(): Promise<void> {
 	if (inFlight) return inFlight;
 	if (listeners.size === 0 || document.visibilityState === "hidden") return Promise.resolve();
-	inFlight = track(window.vomp.invoke("usage:limits")).finally(() => {
-		inFlight = null;
-	});
+	inFlight = track(window.vomp.invoke("usage:limits"))
+		.then(() => undefined)
+		.finally(() => {
+			inFlight = null;
+		});
 	return inFlight;
 }
 
-/** Asks omp to fetch fresh figures from the providers instead of its cache ("Refresh limits"). */
-export function checkUsageLimits(): Promise<void> {
+/**
+ * Asks omp to fetch fresh figures from the providers instead of its cache ("Refresh limits").
+ * Resolves with why the read failed, or null once the new figures are in.
+ */
+export function checkUsageLimits(): Promise<string | null> {
 	return track(window.vomp.invoke("usage:limits", { refresh: true }));
 }
 

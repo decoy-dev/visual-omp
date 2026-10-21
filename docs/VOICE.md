@@ -23,7 +23,7 @@ Match the length to the surface. UI strings are short: a button is verb + object
 
 Rewrite the sentence when one of these appears; replacing a single word is not enough.
 
-- Do not use em dashes, en dashes or double hyphens as prose punctuation. Use a comma, colon, period or parentheses, and use a hyphen for ranges. Literal command flags, code syntax and quoted examples of banned wording are exempt.
+- Do not use em dashes, en dashes or double hyphens as prose punctuation. Use a comma, colon, period or parentheses, and use a hyphen for ranges. Literal command flags, code syntax and quoted examples of banned wording are exempt. Text omp printed and the app shows as omp's own output, such as the reply under "What omp reported for {account}:" after spending a saved reset, keeps omp's wording, dashes included, because rewriting it would misquote omp.
 - Avoid "X, not Y", "not just X, but Y", "it's not X, it's Y" and a trailing "even X". Avoid parallel anaphora ("Every X. Every Y."), triads of fragments ("Plan. Build. Ship.") and slogan cadence.
 - Do not place all-caps or bracketed eyebrow labels above headings (`[ PROJECTS ]`, `[ 1 OF 5 ]`). Use a label only when it names something the heading does not.
 - Do not promise more than the code does. Confirm the behavior in code before describing it.
