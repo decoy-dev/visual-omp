@@ -102,10 +102,23 @@ jobs:
         with:
           name: release-notes
           path: release-notes
+      # Only the newest stable version is marked Latest on the releases page, so a stable tag published
+      # after a newer one leaves the label where it is. Prereleases skip this and are never Latest.
+      - name: Decide whether this release is marked Latest
+        id: latest
+        if: needs.verify.outputs.prerelease != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+        run: |
+          tags="$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name')"
+          make_latest="$(node scripts/make-latest.mjs "${GITHUB_REF_NAME#v}" <<< "$tags")"
+          echo "make_latest=${make_latest}" >> "$GITHUB_OUTPUT"
       - uses: softprops/action-gh-release@v2
         with:
           body_path: release-notes/release-notes.md
           prerelease: ${{ needs.verify.outputs.prerelease == 'true' }}
+          make_latest: ${{ steps.latest.outputs.make_latest }}
           files: release-assets/*
       # The cask and the Scoop manifest are the stable channel: prereleases never reach
       # `brew upgrade` or `scoop update`. Each script leaves its file alone when it already offers

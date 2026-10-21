@@ -1,14 +1,19 @@
 import { readFile } from "node:fs/promises";
 
-/** [major, minor, patch] of a stable release version. Build metadata is ignored, as semver does. */
-function core(version) {
+/** [major, minor, patch] of a stable release version, or null for anything else. Build metadata is ignored, as semver does. */
+export function stableCore(version) {
 	const match = /^(\d+)\.(\d+)\.(\d+)(?:\+[0-9A-Za-z.-]+)?$/.exec(version);
-	if (!match) throw new Error(`Expected a stable release version, got "${version}"`);
-	return match.slice(1).map(Number);
+	return match ? match.slice(1).map(Number) : null;
+}
+
+function core(version) {
+	const parts = stableCore(version);
+	if (!parts) throw new Error(`Expected a stable release version, got "${version}"`);
+	return parts;
 }
 
 /** Negative when `a` is older than `b`, 0 when they are the same release, positive when newer. */
-function compareStable(a, b) {
+export function compareStable(a, b) {
 	const [x, y] = [core(a), core(b)];
 	for (let i = 0; i < 3; i++) if (x[i] !== y[i]) return x[i] - y[i];
 	return 0;
