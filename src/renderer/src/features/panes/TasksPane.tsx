@@ -169,7 +169,8 @@ function TranscriptItem({ item }: { item: HelperTranscriptItem }) {
 	}
 }
 
-function TranscriptDialog({ helper, session, onClose }: { helper: Helper; session: SessionController; onClose(): void }) {
+/** A helper's conversation, read from omp through the collab stream (Tasks pane, the chat's pinned helpers). */
+export function TranscriptDialog({ helper, session, onClose }: { helper: Helper; session: SessionController; onClose(): void }) {
 	const { t } = useTranslation("panes");
 	const [state, setState] = useState<{ text: string } | { error: string } | null>(null);
 	useEffect(() => {

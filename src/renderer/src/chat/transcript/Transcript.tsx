@@ -23,6 +23,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
 import { type Helper, type HelperStatus, helpersByCall, ompRunning, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
+import { unpinnedRuns, usePinnedHelpers } from "../../features/panes/pinnedHelpers";
 import { openInFiles } from "../../features/panes/files-store";
 import { useHomeDir } from "../../features/projects/folders/FolderBrowser";
 import { getCommand } from "../../registry/commands";
@@ -243,6 +244,8 @@ interface WorkView {
 	thoughts: ThoughtChoices;
 	/** Live helpers by the task call that started them (`helpersByCall`). */
 	helpers: ReadonlyMap<string, readonly Helper[]>;
+	/** Running helpers, pinned at the bottom of the chat (`pinnedHelpers`): their cards stay out from under their call. */
+	pinned: ReadonlySet<string>;
 	/** Each helper's last state the transcript records (`transcriptHelperStates`), for helpers read from their call. */
 	recorded: ReadonlyMap<string, HelperStatus>;
 	/** An omp process may still run this chat's helpers (`ompRunning`). */
@@ -320,13 +323,15 @@ function ToolStep({
 			engageId={block.id}
 		/>
 	);
+	// A helper pinned at the bottom of the chat while it runs has no card here; the row still counts it.
+	const cards = work ? unpinnedRuns(runs, work.pinned) : runs;
 	if (runs.length === 0) return card;
 	return (
 		<div>
 			{card}
-			<div className="pt-1 pb-2 pl-6.5">
-				<TaskRuns runs={runs} />
-			</div>
+			<Expand open={cards.length > 0} className="pt-1 pb-2 pl-6.5">
+				<TaskRuns runs={cards} />
+			</Expand>
 		</div>
 	);
 }
@@ -521,7 +526,8 @@ function rowEqual(prev: RowProps, next: RowProps): boolean {
 		const result = next.results.get(block.id);
 		if (prev.results.get(block.id) !== result || prev.active.get(block.id) !== live) return false;
 		if (block.name !== "task") continue;
-		// A task call's helpers report progress after the call itself returned.
+		// A task call's helpers report progress after the call itself returned, and leave its cards while pinned.
+		if (prev.work.pinned !== next.work.pinned) return false;
 		const liveRuns = next.work.helpers.get(block.id);
 		if (prev.work.helpers.get(block.id) !== liveRuns) return false;
 		if (liveRuns && liveRuns.length > 0) continue;
@@ -864,9 +870,10 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		[agents, progress, lifecycle, helpersMayRun],
 	);
 	const recorded = useMemo(() => transcriptHelperStates(entries), [entries]);
+	const pinned = usePinnedHelpers(view).ids;
 	const work = useMemo(
-		(): WorkView => ({ layout, arriving: forming, openGroups, thoughts, helpers, recorded, ompRunning: helpersMayRun, hold, holdGroup }),
-		[layout, forming, openGroups, thoughts, helpers, recorded, helpersMayRun, hold, holdGroup],
+		(): WorkView => ({ layout, arriving: forming, openGroups, thoughts, helpers, pinned, recorded, ompRunning: helpersMayRun, hold, holdGroup }),
+		[layout, forming, openGroups, thoughts, helpers, pinned, recorded, helpersMayRun, hold, holdGroup],
 	);
 	const openFile = (path: string) => openInFiles(session.projectPath, path, { focus: true });
 

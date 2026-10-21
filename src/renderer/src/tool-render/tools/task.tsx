@@ -132,7 +132,7 @@ const DOT: Record<HelperStatus, "agent" | "idle" | "ok" | "err"> = { running: "a
  * A working helper's run time, counted on each second from omp's last report: omp measures the time only when it
  * reports progress, and a helper waiting on a long model reply reports nothing.
  */
-function RunningTime({ durationMs, since }: { durationMs: number; since: number }): ReactNode {
+export function RunningTime({ durationMs, since }: { durationMs: number; since: number }): ReactNode {
 	const now = useNow(1000);
 	return <>{fmtDuration(durationMs + Math.max(0, now - since))}</>;
 }

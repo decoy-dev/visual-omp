@@ -117,6 +117,11 @@ export interface ExpandProps {
 /** Expand timing: open lets the height lead and the content follow 40ms later; close fades the content first. */
 const expandOpen: Transition = { height: spring.snappy, opacity: { duration: duration.base, ease: ease.outQuart, delay: 0.04 } };
 const expandClose: Transition = { height: { duration: 0.17, ease: [0.4, 0, 0.2, 1] }, opacity: { duration: 0.09, ease: "easeIn" } };
+/**
+ * Reduced motion still resolves the height to `auto`, at once: an Expand that was open when reduced motion turned on
+ * can hold the pixel height its last animation left, and it would keep that height as its content changed.
+ */
+const reducedOpen: Transition = { ...fade, height: { duration: 0 } };
 
 /**
  * Animated height-auto disclosure for accordions, tool steps and "show more" rows. Content is unmounted while
@@ -135,7 +140,7 @@ export function Expand({ open, children, className, id, animateOnMount = false }
 					key="expand"
 					id={id}
 					initial={reduced ? { opacity: 0 } : { height: 0, opacity: 0 }}
-					animate={reduced ? { opacity: 1, transition: fade } : { height: "auto", opacity: 1, transition: expandOpen }}
+					animate={reduced ? { height: "auto", opacity: 1, transition: reducedOpen } : { height: "auto", opacity: 1, transition: expandOpen }}
 					exit={closed}
 					onAnimationStart={() => setMoving(true)}
 					onAnimationComplete={() => setMoving(false)}

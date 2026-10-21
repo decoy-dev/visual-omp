@@ -6,10 +6,11 @@
 import { ClipboardText, GitDiff, type Icon, Images, ListChecks, MonitorPlay, TerminalWindow, TreeStructure } from "@phosphor-icons/react";
 import { registerCommand } from "../../registry/commands";
 import { lazyView } from "../../registry/lazy";
-import { panes } from "../../registry/slots";
+import { chatSlots, panes } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import { Skeleton } from "../../ui";
 import { DiffBadge, OutputsBadge } from "./badges";
+import { HelperStrip } from "./HelperStrip";
 import { PlanBadge, PlanPane } from "./PlanPane";
 import { PreviewPane } from "./PreviewPane";
 import { TasksBadge, TasksPane } from "./TasksPane";
@@ -53,6 +54,8 @@ panes.register({
 	badge: OutputsBadge,
 });
 panes.register({ id: "tasks", order: 40, title: "panes:names.tasks", icon: ListChecks, component: TasksPane, badge: TasksBadge });
+// Running helpers pinned at the bottom of the chat, above the working line (DESIGN §3.5).
+chatSlots.register({ id: "pinned-helpers", placement: "aboveComposer", order: 10, component: HelperStrip });
 panes.register({ id: "plan", order: 50, title: "panes:names.plan", icon: ClipboardText, component: PlanPane, badge: PlanBadge });
 panes.register({ id: "terminal", order: 60, title: "panes:names.terminal", icon: TerminalWindow, component: TerminalPane, badge: TerminalBadge });
 

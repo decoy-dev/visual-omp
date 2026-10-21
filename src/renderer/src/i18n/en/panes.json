@@ -292,6 +292,11 @@
 			"contextLabel": "{{name}}'s context use",
 			"contextValue": "{{used}} of {{total}} tokens"
 		},
+		"pinned": {
+			"label": "Helpers at work",
+			"more_one": "Show {{count}} more in Tasks",
+			"more_other": "Show {{count}} more in Tasks"
+		},
 		"group": {
 			"worked": "Worked for {{elapsed}}",
 			"working": "Working for {{elapsed}}",
