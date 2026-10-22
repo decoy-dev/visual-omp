@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fenced, jobPayload, type Notice, parseNotice, parseOmpDuration, stripNoticeMarkup } from "./notices";
+import { contentText, fenced, jobPayload, type Notice, parseNotice, parseOmpDuration, stripNoticeMarkup } from "./notices";
 
 const helperResult = [
 	"<system-notice>",
@@ -255,5 +255,18 @@ describe("fenced", () => {
 	it("uses a fence longer than any backtick run in the text", () => {
 		expect(fenced("a ``` b", "json")).toBe("````json\na ``` b\n````");
 		expect(fenced("plain")).toBe("```\nplain\n```");
+	});
+});
+
+describe("contentText", () => {
+	it("joins text blocks by line and adds nothing for images", () => {
+		const image = { type: "image", data: "iVBORw0KGgo", mimeType: "image/png" };
+		// omp saves a message with pasted images as its text followed by one block per image.
+		expect(contentText([{ type: "text", text: "[Image #1, 398x406] [Image #2, 477x200] Look at these." }, image, image])).toBe(
+			"[Image #1, 398x406] [Image #2, 477x200] Look at these.",
+		);
+		expect(contentText([image, { type: "text", text: "first" }, image, { type: "text", text: "second" }])).toBe("first\nsecond");
+		expect(contentText([image])).toBe("");
+		expect(contentText("plain")).toBe("plain");
 	});
 });

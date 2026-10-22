@@ -7,7 +7,7 @@
  * - `layoutTree`: a horizontal map of the conversation for the navigator sheet.
  */
 import { z } from "zod";
-import { noticeSummary, parseNotice } from "../../chat/transcript/notices";
+import { contentText, noticeSummary, parseNotice } from "../../chat/transcript/notices";
 import { parseJsonl } from "../../collab/lib/jsonl";
 import { i18n } from "../../i18n";
 
@@ -63,6 +63,7 @@ const RawEntry = z.looseObject({
 		.catch(undefined),
 });
 
+/** Assistant and tool text, block after block. What the user wrote goes through `contentText`, as the transcript shows it. */
 function textOf(content: z.infer<typeof Content> | undefined): string {
 	if (content === undefined) return "";
 	if (typeof content === "string") return content;
@@ -86,7 +87,11 @@ export function parseSessionTree(jsonl: string): SessionTree {
 			USER_CUSTOM_TYPES[customType] === true &&
 			(raw.attribution ?? message?.attribution) === "user";
 		const stopReason = message?.stopReason;
-		let text = message ? textOf(message.content) : raw.type === "custom_message" ? textOf(raw.content) : (raw.summary ?? "");
+		// A user's message (a prompt or a collab prompt) reads as the transcript bubble and its Copy give it, so a rewind
+		// puts the same text back in the composer: text blocks one per line, images left out.
+		const userText = role === "user" || (raw.type === "custom_message" && customType === "collab-prompt");
+		const content = message ? message.content : raw.type === "custom_message" ? raw.content : undefined;
+		let text = message || raw.type === "custom_message" ? (userText ? contentText(content ?? "") : textOf(content)) : (raw.summary ?? "");
 		let summary: string | null = null;
 		if (raw.type === "custom_message" && customType !== undefined && customType !== "collab-prompt") {
 			const notice = parseNotice({ customType, content: raw.content ?? "", details: raw.details });

@@ -43,7 +43,7 @@ import { TodoBoard, TodoChangeRow } from "../../tool-render/tools/todo";
 import { detailsRecord, isRecord } from "../../tool-render/util";
 import { CommandResultRow } from "./CommandResultRow";
 import { NoticeRow } from "./NoticeRow";
-import { noticeIsStep, noticeVisible, parseNotice } from "./notices";
+import { contentText, noticeIsStep, noticeVisible, parseNotice } from "./notices";
 import { ToolCard } from "./ToolCard";
 import { ToolGroup } from "./ToolGroup";
 import { TurnSummary } from "./TurnSummary";
@@ -69,10 +69,6 @@ const EARLIER_TRIGGER_PX = 240;
 const PINNED_PX = 48;
 const EMPTY_TOOLS: ReadonlyMap<string, ActiveTool> = new Map();
 
-function textOfContent(content: string | readonly (TextContent | ImageContent)[]): string {
-	return typeof content === "string" ? content : content.map(block => (block.type === "text" ? block.text : "")).join("\n");
-}
-
 function timeOf(timestamp: string | undefined): string {
 	if (!timestamp) return "";
 	const date = new Date(timestamp);
@@ -90,22 +86,17 @@ function Notice({ children }: { children: ReactNode }): ReactNode {
 }
 
 function UserContent({ content }: { content: string | readonly (TextContent | ImageContent)[] }): ReactNode {
-	const images = typeof content === "string" ? [] : content.filter((block): block is ImageContent => block.type === "image");
-	const text = textOfContent(content);
+	// Saved sessions keep image data in omp's blob store (`blob:sha256:…`), which this row does not load; such images
+	// get no thumbnail, and a message holding only those gets no empty thumbnail row.
+	const images = typeof content === "string" ? [] : content.filter((block): block is ImageContent => block.type === "image" && !block.data.startsWith("blob:"));
+	const text = contentText(content);
 	return (
 		<>
 			{images.length > 0 && (
 				<div className="mb-2 flex flex-wrap gap-2">
-					{images.map((image, index) =>
-						image.data.startsWith("blob:") ? null : (
-							<img
-								key={index}
-								src={`data:${image.mimeType};base64,${image.data}`}
-								alt=""
-								className="size-12 rounded-md border border-border object-cover"
-							/>
-						),
-					)}
+					{images.map((image, index) => (
+						<img key={index} src={`data:${image.mimeType};base64,${image.data}`} alt="" className="size-12 rounded-md border border-border object-cover" />
+					))}
 				</div>
 			)}
 			<p className="selectable text-base whitespace-pre-wrap text-fg">{text}</p>
@@ -133,7 +124,7 @@ function UserMessage({ entry, session, from }: { entry: SessionEntry; session: S
 					label={t("copy")}
 					icon={<Copy />}
 					size="sm"
-					onClick={() => void navigator.clipboard.writeText(textOfContent(content)).then(() => toast({ tone: "ok", message: t("copied") }))}
+					onClick={() => void navigator.clipboard.writeText(contentText(content)).then(() => toast({ tone: "ok", message: t("copied") }))}
 				/>
 			</div>
 		</div>

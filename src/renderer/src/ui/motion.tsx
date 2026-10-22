@@ -122,29 +122,47 @@ const expandClose: Transition = { height: { duration: 0.17, ease: [0.4, 0, 0.2, 
  * can hold the pixel height its last animation left, and it would keep that height as its content changed.
  */
 const reducedOpen: Transition = { ...fade, height: { duration: 0 } };
+/**
+ * Closing keyframes. `closed` starts from the pixel height the box had as it began to close (`custom`, see `Expand`):
+ * from `auto`, motion would measure the end state by setting the height to 0 for a moment, and that clamps a scroller
+ * near its end, so a transcript pinned to the bottom jumped by the whole height before the close animated.
+ */
+const expandVariants: Variants = {
+	closed: (from: number | undefined) => ({ height: from === undefined ? 0 : [from, 0], opacity: 0, transition: expandClose }),
+	closedReduced: { opacity: 0, transition: fadeOut },
+};
 
 /**
  * Animated height-auto disclosure for accordions, tool steps and "show more" rows. Content is unmounted while
  * closed. Overflow is clipped only while the height moves, so focus rings and shadows inside stay visible at rest.
  * Opening takes about 230ms with the content fading in just behind the height; closing takes about 170ms with the
  * content fading out first, so nothing pops. Reduced motion: an opacity crossfade with no height animation.
+ *
+ * A closing child keeps the props of its last open render (AnimatePresence), so state set as the close starts never
+ * reaches it. The clip is therefore written on the element by the animation callbacks, which keeps the fading content
+ * from spilling over the rows that move up beneath it, and the close's starting height goes through `custom`.
  */
 export function Expand({ open, children, className, id, animateOnMount = false }: ExpandProps) {
 	const reduced = useMotionReduced();
-	const [moving, setMoving] = useState(false);
-	const closed = reduced ? { opacity: 0, transition: fadeOut } : { height: 0, opacity: 0, transition: expandClose };
+	const box = useRef<HTMLDivElement>(null);
+	const clip = (moving: boolean) => {
+		if (box.current) box.current.style.overflow = moving ? "hidden" : "";
+	};
+	// Read in the render that closes it, while the box still has its open height (later renders during the close are ignored).
+	const from = open || reduced ? undefined : box.current?.offsetHeight;
 	return (
-		<AnimatePresence initial={animateOnMount}>
+		<AnimatePresence initial={animateOnMount} custom={from}>
 			{open && (
 				<motion.div
+					ref={box}
 					key="expand"
 					id={id}
+					variants={expandVariants}
 					initial={reduced ? { opacity: 0 } : { height: 0, opacity: 0 }}
 					animate={reduced ? { height: "auto", opacity: 1, transition: reducedOpen } : { height: "auto", opacity: 1, transition: expandOpen }}
-					exit={closed}
-					onAnimationStart={() => setMoving(true)}
-					onAnimationComplete={() => setMoving(false)}
-					style={{ overflow: moving ? "hidden" : undefined }}
+					exit={reduced ? "closedReduced" : "closed"}
+					onAnimationStart={() => clip(true)}
+					onAnimationComplete={() => clip(false)}
 				>
 					<div className={className}>{children}</div>
 				</motion.div>

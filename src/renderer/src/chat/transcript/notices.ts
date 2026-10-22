@@ -87,8 +87,12 @@ function attr(tag: string, name: string): string | null {
 	return match?.[1] !== undefined ? unescapeXml(match[1]) : null;
 }
 
+/**
+ * The text of a message's content: its text blocks, one per line. Image blocks add nothing; joining them as empty
+ * strings left a trailing newline per image, which a `whitespace-pre-wrap` bubble drew as blank lines.
+ */
 export function contentText(content: NoticeSource["content"]): string {
-	return typeof content === "string" ? content : content.map(block => (block.type === "text" ? (block.text ?? "") : "")).join("\n");
+	return typeof content === "string" ? content : content.flatMap(block => (block.type === "text" ? [block.text ?? ""] : [])).join("\n");
 }
 
 // ─── async-result ──────────────────────────────────────────────────────────

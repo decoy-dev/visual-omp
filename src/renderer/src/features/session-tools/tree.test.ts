@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { layoutTree, parseSessionTree, pathTo, selectorRows } from "./tree";
+import { layoutTree, parseSessionTree, pathTo, rowProbe, selectorRows } from "./tree";
 
 function entry(id: string, parentId: string | null, type: string, timestamp: string, extra: Record<string, unknown> = {}) {
 	return JSON.stringify({ id, parentId, type, timestamp, ...extra });
@@ -60,5 +60,31 @@ describe("session tree model", () => {
 		expect(skill?.text).toBe("tidy the header");
 		expect(skill?.label).toContain("redesign");
 		expect(skill?.label).not.toContain("IMPORTANT");
+	});
+
+	it("reads a user's message as the transcript shows it: text blocks by line, images left out", () => {
+		const image = { type: "image", data: "blob:sha256:abc", mimeType: "image/png" };
+		const tree = parseSessionTree(
+			[
+				entry("u1", null, "message", "2026-01-01T00:00:00Z", {
+					message: { role: "user", content: [{ type: "text", text: "first" }, image, { type: "text", text: "second" }, image] },
+				}),
+				entry("c1", "u1", "custom_message", "2026-01-01T00:00:01Z", {
+					customType: "collab-prompt",
+					attribution: "user",
+					content: [image, { type: "text", text: "from" }, { type: "text", text: "a guest" }],
+				}),
+				entry("a1", "c1", "message", "2026-01-01T00:00:02Z", {
+					message: { role: "assistant", content: [{ type: "text", text: "Part one. " }, { type: "text", text: "Part two." }] },
+				}),
+			].join("\n"),
+		);
+		const user = tree.entries.get("u1");
+		expect(user?.text).toBe("first\nsecond");
+		// omp's `/tree` row runs the text blocks together ("user: firstsecond"); the probe is a prefix of that row.
+		expect(user && rowProbe(user)).toBe("user: first");
+		expect(tree.entries.get("c1")?.text).toBe("from\na guest");
+		// Assistant text keeps its own extraction, blocks run together.
+		expect(tree.entries.get("a1")?.text).toBe("Part one. Part two.");
 	});
 });
