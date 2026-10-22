@@ -74,6 +74,7 @@ function runOf(record: Record<string, unknown>, status: HelperStatus, activity: 
 		contextWindow: positive(num(record.contextWindow)),
 		model: str(record.resolvedModel),
 		hasTranscript: false,
+		messageable: false,
 	};
 }
 
@@ -125,8 +126,8 @@ export function taskRowContextEqual(args: Record<string, unknown>, details: Reco
 	return taskRuns(args, details, true).every(run => prev.recorded.get(run.id) === next.recorded.get(run.id));
 }
 
-const BADGE_TONE: Record<HelperStatus, "ok" | "err" | "info" | "neutral"> = { running: "info", idle: "neutral", done: "ok", failed: "err", stopped: "neutral" };
-const DOT: Record<HelperStatus, "agent" | "idle" | "ok" | "err"> = { running: "agent", idle: "idle", done: "ok", failed: "err", stopped: "idle" };
+const BADGE_TONE: Record<HelperStatus, "ok" | "err" | "info" | "neutral"> = { running: "info", done: "ok", failed: "err", stopped: "neutral" };
+const DOT: Record<HelperStatus, "agent" | "idle" | "ok" | "err"> = { running: "agent", done: "ok", failed: "err", stopped: "idle" };
 
 /**
  * A working helper's run time, counted on each second from omp's last report: omp measures the time only when it
@@ -218,21 +219,21 @@ export function SubagentRun({ run, actions, className }: { run: Helper; actions?
 }
 
 /** Helper states in the order a mixed batch names them, and the `task.one` / `task.many` key of each. */
-const HELPER_STATUSES: readonly HelperStatus[] = ["running", "idle", "done", "failed", "stopped"];
-const SUMMARY_KEY: Record<HelperStatus, string> = { running: "running", idle: "idle", done: "ok", failed: "error", stopped: "stopped" };
+const HELPER_STATUSES: readonly HelperStatus[] = ["running", "done", "failed", "stopped"];
+const SUMMARY_KEY: Record<HelperStatus, string> = { running: "running", done: "ok", failed: "error", stopped: "stopped" };
 
 /**
  * The task call's one-liner from its helpers' state. Homogeneous batches use a short phrase; mixed batches name each
- * reported state with its count. Only an all-finished batch gets the success mark; a batch with waiting or stopped
- * helpers (and none working or failed) gets the neutral mark, labelled "Waiting" when any helper still waits.
+ * reported state with its count. Only an all-finished batch gets the success mark; a batch with stopped helpers (and
+ * none working or failed) gets the neutral "Stopped" mark. A helper omp keeps for a follow-up message is finished.
  */
 export function helperRunsSummary(runs: readonly Helper[], describeState: (status: HelperStatus, count: number) => string): FriendlySummary | null {
 	if (runs.length === 0) return null;
-	const counts: Record<HelperStatus, number> = { running: 0, idle: 0, done: 0, failed: 0, stopped: 0 };
+	const counts: Record<HelperStatus, number> = { running: 0, done: 0, failed: 0, stopped: 0 };
 	for (const run of runs) counts[run.status]++;
 	const present = HELPER_STATUSES.filter(status => counts[status] > 0);
 	const status: ToolStatus = counts.running > 0 ? "running" : counts.failed > 0 ? "error" : counts.done === runs.length ? "ok" : "neutral";
-	const outcome = status === "neutral" ? { status, statusLabel: counts.idle > 0 ? "task.mark.idle" : "task.mark.stopped" } : { status };
+	const outcome = status === "neutral" ? { status, statusLabel: "task.mark.stopped" } : { status };
 	const only = present.length === 1 ? present[0] : undefined;
 	if (only && runs.length === 1) return { key: `task.one.${SUMMARY_KEY[only]}`, values: { agent: runs[0]?.name ?? "" }, ...outcome };
 	if (only) return { key: `task.many.${SUMMARY_KEY[only]}`, values: { count: runs.length }, ...outcome };

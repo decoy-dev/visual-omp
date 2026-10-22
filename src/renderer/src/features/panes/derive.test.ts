@@ -9,6 +9,8 @@ import {
 	devServerUrls,
 	editTotals,
 	fileEdits,
+	foldHelpers,
+	type Helper,
 	helpersByCall,
 	helpersOf,
 	isIntactBase64,
@@ -16,6 +18,7 @@ import {
 	madeCandidates,
 	ompRunning,
 	planChecklist,
+	RECENT_HELPERS,
 	settleHelper,
 	stripAssignmentPreamble,
 	todoChanges,
@@ -24,6 +27,7 @@ import {
 	transcriptHelperStates,
 	workSummary,
 } from "./derive";
+import { pinnedHelpers } from "./pinnedHelpers";
 
 let seq = 0;
 const base = () => ({ id: `e${++seq}`, parentId: null, timestamp: "2026-01-01T00:00:00Z" });
@@ -664,6 +668,7 @@ describe("helpersOf and workSummary", () => {
 				contextWindow: null,
 				model: "opus",
 				hasTranscript: true,
+				messageable: true,
 			},
 			{
 				id: "Bolt",
@@ -678,6 +683,7 @@ describe("helpersOf and workSummary", () => {
 				contextWindow: null,
 				model: null,
 				hasTranscript: false,
+				messageable: false,
 			},
 		]);
 		const jobs = [{ jobId: "j", command: "x", intent: null, state: "running" as const, output: "", startedAt: null, durationMs: null, exitCode: null }];
@@ -702,6 +708,97 @@ describe("helpersOf and workSummary", () => {
 		expect([...byCall.keys()]).toEqual(["k1", "k2"]);
 		expect(byCall.get("k1")?.map(helper => `${helper.id}:${helper.status}`)).toEqual(["A:running", "B:done"]);
 		expect(byCall.get("k2")?.map(helper => helper.status)).toEqual(["running"]);
+	});
+
+	type AgentStatus = "running" | "idle" | "parked" | "aborted";
+	const agent = (id: string, status: AgentStatus, lastActivity: number) => ({ id, displayName: id, kind: "sub" as const, status, hasSessionFile: true, createdAt: 0, lastActivity });
+	const report = (id: string, status: "running" | "completed" | "failed", receivedAt: number) => [id, { index: 0, agent: "task", task: "", progress: { ...progress, id, status }, receivedAt }] as const;
+	const states = (helpers: readonly { id: string; status: string; messageable: boolean }[]) => helpers.map(helper => `${helper.id}:${helper.status}${helper.messageable ? ":msg" : ""}`);
+	const pinnedIds = (helpers: readonly Helper[]) => [...pinnedHelpers(helpers).ids];
+
+	it("shows a helper omp keeps for a follow-up (idle or parked) as done, and it still takes a message", () => {
+		const guest = {
+			agents: [agent("Idle", "idle", 30), agent("Parked", "parked", 20), agent("Kept", "idle", 10), agent("Gone", "aborted", 5)],
+			progress: new Map([report("Kept", "failed", 10)]),
+			lifecycle: new Map(),
+		};
+		// A failed helper omp kept takes a message too; an aborted one omp let go of does not.
+		expect(states(helpersOf(guest, true))).toEqual(["Idle:done:msg", "Parked:done:msg", "Kept:failed:msg", "Gone:stopped"]);
+		expect(workSummary(null, helpersOf(guest, true), []).helpersWorking).toBe(0);
+		expect(pinnedIds(helpersOf(guest, true))).toEqual([]);
+	});
+
+	it("lists running helpers first in omp's order, then finished ones newest first", () => {
+		const guest = {
+			agents: [agent("Old", "parked", 100), agent("Run1", "running", 50), agent("New", "idle", 300), agent("Run2", "running", 10)],
+			// The latest progress report counts over omp's last activity time, which parking moves on.
+			progress: new Map([report("Old", "completed", 400), report("Mid", "failed", 200)]),
+			// Without a time, a helper only the lifecycle reported is the oldest.
+			lifecycle: new Map([["Life", { id: "Life", agent: "task", status: "completed" as const, index: 0 }]]),
+		};
+		expect(states(helpersOf(guest, true))).toEqual(["Run1:running:msg", "Run2:running:msg", "Old:done:msg", "New:done:msg", "Mid:failed", "Life:done"]);
+	});
+
+	it("stops working helpers once omp is gone, and keeps done ones done without a message", () => {
+		const guest = { agents: [agent("Run", "running", 1), agent("Parked", "parked", 2)], progress: new Map(), lifecycle: new Map() };
+		expect(states(helpersOf(guest, false))).toEqual(["Parked:done", "Run:stopped"]);
+	});
+
+	it("shows a parked helper as running again once a message starts a new turn", () => {
+		const before = {
+			agents: [agent("Atlas", "parked", 1)],
+			progress: new Map([report("Atlas", "completed", 1)]),
+			lifecycle: new Map([["Atlas", { id: "Atlas", agent: "task", status: "completed" as const, index: 0 }]]),
+		};
+		expect(states(helpersOf(before, true))).toEqual(["Atlas:done:msg"]);
+		// omp reports the follow-up turn as started before its progress, and the registry says running.
+		const woken = { ...before, lifecycle: new Map([["Atlas", { id: "Atlas", agent: "task", status: "started" as const, index: 0 }]]) };
+		expect(states(helpersOf(woken, true))).toEqual(["Atlas:running:msg"]);
+		const running = { agents: [agent("Atlas", "running", 2)], progress: new Map([report("Atlas", "running", 2)]), lifecycle: woken.lifecycle };
+		expect(states(helpersOf(running, true))).toEqual(["Atlas:running:msg"]);
+		expect(pinnedIds(helpersOf(running, true))).toEqual(["Atlas"]);
+	});
+});
+
+describe("foldHelpers", () => {
+	const make = (id: string, status: "running" | "done" | "failed" | "stopped") => ({
+		id,
+		name: id,
+		status,
+		activity: "",
+		tokens: null,
+		toolCount: null,
+		durationMs: null,
+		durationAt: null,
+		contextTokens: null,
+		contextWindow: null,
+		model: null,
+		hasTranscript: false,
+		messageable: status !== "stopped",
+	});
+	// helpersOf order: running, then finished newest first.
+	const running = [make("R1", "running"), make("R2", "running")];
+	const done = ["D1", "D2", "D3"].map(id => make(id, "done"));
+	const parked = Array.from({ length: 10 }, (_, index) => make(`P${index + 1}`, "done"));
+	const failed = make("F", "failed");
+	const ids = (helpers: readonly { id: string }[]) => helpers.map(helper => helper.id);
+
+	it("lists running helpers, the latest finished ones, then any older failed one, and counts the rest", () => {
+		expect(RECENT_HELPERS).toBe(3);
+		const helpers = [...running, ...done, ...parked, failed];
+		const folded = foldHelpers(helpers, false);
+		expect(ids(folded.shown)).toEqual(["R1", "R2", "D1", "D2", "D3", "F"]);
+		expect(folded.earlier).toBe(10);
+		const expanded = foldHelpers(helpers, true);
+		expect(expanded.shown).toBe(helpers);
+		expect(expanded.earlier).toBe(10);
+	});
+
+	it("counts a recent failed helper among the latest and never folds a running one", () => {
+		const folded = foldHelpers([...running, failed, ...done, ...parked.slice(0, 2)], false);
+		expect(ids(folded.shown)).toEqual(["R1", "R2", "F", "D1", "D2"]);
+		expect(folded.earlier).toBe(3);
+		expect(foldHelpers([...running, ...done], false)).toEqual({ shown: [...running, ...done], earlier: 0 });
 	});
 });
 
@@ -740,6 +837,7 @@ describe("transcriptHelperStates and settleHelper", () => {
 		contextWindow: null,
 		model: null,
 		hasTranscript: false,
+		messageable: false,
 	};
 
 	it("follows wait snapshots and async-result deliveries, latest last", () => {
@@ -768,7 +866,8 @@ describe("transcriptHelperStates and settleHelper", () => {
 		expect(settleHelper(pendingRun, new Map([["AdvisorContext", "done"]]), false).status).toBe("done");
 		expect(settleHelper(pendingRun, new Map(), true)).toBe(pendingRun);
 		expect(settleHelper(pendingRun, null, false).status).toBe("stopped");
-		expect(settleHelper({ ...pendingRun, status: "idle" }, null, false).status).toBe("stopped");
+		expect(settleHelper({ ...pendingRun, status: "done", messageable: true }, null, false)).toMatchObject({ status: "done", messageable: false });
+		expect(settleHelper({ ...pendingRun, messageable: true }, null, false)).toMatchObject({ status: "stopped", messageable: false });
 		expect(settleHelper({ ...pendingRun, status: "failed" }, null, false).status).toBe("failed");
 	});
 });

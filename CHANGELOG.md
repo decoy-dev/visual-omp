@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- Helpers that finished their work now show "Done" in the Tasks pane, on their card in the chat and in the task row, even while omp keeps them ready for a follow-up message. They keep their Message button, and a helper that gets a message shows as working again. The Helpers section lists the running helpers, then the three latest finished ones and any older helper that failed, and "Show N earlier helpers" opens the rest, so a long run of helpers no longer fills the pane with "Waiting" cards. When omp is no longer running for a chat, a helper that had finished stays "Done" instead of turning into "Stopped".
+
 ## [0.6.0] - 2026-10-21
 
 visual-omp 0.6.0 installs and updates through Scoop on Windows and reworks how the chat shows omp at work. In Normal view, consecutive tool calls share a row as they run and thinking shows as omp writes it; running helpers stay pinned above the message box, and Usage & limits lets you spend saved rate-limit resets.

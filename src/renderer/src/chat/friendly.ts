@@ -7,7 +7,7 @@ import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import type { ToolResultLike } from "../tool-render/types";
 import { detailsRecord, isRecord, num, resultTextOf, shortenPath, str } from "../tool-render/util";
 
-/** `neutral` is an outcome that is neither success nor failure, such as a helper that was stopped or is waiting. */
+/** `neutral` is an outcome that is neither success nor failure, such as a helper that was stopped. */
 export type ToolStatus = "running" | "ok" | "error" | "neutral";
 
 export interface FriendlySummary {
@@ -15,7 +15,7 @@ export interface FriendlySummary {
 	key: string;
 	values: Record<string, string | number>;
 	status: ToolStatus;
-	/** Key in `i18n/en/tools.json` naming a `neutral` outcome for screen readers ("Stopped", "Waiting"). */
+	/** Key in `i18n/en/tools.json` naming a `neutral` outcome for screen readers ("Stopped"). */
 	statusLabel?: string;
 	/** Lines added/removed, shown as colored meta when present. */
 	added?: number;

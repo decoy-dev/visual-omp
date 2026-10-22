@@ -150,7 +150,12 @@
 		"status": { "pending": "To do", "in_progress": "In progress", "completed": "Done", "abandoned": "Skipped" },
 		"helpers": "Helpers",
 		"manageHelpers": "Manage helpers",
-		"helperStatus": { "running": "Working", "idle": "Waiting", "done": "Done", "failed": "Failed", "stopped": "Stopped" },
+		"helperStatus": { "running": "Working", "done": "Done", "failed": "Failed", "stopped": "Stopped" },
+		"helper": {
+			"earlier_one": "Show {{count}} earlier helper",
+			"earlier_other": "Show {{count}} earlier helpers",
+			"fewer": "Show fewer helpers"
+		},
 		"tokens_one": "{{formatted}} token",
 		"tokens_other": "{{formatted}} tokens",
 		"tokensHint": "How much text this helper has read and written so far.",
@@ -158,6 +163,7 @@
 		"message": "Message {{name}}",
 		"messageTitle": "Send {{name}} a message",
 		"messagePlaceholder": "It reads this at its next step.",
+		"messagePlaceholderFinished": "It starts working again when it reads this.",
 		"send": "Send message",
 		"messageSent": "Sent to {{name}}",
 		"transcript": "Open {{name}}'s conversation",

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { type Helper, type HelperStatus, helpersOf } from "./derive";
 import { PINNED_ROWS, pinnedHelpers, unpinnedRuns } from "./pinnedHelpers";
 
-const helper = (id: string, status: HelperStatus): Helper => ({
+const helper = (id: string, status: HelperStatus, messageable = status === "running"): Helper => ({
 	id,
 	name: id,
 	status,
@@ -15,11 +15,12 @@ const helper = (id: string, status: HelperStatus): Helper => ({
 	contextWindow: null,
 	model: null,
 	hasTranscript: false,
+	messageable,
 });
 
 describe("pinnedHelpers", () => {
-	it("pins only running helpers; waiting, done, failed and stopped ones stay in the transcript", () => {
-		const pinned = pinnedHelpers([helper("a", "running"), helper("b", "idle"), helper("c", "done"), helper("d", "failed"), helper("e", "stopped")]);
+	it("pins only running helpers; done (also one omp keeps for a follow-up), failed and stopped ones stay in the transcript", () => {
+		const pinned = pinnedHelpers([helper("a", "running"), helper("b", "done", true), helper("c", "done"), helper("d", "failed"), helper("e", "stopped")]);
 		expect(pinned.all.map(run => run.id)).toEqual(["a"]);
 		expect([...pinned.ids]).toEqual(["a"]);
 		expect(pinned.more).toBe(0);

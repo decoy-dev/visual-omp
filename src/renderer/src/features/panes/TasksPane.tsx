@@ -40,7 +40,7 @@ import {
 	toast,
 } from "../../ui";
 import { listRowMotion, Section } from "./common";
-import { type BackgroundJob, backgroundJobs, commandSummary, type Helper, helpersOf, latestTodo, ompRunning } from "./derive";
+import { type BackgroundJob, backgroundJobs, commandSummary, foldHelpers, type Helper, helpersOf, latestTodo, ompRunning } from "./derive";
 import { type HelperTranscriptItem, helperTranscript } from "./helperTranscript";
 
 function MessageHelper({ helper, session }: { helper: Helper; session: SessionController }) {
@@ -74,7 +74,7 @@ function MessageHelper({ helper, session }: { helper: Helper; session: SessionCo
 						onKeyDown={event => {
 							if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) submit(event);
 						}}
-						placeholder={t("tasks.messagePlaceholder")}
+						placeholder={t(helper.status === "running" ? "tasks.messagePlaceholder" : "tasks.messagePlaceholderFinished")}
 						className="w-full resize-none rounded-md border border-border-strong bg-panel px-2.5 py-1.5 text-md text-fg outline-none placeholder:text-fg-faint focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-ring-soft"
 					/>
 					<div className="flex justify-end">
@@ -95,7 +95,7 @@ function HelperRow({ helper, session, onTranscript }: { helper: Helper; session:
 			{helper.hasTranscript && (
 				<IconButton size="sm" label={t("tasks.transcript", { name: helper.name })} icon={<FileText />} onClick={() => onTranscript(helper)} />
 			)}
-			{(helper.status === "running" || helper.status === "idle") && <MessageHelper helper={helper} session={session} />}
+			{helper.messageable && <MessageHelper helper={helper} session={session} />}
 			{helper.status === "running" && (
 				<IconButton
 					size="sm"
@@ -111,6 +111,39 @@ function HelperRow({ helper, session, onTranscript }: { helper: Helper; session:
 		<motion.li layout="position" {...listRowMotion}>
 			<SubagentRun run={helper} actions={actions} />
 		</motion.li>
+	);
+}
+
+/**
+ * Running helpers, then the latest finished ones and any older failed one (`foldHelpers`); the rest wait behind "Show
+ * earlier helpers", the same way the background jobs fold.
+ */
+function HelperList({ helpers, session, onTranscript }: { helpers: readonly Helper[]; session: SessionController; onTranscript(helper: Helper): void }) {
+	const { t } = useTranslation("panes");
+	const [all, setAll] = useState(false);
+	const { shown, earlier } = foldHelpers(helpers, all);
+	return (
+		<>
+			<ul className="flex flex-col gap-2">
+				<AnimatePresence initial={false}>
+					{shown.map(helper => (
+						<HelperRow key={helper.id} helper={helper} session={session} onTranscript={onTranscript} />
+					))}
+				</AnimatePresence>
+			</ul>
+			{earlier > 0 && (
+				<div className="mt-2">
+					<button
+						type="button"
+						aria-expanded={all}
+						onClick={() => setAll(!all)}
+						className="inline-flex h-7 items-center rounded-md px-1 text-sm text-fg-muted hover:bg-hover hover:text-fg focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+					>
+						{all ? t("tasks.helper.fewer") : t("tasks.helper.earlier", { count: earlier })}
+					</button>
+				</div>
+			)}
+		</>
 	);
 }
 
@@ -380,13 +413,7 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 					</Expand>
 					<Expand open={helpers.length > 0}>
 						<Section title={t("tasks.helpers")} count={runningHelpers > 0 && <Badge count={runningHelpers} label={t("tasks.runningCount", { count: runningHelpers })} />}>
-							<ul className="flex flex-col gap-2">
-								<AnimatePresence initial={false}>
-									{helpers.map(helper => (
-										<HelperRow key={helper.id} helper={helper} session={session} onTranscript={setTranscriptOf} />
-									))}
-								</AnimatePresence>
-							</ul>
+							<HelperList helpers={helpers} session={session} onTranscript={setTranscriptOf} />
 							<button
 								type="button"
 								onClick={() => openSettings("helpers", { projectPath: projectPath ?? session.projectPath })}

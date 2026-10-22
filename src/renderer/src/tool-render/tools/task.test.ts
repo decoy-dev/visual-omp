@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Helper } from "../../features/panes/derive";
 import { helperRunsSummary, taskRowContextEqual, taskRuns } from "./task";
 
-function helper(id: string, status: Helper["status"]): Helper {
+function helper(id: string, status: Helper["status"], messageable = false): Helper {
 	return {
 		id,
 		name: id,
@@ -16,19 +16,14 @@ function helper(id: string, status: Helper["status"]): Helper {
 		contextWindow: null,
 		model: null,
 		hasTranscript: false,
+		messageable,
 	};
 }
 
 const describeState = (status: string, count: number) => `${count} ${status}`;
 
 describe("helperRunsSummary", () => {
-	it("gives idle and stopped helpers the neutral mark with their own label", () => {
-		expect(helperRunsSummary([helper("Atlas", "idle")], describeState)).toEqual({
-			key: "task.one.idle",
-			values: { agent: "Atlas" },
-			status: "neutral",
-			statusLabel: "task.mark.idle",
-		});
+	it("gives stopped helpers the neutral mark with their own label", () => {
 		expect(helperRunsSummary([helper("Atlas", "stopped")], describeState)).toEqual({
 			key: "task.one.stopped",
 			values: { agent: "Atlas" },
@@ -41,26 +36,25 @@ describe("helperRunsSummary", () => {
 			status: "neutral",
 			statusLabel: "task.mark.stopped",
 		});
-		expect(helperRunsSummary([helper("A", "idle"), helper("B", "idle")], describeState)).toMatchObject({ key: "task.many.idle", status: "neutral", statusLabel: "task.mark.idle" });
 	});
 
-	it("keeps the success mark for all-finished batches only", () => {
+	it("keeps the success mark for all-finished batches only, counting helpers omp keeps for a follow-up as finished", () => {
 		expect(helperRunsSummary([helper("A", "done")], describeState)).toEqual({ key: "task.one.ok", values: { agent: "A" }, status: "ok" });
+		expect(helperRunsSummary([helper("A", "done", true), helper("B", "done")], describeState)).toEqual({ key: "task.many.ok", values: { count: 2 }, status: "ok" });
 		expect(helperRunsSummary([helper("A", "done"), helper("B", "stopped")], describeState)).toMatchObject({ status: "neutral", statusLabel: "task.mark.stopped" });
-		expect(helperRunsSummary([helper("A", "done"), helper("B", "failed"), helper("C", "idle")], describeState)).toMatchObject({ status: "error" });
+		expect(helperRunsSummary([helper("A", "done"), helper("B", "failed"), helper("C", "done", true)], describeState)).toMatchObject({ status: "error" });
 	});
 
 	it("only calls all-done batches finished and names every state in mixed batches", () => {
 		expect(helperRunsSummary([helper("A", "done"), helper("B", "done")], describeState)).toMatchObject({ key: "task.many.ok", values: { count: 2 } });
-		expect(helperRunsSummary([helper("A", "done"), helper("B", "idle"), helper("C", "stopped")], describeState)).toMatchObject({
+		expect(helperRunsSummary([helper("A", "done"), helper("B", "failed"), helper("C", "stopped")], describeState)).toMatchObject({
 			key: "task.many.states",
-			values: { count: 3, summary: "1 idle · 1 done · 1 stopped" },
-			status: "neutral",
-			statusLabel: "task.mark.idle",
+			values: { count: 3, summary: "1 done · 1 failed · 1 stopped" },
+			status: "error",
 		});
-		expect(helperRunsSummary([helper("A", "running"), helper("B", "idle")], describeState)).toMatchObject({
+		expect(helperRunsSummary([helper("A", "running"), helper("B", "done", true)], describeState)).toMatchObject({
 			key: "task.many.states",
-			values: { count: 2, summary: "1 running · 1 idle" },
+			values: { count: 2, summary: "1 running · 1 done" },
 			status: "running",
 		});
 	});

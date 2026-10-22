@@ -1009,7 +1009,12 @@ export function planChecklist(text: string): PlanStep[] | null {
 
 // ── helpers ─────────────────────────────────────────────────────────────────────────────────────
 
-export type HelperStatus = "running" | "idle" | "done" | "failed" | "stopped";
+/**
+ * A helper's outcome as the app shows it. omp keeps a helper that finished its turn (`idle`, later `parked` with its
+ * session saved) so it can take a follow-up message; that helper is done, and `Helper.messageable` records that omp
+ * still holds it.
+ */
+export type HelperStatus = "running" | "done" | "failed" | "stopped";
 
 /** A subagent as the Tasks pane and the chat header show it. Numbers are null when omp has not reported them. */
 export interface Helper {
@@ -1031,12 +1036,16 @@ export interface Helper {
 	contextWindow: number | null;
 	model: string | null;
 	hasTranscript: boolean;
+	/**
+	 * omp holds the helper and takes a message now: it runs, or it finished and omp keeps it (`idle` or `parked`) for a
+	 * follow-up, which runs it again. Always false without a running omp, and for helpers read from a task call.
+	 */
+	messageable: boolean;
 }
 
-const SNAPSHOT_STATUS: Record<AgentSnapshot["status"], HelperStatus> = { running: "running", idle: "idle", parked: "idle", aborted: "stopped" };
+const SNAPSHOT_STATUS: Record<AgentSnapshot["status"], HelperStatus> = { running: "running", idle: "done", parked: "done", aborted: "stopped" };
 const PROGRESS_STATUS: Record<AgentProgress["status"], HelperStatus> = { pending: "running", running: "running", completed: "done", failed: "failed", aborted: "stopped" };
 const LIFECYCLE_STATUS: Record<SubagentLifecyclePayload["status"], HelperStatus> = { started: "running", completed: "done", failed: "failed", aborted: "stopped" };
-const HELPER_ORDER: Record<HelperStatus, number> = { running: 0, idle: 1, failed: 2, stopped: 3, done: 4 };
 /** A task job's state in a `job`/`wait` snapshot or a delivery, as the helper's status. */
 const JOB_HELPER_STATUS: Record<JobState, HelperStatus> = { running: "running", completed: "done", failed: "failed", cancelled: "stopped" };
 
@@ -1067,13 +1076,13 @@ export function ompRunning(view: Pick<SessionView, "mode" | "readOnly" | "follow
  * Each helper's last state the transcript records, by helper id: what its `task` call's result said (final results,
  * else the progress a background spawn returns with), then the task jobs in `job`/`wait` results and `async-result`
  * deliveries, later reports winning. A delivery for a helper messaged again names the run `<id>-2`; its label is the
- * helper id, so both keys are set. A helper still working or waiting at a `session_exit` record stopped with omp.
+ * helper id, so both keys are set. A helper still working at a `session_exit` record stopped with omp.
  */
 export function transcriptHelperStates(entries: readonly SessionEntry[]): ReadonlyMap<string, HelperStatus> {
 	const states = new Map<string, HelperStatus>();
 	for (const item of transcriptItems(entries)) {
 		if (item.kind === "exit") {
-			for (const [id, status] of states) if (status === "running" || status === "idle") states.set(id, "stopped");
+			for (const [id, status] of states) if (status === "running") states.set(id, "stopped");
 			continue;
 		}
 		if (item.kind === "result" && item.name === "task") {
@@ -1097,13 +1106,14 @@ export function transcriptHelperStates(entries: readonly SessionEntry[]): Readon
 /**
  * A helper's status once the transcript and omp's absence apply. `recorded` (from `transcriptHelperStates`) replaces
  * the status of a helper read from its task call's own result, which a background spawn writes once, at the start;
- * pass null for live helpers, whose status omp keeps current. Without a running omp, a helper still marked working or
- * waiting has stopped.
+ * pass null for live helpers, whose status omp keeps current. Without a running omp, a helper still marked working has
+ * stopped, and none takes a message: a done helper omp kept for a follow-up stays done.
  */
 export function settleHelper(helper: Helper, recorded: ReadonlyMap<string, HelperStatus> | null, ompLive: boolean): Helper {
 	const status = recorded?.get(helper.id) ?? helper.status;
-	const settled = !ompLive && (status === "running" || status === "idle") ? "stopped" : status;
-	return settled === helper.status ? helper : { ...helper, status: settled };
+	const settled = !ompLive && status === "running" ? "stopped" : status;
+	const messageable = ompLive && helper.messageable;
+	return settled === helper.status && messageable === helper.messageable ? helper : { ...helper, status: settled, messageable };
 }
 
 /**
@@ -1177,14 +1187,18 @@ function progressFields(
 }
 
 /**
- * Subagents from the collab `agents` list merged with their task progress and lifecycle, running first. Without a
- * running omp (`ompLive` false, from `ompRunning`: a stale mirror), none still works (`settleHelper`).
+ * Subagents from the collab `agents` list merged with their task progress and lifecycle: running ones first, in omp's
+ * order, then the finished ones newest first (by the app's latest progress report from each, else omp's last activity
+ * for it, later-listed helpers first on a tie). A helper omp keeps after its turn (`idle` or `parked`) is done and
+ * `messageable`; when a message runs it again, omp reports it started and it reads as running. Without a running omp
+ * (`ompLive` false, from `ompRunning`: a stale mirror), none still works or takes a message (`settleHelper`).
  */
 export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "lifecycle"> | null | undefined, ompLive: boolean): Helper[] {
 	if (!guest) return [];
 	const progress = new Map<string, { live: AgentProgress; receivedAt: number }>();
 	for (const payload of guest.progress.values()) progress.set(payload.progress.id, { live: payload.progress, receivedAt: payload.receivedAt });
 	const helpers = new Map<string, Helper>();
+	const heardAt = new Map<string, number>();
 	for (const agent of guest.agents) {
 		if (agent.kind !== "sub") continue;
 		const { live, receivedAt } = progress.get(agent.id) ?? { live: undefined, receivedAt: null };
@@ -1196,7 +1210,9 @@ export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "li
 			activity: activityOf(live),
 			...progressFields(live, receivedAt),
 			hasTranscript: agent.hasSessionFile,
+			messageable: agent.status !== "aborted",
 		});
+		heardAt.set(agent.id, receivedAt ?? agent.lastActivity);
 	}
 	for (const [id, { live, receivedAt }] of progress) {
 		if (helpers.has(id)) continue;
@@ -1207,7 +1223,9 @@ export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "li
 			activity: activityOf(live),
 			...progressFields(live, receivedAt),
 			hasTranscript: false,
+			messageable: false,
 		});
+		heardAt.set(id, receivedAt);
 	}
 	for (const [id, event] of guest.lifecycle) {
 		const existing = helpers.get(id);
@@ -1223,9 +1241,45 @@ export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "li
 			activity: event.description ?? "",
 			...progressFields(undefined, null),
 			hasTranscript: Boolean(event.sessionFile),
+			messageable: false,
 		});
 	}
-	return [...helpers.values()].map(helper => settleHelper(helper, null, ompLive)).sort((a, b) => HELPER_ORDER[a.status] - HELPER_ORDER[b.status]);
+	const listed = [...helpers.values()].map((helper, index) => {
+		// A running helper takes a message whichever source reported it.
+		if (helper.status === "running") helper.messageable = true;
+		return { helper: settleHelper(helper, null, ompLive), index, heardAt: heardAt.get(helper.id) ?? 0 };
+	});
+	const running = listed.filter(item => item.helper.status === "running");
+	const finished = listed.filter(item => item.helper.status !== "running").sort((a, b) => b.heardAt - a.heardAt || b.index - a.index);
+	return [...running, ...finished].map(item => item.helper);
+}
+
+/**
+ * Finished helpers the Tasks pane lists before "Show earlier helpers". A finished card with omp's numbers is about
+ * 127px tall in a 312px pane, so three show what just finished in about 400px and leave the running helpers and the
+ * background jobs within reach. It matches the three running helpers the chat pins (`PINNED_ROWS`).
+ */
+export const RECENT_HELPERS = 3;
+
+export interface HelperFold {
+	/** The helpers to list, in `helpersOf` order. */
+	shown: readonly Helper[];
+	/** How many helpers the fold hides; the count stays the same while the list is expanded. */
+	earlier: number;
+}
+
+/**
+ * The Tasks pane's helper list from `helpersOf`: every running helper, the `RECENT_HELPERS` latest finished ones, and
+ * any older failed one, which stays in view because a failure is the outcome the reader most likely has to act on.
+ * `expanded` lists every helper.
+ */
+export function foldHelpers(helpers: readonly Helper[], expanded: boolean): HelperFold {
+	const kept: Helper[] = [];
+	let finished = 0;
+	for (const helper of helpers) {
+		if (helper.status === "running" || finished++ < RECENT_HELPERS || helper.status === "failed") kept.push(helper);
+	}
+	return { shown: expanded ? helpers : kept, earlier: helpers.length - kept.length };
 }
 
 /**

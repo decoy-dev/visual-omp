@@ -19,7 +19,6 @@
 	"task": {
 		"one": {
 			"running": "Helper “{{agent}}” is working…",
-			"idle": "Helper “{{agent}}” is waiting",
 			"ok": "Helper “{{agent}}” finished",
 			"error": "Helper “{{agent}}” failed",
 			"stopped": "Helper “{{agent}}” stopped"
@@ -28,15 +27,12 @@
 			"running": "{{count}} helpers are working…",
 			"ok": "{{count}} helpers finished",
 			"error": "Some of the {{count}} helpers failed",
-			"idle": "{{count}} helpers are waiting",
 			"stopped": "{{count}} helpers stopped",
 			"states": "{{count}} helpers: {{summary}}"
 		},
 		"states": {
 			"running_one": "{{count}} working",
 			"running_other": "{{count}} working",
-			"idle_one": "{{count}} waiting",
-			"idle_other": "{{count}} waiting",
 			"done_one": "{{count}} finished",
 			"done_other": "{{count}} finished",
 			"failed_one": "{{count}} failed",
@@ -44,7 +40,7 @@
 			"stopped_one": "{{count}} stopped",
 			"stopped_other": "{{count}} stopped"
 		},
-		"mark": { "idle": "Waiting", "stopped": "Stopped" }
+		"mark": { "stopped": "Stopped" }
 	},
 	"todo": { "updated": "Updated the checklist", "progress": "Checklist: {{done}} of {{total}} done" },
 	"web": { "running": "Searching the web for “{{query}}”…", "ok": "Searched the web for “{{query}}”", "error": "Web search failed" },

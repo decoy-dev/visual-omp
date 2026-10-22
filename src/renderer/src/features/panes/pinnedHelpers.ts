@@ -1,7 +1,7 @@
 /**
  * Helpers pinned at the bottom of the chat (DESIGN §3.5): while a helper of this chat runs, it shows in the strip
  * above the composer instead of as a card under its task call, so running work stays in view. Once it stops running
- * (waiting, done, failed or stopped) it leaves the strip, and its card is back under its call in the transcript.
+ * (done, failed or stopped) it leaves the strip, and its card is back under its call in the transcript.
  */
 import { useMemo } from "react";
 import type { SessionView } from "../../state/session";
