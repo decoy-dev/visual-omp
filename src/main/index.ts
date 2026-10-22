@@ -6,16 +6,19 @@ import { registerHandlers } from "./handlers";
 import { ensureNewUserApproval } from "./features/config";
 import { broadcast } from "./ipc";
 import { buildMenu } from "./menu";
-import { stopAllHosts } from "./omp/host";
+import { listHosts, stopAllHosts } from "./omp/host";
 import { followSessions } from "./omp/follow";
 import { stopWatchingSessions, watchSessions } from "./omp/sessions";
 import { getPrefs } from "./prefs";
+import { quitAction } from "./quitFlow";
 import { killAllTerminals } from "./terminals";
 
 let mainWindow: BrowserWindow | null = null;
 /** Set once the renderer confirmed (or had nothing running) so the next quit proceeds. */
 let quitApproved = false;
 let quitting = false;
+/** A quit came while no window was open and omp was still running: the reopened window asks once it has loaded. */
+let askOnLoad = false;
 
 function createWindow(): void {
 	const isMac = process.platform === "darwin";
@@ -56,6 +59,11 @@ function createWindow(): void {
 		if (details.isMainFrame && !details.isSameDocument) followSessions([]);
 	});
 	mainWindow.webContents.on("render-process-gone", () => followSessions([]));
+	mainWindow.webContents.on("did-finish-load", () => {
+		if (!askOnLoad) return;
+		askOnLoad = false;
+		broadcast("app:quitRequested", { reason: "quit" });
+	});
 	mainWindow.on("close", event => {
 		if (quitApproved || process.platform === "darwin") return;
 		event.preventDefault();
@@ -63,6 +71,8 @@ function createWindow(): void {
 	});
 	mainWindow.on("closed", () => {
 		mainWindow = null;
+		// A window reopened to ask that closes before it loaded asks nothing; the next quit reopens it again.
+		askOnLoad = false;
 		followSessions([]);
 	});
 	if (process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
@@ -104,11 +114,21 @@ app.whenReady().then(() => {
 	});
 });
 
-// Ask the renderer first: it knows whether any chat is still working and shows the warning.
+/** Ask the renderer first: it knows whether any chat is still working and shows the warning (`quitAction`). */
 app.on("before-quit", event => {
-	if (quitApproved || !mainWindow) return;
+	const action = quitAction({
+		approved: quitApproved,
+		hasWindow: mainWindow !== null,
+		ompRunning: listHosts().some(host => host.phase !== "exited"),
+		reopening: askOnLoad,
+	});
+	if (action === "proceed") return;
 	event.preventDefault();
-	broadcast("app:quitRequested", { reason: "quit" });
+	if (action === "ask") broadcast("app:quitRequested", { reason: "quit" });
+	else if (action === "reopen") {
+		askOnLoad = true;
+		createWindow();
+	}
 });
 
 app.on("window-all-closed", () => {

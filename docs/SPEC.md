@@ -143,4 +143,4 @@ Current chats, navigation shortcuts and preview release are described under Sess
 
 ### Lifecycle
 
-Quitting or closing a chat while omp is working warns first, then stops cleanly. Sessions resume where they left off. On restart, the app opens on Home with the open chats back in the sidebar; the project last shown stays the active one, and pages are not restored.
+Quitting or closing a chat while omp is working, either replying or with helpers at work, warns first with the work recorded when the user chose to quit or close, then stops cleanly; the saved chats can be reopened afterwards. A quit also asks about any chat whose state could not be checked within 5 seconds, so unknown work is never stopped without asking. On macOS, a quit after the window was closed while omp still runs opens the window again to ask. On restart, the app opens on Home with the open chats back in the sidebar; the project last shown stays the active one, and pages are not restored.

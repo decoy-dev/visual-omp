@@ -12,8 +12,9 @@ import type { AppPreferences, OmpStatus, ProjectSummary, SessionSummary } from "
 import { useComposerDrafts } from "../chat/composer/drafts";
 import { confirmTabClose } from "../registry/guards";
 import { chatTitle } from "../shell/hooks";
-import { type ClosedChat, pushClosed, takeReopenable } from "./closedChats";
 import { normalizeRestoredChatSelection, releaseKeepsNumbers } from "./chatSelection";
+import { workInFlight } from "./chatWork";
+import { type ClosedChat, pushClosed, takeReopenable } from "./closedChats";
 import { type DockLayout, type DockLayouts, dockScope, keepLayouts, keepsChatOpen, layoutFor, moveLayout, OVERVIEW_DOCK, withLayout } from "./dockLayout";
 import { whenLeaving } from "./leaveGuard";
 import { migrateSavedLayout, readSavedLayout } from "./savedLayout";
@@ -218,6 +219,12 @@ let recentTabs: string[] = [];
 let closedChats: ClosedChat[] = [];
 /** Set once init() has adopted running omp hosts; before that a restored chat may still have one. */
 let hostsAdopted = false;
+const adoption = Promise.withResolvers<void>();
+
+/** Resolves once init() has adopted running omp hosts, so a quit asked as the window opens sees every running chat. */
+export function whenHostsAdopted(): Promise<void> {
+	return adoption.promise;
+}
 
 /** The most recently shown open chat other than `exclude`. */
 function recentOtherTab(tabs: readonly ChatTab[], exclude: (string | null)[]): string | null {
@@ -418,6 +425,7 @@ export const useApp = create<AppState>()(
 				}
 				for (const host of running) if (host.phase !== "exited" && !adopted.has(host.hostId)) void window.vomp.invoke("host:stop", host.hostId);
 				hostsAdopted = true;
+				adoption.resolve();
 				await get().refreshProjects();
 			},
 
@@ -827,9 +835,9 @@ export function allControllers(): SessionController[] {
 	return [...controllers.values()];
 }
 
-/** Close an open chat, asking first while omp is working in it (`registry/guards.ts`). */
+/** Close an open chat, asking first while omp is replying or helpers are working in it (`registry/guards.ts`). */
 export async function closeChat(tabId: string): Promise<void> {
-	if (controllers.get(tabId)?.getSnapshot().working && !(await confirmTabClose(tabId))) return;
+	if (workInFlight(controllers.get(tabId)?.getSnapshot() ?? null) && !(await confirmTabClose(tabId))) return;
 	await useApp.getState().closeTab(tabId);
 }
 
