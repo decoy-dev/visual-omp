@@ -1,6 +1,6 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
-import type { ActiveTool } from "../../collab/lib/client";
+import type { ActiveTool, GuestSnapshot } from "../../collab/lib/client";
 import {
 	activityOf,
 	backgroundJobs,
@@ -11,6 +11,7 @@ import {
 	fileEdits,
 	foldHelpers,
 	type Helper,
+	helpersAtWork,
 	helpersByCall,
 	helpersOf,
 	isIntactBase64,
@@ -19,6 +20,7 @@ import {
 	ompRunning,
 	planChecklist,
 	RECENT_HELPERS,
+	runningHelpers,
 	settleHelper,
 	stripAssignmentPreamble,
 	todoChanges,
@@ -757,6 +759,48 @@ describe("helpersOf and workSummary", () => {
 		const running = { agents: [agent("Atlas", "running", 2)], progress: new Map([report("Atlas", "running", 2)]), lifecycle: woken.lifecycle };
 		expect(states(helpersOf(running, true))).toEqual(["Atlas:running:msg"]);
 		expect(pinnedIds(helpersOf(running, true))).toEqual(["Atlas"]);
+	});
+
+	describe("runningHelpers", () => {
+		type Sources = Parameters<typeof helpersOf>[0] & object;
+		/** A chat's view on a running omp (or an exited one) with these helper sources. */
+		const view = (guest: Sources, live = true) => ({ guest: guest as GuestSnapshot, mode: live ? ("live" as const) : ("exited" as const), readOnly: false, follow: null });
+		const cases: Sources[] = [
+			{ agents: [agent("Run1", "running", 1), agent("Run2", "running", 2)], progress: new Map(), lifecycle: new Map() },
+			{ agents: [agent("Idle", "idle", 3), agent("Parked", "parked", 2), agent("Gone", "aborted", 1)], progress: new Map([report("Idle", "failed", 3)]), lifecycle: new Map() },
+			// The registry still says running after the task reported it finished.
+			{ agents: [agent("Atlas", "running", 1)], progress: new Map([report("Atlas", "completed", 1)]), lifecycle: new Map() },
+			// Known from progress or lifecycle alone; a lifecycle start wakes a parked helper.
+			{ agents: [agent("Atlas", "parked", 1)], progress: new Map([report("Solo", "running", 1)]), lifecycle: new Map([["Atlas", { id: "Atlas", agent: "task", status: "started" as const, index: 0 }]]) },
+			{ agents: [], progress: new Map(), lifecycle: new Map([["Bolt", { id: "Bolt", agent: "task", status: "completed" as const, index: 0 }]]) },
+		];
+
+		it("counts the running helpers helpersOf lists, and none once omp is gone", () => {
+			expect(cases.map(guest => runningHelpers(view(guest)))).toEqual(cases.map(guest => helpersOf(guest, true).filter(helper => helper.status === "running").length));
+			expect(cases.map(guest => runningHelpers(view(guest)))).toEqual([2, 0, 0, 2, 0]);
+			expect(cases.map(guest => runningHelpers(view(guest, false)))).toEqual([0, 0, 0, 0, 0]);
+			expect(runningHelpers(null)).toBe(0);
+		});
+
+		it("reuses the count while the helper lists stay the same, and counts again when omp replaces one", () => {
+			const agents = [agent("Run", "running", 1)];
+			const guest = { agents, progress: new Map(), lifecycle: new Map() };
+			expect(runningHelpers(view(guest))).toBe(1);
+			// Changed in place, the same lists: the cached count stands, so nothing was walked again.
+			agents.push(agent("Late", "running", 2));
+			expect(runningHelpers(view({ ...guest }))).toBe(1);
+			// The collab client publishes a new list or map with each helper update; replacing any one of them counts again.
+			expect(runningHelpers(view({ ...guest, agents: [...agents] }))).toBe(2);
+			const reported = { agents: [agent("Run", "running", 1)], progress: new Map(), lifecycle: new Map() };
+			expect(runningHelpers(view(reported))).toBe(1);
+			expect(runningHelpers(view({ ...reported, progress: new Map([report("Run", "completed", 3)]) }))).toBe(0);
+			const parked = { agents: [agent("Run", "parked", 1)], progress: new Map(), lifecycle: new Map() };
+			expect(runningHelpers(view(parked))).toBe(0);
+			const woken = new Map([["Run", { id: "Run", agent: "task", status: "started" as const, index: 0 }]]);
+			expect(runningHelpers(view({ ...parked, lifecycle: woken }))).toBe(1);
+			expect(helpersAtWork(view(parked))).toBe(false);
+			expect(helpersAtWork(view(reported))).toBe(true);
+		});
 	});
 });
 

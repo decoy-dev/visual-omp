@@ -85,6 +85,7 @@
 			"starting": "Starting omp…",
 			"ready": "Ready for your next message",
 			"working": "Working",
+			"helpersWorking": "Helpers are working. omp is ready for your next message.",
 			"waiting": "Waiting for your answer",
 			"readOnly": "Read only. This chat is open in another window, so reply there.",
 			"readOnlyFree": "Read only. You can continue this chat here.",

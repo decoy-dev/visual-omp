@@ -5,16 +5,17 @@ import type { ChatStatus } from "./hooks";
 
 /**
  * Chat status for sidebar rows and project overviews. Each status has its own shape, so it reads without color: a
- * spinning notch while omp works, a question mark while it waits for an answer, a filled circle for a chat open with
- * omp running and a hollow circle for a saved chat. `quiet` (open chats in the Projects tree, whose live status
- * shows under Current chats) draws one small muted dot that only says the chat is open. `label` is the screen-reader text.
+ * spinning notch while omp or its helpers work (the label says which), a question mark while it waits for an answer, a
+ * filled circle for a chat open with omp running and a hollow circle for a saved chat. `quiet` (open chats in the
+ * Projects tree, whose live status shows under Current chats) draws one small muted dot that only says the chat is
+ * open. `label` is the screen-reader text.
  */
 export function ChatStatusMark({ status, label, quiet = false, className }: { status: ChatStatus; label: string; quiet?: boolean; className?: string }): ReactNode {
 	return (
 		<span className={cn("inline-flex size-3.5 shrink-0 items-center justify-center [&>svg]:size-3.5", className)}>
 			{quiet ? (
 				<span aria-hidden className="size-1.5 rounded-full bg-fg-muted" />
-			) : status === "working" ? (
+			) : status === "working" || status === "helpersWorking" ? (
 				<CircleNotch aria-hidden weight="bold" className="animate-spin text-accent" />
 			) : status === "needsInput" ? (
 				<Question aria-hidden weight="bold" className="text-warn" />

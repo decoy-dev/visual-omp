@@ -1,7 +1,7 @@
 import { DotsThree, GitDiff, ListChecks, SidebarSimple } from "@phosphor-icons/react";
 import { Fragment, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { backgroundJobs, helpersOf, latestTodo, ompRunning, workSummary } from "../features/panes/derive";
+import { backgroundJobs, helpersAtWork, helpersOf, latestTodo, ompRunning, workSummary } from "../features/panes/derive";
 import { type CommandSpec, useCommands } from "../registry/commands";
 import { ChatStatusMark } from "../shell/ChatStatusMark";
 import { chatStatus, chatTitle } from "../shell/hooks";
@@ -28,7 +28,18 @@ import type { TranscriptMode } from "./transcript/Transcript";
 
 const TRANSCRIPT_MODES: readonly TranscriptMode[] = ["normal", "thinking", "verbose"];
 
-type HeaderState = "readOnly" | "readOnlyFree" | "readOnlyUnknown" | "stopped" | "reconnecting" | "waiting" | "working" | "starting" | "saved" | "ready";
+type HeaderState =
+	| "readOnly"
+	| "readOnlyFree"
+	| "readOnlyUnknown"
+	| "stopped"
+	| "reconnecting"
+	| "waiting"
+	| "working"
+	| "helpersWorking"
+	| "starting"
+	| "saved"
+	| "ready";
 
 /** The one state the header line describes, most urgent first. */
 function headerState(view: SessionView): HeaderState {
@@ -37,6 +48,7 @@ function headerState(view: SessionView): HeaderState {
 	if (view.mode === "reconnecting") return "reconnecting";
 	if (view.guest?.uiRequest) return "waiting";
 	if (view.working) return "working";
+	if (helpersAtWork(view)) return "helpersWorking";
 	if (view.mode === "starting") return "starting";
 	if (view.mode === "history") return "saved";
 	return "ready";

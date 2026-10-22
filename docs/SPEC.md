@@ -56,12 +56,13 @@ omp's displayed harness notices appear in the chat in all three views, presented
 ## Feature scope (all in scope)
 ### Sessions
 - Open chats appear in a Current chats sidebar section in open order, alongside their entries in the Projects tree. Current chats carries status and selection; open tree entries have a quiet open marker.
+- A chat's status is, in order: waiting for an answer, working (omp's own turn), helpers working (omp's turn has ended and a helper it started still runs, on a running omp), open, or saved. Both working states show the spinning mark everywhere chat status appears: Current chats, the chat header, Home's recent chats and project overviews. Background shell jobs do not keep a chat in a working state, since a dev server started as a job can run until it is stopped.
 - ⌘1-⌘9 open the numbered Current chats row; ⌘⇧[ and ⌘⇧] cycle open chats. ⌘⇧T reopens the last eligible closed chat and its text draft without starting omp. ⌘⇧A selects the next chat waiting for an answer.
 - Each chat can run in its own Git worktree.
 - A chat can be rewound or forked from any message.
 - When the user moves to another chat, a saved chat that was only viewed is released: it has no host, no sent input, no draft or attachments and no open omp terminal. A viewed chat whose side panel is open, or was resized, is not released, so the panel is there when the user comes back. A chat also stays open when a chat that was already open appears later in Current chats, so no ⌘ number shifts. Browsing from one saved chat to the next releases the one left behind.
 - Queued messages can be sent now, edited or removed.
-- Notifications report when a chat finishes or needs input.
+- Notifications report when a chat finishes or needs input. They follow omp's own turn, so a reply that ends while helpers still run is reported when it ends.
 - All saved omp sessions (including ones started in a terminal) appear in history grouped by
   project and can be resumed; a session still live elsewhere opens read-only.
 

@@ -51,6 +51,7 @@
 		"removedProject": "{{path}} is no longer in your project list. Its open chats stay here until you close them.",
 		"status": {
 			"working": "omp is working",
+			"helpersWorking": "omp's helpers are working",
 			"needsInput": "Waiting for your answer",
 			"live": "Open",
 			"idle": "Saved"

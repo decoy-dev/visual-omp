@@ -1186,6 +1186,28 @@ function progressFields(
 	};
 }
 
+type HelperSources = Pick<GuestSnapshot, "agents" | "progress" | "lifecycle">;
+
+/**
+ * Each helper's status by id before omp's absence applies (`settleHelper`), in the order `helpersOf` first meets
+ * them: the subagents in omp's `agents` list, helpers known only from task progress, then ones known only from their
+ * lifecycle. A finished task reports completed or failed in progress while the registry says idle; a lifecycle event
+ * is the latest word, so a parked helper a message wakes reads as running again.
+ */
+function helperStatuses(guest: HelperSources): Map<string, HelperStatus> {
+	const statuses = new Map<string, HelperStatus>();
+	const reported = new Map<string, AgentProgress>();
+	for (const payload of guest.progress.values()) reported.set(payload.progress.id, payload.progress);
+	for (const agent of guest.agents) {
+		if (agent.kind !== "sub") continue;
+		const live = reported.get(agent.id);
+		statuses.set(agent.id, live && live.status !== "running" && live.status !== "pending" ? PROGRESS_STATUS[live.status] : SNAPSHOT_STATUS[agent.status]);
+	}
+	for (const [id, live] of reported) if (!statuses.has(id)) statuses.set(id, PROGRESS_STATUS[live.status]);
+	for (const [id, event] of guest.lifecycle) statuses.set(id, LIFECYCLE_STATUS[event.status]);
+	return statuses;
+}
+
 /**
  * Subagents from the collab `agents` list merged with their task progress and lifecycle: running ones first, in omp's
  * order, then the finished ones newest first (by the app's latest progress report from each, else omp's last activity
@@ -1193,8 +1215,11 @@ function progressFields(
  * `messageable`; when a message runs it again, omp reports it started and it reads as running. Without a running omp
  * (`ompLive` false, from `ompRunning`: a stale mirror), none still works or takes a message (`settleHelper`).
  */
-export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "lifecycle"> | null | undefined, ompLive: boolean): Helper[] {
+export function helpersOf(guest: HelperSources | null | undefined, ompLive: boolean): Helper[] {
 	if (!guest) return [];
+	const statuses = helperStatuses(guest);
+	// Every id listed below has a status: `helperStatuses` walks the same three sources.
+	const statusOf = (id: string): HelperStatus => statuses.get(id) ?? "stopped";
 	const progress = new Map<string, { live: AgentProgress; receivedAt: number }>();
 	for (const payload of guest.progress.values()) progress.set(payload.progress.id, { live: payload.progress, receivedAt: payload.receivedAt });
 	const helpers = new Map<string, Helper>();
@@ -1205,8 +1230,7 @@ export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "li
 		helpers.set(agent.id, {
 			id: agent.id,
 			name: agent.displayName || live?.agent || agent.id,
-			// A finished task reports completed/failed in progress while the registry says idle.
-			status: live && live.status !== "running" && live.status !== "pending" ? PROGRESS_STATUS[live.status] : SNAPSHOT_STATUS[agent.status],
+			status: statusOf(agent.id),
 			activity: activityOf(live),
 			...progressFields(live, receivedAt),
 			hasTranscript: agent.hasSessionFile,
@@ -1219,7 +1243,7 @@ export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "li
 		helpers.set(id, {
 			id,
 			name: live.agent || id,
-			status: PROGRESS_STATUS[live.status],
+			status: statusOf(id),
 			activity: activityOf(live),
 			...progressFields(live, receivedAt),
 			hasTranscript: false,
@@ -1230,14 +1254,13 @@ export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "li
 	for (const [id, event] of guest.lifecycle) {
 		const existing = helpers.get(id);
 		if (existing) {
-			existing.status = LIFECYCLE_STATUS[event.status];
 			if (!existing.activity && event.description) existing.activity = event.description;
 			continue;
 		}
 		helpers.set(id, {
 			id,
 			name: event.agent || id,
-			status: LIFECYCLE_STATUS[event.status],
+			status: statusOf(id),
 			activity: event.description ?? "",
 			...progressFields(undefined, null),
 			hasTranscript: Boolean(event.sessionFile),
@@ -1252,6 +1275,40 @@ export function helpersOf(guest: Pick<GuestSnapshot, "agents" | "progress" | "li
 	const running = listed.filter(item => item.helper.status === "running");
 	const finished = listed.filter(item => item.helper.status !== "running").sort((a, b) => b.heardAt - a.heardAt || b.index - a.index);
 	return [...running, ...finished].map(item => item.helper);
+}
+
+interface RunningCount {
+	progress: HelperSources["progress"];
+	lifecycle: HelperSources["lifecycle"];
+	count: number;
+}
+
+/**
+ * The last count per chat, keyed by the chat's `agents` list and checked against its progress and lifecycle maps. The
+ * collab client replaces each of the three when a helper update arrives and keeps them otherwise, so streamed text
+ * reuses the count.
+ */
+const runningCounts = new WeakMap<HelperSources["agents"], RunningCount>();
+
+/**
+ * How many of the chat's helpers are working now: the running helpers `helpersOf` lists, the rule the Tasks badge and
+ * the pinned helper strip use. A helper that finished (omp keeps it idle or parked for a follow-up) is not working, and
+ * a mirror without a running omp (`ompRunning`) has none at work.
+ */
+export function runningHelpers(view: Pick<SessionView, "guest" | "mode" | "readOnly" | "follow"> | null): number {
+	const guest = view?.guest;
+	if (!guest || !ompRunning(view)) return 0;
+	const cached = runningCounts.get(guest.agents);
+	if (cached && cached.progress === guest.progress && cached.lifecycle === guest.lifecycle) return cached.count;
+	let count = 0;
+	for (const status of helperStatuses(guest).values()) if (status === "running") count++;
+	runningCounts.set(guest.agents, { progress: guest.progress, lifecycle: guest.lifecycle, count });
+	return count;
+}
+
+/** Whether any of the chat's helpers is working now (`runningHelpers`). */
+export function helpersAtWork(view: Pick<SessionView, "guest" | "mode" | "readOnly" | "follow"> | null): boolean {
+	return runningHelpers(view) > 0;
 }
 
 /**

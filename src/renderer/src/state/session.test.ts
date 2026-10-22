@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deliver } from "../chat/composer/send";
 import type { GuestSnapshot } from "../collab/lib/client";
 import { sendSlashCommand } from "../features/session-tools/typed";
+import { chatStatus } from "../shell/hooks";
 import { liveEntries, liveGuest, SessionController, setSlashDelivery } from "./session";
 
 // vi.mock is hoisted above the imports, so the controller under test builds these fakes.
@@ -25,8 +26,8 @@ const fakes = vi.hoisted(() => {
 		connect(): void {}
 		close(): void {}
 		/** What the real client publishes: `waiting` until omp's snapshot arrives, then `live`. */
-		emit(phase: GuestSnapshot["phase"], entries: readonly SessionEntry[], working = false): void {
-			this.snapshot = { phase, entries, working, uiRequest: null } as unknown as GuestSnapshot;
+		emit(phase: GuestSnapshot["phase"], entries: readonly SessionEntry[], working = false, extra: Partial<GuestSnapshot> = {}): void {
+			this.snapshot = { phase, entries, working, uiRequest: null, ...extra } as unknown as GuestSnapshot;
 			for (const listener of this.listeners) listener();
 		}
 	}
@@ -197,6 +198,27 @@ describe("SessionController working start", () => {
 		fakes.guests[0]?.emit("live", [u1, a1, u2], false);
 		expect(session.getSnapshot().workingSince).toBeNull();
 		vi.restoreAllMocks();
+	});
+
+	it("reports the turn's end while a helper it started still runs, and keeps the chat marked for the helper", () => {
+		const session = new SessionController({ tabId: "t5h", projectPath: "/p", sessionFile: null });
+		const events: string[] = [];
+		session.onEvent(event => events.push(event.kind));
+		session.attach(host({ link: "L1" }));
+		const helper = { id: "Atlas", displayName: "Atlas", kind: "sub", status: "running", hasSessionFile: true, createdAt: 0, lastActivity: 0 };
+		const helpers = { agents: [helper], progress: new Map(), lifecycle: new Map() } as unknown as Partial<GuestSnapshot>;
+		fakes.guests[0]?.emit("live", [u1], false);
+		fakes.guests[0]?.emit("live", [u1, a1], true, helpers);
+		expect(chatStatus(session.getSnapshot())).toBe("working");
+		fakes.guests[0]?.emit("live", [u1, a1], false, helpers);
+		// The notification, the Dock badge and the usage refresh all listen for this event.
+		expect(events).toEqual(["finished"]);
+		expect(session.getSnapshot().workingSince).toBeNull();
+		expect(chatStatus(session.getSnapshot())).toBe("helpersWorking");
+		// The helper's end is no turn end, so nothing reports a second time.
+		fakes.guests[0]?.emit("live", [u1, a1], false, { ...helpers, agents: [{ ...helper, status: "idle" }] } as Partial<GuestSnapshot>);
+		expect(events).toEqual(["finished"]);
+		expect(chatStatus(session.getSnapshot())).toBe("live");
 	});
 });
 

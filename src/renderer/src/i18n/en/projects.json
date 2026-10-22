@@ -76,6 +76,7 @@
 			"readOnly": "read-only",
 			"status": {
 				"working": "omp is working",
+				"helpersWorking": "omp's helpers are working",
 				"needsInput": "Waiting for your answer",
 				"live": "Open",
 				"idle": "Saved"

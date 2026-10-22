@@ -1,4 +1,5 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { helpersAtWork } from "../features/panes/derive";
 import type { SessionController, SessionView } from "../state/session";
 
 const noSubscribe = () => () => {};
@@ -9,13 +10,21 @@ export function useSessionView(controller: SessionController | null): SessionVie
 	return useSyncExternalStore(controller ? controller.subscribe : noSubscribe, controller ? controller.getSnapshot : noSnapshot);
 }
 
-export type ChatStatus = "working" | "needsInput" | "live" | "idle";
+/**
+ * `working` is omp's own turn; `helpersWorking` is a chat whose turn has ended while helpers it started still run, so
+ * it takes a message now and its finished turn has already notified.
+ */
+export type ChatStatus = "working" | "helpersWorking" | "needsInput" | "live" | "idle";
 
-/** Waiting for an answer, then working, then open (omp starting, running or reconnecting), else saved. */
+/**
+ * Waiting for an answer, then omp's turn, then helpers at work (the Tasks badge's rule, none without a running omp),
+ * then open (omp starting, running or reconnecting), else saved.
+ */
 export function chatStatus(view: SessionView | null): ChatStatus {
 	if (!view) return "idle";
 	if (view.guest?.uiRequest) return "needsInput";
 	if (view.working) return "working";
+	if (helpersAtWork(view)) return "helpersWorking";
 	return view.mode === "history" || view.mode === "exited" ? "idle" : "live";
 }
 
