@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pinnedAfterScroll, ScrollLedger } from "./scrollFollow";
+import { jumpStart, pinnedAfterScroll, ScrollLedger } from "./scrollFollow";
 
 const THRESHOLD = 48;
 
@@ -82,5 +82,24 @@ describe("pinnedAfterScroll", () => {
 	it("unpins on a move up", () => {
 		expect(pinnedAfterScroll("up", true, 200, THRESHOLD)).toBe(false);
 		expect(pinnedAfterScroll("up", false, 2, THRESHOLD)).toBe(false);
+	});
+});
+
+describe("jumpStart", () => {
+	const GLIDE = 360;
+
+	it("writes nothing from within the glide distance, so the follow glides the whole way", () => {
+		expect(jumpStart(1700, 2000, { instant: false, glide: GLIDE })).toBeNull();
+		expect(jumpStart(1640, 2000, { instant: false, glide: GLIDE })).toBeNull();
+	});
+
+	it("skips to the glide distance above the bottom from farther away", () => {
+		// Far up in a long chat: the view does not scroll through the 38,000px in between.
+		expect(jumpStart(200, 38_400, { instant: false, glide: GLIDE })).toBe(38_040);
+	});
+
+	it("writes the bottom at once under reduced motion", () => {
+		expect(jumpStart(200, 38_400, { instant: true, glide: GLIDE })).toBe(38_400);
+		expect(jumpStart(1990, 2000, { instant: true, glide: GLIDE })).toBe(2000);
 	});
 });

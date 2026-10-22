@@ -1,5 +1,6 @@
 /**
- * How `useScrollFollow` (motion.tsx) tells what moved a scroller: its own writes, the reader, or the page's layout.
+ * How `useScrollFollow` (motion.tsx) tells what moved a scroller (its own writes, the reader, or the page's layout) and
+ * how its jump to the bottom moves.
  * Kept apart from the hook so the rules can be tested without a browser.
  */
 
@@ -54,4 +55,15 @@ export class ScrollLedger {
  */
 export function pinnedAfterScroll(move: ScrollMove, pinned: boolean, distance: number, threshold: number): boolean {
 	return move !== "up" && (pinned || distance <= threshold);
+}
+
+/**
+ * Where "jump to latest" writes the view at once on its way from `top` to the bottom at `target`, or null when it writes
+ * nothing and the follow glides the whole way. Under reduced motion it writes the bottom. From farther than `glide` px
+ * it writes `glide` px above the bottom, so the glide that follows shows which way the view went without scrolling
+ * through hundreds of rows.
+ */
+export function jumpStart(top: number, target: number, { instant, glide }: { instant: boolean; glide: number }): number | null {
+	if (instant) return target;
+	return target - top > glide ? target - glide : null;
 }

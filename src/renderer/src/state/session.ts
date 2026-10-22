@@ -146,7 +146,9 @@ export function liveEntries(view: SessionView | null | undefined): readonly Sess
 export type SessionEvent =
 	| { kind: "finished" }
 	| { kind: "needsInput" }
-	| { kind: "exited"; code: number | null };
+	| { kind: "exited"; code: number | null }
+	/** The user sent something from this window that goes to omp without waiting in the queue (`noteSent`). */
+	| { kind: "sent" };
 
 let nextQueueId = 0;
 
@@ -580,9 +582,16 @@ export class SessionController {
 	 * may still hold a failed message's images (`strandedImages`).
 	 */
 	get busy(): boolean {
+		return this.#view.mode !== "live" || this.#lineAhead;
+	}
+
+	/**
+	 * `busy` without the start: something goes to omp before a message sent now, or omp must finish something first.
+	 * A message sent while only omp's start is awaited goes out first once omp runs.
+	 */
+	get #lineAhead(): boolean {
 		const view = this.#view;
 		return (
-			view.mode !== "live" ||
 			view.working ||
 			view.queue.length > 0 ||
 			view.strandedImages ||
@@ -595,13 +604,26 @@ export class SessionController {
 	}
 
 	/**
+	 * Tell this window's views that the user sent something that goes to omp without waiting behind anything, so the
+	 * transcript goes to its end to show it (`SessionEvent` "sent"). `send`, `steer` and `sendNow` call it; a slash
+	 * command typed at once calls it from `features/session-tools/typed.ts`. Queued messages that go out later don't.
+	 * It records the intent to send: callers fire it before anything is typed, so a send that then fails has still
+	 * moved the view.
+	 */
+	noteSent(): void {
+		this.#emit({ kind: "sent" });
+	}
+
+	/**
 	 * Send a message and its images. It joins the end of the queue while omp is busy (see `busy`) and goes
-	 * out in order through `#resumeQueue`; otherwise omp gets it at once.
+	 * out in order through `#resumeQueue`; otherwise omp gets it at once. A message nothing waits ahead of
+	 * (omp idle, or only starting) counts as sent now (`noteSent`).
 	 */
 	async send(text: string, images: readonly Attachment[] = []): Promise<void> {
 		const message = { text: text.trim(), images: [...images] };
 		if (!message.text && message.images.length === 0) return;
 		this.markInput();
+		if (!this.#lineAhead) this.noteSent();
 		if (this.busy) {
 			const item: QueuedMessage = { id: `q${nextQueueId++}`, ...message };
 			this.#set({ queue: [...this.#view.queue, item] });
@@ -627,6 +649,7 @@ export class SessionController {
 		const message = { text: text.trim(), images: [...images] };
 		if (!message.text && message.images.length === 0) return;
 		this.markInput();
+		this.noteSent();
 		await this.whenLive();
 		await this.#deliverDirect(message);
 	}
@@ -642,6 +665,7 @@ export class SessionController {
 		if (!item) return;
 		if (this.#view.strandedImages) throw new StrandedImagesError();
 		this.#set({ queue: this.#view.queue.filter(entry => entry.id !== id) });
+		this.noteSent();
 		if (this.#isSlash(item)) {
 			await this.#deliverSlash(item, index, false);
 			return;

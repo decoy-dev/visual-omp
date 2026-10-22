@@ -27,7 +27,7 @@ import {
 	type Variants,
 } from "motion/react";
 import { createContext, type ReactNode, type RefObject, useContext, useEffect, useRef, useState } from "react";
-import { pinnedAfterScroll, ScrollLedger } from "./scrollFollow";
+import { jumpStart, pinnedAfterScroll, ScrollLedger } from "./scrollFollow";
 
 /** Cubic-bezier presets, matching `--ease-out-quart` and `--ease-out-expo` in tokens.css. */
 export const ease = {
@@ -380,6 +380,8 @@ const FOLLOW_LERP = 0.3;
 const FOLLOW_MAX_STEP = 24;
 /** A gap wider than this (a chat opening, a history load) is jumped, not chased. */
 const FOLLOW_SNAP_PX = 480;
+/** How far a jump to the latest glides at most; inside `FOLLOW_SNAP_PX`, so the follow eases it instead of snapping. */
+const JUMP_GLIDE_PX = 360;
 const FRAME_MS = 1000 / 60;
 
 export interface ScrollFollowOptions {
@@ -396,7 +398,11 @@ export interface ScrollFollow {
 	follow(): void;
 	/** Go to the bottom now (a chat that just loaded). */
 	snap(): void;
-	/** The explicit "jump to latest" action: pin, then scroll smoothly to the bottom (instantly under reduced motion). */
+	/**
+	 * The explicit "jump to latest" action: pin, then glide to the bottom the way the follow eases (at once under
+	 * reduced motion). From farther than `JUMP_GLIDE_PX`, the view first skips to that distance above the bottom, so the
+	 * glide never runs through hundreds of rows.
+	 */
 	jumpToEnd(): void;
 	/** Call first in the scroller's scroll handler; it settles `pinnedRef` from what moved the view. */
 	onScroll(): void;
@@ -429,8 +435,6 @@ export function useScrollFollow(
 		let lastFrame = 0;
 		/** Where the follow left the view, to tell its own writes and layout from the reader's scrolling. */
 		const ledger = new ScrollLedger();
-		/** A smooth "jump to latest" is under way; the loop stays out of its way. */
-		let jumping = false;
 		const stop = () => {
 			if (frame) cancelAnimationFrame(frame);
 			frame = 0;
@@ -443,7 +447,7 @@ export function useScrollFollow(
 		const run = (now: number) => {
 			frame = 0;
 			const el = ref.current;
-			if (!el || !pinnedRef.current || jumping) return stop();
+			if (!el || !pinnedRef.current) return stop();
 			const top = el.scrollTop;
 			const target = el.scrollHeight - el.clientHeight;
 			const gap = target - top;
@@ -458,12 +462,7 @@ export function useScrollFollow(
 			frame = requestAnimationFrame(run);
 		};
 		const follow = () => {
-			if (!frame && pinnedRef.current && !jumping) frame = requestAnimationFrame(run);
-		};
-		const unpin = () => {
-			pinnedRef.current = false;
-			jumping = false;
-			stop();
+			if (!frame && pinnedRef.current) frame = requestAnimationFrame(run);
 		};
 		return {
 			follow,
@@ -478,12 +477,9 @@ export function useScrollFollow(
 				if (!el) return;
 				pinnedRef.current = true;
 				stop();
-				if (instant.current || el.scrollHeight - el.clientHeight - el.scrollTop <= 1) {
-					write(el, el.scrollHeight - el.clientHeight);
-					return;
-				}
-				jumping = true;
-				el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+				const skipTo = jumpStart(el.scrollTop, el.scrollHeight - el.clientHeight, { instant: instant.current, glide: JUMP_GLIDE_PX });
+				if (skipTo !== null) write(el, skipTo);
+				follow();
 			},
 			shift(delta: number) {
 				ledger.shift(delta);
@@ -495,22 +491,15 @@ export function useScrollFollow(
 				const distance = el.scrollHeight - top - el.clientHeight;
 				const move = ledger.read(top, distance);
 				if (move === "known") return;
-				if (jumping) {
-					if (move !== "up") return;
-					jumping = false;
-				}
 				pinnedRef.current = pinnedAfterScroll(move, pinnedRef.current, distance, threshold);
 				if (pinnedRef.current) follow();
 				else stop();
 			},
 			/** Wheel up states intent before any scroll event; unpin immediately so no frame pulls the view back. */
 			wheel(event: WheelEvent) {
-				if (event.deltaY < 0) unpin();
-			},
-			scrollEnd() {
-				if (!jumping) return;
-				jumping = false;
-				follow();
+				if (event.deltaY >= 0) return;
+				pinnedRef.current = false;
+				stop();
 			},
 			stop,
 		};
@@ -521,14 +510,12 @@ export function useScrollFollow(
 		const grown = content?.current;
 		if (!el) return;
 		el.addEventListener("wheel", api.wheel, { passive: true });
-		el.addEventListener("scrollend", api.scrollEnd);
 		// Content growth, and the scroller itself shrinking (a taller composer, a window resize), both open a gap below.
 		const observer = new ResizeObserver(() => api.follow());
 		observer.observe(el);
 		if (grown) observer.observe(grown);
 		return () => {
 			el.removeEventListener("wheel", api.wheel);
-			el.removeEventListener("scrollend", api.scrollEnd);
 			observer.disconnect();
 			api.stop();
 		};

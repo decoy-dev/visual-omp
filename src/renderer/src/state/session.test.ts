@@ -678,3 +678,74 @@ describe("SessionController queue admission and acknowledgement", () => {
 		expect(session.getSnapshot().queue).toEqual([]);
 	});
 });
+
+describe("SessionController sends that bring the transcript to its end", () => {
+	function sentEvents(session: SessionController): string[] {
+		const events: string[] = [];
+		session.onEvent(event => {
+			if (event.kind === "sent") events.push(event.kind);
+		});
+		return events;
+	}
+
+	it("reports Enter while omp is idle, and not the message after it that waits for that turn", async () => {
+		const session = idle("s1");
+		const sent = sentEvents(session);
+		await deliver(session, "a", [], false);
+		expect(sent).toEqual(["sent"]);
+		await deliver(session, "b", [], false);
+		expect(queued(session)).toEqual(["b"]);
+		expect(sent).toEqual(["sent"]);
+	});
+
+	it("does not report a message that joins the queue, nor its delivery when the turn ends", async () => {
+		const session = working("s2");
+		const sent = sentEvents(session);
+		await deliver(session, "later", [], false);
+		expect(queued(session)).toEqual(["later"]);
+		fakes.guests[0]?.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked).toEqual([submit("later")]);
+		expect(sent).toEqual([]);
+	});
+
+	it("reports Send now from the composer and from the queue tray", async () => {
+		const session = working("s3");
+		const sent = sentEvents(session);
+		await deliver(session, "steer", [], true);
+		expect(sent).toEqual(["sent"]);
+		await deliver(session, "queued", [], false);
+		expect(sent).toEqual(["sent"]);
+		await session.sendNow(session.getSnapshot().queue[0]?.id ?? "");
+		expect(sent).toEqual(["sent", "sent"]);
+		expect(invoked).toEqual([submit("steer"), submit("queued")]);
+	});
+
+	it("reports a slash command typed at once and a shell line, and not a slash command that queues", async () => {
+		const session = idle("s4");
+		const sent = sentEvents(session);
+		await sendSlashCommand(session, "/fast status");
+		expect(sent).toEqual(["sent"]);
+		fakes.watch.end.resolve();
+		await flush();
+		await deliver(session, "!ls", [], false);
+		expect(sent).toEqual(["sent", "sent"]);
+
+		const busy = working("s5");
+		const busySent = sentEvents(busy);
+		await sendSlashCommand(busy, "/fast status");
+		expect(queued(busy)).toEqual(["/fast status"]);
+		expect(busySent).toEqual([]);
+	});
+
+	it("reports a message sent while omp is still starting, which goes out first once omp runs", () => {
+		respond = channel => (channel === "host:start" ? Promise.withResolvers<null>().promise : undefined);
+		const session = new SessionController({ tabId: "s6", projectPath: "/p", sessionFile: null });
+		const sent = sentEvents(session);
+		void deliver(session, "first", [], false);
+		expect(queued(session)).toEqual(["first"]);
+		expect(sent).toEqual(["sent"]);
+		void deliver(session, "second", [], false);
+		expect(sent).toEqual(["sent"]);
+	});
+});

@@ -161,9 +161,11 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
  * the end of the chat's queue and is routed and typed when it drains; with `now` (Send now) it is typed
  * at once, steering the running turn, and still watched for a result. Otherwise it is typed now, and the
  * chat's queue is held from this call until the command's watch ends (it printed its result, started a
- * turn or changed the session), so a message sent meanwhile queues behind it. The promise settles once
- * the line is in omp's editor; the printed result arrives in the chat later. Rejects when the line could
- * not be typed (omp shows a menu of its own, or did not start), so the caller can keep the draft.
+ * turn or changed the session), so a message sent meanwhile queues behind it. A line typed at once counts
+ * as sent now (`noteSent`), so the transcript goes to its end, where the result row or the turn appears.
+ * The promise settles once the line is in omp's editor; the printed result arrives in the chat later.
+ * Rejects when the line could not be typed (omp shows a menu of its own, or did not start), so the caller
+ * can keep the draft.
  */
 export async function sendSlashCommand(session: SessionController, line: string, options: { now?: boolean } = {}): Promise<void> {
 	const trimmed = line.trim();
@@ -172,6 +174,7 @@ export async function sendSlashCommand(session: SessionController, line: string,
 		await session.send(trimmed);
 		return;
 	}
+	session.noteSent();
 	const typed = typeAndWatch(session, trimmed);
 	session.holdQueue(typed.then(({ watching }) => watching));
 	await typed;

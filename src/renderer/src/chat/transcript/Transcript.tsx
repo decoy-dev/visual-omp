@@ -779,11 +779,29 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		if (start > 0) setPinnedStart(Math.max(0, start - WINDOW));
 	};
 
-	const jumpToEnd = () => {
+	/** Jumps to the end asked for so far; each runs after the commit that brings the window back to the latest entries. */
+	const [jumps, setJumps] = useState(0);
+	const jumpToEnd = useCallback(() => {
 		setUnseen(false);
 		setPinnedStart(null);
-		follow.jumpToEnd();
-	};
+		setJumps(count => count + 1);
+	}, []);
+	// After the window effect above, so the jump measures the rows the tail window draws and the follow has counted the
+	// window change as layout.
+	useLayoutEffect(() => {
+		if (jumps > 0) follow.jumpToEnd();
+	}, [follow, jumps]);
+	// Something the user sent from this window that goes to omp at once (the composer, Send now, a slash or shell line;
+	// `SessionController.noteSent`) brings the chat to its end, even from far up, and the reply that follows stays in
+	// view. A message that only joins the queue, a queued one omp takes later and entries from anywhere else leave
+	// the view where the reader put it.
+	useEffect(
+		() =>
+			session.onEvent(event => {
+				if (event.kind === "sent") jumpToEnd();
+			}),
+		[session, jumpToEnd],
+	);
 
 	// File and folder links in replies (`FileLinks`) open in the Files pane, unless the click ended a text selection in them.
 	const openFileLink = (target: EventTarget) => {

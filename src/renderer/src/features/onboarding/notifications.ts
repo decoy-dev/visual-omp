@@ -33,7 +33,7 @@ function publish(alert: boolean): void {
 }
 
 function onChatEvent(controller: SessionController, event: SessionEvent): void {
-	if (event.kind === "exited") return;
+	if (event.kind !== "finished" && event.kind !== "needsInput") return;
 	const enabled = useApp.getState().prefs?.notifications ?? false;
 	const result = unseen.record(controller.tabId, { focused: document.hasFocus(), enabled });
 	if (result === "ignored") return;

@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- Sending a message now takes the chat to its latest messages, even when you had scrolled far up, so your message comes into view and the reply follows it. This applies to anything you send from this window that goes to omp at once: Enter or the send button while omp is idle, **Send now**, a slash command omp runs, and a shell or Python line. Adding a message to the queue doesn't move the view, and neither does omp taking a queued message later or activity from another window; while you are scrolled up, those show **Show new activity**. From far up, the chat skips close to the end and scrolls the rest of the way, and with reduced motion it moves at once. Scrolling up stops it. **Show new activity** moves the same way.
+
 ## [0.6.1] - 2026-10-22
 
 visual-omp 0.6.1 stops long chats flickering at the top and gives each chat its own side panel. It also removes the blank space under messages sent with images, smooths collapsing sections and shows finished helpers as done. A chat keeps its spinning ring while its helpers work, and the quit and close-chat warnings now include working helpers.
