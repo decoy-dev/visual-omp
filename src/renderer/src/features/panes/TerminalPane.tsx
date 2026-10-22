@@ -17,7 +17,7 @@ const XTermView = lazyView(
 	() => <div className="flex min-h-0 flex-1 flex-col bg-(--term-bg)" />,
 );
 
-export function TerminalPane({ projectPath }: PaneProps) {
+export function TerminalPane({ session, projectPath }: PaneProps) {
 	const { t } = useTranslation("panes");
 	const tabs = useTerminals(state => state.tabs);
 	const active = useTerminals(state => state.active);
@@ -25,7 +25,7 @@ export function TerminalPane({ projectPath }: PaneProps) {
 
 	const open = () => {
 		if (!projectPath) return;
-		newShell(projectPath).catch((error: unknown) =>
+		newShell(projectPath, session?.tabId).catch((error: unknown) =>
 			toast({ tone: "err", message: t("terminal.startFailed"), description: error instanceof Error ? error.message : String(error) }),
 		);
 	};

@@ -66,7 +66,7 @@ async function settledText(hostId: string, before: string): Promise<string> {
 }
 
 function setUpVoice(session: SessionController): void {
-	void runInTerminal(session.projectPath, "omp setup speech");
+	void runInTerminal(session.projectPath, "omp setup speech", session.tabId);
 }
 
 export function VoiceTool({ session }: ChatSlotProps) {

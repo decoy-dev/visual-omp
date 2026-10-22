@@ -30,11 +30,32 @@ also lists saved chats in the Projects tree. A controller starts or adopts a **S
 chat; viewing saved history alone needs no host. `releaseKeepsNumbers` in `state/chatSelection.ts` decides release:
 when the user moves to another chat, a saved chat that was only viewed (no host, no sent input, no draft or
 attachments, no open omp terminal) is released unless a chat that was already open appears later in Current chats,
-which keeps every ⌘ number stable. Closing a saved chat adds it to the reopen stack with its text draft. Reopen
-closed chat restores the last eligible entry without starting omp. `normalizeRestoredChatSelection` in the same file
+which keeps every ⌘ number stable. A viewed chat whose side panel is open, or was resized, also stays open
+(`keepsChatOpen` in `state/dockLayout.ts`), so the panel is there when the user comes back. Closing a saved chat adds it to the
+reopen stack with its text draft and side panel layout. Reopen closed chat restores the last eligible entry without
+starting omp. `normalizeRestoredChatSelection` in the same file
 repairs the persisted layout on launch: it drops chats that can't be restored, keeps a valid split, and keeps the
 project last shown (else the focused chat's). The app then always opens on Home (`features/home`), with the open
 chats back in the sidebar; pages are not restored. Split view can show two chats, each with its own controller.
+
+Each open chat also has its own side panel layout (open or closed, pane, width), held in `useApp`'s `docks` map keyed
+by open-chat id; the rules are defined in `state/dockLayout.ts`. The key is the open-chat id rather than the session
+file because a new chat has no file until omp writes one, `/new` and `/resume` change the file of the same chat, and
+an id identifies one place in the window. A fork opens as a new chat and starts with its panel closed; a rewind stays
+in the same chat and keeps its panel; a saved chat opened from the sidebar is a new open chat with a closed panel,
+while Reopen closed chat brings back the panel it closed with; a chat moved to another folder before it sent anything
+keeps its panel layout, but not its Files view, which goes with the old id. Home and project overviews share one
+layout under a reserved key (`OVERVIEW_DOCK`). `currentDock` and `dockKey` read the layout on show (the focused
+chat's); `showPane` and `toggleDock` take the scope a request came from (an open-chat id or `OVERVIEW_DOCK`), and
+callers that wait on IPC, such as the terminal starters, fix that scope before awaiting. A toggle closes only a panel
+that is on screen and otherwise brings it into view. Only layouts that differ from the default are stored, a chat's
+layout is dropped when the chat closes, and `partialize` keeps the layouts of the restored chats and the overview, so
+the map holds at most the open chats plus the shared overview entry. On launch `state/savedLayout.ts` reads the saved
+layout field by field with zod: a field that is missing or of the wrong type keeps its default and a damaged chat
+entry is dropped. The Files pane's viewer tabs, expanded folders and tree width follow the same scope in
+`features/panes/files-store.ts` (not persisted, dropped with the chat, and a request from a chat that has closed
+writes nothing).
+
 Each SessionHost:
 
 1. Allocates a loopback WebSocket relay on a free port (listening on `127.0.0.1` and `::1` only).
@@ -124,7 +145,7 @@ Durations: `fmtDuration` in `collab/lib/format.ts` formats job notice rows (`Not
 | MCP | `~/.omp/agent/mcp.json`, `<project>/.omp/mcp.json` |
 | Usage/limits | Provider limits come from omp's usage reports. Saved rate-limit resets are listed and spent through omp's builtin `/usage reset`, sent as a prompt to a short-lived `omp --mode rpc --no-session` process whose `command_output` events carry what omp prints (`src/main/features/usage/resets.ts`, `usage:resetAccounts` and `usage:spendReset`). Recorded usage comes from local session and subagent JSONL files through `src/main/features/extensions.ts` (`extensions:spend`, up to 371 days for the activity grid; scans of different ranges run one after another and share a parsed-transcript cache); `features/extensions/usage/limitsStore.ts` shares the limits snapshot with the status bar. The browser stats link starts `omp stats`. |
 | Working state | `SessionController` snapshots expose `workingSince`; tool elapsed time is shown only when a call has known start and result times. |
-| Dock visibility | `state/app.ts` exports `useDockVisible()`, which accounts for pages and narrow layouts where chat takes precedence over the open dock. |
+| Dock visibility | `state/app.ts` exports `useDockVisible()`, which accounts for pages and narrow layouts where chat takes precedence over the open dock, and `currentDock()`, the focused chat's panel layout. |
 | Git | `git`, `gh` |
 
 ## Compatibility

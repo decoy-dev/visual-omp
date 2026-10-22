@@ -9,7 +9,7 @@ import { type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
-import { useApp } from "../../state/app";
+import { peekDock, useApp } from "../../state/app";
 import { useLeaveConfirm } from "../../state/leaveGuard";
 import { Button, PresenceSwap, StepDots, spring } from "../../ui";
 
@@ -197,15 +197,9 @@ function TourOverlay({ step, id }: { step: number; id: StepId }) {
 		next.current?.focus();
 	}, [step]);
 
-	// The dock is usually closed on first launch; open it for its step and put it back afterwards.
-	useEffect(() => {
-		if (id !== "dock") return;
-		const wasOpen = useApp.getState().dockOpen;
-		if (!wasOpen) useApp.getState().toggleDock(true);
-		return () => {
-			if (!wasOpen) useApp.getState().toggleDock(false);
-		};
-	}, [id]);
+	// The dock is usually closed on first launch; open it for its step and close it again afterwards, in the chat or
+	// overview it opened in (`peekDock`).
+	useEffect(() => (id === "dock" ? peekDock() : undefined), [id]);
 
 	// Keep focus inside the tour: return it to the card if something outside grabs it.
 	useEffect(() => {

@@ -1,8 +1,9 @@
 /**
  * "Reopen closed chat" (⌘⇧T): a short stack of chats closed in this window, newest first. Only chats with a saved
- * session file go on it, with the text left in their message box. Reopening shows the saved chat and its draft
- * without starting omp.
+ * session file go on it, with the text left in their message box and their side panel layout. Reopening shows the
+ * saved chat, its draft and its panel without starting omp.
  */
+import type { DockLayout } from "./dockLayout";
 
 export interface ClosedChat {
 	projectPath: string;
@@ -10,6 +11,8 @@ export interface ClosedChat {
 	title: string | null;
 	/** Unsent message text when the chat closed. */
 	draft: string;
+	/** The side panel as the chat left it; absent when it was the default (closed at the default width). */
+	dock?: DockLayout;
 }
 
 /** Closed chats kept for reopening. */

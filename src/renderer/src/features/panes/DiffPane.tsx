@@ -21,7 +21,7 @@ import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { GitDiff, GitDiffHunk, GitDiffLine, GitFileDiff, GitFileStatus } from "@shared/contracts/git";
 import type { PaneProps } from "../../registry/slots";
-import { controllerFor, useApp } from "../../state/app";
+import { controllerFor, currentDock, useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import {
 	Button,
@@ -458,7 +458,7 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 	const [diff, setDiff] = useState<GitDiff | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
 	// The file list starts hidden in a narrow dock, so the diff keeps the width; the path above names the file.
-	const [listOpen, setListOpen] = useState(() => useApp.getState().dockWidth >= 400);
+	const [listOpen, setListOpen] = useState(() => currentDock(useApp.getState()).width >= 400);
 	const listId = useId();
 	const [selected, setSelected] = useState<string | null>(null);
 	const [draft, setDraft] = useState<Draft | null>(null);

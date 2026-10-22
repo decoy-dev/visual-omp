@@ -59,13 +59,14 @@ omp's displayed harness notices appear in the chat in all three views, presented
 - ⌘1-⌘9 open the numbered Current chats row; ⌘⇧[ and ⌘⇧] cycle open chats. ⌘⇧T reopens the last eligible closed chat and its text draft without starting omp. ⌘⇧A selects the next chat waiting for an answer.
 - Each chat can run in its own Git worktree.
 - A chat can be rewound or forked from any message.
-- When the user moves to another chat, a saved chat that was only viewed is released: it has no host, no sent input, no draft or attachments and no open omp terminal. It stays open when a chat that was already open appears later in Current chats, so no ⌘ number shifts. Browsing from one saved chat to the next releases the one left behind.
+- When the user moves to another chat, a saved chat that was only viewed is released: it has no host, no sent input, no draft or attachments and no open omp terminal. A viewed chat whose side panel is open, or was resized, is not released, so the panel is there when the user comes back. A chat also stays open when a chat that was already open appears later in Current chats, so no ⌘ number shifts. Browsing from one saved chat to the next releases the one left behind.
 - Queued messages can be sent now, edited or removed.
 - Notifications report when a chat finishes or needs input.
 - All saved omp sessions (including ones started in a terminal) appear in history grouped by
   project and can be resumed; a session still live elsewhere opens read-only.
 
 ### Panes
+- Each chat has its own side panel: whether it is open, which pane it shows and how wide it is belong to that chat, so a chat that never opened its panel shows it closed at the default width, and opening, closing or resizing it in one chat never changes another. Links and buttons in a chat open that chat's panel. Each restored chat comes back with its panel after a restart. Home and project overviews share one panel.
 - The Changes pane reviews edits per file, sends line comments to omp, and runs *Review code* via
   `/review`.
 - The Files pane shows the project tree and a file viewer, and clicking a file can @-mention it.

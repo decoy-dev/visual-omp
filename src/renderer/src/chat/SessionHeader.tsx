@@ -5,7 +5,7 @@ import { backgroundJobs, helpersOf, latestTodo, ompRunning, workSummary } from "
 import { type CommandSpec, useCommands } from "../registry/commands";
 import { ChatStatusMark } from "../shell/ChatStatusMark";
 import { chatStatus, chatTitle } from "../shell/hooks";
-import { useApp, useDockVisible } from "../state/app";
+import { currentDock, dockKey, useApp, useDockVisible } from "../state/app";
 import { liveEntries, type SessionController, type SessionView } from "../state/session";
 import {
 	Button,
@@ -78,7 +78,7 @@ function menuSections(commands: readonly CommandSpec[]): CommandSpec[][] {
  * "3 of 7 tasks · 2 helpers working · 1 job running", absent parts left out; opens the Tasks pane. Below 44rem of
  * header width it shrinks to an icon and one count (tasks done of total, else what is running).
  */
-function WorkChip({ view }: { view: SessionView }): ReactNode {
+function WorkChip({ view, tabId }: { view: SessionView; tabId: string }): ReactNode {
 	const { t } = useTranslation("panes");
 	// Tasks from the branch the chat shows; jobs from every entry omp sent, since they run whatever branch is shown.
 	const shown = useDisplayedEntries(view);
@@ -98,9 +98,9 @@ function WorkChip({ view }: { view: SessionView }): ReactNode {
 			),
 		[shown, entries, activeTools, agents, progress, lifecycle, ompLive],
 	);
-	// While the Tasks pane is on screen, the chip reads as pressed and closes it.
+	// While this chat's Tasks pane is on screen, the chip reads as pressed and closes it.
 	const dockVisible = useDockVisible();
-	const showing = useApp(state => state.dockPane === "tasks") && dockVisible;
+	const showing = useApp(state => dockKey(state) === tabId && currentDock(state).pane === "tasks") && dockVisible;
 	const parts = [
 		summary.tasks ? t("work.chip.tasks", { done: summary.tasks.done, count: summary.tasks.total }) : null,
 		summary.helpersWorking > 0 ? t("work.chip.helpers", { count: summary.helpersWorking }) : null,
@@ -114,7 +114,7 @@ function WorkChip({ view }: { view: SessionView }): ReactNode {
 		<Tooltip content={showing ? t("work.chip.close") : t("work.chip.open")}>
 			<button
 				type="button"
-				onClick={() => (showing ? useApp.getState().toggleDock(false) : useApp.getState().showPane("tasks"))}
+				onClick={() => (showing ? useApp.getState().toggleDock(false, tabId) : useApp.getState().showPane("tasks", tabId))}
 				aria-label={text}
 				aria-pressed={showing}
 				className={cn(
@@ -144,7 +144,9 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 	const { t } = useTranslation(["chat", "shell"]);
 	const commands = useCommands();
 	const transcriptMode = useApp(state => state.prefs?.transcriptMode ?? "normal");
+	// Each half of a split has a header; its toggle reads as pressed only for its own chat's panel.
 	const dockVisible = useDockVisible();
+	const ownDockVisible = useApp(state => dockKey(state) === session.tabId) && dockVisible;
 	const ctx = { session, projectPath: session.projectPath };
 	const sections = menuSections(commands.filter(command => command.when?.(ctx) ?? true));
 	const title = chatTitle(view, fallbackTitle) ?? t("shell:chat.newTitle");
@@ -165,25 +167,25 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 				</p>
 			</div>
 			<div className="flex min-w-0 shrink-0 items-center gap-0.5">
-				<WorkChip view={view} />
+				<WorkChip view={view} tabId={session.tabId} />
 				{/* The wrappers own the display switch, so the buttons' own display classes cannot override it. */}
 				<span className="hidden @min-[36rem]/header:contents">
 					<Tooltip content={t("chat:header.reviewHint")}>
-						<Button variant="ghost" size="sm" icon={<GitDiff />} onClick={() => useApp.getState().showPane("diff")}>
+						<Button variant="ghost" size="sm" icon={<GitDiff />} onClick={() => useApp.getState().showPane("diff", session.tabId)}>
 							{reviewLabel}
 						</Button>
 					</Tooltip>
 				</span>
 				<span className="contents @min-[36rem]/header:hidden">
-					<IconButton label={reviewLabel} icon={<GitDiff />} size="md" onClick={() => useApp.getState().showPane("diff")} />
+					<IconButton label={reviewLabel} icon={<GitDiff />} size="md" onClick={() => useApp.getState().showPane("diff", session.tabId)} />
 				</span>
 				<IconButton
 					label={t("chat:header.inspector")}
 					shortcut="⌥⌘B"
 					icon={<SidebarSimple mirrored />}
 					size="md"
-					pressed={dockVisible}
-					onClick={() => useApp.getState().toggleDock()}
+					pressed={ownDockVisible}
+					onClick={() => useApp.getState().toggleDock(undefined, session.tabId)}
 				/>
 				<Menu>
 					<MenuTrigger asChild>

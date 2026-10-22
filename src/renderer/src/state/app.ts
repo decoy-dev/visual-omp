@@ -2,7 +2,8 @@
  * App-wide UI state: projects and their sessions, open chats (`tabs`, with an optional split), layout,
  * and overlays. Chat behaviour lives in `SessionController`s keyed by open-chat id (see `controllers`).
  * Open chats keep running while another one shows; the sidebar lists them and switches between them.
- * Layout and open chats persist to localStorage so the window comes back the way it was left.
+ * Layout, open chats and each chat's side panel (`docks`, see `dockLayout.ts`) persist to localStorage so the
+ * window comes back the way it was left.
  */
 import { useSyncExternalStore } from "react";
 import { create } from "zustand";
@@ -13,7 +14,9 @@ import { confirmTabClose } from "../registry/guards";
 import { chatTitle } from "../shell/hooks";
 import { type ClosedChat, pushClosed, takeReopenable } from "./closedChats";
 import { normalizeRestoredChatSelection, releaseKeepsNumbers } from "./chatSelection";
+import { type DockLayout, type DockLayouts, dockScope, keepLayouts, keepsChatOpen, layoutFor, moveLayout, OVERVIEW_DOCK, withLayout } from "./dockLayout";
 import { whenLeaving } from "./leaveGuard";
+import { migrateSavedLayout, readSavedLayout } from "./savedLayout";
 import { SessionController } from "./session";
 
 /** Id of the main area; focus lands here when Back cannot return it to the control that opened a page. */
@@ -71,10 +74,11 @@ export interface AppState {
 	focusedSplit: "primary" | "secondary";
 	sidebarOpen: boolean;
 	sidebarWidth: number;
-	/** Persisted: the side panel is open. At narrow widths it may stand aside for the chat (`chatOverDock`). */
-	dockOpen: boolean;
-	dockPane: string;
-	dockWidth: number;
+	/**
+	 * Persisted: the side panel's layout per open chat, plus the one Home and project overviews share (`dockLayout.ts`).
+	 * Read the layout on show with `currentDock`. At narrow widths an open panel may stand aside for the chat (`chatOverDock`).
+	 */
+	docks: DockLayouts;
 	sheet: OpenSheet | null;
 	/** Full page shown while `view` is `page`. */
 	page: OpenPage | null;
@@ -141,9 +145,19 @@ export interface AppState {
 	focusSplit(which: "primary" | "secondary"): void;
 	toggleSidebar(): void;
 	setSidebarWidth(width: number): void;
-	/** Open, close or toggle the side panel. Toggling while the chat covers it at a narrow width shows it. */
-	toggleDock(open?: boolean): void;
-	showPane(paneId: string): void;
+	/**
+	 * Open, close or toggle a side panel. `scope` is where the request came from: a chat's open-chat id (a header
+	 * button, a file link) or `OVERVIEW_DOCK` for Home and project overviews; without it, the panel on show. A toggle
+	 * closes only the panel on screen; any other (another chat's, or one standing aside for the chat at a narrow width)
+	 * comes into view. A panel that opens for the other half of a split focuses that half so it shows; a chat that is
+	 * not showing keeps the change for when it is.
+	 */
+	toggleDock(open?: boolean, scope?: string | null): void;
+	/**
+	 * Open a side panel on `paneId`; `scope` as for `toggleDock`. `keepFocus` is for a request that finishes later (a
+	 * terminal that took a while to start): the panel opens in its chat without taking focus from where the user is now.
+	 */
+	showPane(paneId: string, scope?: string | null, options?: { keepFocus?: boolean }): void;
 	/** Narrow window: show the chat in place of the expanded side panel, which stays open for wider windows. */
 	returnToChat(): void;
 	setDockWidth(width: number): void;
@@ -213,8 +227,9 @@ function recentOtherTab(tabs: readonly ChatTab[], exclude: (string | null)[]): s
 
 /**
  * Release rule: an open chat the user moved away from goes back to being a saved row when omp never started for
- * it (it only showed the saved transcript), nothing was sent, its composer holds no text or files, and removing it
- * renumbers no chat that was already open (`releaseKeepsNumbers`; `before` is the list before this change).
+ * it (it only showed the saved transcript), nothing was sent, its composer holds no text or files, its side panel is
+ * closed at the default width (`keepsChatOpen`), and removing it renumbers no chat that was already open
+ * (`releaseKeepsNumbers`; `before` is the list before this change).
  */
 function releaseIfUnused(tabId: string, before: readonly ChatTab[]): void {
 	const state = useApp.getState();
@@ -222,6 +237,7 @@ function releaseIfUnused(tabId: string, before: readonly ChatTab[]): void {
 	if (!controller || tabId === state.activeTabId || tabId === state.splitTabId || tabId === state.terminalTabId) return;
 	if (!releaseKeepsNumbers(tabId, state.tabs, before)) return;
 	if (controller.getSnapshot().mode !== "history" || controller.hostId || controller.inputSent) return;
+	if (keepsChatOpen(layoutFor(state.docks, tabId))) return;
 	const drafts = useComposerDrafts.getState();
 	if (drafts.drafts[tabId]?.trim() || (drafts.attachments[tabId]?.length ?? 0) > 0) return;
 	controllers.delete(tabId);
@@ -244,6 +260,22 @@ function showTab(tabId: string): void {
 	}));
 }
 
+/**
+ * The state change for `patch` on the side panel of `scope` (see `toggleDock`). A panel left open shows: a chat in the
+ * other half of a split takes focus (unless `keepFocus`), and a panel on show takes its place again at a narrow width
+ * (`chatOverDock` cleared). Closing a panel moves no focus.
+ */
+function changeDock(state: AppState, scope: string | null | undefined, patch: Partial<DockLayout>, keepFocus = false): Partial<AppState> {
+	// A chat that has closed since it asked (a terminal that took a while to start) gets nothing.
+	if (scope && scope !== OVERVIEW_DOCK && !state.tabs.some(tab => tab.id === scope)) return {};
+	const key = scope ?? dockKey(state);
+	const docks = withLayout(state.docks, key, patch);
+	if (!layoutFor(docks, key).open) return { docks };
+	const moveFocus = state.view === "chat" && !keepFocus;
+	const focusedSplit = moveFocus && key === state.splitTabId ? "secondary" : moveFocus && key === state.activeTabId ? "primary" : state.focusedSplit;
+	return key === dockKey({ ...state, focusedSplit }) ? { docks, focusedSplit, chatOverDock: false } : { docks };
+}
+
 /** Narrowest the chat may get beside the side panel before the panel takes the main area instead. */
 export const MIN_CHAT_WIDTH = 480;
 
@@ -257,14 +289,27 @@ const SHEET_SEAM = 1;
 /** How many recent chats `refreshProjects` keeps for Home: enough to fill its list after chats of missing folders drop out. */
 const RECENT_SESSIONS = 24;
 
+type DockSelection = Pick<AppState, "docks" | "view" | "pageReturn" | "activeTabId" | "splitTabId" | "focusedSplit">;
+
+/** Key of the side panel layout on show: the focused chat's, or the overview's (`dockScope`). */
+export function dockKey(state: Omit<DockSelection, "docks">): string {
+	return dockScope(state.view, state.pageReturn, state.focusedSplit === "secondary" && state.splitTabId ? state.splitTabId : state.activeTabId);
+}
+
+/** The side panel layout on show. The same object until it changes, so it works as a selector. */
+export function currentDock(state: DockSelection): DockLayout {
+	return layoutFor(state.docks, dockKey(state));
+}
+
 /**
  * The side panel is open but the window is too narrow for it beside the chat, so it takes the main area
  * (with "Back to chat") unless the user went back to the chat (`chatOverDock`). Home and full pages hide the panel.
  * Everything beside the chat counts: sidebar and seam, panel and its gutters.
  */
-export function dockTooNarrow(state: Pick<AppState, "dockOpen" | "dockWidth" | "sidebarOpen" | "sidebarWidth" | "view">, windowWidth: number): boolean {
-	const occupied = (state.sidebarOpen ? state.sidebarWidth + SHEET_SEAM : 0) + state.dockWidth + 2 * DOCK_INSET;
-	return state.dockOpen && !viewHidesDock(state.view) && windowWidth - occupied < MIN_CHAT_WIDTH;
+export function dockTooNarrow(state: DockSelection & Pick<AppState, "sidebarOpen" | "sidebarWidth">, windowWidth: number): boolean {
+	const dock = currentDock(state);
+	const occupied = (state.sidebarOpen ? state.sidebarWidth + SHEET_SEAM : 0) + dock.width + 2 * DOCK_INSET;
+	return dock.open && !viewHidesDock(state.view) && windowWidth - occupied < MIN_CHAT_WIDTH;
 }
 
 function subscribeResize(listener: () => void): () => void {
@@ -279,11 +324,28 @@ export function useWindowWidth(): number {
 
 /**
  * Whether the side panel is on screen: open, not hidden by a full page, and, when the window is too narrow for it
- * beside the chat, not standing aside for the chat. For controls that show or toggle it (header toggle, work chip).
+ * beside the chat, not standing aside for the chat.
  */
+export function dockVisible(state: DockSelection & Pick<AppState, "sidebarOpen" | "sidebarWidth" | "chatOverDock">, windowWidth: number): boolean {
+	return currentDock(state).open && !viewHidesDock(state.view) && (!state.chatOverDock || !dockTooNarrow(state, windowWidth));
+}
+
+/** `dockVisible` for controls that show or toggle the panel (header toggle, work chip), following window resizes. */
 export function useDockVisible(): boolean {
 	const width = useWindowWidth();
-	return useApp(state => state.dockOpen && !viewHidesDock(state.view) && (!state.chatOverDock || !dockTooNarrow(state, width)));
+	return useApp(state => dockVisible(state, width));
+}
+
+/**
+ * Show the panel on show for a while (the tour's step about it). The returned function closes it again in the same
+ * chat or overview, and only when it was closed before, so a chat switch in between leaves the other chat alone.
+ */
+export function peekDock(): () => void {
+	const state = useApp.getState();
+	const key = dockKey(state);
+	if (layoutFor(state.docks, key).open) return () => undefined;
+	state.toggleDock(true, key);
+	return () => useApp.getState().toggleDock(false, key);
 }
 
 /**
@@ -318,9 +380,7 @@ export const useApp = create<AppState>()(
 			focusedSplit: "primary",
 			sidebarOpen: true,
 			sidebarWidth: 264,
-			dockOpen: false,
-			dockPane: "diff",
-			dockWidth: 420,
+			docks: {},
 			sheet: null,
 			page: null,
 			pageReturn: "home",
@@ -444,6 +504,8 @@ export const useApp = create<AppState>()(
 				const swap = (id: string | null) => (id === tabId ? tab.id : id);
 				set(state => ({
 					tabs: state.tabs.map(entry => (entry.id === tabId ? tab : entry)),
+					// The same chat in another folder: its side panel stays as it was.
+					docks: moveLayout(state.docks, tabId, tab.id),
 					activeTabId: swap(state.activeTabId),
 					splitTabId: swap(state.splitTabId),
 					terminalTabId: swap(state.terminalTabId),
@@ -496,7 +558,13 @@ export const useApp = create<AppState>()(
 				const drafts = useComposerDrafts.getState();
 				if (closing?.sessionFile) {
 					const title = chatTitle(controller?.getSnapshot() ?? null, closing.title);
-					closedChats = pushClosed(closedChats, { projectPath: closing.projectPath, sessionFile: closing.sessionFile, title, draft: drafts.drafts[tabId] ?? "" });
+					closedChats = pushClosed(closedChats, {
+						projectPath: closing.projectPath,
+						sessionFile: closing.sessionFile,
+						title,
+						draft: drafts.drafts[tabId] ?? "",
+						dock: get().docks[tabId],
+					});
 				}
 				drafts.forget(tabId);
 				set(state => {
@@ -544,6 +612,7 @@ export const useApp = create<AppState>()(
 					if (chat.draft) useComposerDrafts.getState().setDraft(tab.id, chat.draft);
 					set(state => ({
 						tabs: [...state.tabs, tab],
+						docks: chat.dock ? { ...state.docks, [tab.id]: chat.dock } : state.docks,
 						activeTabId: tab.id,
 						focusedSplit: "primary",
 						activeProject: chat.projectPath,
@@ -598,17 +667,16 @@ export const useApp = create<AppState>()(
 				set({ sidebarWidth: Math.min(320, Math.max(200, width)) });
 			},
 
-			toggleDock(open) {
+			toggleDock(open, scope) {
 				set(state => {
-					// The panel is open but standing aside for the chat: toggling shows it.
-					if (open === undefined && state.dockOpen && state.chatOverDock && dockTooNarrow(state, window.innerWidth)) return { chatOverDock: false };
-					const dockOpen = open ?? !state.dockOpen;
-					return dockOpen ? { dockOpen, chatOverDock: false } : { dockOpen };
+					const key = scope ?? dockKey(state);
+					const next = open ?? !(key === dockKey(state) && dockVisible(state, window.innerWidth));
+					return changeDock(state, key, { open: next });
 				});
 			},
 
-			showPane(paneId) {
-				set({ dockOpen: true, dockPane: paneId, chatOverDock: false });
+			showPane(paneId, scope, options) {
+				set(state => changeDock(state, scope, { open: true, pane: paneId }, options?.keepFocus));
 			},
 
 			returnToChat() {
@@ -616,7 +684,7 @@ export const useApp = create<AppState>()(
 			},
 
 			setDockWidth(width) {
-				set({ dockWidth: Math.min(640, Math.max(320, width)) });
+				set(state => ({ docks: withLayout(state.docks, dockKey(state), { width }) }));
 			},
 
 			openSheet(id, props) {
@@ -680,7 +748,9 @@ export const useApp = create<AppState>()(
 		}),
 		{
 			name: "visual-omp:layout",
-			version: 1,
+			version: 2,
+			// Saved data is checked field by field (`savedLayout.ts`); version 1 had one panel layout for every chat.
+			migrate: (persistedState, version) => (version < 2 ? migrateSavedLayout(persistedState) : persistedState) as never,
 			partialize: state => {
 				const persistedTabs = state.tabs.filter(tab => tab.sessionFile !== null);
 				const normalized = normalizeRestoredChatSelection({ ...state, tabs: persistedTabs });
@@ -694,16 +764,13 @@ export const useApp = create<AppState>()(
 					// The app opens on Home (see `merge`); pages and other views are not restored.
 					sidebarOpen: state.sidebarOpen,
 					sidebarWidth: state.sidebarWidth,
-					dockOpen: state.dockOpen,
-					dockPane: state.dockPane,
-					dockWidth: state.dockWidth,
+					// Only the restored chats' panels (and the overview's) are kept.
+					docks: keepLayouts(state.docks, persistedTabs.map(tab => tab.id)),
 					expandedProjects: state.expandedProjects,
 				};
 			},
 			merge: (persistedState, currentState) => {
-				const persisted = persistedState as Partial<AppState>;
-				const tabs = (persisted.tabs ?? currentState.tabs).filter(tab => tab.sessionFile !== null);
-				const merged = { ...currentState, ...persisted, tabs };
+				const merged = { ...currentState, ...readSavedLayout(persistedState) };
 				// Open chats come back in the sidebar, but the app always opens on Home.
 				return { ...merged, ...normalizeRestoredChatSelection(merged), view: "home", pageReturn: "home" };
 			},
@@ -719,11 +786,16 @@ for (const tab of useApp.getState().tabs) ensureController(tab);
 
 // Track which chat was shown most recently, keep the project in step with the focused chat (the side panel,
 // status bar and project commands follow `activeProject`, so focusing the other half of a split moves them to
-// that chat's project), and release a chat the user left (see `releaseIfUnused`).
+// that chat's project), drop the side panel layout of a chat that closed, and release a chat the user left (see
+// `releaseIfUnused`).
 useApp.subscribe((state, previous) => {
 	const focused = state.focusedSplit === "secondary" && state.splitTabId ? state.splitTabId : state.activeTabId;
 	if (focused && recentTabs[0] !== focused) recentTabs = [focused, ...recentTabs.filter(id => id !== focused)];
-	if (state.tabs !== previous.tabs) recentTabs = recentTabs.filter(id => state.tabs.some(tab => tab.id === id));
+	if (state.tabs !== previous.tabs) {
+		recentTabs = recentTabs.filter(id => state.tabs.some(tab => tab.id === id));
+		const docks = keepLayouts(state.docks, state.tabs.map(tab => tab.id));
+		if (docks !== state.docks) useApp.setState({ docks });
+	}
 	if (state.view === "chat" && focused) {
 		const project = state.tabs.find(tab => tab.id === focused)?.projectPath;
 		if (project && project !== state.activeProject) useApp.setState({ activeProject: project });

@@ -7,7 +7,8 @@ import { useComposerDrafts } from "../chat/composer/drafts";
 import { getCommand } from "../registry/commands";
 import { type SheetPresence, SheetPresenceContext } from "../registry/sheetPresence";
 import { pages, screens, sheets } from "../registry/slots";
-import { DOCK_INSET, dockTooNarrow, focusedTabId, MAIN_ID, type OpenPage, useApp, useWindowWidth, viewHidesDock } from "../state/app";
+import { currentDock, DOCK_INSET, dockKey, dockTooNarrow, focusedTabId, MAIN_ID, type OpenPage, useApp, useWindowWidth, viewHidesDock } from "../state/app";
+import { DOCK_MAX_WIDTH, DOCK_MIN_WIDTH } from "../state/dockLayout";
 import { Button, cn, duration, EmptyState, Mark, PresenceSwap, spring } from "../ui";
 import { LeaveConfirm } from "./LeaveConfirm";
 import { Dock } from "./Dock";
@@ -145,7 +146,11 @@ function useExpandedDockFocus(expanded: boolean): (back: HTMLElement) => void {
 		};
 		document.addEventListener("focusin", track);
 		const off = useApp.subscribe((state, previous) => {
-			const asked = (state.dockOpen && !previous.dockOpen) || (!state.chatOverDock && previous.chatOverDock) || state.dockPane !== previous.dockPane;
+			// Opening the panel or choosing a pane in the same chat asks for it; switching chats does not.
+			const dock = currentDock(state);
+			const before = currentDock(previous);
+			const sameChat = dockKey(state) === dockKey(previous);
+			const asked = (sameChat && ((dock.open && !before.open) || dock.pane !== before.pane)) || (!state.chatOverDock && previous.chatOverDock);
 			if (asked) askedAt.current = performance.now();
 		});
 		return () => {
@@ -193,8 +198,9 @@ export function Shell(): ReactNode {
 	const { t } = useTranslation("shell");
 	const sidebarOpen = useApp(state => state.sidebarOpen);
 	const sidebarWidth = useApp(state => state.sidebarWidth);
-	const dockOpen = useApp(state => state.dockOpen);
-	const dockWidth = useApp(state => state.dockWidth);
+	const dockOpen = useApp(state => currentDock(state).open);
+	const dockWidth = useApp(state => currentDock(state).width);
+	const dockChat = useApp(dockKey);
 	const view = useApp(state => state.view);
 	const hasTabs = useApp(state => state.tabs.length > 0);
 	const page = useApp(state => (state.view === "page" ? state.page : null));
@@ -252,7 +258,7 @@ export function Shell(): ReactNode {
 									{page ? (
 										<PageView page={page} />
 									) : dockExpanded ? (
-										<Dock width={dockWidth} expanded onEnter={onDockEnter} />
+										<Dock chatKey={dockChat} width={dockWidth} expanded onEnter={onDockEnter} />
 									) : showChat ? null : (
 										<MainScreen view={view === "project" ? "project" : "home"} />
 									)}
@@ -263,9 +269,9 @@ export function Shell(): ReactNode {
 							{/* The side panel belongs to the chat and project views; Home and full pages take the whole main area. */}
 							{showDock && (
 								<motion.div key="dock" data-surface="canvas" className="flex shrink-0 bg-bg" {...sideEnter(1)}>
-									<ResizeHandle label={t("dock.resize")} value={dockWidth} min={320} max={640} direction={-1} onChange={width => useApp.getState().setDockWidth(width)} />
+									<ResizeHandle label={t("dock.resize")} value={dockWidth} min={DOCK_MIN_WIDTH} max={DOCK_MAX_WIDTH} direction={-1} onChange={width => useApp.getState().setDockWidth(width)} />
 									<div className="flex" style={{ padding: DOCK_INSET }}>
-										<Dock width={dockWidth} />
+										<Dock chatKey={dockChat} width={dockWidth} />
 									</div>
 								</motion.div>
 							)}

@@ -2,7 +2,8 @@ import { CaretDown, CaretLeft, X } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { type PaneSpec, panes } from "../registry/slots";
-import { focusedController, useApp } from "../state/app";
+import { controllerFor, useApp } from "../state/app";
+import { layoutFor } from "../state/dockLayout";
 import { cn, IconButton, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PresenceSwap } from "../ui";
 import { focusRingInset } from "../ui/styles";
 
@@ -16,20 +17,25 @@ function paneTitle(t: (key: string, options?: { ns?: string }) => string, entry:
  * typeahead move; Enter or Space shows the pane). The other panes' badges stay mounted, hidden, so the trigger can show
  * a dot when one of them has something to say and their "seen" bookkeeping keeps running.
  *
+ * The pane on show is the focused chat's (`currentDock`), and each chat gets its own instance of it: switching chats
+ * swaps the pane, so what one chat's pane holds on screen (a selected file, an open list) never shows in another.
+ *
  * Beside the chat it is a floating sheet: rounded on every corner with the pop shadow, on the canvas strip Shell gives it.
  *
  * `expanded`: the window is too narrow for the chat and the panel side by side, so the panel takes the main area and
  * offers "Back to chat" (which shows the chat and keeps the panel open for a wider window) instead of squeezing the chat.
  * It then fills the sheet edge to edge. Shell moves focus to "Back to chat" on entry and back to where it was on the way out.
+ *
+ * `chatKey`: whose panel this is (`dockKey`). Shell passes it with the width, so a panel playing its exit after a
+ * chat switch keeps showing the chat it belonged to.
  */
-export function Dock({ width, expanded = false, onEnter }: { width: number; expanded?: boolean; onEnter?: (back: HTMLElement) => void }): ReactNode {
+export function Dock({ chatKey, width, expanded = false, onEnter }: { chatKey: string; width: number; expanded?: boolean; onEnter?: (back: HTMLElement) => void }): ReactNode {
 	const { t } = useTranslation("panes");
 	const list = panes.use();
-	const paneId = useApp(state => state.dockPane);
-	const projectPath = useApp(state => state.activeProject);
-	// Subscribe so panes re-render when the focused chat changes.
-	useApp(state => state.activeTabId + (state.splitTabId ?? "") + state.focusedSplit + state.view);
-	const session = focusedController();
+	const paneId = useApp(state => layoutFor(state.docks, chatKey).pane);
+	const projectPath = useApp(state => state.tabs.find(tab => tab.id === chatKey)?.projectPath ?? state.activeProject);
+	// The overview's key names no chat, so it has no controller.
+	const session = controllerFor(chatKey);
 	const pane = list.find(entry => entry.id === paneId) ?? list[0];
 	const scope = useId();
 	// Pane switches slide toward the pane that was picked: one lower in the list slides in from the right.
@@ -99,7 +105,7 @@ export function Dock({ width, expanded = false, onEnter }: { width: number; expa
 							</button>
 						</MenuTrigger>
 						<MenuContent aria-label={t("dock.choose")} className="min-w-60">
-							<MenuRadioGroup value={pane.id} onValueChange={id => useApp.getState().showPane(id)}>
+							<MenuRadioGroup value={pane.id} onValueChange={id => useApp.getState().showPane(id, chatKey)}>
 								{list.map(entry => (
 									<MenuRadioItem key={entry.id} value={entry.id}>
 										<span className="flex min-w-0 items-center gap-2">
@@ -118,11 +124,14 @@ export function Dock({ width, expanded = false, onEnter }: { width: number; expa
 					</Menu>
 				)}
 				<span className="flex-1" />
-				<IconButton label={t("dock.close")} shortcut="⌥⌘B" icon={<X />} size="sm" onClick={() => useApp.getState().toggleDock(false)} />
+				<IconButton label={t("dock.close")} shortcut="⌥⌘B" icon={<X />} size="sm" onClick={() => useApp.getState().toggleDock(false, chatKey)} />
 			</div>
 			<div role="region" aria-labelledby={pane ? `${scope}-title` : undefined} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
-				<PresenceSwap swapKey={pane?.id ?? "none"} variant="slide" direction={nav.direction} className="flex min-h-0 flex-1 flex-col">
-					{pane ? <pane.component session={session} projectPath={projectPath} /> : <p className="p-6 text-md text-fg-faint">{t("dock.empty")}</p>}
+				{/* A chat switch fades the previous pane out, then the next pane in; within a chat, choosing a pane slides. */}
+				<PresenceSwap swapKey={chatKey} className="flex min-h-0 flex-1 flex-col">
+					<PresenceSwap swapKey={pane?.id ?? "none"} variant="slide" direction={nav.direction} className="flex min-h-0 flex-1 flex-col">
+						{pane ? <pane.component session={session} projectPath={projectPath} /> : <p className="p-6 text-md text-fg-faint">{t("dock.empty")}</p>}
+					</PresenceSwap>
 				</PresenceSwap>
 			</div>
 		</aside>

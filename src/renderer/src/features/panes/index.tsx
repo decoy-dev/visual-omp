@@ -77,7 +77,7 @@ for (const { id, icon } of SHOW) {
 		keywords: `panes:commands.${id}.keywords`,
 		group: "navigation",
 		icon,
-		run: () => useApp.getState().showPane(id),
+		run: ctx => useApp.getState().showPane(id, ctx.session?.tabId),
 	});
 }
 
@@ -90,6 +90,6 @@ registerCommand({
 	icon: TerminalWindow,
 	when: ctx => ctx.projectPath !== null,
 	run: ctx => {
-		if (ctx.projectPath) void newShell(ctx.projectPath);
+		if (ctx.projectPath) void newShell(ctx.projectPath, ctx.session?.tabId);
 	},
 });

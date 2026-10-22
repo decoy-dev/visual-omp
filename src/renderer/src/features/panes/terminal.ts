@@ -6,7 +6,7 @@
  * with {@link runInTerminal}.
  */
 import { create } from "zustand";
-import { useApp } from "../../state/app";
+import { dockKey, useApp } from "../../state/app";
 
 export interface TerminalTab {
 	termId: string;
@@ -83,20 +83,28 @@ async function start(cwd: string, command: string | null): Promise<string> {
 	return termId;
 }
 
-/** Open a new interactive shell tab in `cwd` and show the Terminal pane. */
-export async function newShell(cwd: string): Promise<string> {
+/**
+ * Open a new interactive shell tab in `cwd` and show the Terminal pane in the side panel of `scope` (a chat's
+ * open-chat id or the overview's key, as `showPane` takes it). Without it, the panel on show when this is called:
+ * the scope is fixed before the shell starts, so switching chats meanwhile does not move the request, and the panel
+ * opens there without taking focus from where the user went (`keepFocus`).
+ */
+export async function newShell(cwd: string, scope?: string | null): Promise<string> {
+	const target = scope ?? dockKey(useApp.getState());
 	const termId = await start(cwd, null);
-	useApp.getState().showPane("terminal");
+	useApp.getState().showPane("terminal", target, { keepFocus: true });
 	return termId;
 }
 
 /**
- * Run `command` in a new Terminal tab (login shell, so the user's PATH applies), show the pane, and
- * resolve the terminal id. The tab stays open after the command exits so its output can be read.
+ * Run `command` in a new Terminal tab (login shell, so the user's PATH applies), show the pane in the side panel of
+ * `scope` (as for `newShell`), and resolve the terminal id. The tab stays open after the command exits so its output
+ * can be read.
  */
-export async function runInTerminal(cwd: string, command: string): Promise<string> {
+export async function runInTerminal(cwd: string, command: string, scope?: string | null): Promise<string> {
+	const target = scope ?? dockKey(useApp.getState());
 	const termId = await start(cwd, command);
-	useApp.getState().showPane("terminal");
+	useApp.getState().showPane("terminal", target, { keepFocus: true });
 	return termId;
 }
 

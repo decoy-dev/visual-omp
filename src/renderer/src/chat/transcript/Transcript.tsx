@@ -762,7 +762,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		if (!link || !path) return false;
 		const selection = window.getSelection();
 		if (!selection?.isCollapsed && selection?.containsNode(link, true)) return true;
-		openInFiles(session.projectPath, path, { focus: true });
+		openInFiles(session.projectPath, path, { focus: true, tabId: session.tabId });
 		return true;
 	};
 
@@ -875,7 +875,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		(): WorkView => ({ layout, arriving: forming, openGroups, thoughts, helpers, pinned, recorded, ompRunning: helpersMayRun, hold, holdGroup }),
 		[layout, forming, openGroups, thoughts, helpers, pinned, recorded, helpersMayRun, hold, holdGroup],
 	);
-	const openFile = (path: string) => openInFiles(session.projectPath, path, { focus: true });
+	const openFile = (path: string) => openInFiles(session.projectPath, path, { focus: true, tabId: session.tabId });
 
 	// New rows, stream updates and questions: follow when pinned, otherwise offer the jump. Until the chat has loaded
 	// (and on that first loaded commit) the view goes straight to the bottom instead of gliding there.
@@ -972,7 +972,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 			endRun();
 			rows.push(
 				<Rise key={`summary:${entry.id}`} play={forming.has(`summary:${entry.id}`)} distance={6} tempo="snappy" className="-mt-4">
-					<TurnSummary totals={summary} projectPath={session.projectPath} onOpen={openFile} />
+					<TurnSummary totals={summary} projectPath={session.projectPath} tabId={session.tabId} onOpen={openFile} />
 				</Rise>,
 			);
 		}

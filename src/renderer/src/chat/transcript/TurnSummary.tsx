@@ -68,7 +68,7 @@ function FileRow({ file, projectPath, scale, onOpen }: { file: FileEditTotal; pr
 	);
 }
 
-export function TurnSummary({ totals, projectPath, onOpen }: { totals: EditTotals; projectPath: string; onOpen(path: string): void }): ReactNode {
+export function TurnSummary({ totals, projectPath, tabId, onOpen }: { totals: EditTotals; projectPath: string; tabId: string; onOpen(path: string): void }): ReactNode {
 	const { t } = useTranslation("panes");
 	const [open, setOpen] = useState(false);
 	const counted = totals.files.some(file => file.added !== null);
@@ -101,7 +101,7 @@ export function TurnSummary({ totals, projectPath, onOpen }: { totals: EditTotal
 				<div className="rounded-lg border border-border bg-panel p-menu">
 					<div className="flex flex-wrap items-center gap-x-2 px-row py-1">
 						<p className="min-w-0 flex-[1_1_12rem] text-sm font-semibold text-fg">{t("work.summary.title")}</p>
-						<Button variant="ghost" size="sm" icon={<GitDiff />} onClick={() => useApp.getState().showPane("diff")}>
+						<Button variant="ghost" size="sm" icon={<GitDiff />} onClick={() => useApp.getState().showPane("diff", tabId)}>
 							{t("work.summary.review")}
 						</Button>
 					</div>

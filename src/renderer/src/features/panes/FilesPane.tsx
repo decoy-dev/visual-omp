@@ -36,7 +36,7 @@ import { useHomeDir } from "../projects/folders/FolderBrowser";
 import { tildePath } from "../projects/folders/paths";
 import { PaneToolbar, relativePath, Section, SectionCount, TabStrip, usePaneVisible } from "./common";
 import { IMAGE_EXT, OPENABLE_EXT, PDF_EXT } from "./derive";
-import { EMPTY_PROJECT, useFiles } from "./files-store";
+import { EMPTY_VIEW, filesView, useFiles } from "./files-store";
 import { useGit } from "./git-store";
 import { languageFor, SYN_CLASS, tokenizeLines } from "./highlight";
 import { ExpandPreview, loadFileImage, openWithDefaultApp, PdfFrame, PreviewImage, revealLabel, ThumbnailFrame, Unavailable, useNearView, ZoomImage } from "./media";
@@ -87,7 +87,7 @@ function FileMenu({ entry, projectPath, tabId, children }: RowProps & { children
 					{t("files.mention")}
 				</ContextMenuItem>
 				{entry.kind === "file" && (
-					<ContextMenuItem icon={<FileIcon />} onSelect={() => useFiles.getState().open(projectPath, entry.path)}>
+					<ContextMenuItem icon={<FileIcon />} onSelect={() => useFiles.getState().open(filesView(tabId, projectPath), entry.path)}>
 						{t("files.open")}
 					</ContextMenuItem>
 				)}
@@ -111,8 +111,9 @@ function FileMenu({ entry, projectPath, tabId, children }: RowProps & { children
 
 const TreeRow = memo(function TreeRow({ entry, depth, projectPath, tabId }: RowProps) {
 	const { t } = useTranslation("panes");
-	const expanded = useFiles(state => (state.byProject[projectPath] ?? EMPTY_PROJECT).expanded.includes(entry.path));
-	const active = useFiles(state => state.byProject[projectPath]?.active === entry.path);
+	const viewKey = filesView(tabId, projectPath);
+	const expanded = useFiles(state => (state.byView[viewKey] ?? EMPTY_VIEW).expanded.includes(entry.path));
+	const active = useFiles(state => state.byView[viewKey]?.active === entry.path);
 	const children = useFiles(state => state.children[entry.path]);
 	const isDir = entry.kind === "dir";
 	const onClick = (event: MouseEvent) => {
@@ -120,8 +121,8 @@ const TreeRow = memo(function TreeRow({ entry, depth, projectPath, tabId }: RowP
 			void mentionInChat(projectPath, entry.path, tabId);
 			return;
 		}
-		if (isDir) useFiles.getState().toggle(projectPath, entry.path);
-		else useFiles.getState().open(projectPath, entry.path);
+		if (isDir) useFiles.getState().toggle(viewKey, entry.path);
+		else useFiles.getState().open(viewKey, entry.path);
 	};
 	const Icon = isDir ? (expanded ? FolderOpen : Folder) : IMAGE_EXT.test(entry.name) ? FileImage : languageFor(entry.name) ? FileCode : FileIcon;
 	return (
@@ -180,7 +181,7 @@ const TreeRow = memo(function TreeRow({ entry, depth, projectPath, tabId }: RowP
 });
 
 /** Arrow-key navigation over the visible treeitems (WAI-ARIA tree pattern, roving focus). */
-function onTreeKeyDown(event: KeyboardEvent<HTMLUListElement>, projectPath: string): void {
+function onTreeKeyDown(event: KeyboardEvent<HTMLUListElement>, viewKey: string): void {
 	const items = [...event.currentTarget.querySelectorAll<HTMLElement>('[role="treeitem"]')];
 	const current = event.target instanceof HTMLElement ? event.target.closest<HTMLElement>('[role="treeitem"]') : null;
 	const index = current ? items.indexOf(current) : -1;
@@ -210,13 +211,13 @@ function onTreeKeyDown(event: KeyboardEvent<HTMLUListElement>, projectPath: stri
 		case "ArrowRight":
 			if (path && isDir && !open) {
 				event.preventDefault();
-				useFiles.getState().toggle(projectPath, path, true);
+				useFiles.getState().toggle(viewKey, path, true);
 			} else if (isDir) focus(items[index + 1]);
 			break;
 		case "ArrowLeft":
 			if (path && isDir && open) {
 				event.preventDefault();
-				useFiles.getState().toggle(projectPath, path, false);
+				useFiles.getState().toggle(viewKey, path, false);
 			} else {
 				const parent = current?.parentElement?.parentElement?.closest("li")?.querySelector<HTMLElement>('[role="treeitem"]');
 				focus(parent ?? undefined);
@@ -280,7 +281,7 @@ const CodeView = memo(function CodeView({ path, text }: { path: string; text: st
 let folderViews = 0;
 
 /** A folder tab: images and PDFs as a thumbnail grid, then the other entries as rows; each opens as another tab. */
-function FolderView({ dir, projectPath, revision }: { dir: string; projectPath: string; revision: number }) {
+function FolderView({ dir, viewKey, revision }: { dir: string; viewKey: string; revision: number }) {
 	const { t } = useTranslation("panes");
 	const entries = useFiles(state => state.children[dir]);
 	const [showAll, setShowAll] = useState(false);
@@ -292,7 +293,7 @@ function FolderView({ dir, projectPath, revision }: { dir: string; projectPath: 
 	const isPreview = (entry: DirEntry) => entry.kind === "file" && (IMAGE_EXT.test(entry.name) || PDF_EXT.test(entry.name));
 	const previews = shown.filter(isPreview);
 	const others = shown.filter(entry => !isPreview(entry));
-	const open = (entry: DirEntry) => useFiles.getState().open(projectPath, entry.path);
+	const open = (entry: DirEntry) => useFiles.getState().open(viewKey, entry.path);
 	return (
 		<div className="min-h-full bg-panel">
 			{previews.length > 0 && (
@@ -363,7 +364,7 @@ function FolderTile({ entry, sourceKey, onOpen }: { entry: DirEntry; sourceKey: 
 /** What a viewer tab shows: a file's content, or a folder whose listing is in the store. */
 type Shown = PaneFileContent | { kind: "folder" };
 
-function Viewer({ path, projectPath, home, version }: { path: string; projectPath: string; home: string | null; version: number }) {
+function Viewer({ path, projectPath, viewKey, home, version }: { path: string; projectPath: string; viewKey: string; home: string | null; version: number }) {
 	const { t } = useTranslation("panes");
 	const [content, setContent] = useState<Shown | null>(null);
 	const [error, setError] = useState<string | null>(null);
@@ -466,7 +467,7 @@ function Viewer({ path, projectPath, home, version }: { path: string; projectPat
 							<Spinner /> {t("files.loading")}
 						</div>
 					) : content.kind === "folder" ? (
-						<FolderView dir={path} projectPath={projectPath} revision={version + reload} />
+						<FolderView dir={path} viewKey={viewKey} revision={version + reload} />
 					) : content.kind === "text" ? (
 						<CodeView path={path} text={content.text} />
 					) : (
@@ -497,13 +498,14 @@ export function FilesPane({ session, projectPath }: PaneProps) {
 
 function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string | null }) {
 	const { t } = useTranslation("panes");
-	const state = useFiles(s => s.byProject[projectPath] ?? EMPTY_PROJECT);
+	const viewKey = filesView(tabId, projectPath);
+	const state = useFiles(s => s.byView[viewKey] ?? EMPTY_VIEW);
 	const roots = useFiles(s => s.children[projectPath]);
 	const visible = usePaneVisible("files");
 	const home = useHomeDir();
 	const git = useGit(visible ? projectPath : null);
 	const treeRef = useRef<HTMLUListElement>(null);
-	const [treeWidth, setTreeWidth] = useState(180);
+	const treeWidth = state.treeWidth;
 
 	useEffect(() => {
 		if (visible && !useFiles.getState().children[projectPath]) void useFiles.getState().load(projectPath);
@@ -512,10 +514,10 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 	// Refresh the loaded folders when files change on disk (git:changed covers edits by omp).
 	useEffect(() => {
 		if (git.version === 0) return;
-		const { children, byProject, load } = useFiles.getState();
-		const open = [projectPath, ...(byProject[projectPath]?.expanded ?? [])];
+		const { children, byView, load } = useFiles.getState();
+		const open = [projectPath, ...(byView[viewKey]?.expanded ?? [])];
 		for (const dir of open) if (children[dir]) void load(dir);
-	}, [git.version, projectPath]);
+	}, [git.version, projectPath, viewKey]);
 
 	// Keep exactly one tree row in the tab order.
 	useEffect(() => {
@@ -529,7 +531,7 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 		(event: ReactPointerEvent) => {
 			const startX = event.clientX;
 			const start = treeWidth;
-			const move = (e: PointerEvent) => setTreeWidth(Math.min(360, Math.max(120, start + e.clientX - startX)));
+			const move = (e: PointerEvent) => useFiles.getState().setTreeWidth(viewKey, start + e.clientX - startX);
 			const up = () => {
 				window.removeEventListener("pointermove", move);
 				window.removeEventListener("pointerup", up);
@@ -537,7 +539,7 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 			window.addEventListener("pointermove", move);
 			window.addEventListener("pointerup", up);
 		},
-		[treeWidth],
+		[treeWidth, viewKey],
 	);
 
 	const tabs = state.tabs.map(path => ({ id: path, label: fileName(path), title: viewerPath(projectPath, path, home) }));
@@ -567,7 +569,7 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 							role="tree"
 							aria-label={t("files.tree")}
 							className="min-h-0 flex-1 overflow-y-auto py-1"
-							onKeyDown={event => onTreeKeyDown(event, projectPath)}
+							onKeyDown={event => onTreeKeyDown(event, viewKey)}
 						>
 							{roots === undefined ? (
 								<li className="px-3 py-2 text-sm text-fg-muted">{t("files.loading")}</li>
@@ -601,8 +603,8 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 								label={t("files.openFiles")}
 								tabs={tabs}
 								active={state.active}
-								onSelect={path => useFiles.getState().activate(projectPath, path)}
-								onClose={path => useFiles.getState().close(projectPath, path)}
+								onSelect={path => useFiles.getState().activate(viewKey, path)}
+								onClose={path => useFiles.getState().close(viewKey, path)}
 								closeLabel={tab => t("files.closeTab", { name: tab.label })}
 								leading={
 									<IconButton
@@ -610,13 +612,13 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 										size="sm"
 										label={treeShown ? t("files.hideTree") : t("files.showTree")}
 										icon={<SidebarSimple />}
-										onClick={() => useFiles.getState().setTreeHidden(projectPath, treeShown)}
+										onClick={() => useFiles.getState().setTreeHidden(viewKey, treeShown)}
 									/>
 								}
 							/>
 							{state.active && (
 								<PresenceSwap swapKey={state.active} className="flex min-h-0 flex-1 flex-col">
-									<Viewer path={state.active} projectPath={projectPath} home={home} version={git.version} />
+									<Viewer path={state.active} projectPath={projectPath} viewKey={viewKey} home={home} version={git.version} />
 								</PresenceSwap>
 							)}
 						</div>

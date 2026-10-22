@@ -4,12 +4,12 @@ import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, type ReactNode, useId } from "react";
 import { cn, duration, ease, spring } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
-import { useApp, useDockVisible } from "../../state/app";
+import { currentDock, useApp, useDockVisible } from "../../state/app";
 
 /** The pane is on screen (polling and heavy work only run while visible): not while a page or the chat covers the dock. */
 export function usePaneVisible(id: string): boolean {
 	const visible = useDockVisible();
-	return useApp(state => state.dockPane === id) && visible;
+	return useApp(state => currentDock(state).pane === id) && visible;
 }
 
 /** Project-relative path with forward slashes (absolute when outside the project). */

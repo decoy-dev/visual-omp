@@ -120,7 +120,7 @@ export function HelperStrip({ session }: ChatSlotProps): ReactNode {
 									<button
 										type="button"
 										data-helper-more
-										onClick={() => useApp.getState().showPane("tasks")}
+										onClick={() => useApp.getState().showPane("tasks", session.tabId)}
 										className={cn(
 											"h-8 flex-1 px-3 text-left text-sm text-fg-muted outline-none transition-colors duration-(--dur-fast) hover:bg-hover hover:text-fg",
 											"focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring",
