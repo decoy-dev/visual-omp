@@ -7,6 +7,7 @@ import type { FileRef } from "@shared/contracts/fileRefs";
 import { ArrowDown, ArrowUUpLeft, CaretRight, Copy, GitFork, Warning, XCircle } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import {
+	Component,
 	type KeyboardEvent,
 	type MouseEvent,
 	memo,
@@ -49,6 +50,7 @@ import { ToolGroup } from "./ToolGroup";
 import { TurnSummary } from "./TurnSummary";
 import { thoughtKey, ThoughtChoices, thoughtOpen, writingThought } from "./thoughtChoices";
 import { type BlockRef, type ContentBlock, type EntryLayout, STREAM_ENTRY, TAIL_ENTRY, type TranscriptLayout, transcriptLayout, liveLayoutEntries, unsavedToolsMessage } from "./turns";
+import { anchorRow, tailStart, WINDOW, windowOnScroll } from "./window";
 import {
 	type PlayoutBlock,
 	PlayoutPaused,
@@ -63,7 +65,7 @@ import "./transcript.css";
 
 export type TranscriptMode = "normal" | "thinking" | "verbose";
 
-const WINDOW = 120;
+/** How close to the top loads the previous window, once the reader has scrolled away from the bottom. */
 const EARLIER_TRIGGER_PX = 240;
 /** How close to the bottom still counts as pinned there, so the view keeps following new content. */
 const PINNED_PX = 48;
@@ -633,6 +635,31 @@ export interface TranscriptProps {
 	mode: TranscriptMode;
 }
 
+interface WindowEdgeProps {
+	start: number;
+	/** Records where the view is; called just before React changes the DOM for a new `start`. */
+	onBefore: () => void;
+}
+
+/**
+ * Calls `onBefore` just before a commit that moves the window's start changes the DOM. `getSnapshotBeforeUpdate` is
+ * React's only hook between a render and its DOM changes, and it exists only on class components. The transcript's
+ * layout effect compares the view after the commit with that record.
+ */
+class WindowEdge extends Component<WindowEdgeProps> {
+	getSnapshotBeforeUpdate(previous: Readonly<WindowEdgeProps>): null {
+		if (previous.start !== this.props.start) this.props.onBefore();
+		return null;
+	}
+
+	/** React requires it beside `getSnapshotBeforeUpdate`; the transcript's layout effect does the work. */
+	componentDidUpdate(): void {}
+
+	render(): null {
+		return null;
+	}
+}
+
 /** What the previous commit showed, so a render can tell newly arrived rows from history. */
 interface Arrivals {
 	/** The transcript had loaded (messages or the empty state) at the previous commit. Until then nothing rises. */
@@ -683,8 +710,8 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	}, [view.guest?.phase]);
 
 	const [pinnedStart, setPinnedStart] = useState<number | null>(null);
-	const tailStart = Math.max(0, entries.length - WINDOW);
-	const start = pinnedStart === null ? tailStart : Math.min(pinnedStart, tailStart);
+	const tail = tailStart(entries.length);
+	const start = pinnedStart === null ? tail : Math.min(pinnedStart, tail);
 	const visible = useMemo(() => entries.slice(start), [entries, start]);
 	// What omp printed for typed slash commands, each after the entry that was last on screen when it was typed.
 	const commandResults = useCommandResults(session);
@@ -713,7 +740,11 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const contentRef = useRef<HTMLDivElement | null>(null);
 	const pinnedRef = useRef(true);
 	const [unseen, setUnseen] = useState(false);
-	const prependRef = useRef<{ anchor: Element; offset: number } | null>(null);
+	/**
+	 * The view just before a commit that moved the window's start: its `scrollTop`, and the row kept in place through
+	 * the change (`anchorRow`) with its offset from the top of the view.
+	 */
+	const edgeRef = useRef<{ top: number; anchor: Element | undefined; offset: number } | null>(null);
 	// Reveal state by message, so a streamed reply's saved entry continues the same reveal (`usePlayout`).
 	const [playouts] = useState(() => new Map<number, Playout>());
 	const outOfSight = useOutOfSight(rootRef);
@@ -721,23 +752,31 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	// card) in one eased write per frame. Scrolled up, it stays put.
 	const follow = useScrollFollow(rootRef, pinnedRef, { content: contentRef, threshold: PINNED_PX, paused: outOfSight });
 
+	const recordEdge = () => {
+		const el = rootRef.current;
+		if (!el) return;
+		const view = el.getBoundingClientRect();
+		const rows = [...el.querySelectorAll("[data-row]")];
+		const anchor = rows[anchorRow(rows.map(row => row.getBoundingClientRect()), view.top, view.bottom)];
+		edgeRef.current = { top: el.scrollTop, anchor, offset: anchor ? anchor.getBoundingClientRect().top - view.top : 0 };
+	};
+
+	// Every window change mounts or drops rows above the view. The row recorded before the commit goes back to where it
+	// was; when rows drop, the browser's scroll anchoring usually has it there already, and then nothing is written. No
+	// input is handled during a commit, so all the view moved since the record is the window's doing. The follow counts
+	// that as layout, and a move up the reader made before the commit still unpins.
 	useLayoutEffect(() => {
 		const el = rootRef.current;
-		const before = prependRef.current;
-		if (!el || !before) return;
-		prependRef.current = null;
-		if (before.anchor.isConnected) el.scrollTop += before.anchor.getBoundingClientRect().top - el.getBoundingClientRect().top - before.offset;
-		// Settle the pin now, before the content observer sees the taller column and follows it.
-		pinnedRef.current = el.scrollHeight - el.scrollTop - el.clientHeight <= PINNED_PX;
-	}, [start]);
+		const edge = edgeRef.current;
+		edgeRef.current = null;
+		if (!el || !edge) return;
+		const drift = edge.anchor?.isConnected ? edge.anchor.getBoundingClientRect().top - el.getBoundingClientRect().top - edge.offset : 0;
+		if (Math.abs(drift) >= 0.5) el.scrollTop += drift;
+		follow.shift(el.scrollTop - edge.top);
+	}, [follow, start]);
 
 	const showEarlier = () => {
-		const el = rootRef.current;
-		if (!el || start === 0 || prependRef.current) return;
-		const top = el.getBoundingClientRect().top;
-		const first = el.querySelector("[data-row]");
-		if (first) prependRef.current = { anchor: first, offset: first.getBoundingClientRect().top - top };
-		setPinnedStart(Math.max(0, start - WINDOW));
+		if (start > 0) setPinnedStart(Math.max(0, start - WINDOW));
 	};
 
 	const jumpToEnd = () => {
@@ -874,9 +913,12 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	useEffect(() => {
 		const el = rootRef.current;
 		// A view exactly at the bottom (the content shrank, or never overflowed) is pinned whatever unpinned it earlier,
-		// so "Show new activity" never offers a jump to where the reader already is. A reader who scrolled up even a
-		// little stays where they are.
-		if (!pinnedRef.current && el && el.scrollHeight - el.scrollTop - el.clientHeight <= 1) pinnedRef.current = true;
+		// so "Show new activity" never offers a jump to where the reader already is, and the window follows the tail
+		// again. A reader who scrolled up even a little stays where they are.
+		if (!pinnedRef.current && el && el.scrollHeight - el.scrollTop - el.clientHeight <= 1) {
+			pinnedRef.current = true;
+			setPinnedStart(null);
+		}
 		if (!pinnedRef.current) {
 			setUnseen(true);
 			return;
@@ -981,12 +1023,18 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				onScroll={() => {
 					const el = rootRef.current;
 					if (!el) return;
+					const wasPinned = pinnedRef.current;
 					follow.onScroll();
-					if (pinnedRef.current) {
-						setUnseen(false);
-						if (pinnedStart !== null) setPinnedStart(null);
-					} else if (pinnedStart === null) setPinnedStart(start);
-					if (el.scrollTop <= EARLIER_TRIGGER_PX) showEarlier();
+					if (pinnedRef.current) setUnseen(false);
+					const move = windowOnScroll({
+						wasPinned,
+						pinned: pinnedRef.current,
+						held: pinnedStart !== null,
+						nearTop: el.scrollTop <= EARLIER_TRIGGER_PX,
+					});
+					if (move.release) setPinnedStart(null);
+					else if (move.hold) setPinnedStart(start);
+					if (move.earlier) showEarlier();
 				}}
 				// Both gutters stay reserved, so the column keeps its width and stays centered over the composer as it overflows.
 				className="absolute inset-0 overflow-y-auto [scrollbar-gutter:stable_both-edges]"
@@ -994,6 +1042,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				role="log"
 				aria-live="off"
 			>
+				<WindowEdge start={start} onBefore={recordEdge} />
 				<PlayoutRegistry.Provider value={playouts}>
 					<PlayoutPaused.Provider value={outOfSight}>
 						<FileRefContext.Provider value={fileRefScope}>

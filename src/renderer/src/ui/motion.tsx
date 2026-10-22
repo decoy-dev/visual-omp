@@ -27,6 +27,7 @@ import {
 	type Variants,
 } from "motion/react";
 import { createContext, type ReactNode, type RefObject, useContext, useEffect, useRef, useState } from "react";
+import { pinnedAfterScroll, ScrollLedger } from "./scrollFollow";
 
 /** Cubic-bezier presets, matching `--ease-out-quart` and `--ease-out-expo` in tokens.css. */
 export const ease = {
@@ -399,14 +400,21 @@ export interface ScrollFollow {
 	jumpToEnd(): void;
 	/** Call first in the scroller's scroll handler; it settles `pinnedRef` from what moved the view. */
 	onScroll(): void;
+	/**
+	 * The caller changed content above the view, and that change moved the view by `delta` px (the browser's scroll
+	 * anchoring, or the caller putting a row back in place). The follow counts the move as layout, so a reader's scroll
+	 * around it keeps its direction: a move up the reader made before the next scroll event still unpins.
+	 */
+	shift(delta: number): void;
 }
 
 /**
  * Keeps a scroller pinned to its bottom while content grows (DESIGN §1.12). One rAF loop reads the geometry once and
  * writes `scrollTop` once per frame, easing toward the bottom (30% of the gap per frame, at most 24px) and snapping
- * when the gap is large or motion is reduced. Scroll events caused by its own writes never unpin; the reader scrolling
- * up (wheel, keys, scrollbar, touch) unpins at once, and nothing follows until they return within `threshold` of the
- * bottom or jump there.
+ * when the gap is large or motion is reduced. A move up away from the bottom (the reader's wheel, keys, scrollbar or
+ * touch) unpins at once; the follow's own writes, layout moves the caller reports (`shift`) and moves down never unpin
+ * (`ScrollLedger` and `pinnedAfterScroll` in scrollFollow.ts). Nothing follows until the reader returns within
+ * `threshold` of the bottom or jumps there.
  */
 export function useScrollFollow(
 	ref: RefObject<HTMLElement | null>,
@@ -419,10 +427,8 @@ export function useScrollFollow(
 	const [api] = useState(() => {
 		let frame = 0;
 		let lastFrame = 0;
-		/** The `scrollTop` this hook wrote last; a scroll event reporting it is our own. */
-		let written: number | null = null;
-		/** `scrollTop` at the previous scroll event, to tell scrolling up from scrolling down. */
-		let seen = 0;
+		/** Where the follow left the view, to tell its own writes and layout from the reader's scrolling. */
+		const ledger = new ScrollLedger();
 		/** A smooth "jump to latest" is under way; the loop stays out of its way. */
 		let jumping = false;
 		const stop = () => {
@@ -432,8 +438,7 @@ export function useScrollFollow(
 		};
 		const write = (el: HTMLElement, top: number) => {
 			el.scrollTop = top;
-			written = el.scrollTop;
-			seen = written;
+			ledger.wrote(el.scrollTop);
 		};
 		const run = (now: number) => {
 			frame = 0;
@@ -480,22 +485,23 @@ export function useScrollFollow(
 				jumping = true;
 				el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
 			},
+			shift(delta: number) {
+				ledger.shift(delta);
+			},
 			onScroll() {
 				const el = ref.current;
 				if (!el) return;
 				const top = el.scrollTop;
-				if (written !== null && Math.abs(top - written) < 1) return;
-				written = null;
 				const distance = el.scrollHeight - top - el.clientHeight;
-				const up = top < seen - 0.5 && distance > 1;
-				seen = top;
+				const move = ledger.read(top, distance);
+				if (move === "known") return;
 				if (jumping) {
-					if (!up) return;
+					if (move !== "up") return;
 					jumping = false;
 				}
-				if (up) unpin();
-				else pinnedRef.current = distance <= threshold;
+				pinnedRef.current = pinnedAfterScroll(move, pinnedRef.current, distance, threshold);
 				if (pinnedRef.current) follow();
+				else stop();
 			},
 			/** Wheel up states intent before any scroll event; unpin immediately so no frame pulls the view back. */
 			wheel(event: WheelEvent) {

@@ -160,9 +160,11 @@
 }
 
 /*
- * Reduced motion (DESIGN §1.12): every CSS animation and transition collapses to one 0.01ms run, and indicators
- * freeze into static equivalents. Primitive surfaces opt back into a short opacity crossfade in ui/ui.css.
- * motion/react animations are governed by MotionProvider (ui/motion.tsx), not by these rules.
+ * Reduced motion (DESIGN §1.12): every CSS animation collapses to one 0.01ms run, every CSS transition applies at once,
+ * and indicators freeze into static equivalents. The transition duration is 0s because this rule sets it on every
+ * element: a nonzero duration also enabled transitions on elements left at the default `transition-property: all`, so
+ * their margin and size changes took effect a frame late. Primitive surfaces opt back into a short opacity crossfade
+ * in ui/ui.css. motion/react animations are governed by MotionProvider (ui/motion.tsx), not by these rules.
  */
 :root[data-motion="reduced"] {
 	.pulse-dot {
@@ -177,7 +179,7 @@
 	*::after {
 		animation-duration: 0.01ms !important;
 		animation-iteration-count: 1 !important;
-		transition-duration: 0.01ms !important;
+		transition-duration: 0s !important;
 	}
 }
 
@@ -195,7 +197,7 @@
 		*::after {
 			animation-duration: 0.01ms !important;
 			animation-iteration-count: 1 !important;
-			transition-duration: 0.01ms !important;
+			transition-duration: 0s !important;
 		}
 	}
 }
