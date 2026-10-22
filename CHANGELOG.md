@@ -4,7 +4,11 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-- Sending a message now takes the chat to its latest messages, even when you had scrolled far up, so your message comes into view and the reply follows it. This applies to anything you send from this window that goes to omp at once: Enter or the send button while omp is idle, **Send now**, a slash command omp runs, and a shell or Python line. Adding a message to the queue doesn't move the view, and neither does omp taking a queued message later or activity from another window; while you are scrolled up, those show **Show new activity**. From far up, the chat skips close to the end and scrolls the rest of the way, and with reduced motion it moves at once. Scrolling up stops it. **Show new activity** moves the same way.
+## [0.6.2] - 2026-10-22
+
+visual-omp 0.6.2 brings a chat to its latest messages when you send one, even if you had scrolled up.
+
+- Sending a message now brings the latest messages into view and keeps the chat following the reply. This applies when you send directly to omp: Enter or the send button while omp is idle, **Send now** from the composer or queue tray, a slash command omp runs, or a shell or Python line. Your first message also brings the chat to the end while omp is starting. Otherwise, adding messages to the queue does not bring the chat to the end. Automatic queue delivery and activity from other sources leave your position unchanged while you are scrolled up; new chat activity shows **Show new activity**. Sending and selecting **Show new activity** use the same short scroll to the bottom, or move there immediately with reduced motion. Scrolling up stops the movement and automatic following.
 
 ## [0.6.1] - 2026-10-22
 
