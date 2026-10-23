@@ -4,8 +4,16 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-- Links, files and images in chats and side panels now have right-click menus. A web link offers Open in browser and Copy link, and a local address such as `localhost:5173` can also open in the chat's Preview pane, which now keeps separate browsing history for each chat. A file or folder, including paths in tool steps, file-change summaries and the Files and Changes panes, offers Open, Open with default app, Show in Finder (Show in folder on Windows), Copy path, Copy relative path inside the project and Mention in chat; summary and Changes rows add Show changes. An image, including attached screenshots, tool images and images open in the Files viewer and Outputs, offers Copy image and Save image as, plus the file actions when it comes from a file. "Copy path" now copies the full path everywhere, including the Files pane. Opening a file that isn't an image or PDF with its default app asks first, because that app can run code. The menus also open from the keyboard with Shift+F10 or the menu key, and right-clicking inside selected text keeps the text menu.
-- Right-clicking a text field now opens the system's editing menu: Undo, Redo, Cut, Copy, Paste and Select All, Delete on Windows, and spelling suggestions with Add to dictionary for a misspelled word. Right-clicking selected text in a chat offers Copy, and on macOS Look up. Shell commands, paths and other code-like fields don't check spelling.
+## [0.6.3] - 2026-10-23
+
+visual-omp 0.6.3 adds right-click menus for links, files, paths, images and text throughout the app.
+
+- Right-click links in chats and side panels to choose Open in browser or Copy link. In project chats, links to localhost or 127.0.0.1 also offer Open in Preview pane. Each chat now keeps its own Preview browsing history.
+- Right-click files and folders in chats, tool steps, file-change summaries and side panels to open them, reveal them in Finder or Windows File Explorer, or copy their paths. Project menus also offer Mention in chat, and paths inside the project offer Copy relative path. File-change summaries and Changes rows offer Show changes. Copy path now copies the full absolute path, including in the Files pane.
+- Right-click images, including attached screenshots and images in Files and Outputs, to choose Copy image or Save image as…. Images with a backing file also offer Open with default app, a reveal action and Copy path.
+- Files also offer Open with default app. Opening other file types, including SVG, requires confirmation; supported raster images and PDFs that pass the file checks open directly. The confirmation warns that opening a file outside visual-omp may run code.
+- Open a focused link, file or image menu with Shift+F10 or the context-menu key. Right-clicking within selected text keeps the text menu.
+- Text fields now have native right-click menus for editing and spelling corrections, including Delete on Windows and Add to dictionary for a misspelled word. Selected chat text offers Copy, with Look up available on macOS. Shell commands, paths and other code-like fields keep spellchecking disabled.
 
 ## [0.6.2] - 2026-10-22
 
