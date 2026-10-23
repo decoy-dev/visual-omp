@@ -126,6 +126,7 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 					label={t("permissions.add.label")}
 					placeholder={t("permissions.add.placeholder")}
 					value={newTool}
+					spellCheck={false}
 					onChange={event => setNewTool(event.currentTarget.value)}
 				/>
 				<Button type="submit" size="sm" icon={<Plus />} disabled={!newTool.trim()}>

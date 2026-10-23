@@ -433,6 +433,7 @@ function PresetFieldInput({
 							boxClassName="font-mono"
 							aria-label={t("mcp.form.folderLabel", { index: index + 1 })}
 							value={dir}
+							spellCheck={false}
 							onChange={event => onChange(list.map((d, i) => (i === index ? event.currentTarget.value : d)))}
 						/>
 						<IconButton size="sm" label={t("mcp.form.removeRow")} icon={<Trash />} onClick={() => onChange(list.filter((_, i) => i !== index))} />

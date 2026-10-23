@@ -256,6 +256,7 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 								label={t("new.name.label")}
 								placeholder={t("new.name.placeholder")}
 								value={name}
+								spellCheck={false}
 								onChange={event => setName(event.currentTarget.value)}
 								error={nameError(nameCheck.result, t)}
 								description={nameCheck.result?.ok ? nameCheck.result.path : undefined}
@@ -345,6 +346,7 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 								<Input
 									label={t("new.clone.folder")}
 									value={effectiveCloneName}
+									spellCheck={false}
 									onChange={event => setCloneName(event.currentTarget.value)}
 									error={nameError(cloneCheck.result, t)}
 									description={cloneCheck.result?.ok ? cloneCheck.result.path : undefined}

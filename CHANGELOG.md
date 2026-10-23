@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- Right-clicking a text field now opens the system's editing menu: Undo, Redo, Cut, Copy, Paste and Select All, Delete on Windows, and spelling suggestions with Add to dictionary for a misspelled word. Right-clicking selected text in a chat offers Copy, and on macOS Look up. Shell commands, paths and other code-like fields don't check spelling.
+
 ## [0.6.2] - 2026-10-22
 
 visual-omp 0.6.2 brings a chat to its latest messages when you send one, even if you had scrolled up.

@@ -900,6 +900,10 @@ All menu-like surfaces share the same anatomy: a 12px `--bg-overlay` floating su
 
 Opening uses the Radix transform origin with a short scale and offset; closing fades and scales down. Compact controls may use half-step spacing.
 
+Text editing and plain-text selection use a native operating-system context menu (`main/contextMenu.ts`), with Electron roles supplying localized editing labels. Custom labels come from `src/shared/i18n/en/contextMenu.json`, using the renderer locale convention for interpolation keys. Editable fields offer Undo, Redo, Cut, Copy, Paste and Select all, disabled according to Chromium's edit flags; Windows also offers Delete, and rich-text fields offer Paste and match style. A misspelled word offers spelling suggestions and Add to dictionary. Selected read-only text offers Copy, with Look up on macOS. Lookup previews are limited to 40 Unicode code points. An empty, noneditable target has no native menu. Renderer context-menu triggers must cancel the DOM event for their own targets so the native menu does not open for them; ordinary text fields and selections must leave it uncancelled.
+
+Spellchecking is enabled for prose in the composer and disabled in its Shell and Python modes. Paths, commands, repository URLs and other code-like fields disable spellchecking explicitly; prose fields retain the browser default.
+
 ### 5.6 Pages, dialogs and sheets
 
 **Pages** are for sustained management and reading: Settings, Usage & limits, Help, Project settings and Instructions. A page takes over the main area (`useApp.openPage(id, props)`, `ui/Page.tsx`). Features register pages in `pages` and open them through `state/navigation.ts` (`openSettings`, `openUsage`, `openHelp`, `openProjectSettings`, `openProjectInstructions`). The chat it replaced stays mounted, hidden and inert, so Back finds it with the same scroll position, expanded history and split width; the side panel hides while a page shows. Pages are not restored: after a restart the window opens on Home (§4.24).

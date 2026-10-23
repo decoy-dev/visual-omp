@@ -1,7 +1,8 @@
 import "./profile";
 import { join } from "node:path";
-import { app, BrowserWindow, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, Menu, nativeTheme, shell } from "electron";
 import { attachAttentionWindow, setAppUserModelId } from "./attention";
+import { buildTextContextMenu } from "./contextMenu";
 import { registerHandlers } from "./handlers";
 import { ensureNewUserApproval } from "./features/config";
 import { broadcast } from "./ipc";
@@ -45,6 +46,29 @@ function createWindow(): void {
 		},
 	});
 	attachAttentionWindow(mainWindow);
+	// Radix target menus prevent the DOM event, so only unhandled text reaches this native menu.
+	const window = mainWindow;
+	window.webContents.on("context-menu", (_event, params) => {
+		const template = buildTextContextMenu(params, process.platform);
+		if (!template.length) return;
+		Menu.buildFromTemplate(template.map(({ action, ...item }) => ({
+			...item,
+			...(action ? { click: () => {
+				if (window.isDestroyed() || window.webContents.isDestroyed()) return;
+				switch (action.kind) {
+					case "replaceMisspelling":
+						window.webContents.replaceMisspelling(action.word);
+						break;
+					case "addToDictionary":
+						window.webContents.session.addWordToSpellCheckerDictionary(action.word);
+						break;
+					case "lookUp":
+						window.webContents.showDefinitionForSelection();
+						break;
+				}
+			} } : {}),
+		}))).popup({ window });
+	});
 	mainWindow.once("ready-to-show", () => mainWindow?.show());
 	// Never navigate the app window away; open web links in the user's browser instead.
 	mainWindow.webContents.setWindowOpenHandler(({ url }) => {

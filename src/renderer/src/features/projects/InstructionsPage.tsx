@@ -444,6 +444,7 @@ function RuleEditor({
 				label={t("rules.name")}
 				description={t("rules.nameHint")}
 				value={form.name}
+				spellCheck={false}
 				disabled={initial.original !== null}
 				onChange={event => patch({ name: event.currentTarget.value })}
 				error={form.name ? (nameProblem ?? undefined) : undefined}

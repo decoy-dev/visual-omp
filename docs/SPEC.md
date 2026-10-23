@@ -109,6 +109,11 @@ omp's displayed harness notices appear in the chat in all three views, presented
 - Chats can be imported from Claude Code and Codex.
 - The session tree navigator shows every branch of a chat.
 
+### Text interactions
+- Right-clicking an editable field opens the operating system's editing menu, including spelling suggestions and Add to dictionary for a misspelled word. Undo, Redo, Cut, Copy, Paste and Select all reflect the field's available actions; Windows also offers Delete, and rich-text fields offer Paste and match style.
+- Right-clicking selected read-only text offers Copy. macOS also offers Look up. Nothing selected outside an editable field opens no native menu.
+- The normal composer checks spelling. Shell and Python modes, paths, commands and repository URLs do not. Renderer menus for specific targets consume their own right-click events without blocking the native menu on ordinary text.
+
 ### Commands
 - The Cmd/Ctrl+K command palette makes every omp command searchable in plain language, and the
   title bar's *Search commands* field also opens it.
