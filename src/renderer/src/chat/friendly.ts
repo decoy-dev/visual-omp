@@ -104,13 +104,31 @@ function statusOf(call: ToolCallView): ToolStatus {
 	return call.result?.isError ? "error" : "ok";
 }
 
-function editSummary(call: ToolCallView, status: ToolStatus): FriendlySummary {
+/** The complete path behind a one-file edit summary. Shared with its context menu. */
+function editedPaths(call: ToolCallView): string[] {
 	const details = detailsRecord(call.result);
 	const perFile = details && Array.isArray(details.perFileResults) ? details.perFileResults.filter(isRecord) : [];
 	const entries = perFile.length > 0 ? perFile : details ? [details] : [];
 	const paths = entries.map(entry => str(entry.path)).filter((path): path is string => path !== null);
 	const fromInput = editInputPaths(str(call.args.input) ?? "");
-	const files = paths.length > 0 ? paths : fromInput.length > 0 ? fromInput : [str(call.args.path) ?? ""].filter(Boolean);
+	return paths.length > 0 ? paths : fromInput.length > 0 ? fromInput : [str(call.args.path) ?? ""].filter(Boolean);
+}
+
+/** Only a row naming one destination gets a target; a multi-file row keeps its disclosure behavior. */
+export function toolContextReference(call: ToolCallView): { path?: string; url?: string } {
+	if (call.name === "edit" || call.name === "apply_patch") {
+		const paths = editedPaths(call);
+		return paths.length === 1 ? { path: paths[0] } : {};
+	}
+	const path = call.name === "fetch" ? str(call.args.url) : ["read", "write"].includes(call.name) ? str(call.args.path) ?? str(call.args.file_path) : null;
+	return path ? /^(https?|mailto):/i.test(path) ? { url: path } : { path } : {};
+}
+
+function editSummary(call: ToolCallView, status: ToolStatus): FriendlySummary {
+	const details = detailsRecord(call.result);
+	const perFile = details && Array.isArray(details.perFileResults) ? details.perFileResults.filter(isRecord) : [];
+	const entries = perFile.length > 0 ? perFile : details ? [details] : [];
+	const files = editedPaths(call);
 	let added = 0;
 	let removed = 0;
 	for (const entry of entries) {

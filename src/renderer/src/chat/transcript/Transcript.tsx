@@ -37,6 +37,7 @@ import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toa
 import { useDisplayedEntries } from "../branch";
 import { useComposerDrafts } from "../composer/drafts";
 import { FileRefContext, LinkedMarkdown, useFileRefs, writtenFolders } from "./FileLinks";
+import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { usePendingQuestion } from "./QuestionCard";
 import { ReplyAnnouncer } from "./ReplyAnnouncer";
 import { helperRunsSummary, TaskRuns, taskRowContextEqual, taskRuns } from "../../tool-render/tools/task";
@@ -88,6 +89,7 @@ function Notice({ children }: { children: ReactNode }): ReactNode {
 }
 
 function UserContent({ content }: { content: string | readonly (TextContent | ImageContent)[] }): ReactNode {
+	const { t } = useTranslation("chat");
 	// Saved sessions keep image data in omp's blob store (`blob:sha256:…`), which this row does not load; such images
 	// get no thumbnail, and a message holding only those gets no empty thumbnail row.
 	const images = typeof content === "string" ? [] : content.filter((block): block is ImageContent => block.type === "image" && !block.data.startsWith("blob:"));
@@ -97,7 +99,7 @@ function UserContent({ content }: { content: string | readonly (TextContent | Im
 			{images.length > 0 && (
 				<div className="mb-2 flex flex-wrap gap-2">
 					{images.map((image, index) => (
-						<img key={index} src={`data:${image.mimeType};base64,${image.data}`} alt="" className="size-12 rounded-md border border-border object-cover" />
+						<img key={index} src={`data:${image.mimeType};base64,${image.data}`} alt={t("attachedImage", { number: index + 1 })} tabIndex={0} className="size-12 rounded-md border border-border object-cover" />
 					))}
 				</div>
 			)}
@@ -1033,6 +1035,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	endRun();
 
 	return (
+		<TargetContextMenu projectPath={session.projectPath} tabId={session.tabId}>
 		<div className="relative min-h-0 flex-1">
 			<div
 				ref={rootRef}
@@ -1148,5 +1151,6 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				)}
 			</AnimatePresence>
 		</div>
+		</TargetContextMenu>
 	);
 }

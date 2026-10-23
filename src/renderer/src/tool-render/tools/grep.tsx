@@ -1,12 +1,12 @@
 /** `grep` (legacy `search`) — ripgrep content search across workspace files. */
 import type { ReactNode } from "react";
-import { Badge, Badges, InvalidArg, Note, ResultText } from "../parts";
+import { Badge, Badges, InvalidArg, Note, PathText, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, num, resultTextOf, scopePaths, shortenPath, str } from "../util";
 
 /** Grep scope: current `path` (string, delimited, or JSON array) or legacy `paths`; defaults to workspace root. */
 function pathsOf(args: Record<string, unknown>): string[] {
-	const list = scopePaths(args).map(shortenPath);
+	const list = scopePaths(args);
 	return list.length ? list : ["."];
 }
 
@@ -35,7 +35,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	return (
 		<span>
 			<Pattern args={args} /> <span className="tv-muted">in</span>{" "}
-			<span className="tv-path">{pathsOf(args).join(", ")}</span> <Badges items={argBadges(args)} />
+			{pathsOf(args).map((path, index) => <span key={path}>{index > 0 && ", "}<PathText path={path} kind={path === "." || /[\\/]$/.test(path) ? "folder" : undefined} /></span>)} <Badges items={argBadges(args)} />
 		</span>
 	);
 }
@@ -59,7 +59,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 		<>
 			<div>
 				<Pattern args={args} /> <span className="tv-muted">in</span>{" "}
-				<span className="tv-path">{pathsOf(args).join(", ")}</span> <Badges items={badges} />
+				{pathsOf(args).map((path, index) => <span key={path}>{index > 0 && ", "}<PathText path={path} kind={path === "." || /[\\/]$/.test(path) ? "folder" : undefined} /></span>)} <Badges items={badges} />
 				{truncated && (
 					<>
 						{" "}

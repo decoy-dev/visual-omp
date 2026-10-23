@@ -8,17 +8,18 @@
  */
 import { ArrowLeft, ArrowSquareOut, Copy, FileCode, FileIcon, FolderSimpleDashed, Images } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type KeyboardEvent, type ReactNode, useEffect, useRef, useState } from "react";
+import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PaneProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
-import { cn, ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger, EmptyState, IconButton, PresenceSwap, toast } from "../../ui";
+import { cn, EmptyState, IconButton, PresenceSwap } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
+import { copyText, openFile, openWithDefaultApp, revealLabel } from "../../ui/contextActions";
+import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { FileName, listRowMotion, PaneToolbar, relativePath, Section, SectionCount } from "./common";
 import { type ChatOutput, IMAGE_EXT, isIntactBase64, OPENABLE_EXT, type OutputRelation } from "./derive";
-import { openInFiles } from "./files-store";
 import { languageFor } from "./highlight";
-import { ExpandPreview, loadFileImage, openWithDefaultApp, PdfFrame, PreviewImage, revealLabel, ThumbnailFrame, useNearView, type ZoomControl } from "./media";
+import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage, ThumbnailFrame, useNearView, type ZoomControl } from "./media";
 import { countOutputsMount, useChatOutputs } from "./outputs-store";
 
 function baseName(path: string): string {
@@ -101,48 +102,6 @@ function OutputImage({
 	);
 }
 
-// ── actions ─────────────────────────────────────────────────────────────────────────────────────
-
-function copyPath(path: string, t: (key: string) => string): void {
-	void navigator.clipboard.writeText(path);
-	toast({ tone: "ok", message: t("files.copied") });
-}
-
-/** A file opens in the Files pane, which needs the chat's project; without one it is shown in its folder. */
-function openFile(path: string, projectPath: string | null): void {
-	if (projectPath) openInFiles(projectPath, path);
-	else void window.vomp.invoke("app:showItem", path);
-}
-
-/** Right-click menu for an output with a path; outputs without one have no file actions. */
-function OutputMenu({ output, projectPath, children }: { output: ChatOutput; projectPath: string | null; children: ReactNode }) {
-	const { t } = useTranslation("panes");
-	const path = output.path;
-	if (!path) return children;
-	return (
-		<ContextMenu>
-			<ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-			<ContextMenuContent>
-				{isOpenable(output) ? (
-					<ContextMenuItem icon={<ArrowSquareOut />} onSelect={() => openWithDefaultApp(path, t)}>
-						{t("outputs.openDefault")}
-					</ContextMenuItem>
-				) : (
-					<ContextMenuItem icon={<FileIcon />} onSelect={() => openFile(path, projectPath)}>
-						{t("files.open")}
-					</ContextMenuItem>
-				)}
-				<ContextMenuSeparator />
-				<ContextMenuItem icon={<Copy />} onSelect={() => copyPath(path, t)}>
-					{t("files.copyPath")}
-				</ContextMenuItem>
-				<ContextMenuItem icon={<FolderSimpleDashed />} onSelect={() => void window.vomp.invoke("app:showItem", path)}>
-					{revealLabel(t)}
-				</ContextMenuItem>
-			</ContextMenuContent>
-		</ContextMenu>
-	);
-}
 
 // ── list ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -159,11 +118,12 @@ function PreviewTile({ output, mount, projectPath, onOpen }: { output: ChatOutpu
 	const [ref, near] = useNearView<HTMLButtonElement>();
 	return (
 		<motion.li layout="position" {...listRowMotion}>
-			<OutputMenu output={output} projectPath={projectPath}>
 				<button
 					ref={ref}
 					type="button"
 					data-output={output.key}
+					data-context-path={output.path ?? undefined}
+					data-context-no-image={output.kind === "pdf" ? "" : undefined}
 					onClick={() => onOpen(output.key)}
 					aria-label={t("outputs.openImage", { name: displayPath(output, name, projectPath), when })}
 					title={output.path ?? name}
@@ -174,7 +134,6 @@ function PreviewTile({ output, mount, projectPath, onOpen }: { output: ChatOutpu
 					</ThumbnailFrame>
 					<FileName name={name} className="px-0.5 text-xs text-fg-muted" />
 				</button>
-			</OutputMenu>
 		</motion.li>
 	);
 }
@@ -189,10 +148,10 @@ function FileRow({ output, projectPath }: { output: ChatOutput; projectPath: str
 	const Icon = languageFor(name) ? FileCode : FileIcon;
 	return (
 		<motion.li layout="position" {...listRowMotion}>
-			<OutputMenu output={output} projectPath={projectPath}>
 				<button
 					type="button"
 					data-output={output.key}
+					data-context-path={path}
 					onClick={() => openFile(path, projectPath)}
 					aria-label={t("outputs.openFile", { path: displayPath(output, name, projectPath), when })}
 					title={path}
@@ -208,7 +167,6 @@ function FileRow({ output, projectPath }: { output: ChatOutput; projectPath: str
 						</span>
 					</span>
 				</button>
-			</OutputMenu>
 		</motion.li>
 	);
 }
@@ -324,7 +282,7 @@ function OutputViewer({ output, mount, projectPath, onBack }: { output: ChatOutp
 	};
 	return (
 		// biome-ignore lint/a11y/noStaticElementInteractions: Escape anywhere in the viewer goes back to the list
-		<div ref={rootRef} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
+		<div ref={rootRef} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown} data-context-path={path ?? undefined} data-context-no-image={output.kind === "pdf" ? "" : undefined} data-context-surface="">
 			<PaneToolbar>
 				<IconButton size="sm" label={t("outputs.back")} shortcut="Esc" icon={<ArrowLeft />} onClick={onBack} />
 				<span className="flex min-w-0 flex-1" title={path ?? name}>
@@ -346,7 +304,7 @@ function OutputViewer({ output, mount, projectPath, onBack }: { output: ChatOutp
 					<>
 						{isOpenable(output) && <IconButton size="sm" label={t("outputs.openDefault")} icon={<ArrowSquareOut />} onClick={() => openWithDefaultApp(path, t)} />}
 						<IconButton size="sm" label={revealLabel(t)} icon={<FolderSimpleDashed />} onClick={() => void window.vomp.invoke("app:showItem", path)} />
-						<IconButton size="sm" label={t("files.copyPath")} icon={<Copy />} onClick={() => copyPath(path, t)} />
+						<IconButton size="sm" label={t("files.copyPath")} icon={<Copy />} onClick={() => void copyText(path, t("files.copied"))} />
 					</>
 				)}
 			</PaneToolbar>
@@ -390,6 +348,7 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 	if (!session) return <EmptyState icon={<Images />} title={t("outputs.noChatTitle")} body={t("outputs.noChat")} />;
 	const swapKey = selected ? `view:${selected.key}` : outputs && outputs.length > 0 ? "list" : "empty";
 	return (
+		<TargetContextMenu projectPath={project} tabId={tabId}>
 		<PresenceSwap swapKey={swapKey} className="flex min-h-0 flex-1 flex-col">
 			{selected ? (
 				<OutputViewer
@@ -418,5 +377,6 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 				<EmptyState icon={<Images />} title={t("outputs.emptyTitle")} body={t("outputs.empty")} />
 			)}
 		</PresenceSwap>
+		</TargetContextMenu>
 	);
 }

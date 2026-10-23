@@ -20,7 +20,7 @@ import {
 } from "@phosphor-icons/react";
 import { memo, type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { type FriendlySummary, friendlySummary, resolveToolCall } from "../friendly";
+import { type FriendlySummary, friendlySummary, resolveToolCall, toolContextReference } from "../friendly";
 import { resolveToolRenderer } from "../../tool-render/registry";
 import type { ToolRenderHost, ToolResultLike } from "../../tool-render/types";
 import { replaceTabs, stripAnsi } from "../../tool-render/util";
@@ -103,6 +103,7 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 	}, [onEngage, engageId, engaged]);
 	const call = resolveToolCall({ name: props.name, args: props.args, result: props.result, running: props.running, intent: props.intent });
 	const summary = props.summary ?? friendlySummary(call);
+	const reference = toolContextReference(call);
 	const renderer = resolveToolRenderer(call.name);
 	const ToolIcon = ICONS[call.name] ?? Wrench;
 	const running = summary.status === "running";
@@ -120,6 +121,9 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 		>
 			<button
 				type="button"
+				data-context-tool-path={reference.path}
+				data-context-url={reference.url}
+				data-context-changes={reference.path && ["edit", "apply_patch", "write"].includes(call.name) && summary.status === "ok" ? "" : undefined}
 				aria-expanded={open}
 				onClick={() => setOpen(value => !value)}
 				title={call.intent}

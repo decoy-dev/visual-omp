@@ -48,7 +48,7 @@ declare module "../ipc" {
 		"panes:readPdf": { args: [path: string]; result: Uint8Array<ArrayBuffer> };
 		/**
 		 * The operating system's thumbnail of an image or a PDF's first page as a PNG data URL (at most 480px), when the
-		 * OS provides one. Validated like `panes:openOutput`; null when the file is refused or the OS makes none.
+		 * OS provides one. Only regular files with raster-image or PDF signatures qualify; null when refused or unavailable.
 		 */
 		"panes:thumbnail": { args: [path: string]; result: string | null };
 		/**
@@ -58,12 +58,6 @@ declare module "../ipc" {
 		 * deliverables) and misses files a command never names or that lie beyond the limits.
 		 */
 		"panes:scanMade": { args: [queries: PaneMadeQuery[]]; result: PaneMadeFile[][] };
-		/**
-		 * Open an image or PDF in the system's default app. Main resolves symlinks and requires a regular file whose
-		 * leading bytes match its extension: a raster extension (PNG, JPEG, GIF, WebP, AVIF, BMP, ICO) with the leading
-		 * bytes of any of those formats, or `.pdf` with `%PDF-`. SVG is never opened.
-		 */
-		"panes:openOutput": { args: [path: string]; result: void };
 		/**
 		 * The newest `*plan*.md` in `<sessionFile minus .jsonl>/local/` (where omp keeps the plan
 		 * for plan mode); null when there is none.

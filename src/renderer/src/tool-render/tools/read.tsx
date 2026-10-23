@@ -87,14 +87,14 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 				<KvGrid>
 					{resolved !== null && (
 						<Kv k="resolved">
-							<PathText path={resolved} />
+							<PathText path={resolved} literal />
 						</Kv>
 					)}
 					{d.suffixFrom !== null && <Kv k="corrected from">{shortenPath(d.suffixFrom)}</Kv>}
 				</KvGrid>
 			)}
 			<Badges items={[conflictBadge, elidedBadge, truncatedBadge]} />
-			<ResultImages result={result} />
+			<ResultImages result={result} paths={[resolved ?? path]} literalPaths={resolved !== null} />
 			<ResultText result={result} maxLines={12} lang={languageFromPath(path)} variant="code" />
 		</>
 	);

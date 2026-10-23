@@ -122,6 +122,7 @@ function linkElement(ref: FileRef, className: string): HTMLSpanElement {
 	link.setAttribute("role", "link");
 	link.setAttribute("tabindex", "0");
 	link.dataset.filePath = ref.path;
+	link.dataset.fileKind = ref.kind;
 	link.title = ref.path;
 	return link;
 }

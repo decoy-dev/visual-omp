@@ -48,6 +48,8 @@ function FileRow({ file, projectPath, scale, onOpen }: { file: FileEditTotal; pr
 		<li>
 			<button
 				type="button"
+				data-context-path={file.path}
+				data-context-changes=""
 				onClick={() => onOpen(file.path)}
 				title={file.path}
 				className="flex h-8 w-full items-center gap-3 rounded-sm px-2 text-left outline-none hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"

@@ -7,9 +7,9 @@ import { ArrowSquareOut, ArrowsOut, FilePdf, FolderSimpleDashed, ImageBroken, Ma
 import { type AnimationPlaybackControlsWithThen, animate } from "motion/react";
 import { type ReactNode, type RefObject, useCallback, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { cn, Dialog, DialogContent, DialogTrigger, IconButton, Spinner, spring, toast, useMotionReduced } from "../../ui";
+import { cn, Dialog, DialogContent, DialogTrigger, IconButton, Spinner, spring, useMotionReduced } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
-import { errorText } from "../extensions/format";
+import { openWithDefaultApp, revealLabel } from "../../ui/contextActions";
 import { IMAGE_EXT, OPENABLE_EXT, PDF_EXT } from "./derive";
 import { anchoredScroll, clampScale, clickScale, fitScale, type Point, type Size, ZOOM_STEP, wheelZoomFactor, zoomLayout } from "./zoom";
 
@@ -437,15 +437,6 @@ export function PdfFrame({ path, revision, name }: { path: string; revision: num
 
 // ── actions ─────────────────────────────────────────────────────────────────────────────────────
 
-/** Opens a raster image or PDF in its default app; main refuses anything else (`panes:openOutput`). */
-export function openWithDefaultApp(path: string, t: (key: string) => string): void {
-	window.vomp.invoke("panes:openOutput", path).catch((error: unknown) => toast({ tone: "err", message: t("outputs.openFailed"), description: errorText(error) }));
-}
-
-/** "Show file in Finder" on macOS, else "Show file in folder". */
-export function revealLabel(t: (key: string) => string): string {
-	return t(window.vomp.platform === "darwin" ? "files.revealMac" : "files.reveal");
-}
 
 // ── expanded preview ────────────────────────────────────────────────────────────────────────────
 
@@ -485,7 +476,7 @@ export function ExpandPreview({ name, path, image, render }: { name: string; pat
 					</>
 				}
 			>
-				<div className={cn("flex h-full overflow-hidden rounded-md bg-inset", image ? "items-center justify-center" : "flex-col")}>
+				<div data-context-path={path ?? undefined} data-context-no-image={!image ? "" : undefined} className={cn("flex h-full overflow-hidden rounded-md bg-inset", image ? "items-center justify-center" : "flex-col")}>
 					{render({ zoomed, onZoomedChange: setZoomed, attach })}
 				</div>
 			</DialogContent>

@@ -79,6 +79,9 @@ const md = new Marked({
 			const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";
 			return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener">${inner}</a>`;
 		},
+		image(token) {
+			return plain.image.call(this, token).replace("<img ", '<img tabindex="0" ');
+		},
 		// A header row (language, Copy button) over the block. The button is wired by `copyCode` in Markdown.tsx.
 		code(token) {
 			const lang = (token.lang ?? "").match(/^\S*/)?.[0] ?? "";

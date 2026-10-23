@@ -35,6 +35,7 @@
 	"workingActivityUntimed": "Working · {{activity}}",
 	"newActivity": "Show new activity",
 	"fileRow": "{{name}}, in {{folder}}",
+	"attachedImage": "Attached image {{number}}",
 	"showEarlier": "Show {{count}} earlier messages",
 	"compacted": "Context summarized",
 	"branchSummary": "Continued from another branch",

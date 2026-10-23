@@ -34,11 +34,15 @@ export function PathText({
 	from,
 	to,
 	sel,
+	kind,
+	literal = false,
 }: {
 	path: string;
 	from?: number | null;
 	to?: number | null;
 	sel?: string | null;
+	kind?: "file" | "folder";
+	literal?: boolean;
 }): ReactNode {
 	let range = "";
 	if (from != null || to != null) {
@@ -46,7 +50,7 @@ export function PathText({
 		range = to != null ? `:${start}-${to}` : `:${start}`;
 	}
 	return (
-		<span className="tv-path">
+		<span className="tv-path" data-context-path={literal ? path : undefined} data-context-tool-path={!literal && path !== "…" ? path : undefined} data-context-kind={kind} tabIndex={path === "…" ? undefined : 0}>
 			{shortenPath(path)}
 			{range && <span className="tv-lines">{range}</span>}
 			{sel && <span className="tv-lines">:{sel}</span>}
@@ -192,7 +196,7 @@ function openImage(img: ToolResultImage): void {
 }
 
 /** Thumbnails for every image block in a result; click opens full size. */
-export function ResultImages({ result }: { result: ToolResultLike | undefined }): ReactNode {
+export function ResultImages({ result, paths, literalPaths = false }: { result: ToolResultLike | undefined; paths?: readonly (string | null)[]; literalPaths?: boolean }): ReactNode {
 	const images = resultImagesOf(result);
 	if (images.length === 0) return null;
 	return (
@@ -202,6 +206,8 @@ export function ResultImages({ result }: { result: ToolResultLike | undefined })
 					key={i}
 					type="button"
 					className="tv-img-btn"
+					data-context-path={literalPaths ? paths?.[i] ?? undefined : undefined}
+					data-context-tool-path={!literalPaths ? paths?.[i] ?? undefined : undefined}
 					onClick={() => openImage(img)}
 					aria-label={`Open tool result image ${i + 1}`}
 				>

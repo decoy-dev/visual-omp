@@ -1,6 +1,9 @@
+import { writeFile } from "node:fs/promises";
+import { basename } from "node:path";
 import { homedir } from "node:os";
-import { app, BrowserWindow, dialog, shell } from "electron";
+import { app, BrowserWindow, clipboard, ClipboardItem, dialog, nativeImage, shell } from "electron";
 import type { Platform } from "@shared/ipc";
+import fileLabels from "../shared/i18n/en/fileActions.json";
 import { registerAttention } from "./attention";
 import { listDir, pathExists, projectFiles, readText, writeText } from "./files";
 import { handle } from "./ipc";
@@ -14,6 +17,8 @@ import { getPrefs, setPrefs } from "./prefs";
 import { gateHostStart } from "./services/approval-default";
 import { ensureNewUserApproval } from "./features/config";
 import { killTerminal, resizeTerminal, startTerminal, writeTerminal } from "./terminals";
+import { contextImageBytes } from "./services/contextImages";
+import { openFile, showItem } from "./fileActions";
 
 /** Only web links leave the app; everything else would let content launch local programs. */
 function isSafeExternalUrl(url: string): boolean {
@@ -40,7 +45,27 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("app:openExternal", async url => {
 		if (isSafeExternalUrl(url)) await shell.openExternal(url);
 	});
-	handle("app:showItem", path => shell.showItemInFolder(path));
+	handle("app:showItem", showItem);
+	handle("app:openFile", openFile);
+	handle("app:copyImage", async dataUrl => {
+		const image = nativeImage.createFromBuffer(contextImageBytes(dataUrl));
+		if (image.isEmpty()) throw new Error("Couldn't decode the image");
+		await clipboard.write([new ClipboardItem({ "image/png": new Blob([new Uint8Array(image.toPNG())], { type: "image/png" }) })]);
+	});
+	handle("app:saveImage", async options => {
+		if (!options || typeof options.name !== "string" || typeof options.title !== "string") throw new Error("Invalid image save options");
+		const image = nativeImage.createFromBuffer(contextImageBytes(options.dataUrl));
+		if (image.isEmpty()) throw new Error("Couldn't decode the image");
+		const win = BrowserWindow.getFocusedWindow();
+		const save: Electron.SaveDialogOptions = {
+			title: options.title.slice(0, 200), defaultPath: basename(options.name).replace(/[\\/:]/g, "_").slice(0, 200) || "image.png",
+			filters: [{ name: fileLabels.png, extensions: ["png"] }],
+		};
+		const result = win ? await dialog.showSaveDialog(win, save) : await dialog.showSaveDialog(save);
+		if (result.canceled || !result.filePath) return null;
+		await writeFile(result.filePath, image.toPNG());
+		return result.filePath;
+	});
 	handle("app:pickFolder", async title => {
 		const win = BrowserWindow.getFocusedWindow();
 		const options: Electron.OpenDialogOptions = { title, properties: ["openDirectory", "createDirectory"] };

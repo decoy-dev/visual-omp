@@ -1,0 +1,8 @@
+{
+	"openTitle": "Open with default app",
+	"openMessage": "Open {{name}} with its default app?",
+	"openWarning": "Opening this file outside visual-omp may run code. Open it only if you trust its source.",
+	"cancel": "Cancel",
+	"open": "Open file",
+	"png": "PNG image"
+}

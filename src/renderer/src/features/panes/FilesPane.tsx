@@ -3,23 +3,16 @@
  * syntax colors, inline images, PDFs and folder listings. A tab can show any path, inside the project
  * or not. ⌘click or right-click → "Mention in chat" puts `@path` in the composer of the focused chat.
  */
-import { ArrowSquareOut, ArrowsClockwise, At, CaretRight, Copy, FileCode, FileIcon, FileImage, Folder, FolderOpen, FolderSimpleDashed, SidebarSimple } from "@phosphor-icons/react";
+import { ArrowSquareOut, ArrowsClockwise, CaretRight, FileCode, FileIcon, FileImage, Folder, FolderOpen, FolderSimpleDashed, SidebarSimple } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, type MouseEvent, memo, type PointerEvent as ReactPointerEvent, type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PaneFileContent } from "@shared/contracts/panes";
 import type { DirEntry } from "@shared/ipc";
-import { useComposerDrafts } from "../../chat/composer/drafts";
 import type { PaneProps } from "../../registry/slots";
-import { useApp } from "../../state/app";
 import {
 	Button,
 	cn,
-	ContextMenu,
-	ContextMenuContent,
-	ContextMenuItem,
-	ContextMenuSeparator,
-	ContextMenuTrigger,
 	duration,
 	EmptyState,
 	ease,
@@ -28,9 +21,10 @@ import {
 	PresenceSwap,
 	Spinner,
 	spring,
-	toast,
 } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
+import { mentionInChat, openWithDefaultApp, revealLabel } from "../../ui/contextActions";
+import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { errorText } from "../extensions/format";
 import { useHomeDir } from "../projects/folders/FolderBrowser";
 import { tildePath } from "../projects/folders/paths";
@@ -39,7 +33,7 @@ import { IMAGE_EXT, OPENABLE_EXT, PDF_EXT } from "./derive";
 import { EMPTY_VIEW, filesView, useFiles } from "./files-store";
 import { useGit } from "./git-store";
 import { languageFor, SYN_CLASS, tokenizeLines } from "./highlight";
-import { ExpandPreview, loadFileImage, openWithDefaultApp, PdfFrame, PreviewImage, revealLabel, ThumbnailFrame, Unavailable, useNearView, ZoomImage } from "./media";
+import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage, ThumbnailFrame, Unavailable, useNearView, ZoomImage } from "./media";
 
 /** Lines rendered before "Show all" in the viewer. */
 const VIEW_LINE_BUDGET = 4000;
@@ -60,13 +54,6 @@ function fileName(path: string): string {
 	return path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1) || path;
 }
 
-/** Put `@relative/path` into the focused chat's composer (a new chat when none is open). */
-export async function mentionInChat(projectPath: string, path: string, tabId: string | null): Promise<void> {
-	const target = tabId ?? (await useApp.getState().newChat(projectPath));
-	if (!target) return;
-	const rel = relativePath(projectPath, path);
-	useComposerDrafts.getState().insert(target, `@${rel} `);
-}
 
 // ── tree ────────────────────────────────────────────────────────────────────────────────────────
 
@@ -78,35 +65,7 @@ interface RowProps {
 }
 
 function FileMenu({ entry, projectPath, tabId, children }: RowProps & { children: ReactNode }) {
-	const { t } = useTranslation("panes");
-	return (
-		<ContextMenu>
-			<ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-			<ContextMenuContent>
-				<ContextMenuItem icon={<At />} onSelect={() => mentionInChat(projectPath, entry.path, tabId)} shortcut="⌘click">
-					{t("files.mention")}
-				</ContextMenuItem>
-				{entry.kind === "file" && (
-					<ContextMenuItem icon={<FileIcon />} onSelect={() => useFiles.getState().open(filesView(tabId, projectPath), entry.path)}>
-						{t("files.open")}
-					</ContextMenuItem>
-				)}
-				<ContextMenuSeparator />
-				<ContextMenuItem
-					icon={<Copy />}
-					onSelect={() => {
-						void navigator.clipboard.writeText(relativePath(projectPath, entry.path));
-						toast({ tone: "ok", message: t("files.copied") });
-					}}
-				>
-					{t("files.copyPath")}
-				</ContextMenuItem>
-				<ContextMenuItem icon={<FolderSimpleDashed />} onSelect={() => void window.vomp.invoke("app:showItem", entry.path)}>
-					{revealLabel(t)}
-				</ContextMenuItem>
-			</ContextMenuContent>
-		</ContextMenu>
-	);
+	return <TargetContextMenu projectPath={projectPath} tabId={tabId} target={{ kind: entry.kind === "dir" ? "folder" : "file", path: entry.path }}>{children}</TargetContextMenu>;
 }
 
 const TreeRow = memo(function TreeRow({ entry, depth, projectPath, tabId }: RowProps) {
@@ -244,7 +203,7 @@ const CodeView = memo(function CodeView({ path, text }: { path: string; text: st
 	);
 	const gutter = String(lines.length).length;
 	return (
-		<div className="min-h-full bg-inset py-2 font-mono text-code leading-5">
+		<div className="selectable min-h-full bg-inset py-2 font-mono text-code leading-5">
 			<pre className="m-0">
 				<code>
 					{tokens.map((line, index) => (
@@ -314,6 +273,8 @@ function FolderView({ dir, viewKey, revision }: { dir: string; viewKey: string; 
 								<li key={entry.path}>
 									<button
 										type="button"
+										data-context-path={entry.path}
+										data-context-kind={entry.kind}
 										onClick={() => open(entry)}
 										title={entry.name}
 										className={cn("flex h-7.5 w-full items-center gap-2 rounded-md px-2 text-left text-sm hover:bg-hover", focusRingInset)}
@@ -347,6 +308,8 @@ function FolderTile({ entry, sourceKey, onOpen }: { entry: DirEntry; sourceKey: 
 			<button
 				ref={ref}
 				type="button"
+				data-context-path={entry.path}
+				data-context-no-image={pdf ? "" : undefined}
 				onClick={onOpen}
 				aria-label={t("files.openEntry", { name: entry.name })}
 				title={entry.name}
@@ -406,7 +369,7 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 	const outside = relativePath(projectPath, path) === path;
 	const reveal = () => void window.vomp.invoke("app:showItem", path);
 	return (
-		<div className="@container/viewer flex min-h-0 flex-1 flex-col">
+		<div className="@container/viewer flex min-h-0 flex-1 flex-col" data-context-path={path} data-context-kind={folder ? "folder" : "file"} data-context-surface="" tabIndex={0}>
 			<PaneToolbar>
 				<span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted" title={path}>
 					{viewerPath(projectPath, path, home)}
@@ -500,7 +463,8 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 	const { t } = useTranslation("panes");
 	const viewKey = filesView(tabId, projectPath);
 	const state = useFiles(s => s.byView[viewKey] ?? EMPTY_VIEW);
-	const roots = useFiles(s => s.children[projectPath]);
+	const children = useFiles(s => s.children);
+	const roots = children[projectPath];
 	const visible = usePaneVisible("files");
 	const home = useHomeDir();
 	const git = useGit(visible ? projectPath : null);
@@ -542,9 +506,10 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 		[treeWidth, viewKey],
 	);
 
-	const tabs = state.tabs.map(path => ({ id: path, label: fileName(path), title: viewerPath(projectPath, path, home) }));
+	const tabs = state.tabs.map(path => ({ id: path, path, kind: Array.isArray(children[path]) ? "folder" as const : "file" as const, label: fileName(path), title: viewerPath(projectPath, path, home) }));
 	const treeShown = !state.treeHidden || state.tabs.length === 0;
 	return (
+		<TargetContextMenu projectPath={projectPath} tabId={tabId}>
 		<div className="relative flex min-h-0 flex-1">
 			<AnimatePresence initial={false}>
 				{treeShown && (
@@ -626,5 +591,6 @@ function FilesView({ projectPath, tabId }: { projectPath: string; tabId: string 
 				)}
 			</AnimatePresence>
 		</div>
+		</TargetContextMenu>
 	);
 }

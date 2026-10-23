@@ -85,6 +85,9 @@ export interface StripTab {
 	label: string;
 	title?: string;
 	icon?: ReactNode;
+	/** File viewer tabs expose their absolute path to the pane's delegated context menu. */
+	path?: string;
+	kind?: "file" | "folder";
 }
 
 /**
@@ -142,6 +145,8 @@ export function TabStrip({
 									type="button"
 									role="tab"
 									data-tab-id={tab.id}
+									data-context-path={tab.path}
+									data-context-kind={tab.kind}
 									aria-selected={selected}
 									tabIndex={selected ? 0 : -1}
 									title={tab.title ?? tab.label}

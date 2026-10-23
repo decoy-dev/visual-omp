@@ -1,4 +1,21 @@
 {
+	"context": {
+		"openBrowser": "Open in browser",
+		"openFolder": "Open folder",
+		"mention": "Mention in chat",
+		"openPreview": "Open in Preview pane",
+		"copyLink": "Copy link",
+		"copyRelative": "Copy relative path",
+		"changes": "Show changes",
+		"copyImage": "Copy image",
+		"saveImage": "Save image as…",
+		"copied": "Copied",
+		"linkCopied": "Link copied",
+		"imageCopied": "Image copied",
+		"imageSaved": "Image saved",
+		"imageTooLarge": "This image is too large to copy or save.",
+		"failed": "Couldn't complete the action"
+	},
 	"names": {
 		"diff": "Changes",
 		"files": "Files",
@@ -224,7 +241,7 @@
 		"openImage": "Open {{name}}, {{when}}",
 		"openFile": "Open {{path}}, {{when}}",
 		"back": "Back to outputs",
-		"openDefault": "Open in default app",
+		"openDefault": "Open with default app",
 		"openFailed": "Couldn't open the file",
 		"loading": "Loading image…",
 		"unavailable": "This image could not be displayed.",

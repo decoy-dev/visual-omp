@@ -527,7 +527,7 @@ export function devServerUrls(entries: readonly SessionEntry[], activeTools?: Re
 /** Image files the Files viewer and Outputs pane show from disk (main's `panes:readFile` image types). */
 export const IMAGE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
 export const PDF_EXT = /\.pdf$/i;
-/** Files main opens in the default app and thumbnails (`panes:openOutput` also checks the bytes); SVG stays in-app. */
+/** Raster/PDF toolbar eligibility. Native thumbnails validate bytes; `app:openFile` confirms other regular files. */
 export const OPENABLE_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|ico|pdf)$/i;
 
 /** Image data in a tool result: base64 (the live stream may have cut it short) or a saved session's blob id. */

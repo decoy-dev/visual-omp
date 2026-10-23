@@ -44,9 +44,10 @@ import {
 	useMotionReduced,
 } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
+import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { composeReviewMessage, type LineComment } from "./comments";
 import { listRowMotion, PaneToolbar, usePaneVisible } from "./common";
-import { refreshGit, useGit } from "./git-store";
+import { refreshGit, useFileChangesRequest, useGit } from "./git-store";
 import { languageFor, SYN_CLASS, type SynToken, tokenizeLines } from "./highlight";
 import { hunkEmphasis, type Range } from "./inline-diff";
 
@@ -349,6 +350,7 @@ function FileSection({
 	file,
 	displayPath,
 	projectPath,
+	absolutePath,
 	comments,
 	draft,
 	setDraft,
@@ -358,6 +360,7 @@ function FileSection({
 	file: GitFileDiff;
 	displayPath: string;
 	projectPath: string;
+	absolutePath: string;
 	comments: readonly LineComment[];
 	draft: Draft | null;
 	setDraft(draft: Draft | null): void;
@@ -381,7 +384,7 @@ function FileSection({
 					aria-expanded={open}
 					onClick={() => setOpen(!open)}
 				/>
-				<span className="min-w-0 flex-1 truncate font-mono text-xs text-fg" title={displayPath}>
+				<span data-context-path={absolutePath} data-context-changes="" tabIndex={0} className="min-w-0 flex-1 truncate font-mono text-xs text-fg" title={displayPath}>
 					{file.origPath && <span className="text-fg-faint">{file.origPath} → </span>}
 					{displayPath}
 				</span>
@@ -468,6 +471,16 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 	const sections = useRef(new Map<string, HTMLElement>());
 	const scroller = useRef<HTMLDivElement>(null);
 	const reduced = useMotionReduced();
+	const fileRequest = useFileChangesRequest(state => state.request);
+	useEffect(() => {
+		if (!diff || fileRequest?.projectPath !== projectPath || fileRequest.tabId !== (session?.tabId ?? null)) return;
+		const relative = fileRequest.path.slice(diff.root.replace(/[\\/]+$/, "").length + 1).replace(/\\/g, "/");
+		setSelected(relative);
+		const section = sections.current.get(relative);
+		const column = scroller.current;
+		if (section && column) column.scrollTop += section.getBoundingClientRect().top - column.getBoundingClientRect().top;
+		useFileChangesRequest.setState({ request: null });
+	}, [diff, fileRequest, projectPath, session?.tabId]);
 	const loaded = useRef(-1);
 	useEffect(() => {
 		loaded.current = -1;
@@ -598,6 +611,7 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 	}
 	const selectedPath = selected ?? files[0]?.path ?? null;
 	const view = (
+		<TargetContextMenu projectPath={projectPath} tabId={session?.tabId ?? null} onShowChanges={path => jumpTo(path.slice((diff?.root ?? projectPath).replace(/[\\/]+$/, "").length + 1).replace(/\\/g, "/"))}>
 		<div className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
 			<PaneToolbar>
 				<IconButton
@@ -644,6 +658,8 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 										>
 											<button
 												type="button"
+												data-context-path={`${diff?.root ?? projectPath}/${file.path}`}
+												data-context-changes=""
 												title={display(file.path)}
 												aria-current={active ? "true" : undefined}
 												onClick={() => jumpTo(file.path)}
@@ -677,6 +693,7 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 							displayPath={display(file.path)}
 							projectPath={projectPath}
 							comments={comments}
+							absolutePath={`${diff?.root ?? projectPath}/${file.path}`}
 							draft={draft}
 							setDraft={setDraft}
 							onDiscard={setDiscarding}
@@ -719,6 +736,7 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 				)}
 			</Dialog>
 		</div>
+		</TargetContextMenu>
 	);
 	// The list stays the presence owner while its last file leaves: the old view fades out, then the empty state fades in.
 	return (

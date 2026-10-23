@@ -4,6 +4,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- Links, files and images in chats and side panels now have right-click menus. A web link offers Open in browser and Copy link, and a local address such as `localhost:5173` can also open in the chat's Preview pane, which now keeps separate browsing history for each chat. A file or folder, including paths in tool steps, file-change summaries and the Files and Changes panes, offers Open, Open with default app, Show in Finder (Show in folder on Windows), Copy path, Copy relative path inside the project and Mention in chat; summary and Changes rows add Show changes. An image, including attached screenshots, tool images and images open in the Files viewer and Outputs, offers Copy image and Save image as, plus the file actions when it comes from a file. "Copy path" now copies the full path everywhere, including the Files pane. Opening a file that isn't an image or PDF with its default app asks first, because that app can run code. The menus also open from the keyboard with Shift+F10 or the menu key, and right-clicking inside selected text keeps the text menu.
 - Right-clicking a text field now opens the system's editing menu: Undo, Redo, Cut, Copy, Paste and Select All, Delete on Windows, and spelling suggestions with Add to dictionary for a misspelled word. Right-clicking selected text in a chat offers Copy, and on macOS Look up. Shell commands, paths and other code-like fields don't check spelling.
 
 ## [0.6.2] - 2026-10-22

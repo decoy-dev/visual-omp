@@ -14,6 +14,7 @@ import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { Markdown } from "../../transcript/Markdown";
 import { Button, EmptyState, Expand, Spinner, toast } from "../../ui";
+import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { PaneToolbar, usePaneVisible } from "./common";
 import { PlanChecklist } from "./PlanChecklist";
 
@@ -120,9 +121,10 @@ export function PlanPane({ session }: PaneProps) {
 	}
 	const name = plan.path.slice(plan.path.lastIndexOf("/") + 1);
 	return (
+		<TargetContextMenu projectPath={session.projectPath} tabId={session.tabId}>
 		<div className="flex min-h-0 flex-1 flex-col">
 			<PaneToolbar>
-				<span className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted" title={plan.path}>
+				<span data-context-path={plan.path} tabIndex={0} className="min-w-0 flex-1 truncate font-mono text-xs text-fg-muted" title={plan.path}>
 					{name}
 				</span>
 				<span className="shrink-0 text-xs text-fg-faint">{t("plan.updated", { time: new Date(plan.mtime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) })}</span>
@@ -146,6 +148,7 @@ export function PlanPane({ session }: PaneProps) {
 				<Markdown text={plan.text} />
 			</div>
 		</div>
+		</TargetContextMenu>
 	);
 }
 

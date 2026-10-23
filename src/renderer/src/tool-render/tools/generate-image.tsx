@@ -108,12 +108,12 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 			)}
 			{(provider || model) && <Badges items={[provider, model]} />}
 			{revised && <Note>revised: {truncate(revised, 400)}</Note>}
-			<ResultImages result={merged} />
+			<ResultImages result={merged} paths={paths} literalPaths />
 			{paths.length > 0 && (
 				<div className="tv-list">
 					{paths.map((p, i) => (
 						<Row key={i} k={i === 0 ? "saved" : undefined}>
-							<PathText path={p} />
+							<PathText path={p} literal />
 						</Row>
 					))}
 				</div>

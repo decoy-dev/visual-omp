@@ -183,6 +183,11 @@ export interface IpcInvokeMap {
 	"app:prefs:set": { args: [patch: Partial<AppPreferences>]; result: AppPreferences };
 	"app:openExternal": { args: [url: string]; result: void };
 	"app:showItem": { args: [path: string]; result: void };
+	/** Open a local regular file, confirming non-previewable files before invoking its associated application. */
+	"app:openFile": { args: [path: string]; result: void };
+	/** Renderer-rasterized PNG data only; no network requests are made by main. */
+	"app:copyImage": { args: [dataUrl: string]; result: void };
+	"app:saveImage": { args: [options: { dataUrl: string; name: string; title: string }]; result: string | null };
 	"app:pickFolder": { args: [title?: string]; result: string | null };
 	/** Native notification for the chat `chatId` (a tab id); clicking it focuses the window and sends `app:openChat`. */
 	"app:notify": { args: [title: string, body: string, chatId?: string]; result: void };

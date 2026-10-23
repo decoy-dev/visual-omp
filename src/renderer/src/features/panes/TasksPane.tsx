@@ -20,6 +20,7 @@ import { parseSessionHistory } from "../../state/history";
 import { SubagentRun } from "../../tool-render/tools/task";
 import { TodoBoard } from "../../tool-render/tools/todo";
 import { Markdown } from "../../transcript/Markdown";
+import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import {
 	Badge,
 	Button,
@@ -241,6 +242,7 @@ export function TranscriptDialog({ helper, session, onClose }: { helper: Helper;
 	return (
 		<Dialog open onOpenChange={open => !open && onClose()}>
 			<DialogContent size="xl" title={t("tasks.transcriptTitle", { name: helper.name })} className="h-[min(640px,calc(100vh-64px))]">
+				<TargetContextMenu projectPath={session.projectPath} tabId={session.tabId}>
 				{!state ? (
 					<div className="flex items-center gap-2 py-6 text-sm text-fg-muted" role="status">
 						<Spinner /> {t("tasks.transcriptLoading")}
@@ -256,6 +258,7 @@ export function TranscriptDialog({ helper, session, onClose }: { helper: Helper;
 						))}
 					</div>
 				)}
+				</TargetContextMenu>
 			</DialogContent>
 		</Dialog>
 	);

@@ -5,6 +5,10 @@
  */
 import { useCallback, useSyncExternalStore } from "react";
 import type { GitStatus } from "@shared/contracts/git";
+import { create } from "zustand";
+
+/** A menu request survives the lazy Changes pane mounting, then is consumed by that chat. */
+export const useFileChangesRequest = create<{ request: { projectPath: string; tabId: string | null; path: string } | null }>(() => ({ request: null }));
 
 export interface GitView {
 	status: GitStatus | null;

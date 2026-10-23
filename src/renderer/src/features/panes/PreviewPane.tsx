@@ -6,57 +6,23 @@
 import { ArrowClockwise, ArrowLeft, ArrowRight, ArrowSquareOut, Globe, MonitorPlay } from "@phosphor-icons/react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { create } from "zustand";
 import type { PaneProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
 import { liveEntries } from "../../state/session";
+import { OVERVIEW_DOCK } from "../../state/dockLayout";
 import { Button, cn, EmptyState, Expand, IconButton } from "../../ui";
 import { PaneToolbar } from "./common";
 import { devServerUrls } from "./derive";
 import { normalizePreviewUrl } from "./preview-url";
+import { NO_HISTORY, usePreview } from "./preview-store";
+import { TargetContextMenu } from "../../ui/TargetContextMenu";
 
-interface History {
-	entries: string[];
-	index: number;
-	/** Bumped by Reload to remount the frame. */
-	nonce: number;
-}
-
-interface PreviewState {
-	byProject: Record<string, History>;
-	go(project: string, url: string): void;
-	step(project: string, delta: number): void;
-	reload(project: string): void;
-}
-
-const NO_HISTORY: History = { entries: [], index: -1, nonce: 0 };
-
-const usePreview = create<PreviewState>(set => ({
-	byProject: {},
-	go: (project, url) =>
-		set(state => {
-			const current = state.byProject[project] ?? NO_HISTORY;
-			const entries = [...current.entries.slice(0, current.index + 1), url];
-			return { byProject: { ...state.byProject, [project]: { entries, index: entries.length - 1, nonce: current.nonce } } };
-		}),
-	step: (project, delta) =>
-		set(state => {
-			const current = state.byProject[project] ?? NO_HISTORY;
-			const index = Math.min(current.entries.length - 1, Math.max(0, current.index + delta));
-			return { byProject: { ...state.byProject, [project]: { ...current, index } } };
-		}),
-	reload: project =>
-		set(state => {
-			const current = state.byProject[project] ?? NO_HISTORY;
-			return { byProject: { ...state.byProject, [project]: { ...current, nonce: current.nonce + 1 } } };
-		}),
-}));
 
 export function PreviewPane({ session, projectPath }: PaneProps) {
 	const { t } = useTranslation("panes");
 	const view = useSessionView(session);
-	const project = projectPath ?? "";
-	const history = usePreview(state => state.byProject[project] ?? NO_HISTORY);
+	const scope = session?.tabId ?? OVERVIEW_DOCK;
+	const history = usePreview(state => state.byScope[scope] ?? NO_HISTORY);
 	const current = history.entries[history.index] ?? null;
 	const [address, setAddress] = useState(current ?? "");
 	const [invalid, setInvalid] = useState(false);
@@ -77,7 +43,7 @@ export function PreviewPane({ session, projectPath }: PaneProps) {
 			return;
 		}
 		setInvalid(false);
-		usePreview.getState().go(project, url);
+		usePreview.getState().go(scope, url);
 	};
 	const submit = (event: FormEvent) => {
 		event.preventDefault();
@@ -86,6 +52,7 @@ export function PreviewPane({ session, projectPath }: PaneProps) {
 
 	const suggestions = detected.filter(url => url !== current).slice(0, 4);
 	return (
+		<TargetContextMenu projectPath={projectPath} tabId={session?.tabId ?? null}>
 		<div className="flex min-h-0 flex-1 flex-col">
 			<PaneToolbar>
 				<IconButton
@@ -93,21 +60,21 @@ export function PreviewPane({ session, projectPath }: PaneProps) {
 					label={t("preview.back")}
 					icon={<ArrowLeft />}
 					disabled={history.index <= 0}
-					onClick={() => usePreview.getState().step(project, -1)}
+					onClick={() => usePreview.getState().step(scope, -1)}
 				/>
 				<IconButton
 					size="sm"
 					label={t("preview.forward")}
 					icon={<ArrowRight />}
 					disabled={history.index >= history.entries.length - 1}
-					onClick={() => usePreview.getState().step(project, 1)}
+					onClick={() => usePreview.getState().step(scope, 1)}
 				/>
 				<IconButton
 					size="sm"
 					label={t("preview.reload")}
 					icon={<ArrowClockwise />}
 					disabled={!current}
-					onClick={() => usePreview.getState().reload(project)}
+					onClick={() => usePreview.getState().reload(scope)}
 				/>
 				<form onSubmit={submit} className="min-w-0 flex-1">
 					<input
@@ -143,7 +110,7 @@ export function PreviewPane({ session, projectPath }: PaneProps) {
 			<Expand open={suggestions.length > 0} className="flex flex-wrap items-center gap-1.5 border-b border-border bg-panel px-3 py-1.5">
 				<span className="text-xs text-fg-muted">{t("preview.detected")}</span>
 				{suggestions.map(url => (
-					<Button key={url} size="sm" variant="secondary" icon={<Globe />} className="h-6 font-mono text-xs" onClick={() => navigate(url)}>
+					<Button key={url} data-context-url={url} size="sm" variant="secondary" icon={<Globe />} className="h-6 font-mono text-xs" onClick={() => navigate(url)}>
 						{url.replace(/^https?:\/\//, "")}
 					</Button>
 				))}
@@ -163,7 +130,7 @@ export function PreviewPane({ session, projectPath }: PaneProps) {
 					body={t("preview.empty")}
 					actions={
 						detected[0] ? (
-							<Button size="sm" variant="primary" icon={<Globe />} onClick={() => navigate(detected[0])}>
+							<Button data-context-url={detected[0]} size="sm" variant="primary" icon={<Globe />} onClick={() => navigate(detected[0])}>
 								{t("preview.openDetected", { url: detected[0].replace(/^https?:\/\//, "") })}
 							</Button>
 						) : undefined
@@ -171,5 +138,6 @@ export function PreviewPane({ session, projectPath }: PaneProps) {
 				/>
 			)}
 		</div>
+		</TargetContextMenu>
 	);
 }

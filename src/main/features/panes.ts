@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { nativeImage, shell } from "electron";
+import { nativeImage } from "electron";
 import { userEnv } from "../env";
 import { handle } from "../ipc";
 import { agentDir } from "../omp/paths";
@@ -22,11 +22,5 @@ export function register(): void {
 		}
 	});
 	handle("panes:scanMade", queries => scanMadeFiles(queries, homedir()));
-	handle("panes:openOutput", async path => {
-		// Only files that pass previewablePath (raster images and PDFs whose leading bytes match): opening arbitrary
-		// paths would let chat content launch programs.
-		const failure = await shell.openPath(await previewablePath(path));
-		if (failure) throw new Error(failure);
-	});
 	handle("panes:planFile", sessionFile => findPlanFile(sessionFile));
 }

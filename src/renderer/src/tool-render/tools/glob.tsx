@@ -1,6 +1,6 @@
 /** `glob` (legacy `find`) — glob-based file finder; results are paths sorted by mtime. */
 import type { ReactNode } from "react";
-import { Badge, Badges, InvalidArg, Note, ResultText } from "../parts";
+import { Badge, Badges, InvalidArg, Note, PathText, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, num, scopePaths, shortenPath, str, truncate } from "../util";
 
@@ -44,7 +44,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 							{fileCount} file{fileCount === 1 ? "" : "s"}
 						</Badge>
 					),
-					scopePath !== null && <Badge>in {shortenPath(scopePath)}</Badge>,
+					scopePath !== null && <Badge>in <PathText path={scopePath} kind="folder" /></Badge>,
 					truncated && (
 						<Badge tone="warn">{resultLimit !== null ? `truncated at ${resultLimit}` : "truncated"}</Badge>
 					),
