@@ -20,6 +20,15 @@ export interface Attachment {
 /** Shell (`!`) / Python (`$`) quick modes; null = normal message. */
 export type ComposerMode = "shell" | "python";
 
+/** Home keeps its destination with its unsent text and attachments. */
+export const HOME_DRAFT = "home";
+
+export interface HomeDraft {
+	projectPath: string;
+	text: string;
+	images: Attachment[];
+}
+
 /** A mounted composer's textarea hooks, so inserts land at the caret. */
 export interface ComposerEditor {
 	insertAtCaret(text: string): void;
@@ -29,6 +38,13 @@ export interface ComposerEditor {
 interface DraftState {
 	drafts: Record<string, string>;
 	attachments: Record<string, Attachment[]>;
+	/** null selects the platform's default folder. */
+	homeFolder: string | null;
+	setHomeFolder(path: string): void;
+	/** Returning to an empty Home draft resets its folder, including during an exit animation. */
+	visitHome(): void;
+	/** Keep the draft intact while navigation waits; only a started chat consumes it. */
+	sendHome(defaultFolder: string, start: (draft: HomeDraft) => Promise<string | null>): Promise<string | null>;
 	/** Queue-less focus requests for tabs whose composer is not mounted yet. */
 	pendingFocus: Record<string, true>;
 	/** Per-tab quick mode (not persisted). */
@@ -68,6 +84,30 @@ export const useComposerDrafts = create<DraftState>()(
 		(set, get) => ({
 			drafts: {},
 			attachments: {},
+			homeFolder: null,
+			setHomeFolder(homeFolder) {
+				set({ homeFolder });
+			},
+			visitHome() {
+				const state = get();
+				if (!(state.drafts[HOME_DRAFT] ?? "").trim() && !state.attachments[HOME_DRAFT]?.length) set({ homeFolder: null });
+			},
+			async sendHome(defaultFolder, start) {
+				const state = get();
+				const started = await start({
+					projectPath: state.homeFolder ?? defaultFolder,
+					text: state.drafts[HOME_DRAFT] ?? "",
+					images: [...(state.attachments[HOME_DRAFT] ?? [])],
+				});
+				if (started) {
+					set(current => ({
+						homeFolder: null,
+						drafts: { ...current.drafts, [HOME_DRAFT]: "" },
+						attachments: { ...current.attachments, [HOME_DRAFT]: [] },
+					}));
+				}
+				return started;
+			},
 			pendingFocus: {},
 			modes: {},
 			setMode(tabId, mode) {
@@ -120,7 +160,7 @@ export const useComposerDrafts = create<DraftState>()(
 		{
 			name: "vomp.composer.drafts",
 			storage: createJSONStorage(() => localStorage),
-			partialize: state => ({ drafts: state.drafts, attachments: state.attachments }),
+			partialize: state => ({ drafts: state.drafts, attachments: state.attachments, homeFolder: state.homeFolder }),
 		},
 	),
 );

@@ -1,8 +1,9 @@
 import { writeFile } from "node:fs/promises";
 import { basename } from "node:path";
-import { homedir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, nativeImage, shell } from "electron";
 import type { Platform } from "@shared/ipc";
+import { defaultChatFolder } from "@shared/chatFolder";
 import fileLabels from "../shared/i18n/en/fileActions.json";
 import { registerAttention } from "./attention";
 import { listDir, pathExists, projectFiles, readText, writeText } from "./files";
@@ -39,6 +40,7 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 		platform: process.platform as Platform,
 		arch: process.arch,
 		homeDir: homedir(),
+		defaultChatFolder: defaultChatFolder(process.platform as Platform, tmpdir()),
 	}));
 	handle("app:prefs:get", () => getPrefs());
 	handle("app:prefs:set", patch => setPrefs(patch));

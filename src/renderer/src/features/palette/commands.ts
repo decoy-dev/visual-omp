@@ -1,4 +1,5 @@
 /** Core app/view commands the menu and shortcuts send that no other feature owns. */
+import { commandChatFolder } from "@shared/chatFolder";
 import {
 	ArrowCounterClockwise,
 	ArrowLeft,
@@ -258,8 +259,8 @@ registerCommand({
 	icon: NotePencil,
 	shortcut: keys("N"),
 	run(ctx) {
-		if (ctx.projectPath) void useApp.getState().newChat(ctx.projectPath);
-		else runCommand("project.new");
+		const state = useApp.getState();
+		return state.newChat(commandChatFolder(state.view, ctx.session?.projectPath ?? null, ctx.projectPath)).then(() => undefined);
 	},
 });
 

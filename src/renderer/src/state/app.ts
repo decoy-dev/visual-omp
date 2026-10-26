@@ -61,6 +61,8 @@ export interface OpenPage {
 export interface AppState {
 	prefs: AppPreferences | null;
 	omp: OmpStatus | null;
+	/** Main's platform-specific working folder for chats started without a project. */
+	defaultChatFolder: string | null;
 	projects: ProjectSummary[];
 	sessionsByProject: Record<string, SessionSummary[]>;
 	/** The latest saved chats across every project, newest first, archived ones left out (Home lists them). */
@@ -101,7 +103,7 @@ export interface AppState {
 	chatOverDock: boolean;
 
 	init(): Promise<void>;
-	refreshProjects(): Promise<void>;
+	refreshProjects(selectFirst?: boolean): Promise<void>;
 	loadSessions(projectPath: string): Promise<void>;
 	setPrefs(patch: Partial<AppPreferences>): Promise<void>;
 	refreshOmp(): Promise<void>;
@@ -110,10 +112,9 @@ export interface AppState {
 	goHome(): void;
 	toggleProjectExpanded(path: string): void;
 	/**
-	 * Start a chat; `extraArgs` are omp launch flags for its first start (e.g. `--from-claude`); `split`
-	 * opens it beside the chat that is showing. Resolves to the new chat id, or null when there is no
-	 * project or the user kept editing a page with unsaved changes. Callers that fall back to "Create
-	 * project" check for a project first.
+	 * Start a chat in `projectPath`, or the platform's default chat folder when omitted. `extraArgs`
+	 * are omp launch flags for its first start; `split` opens it beside the chat that is showing.
+	 * Resolves to the new chat id, or null when the user kept editing a page with unsaved changes.
 	 */
 	newChat(projectPath?: string, options?: { extraArgs?: string[]; split?: boolean }): Promise<string | null>;
 	/**
@@ -379,6 +380,7 @@ export const useApp = create<AppState>()(
 			projects: [],
 			sessionsByProject: {},
 			recentSessions: null,
+			defaultChatFolder: null,
 			activeProject: null,
 			view: "home",
 			tabs: [],
@@ -399,11 +401,12 @@ export const useApp = create<AppState>()(
 			chatOverDock: false,
 
 			async init() {
-				const [prefs, omp] = await Promise.all([
+				const [prefs, omp, info] = await Promise.all([
 					window.vomp.invoke("app:prefs:get"),
 					window.vomp.invoke("omp:status"),
+					window.vomp.invoke("app:info"),
 				]);
-				set({ prefs, omp });
+				set({ prefs, omp, defaultChatFolder: info.defaultChatFolder });
 				window.vomp.on("app:prefs", next => set({ prefs: next }));
 				window.vomp.on("sessions:changed", () => {
 					void get().refreshProjects();
@@ -429,12 +432,12 @@ export const useApp = create<AppState>()(
 				await get().refreshProjects();
 			},
 
-			async refreshProjects() {
+			async refreshProjects(selectFirst = true) {
 				const [projects, recentSessions] = await Promise.all([
 					window.vomp.invoke("sessions:projects"),
 					window.vomp.invoke("sessions:recent", RECENT_SESSIONS),
 				]);
-				set(state => ({ projects, recentSessions, activeProject: state.activeProject ?? projects[0]?.path ?? null }));
+				set(state => ({ projects, recentSessions, activeProject: state.activeProject ?? (selectFirst ? projects[0]?.path ?? null : null) }));
 				const expanded = get().expandedProjects;
 				await Promise.all(expanded.map(path => get().loadSessions(path)));
 			},
@@ -475,8 +478,7 @@ export const useApp = create<AppState>()(
 			},
 
 			async newChat(projectPath, options) {
-				const path = projectPath ?? get().activeProject;
-				if (!path) return null;
+				const path = projectPath ?? get().defaultChatFolder ?? (await window.vomp.invoke("app:info")).defaultChatFolder;
 				const result = await whenLeaving(() => {
 					const tab: ChatTab = { id: newTabId(), projectPath: path, sessionFile: null, title: null };
 					const controller = ensureController(tab, options?.extraArgs);

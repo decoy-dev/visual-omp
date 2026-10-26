@@ -148,7 +148,7 @@
 		},
 		"chatNew": {
 			"title": "Start new chat",
-			"hint": "Start a fresh conversation in this project.",
+			"hint": "Use the current chat or project folder, or the temporary folder from other screens.",
 			"keywords": "new, start, fresh, conversation"
 		},
 		"chatClose": {

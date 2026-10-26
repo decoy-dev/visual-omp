@@ -18,11 +18,10 @@ export async function addProject(path: string): Promise<void> {
 	useApp.getState().openProject(path);
 }
 
-/** Register a folder as a project and make it the active one, staying on the current screen (Home's project picker). */
-export async function selectProject(path: string): Promise<void> {
+/** Register a Home draft's folder without changing the project's selection elsewhere in the app. */
+export async function registerDraftProject(path: string): Promise<void> {
 	await window.vomp.invoke("project:add", path);
-	await useApp.getState().refreshProjects();
-	useApp.setState({ activeProject: path });
+	await useApp.getState().refreshProjects(false);
 }
 
 /** Open the folder chooser ("Start a chat in…"); `options.purpose` "open" or "pick" goes straight to the browser. */

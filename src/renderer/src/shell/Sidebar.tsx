@@ -739,17 +739,11 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 						<div className="flex flex-col gap-1 px-3 pb-2">
 							<button
 								type="button"
-								aria-keyshortcuts={MAC ? "Meta+N" : "Control+N"}
 								className="flex h-9 items-center gap-2 rounded-md px-row text-md font-semibold text-accent outline-none hover:bg-accent-muted focus-visible:outline-2 focus-visible:outline-ring"
-								onClick={() => {
-									const { activeProject, newChat } = useApp.getState();
-									if (activeProject) void newChat(activeProject);
-									else runCommand("chat.startIn");
-								}}
+								onClick={() => void useApp.getState().newChat()}
 							>
 								<NotePencil className="size-4" />
 								<span className="flex-1 text-left">{t("sidebar.newChat")}</span>
-								<span className="font-mono text-xs font-normal text-fg-faint">{`${MOD}N`}</span>
 							</button>
 							<SearchInput
 								value={search}

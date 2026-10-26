@@ -38,6 +38,24 @@ repairs the persisted layout on launch: it drops chats that can't be restored, k
 project last shown (else the focused chat's). The app then always opens on Home (`features/home`), with the open
 chats back in the sidebar; pages are not restored. Split view can show two chats, each with its own controller.
 
+New chats without an explicit project use `app:info.defaultChatFolder`, computed in main by the pure
+`shared/chatFolder.ts` rule: `/tmp` on macOS and Linux, and `os.tmpdir()` on Windows. The app store loads it
+alongside preferences; `newChat()` also requests it when called before initialization finishes. The sidebar
+button calls `newChat()` without a project. The `chat.new` command uses its explicit session's folder (the
+focused chat for keyboard and menu commands, the originating chat for `/new`), or the visible project
+overview's folder. Home and pages use the default. Project actions and split-view creation pass their folder
+explicitly. Session grouping uses the header's `cwd`, not the encoded directory name: existing macOS `/tmp`
+chats have `cwd: "/tmp"` inside `--private-tmp--`, so the default keeps that spelling.
+
+Home's folder selection is stored with its text and attachments in `useComposerDrafts`. `visitHome` keeps
+the folder of an unfinished draft and resets an empty draft to the platform default. The mounted composer
+subscribes to Home navigation too, so a quick return during its exit animation follows the same rule.
+`sendHome` keeps the draft intact while the leave guard awaits a decision and clears its text, attachments
+and chosen folder only after a chat starts. A cancelled or failed start leaves the draft unchanged.
+The picker includes the default before it has saved chats and reads its settings through the same
+project-scoped configuration calls as other folders. Choosing or registering a folder for the Home draft
+leaves `activeProject` unchanged.
+
 Each open chat also has its own side panel layout (open or closed, pane, width), held in `useApp`'s `docks` map keyed
 by open-chat id; the rules are defined in `state/dockLayout.ts`. The key is the open-chat id rather than the session
 file because a new chat has no file until omp writes one, `/new` and `/resume` change the file of the same chat, and

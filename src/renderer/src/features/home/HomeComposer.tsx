@@ -12,7 +12,7 @@ import { type ClipboardEvent, type DragEvent, type KeyboardEvent, type ReactNode
 import { useTranslation } from "react-i18next";
 import { attachFiles, attachPaths } from "@/chat/composer/attach";
 import { AttachmentChip } from "@/chat/composer/Composer";
-import { type Attachment, useComposerDrafts } from "@/chat/composer/drafts";
+import { type Attachment, HOME_DRAFT as HOME, useComposerDrafts } from "@/chat/composer/drafts";
 import { useApp } from "@/state/app";
 import { projectColorValue, useProjectColor } from "@/state/projectColors";
 import { sortProjects } from "@/shell/sidebarRows";
@@ -35,12 +35,11 @@ import {
 } from "@/ui";
 import { ProjectColorDot } from "../projects/ProjectColor";
 import { chooseFolder, startChat } from "../projects/actions";
+import { folderName } from "../projects/format";
 import { thinkingChoices, useChatModels } from "../session-tools/model";
 import { ModelList, PermissionMenu, rowPicker } from "../session-tools/pickers";
 import { THINKING_LEVELS, type ThinkingLevel } from "../session-tools/screen";
 
-/** Composer drafts key for Home's text and attachments. */
-const HOME = "home";
 const EMPTY: readonly Attachment[] = [];
 
 /** The project's own model and thinking level (its default role), shown until the user picks others. */
@@ -82,7 +81,9 @@ interface Choice {
 export function HomeComposer(): ReactNode {
 	const { t } = useTranslation("home");
 	const { t: tc } = useTranslation("composer");
-	const projectPath = useApp(state => (state.activeProject && state.projects.some(project => project.path === state.activeProject) ? state.activeProject : null));
+	const defaultFolder = useApp(state => state.defaultChatFolder);
+	const folder = useComposerDrafts(state => state.homeFolder);
+	const projectPath = folder ?? defaultFolder;
 	const draft = useComposerDrafts(state => state.drafts[HOME] ?? "");
 	const attachments = useComposerDrafts(state => state.attachments[HOME] ?? EMPTY);
 	const defaults = useProjectDefaults(projectPath);
@@ -91,6 +92,17 @@ export function HomeComposer(): ReactNode {
 	const picked = choice?.path === projectPath ? choice : null;
 	const [sending, setSending] = useState(false);
 	const textarea = useRef<HTMLTextAreaElement>(null);
+
+	// A quick return can reuse Home while its exit animation still has it mounted.
+	useEffect(() => {
+		useComposerDrafts.getState().visitHome();
+		return useApp.subscribe((state, previous) => {
+			if (state.view === "home" && previous.view !== "home") {
+				useComposerDrafts.getState().visitHome();
+				setChoice(null);
+			}
+		});
+	}, []);
 
 	const modelInfo = picked?.model ?? (defaults?.model ? models?.find(model => model.selector === defaults.model) : undefined) ?? undefined;
 	const choices = thinkingChoices(modelInfo);
@@ -101,25 +113,18 @@ export function HomeComposer(): ReactNode {
 
 	const send = async () => {
 		if (!projectPath || !canSend) return;
-		const text = draft;
-		const images = [...attachments];
 		const store = useComposerDrafts.getState();
-		store.setDraft(HOME, "");
-		store.clearAttachments(HOME);
 		setSending(true);
 		try {
-			const started = await startChat(projectPath, {
-				text,
-				images,
-				model: picked?.model?.selector ?? null,
-				thinking: picked?.thinking ?? null,
-			});
+			const started = await store.sendHome(projectPath, ({ projectPath: path, text, images }) =>
+				startChat(path, {
+					text,
+					images,
+					model: picked?.model?.selector ?? null,
+					thinking: picked?.thinking ?? null,
+				}),
+			);
 			if (started) setChoice(null);
-			else {
-				// No chat started (a page with unsaved edits stayed open): keep what was typed.
-				store.setDraft(HOME, text);
-				store.addAttachments(HOME, images);
-			}
 		} finally {
 			setSending(false);
 		}
@@ -231,7 +236,14 @@ export function HomeComposer(): ReactNode {
 			{/* The chat's settings before it exists: a quiet row under the card that wraps rather than crowd. */}
 			<div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-2">
 				<div className="flex min-w-0 flex-wrap items-center gap-1">
-					<ProjectPicker projectPath={projectPath} />
+					<ProjectPicker
+						projectPath={projectPath}
+						defaultFolder={defaultFolder}
+						onPick={path => {
+							useComposerDrafts.getState().setHomeFolder(path);
+							setChoice(null);
+						}}
+					/>
 					{projectPath && <PermissionMenu projectPath={projectPath} />}
 				</div>
 				{projectPath && (
@@ -260,12 +272,15 @@ export function HomeComposer(): ReactNode {
 }
 
 /** The folder omp will work in: projects pinned first, then by activity, with their colors; or add a folder. */
-function ProjectPicker({ projectPath }: { projectPath: string | null }): ReactNode {
+function ProjectPicker({ projectPath, defaultFolder, onPick }: { projectPath: string | null; defaultFolder: string | null; onPick(path: string): void }): ReactNode {
 	const { t } = useTranslation("home");
 	const projects = useApp(state => state.projects);
 	const pins = useApp(state => state.prefs?.pinnedProjects);
 	const color = useProjectColor(projectPath ?? "");
-	const name = projects.find(project => project.path === projectPath)?.name ?? null;
+	const folders = defaultFolder && !projects.some(project => project.path === defaultFolder)
+		? [...projects, { path: defaultFolder, name: folderName(defaultFolder), sessionCount: 0, lastActivity: 0, exists: true }]
+		: projects;
+	const name = folders.find(project => project.path === projectPath)?.name ?? (projectPath ? folderName(projectPath) : null);
 	return (
 		<Menu>
 			<Tooltip content={t("composer.project.tip")}>
@@ -286,11 +301,11 @@ function ProjectPicker({ projectPath }: { projectPath: string | null }): ReactNo
 				</MenuTrigger>
 			</Tooltip>
 			<MenuContent side="bottom" align="start" className="max-h-96 w-72 overflow-y-auto">
-				{projects.length > 0 && (
+				{folders.length > 0 && (
 					<>
 						<MenuLabel>{t("composer.project.title")}</MenuLabel>
-						<MenuRadioGroup value={projectPath ?? ""} onValueChange={path => useApp.setState({ activeProject: path })}>
-							{sortProjects(projects, pins ?? []).map(project => (
+						<MenuRadioGroup value={projectPath ?? ""} onValueChange={onPick}>
+							{sortProjects(folders, pins ?? []).map(project => (
 								<MenuRadioItem key={project.path} value={project.path} disabled={!project.exists}>
 									<span className="flex min-w-0 items-center gap-2">
 										<ProjectPickerDot path={project.path} />
@@ -302,7 +317,7 @@ function ProjectPicker({ projectPath }: { projectPath: string | null }): ReactNo
 						<MenuSeparator />
 					</>
 				)}
-				<MenuItem icon={<FolderOpen />} onSelect={() => chooseFolder({ purpose: "pick" })}>
+				<MenuItem icon={<FolderOpen />} onSelect={() => chooseFolder({ purpose: "pick", currentPath: projectPath, onPick })}>
 					{t("composer.project.open")}
 				</MenuItem>
 				<MenuItem icon={<FolderPlus />} onSelect={() => useApp.getState().openSheet("project-new")}>
