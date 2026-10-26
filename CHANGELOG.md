@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-10-26
+
+visual-omp 0.6.4 starts chats from the New chat button and Home in the temporary folder instead of the last project you used.
+
 - **New chat** in the sidebar now always starts in `/tmp` on macOS and Linux, or the system temporary folder on Windows, instead of the last project you used, and it no longer shows ⌘N. The message box on Home starts there too. You can still pick another folder on Home, and an unfinished Home message keeps the folder you picked when you leave and come back; once the chat starts, Home goes back to the temporary folder. ⌘N (Ctrl+N on Windows) and File > New Chat keep using the project of the chat or project overview you have open, and start in the temporary folder from Home and other pages. **New chat here** on a project, the project overview and `/new` keep their project. Choosing a folder on Home no longer changes the project shown in the sidebar and status bar.
 
 ## [0.6.3] - 2026-10-23
