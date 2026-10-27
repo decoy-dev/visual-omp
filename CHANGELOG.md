@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.6.6] - 2026-10-27
+
+visual-omp 0.6.6 marks unopened chats with a blue dot, so they stand apart from open chats.
+
 - Unopened chats are now marked with a blue dot instead of a teal one, so they stand apart from the green dot of an open chat in Current chats, the project lists, Home and project overviews.
 
 ## [0.6.5] - 2026-10-27
