@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- Unopened chats are now marked with a blue dot instead of a teal one, so they stand apart from the green dot of an open chat in Current chats, the project lists, Home and project overviews.
+
 ## [0.6.5] - 2026-10-27
 
 visual-omp 0.6.5 counts chats with unopened results on the app icon and lists them first in Current chats.

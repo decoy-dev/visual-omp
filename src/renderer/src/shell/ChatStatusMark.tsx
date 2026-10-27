@@ -9,7 +9,8 @@ import type { ChatStatus } from "./hooks";
  * spinning notch while omp or its helpers work (the label says which), a question mark while it waits for an answer, a
  * filled circle for a chat open with omp running and a hollow circle for a saved chat. `quiet` (open chats in the
  * Projects tree, whose live status shows under Current chats) draws one small muted dot that only says the chat is
- * open. An unseen result adds a teal dot, keeping active work and question marks visible. `label` is screen-reader text.
+ * open. An unseen result adds a blue `--info` dot, apart from the green open dot and the teal working notch, keeping active
+ * work and question marks visible. `label` is screen-reader text.
  */
 export function ChatStatusMark({
 	status,
@@ -32,7 +33,7 @@ export function ChatStatusMark({
 	return (
 		<span id={id} title={unseenLabel} className={cn("relative inline-flex size-3.5 shrink-0 items-center justify-center [&>svg]:size-3.5", className)}>
 			{unseen && !active ? (
-				<span aria-hidden className="size-2 rounded-full bg-accent" />
+				<span aria-hidden className="size-2 rounded-full bg-info" />
 			) : quiet && !unseen ? (
 				<span aria-hidden className="size-1.5 rounded-full bg-fg-muted" />
 			) : status === "working" || status === "helpersWorking" ? (
@@ -44,7 +45,7 @@ export function ChatStatusMark({
 			) : (
 				<CircleIcon aria-hidden weight="bold" className="size-2.5! text-fg-faint" />
 			)}
-			{unseen && active && <span aria-hidden className="absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full bg-accent" />}
+			{unseen && active && <span aria-hidden className="absolute -bottom-0.5 -right-0.5 size-1.5 rounded-full bg-info" />}
 			<span className="sr-only">{unseenLabel && unseenLabel !== label ? `${label}. ${unseenLabel}` : label}</span>
 		</span>
 	);
