@@ -4,7 +4,11 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-- A chat that finishes or asks a question while you can't see it, because visual-omp is in the background or another chat, Home or a page is on screen, now counts as unopened until you open it. The Dock icon on macOS and the taskbar button on Windows show how many chats are unopened, also while you work in another chat, and the count drops as you open them; focusing the window alone no longer clears it. In Current chats, unopened chats come first with a teal mark and a stronger title, separated from the chats you have already seen, and the project lists, Home and project overviews mark them too. Unopened chats stay marked after you restart visual-omp. The count shows even when **Alert me in the background** (Settings → Sounds & alerts) is off; that setting still controls the banners, the Dock bounce and the taskbar flash, which happen only while visual-omp is in the background.
+## [0.6.5] - 2026-10-27
+
+visual-omp 0.6.5 counts chats with unopened results on the app icon and lists them first in Current chats.
+
+- When a chat finishes its main reply or needs your answer while it is not shown in the focused window, it now counts as having an unopened result. This includes results received while the window is in the background or minimized, while you view another chat, Home, a page or a project overview, or while an expanded side panel covers the chat. Each chat counts once. Showing it in either split pane with the window focused clears its mark and count; closing its tab removes them too. Focusing the window on another chat or Home preserves the remaining count. The macOS Dock badge and Windows taskbar overlay show the count while you work in other chats; Windows displays 9+ above nine. In Current chats, unopened results appear first with teal marks and stronger titles, with a divider between unopened and viewed chats when both groups are present. Chat rows in the Projects tree, Home's recent chats and project overviews use the same marks. Unopened results persist with restored chats after restarting visual-omp. The count remains enabled when **Alert me in the background** (Settings → Sounds & alerts) is off. That setting controls background notification banners and the Dock bounce or taskbar flash. Notification banners remain unavailable in the current macOS build.
 
 ## [0.6.4] - 2026-10-26
 
