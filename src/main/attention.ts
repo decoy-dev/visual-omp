@@ -1,12 +1,12 @@
 /**
- * Attention signals for chats that finished or need an answer while the window is in the background
- * (DESIGN §4.22). The renderer keeps the unseen count and sends it here with `app:attention`; main
- * validates every request and clears the native signals itself when the window gains focus,
- * reloads, loses its renderer or closes.
+ * Attention signals for chats whose finished turn or new question has not been shown in the focused
+ * window (DESIGN §4.22). The renderer keeps the unseen count and sends it here with `app:attention`.
+ * Main validates every request and keeps badges on focus, stopping only bounce or flash. Reloads,
+ * renderer loss and closing clear all native signals.
  *
- * - macOS: a Dock badge with the count and one informational bounce per newly unseen chat. The app
- *   also requests native banners; the tested ad-hoc signed build was denied them (the notification
- *   emits `failed`), so the handlers expect that.
+ * - macOS: a Dock badge with the count and one informational bounce per newly unseen chat when
+ *   background alerts are enabled. The app also requests native banners; the tested ad-hoc signed
+ *   build was denied them (the notification emits `failed`), so the handlers expect that.
  * - Windows: native toast requests (shown subject to the system notification settings), a flashing
  *   taskbar button and a count overlay on the taskbar button.
  */
@@ -28,6 +28,7 @@ const MAX_OVERLAY_SIDE = 256;
 const MAX_OVERLAY_DESCRIPTION_LENGTH = 256;
 
 let window: BrowserWindow | null = null;
+let bounceId: number | null = null;
 /**
  * Shown notifications, oldest first. A garbage-collected Notification loses its click handler, so
  * each one stays referenced until it is clicked, closed, refused or pushed out by newer ones.
@@ -60,24 +61,36 @@ export function tagScoopShortcut(): void {
 	}
 }
 
-/** Remove the Dock badge, the taskbar overlay and the taskbar flashing. */
+/** Stop transient alerts without changing the unseen count badge. */
+function stopAlerts(): void {
+	if (process.platform === "darwin") {
+		if (bounceId !== null) {
+			app.dock?.cancelBounce(bounceId);
+			bounceId = null;
+		}
+		return;
+	}
+	if (window && !window.isDestroyed()) window.flashFrame(false);
+}
+
+/** Remove the Dock badge, the taskbar overlay and any active bounce or flash. */
 function clearNative(): void {
+	stopAlerts();
 	if (process.platform === "darwin") {
 		app.dock?.setBadge("");
 		return;
 	}
 	if (!window || window.isDestroyed()) return;
-	window.flashFrame(false);
 	if (process.platform === "win32") window.setOverlayIcon(null, "");
 }
 
 /**
  * The window that notification clicks bring forward and that carries the taskbar flashing and
- * overlay. Its native events clear the signals so a stuck or reloaded renderer cannot leave them.
+ * overlay. Focus stops transient alerts; teardown clears badges so a reloaded renderer cannot leave them.
  */
 export function attachAttentionWindow(win: BrowserWindow): void {
 	window = win;
-	win.on("focus", clearNative);
+	win.on("focus", stopAlerts);
 	win.webContents.on("did-start-navigation", details => {
 		if (details.isMainFrame && !details.isSameDocument) clearNative();
 	});
@@ -164,16 +177,18 @@ function applyAttention(request: unknown): void {
 		clearNative();
 		return;
 	}
-	// A positive count only matters while the window is open and in the background.
-	if (!getPrefs().notifications || !window || window.isDestroyed() || window.isFocused()) return;
+	if (!window || window.isDestroyed()) return;
+	const alertsEnabled = getPrefs().notifications && (!window.isFocused() || window.isMinimized());
 	if (process.platform === "darwin") {
 		app.dock?.setBadge(String(count));
-		if (alert) app.dock?.bounce("informational");
+		if (!alertsEnabled || alert) stopAlerts();
+		if (alertsEnabled && alert) bounceId = app.dock?.bounce("informational") ?? null;
 		return;
 	}
 	// Decode first so a bad overlay rejects the request before anything changes.
 	const image = process.platform === "win32" && overlay ? overlayImage(overlay.image) : null;
-	if (alert) window.flashFrame(true);
+	if (!alertsEnabled) stopAlerts();
+	else if (alert) window.flashFrame(true);
 	if (process.platform === "win32") window.setOverlayIcon(image, image && overlay ? overlay.description : "");
 }
 

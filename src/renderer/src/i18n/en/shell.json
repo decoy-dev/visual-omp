@@ -56,6 +56,10 @@
 			"live": "Open",
 			"idle": "Saved"
 		},
+		"unseen": {
+			"finished": "New result",
+			"needsInput": "Waiting for your answer"
+		},
 		"pinChat": "Pin chat",
 		"unpinChat": "Unpin chat",
 		"pinProject": "Pin project",

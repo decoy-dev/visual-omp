@@ -1,22 +1,34 @@
-/**
- * Background alerts (DESIGN §4.22): when a chat finishes or needs an answer while the window is in
- * the background, ask main for a native notification titled with the chat and a one-line outcome,
- * and keep the count of such chats on the Dock icon (macOS) or the taskbar button (Windows) until
- * the window gains focus.
- */
+/** Unopened results stay badged until their chat is shown with focus; background alerts remain optional. */
 import { type AttentionState, NOTIFY_LIMITS } from "@shared/ipc";
 import { i18n } from "../../i18n";
-import { allControllers, useApp } from "../../state/app";
+import { allControllers, dockTooNarrow, useApp } from "../../state/app";
 import type { SessionController, SessionEvent } from "../../state/session";
-import { drawOverlayBadge, overlayLabel, shorten, UnseenChats } from "./attention";
+import { type ChatVisibility, drawOverlayBadge, overlayLabel, reconcileUnseen, recordUnseen, shorten, shownChatIds } from "./attention";
 import { chatTitle } from "./chat";
 import { outcomeSummary } from "./outcome";
 
-const unseen = new UnseenChats();
+let publishedCount = -1;
+let pendingAlert = false;
+let publishedNotifications: boolean | undefined;
 
-/** Send the unseen count to main. `alert` asks for the one-time Dock bounce or taskbar flash. */
+function visibility(): ChatVisibility {
+	const state = useApp.getState();
+	const covered = dockTooNarrow(state, window.innerWidth) && !state.chatOverDock;
+	return {
+		focused: document.hasFocus() && document.visibilityState !== "hidden",
+		openChatIds: state.tabs.map(tab => tab.id),
+		shownChatIds: shownChatIds(state.view, state.activeTabId, state.splitTabId, covered),
+	};
+}
+
+/** Send changed counts to main; only a newly unseen background chat requests the one-time alert. */
 function publish(alert: boolean): void {
-	const count = unseen.count;
+	const state = useApp.getState();
+	const count = Object.keys(state.unseenChats).length;
+	const notifications = state.prefs?.notifications ?? false;
+	if (count === publishedCount && notifications === publishedNotifications && !alert) return;
+	publishedCount = count;
+	publishedNotifications = notifications;
 	let overlay: AttentionState["overlay"] = null;
 	if (count > 0 && window.vomp.platform === "win32") {
 		const css = getComputedStyle(document.documentElement);
@@ -34,9 +46,18 @@ function publish(alert: boolean): void {
 
 function onChatEvent(controller: SessionController, event: SessionEvent): void {
 	if (event.kind !== "finished" && event.kind !== "needsInput") return;
-	const enabled = useApp.getState().prefs?.notifications ?? false;
-	const result = unseen.record(controller.tabId, { focused: document.hasFocus(), enabled });
-	if (result === "ignored") return;
+	const state = useApp.getState();
+	const context = visibility();
+	const next = recordUnseen(state.unseenChats, controller.tabId, event.kind, context);
+	if (!context.openChatIds.includes(controller.tabId) || (context.focused && context.shownChatIds.includes(controller.tabId))) return;
+	const backgroundAlert = !context.focused && (state.prefs?.notifications ?? false);
+	pendingAlert = backgroundAlert && !Object.hasOwn(state.unseenChats, controller.tabId);
+	try {
+		if (next !== state.unseenChats) useApp.setState({ unseenChats: next });
+	} finally {
+		pendingAlert = false;
+	}
+	if (!backgroundAlert) return;
 	const t = i18n.getFixedT(null, "onboarding");
 	const title = chatTitle(controller) ?? t("notify.untitled");
 	let body: string;
@@ -46,28 +67,31 @@ function onChatEvent(controller: SessionController, event: SessionEvent): void {
 		body = summary ? t("notify.finishedWith", { summary }) : t("notify.finished");
 	}
 	void window.vomp.invoke("app:notify", shorten(title, NOTIFY_LIMITS.title), shorten(body, NOTIFY_LIMITS.body), controller.tabId);
-	if (result === "new") publish(true);
 }
 
-/** Attaches to every chat controller as it appears (controllers are created with their tabs). */
+/** Attach to each controller and acknowledge only chats the person can currently see. */
 export function installNotifications(): void {
 	const watched = new WeakSet<SessionController>();
-	const attach = () => {
+	const sync = () => {
 		for (const controller of allControllers()) {
 			if (watched.has(controller)) continue;
 			watched.add(controller);
 			controller.onEvent(event => onChatEvent(controller, event));
 		}
+		const state = useApp.getState();
+		const next = reconcileUnseen(state.unseenChats, visibility());
+		if (next !== state.unseenChats) {
+			useApp.setState({ unseenChats: next });
+			return;
+		}
+		publish(pendingAlert);
 	};
-	attach();
-	useApp.subscribe(state => {
-		attach();
-		if (!state.prefs?.notifications && unseen.clear()) publish(false);
-	});
-	window.addEventListener("focus", () => {
-		if (unseen.clear()) publish(false);
-	});
+	useApp.subscribe(sync);
+	window.addEventListener("focus", sync);
+	window.addEventListener("blur", sync);
+	window.addEventListener("resize", sync);
+	document.addEventListener("visibilitychange", sync);
 	window.vomp.on("app:openChat", ({ chatId }) => useApp.getState().activateTab(chatId));
-	// A reload starts with nothing unseen, so remove whatever the previous page left on the Dock or taskbar.
-	publish(false);
+	// Restored tabs open on Home, so their saved unseen results remain until opened.
+	sync();
 }

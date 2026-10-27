@@ -19,12 +19,21 @@ describe("readSavedLayout", () => {
 
 	it("leaves out fields of the wrong type so their defaults stay", () => {
 		const read = readSavedLayout({ tabs: "a", activeTabId: 4, focusedSplit: "left", sidebarOpen: "yes", sidebarWidth: "wide", expandedProjects: [1] });
-		expect(read).toEqual({ tabs: [], activeTabId: null, splitTabId: null, focusedSplit: "primary", activeProject: null, docks: {} });
+		expect(read).toEqual({ tabs: [], unseenChats: {}, activeTabId: null, splitTabId: null, focusedSplit: "primary", activeProject: null, docks: {} });
 	});
 
 	it("restores the side panels of the chats it keeps", () => {
 		const docks = { a: { open: true, pane: "tasks", width: 500 }, gone: { open: true, pane: "files", width: 500 } };
 		expect(readSavedLayout({ tabs: [tab], docks }).docks).toEqual({ a: { open: true, pane: "tasks", width: 500 } });
+	});
+
+	it("restores valid unseen results only for saved open chats", () => {
+		const read = readSavedLayout({
+			tabs: [tab, { ...tab, id: "b" }, { ...tab, id: "unsaved", sessionFile: null }],
+			unseenChats: { a: "finished", b: "needsInput", unsaved: "finished", closed: "finished" },
+		});
+		expect(read.unseenChats).toEqual({ a: "finished", b: "needsInput" });
+		expect(readSavedLayout({ tabs: [tab], unseenChats: { a: "working" } }).unseenChats).toEqual({});
 	});
 });
 

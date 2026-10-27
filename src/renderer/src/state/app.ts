@@ -10,6 +10,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { AppPreferences, OmpStatus, ProjectSummary, SessionSummary } from "@shared/ipc";
 import { useComposerDrafts } from "../chat/composer/drafts";
+import { reconcileUnseen, type UnseenChats } from "../features/onboarding/attention";
 import { confirmTabClose } from "../registry/guards";
 import { chatTitle } from "../shell/hooks";
 import { normalizeRestoredChatSelection, releaseKeepsNumbers } from "./chatSelection";
@@ -71,6 +72,8 @@ export interface AppState {
 	view: MainView;
 	/** Open chats, in the order they were opened. */
 	tabs: ChatTab[];
+	/** Unopened results, saved with their open chats and cleared when those chats are shown with focus. */
+	unseenChats: UnseenChats;
 	activeTabId: string | null;
 	/** Chat shown in the right half of a split, or null when not split. */
 	splitTabId: string | null;
@@ -243,6 +246,7 @@ function releaseIfUnused(tabId: string, before: readonly ChatTab[]): void {
 	const state = useApp.getState();
 	const controller = controllers.get(tabId);
 	if (!controller || tabId === state.activeTabId || tabId === state.splitTabId || tabId === state.terminalTabId) return;
+	if (state.unseenChats[tabId]) return;
 	if (!releaseKeepsNumbers(tabId, state.tabs, before)) return;
 	if (controller.getSnapshot().mode !== "history" || controller.hostId || controller.inputSent) return;
 	if (keepsChatOpen(layoutFor(state.docks, tabId))) return;
@@ -384,6 +388,7 @@ export const useApp = create<AppState>()(
 			activeProject: null,
 			view: "home",
 			tabs: [],
+			unseenChats: {},
 			activeTabId: null,
 			splitTabId: null,
 			focusedSplit: "primary",
@@ -767,6 +772,7 @@ export const useApp = create<AppState>()(
 				return {
 					// Chats that never produced a session file have nothing to restore.
 					tabs: persistedTabs,
+					unseenChats: reconcileUnseen(state.unseenChats, { openChatIds: persistedTabs.map(tab => tab.id), shownChatIds: [], focused: false }),
 					activeTabId: normalized.activeTabId,
 					splitTabId: normalized.splitTabId,
 					focusedSplit: normalized.focusedSplit,
@@ -803,8 +809,10 @@ useApp.subscribe((state, previous) => {
 	if (focused && recentTabs[0] !== focused) recentTabs = [focused, ...recentTabs.filter(id => id !== focused)];
 	if (state.tabs !== previous.tabs) {
 		recentTabs = recentTabs.filter(id => state.tabs.some(tab => tab.id === id));
-		const docks = keepLayouts(state.docks, state.tabs.map(tab => tab.id));
-		if (docks !== state.docks) useApp.setState({ docks });
+		const openChatIds = state.tabs.map(tab => tab.id);
+		const docks = keepLayouts(state.docks, openChatIds);
+		const unseenChats = reconcileUnseen(state.unseenChats, { openChatIds, shownChatIds: [], focused: false });
+		if (docks !== state.docks || unseenChats !== state.unseenChats) useApp.setState({ docks, unseenChats });
 	}
 	if (state.view === "chat" && focused) {
 		const project = state.tabs.find(tab => tab.id === focused)?.projectPath;

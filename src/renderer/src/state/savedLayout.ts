@@ -4,6 +4,7 @@
  * damaged chat entry is dropped, instead of the whole window failing to open.
  */
 import { z } from "zod";
+import { restoreUnseen } from "../features/onboarding/attention";
 import type { AppState } from "./app";
 import { layoutFrom, OVERVIEW_DOCK, restoreLayouts, withLayout } from "./dockLayout";
 
@@ -12,6 +13,7 @@ const SavedTab = z.object({ id: z.string(), projectPath: z.string(), sessionFile
 
 const Saved = z.object({
 	tabs: z.array(z.unknown()).catch([]),
+	unseenChats: z.unknown().optional(),
 	activeTabId: z.string().nullable().catch(null),
 	splitTabId: z.string().nullable().catch(null),
 	focusedSplit: z.enum(["primary", "secondary"]).catch("primary"),
@@ -23,13 +25,13 @@ const Saved = z.object({
 	expandedProjects: z.array(z.string()).optional().catch(undefined),
 });
 
-type SavedLayout = Partial<Pick<AppState, "tabs" | "activeTabId" | "splitTabId" | "focusedSplit" | "activeProject" | "sidebarOpen" | "sidebarWidth" | "docks" | "expandedProjects">>;
+type SavedLayout = Partial<Pick<AppState, "tabs" | "unseenChats" | "activeTabId" | "splitTabId" | "focusedSplit" | "activeProject" | "sidebarOpen" | "sidebarWidth" | "docks" | "expandedProjects">>;
 
 /** What `merge` takes from the saved layout; anything unusable is left out, so the default stays. */
 export function readSavedLayout(saved: unknown): SavedLayout {
 	const parsed = Saved.safeParse(saved);
 	if (!parsed.success) return {};
-	const { tabs: entries, docks, sidebarOpen, sidebarWidth, expandedProjects, ...selection } = parsed.data;
+	const { tabs: entries, unseenChats, docks, sidebarOpen, sidebarWidth, expandedProjects, ...selection } = parsed.data;
 	const tabs = entries.flatMap(entry => {
 		const tab = SavedTab.safeParse(entry);
 		return tab.success ? [tab.data] : [];
@@ -37,6 +39,7 @@ export function readSavedLayout(saved: unknown): SavedLayout {
 	return {
 		...selection,
 		tabs,
+		unseenChats: restoreUnseen(unseenChats, tabs.map(tab => tab.id)),
 		docks: restoreLayouts(docks, tabs.map(tab => tab.id)),
 		...(sidebarOpen === undefined ? {} : { sidebarOpen }),
 		...(sidebarWidth === undefined ? {} : { sidebarWidth }),

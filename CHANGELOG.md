@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- A chat that finishes or asks a question while you can't see it, because visual-omp is in the background or another chat, Home or a page is on screen, now counts as unopened until you open it. The Dock icon on macOS and the taskbar button on Windows show how many chats are unopened, also while you work in another chat, and the count drops as you open them; focusing the window alone no longer clears it. In Current chats, unopened chats come first with a teal mark and a stronger title, separated from the chats you have already seen, and the project lists, Home and project overviews mark them too. Unopened chats stay marked after you restart visual-omp. The count shows even when **Alert me in the background** (Settings → Sounds & alerts) is off; that setting still controls the banners, the Dock bounce and the taskbar flash, which happen only while visual-omp is in the background.
+
 ## [0.6.4] - 2026-10-26
 
 visual-omp 0.6.4 starts chats from the New chat button and Home in the temporary folder instead of the last project you used.

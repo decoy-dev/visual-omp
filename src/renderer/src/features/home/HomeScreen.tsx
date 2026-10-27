@@ -163,6 +163,7 @@ function RecentChats({ limit }: { limit: number }): ReactNode {
 function RecentRow({ session, projectName, now }: { session: SessionSummary; projectName: string; now: number }): ReactNode {
 	const { t } = useTranslation("projects");
 	const tab = useApp(state => state.tabs.find(entry => entry.sessionFile === session.file) ?? null);
+	const unseen = useApp(state => (tab ? state.unseenChats[tab.id] : undefined));
 	const view = useSessionView(controllerFor(tab?.id));
 	const status = chatStatus(view);
 	const title = chatTitle(view, session.title) ?? session.preview ?? t("overview.recent.untitled");
@@ -177,8 +178,8 @@ function RecentRow({ session, projectName, now }: { session: SessionSummary; pro
 					focusRing,
 				)}
 			>
-				<ChatStatusMark status={status} label={t(`overview.recent.status.${status}`)} />
-				<span className="min-w-0 flex-1 truncate text-md text-fg">{title}</span>
+				<ChatStatusMark status={status} label={t(`overview.recent.status.${status}`)} unseen={unseen} />
+				<span className={cn("min-w-0 flex-1 truncate text-md text-fg", unseen && "font-semibold")}>{title}</span>
 				{view?.readOnly && <Chip>{t("overview.recent.readOnly")}</Chip>}
 				<span className="flex min-w-0 max-w-[45%] shrink-0 items-center gap-1.5 text-xs text-fg-faint">
 					<ProjectDot path={session.cwd} />

@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
 	prefs: { notifications: true },
 	handlers: new Map<string, (...args: unknown[]) => unknown>(),
 	broadcast: vi.fn(),
-	dock: { setBadge: vi.fn(), bounce: vi.fn() },
+	dock: { setBadge: vi.fn(), bounce: vi.fn(() => 7), cancelBounce: vi.fn() },
 	image: { empty: false, width: 32, height: 32 },
 	notifications: [] as Array<{ title: string; emit(event: string): void; close: Mock }>,
 }));
@@ -47,6 +47,7 @@ class FakeWindow extends EventEmitter {
 	webContents = new EventEmitter();
 	focused = false;
 	minimized = false;
+	destroyed = false;
 	flashFrame = vi.fn();
 	setOverlayIcon = vi.fn();
 	restore = vi.fn();
@@ -54,7 +55,7 @@ class FakeWindow extends EventEmitter {
 	focus = vi.fn();
 	isFocused = () => this.focused;
 	isMinimized = () => this.minimized;
-	isDestroyed = () => false;
+	isDestroyed = () => this.destroyed;
 }
 
 const realPlatform = process.platform;
@@ -133,9 +134,50 @@ describe("app:attention validation", () => {
 		expect(win.setOverlayIcon).toHaveBeenCalledWith(null, "");
 	});
 
-	it("ignores positive requests while the switch is off", () => {
+	it("keeps the overlay while the switch is off without flashing", () => {
 		mocks.prefs.notifications = false;
 		attend({ count: 1, alert: true, overlay });
+		expect(win.flashFrame).not.toHaveBeenCalledWith(true);
+		expect(win.setOverlayIcon).toHaveBeenCalledWith(expect.anything(), overlay.description);
+	});
+
+	it("keeps the overlay while focused without flashing", () => {
+		win.focused = true;
+		attend({ count: 2, alert: true, overlay });
+		expect(win.flashFrame).not.toHaveBeenCalledWith(true);
+		expect(win.setOverlayIcon).toHaveBeenCalledWith(expect.anything(), overlay.description);
+	});
+
+	it("sets the overlay without flashing for a count-only update", () => {
+		attend({ count: 2, alert: false, overlay });
+		expect(win.flashFrame).not.toHaveBeenCalledWith(true);
+		expect(win.setOverlayIcon).toHaveBeenCalledWith(expect.anything(), overlay.description);
+	});
+
+	it("flashes while minimized even if the window still reports focused", () => {
+		win.focused = true;
+		win.minimized = true;
+		attend({ count: 2, alert: true, overlay });
+		expect(win.flashFrame).toHaveBeenCalledWith(true);
+		expect(win.setOverlayIcon).toHaveBeenCalledWith(expect.anything(), overlay.description);
+	});
+
+	it("stops existing flashing when notifications are disabled without clearing the overlay", () => {
+		attend({ count: 2, alert: true, overlay });
+		vi.clearAllMocks();
+		mocks.prefs.notifications = false;
+		attend({ count: 2, alert: false, overlay });
+		expect(win.flashFrame).toHaveBeenCalledWith(false);
+		expect(win.flashFrame).not.toHaveBeenCalledWith(true);
+		expect(win.setOverlayIcon).toHaveBeenCalledWith(expect.anything(), overlay.description);
+		expect(win.setOverlayIcon).not.toHaveBeenCalledWith(null, "");
+	});
+
+	it.each(["focused", "disabled"] as const)("still validates the overlay when %s", state => {
+		win.focused = state === "focused";
+		mocks.prefs.notifications = state !== "disabled";
+		mocks.image.empty = true;
+		expect(() => attend({ count: 2, alert: true, overlay })).toThrow(TypeError);
 		expect(win.flashFrame).not.toHaveBeenCalled();
 		expect(win.setOverlayIcon).not.toHaveBeenCalled();
 	});
@@ -166,10 +208,67 @@ describe("app:notify validation", () => {
 		expect(mocks.broadcast).toHaveBeenCalledWith("app:openChat", { chatId: "t1" });
 	});
 
+	it("allows a notification request while focused for Send a test", () => {
+		win.focused = true;
+		notify("visual-omp", "Test notification");
+		expect(mocks.notifications).toHaveLength(1);
+	});
+
 	it("shows nothing while the switch is off", () => {
 		mocks.prefs.notifications = false;
 		notify("Fix checkout", "Finished", "t1");
 		expect(mocks.notifications).toHaveLength(0);
+	});
+});
+
+describe("Dock attention", () => {
+	beforeEach(() => load("darwin"));
+
+	it.each([
+		["focused", true, false, true, false],
+		["disabled", false, false, false, false],
+		["background", false, false, true, true],
+		["minimized", true, true, true, true],
+	] as const)("keeps the badge when %s and only bounces for enabled background alerts", (_name, focused, minimized, notifications, bounces) => {
+		win.focused = focused;
+		win.minimized = minimized;
+		mocks.prefs.notifications = notifications;
+		attend({ count: 2, alert: true, overlay: null });
+		expect(mocks.dock.setBadge).toHaveBeenCalledWith("2");
+		if (bounces) expect(mocks.dock.bounce).toHaveBeenCalledWith("informational");
+		else expect(mocks.dock.bounce).not.toHaveBeenCalled();
+	});
+
+	it("updates the badge without bouncing for a count-only update", () => {
+		attend({ count: 2, alert: false, overlay: null });
+		expect(mocks.dock.setBadge).toHaveBeenCalledWith("2");
+		expect(mocks.dock.bounce).not.toHaveBeenCalled();
+	});
+
+	it("cancels the previous bounce before starting another", () => {
+		attend({ count: 1, alert: true, overlay: null });
+		attend({ count: 2, alert: true, overlay: null });
+		expect(mocks.dock.cancelBounce).toHaveBeenCalledWith(7);
+		expect(mocks.dock.bounce).toHaveBeenCalledTimes(2);
+	});
+
+	it("clears the badge and cancels bouncing on a zero count", () => {
+		attend({ count: 2, alert: true, overlay: null });
+		vi.clearAllMocks();
+		attend({ count: 0, alert: true, overlay: null });
+		expect(mocks.dock.setBadge).toHaveBeenLastCalledWith("");
+		expect(mocks.dock.cancelBounce).toHaveBeenCalledWith(7);
+		expect(mocks.dock.bounce).not.toHaveBeenCalled();
+	});
+
+	it("stops bouncing when notifications are disabled without clearing the badge", () => {
+		attend({ count: 2, alert: true, overlay: null });
+		vi.clearAllMocks();
+		mocks.prefs.notifications = false;
+		attend({ count: 2, alert: false, overlay: null });
+		expect(mocks.dock.cancelBounce).toHaveBeenCalledWith(7);
+		expect(mocks.dock.setBadge).toHaveBeenLastCalledWith("2");
+		expect(mocks.dock.bounce).not.toHaveBeenCalled();
 	});
 });
 
@@ -199,7 +298,6 @@ describe("retained notifications", () => {
 
 describe("window lifecycle", () => {
 	it.each([
-		["focus", (target: FakeWindow) => target.emit("focus")],
 		["a reload", (target: FakeWindow) => target.webContents.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false })],
 		["renderer loss", (target: FakeWindow) => target.webContents.emit("render-process-gone", {}, { reason: "crashed" })],
 		["closing", (target: FakeWindow) => target.emit("closed")],
@@ -213,7 +311,6 @@ describe("window lifecycle", () => {
 	});
 
 	it.each([
-		["focus", (target: FakeWindow) => target.emit("focus")],
 		["a reload", (target: FakeWindow) => target.webContents.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false })],
 		["renderer loss", (target: FakeWindow) => target.webContents.emit("render-process-gone", {}, { reason: "crashed" })],
 		["closing", (target: FakeWindow) => target.emit("closed")],
@@ -224,6 +321,7 @@ describe("window lifecycle", () => {
 		expect(mocks.dock.bounce).toHaveBeenCalledWith("informational");
 		trigger(win);
 		expect(mocks.dock.setBadge).toHaveBeenLastCalledWith("");
+		expect(mocks.dock.cancelBounce).toHaveBeenCalledWith(7);
 	});
 
 	it("keeps in-page navigation from clearing", async () => {
@@ -232,13 +330,38 @@ describe("window lifecycle", () => {
 		expect(win.flashFrame).not.toHaveBeenCalled();
 	});
 
-	it("ignores a positive update that arrives after the window gained focus", async () => {
-		await load("darwin");
+	it("stops taskbar flashing on focus without clearing the overlay", async () => {
+		await load("win32");
+		attend({ count: 2, alert: true, overlay });
+		vi.clearAllMocks();
 		win.focused = true;
 		win.emit("focus");
+		expect(win.flashFrame).toHaveBeenCalledWith(false);
+		expect(win.setOverlayIcon).not.toHaveBeenCalled();
+		attend({ count: 1, alert: true, overlay });
+		expect(win.setOverlayIcon).toHaveBeenCalledWith(expect.anything(), overlay.description);
+		expect(win.flashFrame).not.toHaveBeenCalledWith(true);
+	});
+
+	it("cancels the bounce on focus while retaining and accepting Dock badge updates", async () => {
+		await load("darwin");
+		attend({ count: 2, alert: true, overlay: null });
+		vi.clearAllMocks();
+		win.focused = true;
+		win.emit("focus");
+		expect(mocks.dock.cancelBounce).toHaveBeenCalledWith(7);
+		expect(mocks.dock.setBadge).not.toHaveBeenCalled();
 		attend({ count: 1, alert: true, overlay: null });
-		expect(mocks.dock.setBadge).toHaveBeenLastCalledWith("");
+		expect(mocks.dock.setBadge).toHaveBeenLastCalledWith("1");
 		expect(mocks.dock.bounce).not.toHaveBeenCalled();
+	});
+
+	it("ignores positive requests for a destroyed window", async () => {
+		await load("win32");
+		win.destroyed = true;
+		attend({ count: 2, alert: true, overlay });
+		expect(win.flashFrame).not.toHaveBeenCalled();
+		expect(win.setOverlayIcon).not.toHaveBeenCalled();
 	});
 
 	it("ignores positive updates once the window is closed, but still clears", async () => {

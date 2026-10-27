@@ -164,11 +164,11 @@ export interface AppPreferences {
 	voiceInput: boolean;
 }
 
-/** Background attention for chats that finished or need an answer while the window was unfocused (DESIGN §4.22). */
+/** Unopened chat results, including other chats in a focused window (DESIGN §4.22). */
 export interface AttentionState {
 	/** Unseen chats. 0 clears the Dock badge, the taskbar overlay and the taskbar flashing. */
 	count: number;
-	/** A chat just became unseen: bounce the Dock icon once (macOS) or flash the taskbar button (Windows). */
+	/** A chat became unseen in the background: request a bounce or flash, subject to the alerts preference. */
 	alert: boolean;
 	/** Windows taskbar overlay: a PNG data URL and its accessible description. Null removes it. */
 	overlay: { image: string; description: string } | null;

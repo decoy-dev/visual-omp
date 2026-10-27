@@ -180,6 +180,8 @@ function ChatRow(props: ChatRowProps): ReactNode {
 	const session = chat.kind === "session" ? chat.session : null;
 	const tabId = chat.tabId;
 	const tab = useApp(state => (tabId ? (state.tabs.find(entry => entry.id === tabId) ?? null) : null));
+	const unseen = useApp(state => (tabId ? state.unseenChats[tabId] : undefined));
+	const statusId = useId();
 	const primary = useApp(state => state.view === "chat" && tabId !== null && state.activeTabId === tabId);
 	const secondary = useApp(state => state.view === "chat" && tabId !== null && state.splitTabId === tabId);
 	const pinned = useApp(state => (session ? (state.prefs?.pinnedSessions.includes(session.id) ?? false) : false));
@@ -267,17 +269,19 @@ function ChatRow(props: ChatRowProps): ReactNode {
 								className="absolute inset-0 -z-10 rounded-md bg-pill shadow-(--shadow-pill)"
 							/>
 						)}
-						<ChatStatusMark status={status} label={t(`sidebar.status.${status}`)} quiet={!current && tabId !== null} />
+						<ChatStatusMark id={statusId} status={status} label={t(`sidebar.status.${status}`)} quiet={!current && tabId !== null} unseen={unseen} />
 						<button
 							type="button"
 							className={cn(
 								"flex-auto shrink-100 truncate text-left outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:outline-2 focus-visible:after:outline-ring",
 								// The title gives way first, down to 60% of a Current chats row; then the project name shrinks.
 								current ? "min-w-3/5" : "min-w-0",
+								unseen && "font-semibold text-fg",
 							)}
 							data-row-title
 							title={session?.preview ?? undefined}
 							aria-current={current && active ? "true" : undefined}
+							aria-describedby={unseen ? statusId : undefined}
 							aria-keyshortcuts={current && props.number ? `${MAC ? "Meta" : "Control"}+${props.number}` : undefined}
 							onClick={open}
 							onAuxClick={event => {
@@ -644,10 +648,18 @@ function HeaderCard({ filled, open, onEmptied }: HeaderCardProps): ReactNode {
 	);
 }
 
-/** Every open chat in the order it was opened, above Projects; hidden when no chat is open or search hides them all. */
+/** Unseen open chats appear first, with open order and shortcut numbers preserved within both groups. */
 function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): ReactNode {
 	const { t } = useTranslation("shell");
 	const tabs = useApp(state => state.tabs);
+	const unseenChats = useApp(state => state.unseenChats);
+	const reduced = useMotionReduced();
+	const { ordered, unseenCount } = useMemo(() => {
+		const unseen: CurrentChat[] = [];
+		const seen: CurrentChat[] = [];
+		for (const chat of chats) (unseenChats[chat.tabId] ? unseen : seen).push(chat);
+		return { ordered: [...unseen, ...seen], unseenCount: unseen.length };
+	}, [chats, unseenChats]);
 	const showNumbers = useModifierHeld();
 	if (chats.length === 0) return null;
 	return (
@@ -656,10 +668,18 @@ function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): Re
 				{t("sidebar.current")}
 			</SectionLabel>
 			<AnimatePresence initial={false} mode="popLayout">
-				{chats.map(chat => {
+				{ordered.map((chat, position) => {
 					const index = tabs.findIndex(tab => tab.id === chat.tabId);
 					return (
-						<motion.div key={chat.key} layout="position" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring.snappy}>
+						<motion.div
+							key={chat.key}
+							layout={reduced ? false : "position"}
+							initial={{ opacity: 0, y: reduced ? 0 : -4 }}
+							animate={{ opacity: 1, y: 0 }}
+							exit={{ opacity: 0 }}
+							transition={spring.snappy}
+						>
+							{unseenCount > 0 && position === unseenCount && <div aria-hidden className="mx-row my-1 h-px bg-border" />}
 							<ChatRow variant="current" chat={chat} now={now} number={index >= 0 && index < 9 ? index + 1 : null} showNumber={showNumbers} />
 						</motion.div>
 					);

@@ -1,7 +1,7 @@
 /**
- * What the sidebar lists, as plain data, so the sidebar and the keyboard shortcuts agree on order. "Current chats"
- * lists every open chat in the order it was opened (status changes never reorder it); ⌘1-⌘9 open its first nine
- * rows and ⌘⇧[ / ⌘⇧] step through it. "Projects" lists every chat, open or saved, under its project.
+ * Sidebar rows in stable open order, which also defines numbered shortcuts and chat cycling. Current chats
+ * visually groups unseen results first without changing those numbers. Projects lists every chat, open or
+ * saved, under its project.
  */
 import type { ProjectSummary, SessionSummary } from "@shared/ipc";
 

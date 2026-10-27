@@ -1,39 +1,42 @@
-/**
- * Background attention (DESIGN §4.22): the chats that finished a turn or started waiting for an
- * answer while the window was in the background, and the taskbar overlay badge that counts them.
- */
+/** Unopened chat results and the taskbar overlay that counts them (DESIGN §4.22). */
+export type UnseenKind = "finished" | "needsInput";
+export type UnseenChats = Record<string, UnseenKind>;
 
-/** What a chat event did to the unseen set. */
-export type UnseenResult =
-	/** The window has focus or the notifications switch is off: no notification, badge or alert. */
-	| "ignored"
-	/** The chat was already unseen: notify again, but the count and the one-time alert stay as they are. */
-	| "repeat"
-	/** The chat became unseen: the count grew, so bounce the Dock icon or flash the taskbar button once. */
-	| "new";
+export interface ChatVisibility {
+	focused: boolean;
+	openChatIds: readonly string[];
+	shownChatIds: readonly string[];
+}
 
-/** Counts chats, so a chat that finishes twice before the user looks counts once. */
-export class UnseenChats {
-	#chats = new Set<string>();
+/** Both split halves count as shown, unless a page, overview or expanded side panel covers them. */
+export function shownChatIds(view: string, primary: string | null, secondary: string | null, covered = false): string[] {
+	return view === "chat" && !covered ? [primary, secondary].filter((id): id is string => id !== null) : [];
+}
 
-	get count(): number {
-		return this.#chats.size;
+/** A closed chat is forgotten; a shown chat is read only while the window has focus. */
+export function reconcileUnseen(chats: UnseenChats, context: ChatVisibility): UnseenChats {
+	let next = chats;
+	for (const id of Object.keys(chats)) {
+		if (context.openChatIds.includes(id) && !(context.focused && context.shownChatIds.includes(id))) continue;
+		if (next === chats) next = { ...chats };
+		delete next[id];
 	}
+	return next;
+}
 
-	/** Record that `chatId` finished or needs an answer. */
-	record(chatId: string, context: { focused: boolean; enabled: boolean }): UnseenResult {
-		if (context.focused || !context.enabled) return "ignored";
-		if (this.#chats.has(chatId)) return "repeat";
-		this.#chats.add(chatId);
-		return "new";
-	}
+/** The badge tracks results independently of the background-alert preference. */
+export function recordUnseen(chats: UnseenChats, chatId: string, kind: UnseenKind, context: ChatVisibility): UnseenChats {
+	if (!context.openChatIds.includes(chatId) || (context.focused && context.shownChatIds.includes(chatId))) return chats;
+	if (chats[chatId] === kind) return chats;
+	return { ...chats, [chatId]: kind };
+}
 
-	/** Forget every chat (the window gained focus or the switch went off). True when the count changed. */
-	clear(): boolean {
-		if (this.#chats.size === 0) return false;
-		this.#chats.clear();
-		return true;
-	}
+/** Disk data is checked per entry and restricted to the tabs that can be restored. */
+export function restoreUnseen(value: unknown, openChatIds: readonly string[]): UnseenChats {
+	if (typeof value !== "object" || value === null || Array.isArray(value)) return {};
+	return Object.fromEntries(
+		Object.entries(value).filter(([id, kind]) => openChatIds.includes(id) && (kind === "finished" || kind === "needsInput")),
+	) as UnseenChats;
 }
 
 /** Text of the taskbar overlay badge: the count up to nine, then "9+" so it stays legible at 16px. */

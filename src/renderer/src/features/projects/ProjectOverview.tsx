@@ -320,6 +320,7 @@ function RecentChats({ sessions }: { sessions: SessionSummary[] | undefined }): 
 function RecentRow({ session, now, ref }: { session: SessionSummary; now: number; ref?: Ref<HTMLLIElement> }): ReactNode {
 	const { t } = useTranslation("projects");
 	const tab = useApp(state => state.tabs.find(entry => entry.sessionFile === session.file) ?? null);
+	const unseen = useApp(state => (tab ? state.unseenChats[tab.id] : undefined));
 	const view = useSessionView(controllerFor(tab?.id));
 	const status = chatStatus(view);
 	const title = chatTitle(view, session.title) ?? session.preview ?? t("overview.recent.untitled");
@@ -339,8 +340,8 @@ function RecentRow({ session, now, ref }: { session: SessionSummary; now: number
 				title={session.preview ?? undefined}
 				className="flex h-10 w-full items-center gap-3 rounded-md px-2 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
 			>
-				<ChatStatusMark status={status} label={statusLabel} />
-				<span className="min-w-0 flex-1 truncate text-md font-medium text-fg">{title}</span>
+				<ChatStatusMark status={status} label={statusLabel} unseen={unseen} />
+				<span className={cn("min-w-0 flex-1 truncate text-md text-fg", unseen ? "font-semibold" : "font-medium")}>{title}</span>
 				{view?.readOnly && <Chip>{t("overview.recent.readOnly")}</Chip>}
 				<span className="shrink-0 font-mono text-xs text-fg-faint">{shortAgo(session.updatedAt, now)}</span>
 			</button>
