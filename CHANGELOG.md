@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- On macOS, Settings › Sounds & alerts now includes help for a missing Dock count: open System Settings › Notifications › visual-omp and turn on Allow notifications and Badge application icon.
+
 ## [0.6.6] - 2026-10-27
 
 visual-omp 0.6.6 marks unopened chats with a blue dot, so they stand apart from open chats.

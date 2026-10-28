@@ -283,7 +283,7 @@
 				"linux": "Sends a desktop notification when a chat finishes or needs your answer while the window is in the background."
 			}
 		},
-		"macNote": "With background alerts on, the Dock icon bounces once for each newly unseen chat in the background. Notification banners are unavailable in the current macOS build.",
+		"macNote": "With background alerts on, the Dock icon bounces once for each newly unseen chat in the background. If the Dock count is missing, open System Settings › Notifications › visual-omp and turn on Allow notifications and Badge application icon. Notification banners are unavailable in the current macOS build.",
 		"test": {
 			"description": "Check that notifications show up on this computer.",
 			"button": "Send a test",
