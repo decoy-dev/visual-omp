@@ -4,6 +4,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- Tables in chats no longer squeeze a column until its words split across lines, as in "Col / our". Columns keep whole words, headers can wrap so a long header over short values leaves room for the text columns, and long links and code paths still wrap inside their cell. A word too long for the chat makes the table scroll sideways instead.
 - On macOS, Settings › Sounds & alerts now includes help for a missing Dock count: open System Settings › Notifications › visual-omp and turn on Allow notifications and Badge application icon.
 
 ## [0.6.6] - 2026-10-27

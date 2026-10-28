@@ -407,14 +407,23 @@
 	padding: 8px 12px;
 	text-align: left;
 	vertical-align: top;
+	/* `anywhere` (inherited from .tr-md) lets a cell shrink to one letter, so the table's auto layout squeezed short
+	 * columns until their words split ("Col / our"). `break-word` still breaks a word that can't fit, but normal word
+	 * widths are preserved during column sizing. */
+	overflow-wrap: break-word;
 }
 
+/* Long links and code (paths, URLs) may still break anywhere, so they don't widen the table into a sideways scroll. */
+.tr-md :is(th, td) :is(a, code) {
+	overflow-wrap: anywhere;
+}
+
+/* Headers wrap at spaces like the cells, so a long header over short values doesn't take width the text columns need. */
 .tr-md th {
 	background: var(--bg-inset);
 	color: var(--fg-muted);
 	font-size: 12px;
 	font-weight: 600;
-	white-space: nowrap;
 }
 
 .tr-md tbody td {
