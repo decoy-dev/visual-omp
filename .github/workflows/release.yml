@@ -57,7 +57,48 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npm run dist:mac
+      # Every release is signed with the project's own certificate, so each release keeps one code signing identity
+      # (scripts/sign-mac.mjs). macOS records permissions people grant visual-omp against that identity; an ad hoc
+      # signed release would get a new one. A missing certificate therefore stops the release, and the signed apps
+      # are checked for the expected certificate. The certificate goes into a temporary keychain that this step
+      # creates and deletes; electron-builder's own CSC_LINK import is not used.
+      - name: Build and sign the macOS installers
+        env:
+          MAC_SIGNING_P12: ${{ secrets.MAC_SIGNING_P12 }}
+          MAC_SIGNING_P12_PASSWORD: ${{ secrets.MAC_SIGNING_P12_PASSWORD }}
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+          VOMP_MAC_IDENTITY: visual-omp code signing
+          VOMP_MAC_CERT_SHA1: 078ca0c88536695e0c46e2b61b43f565783af802
+        run: |
+          if [ -z "$MAC_SIGNING_P12" ] || [ -z "$MAC_SIGNING_P12_PASSWORD" ]; then
+            echo "::error::The MAC_SIGNING_P12 and MAC_SIGNING_P12_PASSWORD secrets are required to sign macOS releases."
+            exit 1
+          fi
+          umask 077
+          work="$(mktemp -d "$RUNNER_TEMP/signing.XXXXXX")"
+          keychain="$work/signing.keychain-db"
+          keychain_password="$(openssl rand -hex 24)"
+          cleanup() {
+            security delete-keychain "$keychain" 2>/dev/null || true
+            rm -rf "$work"
+          }
+          trap cleanup EXIT
+          printf '%s' "$MAC_SIGNING_P12" | base64 -d > "$work/signing.p12"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security import "$work/signing.p12" -k "$keychain" -P "$MAC_SIGNING_P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain" > /dev/null
+          rm "$work/signing.p12"
+          CSC_KEYCHAIN="$keychain" npm run dist:mac
+          for app in release/mac*/visual-omp.app; do
+            requirement="$(codesign -dr - "$app" 2>&1)"
+            echo "$app: $requirement"
+            case "$requirement" in
+              *"certificate root = H\"$VOMP_MAC_CERT_SHA1\""*) ;;
+              *) echo "::error::$app is not signed with the visual-omp certificate"; exit 1 ;;
+            esac
+          done
       - uses: actions/upload-artifact@v4
         with:
           name: macos-installers

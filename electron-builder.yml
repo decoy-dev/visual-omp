@@ -32,9 +32,12 @@ mac:
   category: public.app-category.developer-tools
   # Ad-hoc sign the whole bundle. Without an identity, electron-builder skips signing and ships only
   # Electron's linker signature, which macOS rejects as "damaged" once the app is quarantined.
-  # Disable hardened runtime for compatibility with ad-hoc signed native modules.
-  # This also gives up runtime protections against code injection and library loading.
+  # Release builds swap in the project's own certificate in `scripts/sign-mac.mjs` (VOMP_MAC_IDENTITY),
+  # so every release keeps one designated requirement, which is meant to keep macOS permissions across updates.
+  # Hardened runtime stays off for local ad hoc builds and for release builds alike, as it was before the
+  # certificate. This also gives up runtime protections against code injection and library loading.
   identity: "-"
+  sign: ./scripts/sign-mac.mjs
   hardenedRuntime: false
   icon: build/icon.icns
   target:

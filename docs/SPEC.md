@@ -14,8 +14,11 @@ be able to use it, and it exposes the features that set omp apart from other cod
   stable versions (see docs/RELEASING.md). The cask requires Homebrew 6.0.16 or later. Installer
   copies on Windows suggest switching to Scoop in their update window, because Scoop updates run
   without the setup wizard.
-- **Signing:** ad-hoc signed (no Apple Developer ID). macOS can report a quarantined ad-hoc signed
-  copy as damaged with no way to approve it, so the Homebrew cask removes the quarantine attribute
+- **Signing:** macOS releases are signed with the project's own self-signed certificate (no Apple
+  Developer ID), so every release keeps one designated requirement; this is meant to keep
+  permissions such as App Management across updates (see docs/RELEASING.md). Local builds are
+  ad-hoc signed. macOS can report a quarantined copy that Apple has not notarized as damaged with no
+  way to approve it, so the Homebrew cask removes the quarantine attribute
   from the installed app bundle after installation, upgrade or reinstallation. This bypasses the
   approval check triggered by quarantine, which the owner accepted on 2026-10-12; Homebrew still
   verifies each download against the checksum in the cask. The README documents the macOS
