@@ -4,18 +4,44 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-10-29
+
+visual-omp 0.6.8 warns you when omp switches to a fallback model and fixes several problems with newer omp versions.
+
+### Highlights
+
+- **New:** The chat shows a warning when omp falls back to another model.
+- **Fixed:** Permission settings load again when omp uses Ask and remember, and approval cards keep one-time approval as the main choice.
+- **Fixed:** Claude Opus 5.5 narration between steps appears as reply text instead of hidden thinking.
+- **Fixed:** Finished background commands no longer show as running.
+- **Improved:** Startup failures now show recognized error messages from omp.
+- **Changed:** Chats that visual-omp runs turn off omp features the app cannot display yet, such as interim replies, charts and predictions.
+
+### Detailed changes
+
+#### New
+
 - When omp records a model fallback, the chat now shows a warning at the switch, naming the destination and the source model when recorded. It quotes an error only when omp explicitly ties that error to the model recovery. Provider-reported fallbacks within a reply also show a warning. Screen readers announce each new switch once; loaded history and reconnect snapshots stay silent, and saving a streamed fallback does not repeat its announcement. The model button beneath the message box marks the fallback model with **Fallback**, and its tooltip names the original model when recorded. Replies from a different model receive their own header. Manual model switches and account rotation within the same provider keep their existing presentation. omp does not include the fallback reason in saved model changes or send its reason-bearing fallback event through the connection visual-omp uses, so the warning includes a reason only when an explicitly attributed error provides one.
+
+#### Improved
+
+- When omp fails during startup, the banner now shows recognized error messages, such as a missing saved chat file or an unavailable model, limited to eight lines and 1,200 characters. When omp reports that the requested saved chat file is missing, **Start a fresh chat** opens a new chat in the same folder instead of retrying the missing file.
+- The slash command list now includes omp 18.14's command updates while retaining commands supported by older versions. It adds `/local` and `/forget-approvals`, and `/subagents` now opens the Tasks pane like `/hub`. The `/context` description and command guide now reflect omp's read-only context viewer, shown in the terminal sheet on newer versions. Older versions continue to show a report in the chat.
+- Helper definitions now follow omp 18.11's rules. The helper editor no longer shows an empty or malformed tool list as access to every tool, visual-omp no longer adds `yield` to the tools it reads, and editing or duplicating a helper keeps its `structured` setting and output schema. A new **Return structured results** switch sets `structured` for omp 18.11 or later. The editor notes that earlier omp versions may treat malformed tool lists as default tools and add `yield`.
+
+#### Fixed
+
 - Permission settings now work with omp's **Ask and remember** mode (omp 18.12.3 or later). Previously, choosing that mode in omp stopped the permission button beneath the message box and the permission settings from loading. Settings, project settings and the permission button now offer **Ask and remember** when the installed omp supports it, and Settings › Permissions can forget remembered approvals through omp's own command. A permission mode the app does not recognize is shown with an explanation and left unchanged.
 - Approval cards now recognize omp's broader approval choices, such as approving a tool for the rest of the session or approving a whole file or folder. One-time approval stays the main action and keeps keyboard focus, and broader approvals appear as separate buttons with omp's exact wording. Previously these requests appeared as a general question whose preselected answer could approve a whole folder. With omp 18.11 or later, the card also explains that sending a message denies the pending request.
 - With Claude Opus 5.5, text that omp marks as narration between tool calls now appears as reply text instead of folded thinking, in every transcript view and in helper conversations. It also receives file links, reply pacing and screen-reader announcements, and the activity label shows writing while it streams.
 - Background commands no longer appear to keep running after they finish. Since omp 18.10.2, a command sent to the background keeps reporting after its tool card settles, and those late reports marked finished jobs as running. The Tasks pane now shows the state omp reports, its count and the Tasks button in the chat header count only running jobs, and late output no longer counts as foreground activity. Cancelled background commands show a neutral badge instead of a green one.
 - Saved, followed and live chats now preserve omp's current branch when a late result or usage record names a different active leaf (omp 18.12.4 or later). The session tree uses the same rule for its current marker and navigation order. The session index now skips symbolic links to project session folders, preventing duplicate chat listings.
-- The slash command list now includes omp 18.14's command updates while retaining commands supported by older versions. It adds `/local` and `/forget-approvals`, and `/subagents` now opens the Tasks pane like `/hub`. The `/context` description and command guide now reflect omp's read-only context viewer, shown in the terminal sheet on newer versions. Older versions continue to show a report in the chat.
-- Helper definitions now follow omp 18.11's rules. The helper editor no longer shows an empty or malformed tool list as access to every tool, visual-omp no longer adds `yield` to the tools it reads, and editing or duplicating a helper keeps its `structured` setting and output schema. A new **Return structured results** switch sets `structured` for omp 18.11 or later. The editor notes that earlier omp versions may treat malformed tool lists as default tools and add `yield`.
-- Chats opened directly in your home folder or in a shared temporary folder such as `/tmp` no longer offer project helpers or project skill installs. visual-omp applies omp 18.11's helper and skill discovery limits across all supported omp versions, including older versions that may load definitions from those folders. Subfolders keep project scope.
 - When omp reports that another app, such as Tern, manages its installation, the omp row in Settings › About now names that app with **Managed by** and offers no **Update omp** button. Previously, the update check reported that it could not recognize omp's output.
+
+#### Changed
+
 - Chats that visual-omp runs now disable interim replies written to `out://` and stop advertising SVG pictures and table charts that the app cannot display yet. They also disable next-message predictions and idle recaps, avoiding extra model requests for results the app does not display. Automatic worktree creation is disabled at startup, and existing worktrees are kept at exit, so startup cannot move the chat to an unsupported folder and shutdown does not wait for an unseen worktree question. These settings apply only to chats the app runs; separately launched terminal sessions are unaffected.
-- When omp fails during startup, the banner now shows recognized error messages, such as a missing saved chat file or an unavailable model, limited to eight lines and 1,200 characters. When omp reports that the requested saved chat file is missing, **Start a fresh chat** opens a new chat in the same folder instead of retrying the missing file.
+- Chats opened directly in your home folder or in a shared temporary folder such as `/tmp` no longer offer project helpers or project skill installs. visual-omp applies omp 18.11's helper and skill discovery limits across all supported omp versions, including older versions that may load definitions from those folders. Subfolders keep project scope.
 
 ## [0.6.7] - 2026-10-29
 
