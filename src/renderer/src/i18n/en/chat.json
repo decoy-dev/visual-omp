@@ -17,6 +17,7 @@
 	"exited": "omp stopped{{code}}.",
 	"exitedCode": " (exit {{code}})",
 	"restartOmp": "Start omp again",
+	"startFreshChat": "Start a fresh chat",
 	"follow": {
 		"unreadable": "This view stopped updating because the chat file could not be read ({{error}}). It shows what loaded before that.",
 		"unknownError": "unknown error",

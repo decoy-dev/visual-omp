@@ -103,6 +103,10 @@ export interface HostState {
 	sessionFile: string | null;
 	pid: number | null;
 	exitCode: number | null;
+	/** Bounded startup diagnostic, before omp connected or accepted input; never a live terminal dump. */
+	exitReason?: string | null;
+	/** A startup diagnostic reported that the requested resume file does not exist. */
+	resumeFileMissing?: boolean;
 	error: string | null;
 	/** null when the TUI debug socket is unavailable. */
 	tui: TuiFocus | null;

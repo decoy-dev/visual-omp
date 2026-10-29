@@ -361,7 +361,7 @@ Status text explains read-only access, stopped or reconnecting omp, pending ques
 
 - **Layout**: up to 760px wide and centered, with 24px gutters and message gaps. Transcript updates use `aria-live="off"` while paced content is rendered. A single polite screen-reader announcement follows each completed assistant reply. New Markdown blocks fade in once. Hidden chats continue ingesting state but pause presentation.
 - **Banners** above the transcript:
-  - "omp stopped (exit N)." with [Start omp again]
+  - "omp stopped (exit N)." with [Start omp again]. A nonzero startup failure can show a recognized diagnostic below it, limited to eight lines and 1,200 characters; live terminal contents and composer drafts are excluded. A startup diagnostic naming the missing resume file replaces that action with [Start a fresh chat], which uses the same folder.
   - "Reconnecting to omp…" (warn)
   - "Showing the saved chat. omp starts when you send a message." (info)
   - For a chat open in another window, a follow row with a live dot: "Open in another window. This view updates as that window works; reply from there."

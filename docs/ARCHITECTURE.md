@@ -85,6 +85,12 @@ Each SessionHost:
    read the status line from the painted screen, so the overlay replaces the user's status line
    settings. A theme's symbol overrides still apply after the preset and can change the glyphs
    the parser looks for. The user's own `config.yml` is never modified for this.
+   The overlay also disables terminal-only features the app cannot display: `out.enabled: false`,
+   `tui.renderSvg: false`, `tui.autoGraph: "off"`, `composer.predictions: false` and
+   `recap.enabled: false`. `worktree.onStart: "off"` keeps the chat in its chosen folder and
+   `worktree.onExit: "keep"` avoids an unseen shutdown question. These are process-only settings;
+   older omp releases retain unknown overlay keys without using them. Version 0.7 replaces the
+   out, SVG and chart pins with native reply, SVG and table-chart rendering.
 3. When the omp host connects to the relay (`/r/<roomId>?role=host`), SessionHost resolves the
    room key with `omp collab list --json` + `omp collab link <instanceId> --json`, matching the
    link's room id, and hands the control link to the renderer. The registry pid is not always the
@@ -108,6 +114,16 @@ Each SessionHost:
    terminal sheet stays closed for them. `docs/COMMANDS.md` lists every command's handling.
 6. `/restart`, `/new`, `/resume`, branching and forking start a new collab room (new generation);
    SessionHost re-resolves the link and the renderer reconnects.
+   omp 18.13 and later also rotate the room when a conversation continues in a sibling file, so
+   reconnect updates the tab's saved file. Earlier omp versions can keep the original room and
+   leave tree, rewind and fork on the old file. The app does not infer a live host's destination
+   from sibling `continuationOf` headers: another process can create one while this host keeps
+   writing its original file. Version 0.7 requires omp 18.14 and removes this limitation.
+   A nonzero startup exit can retain recognized diagnostic lines above the editor, bounded to
+   eight lines and 1,200 characters. Capture stops when the host connects, input is sent or the
+   debug channel reports interactive focus. Live terminal output, composer drafts and status
+   chrome are excluded. A startup diagnostic naming the requested missing resume file offers a
+   fresh chat in the same folder.
 
 ## Process boundaries
 - **Main** owns every subprocess, file system access and network socket. Renderer is sandboxed,

@@ -48,6 +48,9 @@ const LINK_RETRY_MS = 250;
 const LINK_RETRY_LIMIT = 40;
 const FOCUS_POLL_MS = 500;
 const STOP_GRACE_MS = 4000;
+const STARTUP_DIAGNOSTIC_MAX_LINES = 8;
+const STARTUP_DIAGNOSTIC_MAX_CHARS = 1200;
+const STARTUP_DIAGNOSTIC = /^(?:Error:\s*|Session file not found:\s*|Could not restore model\s+|Model (?:unavailable:\s*|.+ (?:not found|unavailable)\b)|No models available\.)/;
 
 export class SessionHost {
 	readonly id = randomUUID();
@@ -63,6 +66,9 @@ export class SessionHost {
 	#focusTimer: NodeJS.Timeout | null = null;
 	#exited: Promise<void>;
 	#markExited: () => void;
+	#lastExitReason: string | null = null;
+	#startupComplete = false;
+	#startupResumeFileMissing = false;
 	state: HostState;
 
 	constructor(options: HostStartOptions) {
@@ -84,6 +90,8 @@ export class SessionHost {
 			sessionFile: options.resumeFile ?? null,
 			pid: null,
 			exitCode: null,
+			exitReason: null,
+			resumeFileMissing: false,
 			error: null,
 			tui: null,
 			cols,
@@ -96,7 +104,10 @@ export class SessionHost {
 			const [bin, env] = await Promise.all([ompPath(), userEnv()]);
 			await this.#relay.start();
 			this.#relay.events = {
-				onHostOpen: roomId => void this.#resolveLink(roomId),
+				onHostOpen: roomId => {
+					this.#finishStartup();
+					void this.#resolveLink(roomId);
+				},
 				onHostClose: roomId => this.#onRoomClosed(roomId),
 			};
 			// Owner-only directory: the debug socket accepts keystrokes, so nobody else may reach it.
@@ -124,7 +135,10 @@ export class SessionHost {
 			}
 			this.#debug = new TuiDebugClient(debugPath);
 			this.#pty.onData(data => {
-				this.#screen.write(data);
+				this.#screen.write(data, () => {
+					// Keep only recognized startup diagnostics, never the live transcript or editor.
+					if (!this.#startupComplete) this.#rememberStartupDiagnostic();
+				});
 				broadcast("host:data", { hostId: this.id, data });
 			});
 			this.#pty.onExit(({ exitCode }) => void this.#onExit(exitCode));
@@ -144,6 +158,24 @@ export class SessionHost {
 			// A marker-sized paste followed by Enter becomes an attachment chip; never open the local paste menu.
 			paste: { largeMenuThreshold: 0 },
 			marketplace: { autoUpdate: "off" },
+			// omp 18.14.0: out:// output is hidden; remove once native interim replies render it.
+			out: { enabled: false },
+			tui: {
+				// omp 18.7.0: SVG is code-only; remove once native SVG previews render these fences.
+				renderSvg: false,
+				// omp 18.8.0: TUI charts are hidden; remove once native table charts render them.
+				autoGraph: "off",
+			},
+			worktree: {
+				// omp 18.8.6: remove once native startup worktree selection follows the chat's folder.
+				onStart: "off",
+				// omp 18.8.6: remove once native exit choices can finish before shutdown.
+				onExit: "keep",
+			},
+			// omp 18.9.0: avoid hidden paid predictions; remove once native predictions can be displayed and accepted.
+			composer: { predictions: false },
+			// omp 18.4.6: avoid hidden recap requests; remove once transcript recap notices display their results.
+			recap: { enabled: false },
 			// The app reads this TUI's status line from the editor border (renderer session-tools/screen.ts),
 			// so it pins the format that parser reads over the user's status line settings. A theme's
 			// symbol overrides still apply after the preset and can change those glyphs.
@@ -159,6 +191,7 @@ export class SessionHost {
 
 	/** Raw bytes to the TUI (terminal sheet keystrokes). */
 	write(data: string): void {
+		this.#finishStartup();
 		this.#pty?.write(data);
 	}
 
@@ -168,10 +201,12 @@ export class SessionHost {
 	 * `steer` (Enter) interrupts a running turn at the next safe point; `followUp` (Ctrl+Q) waits for the yield.
 	 */
 	submit(text: string, mode: "steer" | "followUp" = "steer"): void {
+		this.#finishStartup();
 		this.#pty?.write(`\x1b[200~${text}\x1b[201~${mode === "followUp" ? "\x11" : "\r"}`);
 	}
 
 	async keys(keys: string): Promise<void> {
+		this.#finishStartup();
 		if (!this.#debug) throw new Error("omp is not running");
 		await this.#debug.keys(keys);
 	}
@@ -189,9 +224,11 @@ export class SessionHost {
 
 	/** Learn the session file once omp creates it (new chats) so reattaching renderers can match it. */
 	async refreshSessionFile(): Promise<void> {
-		if (this.state.sessionFile || !this.state.sessionId || this.state.phase === "exited") return;
-		const file = await findSessionFile(this.state.sessionId);
-		if (file) this.#update({ sessionFile: file });
+		const initial = this.state;
+		if (initial.sessionFile || !initial.sessionId || initial.phase === "exited") return;
+		const file = await findSessionFile(initial.sessionId);
+		if (this.state !== initial || !file) return;
+		this.#update({ sessionFile: file });
 	}
 
 	resize(cols: number, rows: number): void {
@@ -237,6 +274,7 @@ export class SessionHost {
 					const { host, link } = found;
 					if (this.#roomId !== roomId) return;
 					const sessionFile = host.sessionId ? await findSessionFile(host.sessionId) : null;
+					if (this.#roomId !== roomId) return;
 					this.#update({
 						phase: "live",
 						link,
@@ -267,13 +305,57 @@ export class SessionHost {
 		} catch {
 			tui = null;
 		}
+		if (tui?.focused || (tui?.overlays ?? 0) > 0) this.#finishStartup();
 		if (JSON.stringify(tui) !== JSON.stringify(this.state.tui)) this.#update({ tui });
 	}
 
 	async #onExit(exitCode: number): Promise<void> {
-		this.#update({ phase: "exited", exitCode, link: null, tui: null });
+		// xterm parses writes asynchronously; flush the final error before disposing the screen.
+		const { promise, resolve } = Promise.withResolvers<void>();
+		this.#screen.write("", resolve);
+		await promise;
+		this.#roomId = null;
+		if (!this.#startupComplete) this.#rememberStartupDiagnostic();
+		const exitReason = exitCode !== 0 && !this.#startupComplete ? this.#lastExitReason : null;
+		const resumeFileMissing = exitReason !== null && this.#startupResumeFileMissing;
+		this.#update({ phase: "exited", exitCode, exitReason, resumeFileMissing, link: null, tui: null });
 		this.#markExited();
 		await this.#cleanup();
+	}
+
+	#finishStartup(): void {
+		this.#startupComplete = true;
+		this.#lastExitReason = null;
+		this.#startupResumeFileMissing = false;
+	}
+
+	/** Keep recognized diagnostics above the editor; never copy arbitrary startup output or drafts. */
+	#rememberStartupDiagnostic(): void {
+		const buffer = this.#screen.buffer.active;
+		const lines: string[] = [];
+		let wrapped = "";
+		for (let index = 0; index < buffer.length; index++) {
+			const line = buffer.getLine(index);
+			if (!line) continue;
+			if (!line.isWrapped && wrapped) {
+				lines.push(wrapped);
+				wrapped = "";
+			}
+			const text = line.translateToString(true);
+			// The pinned classic TUI editor begins here; everything below is editable or chrome.
+			if (/^\s*[╭┌┏][─━]/.test(text)) break;
+			wrapped = (wrapped + text).slice(0, STARTUP_DIAGNOSTIC_MAX_CHARS + 1);
+		}
+		if (wrapped) lines.push(wrapped);
+		const diagnostics = lines.map(line => line.trim()).filter(line => STARTUP_DIAGNOSTIC.test(line));
+		if (!diagnostics.length) return;
+		this.#startupResumeFileMissing = diagnostics.some(line => {
+			const file = /^(?:Error:\s*)?Session file not found:\s*(.+)$/.exec(line)?.[1];
+			return file !== undefined && file === this.#options.resumeFile;
+		});
+		const text = diagnostics.slice(-STARTUP_DIAGNOSTIC_MAX_LINES).join("\n");
+		this.#lastExitReason =
+			text.length > STARTUP_DIAGNOSTIC_MAX_CHARS ? `${text.slice(0, STARTUP_DIAGNOSTIC_MAX_CHARS - 1)}…` : text;
 	}
 
 	async #cleanup(): Promise<void> {

@@ -63,19 +63,25 @@ function FollowNotice({ session, follow }: { session: SessionController; follow:
 	return null;
 }
 
-function StateBanner({ session, view }: { session: SessionController; view: SessionView }): ReactNode {
+export function StateBanner({ session, view }: { session: SessionController; view: SessionView }): ReactNode {
 	const { t } = useTranslation("chat");
 	if (view.readOnly) return <FollowNotice session={session} follow={view.follow} />;
 	if (view.mode === "exited") {
 		const code = view.host?.exitCode;
+		const missingFile = view.host?.resumeFileMissing === true;
+		const reason = view.host?.exitReason ?? view.error;
 		return (
 			<Banner tone="err">
-				<span className="flex-1">
-					{t("exited", { code: code !== null && code !== undefined && code !== 0 ? t("exitedCode", { code }) : "" })}
-					{view.error && <span className="selectable ml-2 text-fg-muted">{view.error}</span>}
-				</span>
-				<Button size="sm" onClick={() => void session.ensureLive()}>
-					{t("restartOmp")}
+				<div className="min-w-0 flex-1">
+					<p>{t("exited", { code: code !== null && code !== undefined && code !== 0 ? t("exitedCode", { code }) : "" })}</p>
+					{reason && <p className="selectable mt-1 whitespace-pre-wrap break-words text-sm">{reason}</p>}
+				</div>
+				<Button
+					size="sm"
+					className="shrink-0"
+					onClick={() => void (missingFile ? useApp.getState().newChat(session.projectPath) : session.ensureLive())}
+				>
+					{t(missingFile ? "startFreshChat" : "restartOmp")}
 				</Button>
 			</Banner>
 		);
