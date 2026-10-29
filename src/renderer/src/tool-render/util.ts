@@ -120,6 +120,8 @@ const EXT_TO_LANG: Record<string, string> = {
 	scss: "scss",
 	less: "less",
 	json: "json",
+	jsonl: "json",
+	ndjson: "json",
 	jsonc: "json",
 	json5: "json",
 	yaml: "yaml",
@@ -137,8 +139,26 @@ const EXT_TO_LANG: Record<string, string> = {
 	patch: "diff",
 };
 
+/** Read selectors percent-decode jq without turning its `+` operator into a space. */
+export function splitReadQuery(rawPath: string): { path: string; query: string | null } {
+	const index = rawPath.indexOf("?");
+	if (index < 0 || /^https?:\/\//i.test(rawPath)) return { path: rawPath, query: null };
+	// Image questions and SQLite SQL selectors also use `q`; neither is a jq filter.
+	if (/(?::img|:page\d+\.png|\.(?:png|jpe?g|gif|webp|bmp|tiff?|svg|heic|heif|avif|ico|mp4|m4v|mov|webm|mkv|avi|db|sqlite3?|db3)(?::[^?]*)?)$/i.test(rawPath.slice(0, index))) return { path: rawPath, query: null };
+	const match = /(?:^|&)(?:q|query)=([^&]*)/.exec(rawPath.slice(index + 1));
+	if (!match) return { path: rawPath, query: null };
+	const encoded = match[1] || ".";
+	let query = encoded;
+	try {
+		query = decodeURIComponent(encoded);
+	} catch {
+		// A bare percent is a valid jq modulo operator.
+	}
+	return { path: rawPath.slice(0, index), query };
+}
+
 export function languageFromPath(filePath: string): string | null {
-	const base = filePath.split(/[\\/]/).pop() ?? "";
+	const base = splitReadQuery(filePath).path.split(/[\\/]/).pop() ?? "";
 	if (/^dockerfile$/i.test(base)) return "dockerfile";
 	const ext = base.split(".").pop()?.toLowerCase() ?? "";
 	return EXT_TO_LANG[ext] ?? null;

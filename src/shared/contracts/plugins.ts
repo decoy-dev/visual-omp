@@ -158,11 +158,11 @@ export interface PluginUninstallRequest {
 
 export interface PluginUpgradeRequest {
 	/**
-	 * Marketplace id (`name@marketplace`) or bare name. Omit to upgrade every marketplace plugin.
-	 * npm/git plugins: omp v18.4 has no in-place upgrade — reinstall with `force: true` instead.
+	 * npm/git package name (including `@scope/pkg`), or marketplace id (`name@marketplace`).
+	 * omp upgrades packages from their recorded source. Omit to upgrade every marketplace plugin.
 	 */
 	id?: string;
-	/** Only upgrade this scope's install (single-id upgrades). */
+	/** Marketplace plugins only: upgrade this scope's install (single-id upgrades). */
 	scope?: PluginScope;
 	cwd?: string;
 	opId?: string;
@@ -257,7 +257,7 @@ declare module "../ipc" {
 		"plugins:install": { args: [request: PluginInstallRequest]; result: PluginInstallResult };
 		/** Uninstall an npm plugin or marketplace plugin; streams `plugins:progress`. */
 		"plugins:uninstall": { args: [request: PluginUninstallRequest]; result: PluginOperationResult };
-		/** Upgrade one marketplace plugin, or all of them when `id` is omitted; streams `plugins:progress`. */
+		/** Upgrade one npm/git or marketplace plugin; omitted `id` upgrades marketplace plugins only. Streams `plugins:progress`. */
 		"plugins:upgrade": { args: [request: PluginUpgradeRequest]; result: PluginUpgradeResult };
 		/**
 		 * Enable or disable a plugin. `name` is an npm package name or marketplace id; `scope` picks the

@@ -14,7 +14,7 @@ export function useSessionView(controller: SessionController | null): SessionVie
  * `working` is omp's own turn; `helpersWorking` is a chat whose turn has ended while helpers it started still run, so
  * it takes a message now and its finished turn has already notified.
  */
-export type ChatStatus = "working" | "helpersWorking" | "needsInput" | "live" | "idle";
+export type ChatStatus = "working" | "helpersWorking" | "needsInput" | "error" | "live" | "idle";
 
 /**
  * Waiting for an answer, then omp's turn, then helpers at work (the Tasks badge's rule, none without a running omp),
@@ -22,7 +22,9 @@ export type ChatStatus = "working" | "helpersWorking" | "needsInput" | "live" | 
  */
 export function chatStatus(view: SessionView | null): ChatStatus {
 	if (!view) return "idle";
-	if (view.guest?.uiRequest) return "needsInput";
+	const status = view.mode === "live" || view.mode === "starting" || view.mode === "reconnecting" ? view.host?.programStatus : null;
+	if (view.guest?.uiRequest || status?.state === "blocked") return "needsInput";
+	if (status?.state === "error") return "error";
 	if (view.working) return "working";
 	if (helpersAtWork(view)) return "helpersWorking";
 	return view.mode === "history" || view.mode === "exited" ? "idle" : "live";

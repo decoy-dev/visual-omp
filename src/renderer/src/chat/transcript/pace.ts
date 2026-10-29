@@ -289,7 +289,7 @@ export function synchronizedStream(phase: string | null, previousPhase: string |
  * so the saved entry that replaces the stream row continues the same reveal. Provided by the
  * transcript; without it nothing is paced.
  */
-export const PlayoutRegistry = createContext<Map<number, Playout> | null>(null);
+export const PlayoutRegistry = createContext<Map<number | string, Playout> | null>(null);
 
 /**
  * True while the chat is out of sight (under a page, or the hidden half of a narrow split). Text keeps arriving and
@@ -314,7 +314,7 @@ export interface PlayoutOptions {
  * text growing inside a block reaches only the components reading it with {@link useRevealed},
  * so tool rows and other stable siblings do not re-render on every animation frame.
  */
-export function usePlayout(key: number, blocks: readonly PlayoutBlock[], { pending, showExisting, synchronized }: PlayoutOptions): Playout | null {
+export function usePlayout(key: number | string, blocks: readonly PlayoutBlock[], { pending, showExisting, synchronized }: PlayoutOptions): Playout | null {
 	const registry = useContext(PlayoutRegistry);
 	const paused = useContext(PlayoutPaused);
 	const reduced = useMotionReduced();

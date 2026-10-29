@@ -7,6 +7,7 @@ import { useTranslation } from "react-i18next";
 import { type SheetProps, sheets } from "../registry/slots";
 import { controllerFor, useApp } from "../state/app";
 import { Button, Dialog, DialogContent, toast } from "../ui";
+import { SessionTitle } from "../ui/SessionTitle";
 import { chatTitle, useSessionView } from "./hooks";
 
 export interface TrashTarget {
@@ -42,8 +43,8 @@ export function TrashChatDialog({ open, onOpenChange, title, target }: TrashChat
 			<DialogContent
 				size="sm"
 				destructive
-				title={t("deleteChat.title", { title })}
-				description={t("deleteChat.body", { title })}
+				title={t("deleteChat.title")}
+				description={<><SessionTitle title={title} className="mb-2 text-fg" />{t("deleteChat.body")}</>}
 				footer={
 					<>
 						<Button variant="secondary" onClick={() => onOpenChange(false)}>

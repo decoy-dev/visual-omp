@@ -11,6 +11,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { AppDownload, AppInstallInfo, AppUpdateStatus, OmpUpdateRun, OmpUpdateStatus } from "@shared/contracts/updates";
+import { compareSemver } from "@shared/semver";
 import { i18n } from "../../i18n";
 import { registerCommand } from "../../registry/commands";
 import { useSheetPresence } from "../../registry/sheetPresence";
@@ -18,16 +19,25 @@ import { type SheetProps, sheets } from "../../registry/slots";
 import { allControllers, controllerFor, useApp } from "../../state/app";
 import { openSettings } from "../../state/navigation";
 import type { SessionController } from "../../state/session";
-import { Button, Dialog, DialogContent, Expand, PresenceSwap, Progress, toast, WorkingIndicator } from "../../ui";
+import { Button, Dialog, DialogContent, dismissToast, Expand, PresenceSwap, Progress, toast, WorkingIndicator } from "../../ui";
 import { focusRing } from "../../ui/styles";
-import { ipcErrorMessage as errorText } from "../manage/shared";
+import { ipcErrorMessage as errorText, useResource } from "../manage/shared";
 import { formatBytes } from "../projects/format";
 import { InlineTerminal } from "./InlineTerminal";
 import { quitAfterConfirm } from "./quit";
 import { CommandRun } from "./terminal";
+import { ReleaseNotesViewer, type ReleaseNotesView } from "./ReleaseNotesViewer";
 
 export const OMP_UPDATE_SHEET = "onboarding.ompUpdate";
 export const APP_UPDATE_SHEET = "onboarding.appUpdate";
+export const RELEASE_NOTES_SHEET = "onboarding.releaseNotes";
+let appUpdateNotice: string | null = null;
+
+export function openReleaseNotes(view: ReleaseNotesView = "pending"): void {
+	if (appUpdateNotice) dismissToast(appUpdateNotice);
+	appUpdateNotice = null;
+	useApp.getState().openSheet(RELEASE_NOTES_SHEET, { view });
+}
 
 /** How long a restarted chat may take to reconnect before it counts as failed. */
 const RESTART_CONFIRM_MS = 60_000;
@@ -284,12 +294,12 @@ export async function restartStaleChats(): Promise<void> {
 
 function announceAppUpdate(status: AppUpdateStatus): void {
 	const t = i18n.getFixedT(null, "onboarding");
-	toast({
+	appUpdateNotice = toast({
 		tone: "info",
 		sticky: true,
 		message: t("update.available", { version: status.latestVersion }),
 		description: status.summary ?? t("update.availableBody"),
-		action: { label: t("update.update"), onClick: () => void startAppUpdate() },
+		action: { label: t("update.notes.review"), onClick: () => openReleaseNotes() },
 		secondaryAction: { label: t("update.dismiss"), onClick: () => {} },
 	});
 }
@@ -308,6 +318,7 @@ async function reportOutcome(): Promise<void> {
 /** Registers the update sheet and command and listens for main's checks (shortly after launch, then every 30 minutes). */
 export function installUpdateWatchers(): void {
 	sheets.register({ id: APP_UPDATE_SHEET, component: AppUpdateSheet });
+	sheets.register({ id: RELEASE_NOTES_SHEET, component: ReleaseNotesSheet });
 	registerCommand({
 		id: "app.checkUpdates",
 		title: "onboarding:update.check.title",
@@ -501,6 +512,21 @@ function StatusLine({ text, ok = false }: { text: string; ok?: boolean }) {
 	);
 }
 
+function ReleaseNotesSheet({ close, props }: SheetProps<{ view?: ReleaseNotesView }>) {
+	const presence = useSheetPresence();
+	const status = useUpdates(state => state.app);
+	const info = useResource(() => window.vomp.invoke("app:info"), []);
+	return <ReleaseNotesViewer
+		status={status}
+		installedVersion={info.data?.version ?? null}
+		initialView={props?.view}
+		open={presence.open}
+		onExited={presence.exited}
+		close={close}
+		onUpdate={() => { close(); void startAppUpdate(); }}
+	/>;
+}
+
 /** The visual-omp update in progress: Homebrew terminal, or installer download and next steps. */
 export function AppUpdateSheet({ close }: SheetProps<undefined>) {
 	const { t } = useTranslation("onboarding");
@@ -575,19 +601,26 @@ export function AppUpdateSheet({ close }: SheetProps<undefined>) {
 				}
 			>
 				{body ?? <WorkingIndicator label={t("update.app.preparing")} />}
-				{app?.releaseUrl && (
-					<button
-						type="button"
-						className="mt-3 text-sm text-accent underline-offset-2 hover:underline"
-						onClick={() => void window.vomp.invoke("app:openExternal", app.releaseUrl ?? "")}
-					>
-						{t("update.app.releaseNotes")}
-					</button>
-				)}
+				<button
+					type="button"
+					className="mt-3 text-sm text-accent underline-offset-2 hover:underline"
+					onClick={() => openReleaseNotes()}
+				>
+					{t("update.app.releaseNotes")}
+				</button>
 				{method === "nsis" && <ScoopSuggestion />}
 			</DialogContent>
 		</Dialog>
 	);
+}
+
+/** A successful command still needs to install a supported version before setup can finish. */
+export function ompUpdateState(run: OmpUpdateRun | null, error: string | null, minimum?: string): "running" | "failed" | "unsupported" | "done" {
+	if (error) return "failed";
+	if (!run || run.finishedAt === null) return "running";
+	if (run.exitCode !== 0) return "failed";
+	if (minimum && (!run.versionAfter || compareSemver(run.versionAfter, minimum) < 0)) return "unsupported";
+	return "done";
 }
 
 /** Runs `omp update` (or attaches to a run already in progress) and streams its output. */
@@ -598,6 +631,7 @@ export function OmpUpdateSheet({ close }: SheetProps<undefined>) {
 	const [error, setError] = useState<string | null>(null);
 	const staleChats = useUpdates(state => state.staleChats.length);
 	const restartingChats = useUpdates(state => state.restartingChats);
+	const minimum = useApp(state => state.omp?.minVersion);
 	const output = useRef<HTMLPreElement>(null);
 
 	useEffect(() => {
@@ -647,8 +681,9 @@ export function OmpUpdateSheet({ close }: SheetProps<undefined>) {
 		if (element) element.scrollTop = element.scrollHeight;
 	}, [run?.output]);
 
-	const running = !error && (!run || run.finishedAt === null);
-	const failed = Boolean(error) || (run?.exitCode !== null && run?.exitCode !== undefined && run.exitCode !== 0);
+	const state = ompUpdateState(run, error, minimum);
+	const running = state === "running";
+	const failed = state === "failed" || state === "unsupported";
 	const latest = useUpdates.getState().omp?.latestVersion;
 
 	return (
@@ -671,9 +706,11 @@ export function OmpUpdateSheet({ close }: SheetProps<undefined>) {
 				}
 			>
 				<div role="status" className="mb-3 text-md">
-					<PresenceSwap swapKey={running ? "running" : failed ? "failed" : "done"} className="flex items-center gap-2">
+					<PresenceSwap swapKey={state} className="flex items-center gap-2">
 						{running ? (
 							<WorkingIndicator label={t("update.omp.running")} />
+						) : state === "unsupported" ? (
+							<StatusLine text={t("update.omp.unsupported", { version: minimum })} />
 						) : failed ? (
 							<StatusLine text={error ?? t("update.omp.failed", { code: run?.exitCode })} />
 						) : (

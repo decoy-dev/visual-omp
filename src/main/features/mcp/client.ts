@@ -20,6 +20,7 @@ import type {
 	McpToolInfo,
 	McpTransport,
 } from "@shared/contracts/mcp";
+import { requireExecutable, resolveExecutable } from "../../services/executable";
 import { expandEnvVarsDeep, JsonRecord, normalizeEntry, transportOf, validateServerConfig } from "./config";
 
 /** Latest MCP revision omp negotiates (`MCP_PROTOCOL_VERSION`). */
@@ -245,8 +246,11 @@ class StdioTransport implements Transport {
 
 	async open(): Promise<void> {
 		const windows = process.platform === "win32";
+		const shell = windows
+			? (await resolveExecutable(this.env.ComSpec ?? this.env.COMSPEC ?? "", this.env)) ?? await requireExecutable("cmd.exe", this.env)
+			: null;
 		const child = windows
-			? spawn(process.env.ComSpec ?? "cmd.exe", ["/d", "/s", "/c", `"${[this.command, ...this.args].map(cmdQuote).join(" ")}"`], {
+			? spawn(shell!, ["/d", "/s", "/c", `"${[this.command, ...this.args].map(cmdQuote).join(" ")}"`], {
 					cwd: this.cwd,
 					env: this.env,
 					stdio: ["pipe", "pipe", "pipe"],
@@ -311,10 +315,13 @@ class StdioTransport implements Transport {
 		if (!child?.pid || child.exitCode !== null || child.signalCode !== null) return;
 		child.stdin?.end();
 		const pid = child.pid;
+		const taskkill = process.platform === "win32" ? await resolveExecutable("taskkill.exe", this.env) : null;
 		const kill = (signal: NodeJS.Signals): void => {
 			try {
-				if (process.platform === "win32") execFile("taskkill", ["/pid", String(pid), "/T", "/F"], () => undefined);
-				else process.kill(-pid, signal);
+				if (process.platform === "win32") {
+					if (taskkill) execFile(taskkill, ["/pid", String(pid), "/T", "/F"], () => undefined);
+					else child.kill(signal);
+				} else process.kill(-pid, signal);
 			} catch {
 				child.kill(signal);
 			}
@@ -540,11 +547,15 @@ class LegacySseTransport implements Transport {
 // ---------------------------------------------------------------------------------------------------------------
 
 /** Run a `!command` value: trimmed stdout, or undefined on failure/timeout/blank output. */
-function runCommandValue(command: string, cwd: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
+async function runCommandValue(command: string, cwd: string, env: NodeJS.ProcessEnv): Promise<string | undefined> {
 	const windows = process.platform === "win32";
+	const shell = windows
+		? (await resolveExecutable(env.ComSpec ?? env.COMSPEC ?? "", env)) ?? await resolveExecutable("cmd.exe", env)
+		: "/bin/sh";
+	if (!shell) return undefined;
 	const { promise, resolve } = Promise.withResolvers<string | undefined>();
 	execFile(
-		windows ? (process.env.ComSpec ?? "cmd.exe") : "/bin/sh",
+		shell,
 		windows ? ["/d", "/s", "/c", command] : ["-c", command],
 		{ cwd, env, timeout: COMMAND_VALUE_TIMEOUT_MS, windowsHide: true },
 		(error, stdout) => {

@@ -23,6 +23,7 @@ import {
 	StatusDot,
 	Tooltip,
 } from "../ui";
+import { SessionTitle } from "../ui/SessionTitle";
 import { useDisplayedEntries } from "./branch";
 import type { TranscriptMode } from "./transcript/Transcript";
 
@@ -36,6 +37,7 @@ type HeaderState =
 	| "reconnecting"
 	| "waiting"
 	| "working"
+	| "waitingJobs"
 	| "helpersWorking"
 	| "starting"
 	| "saved"
@@ -47,6 +49,7 @@ function headerState(view: SessionView): HeaderState {
 	if (view.mode === "exited") return "stopped";
 	if (view.mode === "reconnecting") return "reconnecting";
 	if (view.guest?.uiRequest) return "waiting";
+	if (view.guest?.awaitingAsyncWork) return "waitingJobs";
 	if (view.working) return "working";
 	if (helpersAtWork(view)) return "helpersWorking";
 	if (view.mode === "starting") return "starting";
@@ -63,6 +66,8 @@ function StateMark({ state, view }: { state: HeaderState; view: SessionView }): 
 				<StatusDot status="err" glyph />
 			) : state === "reconnecting" ? (
 				<StatusDot status="warn" glyph />
+			) : state === "waitingJobs" ? (
+				<StatusDot status="agent" />
 			) : state === "readOnly" || state === "readOnlyFree" || state === "readOnlyUnknown" ? (
 				<StatusDot status="live" glyph />
 			) : (
@@ -171,8 +176,8 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 			<StateMark state={state} view={view} />
 			<div className="flex min-w-0 flex-1 flex-col">
 				<PresenceSwap swapKey={title} variant="rise" className="min-w-0">
-					<h1 className="truncate text-base leading-5 font-semibold text-fg" title={title}>
-						{title}
+					<h1 className="min-w-0 text-base leading-5 font-semibold text-fg">
+						<SessionTitle title={title} />
 					</h1>
 				</PresenceSwap>
 				<p role="status" className="truncate text-sm text-fg-muted">

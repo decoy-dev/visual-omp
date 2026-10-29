@@ -3,6 +3,8 @@
  * data sources: `src/shared/contracts/config.ts`.
  */
 import { type Stats, unwatchFile, watchFile } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { z } from "zod";
 import {
@@ -36,10 +38,10 @@ import {
 	isOwnWrite,
 	NEUTRAL_CWD,
 	ompAgentDir,
-	readConfig,
 	setConfigPath,
 } from "../omp/config-file";
 import { newUserApprovalRunner, writeApprovalDefaultIfUnset } from "../services/approval-default";
+import { instructionCandidates } from "../services/project";
 import {
 	deepMerge,
 	deleteDocumentPath,
@@ -55,6 +57,7 @@ import {
 	parseCfgTree,
 	parseConfigList,
 	parseModels,
+	parseConfigLayer,
 	ROLE_KINDS,
 	ROLE_NAME_PATTERN,
 	setDocumentPath,
@@ -104,8 +107,13 @@ interface Layers {
 }
 
 async function readLayers(cwd: string | undefined): Promise<Layers> {
-	const [global, project] = await Promise.all([readConfig("global"), cwd ? readConfig("project", cwd) : null]);
-	return { globalFile: global.file, global: global.data, projectFile: project?.file ?? null, project: project?.data ?? {} };
+	const [globalJson, projectJson, globalFile, projectFile] = await Promise.all([
+		ompJson(["config", "list", "--scope", "global", "--json"], cwd),
+		cwd ? ompJson(["config", "list", "--scope", "project", "--json"], cwd) : null,
+		configFile("global"),
+		cwd ? configFile("project", cwd) : null,
+	]);
+	return { globalFile, global: parseConfigLayer(globalJson), projectFile, project: projectJson ? parseConfigLayer(projectJson) : {} };
 }
 
 /** Configured value of `key` in one layer; a YAML `null` counts as unset, as in omp. */
@@ -207,6 +215,7 @@ async function setSetting(key: string, value: JsonValue, scope: SettingScope, cw
 	const leaf = await readLeaf(key, cwd);
 	const problem = valueProblem(leaf.type, leaf.enumValues, JsonValueSchema.parse(value));
 	if (problem) throw new Error(`Invalid value for ${leaf.key}: ${problem}`);
+	if (leaf.key === "contextFiles.extra") instructionCandidates(value);
 	await setConfigPath(scope, cwd, leaf.key.split("."), value);
 	configWritten();
 	return writeResult(leaf.key, scope, cwd);
@@ -221,15 +230,44 @@ async function resetSetting(key: string, scope: SettingScope, cwd: string | unde
 
 // ─── Models ────────────────────────────────────────────────────────────────
 
+/** Ask omp for both window policies without changing the owner's config or model limits. */
+async function modelsWithWindows(cwd: string | undefined, refresh: boolean): Promise<ModelInfo[]> {
+	const dir = await mkdtemp(join(tmpdir(), "visual-omp-model-windows-"));
+	try {
+		const standardFile = join(dir, "standard.yml");
+		const extendedFile = join(dir, "extended.yml");
+		await Promise.all([
+			writeFile(standardFile, "extendedContext: false\ncompaction:\n  modelThresholdsEnabled: false\n", { mode: 0o600 }),
+			writeFile(extendedFile, "extendedContext: true\ncompaction:\n  modelThresholdsEnabled: false\n", { mode: 0o600 }),
+		]);
+		const [models, standard, extended] = await Promise.all([
+			listModels(cwd, refresh),
+			ompJson(["models", "--json", "--kind", "all", "--config", standardFile], cwd, 60_000).then(parseModels),
+			ompJson(["models", "--json", "--kind", "all", "--config", extendedFile], cwd, 60_000).then(parseModels),
+		]);
+		const standardById = new Map(standard.map(model => [model.selector, model.contextWindow]));
+		const extendedById = new Map(extended.map(model => [model.selector, model.contextWindow]));
+		return models.map(model => {
+			const standardWindow = standardById.get(model.selector);
+			const extendedWindow = extendedById.get(model.selector);
+			return standardWindow && extendedWindow && extendedWindow > standardWindow
+				? { ...model, contextWindowTiers: { standard: standardWindow, extended: extendedWindow } }
+				: model;
+		});
+	} finally {
+		await rm(dir, { recursive: true, force: true });
+	}
+}
+
 const MODELS_TTL_MS = 5 * 60_000;
 const modelsCache = new Map<string, { at: number; models: Promise<ModelInfo[]> }>();
 
-export function listModels(cwd: string | undefined, refresh = false): Promise<ModelInfo[]> {
-	const cacheKey = cwd ?? "";
+export function listModels(cwd: string | undefined, refresh = false, includeWindows = false): Promise<ModelInfo[]> {
+	const cacheKey = `${includeWindows ? "windows" : "models"}:${cwd ?? ""}`;
 	const cached = modelsCache.get(cacheKey);
 	if (!refresh && cached && Date.now() - cached.at < MODELS_TTL_MS) return cached.models;
 	const argv = refresh ? ["models", "refresh", "--json", "--kind", "all"] : ["models", "--json", "--kind", "all"];
-	const models = ompJson(argv, cwd, refresh ? 180_000 : 60_000).then(parseModels);
+	const models = includeWindows ? modelsWithWindows(cwd, refresh) : ompJson(argv, cwd, refresh ? 180_000 : 60_000).then(parseModels);
 	const entry = { at: Date.now(), models };
 	modelsCache.set(cacheKey, entry);
 	models.catch(() => {
@@ -256,6 +294,7 @@ const BUILT_IN_ROLE_META: Record<string, { name: string; color: string; section:
 	memory: { name: "Memory", color: "dim", section: "chat" },
 	task: { name: "Subtask", color: "muted", section: "chat" },
 	advisor: { name: "Advisor", color: "accent", section: "chat" },
+	widget: { name: "Job widgets", color: "dim", section: "chat" },
 	image: { name: "Image generation", color: "accent", section: "kind" },
 	web: { name: "Web search", color: "success", section: "kind" },
 	speech: { name: "Speech", color: "warning", section: "kind" },
@@ -482,8 +521,7 @@ async function readApproval(cwd: string | undefined): Promise<ApprovalState> {
 		policies.push({ tool, policy: policy.data, source: fromProject ? "project" : "global" });
 	}
 	const mode = ApprovalModeSchema.safeParse(modeLeaf.value);
-	const supportedModes = (modeLeaf.enumValues ?? ["always-ask", "write", "yolo"])
-		.filter((value): value is ApprovalMode => ApprovalModeSchema.safeParse(value).success);
+	const supportedModes = [...ApprovalModeSchema.options];
 	return {
 		cwd: cwd ?? null,
 		mode: mode.success ? mode.data : null,
@@ -497,8 +535,6 @@ async function readApproval(cwd: string | undefined): Promise<ApprovalState> {
 
 async function setApprovalMode(mode: ApprovalMode, scope: SettingScope, cwd: string | undefined): Promise<ApprovalState> {
 	const value = ApprovalModeSchema.parse(mode);
-	const leaf = await readLeaf("tools.approvalMode", cwd);
-	if (!leaf.enumValues?.includes(value) && value === "always-ask-cached") throw new Error("This omp does not support Ask and remember.");
 	await setConfigPath(scope, cwd, ["tools", "approvalMode"], value);
 	configWritten();
 	return readApproval(cwd);
@@ -506,8 +542,6 @@ async function setApprovalMode(mode: ApprovalMode, scope: SettingScope, cwd: str
 
 /** The builtin owns the approval cache; a separate RPC process does not need a chat or model call. */
 async function forgetApprovals(): Promise<string> {
-	const leaf = await readLeaf("tools.approvalMode", undefined);
-	if (!leaf.enumValues?.includes("always-ask-cached")) throw new Error("This omp does not support remembered approvals.");
 	const printed: string[] = [];
 	const result = await rpcRequest(
 		NEUTRAL_CWD,
@@ -619,8 +653,8 @@ export function register(): void {
 		for (const { file } of await watchedFiles(cwd)) releaseConfigFile(file);
 	});
 
-	handle("config:models", cwd => listModels(cwd));
-	handle("config:models:refresh", cwd => listModels(cwd, true));
+	handle("config:models", (cwd, includeWindows) => listModels(cwd, false, includeWindows));
+	handle("config:models:refresh", (cwd, includeWindows) => listModels(cwd, true, includeWindows));
 
 	handle("config:roles", cwd => readRoles(cwd));
 	handle("config:roles:set", (role, assignment, options) =>

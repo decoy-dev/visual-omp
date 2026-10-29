@@ -84,7 +84,7 @@ export function formatWebLink(relayOrigin: string, roomId: string, key: Buffer, 
 	return `${webBase(origin, webUrl)}/#${collab}`;
 }
 
-function webBase(origin: string, webUrl: string | undefined): string {
+export function webBase(origin: string, webUrl: string | undefined): string {
 	const explicit = webUrl?.trim();
 	if (!explicit) return origin.startsWith("wss://") ? `https://${origin.slice("wss://".length)}` : `http://${origin.slice("ws://".length)}`;
 	const url = new URL(explicit);

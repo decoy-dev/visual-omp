@@ -2,15 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 import type { UsageResetAccount, UsageResetListing, UsageResetOutcome } from "@shared/contracts/usage";
 import { matchResetAccount, ResetFlow, type ResetFlowDeps } from "./resets";
 
-const entry = (provider: string, credentialId: number, label: string): UsageResetAccount => ({
-	provider,
-	credentialId,
-	label,
-	savedCount: 1,
-	usableCount: 1,
-	expiresAt: null,
-	unavailable: null,
-});
+const entry = (provider: string, credentialId: number, label: string): UsageResetAccount => {
+	const [email, orgName] = label.split(" · ");
+	return { provider, credentialId, label, email, orgName, savedCount: 1, usableCount: 1, expiresAt: null, unavailable: null };
+};
 
 describe("matchResetAccount", () => {
 	const listing = [
@@ -41,6 +36,12 @@ describe("matchResetAccount", () => {
 
 	it("refuses two entries with the same identity", () => {
 		expect(matchResetAccount([entry("anthropic", 1, "me@example.com · Team A"), entry("anthropic", 2, "me@example.com · Team A")], "anthropic", { email: "me@example.com", orgName: "Team A" })).toBeNull();
+	});
+
+	it("matches structured ids independently of display punctuation and renamed labels", () => {
+		const structured = { ...entry("anthropic", 3, "Display only"), accountId: "acc-3", orgId: "org-3", orgName: "Team · Europe" };
+		expect(matchResetAccount([structured], "anthropic", { accountId: "acc-3", orgId: "org-3", orgName: "Renamed team" })?.credentialId).toBe(3);
+		expect(matchResetAccount([structured], "anthropic", { accountId: "other", email: "Display only", orgId: "org-3" })).toBeNull();
 	});
 });
 

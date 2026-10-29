@@ -1,6 +1,5 @@
 /**
- * Sharing saved sessions (encrypted link via `omp share`, standalone HTML via `omp --export`)
- * and importing Claude Code / Codex sessions.
+ * Sharing saved sessions through omp and importing foreign or packed sessions.
  */
 
 export interface ShareLinkOptions {
@@ -15,6 +14,17 @@ export interface ShareLinkResult {
 	gistUrl: string | null;
 	/** omp trimmed large content to fit the share size limit. */
 	truncated: boolean;
+}
+
+/** A file or directory confirmed by omp, with its unmodified diagnostic output. */
+export interface ShareFileResult {
+	path: string;
+	/** Warnings and completion details printed by omp. Empty when omp prints only the path. */
+	report: string;
+}
+
+export interface AnonymizedCopyResult extends ShareFileResult {
+	transcriptCount: number;
 }
 
 export type ImportSourceId = "claude" | "codex";
@@ -59,6 +69,12 @@ declare module "../ipc" {
 		 * Resolves the written file path.
 		 */
 		"share:exportHtml": { args: [sessionFile: string, outputPath?: string]; result: string | null };
+		/** Pack a session, artifacts and image blobs into a tar chosen in a native Save dialog. Null on cancel. */
+		"share:pack": { args: [sessionFile: string]; result: ShareFileResult | null };
+		/** Choose a tar and its project folder, then let omp unpack it. The returned path is a saved session. Null on cancel. */
+		"share:unpack": { args: []; result: ShareFileResult | null };
+		/** Choose a new or empty directory and export omp's anonymized transcripts. Null on cancel. */
+		"share:anonymize": { args: [sessionFile: string]; result: AnonymizedCopyResult | null };
 		/** Claude Code / Codex session stores and the launch flags that import from them. */
 		"share:importSources": { args: []; result: ImportSource[] };
 	}

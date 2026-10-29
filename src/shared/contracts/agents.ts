@@ -66,7 +66,7 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 export interface AgentFields {
 	name: string;
 	description: string;
-	/** Explicit tool allowlist; undefined = omp defaults. omp 18.11+ does not inject `yield` here. */
+	/** Explicit tool allowlist; undefined = omp defaults. omp does not inject `yield` here. */
 	tools?: string[];
 	/** Agents this one may spawn; `"*"` = any. Inferred as `"*"` when tools include `task`. */
 	spawns?: string[] | "*";
@@ -75,7 +75,7 @@ export interface AgentFields {
 	thinkingLevel?: AgentThinkingLevel;
 	/** Structured output schema (JTD-style), passed through opaquely. */
 	output?: JsonValue;
-	/** true keeps `yield` and the output schema when `task.structured` is off (omp 18.11+). */
+	/** true keeps `yield` and the output schema when `task.structured` is off. */
 	structured?: boolean;
 	blocking?: boolean;
 	autoloadSkills?: string[];

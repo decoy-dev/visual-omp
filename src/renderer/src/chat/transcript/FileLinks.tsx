@@ -10,6 +10,7 @@ import { useTranslation } from "react-i18next";
 import { chatOutputs } from "../../features/panes/derive";
 import { useMarkdownHtml } from "../../transcript/Markdown";
 import { renderMarkdown } from "../../transcript/render";
+import { useRichContent } from "../../ui/rich-content";
 import { MAX_BASES, ReplyRefCache, type ReplyRefs } from "./fileRefs";
 import { fillThumbnails, linkHtml, occurrences, parse } from "./fileLinkMarkup";
 
@@ -32,7 +33,7 @@ const cache = new ReplyRefCache(request => window.vomp.invoke("fs:resolveRefs", 
  * for `reply` null (a reply still streaming). `reply` is the message's timestamp, which a streamed reply shares with
  * the saved entry that replaces it, so that entry and a remounted transcript link at once.
  */
-export function useFileRefs(reply: number | null, texts: readonly string[]): ReplyRefs | null {
+export function useFileRefs(reply: number | string | null, texts: readonly string[]): ReplyRefs | null {
 	const scope = useContext(FileRefContext);
 	const [, rerender] = useReducer((count: number) => count + 1, 0);
 	const key = reply !== null && scope ? `${scope.chat}\0${reply}` : null;
@@ -67,6 +68,7 @@ export const LinkedMarkdown = memo(function LinkedMarkdown({ text, refs }: { tex
 		[html, refs, home, t],
 	);
 	useLayoutEffect(() => (ref.current ? fillThumbnails(ref.current) : undefined), [linked]);
+	useRichContent(ref, linked);
 	return <div ref={ref} className="tr-md" dangerouslySetInnerHTML={{ __html: linked }} />;
 });
 

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
-import { type BridgeRoom, LoopbackRelay, RoomBridge } from "./relay";
+import { type BridgeRoom, LoopbackRelay, MAX_RELAY_PAYLOAD, RoomBridge } from "./relay";
+import { setAppRendererUrl } from "../services/app-origin";
 
 const ROOM = "room_ABCDEFGHIJ";
 
@@ -101,6 +102,48 @@ describe("LoopbackRelay", () => {
 		await relay.start();
 		const guest = await open(relay, "guest", "missing_room_1234");
 		expect(await closed(guest)).toBe(4004);
+	});
+
+	it("rejects browser origins except the app's exact origin", async () => {
+		relay = new LoopbackRelay();
+		await relay.start();
+		setAppRendererUrl("http://localhost:5173");
+		const connect = (origin: string) => {
+			const { promise, resolve, reject } = Promise.withResolvers<WebSocket>();
+			const ws = new WebSocket(`${relay.url}/r/${ROOM}?role=host`, { origin });
+			ws.once("open", () => resolve(ws));
+			ws.once("error", reject);
+			return promise;
+		};
+		await expect(connect("https://hostile.example")).rejects.toThrow("403");
+		await expect(connect("http://localhost:5174")).rejects.toThrow("403");
+		await expect(connect("null")).rejects.toThrow("403");
+		const host = await connect("http://localhost:5173");
+		host.close();
+	});
+
+	it("does not reopen a room or notify the host twice after its first host leaves", async () => {
+		relay = new LoopbackRelay();
+		await relay.start();
+		const opened: string[] = [];
+		relay.events = { onHostOpen: room => opened.push(room) };
+		const host = await open(relay, "host");
+		const ended = closed(host);
+		host.close();
+		await ended;
+		await expect.poll(() => relay.hasRoom(ROOM)).toBe(false);
+		const replacement = await open(relay, "host");
+		expect(await closed(replacement)).toBe(4009);
+		expect(opened).toEqual([ROOM]);
+	});
+
+	it("closes a peer whose frame exceeds the bounded snapshot size", async () => {
+		relay = new LoopbackRelay();
+		await relay.start();
+		const host = await open(relay, "host");
+		const ended = closed(host);
+		host.send(Buffer.alloc(MAX_RELAY_PAYLOAD + 1));
+		expect(await ended).toBe(1009);
 	});
 });
 

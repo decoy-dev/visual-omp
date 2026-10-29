@@ -2,27 +2,22 @@
  * Whether a saved session is open in an omp process outside this app, so it opens read-only (two
  * writers must never share one session file).
  *
- * omp has no session ownership lock to ask. Its cross-process publish lock
- * (`.<file>.lock` beside the session) is held only for the duration of one append or rewrite,
- * and omp's docs say it "cannot protect against non-cooperating external writers". So ownership
- * is inferred from two observations, and anything the app cannot read makes the answer `unknown`:
- *
- * - An open writable file descriptor on the session file (`lsof`). omp keeps its writer open from
- *   its first append until it closes or switches sessions.
- * - A terminal breadcrumb naming the file whose terminal still runs omp. omp writes one per
- *   terminal under `<agentDir>/terminal-sessions/<terminal-id>` (line 1 the cwd, line 2 the session
- *   file; docs/session.md). On macOS/Linux the id is the tty name; other ids cannot be checked.
- *
- * Remaining gap: an omp that resumed the file but has not appended yet holds no descriptor, and
- * `ps` does not always report the tty it runs on. Such a process looks absent until it writes.
+ * omp 18.14 holds an OS lease keyed by the session header id. Read that lease first:
+ * a flock sidecar on macOS, an abstract socket on Linux, or a named mutex on Windows.
+ * Lease sidecars are persistent, so their existence alone never establishes ownership.
+ * If the header or lease cannot be read, use writable descriptors and terminal breadcrumbs
+ * as a conservative fallback. An unreadable fallback keeps the answer unknown.
  */
 import { execFile } from "node:child_process";
-import { readdir, readFile, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { lstat, open, readdir, readFile, stat } from "node:fs/promises";
+import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
 import type { SessionOwnership } from "@shared/ipc";
 import { userEnv } from "../env";
 import { listHosts } from "./host";
 import { agentDir } from "./paths";
+import { leaseMemoryName } from "./lease-name";
+import { resolveExecutable } from "../services/executable";
 
 interface Run {
 	stdout: string;
@@ -31,9 +26,11 @@ interface Run {
 	code: number | null;
 }
 
-function run(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<Run> {
+async function run(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<Run> {
+	const executable = await resolveExecutable(command, env);
+	if (!executable) return { stdout: "", stderr: "", code: null };
 	const { promise, resolve } = Promise.withResolvers<Run>();
-	execFile(command, args, { env, timeout: 5000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
+	execFile(executable, args, { env, timeout: 5000, maxBuffer: 8 * 1024 * 1024 }, (error, stdout, stderr) => {
 		const code = error === null ? 0 : typeof error.code === "number" && !error.killed ? error.code : null;
 		resolve({ stdout: stdout ?? "", stderr: stderr ?? "", code });
 	});
@@ -77,19 +74,106 @@ async function writtenFiles(files: readonly string[], env: NodeJS.ProcessEnv, ou
 	return written;
 }
 
-/**
- * Ownership of each of `files` (absolute `.jsonl` paths). A step that fails makes every file whose
- * answer depended on it `unknown`; `free` needs every observation to have succeeded.
- */
+/** Read only omp's bounded header prefix, including its optional title slot. */
+async function headerId(file: string): Promise<string | null> {
+	const handle = await open(file, "r");
+	try {
+		const buffer = Buffer.alloc(64 * 1024);
+		const { bytesRead } = await handle.read(buffer, 0, buffer.length, 0);
+		const lines = buffer.toString("utf8", 0, bytesRead).split("\n");
+		for (const line of lines.slice(0, 2)) {
+			const entry: unknown = JSON.parse(line ?? "");
+			if (!entry || typeof entry !== "object" || !("type" in entry)) return null;
+			if (entry.type === "session" && "id" in entry && typeof entry.id === "string") return entry.id;
+			if (entry.type !== "title") return null;
+		}
+		return null;
+	} finally {
+		await handle.close();
+	}
+}
+
+/** Machine-global leases ignore PI_CODING_AGENT_DIR and profile selection, as omp does. */
+async function ownersDir(env: NodeJS.ProcessEnv): Promise<string | null> {
+	if (env.PI_TEST_SESSION_OWNERS_DIR) return resolve(env.PI_TEST_SESSION_OWNERS_DIR);
+	if ((process.platform === "linux" || process.platform === "darwin") && env.XDG_STATE_HOME) {
+		const root = join(env.XDG_STATE_HOME, "omp");
+		try {
+			await stat(root);
+			return join(root, "run", "session-owners");
+		} catch (error) {
+			if (!(error instanceof Error && "code" in error && (error.code === "ENOENT" || error.code === "ENOTDIR"))) return null;
+		}
+	}
+	return join(homedir(), env.PI_CONFIG_DIR || ".omp", "run", "session-owners");
+}
+
+/** null requests the descriptor/breadcrumb fallback, without acquiring or modifying any lease. */
+async function leaseOwnership(file: string, dir: string, env: NodeJS.ProcessEnv, ours: ReadonlySet<number>): Promise<SessionOwnership | null> {
+	try {
+		const id = await headerId(file);
+		// omp hashes non-token ids with Bun.wyhash; these unusual headers use the fallback.
+		if (!id || !/^[A-Za-z0-9_-]{1,128}$/.test(id)) return null;
+		const sidecar = resolve(dir, `${id}.lock`);
+		if (process.platform === "linux") {
+			const sockets = await readFile("/proc/net/unix", "utf8");
+			if (!/^\s*Num\s+RefCount\s+Protocol\s+Flags\s+Type\s+St\s+Inode\s+Path/.test(sockets)) return null;
+			const name = `@${leaseMemoryName(sidecar)}`;
+			return sockets.split("\n").some(line => line.trim().split(/\s+/).at(7) === name) ? "elsewhere" : "free";
+		}
+		if (process.platform === "win32") {
+			// omp's mutex is held by object lifetime, without thread-affine mutex ownership.
+			// OpenExisting only observes the object and never creates or waits on it.
+			const name = `Global\\${leaseMemoryName(sidecar)}`;
+			const script = `$ErrorActionPreference='Stop'; try { $m=[System.Threading.Mutex]::OpenExisting('${name}',[System.Security.AccessControl.MutexRights]::Synchronize); $m.Dispose(); 'held' } catch [System.Threading.WaitHandleCannotBeOpenedException] { 'free' }`;
+			const reply = await run("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], env);
+			if (reply.code !== 0 || reply.stderr.trim()) return null;
+			return reply.stdout.trim() === "held" ? "elsewhere" : reply.stdout.trim() === "free" ? "free" : null;
+		}
+		try {
+			const parent = await lstat(dir);
+			if (!parent.isDirectory() || (process.getuid && parent.uid !== process.getuid()) || (parent.mode & 0o077) !== 0) return null;
+			await stat(sidecar);
+		} catch (error) {
+			if (error instanceof Error && "code" in error && error.code === "ENOENT") return "free";
+			return null;
+		}
+		// Darwin's lsof does not expose flock state. omp retains this descriptor only
+		// while holding the lease; failed contenders immediately close theirs.
+		const reply = await run("lsof", ["-w", "-F", "p", "--", sidecar], env);
+		if ((reply.code !== 0 && reply.code !== 1) || reply.stderr.trim()) return null;
+		return reply.stdout.split("\n").some(line => /^p\d+$/.test(line) && !ours.has(Number(line.slice(1)))) ? "elsewhere" : "free";
+	} catch {
+		return null;
+	}
+}
+
+/** Prefer the session-id lease, falling back only for files whose lease could not be read. */
 export async function sessionOwnership(files: readonly string[]): Promise<Map<string, SessionOwnership>> {
+	const result = new Map<string, SessionOwnership>();
+	if (!files.length) return result;
+	const env = await userEnv();
+	const dir = await ownersDir(env);
+	const ours = new Set(listHosts().flatMap(host => (host.pid ? [host.pid] : [])));
+	ours.add(process.pid);
+	const fallback: string[] = [];
+	await Promise.all(files.map(async file => {
+		const ownership = dir ? await leaseOwnership(file, dir, env, ours) : null;
+		if (ownership) result.set(file, ownership);
+		else fallback.push(file);
+	}));
+	if (fallback.length) for (const [file, ownership] of await fallbackOwnership(fallback, env, ours)) result.set(file, ownership);
+	return result;
+}
+
+/** Legacy observations are best effort; free requires every required observation to succeed. */
+async function fallbackOwnership(files: readonly string[], env: NodeJS.ProcessEnv, ours: ReadonlySet<number>): Promise<Map<string, SessionOwnership>> {
 	const result = new Map<string, SessionOwnership>();
 	const unknownAll = (state: SessionOwnership) => {
 		for (const file of files) result.set(file, state);
 		return result;
 	};
-	if (files.length === 0) return result;
-	if (process.platform === "win32") return unknownAll("unsupported");
-	const env = await userEnv();
+	if (process.platform === "win32") return unknownAll("unknown");
 	const dir = join(agentDir(env), "terminal-sessions");
 	let names: string[];
 	try {
@@ -111,8 +195,6 @@ export async function sessionOwnership(files: readonly string[]): Promise<Map<st
 		// A breadcrumb that vanished or cannot be read might have named any of the files.
 		return unknownAll("unknown");
 	}
-	const ours = new Set(listHosts().flatMap(host => (host.pid ? [host.pid] : [])));
-	ours.add(process.pid);
 	const existing = (await Promise.all(files.map(async file => ((await stat(file).then(() => true, () => false)) ? file : null)))).filter(
 		(file): file is string => file !== null,
 	);

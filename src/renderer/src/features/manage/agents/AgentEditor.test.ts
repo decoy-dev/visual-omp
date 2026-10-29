@@ -36,12 +36,12 @@ function render(existing: boolean): string {
 	}));
 }
 
-describe("helper editor tool-access guidance", () => {
-	it.each([false, true])("keeps the older-runtime caveat visible for %s existing definition", existing => {
-		const html = render(existing);
-		expect(html).toContain('aria-describedby="helper-tool-compatibility"');
-		expect(html).toContain('<p id="helper-tool-compatibility" class="mt-2 text-sm text-fg-muted">On omp versions before 18.11, malformed tool declarations may use default tools, and omp may add yield.</p>');
-		expect(html).not.toContain('id="helper-tool-compatibility" hidden');
-		if (existing) expect(html).toContain('data-state="unchecked"');
+describe("helper editor tool access", () => {
+	it("retains an explicit empty allowlist when editing a helper", () => {
+		expect(render(true)).toContain('data-state="unchecked"');
+	});
+
+	it("uses omp defaults for a new helper", () => {
+		expect(render(false)).toContain('data-state="checked"');
 	});
 });

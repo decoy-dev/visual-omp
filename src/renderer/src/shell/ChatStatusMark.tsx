@@ -1,4 +1,4 @@
-import { CircleIcon, CircleNotch, Question } from "@phosphor-icons/react";
+import { CircleIcon, CircleNotch, Question, XCircle } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../ui";
@@ -29,17 +29,19 @@ export function ChatStatusMark({
 }): ReactNode {
 	const { t } = useTranslation("shell");
 	const unseenLabel = unseen ? t(`sidebar.unseen.${unseen}`) : undefined;
-	const active = status === "working" || status === "helpersWorking" || status === "needsInput";
+	const active = status === "working" || status === "helpersWorking" || status === "needsInput" || status === "error";
 	return (
 		<span id={id} title={unseenLabel} className={cn("relative inline-flex size-3.5 shrink-0 items-center justify-center [&>svg]:size-3.5", className)}>
 			{unseen && !active ? (
 				<span aria-hidden className="size-2 rounded-full bg-info" />
-			) : quiet && !unseen ? (
+			) : quiet && !unseen && !active ? (
 				<span aria-hidden className="size-1.5 rounded-full bg-fg-muted" />
 			) : status === "working" || status === "helpersWorking" ? (
 				<CircleNotch aria-hidden weight="bold" className="animate-spin text-accent" />
 			) : status === "needsInput" ? (
 				<Question aria-hidden weight="bold" className="text-warn" />
+			) : status === "error" ? (
+				<XCircle aria-hidden weight="bold" className="text-err" />
 			) : status === "live" ? (
 				<CircleIcon aria-hidden weight="fill" className="size-2.5! text-ok" />
 			) : (

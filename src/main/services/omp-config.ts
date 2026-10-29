@@ -96,6 +96,15 @@ export function parseConfigList(json: unknown): Map<string, ListedSetting> {
 	return out;
 }
 
+/** A scope listing contains only that layer's own keys, before path-scoped resolution. */
+export function parseConfigLayer(json: unknown): { [key: string]: JsonValue } {
+	const doc = new Document({});
+	for (const setting of parseConfigList(json).values()) {
+		if (!setting.redacted) setDocumentPath(doc, setting.key.split("."), setting.value);
+	}
+	return documentJson(doc);
+}
+
 // ─── `omp read cfg://` ─────────────────────────────────────────────────────
 
 const REDACTED_TOKEN = "<redacted>";
@@ -393,6 +402,7 @@ const ModelJsonSchema = z.object({
 	cost: TokenCostSchema.extend({
 		longContext: TokenCostSchema.extend({ inputThreshold: z.number() }).optional(),
 	}).nullish(),
+	pricingStatus: z.enum(["fixed", "free", "included", "unknown", "variable"]).catch("unknown"),
 });
 
 export const ModelsJsonSchema = z.object({ models: z.array(ModelJsonSchema) });
@@ -426,6 +436,7 @@ export function parseModels(json: unknown): ModelInfo[] {
 				return parsed.success ? [parsed.data] : [];
 			}),
 			vision: model.input.includes("image"),
+			pricingStatus: model.pricingStatus,
 			cost,
 		});
 	}

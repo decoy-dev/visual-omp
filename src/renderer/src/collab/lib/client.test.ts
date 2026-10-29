@@ -3,7 +3,7 @@ import type { HostFrame } from "@oh-my-pi/pi-wire";
 import { GuestClient } from "./client";
 
 /** The socket the client creates; frames from omp's host are fed through `onFrame`. */
-const socket = vi.hoisted(() => ({ current: null as null | { onFrame: (frame: unknown) => void } }));
+const socket = vi.hoisted(() => ({ current: null as null | { onFrame: (frame: unknown) => void }, sent: [] as unknown[] }));
 vi.mock("./socket", () => ({
 	CollabSocket: class {
 		onOpen = () => undefined;
@@ -13,6 +13,7 @@ vi.mock("./socket", () => ({
 			socket.current = this;
 		}
 		connect() {}
+		send(frame: unknown) { socket.sent.push(frame); }
 	},
 }));
 vi.mock("./link", () => ({
@@ -29,6 +30,7 @@ let client: GuestClient;
 const feed = (frame: object) => socket.current?.onFrame(frame as HostFrame);
 
 beforeEach(() => {
+	socket.sent = [];
 	client = new GuestClient("link", "visual-omp");
 	feed(welcome);
 });
@@ -95,5 +97,54 @@ describe("late background tool frames", () => {
 		update("running");
 		expect(client.getSnapshot().activeTools.size).toBe(1);
 		expect(client.getSnapshot().backgroundTools.size).toBe(0);
+	});
+});
+
+describe("background-job waits", () => {
+	const endWaiting = () => feed({ t: "event", event: { type: "agent_end", awaitingAsyncWork: true } });
+	it("retains the distinct wait across idle state frames without claiming a foreground turn", () => {
+		endWaiting();
+		feed({ t: "state", state: welcome.state });
+		expect(client.getSnapshot()).toMatchObject({ working: false, awaitingAsyncWork: true });
+	});
+	it("clears the wait when a continuation starts, including a missed start recovered by state", () => {
+		endWaiting();
+		feed({ t: "event", event: { type: "agent_start" } });
+		expect(client.getSnapshot()).toMatchObject({ working: true, awaitingAsyncWork: false });
+		endWaiting();
+		feed({ t: "state", state: { ...welcome.state, isStreaming: true } });
+		expect(client.getSnapshot()).toMatchObject({ working: true, awaitingAsyncWork: false });
+	});
+	it("clears a terminal settle and never carries a previous room's wait through welcome", () => {
+		endWaiting();
+		feed({ t: "event", event: { type: "agent_end" } });
+		expect(client.getSnapshot().awaitingAsyncWork).toBe(false);
+		endWaiting();
+		feed(welcome);
+		expect(client.getSnapshot().awaitingAsyncWork).toBe(false);
+	});
+	it("sends abort and dismisses the waiting row, without sending job cancellation commands", () => {
+		endWaiting();
+		client.sendAbort();
+		expect(socket.sent).toEqual([{ t: "abort" }]);
+		expect(client.getSnapshot().awaitingAsyncWork).toBe(false);
+	});
+});
+
+describe("restored tool calls", () => {
+	const assistant = { type: "message", id: "assistant", parentId: null, timestamp: "", message: { role: "assistant", content: [{ type: "toolCall", id: "restored-call", name: "bash", arguments: { command: "make" }, intent: "Finishing the interrupted build" }], timestamp: 1 } };
+	it("seeds only the calls omp says it resumes and settles their results normally", () => {
+		feed({ t: "entry", entry: assistant });
+		feed({ t: "event", event: { type: "agent_start", resumedToolCallIds: ["restored-call", "unknown"] } });
+		expect(client.getSnapshot().activeTools.get("restored-call")).toMatchObject({ toolName: "bash", args: { command: "make" }, intent: "Finishing the interrupted build" });
+		expect(client.getSnapshot().activeTools.has("unknown")).toBe(false);
+		feed({ t: "event", event: { type: "tool_execution_end", toolCallId: "restored-call", toolName: "bash", result: {} } });
+		expect(client.getSnapshot().activeTools.size).toBe(0);
+	});
+	it("seeds a resume event that arrives before its snapshot finishes downloading", () => {
+		feed({ ...welcome, entryCount: 1 });
+		feed({ t: "event", event: { type: "agent_start", resumedToolCallIds: ["restored-call"] } });
+		feed({ t: "snapshot-chunk", entries: [assistant], final: true });
+		expect(client.getSnapshot().activeTools.has("restored-call")).toBe(true);
 	});
 });

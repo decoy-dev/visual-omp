@@ -304,6 +304,22 @@ function Account({ account, providerId, provider, named, now }: { account: Accou
 					)}
 				</div>
 			)}
+			{account.policy && (
+				<div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
+					<Chip tone={account.policy.state === "exhausted" ? "err" : account.policy.state === "inside-reserve" ? "warn" : "neutral"}>
+						{t(`usage.limits.policy.state.${account.policy.state}`)}
+					</Chip>
+					<span>{t("usage.limits.policy.priority", { priority: account.policy.priority })}</span>
+					<span>{t("usage.limits.policy.reserve", { percent: account.policy.reservePct, source: t(`usage.limits.policy.source.${account.policy.reserveSource}`) })}</span>
+					{account.policy.reclaimAbovePct !== undefined && <span>{t("usage.limits.policy.reclaim", { percent: account.policy.reclaimAbovePct })}</span>}
+					{account.policy.remainingPct !== undefined && <span>{t("usage.limits.policy.remaining", { percent: account.policy.remainingPct })}</span>}
+					<Tooltip content={t("usage.limits.policy.note")}>
+						<span tabIndex={0} className={cn("inline-flex cursor-help rounded-sm", focusRing)}>
+							<Question aria-label={t("usage.limits.policy.note")} className="size-3.5" />
+						</span>
+					</Tooltip>
+				</div>
+			)}
 
 			{account.resets && <SavedResetsLine resets={account.resets} now={now} onSpend={() => setResetOpen(true)} />}
 

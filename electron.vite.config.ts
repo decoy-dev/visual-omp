@@ -34,6 +34,22 @@ function phosphorWeights(): Plugin {
 // ships no node_modules copy of it.
 export default defineConfig({
 	main: {
+		// Compile ws's optional native loaders out before shipping. CommonJS leaves these two
+		// requires untouched so define can fold their guarded branches without resolving packages.
+		define: {
+			"process.env.WS_NO_BUFFER_UTIL": JSON.stringify("1"),
+			"process.env.WS_NO_UTF_8_VALIDATE": JSON.stringify("1"),
+		},
+		plugins: [{
+			name: "vomp:no-ws-native-loaders",
+			generateBundle(_options, bundle) {
+				for (const output of Object.values(bundle)) {
+					if (output.type === "chunk" && /\brequire\s*\(\s*["'](?:bufferutil|utf-8-validate)["']\s*\)/.test(output.code)) {
+						this.error(`Optional ws native loader remains in ${output.fileName}`);
+					}
+				}
+			},
+		}],
 		resolve: {
 			alias: {
 				"@shared": shared,
@@ -42,10 +58,7 @@ export default defineConfig({
 			},
 		},
 		build: {
-			// ws loads these optional native helpers inside try/catch. Bundled, Vite stubs them as empty
-			// modules, ws takes the stub for the helper and its mask/validate calls throw. Left external,
-			// the require fails as they are not installed and ws uses its JS fallbacks.
-			externalizeDeps: { include: ["bufferutil", "utf-8-validate"] },
+			commonjsOptions: { ignore: ["bufferutil", "utf-8-validate"] },
 		},
 	},
 	preload: {

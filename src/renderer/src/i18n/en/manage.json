@@ -161,7 +161,7 @@
 	},
 	"permissions": {
 		"description": "Choose, tool by tool, whether omp may use it without asking.",
-		"intro": "Tools left on Default follow your permission mode (now: {{mode}}).",
+		"intro": "Tools left on Default follow your permission mode (now: {{mode}}), except foreground computer control.",
 		"listLabel": "Tool permissions",
 		"rowLabel": "Permission for {{tool}}",
 		"choice": {
@@ -172,6 +172,19 @@
 		},
 		"defaultHelp": "Ask checks with you before each use, Allow runs the tool without asking, and Deny blocks it.",
 		"unrecognized": "omp ignores these entries because their value isn't Ask, Allow or Deny: {{tools}}",
+		"computerControl": "Take foreground computer control",
+		"computerHelp": "Foreground computer control asks by default, regardless of permission mode. Allow and Deny explicitly decide whether omp may take control for a task. This does not authorize external actions.",
+		"restricted": {
+			"title": "Restricted folders",
+			"help": "Every read, change, search or command in these folders requires approval, regardless of permission mode or remembered grants. Commands are matched by their working folder.",
+			"pick": "Choose a restricted folder",
+			"add": "Add folder",
+			"remove": "Remove restriction for {{folder}}",
+			"empty": "No restricted folders are configured in this scope.",
+			"inherited": "These restrictions are inherited from All projects. Changing the list saves a project-specific list and retains its other folders.",
+			"overridden": "This project has its own restricted-folder list, so all-projects changes will not replace it. Switch to This project to edit that list.",
+			"reset": "Use inherited restrictions"
+		},
 		"forget": {
 			"action": "Forget remembered approvals",
 			"busy": "Forgetting approvals…",
@@ -202,7 +215,8 @@
 		"caps": {
 			"vision": "Understands images",
 			"reasoning": "Thinks step by step",
-			"cheap": "Low cost"
+			"cheap": "Low cost",
+			"free": "Free"
 		},
 		"context": "{{size}} context",
 		"alias": "Follows another role",
@@ -218,12 +232,64 @@
 			"description": "Higher thinking levels allow more reasoning and may take longer or cost more."
 		}
 	},
+	"compaction": {
+		"title": "Compaction limits",
+		"description": "Choose when omp summarizes a model's context. These limits apply to the model wherever a role uses it.",
+		"choose": "Choose a model",
+		"model": "Model for compaction limit",
+		"limit": "Compaction limit",
+		"placeholder": "90k, 80% or f400k",
+		"save": "Save limit",
+		"forms": "90k sets the base for omp's compaction policy; 80% uses that share of the window; f400k triggers at exactly 400,000 tokens. Clear the field to restore an inherited limit.",
+		"preview": "Compacts at {{tokens}}.",
+		"previewWhenEnabled": "When per-model limits are enabled, this model compacts at {{tokens}}.",
+		"off": "Automatic compaction is off.",
+		"unknownWindow": "omp does not report a context window for this model.",
+		"inherited": "The inherited limit comes from {{selector}}.",
+		"shadowed": "This project has its own limit for this model. Switch to This project to edit it.",
+		"disabled": "Per-model compaction limits are disabled in omp. The saved limit will apply when they are enabled.",
+		"basis": {
+			"fixed": "The trigger is fixed.",
+			"capped": "The window caps the configured trigger.",
+			"base": "The policy uses {{percent}}% of the {{base}} base.",
+			"window": "The policy uses {{percent}}% of the window."
+		},
+		"errors": {
+			"invalid": "Use a positive token count (90k), a percentage up to 100% (80%), or a fixed trigger (f400k).",
+			"baseTooLarge": "The base cannot exceed this model's {{window}} maximum window.",
+			"fixedTooLarge": "The fixed trigger must be below this model's {{window}} maximum window."
+		},
+		"extendedTitle": "Use the extended context window?",
+		"extendedHelp": "This limit opens the model's {{window}} context window. Only this model opts into the larger window.",
+		"premium": "Input above {{tokens}} tokens costs more according to omp's model catalog.",
+		"extendedTitleWhenEnabled": "Save an extended-window limit for later?",
+		"extendedHelpWhenEnabled": "Per-model limits are disabled. When they are enabled, this limit will open this model's {{window}} context window. Saving it now leaves the active window unchanged.",
+		"premiumWhenEnabled": "When per-model limits are enabled, input above {{tokens}} tokens will cost more according to omp's model catalog.",
+		"confirmWhenEnabled": "Save limit for later",
+		"confirm": "Save extended limit"
+	},
 	"providers": {
 		"description": "Sign in to model providers and see what omp reports about them.",
 		"signInNote": "Signing in runs omp's own sign-in, and omp saves the result in its credential store on this computer.",
+		"discoveryNote": "Provider status is checked outside projects with extensions disabled. Extension-contributed sign-ins and project-specific settings are omitted.",
 		"refresh": "Check again",
 		"signInAny": "Sign in to a provider",
 		"loading": "Asking omp which providers are set up…",
+		"transfer": {
+			"title": "Transfer sign-ins",
+			"description": "Use omp to copy locally stored sign-ins between computers. Providers managed by an auth broker must be transferred on its host.",
+			"export": "Export sign-ins…",
+			"import": "Import sign-ins…",
+			"exportTitle": "Export stored sign-ins?",
+			"importTitle": "Import stored sign-ins?",
+			"exportDescription": "The JSON file contains unencrypted API keys and OAuth refresh tokens for every locally stored account. Anyone with the file can use those accounts. Save it somewhere private and delete it after transferring.",
+			"importDescription": "Choose a file created by omp auth export. omp replaces matching accounts and API keys, and keeps other sign-ins. Only import a file you trust.",
+			"rotationWarning": "Some providers rotate refresh tokens. Once another computer refreshes an imported sign-in, the original computer may need to sign in again.",
+			"exportDone": "Sign-ins exported.",
+			"importDone": "Sign-ins imported.",
+			"exportFailed": "Could not export sign-ins.",
+			"importFailed": "Could not import sign-ins."
+		},
 		"connected": {
 			"title": "Connected",
 			"empty": "omp reports no providers yet. Sign in to one below to start chatting."
@@ -416,6 +482,7 @@
 			"tiny": "Small background chores, like naming your chats. Uses the Fast model when empty.",
 			"memory": "Saving and recalling what omp remembers between chats. Uses the Tiny model when empty.",
 			"task": "Helpers omp starts to split a big job into smaller pieces.",
+			"widget": "Writing background-job widgets. Uses the Fast model when empty.",
 			"image": "Creating pictures when you ask for one.",
 			"web": "Searching the web for up-to-date answers.",
 			"speech": "Reading replies aloud.",
@@ -440,6 +507,7 @@
 		"presetSaved": "Saved the {{name}} preset.",
 		"presets": {
 			"title": "Presets",
+			"active": "Active",
 			"description": "Save your whole set of roles under a name and switch between sets in one click.",
 			"saveNew": "Save as preset",
 			"saveFirst": "Save or revert your changes first",
@@ -542,9 +610,8 @@
 			"tools": "Tools",
 			"allTools": "Use omp's default tools",
 			"allToolsHelp": "Turn off to choose a built-in tool allowlist. omp may add support tools, and extension tools follow omp's settings.",
-			"olderToolsHelp": "On omp versions before 18.11, malformed tool declarations may use default tools, and omp may add yield.",
 			"structured": "Return structured results",
-			"structuredHelp": "Keep the result tool and saved output schema when omp's task.structured setting is off. Requires omp 18.11 or later; off follows omp's setting.",
+			"structuredHelp": "Keep the result tool and saved output schema when omp's task.structured setting is off. Turn off to follow omp's setting.",
 			"instructions": "Instructions",
 			"instructionsView": "Instructions view",
 			"write": "Write",

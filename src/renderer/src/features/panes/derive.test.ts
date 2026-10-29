@@ -14,6 +14,7 @@ import {
 	helpersAtWork,
 	helpersByCall,
 	helpersOf,
+	helperJobSnapshots,
 	isIntactBase64,
 	latestTodo,
 	madeCandidates,
@@ -92,6 +93,28 @@ describe("latestTodo", () => {
 });
 
 describe("backgroundJobs", () => {
+	it("retains folders and saved widgets without inventing a folder for a snapshot whose start is missing", () => {
+		const widget = { title: "Build", headline: { text: "40 tests" }, blocks: [{ kind: "text", text: "Compiling" }] };
+		const entries = [
+			call("bash", "bash", { command: "make", cwd: "packages/ui", async: true }),
+			result("bash", "bash", "started", { async: { jobId: "bg_1", state: "running" } }),
+			result("poll", "job", "", { jobs: [{ id: "bg_1", type: "bash", status: "running", widget }, { id: "bg_2", type: "bash", status: "running", label: "npm test" }] }),
+		];
+		expect(backgroundJobs(entries, true, undefined, undefined, "/project")).toMatchObject([
+			{ jobId: "bg_2", command: "npm test", cwd: null },
+			{ jobId: "bg_1", cwd: "/project/packages/ui", widget: { title: "Build", headline: { text: "40 tests" } } },
+		]);
+	});
+
+	it("reads live wait widgets and never revives a job already settled on disk", () => {
+		const entries = [call("bash", "bash", { command: "make", async: true }), result("bash", "bash", "started", { async: { jobId: "bg_1", state: "running" } })];
+		const tool: ActiveTool = { toolCallId: "wait", toolName: "wait", args: {}, startedAt: 0, partialResult: { details: { jobs: [{ id: "bg_1", type: "bash", status: "running", widget: { headline: { text: "50/100" }, blocks: [] } }] } } };
+		const active = new Map([["wait", tool]]);
+		expect(backgroundJobs(entries, true, active)[0]?.widget?.headline?.text).toBe("50/100");
+		const settled = [...entries, result("poll", "job", "", { jobs: [{ id: "bg_1", type: "bash", status: "completed", widget: { headline: { text: "100/100" } } }] })];
+		expect(backgroundJobs(settled, true, active)[0]).toMatchObject({ state: "completed", widget: { headline: { text: "100/100" } } });
+	});
+
 	it("tracks an async bash job from start to delivered result, running jobs first", () => {
 		const entries: SessionEntry[] = [
 			call("b1", "bash", { command: "npm run dev", async: true }),
@@ -692,6 +715,7 @@ describe("helpersOf and workSummary", () => {
 				name: "Atlas",
 				status: "running",
 				activity: "Reading limits",
+				completionPercent: null,
 				tokens: 12_400,
 				toolCount: 6,
 				durationMs: 61_000,
@@ -707,6 +731,7 @@ describe("helpersOf and workSummary", () => {
 				name: "explore",
 				status: "done",
 				activity: "Look around",
+				completionPercent: null,
 				tokens: null,
 				toolCount: null,
 				durationMs: null,
@@ -868,6 +893,18 @@ describe("foldHelpers", () => {
 		expect(expanded.earlier).toBe(10);
 	});
 
+	it("retains an older helper's running child job across expand and collapse without losing the toggle count", () => {
+		const helpers = [...done, ...parked.slice(0, 3)];
+		const jobs = new Map([["P2", [{ jobId: "child", command: "make", intent: null, state: "running" as const, output: "", startedAt: null, durationMs: null, exitCode: null }]]]);
+		const collapsed = foldHelpers(helpers, false, jobs);
+		expect(ids(collapsed.shown)).toEqual(["D1", "D2", "D3", "P2"]);
+		expect(collapsed.earlier).toBe(2);
+		const expanded = foldHelpers(helpers, true, jobs);
+		expect(expanded.shown).toBe(helpers);
+		expect(expanded.earlier).toBe(2);
+		expect(foldHelpers(helpers, false, jobs)).toEqual(collapsed);
+	});
+
 	it("counts a recent failed helper among the latest and never folds a running one", () => {
 		const folded = foldHelpers([...running, failed, ...done, ...parked.slice(0, 2)], false);
 		expect(ids(folded.shown)).toEqual(["R1", "R2", "F", "D1", "D2"]);
@@ -981,10 +1018,21 @@ describe("activityOf", () => {
 	});
 
 	it("prefers the helper's latest activity once it has some", () => {
+		expect(activityOf({ stage: "Checking installer output\nMore", currentToolIntent: "Reading cask" })).toBe("Checking installer output");
+		expect(activityOf({ stage: " \n ", currentToolIntent: "Reading cask" })).toBe("Reading cask");
 		const base = { task, description: "Prove the Homebrew fix" };
 		expect(activityOf({ ...base, recentOutput: ["Checking the tap formula next.", "Earlier line"] })).toBe("Checking the tap formula next.");
 		expect(activityOf({ ...base, recentTools: [{ intent: null }, { intent: "Reading cask" }], recentOutput: ["text"] })).toBe("Reading cask");
 		expect(activityOf({ ...base, lastIntent: "Running brew audit", recentTools: [{ intent: "Reading cask" }] })).toBe("Running brew audit");
 		expect(activityOf({ ...base, lastIntent: "Running brew audit", currentToolIntent: "Writing test cask\nmore" })).toBe("Writing test cask");
+	});
+});
+
+describe("helperJobSnapshots", () => {
+	it("uses the agent handle for collided task job ids and accepts live widget updates", () => {
+		const entries = [result("wait", "wait", "", { jobs: [{ id: "Atlas-2", agentUrlId: "Atlas", type: "task", stage: "Reviewing", completionPercent: 70, widget: { title: "Review", blocks: [] } }] })];
+		expect(helperJobSnapshots(entries).get("Atlas")).toMatchObject({ stage: "Reviewing", completionPercent: 70, widget: { title: "Review" } });
+		const tools = new Map<string, ActiveTool>([["w", { toolCallId: "w", toolName: "wait", args: {}, startedAt: 0, partialResult: { details: { jobs: [{ id: "Atlas-2", agentUrlId: "Atlas", type: "task", stage: "Finishing", completionPercent: 90, widget: { title: "Finishing", blocks: [] } }] } } }]]);
+		expect(helperJobSnapshots(entries, tools).get("Atlas")).toMatchObject({ stage: "Finishing", completionPercent: 90, widget: { title: "Finishing" } });
 	});
 });

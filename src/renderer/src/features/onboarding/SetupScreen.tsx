@@ -14,6 +14,7 @@ import { focusRing } from "../../ui/styles";
 import { HelpView } from "./HelpPage";
 import { InlineTerminal } from "./InlineTerminal";
 import { CommandRun } from "./terminal";
+import { OmpUpdateSheet } from "./updates";
 
 /** DESIGN §4.1: the done state shows both checkmarks briefly before the app takes over. */
 const DONE_DELAY_MS = 600;
@@ -30,12 +31,29 @@ export function SetupScreen(_props: ScreenProps) {
 	// Help replaces the setup steps in place; the steps stay mounted (hidden) so a running install keeps its output.
 	const [helpOpen, setHelpOpen] = useState(false);
 	const helpButton = useRef<HTMLButtonElement>(null);
+	const [updateOpen, setUpdateOpen] = useState(false);
+	const [managedBy, setManagedBy] = useState<string | null>(null);
+	const [checkingUpdate, setCheckingUpdate] = useState(false);
 	const windows = window.vomp.platform === "win32";
 
 	const tooOld = Boolean(omp?.found && !omp.supported);
 	const refused = Boolean(omp?.refused);
 	const done = check === "done";
 	const installing = install.state === "running";
+
+	useEffect(() => {
+		if (!tooOld) return;
+		let active = true;
+		setCheckingUpdate(true);
+		void window.vomp.invoke("updates:omp:check", true)
+			.then(status => {
+				if (active) setManagedBy(status.managedBy ?? null);
+			})
+			.finally(() => {
+				if (active) setCheckingUpdate(false);
+			});
+		return () => { active = false; };
+	}, [tooOld, omp?.path, omp?.version]);
 
 	const runCheck = async () => {
 		setCheck("checking");
@@ -86,7 +104,7 @@ export function SetupScreen(_props: ScreenProps) {
 
 	const copy = async () => {
 		if (!omp) return;
-		await navigator.clipboard.writeText(omp.installCommand);
+		await navigator.clipboard.writeText(tooOld ? "omp update" : omp.installCommand);
 		setCopied(true);
 		toast({ tone: "ok", message: t("setup.step1.copied"), description: t("setup.step1.copiedBody") });
 	};
@@ -121,7 +139,7 @@ export function SetupScreen(_props: ScreenProps) {
 				<Mark size={56} className="mb-6" />
 				<PresenceSwap swapKey={heading} variant="rise" className="flex flex-col items-center">
 					<h1 className="text-page font-semibold leading-tight tracking-[-0.02em] text-fg">{t(`setup.${heading}.title`)}</h1>
-					<p className="mt-3 max-w-110 text-base text-fg-muted">{t(`setup.${heading}.body`)}</p>
+					<p className="mt-3 max-w-110 text-base text-fg-muted">{t(`setup.${heading}.body`, { version: omp?.minVersion })}</p>
 				</PresenceSwap>
 				{tooOld && omp && !done && (
 					<dl className="mt-4 flex items-center gap-6 font-mono text-sm">
@@ -144,12 +162,12 @@ export function SetupScreen(_props: ScreenProps) {
 						number={1}
 						done={step1Done}
 						title={tooOld ? t("setup.step1.update") : t("setup.step1.install")}
-						body={windows ? t("setup.step1.bodyWindows") : t("setup.step1.body")}
+						body={tooOld ? t(managedBy ? "setup.step1.managedUpdate" : "setup.step1.updateBody", { app: managedBy }) : windows ? t("setup.step1.bodyWindows") : t("setup.step1.body")}
 					>
-						{omp && (
+						{omp && !managedBy && (
 							<code className="mt-3 block select-all break-all rounded-md border border-border bg-inset px-3 py-2 font-mono text-sm text-fg">
-								{windows && <span className="mr-2 text-fg-faint">PS&gt;</span>}
-								{omp.installCommand}
+								{windows && !tooOld && <span className="mr-2 text-fg-faint">PS&gt;</span>}
+								{tooOld ? "omp update" : omp.installCommand}
 							</code>
 						)}
 						<Expand open={install.state !== "idle"} className="pt-3">
@@ -177,18 +195,19 @@ export function SetupScreen(_props: ScreenProps) {
 								<Button
 									variant={refused ? "secondary" : "primary"}
 									icon={<Play aria-hidden />}
-									onClick={() => void startInstall()}
-									disabled={!omp || done}
+									onClick={() => tooOld ? setUpdateOpen(true) : void startInstall()}
+									loading={tooOld && checkingUpdate}
+									disabled={!omp || done || Boolean(managedBy)}
 								>
-									{tooOld ? t("setup.step1.runUpdate") : t("setup.step1.run")}
+									{tooOld ? t("setup.step1.update") : t("setup.step1.run")}
 								</Button>
 							)}
 							<Button
 								variant="ghost"
 								icon={<Copy aria-hidden />}
 								onClick={() => void copy()}
-								disabled={!omp}
-								title={t("setup.step1.copyHint")}
+								disabled={!omp || Boolean(managedBy)}
+								title={t(tooOld ? "setup.step1.copyUpdateHint" : "setup.step1.copyHint")}
 							>
 								{t("setup.step1.copy")}
 							</Button>
@@ -199,7 +218,7 @@ export function SetupScreen(_props: ScreenProps) {
 						done={done}
 						disabled={!step2Ready}
 						title={t("setup.step2.title")}
-						body={refused ? t("setup.step2.bodyRefused") : t("setup.step2.body")}
+						body={refused ? t("setup.step2.bodyRefused") : tooOld ? t("setup.step2.bodyUpdate") : t("setup.step2.body")}
 					>
 						<div className="mt-3">
 							<Button
@@ -255,6 +274,7 @@ export function SetupScreen(_props: ScreenProps) {
 				</div>
 			</div>
 		)}
+		{updateOpen && <OmpUpdateSheet props={undefined} close={() => setUpdateOpen(false)} />}
 		</>
 	);
 }

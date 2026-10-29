@@ -8,6 +8,7 @@ import { ArrowDown, ArrowUUpLeft, CaretRight, Copy, GitFork, Warning, XCircle } 
 import { AnimatePresence, motion } from "motion/react";
 import {
 	Component,
+	Fragment,
 	type KeyboardEvent,
 	type MouseEvent,
 	memo,
@@ -36,6 +37,7 @@ import { useApp } from "../../state/app";
 import { copyCode, StreamingMarkdown } from "../../transcript/Markdown";
 import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toast, useScrollFollow } from "../../ui";
 import { useDisplayedEntries } from "../branch";
+import { isReplyWrite, replyWriteUndecided, toolResultReplies } from "../friendly";
 import { useComposerDrafts } from "../composer/drafts";
 import { FileRefContext, LinkedMarkdown, useFileRefs, writtenFolders } from "./FileLinks";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
@@ -44,6 +46,7 @@ import { ReplyAnnouncer } from "./ReplyAnnouncer";
 import { helperRunsSummary, TaskRuns, taskRowContextEqual, taskRuns } from "../../tool-render/tools/task";
 import { TodoBoard, TodoChangeRow } from "../../tool-render/tools/todo";
 import { detailsRecord, isRecord } from "../../tool-render/util";
+import { ResultText } from "../../tool-render/parts";
 import { CommandResultRow } from "./CommandResultRow";
 import { NoticeRow } from "./NoticeRow";
 import { ModelFallbackNotice } from "./ModelFallbackNotice";
@@ -207,6 +210,18 @@ function shownLength(playout: Playout | null, index: number, length: number): nu
 	return playout ? Math.min(length, playout.visible(index)) : length;
 }
 
+/** Each shell reply is complete when emitted, even while its command keeps running. */
+function ToolReply({ replyKey, text, live, synchronized }: { replyKey: string; text: string; live: boolean; synchronized: boolean }): ReactNode {
+	const [arriving, setArriving] = useState(live && !synchronized);
+	useEffect(() => {
+		if (arriving) setArriving(false);
+	}, [arriving]);
+	const playout = usePlayout(replyKey, [{ length: text.length, timed: true }], { pending: arriving, showExisting: !live, synchronized });
+	const refs = useFileRefs(playout ? null : replyKey, [text]);
+	if (playout && shownLength(playout, 0, text.length) <= 0) return null;
+	return <ReplyText text={text} playout={playout} index={0} revealing={playout !== null} caret={playout !== null} refs={refs?.[0]} />;
+}
+
 /** Ids the reader is using, with a stable toggle that leaves the set as it is when nothing changes. */
 function useHeldSet(): [ReadonlySet<string>, (id: string, engaged: boolean) => void] {
 	const [held, setHeld] = useState<ReadonlySet<string>>(() => new Set());
@@ -247,6 +262,8 @@ interface WorkView {
 	recorded: ReadonlyMap<string, HelperStatus>;
 	/** An omp process may still run this chat's helpers (`ompRunning`). */
 	ompRunning: boolean;
+	/** Reply frames present during initial load or reconnect show without replaying their reveal. */
+	synchronizing: boolean;
 	/** Marks a step the reader is using (open, or focus inside it), so it stays a row instead of folding (`turns.ts`). */
 	hold: (callId: string, engaged: boolean) => void;
 	/** Marks a group the reader is using, by key, so it keeps its own boundary and key (`turns.ts`). */
@@ -322,7 +339,15 @@ function ToolStep({
 	);
 	// A helper pinned at the bottom of the chat while it runs has no card here; the row still counts it.
 	const cards = work ? unpinnedRuns(runs, work.pinned) : runs;
-	if (runs.length === 0) return card;
+	const replies = toolResultReplies(result?.details ?? (isRecord(live?.partialResult) ? live.partialResult.details : undefined));
+	if (runs.length === 0) return (
+		<>
+			{card}
+			{replies.map((text, index) => (
+				<ToolReply key={index} replyKey={`tool-replies:${block.id}:${index}`} text={text} live={live !== undefined} synchronized={work?.synchronizing ?? false} />
+			))}
+		</>
+	);
 	return (
 		<div>
 			{card}
@@ -379,9 +404,17 @@ export function AssistantBlocks({
 	const writing = writingThought(message, pending, liveThinking);
 	const isOpen = (index: number) => thoughtOpen(mode, choices.get(thoughtKey(message.timestamp, index)), index === writing);
 	const toggleThought = (index: number) => work?.thoughts.toggle(mode, thoughtKey(message.timestamp, index), isOpen(index));
+	const blockTexts = message.content.map(block => {
+		if (block.type !== "toolCall") return replyText(block);
+		const live = active.get(block.id);
+		const args = live?.args ?? block.arguments;
+		if (pending && replyWriteUndecided(block.name, args)) return "";
+		if (isReplyWrite(block.name, args)) return isRecord(args) && typeof args.content === "string" ? args.content : "";
+		return null;
+	});
 	// Visible text and open thoughts take time to reveal; collapsed thoughts and tool calls show when reached.
 	const timeline: PlayoutBlock[] = message.content.map((block, index) => {
-		const text = replyText(block);
+		const text = blockTexts[index];
 		if (text !== null) return { length: text.length, timed: true };
 		if (block.type === "thinking") return { length: block.thinking.length, timed: isOpen(index) };
 		return { length: 0, timed: false };
@@ -391,12 +424,12 @@ export function AssistantBlocks({
 	const revealing = pending || playout !== null;
 	let lastText = -1;
 	// A finished reply's file names become links; a growing stream is left alone until it ends.
-	const texts = message.content.flatMap(block => replyText(block) ?? []);
+	const texts = blockTexts.filter((text): text is string => text !== null);
 	const refs = useFileRefs(revealing ? null : message.timestamp, texts);
 	let textOrdinal = 0;
-	const textOrdinals = message.content.map(block => (replyText(block) !== null ? textOrdinal++ : -1));
+	const textOrdinals = blockTexts.map(text => (text !== null ? textOrdinal++ : -1));
 	for (const [index, block] of message.content.entries()) {
-		const text = replyText(block);
+		const text = blockTexts[index];
 		if (text !== null && shownLength(playout, index, text.length) > 0) lastText = index;
 	}
 	const failed = !revealing && (message.stopReason === "error" || message.stopReason === "aborted");
@@ -404,19 +437,21 @@ export function AssistantBlocks({
 		<div className="flex flex-col">
 			{message.content.map((block, index) => {
 				if (layout?.hidden.has(index)) return null;
-				const text = replyText(block);
+				const text = blockTexts[index];
 				if (text !== null) {
 					if (shownLength(playout, index, text.length) <= 0 && playout) return null;
 					return (
-						<ReplyText
-							key={index}
-							text={text}
-							playout={playout}
-							index={index}
-							revealing={revealing}
-							caret={revealing && index === lastText}
-							refs={refs?.[textOrdinals[index]]}
-						/>
+						<Fragment key={block.type === "toolCall" ? block.id : index}>
+							<ReplyText
+								text={text}
+								playout={playout}
+								index={index}
+								revealing={revealing}
+								caret={revealing && index === lastText}
+								refs={refs?.[textOrdinals[index]]}
+							/>
+							{block.type === "toolCall" && isReplyWrite(block.name, block.arguments) && results.get(block.id)?.isError && <ResultText result={results.get(block.id)} />}
+						</Fragment>
 					);
 				}
 				switch (block.type) {
@@ -762,7 +797,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	 */
 	const edgeRef = useRef<{ top: number; anchor: Element | undefined; offset: number } | null>(null);
 	// Reveal state by message, so a streamed reply's saved entry continues the same reveal (`usePlayout`).
-	const [playouts] = useState(() => new Map<number, Playout>());
+	const [playouts] = useState(() => new Map<number | string, Playout>());
 	const outOfSight = useOutOfSight(rootRef);
 	// Pinned to the bottom, the view follows new rows and the content column's own growth (a paced reply, an opening
 	// card) in one eased write per frame. Scrolled up, it stays put.
@@ -900,11 +935,12 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				live,
 				group: grouped,
 				context: { cwd: session.projectPath, home },
+				active: activeTools,
 				from: start,
 				hold: heldRows,
 				holdGroups: heldGroups,
 			}),
-		[laidOut, live, grouped, session.projectPath, home, start, heldRows, heldGroups],
+		[laidOut, live, grouped, session.projectPath, home, start, heldRows, heldGroups, activeTools],
 	);
 	const shownWorkRef = useRef<{ live: boolean; grouped: boolean; start: number; keys: ReadonlySet<string> } | null>(null);
 	const shownWork = shownWorkRef.current;
@@ -936,9 +972,10 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	);
 	const recorded = useMemo(() => transcriptHelperStates(entries), [entries]);
 	const pinned = usePinnedHelpers(view).ids;
+	const synchronizingReplies = !arrivals.armed || Boolean(view.guest && streamNeedsSync(view.guest.phase, previousGuestPhase.current));
 	const work = useMemo(
-		(): WorkView => ({ layout, arriving: forming, openGroups, thoughts, helpers, pinned, recorded, ompRunning: helpersMayRun, hold, holdGroup }),
-		[layout, forming, openGroups, thoughts, helpers, pinned, recorded, helpersMayRun, hold, holdGroup],
+		(): WorkView => ({ layout, arriving: forming, openGroups, thoughts, helpers, pinned, recorded, ompRunning: helpersMayRun, hold, holdGroup, synchronizing: synchronizingReplies }),
+		[layout, forming, openGroups, thoughts, helpers, pinned, recorded, helpersMayRun, hold, holdGroup, synchronizingReplies],
 	);
 	const openFile = (path: string) => openInFiles(session.projectPath, path, { focus: true, tabId: session.tabId });
 
@@ -1152,6 +1189,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 			<ReplyAnnouncer
 				entries={entries}
 				stream={stream}
+				active={activeTools}
 				ready={view.guest ? view.guest.phase === "live" && view.guest.loading === null : view.history !== null}
 				session={`${view.guest?.header?.id ?? view.history?.header?.id ?? session.tabId}:${view.displayLeaf ?? ""}`}
 			/>

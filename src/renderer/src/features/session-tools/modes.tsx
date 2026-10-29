@@ -16,6 +16,8 @@ import { exitPlan, togglePlan } from "./plan";
 import { useOmpScreen } from "./status";
 import { parseStatusLine } from "./screen";
 import { usePickerRequests } from "./pickers";
+import { sessionModes, setSessionMode } from "./nativeModes";
+import { goalBudget, loopRequest } from "./modeInputs";
 
 /** Rewind and fork parse the session file (zod schemas); that code loads with the first use (or in idle time). */
 const navigation = () => import("./navigate");
@@ -66,20 +68,28 @@ function GoalDialog({ session, close }: { session: SessionController; close(): v
 	const [objective, setObjective] = useState("");
 	const [budget, setBudget] = useState("");
 	const [busy, setBusy] = useState(false);
-	const run = async (command: string) => {
+	const run = async (action: "pause" | "resume" | "drop") => {
 		setBusy(true);
-		try { await runAndReport(session, command, { timeoutMs: 10000 }); }
+		try { await setSessionMode(session, { mode: "goal", action }); }
+		catch (error) { reportFailure(error); }
 		finally { setBusy(false); }
 	};
 	const start = async (guided: boolean) => {
 		if (guided) { close(); await runAndReport(session, "/guided-goal"); return; }
 		if (!objective.trim()) return;
-		close(); await runAndReport(session, `/goal set ${objective.trim()}`);
-		if (budget.trim()) await runAndReport(session, `/goal budget ${budget.trim()}`);
+		setBusy(true);
+		try {
+			let tokenBudget: number | undefined;
+			try { tokenBudget = goalBudget(budget); }
+			catch { throw new Error(i18n.t("advisor:mode.budget")); }
+			await setSessionMode(session, { mode: "goal", action: "enter", objective: objective.trim(), tokenBudget });
+			close();
+		} catch (error) { reportFailure(error); }
+		finally { setBusy(false); }
 	};
 	return (
 		<Dialog open onOpenChange={open => !open && close()}>
-			<DialogContent title={t("goal.title")} description={t("goal.description")} size="md" footer={<><Button variant="ghost" onClick={close}>{t("common.cancel")}</Button>{active || paused ? <><Button variant="secondary" loading={busy} onClick={() => void run(`/goal ${paused ? "resume" : "pause"}`)}>{t(paused ? "goal.resume" : "goal.pause")}</Button><Button variant="danger-ghost" loading={busy} onClick={() => void run("/goal drop")}>{t("goal.drop")}</Button></> : <Button variant="primary" loading={busy} disabled={!objective.trim()} onClick={() => void start(false)}>{t("goal.start")}</Button>}</>}>
+			<DialogContent title={t("goal.title")} description={t("goal.description")} size="md" footer={<><Button variant="ghost" onClick={close}>{t("common.cancel")}</Button>{active || paused ? <><Button variant="secondary" loading={busy} onClick={() => void run(paused ? "resume" : "pause")}>{t(paused ? "goal.resume" : "goal.pause")}</Button><Button variant="danger-ghost" loading={busy} onClick={() => void run("drop")}>{t("goal.drop")}</Button></> : <Button variant="primary" loading={busy} disabled={!objective.trim()} onClick={() => void start(false)}>{t("goal.start")}</Button>}</>}>
 				{active || paused ? <p className="text-md text-fg-muted">{t(paused ? "goal.pausedBody" : "goal.activeBody")}</p> : <div className="space-y-3"><Textarea autoFocus rows={4} label={t("goal.objective")} value={objective} onChange={event => setObjective(event.currentTarget.value)} /><Input label={t("goal.budget")} description={t("goal.budgetHint")} inputMode="numeric" value={budget} onChange={event => setBudget(event.currentTarget.value)} /><Button variant="ghost" onClick={() => void start(true)}>{t("goal.guided")}</Button></div>}
 			</DialogContent>
 		</Dialog>
@@ -95,14 +105,17 @@ function LoopSheet({ props, close }: SheetProps<TabProps>) {
 	const [prompt, setPrompt] = useState("");
 	const [busy, setBusy] = useState(false);
 	if (!session) return null;
-	const quote = (text: string) => `'${text.replaceAll("'", "'\\''")}'`;
 	const submit = async () => {
-		const args = kind === "count" ? limit.trim() : kind === "duration" ? limit.trim() : `${kind === "until" ? "--until" : "--while"} ${quote(check.trim())}`;
-		if ((kind === "until" || kind === "while") && !check.trim()) return;
 		setBusy(true);
-		close();
-		await runAndReport(session, `/loop ${args}${prompt.trim() ? ` ${prompt.trim()}` : ""}`, { timeoutMs: 8000 });
-		setBusy(false);
+		try {
+			let request;
+			try { request = loopRequest(kind, limit, check, prompt); }
+			catch { throw new Error(i18n.t(`advisor:mode.${kind}`)); }
+			await setSessionMode(session, request);
+			if (request.prompt) await session.send(request.prompt);
+			close();
+		} catch (error) { reportFailure(error); }
+		finally { setBusy(false); }
 	};
 	return <Dialog open onOpenChange={open => !open && close()}><DialogContent title={t("loop.title")} description={t("loop.description")} size="md" footer={<><Button variant="ghost" onClick={close}>{t("common.cancel")}</Button><Button variant="primary" loading={busy} onClick={() => void submit()}>{t("loop.start")}</Button></>}>
 		<div className="space-y-3"><label className="block text-md font-medium">{t("loop.bound")}<select className="mt-1 block h-9 w-full rounded-md border border-border-strong bg-panel px-2 text-fg" value={kind} onChange={event => setKind(event.currentTarget.value as typeof kind)}><option value="count">{t("loop.count")}</option><option value="duration">{t("loop.duration")}</option><option value="until">{t("loop.until")}</option><option value="while">{t("loop.while")}</option></select></label>{kind === "until" || kind === "while" ? <Input label={t("loop.check")} value={check} spellCheck={false} onChange={event => setCheck(event.currentTarget.value)} placeholder="npm test" /> : <Input label={t(kind === "count" ? "loop.countLabel" : "loop.durationLabel")} value={limit} spellCheck={false} onChange={event => setLimit(event.currentTarget.value)} placeholder={kind === "count" ? "5" : "10m"} />}<Textarea rows={3} label={t("loop.prompt")} description={t("loop.promptHint")} value={prompt} onChange={event => setPrompt(event.currentTarget.value)} /></div>
@@ -145,15 +158,16 @@ registerCommand({ id: "chat.compact", title: "session:commands.compact.title", h
 registerCommand({ id: "chat.plan", title: "session:commands.plan.title", hint: "session:commands.plan.hint", slash: "/plan", group: "modes", icon: ClipboardText, header: 220, when: sessionWhen, run: async ({ session }) => { if (session) await togglePlan(session); } });
 registerCommand({ id: "chat.goal", title: "session:commands.goal.title", hint: "session:commands.goal.hint", slash: "/goal", group: "modes", icon: Target, header: 230, when: sessionWhen, run: ({ session }) => { if (session) openGoal(session); } });
 registerCommand({ id: "chat.guidedGoal", title: "session:commands.guided.title", hint: "session:commands.guided.hint", slash: "/guided-goal", group: "modes", icon: ChatCircleDots, header: 240, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "guided"); } });
-registerCommand({ id: "chat.vibe", title: "session:commands.vibe.title", hint: "session:commands.vibe.hint", slash: "/vibe", group: "modes", icon: Lightning, header: 260, when: sessionWhen, run: ({ session }) => { if (session) void runAndReport(session, "/vibe"); } });
-registerCommand({ id: "chat.loop", title: "session:commands.loop.title", hint: "session:commands.loop.hint", slash: "/loop", group: "modes", icon: Repeat, header: 250, when: sessionWhen, run: ({ session }) => { if (session) openLoop(session); } });
-registerCommand({ id: "chat.advisor", title: "session:commands.advisor.title", hint: "session:commands.advisor.hint", slash: "/advisor on|off|status", group: "modes", icon: Eye, header: 270, when: sessionWhen, run: async ({ session }) => {
+registerCommand({ id: "chat.vibe", title: "session:commands.vibe.title", hint: "session:commands.vibe.hint", slash: "/vibe", group: "modes", icon: Lightning, header: 260, when: sessionWhen, run: async ({ session }) => {
 	if (!session) return;
 	try {
-		const { output } = await runCommand(session, "/advisor status", { until: (_lines, lines) => lines.some(line => /Advisor is disabled|Advisor Status/.test(line)) });
-		const enabled = output.some(line => line.includes("Advisor Status"));
-		await runAndReport(session, `/advisor ${enabled ? "off" : "on"}`);
+		const modes = await sessionModes(session);
+		await setSessionMode(session, { mode: "vibe", action: modes.vibe.status === "active" ? "exit" : "enter" });
 	} catch (error) { reportFailure(error); }
+} });
+registerCommand({ id: "chat.loop", title: "session:commands.loop.title", hint: "session:commands.loop.hint", slash: "/loop", group: "modes", icon: Repeat, header: 250, when: sessionWhen, run: ({ session }) => { if (session) openLoop(session); } });
+registerCommand({ id: "chat.advisor", title: "session:commands.advisor.title", hint: "session:commands.advisor.hint", slash: "/advisor configure", group: "modes", icon: Eye, header: 270, when: sessionWhen, run: ({ session }) => {
+	if (session) useApp.getState().openSheet("session-advisor", { tabId: session.tabId });
 } });
 registerCommand({ id: "chat.handoff", title: "session:commands.handoff.title", hint: "session:commands.handoff.hint", slash: "/handoff", group: "modes", icon: ArrowBendUpRight, header: 280, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "handoff"); } });
 registerCommand({ id: "chat.security", title: "session:commands.security.title", hint: "session:commands.security.hint", slash: "/security scan", group: "modes", icon: ShieldCheck, header: 285, when: sessionWhen, run: async ({ session }) => {

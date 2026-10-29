@@ -10,6 +10,8 @@ import { broadcast } from "./ipc";
 interface StoredPreferences extends AppPreferences {
 	/** The first-run "Ask me first" default (services/approval-default.ts); absent on profiles that predate it. */
 	newUserApproval?: NewUserApproval;
+	/** Legacy app pins, removed after their one-time migration into omp's pin file. */
+	pinnedSessions?: string[];
 }
 
 const DEFAULTS: AppPreferences = {
@@ -21,7 +23,6 @@ const DEFAULTS: AppPreferences = {
 	ompPath: null,
 	tourCompleted: false,
 	pinnedProjects: [],
-	pinnedSessions: [],
 	archivedSessions: [],
 	extraProjects: [],
 	projectColors: {},
@@ -58,4 +59,9 @@ export function setPrefs(patch: Partial<StoredPreferences>): StoredPreferences {
 	});
 	broadcast("app:prefs", current);
 	return current;
+}
+
+/** Clear only after omp has confirmed every legacy pin, so a failed migration remains retryable. */
+export function finishSessionPinMigration(): void {
+	setPrefs({ pinnedSessions: undefined });
 }

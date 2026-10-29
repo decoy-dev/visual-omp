@@ -7,6 +7,9 @@
  * carries typed per-cell details, each cell's output is interleaved beneath its code.
  */
 import type { ReactNode } from "react";
+import { Markdown } from "../../transcript/Markdown";
+import { DataTable, FieldTree } from "../structured";
+import { evalMcpProgress, McpProgressLine } from "./mcp";
 import { Badges, CodeBlock, InvalidArg, Note, Output, ResultImages, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { argsDigest, detailsRecord, isRecord, normalizeWs, num, str, truncate } from "../util";
@@ -299,6 +302,8 @@ interface DetailCell {
 	status: string;
 	durationMs: number | null;
 	exitCode: number | null;
+	views: unknown;
+	statusEvents: unknown;
 }
 
 function detailCellsOf(details: Record<string, unknown> | null): DetailCell[] {
@@ -318,9 +323,63 @@ function detailCellsOf(details: Record<string, unknown> | null): DetailCell[] {
 			status: str(item.status) ?? "",
 			durationMs: num(item.durationMs),
 			exitCode: num(item.exitCode),
+			views: item.views,
+			statusEvents: item.statusEvents,
 		});
 	}
 	return out;
+}
+
+type EvalView =
+	| { kind: "table"; columns: Array<{ head: string; numeric: boolean }>; rows: string[][] }
+	| { kind: "json"; value: unknown }
+	| { kind: "markdown"; text: string };
+
+function evalViewOf(raw: unknown): EvalView | null {
+	if (!isRecord(raw)) return null;
+	if (raw.kind === "json" && "value" in raw) return { kind: "json", value: raw.value };
+	if (raw.kind === "markdown" && typeof raw.text === "string") return { kind: "markdown", text: raw.text };
+	if (raw.kind !== "table" || !Array.isArray(raw.columns) || !Array.isArray(raw.rows)) return null;
+	if (!raw.columns.every(column => isRecord(column) && typeof column.head === "string")) return null;
+	const columnCount = raw.columns.length;
+	if (!raw.rows.every(row => Array.isArray(row) && row.length === columnCount && row.every(cell => typeof cell === "string"))) return null;
+	return {
+		kind: "table",
+		columns: raw.columns.map(column => ({ head: column.head as string, numeric: column.numeric === true })),
+		rows: raw.rows as string[][],
+	};
+}
+
+export type EvalOutputPart = { text: string } | { view: EvalView };
+
+/** Replace exact stdout spans in print order. Truncated, malformed and overlapping views keep their plain text. */
+export function evalOutputParts(output: string, views: unknown): EvalOutputPart[] {
+	const parts: EvalOutputPart[] = [];
+	let cursor = 0;
+	if (Array.isArray(views)) {
+		for (const entry of views) {
+			if (!isRecord(entry) || typeof entry.text !== "string" || entry.text === "") continue;
+			const view = evalViewOf(entry.view);
+			if (!view) continue;
+			const start = output.indexOf(entry.text, cursor);
+			if (start < 0) continue;
+			if (start > cursor) parts.push({ text: output.slice(cursor, start) });
+			parts.push({ view });
+			cursor = start + entry.text.length;
+		}
+	}
+	if (cursor < output.length) parts.push({ text: output.slice(cursor) });
+	return parts;
+}
+
+function EvalOutput({ cell }: { cell: DetailCell }): ReactNode {
+	return <>{evalOutputParts(cell.output, cell.views).map((part, index) => {
+		if ("text" in part) return part.text.trim() ? <Output key={index} text={part.text} maxLines={12} error={cell.status === "error"} /> : null;
+		const view = part.view;
+		if (view.kind === "json") return <FieldTree key={index} value={view.value} />;
+		if (view.kind === "markdown") return <Markdown key={index} text={view.text} />;
+		return <DataTable key={index} columns={view.columns} rows={view.rows} />;
+	})}</>;
 }
 
 function renderCells(args: Record<string, unknown>, name: string, detailCells: DetailCell[]): EvalCell[] {
@@ -343,7 +402,7 @@ function Summary({ name, args, result }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ name, args, result }: ToolRenderProps): ReactNode {
+function Body({ name, args, result, running }: ToolRenderProps): ReactNode {
 	const details = detailsRecord(result);
 	const detailCells = detailCellsOf(details);
 	const cells = renderCells(args, name, detailCells);
@@ -359,16 +418,6 @@ function Body({ name, args, result }: ToolRenderProps): ReactNode {
 		);
 	}
 
-	const jsonOutputs = Array.isArray(details?.jsonOutputs) ? details.jsonOutputs : [];
-	const jsonText = jsonOutputs
-		.map(v => {
-			try {
-				return JSON.stringify(v, null, 2) ?? String(v);
-			} catch {
-				return String(v);
-			}
-		})
-		.join("\n");
 	const notice = str(details?.notice);
 
 	return (
@@ -391,12 +440,13 @@ function Body({ name, args, result }: ToolRenderProps): ReactNode {
 					return (
 						<div className="tv-cell" key={`c${i}`}>
 							<CodeBlock code={cell.code} lang={HLJS_LANG[cell.lang] ?? null} title={titleParts.join(" · ")} />
-							{dc && dc.output !== "" && <Output text={dc.output} maxLines={12} error={dc.status === "error"} />}
+							{dc && <EvalOutput cell={dc} />}
+							{running && dc && evalMcpProgress(dc.statusEvents).map(event => <McpProgressLine key={event.id} value={event.value} tool={event.tool} />)}
 						</div>
 					);
 				})}
 			</div>
-			{jsonText && <Output text={jsonText} lang="json" variant="code" maxLines={12} title="display" />}
+			{running && detailCells.every(cell => evalMcpProgress(cell.statusEvents).length === 0) && evalMcpProgress(details?.statusEvents).map(event => <McpProgressLine key={event.id} value={event.value} tool={event.tool} />)}
 			{notice && <Note>{notice}</Note>}
 			<ResultImages result={result} />
 			{detailCells.length === 0 && <ResultText result={result} maxLines={12} />}

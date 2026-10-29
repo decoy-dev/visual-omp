@@ -4,6 +4,7 @@
  * the last status line it saw (the line disappears while omp shows a dialog in the editor slot).
  */
 import { useSyncExternalStore } from "react";
+import type { SessionModes } from "@shared/contracts/native";
 import type { SessionController, SessionView } from "../../state/session";
 import { readScreen } from "./drive";
 import { parseStatusLine, type StatusLine } from "./screen";
@@ -18,6 +19,18 @@ export interface ScreenSnapshot {
 const EMPTY: ScreenSnapshot = { lines: [], status: null };
 const IDLE_MS = 1000;
 const OVERLAY_MS = 450;
+
+export function statusWithModes(status: StatusLine | null, modes: SessionModes | null): StatusLine | null {
+	if (!modes) return status;
+	return {
+		model: status?.model ?? null,
+		thinking: status?.thinking ?? null,
+		plan: modes.plan.status === "inactive" ? "off" : modes.plan.status === "active" ? "on" : "paused",
+		goal: modes.goal.status === "inactive" ? "off" : modes.goal.status,
+		vibe: modes.vibe.status === "active",
+		loop: modes.loop.status !== "inactive",
+	};
+}
 
 class ScreenPoller {
 	readonly #session: SessionController;
@@ -48,12 +61,15 @@ class ScreenPoller {
 	async refresh(): Promise<ScreenSnapshot> {
 		const view = this.#session.getSnapshot();
 		if (view.mode !== "live" || !this.#session.hostId) return this.#snapshot;
-		const lines = await readScreen(this.#session).catch(() => null);
+		const [lines, native] = await Promise.all([
+			readScreen(this.#session).catch(() => null),
+			window.vomp.invoke("native:snapshot", this.#session.hostId).catch(() => null),
+		]);
 		if (!lines) return this.#snapshot;
-		const text = lines.join("\n");
+		const text = `${lines.join("\n")}\n${JSON.stringify(native?.modes)}`;
 		if (text !== this.#text) {
 			this.#text = text;
-			this.#snapshot = { lines, status: parseStatusLine(lines) ?? this.#snapshot.status };
+			this.#snapshot = { lines, status: statusWithModes(parseStatusLine(lines) ?? this.#snapshot.status, native?.modes ?? null) };
 			for (const listener of this.#listeners) listener();
 		}
 		return this.#snapshot;

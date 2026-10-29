@@ -1,5 +1,6 @@
 /** `write` — file create/overwrite: content preview plus write confirmation. */
 import type { ReactNode } from "react";
+import { DiagramPreview } from "../../ui/DiagramPreview";
 import { Badge, Badges, CodeBlock, InvalidArg, Note, Output, PathText, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, languageFromPath, str } from "../util";
@@ -64,7 +65,11 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					<InvalidArg what="content" />: expected string
 				</Note>
 			) : (
-				content && <CodeBlock code={content} lang={path ? languageFromPath(path) : null} maxLines={12} />
+				content && (path && /\.svg$/i.test(path)
+					? <DiagramPreview source={content} language="svg" />
+					: path && /\.mmd$/i.test(path)
+						? <DiagramPreview source={content} language="mermaid" />
+						: <CodeBlock code={content} lang={path ? languageFromPath(path) : null} maxLines={12} />)
 			)}
 			<ResultText result={result} maxLines={4} />
 			{diagnostics && diagnostics.messages.length > 0 && (

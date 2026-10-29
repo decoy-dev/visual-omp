@@ -14,6 +14,14 @@ afterEach(async () => {
 });
 
 describe("resolveFileRefs", () => {
+	it("never resolves out reply URLs as local files", async () => {
+		if (process.platform !== "win32") {
+			await mkdir(join(dir, "out:"), { recursive: true });
+			await writeFile(join(dir, "out:", "report.md"), "A file with a coincidental name.");
+		}
+		expect(await resolveFileRefs({ refs: ["out://report.md", "OUT://report.md"], bases: [dir] }, dir)).toEqual([null, null]);
+	});
+
 	it("resolves names in a folder the reply named earlier before the chat's folder", async () => {
 		// The reply that prompted this: "Files are in `~/Downloads/Flyer/`, and `CONTEXT.md` is updated: ... previews/".
 		const home = join(dir, "home");

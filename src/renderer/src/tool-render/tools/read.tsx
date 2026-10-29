@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { Badge, Badges, Kv, KvGrid, PathText, ResultImages, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
-import { detailsRecord, isRecord, languageFromPath, num, shortenPath, str } from "../util";
+import { detailsRecord, isRecord, languageFromPath, num, shortenPath, splitReadQuery, str } from "../util";
 
 /** Fields of `ReadToolDetails` the web view surfaces (untrusted wire JSON). */
 interface ReadDetails {
@@ -31,8 +31,9 @@ function readDetails(details: Record<string, unknown> | null): ReadDetails {
 const SEL_CHUNK_RE = /^(raw|conflicts|\d+(?:[-+]\d*)?(?:,\d+(?:[-+]\d*)?)*)$/i;
 
 /** Split a `path:sel` argument (handles compound `:50-100:raw` selectors). */
-function splitPathSel(rawPath: string): { path: string; sel: string | null } {
-	let path = rawPath;
+export function splitPathSel(rawPath: string): { path: string; sel: string | null; query: string | null } {
+	const query = splitReadQuery(rawPath);
+	let path = query.path;
 	const chunks: string[] = [];
 	for (let i = 0; i < 2; i++) {
 		const idx = path.lastIndexOf(":");
@@ -40,12 +41,13 @@ function splitPathSel(rawPath: string): { path: string; sel: string | null } {
 		chunks.unshift(path.slice(idx + 1));
 		path = path.slice(0, idx);
 	}
-	return { path, sel: chunks.length > 0 ? chunks.join(":") : null };
+	return { path, sel: chunks.length > 0 ? chunks.join(":") : null, query: query.query };
 }
 
 interface ReadArgs {
 	path: string;
 	sel: string | null;
+	query: string | null;
 	from: number | null;
 	to: number | null;
 }
@@ -58,16 +60,16 @@ function readArgs(args: Record<string, unknown>): ReadArgs {
 	const limit = num(args.limit);
 	const from = offset !== null || limit !== null ? (offset ?? 1) : null;
 	const to = from !== null && limit !== null ? from + limit - 1 : null;
-	return { path: split.path || rawPath, sel, from, to };
+	return { path: split.path || rawPath, sel, query: split.query, from, to };
 }
 
 function Summary(props: ToolRenderProps): ReactNode {
-	const { path, sel, from, to } = readArgs(props.args);
-	return <PathText path={path || "…"} from={from} to={to} sel={sel} />;
+	const { path, sel, query, from, to } = readArgs(props.args);
+	return <><PathText path={path || "…"} from={from} to={to} sel={sel} />{query !== null && <span className="tv-read-query"><Badge>jq: {query}</Badge></span>}</>;
 }
 
 function Body({ args, result }: ToolRenderProps): ReactNode {
-	const { path } = readArgs(args);
+	const { path, query } = readArgs(args);
 	const d = readDetails(detailsRecord(result));
 	const conflictBadge = d.conflictCount !== null && d.conflictCount > 0 && (
 		<Badge tone="warn">
@@ -83,6 +85,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 	const resolved = d.suffixTo ?? d.resolvedPath;
 	return (
 		<>
+			{query !== null && <span className="tv-read-query"><Badge>jq: {query}</Badge></span>}
 			{(resolved !== null || d.suffixFrom !== null) && (
 				<KvGrid>
 					{resolved !== null && (

@@ -67,6 +67,8 @@ import { ChatStatusMark } from "./ChatStatusMark";
 import { chatStatus, chatTitle, shortAgo, useModifierHeld, useNow, useSessionView } from "./hooks";
 import { archivedChats, type CurrentChat, currentChats, type SidebarChat, type SidebarGroup, type SidebarInput, sidebarGroups } from "./sidebarRows";
 import { TrashChatDialog } from "./trash";
+import { RenameChatDialog } from "./RenameChatDialog";
+import { SessionTitle, toast } from "../ui";
 
 const MAC = window.vomp.platform === "darwin";
 /** Display prefix for ⌘/Ctrl shortcuts. */
@@ -95,7 +97,6 @@ function sidebarInput(state: SidebarState): SidebarInput {
 		sessionsByProject: state.sessionsByProject,
 		tabs: state.tabs,
 		pinnedProjects: state.prefs?.pinnedProjects ?? [],
-		pinnedSessions: state.prefs?.pinnedSessions ?? [],
 		expanded: state.expandedProjects,
 		showAll: state.expandedChatLists,
 		query: state.search,
@@ -184,29 +185,32 @@ function ChatRow(props: ChatRowProps): ReactNode {
 	const statusId = useId();
 	const primary = useApp(state => state.view === "chat" && tabId !== null && state.activeTabId === tabId);
 	const secondary = useApp(state => state.view === "chat" && tabId !== null && state.splitTabId === tabId);
-	const pinned = useApp(state => (session ? (state.prefs?.pinnedSessions.includes(session.id) ?? false) : false));
+	const pinned = session?.pinned ?? false;
 	const controller = controllerFor(tabId);
 	const liveView = useSessionView(controller);
 	const [confirmDelete, setConfirmDelete] = useState(false);
+	const [renameSaved, setRenameSaved] = useState(false);
 	const scope = useContext(IndicatorScope);
 	const status = chatStatus(liveView);
 	const title = chatTitle(liveView, session?.title ?? tab?.title ?? null) ?? session?.preview ?? t(session ? "sidebar.untitled" : "chat.newTitle");
 	const active = primary || secondary;
 	const rename = getCommand("chat.rename");
 	const renameContext = controller ? { session: controller, projectPath: controller.projectPath } : null;
-	const canRename = rename !== undefined && renameContext !== null && (rename.when?.(renameContext) ?? true);
+	const liveRename = rename !== undefined && renameContext !== null && Boolean(liveView?.host && liveView.host.phase !== "exited") && (rename.when?.(renameContext) ?? true);
+	const canRename = liveRename || session !== null;
 
 	const open = (event?: MouseEvent) => openSidebarChat(chat, event?.metaKey || event?.ctrlKey);
 	const togglePin = () => {
-		const prefs = useApp.getState().prefs;
-		if (!prefs || !session) return;
-		const list = pinned ? prefs.pinnedSessions.filter(id => id !== session.id) : [...prefs.pinnedSessions, session.id];
-		void useApp.getState().setPrefs({ pinnedSessions: list });
+		if (!session) return;
+		void window.vomp.invoke("sessions:pin", session.file)
+			.then(() => useApp.getState().loadSessions(session.cwd))
+			.catch(error => toast({ message: error instanceof Error ? error.message : String(error), tone: "err" }));
 	};
 	const toggleArchive = () => {
 		const prefs = useApp.getState().prefs;
 		if (!prefs || !session) return;
-		const list = session.archived ? prefs.archivedSessions.filter(id => id !== session.id) : [...prefs.archivedSessions, session.id];
+		const ids = new Set([session.id, ...(session.previousSessionIds ?? [])]);
+		const list = session.archived ? prefs.archivedSessions.filter(id => !ids.has(id)) : [...prefs.archivedSessions, session.id];
 		void useApp.getState().setPrefs({ archivedSessions: list }).then(() => useApp.getState().loadSessions(session.cwd));
 	};
 
@@ -225,8 +229,11 @@ function ChatRow(props: ChatRowProps): ReactNode {
 					{t("sidebar.close")}
 				</kit.Item>
 			)}
-			{canRename && renameContext && (
-				<kit.Item icon={<PencilSimple />} onSelect={() => void rename.run(renameContext)}>
+			{canRename && (
+				<kit.Item icon={<PencilSimple />} onSelect={() => {
+					if (liveRename && renameContext) void rename!.run(renameContext);
+					else setRenameSaved(true);
+				}}>
 					{t("sidebar.rename")}
 				</kit.Item>
 			)}
@@ -295,7 +302,7 @@ function ChatRow(props: ChatRowProps): ReactNode {
 								}
 							}}
 						>
-							{title}
+							<SessionTitle title={title} />
 						</button>
 						{!current && pinned && <PushPin className="size-3 shrink-0 text-fg-faint" aria-hidden />}
 						{current ? (
@@ -339,6 +346,7 @@ function ChatRow(props: ChatRowProps): ReactNode {
 				title={title}
 				target={session ? { file: session.file, cwd: session.cwd, tabId } : null}
 			/>
+			{renameSaved && session && <RenameChatDialog session={session} close={() => setRenameSaved(false)} />}
 		</>
 	);
 }

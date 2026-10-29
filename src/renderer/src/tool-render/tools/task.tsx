@@ -11,7 +11,8 @@ import type { FriendlySummary, ToolStatus } from "../../chat/friendly";
 import { fmtDuration } from "../../collab/lib/format";
 import { useNow } from "../../shell/hooks";
 import { activityOf, type Helper, type HelperStatus, progressStatus, taskResultStatus } from "../../features/panes/derive";
-import { cn, Definition, Meter, StatusBadge, StatusDot } from "../../ui";
+import { completionPercentOf } from "../../features/panes/jobWidgets";
+import { cn, Definition, Meter, Progress, StatusBadge, StatusDot } from "../../ui";
 import { AgentLink, Badge, Note, Output, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderHost, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, normalizeWs, num, str, truncate } from "../util";
@@ -66,6 +67,7 @@ function runOf(record: Record<string, unknown>, status: HelperStatus, activity: 
 		name: taskIdLabel(id),
 		status,
 		activity,
+		completionPercent: completionPercentOf(record.completionPercent),
 		tokens: num(record.tokens),
 		toolCount: num(record.toolCount),
 		durationMs: positive(num(record.durationMs)),
@@ -81,6 +83,7 @@ function runOf(record: Record<string, unknown>, status: HelperStatus, activity: 
 /** The activity fields of a `details.progress` or `details.results` record. */
 function recordActivity(record: Record<string, unknown>): string {
 	return activityOf({
+		stage: str(record.stage),
 		currentToolIntent: str(record.currentToolIntent),
 		lastIntent: str(record.lastIntent),
 		recentTools: Array.isArray(record.recentTools) ? record.recentTools.filter(isRecord).map(tool => ({ intent: str(tool.intent) })) : undefined,
@@ -99,7 +102,7 @@ export function taskRuns(args: Record<string, unknown>, details: Record<string, 
 	if (results.length > 0) {
 		return [...results]
 			.sort((a, b) => (num(a.durationMs) ?? 0) - (num(b.durationMs) ?? 0) || (num(a.index) ?? 0) - (num(b.index) ?? 0))
-			.map(res => runOf(res, taskResultStatus(res), activityOf({ description: str(res.description), task: str(res.task) })));
+			.map(res => runOf(res, taskResultStatus(res), recordActivity(res)));
 	}
 	const progress = details && Array.isArray(details.progress) ? details.progress.filter(isRecord) : [];
 	if (progress.length > 0) return progress.map(p => runOf(p, progressStatus(p.status), recordActivity(p)));
@@ -201,6 +204,18 @@ export function SubagentRun({ run, actions, className }: { run: Helper; actions?
 							),
 						)}
 				</p>
+				{working && run.completionPercent != null && (
+					<div className="mt-1 flex items-center gap-2 text-xs text-fg-muted">
+						<Definition content={t("tasks.helper.completionHint")}>{t("tasks.helper.completion")}</Definition>
+						<Progress
+							value={run.completionPercent}
+							aria-label={t("tasks.helper.completionLabel", { name: run.name })}
+							aria-valuetext={t("tasks.helper.completionValue", { percent: run.completionPercent })}
+							className="max-w-32 flex-1"
+						/>
+						<span className="shrink-0 font-mono tabular-nums">~{run.completionPercent}%</span>
+					</div>
+				)}
 				{context !== null && run.contextTokens !== null && run.contextWindow !== null && (
 					<div className="mt-1 flex items-center gap-2 text-xs text-fg-faint">
 						<span className="shrink-0">{t("work.helper.context")}</span>

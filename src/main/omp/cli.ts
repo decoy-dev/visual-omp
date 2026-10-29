@@ -5,8 +5,8 @@ import { ompPath } from "./locate";
 import { ompStartError } from "./refused";
 
 /** Run a non-interactive omp subcommand and capture its output. Never rejects on non-zero exit. */
-export async function runOmp(argv: string[], options: { cwd?: string; timeoutMs?: number } = {}): Promise<CliResult> {
-	const [bin, env] = await Promise.all([ompPath(), userEnv()]);
+export async function runOmp(argv: string[], options: { cwd?: string; timeoutMs?: number; allowUnsupported?: boolean } = {}): Promise<CliResult> {
+	const [bin, env] = await Promise.all([ompPath({ allowUnsupported: options.allowUnsupported }), userEnv()]);
 	const { promise, resolve } = Promise.withResolvers<CliResult>();
 	try {
 		execFile(

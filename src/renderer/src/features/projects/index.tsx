@@ -163,6 +163,5 @@ registerCommand({
 	group: "chat",
 	icon: ShareNetwork,
 	header: 120,
-	when: ({ session }) => session !== null,
-	run: ({ session }) => useApp.getState().openSheet("share", { tabId: session?.tabId ?? null }),
+	run: ({ session }) => useApp.getState().openSheet("share", { tabId: session?.tabId ?? null, tab: session ? "link" : "move" }),
 });

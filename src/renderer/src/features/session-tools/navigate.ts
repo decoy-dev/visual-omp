@@ -1,5 +1,5 @@
 /**
- * Rewind, resume-from-here and fork, driven through omp's own `/tree` selector.
+ * Rewind and resume-from-here use omp's `/tree` selector; fork uses a separate RPC process.
  *
  * omp has no text command that moves the session leaf, so the app opens `/tree`, switches the filter
  * (Alt+U user turns / Alt+A everything), moves the cursor with Home + Down×n using the row order it
@@ -10,9 +10,9 @@
  */
 import { i18n } from "../../i18n";
 import { useComposerDrafts } from "../../chat/composer/drafts";
-import { controllerFor, useApp } from "../../state/app";
+import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
-import { OmpBusyError, press, readScreen, readyEditor, sleep, waitForScreen } from "./drive";
+import { OmpBusyError, press, readScreen, readyEditor, waitForScreen } from "./drive";
 import { parseStatusLine } from "./screen";
 import { parseSessionTree, rowProbe, type SelectorMode, selectorRows, type SessionTree } from "./tree";
 
@@ -24,7 +24,9 @@ const TREE_TITLE = "Session Tree";
 export async function loadTree(session: SessionController): Promise<SessionTree> {
 	const file = session.sessionFile;
 	if (!file) throw new NavigationError(i18n.t("session:navigate.noFile"));
-	const tree = parseSessionTree(await window.vomp.invoke("sessions:read", file));
+	const host = session.getSnapshot().host;
+	const newest = host && host.phase !== "exited" ? file : await window.vomp.invoke("sessions:resolve", file);
+	const tree = parseSessionTree(await window.vomp.invoke("sessions:read", newest));
 	const leaf = session.getSnapshot().displayLeaf;
 	return leaf && tree.entries.has(leaf) ? { ...tree, leafId: leaf } : tree;
 }
@@ -111,54 +113,13 @@ export async function navigateTo(session: SessionController, entryId: string): P
 	return { draft };
 }
 
-/** Wait for this chat's omp to report a different session file (after `/fork` or `/resume`). */
-async function waitForSessionFile(session: SessionController, test: (file: string | null) => boolean, timeoutMs = 20000): Promise<string> {
-	const deadline = Date.now() + timeoutMs;
-	while (Date.now() < deadline) {
-		const view = session.getSnapshot();
-		const file = session.sessionFile;
-		if (test(file) && view.mode === "live" && file) return file;
-		await sleep(200);
-	}
-	throw new NavigationError(i18n.t("session:navigate.forkTimeout"));
-}
-
-/**
- * Fork this chat into a new tab, optionally continuing from `entryId` there.
- *
- * `/fork` switches the running omp to the copy, so the app then `/resume`s the original here and opens
- * the copy in a new tab (entry ids are preserved by the fork).
- */
+/** Copy this chat, optionally cut at a message, without moving or typing into its live host. */
 export async function forkChat(session: SessionController, entryId?: string): Promise<void> {
 	if (session.getSnapshot().working) throw new NavigationError(i18n.t("session:navigate.busy"));
-	await readyEditor(session);
-	const original = session.sessionFile;
-	const originalId = session.getSnapshot().guest?.header?.id ?? session.getSnapshot().host?.sessionId;
-	if (!original || !originalId) throw new NavigationError(i18n.t("session:navigate.noFile"));
-
-	await session.command("/fork");
-	const forked = await waitForSessionFile(session, file => file !== null && file !== original);
-	const forkedTree = parseSessionTree(await window.vomp.invoke("sessions:read", forked));
-	await readyEditor(session);
-	await session.command(`/resume ${originalId}`);
-	await waitForSessionFile(session, file => file === original);
-
-	const forkedId = /_([^_]+)\.jsonl$/.exec(forked)?.[1] ?? forked;
-	useApp.getState().openSession({
-		id: forkedId,
-		file: forked,
-		cwd: session.projectPath,
-		title: session.getSnapshot().guest?.state?.sessionName ?? null,
-		createdAt: Date.now(),
-		updatedAt: Date.now(),
-		parentSession: originalId,
-		preview: null,
-		archived: false,
-	});
-	if (!entryId || !forkedTree.entries.has(entryId)) return;
-	const tabId = useApp.getState().tabs.find(tab => tab.sessionFile === forked)?.id;
-	const copy = controllerFor(tabId);
-	if (!copy) return;
-	await copy.ensureLive();
-	await navigateTo(copy, entryId);
+	if (!session.sessionFile) throw new NavigationError(i18n.t("session:navigate.noFile"));
+	const original = await window.vomp.invoke("sessions:resolve", session.sessionFile);
+	const forked = await window.vomp.invoke("sessions:fork", original, session.projectPath, entryId);
+	const summary = await window.vomp.invoke("sessions:summary", forked.file);
+	if (!summary) throw new NavigationError(i18n.t("session:navigate.noFile"));
+	useApp.getState().openSession(summary);
 }

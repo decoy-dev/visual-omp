@@ -4,6 +4,62 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+visual-omp 0.7 is the first beta release, adding native reply rendering, session controls and settings for omp 18.14. It requires omp 18.14 or later. Versions before 0.7 were alpha releases.
+
+### Highlights
+
+- **Changed:** visual-omp now requires omp 18.14 or later, and the setup screen can update omp for you.
+- **New:** Replies show omp's interim updates, SVG and Mermaid diagrams, and charts under numeric tables.
+- **New:** You can read release notes before installing an update and browse earlier versions.
+- **New:** The Tasks pane can stop background jobs, shows helpers' progress and draws job charts.
+- **New:** Saved chats can be renamed, pinned, moved to another computer and exported as an anonymized copy.
+- **New:** Settings include a native Advisor sheet, restricted folders, per-model compaction limits and more of omp's options.
+- **Improved:** The message box offers word suggestions, approval cards offer Deny and say why, and an interrupted chat can continue where omp stopped.
+- **Security:** Tool lookup, MCP project servers, update downloads and the packaged app are hardened.
+
+### Detailed changes
+
+#### Changed
+
+- visual-omp now requires omp 18.14.0 or later. If an older version is installed, choose **Update omp** on the setup screen to run omp's updater and read its output without opening a terminal. Setup stays blocked until the detected version meets the requirement. omp discovery ignores relative PATH entries and resolves an explicit executable path before checking its version, so a project folder cannot supply a different omp.
+- Chats that visual-omp runs now follow your omp settings for interim replies, SVG, next-message predictions, idle recaps and worktree exit choices, because the app now shows each of them natively. Tables are charted with omp's local rules only, which avoid extra model requests. Automatic worktree creation at startup stays off, because omp 18.14 does not report when a starting chat is ready for input.
+- Installation guidance now recommends Homebrew on macOS and Scoop on Windows, with the direct installers as alternatives.
+
+#### New
+
+- Interim replies that omp writes to `out://`, including shell redirects, appear as assistant text while omp keeps working. They use reply pacing and screen-reader announcements, stay in saved chats and helper conversations, and never count as file changes.
+- Replies and SVG or Mermaid file previews show theme-aware figures and diagrams, with the source available. Numeric Markdown tables get a chart beneath them, drawn with omp's own chart rules, and the table stays as it was. Diagram images expose their titles and descriptions to screen readers and scroll sideways at narrow widths instead of shrinking.
+- Python cards show tables, expandable JSON fields and Markdown from omp's cell views. Submit Result cards show the submitted section and fields with omp's rejection reason. Running MCP tools show the progress the server reports. Read cards show jq filters separately from the file path and keep JSON highlighting. Large results open with a first page and controls to reveal more.
+- The Tasks pane shows helpers' current stages and completion estimates, nests their background jobs beneath them and shows job folders when known. **Stop** and **Stop all** use omp's own job commands, even while a turn is busy. Job widgets include full charts with trend directions, targets and a data table for screen readers. When omp waits for background jobs, the chat stays active and offers **Stop waiting**.
+- You can read release notes before installing an update, from the update notice or Settings › About, including every version between yours and the new one. A version selector shows earlier notes, and the bundled changelog keeps them available offline.
+- Saved chats can be renamed from the sidebar without opening them. Pins use omp's shared pin file, and existing pins move over automatically. Share can save a chat archive for another computer, import an archive into a chosen folder and export an anonymized copy.
+- Conversations that omp continued in another file appear once in chat lists and search, and saved history follows the newest copy. Deleting such a chat checks that no other omp process owns any of its files before moving them all to the system trash.
+- **Configure advisors** opens a native sheet for advisor models, tools, instructions, review cadence and catch-up policy. Changes keep comments and unknown fields in omp's files and can be applied to a ready chat without restarting it.
+- Settings › Permissions has a restricted folders list and a policy for omp's computer control. Models & roles adds the Job widgets role, marks the active saved preset, labels free models and sets per-model compaction limits with a preview of when compaction starts. The Instructions page lists and edits the extra instruction files omp is configured to read.
+- Usage & limits shows each account's routing priority, reserve and state in omp's window order. Saved resets are listed through omp's command line and spent with a clear result. Providers can export and import sign-ins through omp. Connected tools can sign in to OAuth servers through omp. npm and git plugins offer **Update**.
+- **Continue where omp stopped** restarts an interrupted chat with omp's restore option. The chat follows omp's folder and worktree moves, and worktree exit questions use native dialogs. Startup model substitutions and idle recaps appear in the transcript.
+- The omp terminal uses the active omp theme's colours.
+
+#### Improved
+
+- The message box shows omp's word suggestions as ghost text, and Tab inserts one without sending. Next-message predictions appear the same way when you turn them on in omp; they stay off by default because omp bills an extra request for each.
+- Approval cards offer **Deny and say why**, which sends your explanation with the denial. The card always explains that sending a message denies the pending request.
+- Dictation shows **Starting…** until omp reports that recording has started, and stopping during startup cancels it.
+- File commands marked `side: true` show their answers in the terminal sheet, like `/btw`.
+- Plan, vibe, goal and loop controls read and change omp's modes directly instead of reading the status line.
+- Forking a chat copies it in a separate omp process, so the original chat keeps its place. Saved chats check omp's own session ownership before the app's process checks.
+- Closing a chat no longer sends further queued input, and asks before interrupting a slow shutdown or a worktree cleanup.
+
+#### Security
+
+- Tools such as git are found only through absolute PATH entries, so a project folder cannot supply its own copy.
+- MCP servers defined by a project run only after you choose to check or sign in to that server and confirm. Provider status checks and sign-in transfers run outside project folders. The Stats dashboard opens only on this computer's own addresses.
+- Remote images in replies and tool results load only when you choose **Load image**. Mermaid diagrams that reference images or external styles show their source instead.
+- Custom sharing servers need confirmation, with both addresses shown, before a chat is shared.
+- Downloaded installers must match the SHA-256 checksum GitHub publishes for them.
+- The packaged app turns off Electron features that let other programs run code inside it, and app requests from anywhere other than its own window are refused.
+- Release builds use narrower permissions and pinned actions, and dependencies are updated to clear known vulnerabilities.
+
 ## [0.6.8] - 2026-10-29
 
 visual-omp 0.6.8 warns you when omp switches to a fallback model and fixes several problems with newer omp versions.

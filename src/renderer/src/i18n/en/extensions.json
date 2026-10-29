@@ -86,9 +86,15 @@
 			"disabled": "Turned off {{name}}",
 			"toggleFailed": "Couldn't change {{name}}",
 			"removed": "Removed {{name}}",
-			"saved": "Saved {{name}}. New chats will use it.",
-			"signInTitle": "Sign in to {{name}}",
-			"signInBody": "This server signs you in through your browser. In a chat, type /mcp reauth {{name}} to connect."
+			"saved": "Saved {{name}}. New chats will use it."
+		},
+		"projectChecks": "Project server checks require a per-server action and a confirmation before commands or substitutions run.",
+		"signIn": {
+			"action": "Sign in",
+			"hint": "Sign in saves changes, asks permission to run this server's configuration, then opens omp's browser authorization.",
+			"running": "Authorizing this server. omp allows up to five minutes for browser sign-in.",
+			"completed": "omp completed sign-in for {{name}}.",
+			"restart": "Restart any chat that still cannot connect to this server."
 		},
 		"remove": {
 			"title": "Remove {{name}}?",
@@ -105,7 +111,7 @@
 			"found_one": "Found {{count}} tool",
 			"found_other": "Found {{count}} tools",
 			"server": "{{name}} {{version}} · answered in {{seconds}}s",
-			"authRequired": "The server requires sign-in. Save it, then type /mcp reauth {{name}} in a chat, or add an Authorization header.",
+			"authRequired": "The server requires credentials. Choose Sign in to authorize it through omp, or add an Authorization header.",
 			"unresolved": "These variables aren't set on this computer: {{vars}}",
 			"output": "Server output"
 		},
@@ -389,6 +395,20 @@
 			"noRows": "This account reports no limits.",
 			"noFigure": "No usage figure reported",
 			"unknown": "Unknown",
+			"policy": {
+				"priority": "Priority {{priority}}",
+				"reserve": "Reserve {{percent}}% ({{source}})",
+				"remaining": "{{percent}}% remaining",
+				"reclaim": "Reclaim above {{percent}}%",
+				"source": { "global": "global", "override": "account override" },
+				"state": {
+					"eligible": "Eligible for routing",
+					"inside-reserve": "Inside reserve",
+					"exhausted": "Exhausted",
+					"unknown": "Routing state unknown"
+				},
+				"note": "omp reports this account-wide state from its most-used window. Routing can differ for a particular model or chat."
+			},
 			"alert": {
 				"row": "{{window}}: {{state}}, {{percent}}% used",
 				"rowUnknown": "{{window}}: {{state}}; usage unavailable",
@@ -424,6 +444,7 @@
 				"noneUsable": "the provider reports none usable",
 				"spend": "Spend reset",
 				"unconfirmed": "omp did not confirm whether the reset was spent. Check this account's limits and saved resets before trying again.",
+				"failedExit": "omp's reset command exited with code {{code}}. Check the refreshed limits before trying again.",
 				"notSent": "No reset was sent to omp.",
 				"refreshing": "Refreshing limits",
 				"refreshed": "Limits refreshed.",

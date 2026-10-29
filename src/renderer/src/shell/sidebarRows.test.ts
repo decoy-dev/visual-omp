@@ -29,7 +29,6 @@ function input(patch: Partial<SidebarInput> = {}): SidebarInput {
 			{ id: "tB1", projectPath: "b", sessionFile: "b/b1.jsonl" },
 		],
 		pinnedProjects: ["a"],
-		pinnedSessions: [],
 		expanded: ["a", "b"],
 		showAll: [],
 		query: "",
@@ -58,6 +57,16 @@ describe("sidebarGroups", () => {
 		expect(group?.chats.map(chat => chat.key)).toEqual(["open:tNew", "a/a1.jsonl"]);
 		const closed = sidebarGroups({ ...removed, tabs: removed.tabs.filter(tab => tab.projectPath !== "a") });
 		expect(closed.map(entry => entry.project.path)).toEqual(["b"]);
+	});
+
+	it("uses omp pins and folds an open predecessor into its newest saved copy", () => {
+		const newest = session("a", "latest", 30, { pinned: true, previousSessionFiles: ["a/a1.jsonl"] });
+		const state = input({ sessionsByProject: { a: [session("a", "other", 40), newest] } });
+		const rows = sidebarGroups(state)[0]!.chats;
+		expect(rows.map(row => row.key)).toEqual(["open:tNew", "a/latest.jsonl", "a/other.jsonl"]);
+		expect(rows[1]?.tabId).toBe("tA1");
+		expect(currentChats(state).find(row => row.tabId === "tA1")).toMatchObject({ kind: "session", session: { id: "latest" } });
+		expect(sidebarGroups({ ...state, query: "latest" })[0]?.chats).toHaveLength(1);
 	});
 });
 

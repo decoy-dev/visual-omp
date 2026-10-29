@@ -1,10 +1,8 @@
 /**
- * Readers for omp's painted TUI screen (`host:screen` plain-text lines). omp keeps some state only in
- * its own UI — plan/goal/vibe/loop status, the configured thinking level, the Plan Review overlay and
- * command feedback printed with `showStatus` — so the app reads it back from the screen. Formats were
- * taken from omp 18.4.4 (`status-line`, `plan-review-overlay`, `hook-selector`). The status line
- * style is pinned by the chat's config overlay (main/omp/host.ts), because omp's defaults (thin
- * separators, thinking level as an icon) do not carry the ` ▶ ` and `⬢` markers read here.
+ * Readers for omp's painted TUI screen (`host:screen` plain-text lines). The configured thinking
+ * level, Plan Review overlay and command feedback still come from the screen. Session modes come
+ * from the hosted extension's `ctx.sessionModes` snapshot, never from status labels or job text.
+ * The status-line format stays pinned for the model and thinking reader.
  */
 
 export type PlanState = "off" | "on" | "paused";
@@ -49,12 +47,6 @@ export function parseStatusLine(lines: readonly string[]): StatusLine | null {
 			status.thinking = isThinkingLevel(level) ? level : null;
 			continue;
 		}
-		const words = segment.split(/\s+/);
-		const paused = segment.includes("⏸") || /\bpaused\b/i.test(segment);
-		if (words.includes("Plan")) status.plan = paused ? "paused" : "on";
-		else if (words.includes("Goal")) status.goal = paused ? "paused" : "active";
-		else if (words.includes("Vibe")) status.vibe = true;
-		else if (/(^|\s)Loop\b/.test(segment)) status.loop = true;
 	}
 	return status;
 }

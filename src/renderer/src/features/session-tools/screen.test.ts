@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import { isPlanReview, parsePlanReview, parseStatusLine } from "./screen";
 
 describe("omp screen readers", () => {
-	it("retains plan pause and distinguishes configured thinking from model name", () => {
-		expect(parseStatusLine(["╭── π ▶ ⬢ Opus 5.5 · ◕ xhigh ▶ 🗺 Plan ⏸ ▶ 🗑 project ──╮"]))
-			.toMatchObject({ model: "Opus 5.5", thinking: "xhigh", plan: "paused", goal: "off", vibe: false, loop: false });
+	it("reads thinking without inferring modes from status labels or job headlines", () => {
+		expect(parseStatusLine(["╭── π ▶ ⬢ Opus 5.5 · ◕ xhigh ▶ 🗺 Plan ⏸ ▶ Goal Loop Vibe ──╮"]))
+			.toMatchObject({ model: "Opus 5.5", thinking: "xhigh", plan: "off", goal: "off", vibe: false, loop: false });
 	});
 
 	it("reads Plan Review options, selection, and the optional execution slider", () => {

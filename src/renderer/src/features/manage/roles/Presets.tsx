@@ -18,6 +18,7 @@ function presetSummary(preset: ModelPresetInfo): string {
 export function PresetList({
 	presets,
 	dirty,
+	active,
 	onApply,
 	onDelete,
 	onSaveNew,
@@ -25,6 +26,7 @@ export function PresetList({
 	presets: ModelPresetInfo[] | null;
 	/** Role edits are waiting: saving a preset would miss them. */
 	dirty: boolean;
+	active: string | null;
 	onApply(preset: ModelPresetInfo): void;
 	onDelete(preset: ModelPresetInfo): void;
 	onSaveNew(): void;
@@ -51,6 +53,7 @@ export function PresetList({
 								<div className="flex items-center gap-2">
 									<span className="truncate text-md font-medium text-fg">{preset.name}</span>
 									{preset.source === "project" && <Chip tone="neutral">{t("settings.source.project")}</Chip>}
+									{active === preset.name && <Chip tone="accent">{t("roles.presets.active")}</Chip>}
 								</div>
 								<p className="truncate text-sm text-fg-muted">
 									{t("roles.presets.summary", { model: presetSummary(preset), count: Object.keys(preset.modelRoles).length })}

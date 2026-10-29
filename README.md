@@ -33,7 +33,7 @@ curl -fsSL https://omp.sh/install | sh
 irm https://omp.sh/install.ps1 | iex
 ```
 
-**visual-omp on macOS (Homebrew)**
+**visual-omp on macOS (Homebrew, recommended)**
 
 The Homebrew cask requires Homebrew 6.0.16 or later. Run `brew update` before installing or updating visual-omp.
 
@@ -42,7 +42,7 @@ brew tap decoy-dev/tap https://github.com/decoy-dev/visual-omp
 brew install --cask decoy-dev/tap/visual-omp
 ```
 
-**visual-omp on Windows (Scoop)**
+**visual-omp on Windows (Scoop, recommended)**
 
 Scoop installs visual-omp without the setup wizard, and later updates run from **Settings → About** without it too. Install Scoop by following the instructions on [scoop.sh](https://scoop.sh) if you don't have it, then run these commands in PowerShell. The first installs Git, which Scoop needs to add the visual-omp bucket.
 
@@ -54,11 +54,15 @@ scoop install decoy-dev/visual-omp
 
 visual-omp then appears under **Scoop Apps** in the Start menu. These commands install it for your user, which is what the in-app update expects. A copy installed for all users with `--global` can only be updated by an administrator, so its update window shows the command to run instead.
 
-**visual-omp on Windows (installer)**
+**visual-omp on macOS (disk image, alternative)**
+
+Download the macOS disk image for your processor from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest), open it, and move visual-omp to Applications.
+
+**visual-omp on Windows (installer, alternative)**
 
 Download `visual-omp-<version>-win-x64.exe` from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest) and run it. To move a copy installed this way to Scoop, run the Scoop commands above, quit visual-omp, and uninstall the installer's copy in Windows Settings under **Apps**. Both copies use the same profile folder, so your chats and settings stay.
 
-visual-omp supports macOS on Apple Silicon and Intel, Windows 10 and later, and omp 18.4 or later.
+visual-omp supports macOS on Apple Silicon and Intel, Windows 10 and later, and omp 18.14.0 or later. An older omp opens the setup screen, where **Update omp** runs omp's updater without a separate terminal.
 
 ### First launch
 

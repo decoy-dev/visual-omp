@@ -1,0 +1,103 @@
+.tv-field,
+.tv-field-branch > summary {
+	padding: 2px 0;
+	overflow-wrap: anywhere;
+	white-space: pre-wrap;
+}
+
+.tv-field-branch > summary {
+	cursor: pointer;
+}
+
+.tv-field-branch > summary:focus-visible {
+	outline: 2px solid var(--tv-ring);
+	outline-offset: 2px;
+}
+
+.tv-field-children {
+	padding-left: 16px;
+}
+
+.tv-field-key {
+	color: var(--tv-muted);
+}
+
+.tv-field-value--string {
+	color: var(--syn-string, var(--tv-fg));
+}
+
+.tv-field-value--number,
+.tv-field-value--boolean {
+	color: var(--syn-number, var(--tv-fg));
+}
+
+.tv-data-table {
+	max-width: 100%;
+	overflow-x: auto;
+	border: 1px solid var(--tv-border);
+	border-radius: var(--radius-sm);
+}
+
+.tv-data-table table {
+	width: 100%;
+	border-collapse: collapse;
+	font: inherit;
+}
+
+.tv-data-table th,
+.tv-data-table td {
+	padding: 6px 8px;
+	text-align: left;
+	vertical-align: top;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+.tv-data-table th {
+	background: var(--tv-inset);
+	font-weight: 600;
+}
+
+.tv-data-table tbody tr {
+	border-top: 1px solid var(--tv-border);
+}
+
+.tv-data-table .tv-numeric {
+	text-align: right;
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.tv-mcp-progress {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: baseline;
+	gap: 4px 8px;
+	padding: 4px 0;
+	color: var(--fg-muted, var(--tv-muted));
+	font-family: var(--font-ui, inherit);
+	font-size: var(--text-sm, 12px);
+	overflow-wrap: anywhere;
+}
+
+.tv-mcp-progress-amount {
+	font-family: var(--font-mono, monospace);
+	font-variant-numeric: tabular-nums;
+	white-space: nowrap;
+}
+
+.tv-read-query {
+	max-width: 100%;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+}
+
+.tv-card .tr-md {
+	font-family: var(--font-ui, sans-serif);
+}
+
+.tv-table-actions {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 8px;
+}

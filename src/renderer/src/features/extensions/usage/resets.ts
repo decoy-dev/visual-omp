@@ -3,25 +3,22 @@ import { errorText } from "../format";
 import type { AccountIdentity } from "./planUsage";
 
 /**
- * The entry of omp's `/usage reset` listing for the account a usage report describes, or null unless
- * exactly one entry has the same identity. omp labels an entry from the stored credential as the
- * email (else the account id), then ` · ` and the organization name (else its id) when it has one.
- * The email or id must be the report's, and the organization must agree: both name the same one, or
- * neither names one. Nothing is inferred from how many accounts omp lists, because spending a reset
+ * The entry of omp's JSON listing for the account a usage report describes, or null unless exactly
+ * one entry has the same structured identity and organization. Display labels never identify a
+ * spending target. Nothing is inferred from how many accounts omp lists, because spending a reset
  * cannot be undone and a stale report could describe an account omp no longer holds.
  */
 export function matchResetAccount(accounts: readonly UsageResetAccount[], provider: string, identity: AccountIdentity): UsageResetAccount | null {
-	const base = identity.email ?? identity.accountId;
-	if (!base) return null;
-	const reportOrg = identity.orgName ?? identity.orgId;
+	if (!identity.email && !identity.accountId) return null;
 	const matches = accounts.filter(entry => {
 		if (entry.provider !== provider) return false;
-		const split = entry.label.indexOf(" · ");
-		const labelBase = split < 0 ? entry.label : entry.label.slice(0, split);
-		const labelOrg = split < 0 ? undefined : entry.label.slice(split + 3);
-		if (labelBase.toLowerCase() !== base.toLowerCase()) return false;
-		if (labelOrg === undefined || reportOrg === undefined) return labelOrg === reportOrg;
-		return labelOrg === identity.orgName || labelOrg === identity.orgId;
+		if (entry.accountId && identity.accountId) {
+			if (entry.accountId !== identity.accountId) return false;
+		} else if (!entry.email || !identity.email || entry.email.toLowerCase() !== identity.email.toLowerCase()) return false;
+		if (entry.orgId && identity.orgId) return entry.orgId === identity.orgId;
+		const entryOrg = entry.orgName ?? entry.orgId;
+		const reportOrg = identity.orgName ?? identity.orgId;
+		return entryOrg === reportOrg;
 	});
 	return matches.length === 1 ? (matches[0] ?? null) : null;
 }

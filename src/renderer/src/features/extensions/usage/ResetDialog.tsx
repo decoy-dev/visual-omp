@@ -1,8 +1,8 @@
 /**
  * Usage & limits → Spend a saved reset (DESIGN §4.18). Opening the dialog asks omp for its live
- * `/usage reset` listing and finds this account in it, so the dialog states which stored sign-in omp
- * would spend from and whether it can spend one now. Confirming sends `/usage reset <provider>/<credential id>`
- * to a short-lived omp (`usage:spendReset`), shows what omp printed and refreshes the limits. The steps
+ * `omp usage reset --json` listing and finds this account in it, so the dialog states which stored sign-in omp
+ * would spend from and whether it can spend one now. Confirming runs `omp usage reset <provider>/<credential id>`
+ * (`usage:spendReset`), shows what omp printed with its exit status and refreshes the limits. The steps
  * live in {@link ResetFlow}, which keeps the confirmed target fixed while omp works.
  */
 import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
@@ -124,7 +124,11 @@ export function ResetDialog({ open, onOpenChange, provider, providerName, accoun
 					{spent && (
 						<>
 							{spent.outcome && spent.outcome.output !== "" && <p className="whitespace-pre-wrap [overflow-wrap:anywhere]">{spent.outcome.output}</p>}
-							{spent.outcome && !spent.outcome.confirmed && <Notice tone="warn">{t("usage.limits.resets.unconfirmed")}</Notice>}
+							{spent.outcome && !spent.outcome.confirmed && (
+								<Notice tone={spent.outcome.exitCode === undefined ? "warn" : "err"}>
+									{spent.outcome.exitCode === undefined ? t("usage.limits.resets.unconfirmed") : t("usage.limits.resets.failedExit", { code: spent.outcome.exitCode })}
+								</Notice>
+							)}
 							{spent.error !== null && (
 								<Notice tone="err">
 									{t("usage.limits.resets.notSent")} {spent.error}

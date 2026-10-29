@@ -25,6 +25,7 @@ export * from "./ScopeSwitch";
 export * from "./SectionHeader";
 export * from "./Segmented";
 export * from "./Select";
+export * from "./SessionTitle";
 export * from "./Sheet";
 export * from "./ShareBar";
 export * from "./Slider";

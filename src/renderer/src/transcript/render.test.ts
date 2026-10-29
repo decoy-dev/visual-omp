@@ -21,6 +21,8 @@ const corpus: Record<string, string> = {
 	callouts: "> [!NOTE]\n> Read **this** first.\n\n> [!tip] Faster path\n> Use the cache.\n\n> [!WARNING]\n>\n> Second paragraph.\n\n> Plain quote [!NOTE]",
 	numericTable: "| Model | Tokens | Cost |\n| --- | --- | --- |\n| opus | 1,204 | $3.50 |\n| kimi | `98k` | |\n\nAfter.",
 	tasks: "- [ ] open\n- [x] done\n- plain\n\n1. [x] ordered\n\n- [ ] loose\n\n  with more",
+	svgFigure: '```svg\n<svg viewBox="0 0 80 40"><rect width="80" height="40" fill="var(--accent)"/></svg>\n```',
+	mermaidFigure: "```mermaid\nflowchart LR\nA[Start] --> B[Done]\n```",
 };
 
 const joined = (blocks: MarkdownBlocks, text: string) =>
@@ -75,6 +77,21 @@ describe("Markdown upgrades", () => {
 		const html = dom(renderMarkdown("```ts\nconst a = 1;\n```"));
 		expect(html).toContain('<div class="tr-code"><div class="tr-code-head"><span class="tr-code-lang">ts</span><button type="button" class="tr-code-copy" data-copy-code');
 		expect(html).toContain('<pre><code class="language-ts">const a = 1;</code></pre></div>');
+	});
+
+	it.each(["https://evil.example/pixel?q=private", "//evil.example/pixel", "http://evil.example/pixel"])("keeps remote image %s inert before consent", href => {
+		const html = renderMarkdown(`![Private preview](${href})`);
+		expect(html).not.toContain("<img");
+		expect(html).toContain("Private preview");
+		expect(html).toContain("evil.example");
+		expect(html).toContain("Load image");
+	});
+
+	it("keeps trusted data and relative images while refusing active schemes", () => {
+		expect(renderMarkdown("![inline](data:image/png;base64,iVBORw0KGgo=)")).toContain("<img");
+		expect(renderMarkdown("![local](assets/image.png)")).toContain("<img");
+		expect(renderMarkdown("![unsafe](javascript:alert%281%29)")).not.toContain("<img");
+		expect(renderMarkdown("![unsafe](data:text/html;base64,PHNjcmlwdD4=)")).not.toContain("<img");
 	});
 
 	it("wraps tables in a scroll frame and right-aligns columns that hold only numbers", () => {

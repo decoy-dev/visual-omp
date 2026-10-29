@@ -40,7 +40,7 @@ function unescapeHtml(raw: string): string {
 		}
 	});
 }
-function safeHref(href: string): string | null {
+export function safeHref(href: string): string | null {
 	const trimmed = href.trim();
 	let protocol: string;
 	try {
@@ -62,6 +62,8 @@ const CALLOUT_MARKER = /^\[!(note|tip|important|warning|caution)\][ \t]*/i;
 
 /** marked's own renderer, for the plain code block inside the header frame. */
 const plain = new Renderer();
+/** omp charts only top-level tables, leaving quoted and list-nested tables as their original data. */
+const chartTables = new WeakSet<Tokens.Table>();
 
 const md = new Marked({
 	gfm: true,
@@ -80,11 +82,30 @@ const md = new Marked({
 			return `<a href="${escapeHtml(url)}"${titleAttr} target="_blank" rel="noopener">${inner}</a>`;
 		},
 		image(token) {
-			return plain.image.call(this, token).replace("<img ", '<img tabindex="0" ');
+			const href = token.href.trim();
+			let url: URL;
+			let absolute = true;
+			try { url = new URL(href); } catch {
+				absolute = false;
+				try { url = new URL(href, "https://relative.invalid/"); } catch { return escapeHtml(token.text); }
+			}
+			const networkPath = /^[\\/]{2}/.test(href);
+			if ((url.protocol === "https:" || url.protocol === "http:") && (absolute || networkPath || url.hostname !== "relative.invalid")) {
+				const alt = token.text || i18n.t("chat:visual.remoteImage");
+				return `<span class="vomp-remote-image" data-remote-image="${escapeHtml(url.href)}" data-image-alt="${escapeHtml(token.text)}"><span>${escapeHtml(alt)}</span><span class="vomp-image-host">${escapeHtml(url.host)}</span><button type="button" data-load-image aria-label="${escapeHtml(i18n.t("chat:visual.loadImageFrom", { host: url.host }))}">${escapeHtml(i18n.t("chat:visual.loadImage"))}</button><span data-image-status role="status"></span></span>`;
+			}
+			if (!absolute || /^data:image\/(?:png|jpeg|gif|webp|avif|bmp|svg\+xml)[;,]/i.test(href) || url.protocol === "blob:") return plain.image.call(this, token).replace("<img ", '<img tabindex="0" ');
+			return escapeHtml(token.text);
 		},
 		// A header row (language, Copy button) over the block. The button is wired by `copyCode` in Markdown.tsx.
 		code(token) {
 			const lang = (token.lang ?? "").match(/^\S*/)?.[0] ?? "";
+			if (lang.toLowerCase() === "svg" || lang.toLowerCase() === "mermaid") {
+				const fence = /^ {0,3}(`{3,}|~{3,})/.exec(token.raw)?.[1];
+				const last = token.raw.trimEnd().split("\n").at(-1) || "";
+				const closed = fence && new RegExp(`^ {0,3}${fence[0]}{${fence.length},}[ \\t]*$`).test(last);
+				return `<div class="vomp-diagram" data-diagram="${lang.toLowerCase()}"${closed ? "" : " data-fence-open"}><div data-diagram-image></div><details open><summary>${escapeHtml(i18n.t("chat:visual.source"))}</summary>${plain.code(token)}</details></div>\n`;
+			}
 			const label = escapeHtml(i18n.t("chat:copyCode"));
 			return `<div class="tr-code"><div class="tr-code-head"><span class="tr-code-lang">${escapeHtml(lang)}</span><button type="button" class="tr-code-copy" data-copy-code aria-label="${label}" title="${label}"></button></div>${plain.code(token)}</div>\n`;
 		},
@@ -101,7 +122,10 @@ const md = new Marked({
 			};
 			const head = `<tr>${token.header.map(cell).join("")}</tr>`;
 			const body = token.rows.map(row => `<tr>${row.map(cell).join("")}</tr>`).join("");
-			return `<div class="tr-table"><table><thead>${head}</thead>${body ? `<tbody>${body}</tbody>` : ""}</table></div>\n`;
+			const table = `<div class="tr-table"><table><thead>${head}</thead>${body ? `<tbody>${body}</tbody>` : ""}</table></div>`;
+			if (!chartTables.has(token)) return `${table}\n`;
+			const data = escapeHtml(JSON.stringify({ header: token.header.map(value => value.text), rows: token.rows.map(row => row.map(value => value.text)) }));
+			return `${table}<div class="vomp-chart" data-table-chart="${data}"></div>\n`;
 		},
 		// Task items drop the list marker; the checkbox (read-only, as marked renders it) takes its place.
 		listitem(item) {
@@ -131,7 +155,9 @@ md.use(mathExtension);
 /** The whole message as one HTML string (saved messages and every non-streaming surface). */
 export function renderMarkdown(text: string): string {
 	try {
-		return md.parse(text, { async: false });
+		const tokens = md.lexer(text);
+		for (const token of tokens) if (token.type === "table") chartTables.add(token as Tokens.Table);
+		return md.parser(tokens);
 	} catch {
 		return escapeHtml(text);
 	}
@@ -179,6 +205,7 @@ export class MarkdownBlocks {
 			}
 			this.#source = source;
 			blocks = this.#tokens.map(token => {
+				if (token.type === "table") chartTables.add(token as Tokens.Table);
 				const key = `${this.#links}\u0000${token.raw}`;
 				const html = this.#html.get(key) ?? md.parser([token]);
 				// Math shown as source while KaTeX loads: a key of its own (never a cache hit), so the block

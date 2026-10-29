@@ -32,5 +32,10 @@ src/renderer/src/tool-render/):
   OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
   SOFTWARE.
 
+The unmodified numeric table analysis, chart planner, SVG chart renderer and SVG source handling
+from @oh-my-pi/pi-tui 18.14.0 are included in
+src/renderer/src/ui/charts/vendor/omp/. That directory contains the upstream
+MIT License and a NOTICE identifying each source file.
+
 omp and oh-my-pi are projects of their respective authors; visual-omp is an
 independent desktop interface and is not affiliated with or endorsed by them.

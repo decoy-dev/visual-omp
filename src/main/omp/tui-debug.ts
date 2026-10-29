@@ -27,7 +27,16 @@ const Tree = z.object({
 	ok: z.literal(true),
 	tree: z.object({ overlays: z.array(z.object({ hidden: z.boolean().optional(), root: TreeNodeSchema })) }),
 });
-const Text = z.object({ ok: z.literal(true), lines: z.array(z.string()) });
+const Text = z.object({
+	ok: z.literal(true),
+	lines: z.array(z.string()),
+	cursor: z.object({ x: z.number(), y: z.number(), visible: z.boolean() }).optional(),
+});
+
+export interface TuiPaint {
+	lines: string[];
+	cursor?: { x: number; y: number; visible: boolean };
+}
 const Values = z.object({ ok: z.literal(true), values: z.record(z.string(), z.unknown()) });
 const Failure = z.object({ ok: z.literal(false), error: z.string() });
 
@@ -61,7 +70,11 @@ export class TuiDebugClient {
 	}
 
 	async screen(): Promise<string[]> {
-		return Text.parse(await this.#request({ op: "text" })).lines;
+		return (await this.paint()).lines;
+	}
+
+	async paint(): Promise<TuiPaint> {
+		return Text.parse(await this.#request({ op: "text" }));
 	}
 
 	/** Component debug state (`debugState()` of each TUI component, keyed by kind/id). */

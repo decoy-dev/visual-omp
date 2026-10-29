@@ -36,6 +36,10 @@ export interface DiscoveryContext {
 	settings: McpDiscoverySettings;
 	/** File text, or null when the file does not exist. Throws for other read errors. */
 	readFile: (path: string) => Promise<string | null>;
+	/** Settings listing keeps project secrets unresolved until one server is authorized. */
+	deferProjectValues?: boolean;
+	/** Only this logical project's server may resolve OpenCode file/env references after confirmation. */
+	authorizedProjectServer?: string;
 }
 
 /** One discovered entry before status resolution, in precedence order. */
@@ -87,7 +91,7 @@ export function ompOwnedPaths(cwd: string | null, agentDir: string): string[] {
 interface PlannedFile {
 	path: string;
 	level: McpScope;
-	parse: (text: string) => FileParse | Promise<FileParse>;
+	parse: (text: string, level: McpScope) => FileParse | Promise<FileParse>;
 }
 
 /** Runs the file plan for one provider and records every file as a source. */
@@ -152,7 +156,7 @@ class ProviderLoader {
 	async load(file: PlannedFile): Promise<{ source: McpSourceFile; servers: ParsedServer[] }> {
 		const { source, text } = await this.read(file);
 		if (text === null) return { source, servers: [] };
-		const parsed = await file.parse(text);
+		const parsed = await file.parse(text, file.level);
 		source.error = parsed.error;
 		source.serverCount = parsed.servers.length;
 		return { source, servers: parsed.servers };
@@ -201,8 +205,19 @@ export async function discoverServers(ctx: DiscoveryContext): Promise<DiscoveryR
 	const project = (...parts: string[]): string | null => (cwd ? join(cwd, ...parts) : null);
 	const planned = (entries: Array<[string | null, McpScope, PlannedFile["parse"]]>): PlannedFile[] =>
 		entries.flatMap(([path, level, parse]) => (path ? [{ path, level, parse }] : []));
-	const json = (dialect: "native" | "mcp-json" | "foreign", requireKey = false) => (text: string) =>
-		parseMcpServersJson(text, dialect, env, { requireKey });
+	const parseForScope = (level: McpScope, parse: (values: NodeJS.ProcessEnv) => FileParse): FileParse => {
+		const deferred = level === "project" && ctx.deferProjectValues;
+		const parsed = parse(deferred ? {} : env);
+		if (deferred && ctx.authorizedProjectServer) {
+			const resolved = parse(env);
+			parsed.servers = parsed.servers.map(server => server.name === ctx.authorizedProjectServer
+				? resolved.servers.find(candidate => candidate.name === server.name) ?? server
+				: server);
+		}
+		return parsed;
+	};
+	const json = (dialect: "native" | "mcp-json" | "foreign", requireKey = false) => (text: string, level: McpScope) =>
+		parseForScope(level, values => parseMcpServersJson(text, dialect, values, { requireKey }));
 	const loaders: ProviderLoader[] = [];
 	const loader = (provider: McpProviderId): ProviderLoader => {
 		const created = new ProviderLoader(ctx, provider);
@@ -243,7 +258,7 @@ export async function discoverServers(ctx: DiscoveryContext): Promise<DiscoveryR
 	const codexUser = join(home, ".codex", "config.toml");
 	await loader("codex").all(
 		planned([
-			[codexProject, "project", text => parseCodexToml(text, codexProject ?? "", env)],
+			[codexProject, "project", text => parseForScope("project", values => parseCodexToml(text, codexProject ?? "", values))],
 			[codexUser, "user", text => parseCodexToml(text, codexUser, env)],
 		]),
 	);
@@ -272,7 +287,8 @@ export async function discoverServers(ctx: DiscoveryContext): Promise<DiscoveryR
 		const layer = { path, level };
 		const { source, text } = await opencode.read(layer);
 		if (text === null) continue;
-		const substituted = await substituteOpenCodeVars(text, path, env, file => ctx.readFile(file).catch(() => null));
+		const deferred = level === "project" && ctx.deferProjectValues;
+		const substituted = deferred ? text : await substituteOpenCodeVars(text, path, env, file => ctx.readFile(file).catch(() => null));
 		const { mcp, error } = parseOpenCodeLayer(substituted);
 		source.error = error;
 		source.serverCount = Object.keys(mcp).length;
@@ -281,6 +297,10 @@ export async function discoverServers(ctx: DiscoveryContext): Promise<DiscoveryR
 			if (!record.success || Array.isArray(value)) {
 				source.error = `Invalid MCP config for "${name}"`;
 				continue;
+			}
+			if (deferred && ctx.authorizedProjectServer === name) {
+				const resolved = await substituteOpenCodeVars(JSON.stringify(record.data), path, env, file => ctx.readFile(file).catch(() => null));
+				record.data = JsonRecord.parse(JSON.parse(resolved));
 			}
 			const previous = merged.get(name);
 			merged.set(name, { config: previous ? mergeRecords(previous.config, record.data) : record.data, file: layer });
@@ -303,7 +323,7 @@ export async function discoverServers(ctx: DiscoveryContext): Promise<DiscoveryR
 	);
 
 	// vscode (20): project only.
-	await loader("vscode").all(planned([[project(".vscode", "mcp.json"), "project", text => parseVscodeJson(text, env)]]));
+	await loader("vscode").all(planned([[project(".vscode", "mcp.json"), "project", text => parseForScope("project", values => parseVscodeJson(text, values))]]));
 
 	// mcp-json (5): root fallbacks.
 	await loader("mcp-json").all(

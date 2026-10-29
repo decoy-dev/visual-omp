@@ -252,11 +252,24 @@ export interface McpToggleResult {
 	changedPaths: string[];
 }
 
+export interface McpReauthOptions {
+	/** Scope of the saved server. User scope excludes project servers for this invocation. */
+	scope: McpScope;
+	/** Selected project directory. Required for project scope; omitted uses the neutral cwd. */
+	cwd?: string;
+}
+
 export interface McpTestOptions {
 	/** Project directory: default stdio `cwd`, `!command` working dir, and the root advertised via `roots/list`. */
 	cwd?: string;
 	/** Whole-test deadline in ms (spawn → initialize → list). Default 20000. */
 	timeoutMs?: number;
+	/** A background check can use only a freshly resolved all-projects entry and neutral cwd. */
+	automatic?: boolean;
+	/** Canonical saved entry id. Required for automatic checks; config is re-read in main. */
+	serverId?: string;
+	/** Display name for an unsaved editor check's native confirmation. */
+	serverName?: string;
 }
 
 export interface McpToolInfo {
@@ -389,10 +402,12 @@ declare module "../ipc" {
 		"mcp:enable": { args: [name: string, options?: McpToggleOptions]; result: McpToggleResult };
 		/** Disable a server wherever it is defined, using omp's exact mechanism (see {@link McpToggleMechanism}). */
 		"mcp:disable": { args: [name: string, options?: McpToggleOptions]; result: McpToggleResult };
+		/** Confirm one native saved server, then authorize through omp's isolated print builtin. Rejects on cancellation or nonzero exit. */
+		"mcp:reauth": { args: [name: string, options: McpReauthOptions]; result: void };
 		/**
-		 * Connect to a server config without saving it: spawn (stdio) or connect (Streamable HTTP / legacy SSE), run
-		 * the MCP `initialize` handshake, send `notifications/initialized`, list tools (and prompts/resources when
-		 * advertised), then always close and kill the child process tree. Never rejects; failures are in the result.
+		 * Manual connections require native per-invocation approval before commands or substitutions. Background
+		 * checks accept only fresh user-source IDs with no project cwd; renderer config is ignored.
+		 * Then run initialize/list and close the connection. Authorization failures reject; transport failures are in the result.
 		 */
 		"mcp:test": { args: [config: McpServerConfig, options?: McpTestOptions]; result: McpTestResult };
 		/** Curated popular servers (real npm/PyPI packages and hosted endpoints). */

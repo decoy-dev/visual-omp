@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
 import type { CliResult } from "@shared/ipc";
 import { userEnv } from "../env";
+import { resolveExecutable } from "../services/executable";
 
 /** Hard cap on captured output so a runaway command cannot exhaust memory. */
 const MAX_OUTPUT_BYTES = 256 * 1024 * 1024;
@@ -36,9 +37,14 @@ export class MissingBinaryError extends Error {
 }
 
 /** Spawn a process and capture its output. Resolves on any exit code; rejects only when it cannot start. */
-export function run(bin: string, args: string[], options: RunOptions = {}): Promise<RunResult> {
+export async function run(bin: string, args: string[], options: RunOptions = {}): Promise<RunResult> {
+	const executable = await resolveExecutable(bin, options.env);
+	if (!executable) {
+		if (options.cwd !== undefined && !existsSync(options.cwd)) throw new Error(`Folder not found: ${options.cwd}`);
+		throw new MissingBinaryError(bin);
+	}
 	const { promise, resolve, reject } = Promise.withResolvers<RunResult>();
-	const child = spawn(bin, args, {
+	const child = spawn(executable, args, {
 		cwd: options.cwd,
 		env: options.env,
 		stdio: ["pipe", "pipe", "pipe"],

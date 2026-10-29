@@ -1,5 +1,6 @@
 import "./profile";
 import { join } from "node:path";
+import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, Menu, nativeTheme, shell } from "electron";
 import { attachAttentionWindow, setAppUserModelId } from "./attention";
 import { buildTextContextMenu } from "./contextMenu";
@@ -13,6 +14,7 @@ import { stopWatchingSessions, watchSessions } from "./omp/sessions";
 import { getPrefs } from "./prefs";
 import { quitAction } from "./quitFlow";
 import { killAllTerminals } from "./terminals";
+import { allowsMicrophone, isAppUrl, setAppRendererUrl } from "./services/app-origin";
 
 let mainWindow: BrowserWindow | null = null;
 /** Set once the renderer confirmed (or had nothing running) so the next quit proceeds. */
@@ -44,6 +46,17 @@ function createWindow(): void {
 			nodeIntegration: false,
 			spellcheck: true,
 		},
+	});
+	const rendererUrl = !app.isPackaged && process.env.ELECTRON_RENDERER_URL
+		? process.env.ELECTRON_RENDERER_URL
+		: pathToFileURL(join(__dirname, "../renderer/index.html")).href;
+	setAppRendererUrl(rendererUrl);
+	const contents = mainWindow.webContents;
+	contents.session.setPermissionCheckHandler((requester, permission, _origin, details) =>
+		requester === contents && isAppUrl(requester.getURL()) && allowsMicrophone(permission, details),
+	);
+	contents.session.setPermissionRequestHandler((requester, permission, callback, details) => {
+		callback(requester === contents && isAppUrl(requester.getURL()) && allowsMicrophone(permission, details));
 	});
 	attachAttentionWindow(mainWindow);
 	// Radix target menus prevent the DOM event, so only unhandled text reaches this native menu.
@@ -99,7 +112,7 @@ function createWindow(): void {
 		askOnLoad = false;
 		followSessions([]);
 	});
-	if (process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
+	if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
 	else void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));
 }
 

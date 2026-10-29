@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { SessionController } from "../../state/session";
 import { fuzzyFiles, mentionAtCaret, mentionRanges } from "./fuzzy";
-import { applyMode, imageMessageBytes } from "./send";
+import { applyMode, deliver, imageMessageBytes } from "./send";
 
 describe("mentionAtCaret", () => {
 	it("opens only for an @ at the start or after whitespace", () => {
@@ -56,5 +57,16 @@ describe("imageMessageBytes", () => {
 
 	it("never sends an empty paste (omp reads the clipboard on one)", () => {
 		expect(imageMessageBytes(["/a.png"], "")).toBe("\x1b[200~/a.png\x1b[201~\r");
+	});
+});
+
+describe("approval denial delivery", () => {
+	it("steers an explanation while an approval is pending, including an idle collab snapshot", async () => {
+		const steer = vi.fn();
+		const send = vi.fn();
+		const session = { getSnapshot: () => ({ working: false, guest: { uiRequest: { reqId: 7 } } }), steer, send } as unknown as SessionController;
+		await deliver(session, "Read the scripts first.", [], true);
+		expect(steer).toHaveBeenCalledExactlyOnceWith("Read the scripts first.", []);
+		expect(send).not.toHaveBeenCalled();
 	});
 });

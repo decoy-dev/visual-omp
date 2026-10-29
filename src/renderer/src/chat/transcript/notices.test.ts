@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentText, fenced, jobPayload, type Notice, parseNotice, parseOmpDuration, stripNoticeMarkup } from "./notices";
+import { contentText, fenced, hostNotices, jobPayload, type Notice, parseNotice, parseOmpDuration, stripNoticeMarkup } from "./notices";
 
 const helperResult = [
 	"<system-notice>",
@@ -269,4 +269,11 @@ describe("contentText", () => {
 		expect(contentText([image])).toBe("");
 		expect(contentText("plain")).toBe("plain");
 	});
+});
+
+it("orders recap and startup side notices, preserving text and deduplicating ids", () => {
+	const recap = { id: "recap:1", kind: "recap" as const, timestamp: 20, text: "Resume the next change." };
+	const startup = { id: "startup:1", kind: "startup" as const, timestamp: 10, text: "Default model unavailable. Using provider/model." };
+	expect(hostNotices([recap, startup, recap])).toEqual([startup, recap]);
+	expect(hostNotices(undefined)).toEqual([]);
 });

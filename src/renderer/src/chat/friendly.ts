@@ -5,7 +5,7 @@
  */
 import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import type { ToolResultLike } from "../tool-render/types";
-import { detailsRecord, isRecord, num, resultTextOf, shortenPath, str } from "../tool-render/util";
+import { detailsRecord, isRecord, num, resultTextOf, shortenPath, splitReadQuery, str } from "../tool-render/util";
 
 /** `neutral` is an outcome that is neither success nor failure, such as a helper that was stopped. */
 export type ToolStatus = "running" | "ok" | "error" | "neutral";
@@ -29,6 +29,26 @@ export interface ToolCallView {
 	running: boolean;
 	/** Model-provided intent (`i` argument), shown atop the expanded body. */
 	intent?: string;
+}
+
+/** omp's write-only user reply channel. Its path is ignored by omp. */
+export function isReplyWrite(name: string, args: unknown): boolean {
+	if (name !== "write" || !isRecord(args)) return false;
+	return /^out:\/\//i.test(str(args.path) ?? str(args.file_path) ?? "");
+}
+
+/** Wait for a streamed path to distinguish an ordinary write from an out reply. */
+export function replyWriteUndecided(name: string, args: unknown): boolean {
+	if (name !== "write") return false;
+	const path = isRecord(args) ? str(args.path) ?? str(args.file_path) ?? "" : "";
+	return path.length < 6 && "out://".startsWith(path.toLowerCase());
+}
+
+/** Complete replies emitted by a foreground shell run, oldest first. Progress frames repeat this list. */
+export function toolResultReplies(details: unknown): string[] {
+	return isRecord(details) && Array.isArray(details.replies)
+		? details.replies.filter((reply): reply is string => typeof reply === "string" && reply.trim().length > 0)
+		: [];
 }
 
 /**
@@ -100,7 +120,7 @@ function editInputPaths(input: string): string[] {
 }
 
 function statusOf(call: ToolCallView): ToolStatus {
-	if (call.running && !call.result) return "running";
+	if (call.running) return "running";
 	return call.result?.isError ? "error" : "ok";
 }
 
@@ -118,9 +138,11 @@ function editedPaths(call: ToolCallView): string[] {
 export function toolContextReference(call: ToolCallView): { path?: string; url?: string } {
 	if (call.name === "edit" || call.name === "apply_patch") {
 		const paths = editedPaths(call);
-		return paths.length === 1 ? { path: paths[0] } : {};
+		return paths.length === 1 && !/^out:\/\//i.test(paths[0] ?? "") ? { path: paths[0] } : {};
 	}
-	const path = call.name === "fetch" ? str(call.args.url) : ["read", "write"].includes(call.name) ? str(call.args.path) ?? str(call.args.file_path) : null;
+	const rawPath = call.name === "fetch" ? str(call.args.url) : ["read", "write"].includes(call.name) ? str(call.args.path) ?? str(call.args.file_path) : null;
+	const path = rawPath && call.name === "read" ? splitReadQuery(rawPath).path : rawPath;
+	if (path && /^out:\/\//i.test(path)) return {};
 	return path ? /^(https?|mailto):/i.test(path) ? { url: path } : { path } : {};
 }
 
@@ -198,7 +220,7 @@ export function friendlySummary(call: ToolCallView): FriendlySummary {
 			return { key: `write.${status}`, values: { file: baseName(path), lines }, status };
 		}
 		case "read": {
-			const path = str(args.path) ?? str(args.file_path) ?? "";
+			const path = splitReadQuery(str(args.path) ?? str(args.file_path) ?? "").path;
 			if (/^https?:\/\//i.test(path)) return { key: `read.url.${status}`, values: { url: firstLine(path, 50) }, status };
 			return { key: `read.file.${status}`, values: { file: shortenPath(baseName(path) || path) }, status };
 		}

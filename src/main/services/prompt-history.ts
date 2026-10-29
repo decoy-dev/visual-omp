@@ -20,7 +20,7 @@ export function readPromptHistory(file: string, sessionId: unknown): PromptHisto
 			? [{ text: row.prompt, timestamp: row.created_at * 1000 }]
 			: []).reverse();
 	} catch {
-		// Older omp, missing files and a busy writer must leave transcript history usable.
+		// Missing or unavailable databases and a busy writer must leave transcript history usable.
 		return [];
 	} finally {
 		db?.close();

@@ -51,6 +51,7 @@ export async function deliver(
 	images: readonly Attachment[],
 	now: boolean,
 ): Promise<void> {
-	if (now && session.getSnapshot().working) await session.steer(text, images);
+	const view = session.getSnapshot();
+	if (now && (view.working || view.guest?.uiRequest)) await session.steer(text, images);
 	else await session.send(text, images);
 }

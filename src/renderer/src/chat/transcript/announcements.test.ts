@@ -61,3 +61,41 @@ describe("transcript announcements", () => {
 		expect(tracker.update([choice, { ...fallback, resolvedModelIsFallback: false }], null, true, "chat")).toEqual([]);
 	});
 });
+
+describe("interim reply announcements", () => {
+	const frame = (replies: unknown[]) => new Map([["bash", { toolCallId: "bash", toolName: "bash", args: {}, startedAt: 1000, partialResult: { details: { replies } } }]]);
+	const saved = (replies: unknown[]): SessionEntry => ({ ...base("result"), type: "message", message: { role: "toolResult", toolCallId: "bash", toolName: "bash", timestamp: 2000, content: [], details: { replies }, isError: false } });
+
+	it("announces each foreground reply once across repeated frames and its saved result", () => {
+		const tracker = new AnnouncementTracker();
+		tracker.update([], null, true, "chat");
+		expect(tracker.update([], null, true, "chat", frame(["First."]))).toEqual([{ id: "tool-reply:bash:0", text: "First." }]);
+		expect(tracker.update([], null, true, "chat", frame(["First."]))).toEqual([]);
+		expect(tracker.update([], null, true, "chat", frame(["First.", "Second."]))).toEqual([{ id: "tool-reply:bash:1", text: "Second." }]);
+		expect(tracker.update([saved(["First.", "Second."])], null, true, "chat")).toEqual([]);
+	});
+
+	it("keeps history and reconnect reply frames silent", () => {
+		const tracker = new AnnouncementTracker();
+		expect(tracker.update([], null, true, "chat", frame(["Already shown."]))).toEqual([]);
+		tracker.update([], null, false, "chat");
+		expect(tracker.update([saved(["Already shown.", "While disconnected."])], null, true, "chat", frame(["Already shown.", "While disconnected."]))).toEqual([]);
+		expect(tracker.update([], null, true, "chat", frame(["Already shown.", "While disconnected.", "New reply."]))).toEqual([{ id: "tool-reply:bash:2", text: "New reply." }]);
+	});
+
+	it("announces complete write replies without repeating them as ordinary assistant text", () => {
+		const tracker = new AnnouncementTracker();
+		tracker.update([], null, true, "chat");
+		const out: SessionEntry = { ...base("out"), type: "message", message: { ...response, content: [{ type: "toolCall", id: "out-call", name: "write", arguments: { path: "out://status", content: "The **report**." } }] } };
+		const update = tracker.update([out], null, true, "chat");
+		expect(update.filter(item => "text" in item)).toEqual([{ id: "write-reply:out-call", text: "The **report**." }]);
+		expect(update.filter(item => "message" in item).map(item => item.message.content)).toEqual([[]]);
+		expect(tracker.update([out], null, true, "chat")).toEqual([]);
+	});
+
+	it("ignores malformed and empty reply payloads", () => {
+		const tracker = new AnnouncementTracker();
+		tracker.update([], null, true, "chat");
+		expect(tracker.update([], null, true, "chat", frame([null, "", " ", {}, "Report."]))).toEqual([{ id: "tool-reply:bash:0", text: "Report." }]);
+	});
+});

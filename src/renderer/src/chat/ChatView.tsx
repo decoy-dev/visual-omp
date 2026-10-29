@@ -6,7 +6,7 @@ import { useApp } from "../state/app";
 import type { SessionController, SessionView } from "../state/session";
 import { Button, cn, Expand, WorkingIndicator } from "../ui";
 import { Composer } from "./composer/Composer";
-import { activityKey, friendlySummary, resolveToolCall } from "./friendly";
+import { activityKey, friendlySummary, isReplyWrite, resolveToolCall } from "./friendly";
 import { SessionHeader } from "./SessionHeader";
 import { Transcript } from "./transcript/Transcript";
 import { replyText } from "./transcript/turns";
@@ -69,6 +69,7 @@ export function StateBanner({ session, view }: { session: SessionController; vie
 	if (view.mode === "exited") {
 		const code = view.host?.exitCode;
 		const missingFile = view.host?.resumeFileMissing === true;
+		const restore = !missingFile && view.host?.restoreAvailable === true;
 		const reason = view.host?.exitReason ?? view.error;
 		return (
 			<Banner tone="err">
@@ -79,9 +80,9 @@ export function StateBanner({ session, view }: { session: SessionController; vie
 				<Button
 					size="sm"
 					className="shrink-0"
-					onClick={() => void (missingFile ? useApp.getState().newChat(session.projectPath) : session.ensureLive())}
+					onClick={() => void (missingFile ? useApp.getState().newChat(session.projectPath) : restore ? session.restore() : session.ensureLive())}
 				>
-					{t(missingFile ? "startFreshChat" : "restartOmp")}
+					{t(missingFile ? "startFreshChat" : restore ? "restoreOmp" : "restartOmp")}
 				</Button>
 			</Banner>
 		);
@@ -112,7 +113,7 @@ function OwnerNotice({ session, view }: { session: SessionController; view: Sess
  * already under way when the chat joined shows no time. Status only: stopping is the composer's action slot. Mounted
  * only while working.
  */
-function WorkingRow({ view }: { view: SessionView }): ReactNode {
+function WorkingRow({ view, session }: { view: SessionView; session: SessionController }): ReactNode {
 	const { t } = useTranslation(["chat", "tools"]);
 	const now = useNow(1000);
 	const tool = view.guest ? [...view.guest.activeTools.values()].at(-1) : undefined;
@@ -123,15 +124,23 @@ function WorkingRow({ view }: { view: SessionView }): ReactNode {
 			? { name: last.name, args: last.arguments }
 			: null;
 	const activity = call
-		? t(`tools:${activityKey(friendlySummary(resolveToolCall({ ...call, running: true })))}`)
+		? isReplyWrite(call.name, call.args)
+			? t("chat:activity.writing")
+			: t(`tools:${activityKey(friendlySummary(resolveToolCall({ ...call, running: true })))}`)
 		: last && (replyText(last)?.trim() ?? "") !== ""
 			? t("chat:activity.writing")
 			: t("chat:activity.thinking");
 	const time = view.workingSince === null ? null : elapsed(now - view.workingSince);
-	const label = time === null ? t("chat:workingActivityUntimed", { activity }) : t("chat:workingActivity", { elapsed: time, activity });
+	const waiting = view.guest?.awaitingAsyncWork === true;
+	const label = waiting ? t("chat:waitingJobs") : time === null ? t("chat:workingActivityUntimed", { activity }) : t("chat:workingActivity", { elapsed: time, activity });
 	return (
-		<div className="mx-auto flex h-9 w-full max-w-(--chat-max) items-center px-6 pb-2">
+		<div className="mx-auto flex min-h-9 w-full max-w-(--chat-max) items-center gap-2 px-6 pb-2">
 			<WorkingIndicator label={label} />
+			{waiting && !view.readOnly && view.mode === "live" && (
+				<Button size="sm" variant="ghost" className="ml-auto shrink-0" onClick={() => session.abort()}>
+					{t("chat:stopWaiting")}
+				</Button>
+			)}
 		</div>
 	);
 }
@@ -161,8 +170,8 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 					.map(slot => (
 						<slot.component key={slot.id} session={session} />
 					))}
-				<Expand open={view.working}>
-					<WorkingRow view={view} />
+				<Expand open={view.working || view.guest?.awaitingAsyncWork === true}>
+					<WorkingRow view={view} session={session} />
 				</Expand>
 				<div data-tour="composer" className="mx-auto w-full max-w-[calc(var(--chat-max)+48px)] px-6 pb-4">
 					<Composer session={session} />

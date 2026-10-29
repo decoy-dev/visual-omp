@@ -8,6 +8,8 @@
  */
 import type { ReactNode } from "react";
 import { fmtDuration } from "../../collab/lib/format";
+import { JobWidget } from "../../features/panes/JobWidget";
+import { completionPercentOf, jobWidgetOf, type JobWidgetView } from "../../features/panes/jobWidgets";
 import type { Tone } from "../parts";
 import { Badge, Badges, Note, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
@@ -23,6 +25,10 @@ interface JobSnapshotLike {
 	durationMs: number;
 	resultText: string;
 	errorText: string;
+	widget: JobWidgetView | null;
+	stage: string | null;
+	completionPercent: number | null;
+	cwd: string | null;
 }
 
 interface CancelOutcomeLike {
@@ -74,6 +80,10 @@ function jobOf(value: unknown): JobSnapshotLike | null {
 		durationMs: num(value.durationMs) ?? 0,
 		resultText: str(value.resultText) ?? "",
 		errorText: str(value.errorText) ?? "",
+		widget: jobWidgetOf(value.widget),
+		stage: str(value.stage),
+		completionPercent: completionPercentOf(value.completionPercent),
+		cwd: str(value.cwd),
 	};
 }
 
@@ -137,13 +147,19 @@ function JobRow({ job }: { job: JobSnapshotLike }): ReactNode {
 	const rawPreview = job.errorText.trim() || job.resultText.trim();
 	const preview = rawPreview ? truncate(normalizeWs(stripTaskResultEnvelope(rawPreview)), 160) : "";
 	return (
-		<Row k={<Badge tone={tone}>{job.status || "?"}</Badge>}>
-			{job.type && <Badge tone={tone}>{job.type}</Badge>}
-			{showId && <span className="tv-path"> {job.id}</span>}
-			<span> {truncate(label, 80)}</span>
-			{job.durationMs > 0 && <span className="tv-faint"> {fmtDuration(job.durationMs)}</span>}
-			{preview && <span className={job.errorText ? "tv-err-text" : "tv-faint"}> · {preview}</span>}
-		</Row>
+		<div className="min-w-0">
+			<Row k={<Badge tone={tone}>{job.status || "?"}</Badge>}>
+				{job.type && <Badge tone={tone}>{job.type}</Badge>}
+				{showId && <span className="tv-path"> {job.id}</span>}
+				<span> {truncate(label, 80)}</span>
+				{job.durationMs > 0 && <span className="tv-faint"> {fmtDuration(job.durationMs)}</span>}
+				{job.status === "running" && job.completionPercent !== null && <span className="tv-faint"> ~{job.completionPercent}%</span>}
+				{preview && <span className={job.errorText ? "tv-err-text" : "tv-faint"}> · {preview}</span>}
+			</Row>
+			{job.stage && <p className="break-words text-sm text-fg-muted">{job.stage}</p>}
+			{job.cwd && <p className="break-all font-mono text-xs text-fg-faint">{job.cwd}</p>}
+			{job.widget && <div className="mt-2"><JobWidget widget={job.widget} /></div>}
+		</div>
 	);
 }
 

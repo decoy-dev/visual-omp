@@ -199,8 +199,8 @@ export interface CollabPromptDetails {
 // ═══════════════════════════════════════════════════════════════════════════
 
 export type AgentEvent =
-	| { type: "agent_start" }
-	| { type: "agent_end" }
+	| { type: "agent_start"; resumedToolCallIds?: string[] }
+	| { type: "agent_end"; awaitingAsyncWork?: boolean }
 	| { type: "turn_start" }
 	| { type: "turn_end" }
 	| { type: "message_start"; message: WireMessage }
@@ -279,6 +279,10 @@ export interface AgentProgress {
 	status: "pending" | "running" | "completed" | "failed" | "aborted";
 	task: string;
 	description?: string;
+	/** The helper's current step, in its own words. */
+	stage?: string;
+	/** The helper's self-estimated completion, from 0 to 100. */
+	completionPercent?: number;
 	lastIntent?: string;
 	currentTool?: string;
 	currentToolArgs?: string;

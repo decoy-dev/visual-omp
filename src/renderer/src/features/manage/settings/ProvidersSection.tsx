@@ -1,10 +1,10 @@
 /**
  * Settings → Providers: what the installed omp reports about model providers (models, signed-in
  * accounts, credentials that need a new sign-in) and omp's own `omp login` for everything else.
- * Discovery and sign-in run in the selected project folder, where project extensions can add
- * providers.
+ * Read-only discovery runs outside projects without extensions. Explicit terminal sign-in retains
+ * the selected project folder.
  */
-import { ArrowClockwise, DotsThree, SignIn, SignOut, UserPlus } from "@phosphor-icons/react";
+import { ArrowClockwise, DotsThree, DownloadSimple, SignIn, SignOut, UploadSimple, UserPlus } from "@phosphor-icons/react";
 import type { ConnectedProvider, LoginMethod } from "@shared/contracts/providers";
 import type { TFunction } from "i18next";
 import { AnimatePresence, motion } from "motion/react";
@@ -53,19 +53,21 @@ function idleChats(): SessionController[] {
 export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
 	const { t } = useTranslation("manage");
 	const arg = cwd ?? undefined;
-	const state = useResource(() => window.vomp.invoke("providers:list", arg), [arg]);
+	const state = useResource(() => window.vomp.invoke("providers:list"), []);
 	const [refreshing, setRefreshing] = useState(false);
 	const [login, setLogin] = useState<OmpLoginTarget | null>(null);
 	const [signOut, setSignOut] = useState<ConnectedProvider | null>(null);
 	const [signingOut, setSigningOut] = useState(false);
 	const [query, setQuery] = useState("");
+	const [transfer, setTransfer] = useState<"export" | "import" | null>(null);
+	const [transferring, setTransferring] = useState(false);
 
 	useEffect(() => window.vomp.on("providers:changed", () => void state.reload()), [state.reload]);
 
 	const refresh = async () => {
 		setRefreshing(true);
 		try {
-			state.setData(await window.vomp.invoke("providers:list", arg, true));
+			state.setData(await window.vomp.invoke("providers:list", true));
 		} catch (error) {
 			toast({ tone: "err", message: ipcErrorMessage(error) });
 		} finally {
@@ -115,6 +117,26 @@ export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
 		}
 	};
 
+	const confirmTransfer = async () => {
+		if (!transfer) return;
+		setTransferring(true);
+		try {
+			const changed = await window.vomp.invoke(transfer === "export" ? "providers:export" : "providers:import");
+			if (changed) {
+				toast({
+					tone: "ok",
+					message: t(`providers.transfer.${transfer}Done`),
+					description: transfer === "import" ? t("providers.restart.note") : undefined,
+				});
+			}
+			setTransfer(null);
+		} catch (error) {
+			toast({ tone: "err", message: t(`providers.transfer.${transfer}Failed`), description: ipcErrorMessage(error) });
+		} finally {
+			setTransferring(false);
+		}
+	};
+
 	const data = state.data;
 	const available = useMemo(() => {
 		const tokens = query.toLowerCase().split(/\s+/).filter(Boolean);
@@ -140,7 +162,10 @@ export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
 					</>
 				}
 			/>
-			<p className="mb-6 text-md text-fg-muted">{t("providers.signInNote")}</p>
+			<div className="mb-6 flex flex-col gap-2 text-fg-muted">
+				<p className="text-md">{t("providers.signInNote")}</p>
+				<p className="text-sm">{t("providers.discoveryNote")}</p>
+			</div>
 
 			{state.error && (
 				<Notice tone="err" className="mb-4" actions={<Button size="sm" onClick={() => void state.reload()}>{t("settings.retry")}</Button>}>
@@ -191,6 +216,32 @@ export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
 					</section>
 				</>
 			)}
+
+			<SettingsSection title={t("providers.transfer.title")}>
+				<p className="py-3 text-sm text-fg-muted">{t("providers.transfer.description")}</p>
+				<div className="flex flex-wrap gap-2 pb-3">
+					<Button icon={<UploadSimple />} onClick={() => setTransfer("export")}>{t("providers.transfer.export")}</Button>
+					<Button icon={<DownloadSimple />} onClick={() => setTransfer("import")}>{t("providers.transfer.import")}</Button>
+				</div>
+			</SettingsSection>
+
+			<Dialog open={transfer !== null} onOpenChange={open => !open && !transferring && setTransfer(null)}>
+				{transfer && (
+					<DialogContent
+						size="sm"
+						title={t(`providers.transfer.${transfer}Title`)}
+						description={t(`providers.transfer.${transfer}Description`)}
+						footer={
+							<>
+								<Button disabled={transferring} onClick={() => setTransfer(null)}>{t("common.cancel")}</Button>
+								<Button variant="primary" loading={transferring} onClick={() => void confirmTransfer()}>{t(`providers.transfer.${transfer}`)}</Button>
+							</>
+						}
+					>
+						<Notice tone="warn">{t("providers.transfer.rotationWarning")}</Notice>
+					</DialogContent>
+				)}
+			</Dialog>
 
 			{login && <OmpLoginDialog target={login} cwd={cwd} onClose={() => setLogin(null)} onFinished={loginFinished} />}
 

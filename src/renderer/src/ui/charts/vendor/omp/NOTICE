@@ -1,0 +1,7 @@
+These unmodified chart and SVG source modules come from @oh-my-pi/pi-tui 18.14.0, published under the MIT License.
+
+Upstream: https://github.com/can1357/oh-my-pi
+Package: https://registry.npmjs.org/@oh-my-pi/pi-tui/-/pi-tui-18.14.0.tgz
+Source paths: packages/tui/src/charts/table-data.ts, packages/tui/src/charts/chart-plan.ts, packages/tui/src/charts/chart-svg.ts, packages/tui/src/chat/svg-source.ts.
+
+Local integration, theme mapping and lazy loading are outside this directory. The modules implement local table qualification and all 22 chart kinds. Model-backed smart planning belongs to the omp host and is not replicated through collab.

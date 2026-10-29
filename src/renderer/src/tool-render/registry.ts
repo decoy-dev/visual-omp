@@ -21,6 +21,7 @@ import { waitRenderer } from "./tools/wait";
 import { lspRenderer } from "./tools/lsp";
 import { recallRenderer } from "./tools/memory-recall";
 import { reflectRenderer } from "./tools/memory-reflect";
+import { isMcpResult, mcpRenderer } from "./tools/mcp";
 import { retainRenderer } from "./tools/memory-retain";
 import { readRenderer } from "./tools/read";
 import { reportToolIssueRenderer } from "./tools/report-tool-issue";
@@ -71,6 +72,6 @@ const RENDERERS: Record<string, ToolRenderer> = {
 	yield: yieldRenderer,
 };
 
-export function resolveToolRenderer(name: string): ToolRenderer {
-	return RENDERERS[name] ?? genericRenderer;
+export function resolveToolRenderer(name: string, details?: unknown): ToolRenderer {
+	return RENDERERS[name] ?? (name.startsWith("mcp_") || isMcpResult(details) ? mcpRenderer : genericRenderer);
 }

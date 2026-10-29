@@ -1,6 +1,8 @@
 appId: ltd.decoy.visualomp
 productName: visual-omp
 asar: true
+# Harden the packaged Electron binary before electron-builder signs either platform.
+afterPack: ./scripts/after-pack.mjs
 directories:
   buildResources: build
   output: release

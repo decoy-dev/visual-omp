@@ -1,11 +1,12 @@
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { access, type FileHandle, open, readdir, readFile, realpath, rename, rm } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { app, shell } from "electron";
 import type { CliResult, Platform } from "@shared/ipc";
+import { compareSemver } from "@shared/semver";
 import type {
 	AppDownload,
 	AppInstallInfo,
@@ -28,13 +29,14 @@ import {
 	GitHubReleaseList,
 	type InstallerTrust,
 	REPO,
+	RELEASES_PAGE_SIZE,
 	appBundlePath,
 	brewCandidates,
 	brewUpgradeCommand,
 	caskroomPath,
-	compareSemver,
 	detectInstallMethod,
 	fetchInstaller,
+	fetchReleaseHistory,
 	installerAsset,
 	isScoopGlobal,
 	parseOmpUpdateCheck,
@@ -44,7 +46,9 @@ import {
 	scoopUpdateScript,
 	selectLatestRelease,
 	toAssets,
+	toReleaseNotes,
 	trustedCachedStatus,
+	verifyInstallerDigest,
 } from "../services/updates";
 
 /** Background checks run this often while the app is open, and a result younger than this answers other requests. */
@@ -126,30 +130,33 @@ async function fetchReleases(currentVersion: string): Promise<GitHubRelease[]> {
 	if (feed) return feed.releases;
 	const env = await userEnv();
 	const token = env.GITHUB_TOKEN || env.GH_TOKEN;
-	const response = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=30`, {
-		headers: {
-			Accept: "application/vnd.github+json",
-			"User-Agent": `visual-omp/${currentVersion}`,
-			"X-GitHub-Api-Version": "2022-11-28",
-			...(token ? { Authorization: `Bearer ${token}` } : {}),
-		},
-		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+	return fetchReleaseHistory(async page => {
+		const response = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=${RELEASES_PAGE_SIZE}&page=${page}`, {
+			headers: {
+				Accept: "application/vnd.github+json",
+				"User-Agent": `visual-omp/${currentVersion}`,
+				"X-GitHub-Api-Version": "2022-11-28",
+				...(token ? { Authorization: `Bearer ${token}` } : {}),
+			},
+			signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+		});
+		if (!response.ok) {
+			const limited = response.status === 403 || response.status === 429;
+			throw new Error(
+				limited ? "GitHub rate limit reached. Try again later." : `GitHub answered ${response.status} ${response.statusText}`.trim(),
+			);
+		}
+		const parsed = GitHubReleaseList.safeParse(await response.json());
+		if (!parsed.success) throw new Error("GitHub sent release data in a format visual-omp can't read.");
+		return parsed.data;
 	});
-	if (!response.ok) {
-		const limited = response.status === 403 || response.status === 429;
-		throw new Error(
-			limited ? "GitHub rate limit reached. Try again later." : `GitHub answered ${response.status} ${response.statusText}`.trim(),
-		);
-	}
-	const parsed = GitHubReleaseList.safeParse(await response.json());
-	if (!parsed.success) throw new Error("GitHub sent release data in a format visual-omp can't read.");
-	return parsed.data;
 }
 
 async function fetchAppStatus(previous: AppUpdateStatus | null): Promise<AppUpdateStatus> {
 	const currentVersion = app.getVersion();
 	try {
-		const release = selectLatestRelease(await fetchReleases(currentVersion), currentVersion);
+		const releases = await fetchReleases(currentVersion);
+		const release = selectLatestRelease(releases, currentVersion);
 		const assets = release ? toAssets(release) : [];
 		const latestVersion = release ? release.tag_name.replace(/^v/, "") : null;
 		const status: AppUpdateStatus = {
@@ -159,6 +166,7 @@ async function fetchAppStatus(previous: AppUpdateStatus | null): Promise<AppUpda
 			tag: release?.tag_name ?? null,
 			releaseName: release?.name || null,
 			notes: release?.body || null,
+			releases: toReleaseNotes(releases, currentVersion),
 			releaseUrl: release?.html_url ?? null,
 			publishedAt: release?.published_at ? Date.parse(release.published_at) : null,
 			assets,
@@ -310,14 +318,15 @@ async function startDownload(): Promise<AppDownload> {
 	const abort = new AbortController();
 	download = current;
 	downloadAbort = abort;
-	void receive(url, current, abort.signal);
+	void receive(url, current, abort.signal, asset.digest);
 	return { ...current };
 }
 
-async function receive(url: URL, current: AppDownload, signal: AbortSignal): Promise<void> {
+async function receive(url: URL, current: AppDownload, signal: AbortSignal, digest: string | null | undefined): Promise<void> {
 	const partPath = `${current.filePath}.download`;
 	let file: FileHandle | null = null;
 	let lastEmit = 0;
+	const hash = createHash("sha256");
 	try {
 		const response = await fetchInstaller(url, { signal, headers: { "User-Agent": `visual-omp/${app.getVersion()}` }, anyHost: trust.anyHost });
 		if (!response.ok || !response.body) throw new Error(`The server answered ${response.status} ${response.statusText}`.trim());
@@ -328,7 +337,13 @@ async function receive(url: URL, current: AppDownload, signal: AbortSignal): Pro
 		for (;;) {
 			const { done, value } = await reader.read();
 			if (done) break;
-			await file.write(value);
+			hash.update(value);
+			let offset = 0;
+			while (offset < value.byteLength) {
+				const { bytesWritten } = await file.write(value, offset, value.byteLength - offset);
+				if (bytesWritten === 0) throw new Error("The installer could not be written to disk.");
+				offset += bytesWritten;
+			}
 			current.received += value.byteLength;
 			if (download === current && Date.now() - lastEmit >= PROGRESS_INTERVAL_MS) {
 				lastEmit = Date.now();
@@ -337,6 +352,7 @@ async function receive(url: URL, current: AppDownload, signal: AbortSignal): Pro
 		}
 		await file.close();
 		file = null;
+		verifyInstallerDigest(hash.digest("hex"), digest);
 		await rename(partPath, current.filePath);
 		current.state = "done";
 	} catch (error) {
@@ -440,7 +456,7 @@ async function runOmpCheck(): Promise<OmpUpdateStatus> {
 	const checkedAt = Date.now();
 	try {
 		const simulated: CliResult | undefined = (await devFeed().catch(() => null))?.ompCheck;
-		const parsed = parseOmpUpdateCheck(simulated ?? (await runOmp(["update", "--check"], { timeoutMs: 60_000 })));
+		const parsed = parseOmpUpdateCheck(simulated ?? (await runOmp(["update", "--check"], { timeoutMs: 60_000, allowUnsupported: true })));
 		return { ...parsed, checkedAt, fromCache: false };
 	} catch (error) {
 		// runOmp rejects only when omp itself cannot be located.
@@ -488,7 +504,7 @@ function startOmpUpdate(options: OmpUpdateOptions = {}): Promise<OmpUpdateRun> {
 
 async function spawnOmpUpdate(options: OmpUpdateOptions): Promise<OmpUpdateRun> {
 	const args = ["update", ...(options.plugins ? ["--plugins"] : []), ...(options.force ? ["--force"] : [])];
-	const [bin, env, feed] = await Promise.all([ompPath(), userEnv(), devFeed().catch(() => null)]);
+	const [bin, env, feed] = await Promise.all([ompPath({ allowUnsupported: true }), userEnv(), devFeed().catch(() => null)]);
 	const run: OmpUpdateRun = {
 		runId: randomUUID(),
 		args,

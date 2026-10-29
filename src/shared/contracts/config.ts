@@ -134,6 +134,8 @@ export interface ModelInfo {
 	kind: ModelKind;
 	/** Tokens; null when the catalog does not say (local runners). */
 	contextWindow: number | null;
+	/** Resolved by listing omp with standard and extended context overlays. */
+	contextWindowTiers?: { standard: number; extended: number };
 	maxOutputTokens: number | null;
 	/** Model reasons (thinks) at all. */
 	reasoning: boolean;
@@ -143,11 +145,13 @@ export interface ModelInfo {
 	vision: boolean;
 	/** null when the catalog has no pricing. */
 	cost: ModelCost | null;
+	/** omp's pricing classification; absent values must be treated as unknown. */
+	pricingStatus?: "fixed" | "free" | "included" | "unknown" | "variable";
 }
 
 // ─── Model roles & presets ─────────────────────────────────────────────────
 
-/** The 15 built-in roles, in omp's display order. */
+/** The 16 built-in roles, in omp's display order. */
 export const BUILT_IN_MODEL_ROLES = [
 	"default",
 	"smol",
@@ -159,6 +163,7 @@ export const BUILT_IN_MODEL_ROLES = [
 	"memory",
 	"task",
 	"advisor",
+	"widget",
 	"image",
 	"web",
 	"speech",
@@ -289,7 +294,7 @@ export interface ApprovalState {
 	mode: ApprovalMode | null;
 	/** Effective value, kept unchanged even when the app cannot describe the mode. */
 	rawMode?: JsonValue;
-	/** Known modes advertised by the installed omp's config schema. */
+	/** Known modes supported by the required omp 18.14 runtime. */
 	supportedModes?: ApprovalMode[];
 	modeSource: SettingSource;
 	/** Sorted by tool. */
@@ -323,9 +328,9 @@ declare module "../ipc" {
 		"config:unwatch": { args: [cwd?: string]; result: void };
 
 		/** Usable models of every kind for `cwd` (project settings can enable/disable providers). Cached 5 min and until config changes. */
-		"config:models": { args: [cwd?: string]; result: ModelInfo[] };
+		"config:models": { args: [cwd?: string, includeWindows?: boolean]; result: ModelInfo[] };
 		/** Force omp to re-fetch provider catalogs (`omp models refresh`), then list. */
-		"config:models:refresh": { args: [cwd?: string]; result: ModelInfo[] };
+		"config:models:refresh": { args: [cwd?: string, includeWindows?: boolean]; result: ModelInfo[] };
 
 		"config:roles": { args: [cwd?: string]; result: ModelRolesState };
 		/**

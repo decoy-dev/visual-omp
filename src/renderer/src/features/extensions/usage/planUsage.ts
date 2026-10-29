@@ -4,7 +4,7 @@
  * and per provider account for the Usage & limits page ({@link planLimits}).
  */
 import type { SessionEntry, WireModel } from "@oh-my-pi/pi-wire";
-import type { DisabledCredential, ProviderWindowStat, UsageLimit, UsageLimitsSnapshot, UsageReport, UsageStatus } from "@shared/contracts/usage";
+import type { DisabledCredential, ProviderWindowStat, UsageLimit, UsageLimitsSnapshot, UsagePolicy, UsageReport, UsageStatus } from "@shared/contracts/usage";
 import { formatDuration } from "../format";
 import { limitTone, usedFraction } from "./model";
 
@@ -421,6 +421,8 @@ export interface AccountLimits {
 	/** Saved resets the report lists; null without any. */
 	resets: SavedResets | null;
 	disabled: DisabledCredential[];
+	/** Account-wide routing state reported by omp, independent of this page's warning thresholds. */
+	policy?: UsagePolicy;
 	notes: string[];
 	/** Raw identifiers for the technical details; plan ids stay here until a verified name mapping exists. */
 	ids: AccountId[];
@@ -499,7 +501,7 @@ function limitRows(report: UsageReport): LimitRow[] {
 			row.qualifier = row.qualifier ? `${row.qualifier}, ${row.label}` : row.label;
 		}
 	}
-	return rows.sort((a, b) => rowSeverity(a) - rowSeverity(b));
+	return rows;
 }
 
 /** Disabled or limit-reached accounts first, then near-limit ones, then by the highest known use. */
@@ -541,6 +543,7 @@ export function planLimits(snapshot: UsageLimitsSnapshot): ProviderLimits[] {
 			fetchedAt: report.fetchedAt,
 			rows: limitRows(report),
 			resets: savedResets(report),
+			policy: report.policy,
 			disabled: [],
 			notes: report.notes ?? [],
 			ids: [...ids(report.provider, identity, metaText(meta.planType)), ...report.limits.map(limit => ({ key: "limit" as const, value: limit.id }))],
@@ -554,6 +557,7 @@ export function planLimits(snapshot: UsageLimitsSnapshot): ProviderLimits[] {
 			fetchedAt: null,
 			rows: [],
 			resets: null,
+			policy: account.policy,
 			disabled: [],
 			notes: [],
 			ids: ids(account.provider, account),

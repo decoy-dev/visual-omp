@@ -8,7 +8,7 @@ import {
 	OMP_UPDATE_SHEET,
 	quitForUpdate,
 	restartStaleChats,
-	startAppUpdate,
+	openReleaseNotes,
 	useUpdates,
 } from "@/features/onboarding/updates";
 import { useApp } from "@/state/app";
@@ -72,7 +72,7 @@ export function AboutSection() {
 			return {
 				text: t("about.appUpdate", { version: app.latestVersion }),
 				tone: "accent",
-				action: { label: t("about.updateApp"), primary: true, run: () => void startAppUpdate() },
+				action: { label: t("onboarding:update.notes.review"), primary: true, run: () => openReleaseNotes() },
 			};
 		}
 		return { text: t("about.upToDate"), tone: "ok" };
@@ -155,11 +155,9 @@ export function AboutSection() {
 				<Button variant="primary" icon={<ArrowsClockwise />} loading={checking} onClick={() => void checkForUpdates()}>
 					{t("about.checkUpdates")}
 				</Button>
-				{updates.app?.releaseUrl && (
-					<Button variant="ghost" icon={<ArrowSquareOut />} onClick={() => open(updates.app?.releaseUrl ?? "")}>
-						{t("about.releaseNotes")}
-					</Button>
-				)}
+				<Button variant="ghost" onClick={() => openReleaseNotes(updates.app?.updateAvailable ? "pending" : "past")}>
+					{t("about.releaseNotes")}
+				</Button>
 				<Button variant="ghost" icon={<ArrowSquareOut />} onClick={() => open(DOCS_URL)}>
 					{t("about.docs")}
 				</Button>

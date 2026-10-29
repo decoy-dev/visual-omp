@@ -42,6 +42,16 @@ describe("omp usage --json", () => {
 		expect(degraded?.amount.unit).toBe("unknown");
 		expect(degraded?.status).toBe("unknown");
 	});
+
+	it("retains account policy diagnostics for reported and unavailable accounts", () => {
+		const policy = { priority: 4, reservePct: 15, reserveSource: "override", state: "inside-reserve", remainingPct: 9, reclaimAbovePct: 30 };
+		const raw = JSON.parse(JSON.stringify(fixture("usage-limits.json")));
+		raw.reports[0].policy = policy;
+		raw.accountsWithoutUsage = [{ provider: "anthropic", type: "oauth", email: "unknown@example.com", policy: { ...policy, state: "unknown", remainingPct: undefined } }];
+		const parsed = UsageLimitsSnapshotSchema.parse(raw);
+		expect(parsed.reports[0]?.policy).toEqual(policy);
+		expect(parsed.accountsWithoutUsage[0]?.policy).toMatchObject({ state: "unknown", priority: 4, reservePct: 15 });
+	});
 });
 
 describe("omp usage --history / clients --json", () => {
@@ -95,70 +105,38 @@ describe("usageArgv", () => {
 	});
 });
 
-describe("/usage reset listing", () => {
-	/** omp 18.12.4's printed listing, with identities redacted and two failure lines in omp's format. */
-	const text = readFileSync(join(__dirname, "fixtures", "usage-reset.txt"), "utf8");
-	const { readable, accounts } = parseResetListing(text);
-	const heading = "Saved rate-limit resets:";
-	const hint = "Spend one with `/usage reset <provider>/<credential id>` or `/usage reset <provider>/active`.";
+describe("omp usage reset --json", () => {
+	const listing = fixture("usage-reset.json");
+	const { readable, accounts } = parseResetListing(listing);
 
-	it("reads each account's target, label, counts and soonest expiry", () => {
+	it("retains targets, structured identities, counts and expiry", () => {
 		expect(readable).toBe(true);
 		expect(accounts).toHaveLength(4);
-		expect(accounts.slice(0, 2)).toEqual([
-			{
-				provider: "openai-codex",
-				credentialId: 4,
-				label: "user1@example.com · self_serve_business_prolite",
-				savedCount: 3,
-				usableCount: 3,
-				expiresAt: "2026-10-22T20:27:34.150512Z",
-				unavailable: null,
-			},
-			{
-				provider: "anthropic",
-				credentialId: 6,
-				label: "user1@example.com · Example Org 2",
-				savedCount: 1,
-				usableCount: 1,
-				expiresAt: "2026-10-22T16:00:00.000Z",
-				unavailable: null,
-			},
-		]);
-	});
-
-	it("keeps omp's reason when nothing can be spent now", () => {
-		expect(accounts[2]).toMatchObject({ credentialId: 9, savedCount: 1, usableCount: 0, unavailable: "the provider did not identify a grant that can be safely spent" });
-		expect(accounts[3]).toMatchObject({ credentialId: 12, savedCount: null, usableCount: null, expiresAt: null, unavailable: "token refresh failed" });
-	});
-
-	it("keeps brackets inside a label", () => {
-		expect(parseResetListing(`${heading}\n- Acme [EU] [Claude · anthropic/2]: 2 saved, 2 usable now\n\n${hint}`)).toEqual({
-			readable: true,
-			accounts: [{ provider: "anthropic", credentialId: 2, label: "Acme [EU]", savedCount: 2, usableCount: 2, expiresAt: null, unavailable: null }],
+		expect(accounts[0]).toMatchObject({
+			provider: "openai-codex", credentialId: 4, email: "user1@example.com",
+			label: "user1@example.com · self_serve_business_prolite",
+			savedCount: 3, usableCount: 3, expiresAt: "2026-10-22T20:27:34.150512Z", unavailable: null,
 		});
+		expect(accounts[1]).toMatchObject({ credentialId: 6, orgId: "org-2", orgName: "Example Org 2" });
 	});
 
-	it("reads omp's no-accounts reply as an understood empty listing", () => {
-		expect(parseResetListing("No provider accounts found. Use /login to add one.")).toEqual({ readable: true, accounts: [] });
+	it("retains provider reasons and distinguishes unreadable account counts", () => {
+		expect(accounts[2]).toMatchObject({ credentialId: 9, savedCount: 1, usableCount: 0, unavailable: "the provider did not identify a grant that can be safely spent" });
+		expect(accounts[3]).toMatchObject({ credentialId: 12, label: "account-12", savedCount: null, usableCount: null, unavailable: "token refresh failed" });
 	});
 
-	it("fails closed on a format it doesn't know", () => {
-		// An older omp's Codex-only heading and email targets.
-		expect(parseResetListing("Saved Codex rate-limit resets:\n- me@example.com: 2 available (active)")).toEqual({ readable: false, accounts: [] });
-		expect(parseResetListing("")).toEqual({ readable: false, accounts: [] });
-		expect(parseResetListing(`${heading}\n\n${hint}`)).toEqual({ readable: false, accounts: [] });
+	it("accepts an understood empty listing", () => {
+		expect(parseResetListing({ generatedAt: 1, accounts: [] })).toEqual({ readable: true, accounts: [] });
 	});
 
-	it("fails closed on a malformed credential id or detail", () => {
-		expect(parseResetListing(`${heading}\n- me@example.com [Codex · openai-codex/4a]: 1 saved, 1 usable now`).readable).toBe(false);
-		expect(parseResetListing(`${heading}\n- me@example.com [Codex · openai-codex/1234567890123456]: 1 saved, 1 usable now`).readable).toBe(false);
-		expect(parseResetListing(`${heading}\n- me@example.com [Codex · openai-codex/4]: 1 banked, ready`).readable).toBe(false);
-	});
-
-	it("fails closed on a partly readable listing instead of keeping the lines it understood", () => {
-		const partial = text.replace("- user2@example.com [Claude · anthropic/9]", "- user2@example.com {Claude · anthropic/9}");
-		expect(parseResetListing(partial)).toEqual({ readable: false, accounts: [] });
-		expect(parseResetListing(`${text}\nNote: one account is being refreshed.`).readable).toBe(false);
+	it("fails closed on malformed or partly readable JSON data", () => {
+		for (const invalid of [null, "", { accounts: [] }, { generatedAt: 1, accounts: [{}] }]) {
+			expect(parseResetListing(invalid)).toEqual({ readable: false, accounts: [] });
+		}
+		for (const credentialId of [-1, 1.5, Number.MAX_SAFE_INTEGER + 1, "4"]) {
+			const raw = JSON.parse(JSON.stringify(listing));
+			raw.accounts[1].credentialId = credentialId;
+			expect(parseResetListing(raw)).toEqual({ readable: false, accounts: [] });
+		}
 	});
 });

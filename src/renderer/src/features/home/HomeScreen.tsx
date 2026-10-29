@@ -17,6 +17,7 @@ import { sortProjects } from "@/shell/sidebarRows";
 import { controllerFor, useApp } from "@/state/app";
 import { projectColorValue, useProjectColor } from "@/state/projectColors";
 import { Button, Card, Chip, cn, Expand, Mark } from "@/ui";
+import { SessionTitle } from "@/ui/SessionTitle";
 import { focusRing } from "@/ui/styles";
 import { openFolder } from "../projects/actions";
 import { HomeComposer } from "./HomeComposer";
@@ -162,7 +163,7 @@ function RecentChats({ limit }: { limit: number }): ReactNode {
 
 function RecentRow({ session, projectName, now }: { session: SessionSummary; projectName: string; now: number }): ReactNode {
 	const { t } = useTranslation("projects");
-	const tab = useApp(state => state.tabs.find(entry => entry.sessionFile === session.file) ?? null);
+	const tab = useApp(state => state.tabs.find(entry => entry.sessionFile === session.file || session.previousSessionFiles?.includes(entry.sessionFile ?? "")) ?? null);
 	const unseen = useApp(state => (tab ? state.unseenChats[tab.id] : undefined));
 	const view = useSessionView(controllerFor(tab?.id));
 	const status = chatStatus(view);
@@ -179,7 +180,7 @@ function RecentRow({ session, projectName, now }: { session: SessionSummary; pro
 				)}
 			>
 				<ChatStatusMark status={status} label={t(`overview.recent.status.${status}`)} unseen={unseen} />
-				<span className={cn("min-w-0 flex-1 truncate text-md text-fg", unseen && "font-semibold")}>{title}</span>
+				<SessionTitle title={title} className={cn("flex-1 text-md text-fg", unseen && "font-semibold")} />
 				{view?.readOnly && <Chip>{t("overview.recent.readOnly")}</Chip>}
 				<span className="flex min-w-0 max-w-[45%] shrink-0 items-center gap-1.5 text-xs text-fg-faint">
 					<ProjectDot path={session.cwd} />

@@ -62,6 +62,15 @@
 	"rewind": { "running": "Returning to the checkpoint…", "ok": "Returned to the checkpoint", "error": "Couldn't return to the checkpoint" },
 	"wait": { "running": "Waiting for background work…", "ok": "Finished waiting", "error": "Stopped waiting" },
 	"generic": { "running": "Using {{tool}}…", "ok": "Used {{tool}}", "error": "{{tool}} failed {{detail}}" },
+	"structured": {
+		"table": "Table output",
+		"moreEntries_one": "Show {{count}} more entry",
+		"moreEntries_other": "Show {{count}} more entries",
+		"moreRows_one": "Show {{count}} more row",
+		"moreRows_other": "Show {{count}} more rows",
+		"moreColumns_one": "Show {{count}} more column",
+		"moreColumns_other": "Show {{count}} more columns"
+	},
 	"activity": {
 		"commands": "Running commands",
 		"reading": "Reading files",

@@ -84,7 +84,7 @@ export function ToolView(props: ToolViewProps): ReactNode {
 	const result = xdev
 		? { content: props.result!.content, details: xdev.inner, isError: props.result!.isError }
 		: props.result;
-	const renderer = resolveToolRenderer(name);
+	const renderer = resolveToolRenderer(name, result?.details);
 	const renderProps: ToolRenderProps = {
 		name,
 		args: xdev?.args ?? args,

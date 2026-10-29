@@ -80,3 +80,26 @@ describe("helperTranscript", () => {
 		expect(items[1]).toMatchObject({ kind: "custom", entry: shown });
 	});
 });
+
+describe("helper interim replies", () => {
+	it("shows out write content and shell reply history as prose without counting the reply write as a step", () => {
+		const entries: SessionEntry[] = [
+			{ type: "message", id: "assistant", parentId: null, timestamp: "", message: {
+				role: "assistant", model: "m", timestamp: 1000, stopReason: "toolUse",
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } },
+				content: [
+					{ type: "text", text: "Before." },
+					{ type: "toolCall", id: "out", name: "write", arguments: { path: "out://", content: "Written **reply**." } },
+					{ type: "text", text: "After." },
+					{ type: "toolCall", id: "bash", name: "bash", arguments: { command: "printf report > out://" } },
+				],
+			} },
+			{ type: "message", id: "result", parentId: "assistant", timestamp: "", message: { role: "toolResult", toolCallId: "bash", toolName: "bash", timestamp: 2000, content: [], details: { replies: ["Shell **reply**.", "Next reply."] }, isError: false } },
+		];
+		expect(helperTranscript(entries)).toEqual([
+			{ kind: "reply", id: "assistant", text: "Before.\n\nWritten **reply**.\n\nAfter.", tools: ["bash"] },
+			{ kind: "reply", id: "result:reply:0", text: "Shell **reply**.", tools: [] },
+			{ kind: "reply", id: "result:reply:1", text: "Next reply.", tools: [] },
+		]);
+	});
+});

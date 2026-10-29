@@ -122,8 +122,9 @@ export interface InstructionFile {
 	 * `context`: injected into the opening project context; at the project root only the
 	 * highest-priority non-empty context file is loaded, the rest are shadowed.
 	 * `sticky`: `.omp/RULES.md`, an always-apply rule carried on every request.
+	 * `extra`: a configured `contextFiles.extra` filename, loaded alongside the context file.
 	 */
-	kind: "context" | "sticky";
+	kind: "context" | "sticky" | "extra";
 	/** omp loads this file for sessions started at the project root. */
 	active: boolean;
 }

@@ -9,6 +9,7 @@ const fake = vi.hoisted(() => ({
 	values: ["always-ask", "always-ask-cached", "write", "yolo"],
 	write: vi.fn(),
 	rpc: vi.fn(),
+	cli: vi.fn(),
 }));
 vi.mock("../ipc", () => ({
 	handle: (channel: string, handler: (...args: unknown[]) => Promise<unknown>) => fake.handlers.set(channel, handler),
@@ -16,17 +17,20 @@ vi.mock("../ipc", () => ({
 }));
 vi.mock("../prefs", () => ({ getPrefs: () => ({ newUserApproval: "done" }), setPrefs: vi.fn() }));
 vi.mock("../omp/cli", () => ({
-	runOmp: async (args: string[]) => ({
-		code: 0,
-		stderr: "",
-		stdout: args[1] === "cfg://tools.approvalMode"
-			? `tools.approvalMode: ${JSON.stringify(fake.mode)}\ntype: enum\ndefault: "yolo"\nsource: project config\nvalues: [${fake.values.join(", ")}]\ndescription: Approval mode`
-			: 'tools.approval: {"read":"prompt","bash":"future-policy"}\ntype: record\ndefault: {}\nsource: global config\ndescription: Tool policies',
-	}),
+	runOmp: async (args: string[]) => {
+		fake.cli(args);
+		return {
+			code: 0,
+			stderr: "",
+			stdout: args[0] === "config" ? "{}" : args[1] === "cfg://tools.approvalMode"
+				? `tools.approvalMode: ${JSON.stringify(fake.mode)}\ntype: enum\ndefault: "yolo"\nsource: project config\nvalues: [${fake.values.join(", ")}]\ndescription: Approval mode`
+				: 'tools.approval: {"read":"prompt","bash":"future-policy"}\ntype: record\ndefault: {}\nsource: global config\ndescription: Tool policies',
+		};
+	},
 }));
 vi.mock("../omp/config-file", () => ({
 	NEUTRAL_CWD: "/tmp",
-	readConfig: async (scope: string) => ({ file: `/tmp/${scope}.yml`, data: {} }),
+	configFile: async (scope: string) => `/tmp/${scope}.yml`,
 	setConfigPath: (...args: unknown[]) => fake.write(...args),
 }));
 vi.mock("../omp/rpc", () => ({ rpcRequest: (...args: unknown[]) => fake.rpc(...args) }));
@@ -39,10 +43,11 @@ beforeEach(() => {
 	fake.values = ["always-ask", "always-ask-cached", "write", "yolo"];
 	fake.write.mockReset();
 	fake.rpc.mockReset();
+	fake.cli.mockClear();
 });
 
 describe("approval configuration", () => {
-	it("reads Ask and remember, its installed schema choices and per-tool policies", async () => {
+	it("reads Ask and remember, all supported choices and per-tool policies", async () => {
 		await expect(call("config:approval", "/tmp/project")).resolves.toMatchObject({
 			mode: "always-ask-cached", rawMode: "always-ask-cached", modeSource: "project",
 			supportedModes: ["always-ask", "always-ask-cached", "write", "yolo"],
@@ -59,14 +64,11 @@ describe("approval configuration", () => {
 		expect(fake.write).not.toHaveBeenCalled();
 	});
 
-	it("writes Ask and remember only when the installed schema advertises it", async () => {
+	it("writes Ask and remember without an older schema capability gate", async () => {
+		fake.values = ["always-ask", "write", "yolo"];
 		await call("config:approval:setMode", "always-ask-cached", "project", "/tmp/project");
 		expect(fake.write).toHaveBeenCalledWith("project", "/tmp/project", ["tools", "approvalMode"], "always-ask-cached");
-		fake.write.mockClear();
-		fake.values = ["always-ask", "write", "yolo"];
-		await expect(call("config:approval:setMode", "always-ask-cached", "project", "/tmp/project")).rejects.toThrow("does not support");
-		expect(fake.write).not.toHaveBeenCalled();
-		await expect(call("config:approval")).resolves.toMatchObject({ supportedModes: ["always-ask", "write", "yolo"] });
+		await expect(call("config:approval")).resolves.toMatchObject({ supportedModes: ["always-ask", "always-ask-cached", "write", "yolo"] });
 	});
 
 	it("filters future schema choices while keeping their effective value", async () => {
@@ -86,10 +88,14 @@ describe("forget remembered approvals", () => {
 		expect(fake.rpc).toHaveBeenCalledWith("/tmp", "prompt", expect.objectContaining({ flags: expect.arrayContaining(["--no-session", "--no-tools", "--no-extensions"]) }), { message: "/forget-approvals" });
 	});
 
-	it("refuses unsupported omp before starting RPC", async () => {
+	it("runs the builtin without probing for older remembered-approval support", async () => {
 		fake.values = ["always-ask", "write", "yolo"];
-		await expect(call("config:approval:forget")).rejects.toThrow("does not support");
-		expect(fake.rpc).not.toHaveBeenCalled();
+		fake.rpc.mockImplementation(async (_cwd: string, _type: string, options: RpcRequestOptions) => {
+			options.onMessage?.({ type: "command_output", text: "Remembered approvals forgotten." });
+			return { agentInvoked: false };
+		});
+		await expect(call("config:approval:forget")).resolves.toContain("Remembered approvals forgotten");
+		expect(fake.cli).not.toHaveBeenCalled();
 	});
 
 	it.each([undefined, { agentInvoked: true }, { agentInvoked: false }])("does not claim success without output and a consumed builtin response %j", async response => {

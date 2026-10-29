@@ -91,7 +91,7 @@
     "guided": { "title": "Guided goal", "hint": "omp asks a few questions, then sets up a goal." },
     "vibe": { "title": "Vibe mode", "hint": "omp directs background helpers that do the editing and running, then checks their work." },
     "loop": { "title": "Repeat a task", "hint": "Repeat a request a set number of times, for a set time, or until a check passes." },
-    "advisor": { "title": "Toggle advisor", "hint": "Turn the advisor on or off. It is a second model that reviews each turn and adds notes." },
+    "advisor": { "title": "Configure advisors", "hint": "Choose each advisor's model, tools, review cadence and catch-up policy." },
     "handoff": { "title": "Write a handoff", "hint": "Summarize this chat into a handoff document and continue from it with less context." },
     "security": { "title": "Run security scan", "hint": "Start omp's security scan for this project." },
     "cleanse": { "title": "Cleanse project", "hint": "Find and fix errors and warnings across the project with parallel helpers." },
@@ -106,7 +106,7 @@
   },
   "compact": { "title": "Compact this chat", "description": "omp summarizes the conversation so far to free context space.", "label": "What should the summary keep? (optional)", "action": "Compact chat" },
   "handoff": { "title": "Write a handoff", "description": "omp summarizes this chat into a handoff document and compacts the context around it, so work continues here with less context.", "label": "What should the handoff focus on? (optional)", "action": "Write handoff" },
-  "rename": { "title": "Rename this chat", "description": "Choose a short name you can find later.", "label": "Chat name", "action": "Save name" },
+  "rename": { "title": "Rename this chat", "description": "Choose a short name you can find later.", "savedDescription": "omp saves this name without opening the chat in the app or asking a model.", "continued": "omp continued this chat in another file while saving its name. The saved file is shown below.", "label": "Chat name", "action": "Save name" },
   "guided": { "title": "Set up a guided goal", "description": "Describe a rough objective. omp asks a few questions, then sets up the goal.", "label": "What do you want to accomplish? (optional)", "action": "Start questions" },
   "goal": { "title": "Work toward a goal", "description": "Describe the outcome you want. omp plans the steps and works toward it.", "objective": "What should omp accomplish?", "budget": "Token budget (optional)", "budgetHint": "A positive number. Leave it blank for no limit.", "start": "Start goal", "guided": "Set it up with questions", "pause": "Pause goal", "resume": "Resume goal", "drop": "Drop goal", "activeBody": "This chat has an active goal. You can pause it or drop it.", "pausedBody": "This chat has a paused goal. Resume it to continue, or drop it." },
   "loop": { "title": "Repeat a task", "description": "omp repeats your next request until the limit or check is reached. Press Esc to pause the loop.", "bound": "Stop", "count": "After a number of repeats", "duration": "After a time limit", "until": "When a check passes", "while": "When a check fails", "check": "Shell command to check", "countLabel": "Number of repeats", "durationLabel": "Time limit (for example 10m)", "prompt": "First request (optional)", "promptHint": "Leave it blank to repeat the next request you send.", "start": "Start repeating" },
@@ -165,7 +165,6 @@
     "unsupported": "That entry cannot be opened from the session tree.",
     "notFound": "omp could not find that message in its tree. The original chat is unchanged.",
     "unconfirmed": "omp did not confirm the move. The original chat is unchanged.",
-    "forkTimeout": "omp did not finish switching sessions in time.",
     "openTree": "Open session tree"
   },
   "ompDialog": {

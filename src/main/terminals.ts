@@ -3,21 +3,22 @@ import { type IPty, spawn } from "node-pty";
 import type { TerminalStartOptions } from "@shared/ipc";
 import { ptyEnv, userEnv } from "./env";
 import { broadcast } from "./ipc";
+import { requireExecutable } from "./services/executable";
 
 const terminals = new Map<string, IPty>();
 
-function shellCommand(env: NodeJS.ProcessEnv, command: string | undefined): { file: string; args: string[] } {
+async function shellCommand(env: NodeJS.ProcessEnv, command: string | undefined): Promise<{ file: string; args: string[] }> {
 	if (process.platform === "win32") {
-		return { file: "powershell.exe", args: command ? ["-NoLogo", "-Command", command] : ["-NoLogo"] };
+		return { file: await requireExecutable("powershell.exe", env), args: command ? ["-NoLogo", "-Command", command] : ["-NoLogo"] };
 	}
-	const file = env.SHELL || "/bin/zsh";
+	const file = await requireExecutable(env.SHELL || "/bin/zsh", env);
 	return { file, args: command ? ["-lc", command] : ["-l"] };
 }
 
 /** Start an interactive shell (or a one-off command) in a PTY for the Terminal pane. */
 export async function startTerminal(options: TerminalStartOptions): Promise<string> {
 	const env = await userEnv();
-	const { file, args } = shellCommand(env, options.command);
+	const { file, args } = await shellCommand(env, options.command);
 	const pty = spawn(file, args, {
 		name: "xterm-256color",
 		cols: options.cols ?? 100,

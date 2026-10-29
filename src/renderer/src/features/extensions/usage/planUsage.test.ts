@@ -324,19 +324,19 @@ describe("parseWindowDuration", () => {
 });
 
 describe("planLimits", () => {
-	it("puts limit-reached accounts first, then the highest use, and keeps every window apart", () => {
+	it("puts limit-reached accounts first while preserving omp's window order within each account", () => {
 		const providers = planLimits(fixture);
 		expect(providers.map(provider => provider.provider)).toEqual(["anthropic", "kimi-code", "openai-codex"]);
 
 		const claude = providers[0].accounts[0];
 		expect(claude.rows.map(row => [row.id, row.state])).toEqual([
-			["anthropic:extra", "reached"],
 			["anthropic:5h", "ok"],
 			["anthropic:7d", "ok"],
 			["anthropic:7d:fable", "ok"],
+			["anthropic:extra", "reached"],
 		]);
-		expect(claude.rows[0]).toMatchObject({ label: "Extra Usage", durationMs: null });
-		expect(claude.rows[3]).toMatchObject({ durationMs: 604_800_000, qualifier: "Fable" });
+		expect(claude.rows[3]).toMatchObject({ label: "Extra Usage", durationMs: null, tone: "err" });
+		expect(claude.rows[2]).toMatchObject({ durationMs: 604_800_000, qualifier: "Fable" });
 
 		// Kimi's two 7-day rows report alike but have no shared identity, so both stay; the readable label tells them apart.
 		const kimi = providers[1].accounts[0].rows;
@@ -345,6 +345,19 @@ describe("planLimits", () => {
 			["kimi-code:1", 18_000_000, null],
 			["kimi-code:2", 604_800_000, null],
 		]);
+	});
+
+	it("retains omp's policy for reporting and unavailable accounts without inferring one", () => {
+		const policy = { priority: 2, reservePct: 20, reserveSource: "override" as const, state: "inside-reserve" as const, remainingPct: 10 };
+		const snapshot: UsageLimitsSnapshot = {
+			...fixture,
+			reports: fixture.reports.map((report, index) => index === 0 ? { ...report, policy } : report),
+			accountsWithoutUsage: [{ provider: "anthropic", type: "oauth", email: "unreported@example.com", policy: { ...policy, state: "unknown" } }],
+		};
+		const providers = planLimits(snapshot);
+		expect(providers.find(provider => provider.provider === fixture.reports[0].provider)?.accounts[0].policy).toEqual(policy);
+		expect(providers.flatMap(provider => provider.accounts).find(account => account.name === "unreported@example.com")?.policy?.state).toBe("unknown");
+		expect(providers.find(provider => provider.provider === "openai-codex")?.accounts[0].policy).toBeUndefined();
 	});
 
 	it("names accounts by email and organization and keeps raw plan ids in the technical details", () => {
@@ -395,9 +408,9 @@ describe("planLimits", () => {
 			snapshot([report("anthropic", [limit("anthropic:5h", 0.2), { ...limit("anthropic:7d", 0), amount: { unit: "unknown" } }, limit("anthropic:7d:x", 0.5, { status: "warning" })])]),
 		)[0].accounts[0].rows;
 		expect(rows.map(row => [row.id, row.state])).toEqual([
-			["anthropic:7d:x", "near"],
 			["anthropic:5h", "ok"],
 			["anthropic:7d", "unavailable"],
+			["anthropic:7d:x", "near"],
 		]);
 	});
 

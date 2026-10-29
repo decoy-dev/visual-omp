@@ -4,12 +4,15 @@
  *
  * visual-omp never signs in by itself: the renderer runs `omp login [provider]` in a terminal, and
  * omp handles the browser, pasted codes, API keys and multiple accounts. This module only reads
- * status, deletes stored credentials through `omp auth-broker logout`, and forgets its caches when
- * a sign-in finishes.
+ * status, deletes stored credentials through `omp auth-broker logout`, transfers sign-ins through
+ * `omp auth export` and `omp auth import`, and forgets caches when credentials change.
  *
  * Chats that are already open keep the credentials and model list their omp loaded at start; they
  * see a change after `/restart`.
  */
+import { mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { app, BrowserWindow, dialog } from "electron";
 import { z } from "zod";
 import type { ModelKind } from "@shared/contracts/config";
 import type {
@@ -24,13 +27,13 @@ import { runOmp } from "../omp/cli";
 import { NEUTRAL_CWD } from "../omp/config-file";
 import { ompPath } from "../omp/locate";
 import { rpcRequest } from "../omp/rpc";
-import { ompErrorMessage, UsageJsonSchema } from "../services/omp-config";
-import { configWritten, listModels } from "./config";
+import { ompErrorMessage, parseModels, UsageJsonSchema } from "../services/omp-config";
+import { configWritten } from "./config";
 
 // ─── Sign-in list (`get_login_providers`) ──────────────────────────────────
 
-/** Flags that keep the listing process light; extensions stay on because they can add providers. */
-const RPC_FLAGS = ["--no-session", "--no-lsp", "--no-title", "--no-tools", "--no-skills", "--no-rules"];
+/** Discovery runs outside projects and never loads their extensions, skills, rules or context. */
+const RPC_FLAGS = ["--no-session", "--no-lsp", "--no-title", "--no-tools", "--no-extensions", "--no-skills", "--no-rules", "--no-context-files"];
 const LIST_TIMEOUT_MS = 30_000;
 
 const LoginProvidersSchema = z.object({
@@ -47,8 +50,8 @@ interface OmpLoginProvider {
  * The entries omp's `/login` offers, read with one `get_login_providers` request to a short-lived
  * `omp --mode rpc` process. Read-only: nothing is sent that signs in or changes credentials.
  */
-async function readLoginProviders(folder: string): Promise<OmpLoginProvider[]> {
-	const data = await rpcRequest(folder, "get_login_providers", {
+async function readLoginProviders(): Promise<OmpLoginProvider[]> {
+	const data = await rpcRequest(NEUTRAL_CWD, "get_login_providers", {
 		flags: RPC_FLAGS,
 		timeoutMs: LIST_TIMEOUT_MS,
 		messages: {
@@ -64,20 +67,18 @@ async function readLoginProviders(folder: string): Promise<OmpLoginProvider[]> {
 	);
 }
 
-/** Per project folder: project extensions can add sign-in entries. */
-const loginProvidersCache = new Map<string, Promise<OmpLoginProvider[]>>();
+/** The discovery process has no selected-project state. */
+let loginProvidersCache: Promise<OmpLoginProvider[]> | null = null;
 
-function loginProviders(folder: string): Promise<OmpLoginProvider[]> {
-	let pending = loginProvidersCache.get(folder);
-	if (!pending) {
-		const started = readLoginProviders(folder);
-		pending = started;
-		loginProvidersCache.set(folder, started);
+function loginProviders(): Promise<OmpLoginProvider[]> {
+	if (!loginProvidersCache) {
+		const started = readLoginProviders();
+		loginProvidersCache = started;
 		started.catch(() => {
-			if (loginProvidersCache.get(folder) === started) loginProvidersCache.delete(folder);
+			if (loginProvidersCache === started) loginProvidersCache = null;
 		});
 	}
-	return pending;
+	return loginProvidersCache;
 }
 
 // ─── Provider state ────────────────────────────────────────────────────────
@@ -85,14 +86,16 @@ function loginProviders(folder: string): Promise<OmpLoginProvider[]> {
 /** omp records its own sign-out as a disabled credential; that is not something to fix. */
 const SIGNED_OUT_CAUSE = /^(logged out by user|deleted by user|replaced by)/i;
 
-const stateCache = new Map<string, Promise<ProvidersState>>();
+let stateCache: Promise<ProvidersState> | null = null;
 
-async function readState(folder: string): Promise<ProvidersState> {
-	const [models, usageResult, logins] = await Promise.all([
-		listModels(folder),
-		runOmp(["usage", "--json"], { cwd: folder, timeoutMs: 60_000 }),
-		loginProviders(folder),
+async function readState(): Promise<ProvidersState> {
+	const [modelsResult, usageResult, logins] = await Promise.all([
+		runOmp(["models", "--json", "--kind", "all", "--no-extensions"], { cwd: NEUTRAL_CWD, timeoutMs: 60_000 }),
+		runOmp(["usage", "--json", "--no-extensions"], { cwd: NEUTRAL_CWD, timeoutMs: 60_000 }),
+		loginProviders(),
 	]);
+	if (modelsResult.code !== 0) throw new Error(ompErrorMessage(modelsResult.stderr, `omp models exited with ${modelsResult.code}`));
+	const models = parseModels(JSON.parse(modelsResult.stdout));
 	if (usageResult.code !== 0) throw new Error(ompErrorMessage(usageResult.stderr, `omp usage exited with ${usageResult.code}`));
 	const usage = UsageJsonSchema.parse(JSON.parse(usageResult.stdout));
 
@@ -120,10 +123,10 @@ async function readState(folder: string): Promise<ProvidersState> {
 		]);
 	}
 
-	// A provider is connected when omp lists its models, reports accounts for it, or says its
-	// `/login` entry has a credential. Only ids omp reports are used; nothing is mapped or guessed.
+	// Alias logins inherit their base provider's authenticated flag, but RPC omits storeCredentialsAs.
+	// Only independent model/account/credential evidence creates a row. All login methods remain
+	// available for signing in; an authenticated alias alone must not create a duplicate provider.
 	const ids = new Set<string>([...byProvider.keys(), ...accounts.keys(), ...disabled.keys()]);
-	for (const login of logins) if (login.authenticated) ids.add(login.method.id);
 
 	const connected: ConnectedProvider[] = [...ids].map(id => {
 		const login = logins.find(entry => entry.method.id === id);
@@ -151,33 +154,28 @@ async function readState(folder: string): Promise<ProvidersState> {
 	return { connected, available };
 }
 
-/**
- * The one folder every omp call for a Settings view runs in: the selected project, or the same
- * neutral folder the other `config:*` reads use. Discovery, reads, caches, sign-in and sign-out all
- * use it, so they see the same extensions and `.env` files.
- */
+/** Explicit terminal sign-in and sign-out retain their selected project folder. */
 function effectiveCwd(cwd: string | undefined): string {
 	return cwd ?? NEUTRAL_CWD;
 }
 
-function providersState(folder: string, refresh: boolean): Promise<ProvidersState> {
+function providersState(refresh: boolean): Promise<ProvidersState> {
 	if (refresh) invalidate();
-	let pending = stateCache.get(folder);
-	if (!pending) {
-		pending = readState(folder);
-		stateCache.set(folder, pending);
-		pending.catch(() => {
-			if (stateCache.get(folder) === pending) stateCache.delete(folder);
+	if (!stateCache) {
+		const started = readState();
+		stateCache = started;
+		started.catch(() => {
+			if (stateCache === started) stateCache = null;
 		});
 	}
-	return pending;
+	return stateCache;
 }
 
 /** Credentials changed: forget every cached view of them (models, sign-in list, provider state). */
 function invalidate(): void {
 	configWritten();
-	loginProvidersCache.clear();
-	stateCache.clear();
+	loginProvidersCache = null;
+	stateCache = null;
 }
 
 function credentialsChanged(providerId: string | null): void {
@@ -208,11 +206,57 @@ async function loginCommand(methodId: string | undefined, folder: string): Promi
 	return { command, cwd: folder };
 }
 
+/** Secret output stays in main and is never included in IPC replies, errors or logs. */
+async function exportSignIns(): Promise<boolean> {
+	const options: Electron.SaveDialogOptions = {
+		title: "Export sign-ins",
+		defaultPath: join(app.getPath("downloads"), "omp-sign-ins.json"),
+		filters: [{ name: "omp sign-ins", extensions: ["json"] }],
+		properties: ["createDirectory", "showOverwriteConfirmation"],
+	};
+	const win = BrowserWindow.getFocusedWindow();
+	const choice = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+	if (choice.canceled || !choice.filePath) return false;
+	const result = await runOmp(["auth", "export"], { cwd: NEUTRAL_CWD });
+	if (result.code !== 0) throw new Error(`omp could not export sign-ins (exit code ${result.code}).`);
+	// A private sibling directory keeps incomplete exports inaccessible. Rename replaces a selected
+	// file or symlink with a new owner-only file instead of retaining its old permissions.
+	const temporary = await mkdtemp(join(dirname(choice.filePath), ".visual-omp-auth-"));
+	try {
+		const file = join(temporary, "sign-ins.json");
+		await writeFile(file, result.stdout, { encoding: "utf8", mode: 0o600, flag: "wx" });
+		await rename(file, choice.filePath);
+	} finally {
+		await rm(temporary, { recursive: true, force: true });
+	}
+	return true;
+}
+
+async function importSignIns(): Promise<boolean> {
+	const options: Electron.OpenDialogOptions = {
+		title: "Import sign-ins",
+		filters: [{ name: "omp sign-ins", extensions: ["json"] }],
+		properties: ["openFile"],
+	};
+	const win = BrowserWindow.getFocusedWindow();
+	const choice = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+	const file = choice.filePaths[0];
+	if (choice.canceled || !file) return false;
+	// Let omp validate and merge the file. Its output can quote malformed credential fields, so
+	// neither stream is returned to the renderer or used in an error message.
+	const result = await runOmp(["auth", "import", file], { cwd: NEUTRAL_CWD });
+	if (result.code !== 0) throw new Error(`omp could not import sign-ins (exit code ${result.code}).`);
+	credentialsChanged(null);
+	return true;
+}
+
 // ─── IPC ───────────────────────────────────────────────────────────────────
 
 export function register(): void {
-	handle("providers:list", (cwd, refresh) => providersState(effectiveCwd(cwd), refresh === true));
+	handle("providers:list", refresh => providersState(refresh === true));
 	handle("providers:logout", (providerId, cwd) => logout(providerId, effectiveCwd(cwd)));
 	handle("providers:loginCommand", (methodId, cwd) => loginCommand(methodId, effectiveCwd(cwd)));
 	handle("providers:invalidate", () => credentialsChanged(null));
+	handle("providers:export", () => exportSignIns());
+	handle("providers:import", () => importSignIns());
 }

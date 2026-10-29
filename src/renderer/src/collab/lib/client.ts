@@ -70,6 +70,8 @@ export interface GuestSnapshot {
 	backgroundTools: ReadonlyMap<string, ActiveTool>;
 	/** agent_start..agent_end, reconciled by state.isStreaming. */
 	working: boolean;
+	/** A non-terminal settle whose next turn depends on background jobs. */
+	awaitingAsyncWork?: boolean;
 	/** True when this guest joined through a read-only (view) link. */
 	readOnly: boolean;
 	/** Pending host-side UI request (`ask` select/editor) this guest can answer. */
@@ -136,7 +138,9 @@ export class GuestClient {
 	#backgroundTools: ReadonlyMap<string, ActiveTool> = new Map();
 	/** Retained across idle frames and reconnects: a backgrounded call can keep producing output. */
 	readonly #endedTools = new Set<string>();
+	readonly #resumedToolCallIds = new Set<string>();
 	#working = false;
+	#awaitingAsyncWork = false;
 	#readOnly = false;
 	#uiRequest: CollabUiRequest | null = null;
 	#uiRequestQueue: CollabUiRequest[] = [];
@@ -212,6 +216,10 @@ export class GuestClient {
 
 	sendAbort(): void {
 		this.#socket.send({ t: "abort" });
+		if (this.#awaitingAsyncWork) {
+			this.#awaitingAsyncWork = false;
+			this.#commit();
+		}
 	}
 
 	sendAgentCmd(cmd: "chat" | "kill" | "revive", agentId: string, text?: string): void {
@@ -267,6 +275,7 @@ export class GuestClient {
 		this.#phase = "ended";
 		this.#endedReason = reason;
 		this.#pendingSnapshot = null;
+		this.#awaitingAsyncWork = false;
 		for (const [, pending] of this.#pendingTranscripts) {
 			clearTimeout(pending.timer);
 			pending.resolve(null);
@@ -333,9 +342,11 @@ export class GuestClient {
 				this.#stream = null;
 				this.#streamDone = false;
 				this.#activeTools = new Map();
+				this.#resumedToolCallIds.clear();
 				this.#progress = new Map();
 				this.#lifecycle = new Map();
 				this.#working = frame.state.isStreaming;
+				this.#awaitingAsyncWork = false;
 				this.#readOnly = frame.readOnly === true;
 				// The welcome's snapshot is authoritative again; later events set the flag anew.
 				this.#autoThinking = null;
@@ -373,6 +384,7 @@ export class GuestClient {
 				this.#pendingSnapshot = null;
 				this.#clearSnapshotProgressTimer();
 				this.#phase = "live";
+				this.#seedResumedTools();
 				break;
 			}
 			case "entry":
@@ -389,6 +401,7 @@ export class GuestClient {
 				}
 				this.#entries.push(frame.entry);
 				this.#publishedEntries = [...this.#entries];
+				this.#seedResumedTools();
 				break;
 			case "event":
 				this.#applyEvent(frame.event);
@@ -400,6 +413,7 @@ export class GuestClient {
 				// This covers a connected guest that misses the discrete `agent_start`
 				// without receiving a new `welcome` (for example, mid-stream).
 				this.#working = frame.state.isStreaming;
+				if (frame.state.isStreaming) this.#awaitingAsyncWork = false;
 				if (!frame.state.isStreaming) {
 					// Host idle implies no tool can be running, so clear any card
 					// pinned by a dropped `tool_execution_end` off this signal.
@@ -513,9 +527,17 @@ export class GuestClient {
 			}
 			case "agent_start":
 				this.#working = true;
+				this.#awaitingAsyncWork = false;
+				this.#resumedToolCallIds.clear();
+				for (const id of event.resumedToolCallIds ?? []) {
+					this.#resumedToolCallIds.add(id);
+					this.#endedTools.delete(id);
+				}
+				this.#seedResumedTools();
 				break;
 			case "agent_end":
 				this.#working = false;
+				this.#awaitingAsyncWork = event.awaitingAsyncWork === true;
 				break;
 			case "notice":
 				this.#pushNotice(event.level, event.message);
@@ -550,8 +572,29 @@ export class GuestClient {
 		}
 	}
 
+	/** Restored calls execute without a new assistant message or message_start event. */
+	#seedResumedTools(): void {
+		if (this.#resumedToolCallIds.size === 0) return;
+		const missing = new Set([...this.#resumedToolCallIds].filter(id => !this.#activeTools.has(id)));
+		if (missing.size === 0) return;
+		const active = new Map(this.#activeTools);
+		const read = (message: AssistantMessage): void => {
+			for (const block of message.content) {
+				if (block.type !== "toolCall" || !missing.delete(block.id)) continue;
+				active.set(block.id, { toolCallId: block.id, toolName: block.name, args: block.arguments, intent: block.intent, startedAt: Date.now() });
+			}
+		};
+		if (this.#stream) read(this.#stream);
+		for (let index = this.#entries.length - 1; index >= 0 && missing.size > 0; index--) {
+			const entry = this.#entries[index]!;
+			if (entry.type === "message" && entry.message.role === "assistant") read(entry.message);
+		}
+		this.#activeTools = active;
+	}
+
 	#finishTool(callId: string): void {
 		this.#endedTools.add(callId);
+		this.#resumedToolCallIds.delete(callId);
 		if (!this.#activeTools.has(callId)) return;
 		const next = new Map(this.#activeTools);
 		next.delete(callId);
@@ -595,6 +638,7 @@ export class GuestClient {
 			activeTools: this.#activeTools,
 			backgroundTools: this.#backgroundTools,
 			working: this.#working,
+			awaitingAsyncWork: this.#awaitingAsyncWork,
 			readOnly: this.#readOnly,
 			uiRequest: this.#uiRequest,
 			notices: this.#notices,

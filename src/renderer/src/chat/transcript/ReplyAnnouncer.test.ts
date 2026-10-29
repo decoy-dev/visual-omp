@@ -21,3 +21,14 @@ describe("reply announcement text", () => {
 		expect(renderMarkdown).toHaveBeenCalledWith("First reply\n\nNarrated **reply**\n\nLast reply");
 	});
 });
+
+it("includes a write reply's Markdown without exposing the internal path", () => {
+	vi.stubGlobal("document", { createElement: () => ({ innerHTML: "", content: { textContent: "Spoken reply" } }) });
+	const message: AssistantMessage = {
+		role: "assistant", model: "m", timestamp: 1000, stopReason: "toolUse",
+		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } },
+		content: [{ type: "toolCall", id: "out", name: "write", arguments: { path: "out://report", content: "The **report**." } }],
+	};
+	expect(plainText(message)).toBe("Spoken reply");
+	expect(renderMarkdown).toHaveBeenCalledWith("The **report**.");
+});

@@ -17,13 +17,16 @@
  * room and ids never collide.
  */
 import { createServer, type IncomingMessage, type Server } from "node:http";
+import { isAppOrigin } from "../services/app-origin";
 import type { Duplex } from "node:stream";
 import { type RawData, WebSocket, WebSocketServer } from "ws";
 import { z } from "zod";
 
 const ROOM_PATH_RE = /^\/r\/([A-Za-z0-9_-]{10,64})$/;
 const ENVELOPE_HEADER_LENGTH = 4;
-const MAX_PAYLOAD = 256 * 1024 * 1024;
+// omp 18.14 shrinks replicated entries/events below 1 MiB and targets Bun's 16 MB relay cap
+// (collab/replication-shrink.ts). Leave envelope/chunk headroom while bounding peer allocation.
+export const MAX_RELAY_PAYLOAD = 16 * 1024 * 1024;
 
 interface Room {
 	host: WebSocket;
@@ -51,8 +54,9 @@ export function relayHosting(roomId: string): LoopbackRelay | null {
 
 export class LoopbackRelay {
 	readonly #servers: Server[] = [];
-	readonly #wss = new WebSocketServer({ noServer: true, maxPayload: MAX_PAYLOAD });
+	readonly #wss = new WebSocketServer({ noServer: true, maxPayload: MAX_RELAY_PAYLOAD });
 	readonly #rooms = new Map<string, Room>();
+	readonly #openedRooms = new Set<string>();
 	#port = 0;
 	events: RelayEvents = {};
 
@@ -151,6 +155,11 @@ export class LoopbackRelay {
 	}
 
 	#upgrade(req: IncomingMessage, socket: Duplex, head: Buffer): void {
+		// Node's omp client sends no Origin. Browser guests must come from our app document.
+		if (req.headers.origin !== undefined && !isAppOrigin(req.headers.origin)) {
+			socket.end("HTTP/1.1 403 Forbidden\r\n\r\n");
+			return;
+		}
 		const url = new URL(req.url ?? "/", "http://localhost");
 		const match = ROOM_PATH_RE.exec(url.pathname);
 		const role = url.searchParams.get("role");
@@ -160,17 +169,20 @@ export class LoopbackRelay {
 			return;
 		}
 		this.#wss.handleUpgrade(req, socket, head, ws => {
+			// Invalid WebSocket frames already close the peer; keep protocol errors local to it.
+			ws.on("error", () => ws.close());
 			if (role === "host") this.#openHost(roomId, ws);
 			else this.#openGuest(roomId, ws);
 		});
 	}
 
 	#openHost(roomId: string, ws: WebSocket): void {
-		if (this.#rooms.has(roomId)) {
+		if (this.#openedRooms.has(roomId)) {
 			ws.close(4009, "a host is already connected for this room");
 			return;
 		}
 		const room: Room = { host: ws, guests: new Map(), nextPeerId: 1, bridge: null };
+		this.#openedRooms.add(roomId);
 		this.#rooms.set(roomId, room);
 		ws.on("message", (data, isBinary) => {
 			if (!isBinary) return;
@@ -318,7 +330,7 @@ export class RoomBridge {
 	start(): void {
 		if (this.#status.phase === "stopped" || this.#ws) return;
 		const ws = new WebSocket(`${this.upstreamOrigin}/r/${this.roomId}?role=host`, {
-			maxPayload: MAX_PAYLOAD,
+			maxPayload: MAX_RELAY_PAYLOAD,
 			handshakeTimeout: HANDSHAKE_TIMEOUT_MS,
 		});
 		this.#ws = ws;

@@ -3,8 +3,9 @@
  * slash commands omp would load for a project.
  *
  * Images reach omp the way a terminal delivers them: a bracketed paste made only of absolute image
- * paths makes omp's editor attach those files (png/jpg/gif/webp). The renderer writes that paste
- * through `host:write` right before the message, so clipboard images are first saved to disk here.
+ * paths makes omp's editor attach those files (png/jpg/gif/webp). The renderer requests
+ * `composer:paste`, which uses the serialized host paste operation before submitting the message.
+ * Clipboard images are first saved to disk here.
  */
 
 /** A markdown slash command omp loads (`/name args`). */
@@ -44,13 +45,43 @@ export interface SlashCommandListing {
 	complete: boolean;
 }
 
-/** Text in the hidden omp TUI's prompt editor (where omp's own dictation writes). */
-export interface TuiEditorText {
+
+/** Draft-only microphone capture. Text never submits itself to a chat. */
+export interface DictationUpdate {
+	captureId: string;
+	state: "starting" | "recording" | "transcribing" | "ended";
 	text: string;
-	/** omp's count of characters; `text` may be shorter when it couldn't be read in full. */
-	length: number;
-	/** `text` is exactly the editor content. */
-	complete: boolean;
+	error?: string;
+}
+
+/** Exact editor access is carried by the trusted extension, never reconstructed from screen rows. */
+export interface EditorDraftRequest {
+	operation: "peek" | "take";
+	sessionId: string;
+	expected?: string;
+}
+export interface EditorDraftResult {
+	text: string | null;
+	cleared: boolean;
+	error?: string;
+}
+export interface PredictionTakeRequest {
+	hostId: string;
+	generation: number;
+	tabId: string;
+	nativeDraft: string;
+	expectedGhost: string;
+}
+/** Main retains an exact capture until a renderer explicitly inserts or dismisses it. */
+export interface PredictionCapture {
+	id: string;
+	hostId: string;
+	generation: number;
+	tabId: string;
+	folder: string;
+	text: string | null;
+	blocked: boolean;
+	error: string | null;
 }
 
 declare module "../ipc" {
@@ -71,15 +102,21 @@ declare module "../ipc" {
 		 * Paths must be absolute and omp-supported image paths; follow with host:submit.
 		 */
 		"composer:paste": { args: [hostId: string, text: string]; result: void };
-		/**
-		 * Voice input drives omp's own dictation (`app.stt.toggle`, unbound by default). Binds a free
-		 * function key in `<agentDir>/keybindings.yml` when none is bound (comments kept) and resolves the
-		 * key token to press with `host:keys` (e.g. "f9"). omp reads keybindings at startup: when
-		 * `changed`, running chats must restart before the key works.
-		 */
-		"composer:voiceKey": { args: []; result: { key: string; changed: boolean } };
-		/** Read the prompt editor of a chat's hidden TUI (debug-socket state; painted screen for long text). */
-		"composer:tuiEditorText": { args: [hostId: string]; result: TuiEditorText | null };
+		"composer:voiceStart": { args: [cwd: string, captureId: string]; result: void };
+		"composer:voiceStop": { args: [captureId: string]; result: void };
+		/** Mounted composers share a folder's child; releasing the last owner closes it. */
+		"composer:retainPredictions": { args: [cwd: string, owner: string]; result: void };
+		"composer:releasePredictions": { args: [cwd: string, owner: string]; result: void };
+		/** Ask the hosted TUI's effective SDK discovery whether this invocation runs a side question. */
+		"composer:isSideCommand": { args: [hostId: string, name: string]; result: boolean };
+		/** Local word completion, respecting omp's spelling.autocomplete setting. No provider request. */
+		"composer:predictWord": { args: [cwd: string, text: string, cursor: number]; result: string | null };
+		"composer:predictFeedback": { args: [cwd: string, text: string, cursor: number, suggestion: string, accepted: boolean]; result: void };
+		"composer:tuiPrediction": { args: [hostId: string]; result: string | null };
+		"composer:takePrediction": { args: [request: PredictionTakeRequest]; result: PredictionCapture | null };
+		"composer:predictionCaptures": { args: []; result: PredictionCapture[] };
+		"composer:retryPrediction": { args: [id: string]; result: PredictionCapture | null };
+		"composer:ackPrediction": { args: [id: string]; result: void };
 		/**
 		 * Every slash command omp accepts in `cwd`: omp's `get_available_commands` over a short-lived RPC
 		 * process, plus the builtins that exist only in omp's terminal UI. When omp can't be asked, the
@@ -87,5 +124,9 @@ declare module "../ipc" {
 		 * servers, providers or config change; `fresh` asks omp again (after a typed `/mcp` or `/skills`).
 		 */
 		"composer:slashCommands": { args: [cwd: string, fresh?: boolean]; result: SlashCommandListing };
+	}
+	interface IpcEventMap {
+		"composer:dictation": DictationUpdate;
+		"composer:predictionCaptures": PredictionCapture[];
 	}
 }

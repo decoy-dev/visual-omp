@@ -52,6 +52,7 @@ beforeEach(() => {
 		on: () => () => undefined,
 		invoke: async (channel: string, _host: string, text: string) => {
 			if (channel === "host:screen") return screen;
+			if (channel === "composer:isSideCommand") return ["explain", "user-side", "nested", "folder:nested"].includes(text);
 			if (channel === "host:submit") {
 				submissionStarted.resolve();
 				await submission;
@@ -105,6 +106,19 @@ describe("slash commands sent while omp works", () => {
 		await sendSlashCommand(session, "/btw what changed?", { now: true });
 		expect(submitted).toEqual(["/btw what changed?"]);
 		expect(fake.app.terminalTabId).toBe("chat");
+	});
+
+	it.each(["/explain", "/explain this code", "/user-side", "/nested", "/folder:nested this code"])("opens an effective file side command without scraping its partial answer: %s", async line => {
+		await sendSlashCommand(session, line, { now: true });
+		await vi.advanceTimersByTimeAsync(2000);
+		expect(submitted).toEqual([line]);
+		expect(fake.app.terminalTabId).toBe("chat");
+		expect(commandResults(session)).toEqual([]);
+	});
+
+	it("preserves normal result routing for a file command without side: true", async () => {
+		await sendSlashCommand(session, "/ordinary", { now: true });
+		expect(fake.app.terminalTabId).toBeNull();
 	});
 
 	it.each(["/fast status", "/queue next task", "/tan inspect tests"])("keeps existing result watching without opening a terminal for %s", async line => {

@@ -17,6 +17,11 @@
 	"exited": "omp stopped{{code}}.",
 	"exitedCode": " (exit {{code}})",
 	"restartOmp": "Start omp again",
+	"restoreOmp": "Continue where omp stopped",
+	"hostNotices": {
+		"startup": "At startup, omp reported",
+		"recap": "Recap"
+	},
 	"startFreshChat": "Start a fresh chat",
 	"follow": {
 		"unreadable": "This view stopped updating because the chat file could not be read ({{error}}). It shows what loaded before that.",
@@ -34,6 +39,8 @@
 	"redactedThinking": "Thinking (hidden by the model)",
 	"workingActivity": "Working… {{elapsed}} · {{activity}}",
 	"workingActivityUntimed": "Working · {{activity}}",
+	"waitingJobs": "Waiting for background jobs",
+	"stopWaiting": "Stop waiting",
 	"newActivity": "Show new activity",
 	"fileRow": "{{name}}, in {{folder}}",
 	"attachedImage": "Attached image {{number}}",
@@ -56,6 +63,18 @@
 	"copy": "Copy message",
 	"copied": "Copied",
 	"copyCode": "Copy code",
+	"visual": {
+		"svg": "SVG figure",
+		"mermaid": "Mermaid diagram",
+		"source": "View source",
+		"failed": "This diagram could not be drawn. Its source is shown below.",
+		"remoteImage": "Remote image",
+		"loadImage": "Load image",
+		"loadImageFrom": "Load image from {{host}}",
+		"loadingImage": "Loading image…",
+		"imageFailed": "This image could not be loaded.",
+		"resourceDiagram": "This diagram includes image resources or external styles. Its source is shown below."
+	},
 	"callout": {
 		"note": "Note",
 		"tip": "Tip",
@@ -76,6 +95,10 @@
 		"approvalSessionHelp": "These approvals last for this session.",
 		"messageDenies": "Sending a message now denies this request.",
 		"deny": "Deny action",
+		"denyExplain": "Deny and say why",
+		"denySend": "Deny and send message",
+		"denialReason": "Explain what omp should do instead",
+		"denialFailed": "Couldn't send the denial message",
 		"skip": "Skip question",
 		"answer": "Send answer",
 		"send": "Send answer",
@@ -99,6 +122,7 @@
 			"ready": "Ready for your next message",
 			"working": "Working",
 			"helpersWorking": "Helpers are working. omp is ready for your next message.",
+			"waitingJobs": "Waiting for background jobs",
 			"waiting": "Waiting for your answer",
 			"readOnly": "Read only. This chat is open in another window, so reply there.",
 			"readOnlyFree": "Read only. You can continue this chat here.",

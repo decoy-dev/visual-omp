@@ -1,0 +1,19 @@
+{
+	"keepWorktree": "Keep worktree",
+	"removeWorktree": "Remove worktree",
+	"keepFolder": "Keep current folder",
+	"createWorktree": "Create worktree",
+	"worktreeQuestionUnresolved": "omp has not closed its worktree question. Wait for it to finish, then send your message again.",
+	"closingInput": "omp is closing this chat. The message was not submitted.",
+	"editorTransactionClosed": "This editor operation has already finished.",
+	"shutdownTitle": "omp is still running",
+	"keepWaiting": "Keep waiting",
+	"stopNow": "Stop omp now",
+	"stopUnconfirmed": "omp has not confirmed that it stopped. It remains tracked by visual-omp.",
+	"shutdownStages": {
+		"requested": "omp has not confirmed the exit request. Stopping it now can leave an unfinished session.",
+		"acknowledged": "omp is closing this chat and checking its worktrees. Stopping it now can interrupt those operations.",
+		"teardown": "omp is saving the chat and stopping its services. Worktree cleanup can follow. Stopping it now can leave unfinished cleanup.",
+		"cleanup": "omp has stopped its terminal UI and may be removing a worktree. Stopping it now can interrupt that removal."
+	}
+}

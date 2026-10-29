@@ -18,6 +18,8 @@ import { openSettings, type SettingsSectionId } from "../../state/navigation";
 import type { SessionController } from "../../state/session";
 import { runCommand } from "../palette/run";
 import { usePickerRequests } from "./pickers";
+import { setSessionMode } from "./nativeModes";
+import { reportFailure } from "./drive";
 
 // ─── Catalog ───────────────────────────────────────────────────────────────
 
@@ -78,7 +80,7 @@ function bare(action: (session: SessionController) => boolean, ...forms: string[
 	return (args, session) => (args === "" || forms.includes(args.toLowerCase())) && action(session);
 }
 
-type GuardReason = "collab" | "join" | "move" | "worktree" | "forkTerminal";
+type GuardReason = "collab" | "join" | "forkTerminal";
 
 /** Refuse the line with a toast that says why and, when there is one, offers the app's way to do it. */
 function refuse(reason: GuardReason, typed: string, offer?: () => void): true {
@@ -103,10 +105,6 @@ const collabGuard: Route = (args, session, typed) => {
 	const verb = args.split(/\s+/)[0]?.toLowerCase() ?? "";
 	return verb !== "list" && verb !== "status" && hostingGuard(session, typed);
 };
-
-const moveGuard: Route = (_args, session, typed) => refuse("move", typed, () => runCommand("chat.startIn", contextOf(session)));
-
-const worktreeGuard: Route = (_args, session, typed) => refuse("worktree", typed, () => runCommand("git.worktree", contextOf(session)));
 
 const settingsSection =
 	(section: SettingsSectionId, sectionProps?: unknown) =>
@@ -156,6 +154,7 @@ const ROUTES: Record<string, Route> = {
 	loop: bare(command("chat.loop")),
 	plan: bare(command("chat.plan")),
 	vibe: bare(command("chat.vibe")),
+	advisor: (args, session) => args.toLowerCase() === "configure" && runCommand("chat.advisor", contextOf(session)),
 	new: bare(command("chat.new")),
 	share: bare(command("chat.share")),
 	export: bare(command("chat.export")),
@@ -183,19 +182,21 @@ const ROUTES: Record<string, Route> = {
 	collab: collabGuard,
 	join: (_args, _session, typed) => refuse("join", typed),
 	leave: (_args, session, typed) => hostingGuard(session, typed),
-	move: moveGuard,
-	wt: worktreeGuard,
-	worktree: worktreeGuard,
 };
 
 /**
  * Handle `line` in the app when the routing matrix has a native or guarded row for it. Resolves true
  * when the line was handled and must not be sent; false for everything omp should run itself,
- * including argument forms the matrix leaves to omp (`/fast on`, `/goal pause`).
+ * including argument forms the matrix leaves to omp (`/fast on`, `/goal budget`).
  */
 export async function routeSlash(session: SessionController, line: string): Promise<boolean> {
 	const parsed = parseSlash(line);
 	if (!parsed) return false;
+	if (parsed.name === "goal" && ["pause", "resume", "drop"].includes(parsed.args)) {
+		try { await setSessionMode(session, { mode: "goal", action: parsed.args as "pause" | "resume" | "drop" }); }
+		catch (error) { reportFailure(error); }
+		return true;
+	}
 	const handled = Object.hasOwn(ROUTES, parsed.name) && (ROUTES[parsed.name]?.(parsed.args, session, `/${parsed.name}`) ?? false);
 	if (!handled && CHANGES_COMMANDS.has(parsed.name)) changedAt.set(session.projectPath, Date.now());
 	return handled;

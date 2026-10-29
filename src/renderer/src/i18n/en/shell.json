@@ -53,6 +53,7 @@
 			"working": "omp is working",
 			"helpersWorking": "omp's helpers are working",
 			"needsInput": "Waiting for your answer",
+			"error": "omp reported an error",
 			"live": "Open",
 			"idle": "Saved"
 		},
@@ -68,8 +69,8 @@
 		"moreChats_other": "Show {{count}} more chats"
 	},
 	"deleteChat": {
-		"title": "Delete '{{title}}'?",
-		"body": "This removes the saved conversation from this computer. You can't undo it.",
+		"title": "Delete this chat?",
+		"body": "This moves the saved conversation, its retained copies and their files to the system trash. You can restore the files there to recover the chat.",
 		"confirm": "Delete chat",
 		"cancel": "Keep chat"
 	},

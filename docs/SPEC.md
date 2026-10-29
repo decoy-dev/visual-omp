@@ -31,9 +31,11 @@ be able to use it, and it exposes the features that set omp apart from other cod
   size, reduced motion, and contrast-safe colors in both themes.
 
 ## Engine
-- The user installs omp themselves. When omp is missing or too old, the app shows a guided setup
-  screen in plain language with the official install command, a **Run installer** button that runs
-  it visibly in the built-in terminal (user-initiated), and **Check again**.
+- visual-omp requires omp 18.14.0 or later. When omp is missing, a guided setup screen offers
+  the official install command, **Run installer** in the built-in terminal and **Check for omp**.
+  An older omp is refused, with **Update omp** running omp's own updater in the existing update
+  dialog. Output and errors remain visible, and the detected version is refreshed on completion.
+  Managed installations direct the user to the application that updates omp.
 - Each chat is backed by a **real omp terminal (TUI) running hidden in a pseudo-terminal**. The app
   types messages and commands into it (e.g. the Restart button sends `/restart`), and mirrors its
   live state (streaming text, thinking, tool calls, subagents, questions) as native UI through
@@ -63,11 +65,13 @@ The existing screen-reader announcement channel announces a newly recorded fallb
 ## Feature scope (all in scope)
 ### Sessions
 - Open chats appear in a Current chats sidebar section, with unopened results first and a divider before viewed chats. Each group keeps open order, and numbered shortcuts keep their original chat numbers. A blue dot, stronger title and accessible "New result" or "Waiting for your answer" label mark unopened results. The same mark appears on open chats in the Projects tree, Home's recent chats and project overviews.
-- A chat's status is, in order: waiting for an answer, working (omp's own turn), helpers working (omp's turn has ended and a helper it started still runs, on a running omp), open, or saved. Both working states show the spinning mark everywhere chat status appears: Current chats, the chat header, Home's recent chats and project overviews. Background shell jobs do not keep a chat in a working state, since a dev server started as a job can run until it is stopped.
+- A chat's status is, in order: waiting for an answer, an error reported by omp, working (omp's own turn), helpers working (omp's turn has ended and a helper it started still runs, on a running omp), open, or saved. Both working states show the spinning mark everywhere chat status appears: Current chats, the chat header, Home's recent chats and project overviews. Background shell jobs do not keep a chat in a working state, since a dev server started as a job can run until it is stopped. omp's OSC 7501 messages provide waiting and error text when collab has no matching question.
 - ⌘1-⌘9 open the numbered Current chats row; ⌘⇧[ and ⌘⇧] cycle open chats. ⌘⇧T reopens the last eligible closed chat and its text draft without starting omp. ⌘⇧A selects the next chat waiting for an answer.
 - The sidebar's New chat button always starts in the temporary folder: `/tmp` on macOS and Linux, and the system temp folder on Windows. It has no keyboard shortcut hint because ⌘N/Ctrl+N keeps the focused chat's or visible project overview's folder. From Home, pages or an empty view, that command uses the temporary folder. File > New Chat and the command palette follow the same rule; `/new` keeps its originating chat's folder. New chat here, the project overview's composer and open side by side keep their project.
-- Each chat can run in its own Git worktree.
+- Each chat can run in its own Git worktree. The current chat follows omp's folder and session moves. omp's worktree startup and exit questions use native dialogs, and closing the chat waits for its worktree decision.
 - A chat can be rewound or forked from any message.
+- After a nonzero exit without omp's current `session_exit` marker, **Continue where omp stopped** explicitly restores interrupted work through `omp --restore`. Ordinary restarts continue to use `--resume`.
+- The transcript displays omp's recognized startup model-substitution warnings and journaled idle recaps without sending those notices back to the model.
 - When the user moves to another chat, a saved chat that was only viewed is released: it has no unopened result, no host, no sent input, no draft or attachments and no open omp terminal. A viewed chat whose side panel is open, or was resized, is not released, so the panel is there when the user comes back. A chat also stays open when a chat that was already open appears later in Current chats, so no ⌘ number shifts. Browsing from one saved chat to the next releases the one left behind.
 - Queued messages can be sent now, edited or removed.
 - A chat has an unopened result when its main turn finishes or it starts waiting for an answer while the window is unfocused or minimized, or while another chat, Home, a page, a project overview or an expanded side panel covers it. Showing the chat in either split half with window focus clears only that chat. Closing it removes its unopened result. The count and reasons persist with restorable open tabs and are validated on load, so a restart on Home keeps results available to review.
@@ -95,7 +99,7 @@ The existing screen-reader announcement channel announces a newly recorded fallb
 - The model button marks a recorded fallback with a warning icon and “Fallback”, and its tooltip names the original model when known. It follows the live selected model or, for saved chats, the latest recorded choice. Provider fallback content identifies the model serving that reply. A manual choice or return to the primary removes the retry fallback marker.
 - The picker uses omp's selected identity independently of its serving-model label, so a provider fallback can still be explicitly selected. An unknown original stays unknown through subsequent fallbacks until a non-fallback choice resets the chain.
 - While omp works, the primary action queues the message; Send now remains available with ⌘↵.
-- Approval cards keep the one-time approval as the default, including when omp lists remembered file or folder grants first. Broader grants and session approval appear as secondary actions. On omp 18.11 or later, the card explains that sending a message now denies the pending request. Ask and remember is offered only when the installed omp supports it; Settings > Permissions can forget persisted approvals across projects through omp's own command.
+- Approval cards keep the one-time approval as the default, including when omp lists remembered file or folder grants first. Broader grants and session approval appear as secondary actions. The card explains that sending a message now denies the pending request. Ask and remember is available alongside the other permission modes; Settings > Permissions can forget persisted approvals across projects through omp's own command.
 - Read-only chats explain the reason in the session header and the available action in the placeholder. Composer controls are muted and disabled without repeating a lock banner.
 - At narrow widths, composer actions wrap to a second line so the text box keeps a usable width.
 - Up and Down recall this chat's submitted text when the caret is on the first or last visual line respectively, including wrapped text. Down past the newest entry, or Esc while browsing, restores the original draft and caret with attachments unchanged. Editing a recalled message makes it the new draft. Completion menus keep their arrow keys, and IME input and modified arrows keep native editing behavior.
@@ -114,12 +118,13 @@ The existing screen-reader announcement channel announces a newly recorded fallb
   presets.
 - Helpers manages bundled and custom agents, with a per-agent model, enable/disable and create
   with AI.
-- Connected tools manages MCP servers for all projects and per project.
-- Skills & plugins browses, installs and manages skills and plugins.
+- Connected tools manages MCP servers for all projects and per project. Project servers require an explicit per-server action and native confirmation before connection or sign-in. Background checks use fresh user-source definitions in a neutral folder. OAuth sign-in preserves the selected project and scope while suppressing ambient MCP and extension initialization.
+- Skills & plugins browses, installs and manages skills and plugins. Installed npm and git plugins can update through omp's upgrade command.
 - Memory shows what omp remembers and lets you delete it.
+- Providers checks status outside projects with extensions disabled. Sign-in export and import are global-only operations through omp, with warnings about unencrypted credentials and refresh-token rotation. Export uses restricted file permissions where supported, and credential contents never cross renderer IPC.
 
 ### omp extras
-- Usage & limits shows provider limits by account and window, with status and expandable account detail. Unknown values and warnings remain visible. Accounts with saved rate-limit resets show how many they hold and when the soonest expires, and a reset can be spent from the account after a confirmation; omp's own `/usage reset` spends it and the limits refresh afterwards. An activity grid shows omp's model requests per day over the last year, GitHub style, and Home shows its last few months. Recorded usage comes from local session and subagent files; its 7- or 30-day period does not filter provider limits or the activity grid. The page has a segmented KPI strip, daily cost chart with average line, cost share bars by project and a chat table with project and model filters, pagination and CSV export. Estimated API cost is labelled.
+- Usage & limits shows provider limits by account and window, preserving omp's window order. Expanded accounts include omp's optional routing priority, reserve and account-wide state. Unknown values and warnings remain visible. Saved resets list through `omp usage reset --json`; after confirmation, `omp usage reset <provider>/<id>` spends one and its exit code determines success, then limits refresh. The activity grid shows model requests per day over the last year, and Home shows recent months. Recorded usage comes from local session and subagent files; its 7- or 30-day period does not filter limits or the activity grid. The page includes an estimated API cost chart and searchable chat table with filters, pagination and CSV export. Its browser Stats action follows the dashboard URL printed by omp, which chooses the port.
 - Security scan and cleanse can be run for a project.
 - Chats can be imported from Claude Code and Codex.
 - The session tree navigator shows every branch of a chat.
@@ -144,7 +149,7 @@ The existing screen-reader announcement channel announces a newly recorded fallb
 Current chats, navigation shortcuts and preview release are described under Sessions.
 - Project search, pinning, folder colors, renaming, archiving and project actions are available. A project's folder color is set from its sidebar menu or, for a new empty folder, in the new project wizard.
 - The new project wizard creates an empty folder, opens an existing folder or clones from a GitHub URL.
-- The Instructions page edits the project's AGENTS.md and rules.
+- The Instructions page edits the project's AGENTS.md, configured additional instruction files and rules. Additional filenames can be added to this project's `contextFiles.extra` list without removing inherited names.
 - The Project settings page sets the project's model and permission mode and links to its connected tools, helpers and instructions.
 - The project overview shows recent chats, an instructions and settings summary, Git status and quick-start prompts.
 - Home is where the app opens and what the title bar's Home button (⇧⌘H) shows: a prompt box that starts a chat in any project with the new chat's choices (project folder, permission level, model, thinking level, attached files), the latest chats across every project, the projects with their folder colors, and plan limits with the last 7 days' estimated API cost. A quiet animated dot field renders behind it and holds still under reduced motion.

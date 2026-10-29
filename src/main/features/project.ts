@@ -21,11 +21,13 @@ import type {
 import { writeText } from "../files";
 import { handle } from "../ipc";
 import { listProjects } from "../omp/sessions";
+import { runOmpJson } from "../omp/cli";
+import { parseConfigList } from "../services/omp-config";
 import { getPrefs, setPrefs } from "../prefs";
 import {
 	APPLY_TO_ALL,
 	DEFAULT_INSTRUCTIONS_REL_PATH,
-	INSTRUCTION_CANDIDATES,
+	instructionCandidates,
 	activeInstruction,
 	folderProblem,
 	normalizeRuleName,
@@ -241,10 +243,16 @@ function inProject(projectDir: string, relPath: string): string {
 	return join(projectDir, ...relPath.split("/"));
 }
 
+async function projectInstructionCandidates(projectDir: string) {
+	const config = parseConfigList(await runOmpJson(["config", "list", "--json"], { cwd: projectDir }));
+	return instructionCandidates(config.get("contextFiles.extra")?.value ?? []);
+}
+
 async function readInstructions(input: string): Promise<ProjectInstructions> {
 	const projectDir = resolve(input);
+	const candidates = await projectInstructionCandidates(projectDir);
 	const files = await Promise.all(
-		INSTRUCTION_CANDIDATES.map(async candidate => {
+		candidates.map(async candidate => {
 			const path = inProject(projectDir, candidate.relPath);
 			const content = await readIfExists(path);
 			return { ...candidate, path, content, exists: content !== null };
@@ -253,7 +261,7 @@ async function readInstructions(input: string): Promise<ProjectInstructions> {
 	const activeRelPath = activeInstruction(files, basename(projectDir));
 	const withActive: InstructionFile[] = files.map(file => ({
 		...file,
-		active: file.kind === "sticky" ? Boolean(file.content?.trim()) : file.relPath === activeRelPath,
+		active: file.kind === "context" ? file.relPath === activeRelPath : Boolean(file.content?.trim()),
 	}));
 	const primaryRelPath =
 		activeRelPath ??
@@ -263,10 +271,11 @@ async function readInstructions(input: string): Promise<ProjectInstructions> {
 }
 
 async function writeInstructions(input: string, relPath: string, content: string): Promise<ProjectInstructions> {
-	if (!INSTRUCTION_CANDIDATES.some(candidate => candidate.relPath === relPath)) {
+	const projectDir = resolve(input);
+	const candidates = await projectInstructionCandidates(projectDir);
+	if (!candidates.some(candidate => candidate.relPath === relPath)) {
 		throw new Error(`Not a project instructions file: ${relPath}`);
 	}
-	const projectDir = resolve(input);
 	await writeText(inProject(projectDir, relPath), content);
 	return readInstructions(projectDir);
 }

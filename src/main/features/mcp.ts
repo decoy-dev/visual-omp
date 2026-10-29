@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { isDeepStrictEqual } from "node:util";
 import { app } from "electron";
 import type {
 	McpDiscoverySettings,
@@ -13,21 +14,24 @@ import type {
 import { userEnv } from "../env";
 import { broadcast, handle } from "../ipc";
 import { runOmpJson } from "../omp/cli";
+import { NEUTRAL_CWD } from "../omp/config-file";
 import { agentDir } from "../omp/paths";
 import { testServer } from "./mcp/client";
 import { discoverServers, ompOwnedPaths, resolveEntries } from "./mcp/discovery";
 import { addServer, overrideList, parseDocument, removeServer, shapeError, updateServer } from "./mcp/document";
 import { MCP_PRESETS, buildPresetConfig } from "./mcp/presets";
+import { reauthorizeServer } from "./mcp/reauth";
 import { mutateDocument, readDocument, readOptional, setServerEnabled, writeRawDocument } from "./mcp/store";
 import { DEFAULT_MCP_DISCOVERY_SETTINGS, parseMcpDiscoverySettings } from "./mcp/settings";
+import { confirmServerExecution } from "./mcp/trust";
 
 const DEFAULT_TEST_TIMEOUT_MS = 20_000;
 
-/** The omp settings that shape MCP discovery (`omp config list --json`, merged for `cwd`). */
-async function discoverySettings(cwd: string | null): Promise<{ settings: McpDiscoverySettings; warning: string | null }> {
+/** Background discovery reads global settings, without initializing the selected project's config. */
+async function discoverySettings(): Promise<{ settings: McpDiscoverySettings; warning: string | null }> {
 	try {
 		const settings = parseMcpDiscoverySettings(
-			await runOmpJson(["config", "list", "--json"], { cwd: cwd ?? undefined, timeoutMs: 20_000 }),
+			await runOmpJson(["config", "list", "--json"], { cwd: NEUTRAL_CWD, timeoutMs: 20_000 }),
 		);
 		return { settings, warning: null };
 	} catch (error) {
@@ -46,11 +50,11 @@ async function targetPath(target: McpTarget): Promise<string> {
 	return target.scope === "user" ? (await paths()).userPath : join(target.cwd, ".omp", "mcp.json");
 }
 
-async function listServers(cwd: string | null): Promise<McpListResult> {
-	const [{ env, agentDir: dir, userPath }, { settings, warning }] = await Promise.all([paths(), discoverySettings(cwd)]);
+async function listServers(cwd: string | null, authorizedProjectServer?: string): Promise<McpListResult> {
+	const [{ env, agentDir: dir, userPath }, { settings, warning }] = await Promise.all([paths(), discoverySettings()]);
 	const projectPath = cwd ? join(cwd, ".omp", "mcp.json") : null;
 	const warnings = warning ? [warning] : [];
-	const { rows, sources } = await discoverServers({ cwd, home: homedir(), agentDir: dir, env, settings, readFile: readOptional });
+	const { rows, sources } = await discoverServers({ cwd, home: homedir(), agentDir: dir, env, settings, readFile: readOptional, deferProjectValues: true, authorizedProjectServer });
 	let userDoc: Record<string, unknown> = {};
 	try {
 		userDoc = await readDocument(userPath);
@@ -119,15 +123,39 @@ export function register(): void {
 	handle("mcp:remove", (target, name) => edit(target, (doc, file) => removeServer(doc, name, file)));
 	handle("mcp:enable", (name, options) => toggle(name, true, options));
 	handle("mcp:disable", (name, options) => toggle(name, false, options));
-	handle("mcp:test", async (config: McpServerConfig, options = {}) =>
-		testServer({
-			config,
-			cwd: options.cwd,
+	handle("mcp:reauth", (name, options) => reauthorizeServer(name, options));
+	handle("mcp:test", async (config: McpServerConfig, options = {}) => {
+		let cwd = options.cwd ?? NEUTRAL_CWD;
+		if (options.automatic && (options.cwd || !options.serverId)) throw new Error("Automatic checks require a saved all-projects server and no project folder.");
+		const saved = options.serverId
+			? (await listServers(options.automatic ? null : options.cwd ?? null)).servers.find(entry => entry.id === options.serverId)
+			: undefined;
+		if (options.serverId && !saved) throw new Error("This saved server no longer exists. Refresh Connected tools before trying again.");
+		if (options.automatic) {
+			if (!saved || saved.level !== "user" || !saved.enabled || saved.status !== "active") throw new Error("Project or inactive servers cannot be checked automatically.");
+			config = saved.config;
+			cwd = NEUTRAL_CWD;
+		} else {
+			const selected = saved?.config ?? config;
+			await confirmServerExecution(saved?.name ?? options.serverName ?? "MCP server", selected, cwd, saved?.level ?? (options.cwd ? "project" : "user"), "check");
+			config = selected;
+			if (saved) {
+				const fresh = (await listServers(options.cwd ?? null)).servers.find(entry => entry.id === saved.id);
+				if (!fresh || !isDeepStrictEqual(fresh.raw, saved.raw)) throw new Error("This server's configuration changed. Check it again before allowing the connection.");
+				if (fresh.level === "project") {
+					const resolved = (await listServers(options.cwd ?? null, fresh.name)).servers.find(entry => entry.id === fresh.id);
+					if (!resolved) throw new Error("This saved server no longer exists.");
+					config = resolved.config;
+				}
+			}
+		}
+		return testServer({
+			config, cwd,
 			timeoutMs: options.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS,
 			env: await userEnv(),
 			clientInfo: { name: "visual-omp", version: app.getVersion() },
-		}),
-	);
+		});
+	});
 	handle("mcp:presets", () => MCP_PRESETS);
 	handle("mcp:preset:build", (presetId, values) => {
 		const preset = MCP_PRESETS.find(item => item.id === presetId);

@@ -2,18 +2,19 @@ import { readdir, stat } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { app, BrowserWindow, dialog } from "electron";
-import type { ImportSource, ShareLinkOptions, ShareLinkResult } from "@shared/contracts/share";
+import type { AnonymizedCopyResult, ImportSource, ShareFileResult, ShareLinkOptions, ShareLinkResult } from "@shared/contracts/share";
 import { userEnv } from "../env";
 import { handle } from "../ipc";
 import { runOmp } from "../omp/cli";
-import { allSessions } from "../omp/sessions";
-import { exportFileName, parseExportOutput, parseShareOutput } from "../services/share";
+import { allSessions, resolveSessionFile } from "../omp/sessions";
+import { exportFileName, parseAnonymizeOutput, parseExportOutput, parseShareOutput, parseTransferOutput } from "../services/share";
 
 const SHARE_TIMEOUT_MS = 180_000;
 const EXPORT_TIMEOUT_MS = 180_000;
 
 async function shareLink(sessionFile: string, options: ShareLinkOptions = {}): Promise<ShareLinkResult> {
-	const result = await runOmp(["share", resolve(sessionFile), ...(options.gist ? ["--gist"] : [])], {
+	const file = await resolveSessionFile(sessionFile);
+	const result = await runOmp(["share", file, ...(options.gist ? ["--gist"] : [])], {
 		timeoutMs: SHARE_TIMEOUT_MS,
 	});
 	const parsed = result.code === 0 ? parseShareOutput(result.stdout) : null;
@@ -41,7 +42,7 @@ async function askExportPath(sessionFile: string): Promise<string | null> {
 }
 
 async function exportHtml(input: string, outputPath?: string): Promise<string | null> {
-	const sessionFile = resolve(input);
+	const sessionFile = await resolveSessionFile(input);
 	const target = outputPath ? resolve(outputPath) : await askExportPath(sessionFile);
 	if (!target) return null;
 	// `omp --export <session> <output>`: the first positional argument is the output path.
@@ -51,6 +52,58 @@ async function exportHtml(input: string, outputPath?: string): Promise<string | 
 		throw new Error(result.stderr.trim() || result.stdout.trim() || `omp --export exited with ${result.code}`);
 	}
 	return resolve(written);
+}
+
+async function askFolder(title: string): Promise<string | null> {
+	const options: Electron.OpenDialogOptions = { title, properties: ["openDirectory", "createDirectory"] };
+	const win = BrowserWindow.getFocusedWindow();
+	const choice = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+	return choice.canceled ? null : choice.filePaths[0] ?? null;
+}
+
+async function pack(input: string): Promise<ShareFileResult | null> {
+	const sessionFile = await resolveSessionFile(input);
+	const options: Electron.SaveDialogOptions = {
+		title: "Save chat for another computer",
+		defaultPath: join(app.getPath("downloads"), `${basename(sessionFile, ".jsonl")}.tar`),
+		filters: [{ name: "omp session archive", extensions: ["tar"] }],
+		properties: ["createDirectory", "showOverwriteConfirmation"],
+	};
+	const win = BrowserWindow.getFocusedWindow();
+	const choice = win ? await dialog.showSaveDialog(win, options) : await dialog.showSaveDialog(options);
+	if (choice.canceled || !choice.filePath) return null;
+	const result = await runOmp(["session", "pack", sessionFile, choice.filePath], { timeoutMs: EXPORT_TIMEOUT_MS });
+	const path = result.code === 0 ? parseTransferOutput(result.stdout) : null;
+	if (!path) throw new Error(result.stderr.trim() || result.stdout.trim() || `omp session pack exited with ${result.code}`);
+	return { path, report: result.stderr.trim() };
+}
+
+async function unpack(): Promise<ShareFileResult | null> {
+	const options: Electron.OpenDialogOptions = {
+		title: "Import a chat from another computer",
+		filters: [{ name: "omp session archive", extensions: ["tar"] }],
+		properties: ["openFile"],
+	};
+	const win = BrowserWindow.getFocusedWindow();
+	const choice = win ? await dialog.showOpenDialog(win, options) : await dialog.showOpenDialog(options);
+	const archive = choice.canceled ? null : choice.filePaths[0];
+	if (!archive) return null;
+	const cwd = await askFolder("Choose the project folder for this chat");
+	if (!cwd) return null;
+	const result = await runOmp(["session", "unpack", archive, "--cwd", cwd], { timeoutMs: EXPORT_TIMEOUT_MS });
+	const path = result.code === 0 ? parseTransferOutput(result.stdout) : null;
+	if (!path) throw new Error(result.stderr.trim() || result.stdout.trim() || `omp session unpack exited with ${result.code}`);
+	return { path, report: result.stderr.trim() };
+}
+
+async function anonymize(input: string): Promise<AnonymizedCopyResult | null> {
+	const sessionFile = await resolveSessionFile(input);
+	const target = await askFolder("Choose a new or empty folder for the anonymized copy");
+	if (!target) return null;
+	const result = await runOmp(["anonymize", sessionFile, "-o", target], { timeoutMs: EXPORT_TIMEOUT_MS });
+	const parsed = result.code === 0 ? parseAnonymizeOutput(result.stdout) : null;
+	if (!parsed) throw new Error(result.stderr.trim() || result.stdout.trim() || `omp anonymize exited with ${result.code}`);
+	return { ...parsed, report: [result.stdout.trim(), result.stderr.trim()].filter(Boolean).join("\n") };
 }
 
 /** `.jsonl` transcripts under `dir` (to `depth` levels of subfolders): count and newest mtime. */
@@ -113,5 +166,8 @@ async function importSources(): Promise<ImportSource[]> {
 export function register(): void {
 	handle("share:link", (sessionFile, options) => shareLink(sessionFile, options));
 	handle("share:exportHtml", (sessionFile, outputPath) => exportHtml(sessionFile, outputPath));
+	handle("share:pack", sessionFile => pack(sessionFile));
+	handle("share:unpack", () => unpack());
+	handle("share:anonymize", sessionFile => anonymize(sessionFile));
 	handle("share:importSources", () => importSources());
 }

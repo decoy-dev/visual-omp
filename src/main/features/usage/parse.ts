@@ -16,8 +16,8 @@ import type {
 	UsageHistoryEntry,
 	UsageLimit,
 	UsageLimitsSnapshot,
+	UsagePolicy,
 	UsageReport,
-	UsageResetAccount,
 	UsageResetListing,
 	UsageResetCreditDetail,
 	UsageResetCredits,
@@ -90,11 +90,21 @@ const UsageResetCreditsSchema = z.object({
 	credits: z.array(UsageResetCreditDetailSchema).optional(),
 }) satisfies z.ZodType<UsageResetCredits>;
 
+const UsagePolicySchema = z.object({
+	priority: z.number(),
+	reservePct: z.number(),
+	reserveSource: z.enum(["global", "override"]),
+	reclaimAbovePct: z.number().optional(),
+	state: z.enum(["eligible", "inside-reserve", "exhausted", "unknown"]).catch("unknown"),
+	remainingPct: z.number().optional(),
+}) satisfies z.ZodType<UsagePolicy>;
+
 const UsageReportSchema = z.object({
 	provider: z.string(),
 	fetchedAt: z.number(),
 	limits: z.array(UsageLimitSchema),
 	resetCredits: UsageResetCreditsSchema.optional(),
+	policy: UsagePolicySchema.optional(),
 	notes: z.array(z.string()).optional(),
 	metadata: z.record(z.string(), z.unknown()).optional(),
 }) satisfies z.ZodType<UsageReport>;
@@ -109,6 +119,7 @@ const UsageAccountIdentitySchema = z.object({
 	orgId: z.string().optional(),
 	orgName: z.string().optional(),
 	authorizedAt: z.number().optional(),
+	policy: UsagePolicySchema.optional(),
 }) satisfies z.ZodType<UsageAccountIdentity>;
 
 const DisabledCredentialSchema = z.object({
@@ -279,54 +290,41 @@ export function usageArgv(base: string[], options: { provider?: string; redact?:
 	return argv;
 }
 
-/**
- * omp's `/usage reset` listing (its `reset-usage.ts` helper, omp 18.12): the heading, one line per
- * account, `- {label} [{provider label} · {provider}/{credential id}]: {detail}` with ` (active)` at
- * the end for the session's active account, then a hint. The detail is
- * `{n} saved, {m} usable now[, expires {ISO}][ ({why})]` or `unavailable ({error})`. Without accounts
- * omp prints one line instead.
- */
-const HEADING = "Saved rate-limit resets:";
-const NO_ACCOUNTS = /^No provider accounts found\./;
-const HINT = /^Spend one with /;
-const ACCOUNT_LINE = /^- (.+?) \[[^\]]* · ([a-z0-9][a-z0-9._-]*)\/(\d{1,15})\]: (.*)$/;
-const COUNTS = /^(\d+) saved, (\d+) usable now(?:, expires (\S+))?(?: \((.*)\))?$/;
-const UNAVAILABLE = /^unavailable \((.*)\)$/;
+/** Structured reset listing from omp 18.14. Reject the entire listing if any target is malformed. */
+const ResetListingSchema = z.object({
+	generatedAt: z.number(),
+	accounts: z.array(z.object({
+		provider: z.string().regex(/^[a-z0-9][a-z0-9._-]*$/),
+		credentialId: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+		email: z.string().optional(),
+		accountId: z.string().optional(),
+		orgId: z.string().optional(),
+		orgName: z.string().optional(),
+		availableCount: z.number().int().nonnegative(),
+		redeemableCount: z.number().int().nonnegative(),
+		soonestExpiry: z.string().optional(),
+		unavailableReason: z.string().optional(),
+		error: z.string().optional(),
+	})),
+});
 
-function parseAccountLine(text: string): UsageResetAccount | null {
-	const line = ACCOUNT_LINE.exec(text);
-	if (!line) return null;
-	// Every group of ACCOUNT_LINE is required, so a match has all four.
-	const [, label, provider, id, rest] = line as unknown as [string, string, string, string, string];
-	const detail = rest.replace(/ \(active\)$/, "");
-	const base = { provider, credentialId: Number(id), label };
-	const counts = COUNTS.exec(detail);
-	if (counts) {
-		return { ...base, savedCount: Number(counts[1]), usableCount: Number(counts[2]), expiresAt: counts[3] ?? null, unavailable: counts[4] ?? null };
-	}
-	const unavailable = UNAVAILABLE.exec(detail);
-	return unavailable ? { ...base, savedCount: null, usableCount: null, expiresAt: null, unavailable: unavailable[1] ?? "" } : null;
-}
-
-/**
- * Reads omp's `/usage reset` listing, failing closed: a listing in another format, a heading without
- * accounts, or any line that isn't the heading, an account or the hint makes the whole listing
- * unreadable, since spending from a partly read listing could name the wrong account.
- */
-export function parseResetListing(text: string): UsageResetListing {
-	const unreadable: UsageResetListing = { readable: false, accounts: [] };
-	const lines = text
-		.split("\n")
-		.map(line => line.trimEnd())
-		.filter(line => line !== "");
-	if (lines.length === 1 && NO_ACCOUNTS.test(lines[0] ?? "")) return { readable: true, accounts: [] };
-	if (lines[0] !== HEADING) return unreadable;
-	const accounts: UsageResetAccount[] = [];
-	for (const line of lines.slice(1)) {
-		if (HINT.test(line)) continue;
-		const account = parseAccountLine(line);
-		if (!account) return unreadable;
-		accounts.push(account);
-	}
-	return accounts.length > 0 ? { readable: true, accounts } : unreadable;
+export function parseResetListing(value: unknown): UsageResetListing {
+	const parsed = ResetListingSchema.safeParse(value);
+	if (!parsed.success) return { readable: false, accounts: [] };
+	return {
+		readable: true,
+		accounts: parsed.data.accounts.map(account => ({
+			provider: account.provider,
+			credentialId: account.credentialId,
+			email: account.email,
+			accountId: account.accountId,
+			orgId: account.orgId,
+			orgName: account.orgName,
+			label: [account.email ?? account.accountId ?? `${account.provider}/${account.credentialId}`, account.orgName ?? account.orgId].filter(Boolean).join(" · "),
+			savedCount: account.error ? null : account.availableCount,
+			usableCount: account.error ? null : account.redeemableCount,
+			expiresAt: account.soonestExpiry ?? null,
+			unavailable: account.error ?? account.unavailableReason ?? null,
+		})),
+	};
 }

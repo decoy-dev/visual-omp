@@ -63,27 +63,37 @@ export function McpSection({ projectPath, scope, setScope }: SettingsSectionProp
 	}, [editor, savedTo, setScope]);
 
 	const runCheck = useCallback(
-		async (entry: McpServerEntry) => {
+		async (entry: McpServerEntry, automatic = false) => {
 			setChecks(prev => ({ ...prev, [entry.id]: { state: "running" } }));
-			const result = await window.vomp.invoke("mcp:test", entry.config, projectPath ? { cwd: projectPath } : undefined);
-			setChecks(prev => ({ ...prev, [entry.id]: { state: "done", result } }));
-			return result;
+			try {
+				const result = await window.vomp.invoke("mcp:test", entry.config, { serverId: entry.id, automatic, cwd: automatic ? undefined : projectPath ?? undefined });
+				setChecks(prev => ({ ...prev, [entry.id]: { state: "done", result } }));
+				return result;
+			} catch (error) {
+				setChecks(prev => {
+					const next = { ...prev };
+					delete next[entry.id];
+					return next;
+				});
+				if (!automatic) toast({ tone: "err", message: errorText(error) });
+				return null;
+			}
 		},
 		[projectPath],
 	);
 
-	// Check every server omp would use once per visit, a few at a time.
+	// Only user-owned servers are checked on entry. Project connections need a per-server click.
 	const autoChecked = useRef(new Set<string>());
 	useEffect(() => {
 		const pending = (list.data?.servers ?? []).filter(
-			entry => entry.enabled && entry.status === "active" && !autoChecked.current.has(entry.id),
+			entry => entry.level === "user" && entry.enabled && entry.status === "active" && !autoChecked.current.has(entry.id),
 		);
 		for (const entry of pending) autoChecked.current.add(entry.id);
 		let cursor = 0;
 		const worker = async () => {
 			while (cursor < pending.length) {
 				const entry = pending[cursor++];
-				if (entry) await runCheck(entry);
+				if (entry) await runCheck(entry, true);
 			}
 		};
 		for (let i = 0; i < Math.min(CHECK_CONCURRENCY, pending.length); i++) void worker();
@@ -98,7 +108,7 @@ export function McpSection({ projectPath, scope, setScope }: SettingsSectionProp
 				sourcePath: entry.path,
 			});
 			await list.reload();
-			if (enabled && entry.status === "active") void runCheck(entry);
+			if (enabled && entry.level === "user" && entry.status === "active") void runCheck(entry, true);
 			if (undo) {
 				toast({
 					tone: "info",
@@ -177,6 +187,7 @@ export function McpSection({ projectPath, scope, setScope }: SettingsSectionProp
 					</Notice>
 				))}
 				{level === "project" && list.data && !list.data.settings.enableProjectConfig && <Notice tone="warn">{t("mcp.projectConfigOff")}</Notice>}
+				{level === "project" && <p className="text-sm text-fg-muted">{t("mcp.projectChecks")}</p>}
 
 				{!list.data && list.loading ? (
 					<div className="flex flex-col gap-2">

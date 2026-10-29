@@ -3,19 +3,18 @@ import { Brain, Eye, Lightning } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import { openSettings } from "@/state/navigation";
 import { Select, SelectGroup, SelectItem, SelectLabel, SelectSeparator } from "@/ui";
-import { formatContextWindow, groupModelsByProvider, modelValueStatus } from "./rolesModel";
+import { formatContextWindow, groupModelsByProvider, modelPriceBadge, modelValueStatus } from "./rolesModel";
 
 /** Radix Select forbids "" as an item value. */
 const AUTO = "__auto__";
 /** Last entry: opens Settings → Providers instead of choosing a model. */
 const ADD_PROVIDER = "__add_provider__";
 
-/** Low-cost models get the ⚡ badge: at most $1 per million input tokens. */
-const CHEAP_INPUT_USD_PER_MTOK = 1;
 
 export function ModelCapabilities({ model }: { model: ModelInfo }) {
 	const { t } = useTranslation("manage");
 	const context = formatContextWindow(model.contextWindow);
+	const priceBadge = modelPriceBadge(model);
 	return (
 		<span className="inline-flex items-center gap-1.5 text-fg-faint">
 			{model.vision && (
@@ -30,7 +29,8 @@ export function ModelCapabilities({ model }: { model: ModelInfo }) {
 					<span className="sr-only">{t("models.caps.reasoning")}</span>
 				</span>
 			)}
-			{model.cost && model.cost.input <= CHEAP_INPUT_USD_PER_MTOK && (
+			{priceBadge === "free" && <span className="text-xs">{t("models.caps.free")}</span>}
+			{priceBadge === "cheap" && (
 				<span title={t("models.caps.cheap")}>
 					<Lightning aria-hidden className="size-3.5" />
 					<span className="sr-only">{t("models.caps.cheap")}</span>

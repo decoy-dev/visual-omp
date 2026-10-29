@@ -1,10 +1,10 @@
 /**
  * `providers:*` channels: which model providers omp can use.
  *
- * Sources (omp 18.4.5):
- * - Sign-in entries: `get_login_providers` over `omp --mode rpc` (the list `/login` shows), read only.
+ * Sources (omp 18.14.0), all read outside projects with extension discovery disabled:
+ * - Built-in sign-in entries: `get_login_providers` over `omp --mode rpc`, read only.
  * - Accounts and credentials omp disabled: `omp usage --json`.
- * - Usable models: `omp models --json`.
+ * - Usable models: `omp models --json --kind all`.
  *
  * Signing in is omp's own: the renderer runs `providers:loginCommand`
  * (`omp login [provider]`) in a terminal, and omp handles the browser, codes, API keys and extra
@@ -29,7 +29,7 @@ export interface DisabledProviderAccount {
 	disabledAt: number | null;
 }
 
-/** One entry of omp's `/login` list. */
+/** One built-in entry of omp's `/login` list. */
 export interface LoginMethod {
 	/** Id passed to `omp login`. */
 	id: string;
@@ -73,19 +73,23 @@ export interface ProvidersChangedEvent {
 declare module "../ipc" {
 	interface IpcInvokeMap {
 		/**
-		 * Connected and available providers, read in the project folder `cwd` (project extensions can
-		 * add sign-ins); cached per folder in main. `refresh` re-reads omp.
+		 * Connected and available providers, read outside projects with extension discovery disabled;
+		 * cached globally in main. `refresh` re-reads omp.
 		 */
-		"providers:list": { args: [cwd?: string, refresh?: boolean]; result: ProvidersState };
+		"providers:list": { args: [refresh?: boolean]; result: ProvidersState };
 		/** Delete every stored credential of a model provider (`omp auth-broker logout`), run in `cwd`'s folder. */
 		"providers:logout": { args: [providerId: string, cwd?: string]; result: void };
 		/**
 		 * omp's own sign-in, `omp login <method>` (or its picker without one), plus the folder main
-		 * resolved for `cwd`. Run the command there: it is the folder `providers:list` reads in.
+		 * resolved for `cwd`. This explicit terminal action can load project extensions.
 		 */
 		"providers:loginCommand": { args: [methodId?: string, cwd?: string]; result: { command: string; cwd: string } };
 		/** A terminal sign-in ended: drop cached providers and models and tell every window. */
 		"providers:invalidate": { args: []; result: void };
+		/** Export sign-ins outside projects to a chosen JSON file with mode 0600 where supported. False when cancelled. */
+		"providers:export": { args: []; result: boolean };
+		/** Import outside projects through omp's merge command. No credential content crosses IPC. */
+		"providers:import": { args: []; result: boolean };
 	}
 
 	interface IpcEventMap {

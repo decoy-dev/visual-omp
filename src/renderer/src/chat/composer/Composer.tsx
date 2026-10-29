@@ -66,6 +66,8 @@ import { QueueTray } from "./QueueTray";
 import { type SlashContext, type SlashItem, SlashMenu, slashAtCaret, slashOptions, useSlashCommands } from "./SlashMenu";
 import { QUICK_MODES } from "./tools";
 import { useVoiceRequests, VoiceTool } from "./VoiceTool";
+import { ghostSourceUnchanged, useGhostText } from "./predictions";
+import { acknowledgePrediction, PredictionRecovery, usePredictionCaptures } from "./PredictionRecovery";
 
 const MIN_HEIGHT = 24;
 const MAX_HEIGHT = 200;
@@ -229,6 +231,9 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const [root, setRoot] = useState<HTMLDivElement | null>(null);
 	const textarea = useRef<HTMLTextAreaElement>(null);
 	const mirror = useRef<HTMLDivElement>(null);
+	const [focused, setFocused] = useState(false);
+	const [caret, setCaret] = useState(0);
+	const acceptingGhost = useRef(false);
 	const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
 	const [activeMatch, setActiveMatch] = useState(0);
 	const [library, setLibrary] = useState<LibraryTab | null>(null);
@@ -267,6 +272,11 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		!mention &&
 		!slashClosed &&
 		(slash.kind === "name" || (slashMenu !== null && (slashMenu.items.length > 0 || (slash.token === "" && slashMenu.command?.hint != null))));
+	const ghost = useGhostText({
+		folder: projectPath, tabId, hostId: view.host?.hostId ?? null, generation: view.host?.generation ?? 0, draft, caret,
+		enabled: focused && !readOnly && !mode && !mention && !slashOpen && !view.guest?.uiRequest,
+		idle: view.mode === "live" && !working,
+	});
 
 	const setDraft = useCallback((text: string) => {
 		historyCursor.current.reset();
@@ -452,6 +462,27 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 				return;
 			}
 		}
+		if (event.key === "Tab" && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey && ghost.suffix) {
+			event.preventDefault();
+			if (acceptingGhost.current) return;
+			acceptingGhost.current = true;
+			const source = { draft, mode, hostId: view.host?.hostId ?? null, generation: view.host?.generation ?? 0 };
+			void ghost.accept().then(async accepted => {
+				if (accepted?.capture) usePredictionCaptures.getState().merge([accepted.capture]);
+				const current = session.getSnapshot().host;
+				const store = useComposerDrafts.getState();
+				if (!accepted || accepted.text === null || !ghostSourceUnchanged(source, {
+					draft: composerText(store, tabId), mode: store.modes[tabId] ?? null, hostId: current?.hostId ?? null, generation: current?.generation ?? 0,
+				})) return;
+				const text = accepted.text;
+				setDraft(text);
+				setCaret(text.length);
+				requestAnimationFrame(() => textarea.current?.setSelectionRange(text.length, text.length));
+				if (accepted.capture) await acknowledgePrediction(accepted.capture.id);
+			}).catch((error: unknown) => toast({ tone: "err", message: t("prediction.failed"), description: String(error) }))
+				.finally(() => { acceptingGhost.current = false; });
+			return;
+		}
 		if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
 			// Open menus own arrows even while loading or showing no matches.
 			if (mention || slashOpen) return;
@@ -588,6 +619,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					</div>,
 					dropColumn,
 				)}
+			<PredictionRecovery session={session} readOnly={readOnly} />
 			<QueueTray session={session} queue={view.queue} questionId={questionId} strandedImages={view.strandedImages} />
 			<div
 				className={cn(
@@ -659,6 +691,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 								className={cn(textLayout, "pointer-events-none overflow-hidden text-fg", mode && "font-mono text-code")}
 							>
 								<MentionMirror text={draft} />
+								{ghost.suffix && <span className="text-fg-faint" data-composer-ghost>{ghost.suffix}</span>}
 							</div>
 							<textarea
 								ref={textarea}
@@ -666,12 +699,13 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 								disabled={readOnly}
 								rows={1}
 								spellCheck={!mode}
-								placeholder={placeholder}
+								placeholder={ghost.suffix ? "" : placeholder}
 								aria-label={t("label")}
 								role="combobox"
 								aria-expanded={mention !== null || slashOpen}
 								aria-controls={mention ? pickerId : slashOpen ? slashId : undefined}
-								aria-autocomplete="list"
+								aria-autocomplete={ghost.suffix ? "both" : "list"}
+								aria-description={ghost.suffix ? t("prediction.available", { text: ghost.suffix }) : undefined}
 								aria-activedescendant={
 									mention && matches?.length
 										? `${pickerId}-${activeMatch}`
@@ -681,12 +715,19 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 								}
 								onChange={event => {
 									setDraft(event.target.value);
+									setCaret(event.target.selectionStart === event.target.selectionEnd ? event.target.selectionStart : -1);
 									refreshMention(event.target.value, event.target.selectionStart);
 								}}
 								onSelect={event => {
+									setCaret(event.currentTarget.selectionStart === event.currentTarget.selectionEnd ? event.currentTarget.selectionStart : -1);
 									if (!historyCursor.current.browsing) refreshMention(event.currentTarget.value, event.currentTarget.selectionStart);
 								}}
+								onFocus={event => {
+									setFocused(true);
+									setCaret(event.currentTarget.selectionStart === event.currentTarget.selectionEnd ? event.currentTarget.selectionStart : -1);
+								}}
 								onBlur={() => {
+									setFocused(false);
 									setMention(null);
 									setSlash(null);
 								}}
@@ -776,10 +817,10 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 							<AnimatePresence initial={false} mode="popLayout">
 								{working && (
 									<motion.span key="stop" layoutDependency={actionSet} {...actionMotion}>
-										<Tooltip content={t("send.stop")} shortcut="Esc">
+										<Tooltip content={t(view.guest?.awaitingAsyncWork ? "send.stopWaiting" : "send.stop")} shortcut="Esc">
 											<button
 												type="button"
-												aria-label={t("send.stop")}
+												aria-label={t(view.guest?.awaitingAsyncWork ? "send.stopWaiting" : "send.stop")}
 												onClick={() => session.abort()}
 												className="inline-flex size-8 items-center justify-center rounded-sm bg-err-bg text-err outline-none transition-[background-color,color,scale] duration-(--dur-fast) hover:bg-err hover:text-fg-inverse active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 											>

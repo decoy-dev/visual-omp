@@ -1,0 +1,96 @@
+.vomp-chart {
+	--muted: var(--fg-muted);
+	--surface: var(--selected);
+	--success: var(--ok);
+	--warning: var(--warn);
+	--error: var(--err);
+	--c1: var(--accent);
+	--c2: var(--syn-function);
+	--c3: var(--syn-number);
+	--c4: var(--syn-type);
+	--c5: var(--syn-string);
+	--c6: var(--syn-operator);
+	max-width: 100%;
+	margin-block: 12px;
+	overflow-x: auto;
+	color: var(--fg);
+}
+.vomp-chart:empty { display: none; }
+.vomp-chart > svg {
+	display: block;
+	width: 100%;
+	min-width: 440px;
+	height: auto;
+	font-family: var(--font-ui);
+}
+.vomp-diagram {
+	max-width: 100%;
+	margin-block: 12px;
+	color: var(--fg);
+}
+.vomp-diagram [data-diagram-image] {
+	overflow-x: auto;
+	max-width: 100%;
+}
+.vomp-diagram [data-diagram-image]:focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+.vomp-diagram [data-diagram-image] > img {
+	display: block;
+	width: auto;
+	max-width: none;
+	height: auto;
+	margin-inline: auto;
+}
+.vomp-diagram summary {
+	width: fit-content;
+	padding-block: 6px;
+	color: var(--fg-muted);
+	font-size: var(--text-sm);
+	cursor: pointer;
+}
+.vomp-diagram summary:focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: 2px;
+	border-radius: var(--radius-sm);
+}
+.vomp-diagram pre {
+	max-width: 100%;
+	overflow: auto;
+	padding: 12px;
+	background: var(--bg-inset);
+	border-radius: var(--radius);
+	font: var(--text-code) var(--font-mono);
+}
+[data-streaming] .tr-md > :is(.vomp-chart, .vomp-diagram):last-child::after { content: none; }
+.vomp-remote-image {
+	display: inline-flex;
+	align-items: baseline;
+	flex-wrap: wrap;
+	gap: 8px;
+	max-width: 100%;
+	padding-block: 6px;
+	overflow-wrap: anywhere;
+}
+.vomp-remote-image .vomp-image-host,
+.vomp-remote-image [data-image-status] {
+	color: var(--fg-muted);
+	font-size: var(--text-sm);
+}
+.vomp-remote-image [data-image-status]:empty { display: none; }
+.vomp-remote-image button {
+	border: 1px solid var(--border-strong);
+	border-radius: var(--radius-sm);
+	padding: 2px 8px;
+	background: var(--bg-inset);
+	color: var(--fg);
+	font-size: var(--text-sm);
+}
+.vomp-remote-image button:hover { background: var(--hover); }
+.vomp-remote-image button:disabled { color: var(--fg-muted); }
+.vomp-remote-image button:focus-visible {
+	outline: 2px solid var(--ring);
+	outline-offset: 2px;
+}

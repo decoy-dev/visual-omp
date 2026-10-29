@@ -198,10 +198,9 @@ function ensureController(tab: ChatTab, extraArgs?: string[]): SessionController
 		const synced = controller;
 		synced.subscribe(() => {
 			const file = synced.sessionFile;
-			if (!file) return;
 			const current = useApp.getState().tabs.find(entry => entry.id === tab.id);
-			if (current && current.sessionFile !== file) {
-				useApp.setState(state => ({ tabs: state.tabs.map(entry => (entry.id === tab.id ? { ...entry, sessionFile: file } : entry)) }));
+			if (current && (current.sessionFile !== file || current.projectPath !== synced.projectPath)) {
+				useApp.setState(state => ({ tabs: state.tabs.map(entry => (entry.id === tab.id ? { ...entry, sessionFile: file, projectPath: synced.projectPath } : entry)) }));
 			}
 		});
 	}
@@ -537,7 +536,7 @@ export const useApp = create<AppState>()(
 				void whenLeaving(() => {
 					const state = get();
 					// A split needs a chat on the left that is not the one being opened.
-					const existing = state.tabs.find(tab => tab.sessionFile === session.file);
+					const existing = state.tabs.find(tab => tab.sessionFile === session.file || session.previousSessionFiles?.includes(tab.sessionFile ?? ""));
 					const split = options?.split === true && state.activeTabId !== null && state.activeTabId !== existing?.id;
 					if (existing) {
 						if (split) set({ splitTabId: existing.id, focusedSplit: "secondary", view: "chat", activeProject: session.cwd, chatOverDock: true });

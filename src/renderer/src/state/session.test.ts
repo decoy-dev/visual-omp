@@ -88,6 +88,9 @@ beforeEach(() => {
 			},
 			invoke: async (channel: string, ...args: unknown[]) => {
 				if (channel === "sessions:read") return savedText;
+				if (channel === "sessions:resolve") return (await respond?.(channel)) ?? args[0];
+				if (channel === "composer:commands") return [];
+				if (channel === "composer:isSideCommand") return false;
 				if (channel !== "sessions:find") invoked.push([channel, ...args]);
 				return (await respond?.(channel)) ?? null;
 			},
@@ -183,6 +186,64 @@ describe("SessionController room handoff", () => {
 	});
 });
 
+describe("saved continuation history", () => {
+	it("opens the newest linked file before reading saved history", async () => {
+		savedText = JSON.stringify(u1);
+		respond = channel => channel === "sessions:resolve" ? Promise.resolve("/p/newest.jsonl") : channel === "sessions:ownership" ? Promise.resolve("free") : undefined;
+		const session = new SessionController({ tabId: "continued", projectPath: "/p", sessionFile: "/p/old.jsonl" });
+		await session.loadHistory();
+		expect(session.sessionFile).toBe("/p/newest.jsonl");
+		expect(ids(session.getSnapshot().history?.entries ?? null)).toEqual(["u1"]);
+	});
+
+	it("ignores ownership from an old file after the saved view resolves a continuation", async () => {
+		const oldOwnership = Promise.withResolvers<string>();
+		let ownershipCalls = 0;
+		respond = channel => {
+			if (channel === "sessions:resolve") return Promise.resolve("/p/newest.jsonl");
+			if (channel === "sessions:ownership") return ownershipCalls++ === 0 ? oldOwnership.promise : Promise.resolve("free");
+			return undefined;
+		};
+		const session = new SessionController({ tabId: "ownership-race", projectPath: "/p", sessionFile: "/p/old.jsonl" });
+		const pending = session.checkOwnership();
+		await session.loadHistory();
+		oldOwnership.resolve("elsewhere");
+		await pending;
+		await Promise.resolve();
+		expect(session.getSnapshot().readOnly).toBe(false);
+		expect(session.sessionFile).toBe("/p/newest.jsonl");
+	});
+
+	it("drops a predecessor's read-only follow when its continuation is free", async () => {
+		let ownershipCalls = 0;
+		respond = channel => {
+			if (channel === "sessions:resolve") return Promise.resolve("/p/newest.jsonl");
+			if (channel === "sessions:ownership") return Promise.resolve(ownershipCalls++ === 0 ? "elsewhere" : "free");
+			return undefined;
+		};
+		const session = new SessionController({ tabId: "followed-predecessor", projectPath: "/p", sessionFile: "/p/old.jsonl" });
+		await session.checkOwnership();
+		expect(session.getSnapshot().readOnly).toBe(true);
+		await session.loadHistory();
+		await session.checkOwnership();
+		expect(session.getSnapshot().readOnly).toBe(false);
+		expect(session.getSnapshot().follow).toBeNull();
+	});
+});
+
+describe("unreadable session ownership", () => {
+	it("keeps an unverified Windows lease read-only and refuses Continue here", async () => {
+		respond = channel => channel === "sessions:ownership" ? Promise.resolve("unknown") : undefined;
+		const session = new SessionController({ tabId: "unknown-lease", projectPath: "/p", sessionFile: "/p/source.jsonl" });
+		await session.checkOwnership();
+		expect(session.getSnapshot().readOnly).toBe(true);
+		expect(session.getSnapshot().follow?.ownership).toBe("unknown");
+		expect(session.getSnapshot().ownerUnverified).toBe(false);
+		expect(await session.continueHere()).toBe(false);
+		expect(invoked.some(call => call[0] === "host:start")).toBe(false);
+	});
+});
+
 describe("SessionController working start", () => {
 	it("times a turn it saw start, keeps the time across updates, and has none for a turn under way at join", () => {
 		vi.spyOn(Date, "now").mockReturnValue(5000);
@@ -201,6 +262,29 @@ describe("SessionController working start", () => {
 		fakes.guests[0]?.emit("live", [u1, a1, u2], false);
 		expect(session.getSnapshot().workingSince).toBeNull();
 		vi.restoreAllMocks();
+	});
+
+	it("keeps background waits active without publishing a finished result until the wait ends", () => {
+		const session = new SessionController({ tabId: "async-wait", projectPath: "/p", sessionFile: null });
+		const events: string[] = [];
+		const empty = { agents: [], progress: new Map(), lifecycle: new Map() };
+		session.onEvent(event => events.push(event.kind));
+		session.attach(host({ link: "L1" }));
+		fakes.guests[0]?.emit("live", [u1], false, empty);
+		fakes.guests[0]?.emit("live", [u1, a1], true, empty);
+		fakes.guests[0]?.emit("live", [u1, a1], false, { ...empty, awaitingAsyncWork: true });
+		expect(session.getSnapshot().working).toBe(true);
+		expect(chatStatus(session.getSnapshot())).toBe("working");
+		expect(session.busy).toBe(true);
+		expect(events).toEqual([]);
+		// A continued run and another wait are the same unfinished request.
+		fakes.guests[0]?.emit("live", [u1, a1], true, empty);
+		fakes.guests[0]?.emit("live", [u1, a1], false, { ...empty, awaitingAsyncWork: true });
+		expect(events).toEqual([]);
+		fakes.guests[0]?.emit("live", [u1, a1], false, { ...empty, awaitingAsyncWork: false });
+		expect(events).toEqual(["finished"]);
+		expect(session.getSnapshot().working).toBe(false);
+		expect(chatStatus(session.getSnapshot())).toBe("live");
 	});
 
 	it("reports the turn's end while a helper it started still runs, and keeps the chat marked for the helper", () => {
@@ -364,12 +448,12 @@ describe("SessionController queue with images", () => {
 		expect(queued(session)).toEqual(["first"]);
 	});
 
-	it("submits a queued message that is only images with Enter alone", async () => {
+	it("submits a queued image-only message through the guarded submit path", async () => {
 		const session = working("m4");
 		await deliver(session, "", [shot], false);
 		fakes.guests[0]?.emit("live", [u1, a1], false);
 		await flush();
-		expect(invoked).toEqual([pasteShot, ["host:write", "h1", "\r"]]);
+		expect(invoked).toEqual([pasteShot, submit("")]);
 	});
 });
 
@@ -778,5 +862,32 @@ describe("delivered composer input history", () => {
 		expect(session.getSnapshot().inputHistory).toEqual([{ text: "hello", timestamp: 123 }]);
 		sendHost({ link: "L3", generation: 3, sessionFile: "/p/other.jsonl", sessionId: "other" });
 		expect(session.getSnapshot().inputHistory).toEqual([]);
+	});
+});
+
+describe("native crash and worktree lifecycle", () => {
+	it("updates the controller's folder and saved file together when omp relocates", () => {
+		const session = new SessionController({ tabId: "moved", projectPath: "/p", sessionFile: "/p/session.jsonl" });
+		session.attach(host({ cwd: "/worktree", sessionFile: "/worktree/session.jsonl" }));
+		expect(session.projectPath).toBe("/worktree");
+		expect(session.sessionFile).toBe("/worktree/session.jsonl");
+	});
+	it("restores interrupted work only when the user selects crash recovery", async () => {
+		const session = new SessionController({ tabId: "crashed", projectPath: "/p", sessionFile: "/p/session.jsonl" });
+		session.attach(host({ phase: "exited", exitCode: 1, restoreAvailable: true }));
+		respond = channel => channel === "host:start" ? Promise.resolve(host({})) : undefined;
+		await session.restore();
+		expect(invoked.find(call => call[0] === "host:start")?.[1]).toMatchObject({ resumeFile: "/p/session.jsonl", restore: true });
+	});
+	it("announces an OSC-only block once, and again after the next working state", () => {
+		const session = new SessionController({ tabId: "blocked", projectPath: "/p", sessionFile: null });
+		session.attach(host({}));
+		const events: string[] = []; session.onEvent(event => events.push(event.kind));
+		sendHost({ programStatus: { state: "blocked", kind: "permission", msg: "Approve command?" } });
+		sendHost({ programStatus: { state: "blocked", kind: "permission", msg: "Approve command?" } });
+		expect(events).toEqual(["needsInput"]);
+		sendHost({ programStatus: { state: "working" } });
+		sendHost({ programStatus: { state: "blocked", kind: "question" } });
+		expect(events).toEqual(["needsInput", "needsInput"]);
 	});
 });

@@ -161,7 +161,7 @@ export function parseAgentFields(
 	if (tools !== undefined) {
 		fields.tools = [...new Set(tools.map(tool => CANONICAL_TOOLS[tool.toLowerCase()] ?? tool))];
 		if (tools.length === 0 && !(Array.isArray(rawTools) && rawTools.length === 0)) {
-			warnings.push("`tools` names no tools; omp 18.11+ uses an empty built-in allowlist.");
+			warnings.push("`tools` names no tools; omp uses an empty built-in allowlist.");
 		}
 	}
 

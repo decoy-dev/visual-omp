@@ -1,12 +1,14 @@
 import { z } from "zod";
-import { type FSWatcher, watch } from "node:fs";
+import { createReadStream, type FSWatcher, watch } from "node:fs";
 import { lstat, open, readdir, readFile, stat } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { createInterface } from "node:readline";
 import type { ProjectSummary, SessionSummary } from "@shared/ipc";
 import { userEnv } from "../env";
 import { broadcast } from "../ipc";
 import { getPrefs } from "../prefs";
-import { sessionsDir } from "./paths";
+import { agentDir, sessionsDir } from "./paths";
+import { loadPinnedSessionIds, migrateSessionPins } from "./session-pins";
 
 /** Bytes read from the head of each session file: title slot, header and the first user message. */
 const HEAD_BYTES = 64 * 1024;
@@ -14,6 +16,8 @@ const HEAD_BYTES = 64 * 1024;
 interface CacheEntry {
 	mtimeMs: number;
 	summary: SessionSummary | null;
+	activity?: Promise<{ id?: string; time: number }>;
+	contains?: Map<string, Promise<boolean>>;
 }
 
 const cache = new Map<string, CacheEntry>();
@@ -26,6 +30,7 @@ const Header = z.object({
 	timestamp: z.string().optional(),
 	title: z.string().optional(),
 	parentSession: z.string().optional(),
+	continuationOf: z.string().optional(),
 });
 const UserMessage = z.object({
 	type: z.literal("message"),
@@ -88,13 +93,14 @@ async function summarize(file: string, mtimeMs: number): Promise<SessionSummary 
 		createdAt: header.timestamp ? Date.parse(header.timestamp) : mtimeMs,
 		updatedAt: mtimeMs,
 		parentSession: header.parentSession ?? null,
+		continuationOf: header.continuationOf ?? null,
 		preview,
 		archived: false,
 	};
 }
 
-/** Every saved omp session on disk, newest first. Unchanged files come from cache. */
-export async function allSessions(): Promise<SessionSummary[]> {
+/** Every physical session, including copies superseded by a continuation. */
+async function physicalSessions(): Promise<SessionSummary[]> {
 	const root = sessionsDir(await userEnv());
 	let buckets: string[];
 	try {
@@ -133,12 +139,138 @@ export async function allSessions(): Promise<SessionSummary[]> {
 		}),
 	);
 	for (const file of cache.keys()) if (!seen.has(file)) cache.delete(file);
-	const archived = new Set(getPrefs().archivedSessions);
 	return [...cache.values()]
 		.map(entry => entry.summary)
-		.filter((summary): summary is SessionSummary => summary !== null)
-		.map(summary => ({ ...summary, archived: archived.has(summary.id) }))
-		.sort((a, b) => b.updatedAt - a.updatedAt);
+		.filter((summary): summary is SessionSummary => summary !== null);
+}
+
+async function visitEntries(file: string, visit: (entry: Record<string, unknown>) => boolean | void): Promise<void> {
+	const stream = createReadStream(file, { encoding: "utf8" });
+	const lines = createInterface({ input: stream, crlfDelay: Infinity });
+	try {
+		for await (const line of lines) {
+			let entry: Record<string, unknown>;
+			try { entry = JSON.parse(line); } catch { continue; }
+			if (entry && typeof entry === "object" && visit(entry) === false) break;
+		}
+	} finally {
+		lines.close();
+		stream.destroy();
+	}
+}
+
+/** omp compares conversation activity, excluding exit records and idle eval-state snapshots. */
+function activity(session: SessionSummary): Promise<{ id?: string; time: number }> {
+	const hit = cache.get(session.file);
+	if (hit?.activity) return hit.activity;
+	const reading = (async () => {
+		let last: { id?: string; time: number } = { time: session.createdAt };
+		await visitEntries(session.file, entry => {
+			if (!["message", "custom_message", "branch_summary", "reset_boundary"].includes(String(entry.type))) return;
+			const message = entry.message as { customType?: unknown } | undefined;
+			if ((entry.type === "custom_message" ? entry.customType : message?.customType) === "eval-state-context") return;
+			const time = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : NaN;
+			if (Number.isFinite(time)) last = { time, id: typeof entry.id === "string" ? entry.id : undefined };
+		});
+		return last;
+	})().catch(() => ({ time: Number.NEGATIVE_INFINITY }));
+	if (hit) hit.activity = reading;
+	return reading;
+}
+
+function holdsEntry(file: string, id: string): Promise<boolean> {
+	const hit = cache.get(file);
+	const cached = hit?.contains?.get(id);
+	if (cached) return cached;
+	const reading = (async () => {
+		let found = false;
+		await visitEntries(file, entry => {
+			if (entry.type !== "session" && entry.id === id) { found = true; return false; }
+		}).catch(() => {});
+		return found;
+	})();
+	if (hit) (hit.contains ??= new Map()).set(id, reading);
+	return reading;
+}
+
+/**
+ * A continuation supersedes its predecessor only while it contains the predecessor's newest turn.
+ * A predecessor that kept writing is a separate conversation, matching omp's resume rule.
+ */
+async function continuationTargets(sessions: SessionSummary[]): Promise<Map<string, SessionSummary>> {
+	const byId = new Map(sessions.map(session => [`${dirname(session.file)}\0${session.id}`, session]));
+	const children = new Map<string, SessionSummary[]>();
+	await Promise.all(sessions.map(async session => {
+		const parent = session.continuationOf ? byId.get(`${dirname(session.file)}\0${session.continuationOf}`) : undefined;
+		if (!parent || parent.file === session.file) return;
+		const latest = await activity(parent);
+		if (latest.id && !(await holdsEntry(session.file, latest.id))) return;
+		const list = children.get(parent.file) ?? [];
+		list.push(session);
+		children.set(parent.file, list);
+	}));
+	const targets = new Map<string, SessionSummary>();
+	const resolve = async (session: SessionSummary, seen: Set<string>): Promise<SessionSummary> => {
+		if (seen.has(session.file)) return session;
+		const cached = targets.get(session.file);
+		if (cached) return cached;
+		const path = new Set(seen).add(session.file);
+		let newest = session;
+		let newestTime = (await activity(session)).time;
+		for (const child of children.get(session.file) ?? []) {
+			if (path.has(child.file)) continue;
+			const candidate = await resolve(child, path);
+			const time = (await activity(candidate)).time;
+			if (time >= newestTime) { newest = candidate; newestTime = time; }
+		}
+		targets.set(session.file, newest);
+		return newest;
+	};
+	for (const session of sessions) {
+		if (children.has(session.file)) await resolve(session, new Set());
+		else targets.set(session.file, session);
+	}
+	return targets;
+}
+
+/** Saved conversations, newest first, with superseded copies folded into their latest file. */
+export async function allSessions(): Promise<SessionSummary[]> {
+	const physical = await physicalSessions();
+	const targets = await continuationTargets(physical);
+	const archived = new Set(getPrefs().archivedSessions);
+	const previousByFile = new Map<string, SessionSummary[]>();
+	for (const copy of physical) {
+		const target = targets.get(copy.file);
+		if (!target || target.file === copy.file) continue;
+		const previous = previousByFile.get(target.file) ?? [];
+		previous.push(copy);
+		previousByFile.set(target.file, previous);
+	}
+	const conversations = physical.filter(session => targets.get(session.file)?.file === session.file).map(session => {
+		const previous = previousByFile.get(session.file) ?? [];
+		return {
+			...session,
+			previousSessionFiles: previous.map(copy => copy.file),
+			previousSessionIds: previous.map(copy => copy.id),
+			archived: archived.has(session.id) || previous.some(copy => archived.has(copy.id)),
+		};
+	}).sort((a, b) => b.updatedAt - a.updatedAt);
+	await migrateSessionPins(conversations).catch(error => console.warn("Could not migrate saved chat pins", error));
+	const pinned = await loadPinnedSessionIds();
+	return conversations.map(session => ({
+		...session,
+		pinned: pinned.has(session.id) || session.previousSessionIds.some(id => pinned.has(id)),
+	}));
+}
+
+/** Resolve an old saved copy before history, navigation or export reads it. */
+export async function resolveSessionFile(file: string): Promise<string> {
+	const sessions = await physicalSessions();
+	return (await continuationTargets(sessions)).get(file)?.file ?? file;
+}
+
+export async function sessionSummary(file: string): Promise<SessionSummary | null> {
+	return (await allSessions()).find(session => session.file === file || session.previousSessionFiles?.includes(file)) ?? null;
 }
 
 export async function listSessions(cwd: string): Promise<SessionSummary[]> {
@@ -150,7 +282,8 @@ export async function recentSessions(limit: number): Promise<SessionSummary[]> {
 }
 
 export async function findSessionFile(sessionId: string): Promise<string | null> {
-	return (await allSessions()).find(session => session.id === sessionId)?.file ?? null;
+	// A live room reports an exact session id. Never substitute a different process's continuation.
+	return (await physicalSessions()).find(session => session.id === sessionId)?.file ?? null;
 }
 
 export async function listProjects(): Promise<ProjectSummary[]> {
@@ -192,6 +325,7 @@ export function readSessionFile(file: string): Promise<string> {
 }
 
 let watcher: FSWatcher | null = null;
+let pinsWatcher: FSWatcher | null = null;
 let pending: NodeJS.Timeout | undefined;
 const changeListeners = new Set<() => void>();
 
@@ -218,9 +352,18 @@ export async function watchSessions(): Promise<void> {
 	} catch {
 		watcher = null;
 	}
+	try {
+		pinsWatcher = watch(agentDir(await userEnv()), (_event, name) => {
+			if (name?.toString() === "session-pins.json") broadcast("sessions:changed", { cwd: null });
+		});
+	} catch {
+		pinsWatcher = null;
+	}
 }
 
 export function stopWatchingSessions(): void {
 	watcher?.close();
 	watcher = null;
+	pinsWatcher?.close();
+	pinsWatcher = null;
 }

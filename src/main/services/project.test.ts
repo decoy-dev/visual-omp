@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { INSTRUCTION_CANDIDATES, activeInstruction, parseRuleMarkdown, projectNameProblem, renderRuleMarkdown } from "./project";
+import { INSTRUCTION_CANDIDATES, activeInstruction, instructionCandidates, parseRuleMarkdown, projectNameProblem, renderRuleMarkdown } from "./project";
 
 describe("projectNameProblem", () => {
 	it("accepts ordinary names including spaces and unicode", () => {
@@ -46,6 +46,21 @@ describe("activeInstruction", () => {
 
 	it("ignores standalone files in a dot-named project folder", () => {
 		expect(activeInstruction(withContent({ "AGENTS.md": "a" }), ".config")).toBeNull();
+	});
+});
+
+describe("extra instruction files", () => {
+	it("adds trimmed unique filenames without shadowing the primary context", () => {
+		const files = instructionCandidates([" AGENTS.local.md ", "AGENTS.local.md", "TEAM.md"]);
+		expect(files.filter(file => file.kind === "extra").map(file => file.relPath)).toEqual(["AGENTS.local.md", "TEAM.md"]);
+		expect(activeInstruction(files.map(file => ({ ...file, content: file.kind === "extra" ? "Extra" : file.relPath === "AGENTS.md" ? "Primary" : null })), "repo")).toBe("AGENTS.md");
+		expect(activeInstruction(files.map(file => ({ ...file, content: file.kind === "extra" ? "Extra" : null })), "repo")).toBeNull();
+	});
+	it.each(["../outside.md", "folder/file.md", "folder\\\\file.md", "AGENTS.md", "rules.md", ".", "", "bad\\0name"])("refuses non-local or built-in filename %j", name => {
+		expect(() => instructionCandidates([name])).toThrow("Invalid extra instruction filename");
+	});
+	it("keeps ordinary object-property filenames valid", () => {
+		expect(instructionCandidates(["__proto__"]).at(-1)?.relPath).toBe("__proto__");
 	});
 });
 

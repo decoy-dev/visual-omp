@@ -5,16 +5,19 @@ import { WebLinksAddon } from "@xterm/addon-web-links";
 import { Terminal } from "@xterm/xterm";
 import { useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import type { ITheme } from "@xterm/xterm";
+import type { TerminalColors } from "@shared/contracts/native";
 
-function xtermTheme() {
+export function xtermTheme(active?: TerminalColors | null): ITheme {
 	const css = getComputedStyle(document.documentElement);
 	const token = (name: string) => css.getPropertyValue(name).trim();
 	return {
-		background: token("--term-bg"),
-		foreground: token("--term-fg"),
-		cursor: token("--term-cursor"),
-		cursorAccent: token("--term-bg"),
+		background: active?.background ?? token("--term-bg"),
+		foreground: active?.foreground ?? token("--term-fg"),
+		cursor: active?.foreground ?? token("--term-cursor"),
+		cursorAccent: active?.background ?? token("--term-bg"),
 		selectionBackground: token("--term-selection"),
+		...Object.fromEntries(["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white", "brightBlack", "brightRed", "brightGreen", "brightYellow", "brightBlue", "brightMagenta", "brightCyan", "brightWhite"].flatMap((name, index) => active?.ansi?.[index] ? [[name, active.ansi[index]]] : [])),
 	};
 }
 
@@ -61,6 +64,27 @@ export function Mirror({ hostId, generation, readOnly, onIdleEscape, overlaysOpe
 
 		let disposed = false;
 		let attached = false;
+		let activeTheme: TerminalColors | null = null;
+		let themeRequest = 0;
+		let themeIdentity = "";
+		const refreshTheme = async () => {
+			const request = ++themeRequest;
+			try {
+				const theme = await window.vomp.invoke("native:terminalTheme", hostId);
+				if (disposed || request !== themeRequest) return;
+				activeTheme = theme;
+				term.options.theme = xtermTheme(activeTheme);
+				element.style.backgroundColor = term.options.theme.background ?? "";
+			} catch { /* A host that has stopped retains its last colours. */ }
+		};
+		void refreshTheme();
+		const offTheme = window.vomp.on("native:changed", event => {
+			if (event.hostId !== hostId) return;
+			const next = JSON.stringify(event.snapshot.theme);
+			if (next === themeIdentity) return;
+			themeIdentity = next;
+			void refreshTheme();
+		});
 		const pending: string[] = [];
 		let sent = { cols: 0, rows: 0 };
 		const offData = window.vomp.on("host:data", ({ hostId: id, data }) => {
@@ -106,7 +130,7 @@ export function Mirror({ hostId, generation, readOnly, onIdleEscape, overlaysOpe
 		});
 		observer.observe(element);
 		const themeObserver = new MutationObserver(() => {
-			term.options.theme = xtermTheme();
+			term.options.theme = xtermTheme(activeTheme);
 		});
 		themeObserver.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
@@ -116,6 +140,7 @@ export function Mirror({ hostId, generation, readOnly, onIdleEscape, overlaysOpe
 			observer.disconnect();
 			themeObserver.disconnect();
 			offData();
+			offTheme();
 			onInput.dispose();
 			term.dispose();
 		};

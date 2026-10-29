@@ -12,8 +12,8 @@
 export interface RegisteredHost {
 	instanceId: string;
 	pid: number;
-	/** Epoch milliseconds when the host first connected to its relay; absent from older omp releases. */
-	startedAt?: number;
+	/** Epoch milliseconds when the host first connected to its relay. */
+	startedAt: number;
 }
 
 export interface RoomHostSearch {
@@ -32,7 +32,7 @@ export interface RoomHostSearch {
 
 export async function findRoomHost<T extends RegisteredHost>(hosts: readonly T[], search: RoomHostSearch): Promise<{ host: T; link: string } | null> {
 	const spawned = hosts.filter(host => host.pid === search.pid);
-	const later = hosts.filter(host => host.pid !== search.pid && (host.startedAt === undefined || host.startedAt >= search.spawnedAt));
+	const later = hosts.filter(host => host.pid !== search.pid && host.startedAt >= search.spawnedAt);
 	for (const host of [...spawned, ...later]) {
 		if (search.ruledOut.has(host.instanceId)) continue;
 		let link: string;

@@ -1,10 +1,9 @@
 /**
- * Share dialog (DESIGN §4.20): an encrypted read-only link, a standalone web page, or a live
- * invite through omp's public relay (see `@shared/contracts/collab`).
+ * Share dialog (DESIGN §4.20): encrypted links, exports, machine transfers and live invites.
  */
 import type { ShareLinkResult } from "@shared/contracts/share";
 import type { Participant } from "@oh-my-pi/pi-wire";
-import { Broadcast, Check, Copy, FileArrowDown, LinkSimple, Users } from "@phosphor-icons/react";
+import { Broadcast, Check, Copy, Desktop, FileArrowDown, FileArrowUp, LinkSimple, Users, WarningCircle } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -13,9 +12,9 @@ import { useSessionView } from "@/shell/hooks";
 import { controllerFor, focusedTabId, useApp } from "@/state/app";
 import { Button, Chip, Dialog, DialogContent, IconButton, Input, PresenceSwap, Segmented, StatusDot, Switch, spring, toast } from "@/ui";
 import { errorText } from "./actions";
-import { useShares } from "./share-store";
+import { type ShareFileAction, useShares } from "./share-store";
 
-export type ShareTab = "link" | "file" | "invite";
+export type ShareTab = "link" | "file" | "move" | "invite";
 
 export interface ShareProps {
 	tabId?: string | null;
@@ -25,7 +24,7 @@ export interface ShareProps {
 /** The app's own mirror joins every room as a guest under this name (SessionController). */
 const APP_GUEST_NAME = "visual-omp";
 
-const SHARE_TABS: readonly ShareTab[] = ["link", "file", "invite"];
+const SHARE_TABS: readonly ShareTab[] = ["link", "file", "move", "invite"];
 
 export function ShareDialog({ props, close }: SheetProps<ShareProps | undefined>): ReactNode {
 	const { t } = useTranslation("projects");
@@ -50,11 +49,14 @@ export function ShareDialog({ props, close }: SheetProps<ShareProps | undefined>
 					options={[
 						{ value: "link", label: t("share.tabs.link"), icon: <LinkSimple /> },
 						{ value: "file", label: t("share.tabs.file"), icon: <FileArrowDown /> },
+						{ value: "move", label: t("share.tabs.move"), icon: <Desktop /> },
 						{ value: "invite", label: t("share.tabs.invite"), icon: <Users /> },
 					]}
 				/>
-				<PresenceSwap swapKey={controller ? tab : "none"} variant="slide" direction={travel.direction}>
-					{!controller ? (
+				<PresenceSwap swapKey={tab === "move" ? tab : controller ? `${tab}:${sessionFile}` : "none"} variant="slide" direction={travel.direction}>
+					{tab === "move" ? (
+						<MovePanel sessionFile={sessionFile} close={close} />
+					) : !controller ? (
 						<p className="text-md text-fg-muted">{t("share.noChat")}</p>
 					) : tab === "link" ? (
 						<LinkPanel sessionFile={sessionFile} />
@@ -146,6 +148,7 @@ function LinkPanel({ sessionFile }: { sessionFile: string | null }): ReactNode {
 function FilePanel({ sessionFile }: { sessionFile: string | null }): ReactNode {
 	const { t } = useTranslation("projects");
 	const [busy, setBusy] = useState(false);
+	const fileBusy = useShares(state => state.fileAction?.phase === "busy");
 	const exportFile = async () => {
 		if (!sessionFile) return;
 		setBusy(true);
@@ -171,13 +174,115 @@ function FilePanel({ sessionFile }: { sessionFile: string | null }): ReactNode {
 			{!sessionFile ? (
 				<NeedsMessage />
 			) : (
-				<div className="flex items-center justify-between gap-3">
-					<span className="text-sm text-fg-faint">{t("share.file.note")}</span>
-					<Button variant="primary" icon={<FileArrowDown />} loading={busy} onClick={() => void exportFile()}>
-						{t("share.file.export")}
-					</Button>
+				<>
+					<div className="flex flex-wrap items-center justify-between gap-3">
+						<span className="text-sm text-fg-faint">{t("share.file.note")}</span>
+						<Button variant="primary" icon={<FileArrowDown />} loading={busy} disabled={fileBusy} onClick={() => void exportFile()}>
+							{t("share.file.export")}
+						</Button>
+					</div>
+					<section className="flex flex-col gap-3 border-t border-border pt-4">
+						<h3 className="font-medium text-fg">{t("share.anonymize.title")}</h3>
+						<p className="text-sm text-fg-muted">{t("share.anonymize.explainer")}</p>
+						<p className="text-sm text-fg-muted">{t("share.anonymize.review")}</p>
+						<FileAction kind="anonymize" sessionFile={sessionFile} disabled={busy} />
+					</section>
+				</>
+			)}
+		</div>
+	);
+}
+
+function MovePanel({ sessionFile, close }: { sessionFile: string | null; close: () => void }): ReactNode {
+	const { t } = useTranslation("projects");
+	return (
+		<div className="flex flex-col gap-4">
+			<section className="flex flex-col gap-3">
+				<h3 className="font-medium text-fg">{t("share.pack.title")}</h3>
+				<p className="text-sm text-fg-muted">{t("share.pack.explainer")}</p>
+				<p className="text-sm text-fg-muted">{t("share.pack.privacy")}</p>
+				{sessionFile ? <FileAction kind="pack" sessionFile={sessionFile} /> : <NeedsMessage />}
+			</section>
+			<section className="flex flex-col gap-3 border-t border-border pt-4">
+				<h3 className="font-medium text-fg">{t("share.unpack.title")}</h3>
+				<p className="text-sm text-fg-muted">{t("share.unpack.explainer")}</p>
+				<p className="text-sm text-fg-muted">{t("share.unpack.copies")}</p>
+				<FileAction kind="unpack" close={close} />
+			</section>
+		</div>
+	);
+}
+
+/** Native choosers and CLI work continue across tab switches; only the originating scope shows the result. */
+function FileAction({ kind, sessionFile = null, close, disabled = false }: {
+	kind: ShareFileAction;
+	sessionFile?: string | null;
+	close?: () => void;
+	disabled?: boolean;
+}): ReactNode {
+	const { t } = useTranslation("projects");
+	const fileAction = useShares(state => state.fileAction);
+	const state = fileAction?.kind === kind && fileAction.sessionFile === sessionFile ? fileAction : null;
+	const busy = fileAction?.phase === "busy";
+	const [opening, setOpening] = useState(false);
+	const open = async (file: string) => {
+		setOpening(true);
+		try {
+			const summary = await window.vomp.invoke("sessions:summary", file);
+			if (!summary) throw new Error(t("share.unpack.missing"));
+			await useApp.getState().refreshProjects(false);
+			useApp.getState().openSession(summary);
+			close?.();
+		} catch (error) {
+			toast({ tone: "err", message: t("share.unpack.openFailed"), description: errorText(error) });
+		} finally {
+			setOpening(false);
+		}
+	};
+	return (
+		<div className="flex flex-col gap-3">
+			{state?.phase === "error" && (
+				<div role="alert" className="flex items-start gap-2 text-sm text-err">
+					<WarningCircle className="mt-0.5 size-4 shrink-0" aria-hidden />
+					<div className="min-w-0">
+						<p className="font-medium">{t(`share.${kind}.failed`)}</p>
+						<p className="whitespace-pre-wrap break-words">{state.error}</p>
+					</div>
 				</div>
 			)}
+			{state?.phase === "cancelled" && <p role="status" className="text-sm text-fg-muted">{t("share.operation.cancelled")}</p>}
+			{state?.phase === "done" && (
+				<div className="selectable flex flex-col gap-2">
+					<p role="status" className="flex items-center gap-2 text-sm font-medium">
+						<Check className="size-4 text-ok" aria-hidden />{t(`share.${kind}.saved`)}
+					</p>
+					<p className="break-all font-mono text-xs text-fg-muted">{state.result.path}</p>
+					{state.result.report && (
+						<details className="text-sm text-fg-muted">
+							<summary className="cursor-pointer">{t("share.operation.report")}</summary>
+							<p className="mt-2 whitespace-pre-wrap break-words">{state.result.report}</p>
+						</details>
+					)}
+					<div className="flex justify-end">
+						<Button size="sm" loading={opening} onClick={() => kind === "unpack"
+							? void open(state.result.path)
+							: void window.vomp.invoke("app:showItem", state.result.path)}>
+							{kind === "unpack" ? t("share.unpack.open") : t("share.file.reveal")}
+						</Button>
+					</div>
+				</div>
+			)}
+			<div className="flex justify-end">
+				<Button
+					variant={kind === "unpack" ? "secondary" : "primary"}
+					icon={kind === "unpack" ? <FileArrowUp /> : <FileArrowDown />}
+					loading={state?.phase === "busy"}
+					disabled={disabled || busy || opening}
+					onClick={() => void useShares.getState().runFileAction(kind, sessionFile)}
+				>
+					{state?.phase === "busy" ? t(`share.${kind}.busy`) : t(`share.${kind}.action`)}
+				</Button>
+			</div>
 		</div>
 	);
 }

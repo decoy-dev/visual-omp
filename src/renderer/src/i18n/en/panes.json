@@ -171,7 +171,12 @@
 		"helper": {
 			"earlier_one": "Show {{count}} earlier helper",
 			"earlier_other": "Show {{count}} earlier helpers",
-			"fewer": "Show fewer helpers"
+			"fewer": "Show fewer helpers",
+			"completion": "Estimate",
+			"completionHint": "The helper estimates how much of its assignment it has completed.",
+			"completionLabel": "{{name}}'s estimated completion",
+			"completionValue": "About {{percent}}% complete",
+			"jobsUnavailable": "Background jobs unavailable."
 		},
 		"tokens_one": "{{formatted}} token",
 		"tokens_other": "{{formatted}} tokens",
@@ -203,7 +208,17 @@
 			"output": "Output",
 			"earlier_one": "Show {{count}} earlier job",
 			"earlier_other": "Show {{count}} earlier jobs",
-			"fewer": "Show fewer jobs"
+			"fewer": "Show fewer jobs",
+			"stop": "Stop {{id}}",
+			"stopAction": "Stop",
+			"stopAll": "Stop all",
+			"progress": "Job progress",
+			"chartData": "Show chart data",
+			"sample": "Sample",
+			"value": "Value",
+			"target": "Target",
+			"trendUp": "Up",
+			"trendDown": "Down"
 		},
 		"runningCount_one": "{{count}} running",
 		"runningCount_other": "{{count}} running"

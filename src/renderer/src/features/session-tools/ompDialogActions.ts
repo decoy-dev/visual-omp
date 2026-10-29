@@ -79,7 +79,7 @@ export async function submitText(session: SessionController, dialog: OmpTextDial
 		}
 		if (text.trim() !== "") {
 			// One bracketed paste, so newlines in an editor answer arrive as text instead of keys.
-			await window.vomp.invoke("host:write", hostId, `\x1b[200~${text}\x1b[201~`);
+			await window.vomp.invoke("host:paste", hostId, text);
 			const typed = await waitForScreen(session, lines => {
 				const next = parseOmpDialog(lines);
 				return isSame(dialog, next) && next.value !== "";

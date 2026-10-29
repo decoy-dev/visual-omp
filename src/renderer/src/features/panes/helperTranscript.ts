@@ -6,6 +6,7 @@
  * markup. Displayed `custom_message` entries pass through for the chat's notice rows.
  */
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
+import { isReplyWrite, toolResultReplies } from "../../chat/friendly";
 import { contentText, noticeVisible, parseIrcText, parseNotice, stripNoticeMarkup } from "../../chat/transcript/notices";
 import { replyText } from "../../chat/transcript/turns";
 import { stripAssignmentPreamble } from "./derive";
@@ -70,9 +71,21 @@ export function helperTranscript(entries: readonly SessionEntry[]): HelperTransc
 				.filter(part => part.text)
 				.map((part, index) => ({ ...part, id: `${entry.id}:${index}` }));
 		}
+		if (message.role === "toolResult") {
+			return toolResultReplies(message.details).map((text, index) => ({ kind: "reply", id: `${entry.id}:reply:${index}`, text, tools: [] }));
+		}
 		if (message.role !== "assistant") return [];
-		const text = message.content.map(block => replyText(block) ?? "").join("");
-		const tools = message.content.flatMap(block => (block.type === "toolCall" ? [block.intent ?? block.name] : []));
+		let text = "";
+		let afterReplyWrite = false;
+		for (const block of message.content) {
+			const value = replyText(block);
+			if (!value) continue;
+			const replyWrite = block.type === "toolCall" && isReplyWrite(block.name, block.arguments);
+			if (text && (replyWrite || afterReplyWrite)) text += "\n\n";
+			text += value;
+			afterReplyWrite = replyWrite;
+		}
+		const tools = message.content.flatMap(block => (block.type === "toolCall" && !isReplyWrite(block.name, block.arguments) ? [block.intent ?? block.name] : []));
 		return [{ kind: "reply", id: entry.id, text, tools }];
 	});
 }

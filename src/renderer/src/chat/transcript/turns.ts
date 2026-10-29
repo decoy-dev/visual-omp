@@ -10,7 +10,7 @@ import type { ActiveTool } from "../../collab/lib/client";
 import { isModelFallback } from "../../collab/lib/modelFallback";
 import { type EditTotals, editTotals, fileEdits, type OutputContext, type TodoUpdate, todoUpdates } from "../../features/panes/derive";
 import { isRecord } from "../../tool-render/util";
-import { resolveToolCall } from "../friendly";
+import { isReplyWrite, replyWriteUndecided, resolveToolCall, toolResultReplies } from "../friendly";
 
 export type ContentBlock = AssistantMessage["content"][number];
 
@@ -18,6 +18,7 @@ export type ContentBlock = AssistantMessage["content"][number];
 export function replyText(block: ContentBlock): string | null {
 	if (block.type === "text") return block.text;
 	if (block.type === "thinking" && block.narration === true) return block.thinking;
+	if (block.type === "toolCall" && isReplyWrite(block.name, block.arguments)) return typeof block.arguments.content === "string" ? block.arguments.content : "";
 	return null;
 }
 
@@ -75,6 +76,8 @@ export interface LayoutOptions {
 	group: boolean;
 	/** Resolves relative paths, so one file edited by two names counts once. */
 	context: OutputContext;
+	/** Foreground frames can carry bash replies before their result is saved. */
+	active?: ReadonlyMap<string, ActiveTool>;
 	/**
 	 * Index in `entries` of the first entry the transcript draws (it windows long chats). Steps before it are not
 	 * drawn, so no group reaches across that edge: a group whose first step lies above it would hide the rest.
@@ -253,6 +256,16 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 			if ((current.positions[slot] ?? 0) < (options.from ?? 0)) continue;
 			if (ref.index === 0 && groupBreaks.has(ref.entryId)) flush();
 			const block = ref.block;
+			const partial = block.type === "toolCall" ? options.active?.get(block.id)?.partialResult : null;
+			if (
+				block.type === "toolCall" &&
+				(isReplyWrite(block.name, block.arguments) ||
+					(ref.entryId === STREAM_ENTRY && replyWriteUndecided(block.name, block.arguments)) ||
+					toolResultReplies(results.get(block.id)?.details ?? (isRecord(partial) ? partial.details : undefined)).length > 0)
+			) {
+				flush();
+				continue;
+			}
 			if (block.type === "toolCall") {
 				const name = nameOf(block);
 				if (PROMINENT[name] || todos.get(block.id)?.role === "board" || options.hold?.has(block.id)) {

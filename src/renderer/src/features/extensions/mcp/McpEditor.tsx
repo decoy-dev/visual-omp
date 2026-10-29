@@ -131,6 +131,9 @@ function ServerForm({ mode, projectPath, level, list, onBack, onSaved }: ServerE
 	const [saving, setSaving] = useState(false);
 	const [saveError, setSaveError] = useState<string | null>(null);
 	const [saved, setSaved] = useState(false);
+	const [signingIn, setSigningIn] = useState(false);
+	const [signInError, setSignInError] = useState<string | null>(null);
+	const stored = useRef(editing ? { name: editing.name, scope: editing.level } : null);
 
 	// What the form opened with: edits are anything that differs from it.
 	const initial = useRef({ form, values });
@@ -144,7 +147,7 @@ function ServerForm({ mode, projectPath, level, list, onBack, onSaved }: ServerE
 	const takenNames = (list?.servers ?? [])
 		.filter(entry => entry.editable && entry.path === scopePath)
 		.map(entry => entry.name)
-		.filter(name => !(editing && editing.level === form.scope && name === editing.name));
+		.filter(name => !(stored.current && stored.current.scope === form.scope && name === stored.current.name));
 	const formErrors = validateForm(form, takenNames);
 	// Preset templates supply the command/URL; only the name comes from the form.
 	const errors: McpFormErrors = preset ? { name: formErrors.name } : formErrors;
@@ -152,6 +155,8 @@ function ServerForm({ mode, projectPath, level, list, onBack, onSaved }: ServerE
 	const valid = !errors.name && !errors.command && !errors.url && missingFields.length === 0;
 	const update = (patch: Partial<McpForm>) => {
 		setForm(prev => ({ ...prev, ...patch }));
+		setSaved(false);
+		setSignInError(null);
 		setCheck({ state: "idle" });
 	};
 
@@ -169,51 +174,77 @@ function ServerForm({ mode, projectPath, level, list, onBack, onSaved }: ServerE
 		setCheck({ state: "running" });
 		try {
 			const config = await buildConfig();
-			const result = await window.vomp.invoke("mcp:test", config, projectPath ? { cwd: projectPath } : undefined);
+			const result = await window.vomp.invoke("mcp:test", config, { cwd: projectPath ?? undefined, serverName: form.name });
 			setCheck({ state: "done", result });
 		} catch (err) {
 			setCheck({ state: "error", message: errorText(err) });
 		}
 	};
 
-	const save = async () => {
+	const persist = async () => {
 		setShowErrors(true);
-		if (!valid) return;
+		if (!valid) return null;
 		const target: McpTarget | null =
 			form.scope === "user" ? { scope: "user" } : projectPath ? { scope: "project", cwd: projectPath } : null;
-		if (!target) return;
+		if (!target) return null;
 		const name = form.name.trim();
 		setSaving(true);
 		setSaveError(null);
 		try {
 			const config = await buildConfig();
-			if (editing && editing.level === form.scope) {
-				await window.vomp.invoke("mcp:update", target, editing.name, config, name !== editing.name ? name : undefined);
+			const previous = stored.current;
+			if (previous && previous.scope === form.scope) {
+				await window.vomp.invoke("mcp:update", target, previous.name, config, name !== previous.name ? name : undefined);
 			} else {
 				await window.vomp.invoke("mcp:add", target, name, config);
-				if (editing) {
-					const previous: McpTarget = editing.level === "user" ? { scope: "user" } : { scope: "project", cwd: projectPath ?? "" };
-					await window.vomp.invoke("mcp:remove", previous, editing.name);
+				if (previous) {
+					const previousTarget: McpTarget = previous.scope === "user" ? { scope: "user" } : { scope: "project", cwd: projectPath ?? "" };
+					await window.vomp.invoke("mcp:remove", previousTarget, previous.name);
 				}
 			}
 			toast({ tone: "ok", message: t("mcp.toast.saved", { name }) });
-			if (preset?.oauth) toast({ tone: "info", sticky: true, message: t("mcp.toast.signInTitle", { name }), description: t("mcp.toast.signInBody", { name }) });
+			stored.current = { name, scope: form.scope };
+			initial.current = { form, values };
 			setSaved(true);
-			onSaved(form.scope);
+			return stored.current;
 		} catch (err) {
 			setSaveError(errorText(err));
+			return null;
 		} finally {
 			setSaving(false);
 		}
 	};
+
+	const save = async () => {
+		const result = await persist();
+		if (result) onSaved(result.scope);
+	};
+
+	const signIn = async () => {
+		setSignInError(null);
+		setSigningIn(true);
+		try {
+			const target = dirty || !stored.current ? await persist() : stored.current;
+			if (!target) return;
+			await window.vomp.invoke("mcp:reauth", target.name, { scope: target.scope, cwd: projectPath ?? undefined });
+			toast({ tone: "ok", message: t("mcp.signIn.completed", { name: target.name }), description: t("mcp.signIn.restart") });
+			onSaved(target.scope);
+		} catch (err) {
+			setSignInError(errorText(err));
+		} finally {
+			setSigningIn(false);
+		}
+	};
+
+	const canSignIn = preset?.oauth || (!preset && form.transport !== "stdio");
 
 	const title = editing ? t("mcp.form.editTitle", { name: editing.name }) : preset ? t("mcp.form.presetTitle", { name: preset.label }) : t("mcp.form.customTitle");
 	return (
 		<SectionView>
 			<BackLink label={t(mode.kind === "edit" ? "mcp.backToList" : "mcp.backToGallery")} onBack={() => void whenLeaving(onBack)} className="mb-3" />
 			<PageHeader title={title} description={preset?.description ?? t("mcp.subtitle")} />
-			<div className="flex flex-col gap-5">
-				{preset?.note && <Notice tone="info">{preset.note}</Notice>}
+			<fieldset disabled={saving || signingIn} className="flex min-w-0 flex-col gap-5">
+				{preset?.note && !preset.oauth && <Notice tone="info">{preset.note}</Notice>}
 				{preset && preset.requires.length > 0 && <Notice tone="info">{t("mcp.form.requires", { bins: preset.requires.join(", ") })}</Notice>}
 				<Input
 					label={t("mcp.form.name")}
@@ -235,6 +266,8 @@ function ServerForm({ mode, projectPath, level, list, onBack, onSaved }: ServerE
 							onChange={value => {
 								setValues(prev => ({ ...prev, [field.id]: value }));
 								setCheck({ state: "idle" });
+								setSaved(false);
+								setSignInError(null);
 							}}
 						/>
 					))
@@ -254,14 +287,20 @@ function ServerForm({ mode, projectPath, level, list, onBack, onSaved }: ServerE
 					/>
 				</FieldGroup>
 
-				<TestPanel check={check} name={form.name.trim()} />
+				<TestPanel check={check} />
+				{canSignIn && <Notice tone="info">{t("mcp.signIn.hint")}</Notice>}
+				{signingIn && <div role="status" className="flex items-center gap-2 text-sm text-fg-muted"><Spinner />{t("mcp.signIn.running")}</div>}
+				{signInError && <Notice tone="err">{signInError}</Notice>}
 				{saveError && <Notice tone="err">{saveError}</Notice>}
-			</div>
+			</fieldset>
 			<div className="mt-6 flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-				<Button onClick={() => void test()} loading={check.state === "running"}>
+				<Button onClick={() => void test()} loading={check.state === "running"} disabled={saving || signingIn}>
 					{t("mcp.test.action")}
 				</Button>
-				<Button variant="primary" onClick={() => void save()} loading={saving}>
+				{canSignIn && <Button onClick={() => void signIn()} loading={signingIn} disabled={saving || check.state === "running"}>
+					{t("mcp.signIn.action")}
+				</Button>}
+				<Button variant="primary" onClick={() => void save()} loading={saving} disabled={signingIn || check.state === "running"}>
 					{t("mcp.form.save")}
 				</Button>
 			</div>
@@ -480,7 +519,7 @@ function PresetFieldInput({
 	);
 }
 
-function TestPanel({ check, name }: { check: Check; name: string }) {
+function TestPanel({ check }: { check: Check }) {
 	const { t } = useTranslation("extensions");
 	if (check.state === "idle") return null;
 	if (check.state === "running") {
@@ -511,7 +550,7 @@ function TestPanel({ check, name }: { check: Check; name: string }) {
 		<div role="alert" className="flex flex-col gap-2 rounded-md border border-border bg-err-bg px-3 py-3 text-sm text-fg">
 			<span className="flex items-start gap-2 font-medium">
 				<XCircle aria-hidden className="mt-0.5 size-4 shrink-0 text-err" />
-				<span className="break-words">{result.authRequired ? t("mcp.test.authRequired", { name: name || "server" }) : result.error}</span>
+				<span className="break-words">{result.authRequired ? t("mcp.test.authRequired") : result.error}</span>
 			</span>
 			{result.unresolvedVars.length > 0 && <span className="pl-6 text-fg-muted">{t("mcp.test.unresolved", { vars: result.unresolvedVars.join(", ") })}</span>}
 			{result.stderr.trim() && (

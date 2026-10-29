@@ -12,6 +12,7 @@ import type { SpendChat, SpendDay } from "@shared/contracts/extensions";
 import { useEffect, useMemo, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "@/state/app";
+import { SessionTitle } from "@/ui/SessionTitle";
 import {
 	Button,
 	Cell,
@@ -254,9 +255,9 @@ export function ChatsTable({ chats, days }: { chats: readonly SpendChat[]; days:
 										<button
 											type="button"
 											onClick={() => void open(chat)}
-											className={cn("block rounded-sm text-left text-fg [overflow-wrap:anywhere] hover:underline", focusRingInset)}
+											className={cn("block w-full min-w-0 rounded-sm text-left text-fg hover:underline", focusRingInset)}
 										>
-											{chat.title ?? t("usage.untitled")}
+											<SessionTitle title={chat.title ?? t("usage.untitled")} />
 										</button>
 										<span className="block truncate text-xs text-fg-faint" title={chat.cwd}>
 											{projectName(chat.cwd)}

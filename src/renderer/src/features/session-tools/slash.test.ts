@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
 		openThinking: vi.fn(),
 		focusChatSearch: vi.fn(),
 		toast: vi.fn(),
+		setMode: vi.fn(),
 	};
 });
 vi.mock("@/ui", () => ({ toast: mocks.toast }));
@@ -22,6 +23,7 @@ vi.mock("../../state/navigation", () => ({ openSettings: mocks.openSettings }));
 vi.mock("../../state/app", () => ({ useApp: { getState: () => ({ openSheet: mocks.openSheet }) } }));
 vi.mock("../../shell/Sidebar", () => ({ focusChatSearch: mocks.focusChatSearch }));
 vi.mock("./pickers", () => ({ usePickerRequests: { getState: () => ({ openThinking: mocks.openThinking }) } }));
+vi.mock("./nativeModes", () => ({ setSessionMode: mocks.setMode }));
 
 const session = { tabId: "tab-1", projectPath: "/project", sessionFile: "/sessions/a.jsonl" } as unknown as SessionController;
 const ranCommands = () => mocks.runCommand.mock.calls.map(([id]) => id);
@@ -48,11 +50,23 @@ describe("routeSlash", () => {
 	});
 
 	it("leaves argument forms the matrix gives to omp", async () => {
-		for (const line of ["/fast on", "/goal pause", "/model x", "/mcp list", "/login anthropic", "/switch @smol", "/resume abc123", "/fork elsewhere"]) {
+		for (const line of ["/fast on", "/goal budget 100k", "/model x", "/mcp list", "/login anthropic", "/switch @smol", "/resume abc123", "/fork elsewhere"]) {
 			expect(await routeSlash(session, line), line).toBe(false);
 		}
 		expect(mocks.runCommand).not.toHaveBeenCalled();
 		expect(mocks.toast).not.toHaveBeenCalled();
+	});
+
+	it("switches goal state through the extension without typing a command", async () => {
+		expect(await routeSlash(session, "/goal pause")).toBe(true);
+		expect(mocks.setMode).toHaveBeenCalledWith(session, { mode: "goal", action: "pause" });
+		expect(mocks.runCommand).not.toHaveBeenCalled();
+	});
+
+	it("opens the native advisor configuration while leaving runtime toggles to omp", async () => {
+		expect(await routeSlash(session, "/advisor configure")).toBe(true);
+		expect(ranCommands()).toEqual(["chat.advisor"]);
+		expect(await routeSlash(session, "/advisor on")).toBe(false);
 	});
 
 	it("routes the bare subcommands the matrix names", async () => {
@@ -87,17 +101,20 @@ describe("routeSlash", () => {
 	});
 
 	it("refuses commands that break how the app hosts omp, with a reason and the app's way", async () => {
-		for (const line of ["/collab stop", "/collab", "/collab https://relay.example", "/leave", "/move ../other", "/wt feature", "/fork pane"]) {
+		for (const line of ["/collab stop", "/collab", "/collab https://relay.example", "/leave", "/fork pane"]) {
 			expect(await routeSlash(session, line), line).toBe(true);
 		}
 		expect(mocks.runCommand).not.toHaveBeenCalled();
-		expect(mocks.toast).toHaveBeenCalledTimes(7);
+		expect(mocks.toast).toHaveBeenCalledTimes(5);
 		const first = mocks.toast.mock.calls[0]?.[0];
 		expect(first).toMatchObject({ tone: "warn", message: "slash.guard.notSent", description: "slash.guard.collab" });
 		first.action.onClick();
 		expect(mocks.openSheet).toHaveBeenCalledWith("share", { tabId: "tab-1", tab: "invite" });
-		mocks.toast.mock.calls[5]?.[0].action.onClick();
-		expect(ranCommands()).toEqual(["git.worktree"]);
+	});
+
+	it("lets omp move the current session and create its own worktree", async () => {
+		for (const line of ["/move ../other", "/wt feature", "/worktree"]) expect(await routeSlash(session, line)).toBe(false);
+		expect(mocks.toast).not.toHaveBeenCalled();
 	});
 
 	it("lets the collab reports through and refuses /join without offering Share", async () => {

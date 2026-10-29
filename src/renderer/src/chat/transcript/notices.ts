@@ -6,6 +6,7 @@
  * system/irc-incoming.md, advisor `<advisory>` blocks, skills/user-invocation.md).
  */
 import { z } from "zod";
+import type { HostNotice } from "@shared/ipc";
 
 export type JobStatus = "ok" | "failed" | "stopped";
 
@@ -548,4 +549,15 @@ export function ircTitle(notice: Extract<Notice, { kind: "irc" }>, t: Translate)
 	if (notice.mode === "incoming") return t("notice.irc.from", { from: notice.from ?? unknown });
 	if (notice.mode === "autoreply") return t("notice.irc.autoreply", { to: notice.to ?? unknown });
 	return t("notice.irc.relay", { from: notice.from ?? unknown, to: notice.to ?? unknown });
+}
+
+/** Side-channel notices keep omp's wording and stay outside the messages sent to the model. */
+export function hostNotices(notices: readonly HostNotice[] | undefined): readonly HostNotice[] {
+	if (!notices?.length) return [];
+	const seen = new Set<string>();
+	return notices.filter(notice => {
+		if (!notice.text.trim() || seen.has(notice.id)) return false;
+		seen.add(notice.id);
+		return true;
+	}).sort((left, right) => left.timestamp - right.timestamp);
 }

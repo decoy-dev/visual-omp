@@ -14,6 +14,7 @@ import { ompStatus } from "./omp/locate";
 import { findSessionFile, listProjects, listSessions, readSessionFile, recentSessions } from "./omp/sessions";
 import { sessionOwnership } from "./omp/elsewhere";
 import { followSessions } from "./omp/follow";
+import { trashSessionConversation } from "./omp/session-trash";
 import { getPrefs, setPrefs } from "./prefs";
 import { gateHostStart } from "./services/approval-default";
 import { ensureNewUserApproval } from "./features/config";
@@ -85,13 +86,7 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("sessions:recent", limit => recentSessions(limit));
 	handle("sessions:read", file => readSessionFile(file));
 	handle("sessions:find", sessionId => findSessionFile(sessionId));
-	handle("sessions:trash", async file => {
-		if (!file.endsWith(".jsonl")) throw new Error("not a session file");
-		await shell.trashItem(file);
-		// The artifacts folder (subagent transcripts, plans, local://) sits beside the file.
-		const artifacts = file.slice(0, -".jsonl".length);
-		if (await pathExists(artifacts)) await shell.trashItem(artifacts);
-	});
+	handle("sessions:trash", trashSessionConversation);
 	handle("sessions:ownership", async file => (await sessionOwnership([file])).get(file) ?? "unknown");
 	handle("sessions:follow", files => followSessions(files));
 
@@ -99,6 +94,7 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("host:start", gateHostStart(ensureNewUserApproval, startHost));
 	handle("host:stop", hostId => stopHost(hostId));
 	handle("host:write", (hostId, data) => getHost(hostId).write(data));
+	handle("host:paste", (hostId, text) => getHost(hostId).paste(text));
 	handle("host:submit", (hostId, text, mode) => getHost(hostId).submit(text, mode));
 	handle("host:keys", (hostId, keys) => getHost(hostId).keys(keys));
 	handle("host:screen", hostId => getHost(hostId).screenLines());

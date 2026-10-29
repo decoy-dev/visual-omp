@@ -7,10 +7,11 @@
 import type { AgentProgress, AgentSnapshot, SessionEntry, SubagentLifecyclePayload, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import type { PaneMadeFile, PaneMadeQuery } from "@shared/contracts/panes";
 import type { ActiveTool, GuestSnapshot } from "../../collab/lib/client";
-import { resolveToolCall } from "../../chat/friendly";
+import { isReplyWrite, resolveToolCall } from "../../chat/friendly";
 import { type JobStatus, parseNotice } from "../../chat/transcript/notices";
 import type { SessionView } from "../../state/session";
 import { isRecord, num, str } from "../../tool-render/util";
+import { completionPercentOf, jobWidgetOf, type JobWidgetView } from "./jobWidgets";
 
 export type TodoStatus = "pending" | "in_progress" | "completed" | "abandoned";
 
@@ -40,6 +41,9 @@ export interface BackgroundJob {
 	durationMs: number | null;
 	/** The shell's exit code when the output reports one ("Command exited with code N"). */
 	exitCode: number | null;
+	/** The call's folder, falling back to its session header when none was specified. */
+	cwd?: string | null;
+	widget?: JobWidgetView | null;
 }
 
 type TranscriptItem =
@@ -252,6 +256,8 @@ interface JobReport {
 	output: string | null;
 	/** omp's run time for the job, when the report carries one. */
 	durationMs: number | null;
+	cwd?: string | null;
+	widget?: JobWidgetView | null;
 	/** An `async-result` delivery, which ends the job; snapshots may say it still runs. */
 	delivered: boolean;
 }
@@ -287,6 +293,8 @@ function jobReports(item: TranscriptItem): JobReport[] {
 				state,
 				output: str(job.resultText) || str(job.errorText),
 				durationMs: durationMs !== null && durationMs >= 0 ? durationMs : null,
+				cwd: str(job.cwd),
+				widget: jobWidgetOf(job.widget),
 				delivered: false,
 			},
 		];
@@ -307,7 +315,7 @@ function exitCodeOf(output: string): number | null {
  * record, or no omp running this chat now) shows as cancelled. Running jobs come first, then the rest; newest first
  * within each, as omp's `/jobs` lists them.
  */
-export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolean, activeTools?: ReadonlyMap<string, ActiveTool>, backgroundTools?: ReadonlyMap<string, ActiveTool>): BackgroundJob[] {
+export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolean, activeTools?: ReadonlyMap<string, ActiveTool>, backgroundTools?: ReadonlyMap<string, ActiveTool>, cwd: string | null = null): BackgroundJob[] {
 	const jobs = new Map<string, BackgroundJob>();
 	const upsert = (jobId: string, patch: Partial<BackgroundJob>) => {
 		const existing: BackgroundJob = jobs.get(jobId) ?? {
@@ -319,6 +327,8 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 			startedAt: null,
 			durationMs: null,
 			exitCode: null,
+			cwd: null,
+			widget: null,
 		};
 		jobs.set(jobId, { ...existing, ...patch });
 	};
@@ -334,29 +344,51 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 			const jobId = str(item.details.async.jobId);
 			const state = item.details.async.state;
 			if (jobId && isJobState(state)) {
-				upsert(jobId, { command: str(item.args.command) ?? "", intent: item.intent, state, output: resultText(item.message), startedAt: item.start });
+				const folder = str(item.details.cwd) ?? str(item.args.cwd);
+				upsert(jobId, { command: str(item.args.command) ?? "", cwd: folder ? resolveOutputPath(folder, { cwd, home: null }) ?? folder : cwd, intent: item.intent, state, output: resultText(item.message), startedAt: item.start });
 			}
 			continue;
 		}
 		for (const report of jobReports(item)) {
 			const job = jobs.get(report.id);
-			if (!job) continue;
+			if (!job && report.type !== "bash") continue;
+			if (!job) upsert(report.id, { command: report.label ?? "", state: report.state });
 			// A delivery ends a running job. When a poll already said how it ended, that outcome stands, but the
 			// delivery still brings the final output, omp's run time and the exit line.
-			const state = report.delivered && job.state !== "running" ? job.state : report.state;
-			const output = report.output ?? job.output;
+			const state = report.delivered && job && job.state !== "running" ? job.state : report.state;
+			const output = report.output ?? job?.output ?? "";
 			upsert(report.id, {
 				state,
 				output,
-				...(state !== "running" ? { durationMs: report.durationMs ?? job.durationMs, exitCode: exitCodeOf(output) ?? job.exitCode } : {}),
+				...(report.cwd ? { cwd: report.cwd } : {}),
+				...(report.widget ? { widget: report.widget } : {}),
+				...(state !== "running" ? { durationMs: report.durationMs ?? job?.durationMs ?? null, exitCode: exitCodeOf(output) ?? job?.exitCode ?? null } : {}),
 			});
 		}
 	}
 	for (const tool of [...(activeTools?.values() ?? []), ...(backgroundTools?.values() ?? [])]) {
-		// Only calls the model sent to the background; a foreground wait also runs as a managed job.
-		if (!isRecord(tool.args) || tool.args.async !== true) continue;
 		const partial = isRecord(tool.partialResult) ? tool.partialResult : null;
 		const details = partial && isRecord(partial.details) ? partial.details : null;
+		if (Array.isArray(details?.jobs)) {
+			for (const raw of details.jobs) {
+				if (!isRecord(raw)) continue;
+				const id = str(raw.id);
+				if (!id || raw.type !== "bash" || !isJobState(raw.status)) continue;
+				const existing = jobs.get(id);
+				if (existing && existing.state !== "running") continue;
+				const output = str(raw.resultText) || str(raw.errorText);
+				const widget = jobWidgetOf(raw.widget);
+				upsert(id, {
+					command: existing?.command || str(raw.label) || "",
+					state: raw.status,
+					...(output ? { output } : {}),
+					...(widget ? { widget } : {}),
+					...(str(raw.cwd) ? { cwd: str(raw.cwd) } : {}),
+				});
+			}
+		}
+		// Only calls the model sent to the background; a foreground wait also runs as a managed job.
+		if (!isRecord(tool.args) || tool.args.async !== true) continue;
 		const async = details && isRecord(details.async) ? details.async : null;
 		const jobId = async ? str(async.jobId) : null;
 		if (!jobId) continue;
@@ -365,9 +397,11 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 		// A saved poll or delivery can be newer than the last live frame kept for this call.
 		if (existing && existing.state !== "running") continue;
 		const state = isJobState(async?.state) ? async.state : existing?.state ?? "running";
+		const folder = str(details?.cwd) ?? str(tool.args.cwd);
 		upsert(jobId, {
 			command: str(tool.args.command) ?? "",
 			intent: callIntent({ intent: tool.intent, arguments: tool.args }),
+			cwd: folder ? resolveOutputPath(folder, { cwd, home: null }) ?? folder : existing?.cwd ?? cwd,
 			state,
 			startedAt: existing?.startedAt ?? tool.startedAt,
 			...(output ? { output } : {}),
@@ -376,6 +410,29 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 	if (!ompLive) stopRunning();
 	const newestFirst = [...jobs.values()].reverse();
 	return [...newestFirst.filter(job => job.state === "running"), ...newestFirst.filter(job => job.state !== "running")];
+}
+
+export interface HelperJobSnapshot {
+	stage: string | null;
+	completionPercent: number | null;
+	widget: JobWidgetView | null;
+}
+
+/** Task-job snapshots include widgets and estimates that can outlast the task call's initial spawn result. */
+export function helperJobSnapshots(entries: readonly SessionEntry[], activeTools?: ReadonlyMap<string, ActiveTool>, backgroundTools?: ReadonlyMap<string, ActiveTool>): ReadonlyMap<string, HelperJobSnapshot> {
+	const snapshots = new Map<string, HelperJobSnapshot>();
+	const read = (details: unknown) => {
+		if (!isRecord(details) || !Array.isArray(details.jobs)) return;
+		for (const raw of details.jobs) {
+			if (!isRecord(raw) || raw.type !== "task") continue;
+			const id = str(raw.agentUrlId) ?? str(raw.id);
+			if (!id) continue;
+			snapshots.set(id, { stage: str(raw.stage), completionPercent: completionPercentOf(raw.completionPercent), widget: jobWidgetOf(raw.widget) });
+		}
+	};
+	for (const item of transcriptItems(entries)) if (item.kind === "result" && (item.name === "job" || item.name === "wait")) read(item.details);
+	for (const tool of [...(activeTools?.values() ?? []), ...(backgroundTools?.values() ?? [])]) if (isRecord(tool.partialResult)) read(tool.partialResult.details);
+	return snapshots;
 }
 
 /** Shell setup and chatter a summary skips: `set -e`, `cd dir`, `export X=1`, `X=$(…)`, `sleep 10`, `echo …`, comments. */
@@ -904,6 +961,7 @@ export function fileEdits(entries: readonly SessionEntry[], context: OutputConte
 	for (const item of transcriptItems(entries)) {
 		if (item.kind !== "result" || item.message.isError) continue;
 		const { name, args, details } = item;
+		if (isReplyWrite(name, args)) continue;
 		const id = item.message.toolCallId;
 		const files: FileEdit[] = [];
 		if (name === "write") {
@@ -1028,6 +1086,9 @@ export interface Helper {
 	status: HelperStatus;
 	/** What it is doing now, or what it was asked to do. */
 	activity: string;
+	/** The helper's self-estimated completion. */
+	completionPercent?: number | null;
+	widget?: JobWidgetView | null;
 	tokens: number | null;
 	toolCount: number | null;
 	/** Run time omp last reported for it. */
@@ -1149,6 +1210,7 @@ function firstLine(text: string | null | undefined): string {
 
 /** The fields a helper's activity line is chosen from: live progress, or a task result record, which lacks some. */
 export interface ActivitySource {
+	stage?: string | null;
 	currentToolIntent?: string | null;
 	lastIntent?: string | null;
 	recentTools?: readonly { intent?: string | null }[];
@@ -1158,13 +1220,14 @@ export interface ActivitySource {
 }
 
 /**
- * What a helper is doing, latest first: the intent of its current call, its last intent, the intent of its latest
- * finished call, its latest line of output; before it has done anything, the label omp generated for the task, then
- * the first line of its assignment (without omp's preamble).
+ * What a helper is doing, latest first: its own stage, the intent of its current call, its last intent, the intent
+ * of its latest finished call, its latest line of output; before it has done anything, the label omp generated for
+ * the task, then the first line of its assignment (without omp's preamble).
  */
 export function activityOf(progress: ActivitySource | undefined): string {
 	if (!progress) return "";
 	return (
+		firstLine(progress.stage) ||
 		firstLine(progress.currentToolIntent) ||
 		firstLine(progress.lastIntent) ||
 		firstLine(progress.recentTools?.find(tool => tool.intent)?.intent) ||
@@ -1177,7 +1240,7 @@ export function activityOf(progress: ActivitySource | undefined): string {
 function progressFields(
 	live: AgentProgress | undefined,
 	receivedAt: number | null,
-): Pick<Helper, "tokens" | "toolCount" | "durationMs" | "durationAt" | "contextTokens" | "contextWindow" | "model"> {
+): Pick<Helper, "tokens" | "toolCount" | "durationMs" | "durationAt" | "contextTokens" | "contextWindow" | "model" | "completionPercent"> {
 	const positive = (value: number | undefined) => (value !== undefined && Number.isFinite(value) && value > 0 ? value : null);
 	const durationMs = positive(live?.durationMs);
 	return {
@@ -1188,6 +1251,7 @@ function progressFields(
 		contextTokens: positive(live?.contextTokens),
 		contextWindow: positive(live?.contextWindow),
 		model: live?.resolvedModel ?? null,
+		completionPercent: completionPercentOf(live?.completionPercent),
 	};
 }
 
@@ -1332,14 +1396,14 @@ export interface HelperFold {
 
 /**
  * The Tasks pane's helper list from `helpersOf`: every running helper, the `RECENT_HELPERS` latest finished ones, and
- * any older failed one, which stays in view because a failure is the outcome the reader most likely has to act on.
- * `expanded` lists every helper.
+ * any older failed one or helper with running child jobs. The hidden count stays fixed when `expanded` lists every
+ * helper, so the collapse action remains available.
  */
-export function foldHelpers(helpers: readonly Helper[], expanded: boolean): HelperFold {
+export function foldHelpers(helpers: readonly Helper[], expanded: boolean, jobs?: ReadonlyMap<string, readonly BackgroundJob[]>): HelperFold {
 	const kept: Helper[] = [];
 	let finished = 0;
 	for (const helper of helpers) {
-		if (helper.status === "running" || finished++ < RECENT_HELPERS || helper.status === "failed") kept.push(helper);
+		if (helper.status === "running" || finished++ < RECENT_HELPERS || helper.status === "failed" || jobs?.get(helper.id)?.some(job => job.state === "running")) kept.push(helper);
 	}
 	return { shown: expanded ? helpers : kept, earlier: helpers.length - kept.length };
 }

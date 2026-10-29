@@ -1,5 +1,6 @@
 import { BrowserWindow, ipcMain } from "electron";
 import type { EventChannel, InvokeChannel, IpcEventMap, IpcInvokeMap } from "@shared/ipc";
+import { isAppUrl } from "./services/app-origin";
 
 type Handler<C extends InvokeChannel> = (
 	...args: IpcInvokeMap[C]["args"]
@@ -7,7 +8,12 @@ type Handler<C extends InvokeChannel> = (
 
 /** Register a typed `ipcMain.handle` for a channel in {@link IpcInvokeMap}. */
 export function handle<C extends InvokeChannel>(channel: C, handler: Handler<C>): void {
-	ipcMain.handle(channel, (_event, ...args) => handler(...(args as IpcInvokeMap[C]["args"])));
+	ipcMain.handle(channel, (event, ...args) => {
+		if (!event.senderFrame || event.senderFrame !== event.sender.mainFrame || !isAppUrl(event.senderFrame.url)) {
+			throw new Error("This request must come from the visual-omp window.");
+		}
+		return handler(...(args as IpcInvokeMap[C]["args"]));
+	});
 }
 
 const mainListeners = new Map<EventChannel, Set<(payload: never) => void>>();

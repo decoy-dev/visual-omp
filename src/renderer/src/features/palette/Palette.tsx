@@ -6,7 +6,7 @@ import * as RD from "@radix-ui/react-dialog";
 import type { SessionSummary } from "@shared/ipc";
 import { Command, useCommandState } from "cmdk";
 import { CaretRight, ChatCenteredText, FileText, GearSix, type Icon, MagnifyingGlass, PaperPlaneRight } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import { type CommandSpec, useCommands } from "../../registry/commands";
@@ -15,6 +15,7 @@ import { sendSlashCommand } from "../session-tools/typed";
 import { shortAgo } from "../../shell/hooks";
 import { controllerFor, focusedController, focusedTabId, useApp } from "../../state/app";
 import { cn, toast } from "../../ui";
+import { SessionTitle } from "../../ui/SessionTitle";
 import { menuShortcut } from "../../ui/styles";
 import { commandContext, runCommand } from "./run";
 import { keywordList, rank, rankFiles } from "./search";
@@ -104,7 +105,7 @@ async function mentionFile(path: string, projectPath: string): Promise<void> {
 interface RowProps {
 	value: string;
 	icon: Icon;
-	title: string;
+	title: ReactNode;
 	hint?: string | null;
 	slash?: string;
 	shortcut?: string;
@@ -127,9 +128,9 @@ function Row({ value, icon: Icon, title, hint, slash, shortcut, danger, notice, 
 			)}
 		>
 			<Icon aria-hidden className={cn("size-4 shrink-0", danger ? "text-err" : "text-fg-muted group-data-[selected=true]:text-fg")} />
-			<span className="min-w-0 flex-1 truncate">
-				<span className="font-medium">{title}</span>
-				{hint && <span className="ml-2 text-fg-muted">{hint}</span>}
+			<span className="flex min-w-0 flex-1 items-center gap-2">
+				<span className="min-w-0 truncate font-medium">{title}</span>
+				{hint && <span className="min-w-0 max-w-[45%] truncate text-fg-muted">{hint}</span>}
 			</span>
 			{notice ? (
 				<span role="status" className="shrink-0 font-mono text-xs text-err">
@@ -315,7 +316,7 @@ function PaletteBody() {
 								key={chat.file}
 								value={`chat:${chat.file}`}
 								icon={ChatCenteredText}
-								title={chatTitle(chat)}
+								title={<SessionTitle title={chatTitle(chat)} />}
 								hint={`${projectName(chat.cwd)} · ${shortAgo(chat.updatedAt, now)}`}
 								onSelect={() => {
 									close();

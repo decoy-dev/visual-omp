@@ -8,10 +8,9 @@ import type { CollabUiRequest } from "@oh-my-pi/pi-wire";
 import { ChatCircle, Info, Question, ShieldWarning } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { compareVersions } from "../../features/extensions/format";
-import { useApp } from "../../state/app";
+import { deliver } from "../composer/send";
 import type { SessionController } from "../../state/session";
-import { Button, Textarea } from "../../ui";
+import { Button, Textarea, toast } from "../../ui";
 import { AskSeriesCard } from "./AskSeriesCard";
 import { ASK_CHAT, ASK_NEXT, ASK_OTHER, CUSTOM_ANSWER_PREFIX } from "./askSeries";
 import { useAskSeries } from "./askSeriesStore";
@@ -44,10 +43,11 @@ export function usePendingQuestion(session: SessionController, request: CollabUi
 
 export function QuestionCard({ session, request, note }: { session: SessionController; request: CollabUiRequest; note?: string }): ReactNode {
 	const { t } = useTranslation("chat");
-	const ompVersion = useApp(state => state.omp?.version);
 	const [text, setText] = useState(request.kind === "editor" ? (request.prefill ?? "") : "");
 	const [selected, setSelected] = useState(request.kind === "select" ? (request.initialIndex ?? 0) : 0);
 	const [other, setOther] = useState("");
+	const [explaining, setExplaining] = useState(false);
+	const [denying, setDenying] = useState(false);
 	const rootRef = useRef<HTMLDivElement>(null);
 	const titleId = useId();
 
@@ -124,21 +124,36 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 						<p className="mt-1 text-sm text-fg-muted">{t(labels.some(label => label.startsWith("Always ")) ? "question.approvalChoicesHelp" : "question.approvalSessionHelp")}</p>
 						<div className="mt-2 flex flex-wrap gap-2">
 							{labels.filter(label => label !== once && label !== "Deny").map(label => (
-								<Button key={label} variant="secondary" className="h-auto! min-h-8 max-w-full whitespace-normal! py-1 text-left [overflow-wrap:anywhere] [&>span]:block [&>span]:min-w-0" data-approval-choice={label} onClick={() => session.answer(request.reqId, label)}>
+								<Button key={label} variant="secondary" disabled={denying} className="h-auto! min-h-8 max-w-full whitespace-normal! py-1 text-left [overflow-wrap:anywhere] [&>span]:block [&>span]:min-w-0" data-approval-choice={label} onClick={() => session.answer(request.reqId, label)}>
 									{label}
 								</Button>
 							))}
 						</div>
 					</div>
 				)}
-				{ompVersion && compareVersions(ompVersion, "18.11.0") >= 0 && (
-					<p className="mt-3 text-sm text-fg-muted">{t("question.messageDenies")}</p>
+				<p className="mt-3 text-sm text-fg-muted">{t("question.messageDenies")}</p>
+				{explaining && (
+					<div className="mt-3">
+						<Textarea aria-label={t("question.denialReason")} placeholder={t("question.denialReason")} value={other}
+							onChange={event => setOther(event.target.value)} minRows={2} maxRows={6} autoFocus disabled={denying} />
+					</div>
 				)}
 				<div className="mt-3 flex flex-wrap justify-end gap-2">
-					<Button variant="secondary" onClick={() => session.answer(request.reqId, "Deny")}>
+					<Button variant="secondary" disabled={denying} onClick={() => session.answer(request.reqId, "Deny")}>
 						{t("question.deny")}
 					</Button>
-					<Button variant="primary" autoFocus data-approval-once={once} onClick={() => session.answer(request.reqId, once ?? undefined)}>
+					<Button variant="secondary" disabled={denying || session.getSnapshot().strandedImages || (explaining && !other.trim())} onClick={() => {
+						if (!explaining) { setExplaining(true); return; }
+						if (!other.trim() || session.getSnapshot().guest?.uiRequest?.reqId !== request.reqId) return;
+						setDenying(true);
+						void deliver(session, other.trim(), [], true).catch((error: unknown) => {
+							setDenying(false);
+							toast({ tone: "err", message: t("question.denialFailed"), description: String(error) });
+						});
+					}}>
+						{t(explaining ? "question.denySend" : "question.denyExplain")}
+					</Button>
+					<Button variant="primary" disabled={denying} autoFocus data-approval-once={once} onClick={() => session.answer(request.reqId, once ?? undefined)}>
 						{t(labels.length > 2 ? "question.allowOnce" : "question.allow")}
 					</Button>
 				</div>

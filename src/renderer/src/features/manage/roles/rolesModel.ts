@@ -1,5 +1,5 @@
 /** Pure helpers for the Model roles editor: role order, model grouping, thinking levels, drafts. */
-import type { ModelInfo, ModelKind, ModelRoleInfo, RoleThinking } from "@shared/contracts/config";
+import type { ModelInfo, ModelKind, ModelPresetInfo, ModelRoleInfo, ModelRolesState, RoleThinking } from "@shared/contracts/config";
 
 /** DESIGN §4.13 display order: the everyday roles first, the specialist runners last. */
 export const ROLE_DISPLAY_ORDER = [
@@ -13,6 +13,7 @@ export const ROLE_DISPLAY_ORDER = [
 	"tiny",
 	"memory",
 	"task",
+	"widget",
 	"image",
 	"web",
 	"speech",
@@ -94,4 +95,25 @@ export function formatContextWindow(tokens: number | null): string | null {
 	if (!tokens) return null;
 	if (tokens >= 1_000_000) return `${Number((tokens / 1_000_000).toFixed(1))}M`;
 	return `${Math.round(tokens / 1000)}K`;
+}
+
+/** omp's first alphabetical preset with identical effective roles and optional thinking. */
+export function activeModelPreset(
+	presets: readonly ModelPresetInfo[],
+	state: ModelRolesState | null,
+): string | null {
+	if (!state) return null;
+	const roles = state.roles.filter(role => Boolean(role.value));
+	return [...presets].sort((a, b) => a.name.localeCompare(b.name)).find(preset =>
+		!preset.problem &&
+		(preset.defaultThinkingLevel === null || preset.defaultThinkingLevel === state.defaultThinkingLevel) &&
+		Object.keys(preset.modelRoles).length === roles.length &&
+		roles.every(role => Object.hasOwn(preset.modelRoles, role.id) && preset.modelRoles[role.id] === role.value),
+	)?.name ?? null;
+}
+
+/** Pricing without a known fixed token rate must never imply a low-cost model. */
+export function modelPriceBadge(model: ModelInfo): "cheap" | "free" | null {
+	if (model.pricingStatus === "free") return "free";
+	return model.pricingStatus === "fixed" && model.cost && model.cost.input >= 0 && model.cost.input <= 1 ? "cheap" : null;
 }

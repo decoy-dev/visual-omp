@@ -10,6 +10,8 @@ export interface ReleaseAsset {
 	url: string;
 	/** Bytes. */
 	size: number;
+	/** GitHub's asset digest, when supplied (sha256:<hex>). */
+	digest?: string | null;
 }
 
 /**
@@ -62,6 +64,14 @@ export interface AppUpdateOutcome {
 	updated: boolean;
 }
 
+export interface AppReleaseNotes {
+	version: string;
+	body: string;
+	url: string | null;
+	/** Epoch ms, or null when GitHub did not provide a publication date. */
+	publishedAt: number | null;
+}
+
 export interface AppUpdateStatus {
 	/** `app.getVersion()` of the running app. */
 	currentVersion: string;
@@ -74,6 +84,8 @@ export interface AppUpdateStatus {
 	releaseName: string | null;
 	/** Release notes (GitHub-flavoured Markdown). */
 	notes: string | null;
+	/** Published releases from the same GitHub response. Older on-disk caches may omit this field. */
+	releases?: AppReleaseNotes[];
 	/** Release page URL. */
 	releaseUrl: string | null;
 	/** Epoch ms. */

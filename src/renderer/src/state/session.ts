@@ -99,7 +99,7 @@ export interface SessionView {
 	queue: readonly QueuedMessage[];
 	/** Text successfully submitted in this window, including commands absent from the transcript. */
 	inputHistory: readonly { text: string; timestamp: number }[];
-	/** omp is running a turn. */
+	/** omp is running a turn or waiting for background work to resume it. */
 	working: boolean;
 	/**
 	 * When this app saw the current turn start (epoch ms), for "Working… 14s". Null when not working, or when the turn
@@ -179,7 +179,7 @@ function syncFollowed(): void {
 
 export class SessionController {
 	readonly tabId: string;
-	readonly projectPath: string;
+	#projectPath: string;
 	#sessionFile: string | null;
 	#view: SessionView;
 	/** Queued slash commands handed to `slashDelivery` and not yet done (see `#deliverSlash`). */
@@ -231,10 +231,11 @@ export class SessionController {
 	#disposed = false;
 	/** The ownership check a start must wait for, so omp never resumes a file before it is known to be free. */
 	#ownershipCheck: Promise<void> | null = null;
+	#restoreNext = false;
 
 	constructor(options: { tabId: string; projectPath: string; sessionFile: string | null; extraArgs?: string[] }) {
 		this.tabId = options.tabId;
-		this.projectPath = options.projectPath;
+		this.#projectPath = options.projectPath;
 		this.#sessionFile = options.sessionFile;
 		this.#extraArgs = options.extraArgs ?? [];
 		this.#view = {
@@ -256,6 +257,10 @@ export class SessionController {
 		};
 	}
 
+	get projectPath(): string {
+		return this.#projectPath;
+	}
+
 	get sessionFile(): string | null {
 		return this.#view.host?.sessionFile ?? this.#sessionFile;
 	}
@@ -274,15 +279,15 @@ export class SessionController {
 	/**
 	 * Ask main whether another omp has this chat's file open. If so, or if that cannot be told
 	 * (fail closed), the tab turns read-only and follows the file. Starting omp waits for this.
-	 * On Windows (`unsupported`) nothing can be detected: the tab stays writable, as in v0.1, and
-	 * `ownerUnverified` asks the user to close any terminal omp on the chat first.
+	 * Windows uses omp's named mutex as its ownership lease. An unreadable lease is unknown
+	 * and keeps the chat read-only, just as an unreadable check does on other platforms.
 	 */
 	checkOwnership(): Promise<void> {
 		const file = this.#sessionFile;
 		if (!file || this.#disposed) return Promise.resolve();
 		this.#ownershipCheck ??= (async () => {
 			const ownership = await window.vomp.invoke("sessions:ownership", file).catch((): SessionOwnership => "unknown");
-			if (this.#disposed) return;
+			if (this.#disposed || this.#sessionFile !== file) return;
 			if (ownership === "unsupported") {
 				this.#set({ ownerUnverified: true });
 				return;
@@ -290,8 +295,9 @@ export class SessionController {
 			// A host adopted meanwhile (renderer reload) means this app is the writer.
 			if (this.#view.host) return;
 			if (ownership === "elsewhere" || ownership === "unknown") this.#follow(file, ownership);
-		})().finally(() => {
+		})().finally(async () => {
 			this.#ownershipCheck = null;
+			if (!this.#disposed && this.#sessionFile !== file && !this.#view.host) await this.checkOwnership();
 		});
 		return this.#ownershipCheck;
 	}
@@ -305,9 +311,9 @@ export class SessionController {
 	 * Continue a followed chat here after main reported its file free. Ownership is checked again
 	 * right before omp starts, and anything but `free` keeps the tab read-only (returns false).
 	 *
-	 * Remaining race: omp has no session ownership lock (only a per-write publish lock), so an omp
-	 * started in a terminal between this check and our omp's first append could write the same file.
-	 * Only an ownership lock in omp itself can close that gap.
+	 * omp owns the final write-time decision through its session-id lease. If another process
+	 * claims the session after this check, omp continues in a sibling file instead of appending
+	 * to the other process's journal.
 	 */
 	async continueHere(): Promise<boolean> {
 		const file = this.#sessionFile;
@@ -366,9 +372,19 @@ export class SessionController {
 	async loadHistory(): Promise<void> {
 		if (!this.#sessionFile) return;
 		try {
-			const text = await window.vomp.invoke("sessions:read", this.#sessionFile);
+			const requested = this.#sessionFile;
+			// Live hosts report their own destination. Saved views follow omp's linked copies.
+			const file = this.#view.host ? requested : await window.vomp.invoke("sessions:resolve", requested);
+			if (this.#disposed || this.#sessionFile !== requested) return;
+			if (file !== requested) {
+				this.#stopFollowing();
+				this.#sessionFile = file;
+				this.#set({ readOnly: false, follow: null, ownerUnverified: false });
+				void this.checkOwnership();
+			}
+			const text = await window.vomp.invoke("sessions:read", file);
 			// A followed tab may already hold newer text from the file's tail.
-			if (!this.#disposed && !this.#tailSynced) this.#set({ history: parseSessionHistory(text) });
+			if (!this.#disposed && this.#sessionFile === file && !this.#tailSynced) this.#set({ history: parseSessionHistory(text) });
 		} catch (error) {
 			if (!this.#disposed) this.#set({ error: error instanceof Error ? error.message : String(error) });
 		}
@@ -433,6 +449,7 @@ export class SessionController {
 			state = await window.vomp.invoke("host:start", {
 				cwd: this.projectPath,
 				resumeFile: this.#sessionFile ?? undefined,
+				restore: this.#restoreNext || undefined,
 				extraArgs: this.#extraArgs.length > 0 ? this.#extraArgs : undefined,
 			});
 		} catch (error) {
@@ -451,6 +468,7 @@ export class SessionController {
 		}
 		// Launch flags (e.g. --from-claude) apply to the first start only; later starts resume the file.
 		this.#extraArgs = [];
+		this.#restoreNext = false;
 		hostId = state.hostId;
 		this.#onHostState(state);
 		for (const later of pending) if (later.hostId === hostId) this.#onHostState(later);
@@ -458,6 +476,8 @@ export class SessionController {
 
 	#onHostState(host: HostState): void {
 		if (this.#disposed) return;
+		const previousStatus = this.#view.host?.programStatus;
+		this.#projectPath = host.cwd;
 		if (host.sessionFile && this.#sessionFile && host.sessionFile !== this.#sessionFile) {
 			this.#set({ inputHistory: [] });
 		}
@@ -477,6 +497,9 @@ export class SessionController {
 		const mode: SessionMode =
 			host.phase === "live" ? "live" : host.phase === "restarting" ? "reconnecting" : this.#guest ? "reconnecting" : "starting";
 		this.#set({ host, mode, error: host.error });
+		if (host.programStatus?.state === "blocked" && previousStatus?.state !== "blocked" && !this.#view.guest?.uiRequest) {
+			this.#emit({ kind: "needsInput" });
+		}
 		const restartFrom = this.#strandedSince?.restartFrom;
 		if (restartFrom != null && host.generation > restartFrom) {
 			// omp restarted as `restart` asked: its editor starts empty. The queue continues once the new room has synced.
@@ -538,7 +561,7 @@ export class SessionController {
 		if (this.#disposed) return;
 		const wasWorking = this.#view.working;
 		const hadRequest = this.#view.guest?.uiRequest?.reqId;
-		const working = snapshot.working;
+		const working = snapshot.working || snapshot.awaitingAsyncWork === true;
 		const appended = snapshot.entries.length > (this.#view.guest?.entries.length ?? 0);
 		const patch: Partial<SessionView> = { guest: snapshot, working, ...(appended ? { displayLeaf: null } : {}) };
 		// A turn seen starting on a synced mirror gets a start time; one already under way when the mirror joined or
@@ -758,6 +781,14 @@ export class SessionController {
 		return this.#guest;
 	}
 
+	/** Explicit crash recovery can resume pending tools and helpers before requesting a model reply. */
+	async restore(): Promise<void> {
+		if (this.#view.mode !== "exited" || !this.#view.host?.restoreAvailable || !this.#sessionFile) return;
+		this.#restoreNext = true;
+		try { await this.ensureLive(); }
+		finally { this.#restoreNext = false; }
+	}
+
 	async restart(): Promise<void> {
 		if (this.#view.mode === "exited" || !this.#view.host) {
 			await this.ensureLive();
@@ -860,9 +891,8 @@ export class SessionController {
 					await window.vomp.invoke("composer:paste", hostId, imagePathsText(item.images.map(image => image.path)));
 					pasted = true;
 				}
-				// Without text, Enter alone submits the images: an empty paste would make omp attach the clipboard.
-				if (item.text) await this.#submit(item.text, "steer");
-				else await window.vomp.invoke("host:write", hostId, "\r");
+				// Empty text submits attached images through the same guarded path, without an empty paste.
+				await this.#submit(item.text, "steer");
 				if (before.room === this.#room) this.recordInput(item.text, timestamp);
 				return before;
 			});

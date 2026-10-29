@@ -13,6 +13,7 @@ import { allControllers, controllerFor, whenHostsAdopted } from "../../state/app
 import { type ChatWork, workInFlight } from "../../state/chatWork";
 import type { SessionController, SessionView } from "../../state/session";
 import { Button, Checkbox, Dialog, DialogContent, PulseDot } from "../../ui";
+import { SessionTitle } from "../../ui/SessionTitle";
 import { chatTitle } from "./chat";
 import { closeCopy, quitCopy, rowCopy } from "./quitCopy";
 
@@ -204,7 +205,7 @@ function WorkingChat({ controller }: { controller: SessionController }) {
 	return (
 		<li className="flex h-9 items-center gap-2.5 px-3">
 			{work ? <PulseDot /> : <span className={known ? "size-2 rounded-full bg-ok" : "size-2 rounded-full bg-warn"} aria-hidden />}
-			<span className="min-w-0 flex-1 truncate text-md text-fg">{chatTitle(controller) ?? t("notify.untitled")}</span>
+			<SessionTitle title={chatTitle(controller) ?? t("notify.untitled")} className="flex-1 text-md text-fg" />
 			<span className="shrink-0 text-sm text-fg-muted">{t(doing.key, { count: doing.count })}</span>
 		</li>
 	);

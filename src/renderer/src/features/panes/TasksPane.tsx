@@ -18,6 +18,8 @@ import { openSettings } from "../../state/navigation";
 import { liveEntries, type SessionController } from "../../state/session";
 import { parseSessionHistory } from "../../state/history";
 import { SubagentRun } from "../../tool-render/tools/task";
+import { sendSlashCommand } from "../session-tools/typed";
+import { reportFailure } from "../session-tools/drive";
 import { TodoBoard } from "../../tool-render/tools/todo";
 import { Markdown } from "../../transcript/Markdown";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
@@ -40,9 +42,11 @@ import {
 	StatusDot,
 	toast,
 } from "../../ui";
-import { listRowMotion, Section } from "./common";
-import { type BackgroundJob, backgroundJobs, commandSummary, foldHelpers, type Helper, helpersOf, latestTodo, ompRunning } from "./derive";
+import { listRowMotion, Section, usePaneVisible } from "./common";
+import { type BackgroundJob, backgroundJobs, commandSummary, foldHelpers, type Helper, helperJobSnapshots, helpersOf, latestTodo, ompRunning } from "./derive";
 import { type HelperTranscriptItem, helperTranscript } from "./helperTranscript";
+import { JobWidget } from "./JobWidget";
+import { type HelperJobsSnapshot, watchHelperJobs } from "./helperJobs";
 
 function MessageHelper({ helper, session }: { helper: Helper; session: SessionController }) {
 	const { t } = useTranslation("panes");
@@ -89,7 +93,7 @@ function MessageHelper({ helper, session }: { helper: Helper; session: SessionCo
 	);
 }
 
-function HelperRow({ helper, session, onTranscript }: { helper: Helper; session: SessionController; onTranscript(helper: Helper): void }) {
+function HelperRow({ helper, jobs, error, session, onTranscript }: { helper: Helper; jobs: readonly BackgroundJob[]; error: string | null; session: SessionController; onTranscript(helper: Helper): void }) {
 	const { t } = useTranslation("panes");
 	const actions = (
 		<>
@@ -111,6 +115,9 @@ function HelperRow({ helper, session, onTranscript }: { helper: Helper; session:
 	return (
 		<motion.li layout="position" {...listRowMotion}>
 			<SubagentRun run={helper} actions={actions} />
+			{helper.widget && <div className="mt-2 px-3"><JobWidget widget={helper.widget} /></div>}
+			{jobs.length > 0 && <div className="mt-2 ml-4 border-l border-border pl-3"><JobList jobs={jobs} /></div>}
+			{error !== null && <p role="status" className="mt-2 px-3 text-xs text-fg-muted" title={error}>{t("tasks.helper.jobsUnavailable")}</p>}
 		</motion.li>
 	);
 }
@@ -122,13 +129,16 @@ function HelperRow({ helper, session, onTranscript }: { helper: Helper; session:
 function HelperList({ helpers, session, onTranscript }: { helpers: readonly Helper[]; session: SessionController; onTranscript(helper: Helper): void }) {
 	const { t } = useTranslation("panes");
 	const [all, setAll] = useState(false);
-	const { shown, earlier } = foldHelpers(helpers, all);
+	const readers = useHelperJobs(helpers, session);
+	const jobs = useMemo(() => new Map([...readers].map(([id, snapshot]) => [id, snapshot.jobs])), [readers]);
+	const ordered = helpers.toSorted((a, b) => (jobs.get(b.id)?.filter(job => job.state === "running").length ?? 0) - (jobs.get(a.id)?.filter(job => job.state === "running").length ?? 0));
+	const { shown, earlier } = foldHelpers(ordered, all, jobs);
 	return (
 		<>
 			<ul className="flex flex-col gap-2">
 				<AnimatePresence initial={false}>
 					{shown.map(helper => (
-						<HelperRow key={helper.id} helper={helper} session={session} onTranscript={onTranscript} />
+						<HelperRow key={helper.id} helper={helper} jobs={jobs.get(helper.id) ?? []} error={readers.get(helper.id)?.error ?? null} session={session} onTranscript={onTranscript} />
 					))}
 				</AnimatePresence>
 			</ul>
@@ -264,6 +274,35 @@ export function TranscriptDialog({ helper, session, onClose }: { helper: Helper;
 	);
 }
 
+/** Read the same omp-owned helper files as the conversation dialog, including helpers whose finished rows are folded. */
+function useHelperJobs(helpers: readonly Helper[], session: SessionController): ReadonlyMap<string, HelperJobsSnapshot> {
+	const [readers, setReaders] = useState<ReadonlyMap<string, HelperJobsSnapshot>>(new Map());
+	const visible = usePaneVisible("tasks");
+	const view = useSessionView(session);
+	const client = session.guestClient();
+	const live = ompRunning(view);
+	// Progress reports change often; a new roster or transcript availability is what changes the readers.
+	const ids = helpers.filter(helper => helper.hasTranscript).map(helper => helper.id).sort().join("\0");
+	useEffect(() => {
+		if (!visible || !client || !ids || !live) return;
+		const stops = ids.split("\0").map(id => watchHelperJobs(client, id, session.projectPath, snapshot => {
+			setReaders(previous => new Map(previous).set(id, snapshot));
+		}));
+		return () => { for (const stop of stops) stop(); };
+	}, [visible, client, ids, live, session]);
+	return live ? readers : new Map([...readers].map(([id, snapshot]) => [id, { ...snapshot, jobs: snapshot.jobs.map(job => job.state === "running" ? { ...job, state: "cancelled" as const } : job) }]));
+}
+
+/** Job controls use the composer's Send now path, so omp can dispatch `/jobs kill` during a model turn. */
+function StopJobs({ session, id }: { session: SessionController; id: string }) {
+	const { t } = useTranslation("panes");
+	const [pending, setPending] = useState(false);
+	return <Button size="sm" variant="ghost" disabled={pending} aria-label={id === "all" ? t("tasks.job.stopAll") : t("tasks.job.stop", { id })} onClick={() => {
+		setPending(true);
+		void sendSlashCommand(session, `/jobs kill ${id}`, { now: true }).catch(reportFailure).finally(() => setPending(false));
+	}}>{pending ? <Spinner /> : <Square weight="fill" className="size-3" aria-hidden />}{id === "all" ? t("tasks.job.stopAll") : t("tasks.job.stopAction")}</Button>;
+}
+
 /** How a settled job reads, with the chat's own job marks (NoticeRow's `StatusGlyph`). */
 const SETTLED_STATUS: Record<Exclude<BackgroundJob["state"], "running">, JobStatus> = { completed: "ok", failed: "failed", cancelled: "stopped" };
 
@@ -280,7 +319,7 @@ function RunningFor({ since }: { since: number }) {
  * One background job, as omp's `/jobs` lists it (status, run time, the command dimmed underneath) but titled by what
  * the model said the command is for. Opens to the full command and the latest output.
  */
-function JobRow({ job }: { job: BackgroundJob }) {
+function JobRow({ job, session }: { job: BackgroundJob; session?: SessionController }) {
 	const { t } = useTranslation("panes");
 	const [open, setOpen] = useState(false);
 	const summary = useMemo(() => commandSummary(job.command) || job.jobId, [job.command, job.jobId]);
@@ -293,11 +332,12 @@ function JobRow({ job }: { job: BackgroundJob }) {
 	const live = job.state === "running" && job.startedAt !== null;
 	return (
 		<motion.li layout="position" {...listRowMotion} className="border-b border-border last:border-b-0">
+			<div className="flex items-start">
 			<button
 				type="button"
 				aria-expanded={open}
 				onClick={() => setOpen(!open)}
-				className="flex w-full items-start gap-2.5 px-3 py-2 text-left outline-none hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+				className="flex min-w-0 flex-1 items-start gap-2.5 px-3 py-2 text-left outline-none hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
 			>
 				<span className="mt-0.5 inline-flex size-4 shrink-0 items-center justify-center">
 					{job.state === "running" ? (
@@ -309,12 +349,14 @@ function JobRow({ job }: { job: BackgroundJob }) {
 				<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 					{job.intent ? (
 						<>
-							<span className="truncate text-sm text-fg">{job.intent}</span>
+							<span className="line-clamp-2 break-words text-sm text-fg" title={job.intent}>{job.intent}</span>
 							<code className="truncate font-mono text-xs text-fg-faint">{summary}</code>
 						</>
 					) : (
 						<code className="truncate font-mono text-xs leading-5 text-fg">{summary}</code>
 					)}
+					{job.cwd && <span className="line-clamp-2 break-all font-mono text-xs text-fg-muted" title={job.cwd}>{job.cwd}</span>}
+					{job.widget && <JobWidget widget={job.widget} headlineOnly />}
 				</span>
 				{(live || settledMeta.length > 0) && (
 					<span className={cn("mt-0.5 shrink-0 text-xs tabular-nums", job.state === "failed" ? "text-err" : "text-fg-faint")}>
@@ -329,8 +371,11 @@ function JobRow({ job }: { job: BackgroundJob }) {
 					aria-hidden
 				/>
 			</button>
+			{session && job.state === "running" && <div className="shrink-0 py-1 pr-1"><StopJobs session={session} id={job.jobId} /></div>}
+			</div>
 			<Expand open={open}>
 				<div className="flex flex-col gap-2 border-t border-border bg-inset px-3 py-2.5">
+					{job.widget && <JobWidget widget={job.widget} />}
 					<SectionLabel as="p">{t("tasks.job.command")}</SectionLabel>
 					<pre className="selectable m-0 max-h-32 overflow-auto whitespace-pre-wrap break-all font-mono text-xs leading-4 text-fg">{job.command}</pre>
 					<SectionLabel as="p">{t("tasks.job.output")}</SectionLabel>
@@ -345,7 +390,7 @@ function JobRow({ job }: { job: BackgroundJob }) {
 }
 
 /** Running jobs, then the five most recent settled ones; the rest wait behind "Show earlier jobs". */
-function JobList({ jobs }: { jobs: readonly BackgroundJob[] }) {
+function JobList({ jobs, session }: { jobs: readonly BackgroundJob[]; session?: SessionController }) {
 	const { t } = useTranslation("panes");
 	const [all, setAll] = useState(false);
 	const running = jobs.filter(job => job.state === "running");
@@ -354,10 +399,11 @@ function JobList({ jobs }: { jobs: readonly BackgroundJob[] }) {
 	const shown = [...running, ...settled.slice(0, settled.length - hidden)];
 	return (
 		<>
+			{session && running.length > 0 && <div className="mb-1 flex justify-end"><StopJobs session={session} id="all" /></div>}
 			<ul className="overflow-hidden rounded-lg border border-border bg-panel">
 				<AnimatePresence initial={false}>
 					{shown.map(job => (
-						<JobRow key={job.jobId} job={job} />
+						<JobRow key={job.jobId} job={job} session={session} />
 					))}
 				</AnimatePresence>
 			</ul>
@@ -388,14 +434,20 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 	const backgroundTools = view?.guest?.backgroundTools;
 	const phases = useMemo(() => latestTodo(shown), [shown]);
 	const running = ompRunning(view);
-	const jobs = useMemo(() => (entries ? backgroundJobs(entries, running, activeTools, backgroundTools) : []), [entries, running, activeTools, backgroundTools]);
+	const jobs = useMemo(() => (entries ? backgroundJobs(entries, running, activeTools, backgroundTools, view?.guest?.header?.cwd ?? session?.projectPath ?? null) : []), [entries, running, activeTools, backgroundTools, view?.guest?.header?.cwd, session?.projectPath]);
 	const agents = view?.guest?.agents;
 	const progress = view?.guest?.progress;
 	const lifecycle = view?.guest?.lifecycle;
+	const snapshots = useMemo(() => helperJobSnapshots(entries ?? [], activeTools, backgroundTools), [entries, activeTools, backgroundTools]);
 	// Keyed on agents/progress/lifecycle, not the whole snapshot, so streaming tokens don't recompute this.
 	const helpers = useMemo(
-		() => helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, running),
-		[agents, progress, lifecycle, running],
+		() => helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, running).map(helper => {
+			const snapshot = snapshots.get(helper.id);
+			if (!snapshot) return helper;
+			const stage = [...(progress?.values() ?? [])].find(payload => payload.progress.id === helper.id)?.progress.stage;
+			return { ...helper, activity: stage ? helper.activity : snapshot.stage || helper.activity, completionPercent: helper.completionPercent ?? snapshot.completionPercent, widget: snapshot.widget };
+		}),
+		[agents, progress, lifecycle, running, snapshots],
 	);
 
 	const hasChecklist = phases !== null && phases.length > 0;
@@ -433,7 +485,7 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 							title={t("tasks.background")}
 							count={runningJobs > 0 && <Badge count={runningJobs} label={t("tasks.runningCount", { count: runningJobs })} />}
 						>
-							<JobList jobs={jobs} />
+							<JobList jobs={jobs} session={view?.mode === "live" && !view.readOnly ? session : undefined} />
 						</Section>
 					</Expand>
 					{transcriptOf && <TranscriptDialog helper={transcriptOf} session={session} onClose={() => setTranscriptOf(null)} />}

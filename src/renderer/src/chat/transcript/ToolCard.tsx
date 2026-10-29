@@ -23,7 +23,8 @@ import { useTranslation } from "react-i18next";
 import { type FriendlySummary, friendlySummary, resolveToolCall, toolContextReference } from "../friendly";
 import { resolveToolRenderer } from "../../tool-render/registry";
 import type { ToolRenderHost, ToolResultLike } from "../../tool-render/types";
-import { replaceTabs, stripAnsi } from "../../tool-render/util";
+import { detailsRecord, isRecord, replaceTabs, stripAnsi } from "../../tool-render/util";
+import { isMcpResult, mcpProgressOf, McpProgressLine } from "../../tool-render/tools/mcp";
 import "../../tool-render/tool-render.css";
 import { cn, Expand, PulseDot, Rise } from "../../ui";
 
@@ -85,6 +86,12 @@ function partialText(partial: unknown): string {
 	return "";
 }
 
+/** A live tool update has the same content/details shape as its eventual result. */
+export function partialToolResult(value: unknown): ToolResultLike | undefined {
+	if (!isRecord(value) || !Array.isArray(value.content)) return undefined;
+	return { content: value.content, details: value.details, isError: value.isError === true };
+}
+
 /**
  * One tool call as a quiet inline row (DESIGN §4.7): icon, friendly summary, a status glyph, and a disclosure
  * that expands to omp's own detailed renderer. Consecutive rows stack without gaps, so a run of calls reads as one list.
@@ -101,13 +108,16 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 		onEngage(engageId, true);
 		return () => onEngage(engageId, false);
 	}, [onEngage, engageId, engaged]);
-	const call = resolveToolCall({ name: props.name, args: props.args, result: props.result, running: props.running, intent: props.intent });
+	const liveResult = props.result ?? (props.running ? partialToolResult(props.partialResult) : undefined);
+	const call = resolveToolCall({ name: props.name, args: props.args, result: liveResult, running: props.running, intent: props.intent });
 	const summary = props.summary ?? friendlySummary(call);
 	const reference = toolContextReference(call);
-	const renderer = resolveToolRenderer(call.name);
+	const renderer = resolveToolRenderer(call.name, call.result?.details);
 	const ToolIcon = ICONS[call.name] ?? Wrench;
 	const running = summary.status === "running";
-	const tail = running ? stripAnsi(replaceTabs(partialText(props.partialResult))) : "";
+	const details = detailsRecord(call.result);
+	const progress = running && isMcpResult(details) ? mcpProgressOf(details?.progress) : null;
+	const tail = running && !progress ? stripAnsi(replaceTabs(partialText(props.partialResult))) : "";
 
 	return (
 		<Rise
@@ -161,6 +171,7 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 					aria-hidden
 				/>
 			</button>
+			{progress && !open && <div className="pl-6.5"><McpProgressLine value={progress} /></div>}
 			<Expand open={tail.length > 0 && !open} className="pb-1.5 pl-6.5">
 				<pre className="selectable max-h-24 overflow-hidden rounded-md bg-inset px-3 py-2 font-mono text-code whitespace-pre-wrap text-fg-muted">
 					{tail.length > 1200 ? `…${tail.slice(-1200)}` : tail}

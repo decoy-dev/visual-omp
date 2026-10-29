@@ -60,3 +60,11 @@ describe("chatStatus", () => {
 		expect(chatStatus(view({}, { mode: "history", guest: null }))).toBe("idle");
 	});
 });
+
+it("prioritizes OSC blocks and errors, without retaining them after omp exits", () => {
+	const host = { programStatus: { state: "blocked", kind: "permission" } } as SessionView["host"];
+	expect(chatStatus(view({}, { host, working: true }))).toBe("needsInput");
+	const failed = { programStatus: { state: "error", msg: "Provider failed" } } as SessionView["host"];
+	expect(chatStatus(view({}, { host: failed, working: true }))).toBe("error");
+	expect(chatStatus(view({}, { host: failed, mode: "exited" }))).toBe("idle");
+});

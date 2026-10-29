@@ -8,6 +8,7 @@
  * the rest as a possible cause.
  */
 import { execFile } from "node:child_process";
+import { resolveExecutable } from "../services/executable";
 
 /** Thrown in place of the raw spawn error when Windows refused to start omp. */
 export class OmpRefusedError extends Error {}
@@ -36,10 +37,12 @@ export function smartAppControlOn(regOutput: string): boolean {
 	return new RegExp(`${SAC_VALUE}\\s+REG_DWORD\\s+0x0*1\\b`, "i").test(regOutput);
 }
 
-function readSmartAppControl(): Promise<boolean> {
+async function readSmartAppControl(): Promise<boolean> {
+	const executable = await resolveExecutable("reg.exe");
+	if (!executable) return false;
 	const { promise, resolve } = Promise.withResolvers<boolean>();
 	try {
-		execFile("reg", ["query", SAC_KEY, "/v", SAC_VALUE], { timeout: 5000, windowsHide: true }, (error, stdout) =>
+		execFile(executable, ["query", SAC_KEY, "/v", SAC_VALUE], { timeout: 5000, windowsHide: true }, (error, stdout) =>
 			resolve(!error && smartAppControlOn(stdout)),
 		);
 	} catch {

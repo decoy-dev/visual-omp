@@ -48,6 +48,13 @@ export interface SessionSummary {
 	/** Epoch ms (file mtime). */
 	updatedAt: number;
 	parentSession: string | null;
+	/** omp's predecessor id, present only for a continuation rather than a deliberate fork. */
+	continuationOf?: string | null;
+	/** Superseded copies folded into this conversation. */
+	previousSessionFiles?: string[];
+	previousSessionIds?: string[];
+	/** Stored by omp in session-pins.json. */
+	pinned?: boolean;
 	/** First user message text, trimmed, for previews. */
 	preview: string | null;
 	/** Hidden from the main list; shown under "Archived". */
@@ -91,6 +98,19 @@ export interface TuiFocus {
 
 export type HostPhase = "starting" | "connecting" | "live" | "restarting" | "exited";
 
+export interface ProgramStatus {
+	state: "idle" | "working" | "blocked" | "done" | "error";
+	kind?: "permission" | "question";
+	msg?: string;
+}
+
+export interface HostNotice {
+	id: string;
+	kind: "startup" | "recap";
+	text: string;
+	timestamp: number;
+}
+
 export interface HostState {
 	hostId: string;
 	cwd: string;
@@ -107,6 +127,12 @@ export interface HostState {
 	exitReason?: string | null;
 	/** A startup diagnostic reported that the requested resume file does not exist. */
 	resumeFileMissing?: boolean;
+	/** A nonzero exit without this launch's durable session_exit marker. */
+	restoreAvailable?: boolean;
+	/** omp's OSC 7501 root record; null when disabled or cleared. */
+	programStatus?: ProgramStatus | null;
+	/** Startup warnings and journaled idle recaps, outside model context. */
+	notices?: readonly HostNotice[];
 	error: string | null;
 	/** null when the TUI debug socket is unavailable. */
 	tui: TuiFocus | null;
@@ -119,6 +145,8 @@ export interface HostStartOptions {
 	cwd: string;
 	/** Resume this session file instead of starting fresh. */
 	resumeFile?: string;
+	/** Continue interrupted work using omp --restore rather than an ordinary resume. */
+	restore?: boolean;
 	/** Extra omp launch flags (e.g. ["--plan-yolo"]). */
 	extraArgs?: string[];
 	cols?: number;
@@ -163,7 +191,6 @@ export interface AppPreferences {
 	ompPath: string | null;
 	tourCompleted: boolean;
 	pinnedProjects: string[];
-	pinnedSessions: string[];
 	archivedSessions: string[];
 	/** Extra project folders the user opened that have no sessions yet. */
 	extraProjects: string[];
@@ -212,11 +239,18 @@ export interface IpcInvokeMap {
 	/** The newest `limit` saved chats across every project, archived ones left out (one walk of the sessions folder). */
 	"sessions:recent": { args: [limit: number]; result: SessionSummary[] };
 	"sessions:read": { args: [file: string]; result: string };
+	/** Newest linked copy that contains this file's newest conversation turn. */
+	"sessions:resolve": { args: [file: string]; result: string };
+	"sessions:summary": { args: [file: string]; result: SessionSummary | null };
+	"sessions:pin": { args: [file: string]; result: boolean };
+	"sessions:rename": { args: [file: string, title: string]; result: { title: string; file: string; id: string; movedFrom: string | null } };
+	/** Copy a session through an isolated RPC process without switching its live host. */
+	"sessions:fork": { args: [file: string, folder: string, entryId?: string]; result: { file: string; id: string } };
 	/** Up to 100 prompts from omp's history database, strictly scoped by session UUID. */
 	"sessions:promptHistory": { args: [sessionId: string]; result: PromptHistoryItem[] };
 	/** Session file for a session id (new sessions get their file after the first message). */
 	"sessions:find": { args: [sessionId: string]; result: string | null };
-	/** Move a saved session (and its artifacts folder) to the OS trash. */
+	/** Move all retained continuation files and artifacts individually to the recoverable system Trash. */
 	"sessions:trash": { args: [file: string]; result: void };
 	/** Whether another omp process has this session file open (it then opens read-only). Checked fresh each call. */
 	"sessions:ownership": { args: [file: string]; result: SessionOwnership };
@@ -229,6 +263,8 @@ export interface IpcInvokeMap {
 	"host:start": { args: [options: HostStartOptions]; result: HostState };
 	"host:stop": { args: [hostId: string]; result: void };
 	"host:write": { args: [hostId: string, data: string]; result: void };
+	/** Application paste through the host's closing-aware input queue, without submitting. */
+	"host:paste": { args: [hostId: string, text: string]; result: void };
 	/** Type `text` into the TUI and submit it. `followUp` queues it until omp yields instead of steering. */
 	"host:submit": { args: [hostId: string, text: string, mode?: "steer" | "followUp"]; result: void };
 	/** Press a key sequence in the TUI through omp's input pipeline (e.g. "escape", "down down enter"). */

@@ -1,65 +1,14 @@
 import { posix, win32 } from "node:path";
 import { z } from "zod";
 import type { CliResult, Platform } from "@shared/ipc";
-import type { AppInstallMethod, AppUpdateStatus, OmpUpdateChannel, ReleaseAsset } from "@shared/contracts/updates";
-
-interface Semver {
-	major: number;
-	minor: number;
-	patch: number;
-	prerelease: string[];
-}
-
-const SEMVER = /^v?(\d+)\.(\d+)\.(\d+)(?:-([0-9A-Za-z.-]+))?(?:\+[0-9A-Za-z.-]+)?$/;
-
-/** Parse `1.2.3`, `v1.2.3-beta.1+build`; null when not semver. */
-export function parseSemver(version: string): Semver | null {
-	const match = SEMVER.exec(version.trim());
-	if (!match) return null;
-	return {
-		major: Number(match[1]),
-		minor: Number(match[2]),
-		patch: Number(match[3]),
-		prerelease: match[4] ? match[4].split(".") : [],
-	};
-}
-
-function compareIdentifiers(a: string, b: string): number {
-	const numA = /^\d+$/.test(a);
-	const numB = /^\d+$/.test(b);
-	if (numA && numB) return Number(a) - Number(b);
-	if (numA) return -1;
-	if (numB) return 1;
-	return a < b ? -1 : a > b ? 1 : 0;
-}
-
-/**
- * Semver precedence (build metadata ignored, prereleases sort before their release).
- * Negative when `a < b`, 0 when equal, positive when `a > b`. Unparseable versions sort lowest.
- */
-export function compareSemver(a: string, b: string): number {
-	const pa = parseSemver(a);
-	const pb = parseSemver(b);
-	if (!pa || !pb) return pa ? 1 : pb ? -1 : 0;
-	const core = pa.major - pb.major || pa.minor - pb.minor || pa.patch - pb.patch;
-	if (core !== 0) return core;
-	if (pa.prerelease.length === 0 || pb.prerelease.length === 0) return pb.prerelease.length - pa.prerelease.length;
-	const length = Math.max(pa.prerelease.length, pb.prerelease.length);
-	for (let i = 0; i < length; i++) {
-		const idA = pa.prerelease[i];
-		const idB = pb.prerelease[i];
-		if (idA === undefined) return -1;
-		if (idB === undefined) return 1;
-		const diff = compareIdentifiers(idA, idB);
-		if (diff !== 0) return diff;
-	}
-	return 0;
-}
+import type { AppInstallMethod, AppReleaseNotes, AppUpdateStatus, OmpUpdateChannel, ReleaseAsset } from "@shared/contracts/updates";
+import { compareSemver, parseSemver } from "@shared/semver";
 
 const GitHubAsset = z.object({
 	name: z.string(),
 	browser_download_url: z.string(),
 	size: z.number(),
+	digest: z.string().nullable().optional(),
 });
 
 export const GitHubRelease = z.object({
@@ -76,6 +25,23 @@ export type GitHubRelease = z.infer<typeof GitHubRelease>;
 
 export const GitHubReleaseList = z.array(GitHubRelease);
 
+export const RELEASES_PAGE_SIZE = 30;
+
+/**
+ * GitHub orders releases by publication history, not semantic version. Read every page so a
+ * recently published maintenance release cannot hide intermediate versions on a later page.
+ */
+export async function fetchReleaseHistory(
+	fetchPage: (page: number) => Promise<GitHubRelease[]>,
+): Promise<GitHubRelease[]> {
+	const releases: GitHubRelease[] = [];
+	for (let page = 1; ; page++) {
+		const batch = await fetchPage(page);
+		releases.push(...batch);
+		if (batch.length < RELEASES_PAGE_SIZE) return releases;
+	}
+}
+
 /**
  * The newest non-draft release with a semver tag. Prereleases count only when the running
  * version is itself a prerelease (testers stay on the prerelease track, everyone else does not).
@@ -90,8 +56,30 @@ export function selectLatestRelease(releases: GitHubRelease[], currentVersion: s
 	return best;
 }
 
+/** Notes from published versions, using the update check's existing prerelease track. */
+export function toReleaseNotes(releases: GitHubRelease[], currentVersion: string): AppReleaseNotes[] {
+	const includePrereleases = (parseSemver(currentVersion)?.prerelease.length ?? 0) > 0;
+	return releases
+		.filter(release => !release.draft && (!release.prerelease || includePrereleases) && parseSemver(release.tag_name))
+		.map(release => ({
+			version: release.tag_name.replace(/^v/, ""),
+			body: release.body ?? "",
+			url: release.html_url,
+			publishedAt: release.published_at ? Date.parse(release.published_at) : null,
+		}));
+}
+
 export function toAssets(release: GitHubRelease): ReleaseAsset[] {
-	return release.assets.map(asset => ({ name: asset.name, url: asset.browser_download_url, size: asset.size }));
+	return release.assets.map(asset => ({ name: asset.name, url: asset.browser_download_url, size: asset.size, ...(asset.digest !== undefined ? { digest: asset.digest } : {}) }));
+}
+
+/** Missing digests remain compatible with older GitHub assets; supplied digests fail closed. */
+export function verifyInstallerDigest(actualSha256: string, expected: string | null | undefined): void {
+	if (expected == null) return;
+	if (!/^sha256:[a-fA-F0-9]{64}$/.test(expected)) throw new Error("The release supplied an unsupported installer checksum.");
+	if (actualSha256.toLowerCase() !== expected.slice("sha256:".length).toLowerCase()) {
+		throw new Error("The installer checksum did not match the release. Download the installer again.");
+	}
 }
 
 /** The GitHub repository that publishes visual-omp releases. */
@@ -177,7 +165,7 @@ export async function fetchInstaller(
 	throw new Error("The download redirected too many times.");
 }
 
-const ReleaseAssetSchema = z.object({ name: z.string(), url: z.string(), size: z.number() });
+const ReleaseAssetSchema = z.object({ name: z.string(), url: z.string(), size: z.number(), digest: z.string().nullable().optional() });
 export const AppUpdateStatusSchema = z.object({
 	currentVersion: z.string(),
 	latestVersion: z.string().nullable(),
@@ -185,6 +173,12 @@ export const AppUpdateStatusSchema = z.object({
 	tag: z.string().nullable(),
 	releaseName: z.string().nullable(),
 	notes: z.string().nullable(),
+	releases: z.array(z.object({
+		version: z.string(),
+		body: z.string(),
+		url: z.string().nullable(),
+		publishedAt: z.number().nullable(),
+	})).default([]),
 	releaseUrl: z.string().nullable(),
 	publishedAt: z.number().nullable(),
 	assets: z.array(ReleaseAssetSchema),

@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionController, SessionView } from "../state/session";
 import "../i18n";
 
-const actions = vi.hoisted(() => ({ clicks: [] as (() => void)[], newChat: vi.fn(), ensureLive: vi.fn() }));
+const actions = vi.hoisted(() => ({ clicks: [] as (() => void)[], newChat: vi.fn(), ensureLive: vi.fn(), restore: vi.fn() }));
 vi.mock("../registry/slots", () => ({ chatSlots: { use: () => [] } }));
 vi.mock("../shell/hooks", () => ({ elapsed: vi.fn(), useNow: vi.fn(), useSessionView: vi.fn() }));
 vi.mock("../state/app", () => ({ useApp: { getState: () => ({ newChat: actions.newChat }) } }));
@@ -25,11 +25,11 @@ vi.mock("./transcript/Transcript", () => ({ Transcript: () => null }));
 
 import { StateBanner } from "./ChatView";
 
-beforeEach(() => { actions.clicks.length = 0; actions.newChat.mockClear(); actions.ensureLive.mockClear(); });
+beforeEach(() => { actions.clicks.length = 0; actions.newChat.mockClear(); actions.ensureLive.mockClear(); actions.restore.mockClear(); });
 
-function render(reason: string | null, missing = false, error: string | null = null): string {
-	const session = { projectPath: "/chosen/folder", ensureLive: actions.ensureLive } as unknown as SessionController;
-	const view = { mode: "exited", readOnly: false, error, host: { exitCode: 1, exitReason: reason, resumeFileMissing: missing } } as SessionView;
+function render(reason: string | null, missing = false, error: string | null = null, restore = false): string {
+	const session = { projectPath: "/chosen/folder", ensureLive: actions.ensureLive, restore: actions.restore } as unknown as SessionController;
+	const view = { mode: "exited", readOnly: false, error, host: { exitCode: 1, exitReason: reason, resumeFileMissing: missing, restoreAvailable: restore } } as SessionView;
 	return renderToStaticMarkup(createElement(StateBanner, { session, view }));
 }
 
@@ -57,4 +57,11 @@ describe("startup exit banner", () => {
 	it("keeps a launch error when no terminal reason was reported", () => {
 		expect(render(null, false, "Permission denied")).toContain("Permission denied");
 	});
+});
+
+it("offers explicit crash recovery without silently choosing it for an ordinary restart", () => {
+	expect(render(null, false, null, true)).toContain("Continue where omp stopped");
+	actions.clicks[0]();
+	expect(actions.restore).toHaveBeenCalledOnce();
+	expect(actions.ensureLive).not.toHaveBeenCalled();
 });

@@ -77,6 +77,9 @@ describe("textRefs", () => {
 	});
 
 	it("refuses URL-like and colon words in prose", () => {
+		expect(refs("Written to out://report.md and OUT://progress/report.md.")).toEqual([]);
+		expect(fileRefOf("out://report.md", true)).toBeNull();
+		expect(refs("out://progress?file=report.md#src/app.ts")).toEqual([]);
 		expect(refs("Note:CONTEXT.md mailto:a@b.co http://x.com/a.md")).toEqual([]);
 	});
 });

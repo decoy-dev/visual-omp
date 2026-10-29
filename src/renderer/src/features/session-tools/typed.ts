@@ -151,7 +151,12 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 			const before = await readScreen(session);
 			const anchor = displayedEntries(session.getSnapshot()).at(-1)?.id ?? null;
 			const parsed = parseSlash(line);
-			const sideQuestion = parsed?.name === "btw";
+			// Namespaced file aliases keep their complete token; parseSlash also supports builtin colon syntax.
+			const invocation = line.trim().slice(1).split(" ", 1)[0] ?? "";
+			const fileSide = parsed && parsed.name !== "btw" && session.hostId
+				? await window.vomp.invoke("composer:isSideCommand", session.hostId, invocation)
+				: false;
+			const sideQuestion = parsed?.name === "btw" || fileSide;
 			const timestamp = Date.now();
 			const submittedView = session.getSnapshot();
 			const submittedGuest = session.guestClient();
@@ -168,7 +173,7 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 			// sheet to the reader, and check visibility after submission in case they switched away.
 			if (sideQuestion) openSheet(session, false);
 			// An ephemeral answer may pause while streaming, so a quiet screen is not its completion.
-			return { watching: sideQuestion && parsed.args ? Promise.resolve() : watch(session, line, before, anchor) };
+			return { watching: sideQuestion && (fileSide || parsed?.args) ? Promise.resolve() : watch(session, line, before, anchor) };
 		});
 	typing.set(session, typed);
 	return typed;

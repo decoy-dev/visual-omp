@@ -1,6 +1,7 @@
 import { isMap, parseDocument, parse as parseYaml } from "yaml";
 import { z } from "zod";
 import type { FolderProblem, InstructionsProvider, ProjectNameProblem, RuleDraft } from "@shared/contracts/project";
+import { extraInstructionFilenameProblem } from "@shared/instructionFiles";
 
 const INVALID_NAME_CHARS = /[/\\:*?"<>|\u0000-\u001f\u007f]/;
 const WINDOWS_DEVICE_NAME = /^(con|prn|aux|nul|com[0-9¹²³]|lpt[0-9¹²³])(\..*)?$/i;
@@ -30,7 +31,7 @@ export function folderProblem(error: unknown): FolderProblem {
 export interface InstructionCandidate {
 	provider: InstructionsProvider;
 	relPath: string;
-	kind: "context" | "sticky";
+	kind: "context" | "sticky" | "extra";
 }
 
 /**
@@ -49,6 +50,19 @@ export const INSTRUCTION_CANDIDATES: readonly InstructionCandidate[] = [
 	{ provider: "claude-md", relPath: "CLAUDE.md", kind: "context" },
 	{ provider: "native", relPath: ".omp/RULES.md", kind: "sticky" },
 ];
+
+/** Extra filenames are additive, root-local files and cannot escape the project directory. */
+export function instructionCandidates(extra: unknown): InstructionCandidate[] {
+	const names = z.array(z.string()).parse(extra);
+	const files = [...INSTRUCTION_CANDIDATES];
+	for (const entry of new Set(names.map(name => name.trim()))) {
+		if (extraInstructionFilenameProblem(entry)) {
+			throw new Error(`Invalid extra instruction filename: ${entry}`);
+		}
+		files.push({ provider: "native", relPath: entry, kind: "extra" });
+	}
+	return files;
+}
 
 /** Suggested file for new project instructions: read by omp and most other agent tools. */
 export const DEFAULT_INSTRUCTIONS_REL_PATH = "AGENTS.md";

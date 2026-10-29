@@ -1,3 +1,4 @@
+import { compareSemver } from "@shared/semver";
 import { describe, expect, it } from "vitest";
 import type { ReleaseAsset } from "@shared/contracts/updates";
 import {
@@ -5,7 +6,6 @@ import {
 	appBundlePath,
 	brewCandidates,
 	caskroomPath,
-	compareSemver,
 	detectInstallMethod,
 	fetchInstaller,
 	installerAsset,

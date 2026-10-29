@@ -380,3 +380,61 @@ describe("live layout entries", () => {
 		expect(liveLayoutEntries(before, streamed([tool("t1", "read")], 1), null, true).map(entry => entry.id)).toEqual([...before.map(entry => entry.id), STREAM_ENTRY]);
 	});
 });
+
+describe("interim reply layout", () => {
+	it("keeps out writes out of step counts and ends the groups on both sides", () => {
+		const entries = [
+			user("go"),
+			assistant([tool("before", "read"), tool("out", "write", { path: "out://progress", content: "A report." }), tool("after", "read")], 1000, "reply"),
+			result("out", "write"),
+		];
+		const layout = transcriptLayout(entries, { live: true, group: true, context }).entries.get("reply");
+		expect([...(layout?.groups.values() ?? [])].map(group => group.calls)).toEqual([1, 1]);
+		expect(layout?.hidden.has(1)).toBe(false);
+	});
+
+	it("keeps bash replies outside groups for both saved results and foreground frames", () => {
+		const entries = [user("go"), assistant([tool("before", "read"), tool("bash", "bash"), tool("after", "read")], 1000, "reply")];
+		const active = new Map([["bash", { toolCallId: "bash", toolName: "bash", args: {}, partialResult: { details: { replies: ["Report."] } }, startedAt: 1000 }]]);
+		for (const [saved, frames] of [[true, undefined], [false, active]] as const) {
+			const layout = transcriptLayout(saved ? [...entries, result("bash", "bash", { replies: ["Report."] })] : entries, { live: true, group: true, context, active: frames }).entries.get("reply");
+			expect([...(layout?.groups.values() ?? [])].map(group => group.key)).toEqual(["before", "after"]);
+			expect(layout?.hidden.has(1)).toBe(false);
+		}
+	});
+});
+
+it("waits for a streamed write destination without hiding a completed file named out", () => {
+	const stream = assistant([tool("partial", "write", { path: "out:/" })], 1000, STREAM_ENTRY);
+	expect(transcriptLayout([stream], { live: true, group: true, context }).entries.size).toBe(0);
+	const saved = assistant([tool("file", "write", { path: "out", content: "File contents." })], 1000, "saved");
+	expect(transcriptLayout([saved], { live: false, group: true, context }).entries.get("saved")?.groups.get(0)?.calls).toBe(1);
+});
+
+describe("interim reply file summaries", () => {
+	it.each(["path", "file_path"])("omits a completed out-only turn using %s", destination => {
+		const entries = [
+			user("report"),
+			assistant([tool("out", "write", { [destination]: "out://report", content: "The check passed." })], 1000, "reply"),
+			result("out", "write"),
+			assistant([text("Continuing.")], 2000, "last"),
+		];
+		expect(transcriptLayout(entries, { live: false, group: true, context }).summaries.size).toBe(0);
+	});
+
+	it.each(["path", "file_path"])("lists only an ordinary file in a completed mixed turn using %s", destination => {
+		const entries = [
+			user("write and report"),
+			assistant([
+				tool("file", "write", { path: "report.md", content: "Saved report." }),
+				tool("out", "write", { [destination]: "out://report", content: "The check passed." }),
+			], 1000, "reply"),
+			result("file", "write"),
+			result("out", "write"),
+			assistant([text("Continuing.")], 2000, "last"),
+		];
+		const { summaries } = transcriptLayout(entries, { live: false, group: true, context });
+		expect([...summaries.keys()]).toEqual(["last"]);
+		expect(summaries.get("last")?.files).toEqual([{ path: "/repo/report.md", action: "written", added: null, removed: null }]);
+	});
+});

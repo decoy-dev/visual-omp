@@ -4,9 +4,10 @@
  * Unsaved edits go through the app's leave guard (`useLeaveGuard`), including switching files or tabs.
  */
 import type { InstructionFile, ProjectInstructions, ProjectRule, RuleDraft } from "@shared/contracts/project";
+import { extraInstructionFilenameProblem } from "@shared/instructionFiles";
 import { PencilSimple, Plus, Trash } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PageProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
@@ -28,6 +29,9 @@ import {
 	Segmented,
 	Select,
 	SelectItem,
+	SelectGroup,
+	SelectLabel,
+	SelectSeparator,
 	Skeleton,
 	spring,
 	Switch,
@@ -90,6 +94,9 @@ function InstructionsEditor({ projectPath }: { projectPath: string }): ReactNode
 	const [saved, setSaved] = useState("");
 	const [mode, setMode] = useState<Mode>("write");
 	const [saving, setSaving] = useState(false);
+	const [extraName, setExtraName] = useState("");
+	const [addingExtra, setAddingExtra] = useState(false);
+	const extraNameProblem = extraName ? extraInstructionFilenameProblem(extraName) : null;
 
 	useEffect(() => {
 		let live = true;
@@ -126,6 +133,7 @@ function InstructionsEditor({ projectPath }: { projectPath: string }): ReactNode
 	const activeFile = data.files.find(entry => entry.relPath === data.activeRelPath) ?? null;
 	const contextFiles = data.files.filter(entry => entry.kind === "context");
 	const sticky = data.files.filter(entry => entry.kind === "sticky");
+	const extras = data.files.filter(entry => entry.kind === "extra");
 
 	// Opening another file replaces the text, so unsaved edits are confirmed first.
 	const choose = (next: string) =>
@@ -150,12 +158,34 @@ function InstructionsEditor({ projectPath }: { projectPath: string }): ReactNode
 		}
 	};
 
+	const addExtra = async (event: FormEvent) => {
+		event.preventDefault();
+		const name = extraName.trim();
+		if (!name || extraInstructionFilenameProblem(name)) return;
+		setAddingExtra(true);
+		try {
+			const result = await whenLeaving(async () => {
+				await window.vomp.invoke("config:set", "contextFiles.extra", [...new Set([...extras.map(entry => entry.relPath), name])], "project", projectPath);
+				const next = await window.vomp.invoke("project:instructions", projectPath);
+				setData(next);
+				const entry = next.files.find(candidate => candidate.relPath === name);
+				setRelPath(name);
+				setText(entry?.content ?? "");
+				setSaved(entry?.content ?? "");
+				setExtraName("");
+			});
+			if (result.left) await result.value;
+		} catch (failure) {
+			toast({ tone: "err", message: t("instructions.extraFailed"), description: errorText(failure) });
+		} finally { setAddingExtra(false); }
+	};
+
 	const option = (entry: InstructionFile) => (
 		<SelectItem key={entry.relPath} value={entry.relPath} hint={entry.active ? t("instructions.inUse") : entry.exists ? undefined : t("instructions.new")}>
 			{entry.relPath}
 		</SelectItem>
 	);
-	const notice = file?.kind === "sticky" ? "stickyNote" : activeFile && activeFile.relPath !== relPath ? "shadowed" : "explainer";
+	const notice = file?.kind === "extra" ? "extraNote" : file?.kind === "sticky" ? "stickyNote" : activeFile && activeFile.relPath !== relPath ? "shadowed" : "explainer";
 
 	return (
 		<div className="flex flex-col gap-3">
@@ -163,6 +193,7 @@ function InstructionsEditor({ projectPath }: { projectPath: string }): ReactNode
 				<Select value={relPath} onValueChange={choose} aria-label={t("instructions.file")} className="w-64 max-w-full">
 					{contextFiles.map(option)}
 					{sticky.map(option)}
+					{extras.length > 0 && <SelectGroup><SelectSeparator /><SelectLabel>{t("instructions.extraFiles")}</SelectLabel>{extras.map(option)}</SelectGroup>}
 				</Select>
 				{file?.exists && <span className="text-sm text-fg-faint">{formatBytes(new TextEncoder().encode(saved).length)}</span>}
 				<Segmented<Mode>
@@ -182,6 +213,12 @@ function InstructionsEditor({ projectPath }: { projectPath: string }): ReactNode
 					{notice === "shadowed" ? t("instructions.shadowed", { active: activeFile?.relPath ?? "" }) : t(`instructions.${notice}`)}
 				</Notice>
 			</PresenceSwap>
+
+			<form onSubmit={event => void addExtra(event)} className="flex flex-wrap items-end gap-2">
+				<Input className="min-w-0 flex-1" size="sm" label={t("instructions.extraName")} placeholder="AGENTS.local.md" spellCheck={false} value={extraName} onChange={event => setExtraName(event.currentTarget.value)} error={extraNameProblem ? t(`instructions.extraNameInvalid.${extraNameProblem}`) : undefined} />
+				<Button type="submit" size="sm" icon={<Plus />} disabled={!extraName.trim() || Boolean(extraNameProblem)} loading={addingExtra}>{t("instructions.addExtra")}</Button>
+			</form>
+			<p className="text-sm text-fg-muted">{t("instructions.extraHelp")}</p>
 
 			<PresenceSwap swapKey={mode} className="flex flex-col">
 				{mode === "write" ? (

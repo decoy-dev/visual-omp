@@ -7,10 +7,6 @@ import type { SessionController } from "../../state/session";
 import type * as Ui from "../../ui";
 import { QuestionCard } from "./QuestionCard";
 
-const installed = vi.hoisted(() => ({ version: null as string | null }));
-vi.mock("../../state/app", () => ({
-	useApp: (selector: (state: { omp: { version: string | null } }) => unknown) => selector({ omp: installed }),
-}));
 
 interface TestButton {
 	label: ReactNode;
@@ -44,9 +40,8 @@ beforeEach(() => {
 	controls.buttons.length = 0;
 	controls.focused = null;
 	controls.answer.mockClear();
-	installed.version = null;
 });
-const session = { answer: controls.answer } as unknown as SessionController;
+const session = { answer: controls.answer, getSnapshot: () => ({ strandedImages: false }) } as unknown as SessionController;
 const render = (options: Extract<CollabUiRequest, { kind: "select" }>["options"]) => renderToStaticMarkup(createElement(QuestionCard, {
 	session,
 	request: { reqId: 7, kind: "select", title: "Read /tmp/project/secret.txt?\nFolder: /tmp/project", options, initialIndex: 0 },
@@ -90,11 +85,10 @@ describe("tool approval card", () => {
 		expect(render(["Always Approve File", "Deny"])).not.toContain("Permission needed");
 	});
 
-	it.each(["18.4.4", "18.10.9", "18.11.0-beta.1", "18.11.0", "18.13.3", "19.0.0", null])("shows the message-denial note only on omp 18.11+ (%s)", version => {
-		installed.version = version;
+	it("always explains that a new message denies the request", () => {
 		const html = render(["Approve", "Deny"]);
-		const expected = version !== null && ["18.11.0", "18.13.3", "19.0.0"].includes(version);
-		expect(html.includes("Sending a message now denies this request.")).toBe(expected);
+		expect(html).toContain("Sending a message now denies this request.");
+		expect(html).toContain("Deny and say why");
 		expect(render(["One", "Two"])).not.toContain("Sending a message now denies this request.");
 	});
 });

@@ -18,8 +18,8 @@ const ABBREVIATION = /^(?:[A-Za-z]\.)+[A-Za-z]$/;
 const CODE_REFUSED = /[<>"|?*$;={}`&\n\r\t]|\s{2}|^\s|\s$/;
 const LETTER = /\p{L}/u;
 const ALNUM = /[\p{L}\p{N}]/u;
-/** Runs of characters a path in prose can hold; spaces and other punctuation end a run. */
-const TEXT_RUN = /[\p{L}\p{N}_.@+~/\\:…-]+/gu;
+/** Runs a path in prose can hold. Keep out URLs whole so their query and fragment text cannot become file links. */
+const TEXT_RUN = /out:\/\/[^\s"'`<>)\]]*|[\p{L}\p{N}_.@+~/\\:…-]+/giu;
 const MAX_LENGTH = 1024;
 
 /**

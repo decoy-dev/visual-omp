@@ -46,7 +46,6 @@ export interface SidebarInput {
 	sessionsByProject: Readonly<Record<string, readonly SessionSummary[]>>;
 	tabs: readonly OpenChatRef[];
 	pinnedProjects: readonly string[];
-	pinnedSessions: readonly string[];
 	/** Projects whose chats are showing. */
 	expanded: readonly string[];
 	/** Projects whose whole chat list is showing ("Show N more chats" was used). */
@@ -76,7 +75,6 @@ export function matchesSession(session: SessionSummary, query: string): boolean 
 export function sidebarGroups(input: SidebarInput): SidebarGroup[] {
 	const query = input.query.trim().toLowerCase();
 	const filtering = query.length > 0;
-	const pins = new Set(input.pinnedSessions);
 	const tabByFile = new Map(input.tabs.flatMap(tab => (tab.sessionFile ? [[tab.sessionFile, tab.id] as const] : [])));
 	const listedPaths = new Set(input.projects.map(project => project.path));
 	const removed = [...new Set(input.tabs.map(tab => tab.projectPath))]
@@ -86,14 +84,17 @@ export function sidebarGroups(input: SidebarInput): SidebarGroup[] {
 	for (const project of [...sortProjects(input.projects, input.pinnedProjects), ...removed]) {
 		const isRemoved = !listedPaths.has(project.path);
 		const listed = input.sessionsByProject[project.path] ?? [];
-		const files = new Set(listed.map(session => session.file));
+		const files = new Set(listed.flatMap(session => [session.file, ...(session.previousSessionFiles ?? [])]));
 		const unlisted: SidebarChat[] = input.tabs
 			.filter(tab => tab.projectPath === project.path && !(tab.sessionFile && files.has(tab.sessionFile)))
 			.map(tab => ({ kind: "open", key: `open:${tab.id}`, tabId: tab.id }));
 		const saved: SidebarChat[] = listed
 			.filter(session => !session.archived)
-			.sort((a, b) => Number(pins.has(b.id)) - Number(pins.has(a.id)) || b.updatedAt - a.updatedAt)
-			.map(session => ({ kind: "session", key: session.file, session, tabId: tabByFile.get(session.file) ?? null }));
+			.sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false) || b.updatedAt - a.updatedAt)
+			.map(session => ({
+				kind: "session", key: session.file, session,
+				tabId: [session.file, ...(session.previousSessionFiles ?? [])].map(file => tabByFile.get(file)).find(Boolean) ?? null,
+			}));
 		let chats = [...unlisted, ...saved];
 		if (isRemoved) chats = chats.filter(chat => chat.tabId !== null);
 		const total = chats.length;
@@ -126,7 +127,10 @@ export function archivedChats(input: SidebarInput): SidebarChat[] {
 		.flat()
 		.filter(session => session.archived && (!query || matchesSession(session, query)))
 		.sort((a, b) => b.updatedAt - a.updatedAt)
-		.map((session): SidebarChat => ({ kind: "session", key: session.file, session, tabId: tabByFile.get(session.file) ?? null }));
+		.map((session): SidebarChat => ({
+			kind: "session", key: session.file, session,
+			tabId: [session.file, ...(session.previousSessionFiles ?? [])].map(file => tabByFile.get(file)).find(Boolean) ?? null,
+		}));
 }
 
 /** A "Current chats" row: an open chat with the name of its project, which the row shows as trailing meta. */
@@ -145,7 +149,7 @@ export function currentChats(input: Pick<SidebarInput, "projects" | "sessionsByP
 	const names = new Map(input.projects.map(project => [project.path, project.name]));
 	return input.tabs.flatMap((tab): CurrentChat[] => {
 		const projectName = names.get(tab.projectPath) ?? folderName(tab.projectPath);
-		const session = tab.sessionFile ? input.sessionsByProject[tab.projectPath]?.find(entry => entry.file === tab.sessionFile) : undefined;
+		const session = tab.sessionFile ? input.sessionsByProject[tab.projectPath]?.find(entry => entry.file === tab.sessionFile || entry.previousSessionFiles?.includes(tab.sessionFile!)) : undefined;
 		const row: CurrentChat = session
 			? { kind: "session", key: `current:${tab.id}`, session, tabId: tab.id, projectName }
 			: { kind: "open", key: `current:${tab.id}`, tabId: tab.id, projectName };

@@ -122,6 +122,11 @@ export async function resolveFileRefs(request: unknown, home: string, limits: Re
 	const results: (FileRef | null)[] = [];
 	const budget = { remaining: limits.totalEntries };
 	for (const ref of request.refs) {
+		// Internal reply destinations never name files, including a coincidentally matching local path.
+		if (/^out:\/\//i.test(ref)) {
+			results.push(null);
+			continue;
+		}
 		const candidates = isHomePath(ref)
 			? [join(home, ref.slice(1))]
 			: isAbsolute(ref)

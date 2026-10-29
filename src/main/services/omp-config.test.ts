@@ -9,6 +9,7 @@ import {
 	parseCfgTree,
 	parseConfigDocument,
 	parseConfigList,
+	parseConfigLayer,
 	parseModels,
 	setDocumentPath,
 	splitRoleValue,
@@ -25,6 +26,17 @@ describe("omp config list --json", () => {
 		expect(listed.get("auth.broker.token")).toMatchObject({ type: "string", value: null, redacted: true });
 		expect(listed.get("auth.broker.url")).toMatchObject({ value: null, redacted: false });
 		expect(listed.get("tools.approval")).toMatchObject({ type: "record", value: { bash: "prompt" } });
+	});
+});
+
+describe("scoped configuration layers", () => {
+	it("retains raw path-scoped lists, nulls and literal record keys without adding defaults", () => {
+		expect(parseConfigLayer({
+			"enabledModels": { type: "array", description: "", value: [{ path: "/repo", models: ["local/test"] }] },
+			"tools.approval": { type: "record", description: "", value: { "computer.control": "deny" } },
+			"modelRoles": { type: "record", description: "", value: { widget: null } },
+			"auth.broker.token": { type: "string", description: "", redacted: true },
+		})).toEqual({ enabledModels: [{ path: "/repo", models: ["local/test"] }], tools: { approval: { "computer.control": "deny" } }, modelRoles: { widget: null } });
 	});
 });
 
@@ -99,6 +111,20 @@ describe("omp models --json", () => {
 		expect(tts).toMatchObject({ contextWindow: null, maxOutputTokens: null, thinkingLevels: [], vision: false });
 		const long = models.find(model => model.cost?.longContext);
 		expect(long?.cost?.longContext?.inputThreshold).toBeGreaterThan(0);
+	});
+
+	it.each(["fixed", "free", "included", "unknown", "variable"] as const)("preserves %s pricing independently of the token rates", pricingStatus => {
+		const raw = JSON.parse(fixture("models.json"));
+		raw.models[0].pricingStatus = pricingStatus;
+		expect(parseModels(raw)[0]?.pricingStatus).toBe(pricingStatus);
+	});
+
+	it("treats missing or unrecognized pricing as unknown", () => {
+		const raw = JSON.parse(fixture("models.json"));
+		delete raw.models[0].pricingStatus;
+		expect(parseModels(raw)[0]?.pricingStatus).toBe("unknown");
+		raw.models[0].pricingStatus = "future-status";
+		expect(parseModels(raw)[0]?.pricingStatus).toBe("unknown");
 	});
 
 	it("drops models of kinds this app does not know instead of failing the list", () => {

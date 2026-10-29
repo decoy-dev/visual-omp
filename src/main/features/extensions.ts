@@ -16,9 +16,6 @@ const DEFAULT_DAYS = 7;
 const MAX_DAYS = 371;
 /** Subagents can spawn subagents; their transcripts nest one folder per level. */
 const MAX_SUBAGENT_DEPTH = 4;
-/** omp's `omp stats` default dashboard address. */
-const STATS_PORT = 3847;
-const STATS_URL = `http://127.0.0.1:${STATS_PORT}`;
 const STATS_START_TIMEOUT_MS = 60_000;
 
 interface CachedTranscript {
@@ -113,30 +110,34 @@ const spendInFlight = new Map<number, Promise<SpendSummary>>();
 let spendQueue: Promise<unknown> = Promise.resolve();
 
 let statsServer: ChildProcess | null = null;
+let statsUrl: string | null = null;
+let statsStarting: Promise<string> | null = null;
+let statsQuitting = false;
 
-async function statsReachable(): Promise<boolean> {
+/** omp opens the browser on startup; only reopen a dashboard owned by this app. */
+async function openStatsDashboard(): Promise<string> {
+	if (statsQuitting) throw new Error("visual-omp is closing.");
+	if (statsStarting) return statsStarting;
+	if (statsServer && !statsServer.killed && statsServer.exitCode === null && statsServer.signalCode === null && statsUrl) {
+		const url = statsUrl;
+		await shell.openExternal(url);
+		return url;
+	}
+	const pending = startStatsDashboard();
+	statsStarting = pending;
 	try {
-		const response = await fetch(STATS_URL, { signal: AbortSignal.timeout(1500) });
-		return response.ok;
-	} catch {
-		return false;
+		return await pending;
+	} finally {
+		if (statsStarting === pending) statsStarting = null;
 	}
 }
 
-/**
- * `omp stats` serves the dashboard until killed and opens the browser itself once it is up, so a
- * fresh start only waits for its "Dashboard available at" line; a running one is simply opened.
- */
-async function openStatsDashboard(): Promise<string> {
-	if (await statsReachable()) {
-		await shell.openExternal(STATS_URL);
-		return STATS_URL;
-	}
-	statsServer?.kill();
+async function startStatsDashboard(): Promise<string> {
 	const [bin, env] = await Promise.all([ompPath(), userEnv()]);
-	let child;
+	if (statsQuitting) throw new Error("visual-omp is closing.");
+	let child: ChildProcess;
 	try {
-		child = spawn(bin, ["stats", "--port", String(STATS_PORT)], {
+		child = spawn(bin, ["stats"], {
 			env: { ...env, NO_COLOR: "1" },
 			stdio: ["ignore", "pipe", "pipe"],
 		});
@@ -144,26 +145,82 @@ async function openStatsDashboard(): Promise<string> {
 		throw await ompStartError(error, bin);
 	}
 	statsServer = child;
+	statsUrl = null;
 	const { promise, resolve, reject } = Promise.withResolvers<string>();
 	let output = "";
-	const timer = setTimeout(() => reject(new Error("omp's stats page took too long to start.")), STATS_START_TIMEOUT_MS);
-	const onData = (chunk: Buffer) => {
-		output += chunk.toString("utf8");
-		const match = /Dashboard available at:\s*(\S+)/.exec(output);
-		if (match?.[1]) resolve(match[1]);
+	let stdout = "";
+	let stderr = "";
+	let ready = false;
+	const clearOwnedServer = () => {
+		if (statsServer !== child) return;
+		statsServer = null;
+		statsUrl = null;
 	};
-	child.stdout?.on("data", onData);
-	child.stderr?.on("data", onData);
-	child.once("error", reject);
-	child.once("exit", code => {
-		if (statsServer === child) statsServer = null;
-		reject(new Error(output.trim().split("\n").pop() || `omp stats exited with ${code}`));
-	});
-	try {
-		return await promise;
-	} finally {
+	const stopReading = () => {
 		clearTimeout(timer);
-	}
+		child.stdout?.off("data", onStdout);
+		child.stderr?.off("data", onStderr);
+	};
+	const fail = (error: Error) => {
+		clearOwnedServer();
+		stopReading();
+		reject(error);
+	};
+	const onData = (text: string) => {
+		const match = /Dashboard available at:[ \t]*([^\r\n]*)[\r\n]/.exec(text);
+		if (!match) return;
+		const printedUrl = match[1] ?? "";
+		try {
+			const url = new URL(printedUrl);
+			// Reject authorities that URL would repair or normalize into a loopback address.
+			const loopbackAuthority = /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::[0-9]+)?(?:[/?#]|$)/i;
+			if (
+				url.protocol !== "http:" ||
+				(url.hostname !== "localhost" && url.hostname !== "127.0.0.1" && url.hostname !== "[::1]") ||
+				url.username || url.password ||
+				!loopbackAuthority.test(printedUrl) ||
+				/[\s\\]/.test(printedUrl)
+			) {
+				throw new Error("Invalid stats dashboard URL.");
+			}
+		} catch {
+			fail(new Error("omp printed an invalid stats dashboard URL."));
+			child.kill();
+			return;
+		}
+		ready = true;
+		statsUrl = printedUrl;
+		stopReading();
+		resolve(printedUrl);
+	};
+	const onStdout = (chunk: Buffer) => {
+		const text = chunk.toString("utf8");
+		output += text;
+		stdout += text;
+		onData(stdout);
+	};
+	const onStderr = (chunk: Buffer) => {
+		const text = chunk.toString("utf8");
+		output += text;
+		stderr += text;
+		onData(stderr);
+	};
+	const timer = setTimeout(() => {
+		fail(new Error("omp's stats page took too long to start."));
+		child.kill();
+	}, STATS_START_TIMEOUT_MS);
+	child.stdout?.on("data", onStdout);
+	child.stderr?.on("data", onStderr);
+	child.once("error", error => {
+		fail(error);
+		child.kill();
+	});
+	child.once("exit", code => {
+		clearOwnedServer();
+		stopReading();
+		if (!ready) reject(new Error(output.trim().split("\n").pop() || `omp stats exited with ${code}`));
+	});
+	return promise;
 }
 
 export function register(): void {
@@ -201,6 +258,8 @@ export function register(): void {
 
 	app.on("will-quit", () => {
 		statsServer?.kill();
+		statsUrl = null;
+		statsQuitting = true;
 		statsServer = null;
 	});
 }

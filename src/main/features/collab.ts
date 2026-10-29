@@ -3,12 +3,13 @@
  * `@shared/contracts/collab` and `RoomBridge` in `../omp/relay`).
  */
 import { z } from "zod";
+import { dialog } from "electron";
 import type { LiveShareState } from "@shared/contracts/collab";
 import { broadcast, handle } from "../ipc";
 import { readConfig } from "../omp/config-file";
 import { getHost } from "../omp/host";
 import { type BridgeStatus, relayHosting, type RoomBridge } from "../omp/relay";
-import { DEFAULT_RELAY_ORIGIN, formatWebLink, normalizeRelayOrigin, parseRoomLink } from "./collab/links";
+import { DEFAULT_RELAY_ORIGIN, formatWebLink, normalizeRelayOrigin, parseRoomLink, webBase } from "./collab/links";
 
 const CollabSettings = z.object({
 	collab: z
@@ -69,6 +70,20 @@ async function publish(hostId: string): Promise<LiveShareState> {
 	if (!relay) throw new Error("This chat isn't running right now.");
 	const { relayUrl, webUrl } = await relaySettings(host.state.cwd);
 	const relayOrigin = publicOrigin(relayUrl, relay.url);
+	const browserUrl = webBase(relayOrigin, webUrl);
+	if (relayOrigin !== DEFAULT_RELAY_ORIGIN || browserUrl !== webBase(DEFAULT_RELAY_ORIGIN, undefined)) {
+		const { response } = await dialog.showMessageBox({
+			type: "warning",
+			title: "Share through a custom server?",
+			message: "This chat will use a custom sharing server.",
+			detail: `Relay: ${relayOrigin}\nBrowser client: ${browserUrl}\n\nThe browser client receives the chat key and can read this conversation. A control link also permits sending prompts. Continue only if you trust these servers.`,
+			buttons: ["Cancel", "Share chat"],
+			defaultId: 0,
+			cancelId: 0,
+			noLink: true,
+		});
+		if (response !== 1) throw new Error("Sharing was cancelled.");
+	}
 	const bridge = relay.publish(room.roomId, relayOrigin);
 	const base: LiveShareState = {
 		hostId,

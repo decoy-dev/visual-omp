@@ -80,8 +80,15 @@ export function PluginsTab({ cwd, projectPath, filter, query, onBrowse }: TabPro
 			"plugins.toast.removed",
 		);
 
-	const upgrade = (plugin: MarketplacePlugin) =>
-		run(plugin.id, "updating", opId => window.vomp.invoke("plugins:upgrade", { id: plugin.id, scope: plugin.scope, cwd, opId }), "plugins.toast.updated");
+	const upgrade = (plugin: Installed) => {
+		const id = plugin.kind === "npm" ? plugin.name : plugin.id;
+		return run(
+			id,
+			"updating",
+			opId => window.vomp.invoke("plugins:upgrade", { id, scope: plugin.kind === "marketplace" ? plugin.scope : undefined, cwd, opId }),
+			"plugins.toast.updated",
+		);
+	};
 
 	const toggle = async (plugin: Installed, enabled: boolean) => {
 		const name = plugin.kind === "npm" ? plugin.name : plugin.id;
@@ -171,7 +178,7 @@ export function PluginsTab({ cwd, projectPath, filter, query, onBrowse }: TabPro
 					}
 				/>
 			) : (
-				<ul className="relative flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel">
+				<ul className="@container/plugins relative flex flex-col divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel">
 					<AnimatePresence initial={false} mode="popLayout">
 						{installed.map(plugin => {
 							const newest = plugin.kind === "marketplace" ? latest.get(plugin.id) : undefined;
@@ -183,7 +190,7 @@ export function PluginsTab({ cwd, projectPath, filter, query, onBrowse }: TabPro
 										update={update}
 										running={ops.runningFor(plugin.kind === "npm" ? plugin.name : plugin.id)}
 										onToggle={enabled => void toggle(plugin, enabled)}
-										onUpdate={() => plugin.kind === "marketplace" && void upgrade(plugin)}
+										onUpdate={() => void upgrade(plugin)}
 										onRemove={() => void remove(plugin)}
 									/>
 								</motion.li>
@@ -216,11 +223,11 @@ function InstalledRow({ plugin, update, running, onToggle, onUpdate, onRemove }:
 				? t("plugins.shadowed")
 				: t("plugins.fromMarketplace", { marketplace: plugin.marketplace });
 	return (
-		<div className="flex min-h-14 items-center gap-3 px-3 py-2">
+		<div className="grid min-h-14 grid-cols-[auto_minmax(0,1fr)] items-center gap-3 px-3 py-2 @min-[40rem]/plugins:grid-cols-[auto_minmax(0,1fr)_auto]">
 			<LetterTile name={plugin.name} />
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
-				<div className="flex min-w-0 items-center gap-2">
-					<span className="truncate text-md font-medium text-fg">{plugin.name}</span>
+				<div className="flex min-w-0 flex-wrap items-center gap-2">
+					<span className="min-w-0 break-words text-md font-medium text-fg">{plugin.name}</span>
 					<span className="shrink-0 font-mono text-xs text-fg-faint">v{plugin.version}</span>
 					{plugin.kind === "marketplace" && (
 						<Chip tone={plugin.scope === "project" ? "accent" : "neutral"}>{t(plugin.scope === "project" ? "scope.project" : "scope.user")}</Chip>
@@ -235,15 +242,17 @@ function InstalledRow({ plugin, update, running, onToggle, onUpdate, onRemove }:
 					{running ? <InlineProgress op={running} /> : <p className="truncate text-sm text-fg-muted">{detail}</p>}
 				</PresenceSwap>
 			</div>
-			{update && (
-				<Button size="sm" onClick={onUpdate} disabled={Boolean(running)}>
-					{t("plugins.update")}
+			<div className="col-span-2 flex flex-wrap items-center justify-end gap-3 @min-[40rem]/plugins:col-span-1">
+				{(plugin.kind === "npm" || update) && (
+					<Button size="sm" onClick={onUpdate} disabled={Boolean(running)}>
+						{t("plugins.update")}
+					</Button>
+				)}
+				<Switch checked={plugin.enabled} onCheckedChange={onToggle} disabled={Boolean(running)} aria-label={t(plugin.enabled ? "plugins.turnOff" : "plugins.turnOn", { name: plugin.name })} />
+				<Button size="sm" variant="danger-ghost" icon={<Trash />} onClick={onRemove} disabled={Boolean(running)} aria-label={t("plugins.removeNamed", { name: plugin.name })}>
+					{t("plugins.remove")}
 				</Button>
-			)}
-			<Switch checked={plugin.enabled} onCheckedChange={onToggle} disabled={Boolean(running)} aria-label={t(plugin.enabled ? "plugins.turnOff" : "plugins.turnOn", { name: plugin.name })} />
-			<Button size="sm" variant="danger-ghost" icon={<Trash />} onClick={onRemove} disabled={Boolean(running)} aria-label={t("plugins.removeNamed", { name: plugin.name })}>
-				{t("plugins.remove")}
-			</Button>
+			</div>
 		</div>
 	);
 }

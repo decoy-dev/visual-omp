@@ -6,6 +6,7 @@ import { parseOmpDialog } from "./ompDialog";
 import { ModelButton, PermissionButton, ThinkingButton } from "./pickers";
 import { PlanReviewCard } from "./PlanReviewCard";
 import { parsePlanReview } from "./screen";
+import { isAdvisorConfigure } from "./advisorApply";
 import "./modes";
 
 chatSlots.register({ id: "session-permission", placement: "composerTools", order: 20, component: PermissionButton });
@@ -18,6 +19,8 @@ chatSlots.register({ id: "session-omp-dialog", placement: "transcriptEnd", order
 // claim exactly what the cards render; anything they cannot read still opens the sheet.
 registerNativeOverlay(lines => parsePlanReview(lines) !== null);
 registerNativeOverlay(lines => parseOmpDialog(lines) !== null);
+registerNativeOverlay(isAdvisorConfigure);
 
 // The chat map and the session-file parsing behind it load from their own chunk; the sheet slides in once loaded.
 sheets.register({ id: "session-tree", component: lazyView(() => import("./TreeSheet").then(m => m.TreeSheet)) });
+sheets.register({ id: "session-advisor", component: lazyView(() => import("./AdvisorSheet").then(m => m.AdvisorSheet)) });

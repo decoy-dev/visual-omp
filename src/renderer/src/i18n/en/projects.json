@@ -372,6 +372,17 @@
 		"explainer": "omp reads this file at the start of every chat in this project. Describe how the project works, commands to run, and things to avoid.",
 		"shadowed": "omp reads {{active}} instead of this file, because it comes first. Edit {{active}}, or empty it to use this one.",
 		"stickyNote": "Sticky rules: omp applies these on every step of a chat, in addition to the start.",
+		"extraFiles": "Additional instruction files",
+		"extraNote": "omp loads this configured file alongside the project's main instructions.",
+		"extraName": "Additional instruction filename",
+		"extraNameInvalid": {
+			"empty": "Enter a filename.",
+			"builtIn": "omp already handles this built-in filename.",
+			"path": "Use a filename without a folder path."
+		},
+		"addExtra": "Add instruction file",
+		"extraHelp": "Adds a filename to contextFiles.extra for this project. Existing inherited filenames are retained. Use a filename such as AGENTS.local.md, without a folder path.",
+		"extraFailed": "Couldn't add the instruction filename",
 		"editorLabel": "Contents of {{file}}",
 		"placeholder": "# About this project\n\n- How to run it: …\n- Please don't change: …",
 		"previewEmpty": "Nothing written yet.",
@@ -511,6 +522,7 @@
 		"tabs": {
 			"link": "Link",
 			"file": "File",
+			"move": "Move",
 			"invite": "Invite"
 		},
 		"noChat": "Open a chat to share it.",
@@ -534,6 +546,40 @@
 			"saved": "Web page saved",
 			"reveal": "Show in folder",
 			"failed": "Couldn't export the chat"
+		},
+		"operation": {
+			"cancelled": "Cancelled. No command was run.",
+			"report": "What omp reported"
+		},
+		"pack": {
+			"title": "Move to another computer",
+			"explainer": "Save a tar archive with the chat, its artifacts and referenced images. Transfer it to the other computer, then import it from this tab.",
+			"privacy": "Archives contain the original content and may include secrets. Exit omp for this chat before packing. The local copy remains unchanged.",
+			"action": "Save session archive…",
+			"busy": "Packing chat…",
+			"saved": "Session archive saved",
+			"failed": "Couldn't pack the chat"
+		},
+		"unpack": {
+			"title": "Import from another computer",
+			"explainer": "Choose an omp session archive, then the project folder this chat should use on this computer. Project files must be transferred separately.",
+			"copies": "omp replaces an older local copy when its history matches. If the copies have diverged, omp imports a fork.",
+			"action": "Import session archive…",
+			"busy": "Importing chat…",
+			"saved": "Session archive imported",
+			"failed": "Couldn't import the archive",
+			"open": "Open imported chat",
+			"missing": "The imported session could not be read. The saved path is shown in this dialog.",
+			"openFailed": "Couldn't open the imported chat"
+		},
+		"anonymize": {
+			"title": "Export anonymized copy",
+			"explainer": "Export this chat and its saved helper transcripts to a new or empty folder. omp redacts turn contents and error text, replaces paths and literals, and preserves metadata such as model names.",
+			"review": "Redaction follows fixed rules. Review the exported files before sharing them.",
+			"action": "Export anonymized copy…",
+			"busy": "Anonymizing chat…",
+			"saved": "Anonymized copy exported",
+			"failed": "Couldn't export the anonymized copy"
 		},
 		"invite": {
 			"explainer": "Let someone watch or join this chat live.",

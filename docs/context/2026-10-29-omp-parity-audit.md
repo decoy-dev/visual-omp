@@ -79,7 +79,7 @@ Until native helper-job nesting is implemented, update the `/jobs` row in `docs/
 - Add per-model compaction limits supporting the base token form (`90k`), percentages (`80%`) and fixed limits (`f400k`). Show a "compacts at" preview and omp's extended-window warning above the standard window (18.8.5, 18.8.8).
 - Preserve all `pricingStatus` values: apply the low-cost badge only to eligible `fixed` prices, label `free` explicitly, and show no low-cost badge for `included`, `unknown` or `variable` (18.4.5).
 - List and edit `contextFiles.extra` instruction files on the Instructions page (18.8.8, 18.9.0).
-- Hide Tern-only settings in Advanced after establishing whether `omp config list --json` provides `ui.condition`. If the metadata is unavailable, retain this as blocked parity work requiring an omp metadata path (18.6.3).
+- Hide Tern-only settings in Advanced once omp exposes their UI conditions. This is externally blocked: an isolated 18.14.0 runtime listed 574 settings with only `value`, `redacted`, `type` and `description` fields, matching `cli/config-cli.ts:223-229`; `cfg://` also omits conditions. Keep the settings visible until omp provides a metadata path (18.6.3).
 - Show account routing `policy` (priority, reserve and state) in Usage & limits, preserve omp's usage-window order, and list saved resets through `omp usage reset --json`, using the CLI exit code when spending one (18.8.5, 18.9.0, 18.13.0).
 - Fold aliased logins such as `openai-codex-device` into the base provider, and add sign-in export and import through `omp auth export` / `import`. Exact alias metadata is externally blocked until omp exposes `storeCredentialsAs`; retain that part of parity explicitly (18.7.0, 18.8.1, 18.10.0).
 - Add a Sign in action for OAuth servers in Connected tools. Run `omp -p '/mcp reauth <name>'` in the project folder and report failure through its exit code (18.12.6).
@@ -92,32 +92,32 @@ Until native helper-job nesting is implemented, update the `/jobs` row in `docs/
 - Show "Starting…" until dictation is recording, and treat cancellation during startup as cancellation. This parity item is blocked pending investigation of TUI debug values and status-line state; it is externally blocked only if those paths cannot provide the state and omp must expose it (18.11.0).
 
 ### Other
-- Use the active omp theme's `terminal` colours for the terminal sheet and mirror. Bundled-theme support is externally blocked until omp exposes the compiled theme data, and remains required parity work (18.4.8).
+- Implemented: the terminal mirror uses the active omp theme's `terminal` background, foreground and ANSI palette. The app-hosted extension can read compiled bundled JSON through the public `@oh-my-pi/pi-tui/theme/loader` export; the previously reported bundled-theme blocker is resolved. Custom JSON themes use the same path (18.4.8).
 - Read omp's OSC 7501 program status for waiting and error states (18.8.7).
 - Display idle recaps as transcript notices and remove `recap.enabled: false` once that presentation works (18.4.6).
-- Add advisor cadence and catch-up controls to the planned Advisor sheet (18.4.10).
-- Read and switch mode state through an omp extension using `ctx.sessionModes` and `mode_changed`, replacing status-line parsing (18.13.2).
+- Implemented: the native Advisor sheet edits per-advisor cadence and catch-up policy in omp's `WATCHDOG.yml`/`.yaml`, applying through omp's own configuration editor callback (18.4.10).
+- Implemented: the app-hosted extension reports mode state through `ctx.sessionModes` and `mode_changed`, and native plan, vibe, goal and loop controls request transitions directly. Status labels no longer determine modes (18.13.2).
 - Read config layers with `omp config list --scope`, retaining comment-preserving YAML editing (18.13.3).
-- Preserve startup-model substitution warnings in the native chat. Forwarded session notices are externally blocked on omp; investigate the startup screen as an existing alternative (18.14.0).
+- Implemented: preserve startup-model substitution warnings from omp's painted startup warning rows, including word-wrapped model names. The warning still has no collab notice, but this screen path was verified on isolated 18.14.0 without a model prompt.
 - Retain native retry-fallback and manual-compaction event parity as externally blocked work until omp forwards those events through collab (18.13.x, 18.14.0).
 
 ## omp API gaps
 - Collab does not forward `retry_fallback_applied` or `manual_compaction_*` in 18.14.0. The retry event's reason is therefore unavailable through that event path; the reports do not establish whether saved model-change records omit it.
-- The startup warning for an unavailable default or dictation model is sent only through startup notifications (18.14.0).
+- The startup warning for an unavailable default or dictation model is sent only through startup notifications (18.14.0). Recognized startup screen capture provides the native presentation.
 - `get_available_commands` does not expose a command's `side` flag; the file frontmatter provides an app-readable alternative (18.13.0).
 - `get_login_providers` does not expose `storeCredentialsAs` for aliased logins (18.8.1).
-- Bundled themes' `terminal` colours are compiled into the binary without a supported read path (18.4.8).
+- Config list JSON and `cfg://` omit `ui.condition` and any equivalent Tern-only classification. The Advanced visibility rule requires omp to expose that metadata (verified on 18.14.0).
 - Collab has no dedicated background-job snapshot channel. The app can still derive jobs from tool results and forwarded updates (18.11.1).
+- Early-input readiness is externally blocked: the collab room can connect before the editor's bootstrap submit gate opens and before outer startup dialogs finish. omp must expose `startupComplete` or equivalent input readiness through collab, the debug socket or an extension API. A live collab snapshot alone cannot establish readiness. Native worktree preflight waits for an already-painted question to finish, but does not close the question-not-yet-painted race.
 
 ## Open questions to settle through source inspection or runtime checks
 
 The [findings appendix](2026-10-29-omp-parity-audit-findings.md) preserves each report's proposed check. Use 18.14 for 0.7 checks, and retain version-specific checks for 0.6.9's supported versions.
 
 - Check 18.14.0's collab protocol version against the app's `COLLAB_PROTO` 3.
-- Check whether deferred startup loading in 18.14.0 changes the app's readiness check or early terminal input.
+- Established: deferred startup can expose a live collab room before input is safe. The source trace and the required readiness metadata are recorded under omp API gaps and in the findings appendix.
 - Check whether `narration`, `agent_end.awaitingAsyncWork` and streaming `write out://` arguments survive collab replication.
 - Check whether a jobs widget headline containing "Plan", "Goal" or "Loop" can confuse `parseStatusLine` mode detection.
-- Check whether `omp config list --json` includes `ui.condition`, which is needed to hide Tern-only settings.
 - Check plan-review keys in the classic interface against `PlanReviewCard.tsx`.
 - Check whether `/rename` can exceed the app's 10-second wait when it asks the title model for a card.
 - Check project config loading in home and temporary folders, separately from helper and skill discovery ceilings, using the source reported by `omp read cfg://`.

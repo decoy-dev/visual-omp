@@ -14,14 +14,15 @@ import { useOmpSettings } from "../settings/useOmpSettings";
 import { ipcErrorMessage, useResource } from "../shared";
 import { ModelCapabilities, ModelSelect } from "./ModelSelect";
 import { PresetList, SavePresetDialog } from "./Presets";
-import { changedRoleIds, findModel, modelValueStatus, orderRoles, type RoleDraft, thinkingChoices } from "./rolesModel";
+import { CompactionLimits } from "./CompactionLimits";
+import { activeModelPreset, changedRoleIds, findModel, modelValueStatus, orderRoles, type RoleDraft, thinkingChoices } from "./rolesModel";
 
 export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionProps) {
 	const { t } = useTranslation("manage");
 	const arg = projectPath ?? undefined;
 	const omp = useOmpSettings(projectPath, scope);
 	const roles = useResource(() => window.vomp.invoke("config:roles", arg), [arg]);
-	const models = useResource(() => window.vomp.invoke("config:models", arg), [arg]);
+	const models = useResource(() => window.vomp.invoke("config:models", arg, true), [arg]);
 	const presets = useResource(() => window.vomp.invoke("config:presets", arg), [arg]);
 
 	const [drafts, setDrafts] = useState<Record<string, RoleDraft>>({});
@@ -48,7 +49,7 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 	const refreshModels = async () => {
 		setRefreshing(true);
 		try {
-			models.setData(await window.vomp.invoke("config:models:refresh", arg));
+			models.setData(await window.vomp.invoke("config:models:refresh", arg, true));
 		} catch (error) {
 			toast({ tone: "err", message: ipcErrorMessage(error) });
 		} finally {
@@ -225,12 +226,14 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 
 			<PresetList
 				presets={presets.data}
+				active={activeModelPreset(presets.data ?? [], roles.data ? { ...roles.data, defaultThinkingLevel: typeof thinking?.value === "string" ? thinking.value as ModelRolesState["defaultThinkingLevel"] : roles.data.defaultThinkingLevel } : null)}
 				dirty={dirty}
 				// Applying replaces every role, so pending edits are discarded first (after asking).
 				onApply={preset => void whenLeaving(() => void applyPreset(preset))}
 				onDelete={preset => void deletePreset(preset)}
 				onSaveNew={() => setSavePresetOpen(true)}
 			/>
+			<CompactionLimits models={models.data} omp={omp} onSaved={() => void models.reload()} />
 			<SavePresetDialog
 				open={savePresetOpen}
 				onOpenChange={setSavePresetOpen}

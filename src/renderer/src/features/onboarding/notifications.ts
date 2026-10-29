@@ -1,5 +1,6 @@
 /** Unopened results stay badged until their chat is shown with focus; background alerts remain optional. */
 import { type AttentionState, NOTIFY_LIMITS } from "@shared/ipc";
+import { sessionTitleText } from "@shared/titleCard";
 import { i18n } from "../../i18n";
 import { allControllers, dockTooNarrow, useApp } from "../../state/app";
 import type { SessionController, SessionEvent } from "../../state/session";
@@ -59,12 +60,13 @@ function onChatEvent(controller: SessionController, event: SessionEvent): void {
 	}
 	if (!backgroundAlert) return;
 	const t = i18n.getFixedT(null, "onboarding");
-	const title = chatTitle(controller) ?? t("notify.untitled");
+	const title = sessionTitleText(chatTitle(controller) ?? t("notify.untitled"));
+	const programStatus = controller.getSnapshot().host?.programStatus;
 	let body: string;
-	if (event.kind === "needsInput") body = t("notify.needsInput");
+	if (event.kind === "needsInput") body = programStatus?.state === "blocked" && programStatus.msg ? programStatus.msg : t("notify.needsInput");
 	else {
 		const summary = outcomeSummary(controller.getSnapshot().guest?.entries ?? []);
-		body = summary ? t("notify.finishedWith", { summary }) : t("notify.finished");
+		body = programStatus?.state === "error" && programStatus.msg ? programStatus.msg : summary ? t("notify.finishedWith", { summary }) : t("notify.finished");
 	}
 	void window.vomp.invoke("app:notify", shorten(title, NOTIFY_LIMITS.title), shorten(body, NOTIFY_LIMITS.body), controller.tabId);
 }

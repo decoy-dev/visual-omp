@@ -61,6 +61,13 @@ describe("helperRunsSummary", () => {
 });
 
 describe("taskRuns activity", () => {
+	it("shows the helper's own stage with its completion estimate, retaining a zero estimate", () => {
+		const pending = { id: "A", status: "running", stage: "Checking generated files", currentToolIntent: "Reading output", completionPercent: 0, recentTools: [], recentOutput: [] };
+		expect(taskRuns({}, { progress: [pending] }, true)[0]).toMatchObject({ activity: "Checking generated files", completionPercent: 0 });
+		expect(taskRuns({}, { progress: [{ ...pending, completionPercent: 55 }] }, true)[0]?.completionPercent).toBe(55);
+		expect(taskRuns({}, { progress: [{ ...pending, completionPercent: 999 }] }, true)[0]?.completionPercent).toBeNull();
+	});
+
 	const assignment = "# Target\nTranscript dialog only.\n\n# Change\nClassify messages.";
 
 	it("shows each spawn's name and assignment before omp reports progress", () => {

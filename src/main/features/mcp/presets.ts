@@ -18,7 +18,7 @@ function field(
 
 const BROWSER_NOTE =
 	"omp hides browser-automation MCP servers while its built-in browser is enabled; set browser.enabled: false in omp settings to use this one.";
-const OAUTH_NOTE = "Signs in with OAuth: after adding it, run /mcp reauth <name> inside omp.";
+const OAUTH_NOTE = "Signs in through your browser. Choose Sign in to save this server and authorize it with omp.";
 
 export const MCP_PRESETS: McpPreset[] = [
 	{

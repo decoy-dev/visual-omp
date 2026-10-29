@@ -121,7 +121,7 @@ export function PreviewPane({ session, projectPath }: PaneProps) {
 					src={current}
 					title={t("preview.frameTitle", { url: current })}
 					className="min-h-0 w-full flex-1 border-0 bg-panel"
-					sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals allow-downloads"
+					sandbox="allow-scripts allow-same-origin allow-forms allow-modals allow-downloads"
 				/>
 			) : (
 				<EmptyState

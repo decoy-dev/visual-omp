@@ -3,6 +3,7 @@ import { memo, useLayoutEffect, useMemo, useRef } from "react";
 import { i18n } from "../i18n";
 import { toast } from "../ui/toast";
 import { blockIn, useMotionReduced } from "../ui/motion";
+import { hydrateRichContent, useRichContent } from "../ui/rich-content";
 import { MATH_PENDING, useMathReady } from "./math";
 import { MarkdownBlocks, renderMarkdown } from "./render";
 
@@ -33,7 +34,9 @@ export function useMarkdownHtml(text: string): string {
 
 export const Markdown = memo(function Markdown({ text }: { text: string }): ReactNode {
 	const html = useMarkdownHtml(text);
-	return <div className="tr-md" onClick={copyCode} dangerouslySetInnerHTML={{ __html: html }} />;
+	const ref = useRef<HTMLDivElement>(null);
+	useRichContent(ref, html);
+	return <div ref={ref} className="tr-md" onClick={copyCode} dangerouslySetInnerHTML={{ __html: html }} />;
 });
 
 /** A reveal that is this short at mount is just starting, so its first block enters like the ones after it. */
@@ -93,6 +96,7 @@ export function StreamingMarkdown({ text, blockIn: enter = false }: { text: stri
 			root.append(template.content);
 		}
 		mounted.current = next;
+		return hydrateRichContent(root, true);
 	}, [text, enter, reduced, math]);
 	// Only the chat transcript streams; its click handler runs `copyCode` for these blocks and for saved replies.
 	return <div ref={ref} className="tr-md" />;

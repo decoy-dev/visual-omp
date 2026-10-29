@@ -7,8 +7,8 @@
  * the heavy provider-specific `raw` payload already dropped by omp.
  *
  * omp gaps: `omp stats --json` always reports omp's default dashboard range (the last 24 hours) and
- * has no range flag; the frustration/tools/providers/gain views exist only in the `omp stats`
- * dashboard server, which this app never starts. `omp stats --summary` prints a text rendering of a
+ * has no range flag; the frustration/tools/providers/gain views are available through the separate
+ * `omp stats` browser dashboard. `omp stats --summary` prints a text rendering of a
  * subset of the same data, so it has no channel of its own.
  */
 
@@ -116,6 +116,16 @@ export interface UsageResetCredits {
 	credits?: UsageResetCreditDetail[];
 }
 
+/** Account-wide routing diagnostics supplied by omp, without a model or session context. */
+export interface UsagePolicy {
+	priority: number;
+	reservePct: number;
+	reserveSource: "global" | "override";
+	reclaimAbovePct?: number;
+	state: "eligible" | "inside-reserve" | "exhausted" | "unknown";
+	remainingPct?: number;
+}
+
 /** Usage report of one provider account. */
 export interface UsageReport {
 	/** Provider id, e.g. `anthropic`, `openai-codex`. */
@@ -124,6 +134,7 @@ export interface UsageReport {
 	fetchedAt: number;
 	limits: UsageLimit[];
 	resetCredits?: UsageResetCredits;
+	policy?: UsagePolicy;
 	/** Provider-wide disclaimers shown once above the account's limits. */
 	notes?: string[];
 	/**
@@ -145,6 +156,7 @@ export interface UsageAccountIdentity {
 	orgName?: string;
 	/** Epoch ms of the interactive login that minted the OAuth grant. */
 	authorizedAt?: number;
+	policy?: UsagePolicy;
 }
 
 /** A credential omp auto-disabled (e.g. revoked or expired grant) that needs the user's attention. */
@@ -379,16 +391,21 @@ export interface UsageStats {
 }
 
 /**
- * One stored account in omp's `/usage reset` listing, which reads each Codex and Claude sign-in's
- * saved resets live from the provider. omp spends a reset only through that command.
+ * One stored account in `omp usage reset --json`, which reads each Codex and Claude sign-in's
+ * saved resets live from the provider. omp spends a reset through `omp usage reset <target>`.
  */
 export interface UsageResetAccount {
 	/** Provider id, e.g. `openai-codex`, `anthropic`. */
 	provider: string;
-	/** omp's stored credential id; `<provider>/<credentialId>` is the `/usage reset` target. */
+	/** omp's stored credential id; `<provider>/<credentialId>` is the `omp usage reset` target. */
 	credentialId: number;
 	/** omp's label: the email (else the account id), then ` · ` and the organization when it has one. */
 	label: string;
+	/** Structured identity from omp's JSON listing; labels are display text only. */
+	email?: string;
+	accountId?: string;
+	orgId?: string;
+	orgName?: string;
 	/** Saved resets, including ones not usable now; null when omp couldn't read them. */
 	savedCount: number | null;
 	/** Resets omp could spend now; null when omp couldn't read them. */
@@ -399,30 +416,32 @@ export interface UsageResetAccount {
 	unavailable: string | null;
 }
 
-/** omp's `/usage reset` listing as visual-omp read it. */
+/** omp's `omp usage reset --json` listing as visual-omp read it. */
 export interface UsageResetListing {
 	/**
-	 * Whether visual-omp understood every line omp printed. False for a format it doesn't know or any
-	 * account line it can't read; nothing may be spent from such a listing.
+	 * Whether every account passed the JSON schema. False for malformed data; nothing may be spent
+	 * from a partly understood listing.
 	 */
 	readable: boolean;
 	/** The accounts read; empty when omp reports none or the listing is unreadable. */
 	accounts: UsageResetAccount[];
 }
 
-/** `provider/credentialId`, the `/usage reset` target. */
+/** `provider/credentialId`, the `omp usage reset` target. */
 export interface UsageResetTarget {
 	provider: string;
 	credentialId: number;
 }
 
-/** What omp printed after `/usage reset <target>`. */
+/** What omp printed after `omp usage reset <target>`. */
 export interface UsageResetOutcome {
 	/** omp's printed message, verbatim; empty when it printed nothing. */
 	output: string;
+	/** CLI exit code; absent only when execution could not produce an exit status. */
+	exitCode?: number;
 	/**
-	 * False when omp did not answer the command: it timed out, stopped, failed or printed nothing.
-	 * The reset may or may not have been spent then, and the app never retries by itself.
+	 * True only when omp exited successfully. A failed or interrupted command is never retried
+	 * automatically, because a reset may already have been spent before interruption.
 	 */
 	confirmed: boolean;
 }
@@ -446,14 +465,14 @@ declare module "../ipc" {
 		 */
 		"usage:stats": { args: []; result: UsageStats };
 		/**
-		 * omp's live saved-reset listing (`/usage reset` in a short-lived `omp --mode rpc --no-session`
-		 * process). Read-only; the provider calls take a second or more.
+		 * omp's live saved-reset listing (`omp usage reset --json`).
+		 * Read-only; the provider calls take a second or more.
 		 */
 		"usage:resetAccounts": { args: []; result: UsageResetListing };
 		/**
-		 * Spends one saved reset of `provider/credentialId` through omp's `/usage reset <target>` in a
-		 * short-lived RPC process and returns what omp printed. Irreversible; omp decides whether to
-		 * spend. Rejects without sending anything while a spend for the same target is running.
+		 * Spends one saved reset through `omp usage reset <provider>/<credentialId>` and returns what
+		 * omp printed plus its exit code. Irreversible; omp decides whether to spend.
+		 * Rejects without sending anything while a spend for the same target is running.
 		 */
 		"usage:spendReset": { args: [target: UsageResetTarget]; result: UsageResetOutcome };
 	}

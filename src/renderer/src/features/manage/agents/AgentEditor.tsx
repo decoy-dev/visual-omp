@@ -267,7 +267,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 					</Select>
 				</div>
 				<div>
-					<fieldset className="m-0 min-w-0 border-0 p-0" aria-describedby="helper-tool-compatibility">
+					<fieldset className="m-0 min-w-0 border-0 p-0">
 						<legend className="mb-2 p-0 text-md font-medium text-fg">{t("agents.editor.tools")}</legend>
 						<Switch
 							label={t("agents.editor.allTools")}
@@ -275,7 +275,6 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 							checked={form.tools === null}
 							onCheckedChange={all => update({ tools: all ? null : ["read", "grep", "glob", "find"] })}
 						/>
-						<p id="helper-tool-compatibility" className="mt-2 text-sm text-fg-muted">{t("agents.editor.olderToolsHelp")}</p>
 						{form.tools !== null && (
 							<div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 rounded-md border border-border bg-inset p-3">
 								{toolOptions.map(tool => (

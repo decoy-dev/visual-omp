@@ -11,7 +11,7 @@ import { OPENABLE_EXT } from "../../features/panes/derive";
 import { fileRefOf, textRefs } from "./fileRefs";
 
 /** Links, code blocks and their headers, math and links already made hold no references. */
-const SKIP = "a, pre, .tr-code-head, math, .katex, .tr-file";
+const SKIP = "a, pre, .tr-code-head, math, .katex, .tr-file, .vomp-diagram, .vomp-chart, .vomp-remote-image";
 
 export interface Occurrence {
 	/** The text node holding the reference, or the inline `code` element that is all reference. */

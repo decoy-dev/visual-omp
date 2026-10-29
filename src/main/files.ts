@@ -3,6 +3,7 @@ import { access, mkdir, readdir, readFile, rename, writeFile } from "node:fs/pro
 import { dirname, join, relative } from "node:path";
 import type { DirEntry } from "@shared/ipc";
 import { userEnv } from "./env";
+import { resolveExecutable } from "./services/executable";
 
 const IGNORED_DIRS = new Set([".git", "node_modules", ".DS_Store", "dist", "out", ".next", ".turbo", "target", ".venv"]);
 const MAX_WALK_FILES = 20_000;
@@ -37,13 +38,15 @@ export function pathExists(path: string): Promise<boolean> {
 /** Project-relative file list for the @-mention picker: git-tracked + untracked-not-ignored, else a bounded walk. */
 export async function projectFiles(cwd: string): Promise<string[]> {
 	const env = await userEnv();
+	const executable = await resolveExecutable("git", env);
 	const { promise, resolve } = Promise.withResolvers<string[] | null>();
-	execFile(
-		"git",
+	if (executable) execFile(
+		executable,
 		["ls-files", "--cached", "--others", "--exclude-standard"],
 		{ cwd, env, maxBuffer: 64 * 1024 * 1024, timeout: 15_000 },
 		(error, stdout) => resolve(error ? null : stdout.split("\n").filter(Boolean)),
 	);
+	else resolve(null);
 	const tracked = await promise;
 	if (tracked) return tracked.slice(0, MAX_WALK_FILES * 5);
 	const files: string[] = [];

@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { homedir } from "node:os";
 import { delimiter, join } from "node:path";
+import { resolveExecutable } from "./services/executable";
 
 const MARKER = "__VISUAL_OMP_ENV__";
 
@@ -11,7 +12,8 @@ const MARKER = "__VISUAL_OMP_ENV__";
 async function loadShellEnv(): Promise<NodeJS.ProcessEnv> {
 	const base = { ...process.env };
 	if (process.platform === "win32") return base;
-	const shell = process.env.SHELL || (process.platform === "darwin" ? "/bin/zsh" : "/bin/bash");
+	const shell = await resolveExecutable(process.env.SHELL || (process.platform === "darwin" ? "/bin/zsh" : "/bin/bash"), base);
+	if (!shell) return base;
 	const { promise: output, resolve } = Promise.withResolvers<string>();
 	execFile(
 		shell,

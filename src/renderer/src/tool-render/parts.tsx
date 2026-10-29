@@ -4,6 +4,7 @@
  */
 import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
+import { SYN_CLASS, tokenizeLines } from "../features/panes/highlight";
 import type { ToolRenderHost, ToolResultImage, ToolResultLike } from "./types";
 import { getHljs, replaceTabs, resultImagesOf, resultTextOf, shortenPath, stripAnsi } from "./util";
 
@@ -114,6 +115,7 @@ export function Output({ text, maxLines = 10, lang, error, variant = "plain", ti
 	const collapsible = lines.length > maxLines + 1;
 	const shown = collapsible && !expanded ? lines.slice(0, maxLines).join("\n") : clean;
 	const html = useHighlight(shown, error ? null : lang);
+	const jsonTokens = useMemo(() => html === null && lang === "json" && !error ? tokenizeLines(shown.split("\n"), "json") : null, [html, lang, error, shown]);
 	const classes = ["tv-pre"];
 	if (variant === "plain") classes.push("tv-pre--wrap");
 	if (error) classes.push("tv-pre--error");
@@ -123,6 +125,8 @@ export function Output({ text, maxLines = 10, lang, error, variant = "plain", ti
 			{title && <div className="tv-out-title">{title.charAt(0).toUpperCase() + title.slice(1)}</div>}
 			{html !== null ? (
 				<pre className={classes.join(" ")} dangerouslySetInnerHTML={{ __html: html }} />
+			) : jsonTokens ? (
+				<pre className={classes.join(" ")}>{jsonTokens.map((tokens, line) => <span key={line}>{line > 0 ? "\n" : ""}{tokens.map((token, index) => <span key={index} className={SYN_CLASS[token.role]}>{token.text}</span>)}</span>)}</pre>
 			) : (
 				<pre className={classes.join(" ")}>{shown}</pre>
 			)}
