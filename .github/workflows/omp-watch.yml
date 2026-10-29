@@ -1,0 +1,151 @@
+name: Watch omp releases
+
+on:
+  schedule:
+    - cron: '23 8 * * *'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'omp version to review (blank checks every unreviewed version since 18.14.0)'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: omp-release-watch
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      needed: ${{ steps.discover.outputs.needed }}
+      versions: ${{ steps.discover.outputs.versions }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Find unreviewed releases
+        id: discover
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REQUESTED_VERSION: ${{ inputs.version }}
+          OMP_WATCH_DIR: ${{ runner.temp }}/omp-watch
+        run: |
+          args=()
+          if [[ -n "$REQUESTED_VERSION" ]]; then args+=(--version "$REQUESTED_VERSION"); fi
+          node scripts/omp-watch.mjs discover "${args[@]}"
+      - name: Keep discovery evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: omp-release-queue
+          path: ${{ runner.temp }}/omp-watch/queue.json
+          if-no-files-found: warn
+          retention-days: 30
+
+  watch:
+    needs: discover
+    if: needs.discover.outputs.needed == 'true'
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        version: ${{ fromJSON(needs.discover.outputs.versions) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: npm
+      - name: Set the watcher directory
+        run: printf 'OMP_WATCH_DIR=%s/omp-watch\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
+      - name: Preserve the version and read release metadata
+        id: metadata
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SELECTED_VERSION: ${{ matrix.version }}
+        run: node scripts/omp-watch.mjs prepare --version "$SELECTED_VERSION"
+      - name: Download and verify omp
+        id: download
+        if: steps.metadata.outcome == 'success'
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/omp-watch.mjs download
+      - name: Install dependencies
+        id: install
+        continue-on-error: true
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: '1'
+        run: npm ci
+      - name: Typecheck
+        id: typecheck
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: npm run typecheck
+      - name: Run the full Vitest suite
+        id: tests
+        if: steps.install.outcome == 'success'
+        continue-on-error: true
+        run: |
+          node --test scripts/omp-watch.test.mjs
+          npx vitest run
+      - name: Check live compatibility
+        id: compat
+        if: steps.install.outcome == 'success' && steps.download.outcome == 'success'
+        continue-on-error: true
+        env:
+          OMP_BIN: ${{ runner.temp }}/omp-watch/omp-linux-x64
+          OMP_EXPECTED_VERSION: ${{ matrix.version }}
+          OMP_WIRE_SOURCE: ${{ runner.temp }}/omp-watch/wire.ts
+          OMP_COMPAT_REPORT: ${{ runner.temp }}/omp-watch/compat.json
+          PI_CODING_AGENT_DIR: ${{ runner.temp }}/omp-watch/agent
+        run: npx vitest run src/main/omp/compat.live.test.ts
+      - name: Open the compatibility review issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WATCH_DOWNLOAD: ${{ steps.download.outcome }}
+          WATCH_INSTALL: ${{ steps.install.outcome }}
+          WATCH_TYPECHECK: ${{ steps.typecheck.outcome }}
+          WATCH_TESTS: ${{ steps.tests.outcome }}
+          WATCH_COMPAT: ${{ steps.compat.outcome }}
+        run: node scripts/omp-watch.mjs report
+      - name: Keep compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: omp-compatibility-${{ matrix.version }}
+          path: |
+            ${{ runner.temp }}/omp-watch/release.json
+            ${{ runner.temp }}/omp-watch/checksum.json
+            ${{ runner.temp }}/omp-watch/compat.json
+            ${{ runner.temp }}/omp-watch/issue.md
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Fail when a check failed
+        if: always()
+        env:
+          METADATA: ${{ steps.metadata.outcome }}
+          DOWNLOAD: ${{ steps.download.outcome }}
+          INSTALL: ${{ steps.install.outcome }}
+          TYPECHECK: ${{ steps.typecheck.outcome }}
+          TESTS: ${{ steps.tests.outcome }}
+          COMPAT: ${{ steps.compat.outcome }}
+        run: |
+          for result in "$METADATA" "$DOWNLOAD" "$INSTALL" "$TYPECHECK" "$TESTS" "$COMPAT"; do
+            if [[ "$result" != success ]]; then exit 1; fi
+          done

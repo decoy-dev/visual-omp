@@ -32,3 +32,42 @@ omp updates separately from visual-omp. The app runs `omp update --check` on the
 ## Testing the update flow
 
 No release has to exist to exercise these screens. Development builds (`npm run dev`, never a packaged app) read releases from the JSON file named by `VOMP_UPDATE_FEED` instead of GitHub. The file holds `releases` in the GitHub API shape, and optional fields simulate the rest: `method` (`brew`, `dmg`, `scoop`, `nsis` or `manual`), `brewCommand` (a harmless command runs by default), `installedVersion` (what the Homebrew check reads from the app on disk), `scoopGlobal` (a Scoop install for all users), `ompCheck` (`{ code, stdout, stderr }` in place of `omp update --check`), `ompUpdateCommand` (runs in place of `omp update`) and `ompVersionAfter`. Asset URLs may use plain http so a local server can stand in for GitHub. Development builds never restart themselves, so the Scoop restart itself can only be tested with packaged builds. Set `VOMP_DEV_PROFILE` to a directory name to run this instance beside another development instance.
+
+## Watching omp releases
+
+[Watch omp releases](../.github/workflows/omp-watch.yml) checks npm's published `@oh-my-pi/pi-coding-agent` versions daily at 08:23 UTC. It reviews every untracked version from 18.14.0 onward, so several releases between runs receive separate checks and issues. A manual run can select a version through the workflow's `version` input. The watcher searches open and closed issues labelled `omp-release`; an issue whose title names the exact version prevents another review issue for that version. Keep the version in the title when renaming an issue.
+
+For each unreviewed release, the watcher downloads `omp-linux-x64` from `can1357/oh-my-pi` and verifies it against that release's `SHA256SUMS.txt`. It runs `npm ci`, typecheck, the watcher regressions, the full Vitest suite and the gated live compatibility tests. Checks run independently where their prerequisites succeeded, so a typecheck failure does not prevent the compatibility test. Separate release jobs continue if another version fails. The selected version is saved before GitHub release metadata is fetched; if npm publishes first, the issue explicitly reports the missing GitHub metadata. A failed download or check is reported too.
+ 
+The issue preserves the results and breaking, unsurfaced and diverged triage checklist. Upstream notes from `gh release view` and compatibility details are included as bounded, escaped text with mentions neutralized. Links provide the complete upstream notes and workflow artifacts. The body stays below 60,000 characters, and complete metadata and compatibility reports are retained as workflow artifacts for 30 days. The discovery queue is retained too.
+
+The workflow has `contents: read` and `issues: write` permissions, with its actions pinned to full commit revisions. It creates the `omp-release` label if needed and opens a review issue. It never pushes commits, creates tags or publishes releases. Its token is passed only to discovery, release metadata, download and issue creation; the compatibility subprocess receives an explicit environment allowlist without credentials.
+
+### Running the checks locally
+
+Run the live tests with an absolute executable path:
+
+```sh
+OMP_BIN=/path/to/omp npx vitest run src/main/omp/compat.live.test.ts
+```
+
+Without `OMP_BIN`, those tests are skipped. Each run creates a temporary home and agent directory, disables extensions and skills for RPC, and removes its temporary profile afterwards. No sign-in or model request is sent. RPC needs a selected model to initialize without credentials, so the test selects a bundled model and sends only `get_available_commands`. The tests check the minimum version, settings and model output through the app's parsers, the app's RPC transport and protocol-1 readiness, and added, removed or uncatalogued RPC builtins. Terminal-only commands are recorded separately because omp does not list them through RPC. An empty model catalog is valid without credentials on Linux.
+
+`omp update --check` can read release metadata from the network but does not install an update. A recognized network failure is retained in the evidence. Unknown output fails the test. The collab protocol is read from the matching release's wire source because RPC does not expose it; this comparison does not establish a live collab handshake. Set `OMP_WIRE_SOURCE` to that source file to include the comparison locally. The scheduled workflow always provides it. Set `OMP_EXPECTED_VERSION` to verify the selected binary's release, and `OMP_COMPAT_REPORT` to save a JSON report.
+
+The script's dry run performs discovery and verified downloads without creating labels or issues:
+
+```sh
+export OMP_WATCH_DIR=/tmp/omp-watch
+node scripts/omp-watch.mjs discover --version 18.14.0 --dry-run
+node scripts/omp-watch.mjs prepare --version 18.14.0 --dry-run
+node scripts/omp-watch.mjs download --dry-run
+OMP_BIN=/path/to/omp OMP_EXPECTED_VERSION=18.14.0 \
+  OMP_WIRE_SOURCE="$OMP_WATCH_DIR/wire.ts" \
+  OMP_COMPAT_REPORT="$OMP_WATCH_DIR/compat.json" \
+  npx vitest run src/main/omp/compat.live.test.ts
+node scripts/omp-watch.mjs report --dry-run
+node --test scripts/omp-watch.test.mjs
+```
+
+Discovery, preparation and download require `gh` access to GitHub. Omitting `--version` during discovery queues every untracked npm version from 18.14.0 onward; `prepare` selects one version from that queue. More than 256 untracked versions exceed GitHub's matrix limit and stop discovery with instructions to review selected versions manually. The report preview is written to `$OMP_WATCH_DIR/issue.md`; local checks are marked as not run unless their results are supplied through `WATCH_DOWNLOAD`, `WATCH_INSTALL`, `WATCH_TYPECHECK`, `WATCH_TESTS` and `WATCH_COMPAT`. Release-note review remains necessary after passing automated checks.
