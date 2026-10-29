@@ -190,6 +190,7 @@
 		"turnOnAll": "Turn skills on",
 		"empty": "No skills yet",
 		"emptyProject": "This project has no skills of its own",
+		"projectUnavailable": "Project skill installs are unavailable here in visual-omp. Choose a subfolder or install for all projects.",
 		"emptyBody": "Skills are short instruction files that teach omp how to do something. Browse the registry to add some.",
 		"browse": "Browse the registry",
 		"noMatch": "No skills match '{{q}}'.",

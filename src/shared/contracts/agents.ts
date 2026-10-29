@@ -26,7 +26,7 @@ export const AGENT_RESERVED_NAMES = ["main", "sub"] as const;
 export const AGENT_THINKING_LEVELS = ["inherit", "off", "minimal", "low", "medium", "high", "xhigh", "max", "auto"] as const;
 export type AgentThinkingLevel = (typeof AGENT_THINKING_LEVELS)[number];
 
-/** omp built-in tool names (v18) for the tool picker. Extension/MCP tool names are also valid. `yield` is always added. */
+/** omp built-in tool names (v18) for the tool picker. Extension/MCP tool names are also valid. */
 export const AGENT_BUILTIN_TOOLS = [
 	"read",
 	"bash",
@@ -66,7 +66,7 @@ export type JsonValue = string | number | boolean | null | JsonValue[] | { [key:
 export interface AgentFields {
 	name: string;
 	description: string;
-	/** Explicit tool allow-list (always includes `yield`); undefined = all tools. */
+	/** Explicit tool allowlist; undefined = omp defaults. omp 18.11+ does not inject `yield` here. */
 	tools?: string[];
 	/** Agents this one may spawn; `"*"` = any. Inferred as `"*"` when tools include `task`. */
 	spawns?: string[] | "*";
@@ -75,6 +75,8 @@ export interface AgentFields {
 	thinkingLevel?: AgentThinkingLevel;
 	/** Structured output schema (JTD-style), passed through opaquely. */
 	output?: JsonValue;
+	/** true keeps `yield` and the output schema when `task.structured` is off (omp 18.11+). */
+	structured?: boolean;
 	blocking?: boolean;
 	autoloadSkills?: string[];
 	/** false = `read` returns verbatim content instead of structural summaries. */
@@ -120,7 +122,7 @@ export interface AgentDirs {
 	user: string;
 	/** Existing nearest project agents dir omp reads; null when none exists yet. */
 	project: string | null;
-	/** Where project agents are created when `project` is null (`<cwd>/.omp/agents`); null without a cwd. */
+	/** New project agents directory; null without a cwd or at a home/temporary discovery ceiling. */
 	projectDefault: string | null;
 }
 
@@ -149,6 +151,7 @@ export interface AgentDraft {
 	model?: string[] | null;
 	thinkingLevel?: AgentThinkingLevel | null;
 	output?: JsonValue | null;
+	structured?: boolean | null;
 	blocking?: boolean | null;
 	autoloadSkills?: string[] | null;
 	readSummarize?: boolean | null;

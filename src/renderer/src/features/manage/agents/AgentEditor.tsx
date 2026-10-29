@@ -32,9 +32,10 @@ interface FormState {
 	name: string;
 	description: string;
 	systemPrompt: string;
-	/** null = every tool. */
+	/** null = omp's default tools. */
 	tools: string[] | null;
 	thinkingLevel: AgentThinkingLevel | null;
+	structured: boolean | null;
 	modelOverride: string | null;
 }
 
@@ -43,8 +44,9 @@ function formFrom(entry: AgentEntry | null): FormState {
 		name: entry?.name ?? "",
 		description: entry?.description ?? "",
 		systemPrompt: entry?.systemPrompt ?? "",
-		tools: entry?.tools ? entry.tools.filter(tool => tool !== "yield") : null,
+		tools: entry?.tools ?? null,
 		thinkingLevel: entry?.thinkingLevel ?? null,
+		structured: entry?.structured ?? null,
 		modelOverride: entry?.modelOverride?.[0] ?? null,
 	};
 }
@@ -97,7 +99,8 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 	const entry = target.kind === "edit" ? target.entry : null;
 	const initial = useMemo(() => formFrom(entry), [entry]);
 	const [form, setForm] = useState(initial);
-	const [scope, setScope] = useState<AgentWritableScope>(initialScope);
+	const projectAvailable = Boolean(cwd && (dirs?.project ?? dirs?.projectDefault));
+	const [scope, setScope] = useState<AgentWritableScope>(initialScope === "project" && projectAvailable ? "project" : "user");
 	const [preview, setPreview] = useState<"write" | "preview">("write");
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
@@ -123,12 +126,11 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 		form.systemPrompt !== initial.systemPrompt ||
 		!sameTools(form.tools, initial.tools) ||
 		form.thinkingLevel !== initial.thinkingLevel ||
+		form.structured !== initial.structured ||
 		form.modelOverride !== initial.modelOverride;
 	useLeaveGuard(dirty, () => setForm(initial));
 
-	const extraTools = (entry?.tools ?? []).filter(
-		tool => tool !== "yield" && !(AGENT_BUILTIN_TOOLS as readonly string[]).includes(tool),
-	);
+	const extraTools = (entry?.tools ?? []).filter(tool => !(AGENT_BUILTIN_TOOLS as readonly string[]).includes(tool));
 	const toolOptions = [...AGENT_BUILTIN_TOOLS, ...extraTools];
 
 	const save = async () => {
@@ -145,6 +147,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 						systemPrompt: form.systemPrompt,
 						tools: tools ?? undefined,
 						thinkingLevel: form.thinkingLevel ?? undefined,
+						structured: form.structured ?? undefined,
 					},
 					scope,
 					cwd,
@@ -157,6 +160,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 				if (form.systemPrompt !== initial.systemPrompt) draft.systemPrompt = form.systemPrompt;
 				if (!sameTools(form.tools, initial.tools)) draft.tools = tools;
 				if (form.thinkingLevel !== initial.thinkingLevel) draft.thinkingLevel = form.thinkingLevel;
+				if (form.structured !== initial.structured) draft.structured = form.structured;
 				if (Object.keys(draft).length > 0) await window.vomp.invoke("agents:update", entry.filePath, draft);
 				// Overrides are keyed by name: a rename carries the override along.
 				if (name !== entry.name && entry.modelOverride) {
@@ -199,7 +203,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 							onValueChange={setScope}
 							options={[
 								{ value: "user", label: t("agents.scope.user") },
-								{ value: "project", label: t("agents.scope.project") },
+								{ value: "project", label: t("agents.scope.project"), disabled: !projectAvailable },
 							]}
 						/>
 						<p className="mt-1 text-sm text-fg-muted">
@@ -207,6 +211,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 								dir: scope === "user" ? dirs?.user : (dirs?.project ?? dirs?.projectDefault),
 							})}
 						</p>
+						{!projectAvailable && <p className="mt-1 text-sm text-fg-muted">{t("agents.projectUnavailable")}</p>}
 					</div>
 				)}
 				<Input
@@ -261,28 +266,37 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 						))}
 					</Select>
 				</div>
-				<fieldset className="m-0 min-w-0 border-0 p-0">
-					<legend className="mb-2 p-0 text-md font-medium text-fg">{t("agents.editor.tools")}</legend>
-					<Switch
-						label={t("agents.editor.allTools")}
-						description={t("agents.editor.allToolsHelp")}
-						checked={form.tools === null}
-						onCheckedChange={all => update({ tools: all ? null : ["read", "grep", "glob", "find"] })}
-					/>
-					{form.tools !== null && (
-						<div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 rounded-md border border-border bg-inset p-3">
-							{toolOptions.map(tool => (
-								<Checkbox
-									key={tool}
-									label={t(`agents.tools.${tool}`, { defaultValue: tool })}
-									title={tool}
-									checked={form.tools?.includes(tool) ?? false}
-									onCheckedChange={on => toggleTool(tool, on)}
-								/>
-							))}
-						</div>
-					)}
-				</fieldset>
+				<div>
+					<fieldset className="m-0 min-w-0 border-0 p-0" aria-describedby="helper-tool-compatibility">
+						<legend className="mb-2 p-0 text-md font-medium text-fg">{t("agents.editor.tools")}</legend>
+						<Switch
+							label={t("agents.editor.allTools")}
+							description={t("agents.editor.allToolsHelp")}
+							checked={form.tools === null}
+							onCheckedChange={all => update({ tools: all ? null : ["read", "grep", "glob", "find"] })}
+						/>
+						<p id="helper-tool-compatibility" className="mt-2 text-sm text-fg-muted">{t("agents.editor.olderToolsHelp")}</p>
+						{form.tools !== null && (
+							<div className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2 rounded-md border border-border bg-inset p-3">
+								{toolOptions.map(tool => (
+									<Checkbox
+										key={tool}
+										label={t(`agents.tools.${tool}`, { defaultValue: tool })}
+										title={tool}
+										checked={form.tools?.includes(tool) ?? false}
+										onCheckedChange={on => toggleTool(tool, on)}
+									/>
+								))}
+							</div>
+						)}
+					</fieldset>
+				</div>
+				<Switch
+					label={t("agents.editor.structured")}
+					description={t("agents.editor.structuredHelp")}
+					checked={form.structured === true}
+					onCheckedChange={on => update({ structured: on ? true : null })}
+				/>
 				<div>
 					<div className="mb-2 flex items-center justify-between">
 						<span className="text-md font-medium text-fg" id="manage-agent-instructions">

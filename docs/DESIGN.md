@@ -765,6 +765,9 @@ The Helpers section (`features/manage/agents/HelpersSection.tsx`) lists reusable
 - **Rows** show a 32px letter tile on `--bg-inset` in mono, the name, scope and "Customized" chips, the description, a model chip and an on/off switch. Each row's menu offers Edit helper or Customize helper, Duplicate helper, Run helper now and Delete helper.
 - **Broken files**: a broken definition file shows a warn tile, "Can't be used" and [Fix file].
 - **Editor**: Edit and New open a 400px right sheet (`AgentEditor.tsx`) that uses the leave guard.
+- **Tool access**: the editor labels the default as "Use omp's default tools". Turning it off selects a built-in allowlist, including an empty list. Supporting tools and extension tools remain subject to omp's behavior, so the editor does not promise that the list controls every capability. A visible note explains that omp before 18.11 may use defaults for malformed declarations and add `yield`. The tools fieldset has a wrapper to preserve the form's standard spacing before the structured-results switch.
+- **Structured results**: a standard switch, "Return structured results", keeps the helper's result tool and saved output schema when `task.structured` is off. Its help names omp 18.11 as the minimum version for this field. The switch changes only the flag; reads, edits and Duplicate preserve the schema. A schema editor would add a separate editing workflow for an opaque omp-owned format, so this control stays a single switch.
+- **Scope at discovery ceilings**: This project is disabled in the filter, new-helper editor and AI creation dialog when the folder is home or a shared temporary root. A short explanation identifies this as visual-omp's policy and directs the user to a subfolder or All projects.
 
 ### 4.15 Connected tools (MCP)
 
@@ -786,6 +789,7 @@ The Skills & plugins section (`features/extensions/skills/SkillsSection.tsx`) ha
 
 - **Skills**: rows with a letter tile, name, scope chip, description and switch. Clicking a row opens a 460px detail sheet (`SkillDrawer.tsx`): What it does, When omp uses it, Show file, Remove skill.
 - **Skill registry**: under "From the skill share registry", rows with install counts and [Install skill].
+- **Skill project scope**: project installs are disabled at home and shared temporary roots, with a short explanation beside the skill list. Projects inside those folders retain project installs.
 - **Plugins**: installed plugins show their version and an update chip ("v1.3 → v1.4"). "Install by name" and "From your marketplaces" list what is available.
 - **Activity**: installs and updates appear in an Activity list with progress.
 

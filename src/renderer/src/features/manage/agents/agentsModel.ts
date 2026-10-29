@@ -1,5 +1,5 @@
 /** Pure helpers for the Helpers section: chat prompts and copy names. */
-import type { AgentWritableScope } from "@shared/contracts/agents";
+import type { AgentCreateDraft, AgentEntry, AgentWritableScope } from "@shared/contracts/agents";
 
 /**
  * Chat prompt for "Create with AI". omp's own /agents hub generates the definition with a hidden
@@ -34,4 +34,24 @@ export function copyName(name: string, taken: ReadonlySet<string>): string {
 		const candidate = `${base}-${n}`;
 		if (!taken.has(candidate)) return candidate;
 	}
+}
+
+/** Copy definition fields without losing explicit tools or the structured result contract. */
+export function duplicateAgentDraft(agent: AgentEntry, name: string): AgentCreateDraft {
+	return {
+		name,
+		description: agent.description,
+		systemPrompt: agent.systemPrompt,
+		tools: agent.tools,
+		spawns: agent.spawns,
+		model: agent.model,
+		thinkingLevel: agent.thinkingLevel,
+		output: agent.output,
+		structured: agent.structured,
+		blocking: agent.blocking,
+		autoloadSkills: agent.autoloadSkills,
+		readSummarize: agent.readSummarize,
+		prewalk: agent.prewalk,
+		advisor: agent.advisor,
+	};
 }

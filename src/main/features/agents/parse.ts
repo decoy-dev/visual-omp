@@ -156,18 +156,19 @@ export function parseAgentFields(
 
 	const fields: AgentFields = { name, description };
 
-	let tools =
-		Array.isArray(frontmatter.tools) && frontmatter.tools.length === 0 ? [] : stringList(frontmatter.tools);
-	if (tools) {
-		tools = [...new Set(tools.map(tool => CANONICAL_TOOLS[tool.toLowerCase()] ?? tool))];
-		if (!tools.includes("yield")) tools.push("yield");
-		fields.tools = tools;
+	const rawTools = frontmatter.tools;
+	const tools = rawTools == null ? undefined : (stringList(rawTools) ?? []);
+	if (tools !== undefined) {
+		fields.tools = [...new Set(tools.map(tool => CANONICAL_TOOLS[tool.toLowerCase()] ?? tool))];
+		if (tools.length === 0 && !(Array.isArray(rawTools) && rawTools.length === 0)) {
+			warnings.push("`tools` names no tools; omp 18.11+ uses an empty built-in allowlist.");
+		}
 	}
 
 	const rawSpawns = typeof frontmatter.spawns === "string" ? frontmatter.spawns.trim() : frontmatter.spawns;
 	const spawns = rawSpawns === "*" ? "*" : stringList(rawSpawns);
 	if (spawns !== undefined) fields.spawns = spawns;
-	else if (tools?.includes("task")) fields.spawns = "*";
+	else if (fields.tools?.includes("task")) fields.spawns = "*";
 
 	const model = stringList(frontmatter.model)
 		?.map(entry => entry.trim())
@@ -194,6 +195,8 @@ export function parseAgentFields(
 
 	const blocking = looseBoolean(frontmatter.blocking);
 	if (blocking !== undefined) fields.blocking = blocking;
+	const structured = looseBoolean(frontmatter.structured);
+	if (structured !== undefined) fields.structured = structured;
 	const readSummarize = looseBoolean(frontmatter.readSummarize);
 	if (readSummarize !== undefined) fields.readSummarize = readSummarize;
 
@@ -237,6 +240,7 @@ const FIELD_KEYS: Record<DraftField, readonly string[]> = {
 	thinkingLevel: ["thinking-level", "thinkingLevel", "thinking"],
 	output: ["output"],
 	blocking: ["blocking"],
+	structured: ["structured"],
 	autoloadSkills: ["autoload-skills", "autoloadSkills"],
 	readSummarize: ["read-summarize", "readSummarize"],
 	prewalk: ["prewalk"],

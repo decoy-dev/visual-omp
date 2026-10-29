@@ -33,7 +33,7 @@ import {
 import { listRowMotion } from "../listMotion";
 import { ipcErrorMessage, useResource } from "../shared";
 import { AgentEditor, type EditorTarget } from "./AgentEditor";
-import { copyName, createWithAiPrompt } from "./agentsModel";
+import { copyName, createWithAiPrompt, duplicateAgentDraft } from "./agentsModel";
 import { CreateWithAiDialog } from "./CreateWithAiDialog";
 
 export type HelpersFilter = "all" | AgentScope;
@@ -71,6 +71,7 @@ export function HelpersSection({ projectPath: cwd, props }: SettingsSectionProps
 	}, [cwd, reload]);
 
 	const snapshot = list.data;
+	const projectAvailable = Boolean(cwd && (snapshot?.dirs.project ?? snapshot?.dirs.projectDefault));
 	const takenNames = useMemo(() => new Set(snapshot?.agents.map(agent => agent.name) ?? []), [snapshot]);
 	const words = query.toLowerCase().split(/\s+/).filter(Boolean);
 	const visible = (snapshot?.agents ?? []).filter(
@@ -124,21 +125,7 @@ export function HelpersSection({ projectPath: cwd, props }: SettingsSectionProps
 			const scope: AgentWritableScope = agent.scope === "project" ? "project" : "user";
 			await window.vomp.invoke(
 				"agents:create",
-				{
-					name,
-					description: agent.description,
-					systemPrompt: agent.systemPrompt,
-					tools: agent.tools?.filter(tool => tool !== "yield"),
-					spawns: agent.spawns,
-					model: agent.model,
-					thinkingLevel: agent.thinkingLevel,
-					output: agent.output,
-					blocking: agent.blocking,
-					autoloadSkills: agent.autoloadSkills,
-					readSummarize: agent.readSummarize,
-					prewalk: agent.prewalk,
-					advisor: agent.advisor,
-				},
+				duplicateAgentDraft(agent, name),
 				scope,
 				cwd,
 			);
@@ -212,10 +199,11 @@ export function HelpersSection({ projectPath: cwd, props }: SettingsSectionProps
 						{ value: "all", label: t("agents.filters.all") },
 						{ value: "bundled", label: t("agents.scope.bundled") },
 						{ value: "user", label: t("agents.scope.user") },
-						{ value: "project", label: t("agents.scope.project"), disabled: !cwd },
+						{ value: "project", label: t("agents.scope.project"), disabled: !projectAvailable },
 					]}
 				/>
 			</div>
+			{cwd && snapshot && !projectAvailable && <p className="mb-3 text-sm text-fg-muted">{t("agents.projectUnavailable")}</p>}
 			{list.error && !snapshot ? (
 				<EmptyState
 					icon={<Warning />}
@@ -260,7 +248,7 @@ export function HelpersSection({ projectPath: cwd, props }: SettingsSectionProps
 					models={models.data}
 					takenNames={takenNames}
 					// A new helper starts in the place the list shows (This project or All projects), else all projects.
-					initialScope={filter === "project" && cwd ? "project" : "user"}
+					initialScope={filter === "project" && projectAvailable ? "project" : "user"}
 					onClose={() => setEditor(null)}
 					onSaved={() => void reload()}
 					onTest={name => runNow(name)}

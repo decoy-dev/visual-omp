@@ -18,6 +18,7 @@ import { pathExists, readText, writeText } from "../../files";
 import { runOmpJson } from "../../omp/cli";
 import { deleteConfigPath, readConfig, setConfigPath } from "../../omp/config-file";
 import { agentDir } from "../../omp/paths";
+import { isProjectDiscoveryCeiling, projectAncestorDirs } from "../../omp/project-discovery";
 import {
 	agentFileName,
 	applyAgentDraft,
@@ -57,20 +58,20 @@ function userAgentsDir(): string {
 
 /** omp `findAllNearestProjectConfigDirs("agents")`, `.omp` source: the first `.omp/agents` dir walking up. */
 async function nearestProjectAgentsDir(cwd: string): Promise<string | null> {
-	let dir = resolve(cwd);
-	for (;;) {
+	for (const dir of projectAncestorDirs(cwd)) {
 		const candidate = join(dir, ".omp", "agents");
 		const info = await stat(candidate).catch(() => null);
 		if (info?.isDirectory()) return candidate;
-		const parent = dirname(dir);
-		if (parent === dir) return null;
-		dir = parent;
 	}
+	return null;
 }
 
 async function scopeDir(scope: AgentWritableScope, cwd: string | null | undefined): Promise<string> {
 	if (scope === "user") return userAgentsDir();
 	if (!cwd) throw new Error("A project folder is required for project agents.");
+	if (isProjectDiscoveryCeiling(cwd)) {
+		throw new Error("Project helpers are unavailable here in visual-omp. Choose a subfolder or save for all projects.");
+	}
 	return (await nearestProjectAgentsDir(cwd)) ?? join(resolve(cwd), ".omp", "agents");
 }
 
@@ -230,7 +231,11 @@ export async function listAgents(cwd?: string | null, refresh = false): Promise<
 	return {
 		agents,
 		errors: [...project.errors, ...user.errors],
-		dirs: { user: userDir, project: projectDir, projectDefault: cwd ? join(resolve(cwd), ".omp", "agents") : null },
+		dirs: {
+			user: userDir,
+			project: projectDir,
+			projectDefault: cwd && !isProjectDiscoveryCeiling(cwd) ? join(resolve(cwd), ".omp", "agents") : null,
+		},
 		disabled: settings.disabled,
 		modelOverrides: settings.modelOverrides,
 	};

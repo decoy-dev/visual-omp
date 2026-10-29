@@ -25,6 +25,7 @@ import type {
 } from "@shared/contracts/skills";
 import { pathExists, writeText } from "../../files";
 import { agentDir } from "../../omp/paths";
+import { isProjectDiscoveryCeiling, projectAncestorDirs } from "../../omp/project-discovery";
 import type { OmpRunner } from "../plugins/stream";
 import {
 	allSkillsOverlay,
@@ -179,7 +180,14 @@ export class SkillService {
 		});
 
 		const invalid = await this.#invalidFiles(cwd, env, config, listed.map(({ skill }) => skill), contents);
-		return { cwd, skillsEnabled: config.skills.enabled, skills, invalid, warnings: unattached };
+		return {
+			cwd,
+			projectScopeAvailable: !isProjectDiscoveryCeiling(cwd, home),
+			skillsEnabled: config.skills.enabled,
+			skills,
+			invalid,
+			warnings: unattached,
+		};
 	}
 
 	/**
@@ -196,8 +204,7 @@ export class SkillService {
 		const home = env.HOME || homedir();
 		const roots = new Set<string>([
 			join(agentDir(env), "skills"),
-			join(cwd, ".omp", "skills"),
-			join(cwd, ".agents", "skills"),
+			...(isProjectDiscoveryCeiling(cwd, home) ? [] : [join(cwd, ".omp", "skills"), join(cwd, ".agents", "skills")]),
 			join(home, ".agents", "skills"),
 			...listed.map(skill => dirname(skill.baseDir)),
 			...config.skills.customDirectories.map(dir => {
@@ -271,22 +278,19 @@ export class SkillService {
 		return parseSkillVersion(await this.#query(["skill", "info", `${id}@${version}`, "--json"]));
 	}
 
-	/** omp's project `.omp/` for skills.json: nearest `.omp/` below home, else the git root's, else `<cwd>/.omp/`. */
+	/** Nearest project `.omp/`, then git root, then cwd, stopping before omp's discovery ceilings. */
 	async #projectSkillsDir(cwd: string, env: NodeJS.ProcessEnv): Promise<string | null> {
-		const home = resolve(env.HOME || homedir());
+		const home = env.HOME || homedir();
+		if (isProjectDiscoveryCeiling(cwd, home)) return null;
 		const configDir = env.PI_CONFIG_DIR || ".omp";
 		for (const marker of [configDir, ".git"]) {
-			let dir = resolve(cwd);
-			while (dir !== home) {
+			for (const dir of projectAncestorDirs(cwd, home)) {
 				if (marker === configDir ? await isDirectory(join(dir, marker)) : await pathExists(join(dir, marker))) {
 					return join(dir, configDir);
 				}
-				const parent = dirname(dir);
-				if (parent === dir) break;
-				dir = parent;
 			}
 		}
-		return resolve(cwd) === home ? null : join(resolve(cwd), configDir);
+		return join(resolve(cwd), configDir);
 	}
 
 	async installed(cwd: string): Promise<RegistryInstalledSkill[]> {
@@ -344,7 +348,10 @@ export class SkillService {
 		};
 	}
 
-	install(request: SkillInstallRequest): Promise<SkillRegistryResult> {
+	async install(request: SkillInstallRequest): Promise<SkillRegistryResult> {
+		if (!request.global && isProjectDiscoveryCeiling(request.cwd, (await this.#omp.env()).HOME || homedir())) {
+			throw new Error("Project skill installs are unavailable here in visual-omp. Choose a subfolder or install for all projects.");
+		}
 		const argv = ["skill", "install", ...request.specs];
 		if (request.global) argv.push("-g");
 		if (request.yes) argv.push("-y");

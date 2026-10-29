@@ -155,6 +155,8 @@ export interface InvalidSkillFile {
 
 export interface SkillsListing {
 	cwd: string;
+	/** False at home and shared temporary roots, where omp ignores project discovery. */
+	projectScopeAvailable: boolean;
 	/** `skills.enabled`; when false omp loads no skills and every entry has reason `skillsOff`. */
 	skillsEnabled: boolean;
 	/** Loaded skills first (omp's order), then disabled ones by name. */

@@ -1,6 +1,7 @@
+import type { AgentEntry } from "@shared/contracts/agents";
 import type { ModelInfo, ModelRoleInfo, SettingInfo } from "@shared/contracts/config";
 import { describe, expect, it } from "vitest";
-import { copyName } from "./agents/agentsModel";
+import { copyName, duplicateAgentDraft } from "./agents/agentsModel";
 import { changedRoleIds, modelValueStatus, orderRoles, thinkingChoices } from "./roles/rolesModel";
 import { buildAdvancedRows, parseSettingInput } from "./settings/advancedModel";
 
@@ -144,5 +145,22 @@ describe("helpers hub", () => {
 	it("picks the first free copy name", () => {
 		expect(copyName("reviewer", new Set(["reviewer"]))).toBe("reviewer-copy");
 		expect(copyName("reviewer", new Set(["reviewer-copy", "reviewer-copy-2"]))).toBe("reviewer-copy-3");
+	});
+
+	it.each([true, false, undefined])("preserves structured: %s and the output schema when duplicating", structured => {
+		const agent: AgentEntry = {
+			id: "helper.md", name: "helper", description: "Helps", systemPrompt: "Help with the task.",
+			scope: "user", filePath: "helper.md", enabled: true, modelOverride: null,
+			active: true, shadowedBy: null, overrides: [], warnings: [],
+			tools: ["read", "yield"], structured, output: { type: "string" }, spawns: [],
+			model: ["@smol"], thinkingLevel: "low", blocking: true, autoloadSkills: ["pdf"],
+			readSummarize: false, prewalk: "@smol", advisor: true,
+		};
+		expect(duplicateAgentDraft(agent, "helper-copy")).toEqual({
+			name: "helper-copy", description: "Helps", systemPrompt: "Help with the task.",
+			tools: ["read", "yield"], structured, output: { type: "string" }, spawns: [],
+			model: ["@smol"], thinkingLevel: "low", blocking: true, autoloadSkills: ["pdf"],
+			readSummarize: false, prewalk: "@smol", advisor: true,
+		});
 	});
 });

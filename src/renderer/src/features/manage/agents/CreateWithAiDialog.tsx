@@ -22,6 +22,7 @@ export function CreateWithAiDialog({
 	const [description, setDescription] = useState("");
 	const [scope, setScope] = useState<AgentWritableScope>("user");
 	const [busy, setBusy] = useState(false);
+	const projectAvailable = Boolean(cwd && (dirs?.project ?? dirs?.projectDefault));
 	const dir = scope === "user" ? dirs?.user : (dirs?.project ?? dirs?.projectDefault);
 	const ready = description.trim().length >= 8 && Boolean(dir) && Boolean(cwd);
 
@@ -78,10 +79,11 @@ export function CreateWithAiDialog({
 							onValueChange={setScope}
 							options={[
 								{ value: "user", label: t("agents.scope.user") },
-								{ value: "project", label: t("agents.scope.project"), disabled: !cwd },
+								{ value: "project", label: t("agents.scope.project"), disabled: !projectAvailable },
 							]}
 						/>
 					</div>
+					{cwd && !projectAvailable && <p className="text-sm text-fg-muted">{t("agents.projectUnavailable")}</p>}
 					<p className="text-sm text-fg-muted">{cwd ? t("agents.ai.how") : t("agents.ai.needsProject")}</p>
 				</div>
 			</DialogContent>

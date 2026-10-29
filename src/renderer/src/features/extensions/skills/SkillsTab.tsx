@@ -48,6 +48,7 @@ export function SkillsTab({ cwd, projectPath, filter, query, onBrowse }: TabProp
 	const [open, setOpen] = useState<SkillEntry | null>(null);
 	const [approval, setApproval] = useState<{ id: string; global: boolean } | null>(null);
 
+	const projectScopeAvailable = Boolean(projectPath && listing.data?.projectScopeAvailable);
 	const needle = query.trim().toLowerCase();
 	const skills = useMemo(
 		() =>
@@ -120,12 +121,13 @@ export function SkillsTab({ cwd, projectPath, filter, query, onBrowse }: TabProp
 				</Notice>
 			)}
 			{listing.error && <Notice tone="err">{listing.error}</Notice>}
+			{listing.data && !listing.data.projectScopeAvailable && <p className="text-sm text-fg-muted">{t("skills.projectUnavailable")}</p>}
 
 			{filter === "registry" ? (
 				<RegistryBrowser
 					query={query}
 					installed={installed.data ?? []}
-					projectPath={projectPath}
+					projectScopeAvailable={projectScopeAvailable}
 					runningFor={ops.runningFor}
 					onInstall={(id, global) => void install(id, global).catch(err => toast({ tone: "err", message: errorText(err) }))}
 					onRemove={(id, global) => void uninstall(id, global).catch(err => toast({ tone: "err", message: errorText(err) }))}
@@ -249,13 +251,13 @@ function SkillRow({ skill, onOpen, onToggle }: { skill: SkillEntry; onOpen(): vo
 interface RegistryBrowserProps {
 	query: string;
 	installed: RegistryInstalledSkill[];
-	projectPath: string | null;
+	projectScopeAvailable: boolean;
 	runningFor: Operations["runningFor"];
 	onInstall(id: string, global: boolean): void;
 	onRemove(id: string, global: boolean): void;
 }
 
-function RegistryBrowser({ query, installed, projectPath, runningFor, onInstall, onRemove }: RegistryBrowserProps) {
+function RegistryBrowser({ query, installed, projectScopeAvailable, runningFor, onInstall, onRemove }: RegistryBrowserProps) {
 	const { t } = useTranslation("extensions");
 	const settled = useDebounced(query.trim(), 300);
 	const search = useLoad(() => window.vomp.invoke("skills:registry:search", settled, settled ? "relevance" : "downloads"), [settled]);
@@ -304,7 +306,7 @@ function RegistryBrowser({ query, installed, projectPath, runningFor, onInstall,
 						</MenuTrigger>
 						<MenuContent align="end">
 							<MenuItem onSelect={() => onInstall(id, true)}>{t("skills.installFor.user")}</MenuItem>
-							<MenuItem disabled={!projectPath} onSelect={() => onInstall(id, false)}>
+							<MenuItem disabled={!projectScopeAvailable} onSelect={() => onInstall(id, false)}>
 								{t("skills.installFor.project")}
 							</MenuItem>
 						</MenuContent>
