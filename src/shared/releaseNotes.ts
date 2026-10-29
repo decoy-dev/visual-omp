@@ -23,7 +23,8 @@ export function releaseNotesForVersions(
 	};
 	for (const section of bundled) {
 		if (!eligible(section.version) || compareSemver(section.version, currentVersion) > 0 || !section.body) continue;
-		entries.set(section.version, { version: section.version, body: section.body, url: null, publishedAt: section.date ? Date.parse(section.date) : null, source: "bundled" });
+		// CHANGELOG dates are calendar days; parse them as local midnight so time zones west of UTC keep the day.
+		entries.set(section.version, { version: section.version, body: section.body, url: null, publishedAt: section.date ? Date.parse(`${section.date}T00:00:00`) : null, source: "bundled" });
 	}
 	for (const release of published) {
 		const version = release.version.replace(/^v/, "");

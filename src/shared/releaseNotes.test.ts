@@ -30,6 +30,12 @@ describe("release notes for the pending update and past versions", () => {
 		expect(notes.past.every(entry => entry.source === "bundled")).toBe(true);
 	});
 
+	it("keeps a bundled release on its local calendar day", () => {
+		const installed = releaseNotesForVersions("0.7.0", null, [], bundled).past[0]!;
+		const day = new Date(installed.publishedAt!);
+		expect([day.getFullYear(), day.getMonth() + 1, day.getDate()]).toEqual([2026, 10, 29]);
+	});
+
 	it("keeps stable installations off the prerelease track", () => {
 		const releases = [release("0.8.0-beta.1"), release("0.8.0"), release("0.6.0-beta.1"), release("nightly")];
 		const stable = releaseNotesForVersions("0.7.0", "0.8.0", releases, bundled);
