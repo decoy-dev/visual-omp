@@ -37,6 +37,7 @@
 		"permission": {
 			"title": "Choose your permission mode",
 			"body": "This sets the default for all projects. You can change it for each project later.",
+			"unknown": "omp reports a permission mode that this version of visual-omp does not recognize, so setup leaves it unchanged. Exit setup to keep it, or change it in omp and try again.",
 			"always-ask": {
 				"title": "Ask me first",
 				"body": "Ask before using tools, including edits and commands."

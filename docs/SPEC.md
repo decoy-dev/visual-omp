@@ -54,8 +54,9 @@ be able to use it, and it exposes the features that set omp apart from other cod
   the machine.
 - Full-screen TUI menus that are not rebuilt natively open in a **terminal sheet** showing the
   live omp terminal.
-- Setup preselects **Ask me first** (omp `always-ask`) and saves the chosen permission mode
-  globally. The permission button next to Send can change it later. `ensureNewUserApproval`
+- Setup keeps a permission mode the user already chose and suggests **Ask me first** (omp
+  `always-ask`) only while omp is on its default. It saves a changed mode globally and blocks
+  Continue when omp reports a mode it does not recognize. The permission button next to Send can change it later. `ensureNewUserApproval`
   remains a fallback for a fresh profile whose omp config has no `tools.approvalMode`: it writes
   `always-ask` once (`src/main/services/approval-default.ts`, `newUserApproval` in
   `src/main/prefs.ts`, run from `src/main/features/config.ts` and before each chat's omp starts).

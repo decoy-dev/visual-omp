@@ -508,7 +508,7 @@ The full wizard presents these steps in order:
 2. **Install or update omp** appears only when omp is missing, unsupported or refused. It reuses the existing installer IPC and update dialog, with the states below. A supported omp skips this step.
 3. **Providers** uses omp's provider discovery and `omp login` in an inline terminal. The app stores no credentials itself. [Skip] remains available until a provider is connected, then changes to [Continue].
 4. **Default chat model** saves the selected model to omp's global chat default, so it applies outside the current project.
-5. **Permissions** preselects [Ask me first] (`always-ask`). The selected mode is saved globally through omp's configuration path.
+5. **Permissions** keeps a mode the user already chose and suggests [Ask me first] (`always-ask`) only while omp is on its default. Only a changed mode is saved, globally, through omp's configuration path. An unrecognized mode shows an error with Try again and blocks Continue.
 6. **Appearance** changes the app's appearance with a live preview. It leaves omp's terminal theme unchanged.
 7. **Done** summarizes the choices. Finishing marks setup completed, opens the app and permits the existing first-run tour (§4.2).
 

@@ -33,6 +33,8 @@ export function SetupWizard() {
 	const [selection, setSelection] = useState<string | null>(null);
 	const [savedModel, setSavedModel] = useState<string | null>(null);
 	const [mode, setMode] = useState<ApprovalMode>("always-ask");
+	// The mode the user already chose; null while it is omp's untouched default or unknown.
+	const [savedMode, setSavedMode] = useState<ApprovalMode | null>(null);
 	const [query, setQuery] = useState("");
 	const [login, setLogin] = useState<OmpLoginTarget | null>(null);
 	const [loading, setLoading] = useState(false);
@@ -84,6 +86,31 @@ export function SetupWizard() {
 		}
 	}, []);
 
+	const loadApproval = useCallback(async () => {
+		const request = ++loadRequest.current;
+		setLoading(true);
+		setError(null);
+		try {
+			const current = await window.vomp.invoke("config:approval");
+			if (!active.current || request !== loadRequest.current) return;
+			// An explicit choice stays selected; only omp's untouched default gets the Ask me first suggestion.
+			if (current.modeSource === "default") {
+				setMode("always-ask");
+				setSavedMode(null);
+			} else if (current.mode) {
+				setMode(current.mode);
+				setSavedMode(current.mode);
+			} else {
+				// A mode this version cannot describe blocks Continue, so it is never overwritten.
+				setError(t("wizard.permission.unknown"));
+			}
+		} catch (reason) {
+			if (active.current && request === loadRequest.current) setError(ipcErrorMessage(reason));
+		} finally {
+			if (active.current && request === loadRequest.current) setLoading(false);
+		}
+	}, [t]);
+
 	useEffect(() => {
 		// A request from a previous step cannot own the next step's loading or error state.
 		++loadRequest.current;
@@ -91,7 +118,8 @@ export function SetupWizard() {
 		setQuery("");
 		if (step === "providers") void loadProviders();
 		if (step === "model") void loadModels();
-	}, [step, loadProviders, loadModels]);
+		if (step === "permission") void loadApproval();
+	}, [step, loadProviders, loadModels, loadApproval]);
 
 	const advance = () => setIndex(value => {
 		const next = Math.min(value + 1, steps.length - 1);
@@ -103,7 +131,8 @@ export function SetupWizard() {
 		try { await finishSetup(); }
 		catch (reason) { if (active.current) { setError(ipcErrorMessage(reason)); setSaving(false); } }
 	};
-	const primaryBlocked = saving || loading || (step === "model" && Boolean(error));
+	// Without the current mode, saving could overwrite a choice the user already made.
+	const primaryBlocked = saving || loading || ((step === "model" || step === "permission") && Boolean(error));
 	const primary = async () => {
 		if (primaryBlocked) return;
 		if (step === "done") { await exit(); return; }
@@ -118,7 +147,7 @@ export function SetupWizard() {
 				}, { scope: "global" });
 				setSavedModel(selection);
 			}
-			if (step === "permission") await window.vomp.invoke("config:approval:setMode", mode, "global");
+			if (step === "permission" && mode !== savedMode) await window.vomp.invoke("config:approval:setMode", mode, "global");
 			if (active.current) advance();
 		} catch (reason) {
 			if (active.current) setError(ipcErrorMessage(reason));
@@ -257,7 +286,7 @@ export function SetupWizard() {
 						</section>
 					)}
 				</PresenceSwap>
-				{error && <Notice tone="err" className="mt-5" actions={step === "providers" || step === "model" ? <Button size="sm" onClick={() => void (step === "providers" ? loadProviders() : loadModels())}>{t("wizard.retry")}</Button> : undefined}>{error}</Notice>}
+				{error && <Notice tone="err" className="mt-5" actions={step === "providers" || step === "model" || step === "permission" ? <Button size="sm" onClick={() => void (step === "providers" ? loadProviders() : step === "model" ? loadModels() : loadApproval())}>{t("wizard.retry")}</Button> : undefined}>{error}</Notice>}
 				{step !== "install" && <footer className="mt-8 flex items-center justify-between gap-3 border-t border-border pt-5">
 					{index > 0 && step !== "done" ? <Button variant="ghost" icon={<ArrowLeft />} disabled={saving || loading} onClick={() => setIndex(value => {
 						const previous = Math.max(0, value - 1);

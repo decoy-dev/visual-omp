@@ -10,7 +10,7 @@ import { SetupWizard } from "./SetupWizard";
 import { finishSetup, needsSetup, setupSteps, startSetup, useSetup } from "./setup";
 import "../../i18n";
 
-const fake = vi.hoisted(() => ({ invoke: vi.fn(), setPrefs: vi.fn(), closeSheet: vi.fn(), setPaletteOpen: vi.fn(), connected: false, models: [] as ModelInfo[], installed: false }));
+const fake = vi.hoisted(() => ({ invoke: vi.fn(), setPrefs: vi.fn(), closeSheet: vi.fn(), setPaletteOpen: vi.fn(), connected: false, models: [] as ModelInfo[], installed: false, approval: { mode: "yolo", modeSource: "default" } as { mode: string; modeSource: string } }));
 vi.mock("../../state/app", async () => {
 	// vi.mock factories run before static imports, so this import must stay inside the factory.
 	const { create } = await import("zustand");
@@ -48,11 +48,12 @@ const render = async () => { await act(async () => root.render(createElement(Set
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	fake.invoke.mockReset(); fake.setPrefs.mockReset(); fake.closeSheet.mockReset(); fake.setPaletteOpen.mockReset();
-	fake.connected = false; fake.models = [model]; fake.installed = false;
+	fake.connected = false; fake.models = [model]; fake.installed = false; fake.approval = { mode: "yolo", modeSource: "default" };
 	fake.invoke.mockImplementation(async (channel: string) => {
 		if (channel === "providers:list") return { connected: fake.connected ? [provider] : [], available: fake.connected ? [] : [{ id: "test", name: "Test provider" }] };
 		if (channel === "config:models:refresh") return fake.models;
 		if (channel === "config:roles") return { roles: [{ id: "default", model: "test/chat", thinking: "high" }] };
+		if (channel === "config:approval") return fake.approval;
 		return {};
 	});
 	fake.setPrefs.mockImplementation(async (patch: Partial<AppPreferences>) => useApp.setState({ prefs: { ...useApp.getState().prefs!, ...patch } }));
@@ -175,6 +176,23 @@ it("writes a different permission mode globally after explicit selection", async
 	expect(fake.invoke).toHaveBeenCalledWith("config:approval:setMode", "always-ask-cached", "global");
 });
 
+it("keeps a permission mode the user already chose and does not rewrite it", async () => {
+	fake.approval = { mode: "yolo", modeSource: "global" };
+	await render(); await click("Start setup"); await click("Skip"); await click("Continue");
+	expect((element.querySelector('input[value="yolo"]') as HTMLInputElement).checked).toBe(true);
+	await click("Continue");
+	expect(fake.invoke.mock.calls.some(call => call[0] === "config:approval:setMode")).toBe(false);
+});
+
+it("blocks Continue when omp reports a permission mode the app does not recognize", async () => {
+	fake.approval = { mode: null as unknown as string, modeSource: "global" };
+	await render(); await click("Start setup"); await click("Skip"); await click("Continue");
+	expect(element.textContent).toContain("does not recognize");
+	await click("Continue");
+	await act(async () => element.querySelector("h1")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+	expect(fake.invoke.mock.calls.some(call => call[0] === "config:approval:setMode")).toBe(false);
+});
+
 it("skips the completed install when returning from providers through Welcome", async () => {
 	useApp.setState({ omp: missing });
 	await render(); await click("Start setup"); await click("Install omp");
@@ -192,6 +210,7 @@ it("describes skipped provider and model configuration honestly in the summary",
 		if (channel === "providers:list") return { connected: [], available: [] };
 		if (channel === "config:models:refresh") return [];
 		if (channel === "config:roles") return { roles: [] };
+		if (channel === "config:approval") return fake.approval;
 		return {};
 	});
 	await render(); await click("Start setup"); await click("Skip"); await click("Skip");
@@ -261,6 +280,7 @@ it("keeps disabled-only providers available for sign-in without counting them as
 		if (channel === "providers:list") return { connected: [disabled], available: [] };
 		if (channel === "config:models:refresh") return [];
 		if (channel === "config:roles") return { roles: [] };
+		if (channel === "config:approval") return fake.approval;
 		return {};
 	});
 	await render(); await click("Start setup");

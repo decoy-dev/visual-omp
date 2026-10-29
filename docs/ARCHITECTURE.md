@@ -314,7 +314,9 @@ loads it as true. Explicit requests from Help or the command palette reopen the 
 The sequence is welcome, conditional install or update, providers, default chat model,
 permissions, app appearance and a done summary. Providers reuse omp discovery and `omp login`
 in an inline terminal, with Skip until a provider connects and Continue afterward. The model
-and permission choices use omp's global configuration path; Ask me first is preselected.
+and permission choices use omp's global configuration path. The permission step keeps an
+explicitly chosen mode, suggests Ask me first only while omp is on its default, and writes only a
+changed mode; an unrecognized mode blocks Continue so it cannot be overwritten.
 App appearance previews immediately. Finishing, Exit setup or Esc persists
 `setupCompleted: true` and dismisses setup. The existing tour waits until setup is completed,
 no longer needed and a supported omp is available. Setup never writes omp's `setupVersion`,
