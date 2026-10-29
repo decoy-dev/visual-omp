@@ -1,15 +1,10 @@
-/**
- * omp-missing setup screen (DESIGN §4.1). Replaces the whole window while omp is missing, won't
- * start (including Windows refusing to run it), or is older than visual-omp needs. The installer
- * runs visibly in an inline terminal.
- */
+/** Install, update and Windows-refusal step, shared by first-run and repair setup. */
 import { ArrowClockwise, ArrowRight, Check, Copy, Play, Square } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { OmpStatus } from "@shared/ipc";
-import type { ScreenProps } from "../../registry/slots";
 import { useApp } from "../../state/app";
-import { Button, cn, Expand, Mark, PresenceSwap, toast } from "../../ui";
+import { Button, cn, Expand, PresenceSwap, toast } from "../../ui";
 import { focusRing } from "../../ui/styles";
 import { HelpView } from "./HelpPage";
 import { InlineTerminal } from "./InlineTerminal";
@@ -22,10 +17,11 @@ const DONE_DELAY_MS = 600;
 type Install = { state: "idle" } | { state: "running" | "succeeded" | "failed" | "cancelled"; run: CommandRun; code: number | null };
 type Check = "idle" | "checking" | "missing" | "done";
 
-export function SetupScreen(_props: ScreenProps) {
+export function SetupScreen({ onReady }: { onReady(): void }) {
 	const { t } = useTranslation("onboarding");
 	const omp = useApp(state => state.omp);
 	const [install, setInstall] = useState<Install>({ state: "idle" });
+	const [startingInstall, setStartingInstall] = useState(false);
 	const [copied, setCopied] = useState(false);
 	const [check, setCheck] = useState<Check>("idle");
 	// Help replaces the setup steps in place; the steps stay mounted (hidden) so a running install keeps its output.
@@ -34,6 +30,28 @@ export function SetupScreen(_props: ScreenProps) {
 	const [updateOpen, setUpdateOpen] = useState(false);
 	const [managedBy, setManagedBy] = useState<string | null>(null);
 	const [checkingUpdate, setCheckingUpdate] = useState(false);
+	const ready = useRef(onReady);
+	ready.current = onReady;
+	const doneTimer = useRef<number | undefined>(undefined);
+	const [error, setError] = useState<string | null>(null);
+	const title = useRef<HTMLHeadingElement>(null);
+	const primaryButton = useRef<HTMLButtonElement>(null);
+	const active = useRef(true);
+
+	useEffect(() => {
+		active.current = true;
+		title.current?.focus();
+		return () => {
+			active.current = false;
+			window.clearTimeout(doneTimer.current);
+		};
+	}, []);
+
+	useEffect(() => {
+		if (install.state === "idle") return;
+		const run = install.run;
+		return () => run.kill();
+	}, [install.state === "idle" ? null : install.run]);
 	const windows = window.vomp.platform === "win32";
 
 	const tooOld = Boolean(omp?.found && !omp.supported);
@@ -49,6 +67,7 @@ export function SetupScreen(_props: ScreenProps) {
 			.then(status => {
 				if (active) setManagedBy(status.managedBy ?? null);
 			})
+			.catch(reason => { if (active) setError(String(reason)); })
 			.finally(() => {
 				if (active) setCheckingUpdate(false);
 			});
@@ -57,24 +76,42 @@ export function SetupScreen(_props: ScreenProps) {
 
 	const runCheck = async () => {
 		setCheck("checking");
-		const status: OmpStatus = await window.vomp.invoke("omp:status", true);
-		if (status.found && status.supported) {
-			setCheck("done");
-			// Let the checkmarks land, then hand over to the app (the shell swaps screens on refresh).
-			setTimeout(() => void useApp.getState().refreshOmp(), DONE_DELAY_MS);
-		} else {
+		setError(null);
+		try {
+			const status: OmpStatus = await window.vomp.invoke("omp:status", true);
+			if (!active.current) return;
+			if (status.found && status.supported && !status.refused) {
+				setCheck("done");
+				doneTimer.current = window.setTimeout(() => {
+					useApp.setState({ omp: status });
+					ready.current();
+				}, DONE_DELAY_MS);
+			} else {
+				setCheck("missing");
+				useApp.setState({ omp: status });
+			}
+		} catch (reason) {
 			setCheck("missing");
-			// Surface a changed problem (e.g. now found but too old) without leaving this screen.
-			void useApp.getState().refreshOmp();
+			setError(String(reason));
 		}
 	};
 
 	const startInstall = async () => {
-		if (!omp) return;
+		if (!omp || startingInstall) return;
 		setCheck("idle");
-		const { homeDir } = await window.vomp.invoke("app:info");
-		const run = await CommandRun.start({ command: omp.installCommand, cwd: homeDir, cols: 80, rows: 12 });
-		setInstall({ state: "running", run, code: null });
+		setError(null);
+		setStartingInstall(true);
+		try {
+			const { homeDir } = await window.vomp.invoke("app:info");
+			if (!active.current) return;
+			const run = await CommandRun.start({ command: omp.installCommand, cwd: homeDir, cols: 80, rows: 12 });
+			if (active.current) setInstall({ state: "running", run, code: null });
+			else run.kill();
+		} catch (reason) {
+			if (active.current) setError(String(reason));
+		} finally {
+			if (active.current) setStartingInstall(false);
+		}
 	};
 
 	useEffect(() => {
@@ -127,20 +164,18 @@ export function SetupScreen(_props: ScreenProps) {
 
 	return (
 		<>
-		<main
-			className={cn(
-				"relative min-h-screen w-full items-start justify-center overflow-y-auto bg-bg px-page pb-16 pt-[max(64px,12vh)]",
-				helpOpen ? "hidden" : "flex",
-			)}
-		>
-			{/* Frameless window: keep the top strip draggable. */}
-			<div aria-hidden className="absolute inset-x-0 top-0 h-10 [-webkit-app-region:drag]" />
-			<div className="relative flex w-full max-w-140 flex-col items-center text-center">
-				<Mark size={56} className="mb-6" />
-				<PresenceSwap swapKey={heading} variant="rise" className="flex flex-col items-center">
-					<h1 className="text-page font-semibold leading-tight tracking-[-0.02em] text-fg">{t(`setup.${heading}.title`)}</h1>
-					<p className="mt-3 max-w-110 text-base text-fg-muted">{t(`setup.${heading}.body`, { version: omp?.minVersion })}</p>
+		<section className={cn("w-full", helpOpen && "hidden")} onKeyDown={event => {
+			if (event.key === "Enter" && !event.defaultPrevented && !event.nativeEvent.isComposing && !(event.target as HTMLElement).closest("button, a, input, textarea") && !installing) {
+				event.preventDefault();
+				primaryButton.current?.click();
+			}
+		}}>
+			<div className="relative flex w-full flex-col text-left">
+				<PresenceSwap swapKey={heading} variant="rise">
+					<h1 ref={title} tabIndex={-1} className="text-page font-semibold leading-tight tracking-[-0.02em] text-fg outline-none">{t(`setup.${heading}.title`)}</h1>
+					<p className="mt-3 text-base text-fg-muted">{t(`setup.${heading}.body`, { version: omp?.minVersion })}</p>
 				</PresenceSwap>
+				{error && <p role="alert" className="mt-4 text-sm text-err">{error}</p>}
 				{tooOld && omp && !done && (
 					<dl className="mt-4 flex items-center gap-6 font-mono text-sm">
 						<div className="flex gap-2">
@@ -173,7 +208,7 @@ export function SetupScreen(_props: ScreenProps) {
 						<Expand open={install.state !== "idle"} className="pt-3">
 							{install.state !== "idle" && (
 								<>
-									<InlineTerminal run={install.run} label={t("setup.step1.terminalLabel")} className="h-60" />
+									<InlineTerminal run={install.run} label={t("setup.step1.terminalLabel")} className="h-60" screenReader />
 									<p
 										role="status"
 										className={cn(
@@ -193,10 +228,11 @@ export function SetupScreen(_props: ScreenProps) {
 								</Button>
 							) : (
 								<Button
+									ref={refused ? undefined : primaryButton}
 									variant={refused ? "secondary" : "primary"}
 									icon={<Play aria-hidden />}
 									onClick={() => tooOld ? setUpdateOpen(true) : void startInstall()}
-									loading={tooOld && checkingUpdate}
+									loading={startingInstall || (tooOld && checkingUpdate)}
 									disabled={!omp || done || Boolean(managedBy)}
 								>
 									{tooOld ? t("setup.step1.update") : t("setup.step1.run")}
@@ -222,6 +258,7 @@ export function SetupScreen(_props: ScreenProps) {
 					>
 						<div className="mt-3">
 							<Button
+								ref={refused ? primaryButton : undefined}
 								variant={refused ? "primary" : "secondary"}
 								icon={<ArrowClockwise aria-hidden />}
 								onClick={() => void runCheck()}
@@ -259,12 +296,12 @@ export function SetupScreen(_props: ScreenProps) {
 					</button>
 				</p>
 			</div>
-		</main>
+		</section>
 		{helpOpen && (
 			<div
-				className="flex h-screen w-full flex-col bg-bg"
+				className="fixed inset-0 z-(--z-sheet) flex h-screen w-full flex-col bg-bg"
 				onKeyDown={event => {
-					if (event.key === "Escape" && !event.defaultPrevented) closeHelp();
+					if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); closeHelp(); }
 				}}
 			>
 				{/* Frameless window: keep the top strip draggable. */}
@@ -274,7 +311,7 @@ export function SetupScreen(_props: ScreenProps) {
 				</div>
 			</div>
 		)}
-		{updateOpen && <OmpUpdateSheet props={undefined} close={() => setUpdateOpen(false)} />}
+		{updateOpen && <OmpUpdateSheet props={undefined} close={() => { setUpdateOpen(false); void runCheck(); }} />}
 		</>
 	);
 }

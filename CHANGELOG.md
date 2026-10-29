@@ -10,6 +10,7 @@ visual-omp 0.7 is the first beta release, adding native reply rendering, session
 
 ### Highlights
 
+- **New:** A first-run setup guides you through installing omp, signing in to providers, choosing a default model, setting permissions and picking the app's appearance.
 - **Changed:** visual-omp now requires omp 18.14 or later, and the setup screen can update omp for you.
 - **New:** Replies show omp's interim updates, SVG and Mermaid diagrams, and charts under numeric tables.
 - **New:** You can read release notes before installing an update and browse earlier versions.
@@ -23,12 +24,13 @@ visual-omp 0.7 is the first beta release, adding native reply rendering, session
 
 #### Changed
 
-- visual-omp now requires omp 18.14.0 or later. If an older version is installed, choose **Update omp** on the setup screen to run omp's updater and read its output without opening a terminal. Setup stays blocked until the detected version meets the requirement. omp discovery ignores relative PATH entries and resolves an explicit executable path before checking its version, so a project folder cannot supply a different omp.
+- visual-omp now requires omp 18.14.0 or later. If an older version is installed, choose **Update omp** on the setup screen to run omp's updater and read its output without opening a terminal. Setup cannot advance past installation until the detected version meets the requirement. omp discovery ignores relative PATH entries and resolves an explicit executable path before checking its version, so a project folder cannot supply a different omp.
 - Chats that visual-omp runs now follow your omp settings for interim replies, SVG, next-message predictions, idle recaps and worktree exit choices, because the app now shows each of them natively. Tables are charted with omp's local rules only, which avoid extra model requests. Automatic worktree creation at startup stays off, because omp 18.14 does not report when a starting chat is ready for input.
 - Installation guidance now recommends Homebrew on macOS and Scoop on Windows, with the direct installers as alternatives.
 
 #### New
 
+- A first-run setup guides new users through provider sign-in and default-model selection, matching omp's graphical setup, then adds permissions and app appearance. When omp is missing or too old, setup offers its official installer or updater with output shown in the window. Managed installations direct you to the application responsible for updates. Provider sign-in uses `omp login`; model and permission choices are saved globally, with Ask me first preselected. Appearance changes preview immediately, and the first-run tour follows setup. Provider sign-in and model selection can be skipped. Existing users see only installation recovery when omp is missing, unsupported or refused by the operating system. **Run setup again** is available from Help and the command palette. visual-omp leaves omp's setup-completion setting unchanged, preserving its terminal setup for glyph, composer and theme choices.
 - Interim replies that omp writes to `out://`, including shell redirects, appear as assistant text while omp keeps working. They use reply pacing and screen-reader announcements, stay in saved chats and helper conversations, and never count as file changes.
 - Replies and SVG or Mermaid file previews show theme-aware figures and diagrams, with the source available. Numeric Markdown tables get a chart beneath them, drawn with omp's own chart rules, and the table stays as it was. Diagram images expose their titles and descriptions to screen readers and scroll sideways at narrow widths instead of shrinking.
 - Python cards show tables, expandable JSON fields and Markdown from omp's cell views. Submit Result cards show the submitted section and fields with omp's rejection reason. Running MCP tools show the progress the server reports. Read cards show jq filters separately from the file path and keep JSON highlighting. Large results open with a first page and controls to reveal more.

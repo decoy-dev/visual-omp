@@ -1,4 +1,76 @@
 {
+	"wizard": {
+		"label": "visual-omp setup",
+		"progress": "Step {{current}} of {{total}}",
+		"exit": "Exit setup",
+		"back": "Back",
+		"continue": "Continue",
+		"skip": "Skip",
+		"start": "Start setup",
+		"finish": "Start chatting",
+		"retry": "Try again",
+		"welcome": {
+			"title": "Welcome to visual-omp",
+			"body": "Connect your providers and choose how omp works in your chats."
+		},
+		"providers": {
+			"title": "Sign in to your providers",
+			"body": "Sign in to one or more providers. You can connect another before continuing.",
+			"loading": "Reading providers from omp…",
+			"search": "Search providers",
+			"connected": "Connected",
+			"needsSignIn": "Needs sign-in",
+			"signIn": "Sign in",
+			"noMatches": "No providers match your search.",
+			"note": "omp opens the sign-in process and stores your credentials. You can also use providers configured in your environment."
+		},
+		"model": {
+			"title": "Choose your default model",
+			"body": "Search configured models and save the model used for new chats.",
+			"loading": "Discovering available models…",
+			"search": "Search models",
+			"emptyTitle": "No models yet",
+			"emptyBody": "Sign in to a provider to choose a model, or skip this step and configure one later in Settings.",
+			"signIn": "Back to sign in",
+			"noMatches": "No models match your search."
+		},
+		"permission": {
+			"title": "Choose your permission mode",
+			"body": "This sets the default for all projects. You can change it for each project later.",
+			"always-ask": {
+				"title": "Ask me first",
+				"body": "Ask before using tools, including edits and commands."
+			},
+			"always-ask-cached": {
+				"title": "Ask and remember",
+				"body": "Ask before using tools, with optional remembered file or folder approvals."
+			},
+			"write": {
+				"title": "Edits OK",
+				"body": "Allow reads and workspace edits. Ask before running commands and other execution tools."
+			},
+			"yolo": {
+				"title": "Auto",
+				"body": "Allow tools without asking. Commit or back up your work before using this mode."
+			}
+		},
+		"appearance": {
+			"title": "Choose your appearance",
+			"body": "Preview the app theme here. You can change it later in Settings.",
+			"system": "System",
+			"light": "Light",
+			"dark": "Dark"
+		},
+		"done": {
+			"title": "You're all set",
+			"body": "Your choices are saved. You can change them later in Settings.",
+			"providers": "Providers",
+			"model": "Default model",
+			"permission": "Permission mode",
+			"noProviders": "No providers connected",
+			"noModel": "No default model configured"
+		}
+	},
 	"setup": {
 		"missing": {
 			"title": "Install omp",
@@ -16,7 +88,7 @@
 		},
 		"done": {
 			"title": "omp is ready",
-			"body": "omp is available. Opening visual-omp…"
+			"body": "omp is available. Continuing setup…"
 		},
 		"step1": {
 			"install": "Install omp",
@@ -30,7 +102,7 @@
 			"copyHint": "Copy the install command to run it yourself in a terminal.",
 			"copyUpdateHint": "Copy the update command to run it yourself in a terminal.",
 			"copied": "Command copied",
-			"copiedBody": "Paste it into a terminal, then come back and choose Check again.",
+			"copiedBody": "Paste it into a terminal, then return and choose Check for omp.",
 			"cancel": "Cancel install",
 			"running": "Installing omp…",
 			"succeeded": "The installer finished.",
@@ -46,7 +118,7 @@
 			"check": "Check for omp",
 			"stillMissing": "Still can't find omp",
 			"stillRefused": "Windows still didn't start omp",
-			"stillMissingBody": "If you just installed it, try quitting and reopening visual-omp so it picks up the new install."
+			"stillMissingBody": "If you installed omp in a custom location, add its folder to PATH. Quit and reopen visual-omp, then choose Check for omp."
 		},
 		"trouble": "Having trouble?",
 		"openHelp": "Open the help guide",
@@ -93,6 +165,7 @@
 		"askNeedsProject": "Open a project first",
 		"askNeedsProjectBody": "Questions open a new chat, and each chat belongs to a project folder.",
 		"actions": {
+			"setup": "Run setup again",
 			"tour": "Take the tour",
 			"shortcuts": "Keyboard shortcuts"
 		},
@@ -367,6 +440,11 @@
 		"stopAndClose": "Stop and close"
 	},
 	"commands": {
+		"setup": {
+			"title": "Run setup again",
+			"hint": "Connect providers and choose your default model, permissions and appearance.",
+			"keywords": "onboarding, setup, first run, install, sign in, model"
+		},
 		"tour": {
 			"title": "Take the tour",
 			"hint": "Walk through the main parts of the window.",

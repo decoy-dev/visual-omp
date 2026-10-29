@@ -496,41 +496,38 @@ Plan usage (`features/extensions/usage/PlanUsageStatus.tsx`) shows one meter per
 
 Wireframes are schematic. Every screen uses the §3 shell unless noted, and the strings quoted here come from `src/renderer/src/i18n/en/`, which is authoritative when they differ.
 
-### 4.1 omp-missing setup screen
+### 4.1 Native first-run setup
 
-A full-window screen on `--bg` with no sidebar or dock. It has a 40px drag strip at the top and a centered 560px column starting at 12vh.
+Setup opens as a full-window native wizard without the sidebar or side panel. It uses the shared surfaces, spacing, controls and motion presets, with a draggable title area and an inline terminal only for omp's installer and sign-in commands.
 
-```
-                         ›▟                    C1 mark, 56px
-                    Install omp                28px semibold, −0.02em
-     visual-omp is a desktop app for omp, the AI coding agent.
-          omp isn't installed on this computer yet.           --text-base, --fg-muted
+Fresh app preferences set `setupCompleted: false`. An existing preferences file without that field is treated as completed, so upgrading does not start the full wizard. Existing users whose omp is missing, unsupported or refused see only the install step. Help and the command palette offer [Run setup again] to open the full wizard explicitly.
 
-   ┌────────────────────────────────────────┐
-   │ ① Install omp                          │ numbered step, 28px badge
-   │   The installer is a single command,   │
-   │   and its output appears in this window│
-   │   [curl -fsSL … | sh]                  │ command in --bg-inset mono
-   │   [▶ Run installer]  [Copy command]    │ primary + ghost
-   ├────────────────────────────────────────┤
-   │ ② Check for omp                        │ dims until step 1 finishes
-   │   [↻ Check for omp]                    │ secondary
-   └────────────────────────────────────────┘
-           Having trouble?  Open the help guide →
-```
+The full wizard presents these steps in order:
 
-- **States**:
-  - **missing**: as shown.
-  - **installing**: an inline terminal (240px) shows the installer's output, with [Cancel install] and a status line that ends in "The installer finished." or an error with its exit code.
-  - **too old**: "Your omp is out of date" names the 18.14.0 minimum and shows the installed and required versions. Step 1 becomes "Update omp", showing `omp update` and an [Update omp] button. The button opens the same update dialog as About, with running, error and completion states and streamed output. Completion checks the detected version before the app becomes available. For a managed install, the step names the responsible application and directs the user there; the update action is disabled.
-  - **refused** (Windows only): when Windows does not start omp, "omp can't start" replaces the heading. The reason appears as muted prose under the body, wrapping long paths anywhere. It quotes what Windows reported and names Smart App Control only as a possible cause, when it is on. [Check for omp] becomes the primary button and [Run installer] secondary, step 2 reads "After you allow omp in Windows, check whether it starts." and is available at once, and a failed check shows only "Windows still didn't start omp".
-  - **still missing after a check**: a `--warn-bg` note suggests reopening the app.
-  - **done**: "omp is ready". Both step badges turn `--ok` with a check, and the app opens after 600ms.
-- The heading and body swap with a rise. [Copy command] shows the toast "Command copied". The help link shows the Help content in place of the setup column (`HelpView limited`), without the parts that need omp, and "Back to setup" or Esc returns.
+1. **Welcome** explains that setup connects a provider and chooses the app's initial settings.
+2. **Install or update omp** appears only when omp is missing, unsupported or refused. It reuses the existing installer IPC and update dialog, with the states below. A supported omp skips this step.
+3. **Providers** uses omp's provider discovery and `omp login` in an inline terminal. The app stores no credentials itself. [Skip] remains available until a provider is connected, then changes to [Continue].
+4. **Default chat model** saves the selected model to omp's global chat default, so it applies outside the current project.
+5. **Permissions** preselects [Ask me first] (`always-ask`). The selected mode is saved globally through omp's configuration path.
+6. **Appearance** changes the app's appearance with a live preview. It leaves omp's terminal theme unchanged.
+7. **Done** summarizes the choices. Finishing marks setup completed, opens the app and permits the existing first-run tour (§4.2).
+
+[Exit setup] or Esc also marks setup completed and dismisses the wizard, preserving choices already saved. Setup completion belongs to the app preferences. It never writes omp's `setupVersion`, so terminal omp still offers its glyph, composer and theme setup.
+
+The install step retains the existing recovery behavior:
+
+- **Missing omp** shows the official install command, [Run installer], [Copy command] and [Check for omp].
+- **Installing** shows output in an inline terminal with [Cancel install] and the final status or exit-code error.
+- **Unsupported omp** names the installed version and the 18.14.0 minimum. [Update omp] opens the same update dialog as About, streams output and checks the detected version on completion. Managed installations name the responsible application and direct the user there instead.
+- **Refused omp** on Windows shows "omp can't start", quotes Windows' reason and names Smart App Control only as a possible cause when it is on. [Check for omp] is primary and [Run installer] secondary. A failed check says "Windows still didn't start omp".
+- **Still missing after a check** shows a warning suggesting that the user reopen the app.
+- **Ready omp** advances the full wizard, or opens the app for an existing user who needed only installation.
+
+[Copy command] shows "Command copied". The install step's help link opens the limited Help content without actions that need omp; [Back to setup] returns to the wizard.
 
 ### 4.2 First-run guided tour
 
-The tour runs 800ms after the first launch, once omp is found. Five steps spotlight their targets: the scrim is `--backdrop` with an 8px-padded cutout (radius 12) and a `--ring` outline, and it glides between targets on the gentle spring.
+The tour runs after setup has completed and a supported omp is available. Its automatic start waits 800ms and remains blocked while setup is open or needed. Five steps spotlight their targets: the scrim is `--backdrop` with an 8px-padded cutout (radius 12) and a `--ring` outline, and it glides between targets on the gentle spring.
 
 - **Card**: 320px, `--bg-overlay`, `--radius-lg`, `--shadow-overlay`, placed beside the target. Title `--text-base` semibold, body `--text-md` `--fg-muted`.
 - **Footer**: [Skip tour], step dots (screen readers hear "Step N of 5"), and [Show next step →], which becomes [Start chatting] on the last step. Content slides in the direction of travel.
@@ -541,7 +538,7 @@ The tour runs 800ms after the first launch, once omp is found. Five steps spotli
   3. **How much omp does on its own**: "This setting controls how much omp does before asking you. Auto lets omp edit files and run commands without approval, so commit or back up your work before you use it."
   4. **Watch the work**: "This panel shows changes, files, previews, outputs, running helpers, the plan and a terminal. Choose one from the menu at the top of the panel." The side panel opens for this step and closes again afterwards.
   5. **Project and usage status**: "The status bar shows git information, available plan usage and omp status. Open Usage & limits for estimated API cost."
-- The tour can be replayed from Help → [Take the tour].
+- The tour can be replayed from Help → [Take the tour]. [Run setup again] in Help or the command palette reopens setup separately.
 
 ### 4.3 Project overview
 

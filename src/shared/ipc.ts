@@ -189,6 +189,8 @@ export interface AppPreferences {
 	liveThinking: boolean;
 	/** Explicit omp executable path; null = auto-detect. */
 	ompPath: string | null;
+	/** Native first-run setup is complete; profiles created before setup count as complete. */
+	setupCompleted: boolean;
 	tourCompleted: boolean;
 	pinnedProjects: string[];
 	archivedSessions: string[];

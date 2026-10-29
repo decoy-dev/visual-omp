@@ -21,6 +21,8 @@ const DEFAULTS: AppPreferences = {
 	transcriptMode: "normal",
 	liveThinking: true,
 	ompPath: null,
+	// Existing or unreadable profiles keep setup complete; only a missing file starts setup.
+	setupCompleted: true,
 	tourCompleted: false,
 	pinnedProjects: [],
 	archivedSessions: [],
@@ -39,7 +41,7 @@ function load(): StoredPreferences {
 		return { ...DEFAULTS, ...(JSON.parse(readFileSync(file, "utf8")) as Partial<StoredPreferences>) };
 	} catch (error) {
 		// No preferences file yet: a fresh profile, so the new-user approval default is still to run.
-		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ...DEFAULTS, newUserApproval: "pending" };
+		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { ...DEFAULTS, setupCompleted: false, newUserApproval: "pending" };
 		return { ...DEFAULTS };
 	}
 }

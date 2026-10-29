@@ -3,7 +3,7 @@
  * shortcuts, the omp documentation and a link for reporting a problem. The setup screen shows the
  * same content in place, without the parts that need omp (`limited`).
  */
-import { ArrowSquareOut, Bug, CaretDown, ChatCenteredDots, Compass, Keyboard, MagnifyingGlassMinus } from "@phosphor-icons/react";
+import { ArrowSquareOut, Bug, CaretDown, ChatCenteredDots, Compass, GearSix, Keyboard, MagnifyingGlassMinus } from "@phosphor-icons/react";
 import { type ReactNode, useId, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { PageProps } from "@/registry/slots";
@@ -12,6 +12,7 @@ import { openSettings, usePageBack } from "@/state/navigation";
 import { Button, cn, EmptyState, Expand, type PageBack, PageFrame, PageHeader, SearchInput, SectionHeader, toast } from "@/ui";
 import { focusRingInset } from "@/ui/styles";
 import { GUIDES, type Guide, matchesQuery, TERMS } from "./helpContent";
+import { startSetup } from "./setup";
 import { startTourFromAnywhere } from "./tour";
 
 const OMP_DOCS_URL = "https://omp.sh";
@@ -68,6 +69,9 @@ export function HelpView({ back, focusKey, limited = false }: HelpViewProps): Re
 				actions={
 					!limited && (
 						<>
+							<Button icon={<GearSix aria-hidden />} onClick={startSetup}>
+								{t("help.actions.setup")}
+							</Button>
 							<Button icon={<Compass aria-hidden />} onClick={startTourFromAnywhere}>
 								{t("help.actions.tour")}
 							</Button>

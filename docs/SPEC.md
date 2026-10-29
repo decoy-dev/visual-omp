@@ -31,11 +31,22 @@ be able to use it, and it exposes the features that set omp apart from other cod
   size, reduced motion, and contrast-safe colors in both themes.
 
 ## Engine
-- visual-omp requires omp 18.14.0 or later. When omp is missing, a guided setup screen offers
-  the official install command, **Run installer** in the built-in terminal and **Check for omp**.
-  An older omp is refused, with **Update omp** running omp's own updater in the existing update
-  dialog. Output and errors remain visible, and the detected version is refreshed on completion.
-  Managed installations direct the user to the application that updates omp.
+- visual-omp requires omp 18.14.0 or later. Native first-run setup includes welcome, a conditional
+  install or update step, provider sign-in, a default chat model, permissions, app appearance and a
+  done summary, followed by the existing guided tour. Provider sign-in runs `omp login` in an inline
+  terminal; **Skip** changes to **Continue** once a provider is connected. The model selection saves
+  omp's global default chat model. Appearance changes preview immediately in the app.
+- Fresh app preferences set `setupCompleted: false`; an existing file without the flag is treated
+  as completed. Existing users whose omp is missing, unsupported or refused see only the install
+  step. Finishing, **Exit setup** or Esc marks setup completed. Help and the command palette offer
+  **Run setup again** for the full wizard. The app never writes omp's `setupVersion`, so terminal
+  omp still offers its glyph, composer and theme setup.
+- The install step reuses the existing installer IPC. Missing omp offers the official install
+  command, **Run installer** in an inline terminal and **Check for omp**. An older omp is refused,
+  with **Update omp** running omp's own updater in the existing update dialog. Output and errors
+  remain visible, and the detected version is refreshed on completion. Managed installations
+  direct the user to the application that updates omp. A Windows launch refusal shows the reported
+  reason and offers another check after the user allows omp.
 - Each chat is backed by a **real omp terminal (TUI) running hidden in a pseudo-terminal**. The app
   types messages and commands into it (e.g. the Restart button sends `/restart`), and mirrors its
   live state (streaming text, thinking, tool calls, subagents, questions) as native UI through
@@ -43,14 +54,14 @@ be able to use it, and it exposes the features that set omp apart from other cod
   the machine.
 - Full-screen TUI menus that are not rebuilt natively open in a **terminal sheet** showing the
   live omp terminal.
-- Default permission mode for new users: **Ask me first** (omp `always-ask`), changeable from the
-  permission button next to Send. A fresh profile (no preferences file at first launch) whose omp
-  config has no `tools.approvalMode` gets `always-ask` written to the global config once
-  (`src/main/services/approval-default.ts`, `newUserApproval` in `src/main/prefs.ts`, run from
-  `src/main/features/config.ts` and before each chat's omp starts). While omp cannot be read to
-  check, a fresh profile's chat does not start and shows why, and the next start checks again.
-  Existing users, and anyone whose config or environment already sets a mode, keep their setting;
-  omp's own default stays Auto (`yolo`).
+- Setup preselects **Ask me first** (omp `always-ask`) and saves the chosen permission mode
+  globally. The permission button next to Send can change it later. `ensureNewUserApproval`
+  remains a fallback for a fresh profile whose omp config has no `tools.approvalMode`: it writes
+  `always-ask` once (`src/main/services/approval-default.ts`, `newUserApproval` in
+  `src/main/prefs.ts`, run from `src/main/features/config.ts` and before each chat's omp starts).
+  While omp cannot be read to check, a fresh profile's chat does not start and shows why, and the
+  next start checks again. The fallback preserves an existing config or environment mode and
+  existing users' settings; omp's own default stays Auto (`yolo`).
 
 The app uses a consistent system with an ink sidebar and status bar in both themes, a light default main sheet, a gray page canvas and a floating side panel. Dark mode preserves the surface hierarchy. One teal accent marks actions and selection; stronger borders define controls and cards. Radii and spacing use shared proportional scales. Motion uses `src/renderer/src/ui/motion.tsx` and respects reduced-motion preferences. The Prompt periscope is the app icon (docs/DESIGN.md §0 and §1).
 
@@ -165,10 +176,12 @@ Current chats, navigation shortcuts and preview release are described under Sess
   lists every omp setting.
 
 ### Help
-- A first-run guided tour introduces the app.
+- The first-run guided tour introduces the app after setup completes and a supported omp is
+  available. It never starts over the setup wizard.
 - Every button has a plain-language tooltip.
 - Empty chats offer example prompts.
-- The built-in Help page has guides and a glossary.
+- The built-in Help page has guides, a glossary, **Take the tour** and **Run setup again**.
+  The command palette also offers **Run setup again**.
 - An in-app notice announces updates.
 
 ### Lifecycle

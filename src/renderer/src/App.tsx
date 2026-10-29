@@ -1,5 +1,6 @@
 import { IconContext, type IconProps } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useState } from "react";
+import { needsSetup, useSetup } from "./features/onboarding/setup";
 import { globals, screens } from "./registry/slots";
 import { Shell } from "./shell/Shell";
 import { useApp } from "./state/app";
@@ -31,6 +32,9 @@ function usePreferenceAttributes(): void {
 
 export function App(): ReactNode {
 	const omp = useApp(state => state.omp);
+	const prefs = useApp(state => state.prefs);
+	const requested = useSetup(state => state.requested);
+	const dismissed = useSetup(state => state.dismissed);
 	const activeProject = useApp(state => state.activeProject);
 	const screenList = screens.use();
 	const globalList = globals.use();
@@ -39,15 +43,19 @@ export function App(): ReactNode {
 	useEffect(() => {
 		void useApp.getState().init();
 	}, []);
+	// An exit suppresses the current unavailable engine. A later failure still needs repair.
+	useEffect(() => {
+		if (dismissed && omp?.found && omp.supported && !omp.refused) useSetup.setState({ dismissed: false });
+	}, [dismissed, omp]);
 
 	const setup = screenList.find(screen => screen.id === "setup");
-	const needsSetup = omp !== null && (!omp.found || !omp.supported);
+	const showSetup = needsSetup(omp, prefs, requested, dismissed);
 
 	return (
 		<IconContext.Provider value={iconDefaults}>
 			<MotionProvider>
 				<TooltipProvider>
-					{needsSetup && setup ? <setup.component projectPath={activeProject} /> : <Shell />}
+					{showSetup && setup ? <setup.component projectPath={activeProject} /> : <Shell />}
 					{globalList.map(global => (
 						<global.component key={global.id} />
 					))}

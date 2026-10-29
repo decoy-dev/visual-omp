@@ -300,6 +300,20 @@ refused by the setup screen and by `ompPath`; only update checks and `omp update
 Executable discovery ignores relative PATH entries and normalizes an explicit override to an
 absolute path before checking its version. Subsequent commands retain that checked absolute path,
 so changing a child process's project folder cannot select another project-local omp executable.
-The setup screen reuses the About update dialog, streams the updater's output and refreshes
-the detected version on completion. Managed installations name the application responsible for
-updating omp. Missing binaries retain the official installer flow. There is no upper bound.
+The setup wizard uses the existing installer IPC for missing binaries and the About update dialog
+for unsupported versions. It streams output and refreshes the detected version on completion;
+managed installations name the application responsible for updating omp. Existing users whose
+omp is missing, unsupported or refused receive only this install step. There is no upper bound.
+
+Native first-run setup is renderer-owned, gated on loaded omp status and app preferences.
+Fresh preferences set `setupCompleted: false`; an existing preferences file without the field
+loads it as true. Explicit requests from Help or the command palette reopen the full wizard.
+The sequence is welcome, conditional install or update, providers, default chat model,
+permissions, app appearance and a done summary. Providers reuse omp discovery and `omp login`
+in an inline terminal, with Skip until a provider connects and Continue afterward. The model
+and permission choices use omp's global configuration path; Ask me first is preselected.
+App appearance previews immediately. Finishing, Exit setup or Esc persists
+`setupCompleted: true` and dismisses setup. The existing tour waits until setup is completed,
+no longer needed and a supported omp is available. Setup never writes omp's `setupVersion`,
+so terminal glyph, composer and theme setup remain available. `ensureNewUserApproval`
+remains the fresh-profile approval fallback when omp has no configured mode.

@@ -12,6 +12,7 @@ import { create } from "zustand";
 import { peekDock, useApp } from "../../state/app";
 import { useLeaveConfirm } from "../../state/leaveGuard";
 import { Button, PresenceSwap, StepDots, spring } from "../../ui";
+import { needsSetup, useSetup } from "./setup";
 
 const STEPS = ["sidebar", "composer", "permission", "dock", "statusbar"] as const;
 type StepId = (typeof STEPS)[number];
@@ -149,17 +150,21 @@ export function TourHost() {
 	const step = useTour(state => state.step);
 	const tourCompleted = useApp(state => state.prefs?.tourCompleted);
 	const ompReady = useApp(state => Boolean(state.omp?.found && state.omp.supported));
+	const prefs = useApp(state => state.prefs);
+	const omp = useApp(state => state.omp);
+	const setup = useSetup();
+	const setupOpen = needsSetup(omp, prefs, setup.requested, setup.dismissed);
 
 	useEffect(() => {
-		if (autoStarted || tourCompleted !== false || !ompReady) return;
+		if (autoStarted || tourCompleted !== false || !ompReady || setupOpen) return;
 		const timer = setTimeout(() => {
 			autoStarted = true;
 			startTour();
 		}, AUTO_START_DELAY_MS);
 		return () => clearTimeout(timer);
-	}, [tourCompleted, ompReady]);
+	}, [tourCompleted, ompReady, setupOpen]);
 
-	if (step === null) return null;
+	if (step === null || setupOpen) return null;
 	const id = STEPS[step];
 	return id ? <TourOverlay step={step} id={id} /> : null;
 }
