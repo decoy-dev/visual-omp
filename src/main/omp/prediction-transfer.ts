@@ -35,8 +35,12 @@ export async function paintedPrediction(host: PredictionHost): Promise<string | 
 	if (!paint.cursor?.visible) return null;
 	const row = paint.lines[paint.cursor.y];
 	if (!row) return null;
-	const hint = row.slice(paint.cursor.x).replace(/\s*[│┃║]\s*$/, "").trimEnd();
-	return hint.trim() ? hint : null;
+	// omp paints a prediction starting at the cursor cell (pi-tui editor: before + cursor marker + hint).
+	// Text after a gap is the editor's own chrome, such as the box edge `─╯` or a right-aligned hint.
+	const after = row.slice(paint.cursor.x);
+	if (!after || /^\s/.test(after)) return null;
+	const hint = after.replace(/\s*[\u2500-\u257F]+\s*$/, "").trimEnd();
+	return hint || null;
 }
 
 /** Exact captures remain recoverable until an explicit renderer acknowledgement. */

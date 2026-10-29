@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { EditorDraftRequest, EditorDraftResult } from "@shared/contracts/composer";
 import { exactEditorDraft } from "./native-editor";
-import { PredictionTransfers, type PredictionHost } from "./prediction-transfer";
+import { paintedPrediction, PredictionTransfers, type PredictionHost } from "./prediction-transfer";
 
 const full = `Please check tests at https://example.test/${"long_token_".repeat(16)}?a=one|two&unicode=日本語🧭 and preserve literal | pipes.`;
 const request = { hostId: "host", generation: 1, tabId: "tab", nativeDraft: "Please", expectedGhost: "Please check tests…" };
@@ -128,5 +128,32 @@ describe("next-message capture coordinator", () => {
 		await expect(test.transfers.take(request)).resolves.toBeNull();
 		expect(test.keys).not.toHaveBeenCalled();
 		expect(test.buffer).toBe("Unsent TUI text");
+	});
+});
+
+/** Rows as omp 18.14 paints its empty editor: the input sits inside the box's bottom edge. */
+function paintedHost(row: string): PredictionHost {
+	return {
+		state: { generation: 1, sessionId: "session", cwd: "/project", phase: "live" },
+		withEditorInput: () => { throw new Error("not used"); },
+		tuiFocus: async () => ({ overlays: 0 }),
+		debugValues: async () => ({ "Editor[1]": { textPreview: "", textLength: 0, placeholderActive: false, cursorLine: 0, lineCount: 1 } }),
+		screenPaint: async () => ({ lines: ["╭── π ▶ ⬢ Haiku 5.5 ──╮", row], cursor: { x: 3, y: 1, visible: true } }),
+		setEditorTransferBlocked: () => {},
+	};
+}
+
+describe("painted next-message offers", () => {
+	it("offers no prediction for an empty editor whose row ends in the box edge", async () => {
+		await expect(paintedPrediction(paintedHost(`╰─ ${" ".repeat(116)}─╯`))).resolves.toBeNull();
+	});
+	it("offers only the prediction text, without the padding and box edge after it", async () => {
+		await expect(paintedPrediction(paintedHost(`╰─ yes, give me three colors${" ".repeat(90)}─╯`))).resolves.toBe("yes, give me three colors");
+	});
+	it("ignores right-aligned editor hints that start after a gap", async () => {
+		await expect(paintedPrediction(paintedHost(`╰─ ${" ".repeat(80)}⇧⇥ to change thinking effort ─╯`))).resolves.toBeNull();
+	});
+	it("strips a side border from a prediction on a side-bordered editor", async () => {
+		await expect(paintedPrediction(paintedHost(`│  Run the tests${" ".repeat(20)}│`))).resolves.toBe("Run the tests");
 	});
 });
