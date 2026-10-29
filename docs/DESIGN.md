@@ -741,6 +741,7 @@ Settings opens as a full page (`features/manage/settings/SettingsPage.tsx`, §5.
     - Rows for the visual-omp version (and how it updates), the omp version and channel, the omp location, and the last update check.
     - Actions: [Check for updates], [Read release notes], [Read omp docs] and [Report an issue].
     - When a newer version exists, the row offers [Update visual-omp] or [Update omp].
+    - When omp reports an app-managed installation, its row says "Managed by {app}" and offers no Update action.
 - **Unsaved edits**: sections with drafts (Models & roles, the helper editor) use the leave guard, so switching section or scope asks first (§5.6).
 - **States**:
   - A change made outside the app shows an info banner with [Reload settings].

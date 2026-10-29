@@ -85,6 +85,7 @@ describe("parseOmpUpdateCheck", () => {
 			updateAvailable: false,
 			channel: "stable",
 			packageMovedTo: null,
+			managedBy: null,
 			error: null,
 		});
 	});
@@ -101,6 +102,34 @@ describe("parseOmpUpdateCheck", () => {
 		expect(parsed.latestVersion).toBe("18.5.0-canary.3");
 		expect(parsed.channel).toBe("canary");
 		expect(parsed.packageMovedTo).toBe("@oh-my-pi/omp");
+	});
+
+	it("recognizes omp managed by another app without offering an update", () => {
+		const parsed = parseOmpUpdateCheck({
+			code: 0,
+			stdout: "/Applications/Tern.app/Contents/Resources/omp is installed and kept up to date by Tern; update it from Tern.\n",
+			stderr: "",
+		});
+		expect(parsed).toEqual({
+			currentVersion: null,
+			latestVersion: null,
+			updateAvailable: false,
+			channel: "stable",
+			packageMovedTo: null,
+			managedBy: "Tern",
+			error: null,
+		});
+	});
+
+	it("retains spaces in the managing application's name", () => {
+		const parsed = parseOmpUpdateCheck({
+			code: 0,
+			stdout: "C:\\Apps\\Agent Studio\\omp.exe is installed and kept up to date by Agent Studio; update it from Agent Studio.\n",
+			stderr: "",
+		});
+		expect(parsed.managedBy).toBe("Agent Studio");
+		expect(parsed.error).toBeNull();
+		expect(parsed.updateAvailable).toBe(false);
 	});
 
 	it("surfaces the failure reason", () => {

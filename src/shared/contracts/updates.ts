@@ -102,6 +102,8 @@ export interface OmpUpdateStatus {
 	channel: OmpUpdateChannel;
 	/** omp's npm package was renamed; updating migrates the install to this package. */
 	packageMovedTo: string | null;
+	/** Application responsible for this omp installation; updating is handled there. */
+	managedBy?: string | null;
 	/** Epoch ms of the check that produced this result. */
 	checkedAt: number;
 	/** True when served from the 30-minute cache. */

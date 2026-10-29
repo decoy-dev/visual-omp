@@ -400,13 +400,14 @@ export interface OmpUpdateCheck {
 	updateAvailable: boolean;
 	channel: OmpUpdateChannel;
 	packageMovedTo: string | null;
+	managedBy: string | null;
 	error: string | null;
 }
 
 /**
  * Parse `omp update --check` text output (omp has no JSON mode for it):
  * `Current version: X`, optional `Current channel: canary`, then `New version available: Y`,
- * `Already up to date`, or `Failed to check for updates: …` on stderr with exit 1.
+ * `Already up to date`, an app-managed install notice, or `Failed to check for updates: …` on stderr with exit 1.
  */
 export function parseOmpUpdateCheck(result: CliResult): OmpUpdateCheck {
 	const text = `${result.stdout}\n${result.stderr}`;
@@ -414,21 +415,23 @@ export function parseOmpUpdateCheck(result: CliResult): OmpUpdateCheck {
 	const latestVersion = /New version available:\s*(\S+)/.exec(text)?.[1] ?? null;
 	const channel: OmpUpdateChannel = /Current channel:\s*canary/.test(text) ? "canary" : "stable";
 	const packageMovedTo = /The npm package moved to (\S+?);/.exec(text)?.[1] ?? null;
+	const managedBy = / is installed and kept up to date by ([^\r\n;]+); update it from \1\./.exec(text)?.[1]?.trim() ?? null;
 	let error: string | null = null;
 	if (result.code !== 0) {
 		error =
 			/Failed to check for updates:\s*(.+)/.exec(text)?.[1]?.trim() ||
 			result.stderr.trim() ||
 			`omp update --check exited with ${result.code}`;
-	} else if (!latestVersion && !/Already up to date/.test(text)) {
+	} else if (!managedBy && !latestVersion && !/Already up to date/.test(text)) {
 		error = `Unrecognized omp update output: ${text.trim().slice(0, 200)}`;
 	}
 	return {
 		currentVersion,
-		latestVersion: error ? null : latestVersion,
-		updateAvailable: !error && latestVersion !== null,
+		latestVersion: error || managedBy ? null : latestVersion,
+		updateAvailable: !error && !managedBy && latestVersion !== null,
 		channel,
 		packageMovedTo,
+		managedBy,
 		error,
 	};
 }

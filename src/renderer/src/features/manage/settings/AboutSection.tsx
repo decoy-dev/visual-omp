@@ -83,6 +83,7 @@ export function AboutSection() {
 		if (updates.checkingOmp) return { text: t("about.checking"), tone: "busy" };
 		if (!status) return { text: t("about.notChecked"), tone: "accent" };
 		if (status.error) return { text: t("about.checkFailed", { reason: status.error }), tone: "err" };
+		if (status.managedBy) return { text: t("about.ompManaged", { app: status.managedBy }), tone: "ok" };
 		if (status.updateAvailable) {
 			return {
 				text: t("about.ompUpdate", { version: status.latestVersion }),

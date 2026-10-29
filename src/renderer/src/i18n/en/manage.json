@@ -345,6 +345,7 @@
 		"downloadingPercent": "Downloading the installer ({{percent}}%)",
 		"showProgress": "Show progress",
 		"ompUpdate": "v{{version}} is available",
+		"ompManaged": "Managed by {{app}}",
 		"updateOmp": "Update omp",
 		"staleChats_one": "1 open chat still runs the previous omp",
 		"staleChats_other": "{{count}} open chats still run the previous omp",
