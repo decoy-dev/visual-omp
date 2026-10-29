@@ -56,11 +56,14 @@ vi.mock("../features/session-tools/results", () => ({
 	watchStep: (state: unknown) => [state, { kind: "stop" }],
 }));
 vi.mock("../features/session-tools/screen", () => ({ parseStatusLine: () => ({}) }));
-vi.mock("../features/session-tools/slash", () => ({ routeSlash: async () => false }));
+vi.mock("../features/session-tools/slash", () => ({
+	routeSlash: async () => false,
+	parseSlash: (line: string) => ({ name: line.trim().slice(1).split(/[\s:]/)[0], args: line.trim().replace(/^\/[^\s:]+[\s:]?/, "").trim() }),
+}));
 vi.mock("../features/palette/overlays", () => ({ isNativeOverlay: () => false }));
 vi.mock("../features/palette/TerminalSheet", () => ({ autoOpened: { tabId: null } }));
 vi.mock("../chat/branch", () => ({ displayedEntries: () => [] }));
-vi.mock("./app", () => ({ useApp: { getState: () => ({ view: "home", terminalTabId: null }) } }));
+vi.mock("./app", () => ({ useApp: { getState: () => ({ view: "home", terminalTabId: null, openTerminal: () => undefined }) } }));
 
 const hostListeners = new Set<(state: HostState) => void>();
 let savedText = "";

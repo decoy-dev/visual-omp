@@ -4,6 +4,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- A `/btw` side question sent while omp is working now shows its answer. omp writes side answers only in its own terminal, so visual-omp sent the question but showed nothing, and with **Send now** on a queued `/btw` the message seemed to disappear. visual-omp now opens the terminal sheet after a `/btw` question is sent, if that chat is on screen and no terminal is already open, and leaves it open for you to read and close. If the question can't be sent, it stays in the queue and a notification says why.
 - Tables in chats no longer squeeze a column until its words split across lines, as in "Col / our". Columns keep whole words, headers can wrap so a long header over short values leaves room for the text columns, and long links and code paths still wrap inside their cell. A word too long for the chat makes the table scroll sideways instead.
 - A file name that omp shortens with "…", such as `comparison_portrait_desynth_….png`, now becomes a link when exactly one file or folder matches it in the folder the reply refers to. The link keeps the shortened text, and its tooltip and **Copy path** show the full path. A shortened name that fits two or more files stays plain text.
 - On macOS, Settings › Sounds & alerts now includes help for a missing Dock count: open System Settings › Notifications › visual-omp and turn on Allow notifications and Badge application icon.

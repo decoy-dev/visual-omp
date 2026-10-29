@@ -17,7 +17,7 @@ import { autoOpened } from "../palette/TerminalSheet";
 import { OmpBusyError, readScreen, readyEditor, reportFailure, sleep } from "./drive";
 import { addCommandResult, drawsRow, linesTone, presentLines, roomKey, startWatch, supersededResult, WATCH, watchStep } from "./results";
 import { parseStatusLine } from "./screen";
-import { routeSlash } from "./slash";
+import { parseSlash, routeSlash } from "./slash";
 
 const POLL_MS = 120;
 /** Slower polling while omp's own screen is up: it may stay open for a long time. */
@@ -28,12 +28,13 @@ const watches = new WeakMap<SessionController, { supersede: () => void }>();
 /** The chat's latest typing, so concurrent sends type one at a time. */
 const typing = new WeakMap<SessionController, Promise<unknown>>();
 
-/** Open the terminal sheet on omp's screen, the way OverlayWatcher does. */
-function openSheet(session: SessionController): void {
+/** Open only for a visible chat with no terminal already open; inline side answers stay open for reading. */
+function openSheet(session: SessionController, closeWithEditor = true): void {
 	const app = useApp.getState();
 	const visible = app.view === "chat" && (app.activeTabId === session.tabId || app.splitTabId === session.tabId);
 	if (!visible || app.terminalTabId) return;
-	autoOpened.tabId = session.tabId;
+	if (closeWithEditor) autoOpened.tabId = session.tabId;
+	else if (autoOpened.tabId === session.tabId) autoOpened.tabId = null;
 	app.openTerminal(session.tabId);
 }
 
@@ -149,8 +150,14 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 			watches.get(session)?.supersede();
 			const before = await readScreen(session);
 			const anchor = displayedEntries(session.getSnapshot()).at(-1)?.id ?? null;
+			const parsed = parseSlash(line);
+			const sideQuestion = parsed?.name === "btw";
 			await session.command(line);
-			return { watching: watch(session, line, before, anchor) };
+			// Side answers keep omp's editor on screen and never reach collab. Leave closing the
+			// sheet to the reader, and check visibility after submission in case they switched away.
+			if (sideQuestion) openSheet(session, false);
+			// An ephemeral answer may pause while streaming, so a quiet screen is not its completion.
+			return { watching: sideQuestion && parsed.args ? Promise.resolve() : watch(session, line, before, anchor) };
 		});
 	typing.set(session, typed);
 	return typed;
@@ -159,11 +166,11 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 /**
  * Deliver a pass-through slash command. While omp is busy (`SessionController.busy`), the line joins
  * the end of the chat's queue and is routed and typed when it drains; with `now` (Send now) it is typed
- * at once, steering the running turn, and still watched for a result. Otherwise it is typed now, and the
+ * at once and still watched for a result. Otherwise it is typed now, and the
  * chat's queue is held from this call until the command's watch ends (it printed its result, started a
  * turn or changed the session), so a message sent meanwhile queues behind it. A line typed at once counts
  * as sent now (`noteSent`), so the transcript goes to its end, where the result row or the turn appears.
- * The promise settles once the line is in omp's editor; the printed result arrives in the chat later.
+ * The promise settles once the line is in omp's editor. `/btw` answers use the terminal without result scraping.
  * Rejects when the line could not be typed (omp shows a menu of its own, or did not start), so the caller
  * can keep the draft.
  */
