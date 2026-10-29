@@ -20,9 +20,11 @@ declare module "../ipc" {
 	interface IpcInvokeMap {
 		/**
 		 * Where each reference points, aligned with `refs` (up to 100 refs and 8 bases per request); null when it names
-		 * no regular file or folder. Main only resolves symlinks and stats, and never reads content. An absolute or
-		 * `~/` reference resolves directly. A relative one is tried in the folders that earlier references in the
-		 * request resolved to (latest first, up to 4), then in `bases` in order, and the first match wins.
+		 * no regular file or folder. Main resolves symlinks, stats and bounded directory listings, without reading
+		 * content. An absolute or `~/` reference resolves directly. A relative one is tried in the folders that earlier
+		 * references resolved to (latest first, up to 4), then in `bases` order. Exact names take precedence. Otherwise
+		 * U+2026 in the last component matches visible parts in order, anchored at both ends. Only one match in the
+		 * first eligible folder with matches resolves; hidden entries and symlinks are excluded from pattern matching.
 		 */
 		"fs:resolveRefs": { args: [request: FileRefRequest]; result: (FileRef | null)[] };
 	}

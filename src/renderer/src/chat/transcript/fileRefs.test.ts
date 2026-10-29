@@ -25,6 +25,15 @@ describe("fileRefOf", () => {
 		}
 	});
 
+	it("keeps abbreviated names whole, including prefix-only and suffix-only forms", () => {
+		for (const ref of ["comparison_portrait_desynth_….png", "report_…", "….png", "report_…middle….png", "~/Downloads/report_….png"]) {
+			expect(fileRefOf(ref, true)).toBe(ref);
+			expect(refs(`See ${ref}.`)).toEqual([ref]);
+		}
+		expect(fileRefOf("…", true)).toBeNull();
+		expect(fileRefOf("...", true)).toBeNull();
+	});
+
 	it("refuses words, numbers, abbreviations and non-path syntax", () => {
 		for (const word of ["1.2.3", "v0.3.1", "0.4s", "1.25", "e.g", "i.e", "U.S", "README", "~", "~/", "/", "./", "24/7", "1/2", "a//b", "C:"]) {
 			expect(fileRefOf(word, false), word).toBeNull();

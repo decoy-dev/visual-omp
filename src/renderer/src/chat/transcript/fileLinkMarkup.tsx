@@ -182,9 +182,11 @@ export function linkHtml(html: string, refs: readonly (FileRef | null)[], text: 
 		const kind = kindOf(resolved);
 		const block = blockOf(occurrence);
 		if (block && perBlock.get(block) === 1 && holdsOnly(block, occurrence)) {
-			// The file's name with the reply's line, column or range citation (`app.ts:50-100`), which the lookup drops.
+			// Abbreviated names keep the reply's spelling; the target and title retain the resolved full path.
 			const written = writtenText(occurrence);
-			const name = baseName(resolved.path) + (written.startsWith(occurrence.ref) ? written.slice(occurrence.ref.length) : "");
+			const name = baseName(occurrence.ref).includes("…")
+				? written
+				: baseName(resolved.path) + (written.startsWith(occurrence.ref) ? written.slice(occurrence.ref.length) : "");
 			const folder = parentLabel(resolved.path, text.home);
 			const tile = span("tr-file-tile", icon(kind, "tr-file-icon"));
 			if (OPENABLE_EXT.test(resolved.path) || SVG_EXT.test(resolved.path)) tile.dataset.thumb = resolved.path;

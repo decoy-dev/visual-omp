@@ -19,13 +19,13 @@ const CODE_REFUSED = /[<>"|?*$;={}`&\n\r\t]|\s{2}|^\s|\s$/;
 const LETTER = /\p{L}/u;
 const ALNUM = /[\p{L}\p{N}]/u;
 /** Runs of characters a path in prose can hold; spaces and other punctuation end a run. */
-const TEXT_RUN = /[\p{L}\p{N}_.@+~/\\:-]+/gu;
+const TEXT_RUN = /[\p{L}\p{N}_.@+~/\\:…-]+/gu;
 const MAX_LENGTH = 1024;
 
 /**
  * The path to look up for `raw` (a code span's text, or a run from prose), or null when it cannot name a file:
  * absolute, `~/`, `./` and Windows drive paths, `a/b` forms, names ending in `/`, dotfiles, and bare names with
- * an extension. A trailing line citation (`:12`) is dropped from the path.
+ * an extension, or a name abbreviated with U+2026. A trailing line citation (`:12`) is dropped from the path.
  */
 export function fileRefOf(raw: string, code: boolean): string | null {
 	const ref = raw.replace(LINE_SUFFIX, "");
@@ -38,6 +38,7 @@ export function fileRefOf(raw: string, code: boolean): string | null {
 	if (segments.length === 0 || segments.some(segment => segment === "") || !LETTER.test(ref)) return null;
 	if (root || segments.length > 1 || /[\\/]$/.test(ref)) return ref;
 	if (/^\.[\p{L}\p{N}_]/u.test(ref)) return ref;
+	if (ref.includes("…") && ALNUM.test(ref)) return ref;
 	if (!EXTENSION.test(ref) || ABBREVIATION.test(ref)) return null;
 	return ALNUM.test(ref.slice(0, ref.lastIndexOf("."))) ? ref : null;
 }

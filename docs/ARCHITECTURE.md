@@ -115,6 +115,15 @@ Each SessionHost:
 - Model/Markdown content is rendered without Node access; links open externally via main.
 - One writer per session: a session live in another omp process opens read-only (from its JSONL).
 
+Transcript file references use `fs:resolveRefs` (`main/services/fileRefs.ts`). Exact paths take precedence.
+For an abbreviated final component containing U+2026, main lists only the existing candidate parents:
+folders named earlier in the reply, latest first, then the chat and output bases, or the single parent
+of an absolute or home-relative path. The first eligible folder with matches must contain exactly one
+matching regular file or folder. Bounded directory handles skip hidden entries and symlinks, discard
+oversized or incomplete listings, never recurse and never read file contents. `FILE_REF_LIMITS` caps
+folder entries and total directory reads. The renderer retains the abbreviated label and uses the
+resolved absolute path for opening, its tooltip and Copy path.
+
 ## Source layout
 ```
 src/

@@ -88,6 +88,106 @@ describe("resolveFileRefs", () => {
 		await writeFile(join(dir, "made", "out.pdf"), "");
 		expect(await resolveFileRefs({ refs: ["out.pdf"], bases: ["~/made"] }, dir)).toEqual([{ path: join(dir, "made", "out.pdf"), kind: "file" }]);
 	});
+
+	it("resolves the owner's shortened comparison after its folder and full filenames", async () => {
+		const folder = join(dir, "Downloads", "desynth-test");
+		await mkdir(folder, { recursive: true });
+		const names = ["portrait_desynth.png", "portrait_source.png", "comparison_portrait_desynth_s32_d0.156_p1_r2.4_bw12.png"];
+		for (const name of names) await writeFile(join(folder, name), "");
+		const results = await resolveFileRefs(
+			{ refs: ["~/Downloads/desynth-test/", names[0], names[1], "comparison_portrait_desynth_….png"], bases: [dir] },
+			dir,
+		);
+		expect(results.at(-1)).toEqual({ path: join(folder, names[2]!), kind: "file" });
+	});
+
+	it("matches prefix-only, suffix-only and ordered middle parts, including folders", async () => {
+		await writeFile(join(dir, "report_alpha_middle_beta.png"), "");
+		await mkdir(join(dir, "exports_ready"));
+		const refs = ["report_…", "….png", "report_…middle…beta.png", "report_…beta…middle.png", "exports_…/"];
+		expect(await resolveFileRefs({ refs, bases: [dir] }, dir)).toEqual([
+			{ path: join(dir, "report_alpha_middle_beta.png"), kind: "file" },
+			{ path: join(dir, "report_alpha_middle_beta.png"), kind: "file" },
+			{ path: join(dir, "report_alpha_middle_beta.png"), kind: "file" },
+			null,
+			{ path: join(dir, "exports_ready"), kind: "folder" },
+		]);
+	});
+
+	it("leaves zero matches, multiple matches and overlapping visible parts unresolved", async () => {
+		for (const name of ["report_a.png", "report_b.png", "aba"]) await writeFile(join(dir, name), "");
+		expect(await resolveFileRefs({ refs: ["missing_….png", "report_….png", "ab…ba", "…"], bases: [dir] }, dir)).toEqual([null, null, null, null]);
+	});
+
+	it("uses the latest named folder, then ordered bases, and stops at an ambiguous folder", async () => {
+		const [first, second, earlier, latest] = ["first", "second", "earlier", "latest"].map(name => join(dir, name));
+		for (const folder of [first!, second!, earlier!, latest!]) {
+			await mkdir(folder);
+			await writeFile(join(folder, "report_one.png"), "");
+		}
+		const request = { refs: ["report_….png", earlier!, latest!, "report_….png"], bases: [first!, second!] };
+		const results = await resolveFileRefs(request, dir);
+		expect(results[0]?.path).toBe(join(first!, "report_one.png"));
+		expect(results.at(-1)?.path).toBe(join(latest!, "report_one.png"));
+		await writeFile(join(latest!, "report_two.png"), "");
+		expect((await resolveFileRefs(request, dir)).at(-1)).toBeNull();
+		await writeFile(join(second!, "only_here.png"), "");
+		expect((await resolveFileRefs({ refs: ["only_….png"], bases: [first!, second!] }, dir))[0]?.path).toBe(join(second!, "only_here.png"));
+	});
+
+	it("searches absolute and home references only in their own parent, without recursion", async () => {
+		const folder = join(dir, "named");
+		await mkdir(join(folder, "nested"), { recursive: true });
+		await writeFile(join(dir, "report_elsewhere.png"), "");
+		await writeFile(join(folder, "nested", "report_nested.png"), "");
+		const refs = [join(folder, "report_….png"), "~/named/report_….png"];
+		expect(await resolveFileRefs({ refs, bases: [dir] }, dir)).toEqual([null, null]);
+		await writeFile(join(folder, "report_local.png"), "");
+		expect((await resolveFileRefs({ refs, bases: [dir] }, dir)).map(ref => ref?.path)).toEqual([join(folder, "report_local.png"), join(folder, "report_local.png")]);
+	});
+
+	it("skips hidden entries, hidden folders and symlinks during pattern matching", async () => {
+		await writeFile(join(dir, ".secret.png"), "");
+		await writeFile(join(dir, "visible.png"), "");
+		await mkdir(join(dir, ".hidden"));
+		await writeFile(join(dir, ".hidden", "report.png"), "");
+		await symlink(join(dir, "visible.png"), join(dir, "linked.png"));
+		expect(await resolveFileRefs({ refs: ["….png", ".sec….png", ".hidden/rep….png", "link….png"], bases: [dir] }, dir)).toEqual([
+			{ path: join(dir, "visible.png"), kind: "file" }, null, null, null,
+		]);
+	});
+
+	it("prefers an exact literal ellipsis name, including in a later base, and keeps ASCII dots literal", async () => {
+		const later = join(dir, "later");
+		await mkdir(later);
+		for (const name of ["report_one.png", "report_two.png", "literal...png"]) await writeFile(join(dir, name), "");
+		await writeFile(join(later, "report_….png"), "");
+		expect(await resolveFileRefs({ refs: ["report_….png", "report_...png", "literal...png"], bases: [dir, later] }, dir)).toEqual([
+			{ path: join(later, "report_….png"), kind: "file" }, null, { path: join(dir, "literal...png"), kind: "file" },
+		]);
+	});
+
+	it("discards partial matches in oversized folders and accepts folders at the entry cap", async () => {
+		const large = join(dir, "large");
+		const small = join(dir, "small");
+		await mkdir(large);
+		await mkdir(small);
+		for (const name of ["report_one.png", "other-a", "other-b"]) await writeFile(join(large, name), "");
+		for (const name of ["report_two.png", "other"]) await writeFile(join(small, name), "");
+		const limits = { ...FILE_REF_LIMITS, folderEntries: 2 };
+		expect(await resolveFileRefs({ refs: ["report_….png"], bases: [large] }, dir, limits)).toEqual([null]);
+		expect(await resolveFileRefs({ refs: ["report_….png"], bases: [large, small] }, dir, limits)).toEqual([{ path: join(small, "report_two.png"), kind: "file" }]);
+	});
+
+	it("shares the total scan cap across references, counts hidden entries, and still resolves exact paths", async () => {
+		await writeFile(join(dir, "report_one.png"), "");
+		await writeFile(join(dir, ".hidden"), "");
+		const limits = { ...FILE_REF_LIMITS, totalEntries: 3 };
+		expect(await resolveFileRefs({ refs: ["report_….png", "report_….png", "report_one.png"], bases: [dir] }, dir, limits)).toEqual([
+			{ path: join(dir, "report_one.png"), kind: "file" }, null, { path: join(dir, "report_one.png"), kind: "file" },
+		]);
+		expect(await resolveFileRefs({ refs: ["report_….png"], bases: [dir] }, dir, { ...limits, totalEntries: 1 })).toEqual([null]);
+	});
 });
 
 describe("ReplyRefCache against the resolver", () => {
