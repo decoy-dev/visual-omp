@@ -206,3 +206,27 @@ describe("slash commands sent while omp works", () => {
 		expect(fake.app.terminalTabId).toBeNull();
 	});
 });
+
+describe("slash input history ownership", () => {
+	it("does not record old input or open its terminal after the session changes during submission", async () => {
+		const started = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<void>();
+		vi.spyOn(session, "command").mockImplementation(async () => {
+			started.resolve();
+			await release.promise;
+		});
+		const sending = sendSlashCommand(session, "/btw old question", { now: true });
+		await started.promise;
+		session.attach({
+			...session.getSnapshot().host!,
+			sessionId: "other-room",
+			sessionFile: "/tmp/other.jsonl",
+			generation: 2,
+			link: "other-link",
+		});
+		release.resolve();
+		await sending;
+		expect(session.getSnapshot().inputHistory).toEqual([]);
+		expect(fake.app.terminalTabId).toBeNull();
+	});
+});

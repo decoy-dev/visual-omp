@@ -97,6 +97,8 @@ export interface SessionView {
 	guest: GuestSnapshot | null;
 	history: SessionHistory | null;
 	queue: readonly QueuedMessage[];
+	/** Text successfully submitted in this window, including commands absent from the transcript. */
+	inputHistory: readonly { text: string; timestamp: number }[];
 	/** omp is running a turn. */
 	working: boolean;
 	/**
@@ -241,6 +243,7 @@ export class SessionController {
 			guest: null,
 			history: null,
 			queue: [],
+			inputHistory: [],
 			working: false,
 			workingSince: null,
 			readOnly: false,
@@ -455,6 +458,9 @@ export class SessionController {
 
 	#onHostState(host: HostState): void {
 		if (this.#disposed) return;
+		if (host.sessionFile && this.#sessionFile && host.sessionFile !== this.#sessionFile) {
+			this.#set({ inputHistory: [] });
+		}
 		if (host.sessionFile) this.#sessionFile = host.sessionFile;
 		if (host.phase === "exited") {
 			// Nothing typed into the omp that stopped is coming back to acknowledge itself, and its editor is gone:
@@ -612,6 +618,13 @@ export class SessionController {
 	 */
 	noteSent(): void {
 		this.#emit({ kind: "sent" });
+	}
+
+	/** Remember a delivered input for composer recall; drafts and queued rows are excluded. */
+	recordInput(text: string, timestamp = Date.now()): void {
+		const trimmed = text.trim();
+		if (!trimmed || this.#disposed) return;
+		this.#set({ inputHistory: [...this.#view.inputHistory, { text: trimmed, timestamp }] });
 	}
 
 	/**
@@ -842,6 +855,7 @@ export class SessionController {
 					run: localRun(item.text),
 					steered: this.#view.working,
 				};
+				const timestamp = Date.now();
 				if (item.images.length > 0) {
 					await window.vomp.invoke("composer:paste", hostId, imagePathsText(item.images.map(image => image.path)));
 					pasted = true;
@@ -849,6 +863,7 @@ export class SessionController {
 				// Without text, Enter alone submits the images: an empty paste would make omp attach the clipboard.
 				if (item.text) await this.#submit(item.text, "steer");
 				else await window.vomp.invoke("host:write", hostId, "\r");
+				if (before.room === this.#room) this.recordInput(item.text, timestamp);
 				return before;
 			});
 		} catch (error) {

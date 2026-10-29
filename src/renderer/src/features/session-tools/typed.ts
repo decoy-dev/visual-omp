@@ -152,7 +152,18 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 			const anchor = displayedEntries(session.getSnapshot()).at(-1)?.id ?? null;
 			const parsed = parseSlash(line);
 			const sideQuestion = parsed?.name === "btw";
+			const timestamp = Date.now();
+			const submittedView = session.getSnapshot();
+			const submittedGuest = session.guestClient();
 			await session.command(line);
+			const current = session.getSnapshot();
+			if (current.host?.hostId !== submittedView.host?.hostId ||
+				current.host?.generation !== submittedView.host?.generation ||
+				roomKey(current) !== roomKey(submittedView) || session.guestClient() !== submittedGuest) {
+				// A completed old-room submission cannot add history or open feedback in its replacement.
+				return { watching: Promise.resolve() };
+			}
+			session.recordInput(line, timestamp);
 			// Side answers keep omp's editor on screen and never reach collab. Leave closing the
 			// sheet to the reader, and check visibility after submission in case they switched away.
 			if (sideQuestion) openSheet(session, false);

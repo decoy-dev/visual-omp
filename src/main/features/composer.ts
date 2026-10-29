@@ -11,6 +11,9 @@ import { getHost } from "../omp/host";
 import { rpcRequest } from "../omp/rpc";
 import { discoverCommands, editorTextFromScreen, ensureSttBinding, findPromptEditor } from "../services/composer";
 import { mergeSlashCommands, OMP_BUILTIN_COMMANDS } from "../services/omp-builtin-commands";
+import { readPromptHistory } from "../services/prompt-history";
+import { userEnv } from "../env";
+import { agentDir } from "../omp/paths";
 
 const THUMB_EDGE = 96;
 const SAFE_EXTENSION = /^[a-z0-9]{1,8}$/;
@@ -151,6 +154,7 @@ function paste(hostId: string, text: string): void {
 }
 
 export function register(): void {
+	handle("sessions:promptHistory", async sessionId => readPromptHistory(join(agentDir(await userEnv()), "history.db"), sessionId));
 	handle("composer:saveTemp", (bytes, extension) => saveTemp(bytes, extension));
 	handle("composer:pickFiles", cwd => pickFiles(cwd));
 	handle("composer:thumbnail", path => thumbnail(path));

@@ -54,6 +54,12 @@ export interface SessionSummary {
 	archived: boolean;
 }
 
+/** Submitted text from omp's per-session prompt history, in chronological order. */
+export interface PromptHistoryItem {
+	text: string;
+	timestamp: number;
+}
+
 /**
  * Whether an omp process outside this app has a saved session open (src/main/omp/elsewhere.ts).
  * `unknown`: an observation failed or cannot be made for this file. `unsupported`: no detection
@@ -202,6 +208,8 @@ export interface IpcInvokeMap {
 	/** The newest `limit` saved chats across every project, archived ones left out (one walk of the sessions folder). */
 	"sessions:recent": { args: [limit: number]; result: SessionSummary[] };
 	"sessions:read": { args: [file: string]; result: string };
+	/** Up to 100 prompts from omp's history database, strictly scoped by session UUID. */
+	"sessions:promptHistory": { args: [sessionId: string]; result: PromptHistoryItem[] };
 	/** Session file for a session id (new sessions get their file after the first message). */
 	"sessions:find": { args: [sessionId: string]; result: string | null };
 	/** Move a saved session (and its artifacts folder) to the OS trash. */

@@ -37,6 +37,9 @@ export interface ComposerEditor {
 
 interface DraftState {
 	drafts: Record<string, string>;
+	/** Unedited history recalls are transient; the saved draft remains unchanged. */
+	previews: Record<string, string>;
+	setPreview(tabId: string, text: string | null): void;
 	attachments: Record<string, Attachment[]>;
 	/** null selects the platform's default folder. */
 	homeFolder: string | null;
@@ -79,6 +82,11 @@ export function appendWithSpace(current: string, text: string): string {
 	return /\s$/.test(current) || /^\s/.test(text) ? current + text : `${current} ${text}`;
 }
 
+/** The textarea shows a transient history recall until the person edits or sends it. */
+export function composerText(state: Pick<DraftState, "drafts" | "previews">, tabId: string): string {
+	return state.previews[tabId] ?? state.drafts[tabId] ?? "";
+}
+
 export const useComposerDrafts = create<DraftState>()(
 	persist(
 		(set, get) => ({
@@ -109,9 +117,19 @@ export const useComposerDrafts = create<DraftState>()(
 				return started;
 			},
 			pendingFocus: {},
+			previews: {},
+			setPreview(tabId, text) {
+				set(state => {
+					const { [tabId]: _old, ...previews } = state.previews;
+					return { previews: text === null ? previews : { ...previews, [tabId]: text } };
+				});
+			},
 			modes: {},
 			setMode(tabId, mode) {
-				set(state => ({ modes: { ...state.modes, [tabId]: mode } }));
+				set(state => {
+					const { [tabId]: _preview, ...previews } = state.previews;
+					return { modes: { ...state.modes, [tabId]: mode }, previews };
+				});
 			},
 			insert(tabId, text) {
 				const editor = editors.get(tabId);
@@ -120,13 +138,20 @@ export const useComposerDrafts = create<DraftState>()(
 					editor.focus();
 					return;
 				}
-				set(state => ({
-					drafts: { ...state.drafts, [tabId]: appendWithSpace(state.drafts[tabId] ?? "", text) },
-					pendingFocus: { ...state.pendingFocus, [tabId]: true },
-				}));
+				set(state => {
+					const { [tabId]: _preview, ...previews } = state.previews;
+					return {
+						drafts: { ...state.drafts, [tabId]: appendWithSpace(composerText(state, tabId), text) },
+						pendingFocus: { ...state.pendingFocus, [tabId]: true },
+						previews,
+					};
+				});
 			},
 			setDraft(tabId, text) {
-				set(state => ({ drafts: { ...state.drafts, [tabId]: text } }));
+				set(state => {
+					const { [tabId]: _preview, ...previews } = state.previews;
+					return { drafts: { ...state.drafts, [tabId]: text }, previews };
+				});
 			},
 			focus(tabId) {
 				const editor = editors.get(tabId);
@@ -153,7 +178,8 @@ export const useComposerDrafts = create<DraftState>()(
 					const { [tabId]: _files, ...attachments } = state.attachments;
 					const { [tabId]: _focus, ...pendingFocus } = state.pendingFocus;
 					const { [tabId]: _mode, ...modes } = state.modes;
-					return { drafts, attachments, pendingFocus, modes };
+					const { [tabId]: _preview, ...previews } = state.previews;
+					return { drafts, attachments, pendingFocus, modes, previews };
 				});
 			},
 		}),

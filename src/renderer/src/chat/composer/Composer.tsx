@@ -14,6 +14,7 @@
  * Python quick mode, like omp's own editor; Backspace in an empty box leaves it.
  */
 import { ArrowUp, At, BookBookmark, Command, GraduationCap, ImageSquare, Microphone, PaperPlaneRight, Paperclip, Plus, Square, X } from "@phosphor-icons/react";
+import type { PromptHistoryItem } from "@shared/ipc";
 import { AnimatePresence, motion } from "motion/react";
 import {
 	type ClipboardEvent,
@@ -54,7 +55,9 @@ import {
 	Tooltip,
 } from "../../ui";
 import { attachFiles, attachPaths, useThumbnail } from "./attach";
-import { type Attachment, appendWithSpace, registerComposerEditor, takePendingFocus, useComposerDrafts } from "./drafts";
+import { useDisplayedEntries } from "../branch";
+import { type HistoryDraft, historyOnVisualBoundary, promptHistory, PromptHistoryCursor } from "./history";
+import { type Attachment, appendWithSpace, composerText, registerComposerEditor, takePendingFocus, useComposerDrafts } from "./drafts";
 import { fuzzyFiles, mentionAtCaret, mentionRanges } from "./fuzzy";
 import { MentionPicker, useProjectFiles } from "./MentionPicker";
 import { type LibraryTab, PromptLibrary } from "./PromptLibrary";
@@ -187,9 +190,37 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const tabId = session.tabId;
 	const projectPath = session.projectPath;
 	const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
-	const draft = useComposerDrafts(state => state.drafts[tabId] ?? "");
+	const draft = useComposerDrafts(state => composerText(state, tabId));
 	const attachments = useComposerDrafts(state => state.attachments[tabId] ?? EMPTY);
 	const mode = useComposerDrafts(state => state.modes[tabId] ?? null);
+	const entries = useDisplayedEntries(view);
+	const sessionId = view.host?.sessionId ?? view.guest?.header?.id ?? view.history?.header?.id ?? null;
+	const [storedHistory, setStoredHistory] = useState<{ sessionId: string; items: PromptHistoryItem[] } | null>(null);
+	const historyCursor = useRef(new PromptHistoryCursor());
+	const history = useMemo(
+		() => promptHistory(entries, view.inputHistory, storedHistory?.sessionId === sessionId ? storedHistory.items : [], mode),
+		[entries, view.inputHistory, storedHistory, sessionId, mode],
+	);
+	useEffect(() => {
+		historyCursor.current.reset();
+		useComposerDrafts.getState().setPreview(tabId, null);
+		if (!sessionId) return;
+		let current = true;
+		void window.vomp.invoke("sessions:promptHistory", sessionId).then(items => {
+			if (current) setStoredHistory({ sessionId, items });
+		}).catch(() => { /* The transcript and this window's sends still provide history. */ });
+		return () => { current = false; };
+	}, [sessionId, tabId]);
+	useEffect(() => {
+		const unsubscribe = useComposerDrafts.subscribe((state, previous) => {
+			if (state.previews[tabId] === undefined && previous.previews[tabId] !== undefined) historyCursor.current.reset();
+			else historyCursor.current.sync(composerText(state, tabId), state.modes[tabId] ?? null);
+		});
+		return () => {
+			unsubscribe();
+			useComposerDrafts.getState().setPreview(tabId, null);
+		};
+	}, [tabId]);
 	const tools = chatSlots.use().filter(slot => slot.placement === "composerTools");
 	// The chip row stays open while the last chips leave, then collapses (see AnimatePresence onExitComplete below).
 	const [chipsHeld, setChipsHeld] = useState(attachments.length > 0);
@@ -237,7 +268,10 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		!slashClosed &&
 		(slash.kind === "name" || (slashMenu !== null && (slashMenu.items.length > 0 || (slash.token === "" && slashMenu.command?.hint != null))));
 
-	const setDraft = useCallback((text: string) => useComposerDrafts.getState().setDraft(tabId, text), [tabId]);
+	const setDraft = useCallback((text: string) => {
+		historyCursor.current.reset();
+		useComposerDrafts.getState().setDraft(tabId, text);
+	}, [tabId]);
 
 	const refreshMention = useCallback((text: string, caret: number) => {
 		const next = mentionAtCaret(text, caret);
@@ -250,7 +284,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	/** Replace `[from, to)` of the draft and place the caret after the inserted text. */
 	const replaceRange = useCallback(
 		(from: number, to: number, text: string) => {
-			const current = useComposerDrafts.getState().drafts[tabId] ?? "";
+			const current = composerText(useComposerDrafts.getState(), tabId);
 			const next = current.slice(0, from) + text + current.slice(to);
 			setDraft(next);
 			const caret = from + text.length;
@@ -271,7 +305,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 			registerComposerEditor(tabId, {
 				insertAtCaret(text) {
 					const el = textarea.current;
-					const current = useComposerDrafts.getState().drafts[tabId] ?? "";
+					const current = composerText(useComposerDrafts.getState(), tabId);
 					const start = el ? el.selectionStart : current.length;
 					const end = el ? el.selectionEnd : current.length;
 					const before = current.slice(0, start);
@@ -334,6 +368,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		if (readOnly) return;
 		const text = applyMode(draft, mode);
 		const images = [...attachments];
+		historyCursor.current.reset();
 		if (!text && images.length === 0) return;
 		const store = useComposerDrafts.getState();
 		store.setDraft(tabId, "");
@@ -344,7 +379,10 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		// A slash command without attachments opens the app's own UI when there is one, else omp runs it.
 		const sending =
 			!mode && images.length === 0 && text.startsWith("/")
-				? routeSlash(session, text).then(handled => (handled ? undefined : sendSlashCommand(session, text, { now })))
+				? routeSlash(session, text).then(handled => {
+					if (handled) session.recordInput(text);
+					else return sendSlashCommand(session, text, { now });
+				})
 				: deliver(session, text, images, now);
 		sending.catch((error: unknown) => {
 			// Put the message back so nothing typed is lost.
@@ -368,8 +406,17 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		if (slash) replaceRange(slash.from, slash.to, item.insert);
 	};
 
+	const recall = (next: HistoryDraft) => {
+		useComposerDrafts.getState().setPreview(tabId, historyCursor.current.browsing ? next.text : null);
+		setMention(null);
+		setSlash(null);
+		requestAnimationFrame(() => {
+			textarea.current?.setSelectionRange(next.start, next.end);
+		});
+	};
+
 	const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-		if (event.nativeEvent.isComposing) return;
+		if (readOnly || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
 		if (mention && matches && matches.length > 0) {
 			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 				event.preventDefault();
@@ -405,6 +452,20 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 				return;
 			}
 		}
+		if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
+			// Open menus own arrows even while loading or showing no matches.
+			if (mention || slashOpen) return;
+			const el = event.currentTarget;
+			const direction = event.key === "ArrowUp" ? "older" : "newer";
+			const current = { text: draft, start: el.selectionStart, end: el.selectionEnd };
+			if (!historyOnVisualBoundary(direction, current, mirror.current)) return;
+			const next = historyCursor.current.navigate(direction, current, history, mode);
+			if (next) {
+				event.preventDefault();
+				recall(next);
+			}
+			return;
+		}
 		if (event.key === "Escape") {
 			if (mention) {
 				event.preventDefault();
@@ -414,6 +475,11 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 				event.preventDefault();
 				event.stopPropagation();
 				setSlashClosed(true);
+			} else if (historyCursor.current.browsing) {
+				event.preventDefault();
+				event.stopPropagation();
+				const original = historyCursor.current.restore();
+				if (original) recall(original);
 			} else if (working && !draft) {
 				event.preventDefault();
 				session.abort();
@@ -470,7 +536,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 
 	const startMention = () => {
 		const el = textarea.current;
-		const current = useComposerDrafts.getState().drafts[tabId] ?? "";
+		const current = composerText(useComposerDrafts.getState(), tabId);
 		const start = el ? el.selectionStart : current.length;
 		const end = el ? el.selectionEnd : current.length;
 		const needsSpace = start > 0 && !/\s/.test(current[start - 1] ?? "");
@@ -617,7 +683,9 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 									setDraft(event.target.value);
 									refreshMention(event.target.value, event.target.selectionStart);
 								}}
-								onSelect={event => refreshMention(event.currentTarget.value, event.currentTarget.selectionStart)}
+								onSelect={event => {
+									if (!historyCursor.current.browsing) refreshMention(event.currentTarget.value, event.currentTarget.selectionStart);
+								}}
 								onBlur={() => {
 									setMention(null);
 									setSlash(null);

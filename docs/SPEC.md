@@ -91,6 +91,9 @@ omp's displayed harness notices appear in the chat in all three views, presented
 - While omp works, the primary action queues the message; Send now remains available with ⌘↵.
 - Read-only chats explain the reason in the session header and the available action in the placeholder. Composer controls are muted and disabled without repeating a lock banner.
 - At narrow widths, composer actions wrap to a second line so the text box keeps a usable width.
+- Up and Down recall this chat's submitted text when the caret is on the first or last visual line respectively, including wrapped text. Down past the newest entry, or Esc while browsing, restores the original draft and caret with attachments unchanged. Editing a recalled message makes it the new draft. Completion menus keep their arrow keys, and IME input and modified arrows keep native editing behavior.
+- History combines transcript user text, successfully delivered lines from this window and omp's read-only, session-filtered prompt database, with consecutive duplicates removed. Unsent queue rows remain in the tray. Shell and Python modes recall only their own commands. Split composers browse independently; Home has no chat history. Transcript and omp database records survive restarts, while window-only records end when the chat closes or changes session.
+- Browsing shows transient previews and leaves the persisted draft unchanged. Reloading while browsing restores that unfinished draft. Editing a preview commits it as the draft; Send submits the preview and clears the draft normally. The app writes no other persistent prompt log.
 
 ### omp modes
 - Plan mode is available, with Plan Review for approving plans.

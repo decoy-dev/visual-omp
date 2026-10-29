@@ -752,3 +752,31 @@ describe("SessionController sends that bring the transcript to its end", () => {
 		expect(sent).toEqual(["sent"]);
 	});
 });
+
+describe("delivered composer input history", () => {
+	it("records successful Send now text, excluding queued rows and failed submissions", async () => {
+		const session = working("history-send");
+		await session.send("queued");
+		expect(session.getSnapshot().inputHistory).toEqual([]);
+		failOnce("host:submit", "pty closed");
+		await expect(session.sendNow(session.getSnapshot().queue[0]!.id)).rejects.toThrow("pty closed");
+		expect(session.getSnapshot().inputHistory).toEqual([]);
+		await session.sendNow(session.getSnapshot().queue[0]!.id);
+		expect(session.getSnapshot().inputHistory.map(item => item.text)).toEqual(["queued"]);
+	});
+
+	it.each(["hello", "!pwd", "$ print(1)"])("records successful direct input: %s", async text => {
+		const session = idle("history-direct");
+		await session.send(text);
+		expect(session.getSnapshot().inputHistory).toEqual([{ text, timestamp: expect.any(Number) }]);
+	});
+
+	it("preserves delivered input through a restart, but clears it when the session file changes", () => {
+		const session = working("history-room");
+		session.recordInput("hello", 123);
+		sendHost({ link: "L2", generation: 2 });
+		expect(session.getSnapshot().inputHistory).toEqual([{ text: "hello", timestamp: 123 }]);
+		sendHost({ link: "L3", generation: 3, sessionFile: "/p/other.jsonl", sessionId: "other" });
+		expect(session.getSnapshot().inputHistory).toEqual([]);
+	});
+});
