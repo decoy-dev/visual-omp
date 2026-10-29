@@ -24,6 +24,18 @@ describe("session tree model", () => {
 		expect(selectorRows(tree, "all")[0]?.id).toBe("u1");
 	});
 
+	it("uses the replayed leaf for tree markers and keyboard navigation after an off-branch tail", () => {
+		const late = entry("late", "a2", "message", "2026-01-01T00:00:06Z", {
+			activeLeafId: "a3", message: { role: "toolResult", content: [] },
+		});
+		const tree = parseSessionTree(`${session}\n${late}`);
+		expect(tree.leafId).toBe("a3");
+		expect(selectorRows(tree, "user").map(item => item.id)).toEqual(["u1", "u3", "u2"]);
+		expect(layoutTree(tree).nodes.find(node => node.id === "a3")?.current).toBe(true);
+		expect(parseSessionTree(`${session}\n${entry("clear", "a2", "custom", "", { activeLeafId: null })}`).leafId).toBeNull();
+		expect(parseSessionTree(`${session}\n${entry("missing", "a2", "custom", "", { activeLeafId: "removed" })}`).leafId).toBe("a3");
+	});
+
 	it("maps both branches while preserving active and current markers", () => {
 		const map = layoutTree(parseSessionTree(session));
 		expect(map.branched).toBe(true);

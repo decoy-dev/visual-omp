@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { type FSWatcher, watch } from "node:fs";
-import { open, readdir, readFile, stat } from "node:fs/promises";
+import { lstat, open, readdir, readFile, stat } from "node:fs/promises";
 import { basename, join } from "node:path";
 import type { ProjectSummary, SessionSummary } from "@shared/ipc";
 import { userEnv } from "../env";
@@ -107,7 +107,10 @@ export async function allSessions(): Promise<SessionSummary[]> {
 		buckets.map(async bucket => {
 			let names: string[];
 			try {
-				names = await readdir(join(root, bucket));
+				// omp skips symlinked project buckets so aliases do not list the same sessions twice.
+				const directory = join(root, bucket);
+				if ((await lstat(directory)).isSymbolicLink()) return;
+				names = await readdir(directory);
 			} catch {
 				return;
 			}

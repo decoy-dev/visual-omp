@@ -53,6 +53,30 @@ describe("parseSessionHistory", () => {
 		expect(next.header?.id).toBe("s3");
 		expect(extendSessionHistory(next, "")).toBe(next);
 	});
+
+	it("keeps the recorded active leaf when a late off-branch entry is appended", () => {
+		// Reduced metadata from ArtExtract.jsonl, lines 138-140, in the owner's 18.12.4
+		// session dated 2026-10-21. Message content and earlier ancestry are omitted.
+		const base = parseSessionHistory(lines(
+			{ type: "custom", id: "ca3d7b8b", parentId: null, customType: "tool_execution_start" },
+			{ type: "message", id: "0083f81e", parentId: "ca3d7b8b", message: { role: "toolResult", content: [] } },
+		));
+		const marker = lines({ type: "model_usage", id: "25234517", parentId: "ca3d7b8b", activeLeafId: "0083f81e" });
+		const followed = extendSessionHistory(base, marker);
+		expect(followed.entries.map(entry => entry.id)).toEqual(["ca3d7b8b", "0083f81e"]);
+		expect(followed.entries[1]).toBe(base.entries[1]);
+		expect(parseSessionHistory(lines(...base.all) + "\n" + marker).entries).toEqual(followed.entries);
+		expect(followed.all.map(entry => entry.id)).toContain("25234517");
+	});
+
+	it("restores an empty branch and recovers a captured leaf removed by a rewrite", () => {
+		const base = { type: "message", id: "a", parentId: null, message: { role: "user", content: "first" } };
+		const late = { type: "message", id: "late", parentId: "a", activeLeafId: null, message: { role: "toolResult", content: [] } };
+		expect(parseSessionHistory(lines(base, late)).entries).toEqual([]);
+		expect(parseSessionHistory(lines(base, { ...late, activeLeafId: "removed" })).entries.map(entry => entry.id)).toEqual(["a"]);
+		expect(parseSessionHistory(lines({ ...late, activeLeafId: "removed" })).entries).toEqual([]);
+		expect(parseSessionHistory(lines(base, { ...late, activeLeafId: "late" })).entries.map(entry => entry.id)).toEqual(["a", "late"]);
+	});
 });
 
 describe("activeBranch", () => {

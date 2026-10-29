@@ -10,10 +10,12 @@ import { z } from "zod";
 import { contentText, noticeSummary, parseNotice } from "../../chat/transcript/notices";
 import { parseJsonl } from "../../collab/lib/jsonl";
 import { i18n } from "../../i18n";
+import { resolveSessionLeafId } from "../../state/history";
 
 export interface TreeEntry {
 	id: string;
 	parentId: string | null;
+	activeLeafId?: string | null;
 	type: string;
 	timestamp: string;
 	/** `user` / `assistant` / `toolResult` / … for `message` entries, else null. */
@@ -32,7 +34,7 @@ export interface SessionTree {
 	entries: Map<string, TreeEntry>;
 	children: Map<string | null, TreeEntry[]>;
 	roots: TreeEntry[];
-	/** omp's load rule: the leaf is the last entry in the file. */
+	/** omp's replayed leaf, preserving the active branch across off-branch entries. */
 	leafId: string | null;
 }
 
@@ -45,6 +47,7 @@ const Content = z.union([
 const RawEntry = z.looseObject({
 	id: z.string(),
 	parentId: z.string().nullish(),
+	activeLeafId: z.string().nullish().catch(undefined),
 	type: z.string(),
 	timestamp: z.string().optional(),
 	customType: z.string().optional(),
@@ -101,6 +104,7 @@ export function parseSessionTree(jsonl: string): SessionTree {
 		const entry: TreeEntry = {
 			id: raw.id,
 			parentId: raw.parentId ?? null,
+			activeLeafId: raw.activeLeafId,
 			type: raw.type,
 			timestamp: raw.timestamp ?? "",
 			role,
@@ -125,7 +129,7 @@ export function parseSessionTree(jsonl: string): SessionTree {
 		else children.set(parent.id, [entry]);
 	}
 	for (const siblings of children.values()) siblings.sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
-	return { entries, children, roots, leafId: order.at(-1)?.id ?? null };
+	return { entries, children, roots, leafId: resolveSessionLeafId(order, entries) };
 }
 
 /** Entries from the root to `id`, root first. */

@@ -193,6 +193,8 @@ Approval settings: `config:approval` reads the installed omp's `cfg://tools.appr
 | Dock visibility | `state/app.ts` exports `useDockVisible()`, which accounts for pages and narrow layouts where chat takes precedence over the open dock, and `currentDock()`, the focused chat's panel layout. |
 | Git | `git`, `gh` |
 
+Saved and followed history resolve the active leaf with omp's replay rule in `state/history.ts`: the last entry's optional `activeLeafId` restores the branch interrupted by a late result or usage entry, and null clears the branch. The live mirror and Outputs use the same branch function, with an explicit tree selection taking precedence. A captured leaf omitted from collab is resolved through saved ancestry to its nearest carried ancestor. If the captured leaf is unavailable in both sources, the newest entry that selects itself is used. The session tree uses that resolver for its current marker and keyboard navigation order. The session index skips symlinked project buckets so an alias cannot list the same chats twice.
+
 ## Compatibility
 The collab wire protocol is versioned (`COLLAB_PROTO`). On launch the app reads `omp --version` and
 compares it with `MIN_OMP_VERSION` (`src/main/omp/locate.ts`); an older omp opens the setup screen

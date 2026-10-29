@@ -1,7 +1,6 @@
 /**
- * Session branches. omp sessions are append-only trees (id/parentId); what a chat shows is the
- * active branch — the parentId path from the root to the leaf, which is the last entry unless a
- * rewind moved it (docs/session.md, `buildSessionContext`).
+ * Session branches. omp sessions are append-only trees (id/parentId); a chat shows the parentId
+ * path from the root to the replayed leaf. Off-branch entries preserve that leaf in activeLeafId.
  */
 import type { SessionEntry, SessionHeader } from "@oh-my-pi/pi-wire";
 import { parseJsonl } from "../collab/lib/jsonl";
@@ -19,6 +18,7 @@ export interface SessionHistory {
 interface TreeNode {
 	id: string;
 	parentId?: string | null;
+	activeLeafId?: string | null;
 }
 
 /** Parent ids from a saved session file (id → parent id), for crossing entries the live stream leaves out. */
@@ -37,8 +37,34 @@ export function savedParents(history: SessionHistory | null | undefined): SavedP
 	return parents;
 }
 
+/** omp's replay rule, sharing the caller's id index for captured-leaf validation. */
+export function resolveSessionLeafId(entries: readonly TreeNode[], byId: ReadonlyMap<string, unknown>, saved?: SavedParents): string | null {
+	const last = entries.at(-1);
+	if (!last) return null;
+	const selected = last.activeLeafId !== undefined ? last.activeLeafId : last.id;
+	if (selected === null || byId.has(selected)) return selected;
+	// Collab omits custom entries. A saved captured leaf can still be valid:
+	// follow its known ancestry to the nearest entry carried by the mirror.
+	if (saved?.has(selected)) {
+		let cursor: string | null = selected;
+		const seen = new Set<string>();
+		while (cursor && saved.has(cursor) && !seen.has(cursor)) {
+			seen.add(cursor);
+			cursor = saved.get(cursor) ?? null;
+			if (cursor === null || byId.has(cursor)) return cursor;
+		}
+	}
+	// A rollback or rewrite removed the captured leaf. Skip off-branch entries
+	// and restore the newest entry that selected itself.
+	for (let i = entries.length - 1; i >= 0; i--) {
+		const entry = entries[i];
+		if (entry.activeLeafId === undefined || entry.activeLeafId === entry.id) return entry.id;
+	}
+	return null;
+}
+
 /**
- * Entries on the branch ending at `leafId` (default: the last entry), root → leaf. Unknown leaf → all entries.
+ * Entries on the branch ending at `leafId` (default: omp's replayed leaf), root → leaf. Unknown explicit leaf → all entries.
  *
  * omp's live stream replicates only some entry types, so a parent can be missing: omp's `custom`
  * bookkeeping (`tool_execution_start` between a tool call and its result, title changes) never
@@ -54,6 +80,8 @@ export function activeBranch<T extends TreeNode>(entries: readonly T[], leafId?:
 	if (entries.length === 0) return [];
 	const indexById = new Map<string, number>();
 	entries.forEach((entry, index) => indexById.set(entry.id, index));
+	const selected = leafId ?? resolveSessionLeafId(entries, indexById, saved);
+	if (selected === null) return [];
 	const firstChild = new Map<string, number>();
 	entries.forEach((entry, index) => {
 		const parent = entry.parentId;
@@ -72,7 +100,7 @@ export function activeBranch<T extends TreeNode>(entries: readonly T[], leafId?:
 		if (!cursor) return -1;
 		return (firstChild.get(cursor) ?? from) - 1;
 	};
-	let index = leafId ? indexById.get(leafId) : entries.length - 1;
+	let index = indexById.get(selected);
 	if (index === undefined) return [...entries];
 	const path: T[] = [];
 	const seen = new Set<number>();
@@ -89,6 +117,7 @@ interface RawEntry {
 	type: string;
 	id?: string;
 	parentId?: string | null;
+	activeLeafId?: string | null;
 	title?: string;
 }
 
