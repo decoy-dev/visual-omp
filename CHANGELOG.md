@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-29
+
 visual-omp 0.7 is the first beta release, adding native reply rendering, session controls and settings for omp 18.14. It requires omp 18.14 or later. Versions before 0.7 were alpha releases.
 
 ### Highlights
