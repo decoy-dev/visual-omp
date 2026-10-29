@@ -5,7 +5,7 @@
  * truncates at the button's max width, and the permission text wraps inside its button.
  */
 import type { ApprovalMode, ModelInfo } from "@shared/contracts/config";
-import { Brain, CaretDown, Check, Eye, ShieldCheck, ShieldWarning } from "@phosphor-icons/react";
+import { Brain, CaretDown, Check, Eye, ShieldCheck, ShieldWarning, Warning } from "@phosphor-icons/react";
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
@@ -30,6 +30,7 @@ import {
 } from "@/ui";
 import { focusRing, menuCheckSlot, menuItem, menuItemActive, menuLabel, menuSeparator } from "@/ui/styles";
 import { useDisplayedEntries } from "../../chat/branch";
+import { composerModel } from "../../collab/lib/modelFallback";
 import { getCommand } from "../../registry/commands";
 import type { ChatSlotProps } from "../../registry/slots";
 import { useApp } from "../../state/app";
@@ -382,7 +383,10 @@ export function ModelList({ projectPath, current, onPick, onDone, session }: Mod
 export function ModelButton({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
 	const view = useSessionView(session);
-	const model = view.guest?.state?.model;
+	const entries = useDisplayedEntries(view);
+	const live = view.guest?.state?.model;
+	const stream = view.guest?.stream ?? null;
+	const { model, selectedModel, fallback } = useMemo(() => composerModel(entries, live, stream), [entries, live, stream]);
 	const [open, setOpen] = useState(false);
 	if (view.readOnly && open) setOpen(false);
 	const request = usePickerRequests(state => state.model);
@@ -393,17 +397,22 @@ export function ModelButton({ session }: ChatSlotProps) {
 		if (!session.getSnapshot().readOnly) setOpen(true);
 	}, [request, session]);
 	const name = model?.name ?? t("model.none");
+	const label = fallback
+		? t(fallback.source === "provider" ? "model.providerFallbackAria" : fallback.from ? "model.fallbackAria" : "model.fallbackUnknownAria", { name, from: fallback.from })
+		: t("model.aria", { name });
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			{/* The name truncates at the button's max width, so the tooltip carries it in full. */}
-			<Tooltip content={t("model.aria", { name })} shortcut="⌘⇧M">
+			<Tooltip content={label} shortcut="⌘⇧M">
 				<PopoverTrigger asChild disabled={view.readOnly}>
 					<button
 						type="button"
-						aria-label={t("model.aria", { name })}
-						className={cn(rowPicker, "h-7 min-w-0 max-w-44 shrink-0")}
+						aria-label={label}
+						className={cn(rowPicker, "h-7 min-w-0 max-w-[min(16rem,100%)] shrink-0", fallback && "text-warn")}
 					>
+						{fallback && <Warning weight="fill" className="size-3.5 shrink-0" aria-hidden />}
 						<span className="truncate">{name}</span>
+						{fallback && <span className="shrink-0 text-xs">{t("model.fallback")}</span>}
 						<CaretDown className="size-3 shrink-0" aria-hidden />
 					</button>
 				</PopoverTrigger>
@@ -411,7 +420,7 @@ export function ModelButton({ session }: ChatSlotProps) {
 			<PopoverContent side="top" align="end" width={340} sideOffset={6} className="p-menu">
 				<ModelList
 					projectPath={session.projectPath}
-					current={model ?? null}
+					current={selectedModel}
 					session={session}
 					onDone={() => setOpen(false)}
 					onPick={async picked => {

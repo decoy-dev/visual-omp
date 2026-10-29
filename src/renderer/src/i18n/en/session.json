@@ -34,6 +34,10 @@
   "model": {
     "title": "Choose a model",
     "aria": "Choose model. Current: {{name}}",
+    "fallback": "Fallback",
+    "fallbackAria": "Choose model. {{name}} is a fallback for {{from}}.",
+    "fallbackUnknownAria": "Choose model. {{name}} is a fallback; the original model was not recorded.",
+    "providerFallbackAria": "Choose model. The provider used {{name}} as a fallback for {{from}} in this reply; omp's selected model is unchanged.",
     "none": "Choose model",
     "search": "Search models…",
     "loading": "Loading models…",

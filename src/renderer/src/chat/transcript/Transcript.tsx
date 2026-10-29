@@ -23,6 +23,7 @@ import {
 } from "react";
 import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
+import { continuesAssistantModel, modelFallbacks, modelSetupVisible, providerFallback, type ModelFallback } from "../../collab/lib/modelFallback";
 import { type Helper, type HelperStatus, helpersByCall, ompRunning, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
 import { unpinnedRuns, usePinnedHelpers } from "../../features/panes/pinnedHelpers";
 import { openInFiles } from "../../features/panes/files-store";
@@ -45,6 +46,7 @@ import { TodoBoard, TodoChangeRow } from "../../tool-render/tools/todo";
 import { detailsRecord, isRecord } from "../../tool-render/util";
 import { CommandResultRow } from "./CommandResultRow";
 import { NoticeRow } from "./NoticeRow";
+import { ModelFallbackNotice } from "./ModelFallbackNotice";
 import { contentText, noticeIsStep, noticeVisible, parseNotice } from "./notices";
 import { ToolCard } from "./ToolCard";
 import { ToolGroup } from "./ToolGroup";
@@ -426,6 +428,10 @@ function AssistantBlocks({
 								refs={refs?.[textOrdinals[index]]}
 							/>
 						);
+					case "fallback": {
+						const fallback = providerFallback(block);
+						return fallback ? <ModelFallbackNotice key={index} fallback={fallback} /> : null;
+					}
 					case "toolCall": {
 						if (shownLength(playout, index, 0) < 0) return null;
 						const group = layout?.groups.get(index);
@@ -499,11 +505,13 @@ interface RowProps {
 	/** Hidden blocks and step groups of this entry; compared by `sig`, so a row re-renders only when its layout does. */
 	layout: EntryLayout | undefined;
 	work: WorkView;
+	fallback?: ModelFallback;
 }
 
 function rowEqual(prev: RowProps, next: RowProps): boolean {
 	if (prev.entry !== next.entry || prev.mode !== next.mode || prev.continuesTurn !== next.continuesTurn || prev.afterFirstPrompt !== next.afterFirstPrompt) return false;
 	if (prev.layout?.sig !== next.layout?.sig) return false;
+	if (prev.fallback !== next.fallback) return false;
 	const entry = next.entry;
 	if (entry.type !== "message" || entry.message.role !== "assistant") return true;
 	// A group this row leads draws steps of later entries and of the reply still streaming in, which keep changing.
@@ -549,15 +557,14 @@ function rowShown(entry: SessionEntry, mode: TranscriptMode, afterFirstPrompt: b
 		case "branch_summary":
 			return true;
 		case "model_change":
-			return afterFirstPrompt || mode === "verbose";
 		case "thinking_level_change":
-			return mode === "verbose";
+			return modelSetupVisible(entry, mode === "verbose", afterFirstPrompt);
 		default:
 			return false;
 	}
 }
 
-const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results, active, mode, session, layout, work }: RowProps): ReactNode {
+const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results, active, mode, session, layout, work, fallback }: RowProps): ReactNode {
 	const { t } = useTranslation("chat");
 	switch (entry.type) {
 		case "message": {
@@ -585,9 +592,9 @@ const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results,
 		case "branch_summary":
 			return <Notice>{t("branchSummary")}</Notice>;
 		case "model_change":
-			return afterFirstPrompt || mode === "verbose" ? <Notice>{t("modelChanged", { model: entry.model })}</Notice> : null;
+			return fallback ? <ModelFallbackNotice fallback={fallback} /> : modelSetupVisible(entry, mode === "verbose", afterFirstPrompt) ? <Notice>{t("modelChanged", { model: entry.model })}</Notice> : null;
 		case "thinking_level_change":
-			return mode === "verbose" ? <Notice>{t("thinkingChanged", { level: entry.thinkingLevel ?? "off" })}</Notice> : null;
+			return modelSetupVisible(entry, mode === "verbose", afterFirstPrompt) ? <Notice>{t("thinkingChanged", { level: entry.thinkingLevel ?? "off" })}</Notice> : null;
 		default:
 			return null;
 	}
@@ -697,6 +704,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const guest = liveGuest(view);
 	// The live stream carries every branch; show the one ending at the leaf (after a rewind, the displayed leaf).
 	const entries = useDisplayedEntries(view);
+	const fallbacks = useMemo(() => modelFallbacks(entries), [entries]);
 	const stream = guest?.stream ?? null;
 	const streamDone = view.guest?.streamDone ?? true;
 	const activeTools = guest?.activeTools ?? EMPTY_TOOLS;
@@ -849,6 +857,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	);
 	const empty =
 		!hasMessages &&
+		fallbacks.size === 0 &&
 		stream === null &&
 		!view.working &&
 		!uiRequest &&
@@ -959,7 +968,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	}
 
 	let seenUser = false;
-	let previousAssistant = false;
+	let previousAssistant: AssistantMessage | null = null;
 	const rows: ReactNode[] = [];
 	// Consecutive step-style notices share one flex child, so they stack like a tool group's rows instead of taking
 	// the turn gap between each. Keyed by the run's first entry, so a notice joining the run keeps the others mounted.
@@ -984,7 +993,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		if (!list?.length) return;
 		endRun();
 		rows.push(...resultRows(list));
-		previousAssistant = false;
+		previousAssistant = null;
 	};
 	visible.forEach((entry, index) => {
 		const isUser = (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
@@ -994,8 +1003,9 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 			return;
 		}
 		const isAssistant = entry.type === "message" && entry.message.role === "assistant";
-		const continuesTurn = isAssistant && previousAssistant;
-		previousAssistant = isAssistant;
+		const message = entry.type === "message" && entry.message.role === "assistant" ? entry.message : null;
+		const continuesTurn = continuesAssistantModel(previousAssistant, message);
+		previousAssistant = message;
 		const arrived = arrivals.armed && index > lastSeen && !arrivals.seen.has(entry.id) && !(isAssistant && arrivals.streamed);
 		const summary = layout.summaries.get(entry.id);
 		const row = (
@@ -1010,6 +1020,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 					session={session}
 					layout={layout.entries.get(entry.id)}
 					work={work}
+					fallback={fallbacks.get(entry.id)}
 				/>
 			</Rise>
 		);
@@ -1082,9 +1093,9 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 										play={arrivals.armed && !arrivals.streamed}
 										distance={6}
 										tempo="snappy"
-										className={cn("flex flex-col gap-2", previousAssistant && "-mt-6")}
+										className={cn("flex flex-col gap-2", continuesAssistantModel(previousAssistant, stream) && "-mt-6")}
 									>
-										{!previousAssistant && <AssistantHeader model={stream.model} />}
+										{!continuesAssistantModel(previousAssistant, stream) && <AssistantHeader model={stream.model} />}
 										<AssistantBlocks
 											message={stream}
 											results={results}
@@ -1132,7 +1143,12 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 					</PlayoutPaused.Provider>
 				</PlayoutRegistry.Provider>
 			</div>
-			<ReplyAnnouncer entries={entries} ready={loaded} />
+			<ReplyAnnouncer
+				entries={entries}
+				stream={stream}
+				ready={view.guest ? view.guest.phase === "live" && view.guest.loading === null : view.history !== null}
+				session={`${view.guest?.header?.id ?? view.history?.header?.id ?? session.tabId}:${view.displayLeaf ?? ""}`}
+			/>
 			<AnimatePresence initial={false}>
 				{unseen && (
 					<motion.div

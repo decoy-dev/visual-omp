@@ -7,6 +7,7 @@
  */
 import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import type { ActiveTool } from "../../collab/lib/client";
+import { isModelFallback } from "../../collab/lib/modelFallback";
 import { type EditTotals, editTotals, fileEdits, type OutputContext, type TodoUpdate, todoUpdates } from "../../features/panes/derive";
 import { isRecord } from "../../tool-render/util";
 import { resolveToolCall } from "../friendly";
@@ -145,6 +146,8 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 	const results = new Map<string, ToolResultMessage>();
 	const messageTime = new Map<string, number>();
 	const turns: Turn[] = [];
+	const groupBreaks = new Set<string>();
+	let modelChanged = false;
 	let turn: Turn | null = null;
 	for (const [position, entry] of entries.entries()) {
 		if (isUserTurnStart(entry)) {
@@ -152,6 +155,7 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 			turn = null;
 			continue;
 		}
+		if (isModelFallback(entry)) modelChanged = true;
 		if (entry.type !== "message") continue;
 		const message = entry.message;
 		if (message.role === "toolResult") {
@@ -159,6 +163,10 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 			continue;
 		}
 		if (message.role !== "assistant") continue;
+		if (modelChanged && message.content.length > 0) {
+			groupBreaks.add(entry.id);
+			modelChanged = false;
+		}
 		if (!turn) {
 			turn = { slots: [], positions: [], callIds: [], lastAssistant: null, closed: false };
 			turns.push(turn);
@@ -236,6 +244,7 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 		};
 		for (const [slot, ref] of current.slots.entries()) {
 			if ((current.positions[slot] ?? 0) < (options.from ?? 0)) continue;
+			if (ref.index === 0 && groupBreaks.has(ref.entryId)) flush();
 			const block = ref.block;
 			if (block.type === "toolCall") {
 				const name = nameOf(block);
@@ -247,7 +256,7 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 				if (options.holdGroups?.has(block.id)) flush();
 				run.push(...between, ref);
 				between = [];
-			} else if (block.type === "text" && block.text.trim() !== "") {
+			} else if (block.type === "fallback" || (block.type === "text" && block.text.trim() !== "")) {
 				flush();
 			} else if (run.length > 0) {
 				// Thoughts and blank text between two calls fold in with them; trailing ones stay outside.

@@ -4,6 +4,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+- When omp records a model fallback, the chat now shows a warning at the switch, naming the destination and the source model when recorded. It quotes an error only when omp explicitly ties that error to the model recovery. Provider-reported fallbacks within a reply also show a warning. Screen readers announce each new switch once; loaded history and reconnect snapshots stay silent, and saving a streamed fallback does not repeat its announcement. The model button beneath the message box marks the fallback model with **Fallback**, and its tooltip names the original model when recorded. Replies from a different model receive their own header. Manual model switches and account rotation within the same provider keep their existing presentation. omp does not include the fallback reason in saved model changes or send its reason-bearing fallback event through the connection visual-omp uses, so the warning includes a reason only when an explicitly attributed error provides one.
+
 ## [0.6.7] - 2026-10-29
 
 visual-omp 0.6.7 adds Up and Down message recall and opens the terminal for /btw answers in visible chats.

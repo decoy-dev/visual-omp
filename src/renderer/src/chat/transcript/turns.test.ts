@@ -37,6 +37,30 @@ function result(toolCallId: string, toolName: string, details?: unknown, isError
 const board = (status: string) => ({ phases: [{ name: "P", tasks: [{ content: "a", status }] }] });
 
 describe("transcriptLayout", () => {
+	it("keeps tools on either side of a model switch in separate groups", () => {
+		const entries = [
+			user("go"),
+			assistant([tool("before", "read")], 1000, "before"),
+			{ ...base(), type: "model_change" as const, model: "other/model", resolvedModelIsFallback: true },
+			assistant([], 1500, "failed"),
+			assistant([tool("after", "read")], 2000, "after"),
+		];
+		const layout = transcriptLayout(entries, { live: true, group: true, context });
+		expect(layout.entries.get("before")?.groups.get(0)?.calls).toBe(1);
+		expect(layout.entries.get("after")?.groups.get(0)?.calls).toBe(1);
+		expect(layout.entries.get("after")?.hidden.size).toBe(0);
+	});
+
+	it("never folds provider fallback content into a tool group", () => {
+		const entries = [
+			user("go"),
+			assistant([tool("before", "read"), { type: "fallback", from: { model: "first" }, to: { model: "second" } }, tool("after", "read")], 1000, "reply"),
+		];
+		const layout = transcriptLayout(entries, { live: true, group: true, context }).entries.get("reply");
+		expect(layout?.groups.size).toBe(2);
+		expect(layout?.hidden.has(1)).toBe(false);
+	});
+
 	it("folds a finished turn's run of tool steps, thoughts between them included, into one group", () => {
 		const entries = [
 			user("go"),
@@ -263,6 +287,47 @@ function streamed(content: AssistantMessage["content"], timestamp: number): Assi
 const running = (toolCallId: string, toolName = "read") => ({ toolCallId, toolName, args: { path: "a.ts" }, startedAt: 7000 });
 
 describe("live layout entries", () => {
+	it("retains fallback group keys and held rows as the stream becomes a saved reply", () => {
+		for (const source of ["entry", "provider"] as const) {
+			const before: SessionEntry[] = [user("go"), assistant([tool("before", "read")], 1000, "before")];
+			const content: AssistantMessage["content"] = [];
+			if (source === "entry") {
+				before.push({ ...base(), type: "model_change", model: "other/model", resolvedModelIsFallback: true });
+				before.push(assistant([], 2000, "failed"));
+			} else {
+				content.push({ type: "fallback", from: { model: "primary" }, to: { model: "backup" } });
+			}
+			content.push(tool("after", "read"), tool("focused", "read"));
+			const options = { live: true, group: true, context, holdGroups: new Set(["before", "after"]), hold: new Set(["focused"]) };
+			const stream = transcriptLayout(liveLayoutEntries(before, streamed(content, 3000), null, true), options);
+			const saved = transcriptLayout([...before, assistant(content, 3000, "saved")], options);
+			const index = source === "provider" ? 1 : 0;
+			for (const [layout, id] of [[stream, STREAM_ENTRY], [saved, "saved"]] as const) {
+				expect(layout.entries.get("before")?.groups.get(0)).toMatchObject({ key: "before", calls: 1 });
+				expect(layout.entries.get(id)?.groups.get(index)).toMatchObject({ key: "after", calls: 1 });
+				expect(layout.entries.get(id)?.hidden.has(index + 1)).toBe(false);
+				expect(layout.entries.get(id)?.groups.has(index + 1)).toBe(false);
+			}
+			expect(stream.entries.get(STREAM_ENTRY)?.sig).toBe(saved.entries.get("saved")?.sig);
+		}
+	});
+
+	it("keeps ordinary model switches in the existing group across stream-to-saved updates", () => {
+		const before: SessionEntry[] = [
+			user("go"),
+			assistant([tool("before", "read")], 1000, "before"),
+			{ ...base(), type: "model_change", model: "other/model", resolvedModelIsFallback: false },
+		];
+		const content = [tool("after", "read")];
+		const options = { live: true, group: true, context, holdGroups: new Set(["before"]) };
+		const stream = transcriptLayout(liveLayoutEntries(before, streamed(content, 3000), null, true), options);
+		const saved = transcriptLayout([...before, assistant(content, 3000, "saved")], options);
+		for (const [layout, id] of [[stream, STREAM_ENTRY], [saved, "saved"]] as const) {
+			expect(layout.entries.get("before")?.groups.get(0)).toMatchObject({ key: "before", calls: 2 });
+			expect(layout.entries.get(id)?.hidden.has(0)).toBe(true);
+		}
+	});
+
 	it("groups a tool omp started before its call was saved, and keeps the group's key as the call streams and saves", () => {
 		const before = [user("go")];
 		const unsaved = unsavedToolsMessage([running("t1")], new Set(), null);

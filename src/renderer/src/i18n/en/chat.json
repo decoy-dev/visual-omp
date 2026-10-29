@@ -40,6 +40,12 @@
 	"compacted": "Context summarized",
 	"branchSummary": "Continued from another branch",
 	"modelChanged": "Switched to {{model}}",
+	"modelFallback": {
+		"changed": "omp switched from {{from}} to {{to}} as a fallback.",
+		"unknown": "omp switched to {{to}} as a fallback.",
+		"provider": "The provider switched this reply from {{from}} to {{to}} as a fallback.",
+		"reason": "At the switch, omp reported: {{reason}}"
+	},
 	"thinkingChanged": "Thinking set to {{level}}",
 	"stopped": {
 		"error": "The reply stopped with an error",

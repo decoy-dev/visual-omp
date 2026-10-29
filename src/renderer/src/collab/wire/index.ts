@@ -46,7 +46,14 @@ export interface ToolCallContent {
 	intent?: string;
 }
 
-export type AssistantContent = TextContent | ThinkingContent | RedactedThinkingContent | ToolCallContent;
+/** Provider-reported fallback within an assistant response (omp's Anthropic adapter). */
+export interface FallbackContent {
+	type: "fallback";
+	from: { model: string };
+	to: { model: string };
+}
+
+export type AssistantContent = TextContent | ThinkingContent | RedactedThinkingContent | ToolCallContent | FallbackContent;
 
 export type StopReason = "stop" | "length" | "toolUse" | "error" | "aborted";
 
@@ -82,9 +89,16 @@ export interface AssistantMessage {
 	role: "assistant";
 	content: AssistantContent[];
 	model: string;
+	provider?: string;
 	usage: WireUsage;
 	stopReason: StopReason;
 	errorMessage?: string;
+	/** omp's persisted attribution of an error recovered by retrying. */
+	retryRecovery?: {
+		kind: "auto-retry";
+		recovery: "credential" | "model" | "wait" | "plain";
+		supersededBy?: { provider: string; model: string };
+	};
 	timestamp: number;
 }
 
@@ -151,6 +165,8 @@ export interface ModelChangeEntry extends EntryBase {
 	/** Model in "provider/modelId" format. */
 	model: string;
 	role?: string;
+	/** omp sets this for retry-chain and usage-preflight fallbacks; role alone is insufficient. */
+	resolvedModelIsFallback?: boolean;
 }
 
 export interface ThinkingLevelChangeEntry extends EntryBase {
@@ -198,6 +214,7 @@ export type AgentEvent =
 	| { type: "auto_retry_start"; attempt: number; maxAttempts: number; delayMs: number; errorMessage: string }
 	| { type: "auto_retry_end"; success: boolean; attempt: number; finalError?: string }
 	| { type: "thinking_level_changed"; thinkingLevel?: string; configured?: string; resolved?: string };
+
 
 // ═══════════════════════════════════════════════════════════════════════════
 // State & agents

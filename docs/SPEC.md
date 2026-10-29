@@ -56,6 +56,10 @@ Output: friendly summaries that expand to details. Normal view groups tool calls
 
 omp's displayed harness notices appear in the chat in all three views, presented the way omp's terminal shows them. The normal presentation removes omp's wrapper tags, and Verbose offers the original text in a "Text sent to the model" disclosure. Finished background jobs and helpers become one tool-style row per job that opens to the result; IRC messages become message cards with the body cut to three lines; process exits, advisor notes, skill invocations and other notices each get their own row or card. Verbose initially expands job results, skill text and other-notice details, while IRC message bodies stay collapsed to three lines in every view. The session tree uses the same one-line summaries.
 
+When omp explicitly records a model fallback, all transcript views show a warning at the switch. The warning names the source when recorded and the destination, and quotes a related error only when omp's saved retry attribution identifies that model recovery. Missing reasons remain unspecified, so a provider error or preflight switch is never described as usage exhaustion without evidence. Provider-reported fallback content within a reply also shows a warning. Account rotation and manual changes keep their existing presentation. Recovery during a turn does not create an unopened result or background alert; the normal completion and question rules still apply.
+
+The existing screen-reader announcement channel announces a newly recorded fallback once. Loaded history, reconnect snapshots and the saved copy of a streamed provider fallback remain silent, and the transcript itself stays outside live-region announcements.
+
 ## Feature scope (all in scope)
 ### Sessions
 - Open chats appear in a Current chats sidebar section, with unopened results first and a divider before viewed chats. Each group keeps open order, and numbered shortcuts keep their original chat numbers. A blue dot, stronger title and accessible "New result" or "Waiting for your answer" label mark unopened results. The same mark appears on open chats in the Projects tree, Home's recent chats and project overviews.
@@ -88,6 +92,8 @@ omp's displayed harness notices appear in the chat in all three views, presented
 
 ### Composer
 - The composer card contains ＋, text, microphone and send or stop actions. Permission, model, thinking and context controls appear in a quieter row beneath it.
+- The model button marks a recorded fallback with a warning icon and “Fallback”, and its tooltip names the original model when known. It follows the live selected model or, for saved chats, the latest recorded choice. Provider fallback content identifies the model serving that reply. A manual choice or return to the primary removes the retry fallback marker.
+- The picker uses omp's selected identity independently of its serving-model label, so a provider fallback can still be explicitly selected. An unknown original stays unknown through subsequent fallbacks until a non-fallback choice resets the chain.
 - While omp works, the primary action queues the message; Send now remains available with ⌘↵.
 - Read-only chats explain the reason in the session header and the available action in the placeholder. Composer controls are muted and disabled without repeating a lock banner.
 - At narrow widths, composer actions wrap to a second line so the text box keeps a usable width.
