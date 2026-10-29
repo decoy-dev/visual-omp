@@ -172,6 +172,8 @@ export interface GitFileDiff {
 }
 
 export interface GitDiffOptions {
+	/** Show this commit against its first parent (the empty tree for a root commit). */
+	commit?: string;
 	/** Restrict to these repo-relative paths (a rename is matched by either side). Omit for all changes. */
 	paths?: string[];
 	/** Context lines around changes (git default 3). */
@@ -184,9 +186,31 @@ export interface GitDiffOptions {
 
 export interface GitDiff {
 	root: string;
-	/** What the work tree was compared with: HEAD, or the empty tree on an unborn branch. */
-	base: "HEAD" | "empty";
+	/** HEAD for working changes, a parent commit SHA for history, or the empty tree for a root. */
+	base: string;
 	files: GitFileDiff[];
+}
+
+export interface GitLogOptions {
+	/** Number of commits to return (default 30, maximum 100). */
+	limit?: number;
+	/** Number of commits to skip (default 0). */
+	skip?: number;
+	/** Immutable history snapshot to traverse; omit to resolve the current HEAD. */
+	head?: string;
+}
+
+export interface GitLogCommit {
+	sha: string;
+	shortSha: string;
+	subject: string;
+	body: string;
+	author: string;
+	/** Author date in ISO 8601 format. */
+	authorDate: string;
+	files: number;
+	additions: number;
+	deletions: number;
 }
 
 export interface GitCloneOptions {
@@ -510,8 +534,10 @@ declare module "../ipc" {
 		"git:repo": { args: [cwd: string]; result: GitRepoInfo };
 		/** Branch/upstream/ahead-behind and every changed path with +/- line counts vs HEAD. */
 		"git:status": { args: [cwd: string]; result: GitStatus };
-		/** Unified diff of the work tree vs HEAD (untracked files as additions). */
+		/** Unified diff of the work tree vs HEAD, or a commit against its first parent. */
 		"git:diff": { args: [cwd: string, options?: GitDiffOptions]; result: GitDiff };
+		/** Paginated commits reachable from HEAD, with first-parent change totals. */
+		"git:log": { args: [cwd: string, options?: GitLogOptions]; result: GitLogCommit[] };
 		/**
 		 * DANGER — irreversibly drops all staged and unstaged changes to these repo-relative paths,
 		 * restoring them to HEAD. Untracked/newly added files are moved to the OS trash; a rename is

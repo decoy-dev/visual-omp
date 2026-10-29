@@ -7,6 +7,8 @@ import type {
 	GitDiffOptions,
 	GitFileDiff,
 	GitFileStatus,
+	GitLogCommit,
+	GitLogOptions,
 	GitManualCommitOptions,
 	GitOperation,
 	GitPushResult,
@@ -21,6 +23,8 @@ import { runOmp } from "../omp/cli";
 import {
 	countLines,
 	isBinary,
+	LOG_FORMAT,
+	parseLog,
 	parseNumstat,
 	parseRefs,
 	parseRemotes,
@@ -217,8 +221,45 @@ function totalsOf(files: GitFileStatus[]): GitStatus["totals"] {
 	return totals;
 }
 
+/** Read HEAD history without allowing pagination values to become command options. */
+export async function log(cwd: string, options: GitLogOptions = {}): Promise<GitLogCommit[]> {
+	const limit = options.limit ?? 30;
+	const skip = options.skip ?? 0;
+	if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 || !Number.isSafeInteger(skip) || skip < 0) {
+		throw new Error("Invalid commit history pagination");
+	}
+	const { root } = await requireRepo(cwd);
+	const head = options.head === undefined ? await headCommit(root) : await resolveCommit(root, options.head);
+	if (!head) return [];
+	return parseLog(await git([
+		"log", "-z", `--format=${LOG_FORMAT}`, ...DIFF_FLAGS, "--shortstat", "--root", "--diff-merges=first-parent",
+		`--max-count=${limit}`, `--skip=${skip}`, "--end-of-options", head, "--",
+	], { cwd: root }));
+}
+
+/** Git verifies abbreviated SHA-1 and SHA-256 object IDs after the hexadecimal input check. */
+async function resolveCommit(root: string, commit: string): Promise<string> {
+	if (commit.length < 7 || commit.length > 64 || /[^a-fA-F0-9]/.test(commit)) throw new Error("Invalid commit SHA");
+	const verified = await runGit(["rev-parse", "--verify", "--end-of-options", `${commit}^{commit}`], { cwd: root });
+	if (verified.code !== 0) throw new Error("Commit not found");
+	return verified.stdout.trim();
+}
+
+async function commitDiff(root: string, options: GitDiffOptions): Promise<GitDiff> {
+	const sha = await resolveCommit(root, options.commit ?? "");
+	const ancestry = (await git(["rev-list", "--parents", "-n", "1", "--end-of-options", sha, "--"], { cwd: root })).trim().split(" ");
+	const parent = ancestry[1];
+	const base = parent ?? await diffBase(root, null);
+	const files = parseUnifiedDiff(await git([
+		"diff", ...DIFF_FLAGS, `-U${options.context ?? 3}`, ...(options.ignoreWhitespace ? ["-w"] : []),
+		base, sha, "--",
+	], { cwd: root })).filter(file => !options.paths || options.paths.includes(file.path) || (file.origPath !== null && options.paths.includes(file.origPath)));
+	return { root, base: parent ?? "empty", files };
+}
+
 export async function diff(cwd: string, options: GitDiffOptions = {}): Promise<GitDiff> {
 	const { root } = await requireRepo(cwd);
+	if (options.commit !== undefined) return commitDiff(root, options);
 	const head = await headCommit(root);
 	const base = await diffBase(root, head);
 	const flags = [`-U${options.context ?? 3}`, ...(options.ignoreWhitespace ? ["-w"] : [])];

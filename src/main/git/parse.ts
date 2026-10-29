@@ -11,6 +11,7 @@ import type {
 	GitDiffLine,
 	GitFileDiff,
 	GitHubRepoRef,
+	GitLogCommit,
 	GitProposedCommit,
 	GitRemote,
 	GitSideChange,
@@ -717,4 +718,23 @@ export function parseCommitOutput(stdout: string, stderr: string): CommitOutput 
 		}
 	}
 	return { commits, warnings, usedFallback, noChanges };
+}
+
+/** NUL-delimited metadata keeps separators and newlines in commit messages unambiguous. */
+export const LOG_FORMAT = "%x00%H%x00%h%x00%s%x00%b%x00%an%x00%aI";
+
+/** `git log -z --shortstat --format=LOG_FORMAT`: six metadata fields, then the shortstat. */
+export function parseLog(raw: string): GitLogCommit[] {
+	const fields = raw.split("\0");
+	const commits: GitLogCommit[] = [];
+	for (let i = 1; i + 5 < fields.length; i += 7) {
+		const [sha, shortSha, subject, body, author, authorDate, stat = ""] = fields.slice(i, i + 7) as [string, string, string, string, string, string, string?];
+		commits.push({
+			sha, shortSha, subject, body: body.trimEnd(), author, authorDate,
+			files: Number(/(\d+) files? changed/.exec(stat)?.[1] ?? 0),
+			additions: Number(/(\d+) insertions?\(\+\)/.exec(stat)?.[1] ?? 0),
+			deletions: Number(/(\d+) deletions?\(-\)/.exec(stat)?.[1] ?? 0),
+		});
+	}
+	return commits;
 }

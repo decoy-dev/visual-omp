@@ -15,6 +15,7 @@ visual-omp 0.7 is the first beta release, adding native reply rendering, session
 - **New:** Replies show omp's interim updates, SVG and Mermaid diagrams, and charts under numeric tables.
 - **New:** You can read release notes before installing an update and browse earlier versions.
 - **New:** The Tasks pane can stop background jobs, shows helpers' progress and draws job charts.
+- **New:** The Changes pane keeps earlier commits below your uncommitted edits, so you can review a commit's changes after it is made.
 - **New:** Saved chats can be renamed, pinned, moved to another computer and exported as an anonymized copy.
 - **New:** Settings include a native Advisor sheet, restricted folders, per-model compaction limits and more of omp's options.
 - **Improved:** The message box offers word suggestions, approval cards offer Deny and say why, and an interrupted chat can continue where omp stopped.
@@ -30,6 +31,7 @@ visual-omp 0.7 is the first beta release, adding native reply rendering, session
 
 #### New
 
+- The Changes pane now includes commit history below uncommitted edits, so earlier changes remain available after a commit. Each row shows the subject, author, date, short commit ID and line totals, and **Show more** loads older commits. Selecting a commit opens a read-only diff against its first parent, or the empty tree for the first commit in a repository. Discard, line comments and **Review code** apply only to uncommitted changes. New commits appear without reopening the pane.
 - A first-run setup guides new users through provider sign-in and default-model selection, matching omp's graphical setup, then adds permissions and app appearance. When omp is missing or too old, setup offers its official installer or updater with output shown in the window. Managed installations direct you to the application responsible for updates. Provider sign-in uses `omp login`; model and permission choices are saved globally, with Ask me first preselected. Appearance changes preview immediately, and the first-run tour follows setup. Provider sign-in and model selection can be skipped. Existing users see only installation recovery when omp is missing, unsupported or refused by the operating system. **Run setup again** is available from Help and the command palette. visual-omp leaves omp's setup-completion setting unchanged, preserving its terminal setup for glyph, composer and theme choices.
 - Interim replies that omp writes to `out://`, including shell redirects, appear as assistant text while omp keeps working. They use reply pacing and screen-reader announcements, stay in saved chats and helper conversations, and never count as file changes.
 - Replies and SVG or Mermaid file previews show theme-aware figures and diagrams, with the source available. Numeric Markdown tables get a chart beneath them, drawn with omp's own chart rules, and the table stays as it was. Diagram images expose their titles and descriptions to screen readers and scroll sideways at narrow widths instead of shrinking.

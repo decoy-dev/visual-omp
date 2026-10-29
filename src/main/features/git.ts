@@ -8,6 +8,7 @@ import {
 	diff,
 	discard,
 	init,
+	log,
 	pushBranch,
 	repoInfo,
 	status,
@@ -22,6 +23,7 @@ export function register(): void {
 	handle("git:repo", cwd => repoInfo(cwd));
 	handle("git:status", cwd => status(cwd));
 	handle("git:diff", (cwd, options) => diff(cwd, options));
+	handle("git:log", (cwd, options) => log(cwd, options));
 	handle("git:discard", (cwd, paths) => discard(cwd, paths, path => shell.trashItem(path)));
 	handle("git:init", (dir, options) => init(dir, options));
 	handle("git:clone", options => clone(options, progress => broadcast("git:cloneProgress", progress)));

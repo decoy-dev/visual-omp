@@ -182,6 +182,9 @@ oversized or incomplete listings, never recurse and never read file contents. `F
 folder entries and total directory reads. The renderer retains the abbreviated label and uses the
 resolved absolute path for opening, its tooltip and Copy path.
 
+Git review: `features/panes/git-store.ts` shares live `git:status` between the Changes pane and its uncommitted-only badge. Working diffs follow `git:changed`; `commit-history.ts` retains loaded history across clean/dirty views and commit selection, and refreshes it only when status reports a new HEAD. `git:log` accepts a folder, optional `limit` (default 30, maximum 100), `skip`, and a verified hexadecimal `head` snapshot, returning history with full and short SHAs, subjects, bodies, author names, ISO author dates and first-parent change totals. Every renderer page requests 30 commits against the same immutable SHA, so a commit between requests cannot shift the page boundary. A new HEAD refreshes the previously loaded window through bounded pages; unchanged-HEAD file events reuse existing rows without recomputing statistics. Main uses NUL-framed metadata plus `--shortstat`, preserving separators in commit messages; an unborn HEAD returns an empty list. `git:diff` retains its work-tree behavior unless `commit` is supplied. Main accepts 7-64 hexadecimal characters and verifies the object as a commit with `rev-parse --verify --end-of-options`, supporting SHA-1, SHA-256 and detached HEAD. It compares the commit with its first parent or the repository's empty tree. Historical diffs reuse `GitDiff` and the renderer's existing file viewer, with Discard, comments and Review code unavailable. Commit metadata wraps in a bounded scrolling region while Back remains visible. Initial line tokenization and emphasis use only the displayed line budget; Show all lines expands that budget.
+
+
 ## Source layout
 ```
 src/

@@ -1,10 +1,11 @@
 /**
- * Diff pane (DESIGN §3.7): changed files on the left, the unified diff of every file on the right
- * with syntax colors and word-level emphasis. Hovering a line's gutter shows ＋ to leave a comment;
- * "Send N comments to omp" (⌘↵) turns them into one chat message. "Review code" runs `/review`.
+ * Diff pane (DESIGN §3.7): working changes followed by paginated HEAD history. Both use the
+ * hideable file list and unified viewer with syntax colors and word-level emphasis. Working
+ * changes support line comments, Discard and `/review`; selected commits are read-only.
  */
 import {
 	ArrowUUpLeft,
+	ArrowLeft,
 	CaretRight,
 	ChatCenteredDots,
 	GitDiff as GitDiffIcon,
@@ -19,10 +20,11 @@ import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, memo, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
-import type { GitDiff, GitDiffHunk, GitDiffLine, GitFileDiff, GitFileStatus } from "@shared/contracts/git";
+import type { GitDiff, GitDiffHunk, GitDiffLine, GitFileDiff, GitFileStatus, GitLogCommit } from "@shared/contracts/git";
 import type { PaneProps } from "../../registry/slots";
 import { controllerFor, currentDock, useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
+import { useNow } from "../../shell/hooks";
 import {
 	Button,
 	cn,
@@ -46,6 +48,7 @@ import {
 import { focusRingInset } from "../../ui/styles";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { composeReviewMessage, type LineComment } from "./comments";
+import { type CommitHistoryState, useCommitHistory } from "./commit-history";
 import { listRowMotion, PaneToolbar, usePaneVisible } from "./common";
 import { refreshGit, useFileChangesRequest, useGit } from "./git-store";
 import { languageFor, SYN_CLASS, type SynToken, tokenizeLines } from "./highlight";
@@ -249,6 +252,7 @@ const Hunk = memo(function Hunk({
 	draft,
 	setDraft,
 	limit,
+	readOnly = false,
 }: {
 	hunk: GitDiffHunk;
 	lang: string | null;
@@ -258,11 +262,12 @@ const Hunk = memo(function Hunk({
 	draft: Draft | null;
 	setDraft(draft: Draft | null): void;
 	limit: number;
+	readOnly?: boolean;
 }) {
 	const { t } = useTranslation("panes");
-	const tokens = useMemo(() => tokenizeLines(hunk.lines.map(line => line.text), lang), [hunk, lang]);
-	const emphasis = useMemo(() => hunkEmphasis(hunk.lines), [hunk]);
-	const lines = hunk.lines.slice(0, limit);
+	const lines = useMemo(() => hunk.lines.slice(0, limit), [hunk, limit]);
+	const tokens = useMemo(() => tokenizeLines(lines.map(line => line.text), lang), [lines, lang]);
+	const emphasis = useMemo(() => hunkEmphasis(lines), [lines]);
 	return (
 		<>
 			<div className="flex h-6 items-center bg-diff-hunk-bg px-3 font-mono text-xs text-diff-hunk-text">
@@ -282,7 +287,7 @@ const Hunk = memo(function Hunk({
 						<div className={cn("group/line flex min-h-5 font-mono text-code leading-5", ROW_BG[line.kind])}>
 							<span className="relative w-10 shrink-0 select-none pr-1.5 text-right text-fg-faint tabular-nums">
 								{line.oldLine ?? ""}
-								{number !== null && (
+								{number !== null && !readOnly && (
 									<button
 										type="button"
 										aria-label={commentLabel}
@@ -356,6 +361,7 @@ function FileSection({
 	setDraft,
 	onDiscard,
 	register,
+	readOnly = false,
 }: {
 	file: GitFileDiff;
 	displayPath: string;
@@ -366,6 +372,7 @@ function FileSection({
 	setDraft(draft: Draft | null): void;
 	onDiscard(file: GitFileDiff): void;
 	register(path: string, element: HTMLElement | null): void;
+	readOnly?: boolean;
 }) {
 	const { t } = useTranslation("panes");
 	const [open, setOpen] = useState(true);
@@ -384,7 +391,7 @@ function FileSection({
 					aria-expanded={open}
 					onClick={() => setOpen(!open)}
 				/>
-				<span data-context-path={absolutePath} data-context-changes="" tabIndex={0} className="min-w-0 flex-1 truncate font-mono text-xs text-fg" title={displayPath}>
+				<span data-context-path={readOnly ? undefined : absolutePath} data-context-changes={readOnly ? undefined : ""} tabIndex={0} className="min-w-0 flex-1 truncate font-mono text-xs text-fg" title={displayPath}>
 					{file.origPath && <span className="text-fg-faint">{file.origPath} → </span>}
 					{displayPath}
 				</span>
@@ -399,13 +406,13 @@ function FileSection({
 					<span className="text-diff-add-text">+{file.additions}</span>{" "}
 					<span className="text-diff-del-text">−{file.deletions}</span>
 				</span>
-				<IconButton
+				{!readOnly && <IconButton
 					size="sm"
 					variant="danger-ghost"
 					label={t("diff.discardFile")}
 					icon={<ArrowUUpLeft />}
 					onClick={() => onDiscard(file)}
-				/>
+				/>}
 			</header>
 			<Expand open={open} className="bg-inset">
 				{file.binary ? (
@@ -430,6 +437,7 @@ function FileSection({
 								draft={draft}
 								setDraft={setDraft}
 								limit={limit}
+								readOnly={readOnly}
 							/>
 						);
 					})
@@ -446,20 +454,93 @@ function FileSection({
 	);
 }
 
+/** History remains below working changes, with independent loading and recovery. */
+function CommitHistory({ state, focusOnMount, onFocusRestored, onSelect }: {
+	state: CommitHistoryState;
+	focusOnMount: boolean;
+	onFocusRestored(): void;
+	onSelect(commit: GitLogCommit): void;
+}) {
+	const { t, i18n } = useTranslation("panes");
+	const now = useNow(60_000);
+	const { commits, loading, error, hasMore, more, retry } = state;
+	const time = useMemo(() => new Intl.RelativeTimeFormat(i18n.language, { numeric: "auto", style: "short" }), [i18n.language]);
+	const heading = useRef<HTMLHeadingElement>(null);
+	useEffect(() => {
+		if (focusOnMount) {
+			heading.current?.focus();
+			onFocusRestored();
+		}
+	}, []);
+	const relative = (date: string) => {
+		const seconds = Math.round((Date.parse(date) - now) / 1000);
+		if (Math.abs(seconds) < 60) return time.format(0, "second");
+		const minutes = Math.round(seconds / 60);
+		if (Math.abs(minutes) < 60) return time.format(minutes, "minute");
+		const hours = Math.round(minutes / 60);
+		if (Math.abs(hours) < 24) return time.format(hours, "hour");
+		return time.format(Math.round(hours / 24), "day");
+	};
+	return (
+		<section aria-label={t("diff.history")} aria-busy={loading} className="border-t border-border bg-panel py-3">
+			<h3 ref={heading} tabIndex={-1} className="mb-2 px-3 text-sm font-semibold text-fg">{t("diff.history")}</h3>
+			<ul aria-label={t("diff.history")} onKeyDown={event => {
+				if (!["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+				const buttons = [...event.currentTarget.querySelectorAll<HTMLButtonElement>("button")];
+				const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+				const next = event.key === "Home" ? 0 : event.key === "End" ? buttons.length - 1 : Math.max(0, Math.min(buttons.length - 1, index + (event.key === "ArrowDown" ? 1 : -1)));
+				if (buttons[next]) { event.preventDefault(); buttons[next].focus(); }
+			}}>
+				{commits.map(commit => (
+					<li key={commit.sha}>
+						<button type="button" onClick={() => onSelect(commit)} title={commit.subject} className={cn("block w-full px-3 py-2 text-left hover:bg-hover", focusRingInset)}>
+							<span className="flex min-w-0 items-baseline gap-2">
+								<span className="min-w-0 flex-1 truncate text-sm font-medium text-fg">{commit.subject || t("diff.untitledCommit")}</span>
+								<span className="shrink-0 font-mono text-xs tabular-nums">
+									<span className="text-diff-add-text">+{commit.additions}</span>{" "}
+									<span className="text-diff-del-text">−{commit.deletions}</span>
+								</span>
+							</span>
+							<span className="mt-0.5 flex min-w-0 items-center gap-2 text-xs text-fg-muted">
+								<span className="shrink-0 font-mono">{commit.shortSha}</span>
+								<span className="min-w-0 flex-1 truncate">{commit.author}</span>
+								<time dateTime={commit.authorDate} title={new Date(commit.authorDate).toLocaleString(i18n.language)} className="shrink-0">{relative(commit.authorDate)}</time>
+							</span>
+						</button>
+					</li>
+				))}
+			</ul>
+			{!loading && !error && commits.length === 0 && <p className="px-3 text-sm text-fg-muted">{t("diff.noCommits")}</p>}
+			{error && <div className="px-3 py-2" role="alert">
+				<p className="mb-2 text-sm text-err">{t("diff.historyFailed")}</p>
+				<p className="mb-2 break-words text-xs text-fg-muted">{error}</p>
+				<Button size="sm" variant="secondary" onClick={retry}>{t("diff.reloadHistory")}</Button>
+			</div>}
+			{loading ? <div role="status" className="flex items-center gap-2 px-3 py-2 text-sm text-fg-muted"><Spinner />{t("diff.loadingHistory")}</div>
+				: hasMore && !error && <div className="px-3 pt-2"><Button size="sm" variant="secondary" onClick={() => void more()}>{t("diff.showMore")}</Button></div>}
+		</section>
+	);
+}
+
+/** A stable wrapper keeps project-specific selection and requests out of the next project. */
 // ── pane ────────────────────────────────────────────────────────────────────────────────────────
 
 export function DiffPane({ session, projectPath }: PaneProps) {
 	const { t } = useTranslation("panes");
 	if (!projectPath) return <EmptyState icon={<GitDiffIcon />} title={t("diff.noProjectTitle")} body={t("diff.noProject")} />;
-	return <DiffView session={session} projectPath={projectPath} />;
+	return <DiffView key={projectPath} session={session} projectPath={projectPath} />;
 }
 
 function DiffView({ session, projectPath }: { session: SessionController | null; projectPath: string }) {
 	const { t } = useTranslation("panes");
 	const git = useGit(projectPath);
 	const visible = usePaneVisible("diff");
+	const historyState = useCommitHistory(projectPath, git.status?.head ?? null, git.version > 0, visible && !git.notRepo);
 	const [diff, setDiff] = useState<GitDiff | null>(null);
 	const [loadError, setLoadError] = useState<string | null>(null);
+	const [commit, setCommit] = useState<GitLogCommit | null>(null);
+	const backButton = useRef<HTMLButtonElement>(null);
+	const [focusHistory, setFocusHistory] = useState(false);
 	// The file list starts hidden in a narrow dock, so the diff keeps the width; the path above names the file.
 	const [listOpen, setListOpen] = useState(() => currentDock(useApp.getState()).width >= 400);
 	const listId = useId();
@@ -473,6 +554,12 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 	const reduced = useMotionReduced();
 	const fileRequest = useFileChangesRequest(state => state.request);
 	useEffect(() => {
+		if (commit && fileRequest?.projectPath === projectPath && fileRequest.tabId === (session?.tabId ?? null)) {
+			setCommit(null);
+			setDiff(null);
+			loaded.current = -1;
+			return;
+		}
 		if (!diff || fileRequest?.projectPath !== projectPath || fileRequest.tabId !== (session?.tabId ?? null)) return;
 		const relative = fileRequest.path.slice(diff.root.replace(/[\\/]+$/, "").length + 1).replace(/\\/g, "/");
 		setSelected(relative);
@@ -480,8 +567,8 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 		const column = scroller.current;
 		if (section && column) column.scrollTop += section.getBoundingClientRect().top - column.getBoundingClientRect().top;
 		useFileChangesRequest.setState({ request: null });
-	}, [diff, fileRequest, projectPath, session?.tabId]);
-	const loaded = useRef(-1);
+	}, [commit, diff, fileRequest, projectPath, session?.tabId]);
+	const loaded = useRef<number | string>(-1);
 	useEffect(() => {
 		loaded.current = -1;
 		setDiff(null);
@@ -490,16 +577,16 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 	}, [projectPath]);
 
 
-	// Reload the diff whenever the work tree changed and the pane is on screen.
+	// Working changes follow the watcher; an already loaded commit is immutable.
 	useEffect(() => {
-		if (!visible || git.notRepo || git.version === 0 || loaded.current === git.version) return;
+		if (!visible || git.notRepo || git.version === 0 || loaded.current === (commit?.sha ?? git.version)) return;
 		let cancelled = false;
-		const version = git.version;
+		const revision = commit?.sha ?? git.version;
 		window.vomp
-			.invoke("git:diff", projectPath)
+			.invoke("git:diff", projectPath, commit ? { commit: commit.sha } : undefined)
 			.then(next => {
 				if (cancelled) return;
-				loaded.current = version;
+				loaded.current = revision;
 				setDiff(next);
 				setLoadError(null);
 			})
@@ -509,7 +596,7 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 		return () => {
 			cancelled = true;
 		};
-	}, [visible, git.version, git.notRepo, projectPath]);
+	}, [visible, git.version, git.notRepo, projectPath, commit]);
 
 	// Paths relative to the project folder when it is a subfolder of the repository.
 	const prefix = useMemo(() => {
@@ -521,6 +608,19 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 
 	const statusByPath = useMemo(() => new Map(git.status?.files.map(file => [file.path, file]) ?? []), [git.status]);
 	const files = diff?.files ?? [];
+	const chooseCommit = (next: GitLogCommit | null) => {
+		setFocusHistory(next === null);
+		loaded.current = -1;
+		setLoadError(null);
+		setDiff(null);
+		setSelected(null);
+		setDraft(null);
+		setCommit(next);
+	};
+	useEffect(() => {
+		if (diff && commit) backButton.current?.focus();
+	}, [diff, commit]);
+	const history = <CommitHistory state={historyState} focusOnMount={focusHistory} onFocusRestored={() => setFocusHistory(false)} onSelect={chooseCommit} />;
 
 	const sendComments = async () => {
 		// Read the store, not the render closure: ⌘↵ in a comment box saves that comment first.
@@ -562,7 +662,7 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 	};
 
 	const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-		if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+		if (!commit && event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
 			event.preventDefault();
 			void sendComments();
 		}
@@ -594,11 +694,12 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 				icon={<GitDiffIcon />}
 				title={t("diff.errorTitle")}
 				body={git.error ?? loadError}
-				actions={
-					<Button size="sm" variant="secondary" onClick={() => refreshGit(projectPath)}>
+				actions={<>
+					{commit && <Button size="sm" variant="ghost" icon={<ArrowLeft />} onClick={() => chooseCommit(null)}>{t("diff.backToChanges")}</Button>}
+					<Button size="sm" variant="secondary" onClick={() => { loaded.current = -1; refreshGit(projectPath); }}>
 						{t("diff.reload")}
 					</Button>
-				}
+				</>}
 			/>
 		);
 	}
@@ -613,6 +714,14 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 	const view = (
 		<TargetContextMenu projectPath={projectPath} tabId={session?.tabId ?? null} onShowChanges={path => jumpTo(path.slice((diff?.root ?? projectPath).replace(/[\\/]+$/, "").length + 1).replace(/\\/g, "/"))}>
 		<div className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown}>
+			{commit && <div className="shrink-0 border-b border-border px-3 py-3">
+				<Button ref={backButton} size="sm" variant="ghost" icon={<ArrowLeft />} onClick={() => chooseCommit(null)}>{t("diff.backToChanges")}</Button>
+				<div tabIndex={0} role="region" aria-label={t("diff.commitDetails")} className="mt-2 max-h-40 overflow-y-auto [overflow-wrap:anywhere]">
+					<h3 className="text-sm font-semibold text-fg">{commit.subject || t("diff.untitledCommit")}</h3>
+					<p className="mt-1 text-xs text-fg-muted"><span className="font-mono">{commit.shortSha}</span> · {commit.author} · {t("diff.readOnly")}</p>
+					{commit.body && <p className="mt-2 whitespace-pre-wrap text-sm text-fg-muted">{commit.body}</p>}
+				</div>
+			</div>}
 			<PaneToolbar>
 				<IconButton
 					size="sm"
@@ -632,7 +741,7 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 								</span>
 							))}
 				</nav>
-				{reviewButton}
+				{!commit && reviewButton}
 			</PaneToolbar>
 			<div className="flex min-h-0 flex-1">
 				<AnimatePresence initial={false}>
@@ -648,7 +757,7 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 						>
 							<AnimatePresence initial={false}>
 								{files.map(file => {
-									const kind = statusByPath.get(file.path)?.kind ?? (file.untracked ? "untracked" : file.kind);
+									const kind = (!commit && statusByPath.get(file.path)?.kind) || (file.untracked ? "untracked" : file.kind);
 									const active = file.path === selectedPath;
 									return (
 										<motion.li
@@ -658,8 +767,8 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 										>
 											<button
 												type="button"
-												data-context-path={`${diff?.root ?? projectPath}/${file.path}`}
-												data-context-changes=""
+												data-context-path={commit ? undefined : `${diff?.root ?? projectPath}/${file.path}`}
+												data-context-changes={commit ? undefined : ""}
 												title={display(file.path)}
 												aria-current={active ? "true" : undefined}
 												onClick={() => jumpTo(file.path)}
@@ -686,26 +795,30 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 					)}
 				</AnimatePresence>
 				<div ref={scroller} className="min-w-0 flex-1 overflow-y-auto">
+					{!commit && <h3 className="border-b border-border px-3 py-2 text-sm font-semibold text-fg">{t("diff.uncommitted")}</h3>}
 					{files.map(file => (
 						<FileSection
-							key={file.path}
+							key={`${commit?.sha ?? "working"}:${file.path}`}
 							file={file}
 							displayPath={display(file.path)}
 							projectPath={projectPath}
-							comments={comments}
+							comments={commit ? NO_COMMENTS : comments}
 							absolutePath={`${diff?.root ?? projectPath}/${file.path}`}
 							draft={draft}
 							setDraft={setDraft}
 							onDiscard={setDiscarding}
+							readOnly={commit !== null}
 							register={(path, element) => {
 								if (element) sections.current.set(path, element);
 								else sections.current.delete(path);
 							}}
 						/>
 					))}
+					{!commit && history}
+					{commit && files.length === 0 && <EmptyState icon={<GitDiffIcon />} title={t("diff.emptyCommit")} />}
 				</div>
 			</div>
-			<Expand open={comments.length > 0} className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-panel px-3 py-2">
+			<Expand open={!commit && comments.length > 0} className="flex flex-wrap items-center justify-end gap-2 border-t border-border bg-panel px-3 py-2">
 				<span className="min-w-0 flex-[1_1_10rem] text-sm text-fg-muted">{t("diff.pending", { count: comments.length })}</span>
 				<Button size="sm" variant="ghost" onClick={() => useComments.getState().clear(projectPath)}>
 					{t("diff.clearComments")}
@@ -738,10 +851,15 @@ function DiffView({ session, projectPath }: { session: SessionController | null;
 		</div>
 		</TargetContextMenu>
 	);
-	// The list stays the presence owner while its last file leaves: the old view fades out, then the empty state fades in.
+	if (!commit && files.length === 0) {
+		return <div className="min-h-0 flex-1 overflow-y-auto">
+			<EmptyState icon={<GitDiffIcon />} title={t("diff.emptyTitle")} body={t("diff.empty")} />
+			{history}
+		</div>;
+	}
 	return (
-		<PresenceSwap swapKey={files.length === 0 ? "empty" : "diff"} className="flex min-h-0 flex-1 flex-col">
-			{files.length === 0 ? <EmptyState icon={<GitDiffIcon />} title={t("diff.emptyTitle")} body={t("diff.empty")} /> : view}
+		<PresenceSwap swapKey={commit?.sha ?? "working"} className="flex min-h-0 flex-1 flex-col">
+			{view}
 		</PresenceSwap>
 	);
 }
