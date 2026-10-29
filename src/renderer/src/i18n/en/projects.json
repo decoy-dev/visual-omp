@@ -451,6 +451,14 @@
 				"label": "Ask me first",
 				"body": "omp can look around on its own, but asks before it changes a file or runs a command."
 			},
+			"always-ask-cached": {
+				"label": "Ask and remember",
+				"body": "omp asks before reading or changing files and can remember your approval for a file or folder."
+			},
+			"unknown": {
+				"label": "Unknown permission mode",
+				"body": "This app does not recognize omp's permission mode ({{value}}). Your setting is unchanged."
+			},
 			"write": {
 				"label": "Edits OK",
 				"body": "omp can read and edit files on its own, but asks before running commands or starting helpers."

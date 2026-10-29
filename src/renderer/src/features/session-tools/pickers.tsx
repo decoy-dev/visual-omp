@@ -75,7 +75,6 @@ export const rowPicker = cn(
 
 // ─── Permission and work modes ─────────────────────────────────────────────
 
-const APPROVAL_MODES: readonly ApprovalMode[] = ["always-ask", "write", "yolo"];
 
 /** Apply a permission mode, asking once before the first switch to Auto (DESIGN §8.4). */
 export async function choosePermission(cwd: string, mode: ApprovalMode, current: ApprovalMode | null): Promise<void> {
@@ -159,15 +158,15 @@ export interface PermissionMenuProps {
  */
 export function PermissionMenu({ projectPath, disabled = false, workLabel = null, children }: PermissionMenuProps) {
 	const { t } = useTranslation("session");
-	const { mode, error } = useApprovalMode(projectPath);
+	const { mode, rawMode, supportedModes, loaded, error } = useApprovalMode(projectPath);
 	const [open, setOpen] = useState(false);
 	// A chat that turns read-only closes the menu for good rather than reopening it when replies come back.
 	if (disabled && open) setOpen(false);
-	const Shield = mode === "yolo" ? ShieldWarning : ShieldCheck;
-	const level = mode ? t(`permission.modes.${mode}.label`) : t("common.loading");
+	const Shield = mode === "yolo" || (loaded && mode === null) ? ShieldWarning : ShieldCheck;
+	const level = mode ? t(`permission.modes.${mode}.label`) : loaded ? t("permission.unknown") : t("common.loading");
 	return (
 		<Menu open={open} onOpenChange={setOpen}>
-			<Tooltip content={mode ? t(`permission.modes.${mode}.description`) : t("permission.tooltip")}>
+			<Tooltip content={mode ? t(`permission.modes.${mode}.description`) : loaded ? t("permission.unknownHelp", { value: JSON.stringify(rawMode) }) : t("permission.tooltip")}>
 				<MenuTrigger asChild disabled={disabled}>
 					<button
 						type="button"
@@ -175,9 +174,9 @@ export function PermissionMenu({ projectPath, disabled = false, workLabel = null
 						data-tour="permission"
 						className={cn(rowPicker, "min-h-7 min-w-0 py-1 text-left leading-tight")}
 					>
-						{mode ? <Shield className="size-3.5 shrink-0" aria-hidden /> : <Spinner size={12} tone="current" />}
+						{loaded ? <Shield className="size-3.5 shrink-0" aria-hidden /> : <Spinner size={12} tone="current" />}
 						<span className="min-w-0">
-							{mode && <span>{level}</span>}
+							{loaded && <span>{level}</span>}
 							{mode === "yolo" && <span className="text-fg-faint"> · {t("permission.autoNote")}</span>}
 							{workLabel && <span className="text-accent"> · {workLabel}</span>}
 						</span>
@@ -189,7 +188,7 @@ export function PermissionMenu({ projectPath, disabled = false, workLabel = null
 				<MenuLabel>{t("permission.title")}</MenuLabel>
 				<p className="px-row pb-1 text-sm text-fg-muted">{t("permission.tooltip")}</p>
 				<MenuRadioGroup value={mode ?? ""} onValueChange={value => void choosePermission(projectPath, value as ApprovalMode, mode)}>
-					{APPROVAL_MODES.map(option => (
+					{supportedModes.map(option => (
 						<MenuRadioItem key={option} value={option} description={t(`permission.modes.${option}.description`)}>
 							{t(`permission.modes.${option}.label`)}
 						</MenuRadioItem>

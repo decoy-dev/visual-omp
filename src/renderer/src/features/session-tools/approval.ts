@@ -8,7 +8,12 @@
  * New profiles start on "Ask me first" through a one-time global default (main/features/approval-default.ts).
  */
 import { useCallback, useEffect, useSyncExternalStore } from "react";
-import type { ApprovalMode, ApprovalState } from "@shared/contracts/config";
+import type { ApprovalMode, ApprovalState, JsonValue } from "@shared/contracts/config";
+
+const BASE_MODES: readonly ApprovalMode[] = ["always-ask", "write", "yolo"];
+export function approvalModes(state: ApprovalState | null | undefined): readonly ApprovalMode[] {
+	return state?.supportedModes ?? BASE_MODES;
+}
 
 interface Entry {
 	state: ApprovalState | null;
@@ -21,6 +26,9 @@ interface Entry {
 export interface ApprovalSnapshot {
 	/** null while loading. */
 	mode: ApprovalMode | null;
+	rawMode?: JsonValue;
+	supportedModes: readonly ApprovalMode[];
+	loaded: boolean;
 	/** The project file sets it (otherwise global config or omp's default decides). */
 	fromProject: boolean;
 	error: string | null;
@@ -31,7 +39,7 @@ const entries = new Map<string, Entry>();
 function entryFor(cwd: string): Entry {
 	let entry = entries.get(cwd);
 	if (!entry) {
-		entry = { state: null, error: null, listeners: new Set(), snapshot: { mode: null, fromProject: false, error: null }, stopWatch: null };
+		entry = { state: null, error: null, listeners: new Set(), snapshot: { mode: null, supportedModes: BASE_MODES, loaded: false, fromProject: false, error: null }, stopWatch: null };
 		entries.set(cwd, entry);
 	}
 	return entry;
@@ -40,6 +48,9 @@ function entryFor(cwd: string): Entry {
 function publish(entry: Entry): void {
 	entry.snapshot = {
 		mode: entry.state?.mode ?? null,
+		rawMode: entry.state?.rawMode,
+		supportedModes: approvalModes(entry.state),
+		loaded: entry.state !== null,
 		fromProject: entry.state?.modeSource === "project",
 		error: entry.error,
 	};

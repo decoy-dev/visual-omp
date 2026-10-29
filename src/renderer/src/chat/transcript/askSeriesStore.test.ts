@@ -255,11 +255,15 @@ describe("AskSeriesDriver", () => {
 		expect(other.getSnapshot()).toBeNull();
 	});
 
-	it("shows another request that replaces question 1 on the usual card, unanswered", async () => {
+	it.each([
+		["Approve", "Deny"],
+		["Approve", "Approve bash for this session", "Deny"],
+		["Approve Directory: /tmp/project", "Approve File", "Always Approve File", "Approve Once", "Approve read for this session", "Deny"],
+	])("shows a replacing approval with options %j on the usual card, unanswered", async (...options) => {
 		const chat = new FakeChat([]);
 		const driver = askSeriesFor(chat);
 		expect(driver.getSnapshot()?.phase).toBe("editing");
-		const approval: CollabUiRequest = { reqId: 5, kind: "select", title: "rm -rf build", options: ["Approve", "Deny"] };
+		const approval: CollabUiRequest = { reqId: 5, kind: "select", title: "rm -rf build", options };
 		chat.update({ uiRequest: approval });
 		await settle();
 		expect(chat.sent).toEqual([]);
@@ -268,6 +272,9 @@ describe("AskSeriesDriver", () => {
 		const html = renderToStaticMarkup(createElement(Probe));
 		expect(html).toContain('data-question-card="5"');
 		expect(html).toContain("Permission needed");
+		expect(html).toContain('data-approval-once=');
+		expect(html).toContain("<pre");
+		expect(html).not.toContain("Send answer");
 		expect(html).not.toContain("data-ask-series");
 		expect(chat.sent).toEqual([]);
 	});

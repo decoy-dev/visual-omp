@@ -91,10 +91,14 @@
 		"approvalMode": {
 			"label": "Permission mode",
 			"always-ask": "Ask me first",
+			"always-ask-cached": "Ask and remember",
+			"unknown": "Unknown permission mode",
 			"write": "Edits OK",
 			"yolo": "Auto",
 			"help": {
 				"always-ask": "omp can look around on its own, but asks before it changes a file or runs a command.",
+				"always-ask-cached": "omp asks before reading or changing files and can remember your approval for a file or folder.",
+				"unknown": "This app does not recognize omp's permission mode ({{value}}). Your setting is unchanged.",
 				"write": "omp can read and edit files on its own, but asks before running commands or starting helpers.",
 				"yolo": "omp works on its own without asking. Only use this in projects you trust.",
 				"none": "How much omp may do on its own before asking you."
@@ -168,6 +172,13 @@
 		},
 		"defaultHelp": "Ask checks with you before each use, Allow runs the tool without asking, and Deny blocks it.",
 		"unrecognized": "omp ignores these entries because their value isn't Ask, Allow or Deny: {{tools}}",
+		"forget": {
+			"action": "Forget remembered approvals",
+			"busy": "Forgetting approvals…",
+			"help": "Ask and remember can save file and folder approvals across chats.",
+			"title": "Forget remembered approvals?",
+			"confirmHelp": "This clears omp's saved file and folder approvals for all projects. Approvals held by an already running chat may remain until that chat restarts."
+		},
 		"add": {
 			"label": "Another tool",
 			"placeholder": "Tool name, e.g. mcp_github_create_issue",

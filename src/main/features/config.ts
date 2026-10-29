@@ -28,6 +28,7 @@ import {
 import { broadcast, handle } from "../ipc";
 import { getPrefs, setPrefs } from "../prefs";
 import { runOmp } from "../omp/cli";
+import { rpcRequest } from "../omp/rpc";
 import {
 	configFile,
 	deleteConfigPath,
@@ -458,7 +459,7 @@ async function deletePreset(name: string, cwd: string | undefined): Promise<Pres
 
 // ─── Approval ──────────────────────────────────────────────────────────────
 
-const ApprovalModeSchema = z.enum(["always-ask", "write", "yolo"]);
+const ApprovalModeSchema = z.enum(["always-ask", "always-ask-cached", "write", "yolo"]);
 const ApprovalPolicySchema = z.enum(["allow", "prompt", "deny"]);
 
 async function readApproval(cwd: string | undefined): Promise<ApprovalState> {
@@ -480,13 +481,58 @@ async function readApproval(cwd: string | undefined): Promise<ApprovalState> {
 		const fromProject = isJsonObject(projectPolicies) && Object.hasOwn(projectPolicies, tool);
 		policies.push({ tool, policy: policy.data, source: fromProject ? "project" : "global" });
 	}
-	return { cwd: cwd ?? null, mode: ApprovalModeSchema.parse(modeLeaf.value), modeSource: modeLeaf.source, policies, unrecognized };
+	const mode = ApprovalModeSchema.safeParse(modeLeaf.value);
+	const supportedModes = (modeLeaf.enumValues ?? ["always-ask", "write", "yolo"])
+		.filter((value): value is ApprovalMode => ApprovalModeSchema.safeParse(value).success);
+	return {
+		cwd: cwd ?? null,
+		mode: mode.success ? mode.data : null,
+		rawMode: modeLeaf.value,
+		supportedModes,
+		modeSource: modeLeaf.source,
+		policies,
+		unrecognized,
+	};
 }
 
 async function setApprovalMode(mode: ApprovalMode, scope: SettingScope, cwd: string | undefined): Promise<ApprovalState> {
-	await setConfigPath(scope, cwd, ["tools", "approvalMode"], ApprovalModeSchema.parse(mode));
+	const value = ApprovalModeSchema.parse(mode);
+	const leaf = await readLeaf("tools.approvalMode", cwd);
+	if (!leaf.enumValues?.includes(value) && value === "always-ask-cached") throw new Error("This omp does not support Ask and remember.");
+	await setConfigPath(scope, cwd, ["tools", "approvalMode"], value);
 	configWritten();
 	return readApproval(cwd);
+}
+
+/** The builtin owns the approval cache; a separate RPC process does not need a chat or model call. */
+async function forgetApprovals(): Promise<string> {
+	const leaf = await readLeaf("tools.approvalMode", undefined);
+	if (!leaf.enumValues?.includes("always-ask-cached")) throw new Error("This omp does not support remembered approvals.");
+	const printed: string[] = [];
+	const result = await rpcRequest(
+		NEUTRAL_CWD,
+		"prompt",
+		{
+			flags: ["--no-session", "--no-lsp", "--no-title", "--no-tools", "--no-skills", "--no-rules", "--no-extensions"],
+			timeoutMs: 15_000,
+			messages: {
+				timeout: "omp did not confirm that it forgot remembered approvals in time.",
+				exited: "omp stopped before it confirmed that it forgot remembered approvals.",
+				failed: "omp could not forget remembered approvals.",
+			},
+			onMessage: message => {
+				if (typeof message !== "object" || message === null) return;
+				const { type, text } = message as { type?: unknown; text?: unknown };
+				if (type === "command_output" && typeof text === "string") printed.push(text);
+			},
+		},
+		{ message: "/forget-approvals" },
+	);
+	const output = printed.join("\n").trim();
+	if (!output || typeof result !== "object" || result === null || !("agentInvoked" in result) || result.agentInvoked !== false) {
+		throw new Error("omp did not confirm that it forgot remembered approvals.");
+	}
+	return output;
 }
 
 /** The new-user "Ask me first" check (services/approval-default.ts); app start, approval reads and host starts await it. */
@@ -591,5 +637,6 @@ export function register(): void {
 		return readApproval(cwd);
 	});
 	handle("config:approval:setMode", (mode, scope, cwd) => setApprovalMode(mode, ScopeSchema.parse(scope), cwd));
+	handle("config:approval:forget", () => forgetApprovals());
 	handle("config:approval:setPolicy", (tool, policy, scope, cwd) => setApprovalPolicy(tool, policy, ScopeSchema.parse(scope), cwd));
 }

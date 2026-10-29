@@ -267,10 +267,11 @@ export type PresetDeleteResult = "deleted" | "missing" | "project";
 
 /**
  * `always-ask`: auto-approve read-only tools, ask for write and exec tools.
+ * `always-ask-cached`: ask for reads and writes, with optional remembered file or folder grants.
  * `write`: auto-approve read and workspace-write tools, ask for exec (bash, eval, browser, task…).
  * `yolo`: auto-approve everything (omp default); per-tool policies still apply.
  */
-export type ApprovalMode = "always-ask" | "write" | "yolo";
+export type ApprovalMode = "always-ask" | "always-ask-cached" | "write" | "yolo";
 /** Per-tool override honoured in every mode. */
 export type ApprovalPolicy = "allow" | "prompt" | "deny";
 
@@ -284,7 +285,12 @@ export interface ToolApprovalPolicy {
 
 export interface ApprovalState {
 	cwd: string | null;
-	mode: ApprovalMode;
+	/** null when a newer omp reports a mode this app does not recognize. */
+	mode: ApprovalMode | null;
+	/** Effective value, kept unchanged even when the app cannot describe the mode. */
+	rawMode?: JsonValue;
+	/** Known modes advertised by the installed omp's config schema. */
+	supportedModes?: ApprovalMode[];
 	modeSource: SettingSource;
 	/** Sorted by tool. */
 	policies: ToolApprovalPolicy[];
@@ -346,6 +352,8 @@ declare module "../ipc" {
 
 		"config:approval": { args: [cwd?: string]; result: ApprovalState };
 		"config:approval:setMode": { args: [mode: ApprovalMode, scope: SettingScope, cwd?: string]; result: ApprovalState };
+		/** Run omp's `/forget-approvals` builtin for all remembered file and folder grants. */
+		"config:approval:forget": { args: []; result: string };
 		/** Set `tools.approval.<tool>` in one layer; null removes the entry from that layer. */
 		"config:approval:setPolicy": {
 			args: [tool: string, policy: ApprovalPolicy | null, scope: SettingScope, cwd?: string];

@@ -416,7 +416,7 @@ function ProjectSetup({ path }: { path: string }): ReactNode {
 					<LoadedValue data={approval} failed={t("overview.setup.settingFailed")}>
 						{value => (
 							<span>
-								{t(`settings.mode.${value.mode}.label`)}
+								{t(`settings.mode.${value.mode ?? "unknown"}.label`)}
 								{value.modeSource === "project" && <span className="text-fg-muted"> · {t("overview.setup.projectOnly")}</span>}
 							</span>
 						)}

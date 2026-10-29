@@ -14,10 +14,10 @@ import { Button, Dialog, DialogContent, Divider, PageFrame, PageHeader, Presence
 import type { HelpersSectionProps } from "../manage/agents/HelpersSection";
 import { ModelSelect } from "../manage/roles/ModelSelect";
 import { errorText } from "./actions";
+import { approvalModes } from "../session-tools/approval";
 import { folderName } from "./format";
 
-const MODES: readonly ApprovalMode[] = ["always-ask", "write", "yolo"];
-const STRICTNESS: Record<ApprovalMode, number> = { "always-ask": 2, write: 1, yolo: 0 };
+const STRICTNESS: Record<ApprovalMode, number> = { "always-ask": 2, "always-ask-cached": 3, write: 1, yolo: 0 };
 /** DESIGN §8.4: the Auto warning shows once. */
 const AUTO_WARNED_KEY = "visual-omp:projects:autoWarned";
 
@@ -92,9 +92,9 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 			}),
 		);
 
-	const mode = data?.approval.mode ?? "always-ask";
+	const mode = data?.approval.mode ?? null;
 	const setMode = (next: ApprovalMode, confirmed = false) => {
-		if (next === "yolo" && STRICTNESS[mode] > 0 && !confirmed && localStorage.getItem(AUTO_WARNED_KEY) === null) {
+		if (next === "yolo" && (mode === null || STRICTNESS[mode] > 0) && !confirmed && localStorage.getItem(AUTO_WARNED_KEY) === null) {
 			setConfirmAuto(true);
 			return;
 		}
@@ -142,14 +142,14 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 				<SectionHeader id="ps-mode" title={t("settings.mode.title")} description={t("settings.mode.body")} />
 				{data ? (
 					<div className="flex flex-col gap-3">
-						<Segmented<ApprovalMode>
+						<Segmented<ApprovalMode | "">
 							aria-label={t("settings.mode.title")}
-							value={mode}
-							onValueChange={next => setMode(next)}
-							options={MODES.map(value => ({ value, label: t(`settings.mode.${value}.label`) }))}
+							value={mode ?? ""}
+							onValueChange={next => { if (next) setMode(next); }}
+							options={approvalModes(data.approval).map(value => ({ value, label: t(`settings.mode.${value}.label`) }))}
 						/>
-						<PresenceSwap swapKey={mode} className="text-md text-fg-muted">
-							<p>{t(`settings.mode.${mode}.body`)}</p>
+						<PresenceSwap swapKey={mode ?? "unknown"} className="text-md text-fg-muted">
+							<p>{t(`settings.mode.${mode ?? "unknown"}.body`, { value: JSON.stringify(data.approval.rawMode) })}</p>
 						</PresenceSwap>
 						<div className="flex flex-wrap items-center gap-2 text-sm text-fg-muted">
 							<span className="flex-1">{data.approval.modeSource === "project" ? t("settings.mode.projectOnly") : t("settings.mode.usingGlobal")}</span>

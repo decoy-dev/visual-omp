@@ -5,10 +5,10 @@ import type { SettingsSectionProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
 import { PageHeader, Segmented, Select, SelectItem, Switch } from "@/ui";
 import { useResource } from "../shared";
+import { approvalModes } from "../../session-tools/approval";
 import { ConfigNotices, SectionScope, SettingRow, SettingsSection, SourceChip } from "./parts";
 import { useOmpSettings } from "./useOmpSettings";
 
-const APPROVAL_MODES: readonly ApprovalMode[] = ["always-ask", "write", "yolo"];
 const TRANSCRIPT_MODES: readonly AppPreferences["transcriptMode"][] = ["normal", "thinking", "verbose"];
 
 export function GeneralSection({ projectPath, scope, setScope }: SettingsSectionProps) {
@@ -47,15 +47,15 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 			<SettingsSection title={t("general.safety")}>
 				<SettingRow
 					label={t("general.approvalMode.label")}
-					description={t(`general.approvalMode.help.${mode ?? "none"}`)}
+					description={t(`general.approvalMode.help.${approval.data && !mode ? "unknown" : mode ?? "none"}`, { value: JSON.stringify(approval.data?.rawMode) })}
 					meta={approval.data && <SourceChip source={approval.data.modeSource} />}
 					control={
-						mode && (
-							<Segmented
+						approval.data && (
+							<Segmented<ApprovalMode | "">
 								aria-label={t("general.approvalMode.label")}
-								value={mode}
-								onValueChange={value => void setMode(value)}
-								options={APPROVAL_MODES.map(value => ({ value, label: t(`general.approvalMode.${value}`) }))}
+								value={mode ?? ""}
+								onValueChange={value => { if (value) void setMode(value); }}
+								options={approvalModes(approval.data).map(value => ({ value, label: t(`general.approvalMode.${value}`) }))}
 							/>
 						)
 					}

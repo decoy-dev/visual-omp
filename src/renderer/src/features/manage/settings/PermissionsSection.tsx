@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SettingsSectionProps } from "@/registry/slots";
-import { Button, Input, Notice, PageHeader, Segmented } from "@/ui";
+import { Button, Dialog, DialogContent, Input, Notice, PageHeader, Segmented } from "@/ui";
 import { listRowMotion } from "../listMotion";
 import { useResource } from "../shared";
 import { ConfigNotices, SectionScope, SourceChip } from "./parts";
@@ -33,6 +33,9 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 	const approval = useResource(() => window.vomp.invoke("config:approval", projectPath ?? undefined), [projectPath]);
 	const [added, setAdded] = useState<string[]>([]);
 	const [newTool, setNewTool] = useState("");
+	const [confirmForget, setConfirmForget] = useState(false);
+	const [forgetting, setForgetting] = useState(false);
+	const [forgotten, setForgotten] = useState<string | null>(null);
 	const state = approval.data;
 
 	const rows = useMemo(() => {
@@ -56,6 +59,19 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 			if ((effective?.policy ?? "default") !== choice && effective) omp.reportShadow(effective.source);
 		} catch (error) {
 			omp.reportError(error);
+		}
+	};
+
+	const forget = async () => {
+		setConfirmForget(false);
+		setForgetting(true);
+		setForgotten(null);
+		try {
+			setForgotten(await window.vomp.invoke("config:approval:forget"));
+		} catch (error) {
+			omp.reportError(error);
+		} finally {
+			setForgetting(false);
 		}
 	};
 
@@ -83,13 +99,35 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 				}}
 			/>
 			<p className="text-md text-fg-muted">
-				{t("permissions.intro", { mode: state ? t(`general.approvalMode.${state.mode}`) : "…" })}
+				{t("permissions.intro", { mode: state ? t(`general.approvalMode.${state.mode ?? "unknown"}`) : "…" })}
 			</p>
 			{state && state.unrecognized.length > 0 && (
 				<Notice tone="warn" className="mt-3">
 					{t("permissions.unrecognized", { tools: state.unrecognized.map(entry => entry.tool).join(", ") })}
 				</Notice>
 			)}
+			{state?.supportedModes?.includes("always-ask-cached") && (
+				<div className="mt-4 flex flex-wrap items-center gap-3">
+					<p className="min-w-0 flex-1 text-sm text-fg-muted">{t("permissions.forget.help")}</p>
+					<Button size="sm" variant="secondary" disabled={forgetting} onClick={() => setConfirmForget(true)}>
+						{t(forgetting ? "permissions.forget.busy" : "permissions.forget.action")}
+					</Button>
+				</div>
+			)}
+			{forgotten && <Notice tone="info" className="mt-3">{forgotten}</Notice>}
+			<Dialog open={confirmForget} onOpenChange={setConfirmForget}>
+				<DialogContent
+					size="sm"
+					title={t("permissions.forget.title")}
+					description={t("permissions.forget.confirmHelp")}
+					footer={
+						<>
+							<Button variant="ghost" onClick={() => setConfirmForget(false)}>{t("common.cancel")}</Button>
+							<Button variant="primary" onClick={() => void forget()}>{t("permissions.forget.action")}</Button>
+						</>
+					}
+				/>
+			</Dialog>
 			<ul className="relative mt-4 divide-y divide-border rounded-lg border border-border bg-panel" aria-label={t("permissions.listLabel")}>
 				<AnimatePresence initial={false} mode="popLayout">
 				{rows.map(({ tool, icon: Icon }) => {

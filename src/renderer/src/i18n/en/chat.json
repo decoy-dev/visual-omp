@@ -69,6 +69,11 @@
 	"question": {
 		"approval": "Permission needed",
 		"allow": "Allow action",
+		"allowOnce": "Allow once",
+		"approvalChoices": "Approve more than this action",
+		"approvalChoicesHelp": "These approvals last for this session. Choices starting with “Always” also apply to future chats.",
+		"approvalSessionHelp": "These approvals last for this session.",
+		"messageDenies": "Sending a message now denies this request.",
 		"deny": "Deny action",
 		"skip": "Skip question",
 		"answer": "Send answer",

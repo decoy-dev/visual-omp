@@ -165,6 +165,9 @@ Running work: `ompRunning` in `derive.ts` says whether an omp process may still 
 
 Durations: `fmtDuration` in `collab/lib/format.ts` formats job notice rows (`NoticeRow.tsx`), background job tool rows (`tool-render/tools/job.tsx`) and helper cards (`task.tsx`). `parseOmpDuration` in `notices.ts` reads omp's compact duration text from a task result ("2m41s") when omp gives no millisecond value.
 
+Approval settings: `config:approval` reads the installed omp's `cfg://tools.approvalMode` enum to advertise supported choices. A recognized mode has its typed value; an unknown value has `mode: null` and is retained in `rawMode`, without rewriting config or substituting a permission policy. `config:approval:forget` invokes only `/forget-approvals` in a short-lived no-session RPC process and requires `command_output` plus `agentInvoked: false`. The command clears omp's persisted file and folder grants for all projects; another process's in-memory session grants remain until that process restarts.
+
+
 ## Renderer loading and packaging
 
 `src/renderer/src/registry/lazy.tsx` wraps dynamic imports for pages, Settings sections, views and sheets. Feature entry points register lazy components; registry slots render these chunks on demand. Idle preloading and explicit `preload()` calls load components before they are opened when possible. Usage, Settings sections, xterm, KaTeX and other heavier features have separate chunks. In the v0.5.0 build, the uncompressed initial renderer entry chunk is approximately 1.56 MB, xterm approximately 331 KB and KaTeX approximately 262 KB. These figures are uncompressed build-output sizes of individual chunks.

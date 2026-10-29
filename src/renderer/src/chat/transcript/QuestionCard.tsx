@@ -8,6 +8,8 @@ import type { CollabUiRequest } from "@oh-my-pi/pi-wire";
 import { ChatCircle, Info, Question, ShieldWarning } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { compareVersions } from "../../features/extensions/format";
+import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { Button, Textarea } from "../../ui";
 import { AskSeriesCard } from "./AskSeriesCard";
@@ -42,6 +44,7 @@ export function usePendingQuestion(session: SessionController, request: CollabUi
 
 export function QuestionCard({ session, request, note }: { session: SessionController; request: CollabUiRequest; note?: string }): ReactNode {
 	const { t } = useTranslation("chat");
+	const ompVersion = useApp(state => state.omp?.version);
 	const [text, setText] = useState(request.kind === "editor" ? (request.prefill ?? "") : "");
 	const [selected, setSelected] = useState(request.kind === "select" ? (request.initialIndex ?? 0) : 0);
 	const [other, setOther] = useState("");
@@ -96,7 +99,9 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 	}
 
 	const labels = request.options.map((_, index) => labelOf(request, index).label);
-	const isApproval = labels.length === 2 && labels[0] === "Approve" && labels[1] === "Deny";
+	// omp may put remembered grants before the one-time choice. Never use option 0 as the default.
+	const once = labels.includes("Approve Once") ? "Approve Once" : labels.includes("Approve") ? "Approve" : null;
+	const isApproval = once !== null && labels.at(-1) === "Deny";
 	const markable = request.markableCount ?? labels.filter(label => label !== ASK_OTHER && label !== ASK_CHAT && label !== ASK_NEXT).length;
 	const choices = labels.slice(0, markable).map((_, index) => labelOf(request, index));
 	const hasOther = labels.includes(ASK_OTHER);
@@ -113,12 +118,28 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 					<p className="mb-2 text-base font-medium text-fg">{t("question.approval")}</p>
 					<pre className="selectable max-h-48 overflow-auto rounded-md bg-inset px-3 py-2 font-mono text-code whitespace-pre-wrap text-fg">{request.title}</pre>
 				</Heading>
-				<div className="mt-3 flex justify-end gap-2">
+				{labels.length > 2 && (
+					<div className="mt-3">
+						<p className="text-sm font-medium text-fg">{t("question.approvalChoices")}</p>
+						<p className="mt-1 text-sm text-fg-muted">{t(labels.some(label => label.startsWith("Always ")) ? "question.approvalChoicesHelp" : "question.approvalSessionHelp")}</p>
+						<div className="mt-2 flex flex-wrap gap-2">
+							{labels.filter(label => label !== once && label !== "Deny").map(label => (
+								<Button key={label} variant="secondary" className="h-auto! min-h-8 max-w-full whitespace-normal! py-1 text-left [overflow-wrap:anywhere] [&>span]:block [&>span]:min-w-0" data-approval-choice={label} onClick={() => session.answer(request.reqId, label)}>
+									{label}
+								</Button>
+							))}
+						</div>
+					</div>
+				)}
+				{ompVersion && compareVersions(ompVersion, "18.11.0") >= 0 && (
+					<p className="mt-3 text-sm text-fg-muted">{t("question.messageDenies")}</p>
+				)}
+				<div className="mt-3 flex flex-wrap justify-end gap-2">
 					<Button variant="secondary" onClick={() => session.answer(request.reqId, "Deny")}>
 						{t("question.deny")}
 					</Button>
-					<Button variant="primary" autoFocus onClick={() => session.answer(request.reqId, "Approve")}>
-						{t("question.allow")}
+					<Button variant="primary" autoFocus data-approval-once={once} onClick={() => session.answer(request.reqId, once ?? undefined)}>
+						{t(labels.length > 2 ? "question.allowOnce" : "question.allow")}
 					</Button>
 				</div>
 			</div>
