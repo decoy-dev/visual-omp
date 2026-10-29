@@ -37,6 +37,19 @@ function result(toolCallId: string, toolName: string, details?: unknown, isError
 const board = (status: string) => ({ phases: [{ name: "P", tasks: [{ content: "a", status }] }] });
 
 describe("transcriptLayout", () => {
+	it("keeps narration visible between separate tool groups", () => {
+		const entries = [
+			user("go"),
+			assistant([tool("before", "read")], 1000, "before"),
+			assistant([{ ...thinking("The first check passed."), narration: true }, tool("after", "read")], 2000, "after"),
+		];
+		const layout = transcriptLayout(entries, { live: true, group: true, context });
+		expect(layout.entries.get("before")?.groups.get(0)?.calls).toBe(1);
+		expect(layout.entries.get("after")?.groups.get(1)?.calls).toBe(1);
+		expect(layout.entries.get("after")?.hidden.has(0)).toBe(false);
+		expect([...layout.entries.values()].flatMap(entry => [...entry.groups.values()].flatMap(group => group.items)).some(item => item.block.type === "thinking")).toBe(false);
+	});
+
 	it("keeps tools on either side of a model switch in separate groups", () => {
 		const entries = [
 			user("go"),

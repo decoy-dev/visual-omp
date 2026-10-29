@@ -9,6 +9,7 @@ import { Composer } from "./composer/Composer";
 import { activityKey, friendlySummary, resolveToolCall } from "./friendly";
 import { SessionHeader } from "./SessionHeader";
 import { Transcript } from "./transcript/Transcript";
+import { replyText } from "./transcript/turns";
 
 function Banner({ tone, role = "status", children }: { tone: "info" | "warn" | "err"; role?: "status" | "alert"; children: ReactNode }): ReactNode {
 	return (
@@ -117,7 +118,7 @@ function WorkingRow({ view }: { view: SessionView }): ReactNode {
 			: null;
 	const activity = call
 		? t(`tools:${activityKey(friendlySummary(resolveToolCall({ ...call, running: true })))}`)
-		: last?.type === "text" && last.text.trim() !== ""
+		: last && (replyText(last)?.trim() ?? "") !== ""
 			? t("chat:activity.writing")
 			: t("chat:activity.thinking");
 	const time = view.workingSince === null ? null : elapsed(now - view.workingSince);

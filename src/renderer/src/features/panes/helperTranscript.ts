@@ -7,6 +7,7 @@
  */
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { contentText, noticeVisible, parseIrcText, parseNotice, stripNoticeMarkup } from "../../chat/transcript/notices";
+import { replyText } from "../../chat/transcript/turns";
 import { stripAssignmentPreamble } from "./derive";
 
 type CustomMessageEntry = Extract<SessionEntry, { type: "custom_message" }>;
@@ -70,7 +71,7 @@ export function helperTranscript(entries: readonly SessionEntry[]): HelperTransc
 				.map((part, index) => ({ ...part, id: `${entry.id}:${index}` }));
 		}
 		if (message.role !== "assistant") return [];
-		const text = message.content.map(block => (block.type === "text" ? block.text : "")).join("");
+		const text = message.content.map(block => replyText(block) ?? "").join("");
 		const tools = message.content.flatMap(block => (block.type === "toolCall" ? [block.intent ?? block.name] : []));
 		return [{ kind: "reply", id: entry.id, text, tools }];
 	});

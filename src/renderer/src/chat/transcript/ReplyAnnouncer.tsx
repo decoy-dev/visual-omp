@@ -3,10 +3,11 @@ import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { renderMarkdown } from "../../transcript/render";
 import { AnnouncementTracker } from "./announcements";
+import { replyText } from "./turns";
 
 /** A reply's text as a screen reader should hear it: the rendered Markdown's text, without its syntax. */
-function plainText(message: AssistantMessage): string {
-	const markdown = message.content.flatMap(block => (block.type === "text" ? [block.text] : [])).join("\n\n");
+export function plainText(message: AssistantMessage): string {
+	const markdown = message.content.flatMap(block => replyText(block) ?? []).join("\n\n");
 	if (!markdown.trim()) return "";
 	const template = document.createElement("template");
 	template.innerHTML = renderMarkdown(markdown);

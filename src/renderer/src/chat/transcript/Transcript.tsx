@@ -52,7 +52,7 @@ import { ToolCard } from "./ToolCard";
 import { ToolGroup } from "./ToolGroup";
 import { TurnSummary } from "./TurnSummary";
 import { thoughtKey, ThoughtChoices, thoughtOpen, writingThought } from "./thoughtChoices";
-import { type BlockRef, type ContentBlock, type EntryLayout, STREAM_ENTRY, TAIL_ENTRY, type TranscriptLayout, transcriptLayout, liveLayoutEntries, unsavedToolsMessage } from "./turns";
+import { type BlockRef, type ContentBlock, type EntryLayout, replyText, STREAM_ENTRY, TAIL_ENTRY, type TranscriptLayout, transcriptLayout, liveLayoutEntries, unsavedToolsMessage } from "./turns";
 import { anchorRow, tailStart, WINDOW, windowOnScroll } from "./window";
 import {
 	type PlayoutBlock,
@@ -338,13 +338,13 @@ function GroupThought({ item, thoughts }: { item: BlockRef; thoughts: ThoughtCho
 	const choices = useThoughtChoices(thoughts);
 	const block = item.block;
 	if (block.type === "redactedThinking") return <ThinkingBlock text="" redacted open={false} />;
-	if (block.type !== "thinking") return null;
+	if (block.type !== "thinking" || block.narration === true) return null;
 	const key = thoughtKey(item.messageTime, item.index);
 	const open = thoughtOpen("normal", choices.get(key), false);
 	return <ThinkingBlock text={block.thinking} open={open} onToggle={() => thoughts?.toggle("normal", key, open)} />;
 }
 
-function AssistantBlocks({
+export function AssistantBlocks({
 	message,
 	results,
 	active,
@@ -381,7 +381,8 @@ function AssistantBlocks({
 	const toggleThought = (index: number) => work?.thoughts.toggle(mode, thoughtKey(message.timestamp, index), isOpen(index));
 	// Visible text and open thoughts take time to reveal; collapsed thoughts and tool calls show when reached.
 	const timeline: PlayoutBlock[] = message.content.map((block, index) => {
-		if (block.type === "text") return { length: block.text.length, timed: true };
+		const text = replyText(block);
+		if (text !== null) return { length: text.length, timed: true };
 		if (block.type === "thinking") return { length: block.thinking.length, timed: isOpen(index) };
 		return { length: 0, timed: false };
 	});
@@ -390,16 +391,34 @@ function AssistantBlocks({
 	const revealing = pending || playout !== null;
 	let lastText = -1;
 	// A finished reply's file names become links; a growing stream is left alone until it ends.
-	const texts = message.content.flatMap(block => (block.type === "text" ? [block.text] : []));
+	const texts = message.content.flatMap(block => replyText(block) ?? []);
 	const refs = useFileRefs(revealing ? null : message.timestamp, texts);
 	let textOrdinal = 0;
-	const textOrdinals = message.content.map(block => (block.type === "text" ? textOrdinal++ : -1));
-	for (const [index, block] of message.content.entries()) if (block.type === "text" && shownLength(playout, index, block.text.length) > 0) lastText = index;
+	const textOrdinals = message.content.map(block => (replyText(block) !== null ? textOrdinal++ : -1));
+	for (const [index, block] of message.content.entries()) {
+		const text = replyText(block);
+		if (text !== null && shownLength(playout, index, text.length) > 0) lastText = index;
+	}
 	const failed = !revealing && (message.stopReason === "error" || message.stopReason === "aborted");
 	return (
 		<div className="flex flex-col">
 			{message.content.map((block, index) => {
 				if (layout?.hidden.has(index)) return null;
+				const text = replyText(block);
+				if (text !== null) {
+					if (shownLength(playout, index, text.length) <= 0 && playout) return null;
+					return (
+						<ReplyText
+							key={index}
+							text={text}
+							playout={playout}
+							index={index}
+							revealing={revealing}
+							caret={revealing && index === lastText}
+							refs={refs?.[textOrdinals[index]]}
+						/>
+					);
+				}
 				switch (block.type) {
 					case "thinking":
 						if (shownLength(playout, index, block.thinking.length) < 0) return null;
@@ -415,19 +434,6 @@ function AssistantBlocks({
 						);
 					case "redactedThinking":
 						return shownLength(playout, index, 0) < 0 ? null : <ThinkingBlock key={index} text="" redacted open={false} />;
-					case "text":
-						if (shownLength(playout, index, block.text.length) <= 0 && playout) return null;
-						return (
-							<ReplyText
-								key={index}
-								text={block.text}
-								playout={playout}
-								index={index}
-								revealing={revealing}
-								caret={revealing && index === lastText}
-								refs={refs?.[textOrdinals[index]]}
-							/>
-						);
 					case "fallback": {
 						const fallback = providerFallback(block);
 						return fallback ? <ModelFallbackNotice key={index} fallback={fallback} /> : null;

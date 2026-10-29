@@ -16,6 +16,24 @@ function custom(customType: string, content: string, display: boolean): SessionE
 const strip = (items: HelperTranscriptItem[]) => items.map(({ id: _id, ...rest }) => rest);
 
 describe("helperTranscript", () => {
+	it("keeps narration and ordinary reply text in block order while omitting unmarked thinking", () => {
+		const entry = {
+			type: "message", id: "narrated", parentId: null, timestamp: "",
+			message: {
+				role: "assistant", model: "claude-opus-5-5", timestamp: 0, stopReason: "toolUse",
+				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } },
+				content: [
+					{ type: "text", text: "First reply.\n\n" },
+					{ type: "thinking", thinking: "Unmarked reasoning." },
+					{ type: "thinking", thinking: "Narrated reply.\n\n", narration: true },
+					{ type: "toolCall", id: "read", name: "read", arguments: {}, intent: "Reading project files" },
+					{ type: "text", text: "Last reply." },
+				],
+			},
+		} as SessionEntry;
+		expect(helperTranscript([entry])).toEqual([{ kind: "reply", id: "narrated", text: "First reply.\n\nNarrated reply.\n\nLast reply.", tools: ["Reading project files"] }]);
+	});
+
 	it("shows the first user message as the assignment without omp's preamble", () => {
 		const items = helperTranscript([user("Complete assignment thoroughly:\n\n# Target\nHelper transcript dialog.")]);
 		expect(strip(items)).toEqual([{ kind: "assignment", text: "# Target\nHelper transcript dialog." }]);

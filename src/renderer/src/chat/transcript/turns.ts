@@ -14,6 +14,13 @@ import { resolveToolCall } from "../friendly";
 
 export type ContentBlock = AssistantMessage["content"][number];
 
+/** Visible assistant reply text, including provider narration encoded as thinking. */
+export function replyText(block: ContentBlock): string | null {
+	if (block.type === "text") return block.text;
+	if (block.type === "thinking" && block.narration === true) return block.thinking;
+	return null;
+}
+
 /** One content block of an assistant entry. */
 export interface BlockRef {
 	entryId: string;
@@ -256,7 +263,7 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 				if (options.holdGroups?.has(block.id)) flush();
 				run.push(...between, ref);
 				between = [];
-			} else if (block.type === "fallback" || (block.type === "text" && block.text.trim() !== "")) {
+			} else if (block.type === "fallback" || (replyText(block)?.trim() ?? "") !== "") {
 				flush();
 			} else if (run.length > 0) {
 				// Thoughts and blank text between two calls fold in with them; trailing ones stay outside.

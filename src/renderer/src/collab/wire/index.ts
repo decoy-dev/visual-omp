@@ -31,6 +31,8 @@ export interface ImageContent {
 export interface ThinkingContent {
 	type: "thinking";
 	thinking: string;
+	/** Provider-marked commentary between tool calls, presented as reply text. */
+	narration?: boolean;
 }
 
 export interface RedactedThinkingContent {

@@ -18,7 +18,8 @@ export function thoughtKey(messageTime: number, index: number): string {
 /** Index of the thought omp is writing (the last block while the reply still streams) when the setting is on, else -1. */
 export function writingThought(message: AssistantMessage, pending: boolean, liveThinking: boolean): number {
 	const last = message.content.length - 1;
-	return liveThinking && pending && message.content[last]?.type === "thinking" ? last : -1;
+	const block = message.content[last];
+	return liveThinking && pending && block?.type === "thinking" && block.narration !== true ? last : -1;
 }
 
 /** Whether a thought shows open: every one in Thinking and Verbose; in Normal the reader's choice, else only while omp writes it. */
