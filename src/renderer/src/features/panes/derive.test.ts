@@ -144,6 +144,36 @@ describe("backgroundJobs", () => {
 		expect(backgroundJobs([], true, active)).toMatchObject([{ jobId: "ja", command: "vite", state: "running", output: "listening" }]);
 	});
 
+	it.each(["completed", "failed", "cancelled"] as const)("takes %s from a late background frame without reviving the job", state => {
+		const entries = [
+			call("b1", "bash", { command: "make", async: true }),
+			result("b1", "bash", "started", { async: { jobId: "bg_1", state: "running" } }),
+		];
+		const tool: ActiveTool = {
+			toolCallId: "b1", toolName: "bash", args: { command: "make", async: true }, startedAt: 200,
+			partialResult: { details: { output: "finished", async: { jobId: "bg_1", state } } },
+		};
+		const jobs = backgroundJobs(entries, true, new Map(), new Map([["b1", tool]]));
+		expect(jobs).toMatchObject([{ jobId: "bg_1", state, output: "finished", startedAt: 0 }]);
+		expect(workSummary(null, [], jobs).jobsRunning).toBe(0);
+		// A terminal state is authoritative even if an older host sends it before the end event.
+		expect(backgroundJobs(entries, true, new Map([["b1", tool]]))[0]?.state).toBe(state);
+	});
+
+	it("keeps a saved completion when the last late frame still said running", () => {
+		const entries = [
+			call("b1", "bash", { command: "make", async: true }),
+			result("b1", "bash", "started", { async: { jobId: "bg_1", state: "running" } }),
+			call("wait", "wait", {}),
+			result("wait", "wait", "", { jobs: [{ id: "bg_1", status: "completed", resultText: "final output" }] }),
+		];
+		const late: ActiveTool = {
+			toolCallId: "b1", toolName: "bash", args: { command: "make", async: true }, startedAt: 200,
+			partialResult: { details: { output: "old output", async: { jobId: "bg_1", state: "running" } } },
+		};
+		expect(backgroundJobs(entries, true, new Map(), new Map([["b1", late]]))).toMatchObject([{ jobId: "bg_1", state: "completed", output: "final output" }]);
+	});
+
 	// Shapes from a saved chat: a CI watcher sent to the background, closed only by a later `wait` snapshot.
 	const started = (callId: string, jobId: string, command: string) => [
 		call(callId, "bash", { command, async: true }),

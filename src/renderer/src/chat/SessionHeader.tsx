@@ -96,6 +96,7 @@ function WorkChip({ view, tabId }: { view: SessionView; tabId: string }): ReactN
 	const shown = useDisplayedEntries(view);
 	const entries = liveEntries(view) ?? view.history?.entries;
 	const activeTools = view.guest?.activeTools;
+	const backgroundTools = view.guest?.backgroundTools;
 	const agents = view.guest?.agents;
 	const progress = view.guest?.progress;
 	const lifecycle = view.guest?.lifecycle;
@@ -106,9 +107,9 @@ function WorkChip({ view, tabId }: { view: SessionView; tabId: string }): ReactN
 			workSummary(
 				latestTodo(shown),
 				helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, ompLive),
-				entries ? backgroundJobs(entries, ompLive, activeTools) : [],
+				entries ? backgroundJobs(entries, ompLive, activeTools, backgroundTools) : [],
 			),
-		[shown, entries, activeTools, agents, progress, lifecycle, ompLive],
+		[shown, entries, activeTools, backgroundTools, agents, progress, lifecycle, ompLive],
 	);
 	// While this chat's Tasks pane is on screen, the chip reads as pressed and closes it.
 	const dockVisible = useDockVisible();

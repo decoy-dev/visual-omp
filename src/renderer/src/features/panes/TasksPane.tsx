@@ -385,9 +385,10 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 	const shown = useDisplayedEntries(view);
 	const entries = liveEntries(view) ?? view?.history?.entries;
 	const activeTools = view?.guest?.activeTools;
+	const backgroundTools = view?.guest?.backgroundTools;
 	const phases = useMemo(() => latestTodo(shown), [shown]);
 	const running = ompRunning(view);
-	const jobs = useMemo(() => (entries ? backgroundJobs(entries, running, activeTools) : []), [entries, running, activeTools]);
+	const jobs = useMemo(() => (entries ? backgroundJobs(entries, running, activeTools, backgroundTools) : []), [entries, running, activeTools, backgroundTools]);
 	const agents = view?.guest?.agents;
 	const progress = view?.guest?.progress;
 	const lifecycle = view?.guest?.lifecycle;
@@ -450,14 +451,15 @@ export function TasksBadge({ session }: PaneProps) {
 	const view = useSessionView(session);
 	const entries = view?.guest?.entries;
 	const activeTools = view?.guest?.activeTools;
+	const backgroundTools = view?.guest?.backgroundTools;
 	const agents = view?.guest?.agents;
 	const progress = view?.guest?.progress;
 	const lifecycle = view?.guest?.lifecycle;
 	const running = ompRunning(view);
 	const count = useMemo(() => {
 		const helpers = helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, running).filter(helper => helper.status === "running").length;
-		const jobs = entries ? backgroundJobs(entries, running, activeTools).filter(job => job.state === "running").length : 0;
+		const jobs = entries ? backgroundJobs(entries, running, activeTools, backgroundTools).filter(job => job.state === "running").length : 0;
 		return helpers + jobs;
-	}, [agents, progress, lifecycle, entries, activeTools, running]);
+	}, [agents, progress, lifecycle, entries, activeTools, backgroundTools, running]);
 	return count > 0 ? <Badge count={count} label={t("tasks.runningCount", { count })} /> : null;
 }

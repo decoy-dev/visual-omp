@@ -51,3 +51,49 @@ describe("autoThinking", () => {
 		expect(client.getSnapshot().autoThinking).toBeNull();
 	});
 });
+
+describe("late background tool frames", () => {
+	const call = { toolCallId: "bash-1", toolName: "bash", args: { command: "make", async: true } };
+	const start = () => feed({ t: "event", event: { type: "tool_execution_start", ...call } });
+	const update = (state: string) => feed({ t: "event", event: { type: "tool_execution_update", ...call, partialResult: { details: { output: state, async: { jobId: "bg_1", state } } } } });
+	const end = () => feed({ t: "event", event: { type: "tool_execution_end", ...call, result: { content: [], details: { async: { jobId: "bg_1", state: "running" } } }, isError: false } });
+
+	it("keeps later output separate from active calls, including after an idle frame", () => {
+		start();
+		update("running");
+		expect(client.getSnapshot().activeTools.has(call.toolCallId)).toBe(true);
+		end();
+		update("completed");
+		expect(client.getSnapshot().activeTools.size).toBe(0);
+		expect(client.getSnapshot().backgroundTools.get(call.toolCallId)?.partialResult).toMatchObject({ details: { async: { state: "completed" } } });
+		feed({ t: "state", state: welcome.state });
+		update("completed");
+		expect(client.getSnapshot().activeTools.size).toBe(0);
+		expect(client.getSnapshot().backgroundTools.size).toBe(1);
+	});
+
+	it("recognizes saved tool results when joining an existing session", () => {
+		feed({ ...welcome, entryCount: 1 });
+		feed({ t: "snapshot-chunk", entries: [{ type: "message", id: "result", parentId: null, timestamp: "", message: { role: "toolResult", ...call, content: [], timestamp: 1 } }], final: true });
+		update("cancelled");
+		expect(client.getSnapshot().activeTools.size).toBe(0);
+		expect(client.getSnapshot().backgroundTools.size).toBe(1);
+		feed(welcome);
+		update("completed");
+		expect(client.getSnapshot().activeTools.size).toBe(0);
+	});
+
+	it("recognizes committed live tool results without a matching end event", () => {
+		start();
+		feed({ t: "entry", entry: { type: "message", id: "result", parentId: null, timestamp: "", message: { role: "toolResult", ...call, content: [], timestamp: 1 } } });
+		update("failed");
+		expect(client.getSnapshot().activeTools.size).toBe(0);
+		expect(client.getSnapshot().backgroundTools.size).toBe(1);
+	});
+
+	it("still adopts an update whose foreground start was missed", () => {
+		update("running");
+		expect(client.getSnapshot().activeTools.size).toBe(1);
+		expect(client.getSnapshot().backgroundTools.size).toBe(0);
+	});
+});

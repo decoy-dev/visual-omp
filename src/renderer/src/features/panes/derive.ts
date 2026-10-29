@@ -307,7 +307,7 @@ function exitCodeOf(output: string): number | null {
  * record, or no omp running this chat now) shows as cancelled. Running jobs come first, then the rest; newest first
  * within each, as omp's `/jobs` lists them.
  */
-export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolean, activeTools?: ReadonlyMap<string, ActiveTool>): BackgroundJob[] {
+export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolean, activeTools?: ReadonlyMap<string, ActiveTool>, backgroundTools?: ReadonlyMap<string, ActiveTool>): BackgroundJob[] {
 	const jobs = new Map<string, BackgroundJob>();
 	const upsert = (jobId: string, patch: Partial<BackgroundJob>) => {
 		const existing: BackgroundJob = jobs.get(jobId) ?? {
@@ -352,19 +352,24 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 			});
 		}
 	}
-	for (const tool of activeTools?.values() ?? []) {
+	for (const tool of [...(activeTools?.values() ?? []), ...(backgroundTools?.values() ?? [])]) {
 		// Only calls the model sent to the background; a foreground wait also runs as a managed job.
 		if (!isRecord(tool.args) || tool.args.async !== true) continue;
 		const partial = isRecord(tool.partialResult) ? tool.partialResult : null;
 		const details = partial && isRecord(partial.details) ? partial.details : null;
-		const jobId = details && isRecord(details.async) ? str(details.async.jobId) : null;
+		const async = details && isRecord(details.async) ? details.async : null;
+		const jobId = async ? str(async.jobId) : null;
 		if (!jobId) continue;
 		const output = details ? str(details.output) : null;
+		const existing = jobs.get(jobId);
+		// A saved poll or delivery can be newer than the last live frame kept for this call.
+		if (existing && existing.state !== "running") continue;
+		const state = isJobState(async?.state) ? async.state : existing?.state ?? "running";
 		upsert(jobId, {
 			command: str(tool.args.command) ?? "",
 			intent: callIntent({ intent: tool.intent, arguments: tool.args }),
-			state: "running",
-			startedAt: tool.startedAt,
+			state,
+			startedAt: existing?.startedAt ?? tool.startedAt,
 			...(output ? { output } : {}),
 		});
 	}

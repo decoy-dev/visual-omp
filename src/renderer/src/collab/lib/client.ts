@@ -66,6 +66,8 @@ export interface GuestSnapshot {
 	stream: AssistantMessage | null;
 	streamDone: boolean;
 	activeTools: ReadonlyMap<string, ActiveTool>;
+	/** Updates from calls that already ended, keyed by call id. These never imply foreground activity. */
+	backgroundTools: ReadonlyMap<string, ActiveTool>;
 	/** agent_start..agent_end, reconciled by state.isStreaming. */
 	working: boolean;
 	/** True when this guest joined through a read-only (view) link. */
@@ -131,6 +133,9 @@ export class GuestClient {
 	#stream: AssistantMessage | null = null;
 	#streamDone = false;
 	#activeTools: ReadonlyMap<string, ActiveTool> = new Map();
+	#backgroundTools: ReadonlyMap<string, ActiveTool> = new Map();
+	/** Retained across idle frames and reconnects: a backgrounded call can keep producing output. */
+	readonly #endedTools = new Set<string>();
 	#working = false;
 	#readOnly = false;
 	#uiRequest: CollabUiRequest | null = null;
@@ -353,6 +358,9 @@ export class GuestClient {
 				const pending = this.#pendingSnapshot;
 				if (pending === null) return;
 				pending.entries.push(...frame.entries);
+				for (const entry of frame.entries) {
+					if (entry.type === "message" && entry.message.role === "toolResult") this.#finishTool(entry.message.toolCallId);
+				}
 				// Complete on `final` or once every promised entry arrived, so a
 				// lost final chunk doesn't strand a fully received transcript.
 				if (!frame.final && pending.entries.length < pending.total) {
@@ -368,6 +376,7 @@ export class GuestClient {
 				break;
 			}
 			case "entry":
+				if (frame.entry.type === "message" && frame.entry.message.role === "toolResult") this.#finishTool(frame.entry.message.toolCallId);
 				// The committed row supersedes the finished stream ghost, even when
 				// the row is buffered behind an in-flight snapshot.
 				if (this.#streamDone && frame.entry.type === "message" && frame.entry.message.role === "assistant") {
@@ -394,6 +403,7 @@ export class GuestClient {
 				if (!frame.state.isStreaming) {
 					// Host idle implies no tool can be running, so clear any card
 					// pinned by a dropped `tool_execution_end` off this signal.
+					for (const id of this.#activeTools.keys()) this.#endedTools.add(id);
 					this.#activeTools = new Map();
 					if (this.#streamDone) {
 						this.#stream = null;
@@ -482,7 +492,8 @@ export class GuestClient {
 				break;
 			}
 			case "tool_execution_update": {
-				const existing = this.#activeTools.get(event.toolCallId);
+				const ended = this.#endedTools.has(event.toolCallId);
+				const existing = (ended ? this.#backgroundTools : this.#activeTools).get(event.toolCallId);
 				const tool: ActiveTool = existing
 					? { ...existing, partialResult: event.partialResult }
 					: {
@@ -492,13 +503,12 @@ export class GuestClient {
 							partialResult: event.partialResult,
 							startedAt: Date.now(),
 						};
-				this.#activeTools = new Map(this.#activeTools).set(event.toolCallId, tool);
+				if (ended) this.#backgroundTools = new Map(this.#backgroundTools).set(event.toolCallId, tool);
+				else this.#activeTools = new Map(this.#activeTools).set(event.toolCallId, tool);
 				break;
 			}
 			case "tool_execution_end": {
-				const next = new Map(this.#activeTools);
-				next.delete(event.toolCallId);
-				this.#activeTools = next;
+				this.#finishTool(event.toolCallId);
 				break;
 			}
 			case "agent_start":
@@ -540,6 +550,14 @@ export class GuestClient {
 		}
 	}
 
+	#finishTool(callId: string): void {
+		this.#endedTools.add(callId);
+		if (!this.#activeTools.has(callId)) return;
+		const next = new Map(this.#activeTools);
+		next.delete(callId);
+		this.#activeTools = next;
+	}
+
 	#pushNotice(level: Notice["level"], message: string): void {
 		const notice: Notice = { id: ++this.#noticeSeq, level, message, at: Date.now() };
 		const next = [...this.#notices, notice];
@@ -575,6 +593,7 @@ export class GuestClient {
 			stream: this.#stream,
 			streamDone: this.#streamDone,
 			activeTools: this.#activeTools,
+			backgroundTools: this.#backgroundTools,
 			working: this.#working,
 			readOnly: this.#readOnly,
 			uiRequest: this.#uiRequest,
