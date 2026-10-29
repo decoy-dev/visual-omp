@@ -13,11 +13,21 @@ const command = (name: string, source: SlashCommandInfo["source"], extra: Partia
 });
 
 describe("OMP_BUILTIN_COMMANDS", () => {
-	it("lists omp's 86 builtins and 8 aliases once each", () => {
+	it("lists omp 18.14's 88 builtins and 9 aliases once each", () => {
 		const names = OMP_BUILTIN_COMMANDS.map(entry => entry.name);
-		expect(new Set(names).size).toBe(86);
-		expect(OMP_BUILTIN_COMMANDS.flatMap(entry => entry.aliases).sort()).toEqual(["force:", "models", "plugin", "providers", "q", "rewind", "status", "worktree"]);
+		expect(new Set(names).size).toBe(88);
+		expect(OMP_BUILTIN_COMMANDS.flatMap(entry => entry.aliases).sort()).toEqual(["force:", "models", "plugin", "providers", "q", "rewind", "status", "subagents", "worktree"]);
 		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "mcp")?.subcommands.map(sub => sub.name)).toContain("smithery-search");
+	});
+
+	it("includes the new terminal commands and keeps commands older omp still accepts", () => {
+		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "local")).toMatchObject({
+			description: "Open a session local:// file in $EDITOR (picker when no name given)", hint: "[name]",
+		});
+		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "forget-approvals")).toBeDefined();
+		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "context")?.description).toBe("Browse context usage and detailed content");
+		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "hub")?.aliases).toContain("subagents");
+		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "seance")).toBeDefined();
 	});
 });
 

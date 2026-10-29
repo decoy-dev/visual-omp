@@ -168,6 +168,7 @@ const ROUTES: Record<string, Route> = {
 	},
 	git: bare(command("panes.show.diff")),
 	hub: bare(command("panes.show.tasks")),
+	subagents: bare(command("panes.show.tasks")),
 	jobs: bare(command("panes.show.tasks")),
 	restart: bare(command("chat.restart")),
 	exit: bare(command("chat.close")),

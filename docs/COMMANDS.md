@@ -1,6 +1,6 @@
 # omp commands in visual-omp
 
-This page records how visual-omp handles each omp slash command and the menus those commands open. The list was taken from omp v18.12.2, which registers 86 builtin commands and 8 aliases, plus the skills, custom commands, extension commands, MCP prompts and file commands a project provides.
+This page records how visual-omp handles each omp slash command and the menus those commands open. The list was taken from omp v18.14.0, which registers 88 builtin commands and 9 aliases, plus the skills, custom commands, extension commands, MCP prompts and file commands a project provides. Entries remain available for commands supported by older omp versions.
 
 Every chat runs omp's own terminal interface in a hidden terminal, so any line that reaches omp behaves as it would in a terminal. The app adds four things around that: a slash menu that lists what omp accepts, native screens for commands the app already covers, a result row for what omp prints, and native cards for omp's generic dialogs. The terminal sheet remains the fallback for omp screens the app does not draw.
 
@@ -48,7 +48,7 @@ The table describes the form without arguments unless it shows one.
 | `/hotkeys` | Native: Settings → Shortcuts, which lists the app's shortcuts. omp's key list for its own terminal stays available by typing `/hotkeys` in the terminal sheet |
 | `/fork` | Native: fork into a new chat. `/fork pane`, `window`, `tab`: Guarded, offering a fork in a new chat |
 | `/git` | Native: the Changes pane. `/git <revision>`: Sheet |
-| `/hub`, `/jobs` | Native: the Tasks pane, which lists running helpers and background jobs. omp's fuller Agent Hub stays available in the terminal sheet. `/jobs <args>`: Result |
+| `/hub`, `/subagents`, `/jobs` | Native: the Tasks pane, which lists running helpers and background jobs. omp's fuller Agent Hub stays available in the terminal sheet. `/jobs <args>`: Result |
 | `/exit`, `/quit`, `/q` | Native: close this chat, with its usual confirmations |
 | `/delete`, `/session delete` | Native: the sidebar's move-to-trash confirmation for this chat |
 | `/resume` | Native: the sidebar's chat search. `/resume <id>`: Result (the chat reconnects to that session) |
@@ -58,12 +58,14 @@ The table describes the form without arguments unless it shows one.
 | `/wt`, `/worktree` | Guarded, offering New worktree, which opens a new chat in the worktree |
 | `/compact`, `/handoff`, `/guided-goal`, `/rename`, `/plan-review` | Result |
 | `/advisor`, `/advisor on`, `off`, `status`, `dump` | Result. `/advisor configure`: Sheet |
-| `/security`, `/fast`, `/slow`, `/skillful`, `/extended-context`, `/computer`, `/browser`, `/prewalk`, `/ratchet`, `/tan`, `/force`, `/queue`, `/retry`, `/clear`, `/fresh`, `/shake`, `/trace`, `/dump`, `/open`, `/ssh`, `/add-dir`, `/remove-dir`, `/dirs`, `/pin`, `/reload-plugins`, `/changelog`, `/tools`, `/context`, `/stats`, `/todo`, `/record`, `/session pin <account>` | Result |
+| `/security`, `/fast`, `/slow`, `/skillful`, `/extended-context`, `/computer`, `/browser`, `/prewalk`, `/ratchet`, `/tan`, `/force`, `/queue`, `/retry`, `/clear`, `/fresh`, `/shake`, `/trace`, `/dump`, `/open`, `/ssh`, `/add-dir`, `/remove-dir`, `/dirs`, `/pin`, `/reload-plugins`, `/changelog`, `/tools`, `/stats`, `/todo`, `/record`, `/forget-approvals`, `/session pin <account>` | Result |
 | `/omfg`, `/cleanse` | Result, with Card for their dialogs |
 | `/seance` | Sheet for omp's session picker and its model picker, Card for "Consult this session with". `/seance <session>`: Card, then Sheet for the model picker |
 | `/extensions`, `/status`, `/session`, `/session info`, `/session pin`, `/copy`, `/debug`, `/pause`, `/live`, `/annotate` | Sheet |
+| `/context` | Sheet: omp opens a read-only viewer for context usage and detailed content. Older omp versions print a report, which shows as a result row |
 | `/btw <question>` | Sheet: opens explicitly for the inline side answer, including while the main turn runs. `/btw` alone opens omp's side-answer history on versions that support it |
 | `/todo edit` | Sheet: omp opens the file in the external editor set by `$VISUAL` or `$EDITOR`, which runs inside omp's terminal |
+| `/local [name]` | Sheet: omp opens a session `local://` file in `$EDITOR`, with a file picker when no name is given |
 | Skills (`/skill:<name>`), custom commands (`/review`, `/green`, `/init`, `/autoresearch`), extension commands, MCP prompts (`/<server>:<prompt>`), file commands | Listed in the slash menu and sent to omp. Their dialogs reach the app over collab and show in the question card; fullscreen screens such as `/annotate` use the sheet |
 
 Shortcut-only features such as Shift+Tab, Ctrl+P and double Esc are covered by the thinking picker, the model picker and the session tree; the rest stay available in the terminal sheet.
@@ -82,12 +84,14 @@ These notes record where a native version of each sheet screen belongs, or why t
 - **`/live`**: The terminal sheet remains the right home, because live voice needs a realtime audio path the app does not have. A later native version would be a composer voice mode with a level meter and Stop.
 - **`/annotate`**: An Annotate action on messages and on Files viewer selections would collect feedback into the composer, which is where omp puts it, next to the Changes pane's existing line comments.
 - **`/todo edit`**: An Edit checklist sheet would list each task with a text field, a state mark and a delete action, reusing the task card's data. The other `/todo` subcommands already work with result rows.
+- **`/local`**: The terminal sheet keeps omp's session-file picker and external editor available. A future session-files view could reuse the Files pane's viewer and editing controls.
+- **`/context`**: omp 18.13.2 and later opens a read-only context viewer in the terminal sheet. A native context details dialog could open from the context ring and show its usage breakdown and detailed content.
 - **`/usage reset`**: Usage & limits offers Spend a reset on each account that holds saved resets, with a confirmation because a spent reset cannot be returned (DESIGN §4.18). The page sends omp's own `/usage reset <provider>/<credential id>` to a short-lived omp, so no chat is involved. Typed in a chat without a target, the command still opens omp's account picker in the terminal sheet.
 - **`/advisor configure`**: An Advisor sheet opened from the advisor row in the work modes menu would offer a scope switch, the composer model list for the advisor model and a tool checklist, with Open in external editor for the raw file.
 - **`/git <revision>`**: A Revision sheet would reuse the Changes pane's diff view as a read-only view of the chosen commit.
 - **`/seance`**: A Consult a session dialog would pick a chat with the sidebar's chat search and then a model from the composer model list, and the consultation would appear as a helper in the Tasks pane.
 - **Session toggles** (`/fast`, `/slow`, `/skillful`, `/extended-context`, `/computer`, `/browser`, `/prewalk`): A Chat options popover on the composer's control row would list each toggle as a switch, reading its state from the command's `status` form and confirming each change from what omp prints, the same way the advisor toggle works.
-- **Reports** (`/context`, `/tools`, `/jobs`, `/changelog`, `/memory stats`): These already show as expandable result rows. Each would also gain a permanent home: the context ring popover for `/context`, the Tasks pane for `/jobs`, Settings → Memory for `/memory stats`, the Help page for `/changelog` and a Help dialog for `/tools`.
+- **Reports** (`/tools`, `/jobs`, `/changelog`, `/memory stats`): These already show as expandable result rows. Each would also gain a permanent home: the Tasks pane for `/jobs`, Settings → Memory for `/memory stats`, the Help page for `/changelog` and a Help dialog for `/tools`.
 - **Guarded commands**: The app hosts the collab room that mirrors omp into the chat, so starting, restarting or stopping a room from omp, or leaving it, would disconnect the app, and `/join` would replace the chat with another session. `/move`, `/wt` and `/worktree` move the running session to another folder, which the app cannot follow; New worktree creates the worktree and a new chat in it, and it does not move this conversation or carry its changes. `/fork pane`, `window` and `tab` need a terminal multiplexer, which the app does not have; plain `/fork` and split view cover the same needs.
 
 ## Keeping this current

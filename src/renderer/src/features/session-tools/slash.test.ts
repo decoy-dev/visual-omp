@@ -75,6 +75,17 @@ describe("routeSlash", () => {
 		expect(mocks.openSettings).toHaveBeenCalledWith("skills", expect.objectContaining({ sectionProps: { tab: "plugins" } }));
 	});
 
+	it("routes subagents like hub while leaving argument forms to omp", async () => {
+		expect(await routeSlash(session, "/hub")).toBe(true);
+		expect(await routeSlash(session, "/subagents")).toBe(true);
+		expect(ranCommands()).toEqual(["panes.show.tasks", "panes.show.tasks"]);
+		expect(await routeSlash(session, "/subagents details")).toBe(false);
+		expect(await routeSlash(session, "/local")).toBe(false);
+		expect(await routeSlash(session, "/local notes.md")).toBe(false);
+		expect(await routeSlash(session, "/context")).toBe(false);
+		expect(await routeSlash(session, "/forget-approvals")).toBe(false);
+	});
+
 	it("refuses commands that break how the app hosts omp, with a reason and the app's way", async () => {
 		for (const line of ["/collab stop", "/collab", "/collab https://relay.example", "/leave", "/move ../other", "/wt feature", "/fork pane"]) {
 			expect(await routeSlash(session, line), line).toBe(true);

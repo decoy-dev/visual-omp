@@ -1,5 +1,5 @@
 /**
- * omp's builtin slash commands, taken from omp v18.12.2 (`packages/coding-agent/src/slash-commands/`
+ * omp's builtin slash commands, taken from omp v18.14.0 (`packages/coding-agent/src/slash-commands/`
  * `builtin-*.ts` and `seance.ts`, in `builtin-registry.ts` order). omp's RPC `get_available_commands`
  * lists only the builtins that also run outside its terminal UI, so this list fills in the rest
  * (settings, tree, resume and others). Descriptions are omp's own static text. omp builds three of
@@ -123,16 +123,16 @@ const BUILTINS: readonly BuiltinSpec[] = [
 	{
 		name: "prewalk",
 		description: "Arm, restart, or cancel a one-shot model handoff",
-		hint: "[restart|off]",
+		hint: "[into] | restart [from] [into] | off",
 		subcommands: [
-			{ name: "restart", description: "Return to @default and re-arm the handoff to @smol" },
+			{ name: "restart", description: "Return to the planning model and re-arm the handoff (default prewalk.from → prewalk.into)", usage: "[from] [into]" },
 			{ name: "off", description: "Cancel this session's handoff without changing the active model" },
 		],
 	},
 	{
 		name: "modelpreset",
 		description: "Save and switch model presets (role models + thinking level)",
-		hint: "[list|save|switch|delete] [name]",
+		hint: "[save|switch|delete|list] [name]",
 		subcommands: [
 			{ name: "list", description: "List saved presets" },
 			{ name: "save", description: "Save the current role models and thinking level", usage: "<name>" },
@@ -261,11 +261,12 @@ const BUILTINS: readonly BuiltinSpec[] = [
 	},
 	{ name: "hotkeys", description: "Show all keyboard shortcuts" },
 	{ name: "tools", description: "Show tools currently visible to the agent" },
-	{ name: "context", description: "Show estimated context usage breakdown" },
+	{ name: "context", description: "Browse context usage and detailed content" },
+	{ name: "local", description: "Open a session local:// file in $EDITOR (picker when no name given)", hint: "[name]" },
 	{ name: "extensions", aliases: ["status"], description: "Open Extension Control Center dashboard" },
 	{ name: "agents", description: "Open the agents hub (per-agent model, prewalk, and advisor)" },
 	{ name: "git", description: "Open the git UI (split diff viewer, staging, commit composer)", hint: "[revision]" },
-	{ name: "hub", description: "Open the live Agent Hub" },
+	{ name: "hub", aliases: ["subagents"], description: "Open the live Agent Hub (subagents, including finished ones)" },
 	{ name: "branch", aliases: ["rewind"], description: "Rewind to a previous message, keeping the old path as a branch" },
 	{
 		name: "fork",
@@ -422,6 +423,7 @@ const BUILTINS: readonly BuiltinSpec[] = [
 	{ name: "live", description: "Start Codex-backed realtime voice mode" },
 	{ name: "record", description: "Start or stop recording this screen to a replayable file (omp play)" },
 	{ name: "pause", description: "Freeze all agents (main, subagents, advisor) until resumed" },
+	{ name: "forget-approvals", description: "Forget every file and folder approval Ask and remember has recorded" },
 	{ name: "quit", aliases: ["q"], description: "Quit the application" },
 ];
 
