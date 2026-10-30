@@ -60,7 +60,7 @@ vi.mock("./relay", () => ({
 	},
 }));
 vi.mock("./tui-debug", () => ({ TuiDebugClient: class { info = async () => pty.focus; screen = async () => pty.screen; keys = pty.keys; close() {} } }));
-vi.mock("electron", () => ({ BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: pty.confirm } }));
+vi.mock("electron", () => ({ BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: pty.confirm }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: false }) } }));
 vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, close: async () => {} }) }));
 // Route promise timers through the fake clock in deadline regressions.
 vi.mock("node:timers/promises", () => ({ setTimeout: (ms: number, value?: unknown) => {
@@ -70,6 +70,7 @@ vi.mock("node:timers/promises", () => ({ setTimeout: (ms: number, value?: unknow
 } }));
 
 import { SessionHost, type EditorInputTransaction } from "./host";
+import { TspSession } from "./tsp/session";
 
 let host: SessionHost;
 beforeEach(async () => {
@@ -733,7 +734,6 @@ describe("opt-in semantic transport", () => {
 			() => host.submit("!pwd"),
 			() => host.submit(""),
 			() => host.paste("image.png"),
-			() => host.keys("tab"),
 			() => host.screenLines(),
 			() => host.screenPaint(),
 			() => host.debugValues(),
@@ -741,6 +741,8 @@ describe("opt-in semantic transport", () => {
 		]) await expect(action()).rejects.toThrow("not available in the TSP preview");
 		expect(() => host.serializedScreen()).toThrow("not available");
 		expect(host.state.error).toBeNull();
+		await host.keys("escape", host.state.generation, host.tspSnapshot()!.epoch);
+		expect(pty.writes).toHaveBeenCalledWith("\x1b");
 	});
 
 	it("gates semantic submits and edits while exact-transfer recovery blocks input", async () => {
@@ -790,21 +792,169 @@ describe("opt-in semantic transport", () => {
 
 	it.each([null, [2]])("shows bounded negotiation failure for absent or incompatible hello %j", async versions => {
 		await launchTsp("darwin", true);
+		pty.data?.(Buffer.from("classic output"));
 		if (versions) tspMessage("q", { q: "hello", v: versions });
 		await vi.advanceTimersByTimeAsync(10_001);
-		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "failed", negotiated: false, failure: expect.stringContaining("Relaunch without VOMP_TSP") });
+		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "failed", negotiated: false, failure: "omp did not start its semantic screen" });
+		expect(host.state.tspFailed).toBe(true);
 		expect(host.state.error).toBeNull();
 	});
 
 	it("cancels failed-negotiation reporting after a supported hello or process exit", async () => {
 		await launchTsp("darwin", true);
 		tspMessage("q", { q: "hello", v: [1] });
+		tspMessage("o", { id: "s:1", mode: "inline" });
 		await vi.advanceTimersByTimeAsync(10_001);
 		expect(host.tspSnapshot()?.failure).toBeNull();
 		pty.exit?.({ exitCode: 0 });
 		await vi.advanceTimersByTimeAsync(100);
 		expect(host.tspSnapshot()?.lifecycle).toBe("exited");
 		expect(host.tspSnapshot()?.failure).toBeNull();
+	});
+
+	it("fails a negotiated hello that never opens a surface after five seconds", async () => {
+		await launchTsp("darwin", true);
+		tspMessage("q", { q: "hello", v: [1] });
+		await vi.advanceTimersByTimeAsync(4999);
+		expect(host.state.tspFailed).toBe(false);
+		await vi.advanceTimersByTimeAsync(2);
+		expect(host.state.tspFailed).toBe(true);
+		expect(host.tspSnapshot()?.failure).toBe("omp did not start its semantic screen");
+	});
+
+	it("does not diagnose a silent process as a failed handshake until output arrives", async () => {
+		await launchTsp("darwin", true);
+		await vi.advanceTimersByTimeAsync(10_001);
+		expect(host.tspSnapshot()?.failure).toBeNull();
+		pty.data?.(Buffer.from("late classic output"));
+		await vi.advanceTimersByTimeAsync(1);
+		expect(host.state.tspFailed).toBe(true);
+	});
+
+	it("blocks submission for nonmodal overlays and screen surfaces and exposes the reason", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		expect(host.state.tspAvailability?.available).toBe(true);
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [{ id: "overlay", k: "overlay", p: { modal: false } }] }]] });
+		expect(host.state.tspAvailability).toMatchObject({ available: false, reason: expect.stringContaining("menu") });
+		await expect(host.submit("hello")).rejects.toThrow("menu");
+		tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "overlay"]] });
+		tspMessage("o", { id: "settings", mode: "screen" });
+		await expect(host.submit("hello")).rejects.toThrow("Close the omp screen");
+		tspMessage("x", { id: "settings", keep: false });
+		expect(host.state.tspAvailability?.available).toBe(true);
+	});
+
+	it("resets documents and rejects a previous epoch when a second hello reuses the PTY", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch!;
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		expect(host.tspSnapshot()?.surfaces).toEqual([]);
+		expect(host.tspSnapshot()?.epoch).toBe(epoch + 1);
+		tspComposer();
+		await expect(host.tspEvent(1, { ev: "visible", sf: "s:1", visible: true }, epoch)).rejects.toThrow("restarted");
+		await expect(host.keys("\x1b", 1, epoch)).rejects.toThrow("restarted");
+		await expect(host.keys("tab")).rejects.toThrow("not available");
+		await host.tspEvent(1, { ev: "visible", sf: "s:1", visible: true }, epoch + 1);
+	});
+
+	it.each(["none", "overlay", "screen"])("closes through TSP send from %s and refuses new input", async presentation => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		if (presentation === "overlay") tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [{ id: "overlay", k: "overlay" }] }]] });
+		if (presentation === "screen") tspMessage("o", { id: "settings", mode: "screen" });
+		const stopping = host.stop();
+		await expect(host.submit("late")).rejects.toThrow("closing");
+		await expect(host.keys("escape")).rejects.toThrow("closing");
+		if (presentation !== "none") {
+			await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith("\x1b"));
+			expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining('"text":"/exit"'));
+			if (presentation === "screen") tspMessage("x", { id: "settings", keep: false });
+			else tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "overlay"]] });
+		}
+		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"text":"/exit"')));
+		expect(pty.writes).not.toHaveBeenCalledWith("\x1b[200~/exit\x1b[201~\r");
+		tspMessage("f", { sf: "s:1", s: 4, ops: [["add", "closing", "s:1", null, { id: "closing", k: "toast", p: { role: "omp.toast.status", text: "Closing session…" } }]] });
+		await exit(0); await stopping;
+		expect(pty.kill).not.toHaveBeenCalled();
+	});
+
+	it.each(["toast", "surface"])("acknowledges shutdown from a semantic %s before the short grace expires", async acknowledgement => {
+		await launchTsp("darwin", true);
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		const stopping = host.stop();
+		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"text":"/exit"')));
+		if (acknowledgement === "surface") tspMessage("x", { id: "s:1", keep: true });
+		else tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "closing", "s:1", null, { id: "closing", k: "toast", p: { role: "omp.toast.status", text: "Closing session…" } }]] });
+		await vi.advanceTimersByTimeAsync(5000);
+		expect(pty.confirm).not.toHaveBeenCalled();
+		pty.exit?.({ exitCode: 0 });
+		await vi.advanceTimersByTimeAsync(100);
+		await stopping;
+		expect(pty.kill).not.toHaveBeenCalled();
+	});
+
+	it("blocks hook answers from sibling raw-key fallbacks and queued semantic events, while allowing Escape", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] });
+		tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		const queued = host.tspEvent(1, { ev: "action", sf: "s:1", id: "editor", act: "submit" }, epoch);
+		const refused = expect(queued).rejects.toThrow("read-only");
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [
+			{ id: "hook", k: "overlay", p: { role: "omp.overlay.hook-input" }, c: [{ id: "field", k: "input", p: { text: "", sendable: true } }] },
+			{ id: "fallback", k: "rows", p: { lines: ["Extension fallback"] } },
+		] }]] });
+		await refused;
+		for (const keys of ["\r", "\x1b[200~answer\x1b[201~\r", "yes"]) await expect(host.keys(keys, 1, epoch)).rejects.toThrow("read-only");
+		for (const event of [
+			{ ev: "send", sf: "s:1", id: "field", text: "answer" },
+			{ ev: "action", sf: "s:1", id: "fallback", act: "submit" },
+			{ ev: "edit", sf: "s:1", id: "field", from: 0, to: 0, len: 0, cursor: 1, text: "x" },
+		]) await expect(host.tspEvent(1, event, epoch)).rejects.toThrow("read-only");
+		await host.keys("escape", 1, epoch);
+		expect(pty.writes).toHaveBeenCalledWith("\x1b");
+		expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining('"act":"submit"'));
+		expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining('"text":"answer"'));
+	});
+
+	it.each(["overlay", "epoch"])("continues shutdown stages when a queued exit is invalidated by %s", async transition => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		const original = TspSession.prototype.submit;
+		const submit = vi.spyOn(TspSession.prototype, "submit").mockImplementationOnce(function (this: TspSession, ...args) {
+			const pending = original.apply(this, args);
+			if (transition === "overlay") tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [{ id: "menu", k: "overlay" }] }]] });
+			else tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+			return pending;
+		});
+		try {
+			const stopping = host.stop();
+			await vi.waitFor(() => expect(submit).toHaveBeenCalledTimes(1));
+			if (transition === "overlay") {
+				await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith("\x1b"));
+				tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "menu"]] });
+			} else tspComposer();
+			await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"text":"/exit"')));
+			expect(submit).toHaveBeenCalledTimes(2);
+			await exit(0); await stopping;
+			expect(pty.kill).not.toHaveBeenCalled();
+		} finally { submit.mockRestore(); }
+	});
+
+	it("propagates unrelated semantic writer failures during shutdown", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		const submit = vi.spyOn(TspSession.prototype, "submit").mockRejectedValueOnce(new Error("writer failed"));
+		try { await expect(host.stop()).rejects.toThrow("writer failed"); }
+		finally { submit.mockRestore(); }
 	});
 
 	it("contains malformed protocol operations while preserving subsequent ordinary output", async () => {

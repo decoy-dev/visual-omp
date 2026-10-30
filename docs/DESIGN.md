@@ -742,6 +742,15 @@ The omp terminal appears in a bottom sheet at 80% of the window height. It can e
 - **Leaving**: leaving while an omp menu is open asks "Leave this omp screen?", with [Stay on this screen] and [Leave screen].
 - **Terminal colours**: The mirror reads the active omp theme's `terminal.background`, `terminal.foreground` and 16 ANSI colours through the app-hosted extension. Bundled and custom JSON themes use omp's own loader and colour resolver. Missing fields use the active TUI colours; a theme created only in memory has no JSON terminal section to read.
 
+For chats launched with the developer flag `VOMP_TSP=1`, the same frame contains the semantic **omp screen**. Its title is "omp screen" or "omp screen: {head}". The sheet renders omp's overlays, screen-mode surfaces and unclaimed dock content with the app's existing controls. Unclaimed main content that collab does not replicate appears under "Other omp output"; omp's main composer and replicated transcript are excluded.
+
+- **Selection**: lists expose listbox and option semantics. Generic list clicks highlight locally, with Enter or double-click confirming. Data-first pickers send their preview selection and explicit actions. Tree row clicks remain local until confirmation, including roleless tree-layout pickers.
+- **Questions**: hook dialog roles remain visible and read-only until question matching is implemented. The explanation allows answering in chat when the same question also appears there. A classic dialog card does not claim a TSP node.
+- **Escape and leaving**: Escape dismisses an open omp overlay or screen through the guarded key channel. With neither open, it closes the sheet. The close button closes the sheet without answering omp. Automatic opening and closing follows the semantic document without a painting delay; a manually opened sheet remains open.
+- **Content**: Markdown, source, diffs, JSON fields and progress reuse the shared renderers. Containers remain borderless inside the sheet. Media uses alt-text placeholders while blob support is unavailable. Rows, ANSI and unknown content use a selectable mono block, with the active omp terminal palette when available. Focused fallback blocks forward raw keys.
+- **Debugging**: "Show raw outline" opens the read-only developer inspector below the semantic content. The semantic renderer is loaded as a separate chunk.
+
+
 ### 4.11.1 Advisor sheet
 
 Configure advisors in the work modes menu and `/advisor configure` open a 600px right sheet, capped by the viewport. The scope picker switches between the project-root and active user `WATCHDOG.yml` or existing `.yaml`. A roster picker and Add advisor precede the selected advisor's fields. Review cadence and every-Nth-update controls appear before catch-up, model, session kind, note limit, tool access and instructions. Shared instructions and the shared note limit follow the roster editor. Controls stack at narrow widths; the body scrolls while Save and Close remain in the footer.

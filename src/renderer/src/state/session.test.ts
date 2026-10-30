@@ -424,6 +424,44 @@ describe("SessionController TSP preview input", () => {
 		expect(chatStatus(session.getSnapshot())).toBe("error");
 	});
 
+	it("restarts a failed semantic host only on request, preserving the saved chat and visible history", async () => {
+		const session = new SessionController({ tabId: "preview-restart", projectPath: "/p", sessionFile: "/p/session.jsonl" });
+		session.attach(host({ transport: "tsp", tspFailed: true, link: "L1" }));
+		fakes.guests.at(-1)?.emit("live", [u1, a1]);
+		session.recordInput("Earlier prompt", 10);
+		expect(invoked.some(call => call[0] === "host:stop")).toBe(false);
+		respond = channel => channel === "host:start" ? Promise.resolve(host({ hostId: "h2", transport: "tsp" })) : undefined;
+		await session.restart();
+		expect(invoked.filter(call => call[0] === "host:stop")).toEqual([["host:stop", "h1"]]);
+		expect(invoked.find(call => call[0] === "host:start")?.[1]).toMatchObject({ cwd: "/p", resumeFile: "/p/session.jsonl" });
+		expect(invoked.some(call => call[0] === "host:submit")).toBe(false);
+		expect(session.getSnapshot().host?.hostId).toBe("h2");
+		expect(ids(liveEntries(session.getSnapshot()))).toEqual(["u1", "a1"]);
+		expect(session.getSnapshot().inputHistory).toContainEqual({ text: "Earlier prompt", timestamp: 10 });
+	});
+
+	it("does not relaunch a failed semantic host when its explicit stop fails", async () => {
+		const session = new SessionController({ tabId: "preview-restart-stop-failed", projectPath: "/p", sessionFile: "/p/session.jsonl" });
+		session.attach(host({ transport: "tsp", tspFailed: true }));
+		failOnce("host:stop", "Could not stop omp");
+		await expect(session.restart()).rejects.toThrow("Could not stop omp");
+		expect(invoked.some(call => call[0] === "host:start")).toBe(false);
+		expect(session.getSnapshot().host?.hostId).toBe("h1");
+	});
+
+	it("shares simultaneous failed-host restart requests", async () => {
+		const session = new SessionController({ tabId: "preview-restart-once", projectPath: "/p", sessionFile: "/p/session.jsonl" });
+		session.attach(host({ transport: "tsp", tspFailed: true }));
+		const stopped = Promise.withResolvers<null>();
+		respond = channel => channel === "host:stop" ? stopped.promise : channel === "host:start" ? Promise.resolve(host({ hostId: "h2", transport: "tsp" })) : undefined;
+		const first = session.restart(); const second = session.restart();
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:stop")).toHaveLength(1);
+		stopped.resolve(null);
+		await Promise.all([first, second]);
+		expect(invoked.filter(call => call[0] === "host:start")).toHaveLength(1);
+	});
+
 	it("preserves an actual host exit reason for an in-flight readiness waiter", async () => {
 		const session = new SessionController({ tabId: "preview-exit", projectPath: "/p", sessionFile: null });
 		session.attach(host({ transport: "tsp", phase: "connecting", link: "L1" }));

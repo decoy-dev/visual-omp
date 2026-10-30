@@ -1,18 +1,25 @@
 /**
- * omp terminal sheet (DESIGN §4.11): classic hosts mirror the hidden TUI through xterm.js.
- * TSP hosts show a read-only semantic outline. Only the classic mirror forwards keystrokes,
+ * omp screen sheet (DESIGN §4.11): classic hosts mirror the hidden TUI through xterm.js.
+ * TSP hosts draw omp's semantic overlays and unclaimed output. Only the classic mirror
  * resizes the hidden terminal and restores its previous size on close.
  */
+import { openOverlay, screenSurface } from "@shared/tsp/view-state";
 import { ArrowCounterClockwise, ArrowsIn, ArrowsOut, TerminalWindow, Warning } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useComposerDrafts } from "../../chat/composer/drafts";
 import { lazyView } from "../../registry/lazy";
 import { useSessionView } from "../../shell/hooks";
 import { controllerFor, useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { Button, cn, Dialog, DialogContent, EmptyState, Expand, IconButton, Sheet, SheetContent, Spinner } from "../../ui";
 import { type ScreenKey, screenName } from "./overlays";
-import { TspInspector } from "./TspInspector";
+import { useTsp } from "../tsp/useTsp";
+import { plain } from "../tsp/labels";
+
+function insideAppPopup(target: EventTarget | null): boolean {
+	return target instanceof Element && !!target.closest('.tsp-select-popup, [role="combobox"][data-state="open"]');
+}
 
 /** Tab whose sheet the overlay watcher opened (so it closes again when omp's screen goes away). */
 export const autoOpened: { tabId: string | null } = { tabId: null };
@@ -24,6 +31,10 @@ export const terminalSheet: { requestClose: (() => void) | null } = { requestClo
 const Mirror = lazyView(
 	() => import("./TerminalMirror").then(m => m.Mirror),
 	() => <div className="h-full" />,
+);
+const OmpScreen = lazyView(
+	() => import("../tsp/OmpScreenSheet").then(m => m.OmpScreenSheet),
+	() => <div role="status" className="h-full" />,
 );
 
 /** Recognisable name of the omp screen on show, refreshed as omp repaints. */
@@ -62,9 +73,24 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 	const view = useSessionView(controller);
 	const [expanded, setExpanded] = useState(false);
 	const [confirmLeave, setConfirmLeave] = useState(false);
+	const [screenError, setScreenError] = useState<string | null>(null);
+	const [restarting, setRestarting] = useState(false);
+	const restartTsp = async () => {
+		setScreenError(null);
+		setRestarting(true);
+		try { await controller.restart(); }
+		catch (error) { setScreenError(error instanceof Error ? error.message : String(error)); }
+		finally { setRestarting(false); }
+	};
 	const host = view?.host ?? null;
 	const hostId = host && host.phase !== "exited" ? host.hostId : null;
 	const tsp = host?.transport === "tsp";
+	const { snapshot, failed } = useTsp(tsp ? host?.hostId ?? null : null);
+	const tspSurfaces = snapshot?.lifecycle === "live" && snapshot.generation === host?.generation
+		? snapshot.surfaces.filter(surface => surface.documentGeneration === host.generation) : [];
+	const overlay = openOverlay(tspSurfaces);
+	const screenSurfaceOpen = screenSurface(tspSurfaces);
+	const overlayHead = overlay?.node.k === "overlay" ? plain(overlay.node.p?.head) : overlay?.node.p?.title;
 	const readOnly = view?.readOnly ?? false;
 	const tui = host?.tui ?? null;
 	const screen = useScreenName(tsp ? null : hostId, `${tui?.overlays ?? 0}|${tui?.focused ?? ""}|${tui?.overlayKinds.join(",") ?? ""}`);
@@ -111,7 +137,7 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 		close();
 	};
 
-	const title = tsp ? t("tsp.title") : screen ? t("terminal.titleWith", { screen: t(`screens.${screen}`) }) : t("terminal.title");
+	const title = tsp ? overlayHead ? t("tsp.titleWith", { screen: overlayHead }) : screenSurfaceOpen?.open.title ? t("tsp.titleWith", { screen: screenSurfaceOpen.open.title }) : t("tsp.title") : screen ? t("terminal.titleWith", { screen: t(`screens.${screen}`) }) : t("terminal.title");
 	const mode = view?.mode ?? "starting";
 
 	return (
@@ -139,21 +165,29 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 					/>
 				}
 				onKeyDownCapture={event => {
-					if (!tsp || event.key !== "Escape" || event.defaultPrevented) return;
-					// Handle the read-only inspector locally, including focused/nested outline nodes.
-					// No Escape from this sheet belongs to omp or the app-wide shortcut handler.
+					if (!tsp || event.key !== "Escape" || event.defaultPrevented || insideAppPopup(event.target)) return;
 					event.preventDefault();
 					event.stopPropagation();
-					requestClose();
+					if ((overlay || screenSurfaceOpen) && !readOnly && typeof snapshot?.epoch === "number") void window.vomp.invoke("host:keys", host!.hostId, "escape", snapshot.generation, snapshot.epoch).catch(() => undefined);
+					else requestClose();
 				}}
 				onEscapeKeyDown={event => {
 					// Esc inside the mirror belongs to omp (the key handler decides); elsewhere it closes.
+					if (tsp && (event.defaultPrevented || insideAppPopup(event.target))) return;
 					event.preventDefault();
-					if (tsp || !(event.target instanceof Element && event.target.closest(".xterm"))) requestClose();
+					if (tsp) {
+						if ((overlay || screenSurfaceOpen) && !readOnly && typeof snapshot?.epoch === "number") void window.vomp.invoke("host:keys", host!.hostId, "escape", snapshot.generation, snapshot.epoch).catch(() => undefined);
+						else requestClose();
+					} else if (!(event.target instanceof Element && event.target.closest(".xterm"))) requestClose();
 				}}
 				onOpenAutoFocus={event => {
 					event.preventDefault();
 					if (tsp) inspectorContent.current?.focus();
+				}}
+				onCloseAutoFocus={event => {
+					if (!tsp) return;
+					event.preventDefault();
+					useComposerDrafts.getState().focus(tabId);
 				}}
 				bodyClassName="flex flex-col gap-2 overflow-hidden bg-inset p-3"
 			>
@@ -161,6 +195,16 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 					<div role="status" className="flex h-8 shrink-0 items-center gap-2 rounded-md bg-warn-bg px-3 text-sm text-warn">
 						<Spinner size={12} tone="current" />
 						{t("terminal.reconnecting")}
+					</div>
+				</Expand>
+				<Expand open={screenError !== null}>
+					<p role="alert" className="rounded-md bg-err-bg px-3 py-2 text-sm text-err">{screenError}</p>
+				</Expand>
+				<Expand open={tsp && snapshot?.lifecycle === "failed"}>
+					<div role="alert" className="flex flex-wrap items-center gap-2 rounded-md bg-err-bg px-3 py-2 text-sm text-err">
+						<Warning aria-hidden className="size-4" />
+						<span className="flex-1">{snapshot?.failure}</span>
+						<Button size="sm" variant="secondary" disabled={restarting || readOnly} onClick={() => void restartTsp()}>{t("terminal.restart")}</Button>
 					</div>
 				</Expand>
 				<Expand open={!tsp && mode === "exited"}>
@@ -174,7 +218,7 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 				</Expand>
 				<div className={cn("min-h-0 flex-1 transition-opacity duration-(--dur-slow)", mode === "exited" && "opacity-60")}>
 					{tsp && host ? (
-						<TspInspector ref={inspectorContent} key={`${host.hostId}:${host.generation}`} hostId={host.hostId} generation={host.generation} />
+						<OmpScreen key={`${host.hostId}:${host.generation}:${snapshot?.epoch ?? "waiting"}`} contentRef={inspectorContent} hostId={host.hostId} generation={host.generation} snapshot={snapshot} failed={failed} readOnly={readOnly || mode !== "live"} />
 					) : hostId && host ? (
 						<Mirror
 							hostId={hostId}

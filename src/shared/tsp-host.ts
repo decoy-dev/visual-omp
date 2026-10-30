@@ -40,11 +40,19 @@ export function isTspPreviewInputError(error: unknown): boolean {
 	return (error instanceof Error ? error.message : String(error)).includes("TSP preview:");
 }
 
+export interface TspAvailability {
+	available: boolean;
+	reason: string | null;
+}
+
 /** Complete replacement snapshot. Revision orders an IPC subscription against its initial read. */
 export interface TspHostSnapshot {
 	hostId: string;
 	generation: number;
 	revision: number;
+	/** Increments for each hello, including replacement omp processes on the same PTY. */
+	epoch: number;
+	availability: TspAvailability;
 	negotiated: boolean;
 	/** Input/presentation authority, independent of protocol documents retained for adopt and credits. */
 	lifecycle: "live" | "transitioning" | "failed" | "exited";

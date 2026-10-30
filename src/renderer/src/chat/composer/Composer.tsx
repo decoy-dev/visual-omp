@@ -259,6 +259,9 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 
 	const readOnly = view.readOnly;
 	const working = view.working;
+	const tspReason = view.host?.transport === "tsp" && view.host.tspAvailability?.available !== true
+		? view.host.tspAvailability?.reason ?? "Waiting for omp to open its semantic screen."
+		: null;
 	const voiceOn = useApp(state => state.prefs?.voiceInput ?? false);
 	const files = useProjectFiles(projectPath, mention !== null);
 	const matches = useMemo(() => (mention && files ? fuzzyFiles(files, mention.query, 40) : null), [mention, files]);
@@ -377,7 +380,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	});
 
 	const submit = (now: boolean) => {
-		if (readOnly) return;
+		if (readOnly || tspReason) return;
 		const text = applyMode(draft, mode);
 		const images = [...attachments];
 		historyCursor.current.reset();
@@ -594,7 +597,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 			: working
 				? t("placeholder.working")
 				: t("placeholder.idle");
-	const canSend = !readOnly && (draft.trim().length > 0 || attachments.length > 0);
+	const canSend = !readOnly && !tspReason && (draft.trim().length > 0 || attachments.length > 0);
 	const actionSet = `${working}:${canSend}`;
 	const mod = IS_MAC ? "⌘" : "Ctrl+";
 	const questionId = view.guest?.uiRequest?.reqId ?? null;
@@ -864,7 +867,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 								)}
 								{!working && (
 									<motion.span key="send" layoutDependency={actionSet} {...actionMotion}>
-										<Tooltip content={t("send.tip")} shortcut="↵">
+										<Tooltip content={tspReason ?? t("send.tip")} shortcut="↵">
 											<button
 												type="button"
 												aria-label={t("send.label")}
@@ -882,6 +885,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					</div>
 				</div>
 			</div>
+			{tspReason && <p role="status" className="px-1 pt-2 text-sm text-fg-muted">{tspReason}</p>}
 			{/* The chat's settings: a quiet row under the card that wraps rather than crowd a narrow column. */}
 			<div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-2">
 				<div className="flex min-w-0 flex-wrap items-center gap-1">

@@ -138,64 +138,97 @@ Worktree shutdown: the host lets omp apply its own keep, remove and ask policy. 
 
 Startup readiness remains an omp API gap. A live collab snapshot can precede the editor's submit gate and the outer startup worktree choice. Classic debug values and screen text do not expose that outer readiness flag. Preflight protects a worktree question already painted or being answered; it cannot establish that a later startup question will not appear. The app does not automatically resend an unacknowledged submission. See the parity findings for the source trace.
 
-For developer inspection only, `VOMP_TSP=1` selects Tern Surface Protocol at the launch of an
-app-hosted chat on macOS or Linux. Windows ignores the flag, logs that TSP is unsupported and
-uses the classic transport until bundled ConPTY transport and packaging are verified. Classic
-hosts, terminal-follow and their painted-screen adapters keep their existing behavior. Opt-in TSP
-hosts stop painting terminal rows, so existing screen-driven controls are unavailable in this
-developer preview. Relaunch with `VOMP_TSP` unset to recover the classic controls.
-The hidden PTY still runs the same omp session, private extension and collab relay. The opt-in
-launch sets `TERM_PROGRAM=tern`, removes `PI_TUI_NATIVE`, and reads raw PTY bytes. Its incremental
-splitter removes only TSP APC messages before the existing xterm, OSC 7501 and startup-diagnostic
-paths. Chunk bodies are joined as bytes before UTF-8 decoding.
+The developer flag `VOMP_TSP=1` selects Tern Surface Protocol at the launch of an app-hosted
+chat on macOS or Linux. Windows ignores the flag, logs that TSP is unsupported and uses the
+classic transport until bundled ConPTY transport and packaging are verified. Classic hosts,
+terminal-follow and their painted-screen adapters keep their existing behavior. The hidden PTY
+still runs the same omp session, private extension and collab relay. The opt-in launch sets
+`TERM_PROGRAM=tern`, removes `PI_TUI_NATIVE`, and reads raw PTY bytes. Its incremental splitter
+removes only TSP APC messages before the existing non-TSP byte paths. Chunk bodies are joined
+as bytes before UTF-8 decoding. Relaunch with `VOMP_TSP` unset to recover the classic controls.
 
 `src/main/omp/tsp/` applies frames with omp 18.14.0's MIT-licensed reference document applier.
-Hello advertises all 44 kinds because the read-only inspector displays each node and its complete
-properties as data. The terminal feature list is empty: the inspector does not claim image blob
-caching, aside layout or semantic scrolling. The reply grants two credits per surface and an APC
-body limit of 65,536 bytes. Applied frames receive cumulative acknowledgments; pending acks may
-coalesce to the newest applied sequence. APC replies and events share an ordered protocol queue.
-Ordinary terminal replies, including DA1, follow the hello reply through that queue. Resize, theme
-and motion changes are carried in hello before negotiation and sent as events afterward.
-All PTY writes use the host's atomic writer. Protocol acknowledgments bypass the application
-transaction and closing gates so an editor transfer or graceful shutdown cannot block credits.
-Renderer-originated semantic events use the existing application transaction lock, validate the
-current collab generation again at the writer, and reject stale surface or node targets.
-Renderer events are parsed by a strict shared contract before encoding. Main-owned lifecycle
-events are excluded, and addressed surfaces and nodes must still exist when the writer runs.
-Malformed operation tuples and nested node shapes are rejected before they reach the reference
-applier. Protocol failures are displayed in the preview inspector rather than changing the
-chat's authoritative host or OSC error status.
+Hello advertises all 44 kinds; the semantic renderer covers each kind or its documented fallback.
+The terminal feature list remains empty, so blob caching, aside layout and semantic scrolling
+are not advertised. The reply grants two credits per surface and an APC body limit of 65,536
+bytes. Applied frames receive cumulative acknowledgments, which may coalesce to the newest
+applied sequence while the writer is occupied. Ordinary terminal replies, including DA1, follow
+the hello reply through the ordered protocol queue. Width, theme and motion are carried in hello
+before negotiation and sent as events afterward. All PTY writes use the host's atomic writer.
+Protocol housekeeping bypasses the application transaction and closing gates so an editor
+transfer or graceful shutdown cannot block credits.
 
-Normal plain-text submission uses the same serialized application input lock and a semantic
-`send` addressed to the focused, sendable main composer under `dock`, with program-advertised
-send support. The pinned composer ancestor role is `omp.editor`; shell variants, modal fields
-and a subagent-view composer are refused. The writer rechecks the generation, target and submit
-gate. omp retains displaced drafts through its own send semantics. Image attachments, pastes,
-Ctrl+Q follow-up submission, shell/Python modes, prediction transfer and screen-driven controls are
-unavailable in the preview and reject with a recovery explanation. Expected action refusals do
-not become persistent chat errors. Startup worktree creation stays disabled; exit-worktree
-dialogs do not have preview controls.
+Every newly negotiated hello starts a protocol epoch, clears the live documents and rejects
+input addressed to an earlier epoch, including when omp replaces itself inside the existing PTY.
+Collab room generations are separate: a room transition retains protocol documents but invalidates
+their input authority. Initial collab attachment may adopt the startup document. Later generations
+require a fresh frame for each surface after the new room becomes live; a frame for one surface
+cannot promote another retained tree. A protocol close with `keep: true` retains read-only main
+content. Snapshots distinguish live, transitioning, failed and exited state. Process exit invalidates
+presentation authority even when no protocol close arrived.
 
-Collab room transitions invalidate presentation authority per surface without deleting protocol
-documents needed for acknowledgments and legitimate adoption. Initial collab attachment may
-adopt the startup document. Later generations require a fresh semantic frame for each surface
-after the new room becomes live; a frame for one surface cannot promote another retained tree.
-Snapshots label stale, failed and exited state explicitly, and exit without a protocol close
-still invalidates presentation authority. A ten-second negotiation deadline exposes absent or
-incompatible hello as a failed preview with the relaunch instruction; successful negotiation
-and exit cancel that deadline. There is no automatic retry or renderer-mode switch.
+Renderer-originated semantic events and raw keys enter the existing application transaction lock.
+Main rechecks the host's collab generation and protocol epoch at the writer. Semantic events also
+validate their addressed live surface and node. `host:tsp-event` parses a strict typed subset of events;
+acknowledgments, resize, theme and motion remain main-owned. Raw fallback keys and Escape use
+the guarded `host:keys` route with generation and epoch. Malformed operation tuples and nested
+node shapes are rejected before the reference applier. Protocol failures are shown by the omp
+screen without replacing collab or OSC as the authority for chat status.
 
-The `host:tsp-snapshot` request and `host:tsp-update` event expose complete per-host semantic
-documents with a monotonically increasing revision. `host:tsp-event` accepts addressed input;
-main retains ownership of acknowledgments and environment events. These channels use the
-existing trusted, configured app-window IPC boundary and main-owned host-id lookup; they do not
-introduce per-window host ownership. For an opt-in host, the terminal sheet displays a read-only
-semantic outline instead of mounting an xterm mirror. Its developer-preview explanation names
-unavailable controls and the relaunch recovery. Initial focus goes to its labelled, keyboard-scrollable
-outline, so opening the sheet does not activate a header-button tooltip. Closing that inspector,
-including one Escape from its initial focus, sends no keys to omp. Classic terminal-sheet focus
-behavior is unchanged. There is no new user setting or replacement of the transcript or collaboration channel.
+Plain-text submission uses semantic `send` only when omp advertised it and the focused main
+editor under `dock` explicitly has `sendable: true`. The inherited composer role is `omp.editor`;
+shell variants, modal fields, PTY mode and a subagent-view composer are refused. An open overlay
+or screen-mode surface also blocks submission. Main publishes availability and a reason, and the
+app composer shows that reason beside its unavailable send control. The writer checks availability
+again before sending. omp retains displaced drafts through its own send semantics. Attachments,
+application pastes, Ctrl+Q follow-up submission, shell/Python modes and prediction transfer remain
+unavailable in this preview. Screen-driven feature controls remain disabled until their TSP
+consumers are implemented. Expected refusals do not become persistent chat errors.
+
+TSP shutdown uses the existing native stages and exit records. It sends Escape when an omp
+overlay or screen is open, waits for the main editor to become available, then sends `/exit`
+through semantic `send`. Acknowledgment is the closing-status toast, closure of the surface
+addressed by `/exit`, or process exit. Closing a settings surface alone does not acknowledge
+`/exit`. Startup worktree creation remains disabled. Exit questions remain visible in the omp
+screen and are subject to the read-only hook-dialog restriction below.
+
+If ten seconds elapse from spawn without a supported hello, main marks the preview failed once
+output has been observed. A supported hello starts a separate five-second deadline for the first
+surface. Failure sets `tspFailed`, exposes "omp did not start its semantic screen", and offers
+Restart. It does not automatically retry, kill omp or switch renderer modes. An explicit restart of
+a failed host awaits the existing stop stages, then launches omp again with the saved session file;
+the visible history and input recall are retained while the new collab room connects. Stop or
+launch errors are shown, and a failed stop prevents relaunch.
+
+`host:tsp-snapshot` and `host:tsp-update` expose complete per-host documents with an ordered
+revision, protocol epoch, lifecycle state and send availability. The renderer reconciles replacement
+documents, reuses unchanged nodes and supports subscriptions by surface and node id. Shared
+view-state derivations identify overlays, screen surfaces, focus, the composer and unclaimed output.
+The role/action registry determines claims and interaction overrides. Classic cards claim no TSP
+nodes. These channels retain the existing trusted app-window IPC boundary and main-owned host
+lookup; they do not introduce per-window host ownership.
+
+For TSP hosts, every existing terminal-sheet entry point opens the lazy-loaded **omp screen**.
+The existing sheet frame, expand control and labelled focus region remain. The title includes an
+overlay's heading when present. The renderer draws layers, screen-mode surfaces and unclaimed
+dock nodes. Unclaimed main content that collab does not replicate appears under "Other omp output";
+omp's main transcript and composer are excluded. Lists expose selection semantics, tree row clicks
+stay local until confirmation, and forms send typed events. Markdown, code, diffs, JSON and progress
+reuse shared renderers. Media remains a placeholder while blobs are unavailable. Rows, ANSI and
+unknown content use a readable mono fallback, with guarded raw keys while focused.
+
+Semantic overlays and screen surfaces open the sheet without a painting delay. Their closure
+closes an automatically opened sheet; a manually opened sheet remains open. Escape dismisses an
+open omp overlay or screen through the guarded key route. With neither open, Escape closes the
+sheet. Closing the sheet itself does not answer omp, and focus returns to that chat's composer.
+"Show raw outline" discloses the read-only developer inspector below the semantic content.
+
+Phase 2 is not complete. Hook dialogs are visible but read-only because question arbitration has
+not been implemented; a question may be answered in chat only when collab also presents it there.
+TSP-only notices have not been projected into transcript rows and remain available in the omp
+screen. Full overlay workflow replay, live hook and extension-fallback recordings, sharing parity,
+packaged checks and the remaining manual acceptance criteria still gate the complete Phase 2
+preview. There is no new user setting and no replacement of the transcript or collaboration channel.
 
 
 

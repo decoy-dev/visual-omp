@@ -797,6 +797,20 @@ export class SessionController {
 	}
 
 	async restart(): Promise<void> {
+		const failed = this.#view.host;
+		if (failed?.transport === "tsp" && failed.tspFailed && failed.phase !== "exited") {
+			if (this.#disposed) throw new Error("This chat was closed.");
+			if (this.#view.readOnly) throw new Error("This chat is open elsewhere.");
+			this.#starting ??= (async () => {
+				// Restart is an explicit stop/relaunch. A failed handshake has no usable /restart editor.
+				await window.vomp.invoke("host:stop", failed.hostId);
+				if (this.#disposed) throw new Error("This chat was closed.");
+				this.#closeGuest();
+				this.#set({ host: null, mode: "exited", working: false });
+				await this.#start();
+			})().finally(() => { this.#starting = null; });
+			return this.#starting;
+		}
 		if (this.#view.mode === "exited" || !this.#view.host) {
 			await this.ensureLive();
 			return;

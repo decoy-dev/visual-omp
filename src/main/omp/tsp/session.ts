@@ -1,6 +1,8 @@
 import { z } from "zod";
-import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, type TspEvent, type TspFrame, type TspNode, type TspOpen } from "../../../shared/tsp";
+import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, type TspEvent, type TspFrame, type TspOpen } from "../../../shared/tsp";
 import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspSurfaceSnapshot } from "../../../shared/tsp-host";
+import { composer, liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
+import { isHookDialog } from "../../../shared/tsp/roles";
 import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";
 import type { TspMessage } from "./stream";
@@ -39,9 +41,13 @@ interface Surface {
 
 export type TspUpdate = "hello" | "open" | "frame" | "close";
 
+/** A document or protocol transition refused input before any application bytes were written. */
+export class TspInputStateError extends Error {}
+
 /**
- * omp owns document content and submission semantics. This client only applies and inspects it.
- * All 44 kinds are inspectable as data. No blobs, aside layout, scrolling or editing UI is claimed.
+ * omp owns document content and submission semantics. The app applies its semantic documents
+ * and validates renderer interaction at the serialized writer. Hook dialogs remain display-only
+ * until collab question arbitration is implemented. No blobs or aside layout are advertised.
  * Each applied surface frame returns a cumulative ack, coalesced while the writer is occupied.
  */
 export class TspSession {
@@ -52,6 +58,7 @@ export class TspSession {
 	#pendingAcks = new Map<string, number>();
 	#tail: Promise<void> = Promise.resolve();
 	#negotiated = false;
+	#epoch = 0;
 	#programFeatures = new Set<string>();
 	#cols: number;
 	#dark: boolean;
@@ -78,9 +85,10 @@ export class TspSession {
 		return this.#tail;
 	}
 
-	snapshot(): { negotiated: boolean; surfaces: TspSurfaceSnapshot[] } {
+	snapshot(): { negotiated: boolean; epoch: number; surfaces: TspSurfaceSnapshot[] } {
 		return {
 			negotiated: this.#negotiated,
+			epoch: this.#epoch,
 			surfaces: [...this.#surfaces.values()].map(surface => ({
 				open: { ...surface.open }, sequence: surface.sequence, closed: surface.closed,
 				document: surface.doc.snapshot(), focus: surface.doc.focus,
@@ -100,6 +108,10 @@ export class TspSession {
 				const query = Query.safeParse(body);
 				if (!query.success) { this.#report("Invalid TSP query"); return; }
 				if (query.data.q !== "hello" || !query.data.v?.includes(TSP_VERSION)) return;
+				// A replacement process may reuse this transport and every surface id.
+				this.#epoch++;
+				this.#surfaces.clear();
+				this.#pendingAcks.clear();
 				this.#programFeatures = new Set(query.data.features);
 				// First reply precedes every event, including acks for optimistic native frames.
 				this.#internal(this.#enqueue(() => this.#write(encodeTspJson("r", {
@@ -160,15 +172,18 @@ export class TspSession {
 		const parsed = TspRendererEvent.safeParse(input);
 		if (!parsed.success) return Promise.reject(new Error("TSP preview: Invalid renderer event."));
 		const event = parsed.data;
+		const epoch = this.#epoch;
 		return this.#enqueue(async () => {
 			assertCurrent?.();
+			if (epoch !== this.#epoch) throw new TspInputStateError("TSP preview: The semantic screen restarted.");
 			if (["send", "edit", "undo"].includes(event.ev) && !this.#programFeatures.has(event.ev)) throw new Error(`TSP preview: omp does not accept ${event.ev} events.`);
+			if (event.ev !== "visible" && this.hasReadOnlyHook()) throw new TspInputStateError("TSP preview: This question is read-only in this preview. If it also appears in chat, answer it there.");
 			const surface = this.#surfaces.get(event.sf);
-			if (!surface || surface.closed || surface.doc.suspended) throw new Error("TSP preview: The target surface is no longer available.");
+			if (!surface || surface.closed || surface.doc.suspended) throw new TspInputStateError("TSP preview: The target surface is no longer available.");
 			if ("id" in event) {
 				const node = surface.doc.get(event.id);
-				if (!node) throw new Error("TSP preview: The target node is no longer available.");
-				if (event.ev === "send" && ((node.k !== "editor" && node.k !== "input") || node.p?.sendable !== true)) throw new Error("TSP preview: The editor is not ready to send.");
+				if (!node) throw new TspInputStateError("TSP preview: The target node is no longer available.");
+				if (event.ev === "send" && ((node.k !== "editor" && node.k !== "input") || node.p?.sendable !== true)) throw new TspInputStateError("TSP preview: The editor is not ready to send.");
 				if (event.ev === "edit") {
 					if ((node.k !== "editor" && node.k !== "input") || node.p?.readonly === true || event.len !== (node.p?.text?.length ?? 0)) throw new Error("TSP preview: The editor changed before the edit could be applied.");
 				}
@@ -180,34 +195,30 @@ export class TspSession {
 	/** Atomic text submission to omp's main composer, preserving its displaced-draft semantics. */
 	submit(text: string, assertCurrent?: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
 		if (!text.trim() || /^[!$]/.test(text.trimStart())) return Promise.reject(new Error(TSP_PREVIEW_UNAVAILABLE));
-		let target: { surface: Surface; id: string } | undefined;
-		for (const surface of this.#surfaces.values()) {
-			if (surface.closed || surface.doc.suspended || surface.open.mode !== "inline" || surface.open.role !== "omp.session") continue;
-			if (!surfaceAllowed(surface.open.id)) continue;
-			const hasModal = (node: TspNode): boolean => (node.k === "overlay" && node.p?.modal === true) || (node.c?.some(hasModal) ?? false);
-			const layer = surface.doc.get("layer");
-			if (layer && hasModal(layer)) continue;
-			const dock = surface.doc.get("dock");
-			if (!dock) continue;
-			let viewing = false;
-			const find = (node: TspNode, mainComposer: boolean): string | undefined => {
-				if (node.p?.role === "omp.composer.focus") viewing = true;
-				const role = node.p?.role;
-				const main = role?.startsWith("omp.editor") ? role === "omp.editor" : mainComposer;
-				let found = main && node.id === surface.doc.focus && node.k === "editor" && node.p?.sendable === true && node.p.mode !== "PTY" ? node.id : undefined;
-				for (const child of node.c ?? []) found = find(child, main) ?? found;
-				return found;
-			};
-			const id = find(dock, false);
-			if (viewing) continue;
-			if (id) { target = { surface, id }; break; }
-		}
-		if (!target) return Promise.reject(new Error("TSP preview: The main editor is not ready to send. Wait for omp to finish opening its composer."));
-		const { surface, id } = target;
-		return this.send({ ev: "send", sf: surface.open.id, id, text }, () => {
+		const surfaces = this.snapshot().surfaces;
+		const availability = this.availability(surfaceAllowed);
+		if (!availability.available) return Promise.reject(new TspInputStateError(`TSP preview: The main editor is not ready to send. ${availability.reason}`));
+		const target = composer(surfaces.filter(surface => surfaceAllowed(surface.open.id)))!;
+		const original = this.#surfaces.get(target.surface.open.id);
+		return this.send({ ev: "send", sf: target.surface.open.id, id: target.node.id, text }, () => {
 			assertCurrent?.();
-			if (!surfaceAllowed(surface.open.id) || this.#surfaces.get(surface.open.id) !== surface || surface.doc.focus !== id) throw new Error("TSP preview: The main editor changed before the message could be sent.");
+			if (!surfaceAllowed(target.surface.open.id) || this.#surfaces.get(target.surface.open.id) !== original) throw new TspInputStateError("TSP preview: The main editor changed before the message could be sent.");
+			if (!this.availability(surfaceAllowed).available) throw new TspInputStateError("TSP preview: The main editor is not ready to send.");
 		});
+	}
+
+	availability(surfaceAllowed: (surface: string) => boolean = () => true): { available: boolean; reason: string | null } {
+		const surfaces = this.snapshot().surfaces;
+		if (!this.#negotiated) return { available: false, reason: "Waiting for omp to start its semantic screen." };
+		if (!this.#programFeatures.has("send")) return { available: false, reason: "omp does not accept send events." };
+		if (screenSurface(surfaces)) return { available: false, reason: "Close the omp screen before sending a message." };
+		if (openOverlay(surfaces)) return { available: false, reason: "Close the open omp menu before sending a message." };
+		if (!composer(surfaces.filter(surface => surfaceAllowed(surface.open.id)))) return { available: false, reason: "Wait for omp to finish opening its main editor." };
+		return { available: true, reason: null };
+	}
+
+	hasReadOnlyHook(): boolean {
+		return liveSurfaces(this.snapshot().surfaces).some(surface => [...walkNodes(surface.document)].some(node => isHookDialog(node.p?.role)));
 	}
 
 	/** Ordinary terminal reports share the protocol queue, so DA1 never overtakes hello. */
@@ -244,7 +255,9 @@ export class TspSession {
 		const pending = this.#pendingAcks.has(id);
 		this.#pendingAcks.set(id, surface.sequence);
 		if (pending) return;
+		const epoch = this.#epoch;
 		this.#internal(this.#enqueue(async () => {
+			if (epoch !== this.#epoch) return;
 			const sequence = this.#pendingAcks.get(id)!;
 			this.#pendingAcks.delete(id);
 			// A close may already have removed the document; applied frames still return their credit.

@@ -96,12 +96,16 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("host:write", (hostId, data) => getHost(hostId).write(data));
 	handle("host:paste", (hostId, text) => getHost(hostId).paste(text));
 	handle("host:submit", (hostId, text, mode) => getHost(hostId).submit(text, mode));
-	handle("host:keys", (hostId, keys) => getHost(hostId).keys(keys));
+	handle("host:keys", (hostId, keys, generation, epoch) => getHost(hostId).keys(keys, generation, epoch));
 	handle("host:screen", hostId => getHost(hostId).screenLines());
 	handle("host:resize", (hostId, cols, rows) => getHost(hostId).resize(cols, rows));
 	handle("host:buffer", hostId => getHost(hostId).serializedScreen());
 	handle("host:tsp-snapshot", hostId => getHost(hostId).tspSnapshot());
-	handle("host:tsp-event", (hostId, generation, event) => getHost(hostId).tspEvent(generation, event));
+	handle("host:tsp-event", (hostId, generation, event, epoch) => {
+		if (!Number.isInteger(epoch)) throw new Error("TSP preview: A current protocol epoch is required.");
+		return getHost(hostId).tspEvent(generation, event, epoch);
+	});
+	handle("host:tsp-resize", (hostId, cols) => getHost(hostId).tspResize(cols));
 	handle("host:list", () => listHosts());
 
 	handle("term:start", options => startTerminal(options));

@@ -281,4 +281,33 @@ describe("TSP session", () => {
 		current = false;
 		await expect(sending).rejects.toThrow("changed");
 	});
+	it("starts a new epoch and drops queued old events and credits on a second hello", async () => {
+		const h = harness(); h.hello(); h.open(); h.frame(1, regions);
+		h.frame(2, [["set", "editor", { sendable: true }]]);
+		await h.flush();
+		const epoch = h.session.snapshot().epoch;
+		const sending = h.session.send({ ev: "send", sf: "s:1", id: "editor", text: "old" });
+		const rejected = expect(sending).rejects.toThrow("restarted");
+		h.frame(3, []);
+		h.hello();
+		expect(h.session.snapshot()).toMatchObject({ epoch: epoch + 1, surfaces: [] });
+		h.open(); h.frame(1, regions);
+		await rejected; await h.flush();
+		expect(h.bodies().filter(body => body.ev === "send")).toEqual([]);
+		expect(h.bodies().filter(body => body.ev === "ack").at(-1)).toEqual({ ev: "ack", sf: "s:1", s: 1 });
+	});
+	it("rechecks display-only hook state at the protocol writer after application input was queued", async () => {
+		const gate = Promise.withResolvers<void>();
+		let hold = false;
+		const h = harness(async () => { if (hold) await gate.promise; });
+		h.hello(); h.open(); h.frame(1, regions); await h.flush();
+		hold = true;
+		const blocking = h.session.send({ ev: "visible", sf: "s:1", visible: true });
+		await Promise.resolve();
+		const answering = h.session.send({ ev: "action", sf: "s:1", id: "editor", act: "submit" });
+		const refused = expect(answering).rejects.toThrow("read-only");
+		h.frame(2, [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [{ id: "hook", k: "overlay", p: { role: "omp.overlay.hook-select" } }] }]]);
+		hold = false; gate.resolve(); await blocking; await refused; await h.flush();
+		expect(h.bodies().filter(body => body.ev === "action")).toEqual([]);
+	});
 });

@@ -20,6 +20,8 @@ import { stringify } from "yaml";
 import { z } from "zod";
 import type { HostStartOptions, HostState, TuiFocus } from "@shared/ipc";
 import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspHostSnapshot } from "@shared/tsp-host";
+import { composer, openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
+import { TSP_ROLES, TSP_STATUS } from "@shared/tsp/roles";
 import { BrowserWindow, dialog, nativeTheme, systemPreferences, type MessageBoxOptions, type MessageBoxReturnValue } from "electron";
 import hostLabels from "../../shared/i18n/en/host.json";
 import { crashedWithoutExit, parseProgramStatus, readSessionRecaps, startupModelWarnings, worktreeConfirmation } from "./host-observations";
@@ -34,7 +36,7 @@ import { LoopbackRelay } from "./relay";
 import { findRoomHost } from "./room-host";
 import { findSessionFile, onSessionsChanged } from "./sessions";
 import { TuiDebugClient, type TuiPaint } from "./tui-debug";
-import { TspSession } from "./tsp/session";
+import { TspInputStateError, TspSession } from "./tsp/session";
 import { TspStream } from "./tsp/stream";
 
 const CollabHosts = z.object({
@@ -106,6 +108,13 @@ export class SessionHost {
 	#tspSurfaceGenerations = new Map<string, number>();
 	#tspFailure: string | null = null;
 	#tspHandshakeTimer: NodeJS.Timeout | null = null;
+	#tspExitSurface: string | null = null;
+	#tspFirstBytes = Buffer.alloc(0);
+	#tspAppearanceChanged = (): void => {
+		if (!this.#tsp || this.state.phase === "exited") return;
+		const { dark, reduceMotion } = this.#tspAppearance();
+		void Promise.all([this.#tsp.theme(dark), this.#tsp.motion(reduceMotion)]).catch(error => this.#update({ error: String(error) }));
+	};
 	#terminalDecoder = new StringDecoder("utf8");
 	state: HostState;
 
@@ -185,9 +194,16 @@ export class SessionHost {
 					write: data => this.#writeInput(data),
 					onUpdate: (reason, surface) => {
 						if (reason === "hello") {
+							this.#tspSurfaceGenerations.clear();
+							this.#tspFailure = null;
+							this.#update({ tspFailed: false });
+							this.#armTspHandshake(5000, true);
+						}
+						if (reason === "open") {
 							clearTimeout(this.#tspHandshakeTimer ?? undefined);
 							this.#tspHandshakeTimer = null;
 						}
+						if (this.#closing && ((reason === "close" && surface === this.#tspExitSurface) || this.#tspClosingNotice())) this.#shutdownProgress("acknowledged");
 						if (reason === "frame" && surface && this.state.phase === "live") this.#tspSurfaceGenerations.set(surface, this.state.generation);
 						this.#publishTsp();
 					},
@@ -206,6 +222,7 @@ export class SessionHost {
 				// Headless xterm answers ordinary terminal probes only after the hello is queued.
 				this.#screen.onData(data => this.#tsp!.terminalReply(data));
 				this.#update({ transport: "tsp" });
+				nativeTheme.on("updated", this.#tspAppearanceChanged);
 			} else {
 				childEnv.PI_TUI_NATIVE = "0";
 				delete childEnv.TERM_PROGRAM;
@@ -226,19 +243,15 @@ export class SessionHost {
 			}
 			this.#debug = new TuiDebugClient(debugPath);
 			this.#pty.onData(data => {
-				if (this.#tspStream) this.#tspStream.push(typeof data === "string" ? Buffer.from(data) : data);
-				else this.#terminalOutput(data);
+				if (this.#tspStream) {
+					const bytes = typeof data === "string" ? Buffer.from(data) : data;
+					if (this.#tspFirstBytes.length < 2048) this.#tspFirstBytes = Buffer.concat([this.#tspFirstBytes, bytes.subarray(0, 2048 - this.#tspFirstBytes.length)]);
+					this.#tspStream.push(bytes);
+					if (!this.#tspHandshakeTimer && !this.#tsp!.snapshot().negotiated && !this.#tspFailure) this.#armTspHandshake(Math.max(0, TSP_NEGOTIATION_MS - (Date.now() - this.#spawnedAt)), false);
+				} else this.#terminalOutput(data);
 			});
 			this.#pty.onExit(({ exitCode }) => void this.#onExit(exitCode));
-			if (this.#tsp) {
-				this.#tspHandshakeTimer = setTimeout(() => {
-					this.#tspHandshakeTimer = null;
-					if (this.#tsp?.snapshot().negotiated || this.state.phase === "exited") return;
-					this.#tspFailure = "TSP preview: omp did not negotiate a supported semantic protocol. Relaunch without VOMP_TSP to use the classic controls.";
-					this.#publishTsp();
-				}, TSP_NEGOTIATION_MS);
-				this.#tspHandshakeTimer.unref();
-			}
+			if (this.#tsp) this.#armTspHandshake(TSP_NEGOTIATION_MS, false);
 			this.#update({ phase: "connecting", pid: this.#pty.pid });
 			this.#focusTimer = setInterval(() => void this.#pollFocus(), FOCUS_POLL_MS);
 		} catch (error) {
@@ -302,18 +315,43 @@ export class SessionHost {
 		};
 	}
 
+	#armTspHandshake(delay: number, waitingForSurface: boolean): void {
+		clearTimeout(this.#tspHandshakeTimer ?? undefined);
+		this.#tspHandshakeTimer = setTimeout(() => {
+			this.#tspHandshakeTimer = null;
+			if (this.state.phase === "exited") return;
+			if (waitingForSurface ? this.#tsp!.snapshot().surfaces.length > 0 : this.#tsp!.snapshot().negotiated || this.#tspFirstBytes.length === 0) return;
+			this.#tspFailure = "omp did not start its semantic screen";
+			console.warn("[visual-omp] omp did not start its semantic screen. First PTY bytes (base64, at most 2048 bytes):", this.#tspFirstBytes.toString("base64"));
+			this.#update({ tspFailed: true });
+			this.#publishTsp();
+		}, delay);
+		this.#tspHandshakeTimer.unref();
+	}
+
+	#tspClosingNotice(): boolean {
+		return this.#tsp?.snapshot().surfaces.some(surface => [...walkNodes(surface.document)].some(node =>
+			node.k === "toast" && node.p?.role === TSP_ROLES.toastStatus && typeof node.p.text === "string" && node.p.text.startsWith(TSP_STATUS.closing))) ?? false;
+	}
+
 	tspSnapshot(): TspHostSnapshot | null {
 		if (!this.#tsp) return null;
 		const protocol = this.#tsp.snapshot();
 		const surfaces = protocol.surfaces.map(surface => ({ ...surface, documentGeneration: this.#tspSurfaceGenerations.get(surface.open.id) ?? null }));
 		const current = surfaces.some(surface => !surface.closed && surface.documentGeneration === this.state.generation);
 		const lifecycle = this.state.phase === "exited" ? "exited" : this.#tspFailure ? "failed" : this.state.phase === "live" && current ? "live" : "transitioning";
-		return { hostId: this.id, generation: this.state.generation, revision: this.#tspRevision, negotiated: protocol.negotiated, lifecycle, documentGeneration: current ? this.state.generation : null, failure: this.#tspFailure, surfaces };
+		const reason = this.#closing ? "This chat is closing." : this.#tspFailure ?? (lifecycle !== "live" ? "Waiting for omp to open its semantic screen." : this.#editorTransferBlocked);
+		const availability = reason ? { available: false, reason } : this.#tsp.availability(surface => this.#tspSurfaceGenerations.get(surface) === this.state.generation);
+		return { hostId: this.id, generation: this.state.generation, revision: this.#tspRevision, epoch: protocol.epoch, availability, negotiated: protocol.negotiated, lifecycle, documentGeneration: current ? this.state.generation : null, failure: this.#tspFailure, surfaces };
 	}
 
 	#publishTsp(): void {
 		this.#tspRevision++;
 		const snapshot = this.tspSnapshot();
+		if (snapshot) {
+			this.state = { ...this.state, tspAvailability: snapshot.availability };
+			broadcast("host:state", this.state);
+		}
 		if (snapshot) broadcast("host:tsp-update", snapshot);
 	}
 
@@ -322,12 +360,13 @@ export class SessionHost {
 		if (!this.#tsp || generation !== this.state.generation || this.tspSnapshot()?.lifecycle !== "live") throw new Error("TSP preview: The session changed or its semantic UI is not ready.");
 	}
 
-	tspEvent(generation: number, input: unknown): Promise<void> {
+	tspEvent(generation: number, input: unknown, epoch = this.#tsp?.snapshot().epoch): Promise<void> {
 		const parsed = TspRendererEvent.safeParse(input);
 		if (!parsed.success) return Promise.reject(new Error("TSP preview: Invalid or main-owned renderer event."));
 		const event = parsed.data;
 		const assertCurrent = (): void => {
 			this.#assertTspInput(generation);
+			if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
 			if (["send", "edit", "undo"].includes(event.ev) && this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
 			if (this.#tspSurfaceGenerations.get(event.sf) !== generation) throw new Error("TSP preview: The target surface belongs to an earlier session.");
 		};
@@ -353,11 +392,13 @@ export class SessionHost {
 	 */
 	submit(text: string, mode: "steer" | "followUp" = "steer"): Promise<void> {
 		const generation = this.state.generation;
+		const epoch = this.#tsp?.snapshot().epoch;
 		if (this.#tsp) {
 			if (mode === "followUp") return Promise.reject(new Error(TSP_PREVIEW_UNAVAILABLE));
 			return this.#applicationInput(async () => {
 				const assertCurrent = (): void => {
 					this.#assertTspInput(generation);
+					if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
 					if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
 				};
 				assertCurrent();
@@ -392,6 +433,7 @@ export class SessionHost {
 	/** Exact-transfer recovery gates composed input, while manual keys, recovery and Stop remain available. */
 	setEditorTransferBlocked(reason: string | null): void {
 		this.#editorTransferBlocked = reason;
+		if (this.#tsp) this.#publishTsp();
 	}
 
 	/** Hold the application input lock across one exact editor transfer and its verification. */
@@ -483,8 +525,16 @@ export class SessionHost {
 		} finally { this.#confirmingWorktree = false; }
 	}
 
-	keys(keys: string): Promise<void> {
-		if (this.#tsp) return Promise.reject(new Error(TSP_PREVIEW_UNAVAILABLE));
+	keys(keys: string, generation?: number, epoch?: number): Promise<void> {
+		if (this.#tsp) {
+			return this.#applicationInput(async () => {
+				if (generation === undefined || epoch === undefined) throw new Error(TSP_PREVIEW_UNAVAILABLE);
+				this.#assertTspInput(generation);
+				if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+				if (keys !== "escape" && keys !== "\x1b" && this.#tsp!.hasReadOnlyHook()) throw new Error("TSP preview: This question is read-only in this preview. If it also appears in chat, answer it there.");
+				this.#writeInput(keys === "escape" ? "\x1b" : keys);
+			});
+		}
 		return this.#applicationInput(async () => {
 			if (!this.#debug) throw new Error("omp is not running");
 			const lines = await this.#debug.screen();
@@ -539,6 +589,11 @@ export class SessionHost {
 		this.#update({ cols, rows });
 	}
 
+	tspResize(cols: number): Promise<void> {
+		if (!Number.isInteger(cols) || cols < 20 || cols > 1000) return Promise.reject(new Error("Invalid omp screen width."));
+		return this.#tsp?.resize(cols) ?? Promise.resolve();
+	}
+
 	serializedScreen(): string {
 		if (this.#tsp) throw new Error(TSP_PREVIEW_UNAVAILABLE);
 		return this.#serializer.serialize();
@@ -547,6 +602,7 @@ export class SessionHost {
 	/** Closing cancels application input immediately. Only an explicit native decision can force-stop omp. */
 	stop(): Promise<void> {
 		this.#closing = true;
+		if (this.#tsp) this.#publishTsp();
 		this.#stopping ??= this.#stop().finally(() => { this.#stopping = null; });
 		return this.#stopping;
 	}
@@ -567,7 +623,9 @@ export class SessionHost {
 			}
 		}
 		if (this.#pty !== pty) return;
-		if (prepared && this.#shutdownStage === "requested") {
+		let exitSent = false;
+		let escapedOverlay: string | null = null;
+		if (!this.#tsp && prepared && this.#shutdownStage === "requested") {
 			if (this.state.tui && this.state.tui.overlays > 0) {
 				await this.#debug?.keys("escape").catch(() => undefined);
 				await sleep(150);
@@ -576,8 +634,28 @@ export class SessionHost {
 		}
 		this.#shutdownProgressAt = Date.now();
 		while (this.#pty === pty) {
+			if (this.#tsp && !exitSent && this.#shutdownStage === "requested") {
+				const surfaces = this.#tsp.snapshot().surfaces;
+				const overlay = openOverlay(surfaces);
+				const screen = screenSurface(surfaces);
+				if (overlay || screen) {
+					const identity = overlay ? `${overlay.surface.open.id}:${overlay.node.id}` : screen!.open.id;
+					if (escapedOverlay !== identity) { escapedOverlay = identity; this.#writeInput("\x1b"); }
+				} else if (this.#tsp.availability().available) {
+					this.#tspExitSurface = composer(surfaces)?.surface.open.id ?? null;
+					try {
+						await this.#tsp.submit("/exit");
+						exitSent = true;
+					} catch (error) {
+						if (!(error instanceof TspInputStateError)) throw error;
+						this.#tspExitSurface = null;
+						// A new overlay or epoch invalidated the queued send. Continue through the
+						// existing shutdown deadline and native force-stop decision.
+					}
+				}
+			}
 			if (this.#nativeBridge?.snapshot.shutdown === "teardown") this.#shutdownProgress("teardown");
-			this.#rememberShutdownProgress();
+			if (!this.#tsp) this.#rememberShutdownProgress();
 			if (this.#confirmingWorktree) this.#shutdownProgressAt = Date.now();
 			const deadline = this.#shutdownStage === "requested" ? STOP_GRACE_MS : STOP_PROGRESS_MS;
 			if (!this.#confirmingWorktree && Date.now() - this.#shutdownProgressAt >= deadline) {
@@ -715,11 +793,7 @@ export class SessionHost {
 		if (!this.#debug || this.state.phase === "exited" || this.#polling) return;
 		this.#polling = true;
 		try {
-			if (this.#tsp) {
-				const { dark, reduceMotion } = this.#tspAppearance();
-				await this.#tsp.theme(dark);
-				await this.#tsp.motion(reduceMotion);
-			}
+			if (this.#tsp) this.#tspAppearanceChanged();
 			const location = this.#nativeBridge?.snapshot.location;
 			if (location) {
 				// omp allocates a path before its first durable write. Empty launches must not become
@@ -849,6 +923,7 @@ export class SessionHost {
 		this.#tspHandshakeTimer = null;
 		clearInterval(this.#focusTimer ?? undefined);
 		this.#focusTimer = null;
+		if (this.#tsp) nativeTheme.removeListener("updated", this.#tspAppearanceChanged);
 		this.#debug?.close();
 		this.#relay.stop();
 		await this.#nativeBridge?.close();

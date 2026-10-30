@@ -119,6 +119,9 @@ export interface HostState {
 	phase: HostPhase;
 	/** Launch-only developer transport. Absent for classic hosts and terminal-follow views. */
 	transport?: "classic" | "tsp";
+	/** Semantic startup failed; the existing chat restart action remains available. */
+	tspFailed?: boolean;
+	tspAvailability?: { available: boolean; reason: string | null };
 	/** Collab control link for the renderer guest client; null until resolved. */
 	link: string | null;
 	/** Increments every time omp opens a new collab room (restart, new, resume, branch). */
@@ -282,8 +285,8 @@ export interface IpcInvokeMap {
 	"host:paste": { args: [hostId: string, text: string]; result: void };
 	/** Type `text` into the TUI and submit it. `followUp` queues it until omp yields instead of steering. */
 	"host:submit": { args: [hostId: string, text: string, mode?: "steer" | "followUp"]; result: void };
-	/** Press a key sequence in the TUI through omp's input pipeline (e.g. "escape", "down down enter"). */
-	"host:keys": { args: [hostId: string, keys: string]; result: void };
+	/** Classic named keys, or semantic raw bytes guarded by collab generation and protocol epoch. */
+	"host:keys": { args: [hostId: string, keys: string, generation?: number, epoch?: number]; result: void };
 	/** Painted TUI screen lines (plain text). */
 	"host:screen": { args: [hostId: string]; result: string[] };
 	"host:resize": { args: [hostId: string, cols: number, rows: number]; result: void };
@@ -292,7 +295,9 @@ export interface IpcInvokeMap {
 	/** Complete semantic documents for an opt-in TSP host; null for classic hosts. */
 	"host:tsp-snapshot": { args: [hostId: string]; result: TspHostSnapshot | null };
 	/** Renderer input shares the application input lock and rejects a stale collab generation. */
-	"host:tsp-event": { args: [hostId: string, generation: number, event: TspRendererEvent]; result: void };
+	"host:tsp-event": { args: [hostId: string, generation: number, event: TspRendererEvent, epoch: number]; result: void };
+	/** Semantic sheet width in mono columns. This does not depend on terminal-sheet rows. */
+	"host:tsp-resize": { args: [hostId: string, cols: number]; result: void };
 	"host:list": { args: []; result: HostState[] };
 
 	"term:start": { args: [options: TerminalStartOptions]; result: string };

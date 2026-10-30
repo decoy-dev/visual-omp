@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionController, SessionView } from "../../state/session";
 import type * as SheetModule from "../../ui/Sheet";
 import type * as ButtonModule from "../../ui/Button";
+import type * as OmpScreenModule from "../tsp/OmpScreenSheet";
 import { TooltipProvider } from "../../ui/Tooltip";
 import "../../i18n";
 import { Shortcuts } from "./Shortcuts";
@@ -24,7 +25,12 @@ vi.mock("../../state/app", () => ({
 	}),
 }));
 vi.mock("./run", () => ({ runCommand: vi.fn() }));
-vi.mock("../../registry/lazy", () => ({ lazyView: () => () => null }));
+vi.mock("../../registry/lazy", async () => {
+	// This test intentionally replaces the lazy loading boundary with the real semantic content.
+	const { OmpScreenSheet } = await vi.importActual<typeof OmpScreenModule>("../tsp/OmpScreenSheet");
+	let count = 0;
+	return { lazyView: () => ++count === 1 ? () => null : OmpScreenSheet };
+});
 vi.mock("../../ui", async () => {
 	// Load the real Radix primitive inside the hoisted mock, without the mocked UI barrel.
 	const { Sheet, SheetContent } = await vi.importActual<typeof SheetModule>("../../ui/Sheet");
@@ -65,7 +71,7 @@ afterEach(async () => { await act(async () => root.unmount()); element.remove();
 it.each(["outline", "nested node"])("closes once from a focused %s through the real sheet and app keyboard boundary", async target => {
 	await act(async () => root.render(sheetTree()));
 	const outline = document.querySelector<HTMLElement>('[role="region"]')!;
-	const focused = target === "outline" ? outline : outline.querySelector<HTMLElement>("ul ul code")!;
+	const focused = target === "outline" ? outline : outline.querySelector<HTMLElement>("summary")!;
 	focused.tabIndex = 0;
 	focused.focus();
 	expect(document.activeElement).toBe(focused);
@@ -84,7 +90,7 @@ it.each(["outline", "nested node"])("closes once from a focused %s through the r
 
 it("initially focuses the scrollable inspector rather than opening the expand button tooltip, then closes on one Escape", async () => {
 	await act(async () => root.render(sheetTree()));
-	const outline = document.querySelector<HTMLElement>('[role="region"][aria-label="omp semantic outline"]')!;
+	const outline = document.querySelector<HTMLElement>('[role="region"][aria-label="omp screen"]')!;
 	const expand = document.querySelector<HTMLButtonElement>('button[aria-label="Expand to full window"]')!;
 	expect(expand).not.toBeNull();
 	expect(outline.tabIndex).toBe(0);
@@ -101,4 +107,23 @@ it("initially focuses the scrollable inspector rather than opening the expand bu
 	await act(async () => root.render(sheetTree()));
 	expect(document.querySelector('[role="dialog"]')).toBeNull();
 	expect(document.querySelector('[role="tooltip"]')).toBeNull();
+});
+
+it("lets a nested shared Select consume Escape before a later Escape dismisses omp's screen", async () => {
+	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? {
+		hostId: "host", generation: 1, epoch: 4, revision: 1, negotiated: true, lifecycle: "live", documentGeneration: 1, availability: { available: false, reason: "Settings open" }, failure: null,
+		surfaces: [{ documentGeneration: 1, open: { id: "s:1", mode: "screen" }, sequence: 1, closed: false, focus: "prefs", suspended: false, settled: [], document: { id: "s:1", k: "col", c: [{ id: "main", k: "col", c: [{ id: "prefs", k: "prefs", p: { title: "Settings", page: "display", pages: [], sections: [{ id: "theme", title: "Theme", rows: [{ id: "theme.dark", label: "Dark theme", control: { k: "choice", value: "a", options: [{ value: "a", label: "A" }, { value: "b", label: "B" }] } }] }] } }] }] } }],
+	} : undefined);
+	await act(async () => root.render(sheetTree()));
+	const trigger = document.querySelector<HTMLElement>('[role="combobox"][aria-label="Dark theme"]')!;
+	await act(async () => trigger.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
+	const popup = document.querySelector<HTMLElement>(".tsp-select-popup")!;
+	expect(popup).not.toBeNull();
+	await act(async () => popup.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+	expect(document.querySelector(".tsp-select-popup")).toBeNull();
+	expect(fake.invoke.mock.calls.some(call => call[0] === "host:keys")).toBe(false);
+	expect(fake.closeTerminal).not.toHaveBeenCalled();
+	await act(async () => document.querySelector('[role="region"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+	expect(fake.invoke).toHaveBeenCalledWith("host:keys", "host", "escape", 1, 4);
+	expect(fake.invoke.mock.calls.filter(call => call[0] === "host:keys")).toHaveLength(1);
 });

@@ -1,0 +1,9 @@
+{"verb":"r","body":{"r":"hello","v":1,"term":"visual-omp","kinds":["col","row","card","section","rule","spacer","text","md","code","diff","ansi","math","image","media","kv","table","tree","json","badge","kbd","icon","spinner","shimmer","elapsed","progress","rate","list","item","tabs","editor","input","status","seg","overlay","toast","rows","picker","prefs","tool","checklist","agent","chart","meter","effort"],"features":[],"apc":65536,"credits":2,"cols":110,"dark":false,"reduceMotion":true}}
+{"verb":"e","body":{"ev":"ack","sf":"s:1","s":1}}
+{"verb":"e","body":{"ev":"ack","sf":"s:1","s":2}}
+{"verb":"e","body":{"ev":"send","sf":"s:1","id":"g.line/input","text":"/jobs"}}
+{"verb":"e","body":{"ev":"ack","sf":"s:1","s":3}}
+{"keys":"\u001b"}
+{"verb":"e","body":{"ev":"ack","sf":"s:1","s":4}}
+{"verb":"e","body":{"ev":"send","sf":"s:1","id":"g.line/input","text":"/exit"}}
+{"verb":"e","body":{"ev":"ack","sf":"s:1","s":5}}

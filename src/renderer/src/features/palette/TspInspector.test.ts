@@ -8,7 +8,7 @@ import "../../i18n";
 import { TspInspector } from "./TspInspector";
 
 const snapshot = (revision: number, generation = 1, hostId = "host"): TspHostSnapshot => ({
-	hostId, generation, revision, negotiated: true, lifecycle: "live", documentGeneration: generation, failure: null,
+	hostId, generation, epoch: 1, availability: { available: true, reason: null }, revision, negotiated: true, lifecycle: "live", documentGeneration: generation, failure: null,
 	surfaces: [{
 		documentGeneration: generation,
 		open: { id: "surface", mode: "screen", title: `Revision ${revision}`, role: "test", adopt: true },
