@@ -91,6 +91,44 @@ describe("first-run setup preferences", () => {
 	});
 });
 
+describe("sidebar sort preferences", () => {
+	it.each([null, JSON.stringify({ theme: "dark" })])("defaults to grouped recent activity without a stored choice", async contents => {
+		fake.contents = contents;
+		const { getPrefs } = await import("./prefs");
+		expect(getPrefs().sidebarSort).toEqual({ by: "recent", groupByProject: true });
+	});
+
+	it.each([
+		[null, { by: "recent", groupByProject: true }],
+		["name", { by: "recent", groupByProject: true }],
+		[{ by: "future", groupByProject: false }, { by: "recent", groupByProject: false }],
+		[{ by: "created", groupByProject: "off" }, { by: "created", groupByProject: true }],
+		[{ by: "name" }, { by: "name", groupByProject: true }],
+	])("normalizes unknown or missing fields in %j independently", async (sidebarSort, expected) => {
+		fake.contents = JSON.stringify({ sidebarSort });
+		const { getPrefs } = await import("./prefs");
+		expect(getPrefs().sidebarSort).toEqual(expected);
+	});
+
+	it.each(["recent", "name", "created"] as const)("persists flat %s ordering across reloads", async by => {
+		const { setPrefs, flushPrefs } = await import("./prefs");
+		setPrefs({ sidebarSort: { by, groupByProject: false } });
+		await flushPrefs();
+		vi.resetModules();
+		const { getPrefs } = await import("./prefs");
+		expect(getPrefs().sidebarSort).toEqual({ by, groupByProject: false });
+	});
+
+	it("normalizes an invalid write and preserves the choice when unrelated preferences change", async () => {
+		const { getPrefs, setPrefs, flushPrefs } = await import("./prefs");
+		setPrefs({ sidebarSort: { by: "future", groupByProject: false } as never });
+		expect(getPrefs().sidebarSort).toEqual({ by: "recent", groupByProject: false });
+		setPrefs({ theme: "dark" });
+		await flushPrefs();
+		expect(JSON.parse(fake.contents!).sidebarSort).toEqual({ by: "recent", groupByProject: false });
+	});
+});
+
 // Static imports cannot exercise persisted preferences across module initialization boundaries.
 describe("rollback preferences", () => {
 	it.each([null, JSON.stringify({ theme: "dark" })])("defaults the update skip to null for a profile without it", async contents => {

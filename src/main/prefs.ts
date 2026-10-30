@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { app } from "electron";
-import type { AppPreferences } from "@shared/ipc";
+import { DEFAULT_SIDEBAR_SORT, type AppPreferences, type SidebarSort } from "@shared/ipc";
 import type { NewUserApproval } from "./services/approval-default";
 import { broadcast } from "./ipc";
 
@@ -27,6 +27,7 @@ const DEFAULTS: AppPreferences = {
 	setupCompleted: true,
 	tourCompleted: false,
 	pinnedProjects: [],
+	sidebarSort: DEFAULT_SIDEBAR_SORT,
 	archivedSessions: [],
 	extraProjects: [],
 	projectColors: {},
@@ -38,9 +39,18 @@ const file = join(app.getPath("userData"), "preferences.json");
 let current: StoredPreferences = load();
 let pendingWrite: Promise<void> = Promise.resolve();
 
+function sidebarSort(value: unknown): SidebarSort {
+	const stored = value && typeof value === "object" ? value as Partial<SidebarSort> : {};
+	return {
+		by: stored.by === "name" || stored.by === "created" || stored.by === "recent" ? stored.by : DEFAULT_SIDEBAR_SORT.by,
+		groupByProject: typeof stored.groupByProject === "boolean" ? stored.groupByProject : DEFAULT_SIDEBAR_SORT.groupByProject,
+	};
+}
+
 function load(): StoredPreferences {
 	try {
-		return { appUpdateSkipThrough: null, ...DEFAULTS, ...(JSON.parse(readFileSync(file, "utf8")) as Partial<StoredPreferences>) };
+		const stored = JSON.parse(readFileSync(file, "utf8")) as Partial<StoredPreferences>;
+		return { appUpdateSkipThrough: null, ...DEFAULTS, ...stored, sidebarSort: sidebarSort(stored.sidebarSort) };
 	} catch (error) {
 		// No preferences file yet: a fresh profile, so the new-user approval default is still to run.
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { appUpdateSkipThrough: null, ...DEFAULTS, setupCompleted: false, newUserApproval: "pending" };
@@ -54,7 +64,12 @@ export function getPrefs(): StoredPreferences {
 
 /** Merge `patch`, persist atomically, and notify renderers. */
 export function setPrefs(patch: Partial<StoredPreferences>): StoredPreferences {
-	current = { ...current, ...patch, textScale: Math.min(130, Math.max(90, patch.textScale ?? current.textScale)) };
+	current = {
+		...current,
+		...patch,
+		sidebarSort: sidebarSort(patch.sidebarSort === undefined ? current.sidebarSort : patch.sidebarSort),
+		textScale: Math.min(130, Math.max(90, patch.textScale ?? current.textScale)),
+	};
 	const snapshot = JSON.stringify(current, null, 2);
 	// A failed flush must still allow a subsequent write to restore the previous rollback boundary.
 	pendingWrite = pendingWrite.catch(() => {}).then(async () => {

@@ -22,6 +22,15 @@
 		"version": "v{{version}}",
 		"current": "Current chats",
 		"projects": "Projects",
+		"sort": {
+			"label": "Sort projects and chats",
+			"by": "Sort by",
+			"view": "View",
+			"recent": "Recent activity",
+			"name": "Name",
+			"created": "Date created",
+			"groupByProject": "Group by project"
+		},
 		"archived": "Archived",
 		"usage": "Usage & limits",
 		"settings": "Settings",
@@ -29,6 +38,7 @@
 		"noProjects": "No projects yet. A project is a folder that omp works in.",
 		"newProject": "Create project",
 		"noChats": "No chats yet. New chats in this project appear here.",
+		"noFlatChats": "No chats yet. Start a chat to add it to this list.",
 		"noResults": "No chats match '{{q}}'.",
 		"expand": "Show chats in {{name}}",
 		"collapse": "Hide chats in {{name}}",

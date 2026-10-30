@@ -3,6 +3,7 @@ import * as DM from "@radix-ui/react-dropdown-menu";
 import { CaretRight, Check } from "@phosphor-icons/react";
 import type { ComponentPropsWithRef, ReactNode } from "react";
 import { cn } from "./cn";
+import { SwitchIndicator } from "./Switch";
 import {
 	menuCheckSlot,
 	menuContent,
@@ -87,17 +88,22 @@ export function MenuItem({ icon, shortcut, danger, className, children, ...rest 
 
 export interface MenuCheckboxItemProps extends ComponentPropsWithRef<typeof DM.CheckboxItem> {
 	shortcut?: string;
+	/** A trailing passive switch makes independent on/off settings distinct from radio choices. */
+	indicator?: "check" | "switch";
 }
 
-export function MenuCheckboxItem({ shortcut, className, children, ...rest }: MenuCheckboxItemProps) {
+export function MenuCheckboxItem({ shortcut, indicator = "check", checked, className, children, ...rest }: MenuCheckboxItemProps) {
 	return (
-		<DM.CheckboxItem className={cn(menuItem, className)} {...rest}>
-			<span className={menuCheckSlot}>
-				<DM.ItemIndicator>
-					<Check className="size-4" aria-hidden />
-				</DM.ItemIndicator>
-			</span>
+		<DM.CheckboxItem checked={checked} className={cn(menuItem, className)} {...rest}>
+			{indicator === "check" && (
+				<span className={menuCheckSlot}>
+					<DM.ItemIndicator>
+						<Check className="size-4" aria-hidden />
+					</DM.ItemIndicator>
+				</span>
+			)}
 			<ItemBody shortcut={shortcut}>{children}</ItemBody>
+			{indicator === "switch" && <SwitchIndicator checked={checked === true} />}
 		</DM.CheckboxItem>
 	);
 }

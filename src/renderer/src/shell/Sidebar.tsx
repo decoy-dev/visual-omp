@@ -18,11 +18,13 @@ import {
 	PushPin,
 	PushPinSlash,
 	Question,
+	SortAscending,
 	Trash,
 	X,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type CSSProperties, createContext, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useState } from "react";
+import { type CSSProperties, createContext, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
+import { DEFAULT_SIDEBAR_SORT, type SidebarSort } from "@shared/ipc";
 import { useTranslation } from "react-i18next";
 import { getCommand } from "../registry/commands";
 import { type AppState, closeChat, controllerFor, SIDEBAR_ID, useApp } from "../state/app";
@@ -43,8 +45,11 @@ import {
 	IconButton,
 	Kbd,
 	Menu,
+	MenuCheckboxItem,
 	MenuContent,
+	MenuGroup,
 	MenuItem,
+	MenuLabel,
 	MenuRadioGroup,
 	MenuRadioItem,
 	MenuSeparator,
@@ -65,7 +70,8 @@ import { PROJECT_COLOR_CHOICES, ProjectColorDot } from "../features/projects/Pro
 import { type ProjectColor, projectColorValue, setProjectColor, useProjectColor } from "../state/projectColors";
 import { ChatStatusMark } from "./ChatStatusMark";
 import { chatStatus, chatTitle, shortAgo, useModifierHeld, useNow, useSessionView } from "./hooks";
-import { archivedChats, type CurrentChat, currentChats, type SidebarChat, type SidebarGroup, type SidebarInput, sidebarGroups } from "./sidebarRows";
+import { archivedChats, type CurrentChat, currentChats, flatChats, type ProjectChat, type SidebarChat, type SidebarGroup, type SidebarInput, sidebarGroups } from "./sidebarRows";
+import { sidebarTitles } from "./sidebarTitles";
 import { TrashChatDialog } from "./trash";
 import { RenameChatDialog } from "./RenameChatDialog";
 import { SessionTitle, toast } from "../ui";
@@ -91,16 +97,18 @@ export function focusChatSearch(): void {
 
 type SidebarState = Pick<AppState, "projects" | "sessionsByProject" | "tabs" | "prefs" | "expandedProjects" | "expandedChatLists" | "search">;
 
-function sidebarInput(state: SidebarState): SidebarInput {
+function sidebarInput(state: SidebarState, titles: ReadonlyMap<string, string | null>, labels: Pick<SidebarInput, "untitledTitle" | "newChatTitle">): SidebarInput {
 	return {
 		projects: state.projects,
 		sessionsByProject: state.sessionsByProject,
 		tabs: state.tabs,
 		pinnedProjects: state.prefs?.pinnedProjects ?? [],
+		sortBy: state.prefs?.sidebarSort?.by ?? DEFAULT_SIDEBAR_SORT.by,
 		expanded: state.expandedProjects,
 		showAll: state.expandedChatLists,
 		query: state.search,
-		openTitle: tabId => chatTitle(controllerFor(tabId)?.getSnapshot() ?? null, null),
+		...labels,
+		openTitle: tabId => titles.get(tabId) ?? null,
 	};
 }
 
@@ -153,12 +161,13 @@ function runCommand(id: string): void {
 }
 
 /** Chat rows slide into their new place on reorder; new rows fade and rise, removed rows fade out. */
-function RowList({ chats, now }: { chats: SidebarChat[]; now: number }): ReactNode {
+function RowList({ chats, now }: { chats: (SidebarChat | ProjectChat)[]; now: number }): ReactNode {
+	const reduced = useMotionReduced();
 	return (
 		<AnimatePresence initial={false} mode="popLayout">
 			{chats.map(chat => (
-				<motion.div key={chat.key} layout="position" initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring.snappy}>
-					<ChatRow chat={chat} now={now} />
+				<motion.div key={chat.key} layout={reduced ? false : "position"} initial={{ opacity: 0, y: reduced ? 0 : -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring.snappy}>
+					{"projectName" in chat ? <ChatRow variant="flat" chat={chat} now={now} /> : <ChatRow chat={chat} now={now} />}
 				</motion.div>
 			))}
 		</AnimatePresence>
@@ -167,6 +176,7 @@ function RowList({ chats, now }: { chats: SidebarChat[]; now: number }): ReactNo
 
 type ChatRowProps =
 	| { variant?: "tree"; chat: SidebarChat; now: number }
+	| { variant: "flat"; chat: ProjectChat; now: number }
 	/** A Current chats row: project name as meta, ⌘1-⌘9 `number` shown while ⌘/Ctrl is held. */
 	| { variant: "current"; chat: CurrentChat; now: number; number: number | null; showNumber: boolean };
 
@@ -177,6 +187,8 @@ type ChatRowProps =
 function ChatRow(props: ChatRowProps): ReactNode {
 	const { chat, now } = props;
 	const current = props.variant === "current";
+	const flat = props.variant === "flat";
+	const projectColor = useProjectColor(flat ? props.chat.projectPath : "");
 	const { t } = useTranslation("shell");
 	const session = chat.kind === "session" ? chat.session : null;
 	const tabId = chat.tabId;
@@ -264,7 +276,7 @@ function ChatRow(props: ChatRowProps): ReactNode {
 					<div
 						className={cn(
 							"group relative isolate flex h-8 items-center gap-2 rounded-md pr-1 text-md",
-							current ? "@container/row pl-row" : "pl-7",
+							current || flat ? "@container/row pl-row" : "pl-7",
 							current && active ? "font-medium text-fg [--mark-overlay:var(--pill)]" : cn("text-fg-muted hover:bg-hover hover:text-fg hover:[--mark-overlay:var(--hover)]", rowMenuOpen),
 						)}
 					>
@@ -282,7 +294,7 @@ function ChatRow(props: ChatRowProps): ReactNode {
 							className={cn(
 								"flex-auto shrink-100 truncate text-left outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:outline-2 focus-visible:after:outline-ring",
 								// The title gives way first, down to 60% of a Current chats row; then the project name shrinks.
-								current ? "min-w-3/5" : "min-w-0",
+								current || flat ? "min-w-3/5" : "min-w-0",
 								unseen && "font-semibold text-fg",
 							)}
 							data-row-title
@@ -305,18 +317,19 @@ function ChatRow(props: ChatRowProps): ReactNode {
 							<SessionTitle title={title} />
 						</button>
 						{!current && pinned && <PushPin className="size-3 shrink-0 text-fg-faint" aria-hidden />}
-						{current ? (
-							props.showNumber && props.number ? (
+						{current || flat ? (
+							current && props.showNumber && props.number ? (
 								<Kbd className={cn("shrink-0 group-hover:hidden group-focus-within:hidden", hideWhileMenuOpen)}>{`${MOD}${props.number}`}</Kbd>
 							) : (
 								// Up to 72px of project name; hidden when fewer than about six characters would fit beside the title.
 								<span
 									className={cn(
-										"max-w-18 min-w-0 truncate font-mono text-xs text-fg-faint group-hover:hidden group-focus-within:hidden @max-[10.875rem]/row:hidden",
+										"flex max-w-18 min-w-0 items-center gap-1 font-mono text-xs text-fg-faint group-hover:hidden group-focus-within:hidden @max-[10.875rem]/row:hidden",
 										hideWhileMenuOpen,
 									)}
 								>
-									{props.chat.projectName}
+									{flat && projectColor && <ProjectColorDot color={projectColor} />}
+									<span className="truncate">{props.chat.projectName}</span>
 								</span>
 							)
 						) : (
@@ -364,6 +377,7 @@ function ProjectGroup({ group, now, filtering }: ProjectGroupProps): ReactNode {
 	const active = useApp(state => state.activeProject === project.path && state.view === "project");
 	const pinned = useApp(state => state.prefs?.pinnedProjects.includes(project.path) ?? false);
 	const color = useProjectColor(project.path);
+	const reduced = useMotionReduced();
 
 	const togglePin = () => {
 		const prefs = useApp.getState().prefs;
@@ -416,7 +430,7 @@ function ProjectGroup({ group, now, filtering }: ProjectGroupProps): ReactNode {
 	);
 
 	return (
-		<motion.div role="group" aria-label={project.name} layout="position" transition={spring.gentle}>
+		<motion.div role="group" aria-label={project.name} layout={reduced ? false : "position"} transition={spring.gentle}>
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
 					<div
@@ -504,6 +518,44 @@ function AddProjectMenu(): ReactNode {
 						</MenuItem>
 					);
 				})}
+			</MenuContent>
+		</Menu>
+	);
+}
+
+/** Sorting applies only to Projects; Current chats keeps its opening order and shortcut numbers. */
+function SidebarSortMenu({ sort }: { sort: SidebarSort }): ReactNode {
+	const { t } = useTranslation("shell");
+	const labelId = useId();
+	const viewLabelId = useId();
+	const update = (patch: Partial<SidebarSort>) => {
+		const current = useApp.getState().prefs?.sidebarSort ?? DEFAULT_SIDEBAR_SORT;
+		void useApp.getState().setPrefs({ sidebarSort: { ...current, ...patch } });
+	};
+	return (
+		<Menu>
+			<MenuTrigger asChild>
+				<IconButton label={t("sidebar.sort.label")} icon={<SortAscending />} size="sm" />
+			</MenuTrigger>
+			<MenuContent align="end">
+				<MenuLabel id={labelId}>{t("sidebar.sort.by")}</MenuLabel>
+				<MenuRadioGroup aria-labelledby={labelId} value={sort.by} onValueChange={by => update({ by: by as SidebarSort["by"] })}>
+					<MenuRadioItem value="recent">{t("sidebar.sort.recent")}</MenuRadioItem>
+					<MenuRadioItem value="name">{t("sidebar.sort.name")}</MenuRadioItem>
+					<MenuRadioItem value="created">{t("sidebar.sort.created")}</MenuRadioItem>
+				</MenuRadioGroup>
+				<MenuSeparator />
+				<MenuLabel id={viewLabelId}>{t("sidebar.sort.view")}</MenuLabel>
+				<MenuGroup aria-labelledby={viewLabelId}>
+					<MenuCheckboxItem
+						indicator="switch"
+						checked={sort.groupByProject}
+						onCheckedChange={checked => update({ groupByProject: checked === true })}
+						onSelect={event => event.preventDefault()}
+					>
+						{t("sidebar.sort.groupByProject")}
+					</MenuCheckboxItem>
+				</MenuGroup>
 			</MenuContent>
 		</Menu>
 	);
@@ -709,7 +761,11 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 	const projects = useApp(state => state.projects);
 	const sessionsByProject = useApp(state => state.sessionsByProject);
 	const tabs = useApp(state => state.tabs);
+	const labels = useMemo(() => ({ untitledTitle: t("sidebar.untitled"), newChatTitle: t("chat.newTitle") }), [t]);
+	const titleSource = useMemo(() => sidebarTitles(tabs, sessionsByProject, controllerFor, labels), [tabs, sessionsByProject, labels]);
+	const titles = useSyncExternalStore(titleSource.subscribe, titleSource.getSnapshot);
 	const prefs = useApp(state => state.prefs);
+	const sort = prefs?.sidebarSort ?? DEFAULT_SIDEBAR_SORT;
 	const expandedProjects = useApp(state => state.expandedProjects);
 	const expandedChatLists = useApp(state => state.expandedChatLists);
 	const search = useApp(state => state.search);
@@ -725,18 +781,18 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 	const query = search.trim().toLowerCase();
 	const filtering = query.length > 0;
 
-	// Current chats look up their saved chat (title, menu) in their project's list, and search looks through every
-	// project, so load the chat lists not loaded yet.
+	// Flat lists, created ordering and search need every saved list, including collapsed projects.
 	useEffect(() => {
 		const state = useApp.getState();
-		const paths = [...tabs.map(tab => tab.projectPath), ...(filtering ? state.projects.map(project => project.path) : [])];
+		const allProjects = filtering || !sort.groupByProject || sort.by === "created";
+		const paths = [...tabs.map(tab => tab.projectPath), ...(allProjects ? projects.map(project => project.path) : [])];
 		for (const path of new Set(paths)) if (!state.sessionsByProject[path]) void state.loadSessions(path);
-	}, [filtering, tabs]);
+	}, [filtering, tabs, projects, sort.groupByProject, sort.by]);
 
-	const { groups, archived, current } = useMemo(() => {
-		const input = sidebarInput({ projects, sessionsByProject, tabs, prefs, expandedProjects, expandedChatLists, search });
-		return { groups: sidebarGroups(input), archived: archivedChats(input), current: currentChats(input) };
-	}, [projects, sessionsByProject, tabs, prefs, expandedProjects, expandedChatLists, search]);
+	const { groups, flat, archived, current } = useMemo(() => {
+		const input = sidebarInput({ projects, sessionsByProject, tabs, prefs, expandedProjects, expandedChatLists, search }, titles, labels);
+		return { groups: sidebarGroups(input), flat: sort.groupByProject ? [] : flatChats(input), archived: archivedChats(input), current: currentChats(input) };
+	}, [projects, sessionsByProject, tabs, prefs, expandedProjects, expandedChatLists, search, sort.groupByProject, titles, labels]);
 
 	return (
 		<IndicatorScope.Provider value={scope}>
@@ -788,6 +844,7 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 								<SectionLabel as="h2" className="flex-1">
 									{t("sidebar.projects")}
 								</SectionLabel>
+								<SidebarSortMenu sort={sort} />
 								<AddProjectMenu />
 							</div>
 							{projects.length === 0 && groups.length === 0 ? (
@@ -800,8 +857,10 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 										</Button>
 									}
 								/>
-							) : groups.length === 0 ? (
-								<p className="px-row text-sm text-fg-faint">{t("sidebar.noResults", { q: search.trim() })}</p>
+							) : (sort.groupByProject ? groups.length === 0 : flat.length === 0) ? (
+								<p className="px-row text-sm text-fg-faint">{filtering ? t("sidebar.noResults", { q: search.trim() }) : t("sidebar.noFlatChats")}</p>
+							) : !sort.groupByProject ? (
+								<RowList chats={flat} now={now} />
 							) : (
 								groups.map(group => <ProjectGroup key={group.project.path} group={group} now={now} filtering={filtering} />)
 							)}

@@ -179,6 +179,13 @@ export type ThemePreference = "light" | "dark" | "system";
 export const PROJECT_COLORS = ["red", "orange", "yellow", "green", "blue", "purple", "gray"] as const;
 export type ProjectColor = (typeof PROJECT_COLORS)[number];
 
+export interface SidebarSort {
+	by: "recent" | "name" | "created";
+	groupByProject: boolean;
+}
+
+export const DEFAULT_SIDEBAR_SORT: SidebarSort = { by: "recent", groupByProject: true };
+
 export interface AppPreferences {
 	theme: ThemePreference;
 	/** Percent, 90–130. */
@@ -193,6 +200,8 @@ export interface AppPreferences {
 	setupCompleted: boolean;
 	tourCompleted: boolean;
 	pinnedProjects: string[];
+	/** Projects section ordering; Current chats retains its own open order. */
+	sidebarSort: SidebarSort;
 	archivedSessions: string[];
 	/** Extra project folders the user opened that have no sessions yet. */
 	extraProjects: string[];

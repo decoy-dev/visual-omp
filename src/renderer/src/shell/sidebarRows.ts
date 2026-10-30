@@ -1,9 +1,9 @@
 /**
  * Sidebar rows in stable open order, which also defines numbered shortcuts and chat cycling. Current chats
  * visually groups unseen results first without changing those numbers. Projects lists every chat, open or
- * saved, under its project.
+ * saved, either under its project or in one sorted list.
  */
-import type { ProjectSummary, SessionSummary } from "@shared/ipc";
+import type { ProjectSummary, SessionSummary, SidebarSort } from "@shared/ipc";
 
 /** Chats a collapsed list shows before "Show N more chats". */
 export const COLLAPSED_LIMIT = 8;
@@ -18,7 +18,7 @@ export interface OpenChatRef {
 /**
  * One chat row. `session`: a saved chat, with the open chat showing it when there is one. `open`: an open
  * chat the project's saved list does not include yet (a new chat before omp writes its file, or a file the
- * list has not picked up); these sit at the top of their project.
+ * list has not included). Unknown dates follow saved chats in created order and lead them in recent order.
  */
 export type SidebarChat =
 	| { kind: "session"; key: string; session: SessionSummary; tabId: string | null }
@@ -46,11 +46,14 @@ export interface SidebarInput {
 	sessionsByProject: Readonly<Record<string, readonly SessionSummary[]>>;
 	tabs: readonly OpenChatRef[];
 	pinnedProjects: readonly string[];
+	sortBy?: SidebarSort["by"];
 	/** Projects whose chats are showing. */
 	expanded: readonly string[];
 	/** Projects whose whole chat list is showing ("Show N more chats" was used). */
 	showAll: readonly string[];
 	query: string;
+	untitledTitle: string;
+	newChatTitle: string;
 	/** Live title of an open chat, for search; null while it has none. */
 	openTitle(tabId: string): string | null;
 }
@@ -68,20 +71,36 @@ export function matchesSession(session: SessionSummary, query: string): boolean 
 	return `${session.title ?? ""} ${session.preview ?? ""}`.toLowerCase().includes(query);
 }
 
-/**
- * Project groups in sidebar order, then a group for each removed project that still has open chats. Groups with
- * nothing to show while searching are left out.
- */
-export function sidebarGroups(input: SidebarInput): SidebarGroup[] {
-	const query = input.query.trim().toLowerCase();
-	const filtering = query.length > 0;
+const names = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" });
+
+function compareChats(a: SidebarChat, b: SidebarChat, input: SidebarInput): number {
+	const savedA = a.kind === "session" ? a.session : null;
+	const savedB = b.kind === "session" ? b.session : null;
+	const pins = Number(savedB?.pinned ?? false) - Number(savedA?.pinned ?? false);
+	if (pins) return pins;
+	if (input.sortBy === "name") {
+		const title = (chat: SidebarChat) => (chat.tabId ? input.openTitle(chat.tabId) : null)
+			?? (chat.kind === "session" ? chat.session.title ?? chat.session.preview ?? input.untitledTitle : input.newChatTitle);
+		return names.compare(title(a), title(b));
+	}
+	if (input.sortBy === "created") {
+		const createdA = savedA?.createdAt ?? Infinity;
+		const createdB = savedB?.createdAt ?? Infinity;
+		return createdA === createdB ? 0 : createdA < createdB ? -1 : 1;
+	}
+	const recentA = savedA?.updatedAt ?? Infinity;
+	const recentB = savedB?.updatedAt ?? Infinity;
+	return recentA === recentB ? 0 : recentA > recentB ? -1 : 1;
+}
+
+/** Complete project lists in source order, before sorting, searching or collapsing. */
+function projectChats(input: SidebarInput): SidebarGroup[] {
 	const tabByFile = new Map(input.tabs.flatMap(tab => (tab.sessionFile ? [[tab.sessionFile, tab.id] as const] : [])));
 	const listedPaths = new Set(input.projects.map(project => project.path));
 	const removed = [...new Set(input.tabs.map(tab => tab.projectPath))]
 		.filter(path => !listedPaths.has(path))
 		.map((path): ProjectSummary => ({ path, name: folderName(path), sessionCount: 0, lastActivity: 0, exists: true }));
-	const groups: SidebarGroup[] = [];
-	for (const project of [...sortProjects(input.projects, input.pinnedProjects), ...removed]) {
+	return [...input.projects, ...removed].map(project => {
 		const isRemoved = !listedPaths.has(project.path);
 		const listed = input.sessionsByProject[project.path] ?? [];
 		const files = new Set(listed.flatMap(session => [session.file, ...(session.previousSessionFiles ?? [])]));
@@ -90,33 +109,65 @@ export function sidebarGroups(input: SidebarInput): SidebarGroup[] {
 			.map(tab => ({ kind: "open", key: `open:${tab.id}`, tabId: tab.id }));
 		const saved: SidebarChat[] = listed
 			.filter(session => !session.archived)
-			.sort((a, b) => Number(b.pinned ?? false) - Number(a.pinned ?? false) || b.updatedAt - a.updatedAt)
 			.map(session => ({
 				kind: "session", key: session.file, session,
 				tabId: [session.file, ...(session.previousSessionFiles ?? [])].map(file => tabByFile.get(file)).find(Boolean) ?? null,
 			}));
-		let chats = [...unlisted, ...saved];
-		if (isRemoved) chats = chats.filter(chat => chat.tabId !== null);
-		const total = chats.length;
-		if (query) {
-			chats = chats.filter(chat =>
-				chat.kind === "session" ? matchesSession(chat.session, query) : (input.openTitle(chat.tabId)?.toLowerCase().includes(query) ?? false),
-			);
+		const chats = [...unlisted, ...saved].filter(chat => !isRemoved || chat.tabId !== null);
+		return { project, chats, total: chats.length, more: 0, open: isRemoved || input.expanded.includes(project.path), removed: isRemoved };
+	});
+}
+
+function matchesChat(chat: SidebarChat, query: string, input: SidebarInput): boolean {
+	return (chat.kind === "session" && matchesSession(chat.session, query))
+		|| (chat.tabId !== null && (input.openTitle(chat.tabId)?.toLowerCase().includes(query) ?? false));
+}
+
+/**
+ * Pins lead each sorted set; equal keys retain source order. Created projects use their earliest loaded saved
+ * chat, including archived chats. Projects without a known creation date follow dated projects.
+ */
+export function sidebarGroups(input: SidebarInput): SidebarGroup[] {
+	const query = input.query.trim().toLowerCase();
+	const pins = new Set(input.pinnedProjects);
+	const displayed = projectChats(input);
+	const created = new Map(displayed.map(({ project }) => [
+		project.path,
+		(input.sessionsByProject[project.path] ?? []).reduce((earliest, session) => Math.min(earliest, session.createdAt), Infinity),
+	]));
+	const groups = displayed.sort((a, b) => {
+		const pinned = Number(pins.has(b.project.path)) - Number(pins.has(a.project.path));
+		if (pinned) return pinned;
+		if (input.sortBy === "name") return names.compare(a.project.name, b.project.name);
+		if (input.sortBy === "created") {
+			const dateA = created.get(a.project.path) ?? Infinity;
+			const dateB = created.get(b.project.path) ?? Infinity;
+			return dateA === dateB ? 0 : dateA < dateB ? -1 : 1;
 		}
-		const nameMatch = query.length > 0 && project.name.toLowerCase().includes(query);
-		if (filtering && chats.length === 0 && !nameMatch) continue;
-		const all = filtering || isRemoved || input.showAll.includes(project.path);
+		return b.project.lastActivity - a.project.lastActivity;
+	});
+	return groups.flatMap(group => {
+		let chats = group.chats.sort((a, b) => compareChats(a, b, input));
+		const nameMatch = query.length > 0 && group.project.name.toLowerCase().includes(query);
+		if (query && !nameMatch) chats = chats.filter(chat => matchesChat(chat, query, input));
+		if (query && chats.length === 0 && !nameMatch) return [];
+		const all = Boolean(query) || group.removed || input.showAll.includes(group.project.path);
 		const shown = all ? chats : chats.slice(0, COLLAPSED_LIMIT);
-		groups.push({
-			project,
-			chats: shown,
-			more: chats.length - shown.length,
-			total,
-			open: filtering || isRemoved || input.expanded.includes(project.path),
-			removed: isRemoved,
-		});
-	}
-	return groups;
+		return [{ ...group, chats: shown, more: chats.length - shown.length, open: Boolean(query) || group.open }];
+	});
+}
+
+/** A flat Projects row keeps the same actions and status, with its project shown as trailing metadata. */
+export type ProjectChat = SidebarChat & { projectPath: string; projectName: string };
+
+/** All available chats across projects, independent of disclosure and per-project row limits. */
+export function flatChats(input: SidebarInput): ProjectChat[] {
+	const query = input.query.trim().toLowerCase();
+	return projectChats(input)
+		.flatMap(group => group.chats
+			.filter(chat => !query || group.project.name.toLowerCase().includes(query) || matchesChat(chat, query, input))
+			.map(chat => ({ ...chat, projectPath: group.project.path, projectName: group.project.name })))
+		.sort((a, b) => compareChats(a, b, input));
 }
 
 /** Archived chats across every loaded project, newest first, under the same search. */

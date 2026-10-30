@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+#### New
+
+- The sidebar can sort projects and chats by recent activity, name or creation date. Use the sort button beside **Projects** to choose an order, and turn **Group by project** off to list non-archived chats together across projects. Both settings are saved.
+
 ## [0.7.2] - 2026-10-30
 
 visual-omp 0.7.2 fixes Copy actions, which failed with a clipboard permission error in 0.7.0 and 0.7.1.
