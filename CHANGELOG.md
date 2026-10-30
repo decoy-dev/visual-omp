@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+#### Fixed
+
+- Copy actions no longer fail with a clipboard permission error, which began in 0.7.0. Clipboard writes are restricted to the app's main document, and clipboard reads remain blocked.
+
 ## [0.7.1] - 2026-10-30
 
 visual-omp 0.7.1 lets you return to an earlier version or reinstall the current one, shows chat status as icons, and displays only the latest idle recap.

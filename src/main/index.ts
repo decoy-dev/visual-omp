@@ -14,7 +14,7 @@ import { stopWatchingSessions, watchSessions } from "./omp/sessions";
 import { getPrefs } from "./prefs";
 import { quitAction } from "./quitFlow";
 import { killAllTerminals } from "./terminals";
-import { allowsMicrophone, isAppUrl, setAppRendererUrl } from "./services/app-origin";
+import { allowsAppPermission, isAppUrl, setAppRendererUrl } from "./services/app-origin";
 
 let mainWindow: BrowserWindow | null = null;
 /** Set once the renderer confirmed (or had nothing running) so the next quit proceeds. */
@@ -53,10 +53,10 @@ function createWindow(): void {
 	setAppRendererUrl(rendererUrl);
 	const contents = mainWindow.webContents;
 	contents.session.setPermissionCheckHandler((requester, permission, _origin, details) =>
-		requester === contents && isAppUrl(requester.getURL()) && allowsMicrophone(permission, details),
+		requester === contents && isAppUrl(requester.getURL()) && allowsAppPermission(permission, details),
 	);
 	contents.session.setPermissionRequestHandler((requester, permission, callback, details) => {
-		callback(requester === contents && isAppUrl(requester.getURL()) && allowsMicrophone(permission, details));
+		callback(requester === contents && isAppUrl(requester.getURL()) && allowsAppPermission(permission, details));
 	});
 	attachAttentionWindow(mainWindow);
 	// Radix target menus prevent the DOM event, so only unhandled text reaches this native menu.

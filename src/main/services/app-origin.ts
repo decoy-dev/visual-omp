@@ -28,3 +28,18 @@ export function allowsMicrophone(permission: string, details: { isMainFrame: boo
 		? details.mediaTypes.length > 0 && details.mediaTypes.every(type => type === "audio")
 		: details.mediaType === "audio";
 }
+
+/**
+ * Copy buttons call `navigator.clipboard.writeText`, which Chromium gates behind `clipboard-sanitized-write`. Only the
+ * app's top-level document may write, and only sanitized data; reading the clipboard stays denied. The handlers already
+ * match the main webContents and its top-level URL; the explicit main-frame flag excludes iframes such as the Preview
+ * pane, and a supplied requesting URL must be the app's.
+ */
+export function allowsClipboardWrite(permission: string, details: { isMainFrame?: boolean; requestingUrl?: string }): boolean {
+	return permission === "clipboard-sanitized-write" && details.isMainFrame === true && (details.requestingUrl === undefined || isAppUrl(details.requestingUrl));
+}
+
+/** Everything the app document may use: its microphone for dictation and sanitized clipboard writes. */
+export function allowsAppPermission(permission: string, details: { isMainFrame: boolean; requestingUrl?: string; mediaType?: string; mediaTypes?: string[] }): boolean {
+	return allowsMicrophone(permission, details) || allowsClipboardWrite(permission, details);
+}
