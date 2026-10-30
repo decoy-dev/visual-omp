@@ -1,6 +1,6 @@
 cask "visual-omp" do
-  version "0.6.8"
-  sha256 "e56d8df994c26f2ef992d81582736af303c8faad5fe47f3a9b629564a5cc73c9"
+  version "0.7.0"
+  sha256 "1209b215a3d6e35a1ca2126821010cef3182c915ef5ae12c91acefb4b0a19f86"
 
   url "https://github.com/decoy-dev/visual-omp/releases/download/v#{version}/visual-omp-#{version}-mac-arm64.dmg"
   name "visual-omp"
@@ -18,7 +18,7 @@ cask "visual-omp" do
   end
 
   on_intel do
-    sha256 "6d7e5c170c00c6f96b9ba7fad2c7121b885935de18c866ba637202d5f7712fae"
+    sha256 "d6831a6e92163c5a4d4dfe01b32c5cf58dd6bf510e182fe1be042d2d699d74d6"
     url "https://github.com/decoy-dev/visual-omp/releases/download/v#{version}/visual-omp-#{version}-mac-x64.dmg"
   end
 end
