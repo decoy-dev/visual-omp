@@ -7,11 +7,18 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import type { AppDownload } from "@shared/contracts/updates";
 import { installerName } from "../services/updates";
 import type { Platform } from "@shared/ipc";
+import type * as UpdateService from "../services/updates";
 
 const fake = vi.hoisted(() => ({
 	root: "", version: 1, currentVersion: "0.0.1", digest: "", sizeOffset: 0, writeLimit: Infinity, writeCalls: 0,
 	failPendingWrite: false, failPendingCleanup: false, preferenceWriteFailures: 0, openPath: vi.fn(),
+	isPackaged: true, unavailable: null as "offline" | "missing-release" | "missing-installer" | null,
+	releaseVersion: null as string | null,
 	events: [] as AppDownload[], handlers: new Map<string, (...args: unknown[]) => unknown>(),
+}));
+vi.mock("../services/updates", async importOriginal => ({
+	...(await importOriginal<typeof UpdateService>()),
+	detectInstallMethod: () => process.platform === "win32" ? "nsis" : "dmg",
 }));
 vi.mock("node:fs/promises", async importOriginal => {
 	const actual = await importOriginal<typeof FsPromises>();
@@ -44,7 +51,7 @@ vi.mock("node:fs/promises", async importOriginal => {
 		},
 	};
 });
-vi.mock("electron", () => ({ app: { isPackaged: true, getPath: () => fake.root, getVersion: () => fake.currentVersion, on: vi.fn(), quit: vi.fn() }, shell: { openPath: fake.openPath } }));
+vi.mock("electron", () => ({ app: { get isPackaged() { return fake.isPackaged; }, getPath: () => fake.root, getVersion: () => fake.currentVersion, on: vi.fn(), quit: vi.fn() }, shell: { openPath: fake.openPath } }));
 vi.mock("../attention", () => ({ tagScoopShortcut: vi.fn() }));
 vi.mock("../env", () => ({ userEnv: async () => ({}) }));
 vi.mock("../ipc", () => ({ handle: (channel: string, handler: (...args: unknown[]) => unknown) => fake.handlers.set(channel, handler), broadcast: (channel: string, value: AppDownload) => { if (channel === "updates:app:download") fake.events.push({ ...value }); } }));
@@ -57,11 +64,13 @@ beforeAll(async () => {
 	fake.root = await mkdtemp(join(tmpdir(), "vomp-download-integrity-"));
 	vi.stubGlobal("fetch", vi.fn(async (raw: URL | string) => {
 		if (String(raw).startsWith("https://api.github.com/")) {
-			const version = `1.0.${fake.version}`;
+			if (fake.unavailable === "offline") throw new Error("The network is unavailable");
+			if (fake.unavailable === "missing-release") return Response.json([]);
+			const version = fake.releaseVersion ?? `1.0.${fake.version}`;
 			const name = installerName(version, process.platform as Platform, process.arch)!;
 			return Response.json([{
 				tag_name: `v${version}`, html_url: `https://github.com/decoy-dev/visual-omp/releases/tag/v${version}`, draft: false, prerelease: false,
-				assets: [{ name, browser_download_url: `https://github.com/decoy-dev/visual-omp/releases/download/v${version}/${name}`, size: bytes.length + fake.sizeOffset, digest: fake.digest }],
+				assets: fake.unavailable === "missing-installer" ? [] : [{ name, browser_download_url: `https://github.com/decoy-dev/visual-omp/releases/download/v${version}/${name}`, size: bytes.length + fake.sizeOffset, digest: fake.digest }],
 			}]);
 		}
 		return new Response(bytes);
@@ -203,6 +212,72 @@ it.skipIf(!installerName("1.0.0", process.platform as Platform, process.arch)).e
 		if (failure === "pending" || failure === "preferences") expect(fake.openPath).not.toHaveBeenCalled();
 		if (failure !== "cleanup") await expect(access(join(fake.root, "update-pending.json"))).rejects.toThrow();
 	} finally {
+		await resetRollback();
+	}
+});
+
+it.skipIf(!installerName("1.0.0", process.platform as Platform, process.arch)).each([null, "3.0.0", "0.0.1"])("reinstalls the running version without changing skip %s", async previousSkip => {
+	fake.version++;
+	fake.currentVersion = `1.0.${fake.version}`;
+	fake.events.length = 0;
+	fake.digest = `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+	// The preferences module must use the temporary profile initialized in beforeAll.
+	const { getPrefs, setPrefs, flushPrefs } = await import("../prefs");
+	setPrefs({ appUpdateSkipThrough: previousSkip });
+	await flushPrefs();
+	const before = await readFile(join(fake.root, "preferences.json"), "utf8");
+	fake.openPath.mockReset().mockResolvedValue("");
+	try {
+		const available = await fake.handlers.get("updates:app:reinstallInfo")!();
+		expect(available).toMatchObject({ version: fake.currentVersion, available: true, reason: null });
+		const started = await fake.handlers.get("updates:app:download")!(fake.currentVersion) as AppDownload;
+		await expect.poll(() => fake.events.at(-1)?.state).toBe("done");
+		expect(started.version).toBe(fake.currentVersion);
+		expect(await readFile(started.filePath)).toEqual(Buffer.from(bytes));
+		await fake.handlers.get("updates:app:runInstaller")!();
+		expect(getPrefs().appUpdateSkipThrough).toBe(previousSkip);
+		expect(await readFile(join(fake.root, "preferences.json"), "utf8")).toBe(before);
+		await expect(access(join(fake.root, "update-pending.json"))).rejects.toThrow();
+		fake.openPath.mockResolvedValueOnce("Installer launch failed");
+		await expect(fake.handlers.get("updates:app:runInstaller")!()).rejects.toThrow("Installer launch failed");
+		expect(getPrefs().appUpdateSkipThrough).toBe(previousSkip);
+		expect(await readFile(join(fake.root, "preferences.json"), "utf8")).toBe(before);
+	} finally {
+		await resetRollback();
+	}
+});
+
+it.skipIf(!installerName("1.0.0", process.platform as Platform, process.arch)).each(["development", "offline", "missing-release", "missing-installer"] as const)("reports reinstall unavailable for %s without changing preferences", async reason => {
+	// Preferences must initialize only after beforeAll creates the temporary profile.
+	const { setPrefs, flushPrefs } = await import("../prefs");
+	setPrefs({ appUpdateSkipThrough: "3.0.0" });
+	await flushPrefs();
+	const before = await readFile(join(fake.root, "preferences.json"), "utf8");
+	fake.currentVersion = `1.0.${fake.version}`;
+	fake.isPackaged = reason !== "development";
+	fake.unavailable = reason === "development" ? null : reason;
+	try {
+		expect(await fake.handlers.get("updates:app:reinstallInfo")!()).toMatchObject({ available: false, reason, command: null });
+		expect(await readFile(join(fake.root, "preferences.json"), "utf8")).toBe(before);
+	} finally {
+		fake.isPackaged = true;
+		fake.unavailable = null;
+		await resetRollback();
+	}
+});
+
+it.skipIf(!installerName("1.0.0", process.platform as Platform, process.arch))("rejects an official equal-precedence release with different build metadata", async () => {
+	fake.currentVersion = `1.0.${fake.version}`;
+	fake.releaseVersion = `${fake.currentVersion}+other-build`;
+	fake.events.length = 0;
+	try {
+		const status = await fake.handlers.get("updates:app:check")!(true) as { latestVersion: string; assets: unknown[] };
+		expect(status.latestVersion).toBe(fake.releaseVersion);
+		expect(status.assets).toHaveLength(1);
+		await expect(fake.handlers.get("updates:app:download")!(fake.releaseVersion)).rejects.toThrow("exact installed version");
+		expect(fake.events).toHaveLength(0);
+	} finally {
+		fake.releaseVersion = null;
 		await resetRollback();
 	}
 });

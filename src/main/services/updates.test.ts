@@ -1,8 +1,9 @@
 import { compareSemver } from "@shared/semver";
 import { describe, expect, it } from "vitest";
-import type { ReleaseAsset } from "@shared/contracts/updates";
+import type { AppInstallMethod, ReleaseAsset } from "@shared/contracts/updates";
 import {
 	type GitHubRelease,
+	type InstallerTrust,
 	appBundlePath,
 	brewCandidates,
 	caskroomPath,
@@ -14,6 +15,7 @@ import {
 	parseOmpUpdateCheck,
 	plistVersion,
 	redirectTarget,
+	reinstallAvailability,
 	releaseSummary,
 	scoopLayout,
 	selectLatestRelease,
@@ -212,6 +214,87 @@ describe("installerAsset", () => {
 		const local: ReleaseAsset[] = [{ name: "visual-omp-0.2.0-mac-arm64.dmg", url: "http://127.0.0.1:8765/x.dmg", size: 1 }];
 		expect(installerAsset(local, "v0.2.0", packaged)).toBeNull();
 		expect(installerAsset(local, "v0.2.0", { ...packaged, anyHost: true })?.url).toBe("http://127.0.0.1:8765/x.dmg");
+	});
+});
+
+describe("reinstallAvailability", () => {
+	const current = release("v0.2.0", {
+		assets: releaseAssets.map(asset => ({ name: asset.name, browser_download_url: asset.url, size: asset.size })),
+	});
+	const unavailable = (reason: string) => ({ version: "0.2.0", available: false, reason, command: null });
+
+	it("disables development builds before considering installation method or releases", () => {
+		expect(reinstallAvailability([current], "0.2.0", packaged, false, "dmg")).toEqual(unavailable("development"));
+		expect(reinstallAvailability([], "0.2.0", packaged, false, "manual")).toEqual(unavailable("development"));
+	});
+
+	it("does not offer a reinstall for unsupported manual installations", () => {
+		expect(reinstallAvailability([current], "0.2.0", packaged, true, "manual")).toEqual(unavailable("unsupported"));
+		expect(reinstallAvailability([], "0.2.0", packaged, true, "manual")).toEqual(unavailable("unsupported"));
+	});
+
+	it("requires the exact current release rather than the latest release or equal semver precedence", () => {
+		for (const releases of [
+			[],
+			[release("v0.1.0"), release("v0.3.0")],
+			[release("v0.2.0+other-build", { assets: current.assets })],
+			[release("nightly", { assets: current.assets })],
+			[{ ...current, draft: true }],
+		]) {
+			expect(reinstallAvailability(releases, "0.2.0", packaged, true, "dmg")).toEqual(unavailable("missing-release"));
+		}
+		expect(reinstallAvailability([release("v0.3.0"), current, release("v0.1.0")], "0.2.0", packaged, true, "dmg")).toEqual({
+			version: "0.2.0", available: true, reason: null, command: null,
+		});
+	});
+
+	it.each([
+		{ method: "dmg", trust: packaged },
+		{ method: "brew", trust: packaged },
+		{ method: "nsis", trust: { ...packaged, platform: "win32", arch: "x64" } },
+		{ method: "scoop", trust: { ...packaged, platform: "win32", arch: "x64" } },
+	] satisfies { method: AppInstallMethod; trust: InstallerTrust }[])(
+		"allows $method only with matching official release metadata, leaving commands to main",
+		({ method, trust }) => {
+			expect(reinstallAvailability([current], "0.2.0", trust, true, method)).toEqual({
+				version: "0.2.0", available: true, reason: null, command: null,
+			});
+			expect(reinstallAvailability([{ ...current, assets: [] }], "0.2.0", trust, true, method)).toEqual(unavailable("missing-installer"));
+		},
+	);
+
+	it("rejects missing, foreign, wrong-release and wrong-architecture installers", () => {
+		const asset = current.assets[0]!;
+		for (const assets of [
+			[],
+			[{ ...asset, browser_download_url: `https://evil.test/${asset.name}` }],
+			[{ ...asset, browser_download_url: asset.browser_download_url.replace("/v0.2.0/", "/v0.1.0/") }],
+			current.assets.filter(candidate => candidate.name.endsWith("-mac-x64.dmg")),
+			current.assets.filter(candidate => candidate.name.endsWith(".blockmap")),
+		]) {
+			expect(reinstallAvailability([{ ...current, assets }], "0.2.0", packaged, true, "dmg")).toEqual(unavailable("missing-installer"));
+		}
+		expect(reinstallAvailability([current], "0.2.0", { ...packaged, platform: "win32", arch: "arm64" }, true, "nsis")).toEqual(unavailable("missing-installer"));
+	});
+
+	it("applies the existing prerelease track to the exact current version and excludes drafts", () => {
+		expect(reinstallAvailability([{ ...current, prerelease: true }], "0.2.0", packaged, true, "dmg")).toEqual(unavailable("missing-release"));
+		const version = "0.2.0-beta.2";
+		const tag = `v${version}`;
+		const name = `visual-omp-${version}-mac-arm64.dmg`;
+		const prerelease = release(tag, {
+			prerelease: true,
+			assets: [{ name, browser_download_url: `https://github.com/decoy-dev/visual-omp/releases/download/${tag}/${name}`, size: 100 }],
+		});
+		expect(reinstallAvailability([current, prerelease], version, packaged, true, "dmg")).toEqual({
+			version, available: true, reason: null, command: null,
+		});
+		expect(reinstallAvailability([{ ...prerelease, draft: true }], version, packaged, true, "dmg")).toEqual({
+			version, available: false, reason: "missing-release", command: null,
+		});
+		expect(reinstallAvailability([prerelease], "0.2.0-beta.1", packaged, true, "dmg")).toEqual({
+			version: "0.2.0-beta.1", available: false, reason: "missing-release", command: null,
+		});
 	});
 });
 
@@ -439,3 +522,4 @@ describe("releaseSummary", () => {
 		expect(summary?.endsWith("word…")).toBe(true);
 	});
 });
+

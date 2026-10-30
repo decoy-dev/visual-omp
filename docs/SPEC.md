@@ -184,6 +184,25 @@ Current chats, navigation shortcuts and preview release are described under Sess
   confirmation names the running and selected versions, explains the restart and preserves chats
   and omp settings. Confirming reuses the existing download progress, cancel, error and installer
   controls. Main fetches the official release metadata again before selecting the earlier installer.
+- For disk-image and Windows installer copies, About offers **Reinstall v{version}** for the running
+  version when a fresh official release lookup finds that exact version and a trusted installer
+  for this computer. A confirmation names the version, explains replacement and restart, and
+  states that saved chats, omp settings and the rollback update skip are preserved. Cancelling
+  starts no download.
+- Disk-image and Windows installer reinstalls use the existing progress, cancellation, retry and
+  installer controls. Main fetches the release again before downloading. The shared download
+  path checks trusted asset URLs and redirects, verifies byte count, and validates a supplied
+  SHA256 digest. Missing digests remain compatible with older releases.
+- Homebrew and Scoop reinstalls show package-manager instructions under a generic reinstall
+  heading instead of promising the exact running version. Homebrew's
+  `brew reinstall --cask visual-omp` uses the currently published cask. Scoop's
+  `scoop update visual-omp --force` uses the bucket's current manifest, with `--global` and an
+  administrator PowerShell for global installations. Either command may install a newer version.
+  Saved chats, omp settings and package-manager records remain available. If the replacement
+  version exceeds the saved rollback skip, the usual startup check clears it.
+- Reinstall availability distinguishes development builds, unsupported installations, a missing
+  exact release, a missing trusted platform installer and an offline release lookup. Drafts are
+  excluded; the existing prerelease track applies to the exact running version.
 - On macOS, completing a rollback requires opening the downloaded disk image, quitting visual-omp,
   copying the app into Applications with **Replace**, and reopening it. On Windows, running the
   downloaded installer closes visual-omp; the user completes setup and reopens the app.
@@ -195,7 +214,8 @@ Current chats, navigation shortcuts and preview release are described under Sess
   preferences. In visual-omp 0.7.1 and later, background checks suppress versions at or below this
   ceiling and offer a newer version above it. Running a version strictly newer than the ceiling
   clears it; running the same version retains it. **Check for updates** explicitly includes skipped
-  versions without clearing the preference. Choosing a regular update clears it before updating.
+  versions without clearing the preference. Choosing a regular update clears it before updating;
+  reinstalling the current version through a direct installer leaves it unchanged.
   Versions before 0.7.1 retain the preference but do not honor it, so they may still offer the
   version being left. Those updates require a user action and can be left uninstalled.
 

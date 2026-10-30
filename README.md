@@ -126,6 +126,36 @@ disabled. Development builds and tests do not send these requests, and a failed 
 delay or interrupt an update check.
 These totals measure update checks and cannot identify unique installations.
 
+### Reinstall visual-omp
+
+Open **Settings → About** and choose the reinstall action beside the running version. Direct
+installer copies offer **Reinstall v{version}** and confirm the exact version to replace.
+Homebrew and Scoop copies offer **Reinstall through Homebrew** or **Reinstall through Scoop** with
+package-manager instructions. Saved chats and omp settings remain available. Cancel leaves the
+installation unchanged.
+
+For macOS disk-image and Windows installer copies, confirming downloads the exact current
+version from its official GitHub release through the existing installer window. Downloads use
+the same trusted asset and redirect checks as updates, verify the byte count, and validate a
+SHA256 digest when the release supplies one. Older releases without a digest remain supported.
+Open the disk image or run the installer, then complete the replacement and reopen visual-omp.
+Reinstalling that exact version leaves any update skip saved after a rollback unchanged.
+
+Homebrew and Scoop copies show commands to run after quitting visual-omp:
+
+- **Homebrew:** `brew reinstall --cask visual-omp` uses the currently published cask, which may
+  install a newer version than the one running.
+- **Scoop:** run `scoop update visual-omp --force` in PowerShell. This reinstalls from the bucket's
+  current manifest and may install a newer version than the one running. For a global
+  installation, run `scoop update visual-omp --force --global` in an administrator PowerShell.
+
+Package-manager reinstalls retain their package-manager records for future updates. If either
+command installs a version newer than the saved rollback skip, the usual startup check clears
+that skip.
+
+Reinstall is unavailable in development builds, for unsupported installations, when the exact
+release or a trusted installer for this computer is missing, or when GitHub cannot be reached.
+
 ### Return to an earlier version
 
 Open **Settings → About → Read release notes**, find the earlier release and choose **Install

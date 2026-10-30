@@ -38,6 +38,15 @@ export interface AppInstallInfo {
 	scoopGlobal: boolean;
 }
 
+/** Availability of reinstalling the running version, checked against its published release. */
+export interface AppReinstallInfo {
+	version: string;
+	available: boolean;
+	reason: "development" | "unsupported" | "missing-release" | "missing-installer" | "offline" | null;
+	/** Package-manager command only; direct installs use the existing installer download. */
+	command: string | null;
+}
+
 /** One installer download (`dmg` / `nsis`). Progress streams via `updates:app:download`. */
 export interface AppDownload {
 	/** Release version this installer belongs to (no leading `v`). */
@@ -165,10 +174,12 @@ declare module "../ipc" {
 		/** How this copy was installed (Homebrew cask, disk image, Scoop, NSIS installer) and the cask's upgrade command. */
 		"updates:app:install": { args: []; result: AppInstallInfo };
 		/**
-		 * Download the latest installer, or a selected strictly earlier release fetched from GitHub.
+		 * Download the latest installer, or a selected earlier or running release fetched from GitHub.
 		 * Uses the same trusted asset selection and download verification for either direction.
 		 */
 		"updates:app:download": { args: [version?: string]; result: AppDownload };
+		/** Fresh availability and package-manager guidance for reinstalling the running version. */
+		"updates:app:reinstallInfo": { args: []; result: AppReinstallInfo };
 		/** An explicit choice to update after checking clears the rollback skip. */
 		"updates:app:resume": { args: []; result: void };
 		"updates:app:cancelDownload": { args: []; result: void };

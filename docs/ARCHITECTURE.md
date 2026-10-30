@@ -298,7 +298,7 @@ Session pins: `main/omp/session-pins.ts` reads the agent directory's `session-pi
 
 Saved rename: `main/omp/session-rename.ts` refuses an app-owned or externally owned saved chat before starting a short-lived `--resume` RPC process. An initial `get_state` must match the requested file and id before `set_session_name` can run. omp writes the 256-byte `source: "user"` title slot, title-change entry and title index. A final `get_state`, the resulting saved summary and confirmed child termination establish the returned title, file and id. A write-time continuation returns its changed destination explicitly, and the dialog warns with that path. No model request or model override is selected. omp initialization failures remain visible, including a missing configured default model. The dialog does not open a chat tab.
 
-## App updates and rollback
+## App updates, rollback and reinstall
 
 `main/features/updates.ts` owns update checks, install-method detection and installer downloads.
 `main/services/updates.ts` provides the pure release selection, semver skip and installer-trust
@@ -317,13 +317,37 @@ Worker logs, invocation logs, traces and Logpush are disabled, and the code emit
 These totals measure checks, so they cannot identify unique installations. See
 `workers/update-count/README.md` for deployment and the last-30-days query.
 
-`updates:app:download` takes an optional version. An earlier version causes main to fetch official
-GitHub release metadata again, find the requested published release on the running version's
-release track, and select its trusted matching installer. The renderer cannot supply an installer
-URL. Rollback reuses the existing download, trusted redirect, supplied-checksum verification and
-installer execution path. Main refuses rollback downloads for Homebrew and Scoop installs; the
-viewer explains their package-manager downgrade steps instead. macOS still requires a manual
+`updates:app:reinstallInfo` takes no arguments and returns `AppReinstallInfo` with the running
+`version`, `available`, `reason` and `command`. Main fetches fresh official release metadata;
+cached update availability cannot authorize a reinstall. The pure
+`reinstallAvailability(releases, currentVersion, trust, isPackaged, method)` excludes development
+builds (`development`) and manual installations (`unsupported`), then requires the exact current
+version on the existing prerelease track (`missing-release`) and its trusted platform installer
+(`missing-installer`). Drafts remain excluded. Main reports failed release lookups as `offline`.
+Available results have a null reason. Direct installers have a null command; main supplies
+commands for detected Homebrew and Scoop installations.
+
+`updates:app:download` takes an optional version. A strictly earlier version or the exact running version causes main to fetch
+official GitHub release metadata again, find the requested published release on the running
+version's release track, and select its trusted matching installer. The renderer cannot supply
+an installer URL. Rollback and reinstall reuse the existing download, trusted redirect, byte-count
+verification, optional supplied SHA256 digest validation and installer execution path. A supplied
+digest must be supported and match; an absent digest remains compatible with older releases.
+The renderer offers these targeted downloads only for disk-image and NSIS installations. The viewer
+explains package-manager downgrade or reinstall steps instead. macOS still requires a manual
 copy from the disk image and app restart, and Windows runs the installer after closing the app.
+
+Package-manager reinstall instructions preserve the existing package-manager installation
+records. Homebrew's `brew reinstall --cask visual-omp` uses the currently published cask.
+Scoop's `scoop update visual-omp --force` uses the bucket's current manifest; global installations
+add `--global` and require an administrator PowerShell. Both commands may install a newer version
+than the running app, so their dialog uses a generic reinstall heading and explicitly describes
+that possibility. Saved chats and omp settings remain available. A replacement newer than
+`appUpdateSkipThrough` clears that skip through the usual startup rule.
+
+Same-version installer execution does not normalize or write the rollback boundary. It also
+does not create a pending upgrade outcome, because a version comparison cannot establish whether
+the same-version replacement completed.
 
 The main-only stored preference `appUpdateSkipThrough: string | null` defaults to null. A confirmed
 rollback persists the version being left before the installer is opened. `flushPrefs()` awaits
@@ -343,7 +367,10 @@ cannot restore a suppressed update notice.
 skip; the explicit **Check for updates** action sets `includeSkipped` to true without clearing the
 stored choice. `AppUpdateStatus.skippedThroughVersion` exposes that choice for the About page and
 release viewer. Before beginning a regular update, the renderer calls `updates:app:resume` with no
-arguments to clear the skip explicitly.
+arguments to clear the skip explicitly. Direct current-version reinstall never calls this
+operation and leaves the stored skip unchanged through download and installer execution. The
+renderer retains both the target version and operation kind so the shared installer sheet keeps
+reinstall labels and retries the same version after an error.
 
 ## Compatibility
 The collab wire protocol is versioned (`COLLAB_PROTO`). On launch the app reads `omp --version` and

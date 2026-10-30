@@ -1,5 +1,5 @@
-import { ArrowsClockwise, ArrowSquareOut, Bug } from "@phosphor-icons/react";
-import { type ReactNode, useEffect, useState } from "react";
+import { ArrowsClockwise, ArrowSquareOut, Bug, Copy } from "@phosphor-icons/react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
 	APP_UPDATE_SHEET,
@@ -9,11 +9,12 @@ import {
 	quitForUpdate,
 	restartStaleChats,
 	openReleaseNotes,
+	startAppReinstall,
 	useUpdates,
 } from "@/features/onboarding/updates";
 import { useApp } from "@/state/app";
-import { Button, Mark, PageHeader, PresenceSwap, Spinner, Wordmark } from "@/ui";
-import { useResource } from "../shared";
+import { Button, Dialog, DialogContent, Mark, PageHeader, PresenceSwap, Spinner, Wordmark } from "@/ui";
+import { ipcErrorMessage, useResource } from "../shared";
 
 const DOCS_URL = "https://omp.sh";
 const ISSUES_URL = "https://github.com/decoy-dev/visual-omp/issues";
@@ -115,6 +116,7 @@ export function AboutSection() {
 					</p>
 					<StatusLine row={appRow} />
 					{updates.app?.skippedThroughVersion && <p className="mt-stack text-sm text-fg-muted">{t("onboarding:update.rollback.skipped", { version: updates.app.skippedThroughVersion })}</p>}
+					<ReinstallAction busy={updates.download?.state === "downloading" || updates.brew?.phase === "running" || updates.brew?.phase === "verifying"} />
 				</dd>
 
 				<dt className="text-fg-muted">{t("about.ompVersion")}</dt>
@@ -168,6 +170,101 @@ export function AboutSection() {
 			</div>
 		</div>
 	);
+}
+
+/** Availability is read from fresh release metadata, independently of the cached update offer. */
+function ReinstallAction({ busy }: { busy: boolean }) {
+	const { t } = useTranslation("onboarding");
+	const availability = useResource(async () => {
+		const [reinstall, install] = await Promise.all([
+			window.vomp.invoke("updates:app:reinstallInfo"),
+			window.vomp.invoke("updates:app:install"),
+		]);
+		return { reinstall, install };
+	}, []);
+	const [confirmation, setConfirmation] = useState<typeof availability.data>(null);
+	const [starting, setStarting] = useState(false);
+	const [startError, setStartError] = useState<string | null>(null);
+	const [copied, setCopied] = useState(false);
+	const handedOff = useRef(false);
+	const cancel = useRef<HTMLButtonElement>(null);
+	const action = useRef<HTMLButtonElement>(null);
+	const data = availability.data;
+	const managed = confirmation?.install.method === "brew" || confirmation?.install.method === "scoop";
+	const available = data?.reinstall.available && (
+		data.install.method === "dmg" || data.install.method === "nsis" ||
+		((data.install.method === "brew" || data.install.method === "scoop") && !!data.reinstall.command)
+	);
+	const confirm = async () => {
+		if (!confirmation || managed || starting) return;
+		setStarting(true);
+		setStartError(null);
+		try {
+			await startAppReinstall(confirmation.reinstall.version);
+			handedOff.current = true;
+			setConfirmation(null);
+		} catch (error) {
+			setStartError(t("update.reinstall.startFailed", { reason: ipcErrorMessage(error) }));
+		} finally {
+			setStarting(false);
+		}
+	};
+	const copy = async () => {
+		if (!confirmation?.reinstall.command) return;
+		try {
+			await navigator.clipboard.writeText(confirmation.reinstall.command);
+			setCopied(true);
+			setStartError(null);
+		} catch (error) {
+			setStartError(t("update.reinstall.copyFailed", { reason: ipcErrorMessage(error) }));
+		}
+	};
+
+	return <>
+		<div className="mt-stack flex flex-wrap items-center gap-toolbar">
+			<Button
+				ref={action}
+				size="sm"
+				disabled={availability.loading || !!availability.error || !available || busy}
+				onClick={() => { handedOff.current = false; setCopied(false); setStartError(null); setConfirmation(data); }}
+			>
+				{data?.install.method === "brew" ? t("update.reinstall.brewTitle") : data?.install.method === "scoop" ? t("update.reinstall.scoopTitle") : data ? t("update.reinstall.action", { version: data.reinstall.version }) : t("update.reinstall.actionGeneric")}
+			</Button>
+			{availability.loading ? <span role="status" className="text-sm text-fg-muted">{t("update.reinstall.checking")}</span> :
+				(availability.error || !available) && <>
+					<span role="status" className="text-sm text-fg-muted">
+						{availability.error ? t("update.reinstall.checkFailed", { reason: availability.error }) : t(`update.reinstall.unavailable.${data?.reinstall.reason ?? "unsupported"}`)}
+					</span>
+					<Button size="sm" variant="ghost" onClick={() => void availability.reload()}>{t("update.reinstall.checkAgain")}</Button>
+				</>}
+		</div>
+		<Dialog open={!!confirmation} onOpenChange={open => { if (!open && !starting) setConfirmation(null); }}>
+			<DialogContent
+				size="lg"
+				title={managed ? t(confirmation?.install.method === "brew" ? "update.reinstall.brewTitle" : "update.reinstall.scoopTitle") : t("update.reinstall.title", { version: confirmation?.reinstall.version })}
+				description={t(managed ? "update.reinstall.managerDescription" : "update.reinstall.description", { version: confirmation?.reinstall.version })}
+				hideClose={starting}
+				onOpenAutoFocus={event => { event.preventDefault(); cancel.current?.focus(); }}
+				onCloseAutoFocus={event => { event.preventDefault(); if (!handedOff.current) action.current?.focus(); }}
+				footer={<>
+					<Button ref={cancel} variant="ghost" disabled={starting} onClick={() => setConfirmation(null)}>{t(managed ? "update.app.close" : "update.rollback.cancel")}</Button>
+					{managed ? <Button variant="primary" icon={<Copy aria-hidden />} onClick={() => void copy()}>{t(copied ? "update.reinstall.copied" : "update.reinstall.copy")}</Button> :
+						<Button variant="primary" loading={starting} onClick={() => void confirm()}>{t("update.reinstall.action", { version: confirmation?.reinstall.version })}</Button>}
+				</>}
+			>
+				<div className="flex flex-col gap-stack text-md text-fg-muted">
+					<p>{t(managed ? "update.reinstall.managerPreserved" : "update.reinstall.preserved")}</p>
+					{managed ? <>
+						<p>{t(confirmation?.install.method === "brew" ? "update.reinstall.brew" : "update.reinstall.scoop")}</p>
+						<p>{t("update.reinstall.managerSkip")}</p>
+						<p>{t(confirmation?.install.method === "brew" ? "update.reinstall.brewRun" : confirmation?.install.scoopGlobal ? "update.reinstall.scoopGlobal" : "update.reinstall.scoopRun")}</p>
+						<code className="block select-all whitespace-pre-wrap break-all rounded-md border border-border bg-inset px-3 py-2 font-mono text-sm text-fg">{confirmation?.reinstall.command}</code>
+					</> : <p>{t(confirmation?.install.method === "nsis" ? "update.reinstall.nsis" : "update.reinstall.dmg")}</p>}
+					{startError && <p role="alert" className="text-err">{startError}</p>}
+				</div>
+			</DialogContent>
+		</Dialog>
+	</>;
 }
 
 /** "5 minutes ago", "2 hours ago"; under a minute reads `justNow`. */

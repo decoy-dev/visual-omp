@@ -11,6 +11,7 @@ import type {
 	AppDownload,
 	AppInstallInfo,
 	AppInstallMethod,
+	AppReinstallInfo,
 	AppUpdateOutcome,
 	AppUpdateStatus,
 	OmpUpdateOptions,
@@ -45,6 +46,7 @@ import {
 	parseOmpUpdateCheck,
 	plistVersion,
 	releaseSummary,
+	reinstallAvailability,
 	scoopLayout,
 	scoopUpdateScript,
 	selectLatestRelease,
@@ -311,6 +313,25 @@ function installInfo(): Promise<AppInstallInfo> {
 	return installCache;
 }
 
+/** Reinstall availability never changes update eligibility or the rollback boundary. */
+async function reinstallInfo(): Promise<AppReinstallInfo> {
+	const version = app.getVersion();
+	const unavailable = (reason: AppReinstallInfo["reason"]): AppReinstallInfo => ({ version, available: false, reason, command: null });
+	if (!app.isPackaged) return unavailable("development");
+	const install = await installInfo();
+	if (install.method === "manual") return unavailable("unsupported");
+	let info: AppReinstallInfo;
+	try {
+		info = reinstallAvailability(await fetchReleases(version), version, trust, app.isPackaged, install.method);
+	} catch {
+		return unavailable("offline");
+	}
+	if (!info.available) return info;
+	if (install.method === "brew") return { ...info, command: "brew reinstall --cask visual-omp" };
+	if (install.method === "scoop") return { ...info, command: `scoop update visual-omp --force${install.scoopGlobal ? " --global" : ""}` };
+	return info;
+}
+
 /** Version of the `.app` on disk, which differs from the running one once brew has replaced it. */
 async function installedVersion(): Promise<string | null> {
 	const feed = await devFeed().catch(() => null);
@@ -347,10 +368,13 @@ async function prepareDownload(requestedVersion?: string): Promise<AppDownload> 
 	let asset;
 	if (requestedVersion !== undefined) {
 		version = requestedVersion.replace(/^v/, "");
-		if (!parseSemver(version) || compareSemver(version, app.getVersion()) >= 0) throw new Error("Choose a release older than the installed version.");
+		const runningVersion = app.getVersion().replace(/^v/, "");
+		const order = compareSemver(version, runningVersion);
+		if (!parseSemver(version) || order > 0 || (order === 0 && version !== runningVersion)) throw new Error("Choose the exact installed version or a strictly earlier release.");
 		const { method } = await installInfo();
-		if (method === "brew" || method === "scoop") throw new Error("Use the package manager that installed this copy to install an earlier version.");
-		// Cached renderer metadata never authorizes a rollback. Fetch the published release again.
+		if (method === "brew" || method === "scoop") throw new Error("Use the package manager that installed this copy to reinstall it or install an earlier version.");
+		if (version === runningVersion && (!app.isPackaged || method === "manual")) throw new Error("This copy cannot reinstall itself.");
+		// Cached renderer metadata never authorizes an installer. Fetch the published release again.
 		const releases = toReleaseNotes(await fetchReleases(app.getVersion()), app.getVersion(), trust);
 		asset = releases.find(release => release.version === version)?.platformAsset ?? null;
 	} else {
@@ -453,15 +477,16 @@ async function runInstaller(): Promise<void> {
 	if (download?.state !== "done") throw new Error("The installer hasn't finished downloading.");
 	const { method } = await installInfo();
 	const rollback = compareSemver(download.version, app.getVersion()) < 0;
-	if (rollback && (method === "brew" || method === "scoop")) throw new Error("Use the package manager that installed this copy to install an earlier version.");
-	const previousSkip = updateSkip();
+	const reinstall = compareSemver(download.version, app.getVersion()) === 0;
+	if ((rollback || reinstall) && (method === "brew" || method === "scoop")) throw new Error("Use the package manager that installed this copy to reinstall it or install an earlier version.");
+	const previousSkip = rollback ? updateSkip() : null;
 	try {
 		if (rollback) {
 			const boundary = previousSkip && compareSemver(previousSkip, app.getVersion()) > 0 ? previousSkip : app.getVersion();
 			setPrefs({ appUpdateSkipThrough: boundary });
 			await flushPrefs();
 		}
-		await recordPending(method, download.version);
+		if (!reinstall) await recordPending(method, download.version);
 		const failure = await shell.openPath(download.filePath);
 		if (failure) throw new Error(failure);
 	} catch (error) {
@@ -471,11 +496,11 @@ async function runInstaller(): Promise<void> {
 				await flushPrefs();
 			}
 		} finally {
-			await rm(pendingFile, { force: true });
+			if (!reinstall) await rm(pendingFile, { force: true });
 		}
 		throw error;
 	}
-	if (appStatus) {
+	if (appStatus && !reinstall) {
 		appStatus = applyUpdateSkip(appStatus);
 		broadcast("updates:app", appStatus);
 	}
@@ -525,7 +550,7 @@ async function quitApp(relaunch: boolean): Promise<void> {
 	const { method, scoopGlobal } = await installInfo();
 	if (method === "scoop" && scoopGlobal) throw new Error("This copy was installed for all users, so Scoop needs an administrator PowerShell to update it.");
 	const to = (method === "brew" ? await installedVersion() : null) ?? download?.version ?? appStatus?.latestVersion;
-	if (to) await recordPending(method, to);
+	if (to && compareSemver(to, app.getVersion()) !== 0) await recordPending(method, to);
 	if (relaunch) app.once("will-quit", method === "scoop" ? updateWithScoopAfterExit : relaunchAfterExit);
 	app.quit();
 }
@@ -637,6 +662,7 @@ async function spawnOmpUpdate(options: OmpUpdateOptions): Promise<OmpUpdateRun> 
 export function register(): void {
 	handle("updates:app:check", (force, includeSkipped) => checkApp(force === true, includeSkipped === true));
 	handle("updates:app:install", () => installInfo());
+	handle("updates:app:reinstallInfo", () => reinstallInfo());
 	handle("updates:app:download", version => startDownload(version));
 	handle("updates:app:resume", () => resumeUpdates());
 	handle("updates:app:cancelDownload", () => downloadAbort?.abort());

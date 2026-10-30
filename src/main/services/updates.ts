@@ -1,7 +1,7 @@
 import { posix, win32 } from "node:path";
 import { z } from "zod";
 import type { CliResult, Platform } from "@shared/ipc";
-import type { AppInstallMethod, AppReleaseNotes, AppUpdateStatus, OmpUpdateChannel, ReleaseAsset } from "@shared/contracts/updates";
+import type { AppInstallMethod, AppReinstallInfo, AppReleaseNotes, AppUpdateStatus, OmpUpdateChannel, ReleaseAsset } from "@shared/contracts/updates";
 import { compareSemver, parseSemver } from "@shared/semver";
 
 const GitHubAsset = z.object({
@@ -80,6 +80,19 @@ export function toReleaseNotes(releases: GitHubRelease[], currentVersion: string
 			publishedAt: release.published_at ? Date.parse(release.published_at) : null,
 			...(trust ? { tag: release.tag_name, platformAsset: installerAsset(toAssets(release), release.tag_name, trust) } : {}),
 		}));
+}
+
+/** Reinstall is eligible only for the running version's own published, trusted installer. */
+export function reinstallAvailability(
+	releases: GitHubRelease[], currentVersion: string, trust: InstallerTrust, isPackaged: boolean, method: AppInstallMethod,
+): AppReinstallInfo {
+	const base = { version: currentVersion, available: false, command: null };
+	if (!isPackaged) return { ...base, reason: "development" };
+	if (method === "manual") return { ...base, reason: "unsupported" };
+	const release = toReleaseNotes(releases, currentVersion, trust).find(candidate => candidate.version === currentVersion.replace(/^v/, ""));
+	if (!release) return { ...base, reason: "missing-release" };
+	if (!release.platformAsset) return { ...base, reason: "missing-installer" };
+	return { ...base, available: true, reason: null };
 }
 
 export function toAssets(release: GitHubRelease): ReleaseAsset[] {

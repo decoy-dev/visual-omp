@@ -63,8 +63,9 @@ interface UpdatesState {
 	checkingOmp: boolean;
 	brew: BrewUpgrade | null;
 	download: AppDownload | null;
-	/** Explicit earlier version, retained through cancellation and retry. Null selects the regular update. */
+	/** Explicit installer version, retained through cancellation and retry, including the running version. */
 	downloadTarget: string | null;
+	downloadOperation: "update" | "rollback" | "reinstall";
 	/** The downloaded installer was opened: the disk image in Finder, or the NSIS installer (the app then quits). */
 	installerOpened: boolean;
 	/** Chat tabs whose omp started before the last successful `omp update`. */
@@ -82,6 +83,7 @@ export const useUpdates = create<UpdatesState>(() => ({
 	brew: null,
 	download: null,
 	downloadTarget: null,
+	downloadOperation: "update",
 	installerOpened: false,
 	staleChats: [],
 	restartingChats: 0,
@@ -150,12 +152,21 @@ export async function startAppUpdate(): Promise<void> {
 	}
 	if (install.method === "brew") void startBrewUpgrade();
 	else if (useInstaller) {
+		const previousHandledDownload = handledDownload;
 		handledDownload = null;
+		const previous = useUpdates.getState();
+		useUpdates.setState({ downloadTarget: null, downloadOperation: "update", download: null, installerOpened: false });
 		try {
 			const download = await window.vomp.invoke("updates:app:download");
-			useUpdates.setState({ downloadTarget: null, installerOpened: false });
 			onDownload(download);
 		} catch (error) {
+			handledDownload = previousHandledDownload;
+			useUpdates.setState({
+				download: previous.download,
+				downloadTarget: previous.downloadTarget,
+				downloadOperation: previous.downloadOperation,
+				installerOpened: previous.installerOpened,
+			});
 			toast({ tone: "err", message: t("update.app.download.startFailed"), description: errorText(error) });
 			return;
 		}
@@ -167,18 +178,43 @@ export async function startAppUpdate(): Promise<void> {
 export async function startAppRollback(version: string): Promise<void> {
 	const install = useUpdates.getState().install ?? (await loadInstall());
 	if (install.method !== "dmg" && install.method !== "nsis") throw new Error(i18n.t("onboarding:update.rollback.installerOnly"));
+	await startTargetedAppDownload(version, "rollback");
+}
+
+/** Reuses the installer download without clearing the user's rollback skip. */
+export async function startAppReinstall(version: string): Promise<void> {
+	const install = useUpdates.getState().install ?? (await loadInstall());
+	if (install.method !== "dmg" && install.method !== "nsis") throw new Error(i18n.t("onboarding:update.reinstall.installerOnly"));
+	await startTargetedAppDownload(version, "reinstall");
+}
+
+async function startTargetedAppDownload(version: string, operation: "rollback" | "reinstall"): Promise<void> {
+	const previousHandledDownload = handledDownload;
 	handledDownload = null;
-	const download = await window.vomp.invoke("updates:app:download", version);
-	useUpdates.setState({ downloadTarget: version, installerOpened: false });
-	onDownload(download);
-	useApp.getState().openSheet(APP_UPDATE_SHEET);
+	const previous = useUpdates.getState();
+	useUpdates.setState({ downloadTarget: version, downloadOperation: operation, download: null, installerOpened: false });
+	try {
+		const download = await window.vomp.invoke("updates:app:download", version);
+		onDownload(download);
+		useApp.getState().openSheet(APP_UPDATE_SHEET);
+	} catch (error) {
+		handledDownload = previousHandledDownload;
+		useUpdates.setState({
+			download: previous.download,
+			downloadTarget: previous.downloadTarget,
+			downloadOperation: previous.downloadOperation,
+			installerOpened: previous.installerOpened,
+		});
+		throw error;
+	}
 }
 
 async function retryAppDownload(): Promise<void> {
-	const target = useUpdates.getState().downloadTarget;
+	const { downloadTarget: target, downloadOperation } = useUpdates.getState();
 	if (!target) return startAppUpdate();
 	try {
-		await startAppRollback(target);
+		if (downloadOperation === "reinstall") await startAppReinstall(target);
+		else await startAppRollback(target);
 	} catch (error) {
 		toast({ tone: "err", message: i18n.t("onboarding:update.app.download.startFailed"), description: errorText(error) });
 	}
@@ -573,6 +609,7 @@ export function AppUpdateSheet({ close }: SheetProps<undefined>) {
 	const brew = useUpdates(state => state.brew);
 	const download = useUpdates(state => state.download);
 	const downloadTarget = useUpdates(state => state.downloadTarget);
+	const downloadOperation = useUpdates(state => state.downloadOperation);
 	const installerOpened = useUpdates(state => state.installerOpened);
 	const method = install?.method ?? "manual";
 
@@ -603,7 +640,7 @@ export function AppUpdateSheet({ close }: SheetProps<undefined>) {
 		if (download.state === "downloading") {
 			actions = <Button onClick={() => void window.vomp.invoke("updates:app:cancelDownload")}>{t("update.app.download.cancel")}</Button>;
 		} else if (download.state === "failed" || download.state === "cancelled") {
-			actions = <Button onClick={() => void retryAppDownload()}>{t("update.app.retry")}</Button>;
+			actions = <Button onClick={() => void retryAppDownload()}>{t(downloadOperation === "reinstall" ? "update.reinstall.retry" : downloadOperation === "rollback" ? "update.rollback.retry" : "update.app.retry")}</Button>;
 		} else if (method === "dmg") {
 			actions = (
 				<>
@@ -627,8 +664,8 @@ export function AppUpdateSheet({ close }: SheetProps<undefined>) {
 			<DialogContent
 				onCloseAutoFocus={presence.exited}
 				size="lg"
-				title={downloadTarget ? t("update.rollback.progressTitle", { version: downloadTarget }) : app?.latestVersion ? t("update.app.title", { version: app.latestVersion }) : t("update.app.titleGeneric")}
-				description={downloadTarget ? t("update.rollback.progressDescription", { version: downloadTarget }) : app?.summary ?? undefined}
+				title={downloadTarget ? t(downloadOperation === "reinstall" ? "update.reinstall.progressTitle" : "update.rollback.progressTitle", { version: downloadTarget }) : app?.latestVersion ? t("update.app.title", { version: app.latestVersion }) : t("update.app.titleGeneric")}
+				description={downloadTarget ? t(downloadOperation === "reinstall" ? "update.reinstall.progressDescription" : "update.rollback.progressDescription", { version: downloadTarget }) : app?.summary ?? undefined}
 				footer={
 					<>
 						{actions}

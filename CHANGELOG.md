@@ -7,6 +7,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 #### New
 
 - You can return to an earlier visual-omp version from its release notes: open **Settings → About → Read release notes → Past versions**, choose an earlier release and select **Install v{version}**. The installer comes from the official GitHub release through the same checked download path as updates, and your chats and omp settings stay as they are. Homebrew and Scoop installs show the package manager's downgrade steps instead. From 0.7.1 onward, automatic update checks skip releases through the version you left until a newer release is available. **Check for updates** includes skipped versions without clearing that choice. Versions before 0.7.1 still offer the newer update, which you can leave uninstalled.
+- **Settings → About** now offers reinstalling visual-omp. Disk-image and Windows installer copies download the running version from its official GitHub release through the existing checked download path, preserving saved chats, omp settings and skipped updates. Homebrew and Scoop copies show package-manager commands, which may install a newer version. If that version exceeds the saved update skip, the usual startup check clears it.
 
 #### Improved
 
