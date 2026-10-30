@@ -4,6 +4,16 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.2] - 2026-10-30
+
+visual-omp 0.7.2 fixes Copy actions, which failed with a clipboard permission error in 0.7.0 and 0.7.1.
+
+### Highlights
+
+- **Fixed:** Copy buttons and copy menu items work again.
+
+### Detailed changes
+
 #### Fixed
 
 - Copy actions no longer fail with a clipboard permission error, which began in 0.7.0. Clipboard writes are restricted to the app's main document, and clipboard reads remain blocked.
