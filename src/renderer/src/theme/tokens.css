@@ -18,7 +18,8 @@
 
 @custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
-:root {
+:root,
+[data-theme="light"] {
 	color-scheme: light;
 
 	/* 1.1 surfaces: ink chrome, main sheet, gray canvas with white cards, inset wells, floating layers */
@@ -336,16 +337,19 @@
 	--page-card: oklch(0.65 0.09 192);
 }
 
-/* Dark chrome (0.145) only deepens the wells and tones down the fills; text, status and accent already suit it. */
-[data-theme="dark"] [data-region="chrome"] {
-	--bg-inset: oklch(0.12 0.004 195);
-	--hover: oklch(0.95 0.01 195 / 0.06);
-	--selected: oklch(0.95 0.01 195 / 0.1);
-	--pill: oklch(0.95 0.01 195 / 0.1);
-	--ok-bg: oklch(0.26 0.035 160);
-	--warn-bg: oklch(0.27 0.035 80);
-	--err-bg: oklch(0.26 0.04 22);
-	--info-bg: oklch(0.26 0.035 255);
+/* Dark chrome only deepens the wells and tones down the fills. Stop at a nested light preview;
+ * a dark preview inside that light scope starts its own scope, so the nearest theme always wins. */
+@scope ([data-theme="dark"]) to ([data-theme="light"]) {
+	[data-region="chrome"] {
+		--bg-inset: oklch(0.12 0.004 195);
+		--hover: oklch(0.95 0.01 195 / 0.06);
+		--selected: oklch(0.95 0.01 195 / 0.1);
+		--pill: oklch(0.95 0.01 195 / 0.1);
+		--ok-bg: oklch(0.26 0.035 160);
+		--warn-bg: oklch(0.27 0.035 80);
+		--err-bg: oklch(0.26 0.04 22);
+		--info-bg: oklch(0.26 0.035 255);
+	}
 }
 
 /* Inside the filled header card: white text and mark, a darkening hover wash like a filled button's (3.9:1 under the

@@ -1,17 +1,20 @@
-import { ArrowLeft, ArrowRight, Check, CheckCircle, Monitor, Moon, SignIn, Sun } from "@phosphor-icons/react";
+import { ArrowLeft, ArrowRight, Check, Monitor, Moon, SignIn, Sun } from "@phosphor-icons/react";
 import type { ApprovalMode, ModelInfo, ModelRolesState } from "@shared/contracts/config";
 import type { ProvidersState } from "@shared/contracts/providers";
 import type { AppPreferences } from "@shared/ipc";
 import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useApp } from "../../state/app";
-import { Button, cn, Mark, Notice, PresenceSwap, SearchInput, Spinner } from "../../ui";
+import { Button, cn, PeriscopeMark, Notice, PresenceSwap, SearchInput, Spinner, Stagger, StaggerItem, spring, useMotionReduced } from "../../ui";
 import { focusRingInset } from "../../ui/styles";
 import { findModel } from "../manage/roles/rolesModel";
 import { OmpLoginDialog, type OmpLoginTarget } from "../manage/settings/OmpLoginDialog";
 import { ipcErrorMessage } from "../manage/shared";
 import { finishSetup, ompNeedsSetup, setupSteps, useSetup } from "./setup";
 import { SetupScreen } from "./SetupScreen";
+import { motion } from "motion/react";
+import { MiniShell } from "./MiniShell";
+import "./setup-wizard.css";
 
 const MODES: readonly ApprovalMode[] = ["always-ask", "always-ask-cached", "write", "yolo"];
 const THEMES: readonly AppPreferences["theme"][] = ["system", "light", "dark"];
@@ -27,12 +30,14 @@ export function SetupWizard() {
 	const [steps] = useState(() => setupSteps(Boolean(omp && ompNeedsSetup(omp)), Boolean(prefs?.setupCompleted && !requested)));
 	const [index, setIndex] = useState(0);
 	const step = steps[index] ?? "done";
+	const [miniStarted, setMiniStarted] = useState(step === "install");
 	const [providers, setProviders] = useState<ProvidersState | null>(null);
 	const [models, setModels] = useState<ModelInfo[] | null>(null);
 	const [roles, setRoles] = useState<ModelRolesState | null>(null);
 	const [selection, setSelection] = useState<string | null>(null);
 	const [savedModel, setSavedModel] = useState<string | null>(null);
 	const [mode, setMode] = useState<ApprovalMode>("always-ask");
+	const [approvalKnown, setApprovalKnown] = useState(false);
 	// The mode the user already chose; null while it is omp's untouched default or unknown.
 	const [savedMode, setSavedMode] = useState<ApprovalMode | null>(null);
 	const [query, setQuery] = useState("");
@@ -41,6 +46,31 @@ export function SetupWizard() {
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const heading = useRef<HTMLHeadingElement>(null);
+	const reduced = useMotionReduced();
+	const [markFlash, setMarkFlash] = useState(0);
+	const [finale, setFinale] = useState(false);
+	const [previewTheme, setPreviewTheme] = useState(prefs?.theme ?? "light");
+	const [systemDark, setSystemDark] = useState(() => window.matchMedia("(prefers-color-scheme: dark)").matches);
+	const [installLine, setInstallLine] = useState<{ tone: "busy" | "ok" | "err"; text: string } | null>(null);
+	const finaleTimer = useRef<number | undefined>(undefined);
+	const main = useRef<HTMLElement>(null);
+	const skipFinale = useRef(false);
+	const themeTimer = useRef<number | undefined>(undefined);
+	const [viewport, setViewport] = useState(() => ({ width: window.innerWidth, height: window.innerHeight }));
+	const [controlsTheme, setControlsTheme] = useState(prefs?.theme ?? "light");
+	useEffect(() => {
+		const query = window.matchMedia("(prefers-color-scheme: dark)");
+		const resize = () => setViewport({ width: window.innerWidth, height: window.innerHeight });
+		window.addEventListener("resize", resize);
+		const change = (event: MediaQueryListEvent) => setSystemDark(event.matches);
+		query.addEventListener("change", change);
+		return () => {
+			query.removeEventListener("change", change);
+			clearTimeout(finaleTimer.current);
+			window.removeEventListener("resize", resize);
+			clearTimeout(themeTimer.current);
+		};
+	}, []);
 	const active = useRef(true);
 	const loadRequest = useRef(0);
 	useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
@@ -55,7 +85,10 @@ export function SetupWizard() {
 		setError(null);
 		try {
 			const result = await window.vomp.invoke("providers:list", true);
-			if (active.current && request === loadRequest.current) setProviders(result);
+			if (active.current && request === loadRequest.current) {
+				setProviders(result);
+				setMarkFlash(value => value + 1);
+			}
 		} catch (reason) {
 			if (active.current && request === loadRequest.current) setError(ipcErrorMessage(reason));
 		} finally {
@@ -90,6 +123,7 @@ export function SetupWizard() {
 		const request = ++loadRequest.current;
 		setLoading(true);
 		setError(null);
+		setApprovalKnown(false);
 		try {
 			const current = await window.vomp.invoke("config:approval");
 			if (!active.current || request !== loadRequest.current) return;
@@ -97,9 +131,11 @@ export function SetupWizard() {
 			if (current.modeSource === "default") {
 				setMode("always-ask");
 				setSavedMode(null);
+				setApprovalKnown(true);
 			} else if (current.mode) {
 				setMode(current.mode);
 				setSavedMode(current.mode);
+				setApprovalKnown(true);
 			} else {
 				// A mode this version cannot describe blocks Continue, so it is never overwritten.
 				setError(t("wizard.permission.unknown"));
@@ -121,21 +157,46 @@ export function SetupWizard() {
 		if (step === "permission") void loadApproval();
 	}, [step, loadProviders, loadModels, loadApproval]);
 
-	const advance = () => setIndex(value => {
-		const next = Math.min(value + 1, steps.length - 1);
-		return steps[next] === "install" && omp && !ompNeedsSetup(omp) ? Math.min(next + 1, steps.length - 1) : next;
-	});
-	const exit = async () => {
+	const advance = () => {
+		setMarkFlash(value => value + 1);
+		setMiniStarted(true);
+		setIndex(value => {
+			const next = Math.min(value + 1, steps.length - 1);
+			return steps[next] === "install" && omp && !ompNeedsSetup(omp) ? Math.min(next + 1, steps.length - 1) : next;
+		});
+	};
+	const exit = async (animate = false) => {
 		setSaving(true);
 		setError(null);
-		try { await finishSetup(); }
-		catch (reason) { if (active.current) { setError(ipcErrorMessage(reason)); setSaving(false); } }
+		if (animate) {
+			skipFinale.current = false;
+			useSetup.setState({ handoff: true });
+		}
+		try {
+			await finishSetup();
+			if (animate && active.current) {
+				if (skipFinale.current) useSetup.setState({ handoff: false });
+				else {
+					setFinale(true);
+					requestAnimationFrame(() => main.current?.focus());
+					finaleTimer.current = window.setTimeout(() => useSetup.setState({ handoff: false }), reduced ? 140 : 700);
+				}
+			}
+		} catch (reason) {
+			if (active.current) {
+				setFinale(false);
+				useSetup.setState({ handoff: false });
+				setError(ipcErrorMessage(reason));
+				setSaving(false);
+				requestAnimationFrame(() => heading.current?.focus());
+			}
+		}
 	};
 	// Without the current mode, saving could overwrite a choice the user already made.
 	const primaryBlocked = saving || loading || ((step === "model" || step === "permission") && Boolean(error));
 	const primary = async () => {
 		if (primaryBlocked) return;
-		if (step === "done") { await exit(); return; }
+		if (step === "done") { await exit(true); return; }
 		setSaving(true);
 		setError(null);
 		try {
@@ -157,12 +218,36 @@ export function SetupWizard() {
 	};
 	const chooseTheme = async (theme: AppPreferences["theme"]) => {
 		setError(null);
+		setPreviewTheme(theme);
+		clearTimeout(themeTimer.current);
 		try { await useApp.getState().setPrefs({ theme }); }
-		catch (reason) { if (active.current) setError(ipcErrorMessage(reason)); }
+		catch (reason) {
+			if (active.current) {
+				setPreviewTheme(useApp.getState().prefs?.theme ?? "light");
+				setError(ipcErrorMessage(reason));
+			}
+		}
 	};
+	useEffect(() => {
+		themeTimer.current = window.setTimeout(() => setControlsTheme(previewTheme), reduced ? 0 : 240);
+		return () => clearTimeout(themeTimer.current);
+	}, [previewTheme, reduced]);
 	const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
 		if (event.defaultPrevented || login || event.nativeEvent.isComposing) return;
-		if (event.key === "Escape") { event.preventDefault(); if (!saving) void exit(); }
+		if (finale) {
+			event.preventDefault();
+			event.stopPropagation();
+			if (event.key === "Escape") {
+				window.clearTimeout(finaleTimer.current);
+				useSetup.setState({ handoff: false });
+			}
+			return;
+		}
+		if (event.key === "Escape") {
+			event.preventDefault();
+			if (saving && step === "done") skipFinale.current = true;
+			else if (!saving) void exit();
+		}
 		if (event.key === "Enter" && step !== "install" && !(event.target as HTMLElement).closest("button, a")) {
 			event.preventDefault(); void primary();
 		}
@@ -183,23 +268,34 @@ export function SetupWizard() {
 		})),
 		...(providers?.available ?? []).map(provider => ({ ...provider, target: provider, connected: false, needsSignIn: false })),
 	].filter(provider => `${provider.name} ${provider.id}`.toLowerCase().includes(search));
+	const cover = step === "welcome" || step === "done";
+	const theme = previewTheme === "system" ? (systemDark ? "dark" : "light") : previewTheme;
+	const progress = step === "install" ? 1 : step === "providers" ? 2 : step === "model" ? 3 : step === "permission" ? 4 : step === "appearance" ? 5 : step === "done" ? 6 : 0;
+	const progressTicks = <div className="setup-ticks" aria-hidden>{Array.from({ length: 6 }, (_, tick) => <span key={tick} data-current={tick === progress - 1 || undefined}><motion.i initial={false} animate={{ scaleX: tick < progress ? 1 : 0 }} transition={reduced ? { duration: 0 } : spring.gentle} /></span>)}</div>;
+	const ompLine = omp?.found && omp.supported && !omp.refused && omp.version
+		? { tone: "ok" as const, text: `omp ${omp.version}` }
+		: installLine;
+	const miniScale = Math.min(0.55, Math.max(0.2, (viewport.width - 560) / viewport.width), (viewport.height - 180) / viewport.height);
+	const permission = approvalKnown ? t(`wizard.permission.${mode}.title`) : null;
 
 	return (
-		<main className="relative flex h-screen w-full flex-col overflow-y-auto bg-bg text-fg" onKeyDown={onKeyDown} aria-label={t("wizard.label")}>
+		<motion.main ref={main} tabIndex={-1} initial={false} animate={{ opacity: finale ? 0 : 1 }} transition={{ opacity: { duration: reduced ? 0.14 : 0.2, delay: finale && !reduced ? 0.5 : 0 } }} className={cn("setup-wizard relative flex h-screen w-full flex-col overflow-hidden bg-bg text-fg outline-none", cover && "setup-cover", finale && "setup-finishing")} data-theme={controlsTheme === "system" ? (systemDark ? "dark" : "light") : controlsTheme} data-region={cover ? "chrome" : undefined} data-reduced={reduced || undefined} onKeyDown={onKeyDown} aria-label={t("wizard.label")}>
 			<div aria-hidden className="h-10 shrink-0 [-webkit-app-region:drag]" />
-			<header className="mx-auto flex w-full max-w-200 items-center gap-3 px-page py-4">
-				<Mark size={28} />
+			<header inert={finale} className="setup-header flex w-full items-center gap-3 px-page py-4">
+				{!cover && <PeriscopeMark size={24} flash={markFlash} className="setup-narrow-mark" />}
 				<span className="text-md font-semibold">{t("wizard.label")}</span>
-				<p className="ml-auto text-sm tabular-nums text-fg-muted" aria-live="polite">{t("wizard.progress", { current: index + 1, total: steps.length })}</p>
+				<p className="ml-auto text-sm tabular-nums text-fg-muted" aria-live="polite">{t("wizard.progress", { current: cover ? (step === "done" ? 6 : 1) : progress, total: 6 })}</p>
 				<Button variant="ghost" size="sm" disabled={saving} onClick={() => void exit()}>{t("wizard.exit")}</Button>
 			</header>
-			<div className="mx-auto flex w-full max-w-160 flex-1 flex-col px-page pb-10 pt-8">
+			<p className="sr-only" role="status">{[ompLine?.text, permission].filter(Boolean).join(". ")}</p>
+			<div className={cn("setup-layout", cover && "setup-layout-cover")}>
+			<div className="setup-controls" inert={finale}>
 				<PresenceSwap swapKey={step} variant="rise" className="w-full">
-					{step === "install" ? <SetupScreen onReady={installReady} /> : (
+					{step === "install" ? <SetupScreen onReady={installReady} embedded progress={progressTicks} onStatus={setInstallLine} /> : (
 						<section aria-labelledby={`setup-${step}-title`}>
-							{step === "welcome" && <Mark size={64} className="mb-8" />}
-							{step === "done" && <CheckCircle size={48} className="mb-6 text-accent" aria-hidden />}
-							<h1 id={`setup-${step}-title`} ref={focusHeading} tabIndex={-1} className="text-page font-semibold leading-tight tracking-[-0.02em] outline-none">{t(`wizard.${step}.title`)}</h1>
+							{cover && <PeriscopeMark size={176} mood={step === "welcome" ? "enter" : "celebrate"} inverse flash={markFlash} className="mb-8" />}
+							<h1 id={`setup-${step}-title`} ref={focusHeading} tabIndex={-1} className={cn("font-semibold leading-tight tracking-[-0.02em] outline-none", cover ? "setup-display" : "text-3xl")}>{t(`wizard.${step}.title`)}</h1>
+							{!cover && progressTicks}
 							<p className="mt-3 text-base text-fg-muted">{t(`wizard.${step}.body`)}</p>
 							<div className="mt-8">
 								{loading && <p role="status" className="mb-4 flex items-center gap-2 text-sm text-fg-muted"><Spinner size={14} />{t(`wizard.${step}.loading`)}</p>}
@@ -261,7 +357,7 @@ export function SetupWizard() {
 										{THEMES.map(theme => {
 											const Icon = THEME_ICONS[theme];
 											return (
-												<Choice key={theme} name="setup-theme" value={theme} selected={prefs?.theme === theme}
+												<Choice key={theme} name="setup-theme" value={theme} selected={previewTheme === theme}
 													onChange={() => void chooseTheme(theme)} title={t(`wizard.appearance.${theme}`)}
 													icon={<Icon className="size-5 text-fg-muted" />} />
 											);
@@ -269,18 +365,18 @@ export function SetupWizard() {
 									</div>
 								)}
 								{step === "done" && (
-									<dl className="divide-y divide-border border-y border-border">
+									<Stagger step={0.04}><dl className="divide-y divide-border border-y border-border">
 										{[
 											["providers", connected.map(provider => provider.name).join(", ") || t("wizard.done.noProviders")],
 											["model", findModel(savedModel, models ?? [])?.name ?? savedModel ?? t("wizard.done.noModel")],
 											["permission", t(`wizard.permission.${mode}.title`)],
 										].map(([key, value]) => (
-											<div key={key} className="flex flex-wrap items-baseline justify-between gap-2 py-4">
-												<dt className="text-md text-fg-muted">{t(`wizard.done.${key}`)}</dt>
+											<StaggerItem key={key} className="flex flex-wrap items-baseline justify-between gap-2 py-4">
+												<dt className="flex items-center gap-2 text-md text-fg-muted"><Check className="text-accent" aria-hidden />{t(`wizard.done.${key}`)}</dt>
 												<dd className="max-w-full break-words text-md font-medium">{value}</dd>
-											</div>
+											</StaggerItem>
 										))}
-									</dl>
+									</dl></Stagger>
 								)}
 							</div>
 						</section>
@@ -295,8 +391,14 @@ export function SetupWizard() {
 					<Button variant="primary" icon={<ArrowRight />} loading={saving} disabled={primaryBlocked} onClick={() => void primary()}>{t(`wizard.${primaryLabel}`)}</Button>
 				</footer>}
 			</div>
+				<div className={cn("setup-miniature", cover && "setup-miniature-covered", finale && "setup-miniature-finale")} aria-hidden>
+					<motion.div className="setup-miniature-frame" style={{ width: viewport.width, height: viewport.height }} initial={false} animate={finale ? { scale: 1, x: 0 } : { scale: miniScale, x: viewport.width <= 1100 ? 232 : 252 }} transition={reduced ? { duration: 0 } : finale ? { ...spring.gentle, visualDuration: 0.5 } : spring.gentle}>
+						{miniStarted && <MiniShell theme={theme} ompLine={ompLine} providers={connected.map(({ id, name }) => ({ id, name }))} model={selection ?? savedModel} permission={permission} markFlash={markFlash} celebrate={step === "done"} />}
+					</motion.div>
+				</div>
+			</div>
 			{login && <OmpLoginDialog target={login} cwd={null} onFinished={() => void loadProviders()} onClose={() => { setLogin(null); void loadProviders(); requestAnimationFrame(() => heading.current?.focus()); }} />}
-		</main>
+		</motion.main>
 	);
 }
 

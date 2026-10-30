@@ -35,7 +35,12 @@ be able to use it, and it exposes the features that set omp apart from other cod
   install or update step, provider sign-in, a default chat model, permissions, app appearance and a
   done summary, followed by the existing guided tour. Provider sign-in runs `omp login` in an inline
   terminal; **Skip** changes to **Continue** once a provider is connected. The model selection saves
-  omp's global default chat model. Appearance changes preview immediately in the app.
+  omp's global default chat model. Welcome and Done use ink covers with the animated periscope mark.
+  Content steps pair a 440px control column and six progress ticks with a persistent, non-interactive
+  miniature app shell that reflects the detected omp version, connected providers, model and permission.
+  Below 900px, only the control column is shown. Appearance previews the miniature immediately and the
+  controls follow 240ms later. Start chatting expands the miniature into the app before the tour;
+  reduced motion uses a 140ms crossfade.
 - Fresh app preferences set `setupCompleted: false`; an existing file without the flag is treated
   as completed. Existing users whose omp is missing, unsupported or refused see only the install
   step. Finishing, **Exit setup** or Esc marks setup completed. Help and the command palette offer

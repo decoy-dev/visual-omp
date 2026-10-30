@@ -3,7 +3,7 @@ import { create } from "zustand";
 import { useApp } from "../../state/app";
 import { whenLeaving } from "../../state/leaveGuard";
 
-export const useSetup = create<{ requested: boolean; dismissed: boolean }>(() => ({ requested: false, dismissed: false }));
+export const useSetup = create<{ requested: boolean; dismissed: boolean; handoff: boolean }>(() => ({ requested: false, dismissed: false, handoff: false }));
 
 export function ompNeedsSetup(omp: OmpStatus): boolean {
 	return !omp.found || !omp.supported || Boolean(omp.refused);
@@ -18,7 +18,7 @@ export function startSetup(): void {
 	void whenLeaving(() => {
 		useApp.getState().closeSheet();
 		useApp.getState().setPaletteOpen(false);
-		useSetup.setState({ requested: true, dismissed: false });
+		useSetup.setState({ requested: true, dismissed: false, handoff: false });
 	});
 }
 

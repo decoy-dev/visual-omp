@@ -153,7 +153,7 @@ export function TourHost() {
 	const prefs = useApp(state => state.prefs);
 	const omp = useApp(state => state.omp);
 	const setup = useSetup();
-	const setupOpen = needsSetup(omp, prefs, setup.requested, setup.dismissed);
+	const setupOpen = setup.handoff || needsSetup(omp, prefs, setup.requested, setup.dismissed);
 
 	useEffect(() => {
 		if (autoStarted || tourCompleted !== false || !ompReady || setupOpen) return;

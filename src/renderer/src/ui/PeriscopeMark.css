@@ -1,0 +1,22 @@
+.periscope-mark-head {
+	transform-box: view-box;
+	/* Pivot at (540, 748), relative to the cropped viewBox's (186, 186) origin. */
+	transform-origin: 354px 562px;
+	animation: periscope-mark-look 3.8s var(--ease-in-out) 1.1s 1;
+}
+
+@keyframes periscope-mark-look {
+	0%, 100% { transform: rotate(0deg); }
+	25% { transform: rotate(2deg); }
+	75% { transform: rotate(-2deg); }
+}
+
+html[data-motion="reduced"] .periscope-mark-head {
+	animation: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	html:not([data-motion="full"]) .periscope-mark-head {
+		animation: none;
+	}
+}

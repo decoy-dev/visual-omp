@@ -19,11 +19,20 @@ vi.mock("../../state/app", async () => {
 vi.mock("../../state/leaveGuard", () => ({ whenLeaving: async (run: () => unknown) => ({ left: true, value: run() }) }));
 vi.mock("../manage/settings/OmpLoginDialog", () => ({ OmpLoginDialog: ({ onClose, onFinished }: { onClose(): void; onFinished(code: number): void }) => createElement("button", { onClick: () => { fake.connected = true; onFinished(0); onClose(); } }, "Finish sign-in") }));
 vi.mock("./SetupScreen", () => ({ SetupScreen: ({ onReady }: { onReady(): void }) => createElement("button", { onClick: () => { fake.installed = true; onReady(); } }, "Install omp") }));
+vi.mock("./MiniShell", () => ({ MiniShell: () => createElement("div", { "aria-hidden": true, "data-mini-shell": true }) }));
+vi.mock("motion/react", () => {
+	const tag = (name: string) => ({ children, initial, animate, exit, transition, ...props }: PropsWithChildren<Record<string, unknown>>) => createElement(name, props, children);
+	return { motion: { div: tag("div"), i: tag("i"), main: tag("main") } };
+});
 vi.mock("../../ui", () => {
 	const e = createElement;
 	return {
 		Button: ({ children, onClick, disabled, loading }: PropsWithChildren<{ onClick?: () => void; disabled?: boolean; loading?: boolean }>) => e("button", { disabled: disabled || loading, onClick }, children),
-		Mark: () => null, Spinner: () => null,
+		Mark: () => null, PeriscopeMark: () => null, Spinner: () => null,
+		Stagger: ({ children }: PropsWithChildren) => e("div", null, children),
+		StaggerItem: ({ children }: PropsWithChildren) => e("div", null, children),
+		spring: { gentle: { duration: 0 } },
+		useMotionReduced: () => false,
 		cn: (...values: unknown[]) => values.filter(Boolean).join(" "),
 		PresenceSwap: ({ children }: PropsWithChildren) => e("div", null, children),
 		Notice: ({ children, actions }: PropsWithChildren<{ actions?: ReactNode }>) => e("aside", { role: "alert" }, children, actions),
@@ -58,7 +67,7 @@ beforeEach(() => {
 	});
 	fake.setPrefs.mockImplementation(async (patch: Partial<AppPreferences>) => useApp.setState({ prefs: { ...useApp.getState().prefs!, ...patch } }));
 	useApp.setState({ prefs: { ...prefs }, omp: ready });
-	useSetup.setState({ requested: false, dismissed: false });
+	useSetup.setState({ requested: false, dismissed: false, handoff: false });
 	Object.assign(window, { vomp: { invoke: fake.invoke, platform: "darwin" } });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
@@ -81,7 +90,7 @@ describe("setup visibility and routing", () => {
 	it("offers full setup again from the replay action", async () => {
 		useApp.setState({ prefs: { ...prefs, setupCompleted: true } });
 		startSetup();
-		expect(useSetup.getState()).toEqual({ requested: true, dismissed: false });
+		expect(useSetup.getState()).toEqual({ requested: true, dismissed: false, handoff: false });
 		expect(fake.closeSheet).toHaveBeenCalledOnce();
 		expect(needsSetup(ready, useApp.getState().prefs, true, false)).toBe(true);
 		await render();
@@ -98,12 +107,15 @@ describe("setup visibility and routing", () => {
 
 it("uses Skip until connected, refreshes after sign-in and saves the global default and permission", async () => {
 	await render(); await click("Start setup");
+	const miniature = element.querySelector("[data-mini-shell]");
+	expect(miniature).not.toBeNull();
 	expect(button("Skip")).toBeDefined();
 	await click("Test provider"); await click("Finish sign-in");
 	expect(button("Continue")).toBeDefined();
 	expect(fake.invoke.mock.calls.filter(call => call[0] === "providers:list")).toHaveLength(3);
 	await click("Continue");
 	expect((element.querySelector('input[name="setup-model"]') as HTMLInputElement).checked).toBe(true);
+	expect(element.querySelector("[data-mini-shell]")).toBe(miniature);
 	expect(document.activeElement?.id).toBe("setup-model-title");
 	await click("Continue");
 	expect(fake.invoke).toHaveBeenCalledWith("config:roles:set", "default", { model: "test/chat", thinking: "high" }, { scope: "global" });
@@ -119,6 +131,7 @@ it("uses Skip until connected, refreshes after sign-in and saves the global defa
 	await click("Start chatting");
 	expect(fake.setPrefs).toHaveBeenCalledWith({ setupCompleted: true });
 	expect(useSetup.getState().dismissed).toBe(true);
+	expect(useSetup.getState().handoff).toBe(true);
 });
 
 it("offers sign-in and Skip when no models are available without writing a model", async () => {
@@ -144,7 +157,7 @@ it.each(["Exit setup", "Escape"])("marks setup completed when leaving with %s", 
 	if (action === "Escape") await act(async () => element.querySelector("main")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
 	else await click(action);
 	expect(fake.setPrefs).toHaveBeenCalledWith({ setupCompleted: true });
-	expect(useSetup.getState()).toEqual({ requested: false, dismissed: true });
+	expect(useSetup.getState()).toEqual({ requested: false, dismissed: true, handoff: false });
 });
 
 it("does not dismiss setup when completion persistence fails", async () => {
@@ -291,4 +304,34 @@ it("keeps disabled-only providers available for sign-in without counting them as
 	await click("Skip"); await click("Skip"); await click("Continue"); await click("Continue");
 	expect(element.textContent).toContain("No providers connected");
 	expect(element.querySelector("dd")?.textContent).not.toContain("Test provider");
+});
+
+it("keeps the cover visible while completion saves and lets Escape skip the pending finale", async () => {
+	await render(); await click("Start setup"); await click("Skip"); await click("Continue"); await click("Continue"); await click("Continue");
+	const pending = Promise.withResolvers<void>();
+	fake.setPrefs.mockImplementationOnce(() => pending.promise);
+	await click("Start chatting");
+	expect(useSetup.getState().handoff).toBe(true);
+	expect(element.querySelector("main")?.classList.contains("setup-finishing")).toBe(false);
+	await act(async () => element.querySelector("main")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+	expect(useSetup.getState().dismissed).toBe(false);
+	await act(async () => pending.resolve());
+	expect(useSetup.getState().dismissed).toBe(true);
+	expect(useSetup.getState().handoff).toBe(false);
+});
+
+it("makes finale controls inert and lets Escape complete the handoff", async () => {
+	await render(); await click("Start setup"); await click("Skip"); await click("Continue"); await click("Continue"); await click("Continue"); await click("Start chatting");
+	expect(element.querySelector(".setup-controls")?.hasAttribute("inert")).toBe(true);
+	expect(element.querySelector("main")?.tabIndex).toBe(-1);
+	await act(async () => element.querySelector("main")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+	expect(useSetup.getState().handoff).toBe(false);
+});
+
+it("restores the persisted theme when appearance saving fails", async () => {
+	await render(); await click("Start setup"); await click("Skip"); await click("Continue"); await click("Continue");
+	fake.setPrefs.mockRejectedValueOnce(new Error("Could not save appearance"));
+	await act(async () => (element.querySelector('input[value="dark"]') as HTMLInputElement).click());
+	expect((element.querySelector('input[value="light"]') as HTMLInputElement).checked).toBe(true);
+	expect(element.querySelector('[role="alert"]')?.textContent).toContain("Could not save appearance");
 });

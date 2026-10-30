@@ -9,13 +9,20 @@
 		"start": "Start setup",
 		"finish": "Start chatting",
 		"retry": "Try again",
+		"preview": {
+			"emptyChats": "Your chats will appear here",
+			"noProviders": "No providers yet",
+			"installing": "Running the omp installer",
+			"checking": "Checking for omp",
+			"exitCode": "Exit {{code}}"
+		},
 		"welcome": {
 			"title": "Welcome to visual-omp",
 			"body": "Connect your providers and choose how omp works in your chats."
 		},
 		"providers": {
 			"title": "Sign in to your providers",
-			"body": "Sign in to one or more providers. You can connect another before continuing.",
+			"body": "Sign in to the providers you want to use. You can add more later in Settings.",
 			"loading": "Reading providers from omp…",
 			"search": "Search providers",
 			"connected": "Connected",
@@ -26,7 +33,7 @@
 		},
 		"model": {
 			"title": "Choose your default model",
-			"body": "Search configured models and save the model used for new chats.",
+			"body": "Choose the model new chats start with. You can change it per chat later.",
 			"loading": "Discovering available models…",
 			"search": "Search models",
 			"emptyTitle": "No models yet",
@@ -57,7 +64,7 @@
 		},
 		"appearance": {
 			"title": "Choose your appearance",
-			"body": "Preview the app theme here. You can change it later in Settings.",
+			"body": "Pick a theme. The window previews it as you choose.",
 			"system": "System",
 			"light": "Light",
 			"dark": "Dark"

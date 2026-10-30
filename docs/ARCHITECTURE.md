@@ -317,7 +317,13 @@ in an inline terminal, with Skip until a provider connects and Continue afterwar
 and permission choices use omp's global configuration path. The permission step keeps an
 explicitly chosen mode, suggests Ask me first only while omp is on its default, and writes only a
 changed mode; an unrecognized mode blocks Continue so it cannot be overwritten.
-App appearance previews immediately. Finishing, Exit setup or Esc persists
+`SetupWizard` keeps `MiniShell` mounted between steps and feeds it current install, provider,
+model, permission and appearance state. Welcome and Done are ink covers; content steps use a
+split layout that becomes a single column below 900px. Appearance updates its local miniature
+immediately and the control theme 240ms later. The transient `useSetup.handoff` flag lets `App`
+mount `Shell` behind the existing wizard while its miniature scales to the viewport and fades.
+After 700ms (140ms without transforms under reduced motion), the wizard unmounts. Finishing,
+Exit setup or Esc persists
 `setupCompleted: true` and dismisses setup. The existing tour waits until setup is completed,
 no longer needed and a supported omp is available. Setup never writes omp's `setupVersion`,
 so terminal glyph, composer and theme setup remain available. `ensureNewUserApproval`

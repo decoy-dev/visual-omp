@@ -17,7 +17,7 @@ const DONE_DELAY_MS = 600;
 type Install = { state: "idle" } | { state: "running" | "succeeded" | "failed" | "cancelled"; run: CommandRun; code: number | null };
 type Check = "idle" | "checking" | "missing" | "done";
 
-export function SetupScreen({ onReady }: { onReady(): void }) {
+export function SetupScreen({ onReady, embedded = false, progress, onStatus }: { onReady(): void; embedded?: boolean; progress?: ReactNode; onStatus?(line: { tone: "busy" | "ok" | "err"; text: string } | null): void }) {
 	const { t } = useTranslation("onboarding");
 	const omp = useApp(state => state.omp);
 	const [install, setInstall] = useState<Install>({ state: "idle" });
@@ -156,6 +156,17 @@ export function SetupScreen({ onReady }: { onReady(): void }) {
 		failed: t("setup.step1.failed", { code: install.state === "idle" ? 0 : install.code }),
 		cancelled: t("setup.step1.cancelled"),
 	};
+	useEffect(() => {
+		onStatus?.(error || install.state === "failed" || check === "missing"
+			? { tone: "err", text: error ?? (check === "missing" ? t("setup.step2.stillMissing") : installStatus[install.state]) ?? t("setup.step2.stillMissing") }
+			: check === "checking"
+				? { tone: "busy", text: t("wizard.preview.checking") }
+				: installing || startingInstall
+					? { tone: "busy", text: t("wizard.preview.installing") }
+					: omp?.found && omp.version
+						? { tone: omp.supported && !omp.refused ? "ok" : "err", text: `omp ${omp.version}` }
+						: null);
+	}, [onStatus, error, install.state, check, installing, startingInstall, omp?.found, omp?.version, omp?.supported, omp?.refused, t]);
 
 	const closeHelp = () => {
 		setHelpOpen(false);
@@ -172,7 +183,8 @@ export function SetupScreen({ onReady }: { onReady(): void }) {
 		}}>
 			<div className="relative flex w-full flex-col text-left">
 				<PresenceSwap swapKey={heading} variant="rise">
-					<h1 ref={title} tabIndex={-1} className="text-page font-semibold leading-tight tracking-[-0.02em] text-fg outline-none">{t(`setup.${heading}.title`)}</h1>
+					<h1 ref={title} tabIndex={-1} className={cn("font-semibold leading-tight tracking-[-0.02em] text-fg outline-none", embedded ? "text-3xl" : "text-page")}>{t(`setup.${heading}.title`)}</h1>
+					{progress}
 					<p className="mt-3 text-base text-fg-muted">{t(`setup.${heading}.body`, { version: omp?.minVersion })}</p>
 				</PresenceSwap>
 				{error && <p role="alert" className="mt-4 text-sm text-err">{error}</p>}
@@ -192,7 +204,7 @@ export function SetupScreen({ onReady }: { onReady(): void }) {
 				{omp && !omp.found && omp.path && !done && (
 					<p className={cn("mt-3 max-w-110 text-sm", refused ? "text-fg-muted [overflow-wrap:anywhere]" : "font-mono text-fg-faint")}>{omp.problem}</p>
 				)}
-				<ol className="mt-8 w-full divide-y divide-border overflow-hidden rounded-lg border border-border bg-panel text-left">
+				<ol className={cn("mt-8 w-full divide-y divide-border overflow-hidden text-left", embedded ? "border-y border-border" : "rounded-lg border border-border bg-panel")}>
 					<StepRow
 						number={1}
 						done={step1Done}
@@ -208,7 +220,8 @@ export function SetupScreen({ onReady }: { onReady(): void }) {
 						<Expand open={install.state !== "idle"} className="pt-3">
 							{install.state !== "idle" && (
 								<>
-									<InlineTerminal run={install.run} label={t("setup.step1.terminalLabel")} className="h-60" screenReader />
+									<div className="mb-2 flex items-center gap-2 text-sm text-fg-muted"><span className={cn("size-1.5 rounded-full", installing ? "bg-accent" : "bg-fg-faint")} aria-hidden />{t("setup.step1.terminalLabel")}{install.code !== null && <span className="ml-auto font-mono">{t("wizard.preview.exitCode", { code: install.code })}</span>}</div>
+									<InlineTerminal run={install.run} label={t("setup.step1.terminalLabel")} className={embedded ? "h-40" : "h-60"} screenReader />
 									<p
 										role="status"
 										className={cn(

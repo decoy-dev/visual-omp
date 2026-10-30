@@ -1,9 +1,9 @@
 import { IconContext, type IconProps } from "@phosphor-icons/react";
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import { needsSetup, useSetup } from "./features/onboarding/setup";
 import { globals, screens } from "./registry/slots";
 import { Shell } from "./shell/Shell";
-import { useApp } from "./state/app";
+import { MAIN_ID, useApp } from "./state/app";
 import { MotionProvider, Toaster, TooltipProvider } from "./ui";
 
 /** Phosphor defaults: size follows the text (callers size with `size-*` classes), regular weight, inherited color. */
@@ -35,10 +35,21 @@ export function App(): ReactNode {
 	const prefs = useApp(state => state.prefs);
 	const requested = useSetup(state => state.requested);
 	const dismissed = useSetup(state => state.dismissed);
+	const handoff = useSetup(state => state.handoff);
 	const activeProject = useApp(state => state.activeProject);
 	const screenList = screens.use();
 	const globalList = globals.use();
 	usePreferenceAttributes();
+	const previousHandoff = useRef(false);
+	useEffect(() => {
+		if (previousHandoff.current && !handoff) {
+			const target = [...document.querySelectorAll<HTMLElement>('[data-setup-shell] [data-tour="composer"] textarea')]
+				.find(element => !element.closest("[inert], [hidden]") && element.getClientRects().length > 0)
+				?? document.getElementById(MAIN_ID);
+			target?.focus();
+		}
+		previousHandoff.current = handoff;
+	}, [handoff]);
 
 	useEffect(() => {
 		void useApp.getState().init();
@@ -55,7 +66,8 @@ export function App(): ReactNode {
 		<IconContext.Provider value={iconDefaults}>
 			<MotionProvider>
 				<TooltipProvider>
-					{showSetup && setup ? <setup.component projectPath={activeProject} /> : <Shell />}
+					{(!showSetup || handoff) && <div className="contents" data-setup-shell inert={handoff}><Shell /></div>}
+					{(showSetup || handoff) && setup && <div className={handoff ? "fixed inset-0 z-50" : undefined}><setup.component projectPath={activeProject} /></div>}
 					{globalList.map(global => (
 						<global.component key={global.id} />
 					))}

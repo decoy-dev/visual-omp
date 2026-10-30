@@ -20,6 +20,7 @@ export * from "./NavRail";
 export * from "./Notice";
 export * from "./Page";
 export * from "./Popover";
+export * from "./PeriscopeMark";
 export * from "./Progress";
 export * from "./ScopeSwitch";
 export * from "./SectionHeader";
