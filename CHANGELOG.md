@@ -8,6 +8,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - You can return to an earlier visual-omp version from its release notes: open **Settings → About → Read release notes → Past versions**, choose an earlier release and select **Install v{version}**. The installer comes from the official GitHub release through the same checked download path as updates, and your chats and omp settings stay as they are. Homebrew and Scoop installs show the package manager's downgrade steps instead. From 0.7.1 onward, automatic update checks skip releases through the version you left until a newer release is available. **Check for updates** includes skipped versions without clearing that choice. Versions before 0.7.1 still offer the newer update, which you can leave uninstalled.
 
+#### Improved
+
+- Chat status marks in the sidebar, Home, project overviews and the chat header are now icons with distinct shapes: a spinning notch while omp works, a pulsing robot while only its helpers work, a question mark while it waits for you, an X for an error and a power symbol for an open chat with omp running. Saved chats without an unopened result no longer show a mark. Unopened finished results on inactive chats show blue double checks; unanswered questions keep the question mark, and active chats retain their status icon with a blue badge.
+
 #### Changed
 
 - Packaged builds of visual-omp now send the app version, platform and architecture once per fresh update check. The collector stores daily update-check totals without IP addresses or identifiers; these totals cannot identify unique installations. Development builds and tests send nothing, and failed counting requests do not delay or interrupt updates. See Updating in the README.

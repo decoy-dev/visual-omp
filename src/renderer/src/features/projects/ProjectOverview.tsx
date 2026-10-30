@@ -339,7 +339,7 @@ function RecentRow({ session, now, ref }: { session: SessionSummary; now: number
 				type="button"
 				onClick={() => useApp.getState().openSession(session)}
 				title={session.preview ?? undefined}
-				className="flex h-10 w-full items-center gap-3 rounded-md px-2 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-2 focus-visible:outline-ring"
+				className="flex h-10 w-full items-center gap-3 rounded-md px-2 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover hover:[--mark-overlay:var(--hover)] focus-visible:outline-2 focus-visible:outline-ring"
 			>
 				<ChatStatusMark status={status} label={statusLabel} unseen={unseen} />
 				<SessionTitle title={title} className={cn("flex-1 text-md text-fg", unseen ? "font-semibold" : "font-medium")} />

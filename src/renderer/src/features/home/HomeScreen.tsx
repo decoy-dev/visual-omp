@@ -175,7 +175,7 @@ function RecentRow({ session, projectName, now }: { session: SessionSummary; pro
 				onClick={() => useApp.getState().openSession(session)}
 				title={session.preview ?? undefined}
 				className={cn(
-					"flex h-10 w-full items-center gap-3 rounded-md px-2 text-left transition-colors duration-(--dur-fast) hover:bg-hover",
+					"flex h-10 w-full items-center gap-3 rounded-md px-2 text-left transition-colors duration-(--dur-fast) hover:bg-hover hover:[--mark-overlay:var(--hover)]",
 					focusRing,
 				)}
 			>

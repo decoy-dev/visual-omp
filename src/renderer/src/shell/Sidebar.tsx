@@ -130,7 +130,7 @@ type MenuKit = typeof dropdownKit | typeof contextKit;
  * button inside) is open, though the pointer has moved into the menu: the highlight, the ⋯ button in place of the
  * time or project name.
  */
-const rowMenuOpen = "data-[state=open]:bg-hover data-[state=open]:text-fg has-[[data-state=open]]:bg-hover has-[[data-state=open]]:text-fg";
+const rowMenuOpen = "data-[state=open]:bg-hover data-[state=open]:text-fg has-[[data-state=open]]:bg-hover has-[[data-state=open]]:text-fg data-[state=open]:[--mark-overlay:var(--hover)] has-[[data-state=open]]:[--mark-overlay:var(--hover)]";
 const hideWhileMenuOpen = "group-data-[state=open]:hidden group-has-[[data-state=open]]:hidden";
 const showWhileMenuOpen = "group-data-[state=open]:inline-flex!";
 
@@ -265,7 +265,7 @@ function ChatRow(props: ChatRowProps): ReactNode {
 						className={cn(
 							"group relative isolate flex h-8 items-center gap-2 rounded-md pr-1 text-md",
 							current ? "@container/row pl-row" : "pl-7",
-							current && active ? "font-medium text-fg" : cn("text-fg-muted hover:bg-hover hover:text-fg", rowMenuOpen),
+							current && active ? "font-medium text-fg [--mark-overlay:var(--pill)]" : cn("text-fg-muted hover:bg-hover hover:text-fg hover:[--mark-overlay:var(--hover)]", rowMenuOpen),
 						)}
 					>
 						{current && active && (
