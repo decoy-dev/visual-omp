@@ -11,7 +11,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 #### Improved
 
-- Chat status marks in the sidebar, Home, project overviews and the chat header are now icons with distinct shapes: a spinning notch while omp works, a pulsing robot while only its helpers work, a question mark while it waits for you, an X for an error and a power symbol for an open chat with omp running. Saved chats without an unopened result no longer show a mark. Unopened finished results on inactive chats show blue double checks; unanswered questions keep the question mark, and active chats retain their status icon with a blue badge.
+- Chat status marks in the sidebar, Home, project overviews and the chat header are now icons with distinct shapes: a spinning notch while omp works, a pulsing robot while only its helpers work, a question mark while it waits for you, an X for an error and a power symbol for an open chat with omp running. Saved chats, and inactive open chats under Current chats, show a small faint history clock. Unopened finished results on inactive chats show blue double checks; unanswered questions keep the question mark, and active chats retain their status icon with a blue badge.
 
 #### Changed
 

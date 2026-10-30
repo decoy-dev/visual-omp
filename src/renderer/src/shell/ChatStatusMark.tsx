@@ -1,4 +1,4 @@
-import { ChatCircleIcon, ChecksIcon, CircleNotchIcon, PowerIcon, QuestionIcon, RobotIcon, XCircleIcon } from "@phosphor-icons/react";
+import { ChatCircleIcon, ChecksIcon, CircleNotchIcon, ClockCounterClockwiseIcon, PowerIcon, QuestionIcon, RobotIcon, XCircleIcon } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { cn } from "../ui";
@@ -7,8 +7,9 @@ import type { ChatStatus } from "./hooks";
 /**
  * Chat status for sidebar rows, project overviews, Home and the chat header. Every state is its own bold icon, so it
  * reads without color: a spinning notch while omp works, a pulsing robot while only its helpers work, a question mark
- * while it waits for an answer, an X for an error and a power symbol for a chat open with omp running. A saved chat
- * draws nothing, so the marks that carry news stand out in long lists; the slot stays for alignment. An unseen result
+ * while it waits for an answer, an X for an error and a power symbol for a chat open with omp running. A saved chat, or
+ * an open one whose omp is not running, shows a small faint history clock: saved history or an inactive chat. An unseen
+ * result
  * on an inactive chat shows double checks (or the question mark when omp asked something); on an active chat it is an
  * `--info` badge ringed in the row's color (rows set `--mark-overlay` to their hover or selected overlay), so the state
  * stays visible. `quiet` (inactive open chats in the Projects tree, whose status shows under Current chats) draws a
@@ -51,7 +52,9 @@ export function ChatStatusMark({
 				<ChatCircleIcon aria-hidden weight="bold" className="size-2.75! text-fg-faint" />
 			) : status === "live" ? (
 				<PowerIcon aria-hidden weight="bold" className="text-ok" />
-			) : null}
+			) : (
+				<ClockCounterClockwiseIcon aria-hidden weight="bold" className="size-3! text-fg-faint" />
+			)}
 			{unseen && active && (
 				<span
 					aria-hidden
