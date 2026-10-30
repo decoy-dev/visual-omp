@@ -4,6 +4,19 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.3] - 2026-10-30
+
+visual-omp 0.7.3 adds sidebar sorting, a live overview of each project's chats and a Close split view button, and keeps long links inside your message bubbles.
+
+### Highlights
+
+- **New:** Sort the sidebar by recent activity, name or creation date, with or without project groups.
+- **New:** Project overviews show which chats are waiting for you, which are working and which have new results.
+- **New:** Split view has a **Close split view** button in both chat headers.
+- **Fixed:** Long links and paths in your messages wrap inside the message bubble.
+
+### Detailed changes
+
 #### New
 
 - The sidebar can sort projects and chats by recent activity, name or creation date. Use the sort button beside **Projects** to choose an order, and turn **Group by project** off to list non-archived chats together across projects. Both settings are saved.
