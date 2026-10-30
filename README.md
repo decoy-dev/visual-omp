@@ -1,5 +1,9 @@
 <p align="center">
-  <img src="assets/hero.png" alt="The visual-omp wordmark and periscope logo.">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/hero-dark.webp">
+    <source media="(prefers-color-scheme: light)" srcset="assets/hero-light.webp">
+    <img src="assets/hero-light.webp" alt="The visual-omp wordmark and periscope logo above the app's window, showing a chat with a table of shipping costs and a chart drawn beneath it.">
+  </picture>
 </p>
 
 <p align="center">
@@ -25,13 +29,14 @@ omp (oh-my-pi) has subagents, plan mode, model roles, an advisor, MCP servers an
 
 These screenshots show demo projects in a development build, so some details can differ from the current release.
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/images/shot-01-chat-dark.png">
-  <source media="(prefers-color-scheme: light)" srcset="docs/images/shot-01-chat-light.png">
-  <img src="docs/images/shot-01-chat-light.png" alt="visual-omp shows a demo store chat with a table of shipping costs, a chart drawn beneath it, a changed-files summary and a message being typed.">
-</picture>
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/anim-stream-still.webp">
+    <img src="docs/images/anim-stream.webp" alt="A message is typed and sent, omp works, and its reply streams in as text with a table of shipping costs and a chart drawn beneath it.">
+  </picture>
+</p>
 
-*Replies render as formatted text, with a chart drawn beneath numeric tables and a summary of the files omp changed.*
+<p align="center"><em>Replies stream as formatted text, with a chart drawn beneath numeric tables. The tool-call wait is shortened in this recording; the reply streams at its original speed.</em></p>
 
 ## Install
 
@@ -102,7 +107,16 @@ The practical consequence is that visual-omp does not reimplement omp: a slash c
 
 ### Start a chat in any folder
 
-**Choose the folder omp works in before you send a message.** Home's folder picker lets you select a project or browse to another folder, and the project wizard can create a folder or clone a repository. Projects and saved terminal sessions appear in the sidebar, so you can return to earlier work.
+**Choose the folder omp works in before you send a message.** Home's folder picker lets you select a project or browse to another folder, and the project wizard can create a folder or clone a repository. Projects and saved terminal sessions appear in the sidebar, so you can return to earlier work. In the development build shown here, the Projects list can be sorted by recent activity, name or creation date, and **Group by project** switches between project groups and one list of non-archived chats.
+
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/anim-sort-still.webp">
+    <img src="docs/images/anim-sort.webp" alt="The sidebar's sort menu changes the order from recent activity to name, then switches Group by project off to list non-archived chats together and back on.">
+  </picture>
+</p>
+
+<p align="center"><em>Sort the sidebar by name, or group chats by project.</em></p>
 
 ### Follow a chat that is open in a terminal
 
@@ -116,15 +130,24 @@ The practical consequence is that visual-omp does not reimplement omp: a slash c
 
 **⌘K (Ctrl+K on Windows) searches app commands by what they do.** The chat header and its ⋯ menu offer commands such as Restart, Compact and Plan mode. Slash commands in the message box go to omp as they would in the terminal.
 
-![visual-omp shows the command palette with a search query and matching commands in dark theme.](docs/images/shot-05-palette-dark.png)
+<p align="center">
+  <picture>
+    <source media="(prefers-reduced-motion: reduce)" srcset="docs/images/anim-palette-still.webp">
+    <img src="docs/images/anim-palette.webp" alt="The command palette opens, a query filters it to the Show commands, and choosing Show changes opens the Changes pane.">
+  </picture>
+</p>
 
-*The command palette shows matching commands with descriptions as you type.*
+<p align="center"><em>The command palette searches app commands by what they do.</em></p>
 
 ### Plan before building
 
 **Plan mode asks omp to draft a plan for your approval before implementation.** Review the draft in the Plan pane, then approve it or use the review options to summarize the chat, keep its full context or send a comment back. Goal, Vibe and Loop modes and the Advisor are available from the chat header's ⋯ menu and the command palette.
 
-![visual-omp shows a drafted plan beside the chat, with approval controls in both views, in dark theme.](docs/images/shot-02-plan-dark.png)
+<a href="docs/images/shot-02-plan-light.webp"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/shot-02-plan-dark.webp">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/shot-02-plan-light.webp">
+  <img src="docs/images/shot-02-plan-light.webp" alt="visual-omp shows a drafted plan beside the chat, with approval controls in both views.">
+</picture></a>
 
 *Review the draft beside the chat, then approve it or choose another review option.*
 
@@ -132,11 +155,19 @@ The practical consequence is that visual-omp does not reimplement omp: a slash c
 
 **The Tasks and Changes panes let you follow delegated work and review its result.** Tasks shows helpers (subagents), their token counts and available transcripts alongside the todo list and background jobs. Changes shows uncommitted diffs and commit history; you can send line comments on uncommitted edits to omp, commit with a generated message, open a pull request and check CI.
 
-![visual-omp shows helpers running in the Tasks pane beside a chat in light theme.](docs/images/shot-03-tasks-light.png)
+<a href="docs/images/shot-03-tasks-light.webp"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/shot-03-tasks-dark.webp">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/shot-03-tasks-light.webp">
+  <img src="docs/images/shot-03-tasks-light.webp" alt="visual-omp shows two helpers working in the Tasks pane beside a chat, with omp's todo list above them.">
+</picture></a>
 
 *The Tasks pane shows helpers while they work.*
 
-![visual-omp shows a file diff and commit history in the Changes pane in light theme.](docs/images/shot-04-changes-light.png)
+<a href="docs/images/shot-04-changes-light.webp"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/shot-04-changes-dark.webp">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/shot-04-changes-light.webp">
+  <img src="docs/images/shot-04-changes-light.webp" alt="visual-omp shows a file diff and commit history in the Changes pane.">
+</picture></a>
 
 *The Changes pane shows uncommitted edits and earlier commits for review.*
 
@@ -144,7 +175,11 @@ The practical consequence is that visual-omp does not reimplement omp: a slash c
 
 **Settings lets you connect providers and choose which models and helpers omp uses.** Provider sign-in opens omp's own sign-in inside the app, including when a token expires. **Models & roles** assigns models to jobs such as chat, planning and commits, and **Helpers** lists bundled and custom subagents with their models.
 
-![visual-omp shows the Models & roles settings with model assignments in light theme.](docs/images/shot-06-models-light.png)
+<a href="docs/images/shot-06-models-light.webp"><picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/shot-06-models-dark.webp">
+  <source media="(prefers-color-scheme: light)" srcset="docs/images/shot-06-models-light.webp">
+  <img src="docs/images/shot-06-models-light.webp" alt="visual-omp shows the Models & roles settings with a model assigned to each role.">
+</picture></a>
 
 *Models & roles shows the model assigned to each omp role.*
 
