@@ -12,7 +12,7 @@ import type { FollowState, HostState, SessionOwnership } from "@shared/ipc";
 import { isTspPreviewInputError, TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import type { Attachment } from "../chat/composer/drafts";
 import { imagePathsText } from "../chat/composer/send";
-import { GuestClient, type GuestSnapshot } from "../collab/lib/client";
+import { APP_GUEST_NAME, GuestClient, type GuestSnapshot } from "../collab/lib/client";
 import { toast } from "../ui/toast";
 import { extendSessionHistory, parseSessionHistory, type SessionHistory } from "./history";
 import { TspNoticeStore } from "../features/tsp/notice-store";
@@ -529,7 +529,7 @@ export class SessionController {
 		this.#awaiting = null;
 		this.#closeGuest();
 		this.#guestLink = link;
-		const guest = new GuestClient(link, "visual-omp");
+		const guest = new GuestClient(link, APP_GUEST_NAME);
 		this.#guest = guest;
 		this.#unsubscribeGuest = guest.subscribe(() => this.#onGuest(guest.getSnapshot()));
 		if (carryover !== this.#view.carryover) this.#set({ carryover });

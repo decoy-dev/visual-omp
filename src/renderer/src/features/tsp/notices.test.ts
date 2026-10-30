@@ -40,6 +40,16 @@ describe("TSP transcript notices", () => {
 		projection.collab([user("u1"), custom("later", "Other output")], []); projection.apply(snapshot([toast("Complete.")]));
 		expect(projection.getSnapshot()).toMatchObject([{ id, anchor: "u1", content: "Complete." }]);
 	});
+	it("skips omp's notices about this app's own collab connection but keeps other guests", () => {
+		for (const own of ["collab: visual-omp joined the collab session", "collab: visual-omp joined the collab session (read-only)", "collab: visual-omp left the collab session"]) {
+			const projection = new TspNoticeProjection();
+			projection.collab([user("u1")], []); projection.apply(snapshot([toast(own)]));
+			expect(projection.getSnapshot()).toEqual([]);
+		}
+		const projection = new TspNoticeProjection();
+		projection.collab([user("u1")], []); projection.apply(snapshot([toast("collab: Alice joined the collab session")]));
+		expect(projection.getSnapshot()).toMatchObject([{ content: "collab: Alice joined the collab session" }]);
+	});
 	it.each(["event", "custom"] as const)("suppresses a duplicate collab %s in either arrival order", source => {
 		for (const collabFirst of [false, true]) {
 			const projection = new TspNoticeProjection();

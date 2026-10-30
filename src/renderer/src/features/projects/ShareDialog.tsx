@@ -7,6 +7,7 @@ import { Broadcast, Check, Copy, Desktop, FileArrowDown, FileArrowUp, LinkSimple
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { APP_GUEST_NAME } from "../../collab/lib/client";
 import type { SheetProps } from "@/registry/slots";
 import { useSessionView } from "@/shell/hooks";
 import { controllerFor, focusedTabId, useApp } from "@/state/app";
@@ -20,9 +21,6 @@ export interface ShareProps {
 	tabId?: string | null;
 	tab?: ShareTab;
 }
-
-/** The app's own mirror joins every room as a guest under this name (SessionController). */
-const APP_GUEST_NAME = "visual-omp";
 
 const SHARE_TABS: readonly ShareTab[] = ["link", "file", "move", "invite"];
 

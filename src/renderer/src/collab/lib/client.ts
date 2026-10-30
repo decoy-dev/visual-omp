@@ -108,6 +108,9 @@ interface PendingTranscript {
 	timer: Timer;
 }
 
+/** The name this app joins omp's collab session with; omp announces it in join and leave notices. */
+export const APP_GUEST_NAME = "visual-omp";
+
 export class GuestClient {
 	readonly #socket: CollabSocket;
 	readonly #name: string;

@@ -246,7 +246,8 @@ for the anchor and user-prompt turn. Notices received during snapshot download w
 attribution. Reused toast nodes update their existing row without moving an assigned anchor.
 Displayed custom messages are matched through their parent ancestry; collab notice events use
 the displayed turn when received. Matching text suppresses the projection within that attributed
-turn. Epochs clear rows; room and session changes also discard pending attribution and retain
+turn. Status notices whose exact text announces that the app's own guest name joined or left the
+collab session are omitted; other guests' notices remain visible. Epochs clear rows; room and session changes also discard pending attribution and retain
 observed node text to avoid repeating unchanged notices. These behaviors have recorded startup/
 usage and synthetic ordering, rewind and literal-rendering coverage. Disposing the controller removes its subscription. The role registry claims
 these notice nodes, keeping the generic omp screen from duplicating them.

@@ -17,7 +17,7 @@ const fake = vi.hoisted(() => {
 	const app = { view: "chat", activeTabId: "chat", splitTabId: null as string | null, terminalTabId: null as string | null, openTerminal: vi.fn(), closeTerminal: vi.fn() };
 	return { Guest, app, autoOpened: { tabId: null as string | null }, toast: vi.fn() };
 });
-vi.mock("../../collab/lib/client", () => ({ GuestClient: fake.Guest }));
+vi.mock("../../collab/lib/client", () => ({ APP_GUEST_NAME: "visual-omp", GuestClient: fake.Guest }));
 vi.mock("../../state/app", () => ({ useApp: { getState: () => fake.app } }));
 vi.mock("../palette/TerminalSheet", () => ({ autoOpened: fake.autoOpened }));
 vi.mock("../palette/overlays", () => ({ isNativeOverlay: () => false }));

@@ -39,7 +39,7 @@ const fakes = vi.hoisted(() => {
 	return { FakeGuest, guests, watch };
 });
 vi.mock("../ui/toast", async importOriginal => ({ ...await importOriginal<typeof ToastModule>(), toast: vi.fn() }));
-vi.mock("../collab/lib/client", () => ({ GuestClient: fakes.FakeGuest }));
+vi.mock("../collab/lib/client", () => ({ APP_GUEST_NAME: "visual-omp", GuestClient: fakes.FakeGuest }));
 // typed.ts drives omp's painted screen; these stand-ins type the command and let the test end its watch.
 vi.mock("../features/session-tools/drive", () => ({
 	OmpBusyError: class OmpBusyError extends Error {},

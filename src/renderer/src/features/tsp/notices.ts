@@ -2,9 +2,12 @@ import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { TspNode, TspText } from "@shared/tsp";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import { TSP_NOTICE_ROLES, TSP_ROLES } from "@shared/tsp/roles";
-import type { Notice } from "../../collab/lib/client";
+import { APP_GUEST_NAME, type Notice } from "../../collab/lib/client";
 import { contentText } from "../../chat/transcript/notices";
 import type { SavedParents } from "../../state/history";
+
+/** omp's status toast for this app's own collab connection (`collab/host.ts` join and leave notices). */
+const OWN_COLLAB_NOTICE = new RegExp(`^collab: ${APP_GUEST_NAME} (?:joined the collab session(?: \\(read-only\\))?|left the collab session)$`);
 
 export interface TspNotice {
 	id: string;
@@ -99,7 +102,7 @@ export class TspNoticeProjection {
 					};
 					collect(node);
 					const id = `tsp:${snapshot.epoch}:${surface.open.id}:${node.id}`;
-					if (content.trim() && this.#observed.get(id) !== content) {
+					if (content.trim() && !(node.p?.role === TSP_ROLES.toastStatus && OWN_COLLAB_NOTICE.test(content.trim())) && this.#observed.get(id) !== content) {
 						this.#observed.set(id, content);
 						const previous = this.#rows.get(id);
 						this.#rows.set(id, { id, anchor: previous && previous.turn !== null ? previous.anchor : this.#anchor, turn: this.#authoritative ? this.#turn : null, level, customType: "tsp-notice", content });
