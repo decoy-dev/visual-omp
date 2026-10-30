@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { TranscriptResult } from "../../collab/lib/client";
-import { type HelperJobsSnapshot, watchHelperJobs } from "./helperJobs";
+import { fetchHelperTranscript, type HelperJobsSnapshot, watchHelperJobs } from "./helperJobs";
 
 const transcript = [
 	{ type: "session", id: "helper", cwd: "/helper/project" },
@@ -15,7 +15,7 @@ describe("helper job readers", () => {
 		vi.useFakeTimers();
 		const client = { fetchTranscript: vi.fn(async (): Promise<TranscriptResult | null> => ({ kind: "error", message: "no transcript available" })) };
 		const updates: HelperJobsSnapshot[] = [];
-		const stop = watchHelperJobs(client, "Atlas", "/project", update => updates.push(update));
+		const stop = watchHelperJobs(client, "Atlas", "/project", true, update => updates.push(update));
 		await vi.advanceTimersByTimeAsync(10_000);
 		expect(client.fetchTranscript).toHaveBeenCalledTimes(1);
 		expect(updates).toEqual([{ jobs: [], error: "no transcript available" }]);
@@ -29,7 +29,7 @@ describe("helper job readers", () => {
 			.mockResolvedValueOnce({ kind: "rows", text: transcript, newSize: transcript.length })
 			.mockResolvedValue({ kind: "error", message: "transcript entry exceeds transcript fetch cap" }) };
 		const updates: HelperJobsSnapshot[] = [];
-		const stop = watchHelperJobs(client, "Atlas", "/project", update => updates.push(update));
+		const stop = watchHelperJobs(client, "Atlas", "/project", true, update => updates.push(update));
 		await vi.advanceTimersByTimeAsync(0);
 		expect(client.fetchTranscript).toHaveBeenCalledTimes(1);
 		expect(updates).toEqual([]);
@@ -46,11 +46,55 @@ describe("helper job readers", () => {
 		const response = Promise.withResolvers<TranscriptResult | null>();
 		const client = { fetchTranscript: vi.fn(() => response.promise) };
 		const update = vi.fn();
-		const stop = watchHelperJobs(client, "Atlas", "/project", update);
+		const stop = watchHelperJobs(client, "Atlas", "/project", true, update);
+		await vi.advanceTimersByTimeAsync(0);
 		stop();
 		response.resolve({ kind: "error", message: "Unavailable" });
 		await vi.advanceTimersByTimeAsync(10_000);
 		expect(update).not.toHaveBeenCalled();
 		expect(client.fetchTranscript).toHaveBeenCalledTimes(1);
+	});
+
+	it("keeps one transcript request in flight per connection, so omp never queues several large replies", async () => {
+		const pending: { resolve(result: TranscriptResult | null): void }[] = [];
+		const client = { fetchTranscript: vi.fn((_: string, _offset: number) => {
+			const { promise, resolve } = Promise.withResolvers<TranscriptResult | null>();
+			pending.push({ resolve });
+			return promise;
+		}) };
+		const first = fetchHelperTranscript(client, "Atlas", 0);
+		const second = fetchHelperTranscript(client, "Boreas", 0);
+		await Promise.resolve(); await Promise.resolve();
+		expect(client.fetchTranscript.mock.calls.map(([id]) => id)).toEqual(["Atlas"]);
+		pending[0]!.resolve({ kind: "rows", text: "", newSize: 0 });
+		await first;
+		await Promise.resolve(); await Promise.resolve();
+		expect(client.fetchTranscript.mock.calls.map(([id]) => id)).toEqual(["Atlas", "Boreas"]);
+		pending[1]!.resolve(null);
+		await expect(second).resolves.toBeNull();
+	});
+
+	it("sends nothing for a reader cancelled while it waits in the queue", async () => {
+		const blocker = Promise.withResolvers<TranscriptResult | null>();
+		const client = { fetchTranscript: vi.fn((id: string) => (id === "Atlas" ? blocker.promise : Promise.resolve(null))) };
+		let cancelled = false;
+		void fetchHelperTranscript(client, "Atlas", 0);
+		const waiting = fetchHelperTranscript(client, "Boreas", 0, () => cancelled);
+		cancelled = true;
+		blocker.resolve(null);
+		await expect(waiting).resolves.toBeNull();
+		expect(client.fetchTranscript.mock.calls.map(([id]) => id)).toEqual(["Atlas"]);
+	});
+
+	it("reads a finished helper to the end once and does not poll it again", async () => {
+		vi.useFakeTimers();
+		const client = { fetchTranscript: vi.fn(async (_: string, offset: number): Promise<TranscriptResult | null> =>
+			offset === 0 ? { kind: "rows", text: transcript, newSize: transcript.length } : { kind: "rows", text: "", newSize: transcript.length }) };
+		const updates: HelperJobsSnapshot[] = [];
+		const stop = watchHelperJobs(client, "Atlas", "/project", false, update => updates.push(update));
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(client.fetchTranscript.mock.calls.map(([, offset]) => offset)).toEqual([0, transcript.length]);
+		expect(updates).toMatchObject([{ error: null, jobs: [{ jobId: "bg_1" }] }]);
+		stop();
 	});
 });

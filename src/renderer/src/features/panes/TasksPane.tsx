@@ -6,7 +6,7 @@
  */
 import { CaretRight, ChatCenteredText, ChatCircleText, FileText, GearSix, Info, ListChecks, Square } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type FormEvent, useEffect, useMemo, useState } from "react";
+import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDisplayedEntries } from "../../chat/branch";
 import { NoticeRow, StatusGlyph } from "../../chat/transcript/NoticeRow";
@@ -46,7 +46,7 @@ import { listRowMotion, Section, usePaneVisible } from "./common";
 import { type BackgroundJob, backgroundJobs, commandSummary, foldHelpers, type Helper, helperJobSnapshots, helpersOf, latestTodo, ompRunning } from "./derive";
 import { type HelperTranscriptItem, helperTranscript } from "./helperTranscript";
 import { JobWidget } from "./JobWidget";
-import { type HelperJobsSnapshot, watchHelperJobs } from "./helperJobs";
+import { fetchHelperTranscript, type HelperJobsSnapshot, watchHelperJobs } from "./helperJobs";
 
 function MessageHelper({ helper, session }: { helper: Helper; session: SessionController }) {
 	const { t } = useTranslation("panes");
@@ -228,7 +228,7 @@ export function TranscriptDialog({ helper, session, onClose }: { helper: Helper;
 			let offset = 0;
 			let text = "";
 			while (!cancelled) {
-				const result = await client.fetchTranscript(helper.id, offset);
+				const result = await fetchHelperTranscript(client, helper.id, offset, () => cancelled);
 				if (cancelled) return;
 				if (!result) {
 					setState({ error: t("tasks.transcriptTimeout") });
@@ -281,15 +281,34 @@ function useHelperJobs(helpers: readonly Helper[], session: SessionController): 
 	const view = useSessionView(session);
 	const client = session.guestClient();
 	const live = ompRunning(view);
-	// Progress reports change often; a new roster or transcript availability is what changes the readers.
-	const ids = helpers.filter(helper => helper.hasTranscript).map(helper => helper.id).sort().join("\0");
+	// Progress reports change often; the roster, transcript availability and whether a helper is still running are
+	// what change the readers. Running helpers ("0") sort first so their reads queue ahead of finished ones ("1").
+	const keys = helpers.filter(helper => helper.hasTranscript).map(helper => `${helper.status === "running" ? "0" : "1"}${helper.id}`).sort().join("\0");
+	const readerStops = useRef(new Map<string, () => void>());
+	const readerClient = useRef(client);
 	useEffect(() => {
-		if (!visible || !client || !ids || !live) return;
-		const stops = ids.split("\0").map(id => watchHelperJobs(client, id, session.projectPath, snapshot => {
-			setReaders(previous => new Map(previous).set(id, snapshot));
-		}));
-		return () => { for (const stop of stops) stop(); };
-	}, [visible, client, ids, live, session]);
+		const active = readerStops.current;
+		const stopAll = () => { for (const stop of active.values()) stop(); active.clear(); };
+		if (readerClient.current !== client) {
+			stopAll();
+			readerClient.current = client;
+		}
+		if (!visible || !client || !keys || !live) {
+			stopAll();
+			return;
+		}
+		// Only changed helpers restart, so a helper finishing does not read every other transcript again.
+		const wanted = new Set(keys.split("\0"));
+		for (const [key, stop] of active) if (!wanted.has(key)) { stop(); active.delete(key); }
+		for (const key of wanted) {
+			if (active.has(key)) continue;
+			const id = key.slice(1);
+			active.set(key, watchHelperJobs(client, id, session.projectPath, key[0] === "0", snapshot => {
+				setReaders(previous => new Map(previous).set(id, snapshot));
+			}));
+		}
+	}, [visible, client, keys, live, session]);
+	useEffect(() => () => { for (const stop of readerStops.current.values()) stop(); readerStops.current.clear(); }, []);
 	return live ? readers : new Map([...readers].map(([id, snapshot]) => [id, { ...snapshot, jobs: snapshot.jobs.map(job => job.state === "running" ? { ...job, state: "cancelled" as const } : job) }]));
 }
 
