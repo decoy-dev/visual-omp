@@ -2,6 +2,8 @@
 
 ## Overview
 
+This document describes the current design. A proposed migration of app-hosted chats from reading omp's painted terminal to omp's Tern Surface Protocol (TSP) is described in [TSP-MIGRATION.md](TSP-MIGRATION.md).
+
 ```mermaid
 flowchart LR
   subgraph Renderer [Renderer (React)]
