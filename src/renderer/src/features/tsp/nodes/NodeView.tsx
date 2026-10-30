@@ -14,6 +14,7 @@ import { plain } from "../labels";
 import { rawKey } from "../keys";
 import type { NodeContext, NodeProps } from "./context";
 import { Live } from "./Live";
+import { KeyCombinations, Table } from "./Table";
 
 const FieldTree = lazy(() => import("../../../tool-render/structured").then(module => ({ default: module.FieldTree })));
 export const KIND_GROUPS = {
@@ -60,7 +61,7 @@ function Body({ node, context }: NodeProps) {
 		case "card": case "section": {
 			const p = node.p;
 			if (p?.collapsible) return <details open={!p.collapsed} onToggle={event => { const collapsed = !event.currentTarget.open; if (!context.readOnly && collapsed !== !!p.collapsed) context.send({ ev: "toggle", sf: context.sf, id: node.id, collapsed }); }}><summary className="cursor-pointer py-2 font-semibold">{plain(p.head)}</summary><div className="space-y-stack">{children}</div></details>;
-			return <section className="space-y-stack">{p?.head && <h3 className="font-semibold">{plain(p.head)}</h3>}{children}</section>;
+			return <section className="tsp-section">{p?.head && <h3 className="font-semibold">{plain(p.head)}</h3>}{children}</section>;
 		}
 		case "rule": return <div className="flex items-center gap-3 py-2 text-sm text-fg-muted"><hr className="flex-1 border-border" />{plain(node.p?.label)}{node.p?.label && <hr className="flex-1 border-border" />}</div>;
 		case "spacer": return <div className={node.p?.size === "lg" ? "h-section" : "h-stack"} />;
@@ -70,7 +71,7 @@ function Body({ node, context }: NodeProps) {
 		case "code": return <CodeBlock code={node.p?.text ?? ""} lang={node.p?.lang} title={node.p?.path} />;
 		case "diff": return <DiffBlock diff={node.p?.text ?? node.p?.hunks?.flatMap(hunk => [`@@ -${hunk.oldStart} +${hunk.newStart} @@`, ...hunk.lines]).join("\n") ?? ""} />;
 		case "math": return <Markdown text={`$$\n${node.p?.text ?? ""}\n$$`} />;
-		case "kbd": return <kbd className="rounded-sm border border-border-strong bg-inset px-1.5 py-0.5 font-mono text-xs">{node.p?.keys.join("+")}</kbd>;
+		case "kbd": return node.p?.keys.length ? <KeyCombinations value={[{ t: node.p.keys.join("+"), s: "key" }]} /> : null;
 		case "badge": return <span className="rounded-sm bg-inset px-2 py-1 text-xs">{node.p?.text}</span>;
 		case "icon": { const name = node.p?.name ?? ""; const Icon = /warn|error/.test(name) ? Warning : /check|done|success/.test(name) ? CheckCircle : /file/.test(name) ? File : Info; return <Icon className="size-4 shrink-0" aria-label={node.p?.aria ?? name} />; }
 		case "status": return <div role="status" className="flex flex-wrap items-center gap-3 text-sm text-fg-muted">{children}</div>;
@@ -78,7 +79,7 @@ function Body({ node, context }: NodeProps) {
 		case "item": return <div className="py-2"><p>{plain(node.p?.label)}</p>{node.p?.detail && <p className="text-sm text-fg-muted">{plain(node.p.detail)}</p>}{children}</div>;
 		case "tabs": return <div role="tablist" aria-label={node.p?.aria ?? t("tsp.choices")} className="flex flex-wrap gap-2">{node.p?.items.map(item => <button type="button" className="tsp-tab" key={item.id} role="tab" aria-selected={node.p?.active === item.id} disabled={context.readOnly} onClick={() => context.send({ ev: "select", sf: context.sf, id: node.id, item: item.id })}>{plain(item.label)}</button>)}</div>;
 		case "kv": return <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 gap-y-2">{node.p?.items.map((item, index) => <div key={index} className="contents"><dt className="text-fg-muted">{plain(item.k)}</dt><dd className="break-words">{plain(item.v)}</dd></div>)}</dl>;
-		case "table": return <div className="overflow-auto"><table className="w-full text-left text-sm"><thead><tr>{node.p?.cols.map(col => <th className="border-b border-border p-2 font-semibold" key={col.id}>{plain(col.head)}</th>)}</tr></thead><tbody>{node.p?.rows.map(row => <tr key={row.id}>{node.p?.cols.map(col => <td className="border-b border-border p-2" key={col.id}>{plain(row.cells[col.id])}</td>)}</tr>)}</tbody></table></div>;
+		case "table": return <Table p={node.p} />;
 		case "checklist": return <div className="space-y-stack">{node.p?.phases.map(phase => <section key={phase.id}><h4 className="font-semibold">{plain(phase.title)}</h4><ul>{phase.items.map(item => <li className="flex items-start gap-2 py-1" key={item.id}>{item.status === "done" ? <CheckCircle aria-label={item.status} className="mt-0.5 size-4 text-ok" /> : <Circle aria-label={item.status} className="mt-0.5 size-4 text-fg-muted" />}<span>{plain(item.text)}{item.note && <span className="block text-sm text-fg-muted">{plain(item.note)}</span>}</span></li>)}</ul></section>)}</div>;
 		case "prefs": case "input": case "editor": case "effort": return <Forms node={node} context={context} />;
 		case "spinner": case "shimmer": case "elapsed": case "progress": case "meter": case "rate": case "chart": return <Live node={node} />;
