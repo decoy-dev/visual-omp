@@ -10,15 +10,18 @@ import { focusRingInset } from "../../ui/styles";
 import { findModel } from "../manage/roles/rolesModel";
 import { OmpLoginDialog, type OmpLoginTarget } from "../manage/settings/OmpLoginDialog";
 import { ipcErrorMessage } from "../manage/shared";
-import { finishSetup, ompNeedsSetup, setupSteps, useSetup } from "./setup";
+import { finishSetup, ompNeedsSetup, type SetupStep, setupSteps, useSetup } from "./setup";
 import { SetupScreen } from "./SetupScreen";
-import { motion } from "motion/react";
+import { AnimatePresence, motion, useIsPresent } from "motion/react";
 import { MiniShell } from "./MiniShell";
 import "./setup-wizard.css";
 
 const MODES: readonly ApprovalMode[] = ["always-ask", "always-ask-cached", "write", "yolo"];
 const THEMES: readonly AppPreferences["theme"][] = ["system", "light", "dark"];
 const THEME_ICONS = { system: Monitor, light: Sun, dark: Moon };
+const COVERS: ReadonlySet<SetupStep> = new Set(["welcome", "done"]);
+// Ease in and out, so the ink cover leaves and lands like a curtain rather than a fade.
+const CURTAIN_EASE = [0.76, 0, 0.24, 1] as const;
 
 /** Native equivalent of omp's provider and model setup, with app-specific first-run choices. */
 export function SetupWizard() {
@@ -30,6 +33,9 @@ export function SetupWizard() {
 	const [steps] = useState(() => setupSteps(Boolean(omp && ompNeedsSetup(omp)), Boolean(prefs?.setupCompleted && !requested)));
 	const [index, setIndex] = useState(0);
 	const step = steps[index] ?? "done";
+	// The content step left on the canvas when an ink cover comes down over it.
+	const [lastCanvasStep, setLastCanvasStep] = useState<SetupStep | null>(null);
+	useEffect(() => { if (!COVERS.has(step)) setLastCanvasStep(step); }, [step]);
 	const [miniStarted, setMiniStarted] = useState(step === "install");
 	const [providers, setProviders] = useState<ProvidersState | null>(null);
 	const [models, setModels] = useState<ModelInfo[] | null>(null);
@@ -45,7 +51,6 @@ export function SetupWizard() {
 	const [loading, setLoading] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState<string | null>(null);
-	const heading = useRef<HTMLHeadingElement>(null);
 	const reduced = useMotionReduced();
 	const [markFlash, setMarkFlash] = useState(0);
 	const [finale, setFinale] = useState(false);
@@ -75,9 +80,13 @@ export function SetupWizard() {
 	const loadRequest = useRef(0);
 	useEffect(() => { active.current = true; return () => { active.current = false; }; }, []);
 	const focusHeading = useCallback((element: HTMLHeadingElement | null) => {
-		heading.current = element;
+		// A heading leaving with a cover must not take focus back; the canvas and cover layers each mount their own.
 		element?.focus();
 	}, []);
+	// A canvas step that stayed mounted under a cover does not remount when the cover lifts, so focus its heading here.
+	useEffect(() => {
+		if (!COVERS.has(step)) document.getElementById(`setup-${step}-title`)?.focus();
+	}, [step]);
 
 	const loadProviders = useCallback(async () => {
 		const request = ++loadRequest.current;
@@ -188,7 +197,7 @@ export function SetupWizard() {
 				useSetup.setState({ handoff: false });
 				setError(ipcErrorMessage(reason));
 				setSaving(false);
-				requestAnimationFrame(() => heading.current?.focus());
+				requestAnimationFrame(() => document.getElementById(`setup-${step}-title`)?.focus());
 			}
 		}
 	};
@@ -268,38 +277,47 @@ export function SetupWizard() {
 		})),
 		...(providers?.available ?? []).map(provider => ({ ...provider, target: provider, connected: false, needsSignIn: false })),
 	].filter(provider => `${provider.name} ${provider.id}`.toLowerCase().includes(search));
-	const cover = step === "welcome" || step === "done";
+	const cover = COVERS.has(step);
+	// The canvas keeps its last step under an ink cover, so the cover lifts off it and drops back onto it.
+	const canvasStep = cover ? lastCanvasStep : step;
 	const theme = previewTheme === "system" ? (systemDark ? "dark" : "light") : previewTheme;
-	const progress = step === "install" ? 1 : step === "providers" ? 2 : step === "model" ? 3 : step === "permission" ? 4 : step === "appearance" ? 5 : step === "done" ? 6 : 0;
-	const progressTicks = <div className="setup-ticks" aria-hidden>{Array.from({ length: 6 }, (_, tick) => <span key={tick} data-current={tick === progress - 1 || undefined}><motion.i initial={false} animate={{ scaleX: tick < progress ? 1 : 0 }} transition={reduced ? { duration: 0 } : spring.gentle} /></span>)}</div>;
+	const progressOf = (value: SetupStep | null) => value === "welcome" ? 1 : value === "install" ? 1 : value === "providers" ? 2 : value === "model" ? 3 : value === "permission" ? 4 : value === "appearance" ? 5 : value === "done" ? 6 : 0;
+	const progressTicks = (progress: number) => <div className="setup-ticks" aria-hidden>{Array.from({ length: 6 }, (_, tick) => <span key={tick} data-current={tick === progress - 1 || undefined}><motion.i initial={false} animate={{ scaleX: tick < progress ? 1 : 0 }} transition={reduced ? { duration: 0 } : spring.gentle} /></span>)}</div>;
 	const ompLine = omp?.found && omp.supported && !omp.refused && omp.version
 		? { tone: "ok" as const, text: `omp ${omp.version}` }
 		: installLine;
 	const miniScale = Math.min(0.55, Math.max(0.2, (viewport.width - 560) / viewport.width), (viewport.height - 180) / viewport.height);
 	const permission = approvalKnown ? t(`wizard.permission.${mode}.title`) : null;
 
-	return (
-		<motion.main ref={main} tabIndex={-1} initial={false} animate={{ opacity: finale ? 0 : 1 }} transition={{ opacity: { duration: reduced ? 0.14 : 0.2, delay: finale && !reduced ? 0.5 : 0 } }} className={cn("setup-wizard relative flex h-screen w-full flex-col overflow-hidden bg-bg text-fg outline-none", cover && "setup-cover", finale && "setup-finishing")} data-theme={controlsTheme === "system" ? (systemDark ? "dark" : "light") : controlsTheme} data-region={cover ? "chrome" : undefined} data-reduced={reduced || undefined} onKeyDown={onKeyDown} aria-label={t("wizard.label")}>
-			<div aria-hidden className="h-10 shrink-0 [-webkit-app-region:drag]" />
-			<header inert={finale} className="setup-header flex w-full items-center gap-3 px-page py-4">
-				{!cover && <PeriscopeMark size={24} flash={markFlash} className="setup-narrow-mark" />}
-				<span className="text-md font-semibold">{t("wizard.label")}</span>
-				<p className="ml-auto text-sm tabular-nums text-fg-muted" aria-live="polite">{t("wizard.progress", { current: cover ? (step === "done" ? 6 : 1) : progress, total: 6 })}</p>
-				<Button variant="ghost" size="sm" disabled={saving} onClick={() => void exit()}>{t("wizard.exit")}</Button>
-			</header>
-			<p className="sr-only" role="status">{[ompLine?.text, permission].filter(Boolean).join(". ")}</p>
-			<div className={cn("setup-layout", cover && "setup-layout-cover")}>
-			<div className="setup-controls" inert={finale}>
-				<PresenceSwap swapKey={step} variant="rise" className="w-full">
-					{step === "install" ? <SetupScreen onReady={installReady} embedded progress={progressTicks} onStatus={setInstallLine} /> : (
-						<section aria-labelledby={`setup-${step}-title`}>
-							{cover && <PeriscopeMark size={176} mood={step === "welcome" ? "enter" : "celebrate"} inverse flash={markFlash} className="mb-8" />}
-							<h1 id={`setup-${step}-title`} ref={focusHeading} tabIndex={-1} className={cn("font-semibold leading-tight tracking-[-0.02em] outline-none", cover ? "setup-display" : "text-3xl")}>{t(`wizard.${step}.title`)}</h1>
-							{!cover && progressTicks}
-							<p className="mt-3 text-base text-fg-muted">{t(`wizard.${step}.body`)}</p>
+	const header = (onCover: boolean, current: number) => (
+		<header inert={finale} className="setup-header flex w-full items-center gap-3 px-page py-4">
+			{!onCover && <PeriscopeMark size={24} flash={markFlash} className="setup-narrow-mark" />}
+			<span className="text-md font-semibold">{t("wizard.label")}</span>
+			<p className="ml-auto text-sm tabular-nums text-fg-muted" aria-live="polite">{t("wizard.progress", { current, total: 6 })}</p>
+			<Button variant="ghost" size="sm" disabled={saving} onClick={() => void exit()}>{t("wizard.exit")}</Button>
+		</header>
+	);
+	const errorNotice = error && <Notice tone="err" className="mt-5" actions={step === "providers" || step === "model" || step === "permission" ? <Button size="sm" onClick={() => void (step === "providers" ? loadProviders() : step === "model" ? loadModels() : loadApproval())}>{t("wizard.retry")}</Button> : undefined}>{error}</Notice>;
+	const footer = (shown: SetupStep, label: string) => (
+		<footer className="mt-8 flex items-center justify-between gap-3 border-t border-border pt-5">
+			{index > 0 && !COVERS.has(shown) ? <Button variant="ghost" icon={<ArrowLeft />} disabled={saving || loading} onClick={() => setIndex(value => {
+				const previous = Math.max(0, value - 1);
+				return steps[previous] === "install" && omp && !ompNeedsSetup(omp) ? Math.max(0, previous - 1) : previous;
+			})}>{t("wizard.back")}</Button> : <span />}
+			<Button variant="primary" icon={<ArrowRight />} loading={saving} disabled={primaryBlocked} onClick={() => void primary()}>{t(`wizard.${label}`)}</Button>
+		</footer>
+	);
+	const section = (shown: SetupStep, landed: boolean) => {
+		const onCover = COVERS.has(shown);
+		return (
+						<section aria-labelledby={`setup-${shown}-title`}>
+							{onCover && <PeriscopeMark size={176} mood={shown === "welcome" ? "enter" : landed ? "celebrate" : "still"} inverse flash={markFlash} className="mb-8" />}
+							<h1 id={`setup-${shown}-title`} ref={focusHeading} tabIndex={-1} className={cn("font-semibold leading-tight tracking-[-0.02em] outline-none", onCover ? "setup-display" : "text-3xl")}>{t(`wizard.${shown}.title`)}</h1>
+							{!onCover && progressTicks(progressOf(shown))}
+							<p className="mt-3 text-base text-fg-muted">{t(`wizard.${shown}.body`)}</p>
 							<div className="mt-8">
-								{loading && <p role="status" className="mb-4 flex items-center gap-2 text-sm text-fg-muted"><Spinner size={14} />{t(`wizard.${step}.loading`)}</p>}
-								{step === "providers" && providers && <>
+								{loading && shown === step && <p role="status" className="mb-4 flex items-center gap-2 text-sm text-fg-muted"><Spinner size={14} />{t(`wizard.${shown}.loading`)}</p>}
+								{shown === "providers" && providers && <>
 									<SearchInput value={query} onValueChange={setQuery} aria-label={t("wizard.providers.search")} placeholder={t("wizard.providers.search")} />
 									<ul className="mt-3 max-h-72 overflow-y-auto divide-y divide-border border-y border-border">
 										{providerRows.map(provider => (
@@ -327,7 +345,7 @@ export function SetupWizard() {
 									{providerRows.length === 0 && <p className="py-4 text-md text-fg-muted">{t("wizard.providers.noMatches")}</p>}
 									<p className="mt-4 text-sm text-fg-muted">{t("wizard.providers.note")}</p>
 								</>}
-								{step === "model" && models && !loading && <>
+								{shown === "model" && models && !loading && <>
 									{models.length === 0 ? (
 										<div className="rounded-lg border border-border bg-panel p-5">
 											<h2 className="text-md font-semibold">{t("wizard.model.emptyTitle")}</h2>
@@ -344,7 +362,7 @@ export function SetupWizard() {
 										{filteredModels.length === 0 && <p className="py-4 text-md text-fg-muted">{t("wizard.model.noMatches")}</p>}
 									</>}
 								</>}
-								{step === "permission" && (
+								{shown === "permission" && (
 									<div role="radiogroup" aria-label={t("wizard.permission.title")} className="divide-y divide-border border-y border-border">
 										{MODES.map(value => (
 											<Choice key={value} name="setup-permission" value={value} selected={mode === value} onChange={() => setMode(value)}
@@ -352,7 +370,7 @@ export function SetupWizard() {
 										))}
 									</div>
 								)}
-								{step === "appearance" && (
+								{shown === "appearance" && (
 									<div role="radiogroup" aria-label={t("wizard.appearance.title")} className="divide-y divide-border border-y border-border">
 										{THEMES.map(theme => {
 											const Icon = THEME_ICONS[theme];
@@ -364,7 +382,7 @@ export function SetupWizard() {
 										})}
 									</div>
 								)}
-								{step === "done" && (
+								{shown === "done" && (
 									<Stagger step={0.04}><dl className="divide-y divide-border border-y border-border">
 										{[
 											["providers", connected.map(provider => provider.name).join(", ") || t("wizard.done.noProviders")],
@@ -380,25 +398,77 @@ export function SetupWizard() {
 								)}
 							</div>
 						</section>
-					)}
-				</PresenceSwap>
-				{error && <Notice tone="err" className="mt-5" actions={step === "providers" || step === "model" || step === "permission" ? <Button size="sm" onClick={() => void (step === "providers" ? loadProviders() : step === "model" ? loadModels() : loadApproval())}>{t("wizard.retry")}</Button> : undefined}>{error}</Notice>}
-				{step !== "install" && <footer className="mt-8 flex items-center justify-between gap-3 border-t border-border pt-5">
-					{index > 0 && step !== "done" ? <Button variant="ghost" icon={<ArrowLeft />} disabled={saving || loading} onClick={() => setIndex(value => {
-						const previous = Math.max(0, value - 1);
-						return steps[previous] === "install" && omp && !ompNeedsSetup(omp) ? Math.max(0, previous - 1) : previous;
-					})}>{t("wizard.back")}</Button> : <span />}
-					<Button variant="primary" icon={<ArrowRight />} loading={saving} disabled={primaryBlocked} onClick={() => void primary()}>{t(`wizard.${primaryLabel}`)}</Button>
-				</footer>}
-			</div>
-				<div className={cn("setup-miniature", cover && "setup-miniature-covered", finale && "setup-miniature-finale")} aria-hidden>
-					<motion.div className="setup-miniature-frame" style={{ width: viewport.width, height: viewport.height }} initial={false} animate={finale ? { scale: 1, x: 0 } : { scale: miniScale, x: viewport.width <= 1100 ? 232 : 252 }} transition={reduced ? { duration: 0 } : finale ? { ...spring.gentle, visualDuration: 0.5 } : spring.gentle}>
-						{miniStarted && <MiniShell theme={theme} ompLine={ompLine} providers={connected.map(({ id, name }) => ({ id, name }))} model={selection ?? savedModel} permission={permission} markFlash={markFlash} celebrate={step === "done"} />}
-					</motion.div>
+		);
+	};
+
+	return (
+		<motion.main ref={main} tabIndex={-1} initial={false} animate={{ opacity: finale ? 0 : 1 }} transition={{ opacity: { duration: reduced ? 0.14 : 0.2, delay: finale && !reduced ? 0.5 : 0 } }} className={cn("setup-wizard relative flex h-screen w-full flex-col overflow-hidden bg-bg text-fg outline-none", finale && "setup-finishing")} data-theme={controlsTheme === "system" ? (systemDark ? "dark" : "light") : controlsTheme} data-reduced={reduced || undefined} onKeyDown={onKeyDown} aria-label={t("wizard.label")}>
+			<p className="sr-only" role="status">{[ompLine?.text, permission].filter(Boolean).join(". ")}</p>
+			<AnimatePresence initial={false}>
+				{cover && (
+					<CoverLayer key={step} reduced={reduced}>
+						{landed => <>
+							<div aria-hidden className="h-10 shrink-0 [-webkit-app-region:drag]" />
+							{header(true, progressOf(step))}
+							<div className="setup-layout setup-layout-cover">
+								<div className="setup-controls" inert={finale}>
+									{section(step, landed)}
+									{errorNotice}
+									{footer(step, primaryLabel)}
+								</div>
+							</div>
+						</>}
+					</CoverLayer>
+				)}
+			</AnimatePresence>
+			<div className="flex min-h-0 flex-1 flex-col" inert={cover || finale} aria-hidden={cover || undefined}>
+				<div aria-hidden className="h-10 shrink-0 [-webkit-app-region:drag]" />
+				{canvasStep && header(false, progressOf(canvasStep))}
+				<div className="setup-layout">
+					<div className="setup-controls">
+						{canvasStep && <PresenceSwap swapKey={canvasStep} variant="rise" className="w-full">
+							{canvasStep === "install" ? <SetupScreen onReady={installReady} embedded progress={progressTicks(1)} onStatus={setInstallLine} /> : section(canvasStep, true)}
+						</PresenceSwap>}
+						{!cover && errorNotice}
+						{canvasStep && canvasStep !== "install" && footer(canvasStep, canvasStep === step ? primaryLabel : "continue")}
+					</div>
+					<div className={cn("setup-miniature", !canvasStep && "setup-miniature-covered", finale && "setup-miniature-finale")} aria-hidden>
+						<motion.div className="setup-miniature-frame" style={{ width: viewport.width, height: viewport.height }} initial={false} animate={finale ? { scale: 1, x: 0 } : { scale: miniScale, x: viewport.width <= 1100 ? 232 : 252 }} transition={reduced ? { duration: 0 } : finale ? { ...spring.gentle, visualDuration: 0.5 } : spring.gentle}>
+							{miniStarted && <MiniShell theme={theme} ompLine={ompLine} providers={connected.map(({ id, name }) => ({ id, name }))} model={selection ?? savedModel} permission={permission} markFlash={markFlash} celebrate={step === "done"} />}
+						</motion.div>
+					</div>
 				</div>
 			</div>
-			{login && <OmpLoginDialog target={login} cwd={null} onFinished={() => void loadProviders()} onClose={() => { setLogin(null); void loadProviders(); requestAnimationFrame(() => heading.current?.focus()); }} />}
+			{login && <OmpLoginDialog target={login} cwd={null} onFinished={() => void loadProviders()} onClose={() => { setLogin(null); void loadProviders(); requestAnimationFrame(() => document.getElementById(`setup-${step}-title`)?.focus()); }} />}
 		</motion.main>
+	);
+}
+
+/** The ink cover for Welcome and Done: it lifts off the canvas like a curtain and drops back for the summary. */
+function CoverLayer({ reduced, children }: { reduced: boolean; children: (landed: boolean) => ReactNode }) {
+	const present = useIsPresent();
+	const [landed, setLanded] = useState(reduced);
+	return (
+		<motion.div
+			data-region="chrome"
+			inert={!present}
+			className="setup-cover-layer"
+			initial={reduced ? { opacity: 0 } : { y: "-100%" }}
+			animate={reduced ? { opacity: 1 } : { y: 0 }}
+			exit={reduced ? { opacity: 0 } : { y: "-100%" }}
+			transition={reduced ? { duration: 0.14 } : { duration: 0.7, ease: CURTAIN_EASE }}
+			onAnimationComplete={() => { if (present) setLanded(true); }}
+		>
+			<motion.div
+				className="flex min-h-0 flex-1 flex-col"
+				initial={reduced ? false : { opacity: 0, y: -16 }}
+				animate={{ opacity: 1, y: 0 }}
+				exit={reduced ? undefined : { opacity: 0, y: -32, transition: { duration: 0.3, ease: "easeIn" } }}
+				transition={{ duration: 0.4, ease: "easeOut", delay: reduced ? 0 : 0.35 }}
+			>
+				{children(landed)}
+			</motion.div>
+		</motion.div>
 	);
 }
 

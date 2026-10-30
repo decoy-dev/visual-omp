@@ -22,7 +22,7 @@ vi.mock("./SetupScreen", () => ({ SetupScreen: ({ onReady }: { onReady(): void }
 vi.mock("./MiniShell", () => ({ MiniShell: () => createElement("div", { "aria-hidden": true, "data-mini-shell": true }) }));
 vi.mock("motion/react", () => {
 	const tag = (name: string) => ({ children, initial, animate, exit, transition, ...props }: PropsWithChildren<Record<string, unknown>>) => createElement(name, props, children);
-	return { motion: { div: tag("div"), i: tag("i"), main: tag("main") } };
+	return { motion: { div: tag("div"), i: tag("i"), main: tag("main") }, AnimatePresence: ({ children }: PropsWithChildren) => children, useIsPresent: () => true };
 });
 vi.mock("../../ui", () => {
 	const e = createElement;
@@ -179,6 +179,13 @@ it("uses Enter for the primary action after focusing each step title", async () 
 	await render();
 	await act(async () => element.querySelector("h1")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
 	expect(element.querySelector("h1")?.textContent).toBe("Sign in to your providers");
+	expect(document.activeElement?.id).toBe("setup-providers-title");
+});
+
+it("focuses the step heading again when the cover lifts off a step that stayed mounted", async () => {
+	await render(); await click("Start setup"); await click("Back");
+	expect(document.activeElement?.id).toBe("setup-welcome-title");
+	await click("Start setup");
 	expect(document.activeElement?.id).toBe("setup-providers-title");
 });
 
