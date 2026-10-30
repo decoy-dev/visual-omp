@@ -90,3 +90,50 @@ describe("first-run setup preferences", () => {
 		expect(reloaded.getPrefs()).toMatchObject({ setupCompleted, newUserApproval: "done" });
 	});
 });
+
+// Static imports cannot exercise persisted preferences across module initialization boundaries.
+describe("rollback preferences", () => {
+	it.each([null, JSON.stringify({ theme: "dark" })])("defaults the update skip to null for a profile without it", async contents => {
+		fake.contents = contents;
+		const { getPrefs } = await import("./prefs");
+		expect(getPrefs().appUpdateSkipThrough).toBeNull();
+		expect(fake.writeFile).not.toHaveBeenCalled();
+	});
+
+	it.each(["0.7.1", "0.8.0-beta.11", null])("persists skip %s and restores it on the next load", async appUpdateSkipThrough => {
+		fake.contents = JSON.stringify({ theme: "dark", appUpdateSkipThrough: "0.6.0" });
+		const { getPrefs, setPrefs } = await import("./prefs");
+		const preferences = setPrefs({ appUpdateSkipThrough });
+		expect(getPrefs().appUpdateSkipThrough).toBe(appUpdateSkipThrough);
+		expect(fake.broadcast).toHaveBeenCalledWith("app:prefs", preferences);
+		await vi.waitFor(() => expect(fake.rename).toHaveBeenCalledOnce());
+		expect(JSON.parse(fake.contents!)).toMatchObject({ theme: "dark", appUpdateSkipThrough });
+		vi.resetModules();
+		const reloaded = await import("./prefs");
+		expect(reloaded.getPrefs().appUpdateSkipThrough).toBe(appUpdateSkipThrough);
+	});
+
+	it("retains future unknown keys when an older app changes known preferences", async () => {
+		const future = {
+			futureRollbackState: { selectedVersion: "0.6.7", history: ["0.7.1", "0.7.0"], completed: false },
+			futureNullablePreference: null,
+		};
+		fake.contents = JSON.stringify({ theme: "dark", appUpdateSkipThrough: "0.7.1", ...future });
+		const { getPrefs, setPrefs } = await import("./prefs");
+		expect(getPrefs()).toMatchObject({ theme: "dark", appUpdateSkipThrough: "0.7.1", ...future });
+		setPrefs({ theme: "light" });
+		await vi.waitFor(() => expect(fake.rename).toHaveBeenCalledOnce());
+		expect(JSON.parse(fake.contents!)).toMatchObject({ theme: "light", appUpdateSkipThrough: "0.7.1", ...future });
+		vi.resetModules();
+		const reloaded = await import("./prefs");
+		expect(reloaded.getPrefs()).toMatchObject({ theme: "light", appUpdateSkipThrough: "0.7.1", ...future });
+	});
+
+	it("clears the skip without removing future keys or unrelated preferences", async () => {
+		fake.contents = JSON.stringify({ theme: "dark", appUpdateSkipThrough: "0.7.1", futureUpdateMode: "manual" });
+		const { setPrefs } = await import("./prefs");
+		setPrefs({ appUpdateSkipThrough: null });
+		await vi.waitFor(() => expect(fake.rename).toHaveBeenCalledOnce());
+		expect(JSON.parse(fake.contents!)).toMatchObject({ theme: "dark", appUpdateSkipThrough: null, futureUpdateMode: "manual" });
+	});
+});

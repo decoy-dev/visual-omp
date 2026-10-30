@@ -6,7 +6,7 @@ import { basename, dirname, join } from "node:path";
 import { z } from "zod";
 import { app, shell } from "electron";
 import type { CliResult, Platform } from "@shared/ipc";
-import { compareSemver } from "@shared/semver";
+import { compareSemver, parseSemver } from "@shared/semver";
 import type {
 	AppDownload,
 	AppInstallInfo,
@@ -22,10 +22,11 @@ import { userEnv } from "../env";
 import { writeText } from "../files";
 import { broadcast, handle } from "../ipc";
 import { runOmp } from "../omp/cli";
+import { flushPrefs, getPrefs, setPrefs } from "../prefs";
 import { ompPath, ompStatus } from "../omp/locate";
 import { ompStartError } from "../omp/refused";
-import {
 import { recordUpdateCheck } from "../services/update-count";
+import {
 	type GitHubRelease,
 	GitHubReleaseList,
 	type InstallerTrust,
@@ -36,6 +37,7 @@ import { recordUpdateCheck } from "../services/update-count";
 	brewUpgradeCommand,
 	caskroomPath,
 	detectInstallMethod,
+	effectiveUpdateSkip,
 	fetchInstaller,
 	fetchReleaseHistory,
 	installerAsset,
@@ -49,6 +51,7 @@ import { recordUpdateCheck } from "../services/update-count";
 	toAssets,
 	toReleaseNotes,
 	trustedCachedStatus,
+	updateIsAvailable,
 	verifyInstallerDigest,
 } from "../services/updates";
 
@@ -117,10 +120,35 @@ async function exists(path: string): Promise<boolean> {
 let appStatus: AppUpdateStatus | null = null;
 let appCheckInFlight: Promise<AppUpdateStatus> | null = null;
 
+/** Older preferences may omit this key or contain a value written by a future app version. */
+function updateSkip(): string | null {
+	const stored = getPrefs().appUpdateSkipThrough;
+	const skip = effectiveUpdateSkip(app.getVersion(), typeof stored === "string" ? stored : null);
+	if (skip !== stored) setPrefs({ appUpdateSkipThrough: skip });
+	return skip;
+}
+
+function applyUpdateSkip(status: AppUpdateStatus, includeSkipped = false): AppUpdateStatus {
+	const skippedThroughVersion = updateSkip();
+	return {
+		...status,
+		skippedThroughVersion,
+		updateAvailable: updateIsAvailable(status.latestVersion, status.currentVersion, includeSkipped ? null : skippedThroughVersion),
+	};
+}
+
+async function resumeUpdates(): Promise<void> {
+	setPrefs({ appUpdateSkipThrough: null });
+	await flushPrefs();
+	if (appStatus) {
+		appStatus = applyUpdateSkip(appStatus);
+		broadcast("updates:app", appStatus);
+	}
+}
 async function loadAppCache(): Promise<AppUpdateStatus | null> {
 	if (devFeedFile) return null;
 	try {
-		return trustedCachedStatus(JSON.parse(await readFile(cacheFile, "utf8")), app.getVersion(), trust);
+		return trustedCachedStatus(JSON.parse(await readFile(cacheFile, "utf8")), app.getVersion(), trust, updateSkip());
 	} catch {
 		return null;
 	}
@@ -156,18 +184,19 @@ async function fetchReleases(currentVersion: string): Promise<GitHubRelease[]> {
 async function fetchAppStatus(previous: AppUpdateStatus | null): Promise<AppUpdateStatus> {
 	const currentVersion = app.getVersion();
 	try {
+		recordUpdateCheck(currentVersion, app.isPackaged);
 		const releases = await fetchReleases(currentVersion);
 		const release = selectLatestRelease(releases, currentVersion);
 		const assets = release ? toAssets(release) : [];
 		const latestVersion = release ? release.tag_name.replace(/^v/, "") : null;
-		const status: AppUpdateStatus = {
+		const status: AppUpdateStatus = applyUpdateSkip({
 			currentVersion,
 			latestVersion,
 			updateAvailable: latestVersion !== null && compareSemver(latestVersion, currentVersion) > 0,
 			tag: release?.tag_name ?? null,
 			releaseName: release?.name || null,
 			notes: release?.body || null,
-			releases: toReleaseNotes(releases, currentVersion),
+			releases: toReleaseNotes(releases, currentVersion, trust),
 			releaseUrl: release?.html_url ?? null,
 			publishedAt: release?.published_at ? Date.parse(release.published_at) : null,
 			assets,
@@ -176,7 +205,7 @@ async function fetchAppStatus(previous: AppUpdateStatus | null): Promise<AppUpda
 			checkedAt: Date.now(),
 			fromCache: false,
 			error: null,
-		};
+		});
 		if (!devFeedFile) await writeText(cacheFile, JSON.stringify(status, null, 2));
 		return status;
 	} catch (error) {
@@ -184,7 +213,6 @@ async function fetchAppStatus(previous: AppUpdateStatus | null): Promise<AppUpda
 		const base: AppUpdateStatus = previous ?? {
 			currentVersion,
 			latestVersion: null,
-		recordUpdateCheck(currentVersion, app.isPackaged);
 			updateAvailable: false,
 			tag: null,
 			releaseName: null,
@@ -198,14 +226,14 @@ async function fetchAppStatus(previous: AppUpdateStatus | null): Promise<AppUpda
 			fromCache: false,
 			error: null,
 		};
-		return { ...base, fromCache: false, error: message };
+		return applyUpdateSkip({ ...base, fromCache: false, error: message });
 	}
 }
 
-async function checkApp(force: boolean): Promise<AppUpdateStatus> {
+async function checkApp(force: boolean, includeSkipped = false): Promise<AppUpdateStatus> {
 	appStatus ??= await loadAppCache();
 	if (!force && appStatus && appStatus.error === null && Date.now() - appStatus.checkedAt < CACHE_MS) {
-		return { ...appStatus, fromCache: true };
+		return applyUpdateSkip({ ...appStatus, fromCache: true }, includeSkipped);
 	}
 	appCheckInFlight ??= fetchAppStatus(appStatus)
 		.then(status => {
@@ -216,7 +244,7 @@ async function checkApp(force: boolean): Promise<AppUpdateStatus> {
 		.finally(() => {
 			appCheckInFlight = null;
 		});
-	return appCheckInFlight;
+	return applyUpdateSkip(await appCheckInFlight, includeSkipped);
 }
 
 let installCache: Promise<AppInstallInfo> | null = null;
@@ -298,17 +326,40 @@ async function installedVersion(): Promise<string | null> {
 
 let download: AppDownload | null = null;
 let downloadAbort: AbortController | null = null;
+let downloadStarting = false;
 
 function publishDownload(): void {
 	if (download) broadcast("updates:app:download", { ...download });
 }
 
-async function startDownload(): Promise<AppDownload> {
-	const status = appStatus ?? (await checkApp(false));
-	const version = status.latestVersion;
-	// Re-derived from the release metadata rather than taken from `platformAsset` as stored.
-	const asset = status.tag ? installerAsset(status.assets, status.tag, trust) : null;
-	if (!status.updateAvailable || !version || !asset) throw new Error("This release has no installer for this computer.");
+async function startDownload(requestedVersion?: string): Promise<AppDownload> {
+	if (downloadStarting) throw new Error("An installer download is already starting.");
+	downloadStarting = true;
+	try {
+		return await prepareDownload(requestedVersion);
+	} finally {
+		downloadStarting = false;
+	}
+}
+
+async function prepareDownload(requestedVersion?: string): Promise<AppDownload> {
+	let version: string | null;
+	let asset;
+	if (requestedVersion !== undefined) {
+		version = requestedVersion.replace(/^v/, "");
+		if (!parseSemver(version) || compareSemver(version, app.getVersion()) >= 0) throw new Error("Choose a release older than the installed version.");
+		const { method } = await installInfo();
+		if (method === "brew" || method === "scoop") throw new Error("Use the package manager that installed this copy to install an earlier version.");
+		// Cached renderer metadata never authorizes a rollback. Fetch the published release again.
+		const releases = toReleaseNotes(await fetchReleases(app.getVersion()), app.getVersion(), trust);
+		asset = releases.find(release => release.version === version)?.platformAsset ?? null;
+	} else {
+		const status = applyUpdateSkip(appStatus ?? (await checkApp(false)));
+		version = status.latestVersion;
+		asset = status.updateAvailable && status.tag ? installerAsset(status.assets, status.tag, trust) : null;
+	}
+	if (!version || !asset) throw new Error("This release has no installer for this computer.");
+	if (download?.state === "downloading" && download.version !== version) throw new Error("Cancel the current installer download before choosing another version.");
 	if (download?.version === version) {
 		if (download.state === "downloading") return { ...download };
 		if (download.state === "done" && (await exists(download.filePath))) return { ...download };
@@ -320,11 +371,11 @@ async function startDownload(): Promise<AppDownload> {
 	const abort = new AbortController();
 	download = current;
 	downloadAbort = abort;
-	void receive(url, current, abort.signal, asset.digest);
+	void receive(url, current, abort.signal, asset.digest, asset.size);
 	return { ...current };
 }
 
-async function receive(url: URL, current: AppDownload, signal: AbortSignal, digest: string | null | undefined): Promise<void> {
+async function receive(url: URL, current: AppDownload, signal: AbortSignal, digest: string | null | undefined, expectedSize: number): Promise<void> {
 	const partPath = `${current.filePath}.download`;
 	let file: FileHandle | null = null;
 	let lastEmit = 0;
@@ -354,6 +405,9 @@ async function receive(url: URL, current: AppDownload, signal: AbortSignal, dige
 		}
 		await file.close();
 		file = null;
+		if ((expectedSize > 0 && current.received !== expectedSize) || (length > 0 && current.received !== length)) {
+			throw new Error("The installer size did not match the release. Download the installer again.");
+		}
 		verifyInstallerDigest(hash.digest("hex"), digest);
 		await rename(partPath, current.filePath);
 		current.state = "done";
@@ -384,7 +438,8 @@ async function consumeOutcome(): Promise<AppUpdateOutcome | null> {
 		return null;
 	}
 	const running = app.getVersion();
-	const updated = compareSemver(running, pending.from) > 0;
+	const rolledBack = compareSemver(pending.to, pending.from) < 0;
+	const updated = rolledBack ? compareSemver(running, pending.to) === 0 : compareSemver(running, pending.from) > 0;
 	const expired = Date.now() - pending.at > PENDING_TTL_MS;
 	// A disk image or installer the user hasn't run yet is not a failure: stay quiet until it runs.
 	// Homebrew and Scoop update during the restart, so their result is known at the next launch.
@@ -396,10 +451,34 @@ async function consumeOutcome(): Promise<AppUpdateOutcome | null> {
 
 async function runInstaller(): Promise<void> {
 	if (download?.state !== "done") throw new Error("The installer hasn't finished downloading.");
-	const failure = await shell.openPath(download.filePath);
-	if (failure) throw new Error(failure);
 	const { method } = await installInfo();
-	await recordPending(method, download.version);
+	const rollback = compareSemver(download.version, app.getVersion()) < 0;
+	if (rollback && (method === "brew" || method === "scoop")) throw new Error("Use the package manager that installed this copy to install an earlier version.");
+	const previousSkip = updateSkip();
+	try {
+		if (rollback) {
+			const boundary = previousSkip && compareSemver(previousSkip, app.getVersion()) > 0 ? previousSkip : app.getVersion();
+			setPrefs({ appUpdateSkipThrough: boundary });
+			await flushPrefs();
+		}
+		await recordPending(method, download.version);
+		const failure = await shell.openPath(download.filePath);
+		if (failure) throw new Error(failure);
+	} catch (error) {
+		try {
+			if (rollback) {
+				setPrefs({ appUpdateSkipThrough: previousSkip });
+				await flushPrefs();
+			}
+		} finally {
+			await rm(pendingFile, { force: true });
+		}
+		throw error;
+	}
+	if (appStatus) {
+		appStatus = applyUpdateSkip(appStatus);
+		broadcast("updates:app", appStatus);
+	}
 	// The NSIS installer can't replace files the running app holds open.
 	if (method === "nsis" && app.isPackaged) setTimeout(() => app.quit(), 500);
 }
@@ -556,9 +635,10 @@ async function spawnOmpUpdate(options: OmpUpdateOptions): Promise<OmpUpdateRun> 
 }
 
 export function register(): void {
-	handle("updates:app:check", force => checkApp(force === true));
+	handle("updates:app:check", (force, includeSkipped) => checkApp(force === true, includeSkipped === true));
 	handle("updates:app:install", () => installInfo());
-	handle("updates:app:download", () => startDownload());
+	handle("updates:app:download", version => startDownload(version));
+	handle("updates:app:resume", () => resumeUpdates());
 	handle("updates:app:cancelDownload", () => downloadAbort?.abort());
 	handle("updates:app:runInstaller", () => runInstaller());
 	handle("updates:app:installedVersion", async () => {

@@ -179,6 +179,25 @@ Current chats, navigation shortcuts and preview release are described under Sess
 ### Settings
 - Settings is a full page with curated common sections and a searchable **Advanced** section that
   lists every omp setting.
+- About's **Read release notes** and **Review update** actions open the same release history. An
+  earlier release with a trusted installer for this computer offers **Install v{version}**. A
+  confirmation names the running and selected versions, explains the restart and preserves chats
+  and omp settings. Confirming reuses the existing download progress, cancel, error and installer
+  controls. Main fetches the official release metadata again before selecting the earlier installer.
+- On macOS, completing a rollback requires opening the downloaded disk image, quitting visual-omp,
+  copying the app into Applications with **Replace**, and reopening it. On Windows, running the
+  downloaded installer closes visual-omp; the user completes setup and reopens the app.
+- Homebrew and Scoop installations offer **Show downgrade steps** instead of an in-app rollback
+  download. Homebrew users select an older cask from the tap's history. Scoop users can reset to a
+  previously installed version if its files remain, or consult the bucket's historical manifest
+  and available download. Package-manager installs keep their own installation records.
+- A confirmed installer rollback saves the version being left as `appUpdateSkipThrough` in app
+  preferences. In visual-omp 0.7.1 and later, background checks suppress versions at or below this
+  ceiling and offer a newer version above it. Running a version strictly newer than the ceiling
+  clears it; running the same version retains it. **Check for updates** explicitly includes skipped
+  versions without clearing the preference. Choosing a regular update clears it before updating.
+  Versions before 0.7.1 retain the preference but do not honor it, so they may still offer the
+  version being left. Those updates require a user action and can be left uninstalled.
 
 ### Help
 - The first-run guided tour introduces the app after setup completes and a supported omp is

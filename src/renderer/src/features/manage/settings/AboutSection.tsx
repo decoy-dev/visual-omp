@@ -58,10 +58,10 @@ export function AboutSection() {
 				action: { label: t("about.restartApp"), primary: true, run: () => void quitForUpdate(true) },
 			};
 		}
-		if (download?.state === "downloading" && download.version === app?.latestVersion) {
+		if (download?.state === "downloading") {
 			const percent = download.total ? Math.round((download.received / download.total) * 100) : null;
 			return {
-				text: percent === null ? t("about.downloading") : t("about.downloadingPercent", { percent }),
+				text: t("onboarding:update.rollback.aboutDownloading", { version: download.version, progress: percent === null ? "" : ` (${percent}%)` }),
 				tone: "busy",
 				action: { label: t("about.showProgress"), run: () => openSheet(APP_UPDATE_SHEET) },
 			};
@@ -114,6 +114,7 @@ export function AboutSection() {
 						{updates.install && <span className="text-fg-muted"> · {t(`about.method.${updates.install.method}`)}</span>}
 					</p>
 					<StatusLine row={appRow} />
+					{updates.app?.skippedThroughVersion && <p className="mt-stack text-sm text-fg-muted">{t("onboarding:update.rollback.skipped", { version: updates.app.skippedThroughVersion })}</p>}
 				</dd>
 
 				<dt className="text-fg-muted">{t("about.ompVersion")}</dt>

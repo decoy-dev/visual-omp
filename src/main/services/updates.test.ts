@@ -7,6 +7,7 @@ import {
 	brewCandidates,
 	caskroomPath,
 	detectInstallMethod,
+	effectiveUpdateSkip,
 	fetchInstaller,
 	installerAsset,
 	isScoopGlobal,
@@ -16,7 +17,9 @@ import {
 	releaseSummary,
 	scoopLayout,
 	selectLatestRelease,
+	toReleaseNotes,
 	trustedCachedStatus,
+	updateIsAvailable,
 } from "./updates";
 
 describe("compareSemver", () => {
@@ -73,6 +76,40 @@ describe("selectLatestRelease", () => {
 
 	it("returns null when nothing is published", () => {
 		expect(selectLatestRelease([], "0.1.0")).toBeNull();
+	});
+});
+
+describe("rollback update skipping", () => {
+	it.each([
+		{ latest: null, current: "0.7.0", skipped: null, available: false },
+		{ latest: "0.7.0", current: "0.7.0", skipped: null, available: false },
+		{ latest: "0.6.9", current: "0.7.0", skipped: null, available: false },
+		{ latest: "0.7.1", current: "0.7.0", skipped: null, available: true },
+		{ latest: "0.7.1", current: "0.7.0", skipped: "0.7.1", available: false },
+		{ latest: "0.7.1", current: "0.7.0", skipped: "0.8.0", available: false },
+		{ latest: "0.7.2", current: "0.7.0", skipped: "0.7.1", available: true },
+		{ latest: "0.10.0", current: "0.7.0", skipped: "0.9.9", available: true },
+		{ latest: "v0.7.1+build.2", current: "0.7.0", skipped: "0.7.1", available: false },
+		{ latest: "0.8.0-beta.2", current: "0.8.0-beta.1", skipped: "0.8.0-beta.2", available: false },
+		{ latest: "0.8.0-beta.11", current: "0.8.0-beta.1", skipped: "0.8.0-beta.2", available: true },
+		{ latest: "0.8.0-rc.1", current: "0.8.0-beta.1", skipped: "0.8.0", available: false },
+		{ latest: "0.8.0", current: "0.8.0-beta.1", skipped: "0.8.0-rc.1", available: true },
+	])("returns $available for $latest from $current with skip $skipped", ({ latest, current, skipped, available }) => {
+		expect(updateIsAvailable(latest, current, skipped)).toBe(available);
+	});
+
+	it.each([
+		{ current: "0.7.0", skipped: null, effective: null },
+		{ current: "0.7.0", skipped: "0.7.1", effective: "0.7.1" },
+		{ current: "0.7.1", skipped: "0.7.1", effective: "0.7.1" },
+		{ current: "v0.7.1+build.2", skipped: "0.7.1", effective: "0.7.1" },
+		{ current: "0.7.2", skipped: "0.7.1", effective: null },
+		{ current: "0.10.0", skipped: "0.9.9", effective: null },
+		{ current: "0.8.0-beta.2", skipped: "0.8.0", effective: "0.8.0" },
+		{ current: "0.8.0-beta.11", skipped: "0.8.0-beta.2", effective: null },
+		{ current: "0.8.0", skipped: "0.8.0-rc.1", effective: null },
+	])("retains skip $skipped until $current is strictly newer", ({ current, skipped, effective }) => {
+		expect(effectiveUpdateSkip(current, skipped)).toBe(effective);
 	});
 });
 
@@ -178,6 +215,50 @@ describe("installerAsset", () => {
 	});
 });
 
+describe("rollback release installers", () => {
+	const earlier = release("v0.2.0", {
+		html_url: "https://github.com/decoy-dev/visual-omp/releases/tag/v0.2.0",
+		assets: releaseAssets.map(asset => ({ name: asset.name, browser_download_url: asset.url, size: asset.size })),
+	});
+
+	it("retains the earlier release's tag and matching trusted installer", () => {
+		const notes = toReleaseNotes([release("v0.3.0"), earlier], "0.3.0", packaged);
+		expect(notes.find(entry => entry.version === "0.2.0")).toMatchObject({
+			tag: "v0.2.0",
+			platformAsset: releaseAssets[0],
+		});
+	});
+
+	it("selects the earlier release's installer separately for each supported platform", () => {
+		expect(toReleaseNotes([earlier], "0.3.0", { ...packaged, arch: "x64" })[0]?.platformAsset?.name).toBe("visual-omp-0.2.0-mac-x64.dmg");
+		expect(toReleaseNotes([earlier], "0.3.0", { ...packaged, platform: "win32", arch: "x64" })[0]?.platformAsset?.name).toBe("visual-omp-0.2.0-win-x64.exe");
+		expect(toReleaseNotes([earlier], "0.3.0", { ...packaged, platform: "win32", arch: "arm64" })[0]?.platformAsset).toBeNull();
+	});
+
+	it("keeps notes but offers no installer for a foreign host, another release or the wrong architecture", () => {
+		for (const browser_download_url of [
+			"https://evil.test/visual-omp-0.2.0-mac-arm64.dmg",
+			"https://github.com/decoy-dev/visual-omp/releases/download/v0.1.0/visual-omp-0.2.0-mac-arm64.dmg",
+		]) {
+			const notes = toReleaseNotes([{ ...earlier, assets: [{ name: releaseAssets[0]!.name, browser_download_url, size: 100 }] }], "0.3.0", packaged);
+			expect(notes[0]).toMatchObject({ version: "0.2.0", tag: "v0.2.0", platformAsset: null });
+		}
+		expect(toReleaseNotes([{ ...earlier, assets: earlier.assets.filter(asset => asset.name.endsWith("-mac-x64.dmg")) }], "0.3.0", packaged)[0]?.platformAsset).toBeNull();
+	});
+
+	it("does not infer an earlier release's installer from a newer release's assets", () => {
+		const notes = toReleaseNotes([earlier, release("v0.1.0", { assets: earlier.assets })], "0.3.0", packaged);
+		expect(notes.find(entry => entry.version === "0.1.0")?.platformAsset).toBeNull();
+	});
+
+	it("preserves the existing prerelease track when attaching rollback installers", () => {
+		const prerelease = release("v0.2.0-beta.2", { prerelease: true });
+		const releases = [earlier, prerelease, release("v0.1.0", { draft: true }), release("nightly")];
+		expect(toReleaseNotes(releases, "0.3.0", packaged).map(entry => entry.version)).toEqual(["0.2.0"]);
+		expect(toReleaseNotes(releases, "0.3.0-beta.11", packaged).map(entry => entry.version)).toEqual(["0.2.0", "0.2.0-beta.2"]);
+	});
+});
+
 describe("fetchInstaller", () => {
 	const init = { signal: new AbortController().signal, headers: {}, anyHost: false };
 	const redirect = (location: string) => new Response(null, { status: 302, headers: { location } });
@@ -232,6 +313,21 @@ describe("trustedCachedStatus", () => {
 		expect(trustedCachedStatus({ ...cached, releaseUrl: "https://evil.test/release" }, "0.1.0", packaged)).toBeNull();
 		expect(trustedCachedStatus(cached, "0.1.1", packaged)).toBeNull();
 		expect(trustedCachedStatus({ nonsense: true }, "0.1.0", packaged)).toBeNull();
+	});
+
+	it("rejects availability computed before a rollback skip was saved", () => {
+		expect(trustedCachedStatus(cached, "0.1.0", packaged, "0.2.0")).toBeNull();
+	});
+
+	it("accepts a skipped cache only while its availability matches the current skip", () => {
+		const skipped = { ...cached, updateAvailable: false, skippedThroughVersion: "0.2.0" };
+		expect(trustedCachedStatus(skipped, "0.1.0", packaged, "0.2.0")?.updateAvailable).toBe(false);
+		expect(trustedCachedStatus(skipped, "0.1.0", packaged, null)).toBeNull();
+		expect(trustedCachedStatus(skipped, "0.1.0", packaged, "0.1.5")).toBeNull();
+	});
+
+	it("keeps a newer cached update available above the skipped version", () => {
+		expect(trustedCachedStatus(cached, "0.1.0", packaged, "0.1.5")?.updateAvailable).toBe(true);
 	});
 });
 

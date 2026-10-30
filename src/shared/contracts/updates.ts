@@ -70,6 +70,9 @@ export interface AppReleaseNotes {
 	url: string | null;
 	/** Epoch ms, or null when GitHub did not provide a publication date. */
 	publishedAt: number | null;
+	/** Original published tag and trusted installer for this computer, absent in older caches. */
+	tag?: string;
+	platformAsset?: ReleaseAsset | null;
 }
 
 export interface AppUpdateStatus {
@@ -77,7 +80,7 @@ export interface AppUpdateStatus {
 	currentVersion: string;
 	/** Newest published (non-draft) release version without the leading `v`; null when none is published. */
 	latestVersion: string | null;
-	/** True when `latestVersion` is a strictly newer semver than `currentVersion`. */
+	/** True when a newer release is eligible, respecting the rollback skip unless explicitly checked. */
 	updateAvailable: boolean;
 	/** Release tag as published, e.g. `v0.2.0`. */
 	tag: string | null;
@@ -86,6 +89,8 @@ export interface AppUpdateStatus {
 	notes: string | null;
 	/** Published releases from the same GitHub response. Older on-disk caches may omit this field. */
 	releases?: AppReleaseNotes[];
+	/** Background checks suppress releases at or below this version after a rollback. */
+	skippedThroughVersion?: string | null;
 	/** Release page URL. */
 	releaseUrl: string | null;
 	/** Epoch ms. */
@@ -156,14 +161,16 @@ declare module "../ipc" {
 		 * which runs shortly after launch and every 30 minutes). Never rejects: failures land in `error`.
 		 * Development builds read releases from the JSON file named by `VOMP_UPDATE_FEED` instead.
 		 */
-		"updates:app:check": { args: [force?: boolean]; result: AppUpdateStatus };
+		"updates:app:check": { args: [force?: boolean, includeSkipped?: boolean]; result: AppUpdateStatus };
 		/** How this copy was installed (Homebrew cask, disk image, Scoop, NSIS installer) and the cask's upgrade command. */
 		"updates:app:install": { args: []; result: AppInstallInfo };
 		/**
-		 * Download the platform installer of the latest release to ~/Downloads. Returns the current
-		 * download when one for that version is running or finished. Rejects when no installer exists.
+		 * Download the latest installer, or a selected strictly earlier release fetched from GitHub.
+		 * Uses the same trusted asset selection and download verification for either direction.
 		 */
-		"updates:app:download": { args: []; result: AppDownload };
+		"updates:app:download": { args: [version?: string]; result: AppDownload };
+		/** An explicit choice to update after checking clears the rollback skip. */
+		"updates:app:resume": { args: []; result: void };
 		"updates:app:cancelDownload": { args: []; result: void };
 		/**
 		 * Open the downloaded installer: the disk image in Finder, or on Windows the NSIS installer,

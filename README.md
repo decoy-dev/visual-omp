@@ -125,6 +125,38 @@ daily counts in Cloudflare D1, with no IP address or identifier. Worker request 
 disabled. Development builds and tests do not send these requests, and a failed request does not
 delay or interrupt an update check.
 These totals measure update checks and cannot identify unique installations.
+
+### Return to an earlier version
+
+Open **Settings → About → Read release notes**, find the earlier release and choose **Install
+v{version}**. The confirmation names the version you are leaving and the version you selected.
+After you confirm, visual-omp downloads the matching installer from the official GitHub release,
+using the same download progress and installer controls as a regular update. Your saved chats and
+omp settings remain available.
+
+- **macOS disk-image installs:** open the downloaded disk image, quit visual-omp, drag the app into
+  Applications and choose **Replace**. Reopen visual-omp to use the earlier version.
+- **Windows installer installs:** run the downloaded installer. visual-omp closes so setup can
+  replace it; complete setup and reopen the app.
+- **Homebrew installs:** choose **Show downgrade steps**. Obtain the older `visual-omp.rb` cask
+  from the [tap's history](https://github.com/decoy-dev/visual-omp/commits/main/Casks/visual-omp.rb),
+  quit visual-omp, run `brew uninstall --cask visual-omp`, then run
+  `brew install --cask /path/to/older/visual-omp.rb`. Review the historical cask and confirm its
+  download is still available before removing the current copy.
+- **Scoop installs:** choose **Show downgrade steps**. If Scoop still retains the selected version
+  from a previous installation, quit visual-omp and run `scoop reset visual-omp@VERSION`, replacing
+  `VERSION` with that retained version. Otherwise, consult the
+  [bucket's history](https://github.com/decoy-dev/visual-omp/commits/main/bucket/visual-omp.json)
+  for an older manifest and its download. Reset cannot restore files Scoop has already removed.
+
+A confirmed installer rollback records the version you are leaving in the app's preferences.
+visual-omp 0.7.1 and later suppress background update offers through that version and offer a
+release newer than it. **Check for updates** includes skipped versions without clearing this
+choice; choosing a regular update clears it. The skip also clears when you run a version strictly
+newer than the skipped version. Versions before 0.7.1 do not honor this preference, so they may
+still offer the version you left. You can leave that update uninstalled; those releases require
+you to choose an update before they install it.
+
 ## Development
 
 ```sh

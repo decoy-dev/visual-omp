@@ -56,8 +56,20 @@ export function selectLatestRelease(releases: GitHubRelease[], currentVersion: s
 	return best;
 }
 
+/** A rollback boundary remains active through that version, including when it is reinstalled. */
+export function effectiveUpdateSkip(currentVersion: string, skippedThroughVersion: string | null): string | null {
+	if (!skippedThroughVersion || !parseSemver(skippedThroughVersion)) return null;
+	return compareSemver(currentVersion, skippedThroughVersion) > 0 ? null : skippedThroughVersion;
+}
+
+/** Eligibility is independent of release publication order and uses normal semver precedence. */
+export function updateIsAvailable(latestVersion: string | null, currentVersion: string, skippedThroughVersion: string | null): boolean {
+	const skip = effectiveUpdateSkip(currentVersion, skippedThroughVersion);
+	return latestVersion !== null && compareSemver(latestVersion, currentVersion) > 0 && (!skip || compareSemver(latestVersion, skip) > 0);
+}
+
 /** Notes from published versions, using the update check's existing prerelease track. */
-export function toReleaseNotes(releases: GitHubRelease[], currentVersion: string): AppReleaseNotes[] {
+export function toReleaseNotes(releases: GitHubRelease[], currentVersion: string, trust?: InstallerTrust): AppReleaseNotes[] {
 	const includePrereleases = (parseSemver(currentVersion)?.prerelease.length ?? 0) > 0;
 	return releases
 		.filter(release => !release.draft && (!release.prerelease || includePrereleases) && parseSemver(release.tag_name))
@@ -66,6 +78,7 @@ export function toReleaseNotes(releases: GitHubRelease[], currentVersion: string
 			body: release.body ?? "",
 			url: release.html_url,
 			publishedAt: release.published_at ? Date.parse(release.published_at) : null,
+			...(trust ? { tag: release.tag_name, platformAsset: installerAsset(toAssets(release), release.tag_name, trust) } : {}),
 		}));
 }
 
@@ -178,7 +191,10 @@ export const AppUpdateStatusSchema = z.object({
 		body: z.string(),
 		url: z.string().nullable(),
 		publishedAt: z.number().nullable(),
+		tag: z.string().optional(),
+		platformAsset: ReleaseAssetSchema.nullable().optional(),
 	})).default([]),
+	skippedThroughVersion: z.string().nullable().optional(),
 	releaseUrl: z.string().nullable(),
 	publishedAt: z.number().nullable(),
 	assets: z.array(ReleaseAssetSchema),
@@ -194,17 +210,17 @@ export const AppUpdateStatusSchema = z.object({
  * app version, or does not match what the release metadata vouches for (installer, versions,
  * release page). The file is plain JSON in the profile, so nothing in it is trusted as written.
  */
-export function trustedCachedStatus(raw: unknown, currentVersion: string, trust: InstallerTrust): AppUpdateStatus | null {
+export function trustedCachedStatus(raw: unknown, currentVersion: string, trust: InstallerTrust, skippedThroughVersion: string | null = null): AppUpdateStatus | null {
 	const parsed = AppUpdateStatusSchema.safeParse(raw);
 	if (!parsed.success) return null;
 	const status = parsed.data;
 	if (status.currentVersion !== currentVersion) return null;
 	const latest = status.tag ? status.tag.replace(/^v/, "") : null;
 	if (status.latestVersion !== latest) return null;
-	if (status.updateAvailable !== (latest !== null && compareSemver(latest, currentVersion) > 0)) return null;
+	if (status.updateAvailable !== updateIsAvailable(latest, currentVersion, skippedThroughVersion)) return null;
 	const expected = status.tag ? installerAsset(status.assets, status.tag, trust) : null;
 	const cached = status.platformAsset;
-	if (expected?.url !== cached?.url || expected?.name !== cached?.name || expected?.size !== cached?.size) return null;
+	if (expected?.url !== cached?.url || expected?.name !== cached?.name || expected?.size !== cached?.size || expected?.digest !== cached?.digest) return null;
 	const page = status.releaseUrl ? parseUrl(status.releaseUrl) : null;
 	if (status.releaseUrl && !trust.anyHost && (page?.protocol !== "https:" || page.hostname !== "github.com" || !page.pathname.startsWith(`/${REPO}/releases/`))) {
 		return null;

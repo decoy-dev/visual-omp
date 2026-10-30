@@ -281,6 +281,7 @@ Remote Markdown images: the shared `transcript/render.ts` image renderer emits i
 | Working state | `SessionController` snapshots expose `workingSince`; tool elapsed time is shown only when a call has known start and result times. |
 | Dock visibility | `state/app.ts` exports `useDockVisible()`, which accounts for pages and narrow layouts where chat takes precedence over the open dock, and `currentDock()`, the focused chat's panel layout. |
 | Git | `git`, `gh` |
+| App update metadata and installers | Main calls the official `decoy-dev/visual-omp` GitHub release API and trusted GitHub asset hosts. |
 | Update-check counts | Main posts version, platform and architecture to `https://visual-omp-update-count.chris-216.workers.dev/v1/check` once per fresh packaged-app check. |
 
 Provider identities: `main/features/providers.ts` creates connected rows only from a provider's own models, accounts or disabled credentials. Provider models, usage and login-method discovery run in `NEUTRAL_CWD` with extensions disabled, so background Settings reads omit extension-contributed methods and selected-project configuration. Explicit terminal sign-in retains the selected project. `get_login_providers` inherits an alias's authenticated flag but omits `storeCredentialsAs` (omp 18.14, `modes/rpc/rpc-mode.ts`), so exact alias-to-base grouping remains blocked on upstream metadata. Authenticated login entries without independent provider evidence remain sign-in methods instead of duplicate connected rows.
@@ -297,6 +298,15 @@ Session pins: `main/omp/session-pins.ts` reads the agent directory's `session-pi
 
 Saved rename: `main/omp/session-rename.ts` refuses an app-owned or externally owned saved chat before starting a short-lived `--resume` RPC process. An initial `get_state` must match the requested file and id before `set_session_name` can run. omp writes the 256-byte `source: "user"` title slot, title-change entry and title index. A final `get_state`, the resulting saved summary and confirmed child termination establish the returned title, file and id. A write-time continuation returns its changed destination explicitly, and the dialog warns with that path. No model request or model override is selected. omp initialization failures remain visible, including a missing configured default model. The dialog does not open a chat tab.
 
+## App updates and rollback
+
+`main/features/updates.ts` owns update checks, install-method detection and installer downloads.
+`main/services/updates.ts` provides the pure release selection, semver skip and installer-trust
+rules. Release-note entries can include their original GitHub `tag` and a `platformAsset` selected
+with the same expected filename, platform, architecture and release-download URL checks as a
+regular update. Drafts and unversioned tags are excluded; prereleases remain visible only when
+the running version is itself a prerelease.
+
 `main/services/update-count.ts` sends the update-check count without awaiting it, with a five-second
 timeout and contained failures. Cached status reads, release-note fetches, development builds and
 tests send no count. `workers/update-count` deploys the collector separately from Electron and its
@@ -306,6 +316,34 @@ platform, architecture and count in `daily_counts`; optional channel input is va
 Worker logs, invocation logs, traces and Logpush are disabled, and the code emits no request logs.
 These totals measure checks, so they cannot identify unique installations. See
 `workers/update-count/README.md` for deployment and the last-30-days query.
+
+`updates:app:download` takes an optional version. An earlier version causes main to fetch official
+GitHub release metadata again, find the requested published release on the running version's
+release track, and select its trusted matching installer. The renderer cannot supply an installer
+URL. Rollback reuses the existing download, trusted redirect, supplied-checksum verification and
+installer execution path. Main refuses rollback downloads for Homebrew and Scoop installs; the
+viewer explains their package-manager downgrade steps instead. macOS still requires a manual
+copy from the disk image and app restart, and Windows runs the installer after closing the app.
+
+The main-only stored preference `appUpdateSkipThrough: string | null` defaults to null. A confirmed
+rollback persists the version being left before the installer is opened. `flushPrefs()` awaits
+queued preference writes so an installer-triggered exit cannot discard that choice. Preferences
+preserve unknown JSON fields when an earlier app version writes a known field. This permits a
+rollback to retain newer preferences, although code before 0.7.1 does not honor the skip and can
+still offer the version being left. Those versions require a user action to install an update.
+
+`effectiveUpdateSkip(currentVersion, skippedThroughVersion)` clears the effective skip only when
+the running semver is strictly newer than the stored ceiling. Equal versions, including differing
+build metadata, retain it. `updateIsAvailable(latestVersion, currentVersion, skippedThroughVersion)`
+requires a version newer than both the running version and any effective skip. The cached status
+validator checks availability against the current skip, so a cache written before a rollback
+cannot restore a suppressed update notice.
+
+`updates:app:check` accepts `[force?, includeSkipped?]`. Background and default checks honor the
+skip; the explicit **Check for updates** action sets `includeSkipped` to true without clearing the
+stored choice. `AppUpdateStatus.skippedThroughVersion` exposes that choice for the About page and
+release viewer. Before beginning a regular update, the renderer calls `updates:app:resume` with no
+arguments to clear the skip explicitly.
 
 ## Compatibility
 The collab wire protocol is versioned (`COLLAB_PROTO`). On launch the app reads `omp --version` and
