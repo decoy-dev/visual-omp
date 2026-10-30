@@ -106,6 +106,7 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 		return getHost(hostId).tspEvent(generation, event, epoch);
 	});
 	handle("host:tsp-resize", (hostId, cols) => getHost(hostId).tspResize(cols));
+	handle("host:tsp-questions", (hostId, state) => getHost(hostId).tspQuestions(state));
 	handle("host:list", () => listHosts());
 
 	handle("term:start", options => startTerminal(options));

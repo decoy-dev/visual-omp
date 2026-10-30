@@ -15,6 +15,7 @@ import { imagePathsText } from "../chat/composer/send";
 import { GuestClient, type GuestSnapshot } from "../collab/lib/client";
 import { toast } from "../ui/toast";
 import { extendSessionHistory, parseSessionHistory, type SessionHistory } from "./history";
+import { TspQuestionSync } from "./tsp-questions";
 
 export interface QueuedMessage {
 	id: string;
@@ -234,6 +235,7 @@ export class SessionController {
 	/** The ownership check a start must wait for, so omp never resumes a file before it is known to be free. */
 	#ownershipCheck: Promise<void> | null = null;
 	#restoreNext = false;
+	#tspQuestionSync: TspQuestionSync;
 
 	constructor(options: { tabId: string; projectPath: string; sessionFile: string | null; extraArgs?: string[] }) {
 		this.tabId = options.tabId;
@@ -257,6 +259,7 @@ export class SessionController {
 			strandedImages: false,
 			error: null,
 		};
+		this.#tspQuestionSync = new TspQuestionSync(this);
 	}
 
 	get projectPath(): string {
@@ -836,6 +839,7 @@ export class SessionController {
 	async dispose(): Promise<void> {
 		if (this.#disposed) return;
 		this.#disposed = true;
+		this.#tspQuestionSync.dispose();
 		this.#stopFollowing();
 		this.#closeGuest();
 		this.#unsubscribeHost?.();

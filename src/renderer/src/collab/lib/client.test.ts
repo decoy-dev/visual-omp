@@ -3,7 +3,7 @@ import type { HostFrame } from "@oh-my-pi/pi-wire";
 import { GuestClient } from "./client";
 
 /** The socket the client creates; frames from omp's host are fed through `onFrame`. */
-const socket = vi.hoisted(() => ({ current: null as null | { onFrame: (frame: unknown) => void }, sent: [] as unknown[] }));
+const socket = vi.hoisted(() => ({ current: null as null | { onFrame: (frame: unknown) => void; onClose: (reason: string, reconnect: boolean) => void }, sent: [] as unknown[] }));
 vi.mock("./socket", () => ({
 	CollabSocket: class {
 		onOpen = () => undefined;
@@ -146,5 +146,54 @@ describe("restored tool calls", () => {
 		feed({ t: "event", event: { type: "agent_start", resumedToolCallIds: ["restored-call"] } });
 		feed({ t: "snapshot-chunk", entries: [assistant], final: true });
 		expect(client.getSnapshot().activeTools.has("restored-call")).toBe(true);
+	});
+});
+
+describe("pending question authority", () => {
+	it("retains a locally answered request until omp ends it", () => {
+		const request = { reqId: 1, kind: "editor", title: "Answer", prefill: "draft" };
+		feed({ t: "ui-request", request });
+		client.sendUiResponse(1, "done");
+		expect(client.getSnapshot().uiRequest).toBeNull();
+		expect(client.getSnapshot().pendingUiRequests).toEqual([request]);
+		feed({ t: "ui-request-end", reqId: 1 });
+		expect(client.getSnapshot().pendingUiRequests).toEqual([]);
+	});
+	it("ends a remote answer and queued cancellation without losing other requests", () => {
+		feed({ t: "ui-request", request: { reqId: 1, kind: "editor", title: "First" } });
+		feed({ t: "ui-request", request: { reqId: 2, kind: "editor", title: "Next" } });
+		feed({ t: "ui-request-end", reqId: 2 });
+		expect(client.getSnapshot().pendingUiRequests?.map(request => request.reqId)).toEqual([1]);
+		feed({ t: "ui-request-end", reqId: 1 });
+		expect(client.getSnapshot().uiRequest).toBeNull();
+		expect(client.getSnapshot().pendingUiRequests).toEqual([]);
+	});
+	it("clears visible requests and matching authority on a fresh welcome", () => {
+		feed({ t: "ui-request", request: { reqId: 1, kind: "editor", title: "First" } });
+		const connection = client.getSnapshot().uiConnection!;
+		feed(welcome);
+		expect(client.getSnapshot().pendingUiRequests).toEqual([]);
+		expect(client.getSnapshot().uiConnection).toBeGreaterThan(connection);
+		expect(client.getSnapshot().uiRequest).toBeNull();
+	});
+	it("invalidates matching authority on disconnect while retaining the visible request and queue until welcome", () => {
+		const first = { reqId: 1, kind: "editor", title: "First" };
+		const next = { reqId: 2, kind: "editor", title: "Next" };
+		feed({ t: "ui-request", request: first });
+		feed({ t: "ui-request", request: next });
+		const connection = client.getSnapshot().uiConnection!;
+		socket.current?.onClose("connection lost", true);
+		expect(client.getSnapshot().phase).toBe("reconnecting");
+		expect(client.getSnapshot().uiRequest).toEqual(first);
+		expect(client.getSnapshot().pendingUiRequests).toEqual([]);
+		expect(client.getSnapshot().uiConnection).toBeGreaterThan(connection);
+		// The queue retains its original behavior during reconnect.
+		feed({ t: "ui-request-end", reqId: 1 });
+		expect(client.getSnapshot().uiRequest).toEqual(next);
+		feed(welcome);
+		expect(client.getSnapshot().uiRequest).toBeNull();
+		feed({ t: "ui-request", request: { reqId: 3, kind: "editor", title: "New room" } });
+		feed({ t: "ui-request-end", reqId: 3 });
+		expect(client.getSnapshot().uiRequest).toBeNull();
 	});
 });

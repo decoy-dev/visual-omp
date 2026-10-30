@@ -672,6 +672,47 @@ describe("opt-in semantic transport", () => {
 		await expect(host.tspEvent(1, { ev: "ack", sf: "s:1", s: 99 })).rejects.toThrow("main-owned");
 	});
 
+	it("mirrors scoped pending collab questions without enabling a hook answer path", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] });
+		tspComposer();
+		await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [{ id: "hook", k: "overlay", p: { role: "omp.overlay.hook-select", head: "Choose" }, c: [{ id: "pick", k: "picker", p: { items: [{ id: "yes", label: "Yes" }] } }] }] }]] });
+		const state = { hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [{ reqId: 4, kind: "select", title: "Choose", options: ["Yes"] }] };
+		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"s":2')));
+		const writesBeforeMirror = pty.writes.mock.calls.length;
+		host.tspQuestions(state);
+		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "matched", reqId: 4 }]);
+		await expect(host.tspEvent(1, { ev: "activate", sf: "s:1", id: "pick", item: "yes" }, epoch)).rejects.toThrow("read-only");
+		host.tspQuestions({ ...state, epoch: epoch - 1, revision: 2, requests: [] });
+		expect(host.tspSnapshot()?.questionMatches?.[0]?.status).toBe("matched");
+		host.tspQuestions({ ...state, revision: 2, requests: [] });
+		expect(host.tspSnapshot()?.questionMatches?.[0]?.status).toBe("settling");
+		expect(pty.writes).toHaveBeenCalledTimes(writesBeforeMirror);
+		tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "hook"]] });
+		expect(host.tspSnapshot()?.questionMatches).toEqual([]);
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"activate"'))).toBe(false);
+	});
+
+	it("rejects malformed question mirrors and never writes payload answer fields to the PTY", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"ack"')));
+		const writesBeforeMirror = pty.writes.mock.calls.length;
+		const initial = host.tspSnapshot()!;
+		const state = { hostId: host.id, generation: 1, epoch: initial.epoch, connection: 1, revision: 1, connected: true, requests: [] };
+		for (const input of [undefined, null, [], { ...state, generation: "1" }, { ...state, revision: -1 }, { ...state, requests: [{ reqId: "4", kind: "editor", title: "Bad" }] }, { ...state, requests: [{ reqId: 4, kind: "select", title: "Bad", options: [3] }] }, { ...state, answer: "yes", ev: "activate" }]) {
+			host.tspQuestions(input);
+			expect(host.tspSnapshot()?.revision).toBe(initial.revision);
+			expect(pty.writes).toHaveBeenCalledTimes(writesBeforeMirror);
+		}
+		host.tspQuestions({ ...state, requests: [{ reqId: 4, kind: "editor", title: "Question", prefill: "", answer: "yes", value: "yes", ev: "send", sf: "s:1", id: "editor" }] });
+		expect(host.tspSnapshot()?.revision).toBe(initial.revision + 1);
+		expect(pty.writes).toHaveBeenCalledTimes(writesBeforeMirror);
+	});
+
 	it("ignores the opt-in flag on Windows and logs a single explanation", async () => {
 		const log = vi.spyOn(console, "info").mockImplementation(() => {});
 		try {

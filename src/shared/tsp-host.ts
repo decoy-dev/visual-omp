@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { TspNode, TspOpen } from "./tsp";
+import type { QuestionMatch } from "./tsp/question-match";
 
 /** Read-only inspection of an omp-owned surface, including retained main content after close. */
 export interface TspSurfaceSnapshot {
@@ -58,5 +59,7 @@ export interface TspHostSnapshot {
 	lifecycle: "live" | "transitioning" | "failed" | "exited";
 	documentGeneration: number | null;
 	failure: string | null;
+	/** Arbitration diagnostics only. Hook input remains disabled pending live ordering evidence. */
+	questionMatches?: QuestionMatch[];
 	surfaces: (TspSurfaceSnapshot & { documentGeneration: number | null })[];
 }

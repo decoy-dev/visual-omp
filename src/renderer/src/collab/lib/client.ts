@@ -76,6 +76,9 @@ export interface GuestSnapshot {
 	readOnly: boolean;
 	/** Pending host-side UI request (`ask` select/editor) this guest can answer. */
 	uiRequest: CollabUiRequest | null;
+	/** Includes locally submitted answers until omp sends ui-request-end. */
+	pendingUiRequests?: readonly CollabUiRequest[];
+	uiConnection?: number;
 	/** Capped at 50, newest last. */
 	notices: readonly Notice[];
 	/** From omp's latest `thinking_level_changed` event: true in Auto, false for a fixed level, null before any. */
@@ -144,6 +147,8 @@ export class GuestClient {
 	#readOnly = false;
 	#uiRequest: CollabUiRequest | null = null;
 	#uiRequestQueue: CollabUiRequest[] = [];
+	#pendingUiRequests = new Map<number, CollabUiRequest>();
+	#uiConnection = 0;
 	#notices: readonly Notice[] = [];
 	#autoThinking: boolean | null = null;
 	#snapshot: GuestSnapshot;
@@ -260,6 +265,7 @@ export class GuestClient {
 		if (this.#phase === "ended") return;
 		if (willReconnect) {
 			this.#phase = "reconnecting";
+			this.#invalidateQuestionAuthority();
 			// The next welcome restarts the snapshot; drop the partial one.
 			this.#pendingSnapshot = null;
 			this.#commit();
@@ -438,10 +444,12 @@ export class GuestClient {
 				}
 				break;
 			case "ui-request":
+				this.#pendingUiRequests.set(frame.request.reqId, frame.request);
 				if (this.#uiRequest) this.#uiRequestQueue = [...this.#uiRequestQueue, frame.request];
 				else this.#uiRequest = frame.request;
 				break;
 			case "ui-request-end":
+				this.#pendingUiRequests.delete(frame.reqId);
 				if (this.#uiRequest?.reqId === frame.reqId) this.#showNextUiRequest();
 				else this.#uiRequestQueue = this.#uiRequestQueue.filter(request => request.reqId !== frame.reqId);
 				break;
@@ -608,9 +616,16 @@ export class GuestClient {
 		this.#notices = next;
 	}
 
+	/** Socket loss invalidates matching authority without changing the visible question lifecycle. */
+	#invalidateQuestionAuthority(): void {
+		this.#pendingUiRequests.clear();
+		this.#uiConnection++;
+	}
+
 	#clearUiRequests(): void {
 		this.#uiRequest = null;
 		this.#uiRequestQueue = [];
+		this.#invalidateQuestionAuthority();
 	}
 
 	#showNextUiRequest(): void {
@@ -641,6 +656,8 @@ export class GuestClient {
 			awaitingAsyncWork: this.#awaitingAsyncWork,
 			readOnly: this.#readOnly,
 			uiRequest: this.#uiRequest,
+			pendingUiRequests: [...this.#pendingUiRequests.values()],
+			uiConnection: this.#uiConnection,
 			notices: this.#notices,
 			autoThinking: this.#autoThinking,
 			loading: this.#pendingSnapshot && {

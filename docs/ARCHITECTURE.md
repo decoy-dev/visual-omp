@@ -223,8 +223,22 @@ open omp overlay or screen through the guarded key route. With neither open, Esc
 sheet. Closing the sheet itself does not answer omp, and focus returns to that chat's composer.
 "Show raw outline" discloses the read-only developer inspector below the semantic content.
 
-Phase 2 is not complete. Hook dialogs are visible but read-only because question arbitration has
-not been implemented; a question may be answered in chat only when collab also presents it there.
+`src/shared/tsp/question-match.ts` now provides conservative question arbitration diagnostics.
+The renderer mirrors all pending collab requests, including locally answered requests awaiting
+`ui-request-end`, through `host:tsp-questions`. Main validates the host, protocol epoch, room
+generation and monotonically increasing mirror revision. Matching authority is scoped to the guest
+client, its connection identity and the host generation and epoch observed for each request.
+Disconnect and welcome invalidate matching authority. Room rotation and protocol epoch changes
+exclude requests observed in an earlier scope without clearing the visible collab question or queue.
+A transient disconnect preserves those visible requests until welcome, following the existing
+collab lifecycle. If a delayed TSP snapshot makes a request's epoch uncertain, diagnostic matching
+stays unavailable while the original collab `reqId` answer path remains available. Matching requires
+mutual uniqueness of title, field and option data. A matched node remains in settling state until
+both its request and node have ended. Snapshots expose `questionMatches`.
+
+Phase 2 is not complete. Hook dialogs remain visible and read-only while arbitration is diagnostic.
+The interactive writer recheck, hook completion controls and live channel-ordering evidence remain
+required before local hook answering can be enabled. Collab questions retain their existing controls.
 TSP-only notices have not been projected into transcript rows and remain available in the omp
 screen. Full overlay workflow replay, live hook and extension-fallback recordings, sharing parity,
 packaged checks and the remaining manual acceptance criteria still gate the complete Phase 2

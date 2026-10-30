@@ -22,6 +22,7 @@ import type { HostStartOptions, HostState, TuiFocus } from "@shared/ipc";
 import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspHostSnapshot } from "@shared/tsp-host";
 import { composer, openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { TSP_ROLES, TSP_STATUS } from "@shared/tsp/roles";
+import { hookQuestions, QuestionArbitrator } from "@shared/tsp/question-match";
 import { BrowserWindow, dialog, nativeTheme, systemPreferences, type MessageBoxOptions, type MessageBoxReturnValue } from "electron";
 import hostLabels from "../../shared/i18n/en/host.json";
 import { crashedWithoutExit, parseProgramStatus, readSessionRecaps, startupModelWarnings, worktreeConfirmation } from "./host-observations";
@@ -110,6 +111,7 @@ export class SessionHost {
 	#tspHandshakeTimer: NodeJS.Timeout | null = null;
 	#tspExitSurface: string | null = null;
 	#tspFirstBytes = Buffer.alloc(0);
+	#tspQuestions = new QuestionArbitrator();
 	#tspAppearanceChanged = (): void => {
 		if (!this.#tsp || this.state.phase === "exited") return;
 		const { dark, reduceMotion } = this.#tspAppearance();
@@ -334,6 +336,12 @@ export class SessionHost {
 			node.k === "toast" && node.p?.role === TSP_ROLES.toastStatus && typeof node.p.text === "string" && node.p.text.startsWith(TSP_STATUS.closing))) ?? false;
 	}
 
+	tspQuestions(input: unknown): void {
+		if (!this.#tsp) return;
+		const scope = { hostId: this.id, generation: this.state.generation, epoch: this.#tsp.snapshot().epoch };
+		if (this.#tspQuestions.update(scope, input)) this.#publishTsp();
+	}
+
 	tspSnapshot(): TspHostSnapshot | null {
 		if (!this.#tsp) return null;
 		const protocol = this.#tsp.snapshot();
@@ -342,7 +350,8 @@ export class SessionHost {
 		const lifecycle = this.state.phase === "exited" ? "exited" : this.#tspFailure ? "failed" : this.state.phase === "live" && current ? "live" : "transitioning";
 		const reason = this.#closing ? "This chat is closing." : this.#tspFailure ?? (lifecycle !== "live" ? "Waiting for omp to open its semantic screen." : this.#editorTransferBlocked);
 		const availability = reason ? { available: false, reason } : this.#tsp.availability(surface => this.#tspSurfaceGenerations.get(surface) === this.state.generation);
-		return { hostId: this.id, generation: this.state.generation, revision: this.#tspRevision, epoch: protocol.epoch, availability, negotiated: protocol.negotiated, lifecycle, documentGeneration: current ? this.state.generation : null, failure: this.#tspFailure, surfaces };
+		const questionMatches = this.#tspQuestions.matches({ hostId: this.id, generation: this.state.generation, epoch: protocol.epoch }, hookQuestions(surfaces, this.state.generation));
+		return { hostId: this.id, generation: this.state.generation, revision: this.#tspRevision, epoch: protocol.epoch, availability, negotiated: protocol.negotiated, lifecycle, documentGeneration: current ? this.state.generation : null, failure: this.#tspFailure, surfaces, questionMatches };
 	}
 
 	#publishTsp(): void {

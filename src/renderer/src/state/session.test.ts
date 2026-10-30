@@ -364,7 +364,7 @@ describe("SessionController TSP preview input", () => {
 			expect(session.getSnapshot().strandedImages).toBe(false);
 		}
 		await expect(session.command("!pwd")).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
-		expect(invoked).toEqual([]);
+		expect(invoked).toEqual([["host:tsp-snapshot", "h1"]]);
 		expect(session.getSnapshot().error).toBeNull();
 		expect(chatStatus(session.getSnapshot())).not.toBe("error");
 	});
@@ -376,7 +376,7 @@ describe("SessionController TSP preview input", () => {
 		sendHost({ transport: "tsp", link: "L1", tui: tui(0) });
 		await expect(session.sendNow(before[0]!.id)).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
 		expect(session.getSnapshot().queue).toBe(before);
-		expect(invoked).toEqual([]);
+		expect(invoked).toEqual([["host:tsp-snapshot", "h1"]]);
 	});
 
 	it("rejects images after a new launch identifies itself as a preview host, without keeping a queued message", async () => {
@@ -493,7 +493,7 @@ it("keeps plain preview sends on the composer’s existing explicit steer submit
 	const session = idle("preview-plain");
 	sendHost({ transport: "tsp", link: "L1", tui: tui(0) });
 	await deliver(session, "plain text", [], false);
-	expect(invoked).toEqual([submit("plain text")]);
+	expect(invoked).toEqual([["host:tsp-snapshot", "h1"], submit("plain text")]);
 	expect(session.getSnapshot().error).toBeNull();
 });
 
