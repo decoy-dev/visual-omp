@@ -9,9 +9,11 @@
  */
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { FollowState, HostState, SessionOwnership } from "@shared/ipc";
+import { isTspPreviewInputError, TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import type { Attachment } from "../chat/composer/drafts";
 import { imagePathsText } from "../chat/composer/send";
 import { GuestClient, type GuestSnapshot } from "../collab/lib/client";
+import { toast } from "../ui/toast";
 import { extendSessionHistory, parseSessionHistory, type SessionHistory } from "./history";
 
 export interface QueuedMessage {
@@ -658,6 +660,7 @@ export class SessionController {
 	async send(text: string, images: readonly Attachment[] = []): Promise<void> {
 		const message = { text: text.trim(), images: [...images] };
 		if (!message.text && message.images.length === 0) return;
+		this.#assertPreviewInput(message.text, message.images);
 		this.markInput();
 		if (!this.#lineAhead) this.noteSent();
 		if (this.busy) {
@@ -665,6 +668,7 @@ export class SessionController {
 			this.#set({ queue: [...this.#view.queue, item] });
 			try {
 				await this.whenLive();
+				this.#assertPreviewInput(message.text, message.images);
 			} catch (error) {
 				// omp did not start: the caller gets the message back (the composer restores its draft), so it leaves the queue.
 				if (!this.#disposed) this.#set({ queue: this.#view.queue.filter(entry => entry.id !== item.id) });
@@ -684,6 +688,7 @@ export class SessionController {
 		if (this.#view.strandedImages) return this.send(text, images);
 		const message = { text: text.trim(), images: [...images] };
 		if (!message.text && message.images.length === 0) return;
+		this.#assertPreviewInput(message.text, message.images);
 		this.markInput();
 		this.noteSent();
 		await this.whenLive();
@@ -699,6 +704,7 @@ export class SessionController {
 		const index = this.#view.queue.findIndex(entry => entry.id === id);
 		const item = this.#view.queue[index];
 		if (!item) return;
+		this.#assertPreviewInput(item.text, item.images);
 		if (this.#view.strandedImages) throw new StrandedImagesError();
 		this.#set({ queue: this.#view.queue.filter(entry => entry.id !== id) });
 		this.noteSent();
@@ -748,6 +754,7 @@ export class SessionController {
 		this.markInput();
 		await this.#write(async () => {
 			if (this.#view.strandedImages && !overStrandedImages) throw new StrandedImagesError();
+			this.#assertPreviewInput(line, []);
 			await this.whenLive();
 			beforeSubmit?.();
 			await this.#submit(line, "steer");
@@ -838,10 +845,18 @@ export class SessionController {
 		}
 	}
 
+	/** Reject unsupported preview input before queue edits or image paste; classic input is unchanged. */
+	#assertPreviewInput(text: string, images: readonly Attachment[], mode: "steer" | "followUp" = "steer"): void {
+		if (this.#view.host?.transport === "tsp" && (images.length > 0 || mode === "followUp" || /^[!$]/.test(text.trimStart()))) {
+			throw new Error(TSP_PREVIEW_UNAVAILABLE);
+		}
+	}
+
 	async #submit(text: string, mode: "steer" | "followUp"): Promise<void> {
 		const hostId = this.hostId;
 		this.markInput();
 		if (!hostId) throw new Error("omp is not running");
+		this.#assertPreviewInput(text, [], mode);
 		await window.vomp.invoke("host:submit", hostId, text, mode);
 	}
 
@@ -877,6 +892,7 @@ export class SessionController {
 		try {
 			ack = await this.#write(async () => {
 				if (this.#view.strandedImages) throw new StrandedImagesError();
+				this.#assertPreviewInput(item.text, item.images);
 				const hostId = this.hostId;
 				if (!hostId) throw new Error("omp is not running");
 				const before: Acknowledgement = {
@@ -985,6 +1001,14 @@ export class SessionController {
 	#drainOne(): void {
 		const [next, ...rest] = this.#view.queue;
 		if (!next) return;
+		// A first launch may reveal TSP only after this item was queued. Leave it untouched
+		// for send's post-readiness rejection (or an explicit Send now notice).
+		try {
+			this.#assertPreviewInput(next.text, next.images);
+		} catch (error) {
+			if (isTspPreviewInputError(error)) return;
+			throw error;
+		}
 		this.#set({ queue: rest });
 		if (this.#isSlash(next)) {
 			// Not typed: it goes back first in line. A hold (omp's screen), the next send or a turn end brings it back.
@@ -993,7 +1017,9 @@ export class SessionController {
 		}
 		this.#deliverMessage(next).catch((error: unknown) => {
 			const failure = error instanceof DeliveryFailure ? error : new DeliveryFailure(error, false);
-			console.error("Could not deliver a queued message", failure.reason);
+			if (isTspPreviewInputError(failure.reason)) {
+				toast({ tone: "warn", message: failure.message });
+			} else console.error("Could not deliver a queued message", failure.reason);
 			// It goes back first in line; the next send, turn end or hold end tries again (after omp restarts, when
 			// its images were pasted).
 			this.#requeue(next, 0);

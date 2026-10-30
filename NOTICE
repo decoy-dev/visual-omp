@@ -37,5 +37,10 @@ from @oh-my-pi/pi-tui 18.14.0 are included in
 src/renderer/src/ui/charts/vendor/omp/. That directory contains the upstream
 MIT License and a NOTICE identifying each source file.
 
+The TSP wire contracts in src/shared/tsp.ts and the document applier and
+encoder in src/main/omp/tsp/ are adapted from oh-my-pi v18.14.0, commit
+31147f9d1a76608549821c3759f8487b4d66c72d, packages/wire and packages/tui.
+They use the same MIT License reproduced above and in src/main/omp/tsp/LICENSE.
+
 omp and oh-my-pi are projects of their respective authors; visual-omp is an
 independent desktop interface and is not affiliated with or endorsed by them.

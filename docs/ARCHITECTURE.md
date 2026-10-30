@@ -138,6 +138,66 @@ Worktree shutdown: the host lets omp apply its own keep, remove and ask policy. 
 
 Startup readiness remains an omp API gap. A live collab snapshot can precede the editor's submit gate and the outer startup worktree choice. Classic debug values and screen text do not expose that outer readiness flag. Preflight protects a worktree question already painted or being answered; it cannot establish that a later startup question will not appear. The app does not automatically resend an unacknowledged submission. See the parity findings for the source trace.
 
+For developer inspection only, `VOMP_TSP=1` selects Tern Surface Protocol at the launch of an
+app-hosted chat on macOS or Linux. Windows ignores the flag, logs that TSP is unsupported and
+uses the classic transport until bundled ConPTY transport and packaging are verified. Classic
+hosts, terminal-follow and their painted-screen adapters keep their existing behavior. Opt-in TSP
+hosts stop painting terminal rows, so existing screen-driven controls are unavailable in this
+developer preview. Relaunch with `VOMP_TSP` unset to recover the classic controls.
+The hidden PTY still runs the same omp session, private extension and collab relay. The opt-in
+launch sets `TERM_PROGRAM=tern`, removes `PI_TUI_NATIVE`, and reads raw PTY bytes. Its incremental
+splitter removes only TSP APC messages before the existing xterm, OSC 7501 and startup-diagnostic
+paths. Chunk bodies are joined as bytes before UTF-8 decoding.
+
+`src/main/omp/tsp/` applies frames with omp 18.14.0's MIT-licensed reference document applier.
+Hello advertises all 44 kinds because the read-only inspector displays each node and its complete
+properties as data. The terminal feature list is empty: the inspector does not claim image blob
+caching, aside layout or semantic scrolling. The reply grants two credits per surface and an APC
+body limit of 65,536 bytes. Applied frames receive cumulative acknowledgments; pending acks may
+coalesce to the newest applied sequence. APC replies and events share an ordered protocol queue.
+Ordinary terminal replies, including DA1, follow the hello reply through that queue. Resize, theme
+and motion changes are carried in hello before negotiation and sent as events afterward.
+All PTY writes use the host's atomic writer. Protocol acknowledgments bypass the application
+transaction and closing gates so an editor transfer or graceful shutdown cannot block credits.
+Renderer-originated semantic events use the existing application transaction lock, validate the
+current collab generation again at the writer, and reject stale surface or node targets.
+Renderer events are parsed by a strict shared contract before encoding. Main-owned lifecycle
+events are excluded, and addressed surfaces and nodes must still exist when the writer runs.
+Malformed operation tuples and nested node shapes are rejected before they reach the reference
+applier. Protocol failures are displayed in the preview inspector rather than changing the
+chat's authoritative host or OSC error status.
+
+Normal plain-text submission uses the same serialized application input lock and a semantic
+`send` addressed to the focused, sendable main composer under `dock`, with program-advertised
+send support. The pinned composer ancestor role is `omp.editor`; shell variants, modal fields
+and a subagent-view composer are refused. The writer rechecks the generation, target and submit
+gate. omp retains displaced drafts through its own send semantics. Image attachments, pastes,
+Ctrl+Q follow-up submission, shell/Python modes, prediction transfer and screen-driven controls are
+unavailable in the preview and reject with a recovery explanation. Expected action refusals do
+not become persistent chat errors. Startup worktree creation stays disabled; exit-worktree
+dialogs do not have preview controls.
+
+Collab room transitions invalidate presentation authority per surface without deleting protocol
+documents needed for acknowledgments and legitimate adoption. Initial collab attachment may
+adopt the startup document. Later generations require a fresh semantic frame for each surface
+after the new room becomes live; a frame for one surface cannot promote another retained tree.
+Snapshots label stale, failed and exited state explicitly, and exit without a protocol close
+still invalidates presentation authority. A ten-second negotiation deadline exposes absent or
+incompatible hello as a failed preview with the relaunch instruction; successful negotiation
+and exit cancel that deadline. There is no automatic retry or renderer-mode switch.
+
+The `host:tsp-snapshot` request and `host:tsp-update` event expose complete per-host semantic
+documents with a monotonically increasing revision. `host:tsp-event` accepts addressed input;
+main retains ownership of acknowledgments and environment events. These channels use the
+existing trusted, configured app-window IPC boundary and main-owned host-id lookup; they do not
+introduce per-window host ownership. For an opt-in host, the terminal sheet displays a read-only
+semantic outline instead of mounting an xterm mirror. Its developer-preview explanation names
+unavailable controls and the relaunch recovery. Initial focus goes to its labelled, keyboard-scrollable
+outline, so opening the sheet does not activate a header-button tooltip. Closing that inspector,
+including one Escape from its initial focus, sends no keys to omp. Classic terminal-sheet focus
+behavior is unchanged. There is no new user setting or replacement of the transcript or collaboration channel.
+
+
 
 Composer assistance: `main/omp/predict.ts` keeps one lazy no-session RPC child per retained folder for `predict_word` and `predict_word_feedback`, using the id-correlated transport in `main/omp/rpc.ts`. Mounted composers retain their folder separately, so split composers share one child and the last release closes it. Settings changes close children without dropping those owners; closing the last window or quitting closes all children and clears ownership. Auto resolves to local n-grams; SmolLM and Apple remain omp-owned local choices. No word-completion request sends a provider prompt. Both word and dictation children apply the shared MCP-discovery isolation as the final temporary overlay, disable extension/context/rule/skill loading and scrub inherited execution and host-control environment variables.
 

@@ -1,7 +1,7 @@
 /**
- * omp terminal sheet (DESIGN §4.11): a live xterm.js mirror of a chat's hidden omp TUI, for the
- * full-screen omp menus visual-omp does not draw itself. Keystrokes go straight to omp; while the
- * sheet is open the hidden terminal is sized to it, and its previous size is restored on close.
+ * omp terminal sheet (DESIGN §4.11): classic hosts mirror the hidden TUI through xterm.js.
+ * TSP hosts show a read-only semantic outline. Only the classic mirror forwards keystrokes,
+ * resizes the hidden terminal and restores its previous size on close.
  */
 import { ArrowCounterClockwise, ArrowsIn, ArrowsOut, TerminalWindow, Warning } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
@@ -12,6 +12,7 @@ import { controllerFor, useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { Button, cn, Dialog, DialogContent, EmptyState, Expand, IconButton, Sheet, SheetContent, Spinner } from "../../ui";
 import { type ScreenKey, screenName } from "./overlays";
+import { TspInspector } from "./TspInspector";
 
 /** Tab whose sheet the overlay watcher opened (so it closes again when omp's screen goes away). */
 export const autoOpened: { tabId: string | null } = { tabId: null };
@@ -63,17 +64,20 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 	const [confirmLeave, setConfirmLeave] = useState(false);
 	const host = view?.host ?? null;
 	const hostId = host && host.phase !== "exited" ? host.hostId : null;
+	const tsp = host?.transport === "tsp";
 	const readOnly = view?.readOnly ?? false;
 	const tui = host?.tui ?? null;
-	const screen = useScreenName(hostId, `${tui?.overlays ?? 0}|${tui?.focused ?? ""}|${tui?.overlayKinds.join(",") ?? ""}`);
+	const screen = useScreenName(tsp ? null : hostId, `${tui?.overlays ?? 0}|${tui?.focused ?? ""}|${tui?.overlayKinds.join(",") ?? ""}`);
 	/** The hidden terminal's size before the sheet resized it. */
 	const previousSize = useRef<{ hostId: string; cols: number; rows: number } | null>(null);
+	const inspectorContent = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
 		if (!readOnly) void controller.ensureLive().catch(() => undefined);
 	}, [controller, readOnly]);
 
-	if (host && host.phase !== "exited" && previousSize.current?.hostId !== host.hostId) {
+	if (tsp) previousSize.current = null;
+	else if (host && host.phase !== "exited" && previousSize.current?.hostId !== host.hostId) {
 		previousSize.current = { hostId: host.hostId, cols: host.cols, rows: host.rows };
 	}
 	useEffect(
@@ -91,7 +95,7 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 	const close = () => useApp.getState().closeTerminal();
 	const overlaysOpen = () => (controller.getSnapshot().host?.tui?.overlays ?? 0) > 0;
 	const requestClose = () => {
-		if (overlaysOpen() && !readOnly && view?.mode === "live") setConfirmLeave(true);
+		if (!tsp && overlaysOpen() && !readOnly && view?.mode === "live") setConfirmLeave(true);
 		else close();
 	};
 	terminalSheet.requestClose = requestClose;
@@ -103,11 +107,11 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 	);
 	const leave = async () => {
 		setConfirmLeave(false);
-		await controller.keys("escape");
+		if (controller.getSnapshot().host?.transport !== "tsp") await controller.keys("escape");
 		close();
 	};
 
-	const title = screen ? t("terminal.titleWith", { screen: t(`screens.${screen}`) }) : t("terminal.title");
+	const title = tsp ? t("tsp.title") : screen ? t("terminal.titleWith", { screen: t(`screens.${screen}`) }) : t("terminal.title");
 	const mode = view?.mode ?? "starting";
 
 	return (
@@ -126,7 +130,7 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 						<span className="truncate text-md">{title}</span>
 					</span>
 				}
-				description={readOnly ? t("terminal.readOnly") : t("terminal.hint")}
+				description={tsp ? t("tsp.hint") : readOnly ? t("terminal.readOnly") : t("terminal.hint")}
 				actions={
 					<IconButton
 						label={expanded ? t("terminal.shrink") : t("terminal.expand")}
@@ -134,12 +138,23 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 						onClick={() => setExpanded(value => !value)}
 					/>
 				}
+				onKeyDownCapture={event => {
+					if (!tsp || event.key !== "Escape" || event.defaultPrevented) return;
+					// Handle the read-only inspector locally, including focused/nested outline nodes.
+					// No Escape from this sheet belongs to omp or the app-wide shortcut handler.
+					event.preventDefault();
+					event.stopPropagation();
+					requestClose();
+				}}
 				onEscapeKeyDown={event => {
 					// Esc inside the mirror belongs to omp (the key handler decides); elsewhere it closes.
 					event.preventDefault();
-					if (!(event.target instanceof Element && event.target.closest(".xterm"))) requestClose();
+					if (tsp || !(event.target instanceof Element && event.target.closest(".xterm"))) requestClose();
 				}}
-				onOpenAutoFocus={event => event.preventDefault()}
+				onOpenAutoFocus={event => {
+					event.preventDefault();
+					if (tsp) inspectorContent.current?.focus();
+				}}
 				bodyClassName="flex flex-col gap-2 overflow-hidden bg-inset p-3"
 			>
 				<Expand open={mode === "reconnecting"}>
@@ -148,7 +163,7 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 						{t("terminal.reconnecting")}
 					</div>
 				</Expand>
-				<Expand open={mode === "exited"}>
+				<Expand open={!tsp && mode === "exited"}>
 					<div role="alert" className="flex h-9 shrink-0 items-center gap-2 rounded-md bg-err-bg px-3 text-sm text-err">
 						<Warning aria-hidden className="size-4" />
 						<span className="flex-1">{t("terminal.disconnected")}</span>
@@ -158,7 +173,9 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 					</div>
 				</Expand>
 				<div className={cn("min-h-0 flex-1 transition-opacity duration-(--dur-slow)", mode === "exited" && "opacity-60")}>
-					{hostId && host ? (
+					{tsp && host ? (
+						<TspInspector ref={inspectorContent} key={`${host.hostId}:${host.generation}`} hostId={host.hostId} generation={host.generation} />
+					) : hostId && host ? (
 						<Mirror
 							hostId={hostId}
 							generation={host.generation}
@@ -176,7 +193,7 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 					) : null}
 				</div>
 			</SheetContent>
-			<Dialog open={confirmLeave} onOpenChange={setConfirmLeave}>
+			<Dialog open={confirmLeave && !tsp} onOpenChange={setConfirmLeave}>
 				<DialogContent
 					size="sm"
 					title={t("terminal.leaveTitle")}

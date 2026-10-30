@@ -1,10 +1,13 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { HostState } from "@shared/ipc";
+import { TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deliver } from "../chat/composer/send";
 import type { GuestSnapshot } from "../collab/lib/client";
 import { sendSlashCommand } from "../features/session-tools/typed";
 import { chatStatus } from "../shell/hooks";
+import { toast } from "../ui/toast";
+import type * as ToastModule from "../ui/toast";
 import { liveEntries, liveGuest, SessionController, setSlashDelivery } from "./session";
 
 // vi.mock is hoisted above the imports, so the controller under test builds these fakes.
@@ -27,7 +30,7 @@ const fakes = vi.hoisted(() => {
 		close(): void {}
 		/** What the real client publishes: `waiting` until omp's snapshot arrives, then `live`. */
 		emit(phase: GuestSnapshot["phase"], entries: readonly SessionEntry[], working = false, extra: Partial<GuestSnapshot> = {}): void {
-			this.snapshot = { phase, entries, working, uiRequest: null, ...extra } as unknown as GuestSnapshot;
+			this.snapshot = { phase, entries, working, uiRequest: null, agents: [], progress: new Map(), lifecycle: new Map(), ...extra } as unknown as GuestSnapshot;
 			for (const listener of this.listeners) listener();
 		}
 	}
@@ -35,6 +38,7 @@ const fakes = vi.hoisted(() => {
 	const watch = { end: Promise.withResolvers<void>() };
 	return { FakeGuest, guests, watch };
 });
+vi.mock("../ui/toast", async importOriginal => ({ ...await importOriginal<typeof ToastModule>(), toast: vi.fn() }));
 vi.mock("../collab/lib/client", () => ({ GuestClient: fakes.FakeGuest }));
 // typed.ts drives omp's painted screen; these stand-ins type the command and let the test end its watch.
 vi.mock("../features/session-tools/drive", () => ({
@@ -73,6 +77,7 @@ let invoked: unknown[][] = [];
 let respond: ((channel: string) => Promise<unknown> | undefined) | null = null;
 
 beforeEach(() => {
+	vi.mocked(toast).mockClear();
 	fakes.guests.length = 0;
 	fakes.watch.end = Promise.withResolvers<void>();
 	hostListeners.clear();
@@ -342,6 +347,117 @@ function fakeDelivery() {
 const shot = { path: "/tmp/Screen Shot.png", name: "Screen Shot.png" };
 const pasteShot = ["composer:paste", "h1", "/tmp/Screen\\ Shot.png"];
 const submit = (text: string) => ["host:submit", "h1", text, "steer"];
+
+describe("SessionController TSP preview input", () => {
+	const preview = (busy: boolean) => {
+		const session = busy ? working("preview-working") : idle("preview-idle");
+		sendHost({ transport: "tsp", link: "L1", tui: tui(0) });
+		return session;
+	};
+
+	it.each([false, true])("rejects image, image-only and shell input before paste or queue mutation (busy: %s)", async busy => {
+		const session = preview(busy);
+		for (const [text, images] of [["look", [shot]], ["", [shot]], ["!pwd", []], ["!!pwd", []], ["$ print(1)", []], ["$$ print(1)", []]] as const) {
+			await expect(session.send(text, images)).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
+			await expect(session.steer(text, images)).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
+			expect(session.getSnapshot().queue).toEqual([]);
+			expect(session.getSnapshot().strandedImages).toBe(false);
+		}
+		await expect(session.command("!pwd")).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
+		expect(invoked).toEqual([]);
+		expect(session.getSnapshot().error).toBeNull();
+		expect(chatStatus(session.getSnapshot())).not.toBe("error");
+	});
+
+	it("does not remove an unsupported queued attachment when Send now is requested", async () => {
+		const session = working("preview-queued");
+		await session.send("look", [shot]);
+		const before = session.getSnapshot().queue;
+		sendHost({ transport: "tsp", link: "L1", tui: tui(0) });
+		await expect(session.sendNow(before[0]!.id)).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
+		expect(session.getSnapshot().queue).toBe(before);
+		expect(invoked).toEqual([]);
+	});
+
+	it("rejects images after a new launch identifies itself as a preview host, without keeping a queued message", async () => {
+		respond = channel => channel === "host:start" ? Promise.resolve(host({ transport: "tsp", link: "L1" })) : undefined;
+		const session = new SessionController({ tabId: "preview-launch-images", projectPath: "/p", sessionFile: null });
+		const sending = session.send("look", [shot]);
+		await flush();
+		fakes.guests.at(-1)?.emit("live", [u1], false);
+		await expect(sending).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
+		expect(session.getSnapshot().queue).toEqual([]);
+		expect(invoked.some(call => call[0] === "composer:paste" || call[0] === "host:submit")).toBe(false);
+	});
+
+	it("returns actionable readiness failure to the composer without a persistent error status", async () => {
+		const session = preview(false);
+		const reason = `Error invoking remote method 'host:submit': Error: TSP preview: The focused editor is not ready. Relaunch without VOMP_TSP.`;
+		failOnce("host:submit", reason);
+		await expect(deliver(session, "keep this draft", [], false)).rejects.toThrow("Relaunch without VOMP_TSP");
+		expect(session.getSnapshot().queue).toEqual([]);
+		expect(session.getSnapshot().inputHistory).toEqual([]);
+		expect(session.getSnapshot().error).toBeNull();
+		expect(chatStatus(session.getSnapshot())).toBe("live");
+	});
+
+	it("keeps an automatically delivered preview message queued and shows an actionable notice without red status", async () => {
+		const session = preview(true);
+		await session.send("keep this queued");
+		failOnce("host:submit", "TSP preview: The editor is not ready. Relaunch without VOMP_TSP.");
+		fakes.guests.at(-1)?.emit("live", [u1, a1], false);
+		await flush();
+		expect(queued(session)).toEqual(["keep this queued"]);
+		expect(toast).toHaveBeenCalledExactlyOnceWith({ tone: "warn", message: "TSP preview: The editor is not ready. Relaunch without VOMP_TSP." });
+		expect(session.getSnapshot().error).toBeNull();
+		expect(chatStatus(session.getSnapshot())).toBe("live");
+	});
+
+	it("keeps actual launch failures authoritative even when they quote preview text", async () => {
+		const reason = "omp startup failed while processing 'TSP preview:'";
+		failOnce("host:start", reason);
+		const session = new SessionController({ tabId: "preview-start-failure", projectPath: "/p", sessionFile: null });
+		await expect(session.send("keep this draft")).rejects.toThrow(reason);
+		expect(session.getSnapshot().queue).toEqual([]);
+		expect(session.getSnapshot().mode).toBe("exited");
+		expect(session.getSnapshot().error).toBe(reason);
+		expect(chatStatus(session.getSnapshot())).toBe("error");
+	});
+
+	it("preserves an actual host exit reason for an in-flight readiness waiter", async () => {
+		const session = new SessionController({ tabId: "preview-exit", projectPath: "/p", sessionFile: null });
+		session.attach(host({ transport: "tsp", phase: "connecting", link: "L1" }));
+		const ready = session.whenLive();
+		await flush();
+		sendHost({ transport: "tsp", phase: "exited", error: "connection lost" });
+		await expect(ready).rejects.toThrow("connection lost");
+		expect(session.getSnapshot().error).toBe("connection lost");
+		expect(chatStatus(session.getSnapshot())).toBe("error");
+	});
+
+	it("keeps ordinary host failures as errors", () => {
+		const session = preview(false);
+		sendHost({ transport: "tsp", link: "L1", error: "connection lost" });
+		expect(session.getSnapshot().error).toBe("connection lost");
+		expect(chatStatus(session.getSnapshot())).toBe("error");
+	});
+
+	it("does not suppress authoritative omp error status that quotes preview text", () => {
+		const session = preview(false);
+		const programStatus = { state: "error" as const, msg: "omp task failed while processing 'TSP preview:'" };
+		sendHost({ transport: "tsp", link: "L1", programStatus });
+		expect(session.getSnapshot().host?.programStatus).toBe(programStatus);
+		expect(chatStatus(session.getSnapshot())).toBe("error");
+	});
+});
+
+it("keeps plain preview sends on the composer’s existing explicit steer submit mode", async () => {
+	const session = idle("preview-plain");
+	sendHost({ transport: "tsp", link: "L1", tui: tui(0) });
+	await deliver(session, "plain text", [], false);
+	expect(invoked).toEqual([submit("plain text")]);
+	expect(session.getSnapshot().error).toBeNull();
+});
 
 describe("SessionController queue around omp's own screens", () => {
 	it("holds a queued command while omp's full-screen report is open at turn end, then sends it once the report closes", async () => {

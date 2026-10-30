@@ -37,6 +37,24 @@
 		"stay": "Stay on this screen",
 		"leave": "Leave screen"
 	},
+	"tsp": {
+		"title": "omp semantic inspector",
+		"hint": "Read-only developer preview. Escape closes this view.",
+		"outline": "omp semantic outline",
+		"props": "Properties",
+		"open": "Open metadata",
+		"state": "Surface state",
+		"waiting": "Waiting for semantic surfaces from omp…",
+		"unavailable": "The semantic snapshot could not be loaded. Close and reopen this view to try again, or relaunch visual-omp without VOMP_TSP to return to the classic terminal.",
+		"preview": "Developer preview: this inspector is read-only. Interactive terminal controls, image attachments, follow-up submission and !/$ shell or Python input are not available. Closing this view leaves omp unchanged.",
+		"live": "Current semantic documents",
+		"negotiating": "Negotiating the semantic preview with omp…",
+		"transitioning": "Waiting for current semantic documents from omp…",
+		"failed": "The semantic preview is unavailable.",
+		"exited": "omp stopped. No live semantic documents are available.",
+		"stale": "Retained documents are not current and are hidden.",
+		"recovery": "Quit and relaunch visual-omp without VOMP_TSP to use the classic terminal and its controls."
+	},
 	"screens": {
 		"settings": "Settings",
 		"models": "Model hub",

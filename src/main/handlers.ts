@@ -100,6 +100,8 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("host:screen", hostId => getHost(hostId).screenLines());
 	handle("host:resize", (hostId, cols, rows) => getHost(hostId).resize(cols, rows));
 	handle("host:buffer", hostId => getHost(hostId).serializedScreen());
+	handle("host:tsp-snapshot", hostId => getHost(hostId).tspSnapshot());
+	handle("host:tsp-event", (hostId, generation, event) => getHost(hostId).tspEvent(generation, event));
 	handle("host:list", () => listHosts());
 
 	handle("term:start", options => startTerminal(options));

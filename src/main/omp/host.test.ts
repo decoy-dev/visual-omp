@@ -8,11 +8,13 @@ import type * as Sessions from "./sessions";
 import type { RelayEvents } from "./relay";
 import type { TuiFocus } from "@shared/ipc";
 import type { MessageBoxOptions } from "electron";
+import { broadcast } from "../ipc";
 
 const pty = vi.hoisted(() => ({
-	data: null as ((data: string) => void) | null,
+	data: null as ((data: string | Buffer) => void) | null,
 	exit: null as ((event: { exitCode: number }) => void) | null,
 	args: [] as string[],
+	spawnOptions: null as { env: NodeJS.ProcessEnv; encoding?: string | null; useConptyDll?: boolean } | null,
 	root: "",
 	events: {} as RelayEvents,
 	room: "room",
@@ -27,11 +29,13 @@ const pty = vi.hoisted(() => ({
 	confirm: vi.fn(async (_options?: MessageBoxOptions) => ({ response: 0 })),
 	writes: vi.fn(),
 	kill: vi.fn(),
+	resize: vi.fn(),
 }));
 vi.mock("node-pty", () => ({
-	spawn: vi.fn((_bin, args: string[]) => {
+	spawn: vi.fn((_bin, args: string[], options: typeof pty.spawnOptions) => {
 		pty.args = args;
-		return { pid: 123, onData: (fn: typeof pty.data) => (pty.data = fn), onExit: (fn: typeof pty.exit) => (pty.exit = fn), write: pty.writes, kill: pty.kill };
+		pty.spawnOptions = options;
+		return { pid: 123, onData: (fn: typeof pty.data) => (pty.data = fn), onExit: (fn: typeof pty.exit) => (pty.exit = fn), write: pty.writes, kill: pty.kill, resize: pty.resize };
 	}),
 }));
 vi.mock("../env", () => ({ userEnv: async () => ({}), ptyEnv: (env: unknown) => env }));
@@ -69,6 +73,7 @@ import { SessionHost, type EditorInputTransaction } from "./host";
 
 let host: SessionHost;
 beforeEach(async () => {
+	vi.stubEnv("VOMP_TSP", "");
 	pty.root = await mkdtemp(join(tmpdir(), "vomp-host-test-"));
 	pty.events = {};
 	pty.focus = null;
@@ -91,6 +96,8 @@ afterEach(async () => {
 	if (host.state.phase !== "exited") pty.exit?.({ exitCode: 0 });
 	await vi.waitFor(() => expect(host.state.phase).toBe("exited"));
 	await rm(pty.root, { recursive: true, force: true });
+	vi.unstubAllEnvs();
+	vi.unstubAllGlobals();
 });
 
 async function exit(code: number): Promise<void> {
@@ -611,4 +618,203 @@ it("rejects editor transaction methods after their input lock has been released"
 	expect(() => released!.assertOpen()).toThrow("already finished");
 	await expect(released!.keys("tab")).rejects.toThrow("already finished");
 	expect(pty.keys).not.toHaveBeenCalled();
+});
+
+async function launchTsp(platform: NodeJS.Platform = "darwin", fakeClock = false): Promise<void> {
+	if (host.state.phase !== "exited") await exit(0);
+	if (fakeClock) vi.useFakeTimers();
+	vi.stubEnv("VOMP_TSP", "1");
+	// The spawn and debug bridge are mocked; only launch-policy selection needs the platform.
+	vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? platform : Reflect.get(target, key) }));
+	host = new SessionHost({ cwd: tmpdir() });
+	await host.start();
+}
+
+function tspMessage(verb: string, body: unknown): void {
+	pty.data?.(Buffer.from(`\x1b_tsp;${verb};${JSON.stringify(body)}\x1b\\`));
+}
+
+function tspComposer(surface = "s:1", editor = "editor", sendable = true): void {
+	tspMessage("o", { id: surface, mode: "inline", role: "omp.session" });
+	tspMessage("f", { sf: surface, s: 1, ops: [
+		["add", "dock", surface, null, { id: "dock", k: "col", p: { role: "omp.editor" }, c: [{ id: editor, k: "editor", p: { sendable, text: "" } }] }],
+		["focus", editor],
+	] });
+}
+
+describe("opt-in semantic transport", () => {
+	it("leaves classic launch, raw output and snapshots unchanged by default", () => {
+		expect(pty.spawnOptions?.env).toMatchObject({ PI_TUI_NATIVE: "0" });
+		expect(pty.spawnOptions?.env).not.toHaveProperty("TERM_PROGRAM");
+		expect(pty.spawnOptions).not.toHaveProperty("encoding");
+		expect(host.state.transport).toBeUndefined();
+		expect(host.tspSnapshot()).toBeNull();
+	});
+
+	it("launches a raw-byte Tern client only when explicitly enabled", async () => {
+		await launchTsp();
+		expect(pty.spawnOptions?.env).toMatchObject({ TERM_PROGRAM: "tern" });
+		expect(pty.spawnOptions?.env).not.toHaveProperty("PI_TUI_NATIVE");
+		expect(pty.spawnOptions?.encoding).toBeNull();
+		expect(host.state.transport).toBe("tsp");
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspMessage("o", { id: "s:1", mode: "inline" });
+		tspMessage("f", { sf: "s:1", s: 1, ops: [["add", "dock", "s:1", null, { id: "dock", k: "col", c: [{ id: "editor", k: "editor", p: { sendable: true, text: "" } }] }]] });
+		await connect();
+		const snapshot = host.tspSnapshot();
+		expect(snapshot).toMatchObject({ hostId: host.id, generation: 1, negotiated: true });
+		expect(snapshot?.surfaces[0]?.sequence).toBe(1);
+		expect(broadcast).toHaveBeenCalledWith("host:tsp-update", expect.objectContaining({ generation: 1 }));
+		await host.tspEvent(1, { ev: "send", sf: "s:1", id: "editor", text: "/btw" });
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"text":"/btw"'));
+		await expect(host.tspEvent(0, { ev: "send", sf: "s:1", id: "editor", text: "/btw" })).rejects.toThrow("session changed");
+		await expect(host.tspEvent(1, { ev: "ack", sf: "s:1", s: 99 })).rejects.toThrow("main-owned");
+	});
+
+	it("ignores the opt-in flag on Windows and logs a single explanation", async () => {
+		const log = vi.spyOn(console, "info").mockImplementation(() => {});
+		try {
+			await launchTsp("win32");
+			expect(host.state.transport).toBeUndefined();
+			expect(host.tspSnapshot()).toBeNull();
+			expect(pty.spawnOptions?.env).toMatchObject({ PI_TUI_NATIVE: "0" });
+			expect(pty.spawnOptions?.env).not.toHaveProperty("TERM_PROGRAM");
+			expect(pty.spawnOptions).not.toHaveProperty("encoding");
+			expect(pty.spawnOptions).not.toHaveProperty("useConptyDll");
+			expect(log).toHaveBeenCalledExactlyOnceWith("[visual-omp] TSP is not supported on Windows yet; using classic transport.");
+		} finally { log.mockRestore(); }
+	});
+
+	it("keeps OSC status and startup diagnostics on the non-TSP byte path", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1] });
+		tspMessage("o", { id: "s:1", mode: "inline" });
+		tspMessage("f", { sf: "s:1", s: 1, ops: [["add", "main", "s:1", null, { id: "main", k: "text", p: { text: "Error: semantic text is not a startup diagnostic" } }]] });
+		pty.data?.(Buffer.from("Error: raw startup café\r\n\x1b]7501;state=working:app=omp\x07"));
+		await vi.waitFor(() => expect(host.state.programStatus).toMatchObject({ state: "working" }));
+		expect(broadcast).not.toHaveBeenCalledWith("host:data", expect.objectContaining({ data: expect.stringContaining("semantic text") }));
+		await exit(1);
+		expect(host.state.exitReason).toBe("Error: raw startup café");
+	});
+
+	it("returns protocol credits while unsupported painted input is refused without host error", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1] });
+		tspMessage("o", { id: "s:1", mode: "inline" });
+		await connect();
+		await expect(host.withEditorInput(async () => {})).rejects.toThrow("not available");
+		tspMessage("f", { sf: "s:1", s: 1, ops: [] });
+		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"ack"')));
+		expect(host.state.error).toBeNull();
+	});
+
+	it("rechecks generations for semantic input waiting on the application queue", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer();
+		await connect();
+		const queued = host.tspEvent(1, { ev: "send", sf: "s:1", id: "editor", text: "/btw" });
+		const rejected = expect(queued).rejects.toThrow("session changed");
+		pty.events.onHostClose?.("room");
+		await rejected;
+	});
+
+	it("submits plain text using semantic readiness and keeps painted adapters unavailable", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] });
+		tspComposer("s:1", "editor", false);
+		await connect();
+		await expect(host.submit("hello")).rejects.toThrow("not ready");
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["set", "editor", { sendable: true }]] });
+		await host.submit("/btw", "steer");
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"send","sf":"s:1","id":"editor","text":"/btw"'));
+		for (const action of [
+			() => host.submit("hello", "followUp"),
+			() => host.submit("!pwd"),
+			() => host.submit(""),
+			() => host.paste("image.png"),
+			() => host.keys("tab"),
+			() => host.screenLines(),
+			() => host.screenPaint(),
+			() => host.debugValues(),
+			() => host.tuiFocus(),
+		]) await expect(action()).rejects.toThrow("not available in the TSP preview");
+		expect(() => host.serializedScreen()).toThrow("not available");
+		expect(host.state.error).toBeNull();
+	});
+
+	it("gates semantic submits and edits while exact-transfer recovery blocks input", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] });
+		tspComposer();
+		await connect();
+		host.setEditorTransferBlocked("Recover the displaced draft first.");
+		await expect(host.submit("hello")).rejects.toThrow("Recover");
+		await expect(host.tspEvent(1, { ev: "edit", sf: "s:1", id: "editor", from: 0, to: 0, text: "hello", cursor: 5, len: 0 })).rejects.toThrow("Recover");
+		expect(host.state.error).toBeNull();
+	});
+
+	it("keeps old surface generations stale across room changes and submits only to a fresh surface", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer("s:old", "old-editor");
+		await connect();
+		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "live", documentGeneration: 1 });
+		pty.events.onHostClose?.("room");
+		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "transitioning", documentGeneration: null });
+		await connect("room2", "new");
+		expect(host.tspSnapshot()).toMatchObject({ generation: 2, lifecycle: "transitioning" });
+		await expect(host.submit("hello")).rejects.toThrow("semantic UI is not ready");
+		tspComposer("s:new", "new-editor");
+		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "live", generation: 2 });
+		expect(host.tspSnapshot()?.surfaces.map(surface => [surface.open.id, surface.documentGeneration])).toEqual([["s:old", null], ["s:new", 2]]);
+		await host.submit("/btw");
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"sf":"s:new","id":"new-editor","text":"/btw"'));
+		expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining('"ev":"send","sf":"s:old"'));
+		await expect(host.tspEvent(2, { ev: "visible", sf: "s:old", visible: true })).rejects.toThrow("earlier session");
+	});
+
+	it("marks documents unavailable on exit without a close and never copies them into a replacement host", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer();
+		await connect();
+		const previous = host;
+		await exit(1);
+		expect(previous.tspSnapshot()).toMatchObject({ lifecycle: "exited", documentGeneration: null });
+		expect(previous.tspSnapshot()?.surfaces[0]?.documentGeneration).toBeNull();
+		await launchTsp();
+		expect(host.tspSnapshot()?.surfaces).toEqual([]);
+		expect(host.tspSnapshot()?.hostId).not.toBe(previous.id);
+	});
+
+	it.each([null, [2]])("shows bounded negotiation failure for absent or incompatible hello %j", async versions => {
+		await launchTsp("darwin", true);
+		if (versions) tspMessage("q", { q: "hello", v: versions });
+		await vi.advanceTimersByTimeAsync(10_001);
+		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "failed", negotiated: false, failure: expect.stringContaining("Relaunch without VOMP_TSP") });
+		expect(host.state.error).toBeNull();
+	});
+
+	it("cancels failed-negotiation reporting after a supported hello or process exit", async () => {
+		await launchTsp("darwin", true);
+		tspMessage("q", { q: "hello", v: [1] });
+		await vi.advanceTimersByTimeAsync(10_001);
+		expect(host.tspSnapshot()?.failure).toBeNull();
+		pty.exit?.({ exitCode: 0 });
+		await vi.advanceTimersByTimeAsync(100);
+		expect(host.tspSnapshot()?.lifecycle).toBe("exited");
+		expect(host.tspSnapshot()?.failure).toBeNull();
+	});
+
+	it("contains malformed protocol operations while preserving subsequent ordinary output", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1] });
+		tspMessage("o", { id: "s:1", mode: "inline" });
+		expect(() => pty.data?.(Buffer.from('\x1b_tsp;f;{"sf":"s:1","s":1,"ops":[["add"]]}\x1b\\Error: raw startup failure\r\n'))).not.toThrow();
+		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "failed", failure: expect.stringContaining("Invalid TSP frame") });
+		expect(host.state.error).toBeNull();
+		await exit(1);
+		expect(host.state.exitReason).toBe("Error: raw startup failure");
+	});
 });

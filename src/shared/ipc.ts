@@ -10,6 +10,8 @@
  * automatically by `src/main/handlers.ts`. Core app/omp/session/host channels live here.
  */
 
+import type { TspHostSnapshot, TspRendererEvent } from "./tsp-host";
+
 export type Platform = "darwin" | "win32" | "linux";
 
 export interface OmpStatus {
@@ -115,6 +117,8 @@ export interface HostState {
 	hostId: string;
 	cwd: string;
 	phase: HostPhase;
+	/** Launch-only developer transport. Absent for classic hosts and terminal-follow views. */
+	transport?: "classic" | "tsp";
 	/** Collab control link for the renderer guest client; null until resolved. */
 	link: string | null;
 	/** Increments every time omp opens a new collab room (restart, new, resume, branch). */
@@ -285,6 +289,10 @@ export interface IpcInvokeMap {
 	"host:resize": { args: [hostId: string, cols: number, rows: number]; result: void };
 	/** Serialized terminal state for attaching an xterm view mid-session. */
 	"host:buffer": { args: [hostId: string]; result: string };
+	/** Complete semantic documents for an opt-in TSP host; null for classic hosts. */
+	"host:tsp-snapshot": { args: [hostId: string]; result: TspHostSnapshot | null };
+	/** Renderer input shares the application input lock and rejects a stale collab generation. */
+	"host:tsp-event": { args: [hostId: string, generation: number, event: TspRendererEvent]; result: void };
 	"host:list": { args: []; result: HostState[] };
 
 	"term:start": { args: [options: TerminalStartOptions]; result: string };
@@ -302,6 +310,7 @@ export interface IpcInvokeMap {
 export interface IpcEventMap {
 	"host:state": HostState;
 	"host:data": { hostId: string; data: string };
+	"host:tsp-update": TspHostSnapshot;
 	"term:data": { termId: string; data: string };
 	"term:exit": { termId: string; code: number };
 	"sessions:changed": { cwd: string | null };
