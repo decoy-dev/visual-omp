@@ -15,6 +15,7 @@ import { imagePathsText } from "../chat/composer/send";
 import { GuestClient, type GuestSnapshot } from "../collab/lib/client";
 import { toast } from "../ui/toast";
 import { extendSessionHistory, parseSessionHistory, type SessionHistory } from "./history";
+import { TspNoticeStore } from "../features/tsp/notice-store";
 import { TspQuestionSync } from "./tsp-questions";
 
 export interface QueuedMessage {
@@ -182,6 +183,7 @@ function syncFollowed(): void {
 
 export class SessionController {
 	readonly tabId: string;
+	readonly tspNotices: TspNoticeStore;
 	#projectPath: string;
 	#sessionFile: string | null;
 	#view: SessionView;
@@ -260,6 +262,7 @@ export class SessionController {
 			error: null,
 		};
 		this.#tspQuestionSync = new TspQuestionSync(this);
+		this.tspNotices = new TspNoticeStore(this);
 	}
 
 	get projectPath(): string {
@@ -840,6 +843,7 @@ export class SessionController {
 		if (this.#disposed) return;
 		this.#disposed = true;
 		this.#tspQuestionSync.dispose();
+		this.tspNotices.dispose();
 		this.#stopFollowing();
 		this.#closeGuest();
 		this.#unsubscribeHost?.();

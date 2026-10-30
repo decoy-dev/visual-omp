@@ -201,6 +201,13 @@ These figures are planning judgment for one engineer familiar with the repositor
 
 **Goal.** Make a TSP chat usable for daily work behind the flag, with known gaps that are disabled and explained. This phase extends Phase 1's readiness and plain-text send with overlay and screen blocking and UI availability, brings the minimum close handling forward from Phase 4b, makes the Rule 8 question arbitration a prerequisite for interactive dialogs, adds a generic interactive renderer that replaces the terminal sheet for TSP chats, projects TSP-only notices into the transcript, and introduces claims (Rule 7). It removes the largest blocker the study found: the classic terminal sheet was the catch-all for menus the app has no card for, and a TSP host has no painted terminal.
 
+**Implementation status.** Section 2.2 projects the registered TSP-only notices into transcript rows.
+Recorded startup and usage warnings plus synthetic documents cover deferred snapshot attribution,
+displayed-branch anchoring, replacement, parent-chain custom-message suppression, event
+suppression, epoch/room reset and literal notice rendering. These checks do not establish identity
+for a delayed collab notice event after a turn change. The remaining Phase 2 criteria gate the preview.
+
+
 ### 2.0 Minimum readiness, input and close
 
 - **Readiness.** Extends Phase 1: `composer(doc)` returns the live editor with `p.sendable === true`, and Phase 2 adds blocking while an overlay or `screen` surface is open. The composer's send control shows that availability and its reason.
@@ -248,7 +255,7 @@ These figures are planning judgment for one engineer familiar with the repositor
 
 ### 2.2 TSP-only notices in the transcript
 
-Some omp output exists only in TSP: `omp.toast.status` notices (reused node id, replaced text), `omp.notice.error` rows in `main` (studio, omp 18.14.0, [`docs/architecture/tsp-migration.md:177`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L177)), and startup warnings such as the probe's no-default-model warning. The registry lists these roles. Main projects them into the existing notice rows (`chat/transcript/NoticeRow.tsx`), anchored after the latest collab entry at the time they appear. Deduplication: a projected notice is dropped when a collab `notice` event or `custom_message` entry with the same text arrives within the same turn. Roles that collab replicates (`omp.user`, `omp.assistant`, tool cards, subagents) are never projected.
+Some omp output exists only in TSP: `omp.toast.status` notices (reused node id, replaced text), `omp.notice.error` rows in `main` (studio, omp 18.14.0, [`docs/architecture/tsp-migration.md:177`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L177)), and `omp.notice.warning` startup and command warnings. The registry lists and claims these roles. A controller-owned renderer subscription projects them into literal notice bodies within `chat/transcript/NoticeRow.tsx`. It defers attribution until the current room has a synchronized collab snapshot, then uses the displayed branch's latest entry and user prompt as anchor and turn. Replacing a node preserves its assigned anchor. Displayed `custom_message` entries suppress equal text through their parent-chain turn; collab `notice` events use the displayed turn at receipt. This covers either arrival order within the attributed turn, but cannot identify a delayed event's earlier turn. New protocol epochs clear projections. Room and session changes discard pending attribution and retain observed node text so unchanged retained documents do not repeat notices. Roles collab replicates remain collab-owned and are never projected.
 
 ### Tests
 

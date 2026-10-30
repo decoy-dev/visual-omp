@@ -298,6 +298,12 @@ export interface NoticeRowProps {
 
 export function NoticeRow({ entry, mode }: NoticeRowProps): ReactNode {
 	const { t } = useTranslation("chat");
+	if (entry.customType === "tsp-notice") return (
+		<div role="note" className="-mx-2 flex min-w-0 items-start gap-2.5 px-2 py-1 text-sm text-fg-muted">
+			<Info aria-hidden className="mt-0.5 size-4 shrink-0" />
+			<p className="selectable min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{contentText(entry.content)}</p>
+		</div>
+	);
 	const notice = parseNotice(entry);
 	const verbose = mode === "verbose";
 	let body: ReactNode;

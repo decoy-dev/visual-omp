@@ -239,8 +239,18 @@ both its request and node have ended. Snapshots expose `questionMatches`.
 Phase 2 is not complete. Hook dialogs remain visible and read-only while arbitration is diagnostic.
 The interactive writer recheck, hook completion controls and live channel-ordering evidence remain
 required before local hook answering can be enabled. Collab questions retain their existing controls.
-TSP-only notices have not been projected into transcript rows and remain available in the omp
-screen. Full overlay workflow replay, live hook and extension-fallback recordings, sharing parity,
+TSP-only warning/error rows and status toasts are projected by each chat's controller-owned
+subscription into existing transcript notice rows with literal, whitespace-preserving text. After
+the current room's collab snapshot is synchronized, new notices use its displayed branch and leaf
+for the anchor and user-prompt turn. Notices received during snapshot download wait for that
+attribution. Reused toast nodes update their existing row without moving an assigned anchor.
+Displayed custom messages are matched through their parent ancestry; collab notice events use
+the displayed turn when received. Matching text suppresses the projection within that attributed
+turn. Epochs clear rows; room and session changes also discard pending attribution and retain
+observed node text to avoid repeating unchanged notices. These behaviors have recorded startup/
+usage and synthetic ordering, rewind and literal-rendering coverage. Disposing the controller removes its subscription. The role registry claims
+these notice nodes, keeping the generic omp screen from duplicating them.
+Full overlay workflow replay, live hook and extension-fallback recordings, sharing parity,
 packaged checks and the remaining manual acceptance criteria still gate the complete Phase 2
 preview. There is no new user setting and no replacement of the transcript or collaboration channel.
 

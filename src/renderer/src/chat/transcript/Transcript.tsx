@@ -32,6 +32,7 @@ import { useHomeDir } from "../../features/projects/folders/FolderBrowser";
 import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
 import { type CommandResultRecord, dismissCommandResult, placeResults, roomKey, useCommandResults } from "../../features/session-tools/results";
+import { placeTspNotices, type TspNotice } from "../../features/tsp/notices";
 import { liveGuest, type SessionController, type SessionView } from "../../state/session";
 import { useApp } from "../../state/app";
 import { copyCode, StreamingMarkdown } from "../../transcript/Markdown";
@@ -771,6 +772,8 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		() => placeResults(entries.map(entry => entry.id), start, commandResults, room),
 		[entries, start, commandResults, room],
 	);
+	const tspNotices = useSyncExternalStore(session.tspNotices.subscribe, session.tspNotices.getSnapshot);
+	const placedNotices = useMemo(() => placeTspNotices(entries, start, tspNotices), [entries, start, tspNotices]);
 	const results = useMemo(() => {
 		const map = new Map<string, ToolResultMessage>();
 		for (const entry of visible) if (entry.type === "message" && entry.message.role === "toolResult") map.set(entry.message.toolCallId, entry.message);
@@ -905,6 +908,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		placedResults.top.length === 0 &&
 		placedResults.after.size === 0 &&
 		placedResults.end.length === 0 &&
+		tspNotices.length === 0 &&
 		(view.mode === "live" || (view.mode === "starting" && !view.history));
 
 	// Rows that arrive while the chat is open rise in. History (first render, a tab switch, an async load, an
@@ -1001,7 +1005,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 			follow.snap();
 			settledRef.current = loaded;
 		}
-	}, [follow, loaded, entries, stream, activeTools, uiRequest, view.working]);
+	}, [follow, loaded, entries, stream, activeTools, uiRequest, view.working, tspNotices]);
 	let lastSeen = -1;
 	for (let index = visible.length - 1; index >= 0; index--) {
 		if (arrivals.seen.has(visible[index]?.id ?? "")) {
@@ -1038,11 +1042,20 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		rows.push(...resultRows(list));
 		previousAssistant = null;
 	};
+	const noticeRows = (list: readonly TspNotice[] | undefined) =>
+		(list ?? []).map(notice => <div key={notice.id} data-row><NoticeRow entry={notice} mode={mode} /></div>);
+	const pushNotices = (list: readonly TspNotice[] | undefined) => {
+		if (!list?.length) return;
+		endRun();
+		rows.push(...noticeRows(list));
+		previousAssistant = null;
+	};
 	visible.forEach((entry, index) => {
 		const isUser = (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
 		if (isUser) seenUser = true;
 		if (!rowShown(entry, mode, seenUser)) {
 			pushResults(placedResults.after.get(entry.id));
+			pushNotices(placedNotices.after.get(entry.id));
 			return;
 		}
 		const isAssistant = entry.type === "message" && entry.message.role === "assistant";
@@ -1084,6 +1097,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 			);
 		}
 		pushResults(placedResults.after.get(entry.id));
+		pushNotices(placedNotices.after.get(entry.id));
 	});
 	pushResults(placedResults.end);
 	endRun();
@@ -1129,6 +1143,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 									</Button>
 								)}
 								{resultRows(placedResults.top)}
+								{noticeRows(placedNotices.top)}
 								{rows}
 								{stream && (
 									<Rise

@@ -94,7 +94,7 @@ it("changes typed prefs values and sends page actions", async () => {
 });
 it("shows hook dialogs read-only despite the existing classic OmpDialogCard", async () => {
 	const hook: TspNode = { id: "hook", k: "overlay", p: { role: TSP_ROLES.hookSelect, head: "Choose an option" }, c: [{ id: "picker", k: "picker", p: { items: [{ id: "yes", label: "Yes" }], query: null } }] };
-	expect(TSP_CLAIMS).toEqual({}); expect(roleInteraction(TSP_ROLES.hookSelect)).toBe("display-only");
+	expect(TSP_CLAIMS[TSP_ROLES.hookSelect]).toBeUndefined(); expect(roleInteraction(TSP_ROLES.hookSelect)).toBe("display-only");
 	const surface: TspSurfaceSnapshot = { open: { id: "s:1", mode: "inline" }, sequence: 1, closed: false, suspended: false, settled: [], focus: "hook", document: { id: "s:1", k: "col", c: [{ id: "layer", k: "col", c: [hook] }] } };
 	expect(unclaimed(surface, "layer")).toHaveLength(1);
 	await render(hook); expect(element.textContent).toContain("If it also appears in chat, answer it there.");

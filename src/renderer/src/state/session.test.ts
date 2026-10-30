@@ -14,7 +14,7 @@ import { liveEntries, liveGuest, SessionController, setSlashDelivery } from "./s
 const fakes = vi.hoisted(() => {
 	const guests: FakeGuest[] = [];
 	class FakeGuest {
-		snapshot = { phase: "connecting", entries: [] } as unknown as GuestSnapshot;
+		snapshot = { phase: "connecting", entries: [], notices: [] } as unknown as GuestSnapshot;
 		readonly listeners = new Set<() => void>();
 		constructor(readonly link: string) {
 			guests.push(this);
@@ -30,7 +30,7 @@ const fakes = vi.hoisted(() => {
 		close(): void {}
 		/** What the real client publishes: `waiting` until omp's snapshot arrives, then `live`. */
 		emit(phase: GuestSnapshot["phase"], entries: readonly SessionEntry[], working = false, extra: Partial<GuestSnapshot> = {}): void {
-			this.snapshot = { phase, entries, working, uiRequest: null, agents: [], progress: new Map(), lifecycle: new Map(), ...extra } as unknown as GuestSnapshot;
+			this.snapshot = { phase, entries, working, uiRequest: null, agents: [], notices: [], progress: new Map(), lifecycle: new Map(), ...extra } as unknown as GuestSnapshot;
 			for (const listener of this.listeners) listener();
 		}
 	}
@@ -71,7 +71,7 @@ vi.mock("./app", () => ({ useApp: { getState: () => ({ view: "home", terminalTab
 
 const hostListeners = new Set<(state: HostState) => void>();
 let savedText = "";
-/** Every `window.vomp.invoke` call after the session-file reads: channel, then arguments. */
+/** Every application `invoke` call after session-file and TSP document reads: channel, then arguments. */
 let invoked: unknown[][] = [];
 /** Answers for chosen `invoke` calls (a delayed paste, a failed submit); everything else resolves null. */
 let respond: ((channel: string) => Promise<unknown> | undefined) | null = null;
@@ -96,7 +96,7 @@ beforeEach(() => {
 				if (channel === "sessions:resolve") return (await respond?.(channel)) ?? args[0];
 				if (channel === "composer:commands") return [];
 				if (channel === "composer:isSideCommand") return false;
-				if (channel !== "sessions:find") invoked.push([channel, ...args]);
+				if (channel !== "sessions:find" && channel !== "host:tsp-snapshot") invoked.push([channel, ...args]);
 				return (await respond?.(channel)) ?? null;
 			},
 		},
@@ -364,7 +364,7 @@ describe("SessionController TSP preview input", () => {
 			expect(session.getSnapshot().strandedImages).toBe(false);
 		}
 		await expect(session.command("!pwd")).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
-		expect(invoked).toEqual([["host:tsp-snapshot", "h1"]]);
+		expect(invoked).toEqual([]);
 		expect(session.getSnapshot().error).toBeNull();
 		expect(chatStatus(session.getSnapshot())).not.toBe("error");
 	});
@@ -376,7 +376,7 @@ describe("SessionController TSP preview input", () => {
 		sendHost({ transport: "tsp", link: "L1", tui: tui(0) });
 		await expect(session.sendNow(before[0]!.id)).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
 		expect(session.getSnapshot().queue).toBe(before);
-		expect(invoked).toEqual([["host:tsp-snapshot", "h1"]]);
+		expect(invoked).toEqual([]);
 	});
 
 	it("rejects images after a new launch identifies itself as a preview host, without keeping a queued message", async () => {
@@ -493,7 +493,7 @@ it("keeps plain preview sends on the composer’s existing explicit steer submit
 	const session = idle("preview-plain");
 	sendHost({ transport: "tsp", link: "L1", tui: tui(0) });
 	await deliver(session, "plain text", [], false);
-	expect(invoked).toEqual([["host:tsp-snapshot", "h1"], submit("plain text")]);
+	expect(invoked).toEqual([submit("plain text")]);
 	expect(session.getSnapshot().error).toBeNull();
 });
 

@@ -426,6 +426,9 @@ export function parseNotice(entry: NoticeSource): Notice {
 	const text = contentText(entry.content);
 	let notice: Notice;
 	switch (entry.customType) {
+		case "tsp-notice":
+			notice = { kind: "other", text };
+			break;
 		case "async-result":
 			notice = { kind: "jobs", jobs: parseJobs(entry.details, text) };
 			break;

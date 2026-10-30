@@ -18,8 +18,14 @@ const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS)
 export function isKnownAction(action: string): boolean { return knownActions.has(action); }
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 
+/** Roles projected into transcript notices. Startup diagnostics use the warning role too. */
+export const TSP_NOTICE_ROLES: Readonly<Record<string, "info" | "warning" | "error">> = Object.freeze({
+	[TSP_ROLES.toastStatus]: "info", [TSP_ROLES.noticeError]: "error", [TSP_ROLES.noticeWarning]: "warning",
+});
 /** Claims are added only alongside working TSP consumers. Classic cards have no entries. */
-export const TSP_CLAIMS: Readonly<Record<string, string>> = Object.freeze({});
+export const TSP_CLAIMS: Readonly<Record<string, string>> = Object.freeze(
+	Object.fromEntries(Object.keys(TSP_NOTICE_ROLES).map(role => [role, "transcript-notices"])),
+);
 const replicated = [TSP_ROLES.user, TSP_ROLES.assistant, TSP_ROLES.thinking, TSP_ROLES.tool, TSP_ROLES.agent];
 export function isReplicatedRole(role?: string): boolean {
 	return !!role && replicated.some(prefix => role === prefix || role.startsWith(`${prefix}.`));
