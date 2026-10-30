@@ -551,13 +551,35 @@ export function ircTitle(notice: Extract<Notice, { kind: "irc" }>, t: Translate)
 	return t("notice.irc.relay", { from: notice.from ?? unknown, to: notice.to ?? unknown });
 }
 
-/** Side-channel notices keep omp's wording and stay outside the messages sent to the model. */
-export function hostNotices(notices: readonly HostNotice[] | undefined): readonly HostNotice[] {
+/**
+ * Side-channel notices keep omp's wording and stay outside the messages sent to the model. visual-omp shows only the
+ * latest recap, and only while it is newer than the chat's last message (`lastMessageAt`, ms): a later message
+ * supersedes it.
+ */
+export function hostNotices(notices: readonly HostNotice[] | undefined, lastMessageAt: number | null = null): readonly HostNotice[] {
 	if (!notices?.length) return [];
 	const seen = new Set<string>();
-	return notices.filter(notice => {
+	const unique = notices.filter(notice => {
 		if (!notice.text.trim() || seen.has(notice.id)) return false;
 		seen.add(notice.id);
 		return true;
 	}).sort((left, right) => left.timestamp - right.timestamp);
+	const recap = unique.findLast(notice => notice.kind === "recap");
+	return unique.filter(notice => notice.kind !== "recap" || (notice === recap && (lastMessageAt === null || notice.timestamp > lastMessageAt)));
+}
+
+/**
+ * Newest user or assistant message time (ms) on any branch, including a reply still streaming. Every branch counts, so
+ * rewinding to before a superseded recap does not bring it back.
+ */
+export function latestMessageAt(entries: readonly { type?: unknown; timestamp?: unknown; message?: unknown }[] | null | undefined, streamingAt: number | null = null): number | null {
+	let latest = streamingAt;
+	for (const entry of entries ?? []) {
+		if (entry.type !== "message") continue;
+		const role = (entry.message as { role?: unknown } | null | undefined)?.role;
+		if (role !== "user" && role !== "assistant") continue;
+		const at = typeof entry.timestamp === "string" ? Date.parse(entry.timestamp) : Number.NaN;
+		if (!Number.isNaN(at) && (latest === null || at > latest)) latest = at;
+	}
+	return latest;
 }

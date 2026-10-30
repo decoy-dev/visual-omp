@@ -54,14 +54,20 @@ export async function crashedWithoutExit(file: string | null, spawnedAt: number)
 	finally { lines.close(); input.destroy(); }
 }
 
-/** Recaps are journaled outside JSONL. Open omp's store read-only, without migrations. */
+/**
+ * The chat's latest recap. omp journals every idle recap outside JSONL; visual-omp shows only the newest one, so
+ * older journal rows stay in the journal. Opens omp's store read-only, without migrations.
+ */
 export function readSessionRecaps(file: string, sessionId: string): HostNotice[] | null {
 	let db: DatabaseSync | undefined;
 	try {
 		db = new DatabaseSync(file, { readOnly: true, allowExtension: false });
-		const rows = db.prepare("SELECT id, recap, created_at FROM session_recaps WHERE session_id = ? ORDER BY id DESC LIMIT 100").all(sessionId);
-		return rows.flatMap(row => typeof row.id === "number" && typeof row.recap === "string" && row.recap.trim() && typeof row.created_at === "number"
-			? [{ id: `recap:${sessionId}:${row.id}`, kind: "recap" as const, text: row.recap, timestamp: row.created_at * 1000 }] : []).reverse();
+		// Newest first, stopping at the first row that is non-blank by JavaScript's trim, without loading the journal.
+		for (const row of db.prepare("SELECT id, recap, created_at FROM session_recaps WHERE session_id = ? ORDER BY id DESC").iterate(sessionId)) {
+			if (typeof row.id !== "number" || typeof row.recap !== "string" || !row.recap.trim() || typeof row.created_at !== "number") continue;
+			return [{ id: `recap:${sessionId}:${row.id}`, kind: "recap" as const, text: row.recap, timestamp: row.created_at * 1000 }];
+		}
+		return [];
 	} catch { return null; }
 	finally { db?.close(); }
 }

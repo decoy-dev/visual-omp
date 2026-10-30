@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentText, fenced, hostNotices, jobPayload, type Notice, parseNotice, parseOmpDuration, stripNoticeMarkup } from "./notices";
+import { contentText, fenced, hostNotices, jobPayload, latestMessageAt, type Notice, parseNotice, parseOmpDuration, stripNoticeMarkup } from "./notices";
 
 const helperResult = [
 	"<system-notice>",
@@ -276,4 +276,25 @@ it("orders recap and startup side notices, preserving text and deduplicating ids
 	const startup = { id: "startup:1", kind: "startup" as const, timestamp: 10, text: "Default model unavailable. Using provider/model." };
 	expect(hostNotices([recap, startup, recap])).toEqual([startup, recap]);
 	expect(hostNotices(undefined)).toEqual([]);
+});
+
+it("shows only the latest recap, and only until the chat's next message", () => {
+	const older = { id: "recap:1", kind: "recap" as const, timestamp: 20, text: "An earlier recap." };
+	const latest = { id: "recap:2", kind: "recap" as const, timestamp: 40, text: "Resume the next change." };
+	const startup = { id: "startup:1", kind: "startup" as const, timestamp: 10, text: "Default model unavailable. Using provider/model." };
+	expect(hostNotices([older, startup, latest], 30)).toEqual([startup, latest]);
+	expect(hostNotices([older, startup, latest], 50)).toEqual([startup]);
+	expect(hostNotices([latest], null)).toEqual([latest]);
+});
+
+it("measures the cutoff across every branch and a reply still streaming", () => {
+	const message = (role: string, at: string) => ({ type: "message", timestamp: at, message: { role } });
+	// The newest message is on a branch the user rewound away from; it still supersedes the recap.
+	const entries = [message("user", "2026-10-30T10:00:00.000Z"), message("assistant", "2026-10-30T10:05:00.000Z"), { type: "custom", timestamp: "2026-10-30T11:00:00.000Z" }];
+	expect(latestMessageAt(entries)).toBe(Date.parse("2026-10-30T10:05:00.000Z"));
+	expect(latestMessageAt(entries, Date.parse("2026-10-30T10:30:00.000Z"))).toBe(Date.parse("2026-10-30T10:30:00.000Z"));
+	expect(latestMessageAt([], null)).toBeNull();
+	const recap = { id: "recap:1", kind: "recap" as const, timestamp: Date.parse("2026-10-30T10:10:00.000Z"), text: "Resume the next change." };
+	expect(hostNotices([recap], latestMessageAt(entries))).toEqual([recap]);
+	expect(hostNotices([recap], latestMessageAt(entries, Date.parse("2026-10-30T10:30:00.000Z")))).toEqual([]);
 });

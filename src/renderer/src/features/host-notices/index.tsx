@@ -1,15 +1,20 @@
 import { ClockCounterClockwise, Warning } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { hostNotices } from "../../chat/transcript/notices";
+import { hostNotices, latestMessageAt } from "../../chat/transcript/notices";
 import { chatSlots, type ChatSlotProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
+import { liveEntries, liveGuest } from "../../state/session";
 import { cn } from "../../ui";
 
 export function HostNotices({ session }: ChatSlotProps): ReactNode {
 	const { t } = useTranslation("chat");
 	const view = useSessionView(session);
-	const notices = hostNotices(view?.host?.notices);
+	// Every branch and a reply still streaming count, so a recap stays superseded after a rewind.
+	const all = liveEntries(view) ?? view?.history?.all ?? null;
+	const streamingAt = liveGuest(view)?.stream?.timestamp ?? null;
+	const lastMessageAt = useMemo(() => latestMessageAt(all, typeof streamingAt === "number" ? streamingAt : null), [all, streamingAt]);
+	const notices = hostNotices(view?.host?.notices, lastMessageAt);
 	const status = view?.host?.programStatus;
 	return <div className="flex flex-col gap-3">
 		{notices.map(notice => <div key={notice.id} role="note" className={cn("flex items-start gap-2 text-sm", notice.kind === "startup" ? "text-warn" : "text-fg-muted")}>

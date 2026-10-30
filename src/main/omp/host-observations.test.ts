@@ -43,14 +43,19 @@ describe("crash recovery", () => {
 	});
 });
 
-it("reads only this session's recap journal without modifying its database", () => {
+it("reads only this session's latest recap without modifying its database", () => {
 	const file = join(root, "history.db");
 	const db = new DatabaseSync(file);
 	db.exec("CREATE TABLE session_recaps(id INTEGER PRIMARY KEY, session_id TEXT, recap TEXT, created_at INTEGER)");
-	db.prepare("INSERT INTO session_recaps VALUES(?,?,?,?)").run(1, "s", "Continue with the next change.", 20);
-	db.prepare("INSERT INTO session_recaps VALUES(?,?,?,?)").run(2, "other", "Private other session.", 21);
+	db.prepare("INSERT INTO session_recaps VALUES(?,?,?,?)").run(1, "s", "An earlier recap.", 10);
+	db.prepare("INSERT INTO session_recaps VALUES(?,?,?,?)").run(2, "s", "Continue with the next change.", 20);
+	db.prepare("INSERT INTO session_recaps VALUES(?,?,?,?)").run(3, "other", "Private other session.", 21);
+	db.prepare("INSERT INTO session_recaps VALUES(?,?,?,?)").run(4, "s", "   ", 22);
+	db.prepare("INSERT INTO session_recaps VALUES(?,?,?,?)").run(5, "s", "\n\t", 23);
+	// More blank rows than any small window, above the valid recap.
+	for (let id = 6; id < 40; id++) db.prepare("INSERT INTO session_recaps VALUES(?,?,?,?)").run(id, "s", " \n", 23 + id);
 	db.close();
-	expect(readSessionRecaps(file, "s")).toEqual([{ id: "recap:s:1", kind: "recap", text: "Continue with the next change.", timestamp: 20000 }]);
+	expect(readSessionRecaps(file, "s")).toEqual([{ id: "recap:s:2", kind: "recap", text: "Continue with the next change.", timestamp: 20000 }]);
 	expect(readSessionRecaps(join(root, "missing"), "s")).toBeNull();
 });
 
