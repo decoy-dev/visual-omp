@@ -128,8 +128,13 @@ registerCommand({
 	group: "navigation",
 	icon: Columns,
 	shortcut: keys("\\"),
+	header: 510,
 	when: () => useApp.getState().splitTabId !== null,
-	run: () => useApp.getState().toggleSplit(),
+	run: ctx => {
+		const state = useApp.getState();
+		if (ctx.session) state.closeSplit(ctx.session.tabId === state.splitTabId ? "secondary" : "primary");
+		else state.toggleSplit();
+	},
 });
 
 registerCommand({

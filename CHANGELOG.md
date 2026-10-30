@@ -8,6 +8,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - The sidebar can sort projects and chats by recent activity, name or creation date. Use the sort button beside **Projects** to choose an order, and turn **Group by project** off to list non-archived chats together across projects. Both settings are saved.
 - Project overviews now group chats by waiting, working, new results and recent history, with live activity summaries and keyboard-accessible rows.
+- Both chat headers in split view now have a **Close split view** button. It keeps the chat you clicked at full width, and the other chat stays open in Current chats with its draft and side panel.
 
 ## [0.7.2] - 2026-10-30
 

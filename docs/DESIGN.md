@@ -349,16 +349,17 @@ The sidebar has a 40px header containing the wordmark and app version. Its remai
 
 `chat/ChatArea.tsx` shows one chat, or two side by side.
 
-- ⌘ or Ctrl-click in the sidebar, "Open side by side" in a chat row's menu or the session ⋯ menu, or ⌘⏎ on a chat in the palette opens a chat in the second half. ⌘\ also opens the split, and closes it while it is on.
+- ⌘ or Ctrl-click in the sidebar, "Open side by side" in a chat row's menu or the session ⋯ menu, or ⌘⏎ on a chat in the palette opens a chat in the second half. ⌘\ also opens the split. While split is on, the shortcut keeps the focused chat full width.
 - The left half starts at 50%, and the resize handle ("Resize split") keeps each half at least 360px wide. A divider the user placed is pulled back in when the area shrinks.
 - Each half has its own header, transcript and composer. The sidebar and status bar are shared and follow the focused half. The side panel shows the focused half's own panel (§3.7), and each header's side panel toggle reads as pressed only while its own chat's panel is on show.
+- Each header has a small secondary button with Columns and the visible text "Close split view" between the side panel toggle and ⋯. Its accessible label and tooltip read "Close split view (⌘\)" (Ctrl+\ elsewhere). Below 26rem of header width it becomes a bordered icon button, keeping a readable title and remaining visible at the 360px minimum pane width. The header's ⋯ menu also offers Close split view in place of Open side by side. Either action keeps that header's chat full width and focuses its composer, or its header menu for a read-only chat. Both chats stay open in Current chats with their drafts and individual side panel layouts.
 - The focused half, the one keyboard commands act on, carries a 2px `--accent` line along its top edge that slides across when focus moves. Clicking anywhere in a half focuses it. The halves are groups labelled "Left chat" and "Right chat".
 - The second half enters from the right and fades out when it closes.
 - When the chat area is narrower than two 360px halves, only the focused chat shows; its partner stays mounted, hidden and inert, and comes back as it was once the area widens.
 
 ### 3.4 Session header
 
-The header shows chat status, title and available actions. Its work summary chip opens Tasks and reflects effective dock visibility. Task counts follow the displayed branch; helpers and background jobs remain separate and live.
+The header shows chat status, title and available actions. The trailing action group places Review changes, the side panel toggle, Close split view while split, then ⋯. Close split view is a labelled secondary button with Columns; below 26rem of header width it becomes a bordered icon button. Review changes becomes an icon below 36rem. The work summary chip shrinks to one count below 44rem; it opens Tasks and reflects effective dock visibility. Task counts follow the displayed branch; helpers and background jobs remain separate and live.
 
 Session titles use `ui/SessionTitle.tsx` across chat headers, Current chats, saved project lists, Home, search, usage tables and confirmation lists. The shared parser follows omp's exact `<icon> <CODE>: <title>` form: one to eight non-ASCII icon codepoints, one to six ASCII capitals or digits, and the literal spaces and colon. A recognized card shows its Unicode icon, a compact neutral code chip and an ellipsized title. Private-use characters from every Unicode plane are removed only for display, including terminal-only Nerd Font icons; the code chip remains. Plain and malformed card titles stay whole apart from that removal. Stored titles are unchanged, and text-only labels and native notifications retain the card code.
 

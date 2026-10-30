@@ -143,10 +143,12 @@ export interface AppState {
 	 */
 	reopenClosedChat(): Promise<boolean>;
 	/**
-	 * Split view on or off. Turning it on shows the most recently viewed other open chat beside the
-	 * focused one, or starts a new chat there when no other chat is open.
+	 * Split view on or off. Turning it off keeps the focused chat. Turning it on shows the most recently
+	 * viewed other open chat beside the focused one, or starts a new chat there when no other chat is open.
 	 */
 	toggleSplit(): void;
+	/** Leave split view with this half's chat full width; both chats remain open with their own layouts and drafts. */
+	closeSplit(keep: "primary" | "secondary"): void;
 	focusSplit(which: "primary" | "secondary"): void;
 	toggleSidebar(): void;
 	setSidebarWidth(width: number): void;
@@ -639,9 +641,9 @@ export const useApp = create<AppState>()(
 			},
 
 			toggleSplit() {
-				const { splitTabId, tabs, activeTabId } = get();
+				const { splitTabId, tabs, activeTabId, focusedSplit } = get();
 				if (splitTabId) {
-					set({ splitTabId: null, focusedSplit: "primary" });
+					get().closeSplit(focusedSplit);
 					return;
 				}
 				const primary = tabs.find(tab => tab.id === activeTabId);
@@ -649,6 +651,16 @@ export const useApp = create<AppState>()(
 				const other = recentOtherTab(tabs, [primary.id]);
 				if (other) void whenLeaving(() => set({ splitTabId: other, focusedSplit: "secondary", view: "chat", chatOverDock: true }));
 				else void get().newChat(primary.projectPath, { split: true });
+			},
+
+			closeSplit(keep) {
+				const state = get();
+				if (!state.splitTabId) return;
+				const tab = state.tabs.find(tab => tab.id === (keep === "secondary" ? state.splitTabId : state.activeTabId));
+				if (!tab) return;
+				set({ activeTabId: tab.id, splitTabId: null, focusedSplit: "primary", activeProject: tab.projectPath, chatOverDock: true });
+				// Keeping the right chat mounts it in the full-width slot before its composer takes focus.
+				requestAnimationFrame(() => useComposerDrafts.getState().focus(tab.id));
 			},
 
 			focusSplit(which) {
@@ -818,6 +830,8 @@ useApp.subscribe((state, previous) => {
 		if (project && project !== state.activeProject) useApp.setState({ activeProject: project });
 	}
 	if (!hostsAdopted) return;
+	// Leaving split view returns its partner to Current chats, including a saved chat that was only viewed.
+	if (previous.splitTabId && !state.splitTabId && state.tabs === previous.tabs) return;
 	for (const left of [previous.activeTabId, previous.splitTabId]) {
 		if (left && left !== state.activeTabId && left !== state.splitTabId) releaseIfUnused(left, previous.tabs);
 	}

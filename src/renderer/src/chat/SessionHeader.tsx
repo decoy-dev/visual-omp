@@ -1,4 +1,4 @@
-import { DotsThree, GitDiff, ListChecks, SidebarSimple } from "@phosphor-icons/react";
+import { Columns, DotsThree, GitDiff, ListChecks, SidebarSimple } from "@phosphor-icons/react";
 import { Fragment, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { backgroundJobs, helpersAtWork, helpersOf, latestTodo, ompRunning, workSummary } from "../features/panes/derive";
@@ -154,14 +154,14 @@ function WorkChip({ view, tabId }: { view: SessionView; tabId: string }): ReactN
 
 /**
  * Chat header (DESIGN §3.4). Left: status mark, title and one line saying what the chat is doing. Right: Review
- * changes, the inspector toggle and the ⋯ session menu, which lists every command that declares `header`. The header
- * is a size container; below 36rem "Review changes" becomes an icon with a tooltip, and below 44rem the work chip
- * shrinks to one count.
+ * changes, the inspector toggle, a labelled Close split view button while split, and the ⋯ session menu. Below 26rem
+ * Close split view becomes a bordered icon; below 36rem Review changes becomes an icon; below 44rem the work chip shrinks.
  */
 export function SessionHeader({ session, view, fallbackTitle }: { session: SessionController; view: SessionView; fallbackTitle: string | null }): ReactNode {
 	const { t } = useTranslation(["chat", "shell"]);
 	const commands = useCommands();
 	const transcriptMode = useApp(state => state.prefs?.transcriptMode ?? "normal");
+	const split = useApp(state => state.splitTabId !== null);
 	// Each half of a split has a header; its toggle reads as pressed only for its own chat's panel.
 	const dockVisible = useDockVisible();
 	const ownDockVisible = useApp(state => dockKey(state) === session.tabId) && dockVisible;
@@ -170,6 +170,8 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 	const title = chatTitle(view, fallbackTitle) ?? t("shell:chat.newTitle");
 	const state = headerState(view);
 	const reviewLabel = t("chat:header.review");
+	const splitCommand = commands.find(command => command.id === "view.split");
+	const splitLabel = splitCommand?.shortcut ? `${t("palette:cmd.split.title")} (${splitCommand.shortcut})` : t("palette:cmd.split.title");
 
 	return (
 		<div className="@container/header flex min-h-(--header-h) shrink-0 items-center gap-3 border-b border-border bg-panel px-4 py-2">
@@ -205,9 +207,35 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 					pressed={ownDockVisible}
 					onClick={() => useApp.getState().toggleDock(undefined, session.tabId)}
 				/>
+				{split && (
+					<>
+						<span className="hidden @min-[26rem]/header:contents">
+							<Tooltip content={splitLabel}>
+								<Button
+									aria-label={splitLabel}
+									variant="secondary"
+									size="sm"
+									icon={<Columns />}
+									onClick={() => useApp.getState().closeSplit(useApp.getState().splitTabId === session.tabId ? "secondary" : "primary")}
+								>
+									{t("palette:cmd.split.title")}
+								</Button>
+							</Tooltip>
+						</span>
+						<span className="contents @min-[26rem]/header:hidden">
+							<IconButton
+								label={splitLabel}
+								icon={<Columns />}
+								variant="secondary"
+								size="md"
+								onClick={() => useApp.getState().closeSplit(useApp.getState().splitTabId === session.tabId ? "secondary" : "primary")}
+							/>
+						</span>
+					</>
+				)}
 				<Menu>
 					<MenuTrigger asChild>
-						<IconButton label={t("chat:header.more")} icon={<DotsThree weight="bold" />} size="md" />
+						<IconButton data-chat-header-menu label={t("chat:header.more")} icon={<DotsThree weight="bold" />} size="md" />
 					</MenuTrigger>
 					<MenuContent align="end" className="max-h-[70vh] min-w-60 overflow-y-auto">
 						{sections.map((section, index) => (

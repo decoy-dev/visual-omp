@@ -309,8 +309,8 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		[tabId, setDraft, refreshMention],
 	);
 
-	// Other features insert text (mentions, prompts) through the draft store.
-	useEffect(
+	// Register with the DOM commit so layout navigation cannot focus an exiting copy of this composer.
+	useLayoutEffect(
 		() =>
 			registerComposerEditor(tabId, {
 				insertAtCaret(text) {
@@ -323,7 +323,9 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					replaceRange(0, end, joined);
 				},
 				focus() {
-					textarea.current?.focus();
+					const el = textarea.current;
+					if (el?.disabled) el.closest("section")?.querySelector<HTMLButtonElement>("[data-chat-header-menu]")?.focus();
+					else el?.focus();
 				},
 			}),
 		[tabId, replaceRange],
