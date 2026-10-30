@@ -4,6 +4,19 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.1] - 2026-10-30
+
+visual-omp 0.7.1 lets you return to an earlier version or reinstall the current one, shows chat status as icons, and displays only the latest idle recap.
+
+### Highlights
+
+- **New:** Install an earlier version from the release notes, or reinstall the current one from **Settings → About**.
+- **Improved:** Chats show their status as icons with distinct shapes instead of dots.
+- **Changed:** Installed copies send their version, platform and architecture once per fresh update check. The project's collector stores daily totals without IP addresses or identifiers.
+- **Fixed:** A chat shows only the latest idle recap, and helper cards no longer repeat their status beneath them.
+
+### Detailed changes
+
 #### New
 
 - You can return to an earlier visual-omp version from its release notes: open **Settings → About → Read release notes → Past versions**, choose an earlier release and select **Install v{version}**. The installer comes from the official GitHub release through the same checked download path as updates, and your chats and omp settings stay as they are. Homebrew and Scoop installs show the package manager's downgrade steps instead. From 0.7.1 onward, automatic update checks skip releases through the version you left until a newer release is available. **Check for updates** includes skipped versions without clearing that choice. Versions before 0.7.1 still offer the newer update, which you can leave uninstalled.
