@@ -124,7 +124,8 @@ function UserMessage({ entry, session, from }: { entry: SessionEntry; session: S
 				<span className="opacity-0 transition-opacity duration-(--dur) group-hover:opacity-100">{timeOf(entry.timestamp)}</span>
 				<span className="font-medium text-fg-muted">{from ? t("from", { name: from }) : t("you")}</span>
 			</div>
-			<div className="max-w-[85%] rounded-lg border border-border bg-inset px-4 py-3">
+			<div className="max-w-[85%] min-w-0 rounded-lg border border-border bg-inset px-4 py-3 [overflow-wrap:anywhere]">
+				{/* A long URL or path wraps inside the bubble instead of running past its edge. */}
 				<UserContent content={content} />
 			</div>
 			<div className="flex gap-0.5 opacity-0 transition-opacity duration-(--dur) group-focus-within:opacity-100 group-hover:opacity-100">

@@ -10,6 +10,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Project overviews now group chats by waiting, working, new results and recent history, with live activity summaries and keyboard-accessible rows.
 - Both chat headers in split view now have a **Close split view** button. It keeps the chat you clicked at full width, and the other chat stays open in Current chats with its draft and side panel.
 
+#### Fixed
+
+- Long links and paths in your messages now wrap inside the message bubble instead of running past its edge.
+
 ## [0.7.2] - 2026-10-30
 
 visual-omp 0.7.2 fixes Copy actions, which failed with a clipboard permission error in 0.7.0 and 0.7.1.
