@@ -1,27 +1,21 @@
 /**
- * Project overview (DESIGN §4.3): the project's full name and folder, "Start chat here", recent chats,
+ * Project overview (DESIGN §4.3): the project's full name and folder, "Start chat here", live chat board,
  * its instructions and settings, git state, then example prompts. With no project at all it shows the
  * §8.2 empty state.
  */
 import type { ApprovalState, ModelRolesState } from "@shared/contracts/config";
 import type { ProjectInstructions, ProjectRule } from "@shared/contracts/project";
-import type { SessionSummary } from "@shared/ipc";
 import { ArrowRight, ChatCenteredDots, Copy, DotsThree, DownloadSimple, FileText, FolderMinus, FolderOpen, FolderPlus, Plus, SlidersHorizontal, WarningCircle, X } from "@phosphor-icons/react";
-import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, type Ref, useEffect, useId, useState } from "react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { ScreenProps } from "@/registry/slots";
-import { ChatStatusMark } from "@/shell/ChatStatusMark";
-import { chatStatus, chatTitle, shortAgo, useNow, useSessionView } from "@/shell/hooks";
-import { controllerFor, useApp } from "@/state/app";
+import { useApp } from "@/state/app";
 import { openProjectInstructions, openProjectSettings } from "@/state/navigation";
-import { SessionTitle } from "@/ui/SessionTitle";
 import {
 	Button,
 	Chip,
 	cn,
 	EmptyState,
-	Expand,
 	IconButton,
 	Mark,
 	Menu,
@@ -33,7 +27,6 @@ import {
 	PresenceSwap,
 	SectionHeader,
 	Skeleton,
-	spring,
 	toast,
 } from "@/ui";
 import { initGit } from "../git/actions";
@@ -41,8 +34,7 @@ import { ciState } from "../git/format";
 import { useGit } from "../git/store";
 import { addProject, chooseFolder, errorText, openFolder, startDraft } from "./actions";
 import { EXAMPLE_PROMPTS, folderName, formatBytes } from "./format";
-
-const RECENT_LIMIT = 5;
+import { ProjectBoard } from "./ProjectBoard";
 
 export function ProjectOverview({ projectPath }: ScreenProps): ReactNode {
 	const hasProjects = useApp(state => state.projects.length > 0);
@@ -125,9 +117,12 @@ function OverviewOf({ path }: { path: string }): ReactNode {
 	const exists = project?.exists ?? true;
 	const name = project?.name ?? folderName(path);
 	const notRepo = git !== null && !git.loading && git.repo?.isRepo === false;
+	const [sessionsFailed, setSessionsFailed] = useState(false);
 
 	useEffect(() => {
-		if (sessions === undefined) void useApp.getState().loadSessions(path);
+		let live = true;
+		if (sessions === undefined) void useApp.getState().loadSessions(path).catch(() => { if (live) setSessionsFailed(true); });
+		return () => { live = false; };
 	}, [path, sessions]);
 
 	if (!exists) return <MissingFolder path={path} name={name} />;
@@ -168,7 +163,7 @@ function OverviewOf({ path }: { path: string }): ReactNode {
 				/>
 
 				<div className="flex flex-col gap-section">
-					<RecentChats sessions={sessions?.filter(session => !session.archived)} />
+					<ProjectBoard path={path} sessions={sessions} failed={sessionsFailed} />
 					<div className="grid grid-cols-1 gap-section @min-[46rem]/content:grid-cols-2">
 						<ProjectSetup path={path} />
 						{notRepo ? <NoGit path={path} /> : <Health path={path} />}
@@ -257,96 +252,6 @@ function Loaded({ ready, placeholder, children }: { ready: boolean; placeholder:
 		<PresenceSwap swapKey={ready ? "ready" : "loading"} mode="popLayout">
 			{ready ? children : placeholder}
 		</PresenceSwap>
-	);
-}
-
-function RecentChats({ sessions }: { sessions: SessionSummary[] | undefined }): ReactNode {
-	const { t } = useTranslation("projects");
-	const now = useNow();
-	const id = useId();
-	const [all, setAll] = useState(false);
-	const first = sessions?.slice(0, RECENT_LIMIT) ?? [];
-	const rest = sessions?.slice(RECENT_LIMIT) ?? [];
-	return (
-		<section aria-labelledby={id}>
-			<SectionHeader
-				id={id}
-				title={t("overview.recent.title")}
-				className="mb-2"
-				actions={
-					rest.length > 0 && (
-						<Button variant="ghost" size="sm" onClick={() => setAll(value => !value)} aria-expanded={all}>
-							{all ? t("overview.recent.fewer") : t("overview.recent.all", { count: sessions?.length ?? 0 })}
-						</Button>
-					)
-				}
-			/>
-			<Loaded
-				ready={sessions !== undefined}
-				placeholder={
-					<div className="flex flex-col gap-3 py-1" aria-busy>
-						{[0, 1, 2].map(row => (
-							<Skeleton key={row} height={20} />
-						))}
-					</div>
-				}
-			>
-				{first.length === 0 ? (
-					<p className="py-1 text-md text-fg-muted">{t("overview.recent.empty")}</p>
-				) : (
-					<div className="-mx-2">
-						<ul className="relative flex flex-col">
-							<AnimatePresence initial={false} mode="popLayout">
-								{first.map(session => (
-									<RecentRow key={session.file} session={session} now={now} />
-								))}
-							</AnimatePresence>
-						</ul>
-						<Expand open={all}>
-							<ul className="relative flex flex-col">
-								<AnimatePresence initial={false} mode="popLayout">
-									{rest.map(session => (
-										<RecentRow key={session.file} session={session} now={now} />
-									))}
-								</AnimatePresence>
-							</ul>
-						</Expand>
-					</div>
-				)}
-			</Loaded>
-		</section>
-	);
-}
-
-function RecentRow({ session, now, ref }: { session: SessionSummary; now: number; ref?: Ref<HTMLLIElement> }): ReactNode {
-	const { t } = useTranslation("projects");
-	const tab = useApp(state => state.tabs.find(entry => entry.sessionFile === session.file || session.previousSessionFiles?.includes(entry.sessionFile ?? "")) ?? null);
-	const unseen = useApp(state => (tab ? state.unseenChats[tab.id] : undefined));
-	const view = useSessionView(controllerFor(tab?.id));
-	const status = chatStatus(view);
-	const title = chatTitle(view, session.title) ?? session.preview ?? t("overview.recent.untitled");
-	const statusLabel = t(`overview.recent.status.${status}`);
-	return (
-		<motion.li
-			ref={ref}
-			layout="position"
-			initial={{ opacity: 0, y: -4 }}
-			animate={{ opacity: 1, y: 0 }}
-			exit={{ opacity: 0 }}
-			transition={spring.snappy}
-		>
-			<button
-				type="button"
-				onClick={() => useApp.getState().openSession(session)}
-				title={session.preview ?? undefined}
-				className="flex h-10 w-full items-center gap-3 rounded-md px-2 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover hover:[--mark-overlay:var(--hover)] focus-visible:outline-2 focus-visible:outline-ring"
-			>
-				<ChatStatusMark status={status} label={statusLabel} unseen={unseen} />
-				<SessionTitle title={title} className={cn("flex-1 text-md text-fg", unseen ? "font-semibold" : "font-medium")} />
-				{view?.readOnly && <Chip>{t("overview.recent.readOnly")}</Chip>}
-				<span className="shrink-0 font-mono text-xs text-fg-faint">{shortAgo(session.updatedAt, now)}</span>
-			</button>
-		</motion.li>
 	);
 }
 

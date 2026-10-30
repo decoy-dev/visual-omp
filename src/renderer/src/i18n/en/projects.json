@@ -67,6 +67,16 @@
 			"body": "The folder {{path}} was moved or deleted. Point to where it is now, or remove it from the list.",
 			"locate": "Find folder…"
 		},
+		"board": {
+			"waiting": "Waiting for you",
+			"working": "Working",
+			"unseen": "New results",
+			"waitingFallback": "Waiting for your answer",
+			"helpersMore": "Working with helpers · {{count}}",
+			"announceWaiting": "{{title}} is waiting for your answer",
+			"announceAttention": "{{title}} needs your attention",
+			"loadFailed": "Couldn't read the saved chats"
+		},
 		"recent": {
 			"title": "Recent chats",
 			"all": "Show all {{count}} chats",
@@ -78,6 +88,7 @@
 				"working": "omp is working",
 				"helpersWorking": "omp's helpers are working",
 				"needsInput": "Waiting for your answer",
+				"error": "Chat error",
 				"live": "Open",
 				"idle": "Saved"
 			}

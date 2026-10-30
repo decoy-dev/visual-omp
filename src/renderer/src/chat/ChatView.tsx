@@ -1,15 +1,13 @@
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { chatSlots } from "../registry/slots";
-import { elapsed, useNow, useSessionView } from "../shell/hooks";
+import { chatActivityKey, elapsed, useNow, useSessionView } from "../shell/hooks";
 import { useApp } from "../state/app";
 import type { SessionController, SessionView } from "../state/session";
 import { Button, cn, Expand, WorkingIndicator } from "../ui";
 import { Composer } from "./composer/Composer";
-import { activityKey, friendlySummary, isReplyWrite, resolveToolCall } from "./friendly";
 import { SessionHeader } from "./SessionHeader";
 import { Transcript } from "./transcript/Transcript";
-import { replyText } from "./transcript/turns";
 
 function Banner({ tone, role = "status", children }: { tone: "info" | "warn" | "err"; role?: "status" | "alert"; children: ReactNode }): ReactNode {
 	return (
@@ -116,20 +114,7 @@ function OwnerNotice({ session, view }: { session: SessionController; view: Sess
 function WorkingRow({ view, session }: { view: SessionView; session: SessionController }): ReactNode {
 	const { t } = useTranslation(["chat", "tools"]);
 	const now = useNow(1000);
-	const tool = view.guest ? [...view.guest.activeTools.values()].at(-1) : undefined;
-	const last = view.guest?.stream?.content.at(-1);
-	const call = tool
-		? { name: tool.toolName, args: tool.args, intent: tool.intent }
-		: last?.type === "toolCall"
-			? { name: last.name, args: last.arguments }
-			: null;
-	const activity = call
-		? isReplyWrite(call.name, call.args)
-			? t("chat:activity.writing")
-			: t(`tools:${activityKey(friendlySummary(resolveToolCall({ ...call, running: true })))}`)
-		: last && (replyText(last)?.trim() ?? "") !== ""
-			? t("chat:activity.writing")
-			: t("chat:activity.thinking");
+	const activity = t(chatActivityKey(view));
 	const time = view.workingSince === null ? null : elapsed(now - view.workingSince);
 	const waiting = view.guest?.awaitingAsyncWork === true;
 	const label = waiting ? t("chat:waitingJobs") : time === null ? t("chat:workingActivityUntimed", { activity }) : t("chat:workingActivity", { elapsed: time, activity });

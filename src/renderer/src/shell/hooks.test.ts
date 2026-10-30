@@ -2,7 +2,7 @@ import type { AgentSnapshot, SubagentLifecyclePayload } from "@oh-my-pi/pi-wire"
 import { describe, expect, it } from "vitest";
 import type { GuestSnapshot } from "../collab/lib/client";
 import type { SessionView } from "../state/session";
-import { chatStatus } from "./hooks";
+import { chatActivityKey, chatStatus } from "./hooks";
 
 const agent = (id: string, status: AgentSnapshot["status"]): AgentSnapshot =>
 	({ id, displayName: id, kind: "sub", status, hasSessionFile: true, createdAt: 0, lastActivity: 0 }) as AgentSnapshot;
@@ -67,4 +67,18 @@ it("prioritizes OSC blocks and errors, without retaining them after omp exits", 
 	const failed = { programStatus: { state: "error", msg: "Provider failed" } } as SessionView["host"];
 	expect(chatStatus(view({}, { host: failed, working: true }))).toBe("error");
 	expect(chatStatus(view({}, { host: failed, mode: "exited" }))).toBe("idle");
+});
+
+it("shows controller errors after questions and before work", () => {
+	expect(chatStatus(view({}, { error: "Connection failed", working: true }))).toBe("error");
+	expect(chatStatus(view({ uiRequest: { reqId: 1 } as unknown as GuestSnapshot["uiRequest"] }, { error: "Failed", working: true }))).toBe("needsInput");
+	expect(chatStatus(view({}, { mode: "history", error: "Couldn't read history" }))).toBe("error");
+});
+
+it("shares working activity for running tools, reply writes, streaming text and thinking", () => {
+	const guest = { activeTools: new Map(), stream: null };
+	expect(chatActivityKey(view(guest))).toBe("chat:activity.thinking");
+	expect(chatActivityKey(view({ ...guest, activeTools: new Map([["edit", { toolName: "edit", args: { path: "file.ts" } }]]) } as unknown as Partial<GuestSnapshot>))).toBe("tools:activity.editing");
+	expect(chatActivityKey(view({ ...guest, activeTools: new Map([["reply", { toolName: "write", args: { path: "out://reply", content: "Done" } }]]) } as unknown as Partial<GuestSnapshot>))).toBe("chat:activity.writing");
+	expect(chatActivityKey(view({ ...guest, stream: { content: [{ type: "text", text: "Reply" }] } } as unknown as Partial<GuestSnapshot>))).toBe("chat:activity.writing");
 });

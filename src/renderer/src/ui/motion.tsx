@@ -285,6 +285,8 @@ export function Rise({ as = "div", delay = 0, distance = 8, tempo = "gentle", an
 
 export interface FadeInProps extends MotionDivProps, EntranceProps, PlayOverride {
 	as?: "div" | "section" | "li" | "span";
+	/** Optional exit for a surface inside AnimatePresence. */
+	exit?: HTMLMotionProps<"div">["exit"];
 	/** Seconds; applies only when the entrance plays. */
 	delay?: number;
 }

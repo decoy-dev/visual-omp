@@ -7,6 +7,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 #### New
 
 - The sidebar can sort projects and chats by recent activity, name or creation date. Use the sort button beside **Projects** to choose an order, and turn **Group by project** off to list non-archived chats together across projects. Both settings are saved.
+- Project overviews now group chats by waiting, working, new results and recent history, with live activity summaries and keyboard-accessible rows.
 
 ## [0.7.2] - 2026-10-30
 

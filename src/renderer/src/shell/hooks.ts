@@ -1,4 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { activityKey, friendlySummary, isReplyWrite, resolveToolCall } from "../chat/friendly";
+import { replyText } from "../chat/transcript/turns";
 import { helpersAtWork } from "../features/panes/derive";
 import type { SessionController, SessionView } from "../state/session";
 
@@ -24,7 +26,7 @@ export function chatStatus(view: SessionView | null): ChatStatus {
 	if (!view) return "idle";
 	const status = view.mode === "live" || view.mode === "starting" || view.mode === "reconnecting" ? view.host?.programStatus : null;
 	if (view.guest?.uiRequest || status?.state === "blocked") return "needsInput";
-	if (status?.state === "error") return "error";
+	if (status?.state === "error" || view.error) return "error";
 	if (view.working) return "working";
 	if (helpersAtWork(view)) return "helpersWorking";
 	return view.mode === "history" || view.mode === "exited" ? "idle" : "live";
@@ -33,6 +35,20 @@ export function chatStatus(view: SessionView | null): ChatStatus {
 /** Human title for a chat: omp's live session name, the saved title, the first message, or a fallback. */
 export function chatTitle(view: SessionView | null, fallback: string | null): string | null {
 	return view?.guest?.state?.sessionName || view?.guest?.header?.title || view?.history?.title || fallback;
+}
+
+/** The working row and project board share omp's newest running or streaming activity. */
+export function chatActivityKey(view: SessionView): string {
+	let tool;
+	for (const active of view.guest?.activeTools.values() ?? []) tool = active;
+	const last = view.guest?.stream?.content.at(-1);
+	const call = tool
+		? { name: tool.toolName, args: tool.args, intent: tool.intent }
+		: last?.type === "toolCall"
+			? { name: last.name, args: last.arguments }
+			: null;
+	if (call) return isReplyWrite(call.name, call.args) ? "chat:activity.writing" : `tools:${activityKey(friendlySummary(resolveToolCall({ ...call, running: true })))}`;
+	return last && (replyText(last)?.trim() ?? "") !== "" ? "chat:activity.writing" : "chat:activity.thinking";
 }
 
 /** Re-render every `ms` (relative timestamps, elapsed timers). */
