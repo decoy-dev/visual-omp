@@ -119,6 +119,12 @@ Settings has text size, reduced motion and a light or dark theme. The command pa
 
 visual-omp checks GitHub for a new release about ten seconds after it opens and every 30 minutes while it stays open, and it checks omp the same way through `omp update --check`. **Settings → About** shows both versions and installs either update. A Homebrew install upgrades through `brew upgrade --cask visual-omp`, and any other macOS install downloads the new disk image. On Windows, a Scoop install closes, updates through `scoop update visual-omp` in a PowerShell window and opens again, and an installer copy downloads and runs the new installer. Open chats keep the omp version they started with until they restart, so after an omp update the app offers to restart them.
 
+Each fresh visual-omp update check in a packaged build sends the app version, platform and architecture to the
+project's Cloudflare Worker at `visual-omp-update-count.chris-216.workers.dev`. The collector stores
+daily counts in Cloudflare D1, with no IP address or identifier. Worker request logs and traces are
+disabled. Development builds and tests do not send these requests, and a failed request does not
+delay or interrupt an update check.
+These totals measure update checks and cannot identify unique installations.
 ## Development
 
 ```sh

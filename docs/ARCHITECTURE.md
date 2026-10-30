@@ -281,6 +281,7 @@ Remote Markdown images: the shared `transcript/render.ts` image renderer emits i
 | Working state | `SessionController` snapshots expose `workingSince`; tool elapsed time is shown only when a call has known start and result times. |
 | Dock visibility | `state/app.ts` exports `useDockVisible()`, which accounts for pages and narrow layouts where chat takes precedence over the open dock, and `currentDock()`, the focused chat's panel layout. |
 | Git | `git`, `gh` |
+| Update-check counts | Main posts version, platform and architecture to `https://visual-omp-update-count.chris-216.workers.dev/v1/check` once per fresh packaged-app check. |
 
 Provider identities: `main/features/providers.ts` creates connected rows only from a provider's own models, accounts or disabled credentials. Provider models, usage and login-method discovery run in `NEUTRAL_CWD` with extensions disabled, so background Settings reads omit extension-contributed methods and selected-project configuration. Explicit terminal sign-in retains the selected project. `get_login_providers` inherits an alias's authenticated flag but omits `storeCredentialsAs` (omp 18.14, `modes/rpc/rpc-mode.ts`), so exact alias-to-base grouping remains blocked on upstream metadata. Authenticated login entries without independent provider evidence remain sign-in methods instead of duplicate connected rows.
 
@@ -295,6 +296,16 @@ Conversation deletion: `main/omp/session-trash.ts` first stops this app's hosts 
 Session pins: `main/omp/session-pins.ts` reads the agent directory's `session-pins.json`; pin changes run the consumed `/pin <id>` builtin through a no-session RPC process. omp owns its shared cross-process file lock and atomic replacement. The app accepts only confirmed builtin output with `agentInvoked: false`, watches external pin-file changes and migrates existing app preference pins once without toggling already migrated ids. A failed migration retains its old preference data. Consolidated conversations retain pins on their older copies, and Unpin clears each retained pinned id.
 
 Saved rename: `main/omp/session-rename.ts` refuses an app-owned or externally owned saved chat before starting a short-lived `--resume` RPC process. An initial `get_state` must match the requested file and id before `set_session_name` can run. omp writes the 256-byte `source: "user"` title slot, title-change entry and title index. A final `get_state`, the resulting saved summary and confirmed child termination establish the returned title, file and id. A write-time continuation returns its changed destination explicitly, and the dialog warns with that path. No model request or model override is selected. omp initialization failures remain visible, including a missing configured default model. The dialog does not open a chat tab.
+
+`main/services/update-count.ts` sends the update-check count without awaiting it, with a five-second
+timeout and contained failures. Cached status reads, release-note fetches, development builds and
+tests send no count. `workers/update-count` deploys the collector separately from Electron and its
+TypeScript project. It validates a JSON body of at most 1 KiB, returns 204 and schedules a D1 upsert
+through `ctx.waitUntil`. The `visual-omp-update-count` database stores only UTC day, version,
+platform, architecture and count in `daily_counts`; optional channel input is validated and discarded.
+Worker logs, invocation logs, traces and Logpush are disabled, and the code emits no request logs.
+These totals measure checks, so they cannot identify unique installations. See
+`workers/update-count/README.md` for deployment and the last-30-days query.
 
 ## Compatibility
 The collab wire protocol is versioned (`COLLAB_PROTO`). On launch the app reads `omp --version` and

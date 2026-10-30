@@ -1,0 +1,16 @@
+{
+  "name": "visual-omp-update-count",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "migrate": "wrangler d1 migrations apply visual-omp-update-count --remote",
+    "counts": "wrangler d1 execute visual-omp-update-count --remote --command \"SELECT version, platform, SUM(count) AS checks FROM daily_counts WHERE day >= date('now', '-29 days') GROUP BY version, platform ORDER BY checks DESC, version, platform\""
+  },
+  "devDependencies": {
+    "typescript": "7.0.2",
+    "wrangler": "4.156.0"
+  }
+}

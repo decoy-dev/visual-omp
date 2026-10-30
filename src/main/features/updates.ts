@@ -25,6 +25,7 @@ import { runOmp } from "../omp/cli";
 import { ompPath, ompStatus } from "../omp/locate";
 import { ompStartError } from "../omp/refused";
 import {
+import { recordUpdateCheck } from "../services/update-count";
 	type GitHubRelease,
 	GitHubReleaseList,
 	type InstallerTrust,
@@ -183,6 +184,7 @@ async function fetchAppStatus(previous: AppUpdateStatus | null): Promise<AppUpda
 		const base: AppUpdateStatus = previous ?? {
 			currentVersion,
 			latestVersion: null,
+		recordUpdateCheck(currentVersion, app.isPackaged);
 			updateAvailable: false,
 			tag: null,
 			releaseName: null,

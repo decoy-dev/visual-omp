@@ -1,0 +1,24 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "visual-omp-update-count",
+  "account_id": "92162a0f546c14e218e1e0eff7ee6197",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-30",
+  "workers_dev": true,
+  "preview_urls": false,
+  "send_metrics": false,
+  "logpush": false,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "visual-omp-update-count",
+      "database_id": "185007ae-ba92-4853-a041-90cedb4585f3",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "observability": {
+    "enabled": false,
+    "logs": { "enabled": false, "invocation_logs": false },
+    "traces": { "enabled": false }
+  }
+}

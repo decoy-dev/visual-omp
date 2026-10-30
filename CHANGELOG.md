@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+#### Changed
+
+- Packaged builds of visual-omp now send the app version, platform and architecture once per fresh update check. The collector stores daily update-check totals without IP addresses or identifiers; these totals cannot identify unique installations. Development builds and tests send nothing, and failed counting requests do not delay or interrupt updates. See Updating in the README.
+
 #### Fixed
 
 - A chat shows only omp's latest idle recap, and hides it once a newer message arrives. Opening the terminal sheet no longer fills the end of the transcript with every earlier recap.
