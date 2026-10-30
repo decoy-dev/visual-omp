@@ -4,7 +4,7 @@
     "homepage": "https://github.com/decoy-dev/visual-omp",
     "license": "MIT",
     "url": "https://github.com/decoy-dev/visual-omp/releases/download/v0.7.0/visual-omp-0.7.0-win-x64.exe#/dl.7z",
-    "hash": "ceaf99a7da5fab468c95e54b176ac2e72d606452635c4dedcc4167095e770b41",
+    "hash": "bb134772adec304cfd119f5d5d3d64acedb567495e65d782082a06c818e4a56d",
     "pre_install": "Expand-7zipArchive \"$dir\\`$PLUGINSDIR\\app-64.7z\" \"$dir\"",
     "post_install": "Remove-Item \"$dir\\`$PLUGINSDIR\", \"$dir\\`$R0\" -Force -Recurse",
     "shortcuts": [
