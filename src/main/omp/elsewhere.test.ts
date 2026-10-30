@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
 	hosts: [] as { pid: number; sessionId: string; phase: string }[],
 	run: vi.fn(),
 	sockets: null as string | null,
+	leases: "",
+	leaseMode: 0o700,
 	actualExecutableSearch: false,
 }));
 vi.mock("node:child_process", async importOriginal => {
@@ -21,8 +23,14 @@ vi.mock("node:child_process", async importOriginal => {
 });
 vi.mock("node:fs/promises", async importOriginal => {
 	const actual = await importOriginal<typeof FsPromisesModule>();
-	return { ...actual, readFile: (...args: Parameters<typeof FsPromisesModule.readFile>) =>
-		args[0] === "/proc/net/unix" && mocks.sockets !== null ? Promise.resolve(mocks.sockets) : actual.readFile(...args) };
+	return { ...actual,
+		// The Darwin branch checks Unix permissions, which Windows directories do not expose.
+		lstat: async (...args: Parameters<typeof FsPromisesModule.lstat>) => {
+			const entry = await actual.lstat(...args);
+			return args[0] === mocks.leases ? Object.assign(entry, { mode: (Number(entry.mode) & ~0o777) | mocks.leaseMode }) : entry;
+		},
+		readFile: (...args: Parameters<typeof FsPromisesModule.readFile>) =>
+			args[0] === "/proc/net/unix" && mocks.sockets !== null ? Promise.resolve(mocks.sockets) : actual.readFile(...args) };
 });
 vi.mock("../env", () => ({ userEnv: async () => mocks.env }));
 vi.mock("../services/executable", async importOriginal => {
@@ -40,6 +48,8 @@ beforeEach(async () => {
 	root = await mkdtemp(join(tmpdir(), "vomp-ownership-"));
 	file = join(root, "source.jsonl");
 	leases = join(root, "leases");
+	mocks.leases = leases;
+	mocks.leaseMode = 0o700;
 	await mkdir(leases, { mode: 0o700 });
 	await writeFile(file, `${JSON.stringify({ type: "title", title: "Chat" })}\n${JSON.stringify({ type: "session", id: "source-id" })}\n`);
 	mocks.env = { PI_CODING_AGENT_DIR: root, PI_TEST_SESSION_OWNERS_DIR: leases };
@@ -99,6 +109,18 @@ it("keeps failed legacy observations unknown", async () => {
 	await writeFile(file, "damaged header\n");
 	mocks.run.mockImplementation((_command, _args, _options, callback) => callback(Object.assign(new Error("unavailable"), { code: 2 }), "", ""));
 	expect((await sessionOwnership([file])).get(file)).toBe("unknown");
+});
+
+it("falls back when the Darwin lease directory is accessible to other users", async () => {
+	mocks.leaseMode = 0o777;
+	await writeFile(join(leases, "source-id.lock"), "");
+	mocks.run.mockImplementation((command, _args, _options, callback) => {
+		if (command === "/system-tools/ps") callback(null, "", "");
+		else callback(null, `p93412\nau\nn${file}\n`, "");
+	});
+	expect((await sessionOwnership([file])).get(file)).toBe("elsewhere");
+	expect(mocks.run.mock.calls.map(call => call[0])).toEqual(["/system-tools/ps", "/system-tools/lsof"]);
+	expect(mocks.run.mock.calls[1]?.[1]).toContain("pan");
 });
 
 it("reads Linux abstract socket names without treating a persistent sidecar as held", async () => {
