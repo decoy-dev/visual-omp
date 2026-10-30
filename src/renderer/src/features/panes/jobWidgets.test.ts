@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { completionPercentOf, jobWidgetOf, widgetChart } from "./jobWidgets";
+import { completionPercentOf, helperWidgetCharts, jobWidgetOf, widgetChart } from "./jobWidgets";
 
 describe("completionPercentOf", () => {
 	it("retains zero and one hundred as estimates, rejecting unavailable or invalid values", () => {
@@ -52,5 +52,19 @@ describe("widgetChart", () => {
 		const spec = widgetChart(block);
 		expect(spec.categories).toEqual(["A", "B"]);
 		expect(spec.series[0]?.points).toEqual([{ value: 25, text: "25 req", emphasis: false }, { value: 40, text: "40 req", emphasis: true }]);
+	});
+});
+
+describe("helperWidgetCharts", () => {
+	it("keeps only charts, so no text block appears between helper cards", () => {
+		// omp's default task widget: helper name, stage and raw output-line counters.
+		expect(helperWidgetCharts(jobWidgetOf({ title: "Rollback", stage: "Writing tests", blocks: [{ kind: "stat", items: [{ label: "lines", text: "15.6k" }, { label: "lines/s", text: "0.68" }] }] }))).toBeNull();
+		const authored = jobWidgetOf({ title: "Bench", headline: { label: "p95", text: "40 ms" }, stage: "Sampling", blocks: [
+			{ kind: "text", text: "Warming up" },
+			{ kind: "spark", label: "Latency", values: [3, 2] },
+			{ kind: "meter", label: "Done", value: 0.5, text: "50%" },
+		] });
+		expect(helperWidgetCharts(authored)).toMatchObject({ title: "", headline: null, stage: null, blocks: [{ kind: "spark" }, { kind: "meter" }] });
+		expect(helperWidgetCharts(null)).toBeNull();
 	});
 });

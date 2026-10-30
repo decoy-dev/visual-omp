@@ -46,6 +46,7 @@ import { listRowMotion, Section, usePaneVisible } from "./common";
 import { type BackgroundJob, backgroundJobs, commandSummary, foldHelpers, type Helper, helperJobSnapshots, helpersOf, latestTodo, ompRunning } from "./derive";
 import { type HelperTranscriptItem, helperTranscript } from "./helperTranscript";
 import { JobWidget } from "./JobWidget";
+import { helperWidgetCharts } from "./jobWidgets";
 import { fetchHelperTranscript, type HelperJobsSnapshot, watchHelperJobs } from "./helperJobs";
 
 function MessageHelper({ helper, session }: { helper: Helper; session: SessionController }) {
@@ -112,10 +113,11 @@ function HelperRow({ helper, jobs, error, session, onTranscript }: { helper: Hel
 			)}
 		</>
 	);
+	const charts = helperWidgetCharts(helper.widget);
 	return (
 		<motion.li layout="position" {...listRowMotion}>
 			<SubagentRun run={helper} actions={actions} />
-			{helper.widget && <div className="mt-2 px-3"><JobWidget widget={helper.widget} /></div>}
+			{charts && <div className="mt-2 px-3"><JobWidget widget={charts} /></div>}
 			{jobs.length > 0 && <div className="mt-2 ml-4 border-l border-border pl-3"><JobList jobs={jobs} /></div>}
 			{error !== null && <p role="status" className="mt-2 px-3 text-xs text-fg-muted" title={error}>{t("tasks.helper.jobsUnavailable")}</p>}
 		</motion.li>

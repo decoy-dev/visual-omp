@@ -87,6 +87,15 @@ export function jobWidgetOf(raw: unknown): JobWidgetView | null {
 	return { title: str(raw.title) ?? "", headline: valueOf(raw.headline), stage: str(raw.stage), blocks: Array.isArray(raw.blocks) ? raw.blocks.flatMap(blockOf) : [] };
 }
 
+/**
+ * Keep only charts beneath helper cards; omit textual widget summaries and counters to avoid the extra between-card
+ * text. Null when the widget has no charts.
+ */
+export function helperWidgetCharts(widget: JobWidgetView | null | undefined): JobWidgetView | null {
+	const blocks = widget?.blocks.filter(block => block.kind === "spark" || block.kind === "bars" || block.kind === "meter") ?? [];
+	return blocks.length > 0 ? { title: "", headline: null, stage: null, blocks } : null;
+}
+
 /** Self-estimates remain estimates; missing, invalid and out-of-range values never imply completion. */
 export function completionPercentOf(value: unknown): number | null {
 	const percent = num(value);

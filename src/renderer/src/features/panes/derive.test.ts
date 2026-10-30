@@ -728,7 +728,7 @@ describe("helpersOf and workSummary", () => {
 			},
 			{
 				id: "Bolt",
-				name: "explore",
+				name: "Bolt",
 				status: "done",
 				activity: "Look around",
 				completionPercent: null,
@@ -1034,5 +1034,13 @@ describe("helperJobSnapshots", () => {
 		expect(helperJobSnapshots(entries).get("Atlas")).toMatchObject({ stage: "Reviewing", completionPercent: 70, widget: { title: "Review" } });
 		const tools = new Map<string, ActiveTool>([["w", { toolCallId: "w", toolName: "wait", args: {}, startedAt: 0, partialResult: { details: { jobs: [{ id: "Atlas-2", agentUrlId: "Atlas", type: "task", stage: "Finishing", completionPercent: 90, widget: { title: "Finishing", blocks: [] } }] } } }]]);
 		expect(helperJobSnapshots(entries, tools).get("Atlas")).toMatchObject({ stage: "Finishing", completionPercent: 90, widget: { title: "Finishing" } });
+	});
+});
+
+describe("helper names", () => {
+	it("labels helpers by task id, not the agent type omp reports as their display name", () => {
+		const agent = (id: string, displayName: string) => ({ id, displayName, kind: "sub" as const, status: "running" as const, hasSessionFile: true, createdAt: 0, lastActivity: 0 });
+		const guest = { agents: [agent("Rollback", "task"), agent("Lead.Scout", "explore")], progress: new Map(), lifecycle: new Map() };
+		expect(helpersOf(guest, true).map(helper => helper.name).sort()).toEqual(["Lead>Scout", "Rollback"]);
 	});
 });

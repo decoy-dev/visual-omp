@@ -11,6 +11,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 #### Fixed
 
 - A chat shows only omp's latest idle recap, and hides it once a newer message arrives. Opening the terminal sheet no longer fills the end of the transcript with every earlier recap.
+- Helper cards in the Tasks pane show each helper's task name instead of its agent type, and no longer repeat the helper's status and counters in a block beneath the card. Charts that a task's widget draws still appear under its card.
 
 ## [0.7.0] - 2026-10-29
 

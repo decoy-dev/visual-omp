@@ -10,7 +10,7 @@ import { useTranslation } from "react-i18next";
 import type { FriendlySummary, ToolStatus } from "../../chat/friendly";
 import { fmtDuration } from "../../collab/lib/format";
 import { useNow } from "../../shell/hooks";
-import { activityOf, type Helper, type HelperStatus, progressStatus, taskResultStatus } from "../../features/panes/derive";
+import { activityOf, type Helper, type HelperStatus, progressStatus, taskIdLabel, taskResultStatus } from "../../features/panes/derive";
 import { completionPercentOf } from "../../features/panes/jobWidgets";
 import { cn, Definition, Meter, Progress, StatusBadge, StatusDot } from "../../ui";
 import { AgentLink, Badge, Note, Output, ResultText, Row } from "../parts";
@@ -41,11 +41,6 @@ function taskItems(args: Record<string, unknown>): TaskItemView[] {
 	if (Array.isArray(args.tasks)) return args.tasks.filter(isRecord).map(taskItem);
 	const flat = taskItem(args);
 	return flat.id || flat.description || flat.assignment ? [flat] : [];
-}
-
-/** "Anna.Bob" nesting → "Anna>Bob" breadcrumb (mirrors the TUI's formatTaskId). */
-function taskIdLabel(id: string): string {
-	return id.includes(".") ? id.split(".").join(">") : id;
 }
 
 /** "980", "12.4k", "212k", "1.3M". */

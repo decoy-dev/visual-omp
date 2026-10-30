@@ -418,7 +418,7 @@ export interface HelperJobSnapshot {
 	widget: JobWidgetView | null;
 }
 
-/** Task-job snapshots include widgets and estimates that can outlast the task call's initial spawn result. */
+/** Task-job snapshots carry stages, estimates and widgets that can outlast the task call's initial spawn result. */
 export function helperJobSnapshots(entries: readonly SessionEntry[], activeTools?: ReadonlyMap<string, ActiveTool>, backgroundTools?: ReadonlyMap<string, ActiveTool>): ReadonlyMap<string, HelperJobSnapshot> {
 	const snapshots = new Map<string, HelperJobSnapshot>();
 	const read = (details: unknown) => {
@@ -1079,7 +1079,16 @@ export function planChecklist(text: string): PlanStep[] | null {
  */
 export type HelperStatus = "running" | "done" | "failed" | "stopped";
 
-/** A subagent as the Tasks pane and the chat header show it. Numbers are null when omp has not reported them. */
+/** "Anna.Bob" nesting → "Anna>Bob" breadcrumb (mirrors the TUI's formatTaskId). */
+export function taskIdLabel(id: string): string {
+	return id.includes(".") ? id.split(".").join(">") : id;
+}
+
+/**
+ * A subagent as the Tasks pane and the chat header show it. Numbers are null when omp has not reported them. `name` is
+ * the helper's task id, as omp's own view and the transcript's task cards label it; the agent type ("task") alone
+ * would not tell helpers apart.
+ */
 export interface Helper {
 	id: string;
 	name: string;
@@ -1088,6 +1097,7 @@ export interface Helper {
 	activity: string;
 	/** The helper's self-estimated completion. */
 	completionPercent?: number | null;
+	/** omp's job widget for the helper's task; the card draws only its charts (`helperWidgetCharts`). */
 	widget?: JobWidgetView | null;
 	tokens: number | null;
 	toolCount: number | null;
@@ -1298,7 +1308,7 @@ export function helpersOf(guest: HelperSources | null | undefined, ompLive: bool
 		const { live, receivedAt } = progress.get(agent.id) ?? { live: undefined, receivedAt: null };
 		helpers.set(agent.id, {
 			id: agent.id,
-			name: agent.displayName || live?.agent || agent.id,
+			name: taskIdLabel(agent.id),
 			status: statusOf(agent.id),
 			activity: activityOf(live),
 			...progressFields(live, receivedAt),
@@ -1311,7 +1321,7 @@ export function helpersOf(guest: HelperSources | null | undefined, ompLive: bool
 		if (helpers.has(id)) continue;
 		helpers.set(id, {
 			id,
-			name: live.agent || id,
+			name: taskIdLabel(id),
 			status: statusOf(id),
 			activity: activityOf(live),
 			...progressFields(live, receivedAt),
@@ -1328,7 +1338,7 @@ export function helpersOf(guest: HelperSources | null | undefined, ompLive: bool
 		}
 		helpers.set(id, {
 			id,
-			name: event.agent || id,
+			name: taskIdLabel(id),
 			status: statusOf(id),
 			activity: event.description ?? "",
 			...progressFields(undefined, null),
