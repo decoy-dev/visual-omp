@@ -40,7 +40,8 @@ describe("commit history", () => {
 		expect(commits[0]).toMatchObject({ sha: latest, subject: "Update fields", body: "", files: 1, additions: 2, deletions: 1 });
 		expect(commits[1]).toMatchObject({ sha: root, subject, body, author: "History Author", files: 1, additions: 2, deletions: 0 });
 		expect(commits[1]?.shortSha).toBe(root.slice(0, commits[1]?.shortSha.length));
-		expect(commits[1]?.authorDate).toMatch(/^\d{4}-\d{2}-\d{2}T.*[+-]\d{2}:\d{2}$/);
+		// git writes a UTC author date with Z and any other zone as an offset; both parse as ISO 8601.
+		expect(commits[1]?.authorDate).toMatch(/^\d{4}-\d{2}-\d{2}T.*(?:Z|[+-]\d{2}:\d{2})$/);
 		expect(await log(dir, { limit: 1, skip: 1 })).toEqual([commits[1]]);
 		expect(await log(dir, { skip: 2 })).toEqual([]);
 		const raw = execFileSync("git", ["log", "-z", `--format=${LOG_FORMAT}`, "--shortstat", "--root"], { cwd: dir, encoding: "utf8" });
