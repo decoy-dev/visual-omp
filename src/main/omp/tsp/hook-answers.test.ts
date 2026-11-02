@@ -10,7 +10,7 @@ import { openOverlay, walkNodes } from "../../../shared/tsp/view-state";
 
 const fixtures = new URL("./fixtures/18.15.0/", import.meta.url);
 interface Recording { verb: string; body: Record<string, unknown>; afterMessage?: number }
-const records = (name: string, kind: string): Recording[] => readFileSync(new URL(`${name}.${kind}.jsonl`, fixtures), "utf8").trim().split("\n").map(line => JSON.parse(line));
+const records = (name: string, kind: string): Recording[] => readFileSync(new URL(`${name}.${kind}.jsonl`, fixtures), "utf8").split("\n").filter(line => line.trim() !== "").map(line => JSON.parse(line));
 function replay(messages: Recording[]) {
 	const output: TspRendererEvent[] = [];
 	const stream = new TspStream({ onData: () => {}, onMessage: message => { if (message.verb === "e") output.push(JSON.parse(message.body)); } });
