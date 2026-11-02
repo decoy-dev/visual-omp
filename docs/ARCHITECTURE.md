@@ -169,6 +169,9 @@ presentation authority even when no protocol close arrived.
 
 Startup import menus can open before omp creates its first collab room. Main assigns framed
 documents in that state to generation zero and permits their ordinary semantic controls.
+The semantic sheet uses that snapshot authority while the collab-backed session mode is still
+`starting`; its separate followed/read-only flag continues to disable input. The classic terminal
+mirror retains its existing live-session mode gate.
 The first relay `onHostOpen` callback permanently ends that startup allowance for the host,
 before link resolution completes. A protocol restart before that callback retains the allowance;
 a later restart or room reconnect does not restore it. The input lock checks the same lifetime

@@ -260,7 +260,7 @@ it("renders and completes the recorded startup import screen before the first co
 	const { snapshot } = replayedScreen("import-claude");
 	snapshot.generation = 0; snapshot.documentGeneration = 0;
 	for (const surface of snapshot.surfaces) surface.documentGeneration = 0;
-	fake.view = { ...fake.view!, host: { ...fake.view!.host!, generation: 0, phase: "connecting", link: null } };
+	fake.view = { ...fake.view!, mode: "starting", host: { ...fake.view!.host!, generation: 0, phase: "connecting", link: null } };
 	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
 	await act(async () => root.render(sheetTree()));
 	expect(document.querySelector('[role="listbox"][aria-label="Import Claude Session"]')).not.toBeNull();
@@ -307,4 +307,41 @@ it.each(["matched", "ambiguous"] as const)("keeps the recorded hook-collab-aware
 	expect(fake.invoke.mock.calls.some(call => ["host:tsp-event", "host:tsp-answer", "host:keys"].includes(call[0]))).toBe(false);
 	expect(mirror.requests.map(request => request.reqId)).toEqual(status === "matched" ? [4] : [4, 5]);
 	if (status === "matched") expect(document.body.textContent).toContain("chat's question card");
+});
+
+it("allows Close on a main-authorized startup import picker while the session mode is starting", async () => {
+	const { snapshot } = replayedScreen("import-claude");
+	snapshot.generation = 0; snapshot.documentGeneration = 0;
+	for (const surface of snapshot.surfaces) surface.documentGeneration = 0;
+	fake.view = { ...fake.view!, mode: "starting", host: { ...fake.view!.host!, generation: 0, phase: "connecting", link: null } };
+	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
+	await act(async () => root.render(sheetTree()));
+	const surface = snapshot.surfaces.find(surface => surface.open.mode === "screen")!;
+	const picker = [...walkNodes(surface.document)].find(node => node.k === "picker");
+	if (picker?.k !== "picker") throw new Error("Missing recorded startup import picker");
+	const closeAction = picker.p!.actions!.find(action => action.id === "close")!;
+	const close = [...document.querySelectorAll<HTMLButtonElement>('[role="region"] button')].find(button => button.textContent === closeAction.label)!;
+	expect(close).toBeDefined(); expect(close.disabled).toBe(false);
+	await act(async () => close.click());
+	expect(fake.invoke.mock.calls.filter(call => call[0] === "host:tsp-event")).toEqual([
+		["host:tsp-event", "host", 0, { ev: "action", sf: surface.open.id, id: picker.id, act: "close" }, snapshot.epoch],
+	]);
+});
+it("keeps startup hooks display-only while session mode is starting and the mirror is unavailable", async () => {
+	const { snapshot } = replayedScreen("hook-collab-aware");
+	snapshot.generation = 0; snapshot.documentGeneration = 0;
+	for (const surface of snapshot.surfaces) surface.documentGeneration = 0;
+	const scope = { hostId: "host", generation: 0, epoch: snapshot.epoch };
+	snapshot.questionMatches = new QuestionArbitrator().matches(scope, hookQuestions(snapshot.surfaces, 0));
+	expect(snapshot.questionMatches[0]?.status).toBe("unavailable");
+	fake.view = { ...fake.view!, mode: "starting", host: { ...fake.view!.host!, generation: 0, phase: "connecting", link: null } };
+	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
+	await act(async () => root.render(sheetTree()));
+	const region = document.querySelector<HTMLElement>('[role="region"]')!;
+	const picker = region.querySelector<HTMLElement>('[role="listbox"]')!;
+	expect(picker.getAttribute("aria-disabled")).toBe("true");
+	expect([...region.querySelectorAll<HTMLButtonElement>("button")].every(button => button.disabled)).toBe(true);
+	await act(async () => region.querySelector('[role="option"]')!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+	await act(async () => picker.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+	expect(fake.invoke.mock.calls.some(call => ["host:tsp-event", "host:tsp-answer", "host:keys"].includes(call[0]))).toBe(false);
 });

@@ -226,7 +226,7 @@ export function TerminalSheet({ tabId, controller }: { tabId: string; controller
 				</Expand>
 				<div className={cn("min-h-0 flex-1 transition-opacity duration-(--dur-slow)", mode === "exited" && "opacity-60")}>
 					{tsp && host ? (
-						<OmpScreen key={`${host.hostId}:${host.generation}:${snapshot?.epoch ?? "waiting"}`} contentRef={inspectorContent} hostId={host.hostId} generation={host.generation} snapshot={snapshot} failed={failed} readOnly={readOnly || mode !== "live"} />
+						<OmpScreen key={`${host.hostId}:${host.generation}:${snapshot?.epoch ?? "waiting"}`} contentRef={inspectorContent} hostId={host.hostId} generation={host.generation} snapshot={snapshot} failed={failed} readOnly={readOnly} />
 					) : hostId && host ? (
 						<Mirror
 							hostId={hostId}
