@@ -309,8 +309,38 @@ The no-model recorder accepts `VOMP_TSP_FIXTURE_DIR` so live comparisons do not 
 committed baseline. `fixture-vocabulary.test.ts` checks recorded roles and classifies unsupported
 actions explicitly. Set `OMP_BIN` and `VOMP_TSP_LIVE_FIXTURE_DIR` to compare a scratch re-recording
 with the committed role/action sets. DOM replay covers completion, but criterion 2's required
-headless Chrome exact-event completion tier remains outstanding. The complete Phase 2 gate also
-requires manual criteria 11-13.
+headless Chrome exact-event completion tier remains outstanding.
+
+**Manual evidence, 2026-11-02 (main, macOS, omp 18.14.0).**
+
+- **Entry points (11).** The command palette and omp status menu opened the semantic sheet.
+  The native session tree's refused navigation offered its omp-screen action, which opened
+  omp's tree picker. Import from Claude Code opened the startup session picker before a collab
+  room existed; the follow-up sheet fix enabled its controls while the chat was still starting.
+  Pointer selection and Close worked without importing a conversation. The classic dialog card
+  is deliberately absent in TSP chats; its terminal button is not a TSP entry point.
+  `/extensions` opened automatically without an app card: pointer selection enabled Toggle,
+  unsupported Expand stayed disabled with a reason, and both Escape and Close left the menu.
+  Main also inspected the live extensions screen in Electron at a 960x620 viewport, in light
+  and dark themes at 100% text/full motion and 130% text/reduced motion. Labels remained readable,
+  lists scrolled inside the sheet and Close stayed visible. The broader fixture matrix is
+  additionally covered by the Chrome gate above.
+- **Sharing (12).** With the owner's approval, main published only a scratch chat through the
+  default relay. A separate browser using its view link received the live transcript, was
+  read-only and offered no question-answer controls. A second browser using the control link
+  answered a replicated fixture question with "Second option"; omp reported that exact answer,
+  and the app's pending request, semantic dialog and question card cleared. Main made no local
+  answer submission; writer tests cover refusal of local answers for matched dialogs.
+  A project-only custom relay setting showed the native confirmation naming both relay and
+  browser-client endpoints before publication. Accessibility permission prevented cancelling
+  that native dialog through automation, so main stopped the preview without approving it;
+  the custom endpoint was not published. The default share was stopped and both guests closed.
+- **Terminal follow (13).** A separately running terminal omp held a scratch session. Opening
+  it in the preview reported `elsewhere`, stayed read-only, followed its transcript and created
+  no app host. The existing controller regression for unknown ownership additionally proves
+  that Continue here is refused and `host:start` is never invoked.
+
+These observations do not establish the later composer, adapter, Windows or default-flip phases.
 
 ### 2.0 Minimum readiness, input and close
 
