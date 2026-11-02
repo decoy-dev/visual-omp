@@ -55,3 +55,15 @@ describe("stop announcements", () => {
 		expect(replyAnnouncement(reply("error", "429 rate limited", ""), t)).toBe(`${t("stopped.error")}. 429 rate limited`);
 	});
 });
+
+it("keeps recorded wall-clock times out of the spoken reply", () => {
+	vi.stubGlobal("document", { createElement: () => ({ innerHTML: "", content: { textContent: "Spoken reply" } }) });
+	const message: AssistantMessage = {
+		role: "assistant", model: "m", timestamp: new Date(2026, 2, 4, 9, 12, 8).getTime(), stopReason: "stop",
+		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } },
+		content: [{ type: "thinking", thinking: "Private thought." }, { type: "toolCall", id: "read", name: "read", arguments: { path: "source.ts" } }, { type: "text", text: "Spoken reply" }],
+	};
+	const t = i18n.getFixedT("en", "chat");
+	expect(replyAnnouncement(message, t)).toBe(t("replied", { text: "Spoken reply" }));
+	expect(replyAnnouncement({ ...message, timestamp: message.timestamp + 86_400_000 }, t)).toBe(replyAnnouncement(message, t));
+});

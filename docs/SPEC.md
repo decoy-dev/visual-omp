@@ -79,6 +79,10 @@ When omp explicitly records a model fallback, all transcript views show a warnin
 
 The existing screen-reader announcement channel announces a newly recorded fallback once. Loaded history, reconnect snapshots and the saved copy of a streamed provider fallback remain silent, and the transcript itself stays outside live-region announcements.
 
+The transcript shows recorded times on user messages, assistant messages, thinking disclosures, tool steps and timed notices in Normal, Thinking and Verbose views. User messages retain their entry time; assistant thinking and calls share their message's recorded time because omp does not record per-block starts. Unsaved active calls use their own start time, tool groups show the first call's time, and expanded completed tools show their result time. Compact labels use the user's locale hours and minutes, with the date for entries outside today. Full dates and times with seconds remain available through semantic time elements, accessible labels and tooltips. Consecutive tool steps in the same minute suppress repeated visible labels while preserving their space and full time. Saved chats and classic and TSP chats share the same renderer. Reply announcements contain no timestamps.
+
+Full timestamp tooltips open from keyboard focus and close with Escape. Existing thinking, action and notice disclosure controls retain their keyboard stop; standalone times receive their own focus indicator. A shared midnight timer and focus or visibility refresh keep saved-entry dates current after the local day changes.
+
 ## Feature scope (all in scope)
 ### Sessions
 - Open chats appear in a Current chats sidebar section, with unopened results first and a divider before viewed chats. Each group keeps open order, and numbered shortcuts keep their original chat numbers. A blue dot, stronger title and accessible "New result" or "Waiting for your answer" label mark unopened results. The same mark appears on open chats in the Projects tree, Home's recent chats and project overviews.

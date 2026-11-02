@@ -1,6 +1,7 @@
 {
 	"you": "You",
 	"assistant": "omp",
+	"timestamp": { "finished": "Finished" },
 	"empty": {
 		"first": "What should we work on?",
 		"returning": "What should we work on next?",

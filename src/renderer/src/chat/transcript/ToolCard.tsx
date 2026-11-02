@@ -27,6 +27,7 @@ import { detailsRecord, isRecord, replaceTabs, stripAnsi } from "../../tool-rend
 import { isMcpResult, mcpProgressOf, McpProgressLine } from "../../tool-render/tools/mcp";
 import "../../tool-render/tool-render.css";
 import { cn, Expand, PulseDot, Rise } from "../../ui";
+import { TranscriptTime, type TranscriptTimestamp } from "./TranscriptTime";
 
 const ICONS: Record<string, Icon> = {
 	edit: PencilSimpleLine,
@@ -76,6 +77,9 @@ export interface ToolCardProps {
 	 */
 	onEngage?: (id: string, engaged: boolean) => void;
 	engageId?: string;
+	timestamp?: TranscriptTimestamp;
+	previousTime?: TranscriptTimestamp;
+	completedAt?: TranscriptTimestamp;
 }
 
 function partialText(partial: unknown): string {
@@ -143,6 +147,7 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 				<span className={cn("min-w-0 truncate text-md transition-colors duration-(--dur)", running ? "text-fg" : "text-fg-muted group-hover/tool:text-fg")}>
 					{t(summary.key, summary.values)}
 				</span>
+				<TranscriptTime timestamp={props.timestamp} previous={props.previousTime} className="ml-auto" inControl />
 				{summary.added !== undefined && (
 					<span className="shrink-0 font-mono text-sm">
 						<span className="text-diff-add-text">+{summary.added}</span> <span className="text-diff-del-text">−{summary.removed}</span>
@@ -178,6 +183,7 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 				</pre>
 			</Expand>
 			<Expand open={open} className="selectable pt-1 pb-3 pl-6.5">
+				{props.completedAt ? <div className="mb-2"><TranscriptTime timestamp={props.completedAt} label={tc("timestamp.finished")} /></div> : null}
 				{call.intent && <p className="mb-2 text-sm text-fg-muted">{call.intent}</p>}
 				<div className="tv-card tv-embedded">
 					{renderer.Body ? (

@@ -196,7 +196,7 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 			turn.positions.push(position);
 			if (block.type === "toolCall") {
 				turn.callIds.push(block.id);
-				messageTime.set(block.id, message.timestamp);
+				messageTime.set(block.id, entry.id === TAIL_ENTRY ? (options.active?.get(block.id)?.startedAt ?? 0) : message.timestamp);
 			}
 		}
 	}

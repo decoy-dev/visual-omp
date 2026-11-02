@@ -16,7 +16,7 @@ import {
 	TerminalWindow,
 	X,
 } from "@phosphor-icons/react";
-import { type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { createContext, type ReactNode, useContext, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { fmtDuration } from "../../collab/lib/format";
 import { commandSummary } from "../../features/panes/derive";
@@ -38,6 +38,12 @@ import {
 	processText,
 } from "./notices";
 import type { TranscriptMode } from "./Transcript";
+import { TranscriptTime, type TranscriptTimestamp } from "./TranscriptTime";
+
+const NoticeTimestamp = createContext<TranscriptTimestamp>(undefined);
+function NoticeTime({ inControl = false }: { inControl?: boolean }): ReactNode {
+	return <TranscriptTime timestamp={useContext(NoticeTimestamp)} className="ml-auto" inControl={inControl} />;
+}
 
 /** ToolCard's row geometry; `rowInteractive` adds its hover and focus. */
 const rowClass = "-mx-2 flex h-8 w-[calc(100%+1rem)] items-center gap-2.5 rounded-md px-2 text-left";
@@ -96,6 +102,7 @@ function StepRow({
 			<span className="min-w-0 truncate text-md text-fg-muted transition-colors duration-(--dur) group-hover/tool:text-fg">{title}</span>
 			{detail && <span className="min-w-0 truncate font-mono text-sm text-fg-faint">{detail}</span>}
 			{meta && <span className="shrink-0 text-sm text-fg-faint tabular-nums">{meta}</span>}
+			<NoticeTime inControl={!!children} />
 			{status && <StatusGlyph status={status} />}
 		</>
 	);
@@ -200,6 +207,7 @@ function IrcCard({ notice }: { notice: Extract<Notice, { kind: "irc" }> }): Reac
 			<div className="flex min-w-0 items-center gap-2">
 				<ChatCircleText className="size-4 shrink-0 text-fg-faint" aria-hidden />
 				<span className="min-w-0 truncate text-md font-medium text-fg">{ircTitle(notice, t)}</span>
+				<NoticeTime />
 			</div>
 			{notice.body && (
 				<div
@@ -237,6 +245,7 @@ function AdvisorCard({ notice }: { notice: Extract<Notice, { kind: "advisor" }> 
 				<Lightbulb className="size-4 shrink-0 text-fg-faint" aria-hidden />
 				<span className="text-md font-medium text-fg">{t("notice.advisor.title")}</span>
 				<span className="text-sm text-fg-faint">{t("notice.advisor.notes", { count: notice.notes.length })}</span>
+				<NoticeTime />
 			</div>
 			<ul className="mt-2 flex flex-col gap-3 pl-6">
 				{notice.notes.map((note, index) => (
@@ -279,6 +288,7 @@ function SkillRow({ notice, verbose }: { notice: Extract<Notice, { kind: "skill"
 				/>
 				<BookOpenText className="size-4 shrink-0 text-fg-faint" aria-hidden />
 				<span className="min-w-0 truncate text-md text-fg-muted transition-colors duration-(--dur) group-hover/tool:text-fg">{t("notice.skill.used", { name: notice.name })}</span>
+				<NoticeTime inControl />
 			</button>
 			{notice.args && <p className="selectable max-w-[85%] text-base whitespace-pre-wrap text-fg">{notice.args}</p>}
 			<div className="w-full">
@@ -302,6 +312,7 @@ export function NoticeRow({ entry, mode }: NoticeRowProps): ReactNode {
 		<div role="note" className="-mx-2 flex min-w-0 items-start gap-2.5 px-2 py-1 text-sm text-fg-muted">
 			<Info aria-hidden className="mt-0.5 size-4 shrink-0" />
 			<p className="selectable min-w-0 whitespace-pre-wrap [overflow-wrap:anywhere]">{contentText(entry.content)}</p>
+			<TranscriptTime timestamp={entry.timestamp} className="ml-auto" />
 		</div>
 	);
 	const notice = parseNotice(entry);
@@ -312,7 +323,7 @@ export function NoticeRow({ entry, mode }: NoticeRowProps): ReactNode {
 			body = (
 				<div>
 					{notice.jobs.map((job, index) => (
-						<JobRow key={`${job.id}-${index}`} job={job} verbose={verbose} />
+						<NoticeTimestamp.Provider key={`${job.id}-${index}`} value={index === 0 ? entry.timestamp : undefined}><JobRow job={job} verbose={verbose} /></NoticeTimestamp.Provider>
 					))}
 				</div>
 			);
@@ -321,13 +332,9 @@ export function NoticeRow({ entry, mode }: NoticeRowProps): ReactNode {
 			body = (
 				<div>
 					{notice.processes.map((process, index) => (
-						<StepRow
-							key={`${process.name}-${index}`}
-							icon={TerminalWindow}
-							title={processText(process, t)}
-							status={process.failed ? "failed" : "ok"}
-							verbose={verbose}
-						/>
+						<NoticeTimestamp.Provider key={`${process.name}-${index}`} value={index === 0 ? entry.timestamp : undefined}>
+							<StepRow icon={TerminalWindow} title={processText(process, t)} status={process.failed ? "failed" : "ok"} verbose={verbose} />
+						</NoticeTimestamp.Provider>
 					))}
 				</div>
 			);
@@ -349,11 +356,11 @@ export function NoticeRow({ entry, mode }: NoticeRowProps): ReactNode {
 			);
 			break;
 	}
-	if (!verbose) return body;
+	if (!verbose) return <NoticeTimestamp.Provider value={entry.timestamp}>{body}</NoticeTimestamp.Provider>;
 	return (
-		<div className="flex flex-col gap-1">
+		<NoticeTimestamp.Provider value={entry.timestamp}><div className="flex flex-col gap-1">
 			{body}
 			<RawText source={entry} />
-		</div>
+		</div></NoticeTimestamp.Provider>
 	);
 }

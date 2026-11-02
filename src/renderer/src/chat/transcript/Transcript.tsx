@@ -56,6 +56,7 @@ import { ToolCard } from "./ToolCard";
 import { ToolGroup } from "./ToolGroup";
 import { TurnSummary } from "./TurnSummary";
 import { thoughtKey, ThoughtChoices, thoughtOpen, writingThought } from "./thoughtChoices";
+import { TranscriptTime, type TranscriptTimestamp } from "./TranscriptTime";
 import { type BlockRef, type ContentBlock, type EntryLayout, replyText, STREAM_ENTRY, stoppedVisibly, TAIL_ENTRY, type TranscriptLayout, transcriptLayout, liveLayoutEntries, unsavedToolsMessage } from "./turns";
 import { anchorRow, tailStart, WINDOW, windowOnScroll } from "./window";
 import {
@@ -78,17 +79,11 @@ const EARLIER_TRIGGER_PX = 240;
 const PINNED_PX = 48;
 const EMPTY_TOOLS: ReadonlyMap<string, ActiveTool> = new Map();
 
-function timeOf(timestamp: string | undefined): string {
-	if (!timestamp) return "";
-	const date = new Date(timestamp);
-	return Number.isNaN(date.getTime()) ? "" : date.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
-}
-
-function Notice({ children }: { children: ReactNode }): ReactNode {
+function Notice({ children, timestamp }: { children: ReactNode; timestamp?: TranscriptTimestamp }): ReactNode {
 	return (
 		<div className="flex items-center gap-3 py-1 text-xs text-fg-faint" role="note">
 			<span className="h-px flex-1 bg-border" />
-			<span>{children}</span>
+			<span className="flex items-center gap-2">{children}<TranscriptTime timestamp={timestamp} /></span>
 			<span className="h-px flex-1 bg-border" />
 		</div>
 	);
@@ -121,7 +116,7 @@ function UserMessage({ entry, session, from }: { entry: SessionEntry; session: S
 	return (
 		<div className="group flex flex-col items-end gap-1">
 			<div className="flex items-center gap-2 text-xs text-fg-faint">
-				<span className="opacity-0 transition-opacity duration-(--dur) group-hover:opacity-100">{timeOf(entry.timestamp)}</span>
+				<TranscriptTime timestamp={entry.timestamp} />
 				<span className="font-medium text-fg-muted">{from ? t("from", { name: from }) : t("you")}</span>
 			</div>
 			<div className="max-w-[85%] min-w-0 rounded-lg border border-border bg-inset px-4 py-3 [overflow-wrap:anywhere]">
@@ -149,6 +144,7 @@ function ThinkingBlock({
 	redacted,
 	open,
 	onToggle,
+	timestamp,
 }: {
 	text: string;
 	/** The reply's reveal; the thought's shown prefix follows it without re-rendering the rest of the reply. */
@@ -157,6 +153,7 @@ function ThinkingBlock({
 	redacted?: boolean;
 	open: boolean;
 	onToggle?: () => void;
+	timestamp?: TranscriptTimestamp;
 }): ReactNode {
 	const { t } = useTranslation("chat");
 	const shown = useRevealed(open ? playout : null, index, text.length);
@@ -170,6 +167,7 @@ function ThinkingBlock({
 			>
 				<CaretRight className={cn("size-3.5 transition-[rotate] duration-(--dur) ease-(--ease-out)", open && "rotate-90")} aria-hidden />
 				{redacted ? t("redactedThinking") : t("thoughts")}
+				<TranscriptTime timestamp={timestamp} className="ml-1" inControl />
 			</button>
 			<Expand open={open && !redacted} className="selectable pt-1 pb-2 pl-5 text-sm whitespace-pre-wrap text-fg-muted">
 				{revealedPrefix(text, shown)}
@@ -287,6 +285,8 @@ function ToolStep({
 	arriving,
 	work,
 	grouped = false,
+	timestamp,
+	previousTime,
 }: {
 	block: ToolCallBlock;
 	results: ReadonlyMap<string, ToolResultMessage>;
@@ -297,20 +297,24 @@ function ToolStep({
 	work: WorkView | undefined;
 	/** Drawn inside a step group, which already holds it: using it there never reshapes the groups. */
 	grouped?: boolean;
+	timestamp: TranscriptTimestamp;
+	previousTime?: TranscriptTimestamp;
 }): ReactNode {
 	const { t } = useTranslation("tools");
 	const live = active.get(block.id);
 	const result = results.get(block.id);
 	const running = !result && (live !== undefined || pending);
+	const time = <TranscriptTime timestamp={timestamp} previous={previousTime} className="ml-auto" />;
 	const todo = work?.layout.todos.get(block.id);
 	if (todo?.role === "board") {
 		return (
 			<Rise play={arriving} distance={6} tempo="snappy" className="py-2">
+				<div className="mb-1 flex justify-end">{time}</div>
 				<TodoBoard phases={todo.update.phases} />
 			</Rise>
 		);
 	}
-	if (todo?.role === "change") return <TodoChangeRow update={todo.update} />;
+	if (todo?.role === "change") return <div className="flex items-center gap-2"><div className="min-w-0 flex-1"><TodoChangeRow update={todo.update} /></div>{time}</div>;
 	const args = live?.args ?? block.arguments;
 	// A task call's helpers can outlive it (a background spawn returns at once), so its row and cards follow the
 	// helpers' live state when omp reports it, else what the call's own result or progress says, updated by what the
@@ -337,6 +341,9 @@ function ToolStep({
 			summary={helperRunsSummary(runs, (status, count) => t(`task.states.${status}`, { count })) ?? undefined}
 			onEngage={grouped || mode !== "normal" ? undefined : work?.hold}
 			engageId={block.id}
+			timestamp={timestamp}
+			previousTime={previousTime}
+			completedAt={result?.timestamp}
 		/>
 	);
 	// A helper pinned at the bottom of the chat while it runs has no card here; the row still counts it.
@@ -364,11 +371,11 @@ function ToolStep({
 function GroupThought({ item, thoughts }: { item: BlockRef; thoughts: ThoughtChoices | undefined }): ReactNode {
 	const choices = useThoughtChoices(thoughts);
 	const block = item.block;
-	if (block.type === "redactedThinking") return <ThinkingBlock text="" redacted open={false} />;
+	if (block.type === "redactedThinking") return <ThinkingBlock text="" redacted open={false} timestamp={item.messageTime} />;
 	if (block.type !== "thinking" || block.narration === true) return null;
 	const key = thoughtKey(item.messageTime, item.index);
 	const open = thoughtOpen("normal", choices.get(key), false);
-	return <ThinkingBlock text={block.thinking} open={open} onToggle={() => thoughts?.toggle("normal", key, open)} />;
+	return <ThinkingBlock text={block.thinking} open={open} timestamp={item.messageTime} onToggle={() => thoughts?.toggle("normal", key, open)} />;
 }
 
 export function AssistantBlocks({
@@ -382,6 +389,7 @@ export function AssistantBlocks({
 	liveThinking = false,
 	layout,
 	work,
+	synthetic = false,
 }: {
 	message: AssistantMessage;
 	results: ReadonlyMap<string, ToolResultMessage>;
@@ -400,6 +408,8 @@ export function AssistantBlocks({
 	/** Blocks this reply hides (drawn in an earlier group) and the step groups it leads. */
 	layout?: EntryLayout;
 	work?: WorkView;
+	/** Unsaved active calls have their own recorded start until omp supplies their assistant message. */
+	synthetic?: boolean;
 }): ReactNode {
 	const { t } = useTranslation("chat");
 	const choices = useThoughtChoices(work?.thoughts);
@@ -465,15 +475,16 @@ export function AssistantBlocks({
 								text={block.thinking}
 								playout={playout}
 								index={index}
+								timestamp={message.timestamp}
 								open={isOpen(index)}
 								onToggle={() => toggleThought(index)}
 							/>
 						);
 					case "redactedThinking":
-						return shownLength(playout, index, 0) < 0 ? null : <ThinkingBlock key={index} text="" redacted open={false} />;
+						return shownLength(playout, index, 0) < 0 ? null : <ThinkingBlock key={index} text="" redacted open={false} timestamp={message.timestamp} />;
 					case "fallback": {
 						const fallback = providerFallback(block);
-						return fallback ? <ModelFallbackNotice key={index} fallback={fallback} /> : null;
+						return fallback ? <ModelFallbackNotice key={index} fallback={fallback} timestamp={message.timestamp} /> : null;
 					}
 					case "toolCall": {
 						if (shownLength(playout, index, 0) < 0) return null;
@@ -487,17 +498,26 @@ export function AssistantBlocks({
 									openState={work?.openGroups}
 									onEngage={mode === "normal" ? work?.holdGroup : undefined}
 								>
-									{group.items.map(item =>
-										item.block.type === "toolCall" ? (
-											<ToolStep key={item.block.id} block={item.block} results={results} active={active} pending={group.running} mode={mode} arriving={false} work={work} grouped />
+									{group.items.map((item, position) => {
+										const previous = group.items[position - 1];
+										const previousTime = previous?.block.type === "toolCall"
+											? previous.entryId === TAIL_ENTRY ? active.get(previous.block.id)?.startedAt : previous.messageTime
+											: undefined;
+										return item.block.type === "toolCall" ? (
+											<ToolStep key={item.block.id} block={item.block} timestamp={item.entryId === TAIL_ENTRY ? active.get(item.block.id)?.startedAt : item.messageTime} previousTime={previousTime} results={results} active={active} pending={group.running} mode={mode} arriving={false} work={work} grouped />
 										) : (
 											<GroupThought key={`${item.entryId}:${item.index}`} item={item} thoughts={work?.thoughts} />
-										),
-									)}
+										);
+									})}
 								</ToolGroup>
 							);
 						}
-						return <ToolStep key={block.id} block={block} results={results} active={active} pending={pending} mode={mode} arriving={revealing} work={work} />;
+						const previous = message.content[index - 1];
+						const previousLive = previous?.type === "toolCall" ? active.get(previous.id) : undefined;
+						const partial = previousLive?.partialResult;
+						const consecutive = previous?.type === "toolCall" && blockTexts[index - 1] === null
+							&& toolResultReplies(results.get(previous.id)?.details ?? (isRecord(partial) ? partial.details : undefined)).length === 0;
+						return <ToolStep key={block.id} block={block} timestamp={synthetic ? active.get(block.id)?.startedAt : message.timestamp} previousTime={consecutive && !layout?.hidden.has(index - 1) ? (synthetic ? previousLive?.startedAt : message.timestamp) : undefined} results={results} active={active} pending={pending} mode={mode} arriving={revealing} work={work} />;
 					}
 					default:
 						return null;
@@ -525,12 +545,13 @@ export function AssistantBlocks({
 	);
 }
 
-function AssistantHeader({ model, timestamp }: { model?: string; timestamp?: string }): ReactNode {
+function AssistantHeader({ model, timestamp }: { model?: string; timestamp?: TranscriptTimestamp }): ReactNode {
 	const { t } = useTranslation("chat");
 	return (
 		<div className="flex items-center gap-2 text-sm text-fg-faint">
 			<Mark size={18} />
-			<span>{[model ?? t("assistant"), timeOf(timestamp)].filter(Boolean).join(" · ")}</span>
+			<span>{model ?? t("assistant")}</span>
+			<TranscriptTime timestamp={timestamp} />
 		</div>
 	);
 }
@@ -616,7 +637,7 @@ const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results,
 			if (message.role !== "assistant") return null;
 			return (
 				<div className="flex flex-col gap-2">
-					{!continuesTurn && <AssistantHeader model={message.model} timestamp={entry.timestamp} />}
+					{!continuesTurn ? <AssistantHeader model={message.model} timestamp={message.timestamp} /> : message.content.some((block, index) => replyText(block) !== null && !layout?.hidden.has(index)) && <TranscriptTime timestamp={message.timestamp} className="self-start" />}
 					<AssistantBlocks message={message} results={results} active={active} pending={false} mode={mode} layout={layout} work={work} />
 				</div>
 			);
@@ -631,13 +652,13 @@ const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results,
 			return <NoticeRow entry={entry} mode={mode} />;
 		}
 		case "compaction":
-			return <Notice>{t("compacted")}</Notice>;
+			return <Notice timestamp={entry.timestamp}>{t("compacted")}</Notice>;
 		case "branch_summary":
-			return <Notice>{t("branchSummary")}</Notice>;
+			return <Notice timestamp={entry.timestamp}>{t("branchSummary")}</Notice>;
 		case "model_change":
-			return fallback ? <ModelFallbackNotice fallback={fallback} /> : modelSetupVisible(entry, mode === "verbose", afterFirstPrompt) ? <Notice>{t("modelChanged", { model: entry.model })}</Notice> : null;
+			return fallback ? <ModelFallbackNotice fallback={fallback} timestamp={entry.timestamp} /> : modelSetupVisible(entry, mode === "verbose", afterFirstPrompt) ? <Notice timestamp={entry.timestamp}>{t("modelChanged", { model: entry.model })}</Notice> : null;
 		case "thinking_level_change":
-			return modelSetupVisible(entry, mode === "verbose", afterFirstPrompt) ? <Notice>{t("thinkingChanged", { level: entry.thinkingLevel ?? "off" })}</Notice> : null;
+			return modelSetupVisible(entry, mode === "verbose", afterFirstPrompt) ? <Notice timestamp={entry.timestamp}>{t("thinkingChanged", { level: entry.thinkingLevel ?? "off" })}</Notice> : null;
 		default:
 			return null;
 	}
@@ -1154,7 +1175,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 										tempo="snappy"
 										className={cn("flex flex-col gap-2", continuesAssistantModel(previousAssistant, stream) && "-mt-6")}
 									>
-										{!continuesAssistantModel(previousAssistant, stream) && <AssistantHeader model={stream.model} />}
+										{!continuesAssistantModel(previousAssistant, stream) ? <AssistantHeader model={stream.model} timestamp={stream.timestamp} /> : stream.content.some((block, index) => replyText(block) !== null && !layout.entries.get(STREAM_ENTRY)?.hidden.has(index)) && <TranscriptTime timestamp={stream.timestamp} className="self-start" />}
 										<AssistantBlocks
 											message={stream}
 											results={results}
@@ -1179,6 +1200,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 											mode={mode}
 											layout={layout.entries.get(TAIL_ENTRY)}
 											work={work}
+											synthetic
 										/>
 									</Rise>
 								)}

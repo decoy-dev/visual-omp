@@ -8,6 +8,7 @@ import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { CommandResultRecord } from "../../features/session-tools/results";
 import { cn, IconButton } from "../../ui";
+import { TranscriptTime } from "./TranscriptTime";
 
 /** Longer output starts cut to this many lines. */
 const COLLAPSED_LINES = 12;
@@ -26,6 +27,7 @@ export function CommandResultRow({ result, onDismiss }: { result: CommandResultR
 			<div className="-mx-2 flex h-8 w-[calc(100%+1rem)] items-center gap-2.5 rounded-md px-2">
 				<ToneIcon className={cn("size-4 shrink-0", TONE_CLASS[result.tone])} aria-hidden />
 				<span className="selectable min-w-0 flex-1 truncate font-mono text-sm text-fg-muted">{result.command}</span>
+				<TranscriptTime timestamp={result.createdAt} />
 				<IconButton
 					label={t("commandResult.dismiss")}
 					icon={<X />}

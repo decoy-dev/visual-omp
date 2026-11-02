@@ -57,6 +57,7 @@ export interface NoticeSource {
 	/** omp's content: a string, or text and image blocks (`TextContent | ImageContent` or a parsed session line). */
 	content: string | readonly { type: string; text?: string }[];
 	details?: unknown;
+	timestamp?: string | number;
 }
 
 /** A non-empty string field, else undefined. */

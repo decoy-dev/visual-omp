@@ -1,14 +1,24 @@
 import { createElement } from "react";
 import type * as ReactModule from "react";
 import type * as PaceModule from "./pace";
-import { renderToStaticMarkup } from "react-dom/server";
-import type { AssistantMessage } from "@oh-my-pi/pi-wire";
+import { renderToStaticMarkup as renderMarkup } from "react-dom/server";
+import type { AssistantMessage, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { FileRef } from "@shared/contracts/fileRefs";
 import type { ReplyRefs } from "./fileRefs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../../i18n";
-import { AssistantBlocks } from "./Transcript";
+import { AssistantBlocks, Transcript } from "./Transcript";
+import type { SessionController, SessionView } from "../../state/session";
+import { transcriptLayout, unsavedToolsMessage } from "./turns";
+import { ThoughtChoices } from "./thoughtChoices";
+import { TranscriptTime } from "./TranscriptTime";
+import { NoticeRow } from "./NoticeRow";
+import { TooltipProvider } from "../../ui";
 import { writingThought } from "./thoughtChoices";
+
+function renderToStaticMarkup(node: ReactModule.ReactNode): string {
+	return renderMarkup(createElement(TooltipProvider, null, node));
+}
 
 vi.hoisted(() => { vi.stubGlobal("window", { vomp: { platform: "darwin" }, addEventListener: () => {}, removeEventListener: () => {} }); });
 const pace = vi.hoisted(() => ({ blocks: [] as { length: number; timed: boolean }[], timelines: new Map<number | string, { length: number; timed: boolean }[]>() }));
@@ -163,4 +173,102 @@ it("does not flash a tool card while a partial write path can still become out:/
 		expect(html).not.toContain("aria-expanded");
 		expect(html).not.toContain("Report.");
 	}
+});
+
+describe("recorded transcript times", () => {
+	const start = new Date(2026, 2, 4, 9, 12, 8).getTime();
+	const end = start + 73_000;
+	const iso = (time: number) => new Date(time).toISOString();
+	const call = (id: string) => ({ type: "toolCall" as const, id, name: "read", arguments: { path: `${id}.ts` } });
+	const reply = (timestamp: number, content: AssistantMessage["content"]): AssistantMessage => ({ ...message, timestamp, content });
+	const entry = (id: string, message: AssistantMessage): SessionEntry => ({ type: "message", id, parentId: null, timestamp: iso(end + 1000), message });
+
+	it("uses minute precision with full date, seconds and a machine-readable time, and dates saved entries", () => {
+		const html = renderToStaticMarkup(createElement(TranscriptTime, { timestamp: start }));
+		expect(html).toContain(`dateTime="${iso(start)}"`);
+		expect(html).toContain(new Date(start).toLocaleDateString(undefined, { month: "short", day: "numeric" }));
+		expect(html).toContain(new Date(start).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }));
+		expect(html).toContain("aria-label=");
+		expect(html).toContain('tabindex="0"');
+		expect(html).toContain("08");
+		expect(renderToStaticMarkup(createElement(TranscriptTime, { timestamp: "invalid" }))).toBe("");
+		const today = new Date(); today.setHours(9, 12, 8, 0);
+		const current = renderToStaticMarkup(createElement(TranscriptTime, { timestamp: today.getTime() }));
+		expect(current.slice(current.indexOf(">", current.indexOf("<time")) + 1)).not.toContain(" · ");
+	});
+
+	it.each(["normal", "thinking", "verbose"] as const)("uses the assistant message for thoughts and calls, and the result for completion in %s", mode => {
+		const response = reply(start, [{ type: "thinking", thinking: "Check the source." }, call("source")]);
+		const result = { role: "toolResult" as const, toolCallId: "source", toolName: "read", timestamp: end, content: [], isError: false };
+		const active = new Map([["source", { toolCallId: "source", toolName: "read", args: {}, startedAt: start + 40_000 }]]);
+		const html = renderToStaticMarkup(createElement(AssistantBlocks, { message: response, mode, results: new Map([["source", result]]), active, pending: false }));
+		expect(html.match(new RegExp(`dateTime="${iso(start)}"`, "g"))).toHaveLength(2);
+		expect(html).not.toContain(`dateTime="${iso(start + 40_000)}"`);
+		if (mode === "verbose") expect(html).toContain(`dateTime="${iso(end)}"`);
+	});
+
+	it("keeps a time on each grouped step while hiding repeated adjacent minute labels", () => {
+		const first = reply(start, [call("first")]);
+		const second = reply(start + 10_000, [call("second"), { type: "thinking", thinking: "Continue." }, call("third")]);
+		const entries = [entry("one", first), entry("two", second)];
+		const layout = transcriptLayout(entries, { live: false, group: true, context: { cwd: "/repo", home: null } });
+		const plan = layout.entries.get("one")!.groups.get(0)!;
+		const work = { layout, openGroups: new Map([[plan.key, true]]), thoughts: new ThoughtChoices(), arriving: new Set<string>(), helpers: new Map(), pinned: new Set<string>(), recorded: new Map(), ompRunning: false, synchronizing: false, hold: () => {}, holdGroup: () => {} };
+		const html = renderToStaticMarkup(createElement(AssistantBlocks, { message: first, mode: "normal", results: new Map(), active: new Map(), pending: false, layout: layout.entries.get("one"), work }));
+		expect(html.match(/<time /g)).toHaveLength(5);
+		expect(html.match(/class="invisible"/g)).toHaveLength(1);
+		expect(html.match(new RegExp(`dateTime="${iso(start)}"`, "g"))).toHaveLength(2);
+	});
+
+	it("uses each unsaved active call's own start, before an assistant message exists", () => {
+		const active = new Map(["one", "two"].map((id, index) => [id, { toolCallId: id, toolName: "read", args: { path: `${id}.ts` }, startedAt: start + index * 120_000 }]));
+		const response = unsavedToolsMessage(active.values(), new Set(), null)!;
+		const html = renderToStaticMarkup(createElement(AssistantBlocks, { message: response, mode: "thinking", results: new Map(), active, pending: false, synthetic: true }));
+		expect(html).toContain(`dateTime="${iso(start)}"`);
+		expect(html).toContain(`dateTime="${iso(start + 120_000)}"`);
+	});
+
+	it.each(["normal", "thinking", "verbose"] as const)("renders a custom notice's entry time in %s", mode => {
+		const html = renderToStaticMarkup(createElement(NoticeRow, { entry: { customType: "status", content: "Completed the check.", timestamp: iso(start) }, mode }));
+		expect(html).toContain(`dateTime="${iso(start)}"`);
+		const untimed = renderToStaticMarkup(createElement(NoticeRow, { entry: { customType: "tsp-notice", content: "No timestamp was recorded." }, mode }));
+		expect(untimed).not.toContain("<time");
+	});
+
+	it.each(["thinking", "verbose"] as const)("deduplicates adjacent calls and restarts after reply prose in %s", mode => {
+		const response = reply(start, [call("first"), call("second"), { type: "toolCall", id: "out", name: "write", arguments: { path: "out://progress", content: "Progress." } }, call("third")]);
+		const html = renderToStaticMarkup(createElement(AssistantBlocks, { message: response, mode, results: new Map(), active: new Map(), pending: false }));
+		expect(html.match(/<time /g)).toHaveLength(3);
+		expect(html.match(/class="invisible"/g)).toHaveLength(1);
+	});
+
+	it("shows the same recorded times from the first stream render through the saved reply", () => {
+		const response = reply(start, [{ type: "thinking", thinking: "Check the recorded time." }, call("source"), { type: "text", text: "The source is correct." }]);
+		const guest = { phase: "live", header: { id: "stream" }, entries: [], stream: response, activeTools: new Map(), agents: [], progress: new Map(), lifecycle: new Map(), uiRequest: null, loading: null };
+		const live = { mode: "live", guest, host: null, history: null, working: true } as unknown as SessionView;
+		const saved = { mode: "saved", guest: null, host: null, history: { header: { id: "stream" }, entries: [entry("saved", response)] }, working: false } as unknown as SessionView;
+		const times = (view: SessionView) => {
+			const session = { projectPath: "/repo", tabId: "stream", subscribe: () => () => {}, getSnapshot: () => view, guestClient: () => null, tspNotices: { subscribe: () => () => {}, getSnapshot: () => [] } } as unknown as SessionController;
+			return renderToStaticMarkup(createElement(TooltipProvider, null, createElement(Transcript, { session, view, mode: "thinking" }))).match(/<time[^>]*>.*?<\/time>/g);
+		};
+		expect(times(live)).toHaveLength(3);
+		expect(times(live)).toEqual(times(saved));
+	});
+
+	it.each([undefined, "tsp"] as const)("renders saved user and successive reply times identically with transport %s", transport => {
+		const userTime = start - 60_000;
+		const entries: SessionEntry[] = [
+			{ type: "message", id: "user", parentId: null, timestamp: iso(userTime), message: { role: "user", content: "Review this.", timestamp: userTime + 1000 } },
+			entry("one", reply(start, [{ type: "text", text: "First reply." }])),
+			entry("two", reply(end, [{ type: "text", text: "Second reply." }])),
+			{ type: "compaction", id: "compact", parentId: null, timestamp: iso(end + 5000), summary: "Summary.", firstKeptEntryId: "user", tokensBefore: 10 },
+		];
+		const view = { mode: "saved", guest: null, host: transport ? { transport } : null, history: { header: { id: "saved" }, entries }, working: false } as unknown as SessionView;
+		const session = { projectPath: "/repo", tabId: "saved", subscribe: () => () => {}, getSnapshot: () => view, guestClient: () => null, tspNotices: { subscribe: () => () => {}, getSnapshot: () => [] } } as unknown as SessionController;
+		const html = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(Transcript, { session, view, mode: "thinking" })));
+		for (const time of [userTime, start, end, end + 5000]) expect(html).toContain(`dateTime="${iso(time)}"`);
+		expect(html).not.toContain(`dateTime="${iso(end + 1000)}"`);
+		expect(html).toContain('aria-live="off"');
+		expect(html).toContain("Second reply.");
+	});
 });

@@ -438,3 +438,17 @@ describe("interim reply file summaries", () => {
 		expect(summaries.get("last")?.files).toEqual([{ path: "/repo/report.md", action: "written", added: null, removed: null }]);
 	});
 });
+
+it("starts each unsaved tool group at its own active call time", () => {
+	const active = new Map([
+		["first", { toolCallId: "first", toolName: "read", args: { path: "first.ts" }, startedAt: 1000 }],
+		["helper", { toolCallId: "helper", toolName: "task", args: {}, startedAt: 2000 }],
+		["later", { toolCallId: "later", toolName: "read", args: { path: "later.ts" }, startedAt: 9000 }],
+	]);
+	const unsaved = unsavedToolsMessage(active.values(), new Set(), null)!;
+	const entries = liveLayoutEntries([user("go")], null, unsaved, true);
+	const layout = transcriptLayout(entries, { live: true, group: true, context, active });
+	const groups = layout.entries.get(TAIL_ENTRY)!.groups;
+	expect(groups.get(0)).toMatchObject({ key: "first", startedAt: 1000 });
+	expect(groups.get(2)).toMatchObject({ key: "later", startedAt: 9000 });
+});

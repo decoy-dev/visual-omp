@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { elapsed, useNow } from "../../shell/hooks";
 import { cn, Expand, PulseDot, Rise } from "../../ui";
 import type { ToolGroupPlan } from "./turns";
+import { TranscriptTime } from "./TranscriptTime";
 
 /** "Working for 14s", counting up each second while the group runs. */
 function WorkingFor({ since }: { since: number }): ReactNode {
@@ -90,6 +91,7 @@ export function ToolGroup({
 					{time !== null && " · "}
 					{t("work.group.calls", { count: plan.calls })}
 				</span>
+				<TranscriptTime timestamp={plan.startedAt} className="ml-auto" inControl />
 				{plan.failed > 0 && <span className="shrink-0 text-sm text-err">{t("work.group.failed", { count: plan.failed })}</span>}
 				{plan.running && (
 					<span className="inline-flex size-4 shrink-0 items-center justify-center">
