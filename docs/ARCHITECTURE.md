@@ -345,11 +345,24 @@ closure of the addressed surface, or process exit. Closing a settings surface al
 acknowledge `/exit`. A live hook, regardless of arbitration state or region, blocks shutdown's raw
 Escape and preserves the existing deadline and native force-stop decision.
 
-Startup worktree creation remains disabled. During application-driven shutdown, hook controls
-are unavailable with "This chat is closing." Exit questions can be read in the native hook card
-but cannot be answered while closing; authorized shutdown-question interaction remains Phase 4b.
-Typing `/exit` during a live session is a different case: its unmatched hook question remains
-answerable through the ordinary guarded path until application-driven shutdown starts.
+Startup worktree creation remains disabled. During application-driven shutdown, renderer hook
+controls remain unavailable with "This chat is closing." Main recognizes the exact live exit
+worktree confirm through `tsp/worktree.ts`, reusing the shared hook projection and activation
+helpers. The existing operating-system dialog preserves omp's risk text verbatim, with Keep as
+the default and cancel choice. Keep activates No; Remove activates Yes. This narrow main-owned
+answer path revalidates the question's full shape and detail, current host, generation and protocol
+epoch inside the serialized writer. The shared question arbitrator guards both dialog opening and
+the final activation, then records the answer in the same ownership set used by ordinary hook
+answers. Matched, ambiguous, settling and already-answering questions remain excluded, including
+retained remote ownership across disconnect. Only an otherwise unowned exact exit question gets
+the narrow disconnected-shutdown allowance. It waits for physical node departure before continuing.
+Time spent in that native dialog does not advance the shutdown deadline, and a written answer
+is never automatically retried. Other hooks retain the no-raw-Escape rule and native force-stop
+decision. A typed `/exit` during a live session keeps the ordinary arbitrated native hook card;
+only application-driven shutdown authorizes the operating-system dialog.
+The no-model `worktree-exit-ask` and `worktree-exit-ask-remove` recordings create owned worktrees
+in isolated scratch git repositories, dirty a tracked file and complete both choices with
+`activate`. `worktree-start-ask` records startup evidence without changing the hosted override.
 
 If ten seconds elapse from spawn without a supported hello, main marks the preview failed once
 output has been observed. A supported hello starts a separate five-second deadline for the first

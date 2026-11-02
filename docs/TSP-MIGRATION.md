@@ -539,6 +539,23 @@ Tab target replacement and restored-text retention across delayed clear confirma
 - **TSP.** Startup and exit worktree questions are hook selectors with title, detail and options. Shutdown is already handled by 2.0.
 - **Files.** `src/main/omp/tsp/worktree.ts` (main-side matcher), `host.ts`.
 - **Acceptance.** Replay: `worktree-exit-ask` (scratch git repo, `worktree.onExit: ask`) shows the native dialog with omp's risk text verbatim and Keep as default, and both Keep and Remove complete with `activate`. `worktree-start-ask` is recorded for evidence while the hosted override stays. Manual: quit while working still follows SPEC Lifecycle.
+- **Implementation status (2026-11-02).** Application-driven TSP shutdown recognizes only the live
+  `Remove worktree?` hook with enabled Yes and No options. Its existing native dialog retains
+  omp's complete risk description, defaults and cancels to Keep, and activates the recorded
+  No or Yes item for Keep or Remove. Main revalidates the question, host, generation and epoch
+  at the serialized writer, then waits for physical node departure. Both ordinary hook answers
+  and shutdown share arbitration ownership. Matched, ambiguous, settling and answering questions
+  cannot open or submit a shutdown dialog; retained remote ownership stays blocked after disconnect.
+  An otherwise unowned exact exit question can finish after collab teardown. Other application
+  input remains unavailable while closing, and a live hook still prevents raw Escape.
+- **Evidence and scope.** Three standalone, no-model recordings use fresh scratch git repositories:
+  `worktree-exit-ask`, `worktree-exit-ask-remove` and `worktree-start-ask`. Both exit recordings
+  include uncommitted changes and complete with `activate`. Startup creation remains disabled
+  for hosted chats; the startup recording is evidence only. A typed `/exit` while the chat is
+  live retains the existing arbitrated native hook card. The main-owned operating-system dialog
+  is restricted to application-driven shutdown. Host replay checks both decisions, the exact risk
+  text, Keep defaults, long native decisions, stale-question refusal and zero painted-screen reads.
+  Manual quit while working remains a main-agent or owner check against SPEC Lifecycle.
 
 ### 4c. Plan review (A10)
 

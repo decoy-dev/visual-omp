@@ -27,6 +27,7 @@ const pty = vi.hoisted(() => ({
 	historyDbPath: undefined as string | undefined,
 	shutdown: undefined as "teardown" | undefined,
 	screen: [] as string[],
+	screenReads: vi.fn(),
 	keys: vi.fn(async (_keys: string) => {}),
 	confirm: vi.fn(async (_options?: MessageBoxOptions) => ({ response: 0 })),
 	writes: vi.fn(),
@@ -61,7 +62,7 @@ vi.mock("./relay", () => ({
 		stop() {}
 	},
 }));
-vi.mock("./tui-debug", () => ({ TuiDebugClient: class { info = async () => pty.focus; screen = async () => pty.screen; keys = pty.keys; close() {} } }));
+vi.mock("./tui-debug", () => ({ TuiDebugClient: class { info = async () => pty.focus; screen = async () => { pty.screenReads(); return pty.screen; }; keys = pty.keys; close() {} } }));
 vi.mock("electron", () => ({ BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: pty.confirm }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: false }) } }));
 vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, beginGeneration: vi.fn(), close: async () => {} }) }));
 // Route promise timers through the fake clock in deadline regressions.
@@ -85,6 +86,7 @@ beforeEach(async () => {
 	pty.historyDbPath = undefined;
 	pty.shutdown = undefined;
 	pty.screen = [];
+	pty.screenReads.mockClear();
 	pty.keys.mockReset().mockResolvedValue(undefined);
 	pty.confirm.mockReset().mockResolvedValue({ response: 0 });
 	pty.writes.mockReset();
@@ -1534,6 +1536,220 @@ describe("recorded TSP lifecycle gate", () => {
 		for (const message of messages.slice(boundary + Number(closeOverlay))) tspMessage(message.verb, message.body);
 		await exit(0); await stopping;
 		expect(pty.kill).not.toHaveBeenCalled(); expect(pty.confirm).not.toHaveBeenCalled();
+	});
+	it.each([{ name: "worktree-exit-ask", response: 0 }, { name: "worktree-exit-ask-remove", response: 1 }])("replays native shutdown choice for $name with omp's exact risk text", async ({ name, response }) => {
+		await launchTsp("darwin", true);
+		const messages = await recording(name, "messages");
+		const events = await recording<TspRendererEvent>(name, "events");
+		const exitEvent = events.find(event => event.body?.ev === "send" && event.body.text === "/exit")!;
+		const choice = events.find(event => event.body?.ev === "activate")!;
+		for (const message of messages.slice(0, exitEvent.afterMessage)) tspMessage(message.verb, message.body);
+		await connect();
+		const decision = Promise.withResolvers<{ response: number }>();
+		pty.confirm.mockImplementationOnce(() => decision.promise);
+		pty.writes.mockClear(); pty.screenReads.mockClear();
+		const stopping = host.stop();
+		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining(JSON.stringify(exitEvent.body))));
+		for (const message of messages.slice(exitEvent.afterMessage, choice.afterMessage)) tspMessage(message.verb, message.body);
+		await vi.advanceTimersByTimeAsync(100);
+		expect(pty.confirm).toHaveBeenCalledOnce();
+		const picker = host.tspSnapshot()!.surfaces[0]!.document.c!.find(node => node.id === "layer")!.c!.find(node => node.k === "picker")!;
+		expect(picker.k).toBe("picker");
+		const risk = picker.k === "picker" ? picker.p!.subtitle : "";
+		expect(risk).toContain("has uncommitted changes");
+		expect(pty.confirm).toHaveBeenCalledWith(expect.objectContaining({
+			type: "warning", message: "Remove worktree?", detail: risk,
+			buttons: ["Keep worktree", "Remove worktree"], defaultId: 0, cancelId: 0,
+		}));
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(pty.confirm).toHaveBeenCalledOnce();
+		expect(pty.kill).not.toHaveBeenCalled();
+		await expect(host.tspAnswer(1, { kind: "choose", sf: "s:1", id: picker.id, target: picker.id, item: "0" }, host.tspSnapshot()!.epoch)).rejects.toThrow("closing");
+		decision.resolve({ response });
+		await vi.advanceTimersByTimeAsync(1);
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining(JSON.stringify(choice.body)));
+		expect(pty.writes).not.toHaveBeenCalledWith("\x1b");
+		for (const message of messages.slice(choice.afterMessage, -1)) tspMessage(message.verb, message.body);
+		await vi.advanceTimersByTimeAsync(14_000);
+		expect(pty.confirm).toHaveBeenCalledOnce();
+		const close = messages.at(-1)!;
+		tspMessage(close.verb, close.body);
+		pty.exit?.({ exitCode: 0 }); await vi.advanceTimersByTimeAsync(100); await stopping;
+		expect(pty.screenReads).not.toHaveBeenCalled();
+		expect(pty.keys).not.toHaveBeenCalled();
+		expect(pty.kill).not.toHaveBeenCalled();
+	});
+
+	it.each(["epoch", "risk", "disabled", "replacement", "closed", "exit", "generation"])("refuses an outstanding native removal after its %s changes", async change => {
+		await launchTsp("darwin", true);
+		const messages = await recording("worktree-exit-ask-remove", "messages");
+		const choice = (await recording<TspRendererEvent>("worktree-exit-ask-remove", "events")).find(event => event.body?.ev === "activate")!;
+		for (const message of messages.slice(0, choice.afterMessage)) tspMessage(message.verb, message.body);
+		await connect();
+		const decision = Promise.withResolvers<{ response: number }>();
+		pty.confirm.mockImplementationOnce(() => decision.promise).mockImplementationOnce(() => new Promise(() => {}));
+		const stopping = host.stop();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(pty.confirm).toHaveBeenCalledOnce();
+		pty.writes.mockClear();
+		const id = choice.body.ev === "activate" ? choice.body.id : "";
+		if (change === "epoch") tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		if (change === "risk") tspMessage("f", { sf: "s:1", s: 100, ops: [["set", id, { subtitle: "Changed risk description" }]] });
+		if (change === "disabled") tspMessage("f", { sf: "s:1", s: 100, ops: [["set", id, { items: [{ id: "0", label: "Yes", disabled: true }, { id: "1", label: "No" }] }]] });
+		if (change === "replacement") tspMessage("f", { sf: "s:1", s: 100, ops: [["del", id]] });
+		if (change === "closed") tspMessage("x", { id: "s:1", keep: true });
+		if (change === "generation") {
+			pty.events.onHostClose?.("room");
+			await connect("other-room");
+			await vi.waitFor(() => expect(host.state.generation).toBe(2));
+		}
+		if (change === "exit") { pty.exit?.({ exitCode: 0 }); await vi.advanceTimersByTimeAsync(1); }
+		decision.resolve({ response: 1 });
+		await vi.advanceTimersByTimeAsync(1);
+		expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining('"ev":"activate"'));
+		expect(pty.writes).not.toHaveBeenCalledWith("\x1b");
+		if (change !== "exit") pty.exit?.({ exitCode: 0 });
+		await vi.advanceTimersByTimeAsync(100); await stopping;
+	});
+
+	it("keeps recorded startup creation evidence outside the shutdown answer path", async () => {
+		await launchTsp("darwin", true);
+		const messages = await recording("worktree-start-ask", "messages");
+		for (const message of messages.slice(0, -1)) tspMessage(message.verb, message.body);
+		await connect();
+		const stopping = host.stop();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(pty.confirm).not.toHaveBeenCalled();
+		expect(pty.writes).not.toHaveBeenCalledWith("\x1b");
+		expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining('"ev":"activate"'));
+		pty.exit?.({ exitCode: 0 }); await vi.advanceTimersByTimeAsync(100); await stopping;
+	});
+
+	it.each(["connected", "teardown"])("does not re-answer a typed exit question during %s shutdown", async connection => {
+		await launchTsp("darwin", true);
+		const messages = await recording("worktree-exit-ask", "messages");
+		const choice = (await recording<TspRendererEvent>("worktree-exit-ask", "events")).find(event => event.body?.ev === "activate")!;
+		for (const message of messages.slice(0, choice.afterMessage)) tspMessage(message.verb, message.body);
+		await connect();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(pty.confirm).not.toHaveBeenCalled();
+		const snapshot = host.tspSnapshot()!;
+		host.tspQuestions({ hostId: host.id, generation: 1, epoch: snapshot.epoch, connection: 1, revision: 1, connected: true, requests: [] });
+		const event = choice.body;
+		if (event.ev !== "activate") throw new Error("Missing recorded activation");
+		await host.tspAnswer(1, { kind: "choose", sf: event.sf, id: event.id, target: event.id, item: event.item }, snapshot.epoch);
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining(JSON.stringify(event)));
+		if (connection === "teardown") {
+			host.tspQuestions({ hostId: host.id, generation: 1, epoch: snapshot.epoch, connection: 1, revision: 2, connected: false, requests: [] });
+			pty.events.onHostClose?.("room");
+		}
+		const stopping = host.stop();
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(pty.confirm).not.toHaveBeenCalled();
+		expect(pty.writes.mock.calls.filter(([data]) => data.includes('"ev":"activate"'))).toHaveLength(1);
+		for (const message of messages.slice(choice.afterMessage)) tspMessage(message.verb, message.body);
+		pty.exit?.({ exitCode: 0 }); await vi.advanceTimersByTimeAsync(100); await stopping;
+	});
+
+	it.each(["stalled", "exited"])("does not repeat an activated shutdown answer when omp is %s", async outcome => {
+		await launchTsp("darwin", true);
+		const messages = await recording("worktree-exit-ask", "messages");
+		const choice = (await recording<TspRendererEvent>("worktree-exit-ask", "events")).find(event => event.body?.ev === "activate")!;
+		for (const message of messages.slice(0, choice.afterMessage)) tspMessage(message.verb, message.body);
+		await connect();
+		pty.writes.mockClear();
+		const stopping = host.stop();
+		await vi.advanceTimersByTimeAsync(1);
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining(JSON.stringify(choice.body)));
+		if (outcome === "stalled") {
+			await vi.advanceTimersByTimeAsync(9000);
+			expect(pty.confirm).toHaveBeenCalledOnce();
+			expect(pty.writes.mock.calls.filter(([data]) => data.includes('"ev":"activate"'))).toHaveLength(1);
+			expect(pty.writes).not.toHaveBeenCalledWith("\x1b");
+		}
+		// Process exit is enough, including when omp omits a final frame or close.
+		let stopped = false;
+		void stopping.then(() => { stopped = true; });
+		pty.exit?.({ exitCode: 0 });
+		await vi.advanceTimersByTimeAsync(100);
+		expect(stopped).toBe(true);
+		await stopping;
+	});
+
+	it.each(["matched", "ambiguous", "settling"].flatMap(status => ["before", "pending", "writer", "disconnected"].map(when => ({ status, when }))).concat([{ status: "identity", when: "writer" }]))("preserves $status ownership at $when shutdown arbitration", async ({ status, when }) => {
+		await launchTsp("darwin", true);
+		const messages = await recording("worktree-exit-ask", "messages");
+		const choice = (await recording<TspRendererEvent>("worktree-exit-ask", "events")).find(event => event.body?.ev === "activate")!;
+		for (const message of messages.slice(0, choice.afterMessage)) tspMessage(message.verb, message.body);
+		await connect();
+		const snapshot = host.tspSnapshot()!;
+		const question = hookQuestions(snapshot.surfaces, 1)[0]!;
+		let revision = 0;
+		const request = { reqId: 31, kind: "select", title: question.title, options: question.options! };
+		const mirror = (requests: typeof request[], connected = true) => host.tspQuestions({
+			hostId: host.id, generation: 1, epoch: snapshot.epoch, connection: 1, revision: ++revision, connected, requests,
+		});
+		const takeOwnership = () => {
+			if (status === "identity") {
+				tspMessage("f", { sf: question.surfaceId, s: 100, ops: [["set", question.nodeId, { subtitle: "Changed after the native decision" }]] });
+				return;
+			}
+			mirror(status === "ambiguous" ? [request, { ...request, reqId: 32 }] : [request]);
+			if (status === "settling") mirror([]);
+			expect(host.tspSnapshot()!.questionMatches![0]!.status).toBe(status);
+		};
+		mirror([]);
+		const decision = Promise.withResolvers<{ response: number }>();
+		pty.confirm.mockImplementationOnce(() => decision.promise).mockImplementationOnce(() => new Promise(() => {}));
+		if (when === "before" || when === "disconnected") {
+			takeOwnership();
+			if (when === "disconnected") {
+				mirror([], false);
+				pty.events.onHostClose?.("room");
+			}
+		}
+		pty.writes.mockClear();
+		const stopping = host.stop();
+		await vi.advanceTimersByTimeAsync(1);
+		if (when === "pending") takeOwnership();
+		const original = TspSession.prototype.answerHook;
+		const writer = when === "writer" ? vi.spyOn(TspSession.prototype, "answerHook").mockImplementationOnce(function (this: TspSession, input, assertCurrent) {
+			const pending = original.call(this, input, assertCurrent);
+			takeOwnership();
+			return pending;
+		}) : null;
+		if (when === "before" || when === "disconnected") expect(pty.confirm).not.toHaveBeenCalled();
+		else expect(pty.confirm).toHaveBeenCalledOnce();
+		decision.resolve({ response: 1 });
+		try {
+			await vi.advanceTimersByTimeAsync(100);
+			if (writer) expect(writer).toHaveBeenCalledOnce();
+			expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining('"ev":"activate"'));
+			expect(pty.writes).not.toHaveBeenCalledWith("\x1b");
+		} finally { writer?.mockRestore(); }
+		pty.exit?.({ exitCode: 0 }); await vi.advanceTimersByTimeAsync(100); await stopping;
+	});
+
+	it("allows the exact unowned shutdown question after collab room teardown", async () => {
+		await launchTsp("darwin", true);
+		const messages = await recording("worktree-exit-ask", "messages");
+		const choice = (await recording<TspRendererEvent>("worktree-exit-ask", "events")).find(event => event.body?.ev === "activate")!;
+		for (const message of messages.slice(0, choice.afterMessage)) tspMessage(message.verb, message.body);
+		await connect();
+		const snapshot = host.tspSnapshot()!;
+		host.tspQuestions({ hostId: host.id, generation: 1, epoch: snapshot.epoch, connection: 1, revision: 1, connected: true, requests: [] });
+		host.tspQuestions({ hostId: host.id, generation: 1, epoch: snapshot.epoch, connection: 1, revision: 2, connected: false, requests: [] });
+		pty.events.onHostClose?.("room");
+		pty.writes.mockClear();
+		const stopping = host.stop();
+		await vi.advanceTimersByTimeAsync(100);
+		expect(pty.confirm).toHaveBeenCalledOnce();
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining(JSON.stringify(choice.body)));
+		await vi.advanceTimersByTimeAsync(9000);
+		expect(pty.confirm).toHaveBeenCalledOnce();
+		expect(pty.writes.mock.calls.filter(([data]) => data.includes('"ev":"activate"'))).toHaveLength(1);
+		for (const message of messages.slice(choice.afterMessage)) tspMessage(message.verb, message.body);
+		pty.exit?.({ exitCode: 0 }); await vi.advanceTimersByTimeAsync(100); await stopping;
 	});
 });
 

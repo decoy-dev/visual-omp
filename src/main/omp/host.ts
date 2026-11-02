@@ -23,7 +23,7 @@ import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspEditorRestore, type 
 import { composer, openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { TSP_ROLES, TSP_STATUS } from "@shared/tsp/roles";
 import { hookQuestions, QuestionArbitrator } from "@shared/tsp/question-match";
-import { TspHookAnswer } from "@shared/tsp/dialogs";
+import { nodeHasLeft, TspHookAnswer } from "@shared/tsp/dialogs";
 import { composerFacts as readComposerFacts } from "./tsp/composer";
 import { BrowserWindow, dialog, nativeTheme, systemPreferences, type MessageBoxOptions, type MessageBoxReturnValue } from "electron";
 import hostLabels from "../../shared/i18n/en/host.json";
@@ -41,6 +41,7 @@ import { findSessionFile, onSessionsChanged } from "./sessions";
 import { TuiDebugClient, type TuiPaint } from "./tui-debug";
 import { TspInputStateError, TspSession, type TspEditorTarget } from "./tsp/session";
 import { TspStream } from "./tsp/stream";
+import { worktreeExitConfirmation, type WorktreeExitConfirmation } from "./tsp/worktree";
 import { StartupDiagnosticCapture, startupDiagnostic, STARTUP_DIAGNOSTIC_MAX_CHARS } from "./startup-diagnostics";
 
 const CollabHosts = z.object({
@@ -116,6 +117,7 @@ export class SessionHost {
 	#tspFailure: string | null = null;
 	#tspHandshakeTimer: NodeJS.Timeout | null = null;
 	#tspExitSurface: string | null = null;
+	#tspShutdownScope: { generation: number; epoch: number } | null = null;
 	#tspFirstBytes = Buffer.alloc(0);
 	#tspQuestions = new QuestionArbitrator();
 	#editorRestore: EditorRestoreCapture | null = null;
@@ -373,7 +375,10 @@ export class SessionHost {
 		// opens, link resolution and later rotations keep the normal authority gate.
 		const lifecycle = this.state.phase === "exited" ? "exited" : this.#tspFailure ? "failed" : current && (this.state.phase === "live" || !this.#hadCollabRoom) ? "live" : "transitioning";
 		const reason = this.#closing ? "This chat is closing." : this.#tspFailure ?? (lifecycle !== "live" ? "Waiting for omp to open its semantic screen." : this.#editorTransferBlocked);
-		const questionMatches = this.#tspQuestions.matches({ hostId: this.id, generation: this.state.generation, epoch: protocol.epoch }, hookQuestions(surfaces, this.state.generation));
+		const questionMatches = this.#tspQuestions.matches(
+			{ hostId: this.id, generation: this.state.generation, epoch: protocol.epoch },
+			hookQuestions(surfaces, this.state.generation), hookQuestions(protocol.surfaces, this.state.generation),
+		);
 		const overlay = openOverlay(surfaces, true);
 		const matchedQuestion = overlay && questionMatches.find(match => match.surfaceId === overlay.surface.open.id && match.nodeId === overlay.node.id && match.status === "matched");
 		const availability = reason ? { available: false, reason }
@@ -590,7 +595,18 @@ export class SessionHost {
 
 	/** Shared by application input and shutdown; terminal-sheet bytes stay a separate explicit path. */
 	async #resolveWorktreeQuestion(): Promise<void> {
-		if (this.#tsp) return;
+		if (this.#tsp) {
+			if (!this.#closing || this.#tspShutdownScope?.generation !== this.state.generation || this.#tspShutdownScope.epoch !== this.#tsp.snapshot().epoch) return;
+			if (this.#worktreeDecision) return this.#worktreeDecision;
+			const confirmation = worktreeExitConfirmation(this.#tsp.snapshot().surfaces);
+			if (!confirmation) return;
+			if (!this.#tspQuestions.canAnswerShutdown(
+				{ hostId: this.id, generation: this.state.generation, epoch: this.#tsp.snapshot().epoch },
+				hookQuestions(this.#tsp.snapshot().surfaces, this.state.generation), confirmation.sf, confirmation.id,
+			)) return;
+			this.#worktreeDecision = this.#confirmTspWorktree(confirmation).finally(() => { this.#worktreeDecision = null; });
+			return this.#worktreeDecision;
+		}
 		if (this.#worktreeDecision) return this.#worktreeDecision;
 		if (!this.#debug) throw new Error("omp is not running");
 		const confirmation = worktreeConfirmation(await this.#debug.screen());
@@ -630,6 +646,43 @@ export class SessionHost {
 			}
 			throw new Error(hostLabels.worktreeQuestionUnresolved);
 		} finally { this.#confirmingWorktree = false; }
+	}
+
+	/** Closing owns only this exact exit confirm; ordinary hook input remains rejected. */
+	async #confirmTspWorktree(confirmation: WorktreeExitConfirmation): Promise<void> {
+		const session = this.#tsp!;
+		const epoch = session.snapshot().epoch;
+		const generation = this.state.generation;
+		const pty = this.#pty;
+		const scope = { hostId: this.id, generation, epoch };
+		const current = () => {
+			if (!this.#closing || this.#pty !== pty || this.state.phase === "exited" || session.snapshot().epoch !== epoch || this.state.generation !== generation) return null;
+			const next = worktreeExitConfirmation(session.snapshot().surfaces);
+			return next && JSON.stringify(next) === JSON.stringify(confirmation)
+				&& this.#tspQuestions.canAnswerShutdown(scope, hookQuestions(session.snapshot().surfaces, generation), confirmation.sf, confirmation.id) ? next : null;
+		};
+		this.#confirmingWorktree = true;
+		try {
+			const result = await this.#messageBox({
+				type: "warning", message: confirmation.title, detail: confirmation.detail,
+				buttons: [hostLabels.keepWorktree, hostLabels.removeWorktree],
+				defaultId: 0, cancelId: 0, noLink: true,
+			});
+			if (!current()) return;
+			const event = result.response === 1 ? confirmation.remove : confirmation.keep;
+			if (event.ev !== "activate") return;
+			await session.answerHook({ kind: "choose", sf: confirmation.sf, id: confirmation.id, target: event.id, item: event.item }, () => {
+				if (!current()) throw new TspInputStateError(hostLabels.worktreeQuestionUnresolved);
+				this.#tspQuestions.answer(scope, hookQuestions(session.snapshot().surfaces, generation), confirmation.sf, confirmation.id, "shutdown");
+			});
+			this.#publishTsp();
+			await Promise.race([this.#exited, session.waitFor(() => nodeHasLeft(session.snapshot().surfaces, confirmation.sf, confirmation.id), () => {
+				if (session.snapshot().epoch !== epoch || this.state.generation !== generation) throw new TspInputStateError(hostLabels.worktreeQuestionUnresolved);
+			}, 8000, hostLabels.worktreeQuestionUnresolved)]);
+		} finally {
+			this.#shutdownProgressAt = Date.now();
+			this.#confirmingWorktree = false;
+		}
 	}
 
 	ackEditorRestore(id: string): void {
@@ -809,7 +862,10 @@ export class SessionHost {
 	/** Closing cancels application input immediately. Only an explicit native decision can force-stop omp. */
 	stop(): Promise<void> {
 		this.#closing = true;
-		if (this.#tsp) this.#publishTsp();
+		if (this.#tsp) {
+			this.#tspShutdownScope ??= { generation: this.state.generation, epoch: this.#tsp.snapshot().epoch };
+			this.#publishTsp();
+		}
 		this.#stopping ??= this.#stop().finally(() => { this.#stopping = null; });
 		return this.#stopping;
 	}
@@ -841,6 +897,11 @@ export class SessionHost {
 		}
 		this.#shutdownProgressAt = Date.now();
 		while (this.#pty === pty) {
+			if (this.#tsp) {
+				try { await this.#resolveWorktreeQuestion(); }
+				catch (error) { this.#update({ error: error instanceof Error ? error.message : String(error) }); }
+				if (this.#pty !== pty) return;
+			}
 			if (this.#tsp && !exitSent && this.#shutdownStage === "requested") {
 				const surfaces = this.#tsp.snapshot().surfaces;
 				const overlay = openOverlay(surfaces, true);

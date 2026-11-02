@@ -30,6 +30,15 @@ loopback scripts exercise steer, follow-up delivery, Escape restoration, large t
 attachment, approval denial, ask ownership and prediction acceptance. Shell and Python scenarios
 configure the local model without making a provider request. `image-attach` also attaches a collab guest.
 
+Phase 4b adds three no-model worktree recordings, bringing the baseline to 77 raw recordings
+and 77 integrity manifests. Each creates a fresh scratch git repository and an initial commit.
+`worktree-start-ask` enables `worktree.onStart: ask` and records the creation question without
+answering it. The exit scenarios keep startup creation off, create an owned worktree through
+`/wt fixture`, modify its tracked `fixture.txt` and submit `/exit` with `worktree.onExit: ask`.
+`worktree-exit-ask` activates No (Keep); `worktree-exit-ask-remove` activates Yes (Remove).
+Both retain omp's uncommitted-changes risk text and finish natural process exit. These scenarios
+configure no model and make no provider request. Hosted chats retain `worktree.onStart: off`.
+
 
 ## Capture format
 
@@ -76,6 +85,8 @@ The sanitizer replaces OSC 7 hosts with `localhost` and private home and tempora
 | exit-with-overlay | `/hotkeys`, Escape and semantic `/exit` preserve that close sequence. |
 | startup-no-model | An empty profile emits its startup warning, then exits. |
 | startup-missing-resume | A missing `--resume` file prints its quoted path and recovery guidance, then exits with code 1 before the TUI starts. No model is configured. |
+| worktree-start-ask | A scratch git checkout with `worktree.onStart: ask` opens the startup Yes/No hook. The recording ends without answering. |
+| worktree-exit-ask / worktree-exit-ask-remove | `/wt fixture` creates an owned worktree, a tracked file is changed, and `/exit` opens `Remove worktree?` with the uncommitted-changes description. Activation chooses No (Keep) or Yes (Remove), and omp exits. |
 | notice-error | Text submitted without a model emits `omp.notice.error` without a provider request. |
 | extensions | `/extensions` opens a picker, selects the first rule row and closes. The unsupported `expand` action is not used. |
 | import-claude | `--from-claude` selects and activates one synthetic imported session, closes the startup surface and negotiates a second hello. |

@@ -6,7 +6,7 @@ export const TSP_ROLES = {
 	session: "omp.session", editor: "omp.editor", editorShell: "omp.editor.shell", composerFocus: "omp.composer.focus",
 	editorAsk: "omp.editor.ask", editorAskHidden: "omp.editor.ask.hidden",
 	composerModel: "omp.composer.model", composerEffort: "omp.composer.effort", composerModelEffort: "omp.composer.model.effort",
-	compaction: "omp.compaction", working: "omp.working",
+	compaction: "omp.compaction", working: "omp.working", loader: "omp.loader",
 	queue: "omp.queue", queueItem: "omp.queue.item", approvalChoices: "omp.approval.choices", composerChips: "omp.composer.chips",
 	user: "omp.user", assistant: "omp.assistant", thinking: "omp.thinking", tool: "omp.tool", agent: "omp.agent",
 	toastStatus: "omp.toast.status", noticeError: "omp.notice.error", noticeWarning: "omp.notice.warning",
@@ -35,7 +35,7 @@ export const TSP_ACTIONS = {
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
 export function isKnownAction(action: string): boolean { return knownActions.has(action); }
 /** Recorded actions without an app interaction path stay display-only. */
-export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true };
+export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 export const TSP_PLAN_OPTIONS = {
 	execute: "Approve and execute", compact: "Approve and compact context", keep: "Approve and keep context",

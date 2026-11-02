@@ -49,6 +49,37 @@ describe("hook-collab question arbitration", () => {
 		expect(() => arb.answer(scope, [dialog], "s", "hook")).toThrow("settling");
 		expect(arb.matches(scope, [])).toEqual([]);
 		expect(arb.matches(scope, [dialog])[0]?.status).toBe("unmatched");
+		expect(arb.canAnswerShutdown(scope, [dialog], "s", "hook")).toBe(true);
+	});
+	it("shares local and shutdown answer ownership without requiring a connected shutdown mirror", () => {
+		const arb = new QuestionArbitrator();
+		expect(arb.canAnswerShutdown(scope, [dialog], "s", "hook")).toBe(true);
+		arb.answer(scope, [dialog], "s", "hook", "shutdown");
+		expect(arb.matches(scope, [dialog])[0]?.status).toBe("answering");
+		expect(arb.canAnswerShutdown(scope, [dialog], "s", "hook")).toBe(false);
+		expect(() => arb.answer(scope, [dialog], "s", "hook", "shutdown")).toThrow("answering");
+		arb.matches(scope, []);
+		arb.update(scope, { ...state, requests: [] });
+		arb.answer(scope, [dialog], "s", "hook");
+		expect(arb.canAnswerShutdown(scope, [dialog], "s", "hook")).toBe(false);
+	});
+	it("retains answer ownership when input authority ends before physical node departure", () => {
+		const arb = new QuestionArbitrator();
+		arb.answer(scope, [dialog], "s", "hook", "shutdown");
+		expect(arb.matches(scope, [], [dialog])).toEqual([]);
+		expect(arb.canAnswerShutdown(scope, [dialog], "s", "hook")).toBe(false);
+		arb.matches(scope, [], []);
+		expect(arb.canAnswerShutdown(scope, [dialog], "s", "hook")).toBe(true);
+	});
+	it.each(["matched", "ambiguous", "settling"])("retains %s shutdown exclusion across a disconnected empty mirror", status => {
+		const arb = new QuestionArbitrator();
+		arb.update(scope, { ...state, requests: status === "ambiguous" ? [...state.requests, { ...state.requests[0]!, reqId: 5 }] : state.requests });
+		arb.matches(scope, [dialog]);
+		if (status === "settling") arb.update(scope, { ...state, revision: 2, requests: [] });
+		expect(arb.matches(scope, [dialog])[0]?.status).toBe(status);
+		arb.update(scope, { ...state, revision: 3, connected: false, requests: [] });
+		expect(arb.canAnswerShutdown(scope, [dialog], "s", "hook")).toBe(false);
+		expect(() => arb.answer(scope, [dialog], "s", "hook", "shutdown")).toThrow("unavailable");
 	});
 	it("waits for remote settlement AND node departure in either order", () => {
 		for (const first of ["node", "request"]) {

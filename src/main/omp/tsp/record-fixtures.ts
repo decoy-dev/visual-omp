@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spawn, type IPty } from "node-pty";
+import { parse } from "yaml";
 import type { TspEvent, TspNode } from "../../../shared/tsp";
 import { openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
 import { TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
@@ -106,6 +107,21 @@ async function scriptedProvider(script: ScriptedReply[], agent: string, models?:
   } } }));
   return { requests, release, stop: () => { for (const gate of gates.values()) gate.resolve(); server.closeAllConnections(); server.close(); } };
 }
+
+const worktreeQuestion = (session: TspSession, title: string) => {
+  for (const surface of session.snapshot().surfaces) {
+    if (surface.closed) continue;
+    for (const node of walkNodes(surface.document)) {
+      if (node.k === "picker" && node.p?.title === title) return { surface, node };
+    }
+  }
+  return undefined;
+};
+
+const scratchGit = (root: string, args: string[]) => execFileSync("git", args, {
+  cwd: root, encoding: "utf8",
+  env: { PATH: process.env.PATH!, HOME: join(root, "home"), USERPROFILE: join(root, "home"), XDG_CONFIG_HOME: join(root, "home", ".config"), GIT_CONFIG_NOSYSTEM: "1" },
+});
 const scenarios: Scenario[] = [
   ...[
     ["hotkeys", "/hotkeys"], ["jobs", "/jobs"], ["usage", "/usage"], ["session", "/session"],
@@ -127,6 +143,25 @@ const scenarios: Scenario[] = [
   { name: "tree-confirm", command: "/tree", end: "submit" },
   { name: "hook-collab-aware", command: "/vomp-fixture-select", hook: "select", end: "open" },
   { name: "handshake-timeout", command: null, end: "open" },
+  { name: "worktree-start-ask", command: null, end: "open", config: { worktree: { onStart: "ask", onExit: "keep" } } },
+  ...(["keep", "remove"] as const).map(choice => ({
+    name: choice === "keep" ? "worktree-exit-ask" : "worktree-exit-ask-remove", command: null,
+    config: { worktree: { onStart: "off", onExit: "ask" } },
+    run: async ({ session, send, until, root }: RecordingContext) => {
+      await session.submit("/wt fixture");
+      await until(() => session.availability().available && scratchGit(root, ["worktree", "list", "--porcelain"]).includes("wt/fixture"), "worktree was not created");
+      const worktrees = scratchGit(root, ["worktree", "list", "--porcelain"]);
+      const folder = worktrees.split("\n").find(line => line.startsWith("worktree ") && line.slice(9) !== root)?.slice(9);
+      if (!folder) throw new Error("Missing owned fixture worktree");
+      await writeFile(join(folder, "fixture.txt"), "Uncommitted fixture changes.\n");
+      await session.submit("/exit");
+      await until(() => !!worktreeQuestion(session, "Remove worktree?"), "exit question did not open");
+      const question = worktreeQuestion(session, "Remove worktree?")!;
+      const item = question.node.p?.items?.find(item => item.label === (choice === "remove" ? "Yes" : "No"));
+      if (!item) throw new Error("Missing worktree choice");
+      send({ ev: "activate", sf: question.surface.open.id, id: question.node.id, item: item.id });
+    },
+  })),
   { name: "model-switch", command: null },
   { name: "thinking-cycle", command: null },
   { name: "switch-typed", command: "/switch fixture/fixture-small" },
@@ -275,11 +310,17 @@ for (const scenario of scenarios) {
     tools: { approvalMode: "yolo" }, memory: { enabled: false }, idle: { enabled: false }, ...scenario.config,
     ...(compactSwitch ? { compaction: { asyncEnabled: false, keepRecentTokens: 4096 } } : {}),
     ...(relay ? { collab: { autoStart: "control", relayUrl: relay.url, displayName: "Fixture recorder" } } : {}),
-  }) : config);
+  }) : JSON.stringify({ ...parse(config), ...scenario.config }));
   if (modelControls && !provider) {
     await writeFile(join(agent, "models.yml"), JSON.stringify({ providers: { fixture: {
       baseUrl: "http://127.0.0.1:1/v1", apiKey: "fixture-local-only", api: "openai-completions", models: controlModels,
     } } }));
+  }
+  if (name.startsWith("worktree-")) {
+    scratchGit(root, ["init", "--initial-branch=main", root]);
+    await writeFile(join(root, "fixture.txt"), "Committed fixture content.\n");
+    scratchGit(root, ["add", "fixture.txt"]);
+    scratchGit(root, ["-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "commit", "-m", "Fixture root"]);
   }
   const journal = join(root, "journal.jsonl");
   const missingResume = name === "startup-missing-resume";
@@ -394,6 +435,8 @@ for (const scenario of scenarios) {
       if (exitCode !== 1 || messages.length !== 0) throw new Error(`${name}: expected a pre-TUI failure with exit code 1`);
     } else if (name === "handshake-timeout") {
       await until(() => classicFallback && messages.some(message => "verb" in message && message.verb === "x") && session.snapshot().surfaces.length === 0, "unconfirmed semantic screen did not fall back to classic rows");
+    } else if (name === "worktree-start-ask") {
+      await until(() => !!worktreeQuestion(session, "Create a worktree for this session?"), "startup worktree question did not open");
     } else await until(() => session.availability().available, "composer did not become ready");
     if (name === "model-switch" || compactSwitch) {
       const target = find(node => node.p?.role === TSP_ROLES.composerModel)!;
@@ -512,10 +555,11 @@ for (const scenario of scenarios) {
       await sleep(100);
       child.kill();
       await until(() => exited, "open capture did not stop");
-    } else if (!missingResume) {
+    } else if (!missingResume && !name.startsWith("worktree-exit-ask")) {
       await session.submit("/exit");
       await until(() => exited, "exit did not finish");
     }
+    if (name.startsWith("worktree-exit-ask")) await until(() => exited, "worktree exit did not finish");
     stream.end(); await session.drain();
     const safeRaw = sanitizeFixtureBytes(Buffer.concat(raw));
     const safeMessages: object[] = [];
