@@ -357,6 +357,31 @@ describe("native worktree lifecycle", () => {
 		expect(host.state.generation).toBe(0);
 	});
 
+	it("retries slow background worktree reads without a lasting chat error, logging once", async () => {
+		await connect();
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			const timeout = () => { throw new Error("TUI debug text timed out"); };
+			pty.screenReads.mockImplementationOnce(timeout).mockImplementationOnce(timeout);
+			pty.focus = { focused: "Editor", overlays: 0, overlayKinds: [], altScreen: false };
+			await vi.waitFor(() => expect(pty.screenReads.mock.calls.length).toBeGreaterThanOrEqual(3), { timeout: 5000 });
+			expect(host.state.error).toBeNull();
+			pty.keys.mockImplementationOnce(async () => { pty.screen = []; });
+			pty.screen = ["╭─ Remove worktree? ───────╮", "│                          │", "│ /tmp/worktree (wt/test): has uncommitted changes │", "│                          │", "│  ❯ Yes                   │", "│    No                    │", "│                          │", "│ ↑/↓ navigate ⏎ select ⎋ cancel │", "╰──────────────────────────╯"];
+			await vi.waitFor(() => expect(pty.confirm).toHaveBeenCalled());
+			await vi.waitFor(() => expect(pty.keys).toHaveBeenCalled());
+			expect(warn).toHaveBeenCalledTimes(1);
+		} finally { warn.mockRestore(); }
+	});
+
+	it("still refuses application input when its worktree check cannot read omp's screen", async () => {
+		await connect();
+		pty.screenReads.mockImplementationOnce(() => { throw new Error("TUI debug text timed out"); });
+		pty.writes.mockClear();
+		await expect(host.submit("hello")).rejects.toThrow("TUI debug text timed out");
+		expect(pty.writes).not.toHaveBeenCalled();
+	});
+
 	it("waits for a native worktree decision before finishing shutdown", async () => {
 		await connect();
 		const decision = Promise.withResolvers<{ response: number }>();

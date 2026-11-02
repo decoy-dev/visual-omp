@@ -4,6 +4,12 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Detailed changes
+
+#### Fixed
+
+- Reopening a long chat no longer leaves a lasting “TUI debug text timed out” error at the top of the chat.
+
 ## [0.7.4] - 2026-11-02
 
 visual-omp 0.7.4 fixes model and thinking changes in chats, adds fallback model settings and a grouped model menu, and lets you send a message while omp waits on a question. It requires omp 18.15.0 or later.

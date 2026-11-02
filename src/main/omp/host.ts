@@ -85,6 +85,7 @@ export class SessionHost {
 	#pty: IPty | null = null;
 	#debug: TuiDebugClient | null = null;
 	#loggedUnreadableStatus = false;
+	#loggedSlowWorktreeRead = false;
 	#privateDir: string | null = null;
 	#roomId: string | null = null;
 	#hadCollabRoom = false;
@@ -593,8 +594,12 @@ export class SessionHost {
 		return pending;
 	}
 
-	/** Shared by application input and shutdown; terminal-sheet bytes stay a separate explicit path. */
-	async #resolveWorktreeQuestion(): Promise<void> {
+	/**
+	 * Shared by application input and shutdown; terminal-sheet bytes stay a separate explicit path.
+	 * Background polling passes `retryUnreadable` so a slow first read is retried by the next poll;
+	 * input and shutdown callers still fail when omp's screen cannot be read.
+	 */
+	async #resolveWorktreeQuestion(retryUnreadable = false): Promise<void> {
 		if (this.#tsp) {
 			if (!this.#closing || this.#tspShutdownScope?.generation !== this.state.generation || this.#tspShutdownScope.epoch !== this.#tsp.snapshot().epoch) return;
 			if (this.#worktreeDecision) return this.#worktreeDecision;
@@ -609,7 +614,20 @@ export class SessionHost {
 		}
 		if (this.#worktreeDecision) return this.#worktreeDecision;
 		if (!this.#debug) throw new Error("omp is not running");
-		const confirmation = worktreeConfirmation(await this.#debug.screen());
+		let screen: string[];
+		try {
+			screen = await this.#debug.screen();
+		} catch (error) {
+			if (!retryUnreadable) throw error;
+			// Reopening a long session can keep omp from answering within the debug channel's limit.
+			// The next poll looks again, so this background read must not become the chat's lasting error.
+			if (!this.#loggedSlowWorktreeRead) {
+				this.#loggedSlowWorktreeRead = true;
+				console.warn("[visual-omp] Could not read omp's screen to check for a worktree question; retrying.", error instanceof Error ? error.message : String(error));
+			}
+			return;
+		}
+		const confirmation = worktreeConfirmation(screen);
 		// A poll may have opened the native dialog during the screen request.
 		if (this.#worktreeDecision) return this.#worktreeDecision;
 		if (!confirmation) return;
@@ -1077,7 +1095,7 @@ export class SessionHost {
 				const tui = await this.#debug.info().catch(() => null);
 				if (tui?.focused || (tui?.overlays ?? 0) > 0) this.#finishStartup();
 				if (JSON.stringify(tui) !== JSON.stringify(this.state.tui)) this.#update({ tui });
-				if (tui && !this.#confirmingWorktree && !this.#shutdownPrompt) await this.#resolveWorktreeQuestion();
+				if (tui && !this.#confirmingWorktree && !this.#shutdownPrompt) await this.#resolveWorktreeQuestion(true);
 			}
 			const historyFile = this.#nativeBridge?.snapshot.historyDbPath;
 			if (this.state.sessionId && historyFile) {
