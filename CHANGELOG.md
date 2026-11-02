@@ -23,6 +23,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - File names in omp's replies that start with the chat folder's own name, such as `Sheets/overview.pdf` in a chat whose folder is `Sheets`, now become file links when the referenced file exists in that folder.
 - Table charts now exclude ratio and speedup columns when the values identify them as quotients of two other measurements.
+- Plan proposals no longer show a stray “Stopped” notice with omp's internal marker text in the transcript.
 
 ## [0.7.3] - 2026-10-30
 

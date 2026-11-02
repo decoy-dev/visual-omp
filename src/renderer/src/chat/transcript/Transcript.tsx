@@ -56,7 +56,7 @@ import { ToolCard } from "./ToolCard";
 import { ToolGroup } from "./ToolGroup";
 import { TurnSummary } from "./TurnSummary";
 import { thoughtKey, ThoughtChoices, thoughtOpen, writingThought } from "./thoughtChoices";
-import { type BlockRef, type ContentBlock, type EntryLayout, replyText, STREAM_ENTRY, TAIL_ENTRY, type TranscriptLayout, transcriptLayout, liveLayoutEntries, unsavedToolsMessage } from "./turns";
+import { type BlockRef, type ContentBlock, type EntryLayout, replyText, STREAM_ENTRY, stoppedVisibly, TAIL_ENTRY, type TranscriptLayout, transcriptLayout, liveLayoutEntries, unsavedToolsMessage } from "./turns";
 import { anchorRow, tailStart, WINDOW, windowOnScroll } from "./window";
 import {
 	type PlayoutBlock,
@@ -434,7 +434,7 @@ export function AssistantBlocks({
 		const text = blockTexts[index];
 		if (text !== null && shownLength(playout, index, text.length) > 0) lastText = index;
 	}
-	const failed = !revealing && (message.stopReason === "error" || message.stopReason === "aborted");
+	const failed = !revealing && stoppedVisibly(message);
 	return (
 		<div className="flex flex-col">
 			{message.content.map((block, index) => {

@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { renderMarkdown } from "../../transcript/render";
 import type { ActiveTool } from "../../collab/lib/client";
 import { AnnouncementTracker } from "./announcements";
-import { replyText } from "./turns";
+import { replyText, stoppedVisibly } from "./turns";
 
 /** A reply's text as a screen reader should hear it: the rendered Markdown's text, without its syntax. */
 export function plainMarkdown(markdown: string): string {
@@ -16,6 +16,15 @@ export function plainMarkdown(markdown: string): string {
 
 export function plainText(message: AssistantMessage): string {
 	return plainMarkdown(message.content.flatMap(block => replyText(block) ?? []).join("\n\n"));
+}
+
+/** What a saved reply announces: its text, or the stop it ended with when that stop is shown in the transcript. */
+export function replyAnnouncement(message: AssistantMessage, t: (key: string, options?: Record<string, unknown>) => string): string {
+	if (!stoppedVisibly(message)) {
+		const text = plainText(message);
+		return text ? t("replied", { text }) : "";
+	}
+	return message.stopReason === "error" ? [t("stopped.error"), message.errorMessage].filter(Boolean).join(". ") : t("stopped.aborted");
 }
 
 /**
@@ -41,14 +50,8 @@ export function ReplyAnnouncer({ entries, stream, active, ready, session }: { en
 				if (text) parts.push(t("replied", { text }));
 				continue;
 			}
-			const { stopReason, errorMessage } = item.message;
-			const text =
-				stopReason === "error"
-					? [t("stopped.error"), errorMessage].filter(Boolean).join(". ")
-					: stopReason === "aborted"
-						? t("stopped.aborted")
-						: plainText(item.message);
-			if (text) parts.push(stopReason === "error" || stopReason === "aborted" ? text : t("replied", { text }));
+			const text = replyAnnouncement(item.message, t);
+			if (text) parts.push(text);
 		}
 		if (parts.length > 0) setAnnouncement({ id: next.map(item => item.id).join(":"), text: parts.join(" ") });
 	}, [entries, stream, active, ready, session, t, tracker]);

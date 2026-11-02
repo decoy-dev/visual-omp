@@ -22,6 +22,15 @@ export function replyText(block: ContentBlock): string | null {
 	return null;
 }
 
+/** omp stamps this on turns it ends on purpose, such as a plan proposal, and never shows them as stopped. */
+const SILENT_ABORT_MARKER = "__omp.silent_abort__";
+
+/** Whether a saved reply ended with an error or a stop the user should see. */
+export function stoppedVisibly(message: Pick<AssistantMessage, "stopReason" | "errorMessage">): boolean {
+	if (message.stopReason === "error") return true;
+	return message.stopReason === "aborted" && message.errorMessage !== SILENT_ABORT_MARKER;
+}
+
 /** One content block of an assistant entry. */
 export interface BlockRef {
 	entryId: string;

@@ -84,6 +84,26 @@ describe("narration replies", () => {
 	});
 });
 
+describe("stopped replies", () => {
+	const stopped = (errorMessage?: string, stopReason: AssistantMessage["stopReason"] = "aborted"): AssistantMessage => ({ ...message, stopReason, errorMessage, content: [{ type: "text", text: "Plan written." }] });
+	const render = (reply: AssistantMessage, mode: "normal" | "thinking" | "verbose" = "normal") => renderToStaticMarkup(createElement(AssistantBlocks, { message: reply, mode, results: new Map(), active: new Map(), pending: false }));
+
+	it.each(["normal", "thinking", "verbose"] as const)("hides the stop omp ends a plan proposal with in %s view and keeps the reply", mode => {
+		const silent = render(stopped("__omp.silent_abort__"), mode);
+		expect(silent).toContain("Plan written.");
+		expect(silent).not.toContain("__omp.silent_abort__");
+		expect(silent).not.toContain("bg-warn-bg");
+	});
+
+	it("keeps real stops and errors visible with their diagnostic", () => {
+		expect(render(stopped())).toContain("bg-warn-bg");
+		expect(render(stopped("Request was aborted"))).toContain("Request was aborted");
+		const error = render(stopped("429 rate limited", "error"));
+		expect(error).toContain("bg-err-bg");
+		expect(error).toContain("429 rate limited");
+	});
+});
+
 describe("interim replies", () => {
 	const call = (name: string, args: Record<string, unknown>) => ({ type: "toolCall" as const, id: "reply-call", name, arguments: args });
 
