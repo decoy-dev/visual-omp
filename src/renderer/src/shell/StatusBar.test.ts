@@ -14,6 +14,7 @@ vi.mock("./hooks", () => ({ useSessionView: () => ({ mode: "live", host: { trans
 vi.mock("../features/onboarding/updates", () => ({ OMP_UPDATE_SHEET: "update", useOmpUpdateStatus: () => null, useUpdates: () => null }));
 vi.mock("../registry/slots", () => ({ statusItems: { use: () => [] } }));
 vi.mock("../state/navigation", () => ({ openSettings: vi.fn() }));
+vi.mock("./AppMetricsItem", () => ({ AppMetricsItem: () => null }));
 vi.mock("../ui", () => ({
 	Menu: ({ children }: PropsWithChildren) => children,
 	MenuContent: ({ children }: PropsWithChildren) => children,

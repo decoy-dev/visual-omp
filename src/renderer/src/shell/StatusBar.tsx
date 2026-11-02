@@ -6,6 +6,7 @@ import { statusItems } from "../registry/slots";
 import { focusedController, focusedTabId, useApp } from "../state/app";
 import { openSettings } from "../state/navigation";
 import { Menu, MenuContent, MenuItem, MenuTrigger, PresenceSwap, StatusDot, toast } from "../ui";
+import { AppMetricsItem } from "./AppMetricsItem";
 import { useSessionView } from "./hooks";
 
 /** Shown while a newer visual-omp is published; opens Settings → About, where the update runs. */
@@ -100,11 +101,9 @@ function OmpItem(): ReactNode {
 }
 
 /**
- * 28px status bar (DESIGN §3.8), part of the ink chrome. Left: git items; right: plan usage and other feature items, the app update notice,
- * omp status. Features add items through `statusItems`. The bar is a size container and collapses in order instead
- * of clipping: below 52rem the update notice and omp status drop their text (glyph, tooltip and accessible name stay);
- * below 40rem only the first item of each side stays (branch on the left, plan usage on the right), and the rest
- * remain reachable from the sidebar and the git menu.
+ * 28px status bar (DESIGN §3.8), part of the ink chrome. Left: git items; right: feature items, updates,
+ * omp status and app-only resources. Below 52rem update and omp labels collapse. Below 40rem only
+ * the first registered item on each side stays; resources collapse to their popover button.
  */
 export function StatusBar(): ReactNode {
 	const { t } = useTranslation("shell");
@@ -131,6 +130,7 @@ export function StatusBar(): ReactNode {
 					{right}
 					<AppUpdateItem />
 					<OmpItem />
+					<AppMetricsItem />
 				</div>
 			</div>
 		</footer>

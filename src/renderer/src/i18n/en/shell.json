@@ -110,7 +110,23 @@
 		"restart": "Restart omp",
 		"copyDiagnostics": "Copy diagnostics",
 		"ompUpdateAvailable": "Update omp to {{version}}",
-		"copied": "Diagnostics copied"
+		"copied": "Diagnostics copied",
+		"resources": {
+			"title": "App resources",
+			"hint": "View visual-omp CPU, RAM and measurement scope.",
+			"cpu": "CPU {{value}}",
+			"ram": "RAM {{value}}",
+			"percent": "{{value}}%",
+			"mib": "{{value}} MiB",
+			"gib": "{{value}} GiB",
+			"unavailable": "?",
+			"unknown": "unavailable",
+			"summary": "App CPU {{cpu}}, RAM {{memory}}",
+			"scope": "Includes visual-omp's main, renderer, GPU and utility processes. Excludes omp engines, tools, remote models and other applications.",
+			"cpuScope": "CPU is the app's share of total logical CPU capacity (0% to 100%), averaged between samples. Process changes and missing measurements require another sample.",
+			"memoryScope": "RAM sums process working sets. Shared memory pages may be counted more than once.",
+			"history": "Updates every 2 seconds while visible, with up to 30 samples over 60 seconds. Hiding pauses sampling and clears history. Returning starts a fresh CPU baseline. A question mark means unavailable."
+		}
 	},
 	"home": {
 		"noProject": "Open or create a project to get started.",
