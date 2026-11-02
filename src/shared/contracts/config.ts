@@ -341,6 +341,11 @@ declare module "../ipc" {
 			args: [role: string, assignment: RoleAssignment | null, options?: RoleWriteOptions];
 			result: ModelRolesState;
 		};
+		/** Edit only one role's fallback chain in the selected layer. Empty removes the key, like omp's model hub; null writes an explicit empty chain. Other keys are untouched. */
+		"config:roles:fallbacks": {
+			args: [role: string, chain: string[] | null, options?: RoleWriteOptions];
+			result: SettingWriteResult;
+		};
 
 		/** Saved presets from the global and project config, sorted by name. */
 		"config:presets": { args: [cwd?: string]; result: ModelPresetInfo[] };

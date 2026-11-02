@@ -16,6 +16,8 @@ import { ModelCapabilities, ModelSelect } from "./ModelSelect";
 import { PresetList, SavePresetDialog } from "./Presets";
 import { CompactionLimits } from "./CompactionLimits";
 import { activeModelPreset, changedRoleIds, findModel, modelValueStatus, orderRoles, type RoleDraft, thinkingChoices } from "./rolesModel";
+import { FallbackBehavior, FallbackModels, OtherFallbackChains } from "./FallbackModels";
+import { changedFallbackRoles, FALLBACK_KEY, fallbackRecord, fallbackScopeRecord, type FallbackDraft } from "./fallbackModel";
 
 export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionProps) {
 	const { t } = useTranslation("manage");
@@ -26,20 +28,27 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 	const presets = useResource(() => window.vomp.invoke("config:presets", arg), [arg]);
 
 	const [drafts, setDrafts] = useState<Record<string, RoleDraft>>({});
+	const [fallbackDrafts, setFallbackDrafts] = useState<Record<string, FallbackDraft>>({});
 	const [saving, setSaving] = useState(false);
 	const [refreshing, setRefreshing] = useState(false);
 	const [savePresetOpen, setSavePresetOpen] = useState(false);
 
 	const ordered = useMemo(() => orderRoles(roles.data?.roles ?? []), [roles.data]);
-	const changed = changedRoleIds(ordered, drafts);
+	const roleChanges = changedRoleIds(ordered, drafts);
+	const chainsSetting = omp.byKey.get(FALLBACK_KEY);
+	const chains = fallbackRecord(chainsSetting?.value);
+	const targetChains = fallbackScopeRecord(chainsSetting, scope);
+	const fallbackChanges = changedFallbackRoles(fallbackDrafts, targetChains);
+	const changed = [...new Set([...roleChanges, ...fallbackChanges])];
 	const dirty = changed.length > 0;
-	useLeaveGuard(dirty, () => setDrafts({}));
+	const discardDrafts = () => { setDrafts({}); setFallbackDrafts({}); };
+	useLeaveGuard(dirty, discardDrafts);
 	const draftFor = (role: ModelRoleInfo): RoleDraft => drafts[role.id] ?? { model: role.model, thinking: role.thinking };
 	const thinking = omp.byKey.get("defaultThinkingLevel");
 
 	/** Reads everything again and drops pending role edits; callers ask first (`ConfigNotices`, `whenLeaving`). */
 	const reloadAll = () => {
-		setDrafts({});
+		discardDrafts();
 		void omp.snapshot.reload();
 		void roles.reload();
 		void models.reload();
@@ -61,7 +70,7 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 		setSaving(true);
 		let latest: ModelRolesState | null = null;
 		try {
-			for (const id of changed) {
+			for (const id of roleChanges) {
 				const draft = drafts[id];
 				if (!draft) continue;
 				latest = await window.vomp.invoke(
@@ -71,12 +80,20 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 					{ cwd: arg, scope },
 				);
 			}
+			for (const id of fallbackChanges) {
+				const chain = fallbackDrafts[id];
+				if (chain === undefined) continue;
+				const result = await window.vomp.invoke("config:roles:fallbacks", id, chain, { cwd: arg, scope });
+				omp.snapshot.setData(previous => previous && { ...previous, settings: previous.settings.map(setting => setting.key === FALLBACK_KEY ? result.setting : setting) });
+				omp.reportShadow(result.shadowedBy);
+			}
 			if (latest) roles.setData(latest);
-			setDrafts({});
+			discardDrafts();
 			toast({ tone: "ok", message: t("roles.saved", { count: changed.length }) });
 		} catch (error) {
 			toast({ tone: "err", message: t("settings.saveFailed", { reason: ipcErrorMessage(error) }) });
 			await roles.reload();
+			await omp.snapshot.reload();
 		} finally {
 			setSaving(false);
 		}
@@ -87,7 +104,7 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 		try {
 			const result = await window.vomp.invoke("config:presets:apply", preset.name, arg);
 			roles.setData(result.roles);
-			setDrafts({});
+			discardDrafts();
 			const shadowed = result.shadowed.length > 0 || result.shadowedThinking !== null;
 			toast({
 				tone: shadowed ? "warn" : "ok",
@@ -122,7 +139,7 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 				latest = await window.vomp.invoke("config:roles", arg);
 			}
 			roles.setData(latest);
-			setDrafts({});
+			discardDrafts();
 			void omp.snapshot.reload();
 		} catch (error) {
 			toast({ tone: "err", message: t("settings.saveFailed", { reason: ipcErrorMessage(error) }) });
@@ -206,6 +223,17 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 									models={models.data}
 									scope={scope}
 									onChange={draft => setDrafts(all => ({ ...all, [role.id]: draft }))}
+									fallbacks={<FallbackModels
+										role={role}
+										value={Object.hasOwn(fallbackDrafts, role.id)
+											? fallbackDrafts[role.id] === null ? [] : fallbackDrafts[role.id]?.length ? fallbackDrafts[role.id] : undefined
+											: targetChains?.[role.id]}
+										models={models.data}
+										disabled={saving || !chainsSetting || targetChains === null}
+										effectiveValue={chains?.[role.id]}
+										scope={scope}
+										onChange={chain => setFallbackDrafts(all => ({ ...all, [role.id]: chain }))}
+									/>}
 								/>
 							))}
 						</ul>
@@ -213,7 +241,7 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 							<p className="mr-auto text-sm text-fg-muted" aria-live="polite">
 								{dirty ? t("roles.pending", { count: changed.length }) : t(`roles.saveTo.${scope}`)}
 							</p>
-							<Button variant="ghost" icon={<ArrowUUpLeft />} disabled={!dirty || saving} onClick={() => setDrafts({})}>
+							<Button variant="ghost" icon={<ArrowUUpLeft />} disabled={!dirty || saving} onClick={discardDrafts}>
 								{t("roles.revert")}
 							</Button>
 							<Button variant="primary" icon={<FloppyDisk />} disabled={!dirty} loading={saving} onClick={() => void save()}>
@@ -223,6 +251,8 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 					</>
 				)}
 			</section>
+			<OtherFallbackChains omp={omp} roles={ordered} />
+			<FallbackBehavior omp={omp} />
 
 			<PresetList
 				presets={presets.data}
@@ -261,6 +291,7 @@ function RoleRow({
 	models,
 	scope,
 	onChange,
+	fallbacks,
 }: {
 	role: ModelRoleInfo;
 	draft: RoleDraft;
@@ -268,6 +299,7 @@ function RoleRow({
 	models: ModelInfo[] | null;
 	scope: SettingScope;
 	onChange(draft: RoleDraft): void;
+	fallbacks: React.ReactNode;
 }) {
 	const { t } = useTranslation("manage");
 	const list = models ?? [];
@@ -344,6 +376,7 @@ function RoleRow({
 					{t("roles.overridden", { value: role.projectValue })}
 				</Notice>
 			)}
+			{fallbacks}
 		</li>
 	);
 }

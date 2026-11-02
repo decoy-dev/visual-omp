@@ -46,6 +46,7 @@ import {
 	deepMerge,
 	deleteDocumentPath,
 	formatRoleValue,
+	documentJson,
 	getPath,
 	isJsonObject,
 	JsonValueSchema,
@@ -331,9 +332,11 @@ async function readRoles(cwd: string | undefined): Promise<ModelRolesState> {
 	const projectRoles = stringRecord(layerValue(layers.project, "modelRoles"));
 	const cycle = z.array(z.string()).catch([]).parse(listed.get("cycleOrder")?.value ?? []);
 	const tags = ModelTagsSchema.catch({}).parse(listed.get("modelTags")?.value ?? {});
+	const chains = listed.get("retry.fallbackChains")?.value;
+	const chainRoles = isJsonObject(chains) ? Object.keys(chains).filter(key => ROLE_NAME_PATTERN.test(key)) : [];
 
 	const ids: string[] = [...BUILT_IN_MODEL_ROLES];
-	for (const role of [...cycle, ...Object.keys(effective), ...Object.keys(tags)]) if (!ids.includes(role)) ids.push(role);
+	for (const role of [...cycle, ...Object.keys(effective), ...Object.keys(tags), ...chainRoles]) if (!ids.includes(role)) ids.push(role);
 
 	// Model ids may end in `:max`; resolve that suffix against the catalog only when it occurs.
 	const needsCatalog = Object.values(effective).some(value => value.endsWith(":max"));
@@ -393,6 +396,29 @@ async function setRole(role: string, assignment: RoleAssignment | null, options:
 	}
 	configWritten();
 	return readRoles(cwd);
+}
+
+/** Patch a single record entry so model-keyed chains, unknown entries and comments survive. */
+async function setRoleFallbacks(role: string, chain: string[] | null, options: RoleWriteOptions = {}): Promise<SettingWriteResult> {
+	if (!ROLE_NAME_PATTERN.test(role)) throw new Error(`Invalid role name "${role}"`);
+	const parsed = chain === null ? [] : z.array(z.string().trim().min(1)).parse(chain);
+	const scope = options.scope ?? (await roleStorage(options.cwd));
+	await editConfig(scope, options.cwd, doc => {
+		const data = documentJson(doc);
+		const retry = data.retry;
+		if (retry !== undefined && retry !== null && !isJsonObject(retry)) throw new Error("retry is not a mapping; edit it in Advanced first");
+		const chains = isJsonObject(retry) ? retry.fallbackChains : undefined;
+		if (chains !== undefined && chains !== null && !isJsonObject(chains)) throw new Error("retry.fallbackChains is not a mapping; edit it in Advanced first");
+		const path = ["retry", "fallbackChains", role];
+		if (chain !== null && parsed.length === 0) deleteDocumentPath(doc, path);
+		else setDocumentPath(doc, path, [...new Set(parsed)]);
+	});
+	configWritten();
+	const result = await writeResult("retry.fallbackChains", scope, options.cwd);
+	if (result.shadowedBy === "project" && isJsonObject(result.setting.projectValue) && !Object.hasOwn(result.setting.projectValue, role)) {
+		result.shadowedBy = null;
+	}
+	return result;
 }
 
 // ─── Model presets ─────────────────────────────────────────────────────────
@@ -659,6 +685,9 @@ export function register(): void {
 	handle("config:roles", cwd => readRoles(cwd));
 	handle("config:roles:set", (role, assignment, options) =>
 		setRole(role, assignment, options && { ...options, scope: options.scope && ScopeSchema.parse(options.scope) }),
+	);
+	handle("config:roles:fallbacks", (role, chain, options) =>
+		setRoleFallbacks(role, chain, options && { ...options, scope: options.scope && ScopeSchema.parse(options.scope) }),
 	);
 
 	handle("config:presets", cwd => listPresets(cwd));
