@@ -108,12 +108,29 @@ async function abbreviated(
 	}
 }
 
+/** Path separators on this platform: a backslash is an ordinary filename character outside Windows. */
+const SEPARATORS = process.platform === "win32" ? /[\\/]/ : /\//;
+
+/**
+ * Where a relative reference may point from `parents`: inside each parent, then, for a parent whose own name starts
+ * the reference, inside that parent without the repeated name. Replies often name a file from the folder above the
+ * chat's, as `DEEL Two Sheeter/overview.pdf` from inside `DEEL Two Sheeter`. The shortened form is skipped when the
+ * rest climbs with `..`, so it cannot reach a sibling folder.
+ */
+function relativeCandidates(ref: string, parents: readonly string[]): string[] {
+	const [first, ...rest] = ref.split(SEPARATORS);
+	const shortened = rest.length > 0 && !rest.includes("..");
+	const repeated = shortened ? parents.filter(parent => basename(parent) === first).map(parent => resolve(parent, ...rest)) : [];
+	return [...new Set([...parents.map(parent => resolve(parent, ref)), ...repeated])];
+}
+
 /**
  * Resolves file and folder names from a reply (`fs:resolveRefs`). An absolute or `~/` reference is checked as it
  * stands. A relative one is tried in the folders that earlier references resolved to (latest first), then in each
- * base in order, and the first regular file or folder wins. Exact names take precedence. Otherwise a last component
- * containing U+2026 is matched in those same parents: the first folder with matches wins only if it has one.
- * Directory scans are bounded, skip hidden entries and symlinks, and never recurse or read content. `limits` is a test seam.
+ * base in order, then without a leading folder name that repeats one of those folders' own names; the first regular
+ * file or folder wins. Exact names take precedence. Otherwise a last component containing U+2026 is matched in those
+ * same parents: the first folder with matches wins only if it has one. Directory scans are bounded, skip hidden
+ * entries and symlinks, and never recurse or read content. `limits` is a test seam.
  */
 export async function resolveFileRefs(request: unknown, home: string, limits: Readonly<FileRefLimits> = FILE_REF_LIMITS): Promise<(FileRef | null)[]> {
 	if (!isRequest(request, limits)) throw new Error("Invalid file references");
@@ -131,7 +148,7 @@ export async function resolveFileRefs(request: unknown, home: string, limits: Re
 			? [join(home, ref.slice(1))]
 			: isAbsolute(ref)
 				? [resolve(ref)]
-				: [...new Set([...named, ...bases].map(base => resolve(base, ref)))];
+				: relativeCandidates(ref, [...named, ...bases]);
 		let found = (await Promise.all(candidates.map(check))).find(result => result !== null) ?? null;
 		if (!found && basename(ref).includes("…")) {
 			for (const candidate of candidates) {

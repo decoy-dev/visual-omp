@@ -375,6 +375,9 @@ Ownership: `main/omp/elsewhere.ts` reads omp 18.14's machine-global session-id l
 Forks: `main/omp/fork.ts` resolves the current continuation, starts a short-lived RPC process with `--resume`, calls `fork(entryId?)`, then reads that process's new session identity with `get_state`. It waits for confirmed process termination before handing the copy to the renderer, so the snapshot process has released its lease. Shutdown escalates after three seconds and refuses the handoff after five seconds if exit remains unconfirmed. The renderer opens the copied session without typing `/fork`, `/resume` or `/tree` into the source host. The isolated 18.14 fixture tests preserve the live source's bytes and nanosecond mtime for whole-session, user-message and assistant-message forks. The source keeps its original lease. Extensions, tools, skills, rules, context files and title generation are disabled in the snapshot process.
 
 Transcript file references use `fs:resolveRefs` (`main/services/fileRefs.ts`). Exact paths take precedence.
+A relative reference whose first component repeats a candidate parent's own name is tried in that parent
+without the repeated name, only after every exact candidate and never when the rest contains `..`. Only
+Windows splits that reference on backslashes.
 For an abbreviated final component containing U+2026, main lists only the existing candidate parents:
 folders named earlier in the reply, latest first, then the chat and output bases, or the single parent
 of an absolute or home-relative path. The first eligible folder with matches must contain exactly one

@@ -4,6 +4,12 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Detailed changes
+
+#### Fixed
+
+- File names in omp's replies that start with the chat folder's own name, such as `Sheets/overview.pdf` in a chat whose folder is `Sheets`, now become file links when the referenced file exists in that folder.
+
 ## [0.7.3] - 2026-10-30
 
 visual-omp 0.7.3 adds sidebar sorting, a live overview of each project's chats and a Close split view button, and keeps long links inside your message bubbles.

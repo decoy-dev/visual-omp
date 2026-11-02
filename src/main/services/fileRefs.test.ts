@@ -57,6 +57,63 @@ describe("resolveFileRefs", () => {
 		expect(results.map(result => result?.path ?? null)).toEqual([join(second, "a.md"), join(first, "b.md"), second, join(second, "b.md")]);
 	});
 
+	it("resolves a path that starts with the chat folder's own name, without reaching sibling folders", async () => {
+		// The reply that prompted this, from a chat in `.../Testimonials/DEEL Two Sheeter`:
+		// "The Deel two-pager is done: `DEEL Two Sheeter/ReadyCloud + Deel Partnership Overview.pdf`."
+		const chat = join(dir, "Testimonials", "DEEL Two Sheeter");
+		const other = join(dir, "Testimonials", "Other");
+		await mkdir(chat, { recursive: true });
+		await mkdir(other);
+		await writeFile(join(chat, "ReadyCloud + Deel Partnership Overview.pdf"), "%PDF-");
+		await writeFile(join(other, "sibling.md"), "");
+		const refs = ["DEEL Two Sheeter/ReadyCloud + Deel Partnership Overview.pdf", "Other/sibling.md", "DEEL Two Sheeter/../Other/sibling.md"];
+		expect(await resolveFileRefs({ refs, bases: [chat] }, dir)).toEqual([{ path: join(chat, "ReadyCloud + Deel Partnership Overview.pdf"), kind: "file" }, null, null]);
+	});
+
+	it("prefers every exact candidate over dropping a repeated folder name", async () => {
+		const chat = join(dir, "Chat");
+		await mkdir(join(chat, "Chat"), { recursive: true });
+		await writeFile(join(chat, "Chat", "inner.md"), "nested");
+		await writeFile(join(chat, "inner.md"), "shortened");
+		// A named folder whose name repeats, then a later base that holds the exact path.
+		const named = join(dir, "one", "Proj");
+		const later = join(dir, "two");
+		await mkdir(named, { recursive: true });
+		await mkdir(join(later, "Proj"), { recursive: true });
+		await writeFile(join(named, "x.md"), "shortened");
+		await writeFile(join(later, "Proj", "x.md"), "exact");
+		expect(await resolveFileRefs({ refs: ["Chat/inner.md"], bases: [chat] }, dir)).toEqual([{ path: join(chat, "Chat", "inner.md"), kind: "file" }]);
+		const results = await resolveFileRefs({ refs: [`${named}/`, "Proj/x.md"], bases: [later] }, dir);
+		expect(results[1]).toEqual({ path: join(later, "Proj", "x.md"), kind: "file" });
+	});
+
+	it("drops a repeated name through a folder the reply named", async () => {
+		const assets = join(dir, "site", "Assets");
+		const project = join(dir, "project");
+		await mkdir(assets, { recursive: true });
+		await mkdir(project);
+		await writeFile(join(assets, "logo.png"), "");
+		const results = await resolveFileRefs({ refs: [`${assets}/`, "Assets/logo.png"], bases: [project] }, dir);
+		expect(results[1]).toEqual({ path: join(assets, "logo.png"), kind: "file" });
+	});
+
+	it("matches abbreviations after a repeated name, and an ambiguous exact candidate still stops the search", async () => {
+		const chat = join(dir, "Chat");
+		await mkdir(chat);
+		await writeFile(join(chat, "report_one.png"), "");
+		expect(await resolveFileRefs({ refs: ["Chat/report_….png"], bases: [chat] }, dir)).toEqual([{ path: join(chat, "report_one.png"), kind: "file" }]);
+		await mkdir(join(chat, "Chat"));
+		for (const name of ["report_a.png", "report_b.png"]) await writeFile(join(chat, "Chat", name), "");
+		expect(await resolveFileRefs({ refs: ["Chat/report_….png"], bases: [chat] }, dir)).toEqual([null]);
+	});
+
+	it.skipIf(process.platform === "win32")("keeps a backslash literal when dropping a repeated name outside Windows", async () => {
+		const chat = join(dir, "Chat");
+		await mkdir(join(chat, "sub"), { recursive: true });
+		await writeFile(join(chat, "sub", "report.pdf"), "");
+		expect(await resolveFileRefs({ refs: ["Chat/sub\\report.pdf"], bases: [chat] }, dir)).toEqual([null]);
+	});
+
 	it("tries the latest named folder first and keeps only the newest few", async () => {
 		const folders = ["f0", "f1", "f2", "f3", "f4", "f5"].map(name => join(dir, name));
 		for (const folder of folders) {
