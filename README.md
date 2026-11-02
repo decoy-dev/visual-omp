@@ -83,7 +83,7 @@ Download the macOS disk image for your processor from the [latest release](https
 
 Download `visual-omp-<version>-win-x64.exe` from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest) and run it. To move a copy installed this way to Scoop, run the Scoop commands above, quit visual-omp, and uninstall the installer's copy in Windows Settings under **Apps**. Both copies use the same profile folder, so your chats and settings stay.
 
-visual-omp supports macOS on Apple Silicon and Intel, Windows 10 and later, and omp 18.14.0 or later. An older omp opens the setup screen, where **Update omp** runs omp's updater without a separate terminal.
+visual-omp supports macOS on Apple Silicon and Intel, Windows 10 and later, and omp 18.15.0 or later. An older omp opens the setup screen, where **Update omp** runs omp's updater without a separate terminal.
 
 <details>
 <summary>First launch: macOS and Windows approval</summary>

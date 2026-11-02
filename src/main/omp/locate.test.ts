@@ -6,7 +6,7 @@ import { runOmp } from "./cli";
 import { ompPath, ompStatus } from "./locate";
 
 const processState = vi.hoisted(() => ({
-	version: "18.14.0",
+	version: "18.15.0",
 	path: "/fixture/omp" as string | null,
 	envPath: "",
 	binaryVersions: {} as Record<string, string>,
@@ -24,7 +24,7 @@ vi.mock("../env", () => ({ userEnv: async () => ({ PATH: processState.envPath })
 vi.mock("../prefs", () => ({ getPrefs: () => ({ ompPath: processState.path }) }));
 
 beforeEach(() => {
-	processState.version = "18.14.0";
+	processState.version = "18.15.0";
 	processState.path = "/fixture/omp";
 	processState.envPath = "";
 	processState.binaryVersions = {};
@@ -51,21 +51,21 @@ async function binaries() {
 		await mkdir(resolve(file, ".."), { recursive: true });
 		await writeFile(file, "", { mode: 0o755 });
 	}
-	processState.binaryVersions = { [appRelative]: "18.14.0", [absolute]: "18.14.0", [projectRelative]: "18.13.3" };
+	processState.binaryVersions = { [appRelative]: "18.15.0", [absolute]: "18.15.0", [projectRelative]: "18.13.3" };
 	processState.version = "18.13.3";
 	return { appDir, projectDir, relativeBinDir, name, appRelative, projectRelative, absolute };
 }
 
 describe("minimum omp version", () => {
-	it.each(["18.4.0", "18.11.0", "18.13.3", "18.14.0-beta.1"])("refuses %s for normal commands while retaining the updater path", async version => {
+	it.each(["18.4.0", "18.11.0", "18.13.3", "18.14.0", "18.14.1", "18.14.2", "18.15.0-beta.1"])("refuses %s for normal commands while retaining the updater path", async version => {
 		processState.version = version;
 		const status = await ompStatus(true);
-		expect(status).toMatchObject({ found: true, supported: false, version, minVersion: "18.14.0" });
-		await expect(ompPath()).rejects.toThrow("visual-omp needs 18.14.0 or newer");
+		expect(status).toMatchObject({ found: true, supported: false, version, minVersion: "18.15.0" });
+		await expect(ompPath()).rejects.toThrow("visual-omp needs 18.15.0 or newer");
 		await expect(ompPath({ allowUnsupported: true })).resolves.toBe(resolve("/fixture/omp"));
 	});
 
-	it.each(["18.14.0", "18.14.0+build.1", "18.14.1", "19.0.0"])("accepts %s", async version => {
+	it.each(["18.15.0", "18.15.0+build.1", "18.15.1", "19.0.0"])("accepts %s", async version => {
 		processState.version = version;
 		expect(await ompStatus(true)).toMatchObject({ found: true, supported: true, problem: null });
 		await expect(ompPath()).resolves.toBe(resolve("/fixture/omp"));
@@ -74,7 +74,7 @@ describe("minimum omp version", () => {
 	it("refreshes the detected version after an update", async () => {
 		processState.version = "18.13.3";
 		expect((await ompStatus(true)).supported).toBe(false);
-		processState.version = "18.14.0";
+		processState.version = "18.15.0";
 		expect((await ompStatus()).supported).toBe(false);
 		expect((await ompStatus(true)).supported).toBe(true);
 		await expect(ompPath()).resolves.toBe(resolve("/fixture/omp"));
@@ -99,7 +99,7 @@ describe("omp executable identity", () => {
 		expect(isAbsolute(await ompPath())).toBe(true);
 
 		const result = await runOmp(["--version"], { cwd: paths.projectDir });
-		expect(result.stdout).toContain("18.14.0");
+		expect(result.stdout).toContain("18.15.0");
 		expect(processState.executed).toEqual([paths.absolute, paths.absolute]);
 		expect(processState.executed).not.toContain(paths.projectRelative);
 	});
@@ -113,7 +113,7 @@ describe("omp executable identity", () => {
 		cwd.mockReturnValue(paths.projectDir);
 		expect(await ompPath()).toBe(paths.appRelative);
 		const result = await runOmp(["--version"], { cwd: paths.projectDir });
-		expect(result.stdout).toContain("18.14.0");
+		expect(result.stdout).toContain("18.15.0");
 		expect(processState.executed).toEqual([paths.appRelative, paths.appRelative]);
 		expect(processState.executed).not.toContain(paths.projectRelative);
 	});

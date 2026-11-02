@@ -527,7 +527,7 @@ The install step retains the existing recovery behavior:
 
 - **Missing omp** shows the official install command, [Run installer], [Copy command] and [Check for omp].
 - **Installing** shows output in an inline terminal with [Cancel install] and the final status or exit-code error.
-- **Unsupported omp** names the installed version and the 18.14.0 minimum. [Update omp] opens the same update dialog as About, streams output and checks the detected version on completion. Managed installations name the responsible application and direct the user there instead.
+- **Unsupported omp** names the installed version and the 18.15.0 minimum. [Update omp] opens the same update dialog as About, streams output and checks the detected version on completion. Managed installations name the responsible application and direct the user there instead.
 - **Refused omp** on Windows shows "omp can't start", quotes Windows' reason and names Smart App Control only as a possible cause when it is on. [Check for omp] is primary and [Run installer] secondary. A failed check says "Windows still didn't start omp".
 - **Still missing after a check** shows a warning suggesting that the user reopen the app.
 - **Ready omp** advances the full wizard, or opens the app for an existing user who needed only installation.

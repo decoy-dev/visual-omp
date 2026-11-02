@@ -8,7 +8,7 @@ import { OmpRefusedError, ompStartError } from "./refused";
 import { resolveExecutable } from "../services/executable";
 
 /** Oldest omp supported by visual-omp's native interface and collab handling. */
-export const MIN_OMP_VERSION = "18.14.0";
+export const MIN_OMP_VERSION = "18.15.0";
 
 const INSTALL_COMMAND =
 	process.platform === "win32" ? "irm https://omp.sh/install.ps1 | iex" : "curl -fsSL https://omp.sh/install | sh";

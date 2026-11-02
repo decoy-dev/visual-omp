@@ -26,8 +26,8 @@ vi.mock("../../ui", () => ({
 	toast: vi.fn(),
 }));
 
-const missing: OmpStatus = { found: false, supported: false, path: null, version: null, problem: null, refused: false, minVersion: "18.14.0", installCommand: "mock-installer" };
-const ready: OmpStatus = { ...missing, found: true, supported: true, path: "/mock/omp", version: "18.14.0" };
+const missing: OmpStatus = { found: false, supported: false, path: null, version: null, problem: null, refused: false, minVersion: "18.15.0", installCommand: "mock-installer" };
+const ready: OmpStatus = { ...missing, found: true, supported: true, path: "/mock/omp", version: "18.15.0" };
 let element: HTMLDivElement;
 let root: Root;
 const button = (name: string) => [...element.querySelectorAll("button")].find(node => node.textContent === name)!;

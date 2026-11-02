@@ -31,7 +31,7 @@ be able to use it, and it exposes the features that set omp apart from other cod
   size, reduced motion, and contrast-safe colors in both themes.
 
 ## Engine
-- visual-omp requires omp 18.14.0 or later. Native first-run setup includes welcome, a conditional
+- visual-omp requires omp 18.15.0 or later. Native first-run setup includes welcome, a conditional
   install or update step, provider sign-in, a default chat model, permissions, app appearance and a
   done summary, followed by the existing guided tour. Provider sign-in runs `omp login` in an inline
   terminal; **Skip** changes to **Continue** once a provider is connected. The model selection saves

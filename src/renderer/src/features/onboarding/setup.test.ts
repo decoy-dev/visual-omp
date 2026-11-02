@@ -40,7 +40,7 @@ vi.mock("../../ui", () => {
 	};
 });
 
-const ready: OmpStatus = { found: true, supported: true, path: "/bin/omp", version: "18.14.0", minVersion: "18.14.0", installCommand: "never-run", problem: null, refused: false };
+const ready: OmpStatus = { found: true, supported: true, path: "/bin/omp", version: "18.15.0", minVersion: "18.15.0", installCommand: "never-run", problem: null, refused: false };
 const missing: OmpStatus = { ...ready, found: false, supported: false, path: null, version: null };
 const model: ModelInfo = { selector: "test/chat", provider: "test", id: "chat", name: "Test chat", kind: "chat", contextWindow: 200000, maxOutputTokens: null, reasoning: false, thinkingLevels: [], vision: false, cost: null };
 const provider: ConnectedProvider = {
