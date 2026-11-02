@@ -274,7 +274,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		!slashClosed &&
 		(slash.kind === "name" || (slashMenu !== null && (slashMenu.items.length > 0 || (slash.token === "" && slashMenu.command?.hint != null))));
 	const ghost = useGhostText({
-		folder: projectPath, tabId, hostId: view.host?.hostId ?? null, generation: view.host?.generation ?? 0, draft, caret,
+		folder: projectPath, tabId, hostId: view.host?.hostId ?? null, generation: view.host?.generation ?? 0, transport: view.host?.transport, draft, caret,
 		enabled: focused && !readOnly && !mode && !mention && !slashOpen && !view.guest?.uiRequest,
 		idle: view.mode === "live" && !working,
 	});

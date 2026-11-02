@@ -4,7 +4,7 @@
  */
 import { TspDocumentStore } from "@shared/tsp/document";
 import { openOverlay, screenSurface } from "@shared/tsp/view-state";
-import type { TspHostSnapshot } from "@shared/tsp-host";
+import { TSP_PREVIEW_UNAVAILABLE, type TspHostSnapshot } from "@shared/tsp-host";
 import { toast } from "@/ui";
 import { i18n } from "../../i18n";
 import type { SessionController } from "../../state/session";
@@ -20,6 +20,7 @@ export function sleep(ms: number): Promise<void> {
 }
 
 export async function readScreen(session: SessionController): Promise<string[]> {
+	if (session.getSnapshot().host?.transport === "tsp") throw new Error(TSP_PREVIEW_UNAVAILABLE);
 	const hostId = session.hostId;
 	if (!hostId) return [];
 	return window.vomp.invoke("host:screen", hostId);

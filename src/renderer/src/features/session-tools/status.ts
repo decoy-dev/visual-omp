@@ -1,7 +1,7 @@
 /**
- * One screen poller per chat, shared by every session-tools view (header chips, pickers, Plan Review
- * card). It reads omp's painted screen while something is subscribed and the chat is live, and keeps
- * the last status line it saw (the line disappears while omp shows a dialog in the editor slot).
+ * One status source per chat, shared by session-tools views. Classic hosts poll their painted screen
+ * while subscribed and live, retaining the last status line while a dialog hides it. TSP hosts never
+ * read that screen: their mode status comes from the native snapshot and change events.
  */
 import { useSyncExternalStore } from "react";
 import type { SessionModes } from "@shared/contracts/native";
@@ -10,9 +10,9 @@ import { readScreen } from "./drive";
 import { parseStatusLine, type StatusLine } from "./screen";
 
 export interface ScreenSnapshot {
-	/** Last painted screen; empty until the first read. */
+	/** Last classic painted screen; empty for TSP and before the first classic read. */
 	lines: readonly string[];
-	/** Last status line seen (kept while a dialog hides it); null before omp painted one. */
+	/** Classic status retained across dialogs, or native mode facts without painted model/thinking for TSP. */
 	status: StatusLine | null;
 }
 
@@ -38,48 +38,98 @@ class ScreenPoller {
 	#snapshot: ScreenSnapshot = EMPTY;
 	#timer: number | null = null;
 	#text = "";
+	#scope = "";
+	#hostKey = "";
+	#lifecycle = 0;
+	#nativeRevision = 0;
+	#off: (() => void)[] = [];
 
-	constructor(session: SessionController) {
-		this.#session = session;
-	}
+	constructor(session: SessionController) { this.#session = session; }
 
 	subscribe = (listener: () => void): (() => void) => {
 		this.#listeners.add(listener);
-		if (this.#listeners.size === 1) void this.#tick();
+		if (this.#listeners.size === 1) {
+			this.#off = [
+				this.#session.subscribe(() => this.#reconcile()),
+				window.vomp.on("native:changed", event => {
+					const view = this.#session.getSnapshot();
+					if (view.mode !== "live" || view.host?.transport !== "tsp" || view.host.hostId !== event.hostId) return;
+					this.#nativeRevision++;
+					this.#publish([], event.snapshot.modes, true);
+				}),
+			];
+			this.#reconcile(true);
+		}
 		return () => {
 			this.#listeners.delete(listener);
-			if (this.#listeners.size === 0 && this.#timer) {
-				clearTimeout(this.#timer);
-				this.#timer = null;
+			if (this.#listeners.size === 0) {
+				this.#lifecycle++;
+				this.#cancelTimer();
+				for (const off of this.#off) off();
+				this.#off = [];
 			}
 		};
 	};
 
 	getSnapshot = (): ScreenSnapshot => this.#snapshot;
 
-	/** Read now (after an action) instead of waiting for the next tick. */
+	#cancelTimer(): void { clearTimeout(this.#timer ?? undefined); this.#timer = null; }
+	#identity(view: SessionView): string { return `${view.host?.hostId ?? ""}:${view.host?.generation ?? ""}:${view.host?.transport ?? "classic"}`; }
+	#reconcile(force = false): void {
+		const view = this.#session.getSnapshot();
+		const hostKey = this.#identity(view);
+		const scope = `${hostKey}:${view.mode}`;
+		if (!force && scope === this.#scope) return;
+		this.#scope = scope;
+		this.#lifecycle++;
+		this.#cancelTimer();
+		if (hostKey !== this.#hostKey) {
+			this.#hostKey = hostKey;
+			this.#nativeRevision++;
+			this.#text = "";
+			if (this.#snapshot !== EMPTY) { this.#snapshot = EMPTY; for (const listener of this.#listeners) listener(); }
+		}
+		if (view.mode !== "live" || !this.#session.hostId) return;
+		if (view.host?.transport === "tsp") void this.refresh();
+		else void this.#tick();
+	}
+	#publish(lines: readonly string[], modes: SessionModes | null, tsp: boolean): void {
+		const text = `${tsp ? "semantic" : "painted"}:${lines.join("\n")}\n${JSON.stringify(modes)}`;
+		if (text === this.#text) return;
+		this.#text = text;
+		this.#snapshot = { lines, status: statusWithModes(tsp ? null : parseStatusLine(lines) ?? this.#snapshot.status, modes) };
+		for (const listener of this.#listeners) listener();
+	}
+
+	/** Refresh native mode facts for TSP; only classic hosts have a painted screen to read. */
 	async refresh(): Promise<ScreenSnapshot> {
 		const view = this.#session.getSnapshot();
-		if (view.mode !== "live" || !this.#session.hostId) return this.#snapshot;
-		const [lines, native] = await Promise.all([
-			readScreen(this.#session).catch(() => null),
-			window.vomp.invoke("native:snapshot", this.#session.hostId).catch(() => null),
-		]);
-		if (!lines) return this.#snapshot;
-		const text = `${lines.join("\n")}\n${JSON.stringify(native?.modes)}`;
-		if (text !== this.#text) {
-			this.#text = text;
-			this.#snapshot = { lines, status: statusWithModes(parseStatusLine(lines) ?? this.#snapshot.status, native?.modes ?? null) };
-			for (const listener of this.#listeners) listener();
+		const hostId = this.#session.hostId;
+		if (view.mode !== "live" || !hostId) return this.#snapshot;
+		const identity = this.#identity(view);
+		const lifecycle = this.#lifecycle;
+		const current = () => lifecycle === this.#lifecycle && this.#session.getSnapshot().mode === "live" && this.#identity(this.#session.getSnapshot()) === identity;
+		const nativeRevision = this.#nativeRevision;
+		if (view.host?.transport === "tsp") {
+			const native = await window.vomp.invoke("native:snapshot", hostId).catch(() => null);
+			if (native && current() && nativeRevision === this.#nativeRevision) this.#publish([], native.modes, true);
+		} else {
+			const [lines, native] = await Promise.all([
+				readScreen(this.#session).catch(() => null),
+				window.vomp.invoke("native:snapshot", hostId).catch(() => null),
+			]);
+			if (lines && current()) this.#publish(lines, native?.modes ?? null, false);
 		}
 		return this.#snapshot;
 	}
 
 	async #tick(): Promise<void> {
 		this.#timer = null;
+		const lifecycle = this.#lifecycle;
 		await this.refresh();
-		if (this.#listeners.size === 0) return;
-		const overlays = this.#session.getSnapshot().host?.tui?.overlays ?? 0;
+		const view = this.#session.getSnapshot();
+		if (this.#listeners.size === 0 || lifecycle !== this.#lifecycle || view.mode !== "live" || view.host?.transport === "tsp") return;
+		const overlays = view.host?.tui?.overlays ?? 0;
 		this.#timer = window.setTimeout(() => void this.#tick(), overlays > 0 ? OVERLAY_MS : IDLE_MS);
 	}
 }
@@ -95,7 +145,7 @@ export function screenPoller(session: SessionController): ScreenPoller {
 	return poller;
 }
 
-/** Live omp screen facts for a chat (polled while mounted). */
+/** Live omp status: painted polling for classic hosts, native mode events for TSP hosts. */
 export function useOmpScreen(session: SessionController): ScreenSnapshot {
 	const poller = screenPoller(session);
 	return useSyncExternalStore(poller.subscribe, poller.getSnapshot);

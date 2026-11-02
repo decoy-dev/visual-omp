@@ -22,14 +22,15 @@ const POLL_MS = 2000;
 /** Option 0 of omp's Plan Review list (interactive-mode `showPlanReview`). */
 const REVIEW_MARKER = "Approve and execute";
 
-/** omp's Plan Review screen is open for this chat (read from the painted TUI screen). */
+/** Classic Plan Review detection; TSP keeps these painted-screen approval controls unavailable. */
 export function usePlanReviewPending(session: SessionController | null): boolean {
 	const view = useSessionView(session);
 	const overlays = view?.host?.tui?.overlays ?? 0;
 	const hostId = view?.host?.hostId ?? null;
+	const tsp = view?.host?.transport === "tsp";
 	const [pending, setPending] = useState(false);
 	useEffect(() => {
-		if (!hostId || overlays === 0) {
+		if (!hostId || tsp || overlays === 0) {
 			setPending(false);
 			return;
 		}
@@ -45,8 +46,8 @@ export function usePlanReviewPending(session: SessionController | null): boolean
 		return () => {
 			cancelled = true;
 		};
-	}, [hostId, overlays]);
-	return pending;
+	}, [hostId, overlays, tsp]);
+	return !tsp && pending;
 }
 
 function usePlanFile(sessionFile: string | null, visible: boolean): { plan: PanePlanFile | null; loaded: boolean } {

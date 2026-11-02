@@ -1,6 +1,7 @@
 /** Draft completions are transient. Only explicit Tab acceptance edits the composer. */
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PredictionCapture } from "@shared/contracts/composer";
+import type { HostState } from "@shared/ipc";
 
 export interface WordSuggestion {
 	folder: string;
@@ -52,15 +53,22 @@ export function predictionSuffix(prediction: string | null, draft: string): stri
 	return prediction && !draft.includes("\n") && prediction.startsWith(draft) && draft.length < prediction.length ? prediction.slice(draft.length) : null;
 }
 
-export function useGhostText(options: { folder: string; tabId: string; hostId: string | null; generation: number; draft: string; caret: number; enabled: boolean; idle: boolean }) {
-	const { folder, tabId, hostId, generation, draft, caret, enabled, idle } = options;
+export function useGhostText(options: { folder: string; tabId: string; hostId: string | null; generation: number; transport?: HostState["transport"]; draft: string; caret: number; enabled: boolean; idle: boolean }) {
+	const { folder, tabId, hostId, generation, transport, draft, caret, enabled, idle } = options;
 	const [word, setWord] = useState<WordSuggestion | null>(null);
-	const [prediction, setPrediction] = useState<{ hostId: string; generation: number; text: string } | null>(null);
+	const offerScope = useRef({ hostId, generation, transport });
+	const offerRevision = useRef(0);
+	if (offerScope.current.hostId !== hostId || offerScope.current.generation !== generation || offerScope.current.transport !== transport) {
+		offerScope.current = { hostId, generation, transport };
+		offerRevision.current++;
+	}
+	const revision = offerRevision.current;
+	const [prediction, setPrediction] = useState<{ revision: number; text: string } | null>(null);
 	const feedback = useRef<WordFeedback | null>(null);
 	if (!feedback.current) feedback.current = new WordFeedback((suggestion, accepted) => {
 		void window.vomp.invoke("composer:predictFeedback", suggestion.folder, suggestion.text, suggestion.cursor, suggestion.suffix, accepted).catch(() => {});
 	});
-	const next = prediction?.hostId === hostId && prediction.generation === generation && idle ? prediction.text : null;
+	const next = transport !== "tsp" && prediction?.revision === revision && idle ? prediction.text : null;
 	const nextSuffix = enabled && caret === draft.length ? predictionSuffix(next, draft) : null;
 	const shownWord = useMemo(() => enabled ? projectWord(word, folder, draft, caret) : null, [enabled, word, folder, draft, caret]);
 	const suffix = nextSuffix ?? shownWord?.suffix ?? null;
@@ -88,19 +96,19 @@ export function useGhostText(options: { folder: string; tabId: string; hostId: s
 	useEffect(() => () => feedback.current!.finish(false), []);
 
 	useEffect(() => {
-		if (!hostId || !idle || !enabled) return;
+		if (!hostId || transport === "tsp" || !idle || !enabled) return;
 		let current = true;
 		let timer: ReturnType<typeof setTimeout>;
 		const poll = async () => {
 			try {
 				const text = await window.vomp.invoke("composer:tuiPrediction", hostId);
-				if (current) setPrediction(text ? { hostId, generation, text } : null);
-			} catch { if (current) setPrediction(null); }
-			if (current) timer = setTimeout(() => void poll(), 600);
+				if (current && offerRevision.current === revision) setPrediction(text ? { revision, text } : null);
+			} catch { if (current && offerRevision.current === revision) setPrediction(null); }
+			if (current && offerRevision.current === revision) timer = setTimeout(() => void poll(), 600);
 		};
 		void poll();
 		return () => { current = false; clearTimeout(timer); };
-	}, [hostId, generation, idle, enabled]);
+	}, [hostId, generation, transport, idle, enabled, revision]);
 
 
 	return {

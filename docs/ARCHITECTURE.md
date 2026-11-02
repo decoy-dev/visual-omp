@@ -186,8 +186,21 @@ The writer checks availability again before sending. omp retains displaced draft
 application pastes, Ctrl+Q follow-up submission, shell/Python modes and prediction transfer remain
 unavailable in this preview. Unconverted screen-driven controls still require semantic consumers.
 Tree navigation, thinking changes and advisor application explicitly refuse TSP before mutation.
-Their UI affordances and the shared screen poller still need cutover. Expected refusals do not
-become persistent chat errors.
+Their UI affordances still need cutover. Expected refusals do not become persistent chat errors.
+
+The shared session-tools status source polls painted screens only for classic hosts. A TSP host
+gets an initial native mode snapshot and `native:changed` updates, preserving Goal status and the
+permission button's work-mode label without the 1-second or 450 ms screen timer. Approval policy
+continues to use its existing config source. Explicit refreshes also use native mode facts, and the
+painted read helper refuses TSP locally before IPC. Lifecycle revisions cancel old polling and
+discard in-flight painted results across reconnect and transport round trips. The classic dialog
+and Plan Review cards stay absent
+for TSP. The Plan pane and its badge do not inspect painted overlays or expose classic approval
+controls in TSP; plan-file reading remains available, and omp's own UI is reachable in the omp screen.
+
+The composer does not start its 600 ms painted next-message prediction poll for TSP hosts.
+Transport changes also hide an old offer and prevent its capture. Independent word completion
+remains available; semantic next-message ghost detection and transfer remain Phase 4h work.
 
 Pass-through slash commands use the same semantic submission path for immediate and queued delivery.
 Their readiness checks main's published send availability and document-owned overlays or screen

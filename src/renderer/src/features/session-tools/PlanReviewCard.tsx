@@ -66,7 +66,7 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 	const view = useSessionView(session);
 	const { lines } = useOmpScreen(session);
 	const overlays = view.host?.tui?.overlays ?? 0;
-	const review: PlanReviewScreen | null = overlays > 0 ? parsePlanReview(lines) : null;
+	const review: PlanReviewScreen | null = view.host?.transport !== "tsp" && overlays > 0 ? parsePlanReview(lines) : null;
 	const [plan, setPlan] = useState<string | null>(null);
 	const [expanded, setExpanded] = useState(true);
 	const [busy, setBusy] = useState<PlanAction | "discard" | null>(null);

@@ -184,7 +184,7 @@ export function OmpDialogCard({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
 	const view = useSessionView(session);
 	const { lines } = useOmpScreen(session);
-	const live = view.mode === "live" && !view.readOnly;
+	const live = view.mode === "live" && !view.readOnly && view.host?.transport !== "tsp";
 	const focused = view.host?.tui?.focused ?? null;
 	// Questions mirrored over collab are QuestionCard's, even while omp paints the same dialog locally.
 	const asking = Boolean(view.guest?.uiRequest);
