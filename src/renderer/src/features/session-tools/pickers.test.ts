@@ -265,6 +265,18 @@ it("keeps selected and serving fallback identities separate in the chat consumer
 	await key("Escape"); expect(document.querySelector('[role="tree"]')).toBeNull();
 });
 
+it("names a saved chat's recorded model like a live chat, and keeps an uncatalogued selector readable", async () => {
+	fake.model = null;
+	fake.entries = [{ type: "model_change", id: "m1", parentId: null, timestamp: "", model: "anthropic/claude-opus-5" } as SessionEntry];
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(ModelButton, { session }))));
+	const button = () => document.querySelector<HTMLButtonElement>('button[aria-label^="Choose model."]')!;
+	expect(button().getAttribute("aria-label")).toBe("Choose model. Current: Claude Opus 5");
+	expect(button().textContent).not.toContain("anthropic/claude-opus-5");
+	fake.entries = [{ type: "model_change", id: "m2", parentId: null, timestamp: "", model: "local/retired-model" } as SessionEntry];
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(ModelButton, { session }))));
+	expect(button().getAttribute("aria-label")).toBe("Choose model. Current: local/retired-model");
+});
+
 it("lets real Radix close the parent on Escape while the model search has a query", async () => {
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(ModelButton, { session }))));
 	const button = document.querySelector<HTMLButtonElement>('button[aria-label^="Choose model."]')!;

@@ -464,7 +464,10 @@ export function ModelButton({ session }: ChatSlotProps) {
 		// A read-only chat can't switch models; the request is dropped, not replayed once replies are back on.
 		if (!session.getSnapshot().readOnly) setOpen(true);
 	}, [request, session]);
-	const name = model?.name ?? t("model.none");
+	// Saved chats record only omp's provider/id selector; the catalog supplies the name live chats show.
+	const { models } = useChatModels(session.projectPath);
+	const catalogName = model ? models?.find(entry => entry.provider === model.provider && entry.id === model.id)?.name : undefined;
+	const name = catalogName ?? model?.name ?? t("model.none");
 	const label = fallback
 		? t(fallback.source === "provider" ? "model.providerFallbackAria" : fallback.from ? "model.fallbackAria" : "model.fallbackUnknownAria", { name, from: fallback.from })
 		: t("model.aria", { name });
