@@ -6,6 +6,19 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ### Detailed changes
 
+#### New
+
+- Models & roles now lets you edit ordered fallback models, their thinking levels and when omp switches or returns to the main model.
+- Background jobs now show what they are for, and Tasks shows omp's one-line captions when available.
+- You can send a message instead of answering an ask question. omp closes the question and continues with your message.
+- You can queue compaction while omp works, then edit or remove it from the message queue.
+- The status bar shows visual-omp CPU and memory usage, with a short CPU history and details about which app processes are counted.
+- The model menu groups choices by provider and model family. Expand a family to pick an exact version, or search across all versions.
+
+#### Changed
+
+- visual-omp now requires omp 18.15.0 or later. An older omp opens setup with instructions for updating it.
+
 #### Fixed
 
 - File names in omp's replies that start with the chat folder's own name, such as `Sheets/overview.pdf` in a chat whose folder is `Sheets`, now become file links when the referenced file exists in that folder.
