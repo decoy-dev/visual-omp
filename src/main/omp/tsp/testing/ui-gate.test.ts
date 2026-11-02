@@ -17,6 +17,7 @@ import { openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { plain } from "../../../../renderer/src/features/tsp/labels";
 import { TspRendererEvent, type TspHostSnapshot } from "@shared/tsp-host";
 import { hookAnswerEvents, TspHookAnswer } from "@shared/tsp/dialogs";
+import { planReview } from "@shared/tsp/plan-review";
 
 const root = resolve(import.meta.dirname, "../../../../..");
 const chrome = process.env.CHROME_BIN ?? (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/bin/google-chrome");
@@ -265,6 +266,38 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const label = Array.isArray(node.p?.actions) ? node.p.actions.find(action => action.id === event.act)?.label : undefined;
 		await page.clickElement(`(() => { const root = [...document.querySelectorAll('[data-tsp-id]')].find(node => node.dataset.tspId === ${JSON.stringify(event.id)}); return root && ${label ? `[...root.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(label)})` : "root.querySelector(':scope > button')"}; })()`);
 	}
+	let planRevision = 0;
+	it.each(["light", "dark"])("renders the recorded native plan card in %s and activates its approval", async theme => {
+		const documents = new FixtureDocuments();
+		const recording = loadFixtureRecording("plan-review-execute");
+		let cursor = 0;
+		for (; cursor < recording.messages.length; cursor++) {
+			const message = recording.messages[cursor]!;
+			documents.receive({ verb: message.verb, body: JSON.stringify(message.body) });
+			if (planReview(documents.snapshot().surfaces)) { cursor++; break; }
+		}
+		const snapshot = fixtureSnapshot(documents, 1, ++planRevision);
+		const review = planReview(snapshot.surfaces)!;
+		await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion='reduced'; window.gate.showPlan(${JSON.stringify(snapshot)});`);
+		await page.until("!!document.querySelector('section[aria-label=\"Plan ready for review\"]')");
+		await page.evaluate("document.fonts.ready.then(() => true)");
+		await page.until("document.querySelector('section[aria-label=\"Plan ready for review\"]').getAnimations({subtree:true}).every(animation => animation.playState === 'finished')");
+		expect(await page.evaluate("document.body.textContent.includes('Cover the consumer-visible result.')")).toBe(true);
+		expect(await page.evaluate("[...document.querySelectorAll('button')].filter(button => ['Approve and run','Approve and compact first','More options','Save and stop'].includes(button.textContent.trim())).every(button => window.gate.buttonVisible(button))")).toBe(true);
+		const clip = await page.evaluate<{ x: number; y: number; width: number; height: number; scale: number }>("(() => { const box = document.querySelector('section[aria-label=\"Plan ready for review\"]').getBoundingClientRect(); return {x:box.x,y:box.y,width:box.width,height:box.height,scale:1}; })()");
+		const screenshot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png", clip });
+		await writeFile(join(shots, `plan-card-${theme}.png`), Buffer.from(screenshot.data, "base64"));
+		await page.clickElement("[...document.querySelectorAll('button')].find(button => button.textContent.trim() === 'Approve and run')");
+		expect(await inputs(snapshot)).toEqual([{ verb: "e", body: { ev: "activate", sf: review.sf, id: review.optionsId, item: review.options.find(option => option.action === "execute")!.id } }]);
+		for (; cursor < recording.messages.length; cursor++) {
+			const message = recording.messages[cursor]!;
+			if (message.verb === "x") break;
+			documents.receive({ verb: message.verb, body: JSON.stringify(message.body) });
+			if (!documents.snapshot().surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.id === review.id))) break;
+		}
+		await page.evaluate(`window.gate.update(${JSON.stringify(fixtureSnapshot(documents, 1, ++planRevision))})`);
+		await page.until("!document.querySelector('section[aria-label=\"Plan ready for review\"]')");
+	}, 30_000);
 
 	it.each([
 		"hotkeys", "jobs", "session", "changelog", "tools", "model-picker", "settings-screen", "exit-with-overlay",

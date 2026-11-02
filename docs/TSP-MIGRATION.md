@@ -518,6 +518,21 @@ Record (Rule 5): `slash-overlays` (`/jobs`, `/usage`, `/session`, `/hotkeys`, `/
 - **TSP.** `omp.overlay.planReview` with `omp.plan.body`, `omp.plan.options`, `omp.plan.slider` and `omp.plan.tools` ([`packages/tui/src/overlays/plan-review-overlay.ts:1573-1618`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/overlays/plan-review-overlay.ts#L1573-L1618), [`packages/tui/src/overlays/plan-review-overlay.ts:1654-1700`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/overlays/plan-review-overlay.ts#L1654-L1700)).
 - **Files.** `src/shared/tsp/plan-review.ts`, `PlanReviewCard.tsx` TSP source, `PlanPane.tsx` (direct Enter approval becomes `activate`).
 - **Acceptance.** Replay: `plan-review` (scripted provider) drives Approve and run, Approve and compact first, Refine with a comment, Switch to Auto and run, Discard plan and Save and stop, each matching the recording. Live (scripted provider): the same fixture re-records. The pane's options action opens the omp screen. Permission-mode choices stay on the extension.
+- **Implementation status (2026-11-02).** The card and Plan pane consume current TSP documents,
+  including disabled options, execution tiers and committed compaction. Unknown interactive layouts
+  and annotation choosers remain unclaimed. Only a mounted, visible card claims its exact host,
+  epoch, surface and overlay node. Hidden pages, inert split panes and opening the omp screen
+  release that claim. Physical overlays continue to block composer sends. Writes revalidate the
+  live option after permission changes; only physical node departure completes a choice. Restart,
+  room change and unavailable lifecycle cancel completion without refining, exiting or reporting success.
+  Six standalone 18.15.0 loopback-provider recordings cover
+  execute, compact, keep, refine with a submitted comment, cancel and the save-path confirmation.
+  Production card, composer and screen controls replay every captured workflow, including the
+  refinement comment and save-path confirmation. Deferred permission-config tests cover Auto's
+  ordering and revalidation. The recorder does not capture Auto's config mutation or extension
+  plan exit, so their combined live Electron workflows remain a manual check. The headless Chrome
+  gate includes light and dark card captures.
+
 
 ### 4d. Model and thinking (A11)
 

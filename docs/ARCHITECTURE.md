@@ -275,10 +275,24 @@ gets an initial native mode snapshot and `native:changed` updates, preserving Go
 permission button's work-mode label without the 1-second or 450 ms screen timer. Approval policy
 continues to use its existing config source. Explicit refreshes also use native mode facts, and the
 painted read helper refuses TSP locally before IPC. Lifecycle revisions cancel old polling and
-discard in-flight painted results across reconnect and transport round trips. The native hook
-card reads TSP documents; the Plan Review card remains absent for TSP. The Plan pane and its
-badge do not inspect painted overlays or expose classic approval controls in TSP; plan-file
-reading remains available, and omp's other UI is reachable in the omp screen.
+discard in-flight painted results across reconnect and transport round trips.
+
+TSP Plan Review uses `src/shared/tsp/plan-review.ts` to project the live overlay's title, complete
+Markdown body, option ids, disabled choices and execution tiers into the existing native card.
+Decisions activate `omp.plan.options`; tier changes select `omp.plan.strategy`. The card stays
+disabled through omp's committed spinner, including compaction. Refine restores the app's comment
+draft only after the review leaves. Auto retains `config:approval:setMode`, and leaving plan mode
+retains the extension's session-mode control.
+The Plan pane and badge use the same documents; Approve activates the execute option, and See all
+options opens the omp screen, which releases the card's presentation claim. Save opens omp's
+unclaimed path dialog, where its Save action finishes the operation. Claims are scoped to a mounted,
+visible consumer's host, epoch, surface and node; hidden pages and split panes release them.
+Annotation choosers and unfamiliar interactive states stay in the omp screen. Writes re-read
+the enabled option after an awaited permission change. Completion tracks physical node departure;
+covered or temporarily unsupported reviews keep waiting, while scope or lifecycle invalidation
+cancels the operation without a success message, comment focus or extension plan exit.
+Classic review detection, plan-file reading and key delivery remain unchanged.
+The native hook card also reads TSP documents; other unclaimed omp UI remains available in the omp screen.
 
 The composer does not start its 600 ms painted next-message prediction poll for TSP hosts.
 Transport changes also hide an old offer and prevent its capture. Independent word completion

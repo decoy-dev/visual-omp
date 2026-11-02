@@ -14,7 +14,7 @@ Off cycle. These captures do not establish collab identity or compaction behavio
 tests inject collab identity separately.
 
 Phase 4a adds thirteen `hook-parity-*` recordings for the positive classic dialog captures.
-The combined 4a, 4d and startup-diagnostics baseline contains 57 raw recordings and 57 integrity
+The combined 4a, 4c, 4d and startup-diagnostics baseline contains 63 raw recordings and 63 integrity
 manifests.
 
 The two compaction scenarios use the Phase 3 scripted loopback provider with the same model
@@ -129,3 +129,16 @@ rm record-tsp.mjs
 Pass scenario names after the bundle path to record a subset. Node must execute the recorder: Bun returned no PTY data with this node-pty build. The bundle stays beside node_modules so Node can resolve that external native dependency. No Electron process starts. `VOMP_TSP_FIXTURE_DIR` can select a scratch comparison directory; `VOMP_TSP_LIVE_FIXTURE_DIR` enables the optional vocabulary comparison test against it.
 
 The recorder currently supports macOS and Linux only, matching the preview transport. Recording roots stay under `/tmp`, within the sanitizer's documented path policy. The version-only preflight uses a separate OS temporary directory and never publishes its paths.
+
+## Plan review scripted-provider captures
+
+`plan-review-execute`, `plan-review-compact`, `plan-review-keep`, `plan-review-refine`,
+`plan-review-discard` and `plan-review-save`, bringing the baseline to 63 recordings, use the recorder's isolated loopback provider.
+The first scripted response writes `local://fixture-plan.md`, and the second writes the slug
+`fixture` to omp's `xd://propose` device. That is omp 18.15.0's plan-submission route.
+Each recording then activates the observed option id or cancels through its declared button.
+Refine submits a follow-up comment, and Save confirms the default path in omp's path dialog.
+The provider returns fixed text for any continuation or compaction request and records sanitized
+request bodies in `.provider.json`. No external provider or account is used.
+The app's existing permission-config Auto and extension plan-exit transitions are covered by card
+tests; these PTY recordings cover their execute and cancel events without those mode changes.

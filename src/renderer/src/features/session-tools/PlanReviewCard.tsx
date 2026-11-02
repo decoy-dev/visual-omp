@@ -1,7 +1,6 @@
 /**
- * DESIGN §4.9 Plan Review card. omp shows Plan Review as a full-screen overlay it does not forward to
- * collab guests, so the app recognises it on the painted screen, draws the plan natively and answers
- * the overlay with keys (options 0..4: execute · compact · keep context · refine · save and quit).
+ * DESIGN §4.9 Plan Review card. Classic chats read the painted overlay and answer with keys.
+ * TSP chats project omp's plan overlay and activate its option ids.
  */
 import { CaretDown, Check, ClipboardText } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
@@ -17,6 +16,9 @@ import { press, readScreen, reportFailure, waitForScreen } from "./drive";
 import { exitPlan, loadPlan } from "./plan";
 import { isPlanReview, parsePlanReview, type PlanReviewScreen } from "./screen";
 import { screenPoller, useOmpScreen, useSessionView } from "./status";
+import { useTspPlanReview } from "./planReviewTsp";
+import { usePresentationClaim } from "../tsp/presentation-claims";
+import { useApp } from "../../state/app";
 
 type PlanAction = "execute" | "compact" | "keep" | "refine" | "save";
 
@@ -66,23 +68,33 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 	const view = useSessionView(session);
 	const { lines } = useOmpScreen(session);
 	const overlays = view.host?.tui?.overlays ?? 0;
-	const review: PlanReviewScreen | null = view.host?.transport !== "tsp" && overlays > 0 ? parsePlanReview(lines) : null;
+	const tsp = useTspPlanReview(session);
+	const semantic = view.host?.transport === "tsp";
+	const review: PlanReviewScreen | null = semantic ? tsp.review ? {
+		options: tsp.review.options,
+		slider: tsp.review.slider ? { roles: tsp.review.slider.items.map(item => item.label), selected: tsp.review.slider.selected, model: null } : null,
+	} : null : overlays > 0 ? parsePlanReview(lines) : null;
 	const [plan, setPlan] = useState<string | null>(null);
 	const [expanded, setExpanded] = useState(true);
 	const [busy, setBusy] = useState<PlanAction | "discard" | null>(null);
 	const [done, setDone] = useState<PlanAction | null>(null);
 	const open = review !== null;
 	const sessionFile = session.sessionFile;
+	const covered = useApp(state => !!state.terminalTabId || !!state.sheet);
+	usePresentationClaim(semantic && tsp.review && tsp.snapshot ? {
+		hostId: tsp.snapshot.hostId, epoch: tsp.snapshot.epoch, surfaceId: tsp.review.sf, nodeId: tsp.review.id,
+	} : null, !covered);
 
 	useEffect(() => {
-		if (!open || !sessionFile) return;
+		if (!open || semantic || !sessionFile) return;
 		let live = true;
 		setDone(null);
 		void loadPlan(sessionFile).then(text => live && setPlan(text));
 		return () => {
 			live = false;
 		};
-	}, [open, sessionFile]);
+	}, [open, sessionFile, semantic]);
+	useEffect(() => { if (semantic && open) setDone(null); }, [semantic, open]);
 
 	// The confirmation row stays until the approved run finishes (or briefly when nothing runs).
 	useEffect(() => {
@@ -101,23 +113,29 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 		);
 	}
 	if (!review) return null;
+	const planText = semantic ? tsp.review?.body ?? null : plan;
+	const unavailable = semantic && (tsp.disabled || tsp.review?.committed === true);
+	const offered = (action: PlanAction) => !semantic || tsp.review?.options.some(option => option.action === action && !option.disabled) === true;
 
 	const percent = view.guest?.state?.contextUsage?.percent ?? 0;
-	const keepOffered = review.options.some(option => option.label.startsWith(OPTION_PREFIX.keep)) && percent <= KEEP_CONTEXT_LIMIT;
-	const title = (plan && /^#{1,3}\s+(.+)$/m.exec(plan)?.[1]?.trim()) || t("plan.untitled");
+	const keepOffered = semantic ? tsp.review?.options.some(option => option.action === "keep") === true
+		: review.options.some(option => option.label.startsWith(OPTION_PREFIX.keep)) && percent <= KEEP_CONTEXT_LIMIT;
+	const title = (semantic ? tsp.review?.title : plan && /^#{1,3}\s+(.+)$/m.exec(plan)?.[1]?.trim()) || t("plan.untitled");
 	const slider = review.slider && review.slider.roles.length > 1 ? review.slider : null;
 
 	const act = async (action: PlanAction, before?: () => Promise<void>) => {
-		if (busy) return;
+		if (busy || unavailable || !offered(action)) return;
 		setBusy(action);
 		try {
 			await before?.();
-			await choose(session, action);
+			if (semantic && tsp.review) await tsp.choose(tsp.review, action);
+			else await choose(session, action);
+			if (semantic) tsp.assertCurrent();
 			if (action === "refine") {
 				useComposerDrafts.getState().setDraft(session.tabId, t("plan.refinePrefix"));
 				useComposerDrafts.getState().focus(session.tabId);
 			}
-			setDone(action);
+			setDone(semantic && action === "save" ? null : action);
 		} catch (error) {
 			reportFailure(error);
 		} finally {
@@ -127,11 +145,15 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 
 	// "Discard plan": close the review, then leave plan mode (the draft file stays in the session folder).
 	const discard = async () => {
-		if (busy) return;
+		if (busy || unavailable) return;
 		setBusy("discard");
 		try {
-			await press(session, "escape");
-			await waitForScreen(session, screen => !isPlanReview(screen), 3000);
+			if (semantic && tsp.review) await tsp.choose(tsp.review, "discard");
+			else {
+				await press(session, "escape");
+				await waitForScreen(session, screen => !isPlanReview(screen), 3000);
+			}
+			if (semantic) tsp.assertCurrent();
 			await exitPlan(session);
 		} catch (error) {
 			reportFailure(error);
@@ -147,7 +169,7 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 					<ClipboardText className="mt-0.5 size-4 shrink-0 text-accent" aria-hidden />
 					<div className="min-w-0 flex-1">
 						<h3 className="text-base font-semibold text-fg">{title}</h3>
-						<p className="mt-1 text-sm text-fg-muted">{t("plan.waiting")}</p>
+						<p className="mt-1 text-sm text-fg-muted" role={tsp.review?.committed ? "status" : undefined}>{t(tsp.review?.committed ? "plan.applying" : "plan.waiting")}</p>
 					</div>
 					<Button
 						size="sm"
@@ -162,11 +184,11 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 				<Expand open={expanded}>
 					<div className="mt-3 max-h-96 overflow-y-auto border-t border-border px-4 py-3 text-md">
 						{/* The plan file loads after the card appears; fade from the placeholder to the plan. */}
-						<PresenceSwap swapKey={plan ? "plan" : "missing"}>
-							{plan ? (
+						<PresenceSwap swapKey={planText ? "plan" : "missing"}>
+							{planText ? (
 								<>
-									<PlanChecklist text={plan} className="mb-3" />
-									<Markdown text={plan} />
+									<PlanChecklist text={planText} className="mb-3" />
+									<Markdown text={planText} />
 								</>
 							) : (
 								<p className="text-sm text-fg-muted">{t("plan.missing")}</p>
@@ -183,17 +205,22 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 								aria-label={t("plan.continueWith")}
 								value={slider.roles[slider.selected] ?? ""}
 								options={slider.roles.map(role => ({ value: role, label: role }))}
-								onValueChange={role => void slideTo(session, slider.selected, slider.roles.indexOf(role))}
+								disabled={semantic && (!!busy || unavailable)}
+								onValueChange={role => {
+									const index = slider.roles.indexOf(role);
+									if (semantic && tsp.review?.slider) void tsp.send({ ev: "select", sf: tsp.review.sf, id: tsp.review.slider.id, item: tsp.review.slider.items[index]!.id }).catch(reportFailure);
+									else void slideTo(session, slider.selected, index);
+								}}
 							/>
 							{slider.model && <span className="text-sm text-fg-faint">{slider.model}</span>}
 						</div>
 					)}
 				</Expand>
 				<div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
-					<Button variant="primary" loading={busy === "execute"} onClick={() => void act("execute")}>
+					<Button variant="primary" disabled={semantic && (!!busy || unavailable || !offered("execute"))} loading={busy === "execute"} onClick={() => void act("execute")}>
 						{t("plan.actions.execute")}
 					</Button>
-					<Button variant="secondary" loading={busy === "compact"} onClick={() => void act("compact")}>
+					<Button variant="secondary" disabled={semantic && (!!busy || unavailable || !offered("compact"))} loading={busy === "compact"} onClick={() => void act("compact")}>
 						{t("plan.actions.compact")}
 						{percent >= 60 && (
 							<Chip tone="ok" className="ml-1 h-5">
@@ -203,14 +230,15 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 					</Button>
 					<Menu>
 						<MenuTrigger asChild>
-							<Button variant="ghost" iconRight={<CaretDown />} loading={busy === "refine" || busy === "keep" || busy === "discard"}>
+							<Button variant="ghost" disabled={semantic && (!!busy || unavailable)} iconRight={<CaretDown />} loading={busy === "refine" || busy === "keep" || busy === "discard"}>
 								{t("plan.actions.more")}
 							</Button>
 						</MenuTrigger>
 						<MenuContent className="w-72">
-							<MenuItem onSelect={() => void act("refine")}>{t("plan.actions.refine")}</MenuItem>
-							{keepOffered && <MenuItem onSelect={() => void act("keep")}>{t("plan.actions.keep")}</MenuItem>}
+							<MenuItem disabled={!offered("refine")} onSelect={() => void act("refine")}>{t("plan.actions.refine")}</MenuItem>
+							{keepOffered && <MenuItem disabled={!offered("keep")} onSelect={() => void act("keep")}>{t("plan.actions.keep")}</MenuItem>}
 							<MenuItem
+								disabled={!offered("execute")}
 								onSelect={() =>
 									void act("execute", async () => {
 										acknowledgeAuto();
@@ -226,7 +254,7 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 						</MenuContent>
 					</Menu>
 					<span className="flex-1" />
-					<Button variant="ghost" loading={busy === "save"} onClick={() => void act("save")}>
+					<Button variant="ghost" disabled={semantic && (!!busy || unavailable || !offered("save"))} loading={busy === "save"} onClick={() => void act("save")}>
 						{t("plan.actions.save")}
 					</Button>
 				</div>

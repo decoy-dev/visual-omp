@@ -123,6 +123,7 @@
   "plan": {
     "aria": "Plan ready for review",
     "waiting": "omp is waiting for your approval before it starts.",
+    "applying": "omp is applying your plan choice.",
     "untitled": "Untitled plan",
     "missing": "The plan file is not available yet.",
     "show": "Show plan",

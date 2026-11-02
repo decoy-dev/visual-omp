@@ -17,17 +17,19 @@ import { Button, EmptyState, Expand, Spinner, toast } from "../../ui";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { PaneToolbar, usePaneVisible } from "./common";
 import { PlanChecklist } from "./PlanChecklist";
+import { useTspPlanReview } from "../session-tools/planReviewTsp";
 
 const POLL_MS = 2000;
 /** Option 0 of omp's Plan Review list (interactive-mode `showPlanReview`). */
 const REVIEW_MARKER = "Approve and execute";
 
-/** Classic Plan Review detection; TSP keeps these painted-screen approval controls unavailable. */
+/** Plan availability follows semantic documents for TSP and the existing painted marker for classic. */
 export function usePlanReviewPending(session: SessionController | null): boolean {
 	const view = useSessionView(session);
 	const overlays = view?.host?.tui?.overlays ?? 0;
 	const hostId = view?.host?.hostId ?? null;
 	const tsp = view?.host?.transport === "tsp";
+	const semantic = useTspPlanReview(session);
 	const [pending, setPending] = useState(false);
 	useEffect(() => {
 		if (!hostId || tsp || overlays === 0) {
@@ -47,7 +49,7 @@ export function usePlanReviewPending(session: SessionController | null): boolean
 			cancelled = true;
 		};
 	}, [hostId, overlays, tsp]);
-	return !tsp && pending;
+	return tsp ? semantic.review !== null : pending;
 }
 
 function usePlanFile(sessionFile: string | null, visible: boolean): { plan: PanePlanFile | null; loaded: boolean } {
@@ -91,6 +93,8 @@ export function PlanPane({ session }: PaneProps) {
 	const sessionFile = view ? (session?.sessionFile ?? null) : null;
 	const { plan, loaded } = usePlanFile(sessionFile, visible);
 	const pending = usePlanReviewPending(session);
+	const semantic = useTspPlanReview(session);
+	const [approving, setApproving] = useState(false);
 
 	const turnOn = () => {
 		session?.command("/plan").catch((error: unknown) =>
@@ -139,7 +143,12 @@ export function PlanPane({ session }: PaneProps) {
 					<Button size="sm" variant="ghost" icon={<TreeView />} onClick={() => useApp.getState().openTerminal(session.tabId)} title={t("plan.optionsHint")}>
 						{t("plan.options")}
 					</Button>
-					<Button size="sm" variant="primary" icon={<Play />} onClick={() => void session.keys("enter")} title={t("plan.approveHint")}>
+					<Button size="sm" variant="primary" icon={<Play />} disabled={view?.host?.transport === "tsp" && (approving || semantic.disabled || semantic.review?.committed || !semantic.review?.options.some(option => option.action === "execute" && !option.disabled))} onClick={() => {
+						if (view?.host?.transport !== "tsp") { void session.keys("enter"); return; }
+						if (!semantic.review) return;
+						setApproving(true);
+						void semantic.choose(semantic.review, "execute").catch(error => toast({ tone: "err", message: t("plan.failed"), description: error instanceof Error ? error.message : String(error) })).finally(() => setApproving(false));
+					}} title={t("plan.approveHint")}>
 						{t("plan.approve")}
 					</Button>
 				</span>

@@ -12,8 +12,10 @@ import { TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
 import { TspSession } from "./session";
 import { TspStream } from "./stream";
 import { encodeTspJson } from "./encode";
+import type { TspSurfaceSnapshot } from "../../../shared/tsp-host";
 import { sanitizeFixtureBytes } from "./sanitize-fixture";
 import { parseOmpDialog, type OmpDialog } from "../../../renderer/src/features/session-tools/ompDialog";
+import { planReview, planChoice } from "../../../shared/tsp/plan-review";
 
 // Bundle beside node_modules with Bun (target node, node-pty external), then run with Node.
 // No inherited configuration or provider credentials. Model turns use the isolated scripted provider.
@@ -33,9 +35,27 @@ const extension = resolve("src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs"
 await mkdir(destination, { recursive: true });
 const config = "startup:\n  setupWizard: false\n  checkUpdate: false\n  changelogMode: hidden\n  quiet: true\nmarketplace:\n  autoUpdate: off\nworktree:\n  onStart: off\n  onExit: keep\ntui:\n  autoGraph: never\nautocomplete:\n  enabled: false\nrecap:\n  enabled: false\ncomposer:\n  predictions: false\n";
 type ScriptedReply = { text?: string; tool?: { name: string; arguments: object }; delayMs?: number; gate?: string; error?: string };
-type Scenario = { name: string; command: string | null; hook?: "select" | "input" | "editor" | "confirm" | "rows"; end?: "open" | "submit" | "cancel"; script?: ScriptedReply[]; parity?: OmpDialog };
+type RecordingContext = {
+  session: TspSession;
+  send: (event: TspEvent) => void;
+  keys: (data: string) => void;
+  until: (predicate: () => boolean | Promise<boolean>, label: string) => Promise<void>;
+  find: (predicate: (node: TspNode) => boolean) => { surface: TspSurfaceSnapshot; node: TspNode } | undefined;
+  release: (gate: string) => void;
+  requests: object[];
+  root: string;
+};
+type Scenario = {
+  name: string; command: string | null; hook?: "select" | "input" | "editor" | "confirm" | "rows";
+  end?: "open" | "submit" | "cancel";
+  script?: ScriptedReply[];
+  parity?: OmpDialog;
+  config?: Record<string, unknown>;
+  tools?: string[];
+  run?: (context: RecordingContext) => Promise<void>;
+};
 
-/** Shared recorder mechanism from Phase 3; optional models allow session-switch compaction probes. */
+/** Shared loopback provider; optional models support session-switch compaction probes. */
 async function scriptedProvider(script: ScriptedReply[], agent: string, models?: object[]) {
   const requests: object[] = [];
   const gates = new Map<string, PromiseWithResolvers<void>>();
@@ -108,6 +128,34 @@ const scenarios: Scenario[] = [
   { name: "switch-typed", command: "/switch fixture/fixture-small" },
   { name: "model-switch-compact", command: null, script: Array.from({ length: 16 }, () => ({ text: "## Summary\nThe fixture conversation contains repeated context paragraphs. Preserve the numbered fixture segments and continue the local model-switch test.", delayMs: 1000 })) },
   { name: "model-switch-compact-error", command: null, script: Array.from({ length: 16 }, () => ({ error: "Fixture compaction request failed", delayMs: 1000 })) },
+  ...(["execute", "compact", "keep", "refine", "discard", "save"] as const).map(choice => ({
+    name: `plan-review-${choice}`, command: "/plan Draft a fixture plan", end: "open" as const, tools: ["write", "read"],
+    script: [
+      { tool: { name: "write", arguments: { path: "local://fixture-plan.md", content: "# Fixture plan\n\n## Implementation\n\n- [ ] Add the requested behavior.\n- [ ] Cover the consumer-visible result.\n\n## Validation\n\nRun the focused checks.\n" } } },
+      { tool: { name: "write", arguments: { path: "xd://propose", content: "fixture" } } },
+      ...Array.from({ length: 8 }, () => ({ text: "Fixture work completed." })),
+    ],
+    run: async ({ session, send, until, find }: RecordingContext) => {
+      await until(() => !!planReview(session.snapshot().surfaces), "plan review did not open");
+      const review = planReview(session.snapshot().surfaces)!;
+      if (choice === "discard") {
+        if (!review.cancelId) throw new Error("Plan review did not expose Cancel");
+        send({ ev: "action", sf: review.sf, id: review.cancelId, act: "cancel" });
+      } else send(planChoice(review, choice));
+      await until(() => !planReview(session.snapshot().surfaces), "plan choice did not dismiss review");
+      if (choice === "refine") {
+        await until(() => session.availability().available, "refinement editor did not return");
+        await session.submit("Refine the plan: include the empty state.");
+        await until(() => !!find(node => node.k === "md" && node.p?.text?.includes("Fixture work completed.") === true), "refinement response did not arrive");
+      }
+      if (choice === "save") {
+        await until(() => !!find(node => node.p?.role === TSP_ROLES.planSave), "save path dialog did not open");
+        const save = find(node => node.p?.actions?.click === "save")!;
+        send({ ev: "action", sf: save.surface.open.id, id: save.node.id, act: "save" });
+        await until(() => !find(node => node.p?.role === TSP_ROLES.planSave) && session.availability().available, "plan save did not finish");
+      }
+    },
+  })),
 ];
 // Each positive classic capture has an independently recorded native counterpart.
 for (const name of ["selector-descriptions", "selector-descriptions-moved", "selector-windowed", "selector-search", "selector-outline", "confirm", "confirm-detail", "confirm-detail-no", "input-below-panel", "input-empty", "editor-prompt", "editor-hook", "editor-hook-empty"]) {
@@ -130,12 +178,18 @@ for (const scenario of scenarios) {
   const home = join(root, "home"); const agent = join(root, "agent");
   await Promise.all([mkdir(home), mkdir(agent)]);
   const compactSwitch = name.startsWith("model-switch-compact");
-  await writeFile(join(agent, "config.yml"), config + (compactSwitch ? "compaction:\n  asyncEnabled: false\n  keepRecentTokens: 4096\n" : ""));
   const modelControls = ["model-switch", "thinking-cycle", "switch-typed"].includes(name) || compactSwitch;
   const controlModels = ["large", "small"].map(size => ({ id: `fixture-${size}`, name: `Fixture ${size}`, reasoning: true,
     input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: size === "large" ? 128000 : 32000, maxTokens: 4096 }));
-  const provider = scenario.script ? await scriptedProvider(scenario.script, agent, controlModels) : undefined;
+  const provider = scenario.script ? await scriptedProvider(scenario.script, agent, modelControls ? controlModels : undefined) : undefined;
+  await writeFile(join(agent, "config.yml"), provider && !modelControls ? JSON.stringify({
+    setupVersion: 999, startup: { setupWizard: false, checkUpdate: false, changelogMode: "hidden", quiet: true },
+    marketplace: { autoUpdate: "off" }, worktree: { onStart: "off", onExit: "keep" },
+    tui: { autoGraph: "never" }, autocomplete: { enabled: false }, recap: { enabled: false },
+    composer: { predictions: false }, modelRoles: { default: "fixture/fixture-model", smol: "fixture/fixture-model" },
+    tools: { approvalMode: "yolo" }, memory: { enabled: false }, idle: { enabled: false }, ...scenario.config,
+  }) : config + (compactSwitch ? "compaction:\n  asyncEnabled: false\n  keepRecentTokens: 4096\n" : ""));
   if (modelControls && !provider) {
     await writeFile(join(agent, "models.yml"), JSON.stringify({ providers: { fixture: {
       baseUrl: "http://127.0.0.1:1/v1", apiKey: "fixture-local-only", api: "openai-completions", models: controlModels,
@@ -167,6 +221,8 @@ for (const scenario of scenarios) {
   } });
   const args = ["--no-extensions", "--no-skills", "--no-rules", "--no-context-files", "--no-lsp", "--no-title", "--session-dir", join(root, "sessions")];
   if (modelControls) args.push("--model", "fixture/fixture-large", "--thinking", "off");
+  else if (provider) args.push("--model", "fixture/fixture-model", "--thinking", "off");
+  if (scenario.tools) args.push("--tools", scenario.tools.join(","));
   if (compactSwitch) {
     const timestamp = "2026-11-02T00:00:00.000Z";
     const seed: object[] = [{ type: "session", version: 3, id: "6aaca402-6694-4a08-8f2b-87be2501ed59", timestamp, cwd: root, title: "Fixture model compaction", titleSource: "manual" }];
@@ -347,6 +403,7 @@ for (const scenario of scenarios) {
         await until(() => session.availability().available, "Escape did not restore composer");
       }
     }
+    if (scenario.run) await scenario.run({ session, send, keys, until, find, root, requests: provider?.requests ?? [], release: provider?.release ?? (() => {}) });
     if (end === "open") {
       await session.drain();
       await sleep(100);
@@ -367,6 +424,7 @@ for (const scenario of scenarios) {
       writeFile(join(destination, `${name}.events.jsonl`), sanitizeFixtureBytes(Buffer.from(events.map(event => JSON.stringify(event)).join("\n") + "\n"))),
       writeFile(join(destination, `${name}.messages.jsonl`), safeMessages.map(message => JSON.stringify(message)).join("\n") + "\n"),
       readFile(journal).then(bytes => writeFile(join(destination, `${name}.jsonl`), sanitizeFixtureBytes(bytes))),
+      ...(provider ? [writeFile(join(destination, `${name}.provider.json`), sanitizeFixtureBytes(Buffer.from(JSON.stringify(provider.requests, null, 2) + "\n")))] : []),
     ]);
     if (provider) await writeFile(join(destination, `${name}.provider.json`), sanitizeFixtureBytes(Buffer.from(JSON.stringify(provider.requests, null, 2) + "\n")));
     console.log(`Recorded ${name}: ${Buffer.concat(raw).length} bytes, ${events.length} emitted events.`);
@@ -374,6 +432,7 @@ for (const scenario of scenarios) {
     if (!exited) child.kill();
     provider?.stop();
     if (owner) { owner.kill(); await ownerExit; }
+    provider?.stop();
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }
 }

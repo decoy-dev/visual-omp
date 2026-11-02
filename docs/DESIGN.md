@@ -717,6 +717,11 @@ Shown at the end of the transcript while a plan waits for a decision.
   - [Save and stop]
 - **After a decision**, the card gives way to a status line, for example "Plan approved. omp is starting the work." The line clears 8 seconds after the run ends.
 
+In the developer TSP preview, this card uses omp's live plan document and option ids. The card
+disables decisions while omp applies a committed choice. See all options in the Plan pane opens
+the omp screen with the complete review. Save and stop opens omp's path confirmation there;
+the app does not report a saved plan before that confirmation.
+
 ### 4.10 Command palette (⌘K)
 
 The title bar's Search commands field and ⌘K (Ctrl+K) open a centered 640px palette dialog, 18vh from the top, on `--bg-overlay` with `--radius-lg`, `--shadow-overlay` and the `--backdrop` veil.

@@ -1,0 +1,20 @@
+import { expect, it } from "vitest";
+import { loadFixtureRecording } from "../../../renderer/src/features/tsp/testing/documents";
+import { TspSession } from "./session";
+import { TspStream } from "./stream";
+it("keeps a claimed recorded review as main-process input ownership and writes the exact activation", async () => {
+	const recording = loadFixtureRecording("plan-review-execute");
+	const input = recording.inputs.find(input => !("keys" in input) && input.body.ev === "activate")!;
+	if ("keys" in input || input.afterMessage === undefined) throw new Error("Missing activation");
+	const output: unknown[] = [];
+	const stream = new TspStream({ onData: () => {}, onMessage: message => output.push(JSON.parse(message.body)) });
+	const session = new TspSession({ cols: 110, dark: false, reduceMotion: true, write: data => stream.push(Buffer.from(data)) });
+	for (const message of recording.messages.slice(0, input.afterMessage)) session.receive({ verb: message.verb, body: JSON.stringify(message.body), params: {} });
+	await session.drain();
+	expect(session.availability().available).toBe(false);
+	await expect(session.submit("A prompt while review owns input")).rejects.toThrow("Close the open omp menu");
+	output.length = 0;
+	await session.send(input.body);
+	await session.drain();
+	expect(output).toEqual([input.body]);
+});

@@ -1,4 +1,5 @@
 import type { TspNode } from "../tsp";
+import { projectPlanReview } from "./plan-review";
 
 /** All omp names on which visual-omp makes a behavioral decision. */
 export const TSP_ROLES = {
@@ -12,6 +13,12 @@ export const TSP_ROLES = {
 	hookSelect: "omp.overlay.hook-select", hookConfirm: "omp.overlay.hook-confirm", hookInput: "omp.overlay.hook-input", hookEditor: "omp.overlay.hook-editor",
 	hookInputTitle: "omp.hook-input.title", hookInputDescription: "omp.hook-input.detail",
 	hookEditorTitle: "omp.hook-editor.title", hookEditorDescription: "omp.hook-editor.detail",
+	planReview: "omp.overlay.planReview", planBody: "omp.plan.body", planOptions: "omp.plan.options",
+	planSlider: "omp.plan.slider", planStrategy: "omp.plan.strategy", planTools: "omp.plan.tools",
+	planPrompt: "omp.plan.prompt", planToc: "omp.plan.toc", planNote: "omp.plan.note", planFeedback: "omp.plan.feedback",
+	planSave: "omp.overlay.planSave",
+	overlayHints: "omp.overlay.hints", retryHint: "omp.hint.retry",
+	composerFact: "omp.composer.fact",
 } as const;
 const nativeHookRoles: ReadonlySet<string> = new Set([TSP_ROLES.hookSelect, TSP_ROLES.hookConfirm, TSP_ROLES.hookInput, TSP_ROLES.hookEditor]);
 const hookPartPrefixes = ["omp.hook-input", "omp.hook-editor"] as const;
@@ -21,6 +28,7 @@ export const TSP_ACTIONS = {
 	label: "label", labelSave: "label-save", filter: "filter", clear: "clear", copy: "copy",
 	resume: "resume", click: "click",
 	thinkingCycle: "thinking.cycle", use: "use",
+	copyPlan: "copyPlan", externalEditor: "externalEditor", save: "save",
 	context: "status.context", cost: "status.cost", model: "status.model", path: "status.path",
 } as const;
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
@@ -28,6 +36,10 @@ export function isKnownAction(action: string): boolean { return knownActions.has
 /** Recorded actions without an app interaction path stay display-only. */
 export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
+export const TSP_PLAN_OPTIONS = {
+	execute: "Approve and execute", compact: "Approve and compact context", keep: "Approve and keep context",
+	refine: "Refine plan", save: "Save and quit",
+} as const;
 
 /** Roles projected into transcript notices. Startup diagnostics use the warning role too. */
 export const TSP_NOTICE_ROLES: Readonly<Record<string, "info" | "warning" | "error">> = Object.freeze({
@@ -46,6 +58,7 @@ export function isReplicatedRole(role?: string): boolean {
 	return !!role && replicated.some(prefix => role === prefix || role.startsWith(`${prefix}.`));
 }
 export function isClaimable(node: TspNode): boolean {
+	if (node.p?.role === TSP_ROLES.planReview) return projectPlanReview(node, "") !== null;
 	if (isHookNode(node)) {
 		if (!isNativeHookNode(node)) return false;
 		const supported = (child: TspNode): boolean => !child.p?.hidden && (child.k === "picker" && !!child.p?.items?.length || child.k === "list" && !!child.c?.some(item => item.k === "item" && !item.p?.hidden) || child.k === "input" || child.k === "editor" || !!child.c?.some(supported));
@@ -95,5 +108,5 @@ const knownRoles: ReadonlySet<string> = new Set([
 	"omp.status", "omp.status.context_pct", "omp.status.model", "omp.status.path", "omp.status.pi",
 ]);
 export function isKnownRole(role?: string): boolean {
-	return !role || knownRoles.has(role) || isReplicatedRole(role) || isHookDialog(role) || hookPartPrefixes.some(prefix => role === prefix || role.startsWith(`${prefix}.`));
+	return !role || knownRoles.has(role) || role.startsWith(`${TSP_ROLES.planToc}.`) || isReplicatedRole(role) || isHookDialog(role) || hookPartPrefixes.some(prefix => role === prefix || role.startsWith(`${prefix}.`));
 }
