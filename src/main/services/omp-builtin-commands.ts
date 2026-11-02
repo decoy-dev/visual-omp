@@ -1,5 +1,5 @@
 /**
- * omp's builtin slash commands, taken from omp v18.14.0 (`packages/coding-agent/src/slash-commands/`
+ * omp's builtin slash commands, taken from omp v18.15.0 (`packages/coding-agent/src/slash-commands/`
  * `builtin-*.ts` and `seance.ts`, in `builtin-registry.ts` order). omp's RPC `get_available_commands`
  * lists only the builtins that also run outside its terminal UI, so this list fills in the rest
  * (settings, tree, resume and others). Descriptions are omp's own static text. omp builds three of
@@ -74,7 +74,7 @@ const BUILTINS: readonly BuiltinSpec[] = [
 		hint: "[on|ultra|off|status]",
 		subcommands: [
 			{ name: "on", description: "Enable fast mode (priority tier)" },
-			{ name: "ultra", description: "Enable Ultrafast (OpenAI API, or Codex models that offer it)" },
+			{ name: "ultra", description: "Enable Ultrafast (OpenAI API, or Codex and relay models that offer it)" },
 			{ name: "off", description: "Disable fast mode" },
 			{ name: "status", description: "Show fast mode status" },
 		],

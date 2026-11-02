@@ -63,7 +63,7 @@ vi.mock("./relay", () => ({
 }));
 vi.mock("./tui-debug", () => ({ TuiDebugClient: class { info = async () => pty.focus; screen = async () => pty.screen; keys = pty.keys; close() {} } }));
 vi.mock("electron", () => ({ BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: pty.confirm }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: false }) } }));
-vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, close: async () => {} }) }));
+vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, beginGeneration: vi.fn(), close: async () => {} }) }));
 // Route promise timers through the fake clock in deadline regressions.
 vi.mock("node:timers/promises", () => ({ setTimeout: (ms: number, value?: unknown) => {
 	const { promise, resolve } = Promise.withResolvers<unknown>();

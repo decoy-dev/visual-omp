@@ -41,6 +41,11 @@ describe("parseNotice: async-result", () => {
 		]);
 		expect(jobPayload(jobs(notice)[0]!)).toEqual({ kind: "json", text: '{\n  "verdict": "APPROVED",\n  "required_changes": []\n}' });
 	});
+	it("retains eval delivery metadata and renders its output as code", () => {
+		const notice = parseNotice({ customType: "async-result", content: "<system-notice>\nBackground job bg_eval has completed. Resume your work using the result below.\nFormatted results\n</system-notice>", details: { jobs: [{ jobId: "bg_eval", type: "eval", label: "print(results)", durationMs: 1200 }] } });
+		expect(jobs(notice)[0]).toMatchObject({ id: "bg_eval", type: "eval", label: "print(results)", result: "Formatted results" });
+		expect(jobPayload(jobs(notice)[0]!).kind).toBe("code");
+	});
 
 	it("marks a failed helper, a preview, and a command that exited non-zero", () => {
 		const failed = parseNotice({

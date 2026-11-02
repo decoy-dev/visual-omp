@@ -482,7 +482,7 @@
 			"tiny": "Small background chores, like naming your chats. Uses the Fast model when empty.",
 			"memory": "Saving and recalling what omp remembers between chats. Uses the Tiny model when empty.",
 			"task": "Helpers omp starts to split a big job into smaller pieces.",
-			"widget": "Writing background-job widgets. Uses the Fast model when empty.",
+			"widget": "Writing background-job widgets and captions. Uses the Fast model when empty.",
 			"image": "Creating pictures when you ask for one.",
 			"web": "Searching the web for up-to-date answers.",
 			"speech": "Reading replies aloud.",

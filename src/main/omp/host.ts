@@ -813,6 +813,7 @@ export class SessionHost {
 					if (this.#roomId !== roomId) return;
 					const sessionFile = host.sessionId ? await findSessionFile(host.sessionId) : null;
 					if (this.#roomId !== roomId) return;
+					this.#nativeBridge?.beginGeneration(this.state.generation + 1);
 					this.#update({
 						phase: "live",
 						link,

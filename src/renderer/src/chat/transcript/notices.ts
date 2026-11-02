@@ -13,8 +13,8 @@ export type JobStatus = "ok" | "failed" | "stopped";
 export interface JobNotice {
 	id: string;
 	/** omp's job kind: a background command or a helper agent; null when the entry does not say. */
-	type: "bash" | "task" | null;
-	/** The command (bash) or helper name (task) omp recorded. */
+	type: "bash" | "eval" | "task" | null;
+	/** The command, eval code or helper name omp recorded. */
 	label: string | null;
 	/** Run time from omp's details; null when unknown, or when the `<task-result>` tag gives the helper's own run time. */
 	durationMs: number | null;
@@ -63,7 +63,7 @@ export interface NoticeSource {
 const Field = z.string().trim().min(1).optional().catch(undefined);
 const JobDetails = z.object({
 	jobId: Field,
-	type: z.enum(["bash", "task"]).optional().catch(undefined),
+	type: z.enum(["bash", "eval", "task"]).optional().catch(undefined),
 	label: Field,
 	durationMs: z.number().nonnegative().optional().catch(undefined),
 });
@@ -136,7 +136,7 @@ function parseTaskResult(text: string): TaskResult | null {
 
 interface JobMeta {
 	id: string | null;
-	type: "bash" | "task" | null;
+	type: JobNotice["type"];
 	label: string | null;
 	durationMs: number | null;
 }

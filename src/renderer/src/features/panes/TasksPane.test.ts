@@ -1,4 +1,5 @@
 // @vitest-environment happy-dom
+import type { NativeSnapshot } from "@shared/contracts/native";
 import type * as MotionReact from "motion/react";
 import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -27,12 +28,14 @@ vi.mock("motion/react", async importOriginal => {
 });
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const mounted: { root: Root; container: HTMLElement }[] = [];
+const originalVomp = window.vomp;
 
 afterEach(async () => {
 	for (const { root, container } of mounted.splice(0)) {
 		await act(async () => root.unmount());
 		container.remove();
 	}
+	window.vomp = originalVomp;
 });
 
 const childTranscript = [
@@ -87,5 +90,106 @@ describe("helper list controls", () => {
 		const unavailable = [...container.querySelectorAll('[role="status"]')].find(element => element.textContent === "Background jobs unavailable.");
 		expect(unavailable?.getAttribute("title")).toBe("no transcript available");
 		expect(fetchTranscript).toHaveBeenCalledTimes(1);
+	});
+});
+
+const jobEntries = [{
+	type: "message", id: "poll", timestamp: "2026-11-01T12:00:00Z",
+	message: { role: "toolResult", toolCallId: "poll", toolName: "job", timestamp: 0, content: [], details: { jobs: [
+		{ id: "bg_1", type: "bash", status: "running", label: "npm run build", intent: "Checking the release build" },
+		{ id: "bg_old", type: "bash", status: "running", label: "npm test" },
+	] } },
+}];
+
+async function mountJobs(initial: Promise<NativeSnapshot> = Promise.resolve({ modes: null, theme: null })) {
+	const listeners = new Set<() => void>();
+	const nativeListeners = new Set<(event: { hostId: string; snapshot: NativeSnapshot }) => void>();
+	const invoke = vi.fn(async () => { const snapshot = await initial; return { ...snapshot, asyncJobsGeneration: snapshot.asyncJobsGeneration ?? 1 }; });
+	window.vomp = { invoke, on: (_channel: string, listener: (event: { hostId: string; snapshot: NativeSnapshot }) => void) => {
+		nativeListeners.add(listener); return () => nativeListeners.delete(listener);
+	} } as unknown as typeof window.vomp;
+	let view = {
+		mode: "live", working: false, history: null, displayLeaf: null, readOnly: false,
+		host: { hostId: "host", generation: 1, phase: "live" },
+		guest: { phase: "live", entries: jobEntries, header: { id: "session", cwd: "/project" }, agents: [], progress: new Map(), lifecycle: new Map(), activeTools: new Map(), backgroundTools: new Map() },
+	} as unknown as SessionView;
+	const session = { tabId: "jobs", projectPath: "/project", getSnapshot: () => view, subscribe: (listener: () => void) => {
+		listeners.add(listener); return () => listeners.delete(listener);
+	}, guestClient: () => null } as unknown as SessionController;
+	const container = document.createElement("div");
+	document.body.append(container);
+	const root = createRoot(container);
+	mounted.push({ root, container });
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(TasksPane, { session, projectPath: "/project" }))));
+	return {
+		container, invoke, nativeListeners,
+		publish: async (snapshot: NativeSnapshot, hostId = "host") => { await act(async () => { for (const listener of nativeListeners) listener({ hostId, snapshot: { asyncJobsGeneration: 1, ...snapshot } }); }); },
+		update: async (patch: Partial<SessionView>) => { await act(async () => { view = { ...view, ...patch }; for (const listener of listeners) listener(); }); },
+	};
+}
+
+describe("background job purpose and captions", () => {
+	it("shows report purposes, keeps old labels and displays native captions as muted text", async () => {
+		const test = await mountJobs(Promise.resolve({ modes: null, theme: null, asyncJobs: [{ id: "bg_1", intent: null, caption: "Compiles the desktop bundle" }] }));
+		const row = [...test.container.querySelectorAll("li")].find(element => element.textContent?.includes("Checking the release build"))!;
+		expect(row.querySelector('span[title="Checking the release build"]')).not.toBeNull();
+		expect(row.querySelector("code")?.textContent).toBe("npm run build");
+		expect(test.container.textContent).toContain("npm test");
+		const caption = row.querySelector('span[title="Compiles the desktop bundle"]')!;
+		expect(caption.classList.contains("text-fg-muted")).toBe(true);
+		expect(test.invoke).toHaveBeenCalledExactlyOnceWith("native:snapshot", "host");
+		await test.publish({ modes: null, theme: null, asyncJobs: [{ id: "bg_1", intent: null, caption: "Wrong host" }] }, "other-host");
+		expect(test.container.textContent).not.toContain("Wrong host");
+		await test.publish({ modes: null, theme: null, asyncJobs: [{ id: "bg_1", intent: null, caption: "Packages the installer" }] });
+		expect(test.container.textContent).toContain("Packages the installer");
+		expect(test.container.textContent).not.toContain("Compiles the desktop bundle");
+		await test.publish({ modes: null, theme: null, asyncJobs: [] });
+		expect(test.container.textContent).not.toContain("Packages the installer");
+	});
+
+	it("keeps newer caption events over the initial read and clears captions when the host stops", async () => {
+		const initial = Promise.withResolvers<NativeSnapshot>();
+		const test = await mountJobs(initial.promise);
+		await test.publish({ modes: null, theme: null, asyncJobs: [{ id: "bg_1", intent: null, caption: "Current caption" }] });
+		await act(async () => initial.resolve({ modes: null, theme: null, asyncJobs: [{ id: "bg_1", intent: null, caption: "Old caption" }] }));
+		expect(test.container.textContent).toContain("Current caption");
+		expect(test.container.textContent).not.toContain("Old caption");
+		await test.update({ mode: "exited" });
+		expect(test.container.textContent).not.toContain("Current caption");
+		expect(test.nativeListeners.size).toBe(0);
+	});
+
+	it("does not reuse captions across session and host generations", async () => {
+		const test = await mountJobs(Promise.resolve({ modes: null, theme: null, location: { cwd: "/project", sessionFile: null, sessionId: "session" }, asyncJobs: [{ id: "bg_1", intent: null, caption: "Previous session caption" }] }));
+		expect(test.container.textContent).toContain("Previous session caption");
+		await test.update({ host: { hostId: "host", generation: 2, phase: "live" } as SessionView["host"], guest: {
+			phase: "live", entries: jobEntries, header: { id: "next-session", cwd: "/project" }, agents: [], progress: new Map(), lifecycle: new Map(), activeTools: new Map(), backgroundTools: new Map(),
+		} as unknown as SessionView["guest"] });
+		expect(test.container.textContent).not.toContain("Previous session caption");
+		await test.publish({ modes: null, theme: null, location: { cwd: "/project", sessionFile: null, sessionId: "session" }, asyncJobs: [{ id: "bg_1", intent: null, caption: "Delayed old session" }] });
+		expect(test.container.textContent).not.toContain("Delayed old session");
+		await test.publish({ modes: null, theme: null, asyncJobsGeneration: 2, location: { cwd: "/project", sessionFile: null, sessionId: "next-session" }, asyncJobs: [{ id: "bg_1", intent: null, caption: "New session caption" }] });
+		expect(test.container.textContent).toContain("New session caption");
+	});
+	it("rejects cached and delayed captions after a generation-only restart of the same session", async () => {
+		const test = await mountJobs(Promise.resolve({ modes: null, theme: null, asyncJobsGeneration: 1, asyncJobs: [{ id: "bg_1", intent: null, caption: "Previous process" }] }));
+		expect(test.container.textContent).toContain("Previous process");
+		await test.update({ host: { hostId: "host", generation: 1, phase: "restarting" } as SessionView["host"] });
+		expect(test.container.textContent).not.toContain("Previous process");
+		expect(test.nativeListeners.size).toBe(0);
+		await test.update({ host: { hostId: "host", generation: 2, phase: "live" } as SessionView["host"] });
+		expect(test.container.textContent).not.toContain("Previous process");
+		await test.publish({ modes: null, theme: null, asyncJobsGeneration: 1, asyncJobs: [{ id: "bg_1", intent: null, caption: "Delayed previous process" }] });
+		expect(test.container.textContent).not.toContain("Delayed previous process");
+		await test.publish({ modes: null, theme: null, asyncJobsGeneration: 2, asyncJobs: [{ id: "bg_1", intent: null, caption: "Current process" }] });
+		expect(test.container.textContent).toContain("Current process");
+	});
+	it("does not let an ignored old-generation event suppress the current initial snapshot", async () => {
+		const initial = Promise.withResolvers<NativeSnapshot>();
+		const test = await mountJobs(initial.promise);
+		await test.publish({ modes: null, theme: null, asyncJobsGeneration: 0, asyncJobs: [{ id: "bg_1", intent: null, caption: "Old generation" }] });
+		await act(async () => initial.resolve({ modes: null, theme: null, asyncJobsGeneration: 1, asyncJobs: [{ id: "bg_1", intent: null, caption: "Initial current caption" }] }));
+		expect(test.container.textContent).toContain("Initial current caption");
+		expect(test.container.textContent).not.toContain("Old generation");
 	});
 });

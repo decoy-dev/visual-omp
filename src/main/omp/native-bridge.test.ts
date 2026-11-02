@@ -17,6 +17,40 @@ describe("hosted native mode bridge", () => {
 		expect((await fetch(bridge.url + "/snapshot", { method: "POST", body: "{}" })).status).toBe(400);
 		expect(bridge.snapshot.modes).toBeNull();
 	});
+	it("retains bounded running-job metadata for renderer reads and events", async () => {
+		dir = await mkdtemp(join(tmpdir(), "jobs-bridge-")); bridge = await createNativeBridge("jobs-test", dir);
+		const asyncJobs = [{ id: "bg_1", intent: "Checking the build", caption: "Compiles the desktop bundle" }];
+		const asyncJobsEpoch = (await fetch(bridge.url + "/requests")).headers.get("X-Vomp-Jobs-Epoch");
+		expect((await fetch(bridge.url + "/snapshot", { method: "POST", body: JSON.stringify({ modes, theme: null, asyncJobs, asyncJobsEpoch }) })).status).toBe(200);
+		expect(bridge.snapshot.asyncJobs).toEqual(asyncJobs);
+		expect((await fetch(bridge.url + "/snapshot", { method: "POST", body: JSON.stringify({ modes, theme: null, asyncJobs: Array(101).fill(asyncJobs[0]) }) })).status).toBe(400);
+		expect(bridge.snapshot.asyncJobs).toEqual(asyncJobs);
+	});
+	it("resets same-session generations and rejects old jobs, locations and teardown POSTs", async () => {
+		dir = await mkdtemp(join(tmpdir(), "jobs-generation-")); bridge = await createNativeBridge("jobs-test", dir);
+		const url = bridge.url;
+		const firstEpoch = (await fetch(url + "/requests")).headers.get("X-Vomp-Jobs-Epoch");
+		const oldSnapshot = { modes, theme: null, location: { cwd: "/old", sessionId: "same-session", sessionFile: null }, asyncJobsEpoch: firstEpoch, asyncJobs: [{ id: "bg_1", intent: null, caption: "Previous process" }] };
+		await fetch(url + "/snapshot", { method: "POST", body: JSON.stringify(oldSnapshot) });
+		bridge.beginGeneration(2);
+		expect(bridge.snapshot).toMatchObject({ asyncJobs: [], asyncJobsGeneration: 2 });
+		await fetch(url + "/snapshot", { method: "POST", body: JSON.stringify(oldSnapshot) });
+		expect(bridge.snapshot.asyncJobs).toEqual([]);
+		const nextEpoch = (await fetch(url + "/requests")).headers.get("X-Vomp-Jobs-Epoch");
+		expect(nextEpoch).not.toBe(firstEpoch);
+		const currentSnapshot = { ...oldSnapshot, asyncJobsEpoch: nextEpoch, location: { ...oldSnapshot.location, cwd: "/new" }, asyncJobs: [{ id: "bg_1", intent: null, caption: "Current process" }] };
+		await fetch(url + "/snapshot", { method: "POST", body: JSON.stringify(currentSnapshot) });
+		for (const stale of [oldSnapshot, { ...oldSnapshot, asyncJobsEpoch: null }, { ...oldSnapshot, shutdown: "teardown" }]) {
+			await fetch(url + "/snapshot", { method: "POST", body: JSON.stringify(stale) });
+			expect(bridge.snapshot).toMatchObject({ location: currentSnapshot.location, asyncJobs: currentSnapshot.asyncJobs, asyncJobsGeneration: 2 });
+		}
+		expect((await fetch(url + "/requests")).headers.get("X-Vomp-Jobs-Epoch")).toBe(nextEpoch);
+		await fetch(url + "/snapshot", { method: "POST", body: JSON.stringify({ ...currentSnapshot, shutdown: "teardown" }) });
+		expect(bridge.snapshot.asyncJobs).toEqual([]);
+		await fetch(url + "/snapshot", { method: "POST", body: JSON.stringify(currentSnapshot) });
+		expect(bridge.snapshot.asyncJobs).toEqual([]);
+		expect((await fetch(url + "/requests")).headers.get("X-Vomp-Jobs-Epoch")).not.toBe(nextEpoch);
+	});
 	it("delivers an explicit switch once and preserves omp's disabled result", async () => {
 		dir = await mkdtemp(join(tmpdir(), "misc-bridge-")); bridge = await createNativeBridge("test", dir);
 		await fetch(bridge.url + "/snapshot", { method: "POST", body: JSON.stringify({ modes, theme: null }) });

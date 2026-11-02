@@ -294,7 +294,7 @@ const BUILT_IN_ROLE_META: Record<string, { name: string; color: string; section:
 	memory: { name: "Memory", color: "dim", section: "chat" },
 	task: { name: "Subtask", color: "muted", section: "chat" },
 	advisor: { name: "Advisor", color: "accent", section: "chat" },
-	widget: { name: "Job widgets", color: "dim", section: "chat" },
+	widget: { name: "Job widgets and captions", color: "dim", section: "chat" },
 	image: { name: "Image generation", color: "accent", section: "kind" },
 	web: { name: "Web search", color: "success", section: "kind" },
 	speech: { name: "Speech", color: "warning", section: "kind" },

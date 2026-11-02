@@ -28,6 +28,8 @@ export default function visualOmpNative(pi) {
 	let stopped = false;
 	let timer;
 	let last = "";
+	let jobsEpoch = null;
+	let lifecycle = 0;
 	let lastTheme;
 	let themeRevision = 0;
 	let themeIdentity = null;
@@ -66,32 +68,60 @@ export default function visualOmpNative(pi) {
 		themeIdentity = { name, terminal, background: active.getBgHex("statusLineBg"), foreground: active.getColorHex("text"), revision: ++themeRevision };
 		return themeIdentity;
 	}
+	function runningJobs(ctx) {
+		// The SDK returns summaries, without output. Never request captions or widgets here: omp owns their model calls.
+		const jobs = ctx.getAsyncJobSnapshot?.()?.running ?? [];
+		const summaries = [];
+		let size = 1;
+		for (const job of jobs) {
+			if (summaries.length === 100) break;
+			if (typeof job.id !== "string" || !job.id || job.id.length > 256) continue;
+			const summary = {
+				id: job.id,
+				intent: typeof job.intent === "string" ? job.intent.slice(0, 2048).trim() || null : null,
+				caption: typeof job.caption === "string" ? job.caption.slice(0, 1024).trim() || null : null,
+			};
+			size += JSON.stringify(summary).length + 1;
+			if (size > 24000) break; // Leave room for modes, theme and location in the bridge's 64 KiB request.
+			summaries.push(summary);
+		}
+		return summaries;
+	}
 	async function publish() {
 		if (!context || stopped) return;
+		const ctx = context;
+		const current = lifecycle;
 		let theme = themeIdentity;
-		try { theme = await readTheme(context); }
+		try { theme = await readTheme(ctx); }
 		catch {
-			lastTheme = context.ui.theme;
+			lastTheme = ctx.ui.theme;
 			// A terminal-only JSON error must not prevent mode or location publication.
 			if (!theme) {
-				try { theme = { name: null, background: context.ui.theme.getBgHex("statusLineBg"), foreground: context.ui.theme.getColorHex("text"), revision: ++themeRevision }; }
+				try { theme = { name: null, background: ctx.ui.theme.getBgHex("statusLineBg"), foreground: ctx.ui.theme.getColorHex("text"), revision: ++themeRevision }; }
 				catch { theme = null; }
 			}
 			themeIdentity = theme;
 		}
-		const snapshot = { modes: context.sessionModes?.getState() ?? null, theme, historyDbPath, location: { cwd: context.sessionManager.getCwd(), sessionFile: context.sessionManager.getSessionFile() ?? null, sessionId: context.sessionManager.getSessionId() } };
+		if (stopped || current !== lifecycle) return;
+		const snapshot = { modes: ctx.sessionModes?.getState() ?? null, theme, historyDbPath, asyncJobs: runningJobs(ctx), asyncJobsEpoch: jobsEpoch, location: { cwd: ctx.sessionManager.getCwd(), sessionFile: ctx.sessionManager.getSessionFile() ?? null, sessionId: ctx.sessionManager.getSessionId() } };
 		const encoded = JSON.stringify(snapshot);
 		if (encoded === last) return;
 		const response = await fetch(url + "/snapshot", { method: "POST", body: encoded, signal: AbortSignal.timeout(2000) });
-		if (response.ok) last = encoded;
+		if (response.ok && !stopped && current === lifecycle) last = encoded;
 	}
 	async function tick() {
 		if (stopped || !context) return;
+		const current = lifecycle;
 		try {
 			await publish().catch(() => undefined);
+			if (stopped || current !== lifecycle) return;
 			const response = await fetch(url + "/requests", { signal: AbortSignal.timeout(2000) });
+			if (stopped || current !== lifecycle) return;
+			jobsEpoch = response.headers?.get("X-Vomp-Jobs-Epoch") ?? jobsEpoch;
 			if (response.ok) {
-				for (const item of await response.json()) {
+				const requests = await response.json();
+				for (const item of requests) {
+					if (stopped || current !== lifecycle) return;
 					if (item.kind === "editorDraft") {
 						const result = exactEditorDraft(context.ui, item.editor, context.sessionManager.getSessionId());
 						await fetch(url + "/editor/" + item.id, { method: "POST", body: JSON.stringify(result), signal: AbortSignal.timeout(2000) });
@@ -114,12 +144,12 @@ export default function visualOmpNative(pi) {
 				}
 			}
 		} catch { /* Closing a host closes its private bridge first. No transcript or model output is generated. */ }
-		if (!stopped) timer = setTimeout(tick, 250);
+		if (!stopped && current === lifecycle) timer = setTimeout(tick, 250);
 	}
 	pi.on("session_start", async (_event, ctx) => {
 		if (ctx.agent.kind !== "main") return;
 		delete process.env.VOMP_NATIVE_BRIDGE;
-		context = ctx; stopped = false; last = ""; clearTimeout(timer); await tick();
+		context = ctx; stopped = false; last = ""; jobsEpoch = null; lifecycle++; clearTimeout(timer); await tick();
 	});
 	pi.on("mode_changed", async (_event, ctx) => {
 		if (ctx.agent.kind !== "main") return;
@@ -127,12 +157,14 @@ export default function visualOmpNative(pi) {
 	});
 	pi.on("session_shutdown", async () => {
 		// omp's spawn-based restart inherits the environment after teardown. Restore only at the main session's shutdown.
-		if (context) process.env.VOMP_NATIVE_BRIDGE = url;
-		if (context) {
-			try { await fetch(url + "/snapshot", { method: "POST", body: JSON.stringify({ modes: context.sessionModes?.getState() ?? null, theme: themeIdentity, historyDbPath, shutdown: "teardown", location: { cwd: context.sessionManager.getCwd(), sessionFile: context.sessionManager.getSessionFile() ?? null, sessionId: context.sessionManager.getSessionId() } }), signal: AbortSignal.timeout(2000) }); }
+		const ctx = context;
+		if (ctx) process.env.VOMP_NATIVE_BRIDGE = url;
+		stopped = true; const current = ++lifecycle; clearTimeout(timer);
+		if (ctx) {
+			try { await fetch(url + "/snapshot", { method: "POST", body: JSON.stringify({ modes: ctx.sessionModes?.getState() ?? null, theme: themeIdentity, historyDbPath, asyncJobsEpoch: jobsEpoch, shutdown: "teardown", location: { cwd: ctx.sessionManager.getCwd(), sessionFile: ctx.sessionManager.getSessionFile() ?? null, sessionId: ctx.sessionManager.getSessionId() } }), signal: AbortSignal.timeout(2000) }); }
 			catch { /* The host may already have closed its private bridge. */ }
 		}
-		stopped = true; clearTimeout(timer); context = undefined;
+		if (current === lifecycle) context = undefined;
 	});
 }
 `;

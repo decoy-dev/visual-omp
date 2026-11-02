@@ -29,11 +29,21 @@ export const ThemeIdentitySchema = z.object({
 	terminal: z.object({ background: TerminalColorSchema.optional(), foreground: TerminalColorSchema.optional(), ansi: z.array(TerminalColorSchema).length(16).optional() }).optional(),
 	revision: z.number().optional(),
 });
+/** Only display metadata crosses the bridge; job output and commands remain in omp's transcript. */
+export const NativeJobSchema = z.object({
+	id: z.string().min(1).max(256),
+	intent: z.string().max(2048).nullable(),
+	caption: z.string().max(1024).nullable(),
+});
+export type NativeJob = z.infer<typeof NativeJobSchema>;
 export const NativeSnapshotSchema = z.object({
 	modes: SessionModesSchema.nullable(),
 	theme: ThemeIdentitySchema.nullable(),
 	location: z.object({ cwd: z.string(), sessionFile: z.string().nullable(), sessionId: z.string() }).optional(),
 	historyDbPath: z.string().min(1).optional(),
+	asyncJobs: z.array(NativeJobSchema).max(100).optional(),
+	/** Main's host generation when the bridge accepted this metadata. */
+	asyncJobsGeneration: z.number().int().nonnegative().optional(),
 	shutdown: z.literal("teardown").optional(),
 });
 export type NativeSnapshot = z.infer<typeof NativeSnapshotSchema>;

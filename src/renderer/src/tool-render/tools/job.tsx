@@ -22,6 +22,7 @@ interface JobSnapshotLike {
 	/** "running" | "completed" | "failed" | "cancelled" upstream. */
 	status: string;
 	label: string;
+	intent: string;
 	durationMs: number;
 	resultText: string;
 	errorText: string;
@@ -77,6 +78,7 @@ function jobOf(value: unknown): JobSnapshotLike | null {
 		type: str(value.type) ?? "",
 		status: str(value.status) ?? "",
 		label: str(value.label) ?? "",
+		intent: str(value.intent) ?? "",
 		durationMs: num(value.durationMs) ?? 0,
 		resultText: str(value.resultText) ?? "",
 		errorText: str(value.errorText) ?? "",
@@ -140,7 +142,9 @@ function stripTaskResultEnvelope(text: string): string {
 
 function JobRow({ job }: { job: JobSnapshotLike }): ReactNode {
 	const tone = statusTone(job.status);
-	const label = normalizeWs(job.label) || "(no label)";
+	const intent = normalizeWs(job.intent);
+	const command = normalizeWs(job.label);
+	const label = intent || command || "(no label)";
 	// Task jobs label themselves with their agent id — drop the id column
 	// instead of stuttering it twice.
 	const showId = label !== job.id;
@@ -156,6 +160,7 @@ function JobRow({ job }: { job: JobSnapshotLike }): ReactNode {
 				{job.status === "running" && job.completionPercent !== null && <span className="tv-faint"> ~{job.completionPercent}%</span>}
 				{preview && <span className={job.errorText ? "tv-err-text" : "tv-faint"}> · {preview}</span>}
 			</Row>
+			{intent && command && command !== intent && <p className="break-words font-mono text-xs text-fg-faint">{command}</p>}
 			{job.stage && <p className="break-words text-sm text-fg-muted">{job.stage}</p>}
 			{job.cwd && <p className="break-all font-mono text-xs text-fg-faint">{job.cwd}</p>}
 			{job.widget && <div className="mt-2"><JobWidget widget={job.widget} /></div>}

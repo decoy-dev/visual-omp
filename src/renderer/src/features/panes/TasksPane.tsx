@@ -5,6 +5,7 @@
  * the helper definitions, and the Helpers section links there.
  */
 import { CaretRight, ChatCenteredText, ChatCircleText, FileText, GearSix, Info, ListChecks, Square } from "@phosphor-icons/react";
+import type { NativeJob, NativeSnapshot } from "@shared/contracts/native";
 import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,7 +16,7 @@ import { fmtDuration } from "../../collab/lib/format";
 import type { PaneProps } from "../../registry/slots";
 import { useNow, useSessionView } from "../../shell/hooks";
 import { openSettings } from "../../state/navigation";
-import { liveEntries, type SessionController } from "../../state/session";
+import { liveEntries, type SessionController, type SessionView } from "../../state/session";
 import { parseSessionHistory } from "../../state/history";
 import { SubagentRun } from "../../tool-render/tools/task";
 import { sendSlashCommand } from "../session-tools/typed";
@@ -377,6 +378,7 @@ function JobRow({ job, session }: { job: BackgroundJob; session?: SessionControl
 						<code className="truncate font-mono text-xs leading-5 text-fg">{summary}</code>
 					)}
 					{job.cwd && <span className="line-clamp-2 break-all font-mono text-xs text-fg-muted" title={job.cwd}>{job.cwd}</span>}
+					{job.caption && <span className="line-clamp-2 break-words text-xs text-fg-muted" title={job.caption}>{job.caption}</span>}
 					{job.widget && <JobWidget widget={job.widget} headlineOnly />}
 				</span>
 				{(live || settledMeta.length > 0) && (
@@ -443,6 +445,36 @@ function JobList({ jobs, session }: { jobs: readonly BackgroundJob[]; session?: 
 
 // ── pane ────────────────────────────────────────────────────────────────────────────────────────
 
+const NO_NATIVE_JOBS: readonly NativeJob[] = [];
+
+/** One initial read, then extension events only. Late reads and old sessions cannot replace current captions. */
+function useNativeJobs(view: SessionView | null): readonly NativeJob[] {
+	const hostId = view?.mode === "live" && view.host?.phase === "live" ? view.host.hostId : undefined;
+	const generation = view?.host?.generation;
+	const sessionId = view?.guest?.header?.id;
+	const scope = `${hostId ?? ""}:${generation ?? ""}:${sessionId ?? ""}`;
+	const [snapshot, setSnapshot] = useState<{ scope: string; jobs: readonly NativeJob[] } | null>(null);
+	useEffect(() => {
+		if (!hostId) return;
+		let active = true;
+		let revision = 0;
+		const publish = (native: NativeSnapshot) => {
+			if (!active || native.asyncJobsGeneration !== generation || (sessionId && native.location && native.location.sessionId !== sessionId)) return false;
+			setSnapshot({ scope, jobs: native.shutdown ? NO_NATIVE_JOBS : native.asyncJobs ?? NO_NATIVE_JOBS });
+			return true;
+		};
+		const off = window.vomp.on("native:changed", event => {
+			if (event.hostId !== hostId) return;
+			if (publish(event.snapshot)) revision++;
+		});
+		void window.vomp.invoke("native:snapshot", hostId).then(native => {
+			if (revision === 0) publish(native);
+		}).catch(() => undefined);
+		return () => { active = false; off(); };
+	}, [hostId, generation, sessionId, scope]);
+	return hostId && snapshot?.scope === scope ? snapshot.jobs : NO_NATIVE_JOBS;
+}
+
 export function TasksPane({ session, projectPath }: PaneProps) {
 	const { t } = useTranslation("panes");
 	const view = useSessionView(session);
@@ -455,7 +487,8 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 	const backgroundTools = view?.guest?.backgroundTools;
 	const phases = useMemo(() => latestTodo(shown), [shown]);
 	const running = ompRunning(view);
-	const jobs = useMemo(() => (entries ? backgroundJobs(entries, running, activeTools, backgroundTools, view?.guest?.header?.cwd ?? session?.projectPath ?? null) : []), [entries, running, activeTools, backgroundTools, view?.guest?.header?.cwd, session?.projectPath]);
+	const nativeJobs = useNativeJobs(view);
+	const jobs = useMemo(() => backgroundJobs(entries ?? [], running, activeTools, backgroundTools, view?.guest?.header?.cwd ?? session?.projectPath ?? null, nativeJobs), [entries, running, activeTools, backgroundTools, view?.guest?.header?.cwd, session?.projectPath, nativeJobs]);
 	const agents = view?.guest?.agents;
 	const progress = view?.guest?.progress;
 	const lifecycle = view?.guest?.lifecycle;

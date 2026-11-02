@@ -141,6 +141,79 @@ describe("backgroundJobs", () => {
 			["bg_1", "Building the macOS installers"],
 		]);
 	});
+	it.each(["job", "wait"])("takes purposes from %s reports, preserving the command and old labels", toolName => {
+		const entries = [result("poll", toolName, "", { jobs: [
+			{ id: "bg_1", type: "bash", status: "running", label: "make", intent: "Building the installer" },
+			{ id: "bg_2", type: "eval", status: "running", label: "print(results)", intent: "Summarizing the run" },
+			{ id: "bg_old", type: "bash", status: "running", label: "npm test" },
+		] })];
+		expect(backgroundJobs(entries, true)).toMatchObject([
+			{ jobId: "bg_old", command: "npm test", intent: null },
+			{ jobId: "bg_2", command: "print(results)", intent: "Summarizing the run" },
+			{ jobId: "bg_1", command: "make", intent: "Building the installer" },
+		]);
+	});
+
+	it("retains a purpose across reports that omit it and reads purposes from live-only jobs", () => {
+		const entries = [
+			result("poll", "job", "", { jobs: [{ id: "bg_1", type: "bash", status: "running", label: "make", intent: "Building the installer" }] }),
+			result("next", "wait", "", { jobs: [{ id: "bg_1", type: "bash", status: "running", label: "make" }] }),
+		];
+		const active: ActiveTool = { toolCallId: "wait", toolName: "wait", args: {}, startedAt: 0, partialResult: { details: { jobs: [
+			{ id: "bg_2", type: "eval", status: "running", label: "print(results)", intent: "Summarizing the run" },
+			{ id: "bg_old", type: "bash", status: "running", label: "npm test" },
+		] } } };
+		expect(backgroundJobs(entries, true, new Map([["wait", active]]))).toMatchObject([
+			{ jobId: "bg_old", command: "npm test", intent: null },
+			{ jobId: "bg_2", command: "print(results)", intent: "Summarizing the run" },
+			{ jobId: "bg_1", command: "make", intent: "Building the installer" },
+		]);
+	});
+
+	it("adds native captions only to running known jobs and never revives settled work", () => {
+		const entries = [
+			call("bash", "bash", { command: "make", async: true }),
+			result("bash", "bash", "", { async: { jobId: "bg_1", state: "running" } }),
+			call("eval", "eval", { code: "print(results)", async: true, i: "Summarizing the run" }),
+			result("eval", "eval", "", { async: { jobId: "bg_2", state: "running", type: "eval" } }),
+			result("poll", "job", "", { jobs: [{ id: "bg_done", type: "bash", label: "npm test", status: "completed" }] }),
+		];
+		const native = [
+			{ id: "bg_1", intent: "Building the installer", caption: "Compiles the desktop bundle" },
+			{ id: "bg_2", intent: null, caption: "Formats the collected results" },
+			{ id: "bg_done", intent: "Old purpose", caption: "Stale caption" },
+			{ id: "helper", intent: null, caption: "A helper is not a shell job" },
+		];
+		expect(backgroundJobs(entries, true, undefined, undefined, null, native)).toMatchObject([
+			{ jobId: "bg_2", command: "print(results)", intent: "Summarizing the run", caption: "Formats the collected results" },
+			{ jobId: "bg_1", intent: "Building the installer", caption: "Compiles the desktop bundle" },
+			{ jobId: "bg_done", state: "completed", intent: null },
+		]);
+		expect(backgroundJobs(entries, false, undefined, undefined, null, native).every(job => !job.caption)).toBe(true);
+		const settled = [...entries, result("done", "wait", "", { jobs: [{ id: "bg_2", type: "eval", status: "completed", resultText: "summary" }] })];
+		expect(backgroundJobs(settled, true, undefined, undefined, null, native).find(job => job.jobId === "bg_2")).toMatchObject({ state: "completed", output: "summary" });
+	});
+	it("tracks eval jobs first seen only in an async-result delivery", () => {
+		const entries: SessionEntry[] = [{ ...base(), type: "custom_message", customType: "async-result", display: true, content: "<system-notice>\nBackground job bg_eval has completed. Resume your work using the result below.\nFormatted results\n</system-notice>", details: { jobs: [{ jobId: "bg_eval", type: "eval", label: "print(results)", durationMs: 1200 }] } }];
+		expect(backgroundJobs(entries, true)).toMatchObject([{ jobId: "bg_eval", command: "print(results)", state: "completed", output: "Formatted results", durationMs: 1200 }]);
+	});
+
+	it.each(["completed", "failed", "cancelled"] as const)("takes %s and final text from auto-backgrounded eval frames without an async argument", state => {
+		const entries = [
+			call("eval", "eval", { code: "print(results)", i: "Summarizing the run" }),
+			result("eval", "eval", "started", { async: { jobId: "bg_eval", state: "running", type: "eval" } }),
+		];
+		const tool: ActiveTool = { toolCallId: "eval", toolName: "eval", args: { code: "print(results)" }, startedAt: 0, partialResult: {
+			content: [{ type: "text", text: "Formatted results" }], details: { async: { jobId: "bg_eval", state, type: "eval" } },
+		} };
+		expect(backgroundJobs(entries, true, new Map(), new Map([["eval", tool]]))).toMatchObject([{ jobId: "bg_eval", command: "print(results)", intent: "Summarizing the run", state, output: "Formatted results" }]);
+	});
+
+	it("keeps a full report purpose when native metadata contains a bounded copy", () => {
+		const intent = "Analyzing the recorded results. ".repeat(100);
+		const entries = [result("poll", "job", "", { jobs: [{ id: "bg_1", type: "bash", status: "running", label: "make", intent }] })];
+		expect(backgroundJobs(entries, true, undefined, undefined, null, [{ id: "bg_1", intent: intent.slice(0, 2048), caption: null }])[0]?.intent).toBe(intent.trim());
+	});
 
 	it("takes failure and output from job polls", () => {
 		const entries = [

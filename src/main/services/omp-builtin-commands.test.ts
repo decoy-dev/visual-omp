@@ -13,7 +13,7 @@ const command = (name: string, source: SlashCommandInfo["source"], extra: Partia
 });
 
 describe("OMP_BUILTIN_COMMANDS", () => {
-	it("lists omp 18.14's 88 builtins and 9 aliases once each", () => {
+	it("lists omp 18.15's 88 builtins and 9 aliases once each", () => {
 		const names = OMP_BUILTIN_COMMANDS.map(entry => entry.name);
 		expect(new Set(names).size).toBe(88);
 		expect(OMP_BUILTIN_COMMANDS.flatMap(entry => entry.aliases).sort()).toEqual(["force:", "models", "plugin", "providers", "q", "rewind", "status", "subagents", "worktree"]);
@@ -28,6 +28,13 @@ describe("OMP_BUILTIN_COMMANDS", () => {
 		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "context")?.description).toBe("Browse context usage and detailed content");
 		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "hub")?.aliases).toContain("subagents");
 		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "seance")).toBeDefined();
+	});
+	it("offers 18.15 Ultrafast service and retains the upstream jobs and compact syntax", () => {
+		const fast = OMP_BUILTIN_COMMANDS.find(entry => entry.name === "fast")!;
+		expect(fast.hint).toBe("[on|ultra|off|status]");
+		expect(fast.subcommands.find(entry => entry.name === "ultra")?.description).toBe("Enable Ultrafast (OpenAI API, or Codex and relay models that offer it)");
+		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "jobs")).toMatchObject({ description: "Show async background jobs status", hint: "[full|kill <id>|kill all]" });
+		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "compact")).toMatchObject({ description: "Manually compact the session context", hint: "[soft|remote|snapcompact] [focus]" });
 	});
 });
 

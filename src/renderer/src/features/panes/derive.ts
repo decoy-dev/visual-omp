@@ -5,6 +5,7 @@
  * JSON over the wire.
  */
 import type { AgentProgress, AgentSnapshot, SessionEntry, SubagentLifecyclePayload, ToolResultMessage } from "@oh-my-pi/pi-wire";
+import type { NativeJob } from "@shared/contracts/native";
 import type { PaneMadeFile, PaneMadeQuery } from "@shared/contracts/panes";
 import type { ActiveTool, GuestSnapshot } from "../../collab/lib/client";
 import { isReplyWrite, resolveToolCall } from "../../chat/friendly";
@@ -32,6 +33,8 @@ export interface BackgroundJob {
 	command: string;
 	/** What the model said the command is for (the call's `i` intent), the row's title; null for calls without one. */
 	intent: string | null;
+	/** omp's one-line description of a running job, supplied by the private extension. */
+	caption?: string | null;
 	state: JobState;
 	/** Last output omp saw for this job (start preview, poll snapshot or final result). */
 	output: string;
@@ -66,8 +69,8 @@ type TranscriptItem =
 	 */
 	| { kind: "exit" };
 
-function resultText(message: ToolResultMessage): string {
-	return message.content.map(block => (block.type === "text" ? block.text : "")).join("");
+function resultText(message: { content: readonly unknown[] }): string {
+	return message.content.map(block => (isRecord(block) && block.type === "text" ? str(block.text) ?? "" : "")).join("");
 }
 
 /** When a call started: omp's `tool_execution_start` entry (saved sessions only) or the assistant message that made it. */
@@ -252,6 +255,7 @@ interface JobReport {
 	id: string;
 	type: string | null;
 	label: string | null;
+	intent: string | null;
 	state: JobState;
 	output: string | null;
 	/** omp's run time for the job, when the report carries one. */
@@ -272,6 +276,7 @@ function jobReports(item: TranscriptItem): JobReport[] {
 			id: job.id,
 			type: job.type,
 			label: job.label,
+			intent: null,
 			state: DELIVERED_STATE[job.status],
 			output: job.result,
 			durationMs: job.durationMs,
@@ -290,6 +295,7 @@ function jobReports(item: TranscriptItem): JobReport[] {
 				id,
 				type: str(job.type),
 				label: str(job.agentUrlId) ?? str(job.label),
+				intent: str(job.intent)?.trim() || null,
 				state,
 				output: str(job.resultText) || str(job.errorText),
 				durationMs: durationMs !== null && durationMs >= 0 ? durationMs : null,
@@ -315,7 +321,7 @@ function exitCodeOf(output: string): number | null {
  * record, or no omp running this chat now) shows as cancelled. Running jobs come first, then the rest; newest first
  * within each, as omp's `/jobs` lists them.
  */
-export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolean, activeTools?: ReadonlyMap<string, ActiveTool>, backgroundTools?: ReadonlyMap<string, ActiveTool>, cwd: string | null = null): BackgroundJob[] {
+export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolean, activeTools?: ReadonlyMap<string, ActiveTool>, backgroundTools?: ReadonlyMap<string, ActiveTool>, cwd: string | null = null, nativeJobs?: readonly NativeJob[]): BackgroundJob[] {
 	const jobs = new Map<string, BackgroundJob>();
 	const upsert = (jobId: string, patch: Partial<BackgroundJob>) => {
 		const existing: BackgroundJob = jobs.get(jobId) ?? {
@@ -340,19 +346,19 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 			stopRunning();
 			continue;
 		}
-		if (item.kind === "result" && item.name === "bash" && item.details && isRecord(item.details.async)) {
+		if (item.kind === "result" && (item.name === "bash" || item.name === "eval") && item.details && isRecord(item.details.async)) {
 			const jobId = str(item.details.async.jobId);
 			const state = item.details.async.state;
 			if (jobId && isJobState(state)) {
 				const folder = str(item.details.cwd) ?? str(item.args.cwd);
-				upsert(jobId, { command: str(item.args.command) ?? "", cwd: folder ? resolveOutputPath(folder, { cwd, home: null }) ?? folder : cwd, intent: item.intent, state, output: resultText(item.message), startedAt: item.start });
+				upsert(jobId, { command: str(item.args.command) ?? str(item.args.code) ?? "", cwd: folder ? resolveOutputPath(folder, { cwd, home: null }) ?? folder : cwd, intent: item.intent, state, output: resultText(item.message), startedAt: item.start });
 			}
 			continue;
 		}
 		for (const report of jobReports(item)) {
 			const job = jobs.get(report.id);
-			if (!job && report.type !== "bash") continue;
-			if (!job) upsert(report.id, { command: report.label ?? "", state: report.state });
+			if (!job && report.type !== "bash" && report.type !== "eval") continue;
+			if (!job) upsert(report.id, { command: report.label ?? "", intent: report.intent, state: report.state });
 			// A delivery ends a running job. When a poll already said how it ended, that outcome stands, but the
 			// delivery still brings the final output, omp's run time and the exit line.
 			const state = report.delivered && job && job.state !== "running" ? job.state : report.state;
@@ -360,6 +366,7 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 			upsert(report.id, {
 				state,
 				output,
+				...(report.intent ? { intent: report.intent } : {}),
 				...(report.cwd ? { cwd: report.cwd } : {}),
 				...(report.widget ? { widget: report.widget } : {}),
 				...(state !== "running" ? { durationMs: report.durationMs ?? job?.durationMs ?? null, exitCode: exitCodeOf(output) ?? job?.exitCode ?? null } : {}),
@@ -373,13 +380,15 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 			for (const raw of details.jobs) {
 				if (!isRecord(raw)) continue;
 				const id = str(raw.id);
-				if (!id || raw.type !== "bash" || !isJobState(raw.status)) continue;
+				if (!id || (raw.type !== "bash" && raw.type !== "eval") || !isJobState(raw.status)) continue;
 				const existing = jobs.get(id);
 				if (existing && existing.state !== "running") continue;
 				const output = str(raw.resultText) || str(raw.errorText);
 				const widget = jobWidgetOf(raw.widget);
+				const intent = str(raw.intent)?.trim();
 				upsert(id, {
 					command: existing?.command || str(raw.label) || "",
+					...(intent ? { intent } : {}),
 					state: raw.status,
 					...(output ? { output } : {}),
 					...(widget ? { widget } : {}),
@@ -388,24 +397,29 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 			}
 		}
 		// Only calls the model sent to the background; a foreground wait also runs as a managed job.
-		if (!isRecord(tool.args) || tool.args.async !== true) continue;
+		if (!isRecord(tool.args) || (tool.args.async !== true && tool.toolName !== "eval")) continue;
 		const async = details && isRecord(details.async) ? details.async : null;
 		const jobId = async ? str(async.jobId) : null;
 		if (!jobId) continue;
-		const output = details ? str(details.output) : null;
+		const output = str(details?.output) ?? (tool.toolName === "eval" && Array.isArray(partial?.content) ? resultText({ content: partial.content }) : null);
 		const existing = jobs.get(jobId);
 		// A saved poll or delivery can be newer than the last live frame kept for this call.
 		if (existing && existing.state !== "running") continue;
 		const state = isJobState(async?.state) ? async.state : existing?.state ?? "running";
 		const folder = str(details?.cwd) ?? str(tool.args.cwd);
 		upsert(jobId, {
-			command: str(tool.args.command) ?? "",
-			intent: callIntent({ intent: tool.intent, arguments: tool.args }),
+			command: str(tool.args.command) ?? str(tool.args.code) ?? "",
+			intent: callIntent({ intent: tool.intent, arguments: tool.args }) ?? existing?.intent ?? null,
 			cwd: folder ? resolveOutputPath(folder, { cwd, home: null }) ?? folder : existing?.cwd ?? cwd,
 			state,
 			startedAt: existing?.startedAt ?? tool.startedAt,
 			...(output ? { output } : {}),
 		});
+	}
+	// Metadata cannot revive a settled job or create a shell row for a helper owned by the same session.
+	if (ompLive) for (const native of nativeJobs ?? []) {
+		const job = jobs.get(native.id);
+		if (job?.state === "running") upsert(native.id, { intent: job.intent || native.intent, caption: native.caption });
 	}
 	if (!ompLive) stopRunning();
 	const newestFirst = [...jobs.values()].reverse();

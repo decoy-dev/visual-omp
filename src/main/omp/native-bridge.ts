@@ -16,6 +16,9 @@ export class NativeBridge {
 	readonly #editors = new Map<string, { request: EditorDraftRequest; delivered: boolean; resolve(result: EditorDraftResult): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
 	readonly #server: Server;
 	snapshot: NativeSnapshot = { modes: null, theme: null };
+	#jobsEpoch = randomUUID();
+	#generation = 0;
+	#hasCurrentJobs = false;
 	readonly extensionPath: string;
 	url = "";
 	constructor(readonly hostId: string, privateDir: string) {
@@ -25,6 +28,7 @@ export class NativeBridge {
 			if (!path.startsWith(`/${this.#token}/`) || request.headers.origin) { response.writeHead(403).end(); return; }
 			response.setHeader("Content-Type", "application/json");
 			response.setHeader("Cache-Control", "no-store");
+			response.setHeader("X-Vomp-Jobs-Epoch", this.#jobsEpoch);
 			const route = path.slice(this.#token.length + 1);
 			try {
 				if (request.method === "GET" && route === "/requests") {
@@ -40,7 +44,21 @@ export class NativeBridge {
 				for await (const chunk of request) { body += chunk; if (body.length > 65536) { response.writeHead(413).end(); return; } }
 				const parsed: unknown = JSON.parse(body);
 				if (route === "/snapshot") {
-					this.snapshot = NativeSnapshotSchema.parse(parsed);
+					const incoming = NativeSnapshotSchema.parse(parsed);
+					const epoch = z.object({ asyncJobsEpoch: z.string().nullable().optional() }).parse(parsed).asyncJobsEpoch;
+					const current = epoch === this.#jobsEpoch;
+					// Bootstrap may report modes before its first poll. Once the epoch is known, reject old snapshots whole.
+					if (!current && (epoch != null || this.#hasCurrentJobs || incoming.shutdown)) { response.end("{}"); return; }
+					if (current && !incoming.shutdown) this.#hasCurrentJobs = true;
+					if (incoming.shutdown) {
+						this.beginGeneration(this.#generation);
+						response.setHeader("X-Vomp-Jobs-Epoch", this.#jobsEpoch);
+					}
+					this.snapshot = {
+						...incoming,
+						asyncJobs: incoming.shutdown ? [] : current ? incoming.asyncJobs ?? [] : this.snapshot.asyncJobs ?? [],
+						asyncJobsGeneration: this.#generation,
+					};
 					broadcast("native:changed", { hostId, snapshot: this.snapshot });
 				} else if (route.startsWith("/commands/")) {
 					const id = route.slice("/commands/".length);
@@ -76,6 +94,13 @@ export class NativeBridge {
 				response.end("{}");
 			} catch { response.writeHead(400).end(); }
 		});
+	}
+	/** Called before publishing a new room, including same-session restarts. Old POSTs cannot repopulate its jobs. */
+	beginGeneration(generation: number): void {
+		this.#generation = generation;
+		this.#jobsEpoch = randomUUID();
+		this.#hasCurrentJobs = false;
+		this.snapshot = { ...this.snapshot, asyncJobs: [], asyncJobsGeneration: generation };
 	}
 	async start(): Promise<void> {
 		await writeFile(this.extensionPath, NATIVE_EXTENSION_SOURCE, { mode: 0o600 });

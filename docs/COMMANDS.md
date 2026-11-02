@@ -1,6 +1,6 @@
 # omp commands in visual-omp
 
-This page records how visual-omp handles each omp slash command and the menus those commands open. The list was taken from omp v18.14.0, the minimum supported version, which registers 88 builtin commands and 9 aliases, plus the skills, custom commands, extension commands, MCP prompts and file commands a project provides.
+This page records how visual-omp handles each omp slash command and the menus those commands open. The list was taken from omp v18.15.0, the minimum supported version, which registers 88 builtin commands and 9 aliases, plus the skills, custom commands, extension commands, MCP prompts and file commands a project provides.
 
 Every chat runs omp's own terminal interface in a hidden terminal, so any line that reaches omp behaves as it would in a terminal. The app adds four things around that: a slash menu that lists what omp accepts, native screens for commands the app already covers, a result row for what omp prints, and native cards for omp's generic dialogs. The terminal sheet remains the fallback for omp screens the app does not draw.
 
