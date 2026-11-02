@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { tableChart } from "./table-chart";
 import { analyzeTable, parseCell } from "./vendor/omp/table-data";
-import { buildChart, planChart } from "./vendor/omp/chart-plan";
+import { buildChart, planChart, worthCharting } from "./vendor/omp/chart-plan";
 import { renderChartSvg } from "./render-chart";
 import type { ChartKind, ChartSpec } from "./vendor/omp/chart-plan";
 
@@ -43,6 +43,49 @@ describe("omp table charts", () => {
 		const plan = planChart(table);
 		expect(plan?.kind).toBe("multiples");
 		expect(buildChart(table, plan!)?.series.map(series => series.dim)).toEqual(["currency", "duration"]);
+	});
+
+	it("plots timings without the bare ratio calculated from them", () => {
+		// Upstream f3cc080: the ratio was plotted as 719 times less than C++.
+		const header = ["mode", "old C++ (ms)", "Python (ms)", "ratio", "median per request"];
+		const rows = [
+			["probe-best4", "717", "715", "0.997", "1.000"],
+			["probe-all-heads", "1298", "1294", "0.997", "1.000"],
+			["call", "2320", "2325", "1.002", "1.003"],
+			["gen32", "5536", "5545", "1.002", "1.001"],
+			["all, wall time", "10181", "10180", "1.000", ""],
+		];
+		const table = analyzeTable(header, rows);
+		const plan = planChart(table);
+		expect(plan?.kind).toBe("multiples");
+		const spec = buildChart(table, plan!)!;
+		expect(spec.series.map(series => series.name)).toEqual(["old C++ (ms)", "Python (ms)", "median per request"]);
+		expect(spec.series[0].points.map(point => point?.value)).toEqual([717, 1298, 2320, 5536, 10181]);
+		expect(spec.series[1].points.map(point => point?.value)).toEqual([715, 1294, 2325, 5545, 10180]);
+		expect(worthCharting(spec)).toBe(true);
+		const svg = tableChart(header, rows);
+		expect(svg).toContain("<svg");
+		expect(svg).toContain("old C++ (ms)");
+		expect(svg).toContain("Python (ms)");
+		expect(svg).not.toContain(">ratio<");
+	});
+
+	it("applies the usefulness gate to timings after excluding their speedup factor", () => {
+		// Upstream f3cc080: a factor can vary more than both timings it divides.
+		const header = ["case", "Go", "Zig", "speedup"];
+		const rows = [
+			["a", "80 ms", "20 ms", "4.0×"],
+			["b", "90 ms", "60 ms", "1.5×"],
+			["c", "100 ms", "10.0 ms", "10.0×"],
+		];
+		const table = analyzeTable(header, rows);
+		const plan = planChart(table);
+		expect(plan?.kind).toBe("grouped");
+		const spec = buildChart(table, plan!)!;
+		expect(spec.series.map(series => series.name)).toEqual(["Go", "Zig"]);
+		expect(spec.series.map(series => series.dim)).toEqual(["duration", "duration"]);
+		expect(worthCharting(spec)).toBe(false);
+		expect(tableChart(header, rows)).toBeNull();
 	});
 
 	it("escapes source labels in chart markup", () => {

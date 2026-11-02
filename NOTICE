@@ -33,7 +33,7 @@ src/renderer/src/tool-render/):
   SOFTWARE.
 
 The unmodified numeric table analysis, chart planner, SVG chart renderer and SVG source handling
-from @oh-my-pi/pi-tui 18.14.0 are included in
+from @oh-my-pi/pi-tui 18.15.0 are included in
 src/renderer/src/ui/charts/vendor/omp/. That directory contains the upstream
 MIT License and a NOTICE identifying each source file.
 
