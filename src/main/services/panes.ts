@@ -46,16 +46,25 @@ async function sniff(path: string, size: number): Promise<Uint8Array> {
 }
 
 export async function readPaneFile(path: string): Promise<PaneFileContent> {
+	const mime = IMAGE_TYPES[extname(path).toLowerCase()];
+	if (mime) {
+		const file = await openForRead(path);
+		try {
+			const info = await file.stat();
+			if (!info.isFile()) throw new Error("Not a file");
+			if (info.size > IMAGE_LIMIT) return { kind: "tooLarge", size: info.size, limit: IMAGE_LIMIT };
+			let data = await readWhole(file, info.size);
+			if (!data) throw new Error("This image changed while it was being read");
+			const size = data.length;
+			if (mime === "image/svg+xml") data = svgForImage(data);
+			return { kind: "image", dataUrl: `data:${mime};base64,${data.toString("base64")}`, size };
+		} finally {
+			await file.close();
+		}
+	}
 	const info = await stat(path);
 	if (!info.isFile()) throw new Error("Not a file");
 	const size = info.size;
-	const mime = IMAGE_TYPES[extname(path).toLowerCase()];
-	if (mime) {
-		if (size > IMAGE_LIMIT) return { kind: "tooLarge", size, limit: IMAGE_LIMIT };
-		let data = await readFile(path);
-		if (mime === "image/svg+xml") data = svgForImage(data);
-		return { kind: "image", dataUrl: `data:${mime};base64,${data.toString("base64")}`, size };
-	}
 	if (size > TEXT_LIMIT) return { kind: "tooLarge", size, limit: TEXT_LIMIT };
 	if (looksBinary(await sniff(path, size))) return { kind: "binary", size };
 	const data = await readFile(path);

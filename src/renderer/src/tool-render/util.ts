@@ -176,6 +176,11 @@ export function resultTextOf(result: ToolResultLike | undefined): string {
 	return parts.join("\n");
 }
 
+/** omp closes ask on a user steer without cancelling the turn. Other errors retain failure status. */
+export function isAskClosedByMessage(result: ToolResultLike | undefined): boolean {
+	return result?.isError === true && resultTextOf(result).trim() === "Ask interrupted by message";
+}
+
 export function resultImagesOf(result: ToolResultLike | undefined): ToolResultImage[] {
 	if (!result) return [];
 	const images: ToolResultImage[] = [];

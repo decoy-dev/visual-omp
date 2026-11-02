@@ -20,6 +20,8 @@ interface QueueTrayProps {
 	queue: readonly QueuedMessage[];
 	/** Pending omp question (reqId) not yet answered. */
 	questionId: number | null;
+	askWaiting?: boolean;
+	sendBlocked?: boolean;
 	/** omp's message box may still hold images from a message that didn't send (`SessionView.strandedImages`). */
 	strandedImages: boolean;
 }
@@ -38,7 +40,7 @@ function revealQuestion(reqId: number, reduced: boolean): void {
  * The tray stays mounted in the composer and opens or closes itself. After the last queued message leaves, the
  * section is held open until that row's exit animation finishes, then collapses.
  */
-export function QueueTray({ session, queue, questionId, strandedImages }: QueueTrayProps) {
+export function QueueTray({ session, queue, questionId, askWaiting = false, sendBlocked = false, strandedImages }: QueueTrayProps) {
 	const { t } = useTranslation("composer");
 	const [expanded, setExpanded] = useState(false);
 	const [editing, setEditing] = useState<{ id: string; text: string } | null>(null);
@@ -111,18 +113,18 @@ export function QueueTray({ session, queue, questionId, strandedImages }: QueueT
 		<Expand open={held || questionId !== null || strandedImages}>
 			<div className="mx-3 rounded-t-lg border border-b-0 border-border-strong bg-inset">
 			<Expand open={questionId !== null}>
-				<div className="flex items-center gap-2 px-3 pt-2 pb-1.5">
+				<div className="flex flex-wrap items-center gap-2 px-3 pt-2 pb-1.5">
 					<button
 						type="button"
 						onClick={() => {
 							if (questionId !== null) revealQuestion(questionId, reducedMotion);
 						}}
-						className="inline-flex h-6 items-center gap-1.5 rounded-full bg-accent-muted px-2.5 text-xs font-semibold text-accent outline-none transition-colors duration-(--dur-fast) hover:bg-selected focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+						className="inline-flex h-6 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-accent-muted px-2.5 text-xs font-semibold text-accent outline-none transition-colors duration-(--dur-fast) hover:bg-selected focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 					>
 						<Question weight="bold" className="size-3" aria-hidden />
 						{t("question.chip")}
 					</button>
-					<span className="text-xs text-fg-faint">{t("question.hint")}</span>
+					<span className="text-xs text-fg-faint">{t(askWaiting ? "question.askHint" : "question.hint")}</span>
 				</div>
 			</Expand>
 			<Expand open={strandedImages}>
@@ -234,8 +236,8 @@ export function QueueTray({ session, queue, questionId, strandedImages }: QueueT
 											icon={<PaperPlaneRight />}
 											className="h-6 px-2 text-accent"
 											title={t("queue.sendNowTip")}
-											// Nothing may be typed into omp until it restarts (the notice above says why).
-											disabled={strandedImages}
+											// A stranded image or a guarded omp dialog keeps the queued message intact.
+											disabled={strandedImages || sendBlocked}
 											onClick={() =>
 												session.sendNow(item.id).catch((error: unknown) =>
 													toast({

@@ -14,6 +14,7 @@ import type {
 	CollabUiRequest,
 	CollabUiResponseValue,
 	HostFrame,
+	ImageContent,
 	SessionEntry,
 	SessionHeader,
 	SessionState,
@@ -210,8 +211,13 @@ export class GuestClient {
 		return this.#snapshot;
 	}
 
-	sendPrompt(text: string): void {
-		this.#socket.send({ t: "prompt", text });
+	sendPrompt(text: string, images: ImageContent[] = [], beforeSend?: () => void): Promise<void> {
+		if (this.#phase !== "live" || this.#readOnly) throw new Error("The chat is not ready to receive a message.");
+		const connection = this.#uiConnection;
+		return this.#socket.sendConnected({ t: "prompt", text, ...(images.length ? { images } : {}) }, () => {
+			if (this.#phase !== "live" || this.#readOnly || this.#uiConnection !== connection) throw new Error("The chat changed before the message was sent. Send it again.");
+			beforeSend?.();
+		});
 	}
 
 	sendUiResponse(reqId: number, value?: CollabUiResponseValue): void {

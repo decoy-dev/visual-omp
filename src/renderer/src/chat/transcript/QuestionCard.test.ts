@@ -92,3 +92,13 @@ describe("tool approval card", () => {
 		expect(render(["One", "Two"])).not.toContain("Sending a message now denies this request.");
 	});
 });
+
+it("explains message closure only for an identified live ask question", () => {
+	const request: CollabUiRequest = { reqId: 7, kind: "select", title: "Which database?", options: ["SQLite", "Other (type your own)", "Chat about this"] };
+	const activeTools = new Map([["ask-1", { toolCallId: "ask-1", toolName: "ask", args: { questions: [{ id: "db", question: request.title, options: [{ label: "SQLite" }] }] }, startedAt: 0 }]]);
+	const askSession = { answer: controls.answer, getSnapshot: () => ({ mode: "live", readOnly: false, guest: { phase: "live", readOnly: false, uiRequest: request, activeTools, entries: [], stream: null, working: true } }) } as unknown as SessionController;
+	const html = renderToStaticMarkup(createElement(QuestionCard, { session: askSession, request }));
+	expect(html).toContain("Sending a message closes this question without stopping the reply.");
+	expect(html).not.toContain("Sending a message now denies this request.");
+	expect(render(["One", "Two"])).not.toContain("Sending a message closes this question");
+});

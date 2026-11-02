@@ -112,6 +112,7 @@ export function AskSeriesCard({ session, series }: { session: SessionController;
 					/>
 				</div>
 			</PresenceSwap>
+			{!sending && <p className="mt-3 text-sm text-fg-muted">{t("question.messageCloses")}</p>}
 			<div className="mt-3 flex flex-wrap items-center gap-2">
 				{sending ? (
 					<span role="status" className="inline-flex items-center gap-2 text-sm text-fg-muted">

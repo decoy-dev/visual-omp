@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import { useState } from "react";
 import { resolveToolRenderer } from "./registry";
 import type { ToolRenderHost, ToolRenderProps, ToolResultLike } from "./types";
-import { isRecord, replaceTabs, stripAnsi } from "./util";
+import { isAskClosedByMessage, isRecord, replaceTabs, stripAnsi } from "./util";
 import "./tool-render.css";
 
 export interface ToolViewProps {
@@ -49,7 +49,7 @@ function executeXdevDispatch(props: ToolViewProps): XdevDispatch | null {
 	return { tool: xdev.tool, args: isRecord(xdev.args) ? xdev.args : {}, inner: xdev.inner };
 }
 
-type ToolStatus = "run" | "ok" | "err" | "pending";
+type ToolStatus = "run" | "ok" | "err" | "pending" | "closed";
 
 /**
  * Status glyph plus screen-reader text, so status never depends on color alone: a pulsing dot while
@@ -57,7 +57,7 @@ type ToolStatus = "run" | "ok" | "err" | "pending";
  * Inline SVG keeps the renderer host-agnostic (no app UI kit, no i18n).
  */
 function ToolStatusMark({ status }: { status: ToolStatus }): ReactNode {
-	const label = status === "run" ? "Running" : status === "err" ? "Failed" : status === "ok" ? "Done" : "Waiting for result";
+	const label = status === "run" ? "Running" : status === "err" ? "Failed" : status === "ok" ? "Done" : status === "closed" ? "Closed" : "Waiting for result";
 	return (
 		<span className={`tv-status tv-status--${status}`}>
 			{status === "ok" && (
@@ -70,6 +70,7 @@ function ToolStatusMark({ status }: { status: ToolStatus }): ReactNode {
 					<path d="M3 3l6 6M9 3 3 9" />
 				</svg>
 			)}
+			{status === "closed" && <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M2.5 6h7" /></svg>}
 			<span className="tv-sr">{label}</span>
 		</span>
 	);
@@ -93,8 +94,9 @@ export function ToolView(props: ToolViewProps): ReactNode {
 		host: props.host,
 	};
 
-	const isError = props.result?.isError === true;
-	const status: ToolStatus = props.running ? "run" : isError ? "err" : props.result ? "ok" : "pending";
+	const closed = name === "ask" && isAskClosedByMessage(result);
+	const isError = props.result?.isError === true && !closed;
+	const status: ToolStatus = props.running ? "run" : closed ? "closed" : isError ? "err" : props.result ? "ok" : "pending";
 	const partial = props.running && !props.result && props.partial ? stripAnsi(replaceTabs(props.partial)) : "";
 
 	return (

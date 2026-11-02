@@ -53,7 +53,7 @@
 	},
 	"astEdit": { "running": "Rewriting code…", "ok": "Rewrote code", "error": "Couldn't rewrite code" },
 	"lsp": { "running": "Checking the code…", "ok": "Checked the code", "error": "Code check failed" },
-	"ask": { "running": "Waiting for your answer…", "ok": "Asked you a question", "error": "Question was skipped" },
+	"ask": { "running": "Waiting for your answer…", "ok": "Asked you a question", "error": "Question was skipped", "closed": "Question closed after your message", "closedLabel": "Closed" },
 	"github": { "running": "Working with GitHub…", "ok": "Used GitHub", "error": "GitHub step failed" },
 	"image": { "running": "Creating an image…", "ok": "Created an image", "error": "Couldn't create the image" },
 	"remember": { "running": "Saving a memory…", "ok": "Saved a memory", "error": "Couldn't save the memory" },

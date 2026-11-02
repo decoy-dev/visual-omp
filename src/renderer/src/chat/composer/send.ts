@@ -17,10 +17,10 @@ import type { Attachment, ComposerMode } from "./drafts";
 export const ATTACHABLE_IMAGE = /\.(?:png|jpe?g|gif|webp)$/i;
 
 /** Main identifies the blocking question; the renderer supplies the localized card instruction. */
-export function tspComposerReason(host: Pick<HostState, "transport" | "tspAvailability"> | null, questionHint: string): string | null {
+export function tspComposerReason(host: Pick<HostState, "transport" | "tspAvailability"> | null, questionHint: string, askWaiting = false): string | null {
 	if (host?.transport !== "tsp" || host.tspAvailability?.available === true) return null;
-	return host.tspAvailability?.reasonCode === "matched-question" ? questionHint
-		: host.tspAvailability?.reason ?? "Waiting for omp to open its semantic screen.";
+	if (host.tspAvailability?.reasonCode === "matched-question") return askWaiting ? null : questionHint;
+	return host.tspAvailability?.reason ?? "Waiting for omp to open its semantic screen.";
 }
 
 /** Characters omp un-escapes in pasted paths (`SHELL_ESCAPED_PATH_CHAR_REGEX`). */

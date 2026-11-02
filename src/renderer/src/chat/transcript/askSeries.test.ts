@@ -9,6 +9,7 @@ import {
 	defaultAnswer,
 	findSeriesAsk,
 	isAskRunning,
+	isAskRequest,
 	isSeriesStart,
 	parseAskQuestions,
 	REPLAY_START,
@@ -352,5 +353,19 @@ describe("findSeriesAsk", () => {
 		expect(isAskRunning({ ...source, working: false }, "call-2")).toBe(false);
 		// Without the running tools, only the call itself in the mirror counts as evidence.
 		expect(isAskRunning(source, "call-from-another-room")).toBe(false);
+	});
+
+	it("recognizes only exact live ask selects and their custom-answer editor", () => {
+		const activeTools = new Map([["call-1", { toolCallId: "call-1", toolName: "ask", args }]]);
+		const source = { activeTools, entries: [], stream: null, working: true };
+		const request: CollabUiRequest = { reqId: 7, kind: "select", title: "Which\ndb?", options: ["SQLite", ASK_OTHER, ASK_CHAT] };
+		expect(isAskRequest(source, request)).toBe(true);
+		expect(isAskRequest(source, { ...request, options: ["Postgres", ASK_OTHER, ASK_CHAT] })).toBe(false);
+		expect(isAskRequest({ ...source, activeTools: new Map() }, request)).toBe(false);
+		expect(isAskRequest(source, { reqId: 8, kind: "select", title: "Which\ndb?", options: ["Approve Once", "Deny"] })).toBe(false);
+		expect(isAskRequest(source, { reqId: 9, kind: "editor", title: "Custom answer: Which\ndb?" })).toBe(true);
+		expect(isAskRequest(source, { reqId: 9, kind: "editor", title: "Custom answer: Another question?" })).toBe(false);
+		expect(isAskRequest({ ...source, activeTools: new Map(), entries: [assistant("saved", args)] }, request)).toBe(true);
+		expect(isAskRequest({ ...source, activeTools: new Map(), entries: [assistant("saved", args), result("saved")] }, request)).toBe(false);
 	});
 });

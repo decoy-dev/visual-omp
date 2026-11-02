@@ -9,7 +9,7 @@ import { ChatCircle, Info, Question, ShieldWarning } from "@phosphor-icons/react
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { deliver } from "../composer/send";
-import type { SessionController } from "../../state/session";
+import { pendingAsk, type SessionController } from "../../state/session";
 import { Button, Textarea, toast } from "../../ui";
 import { AskSeriesCard } from "./AskSeriesCard";
 import { ASK_CHAT, ASK_NEXT, ASK_OTHER, CUSTOM_ANSWER_PREFIX } from "./askSeries";
@@ -86,6 +86,7 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 						autoFocus
 					/>
 				</Heading>
+				{pendingAsk(session.getSnapshot()) && <p className="mt-3 text-sm text-fg-muted">{t("question.messageCloses")}</p>}
 				<div className="mt-3 flex justify-end gap-2">
 					<Button variant="ghost" onClick={() => session.answer(request.reqId, undefined)}>
 						{t("question.skip")}
@@ -208,6 +209,7 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 					className={otherInputClass}
 				/>
 			)}
+			{pendingAsk(session.getSnapshot()) && <p className="mt-3 text-sm text-fg-muted">{t("question.messageCloses")}</p>}
 			<div className="mt-3 flex items-center gap-2">
 				{hasChat && (
 					<Button variant="ghost" icon={<ChatCircle />} onClick={() => session.answer(request.reqId, ASK_CHAT)}>

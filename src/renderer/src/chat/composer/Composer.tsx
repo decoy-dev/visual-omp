@@ -35,7 +35,7 @@ import { useTranslation } from "react-i18next";
 import { routeSlash } from "../../features/session-tools/slash";
 import { sendSlashCommand } from "../../features/session-tools/typed";
 import { chatSlots } from "../../registry/slots";
-import type { SessionController } from "../../state/session";
+import { pendingAsk, type SessionController } from "../../state/session";
 import { useApp } from "../../state/app";
 import {
 	cn,
@@ -259,7 +259,9 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 
 	const readOnly = view.readOnly;
 	const working = view.working;
-	const tspReason = tspComposerReason(view.host, t("question.answerBeforeSending"));
+	const askWaiting = pendingAsk(view);
+	const queueing = working && !askWaiting;
+	const tspReason = tspComposerReason(view.host, t("question.answerBeforeSending"), askWaiting);
 	const voiceOn = useApp(state => state.prefs?.voiceInput ?? false);
 	const files = useProjectFiles(projectPath, mention !== null);
 	const matches = useMemo(() => (mention && files ? fuzzyFiles(files, mention.query, 40) : null), [mention, files]);
@@ -398,12 +400,17 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 				})
 				: deliver(session, text, images, now);
 		sending.catch((error: unknown) => {
-			// Put the message back so nothing typed is lost.
 			const restore = useComposerDrafts.getState();
-			if (!(restore.drafts[tabId] ?? "")) restore.setDraft(tabId, draft);
-			restore.addAttachments(tabId, images);
-			restore.setMode(tabId, mode);
-			toast({ tone: "err", message: t("send.failed"), description: error instanceof Error ? error.message : String(error) });
+			const occupied = composerText(restore, tabId).length > 0 || (restore.attachments[tabId]?.length ?? 0) > 0 || restore.modes[tabId] != null;
+			if (occupied) {
+				// Keep the newer draft intact and retain the failed message with its own images.
+				session.preserveFailedMessage(text, images);
+			} else {
+				restore.setDraft(tabId, draft);
+				restore.addAttachments(tabId, images);
+				restore.setMode(tabId, mode);
+			}
+			toast({ tone: "err", message: t(occupied ? "send.keptQueued" : "send.failed"), description: error instanceof Error ? error.message : String(error) });
 		});
 	};
 
@@ -592,11 +599,11 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 			)
 		: mode
 			? t(`placeholder.${mode}`)
-			: working
+			: queueing
 				? t("placeholder.working")
 				: t("placeholder.idle");
 	const canSend = !readOnly && !tspReason && (draft.trim().length > 0 || attachments.length > 0);
-	const actionSet = `${working}:${canSend}`;
+	const actionSet = `${queueing}:${canSend}`;
 	const mod = IS_MAC ? "⌘" : "Ctrl+";
 	const questionId = view.guest?.uiRequest?.reqId ?? null;
 	// Slots below order 50 sit on the left of the row under the card (folder, permission); the rest on the right.
@@ -623,7 +630,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					dropColumn,
 				)}
 			<PredictionRecovery session={session} readOnly={readOnly} />
-			<QueueTray session={session} queue={view.queue} questionId={questionId} strandedImages={view.strandedImages} />
+			<QueueTray session={session} queue={view.queue} questionId={questionId} askWaiting={askWaiting} sendBlocked={Boolean(tspReason)} strandedImages={view.strandedImages} />
 			<div
 				className={cn(
 					"relative rounded-xl border border-border-strong bg-panel shadow-(--shadow-card) transition-colors duration-(--dur-fast) focus-within:border-control-border has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 has-[textarea:focus-visible]:outline-ring",
@@ -832,7 +839,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 										</Tooltip>
 									</motion.span>
 								)}
-								{working && canSend && (
+								{queueing && canSend && (
 									<motion.span key="now" layoutDependency={actionSet} {...actionMotion}>
 										<Tooltip content={t("send.nowTip")} shortcut={sendNowKeys}>
 											<button
@@ -849,7 +856,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 										</Tooltip>
 									</motion.span>
 								)}
-								{working && canSend && (
+								{queueing && canSend && (
 									<motion.span key="queue" layoutDependency={actionSet} {...actionMotion}>
 										<Tooltip content={t("send.queueTip")} shortcut="↵">
 											<button
@@ -863,7 +870,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 										</Tooltip>
 									</motion.span>
 								)}
-								{!working && (
+								{!queueing && (
 									<motion.span key="send" layoutDependency={actionSet} {...actionMotion}>
 										<Tooltip content={tspReason ?? t("send.tip")} shortcut="↵">
 											<button

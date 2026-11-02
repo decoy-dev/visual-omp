@@ -14,6 +14,7 @@ vi.mock("./socket", () => ({
 		}
 		connect() {}
 		send(frame: unknown) { socket.sent.push(frame); }
+		sendConnected(frame: unknown, beforeSend: () => void) { beforeSend(); socket.sent.push(frame); return Promise.resolve(); }
 	},
 }));
 vi.mock("./link", () => ({
@@ -33,6 +34,27 @@ beforeEach(() => {
 	socket.sent = [];
 	client = new GuestClient("link", "visual-omp");
 	feed(welcome);
+});
+
+describe("user prompts while a question waits", () => {
+	it("sends the collab prompt and images without answering or locally dismissing the question", () => {
+		const request = { reqId: 7, kind: "select", title: "Which database?", options: ["SQLite"] };
+		feed({ t: "ui-request", request });
+		const images = [{ type: "image" as const, mimeType: "image/png", data: "aW1hZ2U=" }];
+		client.sendPrompt("Use Postgres.", images);
+		expect(socket.sent).toEqual([{ t: "prompt", text: "Use Postgres.", images }]);
+		expect(client.getSnapshot().uiRequest).toEqual(request);
+		feed({ t: "ui-request-end", reqId: 7 });
+		expect(client.getSnapshot().uiRequest).toBeNull();
+	});
+	it("refuses disconnected and read-only prompts instead of buffering them into a later question", () => {
+		socket.current!.onClose("reconnecting", true);
+		expect(() => client.sendPrompt("Keep this draft.")).toThrow("not ready");
+		expect(socket.sent).toEqual([]);
+		feed({ ...welcome, readOnly: true });
+		expect(() => client.sendPrompt("Keep this draft.")).toThrow("not ready");
+		expect(socket.sent).toEqual([]);
+	});
 });
 
 describe("autoThinking", () => {

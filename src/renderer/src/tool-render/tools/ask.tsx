@@ -2,7 +2,7 @@
 import type { ReactNode } from "react";
 import { Badge, InvalidArg, Note, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
-import { detailsRecord, isRecord, normalizeWs, num, str, truncate } from "../util";
+import { detailsRecord, isAskClosedByMessage, isRecord, normalizeWs, num, str, truncate } from "../util";
 
 interface AskOption {
 	label: string;
@@ -153,7 +153,7 @@ function questionsFromDetails(details: Record<string, unknown>): AskQuestion[] {
 	return out;
 }
 
-function Summary({ args }: ToolRenderProps): ReactNode {
+function Summary({ args, result }: ToolRenderProps): ReactNode {
 	const questions = questionsOf(args);
 	const first = questions[0];
 	if (!first) return <InvalidArg what="questions" />;
@@ -161,6 +161,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 		<>
 			<span>{truncate(normalizeWs(first.question), 70)}</span>
 			{questions.length > 1 && <Badge>{questions.length} questions</Badge>}
+			{isAskClosedByMessage(result) && <Badge>Closed after your message</Badge>}
 		</>
 	);
 }
@@ -217,7 +218,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 				return <QuestionBlock key={i} q={q} answer={answer} />;
 			})}
 			{questions.length === 0 && !result && <InvalidArg what="questions" />}
-			{!answers && <ResultText result={result} maxLines={10} />}
+			{isAskClosedByMessage(result) ? <Note>Question closed after your message. The reply can continue.</Note> : !answers && <ResultText result={result} maxLines={10} />}
 		</>
 	);
 }

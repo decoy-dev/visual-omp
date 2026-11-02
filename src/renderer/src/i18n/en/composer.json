@@ -31,7 +31,8 @@
 		"nowTip": "Send now. omp reads it at its next step, before this reply finishes.",
 		"stop": "Stop reply",
 		"stopWaiting": "Stop waiting",
-		"failed": "Couldn't send your message"
+		"failed": "Couldn't send your message",
+		"keptQueued": "Couldn't send your message. It is saved in the queue."
 	},
 	"plus": {
 		"label": "Add files, prompts and commands",
@@ -85,6 +86,7 @@
 	"question": {
 		"chip": "Question waiting",
 		"hint": "omp needs your answer to continue",
+		"askHint": "Answer the question or send a message to close it",
 		"answerBeforeSending": "Answer the question card before sending a message."
 	},
 	"queue": {
@@ -126,8 +128,10 @@
 		"title": "Context window",
 		"body": "How much of omp's context window this chat fills. When it is full, compact the chat to make room.",
 		"compact": "Compact chat",
+		"queueCompact": "Queue compaction",
+		"compactFailed": "Couldn't compact this chat",
 		"compactTip": "Summarize the chat so far to free context.",
-		"compactBusy": "Available when omp finishes the current reply.",
+		"compactBusy": "Queues /compact for when omp finishes the current reply.",
 		"unknown": "Unknown"
 	},
 	"voice": {

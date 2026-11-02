@@ -28,9 +28,10 @@ const fakes = vi.hoisted(() => {
 		}
 		connect(): void {}
 		close(): void {}
+		sendPrompt = vi.fn(async (_text: string, _images: unknown[], beforeSend?: () => void) => { beforeSend?.(); });
 		/** What the real client publishes: `waiting` until omp's snapshot arrives, then `live`. */
 		emit(phase: GuestSnapshot["phase"], entries: readonly SessionEntry[], working = false, extra: Partial<GuestSnapshot> = {}): void {
-			this.snapshot = { phase, entries, working, uiRequest: null, agents: [], notices: [], progress: new Map(), lifecycle: new Map(), ...extra } as unknown as GuestSnapshot;
+			this.snapshot = { phase, entries, working, uiRequest: null, agents: [], notices: [], progress: new Map(), lifecycle: new Map(), activeTools: new Map(), stream: null, ...extra } as unknown as GuestSnapshot;
 			for (const listener of this.listeners) listener();
 		}
 	}
@@ -347,6 +348,235 @@ function fakeDelivery() {
 const shot = { path: "/tmp/Screen Shot.png", name: "Screen Shot.png" };
 const pasteShot = ["composer:paste", "h1", "/tmp/Screen\\ Shot.png"];
 const submit = (text: string) => ["host:submit", "h1", text, "steer"];
+
+describe("messages while ask waits", () => {
+	const args = { questions: [{ id: "db", question: "Which database?", options: [{ label: "SQLite" }] }] };
+	const request = { reqId: 7, kind: "select" as const, title: "Which database?", options: ["SQLite", "Other (type your own)", "Chat about this"] };
+	const ask = { uiRequest: request, activeTools: new Map([["ask-1", { toolCallId: "ask-1", toolName: "ask", args, startedAt: 0 }]]) };
+	it.each(["classic", "tsp"] as const)("sends Enter and Send now through a user collab prompt in %s without touching the question selector", async transport => {
+		const session = working(`ask-${transport}`);
+		sendHost({ transport, link: "L1", tui: tui(1), tspAvailability: { available: false, reason: "Question", reasonCode: "matched-question" } });
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, ask);
+		await deliver(session, "Use Postgres instead.", [], false);
+		await deliver(session, "Keep the existing schema.", [], true);
+		expect(guest.sendPrompt.mock.calls.map(call => call.slice(0, 2))).toEqual([["Use Postgres instead.", []], ["Keep the existing schema.", []]]);
+		expect(invoked.filter(call => ["host:submit", "host:keys", "composer:paste"].includes(call[0] as string))).toEqual([]);
+		expect(queued(session)).toEqual([]);
+		expect(session.getSnapshot().inputHistory.map(item => item.text)).toEqual(["Use Postgres instead.", "Keep the existing schema."]);
+	});
+
+	it.each(["classic", "tsp"] as const)("sends an existing queued message over collab while ask waits in %s", async transport => {
+		const session = working(`queued-ask-${transport}`);
+		await session.send("Use Postgres.");
+		const id = session.getSnapshot().queue[0]!.id;
+		sendHost({ transport, link: "L1", tui: tui(1), tspAvailability: { available: false, reason: "Question", reasonCode: "matched-question" } });
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, ask);
+		await session.sendNow(id);
+		expect(guest.sendPrompt).toHaveBeenCalledExactlyOnceWith("Use Postgres.", [], expect.any(Function));
+		expect(queued(session)).toEqual([]);
+		expect(invoked.filter(call => call[0] === "host:submit")).toEqual([]);
+	});
+
+	it("carries original image blocks without pasting paths into the ask selector", async () => {
+		const session = working("ask-image");
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, ask);
+		respond = channel => channel === "panes:readFile" ? Promise.resolve({ kind: "image", dataUrl: "data:image/png;base64,aW1hZ2U=", size: 5 }) : undefined;
+		await session.send("Use this design.", [shot]);
+		expect(guest.sendPrompt).toHaveBeenCalledExactlyOnceWith("Use this design.", [{ type: "image", mimeType: "image/png", data: "aW1hZ2U=" }], expect.any(Function));
+		expect(invoked.filter(call => call[0] === "composer:paste" || call[0] === "host:submit")).toEqual([]);
+		expect(session.getSnapshot().strandedImages).toBe(false);
+	});
+
+	it("leaves unreadable images unsent without stranding them in omp's editor", async () => {
+		const session = working("ask-image-failed");
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, ask);
+		respond = channel => channel === "panes:readFile" ? Promise.resolve({ kind: "tooLarge", size: 9_000_000, limit: 8_388_608 }) : undefined;
+		await expect(session.send("Use this image.", [shot])).rejects.toThrow("Could not attach");
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		expect(session.getSnapshot().inputHistory).toEqual([]);
+		expect(invoked.filter(call => call[0] === "host:submit" || call[0] === "composer:paste")).toEqual([]);
+	});
+
+	it("does not redirect an in-flight image prompt into a replacement extension dialog", async () => {
+		const session = working("ask-image-replaced");
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, ask);
+		const read = Promise.withResolvers<unknown>();
+		respond = channel => channel === "panes:readFile" ? read.promise : undefined;
+		const sending = session.send("Use this image.", [shot]);
+		await flush();
+		guest.emit("live", [u1], true, { ...ask, uiRequest: { reqId: 8, kind: "editor", title: "Extension input" } });
+		read.resolve({ kind: "image", dataUrl: "data:image/png;base64,aW1hZ2U=", size: 5 });
+		await expect(sending).rejects.toThrow("Answer the question card");
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		expect(session.getSnapshot().strandedImages).toBe(false);
+	});
+
+	it("treats dollar amounts as message text rather than Python commands", async () => {
+		const session = working("ask-currency");
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, ask);
+		await session.send("$100 is the budget.");
+		expect(guest.sendPrompt).toHaveBeenCalledExactlyOnceWith("$100 is the budget.", [], expect.any(Function));
+		expect(queued(session)).toEqual([]);
+	});
+
+	it("keeps a queued message when a replacement extension dialog refuses Send now", async () => {
+		const session = working("ask-replaced");
+		await session.send("Keep this message.");
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, { ...ask, uiRequest: { ...request, options: ["Extension option"] } });
+		await expect(session.sendNow(session.getSnapshot().queue[0]!.id)).rejects.toThrow("Answer the question card");
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		expect(invoked.filter(call => call[0] === "host:submit")).toEqual([]);
+		expect(queued(session)).toEqual(["Keep this message."]);
+	});
+
+	it("keeps classic approval sends on their existing sending-denies path", async () => {
+		const session = working("approval-message");
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, { uiRequest: { reqId: 8, kind: "select", title: "Run command?", options: ["Approve Once", "Deny"] } });
+		await deliver(session, "Do not run that.", [], true);
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		expect(invoked).toContainEqual(submit("Do not run that."));
+	});
+
+	it.each(["ended", "replaced", "reconnected"] as const)("keeps ask-origin routing across a serialized write when the question is %s", async change => {
+		const session = working(`ask-write-${change}`);
+		const guest = fakes.guests.at(-1)!;
+		const block = Promise.withResolvers<null>();
+		respond = channel => channel === "host:submit" ? block.promise : undefined;
+		const command = session.command("/hold");
+		await flush();
+		guest.emit("live", [u1], true, { ...ask, uiConnection: 1 });
+		const sending = session.send("Keep this as a prompt.");
+		const result = change === "ended" ? sending : expect(sending).rejects.toThrow();
+		if (change === "ended") guest.emit("live", [u1], true, { uiConnection: 1 });
+		else if (change === "replaced") guest.emit("live", [u1], true, { ...ask, uiConnection: 1, uiRequest: { ...request, options: ["Extension option"] } });
+		else guest.emit("live", [u1], true, { ...ask, uiConnection: 2 });
+		block.resolve(null);
+		await command; await result;
+		expect(invoked.filter(call => call[0] === "host:submit")).toEqual([submit("/hold")]);
+		if (change === "ended") expect(guest.sendPrompt).toHaveBeenCalledExactlyOnceWith("Keep this as a prompt.", [], expect.any(Function));
+		else { expect(guest.sendPrompt).not.toHaveBeenCalled(); expect(session.getSnapshot().inputHistory.map(row => row.text)).not.toContain("Keep this as a prompt."); }
+	});
+
+	it.each(["dispose", "reconnect", "readOnly"] as const)("refuses image delivery after %s while retaining undelivered input", async change => {
+		const session = working(`ask-image-${change}`);
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, { ...ask, uiConnection: 1 });
+		const read = Promise.withResolvers<unknown>();
+		respond = channel => channel === "panes:readFile" ? read.promise : undefined;
+		const sending = session.send("Keep this image draft.", [shot]);
+		const rejected = expect(sending).rejects.toThrow("chat changed");
+		await flush();
+		if (change === "dispose") await session.dispose();
+		else if (change === "readOnly") guest.emit("live", [u1], true, { ...ask, uiConnection: 1, readOnly: true });
+		else { guest.emit("reconnecting", [u1], true, { ...ask, uiConnection: 2 }); guest.emit("live", [u1], true, { ...ask, uiConnection: 3 }); }
+		read.resolve({ kind: "image", dataUrl: "data:image/png;base64,aW1hZ2U=", size: 5 });
+		await rejected;
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		expect(session.getSnapshot().inputHistory).toEqual([]);
+		expect(invoked.some(call => call[0] === "composer:paste" || call[0] === "host:submit")).toBe(false);
+	});
+
+	it.each(["reconnecting", "readOnly"] as const)("refuses a stale ask send initiated while %s without queueing or typing it", async unavailable => {
+		const session = working(`ask-stale-${unavailable}`);
+		const guest = fakes.guests.at(-1)!;
+		guest.emit(unavailable === "reconnecting" ? "reconnecting" : "live", [u1], true, { ...ask, readOnly: unavailable === "readOnly" });
+		await expect(session.send("Keep this draft.")).rejects.toThrow("chat changed");
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		expect(queued(session)).toEqual([]);
+		expect(invoked.some(call => call[0] === "host:submit")).toBe(false);
+	});
+
+	it("retains a queued row when its captured ask request changes before its write", async () => {
+		const session = working("ask-queue-replaced");
+		await session.send("Keep this queued.");
+		const item = session.getSnapshot().queue[0]!;
+		const block = Promise.withResolvers<null>();
+		respond = channel => channel === "host:submit" ? block.promise : undefined;
+		const command = session.command("/hold");
+		await flush();
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, ask);
+		const sending = session.sendNow(item.id);
+		const rejected = expect(sending).rejects.toThrow("Answer the question card");
+		guest.emit("live", [u1], true, { ...ask, uiRequest: { reqId: 8, kind: "editor", title: "Extension input" } });
+		block.resolve(null); await command; await rejected;
+		expect(session.getSnapshot().queue).toEqual([item]);
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		expect(invoked.filter(call => call[0] === "host:submit")).toEqual([submit("/hold")]);
+	});
+
+	it("refuses non-question TSP unavailability for all controller prompt entry points", async () => {
+		const session = working("ask-tsp-menu");
+		await session.send("Keep this queued.");
+		const item = session.getSnapshot().queue[0]!;
+		sendHost({ transport: "tsp", link: "L1", tspAvailability: { available: false, reason: "Close the omp screen before sending a message." } });
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, ask);
+		await expect(session.send("Enter prompt")).rejects.toThrow("Close the omp screen");
+		await expect(session.steer("Immediate prompt")).rejects.toThrow("Close the omp screen");
+		await expect(session.sendNow(item.id)).rejects.toThrow("Close the omp screen");
+		expect(session.getSnapshot().queue).toEqual([item]);
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		expect(invoked.some(call => call[0] === "host:submit")).toBe(false);
+	});
+
+	it("waits for its own attributed collab prompt before draining the next queued row", async () => {
+		const session = working("ask-collab-ack");
+		await session.send("Next queued message.");
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, ask);
+		const read = Promise.withResolvers<unknown>();
+		respond = channel => channel === "panes:readFile" ? read.promise : undefined;
+		const sending = session.send("My image prompt.", [shot]);
+		await flush();
+		guest.emit("live", [u1], false);
+		read.resolve({ kind: "image", dataUrl: "data:image/png;base64,aW1hZ2U=", size: 5 });
+		await sending; await flush();
+		const collab = (id: string, from: string, content: string): SessionEntry => ({ type: "custom_message", id, parentId: "u1", timestamp: "", customType: "collab-prompt", display: true, content, details: { from } });
+		const unrelated = collab("other", "Someone else", "My image prompt.");
+		guest.emit("live", [u1, unrelated], false); await flush();
+		expect(queued(session)).toEqual(["Next queued message."]);
+		guest.emit("live", [u1, unrelated, collab("mine", "visual-omp", "My image prompt.")], false); await flush();
+		expect(queued(session)).toEqual([]);
+		expect(invoked.filter(call => call[0] === "host:submit")).toEqual([submit("Next queued message.")]);
+	});
+
+	it("preserves a failed submitted message as one queue row without retrying it", async () => {
+		const session = idle("preserve-failed-message");
+		session.preserveFailedMessage("Keep the failed message.", [shot]);
+		await flush();
+		expect(session.getSnapshot().queue).toMatchObject([{ text: "Keep the failed message.", images: [shot] }]);
+		expect(invoked.filter(call => call[0] === "host:submit" || call[0] === "composer:paste")).toEqual([]);
+	});
+
+	it("queues compaction behind the turn and routes it once through the existing slash delivery", async () => {
+		const calls = fakeDelivery();
+		const session = working("compact-queue");
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, ask);
+		await session.send("/compact");
+		expect(queued(session)).toEqual(["/compact"]);
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		expect(calls).toEqual([]);
+		guest.emit("live", [u1, a1], false);
+		await flush();
+		expect(calls.map(call => call.line)).toEqual(["/compact"]);
+		expect(queued(session)).toEqual([]);
+		calls[0]!.done();
+		await flush();
+		expect(calls).toHaveLength(1);
+	});
+});
 
 describe("SessionController TSP preview input", () => {
 	const preview = (busy: boolean) => {

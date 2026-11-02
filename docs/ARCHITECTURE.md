@@ -102,9 +102,10 @@ Each SessionHost:
 4. The renderer's guest client joins the room and exposes a live snapshot (header, entries,
    streaming message, active tools, subagent progress, model/thinking/context state, pending
    `select`/`editor` UI requests) through `useSyncExternalStore`.
-5. **User input is typed into the real TUI** (bracketed paste + Enter), so prompts, `!`/`$`
+5. **Ordinary user input is typed into the TUI** (bracketed paste + Enter), so prompts, `!`/`$`
    prefixes, queue behaviour and the slash commands the app passes through behave as they do in
-   a terminal. The guest channel is used for UI-request answers, abort and subagent commands. Slash lines first go
+   a terminal. While an `ask` question waits, user messages instead use the collab prompt path described below.
+   The guest channel also carries UI-request answers, abort and subagent commands. Slash lines first go
    through `routeSlash` (`session-tools/slash.ts`), which opens the app's own screen for commands
    it covers and refuses the few that would break the hosted session (`/collab` and `/join`).
    The rest go through `sendSlashCommand` (`session-tools/typed.ts`), which types the line and
@@ -131,6 +132,26 @@ Each SessionHost:
    **Continue where omp stopped**. The explicit action starts `omp --restore <file>`; an ordinary
    restart keeps `--resume`. The collab client seeds `agent_start.resumedToolCallIds` from saved
    assistant calls, including events received before the snapshot finishes.
+
+Ask interruption: `pendingAsk` in `state/session.ts` requires a live writable mirror and a request matching
+a running ask's question, options and sentinels, or its custom-answer editor. Enter, Send now and queued-row
+Send now send those messages through `GuestClient.sendPrompt`, in both classic and TSP chats. omp 18.15
+attributes guest prompts to the user and aborts only the ask dialog with steering reason `user`; IRC and
+background completions leave the dialog open. The app waits for `ui-request-end` and the tool result instead
+of answering or cancelling the request locally. Prompts retain their original ask routing intent and connection
+identity across asynchronous writes. The socket validates that identity again after encryption, immediately
+before sending; a prompt is never buffered or replayed across reconnect. A refused send restores its draft
+and images together, or preserves the failed message in the app queue when a newer draft occupies the composer.
+Classic image attachments reuse `panes:readFile`, whose image reader opens one handle, checks its size and
+reads at most that size plus one byte. Growth is refused and pathname replacement cannot switch the content.
+The original raster blocks travel with the prompt, so no paste enters the selector's search field. Only the
+app guest's matching `collab-prompt` text acknowledges that send. Other extension dialogs retain guarded
+answers; classic approvals keep their existing sending-denies path and TSP approvals remain guarded.
+The exact ask result `Ask interrupted by message` has a neutral Closed mark.
+
+Composer compaction: the context popover calls `SessionController.send("/compact")`. While omp works,
+the line joins the visible app queue and follows the same slash delivery as a typed queued command.
+The app does not send Ctrl+Q or depend on omp's separate queued-compaction state.
 
 Host side-channel notices: `main/omp/host-observations.ts` decodes omp's OSC 7501 root status and reads the session's `session_recaps` journal in read-only mode, keeping only the newest non-blank recap. The owning extension publishes `historyDbPath`; it uses omp's injected `getAgentDir()` and the matching 18.14 profile, `PI_CONFIG_DIR` and existing-XDG-data-root rules from the tested `history-path.ts` resolver. Standalone omp does not resolve the public pi-utils package from an extension, so that resolver is embedded rather than imported there. A locked or temporarily unreadable journal retains the last successful notices. Blocked and error records drive chat marks, and their message text is used for the existing question and completion notifications. Startup model-substitution warnings are captured from recognized warning rows above the editor, with painted word wrapping joined and partial paints deduplicated. Input ends that startup capture. `features/host-notices` presents warnings in every transcript view without adding model messages, and the recap only while it is newer than the newest user or assistant message on any branch, including a reply still streaming (`latestMessageAt` in `chat/transcript/notices.ts`).
 
@@ -207,7 +228,8 @@ shell variants, modal fields, PTY mode and a subagent-view composer are refused.
 or screen-mode surface also blocks submission. Main publishes availability and a reason, and the
 app composer shows that reason beside its unavailable send control. A blocking hook uniquely
 matched to a collab question carries `reasonCode: "matched-question"`; the composer uses a localized
-instruction to answer the question card. Other omp menus retain their close-menu instruction.
+instruction to answer the question card unless `pendingAsk` authorizes a collab user prompt. This exception
+never relaxes main's semantic hook guard. Other omp menus retain their close-menu instruction.
 The writer checks availability again before sending. omp retains displaced drafts through its own send semantics. Attachments,
 application pastes, Ctrl+Q follow-up submission, shell/Python modes and prediction transfer remain
 unavailable in this preview. Unconverted screen-driven controls still require semantic consumers.

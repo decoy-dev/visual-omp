@@ -6,7 +6,7 @@
 import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { type ChatSlotProps, chatSlots } from "../../registry/slots";
-import { Button, cn, ContextRing, contextZone, Popover, PopoverContent, PopoverTrigger, Progress, Tooltip } from "../../ui";
+import { Button, cn, ContextRing, contextZone, Popover, PopoverContent, PopoverTrigger, Progress, toast, Tooltip } from "../../ui";
 import type { ComposerMode } from "./drafts";
 
 /** The quick modes and the glyph that enters each one at the start of an empty box; the ＋ menu lists them. */
@@ -59,11 +59,11 @@ function ContextTool({ session }: ChatSlotProps) {
 					size="sm"
 					variant={zone === "normal" ? "secondary" : "primary"}
 					className="mt-3 w-full"
-					disabled={view.working || view.readOnly}
-					title={t("context.compactTip")}
-					onClick={() => void session.command("/compact")}
+					disabled={view.readOnly}
+					title={t(view.working ? "context.compactBusy" : "context.compactTip")}
+					onClick={() => void session.send("/compact").catch((error: unknown) => toast({ tone: "err", message: t("context.compactFailed"), description: String(error) }))}
 				>
-					{t("context.compact")}
+					{t(view.working ? "context.queueCompact" : "context.compact")}
 				</Button>
 				{view.working && <p className="mt-2 text-xs text-fg-faint">{t("context.compactBusy")}</p>}
 			</PopoverContent>

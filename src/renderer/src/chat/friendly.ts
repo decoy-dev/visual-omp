@@ -5,7 +5,7 @@
  */
 import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import type { ToolResultLike } from "../tool-render/types";
-import { detailsRecord, isRecord, num, resultTextOf, shortenPath, splitReadQuery, str } from "../tool-render/util";
+import { detailsRecord, isAskClosedByMessage, isRecord, num, resultTextOf, shortenPath, splitReadQuery, str } from "../tool-render/util";
 
 /** `neutral` is an outcome that is neither success nor failure, such as a helper that was stopped. */
 export type ToolStatus = "running" | "ok" | "error" | "neutral";
@@ -251,6 +251,7 @@ export function friendlySummary(call: ToolCallView): FriendlySummary {
 		case "lsp":
 			return { key: `lsp.${status}`, values: { action: str(args.action) ?? "" }, status };
 		case "ask":
+			if (!call.running && isAskClosedByMessage(call.result)) return { key: "ask.closed", values: {}, status: "neutral", statusLabel: "ask.closedLabel" };
 			return { key: `ask.${status}`, values: {}, status };
 		case "github":
 			return { key: `github.${status}`, values: {}, status };

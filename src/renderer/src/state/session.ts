@@ -7,11 +7,12 @@
  * go to an app-side queue the user can edit, images included; they go out one at a time, each after
  * omp acknowledged the one before, or immediately (steering the current turn) with "Send now".
  */
-import type { SessionEntry } from "@oh-my-pi/pi-wire";
+import type { CollabUiRequest, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { FollowState, HostState, SessionOwnership } from "@shared/ipc";
 import { isTspPreviewInputError, TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import type { Attachment } from "../chat/composer/drafts";
 import { imagePathsText } from "../chat/composer/send";
+import { isAskRequest } from "../chat/transcript/askSeries";
 import { APP_GUEST_NAME, GuestClient, type GuestSnapshot } from "../collab/lib/client";
 import { toast } from "../ui/toast";
 import { extendSessionHistory, parseSessionHistory, type SessionHistory } from "./history";
@@ -73,6 +74,15 @@ interface Acknowledgement {
 	entries: number;
 	run: LocalRun | null;
 	steered: boolean;
+	/** A collab prompt is acknowledged by its own attributed text, never an unrelated guest's message. */
+	collabPrompt?: string;
+}
+
+interface AskPromptTarget {
+	guest: GuestClient;
+	room: number;
+	connection: number | undefined;
+	reqId: number;
 }
 
 /** A delivery failed; `pasted` is true when the images were pasted into omp's editor before it did. */
@@ -147,6 +157,19 @@ export function liveGuest(view: SessionView | null | undefined): GuestSnapshot |
 /** Live entries to show (all branches): the synced mirror's, else the previous room's. Null: show the saved history. */
 export function liveEntries(view: SessionView | null | undefined): readonly SessionEntry[] | null {
 	return liveGuest(view)?.entries ?? view?.carryover ?? null;
+}
+
+/** A current, writable ask request whose dialog omp closes when a user prompt steers the turn. */
+export function pendingAsk(view: SessionView): boolean {
+	const guest = view.guest;
+	return view.mode === "live" && guest?.phase === "live" && !view.readOnly && !guest.readOnly
+		&& guest.uiRequest !== null && isAskRequest(guest, guest.uiRequest);
+}
+
+function isApprovalRequest(request: CollabUiRequest): boolean {
+	if (request.kind !== "select") return false;
+	const labels = request.options.map(option => typeof option === "string" ? option : option.label);
+	return labels.at(-1) === "Deny" && (labels.includes("Approve Once") || labels.includes("Approve"));
 }
 
 export type SessionEvent =
@@ -586,6 +609,7 @@ export class SessionController {
 			void this.#resolveSessionFile();
 		}
 		if (snapshot.uiRequest && snapshot.uiRequest.reqId !== hadRequest) this.#emit({ kind: "needsInput" });
+		if (hadRequest !== undefined && !snapshot.uiRequest && !working) this.#resumeQueue();
 		if (this.#awaiting && this.#acknowledged(this.#awaiting)) {
 			this.#awaiting = null;
 			// A shell or Python line finished without a turn: no turn end will move the queue on.
@@ -667,6 +691,14 @@ export class SessionController {
 		const message = { text: text.trim(), images: [...images] };
 		if (!message.text && message.images.length === 0) return;
 		this.#assertPreviewInput(message.text, message.images);
+		// Capture ask intent before any await or listener can change the pending request.
+		const askTarget = this.#askPromptTarget(message.text);
+		if (askTarget && !this.#view.strandedImages) {
+			this.markInput();
+			this.noteSent();
+			await this.#deliverDirect(message, askTarget);
+			return;
+		}
 		this.markInput();
 		if (!this.#lineAhead) this.noteSent();
 		if (this.busy) {
@@ -695,10 +727,11 @@ export class SessionController {
 		const message = { text: text.trim(), images: [...images] };
 		if (!message.text && message.images.length === 0) return;
 		this.#assertPreviewInput(message.text, message.images);
+		const askTarget = this.#askPromptTarget(message.text);
 		this.markInput();
 		this.noteSent();
 		await this.whenLive();
-		await this.#deliverDirect(message);
+		await this.#deliverDirect(message, askTarget);
 	}
 
 	/**
@@ -712,6 +745,7 @@ export class SessionController {
 		if (!item) return;
 		this.#assertPreviewInput(item.text, item.images);
 		if (this.#view.strandedImages) throw new StrandedImagesError();
+		const askTarget = this.#askPromptTarget(item.text);
 		this.#set({ queue: this.#view.queue.filter(entry => entry.id !== id) });
 		this.noteSent();
 		if (this.#isSlash(item)) {
@@ -719,7 +753,7 @@ export class SessionController {
 			return;
 		}
 		try {
-			await this.#deliverMessage(item);
+			await this.#deliverMessage(item, askTarget);
 		} catch (error) {
 			const failure = error instanceof DeliveryFailure ? error : new DeliveryFailure(error, false);
 			this.#requeue(item, index);
@@ -733,6 +767,11 @@ export class SessionController {
 
 	removeQueued(id: string): void {
 		this.#set({ queue: this.#view.queue.filter(entry => entry.id !== id) });
+	}
+
+	/** Preserve a failed submitted message when a newer draft already occupies the composer. No retry starts here. */
+	preserveFailedMessage(text: string, images: readonly Attachment[]): void {
+		this.#requeue({ id: `q${nextQueueId++}`, text, images: [...images] }, 0);
 	}
 
 	moveQueued(id: string, toIndex: number): void {
@@ -762,6 +801,9 @@ export class SessionController {
 			if (this.#view.strandedImages && !overStrandedImages) throw new StrandedImagesError();
 			this.#assertPreviewInput(line, []);
 			await this.whenLive();
+			if (!overStrandedImages && this.#view.guest?.uiRequest && !isApprovalRequest(this.#view.guest.uiRequest)) {
+				throw new Error("Answer the question card before sending a command.");
+			}
 			beforeSubmit?.();
 			await this.#submit(line, "steer");
 		});
@@ -900,6 +942,31 @@ export class SessionController {
 		}
 	}
 
+	/** Ask-origin messages keep their collab route even if the question ends before the write. */
+	#askPromptTarget(text: string): AskPromptTarget | undefined {
+		const view = this.#view;
+		const guest = view.guest;
+		const request = guest?.uiRequest;
+		if (text.startsWith("/") || localRun(text) !== null || !guest || !request || !isAskRequest(guest, request)) return undefined;
+		const target = { guest: this.#guest!, room: this.#room, connection: guest.uiConnection, reqId: request.reqId };
+		this.#assertAskPromptTarget(target);
+		return target;
+	}
+
+	#assertAskPromptTarget(target: AskPromptTarget): void {
+		const view = this.#view;
+		const guest = view.guest;
+		if (this.#disposed || view.readOnly || guest?.readOnly || !target.guest || target.guest !== this.#guest
+			|| target.room !== this.#room || view.mode !== "live" || guest?.phase !== "live" || guest.uiConnection !== target.connection) {
+			throw new Error("The chat changed before the message was sent. Send it again.");
+		}
+		if (guest.uiRequest && (guest.uiRequest.reqId !== target.reqId || !pendingAsk(view))) throw new Error("Answer the question card before sending a message.");
+		const availability = view.host?.tspAvailability;
+		if (view.host?.transport === "tsp" && availability?.available !== true && !(availability?.reasonCode === "matched-question" && pendingAsk(view))) {
+			throw new Error(availability?.reason ?? "Waiting for omp to open its semantic screen.");
+		}
+	}
+
 	/**
 	 * Type one message into omp's editor and submit it. Images travel the way a terminal delivers a file
 	 * drag: a bracketed paste of their escaped paths makes omp attach them, and omp holds the keys that
@@ -907,7 +974,7 @@ export class SessionController {
 	 * hold a failed message's images. Once the write is done, `#settle` decides what the queue waits for.
 	 * Rejects with a `DeliveryFailure` that says whether the images were pasted before it failed.
 	 */
-	async #deliverMessage(item: { text: string; images: readonly Attachment[] }): Promise<void> {
+	async #deliverMessage(item: { text: string; images: readonly Attachment[] }, askTarget?: AskPromptTarget): Promise<void> {
 		this.markInput();
 		let pasted = false;
 		let ack: Acknowledgement;
@@ -915,6 +982,8 @@ export class SessionController {
 			ack = await this.#write(async () => {
 				if (this.#view.strandedImages) throw new StrandedImagesError();
 				this.#assertPreviewInput(item.text, item.images);
+				const target = askTarget ?? this.#askPromptTarget(item.text);
+				if (target) this.#assertAskPromptTarget(target);
 				if (this.#view.host?.transport === "tsp" && item.images.length === 0 && item.text.startsWith("/")) {
 					// A slash handler must be registered before this preview can deliver commands.
 					throw new Error(TSP_PREVIEW_UNAVAILABLE);
@@ -929,6 +998,24 @@ export class SessionController {
 					steered: this.#view.working,
 				};
 				const timestamp = Date.now();
+				if (target) {
+					const images = [];
+					for (const image of item.images) {
+						const file = await window.vomp.invoke("panes:readFile", image.path);
+						const match = file.kind === "image" && /^data:(image\/(?:png|jpeg|gif|webp));base64,(.+)$/.exec(file.dataUrl);
+						if (!match) throw new Error(`Could not attach ${image.name}. Choose a PNG, JPEG, GIF or WebP image up to 8 MB.`);
+						images.push({ type: "image" as const, mimeType: match[1]!, data: match[2]! });
+					}
+					this.#assertAskPromptTarget(target);
+					// Collab prompts have user attribution, so omp closes ask without aborting the turn.
+					// Never paste into the ask selector, whose editor is only a type-to-search field.
+					await target.guest.sendPrompt(item.text, images, () => this.#assertAskPromptTarget(target));
+					this.recordInput(item.text, timestamp);
+					return { ...before, run: null, steered: true, collabPrompt: item.text };
+				}
+				if (this.#view.guest?.uiRequest && !isApprovalRequest(this.#view.guest.uiRequest)) {
+					throw new Error("Answer the question card before sending a message.");
+				}
 				if (item.images.length > 0) {
 					await window.vomp.invoke("composer:paste", hostId, imagePathsText(item.images.map(image => image.path)));
 					pasted = true;
@@ -959,7 +1046,7 @@ export class SessionController {
 	 * with a fresh paste after omp restarts), and the promise resolves. Any other failure rejects with the
 	 * reason, and the caller gets the message back.
 	 */
-	async #deliverDirect(message: { text: string; images: readonly Attachment[] }): Promise<void> {
+	async #deliverDirect(message: { text: string; images: readonly Attachment[] }, askTarget?: AskPromptTarget): Promise<void> {
 		if (this.#view.host?.transport === "tsp" && message.images.length === 0 && message.text.startsWith("/")) {
 			// UI-only commands have no collab user entry or turn acknowledgement.
 			if (!slashDelivery) throw new Error(TSP_PREVIEW_UNAVAILABLE);
@@ -967,7 +1054,7 @@ export class SessionController {
 			return;
 		}
 		try {
-			await this.#deliverMessage(message);
+			await this.#deliverMessage(message, askTarget);
 		} catch (error) {
 			if (!(error instanceof DeliveryFailure)) throw error;
 			if (!error.pasted) throw error.reason;
@@ -1014,6 +1101,12 @@ export class SessionController {
 		const added = this.#view.guest?.entries.slice(ack.entries) ?? [];
 		const run = ack.run;
 		if (run) return added.some(entry => isRunResult(entry, run));
+		if (ack.collabPrompt !== undefined) return added.some(entry => {
+			if (entry.type !== "custom_message" || entry.customType !== "collab-prompt") return false;
+			const content = typeof entry.content === "string" ? entry.content : entry.content.filter(part => part.type === "text").map(part => part.text).join("\n");
+			return content === ack.collabPrompt && typeof entry.details === "object" && entry.details !== null
+				&& "from" in entry.details && entry.details.from === APP_GUEST_NAME;
+		});
 		return ack.steered && added.some(entry => entry.type === "message" && entry.message.role === "user" && !entry.message.synthetic);
 	}
 
@@ -1102,7 +1195,7 @@ export class SessionController {
 	 */
 	#resumeQueue(): void {
 		const view = this.#view;
-		if (this.#disposed || view.queue.length === 0 || view.mode !== "live" || view.working || view.strandedImages) return;
+		if (this.#disposed || view.queue.length === 0 || view.mode !== "live" || view.working || view.strandedImages || view.guest?.uiRequest) return;
 		if (this.#writing > 0 || this.#awaiting !== null || this.#slashDeliveries > 0 || this.#queueHolds > 0) return;
 		if ((view.host?.tui?.overlays ?? 0) === 0) {
 			this.#drainOne();

@@ -272,15 +272,8 @@ export function isAskRunning(source: AskSource, toolCallId: string): boolean {
 	return source.activeTools.has(toolCallId) || (source.working && toolCallState(source, toolCallId) === "pending");
 }
 
-/**
- * The running `ask` call with more than one question whose first question is `title`: from the
- * running tools, else the streamed or saved assistant message of the current turn.
- */
-export function findSeriesAsk(source: AskSource, title: string): RunningAsk | null {
-	const matches = (args: unknown): AskQuestion[] | null => {
-		const questions = parseAskQuestions(args);
-		return questions && questions.length > 1 && sanitizeText(questions[0]?.question ?? "") === title ? questions : null;
-	};
+/** Find a running ask by its arguments, including a still-pending call restored after reconnect. */
+function findRunningAsk(source: AskSource, matches: (args: unknown) => AskQuestion[] | null): RunningAsk | null {
 	for (const tool of [...source.activeTools.values()].reverse()) {
 		if (tool.toolName !== "ask") continue;
 		const questions = matches(tool.args);
@@ -300,4 +293,25 @@ export function findSeriesAsk(source: AskSource, title: string): RunningAsk | nu
 		if (questions) return { toolCallId: call.id, questions };
 	}
 	return null;
+}
+
+/**
+ * Only a request matching a live ask may be replaced by a user message. Sentinel labels or
+ * an editor title alone are insufficient: extensions can use the same controls.
+ */
+export function isAskRequest(source: AskSource, request: CollabUiRequest): boolean {
+	return findRunningAsk(source, args => {
+		const questions = parseAskQuestions(args);
+		return questions?.some((question, index) => request.kind === "select"
+			? selectMismatch(question, request) === null
+			: editorMismatch(questions, index, request) === null) ? questions : null;
+	}) !== null;
+}
+
+/** The running multi-question ask whose first question is the request title. */
+export function findSeriesAsk(source: AskSource, title: string): RunningAsk | null {
+	return findRunningAsk(source, args => {
+		const questions = parseAskQuestions(args);
+		return questions && questions.length > 1 && sanitizeText(questions[0]?.question ?? "") === title ? questions : null;
+	});
 }

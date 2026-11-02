@@ -88,6 +88,20 @@ export class CollabSocket {
 			});
 	}
 
+	/** A prompt belongs to this connection. It is never buffered or replayed after reconnect. */
+	sendConnected(frame: GuestFrame, beforeSend: () => void): Promise<void> {
+		const ws = this.#ws;
+		const sending = this.#sendChain.then(async () => {
+			if (this.#closed || !ws || ws !== this.#ws || ws.readyState !== WebSocket.OPEN) throw new Error("The chat disconnected before the message was sent.");
+			const sealed = await seal(await this.#opts.key, frame);
+			if (this.#closed || ws !== this.#ws || ws.readyState !== WebSocket.OPEN) throw new Error("The chat disconnected before the message was sent.");
+			beforeSend();
+			ws.send(packEnvelope(0, sealed));
+		});
+		this.#sendChain = sending.catch(() => undefined);
+		return sending;
+	}
+
 	/** Intentional close: clears any retry timer, suppresses reconnect. A later connect() starts fresh. */
 	close(): void {
 		const hadActivity = this.#ws !== null || this.#retryTimer !== undefined;

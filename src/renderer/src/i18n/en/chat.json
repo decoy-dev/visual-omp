@@ -94,6 +94,7 @@
 		"approvalChoicesHelp": "These approvals last for this session. Choices starting with “Always” also apply to future chats.",
 		"approvalSessionHelp": "These approvals last for this session.",
 		"messageDenies": "Sending a message now denies this request.",
+		"messageCloses": "Sending a message closes this question without stopping the reply.",
 		"deny": "Deny action",
 		"denyExplain": "Deny and say why",
 		"denySend": "Deny and send message",
