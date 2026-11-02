@@ -1,9 +1,9 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { HostState } from "@shared/ipc";
-import { TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deliver } from "../chat/composer/send";
 import type { GuestSnapshot } from "../collab/lib/client";
+import { useComposerDrafts } from "../chat/composer/drafts";
 import { sendSlashCommand } from "../features/session-tools/typed";
 import { chatStatus } from "../shell/hooks";
 import { toast } from "../ui/toast";
@@ -613,7 +613,7 @@ describe("messages while ask waits", () => {
 describe("SessionController TSP preview input", () => {
 	const preview = (busy: boolean) => {
 		const session = busy ? working("preview-working") : idle("preview-idle");
-		sendHost({ transport: "tsp", link: "L1", tui: tui(0) });
+		sendHost({ transport: "tsp", link: "L1", tui: tui(0), tspAvailability: { available: true, reason: null } });
 		return session;
 	};
 
@@ -642,39 +642,69 @@ describe("SessionController TSP preview input", () => {
 		expect(invoked).toEqual([]);
 	});
 
-	it.each([false, true])("rejects image, image-only and shell input before paste or queue mutation (busy: %s)", async busy => {
-		const session = preview(busy);
-		for (const [text, images] of [["look", [shot]], ["", [shot]], ["!pwd", []], ["!!pwd", []], ["$ print(1)", []], ["$$ print(1)", []]] as const) {
-			await expect(session.send(text, images)).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
-			await expect(session.steer(text, images)).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
-			expect(session.getSnapshot().queue).toEqual([]);
-			expect(session.getSnapshot().strandedImages).toBe(false);
-		}
-		await expect(session.command("!pwd")).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
-		expect(invoked).toEqual([]);
-		expect(session.getSnapshot().error).toBeNull();
-		expect(chatStatus(session.getSnapshot())).not.toBe("error");
+	it.each(["!pwd", "!!pwd", "$ print(1)", "$$ print(1)"])("delivers %s without the classic screen or paste path", async text => {
+		const session = preview(false);
+		await session.steer(text);
+		expect(invoked).toEqual([submit(text)]);
+		expect(session.getSnapshot().strandedImages).toBe(false);
 	});
 
-	it("does not remove an unsupported queued attachment when Send now is requested", async () => {
-		const session = working("preview-queued");
+	it("delivers queued images through one main-owned editor transaction", async () => {
+		const session = preview(true);
 		await session.send("look", [shot]);
-		const before = session.getSnapshot().queue;
-		sendHost({ transport: "tsp", link: "L1", tui: tui(0) });
-		await expect(session.sendNow(before[0]!.id)).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
-		expect(session.getSnapshot().queue).toBe(before);
-		expect(invoked).toEqual([]);
+		const id = session.getSnapshot().queue[0]!.id;
+		await session.sendNow(id);
+		expect(invoked).toEqual([["host:submit", "h1", "look", "steer", "/tmp/Screen\\ Shot.png"]]);
+		expect(session.getSnapshot().queue).toEqual([]);
 	});
 
-	it("rejects images after a new launch identifies itself as a preview host, without keeping a queued message", async () => {
-		respond = channel => channel === "host:start" ? Promise.resolve(host({ transport: "tsp", link: "L1" })) : undefined;
-		const session = new SessionController({ tabId: "preview-launch-images", projectPath: "/p", sessionFile: null });
-		const sending = session.send("look", [shot]);
+	it("holds the app queue behind omp's own queued follow-up until its dock clears", async () => {
+		const session = preview(false);
+		const facts = { sendable: true, text: "", cursor: 0, ghost: "", editorId: "e", surfaceId: "s", queued: ["omp follow-up"], blockedBy: null } as const;
+		sendHost({ transport: "tsp", link: "L1", tspAvailability: { available: true, reason: null }, tspComposer: { ...facts, queued: [...facts.queued] } });
+		await session.send("app follow-up");
+		expect(queued(session)).toEqual(["app follow-up"]);
+		expect(invoked).toEqual([]);
+		sendHost({ transport: "tsp", link: "L1", tspAvailability: { available: true, reason: null }, tspComposer: { ...facts, queued: [] } });
 		await flush();
-		fakes.guests.at(-1)?.emit("live", [u1], false);
-		await expect(sending).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
-		expect(session.getSnapshot().queue).toEqual([]);
-		expect(invoked.some(call => call[0] === "composer:paste" || call[0] === "host:submit")).toBe(false);
+		expect(invoked).toEqual([submit("app follow-up")]);
+	});
+
+	it("strands staged images after a main-owned attachment failure without automatically repasting", async () => {
+		const session = preview(false);
+		failOnce("host:submit", "TSP preview: Image submission needs recovery. omp did not attach the image.");
+		await session.send("look", [shot]);
+		expect(session.getSnapshot().strandedImages).toBe(true);
+		expect(queued(session)).toEqual(["look"]);
+		expect(invoked.filter(call => call[0] === "host:submit")).toHaveLength(1);
+	});
+
+	it("acknowledges an inserted restoration once per delivery without duplicating its draft on recovery", async () => {
+		const session = preview(false);
+		useComposerDrafts.getState().forget(session.tabId);
+		const capture = { id: "restore-retry", hostId: "h1", text: "Saved follow-up", cleared: false, error: null };
+		sendHost({ transport: "tsp", link: "L1", tspEditorRestore: capture });
+		expect(useComposerDrafts.getState().drafts[session.tabId]).toBe("Saved follow-up");
+		expect(invoked.some(call => call[0] === "host:ack-editor-restore")).toBe(false);
+		sendHost({ transport: "tsp", link: "L1", tspEditorRestore: { ...capture, cleared: true } });
+		sendHost({ transport: "tsp", link: "L1", tspEditorRestore: { ...capture, cleared: true } });
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:ack-editor-restore")).toEqual([["host:ack-editor-restore", "h1", capture.id]]);
+		sendHost({ transport: "tsp", link: "L1", tspEditorRestore: { ...capture, cleared: true } });
+		await flush();
+		expect(useComposerDrafts.getState().drafts[session.tabId]).toBe("Saved follow-up");
+		useComposerDrafts.getState().forget(session.tabId);
+	});
+
+	it("sends ordinary TSP approval messages immediately so omp denies and steers", async () => {
+		const session = preview(true);
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, { uiRequest: { reqId: 8, kind: "select", title: "Run command?", options: ["Approve Once", "Deny"] } });
+		await deliver(session, "Do not run that.", [], false);
+		expect(invoked).toContainEqual(submit("Do not run that."));
+		expect(queued(session)).toEqual([]);
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		await expect(session.command("/compact")).rejects.toThrow("Answer the approval");
 	});
 
 	it("returns actionable readiness failure to the composer without a persistent error status", async () => {

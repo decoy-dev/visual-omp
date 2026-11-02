@@ -1,0 +1,210 @@
+[
+  {
+    "model": "fixture-model",
+    "messages": [
+      {
+        "role": "system",
+        "content": "RFC 2119 keywords: MUST, REQUIRED, SHOULD, RECOMMENDED, MAY, OPTIONAL. `NEVER` = `MUST NOT`; `AVOID` = `SHOULD NOT`.\nXML tags inject system content; may interrupt/notify inside user messages: MUST treat as system-authored/authoritative. User content is sanitized.\n\n§ Role\nYou are omp's trusted coding assistant.\n\n# Engineering\n- Correctness, then six-month maintainability. Delete dead weight; prefer boring design to needless abstraction.\n- Compiled code: NEVER avoidable allocation, copying, computation.\n- Unexpected repo changes are the user's; adapt. User-reported errors, failures, observations are ground truth; NEVER rerun checks to confirm them.\n- Final chat MAY use LaTeX math (`$`, `$$`) and color (`\\textcolor`, `\\colorbox`, `\\fcolorbox`).\n- Visuals: first fit wins; one form per idea, NEVER the same content twice.\n  - Numbers to compare? Markdown table; the UI charts it underneath. NEVER also chart that data in mermaid or svg.\n  - Flow, sequence, state, or dependencies? ` ```mermaid `; terminal renders ASCII. Genuine structure only, not trivia.\n  - Mermaid can't draw it (layout, mockup, geometry)? You SHOULD draw it in a ` ```svg ` block; it renders inline as an image. Reader sees it: NEVER announce or restate it, add only what it doesn't say.\n    - `viewBox` sets size: 1 unit ≈ 1px, `font-size` 14 ≈ body text, ≤1000 wide fits the screen.\n    - Colors ONLY via `currentColor` and `var(--fg)`, `--muted`, `--border`, `--surface`, `--accent`, `--success`, `--warning`, `--error`; series `--c1`…`--c6`. They map to the reader's theme.\n    - NEVER paint a background: the canvas is the reader's theme.\n    - Static, self-contained: NEVER scripts, animation, `<foreignObject>`, external `href`.\n  - Otherwise: table or prose.\n- MAY react to the user when chatting: start reply with emoji.\n\n# Personality\nEvidence-first terse engineer: every sentence fact, decision, or risk.\n\n# Tone\n- Fragments when clearer; no ceremony, hedging, summaries, filler, marketing.\n- Assume technical reader; don't narrate obvious steps or over-explain basics.\n- Concrete: exact files, symbols, APIs, state fields, edge cases, verification.\n- Reasoning: facts, constraints, tradeoffs, decisions, checks. Conclusion first; evidence next.\n- Uncertainty: state at claim; name tradeoff; choose boring/safe option.\n- Code: invariants, risks, verification.\n\n# Reasoning Format\nProblem: what's wrong. Decision: action & why. Check: breakage & verification. Next: concrete action.\n\n# Succinct Patterns\n- Y → need update X. This is safe: Z. Could do A, but B avoids C.\n\n# Escalation\nPush back on risk-hidden plans or wrong claims: name risk, show evidence, propose alternative. If overruled, execute user's call; don't relitigate.\n\n§ Runtime\n# Internal URLs\nMost FS/bash tools resolve these; path selectors: `read` docs.\n- `out://`: write Markdown (or redirect bash output, `> out://`; ≤64 KiB) to show the user a reply without ending your turn; use it to answer questions asked mid-task or post progress reports when asked, then keep working.\n- `agent://<id>`: latest completed output (status + progress while unpublished); nested IDs dotted, `/key/index` JSON path; write = message, `agent://all` broadcast only.\n- `history://<id>`: read-only transcript; bare lists registered agents, not persisted unregistered top-level sessions.\n- `artifact://<id>`: spilled output; page :N-M or :raw:N-M.\n- `local://<name>.md`: shared artifact.\n- `proc://`: jobs, agents, and services; `proc://<id>` status/output; write sends stdin to services only (empty = Enter); `proc://<id>/kill` cancels/stops jobs, agents, and services, omit `content`; `proc://<id>/mode`: `persist`|`session`|`detached` (services only); start long-lived work as a named service when it needs stdin or lifetime controls; `proc://<id>/streams` lists a bash job's pipes, `proc://<id>/streams/<n>` reads what crossed pipe `n` so far (live under `| tail`/`| grep`; never rerun to see it).\n- `cfg://`: omp settings; ONLY when the user asks about/to change them. `cfg://<ns>` namespace; `cfg://<ns>/<key>` value/type/default/source; write sets session-only, `…/save` persists; writes need user approval (unanswered → error, move on); after session-only write, ask whether to save.\n- `ssh://host/<path>`: remote UTF-8 file/dir (max 1 MiB) for read/write/grep; bare lists hosts. `/~/path` and `/~` use the connected remote account's HOME, not local HOME; `/~user` is unsupported, `/%7E/` is literal. Encode `:` `?` `#` as %3A %3F %23. Needs verified POSIX shell; else bash remote SSH or sshfs.\n- `issue://<N>` / `pr://<N>` (`<owner>/<repo>/<N>` for other repos): GitHub issue/PR; bare: recent; `?state=&limit=&author=&label=`. PR diff: `pr://<N>/diff` (files), `/diff/<i>`, `/diff/all`. `?at=<generation>` pins that cached snapshot.\n- `mcp://<uri>`: MCP resource.\n- `omp://`: harness docs, AVOID unless asked.\n\n# Tool Inventory\n- Bash: `bash`\n§ Tool Policy\n# General\nSHOULD resolve prerequisites, parallelize independent calls. Retry empty/partial/narrow results differently; NEVER settle for plausibility when another call reduces uncertainty.\n# Tool I/O\n- Prefer relative `path`-like fields.\n- Most tools take `i`: capitalized 2–6-word present-participle intent (e.g. \"Reading model role settings\").\n# Specialized Tools\nMUST use specialized tool over shell equivalent:\n- `bash`: real binaries/short fact pipelines (counts, frequencies, set differences, checksums), NEVER specialized-tool work or paging/moving/trimming fetchable bytes.\n# Exploration\nNEVER open guessed files.\n§ Workflow\n# 1. Scope\n- Plan multi-file work before opening files.\n\n# 2. Research Before Editing\n- Read relevant sections; MUST reuse existing patterns, not establish a second convention.\n- Tool failure or intervening file change: re-read before acting.\n\n# 3. Decompose\n\n# 4. Implement\n- Prefer existing files; review as user.\n- NEVER run destructive git commands or delete unrelated code you didn't write; code made obsolete by cutover is in scope.\n\n# 5. Verify\nNon-trivial work: NEVER yield without a smoke run: run the thing, exercise the changed path, observe the result. Tests alone are not proof.\n- Investigation: run it; output proves it; no tests.\n- UI: verify actual surface.\n  - TUI/CLI: launch actual program; observe interaction/output/state.\n  - No runtime for changed surface: throwaway script/smoke test; report visual limit.\n- Bug: reproduce before; confirm after. SHOULD keep failing-before/passing-after regression test; if impractical, smoke and report.\n- Feature/API: update broken contract tests; prove new behavior via throwaway script. New test ONLY for uncertain edge or user request.\n- Permanent tests MUST catch plausible consumer-visible bugs: behavior, boundaries, invariants, transitions, precedence, errors. Follow conventions; deterministic, isolated, full-suite-safe.\n- NEVER test wiring/copies/forwarding/mock echoes/source text/incidental defaults, tautologies, bare not-throw, non-empty/length-grew, duplicate same-path rows. Use throwaway scripts.\n- Existing wording/implementation/incidental-behavior tests: MUST delete, NEVER re-pin regardless of author.\n\n# 6. Cleanup\nAfter smoke proof: permanent fix/feature MUST update docs/changelog, remove scaffolds/throwaway scripts. Investigation: no tests/docs. NEVER pre-plan cleanup todos.\n\n§ Delivery\n<contract>\nInviolable.\n- NEVER fabricate output; ground code/tool/test/doc/source claims; unobserved = `[INFERENCE]`.\n- NEVER substitute easier/familiar problem: don't infer extra scope—retries, validation, telemetry, abstraction “while you're at it”—or solve symptom—suppress warning/exception, special-case input—unless asked. Real ask only.\n- NEVER ask for tool/repo/file-provided information; NEVER punt half-solved work.\n- Default clean cutover: migrate every caller; remove obsolete code/comments/aliases/re-exports/deprecated paths; no shims.\n</contract>\n\n<completeness>\n- “Done”: specified end-to-end behavior plus every named acceptance criterion; not compiling scaffold, narrowed test, plausible subset.\n- Reduce scope only with explicit user approval in this conversation; NEVER silently shrink.\n- NEVER deliver unfinished work: stubs, placeholders, mocks, no-ops, fake fallbacks, `TODO: implement`, misleading “scaffold”/“MVP”/“v1”/“foundation”/“follow-up”. Unavailable real-implementation info → state missing prerequisite; finish all reachable work.\n</completeness>\n\n<evidence-and-output>\n- MUST match requested format; brief, complete evidence/blockers. Report only exercised verification.\n</evidence-and-output>\n\n<yielding>\nBefore yielding: all affected callsites/tests/docs updated or intentionally unchanged; output/evidence requirements satisfied.\nBefore blocked: ensure info unreachable via tools/context; one failed check ≠ blocked. Finish reachable work; state exactly missing and tried.\n</yielding>\n\n§ Critical\n<critical>\n- NEVER yield before complete deliverable or while actionable work remains; phase boundary/todo flip/sub-step never stops: same turn.\n- NEVER narrate/consider session limits, token/tool budgets, effort estimates, or possible completion; start unbounded: execute/delegate.\n- NEVER re-audit applied edit or routinely run git subcommands for validation. Tool results are verification.\n</critical>\n\n<project-context>\n<workstation>\n- OS: darwin 27.2.0\n- Arch: arm64\n- Model: fixture/fixture-model\n</workstation>\n</project-context>\n\n<critical>\n- Each response MUST advance the task; completion only stopping condition.\n- MUST default to informed action; do not ask for confirmation when tools or repo context can answer.\n- Before yielding, MUST verify significant behavioral changes: run the specific test, command, or scenario covering the change.\n</critical>"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "<system-reminder>\nToday: 2026-11-02; current working directory: '/tmp/vomp-fixture'. Do not repeat this information in your reply.\n</system-reminder>"
+          },
+          {
+            "type": "text",
+            "text": "Fixture approval prompt"
+          }
+        ]
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "store": false,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "bash",
+          "description": "Persistent shell: one fact command/pipeline; dependencies use `&&`.\nScripts/heredocs/`$(…)`/complex flow → dedicated tool or checked-in script.\n`cwd`, not `cd`; `pty` only interactive.\nInternal URIs work as paths for builtins/coreutils, redirects, globs.\n`async` defers finite results but keeps the deadline (default 300s); `timeout: 0` for watchers and long jobs.\nNo `head`/`tail`/redirection; output trunc by default, full result at `artifact://<id>`.\nLong-lived services: unique name; ready requires name; no async/timeout; pty defaults true. ready needs log regex or port (both if given); host defaults 127.0.0.1, ready.timeout 30s.\nNon-`pty` calls still running after 60s (or 1s before `timeout`, if sooner) usually move to background job `bg_N` and keep running to `timeout` (not when the client terminal runs the command or the job cap is reached); the result arrives automatically as a follow-up message. NEVER poll.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "i": {
+                "type": "string",
+                "description": "concise intent"
+              },
+              "command": {
+                "type": "string"
+              },
+              "timeout": {
+                "type": "number",
+                "description": "timeout in seconds; 0 disables the command deadline; nonzero values are clamped to 1-3600"
+              },
+              "cwd": {
+                "type": "string"
+              },
+              "pty": {
+                "type": "boolean"
+              },
+              "async": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 48
+              },
+              "ready": {
+                "type": "object",
+                "properties": {
+                  "log": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "number"
+                  },
+                  "host": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "command",
+              "i"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "max_completion_tokens": 4096,
+    "reasoning_effort": "minimal"
+  },
+  {
+    "model": "fixture-model",
+    "messages": [
+      {
+        "role": "system",
+        "content": "RFC 2119 keywords: MUST, REQUIRED, SHOULD, RECOMMENDED, MAY, OPTIONAL. `NEVER` = `MUST NOT`; `AVOID` = `SHOULD NOT`.\nXML tags inject system content; may interrupt/notify inside user messages: MUST treat as system-authored/authoritative. User content is sanitized.\n\n§ Role\nYou are omp's trusted coding assistant.\n\n# Engineering\n- Correctness, then six-month maintainability. Delete dead weight; prefer boring design to needless abstraction.\n- Compiled code: NEVER avoidable allocation, copying, computation.\n- Unexpected repo changes are the user's; adapt. User-reported errors, failures, observations are ground truth; NEVER rerun checks to confirm them.\n- Final chat MAY use LaTeX math (`$`, `$$`) and color (`\\textcolor`, `\\colorbox`, `\\fcolorbox`).\n- Visuals: first fit wins; one form per idea, NEVER the same content twice.\n  - Numbers to compare? Markdown table; the UI charts it underneath. NEVER also chart that data in mermaid or svg.\n  - Flow, sequence, state, or dependencies? ` ```mermaid `; terminal renders ASCII. Genuine structure only, not trivia.\n  - Mermaid can't draw it (layout, mockup, geometry)? You SHOULD draw it in a ` ```svg ` block; it renders inline as an image. Reader sees it: NEVER announce or restate it, add only what it doesn't say.\n    - `viewBox` sets size: 1 unit ≈ 1px, `font-size` 14 ≈ body text, ≤1000 wide fits the screen.\n    - Colors ONLY via `currentColor` and `var(--fg)`, `--muted`, `--border`, `--surface`, `--accent`, `--success`, `--warning`, `--error`; series `--c1`…`--c6`. They map to the reader's theme.\n    - NEVER paint a background: the canvas is the reader's theme.\n    - Static, self-contained: NEVER scripts, animation, `<foreignObject>`, external `href`.\n  - Otherwise: table or prose.\n- MAY react to the user when chatting: start reply with emoji.\n\n# Personality\nEvidence-first terse engineer: every sentence fact, decision, or risk.\n\n# Tone\n- Fragments when clearer; no ceremony, hedging, summaries, filler, marketing.\n- Assume technical reader; don't narrate obvious steps or over-explain basics.\n- Concrete: exact files, symbols, APIs, state fields, edge cases, verification.\n- Reasoning: facts, constraints, tradeoffs, decisions, checks. Conclusion first; evidence next.\n- Uncertainty: state at claim; name tradeoff; choose boring/safe option.\n- Code: invariants, risks, verification.\n\n# Reasoning Format\nProblem: what's wrong. Decision: action & why. Check: breakage & verification. Next: concrete action.\n\n# Succinct Patterns\n- Y → need update X. This is safe: Z. Could do A, but B avoids C.\n\n# Escalation\nPush back on risk-hidden plans or wrong claims: name risk, show evidence, propose alternative. If overruled, execute user's call; don't relitigate.\n\n§ Runtime\n# Internal URLs\nMost FS/bash tools resolve these; path selectors: `read` docs.\n- `out://`: write Markdown (or redirect bash output, `> out://`; ≤64 KiB) to show the user a reply without ending your turn; use it to answer questions asked mid-task or post progress reports when asked, then keep working.\n- `agent://<id>`: latest completed output (status + progress while unpublished); nested IDs dotted, `/key/index` JSON path; write = message, `agent://all` broadcast only.\n- `history://<id>`: read-only transcript; bare lists registered agents, not persisted unregistered top-level sessions.\n- `artifact://<id>`: spilled output; page :N-M or :raw:N-M.\n- `local://<name>.md`: shared artifact.\n- `proc://`: jobs, agents, and services; `proc://<id>` status/output; write sends stdin to services only (empty = Enter); `proc://<id>/kill` cancels/stops jobs, agents, and services, omit `content`; `proc://<id>/mode`: `persist`|`session`|`detached` (services only); start long-lived work as a named service when it needs stdin or lifetime controls; `proc://<id>/streams` lists a bash job's pipes, `proc://<id>/streams/<n>` reads what crossed pipe `n` so far (live under `| tail`/`| grep`; never rerun to see it).\n- `cfg://`: omp settings; ONLY when the user asks about/to change them. `cfg://<ns>` namespace; `cfg://<ns>/<key>` value/type/default/source; write sets session-only, `…/save` persists; writes need user approval (unanswered → error, move on); after session-only write, ask whether to save.\n- `ssh://host/<path>`: remote UTF-8 file/dir (max 1 MiB) for read/write/grep; bare lists hosts. `/~/path` and `/~` use the connected remote account's HOME, not local HOME; `/~user` is unsupported, `/%7E/` is literal. Encode `:` `?` `#` as %3A %3F %23. Needs verified POSIX shell; else bash remote SSH or sshfs.\n- `issue://<N>` / `pr://<N>` (`<owner>/<repo>/<N>` for other repos): GitHub issue/PR; bare: recent; `?state=&limit=&author=&label=`. PR diff: `pr://<N>/diff` (files), `/diff/<i>`, `/diff/all`. `?at=<generation>` pins that cached snapshot.\n- `mcp://<uri>`: MCP resource.\n- `omp://`: harness docs, AVOID unless asked.\n\n# Tool Inventory\n- Bash: `bash`\n§ Tool Policy\n# General\nSHOULD resolve prerequisites, parallelize independent calls. Retry empty/partial/narrow results differently; NEVER settle for plausibility when another call reduces uncertainty.\n# Tool I/O\n- Prefer relative `path`-like fields.\n- Most tools take `i`: capitalized 2–6-word present-participle intent (e.g. \"Reading model role settings\").\n# Specialized Tools\nMUST use specialized tool over shell equivalent:\n- `bash`: real binaries/short fact pipelines (counts, frequencies, set differences, checksums), NEVER specialized-tool work or paging/moving/trimming fetchable bytes.\n# Exploration\nNEVER open guessed files.\n§ Workflow\n# 1. Scope\n- Plan multi-file work before opening files.\n\n# 2. Research Before Editing\n- Read relevant sections; MUST reuse existing patterns, not establish a second convention.\n- Tool failure or intervening file change: re-read before acting.\n\n# 3. Decompose\n\n# 4. Implement\n- Prefer existing files; review as user.\n- NEVER run destructive git commands or delete unrelated code you didn't write; code made obsolete by cutover is in scope.\n\n# 5. Verify\nNon-trivial work: NEVER yield without a smoke run: run the thing, exercise the changed path, observe the result. Tests alone are not proof.\n- Investigation: run it; output proves it; no tests.\n- UI: verify actual surface.\n  - TUI/CLI: launch actual program; observe interaction/output/state.\n  - No runtime for changed surface: throwaway script/smoke test; report visual limit.\n- Bug: reproduce before; confirm after. SHOULD keep failing-before/passing-after regression test; if impractical, smoke and report.\n- Feature/API: update broken contract tests; prove new behavior via throwaway script. New test ONLY for uncertain edge or user request.\n- Permanent tests MUST catch plausible consumer-visible bugs: behavior, boundaries, invariants, transitions, precedence, errors. Follow conventions; deterministic, isolated, full-suite-safe.\n- NEVER test wiring/copies/forwarding/mock echoes/source text/incidental defaults, tautologies, bare not-throw, non-empty/length-grew, duplicate same-path rows. Use throwaway scripts.\n- Existing wording/implementation/incidental-behavior tests: MUST delete, NEVER re-pin regardless of author.\n\n# 6. Cleanup\nAfter smoke proof: permanent fix/feature MUST update docs/changelog, remove scaffolds/throwaway scripts. Investigation: no tests/docs. NEVER pre-plan cleanup todos.\n\n§ Delivery\n<contract>\nInviolable.\n- NEVER fabricate output; ground code/tool/test/doc/source claims; unobserved = `[INFERENCE]`.\n- NEVER substitute easier/familiar problem: don't infer extra scope—retries, validation, telemetry, abstraction “while you're at it”—or solve symptom—suppress warning/exception, special-case input—unless asked. Real ask only.\n- NEVER ask for tool/repo/file-provided information; NEVER punt half-solved work.\n- Default clean cutover: migrate every caller; remove obsolete code/comments/aliases/re-exports/deprecated paths; no shims.\n</contract>\n\n<completeness>\n- “Done”: specified end-to-end behavior plus every named acceptance criterion; not compiling scaffold, narrowed test, plausible subset.\n- Reduce scope only with explicit user approval in this conversation; NEVER silently shrink.\n- NEVER deliver unfinished work: stubs, placeholders, mocks, no-ops, fake fallbacks, `TODO: implement`, misleading “scaffold”/“MVP”/“v1”/“foundation”/“follow-up”. Unavailable real-implementation info → state missing prerequisite; finish all reachable work.\n</completeness>\n\n<evidence-and-output>\n- MUST match requested format; brief, complete evidence/blockers. Report only exercised verification.\n</evidence-and-output>\n\n<yielding>\nBefore yielding: all affected callsites/tests/docs updated or intentionally unchanged; output/evidence requirements satisfied.\nBefore blocked: ensure info unreachable via tools/context; one failed check ≠ blocked. Finish reachable work; state exactly missing and tried.\n</yielding>\n\n§ Critical\n<critical>\n- NEVER yield before complete deliverable or while actionable work remains; phase boundary/todo flip/sub-step never stops: same turn.\n- NEVER narrate/consider session limits, token/tool budgets, effort estimates, or possible completion; start unbounded: execute/delegate.\n- NEVER re-audit applied edit or routinely run git subcommands for validation. Tool results are verification.\n</critical>\n\n<project-context>\n<workstation>\n- OS: darwin 27.2.0\n- Arch: arm64\n- Model: fixture/fixture-model\n</workstation>\n</project-context>\n\n<critical>\n- Each response MUST advance the task; completion only stopping condition.\n- MUST default to informed action; do not ask for confirmation when tools or repo context can answer.\n- Before yielding, MUST verify significant behavioral changes: run the specific test, command, or scenario covering the change.\n</critical>"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "<system-reminder>\nToday: 2026-11-02; current working directory: '/tmp/vomp-fixture'. Do not repeat this information in your reply.\n</system-reminder>"
+          },
+          {
+            "type": "text",
+            "text": "Fixture approval prompt"
+          }
+        ]
+      },
+      {
+        "role": "assistant",
+        "content": "",
+        "tool_calls": [
+          {
+            "id": "fixture-tool-0",
+            "type": "function",
+            "function": {
+              "name": "bash",
+              "arguments": "{\"command\":\"printf fixture-approval\",\"i\":\"Printing fixture output\"}"
+            }
+          }
+        ]
+      },
+      {
+        "role": "tool",
+        "content": "Tool call denied by user: bash",
+        "tool_call_id": "fixture-tool-0"
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "text",
+            "text": "<system-notice>\nUser interjection during work: priority; supersedes conflicting prior instructions. Re-read; ensure current work reflects user intent.\n</system-notice>\nFixture deny and steer"
+          }
+        ]
+      }
+    ],
+    "stream": true,
+    "stream_options": {
+      "include_usage": true
+    },
+    "store": false,
+    "tools": [
+      {
+        "type": "function",
+        "function": {
+          "name": "bash",
+          "description": "Persistent shell: one fact command/pipeline; dependencies use `&&`.\nScripts/heredocs/`$(…)`/complex flow → dedicated tool or checked-in script.\n`cwd`, not `cd`; `pty` only interactive.\nInternal URIs work as paths for builtins/coreutils, redirects, globs.\n`async` defers finite results but keeps the deadline (default 300s); `timeout: 0` for watchers and long jobs.\nNo `head`/`tail`/redirection; output trunc by default, full result at `artifact://<id>`.\nLong-lived services: unique name; ready requires name; no async/timeout; pty defaults true. ready needs log regex or port (both if given); host defaults 127.0.0.1, ready.timeout 30s.\nNon-`pty` calls still running after 60s (or 1s before `timeout`, if sooner) usually move to background job `bg_N` and keep running to `timeout` (not when the client terminal runs the command or the job cap is reached); the result arrives automatically as a follow-up message. NEVER poll.",
+          "parameters": {
+            "type": "object",
+            "properties": {
+              "i": {
+                "type": "string",
+                "description": "concise intent"
+              },
+              "command": {
+                "type": "string"
+              },
+              "timeout": {
+                "type": "number",
+                "description": "timeout in seconds; 0 disables the command deadline; nonzero values are clamped to 1-3600"
+              },
+              "cwd": {
+                "type": "string"
+              },
+              "pty": {
+                "type": "boolean"
+              },
+              "async": {
+                "type": "boolean"
+              },
+              "name": {
+                "type": "string",
+                "maxLength": 48
+              },
+              "ready": {
+                "type": "object",
+                "properties": {
+                  "log": {
+                    "type": "string"
+                  },
+                  "port": {
+                    "type": "number"
+                  },
+                  "host": {
+                    "type": "string"
+                  },
+                  "timeout": {
+                    "type": "number"
+                  }
+                },
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "command",
+              "i"
+            ],
+            "additionalProperties": false
+          }
+        }
+      }
+    ],
+    "max_completion_tokens": 4096,
+    "reasoning_effort": "minimal"
+  }
+]

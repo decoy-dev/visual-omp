@@ -99,6 +99,21 @@ it.each(["outline", "nested node"])("closes once from a focused %s through the r
 	expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
 
+it("keeps restoration failures visible without silently closing the omp screen", async () => {
+	const snapshot = {
+		hostId: "host", generation: 1, revision: 1, epoch: 4, negotiated: true, lifecycle: "live", documentGeneration: 1, failure: null,
+		availability: { available: true, reason: null },
+		composer: { sendable: true, text: "", cursor: 0, ghost: "", editorId: "editor", surfaceId: "s", queued: ["Queued follow-up"], blockedBy: null },
+		surfaces: [{ documentGeneration: 1, open: { id: "s", mode: "inline", role: "omp.session" }, sequence: 1, closed: false, focus: "editor", suspended: false, settled: [], document: { id: "s", k: "col", c: [{ id: "dock", k: "col" }] } }],
+	} as TspHostSnapshot;
+	fake.invoke.mockImplementation(async (channel: string) => { if (channel === "host:tsp-snapshot") return snapshot; if (channel === "host:keys") throw new Error("The restored message is saved. Retry editor recovery."); return undefined; });
+	await act(async () => root.render(sheetTree()));
+	await act(async () => document.querySelector('[role="region"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+	expect(fake.invoke).toHaveBeenCalledWith("host:keys", "host", "escape", 1, 4);
+	expect(document.querySelector('[role="alert"]')?.textContent).toContain("restored message is saved");
+	expect(fake.closeTerminal).not.toHaveBeenCalled();
+});
+
 it("initially focuses the scrollable inspector rather than opening the expand button tooltip, then closes on one Escape", async () => {
 	await act(async () => root.render(sheetTree()));
 	const outline = document.querySelector<HTMLElement>('[role="region"][aria-label="omp screen"]')!;

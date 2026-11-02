@@ -54,6 +54,22 @@ describe("next-message capture coordinator", () => {
 		test.transfers.acknowledge(capture!.id);
 		expect(test.transfers.list()).toEqual([]);
 	});
+	it("uses semantic ghost text and exact Tab transfer without painted reads", async () => {
+		const test = harness();
+		test.host.state.transport = "tsp";
+		test.host.composerFacts = () => ({ sendable: true, text: "", cursor: 0, ghost: request.expectedGhost, editorId: "e", surfaceId: "s", queued: [], blockedBy: null });
+		test.host.tuiFocus = vi.fn(async () => { throw new Error("Painted focus is forbidden"); });
+		test.host.debugValues = vi.fn(async () => { throw new Error("Painted values are forbidden"); });
+		test.host.screenPaint = vi.fn(async () => { throw new Error("Painted rows are forbidden"); });
+		expect(await test.transfers.offer("host")).toBe(request.expectedGhost);
+		const capture = await test.transfers.take(request);
+		expect(capture).toMatchObject({ text: full, blocked: false });
+		expect(test.buffer).toBe("");
+		expect(test.keys).toHaveBeenCalledExactlyOnceWith("tab", request.expectedGhost);
+		expect(test.host.tuiFocus).not.toHaveBeenCalled();
+		expect(test.host.debugValues).not.toHaveBeenCalled();
+		expect(test.host.screenPaint).not.toHaveBeenCalled();
+	});
 	it("leaves an unreadable accepted draft in the TUI, blocks application writes and recovers it on retry", async () => {
 		const test = harness(); test.failReadAt(2);
 		const capture = await test.transfers.take(request);

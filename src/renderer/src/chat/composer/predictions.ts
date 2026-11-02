@@ -53,8 +53,8 @@ export function predictionSuffix(prediction: string | null, draft: string): stri
 	return prediction && !draft.includes("\n") && prediction.startsWith(draft) && draft.length < prediction.length ? prediction.slice(draft.length) : null;
 }
 
-export function useGhostText(options: { folder: string; tabId: string; hostId: string | null; generation: number; transport?: HostState["transport"]; draft: string; caret: number; enabled: boolean; idle: boolean }) {
-	const { folder, tabId, hostId, generation, transport, draft, caret, enabled, idle } = options;
+export function useGhostText(options: { folder: string; tabId: string; hostId: string | null; generation: number; transport?: HostState["transport"]; composer?: HostState["tspComposer"]; draft: string; caret: number; enabled: boolean; idle: boolean }) {
+	const { folder, tabId, hostId, generation, transport, composer, draft, caret, enabled, idle } = options;
 	const [word, setWord] = useState<WordSuggestion | null>(null);
 	const offerScope = useRef({ hostId, generation, transport });
 	const offerRevision = useRef(0);
@@ -68,7 +68,7 @@ export function useGhostText(options: { folder: string; tabId: string; hostId: s
 	if (!feedback.current) feedback.current = new WordFeedback((suggestion, accepted) => {
 		void window.vomp.invoke("composer:predictFeedback", suggestion.folder, suggestion.text, suggestion.cursor, suggestion.suffix, accepted).catch(() => {});
 	});
-	const next = transport !== "tsp" && prediction?.revision === revision && idle ? prediction.text : null;
+	const next = transport === "tsp" ? (idle && composer?.sendable && !composer.blockedBy && !composer.text ? composer.ghost || null : null) : prediction?.revision === revision && idle ? prediction.text : null;
 	const nextSuffix = enabled && caret === draft.length ? predictionSuffix(next, draft) : null;
 	const shownWord = useMemo(() => enabled ? projectWord(word, folder, draft, caret) : null, [enabled, word, folder, draft, caret]);
 	const suffix = nextSuffix ?? shownWord?.suffix ?? null;

@@ -11,7 +11,10 @@
     "isolatedModules": true,
     "esModuleInterop": true,
     "resolveJsonModule": true,
-    "paths": { "@shared/*": ["./src/shared/*"] }
+    "paths": {
+      "@shared/*": ["./src/shared/*"],
+      "@oh-my-pi/pi-wire": ["./src/renderer/src/collab/wire/index.ts"]
+    }
   },
   "include": ["electron.vite.config.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
 }

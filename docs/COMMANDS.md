@@ -18,6 +18,12 @@ Typing a command in the terminal sheet sends it straight to omp, without the men
 
 While omp works, Enter queues pass-through slash commands. Send now, from the composer or a queued row, submits them through omp's editor without waiting for the main turn. omp dispatches its builtins before its streaming-message queue, so commands such as `/btw`, `/fast status`, `/queue` and `/tan` can run during that turn; individual commands still apply omp's own restrictions. If submission fails, a queued row returns to its original position and a notification gives the reason. A direct send keeps its draft.
 
+In developer-flagged TSP chats, an approval blocks slash routing before either app controls or
+omp commands are invoked. Ordinary messages remain available and let omp deny the approval and
+continue with that message. Open omp menus and screen-mode settings retain their separate close-menu
+and close-screen instructions.
+
+
 ## Treatments
 
 - **Native**: the app handles the line with its own screen or control. Most native screens never involve omp. Mode switches use the app-hosted extension's `ctx.sessionModes` controls; restart, export and fork use omp's existing command paths.

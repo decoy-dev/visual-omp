@@ -10,6 +10,8 @@ import type { GuestFrame, HostFrame, RelayControlMessage } from "@oh-my-pi/pi-wi
 import { open, seal } from "./codec";
 import { packEnvelope, unpackEnvelope } from "./link";
 
+type Timer = ReturnType<typeof setTimeout>;
+
 const RELAY_CLOSE_REASONS: Record<number, string> = {
 	4001: "room closed",
 	4004: "no such room",

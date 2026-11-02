@@ -15,7 +15,7 @@ import type { CommandContext } from "../../registry/commands";
 import { focusChatSearch } from "../../shell/Sidebar";
 import { useApp } from "../../state/app";
 import { openSettings, type SettingsSectionId } from "../../state/navigation";
-import type { SessionController } from "../../state/session";
+import { isApprovalRequest, type SessionController } from "../../state/session";
 import { runCommand } from "../palette/run";
 import { usePickerRequests } from "./pickers";
 import { setSessionMode } from "./nativeModes";
@@ -192,6 +192,8 @@ const ROUTES: Record<string, Route> = {
 export async function routeSlash(session: SessionController, line: string): Promise<boolean> {
 	const parsed = parseSlash(line);
 	if (!parsed) return false;
+	const view = session.getSnapshot();
+	if (view.host?.transport === "tsp" && (view.host.tspComposer?.blockedBy === "approval" || view.guest?.pendingUiRequests?.some(isApprovalRequest) || (view.guest?.uiRequest && isApprovalRequest(view.guest.uiRequest)))) throw new Error("Answer the approval before sending a command.");
 	if (parsed.name === "goal" && ["pause", "resume", "drop"].includes(parsed.args)) {
 		try { await setSessionMode(session, { mode: "goal", action: parsed.args as "pause" | "resume" | "drop" }); }
 		catch (error) { reportFailure(error); }

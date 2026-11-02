@@ -1,26 +1,32 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import type { EditorDraftRequest, EditorDraftResult, PredictionCapture, PredictionTakeRequest } from "@shared/contracts/composer";
+import type { TspComposerFacts } from "@shared/tsp-host";
 
 interface EditorInput {
-	keys(keys: string): Promise<void>;
+	keys(keys: string, expectedGhost?: string): Promise<void>;
 	assertOpen(): void;
 }
 export interface PredictionHost {
-	state: { generation: number; sessionId: string | null; cwd: string; phase: string };
+	state: { generation: number; sessionId: string | null; cwd: string; phase: string; transport?: "classic" | "tsp" };
 	withEditorInput<T>(operation: (input: EditorInput) => Promise<T>): Promise<T>;
 	tuiFocus(): Promise<{ overlays: number } | null>;
 	debugValues(): Promise<Record<string, unknown>>;
 	screenPaint(): Promise<{ lines: readonly string[]; cursor?: { x: number; y: number; visible?: boolean } }>;
 	setEditorTransferBlocked(reason: string | null): void;
+	composerFacts?(): TspComposerFacts;
 }
 interface EditorBridge { editorDraft(request: EditorDraftRequest): Promise<EditorDraftResult>; }
 interface CaptureRecord { view: PredictionCapture; sessionId: string; nativeDraft: string; exposed: boolean; }
 const editorShape = z.object({ textPreview: z.string(), textLength: z.number(), placeholderActive: z.boolean(), cursorLine: z.number(), lineCount: z.number() });
 
-/** Painted text identifies an offer only. Exact draft data always comes from the trusted editor API. */
+/** The protocol or painted editor identifies an offer. Exact text comes from the trusted editor API. */
 export async function paintedPrediction(host: PredictionHost): Promise<string | null> {
 	if (host.state.phase !== "live") return null;
+	if (host.state.transport === "tsp") {
+		const facts = host.composerFacts?.();
+		return facts?.sendable && !facts.blockedBy && facts.text === "" ? facts.ghost || null : null;
+	}
 	const focus = await host.tuiFocus();
 	if (!focus || focus.overlays !== 0) return null;
 	let editor: { depth: number; empty: boolean; placeholder: boolean } | null = null;
@@ -72,15 +78,21 @@ export class PredictionTransfers {
 				if (before.text !== "" || host.state.generation !== request.generation) return null;
 				if (await paintedPrediction(host) !== request.expectedGhost) return null;
 				// Check fresh overlays at the point of risk, under the same lock as paste and submit.
-				const focus = await host.tuiFocus();
-				if (!focus || focus.overlays !== 0 || host.state.generation !== request.generation) return null;
+				if (host.state.transport === "tsp") {
+					const facts = host.composerFacts?.();
+					if (!facts?.sendable || facts.blockedBy || facts.text || host.state.generation !== request.generation) return null;
+				} else {
+					const focus = await host.tuiFocus();
+					if (!focus || focus.overlays !== 0 || host.state.generation !== request.generation) return null;
+				}
 				input.assertOpen();
 				record = {
 					view: { id: randomUUID(), hostId: request.hostId, generation: request.generation, tabId: request.tabId, folder: host.state.cwd, text: null, blocked: true, error: null },
 					sessionId, nativeDraft: request.nativeDraft, exposed: false,
 				};
 				this.#captures.set(record.view.id, record);
-				await input.keys("tab");
+				if (host.state.transport === "tsp") await input.keys("tab", request.expectedGhost);
+				else await input.keys("tab");
 				await this.#complete(record, host, input);
 				if (record.view.text === "" && !record.view.blocked) { this.#captures.delete(record.view.id); return null; }
 				return this.#expose(record);

@@ -10,7 +10,7 @@
  * automatically by `src/main/handlers.ts`. Core app/omp/session/host channels live here.
  */
 
-import type { TspAvailability, TspHostSnapshot, TspRendererEvent } from "./tsp-host";
+import type { TspAvailability, TspComposerFacts, TspEditorRestore, TspHostSnapshot, TspRendererEvent } from "./tsp-host";
 import type { CollabQuestionState } from "./tsp/question-match";
 import type { TspHookAnswer } from "./tsp/dialogs";
 
@@ -124,6 +124,9 @@ export interface HostState {
 	/** Semantic startup failed; the existing chat restart action remains available. */
 	tspFailed?: boolean;
 	tspAvailability?: TspAvailability;
+	tspComposer?: TspComposerFacts;
+	tspEpoch?: number;
+	tspEditorRestore?: TspEditorRestore | null;
 	/** Collab control link for the renderer guest client; null until resolved. */
 	link: string | null;
 	/** Increments every time omp opens a new collab room (restart, new, resume, branch). */
@@ -286,9 +289,11 @@ export interface IpcInvokeMap {
 	/** Application paste through the host's closing-aware input queue, without submitting. */
 	"host:paste": { args: [hostId: string, text: string]; result: void };
 	/** Type `text` into the TUI and submit it. `followUp` queues it until omp yields instead of steering. */
-	"host:submit": { args: [hostId: string, text: string, mode?: "steer" | "followUp"]; result: void };
+	"host:submit": { args: [hostId: string, text: string, mode?: "steer" | "followUp", imagePaths?: string]; result: void };
 	/** Classic named keys, or semantic raw bytes guarded by collab generation and protocol epoch. */
 	"host:keys": { args: [hostId: string, keys: string, generation?: number, epoch?: number]; result: void };
+	"host:retry-editor-restore": { args: [hostId: string, id: string]; result: void };
+	"host:ack-editor-restore": { args: [hostId: string, id: string]; result: void };
 	/** Painted TUI screen lines (plain text). */
 	"host:screen": { args: [hostId: string]; result: string[] };
 	"host:resize": { args: [hostId: string, cols: number, rows: number]; result: void };

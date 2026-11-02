@@ -55,6 +55,25 @@ export function tspAllowsAskPrompt(availability: TspAvailability | undefined, re
 		|| (availability?.reasonCode === "matched-question" && availability.questionReqId === reqId);
 }
 
+export interface TspComposerFacts {
+	sendable: boolean;
+	text: string;
+	cursor: number;
+	ghost: string;
+	editorId: string | null;
+	surfaceId: string | null;
+	queued: string[];
+	blockedBy: "ask" | "approval" | "panel" | null;
+}
+
+export interface TspEditorRestore {
+	id: string;
+	hostId: string;
+	text: string;
+	cleared: boolean;
+	error: string | null;
+}
+
 /** Complete replacement snapshot. Revision orders an IPC subscription against its initial read. */
 export interface TspHostSnapshot {
 	hostId: string;
@@ -65,6 +84,8 @@ export interface TspHostSnapshot {
 	/** Main sets this synchronously when application-driven shutdown starts. */
 	closing?: boolean;
 	availability: TspAvailability;
+	composer?: TspComposerFacts;
+	editorRestore?: TspEditorRestore | null;
 	negotiated: boolean;
 	/** Input/presentation authority, independent of protocol documents retained for adopt and credits. */
 	lifecycle: "live" | "transitioning" | "failed" | "exited";

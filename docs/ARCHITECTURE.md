@@ -194,8 +194,10 @@ Native buttons reuse the app's Button and IconButton, including keycaps, pressed
 disabled reasons and busy indicators. Only registered click actions are sent; disabled and busy
 buttons remain inert. Segmented tabs reuse the app's segmented control. Code `nums` preserves
 non-contiguous source numbering with gap rows and falls back to `start` when invalid.
-The no-model recording baseline is `src/main/omp/tsp/fixtures/18.15.0/`, recorded with the
-standalone release in scratch profiles and protected by byte/CR/SHA-256 integrity manifests.
+The recording baseline is `src/main/omp/tsp/fixtures/18.15.0/`, recorded with the standalone release
+in scratch profiles and protected by byte/CR/SHA-256 integrity manifests. Model-dependent input
+recordings opt into the recorder's per-scenario loopback OpenAI script. The image scenario also
+records an attached collab replica's user message; no owner profile or provider credentials are read.
 Deferred shell and eval runs arrive in `main` through omp's `nativeTail`; their unclaimed
 `omp.bash` and `omp.eval` blocks appear under Other omp output rather than in the dock.
 
@@ -235,25 +237,37 @@ the guarded `host:keys` route with generation and epoch. Malformed operation tup
 node shapes are rejected before the reference applier. Protocol failures are shown by the omp
 screen without replacing collab or OSC as the authority for chat status.
 
-Plain-text submission uses semantic `send` only when omp advertised it and the focused main
-editor under `dock` explicitly has `sendable: true`. The inherited composer role is `omp.editor`;
-shell variants, modal fields, PTY mode and a subagent-view composer are refused. An open overlay
-or screen-mode surface also blocks submission. Main publishes availability and a reason, and the
-app composer shows that reason beside its unavailable send control. A blocking hook uniquely
-matched to a collab question carries `reasonCode: "matched-question"` and its `questionReqId`; only that
-same current ask request may authorize a collab user prompt. A rich native ask replaces the main editor
-with exact dock role `omp.editor.ask` or `omp.editor.ask.hidden`, so main publishes `reasonCode: "ask-editor"`
-while semantic submission remains unavailable. This code requires a negotiated protocol and one current,
-unsuspended inline main surface, with no screen, overlay, hook, competing dock editor or unrelated focus.
-The composer and controller share this narrow allowlist and still require `pendingAsk`, including immediately
-before the collab frame is sent. Approval-prefixed roles and generic absent or non-sendable editors receive
-no exception. Closing, transfer blocks and failed or transitioning lifecycles veto the code first.
-These exceptions never relax main's semantic hook or editor guards. Other omp menus retain their close-menu instruction.
-The writer checks availability again before sending. omp retains displaced drafts through its own send semantics. Attachments,
-application pastes, Ctrl+Q follow-up submission, shell/Python modes and prediction transfer remain
-unavailable in this preview. Unconverted screen-driven controls still require semantic consumers.
-Tree navigation and advisor application explicitly refuse TSP before mutation.
-Their UI affordances still need cutover. Expected refusals do not become persistent chat errors.
+TSP submission uses semantic `send` only when omp advertised it and the main editor under `dock`
+explicitly has `sendable: true`. `src/main/omp/tsp/composer.ts` projects exact text, UTF-16 cursor,
+ghost text, editor/surface ids, omp queue pills and ask/approval/panel ownership. `SessionHost`
+publishes these facts on the existing snapshot channel and host state. Shell and Python prefixes
+travel unchanged through `send`, including `!!`; large messages use the protocol's chunk encoder.
+Non-sendable editors, open menus, screen-mode surfaces and stale targets have distinct refusal reasons.
+
+A rich ask replaces the editor with `omp.editor.ask` or `omp.editor.ask.hidden`. The existing
+`ask-editor` availability and matched-hook `questionReqId` permit only that current collab ask's
+prompt path. Lifecycle, closing and transfer guards still apply before those exceptions.
+An approval is identified by `omp.approval.choices`; ordinary messages submit through omp's
+composer so it denies the request and steers. Slash commands and model/thinking actions refuse
+while approval waits. Other hook dialogs retain the guarded answer path and D10 policy.
+
+Follow-up submission writes one len-checked `edit` and Ctrl+Q through the same atomic writer.
+Images write the text edit and bracketed image-path paste together, wait for every new image node
+under `omp.composer.chips`, then send the editor's `submit` action. `send` is deliberately excluded
+from that attachment path because omp omits staged images. Protocol credits continue during the
+attachment wait. A failure after the paste activates the existing stranded-image recovery gate.
+Application pastes retain the bracketed-paste path. `EditorInputTransaction.edit` provides exact
+semantic edits under the same host lock; all transaction access expires when the callback returns.
+
+The app queue also waits for omp's `omp.queue.item` nodes and editor ownership. Escape pins the
+original editor and waits for omp to append queued text. Main retains an identified restoration record
+before the len-checked clear and publishes it through the semantic snapshot and host state. The
+renderer inserts it with a persisted per-draft receipt and acknowledges once clear confirmation arrives.
+Failures retain the exact text with a retry action, and replacements are left unchanged. Application
+pastes hold the host input lock until reflected; follow-up preserves attached image markers. Undo sends
+the advertised `undo` event. Classic input retains its original paste, key and exact-transfer paths.
+Unconverted screen-driven controls still require semantic consumers, and expected refusals do not
+become persistent chat errors.
 
 The TSP composer model menu retains the shared provider, family and version tree. Selecting a
 version opens omp's session-only picker with `status.model`, then activates the exact
@@ -295,8 +309,11 @@ Classic review detection, plan-file reading and key delivery remain unchanged.
 The native hook card also reads TSP documents; other unclaimed omp UI remains available in the omp screen.
 
 The composer does not start its 600 ms painted next-message prediction poll for TSP hosts.
-Transport changes also hide an old offer and prevent its capture. Independent word completion
-remains available; semantic next-message ghost detection and transfer remain Phase 4h work.
+It displays the published editor `ghost` and accepts Tab through the existing exact extension
+capture, compare, clear and recovery path. Main waits for the semantic editor to reflect Tab before
+reading the trusted draft. Transport changes hide stale offers. Independent word completion remains
+available. The prediction recording covers ghost, Tab insertion and clear. The manual Electron and
+IME gate remains unverified.
 
 Pass-through slash commands use the same semantic submission path for immediate and queued delivery.
 Their readiness checks main's published send availability and document-owned overlays or screen

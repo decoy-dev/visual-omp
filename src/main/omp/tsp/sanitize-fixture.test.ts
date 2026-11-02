@@ -50,7 +50,7 @@ describe("TSP fixture privacy", () => {
 		const files = readdirSync(directory);
 		const manifests = files.filter(name => name.endsWith(".integrity.json"));
 		const rawNames = files.filter(name => name.endsWith(".raw.bin")).map(name => name.replace(".raw.bin", "")).sort();
-		expect(rawNames).toHaveLength(63);
+		expect(rawNames).toHaveLength(74);
 		expect(manifests.map(name => name.replace(".integrity.json", "")).sort()).toEqual(rawNames);
 		for (const manifest of manifests) {
 			const expected: { bytes: number; carriageReturns: number; sha256: string } = JSON.parse(readFileSync(join(directory, manifest), "utf8"));

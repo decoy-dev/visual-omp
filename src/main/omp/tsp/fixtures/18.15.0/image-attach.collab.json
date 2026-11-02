@@ -1,0 +1,66 @@
+[
+  {
+    "type": "model_change",
+    "id": "7725fbf2",
+    "parentId": null,
+    "timestamp": "2026-11-02T21:23:24.151Z",
+    "runtime": {
+      "version": "18.15.0"
+    },
+    "model": "fixture/fixture-model",
+    "resolvedModelIsFallback": false
+  },
+  {
+    "type": "thinking_level_change",
+    "id": "66db9057",
+    "parentId": "7725fbf2",
+    "timestamp": "2026-11-02T21:23:24.152Z",
+    "runtime": {
+      "version": "18.15.0"
+    },
+    "thinkingLevel": "off",
+    "configured": null
+  },
+  {
+    "type": "custom_message",
+    "customType": "image-attachment",
+    "content": "The user attached an image as `[Image #1]` in their visible message.\n\nSource path: `/tmp/vomp-fixture/fixture.png`\n\nThe attached image is stored in this file on disk. Use the source path directly with file tools (for example `read /tmp/vomp-fixture/fixture.png`) when you need the file itself — to inspect, copy, or upload it.",
+    "display": false,
+    "details": {
+      "index": 1,
+      "path": "/tmp/vomp-fixture/fixture.png"
+    },
+    "attribution": "user",
+    "id": "cae194e0",
+    "parentId": "66db9057",
+    "timestamp": "2026-11-02T21:23:25.670Z",
+    "runtime": {
+      "version": "18.15.0"
+    }
+  },
+  {
+    "type": "message",
+    "id": "ad4d9455",
+    "parentId": "cae194e0",
+    "timestamp": "2026-11-02T21:23:25.721Z",
+    "runtime": {
+      "version": "18.15.0"
+    },
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Fixture image prompt[Image #1, 200x200]"
+        },
+        {
+          "type": "image",
+          "data": "UklGRoIAAABXRUJQVlA4IHYAAABQDACdASrIAMgAPm02mUmkIyKhIEgAgA2JaW7hdrEbQBPa9FXCDIIaqk122i4QZBDVUmu20XCDIIaqk122i4QZBDVUmu20XCDIIaqk122i4QZBDVUmu20XCDIIaqk122i4QZBDVUmu20WcAAD+/9GgAAAAAAAA",
+          "mimeType": "image/webp"
+        }
+      ],
+      "attribution": "user",
+      "timestamp": 1793654605670
+    }
+  }
+]

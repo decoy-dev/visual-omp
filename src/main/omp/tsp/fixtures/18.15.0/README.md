@@ -25,6 +25,12 @@ an `omp.compaction` section and confirms the new semantic model label. The failu
 makes two requests that receive scripted HTTP 400 errors, emits `omp.notice.error` and retains
 the large model. No external provider is contacted. Both captures restore the composer and exit.
 
+Phase 3 adds eleven composer input recordings, bringing the baseline to 74 recordings. Their
+loopback scripts exercise steer, follow-up delivery, Escape restoration, large text, image
+attachment, approval denial, ask ownership and prediction acceptance. Shell and Python scenarios
+configure the local model without making a provider request. `image-attach` also attaches a collab guest.
+
+
 ## Capture format
 
 Each scenario has five files:
@@ -32,9 +38,9 @@ Each scenario has five files:
 - `<scenario>.raw.bin` contains sanitized PTY output, preserving ordinary terminal controls and TSP framing.
 - `<scenario>.jsonl` is omp's `PI_TUI_TSP_RECORD` journal with the same privacy replacements.
 - `<scenario>.messages.jsonl` contains messages decoded from the sanitized bytes by `TspStream`.
-- `<scenario>.events.jsonl` contains the app's emitted replies and events. A `keys` record identifies raw Escape or Enter. `afterMessage` records the number of program messages received before that input, so replays can check the addressed live document.
+- `<scenario>.events.jsonl` contains emitted replies and events. A `keys` record identifies raw keys, terminal replies, Ctrl+Q or a bracketed image-path paste. `afterMessage` records the number of program messages received before that input, so replays can check the addressed live document. An edit and the following key or paste can share one writer operation.
 - `<scenario>.integrity.json` contains the sanitized byte length, carriage-return count and SHA-256 digest before storage. Git stores fixture `.bin` files as binary, preserving CR bytes across checkout. JSON delimiters remain LF; stringification escapes embedded CR values.
-- Scripted-provider scenarios also include `<scenario>.provider.json`, containing sanitized request bodies from that isolated loopback server.
+- Scripted scenarios also have `<scenario>.provider.json`, containing sanitized requests to the loopback provider. `image-attach.collab.json` contains the user message observed by an attached collab replica, including omp's processed image.
 
 The recorder uses `TspSession`, including its hello, cumulative acknowledgments and semantic submission. It advertises 45 kinds, including `button`, an empty terminal feature list, two credits, 110 columns, light appearance and reduced motion. Completed scenarios restore the composer and submit `/exit`. Open-only scenarios stop the child after draining its output; omp emits a retained close without a closing toast or answer. The timeout event file is empty because that scenario deliberately sends no reply.
 
@@ -42,7 +48,7 @@ The recorder uses `TspSession`, including its hello, cumulative acknowledgments 
 
 ## Isolation and sanitization
 
-Every scenario uses a fresh HOME, USERPROFILE, XDG config and cache roots, `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR`, session directory and temporary directory. Only PATH is inherited. No credentials, API keys, provider configuration or owner profile is inherited. Discovery of extensions, skills, rules, context files, LSP and title loading is disabled. Hook and custom-row scenarios explicitly load `../extension/vomp-fixture.mjs` through `-e`, with discovery still disabled. Only the two compaction scenarios make model requests, through the isolated scripted provider described above. The credential-free model picker can list local and web providers without invoking them.
+Every scenario uses a fresh HOME, USERPROFILE, XDG config and cache roots, `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR`, session directory and temporary directory. Only PATH is inherited. No credentials, API keys, provider configuration or owner profile is inherited. Discovery of extensions, skills, rules, context files, LSP and title loading is disabled. Hook and custom-row scenarios explicitly load `../extension/vomp-fixture.mjs` through `-e`, with discovery still disabled. Original menu scenarios make no model request. Scripted input scenarios create a zero-cost local fixture model served only on loopback, with an explicit per-request response list.
 
 `TERM_PROGRAM=tern` enables TSP; `PI_TUI_NATIVE` is omitted. Scratch configuration disables setup, update and changelog checks, marketplace updates, autocomplete, recaps, predictions, automatic graphs and startup worktrees; exit worktrees are kept. Scratch profiles are removed after each recording.
 
@@ -86,8 +92,19 @@ The sanitizer replaces OSC 7 hosts with `localhost` and private home and tempora
 | hook-collab-aware | The selector stays open. Tests inject matching and ambiguous question mirrors; the recording has no attached guest. |
 | handshake-timeout | All client replies are withheld. omp withdraws its optimistic surface with `keep: false` and paints classic rows. |
 | hook-parity-* | Thirteen positive classic dialog captures are parsed by the recorder and opened through the fixture extension. Each records a complete native answer: described and moved selectors, outlined and twenty-option region lists, both confirms, empty/prefilled input and both editor styles. The two classic non-dialog captures remain negative parser cases. |
+| send-busy-steer | A gated first model reply keeps the turn busy while a second semantic send steers it. |
+| follow-up-queue | A len-checked edit plus Ctrl+Q produces `omp.queue.item`; releasing the first response delivers the follow-up in the next request. |
+| queue-escape-restore | Escape appends queued text to the main editor; an exact semantic edit clears it before exit. |
+| shell-bang | Semantic `!` and `!!` sends produce shell execution output without a model turn. |
+| python-dollar | Semantic `$ 1+1` produces an eval execution block without a model turn. |
+| paste-large | A large multiline message travels through a chunked semantic send. |
+| image-attach | The text edit and image path paste share one write, attachment appears in the document, and `action submit` produces an image-bearing user message in collab and the provider request. |
+| approval-send-denies | An always-ask bash request opens approval; sending text records a denied tool result and a steering user message. |
+| ask-replaces-editor | A scripted ask tool replaces the main dock editor. The recording ends with that question open. |
+| prediction-ghost | A second scripted request supplies the semantic editor ghost; Tab inserts it, and a len-checked edit clears it before exit. |
+| paste-follow-up | The image paste reflects before follow-up edits. The queued message reaches the next provider request with its attached image intact. |
 
-`../extension/tree-session.jsonl` is a hand-authored version 3 session with three user/assistant pairs, two branches and zero usage. Imported Claude messages are synthetic session input too. These fixtures do not establish model-backed behavior, populated usage history, populated jobs, collab attachment or guest arbitration.
+`../extension/tree-session.jsonl` is a hand-authored version 3 session with three user/assistant pairs, two branches and zero usage. Imported Claude messages are synthetic session input too. The original no-model fixtures do not establish model-backed behavior, populated usage history, populated jobs, collab attachment or guest arbitration.
 
 ## Hook identities and input
 
@@ -121,7 +138,7 @@ Tests now check raw Escape against an open overlay or screen as well as row fall
 From the worktree root with Node 24, Bun and the worktree's node-pty dependency:
 
 ```sh
-bun build src/main/omp/tsp/record-fixtures.ts --target=node --format=esm --external=node-pty --outfile=record-tsp.mjs
+node_modules/.bin/esbuild src/main/omp/tsp/record-fixtures.ts --bundle --platform=node --format=esm --external:node-pty --alias:@oh-my-pi/pi-wire=./src/renderer/src/collab/wire/index.ts --alias:@shared=./src/shared "--banner:js=import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" --outfile=record-tsp.mjs
 OMP_BIN=/absolute/path/to/omp-18.15.0 node record-tsp.mjs
 rm record-tsp.mjs
 ```
@@ -142,3 +159,9 @@ The provider returns fixed text for any continuation or compaction request and r
 request bodies in `.provider.json`. No external provider or account is used.
 The app's existing permission-config Auto and extension plan-exit transitions are covered by card
 tests; these PTY recordings cover their execute and cancel events without those mode changes.
+To add a scripted scenario, set `script` to a list of `{ text }` or `{ tool: { name, arguments } }` replies.
+A reply can have `delayMs` or a named `gate`; the scenario's `run` callback calls `release(name)`.
+The callback receives `session`, `send`, `keys`, `until`, `find`, `requests` and the scratch `root`.
+`config` merges scenario-specific settings, `tools` limits the enabled tools, and `collab: true`
+attaches the recorder's guest for image transcript evidence. `script: []` configures the local model
+without permitting any provider request. No Electron instance is started.

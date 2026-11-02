@@ -25,7 +25,7 @@ vi.mock("../../shell/Sidebar", () => ({ focusChatSearch: mocks.focusChatSearch }
 vi.mock("./pickers", () => ({ usePickerRequests: { getState: () => ({ openThinking: mocks.openThinking }) } }));
 vi.mock("./nativeModes", () => ({ setSessionMode: mocks.setMode }));
 
-const session = { tabId: "tab-1", projectPath: "/project", sessionFile: "/sessions/a.jsonl" } as unknown as SessionController;
+const session = { tabId: "tab-1", projectPath: "/project", sessionFile: "/sessions/a.jsonl", getSnapshot: () => ({ host: null, guest: null }) } as unknown as SessionController;
 const ranCommands = () => mocks.runCommand.mock.calls.map(([id]) => id);
 
 beforeEach(() => {
@@ -42,6 +42,12 @@ describe("parseSlash", () => {
 });
 
 describe("routeSlash", () => {
+	it("refuses app-owned and pass-through slash actions while a TSP approval waits", async () => {
+		const blocked = { ...session, getSnapshot: () => ({ host: { transport: "tsp", tspComposer: { blockedBy: "approval" } }, guest: null }) } as unknown as SessionController;
+		for (const line of ["/switch", "/goal pause", "/extension-command"]) await expect(routeSlash(blocked, line)).rejects.toThrow("Answer the approval");
+		expect(mocks.runCommand).not.toHaveBeenCalled();
+		expect(mocks.setMode).not.toHaveBeenCalled();
+	});
 	it("opens the app's UI for bare commands and keeps them from omp", async () => {
 		expect(await routeSlash(session, "/settings")).toBe(true);
 		expect(await routeSlash(session, "/tree")).toBe(true);

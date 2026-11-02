@@ -130,6 +130,31 @@ describe("TSP session", () => {
 		await expect(h.session.send({ ev: "send", sf: "s:1", id: "editor", text: "/btw" })).rejects.toThrow("does not accept");
 	});
 
+	it("never emits undo when omp did not advertise the capability", async () => {
+		const h = harness();
+		h.receive("q", { q: "hello", v: [1], features: ["send", "edit"] });
+		h.open(); h.frame(1, regions); h.frame(2, [["set", "editor", { sendable: true }]]);
+		await expect(h.session.send({ ev: "undo", sf: "s:1", id: "editor" })).rejects.toThrow("does not accept undo");
+		expect(h.bodies().some(body => body.ev === "undo")).toBe(false);
+	});
+
+	it("distinguishes temporary editor unavailability and rejected additions from lifetime end", async () => {
+		const h = harness(); h.hello(); h.open(); h.frame(1, regions);
+		h.frame(2, [["set", "editor", { sendable: true }]]);
+		const target = h.session.pinEditor();
+		h.frame(3, [["add", "editor", "dock", null, { id: "editor", k: "editor", p: { text: "Rejected replacement", sendable: true } }]]);
+		expect(target.ended()).toBe(false);
+		expect(() => target.assertCurrent()).not.toThrow();
+		h.frame(4, [["suspend"]]);
+		expect(target.ended()).toBe(false);
+		expect(() => target.assertCurrent()).toThrow("temporarily unavailable");
+		h.frame(5, [["resume"]]);
+		expect(() => target.assertCurrent()).not.toThrow();
+		h.frame(6, [["del", "editor"], ["add", "editor", "dock", null, { id: "editor", k: "editor", p: { text: "Replacement", sendable: true } }], ["focus", "editor"]]);
+		expect(target.ended()).toBe(true);
+		await h.flush();
+	});
+
 	it("retains main for keep-close and adopts it without resetting sequence", async () => {
 		const h = harness(); h.hello(); h.open(); h.frame(1, regions);
 		h.receive("x", { id: "s:1", keep: true });
@@ -251,7 +276,9 @@ describe("TSP session", () => {
 		await h.session.submit("/btw");
 		expect(h.bodies().filter(body => body.ev === "send")).toEqual([{ ev: "send", sf: "s:1", id: "editor", text: "/btw" }]);
 		expect(h.session.snapshot().surfaces[0]?.document.c?.[1]?.c?.[0]?.p).toMatchObject({ text: "existing draft" });
-		for (const text of ["", "!pwd", "$print(1)"]) await expect(h.session.submit(text)).rejects.toThrow("not available");
+		await expect(h.session.submit("")).rejects.toThrow("Enter a message");
+		for (const text of ["!pwd", "!!pwd", "$ print(1)"]) await h.session.submit(text);
+		expect(h.bodies().filter(body => body.ev === "send").slice(-3).map(body => body.text)).toEqual(["!pwd", "!!pwd", "$ print(1)"]);
 	});
 
 	it("refuses hook, shell, modal and subagent composers as main app submission targets", async () => {

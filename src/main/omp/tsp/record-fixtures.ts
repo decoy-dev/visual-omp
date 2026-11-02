@@ -16,8 +16,11 @@ import type { TspSurfaceSnapshot } from "../../../shared/tsp-host";
 import { sanitizeFixtureBytes } from "./sanitize-fixture";
 import { parseOmpDialog, type OmpDialog } from "../../../renderer/src/features/session-tools/ompDialog";
 import { planReview, planChoice } from "../../../shared/tsp/plan-review";
+import { composerFacts as readComposerFacts } from "./composer";
+import { LoopbackRelay } from "../relay";
+import { GuestClient } from "../../../renderer/src/collab/lib/client";
 
-// Bundle beside node_modules with Bun (target node, node-pty external), then run with Node.
+// Bundle beside node_modules for Node, with node-pty external and the app's wire aliases.
 // No inherited configuration or provider credentials. Model turns use the isolated scripted provider.
 const bin = process.env.OMP_BIN;
 if (!bin) throw new Error("Set OMP_BIN to the omp 18.15.0 executable.");
@@ -52,6 +55,7 @@ type Scenario = {
   parity?: OmpDialog;
   config?: Record<string, unknown>;
   tools?: string[];
+  collab?: boolean;
   run?: (context: RecordingContext) => Promise<void>;
 };
 
@@ -156,6 +160,83 @@ const scenarios: Scenario[] = [
       }
     },
   })),
+  { name: "shell-bang", command: "!printf fixture-shell", script: [], run: async ({ find, until, session }) => {
+    await until(() => !!find(node => node.p?.role === "omp.bash"), "shell result missing");
+    await session.submit("!!printf fixture-shell-excluded");
+    await until(() => !!find(node => (node.k === "text" || node.k === "md") && node.p?.text?.includes("fixture-shell-excluded") === true), "excluded shell result missing");
+  } },
+  { name: "python-dollar", command: "$ 1+1", script: [], run: async ({ find, until }) => {
+    await until(() => !!find(node => node.p?.role === "omp.eval"), "Python result missing");
+  } },
+  { name: "paste-large", command: null, script: [{ text: "Fixture large paste received." }], run: async ({ session, until, requests }) => {
+    await session.submit("Fixture large paste line.\n".repeat(5000));
+    await until(() => requests.length === 1, "large paste missing from provider");
+  } },
+  ...(["send-busy-steer", "follow-up-queue", "queue-escape-restore"] as const).map(name => ({
+    name, command: "Fixture initial prompt",
+    script: [{ text: "Fixture first response.", gate: "first" }, { text: "Fixture queued response." }],
+    run: async ({ session, until, find, release, requests, keys }: RecordingContext) => {
+      await until(() => requests.length === 1, "initial request missing");
+      if (name === "send-busy-steer") await session.submit("Fixture busy steer");
+      else {
+        await session.followUp("Fixture follow-up text", () => {});
+        await until(() => !!find(node => node.p?.role === TSP_ROLES.queueItem), "follow-up queue missing");
+      }
+      if (name === "queue-escape-restore") {
+        keys("\x1b");
+        await until(() => !!find(node => node.k === "editor" && node.p?.text?.includes("Fixture follow-up text") === true), "Escape did not restore queued text");
+        const facts = readComposerFacts(session.snapshot().surfaces);
+        await session.editAndKeys(0, facts.text.length, "", 0, "", () => {});
+        await until(() => readComposerFacts(session.snapshot().surfaces).text === "", "restored editor did not clear");
+      }
+      release("first");
+      if (name !== "queue-escape-restore") await until(() => requests.length >= 2, "queued message was not delivered");
+      await until(() => !find(node => node.p?.role === "omp.working"), "turn did not finish");
+    },
+  })),
+  { name: "image-attach", command: null, collab: true, script: [{ text: "Fixture image received." }], run: async ({ session, root, requests, until }) => {
+    const path = join(root, "fixture.png");
+    await writeFile(path, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lS8AAAAASUVORK5CYII=", "base64"));
+    await session.submitImages("Fixture image prompt", path, () => {});
+    await until(() => requests.length === 1, "image prompt missing from provider");
+  } },
+  { name: "approval-send-denies", command: "Fixture approval prompt", script: [
+    { tool: { name: "bash", arguments: { command: "printf fixture-approval", i: "Printing fixture output" } } },
+    { text: "Fixture approval denied and message received." },
+  ], config: { tools: { approvalMode: "always-ask" } }, tools: ["bash"], run: async ({ session, find, until, requests }) => {
+    await until(() => !!find(node => node.p?.role === TSP_ROLES.approvalChoices), "approval missing");
+    await session.submit("Fixture deny and steer");
+    await until(() => requests.length >= 2 && !find(node => node.p?.role === TSP_ROLES.approvalChoices), "approval was not denied");
+  } },
+  { name: "ask-replaces-editor", command: "Fixture ask prompt", end: "open", tools: ["ask"], script: [{
+    tool: { name: "ask", arguments: { i: "Choosing fixture storage", questions: [{ id: "fixture-ask", question: "Fixture storage?", options: [{ label: "SQLite" }, { label: "Postgres" }] }] } },
+  }], run: async ({ find, until }) => {
+    await until(() => !!find(node => node.p?.role === TSP_ROLES.editorAsk || node.p?.role === TSP_ROLES.editorAskHidden), "ask did not replace the editor");
+  } },
+  { name: "paste-follow-up", command: "Fixture initial prompt", script: [
+    { text: "Fixture first response.", gate: "first" }, { text: "Fixture pasted follow-up received." },
+  ], run: async ({ session, root, requests, until, release, find }) => {
+    await until(() => requests.length === 1, "initial request missing");
+    const path = join(root, "fixture.png");
+    await writeFile(path, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lS8AAAAASUVORK5CYII=", "base64"));
+    await session.paste(path, () => {}, () => true);
+    await session.followUp("Fixture follow-up text", () => {});
+    await until(() => !!find(node => node.p?.role === TSP_ROLES.queueItem), "pasted follow-up queue missing");
+    release("first");
+    await until(() => requests.length >= 2, "pasted follow-up was not delivered");
+    if (!JSON.stringify(requests[1]).includes('"image_url"')) throw new Error("Pasted image missing from the follow-up provider request");
+    await until(() => !find(node => node.p?.role === TSP_ROLES.working), "pasted follow-up did not finish");
+  } },
+  { name: "prediction-ghost", command: "Fixture prediction prompt", script: [
+    { text: "Fixture prediction answer." }, { text: "Run the fixture tests" },
+  ], config: { composer: { predictions: true } }, run: async ({ session, until, keys }) => {
+    await until(() => readComposerFacts(session.snapshot().surfaces).ghost === "Run the fixture tests", "prediction ghost missing");
+    keys("\t");
+    await until(() => readComposerFacts(session.snapshot().surfaces).text === "Run the fixture tests", "Tab did not accept prediction");
+    const facts = readComposerFacts(session.snapshot().surfaces);
+    await session.editAndKeys(0, facts.text.length, "", 0, "", () => {});
+    await until(() => readComposerFacts(session.snapshot().surfaces).text === "", "accepted prediction did not clear");
+  } },
 ];
 // Each positive classic capture has an independently recorded native counterpart.
 for (const name of ["selector-descriptions", "selector-descriptions-moved", "selector-windowed", "selector-search", "selector-outline", "confirm", "confirm-detail", "confirm-detail-no", "input-below-panel", "input-empty", "editor-prompt", "editor-hook", "editor-hook-empty"]) {
@@ -183,13 +264,18 @@ for (const scenario of scenarios) {
     input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: size === "large" ? 128000 : 32000, maxTokens: 4096 }));
   const provider = scenario.script ? await scriptedProvider(scenario.script, agent, modelControls ? controlModels : undefined) : undefined;
-  await writeFile(join(agent, "config.yml"), provider && !modelControls ? JSON.stringify({
+  const relay = scenario.collab ? new LoopbackRelay() : undefined;
+  if (relay) await relay.start();
+  let guest: GuestClient | undefined;
+  await writeFile(join(agent, "config.yml"), provider ? JSON.stringify({
     setupVersion: 999, startup: { setupWizard: false, checkUpdate: false, changelogMode: "hidden", quiet: true },
     marketplace: { autoUpdate: "off" }, worktree: { onStart: "off", onExit: "keep" },
     tui: { autoGraph: "never" }, autocomplete: { enabled: false }, recap: { enabled: false },
-    composer: { predictions: false }, modelRoles: { default: "fixture/fixture-model", smol: "fixture/fixture-model" },
+    composer: { predictions: false }, modelRoles: { default: modelControls ? "fixture/fixture-large" : "fixture/fixture-model", smol: modelControls ? "fixture/fixture-small" : "fixture/fixture-model" },
     tools: { approvalMode: "yolo" }, memory: { enabled: false }, idle: { enabled: false }, ...scenario.config,
-  }) : config + (compactSwitch ? "compaction:\n  asyncEnabled: false\n  keepRecentTokens: 4096\n" : ""));
+    ...(compactSwitch ? { compaction: { asyncEnabled: false, keepRecentTokens: 4096 } } : {}),
+    ...(relay ? { collab: { autoStart: "control", relayUrl: relay.url, displayName: "Fixture recorder" } } : {}),
+  }) : config);
   if (modelControls && !provider) {
     await writeFile(join(agent, "models.yml"), JSON.stringify({ providers: { fixture: {
       baseUrl: "http://127.0.0.1:1/v1", apiKey: "fixture-local-only", api: "openai-completions", models: controlModels,
@@ -207,14 +293,14 @@ for (const scenario of scenarios) {
   let exited = false;
   let exitCode: number | undefined;
   let classicFallback = false;
-  const output = new TspStream({ onData: () => {}, onMessage: message => events.push({ verb: message.verb, body: JSON.parse(message.body), afterMessage: messages.length }) });
+  const output = new TspStream({ onData: data => events.push({ keys: data.toString("utf8"), afterMessage: messages.length }), onMessage: message => events.push({ verb: message.verb, body: JSON.parse(message.body), afterMessage: messages.length }) });
   const write = (data: string) => { if (name === "handshake-timeout") return; output.push(Buffer.from(data)); child.write(data); };
   const keys = (data: string) => { events.push({ keys: data, afterMessage: messages.length }); child.write(data); };
   // A transport probe deliberately sends the observed hook wire events directly.
   // Production input authority belongs to SessionHost, rather than this isolated recorder.
   const send = (event: TspEvent) => write(encodeTspJson("e", event));
   const session = new TspSession({ cols: 110, dark: false, reduceMotion: true, write, onError: error => { throw error; } });
-  const stream = new TspStream({ onMessage: message => { messages.push({ verb: message.verb, body: JSON.parse(message.body) }); session.receive(message); }, onData: data => {
+  const stream = new TspStream({ onMessage: message => { messages.push({ verb: message.verb, body: message.verb === "b" ? message.body : JSON.parse(message.body) }); session.receive(message); }, onData: data => {
     if (data.toString().includes("No default model selected")) classicFallback = true;
     if (data.includes(Buffer.from("\x1b[c"))) session.terminalReply("\x1b[?62;22c");
     if (data.includes(Buffer.from("\x1b[6n"))) session.terminalReply("\x1b[1;1R");
@@ -237,6 +323,8 @@ for (const scenario of scenarios) {
     await writeFile(sessionFile, seed.map(entry => JSON.stringify(entry)).join("\n") + "\n");
     args.push("--session", sessionFile);
   }
+  if (provider && !modelControls) args.push("--model", "fixture/fixture-model", "--thinking", "off");
+  if (scenario.tools) args.push("--tools", scenario.tools.join(","));
   if (hook || name === "extensions") args.push("-e", extension);
   if (missingResume) args.push("--resume", join(root, "missing-session.jsonl"));
   if (name === "tree-open" || name === "tree-confirm" || name === "resume" || name === "sibling-continuation") {
@@ -338,6 +426,17 @@ for (const scenario of scenarios) {
         if (step === 9) throw new Error("Thinking cycle did not wrap");
       }
     }
+    if (relay) {
+      let hosts: { instanceId: string }[] = [];
+      await until(() => {
+        hosts = JSON.parse(execFileSync(bin, ["collab", "list", "--json"], { env, encoding: "utf8" })).hosts;
+        return hosts.length > 0;
+      }, "isolated collab host missing");
+      const link = JSON.parse(execFileSync(bin, ["collab", "link", hosts[0]!.instanceId, "--json"], { env, encoding: "utf8" })).url;
+      guest = new GuestClient(link, "Fixture recorder");
+      guest.connect();
+      await until(() => guest!.getSnapshot().phase === "live", "collab replica did not connect");
+    }
     if (name === "sibling-continuation") {
       const ownerSession = new TspSession({ cols: 110, dark: false, reduceMotion: true, write: data => owner!.write(data) });
       const ownerStream = new TspStream({ onMessage: message => ownerSession.receive(message), onData: data => {
@@ -404,6 +503,10 @@ for (const scenario of scenarios) {
       }
     }
     if (scenario.run) await scenario.run({ session, send, keys, until, find, root, requests: provider?.requests ?? [], release: provider?.release ?? (() => {}) });
+    if (guest) {
+      await until(() => guest!.getSnapshot().entries.some(entry => entry.type === "message" && entry.message.role === "user" && Array.isArray(entry.message.content) && entry.message.content.some(part => part.type === "image")), "image missing from collab transcript");
+      await writeFile(join(destination, `${name}.collab.json`), sanitizeFixtureBytes(Buffer.from(JSON.stringify(guest.getSnapshot().entries, null, 2) + "\n")));
+    }
     if (end === "open") {
       await session.drain();
       await sleep(100);
@@ -416,7 +519,7 @@ for (const scenario of scenarios) {
     stream.end(); await session.drain();
     const safeRaw = sanitizeFixtureBytes(Buffer.concat(raw));
     const safeMessages: object[] = [];
-    const safeStream = new TspStream({ onData: () => {}, onMessage: message => safeMessages.push({ verb: message.verb, body: JSON.parse(message.body) }) });
+    const safeStream = new TspStream({ onData: () => {}, onMessage: message => safeMessages.push({ verb: message.verb, body: message.verb === "b" ? message.body : JSON.parse(message.body) }) });
     safeStream.push(safeRaw); safeStream.end();
     await Promise.all([
       writeFile(join(destination, `${name}.raw.bin`), safeRaw),
@@ -426,12 +529,12 @@ for (const scenario of scenarios) {
       readFile(journal).then(bytes => writeFile(join(destination, `${name}.jsonl`), sanitizeFixtureBytes(bytes))),
       ...(provider ? [writeFile(join(destination, `${name}.provider.json`), sanitizeFixtureBytes(Buffer.from(JSON.stringify(provider.requests, null, 2) + "\n")))] : []),
     ]);
-    if (provider) await writeFile(join(destination, `${name}.provider.json`), sanitizeFixtureBytes(Buffer.from(JSON.stringify(provider.requests, null, 2) + "\n")));
     console.log(`Recorded ${name}: ${Buffer.concat(raw).length} bytes, ${events.length} emitted events.`);
   } finally {
     if (!exited) child.kill();
-    provider?.stop();
     if (owner) { owner.kill(); await ownerExit; }
+    guest?.close();
+    relay?.stop();
     provider?.stop();
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }

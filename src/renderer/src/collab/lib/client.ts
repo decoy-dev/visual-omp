@@ -25,6 +25,8 @@ import { importRoomKey } from "./codec";
 import { COLLAB_PROTO, encodeBase64Url, parseCollabLink } from "./link";
 import { CollabSocket } from "./socket";
 
+type Timer = ReturnType<typeof setTimeout>;
+
 export type ConnectionPhase = "connecting" | "waiting" | "live" | "reconnecting" | "ended";
 
 export interface ActiveTool {

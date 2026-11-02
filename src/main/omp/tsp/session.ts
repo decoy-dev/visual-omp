@@ -1,12 +1,13 @@
 import { z } from "zod";
 import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, type TspEvent, type TspFrame, type TspOpen } from "../../../shared/tsp";
-import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspAvailability, type TspSurfaceSnapshot } from "../../../shared/tsp-host";
-import { composer, liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
+import { TspRendererEvent, type TspAvailability, type TspSurfaceSnapshot } from "../../../shared/tsp-host";
+import { liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
 import { isHookNode, isKnownAction, TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
 import { hookAnswerEvents, TspHookAnswer } from "../../../shared/tsp/dialogs";
 import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";
 import type { TspMessage } from "./stream";
+import { composerFacts } from "./composer";
 
 const Query = z.object({ q: z.string(), v: z.array(z.number()).optional(), features: z.array(z.string()).optional() });
 const Open = z.object({ id: z.string().min(1), mode: z.enum(["inline", "screen"]), title: z.string().optional(), role: z.string().optional(), adopt: z.boolean().optional() });
@@ -37,7 +38,16 @@ interface Surface {
 	open: TspOpen;
 	doc: TspDocument;
 	sequence: number;
+	editorVersions: Map<string, number>;
 	closed: boolean;
+}
+
+export interface TspEditorTarget {
+	surfaceId: string;
+	editorId: string;
+	epoch: number;
+	assertCurrent(): void;
+	ended(): boolean;
 }
 
 /** A rich ask replaces the dock editor. It never grants input to another focused or dock-owned UI. */
@@ -85,6 +95,7 @@ export class TspSession {
 	#cols: number;
 	#dark: boolean;
 	#reduceMotion: boolean;
+	readonly #waiters = new Set<() => void>();
 
 	constructor(options: {
 		write: (data: string) => Promise<void> | void;
@@ -105,6 +116,77 @@ export class TspSession {
 	/** Drain the serialized protocol writer, including cumulative acknowledgments. */
 	drain(): Promise<void> {
 		return this.#tail;
+	}
+
+	/** Pins the actual editor lifetime, including ids reused within the same surface and epoch. */
+	pinEditor(surfaceAllowed: (surface: string) => boolean = () => true): TspEditorTarget {
+		const facts = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+		const surface = this.#surfaces.get(facts.surfaceId!);
+		if (!surface || !facts.editorId) throw new TspInputStateError("TSP preview: The main editor is not available.");
+		const editorId = facts.editorId;
+		const epoch = this.#epoch;
+		const version = surface.editorVersions.get(editorId);
+		const ended = () => epoch !== this.#epoch || this.#surfaces.get(surface.open.id) !== surface || surface.closed
+			|| surface.editorVersions.get(editorId) !== version || surface.doc.get(editorId)?.k !== "editor";
+		return { surfaceId: surface.open.id, editorId, epoch, ended, assertCurrent: () => {
+			if (ended()) throw new TspInputStateError("TSP preview: The original editor changed.");
+			if (surface.doc.suspended || !surfaceAllowed(surface.open.id)) throw new TspInputStateError("TSP preview: The original editor is temporarily unavailable.");
+			const current = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+			if (current.surfaceId !== surface.open.id || current.editorId !== editorId) throw new TspInputStateError("TSP preview: The original editor changed.");
+		} };
+	}
+
+	#registerEditors(surface: Surface, node: WireNode): void {
+		if (node.k === "editor") surface.editorVersions.set(node.id, (surface.editorVersions.get(node.id) ?? 0) + 1);
+		for (const child of node.c ?? []) this.#registerEditors(surface, child);
+	}
+
+	imageCount(surfaceId: string): number {
+		const surface = this.#surfaces.get(surfaceId);
+		if (!surface || surface.closed) return 0;
+		const chips = [...walkNodes(surface.doc.snapshot())].find(node => node.p?.role === TSP_ROLES.composerChips);
+		return chips ? [...walkNodes(chips)].filter(node => node.k === "image").length : 0;
+	}
+
+	/** Native edits bypass omp's async paste queue. Keep the host lock until the paste is reflected. */
+	async paste(text: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean): Promise<void> {
+		const target = this.pinEditor(surfaceAllowed);
+		const before = composerFacts(this.snapshot().surfaces);
+		const images = this.imageCount(target.surfaceId);
+		const tokens = text.match(/(?:\\.|[^\s])+/g) ?? [];
+		const imagePaths = tokens.length > 0 && tokens.every(token => /\.(?:png|jpe?g|gif|webp)$/i.test(token));
+		const check = () => { assertCurrent(); target.assertCurrent(); };
+		await this.#enqueue(() => {
+			check();
+			if (!this.availability(surfaceAllowed).available) throw new TspInputStateError("TSP preview: The main editor is not ready for a paste.");
+			return this.#write(`\x1b[200~${text}\x1b[201~`);
+		});
+		await this.waitFor(() => imagePaths ? this.imageCount(target.surfaceId) >= images + tokens.length
+			: composerFacts(this.snapshot().surfaces).text !== before.text || this.imageCount(target.surfaceId) > images,
+		check, 8000, "TSP preview: omp did not finish the paste. Check its editor before sending again.");
+	}
+
+	/** Document waits never occupy the protocol writer, so credits keep flowing. */
+	waitFor(predicate: () => boolean, assertCurrent: () => void, timeoutMs: number, reason: string): Promise<void> {
+		const result = Promise.withResolvers<void>();
+		const finish = (error?: unknown) => {
+			clearTimeout(timer);
+			this.#waiters.delete(check);
+			if (error) result.reject(error); else result.resolve();
+		};
+		const check = () => {
+			try { assertCurrent(); if (predicate()) finish(); }
+			catch (error) { finish(error); }
+		};
+		const timer = setTimeout(() => finish(new TspInputStateError(reason)), timeoutMs);
+		this.#waiters.add(check);
+		check();
+		return result.promise;
+	}
+
+	#updated(reason: TspUpdate, surface?: string): void {
+		this.#onUpdate(reason, surface);
+		for (const check of this.#waiters) check();
 	}
 
 	snapshot(): { negotiated: boolean; epoch: number; surfaces: TspSurfaceSnapshot[] } {
@@ -142,7 +224,7 @@ export class TspSession {
 					dark: this.#dark, reduceMotion: this.#reduceMotion,
 				}))));
 				this.#negotiated = true;
-				this.#onUpdate("hello");
+				this.#updated("hello");
 				return;
 			}
 			case "o": {
@@ -157,9 +239,9 @@ export class TspSession {
 					previous.open = open.data;
 					previous.closed = false;
 				} else {
-					this.#surfaces.set(open.data.id, { open: open.data, doc: new TspDocument(open.data.id), sequence: 0, closed: false });
+					this.#surfaces.set(open.data.id, { open: open.data, doc: new TspDocument(open.data.id), sequence: 0, closed: false, editorVersions: new Map() });
 				}
-				this.#onUpdate("open", open.data.id);
+				this.#updated("open", open.data.id);
 				return;
 			}
 			case "f": {
@@ -169,9 +251,10 @@ export class TspSession {
 				if (!surface || surface.closed) { this.#report("Frame for an unavailable TSP surface", frame.data.sf, frame.data.s); return; }
 				if (frame.data.s > surface.sequence) {
 					const errors = surface.doc.applyFrame(frame.data as TspFrame);
+					for (const [index, op] of frame.data.ops.entries()) if (op[0] === "add" && !errors.some(error => error.op === index)) this.#registerEditors(surface, op[4]);
 					surface.sequence = frame.data.s;
 					for (const error of errors) this.#report(error.msg, frame.data.sf, error.s, error.op);
-					this.#onUpdate("frame", frame.data.sf);
+					this.#updated("frame", frame.data.sf);
 				}
 				this.#ack(frame.data.sf);
 				return;
@@ -183,7 +266,7 @@ export class TspSession {
 				if (!surface) return;
 				if (close.data.keep) { surface.doc.close(); surface.closed = true; }
 				else this.#surfaces.delete(close.data.id);
-				this.#onUpdate("close", close.data.id);
+				this.#updated("close", close.data.id);
 			}
 		}
 	}
@@ -213,6 +296,11 @@ export class TspSession {
 					if (!item || item.disabled) throw new TspInputStateError("TSP preview: The picker item is no longer available.");
 				}
 				if (event.ev === "send" && ((node.k !== "editor" && node.k !== "input") || node.p?.sendable !== true)) throw new TspInputStateError("TSP preview: The editor is not ready to send.");
+				if (event.ev === "send") {
+					const surfaces = this.snapshot().surfaces;
+					if (screenSurface(surfaces)) throw new TspInputStateError("TSP preview: Close the omp screen before sending a message.");
+					if (composerFacts(surfaces).blockedBy === "panel") throw new TspInputStateError("TSP preview: Close the open omp menu before sending a message.");
+				}
 				if (event.ev === "edit") {
 					if ((node.k !== "editor" && node.k !== "input") || node.p?.readonly === true || event.len !== (node.p?.text?.length ?? 0)) throw new Error("TSP preview: The editor changed before the edit could be applied.");
 				}
@@ -241,29 +329,81 @@ export class TspSession {
 	}
 	/** Atomic text submission to omp's main composer, preserving its displaced-draft semantics. */
 	submit(text: string, assertCurrent?: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
-		if (!text.trim() || /^[!$]/.test(text.trimStart())) return Promise.reject(new Error(TSP_PREVIEW_UNAVAILABLE));
+		if (!text.trim()) return Promise.reject(new Error("TSP preview: Enter a message before sending."));
 		const surfaces = this.snapshot().surfaces;
 		const availability = this.availability(surfaceAllowed);
 		if (!availability.available) return Promise.reject(new TspInputStateError(`TSP preview: The main editor is not ready to send. ${availability.reason}`));
-		const target = composer(surfaces.filter(surface => surfaceAllowed(surface.open.id)))!;
-		const original = this.#surfaces.get(target.surface.open.id);
-		return this.send({ ev: "send", sf: target.surface.open.id, id: target.node.id, text }, () => {
+		const facts = composerFacts(surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+		const original = this.#surfaces.get(facts.surfaceId!);
+		return this.send({ ev: "send", sf: facts.surfaceId!, id: facts.editorId!, text }, () => {
 			assertCurrent?.();
-			if (!surfaceAllowed(target.surface.open.id) || this.#surfaces.get(target.surface.open.id) !== original) throw new TspInputStateError("TSP preview: The main editor changed before the message could be sent.");
+			if (!surfaceAllowed(facts.surfaceId!) || this.#surfaces.get(facts.surfaceId!) !== original) throw new TspInputStateError("TSP preview: The main editor changed before the message could be sent.");
 			if (!this.availability(surfaceAllowed).available) throw new TspInputStateError("TSP preview: The main editor is not ready to send.");
 		});
+	}
+
+	/** Follow-up has no wire event. Edit and Ctrl+Q must be one atomic write. */
+	followUp(text: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
+		const facts = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+		const value = facts.surfaceId && this.imageCount(facts.surfaceId) > 0 ? facts.text + text : text;
+		return this.editAndKeys(0, facts.text.length, value, value.length, "\x11", assertCurrent, surfaceAllowed);
+	}
+
+	editAndKeys(from: number, to: number, text: string, cursor: number, keys: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
+		const epoch = this.#epoch;
+		const facts = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+		const original = this.#surfaces.get(facts.surfaceId!);
+		const target = this.pinEditor(surfaceAllowed);
+		return this.#enqueue(() => {
+			assertCurrent();
+			target.assertCurrent();
+			if (epoch !== this.#epoch) throw new TspInputStateError("TSP preview: The semantic screen restarted.");
+			const now = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+			if (!this.#programFeatures.has("edit")) throw new TspInputStateError("TSP preview: omp does not accept edit events.");
+			if (!this.availability(surfaceAllowed).available || !now.sendable) throw new TspInputStateError(`TSP preview: ${this.availability(surfaceAllowed).reason}`);
+			if (this.#surfaces.get(facts.surfaceId!) !== original || now.surfaceId !== facts.surfaceId || now.editorId !== facts.editorId || now.text !== facts.text) throw new TspInputStateError("TSP preview: The editor changed before the edit could be applied.");
+			const event = TspRendererEvent.parse({ ev: "edit", sf: facts.surfaceId, id: facts.editorId, from, to, text, cursor, len: facts.text.length });
+			return this.#write(encodeTspJson("e", event) + keys);
+		});
+	}
+
+	/** `send` omits staged images. Preserve them with the composer's submit action. */
+	async submitImages(text: string, paths: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
+		const epoch = this.#epoch;
+		const facts = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+		const original = this.#surfaces.get(facts.surfaceId!);
+		const assertTarget = () => {
+			assertCurrent();
+			const now = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+			if (epoch !== this.#epoch || this.#surfaces.get(facts.surfaceId!) !== original || now.editorId !== facts.editorId || now.surfaceId !== facts.surfaceId) throw new TspInputStateError("The editor changed before the image could be submitted.");
+		};
+		const imageCount = () => this.snapshot().surfaces.filter(surface => surface.open.id === facts.surfaceId).flatMap(surface => [...walkNodes(surface.document)]).filter(node => node.p?.role === TSP_ROLES.composerChips).flatMap(node => [...walkNodes(node)]).filter(node => node.k === "image").length;
+		const expected = imageCount() + (paths.match(/(?:\\.|[^\s])+/g)?.length ?? 0);
+		await this.editAndKeys(0, facts.text.length, text, text.length, `\x1b[200~${paths}\x1b[201~`, assertCurrent, surfaceAllowed);
+		try {
+			await this.waitFor(() => imageCount() >= expected, assertTarget, 8000, "omp did not attach the image. Check its editor before sending again.");
+			await this.send({ ev: "action", sf: facts.surfaceId!, id: facts.editorId!, act: TSP_ACTIONS.submit }, () => {
+				assertTarget();
+				if (!this.availability(surfaceAllowed).available) throw new TspInputStateError("The editor changed before the image could be submitted.");
+			});
+		} catch (error) {
+			throw new TspInputStateError(`TSP preview: Image submission needs recovery. ${error instanceof Error ? error.message : String(error)}`);
+		}
 	}
 
 	availability(surfaceAllowed: (surface: string) => boolean = () => true): TspAvailability {
 		const surfaces = this.snapshot().surfaces;
 		if (!this.#negotiated) return { available: false, reason: "Waiting for omp to start its semantic screen." };
 		if (!this.#programFeatures.has("send")) return { available: false, reason: "omp does not accept send events." };
+		const facts = composerFacts(surfaces.filter(surface => surfaceAllowed(surface.open.id)));
 		if (screenSurface(surfaces)) return { available: false, reason: "Close the omp screen before sending a message." };
-		if (openOverlay(surfaces, true)) return { available: false, reason: "Close the open omp menu before sending a message." };
+		if (facts.blockedBy === "approval" && facts.sendable) return { available: true, reason: null };
+		if (facts.blockedBy === "panel" || openOverlay(surfaces, true)) return { available: false, reason: "Close the open omp menu before sending a message." };
 		if (!this.hasHookDialog() && askEditorOwnsDock(surfaces.filter(surface => surfaceAllowed(surface.open.id)))) {
 			return { available: false, reason: "Answer the question card before sending a message.", reasonCode: "ask-editor" };
 		}
-		if (!composer(surfaces.filter(surface => surfaceAllowed(surface.open.id)))) return { available: false, reason: "Wait for omp to finish opening its main editor." };
+		if (!facts.editorId) return { available: false, reason: "Wait for omp to finish opening its main editor." };
+		if (!facts.sendable) return { available: false, reason: "Wait for omp to enable its main editor." };
 		return { available: true, reason: null };
 	}
 

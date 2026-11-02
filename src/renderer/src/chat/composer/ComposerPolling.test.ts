@@ -119,6 +119,23 @@ it("keeps classic screen polling and next-message prediction offers while mounte
 	expect(element.querySelector("[data-composer-ghost]")?.textContent).toBe("Run the tests");
 });
 
+it("shows semantic ghost text and accepts Tab without polling omp's painted editor", async () => {
+	setHost("tsp");
+	view = { ...view, host: { ...view.host!, tspComposer: { sendable: true, text: "", cursor: 0, ghost: "Run the recorded tests", editorId: "e", surfaceId: "s", queued: [], blockedBy: null } } };
+	fake.invoke.mockImplementation(async (channel: string) => {
+		if (channel === "native:snapshot") return { modes, theme: null };
+		if (channel === "composer:takePrediction") return { id: "capture", text: "Run the recorded tests", blocked: false, error: null };
+		return undefined;
+	});
+	await mount();
+	expect(element.querySelector("[data-composer-ghost]")?.textContent).toBe("Run the recorded tests");
+	await act(async () => element.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true })));
+	expect(calls("composer:takePrediction")[0]?.[1]).toMatchObject({ hostId: "host", generation: 1, expectedGhost: "Run the recorded tests" });
+	expect(useComposerDrafts.getState().drafts.polling).toBe("Run the recorded tests");
+	expect(calls("composer:tuiPrediction")).toHaveLength(0);
+	expect(calls("host:screen")).toHaveLength(0);
+});
+
 it("cancels existing classic polling when the host becomes TSP and discards in-flight painted results", async () => {
 	const screen = Promise.withResolvers<string[]>(); const prediction = Promise.withResolvers<string>();
 	fake.invoke.mockImplementation(async (channel: string) => channel === "host:screen" ? screen.promise : channel === "composer:tuiPrediction" ? prediction.promise : channel === "native:snapshot" ? { modes, theme: null } : undefined);

@@ -19,11 +19,12 @@ import { type IPty, spawn } from "node-pty";
 import { stringify } from "yaml";
 import { z } from "zod";
 import type { HostStartOptions, HostState, TuiFocus } from "@shared/ipc";
-import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspHostSnapshot } from "@shared/tsp-host";
+import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspEditorRestore, type TspHostSnapshot } from "@shared/tsp-host";
 import { composer, openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { TSP_ROLES, TSP_STATUS } from "@shared/tsp/roles";
 import { hookQuestions, QuestionArbitrator } from "@shared/tsp/question-match";
 import { TspHookAnswer } from "@shared/tsp/dialogs";
+import { composerFacts as readComposerFacts } from "./tsp/composer";
 import { BrowserWindow, dialog, nativeTheme, systemPreferences, type MessageBoxOptions, type MessageBoxReturnValue } from "electron";
 import hostLabels from "../../shared/i18n/en/host.json";
 import { crashedWithoutExit, parseProgramStatus, readSessionRecaps, startupModelWarnings, worktreeConfirmation } from "./host-observations";
@@ -38,7 +39,7 @@ import { LoopbackRelay } from "./relay";
 import { findRoomHost } from "./room-host";
 import { findSessionFile, onSessionsChanged } from "./sessions";
 import { TuiDebugClient, type TuiPaint } from "./tui-debug";
-import { TspInputStateError, TspSession } from "./tsp/session";
+import { TspInputStateError, TspSession, type TspEditorTarget } from "./tsp/session";
 import { TspStream } from "./tsp/stream";
 import { StartupDiagnosticCapture, startupDiagnostic, STARTUP_DIAGNOSTIC_MAX_CHARS } from "./startup-diagnostics";
 
@@ -68,8 +69,11 @@ type ShutdownStage = "requested" | "acknowledged" | "teardown" | "cleanup";
 export interface EditorInputTransaction {
 	assertOpen(): void;
 	/** Uses the held input lock; calling SessionHost.keys() inside a transaction would re-enter it. */
-	keys(keys: string): Promise<void>;
+	keys(keys: string, expectedGhost?: string): Promise<void>;
+	edit(from: number, to: number, text: string, cursor: number): Promise<void>;
 }
+
+interface EditorRestoreCapture { view: TspEditorRestore; generation: number; target: TspEditorTarget }
 
 export class SessionHost {
 	readonly id = randomUUID();
@@ -113,6 +117,8 @@ export class SessionHost {
 	#tspExitSurface: string | null = null;
 	#tspFirstBytes = Buffer.alloc(0);
 	#tspQuestions = new QuestionArbitrator();
+	#editorRestore: EditorRestoreCapture | null = null;
+	#tspPastesPending = 0;
 	#tspAppearanceChanged = (): void => {
 		if (!this.#tsp || this.state.phase === "exited") return;
 		const { dark, reduceMotion } = this.#tspAppearance();
@@ -351,6 +357,10 @@ export class SessionHost {
 		if (this.#tspQuestions.update(scope, input)) this.#publishTsp();
 	}
 
+	composerFacts() {
+		return readComposerFacts(this.#tsp?.snapshot().surfaces.filter(surface => this.#tspSurfaceGenerations.get(surface.open.id) === this.state.generation) ?? []);
+	}
+
 	tspSnapshot(): TspHostSnapshot | null {
 		if (!this.#tsp) return null;
 		const protocol = this.#tsp.snapshot();
@@ -366,14 +376,14 @@ export class SessionHost {
 		const availability = reason ? { available: false, reason }
 			: matchedQuestion && !screenSurface(surfaces) ? { available: false, reason: hostLabels.matchedQuestion, reasonCode: "matched-question" as const, questionReqId: matchedQuestion.reqId }
 			: this.#tsp.availability(surface => this.#tspSurfaceGenerations.get(surface) === this.state.generation);
-		return { hostId: this.id, generation: this.state.generation, revision: this.#tspRevision, epoch: protocol.epoch, closing: this.#closing, availability, negotiated: protocol.negotiated, lifecycle, documentGeneration: current ? this.state.generation : null, failure: this.#tspFailure, surfaces, questionMatches };
+		return { hostId: this.id, generation: this.state.generation, revision: this.#tspRevision, epoch: protocol.epoch, closing: this.#closing, availability, composer: this.composerFacts(), editorRestore: this.#editorRestore?.view ?? null, negotiated: protocol.negotiated, lifecycle, documentGeneration: current ? this.state.generation : null, failure: this.#tspFailure, surfaces, questionMatches };
 	}
 
 	#publishTsp(): void {
 		this.#tspRevision++;
 		const snapshot = this.tspSnapshot();
 		if (snapshot) {
-			this.state = { ...this.state, tspAvailability: snapshot.availability };
+			this.state = { ...this.state, tspAvailability: snapshot.availability, tspComposer: snapshot.composer, tspEpoch: snapshot.epoch, tspEditorRestore: snapshot.editorRestore };
 			broadcast("host:state", this.state);
 		}
 		if (snapshot) broadcast("host:tsp-update", snapshot);
@@ -393,6 +403,7 @@ export class SessionHost {
 			if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
 			if (["send", "edit", "undo"].includes(event.ev) && this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
 			if (this.#tspSurfaceGenerations.get(event.sf) !== generation) throw new Error("TSP preview: The target surface belongs to an earlier session.");
+			if (event.ev === "action" && this.composerFacts().blockedBy === "approval") throw new Error("TSP preview: Answer the approval before changing omp settings.");
 		};
 		return this.#applicationInput(async () => {
 			assertCurrent();
@@ -432,19 +443,31 @@ export class SessionHost {
 	 * submits early and a large paste becomes an attachment chip instead of a menu.
 	 * `steer` (Enter) interrupts a running turn at the next safe point; `followUp` (Ctrl+Q) waits for the yield.
 	 */
-	submit(text: string, mode: "steer" | "followUp" = "steer"): Promise<void> {
+	submit(text: string, mode: "steer" | "followUp" = "steer", imagePaths?: string): Promise<void> {
 		const generation = this.state.generation;
 		const epoch = this.#tsp?.snapshot().epoch;
 		if (this.#tsp) {
-			if (mode === "followUp") return Promise.reject(new Error(TSP_PREVIEW_UNAVAILABLE));
+			let followUpSource: { target: TspEditorTarget; text: string } | null = null;
+			if (mode === "followUp" && this.#tspPastesPending === 0) {
+				try { followUpSource = { target: this.#tsp.pinEditor(surface => this.#tspSurfaceGenerations.get(surface) === generation), text: this.composerFacts().text }; }
+				catch (error) { return Promise.reject(error); }
+			}
 			return this.#applicationInput(async () => {
 				const assertCurrent = (): void => {
 					this.#assertTspInput(generation);
 					if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
 					if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
+					if (followUpSource) {
+						followUpSource.target.assertCurrent();
+						if (this.composerFacts().text !== followUpSource.text) throw new Error("TSP preview: The editor changed before the follow-up could be written.");
+					}
 				};
 				assertCurrent();
-				await this.#tsp!.submit(text, assertCurrent, surface => this.#tspSurfaceGenerations.get(surface) === generation);
+				if (text.startsWith("/") && this.composerFacts().blockedBy === "approval") throw new Error("TSP preview: Answer the approval before sending a command.");
+				const allowed = (surface: string) => this.#tspSurfaceGenerations.get(surface) === generation;
+				if (imagePaths) await this.#tsp!.submitImages(text, imagePaths, assertCurrent, allowed);
+				else if (mode === "followUp") await this.#tsp!.followUp(text, assertCurrent, allowed);
+				else await this.#tsp!.submit(text, assertCurrent, allowed);
 				this.#captureStartupNotices = false;
 				this.#finishStartup();
 			});
@@ -461,7 +484,24 @@ export class SessionHost {
 	}
 
 	paste(text: string): Promise<void> {
-		if (this.#tsp) return Promise.reject(new Error(TSP_PREVIEW_UNAVAILABLE));
+		if (this.#tsp) {
+			const generation = this.state.generation;
+			const epoch = this.#tsp.snapshot().epoch;
+			this.#tspPastesPending++;
+			return this.#applicationInput(async () => {
+				this.#assertTspInput(generation);
+				if (epoch !== this.#tsp!.snapshot().epoch || !this.tspSnapshot()?.availability.available) throw new Error("TSP preview: Close the open omp menu before pasting.");
+				if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
+				await this.#tsp!.paste(text, () => {
+					this.#assertTspInput(generation);
+					if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+				}, surface => this.#tspSurfaceGenerations.get(surface) === generation);
+			}).catch(error => {
+				this.#editorTransferBlocked = "The paste did not finish. Restart omp before sending another message.";
+				this.#publishTsp();
+				throw error;
+			}).finally(() => { this.#tspPastesPending--; });
+		}
 		return this.#applicationInput(async () => {
 			await this.#resolveWorktreeQuestion();
 			this.#assertApplicationInput(true);
@@ -480,19 +520,41 @@ export class SessionHost {
 
 	/** Hold the application input lock across one exact editor transfer and its verification. */
 	withEditorInput<T>(operation: (input: EditorInputTransaction) => Promise<T>): Promise<T> {
-		if (this.#tsp) return Promise.reject(new Error(TSP_PREVIEW_UNAVAILABLE));
 		return this.#applicationInput(async () => {
 			await this.#resolveWorktreeQuestion();
 			this.#assertApplicationInput(true);
+			if (this.#editorRestore) throw new Error("TSP preview: Recover and acknowledge the restored message before another editor transfer.");
+			const generation = this.state.generation;
+			const epoch = this.#tsp?.snapshot().epoch;
 			let active = true;
 			const assertOpen = (): void => {
 				if (!active) throw new Error(hostLabels.editorTransactionClosed);
 				this.#assertApplicationInput(true);
+				if (this.#tsp) {
+					this.#assertTspInput(generation);
+					if (epoch !== this.#tsp.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+				}
 			};
 			const input: EditorInputTransaction = {
 				assertOpen,
-				keys: async keys => {
+				edit: async (from, to, text, cursor) => {
 					assertOpen();
+					if (!this.#tsp) throw new Error("Exact semantic edits require a TSP host.");
+					await this.#tsp.editAndKeys(from, to, text, cursor, "", assertOpen, surface => this.#tspSurfaceGenerations.get(surface) === generation);
+				},
+				keys: async (keys, expectedGhost) => {
+					assertOpen();
+					if (this.#tsp) {
+						const before = this.composerFacts();
+						if (keys === "tab" && expectedGhost !== undefined && before.ghost !== expectedGhost) throw new Error("TSP preview: The offered suggestion changed before Tab.");
+						const target = this.#tsp.pinEditor(surface => this.#tspSurfaceGenerations.get(surface) === generation);
+						if (this.#tsp.hasHookDialog() || !before.sendable || before.blockedBy) throw new Error("TSP preview: Close the open omp menu before editing.");
+						this.#writeInput(keys === "tab" ? "\t" : keys === "escape" ? "\x1b" : keys);
+						if (keys === "tab" && before.ghost) {
+							await this.#tsp.waitFor(() => this.composerFacts().text !== before.text, () => { assertOpen(); target.assertCurrent(); }, 8000, "TSP preview: omp did not accept the offered suggestion.");
+						}
+						return;
+					}
 					if (!this.#debug) throw new Error("omp is not running");
 					await this.#debug.keys(keys);
 					assertOpen();
@@ -567,6 +629,51 @@ export class SessionHost {
 		} finally { this.#confirmingWorktree = false; }
 	}
 
+	ackEditorRestore(id: string): void {
+		if (!this.#editorRestore || this.#editorRestore.view.id !== id) return;
+		if (!this.#editorRestore.view.cleared) throw new Error("TSP preview: Recover omp's editor before acknowledging the restored message.");
+		this.#editorRestore = null;
+		this.#editorTransferBlocked = null;
+		this.#publishTsp();
+	}
+
+	retryEditorRestore(id: string): Promise<void> {
+		const capture = this.#editorRestore;
+		if (!capture || capture.view.id !== id) return Promise.resolve();
+		if (this.state.phase === "exited") {
+			capture.view = { ...capture.view, cleared: true, error: "omp stopped. The restored message is saved in the app composer." };
+			this.#publishTsp();
+			return Promise.resolve();
+		}
+		return this.#applicationInput(() => this.#finishEditorRestore(capture));
+	}
+
+	async #finishEditorRestore(capture: EditorRestoreCapture): Promise<void> {
+		try {
+			if (capture.view.cleared) return;
+			if (capture.target.ended()) {
+				capture.view = { ...capture.view, cleared: true, error: "The original editor closed. The restored message is saved in the app composer." };
+				return;
+			}
+			capture.target.assertCurrent();
+			const assertCurrent = () => {
+				this.#assertTspInput(capture.generation);
+				capture.target.assertCurrent();
+			};
+			const facts = this.composerFacts();
+			if (facts.surfaceId !== capture.target.surfaceId || facts.editorId !== capture.target.editorId) throw new Error("The original editor changed.");
+			if (facts.text) {
+				if (facts.text !== capture.view.text) throw new Error("omp's editor contains newer text. It was left unchanged.");
+				await this.#tsp!.editAndKeys(0, facts.text.length, "", 0, "", assertCurrent, surface => surface === capture.target.surfaceId);
+			}
+			await this.#tsp!.waitFor(() => this.composerFacts().text === "", assertCurrent, 8000, "omp did not confirm that its restored editor cleared.");
+			capture.view = { ...capture.view, cleared: true, error: null };
+		} catch (error) {
+			capture.view = { ...capture.view, error: error instanceof Error ? error.message : String(error) };
+			throw new Error(`TSP preview: The restored message is saved. Retry editor recovery. ${capture.view.error}`);
+		} finally { this.#publishTsp(); }
+	}
+
 	keys(keys: string, generation?: number, epoch?: number): Promise<void> {
 		if (this.#tsp) {
 			if (keys === "escape" || keys === "\x1b") {
@@ -583,7 +690,41 @@ export class SessionHost {
 				this.#assertTspInput(generation);
 				if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
 				if (this.#tsp!.hasHookDialog()) throw new Error("TSP preview: Answer or cancel this question using its controls. Raw keys are unavailable while a question is open.");
-				this.#writeInput(keys === "escape" ? "\x1b" : keys);
+				if (this.#editorRestore) {
+					await this.#finishEditorRestore(this.#editorRestore);
+					return;
+				}
+				const before = this.composerFacts();
+				const target = before.queued.length ? this.#tsp!.pinEditor(surface => this.#tspSurfaceGenerations.get(surface) === generation) : null;
+				if (keys === "undo" || keys === "\x1a") {
+					if (!before.sendable || !before.surfaceId || !before.editorId || before.blockedBy) throw new Error("TSP preview: Close the open omp menu before undoing an edit.");
+					await this.#tsp!.send({ ev: "undo", sf: before.surfaceId, id: before.editorId }, () => {
+						this.#assertTspInput(generation);
+						if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+					});
+					return;
+				}
+				this.#writeInput(keys === "escape" ? "\x1b" : keys === "tab" ? "\t" : keys);
+				if ((keys === "escape" || keys === "\x1b") && before.queued.length > 0) {
+					const assertCurrent = () => {
+						target!.assertCurrent();
+						this.#assertTspInput(generation);
+						if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+						const current = this.composerFacts();
+						if (current.surfaceId !== target!.surfaceId || current.editorId !== target!.editorId) throw new Error("TSP preview: The original editor changed.");
+					};
+					await this.#tsp!.waitFor(() => {
+						const facts = this.composerFacts();
+						return facts.queued.length === 0 && !!facts.text && facts.sendable;
+					}, assertCurrent, 8000, "TSP preview: omp did not return the queued text to its editor.");
+					const facts = this.composerFacts();
+					if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
+					const capture = { view: { id: randomUUID(), hostId: this.id, text: facts.text, cleared: false, error: null } as TspEditorRestore, generation, target: target! };
+					this.#editorRestore = capture;
+					this.#editorTransferBlocked = "Recover the restored message before sending more text to omp.";
+					this.#publishTsp();
+					await this.#finishEditorRestore(capture);
+				}
 			});
 		}
 		return this.#applicationInput(async () => {

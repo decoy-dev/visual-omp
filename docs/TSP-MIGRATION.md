@@ -116,8 +116,8 @@ Authority after the migration:
 2. **Developer flag until the flip.** Phases 1-6 run only with `VOMP_TSP=1`, read in main at chat launch. Each phase can merge on its own, but the preview is a developer tool with known gaps until the Phase 2 usability gate passes, and it reaches parity only at the end of Phase 4. Classic chats keep their exact behavior in every phase; the existing Vitest suite and the classic fixtures guard that.
 3. **One writer.** Every byte written to the PTY goes through one synchronous writer in `SessionHost`. Renderer-originated TSP events and keys enter the existing application-input chain (`#applicationInput` in `src/main/omp/host.ts`), with closing, generation and surface-id checks. Only protocol housekeeping (hello reply, DA1 answer, `ack`, `resize`, `theme`, `motion`) bypasses the transaction queue; it still uses the same writer and is never written in the middle of a multi-part write. `send` and `undo` are emitted only when omp's hello query advertised them.
 4. **Role registry.** Every omp role string, action name and status word the app depends on is declared once in `src/shared/tsp/roles.ts`. Feature code imports names from there, so an omp rename fails one test file. studio follows the same rule ([`docs/architecture/tsp-btw.md:73-75`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-btw.md?plain=1#L73-L75)).
-5. **Fixtures pinned to omp 18.15.0.** Each scenario records omp's own journal (`PI_TUI_TSP_RECORD`) and the raw PTY bytes. Store fixtures in `src/main/omp/tsp/fixtures/18.15.0/<scenario>.jsonl` and `<scenario>.raw.bin`, with decoded messages, emitted events, a byte/CR/SHA-256 integrity manifest and a `README.md` giving the omp version, commit, config and redactions. Recordings use the standalone 18.15.0 executable with a scratch HOME and config root, no model and no owner profile. Re-record every scenario on a baseline change and remove the old baseline; the recorder sanitizes paths and decoded OSC payloads before storage.
-6. **Scripted model turns.** Scenarios that need a model (plan review, asks, approvals, predictions, `/btw` answers, compaction) use a loopback OpenAI-compatible fake provider that returns scripted responses, so recordings cost nothing and repeat exactly. studio recorded its model-switch compaction fixtures this way ([`docs/architecture/tsp-migration.md:177`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L177)). `[INFERENCE]` The omp config keys for a custom loopback provider must be confirmed while building the recorder.
+5. **Fixtures pinned to omp 18.15.0.** Each scenario records omp's own journal (`PI_TUI_TSP_RECORD`) and the raw PTY bytes. Store fixtures in `src/main/omp/tsp/fixtures/18.15.0/<scenario>.jsonl` and `<scenario>.raw.bin`, with decoded messages, emitted events, a byte/CR/SHA-256 integrity manifest and a `README.md` giving the omp version, commit, config and redactions. Recordings use the standalone 18.15.0 executable with a scratch HOME and config root, and no owner profile. Scenarios use no model unless they opt into the loopback script in Rule 6. Re-record every scenario on a baseline change and remove the old baseline; the recorder sanitizes paths and decoded OSC payloads before storage.
+6. **Scripted model turns.** Scenarios that need a model (plan review, asks, approvals, predictions, `/btw` answers, compaction) use a loopback OpenAI-compatible fake provider that returns scripted responses, so recordings cost nothing and repeat exactly. studio recorded its model-switch compaction fixtures this way ([`docs/architecture/tsp-migration.md:177`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L177)). The recorder confirms `models.yml` providers with `api: openai-completions`, a loopback `/v1` base URL, a local fixture key, and `modelRoles.default` and `smol` in scratch `config.yml`. Per-scenario replies support tool calls, delayed replies and explicit gates.
 7. **Claims decide suppression.** A semantic node is hidden from the generic omp screen only when a working TSP-backed consumer claims it. A consumer registers its claim in the role registry in the same change that implements it for TSP; classic cards never claim TSP nodes. Everything unclaimed stays visible in the omp screen. For hook dialogs that collab may also replicate, the collab card claims the node only under the arbitration rule below, which Phase 2 implements before generic TSP dialogs become interactive.
 8. **One answer path for questions.** TSP hook nodes expose no collab `reqId`, so content matching remains a conservative arbitration heuristic. Match only a unique pending request and unique live dialog within the same host, protocol epoch and collab generation, using their available title, field and option data. Ambiguous candidates disable local TSP answering while the collab question remains available. Main receives the renderer-owned pending-request mirror with scope and revision checks, then repeats arbitration inside the input lock immediately before writing. A matched collab request is answered through its chat question card; an unmatched TSP node is answered through TSP. A matched answer waits for the request to settle and the corresponding node to leave. An unmatched local answer waits only for its node to leave.
 
@@ -437,6 +437,32 @@ Record (Rule 5): `slash-overlays` (`/jobs`, `/usage`, `/session`, `/hotkeys`, `/
 
 **Goal.** Complete the composer for TSP chats: follow-up queueing, shell and Python modes, pastes, images, queue holds, Escape restore, approval interplay and ghost text, without reading painted rows.
 
+**Implementation status (2026-11-02).** Main publishes `composerFacts()` on each TSP snapshot and the
+host state used by the composer. Plain text, shell/Python prefixes and large messages use `send`.
+Follow-up writes one len-checked edit plus Ctrl+Q. Images use one edit-plus-path-paste write,
+wait for all new image attachments in the document, and submit through the editor action. Protocol
+acknowledgments remain available during attachment waits. Image failures after the paste retain the
+existing stranded-image recovery gate.
+
+The app queue waits for omp's queue pills, ask ownership and panels. Escape pins the original
+editor lifetime and retains its exact dequeued text in main before clearing. Snapshot delivery inserts
+the text into the app draft with a persisted receipt, then acknowledges only after clear confirmation.
+Failed or interrupted transfers remain recoverable without clearing a replacement editor or inserting
+duplicate text. Approval sends deny and steer; slash routing,
+model and thinking actions refuse while approval waits. Semantic ghost text uses the existing exact
+Tab capture and recovery path without painted reads. Undo uses the advertised event.
+
+The eleven input recordings are present, including the image's attached collab transcript,
+`prediction-ghost` and `paste-follow-up`. The latter proves that a reflected image paste survives a
+follow-up edit and reaches the next provider request. `input.test.ts` drives production operations against event-gated replay,
+checks raw byte integrity and verifies image write ordering. `input.live.test.ts`, gated by `OMP_BIN`,
+re-records follow-up, image and approval workflows in isolated profiles. The prediction recording
+shows the semantic ghost, Tab acceptance and exact edit clear; extension capture and recovery retain
+their consumer tests. Criterion 7 remains a manual Electron gate for main, including IME composition.
+Host transaction tests cover delayed paste completion, follow-up text/identity races, changing ghosts,
+Tab target replacement and restored-text retention across delayed clear confirmation or epoch change.
+
+
 **Files and modules.** `src/main/omp/tsp/composer.ts` (reads the `editor` node and composer facts), `src/main/omp/host.ts` (`submit`, `paste`, `withEditorInput` by presentation), `src/renderer/src/state/session.ts` (queue holds), `src/renderer/src/chat/composer/` (readiness and ghost text), `src/main/omp/prediction-transfer.ts` (offer detection only).
 
 | Area | Classic today | TSP | Source |
@@ -586,7 +612,7 @@ profiles. Main must still check both composer controls in Electron.
 ### 4h. Prediction offer (A17)
 
 - Detection uses `composerFacts().ghost`. Tab, exact capture, compare and clear through the extension stay.
-- **Current preview.** The composer does not request `composer:tuiPrediction` for TSP hosts. Changing transport cancels the classic offer poll and hides stale painted ghost text before Tab can capture it. Independent word completion remains available. Semantic next-message offers and exact transfer remain gated on this phase's recorded workflow.
+- **Implementation status.** Phase 3 displays `composerFacts().ghost` and uses the existing exact extension transfer for Tab acceptance. `prediction-ghost` records the ghost, Tab insertion and len-checked clear against standalone omp 18.15.0. Changing transport hides stale offers without starting the classic painted poll. Consumer tests cover semantic display and exact transfer without painted reads; manual Electron and IME checks remain with main.
 - **Acceptance.** Replay: `prediction-ghost`; existing `prediction-transfer.test.ts` cases pass with a document source. Live (scripted provider): `prediction-ghost` re-records.
 
 ### 4i. Startup diagnostics (A16)

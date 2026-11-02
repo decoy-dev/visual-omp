@@ -57,6 +57,9 @@ interface DraftState {
 	insert(tabId: string, text: string): void;
 	/** Replace the tab's whole draft. */
 	setDraft(tabId: string, text: string): void;
+	/** Insertion receipts persist with the draft so a lost acknowledgement cannot duplicate text. */
+	editorRestores: Record<string, Record<string, true>>;
+	restoreEditor(tabId: string, id: string, text: string): void;
 	/** Focus the tab's composer (on mount when it isn't visible yet). */
 	focus(tabId: string): void;
 	addAttachments(tabId: string, items: Attachment[]): void;
@@ -92,6 +95,16 @@ export const useComposerDrafts = create<DraftState>()(
 		(set, get) => ({
 			drafts: {},
 			attachments: {},
+			editorRestores: {},
+			restoreEditor(tabId, id, text) {
+				set(state => {
+					if (state.editorRestores[tabId]?.[id]) return state;
+					const draft = state.drafts[tabId] ?? "";
+					const { [tabId]: _preview, ...previews } = state.previews;
+					return { drafts: { ...state.drafts, [tabId]: draft ? `${draft}\n${text}` : text }, previews,
+						editorRestores: { ...state.editorRestores, [tabId]: { ...state.editorRestores[tabId], [id]: true } } };
+				});
+			},
 			homeFolder: null,
 			setHomeFolder(homeFolder) {
 				set({ homeFolder });
@@ -179,14 +192,15 @@ export const useComposerDrafts = create<DraftState>()(
 					const { [tabId]: _focus, ...pendingFocus } = state.pendingFocus;
 					const { [tabId]: _mode, ...modes } = state.modes;
 					const { [tabId]: _preview, ...previews } = state.previews;
-					return { drafts, attachments, pendingFocus, modes, previews };
+					const { [tabId]: _restores, ...editorRestores } = state.editorRestores;
+					return { drafts, attachments, pendingFocus, modes, previews, editorRestores };
 				});
 			},
 		}),
 		{
 			name: "vomp.composer.drafts",
 			storage: createJSONStorage(() => localStorage),
-			partialize: state => ({ drafts: state.drafts, attachments: state.attachments, homeFolder: state.homeFolder }),
+			partialize: state => ({ drafts: state.drafts, attachments: state.attachments, homeFolder: state.homeFolder, editorRestores: state.editorRestores }),
 		},
 	),
 );

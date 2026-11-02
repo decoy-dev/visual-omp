@@ -43,6 +43,7 @@ import {
 	ease,
 	Expand,
 	IconButton,
+	Button,
 	Kbd,
 	Menu,
 	MenuCheckboxItem,
@@ -277,6 +278,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		(slash.kind === "name" || (slashMenu !== null && (slashMenu.items.length > 0 || (slash.token === "" && slashMenu.command?.hint != null))));
 	const ghost = useGhostText({
 		folder: projectPath, tabId, hostId: view.host?.hostId ?? null, generation: view.host?.generation ?? 0, transport: view.host?.transport, draft, caret,
+		composer: view.host?.tspComposer,
 		enabled: focused && !readOnly && !mode && !mention && !slashOpen && !view.guest?.uiRequest,
 		idle: view.mode === "live" && !working,
 	});
@@ -521,6 +523,9 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 				event.stopPropagation();
 				const original = historyCursor.current.restore();
 				if (original) recall(original);
+			} else if (view.host?.transport === "tsp" && (view.host.tspComposer?.queued.length ?? 0) > 0) {
+				event.preventDefault();
+				void session.keys("escape").catch((error: unknown) => toast({ tone: "err", message: String(error) }));
 			} else if (working && !draft) {
 				event.preventDefault();
 				session.abort();
@@ -630,6 +635,10 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					dropColumn,
 				)}
 			<PredictionRecovery session={session} readOnly={readOnly} />
+			{view.host?.tspEditorRestore && <div role="status" className="flex items-center gap-control text-sm text-fg-muted">
+				<p className="flex-1">{view.host.tspEditorRestore.error ?? t("editorRestore.saved")}</p>
+				<Button size="sm" variant="secondary" disabled={readOnly} onClick={() => void session.retryEditorRestore().catch((error: unknown) => toast({ tone: "err", message: String(error) }))}>{t("editorRestore.retry")}</Button>
+			</div>}
 			<QueueTray session={session} queue={view.queue} questionId={questionId} askWaiting={askWaiting} sendBlocked={Boolean(tspReason)} strandedImages={view.strandedImages} />
 			<div
 				className={cn(

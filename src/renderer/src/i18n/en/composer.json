@@ -1,4 +1,8 @@
 {
+	"editorRestore": {
+		"saved": "The restored message is saved in the composer. Confirm that omp's editor is clear.",
+		"retry": "Retry recovery"
+	},
 	"label": "Message to omp",
 	"prediction": {
 		"available": "Suggested text: {{text}}. Press Tab to insert it without sending.",

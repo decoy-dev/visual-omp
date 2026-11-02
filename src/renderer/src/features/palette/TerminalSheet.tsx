@@ -135,8 +135,11 @@ export function TerminalSheet({ tabId, controller }: { tabId: string; controller
 		if (hooks.some(hook => availableConsumers.get(hook.surfaceId)?.has(hook.nodeId))) { requestClose(); return; }
 		const localHook = hooks.length === 1 && snapshot?.questionMatches?.some(match =>
 			match.surfaceId === hooks[0]!.surfaceId && match.nodeId === hooks[0]!.nodeId && match.status === "unmatched");
-		if ((overlay || screenSurfaceOpen || rawFallback) && !readOnly && !snapshot?.closing && (!hooks.length || localHook) && typeof snapshot?.epoch === "number") {
-			void window.vomp.invoke("host:keys", host!.hostId, "escape", snapshot.generation, snapshot.epoch).catch(() => requestClose());
+		if ((overlay || screenSurfaceOpen || rawFallback || (snapshot?.composer?.queued.length ?? 0) > 0) && !readOnly && !snapshot?.closing && (!hooks.length || localHook) && typeof snapshot?.epoch === "number") {
+			void window.vomp.invoke("host:keys", host!.hostId, "escape", snapshot.generation, snapshot.epoch).catch(error => {
+				if ((snapshot.composer?.queued.length ?? 0) > 0 || snapshot.editorRestore) setScreenError(error instanceof Error ? error.message : String(error));
+				else requestClose();
+			});
 		} else requestClose();
 	};
 	terminalSheet.requestClose = requestClose;

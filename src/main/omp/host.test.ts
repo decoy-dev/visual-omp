@@ -896,7 +896,7 @@ describe("opt-in semantic transport", () => {
 		tspMessage("q", { q: "hello", v: [1] });
 		tspMessage("o", { id: "s:1", mode: "inline" });
 		await connect();
-		await expect(host.withEditorInput(async () => {})).rejects.toThrow("not available");
+		await expect(host.withEditorInput(async input => input.assertOpen())).rejects.toThrow("semantic UI is not ready");
 		tspMessage("f", { sf: "s:1", s: 1, ops: [] });
 		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"ack"')));
 		expect(host.state.error).toBeNull();
@@ -922,11 +922,13 @@ describe("opt-in semantic transport", () => {
 		tspMessage("f", { sf: "s:1", s: 2, ops: [["set", "editor", { sendable: true }]] });
 		await host.submit("/btw", "steer");
 		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"send","sf":"s:1","id":"editor","text":"/btw"'));
+		await host.submit("hello", "followUp");
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"') && String(bytes).endsWith("\x11"))).toBe(true);
+		await host.submit("!pwd");
+		pty.writes.mockImplementation((bytes: string) => { if (bytes === "\x1b[200~pasted text\x1b[201~") tspMessage("f", { sf: "s:1", s: 3, ops: [["set", "editor", { text: "pasted text" }]] }); });
+		await host.paste("pasted text");
+		await expect(host.submit("")).rejects.toThrow("Enter a message");
 		for (const action of [
-			() => host.submit("hello", "followUp"),
-			() => host.submit("!pwd"),
-			() => host.submit(""),
-			() => host.paste("image.png"),
 			() => host.screenLines(),
 			() => host.screenPaint(),
 			() => host.debugValues(),
@@ -947,6 +949,132 @@ describe("opt-in semantic transport", () => {
 		await expect(host.submit("hello")).rejects.toThrow("Recover");
 		await expect(host.tspEvent(1, { ev: "edit", sf: "s:1", id: "editor", from: 0, to: 0, text: "hello", cursor: 5, len: 0 })).rejects.toThrow("Recover");
 		expect(host.state.error).toBeNull();
+	});
+
+	it("returns Escape-dequeued text once and clears omp's editor through edit", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send", "edit", "undo"] });
+		tspComposer();
+		await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "queue", "dock", null, { id: "queue", k: "col", p: { role: "omp.queue" }, c: [{ id: "queued", k: "row", p: { role: "omp.queue.item" }, c: [{ id: "queued-text", k: "text", p: { text: "Queued follow-up" } }] }] }]] });
+		pty.writes.mockImplementation((bytes: string) => {
+			if (bytes === "\x1b") tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "queue"], ["text", "editor", "append", "Queued follow-up"]] });
+			if (bytes.includes('"ev":"edit"')) tspMessage("f", { sf: "s:1", s: 4, ops: [["set", "editor", { text: "", cursor: 0 }]] });
+		});
+		await expect(host.keys("escape", 1, epoch)).resolves.toBeUndefined();
+		const capture = host.state.tspEditorRestore!;
+		expect(capture).toMatchObject({ text: "Queued follow-up", cleared: true });
+		host.ackEditorRestore(capture.id);
+		expect(host.composerFacts()).toMatchObject({ text: "", queued: [] });
+		expect(pty.writes.mock.calls.filter(([bytes]) => String(bytes).includes('"ev":"edit"'))).toHaveLength(1);
+		await host.keys("undo", 1, epoch);
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"undo"'));
+	});
+
+	it("refuses a same-epoch replacement during Escape restore without clearing its text", async () => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "queue", "dock", null, { id: "queue", k: "row", p: { role: "omp.queue.item" } }]] });
+		pty.writes.mockImplementation((bytes: string) => {
+			if (bytes === "\x1b") { tspMessage("x", { id: "s:1", keep: false }); tspComposer("replacement", "replacement-editor"); tspMessage("f", { sf: "replacement", s: 2, ops: [["set", "replacement-editor", { text: "Private replacement draft" }]] }); }
+		});
+		await expect(host.keys("escape", 1, epoch)).rejects.toThrow("original editor changed");
+		expect(host.composerFacts().text).toBe("Private replacement draft");
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"'))).toBe(false);
+		expect(host.state.tspEditorRestore).toBeNull();
+	});
+
+	it.each(["delayed", "epoch"] as const)("retains restored text before clear and through %s confirmation", async outcome => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "queue", "dock", null, { id: "queue", k: "row", p: { role: "omp.queue.item" } }]] });
+		pty.writes.mockImplementation((bytes: string) => {
+			if (bytes === "\x1b") tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "queue"], ["set", "editor", { text: "Saved queued text" }]] });
+			if (bytes.includes('"ev":"edit"')) {
+				expect(host.state.tspEditorRestore).toMatchObject({ text: "Saved queued text", cleared: false });
+				if (outcome === "epoch") { tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); tspMessage("f", { sf: "s:1", s: 2, ops: [["set", "editor", { text: "New epoch draft" }]] }); }
+			}
+		});
+		const restoring = host.keys("escape", 1, epoch);
+		const rejected = outcome === "epoch" ? expect(restoring).rejects.toThrow("restored message is saved") : null;
+		await vi.waitFor(() => expect(host.state.tspEditorRestore?.text).toBe("Saved queued text"));
+		if (outcome === "delayed") { tspMessage("f", { sf: "s:1", s: 4, ops: [["set", "editor", { text: "" }]] }); await restoring; }
+		else { await rejected; expect(host.composerFacts().text).toBe("New epoch draft"); }
+		const capture = host.state.tspEditorRestore!;
+		await host.retryEditorRestore(capture.id); await host.retryEditorRestore(capture.id);
+		expect(host.state.tspEditorRestore).toMatchObject({ text: "Saved queued text", cleared: true });
+		expect(pty.writes.mock.calls.filter(([bytes]) => String(bytes).includes('"ev":"edit"'))).toHaveLength(1);
+		host.ackEditorRestore(capture.id); expect(host.state.tspEditorRestore).toBeNull();
+	});
+
+	it("keeps a suspended restoration blocked until the original editor resumes and clears", async () => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "queue", "dock", null, { id: "queue", k: "row", p: { role: "omp.queue.item" } }]] });
+		let clears = 0;
+		pty.writes.mockImplementation((bytes: string) => {
+			if (bytes === "\x1b") tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "queue"], ["set", "editor", { text: "Retained queued text" }]] });
+			if (bytes.includes('"ev":"edit"')) {
+				if (++clears === 1) tspMessage("f", { sf: "s:1", s: 4, ops: [["suspend"]] });
+				else tspMessage("f", { sf: "s:1", s: 6, ops: [["set", "editor", { text: "" }]] });
+			}
+		});
+		await expect(host.keys("escape", 1, epoch)).rejects.toThrow("restored message is saved");
+		const capture = host.state.tspEditorRestore!;
+		await expect(host.retryEditorRestore(capture.id)).rejects.toThrow("temporarily unavailable");
+		expect(host.state.tspEditorRestore).toMatchObject({ text: "Retained queued text", cleared: false });
+		expect(() => host.ackEditorRestore(capture.id)).toThrow("Recover");
+		await expect(host.submit("Another message")).rejects.toThrow("Recover the restored message");
+		expect(clears).toBe(1);
+		tspMessage("f", { sf: "s:1", s: 5, ops: [["resume"]] });
+		expect(host.composerFacts().text).toBe("Retained queued text");
+		await host.retryEditorRestore(capture.id);
+		expect(host.state.tspEditorRestore).toMatchObject({ text: "Retained queued text", cleared: true });
+		expect(host.composerFacts().text).toBe("");
+		expect(clears).toBe(2);
+		host.ackEditorRestore(capture.id);
+		expect(host.state.tspEditorRestore).toBeNull();
+	});
+
+	it.each(["text", "editor", "surface"] as const)("rejects follow-up after its original %s changes in the host input queue", async change => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const gate = Promise.withResolvers<void>(); const entered = Promise.withResolvers<void>();
+		const prior = host.withEditorInput(async () => { entered.resolve(); await gate.promise; }); await entered.promise;
+		const queued = host.submit("Follow-up", "followUp"); const rejected = expect(queued).rejects.toThrow("editor changed");
+		if (change === "text") tspMessage("f", { sf: "s:1", s: 2, ops: [["set", "editor", { text: "Newer text" }]] });
+		else if (change === "surface") tspComposer();
+		else tspMessage("f", { sf: "s:1", s: 2, ops: [["del", "editor"], ["add", "editor", "dock", null, { id: "editor", k: "editor", p: { text: "", sendable: true } }], ["focus", "editor"]] });
+		gate.resolve(); await prior; await rejected;
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"'))).toBe(false);
+	});
+
+	it("holds a follow-up behind an attaching paste and preserves its image marker", async () => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const paste = host.paste("/tmp/image.png"); const follow = host.submit("Follow-up", "followUp");
+		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith("\x1b[200~/tmp/image.png\x1b[201~"));
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"'))).toBe(false);
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["set", "editor", { text: "IMAGE #1 " }], ["add", "chips", "dock", null, { id: "chips", k: "row", p: { role: "omp.composer.chips" }, c: [{ id: "image", k: "image", p: { alt: "Attached" } }] }]] });
+		await paste; await follow;
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"text":"IMAGE #1 Follow-up"') && String(bytes).endsWith("\x11"))).toBe(true);
+	});
+
+	it.each(["gone", "changed", "editor", "surface"] as const)("guards Tab capture when the ghost or target is %s", async change => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["set", "editor", { ghost: "Original ghost" }]] });
+		const gate = Promise.withResolvers<void>(); const entered = Promise.withResolvers<void>();
+		const taking = host.withEditorInput(async input => { entered.resolve(); if (change === "gone" || change === "changed") await gate.promise; await input.keys("tab", "Original ghost"); });
+		const rejected = expect(taking).rejects.toThrow(change === "gone" || change === "changed" ? "suggestion changed" : "original editor changed");
+		await entered.promise;
+		if (change === "gone" || change === "changed") { tspMessage("f", { sf: "s:1", s: 3, ops: [["set", "editor", { ghost: change === "gone" ? "" : "Different ghost" }]] }); gate.resolve(); }
+		else {
+			await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith("\t"));
+			if (change === "surface") tspComposer();
+			else tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "editor"], ["add", "editor", "dock", null, { id: "editor", k: "editor", p: { text: "Replacement", sendable: true } }], ["focus", "editor"]] });
+		}
+		await rejected;
+		if (change === "gone" || change === "changed") expect(pty.writes).not.toHaveBeenCalledWith("\t");
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"'))).toBe(false);
 	});
 
 	it("keeps old surface generations stale across room changes and submits only to a fresh surface", async () => {

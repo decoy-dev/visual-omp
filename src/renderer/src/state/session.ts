@@ -9,8 +9,8 @@
  */
 import type { CollabUiRequest, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { FollowState, HostState, SessionOwnership } from "@shared/ipc";
-import { isTspPreviewInputError, tspAllowsAskPrompt, TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
-import type { Attachment } from "../chat/composer/drafts";
+import { isTspPreviewInputError, tspAllowsAskPrompt, TSP_PREVIEW_UNAVAILABLE, type TspEditorRestore } from "@shared/tsp-host";
+import { useComposerDrafts, type Attachment } from "../chat/composer/drafts";
 import { imagePathsText } from "../chat/composer/send";
 import { isAskRequest } from "../chat/transcript/askSeries";
 import { APP_GUEST_NAME, GuestClient, type GuestSnapshot } from "../collab/lib/client";
@@ -261,6 +261,7 @@ export class SessionController {
 	#ownershipCheck: Promise<void> | null = null;
 	#restoreNext = false;
 	#tspQuestionSync: TspQuestionSync;
+	readonly #restoreAcks = new Set<string>();
 
 	constructor(options: { tabId: string; projectPath: string; sessionFile: string | null; extraArgs?: string[] }) {
 		this.tabId = options.tabId;
@@ -507,6 +508,7 @@ export class SessionController {
 
 	#onHostState(host: HostState): void {
 		if (this.#disposed) return;
+		if (host.tspEditorRestore) this.#receiveEditorRestore(host.tspEditorRestore);
 		const previousStatus = this.#view.host?.programStatus;
 		this.#projectPath = host.cwd;
 		if (host.sessionFile && this.#sessionFile && host.sessionFile !== this.#sessionFile) {
@@ -541,6 +543,7 @@ export class SessionController {
 				() => undefined,
 			);
 		}
+		if (host.transport === "tsp") this.#resumeQueue();
 	}
 
 	#openGuest(link: string): void {
@@ -660,6 +663,7 @@ export class SessionController {
 			this.#awaiting !== null ||
 			this.#slashDeliveries > 0 ||
 			this.#queueHolds > 0 ||
+			(view.host?.transport === "tsp" && ((view.host.tspComposer?.queued.length ?? 0) > 0 || view.host.tspComposer?.blockedBy === "panel" || view.host.tspComposer?.blockedBy === "ask")) ||
 			(view.host?.tui?.overlays ?? 0) > 0
 		);
 	}
@@ -690,10 +694,11 @@ export class SessionController {
 	async send(text: string, images: readonly Attachment[] = []): Promise<void> {
 		const message = { text: text.trim(), images: [...images] };
 		if (!message.text && message.images.length === 0) return;
-		this.#assertPreviewInput(message.text, message.images);
+		this.#assertTspApproval(message.text);
 		// Capture ask intent before any await or listener can change the pending request.
 		const askTarget = this.#askPromptTarget(message.text);
-		if (askTarget && !this.#view.strandedImages) {
+		const approval = this.#view.host?.transport === "tsp" && (this.#view.host.tspComposer?.blockedBy === "approval" || (this.#view.guest?.uiRequest && isApprovalRequest(this.#view.guest.uiRequest)));
+		if ((askTarget || approval) && !this.#view.strandedImages) {
 			this.markInput();
 			this.noteSent();
 			await this.#deliverDirect(message, askTarget);
@@ -706,7 +711,7 @@ export class SessionController {
 			this.#set({ queue: [...this.#view.queue, item] });
 			try {
 				await this.whenLive();
-				this.#assertPreviewInput(message.text, message.images);
+				this.#assertTspApproval(message.text);
 			} catch (error) {
 				// omp did not start: the caller gets the message back (the composer restores its draft), so it leaves the queue.
 				if (!this.#disposed) this.#set({ queue: this.#view.queue.filter(entry => entry.id !== item.id) });
@@ -726,7 +731,7 @@ export class SessionController {
 		if (this.#view.strandedImages) return this.send(text, images);
 		const message = { text: text.trim(), images: [...images] };
 		if (!message.text && message.images.length === 0) return;
-		this.#assertPreviewInput(message.text, message.images);
+		this.#assertTspApproval(message.text);
 		const askTarget = this.#askPromptTarget(message.text);
 		this.markInput();
 		this.noteSent();
@@ -743,7 +748,7 @@ export class SessionController {
 		const index = this.#view.queue.findIndex(entry => entry.id === id);
 		const item = this.#view.queue[index];
 		if (!item) return;
-		this.#assertPreviewInput(item.text, item.images);
+		this.#assertTspApproval(item.text);
 		if (this.#view.strandedImages) throw new StrandedImagesError();
 		const askTarget = this.#askPromptTarget(item.text);
 		this.#set({ queue: this.#view.queue.filter(entry => entry.id !== id) });
@@ -799,8 +804,9 @@ export class SessionController {
 		this.markInput();
 		await this.#write(async () => {
 			if (this.#view.strandedImages && !overStrandedImages) throw new StrandedImagesError();
-			this.#assertPreviewInput(line, []);
+			this.#assertTspApproval(line);
 			await this.whenLive();
+			this.#assertTspApproval(line);
 			if (!overStrandedImages && this.#view.guest?.uiRequest && !isApprovalRequest(this.#view.guest.uiRequest)) {
 				throw new Error("Answer the question card before sending a command.");
 			}
@@ -813,7 +819,22 @@ export class SessionController {
 	async keys(keys: string): Promise<void> {
 		if (!this.hostId) return;
 		this.markInput();
-		await window.vomp.invoke("host:keys", this.hostId, keys);
+		const host = this.#view.host;
+		await window.vomp.invoke("host:keys", this.hostId, keys, host?.transport === "tsp" ? host.generation : undefined, host?.transport === "tsp" ? host.tspEpoch : undefined);
+	}
+
+	#receiveEditorRestore(capture: TspEditorRestore): void {
+		useComposerDrafts.getState().restoreEditor(this.tabId, capture.id, capture.text);
+		if (!capture.cleared || this.#restoreAcks.has(capture.id)) return;
+		this.#restoreAcks.add(capture.id);
+		void window.vomp.invoke("host:ack-editor-restore", capture.hostId, capture.id)
+			.catch(error => toast({ tone: "warn", message: "The restored message is saved. Retry editor recovery.", description: String(error) }))
+			.finally(() => this.#restoreAcks.delete(capture.id));
+	}
+
+	async retryEditorRestore(): Promise<void> {
+		const capture = this.#view.host?.tspEditorRestore;
+		if (capture) await window.vomp.invoke("host:retry-editor-restore", capture.hostId, capture.id);
 	}
 
 	/** Stop the current turn without restoring queued messages into omp's editor. */
@@ -909,18 +930,17 @@ export class SessionController {
 		}
 	}
 
-	/** Reject unsupported preview input before queue edits or image paste; classic input is unchanged. */
-	#assertPreviewInput(text: string, images: readonly Attachment[], mode: "steer" | "followUp" = "steer"): void {
-		if (this.#view.host?.transport === "tsp" && (images.length > 0 || mode === "followUp" || /^[!$]/.test(text.trimStart()))) {
-			throw new Error(TSP_PREVIEW_UNAVAILABLE);
-		}
+	/** TSP commands must not consume an approval's pending decision. */
+	#assertTspApproval(text: string): void {
+		const view = this.#view;
+		if (view.host?.transport === "tsp" && text.startsWith("/") && (view.host.tspComposer?.blockedBy === "approval" || view.guest?.pendingUiRequests?.some(isApprovalRequest) || (view.guest?.uiRequest && isApprovalRequest(view.guest.uiRequest)))) throw new Error("Answer the approval before sending a command.");
 	}
 
 	async #submit(text: string, mode: "steer" | "followUp"): Promise<void> {
 		const hostId = this.hostId;
 		this.markInput();
 		if (!hostId) throw new Error("omp is not running");
-		this.#assertPreviewInput(text, [], mode);
+		this.#assertTspApproval(text);
 		await window.vomp.invoke("host:submit", hostId, text, mode);
 	}
 
@@ -981,7 +1001,7 @@ export class SessionController {
 		try {
 			ack = await this.#write(async () => {
 				if (this.#view.strandedImages) throw new StrandedImagesError();
-				this.#assertPreviewInput(item.text, item.images);
+				this.#assertTspApproval(item.text);
 				const target = askTarget ?? this.#askPromptTarget(item.text);
 				if (target) this.#assertAskPromptTarget(target);
 				if (this.#view.host?.transport === "tsp" && item.images.length === 0 && item.text.startsWith("/")) {
@@ -1016,16 +1036,21 @@ export class SessionController {
 				if (this.#view.guest?.uiRequest && !isApprovalRequest(this.#view.guest.uiRequest)) {
 					throw new Error("Answer the question card before sending a message.");
 				}
-				if (item.images.length > 0) {
-					await window.vomp.invoke("composer:paste", hostId, imagePathsText(item.images.map(image => image.path)));
-					pasted = true;
+				if (item.images.length > 0 && this.#view.host?.transport === "tsp") {
+					await window.vomp.invoke("host:submit", hostId, item.text, "steer", imagePathsText(item.images.map(image => image.path)));
+				} else {
+					if (item.images.length > 0) {
+						await window.vomp.invoke("composer:paste", hostId, imagePathsText(item.images.map(image => image.path)));
+						pasted = true;
+					}
+					// Empty classic text submits the staged image without reading the clipboard.
+					await this.#submit(item.text, "steer");
 				}
-				// Empty text submits attached images through the same guarded path, without an empty paste.
-				await this.#submit(item.text, "steer");
 				if (before.room === this.#room) this.recordInput(item.text, timestamp);
 				return before;
 			});
 		} catch (error) {
+			if (error instanceof Error && error.message.includes("Image submission needs recovery.")) pasted = true;
 			// The paste got through but the submit did not: the images may sit in omp's editor, and anything typed
 			// next would carry them. Hold everything until omp restarts or stops (see `strandedImages`).
 			if (pasted) this.#strandImages();
@@ -1126,14 +1151,6 @@ export class SessionController {
 	#drainOne(): void {
 		const [next, ...rest] = this.#view.queue;
 		if (!next) return;
-		// A first launch may reveal TSP only after this item was queued. Leave it untouched
-		// for send's post-readiness rejection (or an explicit Send now notice).
-		try {
-			this.#assertPreviewInput(next.text, next.images);
-		} catch (error) {
-			if (isTspPreviewInputError(error)) return;
-			throw error;
-		}
 		this.#set({ queue: rest });
 		if (this.#isSlash(next)) {
 			// Not typed: it goes back first in line. A hold (omp's screen), the next send or a turn end brings it back.
@@ -1197,6 +1214,9 @@ export class SessionController {
 		const view = this.#view;
 		if (this.#disposed || view.queue.length === 0 || view.mode !== "live" || view.working || view.strandedImages || view.guest?.uiRequest) return;
 		if (this.#writing > 0 || this.#awaiting !== null || this.#slashDeliveries > 0 || this.#queueHolds > 0) return;
+		// A document watch can release before the separate HostState projection arrives.
+		// Missing availability leaves readiness to that watch and main's guarded writer.
+		if (view.host?.transport === "tsp" && (view.host.tspComposer?.queued.length || view.host.tspComposer?.blockedBy || view.host.tspAvailability?.available === false)) return;
 		if ((view.host?.tui?.overlays ?? 0) === 0) {
 			this.#drainOne();
 			return;
