@@ -1,11 +1,51 @@
 import { z } from "zod";
 import type { TspFrame, TspOpen } from "@shared/tsp";
-import type { TspSurfaceSnapshot } from "@shared/tsp-host";
+import { TspRendererEvent, type TspSurfaceSnapshot } from "@shared/tsp-host";
 import { TspDocument } from "../../../../../main/omp/tsp/apply";
 
 const Open = z.object({ id: z.string(), mode: z.enum(["inline", "screen"]), title: z.string().optional(), role: z.string().optional(), adopt: z.boolean().optional() });
 const Frame = z.object({ sf: z.string(), s: z.number(), ops: z.array(z.unknown()) });
 const Close = z.object({ id: z.string(), keep: z.boolean() });
+
+/** Change this selector when replacing the pinned recordings; consumers do not own fixture paths. */
+export const FIXTURE_VERSION = "18.14.0";
+const recordings = import.meta.glob<string>("../../../../../main/omp/tsp/fixtures/*/*.{messages,events}.jsonl", { query: "?raw", import: "default", eager: true });
+const Message = z.object({ verb: z.string(), body: z.unknown() });
+const EventRecord = z.object({ verb: z.string().optional(), body: z.unknown().optional(), keys: z.string().optional(), afterMessage: z.number().int().nonnegative().optional() });
+export interface FixtureMessage { verb: string; body: unknown }
+export type FixtureInput = { keys: string; afterMessage?: number } | { verb: "e"; body: TspRendererEvent; afterMessage?: number };
+export interface FixtureRecording { messages: FixtureMessage[]; inputs: FixtureInput[] }
+const housekeeping: Readonly<Record<string, true | undefined>> = { ack: true, resize: true, theme: true, motion: true };
+/** Skip only named protocol housekeeping. Unsupported application input must fail the replay. */
+export function parseFixtureInputs(text: string): FixtureInput[] {
+	const lines = text.trim() ? text.trim().split("\n") : [];
+	return lines.flatMap((line): FixtureInput[] => {
+		const record = EventRecord.parse(JSON.parse(line));
+		if (record.keys !== undefined) {
+			if (record.verb !== undefined || record.body !== undefined) throw new Error("A recorded key input cannot also carry a semantic message");
+			return [{ keys: record.keys, afterMessage: record.afterMessage }];
+		}
+		if (record.verb === "r") {
+			z.object({ r: z.literal("hello") }).parse(record.body);
+			return [];
+		}
+		if (record.verb !== "e") throw new Error(`Unsupported recorded client verb: ${record.verb ?? "missing"}`);
+		const envelope = z.object({ ev: z.string() }).parse(record.body);
+		if (Object.hasOwn(housekeeping, envelope.ev)) return [];
+		return [{ verb: "e", body: TspRendererEvent.parse(record.body), afterMessage: record.afterMessage }];
+	});
+}
+export function loadFixtureRecording(name: string): FixtureRecording {
+	const source = (kind: "messages" | "events"): string => {
+		const entry = Object.entries(recordings).find(([path]) => path.endsWith(`/${FIXTURE_VERSION}/${name}.${kind}.jsonl`));
+		if (!entry) throw new Error(`Missing omp ${FIXTURE_VERSION} ${name}.${kind}.jsonl recording`);
+		return entry[1];
+	};
+	const text = source("messages").trim();
+	const messages = (text ? text.split("\n") : []).map(line => Message.parse(JSON.parse(line)));
+	const inputs = parseFixtureInputs(source("events"));
+	return { messages, inputs };
+}
 /** Renderer fixture replay stays free of Node transports and their Buffer dependency. */
 export class FixtureDocuments {
 	#epoch = 0;

@@ -1,7 +1,7 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, realpathSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { WebSocket } from "ws";
@@ -11,15 +11,15 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { TspSession } from "../session";
+import { FixtureDocuments, loadFixtureRecording, type FixtureInput, type FixtureRecording } from "../../../../renderer/src/features/tsp/testing/documents";
 import { hookQuestions } from "@shared/tsp/question-match";
-import { openOverlay, walkNodes } from "@shared/tsp/view-state";
+import { openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { plain } from "../../../../renderer/src/features/tsp/labels";
-import type { TspHostSnapshot } from "@shared/tsp-host";
+import { TspRendererEvent, type TspHostSnapshot } from "@shared/tsp-host";
+import { hookAnswerEvents, TspHookAnswer } from "@shared/tsp/dialogs";
 
 const root = resolve(import.meta.dirname, "../../../../..");
 const chrome = process.env.CHROME_BIN ?? (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/bin/google-chrome");
-const fixtures = resolve(root, "src/main/omp/tsp/fixtures/18.14.0");
 const CdpMessage = z.object({ id: z.number().optional(), result: z.unknown().optional(), error: z.object({ message: z.string() }).optional() });
 interface AxTree { nodes: { role?: { value: string }; name?: { value: string }; properties?: { name: string; value: { value: unknown } }[] }[] }
 interface Evaluation { result: { value: unknown }; exceptionDetails?: { text: string; exception?: { description: string } } }
@@ -66,6 +66,16 @@ class ChromePage {
 		// Chrome runs out of process; fake timers cannot drive its render or focus lifecycle.
 		while (!await this.evaluate(expression)) { if (Date.now() > deadline) throw new Error(`Chrome timed out: ${expression}`); await delay(25); }
 	}
+	async clickElement(expression: string): Promise<void> {
+		const point = await this.evaluate<{ x: number; y: number }>(`(() => { const element = ${expression}; if (!element) throw new Error('Missing Chrome input target'); element.scrollIntoView({block:'center',inline:'nearest'}); const box = element.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`);
+		await this.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
+		await this.send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...point });
+		await this.send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...point });
+	}
+	async key(key: string, code = key, modifiers = 0, commands?: string[]): Promise<void> {
+		await this.send("Input.dispatchKeyEvent", { type: "keyDown", key, code, modifiers, commands });
+		await this.send("Input.dispatchKeyEvent", { type: "keyUp", key, code, modifiers });
+	}
 	close() { this.#fail(new Error("Chrome CDP client closed.")); this.socket.close(); }
 }
 
@@ -78,22 +88,110 @@ async function stopChrome(child: ChildProcess | undefined): Promise<void> {
 	if (!await Promise.race([exited, delay(2_000, false)])) throw new Error("Chrome did not stop after SIGKILL.");
 }
 
-async function recorded(name: string, idle = false): Promise<TspHostSnapshot> {
-	const session = new TspSession({ cols: 100, dark: false, reduceMotion: true, write: () => {}, onError: error => { throw error; } });
-	for (const line of (await readFile(join(fixtures, `${name}.messages.jsonl`), "utf8")).trim().split("\n")) {
-		const message = z.object({ verb: z.string(), body: z.unknown() }).parse(JSON.parse(line));
-		session.receive({ verb: message.verb, params: {}, body: JSON.stringify(message.body) });
-		const snapshot = session.snapshot();
+function fixtureSnapshot(documents: FixtureDocuments, generation = 1, revision = 1): TspHostSnapshot {
+	const snapshot = documents.snapshot();
+	return { ...snapshot, hostId: "gate", generation, revision, lifecycle: "live", documentGeneration: generation, failure: null, availability: { available: false, reason: "Recorded omp menu" },
+		questionMatches: hookQuestions(snapshot.surfaces, generation).map(hook => ({ surfaceId: hook.surfaceId, nodeId: hook.nodeId, status: "unmatched" })),
+		surfaces: snapshot.surfaces.map(surface => ({ ...surface, documentGeneration: generation })) };
+}
+function recorded(name: string, idle = false): TspHostSnapshot {
+	const documents = new FixtureDocuments();
+	for (const message of loadFixtureRecording(name).messages) {
+		documents.receive({ verb: message.verb, body: JSON.stringify(message.body) });
+		const snapshot = documents.snapshot();
 		const nodes = snapshot.surfaces.flatMap(surface => [...walkNodes(surface.document)]);
 		const shown = idle ? nodes.some(node => node.k === "editor" && node.p?.sendable)
 			: name === "settings-screen" ? nodes.some(node => node.k === "prefs")
 			: name === "usage" ? nodes.some(node => JSON.stringify(node.p ?? {}).includes("No usage data available."))
 			: !!openOverlay(snapshot.surfaces);
-		if (message.verb !== "f" || !shown) continue;
-		await session.drain();
-		return { ...snapshot, hostId: "gate", generation: 1, revision: 1, lifecycle: "live", documentGeneration: 1, failure: null, availability: { available: false, reason: "Menu open" }, questionMatches: hookQuestions(snapshot.surfaces, 1).map(hook => ({ surfaceId: hook.surfaceId, nodeId: hook.nodeId, status: "unmatched" })), surfaces: snapshot.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
+		if (message.verb === "f" && shown) return fixtureSnapshot(documents);
 	}
 	throw new Error(`No recorded screen in ${name}`);
+}
+
+type WireInput = { keys: string } | { verb: "e"; body: TspRendererEvent };
+const CapturedCalls = z.array(z.object({ channel: z.enum(["host:tsp-event", "host:tsp-answer", "host:keys"]), args: z.array(z.unknown()) }));
+function wireInput(input: FixtureInput): WireInput { return "keys" in input ? { keys: input.keys } : { verb: "e", body: input.body }; }
+function emittedInputs(snapshot: TspHostSnapshot, value: unknown): WireInput[] {
+	return CapturedCalls.parse(value).flatMap((call): WireInput[] => {
+		expect(call.args[0]).toBe(snapshot.hostId);
+		expect(call.args[call.channel === "host:keys" ? 2 : 1]).toBe(snapshot.generation);
+		expect(call.args[3]).toBe(snapshot.epoch);
+		if (call.channel === "host:tsp-event") return [{ verb: "e" as const, body: TspRendererEvent.parse(call.args[2]) }];
+		if (call.channel === "host:keys") {
+			const keys = z.string().parse(call.args[1]);
+			const hooks = hookQuestions(snapshot.surfaces, snapshot.generation);
+			if (keys !== "escape" || hooks.length !== 1) return [{ keys: keys === "escape" ? "\x1b" : keys }];
+			const hook = hooks[0]!;
+			const root = snapshot.surfaces.find(surface => surface.open.id === hook.surfaceId);
+			const node = root && [...walkNodes(root.document)].find(node => node.id === hook.nodeId);
+			if (!node) throw new Error("Missing recorded hook for guarded Escape");
+			const events = hookAnswerEvents(node, { kind: "cancel", sf: hook.surfaceId, id: hook.nodeId });
+			return events.length ? events.map(body => ({ verb: "e" as const, body })) : [{ keys: "\x1b" }];
+		}
+		const answer = TspHookAnswer.parse(call.args[2]);
+		const surface = snapshot.surfaces.find(surface => surface.open.id === answer.sf);
+		const node = surface && [...walkNodes(surface.document)].find(node => node.id === answer.id);
+		if (!node) throw new Error("Missing recorded hook answer target");
+		// The renderer sends a complete transaction. This is the production writer's wire conversion.
+		const events = hookAnswerEvents(node, answer);
+		return events.length ? events.map(body => ({ verb: "e" as const, body })) : [{ keys: "\x1b" }];
+	});
+}
+function hasRecordedMenu(documents: FixtureDocuments): boolean {
+	const surfaces = documents.snapshot().surfaces.filter(surface => surface.sequence > 0 && !surface.closed);
+	return !!(openOverlay(surfaces) || screenSurface(surfaces) || surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "rows")));
+}
+class CompletionReplay {
+	documents = new FixtureDocuments();
+	readonly recording: FixtureRecording;
+	readonly expected: FixtureInput[];
+	cursor = 0;
+	#revision = 1;
+	constructor(readonly name: string) {
+		const completion = name === "tree-open" ? "tree-confirm" : name.replace(/-open$/, "");
+		this.recording = loadFixtureRecording(completion);
+		const initial = loadFixtureRecording(name);
+		const inputs = this.recording.inputs.filter(input => "keys" in input || input.body.ev !== "send");
+		if (name.startsWith("hook-")) {
+			const candidates = inputs.filter(input => !("keys" in input) && ["activate", "edit", "action"].includes(input.body.ev));
+			const edit = candidates.findLastIndex(input => !("keys" in input) && input.body.ev === "edit");
+			this.expected = name.endsWith("-cancel") ? candidates.slice(-1) : edit >= 0 ? candidates.slice(edit) : candidates;
+		} else this.expected = inputs;
+		if (!this.expected.length) throw new Error(`Missing accepted completion input for ${name}`);
+		const boundary = this.expected[0]!.afterMessage;
+		if (name.endsWith("-open")) {
+			// Open-only captures have their own frame batching; show their final pre-close document.
+			const close = initial.messages.findIndex(message => message.verb === "x");
+			this.advanceTo(close < 0 ? initial.messages.length : close, initial.messages);
+		} else if (boundary !== undefined) this.advanceTo(boundary, initial.messages);
+		else {
+			while (this.cursor < initial.messages.length && !hasRecordedMenu(this.documents)) this.advanceTo(this.cursor + 1, initial.messages);
+		}
+		if (!hasRecordedMenu(this.documents)) throw new Error(`Missing recorded menu before ${name}'s next input`);
+	}
+	snapshot(): TspHostSnapshot { return fixtureSnapshot(this.documents, this.name === "import-claude" ? 0 : 1, this.#revision); }
+	advanceTo(boundary: number, messages = this.recording.messages): void {
+		if (boundary > messages.length) throw new Error(`Missing program responses for ${this.name} at message ${boundary}`);
+		while (this.cursor < boundary) {
+			const message = messages[this.cursor++]!;
+			this.documents.receive({ verb: message.verb, body: JSON.stringify(message.body) });
+			this.#revision++;
+		}
+	}
+	finish(): void {
+		if (this.name.endsWith("-open")) {
+			// Accepted responses belong to the completion recording, not the open-only capture's sequence.
+			this.documents = new FixtureDocuments();
+			this.cursor = 0;
+			this.#revision++;
+			const boundary = this.expected[0]!.afterMessage;
+			if (boundary !== undefined) this.advanceTo(boundary);
+			else while (this.cursor < this.recording.messages.length && !hasRecordedMenu(this.documents)) this.advanceTo(this.cursor + 1);
+		}
+		while (this.cursor < this.recording.messages.length && hasRecordedMenu(this.documents)) this.advanceTo(this.cursor + 1);
+		expect(hasRecordedMenu(this.documents), `${this.name} leaves its recorded menu`).toBe(false);
+	}
 }
 
 describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headless Chrome", () => {
@@ -122,6 +220,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const socket = new WebSocket(target.webSocketDebuggerUrl, { handshakeTimeout: 5_000 }); await once(socket, "open");
 		page = new ChromePage(socket);
 		await page.send("Page.enable");
+		await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
 		await page.send("Page.navigate", { url: `${vite.resolvedUrls!.local[0]}src/renderer/src/features/tsp/testing/gate.html` });
 		await page.until("!!window.gate");
@@ -142,9 +241,115 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		await page.until("!!document.querySelector('.vo-sheet') && document.querySelector('.vo-sheet').getAnimations().every(animation => animation.playState === 'finished')");
 	}
 	async function close() {
-		await page.evaluate("document.querySelector('.vo-sheet button[aria-label=Close]').click()");
+		await page.clickElement("document.querySelector('.vo-sheet button[aria-label=Close]')");
 		await page.until("!document.querySelector('.vo-sheet') && document.activeElement?.getAttribute('aria-label') === 'Message to omp'");
 	}
+
+	async function updateReplay(replay: CompletionReplay) {
+		const snapshot = replay.snapshot();
+		await page.evaluate(`window.gate.update(${JSON.stringify(snapshot)})`);
+		return snapshot;
+	}
+	async function inputs(snapshot: TspHostSnapshot): Promise<WireInput[]> {
+		return emittedInputs(snapshot, await page.evaluate("window.gate.calls"));
+	}
+	async function clickOption(id: string, item: string) {
+		await page.clickElement(`(() => { const root = [...document.querySelectorAll('[data-tsp-id]')].find(node => node.dataset.tspId === ${JSON.stringify(id)}); return root && [...root.querySelectorAll('[role=option]')].find(option => option.id.endsWith(${JSON.stringify(`-${item}`)})); })()`);
+		await page.until(`(() => { const root = [...document.querySelectorAll('[data-tsp-id]')].find(node => node.dataset.tspId === ${JSON.stringify(id)}); return root && [...root.querySelectorAll('[role=option]')].some(option => option.id.endsWith(${JSON.stringify(`-${item}`)}) && option.getAttribute('aria-selected') === 'true'); })()`);
+	}
+	async function clickAction(snapshot: TspHostSnapshot, event: TspRendererEvent) {
+		if (event.ev !== "action") throw new Error("Expected a recorded button action");
+		const node = snapshot.surfaces.flatMap(surface => [...walkNodes(surface.document)]).find(node => node.id === event.id);
+		if (!node) throw new Error(`Missing recorded action node ${event.id}`);
+		const label = Array.isArray(node.p?.actions) ? node.p.actions.find(action => action.id === event.act)?.label : undefined;
+		await page.clickElement(`(() => { const root = [...document.querySelectorAll('[data-tsp-id]')].find(node => node.dataset.tspId === ${JSON.stringify(event.id)}); return root && ${label ? `[...root.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(label)})` : "root.querySelector(':scope > button')"}; })()`);
+	}
+
+	it.each([
+		"hotkeys", "jobs", "session", "changelog", "tools", "model-picker", "settings-screen", "exit-with-overlay",
+		"extension-rows", "extension-rows-cancel", "extension-rows-open",
+		"hook-select", "hook-confirm", "hook-input", "hook-editor",
+		"hook-select-cancel", "hook-confirm-cancel", "hook-input-cancel", "hook-editor-cancel",
+		"hook-select-open", "hook-confirm-open", "hook-input-open", "hook-editor-open",
+		"tree-open", "extensions", "import-claude",
+	])("completes recorded %s with real Chrome pointer and keyboard input matching its next accepted events", async name => {
+		const replay = new CompletionReplay(name);
+		let snapshot = replay.snapshot();
+		const expected = replay.expected.map(wireInput);
+		try {
+			await open(snapshot);
+			const first = replay.expected[0]!;
+			if (name === "extensions") {
+				const select = replay.expected.find(input => !("keys" in input) && input.body.ev === "select");
+				if (!select || "keys" in select || select.body.ev !== "select") throw new Error("Missing recorded extensions selection");
+				const expand = await page.evaluate("([...document.querySelectorAll('.tsp-screen button')].find(button => button.textContent === 'Expand'))?.disabled");
+				expect(expand).toBe(true);
+				await clickOption(select.body.id, select.body.item);
+				expect(await inputs(snapshot)).toEqual([wireInput(select)]);
+				const closeInput = replay.expected.find(input => !("keys" in input) && input.body.ev === "action");
+				if (!closeInput || "keys" in closeInput || closeInput.afterMessage === undefined) throw new Error("Missing recorded extensions Close boundary");
+				replay.advanceTo(closeInput.afterMessage); snapshot = await updateReplay(replay);
+				await clickAction(snapshot, closeInput.body);
+			} else if (name === "import-claude") {
+				const select = replay.expected[0]!;
+				if ("keys" in select || select.body.ev !== "select") throw new Error("Missing startup import selection");
+				expect(snapshot.generation).toBe(0);
+				expect(await page.evaluate("({ mode: window.gate.view().mode, phase: window.gate.view().host.phase, link: window.gate.view().host.link })")).toEqual({ mode: "starting", phase: "connecting", link: null });
+				expect(await page.evaluate("document.querySelector('[role=listbox]').getAttribute('aria-label')")).toBe("Import Claude Session");
+				await clickOption(select.body.id, select.body.item);
+				expect(await inputs(snapshot)).toEqual([wireInput(select)]);
+				await page.key("Enter");
+			} else if (name === "tree-open" || (!("keys" in first) && first.body.ev === "activate")) {
+				if ("keys" in first || first.body.ev !== "activate") throw new Error("Missing recorded choice activation");
+				if (name === "tree-open") {
+					const targetId = first.body.id;
+					const targetItem = first.body.item;
+					const picker = snapshot.surfaces.flatMap(surface => [...walkNodes(surface.document)]).find(node => node.id === targetId);
+					const other = picker?.k === "picker" ? picker.p?.items?.find(item => item.id !== targetItem && !item.disabled) : undefined;
+					if (!other) throw new Error("Recorded tree must offer a different row for local selection");
+					await clickOption(targetId, other.id);
+					expect(await inputs(snapshot), "changing the selected tree row must not navigate").toEqual([]);
+				}
+				await clickOption(first.body.id, first.body.item);
+				expect(await inputs(snapshot), "pointer selection stays local until confirmation").toEqual([]);
+				await page.key("Enter");
+			} else if (!("keys" in first) && first.body.ev === "edit") {
+				const edit = first.body;
+				await page.clickElement(`(() => { const root = [...document.querySelectorAll('[data-tsp-id]')].find(node => node.dataset.tspId === ${JSON.stringify(edit.id)}); return root && root.querySelector('input,textarea'); })()`);
+				await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
+				await page.send("Input.insertText", { text: edit.text });
+				await page.until(`document.activeElement.value === ${JSON.stringify(edit.text)}`);
+				expect(await inputs(snapshot), "hook typing stays local until submission").toEqual([]);
+				if (name.startsWith("hook-input")) await page.key("Enter");
+				else await page.key("Enter", "Enter", 2);
+			} else if (!("keys" in first) && first.body.ev === "action") {
+				if (name === "hook-select-cancel" || name === "hook-editor-cancel") await page.key("Escape");
+				else await clickAction(snapshot, first.body);
+			} else if ("keys" in first) {
+				if (name.startsWith("extension-rows")) await page.clickElement("document.querySelector('.tsp-screen pre')");
+				await page.key(first.keys === "\r" ? "Enter" : "Escape");
+			} else throw new Error(`No browser input driver for ${name}`);
+			expect(await inputs(snapshot)).toEqual(expected);
+			const menuIds = new Set([
+				...hookQuestions(snapshot.surfaces, snapshot.generation).map(hook => hook.nodeId),
+				...snapshot.surfaces.flatMap(surface => [...walkNodes(surface.document)]).filter(node => ["picker", "prefs", "overlay", "rows"].includes(node.k)).map(node => node.id),
+			]);
+			replay.finish(); snapshot = await updateReplay(replay);
+			expect(openOverlay(snapshot.surfaces)).toBeNull();
+			expect(screenSurface(snapshot.surfaces)).toBeNull();
+			expect(hookQuestions(snapshot.surfaces, snapshot.generation)).toEqual([]);
+			const retainedIds = new Set(snapshot.surfaces.flatMap(surface => [...walkNodes(surface.document)]).map(node => node.id));
+			const removedIds = [...menuIds].filter(id => !retainedIds.has(id));
+			if (removedIds.length) await page.until(`![...document.querySelectorAll('.tsp-screen [data-tsp-id]')].some(node => ${JSON.stringify(removedIds)}.includes(node.dataset.tspId))`);
+			else {
+				expect(snapshot.surfaces.some(surface => surface.closed)).toBe(true);
+				await page.until("document.querySelector('.tsp-screen').textContent.includes('This omp screen has closed')");
+			}
+			await page.until("!!document.querySelector('.tsp-screen') && [...document.querySelectorAll('.tsp-screen button')].every(button => button.disabled)");
+		} finally {
+			if (await page.evaluate("!!document.querySelector('.vo-sheet')")) await close();
+		}
+	}, 30_000);
 
 	it("exposes recorded lists and selection in Chrome's accessibility tree and returns focus to the composer", async () => {
 		for (const name of ["model-picker", "hook-select", "tree-open"]) {

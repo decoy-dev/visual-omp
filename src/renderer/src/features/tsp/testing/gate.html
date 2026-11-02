@@ -2,5 +2,5 @@
 <html lang="en"><head><meta charset="UTF-8"><title>TSP screen gate</title></head><body><div id="root"></div><script>
 window.gateSnapshot = null;
 window.gateListeners = new Set();
-window.vomp = { platform: 'darwin', invoke: async (channel) => channel === 'host:tsp-snapshot' ? window.gateSnapshot : undefined, on: (channel, listener) => { if (channel === 'host:tsp-update') window.gateListeners.add(listener); return () => window.gateListeners.delete(listener); } };
+window.vomp = { platform: 'darwin', invoke: async (channel, ...args) => window.gate ? window.gate.invoke(channel, args) : channel === 'host:tsp-snapshot' ? window.gateSnapshot : undefined, on: (channel, listener) => { if (channel === 'host:tsp-update') window.gateListeners.add(listener); return () => window.gateListeners.delete(listener); } };
 </script><script type="module" src="./gate.tsx"></script></body></html>

@@ -19,9 +19,19 @@ import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 
 // Only the preload and session source are replaced. Sheet, focus handling, renderers and CSS are production code.
-const state = window as unknown as { gateSnapshot: TspHostSnapshot; gateListeners: Set<(snapshot: TspHostSnapshot) => void>; gate: { open(snapshot: TspHostSnapshot): void; buttonVisible(button: HTMLButtonElement): boolean } };
-const view = { mode: "live", readOnly: false, host: { hostId: "gate", generation: 1, phase: "live", transport: "tsp", cols: 80, rows: 24 } } as unknown as SessionView;
-const controller = { getSnapshot: () => view, subscribe: () => () => {}, ensureLive: async () => {}, restart: async () => {} } as unknown as SessionController;
+interface CapturedCall { channel: string; args: unknown[] }
+interface Gate {
+	calls: CapturedCall[];
+	view(): SessionView;
+	open(snapshot: TspHostSnapshot): void;
+	update(snapshot: TspHostSnapshot): void;
+	invoke(channel: string, args: unknown[]): TspHostSnapshot | undefined;
+	buttonVisible(button: HTMLButtonElement): boolean;
+}
+const state = window as unknown as { gateSnapshot: TspHostSnapshot; gateListeners: Set<(snapshot: TspHostSnapshot) => void>; gate: Gate };
+let view = { mode: "live", readOnly: false, host: { hostId: "gate", generation: 1, phase: "live", transport: "tsp", cols: 80, rows: 24 } } as unknown as SessionView;
+const sessionListeners = new Set<() => void>();
+const controller = { getSnapshot: () => view, subscribe: (listener: () => void) => { sessionListeners.add(listener); return () => sessionListeners.delete(listener); }, ensureLive: async () => {}, restart: async () => {} } as unknown as SessionController;
 function buttonVisible(button: HTMLButtonElement): boolean {
 	button.scrollIntoView({ block: "nearest", inline: "nearest" });
 	const box = button.getBoundingClientRect();
@@ -42,7 +52,23 @@ function Harness() {
 	const open = useApp(app => app.terminalTabId === "gate");
 	const composer = useRef<HTMLTextAreaElement>(null);
 	useEffect(() => registerComposerEditor("gate", { focus: () => composer.current?.focus(), insertAtCaret: () => {} }), []);
-	useEffect(() => { state.gate = { buttonVisible, open(snapshot) { state.gateSnapshot = snapshot; for (const listener of state.gateListeners) listener(snapshot); useApp.setState({ terminalTabId: "gate" }); } }; }, []);
+	useEffect(() => {
+		const calls: CapturedCall[] = [];
+		const update = (snapshot: TspHostSnapshot) => {
+			state.gateSnapshot = snapshot;
+			view = { ...view, mode: snapshot.generation === 0 ? "starting" : "live", host: { ...view.host!, generation: snapshot.generation, phase: snapshot.generation === 0 ? "connecting" : "live", link: null } };
+			for (const listener of sessionListeners) listener();
+			for (const listener of state.gateListeners) listener(snapshot);
+		};
+		state.gate = {
+			calls, buttonVisible, update, view: () => view,
+			open(snapshot) { calls.length = 0; update(snapshot); useApp.setState({ terminalTabId: "gate" }); },
+			invoke(channel, args) {
+				if (["host:tsp-event", "host:tsp-answer", "host:keys"].includes(channel)) calls.push({ channel, args });
+				return channel === "host:tsp-snapshot" ? state.gateSnapshot : undefined;
+			},
+		};
+	}, []);
 	return <MotionProvider><TooltipProvider><main className="h-full bg-page p-4 text-fg"><label>Message to omp<textarea ref={composer} aria-label="Message to omp" /></label>{open && <TerminalSheet tabId="gate" controller={controller} />}</main></TooltipProvider></MotionProvider>;
 }
 createRoot(document.getElementById("root")!).render(<Harness />);

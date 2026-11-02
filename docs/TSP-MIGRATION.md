@@ -308,8 +308,23 @@ the surface deadline and offers Restart instead of waiting indefinitely on an em
 The no-model recorder accepts `VOMP_TSP_FIXTURE_DIR` so live comparisons do not overwrite the
 committed baseline. `fixture-vocabulary.test.ts` checks recorded roles and classifies unsupported
 actions explicitly. Set `OMP_BIN` and `VOMP_TSP_LIVE_FIXTURE_DIR` to compare a scratch re-recording
-with the committed role/action sets. DOM replay covers completion, but criterion 2's required
-headless Chrome exact-event completion tier remains outstanding.
+with the committed role/action sets. Criterion 2 passed the opt-in headless Chrome gate against the
+pinned recordings on 2026-11-02 (`src/main/omp/tsp/testing/ui-gate.test.ts`), alongside the DOM checks.
+Real Chrome pointer and keyboard input completes 26 overlay cases: slash menus, model/settings,
+custom rows, hook submit/cancel/open variants, tree confirmation, extensions selection and Close,
+and startup import in `starting` mode at generation zero before the collab link. The gate captures
+application IPC without filtering semantic focus events and compares its raw keys and semantic
+events exactly with the next accepted recording inputs. Complete hook answers use the production
+`hookAnswerEvents` writer conversion. Recorded program responses close the live menu in the
+rendered sheet; retained closed surfaces become read-only.
+The preload is a stub: Chrome exercises the renderer and the shared hook wire conversion.
+Main's arbitration, writer serialization and stale-authority refusals remain covered by host replays.
+
+Open-only captures use their own final pre-close document and their completed counterpart's
+accepted inputs/responses, without reusing message positions across independent captures.
+`features/tsp/testing/documents.ts` owns the fixture loader and its `FIXTURE_VERSION` selector;
+the Chrome gate has no versioned fixture path of its own. The notice-only `/usage` capture has no
+menu to complete, and the open-only collab-aware hook remains an arbitration fixture under criterion 6.
 
 **Manual evidence, 2026-11-02 (main, macOS, omp 18.14.0).**
 

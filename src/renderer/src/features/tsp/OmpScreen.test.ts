@@ -176,6 +176,22 @@ it("renders rows as safe ANSI spans and forwards focused raw keys", async () => 
 	await act(async () => element.querySelector("pre")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
 	expect(keys).toHaveBeenCalledWith("\x1b[B");
 });
+it.each(["rows", "ansi"] as const)("focuses %s in the browser and forwards raw keys without a semantic focus write", async kind => {
+	await render(kind === "rows" ? { id: "raw", k: "rows", p: { cols: 80, lines: ["Raw omp output"] } } : { id: "raw", k: "ansi", p: { text: "Raw omp output" } });
+	const block = element.querySelector("pre")!;
+	await act(async () => block.focus());
+	expect(document.activeElement).toBe(block);
+	expect(send).not.toHaveBeenCalled();
+	await act(async () => block.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+	expect(keys).toHaveBeenCalledExactlyOnceWith("\r");
+	expect(send).not.toHaveBeenCalled();
+});
+it.each(["input", "editor"] as const)("keeps semantic focus events for an ordinary %s control", async kind => {
+	await render({ id: "field", k: kind, p: { text: "Current value" } });
+	await act(async () => element.querySelector<HTMLElement>("input,textarea")!.focus());
+	expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "focus", sf: "s:1", id: "field" });
+	expect(keys).not.toHaveBeenCalled();
+});
 it("logs unknown kinds, roles and actions once while keeping content readable without dumping props", async () => {
 	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
 	const unknown = { id: "unknown", k: "future-kind", p: { text: "Readable future output" } } as unknown as TspNode;

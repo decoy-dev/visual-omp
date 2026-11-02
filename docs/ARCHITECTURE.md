@@ -284,6 +284,8 @@ Unknown actions disable only their own control, with an explanatory tooltip and 
 Known picker actions, selection, preference controls and descendants remain available. Rows, ANSI
 and genuinely unknown kinds use a readable mono fallback with guarded raw keys while focused.
 Escape from a focused fallback also reaches omp through the guarded key route.
+Rows and ANSI keep browser keyboard focus without emitting a semantic `focus` event: omp already
+owns their raw-key target. Ordinary semantic input/editor controls retain their protocol focus events.
 The normal view never dumps node props as JSON;
 the raw outline disclosure contains that developer metadata. Hook input omits omp's inherited
 `> ` terminal prefix because the native app field already supplies its own chrome.
