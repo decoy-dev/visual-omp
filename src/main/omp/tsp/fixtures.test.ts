@@ -14,6 +14,20 @@ scenarios.push("btw-history");
 const fixture = (name: string, extension: string) => readFileSync(new URL(`./fixtures/18.15.0/${name}.${extension}`, import.meta.url));
 
 describe("omp 18.15.0 no-model recordings", () => {
+	it("records missing resume as a pre-TUI failure without a hello, journal or emitted input", () => {
+		const raw = fixture("startup-missing-resume", "raw.bin");
+		expect(raw.toString()).toContain('Error: Session "/tmp/vomp-fixture/missing-session.jsonl" not found.');
+		for (let split = 0; split <= raw.length; split++) {
+			const messages: unknown[] = [];
+			const data: Buffer[] = [];
+			const stream = new TspStream({ onData: bytes => data.push(bytes), onMessage: message => messages.push(message) });
+			stream.push(raw.subarray(0, split)); stream.push(raw.subarray(split)); stream.end();
+			expect(messages).toEqual([]);
+			expect(Buffer.concat(data)).toEqual(raw);
+		}
+		for (const extension of ["jsonl", "messages.jsonl", "events.jsonl"]) expect(fixture("startup-missing-resume", extension).toString().trim()).toBe("");
+	});
+
 	it.each(scenarios)("replays %s without rejected operations and retains exact decoded messages", async name => {
 		const errors: Error[] = [];
 		const messages: object[] = [];

@@ -37,7 +37,7 @@ const scenarios: Scenario[] = [
     ["changelog", "/changelog"], ["tools", "/tools"], ["model-picker", "/model"],
     ["btw-history", "/btw"],
     ["settings-screen", "/settings"], ["exit", null], ["exit-with-overlay", "/hotkeys"],
-    ["startup-no-model", null], ["notice-error", "Fixture prompt without a configured model"],
+    ["startup-no-model", null], ["startup-missing-resume", null], ["notice-error", "Fixture prompt without a configured model"],
     ["extensions", "/extensions"],
     ["import-claude", null],
     ["restart", "/restart"], ["new", "/new"], ["resume", "/resume"],
@@ -63,12 +63,16 @@ for (const scenario of scenarios) {
   await Promise.all([mkdir(home), mkdir(agent)]);
   await writeFile(join(agent, "config.yml"), config);
   const journal = join(root, "journal.jsonl");
+  const missingResume = name === "startup-missing-resume";
+  // A pre-TUI failure never creates a TSP journal.
+  if (missingResume) await writeFile(journal, "");
   const env = { PATH: process.env.PATH!, HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, ".config"), XDG_CACHE_HOME: join(home, ".cache"), TMPDIR: root, PI_CODING_AGENT_DIR: agent, PI_CONFIG_DIR: agent, TERM_PROGRAM: "tern", TERM: "xterm-256color", COLORTERM: "truecolor", OMP_SKIP_SETUP: "1", PI_TUI_TSP_RECORD: journal };
   const raw: Buffer[] = []; const events: object[] = []; const messages: object[] = [];
   let child: IPty;
   let owner: IPty | undefined;
   let ownerExit: Promise<void> | undefined;
   let exited = false;
+  let exitCode: number | undefined;
   let classicFallback = false;
   const output = new TspStream({ onData: () => {}, onMessage: message => events.push({ verb: message.verb, body: JSON.parse(message.body), afterMessage: messages.length }) });
   const write = (data: string) => { if (name === "handshake-timeout") return; output.push(Buffer.from(data)); child.write(data); };
@@ -84,6 +88,7 @@ for (const scenario of scenarios) {
   } });
   const args = ["--no-extensions", "--no-skills", "--no-rules", "--no-context-files", "--no-lsp", "--no-title", "--session-dir", join(root, "sessions")];
   if (hook || name === "extensions") args.push("-e", extension);
+  if (missingResume) args.push("--resume", join(root, "missing-session.jsonl"));
   if (name === "tree-open" || name === "tree-confirm" || name === "resume" || name === "sibling-continuation") {
     await mkdir(join(root, "sessions"), { recursive: true });
     const sessionFile = name === "resume" ? join(root, "sessions", "2026-11-02T00-00-00-000Z_c040d770-0bd0-4f54-aefe-f075e648b440.jsonl") : join(root, "tree-session.jsonl");
@@ -106,7 +111,7 @@ for (const scenario of scenarios) {
   }
   child = spawn(bin, args, { name: "xterm-256color", cols: 110, rows: 32, cwd: root, env, encoding: null });
   child.onData(data => { const bytes = typeof data === "string" ? Buffer.from(data) : data; raw.push(bytes); stream.push(bytes); });
-  child.onExit(() => { exited = true; });
+  child.onExit(event => { exited = true; exitCode = event.exitCode; });
   const until = async (predicate: () => boolean | Promise<boolean>, label: string) => { const deadline = Date.now() + 15000; while (!await predicate()) { if (exited || Date.now() > deadline) throw new Error(`${name}: ${label}`); await sleep(30); } };
   const find = (predicate: (node: TspNode) => boolean) => {
     for (const surface of session.snapshot().surfaces) {
@@ -146,7 +151,10 @@ for (const scenario of scenarios) {
       send({ ev: "select", sf: target.surface.open.id, id: target.node.id, item });
       send({ ev: "activate", sf: target.surface.open.id, id: target.node.id, item });
     }
-    if (name === "handshake-timeout") {
+    if (missingResume) {
+      await until(() => exited, "missing resume did not exit");
+      if (exitCode !== 1 || messages.length !== 0) throw new Error(`${name}: expected a pre-TUI failure with exit code 1`);
+    } else if (name === "handshake-timeout") {
       await until(() => classicFallback && messages.some(message => "verb" in message && message.verb === "x") && session.snapshot().surfaces.length === 0, "unconfirmed semantic screen did not fall back to classic rows");
     } else await until(() => session.availability().available, "composer did not become ready");
     if (name === "sibling-continuation") {
@@ -219,7 +227,7 @@ for (const scenario of scenarios) {
       await sleep(100);
       child.kill();
       await until(() => exited, "open capture did not stop");
-    } else {
+    } else if (!missingResume) {
       await session.submit("/exit");
       await until(() => exited, "exit did not finish");
     }

@@ -1,0 +1,2 @@
+[31mError: Session "/tmp/vomp-fixture/missing-session.jsonl" not found.[39m
+[2mRun `omp --resume` without an argument to pick from recent sessions, or `omp` to start a new one.[22m

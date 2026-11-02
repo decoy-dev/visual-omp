@@ -168,6 +168,17 @@ still runs the same omp session, private extension and collab relay. The opt-in 
 removes only TSP APC messages before the existing non-TSP byte paths. Chunk bodies are joined
 as bytes before UTF-8 decoding. Relaunch with `VOMP_TSP` unset to recover the classic controls.
 
+Before its first surface opens, a TSP host captures recognized startup failures directly from the
+non-TSP byte path. Incremental UTF-8 decoding preserves split characters; escape parsing discards
+CSI controls and OSC, DCS and APC payloads without retaining them. Failure text is bounded to
+eight lines and 1,200 characters. The first surface, collab connection or application input ends
+capture. TSP startup diagnostics and warnings never inspect painted rows: post-surface warnings
+use the notice projection below. Classic screen diagnostics and raw TSP failures share the same
+recognition and exact requested-resume-file comparison, including omp 18.15.0's quoted missing
+session message. That classification preserves Start a fresh chat in the same folder; other
+startup failures retain Start omp again. The credential-free `startup-missing-resume` recording
+contains only pre-TUI error bytes, with an empty TSP journal and no emitted input.
+
 `src/main/omp/tsp/` applies frames with omp 18.15.0's MIT-licensed reference document applier,
 unchanged upstream since 18.14.0. Hello advertises all 45 kinds, including `button`; the semantic renderer covers each kind or its documented fallback.
 The terminal feature list remains empty, so blob caching, aside layout and semantic scrolling

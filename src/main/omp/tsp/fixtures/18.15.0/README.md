@@ -2,7 +2,7 @@
 
 These fixtures were recorded on macOS arm64 on 2026-11-02 from the standalone executable `/tmp/omp-18.15/omp-darwin-arm64`, reporting `omp/18.15.0`. The matching upstream release is tag `v18.15.0`, commit `3fedf8d53267e32a6d7521ce725fdcc4a36fdc67` of [oh-my-pi](https://github.com/can1357/oh-my-pi/tree/3fedf8d53267e32a6d7521ce725fdcc4a36fdc67). The version was checked; the executable was not independently reproduced from that commit.
 
-All 37 scenarios from the previous 18.14.0 baseline were re-recorded. `btw-history` replaces the earlier standalone byte capture, bringing the baseline to 38 recordings. The old baseline and byte capture are removed.
+All 37 scenarios from the previous 18.14.0 baseline were re-recorded. `btw-history` replaces the earlier standalone byte capture. `startup-missing-resume` adds a pre-TUI failure, bringing the baseline to 39 recordings. The old baseline and byte capture are removed.
 
 ## Capture format
 
@@ -15,6 +15,8 @@ Each scenario has five files:
 - `<scenario>.integrity.json` contains the sanitized byte length, carriage-return count and SHA-256 digest before storage. Git stores fixture `.bin` files as binary, preserving CR bytes across checkout. JSON delimiters remain LF; stringification escapes embedded CR values.
 
 The recorder uses `TspSession`, including its hello, cumulative acknowledgments and semantic submission. It advertises 45 kinds, including `button`, an empty terminal feature list, two credits, 110 columns, light appearance and reduced motion. Completed scenarios restore the composer and submit `/exit`. Open-only scenarios stop the child after draining its output; omp emits a retained close without a closing toast or answer. The timeout event file is empty because that scenario deliberately sends no reply.
+
+`startup-missing-resume` starts with `--resume <scratch-root>/missing-session.jsonl` and records exit code 1 before any hello or TUI opens. Its journal, decoded messages and emitted events are empty. The recorder creates the empty journal before launch because omp never opens its TSP journal on this path.
 
 ## Isolation and sanitization
 
@@ -40,6 +42,7 @@ The sanitizer replaces OSC 7 hosts with `localhost` and private home and tempora
 | exit | Semantic `/exit` emits the closing toast and retained close. |
 | exit-with-overlay | `/hotkeys`, Escape and semantic `/exit` preserve that close sequence. |
 | startup-no-model | An empty profile emits its startup warning, then exits. |
+| startup-missing-resume | A missing `--resume` file prints its quoted path and recovery guidance, then exits with code 1 before the TUI starts. No model is configured. |
 | notice-error | Text submitted without a model emits `omp.notice.error` without a provider request. |
 | extensions | `/extensions` opens a picker, selects the first rule row and closes. The unsupported `expand` action is not used. |
 | import-claude | `--from-claude` selects and activates one synthetic imported session, closes the startup surface and negotiates a second hello. |

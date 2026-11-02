@@ -40,6 +40,7 @@ import { findSessionFile, onSessionsChanged } from "./sessions";
 import { TuiDebugClient, type TuiPaint } from "./tui-debug";
 import { TspInputStateError, TspSession } from "./tsp/session";
 import { TspStream } from "./tsp/stream";
+import { StartupDiagnosticCapture, startupDiagnostic, STARTUP_DIAGNOSTIC_MAX_CHARS } from "./startup-diagnostics";
 
 const CollabHosts = z.object({
 	hosts: z.array(
@@ -63,9 +64,6 @@ const TSP_NEGOTIATION_MS = 10_000;
 const STOP_GRACE_MS = 4000;
 const STOP_PROGRESS_MS = 15_000;
 type ShutdownStage = "requested" | "acknowledged" | "teardown" | "cleanup";
-const STARTUP_DIAGNOSTIC_MAX_LINES = 8;
-const STARTUP_DIAGNOSTIC_MAX_CHARS = 1200;
-const STARTUP_DIAGNOSTIC = /^(?:Error:\s*|Session file not found:\s*|Could not restore model\s+|Model (?:unavailable:\s*|.+ (?:not found|unavailable)\b)|No models available\.)/;
 
 export interface EditorInputTransaction {
 	assertOpen(): void;
@@ -107,6 +105,7 @@ export class SessionHost {
 	#nativeBridge: NativeBridge | null = null;
 	#tsp: TspSession | null = null;
 	#tspStream: TspStream | null = null;
+	#tspStartup: StartupDiagnosticCapture | null = null;
 	#tspRevision = 0;
 	#tspSurfaceGenerations = new Map<string, number>();
 	#tspFailure: string | null = null;
@@ -193,6 +192,7 @@ export class SessionHost {
 			const childEnv: NodeJS.ProcessEnv = { ...env, OMP_SKIP_SETUP: "1", OMP_TUI_DEBUG: debugPath };
 			childEnv.VOMP_NATIVE_BRIDGE = this.#nativeBridge.url;
 			if (useTsp) {
+				this.#tspStartup = new StartupDiagnosticCapture();
 				childEnv.TERM_PROGRAM = "tern";
 				delete childEnv.PI_TUI_NATIVE;
 				const appearance = this.#tspAppearance();
@@ -206,6 +206,7 @@ export class SessionHost {
 							this.#armTspHandshake(5000, true);
 						}
 						if (reason === "open") {
+							this.#finishStartup();
 							clearTimeout(this.#tspHandshakeTimer ?? undefined);
 							this.#tspHandshakeTimer = null;
 						}
@@ -304,11 +305,14 @@ export class SessionHost {
 	}
 
 	#terminalOutput(data: string | Uint8Array): void {
+		if (this.#tspStartup && !this.#startupComplete) this.#tspStartup.push(typeof data === "string" ? Buffer.from(data) : data);
 		this.#screen.write(data, () => {
-			// Semantic bytes never enter startup diagnostics, OSC parsing or the classic mirror.
-			if (!this.#startupComplete) this.#rememberStartupDiagnostic();
-			if (this.#captureStartupNotices) this.#rememberStartupNotices();
-			if (this.#closing) this.#rememberShutdownProgress();
+			// TSP startup failures use raw bytes; post-surface notices use semantic nodes.
+			if (!this.#tsp) {
+				if (!this.#startupComplete) this.#rememberStartupDiagnostic();
+				if (this.#captureStartupNotices) this.#rememberStartupNotices();
+				if (this.#closing) this.#rememberShutdownProgress();
+			}
 		});
 		// Decode a copy for legacy observers; xterm receives the original bytes, including split UTF-8.
 		broadcast("host:data", { hostId: this.id, data: typeof data === "string" ? data : this.#terminalDecoder.write(Buffer.from(data)) });
@@ -883,6 +887,7 @@ export class SessionHost {
 		this.#tspHandshakeTimer = null;
 		this.#tspSurfaceGenerations.clear();
 		this.#tspStream?.end();
+		this.#tspStartup?.end();
 		const remainder = this.#terminalDecoder.end();
 		if (remainder) broadcast("host:data", { hostId: this.id, data: remainder });
 		// xterm parses writes asynchronously; flush the final error before disposing the screen.
@@ -904,6 +909,7 @@ export class SessionHost {
 		this.#startupComplete = true;
 		this.#lastExitReason = null;
 		this.#startupResumeFileMissing = false;
+		this.#tspStartup = null;
 	}
 
 	#rememberStartupNotices(): void {
@@ -940,6 +946,14 @@ export class SessionHost {
 
 	/** Keep recognized diagnostics above the editor; never copy arbitrary startup output or drafts. */
 	#rememberStartupDiagnostic(): void {
+		if (this.#tsp) {
+			const diagnostic = this.#tspStartup?.diagnostic(this.#options.resumeFile);
+			if (diagnostic) {
+				this.#lastExitReason = diagnostic.text;
+				this.#startupResumeFileMissing = diagnostic.resumeFileMissing;
+			}
+			return;
+		}
 		const buffer = this.#screen.buffer.active;
 		const lines: string[] = [];
 		let wrapped = "";
@@ -956,15 +970,10 @@ export class SessionHost {
 			wrapped = (wrapped + text).slice(0, STARTUP_DIAGNOSTIC_MAX_CHARS + 1);
 		}
 		if (wrapped) lines.push(wrapped);
-		const diagnostics = lines.map(line => line.trim()).filter(line => STARTUP_DIAGNOSTIC.test(line));
-		if (!diagnostics.length) return;
-		this.#startupResumeFileMissing = diagnostics.some(line => {
-			const file = /^(?:Error:\s*)?Session file not found:\s*(.+)$/.exec(line)?.[1];
-			return file !== undefined && file === this.#options.resumeFile;
-		});
-		const text = diagnostics.slice(-STARTUP_DIAGNOSTIC_MAX_LINES).join("\n");
-		this.#lastExitReason =
-			text.length > STARTUP_DIAGNOSTIC_MAX_CHARS ? `${text.slice(0, STARTUP_DIAGNOSTIC_MAX_CHARS - 1)}…` : text;
+		const diagnostic = startupDiagnostic(lines, this.#options.resumeFile);
+		if (!diagnostic) return;
+		this.#startupResumeFileMissing = diagnostic.resumeFileMissing;
+		this.#lastExitReason = diagnostic.text;
 	}
 
 	async #cleanup(): Promise<void> {

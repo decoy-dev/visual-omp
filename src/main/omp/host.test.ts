@@ -148,6 +148,13 @@ describe("startup exit", () => {
 		expect(host.state.resumeFileMissing).toBe(false);
 	});
 
+	it("offers the same missing-resume recovery for omp 18.15.0's quoted error", async () => {
+		pty.data?.('Error: Session "/tmp/visual-omp-missing-session-host-test.jsonl" not found.\r\n');
+		await exit(1);
+		expect(host.state.resumeFileMissing).toBe(true);
+		expect(host.state.exitReason).toContain('Session "/tmp/visual-omp-missing-session-host-test.jsonl" not found.');
+	});
+
 	it("retains only the final eight non-empty screen lines", async () => {
 		pty.data?.(Array.from({ length: 12 }, (_, i) => `Error: detail ${i + 1}\r\n`).join(""));
 		await exit(1);
@@ -623,13 +630,13 @@ it("rejects editor transaction methods after their input lock has been released"
 	expect(pty.keys).not.toHaveBeenCalled();
 });
 
-async function launchTsp(platform: NodeJS.Platform = "darwin", fakeClock = false): Promise<void> {
+async function launchTsp(platform: NodeJS.Platform = "darwin", fakeClock = false, resumeFile?: string): Promise<void> {
 	if (host.state.phase !== "exited") await exit(0);
 	if (fakeClock) vi.useFakeTimers();
 	vi.stubEnv("VOMP_TSP", "1");
 	// The spawn and debug bridge are mocked; only launch-policy selection needs the platform.
 	vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? platform : Reflect.get(target, key) }));
-	host = new SessionHost({ cwd: tmpdir() });
+	host = new SessionHost({ cwd: tmpdir(), resumeFile });
 	await host.start();
 }
 
@@ -805,16 +812,83 @@ describe("opt-in semantic transport", () => {
 		} finally { log.mockRestore(); }
 	});
 
-	it("keeps OSC status and startup diagnostics on the non-TSP byte path", async () => {
+	it.each([1, 13, 197])("replays missing-resume startup bytes in %i-byte reads with fresh-chat recovery", async size => {
+		await launchTsp("darwin", false, "/tmp/vomp-fixture/missing-session.jsonl");
+		const raw = await readFile(new URL("./tsp/fixtures/18.15.0/startup-missing-resume.raw.bin", import.meta.url));
+		for (let offset = 0; offset < raw.length; offset += size) pty.data?.(raw.subarray(offset, offset + size));
+		await exit(1);
+		expect(host.state).toMatchObject({
+			transport: "tsp", exitCode: 1, resumeFileMissing: true, restoreAvailable: false,
+			exitReason: 'Error: Session "/tmp/vomp-fixture/missing-session.jsonl" not found.',
+		});
+		expect(host.tspSnapshot()?.surfaces).toEqual([]);
+	});
+
+	it("keeps the composer accepting input after the recorded no-model warning", async () => {
 		await launchTsp();
+		const messages = (await readFile(new URL("./tsp/fixtures/18.15.0/startup-no-model.messages.jsonl", import.meta.url), "utf8")).trim().split("\n").map(line => JSON.parse(line));
+		for (const message of messages) {
+			tspMessage(message.verb, message.body);
+			if (JSON.stringify(message.body).includes("No default model selected.")) break;
+		}
+		await connect();
+		expect(host.state.exitReason).toBeNull();
+		expect(host.state.notices).toEqual([]);
+		expect(host.tspSnapshot()?.availability).toEqual({ available: true, reason: null });
+		await host.submit("Recorded no-model composer input");
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"text":"Recorded no-model composer input"'));
+	});
+
+	it("retains a raw startup diagnostic even when a same-chunk clear removes painted rows", async () => {
+		await launchTsp();
+		pty.data?.(Buffer.from("Error: before TUI\r\n\x1b[2J\x1b[Hordinary output"));
+		await exit(1);
+		expect(host.state.exitReason).toBe("Error: before TUI");
+	});
+
+	it("bounds pre-surface diagnostics to eight lines and strips split terminal escapes", async () => {
+		await launchTsp();
+		const bytes = Buffer.from('\x1b]0;Error: hidden title\x07' + Array.from({ length: 12 }, (_, i) => `\x1b[31mError: café ${i + 1}\x1b[0m\r\n`).join("") + '\x1bPError: hidden DCS\x1b\\');
+		for (const byte of bytes) pty.data?.(Buffer.from([byte]));
+		await exit(1);
+		expect(host.state.exitReason?.split("\n")).toEqual(Array.from({ length: 8 }, (_, i) => `Error: café ${i + 5}`));
+	});
+
+	it("bounds a pre-surface diagnostic to 1,200 characters without a final newline", async () => {
+		await launchTsp();
+		pty.data?.(Buffer.from(`\x1b[31mError: ${"large ".repeat(1000)}\x1b[0m`));
+		await exit(1);
+		expect(host.state.exitReason).toHaveLength(1200);
+		expect(host.state.exitReason?.endsWith("…")).toBe(true);
+		expect(host.state.resumeFileMissing).toBe(false);
+	});
+
+	it("does not offer missing-resume recovery for another file or a successful TSP exit", async () => {
+		await launchTsp("darwin", false, "/tmp/another-session.jsonl");
+		const raw = await readFile(new URL("./tsp/fixtures/18.15.0/startup-missing-resume.raw.bin", import.meta.url));
+		pty.data?.(raw);
+		await exit(1);
+		expect(host.state.resumeFileMissing).toBe(false);
+		expect(host.state.exitReason).toContain("missing-session.jsonl");
+		await launchTsp("darwin", false, "/tmp/vomp-fixture/missing-session.jsonl");
+		pty.data?.(raw);
+		await exit(0);
+		expect(host.state.exitReason).toBeNull();
+		expect(host.state.resumeFileMissing).toBe(false);
+	});
+
+	it("keeps OSC status on the non-TSP path and stops diagnostics when a surface opens", async () => {
+		await launchTsp();
+		pty.data?.(Buffer.from("Error: raw startup café\r\n"));
 		tspMessage("q", { q: "hello", v: [1] });
 		tspMessage("o", { id: "s:1", mode: "inline" });
 		tspMessage("f", { sf: "s:1", s: 1, ops: [["add", "main", "s:1", null, { id: "main", k: "text", p: { text: "Error: semantic text is not a startup diagnostic" } }]] });
-		pty.data?.(Buffer.from("Error: raw startup café\r\n\x1b]7501;state=working:app=omp\x07"));
+		pty.data?.(Buffer.from("Error: post-surface output\r\n\x1b]7501;state=working:app=omp\x07"));
 		await vi.waitFor(() => expect(host.state.programStatus).toMatchObject({ state: "working" }));
 		expect(broadcast).not.toHaveBeenCalledWith("host:data", expect.objectContaining({ data: expect.stringContaining("semantic text") }));
 		await exit(1);
-		expect(host.state.exitReason).toBe("Error: raw startup café");
+		expect(host.state.exitReason).toBeNull();
+		expect(host.state.notices).toEqual([]);
 	});
 
 	it("returns protocol credits while unsupported painted input is refused without host error", async () => {
@@ -1162,8 +1236,9 @@ describe("opt-in semantic transport", () => {
 		expect(() => pty.data?.(Buffer.from('\x1b_tsp;f;{"sf":"s:1","s":1,"ops":[["add"]]}\x1b\\Error: raw startup failure\r\n'))).not.toThrow();
 		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "failed", failure: expect.stringContaining("Invalid TSP frame") });
 		expect(host.state.error).toBeNull();
+		expect(broadcast).toHaveBeenCalledWith("host:data", expect.objectContaining({ data: "Error: raw startup failure\r\n" }));
 		await exit(1);
-		expect(host.state.exitReason).toBe("Error: raw startup failure");
+		expect(host.state.exitReason).toBeNull();
 	});
 });
 

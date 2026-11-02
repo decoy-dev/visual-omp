@@ -11,7 +11,7 @@ const committed = new URL("./fixtures/18.15.0/", import.meta.url);
 function vocabulary(content: string) {
 	const roles = new Set<string>(); const actions = new Set<string>(); const errors: Error[] = [];
 	const session = new TspSession({ cols: 110, dark: false, reduceMotion: true, write: () => {}, onError: error => errors.push(error) });
-	for (const line of content.trim().split("\n")) {
+	for (const line of content.trim().split("\n").filter(Boolean)) {
 		const message: { verb: string; body: unknown } = JSON.parse(line);
 		session.receive({ verb: message.verb, params: {}, body: JSON.stringify(message.body) });
 		for (const surface of session.snapshot().surfaces) {
