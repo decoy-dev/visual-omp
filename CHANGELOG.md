@@ -4,6 +4,20 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.4] - 2026-11-02
+
+visual-omp 0.7.4 fixes model and thinking changes in chats, adds fallback model settings and a grouped model menu, and lets you send a message while omp waits on a question. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **New:** Edit fallback models for each role in Settings › Models & roles.
+- **New:** The model menu groups models by provider and family.
+- **New:** Send a message while omp waits on a question, and queue compaction while omp works.
+- **New:** The transcript shows when each message, thinking step and action happened.
+- **New:** The status bar shows how much CPU and memory visual-omp uses.
+- **Changed:** visual-omp now requires omp 18.15.0 or later.
+- **Fixed:** Model and thinking changes no longer fail with a warning that an omp menu is open.
+
 ### Detailed changes
 
 #### New
@@ -14,6 +28,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - You can queue compaction while omp works, then edit or remove it from the message queue.
 - The status bar shows visual-omp CPU and memory usage, with a short CPU history and details about which app processes are counted.
 - The model menu groups choices by provider and model family. Expand a family to pick an exact version, or search across all versions.
+- Transcript messages, thinking and actions now show recorded times, with dates for earlier entries and full timestamps available on hover.
 
 #### Changed
 
@@ -21,6 +36,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 #### Fixed
 
+- Fixed model and thinking changes failing with an incorrect warning that an omp menu was open.
 - File names in omp's replies that start with the chat folder's own name, such as `Sheets/overview.pdf` in a chat whose folder is `Sheets`, now become file links when the referenced file exists in that folder.
 - Table charts now exclude ratio and speedup columns when the values identify them as quotients of two other measurements.
 - Plan proposals no longer show a stray “Stopped” notice with omp's internal marker text in the transcript.
