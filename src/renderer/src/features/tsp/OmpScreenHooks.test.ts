@@ -125,17 +125,17 @@ it.each(["matched", "ambiguous"] as const)("keeps the collab question card answe
 	const arb = new QuestionArbitrator();
 	arb.update(scope, { ...scope, connection: 1, revision: 1, connected: true, requests: status === "matched" ? [request] : [request, { ...request, reqId: 5 }] });
 	const snapshot: TspHostSnapshot = { ...scope, revision: 1, lifecycle: "live", negotiated: true, documentGeneration: 1, availability: { available: false, reason: "Question open" }, failure: null, surfaces: [surface], questionMatches: arb.matches(scope, dialogs) };
-	const invoke = vi.fn().mockResolvedValue(undefined);
+	const invoke = vi.fn(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
 	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: () => () => {} } });
 	const answer = vi.fn();
-	const session = { answer, getSnapshot: () => ({ strandedImages: false }) } as unknown as SessionController;
+	const session = { answer, getSnapshot: () => ({ strandedImages: false, host: { transport: "tsp", hostId: "host", generation: 1 } }) } as unknown as SessionController;
 	await act(async () => root.render(createElement("div", null,
 		createElement(OmpScreenSheet, { hostId: "host", generation: 1, snapshot, failed: false, readOnly: false }),
 		createElement(QuestionCard, { session, request }),
 	)));
 	const local = element.querySelector('[role="region"]')!;
-	expect(local.querySelector('[role="listbox"]')?.getAttribute("aria-disabled")).toBe("true");
-	expect([...local.querySelectorAll<HTMLButtonElement>("button")].every(button => button.disabled)).toBe(true);
+	if (status === "matched") expect(local.querySelector('[role="listbox"]')).toBeNull();
+	else expect(local.querySelector('[role="listbox"]')?.getAttribute("aria-disabled")).toBe("true");
 	const card = element.querySelector('[data-question-card="4"]')!;
 	expect(card).not.toBeNull();
 	await act(async () => card.querySelectorAll<HTMLButtonElement>('[role="radio"]')[1]!.click());

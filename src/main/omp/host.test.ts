@@ -1406,6 +1406,47 @@ it.each(["matched", "ambiguous"] as const)("writes no answer bytes for recorded 
 	expect(requests.map(request => request.reqId)).toEqual(status === "matched" ? [4] : [4, 5]);
 });
 
+it.each(["request-before-node", "node-before-request", "reconnect", "remote-guest"] as const)("arbitrates recorded hooks with %s ordering at the main writer", async ordering => {
+	await launchTsp();
+	const messages = await recording("hook-collab-aware", "messages");
+	const model = new TspSession({ cols: 110, dark: false, reduceMotion: true, write: () => {} });
+	for (const message of messages.slice(0, -1)) model.receive({ verb: message.verb, params: {}, body: JSON.stringify(message.body) });
+	const recorded = hookQuestions(model.snapshot().surfaces, 1)[0]!;
+	const request = { reqId: 4, kind: "select", title: recorded.title, options: recorded.options! };
+	const hookIndex = messages.findIndex(message => message.verb === "f" && JSON.stringify(message.body).includes('"noun":"options"'));
+	for (const message of messages.slice(0, hookIndex)) tspMessage(message.verb, message.body);
+	await connect();
+	const epoch = host.tspSnapshot()!.epoch;
+	const mirror = { hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [] as typeof request[] };
+	host.tspQuestions({ ...mirror, requests: ordering === "request-before-node" ? [request] : [] });
+	for (const message of messages.slice(hookIndex, -1)) tspMessage(message.verb, message.body);
+	const answer = { kind: "choose" as const, sf: recorded.surfaceId, id: recorded.nodeId, target: recorded.nodeId, item: "1" };
+	if (ordering !== "request-before-node") expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "unmatched" }]);
+	host.tspQuestions({ ...mirror, revision: 2, requests: [request] });
+	expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "matched" }]);
+	expect(host.tspSnapshot()?.availability).toMatchObject({ available: false, reasonCode: "matched-question", questionReqId: 4 });
+	await host.tspEvent(1, { ev: "visible", sf: recorded.surfaceId, visible: true }, epoch);
+	pty.writes.mockClear();
+	await expect(host.tspAnswer(1, answer, epoch)).rejects.toThrow("matched");
+	if (ordering === "reconnect") {
+		host.tspQuestions({ ...mirror, revision: 3, connected: false, requests: [request] });
+		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "unavailable" }]);
+		await expect(host.tspAnswer(1, answer, epoch)).rejects.toThrow("unavailable");
+		host.tspQuestions({ ...mirror, connection: 2, revision: 4, requests: [request] });
+		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "matched" }]);
+		await expect(host.tspAnswer(1, answer, epoch)).rejects.toThrow("matched");
+	}
+	if (ordering === "remote-guest") {
+		// ui-request-end after a remote answer retains the guard until omp removes its node.
+		host.tspQuestions({ ...mirror, revision: 3, requests: [] });
+		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "settling" }]);
+		await expect(host.tspAnswer(1, answer, epoch)).rejects.toThrow("settling");
+		for (const message of (await recording("hook-select", "messages")).slice(5)) tspMessage(message.verb, message.body);
+		expect(host.tspSnapshot()?.questionMatches).toEqual([]);
+	}
+	expect(pty.writes.mock.calls.some(([bytes]) => /"ev":"(?:activate|edit|action)"/.test(String(bytes)))).toBe(false);
+});
+
 it("marks the recorded unconfirmed optimistic surface fallback tspFailed instead of waiting on an empty screen", async () => {
 	await launchTsp("darwin", true);
 	const raw = await readFile(new URL("./tsp/fixtures/18.15.0/handshake-timeout.raw.bin", import.meta.url));

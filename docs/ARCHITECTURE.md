@@ -275,10 +275,10 @@ gets an initial native mode snapshot and `native:changed` updates, preserving Go
 permission button's work-mode label without the 1-second or 450 ms screen timer. Approval policy
 continues to use its existing config source. Explicit refreshes also use native mode facts, and the
 painted read helper refuses TSP locally before IPC. Lifecycle revisions cancel old polling and
-discard in-flight painted results across reconnect and transport round trips. The classic dialog
-and Plan Review cards stay absent
-for TSP. The Plan pane and its badge do not inspect painted overlays or expose classic approval
-controls in TSP; plan-file reading remains available, and omp's own UI is reachable in the omp screen.
+discard in-flight painted results across reconnect and transport round trips. The native hook
+card reads TSP documents; the Plan Review card remains absent for TSP. The Plan pane and its
+badge do not inspect painted overlays or expose classic approval controls in TSP; plan-file
+reading remains available, and omp's other UI is reachable in the omp screen.
 
 The composer does not start its 600 ms painted next-message prediction poll for TSP hosts.
 Transport changes also hide an old offer and prevent its capture. Independent word completion
@@ -309,8 +309,8 @@ acknowledge `/exit`. A live hook, regardless of arbitration state or region, blo
 Escape and preserves the existing deadline and native force-stop decision.
 
 Startup worktree creation remains disabled. During application-driven shutdown, hook controls
-are unavailable with "This chat is closing." Exit questions can be read in the omp screen but
-cannot be answered there while closing; authorized shutdown-question interaction remains Phase 4b.
+are unavailable with "This chat is closing." Exit questions can be read in the native hook card
+but cannot be answered while closing; authorized shutdown-question interaction remains Phase 4b.
 Typing `/exit` during a live session is a different case: its unmatched hook question remains
 answerable through the ordinary guarded path until application-driven shutdown starts.
 
@@ -327,9 +327,12 @@ launch errors are shown, and a failed stop prevents relaunch.
 revision, protocol epoch, lifecycle state and send availability. The renderer reconciles replacement
 documents, reuses unchanged nodes and supports subscriptions by surface and node id. Shared
 view-state derivations identify overlays, screen surfaces, focus, the composer and unclaimed output.
-The role/action registry determines claims and interaction overrides. Classic cards claim no TSP
-nodes. These channels retain the existing trusted app-window IPC boundary and main-owned host
-lookup; they do not introduce per-window host ownership.
+The role/action registry declares consumer capabilities and interaction overrides. Mounted visible
+renderer consumers acquire exact host/epoch/surface/node presentation claims through
+`features/tsp/presentation-claims.tsx`. Hidden chat pages, hidden split panes, modal sheets and
+unmounted consumers release their claims, restoring the generic omp screen with its existing
+arbitration restrictions. Notice projections and always-present composer model/effort consumers retain static claims.
+These channels retain the trusted app-window IPC boundary and main-owned host lookup.
 
 For TSP hosts, every existing terminal-sheet entry point opens the lazy-loaded **omp screen**.
 The palette title and hint, status menu and tree fallback action use omp screen wording for TSP;
@@ -355,13 +358,28 @@ The normal view never dumps node props as JSON;
 the raw outline disclosure contains that developer metadata. Hook input omits omp's inherited
 `> ` terminal prefix because the native app field already supplies its own chrome.
 
-Semantic overlays, dock hook forms and screen surfaces open the sheet without a painting delay,
-except matched hook dialogs, whose chat question card stays unobscured. An automatically opened
-sheet closes when its hook becomes matched; a manually opened sheet remains available as a
-display-only view. Other overlay closure also closes only an automatically opened sheet.
-Escape cancels a unique locally answerable unmatched hook through the guarded route. For a
-matched, ambiguous, unavailable, settling, answering or closing hook, Escape closes the sheet
-without writing to omp. Other overlays and focused raw fallbacks keep their guarded Escape handling.
+Semantic overlays, dock forms and screen surfaces open the sheet without a painting delay.
+Supported hook dialogs are claimed while a mounted visible native `OmpDialogCard` presents them,
+with the same public props and presentation as classic. Matched hooks use the visible collab
+question card's exact request ownership. Without an active presentation claim, the generic omp
+screen retains the hook and its arbitration restrictions. Disabled options remain inert under
+pointer and double-click input, and keyboard navigation skips them. Other uncertain arbitration
+states remain display-only in the native card. A local answer sends one guarded transaction:
+item-id activation, full-range UTF-16 edit followed by submit, or declared cancel/close with Escape
+fallback. The card stays busy until its addressed node leaves. Losing answers whose node already
+closed receive the existing calm completion message. Full lists retain every item, without a hidden
+options notice or terminal offer. Local dialogs do not alter chat status.
+The shared pure helpers in `src/shared/tsp/dialogs.ts` expose role lookup, event construction,
+hook facts and node-departure predicates. `ompDialogTsp.ts` adapts presentation and provides the
+generation/epoch-scoped document-subscription completion wait. Presentation claims never remove
+input ownership: main availability, shutdown and slash watches query physical overlays with
+`openOverlay(surfaces, true)`. The normal projection omits claimed nodes.
+An available-consumer registration is separate from active suppression. A sheet covering a native
+hook card reveals the generic hook, but Escape closes the sheet without cancelling that hook.
+When no native consumer is available, the generic guarded cancellation path remains unchanged.
+Availability is scoped to the same exact target, releases on hidden ancestors or unmount, and
+grants no input authority.
+Other overlays and focused raw fallbacks keep their guarded Escape handling.
 With no open omp overlay, screen or focused raw fallback, Escape closes the sheet.
 Closing the sheet itself does not answer omp, and focus returns to that chat's composer.
 "Show raw outline" discloses the read-only developer inspector below the semantic content.
@@ -381,7 +399,7 @@ both its request and node have ended. Snapshots expose `questionMatches`, includ
 `nodeFirstSeenMs` and, once matched, `requestFirstSeenMs`. Both use main's single monotonic clock
 and retain first observations through completion; they do not establish input authority.
 
-While the chat is open, hook dialogs are answerable in the omp screen only with a connected,
+While the chat is open, native hook dialogs are answerable only with a connected,
 current-host, current-epoch, current-generation collab mirror reporting no pending request, a
 unique live dialog target and an `unmatched` arbitration result. Matched dialogs direct the reader to the chat's question card;
 ambiguous, unavailable and settling dialogs remain display-only with their reason. omp 18.14.0

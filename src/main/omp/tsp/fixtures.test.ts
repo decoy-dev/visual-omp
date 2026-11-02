@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { TspNode } from "../../../shared/tsp";
 import { TspSession } from "./session";
@@ -11,6 +11,7 @@ const hookScenarios = ["hook-select", "hook-input", "hook-editor", "hook-confirm
 	.flatMap(name => [`${name}-open`, name, `${name}-cancel`]);
 const scenarios = ["hotkeys", "jobs", "usage", "session", "changelog", "tools", "model-picker", "settings-screen", "extensions", "import-claude", "startup-no-model", "notice-error", "exit", "exit-with-overlay", "restart", "new", "resume", "sibling-continuation", "hook-collab-aware", ...hookScenarios, "tree-open", "tree-confirm"];
 scenarios.push("btw-history", "model-switch", "thinking-cycle", "switch-typed", "model-switch-compact", "model-switch-compact-error");
+scenarios.push(...readdirSync(new URL("./fixtures/18.15.0/", import.meta.url)).filter(name => name.startsWith("hook-parity-") && name.endsWith(".messages.jsonl")).map(name => name.replace(".messages.jsonl", "")));
 const fixture = (name: string, extension: string) => readFileSync(new URL(`./fixtures/18.15.0/${name}.${extension}`, import.meta.url));
 
 describe("omp 18.15.0 semantic recordings", () => {

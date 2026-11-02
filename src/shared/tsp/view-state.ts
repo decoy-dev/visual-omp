@@ -1,9 +1,11 @@
 import type { TspNode } from "../tsp";
 import type { TspSurfaceSnapshot } from "../tsp-host";
-import { isClaimed, isHookNode, isReplicatedRole, TSP_ROLES } from "./roles";
+import { isClaimable, isClaimed, isHookNode, isReplicatedRole, TSP_ROLES } from "./roles";
 
 export interface TspNodeTarget { surface: TspSurfaceSnapshot; node: TspNode }
 export type TspSurfaces = readonly TspSurfaceSnapshot[];
+/** Renderer supplies ownership scoped to one exact host and protocol epoch. */
+export type TspPresentationClaims = ReadonlyMap<string, ReadonlySet<string>>;
 
 export function* walkNodes(node: TspNode): Generator<TspNode> {
 	if (node.p?.hidden) return;
@@ -16,14 +18,15 @@ export function region(surface: TspSurfaceSnapshot, id: "main" | "dock" | "layer
 export function liveSurfaces(surfaces: TspSurfaces): TspSurfaceSnapshot[] {
 	return surfaces.filter(surface => !surface.closed && !surface.suspended);
 }
-/** The top layer wins; hook forms may instead replace omp's dock composer. */
-export function openOverlay(surfaces: TspSurfaces): TspNodeTarget | null {
+/** The top layer wins. Input ownership includes claimed nodes; presentation omits them. */
+export function openOverlay(surfaces: TspSurfaces, includeClaimed = false, presented?: TspPresentationClaims): TspNodeTarget | null {
 	for (const surface of [...liveSurfaces(surfaces)].reverse()) {
-		const nodes = region(surface, "layer").filter(node => !node.p?.hidden && node.k !== "toast" && !isClaimed(node));
+		const claimed = (node: TspNode) => isClaimed(node) || !!presented?.get(surface.open.id)?.has(node.id) && isClaimable(node);
+		const nodes = region(surface, "layer").filter(node => !node.p?.hidden && node.k !== "toast" && (includeClaimed || !claimed(node)));
 		const node = nodes.at(-1);
 		if (node) return { surface, node };
 		let hook: TspNode | undefined;
-		for (const root of region(surface, "dock")) for (const candidate of walkNodes(root)) if (isHookNode(candidate)) hook = candidate;
+		for (const root of region(surface, "dock")) for (const candidate of walkNodes(root)) if (isHookNode(candidate) && (includeClaimed || !claimed(candidate))) hook = candidate;
 		if (hook) return { surface, node: hook };
 	}
 	return null;
@@ -56,9 +59,9 @@ export function composer(surfaces: TspSurfaces): TspNodeTarget | null {
 	return null;
 }
 /** Keep whole unclaimed subtrees; replicated transcript and the app composer never appear twice. */
-export function unclaimed(surface: TspSurfaceSnapshot, area: "main" | "dock" | "layer"): readonly TspNode[] {
+export function unclaimed(surface: TspSurfaceSnapshot, area: "main" | "dock" | "layer", presented?: ReadonlySet<string>): readonly TspNode[] {
 	const project = (node: TspNode): TspNode[] => {
-		if (node.p?.hidden || isClaimed(node) || (area === "main" && isReplicatedRole(node.p?.role))) return [];
+		if (node.p?.hidden || isClaimed(node) || presented?.has(node.id) && isClaimable(node) || (area === "main" && isReplicatedRole(node.p?.role))) return [];
 		if (node.p?.role === TSP_ROLES.editor) return [];
 		const children = node.c?.flatMap(project);
 		if ((node.k === "col" || node.k === "row") && !node.p?.role && !node.p?.actions && !children?.length) return [];

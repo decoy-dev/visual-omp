@@ -24,6 +24,7 @@ export function Heading({ icon, children }: { icon: ReactNode; children: ReactNo
 export interface Choice {
 	label: string;
 	description?: string;
+	disabled?: boolean;
 }
 
 export interface ChoiceGridProps {
@@ -50,22 +51,21 @@ export function ChoiceGrid({ choices, multi, labelledBy, describedBy, isOn, acti
 		// Modified arrows belong to the card (Alt+Left and Alt+Right move between questions).
 		if (event.altKey || event.metaKey || event.ctrlKey || event.shiftKey) return;
 		const current = Number((event.target as HTMLElement).dataset.choice ?? activeIndex);
-		const last = choices.length - 1;
-		const next =
-			event.key === "ArrowDown" || event.key === "ArrowRight"
-				? current >= last ? 0 : current + 1
-				: event.key === "ArrowUp" || event.key === "ArrowLeft"
-					? current <= 0 ? last : current - 1
-					: event.key === "Home"
-						? 0
-						: event.key === "End"
-							? last
-							: null;
-		if (next === null) return;
+		const direction = event.key === "ArrowDown" || event.key === "ArrowRight" || event.key === "Home" ? 1
+			: event.key === "ArrowUp" || event.key === "ArrowLeft" || event.key === "End" ? -1 : 0;
+		if (!direction) return;
 		event.preventDefault();
-		onSelect(next);
-		event.currentTarget.querySelector<HTMLElement>(`[data-choice="${next}"]`)?.focus();
+		let next = event.key === "Home" ? -1 : event.key === "End" ? choices.length : current < 0 ? direction === 1 ? -1 : choices.length : current;
+		for (let step = 0; step < choices.length; step++) {
+			next = (next + direction + choices.length) % choices.length;
+			if (!choices[next]?.disabled) {
+				onSelect(next);
+				event.currentTarget.querySelector<HTMLElement>(`[data-choice="${next}"]`)?.focus();
+				return;
+			}
+		}
 	};
+	const tabIndex = choices[activeIndex] && !choices[activeIndex]?.disabled ? activeIndex : choices.findIndex(choice => !choice.disabled);
 
 	return (
 		<div
@@ -75,10 +75,10 @@ export function ChoiceGrid({ choices, multi, labelledBy, describedBy, isOn, acti
 			onKeyDown={multi || disabled ? undefined : moveSelection}
 			className="mt-3 grid gap-2 sm:grid-cols-2"
 		>
-			{choices.map(({ label, description }, index) => {
+			{choices.map(({ label, description, disabled: optionDisabled }, index) => {
 				const on = isOn(index);
 				// Radio pattern: only the checked option (or the first) is a tab stop; arrow keys move and select.
-				const tabStop = multi || (activeIndex === -1 ? index === 0 : index === activeIndex);
+				const tabStop = !optionDisabled && (multi || index === tabIndex);
 				return (
 					<button
 						// Options are fixed per question, and their labels can repeat.
@@ -87,17 +87,18 @@ export function ChoiceGrid({ choices, multi, labelledBy, describedBy, isOn, acti
 						role={multi ? "checkbox" : "radio"}
 						aria-checked={on}
 						tabIndex={tabStop ? 0 : -1}
-						disabled={disabled}
+						disabled={disabled || optionDisabled}
+						aria-disabled={disabled || optionDisabled || undefined}
 						data-choice={index}
-						onClick={() => onSelect(index)}
+						onClick={() => { if (!disabled && !optionDisabled) onSelect(index); }}
 						onDoubleClick={() => {
-							if (!multi) onConfirm?.(index);
+							if (!multi && !disabled && !optionDisabled) onConfirm?.(index);
 						}}
 						className={cn(
 							"relative flex min-h-12 items-start gap-2.5 rounded-md border px-3 py-2.5 text-left outline-none transition-colors duration-(--dur) focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-default",
 							on ? "border-transparent" : "border-control enabled:hover:bg-hover",
 							multi && on && "border-accent bg-accent-muted",
-							disabled && !on && "opacity-60",
+							(disabled || optionDisabled) && !on && "opacity-60",
 						)}
 					>
 						{/* Single choice: one highlight slides to the picked option. */}

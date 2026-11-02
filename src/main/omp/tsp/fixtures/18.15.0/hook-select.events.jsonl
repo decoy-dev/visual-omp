@@ -6,4 +6,4 @@
 {"verb":"e","body":{"ev":"activate","sf":"s:1","id":"k.^picker","item":"1"},"afterMessage":5}
 {"verb":"e","body":{"ev":"ack","sf":"s:1","s":4},"afterMessage":6}
 {"verb":"e","body":{"ev":"send","sf":"s:1","id":"g.line/input","text":"/exit"},"afterMessage":6}
-{"verb":"e","body":{"ev":"ack","sf":"s:1","s":5},"afterMessage":7}
+{"verb":"e","body":{"ev":"ack","sf":"s:1","s":5},"afterMessage":8}

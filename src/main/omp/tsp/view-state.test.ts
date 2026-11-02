@@ -7,6 +7,7 @@ import type { TspHostSnapshot, TspSurfaceSnapshot } from "../../../shared/tsp-ho
 import type { TspFrame, TspOpen } from "../../../shared/tsp";
 import { TspDocumentStore } from "../../../shared/tsp/document";
 import { composer, openOverlay, screenSurface, unclaimed } from "../../../shared/tsp/view-state";
+import { isClaimed, TSP_ROLES } from "../../../shared/tsp/roles";
 
 function snap(revision = 1): TspHostSnapshot {
 	return { hostId: "host", generation: 1, epoch: 1, availability: { available: true, reason: null }, revision, negotiated: true, lifecycle: "live", documentGeneration: 1, failure: null, surfaces: [{ documentGeneration: 1, open: { id: "s:1", mode: "inline", role: "omp.session" }, sequence: revision, closed: false, focus: "editor", suspended: false, settled: [], document: { id: "s:1", k: "col", c: [{ id: "dock", k: "col", p: { role: "omp.editor" }, c: [{ id: "editor", k: "editor", p: { sendable: true, text: "draft" } }] }] } }] };
@@ -37,4 +38,12 @@ it("reads the committed omp 18.15 byte capture and exposes its BTW overlay witho
 	} });
 	stream.push(readFileSync(resolve(process.cwd(), "src/main/omp/tsp/fixtures/18.15.0/btw-history.raw.bin"))); stream.end();
 	expect(sawOverlay).toBe(true); expect(sawComposer).toBe(true);
+});
+
+it.each([TSP_ROLES.composerModel, TSP_ROLES.composerEffort, TSP_ROLES.composerModelEffort])("preserves the always-present %s consumer without a dynamic presentation claim", role => {
+	const surface = snap().surfaces[0]!;
+	const node = { id: "status", k: "text" as const, p: { role, text: "Current model or effort" } };
+	surface.document = { id: "s:1", k: "col", c: [{ id: "dock", k: "col", c: [node] }] };
+	expect(isClaimed(node)).toBe(true);
+	expect(unclaimed(surface, "dock")).toEqual([]);
 });

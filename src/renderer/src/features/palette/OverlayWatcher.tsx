@@ -7,13 +7,13 @@
  * editor for a known dialog that replaces the editor in place (session tree, sign-in, goal prompt…).
  */
 import { openOverlay, screenSurface } from "@shared/tsp/view-state";
-import { isHookNode } from "@shared/tsp/roles";
 import { useEffect, useRef } from "react";
 import { useSessionView } from "../../shell/hooks";
 import { controllerFor, useApp } from "../../state/app";
 import { isNativeOverlay, screenName } from "./overlays";
 import { autoOpened } from "./TerminalSheet";
 import { useTsp } from "../tsp/useTsp";
+import { usePresentationClaims } from "../tsp/presentation-claims";
 
 /** Let omp finish painting before reading the screen. */
 const SETTLE_MS = 300;
@@ -27,12 +27,11 @@ function TabWatch({ tabId }: { tabId: string }) {
 	const hostId = view?.host?.hostId ?? null;
 	const tsp = view?.host?.transport === "tsp";
 	const { snapshot } = useTsp(tsp ? view?.host?.hostId ?? null : null);
+	const claims = usePresentationClaims(hostId, snapshot?.epoch);
 	const surfaces = snapshot?.lifecycle === "live" && snapshot.generation === view?.host?.generation
 		? snapshot.surfaces.filter(surface => surface.documentGeneration === snapshot.generation) : [];
-	const overlay = openOverlay(surfaces);
-	const matchedHook = overlay && isHookNode(overlay.node) && snapshot?.questionMatches?.some(match =>
-		match.surfaceId === overlay.surface.open.id && match.nodeId === overlay.node.id && match.status === "matched");
-	const semanticScreen = !matchedHook && !!(overlay || screenSurface(surfaces));
+	const overlay = openOverlay(surfaces, false, claims);
+	const semanticScreen = !!(overlay || screenSurface(surfaces));
 	const asking = Boolean(view?.guest?.uiRequest);
 	const overlays = tui?.overlays ?? 0;
 	const focused = tui?.focused ?? null;

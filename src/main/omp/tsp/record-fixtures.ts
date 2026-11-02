@@ -13,6 +13,7 @@ import { TspSession } from "./session";
 import { TspStream } from "./stream";
 import { encodeTspJson } from "./encode";
 import { sanitizeFixtureBytes } from "./sanitize-fixture";
+import { parseOmpDialog, type OmpDialog } from "../../../renderer/src/features/session-tools/ompDialog";
 
 // Bundle beside node_modules with Bun (target node, node-pty external), then run with Node.
 // No inherited configuration or provider credentials. Model turns use the isolated scripted provider.
@@ -32,7 +33,7 @@ const extension = resolve("src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs"
 await mkdir(destination, { recursive: true });
 const config = "startup:\n  setupWizard: false\n  checkUpdate: false\n  changelogMode: hidden\n  quiet: true\nmarketplace:\n  autoUpdate: off\nworktree:\n  onStart: off\n  onExit: keep\ntui:\n  autoGraph: never\nautocomplete:\n  enabled: false\nrecap:\n  enabled: false\ncomposer:\n  predictions: false\n";
 type ScriptedReply = { text?: string; tool?: { name: string; arguments: object }; delayMs?: number; gate?: string; error?: string };
-type Scenario = { name: string; command: string | null; hook?: "select" | "input" | "editor" | "confirm" | "rows"; end?: "open" | "submit" | "cancel"; script?: ScriptedReply[] };
+type Scenario = { name: string; command: string | null; hook?: "select" | "input" | "editor" | "confirm" | "rows"; end?: "open" | "submit" | "cancel"; script?: ScriptedReply[]; parity?: OmpDialog };
 
 /** Shared recorder mechanism from Phase 3; optional models allow session-switch compaction probes. */
 async function scriptedProvider(script: ScriptedReply[], agent: string, models?: object[]) {
@@ -108,6 +109,18 @@ const scenarios: Scenario[] = [
   { name: "model-switch-compact", command: null, script: Array.from({ length: 16 }, () => ({ text: "## Summary\nThe fixture conversation contains repeated context paragraphs. Preserve the numbered fixture segments and continue the local model-switch test.", delayMs: 1000 })) },
   { name: "model-switch-compact-error", command: null, script: Array.from({ length: 16 }, () => ({ error: "Fixture compaction request failed", delayMs: 1000 })) },
 ];
+// Each positive classic capture has an independently recorded native counterpart.
+for (const name of ["selector-descriptions", "selector-descriptions-moved", "selector-windowed", "selector-search", "selector-outline", "confirm", "confirm-detail", "confirm-detail-no", "input-below-panel", "input-empty", "editor-prompt", "editor-hook", "editor-hook-empty"]) {
+  const text = await readFile(resolve(`src/renderer/src/features/session-tools/fixtures/omp-dialogs/${name}.txt`), "utf8");
+  const parity = parseOmpDialog(text.split("\n"));
+  if (!parity) throw new Error(`Unrecognized classic parity capture: ${name}`);
+  if (parity.kind === "select" && parity.hidden) {
+    // The classic capture documents all 20 regions; only its painted window/filter is incomplete.
+    parity.options = Array.from({ length: 20 }, (_, i) => ({ label: `Region ${i + 1}`, description: null }));
+    parity.selected = 0;
+  }
+  scenarios.push({ name: `hook-parity-${name}`, command: `/vomp-fixture-parity ${JSON.stringify({ ...parity, outline: name === "selector-outline" })}`, hook: parity.kind === "select" ? parity.confirm ? "confirm" : "select" : parity.kind, end: "submit", parity });
+}
 for (const scenario of scenarios) {
   const { name, hook, end } = scenario;
   let command = scenario.command;
@@ -203,7 +216,7 @@ for (const scenario of scenarios) {
   };
   const role = hook === "input" ? TSP_ROLES.hookInput : hook === "editor" ? TSP_ROLES.hookEditor : TSP_ROLES.hookSelect;
   const dialog = () => find(node => node.p?.role === role
-    || (node.k === "picker" && node.p?.title === (hook === "confirm" ? "Confirm the fixture" : "Choose a fixture option")));
+    || (node.k === "picker" && node.p?.noun === "options" && node.p.layout === "rows"));
   const action = (act: string) => {
     const target = dialog();
     if (target?.node.k === "picker") {
@@ -294,7 +307,7 @@ for (const scenario of scenarios) {
         await until(() => !!dialog(), "hook dialog did not open");
         // ui.input's second argument is a placeholder. Seed a visible default via
         // the same recorded edit path; never mislabel the placeholder as a value.
-        if (hook === "input") await edit("Fixture default value");
+        if (hook === "input") await edit(scenario.parity?.kind === "input" ? scenario.parity.value : "Fixture default value");
       } else {
         await sleep(650);
         if (name === "restart") await until(() => session.snapshot().epoch >= 2 && session.availability().available, "restart did not negotiate a replacement screen");

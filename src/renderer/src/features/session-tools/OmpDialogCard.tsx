@@ -1,14 +1,6 @@
-/**
- * DESIGN §4.8 for omp's own in-place dialogs. Builtin commands (`/seance`, `/cleanse`, `/fork`
- * confirms, the goal prompts…) ask through omp's generic selector, confirm, input and editor, which
- * stay local to the TUI instead of reaching the app over collab. The card reads the dialog from the
- * painted screen (`ompDialog.ts`) and answers it with keys: a choice moves omp's highlight until the
- * screen shows it on the option, then presses Enter; a text answer replaces the field's text and
- * presses the submit key omp's legend names; Cancel presses omp's cancel key. The dialog is
- * registered as a native overlay (index.ts), so the terminal sheet stays closed while the card shows.
- */
+/** Native hook card. Classic reads painted dialogs; TSP reads complete semantic documents. */
 import { Info, Question } from "@phosphor-icons/react";
-import { type ReactNode, useEffect, useId, useState } from "react";
+import { createContext, type ReactNode, useContext, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Input, Rise, Textarea } from "@/ui";
 import { ChoiceGrid, cardClass, Heading } from "../../chat/transcript/QuestionChoices";
@@ -19,6 +11,19 @@ import { reportFailure } from "./drive";
 import { dialogKey, type OmpDialog, type OmpSelectDialog, type OmpTextDialog, parseOmpDialog } from "./ompDialog";
 import { cancelDialog, chooseOption, submitText } from "./ompDialogActions";
 import { screenPoller, useOmpScreen, useSessionView } from "./status";
+import { useTsp } from "../tsp/useTsp";
+import { currentHook, dialogAnswer, nativeDialog, waitForNodeToLeave } from "./ompDialogTsp";
+import type { TspHookAnswer } from "@shared/tsp/dialogs";
+import { usePresentationClaim } from "../tsp/presentation-claims";
+
+interface DialogActions {
+	disabled: boolean;
+	choose(index: number): Promise<void>;
+	text(text: string): Promise<void>;
+	cancel(): Promise<void>;
+	optionDisabled(index: number): boolean;
+}
+const Actions = createContext<DialogActions | null>(null);
 
 type Busy = "answer" | "cancel" | number | null;
 
@@ -33,7 +38,7 @@ function useAction(session: SessionController): [Busy, (busy: Exclude<Busy, null
 			reportFailure(error);
 		} finally {
 			setBusy(null);
-			void screenPoller(session).refresh();
+			if (session.getSnapshot().host?.transport !== "tsp") void screenPoller(session).refresh();
 		}
 	};
 	return [busy, run];
@@ -47,12 +52,14 @@ function Detail({ dialog }: { dialog: OmpDialog }): ReactNode {
 function SelectBody({ session, dialog }: { session: SessionController; dialog: OmpSelectDialog }): ReactNode {
 	const { t } = useTranslation("session");
 	const titleId = useId();
+	const actions = useContext(Actions);
 	// The pick follows its label, because a windowed list repaints other rows as omp's highlight scrolls.
 	const [pickedLabel, setPickedLabel] = useState(dialog.options[dialog.selected]?.label ?? "");
+	const [pickedIndex, setPickedIndex] = useState(dialog.selected);
 	const found = dialog.options.findIndex(option => option.label === pickedLabel);
-	const picked = found >= 0 ? found : dialog.selected;
+	const picked = actions ? pickedIndex : found >= 0 ? found : dialog.selected;
 	const [busy, run] = useAction(session);
-	const answer = (index: number) => run(dialog.confirm ? index : "answer", () => chooseOption(session, dialog, index));
+	const answer = (index: number) => run(dialog.confirm ? index : "answer", () => actions ? actions.choose(index) : chooseOption(session, dialog, index));
 
 	if (dialog.confirm) {
 		return (
@@ -64,10 +71,10 @@ function SelectBody({ session, dialog }: { session: SessionController; dialog: O
 					<Detail dialog={dialog} />
 				</Heading>
 				<div className="mt-3 flex justify-end gap-2">
-					<Button variant="secondary" loading={busy === 1} disabled={busy !== null} onClick={() => void answer(1)}>
+					<Button variant="secondary" loading={busy === 1} disabled={busy !== null || actions?.disabled || actions?.optionDisabled(1)} onClick={() => void answer(1)}>
 						{dialog.options[1]?.label}
 					</Button>
-					<Button variant="primary" loading={busy === 0} disabled={busy !== null} onClick={() => void answer(0)}>
+					<Button variant="primary" loading={busy === 0} disabled={busy !== null || actions?.disabled || actions?.optionDisabled(0)} onClick={() => void answer(0)}>
 						{dialog.options[0]?.label}
 					</Button>
 				</div>
@@ -85,14 +92,14 @@ function SelectBody({ session, dialog }: { session: SessionController; dialog: O
 				{dialog.help && <p className="mt-0.5 text-sm text-fg-muted">{dialog.help}</p>}
 			</Heading>
 			<ChoiceGrid
-				choices={dialog.options.map(option => ({ label: option.label, description: option.description ?? undefined }))}
+				choices={dialog.options.map((option, index) => ({ label: option.label, description: option.description ?? undefined, disabled: actions?.optionDisabled(index) }))}
 				multi={false}
 				labelledBy={titleId}
 				isOn={index => index === picked}
 				activeIndex={picked}
-				onSelect={index => setPickedLabel(dialog.options[index]?.label ?? "")}
+				onSelect={index => { setPickedLabel(dialog.options[index]?.label ?? ""); setPickedIndex(index); }}
 				onConfirm={index => void answer(index)}
-				disabled={busy !== null}
+				disabled={busy !== null || actions?.disabled}
 			/>
 			{dialog.hidden > 0 && (
 				<div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-fg-muted">
@@ -106,10 +113,10 @@ function SelectBody({ session, dialog }: { session: SessionController; dialog: O
 				</div>
 			)}
 			<div className="mt-3 flex justify-end gap-2">
-				<Button variant="ghost" loading={busy === "cancel"} disabled={busy !== null} onClick={() => void run("cancel", () => cancelDialog(session, dialog))}>
+				<Button variant="ghost" loading={busy === "cancel"} disabled={busy !== null || actions?.disabled} onClick={() => void run("cancel", () => actions ? actions.cancel() : cancelDialog(session, dialog))}>
 					{t("ompDialog.cancel")}
 				</Button>
-				<Button variant="primary" loading={busy === "answer"} disabled={busy !== null} onClick={() => void answer(picked)}>
+				<Button variant="primary" loading={busy === "answer"} disabled={busy !== null || actions?.disabled || actions?.optionDisabled(picked)} onClick={() => void answer(picked)}>
 					{t("ompDialog.choose")}
 				</Button>
 			</div>
@@ -120,9 +127,13 @@ function SelectBody({ session, dialog }: { session: SessionController; dialog: O
 function TextBody({ session, dialog }: { session: SessionController; dialog: OmpTextDialog }): ReactNode {
 	const { t } = useTranslation("session");
 	const titleId = useId();
+	const actions = useContext(Actions);
 	const [text, setText] = useState(dialog.value);
 	const [busy, run] = useAction(session);
-	const send = () => run("answer", () => submitText(session, dialog, dialog.kind === "input" ? text.replace(/\s*\n\s*/g, " ") : text));
+	const send = () => run("answer", () => {
+		const value = dialog.kind === "input" ? text.replace(/\s*\n\s*/g, " ") : text;
+		return actions ? actions.text(value) : submitText(session, dialog, value);
+	});
 
 	return (
 		<>
@@ -144,7 +155,7 @@ function TextBody({ session, dialog }: { session: SessionController; dialog: Omp
 								}
 							}}
 							placeholder={t("ompDialog.placeholder")}
-							disabled={busy !== null}
+							disabled={busy !== null || actions?.disabled}
 							autoFocus
 						/>
 					) : (
@@ -161,17 +172,17 @@ function TextBody({ session, dialog }: { session: SessionController; dialog: Omp
 							placeholder={t("ompDialog.placeholder")}
 							minRows={2}
 							maxRows={8}
-							disabled={busy !== null}
+							disabled={busy !== null || actions?.disabled}
 							autoFocus
 						/>
 					)}
 				</div>
 			</Heading>
 			<div className="mt-3 flex justify-end gap-2">
-				<Button variant="ghost" loading={busy === "cancel"} disabled={busy !== null} onClick={() => void run("cancel", () => cancelDialog(session, dialog))}>
+				<Button variant="ghost" loading={busy === "cancel"} disabled={busy !== null || actions?.disabled} onClick={() => void run("cancel", () => actions ? actions.cancel() : cancelDialog(session, dialog))}>
 					{t("ompDialog.cancel")}
 				</Button>
-				<Button variant="primary" loading={busy === "answer"} disabled={busy !== null} onClick={() => void send()}>
+				<Button variant="primary" loading={busy === "answer"} disabled={busy !== null || actions?.disabled} onClick={() => void send()}>
 					{t("ompDialog.send")}
 				</Button>
 			</div>
@@ -180,7 +191,7 @@ function TextBody({ session, dialog }: { session: SessionController; dialog: Omp
 }
 
 /** The card after the transcript while omp shows one of its in-place dialogs. */
-export function OmpDialogCard({ session }: ChatSlotProps) {
+function ClassicDialogCard({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
 	const view = useSessionView(session);
 	const { lines } = useOmpScreen(session);
@@ -204,4 +215,76 @@ export function OmpDialogCard({ session }: ChatSlotProps) {
 			</div>
 		</Rise>
 	);
+}
+
+function TspDialogCard({ session }: ChatSlotProps) {
+	const { t } = useTranslation(["session", "palette"]);
+	const covered = useApp(state => !!state.terminalTabId || !!state.sheet);
+	const view = useSessionView(session);
+	const host = view.host;
+	const { snapshot, store } = useTsp(host?.hostId ?? null);
+	const target = currentHook(snapshot, host?.hostId ?? null, host?.generation);
+	const [pending, setPending] = useState(false);
+	const [error, setError] = useState<string | null>(null);
+	const [closed, setClosed] = useState(false);
+	const inFlight = useRef(false);
+	const abort = useRef<AbortController | null>(null);
+	const key = target && snapshot ? `${snapshot.epoch}:${target.surface.open.id}:${target.node.id}` : "";
+	useEffect(() => {
+		setPending(false); setError(null); setClosed(false); inFlight.current = false;
+		return () => abort.current?.abort();
+	}, [key]);
+	const status = snapshot?.questionMatches?.find(match => match.surfaceId === target?.surface.open.id && match.nodeId === target?.node.id)?.status ?? "unavailable";
+	usePresentationClaim(target && snapshot ? { hostId: snapshot.hostId, epoch: snapshot.epoch, surfaceId: target.surface.open.id, nodeId: target.node.id } : null,
+		(view.mode === "live" || view.mode === "starting") && status !== "matched" && !covered,
+		(view.mode === "live" || view.mode === "starting") && status !== "matched");
+	if (!target || !snapshot || (view.mode !== "live" && view.mode !== "starting")) return null;
+	// A matched request is already drawn by QuestionCard. Other uncertain states remain readable here.
+	if (status === "matched") return null;
+	const disabled = view.mode !== "live" || view.readOnly || snapshot.closing || status !== "unmatched" || pending
+		|| target.dialog.body.kind !== "select" && target.dialog.body.readonly;
+	const answer = async (value: TspHookAnswer) => {
+		if (disabled || inFlight.current) return;
+		inFlight.current = true; setPending(true); setError(null);
+		const controller = new AbortController(); abort.current = controller;
+		const completion = waitForNodeToLeave(store, snapshot, value.sf, value.id, controller.signal);
+		// Attach a rejection handler before invoke, whose failure can abort the subscription.
+		void completion.catch(() => {});
+		try {
+			await window.vomp.invoke("host:tsp-answer", snapshot.hostId, snapshot.generation, value, snapshot.epoch);
+			await completion;
+		} catch (error) {
+			controller.abort();
+			const message = error instanceof Error ? error.message : String(error);
+			const gone = message.includes("TSP preview: The question node is no longer available.") || message.includes("TSP preview: The target surface is no longer available.");
+			inFlight.current = gone; setPending(gone); setClosed(gone);
+			if (!gone) setError(message);
+			return;
+		}
+	};
+	const actions: DialogActions = {
+		disabled: !!disabled,
+		choose: index => answer(dialogAnswer(target.surface.open.id, target.dialog, { index })),
+		text: text => answer(dialogAnswer(target.surface.open.id, target.dialog, { text })),
+		cancel: () => answer(dialogAnswer(target.surface.open.id, target.dialog, { cancel: true })),
+		optionDisabled: index => target.dialog.body.kind === "select" && !!target.dialog.body.options[index]?.disabled,
+	};
+	const label = snapshot.closing ? "hookClosing" : closed ? "hookClosed" : pending || status === "answering" ? "hookAnswering" : status === "ambiguous" ? "hookAmbiguous" : status === "settling" ? "hookSettling" : view.readOnly ? "hookViewOnly" : "hookReadOnly";
+	const dialog = nativeDialog(target.dialog);
+	return <Actions.Provider value={actions}>
+		<Rise as="section" key={key} className="my-3" aria-label={t("ompDialog.aria")} aria-busy={pending || status === "answering" || status === "settling"}
+			onKeyDown={event => { if (event.key === "Escape" && !disabled) { event.preventDefault(); event.stopPropagation(); void actions.cancel(); } }}>
+			<div className={cardClass}>
+				{(disabled || closed) && <p role="status" className="mb-3 text-sm text-fg-muted">{t(`palette:tsp.${label}`)}</p>}
+				{error && <p role="alert" className="mb-3 whitespace-pre-wrap break-words text-sm text-err">{error}</p>}
+				{dialog.kind === "select" ? <SelectBody session={session} dialog={dialog} /> : <TextBody session={session} dialog={dialog} />}
+			</div>
+		</Rise>
+	</Actions.Provider>;
+}
+
+/** Public slot props and classic behavior stay unchanged. */
+export function OmpDialogCard(props: ChatSlotProps) {
+	const view = useSessionView(props.session);
+	return view.host?.transport === "tsp" ? <TspDialogCard {...props} /> : <ClassicDialogCard {...props} />;
 }

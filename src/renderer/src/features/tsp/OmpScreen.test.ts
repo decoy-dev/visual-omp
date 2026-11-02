@@ -96,9 +96,9 @@ it("changes typed prefs values and sends page actions", async () => {
 	await click('[role="switch"]'); expect(send).toHaveBeenLastCalledWith({ ev: "change", sf: "s:1", id: "prefs", item: "enabled", value: true });
 	await click('[role="tab"]:nth-child(2)'); expect(send).toHaveBeenLastCalledWith({ ev: "action", sf: "s:1", id: "prefs", act: "page", value: "agent" });
 });
-it("shows hook dialogs read-only despite the existing classic OmpDialogCard", async () => {
+it("keeps a claimable hook visible when no native consumer owns its presentation", async () => {
 	const hook: TspNode = { id: "hook", k: "overlay", p: { role: TSP_ROLES.hookSelect, head: "Choose an option" }, c: [{ id: "picker", k: "picker", p: { items: [{ id: "yes", label: "Yes" }], query: null } }] };
-	expect(TSP_CLAIMS[TSP_ROLES.hookSelect]).toBeUndefined();
+	expect(TSP_CLAIMS[TSP_ROLES.hookSelect]).toBe("hook-dialog-card");
 	const surface: TspSurfaceSnapshot = { open: { id: "s:1", mode: "inline" }, sequence: 1, closed: false, suspended: false, settled: [], focus: "hook", document: { id: "s:1", k: "col", c: [{ id: "layer", k: "col", c: [hook] }] } };
 	expect(unclaimed(surface, "layer")).toHaveLength(1);
 	await render(hook); expect(element.textContent).toContain("Waiting for the chat's question state");
@@ -156,7 +156,7 @@ it("shows a calm completion message when a losing local answer finds that omp al
 	expect(element.textContent).not.toContain("Answering.");
 	await press("Enter"); expect(answer).toHaveBeenCalledOnce();
 });
-it("passes main's closing snapshot through the omp screen to its hook controls", async () => {
+it("keeps unclaimed hook controls display-only in the omp screen while closing", async () => {
 	const previous = window.vomp;
 	const invoke = vi.fn().mockResolvedValue(undefined);
 	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke } });

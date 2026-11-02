@@ -10,7 +10,10 @@ export const TSP_ROLES = {
 	toastStatus: "omp.toast.status", noticeError: "omp.notice.error", noticeWarning: "omp.notice.warning",
 	tree: "omp.overlay.tree", treeSelector: "omp.overlay.tree-selector", btwHistory: "omp.overlay.btwHistory",
 	hookSelect: "omp.overlay.hook-select", hookConfirm: "omp.overlay.hook-confirm", hookInput: "omp.overlay.hook-input", hookEditor: "omp.overlay.hook-editor",
+	hookInputTitle: "omp.hook-input.title", hookInputDescription: "omp.hook-input.detail",
+	hookEditorTitle: "omp.hook-editor.title", hookEditorDescription: "omp.hook-editor.detail",
 } as const;
+const nativeHookRoles: ReadonlySet<string> = new Set([TSP_ROLES.hookSelect, TSP_ROLES.hookConfirm, TSP_ROLES.hookInput, TSP_ROLES.hookEditor]);
 const hookPartPrefixes = ["omp.hook-input", "omp.hook-editor"] as const;
 export const TSP_ACTIONS = {
 	submit: "submit", cancel: "cancel", page: "page", scope: "scope", tab: "tab", strip: "strip",
@@ -35,13 +38,26 @@ export const TSP_CLAIMS: Readonly<Record<string, string>> = Object.freeze(
 	Object.fromEntries([
 		...Object.keys(TSP_NOTICE_ROLES).map(role => [role, "transcript-notices"]),
 		...[TSP_ROLES.composerModel, TSP_ROLES.composerEffort, TSP_ROLES.composerModelEffort].map(role => [role, "composer-model"]),
+		...[...nativeHookRoles].map(role => [role, "hook-dialog-card"]),
 	]),
 );
 const replicated = [TSP_ROLES.user, TSP_ROLES.assistant, TSP_ROLES.thinking, TSP_ROLES.tool, TSP_ROLES.agent];
 export function isReplicatedRole(role?: string): boolean {
 	return !!role && replicated.some(prefix => role === prefix || role.startsWith(`${prefix}.`));
 }
-export function isClaimed(node: TspNode): boolean { return !!node.p?.role && Object.hasOwn(TSP_CLAIMS, node.p.role); }
+export function isClaimable(node: TspNode): boolean {
+	if (isHookNode(node)) {
+		if (!isNativeHookNode(node)) return false;
+		const supported = (child: TspNode): boolean => !child.p?.hidden && (child.k === "picker" && !!child.p?.items?.length || child.k === "list" && !!child.c?.some(item => item.k === "item" && !item.p?.hidden) || child.k === "input" || child.k === "editor" || !!child.c?.some(supported));
+		return supported(node);
+	}
+	return !!node.p?.role && Object.hasOwn(TSP_CLAIMS, node.p.role);
+}
+/** Always-present consumers retain static claims; conditional native cards require active ownership. */
+export function isClaimed(node: TspNode): boolean {
+	const consumer = node.p?.role ? TSP_CLAIMS[node.p.role] : undefined;
+	return consumer === "transcript-notices" || consumer === "composer-model";
+}
 export function isHookDialog(role?: string): boolean { return !!role && role.startsWith("omp.overlay.hook-"); }
 /** omp 18.14's ordinary hook selector drops its role when picker support is advertised. */
 export function isHookNode(node: TspNode): boolean {
@@ -49,6 +65,10 @@ export function isHookNode(node: TspNode): boolean {
 	return node.k === "picker" && !node.p?.role && node.p?.noun === "options" && node.p.layout === "rows"
 		&& node.p.actions?.length === 2 && node.p.actions.some(action => action.id === TSP_ACTIONS.confirm)
 		&& node.p.actions.some(action => action.id === TSP_ACTIONS.close);
+}
+/** Only the recorded hook vocabulary has a native card; future hook roles keep the fallback. */
+export function isNativeHookNode(node: TspNode): boolean {
+	return node.p?.role ? nativeHookRoles.has(node.p.role) : isHookNode(node);
 }
 /** Select commits in omp's tree selector, so pointer selection must stay local. */
 export function selectionCommits(role?: string, layout?: string): boolean {

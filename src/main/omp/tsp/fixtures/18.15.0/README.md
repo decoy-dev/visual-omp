@@ -13,6 +13,10 @@ They start on the large model with thinking Off. Switching uses omp's session-on
 Off cycle. These captures do not establish collab identity or compaction behavior; consumer
 tests inject collab identity separately.
 
+Phase 4a adds thirteen `hook-parity-*` recordings for the positive classic dialog captures.
+The combined 4a, 4d and startup-diagnostics baseline contains 57 raw recordings and 57 integrity
+manifests.
+
 The two compaction scenarios use the Phase 3 scripted loopback provider with the same model
 definitions. The recorder seeds eight user/assistant pairs with repeated public fixture text and
 40,100 reported context tokens, then selects the 32K model. The success capture makes three
@@ -81,6 +85,7 @@ The sanitizer replaces OSC 7 hosts with `localhost` and private home and tempora
 | tree-open / tree-confirm | `/tree` displays six entries and both branches from the seeded session. Completion activates the current entry `00000006` without a model request. |
 | hook-collab-aware | The selector stays open. Tests inject matching and ambiguous question mirrors; the recording has no attached guest. |
 | handshake-timeout | All client replies are withheld. omp withdraws its optimistic surface with `keep: false` and paints classic rows. |
+| hook-parity-* | Thirteen positive classic dialog captures are parsed by the recorder and opened through the fixture extension. Each records a complete native answer: described and moved selectors, outlined and twenty-option region lists, both confirms, empty/prefilled input and both editor styles. The two classic non-dialog captures remain negative parser cases. |
 
 `../extension/tree-session.jsonl` is a hand-authored version 3 session with three user/assistant pairs, two branches and zero usage. Imported Claude messages are synthetic session input too. These fixtures do not establish model-backed behavior, populated usage history, populated jobs, collab attachment or guest arbitration.
 
@@ -89,6 +94,12 @@ The sanitizer replaces OSC 7 hosts with `localhost` and private home and tempora
 Ordinary selectors and confirms use the data-first picker path because the app advertises `picker`. The root `k.^picker` has no role, stores items in `p.items`, selects `0` and declares `confirm` and `close`. Activation targets that picker id and its data item id, rather than an `item` child.
 
 Input and editor roots remain columns `k` in `dock`, with `omp.overlay.hook-input` and `omp.overlay.hook-editor`. The focused fields are `n` and `l.input`. `k.actions/cancel` and `k.actions/submit` are native button nodes. The editor's `k.actions/external` button is unused because it opens an external editor. Edits use UTF-16 offsets, `from: 0`, the observed text length for `to` and `len`, and the replacement length for `cursor`. The input API's second argument is a placeholder, so the recorder explicitly edits the initial empty value before capturing or answering it.
+
+Phase 4a re-recorded hook-select, hook-confirm, hook-input, hook-editor, extension-rows and
+hook-collab-aware against the same standalone 18.15.0 executable, and added thirteen
+`hook-parity-*` counterparts. The region counterparts contain all twenty options even when the
+classic capture paints a window or search result. Parity editor descriptions use
+`omp.hook-editor.detail`; all new captures use the same sanitizer and integrity manifests.
 
 The custom rows root `k` has no role or document focus. The tree picker `o.^picker` has layout `tree`, focus `list`, null document focus, current entry `00000006` and actions `switch`, `summarize`, `label`, `filter`, `close`. Production callers must derive every id from their current host, surface and protocol epoch; these values describe only the recordings.
 

@@ -1,5 +1,19 @@
 // Explicitly loaded by record-fixtures.ts. This extension never invokes a model.
 export default function vompFixture(pi) {
+	pi.registerCommand("vomp-fixture-parity", {
+		description: "Record a classic dialog's semantic counterpart",
+		handler: async (args, ctx) => {
+			const dialog = JSON.parse(args);
+			const title = [dialog.title, ...dialog.detail].join("\n");
+			const answer = dialog.kind === "select"
+				? dialog.confirm
+					? await ctx.ui.confirm(dialog.title, dialog.detail.join("\n"))
+					: await ctx.ui.select(title, dialog.options.map(option => ({ label: option.label, ...(option.description ? { description: option.description } : {}) })), { initialIndex: dialog.selected, outline: dialog.outline })
+				: dialog.kind === "input" ? await ctx.ui.input(dialog.title)
+					: await ctx.ui.editor(title, dialog.value, undefined, { promptStyle: dialog.submitKey === "enter" });
+			ctx.ui.notify(`Fixture ${dialog.kind === "select" ? dialog.confirm ? "confirm" : "select" : dialog.kind} answer: ${JSON.stringify(answer ?? null)}`, "info");
+		},
+	});
 	pi.registerCommand("vomp-fixture-select", {
 		description: "Record the hook selector",
 		handler: async (_args, ctx) => {

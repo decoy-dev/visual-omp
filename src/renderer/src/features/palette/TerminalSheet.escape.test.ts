@@ -17,6 +17,8 @@ import { TooltipProvider } from "../../ui/Tooltip";
 import "../../i18n";
 import { Shortcuts } from "./Shortcuts";
 import { TerminalSheetHost } from "./TerminalSheet";
+import { presentationClaims } from "../tsp/presentation-claims";
+const releaseClaims: (() => void)[] = [];
 
 const fake = vi.hoisted(() => ({
 	view: null as SessionView | null,
@@ -75,7 +77,7 @@ beforeEach(() => {
 	Object.assign(window, { vomp: { platform: "darwin", invoke: fake.invoke, on: (channel: string, listener: (snapshot: TspHostSnapshot) => void) => { if (channel === "host:tsp-update") fake.updates.add(listener); return () => fake.updates.delete(listener); } } });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
-afterEach(async () => { await act(async () => root.unmount()); element.remove(); });
+afterEach(async () => { await act(async () => root.unmount()); for (const release of releaseClaims.splice(0)) release(); element.remove(); });
 
 it.each(["outline", "nested node"])("closes once from a focused %s through the real sheet and app keyboard boundary", async target => {
 	await act(async () => root.render(sheetTree()));
@@ -152,17 +154,18 @@ it.each((["matched", "ambiguous", "unavailable", "settling", "answering", "closi
 	await act(async () => root.render(sheetTree()));
 	expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
-it.each(["layer", "dock"] as const)("keeps guarded Escape cancellation for an unmatched hook in %s", async place => {
+it.each(["layer", "dock"] as const)("closes a claimed unmatched hook sheet in %s without cancelling its native card", async place => {
 	const snapshot = hookSnapshot("unmatched", place);
+	releaseClaims.push(presentationClaims.acquire({ hostId: "host", epoch: 4, surfaceId: "s:1", nodeId: "hook" }));
 	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
 	await act(async () => root.render(sheetTree()));
 	await act(async () => document.querySelector('[role="region"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
-	expect(fake.invoke).toHaveBeenCalledWith("host:keys", "host", "escape", 1, 4);
-	expect(fake.invoke.mock.calls.filter(call => call[0] === "host:keys")).toHaveLength(1);
-	expect(fake.closeTerminal).not.toHaveBeenCalled();
+	expect(fake.invoke.mock.calls.some(call => ["host:keys", "host:tsp-answer"].includes(call[0]))).toBe(false);
+	expect(fake.closeTerminal).toHaveBeenCalledOnce();
 });
-it("closes the sheet when a mirrored request wins while an unmatched Escape is queued", async () => {
+it("closes the claimed hook sheet without entering a competing local answer queue", async () => {
 	const snapshot = hookSnapshot("unmatched", "layer");
+	releaseClaims.push(presentationClaims.acquire({ hostId: "host", epoch: 4, surfaceId: "s:1", nodeId: "hook" }));
 	fake.invoke.mockImplementation(async (channel: string) => {
 		if (channel === "host:tsp-snapshot") return snapshot;
 		if (channel === "host:keys") throw new Error("TSP preview: This question cannot be answered here (matched).");
@@ -170,6 +173,7 @@ it("closes the sheet when a mirrored request wins while an unmatched Escape is q
 	await act(async () => root.render(sheetTree()));
 	await act(async () => document.querySelector('[role="region"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
 	expect(fake.closeTerminal).toHaveBeenCalledOnce();
+	expect(fake.invoke.mock.calls.some(call => call[0] === "host:keys")).toBe(false);
 });
 
 const recordings = import.meta.glob<string>("../../../../main/omp/tsp/fixtures/18.15.0/*.jsonl", { query: "?raw", import: "default", eager: true });
@@ -184,7 +188,7 @@ function replayedScreen(name: string) {
 		session.receive({ verb: message.verb!, params: {}, body: JSON.stringify(message.body) });
 		boundary++;
 		const surfaces = session.snapshot().surfaces.filter(surface => surface.sequence > 0);
-		if (openOverlay(surfaces) || screenSurface(surfaces) || surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "rows"))) break;
+		if (openOverlay(surfaces, true) || screenSurface(surfaces) || surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "rows"))) break;
 	}
 	const snapshot: TspHostSnapshot = { ...session.snapshot(), hostId: "host", generation: 1, revision: 1, lifecycle: "live", documentGeneration: 1, failure: null, availability: { available: false, reason: "Recorded omp menu" },
 		surfaces: session.snapshot().surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
@@ -300,10 +304,8 @@ it.each(["matched", "ambiguous"] as const)("keeps the recorded hook-collab-aware
 	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
 	await act(async () => root.render(sheetTree()));
 	const picker = document.querySelector<HTMLElement>('[role="listbox"]')!;
-	expect(picker).not.toBeNull(); expect(picker.getAttribute("aria-disabled")).toBe("true");
-	await act(async () => document.querySelector('[role="option"]')!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-	await act(async () => picker.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
-	expect([...document.querySelectorAll<HTMLButtonElement>('[role="region"] button')].every(button => button.disabled)).toBe(true);
+	expect(picker.getAttribute("aria-disabled")).toBe("true");
+	await act(async () => picker.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
 	expect(fake.invoke.mock.calls.some(call => ["host:tsp-event", "host:tsp-answer", "host:keys"].includes(call[0]))).toBe(false);
 	expect(mirror.requests.map(request => request.reqId)).toEqual(status === "matched" ? [4] : [4, 5]);
 	if (status === "matched") expect(document.body.textContent).toContain("chat's question card");
@@ -338,10 +340,7 @@ it("keeps startup hooks display-only while session mode is starting and the mirr
 	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
 	await act(async () => root.render(sheetTree()));
 	const region = document.querySelector<HTMLElement>('[role="region"]')!;
-	const picker = region.querySelector<HTMLElement>('[role="listbox"]')!;
-	expect(picker.getAttribute("aria-disabled")).toBe("true");
-	expect([...region.querySelectorAll<HTMLButtonElement>("button")].every(button => button.disabled)).toBe(true);
-	await act(async () => region.querySelector('[role="option"]')!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-	await act(async () => picker.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+	expect(region.querySelector('[role="listbox"]')?.getAttribute("aria-disabled")).toBe("true");
+	expect(region.textContent).toContain("Waiting for the chat's question state");
 	expect(fake.invoke.mock.calls.some(call => ["host:tsp-event", "host:tsp-answer", "host:keys"].includes(call[0]))).toBe(false);
 });

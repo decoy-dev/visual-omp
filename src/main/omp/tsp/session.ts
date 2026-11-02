@@ -259,7 +259,7 @@ export class TspSession {
 		if (!this.#negotiated) return { available: false, reason: "Waiting for omp to start its semantic screen." };
 		if (!this.#programFeatures.has("send")) return { available: false, reason: "omp does not accept send events." };
 		if (screenSurface(surfaces)) return { available: false, reason: "Close the omp screen before sending a message." };
-		if (openOverlay(surfaces)) return { available: false, reason: "Close the open omp menu before sending a message." };
+		if (openOverlay(surfaces, true)) return { available: false, reason: "Close the open omp menu before sending a message." };
 		if (!this.hasHookDialog() && askEditorOwnsDock(surfaces.filter(surface => surfaceAllowed(surface.open.id)))) {
 			return { available: false, reason: "Answer the question card before sending a message.", reasonCode: "ask-editor" };
 		}

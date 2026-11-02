@@ -6,6 +6,7 @@ import { useTranslation } from "react-i18next";
 import { TspInspector } from "../palette/TspInspector";
 import { NodeView } from "./nodes/NodeView";
 import type { NodeContext } from "./nodes/context";
+import { usePresentationClaims } from "./presentation-claims";
 import "./screen.css";
 
 export interface OmpScreenProps {
@@ -32,8 +33,9 @@ export function OmpScreenSheet({ hostId, generation, snapshot, failed, readOnly,
 	useEffect(() => { content.current?.focus(); }, []);
 	const current = snapshot?.hostId === hostId && snapshot.generation === generation && snapshot.lifecycle === "live" && snapshot.negotiated;
 	const surfaces = current ? snapshot.surfaces.filter(surface => surface.documentGeneration === generation).sort((a, b) => Number(b.open.mode === "screen") - Number(a.open.mode === "screen")) : [];
+	const claims = usePresentationClaims(hostId, snapshot?.epoch);
 	const empty = current && surfaces.length > 0 && !surfaces.some(surface =>
-		["layer", "dock", "main"].some(region => unclaimed(surface, region as "layer" | "dock" | "main").some(hasVisibleContent)));
+		["layer", "dock", "main"].some(region => unclaimed(surface, region as "layer" | "dock" | "main", claims.get(surface.open.id)).some(hasVisibleContent)));
 	const report = (promise: Promise<unknown>) => { void promise.catch(error => setError(error instanceof Error ? error.message : String(error))); };
 	useEffect(() => {
 		const element = content.current;
@@ -61,9 +63,10 @@ export function OmpScreenSheet({ hostId, generation, snapshot, failed, readOnly,
 				if (disabled || !snapshot) throw new Error("TSP preview: The session changed or its semantic UI is not ready.");
 				await window.vomp.invoke("host:tsp-answer", hostId, generation, answer, snapshot.epoch);
 			}, send, keys: data => { if (!disabled && typeof snapshot?.epoch === "number") report(window.vomp.invoke("host:keys", hostId, data, generation, snapshot.epoch)); }, render: node => <NodeView key={node.id} node={node} context={context} /> };
-			const main = unclaimed(surface, "main");
-			const dock = unclaimed(surface, "dock");
-			const layer = unclaimed(surface, "layer");
+			const claimed = claims.get(surface.open.id);
+			const main = unclaimed(surface, "main", claimed);
+			const dock = unclaimed(surface, "dock", claimed);
+			const layer = unclaimed(surface, "layer", claimed);
 			return <section key={`${snapshot!.epoch}:${generation}:${surface.open.id}`} className="space-y-section">
 				{surface.closed && <p className="text-sm text-fg-muted">{t("tsp.retained")}</p>}
 				{layer.map(node => context.render(node))}{dock.map(node => context.render(node))}

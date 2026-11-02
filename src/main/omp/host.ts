@@ -361,7 +361,7 @@ export class SessionHost {
 		const lifecycle = this.state.phase === "exited" ? "exited" : this.#tspFailure ? "failed" : current && (this.state.phase === "live" || !this.#hadCollabRoom) ? "live" : "transitioning";
 		const reason = this.#closing ? "This chat is closing." : this.#tspFailure ?? (lifecycle !== "live" ? "Waiting for omp to open its semantic screen." : this.#editorTransferBlocked);
 		const questionMatches = this.#tspQuestions.matches({ hostId: this.id, generation: this.state.generation, epoch: protocol.epoch }, hookQuestions(surfaces, this.state.generation));
-		const overlay = openOverlay(surfaces);
+		const overlay = openOverlay(surfaces, true);
 		const matchedQuestion = overlay && questionMatches.find(match => match.surfaceId === overlay.surface.open.id && match.nodeId === overlay.node.id && match.status === "matched");
 		const availability = reason ? { available: false, reason }
 			: matchedQuestion && !screenSurface(surfaces) ? { available: false, reason: hostLabels.matchedQuestion, reasonCode: "matched-question" as const, questionReqId: matchedQuestion.reqId }
@@ -687,7 +687,7 @@ export class SessionHost {
 		while (this.#pty === pty) {
 			if (this.#tsp && !exitSent && this.#shutdownStage === "requested") {
 				const surfaces = this.#tsp.snapshot().surfaces;
-				const overlay = openOverlay(surfaces);
+				const overlay = openOverlay(surfaces, true);
 				const screen = screenSurface(surfaces);
 				// Shutdown must never answer a hook through a second, raw-key route.
 				if ((overlay || screen) && !this.#tsp.hasHookDialog()) {

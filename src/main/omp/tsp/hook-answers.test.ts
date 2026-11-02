@@ -45,7 +45,9 @@ describe("recorded omp hook answers", () => {
 		const surfaces = h.session.snapshot().surfaces;
 		const question = hookQuestions(surfaces, 1)[0]!;
 		expect(question, name).toBeDefined();
-		expect(openOverlay(surfaces)?.node.id, name).toBe(question.nodeId);
+		expect(openOverlay(surfaces, true)?.node.id, name).toBe(question.nodeId);
+		expect(openOverlay(surfaces)?.node.id, "no mounted renderer consumer claims the replay").toBe(question.nodeId);
+		expect(h.session.availability().available, "claimed hooks retain composer ownership").toBe(false);
 		const root = [...walkNodes(surfaces.find(surface => surface.open.id === question.surfaceId)!.document)].find(node => node.id === question.nodeId)!;
 		const event = before.body;
 		const base = { sf: question.surfaceId, id: question.nodeId };

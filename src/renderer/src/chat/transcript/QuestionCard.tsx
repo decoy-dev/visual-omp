@@ -15,6 +15,23 @@ import { AskSeriesCard } from "./AskSeriesCard";
 import { ASK_CHAT, ASK_NEXT, ASK_OTHER, CUSTOM_ANSWER_PREFIX } from "./askSeries";
 import { useAskSeries } from "./askSeriesStore";
 import { ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoices";
+import { useTsp } from "../../features/tsp/useTsp";
+import { usePresentationClaim } from "../../features/tsp/presentation-claims";
+import { useApp } from "../../state/app";
+
+/** A collab card claims only the exact hook main associates with this visible request. */
+function QuestionPresentationClaim({ session, reqId }: { session: SessionController; reqId: number }) {
+	const host = session.getSnapshot().host;
+	return host?.transport === "tsp" ? <TspQuestionPresentationClaim hostId={host.hostId} generation={host.generation} reqId={reqId} /> : null;
+}
+function TspQuestionPresentationClaim({ hostId, generation, reqId }: { hostId: string; generation: number; reqId: number }) {
+	const covered = useApp(state => !!state.terminalTabId || !!state.sheet);
+	const { snapshot } = useTsp(hostId);
+	const match = snapshot?.hostId === hostId && snapshot.generation === generation && snapshot.lifecycle === "live"
+		? snapshot.questionMatches?.find(match => match.reqId === reqId && (match.status === "matched" || match.status === "settling")) : null;
+	usePresentationClaim(snapshot && match ? { hostId: snapshot.hostId, epoch: snapshot.epoch, surfaceId: match.surfaceId, nodeId: match.nodeId } : null, !covered);
+	return null;
+}
 
 /** Text typed into "Other" is sent as soon as omp asks for the custom answer. */
 const pendingCustom = new WeakMap<SessionController, string>();
@@ -71,6 +88,7 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 		if (request.title.startsWith(CUSTOM_ANSWER_PREFIX) && pendingCustom.has(session)) return null;
 		return (
 			<div ref={rootRef} data-question-card={request.reqId} className={cardClass}>
+				<QuestionPresentationClaim session={session} reqId={request.reqId} />
 				{noteLine}
 				<Heading icon={<Question className="text-accent" />}>
 					<p id={titleId} className="selectable mb-3 text-base font-medium text-fg">
@@ -114,6 +132,7 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 	if (isApproval) {
 		return (
 			<div data-question-card={request.reqId} className={cardClass}>
+				<QuestionPresentationClaim session={session} reqId={request.reqId} />
 				{noteLine}
 				<Heading icon={<ShieldWarning className="text-warn" />}>
 					<p className="mb-2 text-base font-medium text-fg">{t("question.approval")}</p>
@@ -175,6 +194,7 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 
 	return (
 		<div data-question-card={request.reqId} className={cardClass}>
+			<QuestionPresentationClaim session={session} reqId={request.reqId} />
 			{noteLine}
 			<Heading icon={<Question className="text-accent" />}>
 				<p id={titleId} className="selectable text-base font-medium text-fg">

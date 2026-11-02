@@ -105,7 +105,7 @@ export class TspEditorWatch {
 	}
 	get blocked(): boolean {
 		const surfaces = this.snapshot?.surfaces.filter(surface => surface.documentGeneration === this.snapshot?.generation) ?? [];
-		return !!(openOverlay(surfaces) || screenSurface(surfaces));
+		return !!(openOverlay(surfaces, true) || screenSurface(surfaces));
 	}
 	get available(): boolean {
 		return !this.ended && this.snapshot?.availability.available === true && !this.blocked;

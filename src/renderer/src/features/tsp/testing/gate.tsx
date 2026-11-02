@@ -1,6 +1,8 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { TspHostSnapshot } from "@shared/tsp-host";
+import { hookDialogTarget } from "@shared/tsp/dialogs";
+import { OmpDialogCard } from "../../session-tools/OmpDialogCard";
 import type { SessionController, SessionView } from "../../../state/session";
 import { useApp } from "../../../state/app";
 import { registerComposerEditor } from "../../../chat/composer/drafts";
@@ -51,6 +53,7 @@ function buttonVisible(button: HTMLButtonElement): boolean {
 function Harness() {
 	const open = useApp(app => app.terminalTabId === "gate");
 	const composer = useRef<HTMLTextAreaElement>(null);
+	const [cardInstance, setCardInstance] = useState(0);
 	useEffect(() => registerComposerEditor("gate", { focus: () => composer.current?.focus(), insertAtCaret: () => {} }), []);
 	useEffect(() => {
 		const calls: CapturedCall[] = [];
@@ -62,13 +65,13 @@ function Harness() {
 		};
 		state.gate = {
 			calls, buttonVisible, update, view: () => view,
-			open(snapshot) { calls.length = 0; update(snapshot); useApp.setState({ terminalTabId: "gate" }); },
+			open(snapshot) { calls.length = 0; update(snapshot); setCardInstance(value => value + 1); useApp.setState({ terminalTabId: hookDialogTarget(snapshot.surfaces) ? null : "gate" }); },
 			invoke(channel, args) {
 				if (["host:tsp-event", "host:tsp-answer", "host:keys"].includes(channel)) calls.push({ channel, args });
 				return channel === "host:tsp-snapshot" ? state.gateSnapshot : undefined;
 			},
 		};
 	}, []);
-	return <MotionProvider><TooltipProvider><main className="h-full bg-page p-4 text-fg"><label>Message to omp<textarea ref={composer} aria-label="Message to omp" /></label>{open && <TerminalSheet tabId="gate" controller={controller} />}</main></TooltipProvider></MotionProvider>;
+	return <MotionProvider><TooltipProvider><main className="h-full overflow-auto bg-sheet p-4 text-fg"><label>Message to omp<textarea ref={composer} aria-label="Message to omp" /></label><OmpDialogCard key={cardInstance} session={controller} />{open && <TerminalSheet tabId="gate" controller={controller} />}</main></TooltipProvider></MotionProvider>;
 }
 createRoot(document.getElementById("root")!).render(<Harness />);

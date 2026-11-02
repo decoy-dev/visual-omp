@@ -17,6 +17,7 @@ import { Button, cn, Dialog, DialogContent, EmptyState, Expand, IconButton, Shee
 import { type ScreenKey, screenName } from "./overlays";
 import { useTsp } from "../tsp/useTsp";
 import { plain } from "../tsp/labels";
+import { usePresentationAvailability, usePresentationClaims } from "../tsp/presentation-claims";
 
 function insideAppPopup(target: EventTarget | null): boolean {
 	return target instanceof Element && !!target.closest('.tsp-select-popup, [role="combobox"][data-state="open"]');
@@ -89,7 +90,9 @@ export function TerminalSheet({ tabId, controller }: { tabId: string; controller
 	const { snapshot, failed } = useTsp(tsp ? host?.hostId ?? null : null);
 	const tspSurfaces = snapshot?.lifecycle === "live" && snapshot.generation === host?.generation
 		? snapshot.surfaces.filter(surface => surface.documentGeneration === host.generation) : [];
-	const overlay = openOverlay(tspSurfaces);
+	const presentationClaims = usePresentationClaims(hostId, snapshot?.epoch);
+	const availableConsumers = usePresentationAvailability(hostId, snapshot?.epoch);
+	const overlay = openOverlay(tspSurfaces, false, presentationClaims);
 	const screenSurfaceOpen = screenSurface(tspSurfaces);
 	const overlayHead = overlay?.node.k === "overlay" ? plain(overlay.node.p?.head) : overlay?.node.p?.title;
 	const readOnly = view?.readOnly ?? false;
@@ -128,6 +131,8 @@ export function TerminalSheet({ tabId, controller }: { tabId: string; controller
 	const escapeTsp = (target: EventTarget | null) => {
 		const rawFallback = target instanceof Element && !!target.closest('[data-tsp-kind="rows"], [data-tsp-kind="ansi"]');
 		const hooks = hookQuestions(tspSurfaces, host?.generation ?? 0);
+		// A covering sheet may reveal the generic hook, but Escape returns to its available native card.
+		if (hooks.some(hook => availableConsumers.get(hook.surfaceId)?.has(hook.nodeId))) { requestClose(); return; }
 		const localHook = hooks.length === 1 && snapshot?.questionMatches?.some(match =>
 			match.surfaceId === hooks[0]!.surfaceId && match.nodeId === hooks[0]!.nodeId && match.status === "unmatched");
 		if ((overlay || screenSurfaceOpen || rawFallback) && !readOnly && !snapshot?.closing && (!hooks.length || localHook) && typeof snapshot?.epoch === "number") {

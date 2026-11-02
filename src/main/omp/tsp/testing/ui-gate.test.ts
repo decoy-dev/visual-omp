@@ -104,7 +104,7 @@ function recorded(name: string, idle = false): TspHostSnapshot {
 		const shown = idle ? nodes.some(node => node.k === "editor" && node.p?.sendable)
 			: name === "settings-screen" ? nodes.some(node => node.k === "prefs")
 			: name === "usage" ? nodes.some(node => JSON.stringify(node.p ?? {}).includes("No usage data available."))
-			: !!openOverlay(snapshot.surfaces);
+			: !!openOverlay(snapshot.surfaces, true);
 		if (message.verb === "f" && shown) return fixtureSnapshot(documents);
 	}
 	throw new Error(`No recorded screen in ${name}`);
@@ -141,7 +141,7 @@ function emittedInputs(snapshot: TspHostSnapshot, value: unknown): WireInput[] {
 }
 function hasRecordedMenu(documents: FixtureDocuments): boolean {
 	const surfaces = documents.snapshot().surfaces.filter(surface => surface.sequence > 0 && !surface.closed);
-	return !!(openOverlay(surfaces) || screenSurface(surfaces) || surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "rows")));
+	return !!(openOverlay(surfaces, true) || screenSurface(surfaces) || surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "rows")));
 }
 class CompletionReplay {
 	documents = new FixtureDocuments();
@@ -269,9 +269,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 	it.each([
 		"hotkeys", "jobs", "session", "changelog", "tools", "model-picker", "settings-screen", "exit-with-overlay",
 		"extension-rows", "extension-rows-cancel", "extension-rows-open",
-		"hook-select", "hook-confirm", "hook-input", "hook-editor",
-		"hook-select-cancel", "hook-confirm-cancel", "hook-input-cancel", "hook-editor-cancel",
-		"hook-select-open", "hook-confirm-open", "hook-input-open", "hook-editor-open",
+		// Native hook completion and screenshots are covered by the card gate below.
 		"tree-open", "extensions", "import-claude",
 	])("completes recorded %s with real Chrome pointer and keyboard input matching its next accepted events", async name => {
 		const replay = new CompletionReplay(name);
@@ -353,7 +351,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 	}, 30_000);
 
 	it("exposes recorded lists and selection in Chrome's accessibility tree and returns focus to the composer", async () => {
-		for (const name of ["model-picker", "hook-select", "tree-open"]) {
+		for (const name of ["model-picker", "tree-open"]) {
 			await open(await recorded(name));
 			const tree = await page.send<AxTree>("Accessibility.getFullAXTree");
 			expect(tree.nodes.some(node => node.role?.value === "listbox")).toBe(true);
@@ -411,8 +409,56 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		}
 	});
 
+	it.each(["hook-select", "hook-confirm", "hook-input", "hook-editor", "hook-select-cancel", "hook-confirm-cancel", "hook-input-cancel", "hook-editor-cancel"])("completes the native %s card in Chrome with the recorded events", async name => {
+		const replay = new CompletionReplay(name);
+		const snapshot = replay.snapshot();
+		await page.evaluate(`window.gate.open(${JSON.stringify(snapshot)})`);
+		await page.until("!!document.querySelector('section[aria-label=\"Question from omp\"]')");
+		const first = replay.expected[0]!;
+		if ("keys" in first) throw new Error("Expected semantic hook answer");
+		if (name.endsWith("cancel")) {
+			if (name === "hook-confirm-cancel") {
+				await page.evaluate("document.querySelector('section[aria-label=\"Question from omp\"] button').focus()");
+				await page.key("Escape");
+			} else await page.clickElement("[...document.querySelectorAll('section button')].find(button => button.textContent === 'Cancel')");
+		} else if (first.body.ev === "activate") {
+			if (name === "hook-confirm") await page.clickElement("[...document.querySelectorAll('section button')].find(button => button.textContent === 'Yes')");
+			else {
+				const { item, id } = first.body;
+				const picker = snapshot.surfaces.flatMap(surface => [...walkNodes(surface.document)]).find(node => node.k === "picker" && node.id === id);
+				const index = picker?.k === "picker" ? picker.p?.items?.findIndex(option => option.id === item) : -1;
+				await page.clickElement(`document.querySelectorAll('section [role=radio]')[${index}]`);
+				expect(await inputs(snapshot)).toEqual([]);
+				await page.clickElement("[...document.querySelectorAll('section button')].find(button => button.textContent === 'Choose option')");
+			}
+		} else if (first.body.ev === "edit") {
+			await page.clickElement("document.querySelector('section input, section textarea')");
+			await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
+			await page.send("Input.insertText", { text: first.body.text });
+			expect(await inputs(snapshot)).toEqual([]);
+			await page.clickElement("[...document.querySelectorAll('section button')].find(button => button.textContent === 'Send answer')");
+		}
+		expect(await inputs(snapshot)).toEqual(replay.expected.map(wireInput));
+		expect(await page.evaluate("[...document.querySelectorAll('section button')].every(button => button.disabled)")).toBe(true);
+		replay.finish(); await updateReplay(replay);
+		await page.until("!document.querySelector('section[aria-label=\"Question from omp\"]')");
+	});
+
+	it.each(["light", "dark"])("captures the TSP native hook card in %s at normal and enlarged text", async theme => {
+		for (const scale of [100, 130]) {
+			const snapshot = recorded("hook-select");
+			await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion='reduced'; document.documentElement.style.fontSize=${JSON.stringify(`${scale}%`)}; window.gate.open(${JSON.stringify(snapshot)});`);
+			await page.until("document.querySelectorAll('section [role=radio]').length === 4");
+			await page.evaluate("document.fonts.ready.then(() => true)");
+			expect(await page.evaluate("document.body.scrollWidth <= innerWidth")).toBe(true);
+			expect(await page.evaluate("[...document.querySelectorAll('section [role=radio]')].every(option => option.scrollWidth <= option.clientWidth + 1)")).toBe(true);
+			const capture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+			await writeFile(join(shots, `native-hook-card-${theme}-${scale}.png`), Buffer.from(capture.data, "base64"));
+		}
+	});
+
 	it.each(["light", "dark"])("fits recorded menus at minimum size with normal and enlarged text in %s, including reduced motion", async theme => {
-		for (const scale of [100, 130]) for (const name of ["model-picker", "settings-screen", "hook-select", "jobs", "usage", "session", "hotkeys", "changelog", "tools", "tree-open"]) {
+		for (const scale of [100, 130]) for (const name of ["model-picker", "settings-screen", "jobs", "usage", "session", "hotkeys", "changelog", "tools", "tree-open"]) {
 			const snapshot = await recorded(name);
 			await open(snapshot, theme, scale, scale === 130);
 			const overflow = await page.evaluate("({ body: document.body.scrollWidth > innerWidth, screen: document.querySelector('.tsp-screen').scrollWidth > document.querySelector('.tsp-screen').clientWidth + 1 })");
