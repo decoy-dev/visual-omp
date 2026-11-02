@@ -329,14 +329,26 @@ changes and protocol epochs end the old hold. An unchanged sendable editor settl
 allowing omp to publish a command's overlay after submission. Unrelated updates do not restart this
 timer. It releases input ownership without asserting command success or answer completion.
 Readiness waits up to eight seconds for a sendable editor and preserves main's refusal reason.
-An editor-back hold also ends if its initial snapshot is unavailable. OverlayWatcher opens the omp screen;
-UI-only command feedback uses the existing transcript notices without painted-screen scraping or
-duplicate command-result rows. Direct TSP slash lines sent through the session controller also use
-slash delivery, so commands without a collab user entry or turn never enter message acknowledgement.
-The generic command runner returns no painted output for TSP; command-specific result parsing
-remains part of Phase 4e.
-Security commands leave success/error reporting to notices for TSP, and cleanse leaves semantic
-screen opening to OverlayWatcher.
+An editor-back hold also ends if its initial snapshot is unavailable. OverlayWatcher opens the omp screen.
+Known command feedback uses `src/shared/tsp/command-result.ts`: a local transaction pins host,
+room generation, protocol epoch and each surface's sequence before semantic submission, then
+accepts only semantic content changes in status toasts, error notices and completed compaction
+sections. Style, TTL, collapsed state and descendant ids do not establish new feedback.
+Compaction completion requires a matching completed heading, a nonempty summary and omp's
+settled marker. Subscriptions start before the send call, including feedback delivered during
+its IPC response. Command-specific patterns distinguish success, failure and cancellation;
+jobs-kill feedback is bound to its requested job. Quiet jobs-kill may complete after 1.5 seconds.
+A command without matching output ends without asserting success after five seconds unless
+omp still publishes a working row or loader. Scope changes cancel the old result.
+Typed outcomes use the existing literal result row and its classic shaping. Completed summaries
+stay in collab's transcript row; separate later status messages remain notices. Native results
+carry semantic status independently of their text prefix. Their presentation callback confirms
+display before notice consumption; native export displays failures and preserves the complete
+printed path in its Show action. A missing consumer returns the feedback to notices.
+Cleanse dialogs keep their semantic screen and input ownership until answered. Unrecognized slash commands retain
+the generic editor watch and notices. Classic result parsing is unchanged. Direct TSP slash lines
+sent through the session controller use slash delivery, so commands without a collab user entry
+or turn never enter message acknowledgement. Security commands continue to use notices.
 
 TSP shutdown uses the existing native stages and exit records. It sends Escape for an open omp
 overlay or screen only when no live hook node exists, waits for the main editor to become
@@ -514,6 +526,11 @@ collab session are omitted; other guests' notices remain visible. Epochs clear r
 observed node text to avoid repeating unchanged notices. These behaviors have recorded startup/
 usage and synthetic ordering, rewind and literal-rendering coverage. Disposing the controller removes its subscription. The role registry claims
 these notice nodes, keeping the generic omp screen from duplicating them.
+Command feedback is held provisionally with its arrival-time anchor. Only the first matching
+outcome is reserved. The typed result row or native presentation callback commits consumption
+after displaying it. Rejection, supersession or cancelled collection releases undisplayed rows,
+without moving their original anchor. Additional matching feedback after the first outcome
+uses the ordinary notice path, including while the editor hold is still pending.
 Full overlay workflow replay, live hook and extension-fallback recordings, sharing parity,
 packaged checks and the remaining manual acceptance criteria still gate the complete Phase 2
 preview. There is no new user setting and no replacement of the transcript or collaboration channel.

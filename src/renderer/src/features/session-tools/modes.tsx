@@ -11,7 +11,7 @@ import { controllerFor, useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { i18n } from "../../i18n";
 import { setApprovalMode, acknowledgeAuto } from "./approval";
-import { reportFailure, runAndReport, runCommand } from "./drive";
+import { reportFailure, reportOutput, runAndReport, runCommand } from "./drive";
 import { exitPlan, togglePlan } from "./plan";
 import { useOmpScreen } from "./status";
 import { parseStatusLine } from "./screen";
@@ -37,8 +37,15 @@ function TextActionSheet({ props, close }: SheetProps<TabProps>) {
 		setBusy(true);
 		try {
 			const command = kind === "rename" ? `/rename ${value.trim()}` : kind === "handoff" ? `/handoff${value.trim() ? ` ${value.trim()}` : ""}` : kind === "guided" ? `/guided-goal${value.trim() ? ` ${value.trim()}` : ""}` : `/compact${value.trim() ? ` ${value.trim()}` : ""}`;
-			const result = await runCommand(session, command, { timeoutMs: 10000, until: (_screen, output) => output.length > 0 });
-			if (result.output.length) toast({ message: result.output.at(-1) ?? t(`${key}.title`) });
+			await runCommand(session, command, {
+				timeoutMs: 10000, until: (_screen, output) => output.length > 0,
+				present: result => {
+					if (!result.output.length) return false;
+					if (result.status) return reportOutput(result.output, undefined, result.status);
+					toast({ message: result.output.at(-1) ?? t(`${key}.title`) });
+					return true;
+				},
+			});
 			close();
 		} catch (error) {
 			reportFailure(error);
@@ -181,7 +188,20 @@ registerCommand({ id: "chat.security", title: "session:commands.security.title",
 	} catch (error) { reportFailure(error); }
 } });
 registerCommand({ id: "chat.cleanse", title: "session:commands.cleanse.title", hint: "session:commands.cleanse.hint", slash: "/cleanse", group: "modes", icon: Broom, header: 290, when: sessionWhen, run: async ({ session }) => { if (session) { const result = await runAndReport(session, "/cleanse"); if (session.getSnapshot().host?.transport !== "tsp" && result && !parseStatusLine(result.screen)) useApp.getState().openTerminal(session.tabId); } } });
-registerCommand({ id: "chat.export", title: "session:commands.export.title", hint: "session:commands.export.hint", slash: "/export", group: "modes", icon: Export, header: 150, when: sessionWhen, run: async ({ session }) => { if (session) { const result = await runCommand(session, "/export", { timeoutMs: 10000, until: (_lines, out) => out.some(line => /Session exported to/i.test(line)) }); const path = result.output.find(line => /Session exported to/i.test(line)); if (path) toast({ tone: "ok", message: path, action: { label: i18n.t("session:export.show"), onClick: () => void window.vomp.invoke("app:showItem", path.split(":").at(-1)?.trim() ?? path) } }); } } });
+registerCommand({ id: "chat.export", title: "session:commands.export.title", hint: "session:commands.export.hint", slash: "/export", group: "modes", icon: Export, header: 150, when: sessionWhen, run: async ({ session }) => {
+	if (!session) return;
+	await runCommand(session, "/export", {
+		timeoutMs: 10000, until: (_lines, out) => out.some(line => /Session exported to/i.test(line)),
+		present: result => {
+			if (result.status === "error" || result.status === "cancelled") return reportOutput(result.output, undefined, result.status);
+			const path = result.output.find(line => /Session exported to/i.test(line));
+			if (!path) return false;
+			const file = result.status ? path.slice("Session exported to:".length).trim() : path.split(":").at(-1)?.trim() ?? path;
+			toast({ tone: "ok", message: path, action: { label: i18n.t("session:export.show"), onClick: () => void window.vomp.invoke("app:showItem", file) } });
+			return true;
+		},
+	});
+} });
 registerCommand({ id: "chat.rename", title: "session:commands.rename.title", hint: "session:commands.rename.hint", slash: "/rename", group: "modes", icon: PencilSimple, header: 110, when: sessionWhen, run: ({ session }) => { if (session) openText(session, "rename"); } });
 registerCommand({ id: "chat.stop", title: "session:commands.stop.title", hint: "session:commands.stop.hint", slash: "Esc", shortcut: "⌘.", group: "chat", icon: StopCircle, when: ctx => Boolean(ctx.session?.getSnapshot().working), run: ({ session }) => session?.abort() });
 registerCommand({ id: "chat.model", title: "session:commands.model.title", hint: "session:commands.model.hint", slash: "/switch", shortcut: "⌘⇧M", group: "modes", icon: Cpu, header: 295, when: sessionWhen, run: ({ session }) => { if (session) usePickerRequests.getState().openModel(session.tabId); } });

@@ -22,6 +22,14 @@ In developer-flagged TSP chats, an approval blocks slash routing before either a
 omp commands are invoked. Ordinary messages remain available and let omp deny the approval and
 continue with that message. Open omp menus and screen-mode settings retain their separate close-menu
 and close-screen instructions.
+For the TSP preview, rename, export, compact, handoff, cleanse feedback and jobs-kill results use
+new or changed semantic feedback after submission. The result keeps omp's literal text and
+printed export path. Completed compaction and handoff content stays in its collab transcript row.
+Feedback delivered to a result row or native presentation is omitted from the separate notice
+projection. Undisplayed output returns to notices with its arrival anchor. A quiet jobs-kill
+waits 1.5 seconds before releasing the queue. Other commands retain their semantic editor watch
+and notices, while classic chats retain painted-screen result parsing.
+
 
 
 ## Treatments

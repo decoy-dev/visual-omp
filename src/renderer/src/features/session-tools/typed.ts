@@ -8,16 +8,18 @@
  *
  * One watch per chat: typing the next command ends the previous watch first (keeping what it printed
  * unless its spinner still shows), so two commands typed close together never share output.
- * TSP hosts instead watch document readiness and input ownership. OverlayWatcher opens their semantic
- * screen, and transcript notices carry feedback without scraping or a second result row.
+ * TSP hosts watch document readiness and scoped semantic command outcomes. Unrecognized command
+ * feedback remains in transcript notices, and OverlayWatcher opens the semantic screen.
  */
+import { commandOutcomeSpec } from "@shared/tsp/command-result";
+import type { TspCommandNoticeReservation } from "../tsp/notices";
 import { displayedEntries } from "../../chat/branch";
 import { liveGuest, type SessionController, setSlashDelivery } from "../../state/session";
 import { useApp } from "../../state/app";
 import { isNativeOverlay } from "../palette/overlays";
 import { autoOpened } from "../palette/TerminalSheet";
 import { OmpBusyError, readScreen, readyEditor, reportFailure, sleep, TspEditorWatch } from "./drive";
-import { addCommandResult, drawsRow, linesTone, presentLines, roomKey, startWatch, supersededResult, WATCH, watchStep } from "./results";
+import { addCommandResult, addTspCommandResult, drawsRow, linesTone, presentLines, roomKey, startWatch, supersededResult, WATCH, watchStep } from "./results";
 import { parseStatusLine } from "./screen";
 import { parseSlash, routeSlash } from "./slash";
 
@@ -156,21 +158,37 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 			await readyEditor(session);
 			if (session.getSnapshot().host?.transport === "tsp") {
 				const watch = new TspEditorWatch(session);
+				let reservation: TspCommandNoticeReservation | undefined;
 				try {
 					await watch.ready();
 					watches.get(session)?.supersede();
-					const entry = { supersede: () => watch.dispose() };
+					const entry = { supersede: () => { reservation?.cancel(); watch.dispose(); } };
 					watches.set(session, entry);
+					const baseline = watch.snapshot!;
+					const spec = commandOutcomeSpec(line);
+					const anchor = displayedEntries(session.getSnapshot()).at(-1)?.id ?? null;
+					const room = roomKey(session.getSnapshot());
+					if (spec) reservation = session.tspNotices.beginCommand(baseline, spec);
 					const timestamp = Date.now();
+					const outcome = spec ? watch.outcome(baseline, spec, timestamp).then(result => {
+						if (!result) reservation?.cancel();
+						return result;
+					}) : null;
+					const editor = watch.watch();
 					await session.command(line);
 					if (!watch.ended) session.recordInput(line, timestamp);
-					const watching = watch.watch().finally(() => {
+					const watching = Promise.all([outcome, editor]).then(([result]) => {
+						if (result && !watch.ended) {
+							addTspCommandResult(session, line, result, anchor, room);
+							reservation?.commit(result);
+						} else reservation?.cancel();
+					}).finally(() => {
 						if (watches.get(session) === entry) watches.delete(session);
-						watch.dispose();
+						reservation?.cancel(); watch.dispose();
 					});
 					return { watching };
 				} catch (error) {
-					watch.dispose();
+					reservation?.cancel(); watch.dispose();
 					throw error;
 				}
 			}

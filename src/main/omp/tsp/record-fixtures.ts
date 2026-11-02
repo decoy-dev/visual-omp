@@ -167,6 +167,45 @@ const scenarios: Scenario[] = [
   { name: "switch-typed", command: "/switch fixture/fixture-small" },
   { name: "model-switch-compact", command: null, script: Array.from({ length: 16 }, () => ({ text: "## Summary\nThe fixture conversation contains repeated context paragraphs. Preserve the numbered fixture segments and continue the local model-switch test.", delayMs: 1000 })) },
   { name: "model-switch-compact-error", command: null, script: Array.from({ length: 16 }, () => ({ error: "Fixture compaction request failed", delayMs: 1000 })) },
+  ...[
+    ["rename", "/rename Fixture command feedback"],
+    ["export", "/export"],
+    ["cleanse", "/cleanse"],
+    ["jobs-kill", "/jobs kill fixture-missing-job"],
+  ].map(([name, command]) => ({
+    name: name!, command: command!, end: "open" as const,
+    ...(name === "cleanse" ? { run: async ({ keys, until, session }: RecordingContext) => {
+      keys("\x1b");
+      await until(() => session.availability().available, "cleanse cancellation did not restore the composer");
+    } } : {}),
+  })),
+  { name: "jobs-kill-running", command: "Start a local fixture background job.", end: "open", tools: ["bash"],
+    config: { async: { enabled: true } },
+    script: [
+      { tool: { name: "bash", arguments: { command: "sleep 30", async: true, timeout: 60 } } },
+      { text: "Fixture background job started." },
+    ],
+    run: async ({ session, until, find }: RecordingContext) => {
+      await until(() => !!find(node => node.k === "md" && node.p?.text === "Fixture background job started.") && session.availability().available, "background job did not start");
+      await session.submit("/jobs kill all");
+      await until(() => !!find(node => node.k === "toast" && /Cancelled 1 background job/.test(node.p?.text ?? "")), "running job cancellation feedback missing");
+    },
+  },
+  { name: "handoff", command: "/handoff Preserve the fixture context", end: "open",
+    script: Array.from({ length: 16 }, () => ({ text: "## Handoff\nPreserve the numbered fixture context segments.", delayMs: 100 })),
+    run: async ({ until, find }: RecordingContext) => {
+      await until(() => !!find(node => node.p?.role === TSP_ROLES.compaction || node.p?.role === TSP_ROLES.noticeError || node.k === "toast" && /handoff/i.test(node.p?.text ?? "")), "handoff outcome missing");
+    },
+  },
+  ...(["compact-ok", "compact-error"] as const).map(name => ({
+    name, command: "/compact soft", end: "open" as const,
+    script: Array.from({ length: 16 }, () => name === "compact-error"
+      ? { error: "Fixture compaction request failed", delayMs: 100 }
+      : { text: "## Summary\nPreserve the numbered fixture context segments.", delayMs: 100 }),
+    run: async ({ until, find }: RecordingContext) => {
+      await until(() => !!find(node => node.p?.role === (name === "compact-error" ? TSP_ROLES.noticeError : TSP_ROLES.compaction)), "command compaction outcome missing");
+    },
+  })),
   ...(["execute", "compact", "keep", "refine", "discard", "save"] as const).map(choice => ({
     name: `plan-review-${choice}`, command: "/plan Draft a fixture plan", end: "open" as const, tools: ["write", "read"],
     script: [
@@ -294,6 +333,7 @@ for (const scenario of scenarios) {
   const home = join(root, "home"); const agent = join(root, "agent");
   await Promise.all([mkdir(home), mkdir(agent)]);
   const compactSwitch = name.startsWith("model-switch-compact");
+  const compactCommand = name === "compact-ok" || name === "compact-error";
   const modelControls = ["model-switch", "thinking-cycle", "switch-typed"].includes(name) || compactSwitch;
   const controlModels = ["large", "small"].map(size => ({ id: `fixture-${size}`, name: `Fixture ${size}`, reasoning: true,
     input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -308,7 +348,7 @@ for (const scenario of scenarios) {
     tui: { autoGraph: "never" }, autocomplete: { enabled: false }, recap: { enabled: false },
     composer: { predictions: false }, modelRoles: { default: modelControls ? "fixture/fixture-large" : "fixture/fixture-model", smol: modelControls ? "fixture/fixture-small" : "fixture/fixture-model" },
     tools: { approvalMode: "yolo" }, memory: { enabled: false }, idle: { enabled: false }, ...scenario.config,
-    ...(compactSwitch ? { compaction: { asyncEnabled: false, keepRecentTokens: 4096 } } : {}),
+    ...(compactSwitch || compactCommand ? { compaction: { asyncEnabled: false, keepRecentTokens: 4096 } } : {}),
     ...(relay ? { collab: { autoStart: "control", relayUrl: relay.url, displayName: "Fixture recorder" } } : {}),
   }) : JSON.stringify({ ...parse(config), ...scenario.config }));
   if (modelControls && !provider) {
@@ -350,7 +390,7 @@ for (const scenario of scenarios) {
   if (modelControls) args.push("--model", "fixture/fixture-large", "--thinking", "off");
   else if (provider) args.push("--model", "fixture/fixture-model", "--thinking", "off");
   if (scenario.tools) args.push("--tools", scenario.tools.join(","));
-  if (compactSwitch) {
+  if (compactSwitch || compactCommand || name === "handoff") {
     const timestamp = "2026-11-02T00:00:00.000Z";
     const seed: object[] = [{ type: "session", version: 3, id: "6aaca402-6694-4a08-8f2b-87be2501ed59", timestamp, cwd: root, title: "Fixture model compaction", titleSource: "manual" }];
     let parentId: string | null = null;

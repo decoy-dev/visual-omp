@@ -30,14 +30,26 @@ loopback scripts exercise steer, follow-up delivery, Escape restoration, large t
 attachment, approval denial, ask ownership and prediction acceptance. Shell and Python scenarios
 configure the local model without making a provider request. `image-attach` also attaches a collab guest.
 
-Phase 4b adds three no-model worktree recordings, bringing the baseline to 77 raw recordings
-and 77 integrity manifests. Each creates a fresh scratch git repository and an initial commit.
+Phase 4b adds three no-model worktree recordings. Each creates a fresh scratch git repository and an initial commit.
 `worktree-start-ask` enables `worktree.onStart: ask` and records the creation question without
 answering it. The exit scenarios keep startup creation off, create an owned worktree through
 `/wt fixture`, modify its tracked `fixture.txt` and submit `/exit` with `worktree.onExit: ask`.
 `worktree-exit-ask` activates No (Keep); `worktree-exit-ask-remove` activates Yes (Remove).
 Both retain omp's uncommitted-changes risk text and finish natural process exit. These scenarios
 configure no model and make no provider request. Hosted chats retain `worktree.onStart: off`.
+
+Phase 4e adds eight command-feedback recordings, bringing the baseline to 85 raw recordings
+and 85 integrity manifests. Rename and export preserve omp's literal success message, including
+the generated HTML filename. `/compact soft` uses the shared scripted provider with three summary
+requests; its error counterpart makes two requests with scripted HTTP 400 responses. Handoff
+makes one scripted summary request and records its completed compaction section. These three
+scenarios seed eight public fixture user/assistant pairs in scratch profiles, without an external
+provider. The cleanse capture records the no-checker panel and local instruction prompt, then
+cancels with Escape and waits for the composer to return. Jobs-kill records the explicit
+missing-job error. `jobs-kill-running` starts a scripted async `sleep 30` bash job, then cancels
+it with `/jobs kill all` and records omp's confirmation. Quiet completion remains a synthetic
+consumer test because omp reports this successful cancellation explicitly. A complete
+cleanse checker/fix workflow has not been recorded.
 
 
 ## Capture format

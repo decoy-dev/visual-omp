@@ -2,6 +2,7 @@ import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { TspNode, TspText } from "@shared/tsp";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import { TSP_NOTICE_ROLES, TSP_ROLES } from "@shared/tsp/roles";
+import { commandNodeText, commandOutcome, type CommandOutcome, type CommandOutcomeSpec } from "@shared/tsp/command-result";
 import { APP_GUEST_NAME, type Notice } from "../../collab/lib/client";
 import { contentText } from "../../chat/transcript/notices";
 import type { SavedParents } from "../../state/history";
@@ -18,6 +19,18 @@ export interface TspNotice {
 	customType: "tsp-notice";
 	content: string;
 }
+export interface TspCommandNoticeReservation {
+	commit(outcome: CommandOutcome): void;
+	cancel(): void;
+}
+interface ReservedCommand {
+	before: TspHostSnapshot;
+	spec: CommandOutcomeSpec;
+	outcome: CommandOutcome | null;
+	rows: Map<string, string>;
+	id: number;
+	revision: number | null;
+}
 const text = (value: TspText | undefined): string => typeof value === "string" ? value : value?.filter(span => !span.s?.split(" ").includes("hide")).map(span => span.t).join("") ?? "";
 const key = (turn: string, value: string) => JSON.stringify([turn, value.trim()]);
 /** Arrival-time projection; collab remains the transcript authority. One instance belongs to one chat. */
@@ -32,18 +45,38 @@ export class TspNoticeProjection {
 	#anchor: string | null = null;
 	#authoritative = false;
 	#snapshot: readonly TspNotice[] = [];
+	#commands = new Set<ReservedCommand>();
+	#held = new Set<string>();
+	#nextCommand = 0;
 	getSnapshot = (): readonly TspNotice[] => this.#snapshot;
 
+	/** Hold the first outcome without discarding it until a consumer confirms presentation. */
+	beginCommand(before: TspHostSnapshot, spec: CommandOutcomeSpec): TspCommandNoticeReservation {
+		const command: ReservedCommand = { before, spec, outcome: null, rows: new Map(), id: this.#nextCommand++, revision: null };
+		this.#commands.add(command);
+		const finish = (outcome?: CommandOutcome) => {
+			if (!this.#commands.delete(command)) return;
+			const consumed = new Set(outcome?.nodes.map(node => JSON.stringify([node.sf, node.id, node.text])) ?? []);
+			for (const [id, version] of command.rows) {
+				this.#held.delete(id);
+				if (consumed.has(version)) this.#rows.delete(id);
+			}
+			this.#publish();
+		};
+		return { commit: outcome => finish(outcome), cancel: () => finish() };
+	}
 	reset(): void {
 		this.#epoch = null; this.#generation = null; this.#rows.clear(); this.#observed.clear();
 		this.#collab.clear(); this.#events.clear(); this.#turn = "startup"; this.#anchor = null; this.#snapshot = [];
 		this.#authoritative = false;
+		this.#commands.clear(); this.#held.clear();
 	}
 
 	/** A room/session change clears rows but remembers unchanged document nodes until omp replaces them. */
 	rotate(): void {
 		this.#rows.clear(); this.#collab.clear(); this.#events.clear(); this.#turn = "startup"; this.#anchor = null; this.#snapshot = [];
 		this.#authoritative = false;
+		this.#commands.clear(); this.#held.clear();
 	}
 
 	collab(entries: readonly SessionEntry[], notices: readonly Notice[], displayed: readonly SessionEntry[] = entries, saved?: SavedParents): void {
@@ -86,6 +119,10 @@ export class TspNoticeProjection {
 		if (this.#generation !== null && this.#generation !== snapshot.generation) this.#rows.clear();
 		this.#generation = snapshot.generation;
 		if (snapshot.lifecycle !== "live" || !snapshot.negotiated) { this.#publish(); return; }
+		for (const command of this.#commands) if (!command.outcome) {
+			command.outcome = commandOutcome(command.before, snapshot, command.spec);
+			if (command.outcome) command.revision = snapshot.revision;
+		}
 		for (const surface of snapshot.surfaces) {
 			if (surface.closed || surface.suspended || surface.documentGeneration !== snapshot.generation) continue;
 			const visit = (node: TspNode, region?: string) => {
@@ -102,10 +139,14 @@ export class TspNoticeProjection {
 					};
 					collect(node);
 					const id = `tsp:${snapshot.epoch}:${surface.open.id}:${node.id}`;
+					const version = JSON.stringify([surface.open.id, node.id, commandNodeText(node)]);
+					const reservation = [...this.#commands].find(command => command.revision === snapshot.revision && command.outcome?.nodes.some(candidate => JSON.stringify([candidate.sf, candidate.id, candidate.text]) === version));
 					if (content.trim() && !(node.p?.role === TSP_ROLES.toastStatus && OWN_COLLAB_NOTICE.test(content.trim())) && this.#observed.get(id) !== content) {
 						this.#observed.set(id, content);
-						const previous = this.#rows.get(id);
-						this.#rows.set(id, { id, anchor: previous && previous.turn !== null ? previous.anchor : this.#anchor, turn: this.#authoritative ? this.#turn : null, level, customType: "tsp-notice", content });
+						const rowId = reservation ? `${id}:command:${reservation.id}` : id;
+						const previous = this.#rows.get(rowId);
+						this.#rows.set(rowId, { id: rowId, anchor: previous && previous.turn !== null ? previous.anchor : this.#anchor, turn: this.#authoritative ? this.#turn : null, level, customType: "tsp-notice", content });
+						if (reservation) { reservation.rows.set(rowId, version); this.#held.add(rowId); }
 					}
 					return;
 				}
@@ -117,7 +158,7 @@ export class TspNoticeProjection {
 	}
 
 	#publish(): void {
-		const rows = [...this.#rows.values()].filter(row => row.turn !== null && !this.#collab.has(key(row.turn, row.content)));
+		const rows = [...this.#rows.values()].filter(row => !this.#held.has(row.id) && row.turn !== null && !this.#collab.has(key(row.turn, row.content)));
 		if (rows.length !== this.#snapshot.length || rows.some((row, index) => row !== this.#snapshot[index])) this.#snapshot = rows;
 	}
 }

@@ -8,6 +8,7 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { useSyncExternalStore } from "react";
 import type { SessionView } from "../../state/session";
+import type { CommandOutcome } from "@shared/tsp/command-result";
 import { messageLines } from "./screen";
 
 export type ResultTone = "info" | "warn" | "err";
@@ -268,6 +269,11 @@ function update(chat: object, items: readonly CommandResultRecord[]): void {
 /** Record a result for `chat` (its SessionController). */
 export function addCommandResult(chat: object, result: Omit<CommandResultRecord, "id" | "createdAt">): void {
 	update(chat, [...chatResults(chat).items, { ...result, id: `r${nextResultId++}`, createdAt: Date.now() }]);
+}
+/** Semantic feedback uses the same row shaping as classic output and preserves omp's export path. */
+export function addTspCommandResult(chat: object, command: string, outcome: CommandOutcome, anchor: string | null, room: string | null): void {
+	const lines = presentLines(outcome.lines);
+	if (lines.length) addCommandResult(chat, { command, lines, tone: outcome.status === "error" ? "err" : linesTone(lines), anchor, room });
 }
 
 export function dismissCommandResult(chat: object, id: string): void {

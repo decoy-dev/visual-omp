@@ -3,10 +3,13 @@
  * TSP hosts use main's send availability and document ownership; semantic notices report feedback.
  */
 import { TspDocumentStore } from "@shared/tsp/document";
-import { openOverlay, screenSurface } from "@shared/tsp/view-state";
+import { openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { TSP_PREVIEW_UNAVAILABLE, type TspHostSnapshot } from "@shared/tsp-host";
+import { commandOutcome, commandOutcomeSpec, type CommandOutcome, type CommandOutcomeSpec } from "@shared/tsp/command-result";
+import { TSP_ROLES } from "@shared/tsp/roles";
 import { toast } from "@/ui";
 import { i18n } from "../../i18n";
+import type { TspCommandNoticeReservation } from "../tsp/notices";
 import type { SessionController } from "../../state/session";
 import { outputTone } from "./results";
 import { newOutput, parseStatusLine, statusBorderLine } from "./screen";
@@ -146,6 +149,33 @@ export class TspEditorWatch {
 		// Allow omp's command handler to publish an overlay before treating an unchanged editor as free.
 		return this.#wait(() => this.ended || (!this.blocked && progressed()), undefined, () => this.available);
 	}
+	/** Watch only new command feedback. Quiet commands have an explicit per-command settle interval. */
+	outcome(before: TspHostSnapshot, spec: CommandOutcomeSpec, startedAt: number, timeoutMs = 10 * 60_000): Promise<CommandOutcome | null> {
+		const { promise, resolve } = Promise.withResolvers<CommandOutcome | null>();
+		let finished = false;
+		let quiet: ReturnType<typeof setTimeout> | undefined;
+		let timeout: ReturnType<typeof setTimeout> | undefined;
+		let firstOutput: ReturnType<typeof setTimeout> | undefined;
+		const finish = (result: CommandOutcome | null) => {
+			if (finished) return;
+			finished = true; clearTimeout(quiet); clearTimeout(timeout); clearTimeout(firstOutput); this.#listeners.delete(check); resolve(result);
+		};
+		const check = () => {
+			if (this.ended) { finish(null); return; }
+			const after = this.snapshot;
+			if (!after) return;
+			const result = commandOutcome(before, after, { ...spec, elapsedMs: Date.now() - startedAt });
+			if (result) finish(result);
+			else if (this.blocked) finish(null);
+			else if (Date.now() - startedAt >= 5000 && !after.surfaces.some(surface => !surface.closed && [...walkNodes(surface.document)].some(node => node.p?.role === TSP_ROLES.working || node.p?.role === TSP_ROLES.loader))) finish(null);
+		};
+		this.#listeners.add(check);
+		timeout = setTimeout(() => finish(null), timeoutMs);
+		if (spec.quietMs !== undefined) quiet = setTimeout(check, Math.max(0, spec.quietMs - (Date.now() - startedAt)));
+		firstOutput = setTimeout(check, Math.max(0, 5000 - (Date.now() - startedAt)));
+		check();
+		return promise;
+	}
 	/** A queued command found omp's own UI open. Wait for document readiness or scope invalidation. */
 	back(): Promise<void> {
 		return this.#wait(() => this.ended || this.available || (this.#readError !== null && !this.snapshot));
@@ -205,16 +235,20 @@ export async function readyEditor(session: SessionController): Promise<string[]>
 }
 
 export interface CommandResult {
-	/** Classic feedback lines, oldest first. Empty for TSP, whose notices are projected separately. */
+	/** Feedback lines from the selected presentation. */
 	output: string[];
 	/** Classic screen after the command; empty for TSP. */
 	screen: string[];
+	/** Semantic command status; classic callers keep their existing text-derived behavior. */
+	status?: CommandOutcome["status"];
 }
 
 export interface CommandOptions {
 	/** Resolve once the screen passes this test (default: any new output line or a status-line change). */
 	until?: (lines: string[], output: string[]) => boolean;
 	timeoutMs?: number;
+	/** Return true only after displaying this output. Undelivered TSP feedback returns to notices. */
+	present?: (result: CommandResult) => boolean;
 }
 
 /** Type a slash command into omp and collect the feedback it prints. */
@@ -222,15 +256,24 @@ export async function runCommand(session: SessionController, line: string, optio
 	const before = await readyEditor(session);
 	if (session.getSnapshot().host?.transport === "tsp") {
 		const watch = new TspEditorWatch(session);
+		let reservation: TspCommandNoticeReservation | undefined;
 		try {
 			await watch.ready();
+			const baseline = watch.snapshot!;
+			const spec = commandOutcomeSpec(line);
+			if (spec) reservation = session.tspNotices.beginCommand(baseline, spec);
+			const startedAt = Date.now();
+			const watching = spec ? watch.outcome(baseline, spec, startedAt, options.timeoutMs).then(outcome => {
+				if (!outcome) reservation?.cancel();
+				return outcome;
+			}) : watch.watch().then(() => null);
 			await session.command(line);
-			const watching = watch.watch();
-			session.holdQueue(watching);
-			await watching;
-			// Semantic notices already report the command's feedback in the transcript.
-			return { output: [], screen: [] };
-		} finally { watch.dispose(); }
+			session.holdQueue(watching.then(() => undefined));
+			const outcome = await watching;
+			const result: CommandResult = { output: outcome?.lines ?? [], screen: [], ...(outcome ? { status: outcome.status } : {}) };
+			if (options.present?.(result) && outcome) reservation?.commit(outcome);
+			return result;
+		} finally { reservation?.cancel(); watch.dispose(); }
 	}
 	const beforeStatus = JSON.stringify(parseStatusLine(before));
 	await session.command(line);
@@ -245,23 +288,27 @@ export async function runCommand(session: SessionController, line: string, optio
 			},
 			options.timeoutMs ?? 4000,
 		)) ?? (await readScreen(session));
-	return { output, screen };
+	const result = { output, screen };
+	options.present?.(result);
+	return result;
 }
 
 /** Show omp's feedback for a command as a toast (warnings and errors as warn/err). */
-export function reportOutput(output: readonly string[], fallback?: string): void {
-	const message = output.at(-1) ?? fallback;
-	if (!message) return;
-	const tone = outputTone(message);
+export function reportOutput(output: readonly string[], fallback?: string, status?: CommandOutcome["status"]): boolean {
+	const message = status ? output.join("\n") || fallback : output.at(-1) ?? fallback;
+	if (!message) return false;
+	const tone = status === "error" ? "err" : status === "cancelled" ? "info" : outputTone(message);
 	toast({ tone, message: message.replace(/^(warning|error):\s*/i, "") });
+	return true;
 }
 
 /** Run a command and toast what omp said; busy/offline failures become an error toast too. */
 export async function runAndReport(session: SessionController, line: string, options?: CommandOptions): Promise<CommandResult | null> {
 	try {
-		const result = await runCommand(session, line, options);
-		reportOutput(result.output);
-		return result;
+		return await runCommand(session, line, {
+			...options,
+			present: result => options?.present?.(result) || reportOutput(result.output, undefined, result.status),
+		});
 	} catch (error) {
 		reportFailure(error);
 		return null;

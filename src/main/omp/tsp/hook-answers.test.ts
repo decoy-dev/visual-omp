@@ -20,7 +20,7 @@ function replay(messages: Recording[]) {
 }
 
 describe("recorded omp hook answers", () => {
-	it("classifies hook and worktree recordings across every committed document replay", () => {
+	it("classifies hook, worktree and cleanse instruction recordings across every committed document replay", () => {
 		const names = readdirSync(fixtures).filter(name => name.endsWith(".messages.jsonl")).map(name => name.replace(".messages.jsonl", ""));
 		expect(names).toEqual(expect.arrayContaining(["hook-select", "hook-confirm", "hook-input", "hook-editor", "model-picker", "settings-screen", "jobs", "session", "tools", "changelog", "hotkeys", "tree-open"]));
 		for (const name of names) {
@@ -30,7 +30,7 @@ describe("recorded omp hook answers", () => {
 				session.receive({ verb: message.verb, params: {}, body: JSON.stringify(message.body) });
 				if (session.snapshot().surfaces.some(surface => [...walkNodes(surface.document)].some(isHookNode))) found = true;
 			}
-			expect(found, name).toBe(name.startsWith("hook-") || name.startsWith("worktree-"));
+			expect(found, name).toBe(name.startsWith("hook-") || name.startsWith("worktree-") || name === "cleanse");
 		}
 	});
 	it.each(["hook-select", "hook-confirm", "hook-input", "hook-editor", "hook-select-cancel", "hook-confirm-cancel", "hook-input-cancel", "hook-editor-cancel"])("emits the exact accepted answer events for %s", async name => {

@@ -1,7 +1,8 @@
 import type { TspHostSnapshot } from "@shared/tsp-host";
+import type { CommandOutcomeSpec } from "@shared/tsp/command-result";
 import type { GuestSnapshot } from "../../collab/lib/client";
 import type { SessionController } from "../../state/session";
-import { TspNoticeProjection } from "./notices";
+import { TspNoticeProjection, type TspCommandNoticeReservation } from "./notices";
 import { displayedEntries } from "../../chat/branch";
 import { savedParents } from "../../state/history";
 
@@ -22,6 +23,13 @@ export class TspNoticeStore {
 		this.#offSession = session.subscribe(() => this.#sync());
 	}
 	getSnapshot = () => this.#projection.getSnapshot();
+	beginCommand(before: TspHostSnapshot, spec: CommandOutcomeSpec): TspCommandNoticeReservation {
+		const reservation = this.#projection.beginCommand(before, spec);
+		return {
+			commit: outcome => { reservation.commit(outcome); this.#publish(); },
+			cancel: () => { reservation.cancel(); this.#publish(); },
+		};
+	}
 	subscribe = (listener: () => void): (() => void) => {
 		this.#listeners.add(listener);
 		return () => this.#listeners.delete(listener);

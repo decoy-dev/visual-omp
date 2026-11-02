@@ -35,7 +35,7 @@ export const TSP_ACTIONS = {
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
 export function isKnownAction(action: string): boolean { return knownActions.has(action); }
 /** Recorded actions without an app interaction path stay display-only. */
-export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true };
+export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true, "jobs.open": true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 export const TSP_PLAN_OPTIONS = {
 	execute: "Approve and execute", compact: "Approve and compact context", keep: "Approve and keep context",
@@ -111,6 +111,8 @@ const knownRoles: ReadonlySet<string> = new Set([
 	"omp.overlay.hotkeys", "omp.overlay.jobs", "omp.overlay.report", "omp.overlay.sessionInfo",
 	"omp.picker.title", "omp.prefs.preview.status", "omp.report.body",
 	"omp.compaction.caption",
+	"omp.overlay.cleanse", "omp.sheet.head", "omp.cleanse.live",
+	"omp.hud.pill", "omp.hud.seg", "omp.run.facts",
 	"omp.status", "omp.status.context_pct", "omp.status.model", "omp.status.path", "omp.status.pi",
 ]);
 export function isKnownRole(role?: string): boolean {
