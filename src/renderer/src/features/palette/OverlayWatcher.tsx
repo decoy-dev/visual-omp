@@ -6,17 +6,29 @@
  * Two signals: omp's overlay count (full-screen menus), and the keyboard focus leaving omp's main
  * editor for a known dialog that replaces the editor in place (session tree, sign-in, goal prompt…).
  */
-import { openOverlay, screenSurface } from "@shared/tsp/view-state";
-import { useEffect, useRef } from "react";
+import { openOverlay, screenSurface, unclaimed, walkNodes, type TspPresentationClaims, type TspSurfaces } from "@shared/tsp/view-state";
+import { useEffect, useMemo, useRef } from "react";
 import { useSessionView } from "../../shell/hooks";
 import { controllerFor, useApp } from "../../state/app";
 import { isNativeOverlay, screenName } from "./overlays";
 import { autoOpened } from "./TerminalSheet";
 import { useTsp } from "../tsp/useTsp";
-import { usePresentationClaims } from "../tsp/presentation-claims";
+import { currentPresentationConsumers, usePresentationAvailability, usePresentationClaims } from "../tsp/presentation-claims";
 
 /** Let omp finish painting before reading the screen. */
 const SETTLE_MS = 300;
+
+/** Unclaimed dock fallbacks such as extension rows need the same sheet as layer overlays. */
+function hasUnpresentedScreen(surfaces: TspSurfaces, consumers: TspPresentationClaims): boolean {
+	if (openOverlay(surfaces, false, consumers) || screenSurface(surfaces)) return true;
+	for (const surface of surfaces) {
+		if (surface.closed || surface.suspended) continue;
+		for (const root of unclaimed(surface, "dock", consumers.get(surface.open.id))) {
+			for (const node of walkNodes(root)) if (node.k === "rows" || node.k === "ansi") return true;
+		}
+	}
+	return false;
+}
 
 function TabWatch({ tabId }: { tabId: string }) {
 	const view = useSessionView(controllerFor(tabId));
@@ -28,10 +40,13 @@ function TabWatch({ tabId }: { tabId: string }) {
 	const tsp = view?.host?.transport === "tsp";
 	const { snapshot } = useTsp(tsp ? view?.host?.hostId ?? null : null);
 	const claims = usePresentationClaims(hostId, snapshot?.epoch);
+	const available = usePresentationAvailability(hostId, snapshot?.epoch);
+	// Automatic sheet state must not feed back through a card's covered/presented flag.
+	// Availability survives that cover; hidden layout ancestors and unmount still release it.
+	const nativeConsumers = useMemo(() => currentPresentationConsumers(hostId, snapshot?.epoch), [claims, available, hostId, snapshot?.epoch]);
 	const surfaces = snapshot?.lifecycle === "live" && snapshot.generation === view?.host?.generation
 		? snapshot.surfaces.filter(surface => surface.documentGeneration === snapshot.generation) : [];
-	const overlay = openOverlay(surfaces, false, claims);
-	const semanticScreen = !!(overlay || screenSurface(surfaces));
+	const semanticScreen = hasUnpresentedScreen(surfaces, nativeConsumers);
 	const asking = Boolean(view?.guest?.uiRequest);
 	const overlays = tui?.overlays ?? 0;
 	const focused = tui?.focused ?? null;
@@ -45,7 +60,9 @@ function TabWatch({ tabId }: { tabId: string }) {
 
 	useEffect(() => {
 		if (tsp) {
-			if (!live || !semanticScreen) {
+			// A passive effect may precede the rerender caused by a sibling's layout registration.
+			const needsSemanticScreen = hasUnpresentedScreen(surfaces, currentPresentationConsumers(hostId, snapshot?.epoch));
+			if (!live || !needsSemanticScreen) {
 				if (autoOpened.tabId === tabId) {
 					autoOpened.tabId = null;
 					if (useApp.getState().terminalTabId === tabId) useApp.getState().closeTerminal();
@@ -81,7 +98,7 @@ function TabWatch({ tabId }: { tabId: string }) {
 			cancelled = true;
 			clearTimeout(timer);
 		};
-	}, [needsSheet, hostId, tabId, screenKey, overlays, tsp, semanticScreen, live]);
+	}, [needsSheet, hostId, tabId, screenKey, overlays, tsp, semanticScreen, live, snapshot]);
 
 	return null;
 }

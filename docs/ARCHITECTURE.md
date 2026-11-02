@@ -393,6 +393,11 @@ hook card reveals the generic hook, but Escape closes the sheet without cancelli
 When no native consumer is available, the generic guarded cancellation path remains unchanged.
 Availability is scoped to the same exact target, releases on hidden ancestors or unmount, and
 grants no input authority.
+Automatic sheet opening uses native-consumer availability as well as active presentation claims.
+That availability remains stable while a sheet covers a hook or plan card, so automatic opening
+cannot release the very ownership that decides whether to open it. The watcher re-reads current
+registrations at the passive-effect decision, after sibling layout effects register consumers.
+Dock rows and ANSI fallbacks still open the generic sheet; ordinary HUD status does not trigger automatic opening.
 Other overlays and focused raw fallbacks keep their guarded Escape handling.
 With no open omp overlay, screen or focused raw fallback, Escape closes the sheet.
 Closing the sheet itself does not answer omp, and focus returns to that chat's composer.

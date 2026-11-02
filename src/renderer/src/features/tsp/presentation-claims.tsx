@@ -37,6 +37,19 @@ class PresentationClaimRegistry {
 }
 export const presentationClaims = new PresentationClaimRegistry();
 const availableConsumers = new PresentationClaimRegistry();
+const consumerRegistries = [presentationClaims, availableConsumers] as const;
+
+/** Read at an automatic-opening decision, after consumers have registered in layout effects. */
+export function currentPresentationConsumers(hostId: string | null, epoch: number | undefined): TspPresentationClaims {
+	const surfaces = new Map<string, Set<string>>();
+	for (const registry of consumerRegistries) for (const target of registry.getSnapshot()) {
+		if (target.hostId !== hostId || target.epoch !== epoch) continue;
+		let nodes = surfaces.get(target.surfaceId);
+		if (!nodes) surfaces.set(target.surfaceId, nodes = new Set());
+		nodes.add(target.nodeId);
+	}
+	return surfaces;
+}
 
 /**
  * Active presentation suppresses the generic screen. Availability may remain true while a sheet

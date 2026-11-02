@@ -83,7 +83,7 @@ export function PlanReviewCard({ session }: ChatSlotProps) {
 	const covered = useApp(state => !!state.terminalTabId || !!state.sheet);
 	usePresentationClaim(semantic && tsp.review && tsp.snapshot ? {
 		hostId: tsp.snapshot.hostId, epoch: tsp.snapshot.epoch, surfaceId: tsp.review.sf, nodeId: tsp.review.id,
-	} : null, !covered);
+	} : null, !covered, true);
 
 	useEffect(() => {
 		if (!open || semantic || !sessionFile) return;
