@@ -11,8 +11,8 @@ it("keeps a claimed recorded review as main-process input ownership and writes t
 	const session = new TspSession({ cols: 110, dark: false, reduceMotion: true, write: data => stream.push(Buffer.from(data)) });
 	for (const message of recording.messages.slice(0, input.afterMessage)) session.receive({ verb: message.verb, body: JSON.stringify(message.body), params: {} });
 	await session.drain();
-	expect(session.availability().available).toBe(false);
-	await expect(session.submit("A prompt while review owns input")).rejects.toThrow("Close the open omp menu");
+	expect(session.availability()).toEqual({ available: false, reason: "Choose how to continue with the plan before sending a message." });
+	await expect(session.submit("A prompt while review owns input")).rejects.toThrow("Choose how to continue with the plan");
 	output.length = 0;
 	await session.send(input.body);
 	await session.drain();

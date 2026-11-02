@@ -4,6 +4,7 @@ import { TspRendererEvent, type TspAvailability, type TspSurfaceSnapshot } from 
 import { liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
 import { isHookNode, isKnownAction, TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
 import { hookAnswerEvents, TspHookAnswer } from "../../../shared/tsp/dialogs";
+import { planReview } from "../../../shared/tsp/plan-review";
 import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";
 import type { TspMessage } from "./stream";
@@ -398,7 +399,11 @@ export class TspSession {
 		const facts = composerFacts(surfaces.filter(surface => surfaceAllowed(surface.open.id)));
 		if (screenSurface(surfaces)) return { available: false, reason: "Close the omp screen before sending a message." };
 		if (facts.blockedBy === "approval" && facts.sendable) return { available: true, reason: null };
-		if (facts.blockedBy === "panel" || openOverlay(surfaces, true)) return { available: false, reason: "Close the open omp menu before sending a message." };
+		if (facts.blockedBy === "panel" || openOverlay(surfaces, true)) {
+			if (this.hasHookDialog()) return { available: false, reason: "Answer omp's question before sending a message." };
+			if (planReview(surfaces)) return { available: false, reason: "Choose how to continue with the plan before sending a message." };
+			return { available: false, reason: "Close the open omp menu before sending a message." };
+		}
 		if (!this.hasHookDialog() && askEditorOwnsDock(surfaces.filter(surface => surfaceAllowed(surface.open.id)))) {
 			return { available: false, reason: "Answer the question card before sending a message.", reasonCode: "ask-editor" };
 		}
