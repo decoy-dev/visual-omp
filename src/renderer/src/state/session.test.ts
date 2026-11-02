@@ -355,7 +355,7 @@ describe("messages while ask waits", () => {
 	const ask = { uiRequest: request, activeTools: new Map([["ask-1", { toolCallId: "ask-1", toolName: "ask", args, startedAt: 0 }]]) };
 	it.each(["classic", "tsp"] as const)("sends Enter and Send now through a user collab prompt in %s without touching the question selector", async transport => {
 		const session = working(`ask-${transport}`);
-		sendHost({ transport, link: "L1", tui: tui(1), tspAvailability: { available: false, reason: "Question", reasonCode: "matched-question" } });
+		sendHost({ transport, link: "L1", tui: tui(1), tspAvailability: { available: false, reason: "Question", reasonCode: "matched-question", questionReqId: 7 } });
 		const guest = fakes.guests.at(-1)!;
 		guest.emit("live", [u1], true, ask);
 		await deliver(session, "Use Postgres instead.", [], false);
@@ -370,13 +370,45 @@ describe("messages while ask waits", () => {
 		const session = working(`queued-ask-${transport}`);
 		await session.send("Use Postgres.");
 		const id = session.getSnapshot().queue[0]!.id;
-		sendHost({ transport, link: "L1", tui: tui(1), tspAvailability: { available: false, reason: "Question", reasonCode: "matched-question" } });
+		sendHost({ transport, link: "L1", tui: tui(1), tspAvailability: { available: false, reason: "Question", reasonCode: "matched-question", questionReqId: 7 } });
 		const guest = fakes.guests.at(-1)!;
 		guest.emit("live", [u1], true, ask);
 		await session.sendNow(id);
 		expect(guest.sendPrompt).toHaveBeenCalledExactlyOnceWith("Use Postgres.", [], expect.any(Function));
 		expect(queued(session)).toEqual([]);
 		expect(invoked.filter(call => call[0] === "host:submit")).toEqual([]);
+	});
+
+	it("sends a collab-only rich TSP ask through all message paths while its semantic main editor is absent", async () => {
+		const session = working("observed-tsp-rich-ask");
+		await session.send("Previously queued.");
+		const queuedId = session.getSnapshot().queue[0]!.id;
+		sendHost({ transport: "tsp", link: "L1", tui: tui(0), tspAvailability: { available: false, reason: "Answer the question card before sending a message.", reasonCode: "ask-editor" } });
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("live", [u1], true, ask);
+		await session.send("Use Postgres.");
+		await session.steer("Keep the schema.");
+		await session.sendNow(queuedId);
+		expect(guest.sendPrompt.mock.calls.map(call => call.slice(0, 2))).toEqual([["Use Postgres.", []], ["Keep the schema.", []], ["Previously queued.", []]]);
+		expect(invoked.some(call => call[0] === "host:submit" || call[0] === "composer:paste")).toBe(false);
+		expect(queued(session)).toEqual([]);
+	});
+
+	it("refuses the rich ask code without a current ask and binds matched hooks to that exact request", async () => {
+		const session = working("tsp-question-authority");
+		await session.send("Keep this queued.");
+		const item = session.getSnapshot().queue[0]!;
+		const guest = fakes.guests.at(-1)!;
+		sendHost({ transport: "tsp", link: "L1", tspAvailability: { available: false, reason: "Extension question", reasonCode: "matched-question", questionReqId: 8 } });
+		guest.emit("live", [u1], true, ask);
+		await expect(session.send("Ask A must not bypass hook B.")).rejects.toThrow("Extension question");
+		await expect(session.sendNow(item.id)).rejects.toThrow("Extension question");
+		expect(session.getSnapshot().queue).toEqual([item]);
+		sendHost({ transport: "tsp", link: "L1", tspAvailability: { available: false, reason: "Rich ask owns dock", reasonCode: "ask-editor" } });
+		guest.emit("live", [u1], true, { uiRequest: request, activeTools: new Map() });
+		await expect(session.steer("No active ask.")).rejects.toThrow("Answer the question card");
+		expect(guest.sendPrompt).not.toHaveBeenCalled();
+		expect(invoked.some(call => call[0] === "host:submit")).toBe(false);
 	});
 
 	it("carries original image blocks without pasting paths into the ask selector", async () => {

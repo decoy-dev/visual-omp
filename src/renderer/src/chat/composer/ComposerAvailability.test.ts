@@ -68,7 +68,7 @@ it("renders the matched question instruction and keeps ordinary menu and classic
 
 it.each(["classic", "tsp"] as const)("offers Send message rather than Queue message for a live ask in %s", async transport => {
 	const args = { questions: [{ id: "db", question: "Which database?", options: [{ label: "SQLite" }] }] };
-	view = { ...view, working: true, host: host(transport, { available: false, reason: "Main fallback text", reasonCode: "matched-question" }), guest: {
+	view = { ...view, working: true, host: host(transport, { available: false, reason: "Answer the question card before sending a message.", reasonCode: "ask-editor" }), guest: {
 		phase: "live", readOnly: false, entries: [], stream: null, working: true,
 		uiRequest: { reqId: 7, kind: "select", title: "Which database?", options: ["SQLite", "Other (type your own)", "Chat about this"] },
 		activeTools: new Map([["ask-1", { toolCallId: "ask-1", toolName: "ask", args, startedAt: 0 }]]),
@@ -79,6 +79,23 @@ it.each(["classic", "tsp"] as const)("offers Send message rather than Queue mess
 	expect(element.textContent).not.toContain("Queue message");
 	expect(element.textContent).not.toContain("Answer the question card before sending a message.");
 	expect(element.querySelector<HTMLTextAreaElement>("textarea")?.placeholder).not.toContain("Queue");
+});
+
+it("keeps the ask exception unavailable for a different blocking hook or without a live ask", async () => {
+	const args = { questions: [{ id: "db", question: "Which database?", options: [{ label: "SQLite" }] }] };
+	view = { ...view, working: true, host: host("tsp", { available: false, reason: "Blocking extension question", reasonCode: "matched-question", questionReqId: 8 }), guest: {
+		phase: "live", readOnly: false, entries: [], stream: null, working: true,
+		uiRequest: { reqId: 7, kind: "select", title: "Which database?", options: ["SQLite", "Other (type your own)", "Chat about this"] },
+		activeTools: new Map([["ask-1", { toolCallId: "ask-1", toolName: "ask", args, startedAt: 0 }]]),
+	} as unknown as SessionView["guest"] };
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
+	expect(element.querySelector('[role="status"]')?.textContent).toBe("Answer the question card before sending a message.");
+	view = { ...view, working: false, host: host("tsp", { available: false, reason: "Rich ask owns dock", reasonCode: "ask-editor" }), guest: {
+		...view.guest!, working: false, activeTools: new Map(),
+	} };
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
 });
 
 it("restores a rejected submitted draft with its attachments when the composer is still empty", async () => {

@@ -23,6 +23,18 @@ function harness(write?: (data: string) => void | Promise<void>) {
 
 const regions: readonly TspOp[] = [["add", "main", "s:1", null, { id: "main", k: "col" }], ["add", "dock", "s:1", null, { id: "dock", k: "col", p: { role: "omp.editor" }, c: [{ id: "editor", k: "editor", p: { text: "", sendable: false } }] }], ["focus", "editor"]];
 
+const askRegions: readonly TspOp[] = [
+	["add", "main", "s:1", null, { id: "main", k: "col" }],
+	["add", "dock", "s:1", null, { id: "dock", k: "col", c: [
+		{ id: "ask", k: "col", p: { role: "omp.editor.ask" }, c: [
+			{ id: "question", k: "md", p: { role: "omp.ask.question", text: "First smoke question?" } },
+			{ id: "options", k: "list", p: { role: "omp.ask.options", selected: "sqlite" }, c: [{ id: "sqlite", k: "item", p: { label: "SQLite" } }] },
+		] },
+	] }],
+	["add", "layer", "s:1", null, { id: "layer", k: "col" }],
+	["focus", null],
+];
+
 function hasRole(node: TspNode, role: string): boolean {
 	return node.p?.role === role || (node.c?.some(child => hasRole(child, role)) ?? false);
 }
@@ -253,6 +265,43 @@ describe("TSP session", () => {
 		h.frame(5, [["del", "layer"], ["add", "viewing", "dock", null, { id: "viewing", k: "row", p: { role: "omp.composer.focus" } }]]);
 		await expect(h.session.submit("hello")).rejects.toThrow("main editor");
 		expect(h.bodies().filter(body => body.ev === "send")).toEqual([]);
+	});
+
+	it.each(["expanded", "hidden", "Other", "series"] as const)("identifies the rich %s ask dock without enabling semantic send", async kind => {
+		const h = harness(); h.hello(); h.open(); h.frame(1, askRegions);
+		if (kind === "hidden") h.frame(2, [["set", "ask", { role: "omp.editor.ask.hidden" }]]);
+		if (kind === "Other") h.frame(2, [["add", "custom", "ask", null, { id: "custom", k: "editor", p: { text: "", sendable: false } }], ["focus", "custom"]]);
+		if (kind === "series") h.frame(2, [["add", "tabs", "ask", null, { id: "tabs", k: "tabs", p: { role: "omp.ask.questions", items: [{ id: "q1", label: "First" }, { id: "q2", label: "Second" }], active: "q1" } }]]);
+		expect(h.session.availability()).toMatchObject({ available: false, reasonCode: "ask-editor" });
+		await expect(h.session.submit("Use Postgres.")).rejects.toThrow("not ready");
+		expect(h.bodies().some(body => body.ev === "send")).toBe(false);
+	});
+
+	it.each(["suspended", "stale", "screen", "menu", "hook", "shell", "PTY", "subagent", "foreign-focus", "approval-root", "sibling-approval", "other-surface"] as const)("does not authorize collab ask bypass for %s ownership", kind => {
+		const h = harness(); h.hello(); h.open(); h.frame(1, askRegions);
+		if (kind === "suspended") h.frame(2, [["suspend"]]);
+		if (kind === "screen") h.receive("o", { id: "settings", mode: "screen" });
+		if (kind === "menu") h.frame(2, [["add", "menu", "layer", null, { id: "menu", k: "overlay" }]]);
+		if (kind === "hook") h.frame(2, [["add", "hook", "dock", null, { id: "hook", k: "col", p: { role: "omp.overlay.hook-input" } }]]);
+		if (kind === "shell") h.frame(2, [["add", "shell", "dock", null, { id: "shell", k: "col", p: { role: "omp.editor.shell" } }]]);
+		if (kind === "PTY") h.frame(2, [["add", "pty", "ask", null, { id: "pty", k: "editor", p: { mode: "PTY" } }]]);
+		if (kind === "subagent") h.frame(2, [["add", "viewing", "dock", null, { id: "viewing", k: "row", p: { role: "omp.composer.focus" } }]]);
+		if (kind === "foreign-focus") h.frame(2, [["add", "foreign", "dock", null, { id: "foreign", k: "input", p: { text: "" } }], ["focus", "foreign"]]);
+		if (kind === "approval-root") h.frame(2, [["set", "ask", { role: "omp.editor.ask.approval" }]]);
+		if (kind === "sibling-approval") h.frame(2, [["add", "approval", "dock", null, { id: "approval", k: "col", p: { role: "omp.editor.ask.approval" } }]]);
+		if (kind === "other-surface") h.receive("o", { id: "other", mode: "inline" });
+		expect(h.session.availability(kind === "stale" ? () => false : undefined).reasonCode).toBeUndefined();
+	});
+
+	it("does not confuse missing, unnegotiated or send-unsupported surfaces with rich asks", () => {
+		const h = harness();
+		expect(h.session.availability().reasonCode).toBeUndefined();
+		h.hello();
+		expect(h.session.availability().reasonCode).toBeUndefined();
+		h.open(); h.frame(1, [["add", "dock", "s:1", null, { id: "dock", k: "col" }]]);
+		expect(h.session.availability().reasonCode).toBeUndefined();
+		const unsupported = harness(); unsupported.receive("q", { q: "hello", v: [1] }); unsupported.open(); unsupported.frame(1, askRegions);
+		expect(unsupported.session.availability().reasonCode).toBeUndefined();
 	});
 
 	it("rechecks sendable and selected target identity at the serialized writer", async () => {

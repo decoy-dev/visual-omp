@@ -44,7 +44,15 @@ export function isTspPreviewInputError(error: unknown): boolean {
 export interface TspAvailability {
 	available: boolean;
 	reason: string | null;
-	reasonCode?: "matched-question";
+	reasonCode?: "matched-question" | "ask-editor";
+	/** The blocking hook's matched request, so another pending question cannot authorize its bypass. */
+	questionReqId?: number;
+}
+
+/** Main publishes these only after lifecycle and unrelated-UI guards; an ask prompt uses collab. */
+export function tspAllowsAskPrompt(availability: TspAvailability | undefined, reqId: number): boolean {
+	return availability?.available === true || availability?.reasonCode === "ask-editor"
+		|| (availability?.reasonCode === "matched-question" && availability.questionReqId === reqId);
 }
 
 /** Complete replacement snapshot. Revision orders an IPC subscription against its initial read. */

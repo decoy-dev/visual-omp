@@ -14,7 +14,7 @@ describe("ask closed by a message", () => {
 		const call = { name: "ask", args, result: interrupted, running: false };
 		expect(friendlySummary(call)).toMatchObject({ key: "ask.closed", status: "neutral", statusLabel: "ask.closedLabel" });
 		const html = renderToStaticMarkup(createElement(ToolCard, { ...call, verbose: true }));
-		expect(html).toContain("Question closed after your message");
+		expect(html).toContain("Question closed after a message");
 		expect(html).toContain('aria-label="Closed"');
 		expect(html).toContain("The reply can continue.");
 		expect(html).not.toContain("Ask interrupted by message");

@@ -645,6 +645,22 @@ function tspComposer(surface = "s:1", editor = "editor", sendable = true): void 
 	] });
 }
 
+/** omp18.15 live ask capture: rich ask owns dock, with no main editor or hook overlay and null focus. */
+function tspAskDock(): void {
+	tspMessage("o", { id: "s:1", mode: "inline", role: "omp.session" });
+	tspMessage("f", { sf: "s:1", s: 1, ops: [
+		["add", "main", "s:1", null, { id: "main", k: "col" }],
+		["add", "dock", "s:1", null, { id: "dock", k: "col", c: [
+			{ id: "ask", k: "col", p: { role: "omp.editor.ask" }, c: [
+				{ id: "ask.question", k: "md", p: { role: "omp.ask.question", text: "First smoke question?" } },
+				{ id: "ask.options", k: "list", p: { role: "omp.ask.options", selected: "sqlite" }, c: [{ id: "sqlite", k: "item", p: { label: "SQLite" } }] },
+			] },
+		] }],
+		["add", "layer", "s:1", null, { id: "layer", k: "col" }],
+		["focus", null],
+	] });
+}
+
 describe("opt-in semantic transport", () => {
 	it("leaves classic launch, raw output and snapshots unchanged by default", () => {
 		expect(pty.spawnOptions?.env).toMatchObject({ PI_TUI_NATIVE: "0" });
@@ -949,6 +965,37 @@ describe("opt-in semantic transport", () => {
 		expect(host.state.tspAvailability?.available).toBe(true);
 	});
 
+	it("publishes the rich ask owner for a current no-editor surface without permitting semantic submission", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspAskDock(); await connect();
+		const snapshot = host.tspSnapshot()!;
+		expect(snapshot).toMatchObject({ negotiated: true, lifecycle: "live", questionMatches: [], availability: { available: false, reasonCode: "ask-editor" } });
+		expect(snapshot.surfaces[0]).toMatchObject({ focus: null, closed: false, suspended: false, documentGeneration: 1 });
+		pty.writes.mockClear();
+		await expect(host.submit("Use Postgres.")).rejects.toThrow("not ready");
+		expect(pty.writes.mock.calls.some(([data]) => data.includes('"ev":"send"'))).toBe(false);
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["suspend"]] });
+		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
+		tspMessage("f", { sf: "s:1", s: 3, ops: [["resume"]] });
+		expect(host.state.tspAvailability?.reasonCode).toBe("ask-editor");
+		tspMessage("f", { sf: "s:1", s: 4, ops: [["add", "menu", "layer", null, { id: "menu", k: "overlay", p: { head: "Extension menu" } }]] });
+		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
+		tspMessage("f", { sf: "s:1", s: 5, ops: [["del", "menu"]] });
+		tspMessage("o", { id: "settings", mode: "screen" });
+		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
+		tspMessage("x", { id: "settings", keep: false });
+		expect(host.state.tspAvailability?.reasonCode).toBe("ask-editor");
+		pty.events.onHostClose?.("room");
+		await connect("next-room", "next-session");
+		expect(host.tspSnapshot()?.lifecycle).toBe("transitioning");
+		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
+		tspMessage("f", { sf: "s:1", s: 6, ops: [] });
+		expect(host.state.tspAvailability?.reasonCode).toBe("ask-editor");
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
+	});
+
 	it("points to the question card only while the blocking hook has a unique collab match", async () => {
 		await launchTsp();
 		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
@@ -959,7 +1006,7 @@ describe("opt-in semantic transport", () => {
 		] }]] });
 		expect(host.state.tspAvailability?.reason).toContain("menu");
 		host.tspQuestions({ hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [{ reqId: 4, kind: "select", title: "Choose", options: ["Yes"] }] });
-		expect(host.state.tspAvailability).toEqual({ available: false, reason: "Answer the question card before sending a message.", reasonCode: "matched-question" });
+		expect(host.state.tspAvailability).toEqual({ available: false, reason: "Answer the question card before sending a message.", reasonCode: "matched-question", questionReqId: 4 });
 		expect(host.tspSnapshot()?.availability).toEqual(host.state.tspAvailability);
 		tspMessage("o", { id: "settings", mode: "screen" });
 		expect(host.state.tspAvailability).toEqual({ available: false, reason: "Close the omp screen before sending a message." });

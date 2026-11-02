@@ -79,5 +79,9 @@ describe("semantic composer availability", () => {
 		expect(tspComposerReason({ transport: "tsp", tspAvailability: { available: false, reason } }, questionHint)).toBe(reason);
 		expect(tspComposerReason({ transport: "tsp", tspAvailability: { available: true, reason: null } }, questionHint)).toBeNull();
 		expect(tspComposerReason({ transport: "classic" }, questionHint)).toBeNull();
+		expect(tspComposerReason({ transport: "tsp", tspAvailability: { available: false, reason: "rich ask", reasonCode: "ask-editor" } }, questionHint, 7)).toBeNull();
+		expect(tspComposerReason({ transport: "tsp", tspAvailability: { available: false, reason: "rich ask", reasonCode: "ask-editor" } }, questionHint)).toBe(questionHint);
+		expect(tspComposerReason({ transport: "tsp", tspAvailability: { available: false, reason: "hook", reasonCode: "matched-question", questionReqId: 7 } }, questionHint, 7)).toBeNull();
+		expect(tspComposerReason({ transport: "tsp", tspAvailability: { available: false, reason: "hook", reasonCode: "matched-question", questionReqId: 8 } }, questionHint, 7)).toBe(questionHint);
 	});
 });

@@ -227,9 +227,15 @@ editor under `dock` explicitly has `sendable: true`. The inherited composer role
 shell variants, modal fields, PTY mode and a subagent-view composer are refused. An open overlay
 or screen-mode surface also blocks submission. Main publishes availability and a reason, and the
 app composer shows that reason beside its unavailable send control. A blocking hook uniquely
-matched to a collab question carries `reasonCode: "matched-question"`; the composer uses a localized
-instruction to answer the question card unless `pendingAsk` authorizes a collab user prompt. This exception
-never relaxes main's semantic hook guard. Other omp menus retain their close-menu instruction.
+matched to a collab question carries `reasonCode: "matched-question"` and its `questionReqId`; only that
+same current ask request may authorize a collab user prompt. A rich native ask replaces the main editor
+with exact dock role `omp.editor.ask` or `omp.editor.ask.hidden`, so main publishes `reasonCode: "ask-editor"`
+while semantic submission remains unavailable. This code requires a negotiated protocol and one current,
+unsuspended inline main surface, with no screen, overlay, hook, competing dock editor or unrelated focus.
+The composer and controller share this narrow allowlist and still require `pendingAsk`, including immediately
+before the collab frame is sent. Approval-prefixed roles and generic absent or non-sendable editors receive
+no exception. Closing, transfer blocks and failed or transitioning lifecycles veto the code first.
+These exceptions never relax main's semantic hook or editor guards. Other omp menus retain their close-menu instruction.
 The writer checks availability again before sending. omp retains displaced drafts through its own send semantics. Attachments,
 application pastes, Ctrl+Q follow-up submission, shell/Python modes and prediction transfer remain
 unavailable in this preview. Unconverted screen-driven controls still require semantic consumers.

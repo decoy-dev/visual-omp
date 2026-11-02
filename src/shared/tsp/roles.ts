@@ -3,6 +3,7 @@ import type { TspNode } from "../tsp";
 /** All omp names on which visual-omp makes a behavioral decision. */
 export const TSP_ROLES = {
 	session: "omp.session", editor: "omp.editor", editorShell: "omp.editor.shell", composerFocus: "omp.composer.focus",
+	editorAsk: "omp.editor.ask", editorAskHidden: "omp.editor.ask.hidden",
 	user: "omp.user", assistant: "omp.assistant", thinking: "omp.thinking", tool: "omp.tool", agent: "omp.agent",
 	toastStatus: "omp.toast.status", noticeError: "omp.notice.error", noticeWarning: "omp.notice.warning",
 	tree: "omp.overlay.tree", treeSelector: "omp.overlay.tree-selector", btwHistory: "omp.overlay.btwHistory",

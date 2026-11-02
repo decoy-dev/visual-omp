@@ -10,6 +10,7 @@
  *   (`SessionController.send`), so a message with images queues like any other.
  */
 import type { HostState } from "@shared/ipc";
+import { tspAllowsAskPrompt } from "@shared/tsp-host";
 import type { SessionController } from "../../state/session";
 import type { Attachment, ComposerMode } from "./drafts";
 
@@ -17,9 +18,10 @@ import type { Attachment, ComposerMode } from "./drafts";
 export const ATTACHABLE_IMAGE = /\.(?:png|jpe?g|gif|webp)$/i;
 
 /** Main identifies the blocking question; the renderer supplies the localized card instruction. */
-export function tspComposerReason(host: Pick<HostState, "transport" | "tspAvailability"> | null, questionHint: string, askWaiting = false): string | null {
+export function tspComposerReason(host: Pick<HostState, "transport" | "tspAvailability"> | null, questionHint: string, askReqId?: number): string | null {
 	if (host?.transport !== "tsp" || host.tspAvailability?.available === true) return null;
-	if (host.tspAvailability?.reasonCode === "matched-question") return askWaiting ? null : questionHint;
+	if (askReqId !== undefined && tspAllowsAskPrompt(host.tspAvailability, askReqId)) return null;
+	if (host.tspAvailability?.reasonCode === "matched-question" || host.tspAvailability?.reasonCode === "ask-editor") return questionHint;
 	return host.tspAvailability?.reason ?? "Waiting for omp to open its semantic screen.";
 }
 

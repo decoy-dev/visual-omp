@@ -161,7 +161,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 		<>
 			<span>{truncate(normalizeWs(first.question), 70)}</span>
 			{questions.length > 1 && <Badge>{questions.length} questions</Badge>}
-			{isAskClosedByMessage(result) && <Badge>Closed after your message</Badge>}
+			{isAskClosedByMessage(result) && <Badge>Closed after a message</Badge>}
 		</>
 	);
 }
@@ -218,7 +218,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 				return <QuestionBlock key={i} q={q} answer={answer} />;
 			})}
 			{questions.length === 0 && !result && <InvalidArg what="questions" />}
-			{isAskClosedByMessage(result) ? <Note>Question closed after your message. The reply can continue.</Note> : !answers && <ResultText result={result} maxLines={10} />}
+			{isAskClosedByMessage(result) ? <Note>Question closed after a message. The reply can continue.</Note> : !answers && <ResultText result={result} maxLines={10} />}
 		</>
 	);
 }

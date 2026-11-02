@@ -9,7 +9,7 @@
  */
 import type { CollabUiRequest, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { FollowState, HostState, SessionOwnership } from "@shared/ipc";
-import { isTspPreviewInputError, TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
+import { isTspPreviewInputError, tspAllowsAskPrompt, TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import type { Attachment } from "../chat/composer/drafts";
 import { imagePathsText } from "../chat/composer/send";
 import { isAskRequest } from "../chat/transcript/askSeries";
@@ -962,7 +962,7 @@ export class SessionController {
 		}
 		if (guest.uiRequest && (guest.uiRequest.reqId !== target.reqId || !pendingAsk(view))) throw new Error("Answer the question card before sending a message.");
 		const availability = view.host?.tspAvailability;
-		if (view.host?.transport === "tsp" && availability?.available !== true && !(availability?.reasonCode === "matched-question" && pendingAsk(view))) {
+		if (view.host?.transport === "tsp" && availability?.available !== true && !(tspAllowsAskPrompt(availability, target.reqId) && pendingAsk(view))) {
 			throw new Error(availability?.reason ?? "Waiting for omp to open its semantic screen.");
 		}
 	}

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, type TspEvent, type TspFrame, type TspOpen } from "../../../shared/tsp";
-import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspSurfaceSnapshot } from "../../../shared/tsp-host";
+import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspAvailability, type TspSurfaceSnapshot } from "../../../shared/tsp-host";
 import { composer, liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
-import { isHookNode, isKnownAction } from "../../../shared/tsp/roles";
+import { isHookNode, isKnownAction, TSP_ROLES } from "../../../shared/tsp/roles";
 import { hookAnswerEvents, TspHookAnswer } from "../../../shared/tsp/dialogs";
 import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";
@@ -38,6 +38,27 @@ interface Surface {
 	doc: TspDocument;
 	sequence: number;
 	closed: boolean;
+}
+
+/** A rich ask replaces the dock editor. It never grants input to another focused or dock-owned UI. */
+function askEditorOwnsDock(surfaces: readonly TspSurfaceSnapshot[]): boolean {
+	const live = liveSurfaces(surfaces);
+	const main = live.filter(surface => surface.open.mode === "inline" && surface.open.role === TSP_ROLES.session);
+	if (live.length !== 1 || main.length !== 1) return false;
+	const surface = main[0]!;
+	const dock = surface.document.c?.find(node => node.id === "dock");
+	if (!dock) return false;
+	const dockNodes = [...walkNodes(dock)];
+	const asks = dockNodes.filter(node => node.p?.role === TSP_ROLES.editorAsk || node.p?.role === TSP_ROLES.editorAskHidden);
+	if (asks.length !== 1) return false;
+	const subtree = [...walkNodes(asks[0]!)];
+	if (subtree.some(node => node.k === "editor" && node.p?.mode === "PTY")) return false;
+	const askNodes = new Set(subtree.map(node => node.id));
+	if (live.some(candidate => candidate.focus !== null && (candidate !== surface || !askNodes.has(candidate.focus)))) return false;
+	if (live.some(candidate => [...walkNodes(candidate.document)].some(node => node.p?.role === TSP_ROLES.composerFocus))) return false;
+	return !dockNodes.some(node => !askNodes.has(node.id) && (
+		node.p?.role?.startsWith(TSP_ROLES.editor) || node.k === "editor" || node.k === "input" || node.k === "picker" || node.k === "list" || node.k === "tree"
+	));
 }
 
 export type TspUpdate = "hello" | "open" | "frame" | "close";
@@ -227,12 +248,15 @@ export class TspSession {
 		});
 	}
 
-	availability(surfaceAllowed: (surface: string) => boolean = () => true): { available: boolean; reason: string | null } {
+	availability(surfaceAllowed: (surface: string) => boolean = () => true): TspAvailability {
 		const surfaces = this.snapshot().surfaces;
 		if (!this.#negotiated) return { available: false, reason: "Waiting for omp to start its semantic screen." };
 		if (!this.#programFeatures.has("send")) return { available: false, reason: "omp does not accept send events." };
 		if (screenSurface(surfaces)) return { available: false, reason: "Close the omp screen before sending a message." };
 		if (openOverlay(surfaces)) return { available: false, reason: "Close the open omp menu before sending a message." };
+		if (!this.hasHookDialog() && askEditorOwnsDock(surfaces.filter(surface => surfaceAllowed(surface.open.id)))) {
+			return { available: false, reason: "Answer the question card before sending a message.", reasonCode: "ask-editor" };
+		}
 		if (!composer(surfaces.filter(surface => surfaceAllowed(surface.open.id)))) return { available: false, reason: "Wait for omp to finish opening its main editor." };
 		return { available: true, reason: null };
 	}
