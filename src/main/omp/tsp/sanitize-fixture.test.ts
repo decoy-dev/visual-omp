@@ -1,11 +1,13 @@
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { decodedOscPayloads, sanitizeFixtureBytes, sanitizeFixtureText } from "./sanitize-fixture";
 import { TspStream } from "./stream";
 
 const forbidden = /\.local\/|\/Users\/|\/var\/folders\/|MacBook|readycloud/i;
-const root = new URL("./fixtures/", import.meta.url);
+// fileURLToPath converts the file URL to a native filesystem path, including Windows drive letters.
+const root = fileURLToPath(new URL("./fixtures/", import.meta.url));
 function* fixtureFiles(directory: string): Generator<string> {
 	for (const entry of readdirSync(directory, { withFileTypes: true })) {
 		const path = join(directory, entry.name);
@@ -16,7 +18,7 @@ function* fixtureFiles(directory: string): Generator<string> {
 
 describe("TSP fixture privacy", () => {
 	it("checks every fixture file and decoded base64 OSC payload for private machine data", () => {
-		const files = [...fixtureFiles(root.pathname)];
+		const files = [...fixtureFiles(root)];
 		expect(files.length).toBeGreaterThan(40);
 		for (const file of files) {
 			const text = readFileSync(file).toString("utf8");
