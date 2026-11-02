@@ -43,6 +43,7 @@
     "providerFallbackAria": "Choose model. The provider used {{name}} as a fallback for {{from}} in this reply; omp's selected model is unchanged.",
     "none": "Choose model",
     "search": "Search models…",
+    "treeHelp": "Use Up and Down to browse, Home and End to reach the first and last rows, Right to expand and Left to collapse. Enter expands a group or chooses a version.",
     "loading": "Loading models…",
     "empty": "No models match. Try a shorter search.",
     "noModels": "omp has no models yet. Connect a provider to add some.",
@@ -53,6 +54,7 @@
     "notConfirmed": "omp didn't confirm the switch to {{name}}. Open the terminal sheet to see what omp shows.",
     "notConfirmedLong": "omp hasn't confirmed the switch to {{name}} yet. This chat is longer than that model's context window, so omp may be compacting it first.",
     "vision": "Reads images",
+    "contextWindow": "Context window: {{size}}",
     "reasoning": "Supports thinking levels"
   },
   "thinking": {
