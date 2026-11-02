@@ -3,6 +3,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import messages from "../../i18n/en/onboarding.json";
 import { workInFlight } from "../../state/chatWork";
 import type { SessionView } from "../../state/session";
+// Preload the module graph during collection so cold loading does not consume the test timeout.
+// loadQuit resets modules before each test imports a fresh guard.
+import "./quit";
 import { type CopyKey, closeCopy, quitCopy, rowCopy } from "./quitCopy";
 
 /** A chat the guard can look up: its view can change, and listeners hear of it. */

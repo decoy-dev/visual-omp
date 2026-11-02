@@ -1,6 +1,8 @@
 // @vitest-environment happy-dom
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { renderMarkdown } from "../transcript/render";
+// Preload the chart module during collection so cold loading does not consume vi.waitFor's timeout.
+import "./charts/table-chart";
 import { hydrateRichContent } from "./rich-content";
 
 const cleanups: (() => void)[] = [];
