@@ -112,6 +112,8 @@ const iconButtonSizes: Record<IconButtonSize, string> = {
 export interface IconButtonProps extends Omit<ComponentPropsWithRef<"button">, "children" | "aria-label"> {
 	/** Accessible name and tooltip text. */
 	label: string;
+	/** Tooltip override, for example a disabled action's reason; the accessible name stays label. */
+	tooltip?: string;
 	/** Shortcut shown in the tooltip, e.g. "⌘R". */
 	shortcut?: string;
 	/** The icon (Phosphor element). */
@@ -123,9 +125,10 @@ export interface IconButtonProps extends Omit<ComponentPropsWithRef<"button">, "
 	tooltipSide?: "top" | "right" | "bottom" | "left";
 }
 
-/** Square icon-only button; always tooltipped, aria-label = tooltip text. Sizes 24/28/32. */
+/** Square icon-only button; label supplies its accessible name, with an optional tooltip override. Sizes 24/28/32. */
 export function IconButton({
 	label,
+	tooltip,
 	shortcut,
 	icon,
 	size = "md",
@@ -137,7 +140,7 @@ export function IconButton({
 	...rest
 }: IconButtonProps) {
 	return (
-		<Tooltip content={label} shortcut={shortcut} side={tooltipSide}>
+		<Tooltip content={tooltip ?? label} shortcut={shortcut} side={tooltipSide}>
 			<button
 				type={type}
 				aria-label={label}

@@ -8,7 +8,7 @@ import { hookAnswerEvents, type TspHookAnswer } from "../../../shared/tsp/dialog
 import { isHookNode } from "../../../shared/tsp/roles";
 import { openOverlay, walkNodes } from "../../../shared/tsp/view-state";
 
-const fixtures = new URL("./fixtures/18.14.0/", import.meta.url);
+const fixtures = new URL("./fixtures/18.15.0/", import.meta.url);
 interface Recording { verb: string; body: Record<string, unknown>; afterMessage?: number }
 const records = (name: string, kind: string): Recording[] => readFileSync(new URL(`${name}.${kind}.jsonl`, fixtures), "utf8").trim().split("\n").map(line => JSON.parse(line));
 function replay(messages: Recording[]) {

@@ -1,5 +1,5 @@
 /**
- * Vendored from oh-my-pi v18.14.0, commit 31147f9d1a76608549821c3759f8487b4d66c72d.
+ * Vendored from oh-my-pi v18.15.0, commit 3fedf8d53267e32a6d7521ce725fdcc4a36fdc67.
  * Copyright (c) 2025 Mario Zechner, 2025-2026 Can Bölük, 2026 Stencil Labs, Inc.
  * MIT licensed; see LICENSE in this directory. Only the import path is adapted.
  */

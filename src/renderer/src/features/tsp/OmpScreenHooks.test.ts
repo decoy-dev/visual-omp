@@ -23,7 +23,7 @@ vi.mock("motion/react", () => {
 	return { AnimatePresence: ({ children }: PropsWithChildren) => children, MotionConfig: ({ children }: PropsWithChildren) => children, motion: { div: tag("div"), span: tag("span"), ul: tag("ul"), li: tag("li") }, useReducedMotionConfig: () => true };
 });
 
-const fixtures = import.meta.glob<string>("../../../../main/omp/tsp/fixtures/18.14.0/*.jsonl", { query: "?raw", import: "default", eager: true });
+const fixtures = import.meta.glob<string>("../../../../main/omp/tsp/fixtures/18.15.0/*.jsonl", { query: "?raw", import: "default", eager: true });
 
 let root: Root;
 let element: HTMLDivElement;
@@ -35,7 +35,7 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); Reflect.deleteProperty(window, "vomp"); });
 
 it.each(["hook-select", "hook-confirm", "hook-input", "hook-editor", "hook-select-cancel", "hook-confirm-cancel", "hook-input-cancel", "hook-editor-cancel", "hook-select-open", "hook-confirm-open", "hook-input-open", "hook-editor-open"])("completes recorded %s through the omp screen with the accepted native events", async name => {
-	const prefix = "../../../../main/omp/tsp/fixtures/18.14.0/";
+	const prefix = "../../../../main/omp/tsp/fixtures/18.15.0/";
 	// Open-only captures use the next accepted event and response from their submit recording.
 	const completion = name.replace(/-open$/, "");
 	const responses: { verb: string; body: unknown }[] = fixtures[`${prefix}${completion}.messages.jsonl`]!.trim().split("\n").map(line => JSON.parse(line));
@@ -46,7 +46,9 @@ it.each(["hook-select", "hook-confirm", "hook-input", "hook-editor", "hook-selec
 	const expected = name.endsWith("cancel") ? candidates.slice(-1) : edit >= 0 ? candidates.slice(edit) : candidates;
 	const emitted: TspRendererEvent[] = [];
 	const document = new TspDocument("s:1");
-	for (const message of messages.slice(0, expected[0]!.afterMessage)) if (message.verb === "f") document.applyFrame(message.body as TspFrame);
+	// Frame counts are recording-local. Open-only input can emit its seed in a later frame.
+	const beforeInput = name.endsWith("-open") ? messages.slice(0, messages.findIndex(message => message.verb === "x")) : messages.slice(0, expected[0]!.afterMessage);
+	for (const message of beforeInput) if (message.verb === "f") document.applyFrame(message.body as TspFrame);
 	const surface: TspSurfaceSnapshot = { open: { id: "s:1", mode: "inline" }, document: document.snapshot(), sequence: 1, closed: false, suspended: false, focus: document.focus, settled: [] };
 	const scope = { hostId: "fixture", generation: 1, epoch: 1 };
 	const arb = new QuestionArbitrator(); arb.update(scope, { ...scope, connection: 1, revision: 1, connected: true, requests: [] });
@@ -110,7 +112,7 @@ it.each(["hook-select", "hook-confirm", "hook-input", "hook-editor", "hook-selec
 });
 
 it.each(["matched", "ambiguous"] as const)("keeps the collab question card answerable while the recorded %s hook screen is display-only", async status => {
-	const prefix = "../../../../main/omp/tsp/fixtures/18.14.0/";
+	const prefix = "../../../../main/omp/tsp/fixtures/18.15.0/";
 	const document = new TspDocument("s:1");
 	for (const line of fixtures[`${prefix}hook-collab-aware.messages.jsonl`]!.trim().split("\n")) {
 		const message: { verb: string; body: TspFrame } = JSON.parse(line);

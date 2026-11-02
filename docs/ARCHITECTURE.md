@@ -147,8 +147,8 @@ still runs the same omp session, private extension and collab relay. The opt-in 
 removes only TSP APC messages before the existing non-TSP byte paths. Chunk bodies are joined
 as bytes before UTF-8 decoding. Relaunch with `VOMP_TSP` unset to recover the classic controls.
 
-`src/main/omp/tsp/` applies frames with omp 18.14.0's MIT-licensed reference document applier.
-Hello advertises all 44 kinds; the semantic renderer covers each kind or its documented fallback.
+`src/main/omp/tsp/` applies frames with omp 18.15.0's MIT-licensed reference document applier,
+unchanged upstream since 18.14.0. Hello advertises all 45 kinds, including `button`; the semantic renderer covers each kind or its documented fallback.
 The terminal feature list remains empty, so blob caching, aside layout and semantic scrolling
 are not advertised. The reply grants two credits per surface and an APC body limit of 65,536
 bytes. Applied frames receive cumulative acknowledgments, which may coalesce to the newest
@@ -157,6 +157,15 @@ the hello reply through the ordered protocol queue. Width, theme and motion are 
 before negotiation and sent as events afterward. All PTY writes use the host's atomic writer.
 Protocol housekeeping bypasses the application transaction and closing gates so an editor
 transfer or graceful shutdown cannot block credits.
+
+Native buttons reuse the app's Button and IconButton, including keycaps, pressed state,
+disabled reasons and busy indicators. Only registered click actions are sent; disabled and busy
+buttons remain inert. Segmented tabs reuse the app's segmented control. Code `nums` preserves
+non-contiguous source numbering with gap rows and falls back to `start` when invalid.
+The no-model recording baseline is `src/main/omp/tsp/fixtures/18.15.0/`, recorded with the
+standalone release in scratch profiles and protected by byte/CR/SHA-256 integrity manifests.
+Deferred shell and eval runs arrive in `main` through omp's `nativeTail`; their unclaimed
+`omp.bash` and `omp.eval` blocks appear under Other omp output rather than in the dock.
 
 Every newly negotiated hello starts a protocol epoch, clears the live documents and rejects
 input addressed to an earlier epoch, including when omp replaces itself inside the existing PTY.

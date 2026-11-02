@@ -46,9 +46,12 @@ describe("TSP fixture privacy", () => {
 	});
 
 	it("preserves the captured bytes and carriage returns of raw recordings across storage and checkout", () => {
-		const directory = join(root, "18.14.0");
-		const manifests = readdirSync(directory).filter(name => name.endsWith(".integrity.json"));
-		expect(manifests).toEqual(expect.arrayContaining(["handshake-timeout", "import-claude", "new", "resume", "sibling-continuation", "tree-confirm"].map(name => `${name}.integrity.json`)));
+		const directory = join(root, "18.15.0");
+		const files = readdirSync(directory);
+		const manifests = files.filter(name => name.endsWith(".integrity.json"));
+		const rawNames = files.filter(name => name.endsWith(".raw.bin")).map(name => name.replace(".raw.bin", "")).sort();
+		expect(rawNames).toHaveLength(38);
+		expect(manifests.map(name => name.replace(".integrity.json", "")).sort()).toEqual(rawNames);
 		for (const manifest of manifests) {
 			const expected: { bytes: number; carriageReturns: number; sha256: string } = JSON.parse(readFileSync(join(directory, manifest), "utf8"));
 			const raw = readFileSync(join(directory, manifest.replace(".integrity.json", ".raw.bin")));

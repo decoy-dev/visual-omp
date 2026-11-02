@@ -20,6 +20,7 @@ import { hookAnswerEvents, TspHookAnswer } from "@shared/tsp/dialogs";
 
 const root = resolve(import.meta.dirname, "../../../../..");
 const chrome = process.env.CHROME_BIN ?? (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/bin/google-chrome");
+
 const CdpMessage = z.object({ id: z.number().optional(), result: z.unknown().optional(), error: z.object({ message: z.string() }).optional() });
 interface AxTree { nodes: { role?: { value: string }; name?: { value: string }; properties?: { name: string; value: { value: unknown } }[] }[] }
 interface Evaluation { result: { value: unknown }; exceptionDetails?: { text: string; exception?: { description: string } } }
@@ -384,6 +385,30 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const capture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
 		await writeFile(join(shots, "idle-light-100.png"), Buffer.from(capture.data, "base64"));
 		await close();
+	});
+
+	it("wraps native button labels and keycaps inside a narrow control at enlarged text", async () => {
+		const text = "Close this deliberately long view label " + "unbroken".repeat(24);
+		const snapshot = await recorded("hotkeys");
+		snapshot.surfaces = snapshot.surfaces.map(surface => ({ ...surface, document: {
+			id: surface.open.id, k: "col", c: [{ id: "layer", k: "col", c: [{ id: "long-button", k: "button", p: {
+				text, keys: ["ctrl", "shift", "enter"], actions: { click: "close" },
+			} }] }],
+		} }));
+		for (const theme of ["light", "dark"]) {
+			await open(snapshot, theme, 130, true);
+			try {
+				await page.evaluate("document.querySelector('[data-tsp-id=\"long-button\"]').style.width = '180px'");
+				const layout = await page.evaluate<{ text: string; fits: boolean; wraps: boolean }>("(() => { const button = document.querySelector('[data-tsp-id=\"long-button\"] button'); return { text: button.textContent, fits: button.scrollWidth <= button.clientWidth + 1, wraps: button.getBoundingClientRect().height > 40 }; })()");
+				expect(layout.text).toContain(text);
+				expect(layout.fits).toBe(true);
+				expect(layout.wraps).toBe(true);
+				const capture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+				await writeFile(join(shots, `long-button-${theme}-130.png`), Buffer.from(capture.data, "base64"));
+			} finally {
+				await close();
+			}
+		}
 	});
 
 	it.each(["light", "dark"])("fits recorded menus at minimum size with normal and enlarged text in %s, including reduced motion", async theme => {

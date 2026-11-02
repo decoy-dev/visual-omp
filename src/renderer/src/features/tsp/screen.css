@@ -23,3 +23,5 @@
 .tsp-key-note { white-space: pre-wrap; color: var(--fg-muted); font-size: var(--text-sm); }
 .tsp-section { display: grid; gap: var(--spacing-toolbar); min-width: 0; padding-block-start: var(--spacing-stack); }
 .tsp-section > h3 { margin: 0; font-size: var(--text-md); }
+.tsp-code-number { display: inline-block; min-width: 4ch; padding-inline-end: 1ch; color: var(--fg-faint); text-align: right; user-select: none; }
+.tsp-code-gap { color: var(--fg-muted); }

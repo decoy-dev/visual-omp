@@ -2,6 +2,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { tmpdir } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spawn, type IPty } from "node-pty";
 import type { TspEvent, TspNode } from "../../../shared/tsp";
@@ -15,10 +16,17 @@ import { sanitizeFixtureBytes } from "./sanitize-fixture";
 // Bundle beside node_modules with Bun (target node, node-pty external), then run with Node.
 // No inherited configuration, provider credentials or model turns.
 const bin = process.env.OMP_BIN;
-if (!bin) throw new Error("Set OMP_BIN to the omp 18.14.0 executable.");
-const version = execFileSync(bin, ["--version"], { encoding: "utf8" }).trim();
-if (version !== "omp/18.14.0") throw new Error(`Expected omp/18.14.0; received ${version}.`);
-const destination = resolve(process.env.VOMP_TSP_FIXTURE_DIR ?? "src/main/omp/tsp/fixtures/18.14.0");
+if (!bin) throw new Error("Set OMP_BIN to the omp 18.15.0 executable.");
+if (process.platform !== "darwin" && process.platform !== "linux") throw new Error("Fixture recording is supported only on macOS and Linux.");
+const versionRoot = await mkdtemp(join(tmpdir(), "vomp-tsp-version-"));
+let version: string;
+try {
+  version = execFileSync(bin, ["--version"], { encoding: "utf8", env: { PATH: process.env.PATH!, HOME: versionRoot, USERPROFILE: versionRoot, XDG_CONFIG_HOME: versionRoot, XDG_CACHE_HOME: versionRoot, PI_CODING_AGENT_DIR: versionRoot, PI_CONFIG_DIR: versionRoot, TMPDIR: versionRoot } }).trim();
+} finally {
+  await rm(versionRoot, { recursive: true, force: true });
+}
+if (version !== "omp/18.15.0") throw new Error(`Expected omp/18.15.0; received ${version}.`);
+const destination = resolve(process.env.VOMP_TSP_FIXTURE_DIR ?? "src/main/omp/tsp/fixtures/18.15.0");
 const extension = resolve("src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs");
 await mkdir(destination, { recursive: true });
 const config = "startup:\n  setupWizard: false\n  checkUpdate: false\n  changelogMode: hidden\n  quiet: true\nmarketplace:\n  autoUpdate: off\nworktree:\n  onStart: off\n  onExit: keep\ntui:\n  autoGraph: never\nautocomplete:\n  enabled: false\nrecap:\n  enabled: false\ncomposer:\n  predictions: false\n";
@@ -27,6 +35,7 @@ const scenarios: Scenario[] = [
   ...[
     ["hotkeys", "/hotkeys"], ["jobs", "/jobs"], ["usage", "/usage"], ["session", "/session"],
     ["changelog", "/changelog"], ["tools", "/tools"], ["model-picker", "/model"],
+    ["btw-history", "/btw"],
     ["settings-screen", "/settings"], ["exit", null], ["exit-with-overlay", "/hotkeys"],
     ["startup-no-model", null], ["notice-error", "Fixture prompt without a configured model"],
     ["extensions", "/extensions"],
@@ -48,7 +57,8 @@ for (const scenario of scenarios) {
   const { name, hook, end } = scenario;
   let command = scenario.command;
   if (process.argv.length > 2 && !process.argv.slice(2).includes(name)) continue;
-  const root = await mkdtemp("/tmp/vomp-tsp-record-");
+  // Fixed POSIX root keeps recorded paths within the sanitizer's documented policy.
+  const root = await mkdtemp(join("/tmp", "vomp-tsp-record-"));
   const home = join(root, "home"); const agent = join(root, "agent");
   await Promise.all([mkdir(home), mkdir(agent)]);
   await writeFile(join(agent, "config.yml"), config);

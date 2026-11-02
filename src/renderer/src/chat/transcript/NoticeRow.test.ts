@@ -8,7 +8,7 @@ import { FixtureDocuments } from "../../features/tsp/testing/documents";
 import { TspNoticeProjection } from "../../features/tsp/notices";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 
-const recordings = import.meta.glob<string>("../../../../main/omp/tsp/fixtures/18.14.0/*.messages.jsonl", { query: "?raw", import: "default", eager: true });
+const recordings = import.meta.glob<string>("../../../../main/omp/tsp/fixtures/18.15.0/*.messages.jsonl", { query: "?raw", import: "default", eager: true });
 
 it("renders projected notices literally with preserved whitespace and a wrapping body", async () => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -29,7 +29,7 @@ it.each([{ name: "notice-error", level: "error", text: "No model selected." }, {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	const projection = new TspNoticeProjection(); projection.collab([], []);
 	const session = new FixtureDocuments();
-	for (const line of recordings[`../../../../main/omp/tsp/fixtures/18.14.0/${name}.messages.jsonl`]!.trim().split("\n")) {
+	for (const line of recordings[`../../../../main/omp/tsp/fixtures/18.15.0/${name}.messages.jsonl`]!.trim().split("\n")) {
 		const message: { verb: string; body: unknown } = JSON.parse(line);
 		session.receive({ verb: message.verb, params: {}, body: JSON.stringify(message.body) });
 		const snapshot: TspHostSnapshot = { ...session.snapshot(), hostId: "host", generation: 1, revision: 1, lifecycle: "live", documentGeneration: 1, availability: { available: true, reason: null }, failure: null, surfaces: session.snapshot().surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };

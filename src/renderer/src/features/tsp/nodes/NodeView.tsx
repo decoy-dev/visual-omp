@@ -6,11 +6,14 @@ import { CheckCircle, Circle, File, Image, Info, Warning } from "@phosphor-icons
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Markdown } from "../../../transcript/Markdown";
-import { CodeBlock, DiffBlock } from "../../../tool-render/parts";
+import { DiffBlock } from "../../../tool-render/parts";
 import { Button } from "../../../ui/Button";
 import { ansiRuns } from "../ansi";
 import { Choice } from "../interactive/Choice";
 import { Forms } from "../interactive/Forms";
+import { PushButton } from "../interactive/PushButton";
+import { Segmented } from "../../../ui/Segmented";
+import { Code } from "./Code";
 import { plain } from "../labels";
 import { rawKey } from "../keys";
 import type { NodeContext, NodeProps } from "./context";
@@ -22,7 +25,7 @@ export const KIND_GROUPS = {
 	col: "container", row: "container", card: "container", section: "container", rule: "container", spacer: "container", overlay: "container",
 	text: "text", md: "text", code: "text", diff: "text", math: "text", kbd: "text", badge: "text", icon: "text", status: "text", seg: "text",
 	list: "choice", item: "choice", picker: "choice", tabs: "choice", checklist: "choice", tree: "choice", table: "choice", kv: "choice",
-	prefs: "form", input: "form", editor: "form", effort: "form",
+	prefs: "form", input: "form", editor: "form", effort: "form", button: "form",
 	spinner: "live", shimmer: "live", elapsed: "live", progress: "live", meter: "live", rate: "live", chart: "live",
 	tool: "work", agent: "work", json: "work", image: "media", media: "media", toast: "notice", rows: "fallback", ansi: "fallback",
 } as const satisfies Record<TspKind, string>;
@@ -86,7 +89,7 @@ function Body({ node, context }: NodeProps) {
 		case "text": return <p className="whitespace-pre-wrap break-words">{plain(node.p?.spans ?? node.p?.text)}</p>;
 		case "seg": return <span className="whitespace-pre-wrap">{plain(node.p?.spans)}</span>;
 		case "md": return <Markdown text={node.p?.text ?? ""} />;
-		case "code": return <CodeBlock code={node.p?.text ?? ""} lang={node.p?.lang} title={node.p?.path} />;
+		case "code": return <Code p={node.p} />;
 		case "diff": return <DiffBlock diff={node.p?.text ?? node.p?.hunks?.flatMap(hunk => [`@@ -${hunk.oldStart} +${hunk.newStart} @@`, ...hunk.lines]).join("\n") ?? ""} />;
 		case "math": return <Markdown text={`$$\n${node.p?.text ?? ""}\n$$`} />;
 		case "kbd": return node.p?.keys.length ? <KeyCombinations value={[{ t: node.p.keys.join("+"), s: "key" }]} /> : null;
@@ -95,7 +98,9 @@ function Body({ node, context }: NodeProps) {
 		case "status": return <div role="status" className="flex flex-wrap items-center gap-3 text-sm text-fg-muted">{children}</div>;
 		case "list": case "picker": case "tree": return <Choice node={node} context={context} />;
 		case "item": return <div className="py-2"><p>{plain(node.p?.label)}</p>{node.p?.detail && <p className="text-sm text-fg-muted">{plain(node.p.detail)}</p>}{children}</div>;
-		case "tabs": return <div role="tablist" aria-label={node.p?.aria ?? t("tsp.choices")} className="flex flex-wrap gap-2">{node.p?.items.map(item => <button type="button" className="tsp-tab" key={item.id} role="tab" aria-selected={node.p?.active === item.id} disabled={context.readOnly} onClick={() => context.send({ ev: "select", sf: context.sf, id: node.id, item: item.id })}>{plain(item.label)}</button>)}</div>;
+		case "button": return <PushButton node={node} context={context} />;
+		case "tabs": if (node.p?.variant === "segmented") return <Segmented aria-label={node.p.aria ?? t("tsp.choices")} value={node.p.active ?? ""} options={node.p.items.map(item => ({ value: item.id, label: plain(item.label) }))} disabled={context.readOnly} onValueChange={item => context.send({ ev: "select", sf: context.sf, id: node.id, item })} className="max-w-full flex-wrap" />;
+			return <div role="tablist" aria-label={node.p?.aria ?? t("tsp.choices")} className="flex flex-wrap gap-2">{node.p?.items.map(item => <button type="button" className="tsp-tab" key={item.id} role="tab" aria-selected={node.p?.active === item.id} disabled={context.readOnly} onClick={() => context.send({ ev: "select", sf: context.sf, id: node.id, item: item.id })}>{plain(item.label)}</button>)}</div>;
 		case "kv": return <dl className="grid grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-x-4 gap-y-2">{node.p?.items.map((item, index) => <div key={index} className="contents"><dt className="text-fg-muted">{plain(item.k)}</dt><dd className="break-words">{plain(item.v)}</dd></div>)}</dl>;
 		case "table": return <Table p={node.p} />;
 		case "checklist": return <div className="space-y-stack">{node.p?.phases.map(phase => <section key={phase.id}><h4 className="font-semibold">{plain(phase.title)}</h4><ul>{phase.items.map(item => <li className="flex items-start gap-2 py-1" key={item.id}>{item.status === "done" ? <CheckCircle aria-label={item.status} className="mt-0.5 size-4 text-ok" /> : <Circle aria-label={item.status} className="mt-0.5 size-4 text-fg-muted" />}<span>{plain(item.text)}{item.note && <span className="block text-sm text-fg-muted">{plain(item.note)}</span>}</span></li>)}</ul></section>)}</div>;
@@ -125,7 +130,7 @@ export function NodeView({ node, context }: NodeProps) {
 	const click = !Array.isArray(actions) ? actions?.click : undefined;
 	const unsupportedClick = !!click && !isKnownAction(click);
 	const content = <Body node={node} context={childContext} />;
-	const actionable = click && !["list", "picker", "tree", "item", "tool", "agent", "json"].includes(node.k);
+	const actionable = click && !["button", "list", "picker", "tree", "item", "tool", "agent", "json"].includes(node.k);
 	if (actionable && unsupportedClick) return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0 space-y-stack">{content}<Button variant="secondary" disabled title={t("tsp.unsupportedAction", { action: click })}>{t("tsp.unavailableAction")}</Button></div>;
 	return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0">{actionable ? <Button variant="secondary" disabled={readOnly || unsupportedClick} title={unsupportedClick ? t("tsp.unsupportedAction", { action: click }) : undefined} onClick={() => {
 		if (click === TSP_ACTIONS.copy) void navigator.clipboard.writeText(copyText(node));

@@ -1,10 +1,10 @@
 # visual-omp: moving app-hosted chats to TSP plus collab
 
-Status: proposed migration. Written 2026-10-30 against visual-omp `main` at `da5e968` (0.7.2) and omp 18.14.0, then revised after astra's review. It describes intended changes; `docs/ARCHITECTURE.md` and `docs/SPEC.md` remain the description of current behavior until each phase ships.
+Status: proposed migration. Written 2026-10-30 against visual-omp `main` at `da5e968` (0.7.2) and omp 18.14.0, then revised after astra's review. The protocol and recording baseline is now omp 18.15.0. It describes intended changes; `docs/ARCHITECTURE.md` and `docs/SPEC.md` remain the description of current behavior until each phase ships.
 
 ## Sources and citations
 
-- **omp** links point at tag `v18.14.0` (commit `31147f9d1a76608549821c3759f8487b4d66c72d`) of `can1357/oh-my-pi`, MIT licensed.
+- **omp** source citations from the original study remain pinned to tag `v18.14.0` (commit `31147f9d1a76608549821c3759f8487b4d66c72d`) of `can1357/oh-my-pi`, MIT licensed. The current vendored protocol and recordings use tag [`v18.15.0`](https://github.com/can1357/oh-my-pi/tree/3fedf8d53267e32a6d7521ce725fdcc4a36fdc67), commit `3fedf8d53267e32a6d7521ce725fdcc4a36fdc67`. The reference applier and encoder are unchanged between those releases.
 - **studio** links point at commit `4dbe037dc3bda4c37e831625450225cf102267d7` of `DawnJson/omp-studio`, MIT licensed. Its `docs/architecture/tsp-migration.md` records a desktop app that has completed a move to TSP. Its findings are labeled as studio observations, made against omp 18.12.3 to 18.14.0, and are evidence for this plan rather than guarantees about visual-omp.
 - **visual-omp** paths in backticks are relative to the repository root.
 - **The TSP study** is an investigation of omp 18.14.0 made on 2026-10-30. It is not committed; the findings this plan depends on are restated in the Background section, each with an upstream link or the probe that produced it.
@@ -64,7 +64,7 @@ These are the visual-omp mechanisms that read the painted screen or drive it wit
 ## Assumptions
 
 - Phase 1 is fixed by the shared contract and is being built in a separate worktree. Later phases build on its modules and IPC names; where this plan names an interface, Phase 1's final names govern.
-- omp 18.14.0 is the protocol baseline, matching `MIN_OMP_VERSION` in `src/main/omp/locate.ts`.
+- omp 18.15.0 is the protocol baseline, matching `MIN_OMP_VERSION` in `src/main/omp/locate.ts`.
 - Collab stays authoritative for the transcript replica, sharing, guest permissions, subagents, main-turn abort and replicated asks and approvals.
 - The app keeps its own composer, transcript, cards and panes, and uses omp's documents for state and for a semantic screen. studio chose a similar hybrid ([`docs/architecture/tsp-migration.md:139`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L139)). Decision D1 asks the owner to confirm it.
 - omp defines its role strings, such as `omp.overlay.hook-select`, outside the TSP v1 wire contract, so they can change between omp releases ([`packages/wire/src/tsp.ts:14-18`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/wire/src/tsp.ts#L14-L18) cites the normative protocol, which does not define them).
@@ -116,7 +116,7 @@ Authority after the migration:
 2. **Developer flag until the flip.** Phases 1-6 run only with `VOMP_TSP=1`, read in main at chat launch. Each phase can merge on its own, but the preview is a developer tool with known gaps until the Phase 2 usability gate passes, and it reaches parity only at the end of Phase 4. Classic chats keep their exact behavior in every phase; the existing Vitest suite and the classic fixtures guard that.
 3. **One writer.** Every byte written to the PTY goes through one synchronous writer in `SessionHost`. Renderer-originated TSP events and keys enter the existing application-input chain (`#applicationInput` in `src/main/omp/host.ts`), with closing, generation and surface-id checks. Only protocol housekeeping (hello reply, DA1 answer, `ack`, `resize`, `theme`, `motion`) bypasses the transaction queue; it still uses the same writer and is never written in the middle of a multi-part write. `send` and `undo` are emitted only when omp's hello query advertised them.
 4. **Role registry.** Every omp role string, action name and status word the app depends on is declared once in `src/shared/tsp/roles.ts`. Feature code imports names from there, so an omp rename fails one test file. studio follows the same rule ([`docs/architecture/tsp-btw.md:73-75`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-btw.md?plain=1#L73-L75)).
-5. **Fixtures pinned to omp 18.14.0.** Each scenario is recorded twice: omp's own journal (`PI_TUI_TSP_RECORD`, [`packages/tui/src/native/backend.ts:94`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/native/backend.ts#L94)) and the raw PTY bytes. Store fixtures in `src/main/omp/tsp/fixtures/18.14.0/<scenario>.jsonl` and `<scenario>.raw.bin`, with a `README.md` giving the omp version, commit, config and redactions. Recordings use a scratch HOME and config root and never the owner's profile.
+5. **Fixtures pinned to omp 18.15.0.** Each scenario records omp's own journal (`PI_TUI_TSP_RECORD`) and the raw PTY bytes. Store fixtures in `src/main/omp/tsp/fixtures/18.15.0/<scenario>.jsonl` and `<scenario>.raw.bin`, with decoded messages, emitted events, a byte/CR/SHA-256 integrity manifest and a `README.md` giving the omp version, commit, config and redactions. Recordings use the standalone 18.15.0 executable with a scratch HOME and config root, no model and no owner profile. Re-record every scenario on a baseline change and remove the old baseline; the recorder sanitizes paths and decoded OSC payloads before storage.
 6. **Scripted model turns.** Scenarios that need a model (plan review, asks, approvals, predictions, `/btw` answers, compaction) use a loopback OpenAI-compatible fake provider that returns scripted responses, so recordings cost nothing and repeat exactly. studio recorded its model-switch compaction fixtures this way ([`docs/architecture/tsp-migration.md:177`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L177)). `[INFERENCE]` The omp config keys for a custom loopback provider must be confirmed while building the recorder.
 7. **Claims decide suppression.** A semantic node is hidden from the generic omp screen only when a working TSP-backed consumer claims it. A consumer registers its claim in the role registry in the same change that implements it for TSP; classic cards never claim TSP nodes. Everything unclaimed stays visible in the omp screen. For hook dialogs that collab may also replicate, the collab card claims the node only under the arbitration rule below, which Phase 2 implements before generic TSP dialogs become interactive.
 8. **One answer path for questions.** TSP hook nodes expose no collab `reqId`, so content matching remains a conservative arbitration heuristic. Match only a unique pending request and unique live dialog within the same host, protocol epoch and collab generation, using their available title, field and option data. Ambiguous candidates disable local TSP answering while the collab question remains available. Main receives the renderer-owned pending-request mirror with scope and revision checks, then repeats arbitration inside the input lock immediately before writing. A matched collab request is answered through its chat question card; an unmatched TSP node is answered through TSP. A matched answer waits for the request to settle and the corresponding node to leave. An unmatched local answer waits only for its node to leave.
@@ -199,7 +199,7 @@ These figures are planning judgment for one engineer familiar with the repositor
 
 **Recorded decisions (implementing agent and main, 2026-10-30).**
 
-- The hello reply advertises all 44 upstream kinds as inspection-only data, because the inspector shows every node generically. Advertising every kind means omp sends no classic fallback for any of them, and advertising `json` makes tool views emit `json` nodes ([`packages/tui/src/chat/tool-execution.ts:1026-1027`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/chat/tool-execution.ts#L1026-L1027)). Phase 2 must therefore render all 44 kinds or narrow the list in its hello reply.
+- The original hello reply advertised all 44 omp 18.14.0 kinds as inspection-only data. The current omp 18.15.0 baseline has 45 kinds, including `button`, and Phase 2 renders each kind or its documented fallback. The hello advertises the shared `TSP_KINDS` list. omp enables native button nodes only after that list includes `button`; this also enables segmented tabs. Button actions keep the per-action registry guard, including main's serialized writer refusal for unknown names.
 - Terminal features are empty. omp 18.14 consults only `aside`, `blobs` and `scroll` ([`packages/tui/src/native/backend.ts:182`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/native/backend.ts#L182), [`packages/tui/src/native/backend.ts:619`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/native/backend.ts#L619), [`packages/tui/src/native/reconcile.ts:306`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/native/reconcile.ts#L306)), so an empty list is safe. This list is separate from the program's advertised `edit`, `undo` and `send`, which govern which events the app may send.
 - Input uses APC; credits are 2; acks are cumulative and sent right after synchronous application.
 - Plain-text steer submission uses TSP `send` when the live editor is sendable and omp advertised `send`. Escape is available through the guarded key path. Follow-up, attachment and other unsupported input paths return explicit errors; full composer parity remains Phase 3.
@@ -234,6 +234,9 @@ Recorded startup and usage warnings plus synthetic documents cover deferred snap
 displayed-branch anchoring, replacement, parent-chain custom-message suppression, event
 suppression, epoch/room reset and literal notice rendering. These checks do not establish identity
 for a delayed collab notice event after a turn change. The remaining Phase 2 criteria gate the preview.
+
+The omp 18.15.0 baseline adds native buttons to the 44 previously advertised kinds, bringing the hello to 45. Buttons reuse the app's Button and IconButton, with label, icon, display-only keycaps, variant, size, pressed, disabled-reason and busy states. Disabled, busy and unknown-action buttons send nothing. Segmented tabs reuse the shared segmented control. Code nodes accept strictly ascending, count-matched `nums`; gaps insert an ellipsis row, while invalid numbering falls back to `start`. Deferred `!` and `$` execution blocks now arrive in `main` through omp's `nativeTail`; their `omp.bash` and `omp.eval` roles remain unclaimed and appear under Other omp output.
+
 Pass-through slash delivery now uses main's semantic send availability, TSP submission and document
 subscriptions for immediate and queued commands. Overlay and screen ownership holds the queue;
 editor readiness, turn start, host exit, room generation changes and epoch changes release the
@@ -252,7 +255,7 @@ The screen explains matched, ambiguous and unavailable states without offering a
 Hook picker search remains visibly unavailable because its upstream route uses raw keys; all
 exposed options remain selectable.
 
-omp 18.14.0's ordinary selector and confirm use a roleless picker when `picker` is advertised.
+omp 18.15.0's ordinary selector and confirm use a roleless picker when `picker` is advertised.
 The registry recognizes their `options` noun, row layout and exact confirm/close action set;
 replays of all recorded non-hook workflows guard against classifying other pickers as hooks.
 Recorded select, confirm, input and editor submit/cancel events cover the guarded writer.
@@ -260,7 +263,7 @@ Live channel-ordering, sharing parity, packaged checks and the remaining manual 
 gate the complete Phase 2 preview. The native hook card in Phase 4a remains separate work.
 
 The headless Chrome usability gate (`src/main/omp/tsp/testing/ui-gate.test.ts`) renders recorded
-omp 18.14.0 documents through the production semantic renderers and terminal sheet, with a stub
+omp 18.15.0 documents through the production semantic renderers and terminal sheet, with a stub
 preload and session source. Criteria 8 and 9 passed this local gate on 2026-11-02.
 Criterion 8 covers Chrome accessibility-tree list selection, overlay
 dialog labels, keyboard selection, sheet focus and composer focus restoration. Criterion 9 covers
@@ -282,7 +285,7 @@ status-menu and tree fallback labels name the omp screen; classic labels still n
 A matched blocking hook points the composer to the chat's question card through a localized
 availability reason. These automated checks do not replace manual criteria 11-13.
 
-**Gate replay additions, 2026-11-02.** `OmpScreen.test.ts` enumerates all 44 kinds and exercises
+**Gate replay additions, 2026-11-02.** `OmpScreen.test.ts` enumerates all 45 kinds and exercises
 readable fallback, once-only diagnostics, ordinary unknown-role layout, per-action disabling,
 interactive descendants and the rendered "Other omp output" section. An unknown action disables
 its own control with a reason; it no longer disables an entire picker or form. The recorded
@@ -388,7 +391,7 @@ These observations do not establish the later composer, adapter, Windows or defa
 | Containers | `overlay`, `col`, `row`, `card`, `section`, `rule`, `spacer` | Overlay `head` becomes the sheet title ("omp screen: {head}"). Cards follow §5.10 without nesting a card inside the sheet card; `section` collapses with `toggle`. |
 | Text | `text`, `md`, `code`, `diff`, `math`, `kbd`, `badge`, `icon`, `status`, `seg` | `md` uses the shared Markdown renderer; `code` and `diff` use the transcript highlighters; `kbd` uses the palette footer's mono style; icons map to Phosphor and Nerd Font private-use glyphs are dropped, as studio does ([`docs/architecture/tsp-migration.md:118`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L118)). |
 | Lists and choice | `list`, `item`, `picker`, `tabs`, `checklist`, `tree`, `table`, `kv` | Rows follow §5.9, picker queries the §5.11 search input, tabs §5.8. Interaction follows each node's declared `actions` when present. Without them, a click highlights locally and Enter or a double-click sends `activate`. Components that treat `select` as a commitment are marked in the registry: omp's tree selector navigates on either `select` or `activate` ([`packages/tui/src/overlays/tree-selector.ts:1693-1705`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/overlays/tree-selector.ts#L1693-L1705)), so its rows send nothing until the user confirms. |
-| Forms | `prefs`, `input`, `editor` inside overlays, `effort` | Switch, Select and Input rows from §5.11-5.12; `change` for typed values; `edit` with the observed `len`; `action submit` and `action cancel` for buttons. |
+| Forms | `prefs`, `input`, `editor` inside overlays, `effort`, `button` | Switch, Select and Input rows from §5.11-5.12; `change` for typed values; `edit` with the observed `len`; native Button/IconButton for registered click actions, disabled reasons, busy state, keycaps and pressed state. |
 | Progress and live | `spinner`, `shimmer`, `elapsed`, `progress`, `meter`, `rate`, `chart` | §5.14-5.15 primitives through `ui/motion.tsx`, static under reduced motion; `chart` uses `ui/Chart.tsx`. |
 | Work items | `tool`, `agent`, `json` | Compact read-only rows; `json` uses the existing lazy JSON field tree from the eval renderer. |
 | Media | `image`, `media` | Alt-text placeholder while `blobs` is not advertised. Advertising `blobs` is a separate recorded decision with its own fetch IPC. |
@@ -709,7 +712,7 @@ Record (Rule 5): `slash-overlays` (`/jobs`, `/usage`, `/session`, `/hotkeys`, `/
 
 | Tier | What it proves | Who runs it | Phases |
 |---|---|---|---|
-| Replay | The app follows a recorded omp 18.14.0 workflow and sends the exact events | Any agent, CI | All |
+| Replay | The app follows a recorded omp 18.15.0 workflow and sends the exact events | Any agent, CI | All |
 | Headless Chrome | Rendering, interaction, accessibility, narrow window and large text against fixture snapshots | Any agent | 2-5 |
 | Live, no model | The installed omp still uses the registered roles and actions | CI (`omp-watch.yml`), main agent | 1 onward |
 | Live, scripted provider | Model-dependent workflows still complete on the installed omp | CI (`omp-watch.yml`), main agent | 3-5, required before the flip |

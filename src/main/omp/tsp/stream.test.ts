@@ -66,12 +66,12 @@ describe("TSP byte stream", () => {
 		}
 	});
 
-	it("replays the omp 18.14 capture identically at arbitrary read sizes", () => {
-		const raw = readFileSync(new URL("./fixtures/omp-18.14.bin", import.meta.url));
+	it("replays the omp 18.15 capture identically at arbitrary read sizes", () => {
+		const raw = readFileSync(new URL("./fixtures/18.15.0/btw-history.raw.bin", import.meta.url));
 		const whole = collect();
 		whole.stream.push(raw);
 		whole.stream.end();
-		expect(whole.messages).toHaveLength(9);
+		expect(whole.messages).toHaveLength(8);
 		expect(whole.messages[0]).toMatchObject({ verb: "q" });
 		expect(whole.messages.some(message => message.body.includes("omp.overlay.btwHistory"))).toBe(true);
 		for (const size of [1, 2, 7, 31, 1024]) {

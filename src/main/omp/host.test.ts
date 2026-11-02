@@ -1121,7 +1121,7 @@ describe("opt-in semantic transport", () => {
 });
 
 async function recording<T = unknown>(name: string, suffix: string): Promise<{ verb: string; body: T; keys?: string; afterMessage: number }[]> {
-	return (await readFile(new URL(`./tsp/fixtures/18.14.0/${name}.${suffix}.jsonl`, import.meta.url), "utf8")).trim().split("\n").map(line => JSON.parse(line));
+	return (await readFile(new URL(`./tsp/fixtures/18.15.0/${name}.${suffix}.jsonl`, import.meta.url), "utf8")).trim().split("\n").map(line => JSON.parse(line));
 }
 describe("recorded TSP lifecycle gate", () => {
 	it("allows a recorded startup import picker before collab attaches, then adopts its replacement session", async () => {
@@ -1286,7 +1286,7 @@ it.each(["matched", "ambiguous"] as const)("writes no answer bytes for recorded 
 
 it("marks the recorded unconfirmed optimistic surface fallback tspFailed instead of waiting on an empty screen", async () => {
 	await launchTsp("darwin", true);
-	const raw = await readFile(new URL("./tsp/fixtures/18.14.0/handshake-timeout.raw.bin", import.meta.url));
+	const raw = await readFile(new URL("./tsp/fixtures/18.15.0/handshake-timeout.raw.bin", import.meta.url));
 	pty.data?.(raw);
 	expect(host.tspSnapshot()).toMatchObject({ negotiated: true, lifecycle: "transitioning", surfaces: [] });
 	await vi.advanceTimersByTimeAsync(4999);

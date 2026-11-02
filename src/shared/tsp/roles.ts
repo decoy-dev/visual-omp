@@ -13,7 +13,7 @@ export const TSP_ACTIONS = {
 	submit: "submit", cancel: "cancel", page: "page", scope: "scope", tab: "tab", strip: "strip",
 	confirm: "confirm", close: "close", yes: "yes", no: "no", assign: "assign", switch: "switch", summarize: "summarize",
 	label: "label", labelSave: "label-save", filter: "filter", clear: "clear", copy: "copy",
-	resume: "resume",
+	resume: "resume", click: "click",
 	context: "status.context", cost: "status.cost", model: "status.model", path: "status.path",
 } as const;
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
@@ -47,17 +47,21 @@ export function isHookNode(node: TspNode): boolean {
 export function selectionCommits(role?: string, layout?: string): boolean {
 	return role === TSP_ROLES.tree || role === TSP_ROLES.treeSelector || layout === "tree";
 }
-/** Baseline roles recorded from omp 18.14.0. Unknown additions stay readable. */
+/** Baseline roles recorded from omp 18.15.0. Unknown additions stay readable. */
 const knownRoles: ReadonlySet<string> = new Set([
 	...Object.values(TSP_ROLES),
 	"omp.actions", "omp.btn", "omp.composer.bar", "omp.composer.chips", "omp.composer.context",
 	"omp.composer.extras", "omp.composer.line", "omp.composer.model", "omp.composer.send", "omp.composer.usage",
+	// Deferred shell/eval nativeTail blocks are unclaimed main output, not replicated tool messages.
+	"omp.bash", "omp.eval",
+	"omp.btw.empty", "omp.btw.empty.hint", "omp.btw.empty.title",
 	"omp.form", "omp.form.field",
 	"omp.hotkeys.group", "omp.hotkeys.table", "omp.hud", "omp.hud.downloads", "omp.hud.judge",
 	"omp.composer.stop", "omp.hud.activity", "omp.hud.status", "omp.working", "omp.working.label", "omp.working.sep", "omp.working.stop",
 	"omp.info.column", "omp.info.copy", "omp.info.copy.ic", "omp.info.field", "omp.info.group", "omp.info.identity",
 	"omp.info.kv", "omp.info.label", "omp.info.note", "omp.info.nums", "omp.info.stats", "omp.info.total",
 	"omp.jobs.empty", "omp.jobs.empty.note", "omp.jobs.empty.title", "omp.notice.warning",
+	"omp.jobs.title", "omp.jobs.caption", "omp.app.ibtn", "omp.app.ibtn.set", "omp.app.qbtn", "omp.app.seg",
 	"omp.overlay.hotkeys", "omp.overlay.jobs", "omp.overlay.report", "omp.overlay.sessionInfo",
 	"omp.picker.title", "omp.prefs.preview.status", "omp.report.body",
 	"omp.status", "omp.status.context_pct", "omp.status.model", "omp.status.path", "omp.status.pi",

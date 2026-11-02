@@ -23,7 +23,7 @@ it("derives focused sendable composer and screen blocking from inherited roles",
 	expect(composer(surfaces)?.node.id).toBe("editor"); expect(openOverlay(surfaces)).toBeNull(); expect(screenSurface(surfaces)).toBeNull();
 	surfaces[0]!.document.c![0]!.p = { role: "omp.editor.shell" }; expect(composer(surfaces)).toBeNull();
 });
-it("reads the committed omp 18.14 byte capture and exposes its BTW overlay without duplicate composer", () => {
+it("reads the committed omp 18.15 byte capture and exposes its BTW overlay without duplicate composer", () => {
 	const docs = new Map<string, { doc: TspDocument; open: TspOpen }>(); let sawOverlay = false; let sawComposer = false;
 	const stream = new TspStream({ onData: () => {}, onMessage: message => {
 		const body = JSON.parse(message.body);
@@ -35,6 +35,6 @@ it("reads the committed omp 18.14 byte capture and exposes its BTW overlay witho
 		sawComposer ||= !!composer(surfaces);
 		for (const surface of surfaces) expect(unclaimed(surface, "dock").some(node => node.p?.role === "omp.editor")).toBe(false);
 	} });
-	stream.push(readFileSync(resolve(process.cwd(), "src/main/omp/tsp/fixtures/omp-18.14.bin"))); stream.end();
+	stream.push(readFileSync(resolve(process.cwd(), "src/main/omp/tsp/fixtures/18.15.0/btw-history.raw.bin"))); stream.end();
 	expect(sawOverlay).toBe(true); expect(sawComposer).toBe(true);
 });

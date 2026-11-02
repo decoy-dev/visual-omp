@@ -8,7 +8,7 @@ const Frame = z.object({ sf: z.string(), s: z.number(), ops: z.array(z.unknown()
 const Close = z.object({ id: z.string(), keep: z.boolean() });
 
 /** Change this selector when replacing the pinned recordings; consumers do not own fixture paths. */
-export const FIXTURE_VERSION = "18.14.0";
+export const FIXTURE_VERSION = "18.15.0";
 const recordings = import.meta.glob<string>("../../../../../main/omp/tsp/fixtures/*/*.{messages,events}.jsonl", { query: "?raw", import: "default", eager: true });
 const Message = z.object({ verb: z.string(), body: z.unknown() });
 const EventRecord = z.object({ verb: z.string().optional(), body: z.unknown().optional(), keys: z.string().optional(), afterMessage: z.number().int().nonnegative().optional() });

@@ -39,7 +39,8 @@ describe("TSP session", () => {
 		h.hello();
 		await h.flush();
 		expect(h.bodies()[0]).toEqual({ r: "hello", v: 1, term: "visual-omp", kinds: [...TSP_KINDS], features: [], apc: 65536, credits: 2, cols: 110, dark: true, reduceMotion: true });
-		expect(TSP_KINDS).toHaveLength(44);
+		expect(TSP_KINDS).toHaveLength(45);
+		expect(TSP_KINDS).toContain("button");
 		await h.session.resize(120);
 		await h.session.theme(false);
 		await h.session.motion(false);
@@ -153,7 +154,7 @@ describe("TSP session", () => {
 	});
 
 	it("replays the pinned live capture through negotiation, BTW overlay, acks and retained close", async () => {
-		const raw = readFileSync(new URL("./fixtures/omp-18.14.bin", import.meta.url));
+		const raw = readFileSync(new URL("./fixtures/18.15.0/btw-history.raw.bin", import.meta.url));
 		const h = harness();
 		let sawBtw = false;
 		const stream = new TspStream({ onData: () => {}, onMessage: message => {
@@ -171,7 +172,7 @@ describe("TSP session", () => {
 	});
 
 	it("submits through the fixture's id-based dock and nested main composer", async () => {
-		const raw = readFileSync(new URL("./fixtures/omp-18.14.bin", import.meta.url));
+		const raw = readFileSync(new URL("./fixtures/18.15.0/btw-history.raw.bin", import.meta.url));
 		const incoming: TspMessage[] = [];
 		const stream = new TspStream({ onData: () => {}, onMessage: message => incoming.push(message) });
 		stream.push(raw);

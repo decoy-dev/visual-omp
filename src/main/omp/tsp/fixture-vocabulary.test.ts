@@ -1,12 +1,13 @@
 import { execFileSync } from "node:child_process";
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
 import { isKnownAction, isKnownRole, TSP_READ_ONLY_ACTIONS } from "../../../shared/tsp/roles";
 import { walkNodes } from "../../../shared/tsp/view-state";
 import { TspSession } from "./session";
 
-const committed = new URL("./fixtures/18.14.0/", import.meta.url);
+const committed = new URL("./fixtures/18.15.0/", import.meta.url);
 function vocabulary(content: string) {
 	const roles = new Set<string>(); const actions = new Set<string>(); const errors: Error[] = [];
 	const session = new TspSession({ cols: 110, dark: false, reduceMotion: true, write: () => {}, onError: error => errors.push(error) });
@@ -37,9 +38,14 @@ it("recognizes every recorded role and explicitly classifies unsupported actions
 });
 
 const live = process.env.VOMP_TSP_LIVE_FIXTURE_DIR;
-it.skipIf(!live)("compares scratch no-model re-recordings from installed omp 18.14.0 with the committed registry vocabulary", () => {
+it.skipIf(!live)("compares scratch no-model re-recordings from standalone omp 18.15.0 with the committed registry vocabulary", () => {
 	expect(process.env.OMP_BIN).toBeTruthy();
-	expect(execFileSync(process.env.OMP_BIN!, ["--version"], { encoding: "utf8" }).trim()).toBe("omp/18.14.0");
+	const root = mkdtempSync(join(tmpdir(), "vomp-tsp-version-"));
+	try {
+		expect(execFileSync(process.env.OMP_BIN!, ["--version"], { encoding: "utf8", env: { PATH: process.env.PATH!, HOME: root, USERPROFILE: root, XDG_CONFIG_HOME: root, XDG_CACHE_HOME: root, PI_CODING_AGENT_DIR: root, PI_CONFIG_DIR: root, TMPDIR: root } }).trim()).toBe("omp/18.15.0");
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
 	const files = readdirSync(live!).filter(file => file.endsWith(".messages.jsonl"));
 	expect(files).toEqual(expect.arrayContaining(["hotkeys.messages.jsonl", "jobs.messages.jsonl", "usage.messages.jsonl", "session.messages.jsonl", "changelog.messages.jsonl", "tools.messages.jsonl", "model-picker.messages.jsonl", "settings-screen.messages.jsonl", "hook-select.messages.jsonl", "hook-confirm.messages.jsonl", "hook-input.messages.jsonl", "hook-editor.messages.jsonl"]));
 	for (const file of files) {

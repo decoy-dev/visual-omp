@@ -12,15 +12,17 @@ import type { NodeContext } from "./nodes/context";
 import { rawKey } from "./keys";
 import { ansiRuns } from "./ansi";
 import { OmpScreenSheet } from "./OmpScreenSheet";
+import { TooltipProvider } from "../../ui/Tooltip";
 
 let root: Root;
 let element: HTMLDivElement;
 let context: NodeContext;
 const send = vi.fn(); const keys = vi.fn();
-const render = async (node: TspNode) => { await act(async () => root.render(createElement(NodeView, { node, context }))); };
+const render = async (node: TspNode) => { await act(async () => root.render(createElement(TooltipProvider, { children: createElement(NodeView, { node, context }) }))); };
 const click = async (selector: string, type = "click") => { await act(async () => element.querySelector(selector)!.dispatchEvent(new MouseEvent(type, { bubbles: true }))); };
 const press = async (key: string) => { await act(async () => element.querySelector('[role="listbox"]')!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }))); };
 beforeEach(() => {
+	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin" } });
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 	send.mockClear(); keys.mockClear(); context = { sf: "s:1", readOnly: false, send, keys, render: node => createElement(NodeView, { key: node.id, node, context }) };
@@ -28,9 +30,10 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); });
 it("enumerates every advertised kind, failing when the wire vocabulary grows", () => {
 	expect(Object.keys(KIND_GROUPS).sort()).toEqual([...TSP_KINDS].sort());
-	expect(Object.keys(KIND_GROUPS)).toHaveLength(44);
+	expect(Object.keys(KIND_GROUPS)).toHaveLength(45);
+	expect(KIND_GROUPS.button).toBe("form");
 });
-it("mounts a renderer for all 44 kinds without invoking application input", async () => {
+it("mounts a renderer for all 45 kinds without invoking application input", async () => {
 	for (const k of TSP_KINDS) {
 		await render({ id: `kind-${k}`, k } as TspNode);
 		expect(element.querySelector("[data-tsp-kind]")?.getAttribute("data-tsp-kind")).toBe(k);
@@ -387,4 +390,99 @@ it("explains an unsupported row click while keeping local selection and Enter ac
 	await press("Enter");
 	expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "activate", sf: "s:1", id: "list", item: "entry" });
 	warning.mockRestore();
+});
+it.each(["default", "primary", "quiet", "danger"] as const)("renders a %s button once with its icon, keycaps and click action", async variant => {
+	await render({ id: "push", k: "button", p: { text: "Close view", icon: "close", keys: ["escape"], variant, size: "sm", on: true, actions: { click: "close" } } });
+	expect(element.querySelectorAll("button")).toHaveLength(1);
+	expect(element.querySelector("button")?.textContent).toContain("Close view");
+	expect(element.querySelector("button svg")).not.toBeNull();
+	expect(element.querySelector("button kbd")).not.toBeNull();
+	expect(element.querySelector("button")?.getAttribute("aria-pressed")).toBe("true");
+	expect(element.querySelector("button")?.className).toContain("min-h-7");
+	await click("button");
+	expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "action", sf: "s:1", id: "push", act: "close" });
+});
+it.each(["disabled", "busy", "readonly", "unknown"] as const)("keeps a %s button inert and exposes its state", async state => {
+	context = { ...context, readOnly: state === "readonly" };
+	await render({ id: "push", k: "button", p: { text: "Submit", disabled: state === "disabled" ? "Choose an option first" : false, busy: state === "busy", actions: { click: state === "unknown" ? "future-button-action" : "submit" } } });
+	const button = element.querySelector("button")!;
+	expect(button.disabled).toBe(true);
+	if (state === "disabled") expect(button.title).toBe("Choose an option first");
+	if (state === "unknown") expect(button.title).toContain("future-button-action");
+	if (state === "busy") expect(button.getAttribute("aria-busy")).toBe("true");
+	await click("button"); expect(send).not.toHaveBeenCalled();
+});
+it("renders an accessible icon-only button and defaults its action to click", async () => {
+	await render({ id: "push", k: "button", p: { icon: "close", aria: "Close view", variant: "quiet", on: true } });
+	expect(element.querySelector("button")?.getAttribute("aria-label")).toBe("Close view");
+	expect(element.querySelector("button")?.getAttribute("aria-pressed")).toBe("true");
+	await click("button"); expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "action", sf: "s:1", id: "push", act: "click" });
+});
+it("keeps an icon button's accessible name while exposing its disabled reason", async () => {
+	await render({ id: "push", k: "button", p: { icon: "close", aria: "Close view", disabled: "Waiting for omp", actions: { click: "close" } } });
+	expect(element.querySelector("button")?.getAttribute("aria-label")).toBe("Close view");
+	expect(element.querySelector("button")?.title).toBe("Waiting for omp");
+	await click("button"); expect(send).not.toHaveBeenCalled();
+});
+it("renders segmented tabs using the shared selection control", async () => {
+	await render({ id: "segments", k: "tabs", p: { variant: "segmented", active: "a", items: [{ id: "a", label: "First" }, { id: "b", label: "Second" }] } });
+	expect(element.querySelector('[data-state="on"]')?.textContent).toBe("First");
+	await click('button[data-state="off"]');
+	expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "select", sf: "s:1", id: "segments", item: "b" });
+	context = { ...context, readOnly: true };
+	await render({ id: "segments", k: "tabs", p: { variant: "segmented", active: "a", items: [{ id: "a", label: "First" }] } });
+	expect(element.querySelector("button")?.disabled).toBe(true);
+});
+it("preserves non-contiguous code numbers and inserts only the corresponding gap rows", async () => {
+	await render({ id: "code", k: "code", p: { text: "first\nsecond\nfifth\nsixth", start: 99, nums: [1, 2, 5, 6], numbers: true } });
+	expect([...element.querySelectorAll("[data-tsp-line]")].map(line => line.getAttribute("data-tsp-line"))).toEqual(["1", "2", "5", "6"]);
+	expect(element.querySelectorAll(".tsp-code-gap")).toHaveLength(1);
+	expect(element.querySelector("pre")?.textContent).toContain("…\n5fifth");
+});
+it.each([{ nums: [4] }, { nums: [4, 4] }, { nums: [5, 4] }])("falls back to start for invalid code numbers $nums", async ({ nums }) => {
+	await render({ id: "code", k: "code", p: { text: "first\nsecond", start: 10, nums, numbers: true } });
+	expect([...element.querySelectorAll("[data-tsp-line]")].map(line => line.getAttribute("data-tsp-line"))).toEqual(["10", "11"]);
+	expect(element.querySelector(".tsp-code-gap")).toBeNull();
+});
+it("keeps gap rows when code gutters are explicitly hidden", async () => {
+	await render({ id: "code", k: "code", p: { text: "first\nfifth", nums: [1, 5], numbers: false } });
+	expect(element.querySelector(".tsp-code-number")).toBeNull();
+	expect(element.querySelectorAll(".tsp-code-gap")).toHaveLength(1);
+});
+it("shows deferred nativeTail shell and eval blocks under Other omp output", async () => {
+	const snapshot: TspHostSnapshot = { hostId: "host", generation: 1, epoch: 1, revision: 1, negotiated: true, lifecycle: "live", documentGeneration: 1, availability: { available: true, reason: null }, failure: null, surfaces: [{ open: { id: "s:1", mode: "inline" }, documentGeneration: 1, sequence: 1, closed: false, suspended: false, focus: null, settled: [], document: { id: "s:1", k: "col", c: [{ id: "main", k: "col", c: [
+		{ id: "replicated", k: "tool", p: { role: "omp.tool", name: "bash", title: "Already in transcript", status: "done" } },
+		...(["omp.bash", "omp.eval"] as const).map((role, i) => ({ id: `tail-${i}`, k: "tool" as const, p: { role, name: i ? "eval" : "bash", title: i ? "Python" : "Bash", status: "done" as const }, c: [{ id: `output-${i}`, k: "text" as const, p: { text: `Deferred output ${i}` } }] })),
+	] }] } }] };
+	await act(async () => root.render(createElement(OmpScreenSheet, { hostId: "host", generation: 1, snapshot, failed: false, readOnly: true })));
+	expect(element.textContent).toContain("Other omp output");
+	expect(element.textContent).toContain("Deferred output 0"); expect(element.textContent).toContain("Deferred output 1");
+	expect(element.textContent).not.toContain("Already in transcript");
+});
+it("treats an empty disabled reason as disabled rather than enabling a native button", async () => {
+	await render({ id: "push", k: "button", p: { text: "Submit", disabled: "", actions: { click: "submit" } } });
+	expect(element.querySelector("button")?.disabled).toBe(true);
+	await click("button"); expect(send).not.toHaveBeenCalled();
+});
+it("wraps long native button labels and keycaps without dropping the full accessible label", async () => {
+	const text = "Close this deliberately long view label " + "unbroken".repeat(24);
+	await render({ id: "push", k: "button", p: { text, keys: ["ctrl", "shift", "enter"], actions: { click: "close" } } });
+	const button = element.querySelector("button")!;
+	expect(button.textContent).toContain(text);
+	expect(button.className).toContain("whitespace-normal");
+	expect(button.className).toContain("h-auto");
+	expect(button.querySelector('[class*="overflow-wrap:anywhere"]')?.textContent).toBe(text);
+	expect(button.querySelector('[class*="tsp-key-chord"]')).not.toBeNull();
+	await click("button"); expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "action", sf: "s:1", id: "push", act: "close" });
+});
+it("names a key-only button from its displayed keys", async () => {
+	await render({ id: "push", k: "button", p: { keys: ["ctrl", "enter"], actions: { click: "submit" } } });
+	expect(element.querySelector("button")?.getAttribute("aria-label")).toBe("Control + Enter");
+	expect(element.textContent).not.toContain("Unavailable action");
+});
+it("shows an inert readable fallback when a button has no label, icon or keys", async () => {
+	await render({ id: "push", k: "button" });
+	expect(element.querySelector("button")?.disabled).toBe(true);
+	expect(element.textContent).toContain("Unavailable action");
+	await click("button"); expect(send).not.toHaveBeenCalled();
 });

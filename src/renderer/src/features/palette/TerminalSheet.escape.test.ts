@@ -172,9 +172,9 @@ it("closes the sheet when a mirrored request wins while an unmatched Escape is q
 	expect(fake.closeTerminal).toHaveBeenCalledOnce();
 });
 
-const recordings = import.meta.glob<string>("../../../../main/omp/tsp/fixtures/18.14.0/*.jsonl", { query: "?raw", import: "default", eager: true });
+const recordings = import.meta.glob<string>("../../../../main/omp/tsp/fixtures/18.15.0/*.jsonl", { query: "?raw", import: "default", eager: true });
 function recorded<T = unknown>(name: string, suffix: string): { verb?: string; body: T; keys?: string; afterMessage?: number }[] {
-	return recordings[`../../../../main/omp/tsp/fixtures/18.14.0/${name}.${suffix}.jsonl`]!.trim().split("\n").map(line => JSON.parse(line));
+	return recordings[`../../../../main/omp/tsp/fixtures/18.15.0/${name}.${suffix}.jsonl`]!.trim().split("\n").map(line => JSON.parse(line));
 }
 function replayedScreen(name: string) {
 	const session = new FixtureDocuments();

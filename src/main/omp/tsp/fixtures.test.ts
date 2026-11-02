@@ -4,15 +4,16 @@ import type { TspNode } from "../../../shared/tsp";
 import { TspSession } from "./session";
 import { TspStream } from "./stream";
 import { TSP_ROLES, TSP_STATUS } from "../../../shared/tsp/roles";
-import { walkNodes } from "../../../shared/tsp/view-state";
+import { openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
 import { decodedOscPayloads } from "./sanitize-fixture";
 
 const hookScenarios = ["hook-select", "hook-input", "hook-editor", "hook-confirm", "extension-rows"]
 	.flatMap(name => [`${name}-open`, name, `${name}-cancel`]);
 const scenarios = ["hotkeys", "jobs", "usage", "session", "changelog", "tools", "model-picker", "settings-screen", "extensions", "import-claude", "startup-no-model", "notice-error", "exit", "exit-with-overlay", "restart", "new", "resume", "sibling-continuation", "hook-collab-aware", ...hookScenarios, "tree-open", "tree-confirm"];
-const fixture = (name: string, extension: string) => readFileSync(new URL(`./fixtures/18.14.0/${name}.${extension}`, import.meta.url));
+scenarios.push("btw-history");
+const fixture = (name: string, extension: string) => readFileSync(new URL(`./fixtures/18.15.0/${name}.${extension}`, import.meta.url));
 
-describe("omp 18.14.0 no-model recordings", () => {
+describe("omp 18.15.0 no-model recordings", () => {
 	it.each(scenarios)("replays %s without rejected operations and retains exact decoded messages", async name => {
 		const errors: Error[] = [];
 		const messages: object[] = [];
@@ -22,6 +23,7 @@ describe("omp 18.14.0 no-model recordings", () => {
 		const notices = new Set<string>();
 		const events = fixture(name, "events.jsonl").toString().trim().split("\n").map(line => JSON.parse(line));
 		const applicationEvents = events.filter(event => event.keys !== undefined || (event.verb === "e" && event.body.ev !== "ack"));
+		let escapePending = false;
 		let checkedEvents = 0;
 		const roles = new Set<string>();
 		let closing = false;
@@ -45,8 +47,14 @@ describe("omp 18.14.0 no-model recordings", () => {
 			for (const event of applicationEvents.filter(event => event.afterMessage === messages.length)) {
 				checkedEvents++;
 				if (event.keys !== undefined) {
-					expect(session.snapshot().surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "rows"))).toBe(true);
-					expect(["\r", "\x1b"]).toContain(event.keys);
+					const surfaces = session.snapshot().surfaces;
+					const rows = surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "rows"));
+					if (event.keys === "\r") expect(rows, `${name}: Enter requires a rows fallback`).toBe(true);
+					else {
+						expect(event.keys).toBe("\x1b");
+						expect(!!openOverlay(surfaces) || !!screenSurface(surfaces) || rows).toBe(true);
+						escapePending = true;
+					}
 					continue;
 				}
 				const body = event.body;
@@ -56,6 +64,12 @@ describe("omp 18.14.0 no-model recordings", () => {
 				expect(target, `${name}: event target ${body.id}`).toBeDefined();
 				if (!target) continue;
 				if (body.ev === "send") {
+					if (escapePending) {
+						expect(openOverlay(session.snapshot().surfaces), `${name}: Escape dismissed the overlay`).toBeNull();
+						expect(screenSurface(session.snapshot().surfaces), `${name}: Escape dismissed the screen`).toBeNull();
+						expect(session.availability().available, `${name}: Escape restored the composer`).toBe(true);
+						escapePending = false;
+					}
 					expect(target.k).toBe("editor");
 					if (target.k === "editor") expect(target.p?.sendable).toBe(true);
 				} else if (body.ev === "edit") {
@@ -82,13 +96,12 @@ describe("omp 18.14.0 no-model recordings", () => {
 		expect(closing).toBe(!openedOnly);
 		const journal = fixture(name, "jsonl").toString().trim().split("\n").map(line => JSON.parse(line));
 		expect(journal.length).toBeGreaterThan(0);
-		if (hookScenarios.includes(name) || name === "tree-open") {
-			expect(checkedEvents).toBe(applicationEvents.length);
-			for (const event of applicationEvents) expect(event.afterMessage).toBeGreaterThan(0);
-		}
+		expect(checkedEvents).toBe(applicationEvents.length);
+		for (const event of applicationEvents) expect(event.afterMessage).toBeGreaterThan(0);
 		const sends = events.filter(event => event.body?.ev === "send");
 		if (openedOnly) expect(sends.some(event => event.body.text === "/exit")).toBe(false);
 		else expect(sends.at(-1)?.body.text).toBe("/exit");
+		expect(escapePending, `${name}: captured Escape completion`).toBe(false);
 		if (name.startsWith("hook-select") || name.startsWith("hook-confirm")) {
 			const picker = [...nodes.values()].find(node => node.k === "picker" && node.p?.noun === "options");
 			expect(picker?.p?.role).toBeUndefined();

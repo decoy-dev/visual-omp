@@ -4,7 +4,7 @@ import type { TspHostSnapshot } from "@shared/tsp-host";
 import { TSP_CLAIMS, TSP_NOTICE_ROLES, TSP_ROLES, isReplicatedRole } from "@shared/tsp/roles";
 import { describe, expect, it } from "vitest";
 import { TspDocument } from "../../../../main/omp/tsp/apply";
-import usageRecording from "../../../../main/omp/tsp/fixtures/18.14.0/usage.messages.jsonl?raw";
+import usageRecording from "../../../../main/omp/tsp/fixtures/18.15.0/usage.messages.jsonl?raw";
 import { TspNoticeProjection, placeTspNotices } from "./notices";
 
 const user = (id: string) => ({ id, parentId: null, type: "message", message: { role: "user", content: "hello" } }) as SessionEntry;
