@@ -1,4 +1,5 @@
 import { readFileSync, readdirSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
@@ -40,6 +41,18 @@ describe("TSP fixture privacy", () => {
 		stream.push(clean); stream.end();
 		expect(messages).toEqual([{ sf: "s:1", s: 1, ops: [["text", "message", "append", "café"]] }]);
 		expect(sanitizeFixtureText("/Users/someone/.omp /tmp/tsp-study/repo /tmp/vomp-tsp-record-abcd/home")).toBe("/tmp/vomp-fixture/.omp /tmp/vomp-fixture/repo /tmp/vomp-fixture/home");
+		expect(sanitizeFixtureText('{"detail":[{"t":"/tmp/"},{"t":"vomp-tsp-record-Abc123","s":"path"}]}')).toBe('{"detail":[{"t":"/tmp/"},{"t":"vomp-fixture","s":"path"}]}');
 		expect(sanitizeFixtureBytes(clean)).toEqual(clean);
+	});
+
+	it("preserves the captured bytes and carriage returns of raw recordings across storage and checkout", () => {
+		const directory = join(root, "18.14.0");
+		const manifests = readdirSync(directory).filter(name => name.endsWith(".integrity.json"));
+		expect(manifests).toEqual(expect.arrayContaining(["handshake-timeout", "import-claude", "new", "resume", "sibling-continuation", "tree-confirm"].map(name => `${name}.integrity.json`)));
+		for (const manifest of manifests) {
+			const expected: { bytes: number; carriageReturns: number; sha256: string } = JSON.parse(readFileSync(join(directory, manifest), "utf8"));
+			const raw = readFileSync(join(directory, manifest.replace(".integrity.json", ".raw.bin")));
+			expect({ bytes: raw.length, carriageReturns: raw.filter(byte => byte === 13).length, sha256: createHash("sha256").update(raw).digest("hex") }, manifest).toEqual(expected);
+		}
 	});
 });

@@ -1,0 +1,9 @@
+{"verb":"r","body":{"r":"hello","v":1,"term":"visual-omp","kinds":["col","row","card","section","rule","spacer","text","md","code","diff","ansi","math","image","media","kv","table","tree","json","badge","kbd","icon","spinner","shimmer","elapsed","progress","rate","list","item","tabs","editor","input","status","seg","overlay","toast","rows","picker","prefs","tool","checklist","agent","chart","meter","effort"],"features":[],"apc":65536,"credits":2,"cols":110,"dark":false,"reduceMotion":true},"afterMessage":1}
+{"verb":"e","body":{"ev":"ack","sf":"s:1","s":1},"afterMessage":3}
+{"verb":"e","body":{"ev":"ack","sf":"s:1","s":2},"afterMessage":4}
+{"verb":"e","body":{"ev":"send","sf":"s:1","id":"g.line/input","text":"/tree"},"afterMessage":4}
+{"verb":"e","body":{"ev":"ack","sf":"s:1","s":3},"afterMessage":5}
+{"verb":"e","body":{"ev":"activate","sf":"s:1","id":"o.^picker","item":"00000006"},"afterMessage":5}
+{"verb":"e","body":{"ev":"ack","sf":"s:1","s":4},"afterMessage":6}
+{"verb":"e","body":{"ev":"send","sf":"s:1","id":"g.line/input","text":"/exit"},"afterMessage":6}
+{"verb":"e","body":{"ev":"ack","sf":"s:1","s":5},"afterMessage":7}

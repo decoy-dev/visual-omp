@@ -2,3 +2,4 @@
 *.icns binary
 *.ico binary
 *.png binary
+src/main/omp/tsp/fixtures/**/*.bin binary

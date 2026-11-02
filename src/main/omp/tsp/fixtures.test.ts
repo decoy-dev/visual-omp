@@ -5,10 +5,11 @@ import { TspSession } from "./session";
 import { TspStream } from "./stream";
 import { TSP_ROLES, TSP_STATUS } from "../../../shared/tsp/roles";
 import { walkNodes } from "../../../shared/tsp/view-state";
+import { decodedOscPayloads } from "./sanitize-fixture";
 
 const hookScenarios = ["hook-select", "hook-input", "hook-editor", "hook-confirm", "extension-rows"]
 	.flatMap(name => [`${name}-open`, name, `${name}-cancel`]);
-const scenarios = ["hotkeys", "jobs", "usage", "session", "changelog", "tools", "model-picker", "settings-screen", "exit", "exit-with-overlay", ...hookScenarios, "tree-open"];
+const scenarios = ["hotkeys", "jobs", "usage", "session", "changelog", "tools", "model-picker", "settings-screen", "extensions", "import-claude", "startup-no-model", "notice-error", "exit", "exit-with-overlay", "restart", "new", "resume", "sibling-continuation", "hook-collab-aware", ...hookScenarios, "tree-open", "tree-confirm"];
 const fixture = (name: string, extension: string) => readFileSync(new URL(`./fixtures/18.14.0/${name}.${extension}`, import.meta.url));
 
 describe("omp 18.14.0 no-model recordings", () => {
@@ -62,7 +63,7 @@ describe("omp 18.14.0 no-model recordings", () => {
 					if (target.k === "input" || target.k === "editor") {
 						expect(body).toMatchObject({ from: 0, to: target.p?.text?.length ?? 0, len: target.p?.text?.length ?? 0, cursor: body.text.length });
 					}
-				} else if (body.ev === "activate") {
+				} else if (body.ev === "activate" || body.ev === "select") {
 					expect(target.k).toBe("picker");
 					if (target.k === "picker") expect(target.p?.items?.some(item => item.id === body.item)).toBe(true);
 				} else if (body.ev === "action") {
@@ -77,7 +78,7 @@ describe("omp 18.14.0 no-model recordings", () => {
 		expect(errors).toEqual([]);
 		expect(messages).toEqual(fixture(name, "messages.jsonl").toString().trim().split("\n").map(line => JSON.parse(line)));
 		expect(session.snapshot().surfaces.every(surface => surface.closed)).toBe(true);
-		const openedOnly = name.endsWith("-open");
+		const openedOnly = name.endsWith("-open") || name === "hook-collab-aware";
 		expect(closing).toBe(!openedOnly);
 		const journal = fixture(name, "jsonl").toString().trim().split("\n").map(line => JSON.parse(line));
 		expect(journal.length).toBeGreaterThan(0);
@@ -136,6 +137,14 @@ describe("omp 18.14.0 no-model recordings", () => {
 		if (name === "model-picker") expect(kinds.has("picker")).toBe(true);
 		if (name === "settings-screen") { expect(screen).toBe(true); expect(kinds.has("prefs")).toBe(true); }
 		if (name === "usage") expect(roles.has(TSP_ROLES.noticeWarning)).toBe(true);
+		if (name === "restart") expect(messages.filter(message => "verb" in message && message.verb === "q")).toHaveLength(2);
+		if (name === "new" || name === "resume" || name === "sibling-continuation") expect(messages.filter(message => "verb" in message && message.verb === "q")).toHaveLength(1);
+		if (name === "sibling-continuation") {
+			const paths = decodedOscPayloads(raw.toString()).filter(path => path.startsWith("/tmp/vomp-fixture/") && path.endsWith(".jsonl"));
+			expect(paths).toContain("/tmp/vomp-fixture/tree-session.jsonl");
+			expect(paths.some(path => path !== "/tmp/vomp-fixture/tree-session.jsonl")).toBe(true);
+			expect([...nodes.values()].some(node => node.k === "text" && JSON.stringify(node.p?.spans ?? "").includes("open for writing in another omp process"))).toBe(true);
+		}
 		if (name === "exit-with-overlay") {
 			const escape = events.findIndex(event => event.keys === "\x1b");
 			const exit = events.findIndex(event => event.body?.ev === "send" && event.body.text === "/exit");

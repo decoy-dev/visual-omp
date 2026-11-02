@@ -33,6 +33,19 @@ function copyText(node: TspNode): string {
 	return node.c?.map(copyText).filter(Boolean).join(" ") ?? "";
 }
 function warnOnce(key: string) { if (!warned.has(key)) { warned.add(key); console.warn(`TSP screen fallback: ${key}`); } }
+function warnUnsupportedActions(node: TspNode): void {
+	const actions = node.p?.actions;
+	const declared = Array.isArray(actions) ? actions.map(action => action.id) : [actions?.click, actions?.dblclick, ...(actions?.menu ?? [])];
+	for (const action of declared) if (action && !isKnownAction(action)) warnOnce(`action:${action}`);
+	if (node.k === "prefs") for (const section of node.p?.sections ?? []) for (const row of section.rows) {
+		if (row.control.k === "action" && !isKnownAction(row.control.act)) warnOnce(`action:${row.control.act}`);
+	}
+	// List items are drawn by Choice rather than recursively mounted as NodeView.
+	if (node.k === "list") for (const child of node.c ?? []) if (child.k === "item") {
+		if (!isKnownRole(child.p?.role)) warnOnce(`role:${child.p?.role}`);
+		warnUnsupportedActions(child);
+	}
+}
 function Fallback({ node, context }: NodeProps) {
 	const { t } = useTranslation("palette");
 	const [palette, setPalette] = useState<TerminalColors | null>(null);
@@ -96,6 +109,7 @@ function Body({ node, context }: NodeProps) {
 	}
 }
 export function NodeView({ node, context }: NodeProps) {
+	const { t } = useTranslation("palette");
 	// HookDialog supplies a scoped context on the recursive render.
 	if (node.p?.hidden) return null;
 	if (!isKnownRole(node.p?.role)) warnOnce(`role:${node.p?.role}`);
@@ -103,16 +117,15 @@ export function NodeView({ node, context }: NodeProps) {
 	if (hook && context.hook?.id !== node.id) return <HookDialog node={node} context={context} />;
 	const role = node.p?.role ?? context.role;
 	const actions = node.p?.actions;
-	const unknownAction = Array.isArray(actions)
-		? actions.find(action => !isKnownAction(action.id))?.id
-		: [actions?.click, actions?.dblclick, ...(actions?.menu ?? [])].find(action => action && !isKnownAction(action));
-	if (unknownAction) warnOnce(`action:${unknownAction}`);
-	const readOnly = context.readOnly || !!unknownAction;
+	warnUnsupportedActions(node);
+	const readOnly = context.readOnly;
 	const childContext: NodeContext = { ...context, role, readOnly, render: (child, ro = readOnly) => <NodeView key={child.id} node={child} context={{ ...context, role, readOnly: ro }} /> };
-	const click = !unknownAction && !Array.isArray(actions) ? actions?.click : undefined;
+	const click = !Array.isArray(actions) ? actions?.click : undefined;
+	const unsupportedClick = !!click && !isKnownAction(click);
 	const content = <Body node={node} context={childContext} />;
 	const actionable = click && !["list", "picker", "tree", "item", "tool", "agent", "json"].includes(node.k);
-	return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0">{actionable ? <Button variant="secondary" disabled={readOnly} onClick={() => {
+	if (actionable && unsupportedClick) return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0 space-y-stack">{content}<Button variant="secondary" disabled title={t("tsp.unsupportedAction", { action: click })}>{t("tsp.unavailableAction")}</Button></div>;
+	return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0">{actionable ? <Button variant="secondary" disabled={readOnly || unsupportedClick} title={unsupportedClick ? t("tsp.unsupportedAction", { action: click }) : undefined} onClick={() => {
 		if (click === TSP_ACTIONS.copy) void navigator.clipboard.writeText(copyText(node));
 		else if (click === "toggle") context.send({ ev: "toggle", sf: context.sf, id: node.id, collapsed: node.k === "card" || node.k === "section" ? !node.p?.collapsed : true });
 		else context.send({ ev: "action", sf: context.sf, id: node.id, act: click });

@@ -4,14 +4,18 @@ These fixtures were recorded on macOS arm64 on 2026-10-30 from the installed exe
 
 The hook, custom-row and tree recordings were added on 2026-11-02 with the same installed release and isolation policy. `../extension/vomp-fixture.mjs` is the explicitly loaded fixture extension. `../extension/tree-session.jsonl` is a hand-authored version 3 session containing three user/assistant pairs and two branches. The assistant messages and zero usage values are synthetic session input, so displaying the tree requires no provider request.
 
+The gate recordings added later on 2026-11-02 include startup warnings, an error without a model, extension selection, startup import, restart and session transitions. The import source contains two synthetic Claude JSONL messages under the scratch HOME. The sibling-continuation probe starts a second isolated omp on the seeded session, persists a title there, then renames from the first process. No owner session or profile participates.
+
 ## Capture format
 
-Each scenario has four files:
+Each scenario has four capture files:
 
 - `<scenario>.raw.bin` contains PTY output with the privacy replacements below; ordinary terminal controls and TSP framing are preserved.
 - `<scenario>.jsonl` is omp's own `PI_TUI_TSP_RECORD` journal with the same privacy replacements.
 - `<scenario>.messages.jsonl` contains the messages decoded from those bytes by the app's `TspStream`.
 - `<scenario>.events.jsonl` contains the app's emitted semantic replies and events. A `{ "keys": "\u001b" }` record identifies an Escape input between semantic events. Custom-row completion uses `{ "keys": "\r" }`. Ordinary terminal replies are absent from this semantic event log; they are handled by the same writer.
+
+New recordings also include `<scenario>.integrity.json`, containing the sanitized raw stream's byte length, carriage-return count and SHA-256 digest before storage. The integrity test detects altered bytes after checkout. Git stores fixture `.bin` files as binary so CR bytes are preserved. JSON journals keep LF file delimiters; JSON stringification escapes CR characters within recorded values, so text normalization does not alter those values.
 
 The recorder uses the app's `TspSession`, including its hello reply, cumulative acknowledgments and semantic `send` submission. Completed hook and custom-row scenarios report the extension's answer as an `omp.toast.status`, restore the composer and submit `/exit`. The exit-with-overlay scenario specifically records Escape before the semantic `/exit` send. Open-only scenarios capture the open UI and stop the child with `kill()`. omp responds with a retained surface close, without a closing-status toast or an answer notice. These captures preserve the open document immediately before that close.
 
@@ -55,8 +59,19 @@ Before publication, OSC 7 file URL hosts are replaced with `localhost`, and priv
 | extension-rows | Sent raw Enter and recorded the completed answer. |
 | extension-rows-cancel | Sent raw Escape and recorded the cancelled answer. |
 | tree-open | Started omp with the crafted session through `--session`, then opened `/tree`. The roleless `picker` has `layout: tree`, six entry items and both branches. No navigation event was sent. |
+| tree-confirm | Opened the same seeded tree and activated its current entry. The picker closed without a model request, then `/exit` closed the session. |
+| extensions | Opened `/extensions`, selected the first rule row, then sent the picker's declared `close` action. No toggle or configuration write was requested. Its `expand` action remains unsupported by the app; known selection and Close stay interactive. |
+| import-claude | Started with `--from-claude`, selected and activated the single synthetic session in the startup screen, observed retained close followed by a second hello, then exited the imported session. |
+| startup-no-model | Recorded the one startup warning from an empty profile, then exited. |
+| notice-error | Submitted text without a configured model and recorded `omp.notice.error`, without making a provider request. |
+| restart | `/restart` closed the old surface with `keep: true`, negotiated a second hello on the same PTY and reused `s:1`. |
+| new | `/new` changed the current session's documents without another hello. |
+| resume | `/resume c040d770` selected the seeded session by id from the isolated session directory, without another hello. |
+| sibling-continuation | A competing process persisted a title in the seeded file. The first process's rename continued in a new sibling file, with a warning and changed `omp_session_file` OSC value, without another hello. |
+| hook-collab-aware | Recorded the open collab-aware selector. Tests inject matching and ambiguous collab request mirrors against this document; the capture itself runs without a guest. |
+| handshake-timeout | Withheld every client reply and acknowledgment. omp withdrew its optimistic surface with `keep: false` and painted classic rows. The event file is intentionally empty because nothing was sent. |
 
-Populated usage history, model-backed workflows and collab question arbitration remain outside these recordings.
+Populated usage history and model-backed workflows remain outside these recordings. Collab room changes and question requests are injected by the host and screen replay tests; they are not observations of an attached live guest.
 
 ## Hook and fallback observations
 
@@ -68,9 +83,9 @@ Input and editor dialogs remain columns in `dock`, with roles `omp.overlay.hook-
 
 The public input API accepts a placeholder but has no default-value argument. Passing its second argument leaves `p.text` empty. The recorder therefore seeds the visible default with an explicit, logged `edit` of length zero before capturing or answering it. The editor API supports its two-line prefill directly.
 
-The custom component renders two lines and handles raw Enter or Escape. It emits `rows` id `k`, `cols: 110`, no role and null document focus, with no semantic action declarations. Completion demonstrates that omp receives the raw key despite the null semantic focus. The app's focused-row fallback may require separate focus handling.
+The custom component renders two lines and handles raw Enter or Escape. It emits `rows` id `k`, `cols: 110`, no role and null document focus, with no semantic action declarations. Completion demonstrates that omp receives the raw key despite the null semantic focus. The actual sheet replay now verifies Enter and guarded Escape from this fallback.
 
-The tree picker is `o.^picker`, with null document focus and `p.focus: list`. Its selected and current entry is `00000006`. It declares `switch`, `summarize`, `label`, `filter` and `close`. This fixture records opening only, so it does not demonstrate selection or navigation.
+The tree picker is `o.^picker`, with null document focus and `p.focus: list`. Its selected and current entry is `00000006`. It declares `switch`, `summarize`, `label`, `filter` and `close`. `tree-open` preserves opening alone; `tree-confirm` records activation of the current entry. The screen replay verifies that pointer selection emits nothing before confirmation.
 
 These ids are observed recording values. The root `k`, field/action ids and restored composer `g.line/input` recur across separate scenarios. Production callers must obtain ids from the current document and scope them to the current host, surface and protocol epoch.
 
@@ -85,3 +100,12 @@ rm record-tsp.mjs
 ```
 
 Pass scenario names after `record-tsp.mjs` to record only those scenarios. Node must execute the recorder: the installed Bun runtime returned no PTY data with this node-pty build. The generated bundle stays beside the worktree's node_modules so Node can resolve the external native dependency. No Electron process is started.
+
+Set `VOMP_TSP_FIXTURE_DIR` to a scratch directory to compare a new recording without replacing the committed files:
+
+```sh
+OMP_BIN=/absolute/path/to/omp VOMP_TSP_FIXTURE_DIR=/tmp/vomp-tsp-comparison node record-tsp.mjs
+OMP_BIN=/absolute/path/to/omp VOMP_TSP_LIVE_FIXTURE_DIR=/tmp/vomp-tsp-comparison npm test -- src/main/omp/tsp/fixture-vocabulary.test.ts
+```
+
+On 2026-11-02, the installed executable reported `omp/18.14.0`, and a separate no-model re-recording of all overlay, hook and transition scenarios used names recognized by the registry. The original committed captures were left unchanged. Among the first 36 comparisons, 28 decoded message streams matched exactly and all role/action sets were identical. `usage`, `session`, `tree-confirm`, `notice-error` and `restart` had frame-batching or transient-state timing differences; `settings-screen` had a generated scratch-folder display span; `import-claude` and `sibling-continuation` had generated identity, path or time differences. The later timeout capture included the already-registered `omp.notice.warning` before fallback, while the original timed out before emitting it. Its actions were unchanged. The comparison test reports vocabulary differences and rejects names absent from the registry.

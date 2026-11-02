@@ -344,3 +344,13 @@ describe("TSP session", () => {
 		expect(h.bodies().at(-1)).toEqual({ ev: "action", sf: "s:1", id: "choice", act });
 	});
 });
+
+it.each(["expand", "future-action"])("refuses unsupported action %s at the serialized writer without blocking known Close", async act => {
+	const h = harness(); h.hello(); h.open();
+	h.frame(1, [["add", "picker", "s:1", null, { id: "picker", k: "picker", p: { title: "Extensions", noun: "extensions", layout: "rows", query: null, items: [], actions: [{ id: act, label: "Unsupported" }, { id: "close", label: "Close" }] } }]]);
+	await h.flush(); h.messages.length = 0;
+	await expect(h.session.send({ ev: "action", sf: "s:1", id: "picker", act })).rejects.toThrow(`action ${act} is not supported`);
+	expect(h.messages).toEqual([]);
+	await h.session.send({ ev: "action", sf: "s:1", id: "picker", act: "close" });
+	expect(h.bodies()).toEqual([{ ev: "action", sf: "s:1", id: "picker", act: "close" }]);
+});

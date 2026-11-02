@@ -83,6 +83,7 @@ export class SessionHost {
 	#debug: TuiDebugClient | null = null;
 	#privateDir: string | null = null;
 	#roomId: string | null = null;
+	#hadCollabRoom = false;
 	#spawnedAt = 0;
 	#runStartedAt = 0;
 	#focusTimer: NodeJS.Timeout | null = null;
@@ -171,6 +172,8 @@ export class SessionHost {
 					// A second relay room must never replace the session this host already owns.
 					// Legitimate rotations close the previous room before opening its successor.
 					if (this.#roomId !== null) return;
+					this.#hadCollabRoom = true;
+					if (this.#tsp) this.#publishTsp();
 					this.#runStartedAt = Date.now();
 					this.#finishStartup();
 					void this.#resolveLink(roomId);
@@ -206,8 +209,9 @@ export class SessionHost {
 							clearTimeout(this.#tspHandshakeTimer ?? undefined);
 							this.#tspHandshakeTimer = null;
 						}
+						if (reason === "close" && !this.#closing && !this.#tspFailure && !this.#tsp!.snapshot().surfaces.some(surface => !surface.closed)) this.#armTspHandshake(5000, true);
 						if (this.#closing && ((reason === "close" && surface === this.#tspExitSurface) || this.#tspClosingNotice())) this.#shutdownProgress("acknowledged");
-						if (reason === "frame" && surface && this.state.phase === "live") this.#tspSurfaceGenerations.set(surface, this.state.generation);
+						if (reason === "frame" && surface && (this.state.phase === "live" || !this.#hadCollabRoom)) this.#tspSurfaceGenerations.set(surface, this.state.generation);
 						this.#publishTsp();
 					},
 					onError: error => {
@@ -323,7 +327,7 @@ export class SessionHost {
 		this.#tspHandshakeTimer = setTimeout(() => {
 			this.#tspHandshakeTimer = null;
 			if (this.state.phase === "exited") return;
-			if (waitingForSurface ? this.#tsp!.snapshot().surfaces.length > 0 : this.#tsp!.snapshot().negotiated || this.#tspFirstBytes.length === 0) return;
+			if (waitingForSurface ? this.#tsp!.snapshot().surfaces.some(surface => !surface.closed) : this.#tsp!.snapshot().negotiated || this.#tspFirstBytes.length === 0) return;
 			this.#tspFailure = "omp did not start its semantic screen";
 			console.warn("[visual-omp] omp did not start its semantic screen. First PTY bytes (base64, at most 2048 bytes):", this.#tspFirstBytes.toString("base64"));
 			this.#update({ tspFailed: true });
@@ -348,7 +352,9 @@ export class SessionHost {
 		const protocol = this.#tsp.snapshot();
 		const surfaces = protocol.surfaces.map(surface => ({ ...surface, documentGeneration: this.#tspSurfaceGenerations.get(surface.open.id) ?? null }));
 		const current = surfaces.some(surface => !surface.closed && surface.documentGeneration === this.state.generation);
-		const lifecycle = this.state.phase === "exited" ? "exited" : this.#tspFailure ? "failed" : this.state.phase === "live" && current ? "live" : "transitioning";
+		// Non-hook startup menus can precede the first collab room. Once any room
+		// opens, link resolution and later rotations keep the normal authority gate.
+		const lifecycle = this.state.phase === "exited" ? "exited" : this.#tspFailure ? "failed" : current && (this.state.phase === "live" || !this.#hadCollabRoom) ? "live" : "transitioning";
 		const reason = this.#closing ? "This chat is closing." : this.#tspFailure ?? (lifecycle !== "live" ? "Waiting for omp to open its semantic screen." : this.#editorTransferBlocked);
 		const questionMatches = this.#tspQuestions.matches({ hostId: this.id, generation: this.state.generation, epoch: protocol.epoch }, hookQuestions(surfaces, this.state.generation));
 		const overlay = openOverlay(surfaces);

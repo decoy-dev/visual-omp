@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, type TspEvent, type TspFrame, type TspOpen } from "../../../shared/tsp";
 import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspSurfaceSnapshot } from "../../../shared/tsp-host";
 import { composer, liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
-import { isHookNode } from "../../../shared/tsp/roles";
+import { isHookNode, isKnownAction } from "../../../shared/tsp/roles";
 import { hookAnswerEvents, TspHookAnswer } from "../../../shared/tsp/dialogs";
 import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";
@@ -177,6 +177,7 @@ export class TspSession {
 		return this.#enqueue(async () => {
 			assertCurrent?.();
 			if (epoch !== this.#epoch) throw new TspInputStateError("TSP preview: The semantic screen restarted.");
+			if (event.ev === "action" && !isKnownAction(event.act)) throw new TspInputStateError(`TSP preview: The omp action ${event.act} is not supported in this preview.`);
 			if (["send", "edit", "undo"].includes(event.ev) && !this.#programFeatures.has(event.ev)) throw new Error(`TSP preview: omp does not accept ${event.ev} events.`);
 			if (event.ev !== "visible" && this.hasHookDialog()) throw new TspInputStateError("TSP preview: This question requires the guarded question answer controls.");
 			const surface = this.#surfaces.get(event.sf);

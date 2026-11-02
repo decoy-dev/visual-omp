@@ -167,10 +167,24 @@ cannot promote another retained tree. A protocol close with `keep: true` retains
 content. Snapshots distinguish live, transitioning, failed and exited state. Process exit invalidates
 presentation authority even when no protocol close arrived.
 
+Startup import menus can open before omp creates its first collab room. Main assigns framed
+documents in that state to generation zero and permits their ordinary semantic controls.
+The first relay `onHostOpen` callback permanently ends that startup allowance for the host,
+before link resolution completes. A protocol restart before that callback retains the allowance;
+a later restart or room reconnect does not restore it. The input lock checks the same lifetime
+condition immediately before writing. Hook dialogs remain display-only until a connected mirror
+can arbitrate them. omp installs its collab host before the relay connects, retains collab-aware
+pending requests and replays them to a writable guest on join. Input and confirm hooks without a
+replicated request become locally answerable once a connected empty mirror can arbitrate
+([controller](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/coding-agent/src/collab/controller.ts#L88-L107),
+[retention](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/coding-agent/src/collab/host.ts#L344-L391),
+[join replay](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/coding-agent/src/collab/host.ts#L842-L852)).
+
 Renderer-originated semantic events and raw keys enter the existing application transaction lock.
 Main rechecks the host's collab generation and protocol epoch at the writer. Semantic events also
-validate their addressed live surface and node. `host:tsp-event` parses a strict typed subset of events;
-acknowledgments, resize, theme and motion remain main-owned. Raw fallback keys and Escape use
+validate their addressed live surface and node. `host:tsp-event` parses a strict typed subset of events.
+Unknown action names are refused again at the serialized TSP writer before any action bytes are sent.
+Acknowledgments, resize, theme and motion remain main-owned. Raw fallback keys and Escape use
 the guarded `host:keys` route with generation and epoch. Malformed operation tuples and nested
 node shapes are rejected before the reference applier. Protocol failures are shown by the omp
 screen without replacing collab or OSC as the authority for chat status.
@@ -234,7 +248,8 @@ answerable through the ordinary guarded path until application-driven shutdown s
 
 If ten seconds elapse from spawn without a supported hello, main marks the preview failed once
 output has been observed. A supported hello starts a separate five-second deadline for the first
-surface. Failure sets `tspFailed`, exposes "omp did not start its semantic screen", and offers
+surface, including after an optimistic surface is withdrawn and omp falls back to classic rows.
+Failure sets `tspFailed`, exposes "omp did not start its semantic screen", and offers
 Restart. It does not automatically retry, kill omp or switch renderer modes. An explicit restart of
 a failed host awaits the existing stop stages, then launches omp again with the saved session file;
 the visible history and input recall are retained while the new collab room connects. Stop or
@@ -262,8 +277,11 @@ are excluded. Lists expose selection semantics, tree row clicks stay local until
 and forms send typed events. Markdown, code, diffs, JSON and progress
 reuse shared renderers. Media remains a placeholder while blobs are unavailable. Known kinds keep
 their renderer when a role is unknown, so form and layout containers show their children normally.
-Unknown actions stay read-only. Rows, ANSI and genuinely unknown kinds use a readable mono
-fallback with guarded raw keys while focused. The normal view never dumps node props as JSON;
+Unknown actions disable only their own control, with an explanatory tooltip and one log entry.
+Known picker actions, selection, preference controls and descendants remain available. Rows, ANSI
+and genuinely unknown kinds use a readable mono fallback with guarded raw keys while focused.
+Escape from a focused fallback also reaches omp through the guarded key route.
+The normal view never dumps node props as JSON;
 the raw outline disclosure contains that developer metadata. Hook input omits omp's inherited
 `> ` terminal prefix because the native app field already supplies its own chrome.
 
@@ -273,9 +291,9 @@ sheet closes when its hook becomes matched; a manually opened sheet remains avai
 display-only view. Other overlay closure also closes only an automatically opened sheet.
 Escape cancels a unique locally answerable unmatched hook through the guarded route. For a
 matched, ambiguous, unavailable, settling, answering or closing hook, Escape closes the sheet
-without writing to omp. Other overlays keep their guarded Escape handling. With no open omp
-overlay or screen, Escape closes the sheet. Closing the sheet itself does not answer omp, and focus
-returns to that chat's composer.
+without writing to omp. Other overlays and focused raw fallbacks keep their guarded Escape handling.
+With no open omp overlay, screen or focused raw fallback, Escape closes the sheet.
+Closing the sheet itself does not answer omp, and focus returns to that chat's composer.
 "Show raw outline" discloses the read-only developer inspector below the semantic content.
 
 `src/shared/tsp/question-match.ts` provides conservative question arbitration.

@@ -67,6 +67,8 @@
 		"hookClosing": "This chat is closing.",
 		"hookClosed": "This question has closed. Waiting for omp to update its screen.",
 		"unsupportedKind": "omp content type {{kind}} is not supported in this preview.",
+		"unsupportedAction": "The omp action {{action}} is not supported in this preview.",
+		"unavailableAction": "Unavailable action",
 		"otherOutput": "Other omp output",
 		"rawOutline": "Show raw outline",
 		"retained": "This omp screen has closed. Its output is read-only.",

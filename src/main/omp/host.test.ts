@@ -9,6 +9,8 @@ import type { RelayEvents } from "./relay";
 import type { TuiFocus } from "@shared/ipc";
 import type { MessageBoxOptions } from "electron";
 import { broadcast } from "../ipc";
+import type { TspRendererEvent } from "@shared/tsp-host";
+import { hookQuestions } from "@shared/tsp/question-match";
 
 const pty = vi.hoisted(() => ({
 	data: null as ((data: string | Buffer) => void) | null,
@@ -1116,4 +1118,181 @@ describe("opt-in semantic transport", () => {
 		await exit(1);
 		expect(host.state.exitReason).toBe("Error: raw startup failure");
 	});
+});
+
+async function recording<T = unknown>(name: string, suffix: string): Promise<{ verb: string; body: T; keys?: string; afterMessage: number }[]> {
+	return (await readFile(new URL(`./tsp/fixtures/18.14.0/${name}.${suffix}.jsonl`, import.meta.url), "utf8")).trim().split("\n").map(line => JSON.parse(line));
+}
+describe("recorded TSP lifecycle gate", () => {
+	it("allows a recorded startup import picker before collab attaches, then adopts its replacement session", async () => {
+		await launchTsp();
+		const messages = await recording("import-claude", "messages");
+		const events = await recording<TspRendererEvent>("import-claude", "events");
+		const choices = events.filter(event => event.body?.ev === "select" || event.body?.ev === "activate");
+		const boundary = choices[0]!.afterMessage;
+		for (const message of messages.slice(0, boundary)) tspMessage(message.verb, message.body);
+		expect(host.state).toMatchObject({ phase: "connecting", link: null, generation: 0 });
+		expect(host.tspSnapshot()).toMatchObject({ negotiated: true, epoch: 1, lifecycle: "live", failure: null, surfaces: [{ documentGeneration: null }, { documentGeneration: 0 }] });
+		const epoch = host.tspSnapshot()!.epoch;
+		await host.keys("\x1b[B", 0, epoch);
+		for (const choice of choices) await host.tspEvent(0, choice.body, epoch);
+		for (const choice of choices) expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining(JSON.stringify(choice.body)));
+		const exitBoundary = events.find(event => event.body?.ev === "send")!.afterMessage;
+		for (const message of messages.slice(boundary, exitBoundary)) tspMessage(message.verb, message.body);
+		expect(host.tspSnapshot()).toMatchObject({ epoch: 2, lifecycle: "live" });
+		await expect(host.tspEvent(0, choices[0]!.body, epoch)).rejects.toThrow("restarted");
+		await connect("imported", "imported-session");
+		expect(host.tspSnapshot()).toMatchObject({ epoch: 2, generation: 1, lifecycle: "live", documentGeneration: 1 });
+		await host.submit("Continue imported chat");
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"text":"Continue imported chat"'));
+	});
+	it("keeps startup hooks mirror-gated while ordinary startup pickers accept input before the first room", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer();
+		const hook = { id: "hook", k: "picker", p: { title: "Start in a worktree?", noun: "options", layout: "rows", items: [{ id: "0", label: "Yes" }, { id: "1", label: "No" }], actions: [{ id: "confirm", label: "Select" }, { id: "close", label: "Cancel" }] } };
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "hook", "s:1", null, hook]] });
+		const epoch = host.tspSnapshot()!.epoch;
+		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "unavailable" }]);
+		await expect(host.tspAnswer(0, { kind: "choose", sf: "s:1", id: "hook", target: "hook", item: "1" }, epoch)).rejects.toThrow("unavailable");
+		await expect(host.tspEvent(0, { ev: "activate", sf: "s:1", id: "hook", item: "1" }, epoch)).rejects.toThrow("guarded question");
+		tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "hook"], ["add", "import", "s:1", null, { id: "import", k: "picker", p: { title: "Import a session", noun: "sessions", layout: "cards", items: [{ id: "fixture", label: "Fixture session" }], actions: [{ id: "resume", label: "Import" }, { id: "close", label: "Cancel" }] } }]] });
+		await host.tspEvent(0, { ev: "activate", sf: "s:1", id: "import", item: "fixture" }, epoch);
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"activate","sf":"s:1","id":"import","item":"fixture"'));
+		tspMessage("f", { sf: "s:1", s: 4, ops: [["del", "import"], ["add", "hook", "s:1", null, hook]] });
+		await connect();
+		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "unavailable" }]);
+		await expect(host.tspAnswer(1, { kind: "choose", sf: "s:1", id: "hook", target: "hook", item: "1" }, epoch)).rejects.toThrow("unavailable");
+		host.tspQuestions({ hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [{ reqId: 9, kind: "select", title: "Start in a worktree?", options: ["Yes", "No"] }] });
+		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "matched", reqId: 9 }]);
+		await expect(host.tspAnswer(1, { kind: "choose", sf: "s:1", id: "hook", target: "hook", item: "1" }, epoch)).rejects.toThrow("matched");
+	});
+	it("retains pre-room input across an epoch restart and permanently revokes it at the first room-open callback", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] }); tspComposer();
+		const firstEpoch = host.tspSnapshot()!.epoch;
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] }); tspComposer();
+		expect(host.tspSnapshot()).toMatchObject({ epoch: firstEpoch + 1, generation: 0, lifecycle: "live" });
+		await expect(host.keys("\x1b[B", 0, firstEpoch)).rejects.toThrow("restarted");
+		await host.keys("\x1b[B", 0, firstEpoch + 1);
+		const queued = host.tspEvent(0, { ev: "visible", sf: "s:1", visible: true }, firstEpoch + 1);
+		const refused = expect(queued).rejects.toThrow("semantic UI is not ready");
+		pty.events.onHostOpen?.("room");
+		expect(host.tspSnapshot()?.lifecycle).toBe("transitioning");
+		await refused;
+		await vi.waitFor(() => expect(host.state.phase).toBe("live"));
+		pty.events.onHostClose?.("room");
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] }); tspComposer();
+		expect(host.tspSnapshot()).toMatchObject({ generation: 1, lifecycle: "transitioning", surfaces: [{ documentGeneration: null }] });
+		await expect(host.keys("\x1b[B", 1, firstEpoch + 2)).rejects.toThrow("semantic UI is not ready");
+		await connect("replacement", "replacement-session");
+		expect(host.tspSnapshot()).toMatchObject({ generation: 2, lifecycle: "transitioning" });
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["set", "editor", { sendable: true }]] });
+		expect(host.tspSnapshot()?.lifecycle).toBe("live");
+	});
+	it.each(["new", "resume", "sibling-continuation"])("keeps recorded documents through a %s room generation change and renews authority per surface", async name => {
+		await launchTsp();
+		const messages = await recording(name, "messages");
+		const events = await recording<TspRendererEvent>(name, "events");
+		const boundary = events.find(event => event.body?.ev === "send")!.afterMessage;
+		const exitBoundary = events.find(event => event.body?.ev === "send" && "text" in event.body && event.body.text === "/exit")!.afterMessage;
+		for (const message of messages.slice(0, boundary)) tspMessage(message.verb, message.body);
+		await connect();
+		const before = host.tspSnapshot()!;
+		pty.events.onHostClose?.("room");
+		expect(host.tspSnapshot()!.surfaces[0]!.document).toEqual(before.surfaces[0]!.document);
+		await connect(`${name}-room`, `${name}-session`);
+		expect(host.tspSnapshot()).toMatchObject({ epoch: before.epoch, generation: 2, lifecycle: "transitioning" });
+		expect(host.tspSnapshot()!.surfaces[0]!.document).toEqual(before.surfaces[0]!.document);
+		await expect(host.tspEvent(1, { ev: "visible", sf: "s:1", visible: true }, before.epoch)).rejects.toThrow("session changed");
+		for (const message of messages.slice(boundary, exitBoundary)) tspMessage(message.verb, message.body);
+		expect(host.tspSnapshot()).toMatchObject({ epoch: before.epoch, generation: 2, lifecycle: "live" });
+		await host.submit("Current room input");
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"text":"Current room input"'));
+	});
+	it("resets retained documents on the recorded restart hello and refuses events from the reused surface's previous epoch", async () => {
+		await launchTsp();
+		const messages = await recording("restart", "messages");
+		const restart = messages.findIndex((message, index) => index > 0 && message.verb === "q");
+		expect(restart).toBeGreaterThan(0);
+		for (const message of messages.slice(0, 4)) tspMessage(message.verb, message.body);
+		await connect();
+		const before = host.tspSnapshot()!;
+		for (const message of messages.slice(4, restart)) tspMessage(message.verb, message.body);
+		expect(host.tspSnapshot()?.surfaces[0]?.closed).toBe(true);
+		tspMessage(messages[restart]!.verb, messages[restart]!.body);
+		expect(host.tspSnapshot()).toMatchObject({ epoch: before.epoch + 1, surfaces: [] });
+		for (const message of messages.slice(restart + 1, restart + 4)) tspMessage(message.verb, message.body);
+		expect(host.tspSnapshot()).toMatchObject({ epoch: before.epoch + 1, lifecycle: "live", surfaces: [{ open: { id: "s:1" }, closed: false }] });
+		await expect(host.tspEvent(1, { ev: "visible", sf: "s:1", visible: true }, before.epoch)).rejects.toThrow("restarted");
+		await host.tspEvent(1, { ev: "visible", sf: "s:1", visible: true }, before.epoch + 1);
+	});
+	it("keeps a closed surface read-only and routes application input to its live replacement", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] }); tspComposer(); await connect();
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "main", "s:1", null, { id: "main", k: "col", c: [{ id: "history", k: "text", p: { text: "Retained output" } }] }]] });
+		tspMessage("x", { id: "s:1", keep: true });
+		tspComposer("s:2", "replacement-editor");
+		expect(host.tspSnapshot()?.surfaces[0]).toMatchObject({ closed: true, document: { c: [{ id: "main", c: [{ id: "history", p: { text: "Retained output" } }] }] } });
+		await expect(host.tspEvent(1, { ev: "action", sf: "s:1", id: "history", act: "close" })).rejects.toThrow("surface is no longer available");
+		await host.submit("Replacement input");
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"sf":"s:2","id":"replacement-editor","text":"Replacement input"'));
+	});
+	it.each(["exit", "exit-with-overlay"])("replays recorded %s through shutdown and rejects application input after closing begins", async name => {
+		await launchTsp();
+		const messages = await recording("exit-with-overlay" === name ? name : "exit", "messages");
+		const closeOverlay = name === "exit-with-overlay";
+		const boundary = closeOverlay ? 5 : 4;
+		for (const message of messages.slice(0, boundary)) tspMessage(message.verb, message.body);
+		await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		pty.writes.mockClear();
+		const stopping = host.stop();
+		await expect(host.submit("late input")).rejects.toThrow("closing");
+		await expect(host.keys("\x1b", 1, epoch)).rejects.toThrow("closing");
+		await expect(host.tspEvent(1, { ev: "visible", sf: "s:1", visible: true }, epoch)).rejects.toThrow("closing");
+		if (closeOverlay) {
+			await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith("\x1b"));
+			expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining('"text":"/exit"'));
+			tspMessage(messages[boundary]!.verb, messages[boundary]!.body);
+		}
+		const expected = (await recording<TspRendererEvent>(name, "events")).find(event => event.body?.ev === "send" && "text" in event.body && event.body.text === "/exit")!.body;
+		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining(JSON.stringify(expected))));
+		for (const message of messages.slice(boundary + Number(closeOverlay))) tspMessage(message.verb, message.body);
+		await exit(0); await stopping;
+		expect(pty.kill).not.toHaveBeenCalled(); expect(pty.confirm).not.toHaveBeenCalled();
+	});
+});
+
+it.each(["matched", "ambiguous"] as const)("writes no answer bytes for recorded hook-collab-aware with %s requests", async status => {
+	await launchTsp();
+	const messages = await recording("hook-collab-aware", "messages");
+	for (const message of messages.slice(0, -1)) tspMessage(message.verb, message.body);
+	await connect();
+	const snapshot = host.tspSnapshot()!;
+	const dialog = hookQuestions(snapshot.surfaces, 1)[0]!;
+	expect(dialog).toBeDefined();
+	const request = { reqId: 4, kind: "select", title: dialog.title, options: dialog.options ?? [] };
+	const requests = status === "matched" ? [request] : [request, { ...request, reqId: 5 }];
+	await host.tspEvent(1, { ev: "visible", sf: dialog.surfaceId, visible: true }, snapshot.epoch);
+	pty.writes.mockClear();
+	host.tspQuestions({ hostId: host.id, generation: 1, epoch: snapshot.epoch, connection: 1, revision: 1, connected: true, requests });
+	expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status }]);
+	await expect(host.tspAnswer(1, { kind: "choose", sf: dialog.surfaceId, id: dialog.nodeId, target: dialog.nodeId, item: "1" }, snapshot.epoch)).rejects.toThrow(status);
+	await expect(host.keys("escape", 1, snapshot.epoch)).rejects.toThrow(status);
+	expect(pty.writes).not.toHaveBeenCalled();
+	expect(requests.map(request => request.reqId)).toEqual(status === "matched" ? [4] : [4, 5]);
+});
+
+it("marks the recorded unconfirmed optimistic surface fallback tspFailed instead of waiting on an empty screen", async () => {
+	await launchTsp("darwin", true);
+	const raw = await readFile(new URL("./tsp/fixtures/18.14.0/handshake-timeout.raw.bin", import.meta.url));
+	pty.data?.(raw);
+	expect(host.tspSnapshot()).toMatchObject({ negotiated: true, lifecycle: "transitioning", surfaces: [] });
+	await vi.advanceTimersByTimeAsync(4999);
+	expect(host.state.tspFailed).toBe(false);
+	await vi.advanceTimersByTimeAsync(2);
+	expect(host.state.tspFailed).toBe(true);
+	expect(host.tspSnapshot()).toMatchObject({ lifecycle: "failed", failure: "omp did not start its semantic screen" });
+	await expect(host.keys("\x1b", 0, host.tspSnapshot()!.epoch)).rejects.toThrow("semantic UI is not ready");
 });

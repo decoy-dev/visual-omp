@@ -181,10 +181,14 @@ it("logs unknown kinds, roles and actions once while keeping content readable wi
 	const unknown = { id: "unknown", k: "future-kind", p: { text: "Readable future output" } } as unknown as TspNode;
 	await render(unknown); await render(unknown); expect(element.textContent).toContain("Readable future output");
 	await render({ id: "unknown-role", k: "text", p: { role: "omp.future-role", text: "New role" } });
+	await render({ id: "unknown-role", k: "text", p: { role: "omp.future-role", text: "New role" } });
 	expect(element.textContent).toContain("New role"); expect(element.querySelector("pre")).toBeNull();
 	const action: TspNode = { id: "unknown-action", k: "text", p: { text: "Future control", actions: { click: "future-action" } } };
 	await render(action); await render(action); expect(element.textContent).toContain("Future control");
-	expect(element.querySelector("pre,button")).toBeNull(); expect(element.textContent).not.toContain("future-action");
+	expect(element.querySelector("pre")).toBeNull();
+	expect(element.querySelector("button")?.disabled).toBe(true);
+	expect(element.querySelector("button")?.title).toContain("future-action");
+	await click("button"); expect(send).not.toHaveBeenCalled();
 	expect(warning).toHaveBeenCalledTimes(3); warning.mockRestore();
 });
 it.each(["col", "row", "section", "card"] as const)("renders an unknown-role %s as layout with readable children", async k => {
@@ -209,4 +213,162 @@ it("keeps unclaimed main output and suppresses only the replicated transcript an
 it("does not turn terminal escape controls into links and preserves keyboard boundaries", () => {
 	expect(ansiRuns("\x1b]8;;https://evil.test\x07link\x1b]8;;\x07").map(run => run.text).join("")).toBe("link");
 	expect(rawKey({ key: "Escape", ctrlKey: false, altKey: false, metaKey: false, shiftKey: false })).toBeNull();
+});
+
+it("disables only unsupported picker actions while selection, known actions and children remain interactive", async () => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	const picker: TspNode = { id: "extensions", k: "picker", p: { title: "Extension Control Center", layout: "rows", focus: "list", query: null,
+		items: [{ id: "fixture", label: "Fixture extension" }, { id: "other", label: "Another extension" }],
+		actions: [{ id: "toggle", label: "Toggle", disabled: "Select an extension" }, { id: "future-expand", label: "Expand" }, { id: "close", label: "Close" }] },
+		c: [{ id: "child", k: "text", p: { text: "Known child action", actions: { click: "close" } } }] };
+	await render(picker); await render(picker);
+	const expand = [...element.querySelectorAll("button")].find(button => button.textContent === "Expand")!;
+	expect(expand.disabled).toBe(true); expect(expand.title).toContain("future-expand");
+	await act(async () => expand.click()); expect(send).not.toHaveBeenCalled();
+	await click('[role="option"]');
+	expect(send).toHaveBeenLastCalledWith({ ev: "select", sf: "s:1", id: "extensions", item: "fixture" });
+	await press("ArrowDown");
+	expect(send).toHaveBeenLastCalledWith({ ev: "select", sf: "s:1", id: "extensions", item: "other" });
+	const close = [...element.querySelectorAll("button")].find(button => button.textContent === "Close")!;
+	expect(close.disabled).toBe(false);
+	await act(async () => close.click());
+	expect(send).toHaveBeenLastCalledWith({ ev: "action", sf: "s:1", id: "extensions", act: "close" });
+	await click('[data-tsp-id="child"] > button');
+	expect(send).toHaveBeenLastCalledWith({ ev: "action", sf: "s:1", id: "child", act: "close" });
+	expect(warning).toHaveBeenCalledExactlyOnceWith("TSP screen fallback: action:future-expand");
+	warning.mockRestore();
+});
+it("leaves known node clicks and descendants enabled when a different declared action is unsupported", async () => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	await render({ id: "parent", k: "col", p: { actions: { dblclick: "future-double" } }, c: [{ id: "child", k: "text", p: { text: "Close", actions: { click: "close" } } }] });
+	await click('[data-tsp-id="child"] > button');
+	expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "action", sf: "s:1", id: "child", act: "close" });
+	warning.mockRestore();
+});
+it("keeps unknown preference actions display-only without disabling unrelated preference controls", async () => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	await render({ id: "prefs", k: "prefs", p: { title: "Settings", page: "main", pages: [], sections: [{ id: "main", title: "Main", rows: [
+		{ id: "future", label: "Future action", control: { k: "action", label: "Unsupported", act: "future-prefs" } },
+		{ id: "known", label: "Known action", control: { k: "action", label: "Close", act: "close" } },
+		{ id: "switch", label: "Enabled", control: { k: "switch", on: false } },
+	] }] } });
+	const unsupported = [...element.querySelectorAll("button")].find(button => button.textContent === "Unsupported")!;
+	expect(unsupported.disabled).toBe(true); expect(unsupported.title).toContain("future-prefs");
+	await act(async () => unsupported.click()); expect(send).not.toHaveBeenCalled();
+	await click('[role="switch"]');
+	expect(send).toHaveBeenLastCalledWith({ ev: "change", sf: "s:1", id: "prefs", item: "switch", value: true });
+	const close = [...element.querySelectorAll("button")].find(button => button.textContent === "Close")!;
+	await act(async () => close.click());
+	expect(send).toHaveBeenLastCalledWith({ ev: "action", sf: "s:1", id: "prefs", act: "close", value: "known" });
+	warning.mockRestore();
+});
+it("renders unclaimed main content under Other omp output through the complete screen", async () => {
+	const snapshot: TspHostSnapshot = { hostId: "host", epoch: 1, generation: 1, revision: 1, lifecycle: "live", negotiated: true, documentGeneration: 1, availability: { available: true, reason: null }, failure: null,
+		surfaces: [{ open: { id: "s", mode: "inline" }, documentGeneration: 1, closed: false, sequence: 1, suspended: false, settled: [], focus: null, document: { id: "s", k: "col", c: [{ id: "main", k: "col", c: [
+			{ id: "reply", k: "text", p: { role: TSP_ROLES.assistant, text: "Replicated reply" } }, { id: "local", k: "text", p: { text: "Local-only output" } },
+		] }] } }] };
+	await act(async () => root.render(createElement(OmpScreenSheet, { hostId: "host", generation: 1, snapshot, failed: false, readOnly: true })));
+	expect(element.querySelector("h3")?.textContent).toBe("Other omp output");
+	expect(element.textContent).toContain("Local-only output");
+	expect(element.textContent).not.toContain("Replicated reply");
+});
+
+it("keeps descendants interactive when an unsupported click belongs to their container", async () => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	await render({ id: "parent", k: "col", p: { actions: { click: "future-container" } }, c: [{ id: "child", k: "text", p: { text: "Close child", actions: { click: "close" } } }] });
+	expect(element.querySelector('[data-tsp-id="parent"] > button')?.getAttribute("disabled")).not.toBeNull();
+	expect(element.querySelector('[data-tsp-id="child"] > button')?.closest("button")?.parentElement?.closest("button")).toBeNull();
+	await click('[data-tsp-id="child"] > button');
+	expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "action", sf: "s:1", id: "child", act: "close" });
+	warning.mockRestore();
+});
+it("keeps known list row gestures active when another row gesture is unsupported and logs that action once", async () => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	const node: TspNode = { id: "list", k: "list", c: [{ id: "row", k: "item", p: { key: "entry", label: "Entry", actions: { click: "select", dblclick: "future-row" } } }] };
+	await render(node); await render(node);
+	await click('[role="option"]');
+	expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "select", sf: "s:1", id: "list", item: "entry" });
+	await click('[role="option"]', "dblclick"); expect(send).toHaveBeenCalledTimes(1);
+	expect(warning).toHaveBeenCalledExactlyOnceWith("TSP screen fallback: action:future-row");
+	warning.mockRestore();
+});
+
+it("renders kept surface history read-only while routing new surface controls to the live surface", async () => {
+	const previous = window.vomp;
+	const invoke = vi.fn().mockResolvedValue(undefined);
+	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke, on: () => () => {} } });
+	const snapshot: TspHostSnapshot = { hostId: "host", epoch: 3, generation: 1, revision: 1, lifecycle: "live", negotiated: true, documentGeneration: 1, availability: { available: false, reason: "Menu open" }, failure: null, surfaces: [
+		{ open: { id: "old", mode: "inline" }, documentGeneration: 1, closed: true, sequence: 2, suspended: false, settled: [], focus: null, document: { id: "old", k: "col", c: [{ id: "main", k: "col", c: [{ id: "retained-input", k: "input", p: { aria: "Retained input", text: "Saved output" } }] }] } },
+		{ open: { id: "new", mode: "screen" }, documentGeneration: 1, closed: false, sequence: 1, suspended: false, settled: [], focus: "picker", document: { id: "new", k: "col", c: [{ id: "main", k: "col", c: [{ id: "picker", k: "picker", p: { title: "Current menu", query: null, items: [{ id: "next", label: "Next" }], actions: [{ id: "close", label: "Close" }] } }] }] } },
+	] };
+	try {
+		await act(async () => root.render(createElement(OmpScreenSheet, { hostId: "host", generation: 1, snapshot, failed: false, readOnly: false })));
+		expect(element.textContent).toContain("Its output is read-only");
+		const old = element.querySelector<HTMLInputElement>('[aria-label="Retained input"]')!;
+		expect(old.value).toBe("Saved output"); expect(old.readOnly).toBe(true);
+		await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(old, "Unsaved edit"); old.dispatchEvent(new Event("input", { bubbles: true })); });
+		expect(invoke.mock.calls.filter(call => call[0] === "host:tsp-event")).toEqual([]);
+		await act(async () => element.querySelector('[role="option"]')!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+		expect(invoke).toHaveBeenCalledWith("host:tsp-event", "host", 1, { ev: "select", sf: "new", id: "picker", item: "next" }, 3);
+	} finally {
+		if (previous) Object.defineProperty(window, "vomp", { configurable: true, value: previous });
+		else Reflect.deleteProperty(window, "vomp");
+	}
+});
+
+it("keeps intrinsic prefs controls working when their node declares an unsupported click without children", async () => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	await render({ id: "prefs", k: "prefs", p: { title: "Settings", actions: { click: "future-prefs-click" }, page: "main", pages: [], sections: [{ id: "main", title: "Main", rows: [
+		{ id: "enabled", label: "Enabled", control: { k: "switch", on: false } },
+		{ id: "close", label: "Close settings", control: { k: "action", label: "Close", act: "close" } },
+	] }] } });
+	const toggle = element.querySelector<HTMLButtonElement>('[role="switch"]')!;
+	expect(toggle.disabled).toBe(false); expect(toggle.parentElement?.closest("button")).toBeNull();
+	await act(async () => toggle.click());
+	expect(send).toHaveBeenLastCalledWith({ ev: "change", sf: "s:1", id: "prefs", item: "enabled", value: true });
+	await act(async () => [...element.querySelectorAll("button")].find(button => button.textContent === "Close")!.click());
+	expect(send).toHaveBeenLastCalledWith({ ev: "action", sf: "s:1", id: "prefs", act: "close", value: "close" });
+	const unsupported = element.querySelector<HTMLButtonElement>('[data-tsp-id="prefs"] > button')!;
+	expect(unsupported.disabled).toBe(true); expect(unsupported.title).toContain("future-prefs-click");
+	warning.mockRestore();
+});
+it.each(["input", "editor"] as const)("keeps intrinsic %s editing and submit working alongside an unsupported node click", async kind => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	await render({ id: "field", k: kind, p: { text: "seed", actions: { click: `future-${kind}-click` } } });
+	const field = element.querySelector<HTMLInputElement | HTMLTextAreaElement>("input,textarea")!;
+	expect(field.readOnly).toBe(false); expect(field.closest("button")).toBeNull();
+	await act(async () => {
+		const prototype = kind === "editor" ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+		Object.getOwnPropertyDescriptor(prototype, "value")!.set!.call(field, "updated");
+		field.dispatchEvent(new Event("input", { bubbles: true }));
+	});
+	expect(send).toHaveBeenLastCalledWith({ ev: "edit", sf: "s:1", id: "field", from: 0, to: 4, text: "updated", cursor: 7, len: 4 });
+	await act(async () => [...element.querySelectorAll("button")].find(button => button.textContent === "Submit")!.click());
+	expect(send).toHaveBeenLastCalledWith({ ev: "action", sf: "s:1", id: "field", act: "submit" });
+	expect(element.querySelector<HTMLButtonElement>('[data-tsp-id="field"] > button')?.disabled).toBe(true);
+	warning.mockRestore();
+});
+it("explains unsupported double-click and menu actions on a row without blocking selection", async () => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	await render({ id: "list", k: "list", c: [{ id: "row", k: "item", p: { label: "Entry", key: "entry", actions: { click: "select", dblclick: "future-double-reason", menu: ["future-menu-reason"] } } }] });
+	const row = element.querySelector<HTMLElement>('[role="option"]')!;
+	expect(row.title).toContain("The omp action future-double-reason is not supported");
+	expect(row.title).toContain("The omp action future-menu-reason is not supported");
+	await click('[role="option"]');
+	expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "select", sf: "s:1", id: "list", item: "entry" });
+	await click('[role="option"]', "dblclick");
+	await act(async () => row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true })));
+	expect(send).toHaveBeenCalledTimes(1);
+	warning.mockRestore();
+});
+it("explains an unsupported row click while keeping local selection and Enter activation available", async () => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	await render({ id: "list", k: "list", c: [{ id: "row", k: "item", p: { label: "Entry", key: "entry", actions: { click: "future-click-reason" } } }] });
+	const row = element.querySelector<HTMLElement>('[role="option"]')!;
+	expect(row.title).toContain("The omp action future-click-reason is not supported");
+	await click('[role="option"]');
+	expect(row.getAttribute("aria-selected")).toBe("true"); expect(send).not.toHaveBeenCalled();
+	await press("Enter");
+	expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "activate", sf: "s:1", id: "list", item: "entry" });
+	warning.mockRestore();
 });

@@ -125,6 +125,21 @@ Authority after the migration:
 
    Content matching cannot establish identity across delayed channel updates. D10 accepts that limitation because omp owns the first-answer race. The `questionMatches` diagnostics record when main first observed each hook node and its matching mirrored request on one monotonic clock, without changing arbitration or input authority. A losing local submission whose node has already gone shows a calm completion message rather than an error state.
 
+   Before the first collab room opens, the omp screen accepts input for non-hook documents only.
+   Hook dialogs remain display-only until the mirror can arbitrate. omp retains collab-aware
+   pending requests and replays them to a writable guest on join. Input and confirm hooks without
+   a replicated request become locally answerable once a connected empty mirror can arbitrate.
+   This startup presentation allowance preserves the connected-mirror requirement for hooks:
+   omp installs its room object before the relay connects so early requests can be retained
+   ([18.14.0 controller](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/coding-agent/src/collab/controller.ts#L88-L107));
+   `requestGuestUi` retains them and a writable guest receives pending requests on join
+   ([18.14.0 host](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/coding-agent/src/collab/host.ts#L344-L391),
+   [join replay](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/coding-agent/src/collab/host.ts#L842-L852)).
+   Main ends the allowance synchronously at the first relay room-open callback and never restores
+   it for a later reconnect or protocol epoch. A restart before the first room retains it.
+   The writer repeats that lifetime check inside the input lock, including when the room opens
+   after rendering but before a queued event is written. D10's hook-answer policy is unchanged.
+
    **Manual Electron evidence from main, 2026-11-02.** Main ran the worktree's Electron build with `VOMP_TSP=1` and the fixture extension in a scratch project:
    - Hook input was answered from the omp screen, and omp received the exact text `café ✓ answer`.
    - Hook confirm was answered No from the omp screen, and omp received `false`.
@@ -267,6 +282,35 @@ status-menu and tree fallback labels name the omp screen; classic labels still n
 A matched blocking hook points the composer to the chat's question card through a localized
 availability reason. These automated checks do not replace manual criteria 11-13.
 
+**Gate replay additions, 2026-11-02.** `OmpScreen.test.ts` enumerates all 44 kinds and exercises
+readable fallback, once-only diagnostics, ordinary unknown-role layout, per-action disabling,
+interactive descendants and the rendered "Other omp output" section. An unknown action disables
+its own control with a reason; it no longer disables an entire picker or form. The recorded
+`extensions` picker covers selecting a row and closing while its unsupported Expand action stays
+disabled. The recorded hook submit/cancel tests remain in `OmpScreenHooks.test.ts`.
+`TerminalSheet.escape.test.ts` now drives the actual sheet and semantic screen from overlay,
+settings, custom-row, tree, import and collab-aware recordings, checking their next emitted input.
+It also checks the timeout recovery button. Custom-row Escape reaches omp through guarded keys.
+
+`NoticeRow.test.ts` replays `notice-error` and `startup-no-model`, presents one matching literal
+notice row in each transcript mode and suppresses it when the collab duplicate arrives.
+`host.test.ts` replays restart, new, resume, sibling continuation, startup import and both exit
+recordings. Room changes and pending collab requests are injected at the host boundary.
+The sibling recording uses a second isolated omp process to claim the same seeded file, then
+renames from the first process; its warning and OSC path show the new sibling file. Retained
+surface replacement is tested with constructed protocol input. The startup import recording
+opens its screen before the first room, selects the synthetic Claude session, negotiates a second
+hello and returns to the ordinary session. Startup hooks remain mirror-gated.
+The recorded `handshake-timeout` probe withholds client replies, so omp withdraws its optimistic
+surface and paints classic rows. Replay now detects that withdrawal, reaches `tspFailed` after
+the surface deadline and offers Restart instead of waiting indefinitely on an empty screen.
+
+The no-model recorder accepts `VOMP_TSP_FIXTURE_DIR` so live comparisons do not overwrite the
+committed baseline. `fixture-vocabulary.test.ts` checks recorded roles and classifies unsupported
+actions explicitly. Set `OMP_BIN` and `VOMP_TSP_LIVE_FIXTURE_DIR` to compare a scratch re-recording
+with the committed role/action sets. DOM replay covers completion, but criterion 2's required
+headless Chrome exact-event completion tier remains outstanding. The complete Phase 2 gate also
+requires manual criteria 11-13.
 
 ### 2.0 Minimum readiness, input and close
 
@@ -275,7 +319,7 @@ availability reason. These automated checks do not replace manual criteria 11-13
 - **Escape and overlays.** Escape on the omp screen uses the guarded local answer transaction for a unique unmatched hook dialog, preferring its declared cancel/close action. Matched and uncertain hooks refuse it. Other overlays retain `\x1b`; the protocol has no universal overlay close event ([`docs/architecture/tsp-migration.md:205-206`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L205-L206)).
 - **Stop.** Collab `abort`, unchanged.
 - **Close and quit.** Closing a chat or quitting uses the existing shutdown stages. On a TSP host, `/exit` is sent with `send` once the editor is sendable. Shutdown may first dismiss a non-hook overlay with Escape, but never writes raw Escape while any live hook exists. Its existing deadline and native force-stop decision remain available for an unresolved hook. Acknowledgment is the `omp.toast.status` "Closing session…" node, the addressed surface closing, or process exit, combined with the native shutdown stage and exit records. During application-driven shutdown, hook controls are unavailable with "This chat is closing."; interactive exit questions remain Phase 4b work. An unmatched question opened by typing `/exit` while the chat is still live remains answerable. Quit while working keeps the confirmations in `docs/SPEC.md` (Lifecycle).
-- **Handshake failure.** If no hello arrives within 10 seconds of spawn while output flows, or no surface opens within 5 seconds after the reply, main marks the host `tspFailed`, shows "omp did not start its semantic screen" with Restart, and logs the first bytes it saw. A blank inspector is never the resting state.
+- **Handshake failure.** If no hello arrives within 10 seconds of spawn while output flows, or no surface opens within 5 seconds after the reply, main marks the host `tspFailed`, shows "omp did not start its semantic screen" with Restart, and logs the first bytes it saw. If omp withdraws its last optimistic surface and paints classic rows, the five-second surface deadline starts again. A blank inspector is never the resting state.
 
 ### 2.1 Semantic omp screen
 

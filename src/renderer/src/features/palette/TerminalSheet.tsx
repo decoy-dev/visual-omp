@@ -125,11 +125,12 @@ export function TerminalSheet({ tabId, controller }: { tabId: string; controller
 		if (!tsp && overlaysOpen() && !readOnly && view?.mode === "live") setConfirmLeave(true);
 		else close();
 	};
-	const escapeTsp = () => {
+	const escapeTsp = (target: EventTarget | null) => {
+		const rawFallback = target instanceof Element && !!target.closest('[data-tsp-kind="rows"], [data-tsp-kind="ansi"]');
 		const hooks = hookQuestions(tspSurfaces, host?.generation ?? 0);
 		const localHook = hooks.length === 1 && snapshot?.questionMatches?.some(match =>
 			match.surfaceId === hooks[0]!.surfaceId && match.nodeId === hooks[0]!.nodeId && match.status === "unmatched");
-		if ((overlay || screenSurfaceOpen) && !readOnly && !snapshot?.closing && (!hooks.length || localHook) && typeof snapshot?.epoch === "number") {
+		if ((overlay || screenSurfaceOpen || rawFallback) && !readOnly && !snapshot?.closing && (!hooks.length || localHook) && typeof snapshot?.epoch === "number") {
 			void window.vomp.invoke("host:keys", host!.hostId, "escape", snapshot.generation, snapshot.epoch).catch(() => requestClose());
 		} else requestClose();
 	};
@@ -177,14 +178,14 @@ export function TerminalSheet({ tabId, controller }: { tabId: string; controller
 					if (!tsp || event.key !== "Escape" || event.defaultPrevented || insideAppPopup(event.target)) return;
 					event.preventDefault();
 					event.stopPropagation();
-					escapeTsp();
+					escapeTsp(event.target);
 				}}
 				onEscapeKeyDown={event => {
 					// Esc inside the mirror belongs to omp (the key handler decides); elsewhere it closes.
 					if (tsp && (event.defaultPrevented || insideAppPopup(event.target))) return;
 					event.preventDefault();
 					if (tsp) {
-						escapeTsp();
+						escapeTsp(event.target);
 					} else if (!(event.target instanceof Element && event.target.closest(".xterm"))) requestClose();
 				}}
 				onOpenAutoFocus={event => {

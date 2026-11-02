@@ -1,5 +1,5 @@
 import type { TspPrefsRow } from "@shared/tsp";
-import { TSP_ACTIONS } from "@shared/tsp/roles";
+import { isKnownAction, TSP_ACTIONS } from "@shared/tsp/roles";
 import { useTranslation } from "react-i18next";
 import { Button } from "../../../ui/Button";
 import { Input } from "../../../ui/Input";
@@ -10,6 +10,7 @@ import { rawKey } from "../keys";
 import type { NodeContext, NodeProps } from "../nodes/context";
 
 function PrefControl({ row, context, id }: { row: TspPrefsRow; context: NodeContext; id: string }) {
+	const { t } = useTranslation("palette");
 	const c = row.control;
 	const disabled = context.readOnly || !!row.disabled;
 	const change = (value: boolean | number | string | string[]) => { if (!disabled) context.send({ ev: "change", sf: context.sf, id, item: row.id, value }); };
@@ -20,7 +21,7 @@ function PrefControl({ row, context, id }: { row: TspPrefsRow; context: NodeCont
 		case "text": return <Input aria-label={row.label} type={c.secret ? "password" : "text"} value={c.value} placeholder={c.placeholder} disabled={disabled} onChange={e => change(e.target.value)} />;
 		case "multi": return <div className="flex flex-wrap gap-3">{c.options.map(option => <label key={option.value} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={c.values.includes(option.value)} disabled={disabled} onChange={e => change(e.target.checked ? [...c.values, option.value] : c.values.filter(value => value !== option.value))} />{option.label}</label>)}</div>;
 		case "keys": return <span className="font-mono text-sm">{c.keys.map(keys => keys.join("+")).join(", ")}</span>;
-		case "action": return <Button variant="secondary" disabled={disabled} onClick={() => context.send({ ev: "action", sf: context.sf, id, act: c.act, value: row.id })}>{c.label}</Button>;
+		case "action": return <Button variant="secondary" disabled={disabled || !isKnownAction(c.act)} title={!isKnownAction(c.act) ? t("tsp.unsupportedAction", { action: c.act }) : undefined} onClick={() => context.send({ ev: "action", sf: context.sf, id, act: c.act, value: row.id })}>{c.label}</Button>;
 	}
 }
 export function Forms({ node, context }: NodeProps) {

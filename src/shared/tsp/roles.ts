@@ -13,10 +13,13 @@ export const TSP_ACTIONS = {
 	submit: "submit", cancel: "cancel", page: "page", scope: "scope", tab: "tab", strip: "strip",
 	confirm: "confirm", close: "close", yes: "yes", no: "no", assign: "assign", switch: "switch", summarize: "summarize",
 	label: "label", labelSave: "label-save", filter: "filter", clear: "clear", copy: "copy",
+	resume: "resume",
 	context: "status.context", cost: "status.cost", model: "status.model", path: "status.path",
 } as const;
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
 export function isKnownAction(action: string): boolean { return knownActions.has(action); }
+/** Recorded actions without an app interaction path stay display-only. */
+export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 
 /** Roles projected into transcript notices. Startup diagnostics use the warning role too. */
@@ -49,7 +52,9 @@ const knownRoles: ReadonlySet<string> = new Set([
 	...Object.values(TSP_ROLES),
 	"omp.actions", "omp.btn", "omp.composer.bar", "omp.composer.chips", "omp.composer.context",
 	"omp.composer.extras", "omp.composer.line", "omp.composer.model", "omp.composer.send", "omp.composer.usage",
+	"omp.form", "omp.form.field",
 	"omp.hotkeys.group", "omp.hotkeys.table", "omp.hud", "omp.hud.downloads", "omp.hud.judge",
+	"omp.composer.stop", "omp.hud.activity", "omp.hud.status", "omp.working", "omp.working.label", "omp.working.sep", "omp.working.stop",
 	"omp.info.column", "omp.info.copy", "omp.info.copy.ic", "omp.info.field", "omp.info.group", "omp.info.identity",
 	"omp.info.kv", "omp.info.label", "omp.info.note", "omp.info.nums", "omp.info.stats", "omp.info.total",
 	"omp.jobs.empty", "omp.jobs.empty.note", "omp.jobs.empty.title", "omp.notice.warning",

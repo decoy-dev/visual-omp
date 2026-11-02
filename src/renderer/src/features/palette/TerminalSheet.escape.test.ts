@@ -3,11 +3,14 @@ import { act, createElement, type PropsWithChildren, type ReactNode } from "reac
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionController, SessionView } from "../../state/session";
-import type { TspHostSnapshot } from "@shared/tsp-host";
+import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
 import type { TspNode } from "@shared/tsp";
 import type { QuestionMatch } from "@shared/tsp/question-match";
+import { hookQuestions, QuestionArbitrator } from "@shared/tsp/question-match";
 import { TSP_ROLES } from "@shared/tsp/roles";
 import type * as SheetModule from "../../ui/Sheet";
+import { FixtureDocuments } from "../tsp/testing/documents";
+import { openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import type * as ButtonModule from "../../ui/Button";
 import type * as OmpScreenModule from "../tsp/OmpScreenSheet";
 import { TooltipProvider } from "../../ui/Tooltip";
@@ -19,6 +22,7 @@ const fake = vi.hoisted(() => ({
 	view: null as SessionView | null,
 	controller: null as unknown as SessionController,
 	tabId: "tab" as string | null,
+	updates: new Set<(snapshot: TspHostSnapshot) => void>(),
 	closeTerminal: vi.fn(), closePage: vi.fn(), closeSheet: vi.fn(), setPaletteOpen: vi.fn(), keys: vi.fn(), invoke: vi.fn(),
 }));
 vi.mock("../../shell/hooks", () => ({ useSessionView: () => fake.view }));
@@ -38,12 +42,12 @@ vi.mock("../../registry/lazy", async () => {
 vi.mock("../../ui", async () => {
 	// Load the real Radix primitive inside the hoisted mock, without the mocked UI barrel.
 	const { Sheet, SheetContent } = await vi.importActual<typeof SheetModule>("../../ui/Sheet");
-	const { IconButton } = await vi.importActual<typeof ButtonModule>("../../ui/Button");
+	const { Button, IconButton } = await vi.importActual<typeof ButtonModule>("../../ui/Button");
 	return {
 		Sheet, SheetContent,
 		cn: (...classes: unknown[]) => classes.filter(Boolean).join(" "),
 		Dialog: () => null, DialogContent: () => null,
-		Button: ({ children }: PropsWithChildren) => createElement("button", null, children),
+		Button,
 		IconButton,
 		Expand: ({ open, children }: PropsWithChildren<{ open: boolean }>) => open ? children : null,
 		EmptyState: ({ title }: { title: ReactNode }) => createElement("p", null, title),
@@ -59,6 +63,7 @@ function sheetTree() {
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	fake.tabId = "tab";
+	fake.updates.clear();
 	fake.view = { mode: "live", readOnly: false, host: { hostId: "host", generation: 1, phase: "live", transport: "tsp", tui: { overlays: 1, focused: "picker", overlayKinds: ["picker"] } } } as unknown as SessionView;
 	fake.closeTerminal.mockReset().mockImplementation(() => { fake.tabId = null; });
 	fake.closePage.mockReset(); fake.closeSheet.mockReset(); fake.setPaletteOpen.mockReset(); fake.keys.mockReset();
@@ -67,7 +72,7 @@ beforeEach(() => {
 		surfaces: [{ documentGeneration: 1, open: { id: "dock", mode: "inline" }, sequence: 1, closed: false, focus: "editor", suspended: false, settled: [], document: { id: "root", k: "col", c: [{ id: "editor", k: "editor", p: { text: "Draft", sendable: true } }] } }],
 	} : undefined);
 	fake.controller = { ensureLive: async () => undefined, getSnapshot: () => fake.view, keys: fake.keys } as unknown as SessionController;
-	Object.assign(window, { vomp: { platform: "darwin", invoke: fake.invoke, on: () => () => {} } });
+	Object.assign(window, { vomp: { platform: "darwin", invoke: fake.invoke, on: (channel: string, listener: (snapshot: TspHostSnapshot) => void) => { if (channel === "host:tsp-update") fake.updates.add(listener); return () => fake.updates.delete(listener); } } });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); });
@@ -165,4 +170,141 @@ it("closes the sheet when a mirrored request wins while an unmatched Escape is q
 	await act(async () => root.render(sheetTree()));
 	await act(async () => document.querySelector('[role="region"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
 	expect(fake.closeTerminal).toHaveBeenCalledOnce();
+});
+
+const recordings = import.meta.glob<string>("../../../../main/omp/tsp/fixtures/18.14.0/*.jsonl", { query: "?raw", import: "default", eager: true });
+function recorded<T = unknown>(name: string, suffix: string): { verb?: string; body: T; keys?: string; afterMessage?: number }[] {
+	return recordings[`../../../../main/omp/tsp/fixtures/18.14.0/${name}.${suffix}.jsonl`]!.trim().split("\n").map(line => JSON.parse(line));
+}
+function replayedScreen(name: string) {
+	const session = new FixtureDocuments();
+	const messages = recorded(name, "messages");
+	let boundary = 0;
+	for (const message of messages) {
+		session.receive({ verb: message.verb!, params: {}, body: JSON.stringify(message.body) });
+		boundary++;
+		const surfaces = session.snapshot().surfaces.filter(surface => surface.sequence > 0);
+		if (openOverlay(surfaces) || screenSurface(surfaces) || surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "rows"))) break;
+	}
+	const snapshot: TspHostSnapshot = { ...session.snapshot(), hostId: "host", generation: 1, revision: 1, lifecycle: "live", documentGeneration: 1, failure: null, availability: { available: false, reason: "Recorded omp menu" },
+		surfaces: session.snapshot().surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
+	return { session, snapshot, boundary, messages };
+}
+it.each(["hotkeys", "jobs", "session", "changelog", "tools", "model-picker", "settings-screen", "extension-rows", "extension-rows-cancel", "extension-rows-open"])("completes recorded %s through the real omp sheet with its next recorded input", async name => {
+	const { snapshot, boundary, session, messages } = replayedScreen(name);
+	const expected = recorded(name.replace(/-open$/, ""), "events").find(event => event.keys !== undefined)!;
+	expect(expected).toBeDefined();
+	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
+	await act(async () => root.render(sheetTree()));
+	const screen = document.querySelector<HTMLElement>('[role="region"][aria-label="omp screen"]')!;
+	expect(screen).not.toBeNull();
+	expect(screen.querySelector("[data-tsp-kind]")).not.toBeNull();
+	const target = name.startsWith("extension-rows") ? screen.querySelector("pre")! : screen;
+	await act(async () => target.dispatchEvent(new KeyboardEvent("keydown", { key: name === "extension-rows" || name === "extension-rows-open" ? "Enter" : "Escape", bubbles: true, cancelable: true })));
+	const emitted = fake.invoke.mock.calls.filter(call => call[0] === "host:keys" || call[0] === "host:tsp-event")
+		.map(call => call[0] === "host:keys" ? { keys: call[2] === "escape" ? "\x1b" : call[2] } : { verb: "e", body: call[3] });
+	expect(emitted).toEqual([{ keys: expected.keys }]);
+	expect(fake.closeTerminal).not.toHaveBeenCalled();
+	for (const message of messages.slice(boundary)) {
+		session.receive({ verb: message.verb!, params: {}, body: JSON.stringify(message.body) });
+	}
+	expect(openOverlay(session.snapshot().surfaces)).toBeNull();
+	expect(screenSurface(session.snapshot().surfaces)).toBeNull();
+	expect(session.snapshot().surfaces.every(surface => surface.closed)).toBe(true);
+});
+it("keeps recorded tree-open pointer selection local and confirms with the recorded tree event", async () => {
+	const { snapshot } = replayedScreen("tree-open");
+	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
+	await act(async () => root.render(sheetTree()));
+	const expected = recorded<TspRendererEvent>("tree-confirm", "events").find(event => event.body?.ev === "activate")!.body;
+	if (expected.ev !== "activate") throw new Error("Missing recorded tree activation");
+	const picker = snapshot.surfaces.flatMap(surface => [...walkNodes(surface.document)]).find(node => node.k === "picker")!;
+	if (picker.k !== "picker") throw new Error("Missing recorded tree picker");
+	const index = picker.p!.items!.findIndex(item => item.id === expected.item);
+	expect(index).toBeGreaterThanOrEqual(0);
+	await act(async () => document.querySelectorAll('[role="option"]')[index]!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+	expect(fake.invoke.mock.calls.filter(call => call[0] === "host:tsp-event")).toEqual([]);
+	await act(async () => document.querySelector('[role="listbox"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+	expect(fake.invoke.mock.calls.filter(call => call[0] === "host:tsp-event")).toEqual([["host:tsp-event", "host", 1, expected, snapshot.epoch]]);
+});
+it("completes the recorded extensions picker by selecting a row and using its known Close action", async () => {
+	const { snapshot, session, boundary, messages } = replayedScreen("extensions");
+	const events = recorded<TspRendererEvent>("extensions", "events");
+	const expected = events.filter(event => event.body?.ev === "select" || event.body?.ev === "action").map(event => event.body);
+	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
+	await act(async () => root.render(sheetTree()));
+	const screen = document.querySelector<HTMLElement>('[role="region"]')!;
+	const expand = [...screen.querySelectorAll("button")].find(button => button.textContent === "Expand")!;
+	expect(expand.disabled).toBe(true); expect(expand.title).toContain("expand");
+	await act(async () => expand.click());
+	expect(fake.invoke.mock.calls.filter(call => call[0] === "host:tsp-event")).toEqual([]);
+	const selection = expected.find(event => event.ev === "select");
+	if (selection?.ev !== "select") throw new Error("Missing recorded extension selection");
+	const picker = snapshot.surfaces.flatMap(surface => [...walkNodes(surface.document)]).find(node => node.k === "picker");
+	if (picker?.k !== "picker") throw new Error("Missing recorded extension picker");
+	const label = picker.p!.items!.find(item => item.id === selection.item)!.label;
+	await act(async () => [...screen.querySelectorAll('[role="option"]')].find(option => option.textContent === label)!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+	const closeBoundary = events.find(event => event.body?.ev === "action")!.afterMessage!;
+	for (const message of messages.slice(boundary, closeBoundary)) session.receive({ verb: message.verb!, params: {}, body: JSON.stringify(message.body) });
+	const next = { ...snapshot, revision: snapshot.revision + 1, surfaces: session.snapshot().surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
+	await act(async () => { for (const update of fake.updates) update(next); });
+	expect([...screen.querySelectorAll("button")].find(button => button.textContent === "Toggle")!.disabled).toBe(false);
+	expect([...screen.querySelectorAll("button")].find(button => button.textContent === "Expand")!.disabled).toBe(true);
+	const close = [...screen.querySelectorAll("button")].find(button => button.textContent === "Close")!;
+	expect(close.disabled).toBe(false);
+	await act(async () => close.click());
+	expect(fake.invoke.mock.calls.filter(call => call[0] === "host:tsp-event").map(call => call[3])).toEqual(expected);
+});
+
+it("renders and completes the recorded startup import screen before the first collab link", async () => {
+	const { snapshot } = replayedScreen("import-claude");
+	snapshot.generation = 0; snapshot.documentGeneration = 0;
+	for (const surface of snapshot.surfaces) surface.documentGeneration = 0;
+	fake.view = { ...fake.view!, host: { ...fake.view!.host!, generation: 0, phase: "connecting", link: null } };
+	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
+	await act(async () => root.render(sheetTree()));
+	expect(document.querySelector('[role="listbox"][aria-label="Import Claude Session"]')).not.toBeNull();
+	const option = document.querySelector('[role="option"][aria-disabled="false"]')!;
+	await act(async () => option.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+	await act(async () => document.querySelector('[role="listbox"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+	const expected = recorded<TspRendererEvent>("import-claude", "events").filter(event => event.body?.ev === "select" || event.body?.ev === "activate").map(event => event.body);
+	expect(fake.invoke.mock.calls.filter(call => call[0] === "host:tsp-event").map(call => [call[2], call[3], call[4]])).toEqual(expected.map(event => [0, event, snapshot.epoch]));
+});
+it("offers a working Restart action when handshake-timeout marks the host tspFailed", async () => {
+	const restart = vi.fn().mockResolvedValue(undefined);
+	Object.assign(fake.controller, { restart });
+	fake.view = { ...fake.view!, host: { ...fake.view!.host!, tspFailed: true } };
+	const snapshot: TspHostSnapshot = { hostId: "host", generation: 1, epoch: 0, revision: 1, negotiated: false, lifecycle: "failed", documentGeneration: null, surfaces: [], failure: "omp did not start its semantic screen", availability: { available: false, reason: "omp did not start its semantic screen" } };
+	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
+	await act(async () => root.render(sheetTree()));
+	expect(document.body.textContent).toContain("omp did not start its semantic screen");
+	const button = [...document.querySelectorAll("button")].find(button => button.textContent?.includes("Restart"))!;
+	expect(button).toBeDefined();
+	await act(async () => button.click());
+	expect(restart).toHaveBeenCalledOnce();
+	expect(fake.invoke.mock.calls.some(call => call[0] === "host:keys" || call[0] === "host:tsp-event")).toBe(false);
+});
+
+it.each(["matched", "ambiguous"] as const)("keeps the recorded hook-collab-aware screen display-only with %s injected collab requests", async status => {
+	const { snapshot } = replayedScreen("hook-collab-aware");
+	const scope = { hostId: "host", generation: 1, epoch: snapshot.epoch };
+	const dialogs = hookQuestions(snapshot.surfaces, 1); expect(dialogs).toHaveLength(1);
+	const dialog = dialogs[0]!;
+	const request = { reqId: 4, kind: "select", title: dialog.title, options: dialog.options ?? [] };
+	const requests = status === "matched" ? [request] : [request, { ...request, reqId: 5 }];
+	const mirror = { ...scope, connection: 1, revision: 1, connected: true, requests };
+	const arb = new QuestionArbitrator();
+	expect(arb.update(scope, mirror)).toBe(true);
+	snapshot.questionMatches = arb.matches(scope, dialogs);
+	expect(snapshot.questionMatches[0]?.status).toBe(status);
+	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
+	await act(async () => root.render(sheetTree()));
+	const picker = document.querySelector<HTMLElement>('[role="listbox"]')!;
+	expect(picker).not.toBeNull(); expect(picker.getAttribute("aria-disabled")).toBe("true");
+	await act(async () => document.querySelector('[role="option"]')!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+	await act(async () => picker.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+	expect([...document.querySelectorAll<HTMLButtonElement>('[role="region"] button')].every(button => button.disabled)).toBe(true);
+	expect(fake.invoke.mock.calls.some(call => ["host:tsp-event", "host:tsp-answer", "host:keys"].includes(call[0]))).toBe(false);
+	expect(mirror.requests.map(request => request.reqId)).toEqual(status === "matched" ? [4] : [4, 5]);
+	if (status === "matched") expect(document.body.textContent).toContain("chat's question card");
 });

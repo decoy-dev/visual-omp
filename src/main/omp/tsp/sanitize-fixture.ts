@@ -7,7 +7,8 @@ export function sanitizeFixtureText(text: string): string {
 		.replace(/\/(?:private\/)?var\/folders\/[^/]+\/[^/]+\/(?:T|C)(?:\/vomp-tsp-record-[^/\s"'\\]+)?/g, "/tmp/vomp-fixture")
 		.replace(/\/(?:private\/)?tmp\/vomp-tsp-record-[^/\s"'\\]+/g, "/tmp/vomp-fixture")
 		.replace(/\/(?:private\/)?tmp\/tsp-study/g, "/tmp/vomp-fixture")
-		.replace(/\/Users\/[^/\s"'\\]+/g, "/tmp/vomp-fixture");
+		.replace(/\/Users\/[^/\s"'\\]+/g, "/tmp/vomp-fixture")
+		.replace(/\bvomp-tsp-record-[A-Za-z0-9_-]+/g, "vomp-fixture");
 }
 
 export function decodedOscPayloads(text: string): string[] {

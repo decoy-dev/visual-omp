@@ -1,5 +1,5 @@
 import type { TspNode, TspPickerItem, TspText, TspTreeNode } from "@shared/tsp";
-import { selectionCommits, TSP_ACTIONS } from "@shared/tsp/roles";
+import { isKnownAction, selectionCommits, TSP_ACTIONS } from "@shared/tsp/roles";
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "../../../ui/Button";
 import { Input } from "../../../ui/Input";
@@ -39,18 +39,24 @@ export function Choice({ node, context }: NodeProps) {
 		if (localFirst) return;
 		if (action === "select" || picker) event("select", row.id);
 		else if (action === "activate") event("activate", row.id);
-		else if (action) context.send({ ev: "action", sf: context.sf, id: node.id, act: action, value: row.id });
+		else if (action && isKnownAction(action)) context.send({ ev: "action", sf: context.sf, id: node.id, act: action, value: row.id });
 	};
 	const doubleClick = (row: ChoiceRow) => {
 		if (row.disabled || context.readOnly) return;
 		const actions = row.child?.p?.actions ?? (Array.isArray(p?.actions) ? undefined : p?.actions);
 		const act = actions?.dblclick;
+		if (act && !isKnownAction(act)) return;
 		if (!act || act === "activate" || localFirst) choose(row, true);
 		else if (act === "select") event("select", row.id);
-		else context.send({ ev: "action", sf: context.sf, id: node.id, act, value: row.id });
+		else if (isKnownAction(act)) context.send({ ev: "action", sf: context.sf, id: node.id, act, value: row.id });
+	};
+	const rowTitle = (row: ChoiceRow) => {
+		const actions = row.child?.p?.actions ?? (Array.isArray(p?.actions) ? undefined : p?.actions);
+		const unsupported = [actions?.click, actions?.dblclick, ...(actions?.menu ?? [])].filter((action): action is string => !!action && !isKnownAction(action));
+		return [row.title ?? plain(row.detail ?? row.label), ...unsupported.map(action => t("tsp.unsupportedAction", { action }))].filter(Boolean).join("\n");
 	};
 	const selectedRow = rows.find(row => row.id === selected && !row.disabled);
-	const action = (act: string, value?: string) => { if (!context.readOnly) context.send({ ev: "action", sf: context.sf, id: node.id, act, ...(value === undefined ? {} : { value }) }); };
+	const action = (act: string, value?: string) => { if (!context.readOnly && isKnownAction(act)) context.send({ ev: "action", sf: context.sf, id: node.id, act, ...(value === undefined ? {} : { value }) }); };
 	return <div className="space-y-stack">
 		{picker?.title && <h3 className="text-lg font-semibold">{picker.title}</h3>}
 		{picker?.subtitle && <p className="text-fg-muted">{plain(picker.subtitle)}</p>}
@@ -66,7 +72,7 @@ export function Choice({ node, context }: NodeProps) {
 				if (next) { choose(next); document.getElementById(`${prefix}-${next.id}`)?.scrollIntoView?.({ block: "nearest" }); }
 			}
 		}}>
-			{rows.map(row => <div id={`${prefix}-${row.id}`} role="option" aria-selected={selected === row.id} aria-disabled={!!row.disabled || context.readOnly} key={row.id} className="tsp-option" style={row.depth ? { paddingInlineStart: `${row.depth + 1}rem` } : undefined} title={row.title ?? plain(row.detail ?? row.label)} onClick={() => { listRef.current?.focus(); choose(row); }} onDoubleClick={() => doubleClick(row)}>
+			{rows.map(row => <div id={`${prefix}-${row.id}`} role="option" aria-selected={selected === row.id} aria-disabled={!!row.disabled || context.readOnly} key={row.id} className="tsp-option" style={row.depth ? { paddingInlineStart: `${row.depth + 1}rem` } : undefined} title={rowTitle(row)} onClick={() => { listRef.current?.focus(); choose(row); }} onDoubleClick={() => doubleClick(row)}>
 				<div className="min-w-0 flex-1"><div className="break-words font-medium">{row.child && row.child.k !== "item" ? context.render(row.child) : plain(row.label)}</div>{row.detail && <div className="break-words text-sm text-fg-muted">{plain(row.detail)}</div>}</div>
 			</div>)}
 			{rows.length === 0 && <p className="p-card text-fg-muted">{plain(picker?.empty ?? list?.empty) || t("tsp.empty")}</p>}
@@ -74,7 +80,7 @@ export function Choice({ node, context }: NodeProps) {
 		{picker?.message && <p role="status">{plain(picker.message)}</p>}
 		{picker?.strip && <div className="flex flex-wrap items-center gap-2">{plain(picker.strip.label)}{picker.strip.items.map(item => <Button size="sm" key={item.id} variant={item.on ? "primary" : "secondary"} disabled={context.readOnly} onClick={() => action(TSP_ACTIONS.strip, item.id)}>{plain(item.label)}</Button>)}</div>}
 		{picker?.confirm && <p>{plain(picker.confirm.text)}</p>}
-		{picker?.actions && <div className="sticky bottom-0 flex flex-wrap gap-2 border-t border-border bg-overlay py-3">{picker.actions.map(button => <Button key={button.id} variant={button.primary ? "primary" : "secondary"} disabled={!!button.disabled || context.readOnly} title={typeof button.disabled === "string" ? button.disabled : undefined} onClick={() => {
+		{picker?.actions && <div className="sticky bottom-0 flex flex-wrap gap-2 border-t border-border bg-overlay py-3">{picker.actions.map(button => <Button key={button.id} variant={button.primary ? "primary" : "secondary"} disabled={!!button.disabled || context.readOnly || !isKnownAction(button.id)} title={!isKnownAction(button.id) ? t("tsp.unsupportedAction", { action: button.id }) : typeof button.disabled === "string" ? button.disabled : undefined} onClick={() => {
 			if ((localFirst || context.hook) && selectedRow && (button.id === TSP_ACTIONS.switch || button.id === TSP_ACTIONS.confirm)) choose(selectedRow, true);
 			else {
 				if (localFirst && selectedRow && (button.id === TSP_ACTIONS.summarize || button.id === TSP_ACTIONS.label)) event("select", selectedRow.id);
