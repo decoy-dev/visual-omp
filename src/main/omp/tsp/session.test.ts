@@ -305,9 +305,42 @@ describe("TSP session", () => {
 		const blocking = h.session.send({ ev: "visible", sf: "s:1", visible: true });
 		await Promise.resolve();
 		const answering = h.session.send({ ev: "action", sf: "s:1", id: "editor", act: "submit" });
-		const refused = expect(answering).rejects.toThrow("read-only");
+		const refused = expect(answering).rejects.toThrow("guarded question");
 		h.frame(2, [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [{ id: "hook", k: "overlay", p: { role: "omp.overlay.hook-select" } }] }]]);
 		hold = false; gate.resolve(); await blocking; await refused; await h.flush();
 		expect(h.bodies().filter(body => body.ev === "action")).toEqual([]);
+	});
+	it.each(["input", "editor"] as const)("writes a complete %s answer atomically using the declared submit target", async kind => {
+		const writes: string[] = [];
+		const h = harness(data => { writes.push(data); }); h.hello(); h.open();
+		h.frame(1, [["add", "hook", "s:1", null, { id: "hook", k: "col", p: { role: `omp.overlay.hook-${kind}` }, c: [{ id: "field", k: kind, p: { text: "seed" } }, { id: "submit", k: "text", p: { text: "Send", actions: { click: "submit" } } }] }]]);
+		await h.flush();
+		const checked: string[] = [];
+		await h.session.answerHook({ kind: "text", sf: "s:1", id: "hook", target: "field", text: "Answer 😀", len: 4 }, (sf, id) => { checked.push(`${sf}/${id}`); });
+		expect(checked).toEqual(["s:1/hook"]);
+		expect(h.bodies().slice(-2)).toEqual([
+			{ ev: "edit", sf: "s:1", id: "field", from: 0, to: 4, text: "Answer 😀", cursor: 9, len: 4 },
+			{ ev: "action", sf: "s:1", id: "submit", act: "submit" },
+		]);
+		expect(writes.at(-1)?.match(/tsp;e/g)).toHaveLength(2);
+		await expect(h.session.answerHook({ kind: "text", sf: "s:1", id: "hook", target: "field", text: "stale", len: 0 }, () => {})).rejects.toThrow("field changed");
+	});
+	it("checks arbitration at the final writer and emits nothing when the node disappears", async () => {
+		const gate = Promise.withResolvers<void>(); let hold = false;
+		const h = harness(async () => { if (hold) await gate.promise; }); h.hello(); h.open();
+		h.frame(1, [["add", "hook", "s:1", null, { id: "hook", k: "overlay", p: { role: "omp.overlay.hook-confirm" }, c: [{ id: "list", k: "list", c: [{ id: "yes", k: "item", p: { key: "yes", label: "Yes" } }] }] }]]);
+		await h.flush(); hold = true;
+		const blocking = h.session.send({ ev: "visible", sf: "s:1", visible: true }); await Promise.resolve();
+		const answering = h.session.answerHook({ kind: "choose", sf: "s:1", id: "hook", target: "list", item: "yes" }, () => { throw new Error("must not be reached"); });
+		const rejected = expect(answering).rejects.toThrow("node is no longer available");
+		h.frame(2, [["del", "hook"]]); hold = false; gate.resolve(); await blocking; await rejected;
+		expect(h.bodies().filter(body => body.ev === "activate")).toEqual([]);
+	});
+	it.each(["yes", "no"])("uses a confirmation's declared %s action", async act => {
+		const h = harness(); h.hello(); h.open();
+		h.frame(1, [["add", "hook", "s:1", null, { id: "hook", k: "overlay", p: { role: "omp.overlay.hook-confirm" }, c: [{ id: "choice", k: "text", p: { text: act, actions: { click: act } } }] }]]);
+		await h.flush();
+		await h.session.answerHook({ kind: "action", sf: "s:1", id: "hook", target: "choice", act }, () => {});
+		expect(h.bodies().at(-1)).toEqual({ ev: "action", sf: "s:1", id: "choice", act });
 	});
 });

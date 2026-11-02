@@ -53,13 +53,15 @@ export interface TspHostSnapshot {
 	revision: number;
 	/** Increments for each hello, including replacement omp processes on the same PTY. */
 	epoch: number;
+	/** Main sets this synchronously when application-driven shutdown starts. */
+	closing?: boolean;
 	availability: TspAvailability;
 	negotiated: boolean;
 	/** Input/presentation authority, independent of protocol documents retained for adopt and credits. */
 	lifecycle: "live" | "transitioning" | "failed" | "exited";
 	documentGeneration: number | null;
 	failure: string | null;
-	/** Arbitration diagnostics only. Hook input remains disabled pending live ordering evidence. */
+	/** Main-owned question authority and completion state for the current epoch and generation. */
 	questionMatches?: QuestionMatch[];
 	surfaces: (TspSurfaceSnapshot & { documentGeneration: number | null })[];
 }

@@ -185,12 +185,18 @@ application pastes, Ctrl+Q follow-up submission, shell/Python modes and predicti
 unavailable in this preview. Screen-driven feature controls remain disabled until their TSP
 consumers are implemented. Expected refusals do not become persistent chat errors.
 
-TSP shutdown uses the existing native stages and exit records. It sends Escape when an omp
-overlay or screen is open, waits for the main editor to become available, then sends `/exit`
-through semantic `send`. Acknowledgment is the closing-status toast, closure of the surface
-addressed by `/exit`, or process exit. Closing a settings surface alone does not acknowledge
-`/exit`. Startup worktree creation remains disabled. Exit questions remain visible in the omp
-screen and are subject to the read-only hook-dialog restriction below.
+TSP shutdown uses the existing native stages and exit records. It sends Escape for an open omp
+overlay or screen only when no live hook node exists, waits for the main editor to become
+available, then sends `/exit` through semantic `send`. Acknowledgment is the closing-status toast,
+closure of the addressed surface, or process exit. Closing a settings surface alone does not
+acknowledge `/exit`. A live hook, regardless of arbitration state or region, blocks shutdown's raw
+Escape and preserves the existing deadline and native force-stop decision.
+
+Startup worktree creation remains disabled. During application-driven shutdown, hook controls
+are unavailable with "This chat is closing." Exit questions can be read in the omp screen but
+cannot be answered there while closing; authorized shutdown-question interaction remains Phase 4b.
+Typing `/exit` during a live session is a different case: its unmatched hook question remains
+answerable through the ordinary guarded path until application-driven shutdown starts.
 
 If ten seconds elapse from spawn without a supported hello, main marks the preview failed once
 output has been observed. A supported hello starts a separate five-second deadline for the first
@@ -214,31 +220,87 @@ overlay's heading when present. The renderer draws layers, screen-mode surfaces 
 dock nodes. Unclaimed main content that collab does not replicate appears under "Other omp output";
 omp's main transcript and composer are excluded. Lists expose selection semantics, tree row clicks
 stay local until confirmation, and forms send typed events. Markdown, code, diffs, JSON and progress
-reuse shared renderers. Media remains a placeholder while blobs are unavailable. Rows, ANSI and
-unknown content use a readable mono fallback, with guarded raw keys while focused.
+reuse shared renderers. Media remains a placeholder while blobs are unavailable. Known kinds keep
+their renderer when a role is unknown, so form and layout containers show their children normally.
+Unknown actions stay read-only. Rows, ANSI and genuinely unknown kinds use a readable mono
+fallback with guarded raw keys while focused. The normal view never dumps node props as JSON;
+the raw outline disclosure contains that developer metadata. Hook input omits omp's inherited
+`> ` terminal prefix because the native app field already supplies its own chrome.
 
-Semantic overlays and screen surfaces open the sheet without a painting delay. Their closure
-closes an automatically opened sheet; a manually opened sheet remains open. Escape dismisses an
-open omp overlay or screen through the guarded key route. With neither open, Escape closes the
-sheet. Closing the sheet itself does not answer omp, and focus returns to that chat's composer.
+Semantic overlays, dock hook forms and screen surfaces open the sheet without a painting delay,
+except matched hook dialogs, whose chat question card stays unobscured. An automatically opened
+sheet closes when its hook becomes matched; a manually opened sheet remains available as a
+display-only view. Other overlay closure also closes only an automatically opened sheet.
+Escape cancels a unique locally answerable unmatched hook through the guarded route. For a
+matched, ambiguous, unavailable, settling, answering or closing hook, Escape closes the sheet
+without writing to omp. Other overlays keep their guarded Escape handling. With no open omp
+overlay or screen, Escape closes the sheet. Closing the sheet itself does not answer omp, and focus
+returns to that chat's composer.
 "Show raw outline" discloses the read-only developer inspector below the semantic content.
 
-`src/shared/tsp/question-match.ts` now provides conservative question arbitration diagnostics.
+`src/shared/tsp/question-match.ts` provides conservative question arbitration.
 The renderer mirrors all pending collab requests, including locally answered requests awaiting
 `ui-request-end`, through `host:tsp-questions`. Main validates the host, protocol epoch, room
 generation and monotonically increasing mirror revision. Matching authority is scoped to the guest
 client, its connection identity and the host generation and epoch observed for each request.
-Disconnect and welcome invalidate matching authority. Room rotation and protocol epoch changes
+Disconnect and welcome invalidate matching authority while preserving existing completion guards. Room rotation and protocol epoch changes
 exclude requests observed in an earlier scope without clearing the visible collab question or queue.
 A transient disconnect preserves those visible requests until welcome, following the existing
 collab lifecycle. If a delayed TSP snapshot makes a request's epoch uncertain, diagnostic matching
 stays unavailable while the original collab `reqId` answer path remains available. Matching requires
 mutual uniqueness of title, field and option data. A matched node remains in settling state until
-both its request and node have ended. Snapshots expose `questionMatches`.
+both its request and node have ended. Snapshots expose `questionMatches`, including diagnostic
+`nodeFirstSeenMs` and, once matched, `requestFirstSeenMs`. Both use main's single monotonic clock
+and retain first observations through completion; they do not establish input authority.
 
-Phase 2 is not complete. Hook dialogs remain visible and read-only while arbitration is diagnostic.
-The interactive writer recheck, hook completion controls and live channel-ordering evidence remain
-required before local hook answering can be enabled. Collab questions retain their existing controls.
+While the chat is open, hook dialogs are answerable in the omp screen only with a connected,
+current-host, current-epoch, current-generation collab mirror reporting no pending request, a
+unique live dialog target and an `unmatched` arbitration result. Matched dialogs direct the reader to the chat's question card;
+ambiguous, unavailable and settling dialogs remain display-only with their reason. omp 18.14.0
+omits the hook role from its ordinary selector and confirm picker, so the registry also recognizes
+its roleless `options` picker with row layout and exactly the declared `confirm` and `close` actions.
+Recorded non-hook workflows guard that classifier.
+
+D10 was decided by the owner on 2026-11-02. Main refuses local input once a request is mirrored as
+matched or ambiguous. Before that mirror arrives, local input remains permitted by the owner's
+decision, and upstream arbitration decides which result completes the question. The accepted
+trade-off is that the app can briefly offer both answer controls when channel delivery is delayed;
+omp's `#raceCollabDialog` accepts the first result and aborts the other branch. Consequences can
+include a chat question card that appears and closes at once, or a losing submission or cancellation
+error. This is weaker than an exactly-one-answer-path guarantee. A local submission that finds its
+node already gone shows a calm completion message while the screen updates.
+
+Main recorded manual Electron evidence on 2026-11-02 using this worktree with `VOMP_TSP=1` and
+the fixture extension in a scratch project:
+- Hook input from the omp screen delivered the exact text `café ✓ answer`.
+- Hook confirm answered No from the omp screen and delivered `false`.
+- A collab-aware select request reached main 1.7 ms before its node. It was matched with display-only
+  omp screen controls; Escape did not cancel the question, and the chat card delivered `Second option`.
+- An editor request reached main 1.3 ms before its node, was matched, and delivered an unchanged
+  card answer containing a newline.
+- With collab delivery deliberately delayed by 4 seconds, the node was first and unmatched. omp
+  accepted the local `Fourth option` answer. The late request appeared as a card until the delayed
+  `ui-request-end`, which carried the same delivery delay, removed it.
+- Dropping collab while a matched select was open produced unavailable arbitration and disabled
+  controls. Reconnection re-sent the same `reqId`, restored the match and delivered the card answer.
+- A separate browser guest was not covered. Across three naturally ordered runs, requests preceded
+  nodes by 1.3 to 2.5 ms. These observations preserve D10's documented limitations.
+
+`host:tsp-answer` enters the existing application-input lock, then derives native events from the
+current document at the serialized writer. Main rechecks generation, epoch, live surface, node
+presence and unmatched arbitration immediately before writing. A choice activates its item id;
+a text response replaces the observed UTF-16 range with `edit`, then submits using omp's declared
+button. Both text events share one writer operation. Cancel uses omp's declared cancel or close
+action, or Escape when neither exists. Raw fallback keys and generic semantic events remain
+blocked while a hook dialog is open. Escape for a unique local dialog uses the guarded answer path.
+A local response stays in answering state until its node leaves. Matched responses wait for both
+collab settlement and node departure; neither path offers a second answer while completion waits.
+Hook picker search is visibly unavailable while raw-key question input is blocked; the option list
+remains selectable.
+Collab questions retain their existing controls. Classic hosts are unchanged.
+
+Phase 2 is not complete. Local hook answering and recorded workflow replay now exist; live
+cross-channel ordering and the remaining sharing, packaged and manual criteria still gate it.
 TSP-only warning/error rows and status toasts are projected by each chat's controller-owned
 subscription into existing transcript notice rows with literal, whitespace-preserving text. After
 the current room's collab snapshot is synchronized, new notices use its displayed branch and leaf

@@ -23,6 +23,7 @@ import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspHostSnapshot } from 
 import { composer, openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { TSP_ROLES, TSP_STATUS } from "@shared/tsp/roles";
 import { hookQuestions, QuestionArbitrator } from "@shared/tsp/question-match";
+import { TspHookAnswer } from "@shared/tsp/dialogs";
 import { BrowserWindow, dialog, nativeTheme, systemPreferences, type MessageBoxOptions, type MessageBoxReturnValue } from "electron";
 import hostLabels from "../../shared/i18n/en/host.json";
 import { crashedWithoutExit, parseProgramStatus, readSessionRecaps, startupModelWarnings, worktreeConfirmation } from "./host-observations";
@@ -351,7 +352,7 @@ export class SessionHost {
 		const reason = this.#closing ? "This chat is closing." : this.#tspFailure ?? (lifecycle !== "live" ? "Waiting for omp to open its semantic screen." : this.#editorTransferBlocked);
 		const availability = reason ? { available: false, reason } : this.#tsp.availability(surface => this.#tspSurfaceGenerations.get(surface) === this.state.generation);
 		const questionMatches = this.#tspQuestions.matches({ hostId: this.id, generation: this.state.generation, epoch: protocol.epoch }, hookQuestions(surfaces, this.state.generation));
-		return { hostId: this.id, generation: this.state.generation, revision: this.#tspRevision, epoch: protocol.epoch, availability, negotiated: protocol.negotiated, lifecycle, documentGeneration: current ? this.state.generation : null, failure: this.#tspFailure, surfaces, questionMatches };
+		return { hostId: this.id, generation: this.state.generation, revision: this.#tspRevision, epoch: protocol.epoch, closing: this.#closing, availability, negotiated: protocol.negotiated, lifecycle, documentGeneration: current ? this.state.generation : null, failure: this.#tspFailure, surfaces, questionMatches };
 	}
 
 	#publishTsp(): void {
@@ -385,6 +386,24 @@ export class SessionHost {
 		});
 	}
 
+	/** Local hook answers are arbitrated again inside both serialized input boundaries. */
+	tspAnswer(generation: number, input: unknown, epoch: number): Promise<void> {
+		const parsed = TspHookAnswer.safeParse(input);
+		if (!parsed.success) return Promise.reject(new Error("TSP preview: Invalid question answer."));
+		const answer = parsed.data;
+		return this.#applicationInput(async () => {
+			this.#assertTspInput(generation);
+			await this.#tsp!.answerHook(answer, (surfaceId, nodeId) => {
+				this.#assertTspInput(generation);
+				const snapshot = this.tspSnapshot()!;
+				if (epoch !== snapshot.epoch) throw new Error("TSP preview: The semantic screen restarted.");
+				if (this.#tspSurfaceGenerations.get(surfaceId) !== generation) throw new Error("TSP preview: The target surface belongs to an earlier session.");
+				if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
+				this.#tspQuestions.answer({ hostId: this.id, generation, epoch }, hookQuestions(snapshot.surfaces, generation), surfaceId, nodeId);
+			});
+			this.#publishTsp();
+		});
+	}
 
 	/** Raw bytes to the TUI (terminal sheet keystrokes). */
 	write(data: string): void | Promise<void> {
@@ -536,11 +555,20 @@ export class SessionHost {
 
 	keys(keys: string, generation?: number, epoch?: number): Promise<void> {
 		if (this.#tsp) {
+			if (keys === "escape" || keys === "\x1b") {
+				const snapshot = this.tspSnapshot();
+				const dialogs = snapshot ? hookQuestions(snapshot.surfaces, this.state.generation) : [];
+				if (dialogs.length) {
+					if (generation === undefined || epoch === undefined || dialogs.length !== 1) return Promise.reject(new Error("TSP preview: The current question is ambiguous."));
+					const target = dialogs[0]!;
+					return this.tspAnswer(generation, { kind: "cancel", sf: target.surfaceId, id: target.nodeId }, epoch);
+				}
+			}
 			return this.#applicationInput(async () => {
 				if (generation === undefined || epoch === undefined) throw new Error(TSP_PREVIEW_UNAVAILABLE);
 				this.#assertTspInput(generation);
 				if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
-				if (keys !== "escape" && keys !== "\x1b" && this.#tsp!.hasReadOnlyHook()) throw new Error("TSP preview: This question is read-only in this preview. If it also appears in chat, answer it there.");
+				if (this.#tsp!.hasHookDialog()) throw new Error("TSP preview: Answer or cancel this question using its controls. Raw keys are unavailable while a question is open.");
 				this.#writeInput(keys === "escape" ? "\x1b" : keys);
 			});
 		}
@@ -647,10 +675,11 @@ export class SessionHost {
 				const surfaces = this.#tsp.snapshot().surfaces;
 				const overlay = openOverlay(surfaces);
 				const screen = screenSurface(surfaces);
-				if (overlay || screen) {
+				// Shutdown must never answer a hook through a second, raw-key route.
+				if ((overlay || screen) && !this.#tsp.hasHookDialog()) {
 					const identity = overlay ? `${overlay.surface.open.id}:${overlay.node.id}` : screen!.open.id;
 					if (escapedOverlay !== identity) { escapedOverlay = identity; this.#writeInput("\x1b"); }
-				} else if (this.#tsp.availability().available) {
+				} else if (!this.#tsp.hasHookDialog() && this.#tsp.availability().available) {
 					this.#tspExitSurface = composer(surfaces)?.surface.open.id ?? null;
 					try {
 						await this.#tsp.submit("/exit");

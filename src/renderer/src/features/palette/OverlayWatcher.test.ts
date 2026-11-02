@@ -1,5 +1,7 @@
 // @vitest-environment happy-dom
 import type { TspHostSnapshot } from "@shared/tsp-host";
+import type { QuestionMatch } from "@shared/tsp/question-match";
+import { TSP_ROLES } from "@shared/tsp/roles";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -23,4 +25,24 @@ it.each(["overlay", "screen"])("opens an omp %s immediately and closes only its 
 });
 it("keeps a manually opened sheet open after omp dismisses its overlay", async () => {
 	fake.terminal = "tab"; await render(); fake.snapshot = snapshot(true); await render(); expect(autoOpened.tabId).toBeNull(); fake.snapshot = snapshot(false); await render(); expect(fake.close).not.toHaveBeenCalled();
+});
+function hookSnapshot(status: QuestionMatch["status"], place: "layer" | "dock"): TspHostSnapshot {
+	const value = snapshot(false);
+	value.questionMatches = [{ surfaceId: "s:1", nodeId: "hook", status }];
+	value.surfaces[0]!.document = { id: "s:1", k: "col", c: [{ id: place, k: "col", c: [{ id: "hook", k: "overlay", p: { role: TSP_ROLES.hookSelect, head: "Choose" } }] }] };
+	return value;
+}
+it.each(["layer", "dock"] as const)("does not auto-open a matched hook in %s over the chat card", async place => {
+	fake.snapshot = hookSnapshot("matched", place); await render();
+	expect(fake.open).not.toHaveBeenCalled(); expect(autoOpened.tabId).toBeNull();
+});
+it.each(["layer", "dock"] as const)("closes an automatic %s hook sheet when the request becomes matched", async place => {
+	fake.snapshot = hookSnapshot("unmatched", place); await render();
+	expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab"); expect(autoOpened.tabId).toBe("tab");
+	fake.snapshot = hookSnapshot("matched", place); await render();
+	expect(fake.close).toHaveBeenCalledOnce(); expect(autoOpened.tabId).toBeNull();
+});
+it("keeps a manually opened matched hook sheet available as a display-only view", async () => {
+	fake.terminal = "tab"; fake.snapshot = hookSnapshot("matched", "layer"); await render();
+	expect(fake.close).not.toHaveBeenCalled(); expect(fake.open).not.toHaveBeenCalled(); expect(autoOpened.tabId).toBeNull();
 });

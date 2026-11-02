@@ -12,6 +12,7 @@
 
 import type { TspHostSnapshot, TspRendererEvent } from "./tsp-host";
 import type { CollabQuestionState } from "./tsp/question-match";
+import type { TspHookAnswer } from "./tsp/dialogs";
 
 export type Platform = "darwin" | "win32" | "linux";
 
@@ -297,6 +298,8 @@ export interface IpcInvokeMap {
 	"host:tsp-snapshot": { args: [hostId: string]; result: TspHostSnapshot | null };
 	/** Renderer input shares the application input lock and rejects a stale collab generation. */
 	"host:tsp-event": { args: [hostId: string, generation: number, event: TspRendererEvent, epoch: number]; result: void };
+	/** Complete local hook answer. Main derives events from the live document and rechecks arbitration. */
+	"host:tsp-answer": { args: [hostId: string, generation: number, answer: TspHookAnswer, epoch: number]; result: void };
 	/** Renderer-owned pending collab requests, scoped to this protocol epoch and room. */
 	"host:tsp-questions": { args: [hostId: string, state: CollabQuestionState]; result: void };
 	/** Semantic sheet width in mono columns. This does not depend on terminal-sheet rows. */

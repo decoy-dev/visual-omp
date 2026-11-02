@@ -39,12 +39,15 @@ describe("hook-collab question arbitration", () => {
 		expect(arb.matches(scope, [dialog])[0]?.status).toBe("matched");
 		for (const changed of [{ ...scope, epoch: 2 }, { ...scope, generation: 2 }]) expect(arb.matches(changed, [dialog])[0]?.status).toBe("unavailable");
 	});
-	it("invalidates on disconnect and reconnect instead of carrying old matches", () => {
+	it("invalidates match authority on disconnect while preserving a bound dialog's completion guard", () => {
 		const arb = new QuestionArbitrator();
 		arb.update(scope, state); arb.matches(scope, [dialog]);
 		arb.update(scope, { ...state, revision: 2, connected: false, requests: [] });
 		expect(arb.matches(scope, [dialog])[0]?.status).toBe("unavailable");
 		arb.update(scope, { ...state, revision: 3, connection: 2, requests: [] });
+		expect(arb.matches(scope, [dialog])[0]?.status).toBe("settling");
+		expect(() => arb.answer(scope, [dialog], "s", "hook")).toThrow("settling");
+		expect(arb.matches(scope, [])).toEqual([]);
 		expect(arb.matches(scope, [dialog])[0]?.status).toBe("unmatched");
 	});
 	it("waits for remote settlement AND node departure in either order", () => {
@@ -61,5 +64,36 @@ describe("hook-collab question arbitration", () => {
 		const surface = { open: { id: "s", mode: "inline" as const }, sequence: 1, closed: false, suspended: false, focus: null, settled: [], documentGeneration: 1, document: { id: "hook", k: "overlay" as const, p: { role: "omp.overlay.hook-select", head: "Choose" }, c: [{ id: "picker", k: "picker" as const, p: { items: [{ id: "yes", label: "Yes", detail: "Continue" }, { id: "no", label: "No" }] } }] } };
 		expect(hookQuestions([surface], 1)).toEqual([{ ...dialog, field: undefined }]);
 		for (const changed of [{ ...surface, closed: true }, { ...surface, suspended: true }, { ...surface, documentGeneration: 0 }]) expect(hookQuestions([changed], 1)).toEqual([]);
+	});
+	it("keeps a local answer blocked until its node departs, including reconnects", () => {
+		const arb = new QuestionArbitrator();
+		arb.update(scope, { ...state, requests: [] });
+		arb.answer(scope, [dialog], "s", "hook");
+		expect(arb.matches(scope, [dialog])[0]?.status).toBe("answering");
+		expect(() => arb.answer(scope, [dialog], "s", "hook")).toThrow("answering");
+		arb.update(scope, { ...state, revision: 2, connected: false, requests: [] });
+		arb.update(scope, { ...state, revision: 3, connection: 2, requests: [] });
+		expect(arb.matches(scope, [dialog])[0]?.status).toBe("answering");
+		expect(arb.matches(scope, [])).toEqual([]);
+		expect(arb.matches(scope, [dialog])[0]?.status).toBe("unmatched");
+		expect(arb.matches({ ...scope, epoch: 2 }, [dialog])[0]?.status).toBe("unavailable");
+	});
+	it.each(["node", "request"])("records stable monotonic observation times when %s arrives first", first => {
+		let now = 10;
+		const arb = new QuestionArbitrator(() => now);
+		if (first === "node") expect(arb.matches(scope, [dialog])[0]).toMatchObject({ nodeFirstSeenMs: 10, status: "unavailable" });
+		else arb.update(scope, state);
+		now = 25;
+		if (first === "node") arb.update(scope, state);
+		const match = arb.matches(scope, [dialog])[0]!;
+		expect(match).toMatchObject({ status: "matched", nodeFirstSeenMs: first === "node" ? 10 : 25, requestFirstSeenMs: first === "node" ? 25 : 10 });
+		now = 40; arb.update(scope, { ...state, revision: 2 });
+		expect(arb.matches(scope, [dialog])[0]).toEqual(match);
+		arb.update(scope, { ...state, revision: 3, requests: [] });
+		expect(arb.matches(scope, [dialog])[0]).toMatchObject({ status: "settling", nodeFirstSeenMs: match.nodeFirstSeenMs, requestFirstSeenMs: match.requestFirstSeenMs });
+		arb.matches(scope, []);
+		now = 60;
+		expect(arb.matches(scope, [dialog])[0]).toMatchObject({ status: "unmatched", nodeFirstSeenMs: 60 });
+		expect(arb.matches(scope, [dialog])[0]?.requestFirstSeenMs).toBeUndefined();
 	});
 });

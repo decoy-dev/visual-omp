@@ -41,8 +41,22 @@ export function Forms({ node, context }: NodeProps) {
 	if (node.k === "effort") return <span className="inline-flex items-center gap-2 text-sm" aria-label={`${t("tsp.effort")}: ${node.p?.level ?? ""}`}>{t("tsp.effort")}: <span className="font-mono">{node.p?.level}</span></span>;
 	if (node.k !== "editor" && node.k !== "input") return null;
 	const p = node.p;
-	const text = p?.text ?? "";
+	const observed = p?.text ?? "";
+	const text = context.hook?.fieldId === node.id ? context.hook.draft : observed;
 	const readonly = context.readOnly || p?.readonly;
-	const props = { "aria-label": p?.aria ?? (plain(p?.prompt) || t("tsp.input")), value: text, readOnly: readonly, placeholder: plain(p?.placeholder), onFocus: () => { if (!readonly) context.send({ ev: "focus", sf: context.sf, id: node.id }); }, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => { if (!readonly) context.send({ ev: "edit", sf: context.sf, id: node.id, from: 0, to: text.length, text: e.target.value, cursor: e.target.selectionStart ?? e.target.value.length, len: text.length }); } };
-	return <div className="space-y-stack">{p?.prompt && <p className="font-medium">{plain(p.prompt)}</p>}{node.k === "editor" ? <textarea {...props} rows={Math.min(12, Math.max(4, text.split("\n").length))} className="tsp-control w-full resize-y font-mono" /> : <Input {...props} />}{!context.readOnly && <div className="flex flex-wrap gap-2"><Button variant="primary" disabled={p?.readonly} onClick={() => action(TSP_ACTIONS.submit)}>{t("tsp.submit")}</Button><Button variant="secondary" onClick={() => action(TSP_ACTIONS.cancel)}>{t("tsp.cancel")}</Button></div>}</div>;
+	// omp 18.14's HookInputComponent creates TextFormField without overriding Input's
+	// default terminal prefix (hook-input.ts:86-99, input.ts:70). The app supplies field chrome.
+	const rawPrompt = plain(p?.prompt);
+	const prompt = context.hook && node.k === "input" && rawPrompt.trim() === ">" ? "" : rawPrompt;
+	const props = { "aria-label": p?.aria ?? (prompt || t("tsp.input")), value: text, readOnly: readonly, placeholder: plain(p?.placeholder), onFocus: () => { if (!readonly && !context.hook) context.send({ ev: "focus", sf: context.sf, id: node.id }); }, onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+		if (readonly) return;
+		if (context.hook) context.hook.setDraft(e.target.value);
+		else context.send({ ev: "edit", sf: context.sf, id: node.id, from: 0, to: observed.length, text: e.target.value, cursor: e.target.selectionStart ?? e.target.value.length, len: observed.length });
+	}, onKeyDown: (event: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+		if (!context.hook || readonly || event.nativeEvent.isComposing) return;
+		if (event.key === "Enter" && (node.k === "input" || event.metaKey || event.ctrlKey)) {
+			event.preventDefault(); context.send({ ev: "action", sf: context.sf, id: node.id, act: TSP_ACTIONS.submit });
+		}
+	} };
+	return <div className="space-y-stack">{prompt && <p className="font-medium">{prompt}</p>}{node.k === "editor" ? <textarea {...props} rows={Math.min(12, Math.max(4, text.split("\n").length))} className="tsp-control w-full resize-y font-mono" /> : <Input {...props} />}{!context.readOnly && !context.hook?.declaredButtons && <div className="flex flex-wrap gap-2"><Button variant="primary" disabled={p?.readonly} onClick={() => action(TSP_ACTIONS.submit)}>{t("tsp.submit")}</Button><Button variant="secondary" onClick={() => action(TSP_ACTIONS.cancel)}>{t("tsp.cancel")}</Button></div>}</div>;
 }

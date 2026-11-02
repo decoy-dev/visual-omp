@@ -3,14 +3,15 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TSP_KINDS, type TspNode } from "@shared/tsp";
-import { TSP_CLAIMS, TSP_ROLES, roleInteraction } from "@shared/tsp/roles";
+import { TSP_CLAIMS, TSP_ROLES } from "@shared/tsp/roles";
 import { unclaimed } from "@shared/tsp/view-state";
-import type { TspSurfaceSnapshot } from "@shared/tsp-host";
+import type { TspHostSnapshot, TspSurfaceSnapshot } from "@shared/tsp-host";
 import "../../i18n";
 import { KIND_GROUPS, NodeView } from "./nodes/NodeView";
 import type { NodeContext } from "./nodes/context";
 import { rawKey } from "./keys";
 import { ansiRuns } from "./ansi";
+import { OmpScreenSheet } from "./OmpScreenSheet";
 
 let root: Root;
 let element: HTMLDivElement;
@@ -94,11 +95,80 @@ it("changes typed prefs values and sends page actions", async () => {
 });
 it("shows hook dialogs read-only despite the existing classic OmpDialogCard", async () => {
 	const hook: TspNode = { id: "hook", k: "overlay", p: { role: TSP_ROLES.hookSelect, head: "Choose an option" }, c: [{ id: "picker", k: "picker", p: { items: [{ id: "yes", label: "Yes" }], query: null } }] };
-	expect(TSP_CLAIMS[TSP_ROLES.hookSelect]).toBeUndefined(); expect(roleInteraction(TSP_ROLES.hookSelect)).toBe("display-only");
+	expect(TSP_CLAIMS[TSP_ROLES.hookSelect]).toBeUndefined();
 	const surface: TspSurfaceSnapshot = { open: { id: "s:1", mode: "inline" }, sequence: 1, closed: false, suspended: false, settled: [], focus: "hook", document: { id: "s:1", k: "col", c: [{ id: "layer", k: "col", c: [hook] }] } };
 	expect(unclaimed(surface, "layer")).toHaveLength(1);
-	await render(hook); expect(element.textContent).toContain("If it also appears in chat, answer it there.");
+	await render(hook); expect(element.textContent).toContain("Waiting for the chat's question state");
 	await click('[role="option"]'); await press("Enter"); expect(send).not.toHaveBeenCalled(); expect(keys).not.toHaveBeenCalled();
+});
+it.each(["matched", "ambiguous", "unavailable", "settling", "answering"] as const)("keeps %s hook dialogs display-only with a truthful reason", async status => {
+	const answer = vi.fn().mockResolvedValue(undefined);
+	context = { ...context, questionMatches: [{ surfaceId: "s:1", nodeId: "hook", status }], answer };
+	await render({ id: "hook", k: "overlay", p: { role: TSP_ROLES.hookSelect, head: "Choose" }, c: [{ id: "list", k: "list", c: [{ id: "yes", k: "item", p: { label: "Yes" } }] }] });
+	expect(element.querySelector('[role="status"]')?.textContent).toBeTruthy();
+	if (status === "matched") expect(element.textContent).toContain("chat's question card");
+	await click('[role="option"]'); await press("Enter");
+	expect(answer).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled(); expect(keys).not.toHaveBeenCalled();
+});
+it("answers a roleless hook picker once and shows answering until the node departs", async () => {
+	const answer = vi.fn().mockResolvedValue(undefined);
+	context = { ...context, questionMatches: [{ surfaceId: "s:1", nodeId: "hook", status: "unmatched" }], answer };
+	const hook: TspNode = { id: "hook", k: "picker", p: { title: "Choose", noun: "options", layout: "rows", query: null, selected: "0", items: [{ id: "0", label: "Yes" }, { id: "1", label: "No" }], actions: [{ id: "confirm", label: "Select", primary: true }, { id: "close", label: "Cancel" }] } };
+	await render(hook); await click('[role="option"]:nth-child(2)');
+	expect(answer).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
+	await press("Enter");
+	expect(answer).toHaveBeenCalledExactlyOnceWith({ kind: "choose", sf: "s:1", id: "hook", target: "hook", item: "1" });
+	expect(element.textContent).toContain("Answering");
+	await press("Enter"); expect(answer).toHaveBeenCalledTimes(1);
+	await render({ id: "next", k: "text", p: { text: "Next overlay" } });
+	expect(element.textContent).toContain("Next overlay"); expect(element.textContent).not.toContain("Answering");
+});
+it.each(["input", "editor"] as const)("keeps a local %s draft and submits one full answer using its observed length", async kind => {
+	const answer = vi.fn().mockResolvedValue(undefined);
+	context = { ...context, questionMatches: [{ surfaceId: "s:1", nodeId: "hook", status: "unmatched" }], answer };
+	await render({ id: "hook", k: "col", p: { role: `omp.overlay.hook-${kind}` }, c: [{ id: "field", k: kind, p: { text: "seed" } }] });
+	const field = element.querySelector("input,textarea") as HTMLInputElement;
+	expect(field.readOnly).toBe(false); expect(field.value).toBe("seed");
+	await click("button");
+	expect(answer).toHaveBeenCalledExactlyOnceWith({ kind: "text", sf: "s:1", id: "hook", target: "field", text: "seed", len: 4 });
+	expect(send).not.toHaveBeenCalled(); expect(element.textContent).toContain("Answering");
+});
+it.each(["unmatched", "matched", "ambiguous", "unavailable", "answering"] as const)("makes a %s hook unavailable while closing", async status => {
+	const answer = vi.fn().mockResolvedValue(undefined);
+	context = { ...context, closing: true, questionMatches: [{ surfaceId: "s:1", nodeId: "hook", status }], answer };
+	await render({ id: "hook", k: "overlay", p: { role: TSP_ROLES.hookSelect, head: "Choose" }, c: [{ id: "list", k: "list", c: [{ id: "yes", k: "item", p: { label: "Yes" } }] }] });
+	expect(element.textContent).toContain("This chat is closing.");
+	await click('[role="option"]'); await press("Enter");
+	expect(answer).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled(); expect(keys).not.toHaveBeenCalled();
+	expect([...element.querySelectorAll("button")].every(button => button.disabled)).toBe(true);
+});
+it("shows a calm completion message when a losing local answer finds that omp already closed its node", async () => {
+	const answer = vi.fn().mockRejectedValue(new Error("Error invoking remote method 'host:tsp-answer': Error: TSP preview: The question node is no longer available."));
+	context = { ...context, questionMatches: [{ surfaceId: "s:1", nodeId: "hook", status: "unmatched" }], answer };
+	await render({ id: "hook", k: "picker", p: { title: "Choose", noun: "options", layout: "rows", query: null, selected: "0", items: [{ id: "0", label: "Yes" }], actions: [{ id: "confirm", label: "Select" }, { id: "close", label: "Cancel" }] } });
+	await press("Enter");
+	expect(answer).toHaveBeenCalledOnce();
+	expect(element.querySelector('[role="alert"]')).toBeNull();
+	expect(element.textContent).toContain("This question has closed.");
+	expect(element.textContent).not.toContain("Answering.");
+	await press("Enter"); expect(answer).toHaveBeenCalledOnce();
+});
+it("passes main's closing snapshot through the omp screen to its hook controls", async () => {
+	const previous = window.vomp;
+	const invoke = vi.fn().mockResolvedValue(undefined);
+	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke } });
+	const hook: TspNode = { id: "hook", k: "overlay", p: { role: TSP_ROLES.hookSelect, head: "Choose" }, c: [{ id: "list", k: "list", c: [{ id: "yes", k: "item", p: { label: "Yes" } }] }] };
+	const snapshot: TspHostSnapshot = { hostId: "host", generation: 1, epoch: 1, revision: 1, closing: true, negotiated: true, lifecycle: "live", documentGeneration: 1, availability: { available: false, reason: "This chat is closing." }, failure: null, questionMatches: [{ surfaceId: "s:1", nodeId: "hook", status: "unmatched" }], surfaces: [{ open: { id: "s:1", mode: "inline" }, documentGeneration: 1, sequence: 1, closed: false, suspended: false, focus: null, settled: [], document: { id: "s:1", k: "col", c: [{ id: "layer", k: "col", c: [hook] }] } }] };
+	try {
+		await act(async () => root.render(createElement(OmpScreenSheet, { hostId: "host", generation: 1, snapshot, failed: false, readOnly: false })));
+		expect(element.textContent).toContain("This chat is closing.");
+		await click('[role="option"]'); await press("Enter");
+		expect(invoke).not.toHaveBeenCalledWith("host:tsp-answer", expect.anything(), expect.anything(), expect.anything(), expect.anything());
+		expect(element.querySelector('[role="listbox"]')?.getAttribute("aria-disabled")).toBe("true");
+	} finally {
+		if (previous) Object.defineProperty(window, "vomp", { configurable: true, value: previous });
+		else Reflect.deleteProperty(window, "vomp");
+	}
 });
 it("renders rows as safe ANSI spans and forwards focused raw keys", async () => {
 	await render({ id: "fallback", k: "rows", p: { cols: 80, lines: ["\x1b[31mError\x1b[0m", "<script>not HTML</script>"] } });
@@ -106,15 +176,31 @@ it("renders rows as safe ANSI spans and forwards focused raw keys", async () => 
 	await act(async () => element.querySelector("pre")!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
 	expect(keys).toHaveBeenCalledWith("\x1b[B");
 });
-it("logs unknown kinds, roles and actions only once and preserves their properties", async () => {
+it("logs unknown kinds, roles and actions once while keeping content readable without dumping props", async () => {
 	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
 	const unknown = { id: "unknown", k: "future-kind", p: { text: "Readable future output" } } as unknown as TspNode;
 	await render(unknown); await render(unknown); expect(element.textContent).toContain("Readable future output");
 	await render({ id: "unknown-role", k: "text", p: { role: "omp.future-role", text: "New role" } });
-	expect(element.querySelector("pre")?.textContent).toContain("New role");
+	expect(element.textContent).toContain("New role"); expect(element.querySelector("pre")).toBeNull();
 	const action: TspNode = { id: "unknown-action", k: "text", p: { text: "Future control", actions: { click: "future-action" } } };
-	await render(action); await render(action); expect(element.querySelector("pre")?.textContent).toContain("future-action");
+	await render(action); await render(action); expect(element.textContent).toContain("Future control");
+	expect(element.querySelector("pre,button")).toBeNull(); expect(element.textContent).not.toContain("future-action");
 	expect(warning).toHaveBeenCalledTimes(3); warning.mockRestore();
+});
+it.each(["col", "row", "section", "card"] as const)("renders an unknown-role %s as layout with readable children", async k => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	await render({ id: "container", k, p: { role: `omp.future-${k}` }, c: [{ id: "child", k: "text", p: { text: "Visible child" } }] });
+	expect(element.textContent).toBe("Visible child");
+	expect(element.querySelector("pre")).toBeNull();
+	expect(element.textContent).not.toContain("gap"); expect(element.textContent).not.toContain("role");
+	warning.mockRestore();
+});
+it("shows an unknown-kind message without exposing its props when no readable text exists", async () => {
+	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+	await render({ id: "unknown-data", k: "future-data", p: { metadata: { internal: "Private implementation details" } } } as unknown as TspNode);
+	expect(element.querySelector("pre")?.textContent).toContain("omp content type future-data is not supported");
+	expect(element.textContent).not.toContain("metadata"); expect(element.textContent).not.toContain("Private implementation");
+	warning.mockRestore();
 });
 it("keeps unclaimed main output and suppresses only the replicated transcript and composer", () => {
 	const surface: TspSurfaceSnapshot = { open: { id: "s", mode: "inline" }, sequence: 1, closed: false, suspended: false, settled: [], focus: null, document: { id: "s", k: "col", c: [{ id: "main", k: "col", c: [{ id: "reply", k: "md", p: { role: TSP_ROLES.assistant, text: "Replicated" } }, { id: "notice", k: "text", p: { text: "Local notice" } }] }] } };

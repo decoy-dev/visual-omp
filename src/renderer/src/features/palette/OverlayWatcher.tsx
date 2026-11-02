@@ -7,6 +7,7 @@
  * editor for a known dialog that replaces the editor in place (session tree, sign-in, goal prompt…).
  */
 import { openOverlay, screenSurface } from "@shared/tsp/view-state";
+import { isHookNode } from "@shared/tsp/roles";
 import { useEffect, useRef } from "react";
 import { useSessionView } from "../../shell/hooks";
 import { controllerFor, useApp } from "../../state/app";
@@ -28,7 +29,10 @@ function TabWatch({ tabId }: { tabId: string }) {
 	const { snapshot } = useTsp(tsp ? view?.host?.hostId ?? null : null);
 	const surfaces = snapshot?.lifecycle === "live" && snapshot.generation === view?.host?.generation
 		? snapshot.surfaces.filter(surface => surface.documentGeneration === snapshot.generation) : [];
-	const semanticScreen = !!(openOverlay(surfaces) || screenSurface(surfaces));
+	const overlay = openOverlay(surfaces);
+	const matchedHook = overlay && isHookNode(overlay.node) && snapshot?.questionMatches?.some(match =>
+		match.surfaceId === overlay.surface.open.id && match.nodeId === overlay.node.id && match.status === "matched");
+	const semanticScreen = !matchedHook && !!(overlay || screenSurface(surfaces));
 	const asking = Boolean(view?.guest?.uiRequest);
 	const overlays = tui?.overlays ?? 0;
 	const focused = tui?.focused ?? null;

@@ -44,13 +44,16 @@ export function OmpScreenSheet({ hostId, generation, snapshot, failed, readOnly,
 		{snapshot?.lifecycle === "exited" && <p className="mt-card text-fg-muted">{t("tsp.recovery")}</p>}
 		{current && !surfaces.length && <p role="status" className="text-fg-muted">{t("tsp.waiting")}</p>}
 		{surfaces.map(surface => {
-			const disabled = readOnly || surface.closed || surface.suspended;
+			const disabled = readOnly || !!snapshot?.closing || surface.closed || surface.suspended;
 			const send = (event: TspRendererEvent) => { if (!disabled && typeof snapshot?.epoch === "number") report(window.vomp.invoke("host:tsp-event", hostId, generation, event, snapshot.epoch)); };
-			const context: NodeContext = { sf: surface.open.id, hostId, readOnly: disabled, send, keys: data => { if (!disabled && typeof snapshot?.epoch === "number") report(window.vomp.invoke("host:keys", hostId, data, generation, snapshot.epoch)); }, render: node => <NodeView key={node.id} node={node} context={context} /> };
+			const context: NodeContext = { sf: surface.open.id, hostId, readOnly: disabled, closing: snapshot?.closing, questionMatches: snapshot?.questionMatches, answer: async answer => {
+				if (disabled || !snapshot) throw new Error("TSP preview: The session changed or its semantic UI is not ready.");
+				await window.vomp.invoke("host:tsp-answer", hostId, generation, answer, snapshot.epoch);
+			}, send, keys: data => { if (!disabled && typeof snapshot?.epoch === "number") report(window.vomp.invoke("host:keys", hostId, data, generation, snapshot.epoch)); }, render: node => <NodeView key={node.id} node={node} context={context} /> };
 			const main = unclaimed(surface, "main");
 			const dock = unclaimed(surface, "dock");
 			const layer = unclaimed(surface, "layer");
-			return <section key={surface.open.id} className="space-y-section">
+			return <section key={`${snapshot!.epoch}:${generation}:${surface.open.id}`} className="space-y-section">
 				{surface.closed && <p className="text-sm text-fg-muted">{t("tsp.retained")}</p>}
 				{layer.map(node => context.render(node))}{dock.map(node => context.render(node))}
 				{surface.open.mode === "screen" ? main.map(node => context.render(node)) : main.length > 0 && <section className="space-y-stack"><h3 className="text-sm font-semibold text-fg-muted">{t("tsp.otherOutput")}</h3>{main.map(node => context.render(node))}</section>}

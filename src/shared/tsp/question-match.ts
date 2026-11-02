@@ -1,7 +1,7 @@
 import { z } from "zod";
 import type { TspText } from "../tsp";
 import type { TspSurfaceSnapshot } from "../tsp-host";
-import { isHookDialog, TSP_ROLES } from "./roles";
+import { isHookNode, TSP_ROLES } from "./roles";
 import { walkNodes } from "./view-state";
 
 const Option = z.union([z.string(), z.object({ label: z.string(), description: z.string().optional() })]);
@@ -18,7 +18,14 @@ export const CollabQuestionState = z.strictObject({
 export type CollabQuestionState = z.infer<typeof CollabQuestionState>;
 export interface QuestionScope { hostId: string; generation: number; epoch: number }
 export interface HookQuestion { surfaceId: string; nodeId: string; title: string; kind: "select" | "editor" | "local"; options?: { label: string; description?: string }[]; field?: string }
-export interface QuestionMatch { surfaceId: string; nodeId: string; status: "matched" | "ambiguous" | "unmatched" | "unavailable" | "settling"; reqId?: number }
+export interface QuestionMatch {
+	surfaceId: string; nodeId: string;
+	status: "matched" | "ambiguous" | "unmatched" | "unavailable" | "settling" | "answering";
+	reqId?: number;
+	/** Diagnostic observation times from main's single monotonic clock. Never input authority. */
+	nodeFirstSeenMs?: number;
+	requestFirstSeenMs?: number;
+}
 const text = (value: string): string => value.trim().replace(/\s+/g, " ");
 const sameScope = (a: QuestionScope, b: QuestionScope): boolean => a.hostId === b.hostId && a.generation === b.generation && a.epoch === b.epoch;
 function questionText(value: TspText | undefined): string {
@@ -31,13 +38,15 @@ export function hookQuestions(surfaces: readonly (TspSurfaceSnapshot & { documen
 	for (const surface of surfaces) {
 		if (surface.closed || surface.suspended || (surface.documentGeneration !== undefined && surface.documentGeneration !== generation)) continue;
 		for (const node of walkNodes(surface.document)) {
-			if (!isHookDialog(node.p?.role)) continue;
+			if (!isHookNode(node)) continue;
 			const children = [...walkNodes(node)];
 			const picker = children.find(child => child.k === "picker" || child.k === "list");
 			const field = children.find(child => child.k === "editor" || child.k === "input");
-			const kind = node.p?.role === TSP_ROLES.hookSelect ? "select" : node.p?.role === TSP_ROLES.hookEditor ? "editor" : "local";
+			const kind = node.k === "picker" || node.p?.role === TSP_ROLES.hookSelect || node.p?.role === TSP_ROLES.hookConfirm ? "select" : node.p?.role === TSP_ROLES.hookEditor ? "editor" : "local";
 			const items = picker?.k === "picker" ? picker.p?.items : children.filter(child => child.k === "item").map(child => child.p!);
-			result.push({ surfaceId: surface.open.id, nodeId: node.id, kind, title: node.k === "overlay" ? questionText(node.p?.head) : "", options: items?.map(item => ({ label: questionText(item.label), ...(item.detail ? { description: questionText(item.detail) } : {}) })), field: field?.p?.text });
+			const titleNode = children.find(child => child.p?.role?.endsWith(".title") || child.p?.role?.endsWith(".eyebrow"));
+			const title = node.k === "overlay" ? questionText(node.p?.head) : node.k === "picker" ? node.p?.title ?? "" : "";
+			result.push({ surfaceId: surface.open.id, nodeId: node.id, kind, title: title || (titleNode?.k === "text" ? questionText(titleNode.p?.spans) : ""), options: items?.map(item => ({ label: questionText(item.label), ...(item.detail ? { description: questionText(item.detail) } : {}) })), field: field?.p?.text });
 		}
 	}
 	return result;
@@ -61,7 +70,7 @@ export function matchQuestions(scope: QuestionScope, state: CollabQuestionState 
 	return dialogs.map((dialog, index) => {
 		const matches = candidates[index]!;
 		if (!current) return { ...dialog, status: "unavailable" };
-		if (state.requests.length === 0) return { ...dialog, status: "unmatched" };
+		if (state.requests.length === 0) return { ...dialog, status: dialogs.filter(other => other.surfaceId === dialog.surfaceId && other.nodeId === dialog.nodeId).length === 1 ? "unmatched" : "ambiguous" };
 		const request = matches[0];
 		if (matches.length === 1 && candidates.filter(list => list.some(candidate => candidate.reqId === request!.reqId)).length === 1) return { ...dialog, status: "matched", reqId: request!.reqId };
 		return { ...dialog, status: "ambiguous" };
@@ -72,10 +81,16 @@ export function matchQuestions(scope: QuestionScope, state: CollabQuestionState 
 export class QuestionArbitrator {
 	#scope: QuestionScope | null = null;
 	#state: CollabQuestionState | null = null;
-	#bindings = new Map<string, { dialog: HookQuestion; reqId: number }>();
+	#bindings = new Map<string, { dialog: HookQuestion; reqId: number; requestFirstSeenMs: number }>();
+	#answering = new Set<string>();
+	#nodeFirstSeen = new Map<string, number>();
+	#requestFirstSeen = new Map<string, number>();
+	readonly #clock: () => number;
+	constructor(clock: () => number = () => performance.now()) { this.#clock = clock; }
 	reset(scope: QuestionScope): void {
 		if (this.#scope && sameScope(this.#scope, scope)) return;
-		this.#scope = scope; this.#state = null; this.#bindings.clear();
+		this.#scope = scope; this.#state = null; this.#bindings.clear(); this.#answering.clear();
+		this.#nodeFirstSeen.clear(); this.#requestFirstSeen.clear();
 	}
 	update(scope: QuestionScope, input: unknown): boolean {
 		this.reset(scope);
@@ -83,22 +98,46 @@ export class QuestionArbitrator {
 		if (!parsed.success || !sameScope(scope, parsed.data)) return false;
 		const state = parsed.data;
 		if (this.#state && state.revision <= this.#state.revision) return false;
-		if (!state.connected || this.#state?.connection !== state.connection) this.#bindings.clear();
+		const observedAt = this.#clock();
+		const requestKeys = new Set<string>();
+		for (const request of state.requests) {
+			const key = JSON.stringify([state.connection, request.reqId]);
+			requestKeys.add(key);
+			if (!this.#requestFirstSeen.has(key)) this.#requestFirstSeen.set(key, observedAt);
+		}
+		for (const key of this.#requestFirstSeen.keys()) if (!requestKeys.has(key)) this.#requestFirstSeen.delete(key);
 		this.#state = state;
 		return true;
+	}
+	/** Called synchronously at the serialized writer, after the final arbitration check. */
+	answer(scope: QuestionScope, dialogs: readonly HookQuestion[], surfaceId: string, nodeId: string): void {
+		const match = this.matches(scope, dialogs).find(match => match.surfaceId === surfaceId && match.nodeId === nodeId);
+		if (match?.status !== "unmatched") throw new Error(`TSP preview: This question cannot be answered here (${match?.status ?? "no longer available"}).`);
+		this.#answering.add(JSON.stringify([surfaceId, nodeId]));
 	}
 	matches(scope: QuestionScope, dialogs: readonly HookQuestion[]): QuestionMatch[] {
 		this.reset(scope);
 		const matches = matchQuestions(scope, this.#state, dialogs);
+		const observedAt = this.#clock();
+		const nodeKeys = new Set(dialogs.map(dialog => JSON.stringify([dialog.surfaceId, dialog.nodeId])));
+		for (const key of nodeKeys) if (!this.#nodeFirstSeen.has(key)) this.#nodeFirstSeen.set(key, observedAt);
+		for (const key of this.#nodeFirstSeen.keys()) if (!nodeKeys.has(key)) this.#nodeFirstSeen.delete(key);
+		for (const key of this.#answering) if (!dialogs.some(dialog => JSON.stringify([dialog.surfaceId, dialog.nodeId]) === key)) this.#answering.delete(key);
 		for (const [key, binding] of this.#bindings) {
-			if (!dialogs.some(dialog => dialog.surfaceId === binding.dialog.surfaceId && dialog.nodeId === binding.dialog.nodeId) && !this.#state?.requests.some(request => request.reqId === binding.reqId)) this.#bindings.delete(key);
+			if (this.#state?.connected && !dialogs.some(dialog => dialog.surfaceId === binding.dialog.surfaceId && dialog.nodeId === binding.dialog.nodeId) && !this.#state.requests.some(request => request.reqId === binding.reqId)) this.#bindings.delete(key);
 		}
 		return matches.map((match, index) => {
 			const key = JSON.stringify([match.surfaceId, match.nodeId]);
 			const prior = this.#bindings.get(key);
-			if (prior && !this.#state?.requests.some(request => request.reqId === prior.reqId)) return { surfaceId: match.surfaceId, nodeId: match.nodeId, status: "settling", reqId: prior.reqId };
-			if (match.status === "matched") this.#bindings.set(key, { dialog: dialogs[index]!, reqId: match.reqId! });
-			return match;
+			let result: QuestionMatch = match;
+			if (this.#answering.has(key)) result = { surfaceId: match.surfaceId, nodeId: match.nodeId, status: "answering" };
+			else if (prior && this.#state?.connected && !this.#state.requests.some(request => request.reqId === prior.reqId)) result = { surfaceId: match.surfaceId, nodeId: match.nodeId, status: "settling", reqId: prior.reqId };
+			if (result.status === "matched") {
+				const requestFirstSeenMs = prior && prior.reqId === result.reqId ? prior.requestFirstSeenMs : this.#requestFirstSeen.get(JSON.stringify([this.#state!.connection, result.reqId]))!;
+				this.#bindings.set(key, { dialog: dialogs[index]!, reqId: result.reqId!, requestFirstSeenMs });
+			}
+			const requestFirstSeenMs = result.reqId === undefined ? undefined : this.#bindings.get(key)?.requestFirstSeenMs;
+			return { ...result, nodeFirstSeenMs: this.#nodeFirstSeen.get(key)!, ...(requestFirstSeenMs === undefined ? {} : { requestFirstSeenMs }) };
 		});
 	}
 }

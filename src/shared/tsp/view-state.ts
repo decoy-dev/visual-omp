@@ -1,6 +1,6 @@
 import type { TspNode } from "../tsp";
 import type { TspSurfaceSnapshot } from "../tsp-host";
-import { isClaimed, isReplicatedRole, TSP_ROLES } from "./roles";
+import { isClaimed, isHookNode, isReplicatedRole, TSP_ROLES } from "./roles";
 
 export interface TspNodeTarget { surface: TspSurfaceSnapshot; node: TspNode }
 export type TspSurfaces = readonly TspSurfaceSnapshot[];
@@ -16,12 +16,15 @@ export function region(surface: TspSurfaceSnapshot, id: "main" | "dock" | "layer
 export function liveSurfaces(surfaces: TspSurfaces): TspSurfaceSnapshot[] {
 	return surfaces.filter(surface => !surface.closed && !surface.suspended);
 }
-/** The last visible layer node is omp's topmost overlay, including data-first pickers. */
+/** The top layer wins; hook forms may instead replace omp's dock composer. */
 export function openOverlay(surfaces: TspSurfaces): TspNodeTarget | null {
 	for (const surface of [...liveSurfaces(surfaces)].reverse()) {
 		const nodes = region(surface, "layer").filter(node => !node.p?.hidden && node.k !== "toast" && !isClaimed(node));
 		const node = nodes.at(-1);
 		if (node) return { surface, node };
+		let hook: TspNode | undefined;
+		for (const root of region(surface, "dock")) for (const candidate of walkNodes(root)) if (isHookNode(candidate)) hook = candidate;
+		if (hook) return { surface, node: hook };
 	}
 	return null;
 }

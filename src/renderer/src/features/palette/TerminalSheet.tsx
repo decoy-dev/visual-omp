@@ -4,6 +4,7 @@
  * resizes the hidden terminal and restores its previous size on close.
  */
 import { openOverlay, screenSurface } from "@shared/tsp/view-state";
+import { hookQuestions } from "@shared/tsp/question-match";
 import { ArrowCounterClockwise, ArrowsIn, ArrowsOut, TerminalWindow, Warning } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -124,6 +125,14 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 		if (!tsp && overlaysOpen() && !readOnly && view?.mode === "live") setConfirmLeave(true);
 		else close();
 	};
+	const escapeTsp = () => {
+		const hooks = hookQuestions(tspSurfaces, host?.generation ?? 0);
+		const localHook = hooks.length === 1 && snapshot?.questionMatches?.some(match =>
+			match.surfaceId === hooks[0]!.surfaceId && match.nodeId === hooks[0]!.nodeId && match.status === "unmatched");
+		if ((overlay || screenSurfaceOpen) && !readOnly && !snapshot?.closing && (!hooks.length || localHook) && typeof snapshot?.epoch === "number") {
+			void window.vomp.invoke("host:keys", host!.hostId, "escape", snapshot.generation, snapshot.epoch).catch(() => requestClose());
+		} else requestClose();
+	};
 	terminalSheet.requestClose = requestClose;
 	useEffect(
 		() => () => {
@@ -168,16 +177,14 @@ function TerminalSheet({ tabId, controller }: { tabId: string; controller: Sessi
 					if (!tsp || event.key !== "Escape" || event.defaultPrevented || insideAppPopup(event.target)) return;
 					event.preventDefault();
 					event.stopPropagation();
-					if ((overlay || screenSurfaceOpen) && !readOnly && typeof snapshot?.epoch === "number") void window.vomp.invoke("host:keys", host!.hostId, "escape", snapshot.generation, snapshot.epoch).catch(() => undefined);
-					else requestClose();
+					escapeTsp();
 				}}
 				onEscapeKeyDown={event => {
 					// Esc inside the mirror belongs to omp (the key handler decides); elsewhere it closes.
 					if (tsp && (event.defaultPrevented || insideAppPopup(event.target))) return;
 					event.preventDefault();
 					if (tsp) {
-						if ((overlay || screenSurfaceOpen) && !readOnly && typeof snapshot?.epoch === "number") void window.vomp.invoke("host:keys", host!.hostId, "escape", snapshot.generation, snapshot.epoch).catch(() => undefined);
-						else requestClose();
+						escapeTsp();
 					} else if (!(event.target instanceof Element && event.target.closest(".xterm"))) requestClose();
 				}}
 				onOpenAutoFocus={event => {

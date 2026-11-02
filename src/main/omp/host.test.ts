@@ -672,7 +672,7 @@ describe("opt-in semantic transport", () => {
 		await expect(host.tspEvent(1, { ev: "ack", sf: "s:1", s: 99 })).rejects.toThrow("main-owned");
 	});
 
-	it("mirrors scoped pending collab questions without enabling a hook answer path", async () => {
+	it("keeps matched collab questions read-only through both event and answer routes", async () => {
 		await launchTsp();
 		tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] });
 		tspComposer();
@@ -684,7 +684,8 @@ describe("opt-in semantic transport", () => {
 		const writesBeforeMirror = pty.writes.mock.calls.length;
 		host.tspQuestions(state);
 		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "matched", reqId: 4 }]);
-		await expect(host.tspEvent(1, { ev: "activate", sf: "s:1", id: "pick", item: "yes" }, epoch)).rejects.toThrow("read-only");
+		await expect(host.tspEvent(1, { ev: "activate", sf: "s:1", id: "pick", item: "yes" }, epoch)).rejects.toThrow("guarded question");
+		await expect(host.tspAnswer(1, { kind: "choose", sf: "s:1", id: "hook", target: "pick", item: "yes" }, epoch)).rejects.toThrow("matched");
 		host.tspQuestions({ ...state, epoch: epoch - 1, revision: 2, requests: [] });
 		expect(host.tspSnapshot()?.questionMatches?.[0]?.status).toBe("matched");
 		host.tspQuestions({ ...state, revision: 2, requests: [] });
@@ -711,6 +712,65 @@ describe("opt-in semantic transport", () => {
 		host.tspQuestions({ ...state, requests: [{ reqId: 4, kind: "editor", title: "Question", prefill: "", answer: "yes", value: "yes", ev: "send", sf: "s:1", id: "editor" }] });
 		expect(host.tspSnapshot()?.revision).toBe(initial.revision + 1);
 		expect(pty.writes).toHaveBeenCalledTimes(writesBeforeMirror);
+	});
+	it.each(["select", "confirm", "input", "editor"] as const)("answers an unmatched %s through the application writer and waits for node departure", async kind => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		const text = kind === "input" || kind === "editor";
+		const node = { id: "hook", k: "overlay", p: { role: `omp.overlay.hook-${kind}`, head: "Local question" }, c: text
+			? [{ id: "field", k: kind, p: { text: "seed" } }, { id: "submit", k: "text", p: { text: "Submit", actions: { click: "submit" } } }]
+			: [{ id: "pick", k: "picker", p: { items: [{ id: "yes", label: "Yes" }, { id: "no", label: "No" }] } }] };
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "hook", "s:1", null, node]] });
+		host.tspQuestions({ hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [] });
+		const answer = text ? { kind: "text", sf: "s:1", id: "hook", target: "field", text: "Answer", len: 4 } : { kind: "choose", sf: "s:1", id: "hook", target: "pick", item: "yes" };
+		await host.tspAnswer(1, answer, epoch);
+		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "answering" }]);
+		await expect(host.tspAnswer(1, answer, epoch)).rejects.toThrow("answering");
+		const output = pty.writes.mock.calls.map(([bytes]) => String(bytes)).join("");
+		expect(output).toContain(text ? '"ev":"edit"' : '"ev":"activate"');
+		if (text) expect(output).toContain('"id":"submit","act":"submit"');
+		tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "hook"]] });
+		expect(host.tspSnapshot()?.questionMatches).toEqual([]);
+	});
+
+	it("refuses unavailable, ambiguous, stale and missing hook answers without answer bytes", async () => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "hook", "s:1", null, { id: "hook", k: "overlay", p: { role: "omp.overlay.hook-select", head: "Choose" }, c: [{ id: "pick", k: "picker", p: { items: [{ id: "yes", label: "Yes" }] } }] }]] });
+		const answer = { kind: "choose", sf: "s:1", id: "hook", target: "pick", item: "yes" };
+		await expect(host.tspAnswer(1, answer, epoch)).rejects.toThrow("unavailable");
+		const state = { hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [{ reqId: 4, kind: "select", title: "Other", options: ["No"] }] };
+		host.tspQuestions(state);
+		await expect(host.tspAnswer(1, answer, epoch)).rejects.toThrow("ambiguous");
+		host.tspQuestions({ ...state, revision: 2, requests: [] });
+		await expect(host.tspAnswer(0, answer, epoch)).rejects.toThrow("session changed");
+		await expect(host.tspAnswer(1, answer, epoch - 1)).rejects.toThrow("restarted");
+		for (const key of ["enter", "\r", "x"]) await expect(host.keys(key, 1, epoch)).rejects.toThrow("Raw keys");
+		tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "hook"]] });
+		await expect(host.tspAnswer(1, answer, epoch)).rejects.toThrow("node is no longer available");
+		expect(pty.writes.mock.calls.some(([bytes]) => /"ev":"(?:activate|edit|action)"/.test(String(bytes)))).toBe(false);
+	});
+	it("rechecks a newly matched question after a local answer enters the application queue", async () => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "hook", "s:1", null, { id: "hook", k: "overlay", p: { role: "omp.overlay.hook-select", head: "Choose" }, c: [{ id: "pick", k: "picker", p: { items: [{ id: "yes", label: "Yes" }] } }] }]] });
+		const state = { hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [] };
+		host.tspQuestions(state);
+		const queued = host.tspAnswer(1, { kind: "choose", sf: "s:1", id: "hook", target: "pick", item: "yes" }, epoch);
+		const rejected = expect(queued).rejects.toThrow("matched");
+		host.tspQuestions({ ...state, revision: 2, requests: [{ reqId: 4, kind: "select", title: "Choose", options: ["Yes"] }] });
+		await rejected;
+		await expect(host.keys("escape", 1, epoch)).rejects.toThrow("matched");
+		expect(pty.writes.mock.calls.some(([bytes]) => /"ev":"(?:activate|edit|action)"/.test(String(bytes)))).toBe(false);
+	});
+	it("cancels an unmatched hook with its declared close action instead of raw Escape", async () => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "hook", "s:1", null, { id: "hook", k: "picker", p: { title: "Choose", noun: "options", layout: "rows", items: [{ id: "0", label: "Yes" }], actions: [{ id: "confirm", label: "Select" }, { id: "close", label: "Cancel" }] } }]] });
+		host.tspQuestions({ hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [] });
+		await host.keys("escape", 1, epoch);
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"id":"hook","act":"close"'));
+		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "answering" }]);
 	});
 
 	it("ignores the opt-in flag on Windows and logs a single explanation", async () => {
@@ -923,6 +983,30 @@ describe("opt-in semantic transport", () => {
 		await exit(0); await stopping;
 		expect(pty.kill).not.toHaveBeenCalled();
 	});
+	it.each(["matched", "ambiguous", "unavailable", "answering"].flatMap(status => ["layer", "dock"].map(place => ({ status, place }))))("never writes shutdown Escape for a $status hook in $place", async ({ status, place }) => {
+		await launchTsp("darwin", true);
+		tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		const editor = place === "dock";
+		const hook = editor
+			? { id: "hook", k: "col", p: { role: "omp.overlay.hook-editor" }, c: [{ id: "title", k: "text", p: { role: "omp.hook-editor.title", spans: [{ t: "Choose" }] } }, { id: "field", k: "editor", p: { text: "seed" } }, { id: "submit", k: "text", p: { text: "Submit", actions: { click: "submit" } } }] }
+			: { id: "hook", k: "overlay", p: { role: "omp.overlay.hook-select", head: "Choose" }, c: [{ id: "pick", k: "picker", p: { items: [{ id: "yes", label: "Yes" }] } }] };
+		tspMessage("f", { sf: "s:1", s: 2, ops: place === "layer" ? [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [hook] }]] : [["add", "hook", "dock", null, hook]] });
+		const request = editor ? { reqId: 4, kind: "editor", title: "Choose", prefill: "seed" } : { reqId: 4, kind: "select", title: "Choose", options: ["Yes"] };
+		if (status !== "unavailable") host.tspQuestions({ hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: status === "answering" ? [] : [{ ...request, title: status === "ambiguous" ? "Other" : "Choose" }] });
+		if (status === "answering") await host.tspAnswer(1, editor ? { kind: "text", sf: "s:1", id: "hook", target: "field", len: 4, text: "Answer" } : { kind: "choose", sf: "s:1", id: "hook", target: "pick", item: "yes" }, epoch);
+		expect(host.tspSnapshot()?.questionMatches?.[0]?.status).toBe(status);
+		await host.tspEvent(1, { ev: "visible", sf: "s:1", visible: true }, epoch); pty.writes.mockClear();
+		const stopping = host.stop();
+		expect(host.tspSnapshot()).toMatchObject({ closing: true, availability: { available: false, reason: "This chat is closing." } });
+		await expect(host.tspAnswer(1, { kind: "cancel", sf: "s:1", id: "hook" }, epoch)).rejects.toThrow("closing");
+		await vi.advanceTimersByTimeAsync(4200);
+		expect(pty.writes).not.toHaveBeenCalledWith("\x1b");
+		expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining('"text":"/exit"'));
+		expect(pty.confirm).toHaveBeenCalledOnce();
+		expect(pty.kill).not.toHaveBeenCalled();
+		pty.exit?.({ exitCode: 0 }); await vi.advanceTimersByTimeAsync(100); await stopping;
+	});
 
 	it.each(["toast", "surface"])("acknowledges shutdown from a semantic %s before the short grace expires", async acknowledgement => {
 		await launchTsp("darwin", true);
@@ -940,24 +1024,26 @@ describe("opt-in semantic transport", () => {
 		expect(pty.kill).not.toHaveBeenCalled();
 	});
 
-	it("blocks hook answers from sibling raw-key fallbacks and queued semantic events, while allowing Escape", async () => {
+	it("blocks sibling raw keys and queued semantic events, and arbitrates Escape before cancellation", async () => {
 		await launchTsp();
 		tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] });
 		tspComposer(); await connect();
 		const epoch = host.tspSnapshot()!.epoch;
 		const queued = host.tspEvent(1, { ev: "action", sf: "s:1", id: "editor", act: "submit" }, epoch);
-		const refused = expect(queued).rejects.toThrow("read-only");
+		const refused = expect(queued).rejects.toThrow("guarded question");
 		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [
 			{ id: "hook", k: "overlay", p: { role: "omp.overlay.hook-input" }, c: [{ id: "field", k: "input", p: { text: "", sendable: true } }] },
 			{ id: "fallback", k: "rows", p: { lines: ["Extension fallback"] } },
 		] }]] });
 		await refused;
-		for (const keys of ["\r", "\x1b[200~answer\x1b[201~\r", "yes"]) await expect(host.keys(keys, 1, epoch)).rejects.toThrow("read-only");
+		for (const keys of ["\r", "\x1b[200~answer\x1b[201~\r", "yes"]) await expect(host.keys(keys, 1, epoch)).rejects.toThrow("Raw keys");
 		for (const event of [
 			{ ev: "send", sf: "s:1", id: "field", text: "answer" },
 			{ ev: "action", sf: "s:1", id: "fallback", act: "submit" },
 			{ ev: "edit", sf: "s:1", id: "field", from: 0, to: 0, len: 0, cursor: 1, text: "x" },
-		]) await expect(host.tspEvent(1, event, epoch)).rejects.toThrow("read-only");
+		]) await expect(host.tspEvent(1, event, epoch)).rejects.toThrow("guarded question");
+		await expect(host.keys("escape", 1, epoch)).rejects.toThrow("unavailable");
+		host.tspQuestions({ hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [] });
 		await host.keys("escape", 1, epoch);
 		expect(pty.writes).toHaveBeenCalledWith("\x1b");
 		expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining('"act":"submit"'));

@@ -2,7 +2,8 @@ import { z } from "zod";
 import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, type TspEvent, type TspFrame, type TspOpen } from "../../../shared/tsp";
 import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspSurfaceSnapshot } from "../../../shared/tsp-host";
 import { composer, liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
-import { isHookDialog } from "../../../shared/tsp/roles";
+import { isHookNode } from "../../../shared/tsp/roles";
+import { hookAnswerEvents, TspHookAnswer } from "../../../shared/tsp/dialogs";
 import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";
 import type { TspMessage } from "./stream";
@@ -46,8 +47,8 @@ export class TspInputStateError extends Error {}
 
 /**
  * omp owns document content and submission semantics. The app applies its semantic documents
- * and validates renderer interaction at the serialized writer. Hook dialogs remain display-only
- * until collab question arbitration is implemented. No blobs or aside layout are advertised.
+ * and validates renderer interaction at the serialized writer. Hook answers require a separate
+ * host-owned arbitration transaction. No blobs or aside layout are advertised.
  * Each applied surface frame returns a cumulative ack, coalesced while the writer is occupied.
  */
 export class TspSession {
@@ -177,7 +178,7 @@ export class TspSession {
 			assertCurrent?.();
 			if (epoch !== this.#epoch) throw new TspInputStateError("TSP preview: The semantic screen restarted.");
 			if (["send", "edit", "undo"].includes(event.ev) && !this.#programFeatures.has(event.ev)) throw new Error(`TSP preview: omp does not accept ${event.ev} events.`);
-			if (event.ev !== "visible" && this.hasReadOnlyHook()) throw new TspInputStateError("TSP preview: This question is read-only in this preview. If it also appears in chat, answer it there.");
+			if (event.ev !== "visible" && this.hasHookDialog()) throw new TspInputStateError("TSP preview: This question requires the guarded question answer controls.");
 			const surface = this.#surfaces.get(event.sf);
 			if (!surface || surface.closed || surface.doc.suspended) throw new TspInputStateError("TSP preview: The target surface is no longer available.");
 			if ("id" in event) {
@@ -192,6 +193,24 @@ export class TspSession {
 		});
 	}
 
+	/** A complete local hook answer is one writer operation, with no yield between edit and submit. */
+	answerHook(input: unknown, assertCurrent: (surfaceId: string, nodeId: string) => void): Promise<void> {
+		const parsed = TspHookAnswer.safeParse(input);
+		if (!parsed.success) return Promise.reject(new TspInputStateError("TSP preview: Invalid question answer."));
+		const answer = parsed.data;
+		const epoch = this.#epoch;
+		return this.#enqueue(() => {
+			if (!this.#negotiated || epoch !== this.#epoch) throw new TspInputStateError("TSP preview: The semantic screen restarted.");
+			const surface = this.#surfaces.get(answer.sf);
+			if (!surface || surface.closed || surface.doc.suspended) throw new TspInputStateError("TSP preview: The target surface is no longer available.");
+			const node = surface.doc.get(answer.id);
+			if (!node) throw new TspInputStateError("TSP preview: The question node is no longer available.");
+			const events = hookAnswerEvents(node, answer);
+			if (events.some(event => event.ev === "edit") && !this.#programFeatures.has("edit")) throw new TspInputStateError("TSP preview: omp does not accept edit events.");
+			assertCurrent(answer.sf, answer.id);
+			return this.#write(events.length ? events.map(event => encodeTspJson("e", event)).join("") : "\x1b");
+		});
+	}
 	/** Atomic text submission to omp's main composer, preserving its displaced-draft semantics. */
 	submit(text: string, assertCurrent?: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
 		if (!text.trim() || /^[!$]/.test(text.trimStart())) return Promise.reject(new Error(TSP_PREVIEW_UNAVAILABLE));
@@ -217,8 +236,8 @@ export class TspSession {
 		return { available: true, reason: null };
 	}
 
-	hasReadOnlyHook(): boolean {
-		return liveSurfaces(this.snapshot().surfaces).some(surface => [...walkNodes(surface.document)].some(node => isHookDialog(node.p?.role)));
+	hasHookDialog(): boolean {
+		return liveSurfaces(this.snapshot().surfaces).some(surface => [...walkNodes(surface.document)].some(isHookNode));
 	}
 
 	/** Ordinary terminal reports share the protocol queue, so DA1 never overtakes hello. */

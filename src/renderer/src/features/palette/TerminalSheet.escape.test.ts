@@ -3,6 +3,10 @@ import { act, createElement, type PropsWithChildren, type ReactNode } from "reac
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionController, SessionView } from "../../state/session";
+import type { TspHostSnapshot } from "@shared/tsp-host";
+import type { TspNode } from "@shared/tsp";
+import type { QuestionMatch } from "@shared/tsp/question-match";
+import { TSP_ROLES } from "@shared/tsp/roles";
 import type * as SheetModule from "../../ui/Sheet";
 import type * as ButtonModule from "../../ui/Button";
 import type * as OmpScreenModule from "../tsp/OmpScreenSheet";
@@ -126,4 +130,39 @@ it("lets a nested shared Select consume Escape before a later Escape dismisses o
 	await act(async () => document.querySelector('[role="region"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
 	expect(fake.invoke).toHaveBeenCalledWith("host:keys", "host", "escape", 1, 4);
 	expect(fake.invoke.mock.calls.filter(call => call[0] === "host:keys")).toHaveLength(1);
+});
+function hookSnapshot(status: QuestionMatch["status"] | "closing", place: "layer" | "dock"): TspHostSnapshot {
+	const hook: TspNode = place === "dock"
+		? { id: "hook", k: "col", p: { role: TSP_ROLES.hookInput }, c: [{ id: "field", k: "input", p: { text: "" } }] }
+		: { id: "hook", k: "overlay", p: { role: TSP_ROLES.hookSelect, head: "Choose" }, c: [{ id: "pick", k: "picker", p: { items: [{ id: "yes", label: "Yes" }], query: null } }] };
+	return { hostId: "host", generation: 1, epoch: 4, revision: 1, negotiated: true, closing: status === "closing", lifecycle: "live", documentGeneration: 1, availability: { available: false, reason: "Question" }, failure: null, questionMatches: [{ surfaceId: "s:1", nodeId: "hook", status: status === "closing" ? "unmatched" : status }], surfaces: [{ open: { id: "s:1", mode: "inline" }, documentGeneration: 1, sequence: 1, closed: false, suspended: false, focus: null, settled: [], document: { id: "s:1", k: "col", c: [{ id: place, k: "col", c: [hook] }] } }] };
+}
+it.each((["matched", "ambiguous", "unavailable", "settling", "answering", "closing"] as const).flatMap(status => (["layer", "dock"] as const).map(place => ({ status, place }))))("closes a $status hook sheet in $place on Escape without writing to omp", async ({ status, place }) => {
+	const snapshot = hookSnapshot(status, place);
+	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
+	await act(async () => root.render(sheetTree()));
+	await act(async () => document.querySelector('[role="region"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+	expect(fake.closeTerminal).toHaveBeenCalledOnce(); expect(fake.keys).not.toHaveBeenCalled();
+	expect(fake.invoke.mock.calls.some(call => call[0] === "host:keys" || call[0] === "host:tsp-answer")).toBe(false);
+	await act(async () => root.render(sheetTree()));
+	expect(document.querySelector('[role="dialog"]')).toBeNull();
+});
+it.each(["layer", "dock"] as const)("keeps guarded Escape cancellation for an unmatched hook in %s", async place => {
+	const snapshot = hookSnapshot("unmatched", place);
+	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
+	await act(async () => root.render(sheetTree()));
+	await act(async () => document.querySelector('[role="region"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+	expect(fake.invoke).toHaveBeenCalledWith("host:keys", "host", "escape", 1, 4);
+	expect(fake.invoke.mock.calls.filter(call => call[0] === "host:keys")).toHaveLength(1);
+	expect(fake.closeTerminal).not.toHaveBeenCalled();
+});
+it("closes the sheet when a mirrored request wins while an unmatched Escape is queued", async () => {
+	const snapshot = hookSnapshot("unmatched", "layer");
+	fake.invoke.mockImplementation(async (channel: string) => {
+		if (channel === "host:tsp-snapshot") return snapshot;
+		if (channel === "host:keys") throw new Error("TSP preview: This question cannot be answered here (matched).");
+	});
+	await act(async () => root.render(sheetTree()));
+	await act(async () => document.querySelector('[role="region"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+	expect(fake.closeTerminal).toHaveBeenCalledOnce();
 });

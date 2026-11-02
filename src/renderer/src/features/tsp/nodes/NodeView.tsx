@@ -1,6 +1,7 @@
 import type { TspKind, TspNode } from "@shared/tsp";
 import type { TerminalColors } from "@shared/contracts/native";
-import { isHookDialog, isKnownAction, isKnownRole, TSP_ACTIONS } from "@shared/tsp/roles";
+import { isHookNode, isKnownAction, isKnownRole, TSP_ACTIONS } from "@shared/tsp/roles";
+import { HookDialog } from "../interactive/HookDialog";
 import { CheckCircle, Circle, File, Image, Info, Warning } from "@phosphor-icons/react";
 import { lazy, Suspense, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -48,7 +49,9 @@ function Fallback({ node, context }: NodeProps) {
 		return () => { live = false; off(); };
 	}, [context.hostId]);
 	const props = node.p as Record<string, unknown> | undefined;
-	const text = node.k === "rows" ? node.p?.lines.join("\n") ?? "" : node.k === "ansi" ? node.p?.text ?? "" : JSON.stringify(props ?? {}, null, 2);
+	const content = props?.text ?? props?.spans ?? props?.label ?? props?.title ?? props?.head;
+	const readable = typeof content === "string" ? content : Array.isArray(content) ? content.flatMap(span => span && typeof span === "object" && "t" in span && typeof span.t === "string" ? [span.t] : []).join("") : "";
+	const text = node.k === "rows" ? node.p?.lines.join("\n") ?? "" : node.k === "ansi" ? node.p?.text ?? "" : readable || t("tsp.unsupportedKind", { kind: node.k });
 	return <div className="space-y-2"><pre tabIndex={0} aria-label={node.p?.aria ?? t("tsp.rawOutput")} style={{ color: palette?.foreground, backgroundColor: palette?.background }} className="overflow-auto whitespace-pre-wrap break-words rounded-sm bg-inset p-card font-mono text-code" onFocus={() => { if (!context.readOnly) context.send({ ev: "focus", sf: context.sf, id: node.id }); }} onKeyDown={event => { if (context.readOnly) return; const key = rawKey(event); if (key) { event.preventDefault(); event.stopPropagation(); context.keys(key); } }} onPaste={event => { if (!context.readOnly) { event.preventDefault(); context.keys(event.clipboardData.getData("text")); } }}>{ansiRuns(text, palette?.ansi).map((run, i) => <span key={i} style={run.style}>{run.text}</span>)}</pre>{node.c?.map(child => context.render(child))}</div>;
 }
 function Body({ node, context }: NodeProps) {
@@ -93,22 +96,23 @@ function Body({ node, context }: NodeProps) {
 	}
 }
 export function NodeView({ node, context }: NodeProps) {
-	const { t } = useTranslation("palette");
+	// HookDialog supplies a scoped context on the recursive render.
 	if (node.p?.hidden) return null;
-	if (!isKnownRole(node.p?.role)) { warnOnce(`role:${node.p?.role}`); return <Fallback node={node} context={context} />; }
-	const hook = isHookDialog(node.p?.role);
-	const readOnly = context.readOnly || hook;
+	if (!isKnownRole(node.p?.role)) warnOnce(`role:${node.p?.role}`);
+	const hook = isHookNode(node);
+	if (hook && context.hook?.id !== node.id) return <HookDialog node={node} context={context} />;
 	const role = node.p?.role ?? context.role;
-	const childContext: NodeContext = { ...context, role, readOnly, render: (child, ro = readOnly) => <NodeView key={child.id} node={child} context={{ ...context, role, readOnly: ro }} /> };
 	const actions = node.p?.actions;
-	const click = !Array.isArray(actions) ? actions?.click : undefined;
 	const unknownAction = Array.isArray(actions)
 		? actions.find(action => !isKnownAction(action.id))?.id
 		: [actions?.click, actions?.dblclick, ...(actions?.menu ?? [])].find(action => action && !isKnownAction(action));
-	if (unknownAction) { warnOnce(`action:${unknownAction}`); return <Fallback node={node} context={childContext} />; }
+	if (unknownAction) warnOnce(`action:${unknownAction}`);
+	const readOnly = context.readOnly || !!unknownAction;
+	const childContext: NodeContext = { ...context, role, readOnly, render: (child, ro = readOnly) => <NodeView key={child.id} node={child} context={{ ...context, role, readOnly: ro }} /> };
+	const click = !unknownAction && !Array.isArray(actions) ? actions?.click : undefined;
 	const content = <Body node={node} context={childContext} />;
 	const actionable = click && !["list", "picker", "tree", "item", "tool", "agent", "json"].includes(node.k);
-	return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0">{hook && <p role="note" className="mb-card rounded-sm bg-inset p-3 text-sm text-fg-muted">{t("tsp.hookReadOnly")}</p>}{actionable ? <Button variant="secondary" disabled={readOnly} onClick={() => {
+	return <div data-tsp-kind={node.k} data-tsp-id={node.id} className="min-w-0">{actionable ? <Button variant="secondary" disabled={readOnly} onClick={() => {
 		if (click === TSP_ACTIONS.copy) void navigator.clipboard.writeText(copyText(node));
 		else if (click === "toggle") context.send({ ev: "toggle", sf: context.sf, id: node.id, collapsed: node.k === "card" || node.k === "section" ? !node.p?.collapsed : true });
 		else context.send({ ev: "action", sf: context.sf, id: node.id, act: click });

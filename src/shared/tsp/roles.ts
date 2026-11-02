@@ -8,9 +8,10 @@ export const TSP_ROLES = {
 	tree: "omp.overlay.tree", treeSelector: "omp.overlay.tree-selector", btwHistory: "omp.overlay.btwHistory",
 	hookSelect: "omp.overlay.hook-select", hookConfirm: "omp.overlay.hook-confirm", hookInput: "omp.overlay.hook-input", hookEditor: "omp.overlay.hook-editor",
 } as const;
+const hookPartPrefixes = ["omp.hook-input", "omp.hook-editor"] as const;
 export const TSP_ACTIONS = {
 	submit: "submit", cancel: "cancel", page: "page", scope: "scope", tab: "tab", strip: "strip",
-	confirm: "confirm", close: "close", assign: "assign", switch: "switch", summarize: "summarize",
+	confirm: "confirm", close: "close", yes: "yes", no: "no", assign: "assign", switch: "switch", summarize: "summarize",
 	label: "label", labelSave: "label-save", filter: "filter", clear: "clear", copy: "copy",
 	context: "status.context", cost: "status.cost", model: "status.model", path: "status.path",
 } as const;
@@ -32,12 +33,16 @@ export function isReplicatedRole(role?: string): boolean {
 }
 export function isClaimed(node: TspNode): boolean { return !!node.p?.role && Object.hasOwn(TSP_CLAIMS, node.p.role); }
 export function isHookDialog(role?: string): boolean { return !!role && role.startsWith("omp.overlay.hook-"); }
+/** omp 18.14's ordinary hook selector drops its role when picker support is advertised. */
+export function isHookNode(node: TspNode): boolean {
+	if (isHookDialog(node.p?.role)) return true;
+	return node.k === "picker" && !node.p?.role && node.p?.noun === "options" && node.p.layout === "rows"
+		&& node.p.actions?.length === 2 && node.p.actions.some(action => action.id === TSP_ACTIONS.confirm)
+		&& node.p.actions.some(action => action.id === TSP_ACTIONS.close);
+}
 /** Select commits in omp's tree selector, so pointer selection must stay local. */
 export function selectionCommits(role?: string, layout?: string): boolean {
 	return role === TSP_ROLES.tree || role === TSP_ROLES.treeSelector || layout === "tree";
-}
-export function roleInteraction(role?: string): "display-only" | "interactive" {
-	return isHookDialog(role) ? "display-only" : "interactive";
 }
 /** Baseline roles recorded from omp 18.14.0. Unknown additions stay readable. */
 const knownRoles: ReadonlySet<string> = new Set([
@@ -53,5 +58,5 @@ const knownRoles: ReadonlySet<string> = new Set([
 	"omp.status", "omp.status.context_pct", "omp.status.model", "omp.status.path", "omp.status.pi",
 ]);
 export function isKnownRole(role?: string): boolean {
-	return !role || knownRoles.has(role) || isReplicatedRole(role) || isHookDialog(role);
+	return !role || knownRoles.has(role) || isReplicatedRole(role) || isHookDialog(role) || hookPartPrefixes.some(prefix => role === prefix || role.startsWith(`${prefix}.`));
 }
