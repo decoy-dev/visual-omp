@@ -182,8 +182,27 @@ or screen-mode surface also blocks submission. Main publishes availability and a
 app composer shows that reason beside its unavailable send control. The writer checks availability
 again before sending. omp retains displaced drafts through its own send semantics. Attachments,
 application pastes, Ctrl+Q follow-up submission, shell/Python modes and prediction transfer remain
-unavailable in this preview. Screen-driven feature controls remain disabled until their TSP
-consumers are implemented. Expected refusals do not become persistent chat errors.
+unavailable in this preview. Unconverted screen-driven controls still require semantic consumers.
+Tree navigation, thinking changes and advisor application explicitly refuse TSP before mutation.
+Their UI affordances and the shared screen poller still need cutover. Expected refusals do not
+become persistent chat errors.
+
+Pass-through slash commands use the same semantic submission path for immediate and queued delivery.
+Their readiness checks main's published send availability and document-owned overlays or screen
+surfaces. A per-command document subscription holds the queue while omp owns the editor, then
+releases it when the main editor is available again or a turn starts. Host exit, room generation
+changes and protocol epochs end the old hold. An unchanged sendable editor settles after 600 ms,
+allowing omp to publish a command's overlay after submission. Unrelated updates do not restart this
+timer. It releases input ownership without asserting command success or answer completion.
+Readiness waits up to eight seconds for a sendable editor and preserves main's refusal reason.
+An editor-back hold also ends if its initial snapshot is unavailable. OverlayWatcher opens the omp screen;
+UI-only command feedback uses the existing transcript notices without painted-screen scraping or
+duplicate command-result rows. Direct TSP slash lines sent through the session controller also use
+slash delivery, so commands without a collab user entry or turn never enter message acknowledgement.
+The generic command runner returns no painted output for TSP; command-specific result parsing
+remains part of Phase 4e.
+Security commands leave success/error reporting to notices for TSP, and cleanse leaves semantic
+screen opening to OverlayWatcher.
 
 TSP shutdown uses the existing native stages and exit records. It sends Escape for an open omp
 overlay or screen only when no live hook node exists, waits for the main editor to become

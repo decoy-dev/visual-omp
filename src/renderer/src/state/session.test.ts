@@ -355,6 +355,31 @@ describe("SessionController TSP preview input", () => {
 		return session;
 	};
 
+	it.each(["send", "steer"] as const)("routes a direct TSP slash from %s through slash delivery without awaiting a collab turn", async method => {
+		const calls = fakeDelivery();
+		const session = preview(false);
+		const sending = session[method]("/extension-ui-only");
+		await flush();
+		expect(calls.map(call => call.line)).toEqual(["/extension-ui-only"]);
+		expect(invoked).toEqual([]);
+		await session.send("after the command");
+		expect(queued(session)).toEqual(["after the command"]);
+		calls[0]!.done();
+		await sending;
+		await flush();
+		expect(invoked).toEqual([submit("after the command")]);
+		expect(queued(session)).toEqual([]);
+	});
+
+	it("returns a failed direct TSP slash to its caller without also adding it to the queue", async () => {
+		setSlashDelivery(async () => { throw new Error("omp owns the editor"); });
+		const session = preview(false);
+		await expect(session.send("/extension-ui-only")).rejects.toThrow("omp owns the editor");
+		expect(queued(session)).toEqual([]);
+		expect(session.busy).toBe(false);
+		expect(invoked).toEqual([]);
+	});
+
 	it.each([false, true])("rejects image, image-only and shell input before paste or queue mutation (busy: %s)", async busy => {
 		const session = preview(busy);
 		for (const [text, images] of [["look", [shot]], ["", [shot]], ["!pwd", []], ["!!pwd", []], ["$ print(1)", []], ["$$ print(1)", []]] as const) {

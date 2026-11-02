@@ -915,6 +915,10 @@ export class SessionController {
 			ack = await this.#write(async () => {
 				if (this.#view.strandedImages) throw new StrandedImagesError();
 				this.#assertPreviewInput(item.text, item.images);
+				if (this.#view.host?.transport === "tsp" && item.images.length === 0 && item.text.startsWith("/")) {
+					// A slash handler must be registered before this preview can deliver commands.
+					throw new Error(TSP_PREVIEW_UNAVAILABLE);
+				}
 				const hostId = this.hostId;
 				if (!hostId) throw new Error("omp is not running");
 				const before: Acknowledgement = {
@@ -956,6 +960,12 @@ export class SessionController {
 	 * reason, and the caller gets the message back.
 	 */
 	async #deliverDirect(message: { text: string; images: readonly Attachment[] }): Promise<void> {
+		if (this.#view.host?.transport === "tsp" && message.images.length === 0 && message.text.startsWith("/")) {
+			// UI-only commands have no collab user entry or turn acknowledgement.
+			if (!slashDelivery) throw new Error(TSP_PREVIEW_UNAVAILABLE);
+			await this.#deliverSlash({ id: `q${nextQueueId++}`, ...message }, 0, false, false);
+			return;
+		}
 		try {
 			await this.#deliverMessage(message);
 		} catch (error) {
@@ -1053,14 +1063,14 @@ export class SessionController {
 	 * the queue and the promise rejects. A command that starts no turn never brings a working→idle edge, so
 	 * the queue continues when the delivery is done.
 	 */
-	async #deliverSlash(item: QueuedMessage, index: number, report: boolean): Promise<void> {
+	async #deliverSlash(item: QueuedMessage, index: number, report: boolean, requeue = true): Promise<void> {
 		if (!slashDelivery) return;
 		this.#slashDeliveries++;
 		try {
 			await slashDelivery(this, item.text, { report });
 		} catch (error) {
 			this.#slashDeliveries--;
-			this.#requeue(item, index);
+			if (requeue) this.#requeue(item, index);
 			throw error;
 		}
 		this.#slashDeliveries--;

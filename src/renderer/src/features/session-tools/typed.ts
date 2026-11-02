@@ -8,13 +8,15 @@
  *
  * One watch per chat: typing the next command ends the previous watch first (keeping what it printed
  * unless its spinner still shows), so two commands typed close together never share output.
+ * TSP hosts instead watch document readiness and input ownership. OverlayWatcher opens their semantic
+ * screen, and transcript notices carry feedback without scraping or a second result row.
  */
 import { displayedEntries } from "../../chat/branch";
 import { liveGuest, type SessionController, setSlashDelivery } from "../../state/session";
 import { useApp } from "../../state/app";
 import { isNativeOverlay } from "../palette/overlays";
 import { autoOpened } from "../palette/TerminalSheet";
-import { OmpBusyError, readScreen, readyEditor, reportFailure, sleep } from "./drive";
+import { OmpBusyError, readScreen, readyEditor, reportFailure, sleep, TspEditorWatch } from "./drive";
 import { addCommandResult, drawsRow, linesTone, presentLines, roomKey, startWatch, supersededResult, WATCH, watchStep } from "./results";
 import { parseStatusLine } from "./screen";
 import { parseSlash, routeSlash } from "./slash";
@@ -50,6 +52,12 @@ function closeAutoSheet(session: SessionController): void {
  * few polls in a row. Also resolves when omp stops or the chat moves to another omp.
  */
 async function editorBack(session: SessionController): Promise<void> {
+	if (session.getSnapshot().host?.transport === "tsp") {
+		const watch = new TspEditorWatch(session);
+		try { await watch.back(); }
+		finally { watch.dispose(); }
+		return;
+	}
 	const hostId = session.hostId;
 	let streak = 0;
 	while (streak < WATCH.replacedPolls) {
@@ -146,6 +154,26 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 		.catch(() => undefined)
 		.then(async () => {
 			await readyEditor(session);
+			if (session.getSnapshot().host?.transport === "tsp") {
+				const watch = new TspEditorWatch(session);
+				try {
+					await watch.ready();
+					watches.get(session)?.supersede();
+					const entry = { supersede: () => watch.dispose() };
+					watches.set(session, entry);
+					const timestamp = Date.now();
+					await session.command(line);
+					if (!watch.ended) session.recordInput(line, timestamp);
+					const watching = watch.watch().finally(() => {
+						if (watches.get(session) === entry) watches.delete(session);
+						watch.dispose();
+					});
+					return { watching };
+				} catch (error) {
+					watch.dispose();
+					throw error;
+				}
+			}
 			// The previous command's output belongs to it: end its watch before reading the screen this one is compared to.
 			watches.get(session)?.supersede();
 			const before = await readScreen(session);

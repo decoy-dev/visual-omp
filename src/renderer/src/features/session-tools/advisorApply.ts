@@ -1,4 +1,5 @@
 import type { AdvisorFile, AdvisorScope } from "@shared/contracts/advisor";
+import { TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import type { SessionController } from "../../state/session";
 import { press, readScreen, runCommand, sleep, waitForScreen } from "./drive";
 
@@ -8,6 +9,10 @@ export function isAdvisorConfigure(lines: readonly string[]): boolean {
 
 /** Uses omp's own save callback to rediscover and apply the persisted roster without toggling advisor enablement. */
 export async function applyAdvisorConfig(session: SessionController, scope: AdvisorScope): Promise<AdvisorFile> {
+	if (session.getSnapshot().host?.transport === "tsp") throw new Error(TSP_PREVIEW_UNAVAILABLE);
+	const host = session.getSnapshot().host;
+	if (!host || host.phase === "exited") await session.whenLive();
+	if (session.getSnapshot().host?.transport === "tsp") throw new Error(TSP_PREVIEW_UNAVAILABLE);
 	const token = await window.vomp.invoke("advisor:beginApply", session.projectPath, scope);
 	let finalized = false;
 	const select = async (phrase: string) => {

@@ -8,6 +8,7 @@
  * the app moves it into its own composer instead), picking anything else continues from there.
  * `/branch` (rewind selector) ends in the same `navigateTree` call, so one path serves both.
  */
+import { TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import { i18n } from "../../i18n";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import { useApp } from "../../state/app";
@@ -60,8 +61,10 @@ export interface NavigateResult {
  * then offers omp's own screen).
  */
 export async function navigateTo(session: SessionController, entryId: string): Promise<NavigateResult> {
+	if (session.getSnapshot().host?.transport === "tsp") throw new NavigationError(TSP_PREVIEW_UNAVAILABLE);
 	if (session.getSnapshot().working) throw new NavigationError(i18n.t("session:navigate.busy"));
 	await readyEditor(session);
+	if (session.getSnapshot().host?.transport === "tsp") throw new NavigationError(TSP_PREVIEW_UNAVAILABLE);
 	const tree = await loadTree(session);
 	const entry = tree.entries.get(entryId);
 	if (!entry) throw new NavigationError(i18n.t("session:navigate.missing"));

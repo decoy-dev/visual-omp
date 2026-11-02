@@ -8,6 +8,7 @@
  *   until omp shows the chosen level. In Auto, omp paints the level it resolved for the latest turn,
  *   so Auto itself is read from the selector omp records in `thinking_level_change` entries.
  */
+import { TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { useEffect, useState } from "react";
 import type { ModelInfo } from "@shared/contracts/config";
@@ -117,11 +118,14 @@ export async function switchModel(session: SessionController, model: ModelInfo):
 /** Set the thinking level by cycling Shift+Tab until the status line shows it. */
 export async function setThinking(session: SessionController, target: ThinkingLevel, choices: readonly ThinkingLevel[]): Promise<boolean> {
 	try {
+		if (session.getSnapshot().host?.transport === "tsp") throw new Error(TSP_PREVIEW_UNAVAILABLE);
 		const read = (screen: readonly string[]) => {
 			const snapshot = session.getSnapshot();
 			return configuredThinking(snapshot.guest?.autoThinking, displayedEntries(snapshot), parseStatusLine(screen)?.thinking ?? null);
 		};
-		let current = read(await readyEditor(session));
+		const screen = await readyEditor(session);
+		if (session.getSnapshot().host?.transport === "tsp") throw new Error(TSP_PREVIEW_UNAVAILABLE);
+		let current = read(screen);
 		if (current === null) throw new OmpBusyError();
 		// One jump by the computed distance, then single steps in case omp's list differs from ours.
 		const from = choices.indexOf(current);

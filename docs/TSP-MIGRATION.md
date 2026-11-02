@@ -219,6 +219,11 @@ Recorded startup and usage warnings plus synthetic documents cover deferred snap
 displayed-branch anchoring, replacement, parent-chain custom-message suppression, event
 suppression, epoch/room reset and literal notice rendering. These checks do not establish identity
 for a delayed collab notice event after a turn change. The remaining Phase 2 criteria gate the preview.
+Pass-through slash delivery now uses main's semantic send availability, TSP submission and document
+subscriptions for immediate and queued commands. Overlay and screen ownership holds the queue;
+editor readiness, turn start, host exit, room generation changes and epoch changes release the
+command watch. UI-only feedback uses the existing notice projection. Synthetic renderer tests
+cover these paths without `host:screen`; live extension and overlay workflows remain part of the gate.
 
 Unmatched hook dialogs can now be answered from the omp screen. Main accepts a complete
 `host:tsp-answer` transaction only with a connected mirror in the current host, protocol epoch
@@ -243,7 +248,7 @@ gate the complete Phase 2 preview. The native hook card in Phase 4a remains sepa
 ### 2.0 Minimum readiness, input and close
 
 - **Readiness.** Extends Phase 1: `composer(doc)` returns the live editor with `p.sendable === true`, and Phase 2 adds blocking while an overlay or `screen` surface is open. The composer's send control shows that availability and its reason.
-- **Send.** Phase 1's plain-text `send` path is unchanged; Phase 2 adds the overlay and screen blocking above and the UI availability state. Follow-up, images and queue behavior stay disabled until Phase 3.
+- **Send.** Phase 1's plain-text `send` path is unchanged; Phase 2 adds overlay and screen blocking above and the UI availability state. Pass-through slash commands use the same `send` path, including application-queued commands, with document-backed queue holds. Follow-up, images and omp editor queue restoration remain Phase 3 work.
 - **Escape and overlays.** Escape on the omp screen uses the guarded local answer transaction for a unique unmatched hook dialog, preferring its declared cancel/close action. Matched and uncertain hooks refuse it. Other overlays retain `\x1b`; the protocol has no universal overlay close event ([`docs/architecture/tsp-migration.md:205-206`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L205-L206)).
 - **Stop.** Collab `abort`, unchanged.
 - **Close and quit.** Closing a chat or quitting uses the existing shutdown stages. On a TSP host, `/exit` is sent with `send` once the editor is sendable. Shutdown may first dismiss a non-hook overlay with Escape, but never writes raw Escape while any live hook exists. Its existing deadline and native force-stop decision remain available for an unresolved hook. Acknowledgment is the `omp.toast.status` "Closing session…" node, the addressed surface closing, or process exit, combined with the native shutdown stage and exit records. During application-driven shutdown, hook controls are unavailable with "This chat is closing."; interactive exit questions remain Phase 4b work. An unmatched question opened by typing `/exit` while the chat is still live remains answerable. Quit while working keeps the confirmations in `docs/SPEC.md` (Lifecycle).
@@ -433,6 +438,7 @@ Record (Rule 5): `slash-overlays` (`/jobs`, `/usage`, `/session`, `/hotkeys`, `/
 ### 4j. Overlay watching, queue holds and slash watches (A6, A7)
 
 - `OverlayWatcher.tsx` and `overlays.ts` use `openOverlay` and claims for TSP hosts; `typed.ts` screen watches use 4e outcomes; queue holds in `state/session.ts` use Phase 3 facts.
+- **Implementation status.** Immediate and queued pass-through slash commands, `readyEditor`, `editorBack` and the generic command runner use TSP availability and document subscriptions for TSP hosts. Readiness waits for the editor with an eight-second bound; an unavailable initial snapshot ends an editor-back hold. A continuously available editor releases the queue after 600 ms, without asserting command success; unrelated updates do not restart that timer. The watch does not scrape feedback; 2.2 projects notices. Direct controller slash sends use slash delivery instead of waiting for a message acknowledgement. The watch releases on host exit, room rotation or a new epoch. Unconverted navigation, thinking and advisor application APIs refuse TSP before mutation. Command-specific result parsing remains 4e work, and UI affordances, the screen poller and unconverted feature adapters still require cutover before this step's full acceptance criterion passes.
 - **Acceptance.** Replay: no TSP code path calls `host:screen`, `host:buffer` or debug `tree`/`text` polling, and the TSP host never starts the 1-second or 450 ms poll.
 
 **Phase 4 gate to Phase 7.** Every step's replay and live criteria pass, the owner signs off each converted card, and a scripted session shows zero screen reads for TSP chats.

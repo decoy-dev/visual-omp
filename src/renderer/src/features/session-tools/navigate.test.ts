@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import type { SessionController } from "../../state/session";
-import { loadTree } from "./navigate";
+import { loadTree, navigateTo } from "./navigate";
 vi.mock("../../state/app", () => ({ controllerFor: vi.fn(), useApp: {} }));
 vi.mock("../../chat/composer/drafts", () => ({ useComposerDrafts: {} }));
 vi.mock("./drive", () => ({ OmpBusyError: class extends Error {}, press: vi.fn(), readScreen: vi.fn(), readyEditor: vi.fn(), sleep: vi.fn(), waitForScreen: vi.fn() }));
@@ -25,4 +26,12 @@ describe("loadTree physical identity", () => {
 		const session = { sessionFile: "/project/original.jsonl", getSnapshot: () => ({ host: null, displayLeaf: null }) } as unknown as SessionController;
 		expect((await loadTree(session)).entries.has("sibling-only")).toBe(true);
 	});
+});
+
+it("refuses TSP navigation before reading a tree or opening its classic selector", async () => {
+	const command = vi.fn();
+	const session = { getSnapshot: () => ({ host: { transport: "tsp" }, working: false }), command } as unknown as SessionController;
+	await expect(navigateTo(session, "entry")).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
+	expect(command).not.toHaveBeenCalled();
+	expect(invoke).not.toHaveBeenCalled();
 });
