@@ -1,5 +1,4 @@
 import type { ModelInfo } from "@shared/contracts/config";
-import { TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import type { SessionEntry, WireModel } from "@oh-my-pi/pi-wire";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { displayedEntries } from "../../chat/branch";
@@ -195,13 +194,4 @@ describe("setThinking", () => {
 		expect(selected).toBe("low");
 	});
 
-	it("refuses TSP thinking changes before reading the screen or pressing keys", async () => {
-		const keys = vi.fn();
-		const whenLive = vi.fn();
-		const session = { getSnapshot: () => ({ host: { transport: "tsp" } }), keys, whenLive } as unknown as SessionController;
-		await expect(setThinking(session, "low", choices)).resolves.toBe(false);
-		expect(keys).not.toHaveBeenCalled();
-		expect(whenLive).not.toHaveBeenCalled();
-		expect(toast).toHaveBeenCalledWith({ tone: "err", message: TSP_PREVIEW_UNAVAILABLE });
-	});
 });

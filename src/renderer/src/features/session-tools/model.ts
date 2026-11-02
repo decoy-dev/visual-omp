@@ -7,8 +7,9 @@
  *   `/switch model:level` it does not reset the provider session (prompt cache), so the app presses it
  *   until omp shows the chosen level. In Auto, omp paints the level it resolved for the latest turn,
  *   so Auto itself is read from the selector omp records in `thinking_level_change` entries.
+ * TSP hosts instead activate omp's session model picker and read the effort node's configured
+ * level, sending thinking.cycle actions without keys or painted-screen reads.
  */
-import { TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { useEffect, useState } from "react";
 import type { ModelInfo } from "@shared/contracts/config";
@@ -19,6 +20,7 @@ import type { SessionController } from "../../state/session";
 import { OmpBusyError, press, readyEditor, reportFailure, waitForScreen } from "./drive";
 import { parseStatusLine, THINKING_LEVELS, type ThinkingLevel } from "./screen";
 import { screenPoller } from "./status";
+import { refuseApproval, setThinkingSemantic, switchModelSemantic } from "./modelTsp";
 
 const modelCache = new Map<string, Promise<ModelInfo[]>>();
 // A sign-in or sign-out changes which models omp lists; the picker reloads the next time it opens.
@@ -87,9 +89,17 @@ export async function switchModel(session: SessionController, model: ModelInfo):
 		return current?.provider === model.provider && current.id === model.id;
 	};
 	try {
-		await readyEditor(session);
+		await session.whenLive();
+		const tsp = session.getSnapshot().host?.transport === "tsp";
+		if (tsp) refuseApproval(session);
 		const tokens = session.getSnapshot().guest?.state?.contextUsage?.tokens ?? 0;
 		const overContext = model.contextWindow !== null && model.contextWindow > 0 && tokens > model.contextWindow;
+		if (tsp) {
+			if (await switchModelSemantic(session, model)) return true;
+			toast({ tone: "warn", message: i18n.t(overContext ? "session:model.notConfirmedLong" : "session:model.notConfirmedTsp", { name: model.name }) });
+			return false;
+		}
+		await readyEditor(session);
 		await session.command(`/switch ${model.selector}`);
 		if (!switched()) {
 			const { promise, resolve } = Promise.withResolvers<void>();
@@ -118,13 +128,16 @@ export async function switchModel(session: SessionController, model: ModelInfo):
 /** Set the thinking level by cycling Shift+Tab until the status line shows it. */
 export async function setThinking(session: SessionController, target: ThinkingLevel, choices: readonly ThinkingLevel[]): Promise<boolean> {
 	try {
-		if (session.getSnapshot().host?.transport === "tsp") throw new Error(TSP_PREVIEW_UNAVAILABLE);
+		if (session.getSnapshot().host?.transport === "tsp") {
+			await session.whenLive();
+			return await setThinkingSemantic(session, target);
+		}
 		const read = (screen: readonly string[]) => {
 			const snapshot = session.getSnapshot();
 			return configuredThinking(snapshot.guest?.autoThinking, displayedEntries(snapshot), parseStatusLine(screen)?.thinking ?? null);
 		};
 		const screen = await readyEditor(session);
-		if (session.getSnapshot().host?.transport === "tsp") throw new Error(TSP_PREVIEW_UNAVAILABLE);
+		if (session.getSnapshot().host?.transport === "tsp") return await setThinkingSemantic(session, target);
 		let current = read(screen);
 		if (current === null) throw new OmpBusyError();
 		// One jump by the computed distance, then single steps in case omp's list differs from ours.

@@ -53,6 +53,10 @@
     "switched": "Switched this chat to {{name}}.",
     "notConfirmed": "omp didn't confirm the switch to {{name}}. Open the terminal sheet to see what omp shows.",
     "notConfirmedLong": "omp hasn't confirmed the switch to {{name}} yet. This chat is longer than that model's context window, so omp may be compacting it first.",
+    "notConfirmedTsp": "omp didn't confirm the switch to {{name}}. Open the omp screen to see what omp shows.",
+    "approvalPending": "Answer the approval card before changing the model or thinking level.",
+    "sessionChanged": "The chat changed before omp confirmed the change. Try again.",
+    "unavailable": "omp cannot use this model for the current chat.",
     "vision": "Reads images",
     "contextWindow": "Context window: {{size}}",
     "reasoning": "Supports thinking levels"
@@ -62,6 +66,8 @@
     "unsupported": "This model has no thinking levels.",
     "aria": "Thinking level: {{level}}",
     "failed": "omp could not switch to that thinking level.",
+    "unsupportedLevel": "This model does not offer the {{level}} thinking level.",
+    "unavailable": "omp has no thinking control for the current model.",
     "levels": {
       "off": { "label": "Off", "description": "Answers without extra reasoning." },
       "auto": { "label": "Auto", "description": "omp sets the effort for each request." },

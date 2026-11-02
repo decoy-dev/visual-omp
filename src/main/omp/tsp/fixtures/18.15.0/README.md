@@ -1,8 +1,25 @@
-# omp 18.15.0 no-model recordings
+# omp 18.15.0 semantic recordings
 
 These fixtures were recorded on macOS arm64 on 2026-11-02 from the standalone executable `/tmp/omp-18.15/omp-darwin-arm64`, reporting `omp/18.15.0`. The matching upstream release is tag `v18.15.0`, commit `3fedf8d53267e32a6d7521ce725fdcc4a36fdc67` of [oh-my-pi](https://github.com/can1357/oh-my-pi/tree/3fedf8d53267e32a6d7521ce725fdcc4a36fdc67). The version was checked; the executable was not independently reproduced from that commit.
 
 All 37 scenarios from the previous 18.14.0 baseline were re-recorded. `btw-history` replaces the earlier standalone byte capture. `startup-missing-resume` adds a pre-TUI failure, bringing the baseline to 39 recordings. The old baseline and byte capture are removed.
+
+Phase 4d adds `model-switch`, `thinking-cycle`, `switch-typed`, `model-switch-compact` and
+`model-switch-compact-error`, bringing the baseline to 44 recordings. The first three configure two scratch-only OpenAI-compatible
+models (`fixture/fixture-large`, 128K context, and `fixture/fixture-small`, 32K context) at
+`http://127.0.0.1:1/v1`, with a public placeholder key. No server or model request is needed.
+They start on the large model with thinking Off. Switching uses omp's session-only picker or
+`/switch`; thinking records the complete Off, Auto, Minimal, Low, Medium, High, Extra high,
+Off cycle. These captures do not establish collab identity or compaction behavior; consumer
+tests inject collab identity separately.
+
+The two compaction scenarios use the Phase 3 scripted loopback provider with the same model
+definitions. The recorder seeds eight user/assistant pairs with repeated public fixture text and
+40,100 reported context tokens, then selects the 32K model. The success capture makes three
+summary requests, emits the `omp.working` row with a progress child, replaces old context with
+an `omp.compaction` section and confirms the new semantic model label. The failure capture
+makes two requests that receive scripted HTTP 400 errors, emits `omp.notice.error` and retains
+the large model. No external provider is contacted. Both captures restore the composer and exit.
 
 ## Capture format
 
@@ -13,6 +30,7 @@ Each scenario has five files:
 - `<scenario>.messages.jsonl` contains messages decoded from the sanitized bytes by `TspStream`.
 - `<scenario>.events.jsonl` contains the app's emitted replies and events. A `keys` record identifies raw Escape or Enter. `afterMessage` records the number of program messages received before that input, so replays can check the addressed live document.
 - `<scenario>.integrity.json` contains the sanitized byte length, carriage-return count and SHA-256 digest before storage. Git stores fixture `.bin` files as binary, preserving CR bytes across checkout. JSON delimiters remain LF; stringification escapes embedded CR values.
+- Scripted-provider scenarios also include `<scenario>.provider.json`, containing sanitized request bodies from that isolated loopback server.
 
 The recorder uses `TspSession`, including its hello, cumulative acknowledgments and semantic submission. It advertises 45 kinds, including `button`, an empty terminal feature list, two credits, 110 columns, light appearance and reduced motion. Completed scenarios restore the composer and submit `/exit`. Open-only scenarios stop the child after draining its output; omp emits a retained close without a closing toast or answer. The timeout event file is empty because that scenario deliberately sends no reply.
 
@@ -20,7 +38,7 @@ The recorder uses `TspSession`, including its hello, cumulative acknowledgments 
 
 ## Isolation and sanitization
 
-Every scenario uses a fresh HOME, USERPROFILE, XDG config and cache roots, `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR`, session directory and temporary directory. Only PATH is inherited. No credentials, API keys, provider configuration or owner profile is inherited. Discovery of extensions, skills, rules, context files, LSP and title loading is disabled. Hook and custom-row scenarios explicitly load `../extension/vomp-fixture.mjs` through `-e`, with discovery still disabled. No provider request or model turn occurs. The credential-free model picker can list local and web providers without invoking them.
+Every scenario uses a fresh HOME, USERPROFILE, XDG config and cache roots, `PI_CODING_AGENT_DIR`, `PI_CONFIG_DIR`, session directory and temporary directory. Only PATH is inherited. No credentials, API keys, provider configuration or owner profile is inherited. Discovery of extensions, skills, rules, context files, LSP and title loading is disabled. Hook and custom-row scenarios explicitly load `../extension/vomp-fixture.mjs` through `-e`, with discovery still disabled. Only the two compaction scenarios make model requests, through the isolated scripted provider described above. The credential-free model picker can list local and web providers without invoking them.
 
 `TERM_PROGRAM=tern` enables TSP; `PI_TUI_NATIVE` is omitted. Scratch configuration disables setup, update and changelog checks, marketplace updates, autocomplete, recaps, predictions, automatic graphs and startup worktrees; exit worktrees are kept. Scratch profiles are removed after each recording.
 
@@ -37,6 +55,11 @@ The sanitizer replaces OSC 7 hosts with `localhost` and private home and tempora
 | changelog | `/changelog` opens `omp.overlay.report` with Recent Changes. |
 | tools | `/tools` opens `omp.overlay.report` with Available Tools. |
 | model-picker | `/model` opens a roleless data-first picker in `layer`; no model is selected. |
+| model-switch | `status.model` on the composer opens the session-only model picker; activating `fixture/fixture-small` closes it and updates the semantic model label. |
+| thinking-cycle | Seven `thinking.cycle` actions update the effort node through a complete cycle back to Off. |
+| switch-typed | Semantic `/switch fixture/fixture-small` updates the model without opening a picker. |
+| model-switch-compact | Selecting the 32K model from a seeded 40K conversation closes the picker, compacts through the scripted provider, emits a summary section and changes the model. |
+| model-switch-compact-error | The same switch receives scripted compaction errors and retains the original model. |
 | settings-screen | `/settings` opens a second `omp.session` surface in screen mode with a `prefs` node; no settings change. |
 | btw-history | `/btw` opens empty `omp.overlay.btwHistory`, then Escape restores the composer. No side question is submitted. |
 | exit | Semantic `/exit` emits the closing toast and retained close. |

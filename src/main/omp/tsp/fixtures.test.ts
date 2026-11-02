@@ -10,10 +10,10 @@ import { decodedOscPayloads } from "./sanitize-fixture";
 const hookScenarios = ["hook-select", "hook-input", "hook-editor", "hook-confirm", "extension-rows"]
 	.flatMap(name => [`${name}-open`, name, `${name}-cancel`]);
 const scenarios = ["hotkeys", "jobs", "usage", "session", "changelog", "tools", "model-picker", "settings-screen", "extensions", "import-claude", "startup-no-model", "notice-error", "exit", "exit-with-overlay", "restart", "new", "resume", "sibling-continuation", "hook-collab-aware", ...hookScenarios, "tree-open", "tree-confirm"];
-scenarios.push("btw-history");
+scenarios.push("btw-history", "model-switch", "thinking-cycle", "switch-typed", "model-switch-compact", "model-switch-compact-error");
 const fixture = (name: string, extension: string) => readFileSync(new URL(`./fixtures/18.15.0/${name}.${extension}`, import.meta.url));
 
-describe("omp 18.15.0 no-model recordings", () => {
+describe("omp 18.15.0 semantic recordings", () => {
 	it("records missing resume as a pre-TUI failure without a hello, journal or emitted input", () => {
 		const raw = fixture("startup-missing-resume", "raw.bin");
 		expect(raw.toString()).toContain('Error: Session "/tmp/vomp-fixture/missing-session.jsonl" not found.');
@@ -27,7 +27,6 @@ describe("omp 18.15.0 no-model recordings", () => {
 		}
 		for (const extension of ["jsonl", "messages.jsonl", "events.jsonl"]) expect(fixture("startup-missing-resume", extension).toString().trim()).toBe("");
 	});
-
 	it.each(scenarios)("replays %s without rejected operations and retains exact decoded messages", async name => {
 		const errors: Error[] = [];
 		const messages: object[] = [];

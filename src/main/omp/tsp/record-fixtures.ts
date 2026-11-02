@@ -1,20 +1,21 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
 import { spawn, type IPty } from "node-pty";
 import type { TspEvent, TspNode } from "../../../shared/tsp";
 import { openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
-import { TSP_ROLES } from "../../../shared/tsp/roles";
+import { TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
 import { TspSession } from "./session";
 import { TspStream } from "./stream";
 import { encodeTspJson } from "./encode";
 import { sanitizeFixtureBytes } from "./sanitize-fixture";
 
 // Bundle beside node_modules with Bun (target node, node-pty external), then run with Node.
-// No inherited configuration, provider credentials or model turns.
+// No inherited configuration or provider credentials. Model turns use the isolated scripted provider.
 const bin = process.env.OMP_BIN;
 if (!bin) throw new Error("Set OMP_BIN to the omp 18.15.0 executable.");
 if (process.platform !== "darwin" && process.platform !== "linux") throw new Error("Fixture recording is supported only on macOS and Linux.");
@@ -30,7 +31,56 @@ const destination = resolve(process.env.VOMP_TSP_FIXTURE_DIR ?? "src/main/omp/ts
 const extension = resolve("src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs");
 await mkdir(destination, { recursive: true });
 const config = "startup:\n  setupWizard: false\n  checkUpdate: false\n  changelogMode: hidden\n  quiet: true\nmarketplace:\n  autoUpdate: off\nworktree:\n  onStart: off\n  onExit: keep\ntui:\n  autoGraph: never\nautocomplete:\n  enabled: false\nrecap:\n  enabled: false\ncomposer:\n  predictions: false\n";
-type Scenario = { name: string; command: string | null; hook?: "select" | "input" | "editor" | "confirm" | "rows"; end?: "open" | "submit" | "cancel" };
+type ScriptedReply = { text?: string; tool?: { name: string; arguments: object }; delayMs?: number; gate?: string; error?: string };
+type Scenario = { name: string; command: string | null; hook?: "select" | "input" | "editor" | "confirm" | "rows"; end?: "open" | "submit" | "cancel"; script?: ScriptedReply[] };
+
+/** Shared recorder mechanism from Phase 3; optional models allow session-switch compaction probes. */
+async function scriptedProvider(script: ScriptedReply[], agent: string, models?: object[]) {
+  const requests: object[] = [];
+  const gates = new Map<string, PromiseWithResolvers<void>>();
+  const released = new Set<string>();
+  const release = (name: string) => { released.add(name); gates.get(name)?.resolve(); };
+  const server = createServer(async (request, response) => {
+    try {
+      if (request.url !== "/v1/chat/completions" || request.method !== "POST") { response.writeHead(404).end(); return; }
+      const parts: Buffer[] = [];
+      for await (const part of request) parts.push(Buffer.from(part));
+      const body = JSON.parse(Buffer.concat(parts).toString("utf8"));
+      const index = requests.length;
+      requests.push(body);
+      const reply = script[index];
+      if (!reply) { response.writeHead(500).end(`No scripted response for request ${index + 1}`); return; }
+      if (reply.gate && !released.has(reply.gate)) {
+        const gate = gates.get(reply.gate) ?? Promise.withResolvers<void>();
+        gates.set(reply.gate, gate);
+        await gate.promise;
+      }
+      if (reply.delayMs) await sleep(reply.delayMs);
+      if (reply.error) {
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: { message: reply.error, type: "invalid_request_error", code: "invalid_request_error" } }));
+        return;
+      }
+      const delta = reply.tool
+        ? { role: "assistant", tool_calls: [{ index: 0, id: `fixture-tool-${index}`, type: "function", function: { name: reply.tool.name, arguments: JSON.stringify(reply.tool.arguments) } }] }
+        : { role: "assistant", content: reply.text ?? "Fixture response." };
+      const chunk = (delta: object, finish_reason: string | null) => `data: ${JSON.stringify({ id: `fixture-${index}`, object: "chat.completion.chunk", created: 1, model: "fixture-model", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.end(chunk(delta, null) + chunk({}, reply.tool ? "tool_calls" : "stop") + "data: [DONE]\n\n");
+    } catch (error) { response.writeHead(500).end(String(error)); }
+  });
+  const listening = Promise.withResolvers<void>();
+  server.listen(0, "127.0.0.1", listening.resolve);
+  await listening.promise;
+  const address = server.address();
+  if (!address || typeof address === "string") throw new Error("Missing loopback provider port");
+  await writeFile(join(agent, "models.yml"), JSON.stringify({ providers: { fixture: {
+    baseUrl: `http://127.0.0.1:${address.port}/v1`, apiKey: "local-fixture-only", api: "openai-completions",
+    models: models ?? [{ id: "fixture-model", name: "Local scripted fixture", reasoning: true, input: ["text", "image"],
+      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128000, maxTokens: 4096 }],
+  } } }));
+  return { requests, release, stop: () => { for (const gate of gates.values()) gate.resolve(); server.closeAllConnections(); server.close(); } };
+}
 const scenarios: Scenario[] = [
   ...[
     ["hotkeys", "/hotkeys"], ["jobs", "/jobs"], ["usage", "/usage"], ["session", "/session"],
@@ -52,6 +102,11 @@ const scenarios: Scenario[] = [
   { name: "tree-confirm", command: "/tree", end: "submit" },
   { name: "hook-collab-aware", command: "/vomp-fixture-select", hook: "select", end: "open" },
   { name: "handshake-timeout", command: null, end: "open" },
+  { name: "model-switch", command: null },
+  { name: "thinking-cycle", command: null },
+  { name: "switch-typed", command: "/switch fixture/fixture-small" },
+  { name: "model-switch-compact", command: null, script: Array.from({ length: 16 }, () => ({ text: "## Summary\nThe fixture conversation contains repeated context paragraphs. Preserve the numbered fixture segments and continue the local model-switch test.", delayMs: 1000 })) },
+  { name: "model-switch-compact-error", command: null, script: Array.from({ length: 16 }, () => ({ error: "Fixture compaction request failed", delayMs: 1000 })) },
 ];
 for (const scenario of scenarios) {
   const { name, hook, end } = scenario;
@@ -61,7 +116,18 @@ for (const scenario of scenarios) {
   const root = await mkdtemp(join("/tmp", "vomp-tsp-record-"));
   const home = join(root, "home"); const agent = join(root, "agent");
   await Promise.all([mkdir(home), mkdir(agent)]);
-  await writeFile(join(agent, "config.yml"), config);
+  const compactSwitch = name.startsWith("model-switch-compact");
+  await writeFile(join(agent, "config.yml"), config + (compactSwitch ? "compaction:\n  asyncEnabled: false\n  keepRecentTokens: 4096\n" : ""));
+  const modelControls = ["model-switch", "thinking-cycle", "switch-typed"].includes(name) || compactSwitch;
+  const controlModels = ["large", "small"].map(size => ({ id: `fixture-${size}`, name: `Fixture ${size}`, reasoning: true,
+    input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+    contextWindow: size === "large" ? 128000 : 32000, maxTokens: 4096 }));
+  const provider = scenario.script ? await scriptedProvider(scenario.script, agent, controlModels) : undefined;
+  if (modelControls && !provider) {
+    await writeFile(join(agent, "models.yml"), JSON.stringify({ providers: { fixture: {
+      baseUrl: "http://127.0.0.1:1/v1", apiKey: "fixture-local-only", api: "openai-completions", models: controlModels,
+    } } }));
+  }
   const journal = join(root, "journal.jsonl");
   const missingResume = name === "startup-missing-resume";
   // A pre-TUI failure never creates a TSP journal.
@@ -87,6 +153,21 @@ for (const scenario of scenarios) {
     if (data.includes(Buffer.from("\x1b[6n"))) session.terminalReply("\x1b[1;1R");
   } });
   const args = ["--no-extensions", "--no-skills", "--no-rules", "--no-context-files", "--no-lsp", "--no-title", "--session-dir", join(root, "sessions")];
+  if (modelControls) args.push("--model", "fixture/fixture-large", "--thinking", "off");
+  if (compactSwitch) {
+    const timestamp = "2026-11-02T00:00:00.000Z";
+    const seed: object[] = [{ type: "session", version: 3, id: "6aaca402-6694-4a08-8f2b-87be2501ed59", timestamp, cwd: root, title: "Fixture model compaction", titleSource: "manual" }];
+    let parentId: string | null = null;
+    for (let turn = 0; turn < 8; turn++) {
+      const userId = `u${turn}`; const assistantId = `a${turn}`;
+      seed.push({ type: "message", id: userId, parentId, timestamp, message: { role: "user", content: `Fixture context segment ${turn}. ` + "Keep this numbered context paragraph available for the switch compaction fixture. ".repeat(500), timestamp: 1793577600000 } });
+      seed.push({ type: "message", id: assistantId, parentId: userId, timestamp, message: { role: "assistant", content: [{ type: "text", text: `Fixture answer ${turn}.` }], api: "openai-completions", provider: "fixture", model: "fixture-large", usage: { input: 40000, output: 100, cacheRead: 0, cacheWrite: 0, totalTokens: 40100, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } }, stopReason: "stop", timestamp: 1793577600000 } });
+      parentId = assistantId;
+    }
+    const sessionFile = join(root, "compact-session.jsonl");
+    await writeFile(sessionFile, seed.map(entry => JSON.stringify(entry)).join("\n") + "\n");
+    args.push("--session", sessionFile);
+  }
   if (hook || name === "extensions") args.push("-e", extension);
   if (missingResume) args.push("--resume", join(root, "missing-session.jsonl"));
   if (name === "tree-open" || name === "tree-confirm" || name === "resume" || name === "sibling-continuation") {
@@ -157,6 +238,37 @@ for (const scenario of scenarios) {
     } else if (name === "handshake-timeout") {
       await until(() => classicFallback && messages.some(message => "verb" in message && message.verb === "x") && session.snapshot().surfaces.length === 0, "unconfirmed semantic screen did not fall back to classic rows");
     } else await until(() => session.availability().available, "composer did not become ready");
+    if (name === "model-switch" || compactSwitch) {
+      const target = find(node => node.p?.role === TSP_ROLES.composerModel)!;
+      send({ ev: "action", sf: target.surface.open.id, id: target.node.id, act: TSP_ACTIONS.model });
+      await until(() => !!find(node => node.k === "picker" && !!node.p?.items?.some(item => item.id === "fixture/fixture-small")), "session model picker did not open");
+      const picker = find(node => node.k === "picker" && !!node.p?.items?.some(item => item.id === "fixture/fixture-small"))!;
+      send({ ev: "activate", sf: picker.surface.open.id, id: picker.node.id, item: "fixture/fixture-small" });
+      if (compactSwitch) {
+        await until(() => provider!.requests.length > 0 || !!find(node => node.p?.role === TSP_ROLES.compaction), "model switch compaction did not start");
+        await until(() => provider!.requests.length > 0, "compaction provider request missing");
+        if (name.endsWith("-error")) await until(() => !!find(node => node.p?.role === TSP_ROLES.noticeError), "compaction error missing");
+        else await until(() => !!find(node => node.k === "toast" && node.p?.text?.includes("Session-only model: fixture/fixture-small") === true), "compacted model switch did not complete");
+      }
+      await until(() => session.availability().available && !find(node => node.id === picker.node.id), "model switch did not restore composer");
+    }
+    if (name === "thinking-cycle") {
+      const level = () => {
+        const target = find(node => node.k === "effort")?.node;
+        return target?.k === "effort" ? target : undefined;
+      };
+      const start = level();
+      if (!start || start.k !== "effort") throw new Error("Missing thinking effort");
+      const initial = start.p?.level;
+      for (let step = 0; step < 10; step++) {
+        const before = level();
+        const target = find(node => node.p?.actions?.click === TSP_ACTIONS.thinkingCycle)!;
+        send({ ev: "action", sf: target.surface.open.id, id: target.node.id, act: TSP_ACTIONS.thinkingCycle });
+        await until(() => level()?.p?.level !== before?.p?.level, "thinking effort did not change");
+        if (level()?.p?.level === initial) break;
+        if (step === 9) throw new Error("Thinking cycle did not wrap");
+      }
+    }
     if (name === "sibling-continuation") {
       const ownerSession = new TspSession({ cols: 110, dark: false, reduceMotion: true, write: data => owner!.write(data) });
       const ownerStream = new TspStream({ onMessage: message => ownerSession.receive(message), onData: data => {
@@ -243,9 +355,11 @@ for (const scenario of scenarios) {
       writeFile(join(destination, `${name}.messages.jsonl`), safeMessages.map(message => JSON.stringify(message)).join("\n") + "\n"),
       readFile(journal).then(bytes => writeFile(join(destination, `${name}.jsonl`), sanitizeFixtureBytes(bytes))),
     ]);
+    if (provider) await writeFile(join(destination, `${name}.provider.json`), sanitizeFixtureBytes(Buffer.from(JSON.stringify(provider.requests, null, 2) + "\n")));
     console.log(`Recorded ${name}: ${Buffer.concat(raw).length} bytes, ${events.length} emitted events.`);
   } finally {
     if (!exited) child.kill();
+    provider?.stop();
     if (owner) { owner.kill(); await ownerExit; }
     await rm(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
   }

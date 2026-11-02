@@ -35,6 +35,8 @@ import { getCommand } from "../../registry/commands";
 import type { ChatSlotProps } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
+import { useTsp } from "../tsp/useTsp";
+import { semanticThinking } from "./modelTsp";
 import { autoAcknowledged, setApprovalMode, useApprovalMode } from "./approval";
 import { configuredThinking, setThinking, switchModel, thinkingChoices, useChatModels } from "./model";
 import { containsCurrent, modelRows, modelTree, searchModelTree, type ModelBranch, type ModelNode } from "./modelTree";
@@ -506,9 +508,11 @@ export function ModelButton({ session }: ChatSlotProps) {
 function useThinking(session: SessionController): ThinkingLevel | null {
 	const status = useOmpScreen(session).status;
 	const view = useSessionView(session);
+	const tsp = useTsp(view.host?.transport === "tsp" ? view.host.hostId : null).snapshot;
 	const entries = useDisplayedEntries(view);
 	const configured = configuredThinking(view.guest?.autoThinking, entries, status?.thinking ?? null);
 	const effective = view.guest?.state?.thinkingLevel;
+	if (view.host?.transport === "tsp") return semanticThinking(tsp) ?? configured ?? THINKING_LEVELS.find(level => level === effective) ?? null;
 	return configured ?? THINKING_LEVELS.find(level => level === effective) ?? null;
 }
 
@@ -550,7 +554,7 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 		const ok = await setThinking(session, target, choices);
 		setBusy(null);
 		if (ok) setOpen(false);
-		else toast({ tone: "warn", message: t("thinking.failed") });
+		else if (session.getSnapshot().host?.transport !== "tsp") toast({ tone: "warn", message: t("thinking.failed") });
 	};
 	const label = t("thinking.aria", { level: level ? t(`thinking.levels.${level}.label`) : t("common.unknown") });
 	return (

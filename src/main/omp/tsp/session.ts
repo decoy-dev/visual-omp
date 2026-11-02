@@ -2,7 +2,7 @@ import { z } from "zod";
 import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, type TspEvent, type TspFrame, type TspOpen } from "../../../shared/tsp";
 import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspAvailability, type TspSurfaceSnapshot } from "../../../shared/tsp-host";
 import { composer, liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
-import { isHookNode, isKnownAction, TSP_ROLES } from "../../../shared/tsp/roles";
+import { isHookNode, isKnownAction, TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
 import { hookAnswerEvents, TspHookAnswer } from "../../../shared/tsp/dialogs";
 import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";
@@ -206,6 +206,12 @@ export class TspSession {
 			if ("id" in event) {
 				const node = surface.doc.get(event.id);
 				if (!node) throw new TspInputStateError("TSP preview: The target node is no longer available.");
+				if (event.ev === "action" && (event.act === TSP_ACTIONS.model || event.act === TSP_ACTIONS.thinkingCycle)
+					&& node.p?.actions?.click !== event.act) throw new TspInputStateError("TSP preview: The target no longer offers this model or thinking action.");
+				if (event.ev === "activate" && node.k === "picker") {
+					const item = node.p?.items?.find(item => item.id === event.item);
+					if (!item || item.disabled) throw new TspInputStateError("TSP preview: The picker item is no longer available.");
+				}
 				if (event.ev === "send" && ((node.k !== "editor" && node.k !== "input") || node.p?.sendable !== true)) throw new TspInputStateError("TSP preview: The editor is not ready to send.");
 				if (event.ev === "edit") {
 					if ((node.k !== "editor" && node.k !== "input") || node.p?.readonly === true || event.len !== (node.p?.text?.length ?? 0)) throw new Error("TSP preview: The editor changed before the edit could be applied.");

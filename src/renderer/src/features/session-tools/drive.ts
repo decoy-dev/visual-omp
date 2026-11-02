@@ -110,6 +110,10 @@ export class TspEditorWatch {
 	get available(): boolean {
 		return !this.ended && this.snapshot?.availability.available === true && !this.blocked;
 	}
+	subscribe(listener: () => void): () => void {
+		this.#listeners.add(listener);
+		return () => this.#listeners.delete(listener);
+	}
 	async ready(): Promise<void> {
 		await this.#wait(() => {
 			if (this.blocked) throw new OmpBusyError();

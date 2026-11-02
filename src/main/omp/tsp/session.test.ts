@@ -404,3 +404,36 @@ it.each(["expand", "future-action"])("refuses unsupported action %s at the seria
 	await h.session.send({ ev: "action", sf: "s:1", id: "picker", act: "close" });
 	expect(h.bodies()).toEqual([{ ev: "action", sf: "s:1", id: "picker", act: "close" }]);
 });
+
+it.each(["status.model", "thinking.cycle"])("revalidates the live %s declaration after an action was queued", async act => {
+	const gate = Promise.withResolvers<void>(); let hold = false;
+	const h = harness(async () => { if (hold) await gate.promise; }); h.hello(); h.open();
+	h.frame(1, [["add", "control", "s:1", null, { id: "control", k: "row", p: { actions: { click: act } } }]]);
+	await h.flush();
+	await h.session.send({ ev: "action", sf: "s:1", id: "control", act });
+	h.messages.length = 0; hold = true;
+	const blocking = h.session.send({ ev: "visible", sf: "s:1", visible: true }); await Promise.resolve();
+	const pending = h.session.send({ ev: "action", sf: "s:1", id: "control", act });
+	const refused = expect(pending).rejects.toThrow("no longer offers");
+	h.frame(2, [["set", "control", { actions: {} }]]);
+	hold = false; gate.resolve(); await blocking; await refused; await h.flush();
+	expect(h.bodies().filter(body => body.ev === "action")).toEqual([]);
+});
+
+it.each(["removed", "disabled"] as const)("revalidates a picker item that became %s before activation was written", async change => {
+	const gate = Promise.withResolvers<void>(); let hold = false;
+	const h = harness(async () => { if (hold) await gate.promise; }); h.hello(); h.open();
+	const item = { id: "provider/model", label: "Exact model" };
+	h.frame(1, [["add", "picker", "s:1", null, { id: "picker", k: "picker", p: { items: [item] } }]]);
+	await h.flush(); hold = true;
+	const blocking = h.session.send({ ev: "visible", sf: "s:1", visible: true }); await Promise.resolve();
+	const event = { ev: "activate", sf: "s:1", id: "picker", item: item.id } as const;
+	const pending = h.session.send(event);
+	const refused = expect(pending).rejects.toThrow("item is no longer available");
+	h.frame(2, [["set", "picker", { items: change === "removed" ? [] : [{ ...item, disabled: true }] }]]);
+	hold = false; gate.resolve(); await blocking; await refused; await h.flush();
+	expect(h.bodies().filter(body => body.ev === "activate")).toEqual([]);
+	h.frame(3, [["set", "picker", { items: [item] }]]);
+	await h.session.send(event);
+	expect(h.bodies().filter(body => body.ev === "activate")).toEqual([event]);
+});

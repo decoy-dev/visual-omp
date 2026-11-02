@@ -521,6 +521,28 @@ Record (Rule 5): `slash-overlays` (`/jobs`, `/usage`, `/session`, `/hotkeys`, `/
 - **Typed commands remain valid.** omp defines TUI handlers for `/model` and `/switch`; `/switch` explicitly accepts selector arguments ([`packages/coding-agent/src/slash-commands/builtin-modes.ts:413-490`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/coding-agent/src/slash-commands/builtin-modes.ts#L413-L490)), and `send` uses ordinary submission. studio's observation that `/model <id>` reached the model as a message does not establish a TSP rule. Sending `/switch <selector>` through `send` therefore stays an acceptable fallback; the picker route is preferred because it confirms the exact item.
 - **Acceptance.** Replay: `model-switch`, `model-switch-compact`, `model-switch-compact-error`, `thinking-cycle`, and `switch-typed` complete through the composer controls; collab confirms identity. Live (scripted provider): `model-switch-compact` re-records.
 
+**Implementation status (2026-11-02).** The TSP composer controls now use the session picker and
+semantic thinking-cycle routes above. The existing provider/family/version menu activates the
+exact provider/model item; success requires picker departure and collab identity. Missing picker
+routes retain semantic `/switch` fallback. Model and thinking changes refuse pending approvals
+before writing and distinguish unsupported thinking levels from general failure. Scoped document
+subscriptions terminate on lifecycle changes, preserve the longer compaction wait, and never
+read painted screens. Composer model and effort roles are claimed alongside these consumers.
+At the serialized writer, model and thinking actions must still be declared by their current
+target, and an activated picker item must still exist and be enabled. Other known action routes
+retain their existing declaration rules. Active compaction has no fixed timeout; its departure
+starts a bounded collab-confirmation interval.
+
+The standalone 18.15.0 recorder adds `model-switch`, `thinking-cycle` and `switch-typed`, using
+two isolated local models whose unused loopback endpoint receives no requests. Consumer replay
+tests cover exact events, delayed or absent collab confirmation, picker closure, typed fallback,
+full-cycle refusal, approval refusal, room changes and the native model tree and thinking menu.
+Recorded `model-switch-compact` and `model-switch-compact-error` use the Phase 3 loopback provider
+with a seeded eight-turn conversation. Consumer replays preserve the live compaction progress
+row beyond the ordinary confirmation interval and distinguish the error outcome without
+changing model identity. Both scenarios were recorded against standalone omp 18.15.0 in scratch
+profiles. Main must still check both composer controls in Electron.
+
 ### 4e. Command feedback (A14)
 
 - **TSP.** `omp.toast.status`, `omp.notice.error` and `section` with role `omp.compaction` (studio [`docs/architecture/tsp-migration.md:149-152`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L149-L152), [`docs/architecture/tsp-migration.md:212-213`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L212-L213)). A local transaction records the document sequence before `send` and accepts only nodes added or changed after it.

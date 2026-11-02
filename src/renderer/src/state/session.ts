@@ -166,7 +166,7 @@ export function pendingAsk(view: SessionView): boolean {
 		&& guest.uiRequest !== null && isAskRequest(guest, guest.uiRequest);
 }
 
-function isApprovalRequest(request: CollabUiRequest): boolean {
+export function isApprovalRequest(request: CollabUiRequest): boolean {
 	if (request.kind !== "select") return false;
 	const labels = request.options.map(option => typeof option === "string" ? option : option.label);
 	return labels.at(-1) === "Deny" && (labels.includes("Approve Once") || labels.includes("Approve"));

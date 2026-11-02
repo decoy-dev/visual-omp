@@ -228,6 +228,8 @@ Renderer-originated semantic events and raw keys enter the existing application 
 Main rechecks the host's collab generation and protocol epoch at the writer. Semantic events also
 validate their addressed live surface and node. `host:tsp-event` parses a strict typed subset of events.
 Unknown action names are refused again at the serialized TSP writer before any action bytes are sent.
+The writer also rechecks that model and thinking targets still declare their requested click
+action, and that an activated picker item still exists and is enabled.
 Acknowledgments, resize, theme and motion remain main-owned. Raw fallback keys and Escape use
 the guarded `host:keys` route with generation and epoch. Malformed operation tuples and nested
 node shapes are rejected before the reference applier. Protocol failures are shown by the omp
@@ -250,8 +252,23 @@ These exceptions never relax main's semantic hook or editor guards. Other omp me
 The writer checks availability again before sending. omp retains displaced drafts through its own send semantics. Attachments,
 application pastes, Ctrl+Q follow-up submission, shell/Python modes and prediction transfer remain
 unavailable in this preview. Unconverted screen-driven controls still require semantic consumers.
-Tree navigation, thinking changes and advisor application explicitly refuse TSP before mutation.
+Tree navigation and advisor application explicitly refuse TSP before mutation.
 Their UI affordances still need cutover. Expected refusals do not become persistent chat errors.
+
+The TSP composer model menu retains the shared provider, family and version tree. Selecting a
+version opens omp's session-only picker with `status.model`, then activates the exact
+`provider/model` item. Success requires both the addressed picker to close and collab to report
+that provider and model id. If the composer has no model action, or the picker lacks the exact
+item, the app uses semantic `/switch <selector>` after safely closing its own picker. Disabled
+items are refused. Ordinary confirmation waits eight seconds. A live `omp.working` row containing
+a progress node holds the operation until compaction ends, reports an error or loses its host,
+room or epoch scope, regardless of duration. After compaction ends, collab has a bounded
+eight-second confirmation interval. New semantic error rows end the wait.
+Thinking reads the composer's effort `level`, including Auto, and sends one `thinking.cycle`
+action at a time until the requested level appears. Repeating a level ends the cycle with an
+unsupported-level explanation. Both controls refuse pending approvals with a distinct message,
+and document waits stop after a host, room generation or protocol epoch change. Classic model
+switching and Shift+Tab cycling retain their existing paths.
 
 The shared session-tools status source polls painted screens only for classic hosts. A TSP host
 gets an initial native mode snapshot and `native:changed` updates, preserving Goal status and the
