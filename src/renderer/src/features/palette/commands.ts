@@ -78,10 +78,15 @@ registerCommand({
 	run: () => useApp.getState().goHome(),
 });
 
+function semanticScreen(): boolean {
+	const state = useApp.getState();
+	return controllerFor(state.terminalTabId ?? focusedTabId(state))?.getSnapshot().host?.transport === "tsp";
+}
+
 registerCommand({
 	id: "view.terminal",
-	title: "palette:cmd.terminal.title",
-	hint: "palette:cmd.terminal.hint",
+	get title() { return semanticScreen() ? "palette:cmd.ompScreen.title" : "palette:cmd.terminal.title"; },
+	get hint() { return semanticScreen() ? "palette:cmd.ompScreen.hint" : "palette:cmd.terminal.hint"; },
 	keywords: "palette:cmd.terminal.keywords",
 	group: "navigation",
 	icon: TerminalWindow,

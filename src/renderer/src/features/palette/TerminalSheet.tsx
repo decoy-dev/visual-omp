@@ -69,7 +69,7 @@ function useScreenName(hostId: string | null, tuiKey: string): ScreenKey | null 
 	return name;
 }
 
-function TerminalSheet({ tabId, controller }: { tabId: string; controller: SessionController }) {
+export function TerminalSheet({ tabId, controller }: { tabId: string; controller: SessionController }) {
 	const { t } = useTranslation("palette");
 	const view = useSessionView(controller);
 	const [expanded, setExpanded] = useState(false);

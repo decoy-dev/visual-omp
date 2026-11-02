@@ -244,6 +244,29 @@ Recorded select, confirm, input and editor submit/cancel events cover the guarde
 Live channel-ordering, sharing parity, packaged checks and the remaining manual criteria still
 gate the complete Phase 2 preview. The native hook card in Phase 4a remains separate work.
 
+The headless Chrome usability gate (`src/main/omp/tsp/testing/ui-gate.test.ts`) renders recorded
+omp 18.14.0 documents through the production semantic renderers and terminal sheet, with a stub
+preload and session source. Criteria 8 and 9 passed this local gate on 2026-11-02.
+Criterion 8 covers Chrome accessibility-tree list selection, overlay
+dialog labels, keyboard selection, sheet focus and composer focus restoration. Criterion 9 covers
+960x620 in light and dark themes, using full motion at 100% text and reduced motion at 130%:
+model and hook pickers, settings, slash-command output and the session tree. It checks wrapping action
+rows, readable long labels, ancestor clipping, hit-test visibility, internal scrolling and reachable
+action buttons after fonts load, and saves a screenshot for each fixture/theme/text-size combination.
+The browser gate is opt-in; normal tests do not launch Chrome or write screenshots. Run it with:
+
+```sh
+TSP_UI_GATE=1 TSP_GATE_SHOTS=/tmp/vomp-gate-b-shots npx vitest run src/main/omp/tsp/testing/ui-gate.test.ts
+```
+
+An opted-in run fails if Chrome is unavailable. Set `CHROME_BIN` when Chrome is installed outside the
+platform default. Without `TSP_GATE_SHOTS`, each run creates a unique temporary screenshot directory.
+
+The idle omp screen now explains that no menu is open and retains its raw outline. TSP palette,
+status-menu and tree fallback labels name the omp screen; classic labels still name the terminal.
+A matched blocking hook points the composer to the chat's question card through a localized
+availability reason. These automated checks do not replace manual criteria 11-13.
+
 
 ### 2.0 Minimum readiness, input and close
 

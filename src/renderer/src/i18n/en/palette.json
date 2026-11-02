@@ -40,11 +40,13 @@
 	"tsp": {
 		"title": "omp screen",
 		"titleWith": "omp screen: {{screen}}",
-		"hint": "Choose an option or type in omp's controls. Escape dismisses the current menu.",
+		"hint": "View omp menus and settings for this chat.",
 		"search": "Search options",
 		"searchSettings": "Search settings",
 		"choices": "Options",
 		"empty": "No options are available.",
+		"emptyScreenTitle": "omp is not showing a menu.",
+		"emptyScreenHint": "Type a / command in the message box to open an omp menu.",
 		"confirm": "Confirm selection",
 		"submit": "Submit",
 		"cancel": "Cancel",
@@ -134,6 +136,10 @@
 			"title": "Show omp terminal",
 			"hint": "Open omp's terminal screen for this chat.",
 			"keywords": "terminal, console, tui, raw, menu"
+		},
+		"ompScreen": {
+			"title": "Show omp screen",
+			"hint": "Open omp's menus and settings for this chat."
 		},
 		"sidebar": {
 			"title": "Toggle sidebar",

@@ -84,7 +84,8 @@
 	},
 	"question": {
 		"chip": "Question waiting",
-		"hint": "omp needs your answer to continue"
+		"hint": "omp needs your answer to continue",
+		"answerBeforeSending": "Answer the question card before sending a message."
 	},
 	"queue": {
 		"label_one": "{{count}} queued message",

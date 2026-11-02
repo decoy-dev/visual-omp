@@ -44,6 +44,7 @@ export function isTspPreviewInputError(error: unknown): boolean {
 export interface TspAvailability {
 	available: boolean;
 	reason: string | null;
+	reasonCode?: "matched-question";
 }
 
 /** Complete replacement snapshot. Revision orders an IPC subscription against its initial read. */

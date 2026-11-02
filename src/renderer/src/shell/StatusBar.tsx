@@ -81,7 +81,7 @@ function OmpItem(): ReactNode {
 			</MenuTrigger>
 			<MenuContent align="end" side="top">
 				<MenuItem icon={<TerminalWindow />} shortcut="⌘J" disabled={!tabId} onSelect={() => useApp.getState().openTerminal(tabId)}>
-					{t("status.openTerminal")}
+					{t(view?.host?.transport === "tsp" ? "status.openScreen" : "status.openTerminal")}
 				</MenuItem>
 				<MenuItem icon={<ArrowCounterClockwise />} disabled={!controller} onSelect={() => void controller?.restart()}>
 					{t("status.restart")}

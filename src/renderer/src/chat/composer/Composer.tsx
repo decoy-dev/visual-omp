@@ -61,7 +61,7 @@ import { type Attachment, appendWithSpace, composerText, registerComposerEditor,
 import { fuzzyFiles, mentionAtCaret, mentionRanges } from "./fuzzy";
 import { MentionPicker, useProjectFiles } from "./MentionPicker";
 import { type LibraryTab, PromptLibrary } from "./PromptLibrary";
-import { applyMode, deliver } from "./send";
+import { applyMode, deliver, tspComposerReason } from "./send";
 import { QueueTray } from "./QueueTray";
 import { type SlashContext, type SlashItem, SlashMenu, slashAtCaret, slashOptions, useSlashCommands } from "./SlashMenu";
 import { QUICK_MODES } from "./tools";
@@ -259,9 +259,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 
 	const readOnly = view.readOnly;
 	const working = view.working;
-	const tspReason = view.host?.transport === "tsp" && view.host.tspAvailability?.available !== true
-		? view.host.tspAvailability?.reason ?? "Waiting for omp to open its semantic screen."
-		: null;
+	const tspReason = tspComposerReason(view.host, t("question.answerBeforeSending"));
 	const voiceOn = useApp(state => state.prefs?.voiceInput ?? false);
 	const files = useProjectFiles(projectPath, mention !== null);
 	const matches = useMemo(() => (mention && files ? fuzzyFiles(files, mention.query, 40) : null), [mention, files]);

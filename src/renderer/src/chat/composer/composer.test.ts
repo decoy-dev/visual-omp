@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type { SessionController } from "../../state/session";
 import { fuzzyFiles, mentionAtCaret, mentionRanges } from "./fuzzy";
-import { applyMode, deliver, imageMessageBytes } from "./send";
+import { applyMode, deliver, imageMessageBytes, tspComposerReason } from "./send";
 
 describe("mentionAtCaret", () => {
 	it("opens only for an @ at the start or after whitespace", () => {
@@ -68,5 +68,16 @@ describe("approval denial delivery", () => {
 		await deliver(session, "Read the scripts first.", [], true);
 		expect(steer).toHaveBeenCalledExactlyOnceWith("Read the scripts first.", []);
 		expect(send).not.toHaveBeenCalled();
+	});
+});
+
+describe("semantic composer availability", () => {
+	it("uses the localized question card hint for a matched hook without changing other overlay reasons", () => {
+		const questionHint = "Answer the question card before sending a message.";
+		expect(tspComposerReason({ transport: "tsp", tspAvailability: { available: false, reason: "main fallback", reasonCode: "matched-question" } }, questionHint)).toBe(questionHint);
+		const reason = "Close the open omp menu before sending a message.";
+		expect(tspComposerReason({ transport: "tsp", tspAvailability: { available: false, reason } }, questionHint)).toBe(reason);
+		expect(tspComposerReason({ transport: "tsp", tspAvailability: { available: true, reason: null } }, questionHint)).toBeNull();
+		expect(tspComposerReason({ transport: "classic" }, questionHint)).toBeNull();
 	});
 });

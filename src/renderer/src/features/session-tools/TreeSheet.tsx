@@ -167,7 +167,7 @@ function TreeSheet({ props, close }: SheetProps<TreeProps>) {
 			close();
 		} catch (reason) {
 			setError(reason instanceof Error ? reason.message : String(reason));
-			toast({ tone: "warn", message: reason instanceof Error ? reason.message : String(reason), action: { label: t("tree.openTerminal"), onClick: () => { void session.command("/tree"); useApp.getState().openTerminal(session.tabId); } } });
+			toast({ tone: "warn", message: reason instanceof Error ? reason.message : String(reason), action: { label: t(session.getSnapshot().host?.transport === "tsp" ? "tree.openScreen" : "tree.openTerminal"), onClick: () => { void session.command("/tree"); useApp.getState().openTerminal(session.tabId); } } });
 		} finally { setBusy(false); }
 	};
 

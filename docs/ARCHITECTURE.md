@@ -179,8 +179,10 @@ Plain-text submission uses semantic `send` only when omp advertised it and the f
 editor under `dock` explicitly has `sendable: true`. The inherited composer role is `omp.editor`;
 shell variants, modal fields, PTY mode and a subagent-view composer are refused. An open overlay
 or screen-mode surface also blocks submission. Main publishes availability and a reason, and the
-app composer shows that reason beside its unavailable send control. The writer checks availability
-again before sending. omp retains displaced drafts through its own send semantics. Attachments,
+app composer shows that reason beside its unavailable send control. A blocking hook uniquely
+matched to a collab question carries `reasonCode: "matched-question"`; the composer uses a localized
+instruction to answer the question card. Other omp menus retain their close-menu instruction.
+The writer checks availability again before sending. omp retains displaced drafts through its own send semantics. Attachments,
 application pastes, Ctrl+Q follow-up submission, shell/Python modes and prediction transfer remain
 unavailable in this preview. Unconverted screen-driven controls still require semantic consumers.
 Tree navigation, thinking changes and advisor application explicitly refuse TSP before mutation.
@@ -234,11 +236,17 @@ nodes. These channels retain the existing trusted app-window IPC boundary and ma
 lookup; they do not introduce per-window host ownership.
 
 For TSP hosts, every existing terminal-sheet entry point opens the lazy-loaded **omp screen**.
-The existing sheet frame, expand control and labelled focus region remain. The title includes an
-overlay's heading when present. The renderer draws layers, screen-mode surfaces and unclaimed
-dock nodes. Unclaimed main content that collab does not replicate appears under "Other omp output";
-omp's main transcript and composer are excluded. Lists expose selection semantics, tree row clicks
-stay local until confirmation, and forms send typed events. Markdown, code, diffs, JSON and progress
+The palette title and hint, status menu and tree fallback action use omp screen wording for TSP;
+classic chats keep terminal wording. The existing sheet frame, expand control and labelled focus
+region remain. The title includes an overlay's heading when present, and semantic overlays expose
+dialogs named by that heading. Opening the sheet focuses its content region; closing returns focus
+to that chat's composer. Its neutral subtitle is "View omp menus and settings for this chat."
+When omp has no readable unclaimed output, the sheet explains that no menu is open and how to
+open one, while retaining the raw outline disclosure.
+The renderer draws layers, screen-mode surfaces and unclaimed dock nodes. Unclaimed main content
+that collab does not replicate appears under "Other omp output"; omp's main transcript and composer
+are excluded. Lists expose selection semantics, tree row clicks stay local until confirmation,
+and forms send typed events. Markdown, code, diffs, JSON and progress
 reuse shared renderers. Media remains a placeholder while blobs are unavailable. Known kinds keep
 their renderer when a role is unknown, so form and layout containers show their children normally.
 Unknown actions stay read-only. Rows, ANSI and genuinely unknown kinds use a readable mono

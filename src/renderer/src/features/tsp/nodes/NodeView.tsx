@@ -58,7 +58,7 @@ function Body({ node, context }: NodeProps) {
 	const { t } = useTranslation("palette");
 	const children = node.c?.map(child => context.render(child));
 	switch (node.k) {
-		case "overlay": return <section role="group" aria-label={plain(node.p?.head) || t("tsp.title")} className="space-y-stack">{children}</section>;
+		case "overlay": return <section role="dialog" aria-label={plain(node.p?.head) || t("tsp.title")} className="space-y-stack">{children}</section>;
 		case "col": return <div className="space-y-stack">{children}</div>;
 		case "row": return <div className="flex flex-wrap items-center gap-3">{children}</div>;
 		case "card": case "section": {

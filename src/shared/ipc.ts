@@ -10,7 +10,7 @@
  * automatically by `src/main/handlers.ts`. Core app/omp/session/host channels live here.
  */
 
-import type { TspHostSnapshot, TspRendererEvent } from "./tsp-host";
+import type { TspAvailability, TspHostSnapshot, TspRendererEvent } from "./tsp-host";
 import type { CollabQuestionState } from "./tsp/question-match";
 import type { TspHookAnswer } from "./tsp/dialogs";
 
@@ -123,7 +123,7 @@ export interface HostState {
 	transport?: "classic" | "tsp";
 	/** Semantic startup failed; the existing chat restart action remains available. */
 	tspFailed?: boolean;
-	tspAvailability?: { available: boolean; reason: string | null };
+	tspAvailability?: TspAvailability;
 	/** Collab control link for the renderer guest client; null until resolved. */
 	link: string | null;
 	/** Increments every time omp opens a new collab room (restart, new, resume, branch). */

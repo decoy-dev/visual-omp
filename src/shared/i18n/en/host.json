@@ -5,6 +5,7 @@
 	"createWorktree": "Create worktree",
 	"worktreeQuestionUnresolved": "omp has not closed its worktree question. Wait for it to finish, then send your message again.",
 	"closingInput": "omp is closing this chat. The message was not submitted.",
+	"matchedQuestion": "Answer the question card before sending a message.",
 	"editorTransactionClosed": "This editor operation has already finished.",
 	"shutdownTitle": "omp is still running",
 	"keepWaiting": "Keep waiting",

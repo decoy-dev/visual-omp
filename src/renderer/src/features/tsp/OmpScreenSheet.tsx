@@ -1,4 +1,5 @@
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
+import type { TspNode } from "@shared/tsp";
 import { unclaimed } from "@shared/tsp/view-state";
 import { useEffect, useRef, useState, type Ref } from "react";
 import { useTranslation } from "react-i18next";
@@ -15,6 +16,13 @@ export interface OmpScreenProps {
 	readOnly: boolean;
 	contentRef?: Ref<HTMLDivElement>;
 }
+
+/** omp retains empty layout containers when no menu is open. They are not readable output. */
+function hasVisibleContent(node: TspNode): boolean {
+	if (node.p?.hidden || node.k === "spacer" || node.k === "rule") return false;
+	if (node.k === "col" || node.k === "row") return node.c?.some(hasVisibleContent) ?? false;
+	return true;
+}
 /** Semantic content inside the existing terminal sheet frame. Main owns protocol housekeeping. */
 export function OmpScreenSheet({ hostId, generation, snapshot, failed, readOnly, contentRef }: OmpScreenProps) {
 	const { t } = useTranslation("palette");
@@ -24,6 +32,8 @@ export function OmpScreenSheet({ hostId, generation, snapshot, failed, readOnly,
 	useEffect(() => { content.current?.focus(); }, []);
 	const current = snapshot?.hostId === hostId && snapshot.generation === generation && snapshot.lifecycle === "live" && snapshot.negotiated;
 	const surfaces = current ? snapshot.surfaces.filter(surface => surface.documentGeneration === generation).sort((a, b) => Number(b.open.mode === "screen") - Number(a.open.mode === "screen")) : [];
+	const empty = current && surfaces.length > 0 && !surfaces.some(surface =>
+		["layer", "dock", "main"].some(region => unclaimed(surface, region as "layer" | "dock" | "main").some(hasVisibleContent)));
 	const report = (promise: Promise<unknown>) => { void promise.catch(error => setError(error instanceof Error ? error.message : String(error))); };
 	useEffect(() => {
 		const element = content.current;
@@ -43,6 +53,7 @@ export function OmpScreenSheet({ hostId, generation, snapshot, failed, readOnly,
 		{!current && <p role="status" className="text-fg-muted">{snapshot?.failure ?? t(failed ? "tsp.unavailable" : snapshot ? `tsp.${snapshot.lifecycle}` : "tsp.waiting")}</p>}
 		{snapshot?.lifecycle === "exited" && <p className="mt-card text-fg-muted">{t("tsp.recovery")}</p>}
 		{current && !surfaces.length && <p role="status" className="text-fg-muted">{t("tsp.waiting")}</p>}
+		{empty && <div role="status" className="space-y-stack py-section"><p className="font-medium">{t("tsp.emptyScreenTitle")}</p><p className="text-fg-muted">{t("tsp.emptyScreenHint")}</p></div>}
 		{surfaces.map(surface => {
 			const disabled = readOnly || !!snapshot?.closing || surface.closed || surface.suspended;
 			const send = (event: TspRendererEvent) => { if (!disabled && typeof snapshot?.epoch === "number") report(window.vomp.invoke("host:tsp-event", hostId, generation, event, snapshot.epoch)); };

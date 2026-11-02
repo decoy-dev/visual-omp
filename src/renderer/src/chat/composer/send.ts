@@ -9,11 +9,19 @@
  *   that arrive after an attaching paste until the images are loaded. The chat's controller types them
  *   (`SessionController.send`), so a message with images queues like any other.
  */
+import type { HostState } from "@shared/ipc";
 import type { SessionController } from "../../state/session";
 import type { Attachment, ComposerMode } from "./drafts";
 
 /** Extensions omp's editor attaches from a pasted path. */
 export const ATTACHABLE_IMAGE = /\.(?:png|jpe?g|gif|webp)$/i;
+
+/** Main identifies the blocking question; the renderer supplies the localized card instruction. */
+export function tspComposerReason(host: Pick<HostState, "transport" | "tspAvailability"> | null, questionHint: string): string | null {
+	if (host?.transport !== "tsp" || host.tspAvailability?.available === true) return null;
+	return host.tspAvailability?.reasonCode === "matched-question" ? questionHint
+		: host.tspAvailability?.reason ?? "Waiting for omp to open its semantic screen.";
+}
 
 /** Characters omp un-escapes in pasted paths (`SHELL_ESCAPED_PATH_CHAR_REGEX`). */
 const SHELL_SPECIAL = /[\\\s'"()[\]{}&;<>|?*!$`]/g;

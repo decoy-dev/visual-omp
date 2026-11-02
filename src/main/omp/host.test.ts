@@ -947,6 +947,28 @@ describe("opt-in semantic transport", () => {
 		expect(host.state.tspAvailability?.available).toBe(true);
 	});
 
+	it("points to the question card only while the blocking hook has a unique collab match", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [
+			{ id: "hook", k: "overlay", p: { role: "omp.overlay.hook-select", head: "Choose" }, c: [{ id: "pick", k: "picker", p: { items: [{ id: "yes", label: "Yes" }] } }] },
+		] }]] });
+		expect(host.state.tspAvailability?.reason).toContain("menu");
+		host.tspQuestions({ hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [{ reqId: 4, kind: "select", title: "Choose", options: ["Yes"] }] });
+		expect(host.state.tspAvailability).toEqual({ available: false, reason: "Answer the question card before sending a message.", reasonCode: "matched-question" });
+		expect(host.tspSnapshot()?.availability).toEqual(host.state.tspAvailability);
+		tspMessage("o", { id: "settings", mode: "screen" });
+		expect(host.state.tspAvailability).toEqual({ available: false, reason: "Close the omp screen before sending a message." });
+		tspMessage("x", { id: "settings", keep: false });
+		host.tspQuestions({ hostId: host.id, generation: 1, epoch, connection: 1, revision: 2, connected: true, requests: [] });
+		expect(host.state.tspAvailability?.reason).toContain("menu");
+		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
+		tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "hook"], ["add", "menu", "layer", null, { id: "menu", k: "overlay", p: { head: "Other menu" } }]] });
+		expect(host.state.tspAvailability?.reason).toBe("Close the open omp menu before sending a message.");
+	});
+
 	it("resets documents and rejects a previous epoch when a second hello reuses the PTY", async () => {
 		await launchTsp();
 		tspMessage("q", { q: "hello", v: [1], features: ["send"] });

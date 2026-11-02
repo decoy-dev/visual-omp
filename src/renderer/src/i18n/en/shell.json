@@ -106,6 +106,7 @@
 		"ompStarting": "Starting omp…",
 		"ompMenu": "omp status: {{status}}",
 		"openTerminal": "Show omp terminal",
+		"openScreen": "Show omp screen",
 		"restart": "Restart omp",
 		"copyDiagnostics": "Copy diagnostics",
 		"ompUpdateAvailable": "Update omp to {{version}}",
