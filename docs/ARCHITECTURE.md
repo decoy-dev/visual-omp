@@ -85,8 +85,14 @@ Each SessionHost:
    as a word) into a private temporary directory and spawns
    `omp --config <overlay> --extension <private bridge> [--resume <file>]` in a node-pty with the project as cwd. Crash recovery uses `--restore <file>` instead. Session tools
    read the model and thinking segment from the painted screen, so the overlay replaces the user's status line
-   settings. A theme's symbol overrides still apply after the preset and can change the glyphs
-   the parser looks for. The user's own `config.yml` is never modified for this.
+   settings. Classic hosts also pin `composer.shape: box`; TSP hosts keep the user's composer shape.
+   The reader accepts both the boxed composer and omp's default band composer, including narrow bands
+   that omit the model segment while leaving the editor usable. A theme's symbol overrides still apply
+   after the preset. The user's own `config.yml` is never modified for this. Classic readiness reads a
+   fresh non-hidden overlay count from the debug tree and refuses input when that state is unavailable.
+   A missing status line without an open overlay reports a read failure. Main logs only a candidate
+   status border with composer structure, once per host and at most 2,048 characters. It logs null
+   when no composer-context candidate is available, without copying dialog titles or transcript boxes.
    Of the feature pins reviewed for 0.7, table charting and startup worktree creation remain overridden for hosted chats. `tui.autoGraph: "always"` charts tables with
    omp's local rules, which the app draws natively, and avoids the model judge calls of `auto` and
    `smart`, whose chart plans collab does not carry. `worktree.onStart: "off"` stays until omp exposes

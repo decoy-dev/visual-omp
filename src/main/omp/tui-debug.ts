@@ -61,12 +61,14 @@ export class TuiDebugClient {
 
 	async info(): Promise<TuiFocus> {
 		const info = Info.parse(await this.#request({ op: "info" }));
+		// omp counts registered entries, including hidden overlays. Consumers need the same
+		// non-hidden entries that supply overlayKinds for editor readiness and menu detection.
 		let overlayKinds: string[] = [];
 		if (info.overlays > 0) {
 			const tree = Tree.parse(await this.#request({ op: "tree" }));
 			overlayKinds = tree.tree.overlays.filter(overlay => !overlay.hidden).map(overlay => overlay.root.kind);
 		}
-		return { overlays: info.overlays, focused: info.focused, altScreen: info.alt_screen, overlayKinds };
+		return { overlays: overlayKinds.length, focused: info.focused, altScreen: info.alt_screen, overlayKinds };
 	}
 
 	async screen(): Promise<string[]> {

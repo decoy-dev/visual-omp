@@ -91,7 +91,7 @@ export interface FollowState {
 
 /** Live TUI focus snapshot from omp's `OMP_TUI_DEBUG` socket. */
 export interface TuiFocus {
-	/** Open overlays (full-screen menus, Plan Review, pickers). */
+	/** Visible overlays (full-screen menus, Plan Review, pickers); hidden registrations are excluded. */
 	overlays: number;
 	/** Component kind that holds keyboard focus (the main editor when idle). */
 	focused: string | null;
@@ -296,6 +296,10 @@ export interface IpcInvokeMap {
 	"host:ack-editor-restore": { args: [hostId: string, id: string]; result: void };
 	/** Painted TUI screen lines (plain text). */
 	"host:screen": { args: [hostId: string]; result: string[] };
+	/** Fresh classic debug focus for input readiness; null when focus cannot be read. */
+	"host:tui-focus": { args: [hostId: string]; result: TuiFocus | null };
+	/** Log one unreadable classic status border per host, without capturing the transcript. */
+	"host:statusUnreadable": { args: [hostId: string, border: string | null]; result: void };
 	"host:resize": { args: [hostId: string, cols: number, rows: number]; result: void };
 	/** Serialized terminal state for attaching an xterm view mid-session. */
 	"host:buffer": { args: [hostId: string]; result: string };

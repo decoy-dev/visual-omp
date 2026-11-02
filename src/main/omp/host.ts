@@ -83,6 +83,7 @@ export class SessionHost {
 	readonly #serializer = new SerializeAddon();
 	#pty: IPty | null = null;
 	#debug: TuiDebugClient | null = null;
+	#loggedUnreadableStatus = false;
 	#privateDir: string | null = null;
 	#roomId: string | null = null;
 	#hadCollabRoom = false;
@@ -189,7 +190,7 @@ export class SessionHost {
 			this.#privateDir = await mkdtemp(join(tmpdir(), "vomp-"));
 			this.#nativeBridge = await createNativeBridge(this.id, this.#privateDir);
 			const overlay = join(this.#privateDir, "overlay.yml");
-			await writeFile(overlay, stringify(this.#overlayConfig()), { mode: 0o600 });
+			await writeFile(overlay, stringify(this.#overlayConfig(useTsp)), { mode: 0o600 });
 			const debugPath =
 				process.platform === "win32" ? `\\\\.\\pipe\\visual-omp-${this.id}` : join(this.#privateDir, "tui.sock");
 			const args = ["--config", overlay, "--extension", this.#nativeBridge.extensionPath];
@@ -275,7 +276,7 @@ export class SessionHost {
 	}
 
 	/** Settings layered over the user's config for this process only. */
-	#overlayConfig(): Record<string, unknown> {
+	#overlayConfig(useTsp: boolean): Record<string, unknown> {
 		return {
 			collab: { autoStart: "control", relayUrl: this.#relay.url, displayName: "visual-omp" },
 			startup: { setupWizard: false, checkUpdate: false, changelogMode: "hidden", quiet: true },
@@ -296,6 +297,8 @@ export class SessionHost {
 			// so it pins the format that parser reads over the user's status line settings. A theme's
 			// symbol overrides still apply after the preset and can change those glyphs.
 			symbolPreset: "unicode",
+			// Classic screen readers need a stable editor frame as well as stable status segments.
+			...(!useTsp ? { composer: { shape: "box" } } : {}),
 			statusLine: {
 				preset: "default",
 				separator: "powerline",
@@ -744,6 +747,18 @@ export class SessionHost {
 		return this.#debug.screen();
 	}
 
+	/** A failed classic readiness read records only its border, once for this host. */
+	reportUnreadableStatus(border: string | null): void {
+		if (this.#tsp || this.#loggedUnreadableStatus) return;
+		this.#loggedUnreadableStatus = true;
+		console.warn("[visual-omp] Could not read omp's classic status line:", {
+			hostId: this.id,
+			cols: this.state.cols,
+			rows: this.state.rows,
+			border: border?.slice(0, 2048) ?? null,
+		});
+	}
+
 	async screenPaint(): Promise<TuiPaint> {
 		if (this.#tsp) throw new Error(TSP_PREVIEW_UNAVAILABLE);
 		if (!this.#debug) return { lines: [] };
@@ -1078,7 +1093,7 @@ export class SessionHost {
 			if (!line) continue;
 			if (!line.isWrapped && wrapped !== null) { lines.push(wrapped); wrapped = ""; }
 			const text = line.translateToString(true);
-			if (/^\s*[╭┌┏][─━]/.test(text)) break;
+			if (/^\s*(?:[╭┌┏][─━]|π\s+[▶>\ue0b0]|🗑.*[▶>\ue0b0][─-])/u.test(text)) break;
 			wrapped = ((wrapped ?? "") + text).slice(0, STARTUP_DIAGNOSTIC_MAX_CHARS + 1);
 		}
 		if (wrapped !== null) lines.push(wrapped);
@@ -1106,8 +1121,8 @@ export class SessionHost {
 				wrapped = "";
 			}
 			const text = line.translateToString(true);
-			// The pinned classic TUI editor begins here; everything below is editable or chrome.
-			if (/^\s*[╭┌┏][─━]/.test(text)) break;
+			// Box and band composers both separate transcript output from editable content.
+			if (/^\s*(?:[╭┌┏][─━]|π\s+[▶>\ue0b0]|🗑.*[▶>\ue0b0][─-])/u.test(text)) break;
 			wrapped = (wrapped + text).slice(0, STARTUP_DIAGNOSTIC_MAX_CHARS + 1);
 		}
 		if (wrapped) lines.push(wrapped);

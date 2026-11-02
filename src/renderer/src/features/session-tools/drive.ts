@@ -9,7 +9,7 @@ import { toast } from "@/ui";
 import { i18n } from "../../i18n";
 import type { SessionController } from "../../state/session";
 import { outputTone } from "./results";
-import { newOutput, parseStatusLine } from "./screen";
+import { newOutput, parseStatusLine, statusBorderLine } from "./screen";
 
 const POLL_MS = 120;
 
@@ -46,6 +46,14 @@ export class OmpBusyError extends Error {
 	constructor() {
 		super(i18n.t("session:errors.busy"));
 	}
+}
+
+/** Readiness failed without evidence that an omp menu is open. */
+export async function statusReadError(session: SessionController, lines: readonly string[]): Promise<Error> {
+	if (session.hostId) {
+		await window.vomp.invoke("host:statusUnreadable", session.hostId, statusBorderLine(lines)).catch(() => undefined);
+	}
+	return new Error(i18n.t("session:errors.statusUnreadable"));
 }
 
 /**
@@ -182,8 +190,17 @@ export async function readyEditor(session: SessionController): Promise<string[]>
 		try { await watch.ready(); return []; }
 		finally { watch.dispose(); }
 	}
-	const lines = await waitForScreen(session, screen => parseStatusLine(screen) !== null, 8000);
-	if (!lines || (session.getSnapshot().host?.tui?.overlays ?? 0) > 0) throw new OmpBusyError();
+	let lastScreen: string[] = [];
+	const lines = await waitForScreen(session, screen => {
+		lastScreen = screen;
+		return parseStatusLine(screen) !== null;
+	}, 8000);
+	// Read after the screen wait: HostState.tui may predate an overlay change.
+	const hostId = session.hostId;
+	const focus = hostId ? await window.vomp.invoke("host:tui-focus", hostId) : null;
+	if (!focus) throw new Error(i18n.t("session:errors.focusUnavailable"));
+	if (focus.overlays > 0) throw new OmpBusyError();
+	if (!lines) throw await statusReadError(session, lastScreen);
 	return lines;
 }
 

@@ -6,7 +6,9 @@
     "unknown": "Unknown"
   },
   "errors": {
-    "busy": "omp has a menu open. Close it in the terminal sheet, then try again."
+    "busy": "omp has a menu open. Close it in the terminal sheet, then try again.",
+    "focusUnavailable": "visual-omp could not check omp's editor focus. Open the terminal sheet to inspect it, then try again.",
+    "statusUnreadable": "visual-omp could not read omp's status line. Open the terminal sheet to inspect it, then try again."
   },
   "commandResult": {
     "aria": "What omp printed for {{command}}",

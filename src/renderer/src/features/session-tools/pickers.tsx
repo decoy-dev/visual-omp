@@ -554,7 +554,6 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 		const ok = await setThinking(session, target, choices);
 		setBusy(null);
 		if (ok) setOpen(false);
-		else if (session.getSnapshot().host?.transport !== "tsp") toast({ tone: "warn", message: t("thinking.failed") });
 	};
 	const label = t("thinking.aria", { level: level ? t(`thinking.levels.${level}.label`) : t("common.unknown") });
 	return (

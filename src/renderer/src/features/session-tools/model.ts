@@ -17,7 +17,7 @@ import { toast } from "@/ui";
 import { displayedEntries } from "../../chat/branch";
 import { i18n } from "../../i18n";
 import type { SessionController } from "../../state/session";
-import { OmpBusyError, press, readyEditor, reportFailure, waitForScreen } from "./drive";
+import { press, readyEditor, reportFailure, statusReadError, waitForScreen } from "./drive";
 import { parseStatusLine, THINKING_LEVELS, type ThinkingLevel } from "./screen";
 import { screenPoller } from "./status";
 import { refuseApproval, setThinkingSemantic, switchModelSemantic } from "./modelTsp";
@@ -139,7 +139,7 @@ export async function setThinking(session: SessionController, target: ThinkingLe
 		const screen = await readyEditor(session);
 		if (session.getSnapshot().host?.transport === "tsp") return await setThinkingSemantic(session, target);
 		let current = read(screen);
-		if (current === null) throw new OmpBusyError();
+		if (current === null) throw await statusReadError(session, screen);
 		// One jump by the computed distance, then single steps in case omp's list differs from ours.
 		const from = choices.indexOf(current);
 		const to = choices.indexOf(target);
@@ -155,7 +155,9 @@ export async function setThinking(session: SessionController, target: ThinkingLe
 			current = (lines && read(lines)) ?? current;
 		}
 		void screenPoller(session).refresh();
-		return current === target;
+		if (current === target) return true;
+		toast({ tone: "warn", message: i18n.t("session:thinking.failed") });
+		return false;
 	} catch (error) {
 		reportFailure(error);
 		return false;

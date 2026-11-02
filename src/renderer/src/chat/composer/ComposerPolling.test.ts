@@ -71,7 +71,7 @@ beforeEach(() => {
 	listeners.clear(); fake.invoke.mockReset(); fake.events.clear();
 	fake.invoke.mockImplementation(async (channel: string) => {
 		if (channel === "native:snapshot") return { modes, theme: null };
-		if (channel === "host:screen") return ["╭── π ▶ ⬢ Opus 5.5 · ◕ xhigh ──╮"];
+		if (channel === "host:screen") return ["╭── π ▶ ⬢ Opus 5.5 · ◕ xhigh ──╮", "╰─                          ─╯"];
 		if (channel === "composer:tuiPrediction") return "Run the tests";
 		if (channel === "config:approval") return { mode: "always-ask", supportedModes: ["always-ask", "write", "yolo"], modeSource: "project" };
 		return undefined;
@@ -142,7 +142,7 @@ it("cancels existing classic polling when the host becomes TSP and discards in-f
 	setHost("classic"); await mount();
 	expect(calls("host:screen").length).toBeGreaterThan(0); expect(calls("composer:tuiPrediction").length).toBeGreaterThan(0);
 	await act(async () => setHost("tsp")); fake.invoke.mockClear();
-	await act(async () => { screen.resolve(["╭── π ▶ ⬢ Old model · ◕ xhigh ──╮"]); prediction.resolve("Old prediction"); });
+	await act(async () => { screen.resolve(["╭── π ▶ ⬢ Old model · ◕ xhigh ──╮", "╰─                          ─╯"]); prediction.resolve("Old prediction"); });
 	await advance(60_000);
 	expect(calls("host:screen")).toHaveLength(0); expect(calls("composer:tuiPrediction")).toHaveLength(0);
 	expect(element.querySelector('[data-status="one"]')?.textContent).not.toContain("Old model");
@@ -183,7 +183,7 @@ it.each(["reconnecting", "tsp"] as const)("keeps one screen loop after a classic
 	let reads = 0;
 	fake.invoke.mockImplementation(async (channel: string) => {
 		if (channel === "native:snapshot") return { modes, theme: null };
-		if (channel === "host:screen") return ++reads === 1 ? old.promise : ["╭── π ▶ ⬢ Fresh model · ◕ xhigh ──╮"];
+		if (channel === "host:screen") return ++reads === 1 ? old.promise : ["╭── π ▶ ⬢ Fresh model · ◕ xhigh ──╮", "╰─                          ─╯"];
 		return undefined;
 	});
 	setHost("classic");
@@ -192,7 +192,7 @@ it.each(["reconnecting", "tsp"] as const)("keeps one screen loop after a classic
 	await act(async () => transition === "tsp" ? setHost("tsp") : setHost("classic", "reconnecting"));
 	await act(async () => setHost("classic"));
 	expect(calls("host:screen")).toHaveLength(2);
-	await act(async () => old.resolve(["╭── π ▶ ⬢ Stale model · ◕ xhigh ──╮"]));
+	await act(async () => old.resolve(["╭── π ▶ ⬢ Stale model · ◕ xhigh ──╮", "╰─                          ─╯"]));
 	expect(element.querySelector('[data-status="one"]')?.textContent).toContain("Fresh model");
 	expect(element.querySelector('[data-status="one"]')?.textContent).not.toContain("Stale model");
 	expect(vi.getTimerCount()).toBe(1);

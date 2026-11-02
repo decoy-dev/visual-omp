@@ -172,4 +172,12 @@ describe("painted next-message offers", () => {
 	it("strips a side border from a prediction on a side-bordered editor", async () => {
 		await expect(paintedPrediction(paintedHost(`│  Run the tests${" ".repeat(20)}│`))).resolves.toBe("Run the tests");
 	});
+	it("reads a band-composer prediction from its cursor row without a boxed status header", async () => {
+		const host = paintedHost("");
+		host.screenPaint = async () => ({
+			lines: [" π ▶ ⬢ Sonnet 4.6 · ◒ high ▶ 🗑 project ▶─0.3%─┃1M─", "╰─ Run the tests"],
+			cursor: { x: 3, y: 1, visible: true },
+		});
+		await expect(paintedPrediction(host)).resolves.toBe("Run the tests");
+	});
 });

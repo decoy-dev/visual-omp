@@ -1,4 +1,5 @@
 import type { ModelInfo } from "@shared/contracts/config";
+import type { TuiFocus } from "@shared/ipc";
 import type { SessionEntry, WireModel } from "@oh-my-pi/pi-wire";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { displayedEntries } from "../../chat/branch";
@@ -9,8 +10,23 @@ import { configuredThinking, setThinking, switchModel } from "./model";
 const vomp = vi.hoisted(() => {
 	const vomp = {
 		screen: [] as string[],
+		screenError: null as Error | null,
+		focus: null as TuiFocus | null,
+		focusError: null as Error | null,
+		diagnostics: [] as (string | null)[],
 		on: () => () => undefined,
-		invoke: async (channel: string) => (channel === "host:screen" ? vomp.screen : null),
+		invoke: async (channel: string, _hostId: string, border: string | null) => {
+			if (channel === "host:screen") {
+				if (vomp.screenError) throw vomp.screenError;
+				return vomp.screen;
+			}
+			if (channel === "host:tui-focus") {
+				if (vomp.focusError) throw vomp.focusError;
+				return vomp.focus;
+			}
+			if (channel === "host:statusUnreadable") vomp.diagnostics.push(border);
+			return null;
+		},
 	};
 	vi.stubGlobal("window", { vomp });
 	return vomp;
@@ -18,7 +34,15 @@ const vomp = vi.hoisted(() => {
 const toast = vi.hoisted(() => vi.fn());
 vi.mock("@/ui", () => ({ toast }));
 
-const statusLine = (name: string) => `╭── π ▶ ⬢ ${name} · ◕ high ▶ proj ──╮`;
+const boxEditor = (name: string, effort = "high") => [
+	`╭── π ▶ ⬢ ${name} · ◕ ${effort} ▶ proj ──╮`,
+	"╰─                          ─╯",
+];
+// omp 18.15.0 debug text at 80 columns, with the app's status pins and default band composer.
+const bandEditor = [
+	" π ▶ ⬢ Sonnet 4.6 · ◒ high ▶ 🗑 …dows-project-directory\\session-tools ▶─0.3%─┃1M─",
+	"╰─                                                  ⇧⇥ to change thinking effort",
+];
 const haiku: WireModel = { provider: "anthropic", id: "claude-haiku-4-5", name: "Claude Haiku 4.5", contextWindow: 200_000 };
 const sonnet: ModelInfo = {
 	selector: "anthropic/claude-sonnet-4-5",
@@ -38,6 +62,7 @@ const sonnetState: WireModel = { provider: sonnet.provider, id: sonnet.id, name:
 /** omp's state as its collab stream reports it, and what omp does with a typed command. */
 let current: WireModel;
 let tokens: number;
+let overlays: number;
 let omp: (line: string) => void;
 const commands: string[] = [];
 const listeners = new Set<() => void>();
@@ -58,7 +83,7 @@ const chat = {
 		listeners.add(listener);
 		return () => listeners.delete(listener);
 	},
-	getSnapshot: () => ({ host: { tui: { overlays: 0 } }, guest: { state: { model: current, contextUsage: { tokens } } } }),
+	getSnapshot: () => ({ host: { tui: { overlays } }, guest: { state: { model: current, contextUsage: { tokens } } } }),
 } as unknown as SessionController;
 
 beforeEach(() => {
@@ -68,7 +93,12 @@ beforeEach(() => {
 	listeners.clear();
 	current = haiku;
 	tokens = 30_000;
-	vomp.screen = [statusLine("Haiku 4.5")];
+	overlays = 0;
+	vomp.screenError = null;
+	vomp.focusError = null;
+	vomp.focus = { overlays: 0, focused: "editor", overlayKinds: [], altScreen: false };
+	vomp.diagnostics = [];
+	vomp.screen = boxEditor("Haiku 4.5");
 	omp = () => undefined;
 });
 
@@ -86,9 +116,9 @@ async function switchToSonnet(): Promise<boolean> {
 describe("switchModel", () => {
 	it("confirms from omp's state while older transcript lines mention errors", async () => {
 		// omp rewrites the previous "Session-only model" status in place, so only older lines stay put.
-		vomp.screen = [" The build failed with an error.", " Session-only model: anthropic/claude-haiku-4-5.", statusLine("Haiku 4.5")];
+		vomp.screen = [" The build failed with an error.", " Session-only model: anthropic/claude-haiku-4-5.", ...boxEditor("Haiku 4.5")];
 		omp = () => {
-			vomp.screen = [" The build failed with an error.", " Session-only model: anthropic/claude-sonnet-4-5.", statusLine("Sonnet 4.5")];
+			vomp.screen = [" The build failed with an error.", " Session-only model: anthropic/claude-sonnet-4-5.", ...boxEditor("Sonnet 4.5")];
 			report(sonnetState);
 		};
 		await expect(switchToSonnet()).resolves.toBe(true);
@@ -101,7 +131,7 @@ describe("switchModel", () => {
 			vomp.screen = [
 				" Error: request to anthropic/claude-sonnet-4-5 failed",
 				" Error: No API key for anthropic/claude-sonnet-4-5",
-				statusLine("Haiku 4.5"),
+				...boxEditor("Haiku 4.5"),
 			];
 			setTimeout(() => report(sonnetState), 1500);
 		};
@@ -112,7 +142,7 @@ describe("switchModel", () => {
 
 	it("warns when omp never reports the new model", async () => {
 		omp = () => {
-			vomp.screen = [" Error: No API key for anthropic/claude-sonnet-4-5", statusLine("Haiku 4.5")];
+			vomp.screen = [" Error: No API key for anthropic/claude-sonnet-4-5", ...boxEditor("Haiku 4.5")];
 		};
 		await expect(switchToSonnet()).resolves.toBe(false);
 		expect(toast).toHaveBeenCalledWith({
@@ -126,6 +156,72 @@ describe("switchModel", () => {
 		tokens = 250_000;
 		await expect(switchToSonnet()).resolves.toBe(false);
 		expect(toast).toHaveBeenCalledWith({ tone: "warn", message: expect.stringContaining("omp may be compacting it first") });
+	});
+
+	it("refuses a visible menu before typing a switch command", async () => {
+		overlays = 1;
+		vomp.focus = { overlays: 1, focused: "picker", overlayKinds: ["picker"], altScreen: false };
+		await expect(switchToSonnet()).resolves.toBe(false);
+		expect(commands).toEqual([]);
+		expect(toast).toHaveBeenCalledExactlyOnceWith({ tone: "err", message: expect.stringContaining("omp has a menu open") });
+		expect(vomp.diagnostics).toEqual([]);
+	});
+
+	it("refuses a fresh overlay after waiting for the editor despite a cached zero overlay count", async () => {
+		vomp.screen = [];
+		setTimeout(() => {
+			vomp.screen = boxEditor("Haiku 4.5");
+			vomp.focus = { overlays: 1, focused: "picker", overlayKinds: ["picker"], altScreen: false };
+		}, 120);
+		await expect(switchToSonnet()).resolves.toBe(false);
+		expect(overlays).toBe(0);
+		expect(commands).toEqual([]);
+		expect(toast).toHaveBeenCalledExactlyOnceWith({ tone: "err", message: expect.stringContaining("omp has a menu open") });
+		expect(vomp.diagnostics).toEqual([]);
+	});
+
+	it("uses fresh readiness when the cached snapshot still reports a closed menu", async () => {
+		overlays = 1;
+		omp = () => report(sonnetState);
+		await expect(switchToSonnet()).resolves.toBe(true);
+		expect(commands).toEqual(["/switch anthropic/claude-sonnet-4-5"]);
+		expect(toast).not.toHaveBeenCalled();
+	});
+
+	it.each(["unavailable", "error"] as const)("refuses %s focus without claiming a menu is open", async reason => {
+		if (reason === "error") vomp.focusError = new Error("TUI debug focus timed out");
+		else vomp.focus = null;
+		await expect(switchToSonnet()).resolves.toBe(false);
+		expect(commands).toEqual([]);
+		expect(toast).toHaveBeenCalledExactlyOnceWith({
+			tone: "err",
+			message: reason === "error" ? "TUI debug focus timed out" : expect.stringContaining("could not check omp's editor focus"),
+		});
+		expect(vomp.diagnostics).toEqual([]);
+	});
+
+	it("reports an unreadable status separately from a menu and logs only the border", async () => {
+		vomp.screen = ["Private transcript text", "╭── π ▶ custom model symbol ──╮", "╰─                           ─╯"];
+		await expect(switchToSonnet()).resolves.toBe(false);
+		expect(commands).toEqual([]);
+		expect(toast).toHaveBeenCalledExactlyOnceWith({ tone: "err", message: expect.stringContaining("could not read omp's status line") });
+		expect(vomp.diagnostics).toEqual(["╭── π ▶ custom model symbol ──╮"]);
+	});
+
+	it("preserves debug-channel errors instead of claiming a menu is open", async () => {
+		vomp.screenError = new Error("TUI debug text timed out");
+		await expect(switchToSonnet()).resolves.toBe(false);
+		expect(commands).toEqual([]);
+		expect(toast).toHaveBeenCalledExactlyOnceWith({ tone: "err", message: "TUI debug text timed out" });
+		expect(vomp.diagnostics).toEqual([]);
+	});
+
+	it("switches from omp's painted default band composer", async () => {
+		vomp.screen = bandEditor;
+		omp = () => report(sonnetState);
+		await expect(switchToSonnet()).resolves.toBe(true);
+		expect(commands).toEqual(["/switch anthropic/claude-sonnet-4-5"]);
+		expect(toast).not.toHaveBeenCalled();
 	});
 });
 
@@ -166,7 +262,7 @@ describe("setThinking", () => {
 	let selected: (typeof choices)[number];
 	let pressed: string[];
 	const paint = () => {
-		vomp.screen = [`╭── π ▶ ⬢ Sonnet 4.5 · ◕ ${selected === "auto" ? "low" : selected} ▶ proj ──╮`];
+		vomp.screen = boxEditor("Sonnet 4.5", selected === "auto" ? "low" : selected);
 	};
 	const autoChat = {
 		hostId: "h1",
@@ -192,6 +288,65 @@ describe("setThinking", () => {
 		await expect(result).resolves.toBe(true);
 		expect(pressed).toEqual(["S-tab"]);
 		expect(selected).toBe("low");
+	});
+
+	it("cycles thinking from omp's painted default band composer", async () => {
+		selected = "high";
+		vomp.screen = bandEditor;
+		const result = setThinking(autoChat, "off", choices);
+		await vi.advanceTimersByTimeAsync(10_000);
+		await expect(result).resolves.toBe(true);
+		expect(pressed).toEqual(["S-tab"]);
+		expect(selected).toBe("off");
+		expect(toast).not.toHaveBeenCalled();
+	});
+
+	it("refuses a fresh overlay after waiting for the editor without sending thinking keys", async () => {
+		vomp.screen = [];
+		setTimeout(() => {
+			paint();
+			vomp.focus = { overlays: 1, focused: "picker", overlayKinds: ["picker"], altScreen: false };
+		}, 120);
+		const result = setThinking(autoChat, "high", choices);
+		await vi.advanceTimersByTimeAsync(10_000);
+		await expect(result).resolves.toBe(false);
+		expect(autoChat.getSnapshot().host?.tui?.overlays).toBe(0);
+		expect(pressed).toEqual([]);
+		expect(toast).toHaveBeenCalledExactlyOnceWith({ tone: "err", message: expect.stringContaining("omp has a menu open") });
+		expect(vomp.diagnostics).toEqual([]);
+	});
+
+	it.each(["unavailable", "error"] as const)("refuses %s focus without sending thinking keys or claiming a menu", async reason => {
+		if (reason === "error") vomp.focusError = new Error("TUI debug focus timed out");
+		else vomp.focus = null;
+		const result = setThinking(autoChat, "high", choices);
+		await vi.advanceTimersByTimeAsync(10_000);
+		await expect(result).resolves.toBe(false);
+		expect(pressed).toEqual([]);
+		expect(toast).toHaveBeenCalledExactlyOnceWith({
+			tone: "err",
+			message: reason === "error" ? "TUI debug focus timed out" : expect.stringContaining("could not check omp's editor focus"),
+		});
+		expect(vomp.diagnostics).toEqual([]);
+	});
+
+	it("reports an unreadable thinking control once without sending cycle keys", async () => {
+		vomp.screen = ["╭── π ▶ ⬢ Sonnet 4.5 ▶ proj ──╮", "╰─                          ─╯"];
+		selected = "off";
+		const result = setThinking(autoChat, "high", choices);
+		await vi.advanceTimersByTimeAsync(1000);
+		await expect(result).resolves.toBe(false);
+		expect(pressed).toEqual([]);
+		expect(toast).toHaveBeenCalledExactlyOnceWith({ tone: "err", message: expect.stringContaining("could not read omp's status line") });
+	});
+
+	it("reports an unconfirmed cycle once", async () => {
+		const unresponsive = { ...autoChat, keys: async (keys: string) => { pressed.push(keys); } } as unknown as SessionController;
+		const result = setThinking(unresponsive, "high", choices);
+		await vi.advanceTimersByTimeAsync(30_000);
+		await expect(result).resolves.toBe(false);
+		expect(pressed.length).toBeGreaterThan(0);
+		expect(toast).toHaveBeenCalledExactlyOnceWith({ tone: "warn", message: "omp could not switch to that thinking level." });
 	});
 
 });

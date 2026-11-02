@@ -23,37 +23,86 @@ export interface StatusLine {
 	loop: boolean;
 }
 
-function isThinkingLevel(value: string): value is ThinkingLevel {
-	return (THINKING_LEVELS as readonly string[]).includes(value);
+function paintedThinkingLevel(value: string): ThinkingLevel | null {
+	const word = value.replace(/^\[|\]$/g, "");
+	if (word === "min") return "minimal";
+	if (word === "med") return "medium";
+	if (word === "xhi") return "xhigh";
+	return (THINKING_LEVELS as readonly string[]).includes(word) ? (word as ThinkingLevel) : null;
+}
+
+// The overlay pins Unicode symbols, but theme overrides still win. These are omp's
+// shipped Unicode, Nerd Font and ASCII model/separator spellings, not arbitrary icons.
+const MODEL_MARKER = /^(?:⬢|\uec19|\[M\])(?:\s+|$)/u;
+const SEGMENT_SEPARATOR = /\s+[▶\ue0b0>](?:\s+|(?=[─-]))/u;
+
+function statusSegments(line: string): string[] {
+	return line
+		.replace(/^\s*(?:[╭┌]─+|\+-+)\s*/, "")
+		.replace(/[─-]+[╮┐+]\s*$/, "")
+		.split(SEGMENT_SEPARATOR)
+		.map(segment => segment.trim());
+}
+
+function isFramedTop(line: string): boolean {
+	return /^\s*(?:[╭┌]─+.*[╮┐]|\+-+.*\+)\s*$/u.test(line);
+}
+
+function hasComposerContext(lines: readonly string[], index: number): boolean {
+	// The band starts input immediately below its status. Boxed input merges its
+	// last row into the bottom border; earlier input rows retain both side borders.
+	if (!isFramedTop(lines[index] ?? "")) return /^╰─(?:\s|$)/u.test(lines[index + 1] ?? "");
+	let prompt = index + 1;
+	while (/^│.*[│█]\s*$/u.test(lines[prompt] ?? "")) prompt++;
+	return /^╰─(?:\s|$).*╯\s*$/u.test(lines[prompt] ?? "");
+}
+
+function isEditorStatus(lines: readonly string[], index: number, diagnostic = false): boolean {
+	const line = lines[index] ?? "";
+	const segments = statusSegments(line);
+	const hasModel = segments.some(segment => MODEL_MARKER.test(segment));
+	const hasGauge = /[▶\ue0b0>][─-]/u.test(line);
+	// Unknown model glyphs are diagnostic-only, and still need omp's literal
+	// status prefix as well as the composer rows before their title can be logged.
+	return (hasModel || hasGauge || (diagnostic && segments.includes("π"))) && hasComposerContext(lines, index);
+}
+
+function editorStatusIndex(lines: readonly string[]): number {
+	return lines.findLastIndex((_, index) => isEditorStatus(lines, index));
 }
 
 /**
- * The editor's top border doubles as omp's status line: `╭── π ▶ ⬢ Opus 5.5 · ◕ xhigh ▶ 🗺 Plan ▶ …╮`.
- * Returns null when it is not painted (a dialog or full-screen overlay replaces the editor).
+ * Last status row with supported composer context, including unfamiliar glyphs
+ * after omp's literal prefix. Dialog and transcript borders are excluded.
+ */
+export function statusBorderLine(lines: readonly string[]): string | null {
+	const index = lines.findLastIndex((_, candidate) => isEditorStatus(lines, candidate, true));
+	return index >= 0 ? lines[index] ?? null : null;
+}
+
+/**
+ * Read the classic boxed editor or the default band composer. Narrow bars can drop
+ * the model segment entirely; null fields then mean it was not painted, not "off".
+ * Other composer layouts and arbitrary theme symbol overrides remain unsupported.
  */
 export function parseStatusLine(lines: readonly string[]): StatusLine | null {
-	const line = lines.findLast(candidate => /^\s*╭─/.test(candidate) && candidate.includes(" ▶ ") && candidate.includes("⬢"));
-	if (!line) return null;
-	const segments = line
-		.replace(/^\s*╭─+\s*/, "")
-		.split(" ▶ ")
-		.map(segment => segment.replace(/─+.*$/, "").trim());
+	const index = editorStatusIndex(lines);
+	if (index < 0) return null;
 	const status: StatusLine = { model: null, thinking: null, plan: "off", goal: "off", vibe: false, loop: false };
-	for (const segment of segments) {
-		if (segment.startsWith("⬢")) {
-			const [name = "", effort = ""] = segment.slice(1).split(" · ");
-			status.model = name.replace(/\s+\p{Extended_Pictographic}\uFE0F?$/u, "").trim() || null;
-			const level = effort.trim().split(/\s+/).at(-1) ?? "";
-			status.thinking = isThinkingLevel(level) ? level : null;
-			continue;
-		}
+	for (const segment of statusSegments(lines[index] ?? "")) {
+		const marker = MODEL_MARKER.exec(segment);
+		if (!marker) continue;
+		const [name = "", effort = ""] = segment.slice(marker[0].length).split(/\s+·\s+|\s+-\s+/u);
+		status.model = name.replace(/\s+\p{Extended_Pictographic}\uFE0F?$/u, "").trim() || null;
+		status.thinking = paintedThinkingLevel(effort.trim().split(/\s+/).at(-1) ?? "");
+		break;
 	}
 	return status;
 }
 
-/** Transcript lines above the editor (where omp prints command feedback). */
+/** Transcript lines above the same editor/status row recognized by the parser. */
 export function messageLines(lines: readonly string[]): string[] {
-	const editorTop = lines.findLastIndex(line => /^\s*╭─/.test(line) && line.includes("⬢"));
+	const editorTop = editorStatusIndex(lines);
 	return (editorTop >= 0 ? lines.slice(0, editorTop) : [...lines]).map(line => line.trimEnd()).filter(line => line.trim() !== "");
 }
 

@@ -125,10 +125,22 @@ describe("host overlay", () => {
 		});
 		// Interim replies, SVG, predictions, recaps and worktree exit choices follow the user's omp settings.
 		expect(overlay).not.toHaveProperty("out");
-		expect(overlay).not.toHaveProperty("composer");
+		expect(overlay.composer).toEqual({ shape: "box" });
 		expect(overlay).not.toHaveProperty("recap");
 		expect(overlay.tui).not.toHaveProperty("renderSvg");
 		expect(overlay.worktree).not.toHaveProperty("onExit");
+	});
+
+	it("logs an unreadable border once without recording terminal transcript lines", () => {
+		const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+		try {
+			pty.screen = ["Private transcript text", "╭── custom status ──╮"];
+			host.reportUnreadableStatus("╭── custom status ──╮");
+			host.reportUnreadableStatus("╭── another status ──╮");
+			expect(warn).toHaveBeenCalledExactlyOnceWith("[visual-omp] Could not read omp's classic status line:", {
+				hostId: host.id, cols: 120, rows: 36, border: "╭── custom status ──╮",
+			});
+		} finally { warn.mockRestore(); }
 	});
 });
 
@@ -194,15 +206,25 @@ describe("startup diagnostic boundaries", () => {
 		expect(host.state.exitReason?.endsWith("…")).toBe(true);
 	});
 
-	it("excludes editor drafts, status chrome and unrecognized output before collab connects", async () => {
+	it.each([
+		"╭── π ▶ ⬢ Model · high ──╮",
+		" π ▶ ⬢ Sonnet 4.6 · ◒ high ▶ 🗑 project ▶─0.3%─┃1M─",
+		" π \ue0b0 \uec19 Sonnet 4.6 · ◒ high \ue0b0 🗑 project \ue0b0─0.3%─┃1M─",
+		" π ▶ 🗑 …tools ▶─0.3%─────────────╎┃──1M─",
+		" π ▶ 🗑 …tools ▶─0.3%─────┃─1M─",
+		" 🗑 …tools ▶───────╎┃",
+	])("excludes diagnostic-looking drafts below %s before collab connects", async border => {
 		pty.data?.(
 			"private startup output\r\nError: Could not restore model provider/model-name\r\n" +
-			"╭── π ▶ ⬢ Model · high ──╮\r\nSession file not found: /tmp/visual-omp-missing-session-host-test.jsonl\r\n" +
+			"Warning: Default model provider/missing not found. Using provider/available\r\n" +
+			`${border}\r\nSession file not found: /tmp/visual-omp-missing-session-host-test.jsonl\r\n` +
+			"Warning: Default model private/draft not found. Using private/model\r\n" +
 			"unsent private draft\r\n╰──────────────────────╯\r\n",
 		);
 		await exit(1);
 		expect(host.state.exitReason).toBe("Error: Could not restore model provider/model-name");
 		expect(host.state.resumeFileMissing).toBe(false);
+		expect(host.state.notices?.map(notice => notice.text)).toEqual(["Default model provider/missing not found. Using provider/available"]);
 	});
 
 	it("never promotes live TUI content or an unrelated missing-file line after connection", async () => {
@@ -679,6 +701,7 @@ describe("opt-in semantic transport", () => {
 
 	it("launches a raw-byte Tern client only when explicitly enabled", async () => {
 		await launchTsp();
+		expect(parse(await readFile(pty.args[1]!, "utf8"))).not.toHaveProperty("composer");
 		expect(pty.spawnOptions?.env).toMatchObject({ TERM_PROGRAM: "tern" });
 		expect(pty.spawnOptions?.env).not.toHaveProperty("PI_TUI_NATIVE");
 		expect(pty.spawnOptions?.encoding).toBeNull();

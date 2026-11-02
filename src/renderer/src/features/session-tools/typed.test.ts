@@ -1,4 +1,4 @@
-import type { HostState } from "@shared/ipc";
+import type { HostState, TuiFocus } from "@shared/ipc";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GuestSnapshot } from "../../collab/lib/client";
@@ -33,6 +33,7 @@ const EDITOR = ["╭── π ▶ ⬢ Opus 5.5 · ◕ xhigh ▶ 🗑 project ▶
 let session: SessionController;
 let screen: string[];
 let submitted: string[];
+let focus: TuiFocus | null;
 let failure: Error | null;
 let submission: Promise<void> | null;
 let submissionStarted: PromiseWithResolvers<void>;
@@ -45,6 +46,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	submitted = [];
 	failure = null;
+	focus = { overlays: 0, focused: "editor", overlayKinds: [], altScreen: false };
 	submission = null;
 	submissionStarted = Promise.withResolvers<void>();
 	tsp = null;
@@ -67,6 +69,7 @@ beforeEach(() => {
 			channels.push(channel);
 			if (channel === "host:tsp-snapshot") return tsp;
 			if (channel === "host:screen") return screen;
+			if (channel === "host:tui-focus") return focus;
 			if (channel === "composer:isSideCommand") return ["explain", "user-side", "nested", "folder:nested"].includes(text);
 			if (channel === "host:submit") {
 				submissionStarted.resolve();
@@ -79,7 +82,8 @@ beforeEach(() => {
 				}
 				if (text === "/btw") {
 					screen = ["Side-answer history"];
-					session.attach({ ...session.getSnapshot().host!, tui: { overlays: 1, focused: "history", overlayKinds: ["history"], altScreen: false } });
+					focus = { overlays: 1, focused: "history", overlayKinds: ["history"], altScreen: false };
+					session.attach({ ...session.getSnapshot().host!, tui: focus });
 				} else {
 					// omp's side answer is inline. Its editor and overlay count do not change.
 					screen = ["Main reply so far", "╭─ btw ─╮", "Side answer", ...EDITOR];
@@ -199,7 +203,8 @@ describe("slash commands sent while omp works", () => {
 		expect(session.getSnapshot().queue.map(item => item.text)).toEqual(["after history"]);
 		expect(fake.app.terminalTabId).toBe("chat");
 		screen = [...EDITOR];
-		session.attach({ ...session.getSnapshot().host!, tui: { overlays: 0, focused: "editor", overlayKinds: [], altScreen: false } });
+		focus = { overlays: 0, focused: "editor", overlayKinds: [], altScreen: false };
+		session.attach({ ...session.getSnapshot().host!, tui: focus });
 		await vi.advanceTimersByTimeAsync(1000);
 		expect(submitted).toEqual(["/btw", "after history"]);
 		expect(session.getSnapshot().queue).toEqual([]);
@@ -302,6 +307,7 @@ function setWorking(working: boolean): void {
 describe("TSP slash delivery", () => {
 	afterEach(() => {
 		expect(channels).not.toContain("host:screen");
+		expect(channels).not.toContain("host:tui-focus");
 	});
 
 	it.each(["overlay", "screen"] as const)("submits once and holds following messages while an omp %s is open", async blocked => {
