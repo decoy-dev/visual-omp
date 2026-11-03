@@ -28,7 +28,7 @@ import {
 	toast,
 	Tooltip,
 } from "@/ui";
-import { focusRing, menuCheckSlot, menuItem, menuItemActive, menuSeparator } from "@/ui/styles";
+import { focusRing, menuCheckSlot, menuItem, menuItemActive, menuSeparator, rowPicker } from "@/ui/styles";
 import { useDisplayedEntries } from "../../chat/branch";
 import { composerModel } from "../../collab/lib/modelFallback";
 import { getCommand } from "../../registry/commands";
@@ -68,13 +68,6 @@ export const usePickerRequests = create<PickerRequests>()(set => ({
 	handled: picker => set({ [picker]: null }),
 }));
 
-/** Ghost 28px-high control shared by the composer's labelled pickers (each adds its own height rule), and Home's. */
-export const rowPicker = cn(
-	"inline-flex items-center gap-1.5 rounded-md px-2 text-sm font-medium text-fg-muted",
-	"transition-colors duration-(--dur-fast) enabled:hover:bg-hover enabled:hover:text-fg data-[state=open]:bg-hover data-[state=open]:text-fg",
-	"disabled:cursor-not-allowed disabled:opacity-45",
-	focusRing,
-);
 
 // ─── Permission and work modes ─────────────────────────────────────────────
 

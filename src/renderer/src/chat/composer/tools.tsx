@@ -8,6 +8,7 @@ import { useTranslation } from "react-i18next";
 import { type ChatSlotProps, chatSlots } from "../../registry/slots";
 import { Button, cn, ContextRing, contextZone, Popover, PopoverContent, PopoverTrigger, Progress, toast, Tooltip } from "../../ui";
 import type { ComposerMode } from "./drafts";
+import { SuggestionsTool } from "./SuggestionsTool";
 
 /** The quick modes and the glyph that enters each one at the start of an empty box; the ＋ menu lists them. */
 export const QUICK_MODES: ReadonlyArray<{ mode: ComposerMode; glyph: string }> = [
@@ -72,3 +73,4 @@ function ContextTool({ session }: ChatSlotProps) {
 }
 
 chatSlots.register({ id: "composer.context", placement: "composerTools", order: 90, component: ContextTool });
+chatSlots.register({ id: "composer.suggestions", placement: "composerTools", order: 40, component: SuggestionsTool });

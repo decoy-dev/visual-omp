@@ -12,6 +12,14 @@ export const disabledNative = "disabled:cursor-not-allowed disabled:opacity-45";
 /** Same treatment for Radix `data-disabled`. */
 export const disabledData = "data-disabled:cursor-not-allowed data-disabled:opacity-45";
 
+/** Ghost control for the labelled settings row below chat and Home composers; callers set height. */
+export const rowPicker = [
+	"inline-flex items-center gap-1.5 rounded-md px-2 text-sm font-medium text-fg-muted",
+	"transition-colors duration-(--dur-fast) enabled:hover:bg-hover enabled:hover:text-fg data-[state=open]:bg-hover data-[state=open]:text-fg",
+	disabledNative,
+	focusRing,
+].join(" ");
+
 /** Press feedback for small square controls (close buttons, chip remove): a slightly deeper scale than Button. */
 export const pressSmall = "active:scale-[0.94]";
 

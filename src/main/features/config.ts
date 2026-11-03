@@ -219,14 +219,18 @@ async function setSetting(key: string, value: JsonValue, scope: SettingScope, cw
 	if (leaf.key === "contextFiles.extra") instructionCandidates(value);
 	await setConfigPath(scope, cwd, leaf.key.split("."), value);
 	configWritten();
-	return writeResult(leaf.key, scope, cwd);
+	const result = await writeResult(leaf.key, scope, cwd);
+	if (leaf.key === "composer.predictions") broadcast("config:changed", { scope, cwd: scope === "global" ? null : cwd ?? null, file: await configFile(scope, cwd), origin: "app" });
+	return result;
 }
 
 async function resetSetting(key: string, scope: SettingScope, cwd: string | undefined): Promise<SettingWriteResult> {
 	const leaf = await readLeaf(key, cwd);
 	await deleteConfigPath(scope, cwd, leaf.key.split("."));
 	configWritten();
-	return writeResult(leaf.key, scope, cwd);
+	const result = await writeResult(leaf.key, scope, cwd);
+	if (leaf.key === "composer.predictions") broadcast("config:changed", { scope, cwd: scope === "global" ? null : cwd ?? null, file: await configFile(scope, cwd), origin: "app" });
+	return result;
 }
 
 // ─── Models ────────────────────────────────────────────────────────────────

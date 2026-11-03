@@ -92,12 +92,13 @@ export interface SettingWriteResult {
 	shadowedBy: SettingSource | null;
 }
 
-/** Which config file changed on disk (not emitted for the app's own writes). */
+/** Which config file changed on disk. App writes identify themselves to avoid external-edit notices. */
 export interface ConfigChangedEvent {
 	scope: SettingScope;
 	/** Project directory for `project` changes; null for the global file. */
 	cwd: string | null;
 	file: string;
+	origin?: "app";
 }
 
 // ─── Models ────────────────────────────────────────────────────────────────
@@ -372,7 +373,7 @@ declare module "../ipc" {
 	}
 
 	interface IpcEventMap {
-		/** A watched config file changed outside the app. Re-query what you display. */
+		/** A watched config file or app suggestion setting changed. Re-query what you display. */
 		"config:changed": ConfigChangedEvent;
 	}
 }

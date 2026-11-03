@@ -37,7 +37,8 @@ import { ProjectColorDot } from "../projects/ProjectColor";
 import { chooseFolder, startChat } from "../projects/actions";
 import { folderName } from "../projects/format";
 import { thinkingChoices, useChatModels } from "../session-tools/model";
-import { ModelList, PermissionMenu, rowPicker } from "../session-tools/pickers";
+import { ModelList, PermissionMenu } from "../session-tools/pickers";
+import { rowPicker } from "@/ui/styles";
 import { THINKING_LEVELS, type ThinkingLevel } from "../session-tools/screen";
 
 const EMPTY: readonly Attachment[] = [];

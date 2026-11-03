@@ -4,6 +4,18 @@
 		"retry": "Retry recovery"
 	},
 	"label": "Message to omp",
+	"suggestions": {
+		"title": "Suggestions",
+		"label": "Suggestions: predict my next message",
+		"on": "On",
+		"off": "Off",
+		"unknown": "…",
+		"tip": "Suggest your next message with an extra model request after replies; this counts toward usage.",
+		"live": "Saves for all projects and updates running chats when omp reloads its settings; restart omp if needed.",
+		"controlled": "This project's setting or another higher-priority omp setting controls suggestions. Change it in Settings > Advanced.",
+		"loadFailed": "Couldn't read omp's suggestion setting: {{reason}}",
+		"saveFailed": "Couldn't save suggestions"
+	},
 	"prediction": {
 		"available": "Suggested text: {{text}}. Press Tab to insert it without sending.",
 		"failed": "Couldn't insert the suggestion",

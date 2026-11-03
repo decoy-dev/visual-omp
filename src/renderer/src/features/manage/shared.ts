@@ -44,7 +44,7 @@ export function useResource<T>(load: () => Promise<T>, deps: DependencyList): Re
 
 /**
  * Watches omp's global config (and the project's, with `cwd`) while mounted and reports edits made
- * outside the app. The app's own writes never trigger `config:changed`.
+ * outside the app. App suggestion writes also refresh consumers, without an external-edit notice.
  */
 export function useExternalConfigChange(cwd: string | null): [changed: boolean, clear: () => void] {
 	const [changed, setChanged] = useState(false);
@@ -52,6 +52,7 @@ export function useExternalConfigChange(cwd: string | null): [changed: boolean, 
 		const arg = cwd ?? undefined;
 		void window.vomp.invoke("config:watch", arg);
 		const off = window.vomp.on("config:changed", event => {
+			if (event.origin === "app") return;
 			if (event.scope === "global" || event.cwd === cwd) setChanged(true);
 		});
 		return () => {
