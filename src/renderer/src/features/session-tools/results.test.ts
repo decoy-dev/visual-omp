@@ -68,6 +68,46 @@ describe("presentLines", () => {
 	it("unboxes a report panel, keeps its title and grid, drops the close hint", () => {
 		expect(presentLines(PANEL)).toEqual(["Context Usage", "", "⛁ ⛁ ⛶ ⛶   Claude Opus 5.5 (1m context)", "⛶ ⛶ ⛝ ⛝   31K/1m tokens (3.1%)"]);
 	});
+
+	it("removes only omp 18.16 execution status rules from the presented output", () => {
+		expect(presentLines([
+			"─── ⣾ Running… (⎋ to cancel) ──────────────────",
+			"─── exit 1 ───────────────────────────────────",
+			"─── exit -1 ─",
+			"─── cancelled ────────────────────────────────",
+			"the output contains --- dashes and ─── rules",
+			"--- exit 1 ---",
+			"── exit 1 ───",
+			"─── exit 1 ─── more output",
+			"─── exit 1: expected failure ───",
+			"─── Running… (⎋ to cancel) ───",
+			"─── ⣾ Running tests… (⎋ to cancel) ───",
+			"──── ⣾ Running… (⎋ to cancel) ───",
+			"───  ⣾ Running… (⎋ to cancel) ───",
+			"─── ⣾ Running… (⎋ to cancel)  ───",
+			"─── ⣾ Running… (⎋ to cancel)",
+			"─── exit 1",
+			"─── ⠋ Running… (⎋ to cancel) ───",
+		])).toEqual([
+			"the output contains --- dashes and ─── rules",
+			"--- exit 1 ---",
+			"── exit 1 ───",
+			"─── exit 1 ─── more output",
+			"─── exit 1: expected failure ───",
+			"─── Running… (⎋ to cancel) ───",
+			"─── ⣾ Running tests… (⎋ to cancel) ───",
+			"──── ⣾ Running… (⎋ to cancel) ───",
+			"───  ⣾ Running… (⎋ to cancel) ───",
+			"─── ⣾ Running… (⎋ to cancel)  ───",
+			"─── ⣾ Running… (⎋ to cancel)",
+			"─── exit 1",
+			"─── ⠋ Running… (⎋ to cancel) ───",
+		]);
+	});
+
+	it.each(["⣾", "⣽", "⣻", "⢿", "⡿", "⣟", "⣯", "⣷"])("removes the execution loader rule with Unicode status frame %s", frame => {
+		expect(presentLines([`─── ${frame} Running… (⎋ to cancel) ───`, "command output"])).toEqual(["command output"]);
+	});
 });
 
 describe("watchStep", () => {
@@ -95,6 +135,23 @@ describe("watchStep", () => {
 			sample(compacted, 7520, { transcriptGrew: true }),
 		];
 		expect(run(before, "/compact", samples)).toEqual({ kind: "stop", at: 7520 });
+	});
+
+	it.each(["!false", "$raise SystemExit(1)"])("waits through the 18.16 labelled loader for %s", command => {
+		const before = screen();
+		const spinning = screen("command output --- keep this", "─── ⣾ Running… (⎋ to cancel) ──────────────────");
+		const settled = screen("command output --- keep this", "─── exit 1 ───────────────────────────────────");
+		const result = run(before, command, [...hold(spinning, 120, 3000), ...hold(settled, 3120, 6000)]);
+		expect(result).toMatchObject({ kind: "result", lines: ["command output --- keep this"] });
+		expect("at" in result && result.at).toBeGreaterThanOrEqual(3000 + WATCH.afterLoaderMs);
+	});
+
+	it("does not turn a cancelled execution's status rule into command output", () => {
+		const before = screen();
+		const spinning = screen("─── ⣷ Running… (⎋ to cancel) ──────────");
+		const settled = screen("─── cancelled ──────────────────────");
+		expect(run(before, "!sleep 60", [...hold(spinning, 120, 1200), ...hold(settled, 1320, 4000)]))
+			.toMatchObject({ kind: "stop" });
 	});
 
 	it("stops without a row when a turn starts", () => {

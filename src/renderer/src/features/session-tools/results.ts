@@ -61,9 +61,15 @@ export function printedLines(before: readonly string[], after: readonly string[]
 	return added;
 }
 
-/** omp's working spinner (`Loader`): a braille frame leading the line, e.g. `⠧ Compacting context... (⎋ to cancel)`. */
+// omp 18.16's execution frame uses exactly three leading rule cells, single spaces
+// around its label and at least one trailing cell (tui/src/chat/execution-shared.ts).
+const EXECUTION_LOADER_RULE = /^─── [⣾⣽⣻⢿⡿⣟⣯⣷] Running… \([^()\r\n]+ to cancel\) ─+$/u;
+const EXECUTION_STATUS_RULE = /^─── (?:exit -?\d+|cancelled) ─+$/u;
+
+/** omp's braille loader, either leading a line or inside its 18.16 execution rule. */
 export function isLoaderLine(line: string): boolean {
-	return /^[\u2801-\u28FF]\s/.test(line.trim());
+	const trimmed = line.trim();
+	return /^[\u2801-\u28FF]\s/u.test(trimmed) || EXECUTION_LOADER_RULE.test(trimmed);
 }
 
 /**
@@ -75,6 +81,7 @@ export function presentLines(lines: readonly string[]): string[] {
 	const shaped: string[] = [];
 	for (const line of lines) {
 		const trimmed = line.trimEnd();
+		if (isLoaderLine(trimmed) || EXECUTION_STATUS_RULE.test(trimmed.trim())) continue;
 		const title = /^\s*╭─+\s*(.*?)\s*─*╮$/.exec(trimmed);
 		if (title) {
 			if (title[1]) shaped.push(title[1]);
@@ -181,7 +188,7 @@ export function watchStep(state: WatchState, before: readonly string[], command:
 	if (turn || sample.transcriptGrew) return [state, { kind: "stop" }];
 	const printed = printedLines(before, sample.lines).filter(line => line.trim() !== command);
 	const spinning = !state.duringTurn && printed.some(isLoaderLine);
-	const output = printed.filter(line => !isLoaderLine(line));
+	const output = printed.filter(line => !isLoaderLine(line) && !EXECUTION_STATUS_RULE.test(line.trim()));
 	const changed = output.join("\n") !== state.output.join("\n");
 	const next: WatchState = {
 		...state,
