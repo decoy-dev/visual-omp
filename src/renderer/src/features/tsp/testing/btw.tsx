@@ -4,7 +4,7 @@ import { createRoot } from "react-dom/client";
 import type { BtwState, BtwTurn } from "@shared/contracts/btw";
 import type { TspNode } from "@shared/tsp";
 import { btwOverlayTopics, mergeBtwTopics, projectBtw, resolveBtwTopic } from "@shared/tsp/btw";
-import { BtwPaneContent } from "../../btw/BtwPane";
+import { BtwPaneContent } from "../../btw/BtwPaneContent";
 import { MotionProvider } from "../../../ui/motion";
 import { TooltipProvider } from "../../../ui/Tooltip";
 import recorded from "../../../../../main/omp/tsp/fixtures/18.15.0/btw-follow-up.btw.json";

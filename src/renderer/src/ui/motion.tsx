@@ -26,7 +26,7 @@ import {
 	useReducedMotionConfig,
 	type Variants,
 } from "motion/react";
-import { createContext, type ReactNode, type RefObject, useContext, useEffect, useRef, useState } from "react";
+import { createContext, type ReactNode, type Ref, type RefObject, useContext, useEffect, useRef, useState } from "react";
 import { jumpStart, pinnedAfterScroll, ScrollLedger } from "./scrollFollow";
 
 /** Cubic-bezier presets, matching `--ease-out-quart` and `--ease-out-expo` in tokens.css. */
@@ -339,12 +339,27 @@ export interface PresenceSwapProps {
 	/**
 	 * `wait` (default) lets the old content leave before the new one enters. `popLayout` overlaps them; the parent
 	 * then needs `position: relative`.
+	 * `replace` enters immediately and positions exiting content over its relative parent until its exit ends.
+	 * Unlike switching into Motion's measured `popLayout`, it also works when the previous mode was `wait`.
 	 */
-	mode?: "wait" | "popLayout" | "sync";
+	mode?: "wait" | "popLayout" | "sync" | "replace";
 	/** Animate the first render too. Default false. */
 	animateOnMount?: boolean;
 	className?: string;
 	children: ReactNode;
+}
+
+const SwapExitLayer = createContext<string | number | null>(null);
+
+/** Retained children keep their original key, but receive the destination through context. */
+function SwapContent({ swapKey, variant, direction, className, children, ref }: {
+	swapKey: string | number; variant: SwapVariant; direction: 1 | -1; className?: string; children: ReactNode; ref?: Ref<HTMLDivElement>;
+}) {
+	const destination = useContext(SwapExitLayer);
+	return <motion.div ref={ref} custom={direction} variants={swapVariants[variant]} initial="enter" animate="center" exit="exit"
+		className={className} style={destination !== null && destination !== swapKey ? { position: "absolute", inset: 0 } : undefined}>
+		{children}
+	</motion.div>;
 }
 
 /** Crossfade, rise or slide between keyed children, for tab, pane and screen switches. */
@@ -358,19 +373,11 @@ export function PresenceSwap({
 	children,
 }: PresenceSwapProps) {
 	return (
-		<AnimatePresence mode={mode} initial={animateOnMount} custom={direction}>
-			<motion.div
-				key={swapKey}
-				custom={direction}
-				variants={swapVariants[variant]}
-				initial="enter"
-				animate="center"
-				exit="exit"
-				className={className}
-			>
-				{children}
-			</motion.div>
-		</AnimatePresence>
+		<SwapExitLayer.Provider value={mode === "replace" ? swapKey : null}>
+			<AnimatePresence mode={mode === "replace" ? "sync" : mode} initial={animateOnMount} custom={direction}>
+				<SwapContent key={swapKey} swapKey={swapKey} variant={variant} direction={direction} className={className}>{children}</SwapContent>
+			</AnimatePresence>
+		</SwapExitLayer.Provider>
 	);
 }
 

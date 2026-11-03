@@ -487,6 +487,15 @@ response completed. The pane describes the current published status.
 
 The pane claims only the exact supported overlay while visibly displaying its selected scoped
 topic. A new overlay or topic selects its current answer; reading another topic releases the claim.
+The pane registers eagerly, and slash routing flushes its mount before asking omp. Pane transitions
+enter Side questions immediately, including the expanded narrow layout, while keeping the shared
+motion presets. Shared `PresenceSwap` replacement entry takes exiting content out of layout
+until its exit finishes, so it cannot divide the panel or main area. Other destinations retain
+their existing wait transition. If the document arrives before its history snapshot, a read-only document preview
+owns that exact supported overlay until the scoped native controls are ready. This prevents the
+generic screen from opening between the document and history IPC events.
+Interactive history and composer controls remain in a lazy chunk; its read-only fallback also
+claims the supported topic it displays, so chunk loading cannot open the generic screen.
 Hidden panes and covering screens also release it, and unfamiliar controls remain in the omp screen.
 A supported empty history also registers ownership while the pane shows its empty state and
 question field. Reading a different saved topic leaves that empty native overlay unclaimed.
@@ -905,6 +914,10 @@ last classic release, v0.7.4 (`233c28252a211081e30202d4b0a41e02f45cad97`, 2,017,
 `scripts/renderer-classic-baseline.json` records the baseline and its reproduction commands.
 These are guard requirements and historical baseline evidence; each build's report
 provides its measured size when verification runs.
+On 2026-11-03, the owner accepted a measured entry ceiling of 2,038,175 bytes for
+Side questions first-frame presentation (`/btw` opens the pane without the omp screen flashing).
+The baseline file records that exception in `acceptedGrowth` with its reason and acceptance date;
+the 20,000-byte default and the refusal of eager TSP view modules remain enforced.
 
 `electron.vite.config.ts` bundles main and preload dependencies other than externalized packages. Pure-JavaScript main-process packages are devDependencies and are bundled into `out`; native `node-pty` remains a runtime dependency and is selectively included by `electron-builder.yml`. `electronLanguages` retains `en` and `en-US`; source maps are excluded from packaged output. `node-pty`'s package contents are trimmed to runtime files.
 

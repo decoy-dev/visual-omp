@@ -5,6 +5,11 @@
   "entryFile": "assets/index-BrD4viTj.js",
   "entryBytes": 2017581,
   "maxGrowthBytes": 20000,
+  "acceptedGrowth": {
+    "entryBytes": 2038175,
+    "reason": "Side questions first-frame presentation (/btw opens the pane without the omp screen flashing)",
+    "acceptedOn": "2026-11-03"
+  },
   "measurement": {
     "metric": "Uncompressed UTF-8 bytes of the single JavaScript module entry referenced by out/renderer/index.html. CSS, dynamic chunks and source maps are excluded.",
     "platform": "darwin",

@@ -6,7 +6,7 @@ import type { BtwState, BtwTopic, BtwTurn } from "@shared/contracts/btw";
 import { btwOverlayTopics, mergeBtwTopics, projectBtw, resolveBtwTopic } from "@shared/tsp/btw";
 import type { SessionController, SessionView } from "../../state/session";
 import { TooltipProvider } from "../../ui";
-import { BtwPane } from "./BtwPane";
+import { BtwContent, BtwPane } from "./BtwPane";
 import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 import { FixtureDocuments } from "../tsp/testing/documents";
 import messagesRaw from "../../../../main/omp/tsp/fixtures/18.15.0/btw-open-main-abort.messages.jsonl?raw";
@@ -23,6 +23,7 @@ const originalVomp = window.vomp;
 afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; container?.remove(); container = undefined; window.vomp = originalVomp; });
 
 it("renders each recorded streaming frame and sidecar handoff without losing the claimed answer", async () => {
+	await BtwContent.preload();
 	const messages: { verb: string; body: unknown }[] = messagesRaw.trim().split("\n").map(line => JSON.parse(line));
 	const documents = new FixtureDocuments();
 	const listeners = new Set<(state: BtwState) => void>();

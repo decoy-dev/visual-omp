@@ -131,8 +131,8 @@ export function Dock({ chatKey, width, expanded = false, onEnter }: { chatKey: s
 			</div>
 			<div role="region" aria-labelledby={pane ? `${scope}-title` : undefined} className="relative flex min-h-0 flex-1 flex-col overflow-hidden">
 				{/* A chat switch fades the previous pane out, then the next pane in; within a chat, choosing a pane slides. */}
-				<PresenceSwap swapKey={chatKey} className="flex min-h-0 flex-1 flex-col">
-					<PresenceSwap swapKey={pane?.id ?? "none"} variant="slide" direction={nav.direction} className="flex min-h-0 flex-1 flex-col">
+				<PresenceSwap swapKey={chatKey} mode={pane?.id === "btw" ? "replace" : "wait"} className="relative flex min-h-0 flex-1 flex-col">
+					<PresenceSwap swapKey={pane?.id ?? "none"} mode={pane?.id === "btw" ? "replace" : "wait"} variant="slide" direction={nav.direction} className="flex min-h-0 flex-1 flex-col">
 						{pane ? <pane.component session={session} projectPath={projectPath} /> : <p className="p-6 text-md text-fg-faint">{t("dock.empty")}</p>}
 					</PresenceSwap>
 				</PresenceSwap>

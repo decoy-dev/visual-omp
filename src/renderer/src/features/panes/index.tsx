@@ -16,6 +16,7 @@ import { PreviewPane } from "./PreviewPane";
 import { TasksBadge, TasksPane } from "./TasksPane";
 import { TerminalBadge, TerminalPane } from "./TerminalPane";
 import { newShell } from "./terminal";
+import { BtwPane } from "../btw/BtwPane";
 
 /** Stands in for a pane while its chunk loads. */
 function PaneLoading() {
@@ -59,7 +60,7 @@ chatSlots.register({ id: "pinned-helpers", placement: "aboveComposer", order: 10
 panes.register({ id: "plan", order: 50, title: "panes:names.plan", icon: ClipboardText, component: PlanPane, badge: PlanBadge });
 panes.register({
 	id: "btw", order: 55, title: "panes:names.btw", icon: ChatCircle,
-	component: lazyView(() => import("../btw/BtwPane").then(m => m.BtwPane), PaneLoading),
+	component: BtwPane,
 	when: session => session?.getSnapshot().host?.transport === "tsp",
 });
 panes.register({ id: "terminal", order: 60, title: "panes:names.terminal", icon: TerminalWindow, component: TerminalPane, badge: TerminalBadge });

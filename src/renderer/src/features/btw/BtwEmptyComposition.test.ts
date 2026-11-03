@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement, Fragment, type PropsWithChildren } from "react";
+import { act, type ComponentType, createElement, Fragment, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { BtwState } from "@shared/contracts/btw";
@@ -8,20 +8,21 @@ import { projectBtw } from "@shared/tsp/btw";
 import { SessionController, type SessionView } from "../../state/session";
 import { controllerFor, useApp, useDockVisible } from "../../state/app";
 import { TooltipProvider } from "../../ui/Tooltip";
-import { BtwPane } from "./BtwPane";
+import { BtwContent, BtwPane } from "./BtwPane";
 import { OverlayWatcher } from "../palette/OverlayWatcher";
 import { autoOpened, TerminalSheetHost } from "../palette/TerminalSheet";
 import { currentPresentationConsumers, PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 import { FixtureDocuments, loadFixtureRecording } from "../tsp/testing/documents";
 import type * as OmpScreenModule from "../tsp/OmpScreenSheet";
+import type * as LazyModule from "../../registry/lazy";
 import "../../i18n";
 
 vi.hoisted(() => { Object.assign(window, { vomp: { platform: "darwin", on: () => () => {}, invoke: async () => undefined } }); });
-vi.mock("../../registry/lazy", async () => {
-	// Replace only the chunk boundary; the generic semantic screen stays production code.
+vi.mock("../../registry/lazy", async importOriginal => {
+	const original = await importOriginal<typeof LazyModule>();
 	const { OmpScreenSheet } = await vi.importActual<typeof OmpScreenModule>("../tsp/OmpScreenSheet");
-	let count = 0;
-	return { lazyView: () => ++count === 1 ? () => null : OmpScreenSheet };
+	return { ...original, lazyView: (load: () => Promise<ComponentType<object>>, fallback: ComponentType<object> | null) =>
+		load.toString().includes("OmpScreenSheet") ? OmpScreenSheet : original.lazyView(load, fallback) };
 });
 vi.mock("motion/react", () => {
 	const tag = (name: string) => ({ children, initial, animate, exit, transition, layout, layoutId, variants, ...props }: PropsWithChildren<Record<string, unknown>>) => createElement(name, props, children);
@@ -54,6 +55,7 @@ function publish() {
 	for (const listener of btwUpdates) listener(state);
 }
 beforeEach(async () => {
+	await BtwContent.preload();
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} unobserve() {} });
 	hostUpdates.clear(); btwUpdates.clear(); opened = []; revision = 1; autoOpened.tabId = null;

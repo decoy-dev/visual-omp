@@ -7,7 +7,8 @@ import type { SessionController, SessionView } from "../../state/session";
 import "../../i18n";
 import { routeSlash } from "../session-tools/slash";
 import { TooltipProvider } from "../../ui";
-import { BtwPane, BtwPaneContent } from "./BtwPane";
+import { BtwContent, BtwPane } from "./BtwPane";
+import { BtwPaneContent } from "./BtwPaneContent";
 import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 
 vi.hoisted(() => { Object.assign(window, { vomp: { platform: "darwin", on: () => () => {}, invoke: async () => undefined } }); });
@@ -22,7 +23,8 @@ const listeners = new Map<string, Set<(event: unknown) => void>>();
 const originalVomp = window.vomp;
 const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 const invoke = vi.fn();
-beforeEach(() => {
+beforeEach(async () => {
+	await BtwContent.preload();
 	invoke.mockReset();
 	listeners.clear();
 	window.vomp = { platform: "darwin", invoke, on: (channel: string, listener: (event: unknown) => void) => {
