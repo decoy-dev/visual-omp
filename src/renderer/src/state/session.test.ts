@@ -1381,6 +1381,28 @@ describe("SessionController TSP preview input", () => {
 		expect(session.getSnapshot().inputHistory).toContainEqual({ text: "Earlier prompt", timestamp: 10 });
 	});
 
+	it.each(["Invalid TSP JSON", "Invalid TSP surface"])("restarts after a live protocol failure by stopping before saved-session relaunch: %s", async diagnostic => {
+		const session = new SessionController({ tabId: "protocol-failed-restart", projectPath: "/p", sessionFile: "/p/session.jsonl" });
+		session.attach(host({ transport: "tsp", tspFailed: false, tspEpoch: 7, link: "L1" }));
+		fakes.guests.at(-1)?.emit("live", [u1, a1]);
+		sendHost({ transport: "tsp", tspFailed: true, tspEpoch: 7, link: "L1", tspAvailability: { available: false, reason: diagnostic } });
+		const stopped = Promise.withResolvers<null>();
+		respond = channel => channel === "host:prepare-restart" ? Promise.reject(new Error("Failed protocols cannot prepare restart"))
+			: channel === "host:stop" ? stopped.promise
+			: channel === "host:start" ? Promise.resolve(host({ hostId: "h2", transport: "tsp", tspFailed: false, link: "L2" })) : undefined;
+		const restarting = session.restart();
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:stop")).toEqual([["host:stop", "h1"]]);
+		expect(invoked.some(call => call[0] === "host:prepare-restart" || call[0] === "host:submit" || call[0] === "host:start")).toBe(false);
+		expect(ids(liveEntries(session.getSnapshot()))).toEqual(["u1", "a1"]);
+		stopped.resolve(null);
+		await restarting;
+		expect(invoked.find(call => call[0] === "host:start")?.[1]).toMatchObject({ cwd: "/p", resumeFile: "/p/session.jsonl" });
+		expect(session.getSnapshot().host).toMatchObject({ hostId: "h2", tspFailed: false });
+		expect(invoked.some(call => call[0] === "host:prepare-restart" || call[0] === "host:submit")).toBe(false);
+		expect(ids(liveEntries(session.getSnapshot()))).toEqual(["u1", "a1"]);
+	});
+
 	it("does not relaunch a failed semantic host when its explicit stop fails", async () => {
 		const session = new SessionController({ tabId: "preview-restart-stop-failed", projectPath: "/p", sessionFile: "/p/session.jsonl" });
 		session.attach(host({ transport: "tsp", tspFailed: true }));

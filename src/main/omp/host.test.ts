@@ -2008,6 +2008,31 @@ describe("opt-in semantic transport", () => {
 		expect(host.state.tspFailed).toBe(true);
 	});
 
+	it.each([
+		{ bytes: "\x1b_tsp;f;{\x1b\\", diagnostic: "Invalid TSP JSON" },
+		{ bytes: '\x1b_tsp;o;{"id":42,"mode":"inline"}\x1b\\', diagnostic: "Invalid TSP surface" },
+	])("publishes restartable protocol failure after negotiation: $diagnostic", async ({ bytes, diagnostic }) => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer();
+		await connect();
+		expect(host.tspSnapshot()?.lifecycle).toBe("live");
+		expect(host.state.tspFailed).toBe(false);
+		vi.mocked(broadcast).mockClear();
+		pty.data?.(Buffer.from(bytes));
+		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "failed", negotiated: true, failure: expect.stringContaining(diagnostic) });
+		expect(host.state.tspFailed).toBe(true);
+		expect(host.state.tspAvailability).toMatchObject({ available: false, reason: expect.stringContaining(diagnostic) });
+		expect(broadcast).toHaveBeenCalledWith("host:state", expect.objectContaining({ hostId: host.id, tspFailed: true }));
+		expect(broadcast).toHaveBeenCalledWith("host:tsp-update", expect.objectContaining({ lifecycle: "failed" }));
+		// A fresh hello is the only protocol transition that clears the failed epoch.
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		expect(host.state.tspFailed).toBe(false);
+		expect(host.tspSnapshot()?.failure).toBeNull();
+		tspComposer();
+		expect(host.tspSnapshot()?.lifecycle).toBe("live");
+	});
+
 	it("blocks submission for nonmodal overlays and screen surfaces and exposes the reason", async () => {
 		await launchTsp();
 		tspMessage("q", { q: "hello", v: [1], features: ["send"] });

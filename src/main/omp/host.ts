@@ -470,7 +470,7 @@ export class SessionHost {
 		this.#tspRevision++;
 		const snapshot = this.tspSnapshot();
 		if (snapshot) {
-			this.state = { ...this.state, tspAvailability: snapshot.availability, tspComposer: snapshot.composer, tspEpoch: snapshot.epoch, tspEditorRestore: snapshot.editorRestore };
+			this.state = { ...this.state, tspFailed: snapshot.lifecycle === "failed", tspAvailability: snapshot.availability, tspComposer: snapshot.composer, tspEpoch: snapshot.epoch, tspEditorRestore: snapshot.editorRestore };
 			broadcast("host:state", this.state);
 		}
 		if (snapshot) broadcast("host:tsp-update", snapshot);
