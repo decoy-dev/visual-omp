@@ -932,7 +932,26 @@ naturally within 300 seconds, with no recorder `process.exit()`, `unref()` or pr
 Both variants are attempted even if the first fails, and retain separate failure diagnostics plus
 an aggregate `lifecycle-failure.json`. Executable bundles use a temporary directory beneath the
 checkout for static node-pty resolution; reports remain in the evidence directory after cleanup.
-The next Windows run must confirm the fix and determine whether classic chats retain resources.
+
+**Passing Windows evidence (`41695138305`, preview commit `9095eed`).** The
+[CI run](https://github.com/decoy-dev/visual-omp/actions/runs/41695138305) passed on Windows and
+macOS. Both production-host lifecycle recorders completed all six cycles and exited naturally.
+Every settled TSP and classic sample had zero `MessagePort` resources and a flat two `PipeWrap`
+resources; `workerGrowth` was empty for every cycle and both `retentionFailures` lists were empty.
+Settled thread counts declined from 18 after the first cycle to 15 after the sixth.
+
+| Lifecycle transport | Settled handles after natural cycles 1, 2, 3 | Confirmed force-stop observations |
+|---|---|---|
+| TSP, bundled ConPTY | 231, 233, 235 | One confirmation per cycle; no worker growth. |
+| Classic, system ConPTY | 232, 235, 238 | One confirmation per cycle; no worker growth. |
+
+The two-to-three-handle increases per natural cycle remain observational. This run proves the
+worker/pipe retention fix and natural recorder exit for the tested scenarios; it does not establish
+that native HPCON handles never accumulate. The installed-build worker/thread, pipe-handle and
+leftover-process checks in criterion 5 and Defender/SmartScreen checks in criterion 6 remain open.
+The same run passed Node and packaged x64 Electron APC/OSC 877 hello, acknowledgments and Unicode
+edit/send exchanges, the system-ConPTY observation, and both architecture layout checks. This
+evidence is for the preview commit; the port onto newer local main requires its own local checks.
 
 **Local checkpoint (2026-11-03, after review, before rebasing onto refreshed main).** macOS
 typecheck and all 47 packaging and CI-helper unit tests pass. One full Vitest run passes
