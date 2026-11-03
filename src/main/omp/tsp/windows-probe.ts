@@ -28,6 +28,9 @@ export interface WindowsProbeResult {
 	cleanupErrors: string[];
 	traffic: { direction: "in" | "out"; base64: string; at: number }[];
 	trafficTruncated?: boolean;
+	/** An omp exit observed before the probe asked it to terminate is a startup/runtime failure. */
+	earlyExit?: { exitCode: number; signal?: number };
+	subprocessError?: string;
 }
 
 // Per probe: 20s work + two 2s cleanup waits. Coordinator: two 30s subprocesses.
@@ -67,6 +70,7 @@ export async function runWindowsProbe(bin: string, useConptyDll: boolean, framin
 	let root: string | undefined;
 	let child: IPty | undefined;
 	let exited = false;
+	let stopping = false;
 	let recordedBytes = 0;
 	const exit = Promise.withResolvers<void>();
 	const record = (direction: "in" | "out", bytes: Buffer) => {
@@ -109,8 +113,8 @@ export async function runWindowsProbe(bin: string, useConptyDll: boolean, framin
 		await bounded((async () => {
 			root = await mkdtemp(join(tmpdir(), "vomp-windows-tsp-"));
 			const home = join(root, "home");
-			const agent = join(root, "agent");
-			await Promise.all([(deps.mkdir ?? mkdir)(home), (deps.mkdir ?? mkdir)(agent)]);
+			const agent = join(home, ".omp", "agent");
+			await (deps.mkdir ?? mkdir)(agent, { recursive: true });
 			await writeFile(join(agent, "config.yml"), JSON.stringify({
 				startup: { setupWizard: false, checkUpdate: false, changelogMode: "hidden", quiet: true },
 				marketplace: { autoUpdate: "off" }, worktree: { onStart: "off", onExit: "keep" },
@@ -118,14 +122,15 @@ export async function runWindowsProbe(bin: string, useConptyDll: boolean, framin
 			}));
 		})(), deadline - Date.now(), "Profile setup exceeded the probe deadline");
 		const home = join(root!, "home");
-		const agent = join(root!, "agent");
 		const env: Record<string, string> = {};
 		for (const [key, value] of Object.entries(process.env)) {
 			if (value !== undefined && /^(PATH|SYSTEMROOT|WINDIR|COMSPEC|PATHEXT|TEMP|TMP)$/i.test(key)) env[key] = value;
 		}
 		Object.assign(env, { HOME: home, USERPROFILE: home, APPDATA: join(home, "AppData", "Roaming"),
-			LOCALAPPDATA: join(home, "AppData", "Local"), XDG_CONFIG_HOME: home, XDG_CACHE_HOME: home,
-			PI_CODING_AGENT_DIR: agent, PI_CONFIG_DIR: agent, TERM_PROGRAM: "tern", TERM: "xterm-256color",
+			LOCALAPPDATA: join(home, "AppData", "Local"),
+			// PI_CONFIG_DIR is a name relative to home, not an absolute config path.
+			// Let omp derive its normal ~/.omp/agent and ~/.omp/run paths from this scratch home.
+			TERM_PROGRAM: "tern", TERM: "xterm-256color",
 			COLORTERM: "truecolor", OMP_SKIP_SETUP: "1" });
 		let nativeSpawn = deps.spawn;
 		if (!nativeSpawn) {
@@ -139,7 +144,7 @@ export async function runWindowsProbe(bin: string, useConptyDll: boolean, framin
 			try { const bytes = Buffer.isBuffer(data) ? data : Buffer.from(data); record("out", bytes); stream.push(bytes); }
 			catch (error) { result.error ??= diagnostic(error); }
 		});
-		child.onExit(() => { exited = true; exit.resolve(); });
+		child.onExit(event => { exited = true; if (!stopping) result.earlyExit = event; exit.resolve(); });
 		await until(() => result.hello && composerFacts(session.snapshot().surfaces).sendable, "No ready TSP editor");
 		const send = async (event: TspEvent) => {
 			const encoded = encodeTspJson("e", event, undefined, 48);
@@ -166,7 +171,7 @@ export async function runWindowsProbe(bin: string, useConptyDll: boolean, framin
 		} catch (error) { result.error ??= diagnostic(error); }
 		persist();
 		try {
-			if (child && !exited) { child.kill(); await bounded(exit.promise, cleanupTimeout, "PTY exit was not observed after kill"); }
+			if (child && !exited) { stopping = true; child.kill(); await bounded(exit.promise, cleanupTimeout, "PTY exit was not observed after kill"); }
 		} catch (error) { result.cleanupErrors.push(diagnostic(error)); }
 		persist();
 		try { if (root) await bounded((deps.rm ?? rm)(root, { recursive: true, force: true }), cleanupTimeout, "Profile cleanup timed out"); }
@@ -207,7 +212,10 @@ export async function runWindowsProbes(options: ProbeRunOptions) {
 			result = { useConptyDll: !options.system, framing, status: "running", hello: false, frames: 0, acks: 0, edit: false, send: false, cleanupErrors: [], traffic: [],
 				error: `No readable probe report: ${diagnostic(error)}` };
 		}
-		if (output.error) result.error = [result.error, `Probe subprocess: ${diagnostic(output.error)}; stdout=${output.stdout.slice(0, 4096)}; stderr=${output.stderr.slice(0, 4096)}`].filter(Boolean).join("\n");
+		if (output.error) {
+			result.subprocessError = `Probe subprocess: ${diagnostic(output.error)}; stdout=${output.stdout.slice(0, 4096)}; stderr=${output.stderr.slice(0, 4096)}`;
+			result.error = [result.error, result.subprocessError].filter(Boolean).join("\n");
+		}
 		if (result.status !== "complete") result.error ??= "Probe subprocess ended without a completed report; consult its traffic journal.";
 		results.push(result);
 		persist();
@@ -228,6 +236,12 @@ export async function readWindowsProbeReport(path: string, output: { error: Erro
 	return evidence;
 }
 
+/** Missing APC is observational only while omp itself stays running without a subprocess failure. */
+export function windowsProbeFailed(result: WindowsProbeResult, system: boolean): boolean {
+	if (result.status !== "complete" || result.cleanupErrors.length || result.subprocessError || result.earlyExit || !result.traffic.length) return true;
+	return !system && (!result.hello || !result.frames || !result.acks || !result.edit || !result.send || !!result.error);
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 	if (process.platform !== "win32") throw new Error("The Windows TSP probe requires Windows.");
 	const bin = process.env.OMP_BIN;
@@ -242,6 +256,6 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 	} else {
 		const report = await runWindowsProbes({ bin: resolve(bin), system, destination });
 		console.log(JSON.stringify(report.results.map(({ traffic, ...result }) => ({ ...result, trafficChunks: traffic.length }))));
-		if (!system && report.results.some(result => result.status !== "complete" || !result.hello || !result.frames || !result.acks || !result.edit || !result.send || result.error || result.cleanupErrors.length)) process.exitCode = 1;
+		if (report.results.some(result => windowsProbeFailed(result, system))) process.exitCode = 1;
 	}
 }
