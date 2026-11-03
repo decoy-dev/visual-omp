@@ -8,8 +8,7 @@ import type { ThinkingLevel } from "../session-tools/screen";
 import { routeSlash } from "../session-tools/slash";
 import { sendSlashCommand } from "../session-tools/typed";
 import type { FolderChooserProps } from "./folders/FolderChooser";
-
-export const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+import { errorText } from "@shared/errors";
 
 /** Register a folder as a project, refresh the sidebar and show its overview. */
 export async function addProject(path: string): Promise<void> {

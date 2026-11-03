@@ -11,7 +11,7 @@ import type { SheetProps } from "@/registry/slots";
 import { shortAgo } from "@/shell/hooks";
 import { useApp } from "@/state/app";
 import { cn, Dialog, DialogContent, PresenceSwap, Skeleton, toast } from "@/ui";
-import { errorText } from "./actions";
+import { errorText } from "@shared/errors";
 
 export interface ImportProps {
 	projectPath?: string | null;

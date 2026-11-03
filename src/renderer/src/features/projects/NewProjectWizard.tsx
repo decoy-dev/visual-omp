@@ -27,7 +27,8 @@ import {
 	Textarea,
 	toast,
 } from "@/ui";
-import { addProject, errorText, startChat } from "./actions";
+import { addProject, startChat } from "./actions";
+import { errorText } from "@shared/errors";
 import { CheckFailure } from "./CheckFailure";
 import { FolderBrowserDialog } from "./folders/FolderBrowser";
 import { folderName } from "./format";

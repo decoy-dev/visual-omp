@@ -32,7 +32,8 @@ import {
 import { initGit } from "../git/actions";
 import { ciState } from "../git/format";
 import { useGit } from "../git/store";
-import { addProject, chooseFolder, errorText, openFolder, startDraft } from "./actions";
+import { addProject, chooseFolder, openFolder, startDraft } from "./actions";
+import { errorText } from "@shared/errors";
 import { EXAMPLE_PROMPTS, folderName, formatBytes } from "./format";
 import { ProjectBoard } from "./ProjectBoard";
 

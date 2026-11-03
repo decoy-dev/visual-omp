@@ -13,7 +13,8 @@ import type { SheetProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
 import { Button, Chip, cn, Dialog, DialogContent, Expand, PresenceSwap, SearchInput } from "@/ui";
 import { menuItem, menuItemActive, menuItemDescribed } from "@/ui/styles";
-import { addProject, errorText, registerDraftProject, startChatIn } from "../actions";
+import { addProject, registerDraftProject, startChatIn } from "../actions";
+import { errorText } from "@shared/errors";
 import { type EscapeHandler, FolderBrowser, nativePickerLabel, useHomeDir } from "./FolderBrowser";
 import { tildePath, typedPath } from "./paths";
 

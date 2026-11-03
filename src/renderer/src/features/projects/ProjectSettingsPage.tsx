@@ -13,7 +13,7 @@ import { openProjectInstructions, openSettings, type ProjectPageProps, usePageBa
 import { Button, Dialog, DialogContent, Divider, PageFrame, PageHeader, PresenceSwap, SectionHeader, Segmented, Skeleton, toast } from "@/ui";
 import type { HelpersSectionProps } from "../manage/agents/HelpersSection";
 import { ModelSelect } from "../manage/roles/ModelSelect";
-import { errorText } from "./actions";
+import { errorText } from "@shared/errors";
 import { approvalModes } from "../session-tools/approval";
 import { folderName } from "./format";
 

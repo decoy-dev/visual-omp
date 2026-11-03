@@ -12,7 +12,7 @@ import type { SheetProps } from "@/registry/slots";
 import { useSessionView } from "@/shell/hooks";
 import { controllerFor, focusedTabId, useApp } from "@/state/app";
 import { Button, Chip, Dialog, DialogContent, IconButton, Input, PresenceSwap, Segmented, StatusDot, Switch, spring, toast } from "@/ui";
-import { errorText } from "./actions";
+import { errorText } from "@shared/errors";
 import { type ShareFileAction, useShares } from "./share-store";
 
 export type ShareTab = "link" | "file" | "move" | "invite";

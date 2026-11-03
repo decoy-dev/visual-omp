@@ -42,7 +42,7 @@ import {
 	Textarea,
 	toast,
 } from "@/ui";
-import { errorText } from "./actions";
+import { errorText } from "@shared/errors";
 import { folderName, formatBytes } from "./format";
 
 type Tab = NonNullable<ProjectInstructionsPageProps["tab"]>;
