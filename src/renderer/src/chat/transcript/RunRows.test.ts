@@ -43,11 +43,11 @@ function execution(id: string, python = false, options: Record<string, unknown> 
 	const fields = { output: python ? "python result\n" : "shell result\n", cancelled: false, truncated: false, timestamp: Date.parse(time), exitCode: 0, ...options };
 	return { type: "message", id, parentId: null, timestamp: time, message: python ? { role: "pythonExecution", code: "print(2 + 2)", ...fields } : { role: "bashExecution", command: "printf shell", ...fields } } as SessionEntry;
 }
-function native(id: string, python = false, status: "running" | "done" | "error" | "cancelled" = "done"): TspNode {
+function native(id: string, python = false, status: "running" | "done" | "error" | "cancelled" = "done", output = python ? "python result\n" : "shell result\n"): TspNode {
 	const prefix = python ? "eval" : "bash";
 	return { id, k: "tool", p: { role: `omp.${prefix}`, name: python ? "eval" : "bash", title: python ? "Python" : "Bash", command: python ? "print(2 + 2)" : "printf shell", status, exit: status === "error" ? 9 : undefined }, c: [{ id: `${id}-run`, k: "col", p: { role: "omp.run" }, c: [
 		{ id: `${id}-input`, k: "code", p: { role: python ? "omp.tool.eval.input" : "omp.tool.bash.command", text: python ? "print(2 + 2)" : "printf shell" } },
-		{ id: `${id}-output`, k: "ansi", p: { role: `omp.tool.${prefix}.output`, text: python ? "python result\n" : "shell result\n" } },
+		{ id: `${id}-output`, k: "ansi", p: { role: `omp.tool.${prefix}.output`, text: output } },
 	] }] };
 }
 function snapshot(nodes: TspNode[]): TspHostSnapshot {
@@ -74,7 +74,7 @@ async function render(entries: SessionEntry[], { mode = "normal", live = false, 
 const runRows = () => element.querySelectorAll('section[aria-label^="Your "]');
 
 describe("user execution transcript rows", () => {
-	it.each(["normal", "thinking", "verbose"] as const)("renders live classic and saved shell/Python runs as the user in %s", async mode => {
+	it.each(["normal", "thinking", "verbose"] as const)("expands live classic and saved shell/Python output by default in %s", async mode => {
 		for (const live of [true, false]) {
 			await render([execution("shell"), execution("python", true, { cancelled: true, exitCode: 130, excludeFromContext: true })], { mode, live });
 			expect(runRows()).toHaveLength(2);
@@ -85,22 +85,78 @@ describe("user execution transcript rows", () => {
 			expect(element.textContent).toContain("Cancelled");
 			expect(element.textContent).toContain("Not sent to the model");
 			expect(element.querySelectorAll(`time[datetime="${time}"]`)).toHaveLength(2);
-			for (const row of runRows()) expect(row.querySelector("button")?.getAttribute("aria-expanded")).toBe(String(mode === "verbose"));
+			for (const [index, row] of [...runRows()].entries()) {
+				expect(row.querySelector("button")?.getAttribute("aria-expanded")).toBe("true");
+				expect(row.querySelector(".tv-pre")?.textContent).toBe(index === 0 ? "shell result" : "python result");
+			}
 			expect(element.textContent).not.toContain("What should we work on");
 		}
 	});
-	it("opens output on click and shows errors, empty output and truncation without treating output as markup", async () => {
-		await render([execution("error", false, { exitCode: 9, output: "<script>bad()</script>", truncated: true }), execution("empty", true, { output: "" })]);
+	it("shows errors and truncation safely, and lets the user fold and reopen output", async () => {
+		await render([execution("error", false, { exitCode: 9, output: "<script>bad()</script>", truncated: true })]);
 		const row = runRows()[0]!;
 		const disclosure = row.querySelector("button")!;
-		await act(async () => disclosure.click());
 		expect(disclosure.getAttribute("aria-expanded")).toBe("true");
 		expect(row.textContent).toContain("Exit code 9");
 		expect(row.textContent).toContain("<script>bad()</script>");
 		expect(row.querySelector("script")).toBeNull();
 		expect(row.textContent).toContain("omp truncated this output.");
-		await act(async () => runRows()[1]!.querySelector("button")!.click());
-		expect(runRows()[1]!.textContent).toContain("No output.");
+		await act(async () => disclosure.click());
+		expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+		expect(row.querySelector(".tv-pre")).toBeNull();
+		await render([execution("error", false, { exitCode: 9, output: "<script>bad()</script>", truncated: true })], { mode: "verbose" });
+		expect(disclosure.getAttribute("aria-expanded")).toBe("false");
+		await act(async () => disclosure.click());
+		expect(row.querySelector(".tv-pre")?.textContent).toBe("<script>bad()</script>");
+	});
+	it.each(["normal", "thinking", "verbose"] as const)("expands deferred native shell/Python output by default in %s", async mode => {
+		data.snapshot = snapshot([native("shell", false, "running"), native("python", true)]);
+		await render([], { live: true, mode });
+		expect(runRows()).toHaveLength(2);
+		for (const [index, row] of [...runRows()].entries()) {
+			expect(row.querySelector("button")?.getAttribute("aria-expanded")).toBe("true");
+			expect(row.querySelector(".tv-pre")?.textContent).toBe(index === 0 ? "shell result" : "python result");
+		}
+	});
+	it.each(["normal", "thinking", "verbose"] as const)("bounds long shell/Python output and reveals all lines in %s, live and saved", async mode => {
+		const output = Array.from({ length: 25 }, (_, index) => `result ${index + 1}`).join("\n");
+		for (const source of ["classic", "native", "saved"] as const) {
+			await act(async () => root.render(null));
+			data.snapshot = source === "native" ? snapshot([native("shell", false, "running", output), native("python", true, "done", output)]) : null;
+			await render(source === "native" ? [] : [execution("shell", false, { output }), execution("python", true, { output })], { mode, live: source !== "saved" });
+			for (const row of runRows()) {
+				expect(row.querySelector("button")?.getAttribute("aria-expanded")).toBe("true");
+				expect(row.querySelector(".tv-pre")?.textContent).toBe(output.split("\n").slice(0, 20).join("\n"));
+				const more = row.querySelector<HTMLButtonElement>(".tv-expand")!;
+				expect(more.textContent).toBe("Show 5 more lines");
+				await act(async () => more.click());
+				expect(row.querySelector(".tv-pre")?.textContent).toBe(output);
+				expect(more.textContent).toBe("Collapse output");
+				await act(async () => more.click());
+				expect(row.querySelector(".tv-pre")?.textContent).not.toContain("result 21");
+				await act(async () => row.querySelector("button")!.click());
+				expect(row.querySelector("button")?.getAttribute("aria-expanded")).toBe("false");
+				expect(row.querySelector(".tv-pre")).toBeNull();
+			}
+		}
+	});
+	it.each(["normal", "thinking", "verbose"] as const)("shows empty shell/Python output immediately in %s, live and saved", async mode => {
+		for (const source of ["classic", "native", "saved"] as const) {
+			await act(async () => root.render(null));
+			data.snapshot = source === "native" ? snapshot([native("shell", false, "done", ""), native("python", true, "done", "")]) : null;
+			await render(source === "native" ? [] : [execution("shell", false, { output: "" }), execution("python", true, { output: "" })], { mode, live: source !== "saved" });
+			for (const row of runRows()) {
+				expect(row.querySelector("button")?.getAttribute("aria-expanded")).toBe("true");
+				expect(row.textContent).toContain("No output.");
+				expect(row.querySelector(".tv-expand")).toBeNull();
+			}
+		}
+	});
+	it("retains native execution details beside the bounded output", async () => {
+		const run = native("shell");
+		data.snapshot = snapshot([{ ...run, c: [...run.c!, { id: "duration", k: "text", p: { text: "Finished in 2 seconds" } }] }]);
+		await render([], { live: true });
+		expect(runRows()[0]!.textContent).toContain("Finished in 2 seconds");
 	});
 	it("shows deferred nativeTail results before another prompt and replaces them once with saved entries", async () => {
 		data.snapshot = snapshot([native("shell"), native("python", true)]);

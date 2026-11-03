@@ -638,7 +638,7 @@ const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results,
 		case "message": {
 			const message = entry.message;
 			if (message.role === "user") return <UserMessage entry={entry} session={session} />;
-			if (isExecutionMessage(message)) return <SavedRunRow message={message} timestamp={entry.timestamp} mode={mode} />;
+			if (isExecutionMessage(message)) return <SavedRunRow message={message} timestamp={entry.timestamp} />;
 			if (message.role !== "assistant") return null;
 			return (
 				<div className="flex flex-col gap-2">
@@ -1217,7 +1217,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 										/>
 									</Rise>
 								)}
-								<NativeRunRows items={localRuns} visibleEntries={visibleEntryIds} mode={mode} tabId={session.tabId} hidden={outOfSight} />
+								<NativeRunRows items={localRuns} visibleEntries={visibleEntryIds} tabId={session.tabId} hidden={outOfSight} />
 								<AnimatePresence initial={false} mode="wait">
 									{pendingQuestion && (
 										<motion.div

@@ -25,7 +25,7 @@ export interface RunProjection {
 	/** Retain assignments when nativeTail removes or reorders its nodes. */
 	occurrences: ReadonlyMap<string, RunOccurrence>;
 }
-function nativeOutput(node: TspNode): string {
+export function nativeRunOutput(node: TspNode): string {
 	return [...walkNodes(node)].flatMap(child => child.k === "ansi" && child.p?.role?.endsWith(".output") ? [child.p.text ?? ""] : []).join("\n");
 }
 
@@ -61,7 +61,7 @@ export function nativeRuns(snapshot: TspHostSnapshot | null, hostId: string | nu
 				if (savedIndexes.has(occurrence.entryId)) item.entryId = occurrence.entryId;
 				return;
 			}
-			const output = stripAnsi(nativeOutput(node)).replace(/\n+$/, "");
+			const output = stripAnsi(nativeRunOutput(node)).replace(/\n+$/, "");
 			// If the boundary left the displayed branch, no entry here can prove it is newer.
 			const boundary = occurrence.afterEntryId == null ? -1 : savedIndexes.get(occurrence.afterEntryId) ?? Number.POSITIVE_INFINITY;
 			const eligible = saved.filter(({ entry, message }, index) => {
@@ -93,8 +93,8 @@ export function nativeRuns(snapshot: TspHostSnapshot | null, hostId: string | nu
 	return projection;
 }
 
-/** Source is already permanently visible above the output disclosure; retain every other native detail. */
+/** Source and bounded output have shared run renderers; retain every other native detail. */
 export function nativeRunBody(node: TspNode): TspNode[] {
-	if (node.p?.role === "omp.tool.bash.command" || node.p?.role === "omp.tool.eval.input") return [];
+	if (node.p?.role === "omp.tool.bash.command" || node.p?.role === "omp.tool.eval.input" || node.k === "ansi" && node.p?.role?.endsWith(".output")) return node.c?.flatMap(nativeRunBody) ?? [];
 	return [{ ...node, ...(node.c ? { c: node.c.flatMap(nativeRunBody) } : {}) } as TspNode];
 }

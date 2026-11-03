@@ -5,7 +5,6 @@ import { useTranslation } from "react-i18next";
 import { Output, ResultImages } from "../../tool-render/parts";
 import { cn, Expand, PulseDot } from "../../ui";
 import { TranscriptTime, type TranscriptTimestamp } from "./TranscriptTime";
-import type { TranscriptMode } from "./Transcript";
 import "../../tool-render/tool-render.css";
 
 export type ExecutionMessage = BashExecutionMessage | PythonExecutionMessage;
@@ -22,10 +21,9 @@ export interface UserRun {
 }
 
 /** User-entered code keeps its attribution; output uses the same disclosure and well as tool steps. */
-export function RunRow({ run, timestamp, mode, children }: { run: UserRun; timestamp?: TranscriptTimestamp; mode: TranscriptMode; children: ReactNode }): ReactNode {
+export function RunRow({ run, timestamp, children }: { run: UserRun; timestamp?: TranscriptTimestamp; children: ReactNode }): ReactNode {
 	const { t } = useTranslation("chat");
-	const [choice, setChoice] = useState<boolean | null>(null);
-	const open = choice ?? mode === "verbose";
+	const [open, setOpen] = useState(true);
 	const outputId = useId();
 	const Icon = run.kind === "shell" ? TerminalWindow : CodeSimple;
 	const status = run.status === "running" ? t("run.running") : run.status === "cancelled" ? t("run.cancelled") : run.exitCode !== undefined ? t("run.exit", { code: run.exitCode }) : t(run.status === "error" ? "toolFailed" : "run.finished");
@@ -38,7 +36,7 @@ export function RunRow({ run, timestamp, mode, children }: { run: UserRun; times
 		</div>
 		<pre className="selectable max-h-60 max-w-[85%] min-w-0 overflow-auto rounded-lg border border-border bg-inset px-4 py-3 font-mono text-code whitespace-pre-wrap text-fg [overflow-wrap:anywhere]" aria-label={t(`run.${run.kind}Source`)}><code>{run.source}</code></pre>
 		<div className="w-full min-w-0">
-			<button type="button" aria-expanded={open} aria-controls={outputId} onClick={() => setChoice(!open)} className="-mx-2 flex min-h-8 w-[calc(100%+1rem)] items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring">
+			<button type="button" aria-expanded={open} aria-controls={outputId} onClick={() => setOpen(!open)} className="-mx-2 flex min-h-8 w-[calc(100%+1rem)] items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring">
 				<Icon className="size-4 shrink-0 text-fg-faint" aria-hidden />
 				<span className="text-md text-fg-muted">{t("run.output")}</span>
 				<span className={cn("ml-auto text-xs", run.status === "error" ? "text-err" : "text-fg-faint")}>{status}</span>
@@ -52,12 +50,18 @@ export function RunRow({ run, timestamp, mode, children }: { run: UserRun; times
 	</section>;
 }
 
-export function SavedRunRow({ message, timestamp, mode }: { message: ExecutionMessage; timestamp: TranscriptTimestamp; mode: TranscriptMode }): ReactNode {
+/** Keep live native output and recorded output on the same bounded preview. */
+export function RunOutput({ text }: { text: string }): ReactNode {
+	const { t } = useTranslation("chat");
+	return text ? <Output text={text} variant="code" maxLines={20} /> : <p className="text-sm text-fg-muted">{t("run.empty")}</p>;
+}
+
+export function SavedRunRow({ message, timestamp }: { message: ExecutionMessage; timestamp: TranscriptTimestamp }): ReactNode {
 	const { t } = useTranslation("chat");
 	const run: UserRun = { kind: message.role === "bashExecution" ? "shell" : "python", source: message.role === "bashExecution" ? message.command : message.code, status: message.cancelled ? "cancelled" : message.exitCode !== undefined && message.exitCode !== 0 ? "error" : "done", exitCode: message.exitCode, excluded: message.excludeFromContext };
-	return <RunRow run={run} timestamp={timestamp} mode={mode}>
+	return <RunRow run={run} timestamp={timestamp}>
 		<div className="tv-body">
-			{message.output ? <Output text={message.output} variant="code" maxLines={20} /> : <p className="text-sm text-fg-muted">{t("run.empty")}</p>}
+			<RunOutput text={message.output} />
 			{message.truncated && <p className="mt-2 text-sm text-fg-muted">{t("run.truncated")}</p>}
 			{message.role === "bashExecution" && message.images?.length ? <ResultImages result={{ content: message.images }} /> : null}
 		</div>
