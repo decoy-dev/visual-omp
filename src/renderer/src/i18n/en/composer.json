@@ -98,6 +98,7 @@
 		"label_other": "{{count}} queued messages",
 		"title_one": "{{count}} queued. It sends when omp finishes.",
 		"title_other": "{{count}} queued. They send in order when omp finishes.",
+		"failedTitle": "Review the failed message, then send it again.",
 		"sendNow": "Send message now",
 		"sendNowTip": "Send this now. omp reads it at its next step, before this reply finishes.",
 		"sendFailed": "Couldn't send the queued message, so it is back in the queue",

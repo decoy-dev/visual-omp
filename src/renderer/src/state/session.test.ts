@@ -793,6 +793,105 @@ describe("SessionController TSP preview input", () => {
 		expect(invoked.filter(call => call[0] === "host:submit")).toHaveLength(1);
 	});
 
+	it.each(["classic", "tsp"] as const)("retains a restored failed image with omp's error until an explicit retry in %s", async transport => {
+		const session = preview(false);
+		sendHost({ transport, link: "L1" });
+		failOnce(transport === "tsp" ? "host:submit" : "composer:paste", "Image submission was restored. Failed to read pasted image path");
+		await session.send("look", [shot]);
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		const [failed] = session.getSnapshot().queue;
+		expect(failed).toMatchObject({ text: "look", images: [shot], error: "Failed to read pasted image path" });
+		const before = invoked.filter(call => call[0] === "host:submit" || call[0] === "composer:paste").length;
+		sendHost({ transport, link: "L1" });
+		fakes.guests.at(-1)?.emit("live", [u1], true);
+		fakes.guests.at(-1)?.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:submit" || call[0] === "composer:paste")).toHaveLength(before);
+		expect(session.getSnapshot().queue).toEqual([failed]);
+		await session.sendNow(failed!.id);
+		expect(session.getSnapshot().queue).toEqual([]);
+		expect(session.getSnapshot().strandedImages).toBe(false);
+	});
+
+	it("keeps an automatically sent rejected image queued without retrying on readiness updates", async () => {
+		const session = preview(true);
+		await session.send("look", [shot]);
+		failOnce("host:submit", "TSP preview: Image submission was restored. Failed to read pasted image path");
+		fakes.guests.at(-1)?.emit("live", [u1, a1], false);
+		await flush();
+		expect(session.getSnapshot().queue[0]).toMatchObject({ text: "look", images: [shot], error: "Failed to read pasted image path" });
+		sendHost({ transport: "tsp", link: "L1" });
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:submit")).toHaveLength(1);
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		const failed = session.getSnapshot().queue[0]!;
+		await session.send("next message");
+		session.editQueued(failed.id, "edited prompt");
+		sendHost({ transport: "tsp", link: "L1" });
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:submit")).toHaveLength(1);
+		session.removeQueued(failed.id);
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:submit").at(-1)).toEqual(submit("next message"));
+		expect(session.getSnapshot().queue).toEqual([]);
+	});
+
+	it("waits for semantic menu dismissal before sending /restart", async () => {
+		const session = preview(false);
+		sendHost({ transport: "tsp", link: "L1", tspEpoch: 7, tspAvailability: { available: false, reason: "Close the open omp menu before sending a message." } });
+		const prepared = Promise.withResolvers<boolean>();
+		respond = channel => channel === "host:prepare-restart" ? prepared.promise : undefined;
+		const restarting = session.restart();
+		await flush();
+		expect(invoked).toContainEqual(["host:prepare-restart", "h1", 1, 7]);
+		expect(invoked.some(call => call[0] === "host:submit")).toBe(false);
+		prepared.resolve(true);
+		await restarting;
+		expect(invoked).toContainEqual(submit("/restart"));
+		expect(invoked.some(call => call[0] === "host:stop" || call[0] === "host:start")).toBe(false);
+	});
+
+	it("relaunches the saved TSP session when autocomplete has no declared dismissal", async () => {
+		const session = preview(false);
+		sendHost({ transport: "tsp", link: "L1", tspEpoch: 7, tspAvailability: { available: false, reason: "Close the open omp menu before sending a message." } });
+		respond = channel => channel === "host:prepare-restart" ? Promise.resolve(false) : channel === "host:start" ? Promise.resolve(host({ hostId: "h2", transport: "tsp" })) : undefined;
+		await session.restart();
+		expect(invoked.filter(call => call[0] === "host:stop")).toEqual([["host:stop", "h1"]]);
+		expect(invoked.find(call => call[0] === "host:start")?.[1]).toMatchObject({ resumeFile: "/p/session.jsonl" });
+		expect(invoked.some(call => call[0] === "host:submit")).toBe(false);
+		expect(session.getSnapshot().host?.hostId).toBe("h2");
+	});
+
+	it("relaunches classic required recovery without appending /restart to contaminated image input", async () => {
+		const session = preview(false);
+		sendHost({ transport: "classic", link: "L1" });
+		failOnce("composer:paste", "Image submission needs recovery. Failed image text includes Image submission was restored. unsafe");
+		await session.send("look", [shot]);
+		expect(session.getSnapshot().strandedImages).toBe(true);
+		expect(session.getSnapshot().queue[0]?.error).toBeUndefined();
+		respond = channel => channel === "host:start" ? Promise.resolve(host({ hostId: "h2", transport: "classic" })) : undefined;
+		await session.restart();
+		expect(invoked.filter(call => call[0] === "host:stop")).toEqual([["host:stop", "h1", "editor-recovery"]]);
+		expect(invoked.some(call => call[0] === "host:submit" || call[0] === "host:prepare-restart")).toBe(false);
+		expect(session.getSnapshot().host?.hostId).toBe("h2");
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		expect(session.getSnapshot().queue[0]).toMatchObject({ text: "look", images: [shot] });
+	});
+
+	it("does not restart a replacement generation after semantic preparation finishes late", async () => {
+		const session = preview(false);
+		sendHost({ transport: "tsp", link: "L1", tspEpoch: 7 });
+		const prepared = Promise.withResolvers<boolean>();
+		respond = channel => channel === "host:prepare-restart" ? prepared.promise : undefined;
+		const restarting = session.restart();
+		const rejected = expect(restarting).rejects.toThrow("chat changed");
+		await flush();
+		sendHost({ transport: "tsp", link: "L1", generation: 2, tspEpoch: 8 });
+		prepared.resolve(true);
+		await rejected;
+		expect(invoked.some(call => call[0] === "host:submit" || call[0] === "host:stop" || call[0] === "host:start")).toBe(false);
+	});
+
 	it("acknowledges an inserted restoration once per delivery without duplicating its draft on recovery", async () => {
 		const session = preview(false);
 		useComposerDrafts.getState().forget(session.tabId);

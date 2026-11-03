@@ -122,6 +122,12 @@ export default function visualOmpNative(pi) {
 				const requests = await response.json();
 				for (const item of requests) {
 					if (stopped || current !== lifecycle) return;
+					if (item.kind === "shutdown") {
+						// This enters InteractiveMode.requestShutdown(), not the editor submit path.
+						// If the SDK is unavailable, the host retains its explicit native stop decision.
+						if (typeof context.shutdown === "function") context.shutdown();
+						continue;
+					}
 					if (item.kind === "asyncWork") {
 						// A fresh owner-scoped sample includes delivery handoffs, not just running rows.
 						// The sink stays in flight until its yield-queue entry injects or is discarded.

@@ -129,7 +129,7 @@ async function thumbnail(path: string): Promise<string | null> {
 /** Deliver omp's image-path attachment syntax without Enter; caller submits message text afterward. */
 async function paste(hostId: string, text: string): Promise<void> {
 	if (!text.trim()) throw new Error("Image attachment paths are required");
-	await getHost(hostId).paste(text);
+	await getHost(hostId).paste(text, true);
 }
 
 export function register(): void {

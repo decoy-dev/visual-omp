@@ -34,7 +34,15 @@ configure the local model without making a provider request. `image-attach` also
 clears the editor and pastes image paths in one write, waits for omp's image chips, then appends
 the prompt and submits in one write. The saved collab text and loopback provider request retain
 `[Image #1, 200x200] Fixture image prompt`, including omp's separator. This replaces the existing
-recording without adding a scenario. With the navigation and advisor captures below, the baseline contains 89 recordings and 89 integrity manifests.
+recording without adding a scenario. With the navigation, advisor and rejected-image captures, the baseline contains 90 recordings and 90 integrity manifests.
+
+`image-reject` was recorded on 2026-11-03 using the exact 78-byte bad-CRC PNG from the 18.16
+standalone paste failure. It configures the scratch loopback model with an empty script and makes
+zero provider requests. A public edit seeds `Keep café 🧭 draft` with UTF-16 cursor 5, then the
+production image submit path pastes `./live-check.png`. omp reports `Failed to read pasted image path`
+and inserts the path as text. A len-checked public edit restores the exact draft and cursor before
+`/exit`. The relative path preserves all recorded editor offsets through privacy sanitization.
+The same scenario is also recorded separately against 18.16.0 in `../18.16.0/`.
 
 Phase 4b adds three no-model worktree recordings. Each creates a fresh scratch git repository and an initial commit.
 `worktree-start-ask` enables `worktree.onStart: ask` and records the creation question without
@@ -148,6 +156,7 @@ The sanitizer replaces OSC 7 hosts with `localhost` and private home and tempora
 | python-dollar | Semantic `$ 1+1` produces an eval execution block without a model turn. |
 | paste-large | A large multiline message travels through a chunked semantic send. |
 | image-attach | A clear edit and image path paste share one write. After attachment appears in the document, an append edit and `action submit` share one write, producing markers-first text with a separating space in collab and the provider request. |
+| image-reject | The exact bad-CRC image is rejected without a provider request. Public edit restores the original Unicode draft and cursor; no attachment submit action is emitted. |
 | approval-send-denies | An always-ask bash request opens approval; sending text records a denied tool result and a steering user message. |
 | ask-replaces-editor | A scripted ask tool replaces the main dock editor. The recording ends with that question open. |
 | prediction-ghost | A second scripted request supplies the semantic editor ghost; Tab inserts it, and a len-checked edit clears it before exit. |

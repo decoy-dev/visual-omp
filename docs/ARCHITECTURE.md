@@ -111,6 +111,23 @@ Each SessionHost:
 5. **Ordinary user input is typed into the TUI** (bracketed paste + Enter), so prompts, `!`/`$`
    prefixes, queue behaviour and the slash commands the app passes through behave as they do in
    a terminal. While an `ask` question waits, user messages instead use the collab prompt path described below.
+   Classic image pastes hold the serialized host input boundary until omp's public editor text
+   reports a new image token for each escaped path. The trusted extension counts tokens using
+   omp's current image symbol; the wrapper does not decode the image. A recognized read failure
+   keeps omp's diagnostic and compares the exact editor text before restoring a text-only draft.
+   The original message and attachments remain queued for an explicit retry. If an earlier image
+   attached, the editor changed unexpectedly or acknowledgement is unavailable, the existing
+   stranded-image hold requires recovery because public editor text replacement cannot remove
+   pending image payloads. The public editor API does not expose a cursor position to restore.
+   This safety check adds public-extension and classic-debug round trips to every classic image
+   send, with 40 ms polling when acknowledgement is pending and an eight-second deadline for each
+   image. Unavailable extension state or unsupported token formatting blocks submission. This is
+   the accepted trade-off for preventing a rejected path from being submitted as prompt text.
+   The standalone classic success captures in `src/main/omp/fixtures/{18.15.0,18.16.0}/` run
+   the production helper, private native bridge and debug client with the actual titanium theme.
+   Its public image symbol is `📷`; the captured editor tokens are `📷 #1 ` and `📷 #1 📷 #2 `.
+   The loopback provider receives one image in the first user message and two distinct images
+   in the next user message, alongside the earlier image retained in conversation history.
    The guest channel also carries UI-request answers, abort and subagent commands. Slash lines first go
    through `routeSlash` (`session-tools/slash.ts`), which opens the app's own screen for commands
    it covers and refuses the few that would break the hosted session (`/collab` and `/join`).
@@ -258,11 +275,17 @@ composer so it denies the request and steers. Slash commands and model/thinking 
 while approval waits. Other hook dialogs retain the guarded answer path and D10 policy.
 
 Follow-up submission writes one len-checked `edit` and Ctrl+Q through the same atomic writer.
-Images clear the editor and paste bracketed image paths together, wait for every new image node
-under `omp.composer.chips`, then append the prompt text and submit in one atomic write. This keeps
-omp's image markers before the text, with its own separating space, as in classic chats. `send`
-is excluded because omp omits staged images. Protocol credits continue during the attachment wait.
-A failure after the paste activates the existing stranded-image recovery gate.
+Images clear the editor and paste bracketed image paths one at a time, waiting for each new image
+node under `omp.composer.chips`, then append the prompt text and submit in one atomic write.
+This keeps omp's image markers before the text, with its own separating space. `send` is excluded
+because omp omits staged images. Protocol credits continue during each attachment wait.
+When omp reports a rejected image paste, a public len-checked `edit` restores the pre-send text
+and UTF-16 cursor, removes pasted path text and its autocomplete, and confirms the original image
+count. `TspImageSubmissionError` distinguishes confirmed restoration from recovery still required;
+its message retains that classification across IPC and quotes omp's failure text. Confirmed failures
+remain in the app queue with text and images for an explicit action, without automatic retry or a
+stranded-image notice. An uncertain paste, changed editor or unconfirmed restoration retains the
+stranded-image gate.
 Application pastes retain the bracketed-paste path. `EditorInputTransaction.edit` provides exact
 semantic edits under the same host lock; all transaction access expires when the callback returns.
 
@@ -458,6 +481,10 @@ Restart. It does not automatically retry, kill omp or switch renderer modes. An 
 a failed host awaits the existing stop stages, then launches omp again with the saved session file;
 the visible history and input recall are retained while the new collab room connects. Stop or
 launch errors are shown, and a failed stop prevents relaunch.
+
+TSP Restart first asks main to prepare the current host generation and protocol epoch. A live menu with an enabled declared Close or Cancel action is dismissed through that exact semantic control, then main waits for the editor to become available before the controller types `/restart`. Autocomplete without a declared dismissal and failed protocols use the existing explicit stop and saved-session relaunch path. Hook and approval controls are never answered by generic restart preparation. A failed stop prevents relaunch; host, generation and epoch changes refuse stale preparation.
+
+Classic image failures that require recovery also use explicit stop and saved-session relaunch, since typing `/restart` could append it to the rejected path or partially staged input. Main latches this state when its attachment helper fails, so ordinary Close and Quit also avoid editor submission. The private bridge requests the public SDK `ctx.shutdown()` path, which reaches omp's normal shutdown and worktree-exit planning without pressing Enter or writing `/exit`. Missing acknowledgement or stalled shutdown retains the existing explicit native stop decision. The fallback resumes the saved session and retains the app queue. Confirmed text-only restoration keeps the normal classic restart path.
 
 `host:tsp-snapshot` and `host:tsp-update` expose complete per-host documents with an ordered
 revision, protocol epoch, lifecycle state and send availability. The renderer reconciles replacement

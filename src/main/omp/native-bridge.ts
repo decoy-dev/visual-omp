@@ -20,6 +20,7 @@ export class NativeBridge {
 	#jobsEpoch = randomUUID();
 	#generation = 0;
 	#hasCurrentJobs = false;
+	#shutdownRequest: "pending" | "delivered" | null = null;
 	readonly extensionPath: string;
 	url = "";
 	constructor(readonly hostId: string, privateDir: string) {
@@ -38,7 +39,9 @@ export class NativeBridge {
 						...[...this.#commands].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "sideCommands" }; }),
 						...[...this.#editors].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "editorDraft", editor: item.request }; }),
 						...[...this.#asyncWork].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "asyncWork" }; }),
+						...(this.#shutdownRequest === "pending" ? [{ kind: "shutdown" }] : []),
 					];
+					if (this.#shutdownRequest === "pending") this.#shutdownRequest = "delivered";
 					response.end(JSON.stringify(items)); return;
 				}
 				if (request.method !== "POST") { response.writeHead(404).end(); return; }
@@ -84,7 +87,7 @@ export class NativeBridge {
 				} else if (route.startsWith("/editor/")) {
 					const id = route.slice("/editor/".length);
 					const item = this.#editors.get(id);
-					const result = z.object({ text: z.string().nullable(), cleared: z.boolean(), error: z.string().optional() }).parse(parsed);
+					const result = z.object({ text: z.string().nullable(), cleared: z.boolean(), restored: z.boolean().optional(), imageChips: z.number().int().nonnegative().optional(), imageSymbol: z.string().optional(), error: z.string().optional() }).parse(parsed);
 					if (item) {
 						clearTimeout(item.timer);
 						this.#editors.delete(id);
@@ -109,6 +112,7 @@ export class NativeBridge {
 	/** Called before publishing a new room, including same-session restarts. Old POSTs cannot repopulate its jobs. */
 	beginGeneration(generation: number): void {
 		this.#clearAsyncWork("omp changed rooms before reporting its background work.");
+		this.#shutdownRequest = null;
 		this.#generation = generation;
 		this.#jobsEpoch = randomUUID();
 		this.#hasCurrentJobs = false;
@@ -153,6 +157,10 @@ export class NativeBridge {
 		const timer = setTimeout(() => { this.#commands.delete(id); reject(new Error("omp did not report its side commands in time.")); }, 10_000);
 		this.#commands.set(id, { delivered: false, resolve, reject, timer });
 		return promise;
+	}
+	/** One SDK request per process generation. Lack of progress never falls back to editor input. */
+	requestShutdown(): void {
+		this.#shutdownRequest ??= "pending";
 	}
 	editorDraft(request: EditorDraftRequest): Promise<EditorDraftResult> {
 		const id = randomUUID();

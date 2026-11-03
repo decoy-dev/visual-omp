@@ -17,6 +17,9 @@ import type { TspAdvisorAction } from "./tsp/advisor";
 
 export type Platform = "darwin" | "win32" | "linux";
 
+/** Editor recovery must request SDK shutdown without submitting the contaminated draft. */
+export type HostStopMode = "normal" | "editor-recovery";
+
 export interface OmpStatus {
 	found: boolean;
 	/** Absolute path of the omp executable that will be used. */
@@ -287,12 +290,14 @@ export interface IpcInvokeMap {
 	"sessions:follow": { args: [files: string[]]; result: void };
 
 	"host:start": { args: [options: HostStartOptions]; result: HostState };
-	"host:stop": { args: [hostId: string]; result: void };
+	"host:stop": { args: [hostId: string, mode?: HostStopMode]; result: void };
 	"host:write": { args: [hostId: string, data: string]; result: void };
 	/** Application paste through the host's closing-aware input queue, without submitting. */
 	"host:paste": { args: [hostId: string, text: string]; result: void };
 	/** Type `text` into the TUI and submit it. `followUp` queues it until omp yields instead of steering. */
 	"host:submit": { args: [hostId: string, text: string, mode?: "steer" | "followUp", imagePaths?: string]; result: void };
+	/** Close declared TSP menu controls before /restart; false requests an explicit saved-session relaunch. */
+	"host:prepare-restart": { args: [hostId: string, generation: number, epoch?: number]; result: boolean };
 	/** Classic named keys, or semantic raw bytes guarded by collab generation and protocol epoch. */
 	"host:keys": { args: [hostId: string, keys: string, generation?: number, epoch?: number]; result: void };
 	"host:retry-editor-restore": { args: [hostId: string, id: string]; result: void };

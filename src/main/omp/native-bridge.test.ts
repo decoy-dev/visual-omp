@@ -66,6 +66,19 @@ describe("hosted native mode bridge", () => {
 		await fetch(bridge.url + "/async-work/" + request!.id, { method: "POST", body: JSON.stringify({ pending: true }) });
 		await expect(current).resolves.toBe(true);
 	});
+	it("delivers SDK shutdown once per generation without editor or mode commands", async () => {
+		dir = await mkdtemp(join(tmpdir(), "shutdown-bridge-")); bridge = await createNativeBridge("shutdown-test", dir);
+		bridge.requestShutdown(); bridge.requestShutdown();
+		expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([{ kind: "shutdown" }]);
+		bridge.requestShutdown();
+		expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([]);
+		bridge.beginGeneration(1);
+		bridge.requestShutdown();
+		bridge.beginGeneration(2);
+		expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([]);
+		bridge.requestShutdown();
+		expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([{ kind: "shutdown" }]);
+	});
 	it("delivers an explicit switch once and preserves omp's disabled result", async () => {
 		dir = await mkdtemp(join(tmpdir(), "misc-bridge-")); bridge = await createNativeBridge("test", dir);
 		await fetch(bridge.url + "/snapshot", { method: "POST", body: JSON.stringify({ modes, theme: null }) });

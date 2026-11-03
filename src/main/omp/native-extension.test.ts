@@ -11,6 +11,7 @@ interface CommandFixture {
 	delivery?: { queued: number; delivering: boolean };
 	streaming?: boolean;
 	pendingMessages?: boolean;
+	shutdownUnavailable?: boolean;
 }
 // Exercise generated code with the public SDK exports injected; runtime integration uses the isolated binary fixture.
 function harness(options: CommandFixture = {}) {
@@ -23,7 +24,8 @@ function harness(options: CommandFixture = {}) {
 	});
 	const theme = { getAllThemeColorHexes: () => ["#ffffff"], getBgHex: () => "#000000", getColorHex: () => "#ffffff" };
 	const modes = { plan: { status: "inactive" }, vibe: { status: "inactive" }, goal: { status: "inactive" }, loop: { status: "inactive" } };
-	const context = { agent: { kind: "main" }, ui: { theme, getTheme: async () => theme }, sessionModes: { getState: () => modes, set: vi.fn() }, sessionManager: { getCwd: () => "/project", getSessionFile: () => "/session.jsonl", getSessionId: () => "session" }, getAsyncJobSnapshot: vi.fn(() => ({ running: options.jobs ?? [], recent: [{ id: "finished" }], delivery: options.delivery ?? { queued: 0, delivering: false } })), isIdle: () => !options.streaming, hasPendingMessages: () => options.pendingMessages === true };
+	const shutdown = vi.fn();
+	const context = { agent: { kind: "main" }, ui: { theme, getTheme: async () => theme }, shutdown: options.shutdownUnavailable ? undefined : shutdown, sessionModes: { getState: () => modes, set: vi.fn() }, sessionManager: { getCwd: () => "/project", getSessionFile: () => "/session.jsonl", getSessionId: () => "session" }, getAsyncJobSnapshot: vi.fn(() => ({ running: options.jobs ?? [], recent: [{ id: "finished" }], delivery: options.delivery ?? { queued: 0, delivering: false } })), isIdle: () => !options.streaming, hasPendingMessages: () => options.pendingMessages === true };
 	const handlers = new Map<string, (event: unknown, ctx?: unknown) => Promise<void>>();
 	const discover = vi.fn(async (_options: { cwd: string }) => options.files ?? []);
 	const body = NATIVE_EXTENSION_SOURCE.replace(/^import .*;$/gm, "").replace("export default function", "return function");
@@ -37,7 +39,7 @@ function harness(options: CommandFixture = {}) {
 		on: (name: string, handler: (event: unknown, ctx?: unknown) => Promise<void>) => handlers.set(name, handler),
 		getCommands: () => (options.shadowed ?? []).map(name => ({ name })),
 	});
-	return { env, requests, context, handlers, discover, fetch, tick: async () => { await timers.shift()?.(); } };
+	return { env, requests, context, shutdown, handlers, discover, fetch, tick: async () => { await timers.shift()?.(); } };
 }
 
 describe("hosted extension lifecycle", () => {
@@ -60,6 +62,20 @@ describe("hosted extension lifecycle", () => {
 		await test.handlers.get("session_shutdown")!({});
 		expect(test.requests).toEqual([]);
 		expect(test.env.VOMP_NATIVE_BRIDGE).toBeUndefined();
+	});
+	it("requests SDK shutdown without touching the contaminated editor or submitting a command", async () => {
+		const test = harness({ requests: [{ id: "shutdown", kind: "shutdown" }] });
+		await test.handlers.get("session_start")!({}, test.context);
+		expect(test.shutdown).toHaveBeenCalledExactlyOnceWith();
+		expect(test.context.sessionModes.set).not.toHaveBeenCalled();
+		expect(test.requests.filter(item => !item.url.endsWith("/requests") && !item.url.endsWith("/snapshot"))).toEqual([]);
+	});
+	it("leaves unavailable SDK shutdown to the host's explicit native stop decision", async () => {
+		const test = harness({ requests: [{ id: "shutdown", kind: "shutdown" }], shutdownUnavailable: true });
+		await test.handlers.get("session_start")!({}, test.context);
+		expect(test.shutdown).not.toHaveBeenCalled();
+		expect(test.context.sessionModes.set).not.toHaveBeenCalled();
+		expect(test.requests.filter(item => !item.url.endsWith("/requests") && !item.url.endsWith("/snapshot"))).toEqual([]);
 	});
 	it("retains the wait for remaining jobs and delivery handoffs, then reports quiet completion", async () => {
 		const options: CommandFixture = { jobs: [{ id: "bg_1" }, { id: "bg_2" }], requests: [{ id: "wait", kind: "asyncWork" }], delivery: { queued: 0, delivering: false } };

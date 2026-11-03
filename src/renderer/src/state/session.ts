@@ -25,6 +25,8 @@ export interface QueuedMessage {
 	text: string;
 	/** Images omp attaches with the text, in the order they were added. */
 	images: readonly Attachment[];
+	/** omp rejected this send after its editor was restored; only an explicit retry releases it. */
+	error?: string;
 }
 
 /** A shell or Python line omp runs itself, without a model turn, and the result entry it appends for it. */
@@ -91,6 +93,7 @@ class DeliveryFailure extends Error {
 	constructor(
 		readonly reason: unknown,
 		readonly pasted: boolean,
+		readonly queueError?: string,
 	) {
 		super(reason instanceof Error ? reason.message : String(reason));
 	}
@@ -243,7 +246,7 @@ export class SessionController {
 	 * (null until then, or after that attempt failed). Only a later generation clears the hold, because omp
 	 * also opens new rooms without restarting (a new session), and those keep the editor.
 	 */
-	#strandedSince: { restartFrom: number | null } | null = null;
+	#strandedSince: { restartFrom: number | null; requiresRelaunch: boolean } | null = null;
 	#resolvingFile = false;
 	/** omp launch flags for the first start only (Claude Code / Codex import opens omp's picker). */
 	#extraArgs: string[];
@@ -255,6 +258,7 @@ export class SessionController {
 	#unsubscribeHost: (() => void) | null = null;
 	#asyncWaitCheck: AsyncWaitCheck | null = null;
 	#starting: Promise<void> | null = null;
+	#restarting: Promise<void> | null = null;
 	#listeners = new Set<() => void>();
 	#eventListeners = new Set<(event: SessionEvent) => void>();
 	#unfollow: (() => void) | null = null;
@@ -810,7 +814,7 @@ export class SessionController {
 			await this.#deliverMessage(item, askTarget);
 		} catch (error) {
 			const failure = error instanceof DeliveryFailure ? error : new DeliveryFailure(error, false);
-			this.#requeue(item, index);
+			this.#requeue({ ...item, error: failure.queueError }, index);
 			throw failure.reason;
 		}
 	}
@@ -820,7 +824,9 @@ export class SessionController {
 	}
 
 	removeQueued(id: string): void {
+		const removedFailure = this.#view.queue.find(entry => entry.id === id)?.error !== undefined;
 		this.#set({ queue: this.#view.queue.filter(entry => entry.id !== id) });
+		if (removedFailure) this.#resumeQueue();
 	}
 
 	/** Preserve a failed submitted message when a newer draft already occupies the composer. No retry starts here. */
@@ -916,23 +922,38 @@ export class SessionController {
 
 	async restart(): Promise<void> {
 		const failed = this.#view.host;
-		if (failed?.transport === "tsp" && failed.tspFailed && failed.phase !== "exited") {
+		if (failed && (failed.transport === "tsp" || this.#strandedSince?.requiresRelaunch) && failed.phase !== "exited") {
 			if (this.#disposed) throw new Error("This chat was closed.");
 			if (this.#view.readOnly) throw new Error("This chat is open elsewhere.");
-			this.#starting ??= (async () => {
-				// Restart is an explicit stop/relaunch. A failed handshake has no usable /restart editor.
-				await window.vomp.invoke("host:stop", failed.hostId);
-				if (this.#disposed) throw new Error("This chat was closed.");
-				this.#closeGuest();
-				this.#set({ host: null, mode: "exited", working: false });
-				await this.#start();
-			})().finally(() => { this.#starting = null; });
-			return this.#starting;
+			this.#restarting ??= (async () => {
+				const prepared = failed.transport === "tsp" && !failed.tspFailed && await window.vomp.invoke("host:prepare-restart", failed.hostId, failed.generation, failed.tspEpoch);
+				if (this.#disposed || this.#view.host?.hostId !== failed.hostId || this.#view.host.generation !== failed.generation) throw new Error("The chat changed before omp could restart.");
+				if (prepared) {
+					await this.#restartCommand();
+					return;
+				}
+				// No declared dismissal, or a failed classic restore, requires an explicit saved-session relaunch.
+				this.#starting ??= (async () => {
+					if (this.#strandedSince?.requiresRelaunch) await window.vomp.invoke("host:stop", failed.hostId, "editor-recovery");
+					else await window.vomp.invoke("host:stop", failed.hostId);
+					if (this.#disposed) throw new Error("This chat was closed.");
+					this.#closeGuest();
+					this.#strandedSince = null;
+					this.#set({ host: null, mode: "exited", working: false, strandedImages: false });
+					await this.#start();
+				})().finally(() => { this.#starting = null; });
+				await this.#starting;
+			})().finally(() => { this.#restarting = null; });
+			return this.#restarting;
 		}
 		if (this.#view.mode === "exited" || !this.#view.host) {
 			await this.ensureLive();
 			return;
 		}
+		await this.#restartCommand();
+	}
+
+	async #restartCommand(): Promise<void> {
 		// The restart empties omp's editor, so it is the one thing typed while a message's images may be stranded
 		// there. The hold ends only on a generation newer than the one omp had when /restart was typed (see
 		// `#onHostState`); updates in that generation, and a restart that failed to type, keep it.
@@ -1099,18 +1120,22 @@ export class SessionController {
 				return before;
 			});
 		} catch (error) {
-			if (error instanceof Error && error.message.includes("Image submission needs recovery.")) pasted = true;
+			const message = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, "") : "";
+			const restored = /^(?:TSP preview:\s*)?Image submission was restored\.\s+([\s\S]+)$/.exec(message)?.[1];
+			if (restored) throw new DeliveryFailure(error, false, restored);
+			const requiresRelaunch = /^(?:TSP preview:\s*)?Image submission needs recovery\./.test(message);
+			if (requiresRelaunch) pasted = true;
 			// The paste got through but the submit did not: the images may sit in omp's editor, and anything typed
 			// next would carry them. Hold everything until omp restarts or stops (see `strandedImages`).
-			if (pasted) this.#strandImages();
+			if (pasted) this.#strandImages(requiresRelaunch);
 			throw new DeliveryFailure(error, pasted);
 		}
 		this.#settle(ack);
 	}
 
-	#strandImages(): void {
+	#strandImages(requiresRelaunch = false): void {
 		if (this.#disposed || this.#view.strandedImages) return;
-		this.#strandedSince = { restartFrom: null };
+		this.#strandedSince = { restartFrom: null, requiresRelaunch };
 		this.#set({ strandedImages: true });
 	}
 
@@ -1131,9 +1156,9 @@ export class SessionController {
 			await this.#deliverMessage(message, askTarget);
 		} catch (error) {
 			if (!(error instanceof DeliveryFailure)) throw error;
-			if (!error.pasted) throw error.reason;
-			console.error("Could not submit a message after pasting its images", error.reason);
-			this.#requeue({ id: `q${nextQueueId++}`, ...message }, 0);
+			if (!error.pasted && !error.queueError) throw error.reason;
+			if (!error.queueError) console.error("Could not submit a message after pasting its images", error.reason);
+			this.#requeue({ id: `q${nextQueueId++}`, ...message, ...(error.queueError ? { error: error.queueError } : {}) }, 0);
 		}
 	}
 
@@ -1213,7 +1238,7 @@ export class SessionController {
 			} else console.error("Could not deliver a queued message", failure.reason);
 			// It goes back first in line; the next send, turn end or hold end tries again (after omp restarts, when
 			// its images were pasted).
-			this.#requeue(next, 0);
+			this.#requeue({ ...next, ...(failure.queueError ? { error: failure.queueError } : {}) }, 0);
 		});
 	}
 
@@ -1261,7 +1286,7 @@ export class SessionController {
 	 */
 	#resumeQueue(): void {
 		const view = this.#view;
-		if (this.#disposed || view.queue.length === 0 || view.mode !== "live" || view.working || view.strandedImages || view.guest?.uiRequest) return;
+		if (this.#disposed || view.queue.length === 0 || view.queue[0]?.error || view.mode !== "live" || view.working || view.strandedImages || view.guest?.uiRequest) return;
 		if (this.#writing > 0 || this.#awaiting !== null || this.#slashDeliveries > 0 || this.#queueHolds > 0) return;
 		// A document watch can release before the separate HostState projection arrives.
 		// Missing availability leaves readiness to that watch and main's guarded writer.

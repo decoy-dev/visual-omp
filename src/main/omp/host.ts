@@ -18,7 +18,7 @@ import { Terminal } from "@xterm/headless";
 import { type IPty, spawn } from "node-pty";
 import { stringify } from "yaml";
 import { z } from "zod";
-import type { HostStartOptions, HostState, TuiFocus } from "@shared/ipc";
+import type { HostStartOptions, HostState, HostStopMode, TuiFocus } from "@shared/ipc";
 import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspEditorRestore, type TspHostSnapshot } from "@shared/tsp-host";
 import { composer, openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { TSP_ROLES, TSP_STATUS } from "@shared/tsp/roles";
@@ -41,6 +41,7 @@ import { LoopbackRelay } from "./relay";
 import { findRoomHost } from "./room-host";
 import { findSessionFile, onSessionsChanged } from "./sessions";
 import { TuiDebugClient, type TuiPaint } from "./tui-debug";
+import { attachClassicImages, classicImageFailure } from "./classic-image-paste";
 import { TspInputStateError, TspSession, type TspEditorTarget } from "./tsp/session";
 import { TspStream } from "./tsp/stream";
 import { worktreeExitConfirmation, type WorktreeExitConfirmation } from "./tsp/worktree";
@@ -107,6 +108,7 @@ export class SessionHost {
 	#polling = false;
 	#stopping: Promise<void> | null = null;
 	#closing = false;
+	#stopWithoutEditor = false;
 	#inputTail: Promise<void> = Promise.resolve();
 	#editorTransferBlocked: string | null = null;
 	#shutdownStage: ShutdownStage = "requested";
@@ -406,6 +408,19 @@ export class SessionHost {
 		if (!this.#tsp || generation !== this.state.generation || this.tspSnapshot()?.lifecycle !== "live") throw new Error("TSP preview: The session changed or its semantic UI is not ready.");
 	}
 
+	/** Restart may dismiss menus, but never confirms their selected item or invents an action. */
+	prepareRestart(generation: number, epoch?: number): Promise<boolean> {
+		return this.#applicationInput(async () => {
+			const assertCurrent = (): void => {
+				this.#assertTspInput(generation);
+				if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+			};
+			this.#assertTspInput(generation);
+			if (epoch === undefined) return false;
+			assertCurrent();
+			return this.#tsp!.prepareRestart(assertCurrent, surface => this.#tspSurfaceGenerations.get(surface) === generation);
+		});
+	}
 	tspEvent(generation: number, input: unknown, epoch = this.#tsp?.snapshot().epoch): Promise<void> {
 		const parsed = TspRendererEvent.safeParse(input);
 		if (!parsed.success) return Promise.reject(new Error("TSP preview: Invalid or main-owned renderer event."));
@@ -530,7 +545,7 @@ export class SessionHost {
 		});
 	}
 
-	paste(text: string): Promise<void> {
+	paste(text: string, imagePaths = false): Promise<void> {
 		if (this.#tsp) {
 			const generation = this.state.generation;
 			const epoch = this.#tsp.snapshot().epoch;
@@ -555,7 +570,33 @@ export class SessionHost {
 			if (this.#editorTransferBlocked) throw new Error(this.#editorTransferBlocked);
 			this.#captureStartupNotices = false;
 			this.#finishStartup();
-			this.#writeInput(`\x1b[200~${text}\x1b[201~`);
+			if (!imagePaths) {
+				this.#writeInput(`\x1b[200~${text}\x1b[201~`);
+				return;
+			}
+			const bridge = this.#nativeBridge;
+			const debug = this.#debug;
+			const sessionId = this.state.sessionId;
+			const generation = this.state.generation;
+			if (!bridge || !debug || !sessionId) throw new Error("omp's image attachment controls are unavailable.");
+			await attachClassicImages(text, {
+				assertCurrent: () => {
+					this.#assertApplicationInput(true);
+					if (this.state.generation !== generation || this.state.sessionId !== sessionId) throw new Error("The chat changed while attaching its images.");
+				},
+				readEditor: () => bridge.editorDraft({ operation: "peek", sessionId }),
+				restoreEditor: (expected, restoreText) => bridge.editorDraft({ operation: "restore", sessionId, expected, restoreText }),
+				failureText: async () => classicImageFailure(await debug.values()),
+				paste: path => this.#writeInput(`\x1b[200~${path}\x1b[201~`),
+				wait: () => sleep(40),
+			}).catch(error => {
+				if (error instanceof Error && error.message.startsWith("Image submission needs recovery.")) {
+					// Quit and ordinary Close also reach stop() without renderer recovery intent.
+					this.#stopWithoutEditor = true;
+					this.#editorTransferBlocked = "Restart omp before sending more text after the failed image submission.";
+				}
+				throw error;
+			});
 		});
 	}
 
@@ -945,8 +986,9 @@ export class SessionHost {
 	}
 
 	/** Closing cancels application input immediately. Only an explicit native decision can force-stop omp. */
-	stop(): Promise<void> {
+	stop(mode: HostStopMode = "normal"): Promise<void> {
 		this.#closing = true;
+		this.#stopWithoutEditor ||= mode === "editor-recovery";
 		if (this.#tsp) {
 			this.#tspShutdownScope ??= { generation: this.state.generation, epoch: this.#tsp.snapshot().epoch };
 			this.#publishTsp();
@@ -961,6 +1003,8 @@ export class SessionHost {
 		// A submission may be awaiting a native startup decision. It rejects when that decision
 		// finishes because closing was set synchronously, before this drain.
 		if (!(await this.#drainApplicationInput(pty))) return;
+		// Main also guards ordinary close after a failed transfer, even if the renderer lost its recovery state.
+		this.#stopWithoutEditor ||= !this.#tsp && this.#editorTransferBlocked !== null;
 		if (this.#nativeBridge?.snapshot.shutdown === "teardown") this.#shutdownProgress("teardown");
 		let prepared = true;
 		if (this.#shutdownStage === "requested" || this.#shutdownStage === "acknowledged") {
@@ -973,7 +1017,13 @@ export class SessionHost {
 		if (this.#pty !== pty) return;
 		let exitSent = false;
 		let escapedOverlay: string | null = null;
-		if (!this.#tsp && prepared && this.#shutdownStage === "requested") {
+		if (this.#stopWithoutEditor && prepared && this.#shutdownStage === "requested") {
+			// SDK shutdown preserves upstream settled-boundary and worktree exit decisions. A kernel
+			// signal also avoids Enter, but skips shutdown()'s owned-worktree planning.
+			try { this.#nativeBridge?.requestShutdown(); }
+			catch (error) { this.#update({ error: error instanceof Error ? error.message : String(error) }); }
+			// A missing/unresponsive bridge goes through the existing explicit native stop decision.
+		} else if (!this.#tsp && prepared && this.#shutdownStage === "requested") {
 			if (this.state.tui && this.state.tui.overlays > 0) {
 				await this.#debug?.keys("escape").catch(() => undefined);
 				await sleep(150);
@@ -982,12 +1032,12 @@ export class SessionHost {
 		}
 		this.#shutdownProgressAt = Date.now();
 		while (this.#pty === pty) {
-			if (this.#tsp) {
+			if (this.#tsp || this.#stopWithoutEditor) {
 				try { await this.#resolveWorktreeQuestion(); }
 				catch (error) { this.#update({ error: error instanceof Error ? error.message : String(error) }); }
 				if (this.#pty !== pty) return;
 			}
-			if (this.#tsp && !exitSent && this.#shutdownStage === "requested") {
+			if (this.#tsp && !this.#stopWithoutEditor && !exitSent && this.#shutdownStage === "requested") {
 				const surfaces = this.#tsp.snapshot().surfaces;
 				const overlay = openOverlay(surfaces, true);
 				const screen = screenSurface(surfaces);
@@ -1335,13 +1385,13 @@ export function listHosts(): HostState[] {
 	return [...hosts.values()].map(host => host.state);
 }
 
-export async function stopHost(hostId: string): Promise<void> {
+export async function stopHost(hostId: string, mode?: HostStopMode): Promise<void> {
 	const host = hosts.get(hostId);
 	if (!host) return;
-	await host.stop();
+	await host.stop(mode);
 	hosts.delete(hostId);
 }
 
 export async function stopAllHosts(): Promise<void> {
-	await Promise.all([...hosts.keys()].map(stopHost));
+	await Promise.all([...hosts.keys()].map(hostId => stopHost(hostId)));
 }

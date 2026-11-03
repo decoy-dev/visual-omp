@@ -1,0 +1,58 @@
+{
+  "version": "18.15.0",
+  "sourceCommit": "3fedf8d53267e32a6d7521ce725fdcc4a36fdc67",
+  "sourceFiles": [
+    {
+      "path": "packages/coding-agent/src/modes/controllers/input-controller.ts",
+      "evidence": "#insertPendingImage: pendingImages.push, chipLabel, insertAtom",
+      "sha256": "ff826184d4a1ab66ffa5369f43099fc1355a210c60723bd48942d203ef7bb83e"
+    },
+    {
+      "path": "packages/tui/src/prompt/composer-attachments.ts",
+      "evidence": "activeChipIcon and chipLabel",
+      "sha256": "fec09dcb5644ba3de97ed4e22ab3e2a0714c394fa0f30de8132f30f38c3c4389"
+    },
+    {
+      "path": "packages/tui/src/components/editor.ts",
+      "evidence": "insertAtom inserts label plus trailing space",
+      "sha256": "241d6245f7f5354fd7888e28175c102b30cc8a3eb9a038540bb1107e91a43ec6"
+    },
+    {
+      "path": "packages/tui/src/theme/symbols.ts",
+      "evidence": "chip.image presets",
+      "sha256": "c118fc13862a3fdfb5ea03a9b48d9e67cd081872ea3e163efa05cdca3a560766"
+    }
+  ],
+  "executableSha256": "d36dfabf0ee52d6f08efadb59c46f0349545c6f6975522417adae29646e73e34",
+  "inputImages": [
+    {
+      "bytes": 68,
+      "sha256": "0a97622d6e7ce7ad16ce29a411b253471fbc73e0552cb63d8384f6ea986f25e2",
+      "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a4ioAAAAASUVORK5CYII="
+    },
+    {
+      "bytes": 69,
+      "sha256": "c47dd9465c00e9a0c8b85e9ea58d3034a0d23b9cf926113602f3460752a4eb96",
+      "base64": "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADElEQVR4nGNgYGAAAAAEAAH2FzhVAAAAAElFTkSuQmCC"
+    }
+  ],
+  "isolation": "Scratch HOME/config/cache/session, allowlisted environment, scripted loopback provider, no inherited credentials or context",
+  "classicEnvironment": {
+    "PI_TUI_NATIVE": "0",
+    "TERM_PROGRAM": null
+  },
+  "pathSanitizer": "tsp/sanitize-fixture.ts",
+  "shutdown": "NativeBridge.requestShutdown SDK path",
+  "artifacts": {
+    "classic-image-success.json": {
+      "bytes": 93896,
+      "carriageReturns": 0,
+      "sha256": "a734e6cbdbf62c2c8ea55cda88e5ceb98e913f53580b44bdad5461c497d0c80b"
+    },
+    "classic-image-success.raw.bin": {
+      "bytes": 19782,
+      "carriageReturns": 160,
+      "sha256": "34d8fedfb20fda256ca525ef5ea63868dce8d5dbb430268e1a4a835832017988"
+    }
+  }
+}

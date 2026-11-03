@@ -92,10 +92,11 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 
 	// A fresh profile's chats wait for the "Ask me first" default (services/approval-default.ts).
 	handle("host:start", gateHostStart(ensureNewUserApproval, startHost));
-	handle("host:stop", hostId => stopHost(hostId));
+	handle("host:stop", (hostId, mode) => stopHost(hostId, mode));
 	handle("host:write", (hostId, data) => getHost(hostId).write(data));
 	handle("host:paste", (hostId, text) => getHost(hostId).paste(text));
 	handle("host:submit", (hostId, text, mode, imagePaths) => getHost(hostId).submit(text, mode, imagePaths));
+	handle("host:prepare-restart", (hostId, generation, epoch) => getHost(hostId).prepareRestart(generation, epoch));
 	handle("host:keys", (hostId, keys, generation, epoch) => getHost(hostId).keys(keys, generation, epoch));
 	handle("host:retry-editor-restore", (hostId, id) => getHost(hostId).retryEditorRestore(id));
 	handle("host:ack-editor-restore", (hostId, id) => getHost(hostId).ackEditorRestore(id));

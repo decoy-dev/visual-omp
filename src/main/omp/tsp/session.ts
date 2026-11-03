@@ -6,6 +6,7 @@ import { isHookNode, isKnownAction, TSP_ACTIONS, TSP_ROLES } from "../../../shar
 import { hookAnswerEvents, TspHookAnswer } from "../../../shared/tsp/dialogs";
 import { planReview } from "../../../shared/tsp/plan-review";
 import { advisorActionEvents, advisorOverlay, TspAdvisorAction } from "../../../shared/tsp/advisor";
+import { commandNodeText } from "../../../shared/tsp/command-result";
 import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";
 import type { TspMessage } from "./stream";
@@ -77,6 +78,13 @@ export type TspUpdate = "hello" | "open" | "frame" | "close";
 
 /** A document or protocol transition refused input before any application bytes were written. */
 export class TspInputStateError extends Error {}
+
+/** Image input failed after staging; the message carries the recovery contract across IPC. */
+export class TspImageSubmissionError extends TspInputStateError {
+	constructor(readonly recovery: "restored" | "required", reason: string) {
+		super(`TSP preview: Image submission ${recovery === "restored" ? "was restored." : "needs recovery."} ${reason}`);
+	}
+}
 
 /**
  * omp owns document content and submission semantics. The app applies its semantic documents
@@ -347,6 +355,43 @@ export class TspSession {
 			return this.#write(events.length ? events.map(event => encodeTspJson("e", event)).join("") : "\x1b");
 		});
 	}
+	/** Restart uses declared dismissal only; autocomplete without one requires a saved-session relaunch. */
+	async prepareRestart(assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<boolean> {
+		assertCurrent();
+		if (this.availability(surfaceAllowed).available) return true;
+		const surfaces = this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id));
+		if (this.hasHookDialog() || composerFacts(surfaces).blockedBy === "approval") return false;
+		const screen = screenSurface(surfaces);
+		const target = screen ? { surface: screen, node: screen.document } : openOverlay(surfaces, true);
+		if (!target) return false;
+		const controls = [...walkNodes(target.node)];
+		let dismissal: { id: string; act: "close" | "cancel" } | undefined;
+		for (const act of [TSP_ACTIONS.close, TSP_ACTIONS.cancel] as const) {
+			for (const node of controls) {
+				if (node.k === "button" && !node.p?.disabled && node.p?.actions?.click === act
+					|| Array.isArray(node.p?.actions) && node.p.actions.some(action => action.id === act && !action.disabled)) {
+					dismissal = { id: node.id, act };
+					break;
+				}
+			}
+			if (dismissal) break;
+		}
+		if (!dismissal) return false;
+		const event = { ev: "action", sf: target.surface.open.id, ...dismissal } as const;
+		const epoch = this.#epoch;
+		await this.send(event, () => {
+			assertCurrent();
+			const current = this.#surfaces.get(event.sf);
+			const node = current?.doc.get(event.id);
+			if (epoch !== this.#epoch || !surfaceAllowed(event.sf) || current?.closed || !node
+				|| !(node.k === "button" && !node.p?.disabled && node.p?.actions?.click === event.act
+					|| Array.isArray(node.p?.actions) && node.p.actions.some(action => action.id === event.act && !action.disabled))) {
+				throw new TspInputStateError("TSP preview: The omp menu changed before it could close.");
+			}
+		});
+		await this.waitFor(() => this.availability(surfaceAllowed).available, assertCurrent, 8000, "omp did not confirm that its menu closed.");
+		return true;
+	}
 	/** Atomic text submission to omp's main composer, preserving its displaced-draft semantics. */
 	submit(text: string, assertCurrent?: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
 		if (!text.trim()) return Promise.reject(new Error("TSP preview: Enter a message before sending."));
@@ -389,25 +434,68 @@ export class TspSession {
 
 	/** `send` omits staged images. Preserve them with the composer's submit action. */
 	async submitImages(text: string, paths: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
-		const epoch = this.#epoch;
 		const facts = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
-		const original = this.#surfaces.get(facts.surfaceId!);
-		const assertTarget = () => {
-			assertCurrent();
-			const now = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
-			if (epoch !== this.#epoch || this.#surfaces.get(facts.surfaceId!) !== original || now.editorId !== facts.editorId || now.surfaceId !== facts.surfaceId) throw new TspInputStateError("The editor changed before the image could be submitted.");
-		};
-		const expected = this.imageCount(facts.surfaceId!) + (paths.match(/(?:\\.|[^\s])+/g)?.length ?? 0);
-		// omp inserts image atoms at the cursor, including their trailing separator.
-		await this.editAndKeys(0, facts.text.length, "", 0, `\x1b[200~${paths}\x1b[201~`, assertCurrent, surfaceAllowed);
+		const target = this.pinEditor(surfaceAllowed);
+		const assertTarget = () => { assertCurrent(); target.assertCurrent(); };
+		const originalImages = this.imageCount(target.surfaceId);
+		const tokens = paths.match(/(?:\\.|[^\s])+/g) ?? [];
+		const notices = () => [...walkNodes(this.#surfaces.get(target.surfaceId)!.doc.snapshot())]
+			.filter(node => node.p?.role === TSP_ROLES.toastStatus || node.p?.role === TSP_ROLES.noticeError || node.p?.role === TSP_ROLES.noticeWarning)
+			.map(node => ({ id: node.id, text: commandNodeText(node) }));
+		let pasteFinished = false;
+		let submitting = false;
+		let stagedWrites = 0;
 		try {
-			await this.waitFor(() => this.imageCount(facts.surfaceId!) >= expected, assertTarget, 8000, "omp did not attach the image. Check its editor before sending again.");
+			// Await each path separately so rejection cannot leave a later paste callback pending.
+			for (const [index, path] of tokens.entries()) {
+				const priorNotices = new Map(notices().map(notice => [notice.id, notice.text]));
+				const expected = (index === 0 ? 0 : this.imageCount(target.surfaceId)) + 1;
+				const before = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+				const fallbackText = (index === 0 ? "" : before.text) + path.replace(/\\(.)/g, "$1");
+				pasteFinished = false;
+				await this.editAndKeys(index === 0 ? 0 : before.text.length, before.text.length, "", index === 0 ? 0 : before.text.length,
+					`\x1b[200~${path}\x1b[201~`, assertTarget, surfaceAllowed);
+				stagedWrites++;
+				await this.waitFor(() => {
+					const currentText = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id))).text;
+					const failure = notices().find(notice => (priorNotices.get(notice.id) !== notice.text
+						|| fallbackText !== before.text && currentText === fallbackText)
+						&& /^(?:Failed to read pasted image path|Pasted path is not a supported image|Image not found at |Image file too large:|Unsupported pasted image format:)/.test(notice.text));
+					if (failure) { pasteFinished = true; throw new Error(failure.text); }
+					if (this.imageCount(target.surfaceId) < expected) return false;
+					pasteFinished = true;
+					return true;
+				}, assertTarget, 8000, "omp did not attach the image. Check its editor before sending again.");
+			}
 			const attached = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
-			const submit = { ev: "action", sf: facts.surfaceId!, id: facts.editorId!, act: TSP_ACTIONS.submit } as const;
+			const submit = { ev: "action", sf: target.surfaceId, id: target.editorId, act: TSP_ACTIONS.submit } as const;
+			submitting = true;
 			await this.editAndKeys(attached.text.length, attached.text.length, text, attached.text.length + text.length,
 				encodeTspJson("e", submit), assertTarget, surfaceAllowed);
 		} catch (error) {
-			throw new TspInputStateError(`TSP preview: Image submission needs recovery. ${error instanceof Error ? error.message : String(error)}`);
+			if (stagedWrites === 0 && error instanceof TspInputStateError) throw error;
+			const reason = error instanceof Error ? error.message : String(error);
+			if (pasteFinished && !submitting) {
+				try {
+					assertTarget();
+					const failed = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+					// Public edit remains valid while the failed path's autocomplete owns a panel.
+					await this.send({ ev: "edit", sf: target.surfaceId, id: target.editorId, from: 0, to: failed.text.length,
+						text: facts.text, cursor: facts.cursor, len: failed.text.length }, () => {
+						assertTarget();
+						if (composerFacts(this.snapshot().surfaces).text !== failed.text) throw new TspInputStateError("The editor changed before the image input could be restored.");
+					});
+					await this.waitFor(() => {
+						const restored = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+						return restored.text === facts.text && restored.cursor === facts.cursor && this.imageCount(target.surfaceId) === originalImages
+							&& restored.blockedBy !== "panel";
+					}, assertTarget, 8000, "omp did not confirm the restored editor.");
+				} catch (recoveryError) {
+					throw new TspImageSubmissionError("required", `${reason} ${recoveryError instanceof Error ? recoveryError.message : String(recoveryError)}`);
+				}
+				throw new TspImageSubmissionError("restored", reason);
+			}
+			throw new TspImageSubmissionError("required", reason);
 		}
 	}
 

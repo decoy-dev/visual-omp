@@ -56,13 +56,18 @@ export interface DictationUpdate {
 
 /** Exact editor access is carried by the trusted extension, never reconstructed from screen rows. */
 export interface EditorDraftRequest {
-	operation: "peek" | "take";
+	operation: "peek" | "take" | "restore";
 	sessionId: string;
 	expected?: string;
+	restoreText?: string;
 }
 export interface EditorDraftResult {
 	text: string | null;
 	cleared: boolean;
+	restored?: boolean;
+	/** Compact image tokens identified with omp's current theme symbol, when available. */
+	imageChips?: number;
+	imageSymbol?: string;
 	error?: string;
 }
 export interface PredictionTakeRequest {

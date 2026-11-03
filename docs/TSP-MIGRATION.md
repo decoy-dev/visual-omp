@@ -113,7 +113,7 @@ Authority after the migration:
 ## Rules for every phase
 
 1. **Launch-time choice.** A host is classic or TSP for its whole process life, because the study found no supported way to switch a running omp between renderers. `HostState` carries the presentation (`"classic" | "tsp"`), so the renderer never guesses it from screen content.
-2. **Developer flag until the flip.** Phases 1-6 run only with `VOMP_TSP=1`, read in main at chat launch. Each phase can merge on its own, but the preview is a developer tool with known gaps until the Phase 2 usability gate passes, and it reaches parity only at the end of Phase 4. Classic chats keep their exact behavior in every phase; the existing Vitest suite and the classic fixtures guard that.
+2. **Developer flag until the flip.** Phases 1-6 run only with `VOMP_TSP=1`, read in main at chat launch. Each phase can merge on its own, but the preview is a developer tool with known gaps until the Phase 2 usability gate passes, and it reaches parity only at the end of Phase 4. Classic presentation and ordinary text input retain their existing behavior. The shared image safety fix is an explicit exception: classic image sends now wait for upstream attachment acknowledgement, retain rejected images for explicit retry and use recovery-safe shutdown when the editor cannot be restored.
 3. **One writer.** Every byte written to the PTY goes through one synchronous writer in `SessionHost`. Renderer-originated TSP events and keys enter the existing application-input chain (`#applicationInput` in `src/main/omp/host.ts`), with closing, generation and surface-id checks. Only protocol housekeeping (hello reply, DA1 answer, `ack`, `resize`, `theme`, `motion`) bypasses the transaction queue; it still uses the same writer and is never written in the middle of a multi-part write. `send` and `undo` are emitted only when omp's hello query advertised them.
 4. **Role registry.** Every omp role string, action name and status word the app depends on is declared once in `src/shared/tsp/roles.ts`. Feature code imports names from there, so an omp rename fails one test file. studio follows the same rule ([`docs/architecture/tsp-btw.md:73-75`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-btw.md?plain=1#L73-L75)).
 5. **Fixtures pinned to omp 18.15.0.** Each scenario records omp's own journal (`PI_TUI_TSP_RECORD`) and the raw PTY bytes. Store fixtures in `src/main/omp/tsp/fixtures/18.15.0/<scenario>.jsonl` and `<scenario>.raw.bin`, with decoded messages, emitted events, a byte/CR/SHA-256 integrity manifest and a `README.md` giving the omp version, commit, config and redactions. Recordings use the standalone 18.15.0 executable with a scratch HOME and config root, and no owner profile. Scenarios use no model unless they opt into the loopback script in Rule 6. Re-record every scenario on a baseline change and remove the old baseline; the recorder sanitizes paths and decoded OSC payloads before storage.
@@ -163,7 +163,7 @@ Authority after the migration:
 
 ## What a TSP chat can do after each phase
 
-The table applies to chats started with `VOMP_TSP=1`. Classic chats are unchanged throughout. "Disabled" means the control is shown as unavailable with a one-sentence reason, so a preview user never sees a control that silently fails.
+The table applies to chats started with `VOMP_TSP=1`. Classic presentation and ordinary text input are unchanged; the attachment acknowledgement and rejection recovery described in Rule 2 are the shared safety exception. "Disabled" means the control is shown as unavailable with a one-sentence reason, so a preview user never sees a control that silently fails.
 
 | After phase | Available in a TSP chat | Disabled, with the reason shown | Fallback |
 |---|---|---|---|
@@ -193,7 +193,7 @@ These figures are planning judgment for one engineer familiar with the repositor
 
 ## Phase 1: developer-only transport preview (fixed contract)
 
-**Goal.** Provide a developer-only transport preview. Classic remains unchanged; the TSP preview does not yet provide feature parity. A chat started with `VOMP_TSP=1` on macOS or Linux runs omp as a TSP client, keeps collab exactly as today, and shows a read-only outline of omp's documents in place of the xterm mirror.
+**Goal.** Provide a developer-only transport preview. Classic rendering remains unchanged, with the shared attachment safety exception in Rule 2; the TSP preview does not yet provide feature parity. A chat started with `VOMP_TSP=1` on macOS or Linux runs omp as a TSP client, keeps collab exactly as today, and shows a read-only outline of omp's documents in place of the xterm mirror.
 
 **Files and modules (contract).** `src/main/omp/tsp/` (stream splitter, protocol and vendored applier, session), a small `src/main/omp/host.ts` integration, shared IPC contract types in `src/shared`, and a renderer inspector shown by `features/palette/TerminalSheet.tsx` for TSP hosts. The applier is vendored from [`packages/tui/src/native/apply.ts:1-277`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/native/apply.ts#L1-L277) (the `TspDocument` class begins at [`packages/tui/src/native/apply.ts:39`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/native/apply.ts#L39)) with MIT attribution beside it and in `NOTICE`.
 
@@ -326,7 +326,7 @@ Source inspection adds unclaimed `omp.btw.inject` and read-only `inject` for the
 steering feature. Prediction alternatives expose the existing `omp.autocomplete` and `omp.select`
 roles, now recognized without a native claim. The live application-overlay prediction test covers
 exact first-choice transfers and second-Tab list selection in classic and TSP hosts.
-No 18.16 recording is committed; the minimum and fixture baseline remain 18.15.0.
+The targeted `fixtures/18.16.0/image-reject` recording provides comparison evidence for image rejection and draft restoration. It does not replace the complete 18.15.0 fixture baseline or raise the minimum version.
 
 Criterion 2 passed the opt-in headless Chrome gate against the pinned recordings on 2026-11-02
 (`src/main/omp/tsp/testing/ui-gate.test.ts`), alongside the DOM checks.
@@ -456,10 +456,12 @@ Record (Rule 5): `slash-overlays` (`/jobs`, `/usage`, `/session`, `/hotkeys`, `/
 
 **Implementation status (2026-11-02).** Main publishes `composerFacts()` on each TSP snapshot and the
 host state used by the composer. Plain text, shell/Python prefixes and large messages use `send`.
-Follow-up writes one len-checked edit plus Ctrl+Q. Images use one edit-plus-path-paste write,
-wait for all new image attachments in the document, and submit through the editor action. Protocol
-acknowledgments remain available during attachment waits. Image failures after the paste retain the
-existing stranded-image recovery gate.
+Follow-up writes one len-checked edit plus Ctrl+Q. Images clear the editor, paste and confirm
+each path separately, then append the prompt text and submit through the editor action. Protocol
+acknowledgments remain available during attachment waits. omp's own image rejection restores the
+pre-send editor through len-checked edit and waits for confirmation. The failed message retains
+its images and literal error in the queue until an explicit retry. Uncertain restoration retains
+the existing stranded-image recovery gate.
 
 The app queue waits for omp's queue pills, ask ownership and panels. Escape pins the original
 editor lifetime and retains its exact dequeued text in main before clearing. Snapshot delivery inserts
@@ -469,13 +471,14 @@ duplicate text. Approval sends deny and steer; slash routing,
 model and thinking actions refuse while approval waits. Semantic ghost text uses the existing exact
 Tab capture and recovery path without painted reads. Undo uses the advertised event.
 
-The eleven input recordings are present, including the image's attached collab transcript,
+The input recordings include the image's attached collab transcript,
 `prediction-ghost` and `paste-follow-up`. The latter proves that a reflected image paste survives a
 follow-up edit and reaches the next provider request. `input.test.ts` drives production operations against event-gated replay,
 checks raw byte integrity and verifies image write ordering. `input.live.test.ts`, gated by `OMP_BIN`,
 re-records follow-up, image and approval workflows in isolated profiles. The prediction recording
 shows the semantic ghost, Tab acceptance and exact edit clear; extension capture and recovery retain
 their consumer tests. Criterion 7 remains a manual Electron gate for main, including IME composition.
+The `image-reject` recording adds the exact bad-CRC PNG rejection and Unicode draft/cursor restoration in standalone 18.15 and 18.16, with no provider request.
 Host transaction tests cover delayed paste completion, follow-up text/identity races, changing ghosts,
 Tab target replacement and restored-text retention across delayed clear confirmation or epoch change.
 
@@ -488,7 +491,7 @@ Tab target replacement and restored-text retention across delayed clear confirma
 | Follow-up (Ctrl+Q) | Bracketed paste plus `\x11` | omp defines no follow-up event; its composer actions are `thinking.cycle`, `dictation.toggle`, `submit` and `interrupt` ([`packages/tui/src/prompt/custom-editor.ts:1434-1452`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/prompt/custom-editor.ts#L1434-L1452)). Use `edit` to set the editor text with a `len` check, then the `\x11` key through the same writer | omp source |
 | Shell and Python (`!`, `!!`, `$`) | Typed | `send` the text; studio observed omp running them as `omp.bash` and `omp.eval` | [`docs/architecture/tsp-real-omp-probes.md:22-30`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-real-omp-probes.md?plain=1#L22-L30) |
 | Pastes | Bracketed paste | Unchanged key path; omp's paste handling is the same code | `host.ts` `paste` |
-| Images | Path paste plus Enter | `edit` the text, bracketed-paste the image path, wait for omp's attachment, then `action submit`; studio found that `send` drops attached images | [`docs/architecture/tsp-migration.md:196`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L196) |
+| Images | Path paste plus Enter | Clear the editor, bracketed-paste and confirm each image path, then append text and `action submit`. On rejection, restore the original text/cursor and retain the failed message for explicit retry. `send` drops staged images | Current 18.15/18.16 `image-reject` recordings and [`docs/architecture/tsp-migration.md:196`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L196) |
 | Queue holds | Debug overlays and painted editor (A6) | `omp.queue` items in `dock`, an open overlay or `screen` surface, or the editor replaced by an ask | [`docs/architecture/tsp-real-omp-probes.md:36-41`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-real-omp-probes.md?plain=1#L36-L41) |
 | Escape with queued items | Painted editor return | On Escape omp appends queued text to its own editor; read it from the `text` append operation, return it to the app composer, then clear omp's editor with `edit` | [`docs/architecture/tsp-real-omp-probes.md:40-41`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-real-omp-probes.md?plain=1#L40-L41) |
 | Approval pending | "Sending a message now denies this request" | Same rule: `send` while an approval waits denies and steers (studio confirmed on omp 18.12.5); model, thinking and slash actions are refused while an approval waits | [`docs/architecture/tsp-migration.md:220-224`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L220-L224) |
@@ -506,7 +509,7 @@ Tab target replacement and restored-text retention across delayed clear confirma
 2. Replay: `send` is never written while `sendable` is false, while a `screen` surface is open, or with a stale surface id; each refusal returns a distinct message the composer shows.
 3. Replay: follow-up appears in `omp.queue` and is delivered after the turn ends; Escape during a queued follow-up returns its text to the app composer and leaves omp's editor empty.
 4. Replay: an image submission produces a user message with the image in the collab transcript of the fixture.
-5. Replay: classic hosts write exactly the bytes they wrote before.
+5. Replay: classic ordinary text and generic dialog pastes retain their existing byte path. The Rule 2 attachment safety exception delays classic image submission until the production acknowledgement path confirms each upstream token, blocks unsupported or unavailable acknowledgement, and retains rejected attachments for explicit retry. Live (scripted provider): verify successful single and multiple image sends on 18.15 and 18.16, including provider image receipt.
 6. Live (scripted provider): `follow-up-queue`, `image-attach` and `approval-send-denies` complete against the installed omp.
 7. Manual (macOS): steer, follow-up, `!ls`, `$ 1+1`, a long paste, an image and a prediction in a TSP chat; IME composition (Japanese or Chinese) submits the committed text once. `[INFERENCE]` The app composer is unchanged, so IME should behave as before; it must still be checked by hand.
 

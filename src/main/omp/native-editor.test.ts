@@ -56,4 +56,26 @@ describe("exact trusted editor transfer", () => {
 		let buffer = text;
 		expect(embedded({ getEditorText: () => buffer, setEditorText: value => { buffer = value; } }, take, "session")).toEqual({ text, cleared: true });
 	});
+	it("counts only current-theme image tokens in exact editor text", () => {
+		const ui = { getEditorText: () => "IMAGE #1 IMAGE #2 PASTE #3", setEditorText: vi.fn(), theme: { symbol: () => "IMAGE" } };
+		expect(exactEditorDraft(ui, { operation: "peek", sessionId: "session" }, "session")).toMatchObject({ imageChips: 2, cleared: false });
+		expect(ui.setEditorText).not.toHaveBeenCalled();
+	});
+	it("restores the original editor text only after an exact same-session comparison", () => {
+		let buffer = "draft /tmp/broken.png";
+		const ui = { getEditorText: () => buffer, setEditorText: vi.fn((value: string) => { buffer = value; }) };
+		const restore = { operation: "restore", sessionId: "session", expected: buffer, restoreText: "draft " } as const;
+		expect(exactEditorDraft(ui, restore, "other")).toMatchObject({ text: null, cleared: false });
+		expect(exactEditorDraft(ui, { ...restore, expected: "older" }, "session")).toMatchObject({ cleared: false });
+		expect(ui.setEditorText).not.toHaveBeenCalled();
+		expect(exactEditorDraft(ui, restore, "session")).toMatchObject({ restored: true, cleared: false });
+		expect(buffer).toBe("draft ");
+	});
+	it("reports an unsuccessful restore without replacing a newer editor a second time", () => {
+		let buffer = "/tmp/broken.png";
+		const ui = { getEditorText: () => buffer, setEditorText: vi.fn(() => { buffer = "newer"; }) };
+		expect(exactEditorDraft(ui, { operation: "restore", sessionId: "session", expected: buffer, restoreText: "" }, "session")).toMatchObject({ restored: false, cleared: false });
+		expect(buffer).toBe("newer");
+		expect(ui.setEditorText).toHaveBeenCalledOnce();
+	});
 });

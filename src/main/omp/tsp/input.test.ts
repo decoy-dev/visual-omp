@@ -1,27 +1,27 @@
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { composerFacts } from "./composer";
 import { TspSession } from "./session";
 import { TspStream } from "./stream";
 import type { TspOp } from "../../../shared/tsp";
 
-const fixture = (name: string, suffix: string) => readFileSync(new URL(`./fixtures/18.15.0/${name}.${suffix}`, import.meta.url), "utf8");
+const fixture = (name: string, suffix: string, version = "18.15.0") => readFileSync(new URL(`./fixtures/${version}/${name}.${suffix}`, import.meta.url), "utf8");
 interface RecordedEvent { verb?: string; body?: { ev: string }; keys?: string; afterMessage: number }
 interface RecordedMessage { verb: string; body: unknown }
 
 /** The fake program advances only after the next recorded application event matches. */
-function replay(name: string) {
+function replay(name: string, version = "18.15.0") {
 	const incoming: RecordedMessage[] = [];
-	const raw = readFileSync(new URL(`./fixtures/18.15.0/${name}.raw.bin`, import.meta.url));
-	const integrity = JSON.parse(fixture(name, "integrity.json"));
+	const raw = readFileSync(new URL(`./fixtures/${version}/${name}.raw.bin`, import.meta.url));
+	const integrity = JSON.parse(fixture(name, "integrity.json", version));
 	expect({ bytes: raw.length, carriageReturns: raw.filter(byte => byte === 13).length, sha256: createHash("sha256").update(raw).digest("hex") }).toEqual(integrity);
 	expect(raw.toString()).not.toMatch(/\/Users\/|vomp-tsp-record-/);
 	const parser = new TspStream({ onData: () => {}, onMessage: message => incoming.push({ verb: message.verb, body: message.verb === "b" ? message.body : JSON.parse(message.body) }) });
 	for (let offset = 0; offset < raw.length; offset += 7) parser.push(raw.subarray(offset, offset + 7));
 	parser.end();
-	expect(incoming).toEqual(fixture(name, "messages.jsonl").trim().split("\n").map(line => JSON.parse(line)));
-	const expected: RecordedEvent[] = fixture(name, "events.jsonl").trim().split("\n").map(line => JSON.parse(line))
+	expect(incoming).toEqual(fixture(name, "messages.jsonl", version).trim().split("\n").map(line => JSON.parse(line)));
+	const expected: RecordedEvent[] = fixture(name, "events.jsonl", version).trim().split("\n").map(line => JSON.parse(line))
 		.filter((event: RecordedEvent) => event.keys !== undefined ? !/^\x1b\[(?:\?62;22c|1;1R)$/.test(event.keys) : event.verb === "e" && event.body?.ev !== "ack");
 	let at = 0;
 	let eventIndex = 0;
@@ -143,6 +143,97 @@ describe("recorded TSP composer input", () => {
 		expect(content).toContainEqual({ type: "text", text: "[Image #1, 200x200] Fixture image prompt" });
 	});
 
+	it.each(["18.15.0", "18.16.0"])("replays rejected bad-CRC image recovery from omp %s", async version => {
+		const h = replay("image-reject", version);
+		await h.session.editAndKeys(0, 0, "Keep café 🧭 draft", 5, "", () => {});
+		await expect(h.session.submitImages("Fixture rejected image prompt", "./live-check.png", () => {}))
+			.rejects.toMatchObject({ recovery: "restored", message: "TSP preview: Image submission was restored. Failed to read pasted image path" });
+		expect(h.facts()).toMatchObject({ text: "Keep café 🧭 draft", cursor: 5, blockedBy: null });
+		expect(h.session.imageCount(h.facts().surfaceId!)).toBe(0);
+		expect(h.writes.some(write => write.includes('"act":"submit"'))).toBe(false);
+		expect(JSON.parse(fixture("image-reject", "provider.json", version))).toEqual([]);
+		await h.session.submit("/exit");
+		await h.finish();
+	});
+
+	it.each(["restored", "retained", "replaced", "unconfirmed", "generation"] as const)("retains actionable failure classification with autocomplete (%s)", async outcome => {
+		vi.useFakeTimers();
+		try {
+			const writes: string[] = [];
+			let sequence = 1;
+			let generation = 1;
+			const session = new TspSession({ cols: 100, dark: false, reduceMotion: true, write: data => {
+				writes.push(data);
+				if (data.includes("\x1b[200~")) {
+					if (outcome === "replaced") {
+						receive("f", { sf: "s", s: ++sequence, ops: [["del", "input"], ["add", "input", "editor", null, { id: "input", k: "editor", p: { text: "Replacement draft", sendable: true } }], ["focus", "input"]] });
+					} else {
+						if (outcome === "generation") generation++;
+						receive("f", { sf: "s", s: ++sequence, ops: [
+							["set", "input", { text: "/bad.png", cursor: 8 }],
+							outcome === "retained"
+								? ["set", "failure", { text: "Failed to read pasted image path" }]
+								: ["add", "failure", "main", null, { id: "failure", k: "toast", p: { role: "omp.toast.status", text: "Failed to read pasted image path" } }],
+							["add", "complete", "layer", null, { id: "complete", k: "overlay", p: { role: "omp.autocomplete" } }],
+						] });
+					}
+				} else if (data.includes('"text":"Keep café 🧭 draft"') && (outcome === "restored" || outcome === "retained")) {
+					receive("f", { sf: "s", s: ++sequence, ops: [["set", "input", { text: "Keep café 🧭 draft", cursor: 5 }], ["del", "complete"]] });
+				}
+			} });
+			const receive = (verb: string, body: unknown) => session.receive({ verb, params: {}, body: JSON.stringify(body) });
+			receive("q", { q: "hello", v: [1], features: ["send", "edit"] });
+			receive("o", { id: "s", mode: "inline", role: "omp.session" });
+			receive("f", { sf: "s", s: sequence, ops: [
+				["add", "main", "s", null, { id: "main", k: "col", ...(outcome === "retained" ? { c: [{ id: "failure", k: "toast", p: { role: "omp.toast.status", text: "Failed to read pasted image path" } }] } : {}) }],
+				["add", "layer", "s", null, { id: "layer", k: "col" }],
+				["add", "dock", "s", null, { id: "dock", k: "col", c: [{ id: "editor", k: "col", p: { role: "omp.editor" }, c: [{ id: "input", k: "editor", p: { text: "Keep café 🧭 draft", cursor: 5, sendable: true } }] }, { id: "chips", k: "row", p: { role: "omp.composer.chips" } }] }],
+				["focus", "input"],
+			] });
+			const sending = session.submitImages("Question", "/bad.png", () => { if (generation !== 1) throw new Error("Connection changed"); });
+			const rejected = expect(sending).rejects.toMatchObject({ recovery: outcome === "restored" || outcome === "retained" ? "restored" : "required" });
+			await vi.runAllTimersAsync();
+			await rejected;
+			expect(writes.some(write => write.includes('"act":"submit"'))).toBe(false);
+			if (outcome === "restored" || outcome === "retained") {
+				expect(composerFacts(session.snapshot().surfaces)).toMatchObject({ text: "Keep café 🧭 draft", cursor: 5, blockedBy: null });
+				expect(writes.find(write => write.includes('"text":"Keep café 🧭 draft"'))).toContain('"to":8');
+			} else if (outcome === "replaced") expect(composerFacts(session.snapshot().surfaces).text).toBe("Replacement draft");
+			else if (outcome === "generation") expect(writes.some(write => write.includes('"text":"Keep café 🧭 draft"'))).toBe(false);
+		} finally { vi.useRealTimers(); }
+	});
+
+	it.each(["", "Keep draft"])("removes staged images and stops later paths after rejection (draft %j)", async draft => {
+		const writes: string[] = [];
+		let sequence = 1;
+		const session = new TspSession({ cols: 100, dark: false, reduceMotion: true, write: data => {
+			writes.push(data);
+			if (data.includes("\x1b[200~/first.png")) {
+				receive("f", { sf: "s", s: ++sequence, ops: [["set", "input", { text: "\uf03e #1 ", cursor: 5 }], ["add", "first", "chips", null, { id: "first", k: "image", p: { alt: "First image" } }]] });
+			} else if (data.includes("\x1b[200~/bad.png")) {
+				receive("f", { sf: "s", s: ++sequence, ops: [
+					["set", "input", { text: "\uf03e #1 /bad.png", cursor: 13 }],
+					["add", "failure", "main", null, { id: "failure", k: "toast", p: { role: "omp.toast.status", text: "Failed to read pasted image path" } }],
+				] });
+			} else if (data.includes('"ev":"edit"')) {
+				receive("f", { sf: "s", s: ++sequence, ops: [["set", "input", { text: draft, cursor: draft.length }], ["del", "first"]] });
+			}
+		} });
+		const receive = (verb: string, body: unknown) => session.receive({ verb, params: {}, body: JSON.stringify(body) });
+		receive("q", { q: "hello", v: [1], features: ["send", "edit"] });
+		receive("o", { id: "s", mode: "inline", role: "omp.session" });
+		receive("f", { sf: "s", s: sequence, ops: [
+			["add", "main", "s", null, { id: "main", k: "col" }],
+			["add", "dock", "s", null, { id: "dock", k: "col", p: { role: "omp.editor" }, c: [{ id: "input", k: "editor", p: { text: draft, cursor: draft.length, sendable: true } }, { id: "chips", k: "row", p: { role: "omp.composer.chips" } }] }],
+			["focus", "input"],
+		] });
+		await expect(session.submitImages("", "/first.png /bad.png /never.png", () => {}))
+			.rejects.toMatchObject({ recovery: "restored", message: "TSP preview: Image submission was restored. Failed to read pasted image path" });
+		expect(composerFacts(session.snapshot().surfaces)).toMatchObject({ text: draft, cursor: draft.length });
+		expect(session.imageCount("s")).toBe(0);
+		expect(writes.some(write => write.includes("/never.png") || write.includes('"act":"submit"'))).toBe(false);
+	});
+
 	it("keeps image staging and the later append plus submit atomic around acknowledgments", async () => {
 		const writes: string[] = [];
 		let submitted = false;
@@ -175,7 +266,11 @@ describe("recorded TSP composer input", () => {
 
 	it.each(["complete", "replace"] as const)("keeps credits flowing while all attachments wait (%s)", async outcome => {
 		const writes: string[] = [];
-		const session = new TspSession({ cols: 100, dark: false, reduceMotion: true, write: data => { writes.push(data); } });
+		const secondPasteWritten = Promise.withResolvers<void>();
+		const session = new TspSession({ cols: 100, dark: false, reduceMotion: true, write: data => {
+			writes.push(data);
+			if (data.includes("\x1b[200~/second\\ image.png\x1b[201~")) secondPasteWritten.resolve();
+		} });
 		const receive = (verb: string, body: unknown) => session.receive({ verb, params: {}, body: JSON.stringify(body) });
 		receive("q", { q: "hello", v: [1], features: ["send", "edit"] });
 		receive("o", { id: "s", mode: "inline", role: "omp.session" });
@@ -192,6 +287,8 @@ describe("recorded TSP composer input", () => {
 			await rejected;
 			expect(writes.some(data => data.includes('"act":"submit"'))).toBe(false);
 		} else {
+			await secondPasteWritten.promise;
+			expect(writes.find(data => data.includes("\x1b[200~/second\\ image.png\x1b[201~"))).toContain('"from":5,"to":5,"text":"","cursor":5,"len":5');
 			receive("f", { sf: "s", s: 3, ops: [["set", "input", { text: "\uf03e #1 \uf03e #2 ", cursor: 10 }], ["add", "second", "chips", null, { id: "second", k: "image", p: { alt: "Second image" } }]] });
 			await sending;
 			expect(writes.filter(data => data.includes('"act":"submit"'))).toHaveLength(1);

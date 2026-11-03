@@ -3,11 +3,11 @@
  *
  * - Shell / Python modes prefix the text exactly like typing in omp: `!cmd` runs a shell command,
  *   `$ code` runs Python (the sigil needs a space after it, input-controller.ts).
- * - Images travel the way a terminal delivers a file drag: one bracketed paste made only of absolute
- *   image paths makes omp's editor attach them (custom-editor.ts accepts png/jpg/jpeg/gif/webp; spaces
- *   and shell metacharacters backslash-escaped). The message text follows, then Enter; omp holds keys
- *   that arrive after an attaching paste until the images are loaded. The chat's controller types them
- *   (`SessionController.send`), so a message with images queues like any other.
+ * - Images travel the way a terminal delivers a file drag: bracketed pastes of absolute image paths
+ *   make omp's editor attach them (custom-editor.ts accepts png/jpg/jpeg/gif/webp; spaces and shell
+ *   metacharacters are backslash-escaped). The host confirms omp's image tokens before message text
+ *   and Enter. The chat's controller delivers them (`SessionController.send`), so a message with
+ *   images queues like any other.
  */
 import type { HostState } from "@shared/ipc";
 import { tspAllowsAskPrompt } from "@shared/tsp-host";

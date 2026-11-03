@@ -9,7 +9,7 @@ import { parse } from "yaml";
 import type { TspEvent, TspNode } from "../../../shared/tsp";
 import { openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
 import { TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
-import { TspSession } from "./session";
+import { TspImageSubmissionError, TspSession } from "./session";
 import { TspStream } from "./stream";
 import { encodeTspJson } from "./encode";
 import type { TspSurfaceSnapshot } from "../../../shared/tsp-host";
@@ -277,6 +277,23 @@ const scenarios: Scenario[] = [
     await writeFile(path, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+/lS8AAAAASUVORK5CYII=", "base64"));
     await session.submitImages("Fixture image prompt", path, () => {});
     await until(() => requests.length === 1, "image prompt missing from provider");
+  } },
+  { name: "image-reject", command: null, script: [], config: { autocomplete: { enabled: true } }, run: async ({ session, root, requests, until }) => {
+    // Exact 78-byte bad-CRC PNG from the standalone 18.16 paste failure.
+    const path = "./live-check.png";
+    await writeFile(join(root, path), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAFklEQVR4nGP8z8DAwMDAxMDAwMAAAAQ/AQGMQ3ZrAAAAAElFTkSuQmCC", "base64"));
+    const draft = "Keep café 🧭 draft";
+    await session.editAndKeys(0, 0, draft, 5, "", () => {});
+    await until(() => readComposerFacts(session.snapshot().surfaces).text === draft, "initial image-rejection draft missing");
+    try {
+      await session.submitImages("Fixture rejected image prompt", path, () => {});
+      throw new Error("Corrupt image submission unexpectedly succeeded");
+    } catch (error) {
+      if (!(error instanceof TspImageSubmissionError) || error.recovery !== "restored" || !error.message.endsWith("Failed to read pasted image path")) throw error;
+    }
+    const restored = readComposerFacts(session.snapshot().surfaces);
+    if (restored.text !== draft || restored.cursor !== 5 || restored.blockedBy !== null || session.imageCount(restored.surfaceId!) !== 0) throw new Error("Rejected image did not restore the original editor");
+    if (requests.length !== 0) throw new Error("Rejected image made a provider request");
   } },
   { name: "approval-send-denies", command: "Fixture approval prompt", script: [
     { tool: { name: "bash", arguments: { command: "printf fixture-approval", i: "Printing fixture output" } } },

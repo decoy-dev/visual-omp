@@ -30,6 +30,9 @@ const pty = vi.hoisted(() => ({
 	screen: [] as string[],
 	screenReads: vi.fn(),
 	keys: vi.fn(async (_keys: string) => {}),
+	values: vi.fn(async (): Promise<Record<string, unknown>> => ({})),
+	requestShutdown: vi.fn(),
+	editorDraft: vi.fn(async (_request: unknown) => ({ text: "", cleared: true, imageChips: 0, imageSymbol: "IMAGE" })),
 	confirm: vi.fn(async (_options?: MessageBoxOptions) => ({ response: 0 })),
 	writes: vi.fn(),
 	kill: vi.fn(),
@@ -63,9 +66,9 @@ vi.mock("./relay", () => ({
 		stop() {}
 	},
 }));
-vi.mock("./tui-debug", () => ({ TuiDebugClient: class { info = async () => pty.focus; screen = async () => { pty.screenReads(); return pty.screen; }; keys = pty.keys; close() {} } }));
+vi.mock("./tui-debug", () => ({ TuiDebugClient: class { info = async () => pty.focus; screen = async () => { pty.screenReads(); return pty.screen; }; values = pty.values; keys = pty.keys; close() {} } }));
 vi.mock("electron", () => ({ BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: pty.confirm }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: false }) } }));
-vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, beginGeneration: vi.fn(), close: async () => {} }) }));
+vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", requestShutdown: pty.requestShutdown, editorDraft: pty.editorDraft, snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, beginGeneration: vi.fn(), close: async () => {} }) }));
 // Route promise timers through the fake clock in deadline regressions.
 vi.mock("node:timers/promises", () => ({ setTimeout: (ms: number, value?: unknown) => {
 	const { promise, resolve } = Promise.withResolvers<unknown>();
@@ -89,8 +92,14 @@ beforeEach(async () => {
 	pty.screen = [];
 	pty.screenReads.mockClear();
 	pty.keys.mockReset().mockResolvedValue(undefined);
+	pty.values.mockReset().mockResolvedValue({});
+	pty.requestShutdown.mockReset();
 	pty.confirm.mockReset().mockResolvedValue({ response: 0 });
 	pty.writes.mockReset();
+	pty.editorDraft.mockReset().mockImplementation(async () => {
+		const imageChips = pty.writes.mock.calls.filter(call => String(call[0]).endsWith(".png\x1b[201~")).length;
+		return { text: imageChips ? `IMAGE #${imageChips} ` : "", cleared: imageChips === 0, imageChips, imageSymbol: "IMAGE" };
+	});
 	pty.kill.mockReset();
 	pty.sessionId = "old";
 	pty.room = "room";
@@ -463,7 +472,8 @@ describe("serialized application input", () => {
 	});
 
 	it("holds image-only Enter for a native question and never sends an empty paste", async () => {
-		await host.paste("/tmp/image.png");
+		await connect();
+		await host.paste("/tmp/image.png", true);
 		pty.writes.mockClear();
 		pty.screen = startupQuestion;
 		const decision = Promise.withResolvers<{ response: number }>();
@@ -476,6 +486,82 @@ describe("serialized application input", () => {
 		await pending;
 		expect(pty.keys).toHaveBeenCalledWith("down enter");
 		expect(pty.writes).toHaveBeenCalledExactlyOnceWith("\r");
+	});
+});
+
+describe("classic contaminated-editor shutdown", () => {
+	async function stageMixedImageFailure(): Promise<void> {
+		await connect();
+		pty.editorDraft.mockReset()
+			.mockResolvedValueOnce({ text: "Unsent draft ", cleared: false, imageChips: 0, imageSymbol: "IMAGE" })
+			.mockResolvedValueOnce({ text: "Unsent draft IMAGE #1 ", cleared: false, imageChips: 1, imageSymbol: "IMAGE" })
+			.mockResolvedValue({ text: "Unsent draft IMAGE #1 /tmp/rejected.png", cleared: false, imageChips: 1, imageSymbol: "IMAGE" });
+		pty.values.mockResolvedValueOnce({}).mockResolvedValueOnce({})
+			.mockResolvedValue({ failure: { textPreview: "Failed to read pasted image path: /tmp/rejected.png" } });
+		await expect(host.paste("/tmp/staged.png /tmp/rejected.png", true)).rejects.toThrow("Image submission needs recovery.");
+		expect(pty.writes.mock.calls.map(([data]) => data)).toEqual([
+			"\x1b[200~/tmp/staged.png\x1b[201~", "\x1b[200~/tmp/rejected.png\x1b[201~",
+		]);
+		pty.writes.mockClear();
+	}
+
+	it("requests SDK shutdown after mixed image failure and waits for upstream teardown without submitting the draft", async () => {
+		await stageMixedImageFailure();
+		vi.useFakeTimers();
+		const stopped = host.stop("editor-recovery");
+		await vi.advanceTimersByTimeAsync(100);
+		expect(pty.requestShutdown).toHaveBeenCalledOnce();
+		pty.shutdown = "teardown";
+		await vi.advanceTimersByTimeAsync(14_000);
+		expect(pty.confirm).not.toHaveBeenCalled();
+		expect(pty.kill).not.toHaveBeenCalled();
+		expect(pty.writes).not.toHaveBeenCalled();
+		expect(pty.keys).not.toHaveBeenCalled();
+		pty.exit?.({ exitCode: 0 }); await vi.advanceTimersByTimeAsync(100); await stopped;
+		expect(pty.writes).not.toHaveBeenCalled();
+	});
+
+	it.each(["unresponsive", "unavailable"] as const)("offers only an explicit native stop when SDK shutdown is %s", async availability => {
+		await stageMixedImageFailure();
+		// Normal Close and application Quit have no renderer recovery argument.
+		if (availability === "unavailable") pty.requestShutdown.mockImplementationOnce(() => { throw new Error("SDK shutdown unavailable"); });
+		vi.useFakeTimers();
+		const decision = Promise.withResolvers<{ response: number }>();
+		pty.confirm.mockImplementationOnce(() => decision.promise);
+		pty.kill.mockImplementationOnce(() => { pty.exit?.({ exitCode: 1 }); });
+		const stopped = host.stop();
+		await vi.advanceTimersByTimeAsync(4100);
+		expect(pty.requestShutdown).toHaveBeenCalledOnce();
+		expect(pty.confirm).toHaveBeenCalledOnce();
+		expect(pty.kill).not.toHaveBeenCalled();
+		expect(pty.writes).not.toHaveBeenCalled();
+		expect(pty.keys).not.toHaveBeenCalled();
+		decision.resolve({ response: 1 });
+		await vi.advanceTimersByTimeAsync(100); await stopped;
+		expect(pty.kill).toHaveBeenCalledOnce();
+		expect(pty.writes).not.toHaveBeenCalled();
+	});
+
+	it("preserves the native worktree decision created by SDK shutdown", async () => {
+		await stageMixedImageFailure();
+		vi.useFakeTimers();
+		const decision = Promise.withResolvers<{ response: number }>();
+		pty.confirm.mockImplementationOnce(() => decision.promise);
+		pty.requestShutdown.mockImplementationOnce(() => {
+			pty.focus = { focused: "HookSelector", overlays: 0, overlayKinds: [], altScreen: false };
+			pty.screen = ["╭─ Remove worktree? ─╮", "│ /tmp/worktree (wt/test): has uncommitted changes │", "│  ❯ Yes │", "│    No │", "│ ↑/↓ navigate ⏎ select ⎋ cancel │", "╰────────────────────╯"];
+		});
+		pty.keys.mockImplementationOnce(async () => { pty.screen = []; });
+		const stopped = host.stop("editor-recovery");
+		await vi.advanceTimersByTimeAsync(1000);
+		expect(pty.confirm).toHaveBeenCalledOnce();
+		expect(pty.writes).not.toHaveBeenCalled();
+		expect(pty.kill).not.toHaveBeenCalled();
+		decision.resolve({ response: 0 });
+		await vi.advanceTimersByTimeAsync(100);
+		expect(pty.keys).toHaveBeenCalledExactlyOnceWith("down enter");
+		expect(pty.writes).not.toHaveBeenCalled();
+		pty.exit?.({ exitCode: 0 }); await vi.advanceTimersByTimeAsync(100); await stopped;
 	});
 });
 
@@ -609,8 +695,15 @@ it("cancels a pending native text-dialog paste when shutdown starts", async () =
 	await exit(0);
 	await stopped;
 });
+it("keeps native text-dialog pastes independent of image attachment controls", async () => {
+	await host.paste("Native dialog answer\nwith a second line");
+	expect(pty.writes).toHaveBeenCalledExactlyOnceWith("\u001b[200~Native dialog answer\nwith a second line\u001b[201~");
+	expect(pty.editorDraft).not.toHaveBeenCalled();
+});
+
 
 it("holds one input transaction across editor keys and the following exact transfer", async () => {
+	await connect();
 	const transfer = Promise.withResolvers<void>();
 	const entered = Promise.withResolvers<void>();
 	const pending = host.withEditorInput(async input => {
@@ -621,13 +714,13 @@ it("holds one input transaction across editor keys and the following exact trans
 		return "accepted prediction";
 	});
 	await entered.promise;
-	const after = host.paste("next application input");
+	const after = host.paste("/tmp/next.png", true);
 	expect(pty.keys).toHaveBeenCalledWith("tab");
 	expect(pty.writes).not.toHaveBeenCalled();
 	transfer.resolve();
 	await expect(pending).resolves.toBe("accepted prediction");
 	await after;
-	expect(pty.writes).toHaveBeenCalledExactlyOnceWith("\u001b[200~next application input\u001b[201~");
+	expect(pty.writes).toHaveBeenCalledExactlyOnceWith("\u001b[200~/tmp/next.png\u001b[201~");
 });
 
 it("blocks composed input after an uncertain editor transfer without blocking recovery keys or Stop", async () => {
@@ -638,7 +731,8 @@ it("blocks composed input after an uncertain editor transfer without blocking re
 	await expect(host.withEditorInput(async input => { input.assertOpen(); return "recovery available"; })).resolves.toBe("recovery available");
 	expect(pty.writes).not.toHaveBeenCalled();
 	const stopped = host.stop();
-	await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith("\u001b[200~/exit\u001b[201~\r"));
+	await vi.waitFor(() => expect(pty.requestShutdown).toHaveBeenCalledOnce());
+	expect(pty.writes).not.toHaveBeenCalled();
 	await exit(0); await stopped;
 });
 

@@ -147,7 +147,7 @@ export function QueueTray({ session, queue, questionId, askWaiting = false, send
 				<section aria-label={t("queue.label", { count })} className="p-menu">
 					<p className="flex items-center gap-1.5 px-1.5 pb-1 text-xs font-medium text-fg-muted">
 						<Hourglass className="size-3 text-fg-faint" aria-hidden />
-						{t("queue.title", { count })}
+						{queue.some(item => item.error) ? t("queue.failedTitle") : t("queue.title", { count })}
 					</p>
 					<ol className="relative flex flex-col gap-0.5">
 						<AnimatePresence
@@ -264,6 +264,7 @@ export function QueueTray({ session, queue, questionId, askWaiting = false, send
 											onClick={() => session.removeQueued(item.id)}
 										/>
 									</div>
+									{item.error && <p role="status" className="px-2 py-1 text-xs whitespace-pre-wrap text-err [overflow-wrap:anywhere]">{item.error}</p>}
 								</motion.li>
 							))}
 						</AnimatePresence>
