@@ -1,4 +1,4 @@
-import type { SessionEntry } from "@oh-my-pi/pi-wire";
+import type { SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
 import type { ActiveTool, GuestSnapshot } from "../../collab/lib/client";
 import {
@@ -414,7 +414,7 @@ describe("chatOutputs", () => {
 
 	/** A tool call and its result at `time` (ms); `blocks` are extra content blocks such as images. */
 	function tool(id: string, name: string, args: Record<string, unknown>, time: number, options: { details?: unknown; blocks?: unknown[]; isError?: boolean } = {}): SessionEntry[] {
-		const content = [{ type: "text", text: "" }, ...(options.blocks ?? [])] as Extract<SessionEntry, { type: "message" }>["message"]["content"];
+		const content = [{ type: "text", text: "" }, ...(options.blocks ?? [])] as ToolResultMessage["content"];
 		return [
 			call(id, name, args),
 			{

@@ -114,7 +114,34 @@ export interface ToolResultMessage {
 	timestamp: number;
 }
 
-export type WireMessage = UserMessage | DeveloperMessage | AssistantMessage | ToolResultMessage;
+/** User `!` / `!!` shell runs, recorded separately from model tool calls by omp. */
+export interface BashExecutionMessage {
+	role: "bashExecution";
+	command: string;
+	output: string;
+	cancelled: boolean;
+	truncated: boolean;
+	timestamp: number;
+	exitCode?: number;
+	images?: ImageContent[];
+	meta?: Record<string, unknown>;
+	excludeFromContext?: boolean;
+}
+
+/** User `$` / `$$` Python runs share the shell execution result fields. */
+export interface PythonExecutionMessage {
+	role: "pythonExecution";
+	code: string;
+	output: string;
+	cancelled: boolean;
+	truncated: boolean;
+	timestamp: number;
+	exitCode?: number;
+	meta?: Record<string, unknown>;
+	excludeFromContext?: boolean;
+}
+
+export type WireMessage = UserMessage | DeveloperMessage | AssistantMessage | ToolResultMessage | BashExecutionMessage | PythonExecutionMessage;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Session entries (rendered subset; cast `as SessionEntry` at the JSON

@@ -11,6 +11,7 @@ export const TSP_ROLES = {
 	compaction: "omp.compaction", working: "omp.working", loader: "omp.loader",
 	queue: "omp.queue", queueItem: "omp.queue.item", approvalChoices: "omp.approval.choices", composerChips: "omp.composer.chips",
 	user: "omp.user", assistant: "omp.assistant", thinking: "omp.thinking", tool: "omp.tool", agent: "omp.agent",
+	userShell: "omp.bash", userPython: "omp.eval",
 	toastStatus: "omp.toast.status", noticeError: "omp.notice.error", noticeWarning: "omp.notice.warning",
 	tree: "omp.overlay.tree", treeSelector: "omp.overlay.tree-selector", btwHistory: "omp.overlay.btwHistory",
 	hookSelect: "omp.overlay.hook-select", hookConfirm: "omp.overlay.hook-confirm", hookInput: "omp.overlay.hook-input", hookEditor: "omp.overlay.hook-editor",
@@ -71,6 +72,7 @@ export const TSP_CLAIMS: Readonly<Record<string, string>> = Object.freeze(
 		...[TSP_ROLES.composerModel, TSP_ROLES.composerEffort, TSP_ROLES.composerModelEffort].map(role => [role, "composer-model"]),
 		...[...nativeHookRoles].map(role => [role, "hook-dialog-card"]),
 		[TSP_ROLES.advisor, "advisor-apply"],
+		...[TSP_ROLES.userShell, TSP_ROLES.userPython].map(role => [role, "transcript-user-runs"]),
 	]),
 );
 const replicated = [TSP_ROLES.user, TSP_ROLES.assistant, TSP_ROLES.thinking, TSP_ROLES.tool, TSP_ROLES.agent];
@@ -80,6 +82,7 @@ export function isReplicatedRole(role?: string): boolean {
 export function isClaimable(node: TspNode, surface?: TspSurfaceSnapshot): boolean {
 	if (isTreeSelectorNode(node)) return true;
 	if (node.k === "prefs" || node.p?.role === TSP_ROLES.advisor) return advisorScope(node, surface?.open.mode) !== null;
+	if (node.p?.role === TSP_ROLES.userShell || node.p?.role === TSP_ROLES.userPython) return isUserRunNode(node);
 	if (node.p?.role === TSP_ROLES.planReview) return projectPlanReview(node, "") !== null;
 	if (isHookNode(node)) {
 		if (!isNativeHookNode(node)) return false;
@@ -92,6 +95,12 @@ export function isClaimable(node: TspNode, surface?: TspSurfaceSnapshot): boolea
 export function isClaimed(node: TspNode): boolean {
 	const consumer = node.p?.role ? TSP_CLAIMS[node.p.role] : undefined;
 	return consumer === "transcript-notices" || consumer === "composer-model";
+}
+/** Only the data-first user-run shape is projected; unsupported shapes retain the generic fallback. */
+export function isUserRunNode(node: TspNode): node is Extract<TspNode, { k: "tool" }> {
+	return node.k === "tool" && (node.p?.role === TSP_ROLES.userShell && node.p.name === "bash" || node.p?.role === TSP_ROLES.userPython && node.p.name === "eval")
+		&& typeof node.p.command === "string" && !!node.p.command.trim()
+		&& (node.p.status === "running" || node.p.status === "done" || node.p.status === "error" || node.p.status === "cancelled");
 }
 export function isHookDialog(role?: string): boolean { return !!role && role.startsWith("omp.overlay.hook-"); }
 /** omp 18.14's ordinary hook selector drops its role when picker support is advertised. */
@@ -114,8 +123,7 @@ const knownRoles: ReadonlySet<string> = new Set([
 	...Object.values(TSP_ROLES),
 	"omp.actions", "omp.btn", "omp.composer.bar", "omp.composer.chips", "omp.composer.context",
 	"omp.composer.extras", "omp.composer.line", "omp.composer.send", "omp.composer.usage",
-	// Deferred shell/eval nativeTail blocks are unclaimed main output, not replicated tool messages.
-	"omp.bash", "omp.eval",
+	// User shell and Python runs use conditional transcript ownership.
 	// Recorded approval details and execution chrome remain visible through the generic screen.
 	"omp.approval.choice", "omp.approval.details", "omp.approval.title", "omp.editor.ask.approval",
 	"omp.run", "omp.run.foot", "omp.run.state", "omp.run.time",

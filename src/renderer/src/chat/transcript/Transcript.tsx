@@ -33,6 +33,7 @@ import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
 import { type CommandResultRecord, dismissCommandResult, placeResults, roomKey, useCommandResults } from "../../features/session-tools/results";
 import { placeTspNotices, type TspNotice } from "../../features/tsp/notices";
+import { useTsp } from "../../features/tsp/useTsp";
 import { liveGuest, type SessionController, type SessionView } from "../../state/session";
 import { useApp } from "../../state/app";
 import { copyCode, StreamingMarkdown } from "../../transcript/Markdown";
@@ -57,6 +58,9 @@ import { ToolGroup } from "./ToolGroup";
 import { TurnSummary } from "./TurnSummary";
 import { thoughtKey, ThoughtChoices, thoughtOpen, writingThought } from "./thoughtChoices";
 import { TranscriptTime, type TranscriptTimestamp } from "./TranscriptTime";
+import { isExecutionMessage, SavedRunRow } from "./RunRow";
+import { nativeRuns, type RunProjection } from "./localRuns";
+import { NativeRunRows } from "./NativeRunRows";
 import { type BlockRef, type ContentBlock, type EntryLayout, replyText, STREAM_ENTRY, stoppedVisibly, TAIL_ENTRY, type TranscriptLayout, transcriptLayout, liveLayoutEntries, unsavedToolsMessage } from "./turns";
 import { anchorRow, tailStart, WINDOW, windowOnScroll } from "./window";
 import {
@@ -614,7 +618,7 @@ function rowEqual(prev: RowProps, next: RowProps): boolean {
 function rowShown(entry: SessionEntry, mode: TranscriptMode, afterFirstPrompt: boolean): boolean {
 	switch (entry.type) {
 		case "message":
-			return entry.message.role === "user" || entry.message.role === "assistant";
+			return entry.message.role === "user" || entry.message.role === "assistant" || isExecutionMessage(entry.message);
 		case "custom_message":
 			return entry.customType === "collab-prompt" || (entry.display && noticeVisible(parseNotice(entry)));
 		case "compaction":
@@ -634,6 +638,7 @@ const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results,
 		case "message": {
 			const message = entry.message;
 			if (message.role === "user") return <UserMessage entry={entry} session={session} />;
+			if (isExecutionMessage(message)) return <SavedRunRow message={message} timestamp={entry.timestamp} mode={mode} />;
 			if (message.role !== "assistant") return null;
 			return (
 				<div className="flex flex-col gap-2">
@@ -768,6 +773,12 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const guest = liveGuest(view);
 	// The live stream carries every branch; show the one ending at the leaf (after a rewind, the displayed leaf).
 	const entries = useDisplayedEntries(view);
+	const tspHost = view.host?.transport === "tsp" ? view.host : null;
+	const { snapshot: tspSnapshot } = useTsp(tspHost?.hostId ?? null);
+	const previousRuns = useRef<RunProjection | undefined>(undefined);
+	const runProjection = useMemo(() => nativeRuns(tspSnapshot, tspHost?.hostId ?? null, tspHost?.generation, entries, previousRuns.current), [tspSnapshot, tspHost?.hostId, tspHost?.generation, entries]);
+	const localRuns = runProjection.runs;
+	useLayoutEffect(() => { previousRuns.current = runProjection; }, [runProjection]);
 	const fallbacks = useMemo(() => modelFallbacks(entries), [entries]);
 	const stream = guest?.stream ?? null;
 	const streamDone = view.guest?.streamDone ?? true;
@@ -787,6 +798,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const tail = tailStart(entries.length);
 	const start = pinnedStart === null ? tail : Math.min(pinnedStart, tail);
 	const visible = useMemo(() => entries.slice(start), [entries, start]);
+	const visibleEntryIds = useMemo(() => new Set(visible.map(entry => entry.id)), [visible]);
 	// What omp printed for typed slash commands, each after the entry that was last on screen when it was typed.
 	const commandResults = useCommandResults(session);
 	const room = roomKey(view);
@@ -919,10 +931,11 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 
 	// omp's first entries are session setup (model / thinking level); a chat is empty until someone talks.
 	const hasMessages = entries.some(
-		entry => (entry.type === "message" && (entry.message.role === "user" || entry.message.role === "assistant")) || entry.type === "custom_message",
+		entry => (entry.type === "message" && (entry.message.role === "user" || entry.message.role === "assistant" || isExecutionMessage(entry.message))) || entry.type === "custom_message",
 	);
 	const empty =
 		!hasMessages &&
+		localRuns.length === 0 &&
 		fallbacks.size === 0 &&
 		stream === null &&
 		!view.working &&
@@ -1027,7 +1040,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 			follow.snap();
 			settledRef.current = loaded;
 		}
-	}, [follow, loaded, entries, stream, activeTools, uiRequest, view.working, tspNotices]);
+	}, [follow, loaded, entries, stream, activeTools, uiRequest, view.working, tspNotices, localRuns]);
 	let lastSeen = -1;
 	for (let index = visible.length - 1; index >= 0; index--) {
 		if (arrivals.seen.has(visible[index]?.id ?? "")) {
@@ -1204,6 +1217,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 										/>
 									</Rise>
 								)}
+								<NativeRunRows items={localRuns} visibleEntries={visibleEntryIds} mode={mode} tabId={session.tabId} hidden={outOfSight} />
 								<AnimatePresence initial={false} mode="wait">
 									{pendingQuestion && (
 										<motion.div

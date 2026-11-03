@@ -56,9 +56,10 @@ function localRun(text: string): LocalRun | null {
 /** True when `entry` is the result omp appended for `run`. */
 function isRunResult(entry: SessionEntry, run: LocalRun): boolean {
 	if (entry.type !== "message") return false;
-	// The wire types list only the rendered roles; omp also replicates its shell and Python result messages.
-	const message = entry.message as unknown as { role: string; command?: string; code?: string };
-	return message.role === run.role && (run.role === "bashExecution" ? message.command : message.code) === run.source;
+	const message = entry.message;
+	return run.role === "bashExecution"
+		? message.role === "bashExecution" && message.command === run.source
+		: message.role === "pythonExecution" && message.code === run.source;
 }
 
 /**

@@ -2,6 +2,22 @@
 	"you": "You",
 	"assistant": "omp",
 	"timestamp": { "finished": "Finished" },
+	"run": {
+		"shell": "Shell",
+		"python": "Python",
+		"shellLabel": "Your shell run",
+		"pythonLabel": "Your Python run",
+		"shellSource": "Shell command",
+		"pythonSource": "Python code",
+		"output": "Output",
+		"running": "Running",
+		"finished": "Finished",
+		"cancelled": "Cancelled",
+		"exit": "Exit code {{code}}",
+		"excluded": "Not sent to the model",
+		"empty": "No output.",
+		"truncated": "omp truncated this output."
+	},
 	"empty": {
 		"first": "What should we work on?",
 		"returning": "What should we work on next?",

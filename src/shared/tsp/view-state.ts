@@ -60,12 +60,14 @@ export function composer(surfaces: TspSurfaces): TspNodeTarget | null {
 }
 /** Keep whole unclaimed subtrees; replicated transcript and the app composer never appear twice. */
 export function unclaimed(surface: TspSurfaceSnapshot, area: "main" | "dock" | "layer", presented?: ReadonlySet<string>): readonly TspNode[] {
-	const project = (node: TspNode): TspNode[] => {
-		if (node.p?.hidden || isClaimed(node) || presented?.has(node.id) && isClaimable(node, surface) || (area === "main" && isReplicatedRole(node.p?.role))) return [];
+	const project = (node: TspNode, inUserRun: boolean): TspNode[] => {
+		if (node.p?.hidden || isClaimed(node) || presented?.has(node.id) && isClaimable(node, surface) || (area === "main" && !inUserRun && isReplicatedRole(node.p?.role))) return [];
 		if (node.p?.role === TSP_ROLES.editor) return [];
-		const children = node.c?.flatMap(project);
+		// User-run bodies reuse omp.tool.* roles without being replicated assistant tool messages.
+		const userRun = inUserRun || node.p?.role === TSP_ROLES.userShell || node.p?.role === TSP_ROLES.userPython;
+		const children = node.c?.flatMap(child => project(child, userRun));
 		if ((node.k === "col" || node.k === "row") && !node.p?.role && !node.p?.actions && !children?.length) return [];
 		return [{ ...node, ...(children ? { c: children } : {}) } as TspNode];
 	};
-	return region(surface, area).flatMap(project);
+	return region(surface, area).flatMap(node => project(node, false));
 }
