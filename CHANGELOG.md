@@ -12,6 +12,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Saved chats now show the model's name in the composer, as live chats do, instead of its provider and model id.
 - Background jobs from before a chat's omp restarted no longer show as running in Tasks and the chat header.
 - Rewinding to an earlier message of yours now hides the later messages right away, instead of showing the whole chat until the next reply.
+- Background-job waits now end when the last job is cancelled or finishes without another reply, allowing queued messages to continue.
+- Shell and Python runs started with `!` or `$` now appear in live and saved chats with their source, output and execution status.
 
 ## [0.7.4] - 2026-11-02
 
