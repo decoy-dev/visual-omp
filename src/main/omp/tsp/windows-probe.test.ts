@@ -1,8 +1,10 @@
+import { execFile, type ExecFileException } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { spawn as spawnPty } from "node-pty";
+import { build } from "esbuild";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { readWindowsProbeReport, runWindowsProbe, runWindowsProbes, windowsProbeFailed } from "./windows-probe";
 
@@ -113,6 +115,34 @@ describe("Windows probe failure evidence", () => {
 		expect(result.status).toBe("complete");
 	});
 
+	it("exits an isolated native-worker process promptly with success or failure determined by the completed probe", async () => {
+		const entry = join(await scratch(), "exit-probe.mjs");
+		await build({ stdin: { contents: `
+import { Worker } from "node:worker_threads";
+import { exitWindowsProbe } from ${JSON.stringify(resolve("src/main/omp/tsp/windows-probe.ts"))};
+// A real referenced worker models the native ConPTY worker that outlives PTY onExit.
+new Worker("setInterval(() => {}, 1000)", { eval: true });
+exitWindowsProbe(JSON.parse(process.env.PROBE_RESULT), process.env.SYSTEM_PROBE === "1");
+`, resolveDir: process.cwd(), sourcefile: "exit-probe.ts" }, outfile: entry, bundle: true, platform: "node", format: "esm", external: ["node-pty"] });
+		const healthy = { ...complete, framing: "apc", traffic: [{ direction: "out", base64: "b3V0cHV0", at: 1 }] };
+		for (const [result, system, code] of [
+			[healthy, false, 0],
+			[{ ...healthy, send: false }, false, 1],
+			[{ ...healthy, cleanupErrors: ["PTY did not exit"] }, false, 1],
+			[{ ...healthy, hello: false, frames: 0, acks: 0, edit: false, send: false, error: "No ready TSP editor" }, true, 0],
+			[{ ...healthy, earlyExit: { exitCode: 1 } }, true, 1],
+			[{ ...healthy, subprocessError: "child failed" }, true, 1],
+		] as const) {
+			const done = Promise.withResolvers<ExecFileException | null>();
+			execFile(process.execPath, [entry], { env: { ...process.env, PROBE_RESULT: JSON.stringify(result), SYSTEM_PROBE: system ? "1" : "0" }, timeout: 3000 },
+				error => done.resolve(error));
+			const error = await done.promise;
+			// This integration test requires a real worker and OS process termination.
+			expect(error?.killed ?? false).toBe(false);
+			expect(error?.code ?? 0).toBe(code);
+		}
+	}, 20_000);
+
 	it("keeps an APC timeout's partial capture and still completes the independent OSC subprocess", async () => {
 		const root = await scratch();
 		const entry = join(root, "fake-probe.mjs");
@@ -127,7 +157,11 @@ else writeFileSync(path,JSON.stringify(result));`);
 		expect(report.results[0]).toMatchObject({ framing: "apc", status: "running" });
 		// This integration case needs a real OS child timeout and kill; fake timers cannot deliver that signal.
 		expect(report.results[0]!.error).toContain("Probe subprocess:");
+		expect(report.results[0]!.subprocessExit).toMatchObject({ killed: true, timeoutMs: 500 });
+		expect(report.results[0]!.subprocessExit!.signal !== null || report.results[0]!.subprocessExit!.code !== null).toBe(true);
+		expect(report.results[0]!.subprocessExit!.elapsedMs).toBeGreaterThanOrEqual(500);
 		expect(report.results[1]).toMatchObject({ framing: "osc877", status: "complete", send: true });
+		expect(report.results[1]!.subprocessExit).toMatchObject({ code: 0, signal: null, killed: false });
 		expect(await readFile(`${destination}.apc.json.traffic.jsonl`, "utf8")).toContain("cGFydGlhbA==");
 		expect(JSON.parse(await readFile(destination, "utf8"))).toEqual(report);
 	}, 5000);
@@ -141,6 +175,7 @@ writeFileSync(process.env.VOMP_TSP_WINDOWS_REPORT,JSON.stringify({...${JSON.stri
 		const report = await runWindowsProbes({ bin: "unused", system: false, destination: join(root, "report.json"), entry });
 		expect(report.results[0]!.error).toContain("APC startup failure");
 		expect(report.results[0]!.error).toContain("No readable probe report");
+		expect(report.results[0]!.subprocessExit).toMatchObject({ code: 1, signal: null, killed: false });
 		expect(report.results[1]).toMatchObject({ status: "complete", framing: "osc877" });
 	});
 
