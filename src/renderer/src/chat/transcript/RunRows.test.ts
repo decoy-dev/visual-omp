@@ -13,6 +13,7 @@ import { OmpScreenSheet } from "../../features/tsp/OmpScreenSheet";
 import { TooltipProvider } from "../../ui";
 import { Transcript, type TranscriptMode } from "./Transcript";
 import "../../i18n";
+import { WINDOW, WINDOW_STEP } from "./window";
 
 const data = vi.hoisted(() => {
 	// Transcript dependencies read the preload platform while their modules initialize.
@@ -32,6 +33,12 @@ vi.mock("motion/react", async importOriginal => {
 });
 const time = "2026-10-30T10:11:12.000Z";
 const noNotices: never[] = [];
+// Windowing counts hidden session entries too. Cross the real boundary with
+// bookkeeping, then keep one visible user row without mounting 120 tooltip trees.
+const laterEntries: SessionEntry[] = [
+	...Array.from({ length: WINDOW + WINDOW_STEP }, (_, index): SessionEntry => ({ type: "custom_message", id: `later-${index}`, parentId: null, timestamp: time, customType: "window-padding", content: "", display: false })),
+	{ type: "message", id: "latest", parentId: null, timestamp: time, message: { role: "user", content: "Latest message", timestamp: Date.parse(time) } },
+];
 function execution(id: string, python = false, options: Record<string, unknown> = {}): SessionEntry {
 	const fields = { output: python ? "python result\n" : "shell result\n", cancelled: false, truncated: false, timestamp: Date.parse(time), exitCode: 0, ...options };
 	return { type: "message", id, parentId: null, timestamp: time, message: python ? { role: "pythonExecution", code: "print(2 + 2)", ...fields } : { role: "bashExecution", command: "printf shell", ...fields } } as SessionEntry;
@@ -156,12 +163,12 @@ describe("user execution transcript rows", () => {
 		data.snapshot = snapshot([native("new-node"), native("established-node")]);
 		await render([history], { live: true });
 		expect(runRows()).toHaveLength(2);
-		const later = Array.from({ length: 200 }, (_, index): SessionEntry => ({ type: "message", id: `later-${index}`, parentId: null, timestamp: time, message: { role: "user", content: `Later ${index}`, timestamp: Date.parse(time) } }));
-		await render([history, ...later], { live: true });
+		await render([history, ...laterEntries], { live: true });
+		expect(element.textContent).toContain("Latest message");
 		expect(runRows()).toHaveLength(1);
 		expect(presentationClaims.getSnapshot().map(claim => claim.nodeId)).toEqual(["new-node"]);
 		data.snapshot = snapshot([native("new-node")]);
-		await render([history, ...later], { live: true });
+		await render([history, ...laterEntries], { live: true });
 		expect(runRows()).toHaveLength(1);
 		expect(presentationClaims.getSnapshot().map(claim => claim.nodeId)).toEqual(["new-node"]);
 	});
@@ -174,8 +181,8 @@ describe("user execution transcript rows", () => {
 		await render([], { live: true }); expect(presentationClaims.getSnapshot()).toHaveLength(1);
 		await act(async () => useApp.setState({ terminalTabId: "runs" })); expect(presentationClaims.getSnapshot()).toHaveLength(0);
 		await act(async () => useApp.setState({ terminalTabId: null }));
-		const later = Array.from({ length: 200 }, (_, index): SessionEntry => ({ type: "message", id: `user-${index}`, parentId: null, timestamp: time, message: { role: "user", content: `Later ${index}`, timestamp: Date.parse(time) } }));
-		await render([execution("old"), ...later], { live: true, fallback: true });
+		await render([execution("old"), ...laterEntries], { live: true, fallback: true });
+		expect(element.textContent).toContain("Latest message");
 		expect(runRows()).toHaveLength(0);
 		expect(presentationClaims.getSnapshot()).toHaveLength(0);
 		expect(element.querySelector("[data-fallback]")?.textContent).toContain("shell result");

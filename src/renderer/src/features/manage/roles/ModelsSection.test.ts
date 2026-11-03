@@ -14,6 +14,12 @@ const fake = vi.hoisted(() => ({
 	globalBehavior: {} as Record<string, JsonValue>, projectBehavior: {} as Record<string, JsonValue>,
 	fallbackOnChoices: ["any", "usage-limit"],
 }));
+// Keep the real IconButton and its focus behavior, but omit Radix tooltip trees from each editor update.
+// Button imports Tooltip directly, so mocking only the UI barrel would leave those trees mounted.
+vi.mock("@/ui/Tooltip", () => ({
+	Tooltip: ({ children }: PropsWithChildren) => children,
+	TooltipProvider: ({ children }: PropsWithChildren) => children,
+}));
 // Use native selects for deterministic form events; the headless check exercises actual Radix menus.
 vi.mock("@/ui", async () => {
 	const actual = await vi.importActual<typeof Ui>("@/ui");

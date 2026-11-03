@@ -106,7 +106,7 @@ describe("svgForImage", () => {
 		for (const prolog of prologs) expect(fix(`${prolog}\n<svg/>`)).toBe(`${prolog}\n<svg ${xmlns}/>`);
 	});
 
-	it("scans long whitespace, comments, doctypes and unclosed quotes in linear time", () => {
+	it("preserves long whitespace, comments, doctypes and unclosed quotes", () => {
 		const inputs = [
 			`${" ".repeat(1_000_000)}<html/>`,
 			`${" \n<!-- c -->".repeat(100_000)}<html/>`,
@@ -117,11 +117,39 @@ describe("svgForImage", () => {
 			`<!DOCTYPE svg [${"<!ENTITY a 'x>]'>".repeat(100_000)}`,
 			`<!DOCTYPE svg>${"[".repeat(1_000_000)}<svg/>`,
 		];
-		const started = performance.now();
 		for (const text of inputs) expect(fix(text)).toBe(text);
 		expect(fix(`${" \n".repeat(500_000)}<svg/>`)).toBe(`${" \n".repeat(500_000)}<svg xmlns="http://www.w3.org/2000/svg"/>`);
-		// A pattern with nested repetition needs seconds for 30 spaces before `<html/>` (twice as long per extra space).
-		expect(performance.now() - started).toBeLessThan(1000);
+	});
+
+	it.each([
+		["whitespace", (n: number) => `${" ".repeat(n * 10)}<html/>`],
+		["comments", (n: number) => `${" \n<!-- c -->".repeat(n)}<html/>`],
+		["processing instructions and attributes", (n: number) => `${"<?pi ?>".repeat(n)}<svg${' a="1"'.repeat(n)}`],
+		["an unclosed attribute quote", (n: number) => `<svg data-x='${" ".repeat(n * 10)}`],
+		["an unclosed doctype subset", (n: number) => `${"<!DOCTYPE svg [".repeat(n)}<html/>`],
+		["quoted doctype entities", (n: number) => `<!DOCTYPE svg [${"<!ENTITY a 'x>]'>".repeat(n)}`],
+		["whitespace before a repaired root", (n: number) => `${" \n".repeat(n * 5)}<svg/>`],
+	] as const)("scans %s without quadratic rescanning", (name, make) => {
+		const iterations = 1024;
+		const cpuTime = (data: Buffer<ArrayBuffer>) => {
+			const samples = Array.from({ length: 5 }, () => {
+				const started = process.cpuUsage();
+				for (let i = 0; i < iterations; i++) svgForImage(data);
+				const elapsed = process.cpuUsage(started);
+				return elapsed.user + elapsed.system;
+			});
+			return samples.sort((a, b) => a - b)[2]!;
+		};
+		const small = Buffer.from(make(128));
+		const large = Buffer.from(make(2048));
+		// Warm both sizes, then batch identical call counts so even native
+		// quote searches contribute substantial CPU samples.
+		for (let i = 0; i < 8; i++) { svgForImage(small); svgForImage(large); }
+		const baseline = cpuTime(small);
+		const grown = cpuTime(large);
+		// Process CPU excludes worker scheduling delays. Each path must stay
+		// below 64x work for 16x input, rather than hiding behind other paths.
+		expect(grown, `SVG ${name}: ${baseline}us -> ${grown}us`).toBeLessThan(baseline * 64);
 	});
 });
 

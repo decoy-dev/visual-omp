@@ -39,20 +39,21 @@ afterEach(async () => {
 const initial = (): BtwState => ({ hostId: "host", generation: 1, epoch: 1, revision: 1,
 	topics: [{ id: "topic", title: "Why is the change small?", live: true, turns: [{ question: "Why is the change small?", answer: "The first answer.", status: "complete", createdAt: 1793723247397, updatedAt: 1793723247415 }] }],
 	overlay: { epoch: 1, surfaceId: "s", nodeId: "btw", selectedTopic: { id: "topic" }, topics: [{ id: "topic" }], actions: ["close", "copy-answer", "follow-up"], followUp: false, supported: true, notice: null, draft: null } });
-async function mountContent(state = initial()) {
+// Plain-text mounts and input commit synchronously; await IPC completion separately.
+function mountContent(state = initial()) {
 	const container = document.createElement("div"); document.body.append(container);
 	const root = createRoot(container); mounted.push({ root, container });
-	const render = async (next: BtwState) => { await act(async () => root.render(createElement(TooltipProvider, null, createElement(BtwPaneContent, { state: next, error: null, hostId: next.hostId, presentation: { active: true, available: true } })))); };
-	await render(state);
+	const render = (next: BtwState) => { act(() => root.render(createElement(TooltipProvider, null, createElement(BtwPaneContent, { state: next, error: null, hostId: next.hostId, presentation: { active: true, available: true } })))); };
+	render(state);
 	return { container, render };
 }
 function button(container: HTMLElement, label: string) {
 	const match = [...container.querySelectorAll("button")].find(button => button.textContent?.trim() === label);
 	expect(match, label).toBeDefined(); return match!;
 }
-async function fill(container: HTMLElement, text: string) {
+function fill(container: HTMLElement, text: string) {
 	const input = container.querySelector("textarea")!;
-	await act(async () => {
+	act(() => {
 		Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(input, text);
 		input.dispatchEvent(new Event("input", { bubbles: true }));
 		input.dispatchEvent(new Event("change", { bubbles: true }));
@@ -81,13 +82,15 @@ describe("native side-question pane", () => {
 	it("consumes only the submitted draft when its own ask opens a new native topic", async () => {
 		const pending = Promise.withResolvers<void>(); invoke.mockReturnValue(pending.promise);
 		const empty = initial(); empty.topics = []; empty.overlay = null;
-		const h = await mountContent(empty);
-		await fill(h.container, "The question being submitted");
-		await act(async () => button(h.container, "Ask question").click());
+		const h = mountContent(empty);
+		fill(h.container, "The question being submitted");
+		act(() => button(h.container, "Ask question").click());
+		expect(invoke).toHaveBeenCalledExactlyOnceWith("btw:ask", "host", "The question being submitted", { generation: 1, epoch: 1 });
 		const next = initial(); next.topics[0]!.title = "The question being submitted"; next.topics[0]!.turns[0]!.question = "The question being submitted";
 		next.topics[0]!.turns[0]!.status = "running"; next.topics[0]!.turns[0]!.answer = "The new native answer"; next.overlay!.actions = ["close", "stop"];
-		await h.render(next);
+		h.render(next);
 		expect(h.container.querySelector("details")?.textContent).toContain("The question being submitted");
+		expect(button(h.container, "Stop side answer").disabled).toBe(true);
 		await act(async () => pending.resolve());
 		expect(h.container.querySelector("details")).toBeNull();
 		expect(h.container.textContent).toContain("The new native answer");
@@ -96,11 +99,11 @@ describe("native side-question pane", () => {
 	it("streams every update and leaves an unchanged running answer marked Answering", async () => {
 		const state = initial(); state.topics[0]!.turns[0]!.status = "running"; state.topics[0]!.turns[0]!.answer = "First fragment";
 		state.overlay!.actions = ["close", "stop"];
-		const h = await mountContent(state);
+		const h = mountContent(state);
 		expect(h.container.textContent).toContain("First fragment");
 		expect(h.container.querySelector('[role="status"]')?.textContent).toContain("Answering");
 		const next = structuredClone(state); next.revision++; next.topics[0]!.turns[0]!.answer += " and the next fragment.";
-		await h.render(next);
+		h.render(next);
 		expect(h.container.textContent).toContain("First fragment and the next fragment.");
 		expect(h.container.textContent).toContain("Answering");
 		expect(button(h.container, "Stop side answer").disabled).toBe(false);
@@ -108,9 +111,9 @@ describe("native side-question pane", () => {
 	});
 
 	it("preserves a failed follow-up draft and sends the selected topic on retry", async () => {
-		const h = await mountContent();
+		const h = mountContent();
 		await act(async () => button(h.container, "Follow up").click());
-		const input = await fill(h.container, "Explain the smaller change.\nKeep Unicode: café ✓");
+		const input = fill(h.container, "Explain the smaller change.\nKeep Unicode: café ✓");
 		invoke.mockRejectedValueOnce(new Error("The side question is unavailable. Try again."));
 		await act(async () => button(h.container, "Send follow-up").click());
 		expect(h.container.querySelector('[role="alert"]')?.textContent).toContain("Try again");
@@ -124,7 +127,7 @@ describe("native side-question pane", () => {
 	it("separates Put away from stopping the side answer", async () => {
 		const state = initial(); state.topics[0]!.turns[0]!.status = "running"; state.overlay!.actions = ["close", "stop"];
 		state.topics[0]!.scope = "main"; state.overlay!.selectedTopic = { id: "topic", scope: "main" }; state.overlay!.topics = [{ id: "topic", scope: "main" }];
-		const h = await mountContent(state); invoke.mockResolvedValue(undefined);
+		const h = mountContent(state); invoke.mockResolvedValue(undefined);
 		await act(async () => button(h.container, "Put away").click());
 		expect(invoke).toHaveBeenLastCalledWith("btw:close", "host", { id: "topic", scope: "main" }, { generation: 1, epoch: 1 });
 		await act(async () => button(h.container, "Stop side answer").click());
@@ -135,14 +138,14 @@ describe("native side-question pane", () => {
 	it("shows steering content but offers injection only when omp declares the action", async () => {
 		const state = initial(); state.topics[0]!.turns[0]!.answer = "Useful context.\n\n<inject>\nKeep the change small.\n</inject>";
 		state.topics[0]!.turns[0]!.inject = { text: "Keep the change small.", sent: false };
-		const h = await mountContent(state);
+		const h = mountContent(state);
 		expect(h.container.textContent).toContain("Steering prompt for the main chat");
 		expect(h.container.textContent).toContain("Keep the change small.");
 		expect([...h.container.querySelectorAll("button")].some(button => button.textContent === "Inject into main")).toBe(false);
 		expect(h.container.textContent).toContain("Side answers are separate.");
 		expect(h.container.textContent).not.toContain("Inject into main sends");
 		const next = structuredClone(state); next.overlay!.actions.push("inject"); next.revision++;
-		await h.render(next); invoke.mockResolvedValue(undefined);
+		h.render(next); invoke.mockResolvedValue(undefined);
 		expect(h.container.textContent).toContain("Side answers are separate. Inject into main sends the steering prompt to the main chat.");
 		await act(async () => button(h.container, "Inject into main").click());
 		expect(invoke).toHaveBeenLastCalledWith("btw:inject", "host", { id: "topic" }, { generation: 1, epoch: 1 });
@@ -150,7 +153,7 @@ describe("native side-question pane", () => {
 
 	it("presents a native follow-up field left open by omp and keeps its draft", async () => {
 		const state = initial(); state.overlay!.followUp = true; state.overlay!.draft = "Recovered side draft"; state.overlay!.actions = ["discard", "send"];
-		const h = await mountContent(state);
+		const h = mountContent(state);
 		expect(h.container.querySelector("textarea")?.value).toBe("Recovered side draft");
 		expect(button(h.container, "Send follow-up").disabled).toBe(false);
 	});
@@ -165,7 +168,7 @@ describe("native side-question pane", () => {
 		state.overlay!.actions.push("inject", "stop");
 		const clipboard = vi.fn().mockResolvedValue(undefined);
 		Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: clipboard } });
-		const h = await mountContent(state);
+		const h = mountContent(state);
 		expect(h.container.textContent).toContain("The first answer.");
 		await chooseHistory(h.container, "Helper question");
 		expect(h.container.textContent).toContain("Helper answer");
@@ -181,25 +184,25 @@ describe("native side-question pane", () => {
 		await act(async () => button(h.container, "Inject into main").click());
 		expect(invoke).toHaveBeenLastCalledWith("btw:inject", "host", { id: "topic", scope: "main" }, { generation: 1, epoch: 1 });
 		await act(async () => button(h.container, "Follow up").click());
-		await fill(h.container, "Scoped follow-up");
+		fill(h.container, "Scoped follow-up");
 		await act(async () => button(h.container, "Send follow-up").click());
 		expect(invoke).toHaveBeenLastCalledWith("btw:followUp", "host", { id: "topic", scope: "main" }, "Scoped follow-up", { generation: 1, epoch: 1 });
 	});
 
 	it("retains unsent drafts at their original topic across history selection", async () => {
 		const state = initial(); secondTopic(state);
-		const h = await mountContent(state);
+		const h = mountContent(state);
 		await act(async () => button(h.container, "Follow up").click());
-		await fill(h.container, "Draft for the first topic");
+		fill(h.container, "Draft for the first topic");
 		await chooseHistory(h.container, "Second question");
 		expect(h.container.querySelector("textarea")).toBeNull();
 		const second = structuredClone(state); second.revision++; second.overlay!.selectedTopic = { id: "second" };
-		await h.render(second);
+		h.render(second);
 		await act(async () => button(h.container, "Follow up").click());
 		expect(h.container.querySelector("textarea")?.value).toBe("");
-		await fill(h.container, "Draft for the second topic");
+		fill(h.container, "Draft for the second topic");
 		await chooseHistory(h.container, "Why is the change small?");
-		await h.render({ ...state, revision: 3 });
+		h.render({ ...state, revision: 3 });
 		await act(async () => button(h.container, "Follow up").click());
 		expect(h.container.querySelector("textarea")?.value).toBe("Draft for the first topic");
 	});
@@ -209,18 +212,18 @@ describe("native side-question pane", () => {
 		const oldOperation = Promise.withResolvers<void>();
 		const newOperation = Promise.withResolvers<void>();
 		invoke.mockReturnValueOnce(oldOperation.promise).mockReturnValueOnce(newOperation.promise);
-		const h = await mountContent(original);
+		const h = mountContent(original);
 		await act(async () => button(h.container, "Follow up").click());
-		await fill(h.container, "Original draft");
+		fill(h.container, "Original draft");
 		await act(async () => button(h.container, "Send follow-up").click());
 		const replacement = structuredClone(original);
 		if (field === "host") replacement.hostId = "replacement-host";
 		else if (field === "generation") replacement.generation = 2;
 		else { replacement.epoch = 2; replacement.overlay!.epoch = 2; }
-		await h.render(replacement);
+		h.render(replacement);
 		expect(h.container.querySelector("textarea")).toBeNull();
 		await act(async () => button(h.container, "Follow up").click());
-		await fill(h.container, "Replacement draft");
+		fill(h.container, "Replacement draft");
 		expect(button(h.container, "Send follow-up").disabled).toBe(false);
 		await act(async () => button(h.container, "Send follow-up").click());
 		expect(invoke).toHaveBeenNthCalledWith(1, "btw:followUp", "host", { id: "topic" }, "Original draft", { generation: 1, epoch: 1 });
@@ -231,24 +234,24 @@ describe("native side-question pane", () => {
 		await act(async () => newOperation.reject(new Error("Keep the replacement draft.")));
 		expect(h.container.querySelector("textarea")?.value).toBe("Replacement draft");
 		expect(button(h.container, "Send follow-up").disabled).toBe(false);
-		await h.render(original);
-		await h.render(replacement);
+		h.render(original);
+		h.render(replacement);
 		expect(h.container.querySelector("textarea")?.value).toBe("Replacement draft");
 		expect(h.container.querySelector('[role="alert"]')?.textContent).toContain("Keep the replacement draft.");
 	});
 
 	it("retains an unsent draft when the same host returns to its original epoch", async () => {
 		const state = initial();
-		const h = await mountContent(state);
+		const h = mountContent(state);
 		await act(async () => button(h.container, "Follow up").click());
-		await fill(h.container, "Keep in epoch one");
+		fill(h.container, "Keep in epoch one");
 		const next = structuredClone(state); next.epoch = 2; next.overlay!.epoch = 2;
-		await h.render(next);
+		h.render(next);
 		await act(async () => button(h.container, "Follow up").click());
-		await fill(h.container, "Keep in epoch two");
-		await h.render(state);
+		fill(h.container, "Keep in epoch two");
+		h.render(state);
 		expect(h.container.querySelector("textarea")?.value).toBe("Keep in epoch one");
-		await h.render(next);
+		h.render(next);
 		expect(h.container.querySelector("textarea")?.value).toBe("Keep in epoch two");
 		expect(invoke).not.toHaveBeenCalled();
 	});
@@ -256,12 +259,12 @@ describe("native side-question pane", () => {
 	it("does not let a late completion clear the next topic's native draft or selection", async () => {
 		const state = initial(); secondTopic(state);
 		const pending = Promise.withResolvers<void>(); invoke.mockReturnValueOnce(pending.promise);
-		const h = await mountContent(state);
+		const h = mountContent(state);
 		await act(async () => button(h.container, "Follow up").click());
-		await fill(h.container, "First topic request");
+		fill(h.container, "First topic request");
 		await act(async () => button(h.container, "Send follow-up").click());
 		const next = structuredClone(state); next.revision++; next.overlay!.selectedTopic = { id: "second" }; next.overlay!.followUp = true; next.overlay!.draft = "Second topic native draft"; next.overlay!.actions = ["send", "discard"];
-		await h.render(next);
+		h.render(next);
 		expect(h.container.textContent).toContain("Second answer");
 		expect(h.container.querySelector("textarea")?.value).toBe("Second topic native draft");
 		expect(button(h.container, "Send follow-up").disabled).toBe(true);
@@ -276,9 +279,9 @@ describe("native side-question pane", () => {
 	it("synchronously guards duplicate submissions and blocks history mutations while busy", async () => {
 		const pending = Promise.withResolvers<void>(); invoke.mockReturnValue(pending.promise);
 		const state = initial(); secondTopic(state);
-		const h = await mountContent(state);
+		const h = mountContent(state);
 		await act(async () => button(h.container, "Follow up").click());
-		await fill(h.container, "Only once");
+		fill(h.container, "Only once");
 		await act(async () => {
 			const form = h.container.querySelector("form")!;
 			form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
@@ -295,32 +298,32 @@ describe("native side-question pane", () => {
 
 	it("reopens native history explicitly before offering durable topic mutations", async () => {
 		const state = initial(); state.overlay = null;
-		const h = await mountContent(state);
+		const h = mountContent(state);
 		expect(h.container.textContent).toContain("The first answer.");
 		for (const label of ["Follow up", "Inject into main", "Stop side answer", "Put away"]) expect([...h.container.querySelectorAll("button")].some(button => button.textContent?.trim() === label)).toBe(false);
 		await act(async () => button(h.container, "Open history").click());
 		expect(invoke).toHaveBeenLastCalledWith("btw:ask", "host", "", { generation: 1, epoch: 1 });
-		await h.render(initial());
+		h.render(initial());
 		expect(button(h.container, "Follow up").disabled).toBe(false);
 	});
 
 	it("closes empty native history with an explicit null topic", async () => {
 		const state = initial(); state.topics = []; state.overlay!.selectedTopic = null; state.overlay!.topics = [];
-		const h = await mountContent(state);
+		const h = mountContent(state);
 		await act(async () => button(h.container, "Put away").click());
 		expect(invoke).toHaveBeenLastCalledWith("btw:close", "host", null, { generation: 1, epoch: 1 });
 	});
 
 	it.each(["host", "generation", "epoch"] as const)("keeps a displaced %s draft visibly readable and copyable without retargeting", async field => {
 		const state = initial(); state.topics[0]!.scope = "original-main"; state.overlay!.selectedTopic = { id: "topic", scope: "original-main" }; state.overlay!.topics = [{ id: "topic", scope: "original-main" }];
-		const h = await mountContent(state);
+		const h = mountContent(state);
 		await act(async () => button(h.container, "Follow up").click());
-		await fill(h.container, "Keep the original draft accessible.");
+		fill(h.container, "Keep the original draft accessible.");
 		const replacement = structuredClone(state);
 		if (field === "host") replacement.hostId = "replacement";
 		else if (field === "generation") replacement.generation = 2;
 		else { replacement.epoch = 2; replacement.overlay!.epoch = 2; }
-		await h.render(replacement);
+		h.render(replacement);
 		expect(h.container.querySelector("textarea")).toBeNull();
 		const saved = h.container.querySelector("details")!;
 		expect(saved.querySelector("summary")?.textContent).toBe("Saved drafts (1)");
@@ -341,9 +344,9 @@ describe("native side-question pane", () => {
 
 	it("keeps the initial empty-history draft accessible after a native topic opens", async () => {
 		const empty = initial(); empty.topics = []; empty.overlay = null;
-		const h = await mountContent(empty);
-		await fill(h.container, "Draft before the first topic opened");
-		await h.render(initial());
+		const h = mountContent(empty);
+		fill(h.container, "Draft before the first topic opened");
+		h.render(initial());
 		expect(h.container.querySelector("textarea")).toBeNull();
 		const saved = h.container.querySelector("details")!;
 		expect(saved.querySelector("summary")?.textContent).toBe("Saved drafts (1)");

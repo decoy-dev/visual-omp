@@ -213,11 +213,30 @@ it.each(["hotkeys", "jobs", "session", "changelog", "tools", "model-picker", "se
 	const { snapshot, boundary, session, messages } = replayedScreen(name);
 	const expected = recorded(name.replace(/-open$/, ""), "events").find(event => event.keys !== undefined)!;
 	expect(expected).toBeDefined();
+	if (name === "settings-screen") {
+		// Escape routing needs every real prefs control, but Radix also mounts closed menus' 102-theme catalogs.
+		// Bound only those catalogs to the selected theme and one alternative; keep the replay document intact.
+		snapshot.surfaces = structuredClone(snapshot.surfaces);
+		for (const surface of snapshot.surfaces) for (const node of walkNodes(surface.document)) {
+			if (node.k !== "prefs") continue;
+			for (const section of node.p?.sections ?? []) for (const row of section.rows) {
+				const control = row.control;
+				if (!row.id.startsWith("theme.") || control.k !== "choice") continue;
+				const alternative = control.options.find(option => option.value !== control.value)?.value;
+				control.options = control.options.filter(option => option.value === control.value || option.value === alternative);
+			}
+		}
+	}
 	fake.invoke.mockImplementation(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
 	await act(async () => root.render(sheetTree()));
 	const screen = document.querySelector<HTMLElement>('[role="region"][aria-label="omp screen"]')!;
 	expect(screen).not.toBeNull();
 	expect(screen.querySelector("[data-tsp-kind]")).not.toBeNull();
+	if (name === "settings-screen") {
+		expect(screen.querySelectorAll('[role="combobox"]')).toHaveLength(14);
+		expect(screen.querySelector('[role="combobox"][aria-label="Dark Theme"]')?.textContent).toContain("titanium");
+		expect(screen.querySelector('[role="combobox"][aria-label="Light Theme"]')?.textContent).toContain("light");
+	}
 	const target = name.startsWith("extension-rows") ? screen.querySelector("pre")! : screen;
 	await act(async () => target.dispatchEvent(new KeyboardEvent("keydown", { key: name === "extension-rows" || name === "extension-rows-open" ? "Enter" : "Escape", bubbles: true, cancelable: true })));
 	const emitted = fake.invoke.mock.calls.filter(call => call[0] === "host:keys" || call[0] === "host:tsp-event")

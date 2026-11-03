@@ -7,6 +7,9 @@ import { TranscriptTime } from "./TranscriptTime";
 import { ToolCard } from "./ToolCard";
 import "../../i18n";
 
+// Startup preloads schedule real timers during import. Keep that separate clock
+// out of the timestamp tests, which explicitly control Date and midnight timers.
+vi.mock("../../registry/idle", () => ({ preloadWhenIdle: vi.fn() }));
 let container: HTMLDivElement;
 let root: Root;
 beforeEach(() => {

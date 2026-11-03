@@ -21,6 +21,8 @@ const send = vi.fn(); const keys = vi.fn();
 const render = async (node: TspNode) => { await act(async () => root.render(createElement(TooltipProvider, { children: createElement(NodeView, { node, context }) }))); };
 const click = async (selector: string, type = "click") => { await act(async () => element.querySelector(selector)!.dispatchEvent(new MouseEvent(type, { bubbles: true }))); };
 const press = async (key: string) => { await act(async () => element.querySelector('[role="listbox"]')!.dispatchEvent(new KeyboardEvent("keydown", { key, bubbles: true, cancelable: true }))); };
+// KaTeX's idle import can warn while an unrelated node is under test.
+const fallbackWarnings = (warning: { mock: { calls: unknown[][] } }) => warning.mock.calls.filter(([message]) => typeof message === "string" && message.startsWith("TSP screen fallback:"));
 beforeEach(() => {
 	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin" } });
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -208,7 +210,7 @@ it("logs unknown kinds, roles and actions once while keeping content readable wi
 	expect(element.querySelector("button")?.disabled).toBe(true);
 	expect(element.querySelector("button")?.title).toContain("future-action");
 	await click("button"); expect(send).not.toHaveBeenCalled();
-	expect(warning).toHaveBeenCalledTimes(3); warning.mockRestore();
+	expect(fallbackWarnings(warning)).toEqual([["TSP screen fallback: kind:future-kind"], ["TSP screen fallback: role:omp.future-role"], ["TSP screen fallback: action:future-action"]]); warning.mockRestore();
 });
 it.each(["col", "row", "section", "card"] as const)("renders an unknown-role %s as layout with readable children", async k => {
 	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -254,7 +256,7 @@ it("disables only unsupported picker actions while selection, known actions and 
 	expect(send).toHaveBeenLastCalledWith({ ev: "action", sf: "s:1", id: "extensions", act: "close" });
 	await click('[data-tsp-id="child"] > button');
 	expect(send).toHaveBeenLastCalledWith({ ev: "action", sf: "s:1", id: "child", act: "close" });
-	expect(warning).toHaveBeenCalledExactlyOnceWith("TSP screen fallback: action:future-expand");
+	expect(fallbackWarnings(warning)).toEqual([["TSP screen fallback: action:future-expand"]]);
 	warning.mockRestore();
 });
 it("leaves known node clicks and descendants enabled when a different declared action is unsupported", async () => {
@@ -308,7 +310,7 @@ it("keeps known list row gestures active when another row gesture is unsupported
 	await click('[role="option"]');
 	expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "select", sf: "s:1", id: "list", item: "entry" });
 	await click('[role="option"]', "dblclick"); expect(send).toHaveBeenCalledTimes(1);
-	expect(warning).toHaveBeenCalledExactlyOnceWith("TSP screen fallback: action:future-row");
+	expect(fallbackWarnings(warning)).toEqual([["TSP screen fallback: action:future-row"]]);
 	warning.mockRestore();
 });
 
