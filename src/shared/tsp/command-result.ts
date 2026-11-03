@@ -16,6 +16,11 @@ export interface CommandOutcome {
 	lines: string[];
 	nodes: { sf: string; id: string; text: string }[];
 }
+
+/** BTW starts and submissions are confirmed by their document, never by a quiet editor. */
+export const BTW_COMMAND_OUTCOME: CommandOutcomeSpec = {
+	errors: [/^(?:Cannot open \/btw history:|Could not save \/btw history:|Cannot inject \/btw prompt:|\/btw prompt not sent|No active model available for \/btw\.|A \/btw (?:question|action) is|This side conversation is unavailable|Wait for the current \/btw)/i],
+};
 const spans = (value: TspText | undefined): string => typeof value === "string" ? value : value?.filter(span => !span.s?.split(" ").includes("hide")).map(span => span.t).join("") ?? "";
 /** Literal omp feedback, excluding icons and presentation properties. */
 export function commandNodeText(node: TspNode): string {

@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => {
 		runCommand: vi.fn((_id: string) => true),
 		openSettings: vi.fn(),
 		openSheet: vi.fn(),
+		showPane: vi.fn(),
 		openThinking: vi.fn(),
 		focusChatSearch: vi.fn(),
 		toast: vi.fn(),
@@ -20,7 +21,7 @@ vi.mock("@/ui", () => ({ toast: mocks.toast }));
 vi.mock("../../i18n", () => ({ i18n: { t: (key: string) => key.replace(/^composer:/, "") } }));
 vi.mock("../palette/run", () => ({ runCommand: mocks.runCommand }));
 vi.mock("../../state/navigation", () => ({ openSettings: mocks.openSettings }));
-vi.mock("../../state/app", () => ({ useApp: { getState: () => ({ openSheet: mocks.openSheet }) } }));
+vi.mock("../../state/app", () => ({ useApp: { getState: () => ({ openSheet: mocks.openSheet, showPane: mocks.showPane }) } }));
 vi.mock("../../shell/Sidebar", () => ({ focusChatSearch: mocks.focusChatSearch }));
 vi.mock("./pickers", () => ({ usePickerRequests: { getState: () => ({ openThinking: mocks.openThinking }) } }));
 vi.mock("./nativeModes", () => ({ setSessionMode: mocks.setMode }));
@@ -42,6 +43,17 @@ describe("parseSlash", () => {
 });
 
 describe("routeSlash", () => {
+	it("routes TSP side questions to their chat's native pane and leaves classic delivery unchanged", async () => {
+		const tsp = { ...session, getSnapshot: () => ({ host: { hostId: "tsp-host", transport: "tsp", generation: 2, tspEpoch: 3 }, guest: null }) } as unknown as SessionController;
+		expect(await routeSlash(tsp, "/btw How does this work?")).toBe(true);
+		expect(mocks.showPane).toHaveBeenCalledWith("btw", "tab-1");
+		expect(mocks.invoke).toHaveBeenLastCalledWith("btw:ask", "tsp-host", "How does this work?", { generation: 2, epoch: 3 });
+		expect(await routeSlash(tsp, "/btw")).toBe(true);
+		expect(mocks.invoke).toHaveBeenLastCalledWith("btw:ask", "tsp-host", "", { generation: 2, epoch: 3 });
+		mocks.invoke.mockClear();
+		expect(await routeSlash(session, "/btw How does this work?")).toBe(false);
+		expect(mocks.invoke).not.toHaveBeenCalled();
+	});
 	it("refuses app-owned and pass-through slash actions while a TSP approval waits", async () => {
 		const blocked = { ...session, getSnapshot: () => ({ host: { transport: "tsp", tspComposer: { blockedBy: "approval" } }, guest: null }) } as unknown as SessionController;
 		for (const line of ["/switch", "/goal pause", "/extension-command"]) await expect(routeSlash(blocked, line)).rejects.toThrow("Answer the approval");

@@ -1,0 +1,79 @@
+[
+  {
+    "type": "model_change",
+    "id": "c1703c41",
+    "parentId": null,
+    "timestamp": "2026-11-03T16:27:37.612Z",
+    "runtime": {
+      "version": "18.15.0"
+    },
+    "model": "fixture/fixture-model",
+    "resolvedModelIsFallback": false
+  },
+  {
+    "type": "thinking_level_change",
+    "id": "c507bcfb",
+    "parentId": "c1703c41",
+    "timestamp": "2026-11-03T16:27:37.612Z",
+    "runtime": {
+      "version": "18.15.0"
+    },
+    "thinkingLevel": "off",
+    "configured": null
+  },
+  {
+    "type": "message",
+    "id": "e88783dd",
+    "parentId": "c507bcfb",
+    "timestamp": "2026-11-03T16:27:37.894Z",
+    "runtime": {
+      "version": "18.15.0"
+    },
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Start the main fixture turn and keep it running."
+        }
+      ],
+      "attribution": "user",
+      "timestamp": 1793723257884
+    }
+  },
+  {
+    "type": "message",
+    "id": "a7aa76ac",
+    "parentId": "e88783dd",
+    "timestamp": "2026-11-03T16:27:37.947Z",
+    "runtime": {
+      "version": "18.15.0"
+    },
+    "message": {
+      "role": "assistant",
+      "content": [],
+      "api": "openai-completions",
+      "provider": "fixture",
+      "model": "fixture-model",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "aborted",
+      "errorMessage": "Interrupted by user",
+      "errorId": 67112960,
+      "timestamp": 1793723257945,
+      "completedAt": 1793723257946
+    }
+  }
+]

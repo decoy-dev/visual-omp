@@ -21,6 +21,13 @@ export const TSP_ROLES = {
 	planSlider: "omp.plan.slider", planStrategy: "omp.plan.strategy", planTools: "omp.plan.tools",
 	planPrompt: "omp.plan.prompt", planToc: "omp.plan.toc", planNote: "omp.plan.note", planFeedback: "omp.plan.feedback",
 	planSave: "omp.overlay.planSave", advisor: "omp.overlay.advisor",
+	btwThread: "omp.btw.thread", btwTurn: "omp.btw.turn", btwQuestion: "omp.btw.question", btwFollowup: "omp.btw.followup",
+	btwAnswer: "omp.btw.answer", btwMeta: "omp.btw.meta", btwError: "omp.btw.error", btwPending: "omp.btw.pending",
+	btwList: "omp.btw.list", btwListIdle: "omp.btw.list.idle", btwComposer: "omp.btw.composer",
+	btwInject: "omp.btw.inject",
+	btwNote: "omp.btw.note", btwNotice: "omp.btw.notice", btwCopied: "omp.btw.copied",
+	btwBody: "omp.btw.body", btwReader: "omp.btw.reader", btwHistoryList: "omp.btw.history",
+	btwEmpty: "omp.btw.empty", btwEmptyTitle: "omp.btw.empty.title", btwEmptyHint: "omp.btw.empty.hint",
 	overlayHints: "omp.overlay.hints", retryHint: "omp.hint.retry",
 	composerFact: "omp.composer.fact",
 } as const;
@@ -33,12 +40,13 @@ export const TSP_ACTIONS = {
 	resume: "resume", click: "click",
 	thinkingCycle: "thinking.cycle", use: "use",
 	copyPlan: "copyPlan", externalEditor: "externalEditor", save: "save",
+	btwFollowUp: "follow-up", btwSend: "send", btwDiscard: "discard", btwStop: "stop", btwCopy: "copy-answer", btwInject: "inject",
 	context: "status.context", cost: "status.cost", model: "status.model", path: "status.path",
 } as const;
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
 export function isKnownAction(action: string): boolean { return knownActions.has(action); }
 /** Recorded actions without an app interaction path stay display-only. */
-export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true, "jobs.open": true, inject: true, edit: true, add: true, delete: true };
+export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true, "jobs.open": true, edit: true, add: true, delete: true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 export const TSP_TREE = {
 	summaryTitle: "Summarize branch?", noSummary: "No summary",
@@ -50,6 +58,7 @@ export function isTreeSelectorNode(node: TspNode): boolean {
 		&& node.p.actions?.some(action => action.id === TSP_ACTIONS.switch && !action.disabled) === true
 		|| node.k === "list" && (node.p?.role === TSP_ROLES.tree || node.p?.role === TSP_ROLES.treeSelector);
 }
+export const TSP_BTW_STATUS = { running: "Answering", cancelled: "Cancelled", error: "Failed", interrupted: "Interrupted" } as const;
 export const TSP_PLAN_OPTIONS = {
 	execute: "Approve and execute", compact: "Approve and compact context", keep: "Approve and keep context",
 	refine: "Refine plan", save: "Save and quit",
@@ -73,6 +82,7 @@ export const TSP_CLAIMS: Readonly<Record<string, string>> = Object.freeze(
 		...[...nativeHookRoles].map(role => [role, "hook-dialog-card"]),
 		[TSP_ROLES.advisor, "advisor-apply"],
 		...[TSP_ROLES.userShell, TSP_ROLES.userPython].map(role => [role, "transcript-user-runs"]),
+		[TSP_ROLES.btwHistory, "btw-pane"],
 	]),
 );
 const replicated = [TSP_ROLES.user, TSP_ROLES.assistant, TSP_ROLES.thinking, TSP_ROLES.tool, TSP_ROLES.agent];
@@ -129,9 +139,8 @@ const knownRoles: ReadonlySet<string> = new Set([
 	"omp.run", "omp.run.foot", "omp.run.state", "omp.run.time",
 	"omp.ask.option", "omp.ask.options", "omp.ask.other", "omp.ask.question",
 	"omp.composer.chip", "omp.composer.fact", "omp.queue.edit",
-	"omp.btw.empty", "omp.btw.empty.hint", "omp.btw.empty.title",
-	// 18.16 steering injection has no app consumer; prediction alternatives use the generic list.
-	"omp.btw.inject", "omp.autocomplete", "omp.select",
+	// Prediction alternatives retain the generic list.
+	"omp.autocomplete", "omp.select",
 	"omp.form", "omp.form.field",
 	"omp.hotkeys.group", "omp.hotkeys.table", "omp.hud", "omp.hud.downloads", "omp.hud.judge",
 	"omp.composer.stop", "omp.hud.activity", "omp.hud.status", "omp.working.label", "omp.working.sep", "omp.working.stop",

@@ -796,6 +796,42 @@ function tspComposer(surface = "s:1", editor = "editor", sendable = true): void 
 	] });
 }
 
+describe("TSP side-question writer", () => {
+	it.each(["room", "epoch"] as const)("refuses a stale renderer BTW %s scope before sending", async changed => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const scope = { generation: changed === "room" ? 0 : host.state.generation, epoch: changed === "epoch" ? 0 : host.tspSnapshot()!.epoch };
+		await expect(host.btwAction("ask", "A stale side question", undefined, scope)).rejects.toThrow(/changed|restarted/);
+		expect(pty.writes.mock.calls.some(([data]) => String(data).includes("A stale side question"))).toBe(false);
+	});
+	it("holds main input behind opening BTW and refuses it once the overlay owns input", async () => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const asking = host.btwAction("ask");
+		const main = host.submit("Do not swallow this main prompt");
+		const refused = expect(main).rejects.toThrow("Put away the side question");
+		await vi.waitFor(() => expect(pty.writes.mock.calls.some(([data]) => String(data).includes('"text":"/btw"'))).toBe(true));
+		expect(pty.writes.mock.calls.some(([data]) => String(data).includes("Do not swallow"))).toBe(false);
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [
+			{ id: "btw", k: "overlay", p: { role: "omp.overlay.btwHistory" }, c: [{ id: "close", k: "button", p: { text: "Close", actions: { click: "close" } } }] },
+		] }]] });
+		await asking; await refused;
+		expect(host.state.tspAvailability).toMatchObject({ available: false, reason: "Put away the side question to send a message.", reasonCode: "btw" });
+		expect(pty.writes.mock.calls.some(([data]) => String(data).includes('"ev":"ack","sf":"s:1","s":2'))).toBe(true);
+		expect(pty.writes.mock.calls.some(([data]) => String(data).includes("Do not swallow"))).toBe(false);
+		expect(pty.keys).not.toHaveBeenCalled(); expect(pty.screenReads).not.toHaveBeenCalled();
+	});
+
+	it("rejects a queued BTW request after the protocol epoch changes", async () => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const gate = Promise.withResolvers<void>(); const entered = Promise.withResolvers<void>();
+		const prior = host.withEditorInput(async () => { entered.resolve(); await gate.promise; }); await entered.promise;
+		const asking = host.btwAction("ask", "Question for the old process");
+		const refused = expect(asking).rejects.toThrow("restarted");
+		tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer();
+		gate.resolve(); await prior.catch(() => {}); await refused;
+		expect(pty.writes.mock.calls.some(([data]) => String(data).includes("Question for the old process"))).toBe(false);
+	});
+});
+
 describe("TSP tree navigation writer", () => {
 	it.each(["tree-navigate", "tree-navigate-summary"])("replays %s through exact activation, guarded summary and retained editor clear", async name => {
 		await launchTsp();

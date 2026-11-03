@@ -2,6 +2,7 @@ import { writeFile } from "node:fs/promises";
 import { basename } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, nativeImage, shell } from "electron";
+import { z } from "zod";
 import type { Platform } from "@shared/ipc";
 import { defaultChatFolder } from "@shared/chatFolder";
 import fileLabels from "../shared/i18n/en/fileActions.json";
@@ -21,6 +22,9 @@ import { ensureNewUserApproval } from "./features/config";
 import { killTerminal, resizeTerminal, startTerminal, writeTerminal } from "./terminals";
 import { contextImageBytes } from "./services/contextImages";
 import { openFile, showItem } from "./fileActions";
+
+const BtwScope = z.object({ generation: z.number().int(), epoch: z.number().int() }).strict();
+const BtwTopic = z.object({ id: z.string().min(1), scope: z.string().min(1).optional() }).strict();
 
 /** Only web links leave the app; everything else would let content launch local programs. */
 function isSafeExternalUrl(url: string): boolean {
@@ -123,6 +127,13 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("host:tsp-resize", (hostId, cols) => getHost(hostId).tspResize(cols));
 	handle("host:tsp-questions", (hostId, state) => getHost(hostId).tspQuestions(state));
 	handle("host:list", () => listHosts());
+	handle("btw:list", hostId => getHost(hostId).btwList());
+	handle("btw:select", (hostId, topic, scope) => getHost(hostId).btwAction("select", "", BtwTopic.parse(topic), BtwScope.parse(scope)));
+	handle("btw:ask", (hostId, question, scope) => getHost(hostId).btwAction("ask", z.string().parse(question), undefined, BtwScope.parse(scope)));
+	handle("btw:followUp", (hostId, topic, text, scope) => getHost(hostId).btwAction("followUp", z.string().min(1).parse(text), BtwTopic.parse(topic), BtwScope.parse(scope)));
+	handle("btw:stop", (hostId, topic, scope) => getHost(hostId).btwAction("stop", "", BtwTopic.parse(topic), BtwScope.parse(scope)));
+	handle("btw:close", (hostId, topic, scope) => getHost(hostId).btwAction("close", "", BtwTopic.nullable().parse(topic), BtwScope.parse(scope)));
+	handle("btw:inject", (hostId, topic, scope) => getHost(hostId).btwAction("inject", "", BtwTopic.parse(topic), BtwScope.parse(scope)));
 
 	handle("term:start", options => startTerminal(options));
 	handle("term:write", (termId, data) => writeTerminal(termId, data));

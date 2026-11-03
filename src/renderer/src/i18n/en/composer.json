@@ -26,6 +26,10 @@
 		"readOnlyUnknown": "Replies are off until the app can check the other window",
 		"readOnlyUnreadable": "Replies are off while the chat file can't be read"
 	},
+	"btw": {
+		"putAway": "Put away",
+		"closeFailed": "Couldn't put away the side question"
+	},
 	"send": {
 		"label": "Send message",
 		"tip": "Send your message",

@@ -1,0 +1,1122 @@
+{
+  "version": "omp/18.15.0",
+  "stages": [
+    {
+      "stage": "before-main-abort",
+      "afterMessage": 10,
+      "epoch": 1,
+      "surfaceId": "s:1",
+      "overlay": {
+        "id": "layer.ov-m",
+        "k": "overlay",
+        "p": {
+          "anchor": "center",
+          "size": "lg",
+          "modal": true,
+          "role": "omp.overlay.btwHistory",
+          "head": "BTW history"
+        },
+        "c": [
+          {
+            "id": "m",
+            "k": "col",
+            "p": {
+              "gap": "none"
+            },
+            "c": [
+              {
+                "id": "m.body",
+                "k": "row",
+                "p": {
+                  "role": "omp.btw.body"
+                },
+                "c": [
+                  {
+                    "id": "m.body/details",
+                    "k": "col",
+                    "p": {
+                      "role": "omp.btw.reader",
+                      "grow": 1,
+                      "basis": 0,
+                      "min": {
+                        "w": 0
+                      }
+                    },
+                    "c": [
+                      {
+                        "id": "m.body/details/thread",
+                        "k": "col",
+                        "p": {
+                          "role": "omp.btw.thread"
+                        },
+                        "c": [
+                          {
+                            "id": "m.body/details/thread/turn-0",
+                            "k": "col",
+                            "p": {
+                              "role": "omp.btw.turn"
+                            },
+                            "c": [
+                              {
+                                "id": "m.body/details/thread/turn-0/0",
+                                "k": "md",
+                                "p": {
+                                  "role": "omp.btw.question",
+                                  "text": "What is the first fixture side question?"
+                                }
+                              },
+                              {
+                                "id": "m.body/details/thread/turn-0/1",
+                                "k": "text",
+                                "p": {
+                                  "role": "omp.btw.meta",
+                                  "truncate": "end",
+                                  "lines": 1,
+                                  "spans": [
+                                    {
+                                      "t": "Nov 3, 2026 at 09:27"
+                                    },
+                                    {
+                                      "t": "  ·  "
+                                    },
+                                    {
+                                      "t": "●",
+                                      "s": "accent",
+                                      "fx": "pulse"
+                                    },
+                                    {
+                                      "t": " Answering",
+                                      "s": "accent"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "id": "m.body/details/thread/turn-0/answer",
+                                "k": "col",
+                                "p": {
+                                  "role": "omp.btw.answer"
+                                },
+                                "c": [
+                                  {
+                                    "id": "m.body/details/thread/turn-0/answer/0",
+                                    "k": "md",
+                                    "p": {
+                                      "stream": true,
+                                      "text": "Side answer continues "
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "m.actions",
+                "k": "row",
+                "p": {
+                  "role": "omp.actions",
+                  "gap": "sm",
+                  "align": "center"
+                },
+                "c": [
+                  {
+                    "id": "m.actions/stop",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Stop answer",
+                      "actions": {
+                        "click": "stop"
+                      },
+                      "title": "Stop answer  x",
+                      "keys": [
+                        "x"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "m.actions/copy-answer",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Copy answer",
+                      "actions": {
+                        "click": "copy-answer"
+                      },
+                      "title": "Copy answer  c",
+                      "keys": [
+                        "c"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "m.actions/2",
+                    "k": "spacer",
+                    "p": {
+                      "grow": 1
+                    }
+                  },
+                  {
+                    "id": "m.actions/close",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Close",
+                      "actions": {
+                        "click": "close"
+                      },
+                      "title": "Close  esc",
+                      "keys": [
+                        "escape"
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "files": [
+        {
+          "path": "sessions/2026-11-03T16-27-37-432Z_01a1a23c-d258-717a-a306-99ca3fe0809f/btw-history/entry-15bfdc8910425772.json",
+          "text": "{\"question\":\"What is the first fixture side question?\",\"answer\":\"\",\"status\":\"running\",\"createdAt\":1793723257921,\"updatedAt\":1793723257921,\"id\":\"15bfdc8910425772\",\"leafId\":\"e88783dd\"}\n"
+        }
+      ],
+      "collab": {
+        "working": true,
+        "state": {
+          "isStreaming": false,
+          "isAborting": false,
+          "queuedMessageCount": 0,
+          "cwd": "/tmp/vomp-fixture",
+          "model": {
+            "id": "fixture-model",
+            "name": "Local scripted fixture",
+            "api": "openai-completions",
+            "provider": "fixture",
+            "baseUrl": "http://127.0.0.1:53769/v1",
+            "reasoning": true,
+            "thinking": {
+              "mode": "effort",
+              "efforts": [
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh"
+              ]
+            },
+            "input": [
+              "text",
+              "image"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 128000,
+            "maxTokens": 4096,
+            "compat": {
+              "supportsStore": true,
+              "supportsDeveloperRole": false,
+              "supportsMultipleSystemMessages": false,
+              "supportsReasoningEffort": true,
+              "supportsReasoningParams": true,
+              "supportsSamplingParams": true,
+              "supportsPenaltyAndStopParams": true,
+              "reasoningEffortMap": {},
+              "supportsUsageInStreaming": true,
+              "alwaysSendMaxTokens": false,
+              "disableReasoningOnForcedToolChoice": false,
+              "disableReasoningOnToolChoice": false,
+              "disableReasoningWithTools": false,
+              "supportsToolChoice": true,
+              "supportsForcedToolChoice": true,
+              "supportsNamedToolChoice": true,
+              "maxTokensField": "max_completion_tokens",
+              "requiresToolResultName": false,
+              "requiresAssistantAfterToolResult": false,
+              "requiresThinkingAsText": false,
+              "requiresMistralToolIds": false,
+              "thinkingFormat": "openai",
+              "reasoningDisableMode": "lowest-effort",
+              "omitReasoningEffort": false,
+              "includeEncryptedReasoning": true,
+              "filterReasoningHistory": false,
+              "reasoningContentField": "reasoning_content",
+              "requiresReasoningContentForToolCalls": false,
+              "requiresReasoningContentForAllAssistantTurns": false,
+              "allowsSyntheticReasoningContentForToolCalls": true,
+              "replayReasoningContent": true,
+              "qwenPreserveThinking": false,
+              "qwenTemplateReasoningEffort": false,
+              "requiresAssistantContentForToolCalls": false,
+              "supportsPromptCacheBreakpoints": false,
+              "isOpenRouterHost": false,
+              "wireModelIdMode": "raw",
+              "isVercelGatewayHost": false,
+              "supportsStrictMode": false,
+              "toolStrictMode": "mixed",
+              "toolSchemaFlavor": "grammar",
+              "streamFirstEventTimeoutMs": 0,
+              "streamIdleTimeoutMs": 300000,
+              "stripDeepseekSpecialTokens": false,
+              "streamMarkupHealingPattern": "thinking",
+              "reasoningDeltasMayBeCumulative": false,
+              "emptyLengthFinishIsContextError": false,
+              "usesOpenAIToolCallIdLimit": false,
+              "dropThinkingWhenReasoningEffort": false,
+              "nativeKimiK3Reasoning": false,
+              "zaiReasoningEffortDialect": false,
+              "clampOutputToModelMax": true,
+              "stripImageInput": false,
+              "rejectRootObjectUnion": false,
+              "retryWithoutStrictOnGrammarError": false,
+              "supportsPromptCacheKey": false
+            },
+            "identity": {
+              "class": "unknown"
+            },
+            "requiresGlyphTokenization": false,
+            "supportsComputerUse": false
+          },
+          "thinkingLevel": "off",
+          "contextUsage": {
+            "tokens": 7702,
+            "contextWindow": 128000,
+            "percent": 6.0171875
+          },
+          "participants": [
+            {
+              "name": "Fixture recorder",
+              "role": "host"
+            },
+            {
+              "name": "Fixture recorder",
+              "role": "guest"
+            }
+          ]
+        },
+        "entries": [
+          {
+            "type": "model_change",
+            "id": "c1703c41",
+            "parentId": null,
+            "timestamp": "2026-11-03T16:27:37.612Z",
+            "runtime": {
+              "version": "18.15.0"
+            },
+            "model": "fixture/fixture-model",
+            "resolvedModelIsFallback": false
+          },
+          {
+            "type": "thinking_level_change",
+            "id": "c507bcfb",
+            "parentId": "c1703c41",
+            "timestamp": "2026-11-03T16:27:37.612Z",
+            "runtime": {
+              "version": "18.15.0"
+            },
+            "thinkingLevel": "off",
+            "configured": null
+          },
+          {
+            "type": "message",
+            "id": "e88783dd",
+            "parentId": "c507bcfb",
+            "timestamp": "2026-11-03T16:27:37.894Z",
+            "runtime": {
+              "version": "18.15.0"
+            },
+            "message": {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Start the main fixture turn and keep it running."
+                }
+              ],
+              "attribution": "user",
+              "timestamp": 1793723257884
+            }
+          }
+        ]
+      }
+    },
+    {
+      "stage": "after-main-abort-side-running",
+      "afterMessage": 11,
+      "epoch": 1,
+      "surfaceId": "s:1",
+      "overlay": {
+        "id": "layer.ov-m",
+        "k": "overlay",
+        "p": {
+          "anchor": "center",
+          "size": "lg",
+          "modal": true,
+          "role": "omp.overlay.btwHistory",
+          "head": "BTW history"
+        },
+        "c": [
+          {
+            "id": "m",
+            "k": "col",
+            "p": {
+              "gap": "none"
+            },
+            "c": [
+              {
+                "id": "m.body",
+                "k": "row",
+                "p": {
+                  "role": "omp.btw.body"
+                },
+                "c": [
+                  {
+                    "id": "m.body/details",
+                    "k": "col",
+                    "p": {
+                      "role": "omp.btw.reader",
+                      "grow": 1,
+                      "basis": 0,
+                      "min": {
+                        "w": 0
+                      }
+                    },
+                    "c": [
+                      {
+                        "id": "m.body/details/thread",
+                        "k": "col",
+                        "p": {
+                          "role": "omp.btw.thread"
+                        },
+                        "c": [
+                          {
+                            "id": "m.body/details/thread/turn-0",
+                            "k": "col",
+                            "p": {
+                              "role": "omp.btw.turn"
+                            },
+                            "c": [
+                              {
+                                "id": "m.body/details/thread/turn-0/0",
+                                "k": "md",
+                                "p": {
+                                  "role": "omp.btw.question",
+                                  "text": "What is the first fixture side question?"
+                                }
+                              },
+                              {
+                                "id": "m.body/details/thread/turn-0/1",
+                                "k": "text",
+                                "p": {
+                                  "role": "omp.btw.meta",
+                                  "truncate": "end",
+                                  "lines": 1,
+                                  "spans": [
+                                    {
+                                      "t": "Nov 3, 2026 at 09:27"
+                                    },
+                                    {
+                                      "t": "  ·  "
+                                    },
+                                    {
+                                      "t": "●",
+                                      "s": "accent",
+                                      "fx": "pulse"
+                                    },
+                                    {
+                                      "t": " Answering",
+                                      "s": "accent"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "id": "m.body/details/thread/turn-0/answer",
+                                "k": "col",
+                                "p": {
+                                  "role": "omp.btw.answer"
+                                },
+                                "c": [
+                                  {
+                                    "id": "m.body/details/thread/turn-0/answer/0",
+                                    "k": "md",
+                                    "p": {
+                                      "stream": true,
+                                      "text": "Side answer continues "
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "m.actions",
+                "k": "row",
+                "p": {
+                  "role": "omp.actions",
+                  "gap": "sm",
+                  "align": "center"
+                },
+                "c": [
+                  {
+                    "id": "m.actions/stop",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Stop answer",
+                      "actions": {
+                        "click": "stop"
+                      },
+                      "title": "Stop answer  x",
+                      "keys": [
+                        "x"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "m.actions/copy-answer",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Copy answer",
+                      "actions": {
+                        "click": "copy-answer"
+                      },
+                      "title": "Copy answer  c",
+                      "keys": [
+                        "c"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "m.actions/2",
+                    "k": "spacer",
+                    "p": {
+                      "grow": 1
+                    }
+                  },
+                  {
+                    "id": "m.actions/close",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Close",
+                      "actions": {
+                        "click": "close"
+                      },
+                      "title": "Close  esc",
+                      "keys": [
+                        "escape"
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "files": [
+        {
+          "path": "sessions/2026-11-03T16-27-37-432Z_01a1a23c-d258-717a-a306-99ca3fe0809f/btw-history/entry-15bfdc8910425772.json",
+          "text": "{\"question\":\"What is the first fixture side question?\",\"answer\":\"\",\"status\":\"running\",\"createdAt\":1793723257921,\"updatedAt\":1793723257921,\"id\":\"15bfdc8910425772\",\"leafId\":\"e88783dd\"}\n"
+        }
+      ],
+      "collab": {
+        "working": false,
+        "state": {
+          "isStreaming": false,
+          "isAborting": false,
+          "queuedMessageCount": 0,
+          "cwd": "/tmp/vomp-fixture",
+          "model": {
+            "id": "fixture-model",
+            "name": "Local scripted fixture",
+            "api": "openai-completions",
+            "provider": "fixture",
+            "baseUrl": "http://127.0.0.1:53769/v1",
+            "reasoning": true,
+            "thinking": {
+              "mode": "effort",
+              "efforts": [
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh"
+              ]
+            },
+            "input": [
+              "text",
+              "image"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 128000,
+            "maxTokens": 4096,
+            "compat": {
+              "supportsStore": true,
+              "supportsDeveloperRole": false,
+              "supportsMultipleSystemMessages": false,
+              "supportsReasoningEffort": true,
+              "supportsReasoningParams": true,
+              "supportsSamplingParams": true,
+              "supportsPenaltyAndStopParams": true,
+              "reasoningEffortMap": {},
+              "supportsUsageInStreaming": true,
+              "alwaysSendMaxTokens": false,
+              "disableReasoningOnForcedToolChoice": false,
+              "disableReasoningOnToolChoice": false,
+              "disableReasoningWithTools": false,
+              "supportsToolChoice": true,
+              "supportsForcedToolChoice": true,
+              "supportsNamedToolChoice": true,
+              "maxTokensField": "max_completion_tokens",
+              "requiresToolResultName": false,
+              "requiresAssistantAfterToolResult": false,
+              "requiresThinkingAsText": false,
+              "requiresMistralToolIds": false,
+              "thinkingFormat": "openai",
+              "reasoningDisableMode": "lowest-effort",
+              "omitReasoningEffort": false,
+              "includeEncryptedReasoning": true,
+              "filterReasoningHistory": false,
+              "reasoningContentField": "reasoning_content",
+              "requiresReasoningContentForToolCalls": false,
+              "requiresReasoningContentForAllAssistantTurns": false,
+              "allowsSyntheticReasoningContentForToolCalls": true,
+              "replayReasoningContent": true,
+              "qwenPreserveThinking": false,
+              "qwenTemplateReasoningEffort": false,
+              "requiresAssistantContentForToolCalls": false,
+              "supportsPromptCacheBreakpoints": false,
+              "isOpenRouterHost": false,
+              "wireModelIdMode": "raw",
+              "isVercelGatewayHost": false,
+              "supportsStrictMode": false,
+              "toolStrictMode": "mixed",
+              "toolSchemaFlavor": "grammar",
+              "streamFirstEventTimeoutMs": 0,
+              "streamIdleTimeoutMs": 300000,
+              "stripDeepseekSpecialTokens": false,
+              "streamMarkupHealingPattern": "thinking",
+              "reasoningDeltasMayBeCumulative": false,
+              "emptyLengthFinishIsContextError": false,
+              "usesOpenAIToolCallIdLimit": false,
+              "dropThinkingWhenReasoningEffort": false,
+              "nativeKimiK3Reasoning": false,
+              "zaiReasoningEffortDialect": false,
+              "clampOutputToModelMax": true,
+              "stripImageInput": false,
+              "rejectRootObjectUnion": false,
+              "retryWithoutStrictOnGrammarError": false,
+              "supportsPromptCacheKey": false
+            },
+            "identity": {
+              "class": "unknown"
+            },
+            "requiresGlyphTokenization": false,
+            "supportsComputerUse": false
+          },
+          "thinkingLevel": "off",
+          "contextUsage": {
+            "tokens": 7714,
+            "contextWindow": 128000,
+            "percent": 6.026562500000001
+          },
+          "participants": [
+            {
+              "name": "Fixture recorder",
+              "role": "host"
+            },
+            {
+              "name": "Fixture recorder",
+              "role": "guest"
+            }
+          ]
+        },
+        "entries": [
+          {
+            "type": "model_change",
+            "id": "c1703c41",
+            "parentId": null,
+            "timestamp": "2026-11-03T16:27:37.612Z",
+            "runtime": {
+              "version": "18.15.0"
+            },
+            "model": "fixture/fixture-model",
+            "resolvedModelIsFallback": false
+          },
+          {
+            "type": "thinking_level_change",
+            "id": "c507bcfb",
+            "parentId": "c1703c41",
+            "timestamp": "2026-11-03T16:27:37.612Z",
+            "runtime": {
+              "version": "18.15.0"
+            },
+            "thinkingLevel": "off",
+            "configured": null
+          },
+          {
+            "type": "message",
+            "id": "e88783dd",
+            "parentId": "c507bcfb",
+            "timestamp": "2026-11-03T16:27:37.894Z",
+            "runtime": {
+              "version": "18.15.0"
+            },
+            "message": {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Start the main fixture turn and keep it running."
+                }
+              ],
+              "attribution": "user",
+              "timestamp": 1793723257884
+            }
+          },
+          {
+            "type": "message",
+            "id": "a7aa76ac",
+            "parentId": "e88783dd",
+            "timestamp": "2026-11-03T16:27:37.947Z",
+            "runtime": {
+              "version": "18.15.0"
+            },
+            "message": {
+              "role": "assistant",
+              "content": [],
+              "api": "openai-completions",
+              "provider": "fixture",
+              "model": "fixture-model",
+              "usage": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "totalTokens": 0,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "aborted",
+              "errorMessage": "Interrupted by user",
+              "errorId": 67112960,
+              "timestamp": 1793723257945,
+              "completedAt": 1793723257946
+            }
+          }
+        ]
+      }
+    },
+    {
+      "stage": "after-main-abort-side-complete",
+      "afterMessage": 12,
+      "epoch": 1,
+      "surfaceId": "s:1",
+      "overlay": {
+        "id": "layer.ov-m",
+        "k": "overlay",
+        "p": {
+          "anchor": "center",
+          "size": "lg",
+          "modal": true,
+          "role": "omp.overlay.btwHistory",
+          "head": "BTW history"
+        },
+        "c": [
+          {
+            "id": "m",
+            "k": "col",
+            "p": {
+              "gap": "none"
+            },
+            "c": [
+              {
+                "id": "m.body",
+                "k": "row",
+                "p": {
+                  "role": "omp.btw.body"
+                },
+                "c": [
+                  {
+                    "id": "m.body/details",
+                    "k": "col",
+                    "p": {
+                      "role": "omp.btw.reader",
+                      "grow": 1,
+                      "basis": 0,
+                      "min": {
+                        "w": 0
+                      }
+                    },
+                    "c": [
+                      {
+                        "id": "m.body/details/thread",
+                        "k": "col",
+                        "p": {
+                          "role": "omp.btw.thread"
+                        },
+                        "c": [
+                          {
+                            "id": "m.body/details/thread/turn-0",
+                            "k": "col",
+                            "p": {
+                              "role": "omp.btw.turn"
+                            },
+                            "c": [
+                              {
+                                "id": "m.body/details/thread/turn-0/0",
+                                "k": "md",
+                                "p": {
+                                  "role": "omp.btw.question",
+                                  "text": "What is the first fixture side question?"
+                                }
+                              },
+                              {
+                                "id": "m.body/details/thread/turn-0/1",
+                                "k": "text",
+                                "p": {
+                                  "role": "omp.btw.meta",
+                                  "truncate": "end",
+                                  "lines": 1,
+                                  "spans": [
+                                    {
+                                      "t": "Nov 3, 2026 at 09:27"
+                                    }
+                                  ]
+                                }
+                              },
+                              {
+                                "id": "m.body/details/thread/turn-0/answer",
+                                "k": "col",
+                                "p": {
+                                  "role": "omp.btw.answer"
+                                },
+                                "c": [
+                                  {
+                                    "id": "m.body/details/thread/turn-0/answer/0",
+                                    "k": "md",
+                                    "p": {
+                                      "stream": false,
+                                      "text": "Side answer continues after the main turn stops."
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  }
+                ]
+              },
+              {
+                "id": "m.actions",
+                "k": "row",
+                "p": {
+                  "role": "omp.actions",
+                  "gap": "sm",
+                  "align": "center"
+                },
+                "c": [
+                  {
+                    "id": "m.actions/copy-answer",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Copy answer",
+                      "actions": {
+                        "click": "copy-answer"
+                      },
+                      "title": "Copy answer  c",
+                      "keys": [
+                        "c"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "m.actions/1",
+                    "k": "spacer",
+                    "p": {
+                      "grow": 1
+                    }
+                  },
+                  {
+                    "id": "m.actions/close",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Close",
+                      "actions": {
+                        "click": "close"
+                      },
+                      "title": "Close  esc",
+                      "keys": [
+                        "escape"
+                      ]
+                    }
+                  },
+                  {
+                    "id": "m.actions/follow-up",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Follow up",
+                      "actions": {
+                        "click": "follow-up"
+                      },
+                      "title": "Follow up  f",
+                      "keys": [
+                        "f"
+                      ],
+                      "variant": "primary",
+                      "tone": "accent"
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "files": [
+        {
+          "path": "sessions/2026-11-03T16-27-37-432Z_01a1a23c-d258-717a-a306-99ca3fe0809f/btw-history/entry-15bfdc8910425772.json",
+          "text": "{\"question\":\"What is the first fixture side question?\",\"answer\":\"Side answer continues after the main turn stops.\",\"status\":\"complete\",\"createdAt\":1793723257921,\"updatedAt\":1793723257974,\"id\":\"15bfdc8910425772\",\"leafId\":\"e88783dd\"}\n"
+        }
+      ],
+      "collab": {
+        "working": false,
+        "state": {
+          "isStreaming": false,
+          "isAborting": false,
+          "queuedMessageCount": 0,
+          "cwd": "/tmp/vomp-fixture",
+          "model": {
+            "id": "fixture-model",
+            "name": "Local scripted fixture",
+            "api": "openai-completions",
+            "provider": "fixture",
+            "baseUrl": "http://127.0.0.1:53769/v1",
+            "reasoning": true,
+            "thinking": {
+              "mode": "effort",
+              "efforts": [
+                "minimal",
+                "low",
+                "medium",
+                "high",
+                "xhigh"
+              ]
+            },
+            "input": [
+              "text",
+              "image"
+            ],
+            "cost": {
+              "input": 0,
+              "output": 0,
+              "cacheRead": 0,
+              "cacheWrite": 0
+            },
+            "contextWindow": 128000,
+            "maxTokens": 4096,
+            "compat": {
+              "supportsStore": true,
+              "supportsDeveloperRole": false,
+              "supportsMultipleSystemMessages": false,
+              "supportsReasoningEffort": true,
+              "supportsReasoningParams": true,
+              "supportsSamplingParams": true,
+              "supportsPenaltyAndStopParams": true,
+              "reasoningEffortMap": {},
+              "supportsUsageInStreaming": true,
+              "alwaysSendMaxTokens": false,
+              "disableReasoningOnForcedToolChoice": false,
+              "disableReasoningOnToolChoice": false,
+              "disableReasoningWithTools": false,
+              "supportsToolChoice": true,
+              "supportsForcedToolChoice": true,
+              "supportsNamedToolChoice": true,
+              "maxTokensField": "max_completion_tokens",
+              "requiresToolResultName": false,
+              "requiresAssistantAfterToolResult": false,
+              "requiresThinkingAsText": false,
+              "requiresMistralToolIds": false,
+              "thinkingFormat": "openai",
+              "reasoningDisableMode": "lowest-effort",
+              "omitReasoningEffort": false,
+              "includeEncryptedReasoning": true,
+              "filterReasoningHistory": false,
+              "reasoningContentField": "reasoning_content",
+              "requiresReasoningContentForToolCalls": false,
+              "requiresReasoningContentForAllAssistantTurns": false,
+              "allowsSyntheticReasoningContentForToolCalls": true,
+              "replayReasoningContent": true,
+              "qwenPreserveThinking": false,
+              "qwenTemplateReasoningEffort": false,
+              "requiresAssistantContentForToolCalls": false,
+              "supportsPromptCacheBreakpoints": false,
+              "isOpenRouterHost": false,
+              "wireModelIdMode": "raw",
+              "isVercelGatewayHost": false,
+              "supportsStrictMode": false,
+              "toolStrictMode": "mixed",
+              "toolSchemaFlavor": "grammar",
+              "streamFirstEventTimeoutMs": 0,
+              "streamIdleTimeoutMs": 300000,
+              "stripDeepseekSpecialTokens": false,
+              "streamMarkupHealingPattern": "thinking",
+              "reasoningDeltasMayBeCumulative": false,
+              "emptyLengthFinishIsContextError": false,
+              "usesOpenAIToolCallIdLimit": false,
+              "dropThinkingWhenReasoningEffort": false,
+              "nativeKimiK3Reasoning": false,
+              "zaiReasoningEffortDialect": false,
+              "clampOutputToModelMax": true,
+              "stripImageInput": false,
+              "rejectRootObjectUnion": false,
+              "retryWithoutStrictOnGrammarError": false,
+              "supportsPromptCacheKey": false
+            },
+            "identity": {
+              "class": "unknown"
+            },
+            "requiresGlyphTokenization": false,
+            "supportsComputerUse": false
+          },
+          "thinkingLevel": "off",
+          "contextUsage": {
+            "tokens": 7714,
+            "contextWindow": 128000,
+            "percent": 6.026562500000001
+          },
+          "participants": [
+            {
+              "name": "Fixture recorder",
+              "role": "host"
+            },
+            {
+              "name": "Fixture recorder",
+              "role": "guest"
+            }
+          ]
+        },
+        "entries": [
+          {
+            "type": "model_change",
+            "id": "c1703c41",
+            "parentId": null,
+            "timestamp": "2026-11-03T16:27:37.612Z",
+            "runtime": {
+              "version": "18.15.0"
+            },
+            "model": "fixture/fixture-model",
+            "resolvedModelIsFallback": false
+          },
+          {
+            "type": "thinking_level_change",
+            "id": "c507bcfb",
+            "parentId": "c1703c41",
+            "timestamp": "2026-11-03T16:27:37.612Z",
+            "runtime": {
+              "version": "18.15.0"
+            },
+            "thinkingLevel": "off",
+            "configured": null
+          },
+          {
+            "type": "message",
+            "id": "e88783dd",
+            "parentId": "c507bcfb",
+            "timestamp": "2026-11-03T16:27:37.894Z",
+            "runtime": {
+              "version": "18.15.0"
+            },
+            "message": {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Start the main fixture turn and keep it running."
+                }
+              ],
+              "attribution": "user",
+              "timestamp": 1793723257884
+            }
+          },
+          {
+            "type": "message",
+            "id": "a7aa76ac",
+            "parentId": "e88783dd",
+            "timestamp": "2026-11-03T16:27:37.947Z",
+            "runtime": {
+              "version": "18.15.0"
+            },
+            "message": {
+              "role": "assistant",
+              "content": [],
+              "api": "openai-completions",
+              "provider": "fixture",
+              "model": "fixture-model",
+              "usage": {
+                "input": 0,
+                "output": 0,
+                "cacheRead": 0,
+                "cacheWrite": 0,
+                "totalTokens": 0,
+                "cost": {
+                  "input": 0,
+                  "output": 0,
+                  "cacheRead": 0,
+                  "cacheWrite": 0,
+                  "total": 0
+                }
+              },
+              "stopReason": "aborted",
+              "errorMessage": "Interrupted by user",
+              "errorId": 67112960,
+              "timestamp": 1793723257945,
+              "completedAt": 1793723257946
+            }
+          }
+        ]
+      }
+    }
+  ],
+  "files": [
+    "sessions/2026-11-03T16-27-37-432Z_01a1a23c-d258-717a-a306-99ca3fe0809f/btw-history/entry-15bfdc8910425772.json"
+  ],
+  "observation": "Collab abort stopped the main turn with stopReason aborted. The side question remained running with its Stop answer action and completed after its scripted response was released. No side-question action was sent at abort; Close was sent only after the side answer completed."
+}

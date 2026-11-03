@@ -3,7 +3,7 @@
  * Changes, Files and Outputs (viewers, syntax colors, media) load from their own chunk; their badges load
  * with the app (`./badges`). The Terminal pane loads xterm.js only for its terminal view.
  */
-import { ClipboardText, GitDiff, type Icon, Images, ListChecks, MonitorPlay, TerminalWindow, TreeStructure } from "@phosphor-icons/react";
+import { ChatCircle, ClipboardText, GitDiff, type Icon, Images, ListChecks, MonitorPlay, TerminalWindow, TreeStructure } from "@phosphor-icons/react";
 import { registerCommand } from "../../registry/commands";
 import { lazyView } from "../../registry/lazy";
 import { chatSlots, panes } from "../../registry/slots";
@@ -57,6 +57,11 @@ panes.register({ id: "tasks", order: 40, title: "panes:names.tasks", icon: ListC
 // Running helpers pinned at the bottom of the chat, above the working line (DESIGN §3.5).
 chatSlots.register({ id: "pinned-helpers", placement: "aboveComposer", order: 10, component: HelperStrip });
 panes.register({ id: "plan", order: 50, title: "panes:names.plan", icon: ClipboardText, component: PlanPane, badge: PlanBadge });
+panes.register({
+	id: "btw", order: 55, title: "panes:names.btw", icon: ChatCircle,
+	component: lazyView(() => import("../btw/BtwPane").then(m => m.BtwPane), PaneLoading),
+	when: session => session?.getSnapshot().host?.transport === "tsp",
+});
 panes.register({ id: "terminal", order: 60, title: "panes:names.terminal", icon: TerminalWindow, component: TerminalPane, badge: TerminalBadge });
 
 const SHOW: ReadonlyArray<{ id: string; icon: Icon }> = [
@@ -66,6 +71,7 @@ const SHOW: ReadonlyArray<{ id: string; icon: Icon }> = [
 	{ id: "outputs", icon: Images },
 	{ id: "tasks", icon: ListChecks },
 	{ id: "plan", icon: ClipboardText },
+	{ id: "btw", icon: ChatCircle },
 	{ id: "terminal", icon: TerminalWindow },
 ];
 
@@ -77,6 +83,7 @@ for (const { id, icon } of SHOW) {
 		keywords: `panes:commands.${id}.keywords`,
 		group: "navigation",
 		icon,
+		when: ctx => id !== "btw" || ctx.session?.getSnapshot().host?.transport === "tsp",
 		run: ctx => useApp.getState().showPane(id, ctx.session?.tabId),
 	});
 }

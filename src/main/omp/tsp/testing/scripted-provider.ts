@@ -3,7 +3,7 @@ import { createServer } from "node:http";
 import { join } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
-export type ScriptedReply = { text?: string; tool?: { name: string; arguments: object }; delayMs?: number; gate?: string; error?: string };
+export type ScriptedReply = { text?: string; prefix?: string; tool?: { name: string; arguments: object }; delayMs?: number; gate?: string; error?: string };
 
 export interface ScriptedProvider {
   requests: object[];
@@ -27,6 +27,11 @@ export async function scriptedProvider(script: ScriptedReply[], agent: string, m
       requests.push(body);
       const reply = script[index];
       if (!reply) { response.writeHead(500).end(`No scripted response for request ${index + 1}`); return; }
+      const chunk = (delta: object, finish_reason: string | null) => `data: ${JSON.stringify({ id: `fixture-${index}`, object: "chat.completion.chunk", created: 1, model: "fixture-model", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
+      if (reply.prefix) {
+        response.writeHead(200, { "content-type": "text/event-stream" });
+        response.write(chunk({ role: "assistant", content: reply.prefix }, null));
+      }
       if (reply.gate && !released.has(reply.gate)) {
         const gate = gates.get(reply.gate) ?? Promise.withResolvers<void>();
         gates.set(reply.gate, gate);
@@ -41,8 +46,7 @@ export async function scriptedProvider(script: ScriptedReply[], agent: string, m
       const delta = reply.tool
         ? { role: "assistant", tool_calls: [{ index: 0, id: `fixture-tool-${index}`, type: "function", function: { name: reply.tool.name, arguments: JSON.stringify(reply.tool.arguments) } }] }
         : { role: "assistant", content: reply.text ?? "Fixture response." };
-      const chunk = (delta: object, finish_reason: string | null) => `data: ${JSON.stringify({ id: `fixture-${index}`, object: "chat.completion.chunk", created: 1, model: "fixture-model", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
-      response.writeHead(200, { "content-type": "text/event-stream" });
+      if (!reply.prefix) response.writeHead(200, { "content-type": "text/event-stream" });
       response.end(chunk(delta, null) + chunk({}, reply.tool ? "tool_calls" : "stop") + "data: [DONE]\n\n");
     } catch (error) { response.writeHead(500).end(String(error)); }
   });

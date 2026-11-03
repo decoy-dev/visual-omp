@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { type PaneSpec, panes } from "../registry/slots";
 import { controllerFor, useApp } from "../state/app";
 import { layoutFor } from "../state/dockLayout";
+import { useSessionView } from "./hooks";
 import { cn, IconButton, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, PresenceSwap } from "../ui";
 import { focusRingInset } from "../ui/styles";
 
@@ -31,11 +32,13 @@ function paneTitle(t: (key: string, options?: { ns?: string }) => string, entry:
  */
 export function Dock({ chatKey, width, expanded = false, onEnter }: { chatKey: string; width: number; expanded?: boolean; onEnter?: (back: HTMLElement) => void }): ReactNode {
 	const { t } = useTranslation("panes");
-	const list = panes.use();
+	const registered = panes.use();
 	const paneId = useApp(state => layoutFor(state.docks, chatKey).pane);
 	const projectPath = useApp(state => state.tabs.find(tab => tab.id === chatKey)?.projectPath ?? state.activeProject);
 	// The overview's key names no chat, so it has no controller.
 	const session = controllerFor(chatKey);
+	useSessionView(session);
+	const list = registered.filter(entry => !entry.when || entry.when(session));
 	const pane = list.find(entry => entry.id === paneId) ?? list[0];
 	const scope = useId();
 	// Pane switches slide toward the pane that was picked: one lower in the list slides in from the right.

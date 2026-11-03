@@ -742,9 +742,61 @@ profiles. Main must still check both composer controls in Electron.
 
 **Goal.** A native side-question pane for TSP chats, fed live from omp's `omp.overlay.btwHistory` overlay and reconciled with omp's durable `btw-history` sidecar files, with no second agent and no writes to omp's files.
 
-**Why this channel.** Collab carries no BTW records, deltas or commands, and omp persists a BTW record only at completion, cancellation or error, so disk polling cannot show a streaming answer ([`packages/coding-agent/src/modes/controllers/btw-controller.ts:623-680`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/coding-agent/src/modes/controllers/btw-controller.ts#L623-L680)). The TSP overlay carries the live answer as streaming Markdown and exposes close, stop, copy, follow-up, discard and send actions ([`packages/tui/src/overlays/btw-history-panel.ts:669-787`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/overlays/btw-history-panel.ts#L669-L787)). The overlay is a UI document: a lone topic may omit its id, and its metadata is formatted for display, so durable identity and timestamps come from the sidecar files ([`packages/coding-agent/src/session/btw-history.ts:16-64`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/coding-agent/src/session/btw-history.ts#L16-L64), [`packages/coding-agent/src/session/btw-history.ts:132-159`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/coding-agent/src/session/btw-history.ts#L132-L159)).
+**Why this channel.** Collab carries no BTW records, deltas or commands. omp 18.15.0 writes an initial running checkpoint and a terminal checkpoint, while streaming deltas remain in its live history overlay. Disk reads alone cannot show the streaming answer. The overlay supplies Markdown, status labels and declared close, stop, copy, follow-up, discard and send actions. A single-topic overlay omits its topic id; multi-topic list selections contain physical node paths whose final segment is the sidecar id. Durable ids, raw titles and exact timestamps come from `entry-<id>.json` and `.title` files. These behaviors are recorded by the six BTW fixtures and follow the [18.15.0 controller](https://github.com/can1357/oh-my-pi/blob/v18.15.0/packages/coding-agent/src/modes/controllers/btw-controller.ts), [panel](https://github.com/can1357/oh-my-pi/blob/v18.15.0/packages/tui/src/overlays/btw-history-panel.ts) and [history store](https://github.com/can1357/oh-my-pi/blob/v18.15.0/packages/coding-agent/src/session/btw-history.ts).
 
 **Depends on.** Phase 2 claims (the pane claims the overlay), Phase 3 (`send` and `edit`), and Phase 4e's outcome helper. Phase 4j is not required, because claims arrive in Phase 2.
+
+**Implementation status.** The developer preview now has a Side questions pane, read-only history watching, frame-based projection, serialized host actions and conditional presentation claims. Classic command delivery is unchanged. `btw.test.ts`, `btw-history.test.ts` and `BtwPane.test.ts` cover replay, persistence, resume recovery, drafts and visible ownership. `btw.live.test.ts` re-records the three scripted live criteria through `OMP_BIN`; no billed provider is used. The owner-run manual criterion 7 remains pending.
+
+**Initial verification (2026-11-03, before review corrections).** Typecheck passed. The focused reader, driver, host, pane and slash
+tests passed (233 tests), the installed-omp scripted live gate passed (1 test), and the full
+suite passed with 258 files and 3,284 tests passing; 6 files and 49 tests were skipped by their
+existing gates. Headless Chrome rendered the recorded pane and follow-up form in light and
+dark themes at 960x620 and 130% text. The captures and input/layout evidence are in
+`/tmp/vomp-btw-shots/`. The follow-up field received keyboard focus, Cmd+Enter preserved
+multiline Unicode text and the displayed generation/epoch scope, and its controls remained
+inside the viewport without horizontal overflow. Worker verification used headless Chrome.
+
+The six 18.15.0 recordings include same-run sidecars in `<scenario>.artifacts/` and staged document and file evidence in `<scenario>.btw.json`. Ask, follow-up and main-abort were also recorded against the installed omp 18.16.0 in `/tmp/vomp-p5-btw-installed-18.16.0`, outside the committed baseline. In both runs, collab abort ended the main assistant with `stopReason: "aborted"` while the side answer remained running and completed after the scripted side response was released. No side-question action was sent at abort. This is scoped recording evidence; the pane continues to display the current document and file status.
+
+omp 18.16.0's optional `omp.btw.inject` block is rendered as a separate steering prompt. Inject into main appears only while the current overlay explicitly declares `inject`, and the protocol writer repeats that declaration check. The 18.15.0 recordings never advertise it. Unknown additional controls release the pane's claim and remain available in the omp screen.
+
+**Review corrections.** Topic identity is `{ scope, id }` throughout the reader, reconciliation,
+aliases, history selection and IPC. Main and helper files may share the same id. The live
+document's current view and a unique record match establish its history scope before the driver
+translates an identity to a physical omp item. Unmatched helper histories remain readable and
+copyable without native mutation controls. The pane claims an overlay only while displaying its
+selected scoped topic; new overlays and selected topics replace an older local history selection.
+Drafts remain bound to their original host, room, epoch and topic. Saved drafts remain available
+for explicit copying, and late asynchronous responses cannot clear a newer draft or conversation.
+History mutation is disabled while an operation is in progress.
+
+Replay now advances the captured sidecar checkpoints with the recorded frames through
+`BtwHistoryState`, and compares the independent terminal projection with disk before merging.
+The recorded-frame pane test renders the corresponding frame/checkpoint projections. Main's omp 18.16 Electron
+check observed `/btw`, the pane, a Unicode follow-up and Put away working. Its reported generic
+main-composer blocker is replaced by "Put away the side question to send a message." with an
+explicit Put away action. Sending never dismisses the side question automatically.
+
+**Review verification (2026-11-03).** Typecheck and all 325 focused tests passed. The installed
+omp 18.16 scripted live gate passed, then the full suite passed once with 260 files and 3,309
+tests passing; 6 files and 49 tests were skipped by their gates. The design detector returned no
+findings. Updated light/dark captures at 960x620 and 130% text include a readable Saved drafts
+disclosure after generation/epoch replacement. No IPC action occurred during that replacement.
+Restoring the original context and explicitly pressing Cmd+Enter sent its retained Unicode draft
+with the original scoped topic and generation/epoch. Capture evidence remains in
+`/tmp/vomp-btw-shots/evidence.json`. Worker Chrome, Vite and scratch configuration were removed.
+
+**Empty-history ownership (2026-11-03).** A visible supported empty BTW overlay now registers
+both presentation ownership and consumer availability while the pane shows its empty state and
+question field. Viewing another saved topic leaves that empty overlay unclaimed. The
+`BtwEmptyComposition.test.ts` regressions use the recorded `btw-empty` document with the actual
+app store, BtwPane, OverlayWatcher and semantic sheet. They verify that the native field and
+Put away remain available without an automatic omp screen, hiding the pane restores the generic
+fallback, and showing it again returns ownership to the native pane. Typecheck and all 50
+affected tests passed. The full suite ran once: 260 files and 3,310 tests passed, with one
+failure in `OmpScreen.test.ts` where its single-warning assertion also captured KaTeX's
+quirks-mode warning. Six files and 49 tests were skipped. The empty-history regressions passed.
 
 **Files and modules.**
 
@@ -755,17 +807,19 @@ profiles. Main must still check both composer controls in Electron.
 
 **Interfaces.**
 
-- `btw:list(hostId)` returns merged topics `{ id, title, turns: [{ question, answer, status, createdAt }], live }`; `btw:changed` pushes updates.
-- `btw:ask(hostId, question)`: `send "/btw <question>"` to the live composer (studio [`src/main/tasks/tsp-btw.ts:198-212`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/src/main/tasks/tsp-btw.ts#L198-L212)).
-- `btw:followUp(hostId, topicId, text)`: open `/btw`, `select` the topic, `action follow-up`, `edit` the field, `action send` (studio [`src/main/tasks/tsp-btw.ts:229-276`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/src/main/tasks/tsp-btw.ts#L229-L276)).
-- `btw:stop(hostId)`: `action stop` on the overlay. `btw:close(hostId)`: `action close`.
+- `btw:list(hostId)` returns a revisioned host, room and epoch snapshot with merged topics `{ id, title, turns: [{ question, answer, status, createdAt, updatedAt }], live, scope? }` and the current overlay's declared actions; `btw:changed` pushes replacements.
+- Mutating IPC requests include `{ generation, epoch }` from the displayed state. Main refuses an old renderer scope before writing and retains that scope through the serialized operation.
+- `btw:ask(hostId, question, inputScope)` sends `/btw <question>` to the live composer; an empty question opens history.
+- `btw:followUp(hostId, topic, text, inputScope)` opens `/btw`, selects the verified scoped topic, sends `action follow-up`, edits the field and sends `action send`.
+- `btw:stop(hostId, topic, inputScope)` sends `action stop` for the same selected topic, then closes it. `btw:close(hostId, topic, inputScope)` closes the same topic's overlay; an empty history has a null topic.
+- `btw:select(hostId, topic, inputScope)` selects the declared physical list item after verifying `{ scope, id }`. `btw:inject(hostId, topic, inputScope)` sends the declared steering action for that selected topic.
 - Identity: a live topic without an id gets `live:N` until its sidecar file appears, then the file's id replaces it (studio [`src/main/tasks/tsp-btw.ts:104-125`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/src/main/tasks/tsp-btw.ts#L104-L125)). Status comes from the document while live and from the file once persisted. The app never marks an answer complete because the stream went quiet.
 
 **Rules.**
 
 - While the pane presents the overlay, the pane claims it and the omp screen does not draw it.
 - Main sends are refused while the follow-up composer owns the overlay; studio saw a main send swallowed otherwise ([`src/main/tasks/tsp-btw.ts:163-184`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/src/main/tasks/tsp-btw.ts#L163-L184)).
-- Stopping the main turn uses collab `abort`, as everywhere else. Stopping a side question is a separate pane action that sends `action stop` and then `action close`. When the user stops the main turn while a side answer streams, main sends the collab abort and does not send any side-question action. The effect of that abort on the side question is unconfirmed: `[INFERENCE]` collab abort acts on the session and may leave the side turn running, and the live `btw-open-main-abort` run must establish what happens before the pane describes it.
+- Stopping the main turn uses collab `abort`, as everywhere else. Stopping a side question sends `action stop`, waits for omp to report that it stopped, then sends `action close`. Main-turn Stop sends no side-question action. The 18.15.0 and installed 18.16.0 scripted main-abort runs left the side question running until its scripted response completed; the app displays the current document rather than assuming that this observation applies to every future omp release.
 - omp has no topic delete; `discard` only drops an unsent follow-up draft (studio [`docs/architecture/tsp-btw.md:83`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-btw.md?plain=1#L83)). The pane offers no delete (decision D6).
 - Classic chats keep today's behavior.
 

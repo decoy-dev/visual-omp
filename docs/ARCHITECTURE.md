@@ -391,6 +391,55 @@ cancels the operation without a success message, comment focus or extension plan
 Classic review detection, plan-file reading and key delivery remain unchanged.
 The native hook card also reads TSP documents; other unclaimed omp UI remains available in the omp screen.
 
+TSP `/btw` is a native Side questions pane. `src/main/omp/btw-history.ts` reads omp's
+`<session artifacts>/btw-history/entry-<id>.json` and optional `.title` files, including focused
+helper histories under `btw-history/sessions/<owning-session-id>/`. The watcher handles missing
+and recreated directories without creating them and logs malformed records before skipping them.
+The app never writes a sidecar. The shared `tsp/btw.ts` projection reads the live overlay's
+questions, turns, streaming Markdown, status labels, physical list ids and declared actions.
+`btw-state.ts` reconciles those frames with durable ids, titles and timestamps, assigns `live:N`
+where a lone topic omits its id and retains an alias while its sidecar becomes visible. Old running
+checkpoints read at process resume show Interrupted. A current side answer never completes on a
+quiet timer.
+Record identity includes both `scope` and `id`, because a main record and a focused helper record
+may have the same id. Main/helper view ownership and a unique document/record match establish
+the current overlay's history scope. Ambiguous records remain separate. Aliases retain the
+complete scoped identity, and only topics established as part of that overlay can select a
+physical item or invoke its follow-up, stop or steering controls. Other helper histories remain
+readable and copyable.
+
+`btw:list` and `btw:changed` carry revisioned host/room/epoch snapshots. Ask, select, follow-up,
+stop, close and optional inject operations run under SessionHost's application-input lock.
+Every mutating request carries the renderer's room generation and protocol epoch; main repeats
+those checks after acquiring the input lock and before each protocol write.
+Topic mutations also carry the selected `{ scope, id }`. Main repeats topic ownership before
+each action, so a reused raw id cannot redirect an in-flight request to another helper.
+`btw-driver.ts` uses Phase 3 `send` and len-checked `edit`, waits for each document transition
+and consults Phase 4e command outcomes for explicit failures. Follow-up retries retain their draft;
+main input remains refused while omp's overlay owns it. Side Stop sends stop and close, while
+main-turn Stop remains an independent collab abort with no side action. Both the 18.15.0 and
+installed 18.16.0 scripted main-abort recordings left the side answer running until its scripted
+response completed. The pane describes the current published status.
+
+The pane claims only the exact supported overlay while visibly displaying its selected scoped
+topic. A new overlay or topic selects its current answer; reading another topic releases the claim.
+Hidden panes and covering screens also release it, and unfamiliar controls remain in the omp screen.
+A supported empty history also registers ownership while the pane shows its empty state and
+question field. Reading a different saved topic leaves that empty native overlay unclaimed.
+Hiding the pane releases both active ownership and consumer availability, restoring the generic
+screen. `BtwEmptyComposition.test.ts` covers these transitions with the recorded empty overlay,
+the actual app store, native pane, OverlayWatcher and semantic sheet.
+The optional 18.16.0 `omp.btw.inject` block displays a steering prompt. Inject into main is
+available only when the overlay declares it, and the writer checks that declaration again.
+The pane has no delete action. Classic `/btw` retains its terminal-sheet route.
+Renderer drafts are retained under their original host, room generation, epoch and scoped topic.
+Displaced drafts are readable in Saved drafts and can be copied explicitly. Operation ownership
+prevents late completions from clearing newer draft state, and history mutation stays disabled
+until the operation finishes. Replay feeds sidecar checkpoints with recorded frames through the
+production state controller; terminal projection assertions run before completed records are merged.
+The main composer names the side-question blocker and offers explicit Put away, retaining its draft.
+Send never dismisses the side overlay automatically.
+
 The composer does not start its 600 ms painted next-message prediction poll for TSP hosts.
 It displays the published editor `ghost` and accepts Tab through the existing exact extension
 capture, compare, clear and recovery path. Main waits for the semantic editor to reflect Tab before

@@ -46,6 +46,9 @@ import { TspInputStateError, TspSession, type TspEditorTarget } from "./tsp/sess
 import { TspStream } from "./tsp/stream";
 import { worktreeExitConfirmation, type WorktreeExitConfirmation } from "./tsp/worktree";
 import { StartupDiagnosticCapture, startupDiagnostic, STARTUP_DIAGNOSTIC_MAX_CHARS } from "./startup-diagnostics";
+import type { BtwInputScope, BtwState, BtwTopicRef } from "../../shared/contracts/btw";
+import { BtwDriver, type BtwOperation } from "./tsp/btw-driver";
+import { BtwHistoryState } from "./tsp/btw-state";
 
 const CollabHosts = z.object({
 	hosts: z.array(
@@ -128,6 +131,7 @@ export class SessionHost {
 	#tspQuestions = new QuestionArbitrator();
 	#editorRestore: EditorRestoreCapture | null = null;
 	#tspPastesPending = 0;
+	#btwHistory: BtwHistoryState | null = null;
 	#tspAppearanceChanged = (): void => {
 		if (!this.#tsp || this.state.phase === "exited") return;
 		const { dark, reduceMotion } = this.#tspAppearance();
@@ -393,6 +397,38 @@ export class SessionHost {
 		return { hostId: this.id, generation: this.state.generation, revision: this.#tspRevision, epoch: protocol.epoch, closing: this.#closing, availability, composer: this.composerFacts(), editorRestore: this.#editorRestore?.view ?? null, negotiated: protocol.negotiated, lifecycle, documentGeneration: current ? this.state.generation : null, failure: this.#tspFailure, surfaces, questionMatches };
 	}
 
+	async btwList(): Promise<BtwState> {
+		const snapshot = this.tspSnapshot();
+		if (!snapshot) throw new Error("Side questions use the omp terminal in classic chats.");
+		this.#btwHistory ??= new BtwHistoryState(state => broadcast("btw:changed", state));
+		this.#btwHistory.update(snapshot, this.state.sessionFile, this.#runStartedAt);
+		return this.#btwHistory.refresh();
+	}
+
+	btwAction(operation: BtwOperation, text = "", topic?: BtwTopicRef | null, scope?: BtwInputScope): Promise<void> {
+		const generation = scope?.generation ?? this.state.generation;
+		const epoch = scope?.epoch ?? this.#tsp?.snapshot().epoch;
+		return this.#applicationInput(async () => {
+			const assertCurrent = () => {
+				this.#assertTspInput(generation);
+				if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("The semantic screen restarted before the side-question action.");
+				if (this.#editorTransferBlocked) throw new Error(this.#editorTransferBlocked);
+			};
+			assertCurrent();
+			await this.btwList();
+			const driver = new BtwDriver({
+				session: this.#tsp!, assertCurrent,
+				snapshot: () => this.tspSnapshot()!,
+				state: () => {
+					const state = this.#btwHistory?.state;
+					if (!state) throw new Error("The side-question history is unavailable.");
+					return state;
+				},
+			});
+			await driver.run(operation, text, topic ? this.#btwHistory!.resolveTopicRef(topic) : topic);
+		});
+	}
+
 	#publishTsp(): void {
 		this.#tspRevision++;
 		const snapshot = this.tspSnapshot();
@@ -401,6 +437,10 @@ export class SessionHost {
 			broadcast("host:state", this.state);
 		}
 		if (snapshot) broadcast("host:tsp-update", snapshot);
+		if (snapshot) {
+			this.#btwHistory ??= new BtwHistoryState(state => broadcast("btw:changed", state));
+			this.#btwHistory.update(snapshot, this.state.sessionFile, this.#runStartedAt);
+		}
 	}
 
 	#assertTspInput(generation: number): void {
@@ -1337,6 +1377,7 @@ export class SessionHost {
 		this.#tspHandshakeTimer = null;
 		clearInterval(this.#focusTimer ?? undefined);
 		this.#focusTimer = null;
+		this.#btwHistory?.close();
 		if (this.#tsp) nativeTheme.removeListener("updated", this.#tspAppearanceChanged);
 		this.#debug?.close();
 		this.#relay.stop();
@@ -1357,7 +1398,7 @@ export class SessionHost {
 		}
 		this.state = { ...this.state, ...patch };
 		broadcast("host:state", this.state);
-		if (this.#tsp && (patch.generation !== undefined || patch.phase !== undefined)) this.#publishTsp();
+		if (this.#tsp && (patch.generation !== undefined || patch.phase !== undefined || patch.sessionFile !== undefined)) this.#publishTsp();
 	}
 }
 

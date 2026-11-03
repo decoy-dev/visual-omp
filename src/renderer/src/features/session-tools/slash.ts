@@ -194,6 +194,12 @@ export async function routeSlash(session: SessionController, line: string): Prom
 	if (!parsed) return false;
 	const view = session.getSnapshot();
 	if (view.host?.transport === "tsp" && (view.host.tspComposer?.blockedBy === "approval" || view.guest?.pendingUiRequests?.some(isApprovalRequest) || (view.guest?.uiRequest && isApprovalRequest(view.guest.uiRequest)))) throw new Error("Answer the approval before sending a command.");
+	if (parsed.name === "btw" && view.host?.transport === "tsp") {
+		useApp.getState().showPane("btw", session.tabId);
+		if (view.host.tspEpoch === undefined) throw new Error("Waiting for omp to open its semantic screen.");
+		await window.vomp.invoke("btw:ask", view.host.hostId, parsed.args, { generation: view.host.generation, epoch: view.host.tspEpoch });
+		return true;
+	}
 	if (parsed.name === "goal" && ["pause", "resume", "drop"].includes(parsed.args)) {
 		try { await setSessionMode(session, { mode: "goal", action: parsed.args as "pause" | "resume" | "drop" }); }
 		catch (error) { reportFailure(error); }

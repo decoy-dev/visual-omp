@@ -21,6 +21,8 @@ export interface PaneSpec {
 	component: ComponentType<PaneProps>;
 	/** Small count or indicator shown beside the pane's name in the selector (e.g. `+12 −3`, running dot). */
 	badge?: ComponentType<PaneProps>;
+	/** A transport-specific pane may be absent from the selector in unsupported chats. */
+	when?: (session: SessionController | null) => boolean;
 }
 
 /** Dialogs and edge sheets for bounded tasks (share, commit, wizards, confirmations). */

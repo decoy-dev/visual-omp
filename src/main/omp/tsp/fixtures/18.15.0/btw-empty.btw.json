@@ -1,0 +1,107 @@
+{
+  "version": "omp/18.15.0",
+  "stages": [
+    {
+      "stage": "empty",
+      "afterMessage": 5,
+      "epoch": 1,
+      "surfaceId": "s:1",
+      "overlay": {
+        "id": "layer.ov-j",
+        "k": "overlay",
+        "p": {
+          "anchor": "center",
+          "size": "md",
+          "modal": true,
+          "role": "omp.overlay.btwHistory",
+          "head": "BTW history"
+        },
+        "c": [
+          {
+            "id": "j",
+            "k": "col",
+            "p": {
+              "gap": "none"
+            },
+            "c": [
+              {
+                "id": "j.empty",
+                "k": "col",
+                "p": {
+                  "role": "omp.btw.empty",
+                  "align": "center",
+                  "gap": "sm"
+                },
+                "c": [
+                  {
+                    "id": "j.empty/0",
+                    "k": "text",
+                    "p": {
+                      "role": "omp.btw.empty.title",
+                      "text": "No side questions yet"
+                    }
+                  },
+                  {
+                    "id": "j.empty/1",
+                    "k": "text",
+                    "p": {
+                      "role": "omp.btw.empty.hint",
+                      "wrap": "word",
+                      "spans": [
+                        {
+                          "t": "Ask one with "
+                        },
+                        {
+                          "t": "/btw <question>",
+                          "s": "code"
+                        },
+                        {
+                          "t": ". The answer stays out of the main conversation."
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "j.actions",
+                "k": "row",
+                "p": {
+                  "role": "omp.actions",
+                  "gap": "sm",
+                  "align": "center"
+                },
+                "c": [
+                  {
+                    "id": "j.actions/0",
+                    "k": "spacer",
+                    "p": {
+                      "grow": 1
+                    }
+                  },
+                  {
+                    "id": "j.actions/close",
+                    "k": "button",
+                    "p": {
+                      "role": "omp.btn",
+                      "text": "Close",
+                      "actions": {
+                        "click": "close"
+                      },
+                      "title": "Close  esc",
+                      "keys": [
+                        "escape"
+                      ]
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "files": []
+    }
+  ],
+  "files": []
+}

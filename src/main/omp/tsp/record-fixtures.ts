@@ -1,6 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -8,7 +8,7 @@ import { spawn, type IPty } from "node-pty";
 import { parse } from "yaml";
 import type { TspEvent, TspNode } from "../../../shared/tsp";
 import { openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
-import { TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
+import { TSP_ACTIONS, TSP_BTW_STATUS, TSP_ROLES } from "../../../shared/tsp/roles";
 import { TspImageSubmissionError, TspSession } from "./session";
 import { TspStream } from "./stream";
 import { encodeTspJson } from "./encode";
@@ -49,6 +49,10 @@ type RecordingContext = {
   release: (gate: string) => void;
   requests: object[];
   root: string;
+  guest?: GuestClient;
+  collabAbort: () => void;
+  captureBtw: (stage: string) => Promise<void>;
+  btwRecords: () => Promise<BtwRecord[]>;
 };
 type Scenario = {
   name: string; command: string | null; hook?: "select" | "input" | "editor" | "confirm" | "rows";
@@ -59,6 +63,97 @@ type Scenario = {
   tools?: string[];
   collab?: boolean;
   run?: (context: RecordingContext) => Promise<void>;
+};
+
+type BtwTurn = { question: string; answer: string; status: string; createdAt: number; updatedAt: number };
+type BtwRecord = BtwTurn & { id: string; leafId: string | null; followUps?: BtwTurn[] };
+type ArtifactFile = { path: string; bytes: Buffer };
+async function btwArtifacts(root: string): Promise<ArtifactFile[]> {
+  const files: ArtifactFile[] = [];
+  const visit = async (directory: string, relative: string, insideBtw: boolean) => {
+    for (const entry of await readdir(directory, { withFileTypes: true }).catch(error => {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    })) {
+      const path = join(directory, entry.name);
+      const child = relative ? `${relative}/${entry.name}` : entry.name;
+      const capture = insideBtw || entry.name === "btw-history";
+      if (entry.isDirectory()) await visit(path, child, capture);
+      else if (capture && /^entry-.+\.(json|title)$/.test(entry.name)) files.push({ path: child, bytes: await readFile(path) });
+    }
+  };
+  await visit(join(root, "sessions"), "sessions", false);
+  return files.sort((left, right) => left.path.localeCompare(right.path));
+}
+
+const btwOverlay = (context: RecordingContext) => context.find(node => node.p?.role === TSP_ROLES.btwHistory);
+const btwAction = (context: RecordingContext, action: string) => {
+  const overlay = btwOverlay(context);
+  const button = overlay && [...walkNodes(overlay.node)].find(node => node.k === "button" && node.p?.actions?.click === action);
+  if (!overlay || !button) throw new Error(`BTW does not declare ${action}`);
+  context.send({ ev: "action", sf: overlay.surface.open.id, id: button.id, act: action });
+};
+const btwText = (context: RecordingContext, text: string) => {
+  const overlay = btwOverlay(context);
+  return !!overlay && [...walkNodes(overlay.node)].some(node => node.k === "md" && node.p?.text === text);
+};
+const closeBtw = async (context: RecordingContext) => {
+  btwAction(context, TSP_ACTIONS.close);
+  await context.until(() => !btwOverlay(context) && context.session.availability().available, "BTW close did not restore composer");
+};
+const persistedBtw = async (context: RecordingContext, expected: { question: string; answer: string; status: string; followUps?: { question: string; answer: string; status: string }[] }[]) => {
+  let records: BtwRecord[] = [];
+  await context.until(async () => {
+    records = await context.btwRecords();
+    return records.length === expected.length && expected.every(wanted => records.some(record =>
+      record.question === wanted.question && record.answer === wanted.answer && record.status === wanted.status
+      && (record.followUps?.length ?? 0) === (wanted.followUps?.length ?? 0)
+      && (wanted.followUps ?? []).every((turn, index) => Object.entries(turn).every(([key, value]) => record.followUps?.[index]?.[key as keyof BtwTurn] === value))));
+  }, "BTW persisted turns did not match the scripted answers");
+  const ids = new Set<string>();
+  for (const record of records) {
+    if (!record.id || ids.has(record.id)) throw new Error("BTW persisted ids are missing or duplicated");
+    ids.add(record.id);
+    for (const turn of [record, ...(record.followUps ?? [])]) {
+      if (!Number.isFinite(turn.createdAt) || !Number.isFinite(turn.updatedAt) || turn.updatedAt < turn.createdAt) throw new Error("BTW persisted timestamps are invalid");
+    }
+    const overlay = btwOverlay(context);
+    const list = overlay && [...walkNodes(overlay.node)].find(node => node.k === "list");
+    if (list && !list.c?.some(node => node.id.endsWith(`/${record.id}`))) throw new Error("BTW overlay item id does not match its persisted record");
+  }
+  const overlay = btwOverlay(context);
+  const thread = overlay && [...walkNodes(overlay.node)].find(node => node.p?.role === TSP_ROLES.btwThread);
+  if (thread) {
+    const opening = thread.c?.[0];
+    const question = opening && [...walkNodes(opening)].find(node => node.p?.role === TSP_ROLES.btwQuestion);
+    const record = records.find(record => question?.k === "md" && record.question === question.p?.text);
+    if (!record || thread.c?.length !== 1 + (record.followUps?.length ?? 0)) throw new Error("BTW visible turns do not match the persisted topic");
+    for (const [index, turn] of [record, ...(record.followUps ?? [])].entries()) {
+      const nodes = [...walkNodes(thread.c![index]!)];
+      const answer = nodes.find(node => node.p?.role === TSP_ROLES.btwAnswer);
+      const markdown = answer && [...walkNodes(answer)].find(node => node.k === "md");
+      const meta = nodes.find(node => node.p?.role === TSP_ROLES.btwMeta);
+      const status = meta?.k === "text" ? meta.p?.spans?.map(span => span.t).join("") ?? "" : "";
+      if (turn.answer && (markdown?.p?.text !== turn.answer || markdown.p?.stream !== false)) throw new Error("BTW final visible answer differs from its persisted answer");
+      if (turn.status === "cancelled" && !status.includes(TSP_BTW_STATUS.cancelled)) throw new Error("BTW cancellation status differs from disk");
+      if (turn.status === "complete" && Object.values(TSP_BTW_STATUS).some(word => status.includes(word))) throw new Error("BTW completed status differs from disk");
+    }
+  }
+  return records;
+};
+
+const btwQuestion = "What is the first fixture side question?";
+const btwAnswer = "The first fixture side answer is complete.";
+const btwSecondQuestion = "What is the second fixture side question?";
+const btwSecondAnswer = "The second fixture side answer is complete.";
+const btwFollowQuestion = "Explain the fixture answer in one more sentence.";
+const btwFollowAnswer = "The follow-up fixture answer preserves the first topic.";
+const firstBtw = { question: btwQuestion, answer: btwAnswer, status: "complete" };
+const askBtw = async (context: RecordingContext) => {
+  await context.session.submit(`/btw ${btwQuestion}`);
+  await context.until(() => btwText(context, btwAnswer), "BTW final answer did not appear");
+  await persistedBtw(context, [firstBtw]);
+  await context.captureBtw("first-complete");
 };
 
 
@@ -78,6 +173,97 @@ const scratchGit = (root: string, args: string[]) => execFileSync("git", args, {
 });
 const treeNavigationDraft = "  Add a branch for the alternate fixture answer.\nKeep café 🧭 spacing.  \n";
 const scenarios: Scenario[] = [
+  { name: "btw-empty", command: "/btw", script: [], end: "open",
+    run: async context => {
+      await context.until(() => !!btwOverlay(context), "empty BTW overlay missing");
+      if ((await context.btwRecords()).length !== 0) throw new Error("Empty BTW persisted an unexpected topic");
+      await context.captureBtw("empty");
+    },
+  },
+  { name: "btw-ask", command: null, script: [{ text: btwAnswer }],
+    run: async context => { await askBtw(context); await closeBtw(context); },
+  },
+  { name: "btw-ask-again", command: null, script: [{ text: btwAnswer }, { text: btwSecondAnswer }],
+    run: async context => {
+      await askBtw(context);
+      const original = (await context.btwRecords())[0]!;
+      await closeBtw(context);
+      await context.session.submit(`/btw ${btwSecondQuestion}`);
+      await context.until(() => btwText(context, btwSecondAnswer), "second BTW answer missing");
+      const records = await persistedBtw(context, [firstBtw, { question: btwSecondQuestion, answer: btwSecondAnswer, status: "complete" }]);
+      const retained = records.find(record => record.id === original.id);
+      if (JSON.stringify(retained) !== JSON.stringify(original)) throw new Error("Asking again changed the first persisted BTW topic");
+      await context.captureBtw("second-complete");
+      const overlay = btwOverlay(context)!;
+      const list = [...walkNodes(overlay.node)].find(node => node.k === "list");
+      const first = records.find(record => record.question === btwQuestion)!;
+      const item = list?.c?.find(node => node.id.endsWith(`/${first.id}`));
+      if (!list || !item) throw new Error("Missing first persisted BTW list item");
+      context.send({ ev: "select", sf: overlay.surface.open.id, id: list.id, item: item.id });
+      await context.until(() => btwText(context, btwAnswer), "BTW selection did not display first answer");
+      await context.captureBtw("first-selected");
+      await closeBtw(context);
+    },
+  },
+  { name: "btw-follow-up", command: null, script: [{ text: btwAnswer }, { prefix: "The follow-up ", text: "fixture answer preserves the first topic.", gate: "follow-up" }],
+    run: async context => {
+      await askBtw(context);
+      const original = (await context.btwRecords())[0]!;
+      btwAction(context, TSP_ACTIONS.btwFollowUp);
+      await context.until(() => !!context.find(node => node.p?.role === TSP_ROLES.btwComposer), "BTW follow-up composer missing");
+      const overlay = btwOverlay(context)!;
+      const composer = [...walkNodes(overlay.node)].find(node => node.p?.role === TSP_ROLES.btwComposer)!;
+      const input = [...walkNodes(composer)].find(node => node.k === "input");
+      if (!input) throw new Error("BTW follow-up input missing");
+      const len = input.p?.text?.length ?? 0;
+      context.send({ ev: "edit", sf: overlay.surface.open.id, id: input.id, from: 0, to: len, text: btwFollowQuestion, cursor: btwFollowQuestion.length, len });
+      await context.until(() => { const edited = context.find(node => node.id === input.id)?.node; return edited?.k === "input" && edited.p?.text === btwFollowQuestion; }, "BTW follow-up edit missing");
+      await context.captureBtw("follow-up-draft");
+      btwAction(context, TSP_ACTIONS.btwSend);
+      await context.until(() => btwText(context, "The follow-up "), "BTW follow-up stream missing");
+      await context.captureBtw("follow-up-running");
+      context.release("follow-up");
+      await context.until(() => btwText(context, btwFollowAnswer), "BTW final follow-up answer missing");
+      const records = await persistedBtw(context, [{ ...firstBtw, followUps: [{ question: btwFollowQuestion, answer: btwFollowAnswer, status: "complete" }] }]);
+      if (records[0]!.id !== original.id || records[0]!.createdAt !== original.createdAt || records[0]!.updatedAt !== original.updatedAt) throw new Error("Follow-up changed the original BTW identity or timestamps");
+      if (records[0]!.followUps![0]!.createdAt < original.updatedAt) throw new Error("Follow-up predates its opening turn");
+      await context.captureBtw("follow-up-complete");
+      await closeBtw(context);
+    },
+  },
+  { name: "btw-cancel", command: null, script: [{ prefix: "Partial fixture side answer.", text: " This must never complete.", gate: "cancel" }],
+    run: async context => {
+      await context.session.submit(`/btw ${btwQuestion}`);
+      await context.until(() => btwText(context, "Partial fixture side answer."), "BTW partial answer missing");
+      await context.captureBtw("before-stop");
+      btwAction(context, TSP_ACTIONS.btwStop);
+      await persistedBtw(context, [{ question: btwQuestion, answer: "Partial fixture side answer.", status: "cancelled" }]);
+      await context.until(() => !context.find(node => node.k === "button" && node.p?.actions?.click === TSP_ACTIONS.btwStop), "BTW stop action remained after cancellation");
+      await context.captureBtw("cancelled");
+      await closeBtw(context);
+    },
+  },
+  { name: "btw-open-main-abort", command: null, collab: true,
+    script: [{ text: "Main answer must be aborted.", gate: "main" }, { prefix: "Side answer continues ", text: "after the main turn stops.", gate: "side" }],
+    run: async context => {
+      if (!context.guest) throw new Error("Main abort scenario needs a collab guest");
+      await context.session.submit("Start the main fixture turn and keep it running.");
+      await context.until(() => context.requests.length === 1 && context.guest!.getSnapshot().working, "main fixture turn did not start");
+      await context.session.submit(`/btw ${btwQuestion}`);
+      await context.until(() => context.requests.length === 2 && btwText(context, "Side answer continues "), "side fixture turn did not stream alongside main");
+      await context.captureBtw("before-main-abort");
+      context.collabAbort();
+      await context.until(() => !context.guest!.getSnapshot().working && context.guest!.getSnapshot().entries.some(entry => entry.type === "message" && entry.message.role === "assistant" && entry.message.stopReason === "aborted"), "collab abort did not stop the main turn");
+      if (!btwText(context, "Side answer continues ") || !context.find(node => node.k === "button" && node.p?.actions?.click === TSP_ACTIONS.btwStop)) throw new Error("Main abort unexpectedly stopped the side question");
+      await context.captureBtw("after-main-abort-side-running");
+      context.release("side");
+      await context.until(() => btwText(context, "Side answer continues after the main turn stops."), "side answer did not complete after main abort");
+      await persistedBtw(context, [{ question: btwQuestion, answer: "Side answer continues after the main turn stops.", status: "complete" }]);
+      await context.captureBtw("after-main-abort-side-complete");
+      context.release("main");
+      await closeBtw(context);
+    },
+  },
   ...[
     ["hotkeys", "/hotkeys"], ["jobs", "/jobs"], ["usage", "/usage"], ["session", "/session"],
     ["changelog", "/changelog"], ["tools", "/tools"], ["model-picker", "/model"],
@@ -389,6 +575,7 @@ for (const scenario of scenarios) {
   if (missingResume) await writeFile(journal, "");
   const env = { PATH: process.env.PATH!, HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, ".config"), XDG_CACHE_HOME: join(home, ".cache"), TMPDIR: root, PI_CODING_AGENT_DIR: agent, PI_CONFIG_DIR: agent, TERM_PROGRAM: "tern", TERM: "xterm-256color", COLORTERM: "truecolor", OMP_SKIP_SETUP: "1", PI_TUI_TSP_RECORD: journal };
   const raw: Buffer[] = []; const events: object[] = []; const messages: object[] = [];
+  const btwEvidence: object[] = [];
   let child: IPty;
   let owner: IPty | undefined;
   let ownerExit: Promise<void> | undefined;
@@ -614,9 +801,32 @@ for (const scenario of scenarios) {
         await until(() => session.availability().available, "Escape did not restore composer");
       }
     }
-    if (scenario.run) await scenario.run({ session, send, keys, until, find, root, requests: provider?.requests ?? [], release: provider?.release ?? (() => {}) });
+    if (scenario.run) await scenario.run({
+      session, send, keys, until, find, root, guest, requests: provider?.requests ?? [], release: provider?.release ?? (() => {}),
+      collabAbort: () => {
+        if (!guest) throw new Error("Missing collab guest");
+        events.push({ collab: { t: "abort" }, afterMessage: messages.length });
+        guest.sendAbort();
+      },
+      btwRecords: async () => (await btwArtifacts(root)).filter(file => file.path.endsWith(".json")).map(file => {
+        const record = JSON.parse(file.bytes.toString("utf8")) as BtwRecord;
+        if (!file.path.endsWith(`/entry-${record.id}.json`)) throw new Error("BTW file id does not match its record");
+        return record;
+      }),
+      captureBtw: async stage => {
+        await session.drain();
+        const overlay = find(node => node.p?.role === TSP_ROLES.btwHistory);
+        if (!overlay) throw new Error(`Missing BTW overlay at ${stage}`);
+        btwEvidence.push({
+          stage, afterMessage: messages.length, epoch: session.snapshot().epoch, surfaceId: overlay.surface.open.id,
+          overlay: structuredClone(overlay.node),
+          files: (await btwArtifacts(root)).map(file => ({ path: file.path, text: file.bytes.toString("utf8") })),
+          ...(guest ? { collab: { working: guest.getSnapshot().working, state: guest.getSnapshot().state, entries: guest.getSnapshot().entries } } : {}),
+        });
+      },
+    });
     if (guest) {
-      await until(() => guest!.getSnapshot().entries.some(entry => entry.type === "message" && entry.message.role === "user" && Array.isArray(entry.message.content) && entry.message.content.some(part => part.type === "image")), "image missing from collab transcript");
+      if (name === "image-attach") await until(() => guest!.getSnapshot().entries.some(entry => entry.type === "message" && entry.message.role === "user" && Array.isArray(entry.message.content) && entry.message.content.some(part => part.type === "image")), "image missing from collab transcript");
       await writeFile(join(destination, `${name}.collab.json`), sanitizeFixtureBytes(Buffer.from(JSON.stringify(guest.getSnapshot().entries, null, 2) + "\n")));
     }
     if (end === "open") {
@@ -634,6 +844,22 @@ for (const scenario of scenarios) {
     const safeMessages: object[] = [];
     const safeStream = new TspStream({ onData: () => {}, onMessage: message => safeMessages.push({ verb: message.verb, body: message.verb === "b" ? message.body : JSON.parse(message.body) }) });
     safeStream.push(safeRaw); safeStream.end();
+    if (name.startsWith("btw-") && scenario.script) {
+      const artifacts = await btwArtifacts(root);
+      if (provider?.requests.length !== scenario.script.length) throw new Error("BTW provider request count differs from the explicit script");
+      const finalStage = btwEvidence.at(-1) as { files: { path: string; text: string }[] } | undefined;
+      if (!finalStage || JSON.stringify(artifacts.map(file => ({ path: file.path, text: file.bytes.toString("utf8") }))) !== JSON.stringify(finalStage.files)) throw new Error("BTW final artifacts changed identity, answers, statuses or timestamps after observation");
+      await rm(join(destination, `${name}.artifacts`), { recursive: true, force: true });
+      for (const file of artifacts) {
+        const target = join(destination, `${name}.artifacts`, file.path);
+        await mkdir(join(target, ".."), { recursive: true });
+        await writeFile(target, sanitizeFixtureBytes(file.bytes));
+      }
+      await writeFile(join(destination, `${name}.btw.json`), sanitizeFixtureBytes(Buffer.from(JSON.stringify({
+        version, stages: btwEvidence, files: artifacts.map(file => file.path),
+        ...(name === "btw-open-main-abort" ? { observation: "Collab abort stopped the main turn with stopReason aborted. The side question remained running with its Stop answer action and completed after its scripted response was released. No side-question action was sent at abort; Close was sent only after the side answer completed." } : {}),
+      }, null, 2) + "\n")));
+    }
     await Promise.all([
       writeFile(join(destination, `${name}.raw.bin`), safeRaw),
       writeFile(join(destination, `${name}.integrity.json`), JSON.stringify({ bytes: safeRaw.length, carriageReturns: safeRaw.filter(byte => byte === 13).length, sha256: createHash("sha256").update(safeRaw).digest("hex") }) + "\n"),

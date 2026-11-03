@@ -44,7 +44,7 @@ export function isTspPreviewInputError(error: unknown): boolean {
 export interface TspAvailability {
 	available: boolean;
 	reason: string | null;
-	reasonCode?: "matched-question" | "ask-editor";
+	reasonCode?: "matched-question" | "ask-editor" | "btw";
 	/** The blocking hook's matched request, so another pending question cannot authorize its bypass. */
 	questionReqId?: number;
 }

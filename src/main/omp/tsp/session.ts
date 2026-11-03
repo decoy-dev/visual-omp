@@ -11,6 +11,7 @@ import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";
 import type { TspMessage } from "./stream";
 import { composerFacts } from "./composer";
+import { assertBtwEvent, BTW_SEND_BLOCKED_REASON, projectBtw } from "../../../shared/tsp/btw";
 
 const Query = z.object({ q: z.string(), v: z.array(z.number()).optional(), features: z.array(z.string()).optional() });
 const Open = z.object({ id: z.string().min(1), mode: z.enum(["inline", "screen"]), title: z.string().optional(), role: z.string().optional(), adopt: z.boolean().optional() });
@@ -292,6 +293,7 @@ export class TspSession {
 			assertCurrent?.();
 			if (epoch !== this.#epoch) throw new TspInputStateError("TSP preview: The semantic screen restarted.");
 			if (event.ev === "action" && !isKnownAction(event.act)) throw new TspInputStateError(`TSP preview: The omp action ${event.act} is not supported in this preview.`);
+			assertBtwEvent(this.snapshot().surfaces, event);
 			if (["send", "edit", "undo"].includes(event.ev) && !this.#programFeatures.has(event.ev)) throw new Error(`TSP preview: omp does not accept ${event.ev} events.`);
 			if (event.ev !== "visible" && this.hasHookDialog()) throw new TspInputStateError("TSP preview: This question requires the guarded question answer controls.");
 			const surface = this.#surfaces.get(event.sf);
@@ -309,6 +311,7 @@ export class TspSession {
 				if (event.ev === "send") {
 					const surfaces = this.snapshot().surfaces;
 					if (screenSurface(surfaces)) throw new TspInputStateError("TSP preview: Close the omp screen before sending a message.");
+					if (projectBtw(surfaces)) throw new TspInputStateError(`TSP preview: ${BTW_SEND_BLOCKED_REASON}`);
 					if (composerFacts(surfaces).blockedBy === "panel") throw new TspInputStateError("TSP preview: Close the open omp menu before sending a message.");
 				}
 				if (event.ev === "edit") {
@@ -507,6 +510,7 @@ export class TspSession {
 		if (screenSurface(surfaces)) return { available: false, reason: "Close the omp screen before sending a message." };
 		if (facts.blockedBy === "approval" && facts.sendable) return { available: true, reason: null };
 		if (facts.blockedBy === "panel" || openOverlay(surfaces, true)) {
+			if (projectBtw(surfaces)) return { available: false, reason: BTW_SEND_BLOCKED_REASON, reasonCode: "btw" };
 			if (this.hasHookDialog()) return { available: false, reason: "Answer omp's question before sending a message." };
 			if (planReview(surfaces)) return { available: false, reason: "Choose how to continue with the plan before sending a message." };
 			return { available: false, reason: "Close the open omp menu before sending a message." };

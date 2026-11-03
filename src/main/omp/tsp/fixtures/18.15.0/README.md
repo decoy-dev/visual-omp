@@ -34,7 +34,7 @@ configure the local model without making a provider request. `image-attach` also
 clears the editor and pastes image paths in one write, waits for omp's image chips, then appends
 the prompt and submits in one write. The saved collab text and loopback provider request retain
 `[Image #1, 200x200] Fixture image prompt`, including omp's separator. This replaces the existing
-recording without adding a scenario. With the navigation, advisor and rejected-image captures, the baseline contains 90 recordings and 90 integrity manifests.
+recording without adding a scenario. Before Phase 5, the navigation, advisor and rejected-image captures brought the baseline to 90 recordings and 90 integrity manifests.
 
 `image-reject` was recorded on 2026-11-03 using the exact 78-byte bad-CRC PNG from the 18.16
 standalone paste failure. It configures the scratch loopback model with an empty script and makes
@@ -52,8 +52,7 @@ answering it. The exit scenarios keep startup creation off, create an owned work
 Both retain omp's uncommitted-changes risk text and finish natural process exit. These scenarios
 configure no model and make no provider request. Hosted chats retain `worktree.onStart: off`.
 
-Phase 4e adds eight command-feedback recordings, bringing the baseline to 85 raw recordings
-and 85 integrity manifests. Rename and export preserve omp's literal success message, including
+Phase 4e adds eight command-feedback recordings. Rename and export preserve omp's literal success message, including
 the generated HTML filename. `/compact soft` uses the shared scripted provider with three summary
 requests; its error counterpart makes two requests with scripted HTTP 400 responses. Handoff
 makes one scripted summary request and records its completed compaction section. These three
@@ -82,6 +81,9 @@ advisor prefs page through semantic `/advisor configure`, selects user scope wit
 initial scope. Save keeps the fullscreen page open, so its success toast becomes visible after
 Close removes that screen surface. Neither recording changes advisor enablement or contacts a
 provider. The app's existing main-owned preservation tests cover comments and unknown fields.
+
+Phase 5 adds six scripted-provider BTW recordings, bringing the baseline to 96 raw recordings
+and 96 integrity manifests. Their same-run sidecar files and staged live documents are described below.
 
 
 ## Capture format

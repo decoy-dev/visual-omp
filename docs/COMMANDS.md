@@ -30,6 +30,14 @@ projection. Undisplayed output returns to notices with its arrival anchor. A qui
 waits 1.5 seconds before releasing the queue. Other commands retain their semantic editor watch
 and notices, while classic chats retain painted-screen result parsing.
 
+In TSP chats, `/btw` is routed to the originating chat's Side questions pane. Bare `/btw` opens
+history; `/btw <question>` starts a side answer through omp's semantic editor. The pane reads
+live frames and watches omp's history files without writing them. Follow up uses omp's topic
+selection and follow-up field. Put away closes the overlay without stopping an answer; Stop side
+answer sends omp's declared stop action and then closes it. Main-turn Stop remains collab abort.
+The pane has no delete control. An optional 18.16 steering prompt is injectable only while omp
+declares that action. Classic chats and file-side commands retain their terminal-sheet behavior.
+
 
 
 ## Treatments
@@ -79,7 +87,7 @@ The table describes the form without arguments unless it shows one.
 | `/seance` | Sheet for omp's session picker and its model picker, Card for "Consult this session with". `/seance <session>`: Card, then Sheet for the model picker |
 | `/extensions`, `/status`, `/session`, `/session info`, `/session pin`, `/copy`, `/debug`, `/pause`, `/live`, `/annotate` | Sheet |
 | `/context` | Sheet: omp opens a read-only viewer for context usage and detailed content |
-| `/btw <question>` | Sheet: opens explicitly for the inline side answer, including while the main turn runs. `/btw` alone opens omp's side-answer history |
+| `/btw <question>` | TSP: opens Side questions and asks omp there; bare `/btw` opens its history. Classic: the terminal sheet opens explicitly for the inline side answer, including while the main turn runs; bare `/btw` opens omp's side-answer history |
 | `/todo edit` | Sheet: omp opens the file in the external editor set by `$VISUAL` or `$EDITOR`, which runs inside omp's terminal |
 | `/local [name]` | Sheet: omp opens a session `local://` file in `$EDITOR`, with a file picker when no name is given |
 | Skills (`/skill:<name>`), custom commands (`/review`, `/green`, `/init`, `/autoresearch`), extension commands, MCP prompts (`/<server>:<prompt>`), file commands | Listed in the slash menu and sent to omp. Their dialogs reach the app over collab and show in the question card; fullscreen screens such as `/annotate` use the sheet |
@@ -94,7 +102,7 @@ These notes record where a native version of each sheet screen belongs, or why t
 - **`/session info`**: A Chat details dialog from the session ⋯ menu would show the session id, file path, model, message counts and token use, with Show in folder and Copy path.
 - **`/session pin`**: A dialog from the session ⋯ menu would list the signed-in accounts as radio rows, reusing the Providers account presentation, with Pin to this account disabled while omp is working.
 - **`/copy`**: The message hover actions would gain a Copy menu for the message, its code block, its command or its last link, in the style of the code block Copy button. `/copy code`, `/copy cmd` and `/copy link` already work with a result row.
-- **`/btw`**: omp displays a side answer above its editor, without replacing the editor or adding a collab message. After submission, the app opens the terminal sheet for a visible chat when no terminal is already open, and leaves it open for reading. Background submissions and an existing terminal leave the current view unchanged; the answer remains in the originating chat's omp terminal. omp's own Copy, Branch and Follow up actions remain available there with omp's restrictions. Bare `/btw` opens side-answer history. A future native version could show a transcript card titled Side answer with the same actions.
+- **`/btw`**: TSP chats use the native Side questions pane described above. In classic chats, omp displays a side answer above its editor without adding a collab message. The app opens the terminal sheet for a visible chat when no terminal is already open, and leaves it open for reading. Background submissions and an existing terminal leave the current view unchanged. omp's own Copy, Branch and Follow up actions remain available there with omp's restrictions.
 - **`/debug`**: A Diagnostics section on the Help page would offer one row per action (open the artifact folder, recent logs, system info, dump the session, test terminal protocols, clear the artifact cache), with a confirmation before clearing.
 - **`/pause`**: A modal card titled Chat paused would show the hold time with Resume as the primary action.
 - **`/live`**: The terminal sheet remains the right home, because live voice needs a realtime audio path the app does not have. A later native version would be a composer voice mode with a level meter and Stop.
