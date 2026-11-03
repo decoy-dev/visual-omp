@@ -24,6 +24,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - GitHub workflow watches now distinguish pending jobs from unknown states and label job statuses for screen readers.
 - Command results in classic chats now omit execution status lines and wait for running commands to finish.
 - Plugin failure messages now omit leading `[!!]` and `[-]` markers.
+- Messages omp rejects before starting a turn remain in the queue with their original text, images and omp's diagnostic, so they can be retried or removed without being appended to the next message.
 
 ## [0.7.4] - 2026-11-02
 
