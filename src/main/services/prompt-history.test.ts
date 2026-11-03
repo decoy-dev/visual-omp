@@ -19,6 +19,7 @@ function fixture(schema = "CREATE TABLE history (id INTEGER PRIMARY KEY, prompt 
 afterEach(() => { for (const folder of folders.splice(0)) rmSync(folder, { recursive: true, force: true }); });
 
 describe("read-only omp prompt history", () => {
+	// Windows CI has taken about 12 seconds to commit this disk-backed SQLite fixture under load.
 	it("filters strictly by session, caps to newest 100 and returns chronological milliseconds", () => {
 		const { file, db } = fixture();
 		const insert = db.prepare("INSERT INTO history (prompt, created_at, session_id) VALUES (?, ?, ?)");
@@ -31,7 +32,7 @@ describe("read-only omp prompt history", () => {
 		expect(result[0]).toEqual({ text: "prompt 5", timestamp: 1005000 });
 		expect(result.at(-1)?.text).toBe("prompt 104");
 		expect(readFileSync(file)).toEqual(before);
-	});
+	}, process.platform === "win32" ? 20_000 : 5000);
 
 	it("rejects paths, SQL and non-UUID arguments without opening a file", () => {
 		for (const id of ["../history.db", "' OR 1=1", "short", null, {}]) expect(readPromptHistory("missing.db", id)).toEqual([]);
