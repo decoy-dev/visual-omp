@@ -121,7 +121,7 @@ export class QuestionArbitrator {
 	answer(scope: QuestionScope, dialogs: readonly HookQuestion[], surfaceId: string, nodeId: string, authority: "local" | "shutdown" = "local"): void {
 		const match = this.matches(scope, dialogs).find(match => match.surfaceId === surfaceId && match.nodeId === nodeId);
 		const allowed = authority === "shutdown" ? this.canAnswerShutdown(scope, dialogs, surfaceId, nodeId) : match?.status === "unmatched";
-		if (!allowed) throw new Error(`TSP preview: This question cannot be answered here (${match?.status ?? "no longer available"}).`);
+		if (!allowed) throw new Error(`omp screen: This question cannot be answered here (${match?.status ?? "no longer available"}).`);
 		this.#answering.add(JSON.stringify([surfaceId, nodeId]));
 	}
 	/** Input authority may disappear before a hook's physical node leaves during teardown. */

@@ -58,7 +58,7 @@ export function TspInspector({ hostId, generation, ref }: { hostId: string; gene
 	if (current?.lifecycle === "live") status = !current.negotiated ? "tsp.negotiating" : surfaces.length > 0 ? "tsp.live" : "tsp.waiting";
 	return (
 		<div ref={ref} role="region" aria-label={t("tsp.outline")} tabIndex={0} className="h-full overflow-auto rounded-sm bg-overlay p-card text-sm text-fg">
-			<p className="mb-stack text-fg-muted">{t("tsp.preview")}</p>
+			<p className="mb-stack text-fg-muted">{t("tsp.inspectorHint")}</p>
 			<p className="mb-section text-fg-muted">{t("tsp.recovery")}</p>
 			{!current ? <p role="status" className="text-fg-muted">{t(failed ? "tsp.unavailable" : "tsp.waiting")}</p> : (
 				<div className="space-y-section">

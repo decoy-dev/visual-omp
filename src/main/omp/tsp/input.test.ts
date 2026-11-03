@@ -147,7 +147,7 @@ describe("recorded TSP composer input", () => {
 		const h = replay("image-reject", version);
 		await h.session.editAndKeys(0, 0, "Keep café 🧭 draft", 5, "", () => {});
 		await expect(h.session.submitImages("Fixture rejected image prompt", "./live-check.png", () => {}))
-			.rejects.toMatchObject({ recovery: "restored", message: "TSP preview: Image submission was restored. Failed to read pasted image path" });
+			.rejects.toMatchObject({ recovery: "restored", message: "omp screen: Image submission was restored. Failed to read pasted image path" });
 		expect(h.facts()).toMatchObject({ text: "Keep café 🧭 draft", cursor: 5, blockedBy: null });
 		expect(h.session.imageCount(h.facts().surfaceId!)).toBe(0);
 		expect(h.writes.some(write => write.includes('"act":"submit"'))).toBe(false);
@@ -228,7 +228,7 @@ describe("recorded TSP composer input", () => {
 			["focus", "input"],
 		] });
 		await expect(session.submitImages("", "/first.png /bad.png /never.png", () => {}))
-			.rejects.toMatchObject({ recovery: "restored", message: "TSP preview: Image submission was restored. Failed to read pasted image path" });
+			.rejects.toMatchObject({ recovery: "restored", message: "omp screen: Image submission was restored. Failed to read pasted image path" });
 		expect(composerFacts(session.snapshot().surfaces)).toMatchObject({ text: draft, cursor: draft.length });
 		expect(session.imageCount("s")).toBe(0);
 		expect(writes.some(write => write.includes("/never.png") || write.includes('"act":"submit"'))).toBe(false);

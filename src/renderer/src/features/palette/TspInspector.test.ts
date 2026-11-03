@@ -112,15 +112,15 @@ describe("TSP inspector lifecycle", () => {
 		expect(element.querySelector("h3")).toBeNull();
 		expect(element.textContent).toContain("Retained documents are not current and are hidden.");
 		expect(element.textContent).not.toContain("Current semantic documents");
-		if (lifecycle !== "transitioning") expect(element.textContent).toContain("relaunch visual-omp without VOMP_TSP");
+		if (lifecycle !== "transitioning") expect(element.textContent).toContain("Restart omp to try again.");
 		if (lifecycle === "failed") expect(element.textContent).toContain("Negotiation rejected by omp");
 	});
 
-	it("offers classic relaunch recovery after failed negotiation, then accepts fresh negotiated documents", async () => {
+	it("offers omp restart recovery after failed negotiation, then accepts fresh negotiated documents", async () => {
 		await render();
 		await reply({ ...snapshot(1), negotiated: false, lifecycle: "failed", documentGeneration: null, failure: "Unsupported TSP version" });
-		expect(element.textContent).toContain("The semantic preview is unavailable.");
-		expect(element.textContent).toContain("Quit and relaunch visual-omp without VOMP_TSP");
+		expect(element.textContent).toContain("The omp screen is unavailable.");
+		expect(element.textContent).toContain("Restart omp to try again.");
 		expect(element.querySelector("section")).toBeNull();
 		await update(snapshot(2));
 		expect(element.querySelector("h3")?.textContent).toBe("Revision 2");
@@ -131,7 +131,7 @@ describe("TSP inspector lifecycle", () => {
 	it("does not show documents before negotiation or from a previous document generation", async () => {
 		await render();
 		await reply({ ...snapshot(1), negotiated: false });
-		expect(element.textContent).toContain("Negotiating the semantic preview");
+		expect(element.textContent).toContain("Connecting to omp's semantic screen");
 		expect(element.querySelector("section")).toBeNull();
 		await update({ ...snapshot(2), documentGeneration: 0 });
 		expect(element.querySelector("section")).toBeNull();

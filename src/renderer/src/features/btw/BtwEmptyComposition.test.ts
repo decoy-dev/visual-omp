@@ -11,7 +11,7 @@ import { TooltipProvider } from "../../ui/Tooltip";
 import { BtwPane } from "./BtwPane";
 import { OverlayWatcher } from "../palette/OverlayWatcher";
 import { autoOpened, TerminalSheetHost } from "../palette/TerminalSheet";
-import { currentPresentationConsumers, PresentationVisibility, presentationClaims } from "../tsp/presentation-claims";
+import { currentPresentationConsumers, PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 import { FixtureDocuments, loadFixtureRecording } from "../tsp/testing/documents";
 import type * as OmpScreenModule from "../tsp/OmpScreenSheet";
 import "../../i18n";

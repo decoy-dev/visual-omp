@@ -5,7 +5,7 @@ import { Button } from "../../../ui/Button";
 import { Input } from "../../../ui/Input";
 import { Switch } from "../../../ui/Switch";
 import { Select, SelectItem } from "../../../ui/Select";
-import { plain } from "../labels";
+import { plain } from "../../../state/tsp/labels";
 import { rawKey } from "../keys";
 import type { NodeContext, NodeProps } from "../nodes/context";
 

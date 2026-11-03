@@ -1,3 +1,4 @@
+import { stat, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
@@ -24,6 +25,27 @@ function phosphorWeights(): Plugin {
 			const entries = code.match(ICON_WEIGHT_ENTRY);
 			if (entries?.length !== 6) this.error(`unexpected Phosphor icon definition format in ${id}`);
 			return { code: code.replace(ICON_WEIGHT_ENTRY, (entry, weight: string) => (ICON_WEIGHTS[weight] ? entry : "")), map: null };
+		},
+	};
+}
+
+/** Rollup's module membership is needed by the renderer guard; Vite's manifest omits it. */
+function rendererChunkMetadata(): Plugin {
+	const root = `${__dirname.replaceAll("\\", "/")}/`;
+	return {
+		name: "vomp:renderer-chunk-metadata",
+		apply: "build",
+		async writeBundle(options, bundle) {
+			if (!options.dir) this.error("Renderer chunk metadata requires an output directory.");
+			const chunks = await Promise.all(Object.values(bundle).filter(output => output.type === "chunk").map(async chunk => ({
+				fileName: chunk.fileName,
+				isEntry: chunk.isEntry,
+				bytes: (await stat(resolve(options.dir!, chunk.fileName))).size,
+				imports: chunk.imports,
+				dynamicImports: chunk.dynamicImports,
+				modules: Object.keys(chunk.modules).map(id => id.replaceAll("\\", "/").replaceAll(root, "").replace(/^.*\/node_modules\//, "node_modules/")).sort(),
+			})));
+			await writeFile(resolve(options.dir, "renderer-chunks.json"), `${JSON.stringify({ schemaVersion: 1, chunks }, null, 2)}\n`);
 		},
 	};
 }
@@ -66,7 +88,7 @@ export default defineConfig({
 		build: { rollupOptions: { output: { format: "cjs" } } },
 	},
 	renderer: {
-		plugins: [react(), tailwindcss(), phosphorWeights()],
+		plugins: [react(), tailwindcss(), phosphorWeights(), rendererChunkMetadata()],
 		resolve: {
 			alias: {
 				"@shared": shared,

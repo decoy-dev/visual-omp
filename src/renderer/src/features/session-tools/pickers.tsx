@@ -35,7 +35,7 @@ import { getCommand } from "../../registry/commands";
 import type { ChatSlotProps } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
-import { useTsp } from "../tsp/useTsp";
+import { useTsp } from "../../state/tsp/useTsp";
 import { semanticThinking } from "./modelTsp";
 import { autoAcknowledged, setApprovalMode, useApprovalMode } from "./approval";
 import { configuredThinking, setThinking, switchModel, thinkingChoices, useChatModels } from "./model";

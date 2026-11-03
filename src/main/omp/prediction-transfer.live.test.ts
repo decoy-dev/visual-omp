@@ -49,7 +49,7 @@ describe.skipIf(!process.env.OMP_BIN || !process.env.VOMP_PREDICTION_ALTERNATIVE
 			if (!address || typeof address === "string") throw new Error("Missing fixture provider port");
 			await writeFile(join(agent, "models.yml"), JSON.stringify({ providers: { fixture: { baseUrl: `http://127.0.0.1:${address.port}/v1`, apiKey: "local-fixture-only", api: "openai-completions", models: [{ id: "fixture-model", name: "Fixture model", reasoning: true, input: ["text"], cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128000, maxTokens: 4096 }] } } }));
 			await writeFile(join(agent, "config.yml"), JSON.stringify({ setupVersion: 999, composer: { predictions: true, predictionAlternatives: true }, autocomplete: { enabled: false }, recap: { enabled: false }, memory: { enabled: false }, idle: { enabled: false }, worktree: { onExit: "keep" }, modelRoles: { default: "fixture/fixture-model", smol: "fixture/fixture-model" } }));
-			vi.stubEnv("VOMP_TSP", transport === "tsp" ? "1" : "");
+			vi.stubEnv("VOMP_TSP", transport === "tsp" ? undefined : "0");
 			const host = hostToStop = new SessionHost({ cwd: root, extraArgs: ["--no-extensions", "--no-skills", "--no-rules", "--no-context-files", "--no-lsp", "--no-title", "--model", "fixture/fixture-model", "--thinking", "off"] });
 			const transfers = new PredictionTransfers(() => host, nativeBridge, () => {});
 			await host.start();

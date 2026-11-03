@@ -148,7 +148,7 @@ it.each(["unmatched", "matched", "ambiguous", "unavailable", "answering"] as con
 	expect([...element.querySelectorAll("button")].every(button => button.disabled)).toBe(true);
 });
 it("shows a calm completion message when a losing local answer finds that omp already closed its node", async () => {
-	const answer = vi.fn().mockRejectedValue(new Error("Error invoking remote method 'host:tsp-answer': Error: TSP preview: The question node is no longer available."));
+	const answer = vi.fn().mockRejectedValue(new Error("Error invoking remote method 'host:tsp-answer': Error: omp screen: The question node is no longer available."));
 	context = { ...context, questionMatches: [{ surfaceId: "s:1", nodeId: "hook", status: "unmatched" }], answer };
 	await render({ id: "hook", k: "picker", p: { title: "Choose", noun: "options", layout: "rows", query: null, selected: "0", items: [{ id: "0", label: "Yes" }], actions: [{ id: "confirm", label: "Select" }, { id: "close", label: "Cancel" }] } });
 	await press("Enter");
@@ -223,7 +223,7 @@ it.each(["col", "row", "section", "card"] as const)("renders an unknown-role %s 
 it("shows an unknown-kind message without exposing its props when no readable text exists", async () => {
 	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
 	await render({ id: "unknown-data", k: "future-data", p: { metadata: { internal: "Private implementation details" } } } as unknown as TspNode);
-	expect(element.querySelector("pre")?.textContent).toContain("omp content type future-data is not supported");
+	expect(element.querySelector("pre")?.textContent).toContain("visual-omp cannot display omp content type future-data.");
 	expect(element.textContent).not.toContain("metadata"); expect(element.textContent).not.toContain("Private implementation");
 	warning.mockRestore();
 });
@@ -373,8 +373,8 @@ it("explains unsupported double-click and menu actions on a row without blocking
 	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
 	await render({ id: "list", k: "list", c: [{ id: "row", k: "item", p: { label: "Entry", key: "entry", actions: { click: "select", dblclick: "future-double-reason", menu: ["future-menu-reason"] } } }] });
 	const row = element.querySelector<HTMLElement>('[role="option"]')!;
-	expect(row.title).toContain("The omp action future-double-reason is not supported");
-	expect(row.title).toContain("The omp action future-menu-reason is not supported");
+	expect(row.title).toContain("visual-omp cannot perform the omp action future-double-reason.");
+	expect(row.title).toContain("visual-omp cannot perform the omp action future-menu-reason.");
 	await click('[role="option"]');
 	expect(send).toHaveBeenCalledExactlyOnceWith({ ev: "select", sf: "s:1", id: "list", item: "entry" });
 	await click('[role="option"]', "dblclick");
@@ -386,7 +386,7 @@ it("explains an unsupported row click while keeping local selection and Enter ac
 	const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
 	await render({ id: "list", k: "list", c: [{ id: "row", k: "item", p: { label: "Entry", key: "entry", actions: { click: "future-click-reason" } } }] });
 	const row = element.querySelector<HTMLElement>('[role="option"]')!;
-	expect(row.title).toContain("The omp action future-click-reason is not supported");
+	expect(row.title).toContain("visual-omp cannot perform the omp action future-click-reason.");
 	await click('[role="option"]');
 	expect(row.getAttribute("aria-selected")).toBe("true"); expect(send).not.toHaveBeenCalled();
 	await press("Enter");

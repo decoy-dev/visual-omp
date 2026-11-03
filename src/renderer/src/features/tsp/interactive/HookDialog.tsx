@@ -25,7 +25,7 @@ export function HookDialog({ node, context }: NodeProps) {
 		inFlight.current = true; setPending(true); setError(null);
 		void context.answer!(value).catch(error => {
 			const message = error instanceof Error ? error.message : String(error);
-			const targetGone = message.includes("TSP preview: The question node is no longer available.") || message.includes("TSP preview: The target surface is no longer available.");
+			const targetGone = message.includes("omp screen: The question node is no longer available.") || message.includes("omp screen: The target surface is no longer available.");
 			inFlight.current = targetGone; setPending(targetGone); setClosed(targetGone);
 			if (!targetGone) setError(message);
 		});

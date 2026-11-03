@@ -3,7 +3,7 @@ import { isKnownAction, selectionCommits, TSP_ACTIONS } from "@shared/tsp/roles"
 import { useEffect, useId, useRef, useState } from "react";
 import { Button } from "../../../ui/Button";
 import { Input } from "../../../ui/Input";
-import { plain } from "../labels";
+import { plain } from "../../../state/tsp/labels";
 import { rawKey } from "../keys";
 import type { NodeProps } from "../nodes/context";
 import { useTranslation } from "react-i18next";

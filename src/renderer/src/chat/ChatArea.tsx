@@ -5,7 +5,7 @@ import { ResizeHandle } from "../shell/ResizeHandle";
 import { type ChatTab, controllerFor, useApp } from "../state/app";
 import { cn, duration, ease, spring } from "../ui";
 import { ChatView } from "./ChatView";
-import { PresentationVisibility } from "../features/tsp/presentation-claims";
+import { PresentationVisibility } from "../state/tsp/presentation-claims";
 
 /** Narrowest a chat may get in split view; below twice this the chat area shows only the focused chat. */
 const PANE_MIN = 360;

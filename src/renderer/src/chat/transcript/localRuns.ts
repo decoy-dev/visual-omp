@@ -3,7 +3,7 @@ import type { TspNode } from "@shared/tsp";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import { isReplicatedRole, isUserRunNode, TSP_ROLES } from "@shared/tsp/roles";
 import { region, walkNodes } from "@shared/tsp/view-state";
-import type { PresentationTarget } from "../../features/tsp/presentation-claims";
+import type { PresentationTarget } from "../../state/tsp/presentation-claims";
 import { stripAnsi } from "../../tool-render/util";
 import { isExecutionMessage, type UserRun } from "./RunRow";
 

@@ -265,7 +265,11 @@
 			},
 			"tui": {
 				"term": "TUI",
-				"def": "omp's own text interface in a terminal. visual-omp runs it for you in the background."
+				"def": "omp's own text interface. On macOS and Linux, visual-omp reads omp's screen documents to present its controls. Windows keeps omp's terminal running in the background."
+			},
+			"ompScreen": {
+				"term": "omp screen",
+				"def": "The sheet for omp's menus and settings on macOS and Linux. Open Show omp screen from the chat menu and use its controls. On Windows, Show omp terminal opens the terminal sheet instead."
 			},
 			"modelRole": {
 				"term": "model role",

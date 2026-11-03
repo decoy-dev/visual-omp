@@ -17,7 +17,7 @@ import { exitPlan, loadPlan } from "./plan";
 import { isPlanReview, parsePlanReview, type PlanReviewScreen } from "./screen";
 import { screenPoller, useOmpScreen, useSessionView } from "./status";
 import { useTspPlanReview } from "./planReviewTsp";
-import { usePresentationClaim } from "../tsp/presentation-claims";
+import { usePresentationClaim } from "../../state/tsp/presentation-claims";
 import { useApp } from "../../state/app";
 
 type PlanAction = "execute" | "compact" | "keep" | "refine" | "save";

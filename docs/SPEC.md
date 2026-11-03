@@ -52,13 +52,16 @@ be able to use it, and it exposes the features that set omp apart from other cod
   remain visible, and the detected version is refreshed on completion. Managed installations
   direct the user to the application that updates omp. A Windows launch refusal shows the reported
   reason and offers another check after the user allows omp.
-- Each chat is backed by a **real omp terminal (TUI) running hidden in a pseudo-terminal**. The app
-  types messages and commands into it (e.g. the Restart button sends `/restart`), and mirrors its
-  live state (streaming text, thinking, tool calls, subagents, questions) as native UI through
-  omp's collab protocol over a relay bound to 127.0.0.1, so the app-to-omp connection never leaves
-  the machine.
-- Full-screen TUI menus that are not rebuilt natively open in a **terminal sheet** showing the
-  live omp terminal.
+- Each app-hosted chat runs omp in a pseudo-terminal. On macOS and Linux, the app uses
+  **Tern Surface Protocol (TSP)** documents for omp's menus, editor state and native controls.
+  Input uses omp's semantic actions and guarded paste or key paths. The live transcript,
+  thinking, tools, subagents and questions use omp's collab protocol over a loopback relay,
+  so the app-to-omp connection never leaves the machine.
+- Full-screen menus and other omp content without a native app presentation open in the
+  **omp screen**, a semantic sheet. Classic chats retain the painted terminal sheet.
+  Windows starts classic unless `VOMP_TSP=1`. On macOS and Linux, hidden `VOMP_TSP=0`
+  provides classic recovery for one release. Main reads this choice when each host launches;
+  changing it never switches a running host. Classic code remains for a later removal release.
 - Setup keeps a permission mode the user already chose and suggests **Ask me first** (omp
   `always-ask`) only while omp is on its default. It saves a changed mode globally and blocks
   Continue when omp reports a mode it does not recognize. The permission button next to Send can change it later. `ensureNewUserApproval`
@@ -112,7 +115,7 @@ Full timestamp tooltips open from keyboard focus and close with Escape. Existing
 - The Preview pane is a built-in browser for dev servers.
 - The Tasks pane shows omp's todo list, its helpers (subagents) and background jobs. Each helper's activity line prefers what it is doing now, then what it did last, then omp's task description and finally its assignment with omp's assignment preamble removed. Its conversation dialog starts with the assignment and labels later messages by sender. A helper that finished its turn shows Done, even while omp keeps it for a follow-up message, and the Tasks pane still offers to message it; a message runs it again and shows it as working. The pane lists every running helper, then the three latest finished ones and any older failed one, with the rest behind "Show earlier helpers". A task row shows a success check only when every helper finished; helpers that stopped get a neutral "Stopped" mark, and a mixed batch reads running if any helper runs and failed if any failed. Helper and job outcomes come from omp's async-result notices and `job` and `wait` results. Without omp running for the chat (a saved or exited chat), a helper still marked working shows Stopped, a finished helper stays Done and can no longer be messaged, and a running job shows stopped; work still running at an omp `session_exit` entry also shows stopped in a resumed chat. A read-only chat counts as running while another window owns it or its ownership is unknown; once it is found free to continue, its unfinished work shows stopped. The header work chip, the Tasks pane, task rows and helper cards agree. Background jobs list running jobs first and then the five most recent finished ones, with the rest behind "Show earlier jobs". Each job is titled by the intent the model gave its command (or by its first real step when there is none), with that step under it. A running job shows the time since it started; a settled job shows omp's reported run time and, for a failure, the exit code, when omp reports them. A job opens to the full command, its latest output and its id. Durations on job rows and helper cards use one style: "847ms", "4.2s", "42s", "4m 05s", "1h 13m".
 - The Plan pane shows the current plan and lets you approve or refine it.
-- Chats launched with the developer TSP flag have a Side questions pane. `/btw <question>` opens that chat's pane and asks omp; bare `/btw` opens its history. Live answers stream from omp's document, and previous topics, titles and exact times come from its read-only sidecar files, including focused-helper histories. The pane offers new questions, follow-ups, copying and a separate Stop side answer action. Put away closes omp's history without stopping a side answer. Main-turn Stop remains collab abort. The pane never deletes a topic or writes omp's history. omp 18.16's steering block and Inject into main appear only when omp publishes them. Classic chats keep the terminal-sheet behavior.
+- TSP chats, including default macOS and Linux chats, have a Side questions pane. `/btw <question>` opens that chat's pane and asks omp; bare `/btw` opens its history. Live answers stream from omp's document, and previous topics, titles and exact times come from its read-only sidecar files, including focused-helper histories. The pane offers new questions, follow-ups, copying and a separate Stop side answer action. Put away closes omp's history without stopping a side answer. Main-turn Stop remains collab abort. The pane never deletes a topic or writes omp's history. omp 18.16's steering block and Inject into main appear only when omp publishes them. Classic chats keep the terminal-sheet behavior.
 - Side-question history keeps main and helper records separate even when their ids match. Native actions apply only to a topic established as belonging to the current omp overlay. Drafts retain their original chat scope and topic; displaced drafts can be copied from Saved drafts. A pending operation disables history mutation, and late results cannot clear a newer draft. The main composer names an open side question as its blocker and offers Put away without automatically dismissing it on Send.
 - Outputs groups images, PDFs and files by whether omp created, wrote, changed or viewed them.
 

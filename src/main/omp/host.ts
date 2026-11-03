@@ -19,7 +19,7 @@ import { type IPty, spawn } from "node-pty";
 import { stringify } from "yaml";
 import { z } from "zod";
 import type { HostStartOptions, HostState, HostStopMode, PromptSubmissionFailure, TuiFocus } from "@shared/ipc";
-import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspEditorRestore, type TspHostSnapshot } from "@shared/tsp-host";
+import { TspRendererEvent, TSP_CLASSIC_ACTION_UNAVAILABLE, type TspEditorRestore, type TspHostSnapshot } from "@shared/tsp-host";
 import { composer, openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { TSP_ROLES, TSP_STATUS } from "@shared/tsp/roles";
 import { hookQuestions, QuestionArbitrator } from "@shared/tsp/question-match";
@@ -207,7 +207,8 @@ export class SessionHost {
 	async start(): Promise<void> {
 		try {
 			// Read only in main at launch. Existing hosts never change renderer mid-session.
-			const useTsp = process.env.VOMP_TSP === "1";
+			const tspFlag = process.env.VOMP_TSP;
+			const useTsp = process.platform === "darwin" || process.platform === "linux" ? tspFlag !== "0" : tspFlag === "1";
 			const [bin, env] = await Promise.all([ompPath(), userEnv()]);
 			await this.#relay.start();
 			this.#relay.events = {
@@ -270,7 +271,7 @@ export class SessionHost {
 					},
 					onError: error => {
 						if (this.state.phase === "exited") return;
-						this.#tspFailure = `TSP preview: ${error.message}. Relaunch without VOMP_TSP to use the classic controls.`;
+						this.#tspFailure = `omp screen: ${error.message}. Restart omp to try again.`;
 						this.#publishTsp();
 					},
 					cols: this.#screen.cols,
@@ -482,7 +483,7 @@ export class SessionHost {
 
 	#assertTspInput(generation: number): void {
 		this.#assertApplicationInput(true);
-		if (!this.#tsp || generation !== this.state.generation || this.tspSnapshot()?.lifecycle !== "live") throw new Error("TSP preview: The session changed or its semantic UI is not ready.");
+		if (!this.#tsp || generation !== this.state.generation || this.tspSnapshot()?.lifecycle !== "live") throw new Error("omp screen: The session changed or its semantic UI is not ready.");
 	}
 
 	/** Restart may dismiss menus, but never confirms their selected item or invents an action. */
@@ -490,7 +491,7 @@ export class SessionHost {
 		return this.#applicationInput(async () => {
 			const assertCurrent = (): void => {
 				this.#assertTspInput(generation);
-				if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+				if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("omp screen: The semantic screen restarted.");
 			};
 			this.#assertTspInput(generation);
 			if (epoch === undefined) return false;
@@ -500,14 +501,14 @@ export class SessionHost {
 	}
 	tspEvent(generation: number, input: unknown, epoch = this.#tsp?.snapshot().epoch): Promise<void> {
 		const parsed = TspRendererEvent.safeParse(input);
-		if (!parsed.success) return Promise.reject(new Error("TSP preview: Invalid or main-owned renderer event."));
+		if (!parsed.success) return Promise.reject(new Error("omp screen: Invalid or main-owned renderer event."));
 		const event = parsed.data;
 		const assertCurrent = (): void => {
 			this.#assertTspInput(generation);
-			if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
-			if (["send", "edit", "undo"].includes(event.ev) && this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
-			if (this.#tspSurfaceGenerations.get(event.sf) !== generation) throw new Error("TSP preview: The target surface belongs to an earlier session.");
-			if (event.ev === "action" && this.composerFacts().blockedBy === "approval") throw new Error("TSP preview: Answer the approval before changing omp settings.");
+			if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("omp screen: The semantic screen restarted.");
+			if (["send", "edit", "undo"].includes(event.ev) && this.#editorTransferBlocked) throw new Error(`omp screen: ${this.#editorTransferBlocked}`);
+			if (this.#tspSurfaceGenerations.get(event.sf) !== generation) throw new Error("omp screen: The target surface belongs to an earlier session.");
+			if (event.ev === "action" && this.composerFacts().blockedBy === "approval") throw new Error("omp screen: Answer the approval before changing omp settings.");
 		};
 		return this.#applicationInput(async () => {
 			assertCurrent();
@@ -517,13 +518,13 @@ export class SessionHost {
 	/** Bind advisor file actions to the prepared scope at both serialized input boundaries. */
 	tspAdvisor(generation: number, input: unknown, epoch: number): Promise<void> {
 		const parsed = TspAdvisorAction.safeParse(input);
-		if (!parsed.success) return Promise.reject(new Error("TSP preview: Invalid advisor action."));
+		if (!parsed.success) return Promise.reject(new Error("omp screen: Invalid advisor action."));
 		const action = parsed.data;
 		const assertCurrent = (): void => {
 			this.#assertTspInput(generation);
-			if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
-			if (this.#tspSurfaceGenerations.get(action.sf) !== generation) throw new Error("TSP preview: The target surface belongs to an earlier session.");
-			if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
+			if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("omp screen: The semantic screen restarted.");
+			if (this.#tspSurfaceGenerations.get(action.sf) !== generation) throw new Error("omp screen: The target surface belongs to an earlier session.");
+			if (this.#editorTransferBlocked) throw new Error(`omp screen: ${this.#editorTransferBlocked}`);
 			if (this.composerFacts().blockedBy === "approval") throw new Error("Answer the approval before applying advisor configuration.");
 		};
 		return this.#applicationInput(async () => {
@@ -537,11 +538,11 @@ export class SessionHost {
 		const assertCurrent = (): void => {
 			this.#assertTspInput(generation);
 			const snapshot = this.tspSnapshot()!;
-			if (epoch !== snapshot.epoch) throw new Error("TSP preview: The semantic screen restarted.");
-			if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
-			if (this.#tspSurfaceGenerations.get(surfaceId) !== generation) throw new Error("TSP preview: The target surface belongs to an earlier session.");
+			if (epoch !== snapshot.epoch) throw new Error("omp screen: The semantic screen restarted.");
+			if (this.#editorTransferBlocked) throw new Error(`omp screen: ${this.#editorTransferBlocked}`);
+			if (this.#tspSurfaceGenerations.get(surfaceId) !== generation) throw new Error("omp screen: The target surface belongs to an earlier session.");
 			const target = treeSelector(snapshot.surfaces);
-			if (!target || target.surface.open.id !== surfaceId || target.node.id !== selectorId) throw new Error("TSP preview: The session tree selector changed. Open the tree again.");
+			if (!target || target.surface.open.id !== surfaceId || target.node.id !== selectorId) throw new Error("omp screen: The session tree selector changed. Open the tree again.");
 			assertTreeEntry(target.node, entryId);
 		};
 		return this.#applicationInput(async () => {
@@ -553,16 +554,16 @@ export class SessionHost {
 	/** Local hook answers are arbitrated again inside both serialized input boundaries. */
 	tspAnswer(generation: number, input: unknown, epoch: number): Promise<void> {
 		const parsed = TspHookAnswer.safeParse(input);
-		if (!parsed.success) return Promise.reject(new Error("TSP preview: Invalid question answer."));
+		if (!parsed.success) return Promise.reject(new Error("omp screen: Invalid question answer."));
 		const answer = parsed.data;
 		return this.#applicationInput(async () => {
 			this.#assertTspInput(generation);
 			await this.#tsp!.answerHook(answer, (surfaceId, nodeId) => {
 				this.#assertTspInput(generation);
 				const snapshot = this.tspSnapshot()!;
-				if (epoch !== snapshot.epoch) throw new Error("TSP preview: The semantic screen restarted.");
-				if (this.#tspSurfaceGenerations.get(surfaceId) !== generation) throw new Error("TSP preview: The target surface belongs to an earlier session.");
-				if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
+				if (epoch !== snapshot.epoch) throw new Error("omp screen: The semantic screen restarted.");
+				if (this.#tspSurfaceGenerations.get(surfaceId) !== generation) throw new Error("omp screen: The target surface belongs to an earlier session.");
+				if (this.#editorTransferBlocked) throw new Error(`omp screen: ${this.#editorTransferBlocked}`);
 				this.#tspQuestions.answer({ hostId: this.id, generation, epoch }, hookQuestions(snapshot.surfaces, generation), surfaceId, nodeId);
 			});
 			this.#publishTsp();
@@ -571,7 +572,7 @@ export class SessionHost {
 
 	/** Raw bytes to the TUI (terminal sheet keystrokes). */
 	write(data: string): void | Promise<void> {
-		if (this.#tsp) return Promise.reject(new Error(TSP_PREVIEW_UNAVAILABLE));
+		if (this.#tsp) return Promise.reject(new Error(TSP_CLASSIC_ACTION_UNAVAILABLE));
 		this.#captureStartupNotices = false;
 		this.#finishStartup();
 		this.#writeInput(data);
@@ -594,15 +595,15 @@ export class SessionHost {
 			return this.#applicationInput(async () => {
 				const assertCurrent = (): void => {
 					this.#assertTspInput(generation);
-					if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
-					if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
+					if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("omp screen: The semantic screen restarted.");
+					if (this.#editorTransferBlocked) throw new Error(`omp screen: ${this.#editorTransferBlocked}`);
 					if (followUpSource) {
 						followUpSource.target.assertCurrent();
-						if (this.composerFacts().text !== followUpSource.text) throw new Error("TSP preview: The editor changed before the follow-up could be written.");
+						if (this.composerFacts().text !== followUpSource.text) throw new Error("omp screen: The editor changed before the follow-up could be written.");
 					}
 				};
 				assertCurrent();
-				if (text.startsWith("/") && this.composerFacts().blockedBy === "approval") throw new Error("TSP preview: Answer the approval before sending a command.");
+				if (text.startsWith("/") && this.composerFacts().blockedBy === "approval") throw new Error("omp screen: Answer the approval before sending a command.");
 				const allowed = (surface: string) => this.#tspSurfaceGenerations.get(surface) === generation;
 				const submission = submissionId ? await this.#beginPromptSubmission(submissionId, text, imagePaths?.match(/(?:\\.|[^\s])+/g)?.length ?? 0) : null;
 				try {
@@ -824,11 +825,11 @@ export class SessionHost {
 			this.#tspPastesPending++;
 			return this.#applicationInput(async () => {
 				this.#assertTspInput(generation);
-				if (epoch !== this.#tsp!.snapshot().epoch || !this.tspSnapshot()?.availability.available) throw new Error("TSP preview: Close the open omp menu before pasting.");
-				if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
+				if (epoch !== this.#tsp!.snapshot().epoch || !this.tspSnapshot()?.availability.available) throw new Error("omp screen: Close the open omp menu before pasting.");
+				if (this.#editorTransferBlocked) throw new Error(`omp screen: ${this.#editorTransferBlocked}`);
 				await this.#tsp!.paste(text, () => {
 					this.#assertTspInput(generation);
-					if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+					if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("omp screen: The semantic screen restarted.");
 				}, surface => this.#tspSurfaceGenerations.get(surface) === generation);
 			}).catch(error => {
 				this.#editorTransferBlocked = "The paste did not finish. Restart omp before sending another message.";
@@ -894,7 +895,7 @@ export class SessionHost {
 		return this.#applicationInput(async () => {
 			await this.#resolveWorktreeQuestion();
 			this.#assertApplicationInput(true);
-			if (this.#editorRestore) throw new Error("TSP preview: Recover and acknowledge the restored message before another editor transfer.");
+			if (this.#editorRestore) throw new Error("omp screen: Recover and acknowledge the restored message before another editor transfer.");
 			const generation = this.state.generation;
 			const epoch = this.#tsp?.snapshot().epoch;
 			let active = true;
@@ -903,7 +904,7 @@ export class SessionHost {
 				this.#assertApplicationInput(true);
 				if (this.#tsp) {
 					this.#assertTspInput(generation);
-					if (epoch !== this.#tsp.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+					if (epoch !== this.#tsp.snapshot().epoch) throw new Error("omp screen: The semantic screen restarted.");
 				}
 			};
 			const input: EditorInputTransaction = {
@@ -917,12 +918,12 @@ export class SessionHost {
 					assertOpen();
 					if (this.#tsp) {
 						const before = this.composerFacts();
-						if (keys === "tab" && expectedGhost !== undefined && before.ghost !== expectedGhost) throw new Error("TSP preview: The offered suggestion changed before Tab.");
+						if (keys === "tab" && expectedGhost !== undefined && before.ghost !== expectedGhost) throw new Error("omp screen: The offered suggestion changed before Tab.");
 						const target = this.#tsp.pinEditor(surface => this.#tspSurfaceGenerations.get(surface) === generation);
-						if (this.#tsp.hasHookDialog() || !before.sendable || before.blockedBy) throw new Error("TSP preview: Close the open omp menu before editing.");
+						if (this.#tsp.hasHookDialog() || !before.sendable || before.blockedBy) throw new Error("omp screen: Close the open omp menu before editing.");
 						this.#writeInput(keys === "tab" ? "\t" : keys === "escape" ? "\x1b" : keys);
 						if (keys === "tab" && before.ghost) {
-							await this.#tsp.waitFor(() => this.composerFacts().text !== before.text, () => { assertOpen(); target.assertCurrent(); }, 8000, "TSP preview: omp did not accept the offered suggestion.");
+							await this.#tsp.waitFor(() => this.composerFacts().text !== before.text, () => { assertOpen(); target.assertCurrent(); }, 8000, "omp screen: omp did not accept the offered suggestion.");
 						}
 						return;
 					}
@@ -1069,10 +1070,10 @@ export class SessionHost {
 	takeEditorRestore(generation: number, epoch: number, surfaceId: string, editorId: string, text: string): Promise<void> {
 		return this.#applicationInput(async () => {
 			this.#assertTspInput(generation);
-			if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
-			if (this.#editorRestore || this.#editorTransferBlocked) throw new Error("TSP preview: Recover the previous editor transfer before restoring another message.");
+			if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("omp screen: The semantic screen restarted.");
+			if (this.#editorRestore || this.#editorTransferBlocked) throw new Error("omp screen: Recover the previous editor transfer before restoring another message.");
 			const facts = this.composerFacts();
-			if (!facts.sendable || facts.blockedBy || facts.surfaceId !== surfaceId || facts.editorId !== editorId || facts.text !== text) throw new Error("TSP preview: The restored editor changed before its draft could be saved. It was left unchanged.");
+			if (!facts.sendable || facts.blockedBy || facts.surfaceId !== surfaceId || facts.editorId !== editorId || facts.text !== text) throw new Error("omp screen: The restored editor changed before its draft could be saved. It was left unchanged.");
 			if (!text) return;
 			const target = this.#tsp!.pinEditor(surface => surface === surfaceId && this.#tspSurfaceGenerations.get(surface) === generation);
 			await this.#captureEditorRestore(generation, target, text);
@@ -1089,7 +1090,7 @@ export class SessionHost {
 
 	ackEditorRestore(id: string): void {
 		if (!this.#editorRestore || this.#editorRestore.view.id !== id) return;
-		if (!this.#editorRestore.view.cleared) throw new Error("TSP preview: Recover omp's editor before acknowledging the restored message.");
+		if (!this.#editorRestore.view.cleared) throw new Error("omp screen: Recover omp's editor before acknowledging the restored message.");
 		this.#editorRestore = null;
 		this.#editorTransferBlocked = null;
 		this.#publishTsp();
@@ -1128,7 +1129,7 @@ export class SessionHost {
 			capture.view = { ...capture.view, cleared: true, error: null };
 		} catch (error) {
 			capture.view = { ...capture.view, error: error instanceof Error ? error.message : String(error) };
-			throw new Error(`TSP preview: The restored message is saved. Retry editor recovery. ${capture.view.error}`);
+			throw new Error(`omp screen: The restored message is saved. Retry editor recovery. ${capture.view.error}`);
 		} finally { this.#publishTsp(); }
 	}
 
@@ -1138,16 +1139,16 @@ export class SessionHost {
 				const snapshot = this.tspSnapshot();
 				const dialogs = snapshot ? hookQuestions(snapshot.surfaces, this.state.generation) : [];
 				if (dialogs.length) {
-					if (generation === undefined || epoch === undefined || dialogs.length !== 1) return Promise.reject(new Error("TSP preview: The current question is ambiguous."));
+					if (generation === undefined || epoch === undefined || dialogs.length !== 1) return Promise.reject(new Error("omp screen: The current question is ambiguous."));
 					const target = dialogs[0]!;
 					return this.tspAnswer(generation, { kind: "cancel", sf: target.surfaceId, id: target.nodeId }, epoch);
 				}
 			}
 			return this.#applicationInput(async () => {
-				if (generation === undefined || epoch === undefined) throw new Error(TSP_PREVIEW_UNAVAILABLE);
+				if (generation === undefined || epoch === undefined) throw new Error(TSP_CLASSIC_ACTION_UNAVAILABLE);
 				this.#assertTspInput(generation);
-				if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
-				if (this.#tsp!.hasHookDialog()) throw new Error("TSP preview: Answer or cancel this question using its controls. Raw keys are unavailable while a question is open.");
+				if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("omp screen: The semantic screen restarted.");
+				if (this.#tsp!.hasHookDialog()) throw new Error("omp screen: Answer or cancel this question using its controls. Raw keys are unavailable while a question is open.");
 				if (this.#editorRestore) {
 					await this.#finishEditorRestore(this.#editorRestore);
 					return;
@@ -1155,10 +1156,10 @@ export class SessionHost {
 				const before = this.composerFacts();
 				const target = before.queued.length ? this.#tsp!.pinEditor(surface => this.#tspSurfaceGenerations.get(surface) === generation) : null;
 				if (keys === "undo" || keys === "\x1a") {
-					if (!before.sendable || !before.surfaceId || !before.editorId || before.blockedBy) throw new Error("TSP preview: Close the open omp menu before undoing an edit.");
+					if (!before.sendable || !before.surfaceId || !before.editorId || before.blockedBy) throw new Error("omp screen: Close the open omp menu before undoing an edit.");
 					await this.#tsp!.send({ ev: "undo", sf: before.surfaceId, id: before.editorId }, () => {
 						this.#assertTspInput(generation);
-						if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+						if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("omp screen: The semantic screen restarted.");
 					});
 					return;
 				}
@@ -1167,16 +1168,16 @@ export class SessionHost {
 					const assertCurrent = () => {
 						target!.assertCurrent();
 						this.#assertTspInput(generation);
-						if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+						if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("omp screen: The semantic screen restarted.");
 						const current = this.composerFacts();
-						if (current.surfaceId !== target!.surfaceId || current.editorId !== target!.editorId) throw new Error("TSP preview: The original editor changed.");
+						if (current.surfaceId !== target!.surfaceId || current.editorId !== target!.editorId) throw new Error("omp screen: The original editor changed.");
 					};
 					await this.#tsp!.waitFor(() => {
 						const facts = this.composerFacts();
 						return facts.queued.length === 0 && !!facts.text && facts.sendable;
-					}, assertCurrent, 8000, "TSP preview: omp did not return the queued text to its editor.");
+					}, assertCurrent, 8000, "omp screen: omp did not return the queued text to its editor.");
 					const facts = this.composerFacts();
-					if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
+					if (this.#editorTransferBlocked) throw new Error(`omp screen: ${this.#editorTransferBlocked}`);
 					await this.#captureEditorRestore(generation, target!, facts.text);
 				}
 			});
@@ -1200,7 +1201,7 @@ export class SessionHost {
 	#assertClassicRead(source: string): void {
 		if (!this.#tsp) return;
 		this.#screenReadAttempts.push({ source });
-		throw new Error(TSP_PREVIEW_UNAVAILABLE);
+		throw new Error(TSP_CLASSIC_ACTION_UNAVAILABLE);
 	}
 
 	async screenLines(): Promise<string[]> {

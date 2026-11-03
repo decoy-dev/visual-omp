@@ -291,7 +291,7 @@ async function withFixture(name: string, transport: Transport, work: (fixture: F
 		const { stdout } = await runFile(isolated.bin, ["--version"], { cwd: root, env: isolated.env, timeout: 15_000 });
 		report.version = /\b(18\.(?:15|16)\.\d+)\b/.exec(stdout)?.[1];
 		expect(report.version, "This gate covers the supplied omp 18.15/18.16 binaries").toBeDefined();
-		vi.stubEnv("VOMP_TSP", transport === "tsp" ? "1" : "");
+		vi.stubEnv("VOMP_TSP", transport === "tsp" ? undefined : "0");
 		const listeners = new Map<string, Set<(value: unknown) => void>>();
 		const fixture: Fixture = { root, agent, transport, legacy: report.version!.startsWith("18.15."), controller: undefined!, hosts,
 			observations: new Map(), submits: [], acks: [], failures: new Map(), requests: [], providerErrors: [], baseUrl: "", expectedProviderImages: [], maxUserEntries: 0, report };

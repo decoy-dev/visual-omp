@@ -1,11 +1,13 @@
 import type { TspNode } from "@shared/tsp";
 import { useApp } from "../../state/app";
-import { usePresentationClaim } from "../../features/tsp/presentation-claims";
-import { NodeView } from "../../features/tsp/nodes/NodeView";
+import { usePresentationClaim } from "../../state/tsp/presentation-claims";
+import { lazyView } from "../../registry/lazy";
 import type { NodeContext } from "../../features/tsp/nodes/context";
 import { RunRow } from "./RunRow";
 import { nativeRunBody, type NativeRun } from "./localRuns";
 import type { TranscriptMode } from "./Transcript";
+
+const NodeView = lazyView(() => import("../../features/tsp/nodes/NodeView").then(module => module.NodeView));
 
 /** Matched nodes are claimed only while their saved row is part of the rendered transcript window. */
 function NativeRunConsumer({ item, visibleEntries, mode, visible }: { item: NativeRun; visibleEntries: ReadonlySet<string>; mode: TranscriptMode; visible: boolean }) {

@@ -15,12 +15,13 @@
   "main": "./out/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
-    "build": "electron-vite build",
+    "build": "electron-vite build && npm run guard:renderer",
     "preview": "electron-vite preview",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
-    "test": "vitest run",
-    "dist:mac": "electron-vite build && electron-builder --mac dmg --arm64 --x64 --publish never",
-    "dist:win": "electron-vite build && electron-builder --win nsis --x64 --publish never"
+    "guard:renderer": "node scripts/guard-renderer-bundle.mjs",
+    "test": "vitest run && node --test scripts/guard-renderer-bundle.test.mjs",
+    "dist:mac": "npm run build && electron-builder --mac dmg --arm64 --x64 --publish never",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
     "node-pty": "^1.1.0"

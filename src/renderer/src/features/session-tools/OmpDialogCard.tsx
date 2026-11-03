@@ -11,10 +11,10 @@ import { reportFailure } from "./drive";
 import { dialogKey, type OmpDialog, type OmpSelectDialog, type OmpTextDialog, parseOmpDialog } from "./ompDialog";
 import { cancelDialog, chooseOption, submitText } from "./ompDialogActions";
 import { screenPoller, useOmpScreen, useSessionView } from "./status";
-import { useTsp } from "../tsp/useTsp";
+import { useTsp } from "../../state/tsp/useTsp";
 import { currentHook, dialogAnswer, nativeDialog, waitForNodeToLeave } from "./ompDialogTsp";
 import type { TspHookAnswer } from "@shared/tsp/dialogs";
-import { usePresentationClaim } from "../tsp/presentation-claims";
+import { usePresentationClaim } from "../../state/tsp/presentation-claims";
 
 interface DialogActions {
 	disabled: boolean;
@@ -256,7 +256,7 @@ function TspDialogCard({ session }: ChatSlotProps) {
 		} catch (error) {
 			controller.abort();
 			const message = error instanceof Error ? error.message : String(error);
-			const gone = message.includes("TSP preview: The question node is no longer available.") || message.includes("TSP preview: The target surface is no longer available.");
+			const gone = message.includes("omp screen: The question node is no longer available.") || message.includes("omp screen: The target surface is no longer available.");
 			inFlight.current = gone; setPending(gone); setClosed(gone);
 			if (!gone) setError(message);
 			return;

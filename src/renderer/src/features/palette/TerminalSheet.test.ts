@@ -129,7 +129,7 @@ it.each(["epoch", "generation"])("clears local tree selection when the %s change
 	expect(fake.invoke).toHaveBeenCalledWith("host:tsp-event", "host", generation, { ev: "activate", sf: "s:1", id: "tree", item: "a" }, epoch);
 });
 
-it("shows a failed preview restart error in the sheet", async () => {
+it("shows a failed omp screen restart error in the sheet", async () => {
 	fake.invoke.mockResolvedValue({ hostId: "host", generation: 2, epoch: 1, revision: 1, negotiated: false, lifecycle: "failed", documentGeneration: null, availability: { available: false, reason: "Not ready" }, failure: "omp did not start its semantic screen", surfaces: [] });
 	fake.restart.mockRejectedValue(new Error("Could not stop omp"));
 	await render();
@@ -139,13 +139,15 @@ it("shows a failed preview restart error in the sheet", async () => {
 	expect(element.textContent).toContain("Could not stop omp");
 });
 
-it("does not offer a misleading classic restart control for an exited preview", async () => {
+it("restarts an exited omp screen without exposing the classic escape", async () => {
 	fake.view = { ...hostView(true), mode: "exited", host: { ...hostView(true).host!, phase: "exited" } };
 	fake.invoke.mockResolvedValue({ hostId: "host", generation: 2, revision: 2, negotiated: false, lifecycle: "exited", documentGeneration: 1, failure: null, surfaces: [] });
 	await render();
-	expect(element.textContent).toContain("Quit and relaunch visual-omp without VOMP_TSP");
-	expect([...element.querySelectorAll("button")].some(button => button.textContent === "Restart omp")).toBe(false);
-	expect(element.textContent).not.toContain("Restart it to use this screen again.");
+	expect(element.textContent).not.toContain("VOMP_TSP");
+	const restart = [...element.querySelectorAll("button")].find(button => button.textContent === "Restart omp")!;
+	expect(restart).toBeDefined();
+	await act(async () => restart.click());
+	expect(fake.restart).toHaveBeenCalledOnce();
 });
 
 it("keeps classic screen naming, the mirror and the leave confirmation with Escape", async () => {

@@ -1,6 +1,6 @@
 # Working on visual-omp
 
-visual-omp is an Electron + React desktop app that wraps the omp (oh-my-pi) coding agent. Chats running in the app use omp's TUI in a hidden pty and mirror it through omp's collab stream; saved chats and terminal-follow views read session files. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SPEC.md](docs/SPEC.md) first, and [docs/DESIGN.md](docs/DESIGN.md) before touching UI. The latest session handoff is in [docs/context/](docs/context/).
+visual-omp is an Electron + React desktop app that wraps the omp (oh-my-pi) coding agent. App-hosted chats use omp's Tern Surface Protocol (TSP) by default on macOS and Linux, with collab providing the transcript and questions. Windows stays classic unless `VOMP_TSP=1`; hidden `VOMP_TSP=0` selects classic recovery for one release on macOS and Linux. Main reads the choice at host launch, and running hosts keep their presentation. Classic adapters remain until the later removal release. Saved chats and terminal-follow views read session files. Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/SPEC.md](docs/SPEC.md) first, and [docs/DESIGN.md](docs/DESIGN.md) before touching UI. The latest session handoff is in [docs/context/](docs/context/).
 
 ## The owner's standing rules
 

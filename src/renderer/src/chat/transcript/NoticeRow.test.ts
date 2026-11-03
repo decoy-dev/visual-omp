@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 import "../../i18n";
 import { NoticeRow } from "./NoticeRow";
 import { FixtureDocuments } from "../../features/tsp/testing/documents";
-import { TspNoticeProjection } from "../../features/tsp/notices";
+import { TspNoticeProjection } from "../../state/tsp/notices";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 
 const recordings = import.meta.glob<string>("../../../../main/omp/tsp/fixtures/18.15.0/*.messages.jsonl", { query: "?raw", import: "default", eager: true });

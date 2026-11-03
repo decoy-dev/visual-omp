@@ -17,7 +17,7 @@ import { TooltipProvider } from "../../ui/Tooltip";
 import "../../i18n";
 import { Shortcuts } from "./Shortcuts";
 import { TerminalSheetHost } from "./TerminalSheet";
-import { presentationClaims } from "../tsp/presentation-claims";
+import { presentationClaims } from "../../state/tsp/presentation-claims";
 const releaseClaims: (() => void)[] = [];
 
 const fake = vi.hoisted(() => ({
@@ -183,7 +183,7 @@ it("closes the claimed hook sheet without entering a competing local answer queu
 	releaseClaims.push(presentationClaims.acquire({ hostId: "host", epoch: 4, surfaceId: "s:1", nodeId: "hook" }));
 	fake.invoke.mockImplementation(async (channel: string) => {
 		if (channel === "host:tsp-snapshot") return snapshot;
-		if (channel === "host:keys") throw new Error("TSP preview: This question cannot be answered here (matched).");
+		if (channel === "host:keys") throw new Error("omp screen: This question cannot be answered here (matched).");
 	});
 	await act(async () => root.render(sheetTree()));
 	await act(async () => document.querySelector('[role="region"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));

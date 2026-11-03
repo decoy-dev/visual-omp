@@ -4,12 +4,12 @@
  */
 import { TspDocumentStore } from "@shared/tsp/document";
 import { openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
-import { TSP_PREVIEW_UNAVAILABLE, type TspHostSnapshot } from "@shared/tsp-host";
+import { TSP_CLASSIC_ACTION_UNAVAILABLE, type TspHostSnapshot } from "@shared/tsp-host";
 import { commandOutcome, commandOutcomeSpec, type CommandOutcome, type CommandOutcomeSpec } from "@shared/tsp/command-result";
 import { TSP_ROLES } from "@shared/tsp/roles";
 import { toast } from "@/ui";
 import { i18n } from "../../i18n";
-import type { TspCommandNoticeReservation } from "../tsp/notices";
+import type { TspCommandNoticeReservation } from "../../state/tsp/notices";
 import type { SessionController } from "../../state/session";
 import { outputTone } from "./results";
 import { newOutput, parseStatusLine, statusBorderLine } from "./screen";
@@ -23,7 +23,7 @@ export function sleep(ms: number): Promise<void> {
 }
 
 export async function readScreen(session: SessionController): Promise<string[]> {
-	if (session.getSnapshot().host?.transport === "tsp") throw new Error(TSP_PREVIEW_UNAVAILABLE);
+	if (session.getSnapshot().host?.transport === "tsp") throw new Error(TSP_CLASSIC_ACTION_UNAVAILABLE);
 	const hostId = session.hostId;
 	if (!hostId) return [];
 	return window.vomp.invoke("host:screen", hostId);
@@ -53,7 +53,7 @@ export class OmpBusyError extends Error {
 
 /** Readiness failed without evidence that an omp menu is open. */
 export async function statusReadError(session: SessionController, lines: readonly string[]): Promise<Error> {
-	if (session.getSnapshot().host?.transport === "tsp") return new Error(TSP_PREVIEW_UNAVAILABLE);
+	if (session.getSnapshot().host?.transport === "tsp") return new Error(TSP_CLASSIC_ACTION_UNAVAILABLE);
 	if (session.hostId) {
 		await window.vomp.invoke("host:statusUnreadable", session.hostId, statusBorderLine(lines)).catch(() => undefined);
 	}

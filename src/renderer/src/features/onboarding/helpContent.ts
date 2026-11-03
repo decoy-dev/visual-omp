@@ -28,6 +28,7 @@ export const TERMS = [
 	"subagent",
 	"checkpoint",
 	"tui",
+	"ompScreen",
 	"modelRole",
 ] as const;
 

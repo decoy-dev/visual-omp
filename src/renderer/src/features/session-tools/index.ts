@@ -1,19 +1,24 @@
+import { createElement } from "react";
 import { lazyView } from "../../registry/lazy";
-import { chatSlots, sheets } from "../../registry/slots";
+import { chatSlots, sheets, type ChatSlotProps } from "../../registry/slots";
 import { registerNativeOverlay } from "../palette/overlays";
-import { OmpDialogCard } from "./OmpDialogCard";
 import { parseOmpDialog } from "./ompDialog";
+import { NativeCardLoading, NativeCardPresentation } from "./NativeCardLoading";
 import { ModelButton, PermissionButton, ThinkingButton } from "./pickers";
-import { PlanReviewCard } from "./PlanReviewCard";
 import { parsePlanReview } from "./screen";
 import { isAdvisorConfigure } from "./advisorApply";
 import "./modes";
 
+const PlanReviewCard = lazyView(() => import("./PlanReviewCard").then(m => m.PlanReviewCard), NativeCardLoading);
+const OmpDialogCard = lazyView(() => import("./OmpDialogCard").then(m => m.OmpDialogCard), NativeCardLoading);
+
 chatSlots.register({ id: "session-permission", placement: "composerTools", order: 20, component: PermissionButton });
 chatSlots.register({ id: "session-model", placement: "composerTools", order: 70, component: ModelButton });
 chatSlots.register({ id: "session-thinking", placement: "composerTools", order: 80, component: ThinkingButton });
-chatSlots.register({ id: "session-plan-review", placement: "transcriptEnd", order: 10, component: PlanReviewCard });
-chatSlots.register({ id: "session-omp-dialog", placement: "transcriptEnd", order: 20, component: OmpDialogCard });
+chatSlots.register({ id: "session-plan-review", placement: "transcriptEnd", order: 10,
+	component: (props: ChatSlotProps) => createElement(NativeCardPresentation, { ...props, kind: "plan" }, createElement(PlanReviewCard, props)) });
+chatSlots.register({ id: "session-omp-dialog", placement: "transcriptEnd", order: 20,
+	component: (props: ChatSlotProps) => createElement(NativeCardPresentation, { ...props, kind: "dialog" }, createElement(OmpDialogCard, props)) });
 
 // The cards above draw these omp screens, so the terminal sheet stays closed for them. The matchers
 // claim exactly what the cards render; anything they cannot read still opens the sheet.

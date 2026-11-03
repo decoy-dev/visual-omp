@@ -16,7 +16,7 @@ import { ResizeHandle } from "./ResizeHandle";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { TitleBar } from "./TitleBar";
-import { PresentationVisibility } from "../features/tsp/presentation-claims";
+import { PresentationVisibility } from "../state/tsp/presentation-claims";
 
 /** Longest a sheet that plays an exit may take to report it before the host drops it anyway. */
 const SHEET_EXIT_MAX_MS = 1000;

@@ -1,6 +1,6 @@
 # visual-omp: moving app-hosted chats to TSP plus collab
 
-Status: proposed migration. Written 2026-10-30 against visual-omp `main` at `da5e968` (0.7.2) and omp 18.14.0, then revised after astra's review. The protocol and recording baseline is now omp 18.15.0. It describes intended changes; `docs/ARCHITECTURE.md` and `docs/SPEC.md` remain the description of current behavior until each phase ships.
+Status: Phase 7 FLIP is implemented on the unmerged `feat/tsp-p7-flip` branch. macOS and Linux default to TSP; hidden `VOMP_TSP=0` keeps classic recovery for one release under D3. Windows remains classic unless `VOMP_TSP=1` under D5, with Phase 6 manual criteria 5 and 6 still open. Main reads the presentation at host launch. This branch has not shipped, and classic-code removal remains a later release. The plan was written 2026-10-30 against visual-omp `main` at `da5e968` (0.7.2) and omp 18.14.0, then revised after astra's review. The protocol and recording baseline is now omp 18.15.0. Earlier phase descriptions and dated evidence below record the migration history; `docs/ARCHITECTURE.md` and `docs/SPEC.md` describe this branch's current behavior.
 
 ## Sources and citations
 
@@ -12,7 +12,7 @@ Status: proposed migration. Written 2026-10-30 against visual-omp `main` at `da5
 
 ## Objective
 
-Every app-hosted chat moves from reading omp's painted classic TUI to reading omp's Tern Surface Protocol (TSP) documents, with collab kept as the transcript, sharing and question channel. The plan ends with TSP as the default presentation and the classic screen adapters A2-A17 deleted. File-based terminal-follow for sessions owned by another process stays as it is.
+App-hosted chats move from reading omp's painted classic TUI to reading omp's Tern Surface Protocol (TSP) documents, with collab kept as the transcript, sharing and question channel. The FLIP branch makes TSP the default on macOS and Linux while retaining classic recovery and the Windows default. The later removal release deletes the classic screen adapters A2-A17 only after its gates pass. File-based terminal-follow for sessions owned by another process stays as it is.
 
 Removing the painted terminal for hosted chats is the proposed consequence of the owner's direction ("use TSP, if it means rebuilding how visual-omp works, then so be it"). It is conditional: every place that opens the omp terminal today must have a working semantic replacement before the default changes.
 
@@ -68,7 +68,7 @@ These are the visual-omp mechanisms that read the painted screen or drive it wit
 - Collab stays authoritative for the transcript replica, sharing, guest permissions, subagents, main-turn abort and replicated asks and approvals.
 - The app keeps its own composer, transcript, cards and panes, and uses omp's documents for state and for a semantic screen. studio chose a similar hybrid ([`docs/architecture/tsp-migration.md:139`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L139)). Decision D1 asks the owner to confirm it.
 - omp defines its role strings, such as `omp.overlay.hook-select`, outside the TSP v1 wire contract, so they can change between omp releases ([`packages/wire/src/tsp.ts:14-18`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/wire/src/tsp.ts#L14-L18) cites the normative protocol, which does not define them).
-- Every Windows statement is source or studio evidence until Phase 6 produces visual-omp's own.
+- Windows transport, packaging and repeated-host cleanup now have the scoped CI evidence recorded in Phase 6. Installed-build lifecycle checks and Defender/SmartScreen acceptance remain unverified until manual criteria 5 and 6 pass.
 
 ## End state
 
@@ -113,7 +113,7 @@ Authority after the migration:
 ## Rules for every phase
 
 1. **Launch-time choice.** A host is classic or TSP for its whole process life, because the study found no supported way to switch a running omp between renderers. `HostState` carries the presentation (`"classic" | "tsp"`), so the renderer never guesses it from screen content.
-2. **Developer flag until the flip.** Phases 1-6 run only with `VOMP_TSP=1`, read in main at chat launch. Each phase can merge on its own, but the preview is a developer tool with known gaps until the Phase 2 usability gate passes, and it reaches parity only at the end of Phase 4. Classic presentation retains its existing behavior. Shared safety exceptions cover attachment acknowledgement and rejected prompts: classic image sends wait for upstream tokens, ordinary sends observe their scoped input and guard an unresolved hidden draft, and confirmed rejections remain queued for explicit retry. Nonempty or unreadable editor state uses recovery-safe shutdown.
+2. **Launch policy changes at the flip.** Phases 1-6 used developer-only `VOMP_TSP=1`, read in main at host launch. Phase 7 FLIP now defaults macOS and Linux to TSP, with hidden `VOMP_TSP=0` selecting classic recovery for one release under D3. Windows remains classic unless `VOMP_TSP=1` until Phase 6 passes under D5. The choice stays fixed for the host's process life. Earlier previews had known gaps until the Phase 2 usability gate, with input and adapter parity built in Phases 3 and 4. Classic presentation retains its behavior. Shared safety exceptions cover attachment acknowledgement and rejected prompts: classic image sends wait for upstream tokens, ordinary sends observe their scoped input and guard an unresolved hidden draft, and confirmed rejections remain queued for explicit retry. Nonempty or unreadable editor state uses recovery-safe shutdown.
 3. **One writer.** Every byte written to the PTY goes through one synchronous writer in `SessionHost`. Renderer-originated TSP events and keys enter the existing application-input chain (`#applicationInput` in `src/main/omp/host.ts`), with closing, generation and surface-id checks. Only protocol housekeeping (hello reply, DA1 answer, `ack`, `resize`, `theme`, `motion`) bypasses the transaction queue; it still uses the same writer and is never written in the middle of a multi-part write. `send` and `undo` are emitted only when omp's hello query advertised them.
 4. **Role registry.** Every omp role string, action name and status word the app depends on is declared once in `src/shared/tsp/roles.ts`. Feature code imports names from there, so an omp rename fails one test file. studio follows the same rule ([`docs/architecture/tsp-btw.md:73-75`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-btw.md?plain=1#L73-L75)).
 5. **Fixtures pinned to omp 18.15.0.** Each scenario records omp's own journal (`PI_TUI_TSP_RECORD`) and the raw PTY bytes. Store fixtures in `src/main/omp/tsp/fixtures/18.15.0/<scenario>.jsonl` and `<scenario>.raw.bin`, with decoded messages, emitted events, a byte/CR/SHA-256 integrity manifest and a `README.md` giving the omp version, commit, config and redactions. Recordings use the standalone 18.15.0 executable with a scratch HOME and config root, and no owner profile. Scenarios use no model unless they opt into the loopback script in Rule 6. Re-record every scenario on a baseline change and remove the old baseline; the recorder sanitizes paths and decoded OSC payloads before storage.
@@ -163,7 +163,7 @@ Authority after the migration:
 
 ## What a TSP chat can do after each phase
 
-The table applies to chats started with `VOMP_TSP=1`. Classic presentation is unchanged; the attachment and rejected-prompt safeguards described in Rule 2 are shared safety exceptions. "Disabled" means the control is shown as unavailable with a one-sentence reason, so a preview user never sees a control that silently fails.
+The table records the progression of TSP chats. Phases 1-6 required `VOMP_TSP=1`; Phase 7 FLIP makes TSP the default on macOS and Linux, while Windows still requires that developer opt-in. Classic presentation is retained; the attachment and rejected-prompt safeguards described in Rule 2 are shared safety exceptions. "Disabled" means the control is shown as unavailable with a one-sentence reason, so a preview user never sees a control that silently fails.
 
 | After phase | Available in a TSP chat | Disabled, with the reason shown | Fallback |
 |---|---|---|---|
@@ -172,8 +172,8 @@ The table applies to chats started with `VOMP_TSP=1`. Classic presentation is un
 | 3 | Phase 2 plus: steer and follow-up, shell and Python prefixes, pastes, images, queue holds, Escape queue restore, ghost text display | As phase 2 | The semantic omp screen. |
 | 4 (each step) | The card or control that step converts, claiming its nodes | The controls of later steps | The semantic omp screen. |
 | 5 | Native `/btw` pane | None beyond Phase 4 gaps | The omp screen shows the BTW overlay when the pane is closed. |
-| 6 | Developer-opt-in TSP chats on Windows, pending machine evidence | Windows CI and manual acceptance remain open | Ordinary Windows chats stay classic. |
-| 7 | TSP is the default for hosted chats | None | Proposed one-release hidden `VOMP_TSP=0` (decision D3). |
+| 6 | Developer-opt-in TSP chats on Windows, with scoped transport, packaging and lifecycle CI evidence | Installed-build manual criteria 5 and 6 remain open | Ordinary Windows chats stay classic. |
+| 7 FLIP (unmerged branch) | TSP is the default for hosted chats on macOS and Linux; Windows TSP requires `VOMP_TSP=1` | Windows default flip waits for Phase 6 manual criteria 5 and 6 | Hidden `VOMP_TSP=0` selects classic recovery for one release under D3. Classic code remains for the later removal release. |
 
 ## Phase overview
 
@@ -185,7 +185,7 @@ The table applies to chats started with `VOMP_TSP=1`. Classic presentation is un
 | 4 Adapter cutover | A9, A15, A10, A11, A14, A12, A13, A17, A16, A6/A7 | 2, 3 | 7-11 days |
 | 5 Native `/btw` | Side-question pane | 2 (claims), 3, 4e | 3-5 days |
 | 6 Windows | Bundled ConPTY, packaging, CI and machine evidence | 1; runs beside 2-5 | 3-5 days plus machine time |
-| 7 Default flip and removal | TSP default; classic adapters and hosted xterm path deleted | 2-6 passed | 3-5 days plus one release |
+| 7 Default flip and removal | FLIP implemented on this branch: macOS/Linux default TSP, one-release classic recovery; Windows default and shared-code removal wait | Platform gates apply separately; Windows needs Phase 6 criteria 1-6; removal follows the recovery release | Original estimate: 3-5 days plus one release |
 
 These figures are planning judgment for one engineer familiar with the repository. Together they come to 30-47 engineer-days, about 6-9 weeks, with Phase 6 able to overlap Phases 2-5. The study's earlier figure of 3-5 weeks after a proof of concept excluded fixture recording, the usable-preview work and the removal release, which this plan includes.
 
@@ -533,7 +533,7 @@ loopback provider; their requests establish separate delivery of the retained me
 
 ## Phase 4: adapter cutover
 
-**Goal.** Replace each screen adapter with document facts and TSP actions for TSP hosts. The classic path stays for classic hosts until Phase 7. Each step merges separately, and its consumer claims its nodes only in the change that makes it work (Rule 7).
+**Goal.** Replace each screen adapter with document facts and TSP actions for TSP hosts. The classic path stays for classic hosts until the later Phase 7 removal release. Each step merges separately, and its consumer claims its nodes only in the change that makes it work (Rule 7).
 
 | Step | Adapters | Why in this position |
 |---|---|---|
@@ -558,6 +558,12 @@ loopback provider; their requests establish separate delivery of the retained me
 - **Interfaces.** The card keeps its props; choose = `activate` on the list with the item id; text = `edit` over the full range with `len`, then `action submit`; cancel = `action cancel` or Escape.
 - **Chat status.** A TSP hook dialog is local to omp and has no collab question. Today the classic card does not change chat status for local dialogs either, so this step keeps status unchanged. Showing "waiting for an answer" for local dialogs would be a SPEC change for the owner.
 - **Automatic sheet ownership.** The watcher uses mounted-visible consumer availability independently of covering sheet state, and rechecks current registrations before opening. Hook and plan cards retain that availability while covered, avoiding claim/open/close feedback. A real-composition replay mounts ChatArea, native cards, OverlayWatcher, the terminal sheet and actual stores against input, confirm, editor, plan review and extension-row recordings. Native cards stay visible without an automatic sheet; unclaimed rows open the sheet.
+  The registered native slots establish exact ownership outside their lazy boundaries. While a
+  card import is pending, a labelled, busy, display-only card keeps the recorded document readable.
+  Ownership persists through the loaded card's initial subscription, so loading does not open an
+  automatic sheet or move keyboard focus. `ColdNativeCards.test.ts` holds each production card
+  import pending and checks readable content, no answer input, one presentation target and retained
+  focus before and after resolving the import.
 - **Implementation status.** The native `OmpDialogCard` now reads TSP hook documents through pure shared projections and submits complete answers through main's existing `host:tsp-answer` transaction. It claims supported hooks, including the roleless 18.15 picker shape, so the omp screen does not duplicate their controls or automatically open for them. Matched requests retain the collab question card; ambiguous, unavailable, settling, answering and closing local cards are display-only. Full option lists have no hidden-options note or terminal offer. Local dialogs add no chat-status input. Physical hook ownership still blocks composer and slash delivery after presentation is claimed.
 - **Active presentation ownership.** The registry declares which roles a consumer can present, without hiding nodes by shape alone. Mounted visible native and collab cards register exact host, epoch, surface and node ownership. A page covering the chat, an inert narrow split pane, another sheet or unmount releases ownership, restoring generic hook presentation with unchanged main arbitration. Disabled options remain inert for pointer and double-click input; arrow, Home and End navigation skip them.
 - **Sheet Escape.** A covering sheet releases active suppression while retaining exact native-consumer availability. Escape returns to that card without answering its hook. Without an available native consumer, the generic guarded Escape path remains. Always-present composer model/effort consumers and notice projections retain static claims. The fixture baseline contains 57 raw recordings and matching integrity manifests.
@@ -716,7 +722,7 @@ profiles. Main must still check both composer controls in Electron.
 - **Installed-host evidence (2026-11-03).** `src/main/omp/tsp/retire.live.test.ts` passed against standalone omp 18.15.0 and 18.16.0. One production `SessionHost`, PTY and collab guest complete startup, a scripted message, `/hotkeys` open/close, an exact Unicode hook answer, entry-id tree navigation and restored-draft clear, model selection, Auto and fixed thinking changes, Plan Review refinement and clean shutdown. The host id and PID stay unchanged, each stage records zero attempted painted/debug reads, and exact provider counts remain one through tree navigation and four after refinement. The gate shares the recorder's loopback provider and existing tree, hook and plan assets. It is enabled by `OMP_BIN` on macOS/Linux and included in the release watcher's compatibility step. It does not mount a renderer; the mounted zero-poll replay above supplies that evidence.
 - **Verification (2026-11-03).** Final typecheck passed. The eight affected test files passed 398 tests. The full Vitest suite passed 3,281 tests in 256 files, with 49 tests in six gated files skipped. The installed retirement gate was then run explicitly against each standalone version, with one test passing per version. No Electron or packaged check was run. Phase 4j's automated criterion is met by the installed zero-read session and the mounted zero-poll replay; owner acceptance remains separate.
 
-**Retirement audit after 4a-4i.** "Already semantic" means that the TSP branch existed before 4j; the classic adapter remains until Phase 7.
+**Retirement audit after 4a-4i.** "Already semantic" means that the TSP branch existed before 4j; the classic adapter remains until the later Phase 7 removal release.
 
 | Consumer | TSP status before 4j | Status after 4j |
 |---|---|---|
@@ -735,7 +741,7 @@ profiles. Main must still check both composer controls in Electron.
 | `state/session.ts` queue busy/drain and overlay holds | Semantic facts were checked, but stale `tui.overlays` could still block TSP delivery or retain a classic hold. | TSP uses semantic facts and availability exclusively; replacement-host readiness releases the obsolete classic hold. |
 | Hook/plan cards, plan pane/badge, model/thinking, navigation, advisor | Already selected their 4a-4g semantic consumers before painted adapters. | Unchanged claims, actions and collab authorities. Remaining transport branches preserve classic adapters and transport-specific wording. |
 
-**Phase 4 gate to Phase 7.** The gate remains closed until every step's replay and live criteria pass and the owner signs off each converted card. Automated evidence and owner acceptance are tracked separately:
+**Phase 4 gate to Phase 7.** The following checkpoint records the evidence and outstanding owner acceptance before FLIP implementation. Implementing the default on this branch does not check off these criteria or constitute release approval. Automated evidence and owner acceptance remain separate:
 
 | Gate item | Evidence available | Remaining acceptance |
 |---|---|---|
@@ -1046,12 +1052,30 @@ every failure produces a complete exchange.
 
 ## Phase 7: default flip and removal
 
-**Goal.** TSP becomes the presentation for every app-hosted chat, and the classic adapters A2-A17 and the hosted xterm path are deleted. File-based terminal-follow, the general Terminal pane and onboarding or login terminals stay.
+**Goal.** Make TSP the default on each accepted platform, then remove classic adapters A2-A17 and the hosted xterm path in a later release. File-based terminal-follow, the general Terminal pane and onboarding or login terminals stay.
+
+**FLIP implementation status (2026-11-03, unmerged branch).** `feat/tsp-p7-flip` defaults app-hosted chats to TSP on macOS and Linux. Hidden `VOMP_TSP=0` selects classic recovery for one release, as approved in D3. Windows remains classic unless `VOMP_TSP=1`, as required by D5 while Phase 6 manual criteria 5 and 6 remain open. Main reads the environment at host launch, and each running host retains its presentation. Current behavior docs describe this branch; the dated replay, live, CI and manual evidence above remains historical evidence for the commits it names. The branch is unmerged and unreleased. Local verification is recorded below; owner sign-off and release-candidate acceptance remain separate.
+
+**Local FLIP verification (2026-11-03, macOS).** Typecheck passed. After the protocol-restart and cold-card review fixes, the full suite passed with 272 files and 3,689 tests, with 10 files and 66 tests skipped by their existing gates; the bundle guard's 19 CLI tests also passed. The affected suite passed all 528 tests in 10 files. Host tests exercise unset `VOMP_TSP` defaults on macOS and Linux, explicit classic recovery on both, unchanged running-host presentation after an environment change, and classic Windows defaults with explicit Windows TSP opt-in. Protocol-error tests cover failure publication, new-hello recovery and stop-before-saved-session relaunch.
+
+The requested installed-omp gates passed with scratch profiles and scripted loopback providers:
+
+| Gate | omp 18.16.0 | omp 18.15.0 |
+|---|---|---|
+| `retire.live.test.ts` | Passed, including zero painted-screen reads | Passed, including zero painted-screen reads |
+| `btw.live.test.ts` | Passed | Passed |
+| `prompt-rejection.live.test.ts` | Passed; all 21 recorded scenarios passed | Passed; 15 scenarios passed and six version-specific scenarios remained not required under the existing 18.15 branch |
+
+Each version's installed-omp run passed all three files and 15 tests before the review fixes. This evidence does not establish Windows CI, packaged Windows manual criteria 5 and 6, or the complete manual release-candidate checklist.
+
+**Main's Electron FLIP observations (2026-11-03).** With no flag, chats used TSP for a message, a `!` shell run and `/btw`, including the named Put away hint. Main found no `VOMP_TSP` or preview wording in the window. Launching with `VOMP_TSP=0` produced classic chats. These scoped observations do not claim the complete manual checklist.
 
 **Sequence.**
 
-1. **Flip release.** TSP is the default on each platform whose gates passed. The proposal in decision D3 keeps a hidden `VOMP_TSP=0` for this one release; it needs the owner's approval because it is an exception to clean removal.
-2. **Removal release.** Classic code and the flag are deleted, but only when every supported platform runs TSP. If Windows is still classic, removal of the shared classic code waits for Phase 6.
+1. **Flip release.** Implemented on this branch for macOS and Linux, with a hidden `VOMP_TSP=0` classic recovery option for this one release under the owner's approved D3 exception. Windows stays classic unless `VOMP_TSP=1`; its default flip still requires the complete Phase 6 gate. Release verification and the owner's release-candidate acceptance remain separate from implementation.
+2. **Removal release.** The removal release remains future work. Delete classic code and the flag only after the recovery release and when every supported platform runs TSP. Shared classic code, hosted xterm adapters, classic tests and fixtures remain in the FLIP branch because Windows still defaults to classic.
+
+The deletion inventory below belongs to the future removal release. It is not a list of deletions made by FLIP.
 
 | Area | Delete | Keep |
 |---|---|---|
@@ -1065,17 +1089,26 @@ every failure produces a complete exchange.
 | A10-A17 | Screen parsing in `screen.ts`, `model.ts`, `navigate.ts`, `tree.ts`, `advisorApply.ts`, `modes.tsx`, worktree matchers in `host-observations.ts`, painted shutdown and startup reading, painted ghost detection | Advisor preservation transaction, exact prediction transfer, native shutdown stage |
 | Tests | Classic-only tests and fixtures | All TSP fixtures |
 
-**Docs.** Rewrite the SPEC Engine statements about a hidden TUI and the terminal sheet, the ARCHITECTURE overview and SessionHost step 5, DESIGN §4.8 ("omp dialog") and §4.11, `docs/COMMANDS.md` handling notes and the Help text for the terminal sheet.
+**Docs.** The FLIP branch updates SPEC's engine and sheet statements and Side questions availability, the ARCHITECTURE overview and SessionHost launch/input path, DESIGN §4.8 and §4.11 and current preview descriptions, `docs/COMMANDS.md` handling notes, the AGENTS overview and one Unreleased macOS CHANGELOG entry. Renderer Help and presentation labels are part of the same flip. Descriptions of classic behavior remain while that presentation is available.
 
-**Acceptance criteria.**
+**Acceptance criteria.** These span the flip and removal releases; implementation status above does not mark them passed.
 
-1. Replay: a test fails if any file under `src/` imports the deleted modules or names the deleted IPC channels.
+1. Removal release, replay: a test fails if any file under `src/` imports the deleted modules or names the deleted IPC channels. This criterion does not apply to deleting classic code in the FLIP branch, which retains it.
 2. Replay: typecheck and the full suite pass on macOS and Windows CI; every TSP fixture replays; JSONL follow tests pass unchanged.
 3. Live: the no-model and scripted-provider suites pass against the current omp release.
 4. Packaged, bundle: a build script reads the renderer build's chunk metadata and fails if the initial renderer entry chunk includes any module under `features/tsp/`, and it records the entry chunk's uncompressed size beside the size from the last classic release build. Growth above 20 KB fails the check unless the owner accepts it.
-5. Manual (macOS and Windows release candidates, per the release rule in `AGENTS.md`): a checklist covering every former terminal entry point, every Phase 4 card, `/btw`, sharing with a guest, worktree exit, quit while working, crash restore with `--restore`, `/new`, `/resume`, fork and rewind.
 
-**Gate.** Flip a platform only when: every terminal entry point has a semantic replacement, Phase 6 passed if the platform is Windows, Phase 4 shows zero screen reads in a scripted session, and the live suites pass for the current omp. Remove classic code only after one release with no TSP regression reported, or with the owner's explicit approval.
+   The FLIP guard checks both the initial entry and its static import closure, and emits
+   `out/renderer/renderer-chunks.json` and `renderer-bundle-size.json`. Its classic baseline is
+   v0.7.4 at `233c28252a211081e30202d4b0a41e02f45cad97`, with a 2,017,581-byte entry.
+   `scripts/renderer-classic-baseline.json` records the measurement and reproduction commands.
+   `npm run build` and both distribution paths enforce the 20,000-byte growth limit.
+   The final local FLIP build passed with a 2,033,103-byte entry, 15,522 bytes above the classic baseline.
+   No growth exception was accepted. The native plan-review and omp-dialog cards use lazy slots;
+   emitted-file sizes are recorded after Rollup writes its chunks.
+5. Manual (release candidates on each platform being flipped, per the release rule in `AGENTS.md`): a checklist covering every former terminal entry point, every Phase 4 card, `/btw`, sharing with a guest, worktree exit, quit while working, crash restore with `--restore`, `/new`, `/resume`, fork and rewind. Windows additionally retains Phase 6 manual criteria 5 and 6 before its default flip.
+
+**Gate.** A platform's release flip requires a semantic replacement for each terminal entry point, Phase 4's zero-screen-read scripted session, and passing live suites for the current omp. Windows additionally requires all Phase 6 criteria, including the still-open manual criteria 5 and 6. Remove classic code only in the later removal release, after every supported platform defaults to TSP and one release has no reported TSP regression, or with the owner's explicit approval. This FLIP implementation does not authorize a release or remove classic code.
 
 ---
 
@@ -1087,9 +1120,9 @@ every failure produces a complete exchange.
 | D2 | What replaces "Open omp terminal" for TSP chats | (a) The semantic omp screen, named "omp screen". (b) Hand the session to the system terminal. (c) Remove the entry points. | Decided by the owner on 2026-10-30: (a). (b) is safe only after a confirmed shutdown of the hosted process, which ends app hosting of that chat while the terminal runs it; it suits an explicit "Continue in Terminal" action more than a menu fallback. |
 | D3 | Escape hatch after the flip | (a) Hidden `VOMP_TSP=0` for one release, then none. (b) A permanent per-chat classic option. (c) None. | Decided by the owner on 2026-10-30: (a), approved as an exception to the clean-removal rule for one release. (b) would keep A2-A17 indefinitely. |
 | D4 | Minimum omp version | (a) Keep 18.14.0. (b) Raise it when needed. | Superseded by the owner's 2026-11-02 decision to require omp 18.15.0. The pinned 18.14.0 recordings and omp-watch discovery baseline remain unchanged. Role churn is detected by the live suites in `omp-watch.yml`; their results inform whether to support a release, and raising the minimum alone does not fix a renamed role. |
-| D5 | Windows timing | (a) Flip both platforms together. (b) Flip macOS first and keep Windows classic until Phase 6 passes. | (b). Flip macOS once its gates pass and retain classic Windows until Phase 6 passes. Shared classic-code removal waits for Windows. |
+| D5 | Windows timing | (a) Flip both platforms together. (b) Flip macOS first and keep Windows classic until Phase 6 passes. | The FLIP branch implements (b) for macOS and Linux. Windows remains classic unless `VOMP_TSP=1` while Phase 6 manual criteria 5 and 6 remain open. Shared classic-code removal waits for Windows. |
 | D6 | `/btw` placement and actions | (a) Side panel pane. (b) Right sheet. omp has no topic delete. | (a) with no delete. A "Hide topic" action would need app-owned state, since the app does not write omp's files. |
-| D7 | Preview exposure | (a) Developer flag only. (b) A Settings toggle labeled as a preview. | (a) until the Phase 2 usability gate passes; (b) afterwards only if the owner wants outside testers and the Phase 3 gate has also passed. |
+| D7 | Preview exposure | (a) Developer flag only. (b) A Settings toggle labeled as a preview. | Phases 1-6 used (a); no Settings toggle was added. Phase 7 FLIP makes TSP the macOS/Linux default and retains Windows developer opt-in until its platform gate passes. |
 | D8 | Wording in the omp screen | omp's own text is shown as omp wrote it, which the VOICE exemption for attributed omp output already covers. App-owned headings, labels and controls follow VOICE. | Confirm only if the owner wants a different boundary. |
 | D9 | Upstream requests | Ask omp for an outer input-readiness flag, documented role names for hook dialogs and plan review, a collab BTW channel, and a `reqId` on collab-aware hook nodes. | Ask; none of them blocks this plan. |
 | D10 | Unmatched local hook answers before collab channel ordering settles | Keep select, confirm, editor and input answerable from the omp screen, without a settle window. | D10 decided by the owner on 2026-11-02. This qualifies Rule 8's exactly-one-answer-path guarantee and removes the replay/live ordering prerequisite for unmatched local answering. The app can briefly offer both answer controls when channel delivery is delayed; omp's `#raceCollabDialog` accepts the first result and aborts the other branch. omp 18.14.0 shows collab-aware select/editor/approval dialogs locally and to collab at once, so a local answer racing an in-transit collab request cannot give omp two completed answers. Consequences can include a chat question card that appears and closes at once, or a losing submission or cancellation error. Input (`showHookInput`) and confirm (`showHookConfirm`) never reach collab (routing lines 185-209; race lines 969-994, linked in Rule 8). Main's 2026-11-02 manual Electron evidence under Rule 8 covers local input/confirm, naturally request-first select/editor, deliberately node-first delivery and reconnect. A separate browser guest remains untested. |
@@ -1097,12 +1130,12 @@ every failure produces a complete exchange.
 ## Risks
 
 - **Role churn.** omp defines its role strings outside the TSP v1 wire contract. Mitigation: the registry, pinned fixtures, and live suites in `omp-watch.yml`.
-- **Loss of the painted terminal.** Proposed as a consequence of the owner's direction, conditional on the Phase 2 usability gate. A blank sheet at any entry point is a regression.
+- **Loss of the painted terminal.** TSP hosts use the semantic omp screen. A blank sheet at any former terminal entry point is a regression; classic recovery remains available for the flip release.
 - **Two presentation sources.** Collab and TSP can both show the same question or notice. Mitigation: Rules 7 and 8 and the 2.2 deduplication, each with replay coverage.
-- **Sharing parity unproven.** No guest join was established in the study. Mitigation: Phase 2 criterion 12 before any exposure beyond developers.
+- **Sharing acceptance.** The original study established no guest join. Phase 2 criterion 12 and the release-candidate sharing checklist retain their own acceptance requirements; a default change alone establishes no new sharing evidence.
 - **Startup readiness.** `sendable` precedes the startup worktree question. Mitigation: keep `worktree.onStart: off` until omp exposes outer readiness.
 - **Custom extension UI.** `rows` nodes and PTY-mode editors need raw keys. Mitigation: the fallback forwards keys when such a node has focus.
-- **Windows transport.** Bundled ConPTY is experimental in node-pty and its runtime behavior remains unverified. Mitigation: the developer flag alone enables TSP; the ordinary Windows default stays classic until Phase 6 passes.
+- **Windows transport.** Bundled ConPTY is experimental in node-pty. Scoped CI evidence now covers transport, packaged exchanges and repeated-host worker/pipe cleanup. Installed-build process/handle measurements and Defender/SmartScreen checks remain open. The developer flag alone enables Windows TSP; its ordinary default stays classic until Phase 6 passes.
 - **Lifecycle transitions.** omp instance restart (a new protocol epoch, possibly on the same PTY), room rotation, session identity change and surface replacement need different handling (Rule 9). Mitigation: the Phase 2 transition fixtures.
 - **Pre-TUI failures.** Raw capture stays.
 

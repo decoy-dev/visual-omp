@@ -7,7 +7,7 @@ import { btwOverlayTopics, mergeBtwTopics, projectBtw, resolveBtwTopic } from "@
 import type { SessionController, SessionView } from "../../state/session";
 import { TooltipProvider } from "../../ui";
 import { BtwPane } from "./BtwPane";
-import { PresentationVisibility, presentationClaims } from "../tsp/presentation-claims";
+import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 import { FixtureDocuments } from "../tsp/testing/documents";
 import messagesRaw from "../../../../main/omp/tsp/fixtures/18.15.0/btw-open-main-abort.messages.jsonl?raw";
 import recorded from "../../../../main/omp/tsp/fixtures/18.15.0/btw-open-main-abort.btw.json";

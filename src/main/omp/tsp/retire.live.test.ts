@@ -61,7 +61,7 @@ describe.skipIf(!process.env.OMP_BIN || process.platform === "win32")("TSP paint
 			const seed = await readFile(join(fixtures, "extension/tree-session.jsonl"), "utf8");
 			const sessionFile = join(root, "tree-session.jsonl");
 			await writeFile(sessionFile, seed.replaceAll("/tmp/vomp-fixture", root));
-			vi.stubEnv("VOMP_TSP", "1");
+			vi.stubEnv("VOMP_TSP", undefined);
 			const current = host = new SessionHost({ cwd: root, resumeFile: sessionFile, extraArgs: ["--no-extensions", "--no-skills", "--no-rules", "--no-context-files", "--no-lsp", "--no-title", "--extension", join(fixtures, "extension/vomp-fixture.mjs"), "--model", "fixture/fixture-large", "--thinking", "off", "--tools", "write,read"] });
 			const waitFor = async (label: string, predicate: () => boolean) => {
 				await vi.waitFor(() => {

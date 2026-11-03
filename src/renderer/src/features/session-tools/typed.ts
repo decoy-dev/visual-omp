@@ -12,7 +12,7 @@
  * feedback remains in transcript notices, and OverlayWatcher opens the semantic screen.
  */
 import { commandOutcomeSpec } from "@shared/tsp/command-result";
-import type { TspCommandNoticeReservation } from "../tsp/notices";
+import type { TspCommandNoticeReservation } from "../../state/tsp/notices";
 import { displayedEntries } from "../../chat/branch";
 import { liveGuest, type SessionController, setSlashDelivery } from "../../state/session";
 import { useApp } from "../../state/app";

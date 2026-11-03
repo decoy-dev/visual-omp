@@ -9,7 +9,7 @@
  */
 import type { CollabUiRequest, SessionEntry } from "@oh-my-pi/pi-wire";
 import type { FollowState, HostState, SessionOwnership } from "@shared/ipc";
-import { isTspPreviewInputError, tspAllowsAskPrompt, TSP_PREVIEW_UNAVAILABLE, type TspEditorRestore } from "@shared/tsp-host";
+import { isTspInputError, tspAllowsAskPrompt, TSP_CLASSIC_ACTION_UNAVAILABLE, type TspEditorRestore } from "@shared/tsp-host";
 import { useComposerDrafts, type Attachment } from "../chat/composer/drafts";
 import { imagePathsText } from "../chat/composer/send";
 import { isAskRequest } from "../chat/transcript/askSeries";
@@ -18,7 +18,7 @@ import { expandedPromptTextMatches } from "@shared/prompt-input";
 import { APP_GUEST_NAME, GuestClient, type GuestSnapshot } from "../collab/lib/client";
 import { toast } from "../ui/toast";
 import { extendSessionHistory, parseSessionHistory, type SessionHistory } from "./history";
-import { TspNoticeStore } from "../features/tsp/notice-store";
+import { TspNoticeStore } from "./tsp/notice-store";
 import { TspQuestionSync } from "./tsp-questions";
 
 export interface QueuedMessage {
@@ -1147,8 +1147,8 @@ export class SessionController {
 				const target = askTarget ?? this.#askPromptTarget(item.text);
 				if (target) this.#assertAskPromptTarget(target);
 				if (this.#view.host?.transport === "tsp" && item.images.length === 0 && item.text.startsWith("/")) {
-					// A slash handler must be registered before this preview can deliver commands.
-					throw new Error(TSP_PREVIEW_UNAVAILABLE);
+					// A slash handler must be registered before this chat can deliver commands.
+					throw new Error(TSP_CLASSIC_ACTION_UNAVAILABLE);
 				}
 				const hostId = this.hostId;
 				if (!hostId) throw new Error("omp is not running");
@@ -1208,9 +1208,9 @@ export class SessionController {
 			if (submission?.rejected) return;
 			if (submission) this.#submissions.delete(submission.id);
 			const message = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, "") : "";
-			const restored = /^(?:TSP preview:\s*)?Image submission was restored\.\s+([\s\S]+)$/.exec(message)?.[1];
+			const restored = /^(?:omp screen:\s*)?Image submission was restored\.\s+([\s\S]+)$/.exec(message)?.[1];
 			if (restored) throw new DeliveryFailure(error, false, restored);
-			const requiresRelaunch = /^(?:TSP preview:\s*)?Image submission needs recovery\./.test(message);
+			const requiresRelaunch = /^(?:omp screen:\s*)?Image submission needs recovery\./.test(message);
 			if (requiresRelaunch) pasted = true;
 			// The paste got through but the submit did not: the images may sit in omp's editor, and anything typed
 			// next would carry them. Hold everything until omp restarts or stops (see `strandedImages`).
@@ -1238,7 +1238,7 @@ export class SessionController {
 	async #deliverDirect(message: { text: string; images: readonly Attachment[] }, askTarget?: AskPromptTarget): Promise<void> {
 		if (this.#view.host?.transport === "tsp" && message.images.length === 0 && message.text.startsWith("/")) {
 			// UI-only commands have no collab user entry or turn acknowledgement.
-			if (!slashDelivery) throw new Error(TSP_PREVIEW_UNAVAILABLE);
+			if (!slashDelivery) throw new Error(TSP_CLASSIC_ACTION_UNAVAILABLE);
 			await this.#deliverSlash({ id: `q${nextQueueId++}`, ...message }, 0, false, false);
 			return;
 		}
@@ -1346,7 +1346,7 @@ export class SessionController {
 		}
 		this.#deliverMessage(next).catch((error: unknown) => {
 			const failure = error instanceof DeliveryFailure ? error : new DeliveryFailure(error, false);
-			if (isTspPreviewInputError(failure.reason)) {
+			if (isTspInputError(failure.reason)) {
 				toast({ tone: "warn", message: failure.message });
 			} else console.error("Could not deliver a queued message", failure.reason);
 			// It goes back first in line; the next send, turn end or hold end tries again (after omp restarts, when

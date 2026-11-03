@@ -8,13 +8,13 @@ import "../../i18n";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import { parseSessionTree } from "./tree";
 import { TreeSheet } from "./TreeSheet";
-import { presentationClaims } from "../tsp/presentation-claims";
+import { presentationClaims } from "../../state/tsp/presentation-claims";
 
 const fake = vi.hoisted(() => ({ transport: "classic" as "classic" | "tsp", hostId: "host", generation: 1, snapshot: null as TspHostSnapshot | null, toast: vi.fn(), open: vi.fn(), command: vi.fn(), answer: vi.fn(), navigate: vi.fn(), load: vi.fn() }));
 const controller = { tabId: "tab", command: fake.command, answer: fake.answer, getSnapshot: () => ({ mode: "live", host: { hostId: fake.hostId, generation: fake.generation, transport: fake.transport } }) };
 vi.mock("../../state/app", () => ({ controllerFor: () => controller, useApp: { getState: () => ({ openTerminal: fake.open }) } }));
 vi.mock("../../shell/hooks", () => ({ useSessionView: () => controller.getSnapshot() }));
-vi.mock("../tsp/useTsp", () => ({ useTsp: () => ({ snapshot: fake.snapshot }) }));
+vi.mock("../../state/tsp/useTsp", () => ({ useTsp: () => ({ snapshot: fake.snapshot }) }));
 vi.mock("./navigate", () => ({ loadTree: (...args: unknown[]) => fake.load(...args), navigateTo: (...args: unknown[]) => fake.navigate(...args), forkChat: vi.fn() }));
 vi.mock("../../transcript/Markdown", () => ({ Markdown: ({ text }: { text: string }) => createElement("p", null, text) }));
 vi.mock("@/ui", () => ({

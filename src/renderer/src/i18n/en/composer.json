@@ -10,9 +10,10 @@
 		"saved": "Saved suggestion",
 		"recoveryFailed": "Couldn't recover the suggestion",
 		"editorBlocked": "omp's editor must be confirmed clear before another message can be sent.",
-		"unreadable": "omp has not returned the suggestion text. Retry or open its terminal to inspect the editor.",
+		"unreadable": "omp has not returned the suggestion text. Retry recovery or inspect omp's editor before sending again.",
 		"retry": "Retry recovery",
 		"openTerminal": "Open omp terminal",
+		"openScreen": "Open omp screen",
 		"insertSaved": "Insert saved text",
 		"dismiss": "Dismiss suggestion"
 	},

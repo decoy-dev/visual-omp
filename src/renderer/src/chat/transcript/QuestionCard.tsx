@@ -15,8 +15,8 @@ import { AskSeriesCard } from "./AskSeriesCard";
 import { ASK_CHAT, ASK_NEXT, ASK_OTHER, CUSTOM_ANSWER_PREFIX } from "./askSeries";
 import { useAskSeries } from "./askSeriesStore";
 import { ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoices";
-import { useTsp } from "../../features/tsp/useTsp";
-import { usePresentationClaim } from "../../features/tsp/presentation-claims";
+import { useTsp } from "../../state/tsp/useTsp";
+import { usePresentationClaim } from "../../state/tsp/presentation-claims";
 import { useApp } from "../../state/app";
 
 /** A collab card claims only the exact hook main associates with this visible request. */

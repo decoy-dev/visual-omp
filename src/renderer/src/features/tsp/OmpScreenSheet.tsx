@@ -6,7 +6,7 @@ import { useTranslation } from "react-i18next";
 import { TspInspector } from "../palette/TspInspector";
 import { NodeView } from "./nodes/NodeView";
 import type { NodeContext } from "./nodes/context";
-import { usePresentationClaims } from "./presentation-claims";
+import { usePresentationClaims } from "../../state/tsp/presentation-claims";
 import "./screen.css";
 
 export interface OmpScreenProps {
@@ -60,7 +60,7 @@ export function OmpScreenSheet({ hostId, generation, snapshot, failed, readOnly,
 			const disabled = readOnly || !!snapshot?.closing || surface.closed || surface.suspended;
 			const send = (event: TspRendererEvent) => { if (!disabled && typeof snapshot?.epoch === "number") report(window.vomp.invoke("host:tsp-event", hostId, generation, event, snapshot.epoch)); };
 			const context: NodeContext = { sf: surface.open.id, hostId, readOnly: disabled, closing: snapshot?.closing, questionMatches: snapshot?.questionMatches, answer: async answer => {
-				if (disabled || !snapshot) throw new Error("TSP preview: The session changed or its semantic UI is not ready.");
+				if (disabled || !snapshot) throw new Error("omp screen: The session changed or its semantic UI is not ready.");
 				await window.vomp.invoke("host:tsp-answer", hostId, generation, answer, snapshot.epoch);
 			}, send, keys: data => { if (!disabled && typeof snapshot?.epoch === "number") report(window.vomp.invoke("host:keys", hostId, data, generation, snapshot.epoch)); }, render: node => <NodeView key={node.id} node={node} context={context} /> };
 			const claimed = claims.get(surface.open.id);

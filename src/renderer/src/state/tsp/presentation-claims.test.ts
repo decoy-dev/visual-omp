@@ -5,12 +5,12 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionController, SessionView } from "../../state/session";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import { hookDialogTarget } from "@shared/tsp/dialogs";
-import { FixtureDocuments, loadFixtureRecording } from "./testing/documents";
+import { FixtureDocuments, loadFixtureRecording } from "../../features/tsp/testing/documents";
 import { presentationClaims } from "./presentation-claims";
-import { OmpScreenSheet } from "./OmpScreenSheet";
+import { OmpScreenSheet } from "../../features/tsp/OmpScreenSheet";
 import { Shell } from "../../shell/Shell";
 import "../../i18n";
-import { OmpDialogCard } from "../session-tools/OmpDialogCard";
+import { OmpDialogCard } from "../../features/session-tools/OmpDialogCard";
 
 const fake = vi.hoisted(() => ({ state: {} as Record<string, unknown>, width: 900, controllers: new Map<string, SessionController>() }));
 vi.mock("../../state/app", () => ({

@@ -77,7 +77,7 @@ export function PredictionRecovery({ session, readOnly }: { session: SessionCont
 						const recovered = await window.vomp.invoke("composer:retryPrediction", capture.id);
 						if (recovered) usePredictionCaptures.getState().merge([recovered]);
 					})}>{t("prediction.retry")}</Button>}
-					{capture.blocked && session.hostId === capture.hostId && <Button variant="secondary" onClick={() => useApp.getState().openTerminal(session.tabId)}>{t("prediction.openTerminal")}</Button>}
+					{capture.blocked && session.hostId === capture.hostId && <Button variant="secondary" onClick={() => useApp.getState().openTerminal(session.tabId)}>{t(session.getSnapshot().host?.transport === "tsp" ? "prediction.openScreen" : "prediction.openTerminal")}</Button>}
 					<Button variant="secondary" disabled={readOnly || capture.blocked || !capture.text || busy === capture.id} onClick={() => run(capture.id, async () => {
 						if (capture.text) useComposerDrafts.getState().insert(session.tabId, capture.text);
 						await acknowledgePrediction(capture.id);

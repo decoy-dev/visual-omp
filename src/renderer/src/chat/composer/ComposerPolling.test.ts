@@ -223,9 +223,9 @@ it("keeps a newer native mode event when the initial TSP snapshot arrives late",
 
 it("refuses incidental painted reads locally for TSP without invoking Electron", async () => {
 	setHost("tsp");
-	await expect(readScreen(session)).rejects.toThrow("not available in the TSP preview");
-	await expect(waitForScreen(session, () => false)).rejects.toThrow("not available in the TSP preview");
-	expect((await statusReadError(session, ["Unusable painted status"])).message).toContain("not available in the TSP preview");
+	await expect(readScreen(session)).rejects.toThrow("not available for an omp screen chat");
+	await expect(waitForScreen(session, () => false)).rejects.toThrow("not available for an omp screen chat");
+	expect((await statusReadError(session, ["Unusable painted status"])).message).toContain("not available for an omp screen chat");
 	expect(calls("host:screen")).toHaveLength(0);
 	expect(calls("host:statusUnreadable")).toHaveLength(0);
 });

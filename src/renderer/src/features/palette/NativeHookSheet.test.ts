@@ -7,7 +7,7 @@ import type { TspHostSnapshot } from "@shared/tsp-host";
 import type * as OmpScreenModule from "../tsp/OmpScreenSheet";
 import { hookDialogTarget } from "@shared/tsp/dialogs";
 import { FixtureDocuments, loadFixtureRecording } from "../tsp/testing/documents";
-import { presentationClaims } from "../tsp/presentation-claims";
+import { presentationClaims } from "../../state/tsp/presentation-claims";
 import { OmpDialogCard } from "../session-tools/OmpDialogCard";
 import { useApp } from "../../state/app";
 import { TooltipProvider } from "../../ui/Tooltip";

@@ -2,7 +2,7 @@ import type { TspProps, TspText } from "@shared/tsp";
 import { Fragment } from "react";
 import { Kbd } from "../../../ui/Display";
 import "../../../chat/transcript/transcript.css";
-import { plain } from "../labels";
+import { plain } from "../../../state/tsp/labels";
 import { shortcutKeyLabel, shortcutKeyName, shortcutRuns } from "../shortcuts";
 
 export function KeyCombinations({ value }: { value: TspText }) {

@@ -15,7 +15,7 @@ import { useApp } from "../../state/app";
 import { composer, openOverlay, walkNodes } from "@shared/tsp/view-state";
 import type { TspNode } from "@shared/tsp";
 import { TSP_ROLES } from "@shared/tsp/roles";
-import { presentationClaims, PresentationVisibility } from "../tsp/presentation-claims";
+import { presentationClaims, PresentationVisibility } from "../../state/tsp/presentation-claims";
 import { Composer } from "../../chat/composer/Composer";
 import { OmpScreenSheet } from "../tsp/OmpScreenSheet";
 vi.hoisted(() => { Object.assign(window, { vomp: { platform: "darwin", invoke: async () => [], on: () => () => {} } }); });

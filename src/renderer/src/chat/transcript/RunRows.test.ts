@@ -8,7 +8,7 @@ import type { TspNode } from "@shared/tsp";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionController, SessionView } from "../../state/session";
 import { useApp } from "../../state/app";
-import { PresentationVisibility, presentationClaims } from "../../features/tsp/presentation-claims";
+import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 import { OmpScreenSheet } from "../../features/tsp/OmpScreenSheet";
 import { TooltipProvider } from "../../ui";
 import { Transcript, type TranscriptMode } from "./Transcript";
@@ -20,7 +20,7 @@ const data = vi.hoisted(() => {
 	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin" } });
 	return { snapshot: null as TspHostSnapshot | null };
 });
-vi.mock("../../features/tsp/useTsp", () => ({ useTsp: () => ({ snapshot: data.snapshot }) }));
+vi.mock("../../state/tsp/useTsp", () => ({ useTsp: () => ({ snapshot: data.snapshot }) }));
 vi.mock("./FileLinks", async () => {
 	// Vitest hoists mock factories before static imports, so load React within this factory.
 	const { createContext, createElement } = await import("react");

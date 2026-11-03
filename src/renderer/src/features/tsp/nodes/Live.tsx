@@ -5,7 +5,7 @@ import { Chart, type ChartSpec } from "../../../ui/Chart";
 import { Spinner } from "../../../ui/Spinner";
 import { Progress } from "../../../ui/Progress";
 import { FadeIn } from "../../../ui/motion";
-import { plain } from "../labels";
+import { plain } from "../../../state/tsp/labels";
 
 function Elapsed({ age, stopped }: { age: number; stopped?: number }) {
 	const [now, setNow] = useState(0);

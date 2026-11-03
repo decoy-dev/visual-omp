@@ -2,14 +2,15 @@
 
 ## Overview
 
-This document describes the current design. A proposed migration of app-hosted chats from reading omp's painted terminal to omp's Tern Surface Protocol (TSP) is described in [TSP-MIGRATION.md](TSP-MIGRATION.md).
+This document describes the current FLIP branch. App-hosted chats use omp's Tern Surface Protocol (TSP) by default on macOS and Linux. Windows remains classic unless explicitly enabled. The one-release classic recovery option and the later removal release are tracked in [TSP-MIGRATION.md](TSP-MIGRATION.md); classic adapters are still present.
 
 ```mermaid
 flowchart LR
   subgraph Renderer [Renderer (React)]
     UI[Chat / panes / screens]
     GC[Collab guest client<br/>(AES-GCM, vendored from collab-web)]
-    XT[xterm.js terminal sheet]
+    TS[Semantic omp screen / native controls]
+    XT[xterm.js terminal sheet<br/>classic hosts]
   end
   subgraph Main [Electron main (Node)]
     SH[SessionHost]
@@ -17,10 +18,11 @@ flowchart LR
     CLI[OmpCli / ConfigFiles / Git / Files]
     IDX[SessionsIndex]
   end
-  PTY[[omp TUI in node-pty]]
+  PTY[[omp in node-pty<br/>TSP or classic]]
   UI -- IPC --> SH
-  SH -- keystrokes --> PTY
-  PTY -- screen bytes --> SH -- IPC --> XT
+  SH -- TSP events / guarded paste and keys --> PTY
+  PTY -- TSP documents --> SH -- IPC --> TS --> UI
+  PTY -- classic screen bytes --> SH -- IPC --> XT
   PTY -- collab host ws --> RL -- ws --> GC --> UI
   CLI -- spawn --> OMP[(omp CLI subcommands)]
   IDX -- reads --> FS[(~/.omp/agent/sessions)]
@@ -83,9 +85,12 @@ Each SessionHost:
    `collab.relayUrl: ws://localhost:<port>`, `collab.displayName`, plus a fixed status line style:
    `symbolPreset: unicode` and `statusLine` preset `default`, separator `powerline`, thinking level
    as a word) into a private temporary directory and spawns
-   `omp --config <overlay> --extension <private bridge> [--resume <file>]` in a node-pty with the project as cwd. Crash recovery uses `--restore <file>` instead. Session tools
-   read the model and thinking segment from the painted screen, so the overlay replaces the user's status line
-   settings. Classic hosts also pin `composer.shape: box`; TSP hosts keep the user's composer shape.
+   `omp --config <overlay> --extension <private bridge> [--resume <file>]` in a node-pty with the project as cwd. Crash recovery uses `--restore <file>` instead.
+   Main selects the presentation at host launch: TSP by default on macOS and Linux, classic with
+   hidden `VOMP_TSP=0` for one recovery release, and classic on Windows unless `VOMP_TSP=1`.
+   A running host keeps its choice. Classic session tools read the model and thinking segment
+   from the painted screen, so the overlay still pins the status line for both presentations.
+   Classic hosts also pin `composer.shape: box`; TSP hosts keep the user's composer shape.
    The reader accepts both the boxed composer and omp's default band composer, including narrow bands
    that omit the model segment while leaving the editor usable. A theme's symbol overrides still apply
    after the preset. The user's own `config.yml` is never modified for this. Classic readiness reads a
@@ -108,9 +113,12 @@ Each SessionHost:
 4. The renderer's guest client joins the room and exposes a live snapshot (header, entries,
    streaming message, active tools, subagent progress, model/thinking/context state, pending
    `select`/`editor` UI requests) through `useSyncExternalStore`.
-5. **Ordinary user input is typed into the TUI** (bracketed paste + Enter), so prompts, `!`/`$`
-   prefixes, queue behaviour and the slash commands the app passes through behave as they do in
-   a terminal. While an `ask` question waits, user messages instead use the collab prompt path described below.
+5. **Ordinary TSP input uses semantic editor state and actions.** The host sends `send` events
+   where supported and uses guarded paste and key paths for attachments and other editor input.
+   Shell/Python prefixes, follow-up queueing and pass-through slash commands remain omp-owned.
+   Classic input uses bracketed paste and Enter. Both presentations serialize application input
+   and reject stale host, generation or surface scope. While an `ask` question waits, user messages
+   use the collab prompt path described below.
    Classic image pastes hold the serialized host input boundary until omp's public editor text
    reports a new image token for each escaped path. The trusted extension counts tokens using
    omp's current image symbol; the wrapper does not decode the image. A recognized read failure
@@ -132,13 +140,16 @@ Each SessionHost:
    The guest channel also carries UI-request answers, abort and subagent commands. Slash lines first go
    through `routeSlash` (`session-tools/slash.ts`), which opens the app's own screen for commands
    it covers and refuses the few that would break the hosted session (`/collab` and `/join`).
-   The rest go through `sendSlashCommand` (`session-tools/typed.ts`), which types the line and
-   turns what omp prints above its editor into a chat result row. The composer's slash menu lists
-   omp's `get_available_commands` (a short-lived `omp --mode rpc` in the project folder, cached
-   per folder) merged with the builtin catalog in `src/main/services/omp-builtin-commands.ts`.
-   omp's generic dialogs are local to its TUI, so `OmpDialogCard` reads them from the painted
-   screen and answers with keys; it and the Plan Review card register as native overlays so the
-   terminal sheet stays closed for them. `docs/COMMANDS.md` lists every command's handling.
+   The rest go through `sendSlashCommand` (`session-tools/typed.ts`). TSP hosts submit through
+   the semantic editor, collect known command outcomes from fresh document feedback, and retain
+   other output as notices. Classic hosts type the line and read results above the painted editor.
+   The composer's slash menu lists omp's `get_available_commands` (a short-lived `omp --mode rpc`
+   in the project folder, cached per folder) merged with the builtin catalog in
+   `src/main/services/omp-builtin-commands.ts`.
+   TSP hook dialogs and Plan Review use semantic documents and declared actions; collab-matched
+   questions keep their existing chat cards. Unclaimed content opens in the semantic omp screen.
+   Classic `OmpDialogCard` reads painted dialogs and answers with keys, keeping the terminal sheet
+   closed while a native card handles them. `docs/COMMANDS.md` lists every command's handling.
 6. `/restart`, `/new`, `/resume`, branching and forking start a new collab room (new generation);
    SessionHost re-resolves the link and the renderer reconnects.
    omp 18.14 also rotates the room when a conversation continues in a sibling file, so reconnect
@@ -231,14 +242,19 @@ Worktree shutdown: the host lets omp apply its own keep, remove and ask policy. 
 
 Startup readiness remains an omp API gap. A live collab snapshot can precede the editor's submit gate and the outer startup worktree choice. Classic debug values and screen text do not expose that outer readiness flag. Preflight protects a worktree question already painted or being answered; it cannot establish that a later startup question will not appear. The app does not automatically resend an unacknowledged submission. See the parity findings for the source trace.
 
-The developer flag `VOMP_TSP=1` selects Tern Surface Protocol at the launch of an app-hosted
-chat on macOS, Linux or Windows. Windows TSP hosts alone set node-pty's `useConptyDll: true`.
-Windows transport and package exchanges have CI evidence; repeated-host cleanup and manual gates remain open. Classic hosts,
-terminal-follow and their painted-screen adapters keep their existing behavior. The hidden PTY
-still runs the same omp session, private extension and collab relay. The opt-in launch sets
-`TERM_PROGRAM=tern`, removes `PI_TUI_NATIVE`, and reads raw PTY bytes. Its incremental splitter
-removes only TSP APC messages before the existing non-TSP byte paths. Chunk bodies are joined
-as bytes before UTF-8 decoding. Relaunch with `VOMP_TSP` unset to recover the classic controls.
+TSP is the default presentation for app-hosted chats on macOS and Linux. Main reads `VOMP_TSP`
+at host launch; hidden `VOMP_TSP=0` retains classic recovery for one release under decision D3.
+Windows stays classic unless `VOMP_TSP=1`, pending Phase 6 manual criteria 5 and 6. Windows TSP
+hosts alone set node-pty's `useConptyDll: true`. Transport, packaged exchanges and repeated-host
+cleanup have CI evidence; installed-build process/handle checks and Defender/SmartScreen checks
+remain open. Classic hosts, terminal-follow and painted-screen adapters remain available until
+the later removal release. Changing the environment never switches an existing host.
+
+Both presentations run the same omp session, private extension and collab relay in a hidden PTY.
+A TSP launch sets `TERM_PROGRAM=tern`, removes `PI_TUI_NATIVE`, and reads raw PTY bytes. Its
+incremental splitter removes only TSP APC messages before the existing non-TSP byte paths.
+Chunk bodies are joined as bytes before UTF-8 decoding. To recover classic controls on macOS
+or Linux during this release, relaunch the app with `VOMP_TSP=0` and launch the host again.
 
 Before its first surface opens, a TSP host captures recognized startup failures directly from the
 non-TSP byte path. Incremental UTF-8 decoding preserves split characters; escape parsing discards
@@ -571,11 +587,11 @@ The no-model `worktree-exit-ask` and `worktree-exit-ask-remove` recordings creat
 in isolated scratch git repositories, dirty a tracked file and complete both choices with
 `activate`. `worktree-start-ask` records startup evidence without changing the hosted override.
 
-If ten seconds elapse from spawn without a supported hello, main marks the preview failed once
+If ten seconds elapse from spawn without a supported hello, main marks the TSP host failed once
 output has been observed. A supported hello starts a separate five-second deadline for the first
 surface, including after an optimistic surface is withdrawn and omp falls back to classic rows.
 Failure sets `tspFailed`, exposes "omp did not start its semantic screen", and offers
-Restart. It does not automatically retry, kill omp or switch renderer modes. An explicit restart of
+Restart omp. It does not automatically retry, kill omp or switch renderer modes. An explicit restart of
 a failed host awaits the existing stop stages, then launches omp again with the saved session file;
 the visible history and input recall are retained while the new collab room connects. Stop or
 launch errors are shown, and a failed stop prevents relaunch.
@@ -590,7 +606,7 @@ documents, reuses unchanged nodes and supports subscriptions by surface and node
 view-state derivations identify overlays, screen surfaces, focus, the composer and unclaimed output.
 The role/action registry declares consumer capabilities and interaction overrides. Mounted visible
 renderer consumers acquire exact host/epoch/surface/node presentation claims through
-`features/tsp/presentation-claims.tsx`. Hidden chat pages, hidden split panes, modal sheets and
+`state/tsp/presentation-claims.tsx`. Hidden chat pages, hidden split panes, modal sheets and
 unmounted consumers release their claims, restoring the generic omp screen with its existing
 arbitration restrictions. Notice projections and always-present composer model/effort consumers retain static claims.
 These channels retain the trusted app-window IPC boundary and main-owned host lookup.
@@ -648,7 +664,8 @@ Dock rows and ANSI fallbacks still open the generic sheet; ordinary HUD status d
 Other overlays and focused raw fallbacks keep their guarded Escape handling.
 With no open omp overlay, screen or focused raw fallback, Escape closes the sheet.
 Closing the sheet itself does not answer omp, and focus returns to that chat's composer.
-"Show raw outline" discloses the read-only developer inspector below the semantic content.
+"Show raw outline" discloses read-only document diagnostics below the semantic content; normal
+screen controls remain available above it. Failed and exited TSP hosts offer Restart omp.
 
 `src/shared/tsp/question-match.ts` provides conservative question arbitration.
 The renderer mirrors all pending collab requests, including locally answered requests awaiting
@@ -711,8 +728,9 @@ Hook picker search is visibly unavailable while raw-key question input is blocke
 remains selectable.
 Collab questions retain their existing controls. Classic hosts are unchanged.
 
-Phase 2 is not complete. Local hook answering and recorded workflow replay now exist; live
-cross-channel ordering and the remaining sharing, packaged and manual criteria still gate it.
+At the Phase 2 checkpoint, local hook answering and recorded workflow replay were implemented;
+live ordering, sharing, packaged and manual acceptance were still open. That historical record
+does not establish completion of the later FLIP release checks.
 TSP-only warning/error rows and status toasts are projected by each chat's controller-owned
 subscription into existing transcript notice rows with literal, whitespace-preserving text. After
 the current room's collab snapshot is synchronized, new notices use its displayed branch and leaf
@@ -730,9 +748,10 @@ outcome is reserved. The typed result row or native presentation callback commit
 after displaying it. Rejection, supersession or cancelled collection releases undisplayed rows,
 without moving their original anchor. Additional matching feedback after the first outcome
 uses the ordinary notice path, including while the editor hold is still pending.
-Full overlay workflow replay, live hook and extension-fallback recordings, sharing parity,
-packaged checks and the remaining manual acceptance criteria still gate the complete Phase 2
-preview. There is no new user setting and no replacement of the transcript or collaboration channel.
+The Phase 2 preview acceptance record, including full overlay replay, live hook and
+extension-fallback recordings, sharing parity, packaged checks and manual criteria, remains in
+`TSP-MIGRATION.md`. The FLIP branch changes the launch default without asserting new acceptance
+evidence. There is no new user setting and no replacement of the transcript or collaboration channel.
 
 
 
@@ -872,6 +891,21 @@ Project instructions: `project:instructions` reads `contextFiles.extra` through 
 ## Renderer loading and packaging
 
 `src/renderer/src/registry/lazy.tsx` wraps dynamic imports for pages, Settings sections, views and sheets. Feature entry points register lazy components; registry slots render these chunks on demand. Idle preloading and explicit `preload()` calls load components before they are opened when possible. Usage, Settings sections, xterm, KaTeX and other heavier features have separate chunks. In the v0.5.0 build, the uncompressed initial renderer entry chunk is approximately 1.56 MB, xterm approximately 331 KB and KaTeX approximately 262 KB. These figures are uncompressed build-output sizes of individual chunks.
+
+The FLIP build guard checks the initial renderer entry and its static import closure for any
+`features/tsp/` modules. The semantic screen remains lazy; shared subscriptions, presentation
+claims, labels and notice state use `state/tsp/` so ordinary chat state does not import its UI.
+The native plan-review and omp-dialog cards also load through the existing lazy slot boundary.
+Their synchronous `NativeCardPresentation` slots retain exact presentation ownership while the
+interactive chunk loads and establishes its document subscription. A display-only fallback shows
+the current title, body and choices without moving focus or submitting answers.
+Rollup membership is recorded after writing the build, with sizes read from the emitted files.
+`npm run build` and both distribution paths emit `out/renderer/renderer-chunks.json` and
+`renderer-bundle-size.json`, and enforce at most 20,000 bytes of entry-chunk growth over the
+last classic release, v0.7.4 (`233c28252a211081e30202d4b0a41e02f45cad97`, 2,017,581 bytes).
+`scripts/renderer-classic-baseline.json` records the baseline and its reproduction commands.
+These are guard requirements and historical baseline evidence; this branch's build reports
+provide its measured size when verification runs.
 
 `electron.vite.config.ts` bundles main and preload dependencies other than externalized packages. Pure-JavaScript main-process packages are devDependencies and are bundled into `out`; native `node-pty` remains a runtime dependency and is selectively included by `electron-builder.yml`. `electronLanguages` retains `en` and `en-US`; source maps are excluded from packaged output. `node-pty`'s package contents are trimmed to runtime files.
 

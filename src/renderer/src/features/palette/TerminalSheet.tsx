@@ -15,9 +15,9 @@ import { controllerFor, useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { Button, cn, Dialog, DialogContent, EmptyState, Expand, IconButton, Sheet, SheetContent, Spinner } from "../../ui";
 import { type ScreenKey, screenName } from "./overlays";
-import { useTsp } from "../tsp/useTsp";
-import { plain } from "../tsp/labels";
-import { usePresentationAvailability, usePresentationClaims } from "../tsp/presentation-claims";
+import { useTsp } from "../../state/tsp/useTsp";
+import { plain } from "../../state/tsp/labels";
+import { usePresentationAvailability, usePresentationClaims } from "../../state/tsp/presentation-claims";
 
 function insideAppPopup(target: EventTarget | null): boolean {
 	return target instanceof Element && !!target.closest('.tsp-select-popup, [role="combobox"][data-state="open"]');
@@ -223,11 +223,11 @@ export function TerminalSheet({ tabId, controller }: { tabId: string; controller
 						<Button size="sm" variant="secondary" disabled={restarting || readOnly} onClick={() => void restartTsp()}>{t("terminal.restart")}</Button>
 					</div>
 				</Expand>
-				<Expand open={!tsp && mode === "exited"}>
+				<Expand open={mode === "exited" && (!tsp || snapshot?.lifecycle !== "failed")}>
 					<div role="alert" className="flex h-9 shrink-0 items-center gap-2 rounded-md bg-err-bg px-3 text-sm text-err">
 						<Warning aria-hidden className="size-4" />
 						<span className="flex-1">{t("terminal.disconnected")}</span>
-						<Button size="sm" variant="secondary" icon={<ArrowCounterClockwise />} onClick={() => void controller.restart()}>
+						<Button size="sm" variant="secondary" icon={<ArrowCounterClockwise />} disabled={restarting || readOnly} onClick={() => tsp ? void restartTsp() : void controller.restart()}>
 							{t("terminal.restart")}
 						</Button>
 					</div>

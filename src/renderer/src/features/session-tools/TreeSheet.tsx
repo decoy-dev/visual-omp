@@ -12,8 +12,8 @@ import { useSessionView } from "../../shell/hooks";
 import { Markdown } from "../../transcript/Markdown";
 import { forkChat, loadTree, navigateTo } from "./navigate";
 import { layoutTree, type MapNode, type TreeMap } from "./tree";
-import { useTsp } from "../tsp/useTsp";
-import { usePresentationClaim } from "../tsp/presentation-claims";
+import { useTsp } from "../../state/tsp/useTsp";
+import { usePresentationClaim } from "../../state/tsp/presentation-claims";
 
 interface TreeProps { tabId: string; entryId?: string; }
 

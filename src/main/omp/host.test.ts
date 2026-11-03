@@ -88,7 +88,7 @@ import { TspSession } from "./tsp/session";
 
 let host: SessionHost;
 beforeEach(async () => {
-	vi.stubEnv("VOMP_TSP", "");
+	vi.stubEnv("VOMP_TSP", "0");
 	pty.root = await mkdtemp(join(tmpdir(), "vomp-host-test-"));
 	pty.events = {};
 	pty.focus = null;
@@ -810,7 +810,7 @@ it("rejects editor transaction methods after their input lock has been released"
 async function launchTsp(platform: NodeJS.Platform = "darwin", fakeClock = false, resumeFile?: string): Promise<void> {
 	if (host.state.phase !== "exited") await exit(0);
 	if (fakeClock) vi.useFakeTimers();
-	vi.stubEnv("VOMP_TSP", "1");
+	vi.stubEnv("VOMP_TSP", platform === "win32" ? "1" : undefined);
 	// The spawn and debug bridge are mocked; only launch-policy selection needs the platform.
 	vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? platform : Reflect.get(target, key) }));
 	host = new SessionHost({ cwd: tmpdir(), resumeFile });
@@ -1624,6 +1624,42 @@ describe("opt-in semantic transport", () => {
 		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "answering" }]);
 	});
 
+	it.each(["darwin", "linux"] as const)("defaults to semantic input on %s without VOMP_TSP and keeps that choice for the host lifetime", async platform => {
+		await launchTsp(platform);
+		expect(process.env.VOMP_TSP).toBeUndefined();
+		expect(host.state.transport).toBe("tsp");
+		expect(pty.spawnOptions?.env).toMatchObject({ TERM_PROGRAM: "tern" });
+		expect(pty.spawnOptions?.env).not.toHaveProperty("PI_TUI_NATIVE");
+		expect(pty.spawnOptions).toMatchObject({ encoding: null });
+		expect(pty.spawnOptions).not.toHaveProperty("useConptyDll");
+		vi.stubEnv("VOMP_TSP", "0");
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer();
+		await connect();
+		await host.submit("Default semantic message");
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"send"'));
+		expect(host.state.transport).toBe("tsp");
+		expect(host.screenReadAttempts()).toEqual([]);
+	});
+
+	it.each(["darwin", "linux"] as const)("uses classic input on %s with the one-release escape", async platform => {
+		await exit(0);
+		vi.stubEnv("VOMP_TSP", "0");
+		vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? platform : Reflect.get(target, key) }));
+		host = new SessionHost({ cwd: tmpdir() });
+		await host.start();
+		expect(pty.spawnOptions?.env).toMatchObject({ PI_TUI_NATIVE: "0" });
+		expect(pty.spawnOptions?.env).not.toHaveProperty("TERM_PROGRAM");
+		expect(pty.spawnOptions).not.toHaveProperty("encoding");
+		expect(host.tspSnapshot()).toBeNull();
+		expect(parse(await readFile(pty.args[1]!, "utf8")).composer).toEqual({ shape: "box" });
+		vi.stubEnv("VOMP_TSP", undefined);
+		const bytes = "\x1b[200~Classic escape message\x1b[201~\r";
+		host.write(bytes);
+		expect(pty.writes).toHaveBeenCalledWith(bytes);
+		expect(host.tspSnapshot()).toBeNull();
+	});
+
 	it("uses bundled ConPTY and raw bytes for an explicitly enabled Windows TSP host", async () => {
 		await launchTsp("win32");
 		expect(pty.spawnOptions?.env).toMatchObject({ TERM_PROGRAM: "tern" });
@@ -1639,7 +1675,7 @@ describe("opt-in semantic transport", () => {
 		expect(pty.writes).toHaveBeenCalledWith(expect.stringMatching(/^\x1b_tsp;e;.*"text":"café 🐢".*\x1b\\$/));
 	});
 
-	it.each(["", "0"])("keeps classic Windows spawn options and terminal bytes unchanged with VOMP_TSP=%s", async flag => {
+	it.each([undefined, "", "0"])("keeps classic Windows spawn options and terminal bytes unchanged with VOMP_TSP=%s", async flag => {
 		await exit(0);
 		vi.stubEnv("VOMP_TSP", flag);
 		vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? "win32" : Reflect.get(target, key) }));
@@ -1784,7 +1820,7 @@ describe("opt-in semantic transport", () => {
 			() => host.screenPaint(),
 			() => host.debugValues(),
 			() => host.tuiFocus(),
-		]) await expect(action()).rejects.toThrow("not available in the TSP preview");
+		]) await expect(action()).rejects.toThrow("not available for an omp screen chat");
 		expect(() => host.serializedScreen()).toThrow("not available");
 		expect(host.screenReadAttempts()).toEqual([
 			{ source: "host:screen" }, { source: "screenPaint" }, { source: "debugValues" },
@@ -1967,6 +2003,31 @@ describe("opt-in semantic transport", () => {
 		expect(host.tspSnapshot()?.hostId).not.toBe(previous.id);
 	});
 
+	it.each([
+		{ bytes: "\x1b_tsp;f;{\x1b\\", diagnostic: "Invalid TSP JSON" },
+		{ bytes: '\x1b_tsp;o;{"id":42,"mode":"inline"}\x1b\\', diagnostic: "Invalid TSP surface" },
+	])("publishes restartable protocol failure after negotiation: $diagnostic", async ({ bytes, diagnostic }) => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer();
+		await connect();
+		expect(host.tspSnapshot()?.lifecycle).toBe("live");
+		expect(host.state.tspFailed).toBe(false);
+		vi.mocked(broadcast).mockClear();
+		pty.data?.(Buffer.from(bytes));
+		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "failed", negotiated: true, failure: expect.stringContaining(diagnostic) });
+		expect(host.state.tspFailed).toBe(true);
+		expect(host.state.tspAvailability).toMatchObject({ available: false, reason: expect.stringContaining(diagnostic) });
+		expect(broadcast).toHaveBeenCalledWith("host:state", expect.objectContaining({ hostId: host.id, tspFailed: true }));
+		expect(broadcast).toHaveBeenCalledWith("host:tsp-update", expect.objectContaining({ lifecycle: "failed" }));
+		// A fresh hello is the only protocol transition that clears the failed epoch.
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		expect(host.state.tspFailed).toBe(false);
+		expect(host.tspSnapshot()?.failure).toBeNull();
+		tspComposer();
+		expect(host.tspSnapshot()?.lifecycle).toBe("live");
+	});
+
 	it.each([null, [2]])("shows bounded negotiation failure for absent or incompatible hello %j", async versions => {
 		await launchTsp("darwin", true);
 		pty.data?.(Buffer.from("classic output"));
@@ -2008,30 +2069,6 @@ describe("opt-in semantic transport", () => {
 		expect(host.state.tspFailed).toBe(true);
 	});
 
-	it.each([
-		{ bytes: "\x1b_tsp;f;{\x1b\\", diagnostic: "Invalid TSP JSON" },
-		{ bytes: '\x1b_tsp;o;{"id":42,"mode":"inline"}\x1b\\', diagnostic: "Invalid TSP surface" },
-	])("publishes restartable protocol failure after negotiation: $diagnostic", async ({ bytes, diagnostic }) => {
-		await launchTsp();
-		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
-		tspComposer();
-		await connect();
-		expect(host.tspSnapshot()?.lifecycle).toBe("live");
-		expect(host.state.tspFailed).toBe(false);
-		vi.mocked(broadcast).mockClear();
-		pty.data?.(Buffer.from(bytes));
-		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "failed", negotiated: true, failure: expect.stringContaining(diagnostic) });
-		expect(host.state.tspFailed).toBe(true);
-		expect(host.state.tspAvailability).toMatchObject({ available: false, reason: expect.stringContaining(diagnostic) });
-		expect(broadcast).toHaveBeenCalledWith("host:state", expect.objectContaining({ hostId: host.id, tspFailed: true }));
-		expect(broadcast).toHaveBeenCalledWith("host:tsp-update", expect.objectContaining({ lifecycle: "failed" }));
-		// A fresh hello is the only protocol transition that clears the failed epoch.
-		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
-		expect(host.state.tspFailed).toBe(false);
-		expect(host.tspSnapshot()?.failure).toBeNull();
-		tspComposer();
-		expect(host.tspSnapshot()?.lifecycle).toBe("live");
-	});
 
 	it("blocks submission for nonmodal overlays and screen surfaces and exposes the reason", async () => {
 		await launchTsp();

@@ -244,7 +244,7 @@ describe("TSP session", () => {
 			{ ev: "edit", sf: "s:1", id: "editor", from: -1, to: 0, text: "", cursor: 0, len: 0 },
 			{ ev: "edit", sf: "s:1", id: "editor", from: 0, to: 0, text: "", cursor: Infinity, len: 0 },
 			{ ev: "edit", sf: "s:1", id: "editor", from: 1, to: 0, text: "", cursor: 0, len: 0 },
-		]) await expect(h.session.send(event)).rejects.toThrow("TSP preview:");
+		]) await expect(h.session.send(event)).rejects.toThrow("omp screen:");
 		expect(h.messages).toHaveLength(before);
 	});
 

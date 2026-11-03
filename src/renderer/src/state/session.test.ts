@@ -1097,7 +1097,7 @@ describe("messages while ask waits", () => {
 	});
 });
 
-describe("SessionController TSP preview input", () => {
+describe("SessionController TSP input", () => {
 	const preview = (busy: boolean) => {
 		const session = busy ? working("preview-working") : idle("preview-idle");
 		sendHost({ transport: "tsp", link: "L1", tui: tui(0), tspAvailability: { available: true, reason: null } });
@@ -1197,7 +1197,7 @@ describe("SessionController TSP preview input", () => {
 
 	it("strands staged images after a main-owned attachment failure without automatically repasting", async () => {
 		const session = preview(false);
-		failOnce("host:submit", "TSP preview: Image submission needs recovery. omp did not attach the image.");
+		failOnce("host:submit", "omp screen: Image submission needs recovery. omp did not attach the image.");
 		await session.send("look", [shot]);
 		expect(session.getSnapshot().strandedImages).toBe(true);
 		expect(queued(session)).toEqual(["look"]);
@@ -1227,7 +1227,7 @@ describe("SessionController TSP preview input", () => {
 	it("keeps an automatically sent rejected image queued without retrying on readiness updates", async () => {
 		const session = preview(true);
 		await session.send("look", [shot]);
-		failOnce("host:submit", "TSP preview: Image submission was restored. Failed to read pasted image path");
+		failOnce("host:submit", "omp screen: Image submission was restored. Failed to read pasted image path");
 		fakes.guests.at(-1)?.emit("live", [u1, a1], false);
 		await flush();
 		expect(session.getSnapshot().queue[0]).toMatchObject({ text: "look", images: [shot], error: "Failed to read pasted image path" });
@@ -1333,9 +1333,9 @@ describe("SessionController TSP preview input", () => {
 
 	it("returns actionable readiness failure to the composer without a persistent error status", async () => {
 		const session = preview(false);
-		const reason = `Error invoking remote method 'host:submit': Error: TSP preview: The focused editor is not ready. Relaunch without VOMP_TSP.`;
+		const reason = `Error invoking remote method 'host:submit': Error: omp screen: The focused editor is not ready. Restart omp.`;
 		failOnce("host:submit", reason);
-		await expect(deliver(session, "keep this draft", [], false)).rejects.toThrow("Relaunch without VOMP_TSP");
+		await expect(deliver(session, "keep this draft", [], false)).rejects.toThrow("Restart omp");
 		expect(session.getSnapshot().queue).toEqual([]);
 		expect(session.getSnapshot().inputHistory).toEqual([]);
 		expect(session.getSnapshot().error).toBeNull();
@@ -1345,17 +1345,17 @@ describe("SessionController TSP preview input", () => {
 	it("keeps an automatically delivered preview message queued and shows an actionable notice without red status", async () => {
 		const session = preview(true);
 		await session.send("keep this queued");
-		failOnce("host:submit", "TSP preview: The editor is not ready. Relaunch without VOMP_TSP.");
+		failOnce("host:submit", "omp screen: The editor is not ready. Restart omp.");
 		fakes.guests.at(-1)?.emit("live", [u1, a1], false);
 		await flush();
 		expect(queued(session)).toEqual(["keep this queued"]);
-		expect(toast).toHaveBeenCalledExactlyOnceWith({ tone: "warn", message: "TSP preview: The editor is not ready. Relaunch without VOMP_TSP." });
+		expect(toast).toHaveBeenCalledExactlyOnceWith({ tone: "warn", message: "omp screen: The editor is not ready. Restart omp." });
 		expect(session.getSnapshot().error).toBeNull();
 		expect(chatStatus(session.getSnapshot())).toBe("live");
 	});
 
-	it("keeps actual launch failures authoritative even when they quote preview text", async () => {
-		const reason = "omp startup failed while processing 'TSP preview:'";
+	it("keeps actual launch failures authoritative even when they quote omp screen errors", async () => {
+		const reason = "omp startup failed while processing 'omp screen:'";
 		failOnce("host:start", reason);
 		const session = new SessionController({ tabId: "preview-start-failure", projectPath: "/p", sessionFile: null });
 		await expect(session.send("keep this draft")).rejects.toThrow(reason);
@@ -1443,9 +1443,9 @@ describe("SessionController TSP preview input", () => {
 		expect(chatStatus(session.getSnapshot())).toBe("error");
 	});
 
-	it("does not suppress authoritative omp error status that quotes preview text", () => {
+	it("does not suppress authoritative omp error status that quotes omp screen errors", () => {
 		const session = preview(false);
-		const programStatus = { state: "error" as const, msg: "omp task failed while processing 'TSP preview:'" };
+		const programStatus = { state: "error" as const, msg: "omp task failed while processing 'omp screen:'" };
 		sendHost({ transport: "tsp", link: "L1", programStatus });
 		expect(session.getSnapshot().host?.programStatus).toBe(programStatus);
 		expect(chatStatus(session.getSnapshot())).toBe("error");

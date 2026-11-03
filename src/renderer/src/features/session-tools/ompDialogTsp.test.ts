@@ -14,7 +14,7 @@ import { currentHook, nativeDialog, waitForNodeToLeave } from "./ompDialogTsp";
 import { parseOmpDialog } from "./ompDialog";
 import type { SessionController, SessionView } from "../../state/session";
 import "../../i18n";
-import { PresentationVisibility, presentationClaims } from "../tsp/presentation-claims";
+import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 import { OmpScreenSheet } from "../tsp/OmpScreenSheet";
 
 vi.mock("motion/react", () => {
@@ -139,7 +139,7 @@ it("removes the native card when a delayed collab request matches and after a re
 	await act(async () => publish({ ...snapshot, revision: snapshot.revision + 1, surfaces: [] })); expect(element.querySelector("section")).toBeNull(); expect(emitted).toEqual([]);
 });
 it("shows calm completion for a losing local answer whose node has already gone", async () => {
-	capture("hook-select"); invoke.mockImplementation(async (channel: string) => { if (channel === "host:tsp-snapshot") return snapshot; if (channel === "host:tsp-answer") throw new Error("TSP preview: The question node is no longer available."); });
+	capture("hook-select"); invoke.mockImplementation(async (channel: string) => { if (channel === "host:tsp-snapshot") return snapshot; if (channel === "host:tsp-answer") throw new Error("omp screen: The question node is no longer available."); });
 	await render(); await button("Choose option"); expect(element.querySelector('[role="alert"]')).toBeNull(); expect(element.querySelector('[role="status"]')?.textContent).toContain("closed");
 });
 it("waits for node departure without polling and ends on scope changes", async () => {

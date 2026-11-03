@@ -14,7 +14,7 @@ import { Forms } from "../interactive/Forms";
 import { PushButton } from "../interactive/PushButton";
 import { Segmented } from "../../../ui/Segmented";
 import { Code } from "./Code";
-import { plain } from "../labels";
+import { plain } from "../../../state/tsp/labels";
 import { rawKey } from "../keys";
 import type { NodeContext, NodeProps } from "./context";
 import { Live } from "./Live";

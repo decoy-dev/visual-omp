@@ -114,15 +114,15 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("host:buffer", hostId => getHost(hostId).serializedScreen());
 	handle("host:tsp-snapshot", hostId => getHost(hostId).tspSnapshot());
 	handle("host:tsp-event", (hostId, generation, event, epoch) => {
-		if (!Number.isInteger(epoch)) throw new Error("TSP preview: A current protocol epoch is required.");
+		if (!Number.isInteger(epoch)) throw new Error("omp screen: A current protocol epoch is required.");
 		return getHost(hostId).tspEvent(generation, event, epoch);
 	});
 	handle("host:tsp-answer", (hostId, generation, answer, epoch) => {
-		if (!Number.isInteger(epoch)) throw new Error("TSP preview: A current protocol epoch is required.");
+		if (!Number.isInteger(epoch)) throw new Error("omp screen: A current protocol epoch is required.");
 		return getHost(hostId).tspAnswer(generation, answer, epoch);
 	});
 	handle("host:tsp-advisor", (hostId, generation, action, epoch) => {
-		if (!Number.isInteger(epoch)) throw new Error("TSP preview: A current protocol epoch is required.");
+		if (!Number.isInteger(epoch)) throw new Error("omp screen: A current protocol epoch is required.");
 		return getHost(hostId).tspAdvisor(generation, action, epoch);
 	});
 	handle("host:tsp-resize", (hostId, cols) => getHost(hostId).tspResize(cols));

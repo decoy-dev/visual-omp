@@ -3,7 +3,7 @@ import { advisorOverlay, type AdvisorOverlay, type TspAdvisorAction } from "@sha
 import { nodeHasLeft } from "@shared/tsp/dialogs";
 import { TSP_ADVISOR, TSP_ROLES } from "@shared/tsp/roles";
 import { walkNodes } from "@shared/tsp/view-state";
-import { presentationClaims } from "../tsp/presentation-claims";
+import { presentationClaims } from "../../state/tsp/presentation-claims";
 import { isApprovalRequest, type SessionController } from "../../state/session";
 import { TspEditorWatch } from "./drive";
 

@@ -9,6 +9,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 #### New
 
 - Expanded shell tool cards now show which omp filter changed a command's output and its byte sizes before and after filtering, when omp records them.
+- On macOS, omp menus now open in the native omp screen, and `/btw` answers appear in the Side questions pane.
 
 #### Fixed
 

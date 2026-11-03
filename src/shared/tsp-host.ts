@@ -34,11 +34,11 @@ export const TspRendererEvent = z.discriminatedUnion("ev", [
 ]);
 export type TspRendererEvent = z.infer<typeof TspRendererEvent>;
 
-export const TSP_PREVIEW_UNAVAILABLE = "TSP preview: This action is not available in the TSP preview yet. Relaunch without VOMP_TSP to use the classic controls.";
+export const TSP_CLASSIC_ACTION_UNAVAILABLE = "omp screen: This action is not available for an omp screen chat. Open the omp screen to use its controls.";
 
 /** Electron prefixes remote errors, so classification survives the invoke boundary. */
-export function isTspPreviewInputError(error: unknown): boolean {
-	return (error instanceof Error ? error.message : String(error)).includes("TSP preview:");
+export function isTspInputError(error: unknown): boolean {
+	return (error instanceof Error ? error.message : String(error)).includes("omp screen:");
 }
 
 export interface TspAvailability {

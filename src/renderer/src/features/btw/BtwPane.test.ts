@@ -8,7 +8,7 @@ import "../../i18n";
 import { routeSlash } from "../session-tools/slash";
 import { TooltipProvider } from "../../ui";
 import { BtwPane, BtwPaneContent } from "./BtwPane";
-import { PresentationVisibility, presentationClaims } from "../tsp/presentation-claims";
+import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 
 vi.hoisted(() => { Object.assign(window, { vomp: { platform: "darwin", on: () => () => {}, invoke: async () => undefined } }); });
 vi.mock("../session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));

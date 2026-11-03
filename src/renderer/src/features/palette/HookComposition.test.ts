@@ -19,7 +19,7 @@ import { controllerFor, useApp } from "../../state/app";
 import { TooltipProvider } from "../../ui/Tooltip";
 import { OverlayWatcher } from "./OverlayWatcher";
 import { autoOpened, TerminalSheetHost } from "./TerminalSheet";
-import { presentationClaims } from "../tsp/presentation-claims";
+import { presentationClaims } from "../../state/tsp/presentation-claims";
 import "../../i18n";
 
 vi.mock("../../chat/ChatView", () => ({

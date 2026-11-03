@@ -4,7 +4,7 @@ import type { TspNode } from "@shared/tsp";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
 import type { SessionController } from "../../state/session";
 import { useSessionView } from "../../shell/hooks";
-import { useTsp } from "../tsp/useTsp";
+import { useTsp } from "../../state/tsp/useTsp";
 import { useEffect, useRef } from "react";
 
 /** Presence is physical: hidden or temporarily unsupported content still owns the pending choice. */

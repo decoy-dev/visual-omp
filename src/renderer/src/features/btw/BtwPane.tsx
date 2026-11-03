@@ -10,7 +10,7 @@ import { useApp } from "../../state/app";
 import { Markdown, StreamingMarkdown } from "../../transcript/Markdown";
 import { Button, EmptyState, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, Spinner, Textarea } from "../../ui";
 import { PaneToolbar, usePaneVisible } from "../panes/common";
-import { usePresentationClaim } from "../tsp/presentation-claims";
+import { usePresentationClaim } from "../../state/tsp/presentation-claims";
 
 /** Subscribe before the initial read; a late response cannot replace a newer frame or disk update. */
 export function useBtw(hostId: string | null, generation: number | undefined, epoch: number | undefined) {

@@ -45,8 +45,8 @@
 		"newShell": { "title": "Open a terminal", "hint": "Start another shell in this project.", "keywords": "terminal, shell, new, console" }
 	},
 	"btw": {
-		"noChatTitle": "Side questions need a TSP chat",
-		"noChat": "In classic chats, use /btw in the message box to read the answer in omp's terminal.",
+		"noChatTitle": "Side questions are unavailable here",
+		"noChat": "Use /btw in the message box to read the answer in omp's terminal.",
 		"history": "History ({{count}})",
 		"historyLabel": "Side-question history",
 		"openHistory": "Open history",
@@ -294,7 +294,7 @@
 		"approve": "Approve plan",
 		"approveHint": "omp starts working on this plan.",
 		"options": "See all options",
-		"optionsHint": "Opens omp's terminal to refine the plan, keep or compact the context, or save it for later.",
+		"optionsHint": "Opens omp's plan controls to refine the plan, keep or compact the context, or save it for later.",
 		"checklist": "Plan checklist",
 		"checklistHint": "The checkboxes in omp's plan file, as omp last saved them.",
 		"checked": "Checked",

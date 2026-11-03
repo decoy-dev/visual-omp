@@ -12,8 +12,8 @@ import { useSessionView } from "../../shell/hooks";
 import { controllerFor, useApp } from "../../state/app";
 import { isNativeOverlay, screenName } from "./overlays";
 import { autoOpened } from "./TerminalSheet";
-import { useTsp } from "../tsp/useTsp";
-import { currentPresentationConsumers, usePresentationAvailability, usePresentationClaims } from "../tsp/presentation-claims";
+import { useTsp } from "../../state/tsp/useTsp";
+import { currentPresentationConsumers, usePresentationAvailability, usePresentationClaims } from "../../state/tsp/presentation-claims";
 
 /** Let omp finish painting before reading the screen. */
 const SETTLE_MS = 300;

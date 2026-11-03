@@ -8,7 +8,7 @@ import { advisorActionEvents, advisorOverlay, type TspAdvisorAction } from "@sha
 import { composer, openOverlay, screenSurface, unclaimed } from "@shared/tsp/view-state";
 import type { SessionController } from "../../state/session";
 import { FixtureDocuments, loadFixtureRecording, type FixtureInput } from "../tsp/testing/documents";
-import { presentationClaims } from "../tsp/presentation-claims";
+import { presentationClaims } from "../../state/tsp/presentation-claims";
 import { applyAdvisorConfig } from "./advisorApply";
 import { AdvisorEditor } from "./AdvisorSheet";
 import "../../i18n";

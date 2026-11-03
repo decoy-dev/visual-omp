@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "tag": "v0.7.4",
+  "commit": "233c28252a211081e30202d4b0a41e02f45cad97",
+  "entryFile": "assets/index-BrD4viTj.js",
+  "entryBytes": 2017581,
+  "maxGrowthBytes": 20000,
+  "measurement": {
+    "metric": "Uncompressed UTF-8 bytes of the single JavaScript module entry referenced by out/renderer/index.html. CSS, dynamic chunks and source maps are excluded.",
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.13.1",
+    "electronVite": "5.0.0",
+    "vite": "7.3.7",
+    "react": "19.3.0",
+    "packageLockSha256": "6a819005a0b64f7c37acca951763443a2e53f9bbc8d4319777c98d08adbbcce2",
+    "method": "Built the unmodified release tag in a detached scratch checkout. Dependencies were symlinked from the existing installation without changing its node_modules symlink. The linked Vite, electron-vite and React versions match the tag's lockfile. No Electron process was launched.",
+    "buildWorkingDirectory": "/tmp/vomp-p7-classic-baseline-v074",
+    "commandsRun": [
+      "git worktree add --detach /tmp/vomp-p7-classic-baseline-v074 v0.7.4",
+      "ln -s /tmp/vomp-p7-flip/node_modules /tmp/vomp-p7-classic-baseline-v074/node_modules",
+      "npm run build",
+      "stat -f '%N %z bytes' out/renderer/assets/index-BrD4viTj.js",
+      "shasum -a 256 package-lock.json"
+    ],
+    "cleanReproduction": [
+      "git worktree add --detach /tmp/vomp-classic-baseline v0.7.4",
+      "npm --prefix /tmp/vomp-classic-baseline ci",
+      "npm --prefix /tmp/vomp-classic-baseline run build",
+      "node -e 'const fs=require(\"node:fs\"); const root=\"/tmp/vomp-classic-baseline/out/renderer/\"; const html=fs.readFileSync(root+\"index.html\",\"utf8\"); const file=html.match(/<script[^>]*src=\"([^\"]+)\"/)[1]; console.log(file, fs.statSync(root+file).size);'"
+    ]
+  }
+}

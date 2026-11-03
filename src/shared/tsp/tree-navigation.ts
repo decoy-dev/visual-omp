@@ -14,15 +14,15 @@ export function treeSelector(surfaces: readonly TspSurfaceSnapshot[]): TspNodeTa
 
 /** Repeated at the serialized writer, including the selector's current filter and disabled state. */
 export function assertTreeEntry(node: TspNode, entryId: string): void {
-	if (!isTreeSelectorNode(node)) throw new Error("TSP preview: The session tree selector changed. Open the tree again.");
+	if (!isTreeSelectorNode(node)) throw new Error("omp screen: The session tree selector changed. Open the tree again.");
 	if (node.k === "picker") {
 		const item = node.p?.items?.find(item => item.id === entryId);
-		if (!item) throw new Error("TSP preview: This entry is no longer in omp's session tree.");
-		if (item.disabled) throw new Error(typeof item.disabled === "string" ? item.disabled : "TSP preview: This session entry is disabled.");
-		if (node.p?.order && !node.p.order.includes(entryId)) throw new Error("TSP preview: This entry is hidden by omp's tree filter. Open the omp screen to change the filter.");
+		if (!item) throw new Error("omp screen: This entry is no longer in omp's session tree.");
+		if (item.disabled) throw new Error(typeof item.disabled === "string" ? item.disabled : "omp screen: This session entry is disabled.");
+		if (node.p?.order && !node.p.order.includes(entryId)) throw new Error("omp screen: This entry is hidden by omp's tree filter. Open the omp screen to change the filter.");
 	} else if (node.k === "list") {
 		const item = node.c?.find(item => item.k === "item" && (item.p?.key ?? item.id) === entryId && !item.p?.hidden);
-		if (!item || item.k !== "item") throw new Error("TSP preview: This entry is no longer in omp's session tree.");
-		if (item.p?.disabled) throw new Error("TSP preview: This session entry is disabled.");
+		if (!item || item.k !== "item") throw new Error("omp screen: This entry is no longer in omp's session tree.");
+		if (item.p?.disabled) throw new Error("omp screen: This session entry is disabled.");
 	}
 }
