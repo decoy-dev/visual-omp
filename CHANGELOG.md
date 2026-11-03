@@ -6,6 +6,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ### Detailed changes
 
+#### New
+
+- Expanded shell tool cards now show which omp filter changed a command's output and its byte sizes before and after filtering, when omp records them.
+
 #### Fixed
 
 - A background check no longer leaves a lasting “TUI debug text timed out” error at the top of a chat when omp is slow to respond, including while reopening a long chat.
