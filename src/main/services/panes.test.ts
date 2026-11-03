@@ -130,27 +130,35 @@ describe("svgForImage", () => {
 		["quoted doctype entities", (n: number) => `<!DOCTYPE svg [${"<!ENTITY a 'x>]'>".repeat(n)}`],
 		["whitespace before a repaired root", (n: number) => `${" \n".repeat(n * 5)}<svg/>`],
 	] as const)("scans %s without quadratic rescanning", (name, make) => {
-		const iterations = 1024;
-		const cpuTime = (data: Buffer<ArrayBuffer>) => {
-			const samples = Array.from({ length: 5 }, () => {
-				const started = process.cpuUsage();
-				for (let i = 0; i < iterations; i++) svgForImage(data);
-				const elapsed = process.cpuUsage(started);
-				return elapsed.user + elapsed.system;
-			});
-			return samples.sort((a, b) => a - b)[2]!;
+		// Windows reports process CPU in 15.6 ms ticks, so short batches can read as 0.
+		// Grow the batch until its small-input median reaches 20 ms, then reuse that
+		// count for the large input. Keep each path's 16x input step and 64x ceiling.
+		// Allow 20 seconds because repeated CPU samples exceeded the default timeout under load.
+		const MIN_SAMPLE_US = 20_000;
+		const batch = (data: Buffer<ArrayBuffer>, iterations: number) => {
+			const started = process.cpuUsage();
+			for (let i = 0; i < iterations; i++) svgForImage(data);
+			const elapsed = process.cpuUsage(started);
+			return elapsed.user + elapsed.system;
 		};
+		const cpuTime = (data: Buffer<ArrayBuffer>, iterations: number) =>
+			Array.from({ length: 3 }, () => batch(data, iterations)).sort((a, b) => a - b)[1]!;
 		const small = Buffer.from(make(128));
 		const large = Buffer.from(make(2048));
-		// Warm both sizes, then batch identical call counts so even native
-		// quote searches contribute substantial CPU samples.
+		// Warm both sizes before measuring.
 		for (let i = 0; i < 8; i++) { svgForImage(small); svgForImage(large); }
-		const baseline = cpuTime(small);
-		const grown = cpuTime(large);
+		let iterations = 1024;
+		let baseline = cpuTime(small, iterations);
+		while (baseline < MIN_SAMPLE_US && iterations < 1 << 22) {
+			iterations *= 2;
+			baseline = cpuTime(small, iterations);
+		}
+		expect(baseline, `SVG ${name}: CPU sample below calibration floor`).toBeGreaterThanOrEqual(MIN_SAMPLE_US);
+		const grown = cpuTime(large, iterations);
 		// Process CPU excludes worker scheduling delays. Each path must stay
 		// below 64x work for 16x input, rather than hiding behind other paths.
 		expect(grown, `SVG ${name}: ${baseline}us -> ${grown}us`).toBeLessThan(baseline * 64);
-	});
+	}, 20_000);
 });
 
 describe("readBlobImage", () => {
