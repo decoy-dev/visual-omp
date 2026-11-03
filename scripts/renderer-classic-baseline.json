@@ -6,8 +6,8 @@
   "entryBytes": 2017581,
   "maxGrowthBytes": 20000,
   "acceptedGrowth": {
-    "entryBytes": 2041845,
-    "reason": "0.7.5: Side questions first-frame presentation (/btw opens the pane without the omp screen flashing), the Suggestions switch below the composer and open-by-default shell and Python output",
+    "entryBytes": 2041903,
+    "reason": "0.7.5: Side questions first-frame presentation and put-away on close (/btw opens and closes the pane without the omp screen), the Suggestions switch below the composer and open-by-default shell and Python output",
     "acceptedOn": "2026-11-03"
   },
   "measurement": {

@@ -914,9 +914,9 @@ last classic release, v0.7.4 (`233c28252a211081e30202d4b0a41e02f45cad97`, 2,017,
 `scripts/renderer-classic-baseline.json` records the baseline and its reproduction commands.
 These are guard requirements and historical baseline evidence; each build's report
 provides its measured size when verification runs.
-On 2026-11-03, the owner accepted a measured entry ceiling of 2,041,845 bytes for 0.7.5: Side questions
-first-frame presentation (`/btw` opens the pane without the omp screen flashing), the Suggestions switch
-below the composer and open-by-default shell and Python output.
+On 2026-11-03, the owner accepted a measured entry ceiling of 2,041,903 bytes for 0.7.5: Side questions
+first-frame presentation and put-away on close (`/btw` opens and closes the pane without the omp screen),
+the Suggestions switch below the composer and open-by-default shell and Python output.
 The baseline file records that exception in `acceptedGrowth` with its reason and acceptance date;
 the 20,000-byte default and the refusal of eager TSP view modules remain enforced.
 
