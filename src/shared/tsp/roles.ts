@@ -37,6 +37,16 @@ export function isKnownAction(action: string): boolean { return knownActions.has
 /** Recorded actions without an app interaction path stay display-only. */
 export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true, "jobs.open": true, inject: true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
+export const TSP_TREE = {
+	summaryTitle: "Summarize branch?", noSummary: "No summary",
+	navigated: "Navigated to selected point", already: "Already at this point",
+} as const;
+/** omp 18.15's picker omits the legacy tree-selector role. */
+export function isTreeSelectorNode(node: TspNode): boolean {
+	return node.k === "picker" && node.p?.layout === "tree" && node.p.noun === "entries"
+		&& node.p.actions?.some(action => action.id === TSP_ACTIONS.switch && !action.disabled) === true
+		|| node.k === "list" && (node.p?.role === TSP_ROLES.tree || node.p?.role === TSP_ROLES.treeSelector);
+}
 export const TSP_PLAN_OPTIONS = {
 	execute: "Approve and execute", compact: "Approve and compact context", keep: "Approve and keep context",
 	refine: "Refine plan", save: "Save and quit",
@@ -59,6 +69,7 @@ export function isReplicatedRole(role?: string): boolean {
 	return !!role && replicated.some(prefix => role === prefix || role.startsWith(`${prefix}.`));
 }
 export function isClaimable(node: TspNode): boolean {
+	if (isTreeSelectorNode(node)) return true;
 	if (node.p?.role === TSP_ROLES.planReview) return projectPlanReview(node, "") !== null;
 	if (isHookNode(node)) {
 		if (!isNativeHookNode(node)) return false;

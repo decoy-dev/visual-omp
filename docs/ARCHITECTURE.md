@@ -275,6 +275,19 @@ the advertised `undo` event. Classic input retains its original paste, key and e
 Unconverted screen-driven controls still require semantic consumers, and expected refusals do not
 become persistent chat errors.
 
+TSP Go here opens omp's session tree and activates the current selector with the exact session
+entry id. The main writer rechecks selector identity, item presence, disabled state, current filter,
+room generation and protocol epoch immediately before the event. A mounted, busy TreeSheet claims
+only that selector while its pinned scope remains current. Other callers retain the generic omp
+screen. The optional branch-summary hook chooses No summary through guarded local answering,
+or through collab when the question is replicated. Ambiguous questions stay unanswered.
+Navigation requires fresh success feedback, selector departure and the restored editor. Its exact
+text uses the same retained transfer and persisted composer receipt as Escape restoration before
+a length-checked semantic clear. Existing app drafts are preserved. Tree navigation reads no
+painted rows and sends no Ctrl+C. Classic tree row prediction and key delivery are unchanged.
+The pinned `tree-navigate` and `tree-navigate-summary` recordings include the branched tree,
+optional summary question, whitespace and Unicode draft restoration, clear and clean exit.
+
 The TSP composer model menu retains the shared provider, family and version tree. Selecting a
 version opens omp's session-only picker with `status.model`, then activates the exact
 `provider/model` item. Success requires both the addressed picker to close and collab to report

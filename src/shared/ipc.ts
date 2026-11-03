@@ -296,6 +296,8 @@ export interface IpcInvokeMap {
 	"host:keys": { args: [hostId: string, keys: string, generation?: number, epoch?: number]; result: void };
 	"host:retry-editor-restore": { args: [hostId: string, id: string]; result: void };
 	"host:ack-editor-restore": { args: [hostId: string, id: string]; result: void };
+	/** Retain the exact observed TSP draft before clearing it through recoverable editor transfer. */
+	"host:take-editor-restore": { args: [hostId: string, generation: number, epoch: number, surfaceId: string, editorId: string, text: string]; result: void };
 	/** Painted TUI screen lines (plain text). */
 	"host:screen": { args: [hostId: string]; result: string[] };
 	/** Fresh classic debug focus for input readiness; null when focus cannot be read. */
@@ -309,6 +311,8 @@ export interface IpcInvokeMap {
 	"host:tsp-snapshot": { args: [hostId: string]; result: TspHostSnapshot | null };
 	/** Renderer input shares the application input lock and rejects a stale collab generation. */
 	"host:tsp-event": { args: [hostId: string, generation: number, event: TspRendererEvent, epoch: number]; result: void };
+	/** Activate one current session-tree entry, revalidating the selector and entry at the writer. */
+	"host:tsp-tree-activate": { args: [hostId: string, generation: number, epoch: number, surfaceId: string, selectorId: string, entryId: string]; result: void };
 	/** Complete local hook answer. Main derives events from the live document and rechecks arbitration. */
 	"host:tsp-answer": { args: [hostId: string, generation: number, answer: TspHookAnswer, epoch: number]; result: void };
 	/** Renderer-owned pending collab requests, scoped to this protocol epoch and room. */

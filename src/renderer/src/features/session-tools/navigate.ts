@@ -1,14 +1,10 @@
 /**
  * Rewind and resume-from-here use omp's `/tree` selector; fork uses a separate RPC process.
  *
- * omp has no text command that moves the session leaf, so the app opens `/tree`, switches the filter
- * (Alt+U user turns / Alt+A everything), moves the cursor with Home + Down×n using the row order it
- * computes from the session file (`selectorRows`), checks the highlighted row really is the target,
- * and presses Enter. Picking a user message rewinds past it (omp puts its text back in the editor;
- * the app moves it into its own composer instead), picking anything else continues from there.
- * `/branch` (rewind selector) ends in the same `navigateTree` call, so one path serves both.
+ * Classic hosts drive `/tree` with keys and confirm its painted row. TSP hosts activate omp's
+ * session entry key and recover its exact restored editor text through semantic transfer.
+ * Picking a user message rewinds past it; picking another entry continues from that point.
  */
-import { TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import { i18n } from "../../i18n";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import { useApp } from "../../state/app";
@@ -16,6 +12,7 @@ import type { SessionController } from "../../state/session";
 import { OmpBusyError, press, readScreen, readyEditor, waitForScreen } from "./drive";
 import { parseStatusLine } from "./screen";
 import { parseSessionTree, rowProbe, type SelectorMode, selectorRows, type SessionTree } from "./tree";
+import { navigateSemantic } from "./navigateTsp";
 
 export class NavigationError extends Error {}
 
@@ -61,13 +58,12 @@ export interface NavigateResult {
  * then offers omp's own screen).
  */
 export async function navigateTo(session: SessionController, entryId: string): Promise<NavigateResult> {
-	if (session.getSnapshot().host?.transport === "tsp") throw new NavigationError(TSP_PREVIEW_UNAVAILABLE);
 	if (session.getSnapshot().working) throw new NavigationError(i18n.t("session:navigate.busy"));
 	await readyEditor(session);
-	if (session.getSnapshot().host?.transport === "tsp") throw new NavigationError(TSP_PREVIEW_UNAVAILABLE);
 	const tree = await loadTree(session);
 	const entry = tree.entries.get(entryId);
 	if (!entry) throw new NavigationError(i18n.t("session:navigate.missing"));
+	if (session.getSnapshot().host?.transport === "tsp") return navigateSemantic(session, entry);
 	const probe = rowProbe(entry);
 	if (!probe) throw new NavigationError(i18n.t("session:navigate.unsupported"));
 	const mode: SelectorMode = entry.userTurn ? "user" : "all";

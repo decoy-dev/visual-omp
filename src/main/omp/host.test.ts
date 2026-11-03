@@ -11,6 +11,7 @@ import type { MessageBoxOptions } from "electron";
 import { broadcast } from "../ipc";
 import type { TspRendererEvent } from "@shared/tsp-host";
 import { hookQuestions } from "@shared/tsp/question-match";
+import { treeSelector } from "@shared/tsp/tree-navigation";
 
 const pty = vi.hoisted(() => ({
 	data: null as ((data: string | Buffer) => void) | null,
@@ -700,6 +701,84 @@ function tspComposer(surface = "s:1", editor = "editor", sendable = true): void 
 		["focus", editor],
 	] });
 }
+
+describe("TSP tree navigation writer", () => {
+	it.each(["tree-navigate", "tree-navigate-summary"])("replays %s through exact activation, guarded summary and retained editor clear", async name => {
+		await launchTsp();
+		const directory = new URL("./tsp/fixtures/18.15.0/", import.meta.url);
+		const messages = (await readFile(new URL(`${name}.messages.jsonl`, directory), "utf8")).trim().split("\n").map(line => JSON.parse(line) as { verb: string; body: unknown });
+		const inputs = (await readFile(new URL(`${name}.events.jsonl`, directory), "utf8")).trim().split("\n")
+			.map(line => JSON.parse(line) as { verb?: string; body?: TspRendererEvent; afterMessage: number })
+			.filter((record): record is { verb: string; body: TspRendererEvent; afterMessage: number } => record.verb === "e" && !!record.body && !["ack", "resize", "theme", "motion"].includes(record.body.ev));
+		let message = 0; let input = 0;
+		const advance = () => {
+			const boundary = inputs[input]?.afterMessage ?? messages.length;
+			while (message < boundary) { const next = messages[message++]!; tspMessage(next.verb, next.body); }
+		};
+		const emitted: TspRendererEvent[] = [];
+		pty.writes.mockImplementation((bytes: string) => {
+			const match = /^\x1b_tsp;e;(.*)\x1b\\$/.exec(bytes);
+			if (!match) return;
+			const event = JSON.parse(match[1]!) as TspRendererEvent;
+			if (["ack", "resize", "theme", "motion"].includes(event.ev)) return;
+			expect(event).toEqual(inputs[input++]!.body);
+			emitted.push(event);
+			if (event.ev === "edit") expect(host.state.tspEditorRestore).toMatchObject({ text: "  Add a branch for the alternate fixture answer.\nKeep café 🧭 spacing.  \n", cleared: false });
+			advance();
+		});
+		advance(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		host.tspQuestions({ hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [] });
+		await host.submit("/tree");
+		const target = treeSelector(host.tspSnapshot()!.surfaces)!;
+		expect(target).not.toBeNull();
+		await host.tspTreeActivate(1, epoch, target.surface.open.id, target.node.id, "00000003");
+		if (name.endsWith("summary")) {
+			const question = hookQuestions(host.tspSnapshot()!.surfaces, 1)[0]!;
+			expect(question.title).toBe("Summarize branch?");
+			await host.tspAnswer(1, { kind: "choose", sf: question.surfaceId, id: question.nodeId, target: question.nodeId, item: "0" }, epoch);
+		}
+		const facts = host.composerFacts();
+		expect(facts.text).toBe("  Add a branch for the alternate fixture answer.\nKeep café 🧭 spacing.  \n");
+		await host.takeEditorRestore(1, epoch, facts.surfaceId!, facts.editorId!, facts.text);
+		expect(host.state.tspEditorRestore).toMatchObject({ text: facts.text, cleared: true });
+		expect(host.composerFacts().text).toBe("");
+		host.ackEditorRestore(host.state.tspEditorRestore!.id);
+		await host.submit("/exit");
+		expect(input).toBe(inputs.length);
+		expect(emitted.filter(event => event.ev === "activate" && event.item === "00000003")).toHaveLength(1);
+		expect(pty.writes).not.toHaveBeenCalledWith("\x03");
+		expect(pty.keys).not.toHaveBeenCalled(); expect(pty.screenReads).not.toHaveBeenCalled();
+		await exit(0);
+	});
+
+	it.each(["selector", "missing", "disabled", "filter"] as const)("refuses a queued navigation after its %s changes", async change => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [
+			{ id: "tree", k: "picker", p: { layout: "tree", noun: "entries", order: ["entry"], items: [{ id: "entry", label: "Target" }], actions: [{ id: "switch", label: "Switch" }] } },
+		] }]] });
+		const gate = Promise.withResolvers<void>(); const entered = Promise.withResolvers<void>();
+		const prior = host.withEditorInput(async () => { entered.resolve(); await gate.promise; }); await entered.promise;
+		const navigation = host.tspTreeActivate(1, epoch, "s:1", "tree", "entry");
+		const reason = { selector: "selector changed", missing: "no longer in omp's session tree", disabled: "disabled", filter: "hidden by omp's tree filter" }[change];
+		const rejected = expect(navigation).rejects.toThrow(reason);
+		tspMessage("f", { sf: "s:1", s: 3, ops: [["set", "tree", change === "selector" ? { layout: "rows" } : change === "missing" ? { items: [] } : change === "disabled" ? { items: [{ id: "entry", label: "Target", disabled: true }] } : { order: [] }]] });
+		gate.resolve(); await prior; await rejected;
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"activate"'))).toBe(false);
+		expect(host.state.error).toBeNull();
+	});
+
+	it("leaves a changed editor untouched before retaining a tree restoration", async () => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["set", "editor", { text: "Newer editor text" }]] });
+		await expect(host.takeEditorRestore(1, epoch, "s:1", "editor", "Old restored text")).rejects.toThrow("editor changed");
+		expect(host.composerFacts().text).toBe("Newer editor text");
+		expect(host.state.tspEditorRestore).toBeNull();
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"'))).toBe(false);
+	});
+});
 
 /** omp18.15 live ask capture: rich ask owns dock, with no main editor or hook overlay and null focus. */
 function tspAskDock(): void {

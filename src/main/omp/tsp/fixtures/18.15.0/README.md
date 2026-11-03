@@ -51,6 +51,16 @@ it with `/jobs kill all` and records omp's confirmation. Quiet completion remain
 consumer test because omp reports this successful cancellation explicitly. A complete
 cleanse checker/fix workflow has not been recorded.
 
+Phase 4f adds `tree-navigate` and `tree-navigate-summary`, recorded on 2026-11-03, bringing the
+baseline to 87 raw recordings and 87 integrity manifests. Both use the seeded branched session
+and the shared loopback provider with an empty response script. No provider request occurs.
+The scratch copy gives user entry `00000003` a multiline draft with leading/trailing whitespace,
+an accented character and an emoji. The first capture sets `branchSummary.enabled: false`; the
+second sets it to `true`, records `Summarize branch?` and activates the observed `No summary` id.
+Both open `/tree`, activate entry `00000003` once, wait for `Navigated to selected point` and the
+exact restored editor text, then clear all 73 UTF-16 units with a len-checked semantic edit.
+Neither capture uses row-order prediction or Ctrl+C. The source fixture remains unchanged.
+
 
 ## Capture format
 
@@ -112,6 +122,7 @@ The sanitizer replaces OSC 7 hosts with `localhost` and private home and tempora
 | hook-editor-open / hook-editor / hook-editor-cancel | A dock editor opens with a two-line, 38-character prefill. Completion replaces it with three lines; cancellation returns null. |
 | extension-rows-open / extension-rows / extension-rows-cancel | A custom component without `describe()` emits a bare dock `rows` node. Raw Enter returns `completed`; raw Escape returns `cancelled`. |
 | tree-open / tree-confirm | `/tree` displays six entries and both branches from the seeded session. Completion activates the current entry `00000006` without a model request. |
+| tree-navigate / tree-navigate-summary | `/tree` activates earlier user entry `00000003` by id, restores its exact 73-unit draft, clears it with a len-checked edit and exits. The summary variant answers `Summarize branch?` with `No summary` by its observed item id. |
 | hook-collab-aware | The selector stays open. Tests inject matching and ambiguous question mirrors; the recording has no attached guest. |
 | handshake-timeout | All client replies are withheld. omp withdraws its optimistic surface with `keep: false` and paints classic rows. |
 | hook-parity-* | Thirteen positive classic dialog captures are parsed by the recorder and opened through the fixture extension. Each records a complete native answer: described and moved selectors, outlined and twenty-option region lists, both confirms, empty/prefilled input and both editor styles. The two classic non-dialog captures remain negative parser cases. |
@@ -142,6 +153,16 @@ classic capture paints a window or search result. Parity editor descriptions use
 `omp.hook-editor.detail`; all new captures use the same sanitizer and integrity manifests.
 
 The custom rows root `k` has no role or document focus. The tree picker `o.^picker` has layout `tree`, focus `list`, null document focus, current entry `00000006` and actions `switch`, `summarize`, `label`, `filter`, `close`. Production callers must derive every id from their current host, surface and protocol epoch; these values describe only the recordings.
+
+The navigation captures use tree picker `n.^picker` on `s:1`. The summary variant replaces it
+with roleless rows picker `o.^picker`, title `Summarize branch?`, noun `options`, and choices
+`0` (`No summary`), `1` (`Summarize`) and `2` (`Summarize with custom prompt`). Navigation emits
+`Navigated to selected point` through `omp.toast.status`. In both captures the editor
+`g.line/input` restores the exact string
+`"  Add a branch for the alternate fixture answer.\nKeep café 🧭 spacing.  \n"` before the
+clear event `{ ev: "edit", from: 0, to: 73, text: "", cursor: 0, len: 73 }`. The next frame
+reflects the empty editor before `/exit`. These are recording-specific ids, with no collab
+guest attached; production hook arbitration remains covered separately.
 
 ## Differences from 18.14.0
 

@@ -1,9 +1,9 @@
 /**
  * The full entry tree of a saved omp session file (every branch, not just the active path), plus
  * the two projections the app needs:
- * - `selectorRows`: the row order of omp's `/tree` selector, so the app can move its cursor to an
- *   entry with Home + Down×n (tui `TreeSelectorComponent` + `TreeView`: DFS pre-order, children by
- *   timestamp with the branch holding the current leaf first, rows filtered flat).
+ * - `selectorRows`: the classic-only row order of omp's `/tree` selector, so the classic adapter
+ *   can move its cursor with Home + Down×n (DFS pre-order, current branch first, filtered flat).
+ *   TSP navigation uses omp's entry keys directly and never calls this projection.
  * - `layoutTree`: a horizontal map of the conversation for the navigator sheet.
  */
 import { z } from "zod";

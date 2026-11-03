@@ -1,5 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { TSP_PREVIEW_UNAVAILABLE } from "@shared/tsp-host";
 import type { SessionController } from "../../state/session";
 import { loadTree, navigateTo } from "./navigate";
 vi.mock("../../state/app", () => ({ controllerFor: vi.fn(), useApp: {} }));
@@ -28,10 +27,9 @@ describe("loadTree physical identity", () => {
 	});
 });
 
-it("refuses TSP navigation before reading a tree or opening its classic selector", async () => {
+it("refuses a missing TSP session entry before opening the selector", async () => {
 	const command = vi.fn();
-	const session = { getSnapshot: () => ({ host: { transport: "tsp" }, working: false }), command } as unknown as SessionController;
-	await expect(navigateTo(session, "entry")).rejects.toThrow(TSP_PREVIEW_UNAVAILABLE);
+	const session = { sessionFile: "/project/original.jsonl", getSnapshot: () => ({ host: { transport: "tsp", phase: "live" }, working: false }), command } as unknown as SessionController;
+	await expect(navigateTo(session, "entry")).rejects.toThrow("no longer in this chat");
 	expect(command).not.toHaveBeenCalled();
-	expect(invoke).not.toHaveBeenCalled();
 });

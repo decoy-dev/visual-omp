@@ -24,6 +24,7 @@ import { composer, openOverlay, screenSurface, walkNodes } from "@shared/tsp/vie
 import { TSP_ROLES, TSP_STATUS } from "@shared/tsp/roles";
 import { hookQuestions, QuestionArbitrator } from "@shared/tsp/question-match";
 import { nodeHasLeft, TspHookAnswer } from "@shared/tsp/dialogs";
+import { assertTreeEntry, treeSelector } from "@shared/tsp/tree-navigation";
 import { composerFacts as readComposerFacts } from "./tsp/composer";
 import { BrowserWindow, dialog, nativeTheme, systemPreferences, type MessageBoxOptions, type MessageBoxReturnValue } from "electron";
 import hostLabels from "../../shared/i18n/en/host.json";
@@ -420,6 +421,24 @@ export class SessionHost {
 		});
 	}
 
+	/** Navigation never predicts row positions, and the protocol writer repeats every target check. */
+	tspTreeActivate(generation: number, epoch: number, surfaceId: string, selectorId: string, entryId: string): Promise<void> {
+		const assertCurrent = (): void => {
+			this.#assertTspInput(generation);
+			const snapshot = this.tspSnapshot()!;
+			if (epoch !== snapshot.epoch) throw new Error("TSP preview: The semantic screen restarted.");
+			if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
+			if (this.#tspSurfaceGenerations.get(surfaceId) !== generation) throw new Error("TSP preview: The target surface belongs to an earlier session.");
+			const target = treeSelector(snapshot.surfaces);
+			if (!target || target.surface.open.id !== surfaceId || target.node.id !== selectorId) throw new Error("TSP preview: The session tree selector changed. Open the tree again.");
+			assertTreeEntry(target.node, entryId);
+		};
+		return this.#applicationInput(async () => {
+			assertCurrent();
+			await this.#tsp!.send({ ev: "activate", sf: surfaceId, id: selectorId, item: entryId }, assertCurrent);
+		});
+	}
+
 	/** Local hook answers are arbitrated again inside both serialized input boundaries. */
 	tspAnswer(generation: number, input: unknown, epoch: number): Promise<void> {
 		const parsed = TspHookAnswer.safeParse(input);
@@ -703,6 +722,28 @@ export class SessionHost {
 		}
 	}
 
+	/** The same retained transfer used by Escape also owns a tree-restored editor draft. */
+	takeEditorRestore(generation: number, epoch: number, surfaceId: string, editorId: string, text: string): Promise<void> {
+		return this.#applicationInput(async () => {
+			this.#assertTspInput(generation);
+			if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+			if (this.#editorRestore || this.#editorTransferBlocked) throw new Error("TSP preview: Recover the previous editor transfer before restoring another message.");
+			const facts = this.composerFacts();
+			if (!facts.sendable || facts.blockedBy || facts.surfaceId !== surfaceId || facts.editorId !== editorId || facts.text !== text) throw new Error("TSP preview: The restored editor changed before its draft could be saved. It was left unchanged.");
+			if (!text) return;
+			const target = this.#tsp!.pinEditor(surface => surface === surfaceId && this.#tspSurfaceGenerations.get(surface) === generation);
+			await this.#captureEditorRestore(generation, target, text);
+		});
+	}
+
+	async #captureEditorRestore(generation: number, target: TspEditorTarget, text: string): Promise<void> {
+		const capture = { view: { id: randomUUID(), hostId: this.id, text, cleared: false, error: null } as TspEditorRestore, generation, target };
+		this.#editorRestore = capture;
+		this.#editorTransferBlocked = "Recover the restored message before sending more text to omp.";
+		this.#publishTsp();
+		await this.#finishEditorRestore(capture);
+	}
+
 	ackEditorRestore(id: string): void {
 		if (!this.#editorRestore || this.#editorRestore.view.id !== id) return;
 		if (!this.#editorRestore.view.cleared) throw new Error("TSP preview: Recover omp's editor before acknowledging the restored message.");
@@ -793,11 +834,7 @@ export class SessionHost {
 					}, assertCurrent, 8000, "TSP preview: omp did not return the queued text to its editor.");
 					const facts = this.composerFacts();
 					if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
-					const capture = { view: { id: randomUUID(), hostId: this.id, text: facts.text, cleared: false, error: null } as TspEditorRestore, generation, target: target! };
-					this.#editorRestore = capture;
-					this.#editorTransferBlocked = "Recover the restored message before sending more text to omp.";
-					this.#publishTsp();
-					await this.#finishEditorRestore(capture);
+					await this.#captureEditorRestore(generation, target!, facts.text);
 				}
 			});
 		}

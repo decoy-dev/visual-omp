@@ -124,6 +124,7 @@ const scratchGit = (root: string, args: string[]) => execFileSync("git", args, {
   cwd: root, encoding: "utf8",
   env: { PATH: process.env.PATH!, HOME: join(root, "home"), USERPROFILE: join(root, "home"), XDG_CONFIG_HOME: join(root, "home", ".config"), GIT_CONFIG_NOSYSTEM: "1" },
 });
+const treeNavigationDraft = "  Add a branch for the alternate fixture answer.\nKeep café 🧭 spacing.  \n";
 const scenarios: Scenario[] = [
   ...[
     ["hotkeys", "/hotkeys"], ["jobs", "/jobs"], ["usage", "/usage"], ["session", "/session"],
@@ -143,6 +144,34 @@ const scenarios: Scenario[] = [
     }))),
   { name: "tree-open", command: "/tree", end: "open" },
   { name: "tree-confirm", command: "/tree", end: "submit" },
+  ...(["tree-navigate", "tree-navigate-summary"] as const).map(name => ({
+    name, command: null, script: [],
+    config: { branchSummary: { enabled: name === "tree-navigate-summary" } },
+    run: async ({ session, send, until, find, requests }: RecordingContext) => {
+      await session.submit("/tree");
+      await until(() => !!find(node => node.k === "picker" && node.p?.layout === "tree" && node.p.noun === "entries"), "tree did not open");
+      const tree = find(node => node.k === "picker" && node.p?.layout === "tree" && node.p.noun === "entries")!;
+      if (tree.node.k !== "picker" || !tree.node.p?.items?.some(item => item.id === "00000003")) throw new Error("Missing exact fixture tree entry");
+      send({ ev: "activate", sf: tree.surface.open.id, id: tree.node.id, item: "00000003" });
+      if (name === "tree-navigate-summary") {
+        await until(() => !!find(node => node.k === "picker" && node.p?.title === "Summarize branch?"), "branch summary question did not open");
+        const question = find(node => node.k === "picker" && node.p?.title === "Summarize branch?")!;
+        if (question.node.k !== "picker") throw new Error("Missing branch summary picker");
+        const noSummary = question.node.p?.items?.find(item => item.label === "No summary");
+        if (!noSummary) throw new Error("Missing No summary choice");
+        send({ ev: "activate", sf: question.surface.open.id, id: question.node.id, item: noSummary.id });
+        await until(() => !find(node => node.id === question.node.id), "branch summary question did not close");
+      }
+      await until(() => session.availability().available
+        && !find(node => node.id === tree.node.id)
+        && !!find(node => node.k === "toast" && JSON.stringify(node.p).includes("Navigated to selected point"))
+        && readComposerFacts(session.snapshot().surfaces).text === treeNavigationDraft, "tree navigation did not restore the exact draft");
+      const restored = readComposerFacts(session.snapshot().surfaces);
+      await session.editAndKeys(0, restored.text.length, "", 0, "", () => {});
+      await until(() => readComposerFacts(session.snapshot().surfaces).text === "", "navigated editor did not clear");
+      if (requests.length !== 0) throw new Error("No-summary tree navigation made a provider request");
+    },
+  })),
   { name: "hook-collab-aware", command: "/vomp-fixture-select", hook: "select", end: "open" },
   { name: "handshake-timeout", command: null, end: "open" },
   { name: "worktree-start-ask", command: null, end: "open", config: { worktree: { onStart: "ask", onExit: "keep" } } },
@@ -410,10 +439,18 @@ for (const scenario of scenarios) {
   if (scenario.tools) args.push("--tools", scenario.tools.join(","));
   if (hook || name === "extensions") args.push("-e", extension);
   if (missingResume) args.push("--resume", join(root, "missing-session.jsonl"));
-  if (name === "tree-open" || name === "tree-confirm" || name === "resume" || name === "sibling-continuation") {
+  if (name.startsWith("tree-") || name === "resume" || name === "sibling-continuation") {
     await mkdir(join(root, "sessions"), { recursive: true });
     const sessionFile = name === "resume" ? join(root, "sessions", "2026-11-02T00-00-00-000Z_c040d770-0bd0-4f54-aefe-f075e648b440.jsonl") : join(root, "tree-session.jsonl");
-    const seed = await readFile(resolve("src/main/omp/tsp/fixtures/extension/tree-session.jsonl"), "utf8");
+    let seed = await readFile(resolve("src/main/omp/tsp/fixtures/extension/tree-session.jsonl"), "utf8");
+    if (name === "tree-navigate" || name === "tree-navigate-summary") {
+      seed = seed.split("\n").map(line => {
+        if (!line) return line;
+        const entry = JSON.parse(line);
+        if (entry.id === "00000003") entry.message.content = treeNavigationDraft;
+        return JSON.stringify(entry);
+      }).join("\n");
+    }
     await writeFile(sessionFile, seed.replaceAll("/tmp/vomp-fixture", root));
     if (name === "resume") command = "/resume c040d770";
     else args.push("--session", sessionFile);

@@ -4,15 +4,16 @@ import * as RD from "@radix-ui/react-dialog";
 import { ArrowCounterClockwise, Minus, Plus, TreeStructure } from "@phosphor-icons/react";
 import { motion } from "motion/react";
 import { useTranslation } from "react-i18next";
+import { treeSelector } from "@shared/tsp/tree-navigation";
 import { Button, cn, EmptyState, Expand, Mark, PresenceSwap, spring, toast } from "@/ui";
-import { useComposerDrafts } from "../../chat/composer/drafts";
 import type { SheetProps } from "../../registry/slots";
 import { controllerFor, useApp } from "../../state/app";
-import type { SessionController } from "../../state/session";
+import { useSessionView } from "../../shell/hooks";
 import { Markdown } from "../../transcript/Markdown";
-import { i18n } from "../../i18n";
-import { forkChat, loadTree, navigateTo, NavigationError } from "./navigate";
+import { forkChat, loadTree, navigateTo } from "./navigate";
 import { layoutTree, type MapNode, type TreeMap } from "./tree";
+import { useTsp } from "../tsp/useTsp";
+import { usePresentationClaim } from "../tsp/presentation-claims";
 
 interface TreeProps { tabId: string; entryId?: string; }
 
@@ -134,10 +135,24 @@ function MapCanvas({ map, selected, onSelect }: { map: TreeMap; selected: string
 function TreeSheet({ props, close }: SheetProps<TreeProps>) {
 	const { t } = useTranslation("session");
 	const session = controllerFor(props.tabId);
+	const view = useSessionView(session);
+	const host = view?.host;
+	const { snapshot } = useTsp(host?.transport === "tsp" ? host.hostId : null);
 	const [map, setMap] = useState<TreeMap | null>(null);
 	const [selected, setSelected] = useState<string | null>(props.entryId ?? null);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
+	const [navigationScope, setNavigationScope] = useState<{ hostId: string; generation: number; epoch: number } | null>(null);
+	const current = host?.transport === "tsp" && snapshot?.hostId === host.hostId &&
+		snapshot.generation === host.generation && snapshot.negotiated && snapshot.lifecycle === "live" &&
+		(view?.mode === "live" || view?.mode === "starting");
+	const target = current && navigationScope?.hostId === snapshot.hostId &&
+		navigationScope.generation === snapshot.generation && navigationScope.epoch === snapshot.epoch
+		? treeSelector(snapshot.surfaces) : null;
+	usePresentationClaim(target && snapshot ? {
+		hostId: snapshot.hostId, epoch: snapshot.epoch, surfaceId: target.surface.open.id, nodeId: target.node.id,
+	} : null);
+	const closeSheet = () => { setNavigationScope(null); close(); };
 
 	useEffect(() => {
 		if (!session) return;
@@ -156,31 +171,28 @@ function TreeSheet({ props, close }: SheetProps<TreeProps>) {
 	const act = async (fork: boolean) => {
 		if (!node) return;
 		setBusy(true);
+		if (!fork && current) setNavigationScope({ hostId: snapshot.hostId, generation: snapshot.generation, epoch: snapshot.epoch });
 		try {
 			if (fork) await forkChat(session, node.entryId);
 			else await navigateTo(session, node.entryId);
-			if (!fork) {
-				const entry = node.kind === "user" ? map?.nodes.find(item => item.id === node.id) : null;
-				const maybeEntry = entry?.text;
-				if (node.kind === "user" && maybeEntry) useComposerDrafts.getState().setDraft(session.tabId, maybeEntry);
-			}
-			close();
+			closeSheet();
 		} catch (reason) {
 			setError(reason instanceof Error ? reason.message : String(reason));
-			toast({ tone: "warn", message: reason instanceof Error ? reason.message : String(reason), action: { label: t(session.getSnapshot().host?.transport === "tsp" ? "tree.openScreen" : "tree.openTerminal"), onClick: () => { void session.command("/tree"); useApp.getState().openTerminal(session.tabId); } } });
-		} finally { setBusy(false); }
+			const tsp = session.getSnapshot().host?.transport === "tsp";
+			toast({ tone: "warn", message: reason instanceof Error ? reason.message : String(reason), action: { label: t(tsp ? "tree.openScreen" : "tree.openTerminal"), onClick: () => { if (!tsp) void session.command("/tree"); useApp.getState().openTerminal(session.tabId); } } });
+		} finally { setBusy(false); setNavigationScope(null); }
 	};
 
 	const title = t("tree.title");
 	return (
-		<RD.Root open onOpenChange={open => !open && close()}>
+		<RD.Root open onOpenChange={open => !open && closeSheet()}>
 			<RD.Portal>
 				<RD.Overlay className="vo-scrim fixed inset-0 z-(--z-scrim) bg-backdrop" />
 				<RD.Content className="vo-dialog fixed left-1/2 top-1/2 z-(--z-sheet) flex h-[min(640px,calc(100vh-64px))] w-[min(960px,calc(100vw-32px))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-lg border border-border bg-overlay text-fg shadow-(--shadow-overlay) outline-none">
 					<header className="flex h-14 shrink-0 items-center gap-3 border-b border-border px-5">
 						<Mark size={20} title={title} />
 						<div className="min-w-0 flex-1"><RD.Title className="text-lg font-semibold">{title}</RD.Title><RD.Description className="text-sm text-fg-muted">{t("tree.description")}</RD.Description></div>
-						<Button size="sm" variant="ghost" onClick={close}>{t("common.close")}</Button>
+						<Button size="sm" variant="ghost" onClick={closeSheet}>{t("common.close")}</Button>
 					</header>
 					<Expand open={error !== null}>
 						<div role="alert" className="border-b border-err/30 bg-err-bg px-4 py-2 text-sm text-err">{error}</div>
