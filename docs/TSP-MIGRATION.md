@@ -740,7 +740,7 @@ profiles. Main must still check both composer controls in Electron.
 | Gate item | Evidence available | Remaining acceptance |
 |---|---|---|
 | 4a hook dialogs | Recorded native-card and main-writer replay, composition and Chrome gates; main's 2026-11-02 Electron observations above. | Owner card sign-off; separate browser-guest coverage remains outside the scoped manual observations. |
-| 4b worktree and shutdown | Both recorded Keep/Remove decisions and main-writer lifecycle/refusal replay. | Manual quit while working against SPEC Lifecycle and owner sign-off. |
+| 4b worktree and shutdown | Both recorded Keep/Remove decisions and main-writer lifecycle/refusal replay; main's 2026-11-03 Electron observation below. | Answering the native dialog and observing completed application quit, then owner sign-off. |
 | 4c Plan Review | Six scripted-provider recordings and production-consumer replay; main's 2026-11-03 Electron observations below. | Extension plan-exit Electron workflow, then owner sign-off. |
 | 4d model and thinking | Picker/thinking/typed-switch replay and scripted compaction success/error recordings; main's 2026-11-03 Electron observations below. | Owner sign-off. |
 | 4e command feedback | Eight recordings plus literal-result, ownership and quiet-timing consumer replay; main's 2026-11-03 Electron observations below. | Completed cleanse checker/fix workflow is unrecorded; owner sign-off remains. |
@@ -752,6 +752,7 @@ profiles. Main must still check both composer controls in Electron.
 
 **Main's Electron observations on 2026-11-03.** An isolated development build (`VOMP_TSP=1`, scripted loopback provider, scratch omp profile; omp 18.15.0 in the morning, then 18.16.0) showed:
 
+- 4b: in a git-workspace chat that created a worktree with `/wt fixture` under `worktree.onExit: ask`, main invoked the renderer's `quitAfterConfirm` flow followed by `app:confirmQuit` during a `LIVE_JOB` background-job turn. "Quit while work is running?" reported omp replying in one chat. Stop and quit started application shutdown. The chat showed "Closing session…" and a "Remove worktree?" card with disabled No and Yes buttons and "This chat is closing." A native macOS sheet showed "Remove worktree?", the worktree path, and Remove worktree and Keep worktree buttons, with Keep worktree highlighted as the default. Accessibility permission was unavailable to the harness, so the sheet remained unanswered. Quit did not complete; main stopped the process, and the worktree remained. This check bypassed Cmd+Q because the development build's updates quit path refuses the operation.
 - 4c: Discard plan left plan mode, and Switch to Auto and run set Auto and approved the plan.
 - 4d: the composer's model and thinking controls switched the model and the thinking level on 18.16.0.
 - 4e: `/rename` showed its result row, `/export` wrote the HTML file, `/jobs kill all` reported the cancelled job, and `/compact` ran after Stop waiting.
