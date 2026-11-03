@@ -325,7 +325,7 @@ export function failureMessage(stdout: string, stderr: string, fallback: string)
 	if (crash) return crash;
 	const text = (stderr.trim() || stdout.trim())
 		.split("\n")
-		.map(line => line.replace(/^[✘✖×]\s*/u, "").trim())
+		.map(line => line.replace(/^(?:[✘✖×]\s*|\[(?:!!|-)\](?:\s+|$))/u, "").trim())
 		.filter(Boolean)
 		.join("\n");
 	return text || fallback;

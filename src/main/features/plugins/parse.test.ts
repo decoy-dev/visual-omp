@@ -141,4 +141,20 @@ describe("failureMessage", () => {
 		expect(failureMessage("", "✘ nope is not installed\n", "x")).toBe("nope is not installed");
 		expect(failureMessage("", "", "fallback")).toBe("fallback");
 	});
+
+	it.each(["[!!]", "[-]"])("strips the %s ASCII error prefix from each error line", prefix => {
+		expect(failureMessage("", `${prefix} Plugin not found\n${prefix} Check the marketplace\n`, "x"))
+			.toBe("Plugin not found\nCheck the marketplace");
+		expect(failureMessage(`${prefix} Plugin not found\n`, "", "x")).toBe("Plugin not found");
+	});
+
+	it.each(["[!!]", "[-]"])("removes prefix-only %s lines and handles CRLF error output", prefix => {
+		expect(failureMessage("", `${prefix}\r\n${prefix} Plugin not found\r\n${prefix}\r\n`, "x")).toBe("Plugin not found");
+		expect(failureMessage("", `${prefix}\r\n`, "fallback")).toBe("fallback");
+	});
+
+	it("preserves ASCII status text inside messages and unrelated bracketed output", () => {
+		const message = "Plugin returned [!!] and [-] in its output\n[-]literal\n[!] warning\n[ok] done";
+		expect(failureMessage("", message, "x")).toBe(message);
+	});
 });
