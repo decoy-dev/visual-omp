@@ -180,9 +180,7 @@ export class SessionHost {
 	async start(): Promise<void> {
 		try {
 			// Read only in main at launch. Existing hosts never change renderer mid-session.
-			const requestedTsp = process.env.VOMP_TSP === "1";
-			const useTsp = requestedTsp && process.platform !== "win32";
-			if (requestedTsp && !useTsp) console.info("[visual-omp] TSP is not supported on Windows yet; using classic transport.");
+			const useTsp = process.env.VOMP_TSP === "1";
 			const [bin, env] = await Promise.all([ompPath(), userEnv()]);
 			await this.#relay.start();
 			this.#relay.events = {
@@ -264,6 +262,7 @@ export class SessionHost {
 					cwd: this.#options.cwd,
 					env: ptyEnv(childEnv),
 					...(useTsp ? { encoding: null } : {}),
+					...(useTsp && process.platform === "win32" ? { useConptyDll: true } : {}),
 				});
 			} catch (error) {
 				throw await ompStartError(error, bin);

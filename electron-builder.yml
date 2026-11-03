@@ -1,6 +1,11 @@
 appId: ltd.decoy.visualomp
 productName: visual-omp
 asar: true
+# Stage node-pty's bundled ConPTY for the target architecture before app files are copied.
+beforePack: ./scripts/stage-conpty.mjs
+# electron-builder 26 runs beforePack before native rebuild. Stage again after extraction,
+# which follows the rebuild and precedes copying app files, so a rebuild cannot discard it.
+afterExtract: ./scripts/stage-conpty.mjs
 # Harden the packaged Electron binary before electron-builder signs either platform.
 afterPack: ./scripts/after-pack.mjs
 directories:

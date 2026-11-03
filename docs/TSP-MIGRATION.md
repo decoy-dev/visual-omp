@@ -172,7 +172,7 @@ The table applies to chats started with `VOMP_TSP=1`. Classic presentation and o
 | 3 | Phase 2 plus: steer and follow-up, shell and Python prefixes, pastes, images, queue holds, Escape queue restore, ghost text display | As phase 2 | The semantic omp screen. |
 | 4 (each step) | The card or control that step converts, claiming its nodes | The controls of later steps | The semantic omp screen. |
 | 5 | Native `/btw` pane | None beyond Phase 4 gaps | The omp screen shows the BTW overlay when the pane is closed. |
-| 6 | TSP chats on Windows | None | Windows stays classic until this phase passes. |
+| 6 | Developer-opt-in TSP chats on Windows, pending machine evidence | Windows CI and manual acceptance remain open | Ordinary Windows chats stay classic. |
 | 7 | TSP is the default for hosted chats | None | Proposed one-release hidden `VOMP_TSP=0` (decision D3). |
 
 ## Phase overview
@@ -204,12 +204,12 @@ These figures are planning judgment for one engineer familiar with the repositor
 - Input uses APC; credits are 2; acks are cumulative and sent right after synchronous application.
 - Plain-text steer submission uses TSP `send` when the live editor is sendable and omp advertised `send`. Escape is available through the guarded key path. Follow-up, attachment and other unsupported input paths return explicit errors; full composer parity remains Phase 3.
 - Renderer events use the application-input lock with generation and surface checks. Hello and ack bypass the transaction gates and share the single writer.
-- On Windows, `VOMP_TSP` is ignored: the chat launches classic and main logs one line. The presence of `conpty.dll` and `OpenConsole.exe` in packaged Windows artifacts has not been verified, and node-pty's `binding.gyp` does not copy them (Phase 6).
+- Phase 1 excluded Windows from `VOMP_TSP`. Phase 6 now enables the developer flag on Windows with bundled ConPTY; its CI and manual gates remain open.
 
 **Acceptance criteria.**
 
 1. Replay: flag off, the spawn environment still sets `PI_TUI_NATIVE=0` and deletes `TERM_PROGRAM`, no TSP module is constructed, and the full existing suite passes unchanged.
-2. Replay: flag on (macOS and Linux), the spawn sets `TERM_PROGRAM=tern` and omits `PI_TUI_NATIVE=0`, and the collab overlay, extension, relay and room resolution arguments equal the classic launch. Flag on (Windows), the launch is classic byte for byte and one log line names the reason.
+2. Replay: flag on, the spawn sets `TERM_PROGRAM=tern` and omits `PI_TUI_NATIVE=0`, and the collab overlay, extension, relay and room resolution arguments equal the classic launch. Phase 6 adds `useConptyDll: true` only to Windows TSP hosts. Flag off, classic Windows spawn options and writes remain byte-identical.
 3. Replay: committed copies of the study's raw captures, fed in every two-way split and in one-byte pieces, produce the same decoded message list as a single feed. OSC 7501 and every non-TSP byte reach the existing path in order.
 4. Replay: chunked messages (`c=<id>`, `m=1`) reassemble, including a split inside a multi-byte UTF-8 code point; an interrupted chunk sequence is dropped and reported.
 5. Replay: the hello reply is written before the DA1 answer for each hello, its body is the recorded decision, and no `resize`, `theme` or `motion` APC is written before it. studio saw early APC torn apart at startup and carries those values in the reply instead ([`docs/architecture/tsp-migration.md:117`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-migration.md?plain=1#L117)).
@@ -841,27 +841,65 @@ quirks-mode warning. Six files and 49 tests were skipped. The empty-history regr
 
 ## Phase 6: Windows
 
-**Goal.** Evidence that TSP works in a packaged Windows build in both directions, which is the condition for removing Phase 1's Windows exclusion.
+**Goal.** Evidence that developer-opt-in TSP works in a packaged Windows build in both directions. The developer flag is enabled for this evidence work; the default remains classic until the complete platform gate passes.
+
+**Implementation status (2026-11-03).** Windows TSP launch, target-specific staging, PE layout checks,
+Node live probes and a packaged Electron smoke probe are implemented. Windows runtime evidence is
+pending one owner-approved branch pull request CI run. Criteria 5-6 require an installed build on a
+Windows machine and cannot be established on macOS or by the headless CI probes.
+
+**Local checkpoint (2026-11-03, after review, before rebasing onto refreshed main).** macOS
+typecheck and all 47 packaging and CI-helper unit tests pass. One full Vitest run passes
+253 files and 3,188 tests, with 5 files and
+48 tests skipped. The probe regression tests cover profile setup failure, partial traffic before
+cleanup, kill/removal errors, child timeout followed by OSC, startup failure and missing reports. The
+Windows live suite is among the platform-gated skips, so these results make no Windows runtime
+claim. `actionlint` is unavailable locally; the workflow and builder YAML parse without duplicate
+keys, and the Windows step order and failure-path artifact upload were reviewed.
+
+The input framing decision remains open. `TSP_INPUT_FRAMING` in `encode.ts` retains APC on every
+platform until the Windows evidence is reviewed. The probe records APC first and OSC 877 second,
+using separate isolated omp processes so a failed APC hello cannot prevent OSC evidence. Both
+currently must pass the bundled test. If APC is discarded but OSC succeeds, keep that failing report
+and change only the Windows policy to OSC 877 before repeating CI. An expected transport failure
+must not be described as Windows support passing.
 
 **Facts.**
 
 - node-pty loads `<directory of conpty.node>\conpty\conpty.dll` when `useConptyDll` is set (`node_modules/node-pty/src/win/conpty.cc:181-183`). Its post-install script copies `third_party/conpty/<version>/win10-<arch>/{conpty.dll,OpenConsole.exe}` into `build/Release/conpty` (`node_modules/node-pty/scripts/post-install.js`). The installed tree has version `1.23.251008001` for x64 and arm64, with identical copies under `prebuilds/win32-<arch>/conpty/`.
-- `electron-builder.yml` admits `build/Release/conpty/` through its Release filter, excludes `prebuilds` and `third_party`, and unpacks node-pty from asar. node-pty's `binding.gyp` does not copy the DLL or `OpenConsole.exe`, and whether electron-builder's target rebuild leaves a post-install copy in place has not been verified. The presence of the two files in packaged Windows artifacts is therefore unverified.
+- `electron-builder.yml` admits `build/Release/conpty/` through its Release filter, excludes `prebuilds` and `third_party`, and unpacks node-pty from asar. node-pty's `binding.gyp` does not copy the DLL or `OpenConsole.exe`, so the explicit staging hook supplies them. Packaged presence and target architecture still require the Windows CI run.
 - After-pack fuses keep Node mode on Windows because node-pty's console cleanup forks with `ELECTRON_RUN_AS_NODE` (`docs/ARCHITECTURE.md`, Renderer loading and packaging).
 
 **Files and modules.**
 
-- `src/main/omp/host.ts`: remove the Windows exclusion for TSP hosts and pass `useConptyDll: true` on Windows for TSP hosts only.
-- `src/main/omp/tsp/encode.ts`: input framing (APC or OSC 877) chosen by one platform constant, set from the evidence below.
-- `scripts/stage-conpty.mjs`: copies `third_party/conpty/<version>/win10-<arch>/{conpty.dll,OpenConsole.exe}` into `node_modules/node-pty/build/Release/conpty/` for the architecture being packaged, failing unless exactly one version folder exists. It must run after electron-builder's native rebuild for that architecture and before files are copied into the app, so it runs from the `beforePack` hook. `[INFERENCE]` electron-builder rebuilds native dependencies before calling `beforePack` for each architecture; the packaged-layout check below is what proves the order. An `afterPack` copy into the source `node_modules` would be too late.
+- `src/main/omp/host.ts` enables Windows developer-opt-in TSP and passes `useConptyDll: true` only for Windows TSP hosts. Classic spawn options and input remain unchanged.
+- `src/main/omp/tsp/encode.ts` selects input framing through one platform policy. APC remains the current choice until the recorded evidence resolves Windows input.
+- `scripts/stage-conpty.mjs` copies `third_party/conpty/<version>/win10-<arch>/{conpty.dll,OpenConsole.exe}` into `node_modules/node-pty/build/Release/conpty/` for the packaged architecture, failing unless exactly one version directory exists. It runs from `beforePack` and again from `afterExtract`. Source inspection of electron-builder 26.15.3 (`app-builder-lib/out/platformPackager.js:155-218`) found that `beforePack` precedes native dependency installation, while `afterExtract` follows installation and precedes `copyAppFiles`. The second idempotent staging call therefore restores the target files after rebuild. An `afterPack` source-tree copy would be too late.
 - `scripts/after-pack.mjs`: asserts that both files exist in `resources/app.asar.unpacked/node_modules/node-pty/build/Release/conpty/` and match the architecture being packaged, and fails the build otherwise.
-- `.github/workflows/ci.yml`: the Windows job installs omp, runs the live test with `OMP_BIN` set, packages, checks the layout and runs the packaged smoke test.
+- `.github/workflows/ci.yml` keeps the macOS build commands and signing unchanged. All actions are SHA-pinned, checkouts discard credentials and token permissions are limited to `contents: read`. Windows downloads the exact app minimum from its matching GitHub release, verifies `SHA256SUMS.txt`, runs the Node live test before Electron rebuild, builds the existing x64 installer, checks its layout, runs the packaged x64 smoke probe, and builds and checks an arm64 directory package. Both Windows packaging steps have a 20-minute limit.
+
+`scripts/windows-tsp-ci.mjs` supplies the CI commands. Download requests and response bodies share
+a 30-second deadline; the version subprocess has 10 seconds. Download and layout errors write
+bounded diagnostic JSON before rethrowing. The `windows-conpty-evidence` artifact retains available
+file-size and SHA-256 listings, verified omp identity, per-probe snapshots and traffic journals.
+Each framing uses an independent child with a 20-second work deadline, bounded cleanup and a
+30-second coordinator timeout. An APC child timeout or cleanup failure is recorded before OSC
+starts. The live and packaged outer subprocess limits are 90 seconds; each Vitest live case has
+100 seconds.
+
+Each probe writes its initial snapshot before profile setup, appends traffic records before parsing,
+and saves snapshots before and after cleanup. The coordinator saves each result independently,
+including startup or timeout diagnostics when a child has no completed report. These writes retain
+available partial evidence after ordinary subprocess and cleanup failures. Failed filesystem writes,
+runner loss, job cancellation or forced outer termination can prevent final snapshots or upload;
+the artifact is therefore a record of the files successfully written, rather than a guarantee that
+every failure produces a complete exchange.
 
 **Tests and evidence.**
 
 - **Live, Node (Windows CI, x64):** `src/main/omp/tsp/tsp-windows.live.test.ts`, gated on `OMP_BIN`, which CI sets so the test never skips there. It spawns omp through node-pty with `useConptyDll: true`, completes the hello, receives frames, sends `send` and `edit` through APC and then through OSC 877, and records both directions, including non-ASCII text split across chunks. A second case with `useConptyDll: false` records the system ConPTY behavior. This test loads node-pty as built for Node; the packaged smoke run below covers the Electron rebuild.
 - **Packaged (Windows CI):** the layout assertion for x64 and arm64, and a smoke run of the packaged x64 app with `ELECTRON_RUN_AS_NODE=1` executing a script that loads the packaged, Electron-rebuilt node-pty and repeats the hello and `send` exchange. arm64 is packaged and checked for layout only, unless an arm64 Windows runner is added.
-- **Unit:** `stage-conpty.mjs` picks the right architecture and fails on zero or two versions.
+- **Unit:** staging tests select x64 and arm64 and reject zero or two versions; macOS staging is a no-op. Fixture PE tests reject missing, malformed and wrong-machine files before fuse changes. Host tests protect Windows TSP launch and byte-identical classic behavior; stream tests retain the current framing for chunked Unicode events.
 
 **Acceptance criteria.**
 
@@ -872,7 +910,7 @@ quirks-mode warning. Six files and 49 tests were skipped. The empty-history regr
 5. Manual (Windows machine, installed build): a TSP chat starts, streams, opens and answers a hook dialog, opens `/btw` and exits cleanly; no `OpenConsole.exe` or `bun.exe` remains after closing the chat and after quitting.
 6. Manual: Windows Defender and SmartScreen do not block the bundled `OpenConsole.exe`. `[INFERENCE]` It is signed by Microsoft, but this app has not tested it.
 
-**Risks and gate.** `useConptyDll` is experimental in node-pty, a ConPTY update could drop APC again, and a node-pty upgrade can change the version folder, which the staging step detects. Windows chats stay classic until criteria 1-5 pass.
+**Risks and gate.** `useConptyDll` is experimental in node-pty, a ConPTY update could drop APC again, and a node-pty upgrade can change the version folder, which the staging step detects. Ordinary Windows chats remain classic. The developer flag is available to collect evidence; the default flip and a claim of completed Windows support require criteria 1-6.
 
 ---
 
@@ -934,7 +972,7 @@ quirks-mode warning. Six files and 49 tests were skipped. The empty-history regr
 - **Sharing parity unproven.** No guest join was established in the study. Mitigation: Phase 2 criterion 12 before any exposure beyond developers.
 - **Startup readiness.** `sendable` precedes the startup worktree question. Mitigation: keep `worktree.onStart: off` until omp exposes outer readiness.
 - **Custom extension UI.** `rows` nodes and PTY-mode editors need raw keys. Mitigation: the fallback forwards keys when such a node has focus.
-- **Windows transport.** Bundled ConPTY is experimental in node-pty and its packaging is unverified. Mitigation: Windows stays classic until Phase 6 passes.
+- **Windows transport.** Bundled ConPTY is experimental in node-pty and its runtime behavior remains unverified. Mitigation: the developer flag alone enables TSP; the ordinary Windows default stays classic until Phase 6 passes.
 - **Lifecycle transitions.** omp instance restart (a new protocol epoch, possibly on the same PTY), room rotation, session identity change and surface replacement need different handling (Rule 9). Mitigation: the Phase 2 transition fixtures.
 - **Pre-TUI failures.** Raw capture stays.
 

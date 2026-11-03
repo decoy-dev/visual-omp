@@ -21,10 +21,22 @@ import {
 	type TspVerb,
 } from "../../../shared/tsp";
 
-const APC = "\x1b_";
+/**
+ * Windows input framing is the Phase 6 CI decision point. Keep APC on every
+ * platform until Windows live and packaged evidence justifies OSC 877.
+ * Changing win32 to "osc877" changes only input; omp output remains APC.
+ */
+export const TSP_INPUT_FRAMING: Readonly<{ win32: "apc" | "osc877"; default: "apc" }> = {
+	win32: "apc",
+	default: "apc",
+};
+
 const ST = "\x1b\\";
-/** Every TSP message starts with this. */
-export const TSP_PREFIX = `${APC}${TSP_APC_ID};`;
+/** Every outgoing TSP message starts with the platform-selected prefix. */
+export const TSP_PREFIX = {
+	apc: `\x1b_${TSP_APC_ID};`,
+	osc877: `\x1b]877;${TSP_APC_ID};`,
+}[process.platform === "win32" ? TSP_INPUT_FRAMING.win32 : TSP_INPUT_FRAMING.default];
 
 /** Message parameters (`k=v`, ASCII, never containing `;`). */
 export type TspParams = Readonly<Record<string, string | number>>;
