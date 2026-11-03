@@ -106,15 +106,16 @@ function WorkChip({ view, tabId }: { view: SessionView; tabId: string }): ReactN
 	const progress = view.guest?.progress;
 	const lifecycle = view.guest?.lifecycle;
 	const ompLive = ompRunning(view);
+	const processStartedAt = view.host?.processStartedAt;
 	// Keyed on the transcript and helper maps, not the whole view, so streamed text doesn't recompute it.
 	const summary = useMemo(
 		() =>
 			workSummary(
 				latestTodo(shown),
 				helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, ompLive),
-				entries ? backgroundJobs(entries, ompLive, activeTools, backgroundTools) : [],
+				entries ? backgroundJobs(entries, ompLive, activeTools, backgroundTools, null, undefined, processStartedAt) : [],
 			),
-		[shown, entries, activeTools, backgroundTools, agents, progress, lifecycle, ompLive],
+		[shown, entries, activeTools, backgroundTools, agents, progress, lifecycle, ompLive, processStartedAt],
 	);
 	// While this chat's Tasks pane is on screen, the chip reads as pressed and closes it.
 	const dockVisible = useDockVisible();

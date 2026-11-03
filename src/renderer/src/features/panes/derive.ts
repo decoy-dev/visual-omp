@@ -318,10 +318,10 @@ function exitCodeOf(output: string): number | null {
 /**
  * Background shell jobs: `bash` calls that went async (details.async), updated by `job` and `wait` results and closed
  * by omp's `async-result` deliveries. A job omp never reported finished before its process ended (a `session_exit`
- * record, or no omp running this chat now) shows as cancelled. Running jobs come first, then the rest; newest first
- * within each, as omp's `/jobs` lists them.
+ * record, no omp running this chat now, or a start before the running omp instance registered) shows as cancelled.
+ * Running jobs come first, then the rest; newest first within each, as omp's `/jobs` lists them.
  */
-export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolean, activeTools?: ReadonlyMap<string, ActiveTool>, backgroundTools?: ReadonlyMap<string, ActiveTool>, cwd: string | null = null, nativeJobs?: readonly NativeJob[]): BackgroundJob[] {
+export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolean, activeTools?: ReadonlyMap<string, ActiveTool>, backgroundTools?: ReadonlyMap<string, ActiveTool>, cwd: string | null = null, nativeJobs?: readonly NativeJob[], processStartedAt?: number | null): BackgroundJob[] {
 	const jobs = new Map<string, BackgroundJob>();
 	const upsert = (jobId: string, patch: Partial<BackgroundJob>) => {
 		const existing: BackgroundJob = jobs.get(jobId) ?? {
@@ -373,6 +373,23 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 			});
 		}
 	}
+	// A resumed chat's omp cannot be running jobs an earlier process started, even when that process left no exit record.
+	const earlierProcess = new Set<string>();
+	if (ompLive && typeof processStartedAt === "number") {
+		for (const job of jobs.values()) {
+			if (job.state !== "running" || job.startedAt === null || job.startedAt >= processStartedAt) continue;
+			upsert(job.jobId, { state: "cancelled" });
+			earlierProcess.add(job.jobId);
+		}
+	}
+	// omp numbers jobs per process, so a live frame from the current process can reuse an earlier process's id.
+	// It starts a fresh row instead of inheriting that job's output, run time or exit code.
+	const replacesEarlier = (jobId: string, tool: ActiveTool) => {
+		if (!earlierProcess.has(jobId) || typeof processStartedAt !== "number" || tool.startedAt < processStartedAt) return false;
+		earlierProcess.delete(jobId);
+		jobs.delete(jobId);
+		return true;
+	};
 	for (const tool of [...(activeTools?.values() ?? []), ...(backgroundTools?.values() ?? [])]) {
 		const partial = isRecord(tool.partialResult) ? tool.partialResult : null;
 		const details = partial && isRecord(partial.details) ? partial.details : null;
@@ -381,7 +398,7 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 				if (!isRecord(raw)) continue;
 				const id = str(raw.id);
 				if (!id || (raw.type !== "bash" && raw.type !== "eval") || !isJobState(raw.status)) continue;
-				const existing = jobs.get(id);
+				const existing = replacesEarlier(id, tool) ? undefined : jobs.get(id);
 				if (existing && existing.state !== "running") continue;
 				const output = str(raw.resultText) || str(raw.errorText);
 				const widget = jobWidgetOf(raw.widget);
@@ -402,7 +419,7 @@ export function backgroundJobs(entries: readonly SessionEntry[], ompLive: boolea
 		const jobId = async ? str(async.jobId) : null;
 		if (!jobId) continue;
 		const output = str(details?.output) ?? (tool.toolName === "eval" && Array.isArray(partial?.content) ? resultText({ content: partial.content }) : null);
-		const existing = jobs.get(jobId);
+		const existing = replacesEarlier(jobId, tool) ? undefined : jobs.get(jobId);
 		// A saved poll or delivery can be newer than the last live frame kept for this call.
 		if (existing && existing.state !== "running") continue;
 		const state = isJobState(async?.state) ? async.state : existing?.state ?? "running";

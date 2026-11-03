@@ -10,6 +10,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - Reopening a long chat no longer leaves a lasting “TUI debug text timed out” error at the top of the chat.
 - Saved chats now show the model's name in the composer, as live chats do, instead of its provider and model id.
+- Background jobs from before a chat's omp restarted no longer show as running in Tasks and the chat header.
 
 ## [0.7.4] - 2026-11-02
 

@@ -277,6 +277,38 @@ describe("backgroundJobs", () => {
 	];
 	const exit = { ...base(), type: "custom", customType: "session_exit", data: { reason: "dispose", kind: "normal", recordedAt: "2026-10-01T00:20:47.661Z" } } as unknown as SessionEntry;
 
+	it("ends jobs an earlier omp process started, keeping the current process's jobs and reused ids running", () => {
+		const at = (entry: SessionEntry, time: number) => { if (entry.type === "message") entry.message.timestamp = time; return entry; };
+		const startedAt = (callId: string, jobId: string, command: string, time: number) => started(callId, jobId, command).map(entry => at(entry, time));
+		const entries = [
+			...startedAt("old1", "bg_1", "gh run watch 41147366297", 1_000),
+			...startedAt("old2", "bg_2", "npx electron-vite build", 2_000),
+			...startedAt("new1", "bg_1", "gh run watch 41549644117", 10_000),
+		];
+		const jobs = backgroundJobs(entries, true, undefined, undefined, null, undefined, 5_000);
+		expect(jobs.map(job => [job.jobId, job.command, job.state])).toEqual([
+			["bg_1", "gh run watch 41549644117", "running"],
+			["bg_2", "npx electron-vite build", "cancelled"],
+		]);
+		// Without a known process start, transcript-only jobs keep today's behaviour.
+		expect(backgroundJobs(entries, true).find(job => job.jobId === "bg_2")?.state).toBe("running");
+	});
+
+	it("starts a fresh row when the current process reuses an earlier job id before its result is saved", () => {
+		const at = (entry: SessionEntry, time: number) => { if (entry.type === "message") entry.message.timestamp = time; return entry; };
+		const entries = [
+			...started("old1", "bg_1", "gh run watch 41147366297").map(entry => at(entry, 1_000)),
+			at(result("old-poll", "job", "", { jobs: [{ id: "bg_1", type: "bash", status: "running", resultText: "old output" }] }), 2_000),
+		];
+		const live: ActiveTool = { toolCallId: "new1", toolName: "bash", args: { command: "gh run watch 41549644117", async: true }, startedAt: 10_000, partialResult: { details: { output: "queued", async: { jobId: "bg_1", state: "running" } } } };
+		expect(backgroundJobs(entries, true, new Map([["new1", live]]), undefined, null, undefined, 5_000)).toMatchObject([
+			{ jobId: "bg_1", command: "gh run watch 41549644117", state: "running", output: "queued", startedAt: 10_000, durationMs: null, exitCode: null },
+		]);
+		// A live frame cannot revive the earlier process's job when it predates the current process.
+		const stale: ActiveTool = { ...live, startedAt: 1_000 };
+		expect(backgroundJobs(entries, true, new Map([["old1", stale]]), undefined, null, undefined, 5_000)[0]).toMatchObject({ command: "gh run watch 41147366297", state: "cancelled" });
+	});
+
 	it("closes a job from a wait snapshot", () => {
 		const entries = [
 			...started("b1", "bg_42", "gh run watch"),

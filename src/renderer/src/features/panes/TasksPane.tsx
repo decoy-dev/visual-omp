@@ -488,7 +488,8 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 	const phases = useMemo(() => latestTodo(shown), [shown]);
 	const running = ompRunning(view);
 	const nativeJobs = useNativeJobs(view);
-	const jobs = useMemo(() => backgroundJobs(entries ?? [], running, activeTools, backgroundTools, view?.guest?.header?.cwd ?? session?.projectPath ?? null, nativeJobs), [entries, running, activeTools, backgroundTools, view?.guest?.header?.cwd, session?.projectPath, nativeJobs]);
+	const processStartedAt = view?.host?.processStartedAt;
+	const jobs = useMemo(() => backgroundJobs(entries ?? [], running, activeTools, backgroundTools, view?.guest?.header?.cwd ?? session?.projectPath ?? null, nativeJobs, processStartedAt), [entries, running, activeTools, backgroundTools, view?.guest?.header?.cwd, session?.projectPath, nativeJobs, processStartedAt]);
 	const agents = view?.guest?.agents;
 	const progress = view?.guest?.progress;
 	const lifecycle = view?.guest?.lifecycle;
@@ -562,10 +563,11 @@ export function TasksBadge({ session }: PaneProps) {
 	const progress = view?.guest?.progress;
 	const lifecycle = view?.guest?.lifecycle;
 	const running = ompRunning(view);
+	const processStartedAt = view?.host?.processStartedAt;
 	const count = useMemo(() => {
 		const helpers = helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, running).filter(helper => helper.status === "running").length;
-		const jobs = entries ? backgroundJobs(entries, running, activeTools, backgroundTools).filter(job => job.state === "running").length : 0;
+		const jobs = entries ? backgroundJobs(entries, running, activeTools, backgroundTools, null, undefined, processStartedAt).filter(job => job.state === "running").length : 0;
 		return helpers + jobs;
-	}, [agents, progress, lifecycle, entries, activeTools, backgroundTools, running]);
+	}, [agents, progress, lifecycle, entries, activeTools, backgroundTools, running, processStartedAt]);
 	return count > 0 ? <Badge count={count} label={t("tasks.runningCount", { count })} /> : null;
 }

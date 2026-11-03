@@ -1057,6 +1057,7 @@ export class SessionHost {
 						phase: "live",
 						link,
 						generation: this.state.generation + 1,
+						processStartedAt: host.startedAt,
 						sessionId: host.sessionId,
 						cwd: host.cwd,
 						sessionFile: sessionFile ?? this.state.sessionFile,
