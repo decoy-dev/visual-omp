@@ -37,6 +37,7 @@ const pty = vi.hoisted(() => ({
 	writes: vi.fn(),
 	kill: vi.fn(),
 	resize: vi.fn(),
+	release: vi.fn(),
 }));
 vi.mock("node-pty", () => ({
 	spawn: vi.fn((_bin, args: string[], options: typeof pty.spawnOptions) => {
@@ -45,6 +46,7 @@ vi.mock("node-pty", () => ({
 		return { pid: 123, onData: (fn: typeof pty.data) => (pty.data = fn), onExit: (fn: typeof pty.exit) => (pty.exit = fn), write: pty.writes, kill: pty.kill, resize: pty.resize };
 	}),
 }));
+vi.mock("./windows-pty-cleanup", () => ({ releaseWindowsConpty: (...args: unknown[]) => pty.release(...args) }));
 vi.mock("../env", () => ({ userEnv: async () => ({}), ptyEnv: (env: unknown) => env }));
 vi.mock("../ipc", () => ({ broadcast: vi.fn() }));
 vi.mock("../prefs", () => ({ getPrefs: () => ({ archivedSessions: [], extraProjects: [] }) }));
@@ -101,6 +103,7 @@ beforeEach(async () => {
 		return { text: imageChips ? `IMAGE #${imageChips} ` : "", cleared: imageChips === 0, imageChips, imageSymbol: "IMAGE" };
 	});
 	pty.kill.mockReset();
+	pty.release.mockReset().mockResolvedValue(undefined);
 	pty.sessionId = "old";
 	pty.room = "room";
 	host = new SessionHost({ cwd: "/tmp", resumeFile: "/tmp/visual-omp-missing-session-host-test.jsonl" });
@@ -157,6 +160,18 @@ describe("host overlay", () => {
 });
 
 describe("startup exit", () => {
+	it("reports native transport cleanup failures after exit without killing the process again", async () => {
+		vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? "win32" : Reflect.get(target, key) }));
+		const log = vi.spyOn(console, "error").mockImplementation(() => {});
+		try {
+			pty.release.mockRejectedValueOnce(new Error("native worker did not terminate"));
+			await exit(0);
+			await vi.waitFor(() => expect(host.state.error).toContain("Could not release omp's Windows terminal resources"));
+			expect(host.state.error).toContain("native worker did not terminate");
+			expect(pty.kill).not.toHaveBeenCalled();
+		} finally { log.mockRestore(); }
+	});
+
 	it("flushes pending terminal writes and keeps the missing session path as the reason", async () => {
 		pty.data?.("\u001b[31mSession file not found: /tmp/visual-omp-missing-session-host-test.jsonl\u001b[0m\r\n\r\n");
 		await exit(1);

@@ -184,7 +184,7 @@ Startup readiness remains an omp API gap. A live collab snapshot can precede the
 
 The developer flag `VOMP_TSP=1` selects Tern Surface Protocol at the launch of an app-hosted
 chat on macOS, Linux or Windows. Windows TSP hosts alone set node-pty's `useConptyDll: true`.
-Windows runtime and packaged evidence remain pending Phase 6 CI and manual checks. Classic hosts,
+Windows transport and package exchanges have CI evidence; repeated-host cleanup and manual gates remain open. Classic hosts,
 terminal-follow and their painted-screen adapters keep their existing behavior. The hidden PTY
 still runs the same omp session, private extension and collab relay. The opt-in launch sets
 `TERM_PROGRAM=tern`, removes `PI_TUI_NATIVE`, and reads raw PTY bytes. Its incremental splitter
@@ -844,10 +844,21 @@ retain available evidence when setup, transport or cleanup fails; the coordinato
 timeouts and saves each result separately. Download and layout failures have bounded diagnostic
 JSON. Successfully written listings, hashes, diagnostics and byte captures are uploaded as the
 `windows-conpty-evidence` artifact after ordinary step failures. Disk failures, runner loss or job
-cancellation can prevent final evidence or upload. APC remains the platform input policy until
-the Windows run establishes whether OSC 877 is required. These headless
+cancellation can prevent final evidence or upload. APC remains selected because both APC and
+OSC 877 completed the recorded Node and packaged exchanges. These headless
 checks do not establish installed UI behavior, child-process cleanup or Defender/SmartScreen
 acceptance; those remain Windows-machine criteria in `docs/TSP-MIGRATION.md`.
+
+Windows host exit now releases node-pty 1.1.0's retained JS transport through
+`main/omp/windows-pty-cleanup.ts`. After the public PTY exit event, it destroys input/output
+sockets and awaits the conout worker's termination. This guarded private adapter covers bundled
+TSP and system-ConPTY classic hosts; it never calls native kill a second time. Upstream issues
+887 and 947 document the worker/input-pipe gaps, and issue 983 documents native double-close.
+The latest published 1.2.0 beta retains the worker gap, so the dependency remains 1.1.0.
+The lifecycle CI recorder runs six production hosts per presentation in separate processes,
+asserts no per-cycle MessagePort/worker growth, and requires natural recorder exit. Thread and
+total handle counts remain evidence for review; the adapter does not claim to fix upstream's
+separate native HPCON lifetime issue or replace installed-build process and pipe-handle checks.
 
 `scripts/after-pack.mjs` flips Electron fuses before the existing macOS signing hook. Node-mode startup is disabled on macOS. Windows retains it because node-pty's existing console cleanup forks a Node-mode child with `ELECTRON_RUN_AS_NODE`; changing its PTY backend requires Windows testing. Node environment options and CLI inspection are disabled on both platforms; node-pty's cleanup fork supplies neither. App startup is restricted to ASAR and the embedded archive integrity check is enabled. Native node-pty files remain unpacked and outside the archive integrity check. The main bundle compiles out ws's optional `bufferutil` and `utf-8-validate` loaders, and packaging fails if either bare require is emitted. The macOS hardened runtime remains disabled under the existing signing policy.
 

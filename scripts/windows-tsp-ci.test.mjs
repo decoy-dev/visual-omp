@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { CONPTY_FILES } from "./stage-conpty.mjs";
-import { runWindowsTspCi, WINDOWS_TSP_CI_LIMITS } from "./windows-tsp-ci.mjs";
+import { assertWindowsLifecycleReport, runWindowsTspCi, WINDOWS_TSP_CI_LIMITS } from "./windows-tsp-ci.mjs";
 
 const version = "18.15.0";
 const asset = "omp-windows-x64.exe";
@@ -36,22 +36,39 @@ async function lifecycleFixture(t, mode) {
 	await writeFile(join(directory, "windows-lifecycle.ts"), `
 import { spawn } from "node-pty";
 import { writeFileSync } from "node:fs";
-const mode = process.env.LIFECYCLE_FIXTURE_MODE;
+const transport = process.env.VOMP_TSP === "1" ? "tsp" : "classic";
+const modes = JSON.parse(process.env.LIFECYCLE_FIXTURE_MODES);
+const mode = modes[transport];
+const complete = ["complete", "complete-hang", "messageport", "worker", "transient-port"].includes(mode);
+const resources = { MessagePort: 0, Worker: 0, PipeWrap: 2 };
+const cycles = [1, 2, 3].flatMap(index => ["natural", "force"].map(mode => ({
+  mode, index, confirmations: mode === "force" ? 1 : 0, exitCode: 0,
+  before: { resources: { ...resources } }, settled: { resources: { ...resources, PipeWrap: 8 } },
+})));
+if (mode === "messageport") cycles[0].settled.resources.MessagePort = 1;
+if (mode === "worker") cycles[0].settled.resources.Worker = 1;
+if (mode === "transient-port") {
+  cycles[1].settled.resources.MessagePort = 1;
+  cycles[2].before.resources.MessagePort = 1;
+}
 const report = {
-  status: mode === "complete" ? "complete" : "running",
+  status: complete ? "complete" : "running",
+  transport, variant: process.env.VOMP_TSP, pid: process.pid,
+  profile: process.env.VOMP_TSP_LIFECYCLE_REPORT + ".profile",
   nativePackage: spawn(),
   reportPath: process.env.VOMP_TSP_LIFECYCLE_REPORT,
   extensionPath: process.env.VOMP_TSP_LIFECYCLE_EXTENSION,
   omp: process.env.OMP_BIN,
-  cycles: [{ mode: "natural", index: 1 }],
-  growth: { threads: 6, handles: 30, resources: { MessagePort: 6, PipeWrap: 6 } },
+  baseline: { resources },
+  cycles: complete ? cycles : cycles.slice(0, 1),
+  growth: { threads: 6, handles: 30, resources: { MessagePort: 0, Worker: 0, PipeWrap: 6 } },
 };
 writeFileSync(process.env.VOMP_TSP_LIFECYCLE_REPORT, JSON.stringify(report));
-if (mode === "timeout") setInterval(() => {}, 1000);
-if (mode === "nonzero") { process.stderr.write("lifecycle operation failed"); process.exitCode = 7; }
+if (mode === "timeout" || mode === "complete-hang") setInterval(() => {}, 1000);
+if (mode === "nonzero") { process.stderr.write("lifecycle " + transport + " operation failed"); process.exitCode = 7; }
 `);
 	return { ...options, evidence, env: { ...options.env, PATH: process.env.PATH, SystemRoot: process.env.SystemRoot,
-		OMP_BIN: join(options.project, asset), LIFECYCLE_FIXTURE_MODE: mode } };
+		OMP_BIN: join(options.project, asset), LIFECYCLE_FIXTURE_MODES: JSON.stringify(typeof mode === "string" ? { tsp: mode, classic: mode } : mode) } };
 }
 
 function downloadFetch(sums = `${sha256} *${asset}\n`) {
@@ -283,75 +300,158 @@ for (const arch of ["x64", "arm64"]) {
 	});
 }
 
-test("lifecycle resolves the checkout native package and accepts completed resource growth as evidence requiring review", async t => {
+test("lifecycle runs both transports from the checkout and treats completed thread, handle and PipeWrap growth as observational", async t => {
 	const options = await lifecycleFixture(t, "complete");
-	let recorder;
+	const recorders = [];
+	const variants = [];
 	const messages = [];
 	t.mock.method(console, "log", message => messages.push(message));
 	await runWindowsTspCi(["lifecycle"], {
-		...options,
+		...options, env: { ...options.env, VOMP_TSP: "unexpected-inherited-value" },
 		execFileSync: (file, args, settings) => {
-			recorder = args[0];
+			const recorder = args[0];
+			recorders.push(recorder);
+			variants.push(settings.env.VOMP_TSP);
+			const transport = settings.env.VOMP_TSP === "1" ? "tsp" : "classic";
 			assert.equal(file, process.execPath);
 			assert.equal(dirname(dirname(recorder)), options.project);
 			assert.notEqual(dirname(recorder), options.evidence);
 			assert.equal(settings.timeout, 300_000);
 			assert.equal(settings.killSignal, "SIGKILL");
-			assert.equal(settings.env.VOMP_TSP_LIFECYCLE_REPORT, join(options.evidence, "host-lifecycle.json"));
+			assert.equal(settings.env.VOMP_TSP_LIFECYCLE_REPORT, join(options.evidence, `host-lifecycle-${transport}.json`));
 			assert.equal(settings.env.VOMP_TSP_LIFECYCLE_EXTENSION, join(options.project, "src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs"));
 			assert.equal(settings.env.OMP_BIN, options.env.OMP_BIN);
 			assert.equal(settings.env.NODE_PATH, undefined);
 			return execFileSync(file, args, { ...settings, cwd: options.evidence });
 		},
 	});
-	const report = JSON.parse(await readFile(join(options.evidence, "host-lifecycle.json"), "utf8"));
-	assert.equal(report.nativePackage, "checkout-native-package");
-	assert.equal(report.reportPath, join(options.evidence, "host-lifecycle.json"));
-	assert.equal(report.extensionPath, join(options.project, "src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs"));
-	assert.equal(report.omp, options.env.OMP_BIN);
-	assert.deepEqual(report.growth, { threads: 6, handles: 30, resources: { MessagePort: 6, PipeWrap: 6 } });
-	assert.ok(messages.some(message => message.includes("resource growth (evidence only; requires review)") && message.includes('"threads":6')));
+	assert.deepEqual(variants, ["1", "0"]);
+	const reports = [];
+	for (const transport of ["tsp", "classic"]) {
+		const report = JSON.parse(await readFile(join(options.evidence, `host-lifecycle-${transport}.json`), "utf8"));
+		reports.push(report);
+		assert.equal(report.transport, transport);
+		assert.equal(report.variant, transport === "tsp" ? "1" : "0");
+		assert.equal(report.nativePackage, "checkout-native-package");
+		assert.equal(report.reportPath, join(options.evidence, `host-lifecycle-${transport}.json`));
+		assert.equal(report.extensionPath, join(options.project, "src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs"));
+		assert.equal(report.omp, options.env.OMP_BIN);
+		assert.equal(report.cycles.length, 6);
+		assert.deepEqual(report.growth, { threads: 6, handles: 30, resources: { MessagePort: 0, Worker: 0, PipeWrap: 6 } });
+		assert.ok(messages.some(message => message.includes(`SessionHost ${transport} lifecycle resource growth`) && message.includes("totals are observational") && message.includes('"threads":6')));
+		await assertAbsent(join(options.evidence, `lifecycle-${transport}-failure.json`));
+	}
+	assert.notEqual(reports[0].pid, reports[1].pid);
+	assert.notEqual(reports[0].profile, reports[1].profile);
 	await assertAbsent(join(options.evidence, "lifecycle-failure.json"));
-	await assertAbsent(recorder);
+	for (const recorder of recorders) await assertAbsent(recorder);
 });
 
-for (const mode of ["timeout", "nonzero"]) {
-	test(`lifecycle ${mode} remains fatal and preserves its progressive report`, { timeout: 10_000 }, async t => {
-		const options = await lifecycleFixture(t, mode);
+for (const mode of ["timeout", "nonzero", "complete-hang"]) {
+	test(`lifecycle ${mode} remains fatal, preserves TSP evidence and still completes classic`, { timeout: 10_000 }, async t => {
+		const options = await lifecycleFixture(t, { tsp: mode, classic: "complete" });
+		const variants = [];
 		let recorder;
 		await assert.rejects(runWindowsTspCi(["lifecycle"], {
 			...options,
 			execFileSync: (file, args, settings) => {
 				recorder = args[0];
+				variants.push(settings.env.VOMP_TSP);
 				assert.equal(settings.timeout, 300_000);
-				// Exercise a real platform timeout without waiting for the production five-minute budget.
-				return execFileSync(file, args, { ...settings, timeout: mode === "timeout" ? 500 : settings.timeout });
+				// A completed report cannot excuse a subprocess that fails to exit naturally.
+				const stalled = settings.env.VOMP_TSP === "1" && mode !== "nonzero";
+				return execFileSync(file, args, { ...settings, timeout: stalled ? 500 : settings.timeout });
 			},
-		}), mode === "timeout" ? { code: "ETIMEDOUT" } : /Command failed/);
-		const report = JSON.parse(await readFile(join(options.evidence, "host-lifecycle.json"), "utf8"));
-		assert.equal(report.status, "running");
+		}), error => {
+			assert.ok(error instanceof AggregateError);
+			assert.equal(error.errors.length, 1);
+			if (mode === "nonzero") assert.match(error.errors[0].message, /Command failed/);
+			else assert.equal(error.errors[0].code, "ETIMEDOUT");
+			return true;
+		});
+		assert.deepEqual(variants, ["1", "0"]);
+		const report = JSON.parse(await readFile(join(options.evidence, "host-lifecycle-tsp.json"), "utf8"));
+		assert.equal(report.status, mode === "complete-hang" ? "complete" : "running");
 		assert.equal(report.nativePackage, "checkout-native-package");
-		assert.deepEqual(report.cycles, [{ mode: "natural", index: 1 }]);
-		const diagnostic = await failure(options, "lifecycle");
+		assert.equal(report.cycles.length, mode === "complete-hang" ? 6 : 1);
+		const diagnostic = await failure(options, "lifecycle-tsp");
 		assert.equal(diagnostic.status, "failed");
+		assert.equal(diagnostic.transport, "tsp");
+		assert.equal(diagnostic.variant, "1");
 		assert.equal(diagnostic.phase, "run");
 		assert.equal(diagnostic.timeoutMs, "300000");
-		if (mode === "timeout") assert.equal(diagnostic.error.code, "ETIMEDOUT");
+		assert.equal(diagnostic.report, join(options.evidence, "host-lifecycle-tsp.json"));
+		if (mode !== "nonzero") assert.equal(diagnostic.error.code, "ETIMEDOUT");
 		else {
-			assert.equal(diagnostic.error.stderr, "lifecycle operation failed");
+			assert.equal(diagnostic.error.stderr, "lifecycle tsp operation failed");
 			assert.match(diagnostic.error.message, /Command failed/);
 		}
+		assert.equal(JSON.parse(await readFile(join(options.evidence, "host-lifecycle-classic.json"), "utf8")).status, "complete");
+		await assertAbsent(join(options.evidence, "lifecycle-classic-failure.json"));
+		assert.equal((await failure(options, "lifecycle")).status, "failed");
 		await assertAbsent(recorder);
 	});
 }
 
-test("lifecycle rejects a zero-exit subprocess with an incomplete report", async t => {
-	const options = await lifecycleFixture(t, "incomplete");
+test("lifecycle retains distinct progressive reports and parent diagnostics when both transports fail", async t => {
+	const options = await lifecycleFixture(t, "nonzero");
+	await assert.rejects(runWindowsTspCi(["lifecycle"], options), error => error instanceof AggregateError && error.errors.length === 2);
+	for (const transport of ["tsp", "classic"]) {
+		const report = JSON.parse(await readFile(join(options.evidence, `host-lifecycle-${transport}.json`), "utf8"));
+		assert.equal(report.status, "running");
+		assert.equal(report.transport, transport);
+		const diagnostic = await failure(options, `lifecycle-${transport}`);
+		assert.equal(diagnostic.transport, transport);
+		assert.equal(diagnostic.error.stderr, `lifecycle ${transport} operation failed`);
+	}
+});
+
+test("lifecycle rejects an incomplete zero-exit report and still runs the other transport", async t => {
+	const options = await lifecycleFixture(t, { tsp: "incomplete", classic: "complete" });
 	await assert.rejects(runWindowsTspCi(["lifecycle"], options), /lifecycle recorder did not complete: running/);
-	const report = JSON.parse(await readFile(join(options.evidence, "host-lifecycle.json"), "utf8"));
+	const report = JSON.parse(await readFile(join(options.evidence, "host-lifecycle-tsp.json"), "utf8"));
 	assert.equal(report.status, "running");
 	assert.equal(report.nativePackage, "checkout-native-package");
-	const diagnostic = await failure(options, "lifecycle");
+	const diagnostic = await failure(options, "lifecycle-tsp");
 	assert.equal(diagnostic.status, "failed");
+	assert.equal(diagnostic.phase, "report");
 	assert.match(diagnostic.error.message, /did not complete/);
+	assert.equal(JSON.parse(await readFile(join(options.evidence, "host-lifecycle-classic.json"), "utf8")).status, "complete");
+});
+
+for (const mode of ["messageport", "worker", "transient-port"]) {
+	test(`lifecycle rejects settled ${mode} growth despite observational final totals`, async t => {
+		const options = await lifecycleFixture(t, { tsp: "complete", classic: mode });
+		await assert.rejects(runWindowsTspCi(["lifecycle"], options), /classic lifecycle retained worker resources/);
+		const report = JSON.parse(await readFile(join(options.evidence, "host-lifecycle-classic.json"), "utf8"));
+		assert.equal(report.status, "complete");
+		assert.equal(report.cycles.length, 6);
+		assert.equal(report.growth.resources.MessagePort, 0);
+		assert.equal(report.growth.resources.Worker, 0);
+		const diagnostic = await failure(options, "lifecycle-classic");
+		assert.equal(diagnostic.phase, "report");
+		assert.match(diagnostic.error.message, mode === "worker" ? /Worker grew by 1/ : /MessagePort grew by 1/);
+		await assertAbsent(join(options.evidence, "lifecycle-tsp-failure.json"));
+	});
+}
+
+test("lifecycle report gate requires three natural and three confirmed force cycles", () => {
+	const cycle = (mode, index) => ({ mode, index, confirmations: mode === "force" ? 1 : 0, exitCode: 0,
+		before: { resources: {} }, settled: { resources: {} } });
+	const report = { status: "complete", transport: "classic", variant: "0", baseline: { resources: {} },
+		cycles: [1, 2, 3].flatMap(index => [cycle("natural", index), cycle("force", index)]) };
+	assert.doesNotThrow(() => assertWindowsLifecycleReport(report, "classic"));
+	for (const change of [
+		{ transport: "tsp" },
+		{ cycles: report.cycles.slice(1) },
+		{ cycles: [report.cycles[1], ...report.cycles.slice(1)] },
+		{ cycles: [{ ...report.cycles[0], exitCode: 1 }, ...report.cycles.slice(1)] },
+		{ cycles: [report.cycles[0], { ...report.cycles[1], confirmations: 0 }, ...report.cycles.slice(2)] },
+		{ cycles: [{ ...report.cycles[0], settled: undefined }, ...report.cycles.slice(1)] },
+	]) assert.throws(() => assertWindowsLifecycleReport({ ...report, ...change }, "classic"));
+	// A new worker still fails when its count stays below a pre-existing baseline.
+	const baseline = { resources: { MessagePort: 2 } };
+	assert.throws(() => assertWindowsLifecycleReport({ ...report, baseline,
+		cycles: [{ ...report.cycles[0], settled: { resources: { MessagePort: 1 } } }, ...report.cycles.slice(1)] },
+	"classic"), /MessagePort grew by 1 from cycle/);
 });

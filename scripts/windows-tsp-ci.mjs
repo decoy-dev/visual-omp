@@ -51,7 +51,9 @@ async function persistFailure(evidence, context, error) {
 		limit = Math.floor(limit / 2);
 	} while (Buffer.byteLength(json) > WINDOWS_TSP_CI_LIMITS.diagnosticBytes);
 	const arch = context.arch === "x64" || context.arch === "arm64" ? context.arch : "unknown";
-	const filename = context.command === "layout" ? `layout-${arch}-failure.json` : `${context.command}-failure.json`;
+	const filename = context.command === "layout" ? `layout-${arch}-failure.json`
+		: context.command === "lifecycle" && context.transport ? `lifecycle-${context.transport}-failure.json`
+		: `${context.command}-failure.json`;
 	await writeFile(join(evidence, filename), json);
 }
 
@@ -113,6 +115,30 @@ export async function buildWindowsLifecycleProbe(project, outfile) {
 		}],
 	});
 }
+/** Worker retention is a gate; thread, handle and other resource totals remain evidence. */
+export function assertWindowsLifecycleReport(result, transport) {
+	if (result.status !== "complete") throw new Error(`SessionHost lifecycle recorder did not complete: ${result.error ?? result.status}`);
+	if (result.transport !== transport || result.variant !== (transport === "tsp" ? "1" : "0")) throw new Error(`SessionHost lifecycle report has the wrong transport: ${result.transport}`);
+	if (!result.baseline?.resources || result.cycles?.length !== 6) throw new Error("SessionHost lifecycle report must contain a baseline and six settled cycles");
+	const failures = [...(result.retentionFailures ?? [])];
+	for (const mode of ["natural", "force"]) for (let index = 1; index <= 3; index++) {
+		const matches = result.cycles.filter(cycle => cycle.mode === mode && cycle.index === index);
+		const cycle = matches[0];
+		if (matches.length !== 1 || cycle.error || !cycle.before?.resources || !cycle.settled?.resources
+			|| cycle.confirmations !== (mode === "force" ? 1 : 0) || (mode === "natural" && cycle.exitCode !== 0)) {
+			throw new Error(`SessionHost lifecycle report lacks a successful settled ${mode} ${index} cycle`);
+		}
+		for (const [reference, sample] of [["baseline", result.baseline], ["cycle", cycle.before]]) {
+			const names = new Set([...Object.keys(sample.resources), ...Object.keys(cycle.settled.resources)]);
+			for (const name of names) {
+				const growth = (cycle.settled.resources[name] ?? 0) - (sample.resources[name] ?? 0);
+				if (/MessagePort|Worker/i.test(name) && growth > 0) failures.push(`${mode} ${index}: ${name} grew by ${growth} from ${reference}`);
+			}
+		}
+	}
+	if (failures.length) throw new Error(`SessionHost ${transport} lifecycle retained worker resources:\n${failures.join("\n")}`);
+}
+
 
 /** Run a CI operation without invoking the command line when this module is imported. */
 export async function runWindowsTspCi(argv, {
@@ -178,20 +204,32 @@ export async function runWindowsTspCi(argv, {
 			// Keep the executable beneath this checkout so node-pty finds its native installation.
 			const bundleDir = await mkdtemp(join(resolve(project), ".tsp-host-lifecycle-"));
 			const recorder = join(bundleDir, "host-lifecycle.mjs");
-			const report = join(evidence, "host-lifecycle.json");
+			const failures = [];
 			try {
 				context.phase = "build";
 				await buildWindowsLifecycleProbe(project, recorder);
-				context.phase = "run";
-				context.timeoutMs = WINDOWS_TSP_CI_LIMITS.lifecycleTimeoutMs;
-				execFileSync(process.execPath, [recorder], {
-					stdio: "pipe", timeout: WINDOWS_TSP_CI_LIMITS.lifecycleTimeoutMs, killSignal: "SIGKILL", maxBuffer: 1024 * 1024,
-					env: { ...env, VOMP_TSP_LIFECYCLE_REPORT: report,
-						VOMP_TSP_LIFECYCLE_EXTENSION: join(project, "src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs") },
-				});
-				const result = JSON.parse(await readFile(report, "utf8"));
-				if (result.status !== "complete") throw new Error(`SessionHost lifecycle recorder did not complete: ${result.error ?? result.status}`);
-				console.log(`SessionHost lifecycle resource growth (evidence only; requires review): ${JSON.stringify(result.growth)}`);
+				context.phase = "transports";
+				// Separate subprocesses also give each recorder its own isolated home/profile.
+				// Always attempt both transports, including after a timeout or malformed report.
+				for (const [transport, variant] of [["tsp", "1"], ["classic", "0"]]) {
+					const report = join(evidence, `host-lifecycle-${transport}.json`);
+					const runContext = { command, transport, variant, report, phase: "run", timeoutMs: WINDOWS_TSP_CI_LIMITS.lifecycleTimeoutMs };
+					try {
+						execFileSync(process.execPath, [recorder], {
+							stdio: "pipe", timeout: WINDOWS_TSP_CI_LIMITS.lifecycleTimeoutMs, killSignal: "SIGKILL", maxBuffer: 1024 * 1024,
+							env: { ...env, VOMP_TSP: variant, VOMP_TSP_LIFECYCLE_REPORT: report,
+								VOMP_TSP_LIFECYCLE_EXTENSION: join(project, "src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs") },
+						});
+						runContext.phase = "report";
+						const result = JSON.parse(await readFile(report, "utf8"));
+						assertWindowsLifecycleReport(result, transport);
+						console.log(`SessionHost ${transport} lifecycle resource growth (thread, handle and other totals are observational): ${JSON.stringify(result.growth)}`);
+					} catch (error) {
+						await persistFailure(evidence, runContext, error);
+						failures.push(error);
+					}
+				}
+				if (failures.length) throw new AggregateError(failures, `${failures.length} SessionHost lifecycle transport(s) failed: ${failures.map(error => error.message).join("; ")}`);
 			} finally {
 				await rm(bundleDir, { recursive: true, force: true });
 			}

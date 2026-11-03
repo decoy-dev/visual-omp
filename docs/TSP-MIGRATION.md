@@ -887,29 +887,52 @@ SQLite fixture exceeded its Windows test deadline. Executable startup now uses
 This successful one-shot run does not establish the manual process-cleanup criterion or the
 new repeated-host lifecycle measurement.
 
-The one-shot probe exit does not establish `SessionHost` cleanup inside a running app.
-`SessionHost.#onExit()` releases its PTY reference and closes its own services, but it does not
-dispose node-pty's private conout worker. Retention after natural `/exit` or confirmed force-stop is
-therefore suspected and requires measurement before this criterion can pass.
+**Confirmed retention (`41690123377`).** The production-host recorder completed three natural and
+three confirmed force-stop cycles but stayed alive until its parent killed it after 300 seconds.
+Each stopped TSP chat added one settled `MessagePort`; the final sample retained six. Final
+growth was four threads, 85 handles, five `PipeWrap` resources and one `ProcessWrap`. This is
+per-chat retention in the production `SessionHost`, which the earlier one-shot process exit hid.
 
-The Windows CI `lifecycle` command now records three natural-stop and three confirmed force-stop
-cycles in one process using the production `SessionHost`, node-pty, native bridge, relay, debug
-client and CLI. Headless adapters replace Electron UI/IPC/preferences and launch-environment
-selection only. A recorded hook holds the force-stop case until the real shutdown confirmation
-path chooses Stop now. Before startup, while live, after stop and after a 5.5-second settling period,
-the recorder samples active-resource counts, Windows thread IDs/count, total process handles and
-known child processes. The settling period exceeds the host's 4-second force-stop timer and
-node-pty's 1-second flush timer.
+`package-lock.json` pins node-pty 1.1.0. Its bundled `kill()` destroys the input socket but disposes
+the conout worker only after another output data event; natural bundled exit skips cleanup.
+The worker owns a listening pipe server. System ConPTY calls worker disposal on kill, but its
+natural-exit cleanup destroys only the output socket and leaves the input socket open.
+The source paths are [`windowsPtyAgent.ts:141-165,224-249`](https://github.com/microsoft/node-pty/blob/v1.1.0/src/windowsPtyAgent.ts),
+[`windowsConoutConnection.ts:47-80`](https://github.com/microsoft/node-pty/blob/v1.1.0/src/windowsConoutConnection.ts)
+and [`worker/conoutSocketWorker.ts:13-21`](https://github.com/microsoft/node-pty/blob/v1.1.0/src/worker/conoutSocketWorker.ts).
+Upstream tracks the worker in [#887](https://github.com/microsoft/node-pty/issues/887), the
+system input pipe in [#947](https://github.com/microsoft/node-pty/issues/947), and native natural-exit
+handles in [#965](https://github.com/microsoft/node-pty/issues/965).
 
-`host-lifecycle.json` saves progressive samples and final resource deltas in the existing evidence
-artifact. The executable bundle uses a temporary directory beneath the checkout, so its static
-external node-pty import resolves that checkout's installation independently of cwd or `NODE_PATH`.
-The launcher removes that temporary directory after execution; reports remain in the evidence
-directory on both success and failure. This recorder never calls `process.exit()`, `unref()` or
-private native-worker disposal.
-Its parent has a 5-minute deadline and retains `lifecycle-failure.json` if referenced resources
-prevent natural exit. Measured growth is evidence for review, rather than an automatic diagnosis
-or an unreviewed cleanup change. Actual Windows lifecycle results are pending the next CI run.
+The stable npm release remains 1.1.0. The latest published prerelease,
+[1.2.0-beta.17](https://github.com/microsoft/node-pty/releases/tag/v1.2.0-beta.17), retains the same
+[worker cleanup branches](https://github.com/microsoft/node-pty/blob/v1.2.0-beta.17/src/windowsPtyAgent.ts#L206-L234).
+No public worker-disposal API or published fix resolves this retention, so the dependency is unchanged.
+`windows-pty-cleanup.ts` isolates the guarded 1.1.0 private access: after the real PTY exit, it
+destroys both JS sockets and awaits the conout worker's public `terminate()` promise. `SessionHost`
+uses it for Windows ConPTY in both presentations. It never calls native `kill()` again, because
+[second-kill double-close can corrupt the heap](https://github.com/microsoft/node-pty/issues/983).
+Adapter failures are reported in host state and fail lifecycle evidence. This JS cleanup does not
+claim to close leaked native HPCON handles from #965; total handles, child processes and installed
+cleanup still require review.
+
+The Windows CI `lifecycle` command now runs separate TSP and classic processes and isolated
+profiles. Each records three natural-stop and three confirmed force-stop cycles using production
+`SessionHost`, node-pty, native bridge, relay, debug client and CLI. Headless adapters replace
+Electron UI/IPC/preferences and launch-environment selection only. TSP uses a recorded hook for
+its force-stop case; classic holds a public editor-input transaction until the real shutdown
+confirmation chooses Stop now. Before startup, while live, after stop and after 5.5 seconds of
+settling, the recorder samples active resources, Windows thread IDs/count, total process handles
+and known children.
+
+Reports are `host-lifecycle-tsp.json` and `host-lifecycle-classic.json`. Each settled cycle must show
+no growth of `MessagePort` or worker resources against its baseline or preceding cycle sample.
+Thread, total-handle and other resource deltas remain observational. Each process must also exit
+naturally within 300 seconds, with no recorder `process.exit()`, `unref()` or private disposal.
+Both variants are attempted even if the first fails, and retain separate failure diagnostics plus
+an aggregate `lifecycle-failure.json`. Executable bundles use a temporary directory beneath the
+checkout for static node-pty resolution; reports remain in the evidence directory after cleanup.
+The next Windows run must confirm the fix and determine whether classic chats retain resources.
 
 **Local checkpoint (2026-11-03, after review, before rebasing onto refreshed main).** macOS
 typecheck and all 47 packaging and CI-helper unit tests pass. One full Vitest run passes
@@ -961,8 +984,8 @@ every failure produces a complete exchange.
 
 - **Live, Node (Windows CI, x64):** `src/main/omp/tsp/tsp-windows.live.test.ts`, gated on `OMP_BIN`, which CI sets so the test never skips there. It spawns omp through node-pty with `useConptyDll: true`, completes the hello, receives frames, sends `send` and `edit` through APC and then through OSC 877, and records both directions, including non-ASCII text split across chunks. A second case with `useConptyDll: false` records the system ConPTY behavior. This test loads node-pty as built for Node; the packaged smoke run below covers the Electron rebuild.
 - **Packaged (Windows CI):** the layout assertion for x64 and arm64, and a smoke run of the packaged x64 app with `ELECTRON_RUN_AS_NODE=1` executing a script that loads the packaged, Electron-rebuilt node-pty and repeats the hello and `send` exchange. arm64 is packaged and checked for layout only, unless an arm64 Windows runner is added.
-- **Unit:** staging tests select x64 and arm64 and reject zero or two versions; macOS staging is a no-op. Fixture PE tests reject missing, malformed and wrong-machine files before fuse changes. Host tests protect Windows TSP launch and byte-identical classic behavior; stream tests retain the current framing for chunked Unicode events.
-- **Repeated production hosts (Windows CI):** `src/main/omp/tsp/testing/windows-lifecycle.ts` exercises both shutdown paths and retains resources, threads, handle counts and process observations across six hosts in one process. It uses Node's rebuilt addon and does not replace the installed-build manual check.
+- **Unit:** staging and PE fixtures validate packaged runtime files. Cleanup tests await a real referenced worker's termination, cover both ConPTY variants, release pipe sockets, reject a changed private interface and prove that no second native kill occurs. Host replay surfaces adapter failures as host errors. Existing launch and stream tests retain classic input bytes and Unicode framing behavior.
+- **Repeated production hosts (Windows CI):** `src/main/omp/tsp/testing/windows-lifecycle.ts` exercises both shutdown paths across six hosts per transport, in separate TSP and classic processes. It rejects settled per-cycle worker-resource growth and requires each recorder to exit naturally. Thread and total-handle observations remain available for review. It uses Node's rebuilt addon and does not replace the installed-build manual check.
 
 **Acceptance criteria.**
 
