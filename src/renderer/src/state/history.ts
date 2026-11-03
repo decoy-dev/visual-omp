@@ -64,7 +64,9 @@ export function resolveSessionLeafId(entries: readonly TreeNode[], byId: Readonl
 }
 
 /**
- * Entries on the branch ending at `leafId` (default: omp's replayed leaf), root → leaf. Unknown explicit leaf → all entries.
+ * Entries on the branch ending at `leafId` (default: omp's replayed leaf), root → leaf. An explicit leaf the stream left
+ * out (a rewind to before a user message lands on omp's bookkeeping entry) is bridged like a missing parent; a leaf with
+ * no known ancestry keeps all entries.
  *
  * omp's live stream replicates only some entry types, so a parent can be missing: omp's `custom`
  * bookkeeping (`tool_execution_start` between a tool call and its result, title changes) never
@@ -101,7 +103,12 @@ export function activeBranch<T extends TreeNode>(entries: readonly T[], leafId?:
 		return (firstChild.get(cursor) ?? from) - 1;
 	};
 	let index = indexById.get(selected);
-	if (index === undefined) return [...entries];
+	if (index === undefined) {
+		// Only a leaf with a carried child or saved ancestry can be placed; otherwise nothing is known about it.
+		if (!firstChild.has(selected) && !saved?.has(selected)) return [...entries];
+		index = bridge(selected, entries.length);
+		if (index < 0) return [];
+	}
 	const path: T[] = [];
 	const seen = new Set<number>();
 	for (let entry = entries[index]; entry && !seen.has(index); entry = entries[index]) {

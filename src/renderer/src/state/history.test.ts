@@ -138,5 +138,27 @@ describe("activeBranch", () => {
 		);
 		expect(activeBranch(live).map(entry => entry.id)).toEqual(["u1", "a1", "x1", "u3"]);
 		expect(activeBranch(live, null, savedParents(history)).map(entry => entry.id)).toEqual(["u1", "a1", "u3"]);
+		// An explicit left-out leaf follows the saved ancestry rather than the entry that arrived before it.
+		expect(activeBranch(live, "c2", savedParents(history)).map(entry => entry.id)).toEqual(["u1", "a1"]);
+	});
+
+	it("shows the branch before a rewound user message when its parent is an entry the stream left out", () => {
+		// omp writes bookkeeping before each user message; rewinding past `u2` puts the leaf on that entry (c2).
+		const live = [
+			{ id: "m0", parentId: null },
+			{ id: "u1", parentId: "c1" },
+			{ id: "a1", parentId: "u1" },
+			{ id: "u2", parentId: "c2" },
+			{ id: "a2", parentId: "u2" },
+			{ id: "u3", parentId: "c3" },
+			{ id: "a3", parentId: "u3" },
+		];
+		expect(activeBranch(live, "c2").map(entry => entry.id)).toEqual(["m0", "u1", "a1"]);
+		expect(activeBranch(live, "c1").map(entry => entry.id)).toEqual(["m0"]);
+		// A leaf with neither a carried child nor saved ancestry is unknown, so the whole chat stays visible.
+		expect(activeBranch(live, "unknown").map(entry => entry.id)).toEqual(["m0", "u1", "a1", "u2", "a2", "u3", "a3"]);
+		// A leaf before every carried entry shows an empty branch.
+		expect(activeBranch([{ id: "u1", parentId: "c1" }], "c1")).toEqual([]);
+		expect(activeBranch(live, "saved-root", new Map([["saved-root", null]]))).toEqual([]);
 	});
 });
