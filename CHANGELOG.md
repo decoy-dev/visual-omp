@@ -18,6 +18,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Rewinding to an earlier message of yours now hides the later messages right away, instead of showing the whole chat until the next reply.
 - Background-job waits now end when the last job is cancelled or finishes without another reply, allowing queued messages to continue.
 - Shell and Python runs started with `!` or `$` now appear in live and saved chats with their source, output and execution status.
+- An image omp can't read is no longer sent as its file path in classic chats. After the message box is restored, the message stays queued with its images and omp's error until you retry or remove it.
 
 ## [0.7.4] - 2026-11-02
 
