@@ -19,6 +19,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Background-job waits now end when the last job is cancelled or finishes without another reply, allowing queued messages to continue.
 - Shell and Python runs started with `!` or `$` now appear in live and saved chats with their source, output and execution status.
 - An image omp can't read is no longer sent as its file path in classic chats. After the message box is restored, the message stays queued with its images and omp's error until you retry or remove it.
+- Closing a chat on Windows now releases its terminal worker and JavaScript pipe connections, preventing those resources from accumulating across chats.
 
 ## [0.7.4] - 2026-11-02
 
