@@ -8,7 +8,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 #### Fixed
 
-- Reopening a long chat no longer leaves a lasting “TUI debug text timed out” error at the top of the chat.
+- A background check no longer leaves a lasting “TUI debug text timed out” error at the top of a chat when omp is slow to respond, including while reopening a long chat.
 - Saved chats now show the model's name in the composer, as live chats do, instead of its provider and model id.
 - Background jobs from before a chat's omp restarted no longer show as running in Tasks and the chat header.
 
