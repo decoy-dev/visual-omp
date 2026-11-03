@@ -1,6 +1,6 @@
 # visual-omp: moving app-hosted chats to TSP plus collab
 
-Status: Phase 7 FLIP is implemented on the unmerged `feat/tsp-p7-flip` branch. macOS and Linux default to TSP; hidden `VOMP_TSP=0` keeps classic recovery for one release under D3. Windows remains classic unless `VOMP_TSP=1` under D5, with Phase 6 manual criteria 5 and 6 still open. Main reads the presentation at host launch. This branch has not shipped, and classic-code removal remains a later release. The plan was written 2026-10-30 against visual-omp `main` at `da5e968` (0.7.2) and omp 18.14.0, then revised after astra's review. The protocol and recording baseline is now omp 18.15.0. Earlier phase descriptions and dated evidence below record the migration history; `docs/ARCHITECTURE.md` and `docs/SPEC.md` describe this branch's current behavior.
+Status: Phase 7 FLIP is on `main` for 0.7.5. On 2026-11-03 the owner tried the flip in a development build, signed off the converted cards he checked, chose to skip the remaining manual checks for 4b (answering the worktree sheet during a real quit) and 4h (IME), and asked for TSP to be the default from now on, with classic deprecated. macOS and Linux default to TSP; hidden `VOMP_TSP=0` keeps classic recovery for one release under D3. Windows remains classic unless `VOMP_TSP=1` under D5, with Phase 6 manual criteria 5 and 6 still open. Main reads the presentation at host launch. Classic-code removal remains a later release. The plan was written 2026-10-30 against visual-omp `main` at `da5e968` (0.7.2) and omp 18.14.0, then revised after astra's review. The protocol and recording baseline is now omp 18.15.0. Earlier phase descriptions and dated evidence below record the migration history; `docs/ARCHITECTURE.md` and `docs/SPEC.md` describe current behavior.
 
 ## Sources and citations
 
@@ -12,7 +12,7 @@ Status: Phase 7 FLIP is implemented on the unmerged `feat/tsp-p7-flip` branch. m
 
 ## Objective
 
-App-hosted chats move from reading omp's painted classic TUI to reading omp's Tern Surface Protocol (TSP) documents, with collab kept as the transcript, sharing and question channel. The FLIP branch makes TSP the default on macOS and Linux while retaining classic recovery and the Windows default. The later removal release deletes the classic screen adapters A2-A17 only after its gates pass. File-based terminal-follow for sessions owned by another process stays as it is.
+App-hosted chats move from reading omp's painted classic TUI to reading omp's Tern Surface Protocol (TSP) documents, with collab kept as the transcript, sharing and question channel. The FLIP release (0.7.5) makes TSP the default on macOS and Linux while retaining classic recovery and the Windows default. The later removal release deletes the classic screen adapters A2-A17 only after its gates pass. File-based terminal-follow for sessions owned by another process stays as it is.
 
 Removing the painted terminal for hosted chats is the proposed consequence of the owner's direction ("use TSP, if it means rebuilding how visual-omp works, then so be it"). It is conditional: every place that opens the omp terminal today must have a working semantic replacement before the default changes.
 
@@ -173,7 +173,7 @@ The table records the progression of TSP chats. Phases 1-6 required `VOMP_TSP=1`
 | 4 (each step) | The card or control that step converts, claiming its nodes | The controls of later steps | The semantic omp screen. |
 | 5 | Native `/btw` pane | None beyond Phase 4 gaps | The omp screen shows the BTW overlay when the pane is closed. |
 | 6 | Developer-opt-in TSP chats on Windows, with scoped transport, packaging and lifecycle CI evidence | Installed-build manual criteria 5 and 6 remain open | Ordinary Windows chats stay classic. |
-| 7 FLIP (unmerged branch) | TSP is the default for hosted chats on macOS and Linux; Windows TSP requires `VOMP_TSP=1` | Windows default flip waits for Phase 6 manual criteria 5 and 6 | Hidden `VOMP_TSP=0` selects classic recovery for one release under D3. Classic code remains for the later removal release. |
+| 7 FLIP (0.7.5) | TSP is the default for hosted chats on macOS and Linux; Windows TSP requires `VOMP_TSP=1` | Windows default flip waits for Phase 6 manual criteria 5 and 6 | Hidden `VOMP_TSP=0` selects classic recovery for one release under D3. Classic code remains for the later removal release. |
 
 ## Phase overview
 
@@ -185,7 +185,7 @@ The table records the progression of TSP chats. Phases 1-6 required `VOMP_TSP=1`
 | 4 Adapter cutover | A9, A15, A10, A11, A14, A12, A13, A17, A16, A6/A7 | 2, 3 | 7-11 days |
 | 5 Native `/btw` | Side-question pane | 2 (claims), 3, 4e | 3-5 days |
 | 6 Windows | Bundled ConPTY, packaging, CI and machine evidence | 1; runs beside 2-5 | 3-5 days plus machine time |
-| 7 Default flip and removal | FLIP implemented on this branch: macOS/Linux default TSP, one-release classic recovery; Windows default and shared-code removal wait | Platform gates apply separately; Windows needs Phase 6 criteria 1-6; removal follows the recovery release | Original estimate: 3-5 days plus one release |
+| 7 Default flip and removal | FLIP on `main` for 0.7.5: macOS/Linux default TSP, one-release classic recovery; Windows default and shared-code removal wait | Platform gates apply separately; Windows needs Phase 6 criteria 1-6; removal follows the recovery release | Original estimate: 3-5 days plus one release |
 
 These figures are planning judgment for one engineer familiar with the repository. Together they come to 30-47 engineer-days, about 6-9 weeks, with Phase 6 able to overlap Phases 2-5. The study's earlier figure of 3-5 weeks after a proof of concept excluded fixture recording, the usable-preview work and the removal release, which this plan includes.
 
@@ -741,7 +741,9 @@ profiles. Main must still check both composer controls in Electron.
 | `state/session.ts` queue busy/drain and overlay holds | Semantic facts were checked, but stale `tui.overlays` could still block TSP delivery or retain a classic hold. | TSP uses semantic facts and availability exclusively; replacement-host readiness releases the obsolete classic hold. |
 | Hook/plan cards, plan pane/badge, model/thinking, navigation, advisor | Already selected their 4a-4g semantic consumers before painted adapters. | Unchanged claims, actions and collab authorities. Remaining transport branches preserve classic adapters and transport-specific wording. |
 
-**Phase 4 gate to Phase 7.** The following checkpoint records the evidence and outstanding owner acceptance before FLIP implementation. Implementing the default on this branch does not check off these criteria or constitute release approval. Automated evidence and owner acceptance remain separate:
+**Phase 4 gate to Phase 7.** The following checkpoint records the evidence and owner acceptance for the FLIP. On 2026-11-03 the owner tried the FLIP in a development build, accepted the converted cards he checked, skipped the remaining 4b and 4h manual checks, and asked for the FLIP in 0.7.5. Automated evidence and owner acceptance remain separate:
+
+The table below preserves the checkpoint before the owner's development-build review. Its remaining-acceptance column is historical: the owner accepted the converted cards he checked and chose to skip the 4b quit-sheet and 4h IME manual checks for 0.7.5. Those skipped checks remain unverified.
 
 | Gate item | Evidence available | Remaining acceptance |
 |---|---|---|
@@ -1054,7 +1056,7 @@ every failure produces a complete exchange.
 
 **Goal.** Make TSP the default on each accepted platform, then remove classic adapters A2-A17 and the hosted xterm path in a later release. File-based terminal-follow, the general Terminal pane and onboarding or login terminals stay.
 
-**FLIP implementation status (2026-11-03, unmerged branch).** `feat/tsp-p7-flip` defaults app-hosted chats to TSP on macOS and Linux. Hidden `VOMP_TSP=0` selects classic recovery for one release, as approved in D3. Windows remains classic unless `VOMP_TSP=1`, as required by D5 while Phase 6 manual criteria 5 and 6 remain open. Main reads the environment at host launch, and each running host retains its presentation. Current behavior docs describe this branch; the dated replay, live, CI and manual evidence above remains historical evidence for the commits it names. The branch is unmerged and unreleased. Local verification is recorded below; owner sign-off and release-candidate acceptance remain separate.
+**FLIP implementation status (2026-11-03).** `main` defaults app-hosted chats to TSP on macOS and Linux, merged for 0.7.5 at the owner's request after his development-build check. Hidden `VOMP_TSP=0` selects classic recovery for one release, as approved in D3. Windows remains classic unless `VOMP_TSP=1`, as required by D5 while Phase 6 manual criteria 5 and 6 remain open. Main reads the environment at host launch, and each running host retains its presentation. The dated replay, live, CI and manual evidence above remains historical evidence for the commits it names. Local verification is recorded below.
 
 **Local FLIP verification (2026-11-03, macOS).** Typecheck passed. After the protocol-restart and cold-card review fixes, the full suite passed with 272 files and 3,689 tests, with 10 files and 66 tests skipped by their existing gates; the bundle guard's 19 CLI tests also passed. The affected suite passed all 528 tests in 10 files. Host tests exercise unset `VOMP_TSP` defaults on macOS and Linux, explicit classic recovery on both, unchanged running-host presentation after an environment change, and classic Windows defaults with explicit Windows TSP opt-in. Protocol-error tests cover failure publication, new-hello recovery and stop-before-saved-session relaunch.
 
@@ -1072,8 +1074,8 @@ Each version's installed-omp run passed all three files and 15 tests before the 
 
 **Sequence.**
 
-1. **Flip release.** Implemented on this branch for macOS and Linux, with a hidden `VOMP_TSP=0` classic recovery option for this one release under the owner's approved D3 exception. Windows stays classic unless `VOMP_TSP=1`; its default flip still requires the complete Phase 6 gate. Release verification and the owner's release-candidate acceptance remain separate from implementation.
-2. **Removal release.** The removal release remains future work. Delete classic code and the flag only after the recovery release and when every supported platform runs TSP. Shared classic code, hosted xterm adapters, classic tests and fixtures remain in the FLIP branch because Windows still defaults to classic.
+1. **Flip release (0.7.5).** On `main` for macOS and Linux, with a hidden `VOMP_TSP=0` classic recovery option for this one release under the owner's approved D3 exception. Windows stays classic unless `VOMP_TSP=1`; its default flip still requires the complete Phase 6 gate.
+2. **Removal release.** The removal release remains future work. Delete classic code and the flag only after the recovery release and when every supported platform runs TSP. Shared classic code, hosted xterm adapters, classic tests and fixtures remain because Windows still defaults to classic.
 
 The deletion inventory below belongs to the future removal release. It is not a list of deletions made by FLIP.
 
@@ -1089,11 +1091,11 @@ The deletion inventory below belongs to the future removal release. It is not a 
 | A10-A17 | Screen parsing in `screen.ts`, `model.ts`, `navigate.ts`, `tree.ts`, `advisorApply.ts`, `modes.tsx`, worktree matchers in `host-observations.ts`, painted shutdown and startup reading, painted ghost detection | Advisor preservation transaction, exact prediction transfer, native shutdown stage |
 | Tests | Classic-only tests and fixtures | All TSP fixtures |
 
-**Docs.** The FLIP branch updates SPEC's engine and sheet statements and Side questions availability, the ARCHITECTURE overview and SessionHost launch/input path, DESIGN §4.8 and §4.11 and current preview descriptions, `docs/COMMANDS.md` handling notes, the AGENTS overview and one Unreleased macOS CHANGELOG entry. Renderer Help and presentation labels are part of the same flip. Descriptions of classic behavior remain while that presentation is available.
+**Docs.** The FLIP updates SPEC's engine and sheet statements and Side questions availability, the ARCHITECTURE overview and SessionHost launch/input path, DESIGN §4.8 and §4.11 and current preview descriptions, `docs/COMMANDS.md` handling notes, the AGENTS overview and one macOS CHANGELOG entry. Renderer Help and presentation labels are part of the same flip. Descriptions of classic behavior remain while that presentation is available.
 
 **Acceptance criteria.** These span the flip and removal releases; implementation status above does not mark them passed.
 
-1. Removal release, replay: a test fails if any file under `src/` imports the deleted modules or names the deleted IPC channels. This criterion does not apply to deleting classic code in the FLIP branch, which retains it.
+1. Removal release, replay: a test fails if any file under `src/` imports the deleted modules or names the deleted IPC channels. This criterion does not apply to the FLIP, which retains classic code.
 2. Replay: typecheck and the full suite pass on macOS and Windows CI; every TSP fixture replays; JSONL follow tests pass unchanged.
 3. Live: the no-model and scripted-provider suites pass against the current omp release.
 4. Packaged, bundle: a build script reads the renderer build's chunk metadata and fails if the initial renderer entry chunk includes any module under `features/tsp/`, and it records the entry chunk's uncompressed size beside the size from the last classic release build. Growth above 20 KB fails the check unless the owner accepts it.
@@ -1120,7 +1122,7 @@ The deletion inventory below belongs to the future removal release. It is not a 
 | D2 | What replaces "Open omp terminal" for TSP chats | (a) The semantic omp screen, named "omp screen". (b) Hand the session to the system terminal. (c) Remove the entry points. | Decided by the owner on 2026-10-30: (a). (b) is safe only after a confirmed shutdown of the hosted process, which ends app hosting of that chat while the terminal runs it; it suits an explicit "Continue in Terminal" action more than a menu fallback. |
 | D3 | Escape hatch after the flip | (a) Hidden `VOMP_TSP=0` for one release, then none. (b) A permanent per-chat classic option. (c) None. | Decided by the owner on 2026-10-30: (a), approved as an exception to the clean-removal rule for one release. (b) would keep A2-A17 indefinitely. |
 | D4 | Minimum omp version | (a) Keep 18.14.0. (b) Raise it when needed. | Superseded by the owner's 2026-11-02 decision to require omp 18.15.0. The pinned 18.14.0 recordings and omp-watch discovery baseline remain unchanged. Role churn is detected by the live suites in `omp-watch.yml`; their results inform whether to support a release, and raising the minimum alone does not fix a renamed role. |
-| D5 | Windows timing | (a) Flip both platforms together. (b) Flip macOS first and keep Windows classic until Phase 6 passes. | The FLIP branch implements (b) for macOS and Linux. Windows remains classic unless `VOMP_TSP=1` while Phase 6 manual criteria 5 and 6 remain open. Shared classic-code removal waits for Windows. |
+| D5 | Windows timing | (a) Flip both platforms together. (b) Flip macOS first and keep Windows classic until Phase 6 passes. | The FLIP (0.7.5) implements (b) for macOS and Linux. Windows remains classic unless `VOMP_TSP=1` while Phase 6 manual criteria 5 and 6 remain open. Shared classic-code removal waits for Windows. |
 | D6 | `/btw` placement and actions | (a) Side panel pane. (b) Right sheet. omp has no topic delete. | (a) with no delete. A "Hide topic" action would need app-owned state, since the app does not write omp's files. |
 | D7 | Preview exposure | (a) Developer flag only. (b) A Settings toggle labeled as a preview. | Phases 1-6 used (a); no Settings toggle was added. Phase 7 FLIP makes TSP the macOS/Linux default and retains Windows developer opt-in until its platform gate passes. |
 | D8 | Wording in the omp screen | omp's own text is shown as omp wrote it, which the VOICE exemption for attributed omp output already covers. App-owned headings, labels and controls follow VOICE. | Confirm only if the owner wants a different boundary. |

@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes the current FLIP branch. App-hosted chats use omp's Tern Surface Protocol (TSP) by default on macOS and Linux. Windows remains classic unless explicitly enabled. The one-release classic recovery option and the later removal release are tracked in [TSP-MIGRATION.md](TSP-MIGRATION.md); classic adapters are still present.
+This document describes current behavior. App-hosted chats use omp's Tern Surface Protocol (TSP) by default on macOS and Linux. Windows remains classic unless explicitly enabled. The one-release classic recovery option and the later removal release are tracked in [TSP-MIGRATION.md](TSP-MIGRATION.md); classic adapters are still present.
 
 ```mermaid
 flowchart LR
@@ -749,7 +749,7 @@ without moving their original anchor. Additional matching feedback after the fir
 uses the ordinary notice path, including while the editor hold is still pending.
 The Phase 2 preview acceptance record, including full overlay replay, live hook and
 extension-fallback recordings, sharing parity, packaged checks and manual criteria, remains in
-`TSP-MIGRATION.md`. The FLIP branch changes the launch default without asserting new acceptance
+`TSP-MIGRATION.md`. The FLIP changes the launch default without asserting new acceptance
 evidence. There is no new user setting and no replacement of the transcript or collaboration channel.
 
 
@@ -903,8 +903,8 @@ Rollup membership is recorded after writing the build, with sizes read from the 
 `renderer-bundle-size.json`, and enforce at most 20,000 bytes of entry-chunk growth over the
 last classic release, v0.7.4 (`233c28252a211081e30202d4b0a41e02f45cad97`, 2,017,581 bytes).
 `scripts/renderer-classic-baseline.json` records the baseline and its reproduction commands.
-These are guard requirements and historical baseline evidence; this branch's build reports
-provide its measured size when verification runs.
+These are guard requirements and historical baseline evidence; each build's report
+provides its measured size when verification runs.
 
 `electron.vite.config.ts` bundles main and preload dependencies other than externalized packages. Pure-JavaScript main-process packages are devDependencies and are bundled into `out`; native `node-pty` remains a runtime dependency and is selectively included by `electron-builder.yml`. `electronLanguages` retains `en` and `en-US`; source maps are excluded from packaged output. `node-pty`'s package contents are trimmed to runtime files.
 
