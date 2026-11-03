@@ -1,5 +1,7 @@
 import type { TspNode } from "../tsp";
+import type { TspSurfaceSnapshot } from "../tsp-host";
 import { projectPlanReview } from "./plan-review";
+import { advisorScope } from "./advisor";
 
 /** All omp names on which visual-omp makes a behavioral decision. */
 export const TSP_ROLES = {
@@ -17,7 +19,7 @@ export const TSP_ROLES = {
 	planReview: "omp.overlay.planReview", planBody: "omp.plan.body", planOptions: "omp.plan.options",
 	planSlider: "omp.plan.slider", planStrategy: "omp.plan.strategy", planTools: "omp.plan.tools",
 	planPrompt: "omp.plan.prompt", planToc: "omp.plan.toc", planNote: "omp.plan.note", planFeedback: "omp.plan.feedback",
-	planSave: "omp.overlay.planSave",
+	planSave: "omp.overlay.planSave", advisor: "omp.overlay.advisor",
 	overlayHints: "omp.overlay.hints", retryHint: "omp.hint.retry",
 	composerFact: "omp.composer.fact",
 } as const;
@@ -35,7 +37,7 @@ export const TSP_ACTIONS = {
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
 export function isKnownAction(action: string): boolean { return knownActions.has(action); }
 /** Recorded actions without an app interaction path stay display-only. */
-export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true, "jobs.open": true, inject: true };
+export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true, "jobs.open": true, inject: true, edit: true, add: true, delete: true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 export const TSP_TREE = {
 	summaryTitle: "Summarize branch?", noSummary: "No summary",
@@ -51,6 +53,12 @@ export const TSP_PLAN_OPTIONS = {
 	execute: "Approve and execute", compact: "Approve and compact context", keep: "Approve and keep context",
 	refine: "Refine plan", save: "Save and quit",
 } as const;
+export const TSP_ADVISOR = {
+	command: "/advisor configure", title: "Advisors", fileSection: "file", addAction: "add",
+	projectFile: "WATCHDOG.yml · project", userFile: "WATCHDOG.yml · user",
+	projectScope: "Scope: project", userScope: "Scope: user",
+	savedProject: "Saved project WATCHDOG.yml", savedUser: "Saved user WATCHDOG.yml", errorPrefix: "Advisor config:",
+} as const;
 
 /** Roles projected into transcript notices. Startup diagnostics use the warning role too. */
 export const TSP_NOTICE_ROLES: Readonly<Record<string, "info" | "warning" | "error">> = Object.freeze({
@@ -62,14 +70,16 @@ export const TSP_CLAIMS: Readonly<Record<string, string>> = Object.freeze(
 		...Object.keys(TSP_NOTICE_ROLES).map(role => [role, "transcript-notices"]),
 		...[TSP_ROLES.composerModel, TSP_ROLES.composerEffort, TSP_ROLES.composerModelEffort].map(role => [role, "composer-model"]),
 		...[...nativeHookRoles].map(role => [role, "hook-dialog-card"]),
+		[TSP_ROLES.advisor, "advisor-apply"],
 	]),
 );
 const replicated = [TSP_ROLES.user, TSP_ROLES.assistant, TSP_ROLES.thinking, TSP_ROLES.tool, TSP_ROLES.agent];
 export function isReplicatedRole(role?: string): boolean {
 	return !!role && replicated.some(prefix => role === prefix || role.startsWith(`${prefix}.`));
 }
-export function isClaimable(node: TspNode): boolean {
+export function isClaimable(node: TspNode, surface?: TspSurfaceSnapshot): boolean {
 	if (isTreeSelectorNode(node)) return true;
+	if (node.k === "prefs" || node.p?.role === TSP_ROLES.advisor) return advisorScope(node, surface?.open.mode) !== null;
 	if (node.p?.role === TSP_ROLES.planReview) return projectPlanReview(node, "") !== null;
 	if (isHookNode(node)) {
 		if (!isNativeHookNode(node)) return false;

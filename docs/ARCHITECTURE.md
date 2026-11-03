@@ -303,6 +303,22 @@ unsupported-level explanation. Both controls refuse pending approvals with a dis
 and document waits stop after a host, room generation or protocol epoch change. Classic model
 switching and Shift+Tab cycling retain their existing paths.
 
+The Advisor sheet applies project and user files for TSP chats through semantic
+`/advisor configure`. omp 18.15.0 describes roleless advisor prefs on a screen surface when
+prefs is advertised; the registered `omp.overlay.advisor` list route is also supported.
+`host:tsp-advisor` binds the prepared scope and current declared actions at the serialized
+writer, alongside host, room generation, epoch, surface, question and approval checks.
+Save and Close share one write. The app waits for physical page departure and a fresh
+scope-matching saved status before finishing the unchanged main-owned preservation transaction.
+Only the active apply driver claims that exact advisor page. Roleless prefs recognition requires
+a screen surface without an explicit role, the recorded title and file section, and complete
+file-action declarations. Active editors, malformed shapes and duplicate candidates stay
+unclaimed. Manual pages and unrelated screen content remain available in the omp screen.
+Fresh advisor errors and timeouts finalize preservation once and release claims and subscriptions,
+including when Close is refused. No advisor TSP path reads painted rows. The no-model
+`advisor-apply` and `advisor-apply-project` recordings capture both scopes; consumer and
+main-writer replays cover application, failure and stale-scope behavior.
+
 The shared session-tools status source polls painted screens only for classic hosts. A TSP host
 gets an initial native mode snapshot and `native:changed` updates, preserving Goal status and the
 permission button's work-mode label without the 1-second or 450 ms screen timer. Approval policy

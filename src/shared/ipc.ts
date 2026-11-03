@@ -13,6 +13,7 @@
 import type { TspAvailability, TspComposerFacts, TspEditorRestore, TspHostSnapshot, TspRendererEvent } from "./tsp-host";
 import type { CollabQuestionState } from "./tsp/question-match";
 import type { TspHookAnswer } from "./tsp/dialogs";
+import type { TspAdvisorAction } from "./tsp/advisor";
 
 export type Platform = "darwin" | "win32" | "linux";
 
@@ -315,6 +316,8 @@ export interface IpcInvokeMap {
 	"host:tsp-tree-activate": { args: [hostId: string, generation: number, epoch: number, surfaceId: string, selectorId: string, entryId: string]; result: void };
 	/** Complete local hook answer. Main derives events from the live document and rechecks arbitration. */
 	"host:tsp-answer": { args: [hostId: string, generation: number, answer: TspHookAnswer, epoch: number]; result: void };
+	/** Scope-bound advisor actions. Main derives the current declared save and close routes. */
+	"host:tsp-advisor": { args: [hostId: string, generation: number, action: TspAdvisorAction, epoch: number]; result: void };
 	/** Renderer-owned pending collab requests, scoped to this protocol epoch and room. */
 	"host:tsp-questions": { args: [hostId: string, state: CollabQuestionState]; result: void };
 	/** Semantic sheet width in mono columns. This does not depend on terminal-sheet rows. */

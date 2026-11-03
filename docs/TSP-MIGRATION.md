@@ -650,6 +650,30 @@ profiles. Main must still check both composer controls in Electron.
 
 - **TSP.** `omp.overlay.advisor` ([`packages/tui/src/overlays/advisor-config.ts:920`](https://github.com/can1357/oh-my-pi/blob/v18.14.0/packages/tui/src/overlays/advisor-config.ts#L920)) with list and prefs actions. The main-owned preservation transaction is unchanged.
 - **Acceptance.** Replay: `advisor-apply` chooses scope and Save and apply by id; the transaction's existing tests pass. The study did not exercise this workflow, so this fixture is its first evidence.
+- **Implementation status (2026-11-03).** The Advisor sheet applies saved project and user
+  configuration through semantic `/advisor configure`. With prefs advertised, omp 18.15.0
+  describes a roleless advisor prefs page on a screen surface; the registered overlay and
+  list path remains supported when prefs is absent. The app chooses scope by declared
+  action or list item id. Save and Close share one writer operation. Completion requires
+  physical page departure and a fresh matching saved status, since omp keeps the page open
+  after Save and hides its status until Close. The existing main-owned file-preservation
+  transaction is unchanged.
+- **Authority and claims.** `host:tsp-advisor` binds the expected scope, host, room generation,
+  protocol epoch, surface and node at the serialized writer. Missing or disabled actions,
+  changed scope, a pending question or approval, and stale input have distinct refusals.
+  Only the active apply driver claims the exact advisor page. Roleless prefs must use a
+  screen surface with the recorded title, file section and complete file-action declarations.
+  Foreign roles, inline prefs, active editors, malformed declarations and duplicate candidates
+  stay unavailable to the driver. Manual pages and other unclaimed content remain visible
+  in the omp screen. Scope invalidation, fresh advisor errors and timeouts release claims
+  and subscriptions and finish preservation once without reporting success, including when
+  omp refuses Close. No TSP advisor path reads painted rows.
+- **Evidence.** Standalone 18.15.0 no-model recordings `advisor-apply` and
+  `advisor-apply-project` capture both scopes, Save and Close. Consumer replay checks exact
+  events, departure, confirmation, writer refusal, room changes, preservation finalization
+  and the production Advisor sheet's busy and success states. Main-writer tests cover scope
+  and declaration races and lifecycle refusals. Existing preservation tests remain applicable.
+  Main must check Save and apply and Apply saved configuration for both scopes in Electron.
 
 ### 4h. Prediction offer (A17)
 
@@ -667,7 +691,7 @@ profiles. Main must still check both composer controls in Electron.
 ### 4j. Overlay watching, queue holds and slash watches (A6, A7)
 
 - `OverlayWatcher.tsx` and `overlays.ts` use `openOverlay` and claims for TSP hosts; `typed.ts` screen watches use 4e outcomes; queue holds in `state/session.ts` use Phase 3 facts.
-- **Implementation status.** Immediate and queued pass-through slash commands, `readyEditor`, `editorBack` and the generic command runner use TSP availability and document subscriptions for TSP hosts. Readiness waits for the editor with an eight-second bound; an unavailable initial snapshot ends an editor-back hold. A continuously available editor releases the queue after 600 ms, without asserting command success; unrelated updates do not restart that timer. The watch does not scrape feedback; 2.2 projects notices. Direct controller slash sends use slash delivery instead of waiting for a message acknowledgement. The watch releases on host exit, room rotation or a new epoch. Tree navigation and thinking use their semantic consumers from 4f and 4d; unconverted advisor application still refuses TSP before mutation. Command-specific result parsing, UI affordances and unconverted feature adapters still require cutover before this step's full acceptance criterion passes.
+- **Implementation status.** Immediate and queued pass-through slash commands, `readyEditor`, `editorBack` and the generic command runner use TSP availability and document subscriptions for TSP hosts. Readiness waits for the editor with an eight-second bound; an unavailable initial snapshot ends an editor-back hold. A continuously available editor releases the queue after 600 ms, without asserting command success; unrelated updates do not restart that timer. The watch does not scrape feedback; 2.2 projects notices. Direct controller slash sends use slash delivery instead of waiting for a message acknowledgement. The watch releases on host exit, room rotation or a new epoch. Tree navigation, thinking and advisor application use their semantic consumers from 4f, 4d and 4g. Command-specific result parsing, UI affordances and unconverted feature adapters still require cutover before this step's full acceptance criterion passes.
 - **Background reads.** The shared status source starts no painted screen timer for TSP. Native mode snapshots and `native:changed` events retain Goal status and the permission button's work-mode label; approval policy keeps its existing config source. Explicit refreshes use native mode facts, and the painted screen helper rejects TSP locally. Plan pane and badge effects also skip painted reads. Phase 4a replaces the absent classic dialog card with a TSP-backed native card; Plan Review remains absent until its cutover. The composer skips its painted next-message prediction offer poll. `ComposerPolling.test.ts` mounts the composer and shared status consumers, checks zero `host:screen` and `composer:tuiPrediction` calls over 60 simulated seconds, and verifies native mode labels while preserving classic polling. Deferred reconnect and transport-cycle tests assert one polling loop and discard stale reads and resolved offers. This mounted subset does not establish the global zero-screen-read criterion below.
 - **Acceptance.** Replay: no TSP code path calls `host:screen`, `host:buffer` or debug `tree`/`text` polling, and the TSP host never starts the 1-second or 450 ms poll.
 

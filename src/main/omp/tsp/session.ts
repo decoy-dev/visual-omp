@@ -5,6 +5,7 @@ import { liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../sh
 import { isHookNode, isKnownAction, TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
 import { hookAnswerEvents, TspHookAnswer } from "../../../shared/tsp/dialogs";
 import { planReview } from "../../../shared/tsp/plan-review";
+import { advisorActionEvents, advisorOverlay, TspAdvisorAction } from "../../../shared/tsp/advisor";
 import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";
 import type { TspMessage } from "./stream";
@@ -307,6 +308,24 @@ export class TspSession {
 				}
 			}
 			await this.#write(encodeTspJson("e", event));
+		});
+	}
+	/** Save and close share one write; scope and declarations are checked on the current document. */
+	advisorAction(input: unknown, assertCurrent: () => void): Promise<void> {
+		const parsed = TspAdvisorAction.safeParse(input);
+		if (!parsed.success) return Promise.reject(new TspInputStateError("TSP preview: Invalid advisor action."));
+		const action = parsed.data;
+		const epoch = this.#epoch;
+		return this.#enqueue(() => {
+			assertCurrent();
+			if (!this.#negotiated || epoch !== this.#epoch) throw new TspInputStateError("TSP preview: The semantic screen restarted.");
+			if (this.hasHookDialog()) throw new TspInputStateError("TSP preview: Answer the question before applying advisor configuration.");
+			const surfaces = this.snapshot().surfaces;
+			if (liveSurfaces(surfaces).some(surface => [...walkNodes(surface.document)].some(node => node.p?.role === TSP_ROLES.approvalChoices))) throw new TspInputStateError("Answer the approval before applying advisor configuration.");
+			const target = advisorOverlay(surfaces);
+			if (!target || target.surface.open.id !== action.sf || target.node.id !== action.id) throw new TspInputStateError("The advisor configuration is no longer available.");
+			const events = advisorActionEvents(target, action);
+			return this.#write(events.map(event => encodeTspJson("e", event)).join(""));
 		});
 	}
 

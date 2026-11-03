@@ -1930,3 +1930,26 @@ it("marks the recorded unconfirmed optimistic surface fallback tspFailed instead
 	expect(host.tspSnapshot()).toMatchObject({ lifecycle: "failed", failure: "omp did not start its semantic screen" });
 	await expect(host.keys("\x1b", 0, host.tspSnapshot()!.epoch)).rejects.toThrow("semantic UI is not ready");
 });
+
+it.each(["valid", "generation", "epoch", "queued-room-change"] as const)("guards recorded advisor apply through the host writer for %s", async condition => {
+	await launchTsp();
+	const messages = await recording("advisor-apply-project", "messages");
+	const action = (await recording<TspRendererEvent>("advisor-apply-project", "events")).find(event => event.body?.ev === "action")!;
+	for (const message of messages.slice(0, action.afterMessage)) tspMessage(message.verb, message.body);
+	await connect();
+	const epoch = host.tspSnapshot()!.epoch;
+	const input = { sf: "s:2", id: "k", scope: "project", act: "apply" };
+	if (condition === "valid") {
+		await host.tspAdvisor(1, input, epoch);
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"action","sf":"s:2","id":"k","act":"save"'));
+		const bytes = pty.writes.mock.calls.map(([bytes]) => String(bytes)).find(bytes => bytes.includes('"act":"save"'))!;
+		expect(bytes).toContain('"act":"close"');
+	} else {
+		const applying = host.tspAdvisor(condition === "generation" ? 0 : 1, input, condition === "epoch" ? epoch - 1 : epoch);
+		const rejected = expect(applying).rejects.toThrow(condition === "epoch" ? "restarted" : "session changed");
+		if (condition === "queued-room-change") pty.events.onHostClose?.("room");
+		await rejected;
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"act":"save"'))).toBe(false);
+	}
+	expect(pty.screenReads).not.toHaveBeenCalled();
+});

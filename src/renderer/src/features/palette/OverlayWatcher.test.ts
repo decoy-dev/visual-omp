@@ -65,3 +65,30 @@ it("auto-opens the generic hook after the last visible native consumer releases 
 	await act(async () => releaseClaims.pop()!());
 	expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab");
 });
+
+it("suppresses a claimed advisor screen only during apply and keeps unrelated screen content visible", async () => {
+	fake.snapshot = snapshot(false, true);
+	const surface = fake.snapshot.surfaces[0]!;
+	surface.document.c = [{ id: "main", k: "col", c: [{ id: "advisor", k: "prefs", p: {
+		title: "Advisors", page: "shared", pages: [{ id: "shared", label: "Shared instructions" }],
+		sections: [{ id: "file", title: "WATCHDOG.yml · project", rows: [
+			{ id: "save", label: "Save & apply", control: { k: "action", label: "Save", act: "save" } },
+			{ id: "add", label: "Add advisor", control: { k: "action", label: "Add", act: "add" } },
+			{ id: "scope", label: "Scope", control: { k: "action", label: "Open user", act: "scope" } },
+		] }],
+	} }] }];
+	const release = presentationClaims.acquire({ hostId: "host", epoch: 1, surfaceId: "s:1", nodeId: "advisor" });
+	releaseClaims.push(release);
+	await render();
+	expect(fake.open).not.toHaveBeenCalled();
+	fake.snapshot = structuredClone(fake.snapshot);
+	fake.snapshot.surfaces[0]!.document.c![0]!.c = [...fake.snapshot.surfaces[0]!.document.c![0]!.c!, { id: "other", k: "text", p: { text: "Unclaimed omp output" } }];
+	await render();
+	expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab");
+	fake.snapshot = structuredClone(fake.snapshot);
+	fake.snapshot.surfaces[0]!.document.c![0]!.c = fake.snapshot.surfaces[0]!.document.c![0]!.c!.slice(0, -1);
+	await render();
+	expect(fake.close).toHaveBeenCalledOnce();
+	await act(async () => release());
+	expect(fake.open).toHaveBeenCalledTimes(2);
+});

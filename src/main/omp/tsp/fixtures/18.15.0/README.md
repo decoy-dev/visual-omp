@@ -61,6 +61,14 @@ Both open `/tree`, activate entry `00000003` once, wait for `Navigated to select
 exact restored editor text, then clear all 73 UTF-16 units with a len-checked semantic edit.
 Neither capture uses row-order prediction or Ctrl+C. The source fixture remains unchanged.
 
+Phase 4g adds `advisor-apply` and `advisor-apply-project`, bringing the baseline to 89 raw
+recordings and 89 integrity manifests. Both run without a model. The user capture opens the
+advisor prefs page through semantic `/advisor configure`, selects user scope with its declared
+`scope` action, then sends `save` and the built-in prefs `close`. The project capture keeps the
+initial scope. Save keeps the fullscreen page open, so its success toast becomes visible after
+Close removes that screen surface. Neither recording changes advisor enablement or contacts a
+provider. The app's existing main-owned preservation tests cover comments and unknown fields.
+
 
 ## Capture format
 
@@ -109,6 +117,7 @@ The sanitizer replaces OSC 7 hosts with `localhost` and private home and tempora
 | startup-missing-resume | A missing `--resume` file prints its quoted path and recovery guidance, then exits with code 1 before the TUI starts. No model is configured. |
 | worktree-start-ask | A scratch git checkout with `worktree.onStart: ask` opens the startup Yes/No hook. The recording ends without answering. |
 | worktree-exit-ask / worktree-exit-ask-remove | `/wt fixture` creates an owned worktree, a tracked file is changed, and `/exit` opens `Remove worktree?` with the uncommitted-changes description. Activation chooses No (Keep) or Yes (Remove), and omp exits. |
+| advisor-apply / advisor-apply-project | `/advisor configure` opens roleless advisor prefs on a screen surface. User scope uses `scope`; `save` and `close` remove the page and expose the matching saved confirmation. No model is configured. |
 | notice-error | Text submitted without a model emits `omp.notice.error` without a provider request. |
 | extensions | `/extensions` opens a picker, selects the first rule row and closes. The unsupported `expand` action is not used. |
 | import-claude | `--from-claude` selects and activates one synthetic imported session, closes the startup surface and negotiates a second hello. |

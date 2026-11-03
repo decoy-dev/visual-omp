@@ -193,6 +193,27 @@ const scenarios: Scenario[] = [
       send({ ev: "activate", sf: question.surface.open.id, id: question.node.id, item: item.id });
     },
   })),
+  ...(["user", "project"] as const).map(scope => ({
+    name: scope === "user" ? "advisor-apply" : "advisor-apply-project", command: null,
+    run: async ({ session, send, until, find }: RecordingContext) => {
+      await session.submit("/advisor configure");
+      const advisor = () => find(node => node.k === "prefs" && node.p?.sections?.some(section => section.id === "file" && section.rows.some(row => row.id === "save" && row.control.k === "action" && row.control.act === "save")) === true);
+      await until(() => !!advisor(), "advisor configuration did not open");
+      const target = advisor()!;
+      if (scope === "user") {
+        send({ ev: "action", sf: target.surface.open.id, id: target.node.id, act: "scope" });
+        await until(() => {
+          const node = advisor()?.node;
+          return node?.k === "prefs" && node.p?.sections?.some(section => section.id === "file" && section.title === "WATCHDOG.yml · user") === true;
+        }, "user advisor scope did not open");
+      }
+      const current = advisor()!;
+      send({ ev: "action", sf: current.surface.open.id, id: current.node.id, act: "save" });
+      send({ ev: "action", sf: current.surface.open.id, id: current.node.id, act: "close" });
+      await until(() => !advisor() && session.availability().available, "advisor configuration did not close");
+      await until(() => !!find(node => node.k === "toast" && node.p?.text?.startsWith(`Saved ${scope} WATCHDOG.yml`) === true), "advisor apply confirmation missing");
+    },
+  })),
   { name: "model-switch", command: null },
   { name: "thinking-cycle", command: null },
   { name: "switch-typed", command: "/switch fixture/fixture-small" },

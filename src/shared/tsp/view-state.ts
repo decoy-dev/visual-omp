@@ -21,7 +21,7 @@ export function liveSurfaces(surfaces: TspSurfaces): TspSurfaceSnapshot[] {
 /** The top layer wins. Input ownership includes claimed nodes; presentation omits them. */
 export function openOverlay(surfaces: TspSurfaces, includeClaimed = false, presented?: TspPresentationClaims): TspNodeTarget | null {
 	for (const surface of [...liveSurfaces(surfaces)].reverse()) {
-		const claimed = (node: TspNode) => isClaimed(node) || !!presented?.get(surface.open.id)?.has(node.id) && isClaimable(node);
+		const claimed = (node: TspNode) => isClaimed(node) || !!presented?.get(surface.open.id)?.has(node.id) && isClaimable(node, surface);
 		const nodes = region(surface, "layer").filter(node => !node.p?.hidden && node.k !== "toast" && (includeClaimed || !claimed(node)));
 		const node = nodes.at(-1);
 		if (node) return { surface, node };
@@ -61,7 +61,7 @@ export function composer(surfaces: TspSurfaces): TspNodeTarget | null {
 /** Keep whole unclaimed subtrees; replicated transcript and the app composer never appear twice. */
 export function unclaimed(surface: TspSurfaceSnapshot, area: "main" | "dock" | "layer", presented?: ReadonlySet<string>): readonly TspNode[] {
 	const project = (node: TspNode): TspNode[] => {
-		if (node.p?.hidden || isClaimed(node) || presented?.has(node.id) && isClaimable(node) || (area === "main" && isReplicatedRole(node.p?.role))) return [];
+		if (node.p?.hidden || isClaimed(node) || presented?.has(node.id) && isClaimable(node, surface) || (area === "main" && isReplicatedRole(node.p?.role))) return [];
 		if (node.p?.role === TSP_ROLES.editor) return [];
 		const children = node.c?.flatMap(project);
 		if ((node.k === "col" || node.k === "row") && !node.p?.role && !node.p?.actions && !children?.length) return [];

@@ -25,6 +25,7 @@ import { TSP_ROLES, TSP_STATUS } from "@shared/tsp/roles";
 import { hookQuestions, QuestionArbitrator } from "@shared/tsp/question-match";
 import { nodeHasLeft, TspHookAnswer } from "@shared/tsp/dialogs";
 import { assertTreeEntry, treeSelector } from "@shared/tsp/tree-navigation";
+import { TspAdvisorAction } from "@shared/tsp/advisor";
 import { composerFacts as readComposerFacts } from "./tsp/composer";
 import { BrowserWindow, dialog, nativeTheme, systemPreferences, type MessageBoxOptions, type MessageBoxReturnValue } from "electron";
 import hostLabels from "../../shared/i18n/en/host.json";
@@ -418,6 +419,23 @@ export class SessionHost {
 		return this.#applicationInput(async () => {
 			assertCurrent();
 			await this.#tsp!.send(event, assertCurrent);
+		});
+	}
+	/** Bind advisor file actions to the prepared scope at both serialized input boundaries. */
+	tspAdvisor(generation: number, input: unknown, epoch: number): Promise<void> {
+		const parsed = TspAdvisorAction.safeParse(input);
+		if (!parsed.success) return Promise.reject(new Error("TSP preview: Invalid advisor action."));
+		const action = parsed.data;
+		const assertCurrent = (): void => {
+			this.#assertTspInput(generation);
+			if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("TSP preview: The semantic screen restarted.");
+			if (this.#tspSurfaceGenerations.get(action.sf) !== generation) throw new Error("TSP preview: The target surface belongs to an earlier session.");
+			if (this.#editorTransferBlocked) throw new Error(`TSP preview: ${this.#editorTransferBlocked}`);
+			if (this.composerFacts().blockedBy === "approval") throw new Error("Answer the approval before applying advisor configuration.");
+		};
+		return this.#applicationInput(async () => {
+			assertCurrent();
+			await this.#tsp!.advisorAction(action, assertCurrent);
 		});
 	}
 

@@ -20,7 +20,10 @@ const SETTLE_MS = 300;
 
 /** Unclaimed dock fallbacks such as extension rows need the same sheet as layer overlays. */
 function hasUnpresentedScreen(surfaces: TspSurfaces, consumers: TspPresentationClaims): boolean {
-	if (openOverlay(surfaces, false, consumers) || screenSurface(surfaces)) return true;
+	if (openOverlay(surfaces, false, consumers)) return true;
+	const screen = screenSurface(surfaces);
+	if (screen && (!consumers.get(screen.open.id)?.size
+		|| (["main", "dock", "layer"] as const).some(area => unclaimed(screen, area, consumers.get(screen.open.id)).length))) return true;
 	for (const surface of surfaces) {
 		if (surface.closed || surface.suspended) continue;
 		for (const root of unclaimed(surface, "dock", consumers.get(surface.open.id))) {

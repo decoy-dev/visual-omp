@@ -115,6 +115,10 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 		if (!Number.isInteger(epoch)) throw new Error("TSP preview: A current protocol epoch is required.");
 		return getHost(hostId).tspAnswer(generation, answer, epoch);
 	});
+	handle("host:tsp-advisor", (hostId, generation, action, epoch) => {
+		if (!Number.isInteger(epoch)) throw new Error("TSP preview: A current protocol epoch is required.");
+		return getHost(hostId).tspAdvisor(generation, action, epoch);
+	});
 	handle("host:tsp-resize", (hostId, cols) => getHost(hostId).tspResize(cols));
 	handle("host:tsp-questions", (hostId, state) => getHost(hostId).tspQuestions(state));
 	handle("host:list", () => listHosts());
