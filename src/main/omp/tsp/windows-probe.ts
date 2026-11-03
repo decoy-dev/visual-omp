@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { execFile, type ExecFileException } from "node:child_process";
 import { appendFileSync, writeFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -31,6 +31,8 @@ export interface WindowsProbeResult {
 	/** An omp exit observed before the probe asked it to terminate is a startup/runtime failure. */
 	earlyExit?: { exitCode: number; signal?: number };
 	subprocessError?: string;
+	subprocessExit?: { code: number | string | null; signal: string | null; killed: boolean; elapsedMs: number; timeoutMs: number };
+	activeResourcesAtExit?: string[];
 }
 
 // Per probe: 20s work + two 2s cleanup waits. Coordinator: two 30s subprocesses.
@@ -200,10 +202,12 @@ export async function runWindowsProbes(options: ProbeRunOptions) {
 	persist();
 	for (const framing of options.system ? ["apc"] as const : ["apc", "osc877"] as const) {
 		const destination = `${options.destination}.${framing}.json`;
-		const done = Promise.withResolvers<{ error: Error | null; stdout: string; stderr: string }>();
+		const timeoutMs = options.childTimeoutMs ?? CHILD_TIMEOUT_MS;
+		const started = Date.now();
+		const done = Promise.withResolvers<{ error: ExecFileException | null; stdout: string; stderr: string }>();
 		execFile(options.executable ?? process.execPath, [options.entry ?? fileURLToPath(import.meta.url), "--probe", framing, ...(options.system ? ["--system"] : [])], {
 			env: { ...process.env, OMP_BIN: options.bin, VOMP_TSP_WINDOWS_REPORT: destination },
-			timeout: options.childTimeoutMs ?? CHILD_TIMEOUT_MS, maxBuffer: 64 * 1024,
+			timeout: timeoutMs, maxBuffer: 64 * 1024,
 		}, (error, stdout, stderr) => done.resolve({ error, stdout, stderr }));
 		const output = await done.promise;
 		let result: WindowsProbeResult;
@@ -212,8 +216,10 @@ export async function runWindowsProbes(options: ProbeRunOptions) {
 			result = { useConptyDll: !options.system, framing, status: "running", hello: false, frames: 0, acks: 0, edit: false, send: false, cleanupErrors: [], traffic: [],
 				error: `No readable probe report: ${diagnostic(error)}` };
 		}
+		result.subprocessExit = { code: output.error ? output.error.code ?? null : 0, signal: output.error?.signal ?? null,
+			killed: output.error?.killed ?? false, elapsedMs: Date.now() - started, timeoutMs };
 		if (output.error) {
-			result.subprocessError = `Probe subprocess: ${diagnostic(output.error)}; stdout=${output.stdout.slice(0, 4096)}; stderr=${output.stderr.slice(0, 4096)}`;
+			result.subprocessError = `Probe subprocess: ${diagnostic(output.error)}; termination=${JSON.stringify(result.subprocessExit)}; stdout=${output.stdout.slice(0, 4096)}; stderr=${output.stderr.slice(0, 4096)}`;
 			result.error = [result.error, result.subprocessError].filter(Boolean).join("\n");
 		}
 		if (result.status !== "complete") result.error ??= "Probe subprocess ended without a completed report; consult its traffic journal.";
@@ -242,6 +248,13 @@ export function windowsProbeFailed(result: WindowsProbeResult, system: boolean):
 	return !system && (!result.hello || !result.frames || !result.acks || !result.edit || !result.send || !!result.error);
 }
 
+/** The isolated CLI owns any remaining native worker handles after verified PTY teardown. */
+export function exitWindowsProbe(result: WindowsProbeResult, system: boolean): never {
+	// node-pty 1.1's bundled ConPTY worker can remain referenced after onExit.
+	// Exit only after evidence is written and the same transport, process and cleanup checks run.
+	process.exit(windowsProbeFailed(result, system) ? 1 : 0);
+}
+
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
 	if (process.platform !== "win32") throw new Error("The Windows TSP probe requires Windows.");
 	const bin = process.env.OMP_BIN;
@@ -252,7 +265,10 @@ if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.ur
 	if (probeArg !== -1) {
 		const framing = process.argv[probeArg + 1];
 		if (framing !== "apc" && framing !== "osc877") throw new Error(`Invalid probe framing: ${framing}`);
-		await runWindowsProbe(resolve(bin), !system, framing, destination);
+		const result = await runWindowsProbe(resolve(bin), !system, framing, destination);
+		result.activeResourcesAtExit = process.getActiveResourcesInfo();
+		writeFileSync(destination, JSON.stringify(result));
+		exitWindowsProbe(result, system);
 	} else {
 		const report = await runWindowsProbes({ bin: resolve(bin), system, destination });
 		console.log(JSON.stringify(report.results.map(({ traffic, ...result }) => ({ ...result, trafficChunks: traffic.length }))));

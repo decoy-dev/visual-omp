@@ -720,8 +720,30 @@ defines `PI_CONFIG_DIR` as home-relative at lines 328-336 and joins it to home a
 Daemon scopes use that config root at lines 1121-1129; `launch/presence.ts:40-43` creates `clients`.
 The system test's earlier pass masked this same crash. Unexpected omp exits and failed probe
 subprocesses now fail that observation while retaining its capture; a running system ConPTY with
-no APC remains an observational result. Runtime evidence requires the corrected CI run. Criteria 5-6
-still require an installed build on a Windows machine.
+no APC remains an observational result. Criteria 5-6 still require an installed build on a Windows
+machine.
+
+**Second Windows run (`41684291878`).** The verified omp 18.15.0 binary completed hello, five
+frames and five acknowledgments, chunked Unicode `edit`, and chunked Unicode `send` through both
+APC and OSC 877 with bundled ConPTY. This succeeded with Node's addon and with the packaged x64
+Electron-rebuilt addon. The x64 and arm64 layout checks produced their file listings. System
+ConPTY produced a live classic TUI and no APC hello or frames during its 20-second observation;
+its capture contains no startup crash.
+
+The run still failed because both successful bundled probe children remained alive until the
+coordinator's 30-second limits. Their first-output timestamps are exactly 30 seconds apart, and
+the bundled test took about 60 seconds. The old diagnostic omitted exit code and signal.
+`[INFERENCE]` node-pty 1.1's conout worker retained the event loop: its bundled kill path disposes
+that worker only on a subsequent data event (`lib/windowsPtyAgent.js:153-159`), while the worker
+owns a listening server (`lib/worker/conoutSocketWorker.js:12-20`).
+
+The isolated probe CLI now explicitly exits after writing its completed report and applying the
+same exchange, unexpected-exit and cleanup failure checks. This releases native worker resources
+without treating a timeout or failed exchange as success. Reports now retain active resource names
+before exit and structured subprocess exit code, signal, killed flag and elapsed time. A process
+regression holds a referenced worker open and checks that passing probes exit zero while missing
+exchanges, unexpected omp exits and cleanup failures exit nonzero. Another Windows CI run must
+confirm clean probe-child exit; this does not establish the manual process-cleanup criterion.
 
 **Local checkpoint (2026-11-03, after review, before rebasing onto refreshed main).** macOS
 typecheck and all 47 packaging and CI-helper unit tests pass. One full Vitest run passes
@@ -732,23 +754,22 @@ Windows live suite is among the platform-gated skips, so these results make no W
 claim. `actionlint` is unavailable locally; the workflow and builder YAML parse without duplicate
 keys, and the Windows step order and failure-path artifact upload were reviewed.
 
-The input framing decision remains open. `TSP_INPUT_FRAMING` in `encode.ts` retains APC on every
-platform until the Windows evidence is reviewed. The probe records APC first and OSC 877 second,
-using separate isolated omp processes so a failed APC hello cannot prevent OSC evidence. Both
-currently must pass the bundled test. If APC is discarded but OSC succeeds, keep that failing report
-and change only the Windows policy to OSC 877 before repeating CI. An expected transport failure
-must not be described as Windows support passing.
+The Windows input policy retains APC based on the successful APC exchanges in the second run.
+OSC 877 also delivered both tested operations; these captures provide no reason to change the
+current framing. The probe continues to exercise APC first and OSC 877 second in isolated omp
+processes, so a failure in one still preserves the other result. Both must complete with successful
+probe-child exit before the bundled live and packaged smoke checks pass.
 
 **Facts.**
 
 - node-pty loads `<directory of conpty.node>\conpty\conpty.dll` when `useConptyDll` is set (`node_modules/node-pty/src/win/conpty.cc:181-183`). Its post-install script copies `third_party/conpty/<version>/win10-<arch>/{conpty.dll,OpenConsole.exe}` into `build/Release/conpty` (`node_modules/node-pty/scripts/post-install.js`). The installed tree has version `1.23.251008001` for x64 and arm64, with identical copies under `prebuilds/win32-<arch>/conpty/`.
-- `electron-builder.yml` admits `build/Release/conpty/` through its Release filter, excludes `prebuilds` and `third_party`, and unpacks node-pty from asar. node-pty's `binding.gyp` does not copy the DLL or `OpenConsole.exe`, so the explicit staging hook supplies them. Packaged presence and target architecture still require the Windows CI run.
+- `electron-builder.yml` admits `build/Release/conpty/` through its Release filter, excludes `prebuilds` and `third_party`, and unpacks node-pty from asar. node-pty's `binding.gyp` does not copy the DLL or `OpenConsole.exe`, so the explicit staging hook supplies them. The second Windows run passed the x64 and arm64 layout checks and retained their file-size and SHA-256 listings.
 - After-pack fuses keep Node mode on Windows because node-pty's console cleanup forks with `ELECTRON_RUN_AS_NODE` (`docs/ARCHITECTURE.md`, Renderer loading and packaging).
 
 **Files and modules.**
 
 - `src/main/omp/host.ts` enables Windows developer-opt-in TSP and passes `useConptyDll: true` only for Windows TSP hosts. Classic spawn options and input remain unchanged.
-- `src/main/omp/tsp/encode.ts` selects input framing through one platform policy. APC remains the current choice until the recorded evidence resolves Windows input.
+- `src/main/omp/tsp/encode.ts` selects input framing through one platform policy. APC remains selected following the successful bundled and packaged input exchanges in run `41684291878`.
 - `scripts/stage-conpty.mjs` copies `third_party/conpty/<version>/win10-<arch>/{conpty.dll,OpenConsole.exe}` into `node_modules/node-pty/build/Release/conpty/` for the packaged architecture, failing unless exactly one version directory exists. It runs from `beforePack` and again from `afterExtract`. Source inspection of electron-builder 26.15.3 (`app-builder-lib/out/platformPackager.js:155-218`) found that `beforePack` precedes native dependency installation, while `afterExtract` follows installation and precedes `copyAppFiles`. The second idempotent staging call therefore restores the target files after rebuild. An `afterPack` source-tree copy would be too late.
 - `scripts/after-pack.mjs`: asserts that both files exist in `resources/app.asar.unpacked/node_modules/node-pty/build/Release/conpty/` and match the architecture being packaged, and fails the build otherwise.
 - `.github/workflows/ci.yml` keeps the macOS build commands and signing unchanged. All actions are SHA-pinned, checkouts discard credentials and token permissions are limited to `contents: read`. Windows downloads the exact app minimum from its matching GitHub release, verifies `SHA256SUMS.txt`, runs the Node live test before Electron rebuild, builds the existing x64 installer, checks its layout, runs the packaged x64 smoke probe, and builds and checks an arm64 directory package. Both Windows packaging steps have a 20-minute limit.
