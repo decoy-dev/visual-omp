@@ -483,6 +483,11 @@
 	overflow-wrap: anywhere;
 }
 
+.tv-bash-minimized {
+	color: var(--tv-muted);
+	font-family: var(--font-ui, sans-serif);
+}
+
 /* ---- notes ---- */
 
 .tv-note {
