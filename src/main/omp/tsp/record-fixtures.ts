@@ -20,11 +20,12 @@ import { planReview, planChoice } from "../../../shared/tsp/plan-review";
 import { composerFacts as readComposerFacts } from "./composer";
 import { LoopbackRelay } from "../relay";
 import { GuestClient } from "../../../renderer/src/collab/lib/client";
+import { recordingDestination } from "./recording-destination";
 
 // Bundle beside node_modules for Node, with node-pty external and the app's wire aliases.
 // No inherited configuration or provider credentials. Model turns use the isolated scripted provider.
 const bin = process.env.OMP_BIN;
-if (!bin) throw new Error("Set OMP_BIN to the omp 18.15.0 executable.");
+if (!bin) throw new Error("Set OMP_BIN to the omp executable.");
 if (process.platform !== "darwin" && process.platform !== "linux") throw new Error("Fixture recording is supported only on macOS and Linux.");
 const versionRoot = await mkdtemp(join(tmpdir(), "vomp-tsp-version-"));
 let version: string;
@@ -33,8 +34,9 @@ try {
 } finally {
   await rm(versionRoot, { recursive: true, force: true });
 }
-if (version !== "omp/18.15.0") throw new Error(`Expected omp/18.15.0; received ${version}.`);
-const destination = resolve(process.env.VOMP_TSP_FIXTURE_DIR ?? "src/main/omp/tsp/fixtures/18.15.0");
+const expectedVersion = process.env.VOMP_TSP_FIXTURE_VERSION ?? "18.15.0";
+if (version !== `omp/${expectedVersion}`) throw new Error(`Expected omp/${expectedVersion}; received ${version}.`);
+const destination = await recordingDestination(expectedVersion, process.env.VOMP_TSP_FIXTURE_DIR);
 const extension = resolve("src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs");
 await mkdir(destination, { recursive: true });
 const config = "startup:\n  setupWizard: false\n  checkUpdate: false\n  changelogMode: hidden\n  quiet: true\nmarketplace:\n  autoUpdate: off\nworktree:\n  onStart: off\n  onExit: keep\ntui:\n  autoGraph: never\nautocomplete:\n  enabled: false\nrecap:\n  enabled: false\ncomposer:\n  predictions: false\n";
@@ -237,7 +239,7 @@ const scenarios: Scenario[] = [
   { name: "shell-bang", command: "!printf fixture-shell", script: [], run: async ({ find, until, session }) => {
     await until(() => !!find(node => node.p?.role === "omp.bash"), "shell result missing");
     await session.submit("!!printf fixture-shell-excluded");
-    await until(() => !!find(node => (node.k === "text" || node.k === "md") && node.p?.text?.includes("fixture-shell-excluded") === true), "excluded shell result missing");
+    await until(() => !!find(node => node.k === "tool" && node.p?.role === "omp.bash" && node.p.command === "printf fixture-shell-excluded" && node.p.status === "done"), "excluded shell result missing");
   } },
   { name: "python-dollar", command: "$ 1+1", script: [], run: async ({ find, until }) => {
     await until(() => !!find(node => node.p?.role === "omp.eval"), "Python result missing");

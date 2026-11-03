@@ -321,6 +321,26 @@ reading the trusted draft. Transport changes hide stale offers. Independent word
 available. The prediction recording covers ghost, Tab insertion and clear. The manual Electron and
 IME gate remains unverified.
 
+omp 18.16.0's optional `composer.predictionAlternatives` keeps the existing transfer contract:
+the first Tab inserts one exact message, and the extension clear removes it before another Tab
+can open the alternatives list. The opt-in `prediction-transfer.live.test.ts` uses production
+`SessionHost`, its overlay and native bridge against an isolated scripted provider, covering
+classic and TSP transfers, repeated capture, second-Tab selection and upstream TSP prefix filtering.
+Run it with `OMP_BIN` and `VOMP_PREDICTION_ALTERNATIVES_LIVE=1` against 18.16.0 or later.
+The supported minimum and committed recording baseline remain 18.15.0.
+
+The 18.16 editor node still publishes only the current `ghost`; neither its props nor its debug
+values contain the full prediction array. After insertion, its ghost becomes a `Tab N more`
+hint over a nonempty draft, which the transfer's empty-editor guard excludes. A second Tab
+exposes an `omp.autocomplete` overlay containing `omp.select`, a list and complete item labels.
+Those nodes remain unclaimed and use the generic omp screen. Native alternatives UI would need
+a separate transaction: retain the inserted draft, open that list, select an observed item id,
+wait for the list to close, then capture and clear the exact replacement through the bridge.
+It must not resend Tab after an ambiguous acknowledgement or reconstruct choices from ghost text.
+An upstream editor-props array would let the app filter choices before insertion without opening
+omp's list. The app continues offering the first prediction only; filtering across the other choices
+and an alternatives picker are not implemented.
+
 Pass-through slash commands use the same semantic submission path for immediate and queued delivery.
 Their readiness checks main's published send availability and document-owned overlays or screen
 surfaces. A per-command document subscription holds the queue while omp owns the editor, then

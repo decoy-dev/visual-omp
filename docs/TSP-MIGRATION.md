@@ -308,11 +308,28 @@ The recorded `handshake-timeout` probe withholds client replies, so omp withdraw
 surface and paints classic rows. Replay now detects that withdrawal, reaches `tspFailed` after
 the surface deadline and offers Restart instead of waiting indefinitely on an empty screen.
 
-The no-model recorder accepts `VOMP_TSP_FIXTURE_DIR` so live comparisons do not overwrite the
-committed baseline. `fixture-vocabulary.test.ts` checks recorded roles and classifies unsupported
-actions explicitly. Set `OMP_BIN` and `VOMP_TSP_LIVE_FIXTURE_DIR` to compare a scratch re-recording
-with the committed role/action sets. Criterion 2 passed the opt-in headless Chrome gate against the
-pinned recordings on 2026-11-02 (`src/main/omp/tsp/testing/ui-gate.test.ts`), alongside the DOM checks.
+The recorder accepts `VOMP_TSP_FIXTURE_DIR` so live comparisons do not overwrite the committed
+baseline. `VOMP_TSP_FIXTURE_VERSION` defaults to `18.15.0`; another version requires an explicit
+destination outside the baseline directory. The guard canonicalizes filesystem aliases and the
+nearest existing parent of a new destination before checking that boundary.
+`fixture-vocabulary.test.ts` checks roles, actions and
+kinds, and reports per-scenario layout differences. Set `OMP_BIN`, `VOMP_TSP_FIXTURE_VERSION` and
+`VOMP_TSP_LIVE_FIXTURE_DIR` to compare a scratch recording with the baseline.
+
+The 2026-11-03 comparison recorded all 85 scenarios with standalone omp 18.16.0 into a temporary
+directory, including every scripted-provider scenario. No added role, action, kind or layout was
+observed. The cleanse capture omitted its transient `omp.cleanse.live` spinner, and the execute
+plan capture included an extra spinner label; those observations do not establish an upstream
+layout change. The TSP wire types, reference applier and encoder are unchanged at
+[`v18.16.0`](https://github.com/can1357/oh-my-pi/tree/650f3a108229ee11bf68ba3377f4e8c3391cd424).
+Source inspection adds unclaimed `omp.btw.inject` and read-only `inject` for the optional BTW
+steering feature. Prediction alternatives expose the existing `omp.autocomplete` and `omp.select`
+roles, now recognized without a native claim. The live application-overlay prediction test covers
+exact first-choice transfers and second-Tab list selection in classic and TSP hosts.
+No 18.16 recording is committed; the minimum and fixture baseline remain 18.15.0.
+
+Criterion 2 passed the opt-in headless Chrome gate against the pinned recordings on 2026-11-02
+(`src/main/omp/tsp/testing/ui-gate.test.ts`), alongside the DOM checks.
 Real Chrome pointer and keyboard input completes 26 overlay cases: slash menus, model/settings,
 custom rows, hook submit/cancel/open variants, tree confirmation, extensions selection and Close,
 and startup import in `starting` mode at generation zero before the collab link. The gate captures

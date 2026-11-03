@@ -35,7 +35,7 @@ export const TSP_ACTIONS = {
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
 export function isKnownAction(action: string): boolean { return knownActions.has(action); }
 /** Recorded actions without an app interaction path stay display-only. */
-export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true, "jobs.open": true };
+export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true, "jobs.open": true, inject: true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 export const TSP_PLAN_OPTIONS = {
 	execute: "Approve and execute", compact: "Approve and compact context", keep: "Approve and keep context",
@@ -88,7 +88,7 @@ export function isNativeHookNode(node: TspNode): boolean {
 export function selectionCommits(role?: string, layout?: string): boolean {
 	return role === TSP_ROLES.tree || role === TSP_ROLES.treeSelector || layout === "tree";
 }
-/** Baseline roles recorded from omp 18.15.0. Unknown additions stay readable. */
+/** Baseline roles plus reviewed 18.16 additions. Unclaimed content stays in the omp screen. */
 const knownRoles: ReadonlySet<string> = new Set([
 	...Object.values(TSP_ROLES),
 	"omp.actions", "omp.btn", "omp.composer.bar", "omp.composer.chips", "omp.composer.context",
@@ -101,6 +101,8 @@ const knownRoles: ReadonlySet<string> = new Set([
 	"omp.ask.option", "omp.ask.options", "omp.ask.other", "omp.ask.question",
 	"omp.composer.chip", "omp.composer.fact", "omp.queue.edit",
 	"omp.btw.empty", "omp.btw.empty.hint", "omp.btw.empty.title",
+	// 18.16 steering injection has no app consumer; prediction alternatives use the generic list.
+	"omp.btw.inject", "omp.autocomplete", "omp.select",
 	"omp.form", "omp.form.field",
 	"omp.hotkeys.group", "omp.hotkeys.table", "omp.hud", "omp.hud.downloads", "omp.hud.judge",
 	"omp.composer.stop", "omp.hud.activity", "omp.hud.status", "omp.working.label", "omp.working.sep", "omp.working.stop",
