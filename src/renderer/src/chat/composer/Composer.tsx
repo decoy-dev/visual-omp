@@ -264,19 +264,6 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const askWaiting = pendingAsk(view);
 	const queueing = working && !askWaiting;
 	const tspReason = tspComposerReason(view.host, t("question.answerBeforeSending"), askWaiting ? view.guest?.uiRequest?.reqId : undefined);
-	const btwScopeKey = JSON.stringify([view.host?.hostId, view.host?.generation, view.host?.tspEpoch]);
-	const [btwClosing, setBtwClosing] = useState<string | null>(null);
-	const btwCloseOwner = useRef<{ key: string } | null>({ key: "" });
-	useEffect(() => {
-		btwCloseOwner.current = { key: "" };
-		return () => { btwCloseOwner.current = null; };
-	}, []);
-	const putAwayBtw = () => {
-		void import("../../features/btw/BtwPaneContent").then(module => module.putAwayComposerBtw(
-			session, view.host, btwScopeKey, readOnly, btwCloseOwner, setBtwClosing,
-			error => toast({ tone: "err", message: t("btw.closeFailed"), description: errorText(error) }),
-		));
-	};
 	const voiceOn = useApp(state => state.prefs?.voiceInput ?? false);
 	const files = useProjectFiles(projectPath, mention !== null);
 	const matches = useMemo(() => (mention && files ? fuzzyFiles(files, mention.query, 40) : null), [mention, files]);
@@ -913,7 +900,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					</div>
 				</div>
 			</div>
-			{tspReason && <div role="status" className="flex flex-wrap items-center gap-2 px-1 pt-2 text-sm text-fg-muted"><span>{tspReason}</span>{view.host?.tspAvailability?.reasonCode === "btw" && <Button size="sm" variant="ghost" disabled={readOnly || btwClosing === btwScopeKey} onClick={() => { void putAwayBtw(); }}>{t("btw.putAway")}</Button>}</div>}
+			{tspReason && view.host?.tspAvailability?.reasonCode !== "btw" && <div role="status" className="px-1 pt-2 text-sm text-fg-muted">{tspReason}</div>}
 			{/* The chat's settings: a quiet row under the card that wraps rather than crowd a narrow column. */}
 			<div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-2">
 				<div className="flex min-w-0 flex-wrap items-center gap-1">

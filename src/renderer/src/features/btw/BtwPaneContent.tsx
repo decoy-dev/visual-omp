@@ -1,5 +1,5 @@
-import { ArrowUp, ChatCircle, Copy, Plus, Stop, X } from "@phosphor-icons/react";
-import { useContext, useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
+import { ArrowUp, ChatCircle, Copy, Plus, Stop } from "@phosphor-icons/react";
+import { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import type { BtwState, BtwStatus, BtwTopic, BtwTopicRef } from "@shared/contracts/btw";
 import type { HostState } from "@shared/ipc";
@@ -11,9 +11,13 @@ import { PresentationVisibility, presentationClaims, usePresentationClaim } from
 import { Markdown, StreamingMarkdown } from "../../transcript/Markdown";
 import { Button, EmptyState, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, Spinner, Textarea } from "../../ui";
 import { PaneToolbar } from "../panes/common";
-import { controllerFor, useApp } from "../../state/app";
+import { controllerFor, dockKey, useApp } from "../../state/app";
 import { BtwPaneLoading, BtwPresentation } from "./BtwPane";
 import type { SessionController } from "../../state/session";
+import { AnimatePresence } from "motion/react";
+import { duration, FadeIn } from "../../ui/motion";
+import { useComposerDrafts } from "../../chat/composer/drafts";
+import { useTsp } from "../../state/tsp/useTsp";
 
 interface PanelPutAway {
 	result: Promise<void>;
@@ -68,7 +72,13 @@ export function putAwayBtwPanel(session: SessionController, host: HostState, pro
 			|| current?.hostId !== host.hostId || current.generation !== host.generation || current.tspEpoch !== host.tspEpoch) throw new Error("The chat changed before the side question could be put away.");
 		if (state.overlay) await window.vomp.invoke("btw:close", host.hostId, state.overlay.selectedTopic, { generation: host.generation, epoch: host.tspEpoch });
 	})();
-	const settleNative = () => { nativeSettled = true; if (requestSettled) operation.active = false; };
+	const settleNative = () => {
+		nativeSettled = true;
+		if (requestSettled) {
+			operation.active = false;
+			for (const listener of panelPutAwayListeners) listener();
+		}
+	};
 	void native.then(settleNative, settleNative);
 	const completed = native.then(async () => { if (!expired && !finished()) await documentClosed.promise; });
 	void Promise.race([completed, deadline.promise]).catch(error => {
@@ -82,31 +92,52 @@ export function putAwayBtwPanel(session: SessionController, host: HostState, pro
 		off();
 		documentClosed.resolve();
 		releasePresentation();
+		for (const listener of panelPutAwayListeners) listener();
 	}).then(result.resolve, result.reject);
 	return operation.result;
 }
 
-/** The composer's explicit recovery action shares the same lazy omp-owned put-away path. */
-export async function putAwayComposerBtw(
-	session: SessionController, host: HostState | null, scope: string, readOnly: boolean,
-	ownerRef: RefObject<{ key: string } | null>, setClosing: (scope: string | null) => void, onError: (error: unknown) => void,
-): Promise<void> {
-	if (!ownerRef.current || readOnly || host?.transport !== "tsp" || host.tspAvailability?.reasonCode !== "btw" || host.tspEpoch === undefined || ownerRef.current.key === scope) return;
-	const owner = { key: scope };
-	ownerRef.current = owner;
-	setClosing(scope);
-	try {
-		const state = await window.vomp.invoke("btw:list", host.hostId);
+/** Both Done actions share the panel X's scoped, single-flight close operation. */
+function useBtwFinish(session: SessionController | null, host: HostState | null) {
+	const { snapshot, store } = useTsp(host?.hostId ?? null);
+	const current = snapshot?.lifecycle === "live" && snapshot.generation === host?.generation && snapshot.epoch === host?.tspEpoch;
+	const projection = current ? projectBtw(snapshot.surfaces) : null;
+	const key = host && projection ? panelPutAwayKey(host, projection) : null;
+	const closing = useSyncExternalStore(subscribePanelPutAway, () => session && key ? panelPutAways.get(session)?.get(key)?.active ?? false : false);
+	const error = useSyncExternalStore(subscribePanelPutAway, () => session && key ? panelPutAways.get(session)?.get(key)?.error ?? null : null);
+	return { closing, error, ready: !!projection, finish: async (expanded = false) => {
+		if (!session || !host || !projection) return;
+		await putAwayBtwPanel(session, host, projection, store);
 		const current = session.getSnapshot().host;
-		if (ownerRef.current !== owner || current?.hostId !== host.hostId || current.generation !== host.generation || current.tspEpoch !== host.tspEpoch) return;
-		if (state.hostId !== host.hostId || state.generation !== host.generation || state.epoch !== host.tspEpoch) throw new Error("The chat changed before the side question could be put away.");
-		if (state.overlay) await window.vomp.invoke("btw:close", host.hostId, state.overlay.selectedTopic, { generation: host.generation, epoch: host.tspEpoch });
-	} catch (error) {
-		const current = session.getSnapshot().host;
-		if (ownerRef.current === owner && current?.hostId === host.hostId && current.generation === host.generation && current.tspEpoch === host.tspEpoch) onError(error);
-	} finally {
-		if (ownerRef.current === owner) { ownerRef.current = { key: "" }; setClosing(null); }
-	}
+		if (controllerFor(session.tabId) !== session || current?.hostId !== host.hostId || current.generation !== host.generation
+			|| current.tspEpoch !== host.tspEpoch || dockKey(useApp.getState()) !== session.tabId) return;
+		if (expanded) useApp.getState().returnToChat();
+		requestAnimationFrame(() => {
+			if (controllerFor(session.tabId) === session && dockKey(useApp.getState()) === session.tabId) useComposerDrafts.getState().focus(session.tabId);
+		});
+	} };
+}
+
+/** Loaded with the existing BTW chunk, never part of the eager chat implementation. */
+export function BtwChatPaused({ session, host, paused }: { session: SessionController; host: HostState; paused: boolean }) {
+	const { t } = useTranslation("panes");
+	const { closing, error, ready, finish } = useBtwFinish(session, host);
+	const button = useRef<HTMLButtonElement>(null);
+	useEffect(() => {
+		if (!paused) return;
+		const column = button.current?.closest("[data-chat-column]");
+		if (column?.contains(document.activeElement) || document.activeElement === document.body) button.current?.focus();
+	}, [ready, paused]);
+	return <AnimatePresence initial={false}>{paused && <FadeIn key="paused" animateOnMount
+		exit={{ opacity: 0, transition: { duration: duration.fast, ease: "easeIn" } }}
+		data-btw-paused className="absolute inset-0 z-20 flex items-center justify-center bg-backdrop p-6">
+		<div className="w-full max-w-80 rounded-lg border border-border bg-panel p-6 text-center text-fg">
+		<p role="status" className="font-medium">{t("btw.paused")}</p>
+		<p className="mt-2 text-sm text-fg-muted">{t("btw.pausedHint")}</p>
+		{error && <p role="alert" className="mt-3 text-sm text-err">{error}</p>}
+		<Button ref={button} variant="primary" className="mt-4" disabled={closing || !ready} onClick={() => { void finish().catch(() => {}); }}>{t("btw.done")}</Button>
+		</div>
+	</FadeIn>}</AnimatePresence>;
 }
 
 export interface BtwPaneContentProps {
@@ -115,6 +146,8 @@ export interface BtwPaneContentProps {
 	readOnly?: boolean;
 	hostId: string;
 	presentation?: { active: boolean; available: boolean };
+	onDone?: (expanded?: boolean) => Promise<void>;
+	closing?: boolean;
 }
 
 /** Subscribe before the initial read; a late response cannot replace a newer frame or disk update. */
@@ -144,6 +177,8 @@ export function BtwPaneHost() {
 	const content = useContext(BtwPresentation);
 	const { state, error } = useBtw(content?.hostId ?? null, content?.generation, content?.epoch);
 	const session = content ? controllerFor(content.tabId) : null;
+	const host = session?.getSnapshot().host ?? null;
+	const finish = useBtwFinish(session, host);
 	const closeKey = content?.projection ? panelPutAwayKey({ hostId: content.hostId, generation: content.generation, tspEpoch: content.epoch }, content.projection) : null;
 	const closeError = useSyncExternalStore(subscribePanelPutAway, () => session && closeKey ? panelPutAways.get(session)?.get(closeKey)?.error ?? null : null);
 	if (!content) return null;
@@ -154,7 +189,7 @@ export function BtwPaneHost() {
 		{overlay && !overlay.supported && <div className="border-b border-border p-3"><p className="mb-2 text-sm text-fg-muted">{t("btw.unsupported")}</p><Button size="sm" variant="secondary" onClick={() => useApp.getState().openTerminal(content.tabId)}>{t("btw.openScreen")}</Button></div>}
 		{pending && <><BtwPaneLoading />{(closeError || error) && <p role="alert" className="shrink-0 px-4 pb-3 text-sm text-err">{closeError ?? error}</p>}</>}
 		<div className={pending ? "hidden" : "flex min-h-0 flex-1 flex-col"}><PresentationVisibility visible={!pending && projection?.supported !== false}>
-			<BtwPaneContent state={state} error={closeError ?? error} readOnly={readOnly} hostId={hostId} presentation={presentation} />
+			<BtwPaneContent state={state} error={closeError ?? error} readOnly={readOnly} hostId={hostId} presentation={presentation} onDone={session ? finish.finish : undefined} closing={finish.closing || !!session && !!overlay && !finish.ready} />
 		</PresentationVisibility></div>
 	</>;
 }
@@ -172,7 +207,7 @@ interface PaneContext {
 const emptyContext = (): PaneContext => ({ selection: null, overlayKey: null, composers: {}, activeComposer: null, busy: null, error: null, copied: false });
 
 /** Contexts retain drafts at their original host, generation, epoch and topic. */
-export function BtwPaneContent({ state, error: loadError, readOnly, hostId, presentation }: BtwPaneContentProps) {
+export function BtwPaneContent({ state, error: loadError, readOnly, hostId, presentation, onDone, closing }: BtwPaneContentProps) {
 	const { t } = useTranslation("panes");
 	const [contexts, setContexts] = useState<Record<string, PaneContext>>({});
 	const operations = useRef(new Map<string, symbol>());
@@ -205,7 +240,7 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 	usePresentationClaim(displayingOverlay && overlay?.supported ? { hostId, epoch: overlay.epoch, surfaceId: overlay.surfaceId, nodeId: overlay.nodeId } : null, !!presentation?.active, !!presentation?.available);
 	const running = latest?.status === "running";
 	const sideTurnRunning = topics.some(topic => topic.turns.at(-1)?.status === "running");
-	const busy = context.busy !== null;
+	const busy = context.busy !== null || !!closing;
 	const disabled = !!readOnly || busy || !state;
 	const scope = state ? { generation: state.generation, epoch: state.epoch } : null;
 	const composerKey = context.activeComposer === `ask:${topicKey}` || context.activeComposer === `followUp:${topicKey}` ? context.activeComposer : topics.length === 0 ? "ask:" : null;
@@ -281,7 +316,6 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 			</Menu>
 			<Button size="sm" variant="ghost" className="ml-auto" icon={<Plus />} disabled={disabled || sideTurnRunning || !!overlay?.followUp} onClick={() => startComposer("ask")}>{t("btw.new")}</Button>
 			{!overlay && topics.length > 0 && <Button size="sm" variant="ghost" disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:ask", hostId, "", scope!)); }}>{t("btw.openHistory")}</Button>}
-			{displayingOverlay && overlay && <Button size="sm" variant="ghost" icon={<X />} disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:close", hostId, overlay.selectedTopic, scope!)); }} title={t("btw.putAwayHint")}>{t("btw.putAway")}</Button>}
 		</PaneToolbar>
 		<div ref={body} onScroll={() => { const element = body.current; if (element) follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48; }} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 text-md" tabIndex={0} aria-label={t("btw.answers")}>
 			{!state && !loadError ? <p role="status" className="flex items-center gap-2 text-fg-muted"><Spinner />{t("btw.loading")}</p>
@@ -315,7 +349,7 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 			{latest?.answer && <Button size="sm" variant="ghost" icon={<Copy />} disabled={busy} onClick={copy}>{t(copied ? "btw.copied" : "btw.copy")}</Button>}
 			{actions.includes(TSP_ACTIONS.btwStop) && <Button size="sm" variant="secondary" icon={<Stop />} disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:stop", hostId, topicRef!, scope!)); }}>{t("btw.stop")}</Button>}
 			{actions.includes(TSP_ACTIONS.btwInject) && <Button size="sm" variant="secondary" disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:inject", hostId, topicRef!, scope!)); }}>{t("btw.inject")}</Button>}
-			{actions.includes(TSP_ACTIONS.btwFollowUp) && <Button size="sm" variant="primary" className="ml-auto" disabled={disabled || running || !!overlay?.followUp} onClick={() => startComposer("followUp")}>{t("btw.followUp")}</Button>}
+			{actions.includes(TSP_ACTIONS.btwFollowUp) && <Button size="sm" variant="secondary" className="ml-auto" disabled={disabled || running || !!overlay?.followUp} onClick={() => startComposer("followUp")}>{t("btw.followUp")}</Button>}
 		</div>}
 		{activeComposer && <form className="flex shrink-0 flex-col gap-3 border-t border-border p-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
 			<Textarea ref={input} label={t(mode === "followUp" ? "btw.followUpQuestion" : "btw.askQuestion")} placeholder={t(mode === "followUp" ? "btw.followUpPlaceholder" : "btw.placeholder")} value={draft} minRows={2} maxRows={5} disabled={disabled || mode === "followUp" && !displayingOverlay} onChange={event => { const draft = event.target.value; update(current => ({ ...current, composers: { ...current.composers, [composerKey!]: { ...composer!, draft } } })); }} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
@@ -328,6 +362,13 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 				<Button type="submit" size="sm" variant="primary" icon={busy ? <Spinner /> : <ArrowUp />} disabled={disabled || !draft.trim() || mode === "followUp" && !displayingOverlay}>{t(mode === "followUp" ? "btw.sendFollowUp" : "btw.ask")}</Button>
 			</div>
 		</form>}
+		{overlay && <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-3 py-3">
+			<p className="text-xs text-fg-muted">{t("btw.doneHint")}</p>
+			<Button size="sm" variant="primary" disabled={disabled} onClick={event => {
+				const expanded = !!event.currentTarget.closest("[data-dock-expanded]");
+				void perform(onDone ? () => onDone(expanded) : () => window.vomp.invoke("btw:close", hostId, overlay.selectedTopic, scope!));
+			}}>{t("btw.done")}</Button>
+		</div>}
 		<p className="shrink-0 px-3 pb-3 text-xs text-fg-muted">{t(actions.includes(TSP_ACTIONS.btwInject) ? "btw.separateWithInject" : "btw.separate")}</p>
 	</section>;
 }

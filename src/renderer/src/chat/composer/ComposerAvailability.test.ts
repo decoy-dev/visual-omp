@@ -3,7 +3,6 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { HostState } from "@shared/ipc";
-import type { BtwState } from "@shared/contracts/btw";
 import type { SessionController, SessionView } from "../../state/session";
 import { TooltipProvider } from "../../ui/Tooltip";
 import { useComposerDrafts } from "./drafts";
@@ -67,29 +66,21 @@ it("renders the matched question instruction and keeps ordinary menu and classic
 	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(false);
 });
 
-const btwState = (generation = 1, epoch = 7): BtwState => ({
-	hostId: "host", generation, epoch, revision: 1, topics: [{ id: "shared", scope: "helper_1", title: "Side question", live: true, turns: [{ question: "Side question", answer: "Side answer", status: "complete", createdAt: 1 }] }],
-	overlay: { epoch, surfaceId: "s", nodeId: "btw", selectedTopic: { id: "shared", scope: "helper_1" }, topics: [{ id: "shared", scope: "helper_1" }], actions: ["close"], followUp: false, supported: true, notice: null, draft: null },
-});
 
-it("names the side-question blocker and puts it away only after an explicit hint action", async () => {
+it("leaves the side-question explanation and Done action to the chat layer", async () => {
 	const original = window.vomp.invoke;
-	const invoke = vi.fn(async (channel: string) => channel === "btw:list" ? btwState() : []);
+	const invoke = vi.fn(async (_channel: string) => []);
 	window.vomp.invoke = invoke as typeof window.vomp.invoke;
 	try {
 		view = { ...view, host: { ...host("tsp", { available: false, reason: "Put away the side question to send a message.", reasonCode: "btw" }), tspEpoch: 7 } };
 		await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
-		expect(element.querySelector('[role="status"]')?.textContent).toContain("Put away the side question to send a message.");
+		expect(element.querySelector('[role="status"]')).toBeNull();
 		expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
 		invoke.mockClear();
 		await act(async () => element.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
 		expect(invoke.mock.calls.some(([channel]) => channel === "btw:close" || channel === "btw:list")).toBe(false);
 		expect(session.send).not.toHaveBeenCalled();
-		const putAway = [...element.querySelectorAll("button")].find(button => button.textContent?.trim() === "Put away")!;
-		await act(async () => {
-			putAway.click();
-			await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith("btw:close", "host", { id: "shared", scope: "helper_1" }, { generation: 1, epoch: 7 }));
-		});
+		expect([...element.querySelectorAll("button")].some(button => button.textContent?.trim() === "Put away")).toBe(false);
 		expect(useComposerDrafts.getState().drafts.availability).toBe("A message ready to send");
 		expect(session.send).not.toHaveBeenCalled();
 		view = { ...view, host: { ...view.host!, tspAvailability: { available: true, reason: null } } };
@@ -98,22 +89,6 @@ it("names the side-question blocker and puts it away only after an explicit hint
 	} finally { window.vomp.invoke = original; }
 });
 
-it.each(["room", "epoch"] as const)("does not apply an old Put away read after a %s change", async changed => {
-	const original = window.vomp.invoke;
-	const read = Promise.withResolvers<BtwState>();
-	const invoke = vi.fn(async (channel: string) => channel === "btw:list" ? await read.promise : []);
-	window.vomp.invoke = invoke as typeof window.vomp.invoke;
-	try {
-		view = { ...view, host: { ...host("tsp", { available: false, reason: "Put away the side question to send a message.", reasonCode: "btw" }), tspEpoch: 7 } };
-		await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
-		await act(async () => [...element.querySelectorAll("button")].find(button => button.textContent?.trim() === "Put away")!.click());
-		view = { ...view, host: { ...view.host!, generation: changed === "room" ? 2 : 1, tspEpoch: changed === "epoch" ? 8 : 7 } };
-		await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
-		await act(async () => read.resolve(btwState()));
-		expect(invoke.mock.calls.some(([channel]) => channel === "btw:close")).toBe(false);
-		expect(useComposerDrafts.getState().drafts.availability).toBe("A message ready to send");
-	} finally { window.vomp.invoke = original; }
-});
 
 it.each(["classic", "tsp"] as const)("offers Send message rather than Queue message for a live ask in %s", async transport => {
 	const args = { questions: [{ id: "db", question: "Which database?", options: [{ label: "SQLite" }] }] };

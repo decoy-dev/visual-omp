@@ -1,6 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { chatSlots } from "../registry/slots";
+import { lazyView } from "../registry/lazy";
 import { chatActivityKey, elapsed, useNow, useSessionView } from "../shell/hooks";
 import { useApp } from "../state/app";
 import type { SessionController, SessionView } from "../state/session";
@@ -8,6 +9,8 @@ import { Button, cn, Expand, WorkingIndicator } from "../ui";
 import { Composer } from "./composer/Composer";
 import { SessionHeader } from "./SessionHeader";
 import { Transcript } from "./transcript/Transcript";
+
+const BtwChatPaused = lazyView(() => import("../features/btw/BtwPaneContent").then(module => module.BtwChatPaused));
 
 function Banner({ tone, role = "status", children }: { tone: "info" | "warn" | "err"; role?: "status" | "alert"; children: ReactNode }): ReactNode {
 	return (
@@ -135,6 +138,7 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 	const mode = useApp(state => state.prefs?.transcriptMode ?? "normal");
 	const slots = chatSlots.use();
 	if (!view) return null;
+	const paused = !view.readOnly && view.host?.transport === "tsp" && view.host.tspAvailability?.available === false && view.host.tspAvailability.reasonCode === "btw";
 	return (
 		<section
 			className={cn("relative flex min-w-0 flex-1 flex-col bg-bg", !focused && "opacity-[0.97]")}
@@ -147,6 +151,7 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 		>
 			<SessionHeader session={session} view={view} fallbackTitle={title} />
 			<div data-chat-column className="relative flex min-h-0 flex-1 flex-col">
+				<div data-chat-content inert={paused} aria-hidden={paused || undefined} className="flex min-h-0 flex-1 flex-col">
 				<StateBanner session={session} view={view} />
 				<OwnerNotice session={session} view={view} />
 				<Transcript session={session} view={view} mode={mode} />
@@ -161,6 +166,8 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 				<div data-tour="composer" className="mx-auto w-full max-w-[calc(var(--chat-max)+48px)] px-6 pb-4">
 					<Composer session={session} />
 				</div>
+				</div>
+				{view.host?.transport === "tsp" && <BtwChatPaused session={session} host={view.host} paused={paused} />}
 			</div>
 			{slots
 				.filter(slot => slot.placement === "watchers")

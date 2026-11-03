@@ -126,11 +126,12 @@ describe("native side-question pane", () => {
 		expect(h.container.querySelector("textarea")).toBeNull();
 	});
 
-	it("separates Put away from stopping the side answer", async () => {
+	it("separates Done from stopping the side answer and removes Put away", async () => {
 		const state = initial(); state.topics[0]!.turns[0]!.status = "running"; state.overlay!.actions = ["close", "stop"];
 		state.topics[0]!.scope = "main"; state.overlay!.selectedTopic = { id: "topic", scope: "main" }; state.overlay!.topics = [{ id: "topic", scope: "main" }];
 		const h = mountContent(state); invoke.mockResolvedValue(undefined);
-		await act(async () => button(h.container, "Put away").click());
+		expect(h.container.textContent).not.toContain("Put away");
+		await act(async () => button(h.container, "Done").click());
 		expect(invoke).toHaveBeenLastCalledWith("btw:close", "host", { id: "topic", scope: "main" }, { generation: 1, epoch: 1 });
 		await act(async () => button(h.container, "Stop side answer").click());
 		expect(invoke).toHaveBeenLastCalledWith("btw:stop", "host", { id: "topic", scope: "main" }, { generation: 1, epoch: 1 });
@@ -292,7 +293,7 @@ describe("native side-question pane", () => {
 		expect(invoke).toHaveBeenCalledTimes(1);
 		expect(button(h.container, "History (2)").disabled).toBe(true);
 		expect(button(h.container, "New question").disabled).toBe(true);
-		await act(async () => button(h.container, "Put away").click());
+		await act(async () => button(h.container, "Done").click());
 		expect(invoke).toHaveBeenCalledTimes(1);
 		await act(async () => pending.resolve());
 		expect(button(h.container, "History (2)").disabled).toBe(false);
@@ -302,7 +303,7 @@ describe("native side-question pane", () => {
 		const state = initial(); state.overlay = null;
 		const h = mountContent(state);
 		expect(h.container.textContent).toContain("The first answer.");
-		for (const label of ["Follow up", "Inject into main", "Stop side answer", "Put away"]) expect([...h.container.querySelectorAll("button")].some(button => button.textContent?.trim() === label)).toBe(false);
+		for (const label of ["Follow up", "Inject into main", "Stop side answer", "Done", "Put away"]) expect([...h.container.querySelectorAll("button")].some(button => button.textContent?.trim() === label)).toBe(false);
 		await act(async () => button(h.container, "Open history").click());
 		expect(invoke).toHaveBeenLastCalledWith("btw:ask", "host", "", { generation: 1, epoch: 1 });
 		h.render(initial());
@@ -312,7 +313,7 @@ describe("native side-question pane", () => {
 	it("closes empty native history with an explicit null topic", async () => {
 		const state = initial(); state.topics = []; state.overlay!.selectedTopic = null; state.overlay!.topics = [];
 		const h = mountContent(state);
-		await act(async () => button(h.container, "Put away").click());
+		await act(async () => button(h.container, "Done").click());
 		expect(invoke).toHaveBeenLastCalledWith("btw:close", "host", null, { generation: 1, epoch: 1 });
 	});
 
@@ -387,7 +388,7 @@ describe("slash-driven BTW presentation", () => {
 		await act(async () => root.render(createElement(TooltipProvider, null, createElement(BtwPane, { session, projectPath: "/project" }))));
 		await chooseHistory(container, "Second question");
 		expect(container.textContent).toContain("Second answer");
-		await act(async () => button(container, "Put away").click());
+		await act(async () => button(container, "Done").click());
 		expect(presentationClaims.getSnapshot()).toEqual([]);
 		expect(button(container, "Open history")).toBeDefined();
 		await act(async () => { expect(await routeSlash(session, "/btw Question B")).toBe(true); });

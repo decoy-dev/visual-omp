@@ -123,7 +123,7 @@ it("owns recorded empty BTW while visible and puts it away before hiding", async
 	expect(native.hidden).toBe(false);
 	expect(native.textContent).toContain("No side questions yet");
 	expect(native.querySelector<HTMLTextAreaElement>("textarea")?.disabled).toBe(false);
-	expect([...native.querySelectorAll("button")].find(button => button.textContent?.trim() === "Put away")?.disabled).toBe(false);
+	expect([...native.querySelectorAll("button")].find(button => button.textContent?.trim() === "Done")?.disabled).toBe(false);
 	expect(presentationClaims.getSnapshot()).toContainEqual(target);
 	expect(currentPresentationConsumers("empty-btw", 1).get(target.surfaceId)?.has(target.nodeId)).toBe(true);
 	expect(useApp.getState().terminalTabId).toBeNull(); expect(opened).toEqual([]);
