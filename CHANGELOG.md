@@ -4,12 +4,26 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.5] - 2026-11-03
+
+visual-omp 0.7.5 opens omp menus in the omp screen and `/btw` answers in the Side questions pane by default on macOS and in Linux builds, and keeps messages omp rejects in the queue. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **New:** On macOS and in Linux builds, omp menus open in the omp screen, and `/btw` answers appear in the Side questions pane by default.
+- **New:** A Suggestions switch below the composer turns omp's next-message suggestions on or off.
+- **New:** Shell tool cards show which omp filter changed a command's output.
+- **Fixed:** Messages omp rejects before starting a turn stay in the queue with omp's error, instead of being added to your next message.
+- **Fixed:** Shell and Python runs you start with `!` or `$` appear in chats with their output open.
+- **Fixed:** Background-job waits end when the last job stops, so queued messages continue.
+
 ### Detailed changes
 
 #### New
 
 - Expanded shell tool cards now show which omp filter changed a command's output and its byte sizes before and after filtering, when omp records them.
-- On macOS, omp menus now open in the native omp screen, and `/btw` answers appear in the Side questions pane.
+- App-hosted chats now use omp's Tern Surface Protocol (TSP) by default on macOS and Linux. omp menus open in the omp screen, and `/btw` answers appear in the Side questions pane. Windows keeps the classic presentation.
+- A Suggestions switch below the composer saves your next-message suggestion preference to omp's global settings. Suggestions remain off by default, and project-specific settings still take precedence. Each suggestion sends an extra request containing the full conversation to the chat's model, which counts toward usage.
 
 #### Fixed
 
@@ -18,7 +32,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Background jobs from before a chat's omp restarted no longer show as running in Tasks and the chat header.
 - Rewinding to an earlier message of yours now hides the later messages right away, instead of showing the whole chat until the next reply.
 - Background-job waits now end when the last job is cancelled or finishes without another reply, allowing queued messages to continue.
-- Shell and Python runs started with `!` or `$` now appear in live and saved chats with their source, output and execution status.
+- Shell and Python runs started with `!` or `$` now appear in live and saved chats with their source, execution status and output expanded by default in every transcript view. Long results show a bounded preview, with controls to reveal the remaining lines or fold the entire output.
 - An image omp can't read is no longer sent as its file path in classic chats. After the message box is restored, the message stays queued with its images and omp's error until you retry or remove it.
 - Closing a chat on Windows now releases its terminal worker and JavaScript pipe connections, preventing those resources from accumulating across chats.
 - Settings > Providers now offers Sign out for stored API-key credentials from providers without usage reporting.
