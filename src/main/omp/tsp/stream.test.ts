@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { encodeTspJson, encodeTspMessage } from "./encode";
 import { TspStream, type TspMessage } from "./stream";
 
@@ -9,6 +9,35 @@ function collect() {
 	const stream = new TspStream({ onMessage: message => messages.push(message), onData: bytes => data.push(bytes) });
 	return { stream, messages, passthrough: () => Buffer.concat(data) };
 }
+
+describe("TSP input framing", () => {
+	it.each(["win32", "darwin", "linux"] as const)("keeps APC input bytes on %s pending Windows CI evidence", async platform => {
+		vi.resetModules();
+		vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? platform : Reflect.get(target, key) }));
+		try {
+			// This tests module initialization after stubbing the platform; a static import runs before the stub.
+			const encoder = await import("./encode");
+			expect(encoder.TSP_INPUT_FRAMING).toEqual({ win32: "apc", default: "apc" });
+			expect(encoder.TSP_PREFIX).toBe("\x1b_tsp;");
+			const event = { ev: "send", sf: "s:1", id: "editor", text: "café 🐢" };
+			expect(encoder.encodeTspJson("e", event)).toBe(`\x1b_tsp;e;${JSON.stringify(event)}\x1b\\`);
+			const edit = { ev: "edit", sf: "s:1", id: "editor", from: 0, to: 0, text: "é🐢".repeat(8), cursor: 24, len: 0 };
+			const encoded = encoder.encodeTspJson("e", edit, { sf: "s:1" }, 13);
+			const frames = encoded.split("\x1b\\").slice(0, -1);
+			expect(frames.length).toBeGreaterThan(1);
+			expect(frames.every(frame => frame.startsWith("\x1b_tsp;e;"))).toBe(true);
+			expect(encoded).not.toContain("\x1b]877;");
+			const { stream, messages, passthrough } = collect();
+			for (const byte of Buffer.from(encoded)) stream.push(Buffer.from([byte]));
+			stream.end();
+			expect(messages).toEqual([{ verb: "e", params: { sf: "s:1" }, body: JSON.stringify(edit) }]);
+			expect(passthrough()).toHaveLength(0);
+		} finally {
+			vi.unstubAllGlobals();
+			vi.resetModules();
+		}
+	});
+});
 
 describe("TSP byte stream", () => {
 	it("handles every two-piece boundary, including split ESC, terminator and UTF-8", () => {

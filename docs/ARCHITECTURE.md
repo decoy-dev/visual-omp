@@ -166,8 +166,8 @@ Worktree shutdown: the host lets omp apply its own keep, remove and ask policy. 
 Startup readiness remains an omp API gap. A live collab snapshot can precede the editor's submit gate and the outer startup worktree choice. Classic debug values and screen text do not expose that outer readiness flag. Preflight protects a worktree question already painted or being answered; it cannot establish that a later startup question will not appear. The app does not automatically resend an unacknowledged submission. See the parity findings for the source trace.
 
 The developer flag `VOMP_TSP=1` selects Tern Surface Protocol at the launch of an app-hosted
-chat on macOS or Linux. Windows ignores the flag, logs that TSP is unsupported and uses the
-classic transport until bundled ConPTY transport and packaging are verified. Classic hosts,
+chat on macOS, Linux or Windows. Windows TSP hosts alone set node-pty's `useConptyDll: true`.
+Windows runtime and packaged evidence remain pending Phase 6 CI and manual checks. Classic hosts,
 terminal-follow and their painted-screen adapters keep their existing behavior. The hidden PTY
 still runs the same omp session, private extension and collab relay. The opt-in launch sets
 `TERM_PROGRAM=tern`, removes `PI_TUI_NATIVE`, and reads raw PTY bytes. Its incremental splitter
@@ -667,6 +667,29 @@ Project instructions: `project:instructions` reads `contextFiles.extra` through 
 `src/renderer/src/registry/lazy.tsx` wraps dynamic imports for pages, Settings sections, views and sheets. Feature entry points register lazy components; registry slots render these chunks on demand. Idle preloading and explicit `preload()` calls load components before they are opened when possible. Usage, Settings sections, xterm, KaTeX and other heavier features have separate chunks. In the v0.5.0 build, the uncompressed initial renderer entry chunk is approximately 1.56 MB, xterm approximately 331 KB and KaTeX approximately 262 KB. These figures are uncompressed build-output sizes of individual chunks.
 
 `electron.vite.config.ts` bundles main and preload dependencies other than externalized packages. Pure-JavaScript main-process packages are devDependencies and are bundled into `out`; native `node-pty` remains a runtime dependency and is selectively included by `electron-builder.yml`. `electronLanguages` retains `en` and `en-US`; source maps are excluded from packaged output. `node-pty`'s package contents are trimmed to runtime files.
+
+Windows packaging stages node-pty's bundled `conpty.dll` and `OpenConsole.exe` from the sole
+`third_party/conpty/<version>/win10-<arch>` directory into `build/Release/conpty`. The
+`scripts/stage-conpty.mjs` hook runs in `beforePack` and `afterExtract`: electron-builder 26.15.3
+calls `beforePack` before native rebuild, so the second call restores the files after rebuild and
+before the app copy. macOS targets do nothing. After packaging, `scripts/after-pack.mjs` requires
+both files in `resources/app.asar.unpacked/node_modules/node-pty/build/Release/conpty` and checks
+their PE machine fields against the target x64 or arm64 architecture before changing fuses.
+
+Windows CI runs the no-model TSP transport probe with the Node-built addon before packaging,
+then checks x64 and arm64 package layouts. The x64 smoke probe runs `visual-omp.exe` with
+`ELECTRON_RUN_AS_NODE=1` and explicitly loads the unpacked, Electron-rebuilt node-pty. It repeats
+hello, acknowledgments and chunked Unicode edit/send through APC and OSC 877. System ConPTY is
+recorded separately regardless of whether it drops APC. Each framing runs in an independent child,
+so an APC timeout cannot skip OSC. Initial and pre-cleanup snapshots and appended traffic journals
+retain available evidence when setup, transport or cleanup fails; the coordinator records child
+timeouts and saves each result separately. Download and layout failures have bounded diagnostic
+JSON. Successfully written listings, hashes, diagnostics and byte captures are uploaded as the
+`windows-conpty-evidence` artifact after ordinary step failures. Disk failures, runner loss or job
+cancellation can prevent final evidence or upload. APC remains the platform input policy until
+the Windows run establishes whether OSC 877 is required. These headless
+checks do not establish installed UI behavior, child-process cleanup or Defender/SmartScreen
+acceptance; those remain Windows-machine criteria in `docs/TSP-MIGRATION.md`.
 
 `scripts/after-pack.mjs` flips Electron fuses before the existing macOS signing hook. Node-mode startup is disabled on macOS. Windows retains it because node-pty's existing console cleanup forks a Node-mode child with `ELECTRON_RUN_AS_NODE`; changing its PTY backend requires Windows testing. Node environment options and CLI inspection are disabled on both platforms; node-pty's cleanup fork supplies neither. App startup is restricted to ASAR and the embedded archive integrity check is enabled. Native node-pty files remain unpacked and outside the archive integrity check. The main bundle compiles out ws's optional `bufferutil` and `utf-8-validate` loaders, and packaging fails if either bare require is emitted. The macOS hardened runtime remains disabled under the existing signing policy.
 

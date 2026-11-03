@@ -5,6 +5,9 @@ on:
     branches: [main]
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -18,8 +21,10 @@ jobs:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
           cache: npm
@@ -31,6 +36,52 @@ jobs:
       - name: Package macOS installers
         if: runner.os == 'macOS'
         run: npm run dist:mac
-      - name: Package Windows installer
+      - name: Test Windows packaging hooks
         if: runner.os == 'Windows'
+        run: node --test scripts/stage-conpty.test.mjs scripts/after-pack.test.mjs scripts/windows-tsp-ci.test.mjs
+      - name: Install verified minimum omp for Windows evidence
+        id: omp
+        if: runner.os == 'Windows' && !cancelled()
+        env:
+          VOMP_TSP_WINDOWS_EVIDENCE: ${{ runner.temp }}/windows-tsp-evidence
+        run: node scripts/windows-tsp-ci.mjs download
+      - name: Exercise bundled and system ConPTY with Node
+        id: tsp_live
+        if: runner.os == 'Windows' && !cancelled() && steps.omp.outcome == 'success'
+        env:
+          VOMP_TSP_WINDOWS_EVIDENCE: ${{ runner.temp }}/windows-tsp-evidence
+        run: npx vitest run src/main/omp/tsp/tsp-windows.live.test.ts
+      - name: Package Windows installer
+        if: runner.os == 'Windows' && !cancelled()
+        timeout-minutes: 20
         run: npm run dist:win
+      - name: Check packaged x64 ConPTY layout
+        id: x64_layout
+        if: runner.os == 'Windows' && !cancelled()
+        env:
+          VOMP_TSP_WINDOWS_EVIDENCE: ${{ runner.temp }}/windows-tsp-evidence
+        run: node scripts/windows-tsp-ci.mjs layout release/win-unpacked x64
+      - name: Exercise packaged x64 Electron node-pty
+        if: runner.os == 'Windows' && !cancelled() && steps.omp.outcome == 'success' && steps.x64_layout.outcome == 'success'
+        env:
+          VOMP_TSP_WINDOWS_EVIDENCE: ${{ runner.temp }}/windows-tsp-evidence
+        run: node scripts/windows-tsp-ci.mjs smoke release/win-unpacked
+      - name: Package Windows arm64 layout
+        id: arm64
+        if: runner.os == 'Windows' && !cancelled()
+        timeout-minutes: 20
+        run: npx electron-builder --win dir --arm64 --publish never --config.directories.output=release-arm64
+      - name: Check packaged arm64 ConPTY layout
+        if: runner.os == 'Windows' && !cancelled() && steps.arm64.outcome == 'success'
+        env:
+          VOMP_TSP_WINDOWS_EVIDENCE: ${{ runner.temp }}/windows-tsp-evidence
+        run: node scripts/windows-tsp-ci.mjs layout release-arm64/win-arm64-unpacked arm64
+      - name: Upload Windows ConPTY evidence
+        if: runner.os == 'Windows' && !cancelled()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: windows-conpty-evidence
+          path: |
+            ${{ runner.temp }}/windows-tsp-evidence/*.json
+            ${{ runner.temp }}/windows-tsp-evidence/*.jsonl
+          if-no-files-found: error

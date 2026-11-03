@@ -722,6 +722,7 @@ describe("opt-in semantic transport", () => {
 		expect(pty.spawnOptions?.env).toMatchObject({ PI_TUI_NATIVE: "0" });
 		expect(pty.spawnOptions?.env).not.toHaveProperty("TERM_PROGRAM");
 		expect(pty.spawnOptions).not.toHaveProperty("encoding");
+		expect(pty.spawnOptions).not.toHaveProperty("useConptyDll");
 		expect(host.state.transport).toBeUndefined();
 		expect(host.tspSnapshot()).toBeNull();
 	});
@@ -732,6 +733,7 @@ describe("opt-in semantic transport", () => {
 		expect(pty.spawnOptions?.env).toMatchObject({ TERM_PROGRAM: "tern" });
 		expect(pty.spawnOptions?.env).not.toHaveProperty("PI_TUI_NATIVE");
 		expect(pty.spawnOptions?.encoding).toBeNull();
+		expect(pty.spawnOptions).not.toHaveProperty("useConptyDll");
 		expect(host.state.transport).toBe("tsp");
 		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
 		tspMessage("o", { id: "s:1", mode: "inline" });
@@ -848,18 +850,42 @@ describe("opt-in semantic transport", () => {
 		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "answering" }]);
 	});
 
-	it("ignores the opt-in flag on Windows and logs a single explanation", async () => {
-		const log = vi.spyOn(console, "info").mockImplementation(() => {});
-		try {
-			await launchTsp("win32");
-			expect(host.state.transport).toBeUndefined();
-			expect(host.tspSnapshot()).toBeNull();
-			expect(pty.spawnOptions?.env).toMatchObject({ PI_TUI_NATIVE: "0" });
-			expect(pty.spawnOptions?.env).not.toHaveProperty("TERM_PROGRAM");
-			expect(pty.spawnOptions).not.toHaveProperty("encoding");
-			expect(pty.spawnOptions).not.toHaveProperty("useConptyDll");
-			expect(log).toHaveBeenCalledExactlyOnceWith("[visual-omp] TSP is not supported on Windows yet; using classic transport.");
-		} finally { log.mockRestore(); }
+	it("uses bundled ConPTY and raw bytes for an explicitly enabled Windows TSP host", async () => {
+		await launchTsp("win32");
+		expect(pty.spawnOptions?.env).toMatchObject({ TERM_PROGRAM: "tern" });
+		expect(pty.spawnOptions?.env).not.toHaveProperty("PI_TUI_NATIVE");
+		expect(pty.spawnOptions).toMatchObject({ encoding: null, useConptyDll: true });
+		expect(parse(await readFile(pty.args[1]!, "utf8"))).not.toHaveProperty("composer");
+		expect(host.state.transport).toBe("tsp");
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer();
+		await connect();
+		expect(host.tspSnapshot()).toMatchObject({ negotiated: true, lifecycle: "live" });
+		await host.tspEvent(1, { ev: "send", sf: "s:1", id: "editor", text: "café 🐢" });
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringMatching(/^\x1b_tsp;e;.*"text":"café 🐢".*\x1b\\$/));
+	});
+
+	it.each(["", "0"])("keeps classic Windows spawn options and terminal bytes unchanged with VOMP_TSP=%s", async flag => {
+		await exit(0);
+		vi.stubEnv("VOMP_TSP", flag);
+		vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? "win32" : Reflect.get(target, key) }));
+		host = new SessionHost({ cwd: tmpdir() });
+		await host.start();
+		expect(pty.spawnOptions).toEqual({
+			name: "xterm-256color", cols: 120, rows: 36, cwd: tmpdir(),
+			env: {
+				OMP_SKIP_SETUP: "1", OMP_TUI_DEBUG: `\\\\.\\pipe\\visual-omp-${host.id}`,
+				VOMP_NATIVE_BRIDGE: "http://127.0.0.1/native", PI_TUI_NATIVE: "0",
+			},
+		});
+		expect(parse(await readFile(pty.args[1]!, "utf8")).composer).toEqual({ shape: "box" });
+		expect(host.state.transport).toBeUndefined();
+		expect(host.tspSnapshot()).toBeNull();
+		const bytes = "\x1b[200~café 🐢\x1b[201~\r";
+		host.write(bytes);
+		expect(pty.writes).toHaveBeenCalledWith(bytes);
+		pty.data?.(bytes);
+		expect(broadcast).toHaveBeenCalledWith("host:data", { hostId: host.id, data: bytes });
 	});
 
 	it.each([1, 13, 197])("replays missing-resume startup bytes in %i-byte reads with fresh-chat recovery", async size => {
