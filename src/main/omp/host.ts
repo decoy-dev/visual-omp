@@ -43,6 +43,7 @@ import { TspInputStateError, TspSession, type TspEditorTarget } from "./tsp/sess
 import { TspStream } from "./tsp/stream";
 import { worktreeExitConfirmation, type WorktreeExitConfirmation } from "./tsp/worktree";
 import { StartupDiagnosticCapture, startupDiagnostic, STARTUP_DIAGNOSTIC_MAX_CHARS } from "./startup-diagnostics";
+import { releaseWindowsConpty } from "./windows-pty-cleanup";
 
 const CollabHosts = z.object({
 	hosts: z.array(
@@ -1118,6 +1119,7 @@ export class SessionHost {
 	}
 
 	async #onExit(exitCode: number): Promise<void> {
+		const pty = this.#pty;
 		clearTimeout(this.#tspHandshakeTimer ?? undefined);
 		this.#tspHandshakeTimer = null;
 		this.#tspSurfaceGenerations.clear();
@@ -1136,8 +1138,14 @@ export class SessionHost {
 		const restoreAvailable = exitCode !== 0 && !resumeFileMissing && await crashedWithoutExit(this.state.sessionFile, this.#runStartedAt);
 		this.#pty = null;
 		this.#update({ phase: "exited", exitCode, exitReason, resumeFileMissing, restoreAvailable, programStatus: null, link: null, tui: null });
+		const released = pty && process.platform === "win32" ? releaseWindowsConpty(pty).catch(error => {
+			const reason = error instanceof Error ? error.message : String(error);
+			this.#update({ error: `Could not release omp's Windows terminal resources: ${reason}` });
+			console.error("[visual-omp] Windows terminal resource cleanup failed:", error);
+		}) : undefined;
 		this.#markExited();
-		await this.#cleanup();
+		try { await this.#cleanup(); }
+		finally { await released; }
 	}
 
 	#finishStartup(): void {

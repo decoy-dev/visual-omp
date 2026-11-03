@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 import { z } from "zod";
+import hostLabels from "../../../../shared/i18n/en/host.json";
 import { hookQuestions } from "../../../../shared/tsp/question-match";
 import { SessionHost } from "../../host";
 import { lifecyclePlatform, nativeTheme } from "./windows-lifecycle-platform";
@@ -32,8 +33,16 @@ interface Cycle {
 	stopped?: ResourceSample;
 	settled?: ResourceSample;
 	confirmations?: number;
+	workerGrowth?: Record<string, number>;
 	exitCode?: number | null;
 	error?: string;
+}
+
+function workerGrowth(before: ResourceSample, after: ResourceSample): Record<string, number> {
+	const names = new Set([...Object.keys(before.resources), ...Object.keys(after.resources)]);
+	return Object.fromEntries([...names].filter(name => /MessagePort|Worker/i.test(name))
+		.map(name => [name, (after.resources[name] ?? 0) - (before.resources[name] ?? 0)])
+		.filter(([, growth]) => Number(growth) > 0));
 }
 
 async function sample(knownPids: number[]): Promise<ResourceSample> {
@@ -68,24 +77,30 @@ async function stopWithDeadline(host: SessionHost): Promise<void> {
 if (process.platform !== "win32") throw new Error("The SessionHost lifecycle recorder requires Windows");
 const destination = process.env.VOMP_TSP_LIFECYCLE_REPORT;
 const extension = process.env.VOMP_TSP_LIFECYCLE_EXTENSION;
+const variant = process.env.VOMP_TSP;
+if (variant !== "0" && variant !== "1") throw new Error("VOMP_TSP must select classic (0) or TSP (1)");
+const transport = variant === "1" ? "tsp" : "classic";
 if (!destination || !extension || !process.env.OMP_BIN) throw new Error("Lifecycle report, extension and OMP_BIN are required");
 await mkdir(dirname(resolve(destination)), { recursive: true });
 const report = {
-	status: "running", pid: process.pid, node: process.versions,
+	status: "running", transport, variant, pid: process.pid, node: process.versions,
 	boundary: "Production SessionHost, node-pty, native bridge, relay, debug client and CLI; headless Electron UI/IPC/preferences and isolated launch environment",
 	baseline: undefined as ResourceSample | undefined,
 	cycles: [] as Cycle[],
 	final: undefined as ResourceSample | undefined,
 	growth: undefined as { threads: number; handles: number; resources: Record<string, number> } | undefined,
 	error: undefined as string | undefined,
+	profile: undefined as string | undefined,
+	retentionFailures: [] as string[],
 };
 const persist = () => writeFileSync(destination, JSON.stringify(report, null, 2));
 persist();
-const root = await mkdtemp(join(tmpdir(), "vomp-host-lifecycle-"));
+const root = await mkdtemp(join(tmpdir(), `vomp-host-lifecycle-${transport}-`));
 const knownPids: number[] = [];
 let current: SessionHost | undefined;
 try {
 	const home = join(root, "home");
+	report.profile = home;
 	const agent = join(home, ".omp", "agent");
 	await mkdir(agent, { recursive: true });
 	await writeFile(join(agent, "config.yml"), JSON.stringify({
@@ -100,7 +115,7 @@ try {
 	// Production path readers use os.homedir(); keep this isolated recorder's own home aligned.
 	process.env.HOME = home;
 	process.env.USERPROFILE = home;
-	process.env.VOMP_TSP = "1";
+	process.env.VOMP_TSP = variant;
 	report.baseline = await sample(knownPids);
 	persist();
 	for (let index = 1; index <= 3; index++) for (const mode of ["natural", "force"] as const) {
@@ -112,28 +127,65 @@ try {
 		persist();
 		try {
 			await host.start();
-			await until(() => host.state.phase === "exited" || (host.state.phase === "live" && !!host.tspSnapshot()?.availability.available), "Host did not reach a live TSP editor");
+			await until(() => host.state.phase === "exited" || (host.state.phase === "live" && (transport === "tsp"
+				? !!host.tspSnapshot()?.availability.available
+				: !!host.state.tui?.focused && host.state.tui.overlays === 0)), `Host did not reach a live ${transport} editor`);
 			if (host.state.phase === "exited") throw new Error(`omp exited during startup: ${host.state.error ?? host.state.exitReason ?? host.state.exitCode}`);
 			cycle.pid = host.state.pid ?? undefined;
 			if (cycle.pid) knownPids.push(cycle.pid);
 			cycle.live = await sample(knownPids);
 			persist();
-			if (mode === "force") {
-				await host.submit("/vomp-fixture-select");
-				await until(() => hookQuestions(host.tspSnapshot()?.surfaces ?? [], host.state.generation).length > 0, "Force-stop fixture did not open its hook");
+			const releaseInput = Promise.withResolvers<void>();
+			let heldInput: Promise<void> | undefined;
+			try {
+				if (mode === "force") {
+					if (transport === "tsp") {
+						await host.submit("/vomp-fixture-select");
+						await until(() => hookQuestions(host.tspSnapshot()?.surfaces ?? [], host.state.generation).length > 0, "Force-stop fixture did not open its hook");
+					} else {
+						// Classic stop dismisses overlays. Hold a public input transaction instead,
+						// so production input draining offers its confirmed force-stop decision.
+						let entered = false;
+						heldInput = host.withEditorInput(async () => {
+							entered = true;
+							await releaseInput.promise;
+						});
+						void heldInput.catch(() => undefined);
+						await Promise.race([until(() => entered, "Classic input transaction did not start"), heldInput]);
+						if (!entered) throw new Error("Classic input transaction finished without holding input");
+					}
+				}
+				const before = lifecyclePlatform.confirmations.length;
+				await stopWithDeadline(host);
+				cycle.confirmations = lifecyclePlatform.confirmations.length - before;
+			} finally {
+				// The transaction stays held until the production stop has finished.
+				releaseInput.resolve();
+				try { await heldInput; }
+				catch (error) {
+					// Production verifies the transaction again after its callback returns.
+					// Successful confirmed shutdown has already closed application input.
+					const stoppedState = host.state;
+					if (!(transport === "classic" && mode === "force" && cycle.confirmations === 1
+						&& stoppedState.phase === "exited" && error instanceof Error && error.message === hostLabels.closingInput)) throw error;
+				}
 			}
-			const before = lifecyclePlatform.confirmations.length;
-			await stopWithDeadline(host);
 			await until(() => host.state.phase === "exited", "Stopped host did not publish exit");
-			cycle.confirmations = lifecyclePlatform.confirmations.length - before;
+			cycle.confirmations ??= 0;
 			cycle.exitCode = host.state.exitCode;
 			cycle.stopped = await sample(knownPids);
 			persist();
 			// Real integration settling: SessionHost's force-stop timer lasts 4s; node-pty's flush lasts 1s.
 			await sleep(5500);
 			cycle.settled = await sample(knownPids);
+			if (host.state.error) throw new Error(`Stopped ${transport} host reported an error: ${host.state.error}`);
 			if (mode === "natural" && (cycle.confirmations !== 0 || cycle.exitCode !== 0)) throw new Error("Natural /exit required force confirmation or exited nonzero");
 			if (mode === "force" && cycle.confirmations !== 1) throw new Error("Force-stop did not use exactly one confirmed production shutdown decision");
+			cycle.workerGrowth = workerGrowth(cycle.before, cycle.settled);
+			const baselineGrowth = workerGrowth(report.baseline, cycle.settled);
+			if (Object.keys(cycle.workerGrowth).length || Object.keys(baselineGrowth).length) {
+				report.retentionFailures.push(`${mode} ${index}: worker resources grew after settling; cycle=${JSON.stringify(cycle.workerGrowth)}, baseline=${JSON.stringify(baselineGrowth)}`);
+			}
 		} catch (error) {
 			cycle.error = error instanceof Error ? error.message : String(error);
 			persist();
@@ -147,7 +199,11 @@ try {
 	report.growth = { threads: report.final.threadCount - report.baseline.threadCount, handles: report.final.handleCount - report.baseline.handleCount,
 		resources: Object.fromEntries([...names].map(name => [name, (report.final!.resources[name] ?? 0) - (report.baseline!.resources[name] ?? 0)])) };
 	report.status = "complete";
-	console.log(`SessionHost lifecycle growth (evidence only): ${JSON.stringify(report.growth)}`);
+	console.log(`SessionHost ${transport} lifecycle growth (thread, handle and other resource totals are observational): ${JSON.stringify(report.growth)}`);
+	if (report.retentionFailures.length) {
+		console.error(report.retentionFailures.join("\n"));
+		process.exitCode = 1;
+	}
 } catch (error) {
 	report.status = "failed";
 	report.error = error instanceof Error ? error.message : String(error);
