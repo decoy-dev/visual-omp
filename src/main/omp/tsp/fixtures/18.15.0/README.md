@@ -30,6 +30,12 @@ loopback scripts exercise steer, follow-up delivery, Escape restoration, large t
 attachment, approval denial, ask ownership and prediction acceptance. Shell and Python scenarios
 configure the local model without making a provider request. `image-attach` also attaches a collab guest.
 
+`image-attach` was re-recorded on 2026-11-03 after matching classic attachment order. The recorder
+clears the editor and pastes image paths in one write, waits for omp's image chips, then appends
+the prompt and submits in one write. The saved collab text and loopback provider request retain
+`[Image #1, 200x200] Fixture image prompt`, including omp's separator. This replaces the existing
+recording without adding a scenario. With the navigation and advisor captures below, the baseline contains 89 recordings and 89 integrity manifests.
+
 Phase 4b adds three no-model worktree recordings. Each creates a fresh scratch git repository and an initial commit.
 `worktree-start-ask` enables `worktree.onStart: ask` and records the creation question without
 answering it. The exit scenarios keep startup creation off, create an owned worktree through
@@ -141,7 +147,7 @@ The sanitizer replaces OSC 7 hosts with `localhost` and private home and tempora
 | shell-bang | Semantic `!` and `!!` sends produce shell execution output without a model turn. |
 | python-dollar | Semantic `$ 1+1` produces an eval execution block without a model turn. |
 | paste-large | A large multiline message travels through a chunked semantic send. |
-| image-attach | The text edit and image path paste share one write, attachment appears in the document, and `action submit` produces an image-bearing user message in collab and the provider request. |
+| image-attach | A clear edit and image path paste share one write. After attachment appears in the document, an append edit and `action submit` share one write, producing markers-first text with a separating space in collab and the provider request. |
 | approval-send-denies | An always-ask bash request opens approval; sending text records a denied tool result and a steering user message. |
 | ask-replaces-editor | A scripted ask tool replaces the main dock editor. The recording ends with that question open. |
 | prediction-ghost | A second scripted request supplies the semantic editor ghost; Tab inserts it, and a len-checked edit clears it before exit. |

@@ -258,10 +258,11 @@ composer so it denies the request and steers. Slash commands and model/thinking 
 while approval waits. Other hook dialogs retain the guarded answer path and D10 policy.
 
 Follow-up submission writes one len-checked `edit` and Ctrl+Q through the same atomic writer.
-Images write the text edit and bracketed image-path paste together, wait for every new image node
-under `omp.composer.chips`, then send the editor's `submit` action. `send` is deliberately excluded
-from that attachment path because omp omits staged images. Protocol credits continue during the
-attachment wait. A failure after the paste activates the existing stranded-image recovery gate.
+Images clear the editor and paste bracketed image paths together, wait for every new image node
+under `omp.composer.chips`, then append the prompt text and submit in one atomic write. This keeps
+omp's image markers before the text, with its own separating space, as in classic chats. `send`
+is excluded because omp omits staged images. Protocol credits continue during the attachment wait.
+A failure after the paste activates the existing stranded-image recovery gate.
 Application pastes retain the bracketed-paste path. `EditorInputTransaction.edit` provides exact
 semantic edits under the same host lock; all transaction access expires when the callback returns.
 

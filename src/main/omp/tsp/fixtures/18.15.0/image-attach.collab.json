@@ -1,9 +1,9 @@
 [
   {
     "type": "model_change",
-    "id": "7725fbf2",
+    "id": "fd1e44a0",
     "parentId": null,
-    "timestamp": "2026-11-02T21:23:24.151Z",
+    "timestamp": "2026-11-03T16:35:03.771Z",
     "runtime": {
       "version": "18.15.0"
     },
@@ -12,9 +12,9 @@
   },
   {
     "type": "thinking_level_change",
-    "id": "66db9057",
-    "parentId": "7725fbf2",
-    "timestamp": "2026-11-02T21:23:24.152Z",
+    "id": "3c4d7de9",
+    "parentId": "fd1e44a0",
+    "timestamp": "2026-11-03T16:35:03.771Z",
     "runtime": {
       "version": "18.15.0"
     },
@@ -31,18 +31,18 @@
       "path": "/tmp/vomp-fixture/fixture.png"
     },
     "attribution": "user",
-    "id": "cae194e0",
-    "parentId": "66db9057",
-    "timestamp": "2026-11-02T21:23:25.670Z",
+    "id": "85d2bee2",
+    "parentId": "3c4d7de9",
+    "timestamp": "2026-11-03T16:35:07.998Z",
     "runtime": {
       "version": "18.15.0"
     }
   },
   {
     "type": "message",
-    "id": "ad4d9455",
-    "parentId": "cae194e0",
-    "timestamp": "2026-11-02T21:23:25.721Z",
+    "id": "0ab20200",
+    "parentId": "85d2bee2",
+    "timestamp": "2026-11-03T16:35:08.134Z",
     "runtime": {
       "version": "18.15.0"
     },
@@ -51,7 +51,7 @@
       "content": [
         {
           "type": "text",
-          "text": "Fixture image prompt[Image #1, 200x200]"
+          "text": "[Image #1, 200x200] Fixture image prompt"
         },
         {
           "type": "image",
@@ -60,7 +60,7 @@
         }
       ],
       "attribution": "user",
-      "timestamp": 1793654605670
+      "timestamp": 1793723707998
     }
   }
 ]

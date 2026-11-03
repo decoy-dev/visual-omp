@@ -108,21 +108,50 @@ describe("recorded TSP composer input", () => {
 		await h.finish();
 	});
 
+	it("replays image markers before text with omp's separator intact", async () => {
+		const h = replay("image-attach");
+		await h.session.submitImages("Fixture image prompt", "/tmp/vomp-fixture/fixture.png", () => {});
+		const application: RecordedEvent[] = [];
+		const output = new TspStream({
+			onData: bytes => application.push({ keys: bytes.toString(), afterMessage: 0 }),
+			onMessage: message => {
+				const body = JSON.parse(message.body);
+				if (message.verb === "e" && body.ev !== "ack") application.push({ body, afterMessage: 0 });
+			},
+		});
+		for (const write of h.writes) output.push(Buffer.from(write));
+		expect(application.map(({ afterMessage: _, ...event }) => event)).toEqual([
+			{ body: { ev: "edit", sf: "s:1", id: "g.line/input", from: 0, to: 0, text: "", cursor: 0, len: 0 } },
+			{ keys: "\x1b[200~/tmp/vomp-fixture/fixture.png\x1b[201~" },
+			{ body: { ev: "edit", sf: "s:1", id: "g.line/input", from: 5, to: 5, text: "Fixture image prompt", cursor: 25, len: 5 } },
+			{ body: { ev: "action", sf: "s:1", id: "g.line/input", act: "submit" } },
+		]);
+		const append = h.writes.find(write => write.includes('"text":"Fixture image prompt"'));
+		expect(append).toContain('"act":"submit"');
+		await h.session.submit("/exit");
+		await h.finish();
+	});
+
 	it("retains the original image in omp's collab user message", () => {
 		const entries = JSON.parse(fixture("image-attach", "collab.json"));
 		const user = entries.find((entry: { type: string; message?: { role: string } }) => entry.type === "message" && entry.message?.role === "user");
 		expect(user.message.content).toContainEqual(expect.objectContaining({ type: "image", mimeType: expect.stringMatching(/^image\//), data: expect.any(String) }));
-		expect(user.message.content).toContainEqual(expect.objectContaining({ type: "text", text: expect.stringContaining("Fixture image prompt") }));
+		expect(user.message.content).toContainEqual({ type: "text", text: "[Image #1, 200x200] Fixture image prompt" });
+		const provider = JSON.parse(fixture("image-attach", "provider.json"));
+		const content = provider[0].messages.filter((message: { role: string; content: unknown }) => message.role === "user" && Array.isArray(message.content))
+			.flatMap((message: { content: unknown[] }) => message.content);
+		expect(content).toContainEqual({ type: "text", text: "[Image #1, 200x200] Fixture image prompt" });
 	});
 
-	it("keeps edit and image paste atomic when an ack arrives during that write", async () => {
+	it("keeps image staging and the later append plus submit atomic around acknowledgments", async () => {
 		const writes: string[] = [];
 		let submitted = false;
 		const session = new TspSession({ cols: 100, dark: false, reduceMotion: true, write: data => {
 			writes.push(data);
-			if (data.includes('"ev":"edit"')) {
+			if (data.includes("\x1b[200~")) {
+				expect(data).toContain('"text":"","cursor":0,"len":9');
 				expect(data).toContain('\x1b[200~/fixture.png\x1b[201~');
-				receive("f", { sf: "s", s: 2, ops: [["add", "image", "chips", null, { id: "image", k: "image", p: { alt: "Attached image" } }]] });
+				receive("f", { sf: "s", s: 2, ops: [["set", "input", { text: "IMAGE #1 ", cursor: 9 }], ["add", "image", "chips", null, { id: "image", k: "image", p: { alt: "Attached image" } }]] });
 			}
 			if (data.includes('"act":"submit"')) submitted = true;
 		} });
@@ -138,6 +167,9 @@ describe("recorded TSP composer input", () => {
 		expect(ack).toBeGreaterThan(edit);
 		expect(writes[edit]).toContain('"len":9');
 		expect(writes[edit + 1]).toContain('"ev":"ack"');
+		const append = writes.find(data => data.includes('"text":"Image question"'));
+		expect(append).toContain('"from":9,"to":9');
+		expect(append).toContain('"act":"submit"');
 		expect(writes.some(data => data.includes('"ev":"send"'))).toBe(false);
 	});
 
@@ -151,7 +183,7 @@ describe("recorded TSP composer input", () => {
 		const sending = session.submitImages("", "/first.png /second\\ image.png", () => {});
 		const rejected = outcome === "replace" ? expect(sending).rejects.toThrow("Image submission needs recovery") : null;
 		await session.drain();
-		receive("f", { sf: "s", s: 2, ops: [["add", "first", "chips", null, { id: "first", k: "image", p: { alt: "First image" } }]] });
+		receive("f", { sf: "s", s: 2, ops: [["set", "input", { text: "\uf03e #1 ", cursor: 5 }], ["add", "first", "chips", null, { id: "first", k: "image", p: { alt: "First image" } }]] });
 		await session.drain();
 		expect(writes.some(data => data.includes('"ev":"ack","sf":"s","s":2'))).toBe(true);
 		expect(writes.some(data => data.includes('"act":"submit"'))).toBe(false);
@@ -160,9 +192,12 @@ describe("recorded TSP composer input", () => {
 			await rejected;
 			expect(writes.some(data => data.includes('"act":"submit"'))).toBe(false);
 		} else {
-			receive("f", { sf: "s", s: 3, ops: [["add", "second", "chips", null, { id: "second", k: "image", p: { alt: "Second image" } }]] });
+			receive("f", { sf: "s", s: 3, ops: [["set", "input", { text: "\uf03e #1 \uf03e #2 ", cursor: 10 }], ["add", "second", "chips", null, { id: "second", k: "image", p: { alt: "Second image" } }]] });
 			await sending;
 			expect(writes.filter(data => data.includes('"act":"submit"'))).toHaveLength(1);
+			const submit = writes.find(data => data.includes('"act":"submit"'));
+			expect(submit).toContain('"from":10,"to":10,"text":"","cursor":10,"len":10');
+			expect(writes.some(data => data.includes("\x1b[200~\x1b[201~"))).toBe(false);
 		}
 	});
 });

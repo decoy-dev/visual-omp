@@ -397,15 +397,15 @@ export class TspSession {
 			const now = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
 			if (epoch !== this.#epoch || this.#surfaces.get(facts.surfaceId!) !== original || now.editorId !== facts.editorId || now.surfaceId !== facts.surfaceId) throw new TspInputStateError("The editor changed before the image could be submitted.");
 		};
-		const imageCount = () => this.snapshot().surfaces.filter(surface => surface.open.id === facts.surfaceId).flatMap(surface => [...walkNodes(surface.document)]).filter(node => node.p?.role === TSP_ROLES.composerChips).flatMap(node => [...walkNodes(node)]).filter(node => node.k === "image").length;
-		const expected = imageCount() + (paths.match(/(?:\\.|[^\s])+/g)?.length ?? 0);
-		await this.editAndKeys(0, facts.text.length, text, text.length, `\x1b[200~${paths}\x1b[201~`, assertCurrent, surfaceAllowed);
+		const expected = this.imageCount(facts.surfaceId!) + (paths.match(/(?:\\.|[^\s])+/g)?.length ?? 0);
+		// omp inserts image atoms at the cursor, including their trailing separator.
+		await this.editAndKeys(0, facts.text.length, "", 0, `\x1b[200~${paths}\x1b[201~`, assertCurrent, surfaceAllowed);
 		try {
-			await this.waitFor(() => imageCount() >= expected, assertTarget, 8000, "omp did not attach the image. Check its editor before sending again.");
-			await this.send({ ev: "action", sf: facts.surfaceId!, id: facts.editorId!, act: TSP_ACTIONS.submit }, () => {
-				assertTarget();
-				if (!this.availability(surfaceAllowed).available) throw new TspInputStateError("The editor changed before the image could be submitted.");
-			});
+			await this.waitFor(() => this.imageCount(facts.surfaceId!) >= expected, assertTarget, 8000, "omp did not attach the image. Check its editor before sending again.");
+			const attached = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
+			const submit = { ev: "action", sf: facts.surfaceId!, id: facts.editorId!, act: TSP_ACTIONS.submit } as const;
+			await this.editAndKeys(attached.text.length, attached.text.length, text, attached.text.length + text.length,
+				encodeTspJson("e", submit), assertTarget, surfaceAllowed);
 		} catch (error) {
 			throw new TspInputStateError(`TSP preview: Image submission needs recovery. ${error instanceof Error ? error.message : String(error)}`);
 		}

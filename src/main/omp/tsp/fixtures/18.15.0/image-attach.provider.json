@@ -20,11 +20,11 @@
         "content": [
           {
             "type": "text",
-            "text": "<system-reminder>\nToday: 2026-11-02; current working directory: '/tmp/vomp-fixture'. Do not repeat this information in your reply.\n</system-reminder>"
+            "text": "<system-reminder>\nToday: 2026-11-03; current working directory: '/tmp/vomp-fixture'. Do not repeat this information in your reply.\n</system-reminder>"
           },
           {
             "type": "text",
-            "text": "Fixture image prompt[Image #1, 200x200]"
+            "text": "[Image #1, 200x200] Fixture image prompt"
           },
           {
             "type": "image_url",
