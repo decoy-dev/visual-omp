@@ -1,6 +1,6 @@
 import { execFileSync as executeFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { appendFile, mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { build } from "esbuild";
@@ -13,6 +13,7 @@ export const WINDOWS_TSP_CI_LIMITS = Object.freeze({
 	downloadTimeoutMs: 30_000,
 	versionTimeoutMs: 10_000,
 	smokeTimeoutMs: 90_000,
+	lifecycleTimeoutMs: 300_000,
 	diagnosticTextBytes: 4_096,
 	diagnosticBytes: 65_536,
 });
@@ -96,6 +97,23 @@ async function fetchDownload(version, fetch, timeoutMs, context) {
 	}
 }
 
+/** Keep the actual SessionHost and native transports; adapt only desktop/launch boundaries. */
+export async function buildWindowsLifecycleProbe(project, outfile) {
+	const platform = join(project, "src/main/omp/tsp/testing/windows-lifecycle-platform.ts");
+	return build({
+		entryPoints: [join(project, "src/main/omp/tsp/testing/windows-lifecycle.ts")],
+		outfile, bundle: true, platform: "node", format: "esm", external: ["node-pty"],
+		alias: { "@shared": join(project, "src/shared"), "@oh-my-pi/pi-wire": join(project, "src/renderer/src/collab/wire/index.ts") },
+		banner: { js: "import { createRequire as lifecycleCreateRequire } from 'node:module'; const require = lifecycleCreateRequire(import.meta.url);" },
+		plugins: [{
+			name: "headless-lifecycle-boundaries",
+			setup(builder) {
+				builder.onResolve({ filter: /^(electron|\.\.\/(env|ipc|prefs)|\.\/locate)$/ }, () => ({ path: platform }));
+			},
+		}],
+	});
+}
+
 /** Run a CI operation without invoking the command line when this module is imported. */
 export async function runWindowsTspCi(argv, {
 	project = defaultProject,
@@ -147,7 +165,7 @@ export async function runWindowsTspCi(argv, {
 		} else if (command === "smoke") {
 			const app = resolve(argv[1]);
 			const probe = join(evidence, "packaged-probe.mjs");
-			await build({ entryPoints: [join(project, "src/main/omp/tsp/windows-probe.ts")], outfile: probe, bundle: true, platform: "node", format: "esm", external: ["node-pty"] });
+			await build({ entryPoints: [join(project, "src/main/omp/tsp/windows-probe-cli.ts")], outfile: probe, bundle: true, platform: "node", format: "esm", external: ["node-pty"] });
 			const native = join(app, "resources/app.asar.unpacked/node_modules/node-pty");
 			// Run the packaged executable and its Electron-rebuilt addon, never the development addon.
 			execFileSync(join(app, "visual-omp.exe"), [probe], {
@@ -155,11 +173,33 @@ export async function runWindowsTspCi(argv, {
 				env: { ...env, ELECTRON_RUN_AS_NODE: "1", VOMP_NODE_PTY: native,
 					VOMP_TSP_WINDOWS_REPORT: join(evidence, "packaged-x64.json") },
 			});
+		} else if (command === "lifecycle") {
+			// Static external imports resolve from the bundle, not cwd or the createRequire banner.
+			// Keep the executable beneath this checkout so node-pty finds its native installation.
+			const bundleDir = await mkdtemp(join(resolve(project), ".tsp-host-lifecycle-"));
+			const recorder = join(bundleDir, "host-lifecycle.mjs");
+			const report = join(evidence, "host-lifecycle.json");
+			try {
+				context.phase = "build";
+				await buildWindowsLifecycleProbe(project, recorder);
+				context.phase = "run";
+				context.timeoutMs = WINDOWS_TSP_CI_LIMITS.lifecycleTimeoutMs;
+				execFileSync(process.execPath, [recorder], {
+					stdio: "pipe", timeout: WINDOWS_TSP_CI_LIMITS.lifecycleTimeoutMs, killSignal: "SIGKILL", maxBuffer: 1024 * 1024,
+					env: { ...env, VOMP_TSP_LIFECYCLE_REPORT: report,
+						VOMP_TSP_LIFECYCLE_EXTENSION: join(project, "src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs") },
+				});
+				const result = JSON.parse(await readFile(report, "utf8"));
+				if (result.status !== "complete") throw new Error(`SessionHost lifecycle recorder did not complete: ${result.error ?? result.status}`);
+				console.log(`SessionHost lifecycle resource growth (evidence only; requires review): ${JSON.stringify(result.growth)}`);
+			} finally {
+				await rm(bundleDir, { recursive: true, force: true });
+			}
 		} else {
 			throw new Error(`Unknown Windows TSP CI command: ${command}`);
 		}
 	} catch (error) {
-		if (command === "download" || command === "layout") await persistFailure(evidence, context, error);
+		if (command === "download" || command === "layout" || command === "lifecycle") await persistFailure(evidence, context, error);
 		throw error;
 	}
 }

@@ -1,6 +1,6 @@
 import { execFile, type ExecFileException } from "node:child_process";
 import { readFileSync } from "node:fs";
-import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { spawn as spawnPty } from "node-pty";
@@ -124,6 +124,8 @@ import { exitWindowsProbe } from ${JSON.stringify(resolve("src/main/omp/tsp/wind
 new Worker("setInterval(() => {}, 1000)", { eval: true });
 exitWindowsProbe(JSON.parse(process.env.PROBE_RESULT), process.env.SYSTEM_PROBE === "1");
 `, resolveDir: process.cwd(), sourcefile: "exit-probe.ts" }, outfile: entry, bundle: true, platform: "node", format: "esm", external: ["node-pty"] });
+		// Canonical paths make import.meta.url equal argv[1], including on macOS's /var symlink.
+		const executableEntry = await realpath(entry);
 		const healthy = { ...complete, framing: "apc", traffic: [{ direction: "out", base64: "b3V0cHV0", at: 1 }] };
 		for (const [result, system, code] of [
 			[healthy, false, 0],
@@ -133,13 +135,17 @@ exitWindowsProbe(JSON.parse(process.env.PROBE_RESULT), process.env.SYSTEM_PROBE 
 			[{ ...healthy, earlyExit: { exitCode: 1 } }, true, 1],
 			[{ ...healthy, subprocessError: "child failed" }, true, 1],
 		] as const) {
-			const done = Promise.withResolvers<ExecFileException | null>();
-			execFile(process.execPath, [entry], { env: { ...process.env, PROBE_RESULT: JSON.stringify(result), SYSTEM_PROBE: system ? "1" : "0" }, timeout: 3000 },
-				error => done.resolve(error));
-			const error = await done.promise;
+			const done = Promise.withResolvers<{ error: ExecFileException | null; stdout: string; stderr: string }>();
+			const env: NodeJS.ProcessEnv = { ...process.env, PROBE_RESULT: JSON.stringify(result), SYSTEM_PROBE: system ? "1" : "0" };
+			delete env.OMP_BIN;
+			delete env.VOMP_TSP_WINDOWS_REPORT;
+			execFile(process.execPath, [executableEntry], { env, timeout: 3000 },
+				(error, stdout, stderr) => done.resolve({ error, stdout, stderr }));
+			const output = await done.promise;
+			const details = `Expected ${code}, system=${system}; ${output.error?.message ?? ""}\nstdout=${output.stdout}\nstderr=${output.stderr}`;
 			// This integration test requires a real worker and OS process termination.
-			expect(error?.killed ?? false).toBe(false);
-			expect(error?.code ?? 0).toBe(code);
+			expect(output.error?.killed ?? false, details).toBe(false);
+			expect(output.error?.code ?? 0, details).toBe(code);
 		}
 	}, 20_000);
 

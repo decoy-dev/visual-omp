@@ -11,7 +11,7 @@ describe.skipIf(!process.env.OMP_BIN || process.platform !== "win32")("Windows C
 	beforeAll(async () => {
 		root = await mkdtemp(join(process.cwd(), ".tsp-windows-live-"));
 		probe = join(root, "probe.mjs");
-		await build({ entryPoints: [resolve("src/main/omp/tsp/windows-probe.ts")], outfile: probe,
+		await build({ entryPoints: [resolve("src/main/omp/tsp/windows-probe-cli.ts")], outfile: probe,
 			bundle: true, platform: "node", format: "esm", external: ["node-pty"],
 		});
 	});

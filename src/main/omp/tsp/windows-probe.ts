@@ -5,7 +5,6 @@ import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
-import { fileURLToPath } from "node:url";
 import type { IPty, spawn as spawnPty } from "node-pty";
 import type { TspEvent } from "../../../shared/tsp";
 import { walkNodes } from "../../../shared/tsp/view-state";
@@ -189,7 +188,7 @@ interface ProbeRunOptions {
 	destination: string;
 	system: boolean;
 	executable?: string;
-	entry?: string;
+	entry: string;
 	childTimeoutMs?: number;
 }
 
@@ -205,7 +204,7 @@ export async function runWindowsProbes(options: ProbeRunOptions) {
 		const timeoutMs = options.childTimeoutMs ?? CHILD_TIMEOUT_MS;
 		const started = Date.now();
 		const done = Promise.withResolvers<{ error: ExecFileException | null; stdout: string; stderr: string }>();
-		execFile(options.executable ?? process.execPath, [options.entry ?? fileURLToPath(import.meta.url), "--probe", framing, ...(options.system ? ["--system"] : [])], {
+		execFile(options.executable ?? process.execPath, [options.entry, "--probe", framing, ...(options.system ? ["--system"] : [])], {
 			env: { ...process.env, OMP_BIN: options.bin, VOMP_TSP_WINDOWS_REPORT: destination },
 			timeout: timeoutMs, maxBuffer: 64 * 1024,
 		}, (error, stdout, stderr) => done.resolve({ error, stdout, stderr }));
@@ -255,23 +254,3 @@ export function exitWindowsProbe(result: WindowsProbeResult, system: boolean): n
 	process.exit(windowsProbeFailed(result, system) ? 1 : 0);
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-	if (process.platform !== "win32") throw new Error("The Windows TSP probe requires Windows.");
-	const bin = process.env.OMP_BIN;
-	const destination = process.env.VOMP_TSP_WINDOWS_REPORT;
-	if (!bin || !destination) throw new Error("OMP_BIN and VOMP_TSP_WINDOWS_REPORT are required.");
-	const system = process.argv.includes("--system");
-	const probeArg = process.argv.indexOf("--probe");
-	if (probeArg !== -1) {
-		const framing = process.argv[probeArg + 1];
-		if (framing !== "apc" && framing !== "osc877") throw new Error(`Invalid probe framing: ${framing}`);
-		const result = await runWindowsProbe(resolve(bin), !system, framing, destination);
-		result.activeResourcesAtExit = process.getActiveResourcesInfo();
-		writeFileSync(destination, JSON.stringify(result));
-		exitWindowsProbe(result, system);
-	} else {
-		const report = await runWindowsProbes({ bin: resolve(bin), system, destination });
-		console.log(JSON.stringify(report.results.map(({ traffic, ...result }) => ({ ...result, trafficChunks: traffic.length }))));
-		if (report.results.some(result => windowsProbeFailed(result, system))) process.exitCode = 1;
-	}
-}
