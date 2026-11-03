@@ -1,18 +1,20 @@
 /** `github` — gh CLI dispatch: repo views, PRs, searches, Actions run watch. */
+import { Hourglass } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { Badge, InvalidArg, Kv, KvGrid, Note, Output, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, normalizeWs, num, shortenPath, str, truncate } from "../util";
 
-const SUCCESS_CONCLUSIONS: Record<string, true> = { success: true, neutral: true, skipped: true };
-const FAILURE_CONCLUSIONS: Record<string, true> = {
-	failure: true,
-	timed_out: true,
-	cancelled: true,
-	action_required: true,
-	startup_failure: true,
+const SUCCESS_CONCLUSIONS: Record<string, string> = { success: "Succeeded", neutral: "Neutral", skipped: "Skipped" };
+const FAILURE_CONCLUSIONS: Record<string, string> = {
+	failure: "Failed",
+	timed_out: "Timed out",
+	cancelled: "Cancelled",
+	action_required: "Action required",
+	startup_failure: "Startup failure",
 };
 const RUNNING_STATUSES: Record<string, true> = { in_progress: true };
+const PENDING_STATUSES: Record<string, true> = { queued: true, requested: true, waiting: true, pending: true };
 
 /** `123`, a PR/issue URL, or a branch name → `#123` or a truncated literal. */
 function issueId(value: string): string | null {
@@ -120,13 +122,14 @@ function ArgsGrid({ args }: { args: Record<string, unknown> }): ReactNode {
 	return rows.length > 0 ? <KvGrid>{rows}</KvGrid> : null;
 }
 
-function jobVisual(job: Record<string, unknown>): { icon: string; cls: string } {
+function jobVisual(job: Record<string, unknown>): { icon: ReactNode; cls: string; label: string } {
 	const conclusion = str(job.conclusion);
 	const status = str(job.status);
-	if (conclusion && SUCCESS_CONCLUSIONS[conclusion]) return { icon: "✓", cls: "tv-ok-text" };
-	if (conclusion && FAILURE_CONCLUSIONS[conclusion]) return { icon: "✕", cls: "tv-err-text" };
-	if (status && RUNNING_STATUSES[status]) return { icon: "●", cls: "tv-warn-text" };
-	return { icon: "○", cls: "tv-faint" };
+	if (conclusion && SUCCESS_CONCLUSIONS[conclusion]) return { icon: "✓", cls: "tv-ok-text", label: SUCCESS_CONCLUSIONS[conclusion] };
+	if (conclusion && FAILURE_CONCLUSIONS[conclusion]) return { icon: "✕", cls: "tv-err-text", label: FAILURE_CONCLUSIONS[conclusion] };
+	if (status && RUNNING_STATUSES[status]) return { icon: "●", cls: "tv-warn-text", label: "Running" };
+	if (status && PENDING_STATUSES[status]) return { icon: <Hourglass size={14} aria-hidden="true" />, cls: "tv-muted", label: "Pending" };
+	return { icon: "○", cls: "tv-faint", label: "Unknown status" };
 }
 
 function RunBlock({ run }: { run: Record<string, unknown> }): ReactNode {
@@ -166,7 +169,7 @@ function RunBlock({ run }: { run: Record<string, unknown> }): ReactNode {
 				const duration = num(job.durationSeconds);
 				return (
 					<Row key={num(job.id) ?? index}>
-						<span className={visual.cls}>{visual.icon}</span> <span>{str(job.name) ?? "job"}</span>
+						<span className={`tv-job-state ${visual.cls}`} role="img" aria-label={visual.label}>{visual.icon}</span> <span>{str(job.name) ?? "job"}</span>
 						{duration !== null && <span className="tv-faint"> {duration}s</span>}
 					</Row>
 				);

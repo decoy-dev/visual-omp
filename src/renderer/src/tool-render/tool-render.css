@@ -254,6 +254,15 @@
 	color: var(--tv-faint);
 }
 
+/* Job-state marks stay inline when an icon contains an SVG (Tailwind resets SVGs to block). */
+.tv-job-state {
+	display: inline-flex;
+	width: 1.25em;
+	align-items: center;
+	justify-content: center;
+	vertical-align: text-bottom;
+}
+
 .tv-err-text {
 	color: var(--tv-err);
 }
