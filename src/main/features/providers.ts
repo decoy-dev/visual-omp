@@ -26,7 +26,7 @@ import { broadcast, handle } from "../ipc";
 import { runOmp } from "../omp/cli";
 import { NEUTRAL_CWD } from "../omp/config-file";
 import { ompPath } from "../omp/locate";
-import { rpcRequest } from "../omp/rpc";
+import { rpcRequest, rpcRequests } from "../omp/rpc";
 import { ompErrorMessage, parseModels, UsageJsonSchema } from "../services/omp-config";
 import { configWritten } from "./config";
 
@@ -81,6 +81,35 @@ function loginProviders(): Promise<OmpLoginProvider[]> {
 	return loginProvidersCache;
 }
 
+/**
+ * Usage omits plain API keys for providers without usage reporting. Ask omp's own logout
+ * listing for stored-account evidence, retaining only canonical provider ids, never credentials.
+ * Older omp builds may lack this request or return a different shape; their usage evidence remains.
+ */
+async function storedProviders(providerIds: string[]): Promise<Set<string>> {
+	if (providerIds.length === 0) return new Set();
+	try {
+		const results = await rpcRequests(NEUTRAL_CWD, providerIds.map(providerId => ({
+			type: "get_logout_accounts", params: { providerId },
+		})), {
+			flags: RPC_FLAGS,
+			timeoutMs: LIST_TIMEOUT_MS,
+			messages: {
+				timeout: "omp did not list its stored accounts in time.",
+				exited: "omp stopped before listing its stored accounts.",
+				failed: "omp did not list its stored accounts.",
+			},
+		});
+		const schema = z.object({ accounts: z.array(z.object({ provider: z.string().min(1) })) });
+		return new Set(results.flatMap(result => {
+			const parsed = schema.safeParse(result);
+			return parsed.success ? parsed.data.accounts.map(account => account.provider) : [];
+		}));
+	} catch {
+		return new Set();
+	}
+}
+
 // ─── Provider state ────────────────────────────────────────────────────────
 
 /** omp records its own sign-out as a disabled credential; that is not something to fix. */
@@ -123,10 +152,16 @@ async function readState(): Promise<ProvidersState> {
 		]);
 	}
 
+	const candidates = new Set([
+		...byProvider.keys(),
+		...logins.filter(login => login.authenticated).map(login => login.method.id),
+	]);
+	const stored = await storedProviders([...candidates].filter(id => !accounts.has(id) && !disabled.has(id)));
+
 	// Alias logins inherit their base provider's authenticated flag, but RPC omits storeCredentialsAs.
 	// Only independent model/account/credential evidence creates a row. All login methods remain
 	// available for signing in; an authenticated alias alone must not create a duplicate provider.
-	const ids = new Set<string>([...byProvider.keys(), ...accounts.keys(), ...disabled.keys()]);
+	const ids = new Set<string>([...byProvider.keys(), ...accounts.keys(), ...disabled.keys(), ...stored]);
 
 	const connected: ConnectedProvider[] = [...ids].map(id => {
 		const login = logins.find(entry => entry.method.id === id);
@@ -140,8 +175,8 @@ async function readState(): Promise<ProvidersState> {
 			accounts: providerAccounts,
 			disabledAccounts: providerDisabled,
 			login: login?.method ?? null,
-			authenticated: login?.authenticated === true,
-			canSignOut: providerAccounts.length > 0 || providerDisabled.length > 0,
+			authenticated: login?.authenticated === true || stored.has(id),
+			canSignOut: providerAccounts.length > 0 || providerDisabled.length > 0 || stored.has(id),
 		} satisfies ConnectedProvider;
 	});
 	// Rows that need attention first, then signed-in ones, then the rest by name.

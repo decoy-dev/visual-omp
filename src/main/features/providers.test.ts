@@ -7,12 +7,12 @@ import { register } from "./providers";
 
 const fake = vi.hoisted(() => ({
 	handlers: new Map<string, (...args: unknown[]) => Promise<unknown>>(),
-	run: vi.fn(), rpc: vi.fn(), models: vi.fn(), usage: vi.fn(), changed: vi.fn(), broadcast: vi.fn(), save: vi.fn(), open: vi.fn(),
+	run: vi.fn(), rpc: vi.fn(), rpcs: vi.fn(), models: vi.fn(), usage: vi.fn(), changed: vi.fn(), broadcast: vi.fn(), save: vi.fn(), open: vi.fn(),
 }));
 vi.mock("electron", () => ({ app: { getPath: () => "/tmp" }, BrowserWindow: { getFocusedWindow: () => null }, dialog: { showSaveDialog: fake.save, showOpenDialog: fake.open } }));
 vi.mock("../ipc", () => ({ handle: (channel: string, handler: (...args: unknown[]) => Promise<unknown>) => fake.handlers.set(channel, handler), broadcast: fake.broadcast }));
 vi.mock("../omp/cli", () => ({ runOmp: fake.run }));
-vi.mock("../omp/rpc", () => ({ rpcRequest: fake.rpc }));
+vi.mock("../omp/rpc", () => ({ rpcRequest: fake.rpc, rpcRequests: fake.rpcs }));
 vi.mock("../omp/locate", () => ({ ompPath: async () => "/omp" }));
 vi.mock("../omp/config-file", () => ({ NEUTRAL_CWD: "/tmp" }));
 vi.mock("./config", () => ({ configWritten: fake.changed }));
@@ -33,6 +33,7 @@ beforeEach(async () => {
 		stderr: "",
 	}));
 	fake.rpc.mockResolvedValue({ providers: [] });
+	fake.rpcs.mockResolvedValue([]);
 	fake.models.mockResolvedValue([]);
 	fake.save.mockResolvedValue({ canceled: true });
 	fake.open.mockResolvedValue({ canceled: true, filePaths: [] });
@@ -84,6 +85,83 @@ it("shares global discovery between reads and refreshes it only when requested",
 	expect(fake.run).toHaveBeenCalledTimes(4);
 	expect(fake.rpc.mock.calls.every(([cwd]) => cwd === "/tmp")).toBe(true);
 	expect(fake.run.mock.calls.every(([, options]) => options.cwd === "/tmp")).toBe(true);
+});
+
+
+describe("stored accounts without usage reporting", () => {
+	it("offers sign-out for a stored API key, uses omp's existing logout path, and refreshes the signed-out state", async () => {
+		let signedIn = true;
+		fake.rpc.mockImplementation(async () => ({ providers: [{ id: "scaleway", name: "Scaleway", authenticated: signedIn }] }));
+		fake.rpcs.mockImplementation(async () => [{ accounts: signedIn ? [{ provider: "scaleway", type: "api_key", credentialId: 7, label: "API key #7" }] : [] }]);
+		fake.run.mockImplementation(async (args: string[]) => {
+			if (args[0] === "auth-broker") signedIn = false;
+			return { code: 0, stdout: JSON.stringify(args[0] === "models" ? { models: [] } : usage), stderr: "" };
+		});
+		const before = await call("providers:list") as ProvidersState;
+		expect(before.connected).toEqual([expect.objectContaining({
+			id: "scaleway", authenticated: true, canSignOut: true, accounts: [], modelCount: 0,
+		})]);
+		expect(fake.rpcs).toHaveBeenCalledWith("/tmp", [{ type: "get_logout_accounts", params: { providerId: "scaleway" } }], expect.objectContaining({
+			flags: ["--no-session", "--no-lsp", "--no-title", "--no-tools", "--no-extensions", "--no-skills", "--no-rules", "--no-context-files"],
+		}));
+		await call("providers:logout", "scaleway", "/selected-project");
+		expect(fake.run).toHaveBeenCalledWith(["auth-broker", "logout", "scaleway"], { cwd: "/selected-project", timeoutMs: 30_000 });
+		expect(fake.broadcast).toHaveBeenCalledWith("providers:changed", { providerId: "scaleway" });
+		const after = await call("providers:list") as ProvidersState;
+		expect(after.connected).toEqual([]);
+		expect(after.available).toEqual([{ id: "scaleway", name: "Scaleway" }]);
+		expect(fake.rpc).toHaveBeenCalledTimes(2);
+	});
+
+	it("uses the canonical stored provider for an authenticated alias without creating a duplicate row", async () => {
+		fake.rpc.mockResolvedValue({ providers: [
+			{ id: "mistral", name: "Mistral", authenticated: true },
+			{ id: "mistral-vibe", name: "Mistral Vibe", authenticated: true },
+		] });
+		fake.rpcs.mockResolvedValue([
+			{ accounts: [{ provider: "mistral", credentialId: 1, type: "api_key" }] },
+			{ accounts: [{ provider: "mistral", credentialId: 1, type: "api_key" }] },
+		]);
+		const state = await call("providers:list") as ProvidersState;
+		expect(state.connected).toEqual([expect.objectContaining({ id: "mistral", authenticated: true, canSignOut: true })]);
+		expect(state.available).toEqual([{ id: "mistral-vibe", name: "Mistral Vibe" }]);
+		expect(JSON.stringify(state)).not.toContain("credentialId");
+	});
+
+	it("checks model providers without a login method and retains only provider ids from the safe listing", async () => {
+		fake.models.mockResolvedValue([{ provider: "legacy-key", kind: "chat", id: "model", selector: "legacy-key/model",
+			name: "Model", contextWindow: null, maxTokens: null, reasoning: false, thinking: null, input: ["text"] }]);
+		fake.rpcs.mockResolvedValue([{ accounts: [{ provider: "legacy-key", credentialId: 12, label: "API key #12", detail: "stored API key #12" }] }]);
+		const state = await call("providers:list") as ProvidersState;
+		expect(state.connected).toEqual([expect.objectContaining({ id: "legacy-key", authenticated: true, canSignOut: true, login: null })]);
+		expect(JSON.stringify(state)).not.toContain("API key #12");
+	});
+
+	it("does not offer sign-out for environment or config authentication without stored accounts", async () => {
+		fake.models.mockResolvedValue([{ provider: "scaleway", kind: "chat", id: "model", selector: "scaleway/model",
+			name: "Model", contextWindow: null, maxTokens: null, reasoning: false, thinking: null, input: ["text"] }]);
+		fake.rpc.mockResolvedValue({ providers: [{ id: "scaleway", name: "Scaleway", authenticated: true }] });
+		fake.rpcs.mockResolvedValue([{ accounts: [] }]);
+		const state = await call("providers:list") as ProvidersState;
+		expect(state.connected).toEqual([expect.objectContaining({ id: "scaleway", authenticated: true, canSignOut: false })]);
+	});
+
+	it.each(["unsupported", "different-shape"] as const)("preserves usage-backed sign-out when older omp has an %s logout listing", async mode => {
+		fake.usage.mockResolvedValue({ ...usage, accountsWithoutUsage: [{ provider: "openai-codex" }] });
+		fake.rpc.mockResolvedValue({ providers: [{ id: "legacy", name: "Legacy", authenticated: true }] });
+		if (mode === "unsupported") fake.rpcs.mockRejectedValue(new Error("Unknown command: get_logout_accounts"));
+		else fake.rpcs.mockResolvedValue([{ accounts: null }]);
+		const state = await call("providers:list") as ProvidersState;
+		expect(state.connected).toEqual([expect.objectContaining({ id: "openai-codex", canSignOut: true })]);
+		expect(state.available).toEqual([{ id: "legacy", name: "Legacy" }]);
+	});
+
+	it("does not query stored accounts when usage already establishes the provider", async () => {
+		fake.usage.mockResolvedValue({ ...usage, accountsWithoutUsage: [{ provider: "scaleway" }] });
+		fake.rpc.mockResolvedValue({ providers: [{ id: "scaleway", name: "Scaleway", authenticated: true }] });
+		await call("providers:list");
+		expect(fake.rpcs).not.toHaveBeenCalled();
+	});
 });
 
 describe("sign-in transfer", () => {

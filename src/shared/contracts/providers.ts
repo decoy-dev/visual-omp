@@ -1,9 +1,10 @@
 /**
  * `providers:*` channels: which model providers omp can use.
  *
- * Sources (omp 18.14.0), all read outside projects with extension discovery disabled:
+ * Sources (omp 18.15+), all read outside projects with extension discovery disabled:
  * - Built-in sign-in entries: `get_login_providers` over `omp --mode rpc`, read only.
  * - Accounts and credentials omp disabled: `omp usage --json`.
+ * - Stored accounts without usage evidence: `get_logout_accounts` over RPC, when supported.
  * - Usable models: `omp models --json --kind all`.
  *
  * Signing in is omp's own: the renderer runs `providers:loginCommand`
@@ -53,7 +54,7 @@ export interface ConnectedProvider {
 	disabledAccounts: DisabledProviderAccount[];
 	/** omp's `/login` entry with the same id; null when omp lists none. */
 	login: LoginMethod | null;
-	/** `get_login_providers` says omp has a credential for it (stored, environment or config). */
+	/** omp reports authentication through its login list or stored-account listing. */
 	authenticated: boolean;
 	/** omp reports stored accounts for it, which `providers:logout` deletes. */
 	canSignOut: boolean;
