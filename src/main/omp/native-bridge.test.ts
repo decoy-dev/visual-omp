@@ -51,6 +51,21 @@ describe("hosted native mode bridge", () => {
 		expect(bridge.snapshot.asyncJobs).toEqual([]);
 		expect((await fetch(url + "/requests")).headers.get("X-Vomp-Jobs-Epoch")).not.toBe(nextEpoch);
 	});
+	it("invalidates in-flight async checks at a room transition and refuses old-generation callers", async () => {
+		dir = await mkdtemp(join(tmpdir(), "wait-bridge-")); bridge = await createNativeBridge("wait-test", dir);
+		bridge.beginGeneration(1);
+		const pending = bridge.asyncWork(1);
+		const rejected = expect(pending).rejects.toThrow("changed rooms");
+		const [old] = await (await fetch(bridge.url + "/requests")).json() as { id: string }[];
+		bridge.beginGeneration(2);
+		await rejected;
+		await expect(bridge.asyncWork(1)).rejects.toThrow("room changed");
+		const current = bridge.asyncWork(2);
+		await fetch(bridge.url + "/async-work/" + old!.id, { method: "POST", body: JSON.stringify({ pending: false }) });
+		const [request] = await (await fetch(bridge.url + "/requests")).json() as { id: string }[];
+		await fetch(bridge.url + "/async-work/" + request!.id, { method: "POST", body: JSON.stringify({ pending: true }) });
+		await expect(current).resolves.toBe(true);
+	});
 	it("delivers an explicit switch once and preserves omp's disabled result", async () => {
 		dir = await mkdtemp(join(tmpdir(), "misc-bridge-")); bridge = await createNativeBridge("test", dir);
 		await fetch(bridge.url + "/snapshot", { method: "POST", body: JSON.stringify({ modes, theme: null }) });

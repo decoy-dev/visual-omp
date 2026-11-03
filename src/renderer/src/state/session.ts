@@ -205,6 +205,14 @@ function syncFollowed(): void {
 	void window.vomp.invoke("sessions:follow", [...followed]);
 }
 
+interface AsyncWaitCheck {
+	guest: GuestClient;
+	revision: number;
+	hostId: string;
+	generation: number;
+	timer?: number;
+}
+
 export class SessionController {
 	readonly tabId: string;
 	readonly tspNotices: TspNoticeStore;
@@ -245,6 +253,7 @@ export class SessionController {
 	#guestLink: string | null = null;
 	#unsubscribeGuest: (() => void) | null = null;
 	#unsubscribeHost: (() => void) | null = null;
+	#asyncWaitCheck: AsyncWaitCheck | null = null;
 	#starting: Promise<void> | null = null;
 	#listeners = new Set<() => void>();
 	#eventListeners = new Set<(event: SessionEvent) => void>();
@@ -531,6 +540,7 @@ export class SessionController {
 		const mode: SessionMode =
 			host.phase === "live" ? "live" : host.phase === "restarting" ? "reconnecting" : this.#guest ? "reconnecting" : "starting";
 		this.#set({ host, mode, error: host.error });
+		this.#syncAsyncWait();
 		if (host.programStatus?.state === "blocked" && previousStatus?.state !== "blocked" && !this.#view.guest?.uiRequest) {
 			this.#emit({ kind: "needsInput" });
 		}
@@ -565,6 +575,7 @@ export class SessionController {
 
 	#closeGuest(): void {
 		this.#unsubscribeGuest?.();
+		this.#clearAsyncWaitCheck();
 		this.#unsubscribeGuest = null;
 		this.#guest?.close();
 		this.#guest = null;
@@ -623,6 +634,42 @@ export class SessionController {
 			if (this.#view.queue.length > 0) this.#resumeQueue();
 			else this.#emit({ kind: "finished" });
 		}
+		this.#syncAsyncWait();
+	}
+
+	#clearAsyncWaitCheck(): void {
+		if (this.#asyncWaitCheck?.timer !== undefined) clearTimeout(this.#asyncWaitCheck.timer);
+		this.#asyncWaitCheck = null;
+	}
+
+	/** Collab does not replicate job inventories or a terminal end when a wait loses its last wake. */
+	#syncAsyncWait(): void {
+		const guest = this.#guest;
+		const snapshot = this.#view.guest;
+		const host = this.#view.host;
+		if (!guest || snapshot?.phase !== "live" || !snapshot.awaitingAsyncWork || host?.phase !== "live") {
+			this.#clearAsyncWaitCheck();
+			return;
+		}
+		const revision = snapshot.asyncWaitRevision ?? 0;
+		const current = this.#asyncWaitCheck;
+		if (current?.guest === guest && current.revision === revision && current.hostId === host.hostId && current.generation === host.generation) return;
+		this.#clearAsyncWaitCheck();
+		const check = { guest, revision, hostId: host.hostId, generation: host.generation };
+		this.#asyncWaitCheck = check;
+		void this.#pollAsyncWait(check);
+	}
+
+	async #pollAsyncWait(check: AsyncWaitCheck): Promise<void> {
+		try {
+			const pending = await window.vomp.invoke("native:asyncWork", check.hostId, check.generation);
+			if (this.#asyncWaitCheck !== check) return;
+			if (pending === false) {
+				check.guest.settleAsyncWait(check.revision);
+				return;
+			}
+		} catch { /* Missing or interrupted SDK samples retain the wait until the next sample. */ }
+		if (this.#asyncWaitCheck === check) check.timer = setTimeout(() => { void this.#pollAsyncWait(check); }, 250);
 	}
 
 	/** True once anything was sent or started sending to this chat's omp (see `markInput`). */

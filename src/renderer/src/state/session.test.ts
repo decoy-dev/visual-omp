@@ -29,6 +29,11 @@ const fakes = vi.hoisted(() => {
 		connect(): void {}
 		close(): void {}
 		sendPrompt = vi.fn(async (_text: string, _images: unknown[], beforeSend?: () => void) => { beforeSend?.(); });
+		settleAsyncWait(revision: number): void {
+			if (!this.snapshot.awaitingAsyncWork || revision !== (this.snapshot.asyncWaitRevision ?? 0)) return;
+			this.snapshot = { ...this.snapshot, awaitingAsyncWork: false };
+			for (const listener of this.listeners) listener();
+		}
 		/** What the real client publishes: `waiting` until omp's snapshot arrives, then `live`. */
 		emit(phase: GuestSnapshot["phase"], entries: readonly SessionEntry[], working = false, extra: Partial<GuestSnapshot> = {}): void {
 			this.snapshot = { phase, entries, working, uiRequest: null, agents: [], notices: [], progress: new Map(), lifecycle: new Map(), activeTools: new Map(), stream: null, ...extra } as unknown as GuestSnapshot;
@@ -291,6 +296,77 @@ describe("SessionController working start", () => {
 		expect(events).toEqual(["finished"]);
 		expect(session.getSnapshot().working).toBe(false);
 		expect(chatStatus(session.getSnapshot())).toBe("live");
+	});
+
+	it.each((["classic", "tsp"] as const).flatMap(transport => ["slash cancellation", "Tasks Stop", "quiet completion"].map(source => ({ transport, source }))))("releases queued compaction after $source in $transport", async ({ transport, source }) => {
+		vi.useFakeTimers();
+		const session = new SessionController({ tabId: `wait-release-${transport}`, projectPath: "/p", sessionFile: null });
+		const slash = vi.fn(async () => undefined);
+		setSlashDelivery(slash);
+		const samples = [true, true, false];
+		respond = channel => channel === "native:asyncWork" ? Promise.resolve(samples.shift() ?? true) : undefined;
+		try {
+			session.attach(host({ link: "L1", transport }));
+			const guest = fakes.guests[0]!;
+			guest.emit("live", [u1, a1], true);
+			guest.emit("live", [u1, a1], false, { awaitingAsyncWork: true, asyncWaitRevision: 1 });
+			await session.send("/compact");
+			await flush();
+			expect(session.getSnapshot().queue.map(row => row.text)).toEqual(["/compact"]);
+			expect(slash).not.toHaveBeenCalled();
+			if (source !== "quiet completion") {
+				const command = source === "Tasks Stop" ? "/jobs kill bg_1" : "/jobs kill all";
+				await session.command(command);
+				expect(invoked.filter(call => call[0] === "host:submit").at(-1)?.[2]).toBe(command);
+			}
+			await vi.advanceTimersByTimeAsync(250);
+			expect(session.getSnapshot().working).toBe(true);
+			expect(slash).not.toHaveBeenCalled();
+			await vi.advanceTimersByTimeAsync(250);
+			await flush();
+			expect(session.getSnapshot().working).toBe(false);
+			expect(session.getSnapshot().guest?.awaitingAsyncWork).toBe(false);
+			expect(session.getSnapshot().queue).toEqual([]);
+			expect(slash).toHaveBeenCalledExactlyOnceWith(session, "/compact", { report: true });
+		} finally { await session.dispose(); vi.useRealTimers(); }
+	});
+
+	it("retains the wait when the SDK sample is unavailable or interrupted", async () => {
+		vi.useFakeTimers();
+		const session = new SessionController({ tabId: "wait-unknown", projectPath: "/p", sessionFile: null });
+		let sample = 0;
+		respond = channel => channel === "native:asyncWork"
+			? ++sample === 1 ? Promise.resolve(null) : sample === 2 ? Promise.reject(new Error("Bridge interrupted")) : Promise.resolve(false)
+			: undefined;
+		try {
+			session.attach(host({ link: "L1" }));
+			fakes.guests[0]!.emit("live", [u1, a1], false, { awaitingAsyncWork: true, asyncWaitRevision: 1 });
+			await flush();
+			expect(session.getSnapshot().working).toBe(true);
+			await vi.advanceTimersByTimeAsync(250);
+			expect(session.getSnapshot().working).toBe(true);
+			await vi.advanceTimersByTimeAsync(250);
+			expect(session.getSnapshot().working).toBe(false);
+		} finally { await session.dispose(); vi.useRealTimers(); }
+	});
+
+	it("does not apply an old quiet sample to a continuation's next wait", async () => {
+		vi.useFakeTimers();
+		const session = new SessionController({ tabId: "wait-race", projectPath: "/p", sessionFile: null });
+		const first = Promise.withResolvers<boolean>();
+		let count = 0;
+		respond = channel => channel === "native:asyncWork" ? (++count === 1 ? first.promise : Promise.resolve(true)) : undefined;
+		try {
+			session.attach(host({ link: "L1" }));
+			const guest = fakes.guests[0]!;
+			guest.emit("live", [u1, a1], false, { awaitingAsyncWork: true, asyncWaitRevision: 1 });
+			guest.emit("live", [u1, a1], true);
+			guest.emit("live", [u1, a1], false, { awaitingAsyncWork: true, asyncWaitRevision: 2 });
+			first.resolve(false);
+			await flush();
+			expect(session.getSnapshot().working).toBe(true);
+			expect(session.getSnapshot().guest?.awaitingAsyncWork).toBe(true);
+		} finally { await session.dispose(); vi.useRealTimers(); }
 	});
 
 	it("reports the turn's end while a helper it started still runs, and keeps the chat marked for the helper", () => {

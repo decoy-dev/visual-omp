@@ -129,6 +129,17 @@ describe("background-job waits", () => {
 		feed({ t: "state", state: welcome.state });
 		expect(client.getSnapshot()).toMatchObject({ working: false, awaitingAsyncWork: true });
 	});
+	it("settles only the wait checked by the fresh SDK result and sends no abort", () => {
+		endWaiting();
+		const first = client.getSnapshot().asyncWaitRevision!;
+		feed({ t: "event", event: { type: "agent_start" } });
+		endWaiting();
+		client.settleAsyncWait(first);
+		expect(client.getSnapshot().awaitingAsyncWork).toBe(true);
+		client.settleAsyncWait(client.getSnapshot().asyncWaitRevision!);
+		expect(client.getSnapshot()).toMatchObject({ working: false, awaitingAsyncWork: false });
+		expect(socket.sent).toEqual([]);
+	});
 	it("clears the wait when a continuation starts, including a missed start recovered by state", () => {
 		endWaiting();
 		feed({ t: "event", event: { type: "agent_start" } });

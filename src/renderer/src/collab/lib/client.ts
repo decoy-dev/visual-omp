@@ -75,6 +75,8 @@ export interface GuestSnapshot {
 	working: boolean;
 	/** A non-terminal settle whose next turn depends on background jobs. */
 	awaitingAsyncWork?: boolean;
+	/** Distinguishes waits when a native SDK check completes after a continuation. */
+	asyncWaitRevision?: number;
 	/** True when this guest joined through a read-only (view) link. */
 	readOnly: boolean;
 	/** Pending host-side UI request (`ask` select/editor) this guest can answer. */
@@ -150,6 +152,7 @@ export class GuestClient {
 	readonly #resumedToolCallIds = new Set<string>();
 	#working = false;
 	#awaitingAsyncWork = false;
+	#asyncWaitRevision = 0;
 	#readOnly = false;
 	#uiRequest: CollabUiRequest | null = null;
 	#uiRequestQueue: CollabUiRequest[] = [];
@@ -236,6 +239,13 @@ export class GuestClient {
 			this.#awaitingAsyncWork = false;
 			this.#commit();
 		}
+	}
+
+	/** A fresh, owner-scoped SDK sample found neither jobs nor pending deliveries. */
+	settleAsyncWait(revision: number): void {
+		if (!this.#awaitingAsyncWork || revision !== this.#asyncWaitRevision) return;
+		this.#awaitingAsyncWork = false;
+		this.#commit();
 	}
 
 	sendAgentCmd(cmd: "chat" | "kill" | "revive", agentId: string, text?: string): void {
@@ -557,6 +567,7 @@ export class GuestClient {
 			case "agent_end":
 				this.#working = false;
 				this.#awaitingAsyncWork = event.awaitingAsyncWork === true;
+				this.#asyncWaitRevision++;
 				break;
 			case "notice":
 				this.#pushNotice(event.level, event.message);
@@ -665,6 +676,7 @@ export class GuestClient {
 			backgroundTools: this.#backgroundTools,
 			working: this.#working,
 			awaitingAsyncWork: this.#awaitingAsyncWork,
+			asyncWaitRevision: this.#asyncWaitRevision,
 			readOnly: this.#readOnly,
 			uiRequest: this.#uiRequest,
 			pendingUiRequests: [...this.#pendingUiRequests.values()],

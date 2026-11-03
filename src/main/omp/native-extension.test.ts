@@ -8,6 +8,9 @@ interface CommandFixture {
 	requests?: { id: string; kind: string }[];
 	jobs?: Record<string, unknown>[];
 	jobsEpoch?: string;
+	delivery?: { queued: number; delivering: boolean };
+	streaming?: boolean;
+	pendingMessages?: boolean;
 }
 // Exercise generated code with the public SDK exports injected; runtime integration uses the isolated binary fixture.
 function harness(options: CommandFixture = {}) {
@@ -20,7 +23,7 @@ function harness(options: CommandFixture = {}) {
 	});
 	const theme = { getAllThemeColorHexes: () => ["#ffffff"], getBgHex: () => "#000000", getColorHex: () => "#ffffff" };
 	const modes = { plan: { status: "inactive" }, vibe: { status: "inactive" }, goal: { status: "inactive" }, loop: { status: "inactive" } };
-	const context = { agent: { kind: "main" }, ui: { theme, getTheme: async () => theme }, sessionModes: { getState: () => modes, set: vi.fn() }, sessionManager: { getCwd: () => "/project", getSessionFile: () => "/session.jsonl", getSessionId: () => "session" }, getAsyncJobSnapshot: vi.fn(() => ({ running: options.jobs ?? [], recent: [{ id: "finished" }] })) };
+	const context = { agent: { kind: "main" }, ui: { theme, getTheme: async () => theme }, sessionModes: { getState: () => modes, set: vi.fn() }, sessionManager: { getCwd: () => "/project", getSessionFile: () => "/session.jsonl", getSessionId: () => "session" }, getAsyncJobSnapshot: vi.fn(() => ({ running: options.jobs ?? [], recent: [{ id: "finished" }], delivery: options.delivery ?? { queued: 0, delivering: false } })), isIdle: () => !options.streaming, hasPendingMessages: () => options.pendingMessages === true };
 	const handlers = new Map<string, (event: unknown, ctx?: unknown) => Promise<void>>();
 	const discover = vi.fn(async (_options: { cwd: string }) => options.files ?? []);
 	const body = NATIVE_EXTENSION_SOURCE.replace(/^import .*;$/gm, "").replace("export default function", "return function");
@@ -57,6 +60,29 @@ describe("hosted extension lifecycle", () => {
 		await test.handlers.get("session_shutdown")!({});
 		expect(test.requests).toEqual([]);
 		expect(test.env.VOMP_NATIVE_BRIDGE).toBeUndefined();
+	});
+	it("retains the wait for remaining jobs and delivery handoffs, then reports quiet completion", async () => {
+		const options: CommandFixture = { jobs: [{ id: "bg_1" }, { id: "bg_2" }], requests: [{ id: "wait", kind: "asyncWork" }], delivery: { queued: 0, delivering: false } };
+		const test = harness(options);
+		await test.handlers.get("session_start")!({}, test.context);
+		options.jobs!.shift();
+		await test.tick();
+		options.jobs = [];
+		options.delivery = { queued: 1, delivering: true };
+		await test.tick();
+		options.delivery = { queued: 0, delivering: false };
+		await test.tick();
+		expect(test.requests.filter(item => item.url.endsWith("/async-work/wait")).map(item => JSON.parse(item.body!).pending)).toEqual([true, true, true, false]);
+	});
+	it("does not report quiescence while a continuation streams or messages remain queued", async () => {
+		const options: CommandFixture = { requests: [{ id: "wait", kind: "asyncWork" }], streaming: true };
+		const test = harness(options);
+		await test.handlers.get("session_start")!({}, test.context);
+		options.streaming = false; options.pendingMessages = true;
+		await test.tick();
+		options.pendingMessages = false;
+		await test.tick();
+		expect(test.requests.filter(item => item.url.endsWith("/async-work/wait")).map(item => JSON.parse(item.body!).pending)).toEqual([true, true, false]);
 	});
 	it("publishes running purposes and captions on periodic ticks without shipping output or unchanged snapshots", async () => {
 		const job = { id: "bg_1", intent: "Building the installer", caption: "Compiles the desktop bundle", command: "make", output: "private output", durationMs: 1 };

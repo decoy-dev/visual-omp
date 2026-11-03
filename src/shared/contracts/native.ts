@@ -52,6 +52,8 @@ export interface TerminalColors { background?: string; foreground?: string; ansi
 declare module "../ipc" {
 	interface IpcInvokeMap {
 		"native:snapshot": { args: [hostId: string]; result: NativeSnapshot };
+		/** Fresh SDK sample, requested after a collab background wait begins. Null means unavailable. */
+		"native:asyncWork": { args: [hostId: string, generation: number]; result: boolean | null };
 		"native:setMode": { args: [hostId: string, request: ModeRequest]; result: ModeResult };
 		"native:terminalTheme": { args: [hostId: string]; result: TerminalColors | null };
 	}

@@ -14,6 +14,7 @@ export class NativeBridge {
 	readonly #pending = new Map<string, { request: ModeRequest; delivered: boolean; resolve(result: ModeResult): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
 	readonly #commands = new Map<string, { delivered: boolean; resolve(commands: string[]): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
 	readonly #editors = new Map<string, { request: EditorDraftRequest; delivered: boolean; resolve(result: EditorDraftResult): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
+	readonly #asyncWork = new Map<string, { delivered: boolean; resolve(pending: boolean | null): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
 	readonly #server: Server;
 	snapshot: NativeSnapshot = { modes: null, theme: null };
 	#jobsEpoch = randomUUID();
@@ -36,6 +37,7 @@ export class NativeBridge {
 						...[...this.#pending].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, request: item.request }; }),
 						...[...this.#commands].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "sideCommands" }; }),
 						...[...this.#editors].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "editorDraft", editor: item.request }; }),
+						...[...this.#asyncWork].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "asyncWork" }; }),
 					];
 					response.end(JSON.stringify(items)); return;
 				}
@@ -60,6 +62,15 @@ export class NativeBridge {
 						asyncJobsGeneration: this.#generation,
 					};
 					broadcast("native:changed", { hostId, snapshot: this.snapshot });
+				} else if (route.startsWith("/async-work/")) {
+					const id = route.slice("/async-work/".length);
+					const result = z.object({ pending: z.boolean().nullable() }).parse(parsed);
+					const item = this.#asyncWork.get(id);
+					if (item) {
+						clearTimeout(item.timer);
+						this.#asyncWork.delete(id);
+						item.resolve(result.pending);
+					}
 				} else if (route.startsWith("/commands/")) {
 					const id = route.slice("/commands/".length);
 					const item = this.#commands.get(id);
@@ -97,6 +108,7 @@ export class NativeBridge {
 	}
 	/** Called before publishing a new room, including same-session restarts. Old POSTs cannot repopulate its jobs. */
 	beginGeneration(generation: number): void {
+		this.#clearAsyncWork("omp changed rooms before reporting its background work.");
 		this.#generation = generation;
 		this.#jobsEpoch = randomUUID();
 		this.#hasCurrentJobs = false;
@@ -122,6 +134,19 @@ export class NativeBridge {
 		this.#pending.set(id, { request: valid, delivered: false, resolve, reject, timer });
 		return promise;
 	}
+	/** Sample after the caller observed a wait; cached job metadata may predate that turn. */
+	asyncWork(generation: number): Promise<boolean | null> {
+		if (generation !== this.#generation) return Promise.reject(new Error("omp's room changed."));
+		const id = randomUUID();
+		const { promise, resolve, reject } = Promise.withResolvers<boolean | null>();
+		const timer = setTimeout(() => { this.#asyncWork.delete(id); reject(new Error("omp did not report its background work.")); }, 5000);
+		this.#asyncWork.set(id, { delivered: false, resolve, reject, timer });
+		return promise;
+	}
+	#clearAsyncWork(message: string): void {
+		for (const item of this.#asyncWork.values()) { clearTimeout(item.timer); item.reject(new Error(message)); }
+		this.#asyncWork.clear();
+	}
 	sideCommands(): Promise<string[]> {
 		const id = randomUUID();
 		const { promise, resolve, reject } = Promise.withResolvers<string[]>();
@@ -138,6 +163,7 @@ export class NativeBridge {
 	}
 	async close(): Promise<void> {
 		bridges.delete(this.hostId);
+		this.#clearAsyncWork("omp stopped before reporting its background work.");
 		for (const item of this.#pending.values()) { clearTimeout(item.timer); item.reject(new Error("omp stopped before answering the mode request")); }
 		this.#pending.clear();
 		for (const item of this.#commands.values()) { clearTimeout(item.timer); item.reject(new Error("omp stopped before reporting its side commands.")); }

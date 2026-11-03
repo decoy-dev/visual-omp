@@ -122,6 +122,16 @@ export default function visualOmpNative(pi) {
 				const requests = await response.json();
 				for (const item of requests) {
 					if (stopped || current !== lifecycle) return;
+					if (item.kind === "asyncWork") {
+						// A fresh owner-scoped sample includes delivery handoffs, not just running rows.
+						// The sink stays in flight until its yield-queue entry injects or is discarded.
+						const jobs = context.getAsyncJobSnapshot?.();
+						const pending = jobs?.delivery && typeof jobs.delivery.queued === "number" && typeof jobs.delivery.delivering === "boolean"
+							? jobs.running.length > 0 || jobs.delivery.queued > 0 || jobs.delivery.delivering || !context.isIdle() || context.hasPendingMessages()
+							: null;
+						await fetch(url + "/async-work/" + item.id, { method: "POST", body: JSON.stringify({ pending }), signal: AbortSignal.timeout(2000) });
+						continue;
+					}
 					if (item.kind === "editorDraft") {
 						const result = exactEditorDraft(context.ui, item.editor, context.sessionManager.getSessionId());
 						await fetch(url + "/editor/" + item.id, { method: "POST", body: JSON.stringify(result), signal: AbortSignal.timeout(2000) });

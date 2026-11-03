@@ -1,10 +1,11 @@
 // @vitest-environment happy-dom
-import { act, createElement, Fragment } from "react";
+import { act, createElement, Fragment, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionController, SessionView } from "../../state/session";
 import type { HostState } from "@shared/ipc";
 import type { SessionModes } from "@shared/contracts/native";
+import type * as MotionModule from "motion/react";
 import { TooltipProvider } from "../../ui/Tooltip";
 import { Composer } from "./Composer";
 import { useComposerDrafts } from "./drafts";
@@ -24,6 +25,13 @@ const fake = vi.hoisted(() => {
 		return () => listeners.delete(listener);
 	} } });
 	return { invoke, events };
+});
+vi.mock("motion/react", async importOriginal => {
+	const actual = await importOriginal<typeof MotionModule>();
+	// Vitest hoists this factory before static React imports initialize.
+	const { createElement } = await import("react");
+	const tag = (name: string) => ({ children, initial, animate, exit, transition, layout, layoutId, layoutDependency, variants, custom, ...props }: PropsWithChildren<Record<string, unknown>>) => createElement(name, props, children);
+	return { ...actual, AnimatePresence: ({ children }: PropsWithChildren) => children, motion: { ...actual.motion, div: tag("div"), span: tag("span"), li: tag("li") } };
 });
 vi.mock("../../state/app", () => ({ useApp: (select: (state: { prefs: { voiceInput: boolean } }) => unknown) => select({ prefs: { voiceInput: false } }) }));
 vi.mock("../../ui/TargetContextMenu", () => ({ TargetContextMenu: () => null }));
@@ -86,6 +94,23 @@ afterEach(async () => {
 	if (fontsDescriptor) Object.defineProperty(document, "fonts", fontsDescriptor); else Reflect.deleteProperty(document, "fonts");
 	vi.useRealTimers();
 });
+
+	it.each(["classic", "tsp"] as const)("restores Send after the final background wait settles in %s", async transport => {
+		setHost(transport);
+		view = { ...view, working: true, guest: { awaitingAsyncWork: true } as SessionView["guest"] };
+		useComposerDrafts.getState().setDraft("polling", "Continue after these jobs.");
+		await mount();
+		expect(element.querySelector('button[aria-label="Stop waiting"]')).not.toBeNull();
+		expect([...element.querySelectorAll("button")].some(button => button.textContent === "Queue message")).toBe(true);
+		await act(async () => {
+			view = { ...view, working: false, guest: { awaitingAsyncWork: false } as SessionView["guest"] };
+			for (const listener of listeners) listener();
+		});
+		await advance(500);
+		expect(element.querySelector('button[aria-label="Stop waiting"]')).toBeNull();
+		expect([...element.querySelectorAll("button")].some(button => button.textContent === "Queue message")).toBe(false);
+		expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(false);
+	});
 
 it("mounts an idle TSP composer and shared consumers without painted screen or prediction reads, retaining native mode facts", async () => {
 	setHost("tsp"); await mount();
