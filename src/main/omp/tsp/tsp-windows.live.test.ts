@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { build } from "esbuild";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { readWindowsProbeReport } from "./windows-probe";
+import { readWindowsProbeReport, windowsProbeFailed } from "./windows-probe";
 
 let root = "";
 let probe = "";
@@ -47,5 +47,6 @@ describe.skipIf(!process.env.OMP_BIN || process.platform !== "win32")("Windows C
 		expect(evidence.results).toHaveLength(1);
 		expect(evidence.results[0]).toMatchObject({ useConptyDll: false, framing: "apc" });
 		expect(evidence.results[0].traffic.length).toBeGreaterThan(0);
+		expect(windowsProbeFailed(evidence.results[0], true), "An omp crash cannot establish system ConPTY framing behavior.").toBe(false);
 	}, 100_000);
 });

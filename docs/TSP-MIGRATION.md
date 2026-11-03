@@ -844,9 +844,21 @@ quirks-mode warning. Six files and 49 tests were skipped. The empty-history regr
 **Goal.** Evidence that developer-opt-in TSP works in a packaged Windows build in both directions. The developer flag is enabled for this evidence work; the default remains classic until the complete platform gate passes.
 
 **Implementation status (2026-11-03).** Windows TSP launch, target-specific staging, PE layout checks,
-Node live probes and a packaged Electron smoke probe are implemented. Windows runtime evidence is
-pending one owner-approved branch pull request CI run. Criteria 5-6 require an installed build on a
-Windows machine and cannot be established on macOS or by the headless CI probes.
+Node live probes and a packaged Electron smoke probe are implemented. The first owner-approved PR
+run (`41680836744`, PR #6) packaged both architectures but its bundled and system probes all failed
+before TSP startup: the scratch environment supplied an absolute `PI_CONFIG_DIR`, which omp treats
+as a directory name relative to home. The duplicated Windows drive path caused daemon-presence
+directory creation to fail. This run establishes no APC-versus-OSC transport result.
+
+The probe now writes configuration to its scratch `HOME/.omp/agent/config.yml`, sets scratch
+`HOME` and `USERPROFILE`, and leaves `PI_CONFIG_DIR`, `PI_CODING_AGENT_DIR` and XDG overrides unset.
+omp derives its ordinary config and runtime directories. Upstream 18.15.0 `packages/utils/src/dirs.ts`
+defines `PI_CONFIG_DIR` as home-relative at lines 328-336 and joins it to home at lines 116-117.
+Daemon scopes use that config root at lines 1121-1129; `launch/presence.ts:40-43` creates `clients`.
+The system test's earlier pass masked this same crash. Unexpected omp exits and failed probe
+subprocesses now fail that observation while retaining its capture; a running system ConPTY with
+no APC remains an observational result. Runtime evidence requires the corrected CI run. Criteria 5-6
+still require an installed build on a Windows machine.
 
 **Local checkpoint (2026-11-03, after review, before rebasing onto refreshed main).** macOS
 typecheck and all 47 packaging and CI-helper unit tests pass. One full Vitest run passes

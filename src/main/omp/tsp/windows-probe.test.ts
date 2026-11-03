@@ -4,10 +4,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { spawn as spawnPty } from "node-pty";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { readWindowsProbeReport, runWindowsProbe, runWindowsProbes } from "./windows-probe";
+import { readWindowsProbeReport, runWindowsProbe, runWindowsProbes, windowsProbeFailed } from "./windows-probe";
 
 const roots: string[] = [];
-afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
+afterEach(async () => {
+	vi.unstubAllEnvs();
+	await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true })));
+});
 async function scratch() {
 	const root = await mkdtemp(join(tmpdir(), "vomp-probe-test-"));
 	roots.push(root);
@@ -17,6 +20,54 @@ async function scratch() {
 const complete = { status: "complete", hello: true, frames: 1, acks: 1, edit: true, send: true, useConptyDll: true, cleanupErrors: [], traffic: [] };
 
 describe("Windows probe failure evidence", () => {
+	it("supplies scratch configuration at omp's default home-derived path without absolute config-name overrides", async () => {
+		const path = join(await scratch(), "profile-layout.json");
+		vi.stubEnv("PI_CONFIG_DIR", "C:\\owner\\config");
+		vi.stubEnv("PI_CODING_AGENT_DIR", "C:\\owner\\agent");
+		vi.stubEnv("XDG_STATE_HOME", "C:\\owner\\state");
+		const spawn = vi.fn<typeof spawnPty>((_bin, _args, options) => {
+			const env = options!.env!;
+			expect(env.USERPROFILE).toBe(env.HOME);
+			expect(env.PI_CONFIG_DIR).toBeUndefined();
+			expect(env.PI_CODING_AGENT_DIR).toBeUndefined();
+			expect(env.XDG_STATE_HOME).toBeUndefined();
+			const configRoot = join(env.USERPROFILE!, env.PI_CONFIG_DIR || ".omp");
+			const agent = env.PI_CODING_AGENT_DIR || join(configRoot, "agent");
+			const config = JSON.parse(readFileSync(join(agent, "config.yml"), "utf8"));
+			expect(config.startup).toMatchObject({ setupWizard: false, checkUpdate: false });
+			expect(config.worktree).toEqual({ onStart: "off", onExit: "keep" });
+			expect(join(configRoot, "run", "daemons")).toContain(join("home", ".omp", "run", "daemons"));
+			throw new Error("scratch configuration consumed");
+		});
+		const result = await runWindowsProbe("unused", true, "apc", path, { spawn });
+		expect(spawn).toHaveBeenCalledOnce();
+		expect(result.error).toBe("Error: scratch configuration consumed");
+	});
+
+	it.each([false, true])("distinguishes a live system ConPTY observation from an unexpected omp exit (%s)", async unexpectedExit => {
+		const path = join(await scratch(), "system.json");
+		let onExit: ((event: { exitCode: number }) => void) | undefined;
+		const spawn = vi.fn<typeof spawnPty>(() => ({
+			pid: 0, cols: 110, rows: 32, process: "probe-fixture", handleFlowControl: false,
+			resize: vi.fn(), clear: vi.fn(), write: vi.fn(), pause: vi.fn(), resume: vi.fn(),
+			onData(listener: (data: string) => void) {
+				queueMicrotask(() => {
+					listener(unexpectedExit ? "ENOENT: mkdir scratch-home/absolute-agent/run/daemons/clients" : "classic TUI output");
+					if (unexpectedExit) onExit!({ exitCode: 1 });
+				});
+				return { dispose() {} };
+			},
+			onExit(listener: (event: { exitCode: number }) => void) { onExit = listener; return { dispose() {} }; },
+			kill() { onExit!({ exitCode: 0 }); },
+		}));
+		const result = await runWindowsProbe("unused", false, "apc", path, { spawn, timeoutMs: 100 });
+		expect(result).toMatchObject({ status: "complete", hello: false, frames: 0, cleanupErrors: [] });
+		expect(result.traffic.length).toBeGreaterThan(0);
+		expect(result.earlyExit).toEqual(unexpectedExit ? { exitCode: 1 } : undefined);
+		expect(windowsProbeFailed(result, true)).toBe(unexpectedExit);
+		expect(windowsProbeFailed({ ...result, subprocessError: "child failed" }, true)).toBe(true);
+	});
+
 	it("saves profile setup errors as a completed result before returning", async () => {
 		const path = join(await scratch(), "profile.json");
 		const result = await runWindowsProbe("unused", true, "apc", path, {
