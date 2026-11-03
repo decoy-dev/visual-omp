@@ -50,13 +50,15 @@ const REQUEST_TIMEOUT_MS = 3000;
 
 export class TuiDebugClient {
 	readonly #path: string;
+	readonly #beforeRead: ((operation: string) => void) | undefined;
 	#socket: Socket | null = null;
 	#connecting: Promise<Socket> | null = null;
 	#buffer = "";
 	readonly #pending: Pending[] = [];
 
-	constructor(path: string) {
+	constructor(path: string, beforeRead?: (operation: string) => void) {
 		this.#path = path;
+		this.#beforeRead = beforeRead;
 	}
 
 	async info(): Promise<TuiFocus> {
@@ -96,6 +98,8 @@ export class TuiDebugClient {
 	}
 
 	async #request(body: Record<string, unknown>): Promise<unknown> {
+		// Refuse before connecting, so a TSP host cannot silently inspect classic debug state.
+		if (body.op !== "keys") this.#beforeRead?.(String(body.op));
 		const socket = await this.#connect();
 		const { promise, resolve, reject } = Promise.withResolvers<unknown>();
 		const timer = setTimeout(() => {

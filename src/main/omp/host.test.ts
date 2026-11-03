@@ -1057,6 +1057,7 @@ describe("opt-in semantic transport", () => {
 		pty.writes.mockImplementation((bytes: string) => { if (bytes === "\x1b[200~pasted text\x1b[201~") tspMessage("f", { sf: "s:1", s: 3, ops: [["set", "editor", { text: "pasted text" }]] }); });
 		await host.paste("pasted text");
 		await expect(host.submit("")).rejects.toThrow("Enter a message");
+		expect(host.screenReadAttempts()).toEqual([]);
 		for (const action of [
 			() => host.screenLines(),
 			() => host.screenPaint(),
@@ -1064,6 +1065,11 @@ describe("opt-in semantic transport", () => {
 			() => host.tuiFocus(),
 		]) await expect(action()).rejects.toThrow("not available in the TSP preview");
 		expect(() => host.serializedScreen()).toThrow("not available");
+		expect(host.screenReadAttempts()).toEqual([
+			{ source: "host:screen" }, { source: "screenPaint" }, { source: "debugValues" },
+			{ source: "host:tui-focus" }, { source: "host:buffer" },
+		]);
+		expect(pty.screenReads).not.toHaveBeenCalled();
 		expect(host.state.error).toBeNull();
 		await host.keys("escape", host.state.generation, host.tspSnapshot()!.epoch);
 		expect(pty.writes).toHaveBeenCalledWith("\x1b");

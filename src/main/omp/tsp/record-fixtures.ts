@@ -1,7 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
 import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import { setTimeout as sleep } from "node:timers/promises";
@@ -21,6 +20,7 @@ import { composerFacts as readComposerFacts } from "./composer";
 import { LoopbackRelay } from "../relay";
 import { GuestClient } from "../../../renderer/src/collab/lib/client";
 import { recordingDestination } from "./recording-destination";
+import { scriptedProvider, type ScriptedReply } from "./testing/scripted-provider";
 
 // Bundle beside node_modules for Node, with node-pty external and the app's wire aliases.
 // No inherited configuration or provider credentials. Model turns use the isolated scripted provider.
@@ -40,7 +40,6 @@ const destination = await recordingDestination(expectedVersion, process.env.VOMP
 const extension = resolve("src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs");
 await mkdir(destination, { recursive: true });
 const config = "startup:\n  setupWizard: false\n  checkUpdate: false\n  changelogMode: hidden\n  quiet: true\nmarketplace:\n  autoUpdate: off\nworktree:\n  onStart: off\n  onExit: keep\ntui:\n  autoGraph: never\nautocomplete:\n  enabled: false\nrecap:\n  enabled: false\ncomposer:\n  predictions: false\n";
-type ScriptedReply = { text?: string; tool?: { name: string; arguments: object }; delayMs?: number; gate?: string; error?: string };
 type RecordingContext = {
   session: TspSession;
   send: (event: TspEvent) => void;
@@ -62,53 +61,6 @@ type Scenario = {
   run?: (context: RecordingContext) => Promise<void>;
 };
 
-/** Shared loopback provider; optional models support session-switch compaction probes. */
-async function scriptedProvider(script: ScriptedReply[], agent: string, models?: object[]) {
-  const requests: object[] = [];
-  const gates = new Map<string, PromiseWithResolvers<void>>();
-  const released = new Set<string>();
-  const release = (name: string) => { released.add(name); gates.get(name)?.resolve(); };
-  const server = createServer(async (request, response) => {
-    try {
-      if (request.url !== "/v1/chat/completions" || request.method !== "POST") { response.writeHead(404).end(); return; }
-      const parts: Buffer[] = [];
-      for await (const part of request) parts.push(Buffer.from(part));
-      const body = JSON.parse(Buffer.concat(parts).toString("utf8"));
-      const index = requests.length;
-      requests.push(body);
-      const reply = script[index];
-      if (!reply) { response.writeHead(500).end(`No scripted response for request ${index + 1}`); return; }
-      if (reply.gate && !released.has(reply.gate)) {
-        const gate = gates.get(reply.gate) ?? Promise.withResolvers<void>();
-        gates.set(reply.gate, gate);
-        await gate.promise;
-      }
-      if (reply.delayMs) await sleep(reply.delayMs);
-      if (reply.error) {
-        response.writeHead(400, { "content-type": "application/json" });
-        response.end(JSON.stringify({ error: { message: reply.error, type: "invalid_request_error", code: "invalid_request_error" } }));
-        return;
-      }
-      const delta = reply.tool
-        ? { role: "assistant", tool_calls: [{ index: 0, id: `fixture-tool-${index}`, type: "function", function: { name: reply.tool.name, arguments: JSON.stringify(reply.tool.arguments) } }] }
-        : { role: "assistant", content: reply.text ?? "Fixture response." };
-      const chunk = (delta: object, finish_reason: string | null) => `data: ${JSON.stringify({ id: `fixture-${index}`, object: "chat.completion.chunk", created: 1, model: "fixture-model", choices: [{ index: 0, delta, finish_reason }] })}\n\n`;
-      response.writeHead(200, { "content-type": "text/event-stream" });
-      response.end(chunk(delta, null) + chunk({}, reply.tool ? "tool_calls" : "stop") + "data: [DONE]\n\n");
-    } catch (error) { response.writeHead(500).end(String(error)); }
-  });
-  const listening = Promise.withResolvers<void>();
-  server.listen(0, "127.0.0.1", listening.resolve);
-  await listening.promise;
-  const address = server.address();
-  if (!address || typeof address === "string") throw new Error("Missing loopback provider port");
-  await writeFile(join(agent, "models.yml"), JSON.stringify({ providers: { fixture: {
-    baseUrl: `http://127.0.0.1:${address.port}/v1`, apiKey: "local-fixture-only", api: "openai-completions",
-    models: models ?? [{ id: "fixture-model", name: "Local scripted fixture", reasoning: true, input: ["text", "image"],
-      cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 }, contextWindow: 128000, maxTokens: 4096 }],
-  } } }));
-  return { requests, release, stop: () => { for (const gate of gates.values()) gate.resolve(); server.closeAllConnections(); server.close(); } };
-}
 
 const worktreeQuestion = (session: TspSession, title: string) => {
   for (const surface of session.snapshot().surfaces) {

@@ -127,7 +127,7 @@ export function reportBody(metadata, results, compat, runUrl) {
 	const body = `## omp ${metadata.version}\n\n` +
 		`[Upstream release and complete notes](${releaseUrl}) | [npm package](https://www.npmjs.com/package/${PACKAGE}/v/${metadata.version})` +
 		(runUrl ? ` | [Workflow results and complete evidence artifacts](${runUrl})` : "") + "\n\n" +
-		"The watcher checks CLI output and the app's parsers without signing in or sending a model request. Passing checks still require a release-note review.\n\n" +
+		"The watcher checks CLI output, the app's parsers and a scripted TSP session. Model requests use a local loopback provider without external provider credentials or billing. Passing checks still require a release-note review.\n\n" +
 		"## Test results\n\n| Check | Result |\n|---|---|\n" + statusRows + "\n\n" +
 		(metadata.metadataError ? "### Release metadata failure\n\n" + safeExcerpt(metadata.metadataError, 2_000, evidenceUrl) + "\n" : "") +
 		"### Live compatibility details\n\n" + safeExcerpt(JSON.stringify(compat, null, 2), 12_000, evidenceUrl) + "\n" +

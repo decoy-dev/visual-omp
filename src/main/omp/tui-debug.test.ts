@@ -100,3 +100,35 @@ describe("TuiDebugClient visible overlay projection", () => {
 		expect(requests).toEqual(["info"]);
 	});
 });
+
+describe("TuiDebugClient read guard", () => {
+	it("refuses every debug read before connecting or requesting socket data", async () => {
+		const attempted: string[] = [];
+		const guarded = new TuiDebugClient("unreachable-debug-socket", operation => {
+			attempted.push(operation);
+			throw new Error("Painted reads are unavailable for this host.");
+		});
+		try {
+			for (const read of [() => guarded.info(), () => guarded.screen(), () => guarded.paint(), () => guarded.values()]) {
+				await expect(read()).rejects.toThrow("Painted reads are unavailable");
+			}
+			expect(attempted).toEqual(["info", "text", "text", "values"]);
+			expect(requests).toEqual([]);
+		} finally { guarded.close(); }
+	});
+
+	it("guards the separate tree request when info reports a registered overlay", async () => {
+		client.close();
+		const address = server.address();
+		if (typeof address !== "string") throw new Error("Expected the fixture socket path.");
+		const attempted: string[] = [];
+		client = new TuiDebugClient(address, operation => {
+			attempted.push(operation);
+			if (operation === "tree") throw new Error("Tree reads are unavailable.");
+		});
+		registered = 1;
+		await expect(client.info()).rejects.toThrow("Tree reads are unavailable");
+		expect(attempted).toEqual(["info", "tree"]);
+		expect(requests).toEqual(["info"]);
+	});
+});

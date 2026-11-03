@@ -12,7 +12,7 @@ on:
 
 permissions:
   contents: read
-  issues: write
+  issues: read
 
 concurrency:
   group: omp-release-watch
@@ -54,6 +54,9 @@ jobs:
   watch:
     needs: discover
     if: needs.discover.outputs.needed == 'true'
+    permissions:
+      contents: read
+      issues: write
     strategy:
       fail-fast: false
       max-parallel: 2
@@ -113,7 +116,7 @@ jobs:
           OMP_WIRE_SOURCE: ${{ runner.temp }}/omp-watch/wire.ts
           OMP_COMPAT_REPORT: ${{ runner.temp }}/omp-watch/compat.json
           PI_CODING_AGENT_DIR: ${{ runner.temp }}/omp-watch/agent
-        run: npx vitest run src/main/omp/compat.live.test.ts
+        run: npx vitest run src/main/omp/compat.live.test.ts src/main/omp/tsp/retire.live.test.ts
       - name: Open the compatibility review issue
         if: always()
         env:

@@ -86,6 +86,7 @@ export class SessionHost {
 	readonly #serializer = new SerializeAddon();
 	#pty: IPty | null = null;
 	#debug: TuiDebugClient | null = null;
+	readonly #screenReadAttempts: { readonly source: string }[] = [];
 	#loggedUnreadableStatus = false;
 	#loggedSlowWorktreeRead = false;
 	#privateDir: string | null = null;
@@ -261,7 +262,7 @@ export class SessionHost {
 			} catch (error) {
 				throw await ompStartError(error, bin);
 			}
-			this.#debug = new TuiDebugClient(debugPath);
+			this.#debug = new TuiDebugClient(debugPath, operation => this.#assertClassicRead(`debug:${operation}`));
 			this.#pty.onData(data => {
 				if (this.#tspStream) {
 					const bytes = typeof data === "string" ? Buffer.from(data) : data;
@@ -867,8 +868,19 @@ export class SessionHost {
 		});
 	}
 
+	/** Main-owned audit seam. Attempts are recorded before refusal, including after host exit. */
+	screenReadAttempts(): readonly { readonly source: string }[] {
+		return this.#screenReadAttempts.slice();
+	}
+
+	#assertClassicRead(source: string): void {
+		if (!this.#tsp) return;
+		this.#screenReadAttempts.push({ source });
+		throw new Error(TSP_PREVIEW_UNAVAILABLE);
+	}
+
 	async screenLines(): Promise<string[]> {
-		if (this.#tsp) throw new Error(TSP_PREVIEW_UNAVAILABLE);
+		this.#assertClassicRead("host:screen");
 		if (!this.#debug) return [];
 		return this.#debug.screen();
 	}
@@ -886,21 +898,21 @@ export class SessionHost {
 	}
 
 	async screenPaint(): Promise<TuiPaint> {
-		if (this.#tsp) throw new Error(TSP_PREVIEW_UNAVAILABLE);
+		this.#assertClassicRead("screenPaint");
 		if (!this.#debug) return { lines: [] };
 		return this.#debug.paint();
 	}
 
 	/** TUI component debug state (e.g. the editor's current text) for features that read omp's own UI. */
 	async debugValues(): Promise<Record<string, unknown>> {
-		if (this.#tsp) throw new Error(TSP_PREVIEW_UNAVAILABLE);
+		this.#assertClassicRead("debugValues");
 		if (!this.#debug) return {};
 		return this.#debug.values();
 	}
 
 	/** Read current focus directly; cached HostState.tui is only a periodic UI projection. */
 	async tuiFocus(): Promise<TuiFocus | null> {
-		if (this.#tsp) throw new Error(TSP_PREVIEW_UNAVAILABLE);
+		this.#assertClassicRead("host:tui-focus");
 		if (!this.#debug || this.#pty === null) return null;
 		return this.#debug.info().catch(() => null);
 	}
@@ -928,7 +940,7 @@ export class SessionHost {
 	}
 
 	serializedScreen(): string {
-		if (this.#tsp) throw new Error(TSP_PREVIEW_UNAVAILABLE);
+		this.#assertClassicRead("host:buffer");
 		return this.#serializer.serialize();
 	}
 
@@ -1079,6 +1091,7 @@ export class SessionHost {
 
 	#rememberShutdownProgress(): void {
 		if (this.#shutdownStage !== "requested") return;
+		this.#assertClassicRead("shutdown:painted-progress");
 		const buffer = this.#screen.buffer.active;
 		for (let index = buffer.baseY; index < buffer.length; index++) {
 			if (/^\s*(?:Still closing|Closing session)…/.test(buffer.getLine(index)?.translateToString(true) ?? "")) {
@@ -1220,6 +1233,7 @@ export class SessionHost {
 	}
 
 	#transcriptLines(): string[] {
+		this.#assertClassicRead("startup:painted-notices");
 		const buffer = this.#screen.buffer.active;
 		const lines: string[] = [];
 		let wrapped: string | null = null;
@@ -1245,6 +1259,7 @@ export class SessionHost {
 			}
 			return;
 		}
+		this.#assertClassicRead("startup:painted-diagnostic");
 		const buffer = this.#screen.buffer.active;
 		const lines: string[] = [];
 		let wrapped = "";

@@ -734,6 +734,44 @@ describe("SessionController TSP preview input", () => {
 		expect(session.getSnapshot().queue).toEqual([]);
 	});
 
+	it("delivers an idle prompt from semantic composer facts despite a stale classic overlay count", async () => {
+		const session = preview(false);
+		sendHost({ transport: "tsp", link: "L1", tui: tui(4), tspAvailability: { available: true, reason: null } });
+		expect(session.busy).toBe(false);
+		await session.send("Use the semantic editor.");
+		expect(invoked).toEqual([submit("Use the semantic editor.")]);
+		expect(queued(session)).toEqual([]);
+	});
+
+	it.each(["panel", "ask"] as const)("holds queued input for the semantic %s and releases it independently of classic focus", async blockedBy => {
+		const session = preview(true);
+		const facts = { sendable: true, text: "", cursor: 0, ghost: "", editorId: "e", surfaceId: "s", queued: [] };
+		await session.send("After omp returns.");
+		sendHost({ transport: "tsp", link: "L1", tui: tui(0), tspAvailability: { available: false, reason: "omp owns the editor." }, tspComposer: { ...facts, blockedBy } });
+		fakes.guests.at(-1)!.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked).toEqual([]);
+		expect(queued(session)).toEqual(["After omp returns."]);
+		sendHost({ transport: "tsp", link: "L1", tui: tui(4), tspAvailability: { available: true, reason: null }, tspComposer: { ...facts, blockedBy: null } });
+		await flush();
+		expect(invoked).toEqual([submit("After omp returns.")]);
+		expect(queued(session)).toEqual([]);
+	});
+
+	it("releases a previous classic overlay hold when the replacement TSP host is ready", async () => {
+		const session = working("classic-overlay-replacement");
+		await session.send("Continue in the replacement.");
+		sendHost({ link: "L1", tui: tui(1) });
+		fakes.guests.at(-1)!.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked).toEqual([]);
+		session.attach(host({ hostId: "h2", transport: "tsp", link: "L2", tui: tui(4), tspAvailability: { available: true, reason: null } }));
+		fakes.guests.at(-1)!.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked).toEqual([["host:submit", "h2", "Continue in the replacement.", "steer"]]);
+		expect(queued(session)).toEqual([]);
+	});
+
 	it("holds the app queue behind omp's own queued follow-up until its dock clears", async () => {
 		const session = preview(false);
 		const facts = { sendable: true, text: "", cursor: 0, ghost: "", editorId: "e", surfaceId: "s", queued: ["omp follow-up"], blockedBy: null } as const;

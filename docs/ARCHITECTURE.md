@@ -273,8 +273,11 @@ renderer inserts it with a persisted per-draft receipt and acknowledges once cle
 Failures retain the exact text with a retry action, and replacements are left unchanged. Application
 pastes hold the host input lock until reflected; follow-up preserves attached image markers. Undo sends
 the advertised `undo` event. Classic input retains its original paste, key and exact-transfer paths.
-Unconverted screen-driven controls still require semantic consumers, and expected refusals do not
-become persistent chat errors.
+Hosted controls use their specific semantic consumers and the generic omp screen for unclaimed
+documents. Expected refusals do not become persistent chat errors.
+TSP queue busy/drain decisions ignore cached classic overlay counts and use semantic queue,
+editor ownership and availability facts exclusively. A classic overlay hold also releases when
+a ready TSP host replaces it, preventing stale debug state from stopping queued delivery.
 
 TSP Go here opens omp's session tree and activates the current selector with the exact session
 entry id. The main writer rechecks selector identity, item presence, disabled state, current filter,
@@ -326,6 +329,27 @@ permission button's work-mode label without the 1-second or 450 ms screen timer.
 continues to use its existing config source. Explicit refreshes also use native mode facts, and the
 painted read helper refuses TSP locally before IPC. Lifecycle revisions cancel old polling and
 discard in-flight painted results across reconnect and transport round trips.
+A classic readiness read that resolves after TSP host replacement refuses before requesting
+debug focus from the replacement. Direct TSP status-read errors also refuse locally.
+
+Phase 4j also enforces the read boundary in main. `SessionHost.screenReadAttempts()` returns
+the lifetime list of refused painted-screen or debug reads for a TSP host, including attempts
+after exit. The public screen, buffer, focus, paint and debug-value readers record before
+refusing. The debug client checks the same guard before connecting or sending `info`, `tree`,
+`text` or `values`, so an internal call cannot bypass the audit. Direct xterm buffer readers
+for classic startup and shutdown carry the guard too. TSP still feeds non-protocol bytes to
+xterm for OSC status and terminal-probe replies; parsing those bytes does not inspect painted
+rows. The existing 500 ms main timer updates native session location, recaps and appearance,
+with its debug-focus branch restricted to classic hosts.
+
+`tsp/retire.live.test.ts` is the installed-omp retirement gate, enabled by `OMP_BIN` on macOS
+and Linux. It retains one production host, PTY and collab guest through startup, a scripted
+message, a slash overlay, a hook answer, tree navigation, model/thinking changes, Plan Review
+and shutdown, checking the attempted-read ledger throughout. Its loopback provider is shared
+with the fixture recorder. The release watcher runs this gate with compatibility checks.
+The live host test does not mount the renderer. `ComposerPolling.test.ts` separately mounts
+the renderer consumers and checks that neither classic screen-poll timer starts over
+60 simulated seconds, including when stale classic overlay counts are present.
 
 TSP Plan Review uses `src/shared/tsp/plan-review.ts` to project the live overlay's title, complete
 Markdown body, option ids, disabled choices and execution tiers into the existing native card.

@@ -13,7 +13,7 @@ import { screenPoller, useOmpScreen } from "../../features/session-tools/status"
 import { OmpDialogCard } from "../../features/session-tools/OmpDialogCard";
 import { PlanReviewCard } from "../../features/session-tools/PlanReviewCard";
 import { usePlanReviewPending } from "../../features/panes/PlanPane";
-import { readScreen, waitForScreen } from "../../features/session-tools/drive";
+import { readScreen, runCommand, statusReadError, waitForScreen } from "../../features/session-tools/drive";
 import { PermissionButton } from "../../features/session-tools/pickers";
 import "../../i18n";
 
@@ -136,6 +136,31 @@ it("mounts an idle TSP composer and shared consumers without painted screen or p
 	expect(calls("host:screen")).toHaveLength(0);
 });
 
+it.each([0, 1])("starts no idle or overlay painted timer for a TSP status consumer with %s stale classic overlays", async overlays => {
+	setHost("tsp");
+	view.host!.tui = { overlays, focused: "picker", overlayKinds: ["picker"], altScreen: false };
+	await act(async () => root.render(createElement(StatusConsumer, { id: "one" })));
+	expect(element.querySelector("output")?.textContent).toContain('"goal":"active"');
+	expect(vi.getTimerCount()).toBe(0);
+	await advance(60_000);
+	expect(vi.getTimerCount()).toBe(0);
+	expect(calls("host:screen")).toHaveLength(0);
+	expect(calls("native:snapshot")).toHaveLength(1);
+});
+
+it.each([[0, 1000], [1, 450]])("retains the classic painted cadence with %s overlays", async (overlays, interval) => {
+	setHost("classic");
+	view.host!.tui = { overlays, focused: "picker", overlayKinds: ["picker"], altScreen: false };
+	await act(async () => root.render(createElement(StatusConsumer, { id: "one" })));
+	expect(calls("host:screen")).toHaveLength(1);
+	expect(vi.getTimerCount()).toBe(1);
+	await advance(interval - 1);
+	expect(calls("host:screen")).toHaveLength(1);
+	await advance(1);
+	expect(calls("host:screen")).toHaveLength(2);
+	expect(element.querySelector("output")?.textContent).toContain("Opus 5.5");
+});
+
 it("keeps classic screen polling and next-message prediction offers while mounted", async () => {
 	setHost("classic"); await mount(); await advance(3_000);
 	expect(calls("host:screen").length).toBeGreaterThan(3);
@@ -200,7 +225,31 @@ it("refuses incidental painted reads locally for TSP without invoking Electron",
 	setHost("tsp");
 	await expect(readScreen(session)).rejects.toThrow("not available in the TSP preview");
 	await expect(waitForScreen(session, () => false)).rejects.toThrow("not available in the TSP preview");
+	expect((await statusReadError(session, ["Unusable painted status"])).message).toContain("not available in the TSP preview");
 	expect(calls("host:screen")).toHaveLength(0);
+	expect(calls("host:statusUnreadable")).toHaveLength(0);
+});
+
+it("refuses a command when a TSP host replaces the classic host during its painted readiness read", async () => {
+	const screen = Promise.withResolvers<string[]>();
+	const reading = Promise.withResolvers<void>();
+	setHost("classic");
+	session.whenLive = async () => undefined;
+	session.command = vi.fn(async () => undefined);
+	fake.invoke.mockImplementation(async (channel: string) => {
+		if (channel === "host:screen") { reading.resolve(); return screen.promise; }
+		return undefined;
+	});
+	const running = runCommand(session, "/extension-ui-only");
+	const refused = expect(running).rejects.toThrow("The chat changed while waiting for omp's classic editor.");
+	await reading.promise;
+	setHost("tsp");
+	view.host!.hostId = "replacement-tsp";
+	screen.resolve(["╭── π ▶ ⬢ Old model · ◕ xhigh ──╮", "╰─                          ─╯"]);
+	await refused;
+	expect(session.command).not.toHaveBeenCalled();
+	expect(calls("host:tui-focus")).toHaveLength(0);
+	expect(calls("host:screen")).toEqual([["host:screen", "host"]]);
 });
 
 it.each(["reconnecting", "tsp"] as const)("keeps one screen loop after a classic %s cycle with a deferred old read", async transition => {

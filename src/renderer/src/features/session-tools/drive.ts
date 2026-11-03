@@ -53,6 +53,7 @@ export class OmpBusyError extends Error {
 
 /** Readiness failed without evidence that an omp menu is open. */
 export async function statusReadError(session: SessionController, lines: readonly string[]): Promise<Error> {
+	if (session.getSnapshot().host?.transport === "tsp") return new Error(TSP_PREVIEW_UNAVAILABLE);
 	if (session.hostId) {
 		await window.vomp.invoke("host:statusUnreadable", session.hostId, statusBorderLine(lines)).catch(() => undefined);
 	}
@@ -225,6 +226,7 @@ export async function readyEditor(session: SessionController): Promise<string[]>
 		lastScreen = screen;
 		return parseStatusLine(screen) !== null;
 	}, 8000);
+	if (session.getSnapshot().host?.transport === "tsp") throw new Error("The chat changed while waiting for omp's classic editor.");
 	// Read after the screen wait: HostState.tui may predate an overlay change.
 	const hostId = session.hostId;
 	const focus = hostId ? await window.vomp.invoke("host:tui-focus", hostId) : null;

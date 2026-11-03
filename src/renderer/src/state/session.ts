@@ -711,8 +711,9 @@ export class SessionController {
 			this.#awaiting !== null ||
 			this.#slashDeliveries > 0 ||
 			this.#queueHolds > 0 ||
-			(view.host?.transport === "tsp" && ((view.host.tspComposer?.queued.length ?? 0) > 0 || view.host.tspComposer?.blockedBy === "panel" || view.host.tspComposer?.blockedBy === "ask")) ||
-			(view.host?.tui?.overlays ?? 0) > 0
+			(view.host?.transport === "tsp"
+				? (view.host.tspComposer?.queued.length ?? 0) > 0 || view.host.tspComposer?.blockedBy === "panel" || view.host.tspComposer?.blockedBy === "ask"
+				: (view.host?.tui?.overlays ?? 0) > 0)
 		);
 	}
 
@@ -1264,7 +1265,11 @@ export class SessionController {
 		if (this.#writing > 0 || this.#awaiting !== null || this.#slashDeliveries > 0 || this.#queueHolds > 0) return;
 		// A document watch can release before the separate HostState projection arrives.
 		// Missing availability leaves readiness to that watch and main's guarded writer.
-		if (view.host?.transport === "tsp" && (view.host.tspComposer?.queued.length || view.host.tspComposer?.blockedBy || view.host.tspAvailability?.available === false)) return;
+		if (view.host?.transport === "tsp") {
+			if (view.host.tspComposer?.queued.length || view.host.tspComposer?.blockedBy || view.host.tspAvailability?.available === false) return;
+			this.#drainOne();
+			return;
+		}
 		if ((view.host?.tui?.overlays ?? 0) === 0) {
 			this.#drainOne();
 			return;
@@ -1274,7 +1279,7 @@ export class SessionController {
 		const { promise, resolve } = Promise.withResolvers<void>();
 		const unsubscribe = this.subscribe(() => {
 			const next = this.#view;
-			if ((next.host?.tui?.overlays ?? 0) > 0 && next.mode !== "exited") return;
+			if (next.host?.transport !== "tsp" && (next.host?.tui?.overlays ?? 0) > 0 && next.mode !== "exited") return;
 			unsubscribe();
 			this.#overlayHold = false;
 			resolve();
