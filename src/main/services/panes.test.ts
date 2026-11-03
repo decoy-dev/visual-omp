@@ -239,16 +239,20 @@ describe("readPdfFile", () => {
 });
 
 describe("scanMadeFiles", () => {
-	const now = Date.now();
+	const now = Date.UTC(2026, 0, 1, 12);
 	const window = { start: now - 10_000, end: now + 10_000 };
+	const made = new Date(now);
 	const past = new Date(now - 3_600_000);
 	// Results use the platform's separator; the expectations are written with "/".
 	const rel = (files: { path: string }[] = []) => files.map(file => file.path.slice(dir.length + 1).split(sep).join("/"));
 	const home = () => join(dir, "home");
 
 	async function put(path: string, data: Buffer | string = PNG): Promise<void> {
-		await mkdir(join(dir, path, ".."), { recursive: true });
-		await writeFile(join(dir, path), data);
+		const file = join(dir, path);
+		await mkdir(join(file, ".."), { recursive: true });
+		await writeFile(file, data);
+		// Keep fixture mtimes inside the query window regardless of preceding test duration.
+		await utimes(file, made, made);
 	}
 
 	it("scans a named folder two levels deep for PDFs, images and SVGs modified while the call ran", async () => {
@@ -271,7 +275,10 @@ describe("scanMadeFiles", () => {
 		await put("notes.txt", "copy");
 		await put("old.txt", "copy");
 		await utimes(join(dir, "old.txt"), past, past);
-		const paths = ["notes.txt", "old.txt", "missing.pdf"].map(name => join(dir, name));
+		await put("future.txt", "copy");
+		const future = new Date(window.end + MADE_SCAN.slackMs + 1000);
+		await utimes(join(dir, "future.txt"), future, future);
+		const paths = ["notes.txt", "old.txt", "future.txt", "missing.pdf"].map(name => join(dir, name));
 		const [found] = await scanMadeFiles([{ paths: [...paths, "relative/x.png"], ...window }], home());
 		expect(rel(found)).toEqual(["notes.txt"]);
 	});
