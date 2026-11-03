@@ -106,7 +106,7 @@
 		"sendNow": "Send message now",
 		"sendNowTip": "Send this now. omp reads it at its next step, before this reply finishes.",
 		"sendFailed": "Couldn't send the queued message, so it is back in the queue",
-		"stranded": "omp's message box may still hold images from a message that didn't send. Restart omp to clear it.",
+		"stranded": "omp's message box could not be confirmed clear. Restart omp before sending another message.",
 		"restart": "Restart omp",
 		"restartFailed": "Couldn't restart omp",
 		"edit": "Edit message",

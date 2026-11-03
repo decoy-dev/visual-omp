@@ -119,10 +119,11 @@ Each SessionHost:
    attached, the editor changed unexpectedly or acknowledgement is unavailable, the existing
    stranded-image hold requires recovery because public editor text replacement cannot remove
    pending image payloads. The public editor API does not expose a cursor position to restore.
-   This safety check adds public-extension and classic-debug round trips to every classic image
-   send, with 40 ms polling when acknowledgement is pending and an eight-second deadline for each
-   image. Unavailable extension state or unsupported token formatting blocks submission. This is
-   the accepted trade-off for preventing a rejected path from being submitted as prompt text.
+   Each image adds native-extension editor jobs and classic-debug reads. Editor jobs wait for the
+   extension's 250 ms poll after its preceding tick, while pending attachment acknowledgement is
+   sampled again after 40 ms with an eight-second deadline per image. Unavailable extension state
+   or unsupported token formatting blocks submission, preventing a rejected path from being sent
+   as prompt text.
    The standalone classic success captures in `src/main/omp/fixtures/{18.15.0,18.16.0}/` run
    the production helper, private native bridge and debug client with the actual titanium theme.
    Its public image symbol is `📷`; the captured editor tokens are `📷 #1 ` and `📷 #1 📷 #2 `.
@@ -171,6 +172,54 @@ The original raster blocks travel with the prompt, so no paste enters the select
 app guest's matching `collab-prompt` text acknowledges that send. Other extension dialogs retain guarded
 answers; classic approvals keep their existing sending-denies path and TSP approvals remain guarded.
 The exact ask result `Ask interrupted by message` has a neutral Closed mark.
+
+Ordinary host submissions carry a per-message id until their outcome is known. The controller
+keeps the original text, images and acknowledgement scope until collab supplies positive delivery
+evidence or main reports an explicit rejection. Main arms the trusted extension's public `input`
+observer before writing, so a repainted old error cannot establish ownership by itself.
+Missing-model and missing-credential errors require the exact restored draft before it is cleared.
+Expanded image markers are matched only with the observed submission's exact attachment count,
+numbered leading markers and unchanged authored text. Classic diagnostics may pass through only
+those owned, numbered preview cards immediately above the editor.
+Classic recovery uses the public editor API's synchronous compare, clear and verification; TSP
+recovery uses a scoped, observed-length edit and waits for its semantic echo. An empty ordinary
+editor, elapsed time or an unrelated error never establishes rejection. The `.` and `c` shortcuts
+can report `Nothing to resume` with an empty editor only after a fresh public SDK observation
+established an idle, empty branch with no pending messages.
+
+The controller keeps an explicitly rejected message as one queue row with its original images and
+omp's diagnostic. Only that submission's acknowledgement hold is released; other sends and newer
+composer drafts remain unchanged. The row waits for an explicit retry or removal. Main retains
+failure receipts until the controller acknowledges retaining them, including replayed host state.
+A changed or unreadable editor stays untouched. Until an exact restored draft establishes ownership,
+main retains the submission's acknowledgement hold and publishes no rejection receipt. A failed
+compare/clear after that exact match retains the relaunch-required input hold. Native input-watch
+expiry only removes observation state; it does not reject input.
+The 18.15 path, which leaves no restored ordinary draft, does not gain a fabricated rejection.
+A rejected classic prompt with already attached image payloads also requires relaunch: the public
+text API cannot discard those payloads. The message and original app attachments remain queued;
+clearing their display tokens alone would risk sending the old images with a later message.
+
+Every classic submission checks the exact hidden draft. It permits only an empty editor or the exact
+image tokens staged by that host's application paste in the current generation. For tracked sends,
+one native-extension job reads the editor, arms its scoped input observer and reads the editor again,
+without yielding inside omp. This replaces three sequential bridge jobs with one bridge cycle.
+The extension polls 250 ms after its preceding tick finishes, so a send can wait up to that interval
+plus any in-flight tick and loopback HTTP work. Main has no existing push channel to wake that timer.
+The standalone gate's five fresh-host classic samples on 2026-11-03 measured median submission-to-input
+receipt time decreasing from 762.42 to 260.64 ms on omp 18.16.0 and from 773.43 to 255.44 ms on
+18.15.0. That interval includes controller/main work, polling, PTY input handling and the matching
+public input notification's HTTP return to main; it excludes startup and provider request latency.
+These observations measure the complete guarded send path rather than isolating CPU cost.
+Arming has a five-second deadline; exact recovery editor requests have a ten-second deadline, and
+TSP clear confirmation has an eight-second deadline. These deadlines never establish a rejection.
+Unavailable observation blocks the write and returns the original ordinary message to its app draft
+for a later attempt. If images were already staged when arming fails, relaunch is required because
+the public text API cannot discard their pending payloads. No fallback sends unobserved text.
+The safeguard itself makes zero provider requests; rejection phases in the opt-in standalone gate
+also make zero provider requests. Successful retries use the gate's scripted loopback provider.
+Classic Close and Quit check the hidden editor too: nonempty or unreadable editor state selects
+SDK shutdown rather than appending `/exit`.
 
 Composer compaction: the context popover calls `SessionController.send("/compact")`. While omp works,
 the line joins the visible app queue and follows the same slash delivery as a typed queued command.

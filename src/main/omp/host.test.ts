@@ -7,6 +7,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type * as Sessions from "./sessions";
 import type { RelayEvents } from "./relay";
 import type { TuiFocus } from "@shared/ipc";
+import type { EditorDraftRequest, EditorDraftResult } from "@shared/contracts/composer";
+import type { NativePromptWatch } from "./native-bridge";
 import type { MessageBoxOptions } from "electron";
 import { broadcast } from "../ipc";
 import type { TspRendererEvent } from "@shared/tsp-host";
@@ -32,7 +34,10 @@ const pty = vi.hoisted(() => ({
 	keys: vi.fn(async (_keys: string) => {}),
 	values: vi.fn(async (): Promise<Record<string, unknown>> => ({})),
 	requestShutdown: vi.fn(),
-	editorDraft: vi.fn(async (_request: unknown) => ({ text: "", cleared: true, imageChips: 0, imageSymbol: "IMAGE" })),
+	editorDraft: vi.fn(async (_request: EditorDraftRequest): Promise<EditorDraftResult> => ({ text: "", cleared: true, imageChips: 0, imageSymbol: "IMAGE" })),
+	watchPrompt: vi.fn(async (_request: NativePromptWatch) => ({ emptyResume: false })),
+	forgetPrompt: vi.fn((_id: string) => {}),
+	onPromptInput: null as ((id: string) => void) | null,
 	confirm: vi.fn(async (_options?: MessageBoxOptions) => ({ response: 0 })),
 	writes: vi.fn(),
 	kill: vi.fn(),
@@ -70,7 +75,7 @@ vi.mock("./relay", () => ({
 }));
 vi.mock("./tui-debug", () => ({ TuiDebugClient: class { info = async () => pty.focus; screen = async () => { pty.screenReads(); return pty.screen; }; values = pty.values; keys = pty.keys; close() {} } }));
 vi.mock("electron", () => ({ BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: pty.confirm }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: false }) } }));
-vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", requestShutdown: pty.requestShutdown, editorDraft: pty.editorDraft, snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, beginGeneration: vi.fn(), close: async () => {} }) }));
+vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", requestShutdown: pty.requestShutdown, editorDraft: pty.editorDraft, watchPrompt: pty.watchPrompt, forgetPrompt: pty.forgetPrompt, set onPromptInput(callback: typeof pty.onPromptInput) { pty.onPromptInput = callback; }, snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, beginGeneration: vi.fn(), close: async () => {} }) }));
 // Route promise timers through the fake clock in deadline regressions.
 vi.mock("node:timers/promises", () => ({ setTimeout: (ms: number, value?: unknown) => {
 	const { promise, resolve } = Promise.withResolvers<unknown>();
@@ -96,6 +101,18 @@ beforeEach(async () => {
 	pty.keys.mockReset().mockResolvedValue(undefined);
 	pty.values.mockReset().mockResolvedValue({});
 	pty.requestShutdown.mockReset();
+	pty.watchPrompt.mockReset().mockImplementation(async request => {
+		if (request.classicEditor) {
+			for (let read = 0; read < 2; read++) {
+				const draft = await pty.editorDraft({ operation: "peek", sessionId: request.sessionId });
+				if (draft.error || draft.text === null) throw new Error("omp could not check its editor before sending. Try again when omp is ready.");
+				if (draft.text !== "" && draft.text !== request.classicEditor.expected) throw new Error("omp has unsent text in its editor. Recover it or restart omp before sending another message.");
+			}
+		}
+		return { emptyResume: false };
+	});
+	pty.forgetPrompt.mockReset();
+	pty.onPromptInput = null;
 	pty.confirm.mockReset().mockResolvedValue({ response: 0 });
 	pty.writes.mockReset();
 	pty.editorDraft.mockReset().mockImplementation(async () => {
@@ -508,9 +525,10 @@ describe("classic contaminated-editor shutdown", () => {
 	async function stageMixedImageFailure(): Promise<void> {
 		await connect();
 		pty.editorDraft.mockReset()
-			.mockResolvedValueOnce({ text: "Unsent draft ", cleared: false, imageChips: 0, imageSymbol: "IMAGE" })
-			.mockResolvedValueOnce({ text: "Unsent draft IMAGE #1 ", cleared: false, imageChips: 1, imageSymbol: "IMAGE" })
-			.mockResolvedValue({ text: "Unsent draft IMAGE #1 /tmp/rejected.png", cleared: false, imageChips: 1, imageSymbol: "IMAGE" });
+			.mockResolvedValueOnce({ text: "", cleared: true, imageChips: 0, imageSymbol: "IMAGE" })
+			.mockResolvedValueOnce({ text: "", cleared: true, imageChips: 0, imageSymbol: "IMAGE" })
+			.mockResolvedValueOnce({ text: "IMAGE #1 ", cleared: false, imageChips: 1, imageSymbol: "IMAGE" })
+			.mockResolvedValue({ text: "IMAGE #1 /tmp/rejected.png", cleared: false, imageChips: 1, imageSymbol: "IMAGE" });
 		pty.values.mockResolvedValueOnce({}).mockResolvedValueOnce({})
 			.mockResolvedValue({ failure: { textPreview: "Failed to read pasted image path: /tmp/rejected.png" } });
 		await expect(host.paste("/tmp/staged.png /tmp/rejected.png", true)).rejects.toThrow("Image submission needs recovery.");
@@ -810,6 +828,538 @@ function tspComposer(surface = "s:1", editor = "editor", sendable = true): void 
 		["focus", editor],
 	] });
 }
+
+describe.each(["classic", "tsp"] as const)("%s rejected prompt recovery", transport => {
+	const modelDiagnostic = "No model selected.\n\nUse /login, set an API key environment variable, or create /tmp/agent.db\n\nThen use /model to select a model.";
+	const keyDiagnostic = "No API key found for anthropic.\n\nUse /login, set an API key environment variable, or create /tmp/agent.db";
+	let sequence: number;
+	let notice: number;
+	let draft: string;
+
+	beforeEach(async () => {
+		if (transport === "tsp") {
+			await launchTsp();
+			tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] });
+			tspComposer();
+		}
+		await connect();
+		sequence = 1;
+		notice = 0;
+		draft = "";
+		pty.editorDraft.mockImplementation(async request => {
+			const text = draft;
+			const cleared = request.operation === "take" && request.expected === text;
+			if (cleared) draft = "";
+			return { text, cleared, imageChips: 0, imageSymbol: "IMAGE" };
+		});
+		pty.writes.mockClear();
+	});
+
+	function restore(text: string): void {
+		draft = text;
+		if (transport === "tsp") tspMessage("f", { sf: "s:1", s: ++sequence, ops: [["set", "editor", { text, cursor: text.length }]] });
+	}
+
+	async function diagnostic(text = modelDiagnostic): Promise<void> {
+		if (transport === "tsp") {
+			const id = `rejection-${++notice}`;
+			tspMessage("f", { sf: "s:1", s: ++sequence, ops: [["add", id, "s:1", null, {
+				id, k: "row", p: { role: "omp.notice.error", tone: "error" },
+				c: [{ id: `${id}-text`, k: "text", p: { spans: [{ t: text }] } }],
+			}]] });
+		} else {
+			// Match the real TranscriptNotice padding and pinned classic composer chrome.
+			pty.data?.(`\x1b[2J\x1b[H\r\n Error: ${text.replaceAll("\n", "\r\n ")}\r\n\r\n╭── π ▶ ⬢ model ▶ project ──╮\r\n╰─ ${"─".repeat(115)}╯\r\n`);
+			await vi.waitFor(() => expect(host.serializedScreen()).toContain(text.split("\n")[0]));
+		}
+		// Rejection recovery shares the application queue with real host writers.
+		await host.withEditorInput(async input => { input.assertOpen(); });
+	}
+
+	function confirmSemanticClear(): void {
+		if (transport !== "tsp") return;
+		pty.writes.mockImplementation((bytes: string) => {
+			if (bytes.includes('"ev":"edit"') && bytes.includes('"text":""')) restore("");
+		});
+	}
+
+	function expectPromptWrite(text: string): void {
+		if (transport === "classic") expect(pty.writes).toHaveBeenCalledWith(`\x1b[200~${text}\x1b[201~\r`);
+		else expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining(JSON.stringify({ ev: "send", sf: "s:1", id: "editor", text })));
+	}
+
+	function takes(): EditorDraftRequest[] {
+		return pty.editorDraft.mock.calls.map(([request]) => request).filter(request => request.operation === "take");
+	}
+
+	it("arms exact SDK observation before the host's actual prompt write", async () => {
+		const armed = Promise.withResolvers<{ emptyResume: boolean }>();
+		pty.watchPrompt.mockImplementationOnce(() => armed.promise);
+		const sending = host.submit("Watch before writing", "steer", undefined, "arm-first");
+		await vi.waitFor(() => expect(pty.watchPrompt).toHaveBeenCalledExactlyOnceWith({ id: "arm-first", sessionId: "old", text: "Watch before writing", ...(transport === "classic" ? { classicEditor: { expected: "" } } : {}) }));
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes("Watch before writing"))).toBe(false);
+		armed.resolve({ emptyResume: false });
+		await sending;
+		expectPromptWrite("Watch before writing");
+	});
+
+	it("does not reject restored text until this exact public SDK input event is observed", async () => {
+		await host.submit("Keep exact text", "steer", undefined, "exact-input");
+		restore("Keep exact text");
+		await diagnostic();
+		pty.onPromptInput?.("some-other-submission");
+		await host.withEditorInput(async () => {});
+		expect(host.state.promptFailures ?? []).toEqual([]);
+		expect(takes()).toEqual([]);
+		expect(draft).toBe("Keep exact text");
+		confirmSemanticClear();
+		pty.onPromptInput?.("exact-input");
+		await vi.waitFor(() => expect(host.state.promptFailures).toEqual([{ id: "exact-input", generation: 1, diagnostic: modelDiagnostic, cleared: true }]));
+		expect(draft).toBe("");
+	});
+
+	it("does not turn an old diagnostic and an empty editor into a rejected ordinary prompt", async () => {
+		await diagnostic();
+		await host.submit("Accepted ordinary text", "steer", undefined, "stale-error");
+		pty.onPromptInput?.("stale-error");
+		if (transport === "classic") await diagnostic();
+		else tspMessage("f", { sf: "s:1", s: ++sequence, ops: [["set", "editor", { cursor: 0 }]] });
+		await host.withEditorInput(async () => {});
+		expect(host.state.promptFailures ?? []).toEqual([]);
+		expect(takes()).toEqual([]);
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"'))).toBe(false);
+	});
+
+	it.each([modelDiagnostic, keyDiagnostic])("clears only the matched restored draft and preserves the complete diagnostic: %s", async message => {
+		const text = "Two lines\nwith exact spacing  ";
+		await host.submit(text, "steer", undefined, "preflight");
+		expectPromptWrite(text);
+		restore(text);
+		confirmSemanticClear();
+		pty.onPromptInput?.("preflight");
+		await diagnostic(message);
+		await vi.waitFor(() => expect(host.state.promptFailures).toEqual([{ id: "preflight", generation: 1, diagnostic: message, cleared: true }]));
+		expect(draft).toBe("");
+		if (transport === "classic") expect(takes()).toEqual([{ operation: "take", sessionId: "old", expected: text }]);
+		else {
+			expect(takes()).toEqual([]);
+			expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining(JSON.stringify({ ev: "edit", sf: "s:1", id: "editor", from: 0, to: text.length, text: "", cursor: 0, len: text.length })));
+			expect(host.composerFacts().text).toBe("");
+		}
+	});
+
+	it("handles the same error again after retry instead of deduplicating its diagnostic text", async () => {
+		confirmSemanticClear();
+		for (const id of ["first-attempt", "retry-attempt"]) {
+			await host.submit("Try again", "steer", undefined, id);
+			restore("Try again");
+			pty.onPromptInput?.(id);
+			await diagnostic();
+			await vi.waitFor(() => expect(host.state.promptFailures?.find(failure => failure.id === id)).toMatchObject({ diagnostic: modelDiagnostic, cleared: true }));
+			host.acknowledgeSubmission(id);
+		}
+		expect(host.state.promptFailures).toEqual([]);
+		expect(pty.watchPrompt).toHaveBeenCalledTimes(2);
+	});
+
+	if (transport === "classic") it("retains rejected staged images for SDK relaunch instead of claiming a text clear removed their payloads", async () => {
+		pty.editorDraft.mockImplementation(async request => {
+			const text = draft;
+			const cleared = request.operation === "take" && request.expected === text;
+			if (cleared) draft = "";
+			return { text, cleared, imageChips: draft.startsWith("IMAGE #1 ") ? 1 : 0, imageSymbol: "IMAGE" };
+		});
+		pty.writes.mockImplementation((bytes: string) => {
+			if (bytes === "\x1b[200~/tmp/staged.png\x1b[201~") draft = "IMAGE #1 ";
+		});
+		await host.paste("/tmp/staged.png", true);
+		await host.submit("Describe this image", "steer", undefined, "rejected-image");
+		restore("IMAGE #1 Describe this image");
+		pty.onPromptInput?.("rejected-image");
+		await diagnostic();
+		await vi.waitFor(() => expect(host.state.promptFailures).toEqual([{ id: "rejected-image", generation: 1, diagnostic: modelDiagnostic, cleared: false }]));
+		expect(takes()).toEqual([]);
+		expect(draft).toBe("IMAGE #1 Describe this image");
+		await expect(host.submit("Must not carry the rejected image")).rejects.toThrow("Restart omp");
+	});
+
+	it("retains a failure until its own acknowledgement, not an unrelated acknowledgement or later input", async () => {
+		await host.submit("Rejected once", "steer", undefined, "retained");
+		restore("Rejected once");
+		confirmSemanticClear();
+		pty.onPromptInput?.("retained");
+		await diagnostic();
+		await vi.waitFor(() => expect(host.state.promptFailures).toHaveLength(1));
+		host.acknowledgeSubmission("not-retained");
+		await host.submit("Separate accepted message", "steer", undefined, "accepted");
+		host.acknowledgeSubmission("accepted");
+		expect(host.state.promptFailures).toEqual([{ id: "retained", generation: 1, diagnostic: modelDiagnostic, cleared: true }]);
+		host.acknowledgeSubmission("retained");
+		expect(host.state.promptFailures).toEqual([]);
+		expect(pty.forgetPrompt).toHaveBeenCalledWith("retained");
+	});
+
+	it("refuses a duplicate pending id until that exact id is acknowledged", async () => {
+		await host.submit("First pending", "steer", undefined, "same-id");
+		host.acknowledgeSubmission("other-id");
+		pty.writes.mockClear();
+		await expect(host.submit("Duplicate pending", "steer", undefined, "same-id")).rejects.toThrow(/pending|already/i);
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes("Duplicate pending"))).toBe(false);
+		host.acknowledgeSubmission("same-id");
+		await host.submit("New matching-id submission", "steer", undefined, "same-id");
+		expectPromptWrite("New matching-id submission");
+	});
+
+	it("bounds pending submissions without evicting an unacknowledged prompt", async () => {
+		for (let index = 0; index < 128; index++) await host.submit(`Pending ${index}`, "steer", undefined, `pending-${index}`);
+		pty.writes.mockClear();
+		await expect(host.submit("Overflow stays unsent", "steer", undefined, "overflow")).rejects.toThrow(/pending|acknowledge/i);
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes("Overflow stays unsent"))).toBe(false);
+		expect(pty.watchPrompt).toHaveBeenCalledTimes(128);
+		host.acknowledgeSubmission("pending-0");
+		await host.submit("Capacity released", "steer", undefined, "overflow");
+		expectPromptWrite("Capacity released");
+	});
+
+	it("rejects foreign SDK input observed while arming instead of attributing it to the unwritten prompt", async () => {
+		const armed = Promise.withResolvers<{ emptyResume: boolean }>();
+		pty.watchPrompt.mockImplementationOnce(() => armed.promise);
+		const sending = host.submit("Never written", "steer", undefined, "early-input");
+		const rejected = expect(sending).rejects.toThrow(/another input|again/i);
+		await vi.waitFor(() => expect(pty.watchPrompt).toHaveBeenCalledOnce());
+		pty.onPromptInput?.("early-input");
+		armed.resolve({ emptyResume: false });
+		await rejected;
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes("Never written"))).toBe(false);
+		expect(host.state.promptFailures ?? []).toEqual([]);
+	});
+
+	if (transport === "classic") it("refuses matching foreign input during the atomic final peek even when that peek is empty", async () => {
+		const read = pty.editorDraft.getMockImplementation()!;
+		let peeks = 0;
+		pty.editorDraft.mockImplementation(async request => {
+			if (request.operation === "peek" && ++peeks === 2) pty.onPromptInput?.("foreign-final-peek");
+			return read(request);
+		});
+		await expect(host.submit("Matching foreign text", "steer", undefined, "foreign-final-peek")).rejects.toThrow(/another input|again/i);
+		expect(peeks).toBe(2);
+		expect(draft).toBe("");
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes("Matching foreign text"))).toBe(false);
+		expect(host.state.promptFailures ?? []).toEqual([]);
+	});
+
+	it("keeps ordinary text unsent when observation is unavailable and accepts a later attempt", async () => {
+		const text = "Keep this ordinary draft";
+		pty.watchPrompt.mockRejectedValueOnce(new Error("omp did not arm its input observation. Your message was not sent. Try again when omp is ready."));
+		await expect(host.submit(text, "steer", undefined, "unavailable-observation")).rejects.toThrow("Try again when omp is ready.");
+		expect(draft).toBe("");
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes(text))).toBe(false);
+		expect(host.state.promptFailures ?? []).toEqual([]);
+		await host.submit(text, "steer", undefined, "later-observation");
+		expectPromptWrite(text);
+	});
+
+	it("never infers rejection merely because an observed prompt stays pending", async () => {
+		await host.submit("Slow but accepted", "steer", undefined, "no-timeout");
+		pty.onPromptInput?.("no-timeout");
+		vi.useFakeTimers();
+		await vi.advanceTimersByTimeAsync(60_000);
+		expect(host.state.promptFailures ?? []).toEqual([]);
+		expect(takes()).toEqual([]);
+	});
+
+	it.each([false, true])("requires trusted emptyResume=%s evidence for Nothing to resume", async emptyResume => {
+		pty.watchPrompt.mockResolvedValueOnce({ emptyResume });
+		await host.submit(".", "steer", undefined, "resume-empty");
+		// This branch is identified by the SDK idle snapshot, not an ordinary input callback.
+		await diagnostic("Nothing to resume");
+		if (emptyResume) await vi.waitFor(() => expect(host.state.promptFailures).toEqual([{ id: "resume-empty", generation: 1, diagnostic: "Nothing to resume", cleared: true }]));
+		else expect(host.state.promptFailures ?? []).toEqual([]);
+		expect(takes()).toEqual([]);
+	});
+
+	it("does not claim Nothing to resume when its trusted empty editor has acquired native text", async () => {
+		pty.watchPrompt.mockResolvedValueOnce({ emptyResume: true });
+		await host.submit(".", "steer", undefined, "resume-changed");
+		restore("Private native text");
+		await diagnostic("Nothing to resume");
+		expect(host.state.promptFailures ?? []).toEqual([]);
+		expect(draft).toBe("Private native text");
+		expect(takes()).toEqual([]);
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"'))).toBe(false);
+	});
+
+	it("keeps an unmatched draft and its acknowledgement hold without claiming a rejection", async () => {
+		await host.submit("Original rejected text", "steer", undefined, "changed-draft");
+		restore("New private editor text");
+		pty.onPromptInput?.("changed-draft");
+		await diagnostic();
+		expect(host.state.promptFailures ?? []).toEqual([]);
+		expect(pty.forgetPrompt).not.toHaveBeenCalledWith("changed-draft");
+		expect(draft).toBe("New private editor text");
+		expect(takes()).toEqual([]);
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"'))).toBe(false);
+		host.acknowledgeSubmission("changed-draft");
+		pty.writes.mockClear();
+		await expect(host.submit("Must stay unsent", "steer", undefined, "blocked-after-ack")).rejects.toThrow(/recover|restart/i);
+		expect(pty.writes).not.toHaveBeenCalled();
+		const stopping = host.stop();
+		await vi.waitFor(() => expect(pty.requestShutdown).toHaveBeenCalledOnce());
+		expect(pty.writes).not.toHaveBeenCalled();
+		await exit(0); await stopping;
+	});
+
+	it("compares the exact draft again when native text changes after recovery's read", async () => {
+		await host.submit("Rejected original draft", "steer", undefined, "compare-clear-race");
+		restore("Rejected original draft");
+		const reading = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<EditorDraftResult>();
+		pty.editorDraft.mockImplementationOnce(async () => { reading.resolve(); return release.promise; });
+		pty.onPromptInput?.("compare-clear-race");
+		const showing = diagnostic();
+		await reading.promise;
+		restore("Newer text after the read");
+		release.resolve({ text: "Rejected original draft", cleared: false, imageChips: 0 });
+		await showing;
+		await vi.waitFor(() => expect(host.state.promptFailures).toEqual([{ id: "compare-clear-race", generation: 1, diagnostic: modelDiagnostic, cleared: false }]));
+		expect(draft).toBe("Newer text after the read");
+		if (transport === "classic") expect(takes()).toEqual([{ operation: "take", sessionId: "old", expected: "Rejected original draft" }]);
+		else expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"'))).toBe(false);
+		await expect(host.submit("Stay blocked", "steer", undefined, "after-compare-race")).rejects.toThrow(/recover|restart/i);
+	});
+
+	it("waits for restored text when a recognized diagnostic is rendered before the editor update", async () => {
+		await host.submit("Restore after notice", "steer", undefined, "notice-first");
+		pty.onPromptInput?.("notice-first");
+		await diagnostic();
+		expect(host.state.promptFailures ?? []).toEqual([]);
+		confirmSemanticClear();
+		restore("Restore after notice");
+		if (transport === "classic") await diagnostic();
+		await vi.waitFor(() => expect(host.state.promptFailures).toEqual([{ id: "notice-first", generation: 1, diagnostic: modelDiagnostic, cleared: true }]));
+		expect(draft).toBe("");
+	});
+
+	it.each(["read-error", "read-unavailable", "clear-failure"] as const)("keeps recovery blocked after %s and requires exact ownership before publishing a failure", async failure => {
+		await host.submit("Retain this rejected draft", "steer", undefined, "failed-clear");
+		restore("Retain this rejected draft");
+		if (failure === "read-error") pty.editorDraft.mockRejectedValue(new Error("Exact editor read failed"));
+		else if (failure === "read-unavailable") pty.editorDraft.mockResolvedValue({ text: null, cleared: false, error: "Editor unavailable" });
+		else if (transport === "classic") pty.editorDraft.mockImplementation(async request => ({ text: draft, cleared: false, ...(request.operation === "take" ? { error: "Exact take failed" } : {}) }));
+		else pty.writes.mockImplementation((bytes: string) => {
+			if (bytes.includes('"ev":"edit"')) throw new Error("Semantic clear write failed");
+		});
+		pty.onPromptInput?.("failed-clear");
+		await diagnostic();
+		if (failure === "clear-failure") {
+			await vi.waitFor(() => expect(host.state.promptFailures).toEqual([{ id: "failed-clear", generation: 1, diagnostic: modelDiagnostic, cleared: false }]));
+		} else {
+			expect(host.state.promptFailures ?? []).toEqual([]);
+			expect(pty.forgetPrompt).not.toHaveBeenCalledWith("failed-clear");
+		}
+		expect(draft).toBe("Retain this rejected draft");
+		host.acknowledgeSubmission("failed-clear");
+		await expect(host.submit("Do not send", "steer", undefined, "after-failure")).rejects.toThrow(/recover|restart/i);
+		const stopping = host.stop();
+		await vi.waitFor(() => expect(pty.requestShutdown).toHaveBeenCalledOnce());
+		expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining("/exit"));
+		await exit(0); await stopping;
+	});
+
+	if (transport === "tsp") it("keeps a rejected draft blocked when semantic clear has no confirmation", async () => {
+		await host.submit("Unconfirmed semantic draft", "steer", undefined, "unconfirmed-clear");
+		restore("Unconfirmed semantic draft");
+		pty.onPromptInput?.("unconfirmed-clear");
+		vi.useFakeTimers();
+		const showing = diagnostic();
+		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"edit"')));
+		expect(host.state.promptFailures ?? []).toEqual([]);
+		await vi.advanceTimersByTimeAsync(8100);
+		await showing;
+		expect(host.state.promptFailures).toEqual([{ id: "unconfirmed-clear", generation: 1, diagnostic: modelDiagnostic, cleared: false }]);
+		expect(draft).toBe("Unconfirmed semantic draft");
+		host.acknowledgeSubmission("unconfirmed-clear");
+		await expect(host.submit("No duplicate sends", "steer", undefined, "after-unconfirmed")).rejects.toThrow(/recover|restart/i);
+	});
+
+	it.each(["generation", "session", ...(transport === "tsp" ? ["epoch"] : [])])("refuses a prompt whose %s changes while SDK observation is arming", async change => {
+		const armed = Promise.withResolvers<{ emptyResume: boolean }>();
+		pty.watchPrompt.mockImplementationOnce(() => armed.promise);
+		const sending = host.submit("Old scope must stay unsent", "steer", undefined, "stale-watch");
+		const rejected = expect(sending).rejects.toThrow(/changed|restart|session/i);
+		await vi.waitFor(() => expect(pty.watchPrompt).toHaveBeenCalledOnce());
+		if (change === "generation") {
+			pty.events.onHostClose?.("room"); await connect("next-room", "next-session");
+		} else if (change === "session") {
+			pty.location = { cwd: "/tmp", sessionId: "replacement", sessionFile: null };
+			await vi.waitFor(() => expect(host.state.sessionId).toBe("replacement"));
+		} else {
+			tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer();
+		}
+		armed.resolve({ emptyResume: false });
+		await rejected;
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes("Old scope must stay unsent"))).toBe(false);
+		expect(host.state.promptFailures ?? []).toEqual([]);
+		expect(pty.forgetPrompt).toHaveBeenCalledWith("stale-watch");
+	});
+
+	it.each(["generation", "session", ...(transport === "tsp" ? ["epoch", "editor"] : [])])("does not clear a newer %s after an exact recovery read was suspended", async change => {
+		await host.submit("Rejected in old scope", "steer", undefined, "stale-read");
+		const reading = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<EditorDraftResult>();
+		pty.editorDraft.mockImplementationOnce(async () => { reading.resolve(); return release.promise; });
+		restore("Rejected in old scope");
+		pty.onPromptInput?.("stale-read");
+		// Do not drain the application queue while the exact read deliberately owns it.
+		const showing = diagnostic();
+		await reading.promise;
+		if (change === "generation") {
+			pty.events.onHostClose?.("room"); await connect("next-room", "next-session");
+		} else if (change === "session") {
+			pty.location = { cwd: "/tmp", sessionId: "replacement", sessionFile: null };
+			await vi.waitFor(() => expect(host.state.sessionId).toBe("replacement"));
+		} else if (change === "epoch") {
+			tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); sequence = 1;
+		} else {
+			tspMessage("f", { sf: "s:1", s: ++sequence, ops: [["del", "editor"], ["add", "editor", "dock", null, { id: "editor", k: "editor", p: { text: "", sendable: true } }], ["focus", "editor"]] });
+		}
+		restore("New scope private text");
+		release.resolve({ text: "Rejected in old scope", cleared: false, imageChips: 0 });
+		await showing;
+		expect(draft).toBe("New scope private text");
+		expect(takes()).toEqual([]);
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"'))).toBe(false);
+		expect(host.state.promptFailures ?? []).toEqual([]);
+	});
+
+	it.each(["generation", "session", ...(transport === "tsp" ? ["epoch"] : [])])("does not publish stale recovery after its %s changes during clear confirmation", async change => {
+		await host.submit("Rejected before clear", "steer", undefined, "stale-clear");
+		restore("Rejected before clear");
+		const clearing = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<EditorDraftResult>();
+		if (transport === "classic") pty.editorDraft.mockImplementation(async request => {
+			if (request.operation === "take") { clearing.resolve(); return release.promise; }
+			return { text: draft, cleared: false, imageChips: 0 };
+		});
+		else pty.writes.mockImplementation((bytes: string) => {
+			if (bytes.includes('"ev":"edit"')) clearing.resolve();
+		});
+		pty.onPromptInput?.("stale-clear");
+		const showing = diagnostic().catch(error => {
+			if (transport !== "tsp" || change !== "generation") throw error;
+			expect(String(error)).toMatch(/session changed|not ready/);
+		});
+		await clearing.promise;
+		if (change === "generation") {
+			pty.events.onHostClose?.("room"); await connect("next-room", "next-session");
+		} else if (change === "session") {
+			pty.location = { cwd: "/tmp", sessionId: "replacement", sessionFile: null };
+			await vi.waitFor(() => expect(host.state.sessionId).toBe("replacement"));
+		} else {
+			tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); sequence = 1;
+		}
+		restore("New text written during clear");
+		release.resolve({ text: "Rejected before clear", cleared: true, imageChips: 0 });
+		await showing;
+		expect(draft).toBe("New text written during clear");
+		expect(host.state.promptFailures ?? []).toEqual([]);
+		if (transport === "classic") expect(takes()).toEqual([{ operation: "take", sessionId: "old", expected: "Rejected before clear" }]);
+		else expect(pty.writes.mock.calls.filter(([bytes]) => String(bytes).includes('"ev":"edit"'))).toHaveLength(1);
+	});
+
+});
+
+describe("classic exact editor ownership for submission and shutdown", () => {
+	it("refuses a later application send instead of appending to an unknown hidden draft", async () => {
+		await connect();
+		await host.submit("First accepted message", "steer", undefined, "first-accepted");
+		host.acknowledgeSubmission("first-accepted");
+		pty.editorDraft.mockResolvedValue({ text: "Private terminal draft", cleared: false, imageChips: 0 });
+		pty.writes.mockClear();
+		await expect(host.submit("Must not append", "steer", undefined, "refused-hidden")).rejects.toThrow(/unsent|recover/i);
+		expect(pty.writes).not.toHaveBeenCalled();
+		expect(pty.watchPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ id: "refused-hidden", classicEditor: { expected: "" } }));
+		expect(pty.editorDraft).toHaveBeenLastCalledWith({ operation: "peek", sessionId: "old" });
+	});
+
+	it("allows the exact app-staged image marker and writes only the new message text", async () => {
+		await connect();
+		await host.paste("/tmp/staged.png", true);
+		await host.submit("Describe this image", "steer", undefined, "staged-image");
+		expect(pty.writes.mock.calls.map(([bytes]) => bytes)).toEqual([
+			"\x1b[200~/tmp/staged.png\x1b[201~",
+			"\x1b[200~Describe this image\x1b[201~\r",
+		]);
+		expect(pty.watchPrompt).toHaveBeenCalledExactlyOnceWith({ id: "staged-image", sessionId: "old", text: "Describe this image", images: 1, classicEditor: { expected: "IMAGE #1 " } });
+	});
+
+	it("keeps already staged image payloads behind SDK relaunch if prompt observation cannot be armed", async () => {
+		await connect();
+		await host.paste("/tmp/staged.png", true);
+		pty.editorDraft.mockResolvedValue({ text: "IMAGE #1 ", cleared: false, imageChips: 1, imageSymbol: "IMAGE" });
+		pty.watchPrompt.mockRejectedValueOnce(new Error("Exact input observation unavailable"));
+		pty.writes.mockClear();
+		await expect(host.submit("Keep this image", "steer", undefined, "unarmed-image")).rejects.toThrow("Image submission needs recovery.");
+		expect(pty.writes).not.toHaveBeenCalled();
+		expect(host.state.promptFailures ?? []).toEqual([]);
+		await expect(host.submit("/restart")).rejects.toThrow("Image submission needs recovery.");
+		const stopping = host.stop();
+		await vi.waitFor(() => expect(pty.requestShutdown).toHaveBeenCalledOnce());
+		expect(pty.writes).not.toHaveBeenCalled();
+		await exit(0); await stopping;
+	});
+
+	it("refuses a staged image marker after unrelated native text has been appended", async () => {
+		await connect();
+		await host.paste("/tmp/staged.png", true);
+		pty.editorDraft.mockResolvedValue({ text: "IMAGE #1 Native private text", cleared: false, imageChips: 1, imageSymbol: "IMAGE" });
+		pty.writes.mockClear();
+		await expect(host.submit("Must not append", "steer", undefined, "changed-image-draft")).rejects.toThrow(/unsent|recover/i);
+		expect(pty.writes).not.toHaveBeenCalled();
+		expect(pty.watchPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ id: "changed-image-draft", classicEditor: { expected: "IMAGE #1 " } }));
+	});
+
+	it("does not mistake a marker staged in the previous generation for app-owned input", async () => {
+		await connect();
+		await host.paste("/tmp/staged.png", true);
+		pty.events.onHostClose?.("room");
+		await connect("next-room", "next-session");
+		pty.editorDraft.mockResolvedValue({ text: "IMAGE #1 ", cleared: false, imageChips: 1, imageSymbol: "IMAGE" });
+		pty.writes.mockClear();
+		await expect(host.submit("Must not use old images", "steer", undefined, "old-image-draft")).rejects.toThrow(/unsent|recover/i);
+		expect(pty.writes).not.toHaveBeenCalled();
+		expect(pty.watchPrompt).toHaveBeenLastCalledWith(expect.objectContaining({ id: "old-image-draft", classicEditor: { expected: "" } }));
+	});
+
+	it.each(["nonempty", "unavailable", "failed-read"] as const)("uses SDK shutdown for ordinary Close and Quit with a %s hidden editor", async state => {
+		await connect();
+		if (state === "failed-read") pty.editorDraft.mockRejectedValue(new Error("Exact editor bridge unavailable"));
+		else pty.editorDraft.mockResolvedValue({ text: state === "nonempty" ? "Do not submit me" : null, cleared: false });
+		pty.writes.mockClear();
+		const stopping = host.stop();
+		await vi.waitFor(() => expect(pty.requestShutdown).toHaveBeenCalledOnce());
+		expect(pty.writes).not.toHaveBeenCalled();
+		expect(pty.keys).not.toHaveBeenCalled();
+		await exit(0); await stopping;
+		expect(pty.writes).not.toHaveBeenCalledWith(expect.stringContaining("/exit"));
+	});
+
+	it("rechecks generation after the editor peek before a normal shutdown can write /exit", async () => {
+		await connect();
+		const reading = Promise.withResolvers<void>();
+		const release = Promise.withResolvers<EditorDraftResult>();
+		pty.editorDraft.mockImplementationOnce(async () => { reading.resolve(); return release.promise; });
+		pty.writes.mockClear();
+		const stopping = host.stop();
+		await reading.promise;
+		pty.events.onHostClose?.("room");
+		await connect("replacement-room", "replacement-session");
+		release.resolve({ text: "", cleared: false, imageChips: 0 });
+		await vi.waitFor(() => expect(pty.requestShutdown).toHaveBeenCalledOnce());
+		expect(pty.writes).not.toHaveBeenCalled();
+		await exit(0); await stopping;
+	});
+});
 
 describe("TSP side-question writer", () => {
 	it.each(["room", "epoch"] as const)("refuses a stale renderer BTW %s scope before sending", async changed => {

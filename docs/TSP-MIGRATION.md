@@ -113,7 +113,7 @@ Authority after the migration:
 ## Rules for every phase
 
 1. **Launch-time choice.** A host is classic or TSP for its whole process life, because the study found no supported way to switch a running omp between renderers. `HostState` carries the presentation (`"classic" | "tsp"`), so the renderer never guesses it from screen content.
-2. **Developer flag until the flip.** Phases 1-6 run only with `VOMP_TSP=1`, read in main at chat launch. Each phase can merge on its own, but the preview is a developer tool with known gaps until the Phase 2 usability gate passes, and it reaches parity only at the end of Phase 4. Classic presentation and ordinary text input retain their existing behavior. The shared image safety fix is an explicit exception: classic image sends now wait for upstream attachment acknowledgement, retain rejected images for explicit retry and use recovery-safe shutdown when the editor cannot be restored.
+2. **Developer flag until the flip.** Phases 1-6 run only with `VOMP_TSP=1`, read in main at chat launch. Each phase can merge on its own, but the preview is a developer tool with known gaps until the Phase 2 usability gate passes, and it reaches parity only at the end of Phase 4. Classic presentation retains its existing behavior. Shared safety exceptions cover attachment acknowledgement and rejected prompts: classic image sends wait for upstream tokens, ordinary sends observe their scoped input and guard an unresolved hidden draft, and confirmed rejections remain queued for explicit retry. Nonempty or unreadable editor state uses recovery-safe shutdown.
 3. **One writer.** Every byte written to the PTY goes through one synchronous writer in `SessionHost`. Renderer-originated TSP events and keys enter the existing application-input chain (`#applicationInput` in `src/main/omp/host.ts`), with closing, generation and surface-id checks. Only protocol housekeeping (hello reply, DA1 answer, `ack`, `resize`, `theme`, `motion`) bypasses the transaction queue; it still uses the same writer and is never written in the middle of a multi-part write. `send` and `undo` are emitted only when omp's hello query advertised them.
 4. **Role registry.** Every omp role string, action name and status word the app depends on is declared once in `src/shared/tsp/roles.ts`. Feature code imports names from there, so an omp rename fails one test file. studio follows the same rule ([`docs/architecture/tsp-btw.md:73-75`](https://github.com/DawnJson/omp-studio/blob/4dbe037dc3bda4c37e831625450225cf102267d7/docs/architecture/tsp-btw.md?plain=1#L73-L75)).
 5. **Fixtures pinned to omp 18.15.0.** Each scenario records omp's own journal (`PI_TUI_TSP_RECORD`) and the raw PTY bytes. Store fixtures in `src/main/omp/tsp/fixtures/18.15.0/<scenario>.jsonl` and `<scenario>.raw.bin`, with decoded messages, emitted events, a byte/CR/SHA-256 integrity manifest and a `README.md` giving the omp version, commit, config and redactions. Recordings use the standalone 18.15.0 executable with a scratch HOME and config root, and no owner profile. Scenarios use no model unless they opt into the loopback script in Rule 6. Re-record every scenario on a baseline change and remove the old baseline; the recorder sanitizes paths and decoded OSC payloads before storage.
@@ -163,7 +163,7 @@ Authority after the migration:
 
 ## What a TSP chat can do after each phase
 
-The table applies to chats started with `VOMP_TSP=1`. Classic presentation and ordinary text input are unchanged; the attachment acknowledgement and rejection recovery described in Rule 2 are the shared safety exception. "Disabled" means the control is shown as unavailable with a one-sentence reason, so a preview user never sees a control that silently fails.
+The table applies to chats started with `VOMP_TSP=1`. Classic presentation is unchanged; the attachment and rejected-prompt safeguards described in Rule 2 are shared safety exceptions. "Disabled" means the control is shown as unavailable with a one-sentence reason, so a preview user never sees a control that silently fails.
 
 | After phase | Available in a TSP chat | Disabled, with the reason shown | Fallback |
 |---|---|---|---|
@@ -482,6 +482,20 @@ The `image-reject` recording adds the exact bad-CRC PNG rejection and Unicode dr
 Host transaction tests cover delayed paste completion, follow-up text/identity races, changing ghosts,
 Tab target replacement and restored-text retention across delayed clear confirmation or epoch change.
 
+The omp 18.16 rejected-prompt guard adds per-submission ids and retained failure receipts shared
+by classic and TSP hosts. A trusted public `input` observation plus omp's known preflight error and
+an exact restored draft establishes the failed submission. Classic uses the public compare/clear
+operation; TSP uses an observed-length edit with a pinned editor lifetime. Empty ordinary drafts
+and timeouts do not establish rejection, preserving the 18.15 path. `Nothing to resume` requires
+an independently observed idle, empty branch with no pending messages and an empty editor.
+The controller retains the message, images and literal diagnostic in the queue for explicit retry,
+without replacing a newer app draft or releasing another submission's acknowledgement.
+An unreadable or unmatched editor cannot establish rejection or release that submission's
+acknowledgement hold. Failed recovery after an exact match blocks further application writes and
+uses SDK shutdown for relaunch. Each classic tracked send checks, arms and rechecks in one
+synchronous native-extension job, retaining the fail-closed safeguard with one bridge cycle.
+The standalone rejection phases make zero provider requests. Successful retries use the scripted
+loopback provider; their requests establish separate delivery of the retained messages.
 
 **Files and modules.** `src/main/omp/tsp/composer.ts` (reads the `editor` node and composer facts), `src/main/omp/host.ts` (`submit`, `paste`, `withEditorInput` by presentation), `src/renderer/src/state/session.ts` (queue holds), `src/renderer/src/chat/composer/` (readiness and ghost text), `src/main/omp/prediction-transfer.ts` (offer detection only).
 
@@ -509,7 +523,7 @@ Tab target replacement and restored-text retention across delayed clear confirma
 2. Replay: `send` is never written while `sendable` is false, while a `screen` surface is open, or with a stale surface id; each refusal returns a distinct message the composer shows.
 3. Replay: follow-up appears in `omp.queue` and is delivered after the turn ends; Escape during a queued follow-up returns its text to the app composer and leaves omp's editor empty.
 4. Replay: an image submission produces a user message with the image in the collab transcript of the fixture.
-5. Replay: classic ordinary text and generic dialog pastes retain their existing byte path. The Rule 2 attachment safety exception delays classic image submission until the production acknowledgement path confirms each upstream token, blocks unsupported or unavailable acknowledgement, and retains rejected attachments for explicit retry. Live (scripted provider): verify successful single and multiple image sends on 18.15 and 18.16, including provider image receipt.
+5. Replay: classic ordinary text and generic dialog pastes retain their byte path. Rule 2's shared safeguards add trusted submission observation, an exact hidden-draft check before later classic writes, and compare/clear recovery for explicitly rejected prompts. Image sends also wait for each upstream attachment token and retain rejected images for explicit retry. Live (scripted provider): verify successful single and multiple image sends on 18.15 and 18.16, including provider image receipt.
 6. Live (scripted provider): `follow-up-queue`, `image-attach` and `approval-send-denies` complete against the installed omp.
 7. Manual (macOS): steer, follow-up, `!ls`, `$ 1+1`, a long paste, an image and a prediction in a TSP chat; IME composition (Japanese or Chinese) submits the committed text once. `[INFERENCE]` The app composer is unchanged, so IME should behave as before; it must still be checked by hand.
 

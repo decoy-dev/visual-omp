@@ -436,7 +436,7 @@ export class TspSession {
 	}
 
 	/** `send` omits staged images. Preserve them with the composer's submit action. */
-	async submitImages(text: string, paths: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true): Promise<void> {
+	async submitImages(text: string, paths: string, assertCurrent: () => void, surfaceAllowed: (surface: string) => boolean = () => true, prepared?: (text: string) => void): Promise<void> {
 		const facts = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
 		const target = this.pinEditor(surfaceAllowed);
 		const assertTarget = () => { assertCurrent(); target.assertCurrent(); };
@@ -472,6 +472,7 @@ export class TspSession {
 			}
 			const attached = composerFacts(this.snapshot().surfaces.filter(surface => surfaceAllowed(surface.open.id)));
 			const submit = { ev: "action", sf: target.surfaceId, id: target.editorId, act: TSP_ACTIONS.submit } as const;
+			prepared?.(attached.text + text);
 			submitting = true;
 			await this.editAndKeys(attached.text.length, attached.text.length, text, attached.text.length + text.length,
 				encodeTspJson("e", submit), assertTarget, surfaceAllowed);

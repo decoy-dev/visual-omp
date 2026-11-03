@@ -22,7 +22,7 @@ interface QueueTrayProps {
 	questionId: number | null;
 	askWaiting?: boolean;
 	sendBlocked?: boolean;
-	/** omp's message box may still hold images from a message that didn't send (`SessionView.strandedImages`). */
+	/** omp may still hold rejected text or images (`SessionView.strandedImages`). */
 	strandedImages: boolean;
 }
 

@@ -13,6 +13,8 @@ import { isTspPreviewInputError, tspAllowsAskPrompt, TSP_PREVIEW_UNAVAILABLE, ty
 import { useComposerDrafts, type Attachment } from "../chat/composer/drafts";
 import { imagePathsText } from "../chat/composer/send";
 import { isAskRequest } from "../chat/transcript/askSeries";
+import { contentText } from "../chat/transcript/notices";
+import { expandedPromptTextMatches } from "@shared/prompt-input";
 import { APP_GUEST_NAME, GuestClient, type GuestSnapshot } from "../collab/lib/client";
 import { toast } from "../ui/toast";
 import { extendSessionHistory, parseSessionHistory, type SessionHistory } from "./history";
@@ -25,7 +27,7 @@ export interface QueuedMessage {
 	text: string;
 	/** Images omp attaches with the text, in the order they were added. */
 	images: readonly Attachment[];
-	/** omp rejected this send after its editor was restored; only an explicit retry releases it. */
+	/** omp explicitly rejected this send; only an explicit retry releases it. */
 	error?: string;
 }
 
@@ -79,6 +81,23 @@ interface Acknowledgement {
 	steered: boolean;
 	/** A collab prompt is acknowledged by its own attributed text, never an unrelated guest's message. */
 	collabPrompt?: string;
+	/** The main-owned rejection watch for an ordinary host submission. */
+	submissionId?: string;
+}
+
+interface PendingSubmission {
+	id: string;
+	hostId: string;
+	generation: number;
+	item: QueuedMessage;
+	index: number;
+	ack: Acknowledgement;
+	/** One transcript entry belongs to at most one submission, including while submit is in flight. */
+	deliveryEntry?: string;
+	submitted: boolean;
+	rejected: boolean;
+	retained: boolean;
+	acking: boolean;
 }
 
 interface AskPromptTarget {
@@ -99,10 +118,10 @@ class DeliveryFailure extends Error {
 	}
 }
 
-/** Thrown while omp's editor may still hold images from a message that didn't send (see `strandedImages`). */
+/** Thrown while omp's editor may still hold rejected input or images (see `strandedImages`). */
 class StrandedImagesError extends Error {
 	constructor() {
-		super("omp's message box may still hold images from a message that didn't send. Restart omp to clear it.");
+		super("omp's message box may still hold input from a message that didn't send. Restart omp to clear it.");
 	}
 }
 
@@ -139,9 +158,8 @@ export interface SessionView {
 	 */
 	carryover: readonly SessionEntry[] | null;
 	/**
-	 * A message's images were pasted into omp's editor but its text failed to submit, so the images may
-	 * still be there. Nothing is typed into omp until omp restarts (`restart`) or stops, which empties the
-	 * editor; the queue tray offers the restart.
+	 * omp's editor may still hold input or images from a failed submission. Nothing is typed into omp
+	 * until omp restarts (`restart`) or stops, which empties the editor; the queue tray offers the restart.
 	 */
 	strandedImages: boolean;
 	error: string | null;
@@ -234,6 +252,10 @@ export class SessionController {
 	#lastWrite: Promise<void> = Promise.resolve();
 	/** A message went to an idle omp and omp has not acknowledged it yet; nothing else drains meanwhile. */
 	#awaiting: Acknowledgement | null = null;
+	/** Exact submitted input retained until collab accepts it or main reports an explicit rejection. */
+	#submissions = new Map<string, PendingSubmission>();
+	/** Keep consumed entry ids after their watches retire, so repeated text needs a new transcript entry. */
+	#submissionEntries = new Set<string>();
 	/** Turns seen starting (working edges), so an acknowledgement that arrived mid-write is not missed. */
 	#turnStarts = 0;
 	/**
@@ -522,6 +544,15 @@ export class SessionController {
 
 	#onHostState(host: HostState): void {
 		if (this.#disposed) return;
+		const previous = this.#view.host;
+		if (previous?.hostId === host.hostId && host.generation < previous.generation) return;
+		if (previous && (previous.hostId !== host.hostId || previous.generation !== host.generation
+			|| (host.sessionFile && previous.sessionFile && previous.sessionFile !== host.sessionFile))) {
+			this.#submissions.clear();
+			this.#submissionEntries.clear();
+			this.#awaiting = null;
+			this.#room++;
+		}
 		if (host.tspEditorRestore) this.#receiveEditorRestore(host.tspEditorRestore);
 		const previousStatus = this.#view.host?.programStatus;
 		this.#projectPath = host.cwd;
@@ -530,6 +561,9 @@ export class SessionController {
 		}
 		if (host.sessionFile) this.#sessionFile = host.sessionFile;
 		if (host.phase === "exited") {
+			this.#receivePromptFailures(host);
+			this.#submissions.clear();
+			this.#submissionEntries.clear();
 			// Nothing typed into the omp that stopped is coming back to acknowledge itself, and its editor is gone:
 			// the next omp starts with an empty one.
 			this.#room++;
@@ -541,6 +575,7 @@ export class SessionController {
 			return;
 		}
 		if (host.link && host.link !== this.#guestLink) this.#openGuest(host.link);
+		this.#receivePromptFailures(host);
 		const mode: SessionMode =
 			host.phase === "live" ? "live" : host.phase === "restarting" ? "reconnecting" : this.#guest ? "reconnecting" : "starting";
 		this.#set({ host, mode, error: host.error });
@@ -568,6 +603,8 @@ export class SessionController {
 		// The new room counts entries and turns afresh, so a wait begun in the old one can't be acknowledged.
 		this.#room++;
 		this.#awaiting = null;
+		this.#submissions.clear();
+		this.#submissionEntries.clear();
 		this.#closeGuest();
 		this.#guestLink = link;
 		const guest = new GuestClient(link, APP_GUEST_NAME);
@@ -629,6 +666,9 @@ export class SessionController {
 		}
 		if (snapshot.uiRequest && snapshot.uiRequest.reqId !== hadRequest) this.#emit({ kind: "needsInput" });
 		if (hadRequest !== undefined && !snapshot.uiRequest && !working) this.#resumeQueue();
+		for (const submission of this.#submissions.values()) {
+			if (!submission.rejected && this.#submissionDelivered(submission) && submission.submitted) this.#ackSubmission(submission);
+		}
 		if (this.#awaiting && this.#acknowledged(this.#awaiting)) {
 			this.#awaiting = null;
 			// A shell or Python line finished without a turn: no turn end will move the queue on.
@@ -811,7 +851,7 @@ export class SessionController {
 			return;
 		}
 		try {
-			await this.#deliverMessage(item, askTarget);
+			await this.#deliverMessage(item, askTarget, index);
 		} catch (error) {
 			const failure = error instanceof DeliveryFailure ? error : new DeliveryFailure(error, false);
 			this.#requeue({ ...item, error: failure.queueError }, index);
@@ -976,6 +1016,8 @@ export class SessionController {
 		if (this.#disposed) return;
 		this.#disposed = true;
 		this.#tspQuestionSync.dispose();
+		this.#submissions.clear();
+		this.#submissionEntries.clear();
 		this.tspNotices.dispose();
 		this.#stopFollowing();
 		this.#closeGuest();
@@ -1006,12 +1048,41 @@ export class SessionController {
 		if (view.host?.transport === "tsp" && text.startsWith("/") && (view.host.tspComposer?.blockedBy === "approval" || view.guest?.pendingUiRequests?.some(isApprovalRequest) || (view.guest?.uiRequest && isApprovalRequest(view.guest.uiRequest)))) throw new Error("Answer the approval before sending a command.");
 	}
 
-	async #submit(text: string, mode: "steer" | "followUp"): Promise<void> {
+	/** Retain one original queue row before retiring main's rejection diagnostic. Never edit the composer. */
+	#receivePromptFailures(host: HostState): void {
+		for (const failure of host.promptFailures ?? []) {
+			const submission = this.#submissions.get(failure.id);
+			if (!submission || submission.hostId !== host.hostId || submission.generation !== host.generation
+				|| failure.generation !== host.generation || submission.ack.room !== this.#room) continue;
+			if (!submission.rejected) {
+				submission.rejected = true;
+				if (!failure.cleared) this.#strandImages(true);
+				if (this.#awaiting?.submissionId === submission.id) this.#awaiting = null;
+				this.#requeue({ ...submission.item, error: failure.diagnostic }, submission.index);
+				submission.retained = true;
+			}
+			this.#ackSubmission(submission);
+		}
+	}
+
+	#ackSubmission(submission: PendingSubmission): void {
+		if (submission.acking || (submission.rejected && !submission.retained)) return;
+		submission.acking = true;
+		void window.vomp.invoke("host:ack-submission", submission.hostId, submission.id).then(() => {
+			if (this.#submissions.get(submission.id) === submission) this.#submissions.delete(submission.id);
+		}, () => {
+			// A replayed host state or later collab update can retry the receipt without duplicating its row.
+			submission.acking = false;
+		});
+	}
+
+	async #submit(text: string, mode: "steer" | "followUp", submissionId?: string): Promise<void> {
 		const hostId = this.hostId;
 		this.markInput();
 		if (!hostId) throw new Error("omp is not running");
 		this.#assertTspApproval(text);
-		await window.vomp.invoke("host:submit", hostId, text, mode);
+		if (submissionId) await window.vomp.invoke("host:submit", hostId, text, mode, undefined, submissionId);
+		else await window.vomp.invoke("host:submit", hostId, text, mode);
 	}
 
 	/**
@@ -1064,10 +1135,11 @@ export class SessionController {
 	 * hold a failed message's images. Once the write is done, `#settle` decides what the queue waits for.
 	 * Rejects with a `DeliveryFailure` that says whether the images were pasted before it failed.
 	 */
-	async #deliverMessage(item: { text: string; images: readonly Attachment[] }, askTarget?: AskPromptTarget): Promise<void> {
+	async #deliverMessage(item: { id?: string; text: string; images: readonly Attachment[] }, askTarget?: AskPromptTarget, index = 0): Promise<void> {
 		this.markInput();
 		let pasted = false;
 		let ack: Acknowledgement;
+		let submission: PendingSubmission | undefined;
 		try {
 			ack = await this.#write(async () => {
 				if (this.#view.strandedImages) throw new StrandedImagesError();
@@ -1106,20 +1178,35 @@ export class SessionController {
 				if (this.#view.guest?.uiRequest && !isApprovalRequest(this.#view.guest.uiRequest)) {
 					throw new Error("Answer the question card before sending a message.");
 				}
+				if (!item.text.startsWith("/") && before.run === null) {
+					const id = crypto.randomUUID();
+					before.submissionId = id;
+					submission = {
+						id, hostId, generation: this.#view.host!.generation,
+						item: { id: item.id ?? `q${nextQueueId++}`, text: item.text, images: [...item.images] },
+						index, ack: before, submitted: false, rejected: false, retained: false, acking: false,
+					};
+					this.#submissions.set(id, submission);
+				}
 				if (item.images.length > 0 && this.#view.host?.transport === "tsp") {
-					await window.vomp.invoke("host:submit", hostId, item.text, "steer", imagePathsText(item.images.map(image => image.path)));
+					await window.vomp.invoke("host:submit", hostId, item.text, "steer", imagePathsText(item.images.map(image => image.path)), submission?.id);
 				} else {
 					if (item.images.length > 0) {
 						await window.vomp.invoke("composer:paste", hostId, imagePathsText(item.images.map(image => image.path)));
 						pasted = true;
 					}
 					// Empty classic text submits the staged image without reading the clipboard.
-					await this.#submit(item.text, "steer");
+					await this.#submit(item.text, "steer", submission?.id);
 				}
+				if (submission?.rejected) return before;
+				if (submission) submission.submitted = true;
 				if (before.room === this.#room) this.recordInput(item.text, timestamp);
 				return before;
 			});
 		} catch (error) {
+			// The state event may have retained this rejection before the submit request completed.
+			if (submission?.rejected) return;
+			if (submission) this.#submissions.delete(submission.id);
 			const message = error instanceof Error ? error.message.replace(/^Error invoking remote method '[^']+':\s*(?:Error:\s*)?/, "") : "";
 			const restored = /^(?:TSP preview:\s*)?Image submission was restored\.\s+([\s\S]+)$/.exec(message)?.[1];
 			if (restored) throw new DeliveryFailure(error, false, restored);
@@ -1130,10 +1217,13 @@ export class SessionController {
 			if (pasted) this.#strandImages(requiresRelaunch);
 			throw new DeliveryFailure(error, pasted);
 		}
+		if (submission?.rejected) return;
+		if (submission && this.#submissions.get(submission.id) === submission && this.#submissionDelivered(submission)) this.#ackSubmission(submission);
 		this.#settle(ack);
 	}
 
 	#strandImages(requiresRelaunch = false): void {
+		if (requiresRelaunch && this.#strandedSince) this.#strandedSince.requiresRelaunch = true;
 		if (this.#disposed || this.#view.strandedImages) return;
 		this.#strandedSince = { restartFrom: null, requiresRelaunch };
 		this.#set({ strandedImages: true });
@@ -1188,6 +1278,28 @@ export class SessionController {
 		if (!this.#view.working) this.#resumeQueue();
 	}
 
+	/** Match delivery ownership independently of the activity that releases the queue's wait. */
+	#submissionDelivered(submission: PendingSubmission): boolean {
+		const ack = submission.ack;
+		if (ack.room !== this.#room) return false;
+		if (submission.deliveryEntry === undefined) {
+			const entries = this.#view.guest?.entries ?? [];
+			for (let index = ack.entries; index < entries.length; index++) {
+				const entry = entries[index]!;
+				if (this.#submissionEntries.has(entry.id) || entry.type !== "message"
+					|| entry.message.role !== "user" || entry.message.synthetic) continue;
+				const images = typeof entry.message.content === "string" ? 0
+					: entry.message.content.filter(block => block.type === "image").length;
+				if (images !== submission.item.images.length
+					|| !expandedPromptTextMatches(contentText(entry.message.content), submission.item.text, images)) continue;
+				this.#submissionEntries.add(entry.id);
+				submission.deliveryEntry = entry.id;
+				break;
+			}
+		}
+		return submission.deliveryEntry !== undefined && (ack.steered || this.#turnStarts > ack.turns);
+	}
+
 	/**
 	 * omp acknowledged the message: a turn started after it was typed, or for a shell or Python line omp
 	 * appended that line's result. A message that steered a running turn also counts once omp records it
@@ -1212,6 +1324,7 @@ export class SessionController {
 	/** Put `item` back at `index` (clamped) after a failed delivery. */
 	#requeue(item: QueuedMessage, index: number): void {
 		if (this.#disposed) return;
+		if (this.#view.queue.some(entry => entry.id === item.id)) return;
 		const queue = [...this.#view.queue];
 		queue.splice(Math.min(index, queue.length), 0, item);
 		this.#set({ queue });

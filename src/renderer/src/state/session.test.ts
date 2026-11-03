@@ -77,8 +77,9 @@ vi.mock("./app", () => ({ useApp: { getState: () => ({ view: "home", terminalTab
 
 const hostListeners = new Set<(state: HostState) => void>();
 let savedText = "";
-/** Every application `invoke` call after session-file and TSP document reads: channel, then arguments. */
+/** Application delivery calls, excluding submission receipts recorded separately below. */
 let invoked: unknown[][] = [];
+let submissionAcks: unknown[][] = [];
 /** Answers for chosen `invoke` calls (a delayed paste, a failed submit); everything else resolves null. */
 let respond: ((channel: string) => Promise<unknown> | undefined) | null = null;
 
@@ -89,6 +90,7 @@ beforeEach(() => {
 	hostListeners.clear();
 	savedText = "";
 	invoked = [];
+	submissionAcks = [];
 	respond = null;
 	vi.stubGlobal("window", {
 		vomp: {
@@ -102,7 +104,8 @@ beforeEach(() => {
 				if (channel === "sessions:resolve") return (await respond?.(channel)) ?? args[0];
 				if (channel === "composer:commands") return [];
 				if (channel === "composer:isSideCommand") return false;
-				if (channel !== "sessions:find" && channel !== "host:tsp-snapshot") invoked.push([channel, ...args]);
+				if (channel === "host:ack-submission") submissionAcks.push([channel, ...args]);
+				if (channel !== "sessions:find" && channel !== "host:tsp-snapshot" && channel !== "host:ack-submission") invoked.push([channel, ...args]);
 				return (await respond?.(channel)) ?? null;
 			},
 		},
@@ -145,6 +148,11 @@ const ids = (entries: readonly SessionEntry[] | null) => entries?.map(entry => e
 const u1 = message("u1", null, "user");
 const a1 = message("a1", "u1", "assistant");
 const u2 = message("u2", "a1", "user");
+const userPrompt = (id: string, text: string, images = 0, synthetic = false): SessionEntry =>
+	({
+		...message(id, "u1", "user"),
+		message: { role: "user", content: [{ type: "text", text }, ...Array.from({ length: images }, () => ({ type: "image", data: "aW1hZ2U=", mimeType: "image/png" }))], synthetic },
+	}) as unknown as SessionEntry;
 
 describe("SessionController room handoff", () => {
 	it("keeps a chat's messages on screen while the room after /restart loads, then shows the new room", () => {
@@ -423,7 +431,410 @@ function fakeDelivery() {
 }
 const shot = { path: "/tmp/Screen Shot.png", name: "Screen Shot.png" };
 const pasteShot = ["composer:paste", "h1", "/tmp/Screen\\ Shot.png"];
-const submit = (text: string) => ["host:submit", "h1", text, "steer"];
+const submit = (text: string) => ["host:submit", "h1", text, "steer", ...(!text.startsWith("/") && !/^!!?/.test(text) && !/^\$\$?\s/.test(text) ? [undefined, expect.any(String)] : [])];
+
+describe("SessionController rejected prompt recovery", () => {
+	afterEach(() => { vi.useRealTimers(); });
+
+	it.each(["classic", "tsp"] as const)("retains a direct %s rejection arriving before submit resolves, including images and a newer draft", async transport => {
+		const session = idle(`rejected-before-${transport}`);
+		sendHost({ transport, link: "L1" });
+		const write = Promise.withResolvers<null>();
+		respond = channel => channel === "host:submit" ? write.promise : undefined;
+		const sending = session.send("Original prompt", [shot]);
+		await flush();
+		const call = invoked.find(entry => entry[0] === "host:submit")!;
+		expect(call).toEqual(["host:submit", "h1", "Original prompt", "steer", transport === "tsp" ? "/tmp/Screen\\ Shot.png" : undefined, expect.any(String)]);
+		useComposerDrafts.getState().setDraft(session.tabId, "A newer draft");
+		useComposerDrafts.getState().addAttachments(session.tabId, [{ path: "/tmp/new.png", name: "new.png" }]);
+		const failure = { id: call[5] as string, generation: 1, diagnostic: "No API key found for provider.", cleared: true };
+		let retainedAtReceipt = false;
+		respond = channel => {
+			if (channel === "host:ack-submission") retainedAtReceipt = session.getSnapshot().queue.some(item => item.text === "Original prompt" && item.error === failure.diagnostic);
+			return channel === "host:submit" ? write.promise : undefined;
+		};
+		sendHost({ transport, link: "L1", promptFailures: [failure] });
+		sendHost({ transport, link: "L1", promptFailures: [failure] });
+		expect(retainedAtReceipt).toBe(true);
+		expect(session.getSnapshot().queue).toMatchObject([{ text: "Original prompt", images: [shot], error: failure.diagnostic }]);
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", failure.id]]);
+		expect(useComposerDrafts.getState().drafts[session.tabId]).toBe("A newer draft");
+		expect(useComposerDrafts.getState().attachments[session.tabId]).toEqual([{ path: "/tmp/new.png", name: "new.png" }]);
+		write.resolve(null);
+		await sending;
+		await session.send("Next prompt");
+		session.removeQueued(session.getSnapshot().queue[0]!.id);
+		await flush();
+		expect(invoked.filter(entry => entry[0] === "host:submit").map(entry => entry[2])).toEqual(["Original prompt", "Next prompt"]);
+		useComposerDrafts.getState().forget(session.tabId);
+	});
+
+	it("retains a rejection after submit resolves from an adopted initial host state and never infers a rejection from elapsed time", async () => {
+		vi.useFakeTimers();
+		const session = idle("rejected-after");
+		await session.send("Original prompt");
+		const id = invoked.at(-1)![5] as string;
+		await session.send("Next prompt");
+		await vi.advanceTimersByTimeAsync(600_000);
+		expect(queued(session)).toEqual(["Next prompt"]);
+		expect(submissionAcks).toEqual([]);
+		expect(invoked.filter(entry => entry[0] === "host:submit")).toHaveLength(1);
+		const failure = { id, generation: 1, diagnostic: "No models available.", cleared: true };
+		session.attach(host({ link: "L1", promptFailures: [failure] }));
+		await flush();
+		sendHost({ link: "L1", promptFailures: [failure] });
+		expect(session.getSnapshot().queue).toMatchObject([{ text: "Original prompt", error: failure.diagnostic }, { text: "Next prompt" }]);
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", id]]);
+		fakes.guests[0]!.emit("live", [u1], true);
+		fakes.guests[0]!.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked.filter(entry => entry[0] === "host:submit")).toHaveLength(1);
+	});
+
+	it("retains a queued rejection as the original row and accepts an explicit retry with a fresh submission id", async () => {
+		const session = working("rejected-queued");
+		await session.send("Queued prompt", [shot]);
+		await session.send("Following prompt");
+		const original = session.getSnapshot().queue[0]!;
+		fakes.guests[0]!.emit("live", [u1, a1], false);
+		await flush();
+		const first = invoked.find(entry => entry[0] === "host:submit")!;
+		const failure = { id: first[5] as string, generation: 1, diagnostic: "No models available.", cleared: true };
+		sendHost({ link: "L1", promptFailures: [failure] });
+		await flush();
+		expect(session.getSnapshot().queue[0]).toEqual({ ...original, error: failure.diagnostic });
+		await session.sendNow(original.id);
+		const retry = invoked.filter(entry => entry[0] === "host:submit").at(-1)!;
+		expect(retry[5]).not.toBe(first[5]);
+		expect(invoked.filter(entry => entry[0] === "composer:paste")).toEqual([pasteShot, pasteShot]);
+		expect(queued(session)).toEqual(["Following prompt"]);
+		sendHost({ link: "L1", promptFailures: [failure] });
+		expect(queued(session)).toEqual(["Following prompt"]);
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", first[5]]]);
+		const accepted = userPrompt("accepted-retry", "Queued prompt", 1);
+		fakes.guests[0]!.emit("live", [u1, a1, accepted], true);
+		fakes.guests[0]!.emit("live", [u1, a1, accepted], false);
+		await flush();
+		expect(submissionAcks).toContainEqual(["host:ack-submission", "h1", retry[5]]);
+		expect(invoked.filter(entry => entry[0] === "host:submit").map(entry => entry[2])).toEqual(["Queued prompt", "Queued prompt", "Following prompt"]);
+	});
+
+	it("restores Send now to its queue position when rejection precedes a rejected submit response", async () => {
+		const session = working("rejected-now");
+		await session.send("First");
+		await session.send("Send now", [shot]);
+		await session.send("Last");
+		const original = session.getSnapshot().queue[1]!;
+		const write = Promise.withResolvers<null>();
+		respond = channel => channel === "host:submit" ? write.promise : undefined;
+		const sending = session.sendNow(original.id);
+		await flush();
+		const id = invoked.find(entry => entry[0] === "host:submit")![5] as string;
+		const failure = { id, generation: 1, diagnostic: "No API key found for provider.", cleared: true };
+		sendHost({ link: "L1", promptFailures: [failure] });
+		write.reject(new Error("submission rejected"));
+		await sending;
+		await flush();
+		sendHost({ link: "L1", promptFailures: [failure] });
+		expect(queued(session)).toEqual(["First", "Send now", "Last"]);
+		expect(session.getSnapshot().queue[1]).toEqual({ ...original, error: failure.diagnostic });
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", id]]);
+	});
+
+	it("acknowledges a normal direct send only after its matching user entry and positive turn evidence", async () => {
+		const session = idle("accepted-direct");
+		await session.send("Normal prompt");
+		const id = invoked[0]![5];
+		expect(typeof id).toBe("string");
+		expect(submissionAcks).toEqual([]);
+		const accepted = userPrompt("accepted-direct", "Normal prompt");
+		fakes.guests[0]!.emit("live", [u1, accepted], false);
+		expect(submissionAcks).toEqual([]);
+		fakes.guests[0]!.emit("live", [u1, accepted], true);
+		await flush();
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", id]]);
+		fakes.guests[0]!.emit("live", [u1, accepted, a1], false);
+		sendHost({ link: "L1", promptFailures: [{ id: id as string, generation: 1, diagnostic: "Stale failure", cleared: true }] });
+		expect(queued(session)).toEqual([]);
+	});
+
+	it("waits for the submit response before acknowledging positive evidence received mid-write", async () => {
+		const session = idle("accepted-mid-write");
+		const write = Promise.withResolvers<null>();
+		respond = channel => channel === "host:submit" ? write.promise : undefined;
+		const sending = session.send("Normal prompt");
+		await flush();
+		const id = invoked[0]![5];
+		fakes.guests[0]!.emit("live", [u1, userPrompt("accepted-mid-write", "Normal prompt")], true);
+		expect(submissionAcks).toEqual([]);
+		write.resolve(null);
+		await sending;
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", id]]);
+		expect(queued(session)).toEqual([]);
+	});
+
+	it("acknowledges a steered send from its user message without waiting for another turn", async () => {
+		const session = working("accepted-steered");
+		await session.steer("Steer this turn");
+		const id = invoked[0]![5];
+		expect(submissionAcks).toEqual([]);
+		fakes.guests[0]!.emit("live", [u1, userPrompt("accepted-steered", "Steer this turn")], true);
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", id]]);
+	});
+
+	it("keeps a pending submission when a new chat first publishes its session file", async () => {
+		const session = new SessionController({ tabId: "rejected-first-file", projectPath: "/p", sessionFile: null });
+		session.attach(host({ link: "L1", sessionFile: null }));
+		fakes.guests[0]!.emit("live", [], false);
+		await session.send("First prompt");
+		const id = invoked[0]![5] as string;
+		sendHost({ link: "L1", promptFailures: [{ id, generation: 1, diagnostic: "No models available.", cleared: true }] });
+		expect(session.getSnapshot().queue).toMatchObject([{ text: "First prompt", error: "No models available." }]);
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", id]]);
+	});
+
+	it("retries a failed rejection receipt without duplicating or resending the retained row", async () => {
+		const session = idle("rejected-receipt-retry");
+		await session.send("Original");
+		const id = invoked[0]![5] as string;
+		const failure = { id, generation: 1, diagnostic: "No models available.", cleared: true };
+		failOnce("host:ack-submission", "IPC interrupted");
+		sendHost({ link: "L1", promptFailures: [failure] });
+		await flush();
+		sendHost({ link: "L1", promptFailures: [failure] });
+		await flush();
+		expect(session.getSnapshot().queue).toMatchObject([{ text: "Original", error: failure.diagnostic }]);
+		expect(session.getSnapshot().queue).toHaveLength(1);
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", id], ["host:ack-submission", "h1", id]]);
+		expect(invoked.filter(entry => entry[0] === "host:submit")).toHaveLength(1);
+	});
+
+	it("retains a matching rejection while an accepted receipt is still in flight", async () => {
+		const session = idle("rejected-during-receipt");
+		const receipt = Promise.withResolvers<null>();
+		respond = channel => channel === "host:ack-submission" ? receipt.promise : undefined;
+		await session.send("Original prompt");
+		const id = invoked[0]![5] as string;
+		fakes.guests[0]!.emit("live", [u1, userPrompt("accepted-during-receipt", "Original prompt")], true);
+		sendHost({ link: "L1", promptFailures: [{ id, generation: 1, diagnostic: "No models available.", cleared: true }] });
+		expect(session.getSnapshot().queue).toMatchObject([{ text: "Original prompt", error: "No models available." }]);
+		receipt.resolve(null);
+		await flush();
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", id]]);
+		expect(queued(session)).toEqual(["Original prompt"]);
+	});
+
+	it("keeps simultaneous pending submissions separate and releases only the rejected submission's wait", async () => {
+		const session = idle("rejected-simultaneous");
+		await session.send("First");
+		await session.steer("Second");
+		const [first, second] = invoked.filter(entry => entry[0] === "host:submit");
+		expect(first![5]).not.toBe(second![5]);
+		sendHost({ link: "L1", promptFailures: [{ id: first![5] as string, generation: 1, diagnostic: "First rejected", cleared: true }] });
+		session.removeQueued(session.getSnapshot().queue[0]!.id);
+		await session.send("Third");
+		await flush();
+		expect(queued(session)).toEqual(["Third"]);
+		expect(invoked.filter(entry => entry[0] === "host:submit")).toHaveLength(2);
+		sendHost({ link: "L1", promptFailures: [{ id: second![5] as string, generation: 1, diagnostic: "Second rejected", cleared: true }] });
+		expect(session.getSnapshot().queue).toMatchObject([{ text: "Second", error: "Second rejected" }, { text: "Third" }]);
+		session.removeQueued(session.getSnapshot().queue[0]!.id);
+		await flush();
+		expect(invoked.filter(entry => entry[0] === "host:submit").map(entry => entry[2])).toEqual(["First", "Second", "Third"]);
+	});
+
+	it.each([
+		{ text: "distinct", first: "First", second: "Second", timing: "settled" },
+		{ text: "identical", first: "Repeated", second: "Repeated", timing: "settled" },
+		{ text: "distinct", first: "First", second: "Second", timing: "mid-write" },
+		{ text: "identical", first: "Repeated", second: "Repeated", timing: "mid-write" },
+	])("retains the second of two $text submissions when only the first has delivery evidence ($timing)", async ({ first, second, timing }) => {
+		const session = idle(`accepted-first-${first}-${timing}`);
+		await session.send(first);
+		const write = Promise.withResolvers<null>();
+		respond = channel => channel === "host:submit" ? write.promise : undefined;
+		const sending = session.steer(second);
+		await flush();
+		const [firstCall, secondCall] = invoked.filter(entry => entry[0] === "host:submit");
+		if (timing === "settled") {
+			write.resolve(null);
+			await sending;
+		}
+		const accepted = userPrompt("accepted-first", first);
+		fakes.guests[0]!.emit("live", [u1, accepted], true);
+		await flush();
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", firstCall![5]]]);
+		if (timing === "mid-write") {
+			write.resolve(null);
+			await sending;
+		}
+		// Replayed transcript evidence must stay consumed after the first watch has retired.
+		fakes.guests[0]!.emit("live", [u1, accepted], false);
+		await flush();
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", firstCall![5]]]);
+		expect(session.busy).toBe(false);
+		sendHost({ link: "L1", promptFailures: [{ id: secondCall![5] as string, generation: 1, diagnostic: "Second rejected", cleared: true }] });
+		expect(session.getSnapshot().queue).toMatchObject([{ text: second, error: "Second rejected" }]);
+		expect(submissionAcks).toEqual([
+			["host:ack-submission", "h1", firstCall![5]],
+			["host:ack-submission", "h1", secondCall![5]],
+		]);
+	});
+
+	it("requires a new matching transcript entry to acknowledge another identical submission", async () => {
+		const session = working("accepted-identical");
+		await session.steer("Repeated");
+		await session.steer("Repeated");
+		const [first, second] = invoked.filter(entry => entry[0] === "host:submit");
+		const acceptedFirst = userPrompt("accepted-repeat-1", "Repeated");
+		fakes.guests[0]!.emit("live", [u1, acceptedFirst], true);
+		await flush();
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", first![5]]]);
+		fakes.guests[0]!.emit("live", [u1, acceptedFirst, userPrompt("accepted-repeat-2", "Repeated")], true);
+		expect(submissionAcks).toEqual([
+			["host:ack-submission", "h1", first![5]],
+			["host:ack-submission", "h1", second![5]],
+		]);
+	});
+
+	it("keeps an image submission pending for synthetic text or a different attachment count", async () => {
+		const session = working("accepted-exact-images");
+		await session.steer("Look", [shot]);
+		const id = invoked.find(entry => entry[0] === "host:submit")![5];
+		const synthetic = userPrompt("synthetic", "Look", 1, true);
+		const textOnly = userPrompt("text-only", "Look");
+		fakes.guests[0]!.emit("live", [u1, synthetic, textOnly], true);
+		expect(submissionAcks).toEqual([]);
+		fakes.guests[0]!.emit("live", [u1, synthetic, textOnly, userPrompt("accepted-image", "Look", 1)], true);
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", id]]);
+	});
+
+	it("acknowledges exact authored image text with expanded numbered markers and ignores malformed, reordered or changed text", async () => {
+		const session = working("accepted-expanded-images");
+		await session.steer("Look at these.", [shot, { path: "/tmp/second.png", name: "second.png" }]);
+		const id = invoked.find(entry => entry[0] === "host:submit")![5];
+		const unrelated = [
+			userPrompt("malformed-marker", "[Image #1, 398x] [Image #2, 477x200] Look at these.", 2),
+			userPrompt("reordered-markers", "[Image #2, 477x200] [Image #1, 398x406] Look at these.", 2),
+			userPrompt("changed-authored-text", "[Image #1, 398x406] [Image #2, 477x200] Look elsewhere.", 2),
+			userPrompt("wrong-image-count", "[Image #1, 398x406] [Image #2, 477x200] Look at these.", 1),
+		];
+		fakes.guests[0]!.emit("live", [u1, ...unrelated], true);
+		expect(submissionAcks).toEqual([]);
+		const accepted = userPrompt("accepted-expanded", "[Image #1, 398x406] [Image #2, 477x200] Look at these.", 2);
+		fakes.guests[0]!.emit("live", [u1, ...unrelated, accepted], true);
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", id]]);
+	});
+
+	it.each(["classic", "tsp"] as const)("returns unavailable ordinary-text observation to the %s caller without consuming its draft, then permits a later send", async transport => {
+		const session = idle(`observation-unavailable-${transport}`);
+		sendHost({ transport, link: "L1" });
+		const draft = "  Keep this original draft.\n";
+		useComposerDrafts.getState().setDraft(session.tabId, draft);
+		failOnce("host:submit", "Prompt observation is unavailable. Try again.");
+		await expect(deliver(session, draft, [], false)).rejects.toThrow("Prompt observation is unavailable");
+		expect(useComposerDrafts.getState().drafts[session.tabId]).toBe(draft);
+		expect(queued(session)).toEqual([]);
+		expect(session.getSnapshot().inputHistory).toEqual([]);
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		expect(session.getSnapshot().error).toBeNull();
+		expect(submissionAcks).toEqual([]);
+		expect(session.busy).toBe(false);
+		await deliver(session, draft, [], false);
+		const calls = invoked.filter(entry => entry[0] === "host:submit");
+		expect(calls.map(entry => entry[2])).toEqual([draft.trim(), draft.trim()]);
+		expect(calls[0]![5]).not.toBe(calls[1]![5]);
+		fakes.guests[0]!.emit("live", [u1, userPrompt("accepted-after-observation", draft.trim())], true);
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", calls[1]![5]]]);
+		expect(session.getSnapshot().inputHistory.map(item => item.text)).toEqual([draft.trim()]);
+		expect(useComposerDrafts.getState().drafts[session.tabId]).toBe(draft);
+		useComposerDrafts.getState().forget(session.tabId);
+	});
+
+	it("ignores unmatched ids and stale failure generations without retiring the current submission", async () => {
+		const session = idle("rejected-stale");
+		await session.send("Current");
+		const id = invoked[0]![5] as string;
+		sendHost({ link: "L1", promptFailures: [
+			{ id: "unknown", generation: 1, diagnostic: "Unknown", cleared: false },
+			{ id, generation: 0, diagnostic: "Stale", cleared: false },
+		] });
+		expect(queued(session)).toEqual([]);
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		expect(submissionAcks).toEqual([]);
+		sendHost({ link: "L1", promptFailures: [{ id, generation: 1, diagnostic: "Current rejection", cleared: true }] });
+		expect(session.getSnapshot().queue).toMatchObject([{ text: "Current", error: "Current rejection" }]);
+	});
+
+	it.each(["room", "generation", "exit", "dispose"] as const)("retires pending ids on %s so late failure cannot affect newer input", async change => {
+		const session = idle(`rejected-retired-${change}`);
+		await session.send("Old");
+		const oldId = invoked[0]![5] as string;
+		const link = change === "room" || change === "exit" ? "L2" : "L1";
+		const generation = change === "room" ? 1 : 2;
+		if (change === "dispose") await session.dispose();
+		else {
+			if (change === "exit") sendHost({ phase: "exited", exitCode: 0 });
+			sendHost({ link, generation });
+			fakes.guests.at(-1)!.emit("live", [u1], false);
+			await session.send("New");
+		}
+		sendHost({ link, generation, promptFailures: [{ id: oldId, generation, diagnostic: "Late failure", cleared: false }] });
+		if (generation > 1) sendHost({ link, generation: 1, promptFailures: [{ id: oldId, generation: 1, diagnostic: "Old state", cleared: false }] });
+		expect(queued(session)).toEqual([]);
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		expect(submissionAcks).toEqual([]);
+		if (change !== "dispose") {
+			const newId = invoked.filter(entry => entry[0] === "host:submit").at(-1)![5];
+			fakes.guests.at(-1)!.emit("live", [u1, userPrompt("accepted-new", "New")], true);
+			expect(submissionAcks).toEqual([["host:ack-submission", "h1", newId]]);
+		}
+	});
+
+	it("preserves a failed-clear row and blocks all editor writes until explicit relaunch", async () => {
+		const session = idle("rejected-uncleared");
+		await session.send("Original", [shot]);
+		const id = invoked.find(entry => entry[0] === "host:submit")![5] as string;
+		const failure = { id, generation: 1, diagnostic: "No models available.", cleared: false };
+		sendHost({ link: "L1", promptFailures: [failure] });
+		expect(session.getSnapshot().queue).toMatchObject([{ text: "Original", images: [shot], error: failure.diagnostic }]);
+		const row = session.getSnapshot().queue[0]!;
+		await expect(session.sendNow(row.id)).rejects.toThrow("Restart omp to clear it");
+		await expect(session.command("/compact")).rejects.toThrow("Restart omp to clear it");
+		session.removeQueued(row.id);
+		await session.steer("New prompt");
+		sendHost({ link: "L1", promptFailures: [failure] });
+		await flush();
+		expect(queued(session)).toEqual(["New prompt"]);
+		expect(session.getSnapshot().strandedImages).toBe(true);
+		expect(invoked.filter(entry => entry[0] === "host:submit")).toHaveLength(1);
+		respond = channel => channel === "host:start" ? Promise.resolve(host({ hostId: "h2", link: "L2", generation: 2 })) : undefined;
+		await session.restart();
+		expect(invoked).toContainEqual(["host:stop", "h1", "editor-recovery"]);
+		expect(invoked.some(entry => entry[0] === "host:submit" && entry[2] === "/restart")).toBe(false);
+		expect(session.getSnapshot().strandedImages).toBe(false);
+		expect(submissionAcks).toEqual([["host:ack-submission", "h1", id]]);
+	});
+
+	it.each([".", "c"])("tracks the ordinary shortcut %s for explicit Nothing-to-resume rejection", async text => {
+		const session = idle(`rejected-shortcut-${text}`);
+		await session.send(text);
+		const id = invoked[0]![5] as string;
+		expect(typeof id).toBe("string");
+		sendHost({ link: "L1", promptFailures: [{ id, generation: 1, diagnostic: "Nothing to resume.", cleared: true }] });
+		expect(session.getSnapshot().queue).toMatchObject([{ text, error: "Nothing to resume." }]);
+	});
+
+	it.each(["/compact", "!pwd", "!!pwd", "$ print(1)", "$$ print(1)"])("does not register %s as an ordinary prompt", async text => {
+		const session = idle(`untracked-${text}`);
+		if (text.startsWith("/")) await session.command(text);
+		else await session.steer(text);
+		expect(invoked).toEqual([["host:submit", "h1", text, "steer"]]);
+		fakes.guests[0]!.emit("live", [u1, u2], true);
+		expect(submissionAcks).toEqual([]);
+	});
+});
 
 describe("messages while ask waits", () => {
 	const args = { questions: [{ id: "db", question: "Which database?", options: [{ label: "SQLite" }] }] };
@@ -730,7 +1141,7 @@ describe("SessionController TSP preview input", () => {
 		await session.send("look", [shot]);
 		const id = session.getSnapshot().queue[0]!.id;
 		await session.sendNow(id);
-		expect(invoked).toEqual([["host:submit", "h1", "look", "steer", "/tmp/Screen\\ Shot.png"]]);
+		expect(invoked).toEqual([["host:submit", "h1", "look", "steer", "/tmp/Screen\\ Shot.png", expect.any(String)]]);
 		expect(session.getSnapshot().queue).toEqual([]);
 	});
 
@@ -768,7 +1179,7 @@ describe("SessionController TSP preview input", () => {
 		session.attach(host({ hostId: "h2", transport: "tsp", link: "L2", tui: tui(4), tspAvailability: { available: true, reason: null } }));
 		fakes.guests.at(-1)!.emit("live", [u1, a1], false);
 		await flush();
-		expect(invoked).toEqual([["host:submit", "h2", "Continue in the replacement.", "steer"]]);
+		expect(invoked).toEqual([["host:submit", "h2", "Continue in the replacement.", "steer", undefined, expect.any(String)]]);
 		expect(queued(session)).toEqual([]);
 	});
 

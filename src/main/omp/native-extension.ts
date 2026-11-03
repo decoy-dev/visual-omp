@@ -1,5 +1,6 @@
 import { resolveHistoryDbPath } from "./history-path";
 import { exactEditorDraft } from "./native-editor";
+import { expandedPromptTextMatches } from "../../shared/prompt-input";
 
 /** Written into each app-hosted chat's private directory. omp resolves these public SDK and pi-tui exports from its compiled module map. */
 export const NATIVE_EXTENSION_SOURCE = String.raw`
@@ -12,6 +13,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 const resolveHistoryDbPath = ${resolveHistoryDbPath.toString()};
 const exactEditorDraft = ${exactEditorDraft.toString()};
+const expandedPromptTextMatches = ${expandedPromptTextMatches.toString()};
 const bridgeUrl = process.env.VOMP_NATIVE_BRIDGE;
 delete process.env.VOMP_NATIVE_BRIDGE;
 
@@ -33,6 +35,32 @@ export default function visualOmpNative(pi) {
 	let lastTheme;
 	let themeRevision = 0;
 	let themeIdentity = null;
+	const promptWatches = new Map();
+	let promptSessionId;
+	function forgetPrompt(id) {
+		const watch = promptWatches.get(id);
+		if (!watch) return;
+		clearTimeout(watch.timer);
+		delete watch.text;
+		promptWatches.delete(id);
+	}
+	function clearPromptWatches() {
+		for (const id of promptWatches.keys()) forgetPrompt(id);
+	}
+	function currentPromptSession() {
+		const sessionId = context?.sessionManager.getSessionId();
+		if (sessionId !== promptSessionId) { clearPromptWatches(); promptSessionId = sessionId; }
+		return sessionId;
+	}
+	function promptState(id, watch, state, emptyResume, error) {
+		return fetch(url + "/prompt/" + encodeURIComponent(id), { method: "POST", body: JSON.stringify({ state, epoch: watch.epoch, sessionId: watch.sessionId, emptyResume, error }), signal: AbortSignal.timeout(2000) });
+	}
+	function matchesPromptInput(event, watch) {
+		if (typeof event.text !== "string") return false;
+		const images = Array.isArray(event.images) ? event.images.length : 0;
+		if (images !== (watch.images ?? 0)) return false;
+		return expandedPromptTextMatches(event.text, watch.text, watch.images);
+	}
 	const fingerprint = theme => JSON.stringify([theme.getAllThemeColorHexes(), theme.getBgHex("statusLineBg"), theme.getBgHex("selectedBg")]);
 	async function readTheme(ctx) {
 		const active = ctx.ui.theme;
@@ -117,11 +145,54 @@ export default function visualOmpNative(pi) {
 			if (stopped || current !== lifecycle) return;
 			const response = await fetch(url + "/requests", { signal: AbortSignal.timeout(2000) });
 			if (stopped || current !== lifecycle) return;
-			jobsEpoch = response.headers?.get("X-Vomp-Jobs-Epoch") ?? jobsEpoch;
+			const epoch = response.headers?.get("X-Vomp-Jobs-Epoch") ?? jobsEpoch;
+			if (epoch !== jobsEpoch) clearPromptWatches();
+			jobsEpoch = epoch;
+			currentPromptSession();
 			if (response.ok) {
 				const requests = await response.json();
 				for (const item of requests) {
 					if (stopped || current !== lifecycle) return;
+					if (item.kind === "forgetPrompt") {
+						if (item.epoch === jobsEpoch) forgetPrompt(item.id);
+						continue;
+					}
+					if (item.kind === "watchPrompt") {
+						const watch = item.prompt;
+						if (item.epoch !== jobsEpoch || !watch || watch.id !== item.id || watch.sessionId !== currentPromptSession() || typeof watch.text !== "string") continue;
+						if (watch.images !== undefined && (!Number.isSafeInteger(watch.images) || watch.images < 1)) continue;
+						let size = watch.text.length;
+						for (const pending of promptWatches.values()) size += pending.text.length;
+						if (promptWatches.has(item.id) || promptWatches.size >= 64 || size > 1_048_576) {
+							await promptState(item.id, { ...watch, epoch: item.epoch }, "error");
+							continue;
+						}
+						const armed = { sessionId: watch.sessionId, text: watch.text, images: watch.images, epoch: item.epoch, timer: undefined };
+						try {
+							const checkEditor = () => {
+								if (!watch.classicEditor) return;
+								if (typeof watch.classicEditor.expected !== "string") throw new Error("omp could not check its editor before sending. Try again when omp is ready.");
+								const read = exactEditorDraft(context.ui, { operation: "peek", sessionId: armed.sessionId }, context.sessionManager.getSessionId());
+								if (read.error || read.text === null) throw new Error("omp could not check its editor before sending. Try again when omp is ready.");
+								if (read.text !== "" && read.text !== watch.classicEditor.expected) throw new Error("omp has unsent text in its editor. Recover it or restart omp before sending another message.");
+							};
+							// Keep both editor reads and arming synchronous inside omp's input process.
+							checkEditor();
+							promptWatches.set(item.id, armed);
+							armed.timer = setTimeout(() => { if (promptWatches.get(item.id) === armed) forgetPrompt(item.id); }, 30_000);
+							checkEditor();
+							if (promptWatches.get(item.id) !== armed) throw new Error("omp received another input before this message could be written. Send it again.");
+							delete watch.text;
+							const branch = !armed.images && (armed.text === "." || armed.text === "c") && context.isIdle() && !context.hasPendingMessages() ? context.sessionManager.getBranch?.() : undefined;
+							const emptyResume = Array.isArray(branch) && !branch.some(entry => entry.type === "message" && entry.message?.role === "user");
+							const confirmation = await promptState(item.id, armed, "armed", emptyResume);
+							if (!confirmation.ok && promptWatches.get(item.id) === armed) forgetPrompt(item.id);
+						} catch (error) {
+							if (promptWatches.get(item.id) === armed) forgetPrompt(item.id);
+							await promptState(item.id, armed, "error", undefined, error instanceof Error ? error.message : String(error));
+						}
+						continue;
+					}
 					if (item.kind === "shutdown") {
 						// This enters InteractiveMode.requestShutdown(), not the editor submit path.
 						// If the SDK is unavailable, the host retains its explicit native stop decision.
@@ -162,11 +233,24 @@ export default function visualOmpNative(pi) {
 		} catch { /* Closing a host closes its private bridge first. No transcript or model output is generated. */ }
 		if (!stopped && current === lifecycle) timer = setTimeout(tick, 250);
 	}
-	pi.on("session_start", async (_event, ctx) => {
+	pi.on("input", (event, ctx) => {
+		if (stopped || !context || event.source !== "interactive" || ctx.agent.kind !== "main" || ctx.sessionManager.getSessionId() !== currentPromptSession()) return;
+		for (const [id, watch] of promptWatches) {
+			if (watch.sessionId !== ctx.sessionManager.getSessionId() || !matchesPromptInput(event, watch)) continue;
+			forgetPrompt(id);
+			void promptState(id, watch, "input").catch(() => undefined);
+			break;
+		}
+		// Observation never transforms, handles, submits, or waits for this input.
+	});
+	const startSession = async (_event, ctx) => {
 		if (ctx.agent.kind !== "main") return;
 		delete process.env.VOMP_NATIVE_BRIDGE;
+		clearPromptWatches(); promptSessionId = ctx.sessionManager.getSessionId();
 		context = ctx; stopped = false; last = ""; jobsEpoch = null; lifecycle++; clearTimeout(timer); await tick();
-	});
+	};
+	pi.on("session_start", startSession);
+	pi.on("session_switch", startSession);
 	pi.on("mode_changed", async (_event, ctx) => {
 		if (ctx.agent.kind !== "main") return;
 		context = ctx; await publish().catch(() => undefined);
@@ -175,7 +259,7 @@ export default function visualOmpNative(pi) {
 		// omp's spawn-based restart inherits the environment after teardown. Restore only at the main session's shutdown.
 		const ctx = context;
 		if (ctx) process.env.VOMP_NATIVE_BRIDGE = url;
-		stopped = true; const current = ++lifecycle; clearTimeout(timer);
+		stopped = true; const current = ++lifecycle; clearTimeout(timer); clearPromptWatches(); promptSessionId = undefined;
 		if (ctx) {
 			try { await fetch(url + "/snapshot", { method: "POST", body: JSON.stringify({ modes: ctx.sessionModes?.getState() ?? null, theme: themeIdentity, historyDbPath, asyncJobsEpoch: jobsEpoch, shutdown: "teardown", location: { cwd: ctx.sessionManager.getCwd(), sessionFile: ctx.sessionManager.getSessionFile() ?? null, sessionId: ctx.sessionManager.getSessionId() } }), signal: AbortSignal.timeout(2000) }); }
 			catch { /* The host may already have closed its private bridge. */ }

@@ -119,6 +119,15 @@ export interface HostNotice {
 	timestamp: number;
 }
 
+/** A correlated prompt that omp rejected before starting a turn. Main retains it until acknowledged. */
+export interface PromptSubmissionFailure {
+	id: string;
+	generation: number;
+	diagnostic: string;
+	/** False keeps application input blocked until omp is restarted through editor recovery. */
+	cleared: boolean;
+}
+
 export interface HostState {
 	hostId: string;
 	cwd: string;
@@ -131,6 +140,7 @@ export interface HostState {
 	tspComposer?: TspComposerFacts;
 	tspEpoch?: number;
 	tspEditorRestore?: TspEditorRestore | null;
+	promptFailures?: readonly PromptSubmissionFailure[];
 	/** Collab control link for the renderer guest client; null until resolved. */
 	link: string | null;
 	/** Increments every time omp opens a new collab room (restart, new, resume, branch). */
@@ -295,7 +305,9 @@ export interface IpcInvokeMap {
 	/** Application paste through the host's closing-aware input queue, without submitting. */
 	"host:paste": { args: [hostId: string, text: string]; result: void };
 	/** Type `text` into the TUI and submit it. `followUp` queues it until omp yields instead of steering. */
-	"host:submit": { args: [hostId: string, text: string, mode?: "steer" | "followUp", imagePaths?: string]; result: void };
+	"host:submit": { args: [hostId: string, text: string, mode?: "steer" | "followUp", imagePaths?: string, submissionId?: string]; result: void };
+	/** Retire only the correlated submission whose success or retained rejection the renderer observed. */
+	"host:ack-submission": { args: [hostId: string, submissionId: string]; result: void };
 	/** Close declared TSP menu controls before /restart; false requests an explicit saved-session relaunch. */
 	"host:prepare-restart": { args: [hostId: string, generation: number, epoch?: number]; result: boolean };
 	/** Classic named keys, or semantic raw bytes guarded by collab generation and protocol epoch. */

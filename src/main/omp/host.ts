@@ -18,7 +18,7 @@ import { Terminal } from "@xterm/headless";
 import { type IPty, spawn } from "node-pty";
 import { stringify } from "yaml";
 import { z } from "zod";
-import type { HostStartOptions, HostState, HostStopMode, TuiFocus } from "@shared/ipc";
+import type { HostStartOptions, HostState, HostStopMode, PromptSubmissionFailure, TuiFocus } from "@shared/ipc";
 import { TspRendererEvent, TSP_PREVIEW_UNAVAILABLE, type TspEditorRestore, type TspHostSnapshot } from "@shared/tsp-host";
 import { composer, openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { TSP_ROLES, TSP_STATUS } from "@shared/tsp/roles";
@@ -50,6 +50,8 @@ import type { BtwInputScope, BtwState, BtwTopicRef } from "../../shared/contract
 import { BtwDriver, type BtwOperation } from "./tsp/btw-driver";
 import { BtwHistoryState } from "./tsp/btw-state";
 import { releaseWindowsConpty } from "./windows-pty-cleanup";
+import { classicPromptRejections, semanticPromptRejections, type PromptRejection } from "./prompt-rejection";
+import { expandedPromptTextMatches } from "../../shared/prompt-input";
 
 const CollabHosts = z.object({
 	hosts: z.array(
@@ -82,6 +84,23 @@ export interface EditorInputTransaction {
 }
 
 interface EditorRestoreCapture { view: TspEditorRestore; generation: number; target: TspEditorTarget }
+interface PromptSubmission {
+	id: string;
+	text: string;
+	generation: number;
+	sessionId: string;
+	epoch?: number;
+	target?: TspEditorTarget;
+	diagnostics: ReadonlySet<string>;
+	revision: number;
+	expected: readonly string[];
+	images: number;
+	written: boolean;
+	inputObserved: boolean;
+	inputBeforeWrite: boolean;
+	emptyResume: boolean;
+	failure?: PromptSubmissionFailure;
+}
 
 export class SessionHost {
 	readonly id = randomUUID();
@@ -133,6 +152,13 @@ export class SessionHost {
 	#editorRestore: EditorRestoreCapture | null = null;
 	#tspPastesPending = 0;
 	#btwHistory: BtwHistoryState | null = null;
+	#promptSubmissions = new Map<string, PromptSubmission>();
+	#promptRevision = 0;
+	#promptCheckQueued = false;
+	#promptRecheck = false;
+	#classicStagedDraft: string | null = null;
+	#classicStagedImages = 0;
+	#classicImageSymbol: string | undefined;
 	#tspAppearanceChanged = (): void => {
 		if (!this.#tsp || this.state.phase === "exited") return;
 		const { dark, reduceMotion } = this.#tspAppearance();
@@ -200,6 +226,13 @@ export class SessionHost {
 			// Owner-only directory: the debug socket accepts keystrokes, so nobody else may reach it.
 			this.#privateDir = await mkdtemp(join(tmpdir(), "vomp-"));
 			this.#nativeBridge = await createNativeBridge(this.id, this.#privateDir);
+			this.#nativeBridge.onPromptInput = id => {
+				const submission = this.#promptSubmissions.get(id);
+				if (!submission) return;
+				if (submission.written) submission.inputObserved = true;
+				else submission.inputBeforeWrite = true;
+				this.#queuePromptRejectionCheck();
+			};
 			const overlay = join(this.#privateDir, "overlay.yml");
 			await writeFile(overlay, stringify(this.#overlayConfig(useTsp)), { mode: 0o600 });
 			const debugPath =
@@ -232,6 +265,8 @@ export class SessionHost {
 						if (this.#closing && ((reason === "close" && surface === this.#tspExitSurface) || this.#tspClosingNotice())) this.#shutdownProgress("acknowledged");
 						if (reason === "frame" && surface && (this.state.phase === "live" || !this.#hadCollabRoom)) this.#tspSurfaceGenerations.set(surface, this.state.generation);
 						this.#publishTsp();
+						this.#promptRevision++;
+						this.#queuePromptRejectionCheck();
 					},
 					onError: error => {
 						if (this.state.phase === "exited") return;
@@ -333,6 +368,8 @@ export class SessionHost {
 				if (!this.#startupComplete) this.#rememberStartupDiagnostic();
 				if (this.#captureStartupNotices) this.#rememberStartupNotices();
 				if (this.#closing) this.#rememberShutdownProgress();
+				this.#promptRevision++;
+				this.#queuePromptRejectionCheck();
 			}
 		});
 		// Decode a copy for legacy observers; xterm receives the original bytes, including split UTF-8.
@@ -545,7 +582,7 @@ export class SessionHost {
 	 * submits early and a large paste becomes an attachment chip instead of a menu.
 	 * `steer` (Enter) interrupts a running turn at the next safe point; `followUp` (Ctrl+Q) waits for the yield.
 	 */
-	submit(text: string, mode: "steer" | "followUp" = "steer", imagePaths?: string): Promise<void> {
+	submit(text: string, mode: "steer" | "followUp" = "steer", imagePaths?: string, submissionId?: string): Promise<void> {
 		const generation = this.state.generation;
 		const epoch = this.#tsp?.snapshot().epoch;
 		if (this.#tsp) {
@@ -567,22 +604,217 @@ export class SessionHost {
 				assertCurrent();
 				if (text.startsWith("/") && this.composerFacts().blockedBy === "approval") throw new Error("TSP preview: Answer the approval before sending a command.");
 				const allowed = (surface: string) => this.#tspSurfaceGenerations.get(surface) === generation;
-				if (imagePaths) await this.#tsp!.submitImages(text, imagePaths, assertCurrent, allowed);
-				else if (mode === "followUp") await this.#tsp!.followUp(text, assertCurrent, allowed);
-				else await this.#tsp!.submit(text, assertCurrent, allowed);
+				const submission = submissionId ? await this.#beginPromptSubmission(submissionId, text, imagePaths?.match(/(?:\\.|[^\s])+/g)?.length ?? 0) : null;
+				try {
+					assertCurrent();
+					if (submission) submission.written = true;
+					if (imagePaths) await this.#tsp!.submitImages(text, imagePaths, assertCurrent, allowed, prepared => {
+						if (submission) submission.expected = [text, prepared];
+					});
+					else if (mode === "followUp") await this.#tsp!.followUp(text, assertCurrent, allowed);
+					else await this.#tsp!.submit(text, assertCurrent, allowed);
+				} catch (error) {
+					if (submission) this.acknowledgeSubmission(submission.id);
+					throw error;
+				}
 				this.#captureStartupNotices = false;
 				this.#finishStartup();
 			});
 		}
 		return this.#applicationInput(async () => {
-			await this.#resolveWorktreeQuestion();
-			this.#assertApplicationInput(true);
-			if (this.#editorTransferBlocked) throw new Error(this.#editorTransferBlocked);
-			this.#captureStartupNotices = false;
-			this.#finishStartup();
-			// An image-only submission is Enter, without the empty paste that reads the clipboard.
-			this.#writeInput(`${text ? `\x1b[200~${text}\x1b[201~` : ""}${mode === "followUp" ? "\x11" : "\r"}`);
+			let submission: PromptSubmission | null = null;
+			try {
+				await this.#resolveWorktreeQuestion();
+				this.#assertApplicationInput(true);
+				if (this.#editorTransferBlocked) throw new Error(this.#editorTransferBlocked);
+				if (this.state.generation !== generation) throw new Error("The chat changed before its message could be sent.");
+				submission = submissionId ? await this.#beginPromptSubmission(submissionId, text, this.#classicStagedImages) : null;
+				if (submission) {
+					this.#assertPromptScope(submission);
+					if (submission.inputBeforeWrite) throw new Error("omp received another input before this message could be written. Send it again.");
+					submission.written = true;
+				} else if (this.state.sessionId) await this.#assertClassicEditorDraft();
+				this.#captureStartupNotices = false;
+				this.#finishStartup();
+				// An image-only submission is Enter, without the empty paste that reads the clipboard.
+				this.#writeInput(`${text ? `\x1b[200~${text}\x1b[201~` : ""}${mode === "followUp" ? "\x11" : "\r"}`);
+				this.#classicStagedDraft = null;
+				this.#classicStagedImages = 0;
+			} catch (error) {
+				if (submission) this.acknowledgeSubmission(submission.id);
+				if (this.#classicStagedDraft !== null && generation === this.state.generation) {
+					this.#editorTransferBlocked = "Restart omp before sending more text after its attached input could not be submitted.";
+					this.#stopWithoutEditor = true;
+					throw new Error(`Image submission needs recovery. ${error instanceof Error ? error.message : String(error)}`);
+				}
+				throw error;
+			}
 		});
+	}
+
+	/** Positive collab evidence and retained rejection rows acknowledge only their own submission. */
+	acknowledgeSubmission(id: string): void {
+		if (!this.#promptSubmissions.delete(id)) return;
+		this.#nativeBridge?.forgetPrompt(id);
+		this.#publishPromptFailures();
+		this.#queuePromptRejectionCheck();
+	}
+
+	#publishPromptFailures(): void {
+		this.#update({ promptFailures: [...this.#promptSubmissions.values()].flatMap(submission => submission.failure ? [submission.failure] : []) });
+	}
+
+	#promptDiagnostics(): PromptRejection[] {
+		if (this.#tsp) return semanticPromptRejections(this.#tsp.snapshot().surfaces.filter(surface => this.#tspSurfaceGenerations.get(surface.open.id) === this.state.generation));
+		this.#assertClassicRead("prompt:rejection");
+		const buffer = this.#screen.buffer.active;
+		const lines: string[] = [];
+		for (let index = buffer.baseY; index < buffer.length; index++) lines.push(buffer.getLine(index)?.translateToString(true) ?? "");
+		let images = 0;
+		for (const submission of this.#promptSubmissions.values()) if (submission.written && submission.inputObserved && !submission.failure) images = Math.max(images, submission.images);
+		return classicPromptRejections(lines, images > 0 && this.#classicImageSymbol ? { symbol: this.#classicImageSymbol, count: images } : undefined);
+	}
+
+	#assertPromptScope(submission: PromptSubmission): void {
+		this.#assertApplicationInput();
+		if (this.#promptSubmissions.get(submission.id) !== submission || this.state.generation !== submission.generation || this.state.sessionId !== submission.sessionId) throw new Error("The chat changed before its submitted message could be recovered.");
+		if (this.#tsp) {
+			if (this.#tsp.snapshot().epoch !== submission.epoch) throw new Error("omp restarted before its submitted message could be recovered.");
+			submission.target?.assertCurrent();
+		}
+	}
+
+	async #beginPromptSubmission(id: string, text: string, images = 0): Promise<PromptSubmission> {
+		if (!/^[A-Za-z0-9_-]{1,128}$/.test(id) || this.#promptSubmissions.has(id)) throw new Error("This submission is already pending.");
+		if (this.#promptSubmissions.size >= 128) throw new Error("Wait for omp to acknowledge its pending messages.");
+		const bridge = this.#nativeBridge;
+		const sessionId = this.state.sessionId;
+		if (!bridge || !sessionId) throw new Error("Wait for omp to connect before sending a message.");
+		const generation = this.state.generation;
+		const submission: PromptSubmission = {
+			id, text, generation, sessionId, epoch: this.#tsp?.snapshot().epoch,
+			target: this.#tsp?.pinEditor(surface => this.#tspSurfaceGenerations.get(surface) === generation),
+			diagnostics: new Set(this.#promptDiagnostics().map(diagnostic => diagnostic.key)), revision: this.#promptRevision,
+			expected: this.#classicStagedDraft ? [text, this.#classicStagedDraft + text] : [text],
+			images,
+			written: false, inputObserved: false, inputBeforeWrite: false, emptyResume: false,
+		};
+		this.#promptSubmissions.set(id, submission);
+		try {
+			const observed = await bridge.watchPrompt({ id, sessionId, text, ...(images > 0 ? { images } : {}), ...(!this.#tsp ? { classicEditor: { expected: this.#classicStagedDraft ?? "" } } : {}) });
+			this.#assertPromptScope(submission);
+			if (submission.inputBeforeWrite) throw new Error("omp received another input before this message could be written. Send it again.");
+			submission.emptyResume = observed.emptyResume;
+			return submission;
+		} catch (error) {
+			this.acknowledgeSubmission(id);
+			throw error;
+		}
+	}
+
+	async #assertClassicEditorDraft(): Promise<void> {
+		const bridge = this.#nativeBridge;
+		const sessionId = this.state.sessionId;
+		if (!bridge || !sessionId) throw new Error("Wait for omp to connect before sending a message.");
+		const generation = this.state.generation;
+		const read = await bridge.editorDraft({ operation: "peek", sessionId });
+		this.#assertApplicationInput(true);
+		if (generation !== this.state.generation || sessionId !== this.state.sessionId) throw new Error("The chat changed before its editor could be checked.");
+		if (read.error || read.text === null) throw new Error(read.error ?? "omp's editor could not be checked.");
+		if (read.text !== "" && read.text !== this.#classicStagedDraft) throw new Error("omp has unsent text in its editor. Recover it or restart omp before sending another message.");
+	}
+
+	#queuePromptRejectionCheck(): void {
+		if (this.#closing || this.#promptSubmissions.size === 0) return;
+		let pending = false;
+		for (const submission of this.#promptSubmissions.values()) if (submission.written && !submission.failure) { pending = true; break; }
+		if (!pending) return;
+		this.#promptRecheck = true;
+		if (this.#promptCheckQueued) return;
+		this.#promptCheckQueued = true;
+		void this.#applicationInput(async () => {
+			while (this.#promptRecheck && !this.#closing) {
+				this.#promptRecheck = false;
+				await this.#checkPromptRejections();
+			}
+		}).catch(() => {
+			// A room change or close invalidates recovery; neither proves that a prompt was rejected.
+		}).finally(() => {
+			this.#promptCheckQueued = false;
+			if (this.#promptRecheck && !this.#closing) this.#queuePromptRejectionCheck();
+		});
+	}
+
+	async #checkPromptRejections(): Promise<void> {
+		const diagnostics = this.#promptDiagnostics();
+		if (!diagnostics.length) return;
+		for (const submission of this.#promptSubmissions.values()) {
+			if (submission.generation !== this.state.generation || submission.sessionId !== this.state.sessionId
+				|| this.#tsp && (submission.epoch !== this.#tsp.snapshot().epoch || submission.target?.ended())) {
+				this.acknowledgeSubmission(submission.id);
+				continue;
+			}
+			if (!submission.written || submission.failure || this.#promptRevision <= submission.revision) continue;
+			const diagnostic = diagnostics.find(diagnostic => diagnostic.kind === "resume"
+				? submission.emptyResume && (submission.text === "." || submission.text === "c")
+				: submission.inputObserved && (!this.#tsp || !submission.diagnostics.has(diagnostic.key)));
+			if (!diagnostic) continue;
+			this.#assertPromptScope(submission);
+			let cleared = false;
+			let owned = false;
+			try {
+				const read = await this.#nativeBridge!.editorDraft({ operation: "peek", sessionId: submission.sessionId });
+				this.#assertPromptScope(submission);
+				if (read.error || read.text === null) throw new Error(read.error ?? "omp's editor could not be read.");
+				if (diagnostic.kind === "resume" && read.text !== "") continue;
+				const matchesDraft = (candidate: PromptSubmission): boolean => candidate.expected.includes(read.text!)
+					|| expandedPromptTextMatches(read.text!, candidate.text, candidate.images);
+				let matching: PromptSubmission | undefined, ambiguous = false;
+				for (const candidate of this.#promptSubmissions.values()) {
+					if (!candidate.written || candidate.failure || !candidate.inputObserved || read.text === ""
+						|| candidate.generation !== submission.generation || candidate.sessionId !== submission.sessionId || !matchesDraft(candidate)) continue;
+					if (matching) { ambiguous = true; break; }
+					matching = candidate;
+				}
+				if (matching && (ambiguous || matching !== submission)) continue;
+				// An old diagnostic beside an empty editor does not prove ordinary input was rejected.
+				if (diagnostic.kind === "preflight" && read.text === "") continue;
+				if (read.text === "" && !read.imageChips) { owned = true; cleared = true; }
+				else {
+					if (!matchesDraft(submission)) throw new Error("omp's editor has newer text. It was left unchanged.");
+					owned = true;
+					if (this.#tsp) {
+						const facts = this.composerFacts();
+						if (facts.text !== read.text) throw new Error("omp's semantic editor changed before recovery.");
+						await this.#tsp.editAndKeys(0, facts.text.length, "", 0, "", () => this.#assertPromptScope(submission), surface => this.#tspSurfaceGenerations.get(surface) === submission.generation);
+						await this.#tsp.waitFor(() => this.composerFacts().text === "" && this.#tsp!.imageCount(facts.surfaceId!) === 0, () => this.#assertPromptScope(submission), 8000, "omp did not confirm that its rejected message cleared.");
+						cleared = true;
+					} else {
+						// Public classic text replacement cannot discard pending image payloads.
+						if (submission.images > 0 || read.imageChips) throw new Error("omp still holds rejected images. Restart it without submitting the editor.");
+						const taken = await this.#nativeBridge!.editorDraft({ operation: "take", sessionId: submission.sessionId, expected: read.text });
+						this.#assertPromptScope(submission);
+						cleared = taken.cleared && !taken.error;
+					}
+				}
+			} catch {
+				// A diagnostic without its exact restored draft cannot establish submission ownership.
+				this.#assertPromptScope(submission);
+				this.#editorTransferBlocked = "Restart omp to recover its uncertain editor before sending more text.";
+				this.#stopWithoutEditor = true;
+			}
+			if (!owned) continue;
+			this.#classicStagedDraft = null;
+			this.#classicStagedImages = 0;
+			submission.failure = { id: submission.id, generation: submission.generation, diagnostic: diagnostic.text, cleared };
+			this.#nativeBridge?.forgetPrompt(submission.id);
+			if (!cleared) {
+				this.#editorTransferBlocked = "Restart omp to recover its rejected message before sending more text.";
+				this.#stopWithoutEditor = true;
+			}
+			this.#publishPromptFailures();
+			return;
+		}
 	}
 
 	paste(text: string, imagePaths = false): Promise<void> {
@@ -619,6 +851,7 @@ export class SessionHost {
 			const sessionId = this.state.sessionId;
 			const generation = this.state.generation;
 			if (!bridge || !debug || !sessionId) throw new Error("omp's image attachment controls are unavailable.");
+			await this.#assertClassicEditorDraft();
 			await attachClassicImages(text, {
 				assertCurrent: () => {
 					this.#assertApplicationInput(true);
@@ -637,6 +870,16 @@ export class SessionHost {
 				}
 				throw error;
 			});
+			const staged = await bridge.editorDraft({ operation: "peek", sessionId });
+			this.#assertApplicationInput(true);
+			if (generation !== this.state.generation || sessionId !== this.state.sessionId || staged.error || staged.text === null || !staged.imageChips) {
+				this.#editorTransferBlocked = "Restart omp before sending more text after its image attachment changed.";
+				this.#stopWithoutEditor = true;
+				throw new Error("Image submission needs recovery. omp's attached editor could not be confirmed.");
+			}
+			this.#classicStagedDraft = staged.text;
+			this.#classicStagedImages = staged.imageChips;
+			this.#classicImageSymbol = staged.imageSymbol;
 		});
 	}
 
@@ -1045,6 +1288,13 @@ export class SessionHost {
 		if (!(await this.#drainApplicationInput(pty))) return;
 		// Main also guards ordinary close after a failed transfer, even if the renderer lost its recovery state.
 		this.#stopWithoutEditor ||= !this.#tsp && this.#editorTransferBlocked !== null;
+		if (!this.#tsp && !this.#stopWithoutEditor && this.#nativeBridge && this.state.sessionId) {
+			const generation = this.state.generation, sessionId = this.state.sessionId;
+			try {
+				const read = await this.#nativeBridge.editorDraft({ operation: "peek", sessionId });
+				this.#stopWithoutEditor = generation !== this.state.generation || sessionId !== this.state.sessionId || read.text !== "" || !!read.imageChips || !!read.error;
+			} catch { this.#stopWithoutEditor = true; }
+		}
 		if (this.#nativeBridge?.snapshot.shutdown === "teardown") this.#shutdownProgress("teardown");
 		let prepared = true;
 		if (this.#shutdownStage === "requested" || this.#shutdownStage === "acknowledged") {
@@ -1397,6 +1647,15 @@ export class SessionHost {
 
 	#update(patch: Partial<HostState>): void {
 		const previousGeneration = this.state.generation;
+		if (patch.phase === "exited" || patch.phase === "restarting" || patch.generation !== undefined && patch.generation !== previousGeneration
+			|| patch.sessionId !== undefined && patch.sessionId !== this.state.sessionId) {
+			for (const id of this.#promptSubmissions.keys()) this.#nativeBridge?.forgetPrompt(id);
+			this.#promptSubmissions.clear();
+			this.#classicStagedDraft = null;
+			this.#classicStagedImages = 0;
+			this.#classicImageSymbol = undefined;
+			patch.promptFailures = [];
+		}
 		if (this.#tsp && patch.phase === "restarting") this.#tspSurfaceGenerations.clear();
 		if (this.#tsp && patch.generation !== undefined && patch.generation !== previousGeneration) {
 			if (previousGeneration === 0) {

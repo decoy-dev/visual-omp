@@ -107,3 +107,144 @@ describe("hosted native mode bridge", () => {
 		await rejected;
 	});
 });
+
+describe("native prompt observation bridge", () => {
+	it("waits for the delivered extension arm, then forwards one input notification without text", async () => {
+		dir = await mkdtemp(join(tmpdir(), "prompt-bridge-")); bridge = await createNativeBridge("prompt-test", dir);
+		const observed = vi.fn();
+		bridge.onPromptInput = observed;
+		let armed = false;
+		const pending = bridge.watchPrompt({ id: "prompt/one", sessionId: "session", text: "exact\nprompt" }).then(result => { armed = true; return result; });
+		const response = await fetch(bridge.url + "/requests");
+		const epoch = response.headers.get("X-Vomp-Jobs-Epoch");
+		expect(await response.json()).toEqual([{ id: "prompt/one", kind: "watchPrompt", prompt: { id: "prompt/one", sessionId: "session", text: "exact\nprompt" }, epoch }]);
+		expect(armed).toBe(false);
+		expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([]);
+		const route = bridge.url + "/prompt/" + encodeURIComponent("prompt/one");
+		const post = (state: string, sessionId = "session") => fetch(route, { method: "POST", body: JSON.stringify({ state, sessionId, epoch, emptyResume: false }) });
+		expect((await post("input")).status).toBe(409);
+		expect((await post("armed", "other")).status).toBe(409);
+		expect(armed).toBe(false);
+		expect((await post("armed")).status).toBe(200);
+		await expect(pending).resolves.toEqual({ emptyResume: false });
+		expect(observed).not.toHaveBeenCalled();
+		expect((await post("input")).status).toBe(200);
+		expect(observed).toHaveBeenCalledExactlyOnceWith("prompt/one");
+		expect((await post("input")).status).toBe(409);
+		bridge.forgetPrompt("prompt/one");
+		expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([]);
+	});
+
+	it("forgets both pending and armed watches through the existing request queue", async () => {
+		dir = await mkdtemp(join(tmpdir(), "prompt-forget-")); bridge = await createNativeBridge("prompt-test", dir);
+		const undelivered = bridge.watchPrompt({ id: "undelivered", sessionId: "session", text: "private" });
+		const rejected = expect(undelivered).rejects.toThrow("did not arm");
+		bridge.forgetPrompt("undelivered");
+		await rejected;
+		expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([]);
+		const pending = bridge.watchPrompt({ id: "delivered", sessionId: "session", text: "." });
+		const response = await fetch(bridge.url + "/requests");
+		const epoch = response.headers.get("X-Vomp-Jobs-Epoch");
+		await response.json();
+		await fetch(bridge.url + "/prompt/delivered", { method: "POST", body: JSON.stringify({ state: "armed", epoch, sessionId: "session", emptyResume: true }) });
+		await expect(pending).resolves.toEqual({ emptyResume: true });
+		bridge.forgetPrompt("delivered");
+		expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([{ id: "delivered", kind: "forgetPrompt", epoch }]);
+		expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([]);
+		expect((await fetch(bridge.url + "/prompt/delivered", { method: "POST", body: JSON.stringify({ state: "input", epoch, sessionId: "session" }) })).status).toBe(409);
+	});
+
+	it("rejects old-generation arms and input even if the watch id and session are reused", async () => {
+		dir = await mkdtemp(join(tmpdir(), "prompt-generation-")); bridge = await createNativeBridge("prompt-test", dir);
+		const observed = vi.fn(); bridge.onPromptInput = observed;
+		const first = bridge.watchPrompt({ id: "same", sessionId: "session", text: "first" });
+		const rejected = expect(first).rejects.toThrow("changed rooms");
+		const response = await fetch(bridge.url + "/requests");
+		const previousEpoch = response.headers.get("X-Vomp-Jobs-Epoch");
+		await response.json();
+		bridge.beginGeneration(2); await rejected;
+		const current = bridge.watchPrompt({ id: "same", sessionId: "session", text: "current" });
+		const response2 = await fetch(bridge.url + "/requests");
+		const epoch = response2.headers.get("X-Vomp-Jobs-Epoch");
+		await response2.json();
+		for (const state of ["armed", "input"]) expect((await fetch(bridge.url + "/prompt/same", { method: "POST", body: JSON.stringify({ state, epoch: previousEpoch, sessionId: "session" }) })).status).toBe(409);
+		await fetch(bridge.url + "/prompt/same", { method: "POST", body: JSON.stringify({ state: "armed", epoch, sessionId: "session", emptyResume: false }) });
+		await expect(current).resolves.toEqual({ emptyResume: false });
+		expect(observed).not.toHaveBeenCalled();
+		bridge.beginGeneration(3);
+		expect((await fetch(bridge.url + "/prompt/same", { method: "POST", body: JSON.stringify({ state: "input", epoch, sessionId: "session" }) })).status).toBe(409);
+		expect(observed).not.toHaveBeenCalled();
+	});
+
+	it("rejects unavailable arms and releases pending observation when the bridge closes", async () => {
+		dir = await mkdtemp(join(tmpdir(), "prompt-close-")); bridge = await createNativeBridge("prompt-test", dir);
+		bridge.onPromptInput = vi.fn();
+		const armed = bridge.watchPrompt({ id: "armed", sessionId: "session", text: "private" });
+		const response = await fetch(bridge.url + "/requests");
+		const epoch = response.headers.get("X-Vomp-Jobs-Epoch");
+		await response.json();
+		await fetch(bridge.url + "/prompt/armed", { method: "POST", body: JSON.stringify({ state: "armed", epoch, sessionId: "session", emptyResume: false }) });
+		await armed;
+		const pending = bridge.watchPrompt({ id: "pending", sessionId: "session", text: "private" });
+		const rejected = expect(pending).rejects.toThrow("stopped");
+		await bridge.close(); await rejected;
+		expect(bridge.onPromptInput).toBeUndefined();
+		await expect(bridge.watchPrompt({ id: "closed", sessionId: "session", text: "private" })).rejects.toThrow("unavailable");
+	});
+
+	it("rejects an explicit unavailable extension arm instead of treating it as input", async () => {
+		dir = await mkdtemp(join(tmpdir(), "prompt-unavailable-")); bridge = await createNativeBridge("prompt-test", dir);
+		const observed = vi.fn(); bridge.onPromptInput = observed;
+		const pending = bridge.watchPrompt({ id: "unavailable", sessionId: "session", text: "private" });
+		const rejected = expect(pending).rejects.toThrow("did not arm");
+		const response = await fetch(bridge.url + "/requests");
+		const epoch = response.headers.get("X-Vomp-Jobs-Epoch");
+		await response.json();
+		await fetch(bridge.url + "/prompt/unavailable", { method: "POST", body: JSON.stringify({ state: "error", epoch, sessionId: "session" }) });
+		await rejected;
+		expect(observed).not.toHaveBeenCalled();
+	});
+
+	it("keeps a classic prompt unsent when its atomic editor guard reports private draft text", async () => {
+		dir = await mkdtemp(join(tmpdir(), "prompt-classic-editor-")); bridge = await createNativeBridge("prompt-test", dir);
+		const observed = vi.fn(); bridge.onPromptInput = observed;
+		const pending = bridge.watchPrompt({ id: "classic", sessionId: "session", text: "New message", classicEditor: { expected: "" } });
+		const rejected = expect(pending).rejects.toThrow("omp has unsent text in its editor.");
+		const response = await fetch(bridge.url + "/requests");
+		const epoch = response.headers.get("X-Vomp-Jobs-Epoch");
+		expect(await response.json()).toEqual([{ id: "classic", kind: "watchPrompt", prompt: { id: "classic", sessionId: "session", text: "New message", classicEditor: { expected: "" } }, epoch }]);
+		await fetch(bridge.url + "/prompt/classic", { method: "POST", body: JSON.stringify({ state: "error", epoch, sessionId: "session", error: "omp has unsent text in its editor." }) });
+		await rejected;
+		expect((await fetch(bridge.url + "/prompt/classic", { method: "POST", body: JSON.stringify({ state: "input", epoch, sessionId: "session" }) })).status).toBe(409);
+		expect(observed).not.toHaveBeenCalled();
+	});
+
+	it("delivers only a positive integer image ownership count with the exact prompt watch", async () => {
+		dir = await mkdtemp(join(tmpdir(), "prompt-images-")); bridge = await createNativeBridge("prompt-test", dir);
+		for (const images of [0, -1, 1.5, Number.POSITIVE_INFINITY]) await expect(bridge.watchPrompt({ id: "invalid", sessionId: "session", text: "authored", images })).rejects.toThrow("attachment observation");
+		expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([]);
+		const pending = bridge.watchPrompt({ id: "images", sessionId: "session", text: "authored\ntext", images: 2 });
+		const rejected = expect(pending).rejects.toThrow("did not arm");
+		const response = await fetch(bridge.url + "/requests");
+		const epoch = response.headers.get("X-Vomp-Jobs-Epoch");
+		expect(await response.json()).toEqual([{ id: "images", kind: "watchPrompt", prompt: { id: "images", sessionId: "session", text: "authored\ntext", images: 2 }, epoch }]);
+		bridge.forgetPrompt("images");
+		await rejected;
+	});
+
+	it("times out an unconfirmed arm as unavailable observation and queues its removal", async () => {
+		dir = await mkdtemp(join(tmpdir(), "prompt-timeout-")); bridge = await createNativeBridge("prompt-test", dir);
+		const timers = vi.spyOn(globalThis, "setTimeout");
+		try {
+			const pending = bridge.watchPrompt({ id: "timeout", sessionId: "session", text: "private" });
+			const rejected = expect(pending).rejects.toThrow("did not arm");
+			const response = await fetch(bridge.url + "/requests");
+			const epoch = response.headers.get("X-Vomp-Jobs-Epoch");
+			await response.json();
+			const expire = timers.mock.calls.find(([, delay]) => delay === 5000)?.[0];
+			if (typeof expire !== "function") throw new Error("Missing prompt arming deadline");
+			expire(); await rejected;
+			expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([{ id: "timeout", kind: "forgetPrompt", epoch }]);
+		} finally { timers.mockRestore(); }
+	});
+});
