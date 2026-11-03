@@ -3,7 +3,7 @@ import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { test } from "node:test";
 import { CONPTY_FILES } from "./stage-conpty.mjs";
 import { runWindowsTspCi, WINDOWS_TSP_CI_LIMITS } from "./windows-tsp-ci.mjs";
@@ -20,6 +20,38 @@ async function fixture(t) {
 	await mkdir(join(project, "src/main/omp"), { recursive: true });
 	await writeFile(join(project, "src/main/omp/locate.ts"), `export const MIN_OMP_VERSION = "${version}";\n`);
 	return { project, evidence: join(project, "evidence"), env: { GITHUB_ENV: join(project, "github-env") } };
+}
+
+async function lifecycleFixture(t, mode) {
+	const options = await fixture(t);
+	const evidence = await mkdtemp(join(tmpdir(), "vomp-lifecycle-evidence-"));
+	t.after(() => rm(evidence, { recursive: true, force: true }));
+	const directory = join(options.project, "src/main/omp/tsp/testing");
+	await mkdir(directory, { recursive: true });
+	const nativePackage = join(options.project, "node_modules/node-pty");
+	await mkdir(nativePackage, { recursive: true });
+	await writeFile(join(nativePackage, "package.json"), JSON.stringify({ name: "node-pty", main: "index.cjs" }));
+	await writeFile(join(nativePackage, "index.cjs"), "exports.spawn = () => 'checkout-native-package';\n");
+	// A static external import exercises Node's real resolution from the emitted executable location.
+	await writeFile(join(directory, "windows-lifecycle.ts"), `
+import { spawn } from "node-pty";
+import { writeFileSync } from "node:fs";
+const mode = process.env.LIFECYCLE_FIXTURE_MODE;
+const report = {
+  status: mode === "complete" ? "complete" : "running",
+  nativePackage: spawn(),
+  reportPath: process.env.VOMP_TSP_LIFECYCLE_REPORT,
+  extensionPath: process.env.VOMP_TSP_LIFECYCLE_EXTENSION,
+  omp: process.env.OMP_BIN,
+  cycles: [{ mode: "natural", index: 1 }],
+  growth: { threads: 6, handles: 30, resources: { MessagePort: 6, PipeWrap: 6 } },
+};
+writeFileSync(process.env.VOMP_TSP_LIFECYCLE_REPORT, JSON.stringify(report));
+if (mode === "timeout") setInterval(() => {}, 1000);
+if (mode === "nonzero") { process.stderr.write("lifecycle operation failed"); process.exitCode = 7; }
+`);
+	return { ...options, evidence, env: { ...options.env, PATH: process.env.PATH, SystemRoot: process.env.SystemRoot,
+		OMP_BIN: join(options.project, asset), LIFECYCLE_FIXTURE_MODE: mode } };
 }
 
 function downloadFetch(sums = `${sha256} *${asset}\n`) {
@@ -250,3 +282,76 @@ for (const arch of ["x64", "arm64"]) {
 		await assertAbsent(join(options.evidence, `layout-${arch}-failure.json`));
 	});
 }
+
+test("lifecycle resolves the checkout native package and accepts completed resource growth as evidence requiring review", async t => {
+	const options = await lifecycleFixture(t, "complete");
+	let recorder;
+	const messages = [];
+	t.mock.method(console, "log", message => messages.push(message));
+	await runWindowsTspCi(["lifecycle"], {
+		...options,
+		execFileSync: (file, args, settings) => {
+			recorder = args[0];
+			assert.equal(file, process.execPath);
+			assert.equal(dirname(dirname(recorder)), options.project);
+			assert.notEqual(dirname(recorder), options.evidence);
+			assert.equal(settings.timeout, 300_000);
+			assert.equal(settings.killSignal, "SIGKILL");
+			assert.equal(settings.env.VOMP_TSP_LIFECYCLE_REPORT, join(options.evidence, "host-lifecycle.json"));
+			assert.equal(settings.env.VOMP_TSP_LIFECYCLE_EXTENSION, join(options.project, "src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs"));
+			assert.equal(settings.env.OMP_BIN, options.env.OMP_BIN);
+			assert.equal(settings.env.NODE_PATH, undefined);
+			return execFileSync(file, args, { ...settings, cwd: options.evidence });
+		},
+	});
+	const report = JSON.parse(await readFile(join(options.evidence, "host-lifecycle.json"), "utf8"));
+	assert.equal(report.nativePackage, "checkout-native-package");
+	assert.equal(report.reportPath, join(options.evidence, "host-lifecycle.json"));
+	assert.equal(report.extensionPath, join(options.project, "src/main/omp/tsp/fixtures/extension/vomp-fixture.mjs"));
+	assert.equal(report.omp, options.env.OMP_BIN);
+	assert.deepEqual(report.growth, { threads: 6, handles: 30, resources: { MessagePort: 6, PipeWrap: 6 } });
+	assert.ok(messages.some(message => message.includes("resource growth (evidence only; requires review)") && message.includes('"threads":6')));
+	await assertAbsent(join(options.evidence, "lifecycle-failure.json"));
+	await assertAbsent(recorder);
+});
+
+for (const mode of ["timeout", "nonzero"]) {
+	test(`lifecycle ${mode} remains fatal and preserves its progressive report`, { timeout: 10_000 }, async t => {
+		const options = await lifecycleFixture(t, mode);
+		let recorder;
+		await assert.rejects(runWindowsTspCi(["lifecycle"], {
+			...options,
+			execFileSync: (file, args, settings) => {
+				recorder = args[0];
+				assert.equal(settings.timeout, 300_000);
+				// Exercise a real platform timeout without waiting for the production five-minute budget.
+				return execFileSync(file, args, { ...settings, timeout: mode === "timeout" ? 500 : settings.timeout });
+			},
+		}), mode === "timeout" ? { code: "ETIMEDOUT" } : /Command failed/);
+		const report = JSON.parse(await readFile(join(options.evidence, "host-lifecycle.json"), "utf8"));
+		assert.equal(report.status, "running");
+		assert.equal(report.nativePackage, "checkout-native-package");
+		assert.deepEqual(report.cycles, [{ mode: "natural", index: 1 }]);
+		const diagnostic = await failure(options, "lifecycle");
+		assert.equal(diagnostic.status, "failed");
+		assert.equal(diagnostic.phase, "run");
+		assert.equal(diagnostic.timeoutMs, "300000");
+		if (mode === "timeout") assert.equal(diagnostic.error.code, "ETIMEDOUT");
+		else {
+			assert.equal(diagnostic.error.stderr, "lifecycle operation failed");
+			assert.match(diagnostic.error.message, /Command failed/);
+		}
+		await assertAbsent(recorder);
+	});
+}
+
+test("lifecycle rejects a zero-exit subprocess with an incomplete report", async t => {
+	const options = await lifecycleFixture(t, "incomplete");
+	await assert.rejects(runWindowsTspCi(["lifecycle"], options), /lifecycle recorder did not complete: running/);
+	const report = JSON.parse(await readFile(join(options.evidence, "host-lifecycle.json"), "utf8"));
+	assert.equal(report.status, "running");
+	assert.equal(report.nativePackage, "checkout-native-package");
+	const diagnostic = await failure(options, "lifecycle");
+	assert.equal(diagnostic.status, "failed");
+	assert.match(diagnostic.error.message, /did not complete/);
+});

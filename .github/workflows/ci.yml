@@ -51,6 +51,12 @@ jobs:
         env:
           VOMP_TSP_WINDOWS_EVIDENCE: ${{ runner.temp }}/windows-tsp-evidence
         run: npx vitest run src/main/omp/tsp/tsp-windows.live.test.ts
+      - name: Record repeated production SessionHost cleanup
+        if: runner.os == 'Windows' && !cancelled() && steps.omp.outcome == 'success'
+        timeout-minutes: 6
+        env:
+          VOMP_TSP_WINDOWS_EVIDENCE: ${{ runner.temp }}/windows-tsp-evidence
+        run: node scripts/windows-tsp-ci.mjs lifecycle
       - name: Package Windows installer
         if: runner.os == 'Windows' && !cancelled()
         timeout-minutes: 20

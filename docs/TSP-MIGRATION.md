@@ -742,8 +742,37 @@ same exchange, unexpected-exit and cleanup failure checks. This releases native 
 without treating a timeout or failed exchange as success. Reports now retain active resource names
 before exit and structured subprocess exit code, signal, killed flag and elapsed time. A process
 regression holds a referenced worker open and checks that passing probes exit zero while missing
-exchanges, unexpected omp exits and cleanup failures exit nonzero. Another Windows CI run must
-confirm clean probe-child exit; this does not establish the manual process-cleanup criterion.
+exchanges, unexpected omp exits and cleanup failures exit nonzero. Run `41687130504` confirmed
+clean probe-child exit and passed the existing Windows evidence steps. Its unit-test failures
+were separate: a bundled test accidentally activated the probe's CLI startup, and a disk-backed
+SQLite fixture exceeded its Windows test deadline. Executable startup now uses
+`windows-probe-cli.ts`; importing or bundling `windows-probe.ts` has no CLI startup side effect.
+This successful one-shot run does not establish the manual process-cleanup criterion or the
+new repeated-host lifecycle measurement.
+
+The one-shot probe exit does not establish `SessionHost` cleanup inside a running app.
+`SessionHost.#onExit()` releases its PTY reference and closes its own services, but it does not
+dispose node-pty's private conout worker. Retention after natural `/exit` or confirmed force-stop is
+therefore suspected and requires measurement before this criterion can pass.
+
+The Windows CI `lifecycle` command now records three natural-stop and three confirmed force-stop
+cycles in one process using the production `SessionHost`, node-pty, native bridge, relay, debug
+client and CLI. Headless adapters replace Electron UI/IPC/preferences and launch-environment
+selection only. A recorded hook holds the force-stop case until the real shutdown confirmation
+path chooses Stop now. Before startup, while live, after stop and after a 5.5-second settling period,
+the recorder samples active-resource counts, Windows thread IDs/count, total process handles and
+known child processes. The settling period exceeds the host's 4-second force-stop timer and
+node-pty's 1-second flush timer.
+
+`host-lifecycle.json` saves progressive samples and final resource deltas in the existing evidence
+artifact. The executable bundle uses a temporary directory beneath the checkout, so its static
+external node-pty import resolves that checkout's installation independently of cwd or `NODE_PATH`.
+The launcher removes that temporary directory after execution; reports remain in the evidence
+directory on both success and failure. This recorder never calls `process.exit()`, `unref()` or
+private native-worker disposal.
+Its parent has a 5-minute deadline and retains `lifecycle-failure.json` if referenced resources
+prevent natural exit. Measured growth is evidence for review, rather than an automatic diagnosis
+or an unreviewed cleanup change. Actual Windows lifecycle results are pending the next CI run.
 
 **Local checkpoint (2026-11-03, after review, before rebasing onto refreshed main).** macOS
 typecheck and all 47 packaging and CI-helper unit tests pass. One full Vitest run passes
@@ -796,6 +825,7 @@ every failure produces a complete exchange.
 - **Live, Node (Windows CI, x64):** `src/main/omp/tsp/tsp-windows.live.test.ts`, gated on `OMP_BIN`, which CI sets so the test never skips there. It spawns omp through node-pty with `useConptyDll: true`, completes the hello, receives frames, sends `send` and `edit` through APC and then through OSC 877, and records both directions, including non-ASCII text split across chunks. A second case with `useConptyDll: false` records the system ConPTY behavior. This test loads node-pty as built for Node; the packaged smoke run below covers the Electron rebuild.
 - **Packaged (Windows CI):** the layout assertion for x64 and arm64, and a smoke run of the packaged x64 app with `ELECTRON_RUN_AS_NODE=1` executing a script that loads the packaged, Electron-rebuilt node-pty and repeats the hello and `send` exchange. arm64 is packaged and checked for layout only, unless an arm64 Windows runner is added.
 - **Unit:** staging tests select x64 and arm64 and reject zero or two versions; macOS staging is a no-op. Fixture PE tests reject missing, malformed and wrong-machine files before fuse changes. Host tests protect Windows TSP launch and byte-identical classic behavior; stream tests retain the current framing for chunked Unicode events.
+- **Repeated production hosts (Windows CI):** `src/main/omp/tsp/testing/windows-lifecycle.ts` exercises both shutdown paths and retains resources, threads, handle counts and process observations across six hosts in one process. It uses Node's rebuilt addon and does not replace the installed-build manual check.
 
 **Acceptance criteria.**
 
@@ -803,7 +833,7 @@ every failure produces a complete exchange.
 2. Live: the Windows test runs (not skipped), receives hello, frames and acks through bundled ConPTY, and the chosen framing delivers `send` and `edit` with non-ASCII text intact.
 3. Live: the system ConPTY case is recorded; studio's observation predicts no APC frames, and the recorded result is kept either way.
 4. Packaged: the x64 smoke run completes the exchange with the Electron-rebuilt node-pty.
-5. Manual (Windows machine, installed build): a TSP chat starts, streams, opens and answers a hook dialog, opens `/btw` and exits cleanly; no `OpenConsole.exe` or `bun.exe` remains after closing the chat and after quitting.
+5. Manual (Windows machine, installed build): a TSP chat starts, streams, opens and answers a hook dialog, and opens `/btw`. Within the same running app, repeatedly create and close TSP chats through natural `/exit` and the confirmed force-stop decision. Compare worker/thread counts and pipe-handle counts before starting, after each closure and after settling; confirm that stopped chats do not retain conout workers, threads or pipe handles. Check that no stopped chat leaves `OpenConsole.exe`, omp or `bun.exe` processes. Then quit the app and repeat the process and handle checks. Record the measurements and distinguish normal app-wide background resources from per-chat growth.
 6. Manual: Windows Defender and SmartScreen do not block the bundled `OpenConsole.exe`. `[INFERENCE]` It is signed by Microsoft, but this app has not tested it.
 
 **Risks and gate.** `useConptyDll` is experimental in node-pty, a ConPTY update could drop APC again, and a node-pty upgrade can change the version folder, which the staging step detects. Ordinary Windows chats remain classic. The developer flag is available to collect evidence; the default flip and a claim of completed Windows support require criteria 1-6.
