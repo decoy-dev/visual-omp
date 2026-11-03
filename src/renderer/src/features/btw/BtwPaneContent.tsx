@@ -1,15 +1,113 @@
 import { ArrowUp, ChatCircle, Copy, Plus, Stop, X } from "@phosphor-icons/react";
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef, useState, useSyncExternalStore, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import type { BtwState, BtwStatus, BtwTopic, BtwTopicRef } from "@shared/contracts/btw";
-import { btwTopicKey, sameBtwTopic } from "@shared/tsp/btw";
+import type { HostState } from "@shared/ipc";
+import type { TspDocumentStore } from "@shared/tsp/document";
+import { btwTopicKey, projectBtw, sameBtwTopic, type BtwProjection } from "@shared/tsp/btw";
 import { TSP_ACTIONS } from "@shared/tsp/roles";
-import { PresentationVisibility, usePresentationClaim } from "../../state/tsp/presentation-claims";
+import { errorText } from "@shared/errors";
+import { PresentationVisibility, presentationClaims, usePresentationClaim } from "../../state/tsp/presentation-claims";
 import { Markdown, StreamingMarkdown } from "../../transcript/Markdown";
 import { Button, EmptyState, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, Spinner, Textarea } from "../../ui";
 import { PaneToolbar } from "../panes/common";
-import { useApp } from "../../state/app";
+import { controllerFor, useApp } from "../../state/app";
 import { BtwPaneLoading, BtwPresentation } from "./BtwPane";
+import type { SessionController } from "../../state/session";
+
+interface PanelPutAway {
+	result: Promise<void>;
+	active: boolean;
+	error: string | null;
+}
+const panelPutAways = new WeakMap<SessionController, Map<string, PanelPutAway>>();
+const panelPutAwayListeners = new Set<() => void>();
+function subscribePanelPutAway(listener: () => void) {
+	panelPutAwayListeners.add(listener);
+	return () => { panelPutAwayListeners.delete(listener); };
+}
+function panelPutAwayKey(host: Pick<HostState, "hostId" | "generation" | "tspEpoch">, projection: BtwProjection): string {
+	return JSON.stringify([host.hostId, host.generation, host.tspEpoch, projection.surfaceId, projection.nodeId]);
+}
+
+/** One native operation survives pane remounts; the renderer deadline never replays an outstanding close. */
+export function putAwayBtwPanel(session: SessionController, host: HostState, projection: BtwProjection, store: TspDocumentStore): Promise<void> {
+	let operations = panelPutAways.get(session);
+	if (!operations) { operations = new Map(); panelPutAways.set(session, operations); }
+	const key = panelPutAwayKey(host, projection);
+	const previous = operations.get(key);
+	if (previous?.active) return previous.result;
+	if (host.tspEpoch === undefined) return Promise.reject(new Error("The chat changed before the side question could be put away."));
+	const releasePresentation = presentationClaims.acquire({ hostId: host.hostId, epoch: host.tspEpoch, surfaceId: projection.surfaceId, nodeId: projection.nodeId });
+	const deadline = Promise.withResolvers<void>();
+	const documentClosed = Promise.withResolvers<void>();
+	let expired = false;
+	let nativeSettled = false;
+	let requestSettled = false;
+	let latest = store.getSnapshot();
+	const finished = () => !latest || latest.generation !== host.generation || latest.epoch !== host.tspEpoch
+		|| projectBtw(latest.surfaces)?.nodeId !== projection.nodeId;
+	const off = window.vomp.on("host:tsp-update", next => {
+		if (next.hostId !== host.hostId || latest && next.revision <= latest.revision) return;
+		latest = next;
+		if (finished()) documentClosed.resolve();
+	});
+	const timer = setTimeout(() => {
+		expired = true;
+		deadline.reject(new Error("omp did not close the side-question history."));
+	}, 8000);
+	const result = Promise.withResolvers<void>();
+	const operation: PanelPutAway = { result: result.promise, active: true, error: null };
+	operations.set(key, operation);
+	for (const listener of panelPutAwayListeners) listener();
+	const native = (async () => {
+		const state = await window.vomp.invoke("btw:list", host.hostId);
+		if (expired) return;
+		const current = session.getSnapshot().host;
+		if (controllerFor(session.tabId) !== session || state.hostId !== host.hostId || state.generation !== host.generation || state.epoch !== host.tspEpoch
+			|| current?.hostId !== host.hostId || current.generation !== host.generation || current.tspEpoch !== host.tspEpoch) throw new Error("The chat changed before the side question could be put away.");
+		if (state.overlay) await window.vomp.invoke("btw:close", host.hostId, state.overlay.selectedTopic, { generation: host.generation, epoch: host.tspEpoch });
+	})();
+	const settleNative = () => { nativeSettled = true; if (requestSettled) operation.active = false; };
+	void native.then(settleNative, settleNative);
+	const completed = native.then(async () => { if (!expired && !finished()) await documentClosed.promise; });
+	void Promise.race([completed, deadline.promise]).catch(error => {
+		operation.error = errorText(error);
+		for (const listener of panelPutAwayListeners) listener();
+		throw error;
+	}).finally(() => {
+		requestSettled = true;
+		if (nativeSettled) operation.active = false;
+		clearTimeout(timer);
+		off();
+		documentClosed.resolve();
+		releasePresentation();
+	}).then(result.resolve, result.reject);
+	return operation.result;
+}
+
+/** The composer's explicit recovery action shares the same lazy omp-owned put-away path. */
+export async function putAwayComposerBtw(
+	session: SessionController, host: HostState | null, scope: string, readOnly: boolean,
+	ownerRef: RefObject<{ key: string } | null>, setClosing: (scope: string | null) => void, onError: (error: unknown) => void,
+): Promise<void> {
+	if (!ownerRef.current || readOnly || host?.transport !== "tsp" || host.tspAvailability?.reasonCode !== "btw" || host.tspEpoch === undefined || ownerRef.current.key === scope) return;
+	const owner = { key: scope };
+	ownerRef.current = owner;
+	setClosing(scope);
+	try {
+		const state = await window.vomp.invoke("btw:list", host.hostId);
+		const current = session.getSnapshot().host;
+		if (ownerRef.current !== owner || current?.hostId !== host.hostId || current.generation !== host.generation || current.tspEpoch !== host.tspEpoch) return;
+		if (state.hostId !== host.hostId || state.generation !== host.generation || state.epoch !== host.tspEpoch) throw new Error("The chat changed before the side question could be put away.");
+		if (state.overlay) await window.vomp.invoke("btw:close", host.hostId, state.overlay.selectedTopic, { generation: host.generation, epoch: host.tspEpoch });
+	} catch (error) {
+		const current = session.getSnapshot().host;
+		if (ownerRef.current === owner && current?.hostId === host.hostId && current.generation === host.generation && current.tspEpoch === host.tspEpoch) onError(error);
+	} finally {
+		if (ownerRef.current === owner) { ownerRef.current = { key: "" }; setClosing(null); }
+	}
+}
 
 export interface BtwPaneContentProps {
 	state: BtwState | null;
@@ -45,15 +143,18 @@ export function BtwPaneHost() {
 	const { t } = useTranslation("panes");
 	const content = useContext(BtwPresentation);
 	const { state, error } = useBtw(content?.hostId ?? null, content?.generation, content?.epoch);
+	const session = content ? controllerFor(content.tabId) : null;
+	const closeKey = content?.projection ? panelPutAwayKey({ hostId: content.hostId, generation: content.generation, tspEpoch: content.epoch }, content.projection) : null;
+	const closeError = useSyncExternalStore(subscribePanelPutAway, () => session && closeKey ? panelPutAways.get(session)?.get(closeKey)?.error ?? null : null);
 	if (!content) return null;
 	const { projection, target, hostId, readOnly, presentation } = content;
 	const overlay = state?.overlay;
-	const pending = projection?.supported && !error && (!state || overlay?.nodeId !== projection.nodeId || overlay.surfaceId !== projection.surfaceId || overlay.epoch !== target?.epoch);
+	const pending = projection?.supported && (!state || overlay?.nodeId !== projection.nodeId || overlay.surfaceId !== projection.surfaceId || overlay.epoch !== target?.epoch);
 	return <>
 		{overlay && !overlay.supported && <div className="border-b border-border p-3"><p className="mb-2 text-sm text-fg-muted">{t("btw.unsupported")}</p><Button size="sm" variant="secondary" onClick={() => useApp.getState().openTerminal(content.tabId)}>{t("btw.openScreen")}</Button></div>}
-		{pending && <BtwPaneLoading />}
+		{pending && <><BtwPaneLoading />{(closeError || error) && <p role="alert" className="shrink-0 px-4 pb-3 text-sm text-err">{closeError ?? error}</p>}</>}
 		<div className={pending ? "hidden" : "flex min-h-0 flex-1 flex-col"}><PresentationVisibility visible={!pending && projection?.supported !== false}>
-			<BtwPaneContent state={state} error={error} readOnly={readOnly} hostId={hostId} presentation={presentation} />
+			<BtwPaneContent state={state} error={closeError ?? error} readOnly={readOnly} hostId={hostId} presentation={presentation} />
 		</PresentationVisibility></div>
 	</>;
 }

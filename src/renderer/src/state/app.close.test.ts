@@ -41,7 +41,8 @@ vi.mock("./session", () => ({
 		async dispose() {}
 	},
 }));
-vi.mock("../registry/guards", () => ({
+vi.mock("../registry/guards", async importOriginal => ({
+	...await importOriginal<Record<string, unknown>>(),
 	confirmTabClose: async (tabId: string) => {
 		env.asked.push(tabId);
 		return env.allow;

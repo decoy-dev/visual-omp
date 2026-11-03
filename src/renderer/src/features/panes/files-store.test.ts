@@ -37,7 +37,7 @@ vi.mock("../../state/session", () => ({
 		async dispose() {}
 	},
 }));
-vi.mock("../../registry/guards", () => ({ confirmTabClose: async () => true }));
+vi.mock("../../registry/guards", async importOriginal => ({ ...await importOriginal<Record<string, unknown>>(), confirmTabClose: async () => true }));
 vi.mock("../../shell/hooks", () => ({ chatTitle: () => null }));
 vi.mock("../../chat/composer/drafts", () => ({
 	useComposerDrafts: { getState: () => ({ drafts: {}, attachments: {}, modes: {}, forget() {}, setDraft() {}, addAttachments() {}, setMode() {}, focus() {} }) },

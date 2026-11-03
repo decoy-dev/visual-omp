@@ -11,7 +11,7 @@ import { persist } from "zustand/middleware";
 import type { AppPreferences, OmpStatus, ProjectSummary, SessionSummary } from "@shared/ipc";
 import { useComposerDrafts } from "../chat/composer/drafts";
 import { reconcileUnseen, type UnseenChats } from "../features/onboarding/attention";
-import { confirmTabClose } from "../registry/guards";
+import { confirmTabClose, preparePaneLeave } from "../registry/guards";
 import { chatTitle } from "../shell/hooks";
 import { normalizeRestoredChatSelection, releaseKeepsNumbers } from "./chatSelection";
 import { workInFlight } from "./chatWork";
@@ -287,6 +287,25 @@ function changeDock(state: AppState, scope: string | null | undefined, patch: Pa
 	const moveFocus = state.view === "chat" && !keepFocus;
 	const focusedSplit = moveFocus && key === state.splitTabId ? "secondary" : moveFocus && key === state.activeTabId ? "primary" : state.focusedSplit;
 	return key === dockKey({ ...state, focusedSplit }) ? { docks, focusedSplit, chatOverDock: false } : { docks };
+}
+
+const dockRequests = new Map<string, symbol>();
+
+/** Apply a panel request only after its current pane has finished its omp-owned interaction. */
+function requestDock(key: string, patch: Partial<DockLayout>, keepFocus = false): void {
+	const state = useApp.getState();
+	const owner = Symbol();
+	dockRequests.set(key, owner);
+	const apply = () => useApp.setState(current => {
+		if (dockRequests.get(key) !== owner) return {};
+		const navigated = current.view !== state.view || current.activeTabId !== state.activeTabId
+			|| current.splitTabId !== state.splitTabId || current.focusedSplit !== state.focusedSplit;
+		return changeDock(current, key, patch, keepFocus || navigated);
+	});
+	const finish = () => { if (dockRequests.get(key) === owner) dockRequests.delete(key); };
+	const ready = patch.open === false || patch.pane !== undefined && patch.pane !== layoutFor(state.docks, key).pane ? preparePaneLeave(key) : undefined;
+	if (ready) void ready.then(allowed => { if (allowed) apply(); }).finally(finish);
+	else { apply(); finish(); }
 }
 
 /** Narrowest the chat may get beside the side panel before the panel takes the main area instead. */
@@ -694,15 +713,14 @@ export const useApp = create<AppState>()(
 			},
 
 			toggleDock(open, scope) {
-				set(state => {
-					const key = scope ?? dockKey(state);
-					const next = open ?? !(key === dockKey(state) && dockVisible(state, window.innerWidth));
-					return changeDock(state, key, { open: next });
-				});
+				const state = get();
+				const key = scope ?? dockKey(state);
+				const next = open ?? !(key === dockKey(state) && dockVisible(state, window.innerWidth));
+				requestDock(key, { open: next });
 			},
 
 			showPane(paneId, scope, options) {
-				set(state => changeDock(state, scope, { open: true, pane: paneId }, options?.keepFocus));
+				requestDock(scope ?? dockKey(get()), { open: true, pane: paneId }, options?.keepFocus);
 			},
 
 			returnToChat() {

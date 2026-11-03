@@ -24,7 +24,7 @@ vi.mock("./session", () => ({
 		async dispose() {}
 	},
 }));
-vi.mock("../registry/guards", () => ({ confirmTabClose: async () => true }));
+vi.mock("../registry/guards", async importOriginal => ({ ...await importOriginal<Record<string, unknown>>(), confirmTabClose: async () => true }));
 vi.mock("../shell/hooks", () => ({ chatTitle: () => null }));
 vi.mock("../chat/composer/send", () => ({ deliver: vi.fn() }));
 vi.mock("../features/session-tools/slash", () => ({ routeSlash: vi.fn() }));

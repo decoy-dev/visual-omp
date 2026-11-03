@@ -1,10 +1,11 @@
 import { ChatCircle } from "@phosphor-icons/react";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useLayoutEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { projectBtw, type BtwProjection } from "@shared/tsp/btw";
 import { lazyView } from "../../registry/lazy";
 import type { PaneProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
+import { setPaneLeaveGuard } from "../../registry/guards";
 import { useApp } from "../../state/app";
 import { type PresentationTarget, usePresentationClaim } from "../../state/tsp/presentation-claims";
 import { useTsp } from "../../state/tsp/useTsp";
@@ -31,10 +32,16 @@ export function BtwPane({ session }: PaneProps) {
 	const view = useSessionView(session);
 	const visible = usePaneVisible("btw");
 	const host = view?.host?.transport === "tsp" ? view.host : null;
-	const { snapshot } = useTsp(host?.hostId ?? null);
+	const { snapshot, store } = useTsp(host?.hostId ?? null);
 	const current = snapshot?.lifecycle === "live" && snapshot.generation === host?.generation && snapshot.epoch === host?.tspEpoch;
 	const projection = current ? projectBtw(snapshot.surfaces.filter(surface => surface.documentGeneration === host?.generation)) : null;
 	const terminalOpen = useApp(app => app.terminalTabId === session?.tabId);
+	useLayoutEffect(() => {
+		if (!session || !host || !visible || !projection) return;
+		return setPaneLeaveGuard(session.tabId, () => import("./BtwPaneContent")
+			.then(module => module.putAwayBtwPanel(session, host, projection, store))
+			.then(() => true, () => false));
+	}, [session, host, visible, projection, store]);
 	if (!session || !host) return <EmptyState icon={<ChatCircle />} title={t("btw.noChatTitle")} body={t("btw.noChat")} />;
 	const target = projection && snapshot ? { hostId: snapshot.hostId, epoch: snapshot.epoch, surfaceId: projection.surfaceId, nodeId: projection.nodeId } : null;
 	return <BtwPresentation.Provider value={{ tabId: session.tabId, hostId: host.hostId, generation: host.generation, epoch: host.tspEpoch,

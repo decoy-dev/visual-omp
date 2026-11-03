@@ -38,6 +38,7 @@ let state: BtwState;
 let opened: string[];
 let stopApp: () => void;
 let revision: number;
+let documents: FixtureDocuments;
 const hostUpdates = new Set<(snapshot: TspHostSnapshot) => void>();
 const btwUpdates = new Set<(state: BtwState) => void>();
 const originalVomp = window.vomp;
@@ -59,8 +60,8 @@ beforeEach(async () => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} unobserve() {} });
 	hostUpdates.clear(); btwUpdates.clear(); opened = []; revision = 1; autoOpened.tabId = null;
-	const documents = new FixtureDocuments();
-	for (const message of loadFixtureRecording("btw-empty").messages) {
+	documents = new FixtureDocuments();
+	for (const message of loadFixtureRecording("btw-history").messages) {
 		documents.receive({ ...message, body: JSON.stringify(message.body) });
 		if (projectBtw(documents.snapshot().surfaces)) break;
 	}
@@ -76,7 +77,22 @@ beforeEach(async () => {
 		actions: Object.keys(projection.actions), followUp: false, draft: null, supported: true, notice: null,
 	} };
 	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin",
-		invoke: async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : channel === "btw:list" ? state : undefined,
+		invoke: async (channel: string) => {
+			if (channel === "host:tsp-snapshot") return snapshot;
+			if (channel === "btw:list") return state;
+			if (channel === "btw:close") {
+				const node = state.overlay!.nodeId;
+				const close = loadFixtureRecording("btw-history").messages.find(message => {
+					const body = message.body;
+					return message.verb === "f" && body && typeof body === "object" && "ops" in body && Array.isArray(body.ops)
+						&& body.ops.some(op => Array.isArray(op) && op[0] === "del" && op[1] === node);
+				})!;
+				documents.receive({ ...close, body: JSON.stringify(close.body) });
+				snapshot = { ...snapshot, surfaces: documents.snapshot().surfaces.map(surface => ({ ...surface, documentGeneration: 1 })), availability: { available: true, reason: null } };
+				state = { ...state, overlay: null };
+				publish();
+			}
+		},
 		on: (channel: string, listener: (payload: unknown) => void) => {
 			if (channel === "host:tsp-update") hostUpdates.add(listener);
 			if (channel === "btw:changed") btwUpdates.add(listener);
@@ -99,7 +115,7 @@ afterEach(async () => {
 	element.remove(); window.vomp = originalVomp; vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
 
-it("owns recorded empty BTW while visible and restores the generic screen when hidden", async () => {
+it("owns recorded empty BTW while visible and puts it away before hiding", async () => {
 	await act(async () => root.render(createElement(Harness)));
 	for (let update = 0; update < 3; update++) await act(async () => publish());
 	const target = { hostId: "empty-btw", epoch: 1, surfaceId: state.overlay!.surfaceId, nodeId: state.overlay!.nodeId };
@@ -116,12 +132,12 @@ it("owns recorded empty BTW while visible and restores the generic screen when h
 	expect(native.hidden).toBe(true);
 	expect(presentationClaims.getSnapshot()).toEqual([]);
 	expect(currentPresentationConsumers("empty-btw", 1).size).toBe(0);
-	expect(useApp.getState().terminalTabId).toBe(tabId); expect(opened).toEqual([tabId]);
-	expect(document.querySelector(".tsp-screen")?.textContent).toContain("No side questions yet");
+	expect(useApp.getState().terminalTabId).toBeNull(); expect(opened).toEqual([]);
+	expect(document.querySelector(".tsp-screen")).toBeNull();
 	await act(async () => useApp.getState().toggleDock(true, tabId));
 	expect(native.hidden).toBe(false);
 	expect(useApp.getState().terminalTabId).toBeNull(); expect(autoOpened.tabId).toBeNull();
-	expect(presentationClaims.getSnapshot()).toContainEqual(target);
+	expect(presentationClaims.getSnapshot()).toEqual([]);
 	expect(native.querySelector<HTMLTextAreaElement>("textarea")?.disabled).toBe(false);
 });
 

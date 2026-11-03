@@ -13,3 +13,16 @@ export function setTabCloseGuard(next: TabCloseGuard): void {
 export function confirmTabClose(tabId: string): Promise<boolean> {
 	return guard ? guard(tabId) : Promise.resolve(true);
 }
+
+/** A pane can finish its omp-owned interaction before the panel releases its presentation. */
+type PaneLeaveGuard = () => Promise<boolean>;
+const paneLeaveGuards = new Map<string, PaneLeaveGuard>();
+
+export function setPaneLeaveGuard(scope: string, guard: PaneLeaveGuard): () => void {
+	paneLeaveGuards.set(scope, guard);
+	return () => { if (paneLeaveGuards.get(scope) === guard) paneLeaveGuards.delete(scope); };
+}
+
+export function preparePaneLeave(scope: string): Promise<boolean> | undefined {
+	return paneLeaveGuards.get(scope)?.();
+}

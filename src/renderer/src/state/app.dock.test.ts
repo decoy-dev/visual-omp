@@ -45,7 +45,7 @@ vi.mock("./session", () => ({
 		async dispose() {}
 	},
 }));
-vi.mock("../registry/guards", () => ({ confirmTabClose: async () => true }));
+vi.mock("../registry/guards", async importOriginal => ({ ...await importOriginal<Record<string, unknown>>(), confirmTabClose: async () => true }));
 vi.mock("../shell/hooks", () => ({ chatTitle: () => null }));
 vi.mock("../chat/composer/drafts", () => ({
 	useComposerDrafts: { getState: () => ({ drafts: {}, attachments: {}, modes: {}, forget() {}, setDraft() {}, addAttachments() {}, setMode() {}, focus() {} }) },
@@ -276,5 +276,53 @@ describe("side panel per chat", () => {
 		env.storage.set(STORE, JSON.stringify({ version: 2, state: { tabs: [null, a, { id: 3 }], activeTabId: "a", sidebarWidth: "wide", docks: { a: { open: true, pane: "tasks", width: 500 } } } }));
 		const { useApp } = await loadApp();
 		expect(useApp.getState()).toMatchObject({ tabs: [a], activeTabId: "a", sidebarWidth: 264, docks: { a: { open: true, pane: "tasks", width: 500 } } });
+	});
+});
+
+describe("deferred panel request ownership", () => {
+	it("lets reopening the same pane supersede an earlier close", async () => {
+		const { useApp, currentDock } = await loadApp();
+		const { setPaneLeaveGuard } = await import("../registry/guards");
+		useApp.setState({ tabs, activeTabId: "a", view: "chat" });
+		useApp.getState().showPane("btw", "a");
+		const pending = Promise.withResolvers<boolean>();
+		const off = setPaneLeaveGuard("a", () => pending.promise);
+		useApp.getState().toggleDock(false, "a");
+		useApp.getState().showPane("btw", "a");
+		pending.resolve(true); await pending.promise;
+		expect(currentDock(useApp.getState())).toMatchObject({ open: true, pane: "btw" });
+		off();
+	});
+
+	it.each(["chat", "split focus"] as const)("does not reclaim split focus after a pending pane switch and a %s change", async navigation => {
+		const { useApp, currentDock } = await loadApp();
+		const { setPaneLeaveGuard } = await import("../registry/guards");
+		useApp.setState({ tabs, activeTabId: "a", splitTabId: "b", focusedSplit: "primary", view: "chat" });
+		useApp.getState().showPane("btw", "a");
+		const pending = Promise.withResolvers<boolean>();
+		const off = setPaneLeaveGuard("a", () => pending.promise);
+		useApp.getState().showPane("tasks", "a");
+		if (navigation === "split focus") useApp.getState().focusSplit("secondary");
+		else useApp.setState({ activeTabId: "b", splitTabId: "a", focusedSplit: "primary" });
+		pending.resolve(true); await pending.promise;
+		expect(useApp.getState().docks.a).toMatchObject({ open: true, pane: "tasks" });
+		expect(useApp.getState().focusedSplit).toBe(navigation === "split focus" ? "secondary" : "primary");
+		expect(currentDock(useApp.getState()).open).toBe(false);
+		off();
+	});
+
+	it("does not recreate a disposed tab's layout when a deferred close completes", async () => {
+		const { useApp } = await loadApp();
+		const { setPaneLeaveGuard } = await import("../registry/guards");
+		useApp.setState({ tabs, activeTabId: "a", view: "chat" });
+		useApp.getState().showPane("btw", "a");
+		const pending = Promise.withResolvers<boolean>();
+		const off = setPaneLeaveGuard("a", () => pending.promise);
+		useApp.getState().toggleDock(false, "a");
+		await useApp.getState().closeTab("a");
+		pending.resolve(true); await pending.promise;
+		expect(useApp.getState().tabs.some(tab => tab.id === "a")).toBe(false);
+		expect(useApp.getState().docks.a).toBeUndefined();
+		off();
 	});
 });

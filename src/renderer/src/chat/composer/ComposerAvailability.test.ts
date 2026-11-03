@@ -86,8 +86,10 @@ it("names the side-question blocker and puts it away only after an explicit hint
 		expect(invoke.mock.calls.some(([channel]) => channel === "btw:close" || channel === "btw:list")).toBe(false);
 		expect(session.send).not.toHaveBeenCalled();
 		const putAway = [...element.querySelectorAll("button")].find(button => button.textContent?.trim() === "Put away")!;
-		await act(async () => putAway.click());
-		expect(invoke).toHaveBeenCalledWith("btw:close", "host", { id: "shared", scope: "helper_1" }, { generation: 1, epoch: 7 });
+		await act(async () => {
+			putAway.click();
+			await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith("btw:close", "host", { id: "shared", scope: "helper_1" }, { generation: 1, epoch: 7 }));
+		});
 		expect(useComposerDrafts.getState().drafts.availability).toBe("A message ready to send");
 		expect(session.send).not.toHaveBeenCalled();
 		view = { ...view, host: { ...view.host!, tspAvailability: { available: true, reason: null } } };

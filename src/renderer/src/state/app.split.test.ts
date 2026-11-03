@@ -30,7 +30,7 @@ vi.mock("./session", () => ({
 		dispose = env.dispose;
 	},
 }));
-vi.mock("../registry/guards", () => ({ confirmTabClose: env.close }));
+vi.mock("../registry/guards", async importOriginal => ({ ...await importOriginal<Record<string, unknown>>(), confirmTabClose: env.close }));
 vi.mock("../shell/hooks", () => ({ chatTitle: () => null }));
 
 const tabs = [
