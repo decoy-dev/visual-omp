@@ -50,6 +50,7 @@
 		"openSplit": "Open side by side",
 		"close": "Close chat",
 		"rename": "Rename chat…",
+		"changeIcon": "Change icon…",
 		"archive": "Archive chat",
 		"unarchive": "Restore chat",
 		"delete": "Delete chat…",

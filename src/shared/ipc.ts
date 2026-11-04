@@ -265,6 +265,8 @@ export interface IpcInvokeMap {
 	"app:copyImage": { args: [dataUrl: string]; result: void };
 	"app:saveImage": { args: [options: { dataUrl: string; name: string; title: string }]; result: string | null };
 	"app:pickFolder": { args: [title?: string]; result: string | null };
+	"app:emojiPanelSupported": { args: []; result: boolean };
+	"app:showEmojiPanel": { args: []; result: void };
 	/** Native notification for the chat `chatId` (a tab id); clicking it focuses the window and sends `app:openChat`. */
 	"app:notify": { args: [title: string, body: string, chatId?: string]; result: void };
 	"app:attention": { args: [state: AttentionState]; result: void };

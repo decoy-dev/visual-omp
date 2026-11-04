@@ -19,6 +19,7 @@ import {
 	PushPinSlash,
 	Question,
 	SortAscending,
+	Smiley,
 	Trash,
 	X,
 } from "@phosphor-icons/react";
@@ -27,6 +28,7 @@ import { type CSSProperties, createContext, type MouseEvent, type ReactNode, use
 import { DEFAULT_SIDEBAR_SORT, type SidebarSort } from "@shared/ipc";
 import { useTranslation } from "react-i18next";
 import { getCommand } from "../registry/commands";
+import { lazyView } from "../registry/lazy";
 import { type AppState, closeChat, controllerFor, SIDEBAR_ID, useApp } from "../state/app";
 import { openHelp, openProjectSettings, openSettings, openUsage } from "../state/navigation";
 import {
@@ -73,8 +75,11 @@ import { chatStatus, chatTitle, shortAgo, useModifierHeld, useNow, useSessionVie
 import { archivedChats, type CurrentChat, currentChats, flatChats, type ProjectChat, type SidebarChat, type SidebarGroup, type SidebarInput, sidebarGroups } from "./sidebarRows";
 import { sidebarTitles } from "./sidebarTitles";
 import { TrashChatDialog } from "./trash";
-import { RenameChatDialog } from "./RenameChatDialog";
 import { SessionTitle, toast } from "../ui";
+
+// Title-editing dialogs and their helpers load on demand or during idle preloading, keeping them out of the entry chunk.
+const ChangeChatIconDialog = lazyView(() => import("./ChangeChatIconDialog").then(module => module.ChangeChatIconDialog));
+const RenameChatDialog = lazyView(() => import("./RenameChatDialog").then(module => module.RenameChatDialog));
 
 const MAC = window.vomp.platform === "darwin";
 /** Display prefix for ⌘/Ctrl shortcuts. */
@@ -202,6 +207,7 @@ function ChatRow(props: ChatRowProps): ReactNode {
 	const liveView = useSessionView(controller);
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const [renameSaved, setRenameSaved] = useState(false);
+	const [changeIcon, setChangeIcon] = useState(false);
 	const scope = useContext(IndicatorScope);
 	const status = chatStatus(liveView);
 	const title = chatTitle(liveView, session?.title ?? tab?.title ?? null) ?? session?.preview ?? t(session ? "sidebar.untitled" : "chat.newTitle");
@@ -247,6 +253,11 @@ function ChatRow(props: ChatRowProps): ReactNode {
 					else setRenameSaved(true);
 				}}>
 					{t("sidebar.rename")}
+				</kit.Item>
+			)}
+			{canRename && (
+				<kit.Item icon={<Smiley />} onSelect={() => setChangeIcon(true)}>
+					{t("sidebar.changeIcon")}
 				</kit.Item>
 			)}
 			{session && (
@@ -360,6 +371,7 @@ function ChatRow(props: ChatRowProps): ReactNode {
 				target={session ? { file: session.file, cwd: session.cwd, tabId } : null}
 			/>
 			{renameSaved && session && <RenameChatDialog session={session} close={() => setRenameSaved(false)} />}
+			{changeIcon && <ChangeChatIconDialog title={title} live={liveRename ? controller ?? null : null} session={session} close={() => setChangeIcon(false)} />}
 		</>
 	);
 }

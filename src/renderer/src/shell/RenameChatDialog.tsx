@@ -1,8 +1,8 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { SessionSummary } from "@shared/ipc";
-import { Button, Dialog, DialogContent, Input, toast } from "../ui";
-import { controllerFor, useApp } from "../state/app";
+import { Button, Dialog, DialogContent, Input } from "../ui";
+import { renameSavedChat } from "./renameSavedChat";
 
 export function RenameChatDialog({ session, close }: { session: SessionSummary; close(): void }) {
 	const { t } = useTranslation("session");
@@ -14,14 +14,7 @@ export function RenameChatDialog({ session, close }: { session: SessionSummary; 
 		setBusy(true);
 		setError(null);
 		try {
-			const result = await window.vomp.invoke("sessions:rename", session.file, value);
-			const title = result.title;
-			useApp.setState(state => ({ tabs: state.tabs.map(tab => tab.sessionFile === result.file || (!result.movedFrom && session.previousSessionFiles?.includes(tab.sessionFile ?? "")) ? { ...tab, title } : tab) }));
-			for (const tab of useApp.getState().tabs) {
-				if (tab.sessionFile === session.file || session.previousSessionFiles?.includes(tab.sessionFile ?? "")) void controllerFor(tab.id)?.loadHistory();
-			}
-			await useApp.getState().loadSessions(session.cwd);
-			if (result.movedFrom) toast({ tone: "warn", message: t("rename.continued"), description: result.file });
+			await renameSavedChat(session, value);
 			close();
 		} catch (failure) {
 			setError(failure instanceof Error ? failure.message : String(failure));
