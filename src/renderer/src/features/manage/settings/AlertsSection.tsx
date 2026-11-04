@@ -5,7 +5,7 @@ import { Button, PageHeader, Switch } from "@/ui";
 import { SettingsSection } from "./parts";
 
 export function AlertsSection() {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const prefs = useApp(state => state.prefs);
 	const setPrefs = useApp(state => state.setPrefs);
 	const header = <PageHeader title={t("settings.sections.alerts")} description={t("alerts.description")} />;

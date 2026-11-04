@@ -2,9 +2,9 @@
  * Code-split views. Features keep registering eagerly (commands, status items, badges, the registry
  * entry itself) while the heavy component behind an entry loads in its own chunk: `lazyView` for any
  * component, `lazyPage` for a full page, `lazySection` for a Settings section. Every split chunk is
- * also loaded in idle time after startup (`./idle`), so a view opened later is normally loaded already
- * and renders with no fallback at all; the fallback (shaped like the surface it stands in for) covers
- * an open before that.
+ * also loaded in idle time after startup (`./idle`). A view opened later normally has its component
+ * already loaded; a deferred translation namespace may still suspend on first use. The fallback
+ * (shaped like the surface it stands in for) covers either load.
  */
 import { type ComponentType, createElement, type ReactNode, Suspense, use } from "react";
 import { useTranslation } from "react-i18next";
@@ -22,7 +22,7 @@ export interface LazyView<P> {
 /**
  * A component loaded from its own chunk on first render (or earlier through `preload` and idle time).
  * `Fallback` gets the same props and should look like the surface's empty frame, so loading never
- * shifts layout. Once loaded, the component renders synchronously, without suspending.
+ * shifts layout. Loaded components render directly; their translation hooks can still suspend here.
  */
 export function lazyView<P extends object>(load: () => Promise<ComponentType<P>>, Fallback: ComponentType<P> | null = null): LazyView<P> {
 	let loaded: ComponentType<P> | null = null;

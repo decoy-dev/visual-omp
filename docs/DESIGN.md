@@ -977,6 +977,14 @@ There is no in-app notification center. Current chats separates unopened results
 
 The figures in this section describe the macOS arm64 app directory as measured with `du`, in MiB. The app decreased from 303.9 MiB (0.4.2) to 242.5 MiB (0.5.0), about 61 MiB less. Retaining only `en` and `en-US` removed 48.2 MiB of Electron locale files. The ASAR archive decreased from 14.2 MiB to 3.9 MiB. Pure-JavaScript main-process dependencies are bundled; `node-pty` is the native runtime dependency. Source maps are excluded. The renderer figures are uncompressed build-output sizes of individual chunks. The initial renderer entry chunk decreased from about 4.87 MB to 1.56 MB. Xterm (about 331 KB) and KaTeX (about 262 KB) load as separate chunks, and Settings sections, Usage and other feature views are code-split.
 
+Command labels, navigation titles and loading frames have their translations available with the shell.
+Settings sections, context-tool editors and project detail screens preload their text in idle time.
+If opened sooner, pages and Settings sections show their existing skeletons while loading. Project
+dialogs have no loading frame and appear once their code and translations are ready. Successful loads
+use translated text on the first committed render; a failed namespace load settles and shows raw keys
+for the unavailable messages. The surrounding shell remains usable. Page titles and shared actions
+continue to use their eager namespace, and deferred namespaces cannot redefine those same keys.
+
 ### 4.24 Home
 
 `features/home/HomeScreen.tsx` is where the app opens, and the title bar's Home button shows it. It is not a page, but like one it renders on the gray canvas (`data-surface="canvas"`): the sidebar keeps its lists and the side panel stands aside. Pages opened from it say "Back to Home". Closing the last open chat also returns to it.

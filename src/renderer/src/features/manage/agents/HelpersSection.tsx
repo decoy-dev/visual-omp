@@ -45,7 +45,7 @@ export interface HelpersSectionProps {
 }
 
 export function HelpersSection({ projectPath: cwd, props }: SettingsSectionProps) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const list = useResource(() => window.vomp.invoke("agents:list", cwd, false), [cwd]);
 	const models = useResource(() => window.vomp.invoke("config:models", cwd ?? undefined), [cwd]);
 	// Each deep link remounts the section (SettingsPage), so the linked filter applies once here.
@@ -304,7 +304,7 @@ function AgentRow({
 	/** Set by AnimatePresence (`popLayout`) to measure the row as it leaves. */
 	ref?: Ref<HTMLLIElement>;
 }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const model = agent.modelOverride?.[0] ?? agent.model?.[0] ?? null;
 	const dim = cn("transition-opacity duration-(--dur)", !agent.enabled && "opacity-50");
 	return (
@@ -366,7 +366,7 @@ function AgentRow({
 }
 
 function ErrorRow({ error, onFix, ref }: { error: AgentFileError; onFix(): void; ref?: Ref<HTMLLIElement> }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	return (
 		<motion.li ref={ref} {...listRowMotion} className="flex items-center gap-3 bg-bg px-2 py-3">
 			<span aria-hidden className={cn(letterTile, "bg-warn-bg text-warn")}>

@@ -1,11 +1,11 @@
 // @vitest-environment happy-dom
 import { act, createElement as e, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ConfigSnapshot, JsonValue, ModelInfo, ModelRolesState, SettingInfo } from "@shared/contracts/config";
 import type * as Ui from "@/ui";
 import { TooltipProvider } from "@/ui";
-import "../../../i18n";
+import { i18n } from "../../../i18n";
 import { ModelsSection } from "./ModelsSection";
 
 const fake = vi.hoisted(() => ({
@@ -66,6 +66,7 @@ const select = async (label: string, value: string) => {
 const render = async (scope: "global" | "project" = "global") => {
 	await act(async () => root.render(e(TooltipProvider, { children: e(ModelsSection, { projectPath: "/fixture/project", scope, setScope: () => {}, props: {} }) })));
 };
+beforeAll(async () => { await i18n.loadNamespaces("settings"); });
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	fake.chains = { default: ["openai-codex/gpt-6-luna"], "test/*": ["backup/*"], broken: [23] };

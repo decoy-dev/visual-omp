@@ -23,7 +23,7 @@ export function SkillDrawer({ skill, onClose, onToggle, onRemove }: SkillDrawerP
 }
 
 function DrawerBody({ skill, onToggle, onRemove }: Omit<SkillDrawerProps, "skill" | "onClose"> & { skill: SkillEntry }) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const doc = useLoad(() => window.vomp.invoke("skills:read", skill.filePath), [skill.filePath]);
 	const locked = lockedReason(skill);
 	const issues = [...skill.issues.map(issue => issue.message), ...skill.warnings];

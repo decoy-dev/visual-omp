@@ -49,7 +49,7 @@ const REMOTE_CHECK_DELAY_MS = 500;
 const checkRemote = (url: string) => window.vomp.invoke("workspace:checkRemote", url);
 
 export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | undefined>): ReactNode {
-	const { t } = useTranslation("projects");
+	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
 	const projects = useApp(state => state.projects);
 	const [step, setStep] = useState(props?.kind ? 1 : 0);
 	const [kind, setKind] = useState<Kind>(props?.kind ?? "empty");
@@ -436,7 +436,7 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 }
 
 function LocationRow({ parent, onPick }: { parent: string | undefined; onPick(): void }): ReactNode {
-	const { t } = useTranslation("projects");
+	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
 	const id = useId();
 	return (
 		<div className="flex flex-col gap-2">

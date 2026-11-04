@@ -12,7 +12,7 @@ import { useOmpSettings } from "./useOmpSettings";
 const TRANSCRIPT_MODES: readonly AppPreferences["transcriptMode"][] = ["normal", "thinking", "verbose"];
 
 export function GeneralSection({ projectPath, scope, setScope }: SettingsSectionProps) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const omp = useOmpSettings(projectPath, scope);
 	const approval = useResource(() => window.vomp.invoke("config:approval", projectPath ?? undefined), [projectPath]);
 	const prefs = useApp(state => state.prefs);

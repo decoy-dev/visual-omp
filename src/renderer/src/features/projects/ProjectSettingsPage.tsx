@@ -28,7 +28,7 @@ interface Loaded {
 }
 
 export function ProjectSettingsPage({ props, seq, close }: PageProps<ProjectPageProps>): ReactNode {
-	const { t } = useTranslation("projects");
+	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
 	const { projectPath } = props;
 	const name = useApp(state => state.projects.find(entry => entry.path === projectPath)?.name ?? folderName(projectPath));
 	return (
@@ -44,7 +44,7 @@ export function ProjectSettingsPage({ props, seq, close }: PageProps<ProjectPage
 }
 
 function SettingsBody({ projectPath, close }: { projectPath: string; close(): void }): ReactNode {
-	const { t } = useTranslation("projects");
+	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
 	const [data, setData] = useState<Loaded | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [confirmAuto, setConfirmAuto] = useState(false);

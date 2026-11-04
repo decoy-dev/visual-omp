@@ -18,7 +18,7 @@ export interface ImportProps {
 }
 
 export function ImportDialog({ props, close }: SheetProps<ImportProps | undefined>): ReactNode {
-	const { t } = useTranslation("projects");
+	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
 	const active = useApp(state => state.activeProject);
 	const [sources, setSources] = useState<ImportSource[] | null>(null);
 

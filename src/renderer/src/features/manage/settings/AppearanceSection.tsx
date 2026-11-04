@@ -14,7 +14,7 @@ const THEMES: readonly { value: ThemePreference; icon: typeof Sun }[] = [
 const MOTION: readonly AppPreferences["reducedMotion"][] = ["system", "on", "off"];
 
 export function AppearanceSection() {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const prefs = useApp(state => state.prefs);
 	const setPrefs = useApp(state => state.setPrefs);
 	// Local while dragging so the preview follows the thumb; saved on release.

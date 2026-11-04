@@ -44,7 +44,7 @@ function defaultScope({ scopes, projectScopeIds }: Places): string | null {
 }
 
 export function MemorySection({ projectPath }: SettingsSectionProps) {
-	const { t, i18n } = useTranslation("extensions");
+	const { t, i18n } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const places = useLoad(() => loadPlaces(projectPath), [projectPath]);
 	const [scopeId, setScopeId] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
@@ -281,7 +281,7 @@ function scopeLabel(scope: MemoryScope, projectScopeIds: readonly string[], t: (
 }
 
 function Reader({ entry, onForget, onExport }: { entry: MemoryEntrySummary; onForget(): void; onExport(): void }) {
-	const { t, i18n } = useTranslation("extensions");
+	const { t, i18n } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const full = useLoad(() => window.vomp.invoke("memory:read", entry.id), [entry.id]);
 	const date = (at: number | null) => (at ? new Date(at).toLocaleString(i18n.language, { dateStyle: "medium", timeStyle: "short" }) : null);
 	const meta = useMemo(

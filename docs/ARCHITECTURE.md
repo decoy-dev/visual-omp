@@ -973,6 +973,18 @@ metadata, saved suggestion captures and saved window layouts use explicit field 
 their existing fallback rules. The saved session-tree parser still uses zod in its lazy chunk;
 zod is absent from the initial renderer entry and its static imports.
 
+Translation namespaces used by startup code remain synchronous, including command titles, Settings rail
+labels, pane badges, page-loading titles and folder-picker messages. The larger Settings section bodies,
+context-tool editors and project detail screens use the deferred `settings`, `context` and `projectDetails`
+namespaces. `i18n/index.ts` supplies these through a non-eager glob-backed i18next backend and queues
+them with the import-free `registry/idle` scheduler. Their `useTranslation([deferred, eager],
+{ nsMode: "fallback" })` hooks suspend within the existing lazy-view boundary until loading settles.
+Pages and Settings sections show skeletons; project dialogs have no loading frame and appear once ready.
+Deferred keys and their eager fallback keys are disjoint. The i18n tests check that rule and verify
+translated first commits on successful loads. A failed namespace load shows raw keys for unavailable
+messages without blocking the surrounding shell. Registry consumers without an explicit namespace
+default to the already loaded `shell` namespace.
+
 The FLIP build guard checks the initial renderer entry and its static import closure for any
 `features/tsp/` modules. The semantic screen remains lazy; shared subscriptions, presentation
 claims, labels and notice state use `state/tsp/` so ordinary chat state does not import its UI.

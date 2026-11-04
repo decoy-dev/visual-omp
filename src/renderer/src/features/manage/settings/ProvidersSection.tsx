@@ -51,7 +51,7 @@ function idleChats(): SessionController[] {
 }
 
 export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const arg = cwd ?? undefined;
 	const state = useResource(() => window.vomp.invoke("providers:list"), []);
 	const [refreshing, setRefreshing] = useState(false);
@@ -281,7 +281,7 @@ function statusChip(provider: ConnectedProvider, t: TFunction<"manage">): { tone
 }
 
 function ConnectedRow({ provider, onSignIn, onSignOut }: { provider: ConnectedProvider; onSignIn(): void; onSignOut(): void }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const chip = statusChip(provider, t);
 	const needsSignIn = provider.disabledAccounts.length > 0 && provider.login !== null;
 	const details = [
@@ -350,7 +350,7 @@ function ConnectedRow({ provider, onSignIn, onSignOut }: { provider: ConnectedPr
 }
 
 function LoginList({ methods, onSignIn }: { methods: LoginMethod[]; onSignIn(target: OmpLoginTarget): void }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	if (methods.length === 0) return null;
 	return (
 		<div className="relative mt-2 divide-y divide-border">

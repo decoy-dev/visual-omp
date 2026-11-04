@@ -31,7 +31,7 @@ type PolicyChoice = ApprovalPolicy | "default";
 const CHOICES: readonly PolicyChoice[] = ["default", "prompt", "allow", "deny"];
 
 export function PermissionsSection({ projectPath, scope, setScope }: SettingsSectionProps) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const omp = useOmpSettings(projectPath, scope);
 	const approval = useResource(() => window.vomp.invoke("config:approval", projectPath ?? undefined), [projectPath]);
 	const [added, setAdded] = useState<string[]>([]);
@@ -183,7 +183,7 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 }
 
 function RestrictedFolders({ omp }: { omp: OmpSettings }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const [busy, setBusy] = useState(false);
 	const setting = omp.byKey.get("tools.restrictedFolders");
 	const raw = omp.scope === "global" ? setting?.globalValue : setting?.projectValue;

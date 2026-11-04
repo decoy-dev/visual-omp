@@ -1,0 +1,633 @@
+{
+	"thinking": {
+		"inherit": "Same as the chat",
+		"off": "Off",
+		"minimal": "Minimal",
+		"low": "Low",
+		"medium": "Medium",
+		"high": "High",
+		"xhigh": "Extra high",
+		"max": "Max",
+		"auto": "Auto (omp decides)"
+	},
+	"general": {
+		"description": "Choose how much omp may do on its own and how your chats look.",
+		"safety": "Safety",
+		"approvalMode": {
+			"label": "Permission mode",
+			"always-ask": "Ask me first",
+			"always-ask-cached": "Ask and remember",
+			"unknown": "Unknown permission mode",
+			"write": "Edits OK",
+			"yolo": "Auto",
+			"help": {
+				"always-ask": "omp can look around on its own, but asks before it changes a file or runs a command.",
+				"always-ask-cached": "omp asks before reading or changing files and can remember your approval for a file or folder.",
+				"unknown": "This app does not recognize omp's permission mode ({{value}}). Your setting is unchanged.",
+				"write": "omp can read and edit files on its own, but asks before running commands or starting helpers.",
+				"yolo": "omp works on its own without asking. Only use this in projects you trust.",
+				"none": "How much omp may do on its own before asking you."
+			}
+		},
+		"chats": "Chats",
+		"transcript": {
+			"label": "Transcript view",
+			"description": "Normal groups tool calls into one row. Thinking lists every step and opens every thought. Verbose also opens each step with its raw arguments.",
+			"normal": "Normal",
+			"thinking": "Thinking",
+			"verbose": "Verbose"
+		},
+		"liveThinking": {
+			"label": "Show thinking as omp thinks",
+			"description": "In Normal view, the thought omp is writing stays open so you can follow it, then folds once omp moves on to a step or a reply."
+		},
+		"livePreview": {
+			"label": "Show visual outputs while omp makes them",
+			"description": "Previews supported visual files in Outputs while the current turn works. Turning this off stops file watching and closes the stage."
+		},
+		"livePreviewOpenOutputs": {
+			"label": "Open Outputs when omp starts a visual output",
+			"description": "Opens that chat's Outputs at its first visual output each turn. Watch on a tool card opens it whenever you choose."
+		},
+		"voice": {
+			"label": "Voice input",
+			"description": "Shows a microphone button in the message box so you can talk instead of type. omp turns your speech into text using the Dictation model."
+		},
+		"compaction": {
+			"label": "Summarize long chats automatically",
+			"description": "When a chat gets close to the model's limit, omp condenses the earlier part so you can keep going."
+		},
+		"personality": {
+			"label": "omp's tone",
+			"description": "How omp talks to you in its replies.",
+			"values": {
+				"default": "Standard",
+				"friendly": "Friendly",
+				"pragmatic": "Straight to the point",
+				"none": "No personality"
+			}
+		}
+	},
+	"appearance": {
+		"description": "Change the theme, the text size and the motion in the app.",
+		"look": "Look",
+		"theme": {
+			"label": "Theme",
+			"description": "System follows your computer's light or dark setting.",
+			"light": "Light",
+			"dark": "Dark",
+			"system": "System"
+		},
+		"textSize": {
+			"label": "Text size",
+			"description": "Makes all text in the app bigger or smaller.",
+			"preview": "omp fixed the coupon bug and ran the checkout tests. All 12 passed."
+		},
+		"motion": {
+			"title": "Motion",
+			"label": "Reduce motion",
+			"description": "Turns off sliding, pulsing and shimmering effects.",
+			"system": "Match system",
+			"on": "On",
+			"off": "Off"
+		}
+	},
+	"permissions": {
+		"description": "Choose, tool by tool, whether omp may use it without asking.",
+		"intro": "Tools left on Default follow your permission mode (now: {{mode}}), except foreground computer control.",
+		"listLabel": "Tool permissions",
+		"rowLabel": "Permission for {{tool}}",
+		"choice": {
+			"default": "Default",
+			"prompt": "Ask",
+			"allow": "Allow",
+			"deny": "Deny"
+		},
+		"defaultHelp": "Ask checks with you before each use, Allow runs the tool without asking, and Deny blocks it.",
+		"unrecognized": "omp ignores these entries because their value isn't Ask, Allow or Deny: {{tools}}",
+		"computerControl": "Take foreground computer control",
+		"computerHelp": "Foreground computer control asks by default, regardless of permission mode. Allow and Deny explicitly decide whether omp may take control for a task. This does not authorize external actions.",
+		"restricted": {
+			"title": "Restricted folders",
+			"help": "Every read, change, search or command in these folders requires approval, regardless of permission mode or remembered grants. Commands are matched by their working folder.",
+			"pick": "Choose a restricted folder",
+			"add": "Add folder",
+			"remove": "Remove restriction for {{folder}}",
+			"empty": "No restricted folders are configured in this scope.",
+			"inherited": "These restrictions are inherited from All projects. Changing the list saves a project-specific list and retains its other folders.",
+			"overridden": "This project has its own restricted-folder list, so all-projects changes will not replace it. Switch to This project to edit that list.",
+			"reset": "Use inherited restrictions"
+		},
+		"forget": {
+			"action": "Forget remembered approvals",
+			"busy": "Forgetting approvals…",
+			"help": "Ask and remember can save file and folder approvals across chats.",
+			"title": "Forget remembered approvals?",
+			"confirmHelp": "This clears omp's saved file and folder approvals for all projects. Approvals held by an already running chat may remain until that chat restarts."
+		},
+		"add": {
+			"label": "Another tool",
+			"placeholder": "Tool name, e.g. mcp_github_create_issue",
+			"button": "Add tool",
+			"description": "Tools from connected services (MCP) and extensions can be listed here by name."
+		},
+		"tools": {
+			"read": "Read files",
+			"edit": "Edit files",
+			"write": "Create files",
+			"bash": "Run commands",
+			"eval": "Run code",
+			"fetch": "Open web pages",
+			"web_search": "Search the web",
+			"browser": "Control a web browser",
+			"task": "Start helpers",
+			"generate_image": "Create images"
+		}
+	},
+	"models": {
+		"caps": {
+			"vision": "Understands images",
+			"reasoning": "Thinks step by step",
+			"cheap": "Low cost",
+			"free": "Free"
+		},
+		"context": "{{size}} context",
+		"alias": "Follows another role",
+		"unavailable": "Not available",
+		"custom": "Custom",
+		"addProvider": "Add a provider…"
+	},
+	"modelsTab": {
+		"group": "New chats",
+		"description": "Choose which model handles each job, such as everyday chat, planning and commit messages.",
+		"thinking": {
+			"label": "Default thinking",
+			"description": "Higher thinking levels allow more reasoning and may take longer or cost more."
+		}
+	},
+	"fallbacks": {
+		"title": "Fallback models",
+		"empty": "No fallback models",
+		"add": "Add a fallback model…",
+		"choose": "Choose a model",
+		"addFor": "Add a fallback model for {{role}}",
+		"listFor": "Fallback models for {{role}}",
+		"modelFor": "Fallback {{index}} model for {{role}}",
+		"thinkingFor": "Fallback {{index}} thinking for {{role}}",
+		"inherit": "Same as the failing turn",
+		"up": "Move fallback {{index}} up for {{role}}",
+		"down": "Move fallback {{index}} down for {{role}}",
+		"remove": "Remove fallback {{index}} for {{role}}",
+		"moved": "Fallback moved to position {{index}}.",
+		"disable": "Use no fallback models",
+		"useDefaults": "Use omp's fallback defaults",
+		"useInherited": "Use inherited fallback models",
+		"disableFor": "Use no fallback models for {{role}}",
+		"resetFor": "Restore fallback defaults for {{role}}",
+		"unsetHelp": "No role chain is saved in this scope. omp may use inherited settings or its fallback defaults.",
+		"explicitEmptyHelp": "This role's chain is explicitly empty. Model-specific chains can still take precedence.",
+		"chainHelp": "Models are tried in order. Removing the last entry clears this scope's chain and restores inherited or default settings.",
+		"effectiveChain": "Currently effective chain:",
+		"savedScope": "Saved in this scope:",
+		"effectiveValue": "Currently effective: {{value}}.",
+		"on": "On",
+		"off": "Off",
+		"readOnly": "This chain contains a value this editor cannot resolve. It is preserved as shown. Edit it in Advanced.",
+		"other": "Other fallback chains",
+		"otherHelp": "Model-specific and unrecognized chain keys are read-only here. They are preserved when you save roles.",
+		"behavior": "When a model fails",
+		"scopeHelp": "Fallback chains and behavior use the selected settings scope. Project chains replace the same role's all-projects chain.",
+		"enabled": "Switch models when one fails",
+		"enabledHelp": "Turn this off to disable retry fallback chains. Same-model retries still follow omp's retry settings.",
+		"when": "Switch after",
+		"revert": "Return to the main model",
+		"values": {
+			"any": "Any error",
+			"usage-limit": "Usage limits only",
+			"except-usage-limit": "All but usage limits",
+			"cooldown-expiry": "When its cooldown ends",
+			"never": "Only when I switch"
+		}
+	},
+	"compaction": {
+		"title": "Compaction limits",
+		"description": "Choose when omp summarizes a model's context. These limits apply to the model wherever a role uses it.",
+		"choose": "Choose a model",
+		"model": "Model for compaction limit",
+		"limit": "Compaction limit",
+		"placeholder": "90k, 80% or f400k",
+		"save": "Save limit",
+		"forms": "90k sets the base for omp's compaction policy; 80% uses that share of the window; f400k triggers at exactly 400,000 tokens. Clear the field to restore an inherited limit.",
+		"preview": "Compacts at {{tokens}}.",
+		"previewWhenEnabled": "When per-model limits are enabled, this model compacts at {{tokens}}.",
+		"off": "Automatic compaction is off.",
+		"unknownWindow": "omp does not report a context window for this model.",
+		"inherited": "The inherited limit comes from {{selector}}.",
+		"shadowed": "This project has its own limit for this model. Switch to This project to edit it.",
+		"disabled": "Per-model compaction limits are disabled in omp. The saved limit will apply when they are enabled.",
+		"basis": {
+			"fixed": "The trigger is fixed.",
+			"capped": "The window caps the configured trigger.",
+			"base": "The policy uses {{percent}}% of the {{base}} base.",
+			"window": "The policy uses {{percent}}% of the window."
+		},
+		"errors": {
+			"invalid": "Use a positive token count (90k), a percentage up to 100% (80%), or a fixed trigger (f400k).",
+			"baseTooLarge": "The base cannot exceed this model's {{window}} maximum window.",
+			"fixedTooLarge": "The fixed trigger must be below this model's {{window}} maximum window."
+		},
+		"extendedTitle": "Use the extended context window?",
+		"extendedHelp": "This limit opens the model's {{window}} context window. Only this model opts into the larger window.",
+		"premium": "Input above {{tokens}} tokens costs more according to omp's model catalog.",
+		"extendedTitleWhenEnabled": "Save an extended-window limit for later?",
+		"extendedHelpWhenEnabled": "Per-model limits are disabled. When they are enabled, this limit will open this model's {{window}} context window. Saving it now leaves the active window unchanged.",
+		"premiumWhenEnabled": "When per-model limits are enabled, input above {{tokens}} tokens will cost more according to omp's model catalog.",
+		"confirmWhenEnabled": "Save limit for later",
+		"confirm": "Save extended limit"
+	},
+	"alerts": {
+		"description": "Choose background alerts. On macOS and Windows, the app icon keeps a count of unopened results when alerts are off.",
+		"notifications": {
+			"label": "Alert me in the background",
+			"description": {
+				"darwin": "Alerts you when a chat finishes or needs your answer while the window is in the background.",
+				"win32": "Sends a notification and flashes the taskbar button when a chat finishes or needs your answer while the window is in the background.",
+				"linux": "Sends a desktop notification when a chat finishes or needs your answer while the window is in the background."
+			}
+		},
+		"macNote": "With background alerts on, the Dock icon bounces once for each newly unseen chat in the background. If the Dock count is missing, open System Settings › Notifications › visual-omp and turn on Allow notifications and Badge application icon. Notification banners are unavailable in the current macOS build.",
+		"test": {
+			"description": "Check that notifications show up on this computer.",
+			"button": "Send a test",
+			"title": "visual-omp",
+			"body": "Notifications are working."
+		}
+	},
+	"shortcuts": {
+		"description": "Keyboard shortcuts for the app's commands. Press ⌘K (Ctrl+K on Windows) to find any command by name.",
+		"search": "Search shortcuts",
+		"caption": "Keyboard shortcuts",
+		"action": "Action",
+		"keys": "Keys",
+		"empty": "No shortcuts match your search."
+	},
+	"about": {
+		"tagline": "A desktop app for omp, the coding agent.",
+		"appVersion": "visual-omp",
+		"ompVersion": "omp",
+		"version": "v{{version}}",
+		"ompMissing": "Not found",
+		"ompPath": "omp location",
+		"lastCheck": "Last check",
+		"justNow": "Just now",
+		"never": "Not checked yet",
+		"method": {
+			"brew": "updates through Homebrew",
+			"dmg": "updates from a downloaded disk image",
+			"scoop": "updates through Scoop",
+			"nsis": "updates with the Windows installer",
+			"manual": "updates from the release page"
+		},
+		"channel": {
+			"stable": "stable channel",
+			"canary": "canary channel"
+		},
+		"checkUpdates": "Check for updates",
+		"checking": "Checking for updates…",
+		"notChecked": "Not checked yet",
+		"checkFailed": "Couldn't check: {{reason}}",
+		"upToDate": "Up to date",
+		"appUpdate": "v{{version}} is available",
+		"updateApp": "Update visual-omp",
+		"brewRunning": "Homebrew is upgrading visual-omp…",
+		"brewReady": "v{{version}} is installed. Restart to start using it.",
+		"restartApp": "Restart visual-omp",
+		"downloading": "Downloading the installer…",
+		"downloadingPercent": "Downloading the installer ({{percent}}%)",
+		"showProgress": "Show progress",
+		"ompUpdate": "v{{version}} is available",
+		"ompManaged": "Managed by {{app}}",
+		"updateOmp": "Update omp",
+		"staleChats_one": "1 open chat still runs the previous omp",
+		"staleChats_other": "{{count}} open chats still run the previous omp",
+		"restartChats": "Restart open chats",
+		"restartingChats_one": "Requested a restart of 1 chat. Waiting for it to reconnect…",
+		"restartingChats_other": "Requested a restart of {{count}} chats. Waiting for them to reconnect…",
+		"releaseNotes": "Read release notes",
+		"docs": "Read omp docs",
+		"reportIssue": "Report an issue"
+	},
+	"advanced": {
+		"description": "Every omp setting, including the ones other sections don't show.",
+		"search": "Search every omp setting",
+		"editedOnly": "Changed only",
+		"count_one": "{{count}} setting",
+		"count_other": "{{count}} settings",
+		"loading": "Loading settings…",
+		"empty": "No settings match your search.",
+		"listLabel": "All omp settings",
+		"edited": "Changed from the default",
+		"noDescription": "No description",
+		"notSet": "Not set",
+		"default": "default",
+		"secretSaved": "Saved (hidden)",
+		"reset": "Reset {{key}} to default",
+		"invalid": {
+			"number": "{{key}} needs a number.",
+			"json": "{{key}} needs a valid value.",
+			"array": "{{key}} needs a list, like [\"a\", \"b\"].",
+			"record": "{{key}} needs key-value pairs, like {\"name\": \"value\"}."
+		},
+		"resetAll": {
+			"button": "Reset all to defaults",
+			"title": "Reset all settings?",
+			"body": {
+				"global_one": "This removes {{count}} saved setting from your all-projects settings. Saved passwords and keys are kept.",
+				"global_other": "This removes {{count}} saved settings from your all-projects settings. Saved passwords and keys are kept.",
+				"project_one": "This removes {{count}} saved setting from this project's settings. Saved passwords and keys are kept.",
+				"project_other": "This removes {{count}} saved settings from this project's settings. Saved passwords and keys are kept."
+			},
+			"confirm": "Reset all settings",
+			"done_one": "Reset {{count}} setting.",
+			"done_other": "Reset {{count}} settings."
+		}
+	},
+	"roles": {
+		"title": "Model roles",
+		"description": "Changes to roles wait until you save them.",
+		"unsaved": "Unsaved changes",
+		"refreshModels": "Refresh the model list",
+		"loadFailed": "Couldn't load model roles",
+		"auto": "Let omp choose",
+		"modelFor": "Model for {{role}}",
+		"thinkingFor": "Thinking for {{role}}",
+		"thinkingDefault": "Model's default",
+		"customChip": "Custom",
+		"missing": "This model isn't available. Pick another one.",
+		"aliasHelp": "This role uses whatever model {{alias}} is set to.",
+		"overridden": "This project sets its own model for this role ({{value}}), so that value applies here. Switch to \"This project\" to change it.",
+		"usage": {
+			"default": "Every chat, unless you switch models.",
+			"plan": "Plan mode: working out an approach before any files change.",
+			"commit": "Writing commit messages and summaries of your changes.",
+			"advisor": "A second opinion that watches each step and adds notes when something looks off.",
+			"smol": "Quick, low-cost jobs where speed matters more than depth.",
+			"slow": "Hard problems that deserve slower, more careful thinking.",
+			"vision": "Understanding screenshots and pictures you add to a chat.",
+			"tiny": "Small background chores, like naming your chats. Uses the Fast model when empty.",
+			"memory": "Saving and recalling what omp remembers between chats. Uses the Tiny model when empty.",
+			"task": "Helpers omp starts to split a big job into smaller pieces.",
+			"widget": "Writing background-job widgets and captions. Uses the Fast model when empty.",
+			"image": "Creating pictures when you ask for one.",
+			"web": "Searching the web for up-to-date answers.",
+			"speech": "Reading replies aloud.",
+			"dictation": "Turning your voice into text in the message box.",
+			"judge": "Quick yes-or-no calls omp makes about its own work, like how hard to think about a request.",
+			"custom": "A role you added. Helpers and commands use it by writing @{{id}} as their model."
+		},
+		"saveTo": {
+			"global": "Changes apply to all projects.",
+			"project": "Changes apply to this project only."
+		},
+		"pending_one": "{{count}} unsaved change",
+		"pending_other": "{{count}} unsaved changes",
+		"revert": "Revert changes",
+		"save": "Save roles",
+		"saved_one": "Saved {{count}} role.",
+		"saved_other": "Saved {{count}} roles.",
+		"presetApplied": "Switched to the {{name}} preset.",
+		"presetShadowed": "Some roles are still decided elsewhere: {{roles}}",
+		"presetFailed": "Couldn't apply the preset: {{reason}}",
+		"presetInProject": "{{name}} is also saved in this project's settings; remove it there to delete it completely.",
+		"presetSaved": "Saved the {{name}} preset.",
+		"presets": {
+			"title": "Presets",
+			"active": "Active",
+			"description": "Save your whole set of roles under a name and switch between sets in one click.",
+			"saveNew": "Save as preset",
+			"saveFirst": "Save or revert your changes first",
+			"empty": "No presets yet.",
+			"summary_one": "{{model}} · {{count}} role",
+			"summary_other": "{{model}} · {{count}} roles",
+			"apply": "Apply preset",
+			"delete": "Delete preset {{name}}",
+			"saveTitle": "Save as preset",
+			"saveBody": "Saves the current model for every role, plus the default thinking level.",
+			"name": "Name",
+			"namePlaceholder": "e.g. fast-and-cheap",
+			"nameInvalid": "Start with a letter; use only letters, numbers, - and _.",
+			"nameTaken": "A preset with this name exists. Saving replaces it.",
+			"save": "Save preset",
+			"replace": "Replace preset"
+		}
+	},
+	"agents": {
+		"title": "Helpers",
+		"subtitle": "Reusable specialists omp can hand work to.",
+		"new": "New helper",
+		"createWithAi": "Create helper with omp",
+		"refresh": "Reload helpers",
+		"search": "Search helpers",
+		"filter": "Show",
+		"filters": {
+			"all": "All"
+		},
+		"scope": {
+			"bundled": "Built-in",
+			"user": "All projects",
+			"project": "This project"
+		},
+		"customizedChip": "Customized",
+		"brokenChip": "Can't be used",
+		"fix": "Fix file",
+		"warnings_one": "{{count}} problem",
+		"warnings_other": "{{count}} problems",
+		"defaultModel": "Default model",
+		"overrideHint": "You picked this model for the helper.",
+		"enable": "Let omp use {{name}}",
+		"more": "More actions for {{name}}",
+		"menu": {
+			"edit": "Edit helper",
+			"customize": "Customize helper",
+			"duplicate": "Duplicate helper",
+			"run": "Run helper now",
+			"delete": "Delete helper"
+		},
+		"empty": "No helpers here yet",
+		"emptySearch": "No helpers match your search.",
+		"emptyBody": "Create one to give omp a specialist it can hand work to.",
+		"loadFailed": "Couldn't load helpers",
+		"needsProject": "Open a project first. Helpers run inside a chat.",
+		"projectUnavailable": "Project helpers are unavailable here in visual-omp. Choose a subfolder or save for all projects.",
+		"actionFailed": "That didn't work: {{reason}}",
+		"customized": "Made an editable copy of {{name}} for all projects.",
+		"shadowed": "Saved, but this project's settings still decide whether omp uses {{name}}.",
+		"deleted": "Deleted {{name}}.",
+		"delete": {
+			"title": "Delete {{name}}?",
+			"body": "This removes the helper's file from this computer. This can't be undone.",
+			"confirm": "Delete helper"
+		},
+		"ai": {
+			"title": "Create a helper with AI",
+			"body": "Describe the specialist you want. omp writes the helper for you in a new chat.",
+			"label": "What should this helper do?",
+			"placeholder": "e.g. Review my changes for accessibility problems and suggest fixes in plain words.",
+			"how": "omp opens a new chat, writes the helper file and tells you its name. It shows up here when it's done.",
+			"needsProject": "Open a project first. omp writes the helper from a chat.",
+			"create": "Create helper",
+			"started": "omp is creating your helper in a new chat.",
+			"startedHint": "Open Helpers again when it's done to see it."
+		},
+		"editor": {
+			"newTitle": "New helper",
+			"editTitle": "Edit {{name}}",
+			"fixTitle": "Fix {{name}}",
+			"fixDescription": "omp can't read this file. Fix the text below and save.",
+			"scope": "Available in",
+			"scopeHelp": {
+				"user": "Saved in {{dir}} and usable in every project.",
+				"project": "Saved in {{dir}} and only used in this project."
+			},
+			"name": "Name",
+			"nameHelp": "Short and without spaces, like test-writer. You call the helper by this name.",
+			"nameReserved": "\"{{name}}\" is reserved by omp. Pick another name.",
+			"nameTaken": "Another helper already uses this name.",
+			"nameSpaces": "Use hyphens instead of spaces.",
+			"description": "When to use it",
+			"descriptionHelp": "One sentence. omp reads this to decide when to hand work to this helper.",
+			"model": "Model",
+			"modelDefault": "Same as the chat's helpers",
+			"modelOwn": "The helper's own choice ({{model}})",
+			"modelHelp": "Pick a model just for this helper, or leave it on the default.",
+			"thinking": "Thinking",
+			"thinkingDefault": "The helper's default",
+			"tools": "Tools",
+			"allTools": "Use omp's default tools",
+			"allToolsHelp": "Turn off to choose a built-in tool allowlist. omp may add support tools, and extension tools follow omp's settings.",
+			"structured": "Return structured results",
+			"structuredHelp": "Keep the result tool and saved output schema when omp's task.structured setting is off. Turn off to follow omp's setting.",
+			"instructions": "Instructions",
+			"instructionsView": "Instructions view",
+			"write": "Write",
+			"preview": "Preview",
+			"previewEmpty": "Nothing to preview yet.",
+			"instructionsPlaceholder": "You are a careful reviewer. You will…",
+			"test": "Test in new chat",
+			"testSaveFirst": "Save your changes first",
+			"create": "Create helper",
+			"save": "Save helper",
+			"saved": "Saved {{name}}.",
+			"saveFailed": "Couldn't save: {{reason}}",
+			"fixed": "Fixed. omp can use this helper again.",
+			"valid": "omp can read this file.",
+			"invalid": "omp can't use this yet: {{reason}}",
+			"rawLabel": "Helper file"
+		},
+		"tools": {
+			"read": "Read files",
+			"bash": "Run commands",
+			"edit": "Edit files",
+			"ast_grep": "Search code structure",
+			"ast_edit": "Rewrite code structure",
+			"ask": "Ask you questions",
+			"debug": "Use a debugger",
+			"ida": "Inspect programs (IDA)",
+			"eval": "Run code",
+			"github": "Use GitHub",
+			"glob": "List files",
+			"grep": "Search in files",
+			"find": "Find files",
+			"lsp": "Code intelligence",
+			"checkpoint": "Save checkpoints",
+			"rewind": "Rewind to checkpoints",
+			"context_notes": "Keep notes",
+			"new_context": "Start fresh context",
+			"security_scan": "Scan for security issues",
+			"task": "Start other helpers",
+			"wait": "Wait for helpers",
+			"todo": "Keep a checklist",
+			"web_search": "Search the web",
+			"write": "Create files",
+			"memory_edit": "Edit memories",
+			"retain": "Remember things",
+			"recall": "Recall memories",
+			"reflect": "Reflect on memories",
+			"learn": "Learn skills",
+			"manage_skill": "Manage skills"
+		}
+	},
+	"providers": {
+		"description": "Sign in to model providers and see what omp reports about them.",
+		"signInNote": "Signing in runs omp's own sign-in, and omp saves the result in its credential store on this computer.",
+		"discoveryNote": "Provider status is checked outside projects with extensions disabled. Extension-contributed sign-ins and project-specific settings are omitted.",
+		"refresh": "Check again",
+		"signInAny": "Sign in to a provider",
+		"loading": "Asking omp which providers are set up…",
+		"transfer": {
+			"title": "Transfer sign-ins",
+			"description": "Use omp to copy locally stored sign-ins between computers. Providers managed by an auth broker must be transferred on its host.",
+			"export": "Export sign-ins…",
+			"import": "Import sign-ins…",
+			"exportTitle": "Export stored sign-ins?",
+			"importTitle": "Import stored sign-ins?",
+			"exportDescription": "The JSON file contains unencrypted API keys and OAuth refresh tokens for every locally stored account. Anyone with the file can use those accounts. Save it somewhere private and delete it after transferring.",
+			"importDescription": "Choose a file created by omp auth export. omp replaces matching accounts and API keys, and keeps other sign-ins. Only import a file you trust.",
+			"rotationWarning": "Some providers rotate refresh tokens. Once another computer refreshes an imported sign-in, the original computer may need to sign in again.",
+			"exportDone": "Sign-ins exported.",
+			"importDone": "Sign-ins imported.",
+			"exportFailed": "Could not export sign-ins.",
+			"importFailed": "Could not import sign-ins."
+		},
+		"connected": {
+			"title": "Connected",
+			"empty": "omp reports no providers yet. Sign in to one below to start chatting."
+		},
+		"status": {
+			"needsSignIn": "Needs sign-in",
+			"someNeedSignIn_one": "{{count}} account needs sign-in",
+			"someNeedSignIn_other": "{{count}} accounts need sign-in",
+			"accounts": "Signed in",
+			"authenticated": "Credential found",
+			"models": "Models available"
+		},
+		"models_one": "{{count}} model",
+		"models_other": "{{count}} models",
+		"noModels": "No models",
+		"account": {
+			"unnamed": "Signed-in account",
+			"disabled": "omp stopped using {{account}}: {{cause}}",
+			"disabledUnnamed": "omp stopped using an account: {{cause}}"
+		},
+		"actions": {
+			"more": "More actions for {{name}}",
+			"signInAgain": "Sign in again",
+			"addAccount": "Add another account",
+			"signOut": "Sign out of {{name}}"
+		},
+		"signOut": {
+			"title": "Sign out of {{name}}?",
+			"description": "omp removes the saved sign-in for every account of this provider on this computer. Keys from environment variables or omp's config files stay in place, and chats that are already running may keep the credentials they loaded. You can sign in again at any time.",
+			"confirm": "Sign out all accounts",
+			"done": "Signed out of {{name}}.",
+			"failed": "omp could not sign out of {{name}}."
+		},
+		"add": {
+			"title": "Add a provider",
+			"description": "Providers you can set up in omp. Each one opens omp's sign-in in a terminal here.",
+			"search": "Search providers",
+			"noMatch": "No providers match your search.",
+			"action": "Sign in",
+			"envNote": "Some providers read an API key from an environment variable instead of signing in. omp lists them under Environment Variables in the output of omp --help."
+		},
+		"restart": {
+			"note": "Chats that are already open may keep the models they started with. Restart a chat to load new ones.",
+			"action_one": "Restart {{count}} idle chat",
+			"action_other": "Restart {{count}} idle chats",
+			"requested_one": "Requested a restart for {{count}} chat.",
+			"requested_other": "Requested a restart for {{count}} chats.",
+			"failed_one": "{{count}} chat could not restart.",
+			"failed_other": "{{count}} chats could not restart."
+		}
+	}
+}

@@ -49,7 +49,7 @@ type Tab = NonNullable<ProjectInstructionsPageProps["tab"]>;
 type Mode = "write" | "preview";
 
 export function InstructionsPage({ props, seq, close }: PageProps<ProjectInstructionsPageProps>): ReactNode {
-	const { t } = useTranslation("projects");
+	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
 	const { projectPath } = props;
 	const name = useApp(state => state.projects.find(entry => entry.path === projectPath)?.name ?? folderName(projectPath));
 	const [tab, setTab] = useState<Tab>(props.tab ?? "instructions");
@@ -86,7 +86,7 @@ export function InstructionsPage({ props, seq, close }: PageProps<ProjectInstruc
 }
 
 function InstructionsEditor({ projectPath }: { projectPath: string }): ReactNode {
-	const { t } = useTranslation("projects");
+	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
 	const [data, setData] = useState<ProjectInstructions | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [relPath, setRelPath] = useState<string | null>(null);
@@ -273,7 +273,7 @@ const EMPTY_FORM: RuleForm = { original: null, name: "", description: "", globs:
 const RULE_NAME_RE = /^[A-Za-z0-9._-]+$/;
 
 function RulesPanel({ projectPath }: { projectPath: string }): ReactNode {
-	const { t } = useTranslation("projects");
+	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
 	const [rules, setRules] = useState<ProjectRule[] | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [form, setForm] = useState<RuleForm | null>(null);
@@ -438,7 +438,7 @@ function RuleEditor({
 	onCancel(): void;
 	onSave(draft: RuleDraft): void;
 }): ReactNode {
-	const { t } = useTranslation("projects");
+	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
 	const [form, setForm] = useState(initial);
 	const [preview, setPreview] = useState(false);
 	const dirty = (Object.keys(initial) as (keyof RuleForm)[]).some(key => form[key] !== initial[key]);

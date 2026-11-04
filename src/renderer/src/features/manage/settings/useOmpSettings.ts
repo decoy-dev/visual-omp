@@ -20,7 +20,7 @@ export interface OmpSettings {
 }
 
 export function useOmpSettings(cwd: string | null, scope: SettingScope): OmpSettings {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const snapshot = useResource(() => window.vomp.invoke("config:list", cwd ?? undefined), [cwd]);
 	const byKey = useMemo(() => new Map((snapshot.data?.settings ?? []).map(setting => [setting.key, setting])), [snapshot.data]);
 

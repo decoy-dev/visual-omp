@@ -20,7 +20,7 @@ import { FallbackBehavior, FallbackModels, OtherFallbackChains } from "./Fallbac
 import { changedFallbackRoles, FALLBACK_KEY, fallbackRecord, fallbackScopeRecord, type FallbackDraft } from "./fallbackModel";
 
 export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionProps) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const arg = projectPath ?? undefined;
 	const omp = useOmpSettings(projectPath, scope);
 	const roles = useResource(() => window.vomp.invoke("config:roles", arg), [arg]);
@@ -301,7 +301,7 @@ function RoleRow({
 	onChange(draft: RoleDraft): void;
 	fallbacks: React.ReactNode;
 }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const list = models ?? [];
 	const status = modelValueStatus(draft.model, list);
 	const model = findModel(draft.model, list);

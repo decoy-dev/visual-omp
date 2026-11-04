@@ -2,8 +2,8 @@ import type * as Ui from "@/ui";
 import type { AgentEntry } from "@shared/contracts/agents";
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
-import "../../../i18n";
+import { beforeAll, describe, expect, it, vi } from "vitest";
+import { i18n } from "../../../i18n";
 import { AgentEditor } from "./AgentEditor";
 
 // The sheet portal requires a browser. Render its content in place to exercise the editor form.
@@ -35,6 +35,8 @@ function render(existing: boolean): string {
 		onTest: () => {},
 	}));
 }
+
+beforeAll(async () => { await i18n.loadNamespaces("settings"); });
 
 describe("helper editor tool access", () => {
 	it("retains an explicit empty allowlist when editing a helper", () => {

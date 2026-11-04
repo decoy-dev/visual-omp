@@ -30,7 +30,7 @@ interface StatusRow {
 }
 
 export function AboutSection() {
-	const { t, i18n } = useTranslation("manage");
+	const { t, i18n } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const info = useResource(() => window.vomp.invoke("app:info"), []);
 	const omp = useApp(state => state.omp);
 	const updates = useUpdates();

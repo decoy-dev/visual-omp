@@ -44,7 +44,7 @@ export function targetFor(entry: McpServerEntry, cwd: string | null): McpTarget 
 }
 
 export function McpSection({ projectPath, scope, setScope }: SettingsSectionProps) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const list = useLoad(() => window.vomp.invoke("mcp:list", projectPath), [projectPath]);
 	useIpcEvent("mcp:changed", () => void list.reload());
 	const level = levelForScope(scope, projectPath);
@@ -244,7 +244,7 @@ export function McpSection({ projectPath, scope, setScope }: SettingsSectionProp
 
 /** Where the shown servers are saved, folded away: most people never need the path. */
 function ConfigDetails({ path }: { path: string }) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const copy = async () => {
 		try {
 			await navigator.clipboard.writeText(path);
@@ -285,7 +285,7 @@ interface ServerRowProps {
 }
 
 function ServerRow({ entry, check, projectPath, onToggle, onTest, onEdit, onViewTools, onRemove, ref }: ServerRowProps) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const status = rowStatus(entry, check);
 	const writable = targetFor(entry, projectPath) !== null;
 	const result = check?.state === "done" ? check.result : null;
@@ -366,7 +366,7 @@ function ServerRow({ entry, check, projectPath, onToggle, onTest, onEdit, onView
 }
 
 function ToolsDialog({ entry, check, onClose }: { entry: McpServerEntry | null; check: McpCheck | undefined; onClose(): void }) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const result = check?.state === "done" ? check.result : null;
 	return (
 		<Dialog open={entry !== null} onOpenChange={open => !open && onClose()}>

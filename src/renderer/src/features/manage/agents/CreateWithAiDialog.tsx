@@ -18,7 +18,7 @@ export function CreateWithAiDialog({
 	/** Starts the chat that writes the file. */
 	onCreate(description: string, dir: string, scope: AgentWritableScope): Promise<void>;
 }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const [description, setDescription] = useState("");
 	const [scope, setScope] = useState<AgentWritableScope>("user");
 	const [busy, setBusy] = useState(false);

@@ -31,7 +31,7 @@ export function PresetList({
 	onDelete(preset: ModelPresetInfo): void;
 	onSaveNew(): void;
 }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	return (
 		<section className="mt-10" aria-labelledby="manage-presets-title">
 			<SectionHeader
@@ -89,7 +89,7 @@ export function SavePresetDialog({
 	existing: readonly ModelPresetInfo[];
 	onSave(name: string): Promise<void>;
 }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const [name, setName] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);

@@ -20,7 +20,7 @@ interface FallbackModelsProps {
 
 /** Role chains wait for Save roles, just like their primary assignments. */
 export function FallbackModels({ role, value, models, disabled, effectiveValue, scope, onChange }: FallbackModelsProps) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const group = useRef<HTMLDivElement>(null);
 	const focusAfterChange = useRef<{ index: number; delta?: number } | null>(null);
 	const [announcement, setAnnouncement] = useState("");
@@ -147,7 +147,7 @@ export function FallbackModels({ role, value, models, disabled, effectiveValue, 
 
 /** Controls edit the selected layer while keeping omp's effective value visible. */
 export function FallbackBehavior({ omp }: { omp: OmpSettings }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const enabled = omp.byKey.get("retry.modelFallback");
 	const target = enabled ? scopedFallbackSetting(enabled, omp.scope) : null;
 	return (
@@ -167,7 +167,7 @@ export function FallbackBehavior({ omp }: { omp: OmpSettings }) {
 }
 
 function EffectiveFallbackValue({ setting, target }: { setting: SettingInfo; target: JsonValue }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	if (JSON.stringify(setting.value) === JSON.stringify(target)) return null;
 	const display = typeof setting.value === "boolean" ? t(setting.value ? "fallbacks.on" : "fallbacks.off")
 		: typeof setting.value === "string" ? t(`fallbacks.values.${setting.value}`, { defaultValue: setting.value }) : JSON.stringify(setting.value);
@@ -182,7 +182,7 @@ function FallbackChoice({ setting, label, options, omp }: {
 	options: string[];
 	omp: OmpSettings;
 }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	if (!setting) return null;
 	const target = scopedFallbackSetting(setting, omp.scope);
 	const metadataChoices = setting.enumValues;
@@ -200,7 +200,7 @@ function FallbackChoice({ setting, label, options, omp }: {
 }
 
 export function OtherFallbackChains({ omp, roles }: { omp: OmpSettings; roles: ModelRoleInfo[] }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const setting = omp.byKey.get(FALLBACK_KEY);
 	if (!setting) return null;
 	const target = fallbackScopeRecord(setting, omp.scope);

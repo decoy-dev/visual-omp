@@ -10,7 +10,7 @@ import { PluginsTab } from "./PluginsTab";
 import { SkillsTab } from "./SkillsTab";
 
 export function SkillsSection({ projectPath, scope, props }: SettingsSectionProps) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const link = (props ?? {}) as SkillsSectionProps;
 	const home = useLoad(() => window.vomp.invoke("app:info"), []);
 	// omp resolves skills/plugins for a working directory; without a project, the home folder shows user-level ones.

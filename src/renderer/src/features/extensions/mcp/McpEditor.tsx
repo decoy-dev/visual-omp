@@ -45,7 +45,7 @@ export function ServerEditor(props: ServerEditorProps) {
 }
 
 function PresetGallery({ onBack, onPick }: ServerEditorProps & { onPick(mode: EditorMode): void }) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const presets = useLoad(() => window.vomp.invoke("mcp:presets"), []);
 	const groups = useMemo(
 		() =>
@@ -114,7 +114,7 @@ type Check = { state: "idle" } | { state: "running" } | { state: "done"; result:
 type FormMode = Exclude<EditorMode, { kind: "gallery" }>;
 
 function ServerForm({ mode, projectPath, level, list, onBack, onSaved }: ServerEditorProps & { mode: FormMode }) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const editing = mode.kind === "edit" ? mode.entry : null;
 	const preset = mode.kind === "preset" ? mode.preset : null;
 	const defaultScope: McpScope = editing?.level ?? level;
@@ -323,7 +323,7 @@ function FieldGroup({ label, hint, children }: { label: string; hint?: string; c
 }
 
 function CustomFields({ form, update, errors }: { form: McpForm; update(patch: Partial<McpForm>): void; errors: McpFormErrors }) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const remote = form.transport !== "stdio";
 	return (
 		<>
@@ -403,7 +403,7 @@ interface KeyValueEditorProps {
 }
 
 function KeyValueEditor({ label, hint, addLabel, keyPlaceholder, valuePlaceholder, rows, onChange }: KeyValueEditorProps) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const set = (index: number, patch: Partial<KeyValueRow>) => onChange(rows.map((row, i) => (i === index ? { ...row, ...patch } : row)));
 	return (
 		<FieldGroup label={label} hint={hint}>
@@ -452,7 +452,7 @@ function PresetFieldInput({
 	invalid: boolean;
 	onChange(value: string | string[]): void;
 }) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	const [reveal, setReveal] = useState(false);
 	const label = field.required ? field.label : t("mcp.form.optional", { label: field.label });
 	const error = invalid ? t("mcp.form.errors.fieldRequired") : undefined;
@@ -520,7 +520,7 @@ function PresetFieldInput({
 }
 
 function TestPanel({ check }: { check: Check }) {
-	const { t } = useTranslation("extensions");
+	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
 	if (check.state === "idle") return null;
 	if (check.state === "running") {
 		return (

@@ -10,7 +10,7 @@ import { matchingCompactionEntry, planCompaction, thresholdMap, type CompactionP
 const format = (tokens: number) => tokens.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 2 });
 
 export function CompactionLimits({ models, omp, onSaved }: { models: ModelInfo[] | null; omp: OmpSettings; onSaved(): void }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const [selector, setSelector] = useState<string | null>(null);
 	const model = models?.find(entry => entry.selector === selector);
 	return (
@@ -23,7 +23,7 @@ export function CompactionLimits({ models, omp, onSaved }: { models: ModelInfo[]
 }
 
 function CompactionEditor({ model, omp, onSaved }: { model: ModelInfo; omp: OmpSettings; onSaved(): void }) {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const setting = omp.byKey.get("compaction.modelThresholds");
 	const own = thresholdMap(omp.scope === "global" ? setting?.globalValue : setting?.projectValue);
 	const configured = Object.hasOwn(own, model.selector) ? own[model.selector] : null;

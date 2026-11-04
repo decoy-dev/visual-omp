@@ -10,7 +10,7 @@ function keycaps(shortcut: string): string[] {
 }
 
 export function ShortcutsSection() {
-	const { t } = useTranslation("manage");
+	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
 	const { t: tAny } = useTranslation();
 	const commands = useCommands();
 	const [query, setQuery] = useState("");
