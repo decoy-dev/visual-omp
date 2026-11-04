@@ -61,11 +61,11 @@ export function ChangeChatIconDialog({ title, live, session, close }: { title: s
 	};
 	return (
 		<Dialog open onOpenChange={open => !open && !busy && close()}>
-			<DialogContent title={t("changeIcon.title")} description={t("changeIcon.description")} size="md" footer={<><Button variant="ghost" disabled={busy} onClick={close}>{t("common.cancel")}</Button><Button variant="primary" type="submit" form={formId} loading={busy} disabled={!composed || (!live && !session)}>{t("changeIcon.action")}</Button></>}>
+			<DialogContent initialFocus={emojiInput} title={t("changeIcon.title")} description={t("changeIcon.description")} size="md" footer={<><Button variant="ghost" disabled={busy} onClick={close}>{t("common.cancel")}</Button><Button variant="primary" type="submit" form={formId} loading={busy} disabled={!composed || (!live && !session)}>{t("changeIcon.action")}</Button></>}>
 				<form id={formId} className="space-y-stack" onSubmit={event => { event.preventDefault(); void submit(); }}>
 					<div className="min-w-0 rounded-md bg-inset p-row" role="group" aria-label={t("changeIcon.preview")}><SessionTitle title={composed ?? title} /></div>
 					{terminalIcon && <p className="text-md text-fg-muted">{t("changeIcon.terminalIcon")}</p>}
-					<Input ref={emojiInput} autoFocus label={t("changeIcon.emoji")} description={t("changeIcon.emojiHint")} error={emojiError} value={emoji} disabled={busy} autoComplete="off" onChange={event => { setEmojiEdited(true); setEmoji(event.currentTarget.value); }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} />
+					<Input ref={emojiInput} label={t("changeIcon.emoji")} description={t("changeIcon.emojiHint")} error={emojiError} value={emoji} disabled={busy} autoComplete="off" onChange={event => { setEmojiEdited(true); setEmoji(event.currentTarget.value); }} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} />
 					{supported && <Button variant="secondary" disabled={busy} onClick={() => void chooseEmoji()}>{t("changeIcon.chooseEmoji")}</Button>}
 					{!card && <Input label={t("changeIcon.code")} description={t("changeIcon.codeHint")} value={code} disabled={busy} maxLength={6} autoComplete="off" onChange={event => setCode(event.currentTarget.value.toUpperCase())} onKeyDown={event => { if (event.key === "Enter" && event.nativeEvent.isComposing) event.preventDefault(); }} />}
 					{error && <p role="alert" className="text-md text-err">{error}</p>}

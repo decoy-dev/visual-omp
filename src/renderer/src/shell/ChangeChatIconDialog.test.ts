@@ -6,6 +6,7 @@ import type { SessionSummary } from "@shared/ipc";
 import type { SessionController } from "../state/session";
 import "../i18n";
 import { ChangeChatIconDialog } from "./ChangeChatIconDialog";
+import { RenameChatDialog } from "./RenameChatDialog";
 
 const fake = vi.hoisted(() => ({ invoke: vi.fn(), runCommand: vi.fn(), loadSessions: vi.fn(), loadHistory: vi.fn(), tabs: [{ id: "tab", sessionFile: "/project/chat.jsonl", title: "Original" }] }));
 vi.mock("../features/session-tools/drive", () => ({ runCommand: fake.runCommand }));
@@ -38,6 +39,14 @@ async function fill(label: string, value: string) {
 		input.dispatchEvent(new Event("input", { bubbles: true }));
 	});
 }
+it("opens Change icon with focus on Emoji rather than Close", async () => {
+	await act(async () => root.render(createElement(ChangeChatIconDialog, { title: "🧪 PREV: Build previews", live: null, session: saved, close })));
+	expect(document.activeElement).toBe(field("Emoji"));
+});
+it("opens Rename chat with focus on the title rather than Close", async () => {
+	await act(async () => root.render(createElement(RenameChatDialog, { session: saved, close })));
+	expect(document.activeElement).toBe(document.querySelector("input"));
+});
 it("preserves a card's code and title while sending its normalized emoji through the live rename path", async () => {
 	const live = {} as SessionController;
 	await act(async () => root.render(createElement(ChangeChatIconDialog, { title: "\u{F0208} PREV: Build live previews", live, session: saved, close })));

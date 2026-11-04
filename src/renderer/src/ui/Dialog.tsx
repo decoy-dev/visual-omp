@@ -1,6 +1,6 @@
 import * as RD from "@radix-ui/react-dialog";
 import { Warning, X } from "@phosphor-icons/react";
-import type { ComponentPropsWithRef, ReactNode } from "react";
+import type { ComponentPropsWithRef, ReactNode, RefObject } from "react";
 import { cn } from "./cn";
 import { closeButton } from "./styles";
 
@@ -31,6 +31,8 @@ export interface DialogContentProps extends Omit<ComponentPropsWithRef<typeof RD
 	destructive?: boolean;
 	/** Hides the corner close button (Esc still cancels). */
 	hideClose?: boolean;
+	/** Optional first focus target; dialogs without one keep Radix's default focus order. */
+	initialFocus?: RefObject<HTMLElement | null>;
 }
 
 /**
@@ -46,9 +48,11 @@ export function DialogContent({
 	size = "md",
 	destructive = false,
 	hideClose = false,
+	initialFocus,
 	className,
 	children,
 	onPointerDownOutside,
+	onOpenAutoFocus,
 	...rest
 }: DialogContentProps) {
 	return (
@@ -56,6 +60,13 @@ export function DialogContent({
 			<RD.Overlay className="vo-scrim fixed inset-0 z-(--z-scrim) bg-backdrop" />
 			<RD.Content
 				{...(description ? null : { "aria-describedby": undefined })}
+				onOpenAutoFocus={event => {
+					onOpenAutoFocus?.(event);
+					if (!event.defaultPrevented && initialFocus?.current) {
+						event.preventDefault();
+						initialFocus.current.focus();
+					}
+				}}
 				onPointerDownOutside={(event) => {
 					if (destructive) event.preventDefault();
 					onPointerDownOutside?.(event);

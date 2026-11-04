@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Fixed
+
+- Change icon and Rename chat now focus their text field when they open, so typing starts in the field.
+
 ## [0.7.6] - 2026-11-04
 
 visual-omp 0.7.6 makes the omp screen the default on Windows, keeps long chats responsive on macOS and in Linux builds, previews visual outputs as omp makes them and asks before resuming a very large saved chat. It requires omp 18.15.0 or later.
