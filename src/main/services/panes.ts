@@ -3,6 +3,7 @@ import { type FileHandle, lstat, open, opendir, readdir, readFile, realpath, sta
 import { homedir, tmpdir } from "node:os";
 import { extname, isAbsolute, join, parse, resolve } from "node:path";
 import type { PaneFileContent, PaneMadeFile, PaneMadeQuery, PanePlanFile } from "@shared/contracts/panes";
+import { outputPathKey } from "@shared/outputPaths";
 
 const TEXT_LIMIT = 2 * 1024 * 1024;
 const IMAGE_LIMIT = 8 * 1024 * 1024;
@@ -355,7 +356,7 @@ async function scanQuery(query: PaneMadeQuery, broad: ReadonlySet<string>, limit
 	const found = new Map<string, PaneMadeFile>();
 	let dirReads = 0;
 	const keep = (path: string, info: { mtimeMs: number; size: number }) => {
-		if (info.mtimeMs >= from && info.mtimeMs <= to) found.set(path, { path, mtime: info.mtimeMs, size: info.size });
+		if (info.mtimeMs >= from && info.mtimeMs <= to) found.set(outputPathKey(path, process.platform), { path, mtime: info.mtimeMs, size: info.size });
 	};
 	/** Reads at most `entriesPerDir` entries without loading the rest of the folder, then walks its subfolders. */
 	const walk = async (dir: string, depth: number): Promise<void> => {

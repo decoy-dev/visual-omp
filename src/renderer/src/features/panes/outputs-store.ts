@@ -94,7 +94,7 @@ export function useChatOutputs(session: SessionController | null, view: SessionV
 		const cached = branches.get(source);
 		if (cached && cached.leaf === leaf && cached.saved === saved && cached.cwd === cwd && cached.home === home) return cached;
 		const entries = live ? activeBranch(source, leaf, saved) : source;
-		const next: Branch = { leaf, saved, cwd, home, entries, candidates: madeCandidates(entries, { cwd, home }) };
+		const next: Branch = { leaf, saved, cwd, home, entries, candidates: madeCandidates(entries, { cwd, home, platform: window.vomp.platform }) };
 		branches.set(source, next);
 		return next;
 	}, [source, live, leaf, saved, cwd, home]);
@@ -108,7 +108,7 @@ export function useChatOutputs(session: SessionController | null, view: SessionV
 		if (!branch) return null;
 		const cached = derived.get(branch);
 		if (cached && cached.made === made) return cached;
-		const outputs = chatOutputs(branch.entries, { cwd: branch.cwd, home: branch.home }, made);
+		const outputs = chatOutputs(branch.entries, { cwd: branch.cwd, home: branch.home, platform: window.vomp.platform }, made);
 		let latest = 0;
 		for (const candidate of branch.candidates) latest = Math.max(latest, candidate.end);
 		for (const output of outputs) latest = Math.max(latest, output.time);

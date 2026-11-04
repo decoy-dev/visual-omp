@@ -6,6 +6,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ### Fixed
 
+- On macOS, Outputs lists a file once when tools use both `/tmp`, `/var` or `/etc` and their `/private` paths. The newest use supplies the output, and paths keep the chat folder's spelling. Live previews use the same comparison.
 - Change icon and Rename chat now focus their text field when they open, so typing starts in the field.
 
 ## [0.7.6] - 2026-11-04

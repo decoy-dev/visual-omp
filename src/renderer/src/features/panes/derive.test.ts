@@ -438,6 +438,38 @@ describe("chatOutputs", () => {
 		expect(chatOutputs(entries, context)[1].inline).toEqual({ kind: "blob", hash: BLOB });
 	});
 
+	it.each(["tmp", "var", "etc"])("merges macOS /%s aliases at the newest use with the chat folder's spelling", folder => {
+		const short = `/${folder}/vomp/work/frames.png`;
+		const long = `/private${short}`;
+		const entries = [
+			...tool("b1", "bash", { command: "python draw.py frames.png" }, 10),
+			...tool("r1", "read", { path: long }, 20, { blocks: [image(PNG)] }),
+		];
+		const made = { b1: [{ path: short, mtime: 9, size: 1 }, { path: long, mtime: 9, size: 1 }] };
+		for (const cwd of [`/${folder}/vomp/work`, `/private/${folder}/vomp/work`]) {
+			expect(chatOutputs(entries, { ...context, cwd, platform: "darwin" }, made)).toEqual([
+				expect.objectContaining({ key: `${cwd}/frames.png`, path: `${cwd}/frames.png`, time: 20, tool: "read", action: "viewed", produced: true, relation: "written" }),
+			]);
+			const reversed = [
+				...tool("r1", "read", { path: short }, 10, { blocks: [image(PNG)] }),
+				...tool("b1", "bash", { command: "python draw.py frames.png" }, 20),
+			];
+			expect(chatOutputs(reversed, { ...context, cwd, platform: "darwin" }, made)).toEqual([
+				expect.objectContaining({ key: `${cwd}/frames.png`, path: `${cwd}/frames.png`, time: 20, tool: "bash", action: "made", produced: true, relation: "changed" }),
+			]);
+		}
+	});
+
+	it.each(["linux", "win32"])("keeps /tmp and /private/tmp distinct on %s", platform => {
+		const entries = [...tool("w1", "write", { path: "/tmp/frames.png" }, 10), ...tool("w2", "write", { path: "/private/tmp/frames.png" }, 20)];
+		expect(chatOutputs(entries, { ...context, platform }).map(output => output.path)).toEqual(["/private/tmp/frames.png", "/tmp/frames.png"]);
+	});
+
+	it("recognizes a text read through the other macOS spelling before writing", () => {
+		const entries = [...tool("r1", "read", { path: "/private/tmp/work/a.txt" }, 10), ...tool("w1", "write", { path: "/tmp/work/a.txt" }, 20)];
+		expect(chatOutputs(entries, { ...context, cwd: "/tmp/work", platform: "darwin" })[0].relation).toBe("changed");
+	});
+
 	it("keeps images without a path as separate items and merges frames only by image paths", () => {
 		const entries = [
 			...tool("b1", "browser", { action: "run" }, 1, { blocks: [image(PNG), image(PNG)] }),

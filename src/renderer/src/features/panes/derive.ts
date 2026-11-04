@@ -7,6 +7,7 @@
 import type { AgentProgress, AgentSnapshot, SessionEntry, SubagentLifecyclePayload, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import type { NativeJob } from "@shared/contracts/native";
 import type { PaneMadeFile, PaneMadeQuery } from "@shared/contracts/panes";
+import { outputPathInFolder, outputPathKey } from "@shared/outputPaths";
 import type { ActiveTool, GuestSnapshot } from "../../collab/lib/client";
 import { isReplyWrite, resolveToolCall } from "../../chat/friendly";
 import { type JobStatus, parseNotice } from "../../chat/transcript/notices";
@@ -681,6 +682,8 @@ export interface OutputContext {
 	cwd: string | null;
 	/** The home folder, for `~/` paths. */
 	home: string | null;
+	/** Host platform, for macOS system-folder aliases. */
+	platform?: string;
 }
 
 /** How saved sessions store image data: an id in omp's blob store (`<agentDir>/blobs/<hash>`). */
@@ -699,9 +702,12 @@ export function isIntactBase64(data: string): boolean {
 export function resolveOutputPath(raw: string, context: OutputContext): string | null {
 	const path = raw.trim();
 	if (!path || URL_SCHEME.test(path)) return null;
-	if (path === "~" || path.startsWith("~/")) return context.home ? context.home.replace(/[\\/]+$/, "") + path.slice(1) : null;
-	if (path.startsWith("/") || WINDOWS_ABSOLUTE.test(path)) return path;
-	return context.cwd ? `${context.cwd.replace(/[\\/]+$/, "")}/${path.replace(/^\.\//, "")}` : null;
+	const resolved = path === "~" || path.startsWith("~/")
+		? context.home ? context.home.replace(/[\\/]+$/, "") + path.slice(1) : null
+		: path.startsWith("/") || WINDOWS_ABSOLUTE.test(path)
+			? path
+			: context.cwd ? `${context.cwd.replace(/[\\/]+$/, "")}/${path.replace(/^\.\//, "")}` : null;
+	return resolved ? outputPathInFolder(resolved, context.cwd, context.platform) : null;
 }
 
 function inlineImage(value: unknown): InlineImage | null {
@@ -812,11 +818,11 @@ export function commandPaths(args: Record<string, unknown>, output: string, cont
 	}
 	const cwd = str(args.cwd);
 	const base = { ...context, cwd: (cwd && resolveOutputPath(cwd, context)) || context.cwd };
-	const paths = new Set<string>();
+	const paths = new Map<string, string>();
 	const take = (raw: string) => {
 		const token = cleanToken(raw, vars);
 		const path = token ? resolveOutputPath(token, base) : null;
-		if (path && path !== "/" && !SYSTEM_PATH.test(path) && paths.size < PATHS_PER_CALL) paths.add(path);
+		if (path && path !== "/" && !SYSTEM_PATH.test(path) && paths.size < PATHS_PER_CALL) paths.set(outputPathKey(path, context.platform), path);
 	};
 	const scanOutput = (text: string) => {
 		for (const match of text.matchAll(OUTPUT_TOKEN)) take(match[1]);
@@ -831,7 +837,7 @@ export function commandPaths(args: Record<string, unknown>, output: string, cont
 		}
 	}
 	scanOutput(clip(output));
-	return [...paths];
+	return [...paths.values()];
 }
 
 export interface MadeCandidate extends PaneMadeQuery {
@@ -885,18 +891,19 @@ export function chatOutputs(entries: readonly SessionEntry[], context: OutputCon
 	/** Paths the chat read successfully, which shows they existed then (text reads leave no output of their own). */
 	const read = new Set<string>();
 	const add = (output: Omit<ChatOutput, "produced" | "relation">) => {
-		const previous = outputs.get(output.key);
+		const key = outputPathKey(output.key, context.platform);
+		const previous = outputs.get(key);
 		const produced = PRODUCES[output.action] || previous?.produced === true;
 		// The first producing use decides; a file seen earlier in the chat existed, so producing it changes it.
 		const relation: OutputRelation = previous?.produced
 			? previous.relation
 			: !PRODUCES[output.action]
 				? "viewed"
-				: previous || read.has(output.key)
+				: previous || read.has(key)
 					? "changed"
 					: FIRST_PRODUCED[output.action];
-		outputs.delete(output.key);
-		outputs.set(output.key, { ...output, produced, relation });
+		outputs.delete(key);
+		outputs.set(key, { ...output, produced, relation });
 	};
 	const addFile = (raw: string, tool: string, action: OutputAction, time: number, base: OutputContext) => {
 		const path = resolveOutputPath(raw, base);
@@ -919,7 +926,7 @@ export function chatOutputs(entries: readonly SessionEntry[], context: OutputCon
 		if (name === "read") {
 			const raw = readPath(details, args);
 			const path = raw ? resolveOutputPath(raw, context) : null;
-			if (path && !message.isError) read.add(path);
+			if (path && !message.isError) read.add(outputPathKey(path, context.platform));
 			if (path && PDF_EXT.test(path)) {
 				// Rendered pages belong to the PDF, which the pane previews itself.
 				images.length = 0;

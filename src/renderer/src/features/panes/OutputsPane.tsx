@@ -10,6 +10,7 @@ import { ArrowLeft, ArrowSquareOut, Copy, FileCode, FileIcon, FolderSimpleDashed
 import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { outputPathKey } from "@shared/outputPaths";
 import type { PaneProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
 import { cn, EmptyState, IconButton, PresenceSwap } from "../../ui";
@@ -231,7 +232,7 @@ function OutputList({
 	useEffect(() => {
 		if (!restoreKey) return;
 		for (const element of listRef.current?.querySelectorAll<HTMLElement>("[data-output]") ?? []) {
-			if (element.dataset.output === restoreKey) element.focus();
+			if (element.dataset.output && outputPathKey(element.dataset.output, window.vomp.platform) === outputPathKey(restoreKey, window.vomp.platform)) element.focus();
 		}
 	}, [restoreKey]);
 	return (
@@ -347,7 +348,7 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 	const [restoreKey, setRestoreKey] = useState<string | null>(null);
 	// Kept here, so opening a tile past the first 12 and coming back keeps it on screen.
 	const [showAllViewed, setShowAllViewed] = useState(false);
-	const selected = opened?.tabId === tabId ? (outputs?.find(output => output.key === opened.key) ?? null) : null;
+	const selected = opened?.tabId === tabId ? (outputs?.find(output => outputPathKey(output.key, window.vomp.platform) === outputPathKey(opened.key, window.vomp.platform)) ?? null) : null;
 	const project = projectPath ?? session?.projectPath ?? null;
 
 	if (!session) return <EmptyState icon={<Images />} title={t("outputs.noChatTitle")} body={t("outputs.noChat")} />;
@@ -356,7 +357,7 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 		<TargetContextMenu projectPath={project} tabId={tabId}>
 		<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
 		<Stage session={session} onShowOutput={path => {
-			const output = outputs?.find(item => item.path === path);
+			const output = outputs?.find(item => item.path !== null && outputPathKey(item.path, window.vomp.platform) === outputPathKey(path, window.vomp.platform));
 			if (!output) return;
 			setOpened(null);
 			setRestoreKey(output.key);

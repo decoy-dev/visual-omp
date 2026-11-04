@@ -42,7 +42,7 @@ export function trackSession(session: SessionController, autoOpen: () => boolean
 		const input: SubjectInput = {
 			stream: guest?.stream ?? null, streamDone: guest?.streamDone ?? true,
 			activeTools: guest?.activeTools ?? EMPTY_TOOLS, backgroundTools: guest?.backgroundTools ?? EMPTY_TOOLS,
-			entries, changes, working: view.working, folder: session.projectPath, now: Date.now(),
+			entries, changes, working: view.working, folder: session.projectPath, platform: window.vomp.platform, now: Date.now(),
 		};
 		const before = useLivePreview.getState().chats[session.tabId] ?? EMPTY_CHAT;
 		const subjects = deriveSubjects(input, before.subjects);

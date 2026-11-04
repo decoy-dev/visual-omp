@@ -1,5 +1,6 @@
 import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import type { PreviewChange } from "@shared/contracts/preview";
+import { outputPathInFolder, outputPathKey } from "@shared/outputPaths";
 import { resolveToolCall } from "../../chat/friendly";
 import type { ActiveTool } from "../../collab/lib/client";
 import { isRecord, resultTextOf, str } from "../../tool-render/util";
@@ -15,6 +16,7 @@ export interface SubjectInput {
 	changes: readonly PreviewChange[];
 	working: boolean;
 	folder: string | null;
+	platform?: string;
 	now: number;
 }
 
@@ -108,22 +110,26 @@ function callsOf(input: SubjectInput): Call[] {
 }
 
 function pathsOf(call: Call, input: SubjectInput): string[] {
-	const context = { cwd: input.folder, home: null };
+	const context = { cwd: input.folder, home: null, platform: input.platform };
 	const partial = isRecord(call.partial) && Array.isArray(call.partial.content) ? call.partial.content.filter(isRecord).map(block => block.type === "text" ? str(block.text) ?? "" : "").join("\n") : "";
 	const paths = commandPaths(call.args, `${partial}\n${resultTextOf(call.result)}`, context);
 	const direct = str(call.args.path ?? call.args.file_path);
 	const path = direct ? resolveOutputPath(direct, context) : null;
-	return path ? [...new Set([path, ...paths])] : paths;
+	return path ? uniquePaths([path, ...paths], input) : paths;
+}
+
+function uniquePaths(paths: readonly string[], input: SubjectInput): string[] {
+	return [...new Map(paths.map(path => [outputPathKey(path, input.platform), path])).values()];
 }
 
 /** Paths the turn named, including completed calls, for narrow grants in broad folders. */
 export function relatedPaths(input: SubjectInput): string[] {
-	return [...new Set(callsOf(input).flatMap(call => pathsOf(call, input)))];
+	return uniquePaths(callsOf(input).flatMap(call => pathsOf(call, input)), input);
 }
 
 /** Only running calls extend the watcher's named scope. */
 export function namedPaths(input: SubjectInput): string[] {
-	return [...new Set(callsOf(input).filter(call => call.active).flatMap(call => pathsOf(call, input)))];
+	return uniquePaths(callsOf(input).filter(call => call.active).flatMap(call => pathsOf(call, input)), input);
 }
 
 function stateOf(call: Call, working: boolean): LiveSubjectState {
@@ -159,8 +165,8 @@ function requestOf(args: Record<string, unknown>): LiveRequest {
 	return { prompt, model: str(args.model ?? args.provider), size: str(args.image_size ?? args.size), aspectRatio: str(args.aspect_ratio), count: typeof (args.count ?? args.n) === "number" ? (args.count ?? args.n) as number : null };
 }
 
-function sameContent(a: LiveSubject, b: LiveSubject): boolean {
-	return a.kind === b.kind && a.format === b.format && a.path === b.path && a.text === b.text && a.elided === b.elided && a.size === b.size && (a.kind !== "file" || a.updatedAt === b.updatedAt) && JSON.stringify(a.request) === JSON.stringify(b.request) && JSON.stringify(a.images) === JSON.stringify(b.images);
+function sameContent(a: LiveSubject, b: LiveSubject, platform?: string): boolean {
+	return a.kind === b.kind && a.format === b.format && (a.path === b.path || (a.path !== null && b.path !== null && outputPathKey(a.path, platform) === outputPathKey(b.path, platform))) && a.text === b.text && a.elided === b.elided && a.size === b.size && (a.kind !== "file" || a.updatedAt === b.updatedAt) && JSON.stringify(a.request) === JSON.stringify(b.request) && JSON.stringify(a.images) === JSON.stringify(b.images);
 }
 
 /** Current-turn subjects, newest first. State-only changes preserve the rendered revision. */
@@ -172,7 +178,7 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 		const id = `call:${call.id}`;
 		const prior = old.get(id);
 		const pathArg = str(call.args.path ?? call.args.file_path);
-		const path = pathArg ? resolveOutputPath(pathArg, { cwd: input.folder, home: null }) : null;
+		const path = pathArg ? resolveOutputPath(pathArg, { cwd: input.folder, home: null, platform: input.platform }) : null;
 		const format = call.name === "write" ? sourceFormat(pathArg ?? "") : null;
 		const partialImages = imagesOf(call.partial);
 		const images = partialImages.length ? partialImages : prior?.kind === "images" || call.name === "eval" || call.name === "generate_image" ? imagesOf(call.result) : [];
@@ -188,30 +194,35 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 	}
 	const turn = turnStart(input);
 	for (const change of input.changes) {
+		const path = outputPathInFolder(change.path, input.folder, input.platform);
+		const key = outputPathKey(path, input.platform);
 		const format = fileFormat(change.path);
 		if (!format || change.mtimeMs < turn.time) continue;
-		const named = calls.filter(call => call.active && pathsOf(call, input).some(path => change.path === path || change.path.startsWith(`${path.replace(/[\\/]+$/, "")}/`)));
+		const named = calls.filter(call => call.active && pathsOf(call, input).some(path => {
+			const namedKey = outputPathKey(path, input.platform);
+			return key === namedKey || key.startsWith(`${namedKey.replace(/[\\/]+$/, "")}/`);
+		}));
 		const owner = named.sort((a, b) => b.start - a.start)[0] ?? calls.filter(call => change.mtimeMs >= call.start && change.mtimeMs <= (call.end ?? input.now)).sort((a, b) => b.start - a.start)[0];
 		// The write that streamed this file already shows it, so its save is not a second output. The guest stamps a
 		// call's start when collab delivers it, which can be after the file's mtime, so match the write by path.
-		const source = [...subjects.values()].find(subject => subject.path === change.path && (subject.kind === "source" || (subject.kind === "file" && subject.id.startsWith("call:"))));
+		const source = [...subjects.values()].find(subject => subject.path !== null && outputPathKey(subject.path, input.platform) === key && (subject.kind === "source" || (subject.kind === "file" && subject.id.startsWith("call:"))));
 		if (source && (!owner || owner.id === source.toolCallId)) {
 			if (source.kind === "source" && !source.elided) continue;
 			subjects.set(source.id, { ...source, kind: "file", text: null, elided: false, size: change.size, updatedAt: source.kind === "file" ? Math.max(source.updatedAt, change.mtimeMs) : change.mtimeMs });
 			continue;
 		}
-		const id = `file:${change.path}`;
+		const id = `file:${key}`;
 		const existing = subjects.get(id);
 		if (existing && existing.updatedAt > change.mtimeMs) continue;
 		const prior = old.get(id);
-		subjects.set(id, { id, kind: "file", format, toolCallId: owner?.id ?? null, toolName: owner?.name ?? null, path: change.path, text: null, revision: 1, state: owner ? stateOf(owner, input.working) : input.working ? "running" : "saved", elided: false, intent: owner?.intent ?? null, request: null, images: null, size: change.size, startedAt: prior?.startedAt ?? change.mtimeMs, updatedAt: change.mtimeMs });
+		subjects.set(id, { id, kind: "file", format, toolCallId: owner?.id ?? null, toolName: owner?.name ?? null, path, text: null, revision: 1, state: owner ? stateOf(owner, input.working) : input.working ? "running" : "saved", elided: false, intent: owner?.intent ?? null, request: null, images: null, size: change.size, startedAt: prior?.startedAt ?? change.mtimeMs, updatedAt: change.mtimeMs });
 	}
 	// An aborted stream can disappear before its committed entry arrives.
 	for (const prior of previous) if (!subjects.has(prior.id) && prior.startedAt >= turn.time && !calls.some(call => call.id === prior.toolCallId) && prior.kind !== "file") subjects.set(prior.id, { ...prior, state: "stopped" });
 	return [...subjects.values()].map(subject => {
 		const prior = old.get(subject.id);
 		if (!prior) return subject;
-		const same = sameContent(prior, subject);
+		const same = sameContent(prior, subject, input.platform);
 		return { ...subject, revision: prior.revision + (same ? 0 : 1), updatedAt: same ? prior.updatedAt : subject.updatedAt };
 	}).sort((a, b) => b.startedAt - a.startedAt || b.id.localeCompare(a.id));
 }

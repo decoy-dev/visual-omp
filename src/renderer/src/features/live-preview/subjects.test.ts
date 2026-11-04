@@ -111,6 +111,32 @@ describe("current-turn live subjects", () => {
 		expect(later.find(subject => subject.kind === "file")).toMatchObject({ toolCallId: "redraw", format: "svg" });
 	});
 
+	it.each(["/tmp/work", "/private/tmp/work"])("folds macOS watcher aliases into the write under %s", folder => {
+		const snapshot = input({
+			folder, platform: "darwin",
+			stream: assistant("draw", "write", { path: "poster.svg", content: "<svg/>" }),
+			activeTools: new Map([["draw", running()]]),
+			changes: [{ watchId: "w", path: folder.startsWith("/private") ? "/tmp/work/poster.svg" : "/private/tmp/work/poster.svg", size: 200, mtimeMs: 500 }],
+		});
+		expect(deriveSubjects(snapshot, [])).toEqual([expect.objectContaining({ id: "call:draw", path: `${folder}/poster.svg` })]);
+	});
+
+	it("merges watcher aliases by newest modification and keeps one stable file identity", () => {
+		const snapshot = input({ stream: null, folder: "/tmp/work", platform: "darwin", changes: [
+			{ watchId: "w", path: "/private/tmp/work/frames.png", size: 20, mtimeMs: 500 },
+			{ watchId: "w", path: "/tmp/work/frames.png", size: 30, mtimeMs: 600 },
+		] });
+		expect(deriveSubjects(snapshot, [])).toEqual([expect.objectContaining({ id: "file:/tmp/work/frames.png", path: "/tmp/work/frames.png", size: 30, updatedAt: 600 })]);
+	});
+
+	it.each(["linux", "win32"])("keeps distinct watcher paths on %s", platform => {
+		const snapshot = input({ stream: null, folder: "/tmp/work", platform, changes: [
+			{ watchId: "w", path: "/private/tmp/work/frames.png", size: 20, mtimeMs: 500 },
+			{ watchId: "w", path: "/tmp/work/frames.png", size: 30, mtimeMs: 600 },
+		] });
+		expect(deriveSubjects(snapshot, []).map(subject => subject.path).sort()).toEqual(["/private/tmp/work/frames.png", "/tmp/work/frames.png"]);
+	});
+
 	it("shows structured image generation arguments without inventing defaults", () => {
 		const stream = assistant("image", "generate_image", { subject: "A bird", action: "perched", scene: "a tree", composition: "Close view", style: "Ink", aspect_ratio: "3:4", image_size: "1024x1536", provider: "openai" });
 		const [subject] = deriveSubjects(input({ stream }), []);
@@ -175,6 +201,13 @@ describe("current-turn live subjects", () => {
 		expect(namedPaths(snapshot)).toEqual(expect.arrayContaining(["/project/work/dist", "/project/work/dist/poster.png", "/project/work/final.pdf"]));
 		expect(relatedPaths(input({ stream: assistant("draw", "write", { path: "style.css", content: "body {}" }) }))).toContain("/project/work/style.css");
 		expect(namedPaths(input())).toEqual([]);
+	});
+
+	it("deduplicates command arguments, printed output and watcher scopes using macOS path identity", () => {
+		const tool = { ...running("draw", { command: "python draw.py /tmp/work/frames.png" }, "bash"), partialResult: { content: [{ type: "text", text: "Saved /private/tmp/work/frames.png" }] } };
+		const snapshot = input({ stream: null, folder: "/tmp/work", platform: "darwin", activeTools: new Map([["draw", tool], ["other", running("other", { path: "/private/tmp/work/frames.png" })]]) });
+		expect(namedPaths(snapshot)).toEqual(["/tmp/work/frames.png"]);
+		expect(relatedPaths(snapshot)).toEqual(["/tmp/work/frames.png"]);
 	});
 
 	it("keeps finished call paths in grants and background call paths in watches", () => {

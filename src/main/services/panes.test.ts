@@ -291,6 +291,15 @@ describe("scanMadeFiles", () => {
 		expect(rel(found)).toEqual(["notes.txt"]);
 	});
 
+	it.skipIf(process.platform !== "darwin")("collapses both macOS path spellings in one scan", async () => {
+		await put("out/frames.png");
+		const long = await realpath(join(dir, "out/frames.png"));
+		const short = long.replace(/^\/private\/(tmp|var|etc)(?=\/|$)/, "/$1");
+		expect(short).not.toBe(long);
+		const [found] = await scanMadeFiles([{ paths: [short, long], ...window }], home());
+		expect(found).toEqual([{ path: long, mtime: now, size: PNG.length }]);
+	});
+
 	it.skipIf(process.platform === "win32")("does not walk symlinked folders, the home folder or the file system root", async () => {
 		await put("out/flyer.pdf", PDF);
 		await put("home/shot.png");
