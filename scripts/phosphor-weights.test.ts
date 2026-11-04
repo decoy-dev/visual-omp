@@ -281,9 +281,10 @@ function sources(directory: string, base = directory): Record<string, string> {
 	}));
 }
 
+// Parses every renderer source file: about 1.6 s alone, and slower while the full suite runs in parallel.
 it("checks the icon-authoring convention in renderer TS and TSX sources", () => {
 	expect(checkSources(sources(renderer), phosphorExtraWeights, nonIconBoundaries)).toEqual([]);
-});
+}, 30_000);
 const prelude = 'import { Gear, Folder, FolderIcon as ProjectFolder, IconContext } from "@phosphor-icons/react";';
 it("resolves aliases, const icons and both conditional branches", () => {
 	const source = `${prelude} const Glyph = Folder; const weight = active ? "fill" : "regular";
