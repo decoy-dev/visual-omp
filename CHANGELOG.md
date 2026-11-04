@@ -4,6 +4,20 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.6] - 2026-11-04
+
+visual-omp 0.7.6 keeps long chats responsive on macOS and in Linux builds, previews visual outputs as omp makes them and asks before resuming a very large saved chat. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **New:** Outputs previews images, PDFs, web pages and other visual files while omp makes them.
+- **New:** Before omp resumes a saved chat of 32 MiB or more, visual-omp asks whether to resume it, start a new chat or cancel.
+- **New:** Change a chat's icon from its row menu.
+- **Improved:** The main window loads about 22% less code at startup. Screens and panes that cannot load their code or text now offer Try again.
+- **Fixed:** On macOS and in Linux builds, long chats no longer make visual-omp unresponsive while omp works.
+- **Fixed:** Chats you start in visual-omp get emoji icons in their titles again.
+- **Fixed:** The word you are typing near the right edge of the message box stays visible.
+
 ### Detailed changes
 
 #### New
