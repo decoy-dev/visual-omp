@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import type { TspNode } from "@shared/tsp";
 import type { TspHostSnapshot } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from "vitest";
@@ -12,14 +13,14 @@ const snapshot = (revision: number, generation = 1, hostId = "host"): TspHostSna
 	surfaces: [{
 		documentGeneration: generation,
 		open: { id: "surface", mode: "screen", title: `Revision ${revision}`, role: "test", adopt: true },
-		sequence: revision, closed: false, focus: "editor", suspended: false, settled: ["root"],
-		document: { id: "root", k: "col", c: [{ id: "editor", k: "editor", p: { text: "Draft", sendable: true } }] },
+		sequence: revision, closed: false, focus: "editor", suspended: false, settled: ["surface"],
+		document: { id: "surface", k: "col", c: [{ id: "editor", k: "editor", p: { text: "Draft", sendable: true } }] },
 	}],
 });
 
 let element: HTMLDivElement;
 let root: Root;
-let listeners: Set<(value: TspHostSnapshot) => void>;
+let listeners: Set<(value: TspHostPatch) => void>;
 let requests: PromiseWithResolvers<TspHostSnapshot | null>[];
 let calls: string[];
 let off: Mock;
@@ -27,7 +28,7 @@ const render = async (generation = 1, hostId = "host") => {
 	await act(async () => root.render(createElement(TspInspector, { hostId, generation })));
 };
 const update = async (value: TspHostSnapshot) => {
-	await act(async () => { for (const listener of listeners) listener(value); });
+	await act(async () => { for (const listener of listeners) listener(tspHostPatch(null, value)); });
 };
 const reply = async (value: TspHostSnapshot | null, index = 0) => {
 	await act(async () => requests[index]!.resolve(value));
@@ -37,7 +38,7 @@ beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	listeners = new Set(); requests = []; calls = []; off = vi.fn();
 	Object.assign(window, { vomp: {
-		on: (channel: string, callback: (value: TspHostSnapshot) => void) => {
+		on: (channel: string, callback: (value: TspHostPatch) => void) => {
 			calls.push(channel); listeners.add(callback);
 			return () => { off(); listeners.delete(callback); };
 		},
@@ -54,41 +55,49 @@ afterEach(async () => { await act(async () => root.unmount()); element.remove();
 describe("TSP inspector attachment", () => {
 	it("subscribes before requesting the snapshot and keeps a newer event when the snapshot arrives late", async () => {
 		await render();
-		expect(calls).toEqual(["host:tsp-update", "host:tsp-snapshot"]);
+		expect(calls).toEqual(["host:tsp-patch", "host:tsp-snapshot"]);
 		await update(snapshot(4));
 		await reply(snapshot(2));
 		expect(element.querySelector("h3")?.textContent).toBe("Revision 4");
 	});
 
-	it("ignores another host, another generation, duplicate revisions and older updates", async () => {
+	it("ignores another host, duplicate revisions and older patches, and only shows the current generation", async () => {
 		await render(); await reply(snapshot(4));
 		await update(snapshot(9, 1, "other"));
-		await update(snapshot(9, 2));
 		await update({ ...snapshot(4), surfaces: [] });
 		await update(snapshot(3));
 		expect(element.querySelector("h3")?.textContent).toBe("Revision 4");
 		await update(snapshot(5));
 		expect(element.querySelector("h3")?.textContent).toBe("Revision 5");
+		await update(snapshot(9, 2));
+		expect(element.querySelector("h3")).toBeNull();
+		await render(2);
+		expect(element.querySelector("h3")?.textContent).toBe("Revision 9");
 	});
 
-	it("reattaches on restart and ignores both the old listener and its pending snapshot", async () => {
+	it("keeps one subscription and read across a restart and hides the previous generation's pending snapshot", async () => {
 		await render();
-		const oldListener = [...listeners][0]!;
 		await render(2);
-		expect(off).toHaveBeenCalledOnce();
+		expect(off).not.toHaveBeenCalled();
 		expect(listeners.size).toBe(1);
+		expect(calls).toEqual(["host:tsp-patch", "host:tsp-snapshot"]);
 		await update(snapshot(8, 1));
-		await act(async () => oldListener(snapshot(10, 1)));
 		await reply(snapshot(11, 1));
 		expect(element.querySelector("h3")).toBeNull();
-		await update(snapshot(3, 2));
-		await reply(snapshot(1, 2), 1);
-		expect(element.querySelector("h3")?.textContent).toBe("Revision 3");
+		await update(snapshot(12, 2));
+		expect(element.querySelector("h3")?.textContent).toBe("Revision 12");
+		await act(async () => root.render(null));
+		expect(listeners.size).toBe(0);
+		expect(off).toHaveBeenCalledOnce();
 	});
 
-	it("reattaches on host replacement and keeps a new update when the snapshot is absent", async () => {
+	it("reads the replacement host and keeps its patch when the snapshot is absent", async () => {
 		await render(); await reply(snapshot(3));
 		await render(1, "replacement");
+		expect(element.querySelector("h3")).toBeNull();
+		expect(requests).toHaveLength(2);
+		expect(calls).toEqual(["host:tsp-patch", "host:tsp-snapshot", "host:tsp-snapshot"]);
+		await update(snapshot(10));
 		expect(element.querySelector("h3")).toBeNull();
 		await update(snapshot(1, 1, "replacement"));
 		await reply(null, 1);
@@ -165,5 +174,5 @@ it("shows every surface, lifecycle field, node and serialized property as safe r
 	}
 	expect(element.textContent).toContain(JSON.stringify(props, null, 2));
 	expect(element.querySelector("script, a, input, textarea, button, [contenteditable], .xterm")).toBeNull();
-	expect(calls).toEqual(["host:tsp-update", "host:tsp-snapshot"]);
+	expect(calls).toEqual(["host:tsp-patch", "host:tsp-snapshot"]);
 });

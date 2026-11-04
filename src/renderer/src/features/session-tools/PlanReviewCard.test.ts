@@ -3,6 +3,7 @@ import { act, createElement, useSyncExternalStore, type PropsWithChildren, type 
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { TspRendererEvent, type TspHostSnapshot } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { planReview } from "@shared/tsp/plan-review";
 import type { SessionController, SessionView } from "../../state/session";
 import { FixtureDocuments, loadFixtureRecording } from "../tsp/testing/documents";
@@ -44,7 +45,7 @@ vi.mock("./approval", () => ({ acknowledgeAuto: mocks.auto, setApprovalMode: moc
 vi.mock("./plan", () => ({ exitPlan: mocks.exit, loadPlan: vi.fn().mockResolvedValue(null) }));
 let element: HTMLDivElement, root: Root;
 let snapshot: TspHostSnapshot;
-let listeners: Set<(snapshot: TspHostSnapshot) => void>;
+let listeners: Set<(patch: TspHostPatch) => void>;
 let invoke: ReturnType<typeof vi.fn>;
 let view: SessionView;
 let controller: SessionController;
@@ -61,7 +62,7 @@ function update(next: TspHostSnapshot) {
 	snapshot = next;
 	view = { ...view, host: { ...view.host!, tspAvailability: next.availability } };
 	for (const listener of sessionListeners) listener();
-	for (const listener of listeners) listener(snapshot);
+	for (const listener of listeners) listener(tspHostPatch(null, snapshot));
 }
 function withoutReview() {
 	const next = structuredClone(snapshot);
@@ -143,7 +144,7 @@ beforeEach(() => {
 	view = { mode: "live", readOnly: false, working: false, guest: null, history: null, inputHistory: [], queue: [], strandedImages: [], host: { hostId: "host", generation: 1, transport: "tsp", tspAvailability: snapshot.availability } } as unknown as SessionView;
 	controller = { hostId: "host", tabId: "plan-test", projectPath: "/tmp/plan-test", sessionFile: null, getSnapshot: () => view, subscribe: (listener: () => void) => { sessionListeners.add(listener); return () => sessionListeners.delete(listener); }, preserveFailedMessage: vi.fn() } as unknown as SessionController;
 	invoke = vi.fn(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
-	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: (channel: string, listener: (snapshot: TspHostSnapshot) => void) => { if (channel === "host:tsp-update") listeners.add(listener); return () => listeners.delete(listener); } } });
+	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: (channel: string, listener: (patch: TspHostPatch) => void) => { if (channel === "host:tsp-patch") listeners.add(listener); return () => listeners.delete(listener); } } });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); });

@@ -26,6 +26,7 @@ import { hookQuestions, QuestionArbitrator } from "@shared/tsp/question-match";
 import { nodeHasLeft, TspHookAnswer } from "@shared/tsp/dialogs";
 import { assertTreeEntry, treeSelector } from "@shared/tsp/tree-navigation";
 import { TspAdvisorAction } from "@shared/tsp/advisor";
+import { tspHostPatch } from "@shared/tsp/patch";
 import { composerFacts as readComposerFacts } from "./tsp/composer";
 import { BrowserWindow, dialog, nativeTheme, systemPreferences, type MessageBoxOptions, type MessageBoxReturnValue } from "electron";
 import hostLabels from "../../shared/i18n/en/host.json";
@@ -72,6 +73,8 @@ const LINK_RETRY_MS = 250;
 const LINK_RETRY_LIMIT = 40;
 const FOCUS_POLL_MS = 500;
 const TSP_NEGOTIATION_MS = 10_000;
+/** One screen refresh: frame publishes within this window reach the renderer as one patch. */
+const TSP_PUBLISH_MS = 16;
 const STOP_GRACE_MS = 4000;
 const STOP_PROGRESS_MS = 15_000;
 type ShutdownStage = "requested" | "acknowledged" | "teardown" | "cleanup";
@@ -142,6 +145,9 @@ export class SessionHost {
 	#tspStream: TspStream | null = null;
 	#tspStartup: StartupDiagnosticCapture | null = null;
 	#tspRevision = 0;
+	/** The snapshot every renderer copy matches; the next patch is computed against it. */
+	#tspPublished: TspHostSnapshot | null = null;
+	#tspPublishTimer: NodeJS.Timeout | null = null;
 	#tspSurfaceGenerations = new Map<string, number>();
 	#tspFailure: string | null = null;
 	#tspHandshakeTimer: NodeJS.Timeout | null = null;
@@ -265,7 +271,9 @@ export class SessionHost {
 						if (reason === "close" && !this.#closing && !this.#tspFailure && !this.#tsp!.snapshot().surfaces.some(surface => !surface.closed)) this.#armTspHandshake(5000, true);
 						if (this.#closing && ((reason === "close" && surface === this.#tspExitSurface) || this.#tspClosingNotice())) this.#shutdownProgress("acknowledged");
 						if (reason === "frame" && surface && (this.state.phase === "live" || !this.#hadCollabRoom)) this.#tspSurfaceGenerations.set(surface, this.state.generation);
-						this.#publishTsp();
+						// omp sends a frame per streamed token; other updates publish at once.
+						if (reason === "frame") this.#scheduleTspPublish();
+						else this.#publishTsp();
 						this.#promptRevision++;
 						this.#queuePromptRejectionCheck();
 					},
@@ -467,18 +475,37 @@ export class SessionHost {
 		});
 	}
 
+	/** The published snapshot that later `host:tsp-patch` events apply to. Pending frames publish first. */
+	publishedTspSnapshot(): TspHostSnapshot | null {
+		if (this.#tspPublishTimer || (this.#tsp && !this.#tspPublished)) this.#publishTsp();
+		return this.#tspPublished;
+	}
+
+	/** Frames arrive in bursts; publish them at most once per screen refresh. */
+	#scheduleTspPublish(): void {
+		if (this.#tspPublishTimer) return;
+		this.#tspPublishTimer = setTimeout(() => {
+			this.#tspPublishTimer = null;
+			this.#publishTsp();
+		}, TSP_PUBLISH_MS);
+	}
+
 	#publishTsp(): void {
+		clearTimeout(this.#tspPublishTimer ?? undefined);
+		this.#tspPublishTimer = null;
 		this.#tspRevision++;
 		const snapshot = this.tspSnapshot();
-		if (snapshot) {
-			this.state = { ...this.state, tspFailed: snapshot.lifecycle === "failed", tspAvailability: snapshot.availability, tspComposer: snapshot.composer, tspEpoch: snapshot.epoch, tspEditorRestore: snapshot.editorRestore };
+		if (!snapshot) return;
+		const fields = { tspFailed: snapshot.lifecycle === "failed", tspAvailability: snapshot.availability, tspComposer: snapshot.composer, tspEpoch: snapshot.epoch, tspEditorRestore: snapshot.editorRestore };
+		const current = { tspFailed: this.state.tspFailed, tspAvailability: this.state.tspAvailability, tspComposer: this.state.tspComposer, tspEpoch: this.state.tspEpoch, tspEditorRestore: this.state.tspEditorRestore };
+		if (JSON.stringify(fields) !== JSON.stringify(current)) {
+			this.state = { ...this.state, ...fields };
 			broadcast("host:state", this.state);
 		}
-		if (snapshot) broadcast("host:tsp-update", snapshot);
-		if (snapshot) {
-			this.#btwHistory ??= new BtwHistoryState(state => broadcast("btw:changed", state));
-			this.#btwHistory.update(snapshot, this.state.sessionFile, this.#runStartedAt);
-		}
+		broadcast("host:tsp-patch", tspHostPatch(this.#tspPublished, snapshot));
+		this.#tspPublished = snapshot;
+		this.#btwHistory ??= new BtwHistoryState(state => broadcast("btw:changed", state));
+		this.#btwHistory.update(snapshot, this.state.sessionFile, this.#runStartedAt);
 	}
 
 	#assertTspInput(generation: number): void {
@@ -1633,6 +1660,8 @@ export class SessionHost {
 	async #cleanup(): Promise<void> {
 		clearTimeout(this.#tspHandshakeTimer ?? undefined);
 		this.#tspHandshakeTimer = null;
+		clearTimeout(this.#tspPublishTimer ?? undefined);
+		this.#tspPublishTimer = null;
 		clearInterval(this.#focusTimer ?? undefined);
 		this.#focusTimer = null;
 		this.#btwHistory?.close();

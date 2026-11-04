@@ -631,10 +631,28 @@ TSP Restart first asks main to prepare the current host generation and protocol 
 
 Classic image failures that require recovery also use explicit stop and saved-session relaunch, since typing `/restart` could append it to the rejected path or partially staged input. Main latches this state when its attachment helper fails, so ordinary Close and Quit also avoid editor submission. The private bridge requests the public SDK `ctx.shutdown()` path, which reaches omp's normal shutdown and worktree-exit planning without pressing Enter or writing `/exit`. Missing acknowledgement or stalled shutdown retains the existing explicit native stop decision. The fallback resumes the saved session and retains the app queue. Confirmed text-only restoration keeps the normal classic restart path.
 
-`host:tsp-snapshot` and `host:tsp-update` expose complete per-host documents with an ordered
-revision, protocol epoch, lifecycle state and send availability. The renderer reconciles replacement
-documents, reuses unchanged nodes and supports subscriptions by surface and node id. Shared
-view-state derivations identify overlays, screen surfaces, focus, the composer and unclaimed output.
+`host:tsp-snapshot` returns the complete per-host documents main last published, with an ordered
+revision, protocol epoch, lifecycle state and send availability. Later changes arrive as
+`host:tsp-patch` events (`shared/tsp/patch.ts`): every snapshot field in full, and for each surface
+only the nodes whose kind, props or child order changed since the previous revision. Main finds them
+by identity against its previous publish. That comparison is cheap because the vendored applier
+caches each node's export and clears only the changed path, so successive snapshots share unchanged
+subtrees. Frame publishes wait in a 16 ms batching window and leave as one patch; any other update
+publishes at once with the waiting frames, and `host:tsp-snapshot` publishes waiting frames before it
+answers. TSP publication sends `host:state` only when its TSP fields change; other host changes still
+send it as before. The reason is size: omp's document holds the whole transcript (about 1.6 MB for a
+chat of about 1,400 entries), and sending it whole for each streamed update kept the renderer
+saturated. A streamed update to one text node now sends that node.
+
+In the renderer, `state/tsp/hosts.ts` keeps one document store per host, fed by one IPC listener
+for all hosts. A host's store reads the published snapshot when first subscribed, applies patches by
+rebuilding only the changed nodes and their ancestors (other nodes keep their identity), and reads
+again when a patch does not follow its revision. A read's result and the patches that arrived during
+it reach subscribers as one update. A copy that a failed read leaves missing or behind is hidden and
+reported through `failed()`; two timed retries follow, and the next patch or subscriber reads again.
+The store is released a microtask after its last subscriber leaves. `useTsp`, the notice and question
+controllers, command watches, the BTW drawer and the inspector all read that store. Shared view-state
+derivations identify overlays, screen surfaces, focus, the composer and unclaimed output.
 The role/action registry declares consumer capabilities and interaction overrides. Mounted visible
 renderer consumers acquire exact host/epoch/surface/node presentation claims through
 `state/tsp/presentation-claims.tsx`. Hidden chat pages, hidden split panes, modal sheets and

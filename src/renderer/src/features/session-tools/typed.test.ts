@@ -1,5 +1,6 @@
 import type { HostState, TuiFocus } from "@shared/ipc";
 import type { TspHostSnapshot } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { GuestSnapshot } from "../../collab/lib/client";
 import { SessionController } from "../../state/session";
@@ -43,7 +44,7 @@ let tsp: TspHostSnapshot | null;
 let tspSubmit: ((text: string) => void) | null;
 let tspKeys: ((keys: string) => void) | null;
 let channels: string[];
-const tspListeners = new Set<(snapshot: TspHostSnapshot) => void>();
+const tspListeners = new Set<(patch: TspHostPatch) => void>();
 
 beforeEach(() => {
 	vi.useFakeTimers();
@@ -65,8 +66,8 @@ beforeEach(() => {
 	fake.app.terminalTabId = null;
 	fake.app.openTerminal.mockReset().mockImplementation((id: string) => { fake.app.terminalTabId = id; });
 	vi.stubGlobal("window", { vomp: {
-		on: (channel: string, listener: (snapshot: TspHostSnapshot) => void) => {
-			if (channel === "host:tsp-update") tspListeners.add(listener);
+		on: (channel: string, listener: (patch: TspHostPatch) => void) => {
+			if (channel === "host:tsp-patch") tspListeners.add(listener);
 			return () => tspListeners.delete(listener);
 		},
 		invoke: async (channel: string, _host: string, text: string) => {
@@ -108,6 +109,9 @@ beforeEach(() => {
 });
 
 afterEach(async () => {
+	// End outstanding command watches before disposing their session subscriptions.
+	session.attach({ ...session.getSnapshot().host!, phase: "exited" });
+	await vi.advanceTimersByTimeAsync(0);
 	await session.dispose();
 	await vi.advanceTimersByTimeAsync(1000);
 	vi.useRealTimers();
@@ -294,7 +298,7 @@ function semanticSnapshot(blocked: "overlay" | "screen" | null = null): TspHostS
 function publishTsp(patch: Partial<TspHostSnapshot> = {}, blocked: "overlay" | "screen" | null = null): void {
 	tsp = { ...semanticSnapshot(blocked), ...tsp, surfaces: semanticSnapshot(blocked).surfaces,
 		availability: semanticSnapshot(blocked).availability, revision: (tsp?.revision ?? 0) + 1, ...patch };
-	for (const listener of tspListeners) listener(tsp);
+	for (const listener of tspListeners) listener(tspHostPatch(null, tsp));
 }
 
 function semanticSession(working = false): void {
@@ -327,7 +331,7 @@ function recordedCommand(name: string): string {
 		tsp = { ...current, hostId: "host", generation: 1, revision: (tsp?.revision ?? 0) + 1, lifecycle: "live", documentGeneration: 1, failure: null,
 			availability: { available, reason: available ? null : "Close omp's menu." },
 			surfaces: current.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
-		for (const listener of tspListeners) listener(tsp);
+		for (const listener of tspListeners) listener(tspHostPatch(null, tsp));
 	};
 	while (position < input.afterMessage!) {
 		const message = recording.messages[position++]!;
@@ -478,8 +482,8 @@ describe("TSP slash delivery", () => {
 		await vi.advanceTimersByTimeAsync(20_000);
 		expect(submitted).toEqual([]);
 		expect(session.getSnapshot().queue.map(item => item.text)).toEqual(["/extension-ui-only"]);
-		// Failed readiness does not reinstall an overlay retry hold or loop requests.
-		expect(channels.filter(channel => channel === "host:tsp-snapshot")).toHaveLength(3);
+		// All readiness consumers share one initial read and do not loop requests.
+		expect(channels.filter(channel => channel === "host:tsp-snapshot")).toHaveLength(1);
 	});
 
 	it.each(["exit", "epoch", "generation"] as const)("releases a command hold after %s invalidates its scope", async change => {
@@ -534,8 +538,8 @@ describe("TSP slash delivery", () => {
 	});
 
 	it("releases an editor-back hold when the snapshot request fails", async () => {
-		semanticSession();
 		vi.spyOn(window.vomp, "invoke").mockRejectedValueOnce(new Error("snapshot read failed"));
+		semanticSession();
 		const watch = new TspEditorWatch(session);
 		const back = watch.back();
 		session.holdQueue(back);
@@ -546,23 +550,45 @@ describe("TSP slash delivery", () => {
 	});
 
 	it("keeps a received document authoritative when its initial snapshot request later fails", async () => {
+		const reading = Promise.withResolvers<TspHostSnapshot | null>();
+		vi.spyOn(window.vomp, "invoke").mockReturnValueOnce(reading.promise);
 		semanticSession();
-		vi.spyOn(window.vomp, "invoke").mockRejectedValueOnce(new Error("late snapshot read failure"));
 		const watch = new TspEditorWatch(session);
 		publishTsp({ availability: { available: false, reason: "Wait for omp's editor." } });
 		const ready = watch.ready();
+		reading.reject(new Error("late snapshot read failure"));
 		await vi.advanceTimersByTimeAsync(0);
+		expect(watch.snapshot?.availability.reason).toBe("Wait for omp's editor.");
 		publishTsp();
 		await expect(ready).resolves.toBeUndefined();
 		watch.dispose();
 	});
 
-	it("releases an editor-back hold when main no longer has a semantic snapshot", async () => {
+	it("does not end a readiness wait on a late transitional snapshot older than the live document", async () => {
+		const reading = Promise.withResolvers<TspHostSnapshot | null>();
+		vi.spyOn(window.vomp, "invoke").mockReturnValueOnce(reading.promise);
 		semanticSession();
-		tsp = null;
+		const watch = new TspEditorWatch(session);
+		publishTsp({ availability: { available: false, reason: "Wait for omp's editor." } });
+		const ready = watch.ready();
+		reading.resolve({ ...semanticSnapshot(), revision: 1, lifecycle: "transitioning" });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(watch.ended).toBe(false);
+		publishTsp();
+		await expect(ready).resolves.toBeUndefined();
+		watch.dispose();
+	});
+
+	it("waits for a later document when the shared initial snapshot is empty", async () => {
+		vi.spyOn(window.vomp, "invoke").mockResolvedValueOnce(null);
+		semanticSession();
 		const watch = new TspEditorWatch(session);
 		const back = watch.back();
 		session.holdQueue(back);
+		await vi.advanceTimersByTimeAsync(0);
+		expect(watch.snapshot).toBeNull();
+		expect(session.busy).toBe(true);
+		publishTsp();
 		await expect(back).resolves.toBeUndefined();
 		await vi.advanceTimersByTimeAsync(0);
 		expect(session.busy).toBe(false);

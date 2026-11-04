@@ -1,7 +1,10 @@
 /**
  * Vendored from oh-my-pi v18.15.0, commit 3fedf8d53267e32a6d7521ce725fdcc4a36fdc67.
  * Copyright (c) 2025 Mario Zechner, 2025-2026 Can Bölük, 2026 Stencil Labs, Inc.
- * MIT licensed; see LICENSE in this directory. Only the import path is adapted.
+ * MIT licensed; see LICENSE in this directory. Adapted for visual-omp: the import path, and
+ * exports are cached per node and invalidated along the changed path, so successive snapshots
+ * share every unchanged subtree. Exported nodes, child arrays and props objects are frozen; nested
+ * prop values (spans, items, actions) are shared as omp sent them, so callers must not mutate them.
  */
 /**
  * Reference document applier: applies TSP frames to a node tree the way the
@@ -29,6 +32,8 @@ interface DocNode {
 	p: Record<string, unknown>;
 	c: DocNode[];
 	parent: DocNode | null;
+	/** Cached export; cleared on this node and its ancestors whenever the subtree changes. */
+	out?: TspNode;
 }
 
 const KINDS: ReadonlySet<string> = new Set(TSP_KINDS);
@@ -85,6 +90,7 @@ export class TspDocument {
 			if (!node || node.parent !== this.#root) continue;
 			this.#root.c.splice(this.#root.c.indexOf(node), 1);
 			this.#unregister(node);
+			this.#touch(this.#root);
 		}
 		this.#focus = null;
 	}
@@ -115,10 +121,17 @@ export class TspDocument {
 	}
 
 	#export(node: DocNode): TspNode {
+		if (node.out) return node.out;
 		const out: { id: string; k: TspKind; p?: Record<string, unknown>; c?: TspNode[] } = { id: node.id, k: node.k };
-		if (Object.keys(node.p).length > 0) out.p = { ...node.p };
-		if (node.c.length > 0) out.c = node.c.map(child => this.#export(child));
-		return out as TspNode;
+		if (Object.keys(node.p).length > 0) out.p = Object.freeze({ ...node.p });
+		if (node.c.length > 0) out.c = Object.freeze(node.c.map(child => this.#export(child))) as TspNode[];
+		node.out = Object.freeze(out) as TspNode;
+		return node.out;
+	}
+
+	/** A cached node implies cached descendants, so clearing stops at the first uncached ancestor. */
+	#touch(node: DocNode): void {
+		for (let at: DocNode | null = node; at?.out; at = at.parent) at.out = undefined;
 	}
 
 	#node(id: string): DocNode {
@@ -140,6 +153,7 @@ export class TspDocument {
 				const built = this.#build(wire, parent, new Set());
 				parent.c.splice(index, 0, built);
 				this.#register(built);
+				this.#touch(parent);
 				this.#unsettle(parent);
 				return;
 			}
@@ -153,6 +167,7 @@ export class TspDocument {
 					if (value === null) delete node.p[key];
 					else if (value !== undefined) node.p[key] = value;
 				}
+				this.#touch(node);
 				this.#unsettle(node);
 				return;
 			}
@@ -163,6 +178,7 @@ export class TspDocument {
 				if (mode === "append") node.p.text = this.#text(node) + text;
 				else if (mode === "replace") node.p.text = text;
 				else fail(`unknown text mode ${String(mode)}`);
+				this.#touch(node);
 				this.#unsettle(node);
 				return;
 			}
@@ -173,6 +189,7 @@ export class TspDocument {
 				if (!Number.isInteger(at) || !Number.isInteger(del) || at < 0 || del < 0 || at + del > current.length)
 					fail(`splice range ${at}+${del} outside text of length ${current.length}`);
 				node.p.text = current.slice(0, at) + text + current.slice(at + del);
+				this.#touch(node);
 				this.#unsettle(node);
 				return;
 			}
@@ -192,6 +209,8 @@ export class TspDocument {
 				oldParent.c.splice(oldParent.c.indexOf(node), 1);
 				parent.c.splice(this.#insertIndex(parent, before), 0, node);
 				node.parent = parent;
+				this.#touch(oldParent);
+				this.#touch(parent);
 				this.#unsettle(oldParent);
 				this.#unsettle(node);
 				return;
@@ -203,6 +222,7 @@ export class TspDocument {
 				const parent = node.parent!;
 				parent.c.splice(parent.c.indexOf(node), 1);
 				this.#unregister(node);
+				this.#touch(parent);
 				this.#unsettle(parent);
 				return;
 			}

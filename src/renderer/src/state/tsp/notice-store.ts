@@ -5,6 +5,7 @@ import type { SessionController } from "../../state/session";
 import { TspNoticeProjection, type TspCommandNoticeReservation } from "./notices";
 import { displayedEntries } from "../../chat/branch";
 import { savedParents } from "../../state/history";
+import { tspHost } from "./hosts";
 
 /** Controller-owned subscription, active even while the transcript and omp screen are unmounted. */
 export class TspNoticeStore {
@@ -44,15 +45,17 @@ export class TspNoticeStore {
 			if (this.#host) this.#previousRoomGuest = view.guest;
 			this.#host = host?.hostId ?? null; this.#generation = host?.generation ?? null; this.#identity = host?.sessionId ?? null;
 			if (host) {
-				const hostId = host.hostId;
-				const accept = (snapshot: TspHostSnapshot) => {
-					if (this.#disposed || this.#host !== hostId || snapshot.hostId !== hostId || snapshot.revision <= this.#revision) return;
+				const source = tspHost(host.hostId);
+				const accept = () => {
+					const snapshot = source.getSnapshot();
+					if (this.#disposed || this.#host !== source.hostId || !snapshot || snapshot.revision <= this.#revision) return;
 					if (snapshot.generation !== this.session.getSnapshot().host?.generation) return;
 					this.#revision = snapshot.revision;
 					this.#projection.apply(snapshot); this.#publish();
 				};
-				this.#offTsp = window.vomp.on("host:tsp-update", accept);
-				void window.vomp.invoke("host:tsp-snapshot", hostId).then(snapshot => { if (snapshot) accept(snapshot); }).catch(() => undefined);
+				this.#offTsp = source.subscribe(accept);
+				// Apply an already-shared document after this sync's rotation, as a fresh read would.
+				queueMicrotask(accept);
 			}
 		}
 		if (host && (this.#generation !== host.generation || (this.#identity !== null && host.sessionId !== this.#identity))) {

@@ -2,7 +2,6 @@
  * Driving omp for session tools. Classic hosts use the painted status area to confirm commands.
  * TSP hosts use main's send availability and document ownership; semantic notices report feedback.
  */
-import { TspDocumentStore } from "@shared/tsp/document";
 import { openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { TSP_CLASSIC_ACTION_UNAVAILABLE, type TspHostSnapshot } from "@shared/tsp-host";
 import { commandOutcome, commandOutcomeSpec, type CommandOutcome, type CommandOutcomeSpec } from "@shared/tsp/command-result";
@@ -11,6 +10,7 @@ import { toast } from "@/ui";
 import { isResumeDeclined } from "../../registry/guards";
 import { i18n } from "../../i18n";
 import type { TspCommandNoticeReservation } from "../../state/tsp/notices";
+import { tspHost, type TspHostSource } from "../../state/tsp/hosts";
 import type { SessionController } from "../../state/session";
 import { outputTone } from "./results";
 import { newOutput, parseStatusLine, statusBorderLine } from "./screen";
@@ -66,7 +66,7 @@ export async function statusReadError(session: SessionController, lines: readonl
  * Subscribe before reading or submitting so an overlay opened during the write cannot be missed.
  */
 export class TspEditorWatch {
-	readonly #store = new TspDocumentStore();
+	readonly #source: TspHostSource;
 	readonly #listeners = new Set<() => void>();
 	readonly #off: (() => void)[];
 	readonly #host;
@@ -76,7 +76,6 @@ export class TspEditorWatch {
 	readonly #tools;
 	#epoch: number | null = null;
 	#disposed = false;
-	#readError: unknown = null;
 	constructor(readonly session: SessionController) {
 		const view = session.getSnapshot();
 		this.#host = view.host;
@@ -84,32 +83,24 @@ export class TspEditorWatch {
 		this.#working = view.working;
 		this.#stream = view.guest?.stream;
 		this.#tools = view.guest?.activeTools;
-		const accept = (snapshot: TspHostSnapshot | null) => {
-			if (this.#disposed || !snapshot || snapshot.hostId !== this.#host?.hostId) return;
-			if (!this.#store.accept(snapshot)) return;
-			if (snapshot.generation === this.#host?.generation) this.#epoch ??= snapshot.epoch;
+		this.#source = tspHost(this.#host!.hostId);
+		const changed = () => {
+			if (this.#disposed) return;
+			const snapshot = this.#source.getSnapshot();
+			if (snapshot && snapshot.generation === this.#host?.generation) this.#epoch ??= snapshot.epoch;
 			this.#notify();
 		};
-		this.#off = [
-			window.vomp.on("host:tsp-update", accept),
-			session.subscribe(() => this.#notify()),
-		];
-		void window.vomp.invoke("host:tsp-snapshot", this.#host!.hostId).then(snapshot => {
-			if (snapshot) accept(snapshot);
-			else { this.#readError = new Error("omp's semantic screen is unavailable."); this.#notify(); }
-		}).catch(error => {
-			this.#readError = error;
-			this.#notify();
-		});
+		this.#off = [this.#source.subscribe(changed), session.subscribe(() => this.#notify())];
+		changed();
 	}
 	#notify(): void { for (const listener of this.#listeners) listener(); }
 	get snapshot(): TspHostSnapshot | null {
-		const snapshot = this.#store.getSnapshot();
+		const snapshot = this.#source.getSnapshot();
 		return snapshot?.generation === this.#host?.generation ? snapshot : null;
 	}
 	get ended(): boolean {
 		const view = this.session.getSnapshot();
-		const snapshot = this.#store.getSnapshot();
+		const snapshot = this.#source.getSnapshot();
 		return this.#disposed || view.mode !== "live" || view.host?.hostId !== this.#host?.hostId ||
 			view.host?.generation !== this.#host?.generation || view.host?.sessionId !== this.#host?.sessionId ||
 			this.session.guestClient() !== this.#guest ||
@@ -132,7 +123,7 @@ export class TspEditorWatch {
 			if (this.blocked) throw new OmpBusyError();
 			if (this.available) return true;
 			if (this.ended) throw new Error(this.snapshot?.availability.reason ?? "omp is not running");
-			if (this.#readError && !this.snapshot) throw this.#readError;
+			if (this.#source.failed() && !this.snapshot) throw new Error("omp's semantic screen is unavailable.");
 			return false;
 		}, 8000).catch(error => {
 			// An unavailable capability/editor times out without installing an overlay retry hold.
@@ -180,7 +171,7 @@ export class TspEditorWatch {
 	}
 	/** A queued command found omp's own UI open. Wait for document readiness or scope invalidation. */
 	back(): Promise<void> {
-		return this.#wait(() => this.ended || this.available || (this.#readError !== null && !this.snapshot));
+		return this.#wait(() => this.ended || this.available || (this.#source.failed() && !this.snapshot));
 	}
 	#wait(done: () => boolean, timeoutMs?: number, settled?: () => boolean): Promise<void> {
 		const { promise, resolve, reject } = Promise.withResolvers<void>();

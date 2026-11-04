@@ -65,9 +65,10 @@ describe("upstream TSP document semantics", () => {
 		expect(doc.snapshot().c?.map(node => node.id)).toEqual(["main"]);
 		expect(doc.has("overlay")).toBe(false);
 		expect(doc.focus).toBeNull();
+		// Snapshots share unchanged subtrees with later ones, so they are frozen rather than copied.
 		const snapshot = doc.snapshot();
 		const text = snapshot.c?.[0]?.c?.[0];
-		if (text?.k === "text" && text.p) text.p.text = "external mutation";
+		expect(() => { if (text?.k === "text" && text.p) text.p.text = "external mutation"; }).toThrow(TypeError);
 		expect(doc.get("a")?.p).toMatchObject({ text: "hello" });
 	});
 });

@@ -5,6 +5,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { SessionController } from "../../state/session";
 import type { SessionView } from "../../state/session";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import type { TspHookAnswer } from "@shared/tsp/dialogs";
 import { hookAnswerEvents, hookDialogTarget } from "@shared/tsp/dialogs";
 import { hookQuestions } from "@shared/tsp/question-match";
@@ -43,7 +44,7 @@ let tabId: string;
 let snapshot: TspHostSnapshot;
 let revision: number;
 let invoke: ReturnType<typeof vi.fn>;
-let updates: Set<(snapshot: TspHostSnapshot) => void>;
+let updates: Set<(patch: TspHostPatch) => void>;
 let opened: string[];
 let stopApp: () => void;
 let runtimeErrors: string[];
@@ -59,7 +60,7 @@ function build(documents: FixtureDocuments): TspHostSnapshot {
 }
 function publish(documents: FixtureDocuments) {
 	snapshot = build(documents);
-	for (const listener of updates) listener(snapshot);
+	for (const listener of updates) listener(tspHostPatch(null, snapshot));
 }
 beforeEach(async () => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -67,8 +68,8 @@ beforeEach(async () => {
 	updates = new Set(); opened = []; runtimeErrors = []; revision = 0; autoOpened.tabId = null;
 	window.addEventListener("error", recordError);
 	invoke = vi.fn(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
-	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: (channel: string, listener: (snapshot: TspHostSnapshot) => void) => {
-		if (channel === "host:tsp-update") updates.add(listener);
+	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: (channel: string, listener: (patch: TspHostPatch) => void) => {
+		if (channel === "host:tsp-patch") updates.add(listener);
 		return () => updates.delete(listener);
 	} } });
 	// No omp process or network client is launched. The real controller/store receive recorded host facts.

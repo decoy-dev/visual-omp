@@ -1,7 +1,7 @@
 // @vitest-environment happy-dom
 import { act, createElement, Fragment, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, type Mock, vi } from "vitest";
 import type { SessionController, SessionView } from "../../state/session";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import type * as OmpScreenModule from "../tsp/OmpScreenSheet";
@@ -28,6 +28,7 @@ let root: Root;
 let element: HTMLDivElement;
 let session: SessionController;
 let invoke: ReturnType<typeof vi.fn>;
+let on: Mock;
 function Harness({ card }: { card: boolean }) {
 	const open = useApp(state => state.terminalTabId === "fixture");
 	return createElement(TooltipProvider, null, createElement(Fragment, null,
@@ -50,7 +51,8 @@ beforeEach(() => {
 	const view = { mode: "live", readOnly: false, host: { hostId: "fixture", transport: "tsp", generation: 1, phase: "live", cols: 110, rows: 32, tui: { overlays: 1, focused: "picker", overlayKinds: ["picker"] } } } as unknown as SessionView;
 	session = { tabId: "fixture", hostId: "fixture", subscribe: () => () => {}, getSnapshot: () => view, ensureLive: async () => {}, restart: async () => {} } as unknown as SessionController;
 	invoke = vi.fn(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
-	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: () => () => {} } });
+	on = vi.fn(() => () => {});
+	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on } });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
 afterEach(async () => { await act(async () => root.unmount()); useApp.setState({ terminalTabId: null, sheet: null }); element.remove(); Reflect.deleteProperty(window, "vomp"); });
@@ -62,11 +64,15 @@ it("opens the actual omp sheet over an actual native card and closes it on Escap
 	expect(screen).not.toBeNull();
 	expect(presentationClaims.getSnapshot()).toHaveLength(0);
 	expect(screen.querySelectorAll('[role="option"]')).toHaveLength(4);
+	expect(on.mock.calls).toEqual([["host:tsp-patch", expect.any(Function)]]);
+	expect(invoke.mock.calls.filter(call => call[0] === "host:tsp-snapshot")).toEqual([["host:tsp-snapshot", "fixture"]]);
 	await act(async () => screen.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
 	expect(useApp.getState().terminalTabId).toBeNull();
 	expect(invoke.mock.calls.some(call => ["host:keys", "host:tsp-answer"].includes(String(call[0])))).toBe(false);
 	expect(presentationClaims.getSnapshot()).toHaveLength(1);
 	expect(element.querySelectorAll('[role="radio"]')).toHaveLength(4);
+	expect(on).toHaveBeenCalledOnce();
+	expect(invoke.mock.calls.filter(call => call[0] === "host:tsp-snapshot")).toHaveLength(1);
 });
 it("retains guarded generic Escape cancellation when no native card is available", async () => {
 	await act(async () => root.render(createElement(Harness, { card: false })));

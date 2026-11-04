@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { SessionController, SessionView } from "../../state/session";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import type { TspNode } from "@shared/tsp";
 import type { QuestionMatch } from "@shared/tsp/question-match";
 import { hookQuestions, QuestionArbitrator } from "@shared/tsp/question-match";
@@ -24,7 +25,7 @@ const fake = vi.hoisted(() => ({
 	view: null as SessionView | null,
 	controller: null as unknown as SessionController,
 	tabId: "tab" as string | null,
-	updates: new Set<(snapshot: TspHostSnapshot) => void>(),
+	updates: new Set<(patch: TspHostPatch) => void>(),
 	closeTerminal: vi.fn(), closePage: vi.fn(), closeSheet: vi.fn(), setPaletteOpen: vi.fn(), keys: vi.fn(), invoke: vi.fn(),
 }));
 vi.mock("../../shell/hooks", () => ({ useSessionView: () => fake.view }));
@@ -74,7 +75,7 @@ beforeEach(() => {
 		surfaces: [{ documentGeneration: 1, open: { id: "dock", mode: "inline" }, sequence: 1, closed: false, focus: "editor", suspended: false, settled: [], document: { id: "root", k: "col", c: [{ id: "editor", k: "editor", p: { text: "Draft", sendable: true } }] } }],
 	} : undefined);
 	fake.controller = { ensureLive: async () => undefined, getSnapshot: () => fake.view, keys: fake.keys } as unknown as SessionController;
-	Object.assign(window, { vomp: { platform: "darwin", invoke: fake.invoke, on: (channel: string, listener: (snapshot: TspHostSnapshot) => void) => { if (channel === "host:tsp-update") fake.updates.add(listener); return () => fake.updates.delete(listener); } } });
+	Object.assign(window, { vomp: { platform: "darwin", invoke: fake.invoke, on: (channel: string, listener: (patch: TspHostPatch) => void) => { if (channel === "host:tsp-patch") fake.updates.add(listener); return () => fake.updates.delete(listener); } } });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
 afterEach(async () => { await act(async () => root.unmount()); for (const release of releaseClaims.splice(0)) release(); element.remove(); });
@@ -285,7 +286,7 @@ it("completes the recorded extensions picker by selecting a row and using its kn
 	const closeBoundary = events.find(event => event.body?.ev === "action")!.afterMessage!;
 	for (const message of messages.slice(boundary, closeBoundary)) session.receive({ verb: message.verb!, params: {}, body: JSON.stringify(message.body) });
 	const next = { ...snapshot, revision: snapshot.revision + 1, surfaces: session.snapshot().surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
-	await act(async () => { for (const update of fake.updates) update(next); });
+	await act(async () => { for (const update of fake.updates) update(tspHostPatch(null, next)); });
 	expect([...screen.querySelectorAll("button")].find(button => button.textContent === "Toggle")!.disabled).toBe(false);
 	expect([...screen.querySelectorAll("button")].find(button => button.textContent === "Expand")!.disabled).toBe(true);
 	const close = [...screen.querySelectorAll("button")].find(button => button.textContent === "Close")!;

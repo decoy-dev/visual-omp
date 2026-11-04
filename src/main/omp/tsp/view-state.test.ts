@@ -1,24 +1,16 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { expect, it, vi } from "vitest";
+import { expect, it } from "vitest";
 import { TspDocument } from "./apply";
 import { TspStream } from "./stream";
 import type { TspHostSnapshot, TspSurfaceSnapshot } from "../../../shared/tsp-host";
 import type { TspFrame, TspOpen } from "../../../shared/tsp";
-import { TspDocumentStore } from "../../../shared/tsp/document";
 import { composer, openOverlay, screenSurface, unclaimed } from "../../../shared/tsp/view-state";
 import { isClaimed, TSP_ROLES } from "../../../shared/tsp/roles";
 
 function snap(revision = 1): TspHostSnapshot {
 	return { hostId: "host", generation: 1, epoch: 1, availability: { available: true, reason: null }, revision, negotiated: true, lifecycle: "live", documentGeneration: 1, failure: null, surfaces: [{ documentGeneration: 1, open: { id: "s:1", mode: "inline", role: "omp.session" }, sequence: revision, closed: false, focus: "editor", suspended: false, settled: [], document: { id: "s:1", k: "col", c: [{ id: "dock", k: "col", p: { role: "omp.editor" }, c: [{ id: "editor", k: "editor", p: { sendable: true, text: "draft" } }] }] } }] };
 }
-it("reuses unchanged nodes on replacement and notifies subscriptions only for changed nodes", () => {
-	const store = new TspDocumentStore(); store.accept(snap()); const original = store.getNode("s:1", "editor"); const listener = vi.fn(); store.subscribeNode("s:1", "editor", listener);
-	store.accept(snap(2)); expect(store.getNode("s:1", "editor")).toBe(original); expect(listener).not.toHaveBeenCalled();
-	const changed = snap(3); changed.surfaces[0]!.document.c![0]!.c![0]!.p = { text: "changed", sendable: true };
-	store.accept(changed); expect(listener).toHaveBeenCalledOnce(); expect(store.accept(snap(2))).toBe(false);
-	store.accept({ ...snap(4), epoch: 2 }); expect(store.getNode("s:1", "editor")).not.toBe(original);
-});
 it("derives focused sendable composer and screen blocking from inherited roles", () => {
 	const surfaces = snap().surfaces;
 	expect(composer(surfaces)?.node.id).toBe("editor"); expect(openOverlay(surfaces)).toBeNull(); expect(screenSurface(surfaces)).toBeNull();

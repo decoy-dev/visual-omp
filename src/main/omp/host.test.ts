@@ -821,6 +821,12 @@ function tspMessage(verb: string, body: unknown): void {
 	pty.data?.(Buffer.from(`\x1b_tsp;${verb};${JSON.stringify(body)}\x1b\\`));
 }
 
+/** Host state as the renderer sees it: reading the published snapshot flushes pending frames. */
+function published(): SessionHost["state"] {
+	host.publishedTspSnapshot();
+	return host.state;
+}
+
 function tspComposer(surface = "s:1", editor = "editor", sendable = true): void {
 	tspMessage("o", { id: surface, mode: "inline", role: "omp.session" });
 	tspMessage("f", { sf: surface, s: 1, ops: [
@@ -1379,7 +1385,7 @@ describe("TSP side-question writer", () => {
 			{ id: "btw", k: "overlay", p: { role: "omp.overlay.btwHistory" }, c: [{ id: "close", k: "button", p: { text: "Close", actions: { click: "close" } } }] },
 		] }]] });
 		await asking; await refused;
-		expect(host.state.tspAvailability).toMatchObject({ available: false, reason: "Put away the side question to send a message.", reasonCode: "btw" });
+		expect(published().tspAvailability).toMatchObject({ available: false, reason: "Put away the side question to send a message.", reasonCode: "btw" });
 		expect(pty.writes.mock.calls.some(([data]) => String(data).includes('"ev":"ack","sf":"s:1","s":2'))).toBe(true);
 		expect(pty.writes.mock.calls.some(([data]) => String(data).includes("Do not swallow"))).toBe(false);
 		expect(pty.keys).not.toHaveBeenCalled(); expect(pty.screenReads).not.toHaveBeenCalled();
@@ -1516,11 +1522,35 @@ describe("opt-in semantic transport", () => {
 		const snapshot = host.tspSnapshot();
 		expect(snapshot).toMatchObject({ hostId: host.id, generation: 1, negotiated: true });
 		expect(snapshot?.surfaces[0]?.sequence).toBe(1);
-		expect(broadcast).toHaveBeenCalledWith("host:tsp-update", expect.objectContaining({ generation: 1 }));
+		expect(broadcast).toHaveBeenCalledWith("host:tsp-patch", expect.objectContaining({ generation: 1 }));
 		await host.tspEvent(1, { ev: "send", sf: "s:1", id: "editor", text: "/btw" });
 		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"text":"/btw"'));
 		await expect(host.tspEvent(0, { ev: "send", sf: "s:1", id: "editor", text: "/btw" })).rejects.toThrow("session changed");
 		await expect(host.tspEvent(1, { ev: "ack", sf: "s:1", s: 99 })).rejects.toThrow("main-owned");
+	});
+
+	it("publishes streamed frames once per screen refresh as a patch of the changed nodes", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "main", "s:1", null, { id: "main", k: "col", c: [{ id: "reply", k: "text", p: { text: "" } }] }]] });
+		const base = host.publishedTspSnapshot()!.revision;
+		vi.mocked(broadcast).mockClear();
+		const sent = (channel: string) => vi.mocked(broadcast).mock.calls.filter(call => call[0] === channel).map(call => call[1]);
+		for (const [index, word] of ["one", " two", " three"].entries()) tspMessage("f", { sf: "s:1", s: 3 + index, ops: [["text", "reply", "append", word]] });
+		expect(sent("host:tsp-patch")).toEqual([]);
+		await vi.waitFor(() => expect(sent("host:tsp-patch")).toHaveLength(1));
+		expect(sent("host:tsp-patch")[0]).toMatchObject({ base, surfaces: [{ reset: false, nodes: [{ id: "reply", k: "text", p: { text: "one two three" } }] }] });
+		// Transcript text leaves the composer and availability alone, so host state is not re-sent.
+		tspMessage("f", { sf: "s:1", s: 6, ops: [["text", "reply", "append", "!"]] });
+		vi.mocked(broadcast).mockClear();
+		host.publishedTspSnapshot();
+		expect(vi.mocked(broadcast).mock.calls.map(call => call[0])).toEqual(["host:tsp-patch"]);
+		// Any other update publishes at once, carrying frames still waiting for the refresh.
+		tspMessage("f", { sf: "s:1", s: 7, ops: [["text", "reply", "append", "?"]] });
+		vi.mocked(broadcast).mockClear();
+		tspMessage("o", { id: "settings", mode: "screen" });
+		expect(sent("host:tsp-patch")).toMatchObject([{ surfaces: [{ nodes: [{ id: "reply", p: { text: "one two three!?" } }] }, { reset: true }] }]);
 	});
 
 	it("keeps matched collab questions read-only through both event and answer routes", async () => {
@@ -2019,7 +2049,7 @@ describe("opt-in semantic transport", () => {
 		expect(host.state.tspFailed).toBe(true);
 		expect(host.state.tspAvailability).toMatchObject({ available: false, reason: expect.stringContaining(diagnostic) });
 		expect(broadcast).toHaveBeenCalledWith("host:state", expect.objectContaining({ hostId: host.id, tspFailed: true }));
-		expect(broadcast).toHaveBeenCalledWith("host:tsp-update", expect.objectContaining({ lifecycle: "failed" }));
+		expect(broadcast).toHaveBeenCalledWith("host:tsp-patch", expect.objectContaining({ lifecycle: "failed" }));
 		// A fresh hello is the only protocol transition that clears the failed epoch.
 		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
 		expect(host.state.tspFailed).toBe(false);
@@ -2076,7 +2106,7 @@ describe("opt-in semantic transport", () => {
 		tspComposer(); await connect();
 		expect(host.state.tspAvailability?.available).toBe(true);
 		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [{ id: "overlay", k: "overlay", p: { modal: false } }] }]] });
-		expect(host.state.tspAvailability).toMatchObject({ available: false, reason: expect.stringContaining("menu") });
+		expect(published().tspAvailability).toMatchObject({ available: false, reason: expect.stringContaining("menu") });
 		await expect(host.submit("hello")).rejects.toThrow("menu");
 		tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "overlay"]] });
 		tspMessage("o", { id: "settings", mode: "screen" });
@@ -2096,11 +2126,11 @@ describe("opt-in semantic transport", () => {
 		await expect(host.submit("Use Postgres.")).rejects.toThrow("not ready");
 		expect(pty.writes.mock.calls.some(([data]) => data.includes('"ev":"send"'))).toBe(false);
 		tspMessage("f", { sf: "s:1", s: 2, ops: [["suspend"]] });
-		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
+		expect(published().tspAvailability?.reasonCode).toBeUndefined();
 		tspMessage("f", { sf: "s:1", s: 3, ops: [["resume"]] });
-		expect(host.state.tspAvailability?.reasonCode).toBe("ask-editor");
+		expect(published().tspAvailability?.reasonCode).toBe("ask-editor");
 		tspMessage("f", { sf: "s:1", s: 4, ops: [["add", "menu", "layer", null, { id: "menu", k: "overlay", p: { head: "Extension menu" } }]] });
-		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
+		expect(published().tspAvailability?.reasonCode).toBeUndefined();
 		tspMessage("f", { sf: "s:1", s: 5, ops: [["del", "menu"]] });
 		tspMessage("o", { id: "settings", mode: "screen" });
 		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
@@ -2111,7 +2141,7 @@ describe("opt-in semantic transport", () => {
 		expect(host.tspSnapshot()?.lifecycle).toBe("transitioning");
 		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
 		tspMessage("f", { sf: "s:1", s: 6, ops: [] });
-		expect(host.state.tspAvailability?.reasonCode).toBe("ask-editor");
+		expect(published().tspAvailability?.reasonCode).toBe("ask-editor");
 		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
 		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
 	});
@@ -2124,7 +2154,7 @@ describe("opt-in semantic transport", () => {
 		tspMessage("f", { sf: "s:1", s: 2, ops: [["add", "layer", "s:1", null, { id: "layer", k: "col", c: [
 			{ id: "hook", k: "overlay", p: { role: "omp.overlay.hook-select", head: "Choose" }, c: [{ id: "pick", k: "picker", p: { items: [{ id: "yes", label: "Yes" }] } }] },
 		] }]] });
-		expect(host.state.tspAvailability?.reason).toBe("Answer omp's question before sending a message.");
+		expect(published().tspAvailability?.reason).toBe("Answer omp's question before sending a message.");
 		host.tspQuestions({ hostId: host.id, generation: 1, epoch, connection: 1, revision: 1, connected: true, requests: [{ reqId: 4, kind: "select", title: "Choose", options: ["Yes"] }] });
 		expect(host.state.tspAvailability).toEqual({ available: false, reason: "Answer the question card before sending a message.", reasonCode: "matched-question", questionReqId: 4 });
 		expect(host.tspSnapshot()?.availability).toEqual(host.state.tspAvailability);
@@ -2135,7 +2165,7 @@ describe("opt-in semantic transport", () => {
 		expect(host.state.tspAvailability?.reason).toBe("Answer omp's question before sending a message.");
 		expect(host.state.tspAvailability?.reasonCode).toBeUndefined();
 		tspMessage("f", { sf: "s:1", s: 3, ops: [["del", "hook"], ["add", "menu", "layer", null, { id: "menu", k: "overlay", p: { head: "Other menu" } }]] });
-		expect(host.state.tspAvailability?.reason).toBe("Close the open omp menu before sending a message.");
+		expect(published().tspAvailability?.reason).toBe("Close the open omp menu before sending a message.");
 	});
 
 	it("resets documents and rejects a previous epoch when a second hello reuses the PTY", async () => {

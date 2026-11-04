@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { BtwState } from "@shared/contracts/btw";
 import type { TspHostSnapshot } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { projectBtw } from "@shared/tsp/btw";
 import { SessionController, type SessionView } from "../../state/session";
 import { controllerFor, currentDock, useApp } from "../../state/app";
@@ -39,7 +40,7 @@ let opened: string[];
 let stopApp: () => void;
 let revision: number;
 let documents: FixtureDocuments;
-const hostUpdates = new Set<(snapshot: TspHostSnapshot) => void>();
+const hostUpdates = new Set<(patch: TspHostPatch) => void>();
 const btwUpdates = new Set<(state: BtwState) => void>();
 const originalVomp = window.vomp;
 
@@ -51,7 +52,7 @@ function Harness() {
 function publish() {
 	snapshot = { ...snapshot, revision: ++revision };
 	state = { ...state, revision };
-	for (const listener of hostUpdates) listener(snapshot);
+	for (const listener of hostUpdates) listener(tspHostPatch(null, snapshot));
 	for (const listener of btwUpdates) listener(state);
 }
 beforeEach(async () => {
@@ -93,7 +94,7 @@ beforeEach(async () => {
 			}
 		},
 		on: (channel: string, listener: (payload: unknown) => void) => {
-			if (channel === "host:tsp-update") hostUpdates.add(listener);
+			if (channel === "host:tsp-patch") hostUpdates.add(listener);
 			if (channel === "btw:changed") btwUpdates.add(listener);
 			return () => { hostUpdates.delete(listener); btwUpdates.delete(listener); };
 		},

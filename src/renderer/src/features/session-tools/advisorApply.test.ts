@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { AdvisorScope } from "@shared/contracts/advisor";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { advisorActionEvents, advisorOverlay, type TspAdvisorAction } from "@shared/tsp/advisor";
 import { composer, openOverlay, screenSurface, unclaimed } from "@shared/tsp/view-state";
 import type { SessionController } from "../../state/session";
@@ -13,7 +14,7 @@ import { applyAdvisorConfig } from "./advisorApply";
 import { AdvisorEditor } from "./AdvisorSheet";
 import "../../i18n";
 
-const bridge = vi.hoisted(() => ({ invoke: vi.fn(), listeners: new Set<(snapshot: TspHostSnapshot) => void>(), toast: vi.fn() }));
+const bridge = vi.hoisted(() => ({ invoke: vi.fn(), listeners: new Set<(patch: TspHostPatch) => void>(), toast: vi.fn() }));
 vi.mock("../../state/app", () => ({ controllerFor: vi.fn() }));
 vi.mock("./pickers", () => ({ ModelList: () => null }));
 vi.mock("@/ui", async () => {
@@ -81,7 +82,8 @@ class Replay {
 	}
 	publish() {
 		this.view = this.readView();
-		for (const listener of bridge.listeners) listener(this.snapshot());
+		const patch = tspHostPatch(null, this.snapshot());
+		for (const listener of bridge.listeners) listener(patch);
 		for (const listener of this.listeners) listener();
 	}
 	consume(event: TspRendererEvent) {
@@ -98,9 +100,9 @@ class Replay {
 beforeEach(() => {
 	vi.useFakeTimers(); bridge.invoke.mockReset(); bridge.listeners.clear(); bridge.toast.mockClear();
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-	Object.assign(window, { vomp: { invoke: bridge.invoke, on: (channel: string, listener: (snapshot: TspHostSnapshot) => void) => { if (channel === "host:tsp-update") bridge.listeners.add(listener); return () => bridge.listeners.delete(listener); } } });
+	Object.assign(window, { vomp: { invoke: bridge.invoke, on: (channel: string, listener: (patch: TspHostPatch) => void) => { if (channel === "host:tsp-patch") bridge.listeners.add(listener); return () => bridge.listeners.delete(listener); } } });
 });
-afterEach(() => { vi.useRealTimers(); });
+afterEach(async () => { await act(async () => {}); vi.useRealTimers(); });
 
 it.each(["user", "project"] as const)("replays %s advisor apply by declared ids and finishes preservation after departure", async scope => {
 	const replay = new Replay(scope); replay.defer = true;

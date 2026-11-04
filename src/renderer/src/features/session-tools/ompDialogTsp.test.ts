@@ -2,12 +2,12 @@
 import { act, createElement, Fragment, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { TspDocumentStore } from "@shared/tsp/document";
 import { hookAnswerEvents, hookDialogTarget } from "@shared/tsp/dialogs";
 import { hookQuestions, QuestionArbitrator } from "@shared/tsp/question-match";
 import { openOverlay, unclaimed } from "@shared/tsp/view-state";
 import type { TspHookAnswer } from "@shared/tsp/dialogs";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { FixtureDocuments, loadFixtureRecording } from "../tsp/testing/documents";
 import { OmpDialogCard } from "./OmpDialogCard";
 import { currentHook, nativeDialog, waitForNodeToLeave } from "./ompDialogTsp";
@@ -25,7 +25,7 @@ const classics = import.meta.glob<string>("./fixtures/omp-dialogs/*.txt", { quer
 const parity = Object.entries(classics).filter(([, text]) => parseOmpDialog(text.split("\n"))).map(([path]) => path.split("/").at(-1)!.replace(".txt", ""));
 let root: Root;
 let element: HTMLDivElement;
-let listeners: Set<(snapshot: TspHostSnapshot) => void>;
+let listeners: Set<(patch: TspHostPatch) => void>;
 let snapshot: TspHostSnapshot;
 let invoke: ReturnType<typeof vi.fn>;
 let session: SessionController;
@@ -33,7 +33,7 @@ let emitted: TspRendererEvent[];
 let complete: (() => void) | null;
 const scope = { hostId: "fixture", generation: 1, epoch: 1 };
 const view = { mode: "live", readOnly: false, host: { hostId: "fixture", transport: "tsp", generation: 1 } } as unknown as SessionView;
-function publish(next: TspHostSnapshot) { snapshot = next; for (const listener of listeners) listener(next); }
+function publish(next: TspHostSnapshot) { snapshot = next; for (const listener of listeners) listener(tspHostPatch(null, next)); }
 function capture(name: string) {
 	const recording = loadFixtureRecording(name);
 	const events = recording.inputs.filter(input => "body" in input && ["activate", "edit", "action"].includes(input.body.ev));
@@ -44,7 +44,7 @@ function capture(name: string) {
 	for (const message of recording.messages.slice(0, boundary)) documents.receive({ ...message, body: JSON.stringify(message.body) });
 	const arb = new QuestionArbitrator();
 	arb.update(scope, { ...scope, connection: 1, revision: 1, connected: true, requests: [] });
-	const snap = (): TspHostSnapshot => ({ ...documents.snapshot(), ...scope, revision: (snapshot?.revision ?? 0) + 1, lifecycle: "live", documentGeneration: 1, failure: null, availability: { available: false, reason: "Question open" }, questionMatches: arb.matches(scope, hookQuestions(documents.snapshot().surfaces, 1)), surfaces: documents.snapshot().surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) });
+	const snap = (): TspHostSnapshot => structuredClone({ ...documents.snapshot(), ...scope, revision: (snapshot?.revision ?? 0) + 1, lifecycle: "live", documentGeneration: 1, failure: null, availability: { available: false, reason: "Question open" }, questionMatches: arb.matches(scope, hookQuestions(documents.snapshot().surfaces, 1)), surfaces: documents.snapshot().surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) });
 	snapshot = snap();
 	complete = () => { for (const message of recording.messages.slice(boundary)) documents.receive({ ...message, body: JSON.stringify(message.body) }); publish(snap()); };
 	return { recording, expected, documents, arb, snap };
@@ -60,7 +60,7 @@ beforeEach(() => {
 			emitted.push(...hookAnswerEvents(target.node, answer));
 		}
 	});
-	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: (_channel: string, listener: (snapshot: TspHostSnapshot) => void) => { listeners.add(listener); return () => listeners.delete(listener); } } });
+	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: (channel: string, listener: (patch: TspHostPatch) => void) => { if (channel === "host:tsp-patch") listeners.add(listener); return () => listeners.delete(listener); } } });
 	session = { hostId: "fixture", getSnapshot: () => view, subscribe: () => () => {} } as unknown as SessionController;
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
@@ -143,11 +143,13 @@ it("shows calm completion for a losing local answer whose node has already gone"
 	await render(); await button("Choose option"); expect(element.querySelector('[role="alert"]')).toBeNull(); expect(element.querySelector('[role="status"]')?.textContent).toContain("closed");
 });
 it("waits for node departure without polling and ends on scope changes", async () => {
-	capture("hook-input"); const store = new TspDocumentStore(); store.accept(snapshot);
+	capture("hook-input"); let current = snapshot; const watchers = new Set<() => void>();
+	const source = { getSnapshot: () => current, subscribe: (listener: () => void) => { watchers.add(listener); return () => { watchers.delete(listener); }; } };
+	const update = (next: TspHostSnapshot) => { current = next; for (const listener of watchers) listener(); };
 	const target = hookDialogTarget(snapshot.surfaces)!; const settled = vi.fn();
-	const waiting = waitForNodeToLeave(store, snapshot, target.surface.open.id, target.node.id).then(settled);
-	store.accept({ ...snapshot, revision: snapshot.revision + 1 }); await Promise.resolve(); expect(settled).not.toHaveBeenCalled();
-	store.accept({ ...snapshot, revision: snapshot.revision + 2, epoch: 2 }); await waiting; expect(settled).toHaveBeenCalledOnce();
+	const waiting = waitForNodeToLeave(source, snapshot, target.surface.open.id, target.node.id).then(settled);
+	update({ ...snapshot, revision: snapshot.revision + 1 }); await Promise.resolve(); expect(settled).not.toHaveBeenCalled();
+	update({ ...snapshot, revision: snapshot.revision + 2, epoch: 2 }); await waiting; expect(settled).toHaveBeenCalledOnce();
 	expect(currentHook(snapshot, "other", 1)).toBeNull(); expect(currentHook(snapshot, "fixture", 2)).toBeNull();
 });
 it("keeps custom extension rows unclaimed for the semantic fallback", () => {

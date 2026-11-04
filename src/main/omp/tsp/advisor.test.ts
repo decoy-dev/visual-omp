@@ -97,7 +97,7 @@ it("refuses advisor writes while an approval exists behind the fullscreen prefs 
 
 it.each(["foreign-role", "inline", "title", "file-id", "file-title", "missing-action", "wrong-action", "wrong-control", "duplicate-action", "editing", "editor-child"] as const)("leaves %s advisor-like prefs unclaimed and unavailable to the driver", invalid => {
 	const h = harness(); openAdvisor(h);
-	const surface = h.session.snapshot().surfaces[0]!;
+	const surface = structuredClone(h.session.snapshot().surfaces[0]!);
 	const node = surface.document.c![0]!.c![0]!;
 	if (node.k !== "prefs" || !node.p) throw new Error("Expected recorded prefs");
 	if (invalid === "foreign-role") node.p.role = "other.settings";
@@ -123,7 +123,7 @@ it.each(["foreign-role", "inline", "title", "file-id", "file-title", "missing-ac
 
 it("refuses duplicate advisor candidates within a screen and across screens", () => {
 	const h = harness(); openAdvisor(h);
-	const surface = h.session.snapshot().surfaces[0]!;
+	const surface = structuredClone(h.session.snapshot().surfaces[0]!);
 	const duplicate = structuredClone(surface);
 	duplicate.open.id = "s:3";
 	expect(advisorOverlay([surface, duplicate])).toBeNull();

@@ -3,7 +3,7 @@ import { type ReactNode, useContext, useEffect, useLayoutEffect, useRef, useStat
 import { useTranslation } from "react-i18next";
 import type { BtwState, BtwStatus, BtwTopic, BtwTopicRef } from "@shared/contracts/btw";
 import type { HostState } from "@shared/ipc";
-import { TspDocumentStore } from "@shared/tsp/document";
+import { tspHost, type TspHostSource } from "../../state/tsp/hosts";
 import { btwTopicKey, projectBtw, sameBtwTopic, type BtwProjection } from "@shared/tsp/btw";
 import { TSP_ACTIONS } from "@shared/tsp/roles";
 import { errorText } from "@shared/errors";
@@ -40,7 +40,7 @@ function panelPutAwayKey(host: Pick<HostState, "hostId" | "generation" | "tspEpo
 }
 
 /** One native operation survives pane remounts; the renderer deadline never replays an outstanding close. */
-export function putAwayBtwPanel(session: SessionController, host: HostState, projection: BtwProjection, store: TspDocumentStore): Promise<void> {
+export function putAwayBtwPanel(session: SessionController, host: HostState, projection: BtwProjection, store: TspHostSource): Promise<void> {
 	let operations = panelPutAways.get(session);
 	if (!operations) { operations = new Map(); panelPutAways.set(session, operations); }
 	const key = panelPutAwayKey(host, projection);
@@ -56,8 +56,9 @@ export function putAwayBtwPanel(session: SessionController, host: HostState, pro
 	let latest = store.getSnapshot();
 	const finished = () => !latest || latest.generation !== host.generation || latest.epoch !== host.tspEpoch
 		|| projectBtw(latest.surfaces)?.nodeId !== projection.nodeId;
-	const off = window.vomp.on("host:tsp-update", next => {
-		if (next.hostId !== host.hostId || latest && next.revision <= latest.revision) return;
+	const off = store.subscribe(() => {
+		const next = store.getSnapshot();
+		if (!next || next.hostId !== host.hostId || latest && next.revision <= latest.revision) return;
 		latest = next;
 		if (finished()) documentClosed.resolve();
 	});
@@ -116,7 +117,7 @@ export async function openBtwDrawer(session: SessionController, host: HostState,
 	if (epoch === undefined) throw new Error("Waiting for omp to open its semantic screen.");
 	btwOpenings.get(session)?.stop();
 	const ready = Promise.withResolvers<void>();
-	const store = new TspDocumentStore();
+	const store = tspHost(host.hostId);
 	let seen = false;
 	let closing = false;
 	let stopped = false;
@@ -147,9 +148,9 @@ export async function openBtwDrawer(session: SessionController, host: HostState,
 		request.error = i18n.t("panes:btw.openingFailed");
 		ready.resolve(); notify();
 	}, 8000);
-	const off = window.vomp.on("host:tsp-update", next => {
-		if (next.hostId !== host.hostId || next.generation !== host.generation || next.epoch !== host.tspEpoch || !current()) return;
-		store.accept(next);
+	const off = store.subscribe(() => {
+		const next = store.getSnapshot();
+		if (!next || next.generation !== host.generation || next.epoch !== host.tspEpoch || !current()) return;
 		const projection = projectBtw(next.surfaces);
 		if (!projection) { if (seen) request.stop(); return; }
 		seen = true;
@@ -180,7 +181,7 @@ export async function openBtwDrawer(session: SessionController, host: HostState,
 }
 
 /** All drawer dismissal gestures share one native close, completion toast and focus restoration. */
-export function finishBtwDrawer(session: SessionController, host: HostState, projection: BtwProjection, store: TspDocumentStore): Promise<void> {
+export function finishBtwDrawer(session: SessionController, host: HostState, projection: BtwProjection, store: TspHostSource): Promise<void> {
 	if (projectBtw(store.getSnapshot()?.surfaces ?? [])?.nodeId !== projection.nodeId) return Promise.resolve();
 	const result = putAwayBtwPanel(session, host, projection, store);
 	const operation = panelPutAways.get(session)!.get(panelPutAwayKey(host, projection))!;

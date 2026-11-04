@@ -1,5 +1,6 @@
 // @vitest-environment happy-dom
 import type { TspHostSnapshot } from "@shared/tsp-host";
+import { tspHostPatch } from "@shared/tsp/patch";
 import { act, createElement, type KeyboardEvent as ReactKeyboardEvent, type PropsWithChildren, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -68,7 +69,7 @@ beforeEach(() => {
 	Object.assign(window, { vomp: { invoke: fake.invoke, on: fake.on } });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
-afterEach(async () => { await act(async () => root.unmount()); element.remove(); vi.useRealTimers(); });
+afterEach(async () => { await act(async () => root.unmount()); await vi.runAllTicks(); element.remove(); vi.useRealTimers(); });
 
 it("shows the omp screen without mounting xterm, polling painted titles or resizing the classic terminal", async () => {
 	await render();
@@ -79,7 +80,7 @@ it("shows the omp screen without mounting xterm, polling painted titles or resiz
 	expect(element.querySelector("h2")?.textContent).toBe("omp screen");
 	expect(element.textContent).toContain("Show raw outline");
 	expect(fake.invoke.mock.calls.map(call => call[0])).toEqual(["host:tsp-snapshot"]);
-	expect(fake.on.mock.calls.map(call => call[0])).toEqual(["host:tsp-update"]);
+	expect(fake.on.mock.calls.map(call => call[0])).toEqual(["host:tsp-patch"]);
 	await act(async () => terminalSheet.requestClose?.()); await render();
 	expect(fake.closeTerminal).toHaveBeenCalledOnce();
 	expect(fake.keys).not.toHaveBeenCalled();
@@ -119,10 +120,10 @@ it.each(["epoch", "generation"])("clears local tree selection when the %s change
 	expect(element.querySelectorAll('[role="option"]')[1]?.getAttribute("aria-selected")).toBe("true");
 	const generation = transition === "generation" ? 3 : 2;
 	const epoch = transition === "epoch" ? 2 : 1;
-	const update = fake.on.mock.calls.find(call => call[0] === "host:tsp-update")![1];
+	const update = fake.on.mock.calls.find(call => call[0] === "host:tsp-patch")![1];
 	await act(async () => {
 		fake.view = { ...fake.view!, host: { ...fake.view!.host!, generation } };
-		update({ ...initial, generation, epoch, revision: 2, documentGeneration: generation, surfaces: initial.surfaces.map(surface => ({ ...surface, documentGeneration: generation })) });
+		update(tspHostPatch(null, { ...initial, generation, epoch, revision: 2, documentGeneration: generation, surfaces: initial.surfaces.map(surface => ({ ...surface, documentGeneration: generation })) }));
 		root.render(createElement(TerminalSheetHost));
 	});
 	await act(async () => element.querySelector('[role="listbox"]')!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));

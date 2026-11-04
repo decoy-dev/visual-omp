@@ -1,21 +1,12 @@
-import { TspDocumentStore } from "@shared/tsp/document";
-import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
+import { tspHost, type TspHostSource } from "./hosts";
 
-/** Subscribe before fetching. Revision ordering rejects a late initial read. */
+const none: TspHostSource = { hostId: "", getSnapshot: () => null, failed: () => false, subscribe: () => () => {} };
+
+/** The host's shared omp screen documents; every component reading one host shares one copy. */
 export function useTsp(hostId: string | null) {
-	const store = useMemo(() => new TspDocumentStore(), [hostId]);
-	const [failed, setFailed] = useState(false);
-	useEffect(() => {
-		if (!hostId) return;
-		let live = true;
-		setFailed(false);
-		const accept = (next: Parameters<TspDocumentStore["accept"]>[0] | null) => {
-			if (live && next?.hostId === hostId) { store.accept(next); setFailed(false); }
-		};
-		const off = window.vomp.on("host:tsp-update", accept);
-		void window.vomp.invoke("host:tsp-snapshot", hostId).then(accept).catch(() => { if (live && !store.getSnapshot()) setFailed(true); });
-		return () => { live = false; off(); };
-	}, [hostId, store]);
+	const store = useMemo(() => hostId ? tspHost(hostId) : none, [hostId]);
 	const snapshot = useSyncExternalStore(store.subscribe, store.getSnapshot);
+	const failed = useSyncExternalStore(store.subscribe, store.failed);
 	return { snapshot, failed, store };
 }

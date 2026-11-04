@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { createRoot } from "react-dom/client";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import { hookDialogTarget } from "@shared/tsp/dialogs";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { OmpDialogCard } from "../../session-tools/OmpDialogCard";
 import type { SessionController, SessionView } from "../../../state/session";
 import { useApp } from "../../../state/app";
@@ -32,7 +33,7 @@ interface Gate {
 	buttonVisible(button: HTMLButtonElement): boolean;
 	showPlan(snapshot: TspHostSnapshot): void;
 }
-const state = window as unknown as { gateSnapshot: TspHostSnapshot; gateListeners: Set<(snapshot: TspHostSnapshot) => void>; gate: Gate };
+const state = window as unknown as { gateSnapshot: TspHostSnapshot; gateListeners: Set<(patch: TspHostPatch) => void>; gate: Gate };
 let view = { mode: "live", readOnly: false, host: { hostId: "gate", generation: 1, phase: "live", transport: "tsp", cols: 80, rows: 24 } } as unknown as SessionView;
 const sessionListeners = new Set<() => void>();
 const controller = { tabId: "gate", hostId: "gate", projectPath: "/tmp/vomp-fixture", sessionFile: null, getSnapshot: () => view, subscribe: (listener: () => void) => { sessionListeners.add(listener); return () => sessionListeners.delete(listener); }, ensureLive: async () => {}, restart: async () => {} } as unknown as SessionController;
@@ -64,7 +65,8 @@ function Harness() {
 			state.gateSnapshot = snapshot;
 			view = { ...view, mode: snapshot.generation === 0 ? "starting" : "live", host: { ...view.host!, generation: snapshot.generation, phase: snapshot.generation === 0 ? "connecting" : "live", link: null } };
 			for (const listener of sessionListeners) listener();
-			for (const listener of state.gateListeners) listener(snapshot);
+			const patch = tspHostPatch(null, snapshot);
+			for (const listener of state.gateListeners) listener(patch);
 		};
 		state.gate = {
 			calls, buttonVisible, update, view: () => view,

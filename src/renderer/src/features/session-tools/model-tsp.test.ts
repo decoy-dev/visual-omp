@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import type { ModelInfo } from "@shared/contracts/config";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { composer, openOverlay, walkNodes } from "@shared/tsp/view-state";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, createElement } from "react";
@@ -15,10 +16,10 @@ import { TooltipProvider } from "../../ui/Tooltip";
 import "../../i18n";
 
 const bridge = vi.hoisted(() => {
-	const state = { invoke: vi.fn(), listeners: new Set<(snapshot: TspHostSnapshot) => void>(), toast: vi.fn() };
+	const state = { invoke: vi.fn(), listeners: new Set<(patch: TspHostPatch) => void>(), toast: vi.fn() };
 	Object.defineProperty(window, "vomp", { configurable: true, value: {
-		on: (channel: string, listener: (snapshot: TspHostSnapshot) => void) => {
-			if (channel === "host:tsp-update") state.listeners.add(listener);
+		on: (channel: string, listener: (patch: TspHostPatch) => void) => {
+			if (channel === "host:tsp-patch") state.listeners.add(listener);
 			return () => state.listeners.delete(listener);
 		},
 		invoke: (...args: unknown[]) => state.invoke(...args),
@@ -75,7 +76,7 @@ class Replay {
 		this.publish();
 	}
 	snapshot(): TspHostSnapshot {
-		const document = this.docs.snapshot();
+		const document = structuredClone(this.docs.snapshot());
 		const available = !!composer(document.surfaces) && !openOverlay(document.surfaces);
 		const snapshot: TspHostSnapshot = { ...document, hostId: "host", generation: 1, revision: ++this.revision, lifecycle: "live", documentGeneration: 1, failure: null,
 			availability: { available, reason: available ? null : "Close omp's menu first." }, surfaces: document.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
@@ -85,7 +86,7 @@ class Replay {
 	publish(): void {
 		this.view = this.readView();
 		const snapshot = this.snapshot();
-		for (const listener of bridge.listeners) listener(snapshot);
+		for (const listener of bridge.listeners) listener(tspHostPatch(null, snapshot));
 		for (const listener of this.listeners) listener();
 	}
 	consume(event: TspRendererEvent): void {
@@ -120,7 +121,7 @@ beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	Element.prototype.scrollIntoView = vi.fn();
 });
-afterEach(() => { vi.useRealTimers(); });
+afterEach(async () => { await act(async () => {}); vi.useRealTimers(); });
 
 async function settle<T>(promise: Promise<T>, milliseconds = 10000): Promise<T> {
 	await vi.advanceTimersByTimeAsync(milliseconds);

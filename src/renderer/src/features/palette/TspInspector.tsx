@@ -1,7 +1,7 @@
 import type { TspNode } from "@shared/tsp";
-import type { TspHostSnapshot } from "@shared/tsp-host";
-import { useEffect, useState, type Ref } from "react";
+import type { Ref } from "react";
 import { useTranslation } from "react-i18next";
+import { useTsp } from "../../state/tsp/useTsp";
 
 /** The outline deliberately gives every kind the same read-only treatment, including future kinds. */
 function NodeOutline({ node }: { node: TspNode }) {
@@ -22,34 +22,11 @@ function NodeOutline({ node }: { node: TspNode }) {
 	);
 }
 
-/** Subscribe before reading the snapshot, then only advance within this host generation. */
+/** Shows the shared document only within this host generation. */
 export function TspInspector({ hostId, generation, ref }: { hostId: string; generation: number; ref?: Ref<HTMLDivElement> }) {
 	const { t } = useTranslation("palette");
-	const [snapshot, setSnapshot] = useState<TspHostSnapshot | null>(null);
-	const [failed, setFailed] = useState(false);
-	useEffect(() => {
-		let live = true;
-		let latest: TspHostSnapshot | null = null;
-		setSnapshot(null);
-		setFailed(false);
-		const accept = (next: TspHostSnapshot | null) => {
-			if (!live || !next || next.hostId !== hostId || next.generation !== generation) return;
-			if (latest && next.revision <= latest.revision) return;
-			latest = next;
-			setSnapshot(next);
-			setFailed(false);
-		};
-		const off = window.vomp.on("host:tsp-update", accept);
-		void window.vomp.invoke("host:tsp-snapshot", hostId).then(accept).catch(() => {
-			if (live && !latest) setFailed(true);
-		});
-		return () => {
-			live = false;
-			off();
-		};
-	}, [hostId, generation]);
-
-	// Do not show the previous generation while its replacement's effect is attaching.
+	const { snapshot, failed } = useTsp(hostId);
+	// The shared document may still hold the previous generation; never show it here.
 	const current = snapshot?.hostId === hostId && snapshot.generation === generation ? snapshot : null;
 	const documentsCurrent = current?.lifecycle === "live" && current.negotiated && current.documentGeneration === generation;
 	const surfaces = documentsCurrent ? current.surfaces.filter(surface => surface.documentGeneration === generation) : [];

@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { BtwState } from "@shared/contracts/btw";
 import type { TspHostSnapshot } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { btwOverlayTopics, mergeBtwTopics, projectBtw } from "@shared/tsp/btw";
 import { walkNodes } from "@shared/tsp/view-state";
 import { SessionController, type SessionView } from "../../state/session";
@@ -75,7 +76,7 @@ const originalWidth = window.innerWidth;
 let view: SessionView;
 const viewUpdates = new Set<() => void>();
 const closeRequests: unknown[][] = [];
-const hostUpdates = new Set<(snapshot: TspHostSnapshot) => void>();
+const hostUpdates = new Set<(patch: TspHostPatch) => void>();
 const btwUpdates = new Set<(state: BtwState) => void>();
 const originalVomp = window.vomp;
 
@@ -110,7 +111,7 @@ function receive(message: FixtureMessage = messages[cursor++]!) {
 function publish() {
 	view = { ...view, host: { ...view.host!, tspAvailability: snapshot.availability } };
 	for (const listener of viewUpdates) listener();
-	for (const listener of hostUpdates) listener(snapshot);
+	for (const listener of hostUpdates) listener(tspHostPatch(null, snapshot));
 	for (const listener of btwUpdates) listener(state);
 }
 beforeEach(async () => {
@@ -158,12 +159,12 @@ beforeEach(async () => {
 				if (skipOpeningDocument) return;
 				receive();
 				if (separateDeliveries) {
-					for (const listener of hostUpdates) listener(snapshot);
+					for (const listener of hostUpdates) listener(tspHostPatch(null, snapshot));
 				} else publish();
 			}
 		},
 		on: (channel: string, listener: (payload: unknown) => void) => {
-			if (channel === "host:tsp-update") hostUpdates.add(listener);
+			if (channel === "host:tsp-patch") hostUpdates.add(listener);
 			if (channel === "btw:changed") btwUpdates.add(listener);
 			return () => { hostUpdates.delete(listener); btwUpdates.delete(listener); };
 		},
@@ -245,7 +246,7 @@ it.each(["epoch change", "overlay removal"])("removes a pending document preview
 	await act(async () => {
 		if (change === "epoch change") receive({ verb: "q", body: { q: "hello", v: [1], features: ["send"] } });
 		else receive({ verb: "f", body: { sf: snapshot.surfaces[0]!.open.id, s: snapshot.surfaces[0]!.sequence + 1, ops: [["del", state.overlay!.nodeId]] } });
-		for (const listener of hostUpdates) listener(snapshot);
+		for (const listener of hostUpdates) listener(tspHostPatch(null, snapshot));
 	});
 	expect(element.querySelector("section[aria-busy=true]")).toBeNull();
 	expect(opened).toEqual([]);
@@ -541,7 +542,7 @@ it("releases the claim immediately for an unsupported document layout", async ()
 	await act(async () => {
 		const projection = receive({ verb: "f", body: { sf: surface.open.id, s: surface.sequence + 1, ops: [["set", body.id, { role: "extension.btw.layout" }]] } });
 		expect(projection?.supported).toBe(false);
-		for (const listener of hostUpdates) listener(snapshot);
+		for (const listener of hostUpdates) listener(tspHostPatch(null, snapshot));
 	});
 	expect(opened).toEqual([tabId]);
 	expect(useApp.getState().terminalTabId).toBe(tabId);

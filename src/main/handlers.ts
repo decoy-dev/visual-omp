@@ -112,7 +112,7 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("host:statusUnreadable", (hostId, border) => getHost(hostId).reportUnreadableStatus(border));
 	handle("host:resize", (hostId, cols, rows) => getHost(hostId).resize(cols, rows));
 	handle("host:buffer", hostId => getHost(hostId).serializedScreen());
-	handle("host:tsp-snapshot", hostId => getHost(hostId).tspSnapshot());
+	handle("host:tsp-snapshot", hostId => getHost(hostId).publishedTspSnapshot());
 	handle("host:tsp-event", (hostId, generation, event, epoch) => {
 		if (!Number.isInteger(epoch)) throw new Error("omp screen: A current protocol epoch is required.");
 		return getHost(hostId).tspEvent(generation, event, epoch);

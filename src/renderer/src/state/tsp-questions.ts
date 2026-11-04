@@ -1,17 +1,16 @@
-import type { TspHostSnapshot } from "@shared/tsp-host";
+import { tspHost } from "./tsp/hosts";
 import type { GuestClient } from "../collab/lib/client";
 import type { SessionController } from "./session";
 
 /** Keeps renderer-owned collab request authority separate from omp's document lifecycle. */
 export class TspQuestionSync {
 	#session: SessionController;
-	#snapshot: TspHostSnapshot | null = null;
 	#hostId: string | null = null;
 	#revision = 0;
 	#last = "";
 	#disposed = false;
 	#unsubscribeSession: () => void;
-	#unsubscribeTsp: () => void;
+	#unsubscribeTsp: (() => void) | null = null;
 	#client: GuestClient | null = null;
 	#connection: number | undefined;
 	#connectionSerial = 0;
@@ -19,24 +18,19 @@ export class TspQuestionSync {
 	constructor(session: SessionController) {
 		this.#session = session;
 		this.#unsubscribeSession = session.subscribe(() => this.#sync());
-		this.#unsubscribeTsp = window.vomp.on("host:tsp-update", snapshot => this.#receive(snapshot));
-	}
-	#receive(snapshot: TspHostSnapshot): void {
-		if (this.#disposed || snapshot.hostId !== this.#session.hostId || (this.#snapshot && snapshot.hostId === this.#snapshot.hostId && snapshot.revision <= this.#snapshot.revision)) return;
-		this.#snapshot = snapshot;
-		this.#sync();
 	}
 	#sync(): void {
+		if (this.#disposed) return;
 		const view = this.#session.getSnapshot();
 		const host = view.host;
 		if (host?.transport !== "tsp") return;
 		if (this.#hostId !== host.hostId) {
 			this.#hostId = host.hostId;
-			this.#snapshot = null;
 			this.#last = "";
-			void window.vomp.invoke("host:tsp-snapshot", host.hostId).then(snapshot => { if (snapshot) this.#receive(snapshot); }).catch(error => console.warn("Could not read TSP question scope", error));
+			this.#unsubscribeTsp?.();
+			this.#unsubscribeTsp = tspHost(host.hostId).subscribe(() => this.#sync());
 		}
-		const snapshot = this.#snapshot;
+		const snapshot = tspHost(host.hostId).getSnapshot();
 		const guest = view.guest;
 		const client = this.#session.guestClient();
 		if (client !== this.#client || guest?.uiConnection !== this.#connection) {
@@ -71,6 +65,6 @@ export class TspQuestionSync {
 	dispose(): void {
 		this.#disposed = true;
 		this.#unsubscribeSession();
-		this.#unsubscribeTsp();
+		this.#unsubscribeTsp?.();
 	}
 }

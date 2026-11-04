@@ -3,6 +3,7 @@ import { act, createElement, Fragment, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, type Mock, vi } from "vitest";
 import type { TspHostSnapshot } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { hookDialogTarget } from "@shared/tsp/dialogs";
 import { hookQuestions } from "@shared/tsp/question-match";
 import { planReview } from "@shared/tsp/plan-review";
@@ -53,7 +54,7 @@ let tabId: string;
 let snapshot: TspHostSnapshot;
 let revision = 0;
 let invoke: Mock;
-let updates: Set<(snapshot: TspHostSnapshot) => void>;
+let updates: Set<(patch: TspHostPatch) => void>;
 let opened: string[];
 let stopApp: () => void;
 
@@ -91,8 +92,8 @@ beforeEach(async () => {
 	updates = new Set(); opened = []; autoOpened.tabId = null;
 	invoke = vi.fn(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
 	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke,
-		on: (channel: string, listener: (snapshot: TspHostSnapshot) => void) => {
-			if (channel === "host:tsp-update") updates.add(listener);
+		on: (channel: string, listener: (patch: TspHostPatch) => void) => {
+			if (channel === "host:tsp-patch") updates.add(listener);
 			return () => updates.delete(listener);
 		} } });
 	vi.spyOn(SessionController.prototype, "ensureLive").mockResolvedValue(undefined);
@@ -138,7 +139,7 @@ it("keeps existing recorded dialogs and plans readable through each cold product
 		expectSingleOwner(surfaceId, nodeId);
 		expectNoSheetOrAnswer();
 		// Exercise a new recorded-snapshot delivery while the import remains unresolved.
-		await act(async () => { snapshot = { ...snapshot, revision: ++revision }; for (const listener of updates) listener(snapshot); });
+		await act(async () => { snapshot = { ...snapshot, revision: ++revision }; for (const listener of updates) listener(tspHostPatch(null, snapshot)); });
 		expectSingleOwner(surfaceId, nodeId);
 		expectNoSheetOrAnswer();
 		await act(async () => {

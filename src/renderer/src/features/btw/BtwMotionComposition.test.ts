@@ -4,6 +4,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { BtwState } from "@shared/contracts/btw";
 import type { TspHostSnapshot } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { btwOverlayTopics, mergeBtwTopics, projectBtw } from "@shared/tsp/btw";
 import { panes } from "../../registry/slots";
 import { Dock } from "../../shell/Dock";
@@ -50,7 +51,7 @@ let shell: boolean;
 let cursor: number;
 let documents: FixtureDocuments;
 const messages = loadFixtureRecording("btw-ask").messages;
-const hostUpdates = new Set<(snapshot: TspHostSnapshot) => void>();
+const hostUpdates = new Set<(patch: TspHostPatch) => void>();
 const btwUpdates = new Set<(state: BtwState) => void>();
 const originalVomp = window.vomp;
 const originalWidth = window.innerWidth;
@@ -91,10 +92,10 @@ beforeEach(async () => {
 			if (channel === "app:info") return { homeDir: "/tmp", defaultChatFolder: "/tmp" };
 			if (channel === "host:tsp-snapshot") return snapshot;
 			if (channel === "btw:list") return state;
-			if (channel === "btw:ask") { receive(); for (const listener of hostUpdates) listener(snapshot); for (const listener of btwUpdates) listener(state); }
+			if (channel === "btw:ask") { receive(); for (const listener of hostUpdates) listener(tspHostPatch(null, snapshot)); for (const listener of btwUpdates) listener(state); }
 		},
 		on: (channel: string, listener: (payload: unknown) => void) => {
-			if (channel === "host:tsp-update") hostUpdates.add(listener);
+			if (channel === "host:tsp-patch") hostUpdates.add(listener);
 			if (channel === "btw:changed") btwUpdates.add(listener);
 			return () => { hostUpdates.delete(listener); btwUpdates.delete(listener); };
 		},

@@ -12,6 +12,7 @@
 
 import type { TspAvailability, TspComposerFacts, TspEditorRestore, TspHostSnapshot, TspRendererEvent } from "./tsp-host";
 import type { CollabQuestionState } from "./tsp/question-match";
+import type { TspHostPatch } from "./tsp/patch";
 import type { TspHookAnswer } from "./tsp/dialogs";
 import type { TspAdvisorAction } from "./tsp/advisor";
 
@@ -333,7 +334,7 @@ export interface IpcInvokeMap {
 	"host:resize": { args: [hostId: string, cols: number, rows: number]; result: void };
 	/** Serialized terminal state for attaching an xterm view mid-session. */
 	"host:buffer": { args: [hostId: string]; result: string };
-	/** Complete semantic documents for an opt-in TSP host; null for classic hosts. */
+	/** The published semantic documents that later `host:tsp-patch` events build on; null for classic hosts. */
 	"host:tsp-snapshot": { args: [hostId: string]; result: TspHostSnapshot | null };
 	/** Renderer input shares the application input lock and rejects a stale collab generation. */
 	"host:tsp-event": { args: [hostId: string, generation: number, event: TspRendererEvent, epoch: number]; result: void };
@@ -364,7 +365,8 @@ export interface IpcInvokeMap {
 export interface IpcEventMap {
 	"host:state": HostState;
 	"host:data": { hostId: string; data: string };
-	"host:tsp-update": TspHostSnapshot;
+	/** Changes since the previously published TSP revision; see `@shared/tsp/patch`. */
+	"host:tsp-patch": TspHostPatch;
 	"term:data": { termId: string; data: string };
 	"term:exit": { termId: string; code: number };
 	"sessions:changed": { cwd: string | null };

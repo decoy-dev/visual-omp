@@ -1,6 +1,7 @@
 // @vitest-environment happy-dom
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
+import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import type { TspHookAnswer } from "@shared/tsp/dialogs";
 import { hookDialogTarget } from "@shared/tsp/dialogs";
 import { composer, walkNodes } from "@shared/tsp/view-state";
@@ -11,7 +12,7 @@ import { useComposerDrafts } from "../../chat/composer/drafts";
 import { navigateTo } from "./navigate";
 import "../../i18n";
 
-const bridge = vi.hoisted(() => ({ invoke: vi.fn(), listeners: new Set<(snapshot: TspHostSnapshot) => void>() }));
+const bridge = vi.hoisted(() => ({ invoke: vi.fn(), listeners: new Set<(patch: TspHostPatch) => void>() }));
 vi.mock("../../state/app", () => ({ useApp: {} }));
 vi.mock("@/ui", () => ({ toast: vi.fn() }));
 const draft = "  Add a branch for the alternate fixture answer.\nKeep café 🧭 spacing.  \n";
@@ -79,7 +80,7 @@ class Replay {
 		this.publish();
 	}
 	snapshot(): TspHostSnapshot {
-		const document = this.docs.snapshot();
+		const document = structuredClone(this.docs.snapshot());
 		const facts = composerFacts(document.surfaces);
 		const snapshot: TspHostSnapshot = { ...document, epoch: this.epoch, hostId: "host", generation: this.generation, revision: ++this.revision,
 			lifecycle: "live", documentGeneration: this.generation, failure: null, composer: facts,
@@ -92,7 +93,7 @@ class Replay {
 	}
 	publish() {
 		const snapshot = this.snapshot();
-		for (const listener of bridge.listeners) listener(snapshot);
+		for (const listener of bridge.listeners) listener(tspHostPatch(null, snapshot));
 		for (const listener of this.listeners) listener();
 	}
 	consume(event: TspRendererEvent) {
@@ -140,13 +141,13 @@ function filteredReplay(replacement: "selector" | "surface" | null = null): Repl
 
 beforeEach(() => {
 	vi.useFakeTimers(); bridge.invoke.mockReset(); bridge.listeners.clear();
-	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke: (...args: unknown[]) => bridge.invoke(...args), on: (channel: string, listener: (snapshot: TspHostSnapshot) => void) => {
-		if (channel === "host:tsp-update") bridge.listeners.add(listener);
+	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke: (...args: unknown[]) => bridge.invoke(...args), on: (channel: string, listener: (patch: TspHostPatch) => void) => {
+		if (channel === "host:tsp-patch") bridge.listeners.add(listener);
 		return () => bridge.listeners.delete(listener);
 	} } });
 	localStorage.clear(); useComposerDrafts.setState({ drafts: {}, previews: {}, editorRestores: {}, pendingFocus: {} });
 });
-afterEach(() => vi.useRealTimers());
+afterEach(async () => { await Promise.resolve(); vi.useRealTimers(); });
 
 describe("TSP tree navigation", () => {
 	it.each(["tree-navigate", "tree-navigate-summary"])("completes %s with one exact tree activation and recoverable exact draft transfer", async name => {

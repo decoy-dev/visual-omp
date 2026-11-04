@@ -1,5 +1,5 @@
 import { hookDialogTarget, nodeHasLeft, type HookDialog, type TspHookAnswer } from "@shared/tsp/dialogs";
-import type { TspDocumentStore } from "@shared/tsp/document";
+import type { TspHostSource } from "../../state/tsp/hosts";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import type { OmpDialog } from "./ompDialog";
 
@@ -35,7 +35,7 @@ export function dialogAnswer(sf: string, dialog: HookDialog, answer: { index: nu
  * An epoch/room replacement ends the addressed node's lifetime. Timeout is failure, never success.
  * Abort on unmount or a failed write so no timer or document listener outlives its consumer.
  */
-export function waitForNodeToLeave(store: TspDocumentStore, scope: Pick<TspHostSnapshot, "hostId" | "generation" | "epoch">, sf: string, id: string, signal?: AbortSignal, timeoutMs = 8000): Promise<void> {
+export function waitForNodeToLeave(store: Pick<TspHostSource, "getSnapshot" | "subscribe">, scope: Pick<TspHostSnapshot, "hostId" | "generation" | "epoch">, sf: string, id: string, signal?: AbortSignal, timeoutMs = 8000): Promise<void> {
 	const { promise, resolve, reject } = Promise.withResolvers<void>();
 	let off = () => {};
 	let timer: ReturnType<typeof setTimeout> | undefined;
