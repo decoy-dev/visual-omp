@@ -12,6 +12,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Chat row menus now offer Change icon, with a title preview, an emoji field and the operating system's emoji panel where supported. omp saves the icon in the chat title for live and saved chats.
 - Outputs now previews supported visual files while omp makes them. Watch opens the current output, and Stop and redirect preserves your draft and attachments while you write a correction. Live previews are on by default; opening Outputs automatically is a separate setting, off by default.
 
+#### Improved
+
+- visual-omp's main window startup bundle is 22.2% smaller in build measurements, down from 2.04 MB to 1.59 MB. Release notes and several screens and panes now load on demand. Settings stays available at startup, while text for its sections, connected tools and project details loads with those screens or in idle time. Icons retain regular styles and selected additional styles, and saved data checks no longer require the validation library at startup. Pages and panes show loading placeholders; setup shows a blank window, and some dialogs remain hidden until loaded.
+
 #### Fixed
 
 - On macOS and in Linux builds, long chats no longer make visual-omp unresponsive while omp works. For each streamed update, visual-omp copied omp's whole screen document, which holds the full transcript, to every part of the window that reads it: up to 1.6 MB per update in a chat of about 1,400 entries. The window fell further behind with every reply, so the elapsed timer, the status bar and new chats stopped responding. visual-omp now sends only the parts that changed, combines streamed frames within a 16 ms batching window, and keeps one shared document per chat in the window. In an isolated development-build measurement of that chat, a six-second reply sent 2.7 MB to the window instead of 295 MB, and the window caught up about a second after the reply ended instead of 26 seconds later.
