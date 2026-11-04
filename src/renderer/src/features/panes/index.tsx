@@ -1,6 +1,6 @@
 /**
  * Right-dock panes (DESIGN §3.7): Changes (id `diff`) · Files · Preview · Outputs · Tasks · Plan · Terminal.
- * Changes, Files and Outputs (viewers, syntax colors, media) load from their own chunk; their badges load
+ * Changes, Files, Outputs and Tasks (viewers, syntax colors, media) load from their own chunk; their badges load
  * with the app (`./badges`). The Terminal pane loads xterm.js only for its terminal view.
  */
 import { ChatCircle, ClipboardText, GitDiff, type Icon, Images, ListChecks, MonitorPlay, TerminalWindow, TreeStructure } from "@phosphor-icons/react";
@@ -9,11 +9,10 @@ import { lazyView } from "../../registry/lazy";
 import { chatSlots, panes } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import { Skeleton } from "../../ui";
-import { DiffBadge, OutputsBadge } from "./badges";
+import { DiffBadge, OutputsBadge, TasksBadge } from "./badges";
 import { HelperStrip } from "./HelperStrip";
 import { PlanBadge, PlanPane } from "./PlanPane";
 import { PreviewPane } from "./PreviewPane";
-import { TasksBadge, TasksPane } from "./TasksPane";
 import { TerminalBadge, TerminalPane } from "./TerminalPane";
 import { newShell } from "./terminal";
 import { BtwPane } from "../btw/BtwPane";
@@ -54,7 +53,7 @@ panes.register({
 	component: lazyView(() => import("./OutputsPane").then(m => m.OutputsPane), PaneLoading),
 	badge: OutputsBadge,
 });
-panes.register({ id: "tasks", order: 40, title: "panes:names.tasks", icon: ListChecks, component: TasksPane, badge: TasksBadge });
+panes.register({ id: "tasks", order: 40, title: "panes:names.tasks", icon: ListChecks, component: lazyView(() => import("./TasksPane").then(module => module.TasksPane), PaneLoading), badge: TasksBadge });
 // Running helpers pinned at the bottom of the chat, above the working line (DESIGN §3.5).
 chatSlots.register({ id: "pinned-helpers", placement: "aboveComposer", order: 10, component: HelperStrip });
 panes.register({ id: "plan", order: 50, title: "panes:names.plan", icon: ClipboardText, component: PlanPane, badge: PlanBadge });

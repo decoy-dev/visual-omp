@@ -552,22 +552,3 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 	);
 }
 
-/** Tab badge: how many helpers and background jobs are running. */
-export function TasksBadge({ session }: PaneProps) {
-	const { t } = useTranslation("panes");
-	const view = useSessionView(session);
-	const entries = view?.guest?.entries;
-	const activeTools = view?.guest?.activeTools;
-	const backgroundTools = view?.guest?.backgroundTools;
-	const agents = view?.guest?.agents;
-	const progress = view?.guest?.progress;
-	const lifecycle = view?.guest?.lifecycle;
-	const running = ompRunning(view);
-	const processStartedAt = view?.host?.processStartedAt;
-	const count = useMemo(() => {
-		const helpers = helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, running).filter(helper => helper.status === "running").length;
-		const jobs = entries ? backgroundJobs(entries, running, activeTools, backgroundTools, null, undefined, processStartedAt).filter(job => job.state === "running").length : 0;
-		return helpers + jobs;
-	}, [agents, progress, lifecycle, entries, activeTools, backgroundTools, running, processStartedAt]);
-	return count > 0 ? <Badge count={count} label={t("tasks.runningCount", { count })} /> : null;
-}

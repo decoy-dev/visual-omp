@@ -917,6 +917,8 @@ Project instructions: `project:instructions` reads `contextFiles.extra` through 
 
 `src/renderer/src/registry/lazy.tsx` wraps dynamic imports for pages, Settings sections, views and sheets. Feature entry points register lazy components; registry slots render these chunks on demand. Idle preloading and explicit `preload()` calls load components before they are opened when possible. Usage, Settings sections, xterm, KaTeX and other heavier features have separate chunks. In the v0.5.0 build, the uncompressed initial renderer entry chunk is approximately 1.56 MB, xterm approximately 331 KB and KaTeX approximately 262 KB. These figures are uncompressed build-output sizes of individual chunks.
 
+The Changes, Files, Outputs and Tasks panes load from their own chunks, on demand or during idle preloading, while their badges (`features/panes/badges.tsx`) load with the app so the pane selector can show counts before a pane opens. The pinned helper strip loads the helper transcript dialog the same way, so it does not keep the Tasks pane in the entry chunk.
+
 The FLIP build guard checks the initial renderer entry and its static import closure for any
 `features/tsp/` modules. The semantic screen remains lazy; shared subscriptions, presentation
 claims, labels and notice state use `state/tsp/` so ordinary chat state does not import its UI.

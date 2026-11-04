@@ -1,8 +1,8 @@
 /**
- * Side panel badges for panes that load from their own chunk (Changes, Outputs). Badges stay mounted
+ * Side panel badges for panes that load from their own chunk (Changes, Outputs, Tasks). Badges stay mounted
  * in the pane selector from startup, so they live here, apart from the panes.
  */
-import { useEffect } from "react";
+import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { PaneProps } from "../../registry/slots";
@@ -11,6 +11,7 @@ import { Badge } from "../../ui";
 import { usePaneVisible } from "./common";
 import { useGit } from "./git-store";
 import { useChatOutputs } from "./outputs-store";
+import { backgroundJobs, helpersOf, ompRunning } from "./derive";
 
 /** Changes: `+N −M` for the project's uncommitted changes. */
 export function DiffBadge({ projectPath }: PaneProps) {
@@ -43,4 +44,24 @@ export function OutputsBadge({ session }: PaneProps) {
 	}, [tabId, chat, seen, newest, visible]);
 	const count = chat && seen !== undefined && !visible ? chat.outputs.filter(output => output.time > seen).length : 0;
 	return count > 0 ? <Badge count={count} label={t("outputs.newCount", { count })} /> : null;
+}
+
+/** Tab badge: how many helpers and background jobs are running. */
+export function TasksBadge({ session }: PaneProps) {
+	const { t } = useTranslation("panes");
+	const view = useSessionView(session);
+	const entries = view?.guest?.entries;
+	const activeTools = view?.guest?.activeTools;
+	const backgroundTools = view?.guest?.backgroundTools;
+	const agents = view?.guest?.agents;
+	const progress = view?.guest?.progress;
+	const lifecycle = view?.guest?.lifecycle;
+	const running = ompRunning(view);
+	const processStartedAt = view?.host?.processStartedAt;
+	const count = useMemo(() => {
+		const helpers = helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, running).filter(helper => helper.status === "running").length;
+		const jobs = entries ? backgroundJobs(entries, running, activeTools, backgroundTools, null, undefined, processStartedAt).filter(job => job.state === "running").length : 0;
+		return helpers + jobs;
+	}, [agents, progress, lifecycle, entries, activeTools, backgroundTools, running, processStartedAt]);
+	return count > 0 ? <Badge count={count} label={t("tasks.runningCount", { count })} /> : null;
 }

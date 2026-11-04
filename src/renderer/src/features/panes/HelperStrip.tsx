@@ -24,7 +24,9 @@ import { cn, Expand, IconButton, StatusDot } from "../../ui";
 import { listRowMotion } from "./common";
 import type { Helper } from "./derive";
 import { usePinnedHelpers } from "./pinnedHelpers";
-import { TranscriptDialog } from "./TasksPane";
+import { lazyView } from "../../registry/lazy";
+
+const TranscriptDialog = lazyView(() => import("./TasksPane").then(module => module.TranscriptDialog));
 
 function PinnedRow({ helper, session, onOpen }: { helper: Helper; session: SessionController; onOpen(helper: Helper): void }): ReactNode {
 	const { t } = useTranslation("panes");
