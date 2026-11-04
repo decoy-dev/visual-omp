@@ -94,10 +94,3 @@ export function TerminalPane({ session, projectPath }: PaneProps) {
 		</PresenceSwap>
 	);
 }
-
-/** Tab badge: ● while a command started from the app is still running. */
-export function TerminalBadge() {
-	const { t } = useTranslation("panes");
-	const running = useTerminals(state => state.tabs.some(tab => tab.command !== null && tab.exitCode === null));
-	return running ? <StatusDot status="live" label={t("terminal.running")} /> : null;
-}

@@ -9,7 +9,7 @@ import { create } from "zustand";
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { activeBranch, type SavedParents, savedParents } from "../../state/history";
 import { liveEntries, type SessionController, type SessionView } from "../../state/session";
-import { useHomeDir } from "../projects/folders/FolderBrowser";
+import { useHomeDir } from "../projects/folders/homeDir";
 import { type ChatOutput, chatOutputs, type MadeCandidate, type MadeFiles, madeCandidates } from "./derive";
 
 // ── files made by commands ──────────────────────────────────────────────────────────────────────

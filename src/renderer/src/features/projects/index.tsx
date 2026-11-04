@@ -12,17 +12,24 @@ import { chatSlots, pages, type PaneProps, screens, sheets, statusItems } from "
 import { useSessionView } from "@/shell/hooks";
 import { useApp } from "@/state/app";
 import { openProjectInstructions, openProjectSettings } from "@/state/navigation";
-import { cn, Tooltip } from "@/ui";
+import { cn, PageSkeleton, Tooltip } from "@/ui";
 import { focusRing } from "@/ui/styles";
 import { chooseFolder, openFolder } from "./actions";
 import { FolderChip } from "./folders/FolderChip";
-import { FolderChooser } from "./folders/FolderChooser";
-import { ProjectOverview } from "./ProjectOverview";
 import { useShares } from "./share-store";
 
 const MAC = window.vomp.platform === "darwin";
 
-screens.register({ id: "project", component: ProjectOverview });
+/** The overview's scroll column while its chunk loads, so the swap keeps the layout. */
+function OverviewLoading(): ReactNode {
+	return (
+		<div aria-busy className="min-h-0 flex-1 overflow-y-auto">
+			<div className="mx-auto w-full max-w-230 px-page pb-16 pt-page"><PageSkeleton /></div>
+		</div>
+	);
+}
+
+screens.register({ id: "project", component: lazyView(() => import("./ProjectOverview").then(m => m.ProjectOverview), OverviewLoading) });
 // Pages and dialogs load from their own chunk (`registry/lazy`); a dialog opens as soon as it has loaded.
 sheets.register({ id: "project-new", component: lazyView(() => import("./NewProjectWizard").then(m => m.NewProjectWizard)) });
 pages.register({
@@ -35,7 +42,7 @@ pages.register({
 });
 sheets.register({ id: "project-import", component: lazyView(() => import("./ImportDialog").then(m => m.ImportDialog)) });
 sheets.register({ id: "share", component: lazyView(() => import("./ShareDialog").then(m => m.ShareDialog)) });
-sheets.register({ id: "folder-chooser", component: FolderChooser });
+sheets.register({ id: "folder-chooser", component: lazyView(() => import("./folders/FolderChooser").then(m => m.FolderChooser)) });
 
 chatSlots.register({ id: "projects.folder", placement: "composerTools", order: 10, component: FolderChip });
 

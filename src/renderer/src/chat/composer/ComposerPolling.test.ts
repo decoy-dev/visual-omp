@@ -12,7 +12,7 @@ import { useComposerDrafts } from "./drafts";
 import { screenPoller, useOmpScreen } from "../../features/session-tools/status";
 import { OmpDialogCard } from "../../features/session-tools/OmpDialogCard";
 import { PlanReviewCard } from "../../features/session-tools/PlanReviewCard";
-import { usePlanReviewPending } from "../../features/panes/PlanPane";
+import { usePlanReviewPending } from "../../features/panes/plan-review";
 import { readScreen, runCommand, statusReadError, waitForScreen } from "../../features/session-tools/drive";
 import { PermissionButton } from "../../features/session-tools/pickers";
 import "../../i18n";

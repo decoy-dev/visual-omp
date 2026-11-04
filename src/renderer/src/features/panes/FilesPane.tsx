@@ -26,7 +26,7 @@ import { focusRingInset } from "../../ui/styles";
 import { mentionInChat, openWithDefaultApp, revealLabel } from "../../ui/contextActions";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { errorText } from "../extensions/format";
-import { useHomeDir } from "../projects/folders/FolderBrowser";
+import { useHomeDir } from "../projects/folders/homeDir";
 import { tildePath } from "../projects/folders/paths";
 import { PaneToolbar, relativePath, Section, SectionCount, TabStrip, usePaneVisible } from "./common";
 import { IMAGE_EXT, OPENABLE_EXT, PDF_EXT } from "./derive";

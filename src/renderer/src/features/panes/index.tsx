@@ -1,7 +1,7 @@
 /**
  * Right-dock panes (DESIGN §3.7): Changes (id `diff`) · Files · Preview · Outputs · Tasks · Plan · Terminal.
- * Changes, Files, Outputs and Tasks (viewers, syntax colors, media) load from their own chunk; their badges load
- * with the app (`./badges`). The Terminal pane loads xterm.js only for its terminal view.
+ * Each pane loads from its own chunk; their badges load with the app (`./badges`). The Terminal pane loads
+ * xterm.js only for its terminal view.
  */
 import { ChatCircle, ClipboardText, GitDiff, type Icon, Images, ListChecks, MonitorPlay, TerminalWindow, TreeStructure } from "@phosphor-icons/react";
 import { registerCommand } from "../../registry/commands";
@@ -9,11 +9,8 @@ import { lazyView } from "../../registry/lazy";
 import { chatSlots, panes } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import { Skeleton } from "../../ui";
-import { DiffBadge, OutputsBadge, TasksBadge } from "./badges";
+import { DiffBadge, OutputsBadge, PlanBadge, TasksBadge, TerminalBadge } from "./badges";
 import { HelperStrip } from "./HelperStrip";
-import { PlanBadge, PlanPane } from "./PlanPane";
-import { PreviewPane } from "./PreviewPane";
-import { TerminalBadge, TerminalPane } from "./TerminalPane";
 import { newShell } from "./terminal";
 import { BtwPane } from "../btw/BtwPane";
 
@@ -44,7 +41,7 @@ panes.register({
 	icon: TreeStructure,
 	component: lazyView(() => import("./FilesPane").then(m => m.FilesPane), PaneLoading),
 });
-panes.register({ id: "preview", order: 30, title: "panes:names.preview", icon: MonitorPlay, component: PreviewPane });
+panes.register({ id: "preview", order: 30, title: "panes:names.preview", icon: MonitorPlay, component: lazyView(() => import("./PreviewPane").then(m => m.PreviewPane), PaneLoading) });
 panes.register({
 	id: "outputs",
 	order: 35,
@@ -56,13 +53,13 @@ panes.register({
 panes.register({ id: "tasks", order: 40, title: "panes:names.tasks", icon: ListChecks, component: lazyView(() => import("./TasksPane").then(module => module.TasksPane), PaneLoading), badge: TasksBadge });
 // Running helpers pinned at the bottom of the chat, above the working line (DESIGN §3.5).
 chatSlots.register({ id: "pinned-helpers", placement: "aboveComposer", order: 10, component: HelperStrip });
-panes.register({ id: "plan", order: 50, title: "panes:names.plan", icon: ClipboardText, component: PlanPane, badge: PlanBadge });
+panes.register({ id: "plan", order: 50, title: "panes:names.plan", icon: ClipboardText, component: lazyView(() => import("./PlanPane").then(m => m.PlanPane), PaneLoading), badge: PlanBadge });
 panes.register({
 	id: "btw", order: 55, title: "panes:names.btw", icon: ChatCircle,
 	component: BtwPane,
 	when: session => session?.getSnapshot().host?.transport === "tsp",
 });
-panes.register({ id: "terminal", order: 60, title: "panes:names.terminal", icon: TerminalWindow, component: TerminalPane, badge: TerminalBadge });
+panes.register({ id: "terminal", order: 60, title: "panes:names.terminal", icon: TerminalWindow, component: lazyView(() => import("./TerminalPane").then(m => m.TerminalPane), PaneLoading), badge: TerminalBadge });
 
 const SHOW: ReadonlyArray<{ id: string; icon: Icon }> = [
 	{ id: "diff", icon: GitDiff },

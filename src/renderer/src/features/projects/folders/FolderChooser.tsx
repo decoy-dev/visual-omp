@@ -15,7 +15,8 @@ import { Button, Chip, cn, Dialog, DialogContent, Expand, PresenceSwap, SearchIn
 import { menuItem, menuItemActive, menuItemDescribed } from "@/ui/styles";
 import { addProject, registerDraftProject, startChatIn } from "../actions";
 import { errorText } from "@shared/errors";
-import { type EscapeHandler, FolderBrowser, nativePickerLabel, useHomeDir } from "./FolderBrowser";
+import { type EscapeHandler, FolderBrowser, nativePickerLabel } from "./FolderBrowser";
+import { useHomeDir } from "./homeDir";
 import { tildePath, typedPath } from "./paths";
 
 const WINDOWS = window.vomp.platform === "win32";

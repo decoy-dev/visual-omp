@@ -11,46 +11,15 @@ import type { PanePlanFile } from "@shared/contracts/panes";
 import type { PaneProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
 import { useApp } from "../../state/app";
-import type { SessionController } from "../../state/session";
 import { Markdown } from "../../transcript/Markdown";
 import { Button, EmptyState, Expand, Spinner, toast } from "../../ui";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { PaneToolbar, usePaneVisible } from "./common";
+import { usePlanReviewPending } from "./plan-review";
 import { PlanChecklist } from "./PlanChecklist";
 import { useTspPlanReview } from "../session-tools/planReviewTsp";
 
 const POLL_MS = 2000;
-/** Option 0 of omp's Plan Review list (interactive-mode `showPlanReview`). */
-const REVIEW_MARKER = "Approve and execute";
-
-/** Plan availability follows semantic documents for TSP and the existing painted marker for classic. */
-export function usePlanReviewPending(session: SessionController | null): boolean {
-	const view = useSessionView(session);
-	const overlays = view?.host?.tui?.overlays ?? 0;
-	const hostId = view?.host?.hostId ?? null;
-	const tsp = view?.host?.transport === "tsp";
-	const semantic = useTspPlanReview(session);
-	const [pending, setPending] = useState(false);
-	useEffect(() => {
-		if (!hostId || tsp || overlays === 0) {
-			setPending(false);
-			return;
-		}
-		let cancelled = false;
-		void window.vomp
-			.invoke("host:screen", hostId)
-			.then(lines => {
-				if (!cancelled) setPending(lines.some(line => line.includes(REVIEW_MARKER)));
-			})
-			.catch(() => {
-				if (!cancelled) setPending(false);
-			});
-		return () => {
-			cancelled = true;
-		};
-	}, [hostId, overlays, tsp]);
-	return tsp ? semantic.review !== null : pending;
-}
 
 function usePlanFile(sessionFile: string | null, visible: boolean): { plan: PanePlanFile | null; loaded: boolean } {
 	const [state, setState] = useState<{ file: string | null; plan: PanePlanFile | null; loaded: boolean }>({
@@ -159,18 +128,5 @@ export function PlanPane({ session }: PaneProps) {
 			</div>
 		</div>
 		</TargetContextMenu>
-	);
-}
-
-/** Tab badge: `!` while omp waits for a decision on the plan. */
-export function PlanBadge({ session }: PaneProps) {
-	const { t } = useTranslation("panes");
-	const pending = usePlanReviewPending(session);
-	if (!pending) return null;
-	return (
-		<span className="inline-flex size-4 items-center justify-center rounded-full bg-accent text-xs leading-none font-bold text-accent-fg" title={t("plan.waiting")}>
-			<span aria-hidden>!</span>
-			<span className="sr-only">{t("plan.waiting")}</span>
-		</span>
 	);
 }

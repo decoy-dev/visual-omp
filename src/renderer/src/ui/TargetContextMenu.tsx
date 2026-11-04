@@ -2,7 +2,7 @@ import { ArrowSquareOut, At, Copy, DownloadSimple, File, FolderSimpleDashed, Git
 import { type KeyboardEvent, type MouseEvent, type ReactNode, useRef, useState } from "react";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
-import { useHomeDir } from "../features/projects/folders/FolderBrowser";
+import { useHomeDir } from "../features/projects/folders/homeDir";
 import { ContextMenu, ContextMenuContent, ContextMenuItem, ContextMenuSeparator, ContextMenuTrigger } from "./Menu";
 import { revealLabel, runContextAction, type ContextScope } from "./contextActions";
 import { contextActionIds, contextPath, type ContextActionId, type ContextTarget } from "./contextTargets";

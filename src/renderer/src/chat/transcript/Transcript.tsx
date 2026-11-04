@@ -28,7 +28,7 @@ import { continuesAssistantModel, modelFallbacks, modelSetupVisible, providerFal
 import { type Helper, type HelperStatus, helpersByCall, ompRunning, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
 import { unpinnedRuns, usePinnedHelpers } from "../../features/panes/pinnedHelpers";
 import { openInFiles } from "../../features/panes/files-store";
-import { useHomeDir } from "../../features/projects/folders/FolderBrowser";
+import { useHomeDir } from "../../features/projects/folders/homeDir";
 import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
 import { type CommandResultRecord, dismissCommandResult, placeResults, roomKey, useCommandResults } from "../../features/session-tools/results";

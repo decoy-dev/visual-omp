@@ -1,14 +1,16 @@
 /**
- * Side panel badges for panes that load from their own chunk (Changes, Outputs, Tasks). Badges stay mounted
- * in the pane selector from startup, so they live here, apart from the panes.
+ * Side panel badges for panes that load from their own chunk (Changes, Outputs, Tasks, Plan, Terminal). Badges
+ * stay mounted in the pane selector from startup, so they live here, apart from the panes.
  */
 import { useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import type { PaneProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
-import { Badge } from "../../ui";
+import { Badge, StatusDot } from "../../ui";
 import { usePaneVisible } from "./common";
+import { usePlanReviewPending } from "./plan-review";
+import { useTerminals } from "./terminal";
 import { useGit } from "./git-store";
 import { useChatOutputs } from "./outputs-store";
 import { EMPTY_CHAT, useLivePreview } from "../live-preview/store";
@@ -68,4 +70,24 @@ export function TasksBadge({ session }: PaneProps) {
 		return helpers + jobs;
 	}, [agents, progress, lifecycle, entries, activeTools, backgroundTools, running, processStartedAt]);
 	return count > 0 ? <Badge count={count} label={t("tasks.runningCount", { count })} /> : null;
+}
+
+/** Tab badge: `!` while omp waits for a decision on the plan. */
+export function PlanBadge({ session }: PaneProps) {
+	const { t } = useTranslation("panes");
+	const pending = usePlanReviewPending(session);
+	if (!pending) return null;
+	return (
+		<span className="inline-flex size-4 items-center justify-center rounded-full bg-accent text-xs leading-none font-bold text-accent-fg" title={t("plan.waiting")}>
+			<span aria-hidden>!</span>
+			<span className="sr-only">{t("plan.waiting")}</span>
+		</span>
+	);
+}
+
+/** Tab badge: ● while a command started from the app is still running. */
+export function TerminalBadge() {
+	const { t } = useTranslation("panes");
+	const running = useTerminals(state => state.tabs.some(tab => tab.command !== null && tab.exitCode === null));
+	return running ? <StatusDot status="live" label={t("terminal.running")} /> : null;
 }
