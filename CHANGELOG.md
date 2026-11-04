@@ -4,6 +4,12 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Detailed changes
+
+#### Fixed
+
+- Typing near the right edge of a chat's message box no longer hides the word you are typing until the line wraps. When omp offered a word completion that did not fit on the line, the completion carried the typed letters with it onto a line the message box did not show yet.
+
 ## [0.7.5] - 2026-11-03
 
 visual-omp 0.7.5 opens omp menus in the omp screen and `/btw` answers in the Side questions pane by default on macOS and in Linux builds, and keeps messages omp rejects in the queue. It requires omp 18.15.0 or later.

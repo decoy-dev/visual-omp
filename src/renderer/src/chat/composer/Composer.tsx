@@ -713,7 +713,12 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 								className={cn(textLayout, "pointer-events-none overflow-hidden text-fg", mode && "font-mono text-code")}
 							>
 								<MentionMirror text={draft} />
-								{ghost.suffix && <span className="text-fg-faint" data-composer-ghost>{ghost.suffix}</span>}
+								{/*
+								 * A suggestion that completes the last word would otherwise wrap together with it, moving the typed
+								 * letters onto a line the textarea doesn't have yet, where the mirror's height clips them. The break
+								 * opportunity lets only the suggestion wrap, so the draft keeps the textarea's line breaks.
+								 */}
+								{ghost.suffix && <><wbr /><span className="text-fg-faint" data-composer-ghost>{ghost.suffix}</span></>}
 							</div>
 							<textarea
 								ref={textarea}
