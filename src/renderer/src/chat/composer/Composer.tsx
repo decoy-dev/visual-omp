@@ -60,7 +60,7 @@ import {
 import { attachFiles, attachPaths, useThumbnail } from "./attach";
 import { useDisplayedEntries } from "../branch";
 import { type HistoryDraft, historyOnVisualBoundary, promptHistory, PromptHistoryCursor } from "./history";
-import { type Attachment, appendWithSpace, composerText, registerComposerEditor, takePendingFocus, useComposerDrafts } from "./drafts";
+import { type Attachment, appendWithSpace, composerText, notifyComposerAction, registerComposerEditor, takePendingFocus, useComposerDrafts } from "./drafts";
 import { fuzzyFiles, mentionAtCaret, mentionRanges } from "./fuzzy";
 import { MentionPicker, useProjectFiles } from "./MentionPicker";
 import { type LibraryTab, PromptLibrary } from "./PromptLibrary";
@@ -391,6 +391,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		const images = [...attachments];
 		historyCursor.current.reset();
 		if (!text && images.length === 0) return;
+		notifyComposerAction(tabId);
 		const store = useComposerDrafts.getState();
 		store.setDraft(tabId, "");
 		store.clearAttachments(tabId);
@@ -444,6 +445,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 
 	const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
 		if (readOnly || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
+		if (event.key === "Escape") notifyComposerAction(tabId);
 		if (mention && matches && matches.length > 0) {
 			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 				event.preventDefault();

@@ -1,4 +1,4 @@
-import { BrowserWindow, ipcMain } from "electron";
+import { BrowserWindow, type IpcMainInvokeEvent, ipcMain } from "electron";
 import type { EventChannel, InvokeChannel, IpcEventMap, IpcInvokeMap } from "@shared/ipc";
 import { isAppUrl } from "./services/app-origin";
 
@@ -8,11 +8,22 @@ type Handler<C extends InvokeChannel> = (
 
 /** Register a typed `ipcMain.handle` for a channel in {@link IpcInvokeMap}. */
 export function handle<C extends InvokeChannel>(channel: C, handler: Handler<C>): void {
+	handleWithEvent(channel, (_event, ...args) => handler(...args));
+}
+
+/**
+ * Like {@link handle}, with the invoking event first, for handlers whose state belongs to the window that asked
+ * (for example, resources released when that window reloads). The same origin check applies.
+ */
+export function handleWithEvent<C extends InvokeChannel>(
+	channel: C,
+	handler: (event: IpcMainInvokeEvent, ...args: IpcInvokeMap[C]["args"]) => IpcInvokeMap[C]["result"] | Promise<IpcInvokeMap[C]["result"]>,
+): void {
 	ipcMain.handle(channel, (event, ...args) => {
 		if (!event.senderFrame || event.senderFrame !== event.sender.mainFrame || !isAppUrl(event.senderFrame.url)) {
 			throw new Error("This request must come from the visual-omp window.");
 		}
-		return handler(...(args as IpcInvokeMap[C]["args"]));
+		return handler(event, ...(args as IpcInvokeMap[C]["args"]));
 	});
 }
 

@@ -1,0 +1,31 @@
+[
+  {
+    "elapsedMs": 713,
+    "command": {
+      "id": "probe-1",
+      "type": "get_state"
+    }
+  },
+  {
+    "elapsedMs": 933,
+    "command": {
+      "id": "probe-2",
+      "type": "prompt",
+      "message": "fixture html"
+    }
+  },
+  {
+    "elapsedMs": 16124,
+    "command": {
+      "id": "probe-3",
+      "type": "get_messages"
+    }
+  },
+  {
+    "elapsedMs": 16124,
+    "command": {
+      "id": "probe-4",
+      "type": "get_state"
+    }
+  }
+]

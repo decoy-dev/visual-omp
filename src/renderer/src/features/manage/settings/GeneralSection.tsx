@@ -87,6 +87,14 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 					/>
 				)}
 				{prefs && (
+					<>
+						<Switch className="py-3" label={t("general.livePreview.label")} description={t("general.livePreview.description")}
+							checked={prefs.livePreview} onCheckedChange={livePreview => void setPrefs({ livePreview })} />
+						<Switch className="py-3" label={t("general.livePreviewOpenOutputs.label")} description={t("general.livePreviewOpenOutputs.description")}
+							checked={prefs.livePreviewOpenOutputs} onCheckedChange={livePreviewOpenOutputs => void setPrefs({ livePreviewOpenOutputs })} />
+					</>
+				)}
+				{prefs && (
 					<Switch
 						className="py-3"
 						label={t("general.voice.label")}

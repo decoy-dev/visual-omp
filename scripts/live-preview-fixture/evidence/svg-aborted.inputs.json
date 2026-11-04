@@ -1,0 +1,38 @@
+[
+  {
+    "elapsedMs": 590,
+    "command": {
+      "id": "probe-1",
+      "type": "get_state"
+    }
+  },
+  {
+    "elapsedMs": 765,
+    "command": {
+      "id": "probe-2",
+      "type": "prompt",
+      "message": "fixture svg"
+    }
+  },
+  {
+    "elapsedMs": 1691,
+    "command": {
+      "id": "probe-3",
+      "type": "abort"
+    }
+  },
+  {
+    "elapsedMs": 1702,
+    "command": {
+      "id": "probe-4",
+      "type": "get_messages"
+    }
+  },
+  {
+    "elapsedMs": 1702,
+    "command": {
+      "id": "probe-5",
+      "type": "get_state"
+    }
+  }
+]

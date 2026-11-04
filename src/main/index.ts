@@ -15,6 +15,9 @@ import { getPrefs } from "./prefs";
 import { quitAction } from "./quitFlow";
 import { killAllTerminals } from "./terminals";
 import { allowsAppPermission, isAppUrl, setAppRendererUrl } from "./services/app-origin";
+import { previewDocumentUrl, previewNavigationRule, registerPreviewScheme, revokeAllPreviews } from "./services/preview-protocol";
+
+registerPreviewScheme();
 
 let mainWindow: BrowserWindow | null = null;
 /** Set once the renderer confirmed (or had nothing running) so the next quit proceeds. */
@@ -91,11 +94,29 @@ function createWindow(): void {
 	mainWindow.webContents.on("will-navigate", (event, url) => {
 		if (url !== mainWindow?.webContents.getURL()) event.preventDefault();
 	});
+	contents.on("will-frame-navigate", details => {
+		const decision = previewNavigationRule({
+			url: details.url,
+			currentUrl: details.frame?.url ?? "",
+			isMainFrame: details.isMainFrame,
+			// Compare frame identities by id: Electron does not promise one WebFrameMain object per frame.
+			initiatedByMainFrame: details.initiator != null && details.initiator.frameTreeNodeId === contents.mainFrame.frameTreeNodeId,
+			documentUrl: previewDocumentUrl(details.url),
+		});
+		if (decision.cancel) details.preventDefault();
+		if (decision.blocked) broadcast("preview:blockedNavigation", decision.blocked);
+	});
 	// Followed files belong to the renderer's read-only tabs; a reload, crash or closed window drops them.
 	mainWindow.webContents.on("did-start-navigation", details => {
-		if (details.isMainFrame && !details.isSameDocument) followSessions([]);
+		if (details.isMainFrame && !details.isSameDocument) {
+			followSessions([]);
+			revokeAllPreviews();
+		}
 	});
-	mainWindow.webContents.on("render-process-gone", () => followSessions([]));
+	mainWindow.webContents.on("render-process-gone", () => {
+		followSessions([]);
+		revokeAllPreviews();
+	});
 	mainWindow.webContents.on("did-finish-load", () => {
 		if (!askOnLoad) return;
 		askOnLoad = false;
@@ -111,6 +132,7 @@ function createWindow(): void {
 		// A window reopened to ask that closes before it loaded asks nothing; the next quit reopens it again.
 		askOnLoad = false;
 		followSessions([]);
+		revokeAllPreviews();
 	});
 	if (!app.isPackaged && process.env.ELECTRON_RENDERER_URL) void mainWindow.loadURL(process.env.ELECTRON_RENDERER_URL);
 	else void mainWindow.loadFile(join(__dirname, "../renderer/index.html"));

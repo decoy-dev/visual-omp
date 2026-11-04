@@ -71,6 +71,21 @@ interface DraftState {
 
 const editors = new Map<string, ComposerEditor>();
 
+const composerActions = new Map<string, Set<() => void>>();
+/** A correction hold ends only on this composer's send or Escape action. */
+export function onComposerAction(tabId: string, listener: () => void): () => void {
+	const listeners = composerActions.get(tabId) ?? new Set();
+	composerActions.set(tabId, listeners);
+	listeners.add(listener);
+	return () => {
+		listeners.delete(listener);
+		if (!listeners.size) composerActions.delete(tabId);
+	};
+}
+export function notifyComposerAction(tabId: string): void {
+	for (const listener of [...(composerActions.get(tabId) ?? [])]) listener();
+}
+
 /** Called by the mounted Composer; returns the unregister function. */
 export function registerComposerEditor(tabId: string, editor: ComposerEditor): () => void {
 	editors.set(tabId, editor);

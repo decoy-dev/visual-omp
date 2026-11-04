@@ -116,6 +116,14 @@
 			"label": "Show thinking as omp thinks",
 			"description": "In Normal view, the thought omp is writing stays open so you can follow it, then folds once omp moves on to a step or a reply."
 		},
+		"livePreview": {
+			"label": "Show visual outputs while omp makes them",
+			"description": "Previews supported visual files in Outputs while the current turn works. Turning this off stops file watching and closes the stage."
+		},
+		"livePreviewOpenOutputs": {
+			"label": "Open Outputs when omp starts a visual output",
+			"description": "Opens that chat's Outputs at its first visual output each turn. Watch on a tool card opens it whenever you choose."
+		},
 		"voice": {
 			"label": "Voice input",
 			"description": "Shows a microphone button in the message box so you can talk instead of type. omp turns your speech into text using the Dictation model."

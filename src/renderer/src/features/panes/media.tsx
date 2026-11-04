@@ -394,20 +394,19 @@ export function ThumbnailFrame({ pdf, children }: { pdf: boolean; children: Reac
  * The PDF's bytes as a Blob URL in Chromium's built-in viewer. A new `revision` reads it again; the shown page stays
  * until the new bytes arrive, and each Blob URL is revoked once it is replaced or the view closes.
  */
-export function PdfFrame({ path, revision, name }: { path: string; revision: number; name: string }) {
+export function PdfFrame({ path, revision, name, bytes }: { path: string; revision: number; name: string; bytes?: Uint8Array<ArrayBuffer> }) {
 	const { t } = useTranslation("panes");
 	const [state, setState] = useState<{ path: string; url: string | null } | null>(null);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `revision` is a reload trigger
 	useEffect(() => {
 		let live = true;
-		window.vomp
-			.invoke("panes:readPdf", path)
-			.then(bytes => live && setState({ path, url: URL.createObjectURL(new Blob([bytes], { type: "application/pdf" })) }))
+		const read = bytes ? Promise.resolve(bytes) : window.vomp.invoke("panes:readPdf", path);
+		read.then(value => live && setState({ path, url: URL.createObjectURL(new Blob([value], { type: "application/pdf" })) }))
 			.catch(() => live && setState({ path, url: null }));
 		return () => {
 			live = false;
 		};
-	}, [path, revision]);
+	}, [path, revision, bytes]);
 	const url = state?.url ?? null;
 	useEffect(
 		() => () => {
@@ -448,7 +447,7 @@ export function PdfFrame({ path, revision, name }: { path: string; revision: num
  * could not be drawn). Each opening starts fitted. Open in default app needs an allowed file type and Show in folder a
  * path, as in the panes.
  */
-export function ExpandPreview({ name, path, image, render }: { name: string; path: string | null; image: boolean; render(zoom: ZoomControl): ReactNode }) {
+export function ExpandPreview({ name, path, image, render, open, onOpenChange, hideTrigger = false }: { name: string; path: string | null; image: boolean; render(zoom: ZoomControl): ReactNode; open?: boolean; onOpenChange?(open: boolean): void; hideTrigger?: boolean }) {
 	const { t } = useTranslation("panes");
 	const [zoomed, setZoomed] = useState(false);
 	const [toggle, setToggle] = useState<(() => void) | null>(null);
@@ -457,10 +456,10 @@ export function ExpandPreview({ name, path, image, render }: { name: string; pat
 		if (!next) setZoomed(false);
 	}, []);
 	return (
-		<Dialog onOpenChange={open => open && setZoomed(false)}>
-			<DialogTrigger asChild>
+		<Dialog open={open} onOpenChange={next => { if (next) setZoomed(false); onOpenChange?.(next); }}>
+			{!hideTrigger && <DialogTrigger asChild>
 				<IconButton size="sm" label={t("files.expand")} icon={<ArrowsOut />} />
-			</DialogTrigger>
+			</DialogTrigger>}
 			<DialogContent
 				size="full"
 				title={

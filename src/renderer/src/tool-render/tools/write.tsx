@@ -1,6 +1,7 @@
 /** `write` — file create/overwrite: content preview plus write confirmation. */
 import type { ReactNode } from "react";
 import { DiagramPreview } from "../../ui/DiagramPreview";
+import { closePartialSvg } from "../../ui/charts/vendor/omp/svg-source";
 import { Badge, Badges, CodeBlock, InvalidArg, Note, Output, PathText, ResultText } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, languageFromPath, str } from "../util";
@@ -42,7 +43,7 @@ function Summary({ args }: ToolRenderProps): ReactNode {
 	);
 }
 
-function Body({ args, result }: ToolRenderProps): ReactNode {
+function Body({ args, result, running }: ToolRenderProps): ReactNode {
 	const path = str(args.file_path ?? args.path);
 	const content = str(args.content);
 	const details = detailsRecord(result);
@@ -66,7 +67,7 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 				</Note>
 			) : (
 				content && (path && /\.svg$/i.test(path)
-					? <DiagramPreview source={content} language="svg" />
+					? <DiagramPreview source={running ? closePartialSvg(content) ?? content : content} language="svg" />
 					: path && /\.mmd$/i.test(path)
 						? <DiagramPreview source={content} language="mermaid" />
 						: <CodeBlock code={content} lang={path ? languageFromPath(path) : null} maxLines={12} />)

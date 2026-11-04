@@ -1,0 +1,39 @@
+[
+  {
+    "elapsedMs": 588,
+    "command": {
+      "id": "probe-1",
+      "type": "get_state"
+    }
+  },
+  {
+    "elapsedMs": 912,
+    "command": {
+      "id": "probe-2",
+      "type": "prompt",
+      "message": "fixture svg"
+    }
+  },
+  {
+    "elapsedMs": 1844,
+    "command": {
+      "id": "probe-3",
+      "type": "steer",
+      "message": "Use a blue square instead. Do not write the poster."
+    }
+  },
+  {
+    "elapsedMs": 16115,
+    "command": {
+      "id": "probe-4",
+      "type": "get_messages"
+    }
+  },
+  {
+    "elapsedMs": 16116,
+    "command": {
+      "id": "probe-5",
+      "type": "get_state"
+    }
+  }
+]

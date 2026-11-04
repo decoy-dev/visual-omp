@@ -1,6 +1,6 @@
 # visual-omp: live previews of visual outputs
 
-Status: proposal for 0.7.6, written 2026-11-04 against `main` at `2f6256f` (0.7.5) and omp 18.16.0, then revised after astra's review. The owner has not decided the open questions at the end. Nothing in this plan is implemented yet.
+Status: plan for 0.7.6, written 2026-11-04 against `main` at `2f6256f` (0.7.5) and omp 18.16.0, then revised after astra's review. On 2026-11-04 the owner accepted astra's recommendations on every open question (see [Owner decisions](#owner-decisions)) and asked for Phase 1 to be built. Phase 1 was implemented the same day; where it differs from this plan, the difference is noted in place. Phases 2 and 3 are not started.
 
 ## Sources and citations
 
@@ -30,7 +30,7 @@ Both refresh at checkpoints: a saved file, a reload, a republish. The documentat
 3. **Large frames are cut.** Collab caps each frame at 1 MiB. A frame over the cap has every string cut to its first 64 KiB, then to smaller sizes down to 64 bytes until it fits, and each cut ends with `…[N chars elided for collab session]` (`pi-coding-agent/src/collab/replication-shrink.ts:31,52-60` **[17.3.4]**; the marker is in the **[18.16 bundle]**). Every frame repeats the whole partial message, so a single `write` stops streaming its full content somewhere below 1 MiB. `[INFERENCE]` The message is serialized twice per frame (`message` and the event's `partial`), which puts the limit near 500 KiB.
 4. **Running tools report progress.** bash and eval send output tails, eval also sends images per cell, edit sends per-file diffs and task sends helper progress (`pi-agent-core/src/agent-loop.ts:2533-2542`, `pi-coding-agent/src/tools/bash.ts:1460`, `pi-coding-agent/src/tools/eval.ts:499-505` **[17.3.4]**). The app already renders these from `partialResult` (`chat/transcript/ToolCard.tsx:115-124`).
 5. **`generate_image` produces nothing until it finishes.** It never requests partial images (no `partial_images` in the **[18.16 bundle]**), and it saves to `os.tmpdir()/omp-image-<id>.<ext>` (`pi-coding-agent/src/tools/image-gen.ts:710-716` **[17.3.4]**).
-6. **The person can already stop or redirect.** Stop sends an abort request for the turn (`state/session.ts:973-975`), and queued messages can resume once work ends (`state/session.ts:1431-1447`). Send now steers the running turn (`chat/composer/send.ts:55-66`). omp checks for a queued steer when a tool batch starts and skips tools that have not started, then gives the model the steer (`pi-agent-core/src/agent-loop.ts:2364-2375,2420-2440,2638-2700` **[17.3.4]**). `[INFERENCE]` A steer sent while the model is still writing a `write` call therefore discards that write once the model finishes it, and the model still spends the output tokens for the rest of the content. Phase 1 confirms this, and the abort behavior, against the installed omp before any UI text describes them (see [Acting on drift](#acting-on-drift)).
+6. **The person can already stop or redirect.** Stop sends an abort request for the turn (`state/session.ts:973-975`), and queued messages can resume once work ends (`state/session.ts:1431-1447`). Send now steers the running turn (`chat/composer/send.ts:55-66`). A probe of the installed omp 18.16.0 in RPC mode (`scripts/live-preview-fixture/README.md`, evidence beside it) established what each does while the model is still writing a `write` call. An abort ends the message with `stopReason: "aborted"` and "Interrupted by user", drops the incomplete call from the saved message and runs no tool, so no file is saved. A steer is acknowledged, but the model finishes the arguments, the write runs and saves the file, and omp handles the steer afterwards. The 17.3.4 source suggested that omp skips tools that have not started when a steer is queued (`pi-agent-core/src/agent-loop.ts:2364-2375,2420-2440` **[17.3.4]**); 18.16 does not skip this write. Stop is therefore the only control that saves the remaining output tokens of a streaming write. The probe used RPC; that the app's collab and TSP paths behave the same is `[INFERENCE]`.
 7. **What the app shows today:**
    - The `write` card draws `.svg` and `.mmd` content with `DiagramPreview`, only while the card is expanded (`tool-render/tools/write.tsx:68-72`). A partial SVG fails to parse until the call is complete, because the card does not use the existing `closePartialSvg` repair (`ui/charts/vendor/omp/svg-source.ts:94`) that streamed replies use (`ui/rich-content.ts:10`).
    - Outputs lists images, PDFs and files from finished tool results (`chatOutputs` in `features/panes/derive.ts:883`), so nothing appears while a call runs. For commands, main scans the paths a finished call named, two levels deep, and skips folders that are too broad, such as the file system root, its direct children, home and temporary folders (`scanMadeFiles` and `isBroadFolder` in `src/main/services/panes.ts:318-341`).
@@ -61,7 +61,7 @@ Phase 1 is the 0.7.6 proposal; later phases are described in [Phasing](#phasing)
 | CSV and TSV tables | `write` or a script | 1, 2 | Rows as written, with the existing numeric chart under the table | Table and chart from reply rendering (exists) | 1 |
 | Python plots (matplotlib, seaborn, plotly static export) | eval or bash | 2 | Each figure as its cell displays it, and saved image files as they change | eval partial images (exists in cards), image refresh | 1 |
 | Raster images from scripts (Pillow, sharp, ImageMagick, canvas posters, GIF and APNG) | bash or eval | 2 | The image after each save that stays unchanged long enough to read | Zoom view with refresh on change | 1 |
-| Generated images | `generate_image` | 3, later 2 | Prompt, model, size and count while omp writes them; partial frames once omp reports them | Request card; progressive image after an omp change | 1 (request), 3 (partials) |
+| Generated images | `generate_image` | 3, later 2 | The subject, model, aspect ratio and image size while omp writes them; partial frames once omp reports them | Request card; progressive image after an omp change | 1 (request), 3 (partials) |
 | PDF (LaTeX, Typst, reportlab, WeasyPrint, Chromium print) | bash compile | 2, later 4 | The new PDF after each valid save or compile | Chromium's PDF viewer through a Blob URL (exists) | 1 (refresh), 2 (first-page proofs) |
 | Word documents (DOCX) | python-docx, pandoc | 2, 4 | The document after each save | `docx-preview` (new, lazy) or a PDF from LibreOffice when installed | 2 |
 | Spreadsheets (XLSX) | openpyxl, SheetJS | 2 | Sheets after each save, read-only | SheetJS grid (new, lazy) | 2 |
@@ -95,7 +95,7 @@ flowchart LR
 - **Outputs gains an "In progress" stage** above its existing sections. It appears while omp is making a visual and shows one output at a time, large. Other outputs from the same turn appear as chips above the stage.
 - **The stage shows** the render, a status line ("Writing poster.svg · 42 KB", "Rendering · frame 120 of 300", "Compiling report.tex") and these actions: **Stop**, **Stop and redirect**, Open in Files, and **Expand preview** (`ArrowsOut`) for images and PDFs, reusing the Files pane's full-window layer (DESIGN §3.7).
 - **Tool cards** for visual outputs get a Watch action (`Eye`) that opens that chat's Outputs at the stage. Collapsed cards keep their current height, so the transcript does not move while a preview updates.
-- **Settings › General** gains "Show visual outputs while omp makes them" (default on) and "Open Outputs when omp starts a visual output" (default an owner decision, see [Open questions](#open-questions-for-the-owner)).
+- **Settings › General** gains "Show visual outputs while omp makes them" (default on) and "Open Outputs when omp starts a visual output" (default off, see [Owner decisions](#owner-decisions)).
 - The side panel keeps its per-chat state and the Outputs badge keeps its rules (DESIGN §3.7): in-progress outputs count the same way new outputs count today.
 
 ### Stage behavior
@@ -114,7 +114,7 @@ flowchart LR
   2. It sends the abort and shows "Stopping…" until omp reports that the turn ended.
   3. It inserts `About <file name>: ` at the start of the composer's draft and focuses it. Text and attachments already in the draft stay.
   4. It releases the hold when the person sends a message or presses Escape. If omp does not confirm the stop within 10 seconds, the stage shows "omp did not stop", releases the hold and offers Stop again.
-- **Send now** keeps working as it does today. Its effect on a streaming `write` (Background item 6) is described in the UI only after a scripted probe confirms it against the installed omp.
+- **Send now** keeps working as it does today. The stage does not describe it, because during a streaming `write` it does not stop the write (Background item 6).
 - **Attach this frame** (Phase 2) adds what the stage shows to the draft as a PNG, so omp can see what the person saw. Main captures the stage's visible rectangle with `webContents.capturePage`, which works the same for SVG, HTML, PDF pages and video frames and produces a format the composer accepts (`chat/composer/send.ts:18` lists PNG, JPEG, GIF and WebP). A raster image whose file is one of those formats attaches the file itself. An attached image costs input tokens: on Claude models, after any resizing the model requires, `⌈width / 28⌉ × ⌈height / 28⌉` visual tokens, 1,521 for a 1,092 × 1,092 image. Stop and redirect therefore sends text unless the person attaches a frame.
 
 ### Renderer modules
@@ -122,10 +122,10 @@ flowchart LR
 A new `features/live-preview/` feature, loaded lazily with `lazyView` so the entry chunk stays within `scripts/guard-renderer-bundle.mjs`:
 
 - `subjects.ts` is a pure function from the chat snapshot (`stream`, `activeTools`, `backgroundTools`, recent entries) and watcher events to `LiveSubject[]`:
-  `{ id, kind: "source" | "file" | "request" | "progress", format, path?, text?, revision, state: "writing" | "running" | "saved" | "stopped" | "failed" | "skipped", elided, progress?: { done, total, unit } }`.
+  `{ id, kind: "source" | "file" | "request" | "images", format, path, text, revision, state: "writing" | "running" | "saved" | "stopped" | "failed" | "skipped", elided, request, images, size }` (`features/live-preview/types.ts`).
   It matches formats by path extension and tool name, detects the collab elision marker and switches an elided subject to its file once the tool runs.
-- `formats/*.ts` holds one adapter per format with `match(subject)` and `render(subject, previous)`. Heavy adapters (Mermaid, and later DOCX, XLSX, DOT and 3D) load with `import()`, as Mermaid does today. An adapter that fails on a partial input keeps the last frame that rendered.
-- `progress.ts` parses progress from output tails: ffmpeg `frame=` and `time=` against the input duration, Remotion's rendered-frame counts, manim's animation counts and LaTeX's page counts.
+- `formats/*.tsx` holds one adapter per format, each a `LiveAdapter` with its `maxFps` and a `Frame` component, loaded with `import()` through `loadAdapter`. An adapter that fails on a partial input keeps the last frame that rendered.
+- `progress.ts` (Phase 2) parses progress from output tails: ffmpeg `frame=` and `time=` against the input duration, Remotion's rendered-frame counts, manim's animation counts and LaTeX's page counts. Phase 1's status line shows omp's intent line instead.
 - `Stage.tsx` limits renders to 8 per second for SVG and Mermaid and 4 per second for HTML and coalesces updates that arrive while a render runs, as described in [Stage behavior](#stage-behavior).
 - Independently of the stage, `tool-render/tools/write.tsx` repairs partial SVG with `closePartialSvg` while the call runs, so an expanded card shows the drawing as it grows.
 
@@ -134,31 +134,31 @@ A new `features/live-preview/` feature, loaded lazily with `lazyView` so the ent
 All HTML previews, streaming and saved, load from `vomp-preview:` documents whose policy main sets. A `srcdoc` or `blob:` document would inherit the renderer's own CSP, and the renderer would have to widen that policy for project stylesheets and fonts, so the plan keeps the renderer's policy as it is apart from the additions listed below.
 
 - **Address.** Each subject's document has one address, `vomp-preview://<token>/<path from the asset root>?rev=<revision>`. While omp writes the file, the renderer sends the latest partial text to main (at most 4 times a second) and main answers that address from memory; after the write runs, main answers it from the saved file. Because the address keeps the file's own folder, relative references such as `./style.css` resolve exactly as they would on disk, and those requests go through the same grant checks as any other.
-- **Updates.** Two iframes alternate: the next revision replaces the visible one only after it has loaded, so the page does not flash blank on every update.
+- **Updates.** Two iframes alternate: the next revision replaces the visible one only after it has loaded, so the page does not flash blank on every update. Before loading a revision, the renderer asks main to prepare it (`preview:prepare`): main reads the document once, from live text or disk, under the same grant, containment and size checks as a request, and keeps that exact copy. The iframe's request for that revision receives the prepared copy, so a file that disappears or grows between the check and the load cannot replace the preview with an error page. Main keeps the two newest prepared revisions per token and drops them when the token is revoked. When preparation fails, the visible frame stays with "Waiting for omp to finish saving". Stylesheets, images and fonts the page references are still read from disk under the grant.
 - **Policy.** Every HTML response carries this CSP as a response header, so it applies before any content is parsed:
   `default-src 'none'; script-src 'none'; style-src 'unsafe-inline' vomp-preview:; img-src vomp-preview: data: blob:; font-src vomp-preview: data:; media-src vomp-preview:; connect-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; object-src 'none'; manifest-src 'none'; form-action 'none'; base-uri 'self'`.
   Pages therefore load stylesheets, images and fonts from granted files and inline sources only, and make no network requests.
 - **Sandbox.** The iframe has `sandbox=""` in Phase 1, for streaming and saved pages alike, which blocks scripts, forms, popups and top-level navigation and gives the page an opaque origin.
 - **Navigation inside the frame.** A sandboxed frame can still navigate itself through a link or a `<meta http-equiv="refresh">`. Main handles `will-frame-navigate` for the window: it permits a load that the app's own document starts (the navigation's initiator is the main frame) to the subject's own address, which covers each new revision and the switch to the saved file, and it cancels every navigation the preview page starts. A link the person clicks offers Open in browser through the app's existing external-link handler instead.
-- **Phase 2 scripts.** After saving, a page may run its scripts with `sandbox="allow-scripts"` (still without `allow-same-origin`) and `script-src 'unsafe-inline' vomp-preview:`. Network access stays blocked unless the person allows it (an owner decision).
+- **Phase 2 scripts.** After saving, a page may run its scripts with `sandbox="allow-scripts"` (still without `allow-same-origin`) and `script-src 'unsafe-inline' vomp-preview:`. Network access stays blocked unless the person allows it for that page.
 - **What a page can reach.** A preview page can read every file its token grants, and nothing else. Grants are narrow for that reason (see the protocol below).
 
 ### Main-process additions
 
 - **`vomp-preview:` protocol**, registered as privileged (standard, secure, stream, fetch) and served with `protocol.handle`.
-  - Each preview subject gets its own random token, and main decides its grants from what omp did, never from the page's content. When the subject's folder is not broad by the existing `isBroadFolder` rule (root, its direct children, home and temporary folders), that folder and its subfolders are the asset root. When it is broad, the token grants the subject's file plus files that omp's tool calls in the same turn wrote or named by path; references to anything else stay unavailable, and the stage says that some assets are not shown.
-  - Main resolves each request's path against the subject's folder, rejects any path that leaves the asset root or the granted files (including `..` segments and encoded separators), resolves the result with `realpath` and checks it again against the grants, so a symlink cannot reach outside them.
-  - Main serves regular files only and caps reads (2 MiB for HTML, CSS and SVG, 8 MiB for images, ranges only for video and audio).
+  - Each preview subject gets its own random token, and main decides its grants from what omp did, never from the page's content. The asset root is the chat's folder when the subject is inside it and that folder is not broad by the existing `isBroadFolder` rule (root, its direct children, home and temporary folders), so a page in `site/` can use `../assets/`; otherwise it is the subject's own folder when that is not broad. When both are broad, the token grants the subject's file plus files that omp's tool calls in the same turn wrote or named by path; references to anything else stay unavailable, and the stage shows "Some assets may be unavailable. This preview can load only files named in this turn."
+  - Main resolves each request's path against the asset root (or the subject's folder when there is none), rejects any path that leaves it or the granted files (including `..` segments and encoded separators), resolves the result with `realpath` and checks it again against the grants, so a symlink cannot reach outside them.
+  - Main serves regular files only and caps reads (2 MiB for HTML, CSS, SVG and text, 8 MiB for images, 32 MiB for PDFs, ranges only for video and audio).
   - Tokens are revoked when the stage closes the subject, the chat closes or the window reloads.
   - Responses send `Access-Control-Allow-Origin: *` for fonts, which the opaque-origin frame loads in CORS mode, and support `Range` for video in Phase 2.
 - **Renderer CSP** adds `vomp-preview:` to `frame-src`, `img-src` and `media-src`. `style-src` and `font-src` stay as they are, because preview documents carry their own policy.
-- **Preview watcher** (`src/main/features/preview.ts`, contract in `src/shared/contracts/preview.ts`): `preview:watch` and `preview:unwatch`, reference counted like `git:watch`.
-  - **Scope.** It watches the chat's folder when that folder is not broad by the `isBroadFolder` rule. New chats default to a temporary folder, which is broad, so for those chats and for home or root folders it watches only the files and folders that running tool calls name. The same rule applies to a named folder: a broad folder a tool call names (`/tmp` or `/`, for example) is never watched recursively, and only the files the call names inside it are watched. It also watches omp's local artifact folder for the session.
+- **Preview watcher** (`src/main/services/preview-watch.ts`, registered by `src/main/features/preview.ts`, contract in `src/shared/contracts/preview.ts`): `preview:watch`, `preview:watchNamed` and `preview:unwatch`, owned by the window that asked, which closes its watches when it reloads or exits.
+  - **Scope.** It watches the chat's folder when that folder is not broad by the `isBroadFolder` rule. New chats default to a temporary folder, which is broad, so for those chats and for home or root folders it watches only the files and folders that running tool calls name. The same rule applies to a named folder: a broad folder a tool call names (`/tmp` or `/`, for example) is never watched recursively, and only the files the call names inside it are watched. A named path that does not exist yet is followed from its nearest existing folder, non-recursively, and its scope is promoted once it appears, so a command that names `/tmp/new-output/plot.png` before creating `new-output` is still seen. Watching omp's local artifact folder for the session is left for Phase 2.
   - **Subscriptions.** On macOS and Windows, a recursive `fs.watch` is one operating-system subscription per root, so the watcher filters events and skips `.git`, `node_modules` and git-ignored paths. `[INFERENCE]` On Linux, Node implements recursive watching with one inotify watch per directory, including ignored ones, so there the watcher walks the tree itself, subscribes only to directories it keeps and stops at 2,000 directories, falling back to named paths.
   - **Named outputs win.** A path a running call names in its arguments or output (the same extraction Outputs uses for finished calls, DESIGN §3.7) is watched and reported even inside a git-ignored folder such as `dist/` or `build/`.
-  - **Events.** It keeps an allowlist of visual extensions, debounces for 250 ms, reports a file only after its size and modification time are unchanged across two checks 150 ms apart, and broadcasts `preview:changed { folder, path, size, mtimeMs }`.
-  - **Lifecycle.** It starts when a turn starts and the setting is on, stays while background jobs that the turn started still run, and stops after one final debounced read once the turn and its jobs end.
-  - **Attribution.** `subjects.ts` assigns an event to the running call that named the path, or else to the call whose time window covers it. Events nobody named are best-effort discovery: another program writing in the same folder can appear in the stage, labelled with its file name only.
+  - **Events.** It keeps an allowlist of visual extensions, debounces for 250 ms, reports a file only after its size and modification time are unchanged across two checks 150 ms apart, and broadcasts `preview:changed { watchId, path, size, mtimeMs }`. Paths keep the spelling the renderer gave, so on macOS a save under `/tmp` is reported as `/tmp/...` rather than `/private/tmp/...` and matches the path omp's call named.
+  - **Lifecycle.** It starts when a turn starts and the setting is on, stays while background jobs that the turn started still run, and stops after one final debounced read once the turn and its jobs end. Replacing the named paths during a turn subscribes to the new paths at once and keeps the retiring ones until their pending reads finish, so neither a call's last save nor a save in a newly named folder is lost when the next call starts at once.
+  - **Attribution.** `subjects.ts` assigns an event to the running call that named the path, or else to the call whose time window covers it. The save of a file a `write` call streamed stays in that write's subject, so the stage does not list the same file twice. Events nobody named are best-effort discovery: another program writing in the same folder can appear in the stage, labelled with its file name only.
 
 ### Large and fast output
 
@@ -189,7 +189,7 @@ The app does not need these for Phase 1. Following the wrapper-first rule, they 
 ## Phasing
 
 **Phase 1, proposed for 0.7.6**
-- A scripted probe against the installed omp that confirms Stop and Send now behavior during a streaming `write` (Background item 6).
+- A scripted probe against the installed omp that establishes Stop and Send now behavior during a streaming `write` (done; Background item 6).
 - The Outputs stage with the behavior above, the settings and the Watch action on tool cards.
 - Streaming sources for SVG, Mermaid, static HTML, Markdown and CSV, with elision handling.
 - eval images, plus image and PDF files from bash and eval through the preview watcher. PDFs refresh after each valid save or compile.
@@ -212,7 +212,7 @@ The app does not need these for Phase 1. Following the wrapper-first rule, they 
 5. The protocol refuses `..`, encoded separators, symlinks that leave the grant, folders, files over the caps and revoked tokens. For a subject in a broad folder, a page reference to a file omp did not write or name in that turn stays unavailable, including through `../` and through a symlink.
 6. A bash call whose Python script saves a PNG three times, each save at least one second after the previous one and complete before the next starts, shows three successive images.
 7. A LaTeX compile that rewrites a PDF updates the stage after each compile.
-8. `generate_image` shows its prompt while omp writes it, and Stop before the call executes means no provider request is sent.
+8. `generate_image` shows its subject while omp writes it, and Stop before the call executes means no provider request is sent.
 9. Stop and redirect keeps an existing draft and its attachments, sends no queued message before the person sends or presses Escape, and recovers when omp does not confirm the stop.
 10. A streamed file over the collab frame limit shows the size note, then the saved file.
 11. In a new chat in a temporary folder, the watcher subscribes only to named paths, and a tool call that names `/tmp` or `/` itself starts no recursive watch.
@@ -233,13 +233,12 @@ The app does not need these for Phase 1. Following the wrapper-first rule, they 
 - **Render cost during long streams.** Mitigated by the throttle, coalescing and keeping the last good frame.
 - **Partially written binary files.** Mitigated by the stability check and the decode fallback.
 
-## Open questions for the owner
+## Owner decisions
 
-astra's recommendation follows each question.
+The owner accepted astra's recommendation on each question on 2026-11-04.
 
-1. Should Outputs open by itself when omp starts a visual output? Recommendation: off by default, with Watch opening it explicitly, because opening it automatically replaces the pane the person is using and can take over the main area at narrow widths.
-2. Should proofs be on by default, and should a proof wait for an answer? Recommendation: opt-in, waiting for an answer before an expensive render, accepting the added latency and the cost of the proof itself.
-3. May a saved HTML page reach the network after the person allows it? Recommendation: blocked by default, with a per-page permission in Phase 2.
-4. Is Phase 1 the right scope for 0.7.6? Recommendation: yes, accepting that video and Office formats get no new progress view until Phase 2 and that PDFs update only after a valid save or compile.
-5. Are lazy-loaded dependencies acceptable for Phase 2 and 3 formats (`docx-preview`, SheetJS, `@hpcc-js/wasm`, three.js)?
-6. Should PPTX previews use LibreOffice when it is installed? visual-omp would never install it.
+1. **Opening Outputs.** "Open Outputs when omp starts a visual output" is a setting, off by default. The Watch action opens Outputs explicitly. Opening it automatically would replace the pane the person is using and can take over the main area at narrow widths.
+2. **Proofs.** Opt-in, and a proof waits for the person's answer before an expensive render, accepting the added latency and the cost of the proof itself (Phase 2).
+3. **Network access from HTML previews.** Blocked by default, with a per-page permission in Phase 2.
+4. **Scope for 0.7.6.** Phase 1 as listed in [Phasing](#phasing). Video and Office formats get no new progress view until Phase 2, and PDFs update only after a valid save or compile.
+5. **Dependencies.** Lazy-loaded renderers (`docx-preview`, SheetJS, `@hpcc-js/wasm`, three.js) are acceptable for Phases 2 and 3. PPTX previews use LibreOffice only when it is already installed; visual-omp never installs it.

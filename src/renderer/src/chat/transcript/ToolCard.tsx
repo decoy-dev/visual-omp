@@ -28,6 +28,9 @@ import { isMcpResult, mcpProgressOf, McpProgressLine } from "../../tool-render/t
 import "../../tool-render/tool-render.css";
 import { cn, Expand, PulseDot, Rise } from "../../ui";
 import { TranscriptTime, type TranscriptTimestamp } from "./TranscriptTime";
+import { lazyView } from "../../registry/lazy";
+
+const WatchAction = lazyView(() => import("../../features/live-preview/WatchAction").then(module => module.WatchAction));
 
 const ICONS: Record<string, Icon> = {
 	edit: PencilSimpleLine,
@@ -133,49 +136,55 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 				if (!event.currentTarget.contains(event.relatedTarget)) setFocused(false);
 			}}
 		>
-			<button
-				type="button"
-				data-context-tool-path={reference.path}
-				data-context-url={reference.url}
-				data-context-changes={reference.path && ["edit", "apply_patch", "write"].includes(call.name) && summary.status === "ok" ? "" : undefined}
-				aria-expanded={open}
-				onClick={() => setOpen(value => !value)}
-				title={call.intent}
-				className="-mx-2 flex h-8 w-[calc(100%+1rem)] items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
-			>
-				<ToolIcon className={cn("size-4 shrink-0 transition-colors duration-(--dur)", running ? "text-accent" : "text-fg-faint")} aria-hidden />
-				<span className={cn("min-w-0 truncate text-md transition-colors duration-(--dur)", running ? "text-fg" : "text-fg-muted group-hover/tool:text-fg")}>
-					{t(summary.key, summary.values)}
-				</span>
-				<TranscriptTime timestamp={props.timestamp} previous={props.previousTime} className="ml-auto" inControl />
-				{summary.added !== undefined && (
-					<span className="shrink-0 font-mono text-sm">
-						<span className="text-diff-add-text">+{summary.added}</span> <span className="text-diff-del-text">−{summary.removed}</span>
+			<div className="group/watch relative">
+				<button
+					type="button"
+					data-context-tool-path={reference.path}
+					data-context-url={reference.url}
+					data-context-changes={reference.path && ["edit", "apply_patch", "write"].includes(call.name) && summary.status === "ok" ? "" : undefined}
+					aria-expanded={open}
+					onClick={() => setOpen(value => !value)}
+					title={call.intent}
+					className="-mx-2 flex h-8 w-[calc(100%+1rem)] items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring group-has-[[data-live-watch]]/watch:pr-13"
+				>
+					<ToolIcon className={cn("size-4 shrink-0 transition-colors duration-(--dur)", running ? "text-accent" : "text-fg-faint")} aria-hidden />
+					<span className={cn("min-w-0 truncate text-md transition-colors duration-(--dur)", running ? "text-fg" : "text-fg-muted group-hover/tool:text-fg")}>
+						{t(summary.key, summary.values)}
 					</span>
-				)}
-				<span className="inline-flex size-4 shrink-0 items-center justify-center">
-					{running ? (
-						<PulseDot label={t("generic.running", { tool: call.name })} />
-					) : summary.status === "error" ? (
-						<span className="inline-flex text-err" role="img" aria-label={tc("toolFailed")}>
-							<X weight="bold" className="size-3.5" aria-hidden />
+					<TranscriptTime timestamp={props.timestamp} previous={props.previousTime} className="ml-auto" inControl />
+					{summary.added !== undefined && (
+						<span className="shrink-0 font-mono text-sm">
+							<span className="text-diff-add-text">+{summary.added}</span> <span className="text-diff-del-text">−{summary.removed}</span>
 						</span>
-					) : summary.status === "neutral" ? (
-						<span className="inline-flex text-fg-faint" role="img" aria-label={summary.statusLabel ? t(summary.statusLabel) : undefined}>
-							<Minus weight="bold" className="size-3.5" aria-hidden />
-						</span>
-					) : (
-						<Check weight="bold" className="size-3.5 text-fg-faint" aria-hidden />
 					)}
-				</span>
-				<CaretRight
-					className={cn(
-						"size-3.5 shrink-0 text-fg-faint opacity-0 transition-[rotate,opacity] duration-(--dur) ease-(--ease-out) group-hover/tool:opacity-100 group-focus-within/tool:opacity-100",
-						open && "rotate-90 opacity-100",
-					)}
-					aria-hidden
-				/>
-			</button>
+					<span className="inline-flex size-4 shrink-0 items-center justify-center">
+						{running ? (
+							<PulseDot label={t("generic.running", { tool: call.name })} />
+						) : summary.status === "error" ? (
+							<span className="inline-flex text-err" role="img" aria-label={tc("toolFailed")}>
+								<X weight="bold" className="size-3.5" aria-hidden />
+							</span>
+						) : summary.status === "neutral" ? (
+							<span className="inline-flex text-fg-faint" role="img" aria-label={summary.statusLabel ? t(summary.statusLabel) : undefined}>
+								<Minus weight="bold" className="size-3.5" aria-hidden />
+							</span>
+						) : (
+							<Check weight="bold" className="size-3.5 text-fg-faint" aria-hidden />
+						)}
+					</span>
+					<CaretRight
+						className={cn(
+							"size-3.5 shrink-0 text-fg-faint opacity-0 transition-[rotate,opacity] duration-(--dur) ease-(--ease-out) group-hover/tool:opacity-100 group-focus-within/tool:opacity-100",
+							open && "rotate-90 opacity-100",
+						)}
+						aria-hidden
+					/>
+				</button>
+				{/* After the row's toggle in tab order; drawn over the row's right end, which keeps room for it. */}
+				<div className="absolute top-0 right-5 z-1">
+					<WatchAction name={props.name} args={props.args} callId={props.engageId} />
+				</div>
+			</div>
 			{progress && !open && <div className="pl-6.5"><McpProgressLine value={progress} /></div>}
 			<Expand open={tail.length > 0 && !open} className="pb-1.5 pl-6.5">
 				<pre className="selectable max-h-24 overflow-hidden rounded-md bg-inset px-3 py-2 font-mono text-code whitespace-pre-wrap text-fg-muted">

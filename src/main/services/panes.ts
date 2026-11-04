@@ -1,6 +1,6 @@
 /** File reads for the Files viewer and Outputs pane, and plan-file lookup for the Plan pane (pure fs, no Electron). */
 import { type FileHandle, lstat, open, opendir, readdir, readFile, realpath, stat } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { extname, isAbsolute, join, parse, resolve } from "node:path";
 import type { PaneFileContent, PaneMadeFile, PaneMadeQuery, PanePlanFile } from "@shared/contracts/panes";
 
@@ -316,11 +316,16 @@ export const MADE_SCAN: Readonly<MadeScanLimits> = {
 const PREVIEW_EXT = /\.(pdf|png|jpe?g|gif|webp|avif|bmp|ico|svg)$/i;
 
 /** Folders too broad to scan: the file system root and its direct children, plus `extra` (home and temp folders). */
-function isBroadFolder(real: string, extra: ReadonlySet<string>): boolean {
+export function isBroadFolder(real: string, extra: ReadonlySet<string>): boolean {
 	const parts = real.slice(parse(real).root.length).split(/[\\/]/).filter(Boolean);
 	// macOS keeps /tmp and /var under /private.
 	if (process.platform === "darwin" && parts[0] === "private") parts.shift();
 	return parts.length < 2 || extra.has(real);
+}
+
+/** Canonical home and temporary folders used by the broad-folder rule. */
+export async function broadFolders(home = homedir()): Promise<ReadonlySet<string>> {
+	return new Set(await Promise.all([home, tmpdir()].map(dir => realpath(dir).catch(() => resolve(dir)))));
 }
 
 function isQuery(value: unknown): value is PaneMadeQuery {
@@ -338,7 +343,7 @@ function isQuery(value: unknown): value is PaneMadeQuery {
  */
 export async function scanMadeFiles(queries: unknown, home: string, limits: Readonly<MadeScanLimits> = MADE_SCAN): Promise<PaneMadeFile[][]> {
 	if (!Array.isArray(queries) || queries.length > limits.queries || !queries.every(isQuery)) throw new Error("Invalid scan");
-	const broad = new Set(await Promise.all([home, tmpdir()].map(dir => realpath(dir).catch(() => resolve(dir)))));
+	const broad = await broadFolders(home);
 	const results: PaneMadeFile[][] = [];
 	for (const query of queries) results.push(await scanQuery(query, broad, limits));
 	return results;

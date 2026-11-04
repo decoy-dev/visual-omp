@@ -21,6 +21,9 @@ import { type ChatOutput, IMAGE_EXT, isIntactBase64, OPENABLE_EXT, type OutputRe
 import { languageFor } from "./highlight";
 import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage, ThumbnailFrame, useNearView, type ZoomControl } from "./media";
 import { countOutputsMount, useChatOutputs } from "./outputs-store";
+import { Stage } from "../live-preview/Stage";
+import { EMPTY_CHAT, useLivePreview, visibleSubjects } from "../live-preview/store";
+import { useApp } from "../../state/app";
 
 function baseName(path: string): string {
 	return path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1) || path;
@@ -338,6 +341,8 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 	const [mount] = useState(countOutputsMount);
 	const outputs = useChatOutputs(session, view)?.outputs ?? null;
 	const tabId = session?.tabId ?? null;
+	const preview = useLivePreview(state => tabId ? state.chats[tabId] ?? EMPTY_CHAT : EMPTY_CHAT);
+	const hasStage = useApp(state => state.prefs?.livePreview === true) && visibleSubjects(preview).length > 0;
 	const [opened, setOpened] = useState<{ tabId: string | null; key: string } | null>(null);
 	const [restoreKey, setRestoreKey] = useState<string | null>(null);
 	// Kept here, so opening a tile past the first 12 and coming back keeps it on screen.
@@ -349,6 +354,14 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 	const swapKey = selected ? `view:${selected.key}` : outputs && outputs.length > 0 ? "list" : "empty";
 	return (
 		<TargetContextMenu projectPath={project} tabId={tabId}>
+		<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+		<Stage session={session} onShowOutput={path => {
+			const output = outputs?.find(item => item.path === path);
+			if (!output) return;
+			setOpened(null);
+			setRestoreKey(output.key);
+			setShowAllViewed(true);
+		}} />
 		<PresenceSwap swapKey={swapKey} className="flex min-h-0 flex-1 flex-col">
 			{selected ? (
 				<OutputViewer
@@ -373,10 +386,11 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 						setOpened({ tabId, key });
 					}}
 				/>
-			) : (
+			) : !hasStage ? (
 				<EmptyState icon={<Images />} title={t("outputs.emptyTitle")} body={t("outputs.empty")} />
-			)}
+			) : null}
 		</PresenceSwap>
+		</div>
 		</TargetContextMenu>
 	);
 }

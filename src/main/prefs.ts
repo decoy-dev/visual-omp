@@ -22,6 +22,8 @@ const DEFAULTS: AppPreferences = {
 	reducedMotion: "system",
 	transcriptMode: "normal",
 	liveThinking: true,
+	livePreview: true,
+	livePreviewOpenOutputs: false,
 	ompPath: null,
 	// Existing or unreadable profiles keep setup complete; only a missing file starts setup.
 	setupCompleted: true,

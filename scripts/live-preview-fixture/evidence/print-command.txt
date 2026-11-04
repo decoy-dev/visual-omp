@@ -1,0 +1,18 @@
+Installed version: omp/18.16.0
+Server command (worktree cwd):
+node scripts/live-preview-fixture/server.mjs --root /tmp/vomp-preview-manual.QsNzX8
+Server stdout:
+Live preview fixture listening at http://127.0.0.1:47831/v1
+
+Print command (worktree cwd):
+node scripts/live-preview-fixture/run.mjs /tmp/vomp-preview-manual.QsNzX8 omp --no-extensions --no-skills --no-rules --no-context-files --no-lsp --no-title --no-pty --auto-approve --tools write,bash,generate_image --model fixture/preview --thinking off -p "fixture svg"
+Exit status: 0
+Output:
+Working...
+The fixture tool result was received.
+
+Measured saved file:
+wc -lc /tmp/vomp-preview-manual.QsNzX8/work/poster.svg
+  300 14956 /tmp/vomp-preview-manual.QsNzX8/work/poster.svg
+
+The fixture server was stopped after this check.

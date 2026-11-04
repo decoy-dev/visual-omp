@@ -1,0 +1,2440 @@
+{
+  "version": "omp/18.16.0",
+  "root": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s",
+  "configPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/home/.omp/agent",
+  "expectedConfigPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/home/.omp/agent",
+  "environment": {
+    "PATH": "<the launching shell's PATH, removed from this capture>",
+    "HOME": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/home",
+    "USERPROFILE": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/home",
+    "SHELL": "/bin/bash",
+    "LANG": "en_US.UTF-8",
+    "TERM": "xterm-256color",
+    "COLORTERM": "truecolor",
+    "OMP_PROFILE": "",
+    "PI_CONFIG_DIR": ".omp",
+    "PI_CODING_AGENT_DIR": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/home/.omp/agent",
+    "XDG_CONFIG_HOME": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/home/.config",
+    "XDG_DATA_HOME": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/data",
+    "XDG_STATE_HOME": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/state",
+    "XDG_CACHE_HOME": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/cache",
+    "TMPDIR": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/tmp",
+    "TMP": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/tmp",
+    "TEMP": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/tmp",
+    "OMP_SKIP_SETUP": "1",
+    "PI_NO_PTY": "1",
+    "PI_BASH_NO_LOGIN": "1",
+    "PI_NOTIFICATIONS": "off",
+    "OTEL_SDK_DISABLED": "true",
+    "VOMP_DEV_PROFILE": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/app-profile"
+  },
+  "scenarios": [
+    {
+      "name": "svg-saved",
+      "prompt": "fixture svg",
+      "action": null,
+      "cwd": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/svg-saved",
+      "actionSent": false,
+      "interruptMode": "immediate",
+      "eventRuns": [
+        {
+          "type": "ready",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "advisor_cost_changed",
+          "count": 1
+        },
+        {
+          "type": "available_commands_update",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        },
+        {
+          "type": "agent_start",
+          "count": 1
+        },
+        {
+          "type": "turn_start",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_delta",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_end",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_delta",
+          "count": 151
+        },
+        {
+          "type": "message_update:toolcall_end",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_start",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_update",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "turn_end",
+          "count": 1
+        },
+        {
+          "type": "turn_start",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_delta",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_end",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "turn_end",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "agent_end",
+          "count": 1
+        },
+        {
+          "type": "prompt_result",
+          "count": 1
+        },
+        {
+          "type": "session_settled",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        }
+      ],
+      "inputs": [
+        {
+          "elapsedMs": 315,
+          "command": {
+            "id": "probe-1",
+            "type": "get_state"
+          }
+        },
+        {
+          "elapsedMs": 338,
+          "command": {
+            "id": "probe-2",
+            "type": "prompt",
+            "message": "fixture svg"
+          }
+        },
+        {
+          "elapsedMs": 15512,
+          "command": {
+            "id": "probe-3",
+            "type": "get_messages"
+          }
+        },
+        {
+          "elapsedMs": 15513,
+          "command": {
+            "id": "probe-4",
+            "type": "get_state"
+          }
+        }
+      ],
+      "assistantEnds": [
+        {
+          "stopReason": "toolUse",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will prepare the svg fixture."
+            },
+            {
+              "type": "toolCall",
+              "name": "write",
+              "id": "fixture-1-0",
+              "argumentBytes": 17684
+            }
+          ]
+        },
+        {
+          "stopReason": "stop",
+          "content": [
+            {
+              "type": "text",
+              "text": "The fixture tool result was received."
+            }
+          ]
+        }
+      ],
+      "toolResults": [
+        {
+          "type": "tool_execution_end",
+          "toolCallId": "fixture-1-0",
+          "toolName": "write",
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Successfully wrote 14956 bytes to poster.svg"
+              }
+            ],
+            "details": {
+              "resolvedPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/svg-saved/poster.svg"
+            }
+          },
+          "isError": false
+        }
+      ],
+      "sessionEntries": [
+        {
+          "type": "title"
+        },
+        {
+          "type": "session"
+        },
+        {
+          "type": "model_change"
+        },
+        {
+          "type": "thinking_level_change"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "user"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "stopReason": "toolUse"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "toolResult",
+          "toolName": "write",
+          "content": [
+            {
+              "type": "text",
+              "text": "Successfully wrote 14956 bytes to poster.svg"
+            }
+          ],
+          "details": {
+            "resolvedPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/svg-saved/poster.svg"
+          }
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "stopReason": "stop"
+        }
+      ],
+      "files": [
+        "poster.svg"
+      ],
+      "posterExists": true,
+      "generateImageRegistered": true,
+      "generateImageSchema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "main subject"
+          },
+          "action": {
+            "type": "string",
+            "description": "what subject is doing"
+          },
+          "scene": {
+            "type": "string",
+            "description": "location or environment"
+          },
+          "composition": {
+            "type": "string",
+            "description": "camera angle and framing"
+          },
+          "lighting": {
+            "type": "string",
+            "description": "lighting setup"
+          },
+          "style": {
+            "type": "string",
+            "description": "artistic style"
+          },
+          "text": {
+            "type": "string",
+            "description": "text to render"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "edits to make"
+          },
+          "aspect_ratio": {
+            "enum": [
+              "1:1",
+              "3:4",
+              "4:3",
+              "9:16",
+              "16:9",
+              "3:2",
+              "2:3"
+            ],
+            "type": "string",
+            "description": "aspect ratio"
+          },
+          "image_size": {
+            "enum": [
+              "1024x1024",
+              "1536x1024",
+              "1024x1536"
+            ],
+            "type": "string",
+            "description": "image size"
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "input image path"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "base64 image data"
+                },
+                "mime_type": {
+                  "type": "string",
+                  "description": "mime type"
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "input images"
+          },
+          "model": {
+            "type": "string",
+            "description": "image model selector for this request"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "requests": [
+        {
+          "id": 1,
+          "fixture": "svg",
+          "afterTool": false,
+          "tools": [
+            "write",
+            "bash",
+            "generate_image"
+          ]
+        },
+        {
+          "id": 2,
+          "fixture": "svg",
+          "afterTool": true,
+          "tools": [
+            "write",
+            "bash",
+            "generate_image"
+          ]
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "name": "svg-aborted",
+      "prompt": "fixture svg",
+      "action": "abort",
+      "cwd": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/svg-aborted",
+      "actionSent": true,
+      "fileAbsentAtAction": true,
+      "noToolStartedAtAction": true,
+      "interruptMode": "immediate",
+      "eventRuns": [
+        {
+          "type": "ready",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "advisor_cost_changed",
+          "count": 1
+        },
+        {
+          "type": "available_commands_update",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        },
+        {
+          "type": "agent_start",
+          "count": 1
+        },
+        {
+          "type": "turn_start",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_delta",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_end",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_delta",
+          "count": 11
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "turn_end",
+          "count": 1
+        },
+        {
+          "type": "agent_end",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 1
+        },
+        {
+          "type": "prompt_result",
+          "count": 1
+        },
+        {
+          "type": "session_settled",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        }
+      ],
+      "inputs": [
+        {
+          "elapsedMs": 590,
+          "command": {
+            "id": "probe-1",
+            "type": "get_state"
+          }
+        },
+        {
+          "elapsedMs": 765,
+          "command": {
+            "id": "probe-2",
+            "type": "prompt",
+            "message": "fixture svg"
+          }
+        },
+        {
+          "elapsedMs": 1691,
+          "command": {
+            "id": "probe-3",
+            "type": "abort"
+          }
+        },
+        {
+          "elapsedMs": 1702,
+          "command": {
+            "id": "probe-4",
+            "type": "get_messages"
+          }
+        },
+        {
+          "elapsedMs": 1702,
+          "command": {
+            "id": "probe-5",
+            "type": "get_state"
+          }
+        }
+      ],
+      "assistantEnds": [
+        {
+          "stopReason": "aborted",
+          "errorMessage": "Interrupted by user",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will prepare the svg fixture."
+            }
+          ]
+        }
+      ],
+      "toolResults": [],
+      "sessionEntries": [
+        {
+          "type": "title"
+        },
+        {
+          "type": "session"
+        },
+        {
+          "type": "model_change"
+        },
+        {
+          "type": "thinking_level_change"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "user"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "stopReason": "aborted"
+        }
+      ],
+      "files": [],
+      "posterExists": false,
+      "generateImageRegistered": true,
+      "generateImageSchema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "main subject"
+          },
+          "action": {
+            "type": "string",
+            "description": "what subject is doing"
+          },
+          "scene": {
+            "type": "string",
+            "description": "location or environment"
+          },
+          "composition": {
+            "type": "string",
+            "description": "camera angle and framing"
+          },
+          "lighting": {
+            "type": "string",
+            "description": "lighting setup"
+          },
+          "style": {
+            "type": "string",
+            "description": "artistic style"
+          },
+          "text": {
+            "type": "string",
+            "description": "text to render"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "edits to make"
+          },
+          "aspect_ratio": {
+            "enum": [
+              "1:1",
+              "3:4",
+              "4:3",
+              "9:16",
+              "16:9",
+              "3:2",
+              "2:3"
+            ],
+            "type": "string",
+            "description": "aspect ratio"
+          },
+          "image_size": {
+            "enum": [
+              "1024x1024",
+              "1536x1024",
+              "1024x1536"
+            ],
+            "type": "string",
+            "description": "image size"
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "input image path"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "base64 image data"
+                },
+                "mime_type": {
+                  "type": "string",
+                  "description": "mime type"
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "input images"
+          },
+          "model": {
+            "type": "string",
+            "description": "image model selector for this request"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "requests": [
+        {
+          "id": 3,
+          "fixture": "svg",
+          "afterTool": false,
+          "tools": [
+            "write",
+            "bash",
+            "generate_image"
+          ]
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "name": "svg-steered",
+      "prompt": "fixture svg",
+      "action": "steer",
+      "cwd": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/svg-steered",
+      "actionSent": true,
+      "fileAbsentAtAction": true,
+      "noToolStartedAtAction": true,
+      "interruptMode": "immediate",
+      "eventRuns": [
+        {
+          "type": "ready",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "advisor_cost_changed",
+          "count": 1
+        },
+        {
+          "type": "available_commands_update",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        },
+        {
+          "type": "agent_start",
+          "count": 1
+        },
+        {
+          "type": "turn_start",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_delta",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_end",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_delta",
+          "count": 11
+        },
+        {
+          "type": "queue_update",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_delta",
+          "count": 140
+        },
+        {
+          "type": "message_update:toolcall_end",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_start",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_update",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "turn_end",
+          "count": 1
+        },
+        {
+          "type": "queue_update",
+          "count": 1
+        },
+        {
+          "type": "turn_start",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_delta",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_end",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "turn_end",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "agent_end",
+          "count": 1
+        },
+        {
+          "type": "prompt_result",
+          "count": 1
+        },
+        {
+          "type": "session_settled",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        }
+      ],
+      "inputs": [
+        {
+          "elapsedMs": 588,
+          "command": {
+            "id": "probe-1",
+            "type": "get_state"
+          }
+        },
+        {
+          "elapsedMs": 912,
+          "command": {
+            "id": "probe-2",
+            "type": "prompt",
+            "message": "fixture svg"
+          }
+        },
+        {
+          "elapsedMs": 1844,
+          "command": {
+            "id": "probe-3",
+            "type": "steer",
+            "message": "Use a blue square instead. Do not write the poster."
+          }
+        },
+        {
+          "elapsedMs": 16115,
+          "command": {
+            "id": "probe-4",
+            "type": "get_messages"
+          }
+        },
+        {
+          "elapsedMs": 16116,
+          "command": {
+            "id": "probe-5",
+            "type": "get_state"
+          }
+        }
+      ],
+      "assistantEnds": [
+        {
+          "stopReason": "toolUse",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will prepare the svg fixture."
+            },
+            {
+              "type": "toolCall",
+              "name": "write",
+              "id": "fixture-4-0",
+              "argumentBytes": 17684
+            }
+          ]
+        },
+        {
+          "stopReason": "stop",
+          "content": [
+            {
+              "type": "text",
+              "text": "The correction was received."
+            }
+          ]
+        }
+      ],
+      "toolResults": [
+        {
+          "type": "tool_execution_end",
+          "toolCallId": "fixture-4-0",
+          "toolName": "write",
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Successfully wrote 14956 bytes to poster.svg"
+              }
+            ],
+            "details": {
+              "resolvedPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/svg-steered/poster.svg"
+            }
+          },
+          "isError": false
+        }
+      ],
+      "sessionEntries": [
+        {
+          "type": "title"
+        },
+        {
+          "type": "session"
+        },
+        {
+          "type": "model_change"
+        },
+        {
+          "type": "thinking_level_change"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "user"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "stopReason": "toolUse"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "toolResult",
+          "toolName": "write",
+          "content": [
+            {
+              "type": "text",
+              "text": "Successfully wrote 14956 bytes to poster.svg"
+            }
+          ],
+          "details": {
+            "resolvedPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/svg-steered/poster.svg"
+          }
+        },
+        {
+          "type": "message",
+          "role": "user"
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "stopReason": "stop"
+        }
+      ],
+      "files": [
+        "poster.svg"
+      ],
+      "posterExists": true,
+      "generateImageRegistered": true,
+      "generateImageSchema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "main subject"
+          },
+          "action": {
+            "type": "string",
+            "description": "what subject is doing"
+          },
+          "scene": {
+            "type": "string",
+            "description": "location or environment"
+          },
+          "composition": {
+            "type": "string",
+            "description": "camera angle and framing"
+          },
+          "lighting": {
+            "type": "string",
+            "description": "lighting setup"
+          },
+          "style": {
+            "type": "string",
+            "description": "artistic style"
+          },
+          "text": {
+            "type": "string",
+            "description": "text to render"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "edits to make"
+          },
+          "aspect_ratio": {
+            "enum": [
+              "1:1",
+              "3:4",
+              "4:3",
+              "9:16",
+              "16:9",
+              "3:2",
+              "2:3"
+            ],
+            "type": "string",
+            "description": "aspect ratio"
+          },
+          "image_size": {
+            "enum": [
+              "1024x1024",
+              "1536x1024",
+              "1024x1536"
+            ],
+            "type": "string",
+            "description": "image size"
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "input image path"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "base64 image data"
+                },
+                "mime_type": {
+                  "type": "string",
+                  "description": "mime type"
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "input images"
+          },
+          "model": {
+            "type": "string",
+            "description": "image model selector for this request"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "requests": [
+        {
+          "id": 4,
+          "fixture": "svg",
+          "afterTool": false,
+          "tools": [
+            "write",
+            "bash",
+            "generate_image"
+          ]
+        },
+        {
+          "id": 5,
+          "afterTool": false,
+          "tools": [
+            "write",
+            "bash",
+            "generate_image"
+          ]
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "name": "image-aborted",
+      "prompt": "fixture image",
+      "action": "abort",
+      "cwd": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/image-aborted",
+      "actionSent": true,
+      "fileAbsentAtAction": true,
+      "noToolStartedAtAction": true,
+      "interruptMode": "immediate",
+      "eventRuns": [
+        {
+          "type": "ready",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "advisor_cost_changed",
+          "count": 1
+        },
+        {
+          "type": "available_commands_update",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        },
+        {
+          "type": "agent_start",
+          "count": 1
+        },
+        {
+          "type": "turn_start",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_delta",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_end",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_delta",
+          "count": 22
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "turn_end",
+          "count": 1
+        },
+        {
+          "type": "agent_end",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 1
+        },
+        {
+          "type": "prompt_result",
+          "count": 1
+        },
+        {
+          "type": "session_settled",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        }
+      ],
+      "inputs": [
+        {
+          "elapsedMs": 547,
+          "command": {
+            "id": "probe-1",
+            "type": "get_state"
+          }
+        },
+        {
+          "elapsedMs": 695,
+          "command": {
+            "id": "probe-2",
+            "type": "prompt",
+            "message": "fixture image"
+          }
+        },
+        {
+          "elapsedMs": 2734,
+          "command": {
+            "id": "probe-3",
+            "type": "abort"
+          }
+        },
+        {
+          "elapsedMs": 2758,
+          "command": {
+            "id": "probe-4",
+            "type": "get_messages"
+          }
+        },
+        {
+          "elapsedMs": 2759,
+          "command": {
+            "id": "probe-5",
+            "type": "get_state"
+          }
+        }
+      ],
+      "assistantEnds": [
+        {
+          "stopReason": "aborted",
+          "errorMessage": "Interrupted by user",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will prepare the image fixture."
+            }
+          ]
+        }
+      ],
+      "toolResults": [],
+      "sessionEntries": [
+        {
+          "type": "title"
+        },
+        {
+          "type": "session"
+        },
+        {
+          "type": "model_change"
+        },
+        {
+          "type": "thinking_level_change"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "user"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "stopReason": "aborted"
+        }
+      ],
+      "files": [],
+      "posterExists": false,
+      "generateImageRegistered": true,
+      "generateImageSchema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "main subject"
+          },
+          "action": {
+            "type": "string",
+            "description": "what subject is doing"
+          },
+          "scene": {
+            "type": "string",
+            "description": "location or environment"
+          },
+          "composition": {
+            "type": "string",
+            "description": "camera angle and framing"
+          },
+          "lighting": {
+            "type": "string",
+            "description": "lighting setup"
+          },
+          "style": {
+            "type": "string",
+            "description": "artistic style"
+          },
+          "text": {
+            "type": "string",
+            "description": "text to render"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "edits to make"
+          },
+          "aspect_ratio": {
+            "enum": [
+              "1:1",
+              "3:4",
+              "4:3",
+              "9:16",
+              "16:9",
+              "3:2",
+              "2:3"
+            ],
+            "type": "string",
+            "description": "aspect ratio"
+          },
+          "image_size": {
+            "enum": [
+              "1024x1024",
+              "1536x1024",
+              "1024x1536"
+            ],
+            "type": "string",
+            "description": "image size"
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "input image path"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "base64 image data"
+                },
+                "mime_type": {
+                  "type": "string",
+                  "description": "mime type"
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "input images"
+          },
+          "model": {
+            "type": "string",
+            "description": "image model selector for this request"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "requests": [
+        {
+          "id": 6,
+          "fixture": "image",
+          "afterTool": false,
+          "tools": [
+            "write",
+            "bash",
+            "generate_image"
+          ]
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "name": "png-saved",
+      "prompt": "fixture png",
+      "action": null,
+      "cwd": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/png-saved",
+      "actionSent": false,
+      "interruptMode": "immediate",
+      "eventRuns": [
+        {
+          "type": "ready",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "advisor_cost_changed",
+          "count": 1
+        },
+        {
+          "type": "available_commands_update",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        },
+        {
+          "type": "agent_start",
+          "count": 1
+        },
+        {
+          "type": "turn_start",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_delta",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_end",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_delta",
+          "count": 2
+        },
+        {
+          "type": "message_update:toolcall_end",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_start",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_update",
+          "count": 4
+        },
+        {
+          "type": "tool_execution_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "turn_end",
+          "count": 1
+        },
+        {
+          "type": "turn_start",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_delta",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_end",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "turn_end",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "agent_end",
+          "count": 1
+        },
+        {
+          "type": "prompt_result",
+          "count": 1
+        },
+        {
+          "type": "session_settled",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        }
+      ],
+      "inputs": [
+        {
+          "elapsedMs": 723,
+          "command": {
+            "id": "probe-1",
+            "type": "get_state"
+          }
+        },
+        {
+          "elapsedMs": 960,
+          "command": {
+            "id": "probe-2",
+            "type": "prompt",
+            "message": "fixture png"
+          }
+        },
+        {
+          "elapsedMs": 4272,
+          "command": {
+            "id": "probe-3",
+            "type": "get_messages"
+          }
+        },
+        {
+          "elapsedMs": 4273,
+          "command": {
+            "id": "probe-4",
+            "type": "get_state"
+          }
+        }
+      ],
+      "assistantEnds": [
+        {
+          "stopReason": "toolUse",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will prepare the png fixture."
+            },
+            {
+              "type": "toolCall",
+              "name": "bash",
+              "id": "fixture-7-0",
+              "argumentBytes": 629
+            }
+          ]
+        },
+        {
+          "stopReason": "stop",
+          "content": [
+            {
+              "type": "text",
+              "text": "The fixture tool result was received."
+            }
+          ]
+        }
+      ],
+      "toolResults": [
+        {
+          "type": "tool_execution_end",
+          "toolCallId": "fixture-7-0",
+          "toolName": "bash",
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "/private/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/png-saved/frames.png save 1\n/private/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/png-saved/frames.png save 2\n/private/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/png-saved/frames.png save 3\n\n\nWall time: 3.24 seconds"
+              }
+            ],
+            "details": {
+              "wallTimeNoticeEmitted": true,
+              "timeoutSeconds": 30,
+              "wallTimeMs": 3244.0167079999997
+            }
+          },
+          "isError": false
+        }
+      ],
+      "sessionEntries": [
+        {
+          "type": "title"
+        },
+        {
+          "type": "session"
+        },
+        {
+          "type": "model_change"
+        },
+        {
+          "type": "thinking_level_change"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "user"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "stopReason": "toolUse"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "toolResult",
+          "toolName": "bash",
+          "content": [
+            {
+              "type": "text",
+              "text": "/private/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/png-saved/frames.png save 1\n/private/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/png-saved/frames.png save 2\n/private/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/png-saved/frames.png save 3\n\n\nWall time: 3.24 seconds"
+            }
+          ],
+          "details": {
+            "wallTimeNoticeEmitted": true,
+            "timeoutSeconds": 30,
+            "wallTimeMs": 3244.0167079999997
+          }
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "stopReason": "stop"
+        }
+      ],
+      "files": [
+        "frames.png"
+      ],
+      "posterExists": false,
+      "generateImageRegistered": true,
+      "generateImageSchema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "main subject"
+          },
+          "action": {
+            "type": "string",
+            "description": "what subject is doing"
+          },
+          "scene": {
+            "type": "string",
+            "description": "location or environment"
+          },
+          "composition": {
+            "type": "string",
+            "description": "camera angle and framing"
+          },
+          "lighting": {
+            "type": "string",
+            "description": "lighting setup"
+          },
+          "style": {
+            "type": "string",
+            "description": "artistic style"
+          },
+          "text": {
+            "type": "string",
+            "description": "text to render"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "edits to make"
+          },
+          "aspect_ratio": {
+            "enum": [
+              "1:1",
+              "3:4",
+              "4:3",
+              "9:16",
+              "16:9",
+              "3:2",
+              "2:3"
+            ],
+            "type": "string",
+            "description": "aspect ratio"
+          },
+          "image_size": {
+            "enum": [
+              "1024x1024",
+              "1536x1024",
+              "1024x1536"
+            ],
+            "type": "string",
+            "description": "image size"
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "input image path"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "base64 image data"
+                },
+                "mime_type": {
+                  "type": "string",
+                  "description": "mime type"
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "input images"
+          },
+          "model": {
+            "type": "string",
+            "description": "image model selector for this request"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "requests": [
+        {
+          "id": 7,
+          "fixture": "png",
+          "afterTool": false,
+          "tools": [
+            "write",
+            "bash",
+            "generate_image"
+          ]
+        },
+        {
+          "id": 8,
+          "fixture": "png",
+          "afterTool": true,
+          "tools": [
+            "write",
+            "bash",
+            "generate_image"
+          ]
+        }
+      ],
+      "stderr": ""
+    },
+    {
+      "name": "html-saved",
+      "prompt": "fixture html",
+      "action": null,
+      "cwd": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/html-saved",
+      "actionSent": false,
+      "interruptMode": "immediate",
+      "eventRuns": [
+        {
+          "type": "ready",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "advisor_cost_changed",
+          "count": 1
+        },
+        {
+          "type": "available_commands_update",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        },
+        {
+          "type": "agent_start",
+          "count": 1
+        },
+        {
+          "type": "turn_start",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_delta",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_end",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_delta",
+          "count": 2
+        },
+        {
+          "type": "message_update:toolcall_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_delta",
+          "count": 2
+        },
+        {
+          "type": "message_update:toolcall_end",
+          "count": 2
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_start",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_update",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_start",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_update",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "turn_end",
+          "count": 1
+        },
+        {
+          "type": "turn_start",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_delta",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_end",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:toolcall_delta",
+          "count": 150
+        },
+        {
+          "type": "message_update:toolcall_end",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_start",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_update",
+          "count": 1
+        },
+        {
+          "type": "tool_execution_end",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "turn_end",
+          "count": 1
+        },
+        {
+          "type": "turn_start",
+          "count": 1
+        },
+        {
+          "type": "message_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_start",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_delta",
+          "count": 1
+        },
+        {
+          "type": "message_update:text_end",
+          "count": 1
+        },
+        {
+          "type": "message_end",
+          "count": 1
+        },
+        {
+          "type": "turn_end",
+          "count": 1
+        },
+        {
+          "type": "extension_ui_request",
+          "count": 1
+        },
+        {
+          "type": "agent_end",
+          "count": 1
+        },
+        {
+          "type": "prompt_result",
+          "count": 1
+        },
+        {
+          "type": "session_settled",
+          "count": 1
+        },
+        {
+          "type": "response",
+          "count": 2
+        }
+      ],
+      "inputs": [
+        {
+          "elapsedMs": 713,
+          "command": {
+            "id": "probe-1",
+            "type": "get_state"
+          }
+        },
+        {
+          "elapsedMs": 933,
+          "command": {
+            "id": "probe-2",
+            "type": "prompt",
+            "message": "fixture html"
+          }
+        },
+        {
+          "elapsedMs": 16124,
+          "command": {
+            "id": "probe-3",
+            "type": "get_messages"
+          }
+        },
+        {
+          "elapsedMs": 16124,
+          "command": {
+            "id": "probe-4",
+            "type": "get_state"
+          }
+        }
+      ],
+      "assistantEnds": [
+        {
+          "stopReason": "toolUse",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will prepare the html fixture."
+            },
+            {
+              "type": "toolCall",
+              "name": "write",
+              "id": "fixture-9-0",
+              "argumentBytes": 166
+            },
+            {
+              "type": "toolCall",
+              "name": "write",
+              "id": "fixture-9-1",
+              "argumentBytes": 220
+            }
+          ]
+        },
+        {
+          "stopReason": "toolUse",
+          "content": [
+            {
+              "type": "text",
+              "text": "The fixture tool result was received."
+            },
+            {
+              "type": "toolCall",
+              "name": "write",
+              "id": "fixture-10-0",
+              "argumentBytes": 3704
+            }
+          ]
+        },
+        {
+          "stopReason": "stop",
+          "content": [
+            {
+              "type": "text",
+              "text": "The fixture tool result was received."
+            }
+          ]
+        }
+      ],
+      "toolResults": [
+        {
+          "type": "tool_execution_end",
+          "toolCallId": "fixture-9-0",
+          "toolName": "write",
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Successfully wrote 132 bytes to style.css"
+              }
+            ],
+            "details": {
+              "resolvedPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/html-saved/style.css"
+            }
+          },
+          "isError": false
+        },
+        {
+          "type": "tool_execution_end",
+          "toolCallId": "fixture-9-1",
+          "toolName": "write",
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Successfully wrote 166 bytes to image.svg"
+              }
+            ],
+            "details": {
+              "resolvedPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/html-saved/image.svg"
+            }
+          },
+          "isError": false
+        },
+        {
+          "type": "tool_execution_end",
+          "toolCallId": "fixture-10-0",
+          "toolName": "write",
+          "result": {
+            "content": [
+              {
+                "type": "text",
+                "text": "Successfully wrote 3529 bytes to page.html"
+              }
+            ],
+            "details": {
+              "resolvedPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/html-saved/page.html"
+            }
+          },
+          "isError": false
+        }
+      ],
+      "sessionEntries": [
+        {
+          "type": "title"
+        },
+        {
+          "type": "session"
+        },
+        {
+          "type": "model_change"
+        },
+        {
+          "type": "thinking_level_change"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "user"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "stopReason": "toolUse"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "toolResult",
+          "toolName": "write",
+          "content": [
+            {
+              "type": "text",
+              "text": "Successfully wrote 132 bytes to style.css"
+            }
+          ],
+          "details": {
+            "resolvedPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/html-saved/style.css"
+          }
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "toolResult",
+          "toolName": "write",
+          "content": [
+            {
+              "type": "text",
+              "text": "Successfully wrote 166 bytes to image.svg"
+            }
+          ],
+          "details": {
+            "resolvedPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/html-saved/image.svg"
+          }
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "stopReason": "toolUse"
+        },
+        {
+          "type": "custom"
+        },
+        {
+          "type": "message",
+          "role": "toolResult",
+          "toolName": "write",
+          "content": [
+            {
+              "type": "text",
+              "text": "Successfully wrote 3529 bytes to page.html"
+            }
+          ],
+          "details": {
+            "resolvedPath": "/var/folders/g7/hvvrcl0x3rsgqw_yh76yl9h80000gp/T/vomp-preview-probe-mhBm9s/html-saved/page.html"
+          }
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "stopReason": "stop"
+        }
+      ],
+      "files": [
+        "image.svg",
+        "page.html",
+        "style.css"
+      ],
+      "posterExists": false,
+      "generateImageRegistered": true,
+      "generateImageSchema": {
+        "type": "object",
+        "properties": {
+          "subject": {
+            "type": "string",
+            "description": "main subject"
+          },
+          "action": {
+            "type": "string",
+            "description": "what subject is doing"
+          },
+          "scene": {
+            "type": "string",
+            "description": "location or environment"
+          },
+          "composition": {
+            "type": "string",
+            "description": "camera angle and framing"
+          },
+          "lighting": {
+            "type": "string",
+            "description": "lighting setup"
+          },
+          "style": {
+            "type": "string",
+            "description": "artistic style"
+          },
+          "text": {
+            "type": "string",
+            "description": "text to render"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "edits to make"
+          },
+          "aspect_ratio": {
+            "enum": [
+              "1:1",
+              "3:4",
+              "4:3",
+              "9:16",
+              "16:9",
+              "3:2",
+              "2:3"
+            ],
+            "type": "string",
+            "description": "aspect ratio"
+          },
+          "image_size": {
+            "enum": [
+              "1024x1024",
+              "1536x1024",
+              "1024x1536"
+            ],
+            "type": "string",
+            "description": "image size"
+          },
+          "input": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "description": "input image path"
+                },
+                "data": {
+                  "type": "string",
+                  "description": "base64 image data"
+                },
+                "mime_type": {
+                  "type": "string",
+                  "description": "mime type"
+                }
+              },
+              "additionalProperties": false
+            },
+            "description": "input images"
+          },
+          "model": {
+            "type": "string",
+            "description": "image model selector for this request"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "additionalProperties": false
+      },
+      "requests": [
+        {
+          "id": 9,
+          "fixture": "html",
+          "afterTool": false,
+          "tools": [
+            "write",
+            "bash",
+            "generate_image"
+          ]
+        },
+        {
+          "id": 10,
+          "fixture": "html",
+          "afterTool": true,
+          "tools": [
+            "write",
+            "bash",
+            "generate_image"
+          ]
+        },
+        {
+          "id": 11,
+          "fixture": "html",
+          "afterTool": true,
+          "tools": [
+            "write",
+            "bash",
+            "generate_image"
+          ]
+        }
+      ],
+      "stderr": ""
+    }
+  ]
+}

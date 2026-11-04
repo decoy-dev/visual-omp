@@ -10,6 +10,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - Before omp resumes a saved chat of 32 MiB or more, visual-omp now asks whether to resume it, start a new chat in the same folder or cancel. Resuming a chat that large can make omp slow or unresponsive, and Stop may not respond.
 - Chat row menus now offer Change icon, with a title preview, an emoji field and the operating system's emoji panel where supported. omp saves the icon in the chat title for live and saved chats.
+- Outputs now previews supported visual files while omp makes them. Watch opens the current output, and Stop and redirect preserves your draft and attachments while you write a correction. Live previews are on by default; opening Outputs automatically is a separate setting, off by default.
 
 #### Fixed
 
