@@ -1,10 +1,11 @@
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
-import type { HostState } from "@shared/ipc";
+import type { HostStartOptions, HostState } from "@shared/ipc";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { deliver } from "../chat/composer/send";
 import type { GuestSnapshot } from "../collab/lib/client";
 import { useComposerDrafts } from "../chat/composer/drafts";
 import { sendSlashCommand } from "../features/session-tools/typed";
+import { LARGE_RESUME_BYTES, ResumeDeclinedError, type ResumeGuard, setResumeGuard } from "../registry/guards";
 import { chatStatus } from "../shell/hooks";
 import { toast } from "../ui/toast";
 import type * as ToastModule from "../ui/toast";
@@ -2006,5 +2007,153 @@ describe("native crash and worktree lifecycle", () => {
 		sendHost({ programStatus: { state: "working" } });
 		sendHost({ programStatus: { state: "blocked", kind: "question" } });
 		expect(events).toEqual(["needsInput", "needsInput"]);
+	});
+});
+
+describe("large saved chat warning", () => {
+	const ask = vi.fn<ResumeGuard>();
+	beforeEach(() => {
+		ask.mockReset();
+		setResumeGuard(ask);
+	});
+	afterEach(() => setResumeGuard(async () => true));
+
+	/**
+	 * Main answers the size checks in order from `sizes`, starts omp on the file it is asked to resume (the call's
+	 * arguments are the last `invoked` entry), and leaves other channels to `other`.
+	 */
+	const answer = (sizes: Array<number | null | Promise<number | null>>, other?: (channel: string) => Promise<unknown> | undefined) => {
+		respond = channel => {
+			if (channel === "sessions:size") return Promise.resolve(sizes.shift() ?? null);
+			if (channel === "host:start") {
+				// `invoke` records each call before answering it, so the last entry holds this start's options.
+				const options = invoked.at(-1)?.[1] as HostStartOptions | undefined;
+				return Promise.resolve(host({ sessionFile: options?.resumeFile ?? null }));
+			}
+			return other?.(channel);
+		};
+	};
+	/** Main reports `bytes` for every size check of the saved file. */
+	const saved = (file: string, bytes: number | null) => {
+		answer(Array.from({ length: 4 }, () => bytes));
+		return new SessionController({ tabId: file, projectPath: "/p", sessionFile: file });
+	};
+	const starts = () => invoked.filter(call => call[0] === "host:start");
+	const asked = () => ask.mock.calls.map(([request]) => request.file);
+	const LARGE = LARGE_RESUME_BYTES * 2;
+
+	it("asks at the size limit, and declining keeps omp stopped and gives the message back", async () => {
+		ask.mockResolvedValue(false);
+		const session = saved("/p/declined.jsonl", LARGE_RESUME_BYTES);
+		await expect(session.send("continue the refactor")).rejects.toBeInstanceOf(ResumeDeclinedError);
+		expect(ask).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ tabId: "/p/declined.jsonl", projectPath: "/p", file: "/p/declined.jsonl", bytes: LARGE_RESUME_BYTES }));
+		expect(starts()).toEqual([]);
+		expect(session.getSnapshot()).toMatchObject({ mode: "history", queue: [], error: null });
+	});
+
+	it.each([LARGE_RESUME_BYTES - 1, null])("resumes a saved chat of %s bytes without asking", async bytes => {
+		const session = saved(`/p/small-${bytes}.jsonl`, bytes);
+		await session.ensureLive();
+		expect(ask).not.toHaveBeenCalled();
+		expect(starts()[0]?.[1]).toMatchObject({ resumeFile: `/p/small-${bytes}.jsonl` });
+	});
+
+	it("remembers an approval, so reopening the same file resumes without asking again", async () => {
+		ask.mockResolvedValue(true);
+		await saved("/p/approved.jsonl", LARGE_RESUME_BYTES * 2).ensureLive();
+		await saved("/p/approved.jsonl", LARGE_RESUME_BYTES * 2).ensureLive();
+		expect(ask).toHaveBeenCalledOnce();
+		expect(starts().map(call => call[1])).toEqual([expect.objectContaining({ resumeFile: "/p/approved.jsonl" }), expect.objectContaining({ resumeFile: "/p/approved.jsonl" })]);
+	});
+
+	it("relaunches a chat whose omp already ran without asking", async () => {
+		const session = saved("/p/ran.jsonl", LARGE_RESUME_BYTES * 2);
+		session.attach(host({ sessionFile: "/p/ran.jsonl" }));
+		sendHost({ phase: "exited", exitCode: 1, sessionFile: "/p/ran.jsonl" });
+		await session.ensureLive();
+		expect(ask).not.toHaveBeenCalled();
+		expect(starts()[0]?.[1]).toMatchObject({ resumeFile: "/p/ran.jsonl" });
+	});
+
+	it("closing the chat while the warning is open ends the start without launching omp", async () => {
+		ask.mockImplementation(request => {
+			const { promise, resolve } = Promise.withResolvers<boolean>();
+			request.signal.addEventListener("abort", () => resolve(false));
+			return promise;
+		});
+		const session = saved("/p/closed.jsonl", LARGE_RESUME_BYTES * 2);
+		const starting = expect(session.ensureLive()).rejects.toBeInstanceOf(ResumeDeclinedError);
+		await flush();
+		expect(ask).toHaveBeenCalledOnce();
+		await session.dispose();
+		await starting;
+		expect(starts()).toEqual([]);
+	});
+
+	it("asks once for concurrent starts and asks again after a decline", async () => {
+		const first = Promise.withResolvers<boolean>();
+		ask.mockReturnValueOnce(first.promise).mockResolvedValueOnce(true);
+		const session = saved("/p/retried.jsonl", LARGE);
+		const starting = [session.ensureLive(), session.ensureLive()];
+		await flush();
+		first.resolve(false);
+		for (const start of starting) await expect(start).rejects.toBeInstanceOf(ResumeDeclinedError);
+		await session.ensureLive();
+		expect(asked()).toEqual(["/p/retried.jsonl", "/p/retried.jsonl"]);
+		expect(starts()).toHaveLength(1);
+	});
+
+	it("checks omp's newer linked copy when the chat moves to it during the size check", async () => {
+		const olderSize = Promise.withResolvers<number | null>();
+		answer([olderSize.promise, LARGE], channel => channel === "sessions:resolve" ? Promise.resolve("/p/newer.jsonl") : channel === "sessions:ownership" ? Promise.resolve("free") : undefined);
+		ask.mockResolvedValue(true);
+		const session = new SessionController({ tabId: "moved", projectPath: "/p", sessionFile: "/p/older.jsonl" });
+		const starting = session.ensureLive();
+		await flush();
+		await session.loadHistory();
+		olderSize.resolve(LARGE);
+		await starting;
+		expect(asked()).toEqual(["/p/newer.jsonl"]);
+		expect(starts().map(call => call[1])).toEqual([expect.objectContaining({ resumeFile: "/p/newer.jsonl" })]);
+	});
+
+	it("never lets an approval for one file start omp on the copy the chat moved to while asking", async () => {
+		const older = Promise.withResolvers<boolean>();
+		ask.mockReturnValueOnce(older.promise).mockResolvedValueOnce(false);
+		answer([LARGE, LARGE], channel => channel === "sessions:resolve" ? Promise.resolve("/p/moved-newer.jsonl") : channel === "sessions:ownership" ? Promise.resolve("free") : undefined);
+		const session = new SessionController({ tabId: "moved-asking", projectPath: "/p", sessionFile: "/p/moved-older.jsonl" });
+		const starting = expect(session.ensureLive()).rejects.toBeInstanceOf(ResumeDeclinedError);
+		await flush();
+		await session.loadHistory();
+		older.resolve(true);
+		await starting;
+		expect(asked()).toEqual(["/p/moved-older.jsonl", "/p/moved-newer.jsonl"]);
+		expect(starts()).toEqual([]);
+	});
+
+	it("starts nothing when another omp opens the chat while the warning waits", async () => {
+		const answered = Promise.withResolvers<boolean>();
+		ask.mockReturnValue(answered.promise);
+		answer([LARGE], channel => channel === "sessions:ownership" ? Promise.resolve("elsewhere") : undefined);
+		const session = new SessionController({ tabId: "taken", projectPath: "/p", sessionFile: "/p/taken.jsonl" });
+		const starting = expect(session.ensureLive()).rejects.toThrow("open elsewhere");
+		await flush();
+		await session.checkOwnership();
+		answered.resolve(true);
+		await starting;
+		expect(starts()).toEqual([]);
+	});
+
+	it("asks after a start that failed, because omp never ran for the chat", async () => {
+		answer([LARGE_RESUME_BYTES - 1, LARGE]);
+		const succeed = respond!;
+		let attempts = 0;
+		respond = channel => channel === "host:start" && attempts++ === 0 ? Promise.reject(new Error("omp could not start")) : succeed(channel);
+		ask.mockResolvedValue(true);
+		const session = new SessionController({ tabId: "grew", projectPath: "/p", sessionFile: "/p/grew.jsonl" });
+		await expect(session.ensureLive()).rejects.toThrow("omp could not start");
+		await session.ensureLive();
+		expect(asked()).toEqual(["/p/grew.jsonl"]);
+		expect(starts()).toHaveLength(2);
 	});
 });

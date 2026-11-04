@@ -31,6 +31,14 @@ const inFlight = new Map<string, Promise<SlashCommandListing>>();
 const CHANGES_COMMANDS: ReadonlySet<string> = new Set(["mcp", "skills", "plugins", "plugin", "marketplace", "reload-plugins"]);
 
 /**
+ * Bare app commands that run in omp, plus the `/goal` actions handled below. In a chat whose omp is not running,
+ * `routeSlash` starts omp first and waits for it, so a declined large-chat warning rejects to the composer, which puts
+ * the typed line back. The commands themselves report their own failures and would leave the composer empty.
+ */
+const NEEDS_OMP: ReadonlySet<string> = new Set(["restart", "plan", "vibe", "export"]);
+const GOAL_ACTIONS: readonly string[] = ["pause", "resume", "drop"];
+
+/**
  * When such a line last ran per project. Listings ask omp again for a minute afterwards, because the
  * command may still be installing or reconnecting when the menu opens next.
  */
@@ -203,7 +211,13 @@ export async function routeSlash(session: SessionController, line: string): Prom
 		await import("../btw/BtwPaneContent").then(module => module.openBtwDrawer(session, host, parsed.args));
 		return true;
 	}
-	if (parsed.name === "goal" && ["pause", "resume", "drop"].includes(parsed.args)) {
+	const goalAction = parsed.name === "goal" && GOAL_ACTIONS.includes(parsed.args);
+	if ((goalAction || (NEEDS_OMP.has(parsed.name) && parsed.args === "")) && (view.mode === "history" || view.mode === "exited")) {
+		await session.ensureLive();
+		// For a chat without a running omp, starting it is the whole restart.
+		if (parsed.name === "restart") return true;
+	}
+	if (goalAction) {
 		try { await setSessionMode(session, { mode: "goal", action: parsed.args as "pause" | "resume" | "drop" }); }
 		catch (error) { reportFailure(error); }
 		return true;

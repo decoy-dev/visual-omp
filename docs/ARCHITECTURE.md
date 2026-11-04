@@ -167,6 +167,23 @@ Each SessionHost:
    restart keeps `--resume`. The collab client seeds `agent_start.resumedToolCallIds` from saved
    assistant calls, including events received before the snapshot finishes.
 
+Large saved chats: before `SessionController.#start()` launches omp on a saved file, it asks main for the
+file's size (`sessions:size`, a `stat` that returns null when the file can't be read). At
+`LARGE_RESUME_BYTES` (32 MiB, `registry/guards.ts`) or more, it waits on the resume guard that
+`features/session-tools/index.ts` installs. The guard and the global dialog host dynamically import
+`largeResume.tsx`, which queues one question at a time and holds the dialog, so none of it is in the
+initial renderer chunk. The threshold is a precautionary heuristic, not an omp limit.
+A declined question throws `ResumeDeclinedError`: the controller stays in its saved view, `reportFailure`,
+the command runner and the composer drop it without an error, the omp screen closes, and a window
+`unhandledrejection` listener (installed with the first question) drops it for fire-and-forget callers.
+`routeSlash` starts omp before the app commands that need it (`/restart`, `/plan`, `/vibe`, `/export` and the
+`/goal` actions) in a chat without a running omp, so a decline rejects to the composer and the typed line
+comes back. A controller that saw its omp live or adopted a running host, and a file approved earlier in
+this renderer, skip the question. The ownership check and the question are repeated until both hold for the
+same file, so an approval never covers a linked copy it did not name, and closing the chat aborts a pending
+question before `dispose` waits for the start. In-process restarts, `/resume` typed to omp, the fork and
+rename RPC processes and `sessions:read` are outside the check.
+
 Ask interruption: `pendingAsk` in `state/session.ts` requires a live writable mirror and a request matching
 a running ask's question, options and sentinels, or its custom-answer editor. Enter, Send now and queued-row
 Send now send those messages through `GuestClient.sendPrompt`, in both classic and TSP chats. omp 18.15
@@ -917,7 +934,9 @@ provides its measured size when verification runs.
 On 2026-11-03, the owner accepted a measured entry ceiling of 2,041,903 bytes for 0.7.5: Side questions
 first-frame presentation and put-away on close (`/btw` opens and closes the pane without the omp screen),
 the Suggestions switch below the composer and open-by-default shell and Python output.
-The baseline file records that exception in `acceptedGrowth` with its reason and acceptance date;
+On 2026-11-04, the owner accepted 2,044,096 bytes for the large saved chat warning: the resume check in
+`state/session.ts`, its decline handling and its strings stay in the entry, and the dialog loads lazily.
+The baseline file records the current exception in `acceptedGrowth` with its reason and acceptance date;
 the 20,000-byte default and the refusal of eager TSP view modules remain enforced.
 
 `electron.vite.config.ts` bundles main and preload dependencies other than externalized packages. Pure-JavaScript main-process packages are devDependencies and are bundled into `out`; native `node-pty` remains a runtime dependency and is selectively included by `electron-builder.yml`. `electronLanguages` retains `en` and `en-US`; source maps are excluded from packaged output. `node-pty`'s package contents are trimmed to runtime files.

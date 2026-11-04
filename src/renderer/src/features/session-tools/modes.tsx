@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { ArrowBendUpRight, ArrowsClockwise, ArrowsIn, Broom, ChatCircleDots, ClipboardText, ClockCounterClockwise, Cpu, Export, Eye, GitFork, Lightning, PencilSimple, Repeat, ShieldCheck, StopCircle, Target, TreeStructure } from "@phosphor-icons/react";
 import { Button, Dialog, DialogContent, Input, Textarea, toast } from "@/ui";
 import { registerCommand } from "../../registry/commands";
+import { isResumeDeclined } from "../../registry/guards";
 import type { SheetProps } from "../../registry/slots";
 import { sheets } from "../../registry/slots";
 import { preloadWhenIdle } from "../../registry/idle";
@@ -209,6 +210,6 @@ registerCommand({ id: "chat.tree", title: "session:commands.tree.title", hint: "
 registerCommand({ id: "chat.fork", title: "session:commands.fork.title", hint: "session:commands.fork.hint", slash: "/fork", group: "modes", icon: GitFork, header: 140, when: sessionWhen, run: async ({ session }) => { if (session) try { await (await navigation()).forkChat(session); } catch (error) { reportFailure(error); } } });
 registerCommand({ id: "chat.rewindTo", title: "session:commands.rewind.title", hint: "session:commands.rewind.hint", slash: "/tree", group: "modes", icon: ClockCounterClockwise, when: ctx => Boolean(ctx.session && ctx.entryId), run: async ctx => {
 	if (!ctx.session || !ctx.entryId) return;
-	try { await (await navigation()).navigateTo(ctx.session, ctx.entryId); } catch (error) { toast({ tone: "warn", message: error instanceof Error ? error.message : String(error), action: { label: i18n.t("session:navigate.openTree"), onClick: () => { useApp.getState().openSheet("session-tree", { tabId: ctx.session!.tabId, entryId: ctx.entryId }); } } }); }
+	try { await (await navigation()).navigateTo(ctx.session, ctx.entryId); } catch (error) { if (!isResumeDeclined(error)) toast({ tone: "warn", message: error instanceof Error ? error.message : String(error), action: { label: i18n.t("session:navigate.openTree"), onClick: () => { useApp.getState().openSheet("session-tree", { tabId: ctx.session!.tabId, entryId: ctx.entryId }); } } }); }
 } });
 registerCommand({ id: "chat.forkFrom", title: "session:commands.forkFrom.title", hint: "session:commands.forkFrom.hint", slash: "/fork", group: "modes", icon: GitFork, when: ctx => Boolean(ctx.session && ctx.entryId), run: async ctx => { if (ctx.session) try { await (await navigation()).forkChat(ctx.session, ctx.entryId); } catch (error) { reportFailure(error); } } });

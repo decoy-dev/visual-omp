@@ -1,5 +1,6 @@
 /** Running registered commands from the palette, menu accelerators and keyboard shortcuts. */
 import { type CommandContext, type CommandSpec, getCommand } from "../../registry/commands";
+import { isResumeDeclined } from "../../registry/guards";
 import { controllerFor, focusedTabId, useApp } from "../../state/app";
 import { toast } from "../../ui";
 import { recordUse } from "./usage";
@@ -20,7 +21,7 @@ export function runCommand(target: string | CommandSpec, ctx: CommandContext = c
 	void Promise.resolve()
 		.then(() => spec.run(ctx))
 		.catch((error: unknown) => {
-			toast({ tone: "err", message: error instanceof Error ? error.message : String(error) });
+			if (!isResumeDeclined(error)) toast({ tone: "err", message: error instanceof Error ? error.message : String(error) });
 		});
 	return true;
 }

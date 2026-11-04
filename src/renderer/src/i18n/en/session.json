@@ -199,5 +199,13 @@
       "clear": "The app could not clear the text already in omp's field.",
       "typed": "omp did not receive the text, so nothing was sent."
     }
+  },
+  "largeResume": {
+    "title": "Resume this large chat?",
+    "risk": "This chat's saved history is {{size}}. Resuming a large chat may make omp slow or unresponsive. Stop may not respond.",
+    "newChatNote": "A new chat opens in the same folder without this conversation's history. Any message you were sending stays unsent in this chat.",
+    "newChat": "Start new chat",
+    "resume": "Resume chat",
+    "newChatFailed": "The new chat could not be opened."
   }
 }

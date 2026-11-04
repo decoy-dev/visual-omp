@@ -6,9 +6,9 @@
   "entryBytes": 2017581,
   "maxGrowthBytes": 20000,
   "acceptedGrowth": {
-    "entryBytes": 2041903,
-    "reason": "0.7.5: Side questions first-frame presentation and put-away on close (/btw opens and closes the pane without the omp screen), the Suggestions switch below the composer and open-by-default shell and Python output",
-    "acceptedOn": "2026-11-03"
+    "entryBytes": 2044096,
+    "reason": "0.7.5: Side questions first-frame presentation and put-away on close (/btw opens and closes the pane without the omp screen), the Suggestions switch below the composer and open-by-default shell and Python output. After 0.7.5: the large saved chat warning's resume check, decline handling and strings (its dialog loads from its own chunk)",
+    "acceptedOn": "2026-11-04"
   },
   "measurement": {
     "metric": "Uncompressed UTF-8 bytes of the single JavaScript module entry referenced by out/renderer/index.html. CSS, dynamic chunks and source maps are excluded.",

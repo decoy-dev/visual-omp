@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { lazyView } from "../../registry/lazy";
-import { chatSlots, sheets, type ChatSlotProps } from "../../registry/slots";
+import { setResumeGuard } from "../../registry/guards";
+import { chatSlots, globals, sheets, type ChatSlotProps } from "../../registry/slots";
 import { registerNativeOverlay } from "../palette/overlays";
 import { parseOmpDialog } from "./ompDialog";
 import { NativeCardLoading, NativeCardPresentation } from "./NativeCardLoading";
@@ -29,3 +30,9 @@ registerNativeOverlay(isAdvisorConfigure);
 // The chat map and the session-file parsing behind it load from their own chunk; the sheet slides in once loaded.
 sheets.register({ id: "session-tree", component: lazyView(() => import("./TreeSheet").then(m => m.TreeSheet)) });
 sheets.register({ id: "session-advisor", component: lazyView(() => import("./AdvisorSheet").then(m => m.AdvisorSheet)) });
+
+// Before omp resumes a very large saved chat, the user chooses to resume it, start a new chat or cancel. The warning
+// loads from its own chunk on the first question or in idle time.
+const largeResume = () => import("./largeResume");
+setResumeGuard(async request => (await largeResume()).askLargeResume(request));
+globals.register({ id: "session-large-resume", component: lazyView(() => largeResume().then(m => m.LargeResumeHost)) });

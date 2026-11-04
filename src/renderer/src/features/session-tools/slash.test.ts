@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { ResumeDeclinedError } from "../../registry/guards";
 import type { SessionController } from "../../state/session";
 import { parseSlash, routeSlash, slashCommands } from "./slash";
 
@@ -102,6 +103,31 @@ describe("routeSlash", () => {
 		expect(await routeSlash(session, "/goal pause")).toBe(true);
 		expect(mocks.setMode).toHaveBeenCalledWith(session, { mode: "goal", action: "pause" });
 		expect(mocks.runCommand).not.toHaveBeenCalled();
+	});
+
+	describe("in a chat whose omp is not running", () => {
+		const ensureLive = vi.fn<() => Promise<void>>();
+		const saved = { ...session, getSnapshot: () => ({ mode: "history", host: null, guest: null }), ensureLive } as unknown as SessionController;
+		beforeEach(() => {
+			ensureLive.mockReset().mockResolvedValue(undefined);
+		});
+
+		it.each(["/restart", "/plan", "/vibe", "/export", "/goal pause"])("returns %s to the composer when the user declines resuming the chat", async line => {
+			ensureLive.mockRejectedValue(new ResumeDeclinedError());
+			await expect(routeSlash(saved, line)).rejects.toBeInstanceOf(ResumeDeclinedError);
+			expect(mocks.runCommand).not.toHaveBeenCalled();
+			expect(mocks.setMode).not.toHaveBeenCalled();
+		});
+
+		it("treats starting omp as the whole /restart and runs other commands after it", async () => {
+			expect(await routeSlash(saved, "/restart")).toBe(true);
+			expect(mocks.runCommand).not.toHaveBeenCalled();
+			expect(await routeSlash(saved, "/plan")).toBe(true);
+			expect(ranCommands()).toEqual(["chat.plan"]);
+			expect(ensureLive).toHaveBeenCalledTimes(2);
+			expect(await routeSlash(saved, "/settings")).toBe(true);
+			expect(ensureLive).toHaveBeenCalledTimes(2);
+		});
 	});
 
 	it("opens the native advisor configuration while leaving runtime toggles to omp", async () => {

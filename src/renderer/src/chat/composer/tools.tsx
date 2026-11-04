@@ -5,6 +5,7 @@
  */
 import { useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
+import { isResumeDeclined } from "../../registry/guards";
 import { type ChatSlotProps, chatSlots } from "../../registry/slots";
 import { Button, cn, ContextRing, contextZone, Popover, PopoverContent, PopoverTrigger, Progress, toast, Tooltip } from "../../ui";
 import type { ComposerMode } from "./drafts";
@@ -62,7 +63,7 @@ function ContextTool({ session }: ChatSlotProps) {
 					className="mt-3 w-full"
 					disabled={view.readOnly}
 					title={t(view.working ? "context.compactBusy" : "context.compactTip")}
-					onClick={() => void session.send("/compact").catch((error: unknown) => toast({ tone: "err", message: t("context.compactFailed"), description: String(error) }))}
+					onClick={() => void session.send("/compact").catch((error: unknown) => { if (!isResumeDeclined(error)) toast({ tone: "err", message: t("context.compactFailed"), description: String(error) }); })}
 				>
 					{t(view.working ? "context.queueCompact" : "context.compact")}
 				</Button>

@@ -3,7 +3,11 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { HostState } from "@shared/ipc";
+import { routeSlash } from "../../features/session-tools/slash";
+import { ResumeDeclinedError } from "../../registry/guards";
 import type { SessionController, SessionView } from "../../state/session";
+import { toast } from "../../ui/toast";
+import type * as ToastModule from "../../ui/toast";
 import { TooltipProvider } from "../../ui/Tooltip";
 import { useComposerDrafts } from "./drafts";
 import { Composer } from "./Composer";
@@ -28,6 +32,7 @@ vi.mock("./VoiceTool", () => ({ VoiceTool: () => null, useVoiceRequests: { getSt
 vi.mock("./predictions", () => ({ useGhostText: () => ({ suffix: "" }), ghostSourceUnchanged: () => true }));
 vi.mock("./tools", () => ({ QUICK_MODES: [] }));
 vi.mock("./PredictionRecovery", () => ({ PredictionRecovery: () => null, acknowledgePrediction: vi.fn(), usePredictionCaptures: { getState: () => ({ merge: vi.fn() }) } }));
+vi.mock("../../ui/toast", async importOriginal => ({ ...await importOriginal<typeof ToastModule>(), toast: vi.fn() }));
 
 let root: Root; let element: HTMLDivElement; let view: SessionView;
 let fontsDescriptor: PropertyDescriptor | undefined;
@@ -158,4 +163,29 @@ it("preserves a failed message separately when a newer draft and attachments wer
 	expect(store.modes.availability).toBe("shell");
 	expect(session.preserveFailedMessage).toHaveBeenCalledExactlyOnceWith("A message ready to send", [failedImage]);
 	expect(session.send).toHaveBeenCalledTimes(1);
+});
+
+it.each([["a message", "A message ready to send"], ["an app command", "/plan"]])("gives %s back without an error when resuming the chat is declined", async (_kind, text) => {
+	vi.mocked(toast).mockClear();
+	useComposerDrafts.getState().setDraft("availability", text);
+	vi.mocked(session.send).mockRejectedValueOnce(new ResumeDeclinedError());
+	vi.mocked(routeSlash).mockRejectedValueOnce(new ResumeDeclinedError());
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+	await act(async () => element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click());
+	expect(useComposerDrafts.getState().drafts.availability).toBe(text);
+	expect(session.preserveFailedMessage).not.toHaveBeenCalled();
+	expect(toast).not.toHaveBeenCalled();
+});
+
+it("keeps a newer draft and queues the declined message without an error", async () => {
+	vi.mocked(toast).mockClear();
+	const pending = Promise.withResolvers<void>();
+	vi.mocked(session.send).mockReturnValueOnce(pending.promise);
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+	await act(async () => element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')!.click());
+	await act(async () => useComposerDrafts.getState().setDraft("availability", "My newer draft"));
+	await act(async () => pending.reject(new ResumeDeclinedError()));
+	expect(useComposerDrafts.getState().drafts.availability).toBe("My newer draft");
+	expect(session.preserveFailedMessage).toHaveBeenCalledExactlyOnceWith("A message ready to send", []);
+	expect(toast).not.toHaveBeenCalled();
 });

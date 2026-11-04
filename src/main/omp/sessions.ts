@@ -324,6 +324,15 @@ export function readSessionFile(file: string): Promise<string> {
 	return readFile(file, "utf8");
 }
 
+export async function sessionFileSize(file: string): Promise<number | null> {
+	try {
+		const info = await stat(file);
+		return info.isFile() ? info.size : null;
+	} catch {
+		return null;
+	}
+}
+
 let watcher: FSWatcher | null = null;
 let pinsWatcher: FSWatcher | null = null;
 let pending: NodeJS.Timeout | undefined;

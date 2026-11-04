@@ -6,6 +6,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ### Detailed changes
 
+#### New
+
+- Before omp resumes a saved chat of 32 MiB or more, visual-omp now asks whether to resume it, start a new chat in the same folder or cancel. Resuming a chat that large can make omp slow or unresponsive, and Stop may not respond.
+
 #### Fixed
 
 - Typing near the right edge of a chat's message box no longer hides the word you are typing until the line wraps. When omp offered a word completion that did not fit on the line, the completion carried the typed letters with it onto a line the message box did not show yet.

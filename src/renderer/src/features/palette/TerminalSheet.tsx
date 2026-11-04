@@ -9,6 +9,7 @@ import { ArrowCounterClockwise, ArrowsIn, ArrowsOut, TerminalWindow, Warning } f
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useComposerDrafts } from "../../chat/composer/drafts";
+import { isResumeDeclined } from "../../registry/guards";
 import { lazyView } from "../../registry/lazy";
 import { useSessionView } from "../../shell/hooks";
 import { controllerFor, useApp } from "../../state/app";
@@ -81,7 +82,7 @@ export function TerminalSheet({ tabId, controller }: { tabId: string; controller
 		setScreenError(null);
 		setRestarting(true);
 		try { await controller.restart(); }
-		catch (error) { setScreenError(error instanceof Error ? error.message : String(error)); }
+		catch (error) { if (!isResumeDeclined(error)) setScreenError(error instanceof Error ? error.message : String(error)); }
 		finally { setRestarting(false); }
 	};
 	const host = view?.host ?? null;
@@ -103,8 +104,12 @@ export function TerminalSheet({ tabId, controller }: { tabId: string; controller
 	const inspectorContent = useRef<HTMLDivElement>(null);
 
 	useEffect(() => {
-		if (!readOnly) void controller.ensureLive().catch(() => undefined);
-	}, [controller, readOnly]);
+		if (readOnly) return;
+		// Declining the large-chat warning leaves omp stopped, so this sheet would only show "Starting omp…" forever.
+		void controller.ensureLive().catch((error: unknown) => {
+			if (isResumeDeclined(error) && useApp.getState().terminalTabId === tabId) useApp.getState().closeTerminal();
+		});
+	}, [controller, readOnly, tabId]);
 
 	if (tsp) previousSize.current = null;
 	else if (host && host.phase !== "exited" && previousSize.current?.hostId !== host.hostId) {

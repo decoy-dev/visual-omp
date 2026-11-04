@@ -16,6 +16,7 @@ import { isAskRequest } from "../chat/transcript/askSeries";
 import { contentText } from "../chat/transcript/notices";
 import { expandedPromptTextMatches } from "@shared/prompt-input";
 import { APP_GUEST_NAME, GuestClient, type GuestSnapshot } from "../collab/lib/client";
+import { confirmLargeResume, LARGE_RESUME_BYTES, ResumeDeclinedError } from "../registry/guards";
 import { toast } from "../ui/toast";
 import { extendSessionHistory, parseSessionHistory, type SessionHistory } from "./history";
 import { TspNoticeStore } from "./tsp/notice-store";
@@ -222,6 +223,9 @@ export function setSlashDelivery(deliver: SlashDelivery): void {
 /** Session files the read-only tabs follow; main watches exactly this set (and drops it on reload). */
 const followed = new Set<string>();
 
+/** Saved files the user chose to resume from the large-chat warning; kept for this renderer's lifetime. */
+const approvedLargeResumes = new Set<string>();
+
 function syncFollowed(): void {
 	void window.vomp.invoke("sessions:follow", [...followed]);
 }
@@ -296,6 +300,10 @@ export class SessionController {
 	/** The ownership check a start must wait for, so omp never resumes a file before it is known to be free. */
 	#ownershipCheck: Promise<void> | null = null;
 	#restoreNext = false;
+	/** omp ran for this chat (started live or adopted), so a relaunch skips the large-chat warning. */
+	#hosted = false;
+	/** The large-chat warning this chat is waiting on; closing the chat aborts it. */
+	#resumeGate: AbortController | null = null;
 	#tspQuestionSync: TspQuestionSync;
 	readonly #restoreAcks = new Set<string>();
 
@@ -492,6 +500,7 @@ export class SessionController {
 	/** Adopt an omp that is already running for this chat (renderer reload, window reopened). */
 	attach(host: HostState): void {
 		if (this.#disposed) return;
+		this.#hosted = true;
 		this.#unsubscribeHost?.();
 		this.#unsubscribeHost = window.vomp.on("host:state", state => {
 			if (state.hostId === host.hostId) this.#onHostState(state);
@@ -499,10 +508,37 @@ export class SessionController {
 		this.#onHostState(host);
 	}
 
+	/**
+	 * Ask before omp resumes `file` when it is large (`LARGE_RESUME_BYTES`); resolves with the file it cleared. A chat
+	 * that already ran omp, a file approved earlier and an unreadable size go ahead without asking, and a declined
+	 * warning throws `ResumeDeclinedError`.
+	 */
+	async #clearLargeResume(file: string | null): Promise<string | null> {
+		if (!file || this.#hosted || approvedLargeResumes.has(file)) return file;
+		const bytes = await window.vomp.invoke("sessions:size", file);
+		if (bytes === null || bytes < LARGE_RESUME_BYTES || this.#disposed || this.#sessionFile !== file) return file;
+		const gate = new AbortController();
+		this.#resumeGate = gate;
+		try {
+			if (!(await confirmLargeResume({ tabId: this.tabId, projectPath: this.#projectPath, file, bytes, signal: gate.signal }))) throw new ResumeDeclinedError();
+		} finally {
+			if (this.#resumeGate === gate) this.#resumeGate = null;
+		}
+		approvedLargeResumes.add(file);
+		return file;
+	}
+
 	async #start(): Promise<void> {
-		await this.#ownershipCheck;
-		if (this.#disposed) throw new Error("This chat was closed.");
-		if (this.#view.readOnly) throw new Error("This chat is open elsewhere.");
+		// The ownership check and the large-chat warning both wait, and either can see the chat close, turn read-only or
+		// move to omp's newest linked copy meanwhile, so omp starts only once every check holds for the same file.
+		let cleared: string | null | undefined;
+		for (;;) {
+			await this.#ownershipCheck;
+			if (this.#disposed) throw new Error("This chat was closed.");
+			if (this.#view.readOnly) throw new Error("This chat is open elsewhere.");
+			if (cleared === this.#sessionFile) break;
+			cleared = await this.#clearLargeResume(this.#sessionFile);
+		}
 		this.#set({ mode: "starting", error: null });
 		this.#unsubscribeHost?.();
 		const pending: HostState[] = [];
@@ -578,6 +614,7 @@ export class SessionController {
 		this.#receivePromptFailures(host);
 		const mode: SessionMode =
 			host.phase === "live" ? "live" : host.phase === "restarting" ? "reconnecting" : this.#guest ? "reconnecting" : "starting";
+		if (host.phase === "live") this.#hosted = true;
 		this.#set({ host, mode, error: host.error });
 		this.#syncAsyncWait();
 		if (host.programStatus?.state === "blocked" && previousStatus?.state !== "blocked" && !this.#view.guest?.uiRequest) {
@@ -1025,6 +1062,8 @@ export class SessionController {
 		this.#unsubscribeHost = null;
 		this.#listeners.clear();
 		this.#eventListeners.clear();
+		// A start waiting on the large-chat warning ends here instead of holding the close until the user answers.
+		this.#resumeGate?.abort();
 		await this.#starting?.catch(() => undefined);
 		const host = this.#view.host;
 		if (host && host.phase !== "exited") await this.#stopHost(host.hostId);

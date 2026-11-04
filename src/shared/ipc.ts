@@ -278,6 +278,8 @@ export interface IpcInvokeMap {
 	/** The newest `limit` saved chats across every project, archived ones left out (one walk of the sessions folder). */
 	"sessions:recent": { args: [limit: number]; result: SessionSummary[] };
 	"sessions:read": { args: [file: string]; result: string };
+	/** The saved file's size in bytes, or null when it can't be read (missing, not a file). */
+	"sessions:size": { args: [file: string]; result: number | null };
 	/** Newest linked copy that contains this file's newest conversation turn. */
 	"sessions:resolve": { args: [file: string]; result: string };
 	"sessions:summary": { args: [file: string]; result: SessionSummary | null };

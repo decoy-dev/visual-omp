@@ -8,6 +8,7 @@ import { TSP_CLASSIC_ACTION_UNAVAILABLE, type TspHostSnapshot } from "@shared/ts
 import { commandOutcome, commandOutcomeSpec, type CommandOutcome, type CommandOutcomeSpec } from "@shared/tsp/command-result";
 import { TSP_ROLES } from "@shared/tsp/roles";
 import { toast } from "@/ui";
+import { isResumeDeclined } from "../../registry/guards";
 import { i18n } from "../../i18n";
 import type { TspCommandNoticeReservation } from "../../state/tsp/notices";
 import type { SessionController } from "../../state/session";
@@ -317,7 +318,9 @@ export async function runAndReport(session: SessionController, line: string, opt
 	}
 }
 
+/** Toast a failed session action. A declined large-chat warning is the user's choice, so it reports nothing. */
 export function reportFailure(error: unknown): void {
+	if (isResumeDeclined(error)) return;
 	toast({ tone: "err", message: error instanceof Error ? error.message : String(error) });
 }
 

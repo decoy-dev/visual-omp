@@ -35,6 +35,7 @@ import { useTranslation } from "react-i18next";
 import { routeSlash } from "../../features/session-tools/slash";
 import { sendSlashCommand } from "../../features/session-tools/typed";
 import { errorText } from "@shared/errors";
+import { isResumeDeclined } from "../../registry/guards";
 import { chatSlots } from "../../registry/slots";
 import { pendingAsk, type SessionController } from "../../state/session";
 import { useApp } from "../../state/app";
@@ -415,7 +416,8 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 				restore.addAttachments(tabId, images);
 				restore.setMode(tabId, mode);
 			}
-			toast({ tone: "err", message: t(occupied ? "send.keptQueued" : "send.failed"), description: error instanceof Error ? error.message : String(error) });
+			// Declining the large-chat warning is the user's choice: the message comes back without an error.
+			if (!isResumeDeclined(error)) toast({ tone: "err", message: t(occupied ? "send.keptQueued" : "send.failed"), description: error instanceof Error ? error.message : String(error) });
 		});
 	};
 

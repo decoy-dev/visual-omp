@@ -1,5 +1,5 @@
 import { broadcast, handle } from "../ipc";
-import { resolveSessionFile, sessionSummary } from "../omp/sessions";
+import { resolveSessionFile, sessionFileSize, sessionSummary } from "../omp/sessions";
 import { forkSavedSession } from "../omp/fork";
 import { toggleConversationPin } from "../omp/session-pins";
 import { renameSavedSession } from "../omp/session-rename";
@@ -7,6 +7,7 @@ import { renameSavedSession } from "../omp/session-rename";
 export function register(): void {
 	handle("sessions:resolve", resolveSessionFile);
 	handle("sessions:summary", sessionSummary);
+	handle("sessions:size", sessionFileSize);
 	handle("sessions:fork", forkSavedSession);
 	handle("sessions:pin", async file => {
 		const session = await sessionSummary(file);

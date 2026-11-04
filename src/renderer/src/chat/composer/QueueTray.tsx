@@ -10,6 +10,7 @@ import { ArrowCounterClockwise, DotsSixVertical, Hourglass, ImageSquare, PaperPl
 import { AnimatePresence, motion } from "motion/react";
 import { type DragEvent, type KeyboardEvent, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { isResumeDeclined } from "../../registry/guards";
 import type { QueuedMessage, SessionController } from "../../state/session";
 import { Button, Chip, cn, duration, ease, Expand, IconButton, spring, toast, useMotionReduced } from "../../ui";
 
@@ -65,7 +66,7 @@ export function QueueTray({ session, queue, questionId, askWaiting = false, send
 		setRestarting(true);
 		session.restart().catch((error: unknown) => {
 			setRestarting(false);
-			toast({ tone: "err", message: t("queue.restartFailed"), description: error instanceof Error ? error.message : String(error) });
+			if (!isResumeDeclined(error)) toast({ tone: "err", message: t("queue.restartFailed"), description: error instanceof Error ? error.message : String(error) });
 		});
 	};
 
