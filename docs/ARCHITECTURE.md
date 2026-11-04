@@ -959,8 +959,8 @@ must be static, unmodified objects with an explicit regular weight; each nested 
 and const provider alias is checked. Ordinary chart objects with numeric weights are outside
 the icon-construction checks. This is a source convention check, without arbitrary runtime
 or cross-module dataflow inference. Keep extra-weight rendering local and explicit.
-The check names three non-icon dynamic targets by file and exact expression: `adapter.Frame`
-in `features/live-preview/Stage.tsx`, and `loaded ?? use(preload())` plus `Fallback` in
+The check names four non-icon dynamic targets by file and exact expression: `adapter.Frame`
+in `features/live-preview/Stage.tsx`, and `loaded ?? use(preload())`, `Fallback` and `Failure` in
 `registry/lazy.tsx`. These existing preview and lazy-view boundaries may receive unresolved
 ordinary props, but explicit or statically known weight-bearing props remain prohibited.
 An unused boundary declaration fails the check.
@@ -977,13 +977,26 @@ Translation namespaces used by startup code remain synchronous, including comman
 labels, pane badges, page-loading titles and folder-picker messages. The larger Settings section bodies,
 context-tool editors and project detail screens use the deferred `settings`, `context` and `projectDetails`
 namespaces. `i18n/index.ts` supplies these through a non-eager glob-backed i18next backend and queues
-them with the import-free `registry/idle` scheduler. Their `useTranslation([deferred, eager],
-{ nsMode: "fallback" })` hooks suspend within the existing lazy-view boundary until loading settles.
-Pages and Settings sections show skeletons; project dialogs have no loading frame and appear once ready.
-Deferred keys and their eager fallback keys are disjoint. The i18n tests check that rule and verify
-translated first commits on successful loads. A failed namespace load shows raw keys for unavailable
-messages without blocking the surrounding shell. Registry consumers without an explicit namespace
-default to the already loaded `shell` namespace.
+them with the import-free `registry/idle` scheduler. Their `useDeferredTranslation(namespace)` hooks
+read the deferred namespace, then the eager namespace it was split from, and suspend within the
+existing lazy-view boundary until loading settles. Pages and Settings sections show skeletons; project
+dialogs have no loading frame and appear once ready. Deferred keys and their eager fallback keys are
+disjoint. The i18n tests check that rule and verify translated first commits on successful loads.
+
+i18next records a failed namespace load and does not load that namespace again, so `i18n/index.ts`
+tracks failed loads itself and `useDeferredTranslation` throws a `LoadError` (`registry/loadError.ts`)
+while its namespace is failed. `lazyView` turns a chunk that does not load into the same error. A
+`LoadBoundary` (`registry/lazy.tsx`) catches only `LoadError` and shows its surface's failure state:
+Settings sections show "Couldn't load this part of visual-omp" with Try again in place of their content,
+and pages show it inside their frame with the back link. `SheetHost` (`shell/SheetHost.tsx`) wraps every
+sheet opened through `openSheet` in a boundary that shows the same message as a small dialog with Close.
+That dialog takes part in sheet presence, so it closes and returns focus at once even when the failed sheet
+had claimed presence before a nested part of it failed. Try again loads each failed namespace through the
+app's own loader, adds it with `addResourceBundle`, and renders the surface again; `lazyView` tries a
+failed chunk again on that render. Other errors pass through the boundary. Panes, dialogs that a component
+loads itself (such as the helper transcript dialog of the pinned helper strip) and other views registered
+without a failure state keep the earlier behavior: their load errors reach the React root.
+Registry consumers without an explicit namespace default to the already loaded `shell` namespace.
 
 The FLIP build guard checks the initial renderer entry and its static import closure for any
 `features/tsp/` modules. The semantic screen remains lazy; shared subscriptions, presentation

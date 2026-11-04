@@ -1,7 +1,7 @@
 import type { SettingSource } from "@shared/contracts/config";
 import { ArrowsClockwise } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { SettingsSectionProps } from "@/registry/slots";
 import { Button, Chip, Notice, ScopeSwitch } from "@/ui";
 import { whenLeaving } from "@/state/leaveGuard";
@@ -50,14 +50,14 @@ export function SettingsSection({ title, description, children }: { title?: Reac
 
 /** Where a value comes from, when that is not simply "your settings". */
 export function SourceChip({ source }: { source: SettingSource }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	if (source === "global" || source === "default") return null;
 	return <Chip tone={source === "project" ? "neutral" : "warn"}>{t(`settings.source.${source}`)}</Chip>;
 }
 
 /** The scope switch for a scoped section's `PageHeader` meta line. */
 export function SectionScope({ projectPath, scope, setScope }: Pick<SettingsSectionProps, "projectPath" | "scope" | "setScope">) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	return (
 		<ScopeSwitch
 			value={scope}
@@ -76,7 +76,7 @@ export function SectionScope({ projectPath, scope, setScope }: Pick<SettingsSect
  * the user agrees to discard them (`whenLeaving`).
  */
 export function ConfigNotices({ cwd, error, onReload }: { cwd: string | null; error: string | null; onReload(): void }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const [externalChange, clearExternalChange] = useExternalConfigChange(cwd);
 	if (!externalChange && !error) return null;
 	const reload = () =>

@@ -12,6 +12,7 @@ import {
 	startAppReinstall,
 	useUpdates,
 } from "@/features/onboarding/updates";
+import { useDeferredTranslation } from "@/i18n";
 import { useApp } from "@/state/app";
 import { Button, Dialog, DialogContent, Mark, PageHeader, PresenceSwap, Spinner, Wordmark } from "@/ui";
 import { ipcErrorMessage, useResource } from "../shared";
@@ -30,7 +31,7 @@ interface StatusRow {
 }
 
 export function AboutSection() {
-	const { t, i18n } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t, i18n } = useDeferredTranslation("settings");
 	const info = useResource(() => window.vomp.invoke("app:info"), []);
 	const omp = useApp(state => state.omp);
 	const updates = useUpdates();

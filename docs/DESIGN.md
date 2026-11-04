@@ -981,9 +981,12 @@ Command labels, navigation titles and loading frames have their translations ava
 Settings sections, context-tool editors and project detail screens preload their text in idle time.
 If opened sooner, pages and Settings sections show their existing skeletons while loading. Project
 dialogs have no loading frame and appear once their code and translations are ready. Successful loads
-use translated text on the first committed render; a failed namespace load settles and shows raw keys
-for the unavailable messages. The surrounding shell remains usable. Page titles and shared actions
-continue to use their eager namespace, and deferred namespaces cannot redefine those same keys.
+use translated text on the first committed render. If a Settings section, page or sheet cannot load its
+code or text, it shows "Couldn't load this part of visual-omp" and "Try again, or restart visual-omp if it
+keeps happening." with [Try again]: in place of the section's content, inside the page frame with its
+back link, or as a small dialog with [Close] for a sheet. The surrounding shell remains usable. Page
+titles and shared actions continue to use their eager namespace, and deferred namespaces cannot redefine
+those same keys.
 
 ### 4.24 Home
 

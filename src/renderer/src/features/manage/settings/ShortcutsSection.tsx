@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import { useCommands } from "@/registry/commands";
 import { Cell, EmptyState, HeaderCell, Kbd, PageHeader, SearchInput, Table, TableHead, TableRow } from "@/ui";
 
@@ -10,7 +11,7 @@ function keycaps(shortcut: string): string[] {
 }
 
 export function ShortcutsSection() {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const { t: tAny } = useTranslation();
 	const commands = useCommands();
 	const [query, setQuery] = useState("");

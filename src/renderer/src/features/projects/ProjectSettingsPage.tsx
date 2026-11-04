@@ -6,7 +6,7 @@
 import type { ApprovalMode, ApprovalState, ModelInfo, ModelRolesState } from "@shared/contracts/config";
 import { FileText, Plug, Robot, X } from "@phosphor-icons/react";
 import { type ReactNode, useCallback, useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { PageProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
 import { openProjectInstructions, openSettings, type ProjectPageProps, usePageBack } from "@/state/navigation";
@@ -28,7 +28,7 @@ interface Loaded {
 }
 
 export function ProjectSettingsPage({ props, seq, close }: PageProps<ProjectPageProps>): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	const { projectPath } = props;
 	const name = useApp(state => state.projects.find(entry => entry.path === projectPath)?.name ?? folderName(projectPath));
 	return (
@@ -44,7 +44,7 @@ export function ProjectSettingsPage({ props, seq, close }: PageProps<ProjectPage
 }
 
 function SettingsBody({ projectPath, close }: { projectPath: string; close(): void }): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	const [data, setData] = useState<Loaded | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const [confirmAuto, setConfirmAuto] = useState(false);

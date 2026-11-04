@@ -1,14 +1,14 @@
 import { CheckCircle, X, XCircle } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useRef } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import { listRowMotion } from "@/features/manage/listMotion";
 import { Button, IconButton, Progress } from "@/ui";
 import type { Operation } from "./operations";
 
 /** Inline progress for one running operation: bar + the latest output line. */
 export function InlineProgress({ op }: { op: Operation }) {
-	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("context");
 	const label = t(`ops.${op.verb}`, { name: op.subject });
 	return (
 		<div className="flex min-w-0 flex-col gap-1">
@@ -22,7 +22,7 @@ export function InlineProgress({ op }: { op: Operation }) {
 
 /** Streamed output of recent operations, newest first; running ones can be cancelled. New ones drop in, dismissed ones fade out. */
 export function OperationLog({ ops, onCancel, onDismiss }: { ops: Operation[]; onCancel(opId: string): void; onDismiss(opId: string): void }) {
-	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("context");
 	return (
 		<AnimatePresence initial={false}>
 			{ops.length > 0 && (
@@ -49,7 +49,7 @@ export function OperationLog({ ops, onCancel, onDismiss }: { ops: Operation[]; o
 }
 
 function OperationCard({ op, onCancel, onDismiss }: { op: Operation; onCancel(): void; onDismiss(): void }) {
-	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("context");
 	const pre = useRef<HTMLPreElement>(null);
 	useEffect(() => {
 		const el = pre.current;

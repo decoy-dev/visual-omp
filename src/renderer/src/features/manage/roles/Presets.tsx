@@ -3,7 +3,7 @@ import type { ModelPresetInfo } from "@shared/contracts/config";
 import { Plus, X } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import { Button, Chip, cn, Dialog, DialogContent, IconButton, Input, SectionHeader } from "@/ui";
 import { listRowMotion } from "../listMotion";
 import { ipcErrorMessage } from "../shared";
@@ -31,7 +31,7 @@ export function PresetList({
 	onDelete(preset: ModelPresetInfo): void;
 	onSaveNew(): void;
 }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	return (
 		<section className="mt-10" aria-labelledby="manage-presets-title">
 			<SectionHeader
@@ -89,7 +89,7 @@ export function SavePresetDialog({
 	existing: readonly ModelPresetInfo[];
 	onSave(name: string): Promise<void>;
 }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const [name, setName] = useState("");
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);

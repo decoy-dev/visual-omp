@@ -1,6 +1,6 @@
 import type { ConfigSnapshot, JsonValue, SettingInfo, SettingScope, SettingSource, SettingWriteResult } from "@shared/contracts/config";
 import { useCallback, useMemo } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import { toast } from "@/ui";
 import { ipcErrorMessage, type Resource, useResource } from "../shared";
 
@@ -20,7 +20,7 @@ export interface OmpSettings {
 }
 
 export function useOmpSettings(cwd: string | null, scope: SettingScope): OmpSettings {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const snapshot = useResource(() => window.vomp.invoke("config:list", cwd ?? undefined), [cwd]);
 	const byKey = useMemo(() => new Map((snapshot.data?.settings ?? []).map(setting => [setting.key, setting])), [snapshot.data]);
 

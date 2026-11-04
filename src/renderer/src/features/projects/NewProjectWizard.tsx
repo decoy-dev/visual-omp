@@ -8,7 +8,7 @@ import type { ProjectNameCheck, RecentFolder } from "@shared/contracts/project";
 import type { RemoteCheck } from "@shared/contracts/workspace";
 import { Check, Folder, FolderOpen, Warning, WarningCircle } from "@phosphor-icons/react";
 import { type KeyboardEvent, type ReactNode, useCallback, useEffect, useId, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { SheetProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
 import { type ProjectColor, setProjectColor } from "@/state/projectColors";
@@ -49,7 +49,7 @@ const REMOTE_CHECK_DELAY_MS = 500;
 const checkRemote = (url: string) => window.vomp.invoke("workspace:checkRemote", url);
 
 export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | undefined>): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	const projects = useApp(state => state.projects);
 	const [step, setStep] = useState(props?.kind ? 1 : 0);
 	const [kind, setKind] = useState<Kind>(props?.kind ?? "empty");
@@ -436,7 +436,7 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 }
 
 function LocationRow({ parent, onPick }: { parent: string | undefined; onPick(): void }): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	const id = useId();
 	return (
 		<div className="flex flex-col gap-2">

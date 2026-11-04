@@ -5,7 +5,7 @@
 import type { ModelInfo, ModelPresetInfo, ModelRoleInfo, ModelRolesState, SettingScope } from "@shared/contracts/config";
 import { ArrowsClockwise, ArrowUUpLeft, FloppyDisk, Warning } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { SettingsSectionProps } from "@/registry/slots";
 import { useLeaveGuard, whenLeaving } from "@/state/leaveGuard";
 import { Button, Chip, EmptyState, Expand, Notice, PageHeader, SectionHeader, Select, SelectItem, Skeleton, toast } from "@/ui";
@@ -20,7 +20,7 @@ import { FallbackBehavior, FallbackModels, OtherFallbackChains } from "./Fallbac
 import { changedFallbackRoles, FALLBACK_KEY, fallbackRecord, fallbackScopeRecord, type FallbackDraft } from "./fallbackModel";
 
 export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionProps) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const arg = projectPath ?? undefined;
 	const omp = useOmpSettings(projectPath, scope);
 	const roles = useResource(() => window.vomp.invoke("config:roles", arg), [arg]);
@@ -301,7 +301,7 @@ function RoleRow({
 	onChange(draft: RoleDraft): void;
 	fallbacks: React.ReactNode;
 }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const list = models ?? [];
 	const status = modelValueStatus(draft.model, list);
 	const model = findModel(draft.model, list);

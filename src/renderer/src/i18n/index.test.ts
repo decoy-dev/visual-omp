@@ -1,6 +1,5 @@
 // @vitest-environment happy-dom
-import { type BackendModule, createInstance } from "i18next";
-import { act, createElement, Suspense, useLayoutEffect, useState } from "react";
+import { act, createElement, Suspense, useLayoutEffect } from "react";
 import { createRoot } from "react-dom/client";
 import { flushSync } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -82,59 +81,6 @@ describe("translation loading", () => {
 				act(() => root.unmount());
 				container.remove();
 			}
-		}
-	});
-
-	it("settles a rejected namespace load while keeping the surrounding shell usable", async () => {
-		Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-		const backend = i18n.services.backendConnector.backend as BackendModule;
-		const failedI18n = createInstance();
-		await failedI18n.use(backend).init({
-			...i18n.options,
-			resources: { en: { shell: files["./en/shell.json"], manage: files["./en/manage.json"] } },
-			ns: ["shell", "manage"],
-		});
-		const { promise: rejectedLoad, reject: rejectLoad } = Promise.withResolvers<never>();
-		const read = vi.spyOn(backend, "read").mockImplementation((_language, _namespace, callback) => {
-			void rejectedLoad.catch(error => callback(error, false));
-		});
-		const container = document.createElement("div");
-		document.body.append(container);
-		const crashes: unknown[] = [];
-		const root = createRoot(container, { onUncaughtError: error => crashes.push(error) });
-		function Screen() {
-			const { t } = useTranslation(["settings", "manage"], { i18n: failedI18n, nsMode: "fallback" });
-			return createElement("p", null, `${t("general.description")} | ${t("settings.title")}`);
-		}
-		function Shell() {
-			const [actions, setActions] = useState(0);
-			return createElement("main", null,
-				createElement("button", { onClick: () => setActions(count => count + 1) }, `Shell actions: ${actions}`),
-				createElement(Suspense, { fallback: "Loading" }, createElement(Screen)));
-		}
-		try {
-			act(() => flushSync(() => root.render(createElement(Shell))));
-			expect(container.textContent).toContain("Loading");
-			await act(async () => container.querySelector("button")!.click());
-			expect(container.querySelector("button")!.textContent).toBe("Shell actions: 1");
-			expect(container.textContent).toContain("Loading");
-			let failure: unknown;
-			await act(async () => {
-				const loading = failedI18n.loadNamespaces("settings", error => { failure = error; });
-				rejectLoad(new Error("Namespace chunk unavailable"));
-				await loading;
-			});
-			expect(failure).toBeTruthy();
-			expect(failedI18n.hasLoadedNamespace("settings")).toBe(true);
-			expect(container.textContent).not.toContain("Loading");
-			expect(container.querySelector("p")!.textContent).toBe(`general.description | ${message("manage", "settings.title")}`);
-			await act(async () => container.querySelector("button")!.click());
-			expect(container.querySelector("button")!.textContent).toBe("Shell actions: 2");
-			expect(crashes).toEqual([]);
-		} finally {
-			act(() => root.unmount());
-			read.mockRestore();
-			container.remove();
 		}
 	});
 });

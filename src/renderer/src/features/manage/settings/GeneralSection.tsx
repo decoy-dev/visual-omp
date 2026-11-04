@@ -1,6 +1,6 @@
 import type { AppPreferences } from "@shared/ipc";
 import type { ApprovalMode } from "@shared/contracts/config";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { SettingsSectionProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
 import { PageHeader, Segmented, Select, SelectItem, Switch } from "@/ui";
@@ -12,7 +12,7 @@ import { useOmpSettings } from "./useOmpSettings";
 const TRANSCRIPT_MODES: readonly AppPreferences["transcriptMode"][] = ["normal", "thinking", "verbose"];
 
 export function GeneralSection({ projectPath, scope, setScope }: SettingsSectionProps) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const omp = useOmpSettings(projectPath, scope);
 	const approval = useResource(() => window.vomp.invoke("config:approval", projectPath ?? undefined), [projectPath]);
 	const prefs = useApp(state => state.prefs);

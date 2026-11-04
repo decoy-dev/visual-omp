@@ -15,7 +15,7 @@ const fake = vi.hoisted(() => ({
 	invoke: vi.fn(),
 	reload: vi.fn(),
 }));
-vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
+vi.mock("@/i18n", () => ({ useDeferredTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("@/features/manage/listMotion", () => ({ listRowMotion: {} }));
 vi.mock("motion/react", () => ({
 	AnimatePresence: ({ children }: { children: ReactNode }) => children,

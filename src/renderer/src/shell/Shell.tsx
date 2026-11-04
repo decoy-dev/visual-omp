@@ -1,84 +1,22 @@
 import { FolderOpen, Plus } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ChatArea } from "../chat/ChatArea";
 import { useComposerDrafts } from "../chat/composer/drafts";
 import { getCommand } from "../registry/commands";
-import { type SheetPresence, SheetPresenceContext } from "../registry/sheetPresence";
-import { pages, screens, sheets } from "../registry/slots";
+import { pages, screens } from "../registry/slots";
 import { currentDock, DOCK_INSET, dockKey, dockTooNarrow, focusedTabId, MAIN_ID, type OpenPage, useApp, useWindowWidth, viewHidesDock } from "../state/app";
 import { DOCK_MAX_WIDTH, DOCK_MIN_WIDTH } from "../state/dockLayout";
 import { Button, cn, duration, EmptyState, Mark, PresenceSwap, spring } from "../ui";
 import { LeaveConfirm } from "./LeaveConfirm";
 import { Dock } from "./Dock";
 import { ResizeHandle } from "./ResizeHandle";
+import { SheetHost } from "./SheetHost";
 import { Sidebar } from "./Sidebar";
 import { StatusBar } from "./StatusBar";
 import { TitleBar } from "./TitleBar";
 import { PresentationVisibility } from "../state/tsp/presentation-claims";
-
-/** Longest a sheet that plays an exit may take to report it before the host drops it anyway. */
-const SHEET_EXIT_MAX_MS = 1000;
-
-/**
- * Renders the open sheet. A closed sheet that uses `useSheetPresence` stays mounted with `open` false until it
- * reports its exit finished (see registry/sheetPresence.ts); any other sheet unmounts as soon as it closes.
- */
-function SheetHost(): ReactNode {
-	const sheet = useApp(state => state.sheet);
-	const list = sheets.use();
-	// The sheet on screen: the open one, or the last one while it plays its exit.
-	const [shown, setShown] = useState(sheet);
-	// What had focus before the sheet opened. Sheets open without a Radix trigger, so the host returns focus itself.
-	const opener = useRef<HTMLElement | null>(null);
-	if (sheet && sheet !== shown) {
-		if (!shown) opener.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-		setShown(sheet);
-	}
-	const current = sheet ?? shown;
-	const open = sheet !== null;
-	const id = current?.id ?? null;
-	const claimedBy = useRef<string | null>(null);
-
-	useEffect(() => {
-		if (open || !id) return;
-		if (claimedBy.current !== id) {
-			setShown(null);
-			return;
-		}
-		const timer = setTimeout(() => setShown(null), SHEET_EXIT_MAX_MS);
-		return () => clearTimeout(timer);
-	}, [open, id]);
-
-	const presence = useMemo<SheetPresence>(
-		() => ({
-			open,
-			// Reopening during the exit keeps the sheet; only a sheet that stayed closed is dropped.
-			exited: () => {
-				if (useApp.getState().sheet) return;
-				setShown(null);
-				if (opener.current?.isConnected) opener.current.focus();
-				opener.current = null;
-			},
-			claim: () => {
-				claimedBy.current = id;
-			},
-		}),
-		[open, id],
-	);
-
-	if (!current) return null;
-	const spec = list.find(entry => entry.id === current.id);
-	if (!spec) return null;
-	const Component = spec.component;
-	// Sheet props are defined by each feature; the opener passes the matching shape.
-	return (
-		<SheetPresenceContext.Provider value={presence}>
-			<Component key={current.id} props={current.props as never} close={() => useApp.getState().closeSheet()} />
-		</SheetPresenceContext.Provider>
-	);
-}
 
 /** The main area when no chat or page shows: the Home screen, or the project overview. */
 function MainScreen({ view }: { view: "home" | "project" }): ReactNode {

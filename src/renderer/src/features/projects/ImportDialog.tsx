@@ -6,7 +6,7 @@
 import type { ImportSource } from "@shared/contracts/share";
 import { ArrowRight } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { SheetProps } from "@/registry/slots";
 import { shortAgo } from "@/shell/hooks";
 import { useApp } from "@/state/app";
@@ -18,7 +18,7 @@ export interface ImportProps {
 }
 
 export function ImportDialog({ props, close }: SheetProps<ImportProps | undefined>): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	const active = useApp(state => state.activeProject);
 	const [sources, setSources] = useState<ImportSource[] | null>(null);
 

@@ -1,7 +1,7 @@
 import { ArrowCircleUp, DownloadSimple, Package, Trash } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { AvailablePlugin, MarketplacePlugin, NpmPlugin, PluginOperationResult, PluginScope } from "@shared/contracts/plugins";
 import { listRowMotion } from "@/features/manage/listMotion";
 import { Button, Chip, EmptyState, Input, Menu, MenuContent, MenuItem, MenuTrigger, Notice, PresenceSwap, Skeleton, Switch, toast } from "@/ui";
@@ -27,7 +27,7 @@ function matches(needle: string, ...fields: (string | null)[]): boolean {
 }
 
 export function PluginsTab({ cwd, projectPath, filter, query, onBrowse }: TabProps) {
-	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("context");
 	const listing = useLoad(() => window.vomp.invoke("plugins:list", cwd), [cwd]);
 	const catalog = useLoad(() => window.vomp.invoke("plugins:discover", undefined, cwd), [cwd]);
 	useIpcEvent("plugins:changed", () => {
@@ -215,7 +215,7 @@ interface InstalledRowProps {
 }
 
 function InstalledRow({ plugin, update, running, onToggle, onUpdate, onRemove }: InstalledRowProps) {
-	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("context");
 	const detail =
 		plugin.kind === "npm"
 			? (plugin.description ?? t("plugins.npmSource"))
@@ -268,7 +268,7 @@ function AvailableRow({
 	running: Operation | undefined;
 	onInstall(scope: PluginScope): void;
 }) {
-	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("context");
 	return (
 		<li className="flex min-h-14 items-center gap-3 px-3 py-2">
 			<LetterTile name={entry.name} />

@@ -13,7 +13,7 @@ import {
 import type { ModelInfo } from "@shared/contracts/config";
 import { ChatCenteredDots, FloppyDisk, Warning } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import { whenLeaving, useLeaveGuard } from "@/state/leaveGuard";
 import { Markdown } from "@/transcript/Markdown";
 import { Button, Checkbox, Input, Segmented, Select, SelectItem, Sheet, SheetContent, Skeleton, Switch, Textarea, toast } from "@/ui";
@@ -72,7 +72,7 @@ export interface AgentEditorProps {
 }
 
 export function AgentEditor(props: AgentEditorProps) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const title =
 		props.target.kind === "create"
 			? t("agents.editor.newTitle")
@@ -95,7 +95,7 @@ export function AgentEditor(props: AgentEditorProps) {
 }
 
 function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSaved, onTest, onClose }: AgentEditorProps) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const entry = target.kind === "edit" ? target.entry : null;
 	const initial = useMemo(() => formFrom(entry), [entry]);
 	const [form, setForm] = useState(initial);
@@ -352,7 +352,7 @@ function FormEditor({ target, cwd, dirs, models, takenNames, initialScope, onSav
 }
 
 function RawEditor({ filePath, onSaved, onClose }: AgentEditorProps & { filePath: string }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const [content, setContent] = useState<string | null>(null);
 	/** The file's text on disk, to tell whether there are unsaved edits. */
 	const [saved, setSaved] = useState<string | null>(null);

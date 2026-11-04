@@ -1,7 +1,7 @@
 import type { AgentDirs, AgentWritableScope } from "@shared/contracts/agents";
 import { ChatText } from "@phosphor-icons/react";
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import { Button, Dialog, DialogContent, Segmented, Textarea } from "@/ui";
 
 export function CreateWithAiDialog({
@@ -18,7 +18,7 @@ export function CreateWithAiDialog({
 	/** Starts the chat that writes the file. */
 	onCreate(description: string, dir: string, scope: AgentWritableScope): Promise<void>;
 }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const [description, setDescription] = useState("");
 	const [scope, setScope] = useState<AgentWritableScope>("user");
 	const [busy, setBusy] = useState(false);

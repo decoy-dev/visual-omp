@@ -2,7 +2,7 @@ import type { ApprovalPolicy } from "@shared/contracts/config";
 import { CursorClick, Desktop, FilePlus, FileText, Folder, Globe, type Icon, ImageIcon, MagnifyingGlass, PencilSimpleLine, Plus, Robot, Terminal, TerminalWindow, Trash, Wrench } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type FormEvent, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { SettingsSectionProps } from "@/registry/slots";
 import { Button, Dialog, DialogContent, IconButton, Input, Notice, PageHeader, SectionHeader, Segmented } from "@/ui";
 import { listRowMotion } from "../listMotion";
@@ -31,7 +31,7 @@ type PolicyChoice = ApprovalPolicy | "default";
 const CHOICES: readonly PolicyChoice[] = ["default", "prompt", "allow", "deny"];
 
 export function PermissionsSection({ projectPath, scope, setScope }: SettingsSectionProps) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const omp = useOmpSettings(projectPath, scope);
 	const approval = useResource(() => window.vomp.invoke("config:approval", projectPath ?? undefined), [projectPath]);
 	const [added, setAdded] = useState<string[]>([]);
@@ -183,7 +183,7 @@ export function PermissionsSection({ projectPath, scope, setScope }: SettingsSec
 }
 
 function RestrictedFolders({ omp }: { omp: OmpSettings }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const [busy, setBusy] = useState(false);
 	const setting = omp.byKey.get("tools.restrictedFolders");
 	const raw = omp.scope === "global" ? setting?.globalValue : setting?.projectValue;

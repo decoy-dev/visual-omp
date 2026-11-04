@@ -1,6 +1,6 @@
 import type { ModelInfo, ModelKind } from "@shared/contracts/config";
 import { Brain, Eye, Lightning } from "@phosphor-icons/react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import { openSettings } from "@/state/navigation";
 import { Select, SelectGroup, SelectItem, SelectLabel, SelectSeparator } from "@/ui";
 import { formatContextWindow, groupModelsByProvider, modelPriceBadge, modelValueStatus } from "./rolesModel";
@@ -12,7 +12,7 @@ const ADD_PROVIDER = "__add_provider__";
 
 
 export function ModelCapabilities({ model }: { model: ModelInfo }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const context = formatContextWindow(model.contextWindow);
 	const priceBadge = modelPriceBadge(model);
 	return (
@@ -56,7 +56,7 @@ export interface ModelSelectProps {
 
 /** Model picker grouped by provider with capability icons and context size. */
 export function ModelSelect({ models, accepts, value, onChange, autoLabel, disabled, className, ...aria }: ModelSelectProps) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const groups = groupModelsByProvider(models, accepts);
 	const status = modelValueStatus(value, models);
 	// Aliases, patterns and unavailable models are kept selectable so the current value shows.

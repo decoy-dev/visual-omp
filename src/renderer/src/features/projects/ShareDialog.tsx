@@ -6,7 +6,7 @@ import type { Participant } from "@oh-my-pi/pi-wire";
 import { Broadcast, Check, Copy, Desktop, FileArrowDown, FileArrowUp, LinkSimple, Users, WarningCircle } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type ReactNode, useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import { APP_GUEST_NAME } from "../../collab/lib/client";
 import type { SheetProps } from "@/registry/slots";
 import { useSessionView } from "@/shell/hooks";
@@ -25,7 +25,7 @@ export interface ShareProps {
 const SHARE_TABS: readonly ShareTab[] = ["link", "file", "move", "invite"];
 
 export function ShareDialog({ props, close }: SheetProps<ShareProps | undefined>): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	const tabId = useApp(state => props?.tabId ?? focusedTabId(state));
 	const controller = controllerFor(tabId);
 	const view = useSessionView(controller);
@@ -70,7 +70,7 @@ export function ShareDialog({ props, close }: SheetProps<ShareProps | undefined>
 }
 
 function CopyField({ label, value, description }: { label: string; value: string; description?: string }): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	const [copied, setCopied] = useState(false);
 	const copy = async () => {
 		await navigator.clipboard.writeText(value);
@@ -99,12 +99,12 @@ function CopyField({ label, value, description }: { label: string; value: string
 }
 
 function NeedsMessage(): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	return <p className="rounded-md bg-inset px-3 py-2 text-sm text-fg-muted">{t("share.needsMessage")}</p>;
 }
 
 function LinkPanel({ sessionFile }: { sessionFile: string | null }): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	const [gist, setGist] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [result, setResult] = useState<ShareLinkResult | null>(null);
@@ -144,7 +144,7 @@ function LinkPanel({ sessionFile }: { sessionFile: string | null }): ReactNode {
 }
 
 function FilePanel({ sessionFile }: { sessionFile: string | null }): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	const [busy, setBusy] = useState(false);
 	const fileBusy = useShares(state => state.fileAction?.phase === "busy");
 	const exportFile = async () => {
@@ -192,7 +192,7 @@ function FilePanel({ sessionFile }: { sessionFile: string | null }): ReactNode {
 }
 
 function MovePanel({ sessionFile, close }: { sessionFile: string | null; close: () => void }): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	return (
 		<div className="flex flex-col gap-4">
 			<section className="flex flex-col gap-3">
@@ -218,7 +218,7 @@ function FileAction({ kind, sessionFile = null, close, disabled = false }: {
 	close?: () => void;
 	disabled?: boolean;
 }): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	const fileAction = useShares(state => state.fileAction);
 	const state = fileAction?.kind === kind && fileAction.sessionFile === sessionFile ? fileAction : null;
 	const busy = fileAction?.phase === "busy";
@@ -299,7 +299,7 @@ export function visitors(participants: readonly Participant[]): Participant[] {
 }
 
 function InvitePanel({ hostId, participants }: { hostId: string | null; participants: readonly Participant[] }): ReactNode {
-	const { t } = useTranslation(["projectDetails", "projects"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("projectDetails");
 	const share = useShares(state => (hostId ? state.byHost[hostId] : undefined));
 	const [busy, setBusy] = useState(false);
 

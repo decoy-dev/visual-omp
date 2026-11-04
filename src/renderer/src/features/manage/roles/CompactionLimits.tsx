@@ -1,6 +1,6 @@
 import type { ModelInfo } from "@shared/contracts/config";
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import { useLeaveGuard, whenLeaving } from "@/state/leaveGuard";
 import { Button, Dialog, DialogContent, Input, Notice, SectionHeader } from "@/ui";
 import type { OmpSettings } from "../settings/useOmpSettings";
@@ -10,7 +10,7 @@ import { matchingCompactionEntry, planCompaction, thresholdMap, type CompactionP
 const format = (tokens: number) => tokens.toLocaleString("en-US", { notation: "compact", maximumFractionDigits: 2 });
 
 export function CompactionLimits({ models, omp, onSaved }: { models: ModelInfo[] | null; omp: OmpSettings; onSaved(): void }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const [selector, setSelector] = useState<string | null>(null);
 	const model = models?.find(entry => entry.selector === selector);
 	return (
@@ -23,7 +23,7 @@ export function CompactionLimits({ models, omp, onSaved }: { models: ModelInfo[]
 }
 
 function CompactionEditor({ model, omp, onSaved }: { model: ModelInfo; omp: OmpSettings; onSaved(): void }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const setting = omp.byKey.get("compaction.modelThresholds");
 	const own = thresholdMap(omp.scope === "global" ? setting?.globalValue : setting?.projectValue);
 	const configured = Object.hasOwn(own, model.selector) ? own[model.selector] : null;

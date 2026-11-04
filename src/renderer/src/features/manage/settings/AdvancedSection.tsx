@@ -1,7 +1,7 @@
 import type { SettingInfo } from "@shared/contracts/config";
 import { ArrowCounterClockwise } from "@phosphor-icons/react";
 import { type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { SettingsSectionProps } from "@/registry/slots";
 import {
 	cn,
@@ -36,7 +36,7 @@ export interface AdvancedSectionProps {
 }
 
 export function AdvancedSection({ projectPath, scope, setScope, props }: SettingsSectionProps) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const omp = useOmpSettings(projectPath, scope);
 	// Each deep link remounts the section (SettingsPage), so the linked search applies once here.
 	const [query, setQuery] = useState((props as AdvancedSectionProps | undefined)?.query ?? "");
@@ -137,7 +137,7 @@ function scrollParent(element: HTMLElement): HTMLElement | null {
 
 /** Renders only the rows near the page's viewport; the list scrolls with the page. */
 function VirtualSettings({ rows, omp }: { rows: readonly AdvancedRow[]; omp: OmpSettings }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const list = useRef<HTMLDivElement>(null);
 	// The page viewport, in list coordinates.
 	const [view, setView] = useState({ top: 0, height: 800 });
@@ -201,7 +201,7 @@ function VirtualSettings({ rows, omp }: { rows: readonly AdvancedRow[]; omp: Omp
 
 
 function SettingLine({ setting, omp, style }: { setting: SettingInfo; omp: OmpSettings; style: { top: number; height: number } }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const layerValue = omp.scope === "project" ? setting.projectValue : setting.globalValue;
 	const canReset = layerValue !== null || (setting.redacted && setting.source === omp.scope);
 	return (
@@ -241,7 +241,7 @@ function SettingLine({ setting, omp, style }: { setting: SettingInfo; omp: OmpSe
 }
 
 function SettingControl({ setting, omp }: { setting: SettingInfo; omp: OmpSettings }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	if (setting.type === "boolean") {
 		return (
 			<Switch
@@ -273,7 +273,7 @@ function SettingControl({ setting, omp }: { setting: SettingInfo; omp: OmpSettin
 }
 
 function TextControl({ setting, omp }: { setting: SettingInfo; omp: OmpSettings }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const shown = setting.redacted ? "" : valueToText(setting.value);
 	const [text, setText] = useState(shown);
 	useEffect(() => setText(shown), [shown]);

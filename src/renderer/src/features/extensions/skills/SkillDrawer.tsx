@@ -1,5 +1,5 @@
 import { FolderOpen, Trash } from "@phosphor-icons/react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { SkillEntry } from "@shared/contracts/skills";
 import { Markdown } from "@/transcript/Markdown";
 import { Button, Chip, Notice, SectionLabel, Sheet, SheetContent, Skeleton, Switch } from "@/ui";
@@ -23,7 +23,7 @@ export function SkillDrawer({ skill, onClose, onToggle, onRemove }: SkillDrawerP
 }
 
 function DrawerBody({ skill, onToggle, onRemove }: Omit<SkillDrawerProps, "skill" | "onClose"> & { skill: SkillEntry }) {
-	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("context");
 	const doc = useLoad(() => window.vomp.invoke("skills:read", skill.filePath), [skill.filePath]);
 	const locked = lockedReason(skill);
 	const issues = [...skill.issues.map(issue => issue.message), ...skill.warnings];

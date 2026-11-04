@@ -1,7 +1,7 @@
 import { BookOpenText, DownloadSimple, Trash } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { RegistryInstalledSkill, SkillEntry, SkillRegistryResult, SkillSearchHit } from "@shared/contracts/skills";
 import { listRowMotion } from "@/features/manage/listMotion";
 import {
@@ -37,7 +37,7 @@ interface TabProps {
 }
 
 export function SkillsTab({ cwd, projectPath, filter, query, onBrowse }: TabProps) {
-	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("context");
 	const listing = useLoad(() => window.vomp.invoke("skills:list", cwd), [cwd]);
 	const installed = useLoad(() => window.vomp.invoke("skills:registry:installed", cwd), [cwd]);
 	useIpcEvent("skills:changed", () => {
@@ -214,7 +214,7 @@ export function SkillsTab({ cwd, projectPath, filter, query, onBrowse }: TabProp
 
 /** One installed skill: the whole row opens the drawer; the switch sits above that hit area. */
 function SkillRow({ skill, onOpen, onToggle }: { skill: SkillEntry; onOpen(): void; onToggle(enabled: boolean): void }) {
-	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("context");
 	const locked = lockedReason(skill);
 	const toggleLabel = t(skill.enabled ? "skills.turnOff" : "skills.turnOn", { name: skill.name });
 	return (
@@ -258,7 +258,7 @@ interface RegistryBrowserProps {
 }
 
 function RegistryBrowser({ query, installed, projectScopeAvailable, runningFor, onInstall, onRemove }: RegistryBrowserProps) {
-	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("context");
 	const settled = useDebounced(query.trim(), 300);
 	const search = useLoad(() => window.vomp.invoke("skills:registry:search", settled, settled ? "relevance" : "downloads"), [settled]);
 	const installedById = useMemo(() => {

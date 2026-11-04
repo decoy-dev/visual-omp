@@ -9,7 +9,7 @@ import type { ConnectedProvider, LoginMethod } from "@shared/contracts/providers
 import type { TFunction } from "i18next";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { SettingsSectionProps } from "@/registry/slots";
 import { controllerFor, useApp } from "@/state/app";
 import type { SessionController } from "@/state/session";
@@ -51,7 +51,7 @@ function idleChats(): SessionController[] {
 }
 
 export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const arg = cwd ?? undefined;
 	const state = useResource(() => window.vomp.invoke("providers:list"), []);
 	const [refreshing, setRefreshing] = useState(false);
@@ -281,7 +281,7 @@ function statusChip(provider: ConnectedProvider, t: TFunction<"manage">): { tone
 }
 
 function ConnectedRow({ provider, onSignIn, onSignOut }: { provider: ConnectedProvider; onSignIn(): void; onSignOut(): void }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const chip = statusChip(provider, t);
 	const needsSignIn = provider.disabledAccounts.length > 0 && provider.login !== null;
 	const details = [
@@ -350,7 +350,7 @@ function ConnectedRow({ provider, onSignIn, onSignOut }: { provider: ConnectedPr
 }
 
 function LoginList({ methods, onSignIn }: { methods: LoginMethod[]; onSignIn(target: OmpLoginTarget): void }) {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	if (methods.length === 0) return null;
 	return (
 		<div className="relative mt-2 divide-y divide-border">

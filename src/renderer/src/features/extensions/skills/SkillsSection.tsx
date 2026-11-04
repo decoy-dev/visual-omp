@@ -1,7 +1,7 @@
 /** DESIGN §4.16: Skills & plugins, a Settings section with a tab for each. */
 import { BookOpenText, Package } from "@phosphor-icons/react";
 import { useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { SettingsSectionProps } from "@/registry/slots";
 import { PageHeader, PresenceSwap, SearchInput, Segmented, Tabs, TabsContent, TabsList, TabsTrigger } from "@/ui";
 import { useLoad } from "../shared";
@@ -10,7 +10,7 @@ import { PluginsTab } from "./PluginsTab";
 import { SkillsTab } from "./SkillsTab";
 
 export function SkillsSection({ projectPath, scope, props }: SettingsSectionProps) {
-	const { t } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("context");
 	const link = (props ?? {}) as SkillsSectionProps;
 	const home = useLoad(() => window.vomp.invoke("app:info"), []);
 	// omp resolves skills/plugins for a working directory; without a project, the home folder shows user-level ones.

@@ -1,7 +1,7 @@
 import type { AppPreferences, ThemePreference } from "@shared/ipc";
 import { Monitor, Moon, Sun } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import { useApp } from "@/state/app";
 import { PageHeader, Segmented, Slider } from "@/ui";
 import { SettingRow, SettingsSection } from "./parts";
@@ -14,7 +14,7 @@ const THEMES: readonly { value: ThemePreference; icon: typeof Sun }[] = [
 const MOTION: readonly AppPreferences["reducedMotion"][] = ["system", "on", "off"];
 
 export function AppearanceSection() {
-	const { t } = useTranslation(["settings", "manage"], { nsMode: "fallback" });
+	const { t } = useDeferredTranslation("settings");
 	const prefs = useApp(state => state.prefs);
 	const setPrefs = useApp(state => state.setPrefs);
 	// Local while dragging so the preview follows the thumb; saved on release.

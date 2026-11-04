@@ -4,6 +4,12 @@
 		"backToProject": "Back to project",
 		"backToHome": "Back to Home"
 	},
+	"load": {
+		"failedTitle": "Couldn't load this part of visual-omp",
+		"failedBody": "Try again, or restart visual-omp if it keeps happening.",
+		"retry": "Try again",
+		"close": "Close"
+	},
 	"leave": {
 		"title": "Discard your changes?",
 		"body": "This page has edits that haven't been saved.",

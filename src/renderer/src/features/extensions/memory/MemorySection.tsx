@@ -2,7 +2,7 @@
 import { Brain, DownloadSimple, Lock, Trash } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, useEffect, useMemo, useState } from "react";
-import { useTranslation } from "react-i18next";
+import { useDeferredTranslation } from "@/i18n";
 import type { MemoryEntrySummary, MemoryScope, MemoryStatus } from "@shared/contracts/memory";
 import type { AdvancedSectionProps } from "@/features/manage/settings/AdvancedSection";
 import { listRowMotion } from "@/features/manage/listMotion";
@@ -44,7 +44,7 @@ function defaultScope({ scopes, projectScopeIds }: Places): string | null {
 }
 
 export function MemorySection({ projectPath }: SettingsSectionProps) {
-	const { t, i18n } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t, i18n } = useDeferredTranslation("context");
 	const places = useLoad(() => loadPlaces(projectPath), [projectPath]);
 	const [scopeId, setScopeId] = useState<string | null>(null);
 	const [query, setQuery] = useState("");
@@ -281,7 +281,7 @@ function scopeLabel(scope: MemoryScope, projectScopeIds: readonly string[], t: (
 }
 
 function Reader({ entry, onForget, onExport }: { entry: MemoryEntrySummary; onForget(): void; onExport(): void }) {
-	const { t, i18n } = useTranslation(["context", "extensions"], { nsMode: "fallback" });
+	const { t, i18n } = useDeferredTranslation("context");
 	const full = useLoad(() => window.vomp.invoke("memory:read", entry.id), [entry.id]);
 	const date = (at: number | null) => (at ? new Date(at).toLocaleString(i18n.language, { dateStyle: "medium", timeStyle: "short" }) : null);
 	const meta = useMemo(
