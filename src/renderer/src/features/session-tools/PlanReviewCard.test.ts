@@ -2,7 +2,8 @@
 import { act, createElement, useSyncExternalStore, type PropsWithChildren, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { TspRendererEvent, type TspHostSnapshot } from "@shared/tsp-host";
+import type { TspHostSnapshot } from "@shared/tsp-host";
+import { TspRendererEvent } from "@shared/tsp-host.schema";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { planReview } from "@shared/tsp/plan-review";
 import type { SessionController, SessionView } from "../../state/session";

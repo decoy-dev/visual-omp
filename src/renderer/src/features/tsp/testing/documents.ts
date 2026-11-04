@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { TspFrame, TspOpen } from "@shared/tsp";
-import { TspRendererEvent, type TspSurfaceSnapshot } from "@shared/tsp-host";
+import type { TspSurfaceSnapshot } from "@shared/tsp-host";
+import { TspRendererEvent } from "@shared/tsp-host.schema";
 import { TspDocument } from "../../../../../main/omp/tsp/apply";
 
 const Open = z.object({ id: z.string(), mode: z.enum(["inline", "screen"]), title: z.string().optional(), role: z.string().optional(), adopt: z.boolean().optional() });

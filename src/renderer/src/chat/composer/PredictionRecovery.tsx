@@ -3,13 +3,12 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { z } from "zod";
+import { isRecord } from "../../tool-render/util";
 import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { Button, toast } from "../../ui";
 import { useComposerDrafts } from "./drafts";
 
-const captureSchema = z.object({ id: z.string(), hostId: z.string(), generation: z.number(), tabId: z.string(), folder: z.string(), text: z.string().nullable(), blocked: z.boolean(), error: z.string().nullable() });
 interface CaptureState {
 	captures: PredictionCapture[];
 	merge(captures: PredictionCapture[]): void;
@@ -34,8 +33,20 @@ export const usePredictionCaptures = create<CaptureState>()(persist((set, get) =
 	name: "vomp.composer.prediction-captures", storage: createJSONStorage(() => localStorage),
 	partialize: state => ({ captures: state.captures }),
 	merge(persisted, current) {
-		const parsed = z.object({ captures: z.array(captureSchema) }).safeParse(persisted);
-		return { ...current, captures: parsed.success ? parsed.data.captures : [] };
+		if (!isRecord(persisted) || !Array.isArray(persisted.captures)) return { ...current, captures: [] };
+		const captures: PredictionCapture[] = [];
+		for (const capture of persisted.captures) {
+			if (!isRecord(capture) || typeof capture.id !== "string" || typeof capture.hostId !== "string"
+				|| typeof capture.generation !== "number" || !Number.isFinite(capture.generation)
+				|| typeof capture.tabId !== "string" || typeof capture.folder !== "string"
+				|| !(typeof capture.text === "string" || capture.text === null)
+				|| typeof capture.blocked !== "boolean" || !(typeof capture.error === "string" || capture.error === null)) {
+				return { ...current, captures: [] };
+			}
+			const { id, hostId, generation, tabId, folder, text, blocked, error } = capture;
+			captures.push({ id, hostId, generation, tabId, folder, text, blocked, error });
+		}
+		return { ...current, captures };
 	},
 }));
 

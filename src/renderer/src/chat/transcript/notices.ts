@@ -5,7 +5,7 @@
  * when they are missing does the parser read omp's wrapper markup (prompts/tools/async-result.md, task-summary.md,
  * system/irc-incoming.md, advisor `<advisory>` blocks, skills/user-invocation.md).
  */
-import { z } from "zod";
+import { isRecord } from "../../tool-render/util";
 import type { HostNotice } from "@shared/ipc";
 
 export type JobStatus = "ok" | "failed" | "stopped";
@@ -60,25 +60,21 @@ export interface NoticeSource {
 	timestamp?: string | number;
 }
 
-/** A non-empty string field, else undefined. */
-const Field = z.string().trim().min(1).optional().catch(undefined);
-const JobDetails = z.object({
-	jobId: Field,
-	type: z.enum(["bash", "eval", "task"]).optional().catch(undefined),
-	label: Field,
-	durationMs: z.number().nonnegative().optional().catch(undefined),
-});
-/** `async-result` details: a batch under `jobs`, or one job at the top level. */
-const AsyncDetails = JobDetails.extend({ jobs: z.array(JobDetails).optional().catch(undefined) });
-const IrcDetails = z.object({ from: Field, to: Field, message: Field, body: Field });
-const LaunchDetails = z.object({
-	daemons: z.array(z.object({ name: Field, state: z.string().optional().catch(undefined), exitCode: z.number().int().optional().catch(undefined) })).min(1),
-});
-const Severity = z.enum(["nit", "concern", "blocker"]);
-const AdvisorDetails = z.object({
-	notes: z.array(z.object({ note: z.string().trim().min(1), severity: Severity.optional().catch(undefined), advisor: Field })).min(1),
-});
-const SkillDetails = z.object({ name: Field, path: Field, args: Field });
+/** A non-empty string field, else undefined. Invalid optional metadata keeps its fallback. */
+function field(value: unknown): string | undefined {
+	if (typeof value !== "string") return undefined;
+	return value.trim() || undefined;
+}
+
+function isSeverity(value: unknown): value is AdvisorSeverity {
+	return value === "nit" || value === "concern" || value === "blocker";
+}
+
+function isRecordArray(value: unknown): value is Record<string, unknown>[] {
+	if (!Array.isArray(value)) return false;
+	for (const item of value) if (!isRecord(item)) return false;
+	return true;
+}
 
 function unescapeXml(text: string): string {
 	return text.replace(/&(lt|gt|quot|apos|amp);/g, (_, name: string) => ({ lt: "<", gt: ">", quot: '"', apos: "'", amp: "&" })[name] ?? "");
@@ -145,14 +141,18 @@ interface JobMeta {
 const NO_META: JobMeta = { id: null, type: null, label: null, durationMs: null };
 
 function jobMetas(details: unknown): JobMeta[] {
-	const parsed = AsyncDetails.safeParse(details);
-	if (!parsed.success) return [];
-	const list = parsed.data.jobs?.length ? parsed.data.jobs : [parsed.data];
-	return list.flatMap(job =>
-		job.jobId === undefined && job.type === undefined && job.label === undefined && job.durationMs === undefined
+	if (!isRecord(details)) return [];
+	// An invalid batch falls back to the top-level job, matching the optional batch field.
+	const list = isRecordArray(details.jobs) && details.jobs.length ? details.jobs : [details];
+	return list.flatMap(job => {
+		const id = field(job.jobId);
+		const type = job.type === "bash" || job.type === "eval" || job.type === "task" ? job.type : undefined;
+		const label = field(job.label);
+		const durationMs = typeof job.durationMs === "number" && Number.isFinite(job.durationMs) && job.durationMs >= 0 ? job.durationMs : undefined;
+		return id === undefined && type === undefined && label === undefined && durationMs === undefined
 			? []
-			: [{ id: job.jobId ?? null, type: job.type ?? null, label: job.label ?? null, durationMs: job.durationMs ?? null }],
-	);
+			: [{ id: id ?? null, type: type ?? null, label: label ?? null, durationMs: durationMs ?? null }];
+	});
 }
 
 /** One job's output in the content: the id its header names (null when the content names none) and the text under it. */
@@ -303,11 +303,10 @@ const IRC_RELAY_HEADER = /^\[IRC (?:`([^`]+)`|you) → `([^`]+)`(?: \(auto\))?\]
 
 function parseIrc(customType: string, details: unknown, text: string): Notice {
 	const mode: IrcMode = customType === "irc:incoming" ? "incoming" : customType === "irc:autoreply" ? "autoreply" : "relay";
-	const parsed = IrcDetails.safeParse(details);
-	const record = parsed.success ? parsed.data : {};
-	let from = record.from ?? null;
-	let to = record.to ?? null;
-	let body = (mode === "incoming" ? record.message : record.body) ?? null;
+	const record = isRecord(details) ? details : {};
+	let from = field(record.from) ?? null;
+	let to = field(record.to) ?? null;
+	let body = field(mode === "incoming" ? record.message : record.body) ?? null;
 	if (body === null) {
 		const irc = parseIrcText(text);
 		const relay = irc ? null : IRC_RELAY_HEADER.exec(text);
@@ -323,15 +322,14 @@ function parseIrc(customType: string, details: unknown, text: string): Notice {
 const LAUNCH_SENTENCE = /^Supervised process (\S+) (\S+) (?:with exit code (-?\d+)|without an exit code)\.$/;
 
 function parseLaunch(details: unknown, text: string): Notice {
-	const parsed = LaunchDetails.safeParse(details);
 	const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
-	if (parsed.success) {
+	if (isRecord(details) && isRecordArray(details.daemons) && details.daemons.length > 0) {
 		return {
 			kind: "launch",
-			processes: parsed.data.daemons.map((daemon, index) => {
-				const exitCode = daemon.exitCode ?? null;
+			processes: details.daemons.map((daemon, index) => {
+				const exitCode = typeof daemon.exitCode === "number" && Number.isSafeInteger(daemon.exitCode) ? daemon.exitCode : null;
 				return {
-					name: daemon.name ?? "",
+					name: field(daemon.name) ?? "",
 					exitCode,
 					failed: daemon.state === "failed" || (exitCode !== null && exitCode !== 0),
 					text: lines[index] ?? "",
@@ -352,11 +350,16 @@ function parseLaunch(details: unknown, text: string): Notice {
 // ─── advisor ───────────────────────────────────────────────────────────────
 
 function parseAdvisor(details: unknown, text: string): Notice {
-	const parsed = AdvisorDetails.safeParse(details);
-	if (parsed.success) {
-		return {
+	const notes: AdvisorNote[] = [];
+	if (isRecord(details) && Array.isArray(details.notes) && details.notes.length > 0) {
+		for (const raw of details.notes) {
+			const note = isRecord(raw) ? field(raw.note) : undefined;
+			if (note === undefined || !isRecord(raw)) break;
+			notes.push({ note, severity: isSeverity(raw.severity) ? raw.severity : null, advisor: field(raw.advisor) ?? null });
+		}
+		if (notes.length === details.notes.length) return {
 			kind: "advisor",
-			notes: parsed.data.notes.map(note => ({ note: note.note, severity: note.severity ?? null, advisor: note.advisor ?? null })),
+			notes,
 		};
 	}
 	const blocks = [...text.matchAll(/<advisory\b([^>]*)>\n?([\s\S]*?)\n?<\/advisory>/g)];
@@ -364,10 +367,10 @@ function parseAdvisor(details: unknown, text: string): Notice {
 	return {
 		kind: "advisor",
 		notes: blocks.map(block => {
-			const severity = Severity.safeParse(attr(block[1] ?? "", "severity"));
+			const level = attr(block[1] ?? "", "severity");
 			return {
 				note: unescapeXml(block[2] ?? "").trim(),
-				severity: severity.success ? severity.data : null,
+				severity: isSeverity(level) ? level : null,
 				advisor: attr(block[1] ?? "", "advisor"),
 			};
 		}),
@@ -380,18 +383,17 @@ const SKILL_HEADER = /^\[IMPORTANT: User invoked the "([^"]+)" skill; follow its
 const SKILL_FOOTER = /\n+---\n+\[Skill directory: [^\n]*\]\n[^\n]*(?:\nUser: ([\s\S]*))?\s*$/;
 
 function parseSkill(details: unknown, text: string): Notice {
-	const parsed = SkillDetails.safeParse(details);
-	const record = parsed.success ? parsed.data : {};
+	const record = isRecord(details) ? details : {};
 	const header = SKILL_HEADER.exec(text);
 	let body = header ? text.slice(header[0].length) : text;
 	const footer = SKILL_FOOTER.exec(body);
 	if (footer) body = body.slice(0, footer.index);
-	const args = record.args ?? footer?.[1]?.trim() ?? null;
+	const args = field(record.args) ?? footer?.[1]?.trim() ?? null;
 	return {
 		kind: "skill",
-		name: record.name ?? header?.[1] ?? "",
+		name: field(record.name) ?? header?.[1] ?? "",
 		args: args ? args.replace(/\s+/g, " ").trim() : null,
-		path: record.path ?? null,
+		path: field(record.path) ?? null,
 		text: body.trim(),
 	};
 }

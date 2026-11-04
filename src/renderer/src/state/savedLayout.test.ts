@@ -22,6 +22,23 @@ describe("readSavedLayout", () => {
 		expect(read).toEqual({ tabs: [], unseenChats: {}, activeTabId: null, splitTabId: null, focusedSplit: "primary", activeProject: null, docks: {} });
 	});
 
+	it("keeps valid fields independently, strips tab extras and rejects nonfinite widths", () => {
+		const read = readSavedLayout({
+			tabs: [{ ...tab, extra: "ignored" }],
+			activeTabId: "a", splitTabId: "b", focusedSplit: "secondary", activeProject: "/p",
+			sidebarOpen: false, sidebarWidth: 240, expandedProjects: ["/p", "/q"],
+		});
+		expect(read).toMatchObject({
+			tabs: [tab], activeTabId: "a", splitTabId: "b", focusedSplit: "secondary", activeProject: "/p",
+			sidebarOpen: false, sidebarWidth: 240, expandedProjects: ["/p", "/q"],
+		});
+		expect(read.tabs?.[0]).not.toHaveProperty("extra");
+		for (const sidebarWidth of [NaN, Infinity, -Infinity]) expect(readSavedLayout({ sidebarWidth })).not.toHaveProperty("sidebarWidth");
+		expect(readSavedLayout({ expandedProjects: ["/p", null] })).not.toHaveProperty("expandedProjects");
+		expect(readSavedLayout({ expandedProjects: new Array(1) })).not.toHaveProperty("expandedProjects");
+		expect(readSavedLayout({ tabs: [{ ...tab, title: undefined }] }).tabs).toEqual([]);
+	});
+
 	it("restores the side panels of the chats it keeps", () => {
 		const docks = { a: { open: true, pane: "tasks", width: 500 }, gone: { open: true, pane: "files", width: 500 } };
 		expect(readSavedLayout({ tabs: [tab], docks }).docks).toEqual({ a: { open: true, pane: "tasks", width: 500 } });
@@ -50,5 +67,9 @@ describe("migrateSavedLayout", () => {
 		expect(migrateSavedLayout(null)).toEqual({});
 		expect(migrateSavedLayout(["a"])).toEqual({});
 		expect(migrateSavedLayout({ dockOpen: "yes" })).toEqual({ docks: {} });
+		expect(migrateSavedLayout(new Date())).toEqual({});
+		expect(migrateSavedLayout(new Map())).toEqual({});
+		expect(migrateSavedLayout({ [Symbol("invalid")]: true })).toEqual({});
+		expect(migrateSavedLayout(JSON.parse('{"__proto__":{"invalid":true},"tabs":[]}'))).toEqual({ tabs: [], docks: {} });
 	});
 });

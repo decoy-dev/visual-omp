@@ -15,8 +15,10 @@ import { FixtureDocuments, loadFixtureRecording, type FixtureInput, type Fixture
 import { hookQuestions } from "@shared/tsp/question-match";
 import { openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { plain } from "../../../../renderer/src/state/tsp/labels";
-import { TspRendererEvent, type TspHostSnapshot } from "@shared/tsp-host";
-import { hookAnswerEvents, TspHookAnswer } from "@shared/tsp/dialogs";
+import type { TspHostSnapshot } from "@shared/tsp-host";
+import { TspRendererEvent } from "@shared/tsp-host.schema";
+import { hookAnswerEvents } from "@shared/tsp/dialogs";
+import { TspHookAnswer } from "@shared/tsp/dialogs.schema";
 import { planReview } from "@shared/tsp/plan-review";
 
 const root = resolve(import.meta.dirname, "../../../../..");

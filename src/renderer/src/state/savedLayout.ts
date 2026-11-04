@@ -3,47 +3,41 @@
  * be from another version or damaged, so a field that is missing or of the wrong type keeps the app's default and a
  * damaged chat entry is dropped, instead of the whole window failing to open.
  */
-import { z } from "zod";
+import { isRecord } from "../tool-render/util";
 import { restoreUnseen } from "../features/onboarding/attention";
 import type { AppState } from "./app";
 import { layoutFrom, OVERVIEW_DOCK, restoreLayouts, withLayout } from "./dockLayout";
 
-/** A saved open chat. Only chats with a session file are saved; one without has nothing to restore. */
-const SavedTab = z.object({ id: z.string(), projectPath: z.string(), sessionFile: z.string(), title: z.string().nullable() });
-
-const Saved = z.object({
-	tabs: z.array(z.unknown()).catch([]),
-	unseenChats: z.unknown().optional(),
-	activeTabId: z.string().nullable().catch(null),
-	splitTabId: z.string().nullable().catch(null),
-	focusedSplit: z.enum(["primary", "secondary"]).catch("primary"),
-	activeProject: z.string().nullable().catch(null),
-	sidebarOpen: z.boolean().optional().catch(undefined),
-	sidebarWidth: z.number().optional().catch(undefined),
-	/** Checked entry by entry in `restoreLayouts`. */
-	docks: z.unknown().optional(),
-	expandedProjects: z.array(z.string()).optional().catch(undefined),
-});
-
 type SavedLayout = Partial<Pick<AppState, "tabs" | "unseenChats" | "activeTabId" | "splitTabId" | "focusedSplit" | "activeProject" | "sidebarOpen" | "sidebarWidth" | "docks" | "expandedProjects">>;
+
+function isStringArray(value: unknown): value is string[] {
+	if (!Array.isArray(value)) return false;
+	for (const item of value) if (typeof item !== "string") return false;
+	return true;
+}
 
 /** What `merge` takes from the saved layout; anything unusable is left out, so the default stays. */
 export function readSavedLayout(saved: unknown): SavedLayout {
-	const parsed = Saved.safeParse(saved);
-	if (!parsed.success) return {};
-	const { tabs: entries, unseenChats, docks, sidebarOpen, sidebarWidth, expandedProjects, ...selection } = parsed.data;
+	if (!isRecord(saved)) return {};
+	const entries = Array.isArray(saved.tabs) ? saved.tabs : [];
 	const tabs = entries.flatMap(entry => {
-		const tab = SavedTab.safeParse(entry);
-		return tab.success ? [tab.data] : [];
+		if (!isRecord(entry) || typeof entry.id !== "string" || typeof entry.projectPath !== "string"
+			|| typeof entry.sessionFile !== "string" || !(typeof entry.title === "string" || entry.title === null)) return [];
+		return [{ id: entry.id, projectPath: entry.projectPath, sessionFile: entry.sessionFile, title: entry.title }];
 	});
+	const nullableString = (value: unknown): string | null => typeof value === "string" ? value : null;
+	const { unseenChats, docks, sidebarOpen, sidebarWidth, expandedProjects } = saved;
 	return {
-		...selection,
+		activeTabId: nullableString(saved.activeTabId),
+		splitTabId: nullableString(saved.splitTabId),
+		focusedSplit: saved.focusedSplit === "secondary" ? "secondary" : "primary",
+		activeProject: nullableString(saved.activeProject),
 		tabs,
 		unseenChats: restoreUnseen(unseenChats, tabs.map(tab => tab.id)),
 		docks: restoreLayouts(docks, tabs.map(tab => tab.id)),
-		...(sidebarOpen === undefined ? {} : { sidebarOpen }),
-		...(sidebarWidth === undefined ? {} : { sidebarWidth }),
-		...(expandedProjects === undefined ? {} : { expandedProjects }),
+		...(typeof sidebarOpen === "boolean" ? { sidebarOpen } : {}),
+		...(typeof sidebarWidth === "number" && Number.isFinite(sidebarWidth) ? { sidebarWidth } : {}),
+		...(isStringArray(expandedProjects) ? { expandedProjects: [...expandedProjects] } : {}),
 	};
 }
 
@@ -53,9 +47,17 @@ export function readSavedLayout(saved: unknown): SavedLayout {
  * at the default width. Anything that is not an object comes back empty, which `readSavedLayout` reads as defaults.
  */
 export function migrateSavedLayout(saved: unknown): Record<string, unknown> {
-	const parsed = z.record(z.string(), z.unknown()).safeParse(saved);
-	if (!parsed.success) return {};
-	const { dockOpen, dockPane, dockWidth, ...rest } = parsed.data;
+	if (!isRecord(saved)) return {};
+	// Migration keeps the persisted format's string-keyed, plain-record boundary.
+	const constructor = saved.constructor;
+	if (typeof constructor === "function" && (!isRecord(constructor.prototype) || !Object.hasOwn(constructor.prototype, "isPrototypeOf"))) return {};
+	const record: Record<string, unknown> = {};
+	for (const key of Reflect.ownKeys(saved)) {
+		if (!Object.prototype.propertyIsEnumerable.call(saved, key) || key === "__proto__") continue;
+		if (typeof key !== "string") return {};
+		record[key] = saved[key];
+	}
+	const { dockOpen, dockPane, dockWidth, ...rest } = record;
 	const layout = layoutFrom({ open: dockOpen, pane: dockPane, width: dockWidth });
 	return { ...rest, docks: layout ? withLayout({}, OVERVIEW_DOCK, layout) : {} };
 }

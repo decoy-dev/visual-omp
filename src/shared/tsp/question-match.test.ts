@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { hookQuestions, matchQuestions, QuestionArbitrator, type CollabQuestionState, type HookQuestion } from "./question-match";
+import { hookQuestions, matchQuestions, type CollabQuestionState, type HookQuestion } from "./question-match";
+import { QuestionArbitrator } from "./question-arbitrator";
 
 const scope = { hostId: "host", generation: 1, epoch: 1 };
 const dialog: HookQuestion = { surfaceId: "s", nodeId: "hook", title: "Choose", kind: "select", options: [{ label: "Yes", description: "Continue" }, { label: "No" }] };
@@ -38,6 +39,15 @@ describe("hook-collab question arbitration", () => {
 		for (const stale of [{ ...state, hostId: "other" }, { ...state, generation: 0 }, { ...state, epoch: 0 }, { ...state, requests: [] }]) expect(arb.update(scope, stale)).toBe(false);
 		expect(arb.matches(scope, [dialog])[0]?.status).toBe("matched");
 		for (const changed of [{ ...scope, epoch: 2 }, { ...scope, generation: 2 }]) expect(arb.matches(changed, [dialog])[0]?.status).toBe("unavailable");
+	});
+	it("keeps strict mirror validation and strips unknown request fields", () => {
+		for (const invalid of [
+			null, { ...state, extra: true }, { ...state, connection: -1 }, { ...state, revision: 1.5 },
+			{ ...state, requests: [{ ...state.requests[0], reqId: -1 }] },
+		]) expect(new QuestionArbitrator().update(scope, invalid)).toBe(false);
+		const arb = new QuestionArbitrator();
+		expect(arb.update(scope, { ...state, requests: [{ ...state.requests[0], extra: true }] })).toBe(true);
+		expect(arb.matches(scope, [dialog])[0]).toMatchObject({ status: "matched", reqId: 4 });
 	});
 	it("invalidates match authority on disconnect while preserving a bound dialog's completion guard", () => {
 		const arb = new QuestionArbitrator();

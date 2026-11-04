@@ -1,19 +1,12 @@
-import { z } from "zod";
+import type { TspHookAnswer } from "./dialogs.schema";
 import type { TspNode } from "../tsp";
 import type { TspRendererEvent, TspSurfaceSnapshot } from "../tsp-host";
 import { isHookNode, isNativeHookNode, TSP_ACTIONS, TSP_ROLES } from "./roles";
 import { liveSurfaces, walkNodes, type TspNodeTarget, type TspSurfaces } from "./view-state";
 
-const Target = { sf: z.string().min(1), id: z.string().min(1) };
 const completionActions: ReadonlySet<string> = new Set([TSP_ACTIONS.yes, TSP_ACTIONS.no, TSP_ACTIONS.confirm, TSP_ACTIONS.cancel, TSP_ACTIONS.close]);
 /** A complete answer, validated and converted to native events at the writer. */
-export const TspHookAnswer = z.discriminatedUnion("kind", [
-	z.strictObject({ ...Target, kind: z.literal("choose"), target: z.string().min(1), item: z.string() }),
-	z.strictObject({ ...Target, kind: z.literal("text"), target: z.string().min(1), text: z.string(), len: z.number().int().nonnegative() }),
-	z.strictObject({ ...Target, kind: z.literal("action"), target: z.string().min(1), act: z.string().min(1) }),
-	z.strictObject({ ...Target, kind: z.literal("cancel") }),
-]);
-export type TspHookAnswer = z.infer<typeof TspHookAnswer>;
+export type { TspHookAnswer } from "./dialogs.schema";
 
 /** Find a visible descendant by its exact registered role, without inspecting painted text. */
 export function findNodeByRole(root: TspNode, role: string): TspNode | null {

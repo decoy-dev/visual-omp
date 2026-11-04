@@ -73,7 +73,7 @@ callers that wait on IPC, such as the terminal starters, fix that scope before a
 that is on screen and otherwise brings it into view. Only layouts that differ from the default are stored, a chat's
 layout is dropped when the chat closes, and `partialize` keeps the layouts of the restored chats and the overview, so
 the map holds at most the open chats plus the shared overview entry. On launch `state/savedLayout.ts` reads the saved
-layout field by field with zod: a field that is missing or of the wrong type keeps its default and a damaged chat
+layout field by field with explicit type checks: a field that is missing or of the wrong type keeps its default and a damaged chat
 entry is dropped. The Files pane's viewer tabs, expanded folders and tree width follow the same scope in
 `features/panes/files-store.ts` (not persisted, dropped with the chat, and a request from a chat that has closed
 writes nothing).
@@ -964,6 +964,14 @@ in `features/live-preview/Stage.tsx`, and `loaded ?? use(preload())` plus `Fallb
 `registry/lazy.tsx`. These existing preview and lazy-view boundaries may receive unresolved
 ordinary props, but explicit or statically known weight-bearing props remain prohibited.
 An unused boundary declaration fails the check.
+
+TSP input validators are separate `shared/tsp-host.schema.ts` and `shared/tsp/*.schema.ts`
+modules used by main. Shared renderer types derive from these schemas through type-only imports,
+while document helpers remain free of runtime validation dependencies. Main's question mirror
+uses `shared/tsp/question-arbitrator.ts` and retains the same zod validation. Startup notice
+metadata, saved suggestion captures and saved window layouts use explicit field checks with
+their existing fallback rules. The saved session-tree parser still uses zod in its lazy chunk;
+zod is absent from the initial renderer entry and its static imports.
 
 The FLIP build guard checks the initial renderer entry and its static import closure for any
 `features/tsp/` modules. The semantic screen remains lazy; shared subscriptions, presentation

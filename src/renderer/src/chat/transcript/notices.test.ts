@@ -159,6 +159,21 @@ describe("parseNotice: async-result", () => {
 		const notice = parseNotice({ customType: "async-result", content: helperResult });
 		expect(jobs(notice)).toMatchObject([{ id: "AdvisorContext", type: "task", label: null, durationMs: 21_100, durationText: null, status: "ok" }]);
 	});
+
+	it("keeps field fallbacks and rejects a damaged batch as a whole", () => {
+		const content = "output";
+		expect(jobs(parseNotice({
+			customType: "async-result", content,
+			details: { jobId: " top ", type: "bash", label: " run ", durationMs: 0, jobs: [{ jobId: "nested" }, null] },
+		}))).toMatchObject([
+			{ id: "", label: null, result: "output" },
+			{ id: "top", type: "bash", label: "run", durationMs: 0, result: null },
+		]);
+		for (const durationMs of [NaN, Infinity, -Infinity, -1, "12"]) {
+			expect(jobs(parseNotice({ customType: "async-result", content, details: { label: " run ", type: "unknown", durationMs } }))[0])
+				.toMatchObject({ label: "run", type: null, durationMs: null });
+		}
+	});
 });
 
 describe("parseOmpDuration", () => {
@@ -244,6 +259,23 @@ describe("parseNotice: other types", () => {
 
 	it("strips omp's wrapper from an unknown notice", () => {
 		expect(parseNotice({ customType: "handoff", content: "<system-notice>\nThe build finished.\n</system-notice>" })).toEqual({ kind: "other", text: "The build finished." });
+	});
+
+	it("normalizes optional fields and falls back from invalid required detail arrays", () => {
+		expect(parseNotice({ customType: "irc:incoming", content: "fallback", details: { from: " A ", message: " body ", to: 7 } }))
+			.toEqual({ kind: "irc", mode: "incoming", from: "A", to: null, body: "body" });
+		expect(parseNotice({ customType: "skill-prompt", content: "skill", details: { name: " Name ", path: " /p ", args: "   " } }))
+			.toMatchObject({ name: "Name", path: "/p", args: null });
+		const advisory = '<advisory severity="blocker">fallback</advisory>';
+		expect(parseNotice({ customType: "advisor", content: advisory, details: { notes: [{ note: "valid" }, { note: " " }] } }))
+			.toEqual({ kind: "advisor", notes: [{ note: "fallback", severity: "blocker", advisor: null }] });
+		expect(parseNotice({ customType: "advisor", content: "", details: { notes: [{ note: " trimmed ", severity: "unknown", advisor: 1 }] } }))
+			.toEqual({ kind: "advisor", notes: [{ note: "trimmed", severity: null, advisor: null }] });
+		const content = "Supervised process worker failed with exit code 1.";
+		expect(parseNotice({ customType: "launch-completion", content, details: { daemons: [{ name: "ignored" }, null] } }))
+			.toMatchObject({ processes: [{ name: "worker", failed: true, exitCode: 1 }] });
+		expect(parseNotice({ customType: "launch-completion", content: "", details: { daemons: [{ name: " worker ", state: 1, exitCode: Number.MAX_SAFE_INTEGER + 1 }] } }))
+			.toMatchObject({ processes: [{ name: "worker", failed: false, exitCode: null }] });
 	});
 });
 

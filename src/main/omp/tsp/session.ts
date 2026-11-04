@@ -1,11 +1,14 @@
 import { z } from "zod";
 import { TSP_DEFAULT_APC_LIMIT, TSP_DEFAULT_CREDITS, TSP_KINDS, TSP_VERSION, type TspEvent, type TspFrame, type TspOpen } from "../../../shared/tsp";
-import { TspRendererEvent, type TspAvailability, type TspSurfaceSnapshot } from "../../../shared/tsp-host";
+import type { TspAvailability, TspSurfaceSnapshot } from "../../../shared/tsp-host";
+import { TspRendererEvent } from "../../../shared/tsp-host.schema";
 import { liveSurfaces, openOverlay, screenSurface, walkNodes } from "../../../shared/tsp/view-state";
 import { isHookNode, isKnownAction, TSP_ACTIONS, TSP_ROLES } from "../../../shared/tsp/roles";
-import { hookAnswerEvents, TspHookAnswer } from "../../../shared/tsp/dialogs";
+import { hookAnswerEvents } from "../../../shared/tsp/dialogs";
+import { TspHookAnswer } from "../../../shared/tsp/dialogs.schema";
 import { planReview } from "../../../shared/tsp/plan-review";
-import { advisorActionEvents, advisorOverlay, TspAdvisorAction } from "../../../shared/tsp/advisor";
+import { advisorActionEvents, advisorOverlay } from "../../../shared/tsp/advisor";
+import { TspAdvisorAction } from "../../../shared/tsp/advisor.schema";
 import { commandNodeText } from "../../../shared/tsp/command-result";
 import { TspDocument } from "./apply";
 import { encodeTspJson } from "./encode";

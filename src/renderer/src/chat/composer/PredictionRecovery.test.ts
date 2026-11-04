@@ -49,3 +49,15 @@ it.each(["tsp", "classic"] as const)("opens the correct %s recovery screen witho
 	await act(async () => button!.click());
 	expect(fake.openTerminal).toHaveBeenCalledExactlyOnceWith("tab");
 });
+
+it("restores complete saved batches, strips extra fields and rejects the whole damaged batch", () => {
+	const merge = usePredictionCaptures.persist.getOptions().merge!;
+	const current = usePredictionCaptures.getState();
+	const capture = { id: "capture", hostId: "host", generation: 1.5, tabId: "tab", folder: "/project", text: "saved", blocked: false, error: null };
+	expect(merge({ captures: [{ ...capture, extra: "ignored" }] }, current)).toMatchObject({ captures: [capture] });
+	expect((merge({ captures: [{ ...capture, extra: "ignored" }] }, current) as typeof current).captures[0]).not.toHaveProperty("extra");
+	for (const damaged of [null, {}, { ...capture, text: undefined }, { ...capture, generation: NaN }, { ...capture, generation: Infinity }, { ...capture, error: 1 }]) {
+		expect(merge({ captures: [capture, damaged] }, current)).toMatchObject({ captures: [] });
+	}
+	expect(merge({ captures: "damaged" }, current)).toMatchObject({ captures: [] });
+});

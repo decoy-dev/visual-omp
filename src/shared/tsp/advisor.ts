@@ -1,4 +1,4 @@
-import { z } from "zod";
+import type { TspAdvisorAction } from "./advisor.schema";
 import type { AdvisorScope } from "../contracts/advisor";
 import type { TspNode, TspOpen } from "../tsp";
 import type { TspRendererEvent } from "../tsp-host";
@@ -6,10 +6,7 @@ import { TSP_ACTIONS, TSP_ADVISOR, TSP_ROLES } from "./roles";
 import { liveSurfaces, walkNodes, type TspNodeTarget, type TspSurfaces } from "./view-state";
 
 /** Expected scope binds a save to the file the app prepared, including at the serialized writer. */
-export const TspAdvisorAction = z.strictObject({
-	sf: z.string().min(1), id: z.string().min(1), scope: z.enum(["project", "user"]), act: z.enum(["scope", "apply", "close"]),
-});
-export type TspAdvisorAction = z.infer<typeof TspAdvisorAction>;
+export type { TspAdvisorAction } from "./advisor.schema";
 export interface AdvisorOverlay extends TspNodeTarget { scope: AdvisorScope }
 
 /** omp 18.15 uses roleless prefs when supported, otherwise its registered overlay and list. */
