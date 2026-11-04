@@ -947,6 +947,24 @@ The release notes sheet loads in two stages, on first open or during idle preloa
 
 Screens, pages and sheets that most launches do not show register through `lazyView` or `lazyPage` too: the setup wizard, Help, the app and omp update sheets, the project overview, the folder chooser with its folder browser, and the session mode dialogs (`features/session-tools/ModeSheets.tsx`). When the first window opens on one of them (the setup wizard on a first run, or a restored project overview), its fallback shows until the chunk loads: a blank window in the chrome color for the setup wizard, and a skeleton in the overview's scroll column for the project overview. Pages show their frame, back link and skeleton while they load. The Settings page and its rail stay in the entry, because its sections already load from their own chunks and a lazy page would open without its rail. Home, composer tools, status items, notices and the global hosts (tour, quit, palette, terminal sheet) stay in the entry because they render with the first window. Small shared hooks are defined in separate modules so eager code does not import a lazy screen; for example `useHomeDir` is defined in `features/projects/folders/homeDir.ts` rather than the folder browser.
 
+The Phosphor build transform retains `regular` for every icon definition and only the extra
+weights named per definition in `scripts/phosphor-weights.ts`. `Name` and `NameIcon` exports
+share a definition. `scripts/phosphor-weights.test.ts` checks production renderer `.ts` and
+`.tsx` files, excluding tests and declarations, against an icon-authoring convention. Extra
+weights must be explicit JSX props on imported icons or statically resolved const aliases,
+using literals or conditional literal branches. The check rejects missing and unused
+allowances, extra weights forwarded through props or React element constructors, and
+unresolved icon props. Computed keys and getters cannot supply icon props. Context defaults
+must be static, unmodified objects with an explicit regular weight; each nested provider
+and const provider alias is checked. Ordinary chart objects with numeric weights are outside
+the icon-construction checks. This is a source convention check, without arbitrary runtime
+or cross-module dataflow inference. Keep extra-weight rendering local and explicit.
+The check names three non-icon dynamic targets by file and exact expression: `adapter.Frame`
+in `features/live-preview/Stage.tsx`, and `loaded ?? use(preload())` plus `Fallback` in
+`registry/lazy.tsx`. These existing preview and lazy-view boundaries may receive unresolved
+ordinary props, but explicit or statically known weight-bearing props remain prohibited.
+An unused boundary declaration fails the check.
+
 The FLIP build guard checks the initial renderer entry and its static import closure for any
 `features/tsp/` modules. The semantic screen remains lazy; shared subscriptions, presentation
 claims, labels and notice state use `state/tsp/` so ordinary chat state does not import its UI.

@@ -996,6 +996,28 @@ The figures in this section describe the macOS arm64 app directory as measured w
 
 These primitives live in `src/renderer/src/ui/` and are imported from `@/ui`. Colors always come from tokens. Every interactive component has a `:focus-visible` ring (§1.8); icon-only controls carry a tooltip and an `aria-label` that matches it; disabled controls stay visible at 45% opacity with a `not-allowed` cursor. Icons are Phosphor (`@phosphor-icons/react`). `App` mounts `IconContext` with size `1em`, regular weight and `currentColor`, so callers size icons with `size-*` classes and pass `weight` only to deviate (`bold` for heavier strokes, `fill` for solid status glyphs).
 
+The build keeps regular path data for every icon. Add extra weights by definition module name
+in `scripts/phosphor-weights.ts`; `Folder` and `FolderIcon` share the `Folder` definition.
+The production renderer TS/TSX source check enforces this authoring convention:
+
+- Draw extra weights through explicit JSX `weight` props on imported icons or statically
+  resolved const aliases. Use literal weights or conditional literal branches.
+- Keep extra-weight rendering local. Do not forward extra weights through wrapper props, spread
+  objects, `createElement` or `cloneElement`; use explicit icon JSX instead.
+- Icon props must not depend on unresolved spreads, computed keys, getters or methods.
+  Ordinary component spreads are allowed, but cannot carry an extra icon weight.
+- Give every `IconContext` provider a static object with an explicit regular weight.
+  Const defaults and provider aliases must stay in their declaring file. Defaults may only
+  be declared and passed directly as provider values. Do not mutate them, spread additional
+  values into them, use computed keys or duplicate their keys. Const aliases of
+  `IconContext.Provider` must be rendered directly in JSX.
+
+The check verifies supported source constructions and rejects unused allowances. A short
+list in the test names existing preview and lazy-view targets that may forward unresolved
+ordinary props. Those precise file/expression declarations cannot accept a weight prop,
+and stale declarations fail the check. The check does not infer arbitrary runtime icon
+lookups or cross-module dataflow.
+
 ### 5.1 Buttons
 
 | Variant | Fill | Text | Border | Use |

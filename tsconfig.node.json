@@ -16,5 +16,5 @@
       "@oh-my-pi/pi-wire": ["./src/renderer/src/collab/wire/index.ts"]
     }
   },
-  "include": ["electron.vite.config.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
+  "include": ["electron.vite.config.ts", "scripts/**/*.ts", "src/main/**/*", "src/preload/**/*", "src/shared/**/*"]
 }

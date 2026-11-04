@@ -4,27 +4,27 @@ import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
 import type { Plugin } from "vite";
+import { phosphorExtraWeights } from "./scripts/phosphor-weights";
 
 const shared = resolve(__dirname, "src/shared");
 
-/** Phosphor weights the renderer draws: `regular` (App's IconContext default), plus `bold` and `fill` props. */
-const ICON_WEIGHTS: Record<string, true> = { regular: true, bold: true, fill: true };
 /** One weight's entry in a Phosphor icon definition module (`dist/defs/*.es.js`): `[ "bold", <svg body> ],`. */
 const ICON_WEIGHT_ENTRY = /\n {2}\[\n {4}"(\w+)",\n[\s\S]*?\n {2}\],?/g;
 
 /**
- * Every Phosphor icon module carries all six weights. This drops the weights missing from `ICON_WEIGHTS`,
- * about half of the icons' share of the startup chunk. An icon drawn in a dropped weight renders empty:
- * add the weight to `ICON_WEIGHTS` before using it.
+ * Every Phosphor icon module carries all six weights. Keep regular plus only the extra weights
+ * drawn for this definition. The renderer source check rejects missing and unused allowances.
  */
 function phosphorWeights(): Plugin {
 	return {
 		name: "vomp:phosphor-weights",
 		transform(code, id) {
-			if (!/@phosphor-icons\/react\/dist\/defs\/\w+\.es\.js$/.test(id)) return null;
+			const definition = /@phosphor-icons\/react\/dist\/defs\/(\w+)\.es\.js$/.exec(id)?.[1];
+			if (!definition) return null;
 			const entries = code.match(ICON_WEIGHT_ENTRY);
 			if (entries?.length !== 6) this.error(`unexpected Phosphor icon definition format in ${id}`);
-			return { code: code.replace(ICON_WEIGHT_ENTRY, (entry, weight: string) => (ICON_WEIGHTS[weight] ? entry : "")), map: null };
+			const extraWeights = phosphorExtraWeights[definition] ?? [];
+			return { code: code.replace(ICON_WEIGHT_ENTRY, (entry, weight: string) => (weight === "regular" || extraWeights.includes(weight) ? entry : "")), map: null };
 		},
 	};
 }
