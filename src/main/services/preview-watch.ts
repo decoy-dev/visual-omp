@@ -444,8 +444,9 @@ export class PreviewWatchService {
 	}
 }
 
-export function registerPreviewWatch(): void {
-	const service = new PreviewWatchService(change => broadcast("preview:changed", change));
+/** `options` pass to the service (tests supply a watcher that reports only what they send). */
+export function registerPreviewWatch(options: PreviewWatchOptions = {}): void {
+	const service = new PreviewWatchService(change => broadcast("preview:changed", change), options);
 	const owners = new Map<WebContents, { ids: Set<string>; generation: number }>();
 	const ownerFor = (sender: WebContents): { ids: Set<string>; generation: number } => {
 		const existing = owners.get(sender);

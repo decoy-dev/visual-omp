@@ -21,11 +21,14 @@ import { type PreviewWatchOptions, PreviewWatchService, registerPreviewWatch } f
 let dir: string;
 let changes: PreviewChange[];
 let services: { service: PreviewWatchService; ids: string[] }[];
+/** Paths the OS has reported to a real watcher in this test. */
+let reportedPaths: Set<string>;
 
 beforeEach(async () => {
 	dir = await realpath(await mkdtemp(join(tmpdir(), "vomp-preview-watch-")));
 	changes = [];
 	services = [];
+	reportedPaths = new Set();
 	ipc.handlers.clear();
 	ipc.broadcast.mockClear();
 });
@@ -35,28 +38,91 @@ afterEach(async () => {
 	await rm(dir, { recursive: true, force: true });
 });
 
+/**
+ * These tests use the OS's real file events, which arrive seconds late when the machine is busy (as when the full
+ * suite runs in parallel). The wait returns as soon as the count arrives, so the budget only matters when events
+ * are late; each test's limit leaves room for several such waits.
+ */
+const EVENT_WAIT_MS = 15_000;
+const TEST_LIMIT_MS = 60_000;
+const eventually = (count: number) => expect.poll(() => changes.length, { timeout: EVENT_WAIT_MS, interval: 25 }).toBe(count);
+
+type Watch = NonNullable<PreviewWatchOptions["watch"]>;
+/** Marks a watcher that only reports what its test sends, so `start` does not wait for the OS. */
+const CONTROLLED = Symbol("controlled watch");
+
+/** Passes events through, recording what the OS reported and which folders were subscribed. */
+function observe(inner: Watch, subscribed: string[]): Watch {
+	return (path, options, listener) => {
+		subscribed.push(path);
+		return inner(path, options, (event, filename) => {
+			if (filename !== null) reportedPaths.add(join(path, filename));
+			listener(event, filename);
+		});
+	};
+}
+
+let probes = 0;
+/**
+ * The OS starts delivering a new watcher's events a moment after it is created, and under load a save made in that
+ * gap is never reported. Each newly subscribed folder gets a non-visual probe file, rewritten until the OS reports
+ * it (a probe written in the gap is lost too), and the test continues once it has.
+ */
+async function live(folders: string[]): Promise<void> {
+	for (const folder of new Set(folders.splice(0))) {
+		const probe = join(folder, `probe-${++probes}.txt`);
+		// Real OS events have no signal to await but the report itself, so the probe is rewritten on a short interval.
+		for (let writes = 1; !reportedPaths.has(probe); writes++) {
+			try {
+				await writeFile(probe, String(writes));
+			} catch (error) {
+				// A folder the test has since removed has nothing left to report; any other failure is the test's.
+				if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
+				throw error;
+			}
+			if (writes * 100 > EVENT_WAIT_MS) throw new Error(`The OS did not report ${probe} within ${EVENT_WAIT_MS} ms`);
+			await delay(100);
+		}
+	}
+}
+
 async function start(folder = dir, named: string[] = [], options: ConstructorParameters<typeof PreviewWatchService>[1] = {}) {
-	const service = new PreviewWatchService(change => changes.push(change), options);
+	const inner = options.watch ?? fsWatch;
+	const real = !(CONTROLLED in inner);
+	const subscribed: string[] = [];
+	const service = new PreviewWatchService(change => changes.push(change), { ...options, watch: observe(inner, subscribed) });
 	const entry = { service, ids: [] as string[] };
 	services.push(entry);
 	const id = await service.watch({ folder, named });
 	entry.ids.push(id);
+	if (real) {
+		await live(subscribed);
+		// Folders a later scope subscribes are waited for the same way.
+		const watchNamed = service.watchNamed.bind(service);
+		service.watchNamed = async (watchId, paths) => {
+			await watchNamed(watchId, paths);
+			await live(subscribed);
+		};
+	}
 	return { service, id };
 }
 
-const eventually = (count: number) => expect.poll(() => changes.length, { timeout: 4000, interval: 25 }).toBe(count);
-
 /** Exercise Linux subscription/rescan logic independently of the host OS's native event scheduling. */
 function controlledWatch() {
-	const listeners = new Map<string, Parameters<NonNullable<PreviewWatchOptions["watch"]>>[2]>();
-	const watch = vi.fn<NonNullable<PreviewWatchOptions["watch"]>>((path, _options, listener) => {
+	const listeners = new Map<string, Parameters<Watch>[2]>();
+	const watch = vi.fn<Watch>((path, _options, listener) => {
 		listeners.set(path, listener);
 		return Object.assign(new EventEmitter(), { close: () => { listeners.delete(path); } }) as FSWatcher;
 	});
-	return { watch, notify: (path: string, filename: string) => listeners.get(path)!("rename", filename) };
+	Object.assign(watch, { [CONTROLLED]: true });
+	return {
+		watch,
+		notify: (path: string, filename: string) => listeners.get(path)!("rename", filename),
+		watching: (path: string) => listeners.has(path),
+	};
 }
 
-describe("preview file watches", () => {
+describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
 	it("reports a PNG once after a save becomes stable", async () => {
 		await start();
 		const file = join(dir, "poster.png");
@@ -93,7 +159,7 @@ describe("preview file watches", () => {
 			if (revision < 3) await delay(1000);
 		}
 		expect(changes.map(change => change.size)).toEqual([1, 2, 3]);
-	}, 10_000);
+	});
 
 	it("ignores non-visual files and directories with visual names", async () => {
 		await start();
@@ -182,17 +248,22 @@ describe("preview file watches", () => {
 	});
 
 	it.each(["file", "folder"] as const)("reports the last save before replacing a named %s without waiting for debounce", async scope => {
+		// Controlled events: the save is reported before the handoff starts, and the handoff publishes it at once.
+		const { watch, notify, watching } = controlledWatch();
 		const first = join(dir, "first.png");
 		const secondDir = join(dir, "second");
 		await mkdir(secondDir);
 		const second = join(secondDir, "second.png");
-		const { service, id } = await start(tmpdir(), [scope === "file" ? first : dir]);
+		const { service, id } = await start(tmpdir(), [scope === "file" ? first : dir], { watch });
 		await writeFile(first, "completed call's final image");
+		notify(dir, "first.png");
 		await service.watchNamed(id, [second]);
 		expect(changes).toHaveLength(1);
 		expect(changes[0]).toMatchObject({ path: first, size: 28 });
 		await writeFile(first, "retired scope");
+		if (watching(dir)) notify(dir, "first.png");
 		await writeFile(second, "new output");
+		notify(secondDir, "second.png");
 		await eventually(2);
 		await delay(500);
 		expect(changes.map(change => change.path)).toEqual([first, second]);
@@ -304,7 +375,9 @@ describe("preview file watches", () => {
 	});
 
 	it("closes subscriptions after four hours without activity", async () => {
-		const watch = vi.fn<NonNullable<PreviewWatchOptions["watch"]>>(fsWatch);
+		// Any file event counts as activity and restarts the four hours. A real watcher can deliver the temp folder's own
+		// creation late, during the advance below, so this test uses a watcher that only reports what the test sends.
+		const { watch } = controlledWatch();
 		const { service, id } = await start(tmpdir(), [join(dir, "output.png")], { watch });
 		const watcher = watch.mock.results[0]!.value;
 		const close = vi.spyOn(watcher, "close");
@@ -315,7 +388,7 @@ describe("preview file watches", () => {
 	});
 });
 
-describe("preview watch IPC lifecycle", () => {
+describe("preview watch IPC lifecycle", { timeout: TEST_LIMIT_MS }, () => {
 	it.each(["reload", "renderer exit", "destroyed"])("closes a window's watches on %s", async trigger => {
 		registerPreviewWatch();
 		const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
@@ -331,7 +404,9 @@ describe("preview watch IPC lifecycle", () => {
 	});
 
 	it("broadcasts stable files and prevents a different renderer from stopping the watch", async () => {
-		registerPreviewWatch();
+		// Controlled events: this test is about which renderer owns the watch, not how quickly the OS reports a save.
+		const { watch, notify } = controlledWatch();
+		registerPreviewWatch({ watch });
 		const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
 		const other = Object.assign(new EventEmitter(), { isDestroyed: () => false });
 		const event = { sender: sender as unknown as WebContents } as IpcMainInvokeEvent;
@@ -341,7 +416,8 @@ describe("preview watch IPC lifecycle", () => {
 		await ipc.handlers.get("preview:unwatch")!(otherEvent, id);
 		await ipc.handlers.get("preview:watchNamed")!(otherEvent, id, []);
 		await writeFile(path, "saved");
-		await expect.poll(() => ipc.broadcast.mock.calls.length, { timeout: 4000 }).toBe(1);
+		notify(dir, "broadcast.png");
+		await expect.poll(() => ipc.broadcast.mock.calls.length, { timeout: EVENT_WAIT_MS }).toBe(1);
 		expect(ipc.broadcast).toHaveBeenCalledWith("preview:changed", expect.objectContaining({ watchId: id, path, size: 5 }));
 		await ipc.handlers.get("preview:unwatch")!(event, id);
 	});
