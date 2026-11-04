@@ -3,6 +3,7 @@ import { ArrowCounterClockwise } from "@phosphor-icons/react";
 import { type KeyboardEvent, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useDeferredTranslation } from "@/i18n";
 import type { SettingsSectionProps } from "@/registry/slots";
+import { useApp } from "@/state/app";
 import {
 	cn,
 	Button,
@@ -21,7 +22,7 @@ import {
 	Tooltip,
 } from "@/ui";
 import { type AdvancedRow, buildAdvancedRows, parseSettingInput, valueToText } from "./advancedModel";
-import { ConfigNotices, SectionScope, SourceChip } from "./parts";
+import { ConfigNotices, SectionScope, SettingsSection, SourceChip } from "./parts";
 import { type OmpSettings, useOmpSettings } from "./useOmpSettings";
 
 const GROUP_HEIGHT = 36;
@@ -44,6 +45,8 @@ export function AdvancedSection({ projectPath, scope, setScope, props }: Setting
 	const [confirmReset, setConfirmReset] = useState(false);
 	const [resetting, setResetting] = useState(false);
 	const settings = omp.snapshot.data?.settings;
+	const prefs = useApp(state => state.prefs);
+	const setPrefs = useApp(state => state.setPrefs);
 	const rows = useMemo(() => buildAdvancedRows(settings ?? [], query, editedOnly), [settings, query, editedOnly]);
 
 	// Settings that have a value in the scope being edited (credentials are never wiped in bulk).
@@ -78,6 +81,17 @@ export function AdvancedSection({ projectPath, scope, setScope, props }: Setting
 				}
 			/>
 			<ConfigNotices cwd={projectPath} error={omp.snapshot.error} onReload={() => void omp.snapshot.reload()} />
+			{prefs && (
+				<SettingsSection title={t("advanced.app.title")} description={t("advanced.app.description")}>
+					<Switch
+						className="py-3"
+						label={t("advanced.app.classic.label")}
+						description={t("advanced.app.classic.description")}
+						checked={prefs.classicPresentation}
+						onCheckedChange={classicPresentation => void setPrefs({ classicPresentation })}
+					/>
+				</SettingsSection>
+			)}
 			<div className="sticky top-0 z-(--z-sticky) -mx-1 flex items-center gap-2 bg-bg px-1 pb-2 pt-1">
 				<SearchInput
 					className="flex-1"

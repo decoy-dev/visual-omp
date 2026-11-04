@@ -35,6 +35,7 @@ const DEFAULTS: AppPreferences = {
 	projectColors: {},
 	notifications: true,
 	voiceInput: false,
+	classicPresentation: false,
 };
 
 const file = join(app.getPath("userData"), "preferences.json");

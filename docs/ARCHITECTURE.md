@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes current behavior. App-hosted chats use omp's Tern Surface Protocol (TSP) by default on macOS and Linux. Windows remains classic unless explicitly enabled. The classic recovery option lasts until the later removal release; both are tracked in [TSP-MIGRATION.md](TSP-MIGRATION.md), and classic adapters are still present.
+This document describes current behavior. App-hosted chats use omp's Tern Surface Protocol (TSP) by default on macOS, Linux and Windows. Settings > Advanced offers "Classic omp terminal" for new chats; the switch is off by default. Classic adapters remain while that setting exists. The migration and dated platform evidence are tracked in [TSP-MIGRATION.md](TSP-MIGRATION.md).
 
 ```mermaid
 flowchart LR
@@ -92,9 +92,10 @@ Each SessionHost:
    `symbolPreset: unicode` and `statusLine` preset `default`, separator `powerline`, thinking level
    as a word) into a private temporary directory and spawns
    `omp --config <overlay> --extension <private bridge> [--resume <file>]` in a node-pty with the project as cwd. Crash recovery uses `--restore <file>` instead.
-   Main selects the presentation at host launch: TSP by default on macOS and Linux, classic with
-   hidden `VOMP_TSP=0` until the removal release, and classic on Windows unless `VOMP_TSP=1`.
-   A running host keeps its choice. Classic session tools read the model and thinking segment
+   Main selects TSP at host launch on macOS, Linux and Windows unless the app preference
+   `classicPresentation` is on through Settings > Advanced > Classic omp terminal.
+   `VOMP_TSP=1` forces TSP and `VOMP_TSP=0` forces classic as developer overrides on every platform.
+   A running host keeps its choice until omp restarts in it. Classic session tools read the model and thinking segment
    from the painted screen, so the overlay still pins the status line for both presentations.
    Classic hosts also pin `composer.shape: box`; TSP hosts keep the user's composer shape.
    The reader accepts both the boxed composer and omp's default band composer, including narrow bands
@@ -264,19 +265,23 @@ Worktree shutdown: the host lets omp apply its own keep, remove and ask policy. 
 
 Startup readiness remains an omp API gap. A live collab snapshot can precede the editor's submit gate and the outer startup worktree choice. Classic debug values and screen text do not expose that outer readiness flag. Preflight protects a worktree question already painted or being answered; it cannot establish that a later startup question will not appear. The app does not automatically resend an unacknowledged submission. See the parity findings for the source trace.
 
-TSP is the default presentation for app-hosted chats on macOS and Linux. Main reads `VOMP_TSP`
-at host launch; hidden `VOMP_TSP=0` retains classic recovery until the removal release under decision D3.
-Windows stays classic unless `VOMP_TSP=1`, pending Phase 6 manual criteria 5 and 6. Windows TSP
-hosts alone set node-pty's `useConptyDll: true`. Transport, packaged exchanges and repeated-host
-cleanup have CI evidence; installed-build process/handle checks and Defender/SmartScreen checks
-remain open. Classic hosts, terminal-follow and painted-screen adapters remain available until
-the later removal release. Changing the environment never switches an existing host.
+TSP is the default presentation for app-hosted chats on macOS, Linux and Windows. Main reads
+the app preference `classicPresentation` at host launch; it defaults to `false`. Settings > Advanced >
+Classic omp terminal turns it on for chats started or restarted afterwards. Developer overrides
+`VOMP_TSP=1` and `VOMP_TSP=0` force TSP and classic respectively on every platform, taking
+precedence over the preference. Running hosts keep their presentation.
+Windows TSP hosts alone set node-pty's `useConptyDll: true`, using the app's bundled
+`OpenConsole.exe` and `conpty.dll`; classic hosts use the system ConPTY. Phase 6 manual criteria
+5 and 6 passed on the owner's Windows ARM VM with x64 emulation on 2026-11-04, with the
+cross-build, synthetic input and unexercised SmartScreen differences recorded and accepted in
+[TSP-MIGRATION.md](TSP-MIGRATION.md). Classic hosts and painted-screen adapters remain while
+the setting exists. File-based terminal-follow is unchanged; any later classic removal is the owner's decision.
 
 Both presentations run the same omp session, private extension and collab relay in a hidden PTY.
 A TSP launch sets `TERM_PROGRAM=tern`, removes `PI_TUI_NATIVE`, and reads raw PTY bytes. Its
 incremental splitter removes only TSP APC messages before the existing non-TSP byte paths.
-Chunk bodies are joined as bytes before UTF-8 decoding. To recover classic controls on macOS
-or Linux, relaunch the app with `VOMP_TSP=0` and launch the host again.
+Chunk bodies are joined as bytes before UTF-8 decoding. If a chat does not work with the omp
+screen, turn on Classic omp terminal in Settings > Advanced, then start a chat or restart omp in it.
 
 Before its first surface opens, a TSP host captures recognized startup failures directly from the
 non-TSP byte path. Incremental UTF-8 decoding preserves split characters; escape parsing discards

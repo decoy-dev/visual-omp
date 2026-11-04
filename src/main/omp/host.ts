@@ -216,8 +216,9 @@ export class SessionHost {
 	async start(): Promise<void> {
 		try {
 			// Read only in main at launch. Existing hosts never change renderer mid-session.
+			// VOMP_TSP=1 or 0 overrides the user's choice for live tests and lifecycle recorders.
 			const tspFlag = process.env.VOMP_TSP;
-			const useTsp = process.platform === "darwin" || process.platform === "linux" ? tspFlag !== "0" : tspFlag === "1";
+			const useTsp = tspFlag === "1" || (tspFlag !== "0" && !getPrefs().classicPresentation);
 			const [bin, env] = await Promise.all([ompPath(), userEnv()]);
 			await this.#relay.start();
 			this.#relay.events = {

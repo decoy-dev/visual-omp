@@ -54,7 +54,8 @@ vi.mock("node-pty", () => ({
 vi.mock("./windows-pty-cleanup", () => ({ releaseWindowsConpty: (...args: unknown[]) => pty.release(...args) }));
 vi.mock("../env", () => ({ userEnv: async () => ({}), ptyEnv: (env: unknown) => env }));
 vi.mock("../ipc", () => ({ broadcast: vi.fn() }));
-vi.mock("../prefs", () => ({ getPrefs: () => ({ archivedSessions: [], extraProjects: [] }) }));
+const prefs = vi.hoisted(() => ({ classicPresentation: false }));
+vi.mock("../prefs", () => ({ getPrefs: () => ({ archivedSessions: [], extraProjects: [], classicPresentation: prefs.classicPresentation }) }));
 vi.mock("./cli", () => ({
 	runOmpJson: async (args: string[]) =>
 		args[1] === "list"
@@ -89,6 +90,7 @@ import { TspSession } from "./tsp/session";
 let host: SessionHost;
 beforeEach(async () => {
 	vi.stubEnv("VOMP_TSP", "0");
+	prefs.classicPresentation = false;
 	pty.root = await mkdtemp(join(tmpdir(), "vomp-host-test-"));
 	pty.events = {};
 	pty.focus = null;
@@ -810,7 +812,7 @@ it("rejects editor transaction methods after their input lock has been released"
 async function launchTsp(platform: NodeJS.Platform = "darwin", fakeClock = false, resumeFile?: string): Promise<void> {
 	if (host.state.phase !== "exited") await exit(0);
 	if (fakeClock) vi.useFakeTimers();
-	vi.stubEnv("VOMP_TSP", platform === "win32" ? "1" : undefined);
+	vi.stubEnv("VOMP_TSP", undefined);
 	// The spawn and debug bridge are mocked; only launch-policy selection needs the platform.
 	vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? platform : Reflect.get(target, key) }));
 	host = new SessionHost({ cwd: tmpdir(), resumeFile });
@@ -1497,8 +1499,8 @@ function tspAskDock(): void {
 	] });
 }
 
-describe("opt-in semantic transport", () => {
-	it("leaves classic launch, raw output and snapshots unchanged by default", () => {
+describe("semantic transport", () => {
+	it("leaves classic launch, raw output and snapshots unchanged in a classic host", () => {
 		expect(pty.spawnOptions?.env).toMatchObject({ PI_TUI_NATIVE: "0" });
 		expect(pty.spawnOptions?.env).not.toHaveProperty("TERM_PROGRAM");
 		expect(pty.spawnOptions).not.toHaveProperty("encoding");
@@ -1654,7 +1656,7 @@ describe("opt-in semantic transport", () => {
 		expect(host.tspSnapshot()?.questionMatches).toMatchObject([{ status: "answering" }]);
 	});
 
-	it.each(["darwin", "linux"] as const)("defaults to semantic input on %s without VOMP_TSP and keeps that choice for the host lifetime", async platform => {
+	it.each(["darwin", "linux"] as const)("defaults to semantic input on %s and keeps it for the host lifetime while the next host follows the setting", async platform => {
 		await launchTsp(platform);
 		expect(process.env.VOMP_TSP).toBeUndefined();
 		expect(host.state.transport).toBe("tsp");
@@ -1662,7 +1664,7 @@ describe("opt-in semantic transport", () => {
 		expect(pty.spawnOptions?.env).not.toHaveProperty("PI_TUI_NATIVE");
 		expect(pty.spawnOptions).toMatchObject({ encoding: null });
 		expect(pty.spawnOptions).not.toHaveProperty("useConptyDll");
-		vi.stubEnv("VOMP_TSP", "0");
+		prefs.classicPresentation = true;
 		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
 		tspComposer();
 		await connect();
@@ -1670,11 +1672,40 @@ describe("opt-in semantic transport", () => {
 		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"send"'));
 		expect(host.state.transport).toBe("tsp");
 		expect(host.screenReadAttempts()).toEqual([]);
+		await exit(0);
+		host = new SessionHost({ cwd: tmpdir() });
+		await host.start();
+		expect(host.tspSnapshot()).toBeNull();
+		expect(pty.spawnOptions?.env).toMatchObject({ PI_TUI_NATIVE: "0" });
+		const bytes = "\x1b[200~Next chat in classic\x1b[201~\r";
+		host.write(bytes);
+		expect(pty.writes).toHaveBeenCalledWith(bytes);
 	});
 
-	it.each(["darwin", "linux"] as const)("uses classic input on %s with the classic recovery switch", async platform => {
+	it.each(["darwin", "win32"] as const)("uses semantic input on %s when VOMP_TSP=1 overrides the classic setting", async platform => {
 		await exit(0);
-		vi.stubEnv("VOMP_TSP", "0");
+		prefs.classicPresentation = true;
+		vi.stubEnv("VOMP_TSP", "1");
+		vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? platform : Reflect.get(target, key) }));
+		host = new SessionHost({ cwd: tmpdir() });
+		await host.start();
+		expect(host.state.transport).toBe("tsp");
+		expect(pty.spawnOptions?.env).toMatchObject({ TERM_PROGRAM: "tern" });
+		expect(pty.spawnOptions?.useConptyDll === true).toBe(platform === "win32");
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer();
+		await connect();
+		await host.submit("Override message");
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"send"'));
+		expect(host.screenReadAttempts()).toEqual([]);
+	});
+
+	it.each([
+		["darwin", "setting"], ["linux", "setting"], ["darwin", "VOMP_TSP=0"], ["linux", "VOMP_TSP=0"],
+	] as const)("uses classic input on %s when chosen by %s", async (platform, source) => {
+		await exit(0);
+		vi.stubEnv("VOMP_TSP", source === "setting" ? undefined : "0");
+		prefs.classicPresentation = source === "setting";
 		vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? platform : Reflect.get(target, key) }));
 		host = new SessionHost({ cwd: tmpdir() });
 		await host.start();
@@ -1690,8 +1721,9 @@ describe("opt-in semantic transport", () => {
 		expect(host.tspSnapshot()).toBeNull();
 	});
 
-	it("uses bundled ConPTY and raw bytes for an explicitly enabled Windows TSP host", async () => {
+	it("uses bundled ConPTY and raw bytes for a Windows TSP host by default", async () => {
 		await launchTsp("win32");
+		expect(process.env.VOMP_TSP).toBeUndefined();
 		expect(pty.spawnOptions?.env).toMatchObject({ TERM_PROGRAM: "tern" });
 		expect(pty.spawnOptions?.env).not.toHaveProperty("PI_TUI_NATIVE");
 		expect(pty.spawnOptions).toMatchObject({ encoding: null, useConptyDll: true });
@@ -1705,9 +1737,10 @@ describe("opt-in semantic transport", () => {
 		expect(pty.writes).toHaveBeenCalledWith(expect.stringMatching(/^\x1b_tsp;e;.*"text":"café 🐢".*\x1b\\$/));
 	});
 
-	it.each([undefined, "", "0"])("keeps classic Windows spawn options and terminal bytes unchanged with VOMP_TSP=%s", async flag => {
+	it.each(["setting", "VOMP_TSP=0"] as const)("keeps classic Windows spawn options and terminal bytes unchanged when chosen by %s", async source => {
 		await exit(0);
-		vi.stubEnv("VOMP_TSP", flag);
+		vi.stubEnv("VOMP_TSP", source === "setting" ? undefined : "0");
+		prefs.classicPresentation = source === "setting";
 		vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? "win32" : Reflect.get(target, key) }));
 		host = new SessionHost({ cwd: tmpdir() });
 		await host.start();

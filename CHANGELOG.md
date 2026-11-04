@@ -4,6 +4,13 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### Detailed changes
+
+#### New
+
+- Windows chats now use the omp screen by default, as on macOS and Linux.
+- Settings → Advanced now offers a Classic omp terminal switch, off by default, to make new chats use omp's terminal screen if a chat does not work with the omp screen. Open chats keep their view until omp restarts in them.
+
 ## [0.7.6] - 2026-11-04
 
 visual-omp 0.7.6 keeps long chats responsive on macOS and in Linux builds, previews visual outputs as omp makes them and asks before resuming a very large saved chat. It requires omp 18.15.0 or later.

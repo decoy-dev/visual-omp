@@ -318,7 +318,15 @@
 		"reportIssue": "Report an issue"
 	},
 	"advanced": {
-		"description": "Every omp setting, including the ones other sections don't show.",
+		"description": "App compatibility options and every omp setting.",
+		"app": {
+			"title": "visual-omp",
+			"description": "These settings apply to every project.",
+			"classic": {
+				"label": "Classic omp terminal",
+				"description": "New chats show omp's terminal screen instead of the omp screen. Turn this on only if a chat does not work with the omp screen. Chats that are already open keep their view until omp restarts in them."
+			}
+		},
 		"search": "Search every omp setting",
 		"editedOnly": "Changed only",
 		"count_one": "{{count}} setting",
@@ -339,15 +347,15 @@
 			"record": "{{key}} needs key-value pairs, like {\"name\": \"value\"}."
 		},
 		"resetAll": {
-			"button": "Reset all to defaults",
-			"title": "Reset all settings?",
+			"button": "Reset omp settings to defaults",
+			"title": "Reset all omp settings?",
 			"body": {
 				"global_one": "This removes {{count}} saved setting from your all-projects settings. Saved passwords and keys are kept.",
 				"global_other": "This removes {{count}} saved settings from your all-projects settings. Saved passwords and keys are kept.",
 				"project_one": "This removes {{count}} saved setting from this project's settings. Saved passwords and keys are kept.",
 				"project_other": "This removes {{count}} saved settings from this project's settings. Saved passwords and keys are kept."
 			},
-			"confirm": "Reset all settings",
+			"confirm": "Reset omp settings",
 			"done_one": "Reset {{count}} setting.",
 			"done_other": "Reset {{count}} settings."
 		}

@@ -243,6 +243,8 @@ export interface AppPreferences {
 	notifications: boolean;
 	/** Enable omp's speech-to-text in each chat's hidden omp (per-process overlay, never the global config). */
 	voiceInput: boolean;
+	/** New chats use omp's painted terminal instead of the omp screen (TSP). Running chats keep their presentation. */
+	classicPresentation: boolean;
 }
 
 /** Unopened chat results, including other chats in a focused window (DESIGN §4.22). */

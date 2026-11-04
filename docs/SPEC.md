@@ -52,16 +52,19 @@ be able to use it, and it exposes the features that set omp apart from other cod
   remain visible, and the detected version is refreshed on completion. Managed installations
   direct the user to the application that updates omp. A Windows launch refusal shows the reported
   reason and offers another check after the user allows omp.
-- Each app-hosted chat runs omp in a pseudo-terminal. On macOS and Linux, the app uses
-  **Tern Surface Protocol (TSP)** documents for omp's menus, editor state and native controls.
+- Each app-hosted chat runs omp in a pseudo-terminal. On macOS, Linux and Windows, the app uses
+  **Tern Surface Protocol (TSP)** documents by default for omp's menus, editor state and native controls.
   Input uses omp's semantic actions and guarded paste or key paths. The live transcript,
   thinking, tools, subagents and questions use omp's collab protocol over a loopback relay,
   so the app-to-omp connection never leaves the machine.
 - Full-screen menus and other omp content without a native app presentation open in the
   **omp screen**, a semantic sheet. Classic chats retain the painted terminal sheet.
-  Windows starts classic unless `VOMP_TSP=1`. On macOS and Linux, hidden `VOMP_TSP=0`
-  provides classic recovery until a later removal release deletes classic code. Main reads this
-  choice when each host launches; changing it never switches a running host.
+  Settings > Advanced offers **Classic omp terminal**, off by default, to make new chats use
+  omp's terminal screen if a chat does not work with the omp screen. Main reads the app preference
+  `classicPresentation` when each host launches; open chats keep their view until omp restarts in them.
+  Developer overrides `VOMP_TSP=1` and `VOMP_TSP=0` force TSP and classic respectively on every
+  platform. Windows TSP hosts use node-pty's bundled ConPTY; classic hosts use the system ConPTY.
+  Classic code remains while the setting exists; any later removal is the owner's decision.
 - Setup keeps a permission mode the user already chose and suggests **Ask me first** (omp
   `always-ask`) only while omp is on its default. It saves a changed mode globally and blocks
   Continue when omp reports a mode it does not recognize. The permission button next to Send can change it later. `ensureNewUserApproval`

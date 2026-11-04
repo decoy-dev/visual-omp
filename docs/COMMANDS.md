@@ -2,7 +2,7 @@
 
 This page records how visual-omp handles each omp slash command and the menus those commands open. The list was taken from omp v18.15.0, the minimum supported version, which registers 88 builtin commands and 9 aliases, plus the skills, custom commands, extension commands, MCP prompts and file commands a project provides.
 
-Each app-hosted chat runs omp in a pseudo-terminal. macOS and Linux use Tern Surface Protocol (TSP) by default, with semantic editor actions, native cards and an omp screen for unclaimed menus or output. Windows stays classic unless `VOMP_TSP=1`. Hidden `VOMP_TSP=0` provides classic recovery on macOS and Linux until a later removal release. Main reads the choice at host launch; running hosts keep their presentation, and classic code remains until that release. Both presentations use collab for the transcript and questions.
+Each app-hosted chat runs omp in a pseudo-terminal. macOS, Linux and Windows use Tern Surface Protocol (TSP) by default, with semantic editor actions, native cards and an omp screen for unclaimed menus or output. Settings > Advanced has a "Classic omp terminal" switch, off by default, for new chats that need omp's terminal screen. Main reads the choice at host launch; running hosts keep their presentation until omp restarts in them. Developer overrides `VOMP_TSP=1` and `VOMP_TSP=0` force TSP and classic respectively on every platform. Windows TSP hosts use node-pty's bundled ConPTY; classic hosts use the system ConPTY. Classic code remains while the setting exists. Both presentations use collab for the transcript and questions.
 
 ## How a slash line is handled
 
