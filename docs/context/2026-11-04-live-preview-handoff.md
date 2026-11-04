@@ -15,8 +15,8 @@ This session ran beside another session that shipped the 0.7.6 release commit (`
 
 - Full Vitest suite, typecheck, build and the renderer bundle guard passed after each change. After `33f694c` the entry is 1,591,722 bytes, well under the guard.
 - A development build driven over CDP against the fixture (isolated HOME and profile) showed SVG drawing mid-stream, HTML with project assets while remote stylesheets, images, fonts, scripts, meta refresh and link clicks were blocked, three successive PNG revisions, Stop and redirect leaving no file, and Change icon renaming a live chat.
-- Headless Chrome with the real stage and adapters (no Electron, because the owner's development build was running) confirmed Markdown, Mermaid (last good diagram on a syntax error), CSV with its chart, PDF, image-generator requests, result images, the elision note and the 320px layout. The CSV chart scrolls sideways inside the stage at 320px, which is the existing chart behavior.
-- omp 18.16 probe: an abort during a streaming `write` saves nothing; a steer does not stop the write. The UI never describes Send now on the stage.
+- Headless Chrome with the stage and adapters (no Electron, because the owner's development build was running) confirmed Markdown, Mermaid (last good diagram on a syntax error), CSV with its chart, PDF, image-generator requests, result images, the elision note and the 320px layout. The CSV chart scrolls sideways inside the stage at 320px, which is the existing chart behavior.
+- The CDP and headless Chrome screenshots and assertion output were scratch files under `/tmp` and were not kept; these results are recorded only here and in the session's own transcript. The omp 18.16 probe evidence is kept in `scripts/live-preview-fixture/evidence/`: an abort during a streaming `write` saves nothing, and a steer does not stop the write. The UI never describes Send now on the stage.
 
 ## Open items
 
@@ -27,9 +27,9 @@ This session ran beside another session that shipped the 0.7.6 release commit (`
 
 ## Phase 2
 
-`docs/LIVE-PREVIEW-PHASE2.md` is the implementation plan for Phase 2 (video, Office formats, scripts with per-page network permission, Attach this frame, the opt-in proofs skill), revised after astra's review. Its first slice is a blocking investigation of process isolation for script-running frames and the CORS correction. Its open questions for the owner are listed at its end.
+`docs/LIVE-PREVIEW-PHASE2.md` is the implementation plan for Phase 2 (video, Office formats, scripts with per-page network permission, Attach this frame, the opt-in proofs skill). astra approved it after two revisions, with its security and isolation gates mandatory before script-enabled previews ship. Its first slice is a blocking investigation of process isolation for script-running frames and the CORS correction. Its open questions for the owner are listed at its end.
 
 ## Cleanup
 
-- All of this session's worktrees and branches were removed except `/tmp/vomp-loose-ends` (branch `fix/loose-ends`, merged into main), used for these docs.
-- The fixture's scratch root `/tmp/vomp-smoke` was deleted. Rerun `scripts/live-preview-fixture/README.md` to recreate it.
+- All of this session's worktrees and branches were removed after their work was merged into main.
+- The fixture's scratch root `/tmp/vomp-smoke` was deleted. To use the fixture again, follow `scripts/live-preview-fixture/README.md` from an existing checkout, substituting that checkout's path for the README's `/tmp/vomp-live-preview`; the server creates its own scratch root.
