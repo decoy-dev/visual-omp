@@ -4,19 +4,13 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-### Detailed changes
-
-#### New
-
-- Windows chats now use the omp screen by default, as on macOS and Linux.
-- Settings → Advanced now offers a Classic omp terminal switch, off by default, to make new chats use omp's terminal screen if a chat does not work with the omp screen. Open chats keep their view until omp restarts in them.
-
 ## [0.7.6] - 2026-11-04
 
-visual-omp 0.7.6 keeps long chats responsive on macOS and in Linux builds, previews visual outputs as omp makes them and asks before resuming a very large saved chat. It requires omp 18.15.0 or later.
+visual-omp 0.7.6 makes the omp screen the default on Windows, keeps long chats responsive on macOS and in Linux builds, previews visual outputs as omp makes them and asks before resuming a very large saved chat. It requires omp 18.15.0 or later.
 
 ### Highlights
 
+- **New:** Windows chats use the omp screen by default. If a chat does not work with it, the Classic omp terminal switch in Settings → Advanced brings back omp's terminal screen for new chats.
 - **New:** Outputs previews images, PDFs, web pages and other visual files while omp makes them.
 - **New:** Before omp resumes a saved chat of 32 MiB or more, visual-omp asks whether to resume it, start a new chat or cancel.
 - **New:** Change a chat's icon from its row menu.
@@ -32,6 +26,8 @@ visual-omp 0.7.6 keeps long chats responsive on macOS and in Linux builds, previ
 - Before omp resumes a saved chat of 32 MiB or more, visual-omp now asks whether to resume it, start a new chat in the same folder or cancel. Resuming a chat that large can make omp slow or unresponsive, and Stop may not respond.
 - Chat row menus now offer Change icon, with a title preview, an emoji field and the operating system's emoji panel where supported. omp saves the icon in the chat title for live and saved chats.
 - Outputs now previews supported visual files while omp makes them. Watch opens the current output, and Stop and redirect preserves your draft and attachments while you write a correction. Live previews are on by default; opening Outputs automatically is a separate setting, off by default.
+- Windows chats now use the omp screen by default, as on macOS and Linux.
+- Settings → Advanced now offers a Classic omp terminal switch, off by default, to make new chats use omp's terminal screen if a chat does not work with the omp screen. Open chats keep their view until omp restarts in them.
 
 #### Improved
 
