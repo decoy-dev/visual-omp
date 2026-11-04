@@ -33,7 +33,9 @@ beforeEach(async () => {
 	invoke.mockReset();
 	listeners.clear();
 	useApp.setState({ btwDrawers: { "btw-slash": true, "btw-race": true, "btw-test": true } });
-	window.vomp = { platform: "darwin", invoke, on: (channel: string, listener: (event: unknown) => void) => {
+	// The shared TSP document read is not part of these side-question exchanges: no documents.
+	const bridgeInvoke = (channel: string, ...args: unknown[]) => channel === "host:tsp-snapshot" ? Promise.resolve(null) : invoke(channel, ...args);
+	window.vomp = { platform: "darwin", invoke: bridgeInvoke, on: (channel: string, listener: (event: unknown) => void) => {
 		let set = listeners.get(channel); if (!set) listeners.set(channel, set = new Set());
 		set.add(listener); return () => set!.delete(listener);
 	} } as unknown as typeof window.vomp;
