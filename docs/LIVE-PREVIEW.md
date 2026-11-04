@@ -199,7 +199,7 @@ The app does not need these for Phase 1. Following the wrapper-first rule, they 
 - `closePartialSvg` in the `write` card.
 - `[INFERENCE]` About 7 to 10 engineer-days, with the protocol, its security tests and the watcher as the largest parts.
 
-**Phase 2**: video (range requests, progress parsers, contact sheets), DOCX, XLSX, PPTX, scripts in saved HTML, Attach this frame, and the `visual-proofs` skill with first-page and key-frame proofs.
+**Phase 2**: video (range requests, progress parsers, contact sheets), DOCX, XLSX, PPTX, scripts in saved HTML, Attach this frame, and the `visual-proofs` skill with first-page and key-frame proofs. Its implementation plan, revised after astra's review, is [`LIVE-PREVIEW-PHASE2.md`](LIVE-PREVIEW-PHASE2.md); it starts with a blocking investigation of process isolation for script-running frames and narrows the protocol's cross-origin header, which Phase 1 sends on every response. Watching omp's local artifact folder moves to Phase 3.
 
 **Phase 3**: Graphviz DOT, D2 and PlantUML, 3D models, and progressive `generate_image` frames once omp reports them.
 
