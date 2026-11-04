@@ -33,7 +33,7 @@ vi.mock("motion/react", async importOriginal => {
 	const tag = (name: string) => ({ children, initial, animate, exit, transition, layout, layoutId, layoutDependency, variants, custom, ...props }: PropsWithChildren<Record<string, unknown>>) => createElement(name, props, children);
 	return { ...actual, AnimatePresence: ({ children }: PropsWithChildren) => children, motion: { ...actual.motion, div: tag("div"), span: tag("span"), li: tag("li") } };
 });
-vi.mock("../../state/app", () => ({ useApp: (select: (state: { prefs: { voiceInput: boolean } }) => unknown) => select({ prefs: { voiceInput: false } }) }));
+vi.mock("../../state/app", () => ({ useApp: (select: (state: { prefs: { voiceInput: boolean }; btwDrawers: Record<string, boolean> }) => unknown) => select({ prefs: { voiceInput: false }, btwDrawers: {} }) }));
 vi.mock("../../ui/TargetContextMenu", () => ({ TargetContextMenu: () => null }));
 vi.mock("../../features/session-tools/slash", () => ({ routeSlash: vi.fn() }));
 vi.mock("../../features/session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));

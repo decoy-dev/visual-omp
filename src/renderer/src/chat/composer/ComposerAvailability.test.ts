@@ -14,7 +14,7 @@ vi.hoisted(() => {
 	// Exercise Motion's JS fallback: happy-dom's cancelled WAAPI promises reject during draft transitions.
 	Reflect.deleteProperty(Element.prototype, "animate");
 });
-vi.mock("../../state/app", () => ({ useApp: (select: (state: { prefs: { voiceInput: boolean } }) => unknown) => select({ prefs: { voiceInput: false } }) }));
+vi.mock("../../state/app", () => ({ useApp: (select: (state: { prefs: { voiceInput: boolean }; btwDrawers: Record<string, boolean> }) => unknown) => select({ prefs: { voiceInput: false }, btwDrawers: {} }) }));
 vi.mock("../../features/session-tools/slash", () => ({ routeSlash: vi.fn() }));
 vi.mock("../../features/session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));
 vi.mock("../../registry/slots", () => ({ chatSlots: { use: () => [] } }));

@@ -17,6 +17,7 @@ import { autoOpened } from "../palette/TerminalSheet";
 import { routeSlash } from "../session-tools/slash";
 import { FixtureDocuments, loadFixtureRecording } from "../tsp/testing/documents";
 import "../panes";
+import { ChatView } from "../../chat/ChatView";
 import "../../i18n";
 
 vi.hoisted(() => {
@@ -26,9 +27,11 @@ vi.hoisted(() => {
 	Object.defineProperty(Element.prototype, "animate", { configurable: true, value: undefined });
 });
 vi.mock("../../registry/idle", () => ({ preloadWhenIdle: () => {} }));
-// Keep the production Shell, Dock, MotionProvider, PresenceSwap and AnimatePresence. Unrelated
-// chrome and chat content are excluded so this composition isolates side-panel entry and layout.
-vi.mock("../../chat/ChatArea", () => ({ ChatArea: () => createElement("div", { "data-test-chat": true }, "Main chat") }));
+// Keep production Shell, ChatView, Dock, MotionProvider and AnimatePresence.
+// Only unrelated chrome and transcript internals are excluded.
+vi.mock("../../chat/ChatArea", () => ({ ChatArea: () => createElement(ChatView, { session: controller, title: "Fixture chat", focused: true }) }));
+vi.mock("../../chat/SessionHeader", () => ({ SessionHeader: () => createElement("header", null, "Chat header") }));
+vi.mock("../../chat/transcript/Transcript", () => ({ Transcript: () => createElement("div", { "data-test-transcript": true }, "Main chat transcript") }));
 vi.mock("../../shell/Sidebar", () => ({ Sidebar: () => null, focusChatSearch: () => {} }));
 vi.mock("../../shell/TitleBar", () => ({ TitleBar: () => null }));
 vi.mock("../../shell/StatusBar", () => ({ StatusBar: () => null }));
@@ -56,7 +59,9 @@ const originalMotion = document.documentElement.dataset.motion;
 function Harness() {
 	const visible = useDockVisible();
 	return createElement(MotionProvider, null, createElement(TooltipProvider, null, createElement(Fragment, null,
-		shell ? createElement(Shell) : visible && createElement(Dock, { chatKey: tabId, width: 440 }), createElement(OverlayWatcher))));
+		shell ? createElement(Shell) : createElement(Fragment, null,
+			createElement(ChatView, { session: controller, title: "Fixture chat", focused: true }),
+			visible && createElement(Dock, { chatKey: tabId, width: 440 })), createElement(OverlayWatcher))));
 }
 function receive() {
 	const message = messages[cursor++]!;
@@ -65,7 +70,7 @@ function receive() {
 	const projection = projectBtw(protocol.surfaces);
 	const selectedTopic = projection?.turns.length ? { id: "live:1" } : null;
 	snapshot = { ...protocol, hostId: "motion-btw", generation: 1, revision: cursor, lifecycle: "live", documentGeneration: 1, failure: null,
-		availability: { available: !projection, reason: null }, questionMatches: [], surfaces: protocol.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
+		availability: { available: !projection, reason: projection ? "Finish the side question to send a message." : null, ...(projection ? { reasonCode: "btw" as const } : {}) }, questionMatches: [], surfaces: protocol.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
 	state = { hostId: "motion-btw", generation: 1, epoch: protocol.epoch, revision: cursor,
 		topics: mergeBtwTopics([], projection, { id: "live:1" }), overlay: projection ? {
 			epoch: protocol.epoch, surfaceId: projection.surfaceId, nodeId: projection.nodeId, selectedTopic,
@@ -73,16 +78,12 @@ function receive() {
 			followUp: !!projection.field, draft: projection.field?.text ?? null, supported: projection.supported, notice: projection.notice,
 		} : null };
 }
-function expectExitOutsideFlow(outgoing: HTMLElement) {
-	expect(outgoing.isConnected).toBe(true);
-	expect(getComputedStyle(outgoing).position).toBe("absolute");
-	expect(getComputedStyle(outgoing.parentElement!).position).toBe("relative");
-}
 beforeEach(async () => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} unobserve() {} });
 	hostUpdates.clear(); btwUpdates.clear(); opened = []; cursor = 0; shell = false; autoOpened.tabId = null;
 	Object.defineProperty(window, "innerWidth", { configurable: true, value: 1500 });
+	Object.defineProperty(document, "fonts", { configurable: true, value: new EventTarget() });
 	documents = new FixtureDocuments();
 	while (cursor < 4) receive();
 	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin",
@@ -99,7 +100,7 @@ beforeEach(async () => {
 		},
 	} });
 	vi.spyOn(SessionController.prototype, "ensureLive").mockResolvedValue(undefined);
-	useApp.setState({ terminalTabId: null, sheet: null, tabs: [], activeTabId: null, splitTabId: null, docks: {}, view: "chat", sidebarOpen: false, chatOverDock: false });
+	useApp.setState({ terminalTabId: null, sheet: null, tabs: [], activeTabId: null, splitTabId: null, docks: {}, btwDrawers: {}, view: "chat", sidebarOpen: false, chatOverDock: false });
 	tabId = (await useApp.getState().newChat("/tmp/fixture"))!;
 	controller = controllerFor(tabId)!;
 	const view = { ...controller.getSnapshot(), mode: "live", readOnly: false, host: { hostId: "motion-btw", transport: "tsp", generation: 1, tspEpoch: 1, phase: "live", cols: 110, rows: 32 } } as unknown as SessionView;
@@ -120,28 +121,37 @@ afterEach(async () => {
 	vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
 
-it.each(["full", "reduced"])("removes the exiting pane from layout when BTW enters with %s motion", async preference => {
+it.each(["full", "reduced"])("keeps the transcript and existing side pane rendered when the drawer enters with %s motion", async preference => {
 	document.documentElement.dataset.motion = preference;
 	useApp.getState().showPane("motion-first", tabId);
 	await act(async () => root.render(createElement(Harness)));
-	const outgoing = element.querySelector<HTMLElement>('[data-test-pane="motion-first"]')!.parentElement!;
+	const pane = element.querySelector<HTMLElement>('[data-test-pane="motion-first"]')!;
+	const transcript = element.querySelector<HTMLElement>("[data-test-transcript]")!;
 	await act(async () => { await routeSlash(controller, "/btw What is the first fixture side question?"); });
-	expectExitOutsideFlow(outgoing);
-	expect(element.querySelector("aside")?.textContent).toContain("What is the first fixture side question?");
+	expect(pane.isConnected).toBe(true);
+	expect(transcript.isConnected).toBe(true);
+	expect(element.querySelector("aside")?.textContent).toContain("motion-first");
+	expect(element.querySelector("aside")?.textContent).not.toContain("What is the first fixture side question?");
+	const drawer = element.querySelector("[data-btw-drawer]")!;
+	expect(drawer.textContent).toContain("What is the first fixture side question?");
+	expect(drawer.closest("[data-chat-column]")).toBe(transcript.closest("[data-chat-column]"));
+	expect(element.querySelector("[data-btw-paused]")).toBeNull();
 	expect(opened).toEqual([]);
 	expect(useApp.getState().terminalTabId).toBeNull();
 });
 
-it.each(["full", "reduced"])("removes the previous main-area slot from layout when narrow Shell enters BTW with %s motion", async preference => {
+it.each(["full", "reduced"])("keeps the narrow Shell chat slot mounted when the drawer enters with %s motion", async preference => {
 	document.documentElement.dataset.motion = preference;
 	Object.defineProperty(window, "innerWidth", { configurable: true, value: 640 }); shell = true;
 	await act(async () => root.render(createElement(Harness)));
-	const stage = element.querySelector("main")!.firstElementChild!;
-	const outgoing = stage.lastElementChild as HTMLElement;
+	const transcript = element.querySelector<HTMLElement>("[data-test-transcript]")!;
+	const column = transcript.closest("[data-chat-column]")!;
 	await act(async () => { await routeSlash(controller, "/btw What is the first fixture side question?"); });
-	expectExitOutsideFlow(outgoing);
-	expect(element.querySelector("[data-dock-expanded]")?.textContent).toContain("What is the first fixture side question?");
-	expect(element.querySelector("[data-dock-expanded]")?.textContent).toContain("Back to chat");
+	expect(transcript.isConnected).toBe(true);
+	expect(element.querySelector("[data-btw-drawer]")?.closest("[data-chat-column]")).toBe(column);
+	expect(element.querySelector("[data-btw-drawer]")?.textContent).toContain("What is the first fixture side question?");
+	expect(element.querySelector("[data-dock-expanded]")).toBeNull();
+	expect(element.querySelector("[data-btw-scrim]")?.closest("[data-chat-column]")).toBe(column);
 	expect(opened).toEqual([]);
 	expect(useApp.getState().terminalTabId).toBeNull();
 });

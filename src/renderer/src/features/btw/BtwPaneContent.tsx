@@ -1,28 +1,33 @@
 import { ArrowUp, ChatCircle, Copy, Plus, Stop } from "@phosphor-icons/react";
-import { useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { type ReactNode, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import type { BtwState, BtwStatus, BtwTopic, BtwTopicRef } from "@shared/contracts/btw";
 import type { HostState } from "@shared/ipc";
-import type { TspDocumentStore } from "@shared/tsp/document";
+import { TspDocumentStore } from "@shared/tsp/document";
 import { btwTopicKey, projectBtw, sameBtwTopic, type BtwProjection } from "@shared/tsp/btw";
 import { TSP_ACTIONS } from "@shared/tsp/roles";
 import { errorText } from "@shared/errors";
 import { PresentationVisibility, presentationClaims, usePresentationClaim } from "../../state/tsp/presentation-claims";
 import { Markdown, StreamingMarkdown } from "../../transcript/Markdown";
-import { Button, EmptyState, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, Spinner, Textarea } from "../../ui";
-import { PaneToolbar } from "../panes/common";
+import { Button, EmptyState, Menu, MenuContent, MenuRadioGroup, MenuRadioItem, MenuTrigger, Spinner, Textarea, toast } from "../../ui";
+import { PaneToolbar, usePaneVisible } from "../panes/common";
 import { controllerFor, dockKey, useApp } from "../../state/app";
-import { BtwPaneLoading, BtwPresentation } from "./BtwPane";
+import { BtwPaneLoading, BtwPresentation, useBtwPresentation } from "./BtwPane";
 import type { SessionController } from "../../state/session";
-import { AnimatePresence } from "motion/react";
-import { duration, FadeIn } from "../../ui/motion";
 import { useComposerDrafts } from "../../chat/composer/drafts";
+import { i18n } from "../../i18n";
+import { AnimatePresence } from "motion/react";
+import { duration, FadeIn, Rise, useMotionReduced } from "../../ui/motion";
 import { useTsp } from "../../state/tsp/useTsp";
+import { useSessionView } from "../../shell/hooks";
+import type { PaneProps } from "../../registry/slots";
+import { flushSync } from "react-dom";
 
 interface PanelPutAway {
 	result: Promise<void>;
 	active: boolean;
 	error: string | null;
+	completion?: Promise<void>;
 }
 const panelPutAways = new WeakMap<SessionController, Map<string, PanelPutAway>>();
 const panelPutAwayListeners = new Set<() => void>();
@@ -97,47 +102,172 @@ export function putAwayBtwPanel(session: SessionController, host: HostState, pro
 	return operation.result;
 }
 
-/** Both Done actions share the panel X's scoped, single-flight close operation. */
-function useBtwFinish(session: SessionController | null, host: HostState | null) {
-	const { snapshot, store } = useTsp(host?.hostId ?? null);
-	const current = snapshot?.lifecycle === "live" && snapshot.generation === host?.generation && snapshot.epoch === host?.tspEpoch;
-	const projection = current ? projectBtw(snapshot.surfaces) : null;
-	const key = host && projection ? panelPutAwayKey(host, projection) : null;
-	const closing = useSyncExternalStore(subscribePanelPutAway, () => session && key ? panelPutAways.get(session)?.get(key)?.active ?? false : false);
-	const error = useSyncExternalStore(subscribePanelPutAway, () => session && key ? panelPutAways.get(session)?.get(key)?.error ?? null : null);
-	return { closing, error, ready: !!projection, finish: async (expanded = false) => {
-		if (!session || !host || !projection) return;
-		await putAwayBtwPanel(session, host, projection, store);
+interface BtwOpening {
+	error: string | null;
+	dismissed: boolean;
+	dismiss(): void;
+	stop(): void;
+}
+const btwOpenings = new WeakMap<SessionController, BtwOpening>();
+
+/** Keep a scoped listener after cancellation so a late native overlay is put away without a saved toast. */
+export async function openBtwDrawer(session: SessionController, host: HostState, question: string): Promise<void> {
+	const epoch = host.tspEpoch;
+	if (epoch === undefined) throw new Error("Waiting for omp to open its semantic screen.");
+	btwOpenings.get(session)?.stop();
+	const ready = Promise.withResolvers<void>();
+	const store = new TspDocumentStore();
+	let seen = false;
+	let closing = false;
+	let stopped = false;
+	const notify = () => { for (const listener of panelPutAwayListeners) listener(); };
+	const current = () => {
+		const next = session.getSnapshot().host;
+		return controllerFor(session.tabId) === session && next?.hostId === host.hostId && next.generation === host.generation && next.tspEpoch === host.tspEpoch;
+	};
+	const request: BtwOpening = {
+		error: null, dismissed: false,
+		dismiss() {
+			request.dismissed = true;
+			clearTimeout(timer);
+			ready.resolve();
+			useApp.setState(state => ({ btwDrawers: { ...state.btwDrawers, [session.tabId]: false } }));
+			notify();
+			requestAnimationFrame(() => { if (current() && dockKey(useApp.getState()) === session.tabId) useComposerDrafts.getState().focus(session.tabId); });
+		},
+		stop() {
+			if (stopped) return;
+			stopped = true;
+			clearTimeout(timer); off(); offSession(); offApp(); ready.resolve();
+			if (btwOpenings.get(session) === request) btwOpenings.delete(session);
+			notify();
+		},
+	};
+	const timer = setTimeout(() => {
+		request.error = i18n.t("panes:btw.openingFailed");
+		ready.resolve(); notify();
+	}, 8000);
+	const off = window.vomp.on("host:tsp-update", next => {
+		if (next.hostId !== host.hostId || next.generation !== host.generation || next.epoch !== host.tspEpoch || !current()) return;
+		store.accept(next);
+		const projection = projectBtw(next.surfaces);
+		if (!projection) { if (seen) request.stop(); return; }
+		seen = true;
+		clearTimeout(timer); ready.resolve();
+		if (!request.dismissed) { request.error = null; notify(); }
+		if (!request.dismissed || closing) return;
+		closing = true;
+		void putAwayBtwPanel(session, host, projection, store).then(() => request.stop(), error => {
+			closing = false; request.dismissed = false; request.error = errorText(error);
+			useApp.setState(state => ({ btwDrawers: { ...state.btwDrawers, [session.tabId]: true } }));
+			notify();
+		});
+	});
+	const offSession = session.subscribe(() => { if (!current()) request.stop(); });
+	const offApp = useApp.subscribe(() => { if (!current()) request.stop(); });
+	btwOpenings.set(session, request);
+	flushSync(() => {
+		useApp.setState(state => ({ btwDrawers: { ...state.btwDrawers, [session.tabId]: true } }));
+		useApp.getState().returnToChat();
+	});
+	notify();
+	const native = window.vomp.invoke("btw:ask", host.hostId, question, { generation: host.generation, epoch }).catch(error => {
+		if (stopped) return;
+		request.error = errorText(error);
+		clearTimeout(timer); ready.resolve(); notify();
+	});
+	await Promise.race([ready.promise, native]);
+}
+
+/** All drawer dismissal gestures share one native close, completion toast and focus restoration. */
+export function finishBtwDrawer(session: SessionController, host: HostState, projection: BtwProjection, store: TspDocumentStore): Promise<void> {
+	if (projectBtw(store.getSnapshot()?.surfaces ?? [])?.nodeId !== projection.nodeId) return Promise.resolve();
+	const result = putAwayBtwPanel(session, host, projection, store);
+	const operation = panelPutAways.get(session)!.get(panelPutAwayKey(host, projection))!;
+	if (operation.completion) return operation.completion;
+	operation.completion = result.then(() => {
 		const current = session.getSnapshot().host;
 		if (controllerFor(session.tabId) !== session || current?.hostId !== host.hostId || current.generation !== host.generation
-			|| current.tspEpoch !== host.tspEpoch || dockKey(useApp.getState()) !== session.tabId) return;
-		if (expanded) useApp.getState().returnToChat();
+			|| current.tspEpoch !== host.tspEpoch) return;
+		useApp.setState(state => ({ btwDrawers: { ...state.btwDrawers, [session.tabId]: false } }));
+		if (projection.turns.length || projection.topics.length) toast({ tone: "ok", message: i18n.t("panes:btw.saved"), action: { label: i18n.t("panes:btw.viewHistory"), onClick: () => {
+			if (controllerFor(session.tabId) === session) useApp.getState().showPane("btw", session.tabId);
+		} } });
 		requestAnimationFrame(() => {
 			if (controllerFor(session.tabId) === session && dockKey(useApp.getState()) === session.tabId) useComposerDrafts.getState().focus(session.tabId);
 		});
-	} };
+	});
+	return operation.completion;
 }
 
-/** Loaded with the existing BTW chunk, never part of the eager chat implementation. */
-export function BtwChatPaused({ session, host, paused }: { session: SessionController; host: HostState; paused: boolean }) {
+/** Chat-local layout and keyboard handling stay in the lazy BTW chunk. */
+export function BottomDrawer({ open, children, onDismiss, label }: { open: boolean; children: ReactNode; onDismiss(): void; label: string }) {
+	const reduced = useMotionReduced();
+	return <AnimatePresence>{open && <div key="drawer" className="absolute inset-0 z-20 flex flex-col justify-end">
+		<FadeIn animateOnMount data-btw-scrim aria-hidden="true" className="absolute inset-0 bg-backdrop/50" onClick={onDismiss}
+			exit={{ opacity: 0, transition: { duration: duration.slow, ease: "easeIn" } }} />
+		<Rise as="section" animateOnMount distance={reduced ? 0 : "100%"} data-btw-drawer role="dialog" aria-label={label}
+			exit={{ opacity: 0, ...(reduced ? {} : { y: "100%" }), transition: { duration: duration.slow, ease: "easeIn" } }}
+			className="relative mx-3 mb-3 flex h-[min(75%,42rem)] min-h-0 flex-col overflow-hidden rounded-lg border border-border bg-panel text-fg shadow-overlay"
+			onKeyDown={event => {
+				if (event.key === "Escape" && !event.defaultPrevented && !event.nativeEvent.isComposing) {
+					event.preventDefault(); event.stopPropagation(); onDismiss();
+				}
+			}}>{children}</Rise>
+	</div>}</AnimatePresence>;
+}
+
+export function BtwDrawerHost() {
 	const { t } = useTranslation("panes");
-	const { closing, error, ready, finish } = useBtwFinish(session, host);
+	const content = useContext(BtwPresentation);
+	const session = content ? controllerFor(content.tabId) : null;
+	const view = useSessionView(session);
+	const host = view?.host ?? null;
+	useEffect(() => () => {
+		if (content && !controllerFor(content.tabId)) useApp.setState(state => ({
+			btwDrawers: Object.fromEntries(Object.entries(state.btwDrawers).filter(([id]) => id !== content.tabId)),
+		}));
+	}, [content?.tabId]);
+	const { store } = useTsp(content?.hostId ?? null);
+	const open = !!content?.presentation.available;
+	const projection = content?.projection;
+	const requested = useApp(app => !!content && !!app.btwDrawers[content.tabId]);
+	const openingError = useSyncExternalStore(subscribePanelPutAway, () => session ? btwOpenings.get(session)?.error ?? null : null);
+	const dismissed = useSyncExternalStore(subscribePanelPutAway, () => session ? btwOpenings.get(session)?.dismissed ?? false : false);
 	const button = useRef<HTMLButtonElement>(null);
-	useEffect(() => {
-		if (!paused) return;
-		const column = button.current?.closest("[data-chat-column]");
-		if (column?.contains(document.activeElement) || document.activeElement === document.body) button.current?.focus();
-	}, [ready, paused]);
-	return <AnimatePresence initial={false}>{paused && <FadeIn key="paused" animateOnMount
-		exit={{ opacity: 0, transition: { duration: duration.fast, ease: "easeIn" } }}
-		data-btw-paused className="absolute inset-0 z-20 flex items-center justify-center bg-backdrop p-6">
-		<div className="w-full max-w-80 rounded-lg border border-border bg-panel p-6 text-center text-fg">
-		<p role="status" className="font-medium">{t("btw.paused")}</p>
-		<p className="mt-2 text-sm text-fg-muted">{t("btw.pausedHint")}</p>
-		{error && <p role="alert" className="mt-3 text-sm text-err">{error}</p>}
-		<Button ref={button} variant="primary" className="mt-4" disabled={closing || !ready} onClick={() => { void finish().catch(() => {}); }}>{t("btw.done")}</Button>
+	useLayoutEffect(() => { if (open) button.current?.focus(); }, [open, projection?.nodeId]);
+	const opening = useRef<{ scope: string; presented: boolean } | null>(null);
+	const scope = host ? JSON.stringify([host.hostId, host.generation, host.tspEpoch]) : "";
+	useLayoutEffect(() => {
+		if (!requested) { opening.current = null; return; }
+		if (content && opening.current && (opening.current.scope !== scope || opening.current.presented && !projection)) {
+			opening.current = null;
+			useApp.setState(state => ({ btwDrawers: { ...state.btwDrawers, [content.tabId]: false } }));
+		} else opening.current = { scope, presented: opening.current?.presented === true || !!projection };
+	}, [requested, scope, projection, content?.tabId]);
+	const dismiss = () => {
+		if (!session || !host) return;
+		if (projection) void finishBtwDrawer(session, host, projection, store).catch(() => {});
+		else btwOpenings.get(session)?.dismiss();
+	};
+	return <BottomDrawer open={open && !dismissed} onDismiss={dismiss} label={t("btw.question")}>
+		<div className="flex shrink-0 items-center justify-between gap-3 border-b border-border px-4 py-3">
+			<h2 className="text-md font-medium">{t("btw.question")}</h2>
+			<Button ref={button} size="sm" variant="primary" onClick={dismiss}>{t("btw.done")}</Button>
 		</div>
-	</FadeIn>}</AnimatePresence>;
+		{openingError && <p role="alert" className="shrink-0 px-4 py-3 text-sm text-err">{openingError}</p>}
+		<BtwPresentation.Provider value={content}><BtwPaneHost /></BtwPresentation.Provider>
+	</BottomDrawer>;
+}
+
+export function BtwHistoryHost({ session }: PaneProps) {
+	const { t } = useTranslation("panes");
+	const visible = usePaneVisible("btw");
+	const { view, host, projection, target } = useBtwPresentation(session);
+	if (!session || !host) return <EmptyState icon={<ChatCircle />} title={t("btw.noChatTitle")} body={t("btw.noChat")} />;
+	return <BtwPresentation.Provider value={{ tabId: session.tabId, hostId: host.hostId, generation: host.generation, epoch: host.tspEpoch,
+		readOnly: !!view?.readOnly || host.phase !== "live", projection, target, drawer: false,
+		presentation: { active: false, available: visible } }}><BtwPaneHost /></BtwPresentation.Provider>;
 }
 
 export interface BtwPaneContentProps {
@@ -146,7 +276,8 @@ export interface BtwPaneContentProps {
 	readOnly?: boolean;
 	hostId: string;
 	presentation?: { active: boolean; available: boolean };
-	onDone?: (expanded?: boolean) => Promise<void>;
+	historyOnly?: boolean;
+	drawer?: boolean;
 	closing?: boolean;
 }
 
@@ -177,10 +308,9 @@ export function BtwPaneHost() {
 	const content = useContext(BtwPresentation);
 	const { state, error } = useBtw(content?.hostId ?? null, content?.generation, content?.epoch);
 	const session = content ? controllerFor(content.tabId) : null;
-	const host = session?.getSnapshot().host ?? null;
-	const finish = useBtwFinish(session, host);
 	const closeKey = content?.projection ? panelPutAwayKey({ hostId: content.hostId, generation: content.generation, tspEpoch: content.epoch }, content.projection) : null;
 	const closeError = useSyncExternalStore(subscribePanelPutAway, () => session && closeKey ? panelPutAways.get(session)?.get(closeKey)?.error ?? null : null);
+	const closing = useSyncExternalStore(subscribePanelPutAway, () => session && closeKey ? panelPutAways.get(session)?.get(closeKey)?.active ?? false : false);
 	if (!content) return null;
 	const { projection, target, hostId, readOnly, presentation } = content;
 	const overlay = state?.overlay;
@@ -189,7 +319,7 @@ export function BtwPaneHost() {
 		{overlay && !overlay.supported && <div className="border-b border-border p-3"><p className="mb-2 text-sm text-fg-muted">{t("btw.unsupported")}</p><Button size="sm" variant="secondary" onClick={() => useApp.getState().openTerminal(content.tabId)}>{t("btw.openScreen")}</Button></div>}
 		{pending && <><BtwPaneLoading />{(closeError || error) && <p role="alert" className="shrink-0 px-4 pb-3 text-sm text-err">{closeError ?? error}</p>}</>}
 		<div className={pending ? "hidden" : "flex min-h-0 flex-1 flex-col"}><PresentationVisibility visible={!pending && projection?.supported !== false}>
-			<BtwPaneContent state={state} error={closeError ?? error} readOnly={readOnly} hostId={hostId} presentation={presentation} onDone={session ? finish.finish : undefined} closing={finish.closing || !!session && !!overlay && !finish.ready} />
+			<BtwPaneContent state={state} error={closeError ?? error} readOnly={readOnly} hostId={hostId} presentation={presentation} historyOnly={!content.drawer} drawer={content.drawer} closing={closing} />
 		</PresentationVisibility></div>
 	</>;
 }
@@ -207,7 +337,7 @@ interface PaneContext {
 const emptyContext = (): PaneContext => ({ selection: null, overlayKey: null, composers: {}, activeComposer: null, busy: null, error: null, copied: false });
 
 /** Contexts retain drafts at their original host, generation, epoch and topic. */
-export function BtwPaneContent({ state, error: loadError, readOnly, hostId, presentation, onDone, closing }: BtwPaneContentProps) {
+export function BtwPaneContent({ state, error: loadError, readOnly, hostId, presentation, historyOnly = false, drawer = false, closing }: BtwPaneContentProps) {
 	const { t } = useTranslation("panes");
 	const [contexts, setContexts] = useState<Record<string, PaneContext>>({});
 	const operations = useRef(new Map<string, symbol>());
@@ -228,7 +358,7 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 	const input = useRef<HTMLTextAreaElement>(null);
 	const body = useRef<HTMLDivElement>(null);
 	const follow = useRef(true);
-	const topics = state?.topics ?? [];
+	const topics = drawer && overlay ? (state?.topics ?? []).filter(topic => overlay.topics.some(ref => sameBtwTopic(ref, topic))) : state?.topics ?? [];
 	const topic = topics.find(topic => sameBtwTopic(topic, context.selection)) ?? topics.find(topic => sameBtwTopic(topic, overlay?.selectedTopic)) ?? topics[0];
 	const topicRef = topic ? { id: topic.id, ...(topic.scope !== undefined ? { scope: topic.scope } : {}) } : null;
 	const topicKey = topic ? btwTopicKey(topic) : "";
@@ -243,8 +373,9 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 	const busy = context.busy !== null || !!closing;
 	const disabled = !!readOnly || busy || !state;
 	const scope = state ? { generation: state.generation, epoch: state.epoch } : null;
-	const composerKey = context.activeComposer === `ask:${topicKey}` || context.activeComposer === `followUp:${topicKey}` ? context.activeComposer : topics.length === 0 ? "ask:" : null;
-	const composer = composerKey ? context.composers[composerKey] ?? { mode: "ask" as const, draft: "", topic: topicRef, title: topic?.title ?? null } : null;
+	const composerKey = context.activeComposer === `ask:${topicKey}` || context.activeComposer === `followUp:${topicKey}` ? context.activeComposer
+		: drawer && !running && actions.includes(TSP_ACTIONS.btwFollowUp) ? `followUp:${topicKey}` : topics.length === 0 ? "ask:" : null;
+	const composer = composerKey ? context.composers[composerKey] ?? { mode: composerKey.startsWith("followUp:") ? "followUp" as const : "ask" as const, draft: "", topic: topicRef, title: topic?.title ?? null } : null;
 	const mode = composer?.mode;
 	const draft = composer?.draft ?? "";
 	const activeComposer = composer !== null;
@@ -303,7 +434,7 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 		update(current => ({ ...current, selection: ref, activeComposer: null, error: null }));
 		follow.current = false;
 		body.current?.scrollTo({ top: 0 });
-		if (!readOnly && overlay?.supported && overlay.topics.some(topic => sameBtwTopic(topic, ref)) && scope) void perform(() => window.vomp.invoke("btw:select", hostId, ref, scope));
+		if (!historyOnly && !readOnly && overlay?.supported && overlay.topics.some(topic => sameBtwTopic(topic, ref)) && scope) void perform(() => window.vomp.invoke("btw:select", hostId, ref, scope));
 	};
 	const statusLabel = (status: BtwStatus) => t(`btw.status.${status}`);
 	const copy = () => { if (topic) void perform(() => navigator.clipboard.writeText(topic.turns.map(turn => turn.answer).filter(Boolean).join("\n\n")), current => current.selection === context.selection && current.overlayKey === overlayKey ? { ...current, copied: true } : current); };
@@ -314,8 +445,8 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 					{topics.map(topic => <MenuRadioItem key={btwTopicKey(topic)} value={btwTopicKey(topic)} disabled={busy}><span className="max-w-64 truncate" title={topic.title}>{topic.title}</span></MenuRadioItem>)}
 				</MenuRadioGroup></MenuContent>
 			</Menu>
-			<Button size="sm" variant="ghost" className="ml-auto" icon={<Plus />} disabled={disabled || sideTurnRunning || !!overlay?.followUp} onClick={() => startComposer("ask")}>{t("btw.new")}</Button>
-			{!overlay && topics.length > 0 && <Button size="sm" variant="ghost" disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:ask", hostId, "", scope!)); }}>{t("btw.openHistory")}</Button>}
+			{!historyOnly && <Button size="sm" variant="ghost" className="ml-auto" icon={<Plus />} disabled={disabled || sideTurnRunning || !!overlay?.followUp} onClick={() => startComposer("ask")}>{t("btw.new")}</Button>}
+			{!historyOnly && !overlay && topics.length > 0 && <Button size="sm" variant="ghost" disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:ask", hostId, "", scope!)); }}>{t("btw.openHistory")}</Button>}
 		</PaneToolbar>
 		<div ref={body} onScroll={() => { const element = body.current; if (element) follow.current = element.scrollHeight - element.scrollTop - element.clientHeight < 48; }} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 text-md" tabIndex={0} aria-label={t("btw.answers")}>
 			{!state && !loadError ? <p role="status" className="flex items-center gap-2 text-fg-muted"><Spinner />{t("btw.loading")}</p>
@@ -345,16 +476,16 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 		</div>
 		{state?.overlay?.notice && <p role="status" className="shrink-0 px-4 pb-3 text-sm text-fg-muted">{state.overlay.notice}</p>}
 		{(loadError || error) && <p role="alert" className="shrink-0 px-4 pb-3 text-sm text-err">{error ?? loadError}</p>}
-		{topic && !activeComposer && <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-2">
+		{topic && (!activeComposer || drawer || historyOnly) && <div className="flex shrink-0 flex-wrap items-center gap-2 border-t border-border px-3 py-2">
 			{latest?.answer && <Button size="sm" variant="ghost" icon={<Copy />} disabled={busy} onClick={copy}>{t(copied ? "btw.copied" : "btw.copy")}</Button>}
-			{actions.includes(TSP_ACTIONS.btwStop) && <Button size="sm" variant="secondary" icon={<Stop />} disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:stop", hostId, topicRef!, scope!)); }}>{t("btw.stop")}</Button>}
-			{actions.includes(TSP_ACTIONS.btwInject) && <Button size="sm" variant="secondary" disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:inject", hostId, topicRef!, scope!)); }}>{t("btw.inject")}</Button>}
-			{actions.includes(TSP_ACTIONS.btwFollowUp) && <Button size="sm" variant="secondary" className="ml-auto" disabled={disabled || running || !!overlay?.followUp} onClick={() => startComposer("followUp")}>{t("btw.followUp")}</Button>}
+			{!historyOnly && actions.includes(TSP_ACTIONS.btwStop) && <Button size="sm" variant="secondary" icon={<Stop />} disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:stop", hostId, topicRef!, scope!)); }}>{t("btw.stop")}</Button>}
+			{!historyOnly && actions.includes(TSP_ACTIONS.btwInject) && <Button size="sm" variant="secondary" disabled={disabled} onClick={() => { void perform(() => window.vomp.invoke("btw:inject", hostId, topicRef!, scope!)); }}>{t("btw.inject")}</Button>}
+			{!historyOnly && !drawer && actions.includes(TSP_ACTIONS.btwFollowUp) && <Button size="sm" variant="secondary" className="ml-auto" disabled={disabled || running || !!overlay?.followUp} onClick={() => startComposer("followUp")}>{t("btw.followUp")}</Button>}
 		</div>}
-		{activeComposer && <form className="flex shrink-0 flex-col gap-3 border-t border-border p-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
+		{!historyOnly && activeComposer && <form className="flex shrink-0 flex-col gap-3 border-t border-border p-3" onSubmit={event => { event.preventDefault(); void submit(); }}>
 			<Textarea ref={input} label={t(mode === "followUp" ? "btw.followUpQuestion" : "btw.askQuestion")} placeholder={t(mode === "followUp" ? "btw.followUpPlaceholder" : "btw.placeholder")} value={draft} minRows={2} maxRows={5} disabled={disabled || mode === "followUp" && !displayingOverlay} onChange={event => { const draft = event.target.value; update(current => ({ ...current, composers: { ...current.composers, [composerKey!]: { ...composer!, draft } } })); }} onKeyDown={event => { if ((event.metaKey || event.ctrlKey) && event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); void submit(); } }} />
 			<div className="flex flex-wrap items-center justify-end gap-2">
-				{topics.length > 0 && <Button size="sm" variant="ghost" disabled={busy} onClick={() => {
+				{topics.length > 0 && !drawer && <Button size="sm" variant="ghost" disabled={busy} onClick={() => {
 					const cancel = (current: PaneContext) => current.activeComposer === composerKey && current.overlayKey === overlayKey ? { ...current, activeComposer: null, error: null } : current;
 					if (overlay?.followUp && displayingOverlay) void perform(() => window.vomp.invoke("btw:close", hostId, overlay.selectedTopic, scope!), cancel);
 					else update(cancel);
@@ -362,13 +493,6 @@ export function BtwPaneContent({ state, error: loadError, readOnly, hostId, pres
 				<Button type="submit" size="sm" variant="primary" icon={busy ? <Spinner /> : <ArrowUp />} disabled={disabled || !draft.trim() || mode === "followUp" && !displayingOverlay}>{t(mode === "followUp" ? "btw.sendFollowUp" : "btw.ask")}</Button>
 			</div>
 		</form>}
-		{overlay && <div className="flex shrink-0 items-center justify-between gap-3 border-t border-border px-3 py-3">
-			<p className="text-xs text-fg-muted">{t("btw.doneHint")}</p>
-			<Button size="sm" variant="primary" disabled={disabled} onClick={event => {
-				const expanded = !!event.currentTarget.closest("[data-dock-expanded]");
-				void perform(onDone ? () => onDone(expanded) : () => window.vomp.invoke("btw:close", hostId, overlay.selectedTopic, scope!));
-			}}>{t("btw.done")}</Button>
-		</div>}
 		<p className="shrink-0 px-3 pb-3 text-xs text-fg-muted">{t(actions.includes(TSP_ACTIONS.btwInject) ? "btw.separateWithInject" : "btw.separate")}</p>
 	</section>;
 }

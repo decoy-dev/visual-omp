@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { BtwState } from "@shared/contracts/btw";
@@ -7,9 +7,10 @@ import type { SessionController, SessionView } from "../../state/session";
 import "../../i18n";
 import { routeSlash } from "../session-tools/slash";
 import { TooltipProvider } from "../../ui";
-import { BtwContent, BtwPane } from "./BtwPane";
+import { BtwDrawerContent, BtwDrawer, BtwPane } from "./BtwPane";
 import { BtwPaneContent } from "./BtwPaneContent";
 import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
+import { useApp } from "../../state/app";
 
 vi.hoisted(() => { Object.assign(window, { vomp: { platform: "darwin", on: () => () => {}, invoke: async () => undefined } }); });
 vi.mock("../session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));
@@ -17,6 +18,10 @@ vi.mock("../session-tools/drive", () => ({ reportFailure: vi.fn() }));
 vi.mock("../panes/common", async original => ({ ...await original<object>(), usePaneVisible: () => true }));
 vi.mock("../../shell/Sidebar", () => ({ focusChatSearch: vi.fn() }));
 vi.mock("../palette/run", () => ({ runCommand: vi.fn() }));
+vi.mock("motion/react", () => {
+	const tag = (name: string) => ({ children, initial, animate, exit, transition, layout, layoutId, variants, custom, ...props }: PropsWithChildren<Record<string, unknown>>) => createElement(name, props, children);
+	return { AnimatePresence: ({ children }: PropsWithChildren) => children, MotionConfig: ({ children }: PropsWithChildren) => children, motion: { div: tag("div"), section: tag("section"), span: tag("span"), ul: tag("ul"), li: tag("li") }, useReducedMotionConfig: () => true };
+});
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const mounted: { root: Root; container: HTMLElement }[] = [];
 const listeners = new Map<string, Set<(event: unknown) => void>>();
@@ -24,9 +29,10 @@ const originalVomp = window.vomp;
 const originalClipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
 const invoke = vi.fn();
 beforeEach(async () => {
-	await BtwContent.preload();
+	await BtwDrawerContent.preload();
 	invoke.mockReset();
 	listeners.clear();
+	useApp.setState({ btwDrawers: { "btw-slash": true, "btw-race": true, "btw-test": true } });
 	window.vomp = { platform: "darwin", invoke, on: (channel: string, listener: (event: unknown) => void) => {
 		let set = listeners.get(channel); if (!set) listeners.set(channel, set = new Set());
 		set.add(listener); return () => set!.delete(listener);
@@ -37,15 +43,16 @@ afterEach(async () => {
 	window.vomp = originalVomp;
 	if (originalClipboard) Object.defineProperty(navigator, "clipboard", originalClipboard);
 	else Reflect.deleteProperty(navigator, "clipboard");
+	useApp.setState({ btwDrawers: {} });
 });
 const initial = (): BtwState => ({ hostId: "host", generation: 1, epoch: 1, revision: 1,
 	topics: [{ id: "topic", title: "Why is the change small?", live: true, turns: [{ question: "Why is the change small?", answer: "The first answer.", status: "complete", createdAt: 1793723247397, updatedAt: 1793723247415 }] }],
 	overlay: { epoch: 1, surfaceId: "s", nodeId: "btw", selectedTopic: { id: "topic" }, topics: [{ id: "topic" }], actions: ["close", "copy-answer", "follow-up"], followUp: false, supported: true, notice: null, draft: null } });
 // Plain-text mounts and input commit synchronously; await IPC completion separately.
-function mountContent(state = initial()) {
+function mountContent(state = initial(), historyOnly = false) {
 	const container = document.createElement("div"); document.body.append(container);
 	const root = createRoot(container); mounted.push({ root, container });
-	const render = (next: BtwState) => { act(() => root.render(createElement(TooltipProvider, null, createElement(BtwPaneContent, { state: next, error: null, hostId: next.hostId, presentation: { active: true, available: true } })))); };
+	const render = (next: BtwState) => { act(() => root.render(createElement(TooltipProvider, null, createElement(BtwPaneContent, { state: next, error: null, hostId: next.hostId, historyOnly, presentation: { active: !historyOnly, available: true } })))); };
 	render(state);
 	return { container, render };
 }
@@ -126,13 +133,12 @@ describe("native side-question pane", () => {
 		expect(h.container.querySelector("textarea")).toBeNull();
 	});
 
-	it("separates Done from stopping the side answer and removes Put away", async () => {
+	it("keeps Stop side answer in the content and reserves Done for the drawer header", async () => {
 		const state = initial(); state.topics[0]!.turns[0]!.status = "running"; state.overlay!.actions = ["close", "stop"];
 		state.topics[0]!.scope = "main"; state.overlay!.selectedTopic = { id: "topic", scope: "main" }; state.overlay!.topics = [{ id: "topic", scope: "main" }];
 		const h = mountContent(state); invoke.mockResolvedValue(undefined);
 		expect(h.container.textContent).not.toContain("Put away");
-		await act(async () => button(h.container, "Done").click());
-		expect(invoke).toHaveBeenLastCalledWith("btw:close", "host", { id: "topic", scope: "main" }, { generation: 1, epoch: 1 });
+		expect([...h.container.querySelectorAll("button")].some(button => button.textContent?.trim() === "Done")).toBe(false);
 		await act(async () => button(h.container, "Stop side answer").click());
 		expect(invoke).toHaveBeenLastCalledWith("btw:stop", "host", { id: "topic", scope: "main" }, { generation: 1, epoch: 1 });
 		expect(invoke.mock.calls.every(([channel]) => channel !== "host:keys" && channel !== "host:tsp-event")).toBe(true);
@@ -293,7 +299,7 @@ describe("native side-question pane", () => {
 		expect(invoke).toHaveBeenCalledTimes(1);
 		expect(button(h.container, "History (2)").disabled).toBe(true);
 		expect(button(h.container, "New question").disabled).toBe(true);
-		await act(async () => button(h.container, "Done").click());
+		expect([...h.container.querySelectorAll("button")].some(button => button.textContent?.trim() === "Done")).toBe(false);
 		expect(invoke).toHaveBeenCalledTimes(1);
 		await act(async () => pending.resolve());
 		expect(button(h.container, "History (2)").disabled).toBe(false);
@@ -310,11 +316,28 @@ describe("native side-question pane", () => {
 		expect(button(h.container, "Follow up").disabled).toBe(false);
 	});
 
-	it("closes empty native history with an explicit null topic", async () => {
+	it("leaves empty native content close controls to the drawer header", () => {
 		const state = initial(); state.topics = []; state.overlay!.selectedTopic = null; state.overlay!.topics = [];
 		const h = mountContent(state);
-		await act(async () => button(h.container, "Done").click());
-		expect(invoke).toHaveBeenLastCalledWith("btw:close", "host", null, { generation: 1, epoch: 1 });
+		expect(h.container.textContent).toContain("No side questions yet");
+		expect([...h.container.querySelectorAll("button")].some(button => button.textContent?.trim() === "Done")).toBe(false);
+		expect(invoke).not.toHaveBeenCalled();
+	});
+
+	it("keeps the history-only pane browseable and copyable without native mutations", async () => {
+		const state = initial(); secondTopic(state); state.overlay!.actions.push("inject", "stop");
+		const clipboard = vi.fn().mockResolvedValue(undefined);
+		Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: clipboard } });
+		const h = mountContent(state, true);
+		await chooseHistory(h.container, "Second question");
+		expect(h.container.textContent).toContain("Second answer");
+		expect(h.container.querySelector("textarea")).toBeNull();
+		const labels = [...h.container.querySelectorAll("button")].map(button => button.textContent?.trim());
+		for (const label of ["Done", "Follow up", "Ask question", "New question", "Open history", "Inject into main", "Stop side answer"]) expect(labels).not.toContain(label);
+		await act(async () => button(h.container, "Copy answers").click());
+		expect(clipboard).toHaveBeenCalledWith("Second answer");
+		expect(invoke).not.toHaveBeenCalled();
+		expect(presentationClaims.getSnapshot()).toEqual([]);
 	});
 
 	it.each(["host", "generation", "epoch"] as const)("keeps a displaced %s draft visibly readable and copyable without retargeting", async field => {
@@ -385,12 +408,12 @@ describe("slash-driven BTW presentation", () => {
 		const session = { tabId: "btw-slash", projectPath: "/project", getSnapshot: () => view, subscribe: () => () => {} } as unknown as SessionController;
 		const container = document.createElement("div"); document.body.append(container);
 		const root = createRoot(container); mounted.push({ root, container });
-		await act(async () => root.render(createElement(TooltipProvider, null, createElement(BtwPane, { session, projectPath: "/project" }))));
+		await act(async () => root.render(createElement(TooltipProvider, null, createElement(BtwDrawer, { session }))));
 		await chooseHistory(container, "Second question");
 		expect(container.textContent).toContain("Second answer");
-		await act(async () => button(container, "Done").click());
+		// omp can close its overlay independently; the next slash request chooses the new topic.
+		await act(async () => { await window.vomp.invoke("btw:close", "host", { id: "second" }, { generation: 1, epoch: 1 }); });
 		expect(presentationClaims.getSnapshot()).toEqual([]);
-		expect(button(container, "Open history")).toBeDefined();
 		await act(async () => { expect(await routeSlash(session, "/btw Question B")).toBe(true); });
 		expect(invoke).toHaveBeenLastCalledWith("btw:ask", "host", "Question B", { generation: 1, epoch: 1 });
 		expect(container.textContent).toContain("Streaming B first fragment");
@@ -412,7 +435,7 @@ describe("BTW presentation ownership", () => {
 		const session = { tabId: "btw-race", getSnapshot: () => view, subscribe: () => () => {} } as unknown as SessionController;
 		const container = document.createElement("div"); document.body.append(container);
 		const root = createRoot(container); mounted.push({ root, container });
-		await act(async () => root.render(createElement(TooltipProvider, null, createElement(BtwPane, { session, projectPath: null }))));
+		await act(async () => root.render(createElement(TooltipProvider, null, createElement(BtwDrawer, { session }))));
 		const newer = initial(); newer.revision = 2; newer.topics[0]!.turns[0]!.answer = "The answer from the newer frame.";
 		await act(async () => { for (const listener of listeners.get("btw:changed") ?? []) listener(newer); });
 		await act(async () => read.resolve(initial()));
@@ -425,7 +448,7 @@ describe("BTW presentation ownership", () => {
 		const session = { tabId: "btw-test", getSnapshot: () => view, subscribe: () => () => {} } as unknown as SessionController;
 		const container = document.createElement("div"); document.body.append(container);
 		const root = createRoot(container); mounted.push({ root, container });
-		const render = async (visible: boolean) => { await act(async () => root.render(createElement(TooltipProvider, null, createElement(PresentationVisibility, { visible }, createElement(BtwPane, { session, projectPath: null }))))); };
+		const render = async (visible: boolean) => { await act(async () => root.render(createElement(TooltipProvider, null, createElement(PresentationVisibility, { visible }, createElement(BtwDrawer, { session }))))); };
 		await render(true);
 		expect(presentationClaims.getSnapshot()).toContainEqual({ hostId: "host", epoch: 1, surfaceId: "s", nodeId: "btw" });
 		await render(false);

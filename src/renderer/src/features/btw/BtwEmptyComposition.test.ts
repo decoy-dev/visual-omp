@@ -6,9 +6,9 @@ import type { BtwState } from "@shared/contracts/btw";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import { projectBtw } from "@shared/tsp/btw";
 import { SessionController, type SessionView } from "../../state/session";
-import { controllerFor, useApp, useDockVisible } from "../../state/app";
+import { controllerFor, currentDock, useApp } from "../../state/app";
 import { TooltipProvider } from "../../ui/Tooltip";
-import { BtwContent, BtwPane } from "./BtwPane";
+import { BtwDrawerContent, BtwDrawer, BtwPane } from "./BtwPane";
 import { OverlayWatcher } from "../palette/OverlayWatcher";
 import { autoOpened, TerminalSheetHost } from "../palette/TerminalSheet";
 import { currentPresentationConsumers, PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
@@ -44,9 +44,8 @@ const btwUpdates = new Set<(state: BtwState) => void>();
 const originalVomp = window.vomp;
 
 function Harness() {
-	const visible = useDockVisible();
 	return createElement(TooltipProvider, null, createElement(Fragment, null,
-		createElement("div", { hidden: !visible, "data-native-btw": true }, createElement(PresentationVisibility, { visible }, createElement(BtwPane, { session: controller, projectPath: "/tmp/fixture" }))),
+		createElement("div", { "data-chat-column": true }, createElement(BtwDrawer, { session: controller })),
 		createElement(OverlayWatcher), createElement(TerminalSheetHost)));
 }
 function publish() {
@@ -56,7 +55,7 @@ function publish() {
 	for (const listener of btwUpdates) listener(state);
 }
 beforeEach(async () => {
-	await BtwContent.preload();
+	await BtwDrawerContent.preload();
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} unobserve() {} });
 	hostUpdates.clear(); btwUpdates.clear(); opened = []; revision = 1; autoOpened.tabId = null;
@@ -70,7 +69,7 @@ beforeEach(async () => {
 	expect(projection.turns).toEqual([]);
 	expect(projection.supported).toBe(true);
 	snapshot = { ...protocol, hostId: "empty-btw", generation: 1, revision, lifecycle: "live", documentGeneration: 1, failure: null,
-		availability: { available: false, reason: "Put away the side question to send a message.", reasonCode: "btw" }, questionMatches: [],
+		availability: { available: false, reason: "Finish the side question to send a message.", reasonCode: "btw" }, questionMatches: [],
 		surfaces: protocol.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
 	state = { hostId: "empty-btw", generation: 1, epoch: protocol.epoch, revision, topics: [], overlay: {
 		epoch: protocol.epoch, surfaceId: projection.surfaceId, nodeId: projection.nodeId, selectedTopic: null, topics: [],
@@ -100,12 +99,11 @@ beforeEach(async () => {
 		},
 	} });
 	vi.spyOn(SessionController.prototype, "ensureLive").mockResolvedValue(undefined);
-	useApp.setState({ terminalTabId: null, sheet: null, tabs: [], activeTabId: null, splitTabId: null, view: "chat" });
+	useApp.setState({ terminalTabId: null, sheet: null, tabs: [], activeTabId: null, splitTabId: null, docks: {}, btwDrawers: {}, view: "chat" });
 	tabId = (await useApp.getState().newChat("/tmp/fixture"))!;
 	controller = controllerFor(tabId)!;
 	const view = { ...controller.getSnapshot(), mode: "live", readOnly: false, host: { hostId: "empty-btw", transport: "tsp", generation: 1, tspEpoch: 1, phase: "live", cols: 110, rows: 32 } } as unknown as SessionView;
 	vi.spyOn(controller, "getSnapshot").mockReturnValue(view);
-	useApp.getState().showPane("btw", tabId);
 	stopApp = useApp.subscribe((next, previous) => { if (next.terminalTabId && next.terminalTabId !== previous.terminalTabId) opened.push(next.terminalTabId); });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
@@ -115,38 +113,50 @@ afterEach(async () => {
 	element.remove(); window.vomp = originalVomp; vi.restoreAllMocks(); vi.unstubAllGlobals();
 });
 
-it("owns recorded empty BTW while visible and puts it away before hiding", async () => {
+it("owns recorded empty BTW in the drawer without opening the side panel", async () => {
 	await act(async () => root.render(createElement(Harness)));
 	for (let update = 0; update < 3; update++) await act(async () => publish());
 	const target = { hostId: "empty-btw", epoch: 1, surfaceId: state.overlay!.surfaceId, nodeId: state.overlay!.nodeId };
-	const native = element.querySelector<HTMLElement>("[data-native-btw]")!;
-	expect(native.hidden).toBe(false);
+	const native = element.querySelector<HTMLElement>('[data-btw-drawer][role="dialog"][aria-label="Side question"]')!;
+	expect(native).not.toBeNull();
 	expect(native.textContent).toContain("No side questions yet");
 	expect(native.querySelector<HTMLTextAreaElement>("textarea")?.disabled).toBe(false);
-	expect([...native.querySelectorAll("button")].find(button => button.textContent?.trim() === "Done")?.disabled).toBe(false);
+	const done = [...native.querySelectorAll("button")].filter(button => button.textContent?.trim() === "Done");
+	expect(done).toHaveLength(1);
+	expect(done[0]!.disabled).toBe(false);
 	expect(presentationClaims.getSnapshot()).toContainEqual(target);
 	expect(currentPresentationConsumers("empty-btw", 1).get(target.surfaceId)?.has(target.nodeId)).toBe(true);
+	expect(currentDock(useApp.getState()).open).toBe(false);
 	expect(useApp.getState().terminalTabId).toBeNull(); expect(opened).toEqual([]);
 	expect(document.querySelector(".tsp-screen")).toBeNull();
-	await act(async () => useApp.getState().toggleDock(false, tabId));
-	expect(native.hidden).toBe(true);
+	await act(async () => done[0]!.click());
+	expect(element.querySelector("[data-btw-drawer]")).toBeNull();
 	expect(presentationClaims.getSnapshot()).toEqual([]);
 	expect(currentPresentationConsumers("empty-btw", 1).size).toBe(0);
+	expect(currentDock(useApp.getState()).open).toBe(false);
 	expect(useApp.getState().terminalTabId).toBeNull(); expect(opened).toEqual([]);
 	expect(document.querySelector(".tsp-screen")).toBeNull();
-	await act(async () => useApp.getState().toggleDock(true, tabId));
-	expect(native.hidden).toBe(false);
-	expect(useApp.getState().terminalTabId).toBeNull(); expect(autoOpened.tabId).toBeNull();
-	expect(presentationClaims.getSnapshot()).toEqual([]);
-	expect(native.querySelector<HTMLTextAreaElement>("textarea")?.disabled).toBe(false);
 });
 
-it("leaves recorded empty BTW unclaimed while a different saved helper topic is displayed", async () => {
+it("keeps the active empty drawer claimed when a saved helper question exists", async () => {
 	state = { ...state, topics: [{ id: "saved-helper", scope: "helper", title: "A saved helper question", live: false, turns: [{ question: "A saved helper question", answer: "The saved helper answer", status: "complete", createdAt: 1 }] }] };
 	await act(async () => root.render(createElement(Harness)));
-	expect(element.querySelector("[data-native-btw]")?.textContent).toContain("The saved helper answer");
+	expect(element.querySelector("[data-btw-drawer]")?.textContent).toContain("No side questions yet");
+	expect(presentationClaims.getSnapshot()).toHaveLength(1);
+	expect(currentPresentationConsumers("empty-btw", 1).size).toBe(1);
+	expect(useApp.getState().terminalTabId).toBeNull(); expect(opened).toEqual([]);
+	expect(document.querySelector(".tsp-screen")).toBeNull();
+});
+
+it("keeps the history pane browse-only and leaves active presentation ownership to the drawer", async () => {
+	state = { ...state, overlay: null, topics: [{ id: "saved-helper", scope: "helper", title: "A saved helper question", live: false, turns: [{ question: "A saved helper question", answer: "The saved helper answer", status: "complete", createdAt: 1 }] }] };
+	useApp.getState().showPane("btw", tabId);
+	await act(async () => root.render(createElement(TooltipProvider, null,
+		createElement(PresentationVisibility, { visible: true }, createElement(BtwPane, { session: controller, projectPath: "/tmp/fixture" })))));
+	expect(element.textContent).toContain("The saved helper answer");
+	expect(element.querySelector("textarea")).toBeNull();
+	const labels = [...element.querySelectorAll("button")].map(button => button.textContent?.trim());
+	expect(labels).toContain("Copy answers");
+	for (const label of ["Done", "Follow up", "Ask question", "New question", "Open history", "Inject into main", "Stop side answer"]) expect(labels).not.toContain(label);
 	expect(presentationClaims.getSnapshot()).toEqual([]);
-	expect(currentPresentationConsumers("empty-btw", 1).size).toBe(0);
-	expect(useApp.getState().terminalTabId).toBe(tabId); expect(opened).toEqual([tabId]);
-	expect(document.querySelector(".tsp-screen")?.textContent).toContain("No side questions yet");
 });

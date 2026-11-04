@@ -263,7 +263,9 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const working = view.working;
 	const askWaiting = pendingAsk(view);
 	const queueing = working && !askWaiting;
-	const tspReason = tspComposerReason(view.host, t("question.answerBeforeSending"), askWaiting ? view.guest?.uiRequest?.reqId : undefined);
+	const drawerOpen = useApp(state => !!state.btwDrawers[tabId]);
+	const tspReason = drawerOpen || view.host?.tspAvailability?.reasonCode === "btw" ? t("panes:btw.composerBlocked")
+		: tspComposerReason(view.host, t("question.answerBeforeSending"), askWaiting ? view.guest?.uiRequest?.reqId : undefined);
 	const voiceOn = useApp(state => state.prefs?.voiceInput ?? false);
 	const files = useProjectFiles(projectPath, mention !== null);
 	const matches = useMemo(() => (mention && files ? fuzzyFiles(files, mention.query, 40) : null), [mention, files]);

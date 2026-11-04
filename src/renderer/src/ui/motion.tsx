@@ -260,10 +260,11 @@ export interface RiseProps extends MotionDivProps, EntranceProps, PlayOverride {
 	as?: "div" | "section" | "li" | "span" | "header" | "article";
 	/** Seconds; applies only when the entrance plays. */
 	delay?: number;
-	/** Rise distance in px. */
-	distance?: number;
+	/** Rise distance in px, or a percentage for a bottom sheet. */
+	distance?: number | string;
 	/** `gentle` (default) for surfaces and list entrances, `snappy` for chat rows that should settle quickly. */
 	tempo?: "gentle" | "snappy";
+	exit?: HTMLMotionProps<"div">["exit"];
 }
 
 /** Entrance for newly inserted content: fade in while rising a few pixels on a critically damped spring. At rest on first render. */
@@ -307,6 +308,7 @@ export function FadeIn({ as = "div", delay = 0, animateOnMount = false, play: pl
 		</Tag>
 	);
 }
+
 
 // ---------------- PresenceSwap ----------------
 

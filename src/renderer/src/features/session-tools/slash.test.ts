@@ -11,6 +11,8 @@ const mocks = vi.hoisted(() => {
 		openSettings: vi.fn(),
 		openSheet: vi.fn(),
 		showPane: vi.fn(),
+		returnToChat: vi.fn(),
+		setState: vi.fn((update: (state: { btwDrawers: Record<string, boolean> }) => unknown) => update({ btwDrawers: {} })),
 		openThinking: vi.fn(),
 		focusChatSearch: vi.fn(),
 		toast: vi.fn(),
@@ -21,10 +23,16 @@ vi.mock("@/ui", () => ({ toast: mocks.toast }));
 vi.mock("../../i18n", () => ({ i18n: { t: (key: string) => key.replace(/^composer:/, "") } }));
 vi.mock("../palette/run", () => ({ runCommand: mocks.runCommand }));
 vi.mock("../../state/navigation", () => ({ openSettings: mocks.openSettings }));
-vi.mock("../../state/app", () => ({ useApp: { getState: () => ({ openSheet: mocks.openSheet, showPane: mocks.showPane }) } }));
+vi.mock("../../state/app", () => ({ useApp: { setState: mocks.setState, getState: () => ({ openSheet: mocks.openSheet, showPane: mocks.showPane, returnToChat: mocks.returnToChat }) } }));
 vi.mock("../../shell/Sidebar", () => ({ focusChatSearch: mocks.focusChatSearch }));
 vi.mock("./pickers", () => ({ usePickerRequests: { getState: () => ({ openThinking: mocks.openThinking }) } }));
 vi.mock("./nativeModes", () => ({ setSessionMode: mocks.setMode }));
+vi.mock("../btw/BtwPane", () => ({ BtwDrawerContent: { preload: async () => {} } }));
+vi.mock("../btw/BtwPaneContent", () => ({ openBtwDrawer: async (session: { tabId: string }, host: { hostId: string; generation: number; tspEpoch: number }, question: string) => {
+	mocks.setState(state => ({ btwDrawers: { ...state.btwDrawers, [session.tabId]: true } }));
+	mocks.returnToChat();
+	await Promise.resolve(mocks.invoke("btw:ask", host.hostId, question, { generation: host.generation, epoch: host.tspEpoch })).catch(() => {});
+} }));
 
 const session = { tabId: "tab-1", projectPath: "/project", sessionFile: "/sessions/a.jsonl", getSnapshot: () => ({ host: null, guest: null }) } as unknown as SessionController;
 const ranCommands = () => mocks.runCommand.mock.calls.map(([id]) => id);
@@ -43,16 +51,31 @@ describe("parseSlash", () => {
 });
 
 describe("routeSlash", () => {
-	it("routes TSP side questions to their chat's native pane and leaves classic delivery unchanged", async () => {
+	it("routes TSP side questions to their chat drawer and leaves classic delivery unchanged", async () => {
 		const tsp = { ...session, getSnapshot: () => ({ host: { hostId: "tsp-host", transport: "tsp", generation: 2, tspEpoch: 3 }, guest: null }) } as unknown as SessionController;
 		expect(await routeSlash(tsp, "/btw How does this work?")).toBe(true);
-		expect(mocks.showPane).toHaveBeenCalledWith("btw", "tab-1");
+		expect(mocks.setState.mock.results[0]?.value).toEqual({ btwDrawers: { "tab-1": true } });
+		expect(mocks.returnToChat).toHaveBeenCalledOnce();
+		expect(mocks.showPane).not.toHaveBeenCalled();
+		expect(mocks.setState.mock.invocationCallOrder[0]).toBeLessThan(mocks.invoke.mock.invocationCallOrder[0]!);
 		expect(mocks.invoke).toHaveBeenLastCalledWith("btw:ask", "tsp-host", "How does this work?", { generation: 2, epoch: 3 });
 		expect(await routeSlash(tsp, "/btw")).toBe(true);
 		expect(mocks.invoke).toHaveBeenLastCalledWith("btw:ask", "tsp-host", "", { generation: 2, epoch: 3 });
+		expect(mocks.setState.mock.results[1]?.value).toEqual({ btwDrawers: { "tab-1": true } });
+		expect(mocks.returnToChat).toHaveBeenCalledTimes(2);
+		expect(mocks.showPane).not.toHaveBeenCalled();
 		mocks.invoke.mockClear();
 		expect(await routeSlash(session, "/btw How does this work?")).toBe(false);
 		expect(mocks.invoke).not.toHaveBeenCalled();
+	});
+	it("leaves native opening errors with the drawer recovery handler", async () => {
+		const tsp = { ...session, getSnapshot: () => ({ host: { hostId: "tsp-host", transport: "tsp", generation: 2, tspEpoch: 3 }, guest: null }) } as unknown as SessionController;
+		mocks.invoke.mockRejectedValueOnce(new Error("The fixture refused the side question."));
+		await expect(routeSlash(tsp, "/btw Question")).resolves.toBe(true);
+		expect(mocks.setState.mock.results.map(result => result.value)).toEqual([
+			{ btwDrawers: { "tab-1": true } },
+		]);
+		expect(mocks.showPane).not.toHaveBeenCalled();
 	});
 	it("refuses app-owned and pass-through slash actions while a TSP approval waits", async () => {
 		const blocked = { ...session, getSnapshot: () => ({ host: { transport: "tsp", tspComposer: { blockedBy: "approval" } }, guest: null }) } as unknown as SessionController;

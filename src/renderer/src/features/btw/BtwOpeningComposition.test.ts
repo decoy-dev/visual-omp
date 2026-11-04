@@ -20,10 +20,9 @@ import type * as OmpScreenModule from "../tsp/OmpScreenSheet";
 import streamingMessages from "../../../../main/omp/tsp/fixtures/18.15.0/btw-open-main-abort.messages.jsonl?raw";
 import { ChatView } from "../../chat/ChatView";
 import { useComposerDrafts } from "../../chat/composer/drafts";
-import { getCommand } from "../../registry/commands";
-import "../palette/commands";
 import { Shell } from "../../shell/Shell";
-import { BtwContent } from "./BtwPane";
+import { BtwDrawerContent } from "./BtwPane";
+import { clearToasts, useToasts } from "../../ui/toast";
 import "../panes";
 import "../../i18n";
 
@@ -31,7 +30,7 @@ vi.hoisted(() => { Object.assign(window, { vomp: { platform: "darwin", on: () =>
 vi.mock("../../registry/idle", () => ({ preloadWhenIdle: () => {} }));
 vi.mock("../../chat/ChatArea", () => ({ ChatArea: () => createElement(ChatView, { session: controller, title: "Fixture chat", focused: true }) }));
 vi.mock("../../chat/SessionHeader", () => ({ SessionHeader: () => createElement("header", null, "Chat header") }));
-vi.mock("../../chat/transcript/Transcript", () => ({ Transcript: () => createElement("button", { "data-transcript-action": true }, "Transcript action") }));
+vi.mock("../../chat/transcript/Transcript", () => ({ Transcript: () => createElement("button", { "data-transcript-action": true }, backgroundText) }));
 vi.mock("../../shell/Sidebar", () => ({ Sidebar: () => null, focusChatSearch: () => {} }));
 vi.mock("../../shell/TitleBar", () => ({ TitleBar: () => null }));
 vi.mock("../../shell/StatusBar", () => ({ StatusBar: () => null }));
@@ -62,7 +61,8 @@ let documents: FixtureDocuments;
 let messages: FixtureMessage[];
 let cursor: number;
 let separateDeliveries = false;
-let showComposer = false;
+let openingGate: Promise<void> | null = null;
+let skipOpeningDocument = false;
 let closeFailure: string | null = null;
 let closeGate: Promise<void> | null = null;
 let readGate: Promise<void> | null = null;
@@ -70,6 +70,7 @@ let separateCloseDocument = false;
 let deliverCloseDocument: (() => void) | null = null;
 let realShell = false;
 let showOtherChat = false;
+let backgroundText = "Transcript action";
 const originalWidth = window.innerWidth;
 let view: SessionView;
 const viewUpdates = new Set<() => void>();
@@ -78,13 +79,18 @@ const hostUpdates = new Set<(snapshot: TspHostSnapshot) => void>();
 const btwUpdates = new Set<(state: BtwState) => void>();
 const originalVomp = window.vomp;
 
+function ToastEvidence() {
+	const toasts = useToasts();
+	return createElement("div", { "data-test-toasts": true }, toasts.map(toast => createElement("p", { key: toast.id }, toast.message)));
+}
 function Harness() {
 	const visible = useDockVisible();
 	return createElement(TooltipProvider, null, createElement(Fragment, null,
-		realShell ? createElement(Shell) : visible && createElement(PresentationVisibility, { visible }, createElement(Dock, { chatKey: tabId, width: 440 })),
-		showComposer && !realShell && createElement(ChatView, { session: controller, title: "Fixture chat", focused: true }),
+		realShell ? createElement(Shell) : createElement(Fragment, null,
+			visible && createElement(PresentationVisibility, { visible }, createElement(Dock, { chatKey: tabId, width: 440 })),
+			createElement(ChatView, { session: controller, title: "Fixture chat", focused: true })),
 		showOtherChat && createElement(ChatView, { session: otherController, title: "Other chat", focused: false }),
-		createElement(OverlayWatcher), createElement(TerminalSheetHost)));
+		createElement(OverlayWatcher), createElement(TerminalSheetHost), createElement(ToastEvidence)));
 }
 function receive(message: FixtureMessage = messages[cursor++]!) {
 	documents.receive({ ...message, body: JSON.stringify(message.body) });
@@ -92,7 +98,7 @@ function receive(message: FixtureMessage = messages[cursor++]!) {
 	const projection = projectBtw(protocol.surfaces);
 	const selectedTopic = projection?.turns.length ? { id: "live:1" } : null;
 	snapshot = { ...protocol, hostId: "opening-btw", generation: 1, revision: ++revision, lifecycle: "live", documentGeneration: 1, failure: null,
-		availability: { available: !projection, reason: projection ? "Put away the side question to send a message." : null, ...(projection ? { reasonCode: "btw" as const } : {}) }, questionMatches: [], surfaces: protocol.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
+		availability: { available: !projection, reason: projection ? "Finish the side question to send a message." : null, ...(projection ? { reasonCode: "btw" as const } : {}) }, questionMatches: [], surfaces: protocol.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
 	state = { hostId: "opening-btw", generation: 1, epoch: protocol.epoch, revision,
 		topics: mergeBtwTopics([], projection, { id: "live:1" }), overlay: projection ? {
 			epoch: protocol.epoch, surfaceId: projection.surfaceId, nodeId: projection.nodeId, selectedTopic,
@@ -111,7 +117,9 @@ beforeEach(async () => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	vi.stubGlobal("ResizeObserver", class { observe() {} disconnect() {} unobserve() {} });
 	separateDeliveries = false;
-	showComposer = false; closeFailure = null; closeGate = null; closeRequests.length = 0; viewUpdates.clear();
+	openingGate = null; skipOpeningDocument = false;
+	backgroundText = "Transcript action";
+	clearToasts(); closeFailure = null; closeGate = null; closeRequests.length = 0; viewUpdates.clear();
 	readGate = null; separateCloseDocument = false; deliverCloseDocument = null; realShell = false; showOtherChat = false;
 	Object.defineProperty(window, "innerWidth", { configurable: true, value: 1500 });
 	Object.defineProperty(document, "fonts", { configurable: true, value: new EventTarget() });
@@ -144,7 +152,10 @@ beforeEach(async () => {
 			}
 			if (channel === "omp:commands" || channel === "panes:files" || channel === "prompts:list") return [];
 			if (channel === "btw:ask") {
-				expect(currentDock(useApp.getState()).pane).toBe("btw");
+				expect(currentDock(useApp.getState()).open).toBe(false);
+				expect(useApp.getState().btwDrawers[tabId]).toBe(true);
+				if (openingGate) await openingGate;
+				if (skipOpeningDocument) return;
 				receive();
 				if (separateDeliveries) {
 					for (const listener of hostUpdates) listener(snapshot);
@@ -158,7 +169,7 @@ beforeEach(async () => {
 		},
 	} });
 	vi.spyOn(SessionController.prototype, "ensureLive").mockResolvedValue(undefined);
-	useApp.setState({ terminalTabId: null, sheet: null, tabs: [], activeTabId: null, splitTabId: null, docks: {}, view: "chat", sidebarOpen: false, chatOverDock: false });
+	useApp.setState({ terminalTabId: null, sheet: null, tabs: [], activeTabId: null, splitTabId: null, docks: {}, btwDrawers: {}, view: "chat", sidebarOpen: false, chatOverDock: false });
 	tabId = (await useApp.getState().newChat("/tmp/fixture"))!;
 	controller = controllerFor(tabId)!;
 	view = { ...controller.getSnapshot(), mode: "live", readOnly: false, host: { hostId: "opening-btw", transport: "tsp", generation: 1, tspEpoch: 1, phase: "live", cols: 110, rows: 32, tspAvailability: snapshot?.availability } } as unknown as SessionView;
@@ -180,11 +191,12 @@ afterEach(async () => {
 	await act(async () => root.unmount()); stopApp(); await useApp.getState().closeTab(tabId);
 	useApp.setState({ terminalTabId: null, sheet: null }); autoOpened.tabId = null;
 	element.remove(); window.vomp = originalVomp; vi.restoreAllMocks(); vi.unstubAllGlobals();
+	clearToasts();
 });
 
-it.each(["btw-ask", "btw-empty"])("opens %s directly in Side questions without any transient sheet", async recording => {
+it.each(["btw-ask", "btw-empty"])("opens %s in a chat-column drawer without a side panel or transient sheet", async recording => {
 	messages = loadFixtureRecording(recording).messages;
-	// Exercise the production pane registration with a closed panel and no idle preload.
+	// Keep the production store, eager drawer, overlay watcher and lazy controls.
 	while (cursor < 4) receive();
 	await act(async () => root.render(createElement(Harness)));
 	const line = recording === "btw-ask" ? "/btw What is the first fixture side question?" : "/btw";
@@ -193,7 +205,12 @@ it.each(["btw-ask", "btw-empty"])("opens %s directly in Side questions without a
 	expect(useApp.getState().terminalTabId).toBeNull();
 	expect(useApp.getState().sheet).toBeNull();
 	expect(document.querySelector(".tsp-screen")).toBeNull();
-	expect(element.querySelector("aside")?.textContent).toContain("Side questions");
+	expect(currentDock(useApp.getState()).open).toBe(false);
+	const drawer = element.querySelector('[data-btw-drawer][role="dialog"][aria-label="Side question"]')!;
+	expect(drawer).not.toBeNull();
+	expect(drawer.closest("[data-chat-column]")).not.toBeNull();
+	expect(element.querySelector("aside")).toBeNull();
+	expect(element.querySelector("[data-btw-paused]")).toBeNull();
 	if (recording === "btw-ask") {
 		expect(element.textContent).toContain("What is the first fixture side question?");
 		expect(element.textContent).toContain("Answering");
@@ -234,7 +251,7 @@ it.each(["epoch change", "overlay removal"])("removes a pending document preview
 	expect(opened).toEqual([]);
 });
 
-it("keeps every recorded streaming frame in the side panel through main-turn abort and completion", async () => {
+it("keeps every recorded streaming frame in the drawer through main-turn abort and completion", async () => {
 	messages = streamingMessages.trim().split("\n").map(line => JSON.parse(line) as FixtureMessage);
 	while (cursor < 8) receive();
 	await act(async () => root.render(createElement(Harness)));
@@ -244,8 +261,8 @@ it("keeps every recorded streaming frame in the side panel through main-turn abo
 		const projection = projectBtw(snapshot.surfaces);
 		if (!projection) break;
 		const turn = projection.turns[0]!;
-		expect(element.querySelector("aside")?.textContent).toContain(turn.question);
-		if (turn.answer) expect(element.querySelector("aside")?.textContent).toContain(turn.answer.trim());
+		expect(element.querySelector("[data-btw-drawer]")?.textContent).toContain(turn.question);
+		if (turn.answer) expect(element.querySelector("[data-btw-drawer]")?.textContent).toContain(turn.answer.trim());
 		if (turn.status === "running") streamingFrames++;
 		expect(opened).toEqual([]);
 		expect(document.querySelector(".tsp-screen")).toBeNull();
@@ -257,123 +274,168 @@ it("keeps every recorded streaming frame in the side panel through main-turn abo
 	expect(element.textContent).toContain("Complete");
 });
 
-it.each(["bare history", "streaming answer", "completed answer"])("puts away %s before closing with the panel X", async stage => {
-	await openForClosing(stage);
-	const history = state.topics;
-	const pending = Promise.withResolvers<void>();
-	closeGate = pending.promise;
-	await act(async () => element.querySelector<HTMLButtonElement>('button[aria-label="Close side panel"]')!.click());
-	expect(currentDock(useApp.getState()).open).toBe(true);
-	expect(opened).toEqual([]);
-	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
-	await act(async () => pending.resolve());
-	expect(closeRequests).toEqual([["opening-btw", stage === "bare history" ? null : { id: "live:1" }, { generation: 1, epoch: 1 }]]);
-	expect(currentDock(useApp.getState()).open).toBe(false);
-	expect(state.topics).toEqual(history);
-	assertSendableWithoutScreen();
-});
-
+function drawerDone() {
+	const buttons = [...element.querySelectorAll<HTMLButtonElement>("[data-btw-drawer] button")].filter(button => button.textContent?.trim() === "Done");
+	expect(buttons).toHaveLength(1);
+	return buttons[0]!;
+}
+function dismissDrawer(action: string) {
+	if (action === "Done") drawerDone().click();
+	else if (action === "outside click") element.querySelector<HTMLElement>("[data-btw-scrim]")!.click();
+	else element.querySelector<HTMLElement>("[data-btw-drawer]")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true }));
+}
 async function openForClosing(stage = "completed answer") {
-	showComposer = true;
 	messages = loadFixtureRecording(stage === "bare history" ? "btw-history" : "btw-ask").messages;
 	while (cursor < 4) receive();
 	await act(async () => root.render(createElement(Harness)));
 	await act(async () => { await routeSlash(controller, stage === "bare history" ? "/btw" : "/btw What is the first fixture side question?"); });
 	if (stage === "completed answer") await act(async () => { receive(); publish(); });
+	expect(element.querySelector("[data-btw-drawer]")).not.toBeNull();
+	expect(currentDock(useApp.getState()).open).toBe(false);
 	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
 }
-
 function assertSendableWithoutScreen() {
 	expect(opened).toEqual([]);
 	expect(useApp.getState().terminalTabId).toBeNull();
 	expect(document.querySelector(".tsp-screen")).toBeNull();
-	expect(element.textContent).not.toContain("Put away the side question to send a message.");
 	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(false);
 }
+function savedToasts() {
+	return [...element.querySelectorAll("[data-test-toasts] p")].filter(item => item.textContent === "Side question saved to History");
+}
 
-it("puts away once through the shared keyboard and menu toggle command", async () => {
+it.each(["Done", "outside click", "Escape"])("puts away once and announces one saved toast after %s", async action => {
 	await openForClosing();
-	await act(async () => { getCommand("view.panel")!.run({ session: controller, projectPath: "/tmp/fixture" }); });
-	expect(closeRequests).toHaveLength(1);
-	expect(currentDock(useApp.getState()).open).toBe(false);
+	const history = structuredClone(state.topics);
+	const column = element.querySelector("[data-chat-column]")!;
+	const transcript = column.querySelector("[data-transcript-action]")!;
+	expect(transcript.isConnected).toBe(true);
+	expect(column.querySelector("[data-chat-content]")?.hasAttribute("inert")).toBe(true);
+	expect(element.querySelector("[data-btw-paused]")).toBeNull();
+	const pending = Promise.withResolvers<void>(); closeGate = pending.promise;
+	await act(async () => { dismissDrawer(action); dismissDrawer(action); });
+	expect(closeRequests).toEqual([["opening-btw", { id: "live:1" }, { generation: 1, epoch: 1 }]]);
+	expect(element.querySelector("[data-btw-drawer]")).not.toBeNull();
+	expect(savedToasts()).toHaveLength(0);
+	await act(async () => pending.resolve());
+	expect(element.querySelector("[data-btw-drawer]")).toBeNull();
+	expect(column.querySelector("[data-chat-content]")?.hasAttribute("inert")).toBe(false);
+	expect(transcript.isConnected).toBe(true);
+	expect(state.topics).toEqual(history);
+	expect(savedToasts()).toHaveLength(1);
+	assertSendableWithoutScreen();
+	const composer = column.querySelector("textarea");
+	await act(async () => { await vi.waitFor(() => expect(document.activeElement).toBe(composer)); });
+});
+
+it.each(["bare history", "streaming answer"])("puts away %s through drawer Done with the recorded close frame", async stage => {
+	await openForClosing(stage);
+	await act(async () => drawerDone().click());
+	expect(closeRequests).toEqual([["opening-btw", stage === "bare history" ? null : { id: "live:1" }, { generation: 1, epoch: 1 }]]);
+	expect(element.querySelector("[data-btw-drawer]")).toBeNull();
+	expect(savedToasts()).toHaveLength(stage === "bare history" ? 0 : 1);
 	assertSendableWithoutScreen();
 });
 
-it("puts away once before switching the side panel to another pane", async () => {
-	await openForClosing();
-	await act(async () => useApp.getState().showPane("tasks", tabId));
+it.each(["Done", "outside click", "Escape"])("recovers a stalled opening with %s and puts away a late native overlay", async action => {
+	messages = loadFixtureRecording("btw-ask").messages;
+	while (cursor < 4) receive();
+	await act(async () => root.render(createElement(Harness)));
+	const pending = Promise.withResolvers<void>();
+	openingGate = pending.promise;
+	vi.useFakeTimers();
+	let sending: Promise<boolean>;
+	await act(async () => { sending = routeSlash(controller, "/btw A delayed question"); });
+	expect(element.querySelector("[data-btw-drawer]")?.getAttribute("aria-modal")).toBeNull();
+	expect(drawerDone().disabled).toBe(false);
+	await act(async () => { await vi.advanceTimersByTimeAsync(8001); });
+	await expect(sending!).resolves.toBe(true);
+	expect(element.querySelector("[data-btw-drawer] [role=alert]")?.textContent).toBe("omp did not open the side question.");
+	await act(async () => dismissDrawer(action));
+	expect(element.querySelector("[data-btw-drawer]")).toBeNull();
+	expect(element.querySelector("[data-chat-content]")?.hasAttribute("inert")).toBe(false);
+	await act(async () => pending.resolve());
 	expect(closeRequests).toHaveLength(1);
-	expect(currentDock(useApp.getState()).pane).toBe("tasks");
-	assertSendableWithoutScreen();
+	expect(savedToasts()).toHaveLength(0);
+	expect(opened).toEqual([]);
+	expect(document.querySelector(".tsp-screen")).toBeNull();
+	vi.useRealTimers();
 });
 
-it.each(["panel X", "toggle", "switch"])("keeps the pane visible with omp's error after a failed %s put-away", async action => {
+it("bounds a successful native request that never publishes a document", async () => {
+	messages = loadFixtureRecording("btw-ask").messages;
+	while (cursor < 4) receive();
+	await act(async () => root.render(createElement(Harness)));
+	skipOpeningDocument = true;
+	vi.useFakeTimers();
+	await act(async () => { await routeSlash(controller, "/btw Missing document"); });
+	await act(async () => { await vi.advanceTimersByTimeAsync(8001); });
+	expect(element.querySelector("[data-btw-drawer] [role=alert]")?.textContent).toBe("omp did not open the side question.");
+	await act(async () => drawerDone().click());
+	expect(element.querySelector("[data-btw-drawer]")).toBeNull();
+	expect(savedToasts()).toHaveLength(0);
+	vi.useRealTimers();
+});
+
+it.each(["Done", "outside click", "Escape"])("keeps the drawer, disabled composer and error after failed %s", async action => {
 	await openForClosing();
 	closeFailure = "The fixture refused to put away the side question.";
-	await act(async () => {
-		if (action === "panel X") element.querySelector<HTMLButtonElement>('button[aria-label="Close side panel"]')!.click();
-		else if (action === "toggle") getCommand("view.panel")!.run({ session: controller, projectPath: "/tmp/fixture" });
-		else useApp.getState().showPane("tasks", tabId);
-	});
+	await act(async () => dismissDrawer(action));
 	expect(closeRequests).toHaveLength(1);
-	expect(currentDock(useApp.getState())).toMatchObject({ open: true, pane: "btw" });
-	expect(element.querySelector("aside [role=alert]")?.textContent).toBe(closeFailure);
+	expect(element.querySelector("[data-btw-drawer] [role=alert]")?.textContent).toBe(closeFailure);
+	expect(element.querySelector("[data-btw-drawer]")).not.toBeNull();
+	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
+	expect(savedToasts()).toHaveLength(0);
 	expect(opened).toEqual([]);
 	expect(document.querySelector(".tsp-screen")).toBeNull();
 });
 
-it.each(["chat Done", "pane Done"])("resumes the chat once through %s and preserves History", async action => {
+it("sends a follow-up inside the drawer while retaining the background transcript", async () => {
 	await openForClosing();
-	const history = structuredClone(state.topics);
-	const column = element.querySelector("[data-chat-column]")!;
-	expect(column.querySelector("[data-chat-content]")?.hasAttribute("inert")).toBe(true);
-	expect(column.querySelector("[data-chat-content]")?.getAttribute("aria-hidden")).toBe("true");
-	expect(column.querySelector("[data-btw-paused] [role=status]")?.textContent).toBe("Main chat is paused");
-	expect(element.textContent).not.toContain("Put away");
-	const scope = action === "chat Done" ? column : element.querySelector("aside")!;
-	const done = [...scope.querySelectorAll("button")].find(button => button.textContent?.trim() === "Done")!;
-	expect(done.disabled).toBe(false);
-	const pending = Promise.withResolvers<void>(); closeGate = pending.promise;
-	await act(async () => { done.click(); done.click(); });
-	expect(closeRequests).toHaveLength(1);
-	expect(column.querySelector("[data-btw-paused]")).not.toBeNull();
-	await act(async () => pending.resolve());
-	expect(state.topics).toEqual(history);
-	expect(element.querySelector("aside")?.textContent).toContain(`History (${history.length})`);
-	expect(column.querySelector("[data-btw-paused]")).toBeNull();
-	expect(column.querySelector("[data-chat-content]")?.hasAttribute("inert")).toBe(false);
-	assertSendableWithoutScreen();
-	await act(async () => { await vi.waitFor(() => expect(document.activeElement).toBe(column.querySelector("textarea"))); });
+	const drawer = element.querySelector<HTMLElement>("[data-btw-drawer]")!;
+	expect([...drawer.querySelectorAll("button")].some(button => button.textContent?.trim() === "Follow up")).toBe(false);
+	const field = drawer.querySelector<HTMLTextAreaElement>("textarea")!;
+	expect(field).not.toBeNull();
+	await act(async () => {
+		Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(field, "Explain the fixture answer.");
+		field.dispatchEvent(new Event("input", { bubbles: true }));
+		field.dispatchEvent(new Event("change", { bubbles: true }));
+	});
+	const invoke = vi.spyOn(window.vomp, "invoke");
+	await act(async () => [...drawer.querySelectorAll("button")].find(button => button.textContent?.trim() === "Send follow-up")!.click());
+	expect(invoke).toHaveBeenCalledWith("btw:followUp", "opening-btw", { id: "live:1" }, "Explain the fixture answer.", { generation: 1, epoch: 1 });
+	expect(element.querySelector("[data-transcript-action]")).not.toBeNull();
+	expect(currentDock(useApp.getState()).open).toBe(false);
+	expect(opened).toEqual([]);
 });
 
-it("keeps the paused layer and error when Done fails", async () => {
+it("renders background transcript updates while the drawer keeps main input inert", async () => {
 	await openForClosing();
-	closeFailure = "The fixture refused to finish.";
-	const done = [...element.querySelectorAll("[data-btw-paused] button")].find(button => button.textContent?.trim() === "Done") as HTMLButtonElement;
-	await act(async () => done.click());
-	expect(closeRequests).toHaveLength(1);
-	expect(element.querySelector("[data-btw-paused] [role=alert]")?.textContent).toBe(closeFailure);
-	expect(element.querySelector("[data-chat-content]")?.hasAttribute("inert")).toBe(true);
-	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
+	const transcript = element.querySelector("[data-transcript-action]")!;
+	await act(async () => {
+		backgroundText = "The main answer continued in the background.";
+		view = { ...view };
+		publish();
+	});
+	expect(transcript.textContent).toBe(backgroundText);
+	expect(transcript.closest("[data-chat-content]")?.hasAttribute("inert")).toBe(true);
+	expect(element.querySelector("[data-btw-drawer]")).not.toBeNull();
+	expect(opened).toEqual([]);
 });
 
-it("pauses only the blocked chat in a split and leaves the other column interactive", async () => {
+it("contains the drawer to its chat column in split view", async () => {
 	showOtherChat = true;
 	await openForClosing();
 	const blocked = element.querySelector('section[aria-label="Fixture chat"]')!;
 	const other = element.querySelector('section[aria-label="Other chat"]')!;
-	expect(blocked.querySelector("[data-chat-content]")?.hasAttribute("inert")).toBe(true);
+	expect(blocked.querySelector("[data-btw-drawer]")?.closest("[data-chat-column]")).toBe(blocked.querySelector("[data-chat-column]"));
+	expect(other.querySelector("[data-btw-drawer]")).toBeNull();
 	expect(other.querySelector("[data-chat-content]")?.hasAttribute("inert")).toBe(false);
-	expect(other.querySelector("[data-btw-paused]")).toBeNull();
-	expect(blocked.querySelector("[data-btw-paused]")?.closest("[data-chat-column]")).toBe(blocked.querySelector("[data-chat-column]"));
 	other.querySelector<HTMLButtonElement>("[data-transcript-action]")!.focus();
 	expect(document.activeElement).toBe(other.querySelector("[data-transcript-action]"));
-	await act(async () => { view = { ...view, host: { ...view.host!, tspAvailability: { available: false, reason: "Open menu" } } }; for (const listener of viewUpdates) listener(); });
-	expect(blocked.querySelector("[data-btw-paused]")).toBeNull();
-	expect(blocked.querySelector("[data-chat-content]")?.hasAttribute("inert")).toBe(false);
 });
 
-it("keeps the first-frame presentation claimed when put-away fails before history arrives", async () => {
+it("keeps the first-frame claim when put-away fails before history arrives", async () => {
 	messages = loadFixtureRecording("btw-ask").messages;
 	while (cursor < 4) receive();
 	await act(async () => root.render(createElement(Harness)));
@@ -381,127 +443,92 @@ it("keeps the first-frame presentation claimed when put-away fails before histor
 	await act(async () => { await routeSlash(controller, "/btw What is the first fixture side question?"); });
 	expect(element.querySelector("section[aria-busy=true]")).not.toBeNull();
 	closeFailure = "The fixture refused to put away the pending history.";
-	await act(async () => element.querySelector<HTMLButtonElement>('button[aria-label="Close side panel"]')!.click());
+	await act(async () => drawerDone().click());
 	expect(closeRequests).toHaveLength(1);
-	expect(currentDock(useApp.getState())).toMatchObject({ open: true, pane: "btw" });
 	expect(element.querySelector("section[aria-busy=true]")).not.toBeNull();
-	expect(element.querySelector("aside [role=alert]")?.textContent).toBe(closeFailure);
+	expect(element.querySelector("[data-btw-drawer] [role=alert]")?.textContent).toBe(closeFailure);
+	expect(savedToasts()).toHaveLength(0);
 	expect(opened).toEqual([]);
-	expect(document.querySelector(".tsp-screen")).toBeNull();
 });
 
-it("deduplicates double X while omp's close is pending", async () => {
-	await openForClosing();
-	const pending = Promise.withResolvers<void>(); closeGate = pending.promise;
-	await act(async () => {
-		element.querySelector<HTMLButtonElement>('button[aria-label="Close side panel"]')!.click();
-		element.querySelector<HTMLButtonElement>('button[aria-label="Close side panel"]')!.click();
-	});
-	expect(closeRequests).toHaveLength(1);
-	await act(async () => pending.resolve());
-	expect(currentDock(useApp.getState()).open).toBe(false);
-	assertSendableWithoutScreen();
-});
-
-it("does not apply an old close after Side questions is reopened", async () => {
-	await openForClosing();
-	const pending = Promise.withResolvers<void>(); closeGate = pending.promise;
-	await act(async () => element.querySelector<HTMLButtonElement>('button[aria-label="Close side panel"]')!.click());
-	await act(async () => useApp.getState().showPane("btw", tabId));
-	await act(async () => pending.resolve());
-	expect(closeRequests).toHaveLength(1);
-	expect(currentDock(useApp.getState())).toMatchObject({ open: true, pane: "btw" });
-	assertSendableWithoutScreen();
-});
-
-it("retains its presentation after close resolves until the closing document arrives", async () => {
+it("retains its presentation until the closing document arrives", async () => {
 	await openForClosing();
 	separateCloseDocument = true;
-	await act(async () => element.querySelector<HTMLButtonElement>('button[aria-label="Close side panel"]')!.click());
+	await act(async () => drawerDone().click());
 	expect(closeRequests).toHaveLength(1);
-	expect(currentDock(useApp.getState()).open).toBe(true);
-	expect(opened).toEqual([]);
+	expect(element.querySelector("[data-btw-drawer]")).not.toBeNull();
+	expect(savedToasts()).toHaveLength(0);
 	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
 	await act(async () => deliverCloseDocument!());
-	expect(currentDock(useApp.getState()).open).toBe(false);
+	expect(element.querySelector("[data-btw-drawer]")).toBeNull();
+	expect(savedToasts()).toHaveLength(1);
 	assertSendableWithoutScreen();
 });
 
-it.each(["history read", "native close", "closing document"])("expires the entire put-away during a stalled %s without applying a late close", async stall => {
-	await BtwContent.preload();
+it.each(["history read", "native close", "closing document"])("expires the entire put-away during a stalled %s without a false saved toast", async stall => {
+	await BtwDrawerContent.preload();
 	await openForClosing();
 	const pending = Promise.withResolvers<void>();
 	if (stall === "history read") readGate = pending.promise;
 	else if (stall === "native close") closeGate = pending.promise;
 	else separateCloseDocument = true;
 	vi.useFakeTimers();
-	await act(async () => element.querySelector<HTMLButtonElement>('button[aria-label="Close side panel"]')!.click());
+	await act(async () => drawerDone().click());
 	await act(async () => { await vi.advanceTimersByTimeAsync(8001); });
-	expect(currentDock(useApp.getState())).toMatchObject({ open: true, pane: "btw" });
-	expect(element.querySelector("aside [role=alert]")?.textContent).toBe("omp did not close the side-question history.");
+	expect(element.querySelector("[data-btw-drawer] [role=alert]")?.textContent).toBe("omp did not close the side-question history.");
+	expect(savedToasts()).toHaveLength(0);
 	expect(opened).toEqual([]);
 	const before = closeRequests.length;
 	if (stall !== "closing document") {
-		await act(async () => element.querySelector<HTMLButtonElement>('button[aria-label="Close side panel"]')!.click());
+		await act(async () => drawerDone().click());
 		expect(closeRequests).toHaveLength(before);
 	}
 	await act(async () => {
 		if (stall === "closing document") deliverCloseDocument!();
 		else pending.resolve();
 	});
-	expect(currentDock(useApp.getState())).toMatchObject({ open: true, pane: "btw" });
+	expect(savedToasts()).toHaveLength(0);
 	expect(opened).toEqual([]);
 	if (stall === "history read") expect(closeRequests).toHaveLength(0);
 	else expect(closeRequests).toHaveLength(1);
 	vi.useRealTimers();
 });
 
-it("keeps one native close through a narrow real Shell remount", async () => {
+it("keeps the transcript and one native close through a narrow real Shell resize", async () => {
 	realShell = true;
 	await openForClosing();
+	const transcript = element.querySelector("[data-transcript-action]")!;
 	const pending = Promise.withResolvers<void>(); closeGate = pending.promise;
-	await act(async () => element.querySelector<HTMLButtonElement>('button[aria-label="Close side panel"]')!.click());
-	expect(closeRequests).toHaveLength(1);
+	await act(async () => drawerDone().click());
 	await act(async () => {
 		Object.defineProperty(window, "innerWidth", { configurable: true, value: 640 });
 		window.dispatchEvent(new Event("resize"));
 	});
-	expect(element.querySelector("[data-dock-expanded]")?.textContent).toContain("Side questions");
-	await act(async () => element.querySelector<HTMLButtonElement>('[data-dock-expanded] button[aria-label="Close side panel"]')!.click());
+	expect(element.querySelector("[data-btw-drawer]")).not.toBeNull();
+	expect(element.querySelector("[data-dock-expanded]")).toBeNull();
+	expect(transcript.isConnected).toBe(true);
+	await act(async () => dismissDrawer("Escape"));
 	expect(closeRequests).toHaveLength(1);
 	await act(async () => pending.resolve());
-	expect(currentDock(useApp.getState()).open).toBe(false);
+	expect(element.querySelector("[data-btw-drawer]")).toBeNull();
+	expect(savedToasts()).toHaveLength(1);
 	assertSendableWithoutScreen();
 });
 
-it("returns from narrow-pane Done to that chat's composer with keyboard focus", async () => {
+it("returns from narrow drawer Done to the chat composer with keyboard focus", async () => {
 	realShell = true;
 	Object.defineProperty(window, "innerWidth", { configurable: true, value: 640 });
 	await openForClosing();
-	const expanded = element.querySelector("[data-dock-expanded]")!;
-	expect(expanded).not.toBeNull();
-	const done = [...expanded.querySelectorAll("button")].find(button => button.textContent?.trim() === "Done")!;
-	done.focus();
+	const done = drawerDone(); done.focus();
 	await act(async () => done.click());
 	expect(closeRequests).toHaveLength(1);
 	expect(element.querySelector("[data-dock-expanded]")).toBeNull();
-	expect(useApp.getState().chatOverDock).toBe(true);
+	expect(element.querySelector("[data-btw-drawer]")).toBeNull();
 	const composer = element.querySelector<HTMLTextAreaElement>('section[aria-label="Fixture chat"] textarea')!;
 	await act(async () => { await vi.waitFor(() => expect(document.activeElement).toBe(composer)); });
 	expect(composer.closest("[inert]")).toBeNull();
 	expect(state.topics).toHaveLength(1);
 	assertSendableWithoutScreen();
-});
-
-it("does not restore a disposed tab's panel after its native close completes", async () => {
-	await openForClosing();
-	const pending = Promise.withResolvers<void>(); closeGate = pending.promise;
-	await act(async () => useApp.getState().toggleDock(false, tabId));
-	await act(async () => { await useApp.getState().closeTab(tabId); });
-	await act(async () => pending.resolve());
-	expect(useApp.getState().tabs.some(tab => tab.id === tabId)).toBe(false);
-	expect(useApp.getState().docks[tabId]).toBeUndefined();
-	expect(opened).toEqual([]);
 });
 
 it("releases the claim immediately for an unsupported document layout", async () => {

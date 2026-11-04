@@ -85,6 +85,8 @@ export interface AppState {
 	 * Read the layout on show with `currentDock`. At narrow widths an open panel may stand aside for the chat (`chatOverDock`).
 	 */
 	docks: DockLayouts;
+	/** Chat-local side-question drawers, including the first frame before omp replies. Not persisted. */
+	btwDrawers: Record<string, boolean>;
 	sheet: OpenSheet | null;
 	/** Full page shown while `view` is `page`. */
 	page: OpenPage | null;
@@ -415,6 +417,7 @@ export const useApp = create<AppState>()(
 			sidebarOpen: true,
 			sidebarWidth: 264,
 			docks: {},
+			btwDrawers: {},
 			sheet: null,
 			page: null,
 			pageReturn: "home",

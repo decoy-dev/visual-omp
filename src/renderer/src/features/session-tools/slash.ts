@@ -8,10 +8,10 @@
  * else is typed into omp (`sendSlashCommand`). The rows follow the routing matrix in docs/COMMANDS.md.
  */
 import type { SlashCommandListing } from "@shared/contracts/composer";
-import { flushSync } from "react-dom";
 import type { SkillsSectionProps } from "../extensions/skills/model";
 import { toast } from "@/ui";
 import { i18n } from "../../i18n";
+import { BtwDrawerContent } from "../btw/BtwPane";
 import type { CommandContext } from "../../registry/commands";
 import { focusChatSearch } from "../../shell/Sidebar";
 import { useApp } from "../../state/app";
@@ -196,10 +196,11 @@ export async function routeSlash(session: SessionController, line: string): Prom
 	const view = session.getSnapshot();
 	if (view.host?.transport === "tsp" && (view.host.tspComposer?.blockedBy === "approval" || view.guest?.pendingUiRequests?.some(isApprovalRequest) || (view.guest?.uiRequest && isApprovalRequest(view.guest.uiRequest)))) throw new Error("Answer the approval before sending a command.");
 	if (parsed.name === "btw" && view.host?.transport === "tsp") {
-		// Mount the native pane before omp can publish its side-question overlay.
-		flushSync(() => useApp.getState().showPane("btw", session.tabId));
 		if (view.host.tspEpoch === undefined) throw new Error("Waiting for omp to open its semantic screen.");
-		await window.vomp.invoke("btw:ask", view.host.hostId, parsed.args, { generation: view.host.generation, epoch: view.host.tspEpoch });
+		await BtwDrawerContent.preload();
+		const host = view.host;
+		// Deliberate feature-chunk boundary: opening recovery must not enter the startup bundle.
+		await import("../btw/BtwPaneContent").then(module => module.openBtwDrawer(session, host, parsed.args));
 		return true;
 	}
 	if (parsed.name === "goal" && ["pause", "resume", "drop"].includes(parsed.args)) {

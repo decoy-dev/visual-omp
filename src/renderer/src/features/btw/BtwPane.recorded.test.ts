@@ -1,13 +1,14 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, type PropsWithChildren } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
 import type { BtwState, BtwTopic, BtwTurn } from "@shared/contracts/btw";
 import { btwOverlayTopics, mergeBtwTopics, projectBtw, resolveBtwTopic } from "@shared/tsp/btw";
 import type { SessionController, SessionView } from "../../state/session";
 import { TooltipProvider } from "../../ui";
-import { BtwContent, BtwPane } from "./BtwPane";
+import { BtwDrawerContent, BtwDrawer } from "./BtwPane";
 import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
+import { useApp } from "../../state/app";
 import { FixtureDocuments } from "../tsp/testing/documents";
 import messagesRaw from "../../../../main/omp/tsp/fixtures/18.15.0/btw-open-main-abort.messages.jsonl?raw";
 import recorded from "../../../../main/omp/tsp/fixtures/18.15.0/btw-open-main-abort.btw.json";
@@ -16,14 +17,18 @@ import "../../i18n";
 vi.mock("../session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));
 vi.mock("../session-tools/drive", () => ({ reportFailure: vi.fn() }));
 vi.mock("../panes/common", async original => ({ ...await original<object>(), usePaneVisible: () => true }));
+vi.mock("motion/react", () => {
+	const tag = (name: string) => ({ children, initial, animate, exit, transition, layout, layoutId, variants, custom, ...props }: PropsWithChildren<Record<string, unknown>>) => createElement(name, props, children);
+	return { AnimatePresence: ({ children }: PropsWithChildren) => children, MotionConfig: ({ children }: PropsWithChildren) => children, motion: { div: tag("div"), section: tag("section"), span: tag("span"), ul: tag("ul"), li: tag("li") }, useReducedMotionConfig: () => true };
+});
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 let root: Root | undefined;
 let container: HTMLElement | undefined;
 const originalVomp = window.vomp;
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; container?.remove(); container = undefined; window.vomp = originalVomp; });
+afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; container?.remove(); container = undefined; window.vomp = originalVomp; useApp.setState({ btwDrawers: {} }); });
 
 it("renders each recorded streaming frame and sidecar handoff without losing the claimed answer", async () => {
-	await BtwContent.preload();
+	await BtwDrawerContent.preload();
 	const messages: { verb: string; body: unknown }[] = messagesRaw.trim().split("\n").map(line => JSON.parse(line));
 	const documents = new FixtureDocuments();
 	const listeners = new Set<(state: BtwState) => void>();
@@ -47,8 +52,9 @@ it("renders each recorded streaming frame and sidecar handoff without losing the
 		on: (channel: string, listener: (state: BtwState) => void) => { if (channel === "btw:changed") listeners.add(listener); return () => listeners.delete(listener); } } as unknown as typeof window.vomp;
 	const view = { mode: "live", readOnly: false, host: { hostId: "pane-recorded", generation: 1, tspEpoch: 1, phase: "live", transport: "tsp" } } as unknown as SessionView;
 	const controller = { tabId: "pane-recorded", getSnapshot: () => view, subscribe: () => () => {} } as unknown as SessionController;
+	useApp.setState({ btwDrawers: { "pane-recorded": true } });
 	container = document.createElement("div"); document.body.append(container); root = createRoot(container);
-	const render = async (visible = true) => { await act(async () => root!.render(createElement(TooltipProvider, null, createElement(PresentationVisibility, { visible }, createElement(BtwPane, { session: controller, projectPath: null }))))); };
+	const render = async (visible = true) => { await act(async () => root!.render(createElement(TooltipProvider, null, createElement(PresentationVisibility, { visible }, createElement(BtwDrawer, { session: controller }))))); };
 	await render();
 	let streamingFrames = 0;
 	let completedRecord: { answer: string; status: string } | undefined;

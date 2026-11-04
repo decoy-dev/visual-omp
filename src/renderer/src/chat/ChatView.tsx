@@ -1,7 +1,7 @@
 import { type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { chatSlots } from "../registry/slots";
-import { lazyView } from "../registry/lazy";
+import { BtwDrawer } from "../features/btw/BtwPane";
 import { chatActivityKey, elapsed, useNow, useSessionView } from "../shell/hooks";
 import { useApp } from "../state/app";
 import type { SessionController, SessionView } from "../state/session";
@@ -9,8 +9,6 @@ import { Button, cn, Expand, WorkingIndicator } from "../ui";
 import { Composer } from "./composer/Composer";
 import { SessionHeader } from "./SessionHeader";
 import { Transcript } from "./transcript/Transcript";
-
-const BtwChatPaused = lazyView(() => import("../features/btw/BtwPaneContent").then(module => module.BtwChatPaused));
 
 function Banner({ tone, role = "status", children }: { tone: "info" | "warn" | "err"; role?: "status" | "alert"; children: ReactNode }): ReactNode {
 	return (
@@ -137,8 +135,9 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 	const view = useSessionView(session);
 	const mode = useApp(state => state.prefs?.transcriptMode ?? "normal");
 	const slots = chatSlots.use();
+	const requested = useApp(state => !!state.btwDrawers[session.tabId]);
 	if (!view) return null;
-	const paused = !view.readOnly && view.host?.transport === "tsp" && view.host.tspAvailability?.available === false && view.host.tspAvailability.reasonCode === "btw";
+	const paused = !view.readOnly && view.host?.transport === "tsp" && (requested || view.host.tspAvailability?.available === false && view.host.tspAvailability.reasonCode === "btw");
 	return (
 		<section
 			className={cn("relative flex min-w-0 flex-1 flex-col bg-bg", !focused && "opacity-[0.97]")}
@@ -167,7 +166,7 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 					<Composer session={session} />
 				</div>
 				</div>
-				{view.host?.transport === "tsp" && <BtwChatPaused session={session} host={view.host} paused={paused} />}
+				{view.host?.transport === "tsp" && <BtwDrawer session={session} />}
 			</div>
 			{slots
 				.filter(slot => slot.placement === "watchers")

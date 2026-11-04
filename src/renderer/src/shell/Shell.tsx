@@ -201,7 +201,6 @@ export function Shell(): ReactNode {
 	const sidebarWidth = useApp(state => state.sidebarWidth);
 	const dockOpen = useApp(state => currentDock(state).open);
 	const dockWidth = useApp(state => currentDock(state).width);
-	const btwPane = useApp(state => currentDock(state).pane === "btw");
 	const dockChat = useApp(dockKey);
 	const view = useApp(state => state.view);
 	const hasTabs = useApp(state => state.tabs.length > 0);
@@ -254,7 +253,6 @@ export function Shell(): ReactNode {
 								)}
 								<PresenceSwap
 									swapKey={page ? `page:${page.id}` : dockExpanded ? "dock" : showChat ? "chat" : view === "project" ? "project" : "home"}
-									mode={dockExpanded && btwPane ? "replace" : "wait"}
 									variant="rise"
 									className={cn("relative flex min-h-0 min-w-0 flex-1", showChat && "pointer-events-none")}
 								>
