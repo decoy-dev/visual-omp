@@ -12,7 +12,7 @@ import { Component, type ComponentType, createElement, type ReactNode, Suspense,
 import { useTranslation } from "react-i18next";
 import { retryFailedNamespaces } from "../i18n";
 import { usePageBack } from "../state/navigation";
-import { Button, EmptyState } from "../ui";
+import { Button, Dialog, DialogContent, EmptyState } from "../ui";
 import { PageFrame, PageSkeleton, type PageWidth } from "../ui/Page";
 import { preloadWhenIdle } from "./idle";
 import { LoadError } from "./loadError";
@@ -52,10 +52,38 @@ export class LoadBoundary extends Component<{ fallback(retry: () => void): React
 	}
 }
 
-/** The failure state of a Settings section or a page, in place of its content. */
+/** The failure state of a Settings section, a page or a side panel pane, in place of its content. */
 export function LoadFailed({ retry }: LoadFailureProps): ReactNode {
 	const { t } = useTranslation("shell");
 	return <EmptyState icon={<Warning />} title={t("load.failedTitle")} body={t("load.failedBody")} actions={<Button onClick={retry}>{t("load.retry")}</Button>} />;
+}
+
+/**
+ * The failure state of a dialog: a small dialog with the same message, Close and Try again. `open` and
+ * `onExited` let a sheet play its exit through sheet presence; a dialog its opener unmounts can omit them.
+ */
+export function LoadFailedDialog({ retry, onClose, open = true, onExited }: LoadFailureProps & { onClose(): void; open?: boolean; onExited?(): void }): ReactNode {
+	const { t } = useTranslation("shell");
+	return (
+		<Dialog open={open} onOpenChange={next => !next && onClose()}>
+			<DialogContent
+				onCloseAutoFocus={onExited}
+				size="sm"
+				title={t("load.failedTitle")}
+				description={t("load.failedBody")}
+				footer={
+					<>
+						<Button variant="ghost" onClick={onClose}>
+							{t("load.close")}
+						</Button>
+						<Button variant="primary" onClick={retry}>
+							{t("load.retry")}
+						</Button>
+					</>
+				}
+			/>
+		</Dialog>
+	);
 }
 
 /**

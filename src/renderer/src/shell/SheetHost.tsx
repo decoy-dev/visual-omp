@@ -1,11 +1,9 @@
 /** The registry sheet host: the open sheet, its exit, and its failure state when it does not load. */
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { useTranslation } from "react-i18next";
-import { LoadBoundary, type LoadFailureProps } from "../registry/lazy";
+import { LoadBoundary, LoadFailedDialog, type LoadFailureProps } from "../registry/lazy";
 import { type SheetPresence, SheetPresenceContext, useSheetPresence } from "../registry/sheetPresence";
 import { sheets } from "../registry/slots";
 import { useApp } from "../state/app";
-import { Button, Dialog, DialogContent } from "../ui";
 
 /** Longest a sheet that plays an exit may take to report it before the host drops it anyway. */
 const SHEET_EXIT_MAX_MS = 1000;
@@ -79,27 +77,7 @@ export function SheetHost(): ReactNode {
  * presence before a nested part of it failed.
  */
 function SheetLoadFailed({ retry, close }: LoadFailureProps & { close(): void }): ReactNode {
-	const { t } = useTranslation("shell");
 	const presence = useSheetPresence();
-	return (
-		<Dialog open={presence.open} onOpenChange={open => !open && close()}>
-			<DialogContent
-				onCloseAutoFocus={presence.exited}
-				size="sm"
-				title={t("load.failedTitle")}
-				description={t("load.failedBody")}
-				footer={
-					<>
-						<Button variant="ghost" onClick={close}>
-							{t("load.close")}
-						</Button>
-						<Button variant="primary" onClick={retry}>
-							{t("load.retry")}
-						</Button>
-					</>
-				}
-			/>
-		</Dialog>
-	);
+	return <LoadFailedDialog retry={retry} onClose={close} open={presence.open} onExited={presence.exited} />;
 }
 

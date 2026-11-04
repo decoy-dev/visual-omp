@@ -1,6 +1,7 @@
 import { CaretDown, CaretLeft, X } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { LoadBoundary, LoadFailed } from "../registry/lazy";
 import { type PaneSpec, panes } from "../registry/slots";
 import { controllerFor, useApp } from "../state/app";
 import { layoutFor } from "../state/dockLayout";
@@ -133,7 +134,14 @@ export function Dock({ chatKey, width, expanded = false, onEnter }: { chatKey: s
 				{/* A chat switch fades the previous pane out, then the next pane in; within a chat, choosing a pane slides. */}
 				<PresenceSwap swapKey={chatKey} className="relative flex min-h-0 flex-1 flex-col">
 					<PresenceSwap swapKey={pane?.id ?? "none"} variant="slide" direction={nav.direction} className="flex min-h-0 flex-1 flex-col">
-						{pane ? <pane.component session={session} projectPath={projectPath} /> : <p className="p-6 text-md text-fg-faint">{t("dock.empty")}</p>}
+						{pane ? (
+							// A pane whose code or text does not load shows its failure state here; the header still switches and closes panes.
+							<LoadBoundary key={`${chatKey}|${pane.id}`} fallback={retry => <LoadFailed retry={retry} />}>
+								<pane.component session={session} projectPath={projectPath} />
+							</LoadBoundary>
+						) : (
+							<p className="p-6 text-md text-fg-faint">{t("dock.empty")}</p>
+						)}
 					</PresenceSwap>
 				</PresenceSwap>
 			</div>

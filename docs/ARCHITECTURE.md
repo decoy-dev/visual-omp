@@ -988,14 +988,19 @@ tracks failed loads itself and `useDeferredTranslation` throws a `LoadError` (`r
 while its namespace is failed. `lazyView` turns a chunk that does not load into the same error. A
 `LoadBoundary` (`registry/lazy.tsx`) catches only `LoadError` and shows its surface's failure state:
 Settings sections show "Couldn't load this part of visual-omp" with Try again in place of their content,
-and pages show it inside their frame with the back link. `SheetHost` (`shell/SheetHost.tsx`) wraps every
-sheet opened through `openSheet` in a boundary that shows the same message as a small dialog with Close.
+and pages show it inside their frame with the back link. The side panel (`shell/Dock.tsx`) wraps the pane on
+show in a boundary keyed by chat and pane, so a pane that does not load shows the same inline state while the
+panel header still switches and closes panes. `SheetHost` (`shell/SheetHost.tsx`) wraps every sheet opened
+through `openSheet` in a boundary that shows the message as a small dialog with Close (`LoadFailedDialog`).
 That dialog takes part in sheet presence, so it closes and returns focus at once even when the failed sheet
-had claimed presence before a nested part of it failed. Try again loads each failed namespace through the
-app's own loader, adds it with `addResourceBundle`, and renders the surface again; `lazyView` tries a
-failed chunk again on that render. Other errors pass through the boundary. Panes, dialogs that a component
-loads itself (such as the helper transcript dialog of the pinned helper strip) and other views registered
-without a failure state keep the earlier behavior: their load errors reach the React root.
+had claimed presence before a nested part of it failed. The pinned helper strip's transcript dialog
+(`features/panes/HelperStrip.tsx`) passes the same dialog as its `lazyView` failure state. Try again loads
+each failed namespace through the app's own loader, adds it with `addResourceBundle`, and renders the
+surface again; `lazyView` tries a failed chunk again on that render. Other errors pass through the boundary.
+Lazy views without a failure state keep the earlier behavior: their load errors reach the React root. They
+include the sidebar's Change icon and Rename chat dialogs, the large saved chat prompt, the terminal sheet,
+transcript node views, the native question and plan cards, the side questions drawer, the setup wizard and
+the project overview.
 Registry consumers without an explicit namespace default to the already loaded `shell` namespace.
 
 The FLIP build guard checks the initial renderer entry and its static import closure for any

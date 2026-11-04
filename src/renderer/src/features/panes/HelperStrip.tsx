@@ -24,9 +24,15 @@ import { cn, Expand, IconButton, StatusDot } from "../../ui";
 import { listRowMotion } from "./common";
 import type { Helper } from "./derive";
 import { usePinnedHelpers } from "./pinnedHelpers";
-import { lazyView } from "../../registry/lazy";
+import { LoadFailedDialog, type LoadFailureProps, lazyView } from "../../registry/lazy";
 
-const TranscriptDialog = lazyView(() => import("./TasksPane").then(module => module.TranscriptDialog));
+/** A helper's transcript dialog that did not load: the same failure dialog, and Close dismisses it. */
+function TranscriptLoadFailed({ onClose, retry }: LoadFailureProps & { onClose(): void }): ReactNode {
+	return <LoadFailedDialog retry={retry} onClose={onClose} />;
+}
+
+/** The helper transcript dialog loads with the Tasks pane's chunk; if that does not load, it shows its failure dialog. */
+export const HelperTranscriptDialog = lazyView(() => import("./TasksPane").then(module => module.TranscriptDialog), null, TranscriptLoadFailed);
 
 function PinnedRow({ helper, session, onOpen }: { helper: Helper; session: SessionController; onOpen(helper: Helper): void }): ReactNode {
 	const { t } = useTranslation("panes");
@@ -136,7 +142,7 @@ export function HelperStrip({ session }: ChatSlotProps): ReactNode {
 					</ul>
 				</div>
 			</Expand>
-			{transcriptOf && <TranscriptDialog helper={transcriptOf} session={session} onClose={() => setTranscriptOf(null)} />}
+			{transcriptOf && <HelperTranscriptDialog helper={transcriptOf} session={session} onClose={() => setTranscriptOf(null)} />}
 		</>
 	);
 }
