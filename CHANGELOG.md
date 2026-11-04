@@ -4,12 +4,6 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
-### Fixed
-
-- On macOS, Outputs lists a file once when tools use both `/tmp`, `/var` or `/etc` and their `/private` paths. The newest use supplies the output, and paths keep the chat folder's spelling. Live previews use the same comparison.
-- Change icon and Rename chat now focus their text field when they open, so typing starts in the field.
-- Live previews now offer Try again when their background tracker or a format cannot load. Turning previews off and on retries the tracker, and a file update retries its failed format.
-
 ## [0.7.6] - 2026-11-04
 
 visual-omp 0.7.6 makes the omp screen the default on Windows, keeps long chats responsive on macOS and in Linux builds, previews visual outputs as omp makes them and asks before resuming a very large saved chat. It requires omp 18.15.0 or later.
@@ -31,7 +25,7 @@ visual-omp 0.7.6 makes the omp screen the default on Windows, keeps long chats r
 
 - Before omp resumes a saved chat of 32 MiB or more, visual-omp now asks whether to resume it, start a new chat in the same folder or cancel. Resuming a chat that large can make omp slow or unresponsive, and Stop may not respond.
 - Chat row menus now offer Change icon, with a title preview, an emoji field and the operating system's emoji panel where supported. omp saves the icon in the chat title for live and saved chats.
-- Outputs now previews supported visual files while omp makes them. Watch opens the current output, and Stop and redirect preserves your draft and attachments while you write a correction. Live previews are on by default; opening Outputs automatically is a separate setting, off by default.
+- Outputs now previews supported visual files while omp makes them. Watch opens the current output, and Stop and redirect preserves your draft and attachments while you write a correction. Live previews are on by default; opening Outputs automatically is a separate setting, off by default. A preview whose background tracker or format cannot load offers Try again. Turning previews off and on retries the tracker, and a file update retries its failed format.
 - Windows chats now use the omp screen by default, as on macOS and Linux.
 - Settings → Advanced now offers a Classic omp terminal switch, off by default, to make new chats use omp's terminal screen if a chat does not work with the omp screen. Open chats keep their view until omp restarts in them.
 
@@ -44,6 +38,8 @@ visual-omp 0.7.6 makes the omp screen the default on Windows, keeps long chats r
 - On macOS and in Linux builds, long chats no longer make visual-omp unresponsive while omp works. For each streamed update, visual-omp copied omp's whole screen document, which holds the full transcript, to every part of the window that reads it: up to 1.6 MB per update in a chat of about 1,400 entries. The window fell further behind with every reply, so the elapsed timer, the status bar and new chats stopped responding. visual-omp now sends only the parts that changed, combines streamed frames within a 16 ms batching window, and keeps one shared document per chat in the window. In an isolated development-build measurement of that chat, a six-second reply sent 2.7 MB to the window instead of 295 MB, and the window caught up about a second after the reply ended instead of 26 seconds later.
 - Typing near the right edge of a chat's message box no longer hides the word you are typing until the line wraps. When omp offered a word completion that did not fit on the line, the completion carried the typed letters with it onto a line the message box did not show yet.
 - Chats you start in visual-omp use emoji icons in their titles again. In chats that use the omp screen, the default on macOS and in Linux builds, omp 18.16 could head a new title with a Nerd Font symbol that the sidebar cannot display, so the row showed the chat's short code and title without an icon. For a chat that already has one of these symbols, choose Change icon in its row menu.
+- On macOS, Outputs lists a file once when tools use both `/tmp`, `/var` or `/etc` and their `/private` paths. The newest use supplies the output, and paths keep the chat folder's spelling. Live previews use the same comparison.
+- Rename chat now focuses its text field when it opens, so typing starts in the field.
 
 ## [0.7.5] - 2026-11-03
 
