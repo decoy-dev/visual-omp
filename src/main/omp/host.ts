@@ -352,6 +352,12 @@ export class SessionHost {
 				// could meet an early keystroke. Remove once omp reports input readiness.
 				onStart: "off",
 			},
+			title: {
+				// omp's default `title.icons` heads a title with a Nerd Font glyph while its symbol preset is
+				// `nerd`, and omp 18.16's screen (TSP) presenter sets that preset itself, over `symbolPreset`
+				// below. The app has no Nerd Font and strips those glyphs, so app chats keep emoji icons.
+				icons: "emoji",
+			},
 			// The app reads this TUI's status line from the editor border (renderer session-tools/screen.ts),
 			// so it pins the format that parser reads over the user's status line settings. A theme's
 			// symbol overrides still apply after the preset and can change those glyphs.

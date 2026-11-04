@@ -16,6 +16,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - On macOS and in Linux builds, long chats no longer make visual-omp unresponsive while omp works. For each streamed update, visual-omp copied omp's whole screen document, which holds the full transcript, to every part of the window that reads it: up to 1.6 MB per update in a chat of about 1,400 entries. The window fell further behind with every reply, so the elapsed timer, the status bar and new chats stopped responding. visual-omp now sends only the parts that changed, combines streamed frames within a 16 ms batching window, and keeps one shared document per chat in the window. In an isolated development-build measurement of that chat, a six-second reply sent 2.7 MB to the window instead of 295 MB, and the window caught up about a second after the reply ended instead of 26 seconds later.
 - Typing near the right edge of a chat's message box no longer hides the word you are typing until the line wraps. When omp offered a word completion that did not fit on the line, the completion carried the typed letters with it onto a line the message box did not show yet.
+- Chats you start in visual-omp use emoji icons in their titles again. In chats that use the omp screen, the default on macOS and in Linux builds, omp 18.16 could head a new title with a Nerd Font symbol that the sidebar cannot display, so the row showed the chat's short code and title without an icon. For a chat that already has one of these symbols, choose Change icon in its row menu.
 
 ## [0.7.5] - 2026-11-03
 
