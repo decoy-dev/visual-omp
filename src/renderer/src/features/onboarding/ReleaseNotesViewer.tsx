@@ -14,7 +14,7 @@ const bundled = parseChangelog(changelog);
 const RELEASES_URL = "https://github.com/decoy-dev/visual-omp/releases";
 export type ReleaseNotesView = "pending" | "past";
 
-interface Props {
+export interface ReleaseNotesViewerProps {
 	status: AppUpdateStatus | null;
 	installedVersion: string | null;
 	initialView?: ReleaseNotesView;
@@ -27,7 +27,7 @@ interface Props {
 }
 
 /** A bounded update decision, with the installed version's history available in the same window. */
-export function ReleaseNotesViewer({ status, installedVersion, installInfo, initialView = "pending", open, onExited, close, onUpdate, onRollback }: Props) {
+export function ReleaseNotesViewer({ status, installedVersion, installInfo, initialView = "pending", open, onExited, close, onUpdate, onRollback }: ReleaseNotesViewerProps) {
 	const { t } = useTranslation("onboarding");
 	const currentVersion = status?.currentVersion ?? installedVersion;
 	const skipThrough = status?.skippedThroughVersion && currentVersion && compareSemver(status.skippedThroughVersion, currentVersion) > 0 ? status.skippedThroughVersion : currentVersion;

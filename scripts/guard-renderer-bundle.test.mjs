@@ -92,6 +92,20 @@ test("growth approval never permits an eager TSP module", async t => {
 	failed(setup.run(), /contains TSP view modules/);
 });
 
+test("CLI keeps the bundled changelog out of the entry and its static dependencies", async t => {
+	const direct = await fixture(t, [entry({ modules: ["src/renderer/src/App.tsx", "CHANGELOG.md?raw"] })]);
+	failed(direct.run(), /Initial renderer chunk assets\/entry\.js contains the bundled changelog/);
+	const shared = await fixture(t, [entry({ imports: ["assets/notes.js"] }), entry({ fileName: "assets/notes.js", isEntry: false, modules: ["CHANGELOG.md?raw"] })]);
+	failed(shared.run(), /Initial renderer chunk assets\/notes\.js contains the bundled changelog/);
+	const windows = await fixture(t, [entry({ modules: ["C:\\checkout\\CHANGELOG.md?raw"] })]);
+	failed(windows.run(), /contains the bundled changelog/);
+	const approved = await fixture(t, [entry({ modules: ["CHANGELOG.md?raw"] })], { ...baseline, acceptedGrowth: { entryBytes: 9999999, reason: "Size approval only." } });
+	failed(approved.run(), /contains the bundled changelog/);
+	const lazy = await fixture(t, [entry({ dynamicImports: ["assets/notes.js"] }), entry({ fileName: "assets/notes.js", isEntry: false, modules: ["CHANGELOG.md?raw"] })]);
+	const result = lazy.run();
+	assert.equal(result.status, 0, result.stderr);
+});
+
 test("CLI rejects stale byte counts and counts UTF-8 bytes rather than characters", async t => {
 	const setup = await fixture(t, [entry({ bytes: Buffer.byteLength("🙂", "utf8") })]);
 	await writeFile(join(setup.dir, "assets/entry.js"), "🙂");

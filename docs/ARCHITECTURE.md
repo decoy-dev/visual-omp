@@ -943,6 +943,8 @@ Project instructions: `project:instructions` reads `contextFiles.extra` through 
 
 The Changes, Files, Outputs and Tasks panes load from their own chunks, on demand or during idle preloading, while their badges (`features/panes/badges.tsx`) load with the app so the pane selector can show counts before a pane opens. The pinned helper strip loads the helper transcript dialog the same way, so it does not keep the Tasks pane in the entry chunk.
 
+The release notes viewer, the bundled `CHANGELOG.md` text and its Markdown helpers load from their own chunk when release notes first open or during idle preloading. Until then the sheet shows the notes dialog's frame with a skeleton, and closing it still reports the exit to the sheet host. The build guard rejects the changelog anywhere in the entry's static import closure, because the changelog grows with every release and would otherwise count against the entry allowance.
+
 The FLIP build guard checks the initial renderer entry and its static import closure for any
 `features/tsp/` modules. The semantic screen remains lazy; shared subscriptions, presentation
 claims, labels and notice state use `state/tsp/` so ordinary chat state does not import its UI.

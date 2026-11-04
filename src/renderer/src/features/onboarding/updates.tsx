@@ -14,19 +14,35 @@ import type { AppDownload, AppInstallInfo, AppUpdateStatus, OmpUpdateRun, OmpUpd
 import { compareSemver } from "@shared/semver";
 import { i18n } from "../../i18n";
 import { registerCommand } from "../../registry/commands";
+import { lazyView } from "../../registry/lazy";
 import { useSheetPresence } from "../../registry/sheetPresence";
 import { type SheetProps, sheets } from "../../registry/slots";
 import { allControllers, controllerFor, useApp } from "../../state/app";
 import { openSettings } from "../../state/navigation";
 import type { SessionController } from "../../state/session";
-import { Button, Dialog, DialogContent, dismissToast, Expand, PresenceSwap, Progress, toast, WorkingIndicator } from "../../ui";
+import { Button, Dialog, DialogContent, dismissToast, Expand, PageSkeleton, PresenceSwap, Progress, toast, WorkingIndicator } from "../../ui";
 import { focusRing } from "../../ui/styles";
 import { ipcErrorMessage as errorText, useResource } from "../manage/shared";
 import { formatBytes } from "../projects/format";
 import { InlineTerminal } from "./InlineTerminal";
 import { quitAfterConfirm } from "./quit";
 import { CommandRun } from "./terminal";
-import { ReleaseNotesViewer, type ReleaseNotesView } from "./ReleaseNotesViewer";
+import type { ReleaseNotesView, ReleaseNotesViewerProps } from "./ReleaseNotesViewer";
+
+/** The changelog text and its viewer load on first use or in idle time, outside the startup chunk. */
+const ReleaseNotesViewer = lazyView(() => import("./ReleaseNotesViewer").then(module => module.ReleaseNotesViewer), ReleaseNotesLoading);
+
+/** The notes dialog's frame while its chunk loads; closing it still reports the exit to the sheet host. */
+function ReleaseNotesLoading({ open, onExited, close }: ReleaseNotesViewerProps) {
+	const { t } = useTranslation("onboarding");
+	return (
+		<Dialog open={open} onOpenChange={next => { if (!next) close(); }}>
+			<DialogContent size="xl" title={t("update.notes.title")} onCloseAutoFocus={onExited}>
+				<PageSkeleton />
+			</DialogContent>
+		</Dialog>
+	);
+}
 
 export const OMP_UPDATE_SHEET = "onboarding.ompUpdate";
 export const APP_UPDATE_SHEET = "onboarding.appUpdate";

@@ -7,6 +7,8 @@ const defaultMetadataPath = fileURLToPath(new URL("../out/renderer/renderer-chun
 const integer = value => Number.isSafeInteger(value) && value >= 0;
 const strings = value => Array.isArray(value) && value.every(item => typeof item === "string");
 const tspModule = id => /(?:^|\/)src\/renderer\/src\/features\/tsp\//.test(id.replaceAll("\\", "/"));
+/** The bundled changelog loads with the release notes viewer; in the entry, every release would grow startup. */
+const changelogModule = id => /(?:^|\/)CHANGELOG\.md(?:\?|$)/.test(id.replaceAll("\\", "/"));
 
 /** Validate emitted Rollup membership, including synchronous dependencies of the entry. */
 export function inspectRendererBundle(metadata, baseline) {
@@ -27,6 +29,8 @@ export function inspectRendererBundle(metadata, baseline) {
 		initial.add(chunk.fileName);
 		const forbidden = chunk.modules.filter(tspModule);
 		if (forbidden.length) throw new Error(`Initial renderer chunk ${chunk.fileName} contains TSP view modules:\n${forbidden.join("\n")}`);
+		const changelog = chunk.modules.filter(changelogModule);
+		if (changelog.length) throw new Error(`Initial renderer chunk ${chunk.fileName} contains the bundled changelog, which must load with the release notes viewer:\n${changelog.join("\n")}`);
 		for (const name of chunk.imports) {
 			const dependency = chunks.get(name);
 			if (!dependency) throw new Error(`Missing renderer chunk metadata for static import ${name}.`);
