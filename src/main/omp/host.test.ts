@@ -1672,7 +1672,7 @@ describe("opt-in semantic transport", () => {
 		expect(host.screenReadAttempts()).toEqual([]);
 	});
 
-	it.each(["darwin", "linux"] as const)("uses classic input on %s with the one-release escape", async platform => {
+	it.each(["darwin", "linux"] as const)("uses classic input on %s with the classic recovery switch", async platform => {
 		await exit(0);
 		vi.stubEnv("VOMP_TSP", "0");
 		vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? platform : Reflect.get(target, key) }));

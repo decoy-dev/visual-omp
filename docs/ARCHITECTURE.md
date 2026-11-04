@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document describes current behavior. App-hosted chats use omp's Tern Surface Protocol (TSP) by default on macOS and Linux. Windows remains classic unless explicitly enabled. The one-release classic recovery option and the later removal release are tracked in [TSP-MIGRATION.md](TSP-MIGRATION.md); classic adapters are still present.
+This document describes current behavior. App-hosted chats use omp's Tern Surface Protocol (TSP) by default on macOS and Linux. Windows remains classic unless explicitly enabled. The classic recovery option lasts until the later removal release; both are tracked in [TSP-MIGRATION.md](TSP-MIGRATION.md), and classic adapters are still present.
 
 ```mermaid
 flowchart LR
@@ -93,7 +93,7 @@ Each SessionHost:
    as a word) into a private temporary directory and spawns
    `omp --config <overlay> --extension <private bridge> [--resume <file>]` in a node-pty with the project as cwd. Crash recovery uses `--restore <file>` instead.
    Main selects the presentation at host launch: TSP by default on macOS and Linux, classic with
-   hidden `VOMP_TSP=0` for one recovery release, and classic on Windows unless `VOMP_TSP=1`.
+   hidden `VOMP_TSP=0` until the removal release, and classic on Windows unless `VOMP_TSP=1`.
    A running host keeps its choice. Classic session tools read the model and thinking segment
    from the painted screen, so the overlay still pins the status line for both presentations.
    Classic hosts also pin `composer.shape: box`; TSP hosts keep the user's composer shape.
@@ -265,7 +265,7 @@ Worktree shutdown: the host lets omp apply its own keep, remove and ask policy. 
 Startup readiness remains an omp API gap. A live collab snapshot can precede the editor's submit gate and the outer startup worktree choice. Classic debug values and screen text do not expose that outer readiness flag. Preflight protects a worktree question already painted or being answered; it cannot establish that a later startup question will not appear. The app does not automatically resend an unacknowledged submission. See the parity findings for the source trace.
 
 TSP is the default presentation for app-hosted chats on macOS and Linux. Main reads `VOMP_TSP`
-at host launch; hidden `VOMP_TSP=0` retains classic recovery for one release under decision D3.
+at host launch; hidden `VOMP_TSP=0` retains classic recovery until the removal release under decision D3.
 Windows stays classic unless `VOMP_TSP=1`, pending Phase 6 manual criteria 5 and 6. Windows TSP
 hosts alone set node-pty's `useConptyDll: true`. Transport, packaged exchanges and repeated-host
 cleanup have CI evidence; installed-build process/handle checks and Defender/SmartScreen checks
@@ -276,7 +276,7 @@ Both presentations run the same omp session, private extension and collab relay 
 A TSP launch sets `TERM_PROGRAM=tern`, removes `PI_TUI_NATIVE`, and reads raw PTY bytes. Its
 incremental splitter removes only TSP APC messages before the existing non-TSP byte paths.
 Chunk bodies are joined as bytes before UTF-8 decoding. To recover classic controls on macOS
-or Linux during this release, relaunch the app with `VOMP_TSP=0` and launch the host again.
+or Linux, relaunch the app with `VOMP_TSP=0` and launch the host again.
 
 Before its first surface opens, a TSP host captures recognized startup failures directly from the
 non-TSP byte path. Incremental UTF-8 decoding preserves split characters; escape parsing discards

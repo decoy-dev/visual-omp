@@ -60,8 +60,8 @@ be able to use it, and it exposes the features that set omp apart from other cod
 - Full-screen menus and other omp content without a native app presentation open in the
   **omp screen**, a semantic sheet. Classic chats retain the painted terminal sheet.
   Windows starts classic unless `VOMP_TSP=1`. On macOS and Linux, hidden `VOMP_TSP=0`
-  provides classic recovery for one release. Main reads this choice when each host launches;
-  changing it never switches a running host. Classic code remains for a later removal release.
+  provides classic recovery until a later removal release deletes classic code. Main reads this
+  choice when each host launches; changing it never switches a running host.
 - Setup keeps a permission mode the user already chose and suggests **Ask me first** (omp
   `always-ask`) only while omp is on its default. It saves a changed mode globally and blocks
   Continue when omp reports a mode it does not recognize. The permission button next to Send can change it later. `ensureNewUserApproval`

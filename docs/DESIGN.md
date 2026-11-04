@@ -783,7 +783,7 @@ The title bar's Search commands field and ⌘K (Ctrl+K) open a centered 640px pa
 
 ### 4.11 omp screen and classic terminal sheet
 
-The omp sheet opens at the bottom at 80% of the window height and can expand to fill the window. TSP chats show the semantic omp screen. This is the default for app-hosted chats on macOS and Linux. Windows stays classic unless `VOMP_TSP=1`; hidden `VOMP_TSP=0` provides classic recovery on macOS and Linux for one release. Main reads the choice at host launch, and an existing host never changes presentation. The classic adapters remain until the later removal release.
+The omp sheet opens at the bottom at 80% of the window height and can expand to fill the window. TSP chats show the semantic omp screen. This is the default for app-hosted chats on macOS and Linux. Windows stays classic unless `VOMP_TSP=1`; hidden `VOMP_TSP=0` provides classic recovery on macOS and Linux until the later removal release. Main reads the choice at host launch, and an existing host never changes presentation. The classic adapters remain until that release.
 
 Classic chats mirror omp's painted terminal in the same frame:
 
