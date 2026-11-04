@@ -1,6 +1,7 @@
 import { ArrowsOut, DotsThree, FolderOpen, Square, X } from "@phosphor-icons/react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { LoadFailedNotice } from "../../registry/lazy";
 import type { SessionController } from "../../state/session";
 import { useApp } from "../../state/app";
 import { Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuTrigger } from "../../ui";
@@ -23,11 +24,14 @@ function Frame(props: LiveFrameProps) {
 	const [adapter, setAdapter] = useState<LiveAdapter | null>(null);
 	const [shown, setShown] = useState(props);
 	const [failed, setFailed] = useState(false);
+	const [attempt, setAttempt] = useState(0);
 	useEffect(() => {
+		if (adapter) return;
+		setFailed(false);
 		let current = true;
 		void loadAdapter(props.subject.format).then(value => { if (current) setAdapter(value); }).catch(() => { if (current) setFailed(true); });
 		return () => { current = false; };
-	}, [props.subject.format]);
+	}, [adapter, props.subject.format, props.subject.revision, attempt]);
 	useEffect(() => {
 		if (!adapter) return;
 		const update = () => setShown(previous => {
@@ -39,7 +43,7 @@ function Frame(props: LiveFrameProps) {
 		return () => clearInterval(timer);
 	}, [adapter]);
 	const { t } = useTranslation("panes");
-	if (failed) return <p role="status" className="p-3 text-sm text-fg-muted">{t("live.unavailable")}</p>;
+	if (failed) return <LoadFailedNotice retry={() => setAttempt(value => value + 1)} className="m-3" />;
 	return adapter ? <adapter.Frame {...shown} /> : <p role="status" className="p-3 text-sm text-fg-muted">{t("live.loading")}</p>;
 }
 

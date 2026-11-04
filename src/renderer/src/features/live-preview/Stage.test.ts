@@ -13,6 +13,7 @@ import type { LiveFrameProps, LiveSubject } from "./types";
 
 const env = vi.hoisted(() => ({
 	subjects: [] as LiveSubject[], sessions: new Map<string, SessionController>(), showPane: vi.fn(), invoke: vi.fn(), listeners: new Map<string, (value: unknown) => void>(),
+	loadAdapter: vi.fn(),
 }));
 vi.mock("../../state/app", async () => {
 	// The mock factory runs before this test module's imports.
@@ -23,9 +24,10 @@ vi.mock("../../state/app", async () => {
 	};
 });
 vi.mock("react-i18next", async () => {
-	const copy = (await import("../../i18n/en/panes.json")).default;
-	return { useTranslation: () => ({ t: (key: string, values?: Record<string, unknown>) => {
-		let value: unknown = copy;
+	const panes = (await import("../../i18n/en/panes.json")).default;
+	const shell = (await import("../../i18n/en/shell.json")).default;
+	return { useTranslation: (namespace = "panes") => ({ t: (key: string, values?: Record<string, unknown>) => {
+		let value: unknown = namespace === "shell" ? shell : panes;
 		for (const part of key.split(".")) value = (value as Record<string, unknown>)?.[part];
 		return String(value ?? key).replace(/{{(\w+)}}/g, (_, name: string) => String(values?.[name] ?? ""));
 	} }) };
@@ -33,6 +35,7 @@ vi.mock("react-i18next", async () => {
 vi.mock("../../ui", () => ({
 	cn: (...values: unknown[]) => values.filter(Boolean).join(" "),
 	Button: ({ children, icon: _icon, variant: _variant, size: _size, ...props }: { children?: ReactNode; icon?: ReactNode; variant?: string; size?: string }) => createElement("button", props, children),
+	Notice: ({ children, actions }: { children: ReactNode; actions: ReactNode }) => createElement("div", { role: "status" }, children, actions),
 	IconButton: ({ label, icon: _icon, size: _size, ...props }: { label: string; icon?: ReactNode; size?: string }) => createElement("button", { ...props, "aria-label": label }, label),
 	Menu: ({ children }: { children: ReactNode }) => children,
 	MenuTrigger: ({ children }: { children: ReactNode }) => children,
@@ -44,7 +47,8 @@ vi.mock("../panes/files-store", () => ({ openInFiles: vi.fn() }));
 vi.mock("../panes/media", () => ({ ExpandPreview: () => null, PdfFrame: () => null, PreviewImage: () => null, loadFileImage: vi.fn() }));
 vi.mock("../panes/derive", async importOriginal => ({ ...await importOriginal<typeof PanesDerive>(), backgroundJobs: () => [], ompRunning: () => true }));
 vi.mock("./subjects", () => ({ deriveSubjects: () => env.subjects, namedPaths: () => [], relatedPaths: () => [] }));
-vi.mock("./formats", () => ({ loadAdapter: async (format: string) => ({ maxFps: 8, format, Frame: format === "markdown" ? MarkdownFrame : ({ subject }: LiveFrameProps) => createElement("div", { "data-frame": "" }, subject.text) }) }));
+vi.mock("./formats", () => ({ loadAdapter: (format: string) => env.loadAdapter(format) }));
+vi.mock("../../i18n", () => ({ retryFailedNamespaces: async () => {} }));
 vi.mock("../../transcript/Markdown", () => ({ Markdown: ({ text }: { text: string }) => createElement("div", null, text) }));
 vi.mock("../../ui/toast", () => ({ toast: vi.fn() }));
 import { useApp } from "../../state/app";
@@ -71,6 +75,7 @@ beforeEach(() => {
 	vi.useFakeTimers();
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	env.showPane.mockReset(); env.invoke.mockReset(); env.listeners.clear(); env.subjects = [subject("one")];
+	env.loadAdapter.mockReset().mockImplementation(async (format: string) => ({ maxFps: 8, format, Frame: format === "markdown" ? MarkdownFrame : ({ subject }: LiveFrameProps) => createElement("div", { "data-frame": "" }, subject.text) }));
 	env.invoke.mockImplementation(async (channel: string) => channel === "preview:watch" ? "watch" : undefined);
 	Object.assign(window, { vomp: { invoke: env.invoke, on: (channel: string, listener: (value: unknown) => void) => { env.listeners.set(channel, listener); return () => env.listeners.delete(channel); } } });
 	working = true; held = false; snapshotListeners = new Set(); focus = vi.fn();
@@ -174,4 +179,30 @@ it("stops the watcher and hides the stage when the setting is turned off", async
 	expect(env.invoke).toHaveBeenCalledWith("preview:watch", { folder: "/project", named: [] });
 	await act(async () => useApp.setState({ prefs: { livePreview: false, livePreviewOpenOutputs: false } as AppPreferences }));
 	expect(env.invoke).toHaveBeenCalledWith("preview:unwatch", "watch"); expect(element.querySelector("section")).toBeNull();
+});
+
+describe("Adapter load recovery", () => {
+	it("loads the adapter after Try again without remounting the stage", async () => {
+		env.loadAdapter.mockRejectedValueOnce(new Error("Chunk unavailable"));
+		await render();
+		expect(element.querySelector("[data-frame]")).toBeNull();
+		expect(element.textContent).toContain("Couldn't load this part of visual-omp");
+		await click("Try again");
+		expect(env.loadAdapter).toHaveBeenCalledTimes(2);
+		expect(element.querySelector("[data-frame]")?.textContent).toBe("one");
+		expect(element.textContent).not.toContain("Try again");
+	});
+
+	it("retries a failed adapter when the subject changes revision, then keeps the loaded adapter", async () => {
+		env.loadAdapter.mockRejectedValueOnce(new Error("Chunk unavailable"));
+		await render();
+		expect(element.textContent).toContain("Try again");
+		await act(async () => useLivePreview.getState().update("chat", [{ ...env.subjects[0], revision: 2, text: "Updated preview" }], []));
+		expect(env.loadAdapter).toHaveBeenCalledTimes(2);
+		expect(element.querySelector("[data-frame]")?.textContent).toBe("Updated preview");
+		await act(async () => useLivePreview.getState().update("chat", [{ ...env.subjects[0], revision: 3, text: "Latest preview" }], []));
+		await act(async () => vi.advanceTimersByTimeAsync(125));
+		expect(element.querySelector("[data-frame]")?.textContent).toBe("Latest preview");
+		expect(env.loadAdapter).toHaveBeenCalledTimes(2);
+	});
 });

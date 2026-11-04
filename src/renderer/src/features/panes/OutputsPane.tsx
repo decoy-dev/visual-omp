@@ -23,6 +23,7 @@ import { languageFor } from "./highlight";
 import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage, ThumbnailFrame, useNearView, type ZoomControl } from "./media";
 import { countOutputsMount, useChatOutputs } from "./outputs-store";
 import { Stage } from "../live-preview/Stage";
+import { TrackerLoadNotice } from "../live-preview/loader";
 import { EMPTY_CHAT, useLivePreview, visibleSubjects } from "../live-preview/store";
 import { useApp } from "../../state/app";
 
@@ -356,6 +357,7 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 	return (
 		<TargetContextMenu projectPath={project} tabId={tabId}>
 		<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+		<TrackerLoadNotice />
 		<Stage session={session} onShowOutput={path => {
 			const output = outputs?.find(item => item.path !== null && outputPathKey(item.path, window.vomp.platform) === outputPathKey(path, window.vomp.platform));
 			if (!output) return;
