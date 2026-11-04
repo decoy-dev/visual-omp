@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import { isResumeDeclined } from "../../registry/guards";
-import { lazyView } from "../../registry/lazy";
+import { LoadFailed, type LoadFailureProps, lazyView } from "../../registry/lazy";
 import { useSessionView } from "../../shell/hooks";
 import { controllerFor, useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
@@ -30,14 +30,21 @@ export const autoOpened: { tabId: string | null } = { tabId: null };
 /** Close the open sheet the way its close button does (asks first when an omp menu is open). */
 export const terminalSheet: { requestClose: (() => void) | null } = { requestClose: null };
 
+/** If xterm.js or the omp screen does not load, the sheet's body shows the failure state with Try again. */
+function TerminalLoadFailed({ retry }: LoadFailureProps) {
+	return <div className="flex h-full items-center justify-center"><LoadFailed retry={retry} /></div>;
+}
+
 /** xterm.js loads with the first sheet opened (or in idle time); the sheet's inset surface shows until then. */
 const Mirror = lazyView(
 	() => import("./TerminalMirror").then(m => m.Mirror),
 	() => <div className="h-full" />,
+	TerminalLoadFailed,
 );
 const OmpScreen = lazyView(
 	() => import("../tsp/OmpScreenSheet").then(m => m.OmpScreenSheet),
 	() => <div role="status" className="h-full" />,
+	TerminalLoadFailed,
 );
 
 /** Recognisable name of the omp screen on show, refreshed as omp repaints. */

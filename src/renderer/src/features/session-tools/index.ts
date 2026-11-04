@@ -3,15 +3,16 @@ import { lazyView } from "../../registry/lazy";
 import { setResumeGuard } from "../../registry/guards";
 import { chatSlots, globals, sheets, type ChatSlotProps } from "../../registry/slots";
 import { registerNativeOverlay } from "../palette/overlays";
+import { askLargeResume, LargeResumeHost } from "./largeResume";
 import { parseOmpDialog } from "./ompDialog";
-import { NativeCardLoading, NativeCardPresentation } from "./NativeCardLoading";
+import { NativeCardFailed, NativeCardLoading, NativeCardPresentation } from "./NativeCardLoading";
 import { ModelButton, PermissionButton, ThinkingButton } from "./pickers";
 import { parsePlanReview } from "./screen";
 import { isAdvisorConfigure } from "./advisorApply";
 import "./modes";
 
-const PlanReviewCard = lazyView(() => import("./PlanReviewCard").then(m => m.PlanReviewCard), NativeCardLoading);
-const OmpDialogCard = lazyView(() => import("./OmpDialogCard").then(m => m.OmpDialogCard), NativeCardLoading);
+const PlanReviewCard = lazyView(() => import("./PlanReviewCard").then(m => m.PlanReviewCard), NativeCardLoading, NativeCardFailed);
+const OmpDialogCard = lazyView(() => import("./OmpDialogCard").then(m => m.OmpDialogCard), NativeCardLoading, NativeCardFailed);
 
 chatSlots.register({ id: "session-permission", placement: "composerTools", order: 20, component: PermissionButton });
 chatSlots.register({ id: "session-model", placement: "composerTools", order: 70, component: ModelButton });
@@ -31,8 +32,7 @@ registerNativeOverlay(isAdvisorConfigure);
 sheets.register({ id: "session-tree", component: lazyView(() => import("./TreeSheet").then(m => m.TreeSheet)) });
 sheets.register({ id: "session-advisor", component: lazyView(() => import("./AdvisorSheet").then(m => m.AdvisorSheet)) });
 
-// Before omp resumes a very large saved chat, the user chooses to resume it, start a new chat or cancel. The warning
-// loads from its own chunk on the first question or in idle time.
-const largeResume = () => import("./largeResume");
-setResumeGuard(async request => (await largeResume()).askLargeResume(request));
-globals.register({ id: "session-large-resume", component: lazyView(() => largeResume().then(m => m.LargeResumeHost)) });
+// Before omp resumes a very large saved chat, the user chooses to resume it, start a new chat or cancel. The questions
+// load with the app; the dialog loads from its own chunk on the first question or in idle time (`./largeResume`).
+setResumeGuard(askLargeResume);
+globals.register({ id: "session-large-resume", component: LargeResumeHost });

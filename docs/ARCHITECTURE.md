@@ -993,14 +993,23 @@ show in a boundary keyed by chat and pane, so a pane that does not load shows th
 panel header still switches and closes panes. `SheetHost` (`shell/SheetHost.tsx`) wraps every sheet opened
 through `openSheet` in a boundary that shows the message as a small dialog with Close (`LoadFailedDialog`).
 That dialog takes part in sheet presence, so it closes and returns focus at once even when the failed sheet
-had claimed presence before a nested part of it failed. The pinned helper strip's transcript dialog
-(`features/panes/HelperStrip.tsx`) passes the same dialog as its `lazyView` failure state. Try again loads
-each failed namespace through the app's own loader, adds it with `addResourceBundle`, and renders the
-surface again; `lazyView` tries a failed chunk again on that render. Other errors pass through the boundary.
-Lazy views without a failure state keep the earlier behavior: their load errors reach the React root. They
-include the sidebar's Change icon and Rename chat dialogs, the large saved chat prompt, the terminal sheet,
-transcript node views, the native question and plan cards, the side questions drawer, the setup wizard and
-the project overview.
+had claimed presence before a nested part of it failed (`DialogLoadFailed`). The sidebar's Change icon and Rename
+chat dialogs and the omp update dialog (also shown inline by setup) pass `DialogLoadFailed` as their `lazyView`
+failure state, and the pinned helper strip's transcript dialog passes `LoadFailedDialog`. The terminal sheet's omp
+screen and xterm view, the setup wizard (on its ink cover, in chrome colors) and the project overview show the
+inline state in their own frames. The side questions drawer follows its availability and keeps omp's side question
+readable above a compact notice; its put-away needs the failed chunk, so "Show omp terminal" hands the question to
+omp's own screen and releases the drawer's explicit request, leaving the drawer open only while omp presents the
+question. Transcript node views and the inline terminals of setup, sign-in and updates show a compact
+`LoadFailedNotice`, and the native question and plan cards keep the document readable above that notice. Parts with
+nothing of their own to show use `LoadFailedSilently`: the live preview tracker (live previews do not start) and a
+tool card's Watch action (the card works without it). The large saved chat questions and their host load with the
+app (`features/session-tools/largeResume.tsx`); only the dialog loads from its own chunk, and if it does not load,
+the failure dialog's Close answers no, so the chat never waits on a question it cannot show. Try again loads each
+failed namespace through the app's own loader, adds it
+with `addResourceBundle`, and renders the surface again; `lazyView` tries a failed chunk again on that render. Other
+errors pass through the boundary. `App` wraps the window in a last `LoadBoundary` that fills it with the failure
+state, so a future lazy view without a failure state cannot blank the window.
 Registry consumers without an explicit namespace default to the already loaded `shell` namespace.
 
 The FLIP build guard checks the initial renderer entry and its static import closure for any

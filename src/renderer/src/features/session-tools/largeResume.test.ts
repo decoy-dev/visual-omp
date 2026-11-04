@@ -106,7 +106,11 @@ describe("large-chat warning dialog", () => {
 	/** Ask and render the dialog; the answer comes back wrapped, so awaiting the render never awaits the answer. */
 	const open = async (): Promise<{ answered: Promise<boolean> }> => {
 		const answered = askLargeResume(request("a"));
-		await act(async () => root.render(createElement(LargeResumeHost)));
+		await act(async () => {
+			root.render(createElement(LargeResumeHost));
+			// The dialog loads from its own chunk; await the same module.
+			await import("./LargeResumeDialog");
+		});
 		return { answered };
 	};
 

@@ -981,11 +981,15 @@ Command labels, navigation titles and loading frames have their translations ava
 Settings sections, context-tool editors and project detail screens preload their text in idle time.
 If opened sooner, pages and Settings sections show their existing skeletons while loading. Project
 dialogs have no loading frame and appear once their code and translations are ready. Successful loads
-use translated text on the first committed render. If a Settings section, page, side panel pane, sheet or
-the helper transcript dialog cannot load its code or text, it shows "Couldn't load this part of visual-omp"
-and "Try again, or restart visual-omp if it keeps happening." with [Try again]: in place of the section's or
-pane's content, inside the page frame with its back link, or as a small dialog with [Close] for a sheet or
-the transcript dialog. The surrounding shell remains usable. Page
+use translated text on the first committed render. Anything that cannot load its code or text shows "Couldn't
+load this part of visual-omp" with [Try again], and "Try again, or restart visual-omp if it keeps happening." where
+there is room: in place of a Settings section's, pane's or screen's content, inside a page frame with its back
+link, as a small dialog with [Close] for a dialog (Close on the large-chat warning answers no), or as a compact
+error notice in a transcript entry, a chat card or the side questions drawer (both below their readable text), or
+a setup terminal. The drawer also offers [Show omp terminal], where omp puts the side question away. Parts with
+nothing of their own to show, such as the live preview tracker or a tool card's Watch action, stay hidden. These
+states keep the surrounding shell usable. A part that has no failure state of its own fills the window with the
+same message and [Try again] as a last resort, which replaces the shell until it loads. Page
 titles and shared actions continue to use their eager namespace, and deferred namespaces cannot redefine
 those same keys.
 

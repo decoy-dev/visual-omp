@@ -28,7 +28,7 @@ import { type CSSProperties, createContext, type MouseEvent, type ReactNode, use
 import { DEFAULT_SIDEBAR_SORT, type SidebarSort } from "@shared/ipc";
 import { useTranslation } from "react-i18next";
 import { getCommand } from "../registry/commands";
-import { lazyView } from "../registry/lazy";
+import { DialogLoadFailed, lazyView } from "../registry/lazy";
 import { type AppState, closeChat, controllerFor, SIDEBAR_ID, useApp } from "../state/app";
 import { openHelp, openProjectSettings, openSettings, openUsage } from "../state/navigation";
 import {
@@ -78,8 +78,9 @@ import { TrashChatDialog } from "./trash";
 import { SessionTitle, toast } from "../ui";
 
 // Title-editing dialogs and their helpers load on demand or during idle preloading, keeping them out of the entry chunk.
-const ChangeChatIconDialog = lazyView(() => import("./ChangeChatIconDialog").then(module => module.ChangeChatIconDialog));
-const RenameChatDialog = lazyView(() => import("./RenameChatDialog").then(module => module.RenameChatDialog));
+// If one does not load, the failure dialog shows instead, and Close dismisses it.
+const ChangeChatIconDialog = lazyView(() => import("./ChangeChatIconDialog").then(module => module.ChangeChatIconDialog), null, DialogLoadFailed);
+const RenameChatDialog = lazyView(() => import("./RenameChatDialog").then(module => module.RenameChatDialog), null, DialogLoadFailed);
 
 const MAC = window.vomp.platform === "darwin";
 /** Display prefix for ⌘/Ctrl shortcuts. */

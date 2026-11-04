@@ -13,7 +13,7 @@ import type { AppDownload, AppInstallInfo, AppUpdateStatus, OmpUpdateRun, OmpUpd
 import { compareSemver } from "@shared/semver";
 import { i18n } from "../../i18n";
 import { registerCommand } from "../../registry/commands";
-import { lazyView } from "../../registry/lazy";
+import { DialogLoadFailed, lazyView } from "../../registry/lazy";
 import { sheets } from "../../registry/slots";
 import { allControllers, controllerFor, useApp } from "../../state/app";
 import { openSettings } from "../../state/navigation";
@@ -25,8 +25,8 @@ import { CommandRun } from "./terminal";
 import type { ReleaseNotesView } from "./ReleaseNotesViewer";
 
 const updateSheets = () => import("./UpdateSheets");
-/** The omp update sheet, also opened from the setup screen. */
-export const OmpUpdateSheet = lazyView(() => updateSheets().then(module => module.OmpUpdateSheet));
+/** The omp update sheet, also opened from the setup screen; there, outside the sheet host, its failure dialog stands in too. */
+export const OmpUpdateSheet = lazyView(() => updateSheets().then(module => module.OmpUpdateSheet), null, DialogLoadFailed);
 
 export const OMP_UPDATE_SHEET = "onboarding.ompUpdate";
 export const APP_UPDATE_SHEET = "onboarding.appUpdate";

@@ -1,6 +1,7 @@
 import { IconContext, type IconProps } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { needsSetup, useSetup } from "./features/onboarding/setup";
+import { LoadBoundary, LoadFailed, type LoadFailureProps } from "./registry/lazy";
 import { globals, screens } from "./registry/slots";
 import { Shell } from "./shell/Shell";
 import { MAIN_ID, useApp } from "./state/app";
@@ -8,6 +9,19 @@ import { MotionProvider, Toaster, TooltipProvider } from "./ui";
 
 /** Phosphor defaults: size follows the text (callers size with `size-*` classes), regular weight, inherited color. */
 const iconDefaults: IconProps = { size: "1em", weight: "regular", color: "currentColor", mirrored: false };
+
+/**
+ * The last resort for a part that does not load and has no failure state of its own: the window shows the failure
+ * state with Try again instead of going blank. Every lazy view today has its own failure state or sits in a host with
+ * one (the sheet host, the side panel); this covers a future view that has neither.
+ */
+function AppLoadFailed({ retry }: LoadFailureProps): ReactNode {
+	return (
+		<main className="flex h-screen w-full items-center justify-center bg-bg text-fg">
+			<LoadFailed retry={retry} />
+		</main>
+	);
+}
 
 /** Applies theme, text size and motion preferences to <html> so tokens and rem sizes follow them. */
 function usePreferenceAttributes(): void {
@@ -66,11 +80,13 @@ export function App(): ReactNode {
 		<IconContext.Provider value={iconDefaults}>
 			<MotionProvider>
 				<TooltipProvider>
-					{(!showSetup || handoff) && <div className="contents" data-setup-shell inert={handoff}><Shell /></div>}
-					{(showSetup || handoff) && setup && <div className={handoff ? "fixed inset-0 z-50" : undefined}><setup.component projectPath={activeProject} /></div>}
-					{globalList.map(global => (
-						<global.component key={global.id} />
-					))}
+					<LoadBoundary fallback={retry => <AppLoadFailed retry={retry} />}>
+						{(!showSetup || handoff) && <div className="contents" data-setup-shell inert={handoff}><Shell /></div>}
+						{(showSetup || handoff) && setup && <div className={handoff ? "fixed inset-0 z-50" : undefined}><setup.component projectPath={activeProject} /></div>}
+						{globalList.map(global => (
+							<global.component key={global.id} />
+						))}
+					</LoadBoundary>
 					<Toaster />
 				</TooltipProvider>
 			</MotionProvider>

@@ -1,12 +1,12 @@
 import { createContext, useContext, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { projectBtw, type BtwProjection } from "@shared/tsp/btw";
-import { lazyView } from "../../registry/lazy";
+import { LoadFailedNotice, type LoadFailureProps, lazyView } from "../../registry/lazy";
 import { useSessionView } from "../../shell/hooks";
 import { useApp } from "../../state/app";
 import { type PresentationTarget, usePresentationClaim } from "../../state/tsp/presentation-claims";
 import { useTsp } from "../../state/tsp/useTsp";
-import { Spinner } from "../../ui";
+import { Button, Spinner } from "../../ui";
 import type { SessionController } from "../../state/session";
 
 interface BtwPresentation {
@@ -22,7 +22,7 @@ interface BtwPresentation {
 }
 export const BtwPresentation = createContext<BtwPresentation | null>(null);
 /** Keep the document presentation eager while interactive history and composer controls load. */
-export const BtwDrawerContent = lazyView(() => import("./BtwPaneContent").then(module => module.BtwDrawerHost), BtwDrawerLoading);
+export const BtwDrawerContent = lazyView(() => import("./BtwPaneContent").then(module => module.BtwDrawerHost), BtwDrawerLoading, BtwDrawerFailed);
 
 export function useBtwPresentation(session: SessionController | null) {
 	const view = useSessionView(session);
@@ -56,13 +56,39 @@ function BtwDrawerLoading() {
 	return <div data-btw-drawer className="absolute inset-x-3 bottom-3 z-20 flex h-[min(75%,42rem)] flex-col overflow-hidden rounded-lg border border-border bg-panel"><BtwPaneLoading /></div>;
 }
 
-/** The eager drawer owns the claim while a pending subscription presents the exact document text. */
-export function BtwPaneLoading() {
+/**
+ * If the drawer's controls and history do not load, the drawer still follows its availability and keeps omp's side
+ * question readable above a compact Try again notice. Its put-away needs that chunk, so "Show omp terminal" hands the
+ * question to omp's own screen, where omp puts it away: it releases the drawer's explicit request (which the loaded
+ * drawer clears when the document closes), so the drawer stays only while omp presents the question.
+ */
+function BtwDrawerFailed({ retry }: LoadFailureProps) {
+	const { t } = useTranslation("shell");
+	const content = useContext(BtwPresentation);
+	if (!content?.presentation.available) return null;
+	const handOff = () => {
+		useApp.setState(state => ({ btwDrawers: { ...state.btwDrawers, [content.tabId]: false } }));
+		useApp.getState().openTerminal(content.tabId);
+	};
+	return <div data-btw-drawer className="absolute inset-x-3 bottom-3 z-20 flex h-[min(75%,42rem)] flex-col overflow-hidden rounded-lg border border-border bg-panel">
+		<BtwPaneLoading failed />
+		<div className="flex shrink-0 flex-col items-start gap-2 border-t border-border p-3">
+			<LoadFailedNotice retry={retry} className="w-full" />
+			<Button size="sm" variant="secondary" onClick={handOff}>{t("status.openTerminal")}</Button>
+		</div>
+	</div>;
+}
+
+/**
+ * The eager drawer owns the claim while a pending subscription presents the exact document text. `failed`: the
+ * drawer's chunk did not load, so the text is no longer pending and nothing shows without a document.
+ */
+export function BtwPaneLoading({ failed = false }: { failed?: boolean }) {
 	const { t } = useTranslation("panes");
 	const content = useContext(BtwPresentation);
 	const projection = content?.projection;
-	if (!projection) return <p role="status" className="flex items-center gap-2 p-4 text-fg-muted"><Spinner />{t("btw.loading")}</p>;
-	return <section aria-label={t("names.btw")} aria-busy="true" className="min-h-0 flex-1 overflow-y-auto px-4 py-4 text-md">
+	if (!projection) return failed ? null : <p role="status" className="flex items-center gap-2 p-4 text-fg-muted"><Spinner />{t("btw.loading")}</p>;
+	return <section aria-label={t("names.btw")} aria-busy={failed ? undefined : "true"} className="min-h-0 flex-1 overflow-y-auto px-4 py-4 text-md">
 		{projection.turns.length ? <div className="flex flex-col gap-6">{projection.turns.map((turn, index) => <article key={index} aria-label={t(index === 0 ? "btw.question" : "btw.followUp")}>
 			<p className="mb-1 whitespace-pre-wrap font-medium">{turn.question}</p>
 			<p role="status" className="mb-3 text-xs text-fg-muted">{t(`btw.status.${turn.status}`)}</p>

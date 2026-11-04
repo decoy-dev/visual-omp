@@ -6,7 +6,7 @@ import { Compass, DownloadSimple, GearSix, Question } from "@phosphor-icons/reac
 import { createElement } from "react";
 import { registerCommand } from "../../registry/commands";
 import { setTabCloseGuard } from "../../registry/guards";
-import { lazyPage, lazyView } from "../../registry/lazy";
+import { LoadFailed, type LoadFailureProps, lazyPage, lazyView } from "../../registry/lazy";
 import { globals, pages, screens, sheets } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import { openHelp } from "../../state/navigation";
@@ -18,8 +18,11 @@ import { installUpdateWatchers, OMP_UPDATE_SHEET, OmpUpdateSheet } from "./updat
 
 /** Setup opens on its ink cover; the same color stands in while the wizard's chunk loads on first run. */
 const setupLoading = () => createElement("main", { "aria-busy": true, className: "h-screen w-full bg-[var(--chrome-bg)]" });
+/** If the wizard does not load, its cover shows the failure state with Try again, in chrome colors. */
+const setupFailed = ({ retry }: LoadFailureProps) =>
+	createElement("main", { "data-region": "chrome", className: "flex h-screen w-full items-center justify-center bg-[var(--chrome-bg)] text-fg" }, createElement(LoadFailed, { retry }));
 
-screens.register({ id: "setup", component: lazyView(() => import("./SetupWizard").then(module => module.SetupWizard), setupLoading) });
+screens.register({ id: "setup", component: lazyView(() => import("./SetupWizard").then(module => module.SetupWizard), setupLoading, setupFailed) });
 pages.register({ id: "help", component: lazyPage(() => import("./HelpPage").then(module => module.HelpPage), { title: "onboarding:help.title", width: "form" }) });
 sheets.register({ id: OMP_UPDATE_SHEET, component: OmpUpdateSheet });
 globals.register({ id: "onboarding.tour", component: TourHost });

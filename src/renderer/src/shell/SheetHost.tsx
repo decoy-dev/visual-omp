@@ -1,7 +1,7 @@
 /** The registry sheet host: the open sheet, its exit, and its failure state when it does not load. */
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import { LoadBoundary, LoadFailedDialog, type LoadFailureProps } from "../registry/lazy";
-import { type SheetPresence, SheetPresenceContext, useSheetPresence } from "../registry/sheetPresence";
+import { DialogLoadFailed, LoadBoundary } from "../registry/lazy";
+import { type SheetPresence, SheetPresenceContext } from "../registry/sheetPresence";
 import { sheets } from "../registry/slots";
 import { useApp } from "../state/app";
 
@@ -11,7 +11,7 @@ const SHEET_EXIT_MAX_MS = 1000;
 /**
  * Renders the open sheet. A closed sheet that uses `useSheetPresence` stays mounted with `open` false until it
  * reports its exit finished (see registry/sheetPresence.ts); any other sheet unmounts as soon as it closes.
- * A sheet whose chunk or deferred text does not load shows `SheetLoadFailed` instead.
+ * A sheet whose chunk or deferred text does not load shows `DialogLoadFailed` (registry/lazy.tsx) instead.
  */
 export function SheetHost(): ReactNode {
 	const sheet = useApp(state => state.sheet);
@@ -64,20 +64,10 @@ export function SheetHost(): ReactNode {
 	// Sheet props are defined by each feature; the opener passes the matching shape.
 	return (
 		<SheetPresenceContext.Provider value={presence}>
-			<LoadBoundary key={current.id} fallback={retry => <SheetLoadFailed retry={retry} close={close} />}>
+			<LoadBoundary key={current.id} fallback={retry => <DialogLoadFailed retry={retry} close={close} />}>
 				<Component props={current.props as never} close={close} />
 			</LoadBoundary>
 		</SheetPresenceContext.Provider>
 	);
-}
-
-/**
- * A sheet that did not load: a small dialog with Try again and Close. It takes part in sheet presence like any
- * sheet, so closing it plays its exit and returns focus to the opener, even when the failed sheet had claimed
- * presence before a nested part of it failed.
- */
-function SheetLoadFailed({ retry, close }: LoadFailureProps & { close(): void }): ReactNode {
-	const presence = useSheetPresence();
-	return <LoadFailedDialog retry={retry} onClose={close} open={presence.open} onExited={presence.exited} />;
 }
 

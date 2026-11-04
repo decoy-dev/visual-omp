@@ -12,9 +12,10 @@ import { Component, type ComponentType, createElement, type ReactNode, Suspense,
 import { useTranslation } from "react-i18next";
 import { retryFailedNamespaces } from "../i18n";
 import { usePageBack } from "../state/navigation";
-import { Button, Dialog, DialogContent, EmptyState } from "../ui";
+import { Button, Dialog, DialogContent, EmptyState, Notice } from "../ui";
 import { PageFrame, PageSkeleton, type PageWidth } from "../ui/Page";
 import { preloadWhenIdle } from "./idle";
+import { useSheetPresence } from "./sheetPresence";
 import { LoadError } from "./loadError";
 import type { PageProps, SettingsSectionProps } from "./slots";
 
@@ -52,10 +53,25 @@ export class LoadBoundary extends Component<{ fallback(retry: () => void): React
 	}
 }
 
-/** The failure state of a Settings section, a page or a side panel pane, in place of its content. */
+/** The failure state of a section, a page, a side panel pane or another full surface, in place of its content. */
 export function LoadFailed({ retry }: LoadFailureProps): ReactNode {
 	const { t } = useTranslation("shell");
 	return <EmptyState icon={<Warning />} title={t("load.failedTitle")} body={t("load.failedBody")} actions={<Button onClick={retry}>{t("load.retry")}</Button>} />;
+}
+
+/** The compact failure state for a part of a row or card, such as a transcript entry or a chat card. */
+export function LoadFailedNotice({ retry, className }: LoadFailureProps & { className?: string }): ReactNode {
+	const { t } = useTranslation("shell");
+	return (
+		<Notice tone="err" className={className} actions={<Button size="sm" onClick={retry}>{t("load.retry")}</Button>}>
+			{t("load.failedTitle")}
+		</Notice>
+	);
+}
+
+/** For a part with nothing to show on its own (a background tracker, an optional action): its failure keeps the window. */
+export function LoadFailedSilently(): ReactNode {
+	return null;
 }
 
 /**
@@ -84,6 +100,16 @@ export function LoadFailedDialog({ retry, onClose, open = true, onExited }: Load
 			/>
 		</Dialog>
 	);
+}
+
+/**
+ * A dialog with a `close` prop that did not load: a registry sheet, or a dialog its opener unmounts on `close`. Inside
+ * the sheet host the failure dialog follows sheet presence, so closing it plays its exit and returns focus to the
+ * opener even when the failed sheet had claimed presence before a nested part of it failed.
+ */
+export function DialogLoadFailed({ retry, close }: LoadFailureProps & { close(): void }): ReactNode {
+	const presence = useSheetPresence();
+	return <LoadFailedDialog retry={retry} onClose={close} open={presence.open} onExited={presence.exited} />;
 }
 
 /**

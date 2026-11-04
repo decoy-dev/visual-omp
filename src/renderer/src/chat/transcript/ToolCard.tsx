@@ -28,9 +28,10 @@ import { isMcpResult, mcpProgressOf, McpProgressLine } from "../../tool-render/t
 import "../../tool-render/tool-render.css";
 import { cn, Expand, PulseDot, Rise } from "../../ui";
 import { TranscriptTime, type TranscriptTimestamp } from "./TranscriptTime";
-import { lazyView } from "../../registry/lazy";
+import { LoadFailedSilently, lazyView } from "../../registry/lazy";
 
-const WatchAction = lazyView(() => import("../../features/live-preview/WatchAction").then(module => module.WatchAction));
+// An optional action over the card row: if it does not load, the card keeps working without it.
+const WatchAction = lazyView(() => import("../../features/live-preview/WatchAction").then(module => module.WatchAction), null, LoadFailedSilently);
 
 const ICONS: Record<string, Icon> = {
 	edit: PencilSimpleLine,

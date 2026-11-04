@@ -7,7 +7,7 @@ import { DownloadSimple, FileText, FolderOpen, FolderPlus, Folders, GitBranch, S
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { registerCommand } from "@/registry/commands";
-import { lazyPage, lazyView } from "@/registry/lazy";
+import { LoadFailed, type LoadFailureProps, lazyPage, lazyView } from "@/registry/lazy";
 import { chatSlots, pages, type PaneProps, screens, sheets, statusItems } from "@/registry/slots";
 import { useSessionView } from "@/shell/hooks";
 import { useApp } from "@/state/app";
@@ -29,7 +29,16 @@ function OverviewLoading(): ReactNode {
 	);
 }
 
-screens.register({ id: "project", component: lazyView(() => import("./ProjectOverview").then(m => m.ProjectOverview), OverviewLoading) });
+/** The same column with the failure state, if the overview does not load. */
+function OverviewFailed({ retry }: LoadFailureProps): ReactNode {
+	return (
+		<div className="min-h-0 flex-1 overflow-y-auto">
+			<div className="mx-auto w-full max-w-230 px-page pb-16 pt-page"><LoadFailed retry={retry} /></div>
+		</div>
+	);
+}
+
+screens.register({ id: "project", component: lazyView(() => import("./ProjectOverview").then(m => m.ProjectOverview), OverviewLoading, OverviewFailed) });
 // Pages and dialogs load from their own chunk (`registry/lazy`); a dialog opens as soon as it has loaded.
 sheets.register({ id: "project-new", component: lazyView(() => import("./NewProjectWizard").then(m => m.NewProjectWizard)) });
 pages.register({

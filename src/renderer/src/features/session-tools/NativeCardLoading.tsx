@@ -2,6 +2,7 @@
 import { planReview } from "@shared/tsp/plan-review";
 import { createContext, type PropsWithChildren, useContext } from "react";
 import { useTranslation } from "react-i18next";
+import { LoadFailedNotice, type LoadFailureProps } from "../../registry/lazy";
 import type { ChatSlotProps } from "../../registry/slots";
 import { useSessionView } from "../../shell/hooks";
 import { useApp } from "../../state/app";
@@ -52,15 +53,29 @@ export function NativeCardPresentation({ session, kind, children }: PropsWithChi
 export function NativeCardLoading() {
 	const content = useContext(Content);
 	if (!content) return null;
-	return <section className="my-3" aria-label={content.label} aria-busy="true">
-		<Card>
-			<h3 className="selectable text-base font-semibold text-fg">{content.title}</h3>
-			<div className="selectable mt-3 max-h-96 overflow-y-auto whitespace-pre-wrap break-words text-sm text-fg-muted">
-				{content.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
-				{content.options.length > 0 && <ul className="mt-3 space-y-1">{content.options.map(option => <li key={option.id}>
-					{option.label}{option.description && <p>{option.description}</p>}
-				</li>)}</ul>}
-			</div>
-		</Card>
+	return <section className="my-3" aria-label={content.label} aria-busy="true"><ReadableCard content={content} /></section>;
+}
+
+/**
+ * If the interactive card does not load, the document stays readable and a compact notice offers Try again. Without
+ * a document to show (a classic chat), only the notice shows.
+ */
+export function NativeCardFailed({ retry }: LoadFailureProps) {
+	const content = useContext(Content);
+	return <section className="my-3" aria-label={content?.label}>
+		{content && <ReadableCard content={content} />}
+		<LoadFailedNotice retry={retry} className={content ? "mt-2" : undefined} />
 	</section>;
+}
+
+function ReadableCard({ content }: { content: LoadingContent }) {
+	return <Card>
+		<h3 className="selectable text-base font-semibold text-fg">{content.title}</h3>
+		<div className="selectable mt-3 max-h-96 overflow-y-auto whitespace-pre-wrap break-words text-sm text-fg-muted">
+			{content.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
+			{content.options.length > 0 && <ul className="mt-3 space-y-1">{content.options.map(option => <li key={option.id}>
+				{option.label}{option.description && <p>{option.description}</p>}
+			</li>)}</ul>}
+		</div>
+	</Card>;
 }

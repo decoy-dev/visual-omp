@@ -1,12 +1,13 @@
 import type { TspNode } from "@shared/tsp";
 import { useApp } from "../../state/app";
 import { usePresentationClaim } from "../../state/tsp/presentation-claims";
-import { lazyView } from "../../registry/lazy";
+import { LoadFailedNotice, lazyView } from "../../registry/lazy";
 import type { NodeContext } from "../../features/tsp/nodes/context";
 import { RunOutput, RunRow } from "./RunRow";
 import { nativeRunBody, nativeRunOutput, type NativeRun } from "./localRuns";
 
-const NodeView = lazyView(() => import("../../features/tsp/nodes/NodeView").then(module => module.NodeView));
+// If the node views do not load, the transcript row shows a compact failure notice with Try again.
+const NodeView = lazyView(() => import("../../features/tsp/nodes/NodeView").then(module => module.NodeView), null, LoadFailedNotice);
 
 /** Matched nodes are claimed only while their saved row is part of the rendered transcript window. */
 function NativeRunConsumer({ item, visibleEntries, visible }: { item: NativeRun; visibleEntries: ReadonlySet<string>; visible: boolean }) {

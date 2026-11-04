@@ -14,7 +14,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 #### Improved
 
-- visual-omp's main window startup bundle is 22.2% smaller in build measurements, down from 2.04 MB to 1.59 MB. Release notes and several screens and panes now load on demand. Settings stays available at startup, while text for its sections, connected tools and project details loads with those screens or in idle time. Icons retain regular styles and selected additional styles, and saved data checks no longer require the validation library at startup. Pages and panes show loading placeholders; setup shows a blank window, and some dialogs remain hidden until loaded. Settings sections, pages, side panel panes and most dialogs that cannot load their code or text now show a message with Try again instead of leaving the window blank.
+- visual-omp's main window startup bundle is 22.2% smaller in build measurements, down from 2.04 MB to 1.59 MB. Release notes and several screens and panes now load on demand. Settings stays available at startup, while text for its sections, connected tools and project details loads with those screens or in idle time. Icons retain regular styles and selected additional styles, and saved data checks no longer require the validation library at startup. Pages and panes show loading placeholders; setup shows a blank window, and some dialogs remain hidden until loaded. A part of the window that cannot load its code or text now shows a message with Try again, or stays hidden when it has nothing of its own to show, instead of leaving the window blank.
 
 #### Fixed
 
