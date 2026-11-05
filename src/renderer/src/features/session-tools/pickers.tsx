@@ -36,10 +36,11 @@ import type { ChatSlotProps } from "../../registry/slots";
 import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { useTsp } from "../../state/tsp/useTsp";
-import { semanticThinking } from "./modelTsp";
+import { semanticThinkingEffort } from "./modelTsp";
 import { autoAcknowledged, setApprovalMode, useApprovalMode } from "./approval";
 import { setThinking, switchModel, thinkingChoices, useChatModels } from "./model";
-import { configuredThinking } from "./thinking";
+import { observeSessionThinking, thinkingState, type ThinkingState } from "./thinking";
+import { ThinkingLabel, thinkingLabel } from "./ThinkingLabel";
 import { containsCurrent, modelRows, modelTree, searchModelTree, type ModelBranch, type ModelNode } from "./modelTree";
 import { type StatusLine, THINKING_LEVELS, type ThinkingLevel } from "./screen";
 import { useOmpScreen, useSessionView } from "./status";
@@ -501,16 +502,22 @@ export function ModelButton({ session }: ChatSlotProps) {
 
 // ─── Thinking ──────────────────────────────────────────────────────────────
 
-/** Configured thinking level: Auto stays Auto (see `configuredThinking`), else the painted or effective level. */
-export function useThinking(session: SessionController): ThinkingLevel | null {
+/** Keep the chosen selector separate from the effort omp displays or records for Auto. */
+export function useThinking(session: SessionController): ThinkingState {
 	const status = useOmpScreen(session).status;
 	const view = useSessionView(session);
 	const tsp = useTsp(view.host?.transport === "tsp" ? view.host.hostId : null).snapshot;
 	const entries = useDisplayedEntries(view);
-	const configured = configuredThinking(view.guest?.thinkingSelector, entries, status?.thinking ?? null);
+	const sampled = view.host?.transport === "tsp" ? semanticThinkingEffort(tsp) : status?.thinking ?? null;
+	const event = view.guest?.thinkingEvent ?? null;
+	const current = observeSessionThinking(session, view.host, sampled, event);
+	// A remounted reader can briefly lack its display source. Retain this session's last
+	// observed value, including Pending, until that shared source supplies another one.
+	const displayed = sampled ?? current.lastDisplayed;
 	const effective = view.guest?.state?.thinkingLevel;
-	if (view.host?.transport === "tsp") return semanticThinking(tsp, view.guest?.thinkingSelector, entries) ?? configured ?? THINKING_LEVELS.find(level => level === effective) ?? null;
-	return configured ?? THINKING_LEVELS.find(level => level === effective) ?? null;
+	// Ordinary live state has no marker distinguishing a provisional Auto default.
+	const selector = view.guest?.thinkingSelector ?? (entries.some(entry => entry.type === "thinking_level_change") ? null : displayed ?? THINKING_LEVELS.find(level => level === effective) ?? null);
+	return thinkingState(selector, entries, displayed, current.stale ? null : event);
 }
 
 function useCurrentModelInfo(session: SessionController): ModelInfo | undefined {
@@ -521,7 +528,8 @@ function useCurrentModelInfo(session: SessionController): ModelInfo | undefined 
 
 export function ThinkingButton({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
-	const level = useThinking(session);
+	const thinking = useThinking(session);
+	const level = thinking.configured;
 	const info = useCurrentModelInfo(session);
 	const choices = thinkingChoices(info);
 	const [open, setOpen] = useState(false);
@@ -552,14 +560,14 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 		setBusy(null);
 		if (ok) setOpen(false);
 	};
-	const label = t("thinking.aria", { level: level ? t(`thinking.levels.${level}.label`) : t("common.unknown") });
+	const label = t("thinking.aria", { level: thinkingLabel(thinking, t) || t("common.unknown") });
 	return (
 		<Menu open={open} onOpenChange={setOpen}>
 			<Tooltip content={unsupported ? t("thinking.unsupported") : label} shortcut="⇧⇥">
 				<MenuTrigger asChild disabled={disabled}>
-					<button type="button" aria-label={label} aria-busy={busy !== null} className={cn(rowPicker, "h-7 shrink-0")}>
+					<button type="button" aria-label={label} aria-busy={busy !== null} className={cn(rowPicker, "min-h-7 max-w-full shrink-0 py-1 text-left leading-tight")}>
 						{busy ? <Spinner size={12} tone="current" /> : <Brain className="size-3.5 shrink-0" aria-hidden />}
-						<span>{level ? t(`thinking.levels.${level}.label`) : t("thinking.title")}</span>
+						<ThinkingLabel thinking={thinking} />
 						<CaretDown className="size-3 shrink-0" aria-hidden />
 					</button>
 				</MenuTrigger>
@@ -579,7 +587,7 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 								void pick(choice);
 							}}
 						>
-							{t(`thinking.levels.${choice}.label`)}
+							{choice === "auto" && level === "auto" ? <ThinkingLabel thinking={thinking} /> : t(`thinking.levels.${choice}.label`)}
 						</MenuRadioItem>
 					))}
 				</MenuRadioGroup>

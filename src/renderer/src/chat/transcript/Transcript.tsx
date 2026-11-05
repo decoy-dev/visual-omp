@@ -33,6 +33,8 @@ import { useHomeDir } from "../../features/projects/folders/homeDir";
 import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
 import { type CommandResultRecord, dismissCommandResult, placeResults, roomKey, useCommandResults } from "../../features/session-tools/results";
+import { thinkingState } from "../../features/session-tools/thinking";
+import { thinkingLabel } from "../../features/session-tools/ThinkingLabel";
 import { placeTspNotices, type TspNotice } from "../../state/tsp/notices";
 import { useTsp } from "../../state/tsp/useTsp";
 import { liveGuest, type SessionController, type SessionView } from "../../state/session";
@@ -667,7 +669,7 @@ const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results,
 		case "model_change":
 			return fallback ? <ModelFallbackNotice fallback={fallback} timestamp={entry.timestamp} /> : modelSetupVisible(entry, mode === "verbose", afterFirstPrompt) ? <Notice timestamp={entry.timestamp}>{t("modelChanged", { model: entry.model })}</Notice> : null;
 		case "thinking_level_change":
-			return modelSetupVisible(entry, mode === "verbose", afterFirstPrompt) ? <Notice timestamp={entry.timestamp}>{t("thinkingChanged", { level: entry.thinkingLevel ?? "off" })}</Notice> : null;
+			return modelSetupVisible(entry, mode === "verbose", afterFirstPrompt) ? <Notice timestamp={entry.timestamp}>{t("thinkingChanged", { level: entry.configured === "auto" ? thinkingLabel(thinkingState(null, [entry], null), t) : entry.thinkingLevel ?? "off" })}</Notice> : null;
 		default:
 			return null;
 	}

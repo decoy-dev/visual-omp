@@ -13,7 +13,10 @@ import { switchModel, setThinking } from "./model";
 import { semanticThinking } from "./modelTsp";
 import { ModelList, ThinkingButton } from "./pickers";
 import { TooltipProvider } from "../../ui/Tooltip";
-import "../../i18n";
+import { i18n } from "../../i18n";
+import settingsMessages from "../../i18n/en/settings.json";
+import { ThinkingStatusItem } from "../../shell/statusbar/ChatStatusItems";
+import type { ThinkingEvent } from "./thinking";
 
 const bridge = vi.hoisted(() => {
 	const state = { invoke: vi.fn(), listeners: new Set<(patch: TspHostPatch) => void>(), toast: vi.fn() };
@@ -41,8 +44,10 @@ class Replay {
 	message = 0;
 	revision = 0;
 	model = large;
+	transport: "tsp" | "classic" = "tsp";
 	requests: CollabUiRequest[] = [];
 	thinkingSelector: string | null = null;
+	thinkingEvent: ThinkingEvent | null = null;
 	entries: SessionEntry[] = [];
 	generation = 1;
 	autoConfirm = true;
@@ -52,7 +57,7 @@ class Replay {
 	beforeEvent: ((event: TspRendererEvent) => void) | null = null;
 	view = this.readView();
 	readView() {
-		return { mode: "live", readOnly: false, host: { hostId: "host", generation: this.generation, sessionId: "session", transport: "tsp" }, guest: { phase: "live", thinkingSelector: this.thinkingSelector, entries: this.entries, pendingUiRequests: this.requests, uiRequest: this.requests[0] ?? null, state: { model: this.model, contextUsage: { tokens: 0 } } } };
+		return { mode: "live", readOnly: false, host: { hostId: "host", generation: this.generation, sessionId: "session", transport: this.transport }, guest: { phase: "live", thinkingSelector: this.thinkingSelector, thinkingEvent: this.thinkingEvent, entries: this.entries, pendingUiRequests: this.requests, uiRequest: this.requests[0] ?? null, state: { model: this.model, contextUsage: { tokens: 0 } } } };
 	}
 	constructor(name: string) {
 		this.recording = loadFixtureRecording(name);
@@ -65,6 +70,7 @@ class Replay {
 				this.consume(event);
 			}
 			if (channel === "config:models") return [large, small];
+			if (channel === "host:screen" && this.transport === "classic") return [" π ▶ ⬢ Fixture · ◔ low ▶─0%─", "╰─ "];
 			if (channel === "host:screen" || channel === "host:keys") throw new Error("Painted-screen input is forbidden in TSP model controls");
 			return null;
 		});
@@ -378,13 +384,14 @@ describe("TSP composer model controls", () => {
 			const choice = [...document.querySelectorAll<HTMLElement>('[role=\"menuitemradio\"]')].find(row => row.textContent?.includes("Auto"))!;
 			await act(async () => { choice.click(); });
 			expect(replay.events).toHaveLength(1);
-			expect(element.querySelector('button[aria-label=\"Thinking level: Auto\"]')).not.toBeNull();
+			expect(element.querySelector('button[aria-label=\"Thinking level: Auto · Pending\"]')).not.toBeNull();
 			expect(bridge.toast).not.toHaveBeenCalled();
 		} finally { await act(async () => root.unmount()); element.remove(); }
 	});
 
-	it.each(["event", "entry"] as const)("labels resolved Auto from its %s rather than the semantic Low effort", async source => {
+	it.each([["tsp", "event"], ["tsp", "entry"], ["classic", "event"], ["classic", "entry"]] as const)("labels %s resolved Auto from its %s alongside Low", async (presentation, source) => {
 		const replay = new Replay("thinking-cycle");
+		replay.transport = presentation;
 		if (source === "event") replay.thinkingSelector = "auto";
 		else replay.entries = [{ type: "thinking_level_change", id: "auto", parentId: null, timestamp: "", thinkingLevel: "low", configured: "auto" } as SessionEntry];
 		replay.mutate = snapshot => {
@@ -397,8 +404,54 @@ describe("TSP composer model controls", () => {
 		const root = createRoot(element);
 		try {
 			await act(async () => root.render(createElement(TooltipProvider, null, createElement(ThinkingButton, { session: replay.session }))));
-			expect(element.querySelector('button[aria-label="Thinking level: Auto"]')).not.toBeNull();
+			const trigger = element.querySelector<HTMLButtonElement>('button[aria-label="Thinking level: Auto · Low"]')!;
+			expect(trigger).not.toBeNull();
+			expect(trigger.textContent).toBe("Auto · Low");
+			await act(async () => { trigger.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true, button: 0, pointerType: "mouse", ctrlKey: false })); });
+			const auto = [...document.querySelectorAll('[role="menuitemradio"]')].find(row => row.textContent?.startsWith("Auto · Low"));
+			expect(auto?.getAttribute("aria-checked")).toBe("true");
+			expect(auto?.textContent).toContain("may choose Low for short messages");
+			expect(auto?.hasAttribute("aria-label")).toBe(false);
+			expect([...document.querySelectorAll('[role="menuitemradio"]')].some(row => row.textContent?.startsWith("Low"))).toBe(true);
 			expect(replay.events).toEqual([]);
+		} finally { await act(async () => root.unmount()); element.remove(); }
+	});
+
+	it("shows a same-model Auto reapplication as pending without cycling or a new collab event", async () => {
+		i18n.addResourceBundle("en", "settings", settingsMessages);
+		const replay = new Replay("thinking-cycle");
+		replay.thinkingSelector = "auto";
+		replay.thinkingEvent = { configured: "auto", thinkingLevel: "high", resolved: "high" };
+		let effort: "high" | "auto" | "low" = "high";
+		replay.mutate = snapshot => {
+			for (const surface of snapshot.surfaces) for (const node of walkNodes(surface.document)) {
+				if (node.k === "effort") node.p = { ...node.p, level: effort };
+			}
+		};
+		replay.publish();
+		const element = document.createElement("div"); document.body.append(element);
+		const root = createRoot(element);
+		try {
+			await act(async () => root.render(createElement(TooltipProvider, null, createElement(ThinkingButton, { session: replay.session }))));
+			expect(element.querySelector('[aria-label="Thinking level: Auto · High"]')).not.toBeNull();
+			await act(async () => { effort = "auto"; replay.publish(); });
+			expect(element.querySelector('[aria-label="Thinking level: Auto · Pending"]')).not.toBeNull();
+			expect(replay.thinkingEvent?.resolved).toBe("high");
+			await expect(setThinking(replay.session, "auto", [])).resolves.toBe(true);
+			expect(replay.events).toEqual([]);
+			await act(async () => root.render(null));
+			await act(async () => root.render(createElement(TooltipProvider, null, createElement("div", null,
+				createElement(ThinkingButton, { key: "remounted", session: replay.session }),
+				createElement(ThinkingStatusItem, { key: "second-consumer", session: replay.session, projectPath: replay.session.projectPath }),
+			))));
+			expect(element.querySelectorAll('[aria-label="Thinking level: Auto · Pending"]')).toHaveLength(2);
+			await act(async () => {
+				replay.thinkingEvent = { configured: "auto", thinkingLevel: "low", resolved: "low" };
+				replay.publish();
+			});
+			expect(element.querySelectorAll('[aria-label="Thinking level: Auto · Low"]')).toHaveLength(2);
+			await act(async () => { effort = "low"; replay.publish(); });
+			expect(element.querySelectorAll('[aria-label="Thinking level: Auto · Low"]')).toHaveLength(2);
 		} finally { await act(async () => root.unmount()); element.remove(); }
 	});
 });

@@ -26,9 +26,15 @@ export function semanticThinking(
 	selector: string | null | undefined,
 	entries: readonly SessionEntry[],
 ): ThinkingLevel | null {
+	const displayed = semanticThinkingEffort(snapshot);
+	if (displayed === null) return null;
+	return configuredThinking(selector, entries, displayed);
+}
+
+/** omp uses `auto` here until its classifier reports an effort. */
+export function semanticThinkingEffort(snapshot: TspHostSnapshot | null): ThinkingLevel | null {
 	const effort = composerNodes(snapshot)?.nodes.find(node => node.k === "effort");
-	if (effort?.k !== "effort") return null;
-	return configuredThinking(selector, entries, THINKING_LEVELS.find(level => level === effort.p?.level) ?? null);
+	return effort?.k === "effort" ? THINKING_LEVELS.find(level => level === effort.p?.level) ?? null : null;
 }
 
 export function refuseApproval(session: SessionController): void {

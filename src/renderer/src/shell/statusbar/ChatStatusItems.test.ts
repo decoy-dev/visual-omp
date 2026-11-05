@@ -7,9 +7,10 @@ import settingsMessages from "../../i18n/en/settings.json";
 import type { PaneProps } from "../../registry/slots";
 import type { SessionController, SessionView } from "../../state/session";
 import { TooltipProvider } from "../../ui";
+import type { ThinkingState } from "../../features/session-tools/thinking";
 import { ContextStatusItem, HelpersStatusItem, ModelStatusItem, QueueStatusItem, ThinkingStatusItem, WorkingStatusItem } from "./ChatStatusItems";
 
-const fake = vi.hoisted(() => ({ thinking: "auto" as string | null, models: [{ provider: "fixture", id: "model", name: "Catalog model" }] }));
+const fake = vi.hoisted(() => ({ thinking: { configured: "auto", resolved: null, provisional: false } as ThinkingState, models: [{ provider: "fixture", id: "model", name: "Catalog model" }] }));
 vi.mock("../../chat/branch", () => ({ useDisplayedEntries: () => [] }));
 vi.mock("../../features/session-tools/model", () => ({ useChatModels: () => ({ models: fake.models }) }));
 vi.mock("../../features/session-tools/pickers", () => ({ useThinking: () => fake.thinking }));
@@ -19,7 +20,7 @@ beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	i18n.addResourceBundle("en", "settings", settingsMessages);
 	view = { mode: "live", readOnly: false, follow: null, queue: [], working: false, workingSince: null, guest: { phase: "live", state: { contextUsage: { percent: 62.6 }, model: { provider: "fixture", id: "model", name: "Wire model" } }, stream: null, agents: [], progress: new Map(), lifecycle: new Map() } } as unknown as SessionView;
-	fake.thinking = "auto";
+	fake.thinking = { configured: "auto", resolved: null, provisional: false };
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); vi.useRealTimers(); });
@@ -36,8 +37,13 @@ it("uses the model picker's catalog name and retains the full accessible label",
 });
 it("keeps configured Auto and formats the thinking level with the picker labels", async () => {
 	await render(ThinkingStatusItem); expect(element.textContent).toBe("Auto");
-	fake.thinking = "xhigh"; await render(ThinkingStatusItem); expect(element.textContent).toBe("Extra high");
-	fake.thinking = null; await render(ThinkingStatusItem); expect(element.textContent).toBe("");
+	fake.thinking = { configured: "auto", resolved: "low", provisional: false }; await render(ThinkingStatusItem); expect(element.textContent).toBe("Auto · Low");
+	expect(element.querySelector('[aria-label="Thinking level: Auto · Low"]')).not.toBeNull();
+	expect(element.querySelector(".font-medium.text-fg")?.textContent).toBe(" · Low");
+	fake.thinking = { configured: "auto", resolved: null, provisional: true }; await render(ThinkingStatusItem); expect(element.textContent).toBe("Auto · Pending");
+	fake.thinking = { configured: "auto", resolved: "high", provisional: true }; await render(ThinkingStatusItem); expect(element.textContent).toBe("Auto · High (provisional)");
+	fake.thinking = { configured: "xhigh", resolved: null, provisional: false }; await render(ThinkingStatusItem); expect(element.textContent).toBe("Extra high");
+	fake.thinking = { configured: null, resolved: null, provisional: false }; await render(ThinkingStatusItem); expect(element.textContent).toBe("");
 });
 it("includes the whole composer queue, including a zero count", async () => {
 	await render(QueueStatusItem); expect(element.textContent).toBe("0 queued");

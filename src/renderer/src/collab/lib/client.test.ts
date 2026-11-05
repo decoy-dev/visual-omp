@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostFrame } from "@oh-my-pi/pi-wire";
 import { GuestClient } from "./client";
+import { thinkingState } from "../../features/session-tools/thinking";
 
 /** The socket the client creates; frames from omp's host are fed through `onFrame`. */
 const socket = vi.hoisted(() => ({ current: null as null | { onFrame: (frame: unknown) => void; onClose: (reason: string, reconnect: boolean) => void }, sent: [] as unknown[] }));
@@ -322,12 +323,40 @@ describe("thinkingSelector", () => {
 		expect(client.getSnapshot().thinkingSelector).toBeNull();
 		feed(thinking("auto", "low"));
 		expect(client.getSnapshot().thinkingSelector).toBe("auto");
+		expect(client.getSnapshot().thinkingEvent).toMatchObject({ configured: "auto", thinkingLevel: "low" });
+		feed({ t: "event", event: { type: "thinking_level_changed", configured: "auto", thinkingLevel: "low", resolved: "low" } });
+		expect(client.getSnapshot().thinkingEvent?.resolved).toBe("low");
 		feed(thinking(undefined, "low"));
 		expect(client.getSnapshot().thinkingSelector).toBe("low");
 		feed(thinking("medium", "high"));
 		expect(client.getSnapshot().thinkingSelector).toBe("medium");
 		feed(thinking(undefined, "off"));
 		expect(client.getSnapshot().thinkingSelector).toBe("off");
+	});
+
+	it("invalidates resolved High when changing models reapplies Auto at provisional High without a thinking event", () => {
+		feed({ t: "state", state: { ...welcome.state, model: { provider: "fixture", id: "first" }, thinkingLevel: "high" } });
+		feed({ t: "event", event: { type: "thinking_level_changed", configured: "auto", thinkingLevel: "high", resolved: "high" } });
+		let guest = client.getSnapshot();
+		expect(thinkingState(guest.thinkingSelector, [], "high", guest.thinkingEvent).resolved).toBe("high");
+		// omp clears autoResolvedThinkingLevel, but its concrete default remains High.
+		feed({ t: "state", state: { ...welcome.state, model: { provider: "fixture", id: "second" }, thinkingLevel: "high" } });
+		guest = client.getSnapshot();
+		expect(guest.thinkingSelector).toBe("auto");
+		expect(guest.thinkingEvent).toBeNull();
+		expect(thinkingState(guest.thinkingSelector, [], "auto", guest.thinkingEvent)).toEqual({ configured: "auto", resolved: null, provisional: true });
+		// A new classifier event may still arrive before the semantic/painted display.
+		feed({ t: "event", event: { type: "thinking_level_changed", configured: "auto", thinkingLevel: "high", resolved: "high" } });
+		guest = client.getSnapshot();
+		expect(thinkingState(guest.thinkingSelector, [], "auto", guest.thinkingEvent)).toEqual({ configured: "auto", resolved: "high", provisional: false });
+	});
+
+	it("retains the current classifier result through same-model state updates", () => {
+		const state = { ...welcome.state, model: { provider: "fixture", id: "same" }, thinkingLevel: "high" };
+		feed({ t: "state", state });
+		feed({ t: "event", event: { type: "thinking_level_changed", configured: "auto", thinkingLevel: "high", resolved: "high" } });
+		feed({ t: "state", state: { ...state, model: { ...state.model, name: "Updated name" } } });
+		expect(client.getSnapshot().thinkingEvent?.resolved).toBe("high");
 	});
 
 	it("forgets what it saw before a reconnect, for Auto and concrete selectors", () => {
@@ -337,6 +366,7 @@ describe("thinkingSelector", () => {
 		feed(thinking());
 		feed(welcome);
 		expect(client.getSnapshot().thinkingSelector).toBeNull();
+		expect(client.getSnapshot().thinkingEvent).toBeNull();
 	});
 });
 

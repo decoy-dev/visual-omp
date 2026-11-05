@@ -7,6 +7,7 @@ import { composerModel } from "../../collab/lib/modelFallback";
 import { runningHelpers } from "../../features/panes/derive";
 import { useChatModels } from "../../features/session-tools/model";
 import { useThinking } from "../../features/session-tools/pickers";
+import { ThinkingLabel, thinkingLabel } from "../../features/session-tools/ThinkingLabel";
 import type { PaneProps } from "../../registry/slots";
 import { elapsed, useNow, useSessionView } from "../hooks";
 import type { SessionController } from "../../state/session";
@@ -41,10 +42,10 @@ export function ModelStatusItem({ session }: PaneProps) { return session ? <Mode
 
 function ThinkingStatus({ session }: { session: SessionController }) {
 	const { t } = useDeferredTranslation("settings");
-	const level = useThinking(session);
-	if (!level) return null;
-	const label = t("session:thinking.levels." + level + ".label");
-	return <StatusText label={t("status.thinking", { level: label })}><Brain aria-hidden className="size-3.5 shrink-0" />{label}</StatusText>;
+	const thinking = useThinking(session);
+	if (!thinking.configured) return null;
+	const label = thinkingLabel(thinking, t);
+	return <StatusText label={t("status.thinking", { level: label })}><Brain aria-hidden className="size-3.5 shrink-0" /><ThinkingLabel thinking={thinking} /></StatusText>;
 }
 export function ThinkingStatusItem({ session }: PaneProps) { return session ? <ThinkingStatus session={session} /> : null; }
 

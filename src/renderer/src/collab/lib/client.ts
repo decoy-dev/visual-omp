@@ -9,6 +9,7 @@
  */
 
 import type {
+	AgentEvent,
 	AgentSnapshot,
 	AssistantMessage,
 	CollabUiRequest,
@@ -97,6 +98,8 @@ export interface GuestSnapshot {
 	notices: readonly Notice[];
 	/** Configured selector from omp's latest thinking event; null before any or after a reconnect. */
 	thinkingSelector: string | null;
+	/** Complete latest thinking event, including omp's explicit Auto classifier result. */
+	thinkingEvent?: Extract<AgentEvent, { type: "thinking_level_changed" }> | null;
 	/** Snapshot download progress between `welcome` and its final chunk, else null. */
 	loading: { received: number; total: number } | null;
 }
@@ -177,6 +180,7 @@ export class GuestClient {
 	#uiConnection = 0;
 	#notices: readonly Notice[] = [];
 	#thinkingSelector: string | null = null;
+	#thinkingEvent: Extract<AgentEvent, { type: "thinking_level_changed" }> | null = null;
 	#snapshot: GuestSnapshot;
 	/**
 	 * Published entries array, cached across commits: rebuilt only when
@@ -427,6 +431,7 @@ export class GuestClient {
 				this.#readOnly = frame.readOnly === true;
 				// The welcome's snapshot is authoritative again; later events set the selector anew.
 				this.#thinkingSelector = null;
+				this.#thinkingEvent = null;
 				this.#clearUiRequests();
 				this.#welcomed = true;
 				this.#clearWelcomeTimer();
@@ -486,6 +491,12 @@ export class GuestClient {
 				this.#applyEvent(frame.event);
 				break;
 			case "state":
+				// omp reapplies Auto on a model change and can clear its resolved effort
+				// without another thinking event when the provisional level stays the same.
+				if (this.#thinkingSelector === "auto" && (
+					this.#state?.model?.provider !== frame.state.model?.provider
+					|| this.#state?.model?.id !== frame.state.model?.id
+				)) this.#thinkingEvent = null;
 				this.#state = frame.state;
 				// Streaming recovers a missed agent_start. An idle sample alone
 				// remains a candidate until a fresh host observation confirms it.
@@ -660,6 +671,7 @@ export class GuestClient {
 				break;
 			case "thinking_level_changed":
 				this.#thinkingSelector = event.configured ?? event.thinkingLevel ?? null;
+				this.#thinkingEvent = event;
 				break;
 			default:
 				// turn_start/turn_end/unknown — ignore
@@ -807,6 +819,7 @@ export class GuestClient {
 			uiConnection: this.#uiConnection,
 			notices: this.#notices,
 			thinkingSelector: this.#thinkingSelector,
+			thinkingEvent: this.#thinkingEvent,
 			loading: this.#pendingSnapshot && {
 				received: this.#pendingSnapshot.entries.length,
 				total: this.#pendingSnapshot.total,

@@ -482,11 +482,23 @@ eight-second confirmation interval. New semantic error rows end the wait.
 Thinking combines the composer's effort `level` with collab's configured selector and sends one
 `thinking.cycle` action at a time until the requested selector is confirmed. omp can show Auto's
 resolved effort in the semantic node. The complete selector from the latest collab thinking event
-is authoritative for Auto and concrete levels, regardless of semantic update order. After a
-reconnect, the latest thinking entry on the displayed branch supplies the selector; displayed
-effort is used only before either source reports a selection. The menu and action confirmation
-use the same reader, including when leaving Auto for the effort it already displays. Repeating
-a selector ends the cycle with an unsupported-level explanation.
+is authoritative for Auto and concrete levels, regardless of semantic update order. The guest also
+retains that event's `resolved` field: only classifier completion supplies it, while a selection event's
+`thinkingLevel` can be provisional. A collab model-identity change invalidates the cached event, since
+omp reapplies Auto and can clear its resolution without a new event when its provisional effort stays
+the same. A shared observation keyed by session controller also invalidates an unchanged event when
+omp's displayed effort changes from a concrete level to pending Auto, covering same-model Auto
+reapplication. It survives consumer remounts and is shared by the toolbar and optional status item.
+A newly received classifier event while the display was already pending remains authoritative before
+its display update arrives. The observation resets when the host identity or generation changes;
+weak controller keys release it when the session is no longer referenced.
+`thinkingState` combines this with the TSP effort node or classic
+status line and the latest thinking entry on the displayed branch after a reconnect. A displayed
+`auto` means pending classification; a concrete provisional value is labelled accordingly. Saved
+entries report their recorded effort without inventing a classifier marker. Toolbar, Auto menu row
+and optional status item share `ThinkingLabel`, including accessible names and neutral Low emphasis.
+The menu and action confirmation use the configured selector reader, including when leaving Auto
+for the effort it already displays. Repeating a selector ends the cycle with an unsupported-level explanation.
 Both controls refuse pending approvals with a distinct message, and waits stop after a host,
 room generation or protocol epoch change. Classic model switching and Shift+Tab cycling retain
 their existing paths.
