@@ -19,6 +19,7 @@ export interface ReleaseNotesViewerProps {
 	installedVersion: string | null;
 	initialView?: ReleaseNotesView;
 	installInfo?: AppInstallInfo | null;
+	busy?: boolean;
 	open: boolean;
 	onExited(): void;
 	close(): void;
@@ -27,7 +28,7 @@ export interface ReleaseNotesViewerProps {
 }
 
 /** A bounded update decision, with the installed version's history available in the same window. */
-export function ReleaseNotesViewer({ status, installedVersion, installInfo, initialView = "pending", open, onExited, close, onUpdate, onRollback }: ReleaseNotesViewerProps) {
+export function ReleaseNotesViewer({ status, installedVersion, installInfo, initialView = "pending", open, onExited, close, onUpdate, onRollback, busy = false }: ReleaseNotesViewerProps) {
 	const { t } = useTranslation("onboarding");
 	const currentVersion = status?.currentVersion ?? installedVersion;
 	const skipThrough = status?.skippedThroughVersion && currentVersion && compareSemver(status.skippedThroughVersion, currentVersion) > 0 ? status.skippedThroughVersion : currentVersion;
@@ -57,7 +58,7 @@ export function ReleaseNotesViewer({ status, installedVersion, installInfo, init
 	const managed = installInfo?.method === "brew" || installInfo?.method === "scoop";
 	const installer = installInfo?.method === "dmg" || installInfo?.method === "nsis";
 	const confirm = async () => {
-		if (!confirmVersion || starting) return;
+		if (!confirmVersion || starting || busy) return;
 		setStarting(true);
 		setStartError(null);
 		try {
@@ -84,12 +85,12 @@ export function ReleaseNotesViewer({ status, installedVersion, installInfo, init
 				hideClose={starting}
 				footer={confirmOpen ? <>
 					<Button ref={cancelButton} variant="ghost" disabled={starting} onClick={() => setConfirmOpen(false)}>{t("update.rollback.cancel")}</Button>
-					<Button variant="primary" loading={starting} onClick={() => void confirm()}>{t("update.notes.installEarlier", { version: confirmVersion })}</Button>
+					<Button variant="primary" disabled={busy} loading={starting} onClick={() => void confirm()}>{t("update.notes.installEarlier", { version: confirmVersion })}</Button>
 				</> : <>
 					<Button variant="ghost" icon={<ArrowSquareOut />} onClick={() => void window.vomp.invoke("app:openExternal", RELEASES_URL)}>{t("update.notes.allReleases")}</Button>
 					<Button variant="ghost" onClick={close}>{t("update.app.close")}</Button>
-					{view === "pending" && pendingVersion && <Button variant="primary" onClick={onUpdate}>{t("update.notes.install", { version: pendingVersion })}</Button>}
-					{view === "past" && eligible && installer && past && <Button ref={rollbackButton} variant="primary" onClick={() => { setStartError(null); setConfirmVersion(past.version); setConfirmOpen(true); }}>{t("update.notes.installEarlier", { version: past.version })}</Button>}
+					{view === "pending" && pendingVersion && <Button variant="primary" disabled={busy} onClick={onUpdate}>{t("update.notes.install", { version: pendingVersion })}</Button>}
+					{view === "past" && eligible && installer && past && <Button ref={rollbackButton} disabled={busy} variant="primary" onClick={() => { setStartError(null); setConfirmVersion(past.version); setConfirmOpen(true); }}>{t("update.notes.installEarlier", { version: past.version })}</Button>}
 				</>}
 			>
 				{confirmOpen ? <div className="flex flex-col gap-stack text-md text-fg-muted">

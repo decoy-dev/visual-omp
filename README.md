@@ -63,6 +63,10 @@ brew tap decoy-dev/tap https://github.com/decoy-dev/visual-omp
 brew install --cask decoy-dev/tap/visual-omp
 ```
 
+Already using a disk-image copy? Open **Settings → About** and choose **Switch to Homebrew**. The app adds the tap and checks its published cask. Homebrew adopts an app at its destination when that app matches the cask version, including a separate copy, or installs into an empty destination. If the destination has a different version, update that copy through its existing update flow first, then try the switch again. The switch never replaces a bundle. A copy in another folder can be kept or moved to the Trash after the Homebrew copy is verified. An existing cask copy is reused without installing another. Saved chats and omp settings remain available; omp's installation does not change.
+
+If Homebrew is missing, About shows a guide to [brew.sh](https://brew.sh) and the commands above. After installing Homebrew, choose **Check package manager again** to use the automated switch.
+
 **visual-omp on Windows (Scoop, recommended)**
 
 Scoop installs visual-omp without the setup wizard, and later updates run from **Settings → About** without it too. Install Scoop by following the instructions on [scoop.sh](https://scoop.sh) if you don't have it, then run these commands in PowerShell. The first installs Git, which Scoop needs to add the visual-omp bucket.
@@ -81,7 +85,9 @@ Download the macOS disk image for your processor from the [latest release](https
 
 **visual-omp on Windows (installer, alternative)**
 
-Download `visual-omp-<version>-win-x64.exe` from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest) and run it. To move a copy installed this way to Scoop, run the Scoop commands above, quit visual-omp, and uninstall the installer's copy in Windows Settings under **Apps**. Both copies use the same profile folder, so your chats and settings stay.
+Download `visual-omp-<version>-win-x64.exe` from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest) and run it. To move a copy installed this way to Scoop, run the Scoop commands above. After they finish without errors, quit visual-omp and open the Scoop copy from **Scoop Apps** in the Start menu. Check that it opens with your chats and settings, which both copies share, then close it and uninstall the installer's copy in Windows Settings under **Apps**. If the Scoop copy does not open, keep the installer's copy.
+
+Settings > About and the update window show the manual Scoop guide, whether or not Scoop is already installed. visual-omp does not automate the Windows installation transfer.
 
 visual-omp supports macOS on Apple Silicon and Intel, Windows 10 and later, and omp 18.15.0 or later. An older omp opens the setup screen, where **Update omp** runs omp's updater without a separate terminal.
 

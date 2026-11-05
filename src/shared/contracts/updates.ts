@@ -38,6 +38,25 @@ export interface AppInstallInfo {
 	scoopGlobal: boolean;
 }
 
+/** A disk-image copy can transfer to Homebrew without replacing any app bundle. */
+export interface AppInstallSwitchInfo {
+	manager: "brew";
+	available: boolean;
+	/** A package-managed copy already exists; reuse it rather than install another copy. */
+	existing: boolean;
+	target: string | null;
+}
+
+export interface AppInstallSwitchRun {
+	command: string | null;
+	target: string;
+	version: string | null;
+	existing: boolean;
+	canTrash: boolean;
+}
+
+export type AppInstallOperation = "update" | "reinstall" | "switch";
+
 /** Availability of reinstalling the running version, checked against its published release. */
 export interface AppReinstallInfo {
 	version: string;
@@ -71,6 +90,7 @@ export interface AppUpdateOutcome {
 	to: string;
 	running: string;
 	updated: boolean;
+	operation?: "switch";
 }
 
 export interface AppReleaseNotes {
@@ -173,6 +193,15 @@ declare module "../ipc" {
 		"updates:app:check": { args: [force?: boolean, includeSkipped?: boolean]; result: AppUpdateStatus };
 		/** How this copy was installed (Homebrew cask, disk image, Scoop, NSIS installer) and the cask's upgrade command. */
 		"updates:app:install": { args: []; result: AppInstallInfo };
+		"updates:app:switchInfo": { args: []; result: AppInstallSwitchInfo | null };
+		/** Explicitly approved Homebrew preparation; returns a safe adoption/install command. */
+		"updates:app:switchStart": { args: []; result: AppInstallSwitchRun };
+		/** Verify the package-managed copy, then quit and reopen it. Trash applies only to a separate macOS copy. */
+		"updates:app:switchComplete": { args: [trashOld: boolean]; result: void };
+		"updates:app:switchSettled": { args: []; result: void };
+		"updates:app:operation": { args: []; result: AppInstallOperation | null };
+		"updates:app:beginBrew": { args: []; result: string };
+		"updates:app:brewSettled": { args: []; result: void };
 		/**
 		 * Download the latest installer, or a selected earlier or running release fetched from GitHub.
 		 * Uses the same trusted asset selection and download verification for either direction.
@@ -217,6 +246,7 @@ declare module "../ipc" {
 	interface IpcEventMap {
 		/** An app release check result: every fresh check, including the background check at launch and every 30 minutes. */
 		"updates:app": AppUpdateStatus;
+		"updates:app:operation": AppInstallOperation | null;
 		/** An `omp update --check` result, on the same terms as `updates:app` (and after each `omp update`). */
 		"updates:omp": OmpUpdateStatus;
 		/** Installer download progress (throttled) and its final state. */

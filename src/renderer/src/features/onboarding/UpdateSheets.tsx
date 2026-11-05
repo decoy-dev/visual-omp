@@ -3,7 +3,7 @@
  * {@link AppUpdateSheet}, the omp update in {@link OmpUpdateSheet} and the release notes. Their state,
  * checks and actions stay in `./updates`, which loads with the app.
  */
-import { ArrowSquareOut, CheckCircle, Copy, WarningCircle } from "@phosphor-icons/react";
+import { CheckCircle, Copy, WarningCircle } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AppDownload, AppInstallInfo, OmpUpdateRun } from "@shared/contracts/updates";
@@ -16,6 +16,7 @@ import { focusRing } from "../../ui/styles";
 import { ipcErrorMessage as errorText, useResource } from "../manage/shared";
 import { formatBytes } from "../projects/format";
 import { InlineTerminal } from "./InlineTerminal";
+import { PackageManagerSuggestion, ScoopSuggestion } from "./PackageManagerSwitch";
 import type { ReleaseNotesView, ReleaseNotesViewerProps } from "./ReleaseNotesViewer";
 import {
 	type BrewUpgrade, loadInstall, ompUpdateState, openInstaller, openReleaseNotes, quitForUpdate, restartStaleChats,
@@ -105,62 +106,6 @@ function DownloadProgress({ download, method }: { download: AppDownload; method:
 	);
 }
 
-/** What the switch to Scoop runs in PowerShell once Scoop is installed (README, "visual-omp on Windows"). */
-const SCOOP_COMMANDS = ["scoop install git", "scoop bucket add decoy-dev https://github.com/decoy-dev/visual-omp", "scoop install decoy-dev/visual-omp"].join(
-	"\n",
-);
-
-/** Installer copies: a collapsed suggestion to switch to Scoop, whose updates run without the installer. */
-function ScoopSuggestion() {
-	const { t } = useTranslation("onboarding");
-	const [open, setOpen] = useState(false);
-	const copy = () =>
-		void navigator.clipboard.writeText(SCOOP_COMMANDS).then(
-			() => toast({ tone: "ok", message: t("update.app.scoopSwitch.copied") }),
-			error => toast({ tone: "err", message: t("update.app.scoopSwitch.copyFailed"), description: errorText(error) }),
-		);
-	return (
-		<div className="mt-card border-t border-border pt-stack text-sm">
-			<p className="text-fg-muted">
-				{t("update.app.scoopSwitch.intro")}{" "}
-				<button
-					type="button"
-					aria-expanded={open}
-					className={`rounded-sm text-accent underline-offset-2 hover:underline ${focusRing}`}
-					onClick={() => setOpen(value => !value)}
-				>
-					{t(open ? "update.app.scoopSwitch.hide" : "update.app.scoopSwitch.show")}
-				</button>
-			</p>
-			<Expand open={open}>
-				<ol className="mt-stack flex list-decimal flex-col gap-stack pl-5 text-fg">
-					<li>
-						{t("update.app.scoopSwitch.install")}
-						<Button
-							size="sm"
-							variant="ghost"
-							icon={<ArrowSquareOut aria-hidden />}
-							className="ml-1"
-							onClick={() => void window.vomp.invoke("app:openExternal", "https://scoop.sh")}
-						>
-							{t("update.app.scoopSwitch.openScoop")}
-						</Button>
-					</li>
-					<li>
-						{t("update.app.scoopSwitch.commands")}
-						<code className="mt-2 block select-all whitespace-pre-wrap break-all rounded-md border border-border bg-inset px-3 py-2 font-mono text-sm text-fg">
-							{SCOOP_COMMANDS}
-						</code>
-						<Button size="sm" variant="ghost" icon={<Copy aria-hidden />} className="mt-2" onClick={copy}>
-							{t("update.app.scoopSwitch.copy")}
-						</Button>
-					</li>
-					<li>{t("update.app.scoopSwitch.remove")}</li>
-				</ol>
-			</Expand>
-		</div>
-	);
-}
 
 const SCOOP_GLOBAL_COMMAND = "scoop update visual-omp --global";
 
@@ -198,12 +143,14 @@ export function ReleaseNotesSheet({ close, props }: SheetProps<{ view?: ReleaseN
 	const presence = useSheetPresence();
 	const status = useUpdates(state => state.app);
 	const installInfo = useUpdates(state => state.install);
+	const busy = useUpdates(state => !!state.operation);
 	useEffect(() => { if (!useUpdates.getState().install) void loadInstall(); }, []);
 	const info = useResource(() => window.vomp.invoke("app:info"), []);
 	return <ReleaseNotesViewer
 		status={status}
 		installedVersion={info.data?.version ?? null}
 		installInfo={installInfo}
+		busy={busy}
 		initialView={props?.view}
 		open={presence.open}
 		onExited={presence.exited}
@@ -224,6 +171,7 @@ export function AppUpdateSheet({ close }: SheetProps<undefined>) {
 	const downloadTarget = useUpdates(state => state.downloadTarget);
 	const downloadOperation = useUpdates(state => state.downloadOperation);
 	const installerOpened = useUpdates(state => state.installerOpened);
+	const switchRunning = useUpdates(state => state.operation === "switch");
 	const method = install?.method ?? "manual";
 
 	let body: ReactNode = null;
@@ -281,7 +229,7 @@ export function AppUpdateSheet({ close }: SheetProps<undefined>) {
 				description={downloadTarget ? t(downloadOperation === "reinstall" ? "update.reinstall.progressDescription" : "update.rollback.progressDescription", { version: downloadTarget }) : app?.summary ?? undefined}
 				footer={
 					<>
-						{actions}
+						<fieldset disabled={switchRunning} className="contents">{actions}</fieldset>
 						<Button variant="ghost" onClick={close}>
 							{t("update.app.close")}
 						</Button>
@@ -296,7 +244,7 @@ export function AppUpdateSheet({ close }: SheetProps<undefined>) {
 				>
 					{t("update.app.releaseNotes")}
 				</button>
-				{method === "nsis" && <ScoopSuggestion />}
+				{method === "nsis" ? <ScoopSuggestion /> : method === "dmg" && <PackageManagerSuggestion />}
 			</DialogContent>
 		</Dialog>
 	);

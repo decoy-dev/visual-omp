@@ -16,6 +16,7 @@ import { useDeferredTranslation } from "@/i18n";
 import { useApp } from "@/state/app";
 import { Button, Dialog, DialogContent, Mark, PageHeader, PresenceSwap, Spinner, Wordmark } from "@/ui";
 import { ipcErrorMessage, useResource } from "../shared";
+import { PackageManagerSwitch, ScoopSuggestion } from "../../onboarding/PackageManagerSwitch";
 
 const DOCS_URL = "https://omp.sh";
 const ISSUES_URL = "https://github.com/decoy-dev/visual-omp/issues";
@@ -27,7 +28,7 @@ type Tone = "ok" | "accent" | "err";
 interface StatusRow {
 	text: string;
 	tone: Tone | "busy";
-	action?: { label: string; primary?: boolean; run(): void };
+	action?: { label: string; primary?: boolean; disabled?: boolean; run(): void };
 }
 
 export function AboutSection() {
@@ -74,7 +75,7 @@ export function AboutSection() {
 			return {
 				text: t("about.appUpdate", { version: app.latestVersion }),
 				tone: "accent",
-				action: { label: t("onboarding:update.notes.review"), primary: true, run: () => openReleaseNotes() },
+				action: { label: t("onboarding:update.notes.review"), primary: true, disabled: !!updates.operation, run: () => openReleaseNotes() },
 			};
 		}
 		return { text: t("about.upToDate"), tone: "ok" };
@@ -117,7 +118,8 @@ export function AboutSection() {
 					</p>
 					<StatusLine row={appRow} />
 					{updates.app?.skippedThroughVersion && <p className="mt-stack text-sm text-fg-muted">{t("onboarding:update.rollback.skipped", { version: updates.app.skippedThroughVersion })}</p>}
-					<ReinstallAction busy={updates.download?.state === "downloading" || updates.brew?.phase === "running" || updates.brew?.phase === "verifying"} />
+					<ReinstallAction busy={!!updates.operation} />
+					{updates.install?.method === "nsis" ? <ScoopSuggestion /> : <PackageManagerSwitch busy={updates.operation !== null && updates.operation !== "switch"} />}
 				</dd>
 
 				<dt className="text-fg-muted">{t("about.ompVersion")}</dt>
@@ -197,7 +199,7 @@ function ReinstallAction({ busy }: { busy: boolean }) {
 		((data.install.method === "brew" || data.install.method === "scoop") && !!data.reinstall.command)
 	);
 	const confirm = async () => {
-		if (!confirmation || managed || starting) return;
+		if (!confirmation || managed || starting || busy) return;
 		setStarting(true);
 		setStartError(null);
 		try {
@@ -250,7 +252,7 @@ function ReinstallAction({ busy }: { busy: boolean }) {
 				footer={<>
 					<Button ref={cancel} variant="ghost" disabled={starting} onClick={() => setConfirmation(null)}>{t(managed ? "update.app.close" : "update.rollback.cancel")}</Button>
 					{managed ? <Button variant="primary" icon={<Copy aria-hidden />} onClick={() => void copy()}>{t(copied ? "update.reinstall.copied" : "update.reinstall.copy")}</Button> :
-						<Button variant="primary" loading={starting} onClick={() => void confirm()}>{t("update.reinstall.action", { version: confirmation?.reinstall.version })}</Button>}
+						<Button variant="primary" disabled={busy} loading={starting} onClick={() => void confirm()}>{t("update.reinstall.action", { version: confirmation?.reinstall.version })}</Button>}
 				</>}
 			>
 				<div className="flex flex-col gap-stack text-md text-fg-muted">
@@ -290,7 +292,7 @@ function StatusLine({ row }: { row: StatusRow }): ReactNode {
 				{row.tone === "busy" ? <Spinner size={12} /> : <span aria-hidden className={`size-2 shrink-0 rounded-full ${DOTS[row.tone]}`} />}
 				<span className={row.tone === "err" ? "min-w-0 flex-1 text-err" : "min-w-0 flex-1"}>{row.text}</span>
 				{row.action && (
-					<Button size="sm" variant={row.action.primary ? "primary" : "secondary"} onClick={row.action.run}>
+					<Button size="sm" disabled={row.action.disabled} variant={row.action.primary ? "primary" : "secondary"} onClick={row.action.run}>
 						{row.action.label}
 					</Button>
 				)}

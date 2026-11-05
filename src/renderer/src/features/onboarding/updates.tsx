@@ -9,7 +9,7 @@
  */
 import { ArrowsClockwise } from "@phosphor-icons/react";
 import { create } from "zustand";
-import type { AppDownload, AppInstallInfo, AppUpdateStatus, OmpUpdateRun, OmpUpdateStatus } from "@shared/contracts/updates";
+import type { AppDownload, AppInstallInfo, AppInstallOperation, AppUpdateStatus, OmpUpdateRun, OmpUpdateStatus } from "@shared/contracts/updates";
 import { compareSemver } from "@shared/semver";
 import { i18n } from "../../i18n";
 import { registerCommand } from "../../registry/commands";
@@ -59,6 +59,7 @@ interface UpdatesState {
 	app: AppUpdateStatus | null;
 	omp: OmpUpdateStatus | null;
 	install: AppInstallInfo | null;
+	operation: AppInstallOperation | null;
 	checkingApp: boolean;
 	checkingOmp: boolean;
 	brew: BrewUpgrade | null;
@@ -78,6 +79,7 @@ export const useUpdates = create<UpdatesState>(() => ({
 	app: null,
 	omp: null,
 	install: null,
+	operation: null,
 	checkingApp: false,
 	checkingOmp: false,
 	brew: null,
@@ -126,6 +128,7 @@ export async function checkForUpdates(): Promise<void> {
 /** Loads the last results (main's 30-minute cache), checking only what is stale. */
 export async function loadUpdates(): Promise<void> {
 	await Promise.all([checkApp(false), checkOmp(false), loadInstall()]);
+	useUpdates.setState({ operation: await window.vomp.invoke("updates:app:operation") ?? null });
 }
 
 /**
@@ -136,6 +139,7 @@ export async function loadUpdates(): Promise<void> {
 export async function startAppUpdate(): Promise<void> {
 	const t = i18n.getFixedT(null, "onboarding");
 	const { app } = useUpdates.getState();
+	if (useUpdates.getState().operation) return;
 	if (!app?.updateAvailable) return;
 	const install = useUpdates.getState().install ?? (await loadInstall());
 	const useInstaller = install.method === "dmg" || install.method === "nsis";
@@ -157,9 +161,11 @@ export async function startAppUpdate(): Promise<void> {
 		const previous = useUpdates.getState();
 		useUpdates.setState({ downloadTarget: null, downloadOperation: "update", download: null, installerOpened: false });
 		try {
+			useUpdates.setState({ operation: "update" });
 			const download = await window.vomp.invoke("updates:app:download");
 			onDownload(download);
 		} catch (error) {
+			useUpdates.setState({ operation: null });
 			handledDownload = previousHandledDownload;
 			useUpdates.setState({
 				download: previous.download,
@@ -189,15 +195,18 @@ export async function startAppReinstall(version: string): Promise<void> {
 }
 
 async function startTargetedAppDownload(version: string, operation: "rollback" | "reinstall"): Promise<void> {
+	if (useUpdates.getState().operation) throw new Error(i18n.t("onboarding:update.installSwitch.busy"));
 	const previousHandledDownload = handledDownload;
 	handledDownload = null;
 	const previous = useUpdates.getState();
 	useUpdates.setState({ downloadTarget: version, downloadOperation: operation, download: null, installerOpened: false });
 	try {
+		useUpdates.setState({ operation: operation === "reinstall" ? "reinstall" : "update" });
 		const download = await window.vomp.invoke("updates:app:download", version);
 		onDownload(download);
 		useApp.getState().openSheet(APP_UPDATE_SHEET);
 	} catch (error) {
+		useUpdates.setState({ operation: null });
 		handledDownload = previousHandledDownload;
 		useUpdates.setState({
 			download: previous.download,
@@ -225,15 +234,22 @@ let brewStarting = false;
 
 export async function startBrewUpgrade(): Promise<void> {
 	const phase = useUpdates.getState().brew?.phase;
-	if (brewStarting || phase === "running" || phase === "verifying") return;
+	if (useUpdates.getState().operation || brewStarting || phase === "running" || phase === "verifying") return;
 	brewStarting = true;
+	let acquired = false;
 	try {
-		const [{ command }, { homeDir }] = await Promise.all([loadInstall(), window.vomp.invoke("app:info")]);
-		if (!command) return;
+		const command = await window.vomp.invoke("updates:app:beginBrew");
+		acquired = true;
+		const { homeDir } = await window.vomp.invoke("app:info");
+		useUpdates.setState({ operation: "update" });
 		const run = await CommandRun.start({ command, cwd: homeDir, cols: 96, rows: 14 });
 		useUpdates.setState({ brew: { phase: "running", run } });
 		run.attach({ data: () => {}, exit: code => void finishBrewUpgrade(run, code) });
 	} catch (error) {
+		if (acquired) {
+			await window.vomp.invoke("updates:app:brewSettled");
+			useUpdates.setState({ operation: null });
+		}
 		useUpdates.setState({ brew: { phase: "error", message: errorText(error) } });
 	} finally {
 		brewStarting = false;
@@ -244,6 +260,8 @@ export async function startBrewUpgrade(): Promise<void> {
 async function finishBrewUpgrade(run: CommandRun, code: number): Promise<void> {
 	if (code !== 0) {
 		useUpdates.setState({ brew: { phase: "failed", run, code } });
+		await window.vomp.invoke("updates:app:brewSettled");
+		useUpdates.setState({ operation: null });
 		return;
 	}
 	useUpdates.setState({ brew: { phase: "verifying", run } });
@@ -257,6 +275,9 @@ async function finishBrewUpgrade(run: CommandRun, code: number): Promise<void> {
 		});
 	} catch (error) {
 		useUpdates.setState({ brew: { phase: "verifyFailed", run, message: errorText(error) } });
+	} finally {
+		await window.vomp.invoke("updates:app:brewSettled");
+		useUpdates.setState({ operation: null });
 	}
 }
 
@@ -264,7 +285,7 @@ async function finishBrewUpgrade(run: CommandRun, code: number): Promise<void> {
 let handledDownload: string | null = null;
 
 function onDownload(download: AppDownload): void {
-	useUpdates.setState(download.state === "downloading" ? { download, installerOpened: false } : { download });
+	useUpdates.setState(download.state === "downloading" ? { download, installerOpened: false } : { download, operation: null });
 	if (download.state !== "done" || handledDownload === download.filePath) return;
 	handledDownload = download.filePath;
 	void openInstaller();
@@ -273,6 +294,7 @@ function onDownload(download: AppDownload): void {
 /** Opens the disk image in Finder, or runs the Windows installer after confirming the app may quit. */
 export async function openInstaller(): Promise<void> {
 	const t = i18n.getFixedT(null, "onboarding");
+	if (useUpdates.getState().operation) return;
 	try {
 		if (useUpdates.getState().install?.method === "nsis") {
 			// True only once runInstaller resolved (it rejects when the installer can't be opened).
@@ -378,6 +400,13 @@ async function reportOutcome(): Promise<void> {
 	const t = i18n.getFixedT(null, "onboarding");
 	const outcome = await window.vomp.invoke("updates:app:outcome");
 	if (!outcome) return;
+	if (outcome.operation === "switch") {
+		toast({
+			tone: outcome.updated ? "ok" : "warn",
+			message: t(outcome.updated ? "update.installSwitch.succeeded" : "update.installSwitch.failed", { manager: "Homebrew" }),
+		});
+		return;
+	}
 	if (outcome.updated) toast({ tone: "ok", message: t("update.updated", { version: outcome.running }) });
 	else {
 		toast({ tone: "warn", message: t("update.notUpdated", { version: outcome.running }), description: t(`update.notUpdatedBody.${outcome.method}`) });
@@ -409,6 +438,7 @@ export function installUpdateWatchers(): void {
 		announceAppUpdate(status);
 	});
 	window.vomp.on("updates:omp", omp => useUpdates.setState({ omp }));
+	window.vomp.on("updates:app:operation", operation => useUpdates.setState({ operation }));
 	window.vomp.on("updates:app:download", onDownload);
 	window.vomp.on("updates:omp:finished", run => {
 		const before = useUpdates.getState().omp?.currentVersion ?? null;

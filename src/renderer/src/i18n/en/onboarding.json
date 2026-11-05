@@ -288,6 +288,27 @@
 			"brew": "The restart opened the previous copy. Run brew upgrade --cask visual-omp in Terminal to see what Homebrew reports.",
 			"scoop": "Scoop didn't install a newer version, and its PowerShell window shows what it reported. To try again, quit visual-omp, then run scoop update visual-omp in PowerShell, and open visual-omp when the command finishes."
 		},
+		"installSwitch": {
+			"checking": "Checking package managers…",
+			"checkFailed": "Couldn't check package managers: {{reason}}",
+			"checkManager": "Check package manager again",
+			"action": "Switch to {{manager}}",
+			"title": "Switch visual-omp to {{manager}}?",
+			"showProgress": "Show install switch",
+			"brewBody": "Homebrew adopts a matching app at its destination or installs into an empty destination. A different version must be updated first using its existing update flow. This switch never replaces an app bundle.",
+			"existing": "A {{manager}} copy already exists. visual-omp will reuse that copy without installing another.",
+			"preserved": "Saved chats and omp settings remain available. This changes how visual-omp is installed; omp's installation stays unchanged.",
+			"preparing": "Preparing the install switch…",
+			"running": "{{manager}} is installing visual-omp…",
+			"terminalLabel": "Package manager install output",
+			"commandFailed": "The install command exited with code {{code}}. Review its output, then try again.",
+			"restart": "Open Homebrew copy",
+			"busy": "An installation is in progress. Wait for it to finish.",
+			"trashRestart": "Move old copy to Trash and restart",
+			"trashOffer": "The current copy is in another folder. You can keep it or move it to the Trash when the Homebrew copy is verified.",
+			"succeeded": "visual-omp now uses {{manager}}",
+			"failed": "The switch to {{manager}} did not finish"
+		},
 		"check": {
 			"title": "Check for updates",
 			"hint": "Check for new versions of visual-omp and omp.",
@@ -435,6 +456,18 @@
 				"globalCopied": "Command copied",
 				"globalCopyFailed": "Couldn't copy the command"
 			},
+			"brewSwitch": {
+				"intro": "Homebrew can install visual-omp and manage its updates.",
+				"show": "Show how to switch",
+				"hide": "Hide the steps",
+				"install": "Install Homebrew by following the instructions on brew.sh.",
+				"openBrew": "Open brew.sh",
+				"commands": "For a fresh install, run the README commands in Terminal. Homebrew 6.0.16 or later is required.",
+				"copy": "Copy commands",
+				"copied": "Commands copied",
+				"copyFailed": "Couldn't copy the commands",
+				"remove": "To transfer this running copy, return to Settings > About after installing Homebrew, choose Check package manager again, then Switch to Homebrew. The switch handles an app already at Homebrew's destination and offers to move a separate old copy to the Trash."
+			},
 			"scoopSwitch": {
 				"intro": "Scoop can install visual-omp and update it without the installer.",
 				"show": "Show how to switch",
@@ -445,7 +478,7 @@
 				"copy": "Copy commands",
 				"copied": "Commands copied",
 				"copyFailed": "Couldn't copy the commands",
-				"remove": "Quit visual-omp and uninstall this copy in Windows Settings under Apps. Both copies use the same profile folder, so your chats and settings stay. Then open visual-omp from Scoop Apps in the Start menu."
+				"remove": "After the commands finish without errors, quit visual-omp and open the Scoop copy from Scoop Apps in the Start menu. Check that it opens with your chats and settings, which both copies share. Then close it and uninstall this installer copy in Windows Settings under Apps. If the Scoop copy does not open, keep this copy."
 			}
 		},
 		"omp": {

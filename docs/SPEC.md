@@ -11,9 +11,9 @@ be able to use it, and it exposes the features that set omp apart from other cod
   bucket (`scoop install decoy-dev/visual-omp`, which unpacks the app from the NSIS installer
   without running it) and the NSIS installer on GitHub Releases for Windows. GitHub Actions builds
   a release when a `v*` tag is pushed and updates the Homebrew cask and the Scoop manifest for
-  stable versions (see docs/RELEASING.md). The cask requires Homebrew 6.0.16 or later. Installer
-  copies on Windows suggest switching to Scoop in their update window, because Scoop updates run
-  without the setup wizard.
+  stable versions (see docs/RELEASING.md). The cask requires Homebrew 6.0.16 or later. Direct
+  macOS copies offer a safe Homebrew transfer or a Homebrew installation guide from Settings > About.
+  Windows installer copies always show the manual Scoop transfer guide.
 - **Signing:** macOS releases are signed with the project's own self-signed certificate (no Apple
   Developer ID), so every release keeps one designated requirement; this is meant to keep
   permissions such as App Management across updates (see docs/RELEASING.md). Local builds are
@@ -209,6 +209,23 @@ Current chats, navigation shortcuts and preview release are described under Sess
 ### Settings
 - Settings is a full page with curated common sections and a searchable **Advanced** section that
   lists every omp setting.
+- Direct macOS copies offer **Switch to Homebrew**. The app adds the tap and checks the published
+  cask. A matching app at the destination is adopted, including when it is a separate copy.
+  An empty destination permits installation while the running copy remains elsewhere. A differing
+  destination version blocks the switch and asks the person to update that copy first through
+  its existing update flow. The switch never replaces a bundle. Existing cask copies are reused.
+  Restart opens the verified target from disk; moving a separate old copy to the Trash is optional.
+- Windows installer copies always show the manual Scoop guide in About and the update window.
+  The person installs Scoop and Git as needed and runs the README bucket and install commands. Only
+  after they succeed does the guide say to quit, open the Scoop copy, check that it opens with the
+  person's chats and settings, and then remove the installer copy through Windows Settings > Apps;
+  if the Scoop copy does not open, the installer copy stays.
+- Updates, reinstalls and the Homebrew switch share one installation-operation state. Conflicting
+  actions are disabled in the renderer and refused by main until the active operation settles.
+- The Homebrew confirmation starts on Cancel and returns focus to its trigger when closed.
+  Footer actions wrap at narrow widths and larger text sizes. Chats and omp settings are preserved,
+  and omp's installation remains unchanged. Missing Homebrew shows brew.sh and README commands,
+  with **Check package manager again** after installation.
 - About's **Read release notes** and **Review update** actions open the same release history. An
   earlier release with a trusted installer for this computer offers **Install v{version}**. A
   confirmation names the running and selected versions, explains the restart and preserves chats

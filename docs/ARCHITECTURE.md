@@ -1151,6 +1151,34 @@ version on the existing prerelease track (`missing-release`) and its trusted pla
 Available results have a null reason. Direct installers have a null command; main supplies
 commands for detected Homebrew and Scoop installations.
 
+`main/features/install-switch.ts` registers on-demand `updates:app:switchInfo`, `switchStart`,
+`switchSettled` and `switchComplete` handlers for disk-image copies only. Preparation is main-owned.
+Homebrew probes every discovered prefix for existing cask links before choosing a fresh install,
+so a disk-image copy beside a cask copy reuses that target. The destination version is inspected
+independently of the running copy's path. A matching destination uses `--adopt`; an empty one
+permits installation. A differing or unreadable destination version blocks the switch and asks
+the person to update that copy through its existing update flow first. No switch command uses
+forced replacement. Completion verifies the cask link, on-disk version and executable before
+opening the target after the old process exits. Moving a separate old bundle to the Trash is opt-in.
+
+`main/services/install-operation.ts` owns mutual exclusion for updates, reinstalls and transfers.
+Main broadcasts `updates:app:operation`; the renderer uses that shared state to disable conflicting
+actions, while main reserves it before asynchronous preparation. Downloads release it after
+completion, cancellation or failure. Visible Homebrew commands release it after exit and update
+verification. Transfer preparation failures release it, and restart reserves it again while
+verifying the selected target. Switch outcomes check the install method and target version,
+allowing a same-version adoption to count as success.
+
+The isolated macOS feasibility check on 2026-11-05 cloned Homebrew under `/tmp/vomp-brew-scratch`
+with separate cache, logs and temporary folders. The v0.7.6 arm64 release copied to
+`/tmp/vomp-brew-apps` was accepted by `install --cask --adopt --appdir=...`. Changing only its
+`CFBundleShortVersionString` to 0.7.5 caused adoption to fail and kept that copy at 0.7.5.
+`install --cask --force` then replaced it with 0.7.6. The image was detached and all experiment
+folders were removed; the owner's Homebrew and `/Applications` were unchanged.
+
+Automated Windows installer-to-Scoop transfers are not shipped. Windows copies retain the
+manual `ScoopSuggestion` guide regardless of whether Scoop is installed.
+
 `updates:app:download` takes an optional version. A strictly earlier version or the exact running version causes main to fetch
 official GitHub release metadata again, find the requested published release on the running
 version's release track, and select its trusted matching installer. The renderer cannot supply

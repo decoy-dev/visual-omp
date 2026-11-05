@@ -27,6 +27,8 @@ import { flushPrefs, getPrefs, setPrefs } from "../prefs";
 import { ompPath, ompStatus } from "../omp/locate";
 import { ompStartError } from "../omp/refused";
 import { recordUpdateCheck } from "../services/update-count";
+import { registerInstallSwitch } from "./install-switch";
+import { InstallOperation } from "../services/install-operation";
 import {
 	type GitHubRelease,
 	GitHubReleaseList,
@@ -68,6 +70,7 @@ const PROGRESS_INTERVAL_MS = 100;
 const PENDING_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
 const cacheFile = join(app.getPath("userData"), "update-check.json");
+const installOperation = new InstallOperation(operation => broadcast("updates:app:operation", operation));
 const pendingFile = join(app.getPath("userData"), "update-pending.json");
 
 const METHODS = ["brew", "dmg", "scoop", "nsis", "manual"] as const satisfies readonly AppInstallMethod[];
@@ -355,11 +358,13 @@ function publishDownload(): void {
 
 async function startDownload(requestedVersion?: string): Promise<AppDownload> {
 	if (downloadStarting) throw new Error("An installer download is already starting.");
+	installOperation.begin(requestedVersion === app.getVersion() ? "reinstall" : "update");
 	downloadStarting = true;
 	try {
 		return await prepareDownload(requestedVersion);
 	} finally {
 		downloadStarting = false;
+		if (download?.state !== "downloading" && installOperation.current) installOperation.end(installOperation.current);
 	}
 }
 
@@ -443,11 +448,12 @@ async function receive(url: URL, current: AppDownload, signal: AbortSignal, dige
 	}
 	if (download === current) {
 		downloadAbort = null;
+		if (installOperation.current) installOperation.end(installOperation.current);
 		publishDownload();
 	}
 }
 
-const PendingSchema = z.object({ method: z.enum(METHODS), from: z.string(), to: z.string(), at: z.number() });
+const PendingSchema = z.object({ method: z.enum(METHODS), from: z.string(), to: z.string(), at: z.number(), operation: z.literal("switch").optional() });
 
 /** Remembers what the next launch should be, so it can report whether the update took. */
 async function recordPending(method: AppInstallMethod, to: string): Promise<void> {
@@ -463,14 +469,16 @@ async function consumeOutcome(): Promise<AppUpdateOutcome | null> {
 	}
 	const running = app.getVersion();
 	const rolledBack = compareSemver(pending.to, pending.from) < 0;
-	const updated = rolledBack ? compareSemver(running, pending.to) === 0 : compareSemver(running, pending.from) > 0;
+	const updated = pending.operation === "switch"
+		? (await installInfo()).method === pending.method && compareSemver(running, pending.to) === 0
+		: rolledBack ? compareSemver(running, pending.to) === 0 : compareSemver(running, pending.from) > 0;
 	const expired = Date.now() - pending.at > PENDING_TTL_MS;
 	// A disk image or installer the user hasn't run yet is not a failure: stay quiet until it runs.
 	// Homebrew and Scoop update during the restart, so their result is known at the next launch.
 	if (!updated && pending.method !== "brew" && pending.method !== "scoop" && !expired) return null;
 	await rm(pendingFile, { force: true });
 	if (!updated && expired) return null;
-	return { method: pending.method, from: pending.from, to: pending.to, running, updated };
+	return { method: pending.method, from: pending.from, to: pending.to, running, updated, ...(pending.operation ? { operation: pending.operation } : {}) };
 }
 
 async function runInstaller(): Promise<void> {
@@ -660,18 +668,42 @@ async function spawnOmpUpdate(options: OmpUpdateOptions): Promise<OmpUpdateRun> 
 }
 
 export function register(): void {
+	registerInstallSwitch({ installInfo, caskApps, beginOperation: kind => installOperation.begin(kind), endOperation: kind => installOperation.end(kind) });
+	handle("updates:app:operation", () => installOperation.current);
+	handle("updates:app:beginBrew", async () => {
+		installOperation.begin("update");
+		try {
+			const install = await installInfo();
+			if (install.method !== "brew" || !install.command) throw new Error("This copy does not update through Homebrew.");
+			return install.command;
+		} catch (error) {
+			installOperation.end("update");
+			throw error;
+		}
+	});
+	handle("updates:app:brewSettled", () => installOperation.end("update"));
 	handle("updates:app:check", (force, includeSkipped) => checkApp(force === true, includeSkipped === true));
 	handle("updates:app:install", () => installInfo());
 	handle("updates:app:reinstallInfo", () => reinstallInfo());
 	handle("updates:app:download", version => startDownload(version));
-	handle("updates:app:resume", () => resumeUpdates());
+	handle("updates:app:resume", () => {
+		if (installOperation.current) throw new Error("An installation is in progress. Wait for it to finish.");
+		return resumeUpdates();
+	});
 	handle("updates:app:cancelDownload", () => downloadAbort?.abort());
-	handle("updates:app:runInstaller", () => runInstaller());
+	handle("updates:app:runInstaller", async () => {
+		const kind = download?.version === app.getVersion() ? "reinstall" : "update";
+		installOperation.begin(kind);
+		try { await runInstaller(); } finally { installOperation.end(kind); }
+	});
 	handle("updates:app:installedVersion", async () => {
 		const version = await installedVersion();
 		return { version, newer: version !== null && compareSemver(version, app.getVersion()) > 0 };
 	});
-	handle("updates:app:quit", relaunch => quitApp(relaunch));
+	handle("updates:app:quit", relaunch => {
+		if (installOperation.current) throw new Error("An installation is in progress. Wait for it to finish.");
+		return quitApp(relaunch);
+	});
 	handle("updates:app:outcome", () => consumeOutcome());
 	handle("updates:omp:check", force => checkOmp(force === true));
 	handle("updates:omp:run", options => startOmpUpdate(options));
