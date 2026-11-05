@@ -28,6 +28,8 @@ function readVersion(bin: string, env: NodeJS.ProcessEnv): Promise<string | null
 }
 
 let cached: OmpStatus | null = null;
+/** Several status checks at startup refresh at once, so the event log records a version only when it changes. */
+let loggedVersion: string | null | undefined;
 
 export async function ompStatus(refresh = false): Promise<OmpStatus> {
 	if (cached && !refresh) return cached;
@@ -49,7 +51,10 @@ export async function ompStatus(refresh = false): Promise<OmpStatus> {
 			return cached;
 		}
 	}
-	writeDiagnostic({ event: "omp-version", version });
+	if (version !== loggedVersion) {
+		loggedVersion = version;
+		writeDiagnostic({ event: "omp-version", version });
+	}
 	if (!version) {
 		cached = { ...base, found: false, path, version: null, supported: false, problem: `omp at ${path} did not start.` };
 		return cached;
