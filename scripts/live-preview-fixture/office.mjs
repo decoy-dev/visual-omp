@@ -1,9 +1,9 @@
-export function officeCommand(kind, delay = 1) {
+export function officeCommand(kind, delay = 1, truncate = true) {
   if (!["docx", "xlsx", "pptx"].includes(kind)) throw new Error("Unknown Office fixture.");
-  return `python3 - <<'PY'\n${officePython(kind, delay)}\nPY`;
+  return `python3 - <<'PY'\n${officePython(kind, delay, truncate)}\nPY`;
 }
 
-export function officePython(kind, delay = 1) {
+export function officePython(kind, delay = 1, truncate = true) {
   return `import base64, io, os, pathlib, time, zipfile
 kind = ${JSON.stringify(kind)}
 delay = ${Number(delay)}
@@ -58,8 +58,8 @@ for revision in [1,2,3]:
     path.write_bytes(package(revision))
     print(str(path.resolve())+' save '+str(revision),flush=True)
     time.sleep(delay)
-path.write_bytes(package(4)[:-40])
-print(str(path.resolve())+' truncated save',flush=True)
+path.write_bytes(package(4)[:-40] if ${truncate ? "True" : "False"} else package(3))
+print(str(path.resolve())+' ${truncate ? "truncated save" : "complete save"}',flush=True)
 time.sleep(delay)
 bomb = pathlib.Path('bomb.'+kind)
 with zipfile.ZipFile(bomb,'w',zipfile.ZIP_DEFLATED) as archive:

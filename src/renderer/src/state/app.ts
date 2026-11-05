@@ -437,6 +437,11 @@ export const useApp = create<AppState>()(
 					window.vomp.invoke("app:info"),
 				]);
 				set({ prefs, omp, defaultChatFolder: info.defaultChatFolder });
+				if (info.tourLayout) {
+					const layout = readSavedLayout(info.tourLayout);
+					for (const tab of layout.tabs ?? []) ensureController(tab);
+					set({ ...layout, view: "chat", pageReturn: "chat" });
+				}
 				window.vomp.on("app:prefs", next => set({ prefs: next }));
 				window.vomp.on("sessions:changed", () => {
 					void get().refreshProjects();

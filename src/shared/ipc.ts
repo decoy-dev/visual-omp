@@ -269,7 +269,7 @@ export interface AttentionState {
 export const NOTIFY_LIMITS = { title: 256, body: 1024, chatId: 128 } as const;
 
 export interface IpcInvokeMap {
-	"app:info": { args: []; result: { version: string; platform: Platform; arch: string; homeDir: string; defaultChatFolder: string } };
+	"app:info": { args: []; result: { version: string; platform: Platform; arch: string; homeDir: string; defaultChatFolder: string; tourLayout?: unknown } };
 	"app:prefs:get": { args: []; result: AppPreferences };
 	"app:prefs:set": { args: [patch: Partial<AppPreferences>]; result: AppPreferences };
 	"app:openExternal": { args: [url: string]; result: void };

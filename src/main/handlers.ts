@@ -25,6 +25,7 @@ import { contextImageBytes } from "./services/contextImages";
 import { openFile, showItem } from "./fileActions";
 import { writeDiagnostic } from "./services/diagnostics/events";
 import { runDiagnosticTest } from "./services/diagnostics/testing";
+import { readReleaseTour } from "./services/release-tour";
 
 const BtwScope = z.object({ generation: z.number().int(), epoch: z.number().int() }).strict();
 const BtwTopic = z.object({ id: z.string().min(1), scope: z.string().min(1).optional() }).strict();
@@ -49,6 +50,7 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 		arch: process.arch,
 		homeDir: homedir(),
 		defaultChatFolder: defaultChatFolder(process.platform as Platform, tmpdir()),
+		...(app.isPackaged ? {} : { tourLayout: readReleaseTour(false, app.getPath("userData")) }),
 	}));
 	handle("app:prefs:get", () => getPrefs());
 	handle("app:prefs:set", patch => setPrefs(patch));

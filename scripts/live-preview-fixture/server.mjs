@@ -76,7 +76,7 @@ function textOf(message) {
   return (message?.content ?? []).map(part => part.text ?? "").join("\n");
 }
 
-export async function startFixture({ root, port = 47831, durationMs = 15000, onRequest = () => {} }) {
+export async function startFixture({ root, port = 47831, durationMs = 15000, onRequest = () => {}, initializeProfile = true }) {
   let sequence = 0;
   const server = createServer(async (request, response) => {
     try {
@@ -94,9 +94,10 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const id = ++sequence;
       const messages = body.messages ?? [];
       const lastUser = messages.findLast(message => message.role === "user");
+      const turnMessages = messages.slice(messages.findLastIndex(message => message.role === "user"));
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(svg|html|png|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
-      const htmlNeedsPage = afterTool && fixture === "html" && !messages.some(message =>
+      const fixture = /fixture\s+(helper-reply|colors|helper|notes|process|svg|html|png|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
           catch { return false; }
@@ -107,13 +108,37 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         response.write(`data: ${JSON.stringify({ id: `fixture-${id}`, object: "chat.completion.chunk", created: 1, model: "preview", choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
       };
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
-      send({ role: "assistant", content: afterTool ? "The fixture tool result was received." : fixture ? `I will prepare the ${fixture} fixture.` : "The correction was received." });
-      if ((afterTool && !htmlNeedsPage && fixture !== "proof") || !fixture) {
+      if (fixture === "colors") {
+        send({ role: "assistant", content: "Check prose swatches: #2B72E5 and #197f8680. Check inline swatches: `#fff`, `#1234`, `#2B72E5`, `#197f8680`. Issue #123, https://example.invalid/#2B72E5 and /tmp/#2B72E5 stay plain.\n\n```css\n/* Code blocks stay unchanged. */\ncolor: #2B72E5;\n```\n" });
+      } else if (fixture === "helper-reply") {
+        send({ role: "assistant", content: "The helper checked the sample. Open this conversation from Tasks in the live chat, then send a message while the helper is idle to check delivery. The fixture provider answers locally." });
+        send({}, "stop");
+        response.end("data: [DONE]\n\n");
+        return;
+      } else if (fixture === "notes") {
+        send({ role: "assistant", content: "The release checks are in the first message. This chat uses the local fixture model. Settings and commands still need your interaction, and platform-specific checks require the target platform." });
         send({}, "stop");
         response.end("data: [DONE]\n\n");
         return;
       }
-      const calls = fixture === "proof" ? proofCalls(messages, videoCommand()) : htmlNeedsPage ? [
+      send({ role: "assistant", content: afterTool ? "The fixture tool result was received." : fixture ? `I will prepare the ${fixture} fixture.` : "The correction was received." });
+      if ((afterTool && !htmlNeedsPage && !["proof", "helper", "process"].includes(fixture)) || !fixture) {
+        send({}, "stop");
+        response.end("data: [DONE]\n\n");
+        return;
+      }
+      const helperCalls = turnMessages.flatMap(message => message.tool_calls ?? []);
+      const calls = fixture === "colors" ? [
+        { name: "ask", args: { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }, slow: false },
+      ] : fixture === "helper" ? !afterTool ? [
+        { name: "task", args: { i: "Checking release helper conversation", context: "Use the local fixture provider. Do not run tools, checks or edit files.", tasks: [{ name: "TourHelper", task: "fixture helper-reply. Reply with the short release-tour helper check.", solutionSpace: "One fixed reply, no investigation." }] }, slow: false },
+      ] : helperCalls.some(call => call.function?.name === "wait") ? [] : [
+        { name: "wait", args: { i: "Waiting for tour helper" }, slow: false },
+      ] : fixture === "process" ? !afterTool ? [
+        { name: "bash", args: { i: "Starting process exit example", command: "python3 -u -c \"import time; print('tour process ready', flush=True); time.sleep(1); raise SystemExit(1)\"", name: "tour-process", pty: false, timeout: 0, ready: { log: "tour process ready" } }, slow: false },
+      ] : helperCalls.filter(call => call.function?.name === "bash").length === 1 ? [
+        { name: "bash", args: { i: "Recording supervised process exit", command: "python3 -c \"import time; time.sleep(2)\"", timeout: 10 }, slow: false },
+      ] : [] : fixture === "proof" ? proofCalls(turnMessages, videoCommand()) : htmlNeedsPage ? [
         { name: "write", args: { path: "page.html", content: pageHtml() }, slow: true },
       ] : fixture === "html" ? [
         { name: "write", args: { path: "style.css", content: css }, slow: false },
@@ -127,7 +152,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       ] : fixture === "sequence" ? [
         { name: "bash", args: { command: sequenceCommand(), timeout: 30 }, slow: false },
       ] : ["docx", "xlsx", "pptx"].includes(fixture) ? [
-        { name: "bash", args: { command: officeCommand(fixture), timeout: 60 }, slow: false },
+        { name: "bash", args: { command: officeCommand(fixture, 1, !/fixture\s+(docx|xlsx|pptx)\s+complete/i.test(textOf(lastUser))), timeout: 60 }, slow: false },
       ] : fixture === "progress" ? await progressCalls() : fixture === "image" ? [
         { name: "generate_image", args: { subject: "A measured architectural poster. " + "Use a teal circle on a cream background. ".repeat(200), image_size: "1024x1024", aspect_ratio: "1:1" }, slow: true },
       ] : [{ name: "write", args: { path: "poster.svg", content: posterSvg() }, slow: true }];
@@ -152,7 +177,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
   await new Promise((resolve, reject) => { server.once("error", reject); server.listen(port, "127.0.0.1", resolve); });
   const address = server.address();
   const baseUrl = `http://127.0.0.1:${address.port}/v1`;
-  try { await initializeFixture(root, baseUrl); }
+  try { if (initializeProfile) await initializeFixture(root, baseUrl); }
   catch (error) { server.close(); throw error; }
   return { baseUrl, close: async () => { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); } };
 }

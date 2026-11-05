@@ -2,6 +2,10 @@
 
 This loopback OpenAI Chat Completions server supplies deterministic streams to omp. It uses omp's `openai-completions` custom provider API through `models.yml`. Node.js 22 or later and omp 18.16.0 on PATH are required. The PNG, sequence and recorded-progress scenarios require Python 3 as `python3`; video and sequence rendering require ffmpeg with libx264, and the ProRes scenario requires prores_ks. The server binds IPv4 loopback only and does not forward requests to a model provider.
 
+## Release tour
+
+`npm run tour` uses this server to prepare and open the upcoming release's check chats in an isolated development profile. `npm run tour -- --prepare-only` generates and checks the data without launching Electron. See [the development scripts README](../dev/README.md) for the per-release manifest, resume command and replay instructions.
+
 ## Start the server and save an SVG
 
 Run these commands from the live preview worktree. They create a new scratch directory and wait for the server to finish writing its configuration.
@@ -36,6 +40,11 @@ Use `fixture html` or `fixture png` in place of `fixture svg` for the other scen
 - `fixture progress` replays the captured Remotion 4.0.391 and manim 0.19.0 logs from `samples/` through two bash functions, over about six seconds each. This checks the output parser without installing those renderers. It creates no rendered media. The samples retain their original version lines, commands, paths and console text; each also records the parser's expected result. ffmpeg 9.0.2 and sequence captures are included for unit tests.
 - `fixture prores` creates `unsupported.mov` with the ProRes encoder. Chromium's expected unsupported-codec result must show "This video format cannot play here" and Open in Files.
 - `fixture proof` first saves `proofs/frame-1.png` and prints its absolute path, then calls `ask` with "The proof is ready. Continue with the full render?" and Yes and No. The question waits before a full render. No ends the turn; Yes runs the same ffmpeg command as `fixture video`. This scenario needs Python 3, ffmpeg and an interactive app host or `--mode rpc-ui`; ordinary print and `rpc` modes do not expose the built-in `ask` tool.
+- `fixture colors` replies with hex colors in prose and inline code and calls `ask` with two hex-color options. It requires an interactive app host or `--mode rpc-ui`. Headless tour generation answers the question; send the prompt again in the app to inspect the live dialog.
+- `fixture helper` starts one task helper through omp, using the fixture model selected in the scratch configuration, then waits for it. The helper sends `fixture helper-reply`, which the same local server answers without tools. Send `fixture helper` in a live chat to open its conversation from Tasks; a saved helper card may have no open action.
+- `fixture notes` provides a local reply for release-check notes.
+- `fixture docx complete`, `fixture xlsx complete` and `fixture pptx complete` leave the third complete package in place at the end of the Office run. The unqualified Office prompts still finish with a truncated save. The tour records the truncated run, then restores a complete startup file so the owner can replay the truncated run while Outputs is open.
+- `fixture process` starts the named `tour-process` service, waits for its readiness line, and lets it exit with code 1. A second foreground command keeps omp running while it records that exit. The release tour uses this chat to check that restarting a saved chat preserves the historical process row without repeating it as a new notice.
 
 Stop the server with `kill "$FIXTURE_PID"` when finished. Scratch outputs and agent state remain available for inspection.
 
