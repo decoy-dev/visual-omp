@@ -85,7 +85,7 @@ const COMPONENTS = {
 };
 
 /** One lazy boundary serves every optional focused-chat item. */
-export function ChatStatusItem({ kind, ...props }: PaneProps & { kind: (typeof OPTIONAL_STATUS_ITEMS)[number] }) {
+export function ChatStatusItem({ kind, session, projectPath }: PaneProps & { kind: (typeof OPTIONAL_STATUS_ITEMS)[number] }) {
 	const Item = COMPONENTS[kind];
-	return <Item {...props} />;
+	return <Item session={session} projectPath={projectPath} />;
 }

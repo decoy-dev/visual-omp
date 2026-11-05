@@ -7,14 +7,23 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 #### New
 
 - Release packaging includes native Windows ARM64 installers and an ARM64 Scoop entry. Installed Windows behavior awaits verification on a Windows ARM64 machine.
+- Running chats show an account button next to the model button when omp reports multiple stored OAuth accounts for their provider. While omp is idle, choose the account the chat prefers; omp can still switch accounts at usage limits. Settings → Providers can sign out one account through omp without removing other sign-ins for the same provider. These controls remain hidden when omp lacks the required account APIs.
+- Continue a shared chat on your phone by scanning the control link's QR code. While a chat is shared, visual-omp keeps the computer from sleeping when idle, and the links refresh when omp changes rooms. Stop sharing disconnects guests; sharing the same room again revives its earlier links.
+- Choose which items the status bar shows, and in what order, by right-clicking the status bar or in Settings → Appearance. New optional items show the focused chat's context use, model and thinking level, queued messages, working time and running helpers. omp status and the update notice always show.
+- Outputs plays videos (MP4, M4V, WebM and MOV) with seeking. While ffmpeg, Remotion or manim renders, it shows progress, then the video once it can play, with six key frames you can click to jump to.
+- Settings → General offers "Ask omp for a proof before long renders", off by default. It installs the visual-proofs skill, which asks omp to prepare a proof and request your approval before the full render. The model decides whether to follow this guidance; the app does not enforce approval. Proofs cost tokens and possibly provider credits. Start a new chat or restart omp in an existing chat to load skill changes.
 
 #### Improved
 
 - Direct copies running under x64 emulation select native ARM64 installers for updates and reinstalls. Emulated Scoop copies show manual ARM64 migration instructions when a native stable release is published.
+- While the window is hidden or minimized, chats stop redrawing; omp keeps working, and notifications and sounds still arrive. Returning to the window shows the latest reply at once. This reduces work while visual-omp is in the background and may help with the freezes some Windows users reported; its effect is not measured yet.
+- Outputs groups the frames of a declared render sequence and keeps unrelated numbered images separate.
 
 #### Fixed
 
 - Restarting a saved chat no longer repeats its earlier "Supervised process failed" lines after the first message you send. When omp resumes a chat, it redraws process exits from the chat's history in its own wording, and visual-omp showed those redrawn lines as new notices below the chat. The chat's own process exit rows still appear where they happened.
+- visual-omp now keeps a chat working through omp's non-terminal end events and waits for a terminal end or a fresh idle observation before marking it finished. This addresses paths that could report completion too early, but the incidents reported after helpers finished have not been reproduced, and confirmation in the app is pending. Each transition from working to idle records its cause in the diagnostics event log, without chat contents.
+- The Watch button on a tool card now lines up with the card's other icons instead of sitting above them at the far right.
 
 ## [0.7.7] - 2026-11-05
 
