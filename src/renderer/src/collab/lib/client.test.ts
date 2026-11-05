@@ -15,7 +15,7 @@ vi.mock("./socket", () => ({
 		connect() {}
 		close() {}
 		send(frame: unknown) { socket.sent.push(frame); }
-		sendConnected(frame: unknown, beforeSend: () => void) { beforeSend(); socket.sent.push(frame); return Promise.resolve(); }
+		sendConnected(frame: unknown, beforeSend: () => void, dispatched?: () => void) { beforeSend(); socket.sent.push(frame); dispatched?.(); return Promise.resolve(); }
 	},
 }));
 vi.mock("./link", () => ({
@@ -297,6 +297,22 @@ describe("user prompts while a question waits", () => {
 		expect(socket.sent).toEqual([]);
 		feed({ ...welcome, readOnly: true });
 		expect(() => client.sendPrompt("Keep this draft.")).toThrow("not ready");
+		expect(socket.sent).toEqual([]);
+	});
+});
+
+describe("queued helper prompts", () => {
+	it("sends through the connected path only after its final idle check", async () => {
+		const check = vi.fn();
+		await client.sendHelperPrompt("Atlas", "Follow up.", check);
+		expect(check).toHaveBeenCalledOnce();
+		expect(socket.sent).toEqual([{ t: "agent-cmd", cmd: "chat", agentId: "Atlas", text: "Follow up." }]);
+	});
+	it("preserves the message when the helper becomes busy or the connection becomes read-only", () => {
+		expect(() => client.sendHelperPrompt("Atlas", "Wait.", () => { throw new Error("Helper is busy"); })).toThrow("Helper is busy");
+		expect(socket.sent).toEqual([]);
+		feed({ ...welcome, readOnly: true });
+		expect(() => client.sendHelperPrompt("Atlas", "Wait.", () => {})).toThrow("not ready");
 		expect(socket.sent).toEqual([]);
 	});
 });

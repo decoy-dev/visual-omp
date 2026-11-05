@@ -4,7 +4,7 @@
  * call's helpers from its streamed progress or final results. The expanded body keeps the batch's assignments and
  * each helper's output.
  */
-import { CircleHalf } from "@phosphor-icons/react";
+import { CircleHalf, FileText } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { FriendlySummary, ToolStatus } from "../../chat/friendly";
@@ -12,7 +12,7 @@ import { fmtDuration } from "../../collab/lib/format";
 import { useNow } from "../../shell/hooks";
 import { activityOf, type Helper, type HelperStatus, progressStatus, taskIdLabel, taskResultStatus } from "../../features/panes/derive";
 import { completionPercentOf } from "../../features/panes/jobWidgets";
-import { cn, Definition, Meter, Progress, StatusBadge, StatusDot } from "../../ui";
+import { cn, Definition, IconButton, Meter, Progress, StatusBadge, StatusDot } from "../../ui";
 import { AgentLink, Badge, Note, Output, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderHost, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, normalizeWs, num, str, truncate } from "../util";
@@ -252,12 +252,13 @@ export function helperRunsSummary(runs: readonly Helper[], describeState: (statu
 }
 
 /** The helpers one task call runs, as cards; shown under the call in the transcript while they run and after. */
-export function TaskRuns({ runs }: { runs: readonly Helper[] }): ReactNode {
+export function TaskRuns({ runs, onOpen }: { runs: readonly Helper[]; onOpen?: (helper: Helper) => void }): ReactNode {
+	const { t } = useTranslation("panes");
 	if (runs.length === 0) return null;
 	return (
 		<div className="flex flex-col gap-2">
 			{runs.map(run => (
-				<SubagentRun key={run.id} run={run} />
+				<SubagentRun key={run.id} run={run} actions={onOpen && run.hasTranscript ? <IconButton size="sm" label={t("tasks.transcript", { name: run.name })} icon={<FileText />} onClick={() => onOpen(run)} /> : undefined} />
 			))}
 		</div>
 	);

@@ -7,7 +7,7 @@ import type { FileRef } from "@shared/contracts/fileRefs";
 import type { ReplyRefs } from "./fileRefs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import "../../i18n";
-import { AssistantBlocks, Transcript } from "./Transcript";
+import { AssistantBlocks, Transcript, TranscriptBody } from "./Transcript";
 import type { SessionController, SessionView } from "../../state/session";
 import { transcriptLayout, unsavedToolsMessage } from "./turns";
 import { ThoughtChoices } from "./thoughtChoices";
@@ -26,7 +26,7 @@ const links = vi.hoisted(() => ({ texts: [] as readonly string[], refs: null as 
 beforeEach(() => { links.texts = []; links.refs = null; links.drawn = []; pace.timelines.clear(); });
 vi.mock("react", async importOriginal => ({
 	...await importOriginal<typeof ReactModule>(),
-	useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown) => snapshot(),
+	useSyncExternalStore: (_subscribe: unknown, snapshot: () => unknown, serverSnapshot?: () => unknown) => (serverSnapshot ?? snapshot)(),
 }));
 vi.mock("./pace", async importOriginal => ({
 	...await importOriginal<typeof PaceModule>(),
@@ -271,4 +271,24 @@ describe("recorded transcript times", () => {
 		expect(html).toContain('aria-live="off"');
 		expect(html).toContain("Second reply.");
 	});
+});
+
+it("renders a helper's file-backed conversation with shared tool cards, thoughts and notices without a controller", () => {
+	const response = { ...message, content: [
+		{ type: "thinking", thinking: "Inspect the file." },
+		{ type: "text", text: "The helper found **the answer**." },
+		{ type: "toolCall", id: "helper-read", name: "read", intent: "Reading helper source", arguments: { path: "/repo/source.ts" } },
+	] } as AssistantMessage;
+	const entries: SessionEntry[] = [
+		{ type: "message", id: "helper-reply", parentId: null, timestamp: "2026-11-05T12:00:00Z", message: response },
+		{ type: "message", id: "helper-result", parentId: "helper-reply", timestamp: "2026-11-05T12:00:01Z", message: { role: "toolResult", toolCallId: "helper-read", toolName: "read", timestamp: 2000, content: [{ type: "text", text: "File contents." }], isError: false } },
+		{ type: "custom_message", id: "helper-notice", parentId: "helper-result", timestamp: "2026-11-05T12:00:02Z", customType: "skill-invocation", content: "Helper notice.", display: true },
+	];
+	const html = renderToStaticMarkup(createElement(TranscriptBody, { scope: { tabId: "parent", projectPath: "/repo" }, entries, mode: "verbose", ready: true, identity: "helper" }));
+	expect(html).toContain("Reading helper source");
+	expect(html).toContain("Inspect the file.");
+	expect(html).toContain("<strong>the answer</strong>");
+	expect(html).toContain("Helper notice.");
+	expect(html).not.toContain("Rewind");
+	expect(html).not.toContain("Fork from");
 });

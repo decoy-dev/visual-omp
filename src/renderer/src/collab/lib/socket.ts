@@ -91,7 +91,7 @@ export class CollabSocket {
 	}
 
 	/** A prompt belongs to this connection. It is never buffered or replayed after reconnect. */
-	sendConnected(frame: GuestFrame, beforeSend: () => void): Promise<void> {
+	sendConnected(frame: GuestFrame, beforeSend: () => void, dispatched?: () => void): Promise<void> {
 		const ws = this.#ws;
 		const sending = this.#sendChain.then(async () => {
 			if (this.#closed || !ws || ws !== this.#ws || ws.readyState !== WebSocket.OPEN) throw new Error("The chat disconnected before the message was sent.");
@@ -99,6 +99,7 @@ export class CollabSocket {
 			if (this.#closed || ws !== this.#ws || ws.readyState !== WebSocket.OPEN) throw new Error("The chat disconnected before the message was sent.");
 			beforeSend();
 			ws.send(packEnvelope(0, sealed));
+			dispatched?.();
 		});
 		this.#sendChain = sending.catch(() => undefined);
 		return sending;

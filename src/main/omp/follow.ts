@@ -10,6 +10,7 @@ import type { FollowState, SessionOwnership } from "@shared/ipc";
 import { broadcast } from "../ipc";
 import { sessionOwnership } from "./elsewhere";
 import { SessionTail } from "./tail";
+import { helperFileValidation } from "./helper-file";
 
 /** fs.watch events within this window coalesce into one read. */
 const READ_DELAY_MS = 120;
@@ -40,7 +41,7 @@ class Follower {
 	#closed = false;
 
 	constructor(file: string) {
-		this.tail = new SessionTail(file);
+		this.tail = new SessionTail(file, helperFileValidation(file));
 		this.#state = { file, readable: true, error: null, ownership: "unknown" };
 		this.#watch();
 		void this.flush();

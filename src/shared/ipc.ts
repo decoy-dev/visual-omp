@@ -306,6 +306,8 @@ export interface IpcInvokeMap {
 	/** Newest linked copy that contains this file's newest conversation turn. */
 	"sessions:resolve": { args: [file: string]; result: string };
 	"sessions:summary": { args: [file: string]; result: SessionSummary | null };
+	/** A helper's local transcript under this chat's companion folder, including nested helpers. */
+	"sessions:helperFile": { args: [parent: string, helperId: string]; result: string | null };
 	"sessions:pin": { args: [file: string]; result: boolean };
 	"sessions:rename": { args: [file: string, title: string]; result: { title: string; file: string; id: string; movedFrom: string | null } };
 	/** Copy a session through an isolated RPC process without switching its live host. */

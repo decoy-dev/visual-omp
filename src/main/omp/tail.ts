@@ -56,7 +56,7 @@ export class SessionTail {
 	#size = -1;
 	#mtimeMs = -1;
 
-	constructor(file: string) {
+	constructor(file: string, private readonly validateFile?: (handle: FileHandle) => Promise<void>) {
 		this.file = file;
 	}
 
@@ -68,6 +68,7 @@ export class SessionTail {
 	async read(): Promise<TailUpdate | null> {
 		const handle = await open(this.file, "r");
 		try {
+			if (this.validateFile) await this.validateFile(handle);
 			const stats = await handle.stat();
 			if (stats.ino !== this.#ino || stats.size < this.#offset) return await this.#readAll(handle, stats.ino, stats.size, stats.mtimeMs);
 			if (stats.size === this.#size && stats.mtimeMs === this.#mtimeMs) return null;

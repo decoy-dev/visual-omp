@@ -4,10 +4,10 @@
  * Message / transcript) and background shell jobs. This is where running work shows; Settings → Helpers holds only
  * the helper definitions, and the Helpers section links there.
  */
-import { CaretRight, ChatCenteredText, ChatCircleText, FileText, GearSix, Info, ListChecks, Square } from "@phosphor-icons/react";
+import { CaretRight, ChatCenteredText, FileText, GearSix, ListChecks, Square } from "@phosphor-icons/react";
 import type { NativeJob, NativeSnapshot } from "@shared/contracts/native";
 import { AnimatePresence, motion } from "motion/react";
-import { type FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useDisplayedEntries } from "../../chat/branch";
 import { NoticeRow, StatusGlyph } from "../../chat/transcript/NoticeRow";
@@ -17,83 +17,29 @@ import type { PaneProps } from "../../registry/slots";
 import { useNow, useSessionView } from "../../shell/hooks";
 import { openSettings } from "../../state/navigation";
 import { liveEntries, type SessionController, type SessionView } from "../../state/session";
-import { parseSessionHistory } from "../../state/history";
 import { SubagentRun } from "../../tool-render/tools/task";
 import { sendSlashCommand } from "../session-tools/typed";
 import { reportFailure } from "../session-tools/drive";
 import { TodoBoard } from "../../tool-render/tools/todo";
-import { Markdown } from "../../transcript/Markdown";
-import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import {
 	Badge,
 	Button,
-	Chip,
 	cn,
-	Dialog,
-	DialogContent,
 	EmptyState,
 	Expand,
 	IconButton,
-	Popover,
-	PopoverContent,
-	PopoverTrigger,
 	PresenceSwap,
 	SectionLabel,
 	Spinner,
 	StatusDot,
-	toast,
 } from "../../ui";
 import { listRowMotion, Section, usePaneVisible } from "./common";
 import { type BackgroundJob, backgroundJobs, commandSummary, foldHelpers, type Helper, helperJobSnapshots, helpersOf, latestTodo, ompRunning } from "./derive";
-import { type HelperTranscriptItem, helperTranscript } from "./helperTranscript";
+import { openHelper } from "./helperFocus";
 import { JobWidget } from "./JobWidget";
 import { helperWidgetCharts } from "./jobWidgets";
-import { fetchHelperTranscript, type HelperJobsSnapshot, watchHelperJobs } from "./helperJobs";
+import { type HelperJobsSnapshot, watchHelperJobs } from "./helperJobs";
 
-function MessageHelper({ helper, session }: { helper: Helper; session: SessionController }) {
-	const { t } = useTranslation("panes");
-	const [open, setOpen] = useState(false);
-	const [text, setText] = useState("");
-	const submit = (event: FormEvent) => {
-		event.preventDefault();
-		if (!text.trim()) return;
-		session.agentCommand("chat", helper.id, text.trim());
-		toast({ tone: "ok", message: t("tasks.messageSent", { name: helper.name }) });
-		setText("");
-		setOpen(false);
-	};
-	return (
-		<Popover open={open} onOpenChange={setOpen}>
-			<PopoverTrigger asChild>
-				<IconButton size="sm" label={t("tasks.message", { name: helper.name })} icon={<ChatCenteredText />} />
-			</PopoverTrigger>
-			<PopoverContent align="end" className="w-72 p-3">
-				<form onSubmit={submit} className="flex flex-col gap-2">
-					<label htmlFor={`msg-${helper.id}`} className="text-sm font-medium text-fg">
-						{t("tasks.messageTitle", { name: helper.name })}
-					</label>
-					<textarea
-						id={`msg-${helper.id}`}
-						autoFocus
-						rows={3}
-						value={text}
-						onChange={event => setText(event.target.value)}
-						onKeyDown={event => {
-							if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) submit(event);
-						}}
-						placeholder={t(helper.status === "running" ? "tasks.messagePlaceholder" : "tasks.messagePlaceholderFinished")}
-						className="w-full resize-none rounded-md border border-border-strong bg-panel px-2.5 py-1.5 text-md text-fg outline-none placeholder:text-fg-faint focus-visible:border-ring focus-visible:outline-2 focus-visible:outline-ring-soft"
-					/>
-					<div className="flex justify-end">
-						<Button size="sm" variant="primary" type="submit" disabled={!text.trim()}>
-							{t("tasks.send")}
-						</Button>
-					</div>
-				</form>
-			</PopoverContent>
-		</Popover>
-	);
-}
 
 function HelperRow({ helper, jobs, error, session, onTranscript }: { helper: Helper; jobs: readonly BackgroundJob[]; error: string | null; session: SessionController; onTranscript(helper: Helper): void }) {
 	const { t } = useTranslation("panes");
@@ -102,7 +48,7 @@ function HelperRow({ helper, jobs, error, session, onTranscript }: { helper: Hel
 			{helper.hasTranscript && (
 				<IconButton size="sm" label={t("tasks.transcript", { name: helper.name })} icon={<FileText />} onClick={() => onTranscript(helper)} />
 			)}
-			{helper.messageable && <MessageHelper helper={helper} session={session} />}
+			{helper.messageable && <IconButton size="sm" label={t("tasks.message", { name: helper.name })} icon={<ChatCenteredText />} onClick={() => openHelper(session, helper)} />}
 			{helper.status === "running" && (
 				<IconButton
 					size="sm"
@@ -161,123 +107,8 @@ function HelperList({ helpers, session, onTranscript }: { helpers: readonly Help
 	);
 }
 
-function TranscriptItem({ item }: { item: HelperTranscriptItem }) {
-	const { t } = useTranslation("panes");
-	switch (item.kind) {
-		case "assignment":
-		case "prompt":
-			return (
-				<div className="rounded-md bg-inset px-4 py-3">
-					<SectionLabel as="p">{item.kind === "assignment" ? t("tasks.assignment") : t("tasks.transcriptMessage")}</SectionLabel>
-					<div className="mt-1 whitespace-pre-wrap text-md text-fg">{item.text}</div>
-				</div>
-			);
-		case "message":
-			// Same card as the chat's IRC notices (chat/transcript/NoticeRow.tsx), plus why it arrived.
-			return (
-				<div className="rounded-lg border border-border bg-panel px-card py-3">
-					<p className="flex min-w-0 items-center gap-2">
-						<ChatCircleText className="size-4 shrink-0 text-fg-faint" aria-hidden />
-						<span className="min-w-0 truncate text-md font-medium text-fg">
-							{item.from ? t("tasks.transcriptMessageFrom", { name: item.from }) : t("tasks.transcriptMessage")}
-						</span>
-						{item.interrupted && <span className="shrink-0 text-sm text-fg-faint">{t("tasks.transcriptInterrupted")}</span>}
-					</p>
-					<div className="selectable mt-1.5 pl-6">
-						<Markdown text={item.text} />
-					</div>
-				</div>
-			);
-		case "notice":
-			return (
-				<p className="flex min-w-0 items-center gap-2 text-sm text-fg-faint" title={item.text}>
-					<Info className="size-4 shrink-0" aria-hidden />
-					<span className="min-w-0 truncate">{item.text}</span>
-				</p>
-			);
-		case "custom":
-			return <NoticeRow entry={item.entry} mode="normal" />;
-		case "reply":
-			return (
-				<div>
-					{item.text && <Markdown text={item.text} />}
-					{item.tools.length > 0 && (
-						<div className="mt-1 flex flex-wrap gap-1">
-							{item.tools.map((tool, index) => (
-								// biome-ignore lint/suspicious/noArrayIndexKey: display only
-								<Chip key={index} tone="neutral">
-									{tool}
-								</Chip>
-							))}
-						</div>
-					)}
-				</div>
-			);
-	}
-}
 
-/** A helper's conversation, read from omp through the collab stream (Tasks pane, the chat's pinned helpers). */
-export function TranscriptDialog({ helper, session, onClose }: { helper: Helper; session: SessionController; onClose(): void }) {
-	const { t } = useTranslation("panes");
-	const [state, setState] = useState<{ text: string } | { error: string } | null>(null);
-	useEffect(() => {
-		const client = session.guestClient();
-		if (!client) {
-			setState({ error: t("tasks.transcriptOffline") });
-			return;
-		}
-		let cancelled = false;
-		void (async () => {
-			let offset = 0;
-			let text = "";
-			while (!cancelled) {
-				const result = await fetchHelperTranscript(client, helper.id, offset, () => cancelled);
-				if (cancelled) return;
-				if (!result) {
-					setState({ error: t("tasks.transcriptTimeout") });
-					return;
-				}
-				if (result.kind === "error") {
-					setState({ error: result.message });
-					return;
-				}
-				text += result.text;
-				setState({ text });
-				if (result.newSize <= offset || !result.text) return;
-				offset = result.newSize;
-			}
-		})();
-		return () => {
-			cancelled = true;
-		};
-	}, [helper.id, session, t]);
-	const items = useMemo(() => (state && "text" in state ? helperTranscript(parseSessionHistory(state.text).entries) : []), [state]);
-	return (
-		<Dialog open onOpenChange={open => !open && onClose()}>
-			<DialogContent size="xl" title={t("tasks.transcriptTitle", { name: helper.name })} className="h-[min(640px,calc(100vh-64px))]">
-				<TargetContextMenu projectPath={session.projectPath} tabId={session.tabId}>
-				{!state ? (
-					<div className="flex items-center gap-2 py-6 text-sm text-fg-muted" role="status">
-						<Spinner /> {t("tasks.transcriptLoading")}
-					</div>
-				) : "error" in state ? (
-					<p className="py-6 text-sm text-err">{state.error}</p>
-				) : items.length === 0 ? (
-					<p className="py-6 text-sm text-fg-muted">{t("tasks.transcriptEmpty")}</p>
-				) : (
-					<div className="space-y-4 pb-4">
-						{items.map(item => (
-							<TranscriptItem key={item.id} item={item} />
-						))}
-					</div>
-				)}
-				</TargetContextMenu>
-			</DialogContent>
-		</Dialog>
-	);
-}
-
-/** Read the same omp-owned helper files as the conversation dialog, including helpers whose finished rows are folded. */
+/** Read omp-owned helper files for background jobs, including helpers whose finished rows are folded. */
 function useHelperJobs(helpers: readonly Helper[], session: SessionController): ReadonlyMap<string, HelperJobsSnapshot> {
 	const [readers, setReaders] = useState<ReadonlyMap<string, HelperJobsSnapshot>>(new Map());
 	const visible = usePaneVisible("tasks");
@@ -478,7 +309,6 @@ function useNativeJobs(view: SessionView | null): readonly NativeJob[] {
 export function TasksPane({ session, projectPath }: PaneProps) {
 	const { t } = useTranslation("panes");
 	const view = useSessionView(session);
-	const [transcriptOf, setTranscriptOf] = useState<Helper | null>(null);
 	// The checklist follows the branch the chat shows (after a rewind, not the abandoned one); jobs are processes that
 	// keep running whatever branch is shown, so they read every entry omp sent.
 	const shown = useDisplayedEntries(view);
@@ -524,7 +354,7 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 					</Expand>
 					<Expand open={helpers.length > 0}>
 						<Section title={t("tasks.helpers")} count={runningHelpers > 0 && <Badge count={runningHelpers} label={t("tasks.runningCount", { count: runningHelpers })} />}>
-							<HelperList helpers={helpers} session={session} onTranscript={setTranscriptOf} />
+							<HelperList helpers={helpers} session={session} onTranscript={helper => openHelper(session, helper)} />
 							<button
 								type="button"
 								onClick={() => openSettings("helpers", { projectPath: projectPath ?? session.projectPath })}
@@ -543,7 +373,6 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 							<JobList jobs={jobs} session={view?.mode === "live" && !view.readOnly ? session : undefined} />
 						</Section>
 					</Expand>
-					{transcriptOf && <TranscriptDialog helper={transcriptOf} session={session} onClose={() => setTranscriptOf(null)} />}
 				</div>
 			) : (
 				<EmptyState icon={<ListChecks />} title={t("tasks.emptyTitle")} body={t("tasks.empty")} />

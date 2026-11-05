@@ -282,6 +282,16 @@ export class GuestClient {
 		this.#socket.send({ t: "agent-cmd", cmd, agentId, text });
 	}
 
+	/** Helper messages are held by the app until idle and never buffered across a collab reconnect. */
+	sendHelperPrompt(agentId: string, text: string, beforeSend: () => void, dispatched?: () => void): Promise<void> {
+		const connection = this.#uiConnection;
+		if (this.#phase !== "live" || this.#readOnly) throw new Error("The chat is not ready to receive a message.");
+		return this.#socket.sendConnected({ t: "agent-cmd", cmd: "chat", agentId, text }, () => {
+			if (this.#phase !== "live" || this.#readOnly || this.#uiConnection !== connection) throw new Error("The chat changed before the message was sent. Send it again.");
+			beforeSend();
+		}, dispatched);
+	}
+
 	/**
 	 * Incremental subagent-transcript read. Resolves a {@link TranscriptResult}
 	 * (`rows` or terminal `error`), or `null` on transient failure (10s timeout,

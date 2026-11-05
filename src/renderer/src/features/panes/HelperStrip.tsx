@@ -11,7 +11,7 @@
  */
 import { Square } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { useComposerDrafts } from "../../chat/composer/drafts";
 import { fmtDuration } from "../../collab/lib/format";
@@ -24,15 +24,7 @@ import { cn, Expand, IconButton, StatusDot } from "../../ui";
 import { listRowMotion } from "./common";
 import type { Helper } from "./derive";
 import { usePinnedHelpers } from "./pinnedHelpers";
-import { LoadFailedDialog, type LoadFailureProps, lazyView } from "../../registry/lazy";
-
-/** A helper's transcript dialog that did not load: the same failure dialog, and Close dismisses it. */
-function TranscriptLoadFailed({ onClose, retry }: LoadFailureProps & { onClose(): void }): ReactNode {
-	return <LoadFailedDialog retry={retry} onClose={onClose} />;
-}
-
-/** The helper transcript dialog loads with the Tasks pane's chunk; if that does not load, it shows its failure dialog. */
-export const HelperTranscriptDialog = lazyView(() => import("./TasksPane").then(module => module.TranscriptDialog), null, TranscriptLoadFailed);
+import { openHelper } from "./helperFocus";
 
 function PinnedRow({ helper, session, onOpen }: { helper: Helper; session: SessionController; onOpen(helper: Helper): void }): ReactNode {
 	const { t } = useTranslation("panes");
@@ -82,7 +74,6 @@ export function HelperStrip({ session }: ChatSlotProps): ReactNode {
 	const { t } = useTranslation("panes");
 	const view = useSessionView(session);
 	const pinned = usePinnedHelpers(view);
-	const [transcriptOf, setTranscriptOf] = useState<Helper | null>(null);
 	const listRef = useRef<HTMLUListElement | null>(null);
 	// The row keyboard focus is in, so focus can move on when that helper stops running and its row leaves.
 	const focusedRow = useRef<{ id: string; index: number } | null>(null);
@@ -121,7 +112,7 @@ export function HelperStrip({ session }: ChatSlotProps): ReactNode {
 					>
 						<AnimatePresence initial={false}>
 							{pinned.shown.map(helper => (
-								<PinnedRow key={helper.id} helper={helper} session={session} onOpen={setTranscriptOf} />
+								<PinnedRow key={helper.id} helper={helper} session={session} onOpen={helper => openHelper(session, helper)} />
 							))}
 							{pinned.more > 0 && (
 								<motion.li key="more" layout="position" {...listRowMotion} className="flex">
@@ -142,7 +133,6 @@ export function HelperStrip({ session }: ChatSlotProps): ReactNode {
 					</ul>
 				</div>
 			</Expand>
-			{transcriptOf && <HelperTranscriptDialog helper={transcriptOf} session={session} onClose={() => setTranscriptOf(null)} />}
 		</>
 	);
 }

@@ -18,7 +18,8 @@ import { expandedPromptTextMatches } from "@shared/prompt-input";
 import { APP_GUEST_NAME, GuestClient, type GuestSnapshot } from "../collab/lib/client";
 import { confirmLargeResume, LARGE_RESUME_BYTES, ResumeDeclinedError } from "../registry/guards";
 import { toast } from "../ui/toast";
-import { extendSessionHistory, parseSessionHistory, type SessionHistory } from "./history";
+import { parseSessionHistory, type SessionHistory } from "./history";
+import { watchSessionFile } from "./sessionFiles";
 import { TspNoticeStore } from "./tsp/notice-store";
 import { TspQuestionSync } from "./tsp-questions";
 
@@ -199,6 +200,7 @@ export type SessionEvent =
 	| { kind: "finished"; notificationRequested?: boolean }
 	| { kind: "needsInput" }
 	| { kind: "exited"; code: number | null }
+	| { kind: "disposed" }
 	/** The user sent something from this window that goes to omp without waiting in the queue (`noteSent`). */
 	| { kind: "sent" };
 
@@ -220,15 +222,9 @@ export function setSlashDelivery(deliver: SlashDelivery): void {
 	slashDelivery = deliver;
 }
 
-/** Session files the read-only tabs follow; main watches exactly this set (and drops it on reload). */
-const followed = new Set<string>();
-
 /** Saved files the user chose to resume from the large-chat warning; kept for this renderer's lifetime. */
 const approvedLargeResumes = new Set<string>();
 
-function syncFollowed(): void {
-	void window.vomp.invoke("sessions:follow", [...followed]);
-}
 
 interface AsyncWaitCheck {
 	guest: GuestClient;
@@ -408,31 +404,15 @@ export class SessionController {
 	#follow(file: string, ownership: SessionOwnership): void {
 		if (this.#disposed || this.#unfollow) return;
 		this.#set({ readOnly: true, follow: { readable: true, error: null, ownership } });
-		// Main's first tail for a file is the whole file (`reset`); appends before it would be out of order.
 		this.#tailSynced = false;
-		const offTail = window.vomp.on("sessions:tail", tail => {
-			if (tail.file !== file || this.#unfollow !== stop) return;
-			if (tail.reset) {
+		this.#unfollow = watchSessionFile(file, (history, state) => {
+			if (this.#disposed) return;
+			if (history && history !== this.#view.history) {
 				this.#tailSynced = true;
-				this.#set({ history: parseSessionHistory(tail.text) });
-			} else if (this.#tailSynced && this.#view.history) {
-				const history = extendSessionHistory(this.#view.history, tail.text);
-				if (history !== this.#view.history) this.#set({ history });
+				this.#set({ history });
 			}
+			if (state) this.#set({ follow: { readable: state.readable, error: state.error, ownership: state.ownership } });
 		});
-		const offState = window.vomp.on("sessions:followState", state => {
-			if (state.file !== file || this.#unfollow !== stop) return;
-			this.#set({ follow: { readable: state.readable, error: state.error, ownership: state.ownership } });
-		});
-		const stop = () => {
-			offTail();
-			offState();
-			followed.delete(file);
-			syncFollowed();
-		};
-		this.#unfollow = stop;
-		followed.add(file);
-		syncFollowed();
 	}
 
 	#stopFollowing(): void {
@@ -1072,6 +1052,7 @@ export class SessionController {
 	async dispose(): Promise<void> {
 		if (this.#disposed) return;
 		this.#disposed = true;
+		this.#emit({ kind: "disposed" });
 		this.#tspQuestionSync.dispose();
 		this.#submissions.clear();
 		this.#submissionEntries.clear();

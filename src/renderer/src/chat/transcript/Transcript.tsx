@@ -27,6 +27,7 @@ import type { ActiveTool } from "../../collab/lib/client";
 import { continuesAssistantModel, modelFallbacks, modelSetupVisible, providerFallback, type ModelFallback } from "../../collab/lib/modelFallback";
 import { type Helper, type HelperStatus, helpersByCall, ompRunning, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
 import { unpinnedRuns, usePinnedHelpers } from "../../features/panes/pinnedHelpers";
+import { openHelper } from "../../features/panes/helperFocus";
 import { openInFiles } from "../../features/panes/files-store";
 import { useHomeDir } from "../../features/projects/folders/homeDir";
 import { getCommand } from "../../registry/commands";
@@ -35,8 +36,8 @@ import { type CommandResultRecord, dismissCommandResult, placeResults, roomKey, 
 import { placeTspNotices, type TspNotice } from "../../state/tsp/notices";
 import { useTsp } from "../../state/tsp/useTsp";
 import { liveGuest, type SessionController, type SessionView } from "../../state/session";
-import { useApp } from "../../state/app";
 import { useVisualSnapshot } from "../../state/visualSnapshot";
+import { useApp } from "../../state/app";
 import { copyCode, StreamingMarkdown } from "../../transcript/Markdown";
 import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toast, useScrollFollow } from "../../ui";
 import { useDisplayedEntries } from "../branch";
@@ -114,10 +115,10 @@ function UserContent({ content }: { content: string | readonly (TextContent | Im
 	);
 }
 
-function UserMessage({ entry, session, from }: { entry: SessionEntry; session: SessionController; from?: string }): ReactNode {
+function UserMessage({ entry, onCommand, from }: { entry: SessionEntry; onCommand?: (command: string, entryId: string) => void; from?: string }): ReactNode {
 	const { t } = useTranslation("chat");
 	const content = entry.type === "message" && entry.message.role === "user" ? entry.message.content : entry.type === "custom_message" ? entry.content : "";
-	const run = (id: string) => void getCommand(id)?.run({ session, projectPath: session.projectPath, entryId: entry.id });
+	const run = (id: string) => onCommand?.(id, entry.id);
 	return (
 		<div className="group flex flex-col items-end gap-1">
 			<div className="flex items-center gap-2 text-xs text-fg-faint">
@@ -129,8 +130,8 @@ function UserMessage({ entry, session, from }: { entry: SessionEntry; session: S
 				<UserContent content={content} />
 			</div>
 			<div className="flex gap-0.5 opacity-0 transition-opacity duration-(--dur) group-focus-within:opacity-100 group-hover:opacity-100">
-				{getCommand("chat.rewindTo") && <IconButton label={t("rewind")} icon={<ArrowUUpLeft />} size="sm" onClick={() => run("chat.rewindTo")} />}
-				{getCommand("chat.forkFrom") && <IconButton label={t("fork")} icon={<GitFork />} size="sm" onClick={() => run("chat.forkFrom")} />}
+				{onCommand && getCommand("chat.rewindTo") && <IconButton label={t("rewind")} icon={<ArrowUUpLeft />} size="sm" onClick={() => run("chat.rewindTo")} />}
+				{onCommand && getCommand("chat.forkFrom") && <IconButton label={t("fork")} icon={<GitFork />} size="sm" onClick={() => run("chat.forkFrom")} />}
 				<IconButton
 					label={t("copy")}
 					icon={<Copy />}
@@ -273,6 +274,7 @@ interface WorkView {
 	hold: (callId: string, engaged: boolean) => void;
 	/** Marks a group the reader is using, by key, so it keeps its own boundary and key (`turns.ts`). */
 	holdGroup: (key: string, engaged: boolean) => void;
+	onHelper?: (helper: Helper) => void;
 }
 
 type ToolCallBlock = Extract<ContentBlock, { type: "toolCall" }>;
@@ -366,7 +368,7 @@ function ToolStep({
 		<div>
 			{card}
 			<Expand open={cards.length > 0} className="pt-1 pb-2 pl-6.5">
-				<TaskRuns runs={cards} />
+				<TaskRuns runs={cards} onOpen={work?.onHelper} />
 			</Expand>
 		</div>
 	);
@@ -570,7 +572,7 @@ interface RowProps {
 	results: ReadonlyMap<string, ToolResultMessage>;
 	active: ReadonlyMap<string, ActiveTool>;
 	mode: TranscriptMode;
-	session: SessionController;
+	onCommand?: (command: string, entryId: string) => void;
 	/** Hidden blocks and step groups of this entry; compared by `sig`, so a row re-renders only when its layout does. */
 	layout: EntryLayout | undefined;
 	work: WorkView;
@@ -633,12 +635,12 @@ function rowShown(entry: SessionEntry, mode: TranscriptMode, afterFirstPrompt: b
 	}
 }
 
-const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results, active, mode, session, layout, work, fallback }: RowProps): ReactNode {
+const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results, active, mode, onCommand, layout, work, fallback }: RowProps): ReactNode {
 	const { t } = useTranslation("chat");
 	switch (entry.type) {
 		case "message": {
 			const message = entry.message;
-			if (message.role === "user") return <UserMessage entry={entry} session={session} />;
+			if (message.role === "user") return <UserMessage entry={entry} onCommand={onCommand} />;
 			if (isExecutionMessage(message)) return <SavedRunRow message={message} timestamp={entry.timestamp} />;
 			if (message.role !== "assistant") return null;
 			return (
@@ -652,7 +654,7 @@ const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results,
 			if (entry.customType === "collab-prompt") {
 				const details = entry.details;
 				const from = details && typeof details === "object" && "from" in details && typeof details.from === "string" ? details.from : undefined;
-				return <UserMessage entry={entry} session={session} from={from} />;
+				return <UserMessage entry={entry} onCommand={onCommand} from={from} />;
 			}
 			if (!entry.display) return null;
 			return <NoticeRow entry={entry} mode={mode} />;
@@ -714,6 +716,42 @@ export interface TranscriptProps {
 	mode: TranscriptMode;
 }
 
+interface TranscriptScope { tabId: string; projectPath: string }
+const NO_HELPERS: ReadonlyMap<string, readonly Helper[]> = new Map();
+const NO_PINNED: ReadonlySet<string> = new Set();
+const NO_RESULTS: readonly CommandResultRecord[] = [];
+const NO_NOTICES: readonly TspNotice[] = [];
+const NO_RUNS: RunProjection["runs"] = [];
+
+/** File-backed conversations share the chat renderer without acquiring its controller, host or input actions. */
+export interface TranscriptBodyProps {
+	scope: TranscriptScope;
+	entries: readonly SessionEntry[];
+	mode: TranscriptMode;
+	working?: boolean;
+	stream?: AssistantMessage | null;
+	streamDone?: boolean;
+	activeTools?: ReadonlyMap<string, ActiveTool>;
+	phase?: string | null;
+	ready: boolean;
+	identity: string;
+	helpers?: ReadonlyMap<string, readonly Helper[]>;
+	pinned?: ReadonlySet<string>;
+	helpersMayRun?: boolean;
+	commandResults?: readonly CommandResultRecord[];
+	room?: string | null;
+	tspNotices?: readonly TspNotice[];
+	localRuns?: RunProjection["runs"];
+	pendingQuestion?: { key: string; node: ReactNode } | null;
+	footer?: ReactNode;
+	emptyState?: ReactNode;
+	onCommand?: (command: string, entryId: string) => void;
+	onSent?: (listener: () => void) => () => void;
+	onDismissResult?: (id: string) => void;
+	renderUser?: (entry: SessionEntry) => ReactNode;
+	onHelper?: (helper: Helper) => void;
+}
+
 interface WindowEdgeProps {
 	start: number;
 	/** Records where the view is; called just before React changes the DOM for a new `start`. */
@@ -769,45 +807,72 @@ function useOutOfSight(ref: RefObject<HTMLElement | null>): boolean {
 }
 
 export function Transcript({ session, view, mode }: TranscriptProps): ReactNode {
-	const { t } = useTranslation("chat");
 	const slots = chatSlots.use().filter(slot => slot.placement === "transcriptEnd");
 	const guest = liveGuest(view);
-	// The live stream carries every branch; show the one ending at the leaf (after a rewind, the displayed leaf).
 	const entries = useDisplayedEntries(view);
 	const tspHost = view.host?.transport === "tsp" ? view.host : null;
 	const { snapshot: tspSnapshot } = useTsp(tspHost?.hostId ?? null);
 	const previousRuns = useRef<RunProjection | undefined>(undefined);
 	const runProjection = useMemo(() => nativeRuns(tspSnapshot, tspHost?.hostId ?? null, tspHost?.generation, entries, previousRuns.current), [tspSnapshot, tspHost?.hostId, tspHost?.generation, entries]);
-	const localRuns = runProjection.runs;
 	useLayoutEffect(() => { previousRuns.current = runProjection; }, [runProjection]);
+	const pendingQuestion = usePendingQuestion(session, guest?.uiRequest ?? null);
+	const commandResults = useCommandResults(session);
+	const tspNotices = useVisualSnapshot(session.tspNotices.subscribe, session.tspNotices.getSnapshot);
+	const agents = guest?.agents;
+	const progress = guest?.progress;
+	const lifecycle = guest?.lifecycle;
+	const helpersMayRun = ompRunning(view);
+	const helpers = useMemo(
+		() => helpersByCall(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, helpersMayRun),
+		[agents, progress, lifecycle, helpersMayRun],
+	);
+	const pinned = usePinnedHelpers(view).ids;
+	const onSent = useCallback((listener: () => void) => session.onEvent(event => { if (event.kind === "sent") listener(); }), [session]);
+	const onCommand = useCallback((id: string, entryId: string) => { void getCommand(id)?.run({ session, projectPath: session.projectPath, entryId }); }, [session]);
+	const onHelper = useCallback((helper: Helper) => openHelper(session, helper), [session]);
+	return <TranscriptBody
+		scope={session} entries={entries} mode={mode} working={view.working}
+		stream={guest?.stream ?? null} streamDone={view.guest?.streamDone ?? true}
+		activeTools={guest?.activeTools ?? EMPTY_TOOLS} phase={view.guest?.phase}
+		ready={view.guest ? view.guest.phase === "live" && view.guest.loading === null : view.history !== null}
+		identity={`${view.guest?.header?.id ?? view.history?.header?.id ?? session.tabId}:${view.displayLeaf ?? ""}`}
+		helpers={helpers} pinned={pinned} helpersMayRun={helpersMayRun}
+		commandResults={commandResults} room={roomKey(view)} tspNotices={tspNotices}
+		localRuns={runProjection.runs} pendingQuestion={pendingQuestion}
+		footer={slots.map(slot => <slot.component key={slot.id} session={session} />)}
+		emptyState={(view.mode === "live" || view.mode === "starting" && !view.history) ? <EmptyChat session={session} /> : null}
+		onSent={onSent} onCommand={onCommand} onDismissResult={id => dismissCommandResult(session, id)}
+		onHelper={onHelper}
+	/>;
+}
+
+export function TranscriptBody({
+	scope, entries, mode, working = false, stream = null, streamDone = true, activeTools = EMPTY_TOOLS,
+	phase = null, ready, identity, helpers = NO_HELPERS, pinned = NO_PINNED, helpersMayRun = false,
+	commandResults = NO_RESULTS, room = "", tspNotices = NO_NOTICES, localRuns = NO_RUNS,
+	pendingQuestion = null, footer, emptyState, onCommand, onSent, onDismissResult, renderUser, onHelper,
+}: TranscriptBodyProps): ReactNode {
+	const { t } = useTranslation("chat");
 	const fallbacks = useMemo(() => modelFallbacks(entries), [entries]);
-	const stream = guest?.stream ?? null;
-	const streamDone = view.guest?.streamDone ?? true;
-	const activeTools = guest?.activeTools ?? EMPTY_TOOLS;
-	const uiRequest = guest?.uiRequest ?? null;
-	const pendingQuestion = usePendingQuestion(session, uiRequest);
 
 	// A stream present at first synchronization, or while reconnecting, is already in progress.
 	// Keep its current text visible, then pace updates once the mirror is live.
 	const previousGuestPhase = useRef<string | null>(null);
-	const synchronized = stream !== null && streamNeedsSync(view.guest?.phase ?? null, previousGuestPhase.current);
+	const synchronized = stream !== null && streamNeedsSync(phase, previousGuestPhase.current);
 	useEffect(() => {
-		previousGuestPhase.current = view.guest?.phase ?? null;
-	}, [view.guest?.phase]);
+		previousGuestPhase.current = phase;
+	}, [phase]);
 
 	const [pinnedStart, setPinnedStart] = useState<number | null>(null);
 	const tail = tailStart(entries.length);
 	const start = pinnedStart === null ? tail : Math.min(pinnedStart, tail);
 	const visible = useMemo(() => entries.slice(start), [entries, start]);
 	const visibleEntryIds = useMemo(() => new Set(visible.map(entry => entry.id)), [visible]);
-	// What omp printed for typed slash commands, each after the entry that was last on screen when it was typed.
-	const commandResults = useCommandResults(session);
-	const room = roomKey(view);
 	const placedResults = useMemo(
 		() => placeResults(entries.map(entry => entry.id), start, commandResults, room),
 		[entries, start, commandResults, room],
 	);
-	const tspNotices = useVisualSnapshot(session.tspNotices.subscribe, session.tspNotices.getSnapshot);
+
 	const placedNotices = useMemo(() => placeTspNotices(entries, start, tspNotices), [entries, start, tspNotices]);
 	const results = useMemo(() => {
 		const map = new Map<string, ToolResultMessage>();
@@ -884,13 +949,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	// `SessionController.noteSent`) brings the chat to its end, even from far up, and the reply that follows stays in
 	// view. A message that only joins the queue, a queued one omp takes later and entries from anywhere else leave
 	// the view where the reader put it.
-	useEffect(
-		() =>
-			session.onEvent(event => {
-				if (event.kind === "sent") jumpToEnd();
-			}),
-		[session, jumpToEnd],
-	);
+	useEffect(() => onSent?.(jumpToEnd), [onSent, jumpToEnd]);
 
 	// File and folder links in replies (`FileLinks`) open in the Files pane, unless the click ended a text selection in them.
 	const openFileLink = (target: EventTarget) => {
@@ -899,7 +958,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		if (!link || !path) return false;
 		const selection = window.getSelection();
 		if (!selection?.isCollapsed && selection?.containsNode(link, true)) return true;
-		openInFiles(session.projectPath, path, { focus: true, tabId: session.tabId });
+		openInFiles(scope.projectPath, path, { focus: true, tabId: scope.tabId });
 		return true;
 	};
 
@@ -923,11 +982,11 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	};
 
 	// Relative names in replies are looked up in the chat's folder, then in folders omp wrote or edited files in.
-	const written = useMemo(() => writtenFolders(entries, session.projectPath).join("\0"), [entries, session.projectPath]);
+	const written = useMemo(() => writtenFolders(entries, scope.projectPath).join("\0"), [entries, scope.projectPath]);
 	const home = useHomeDir();
 	const fileRefScope = useMemo(
-		() => ({ chat: session.tabId, bases: [session.projectPath, ...(written ? written.split("\0") : [])], home }),
-		[session.tabId, session.projectPath, written, home],
+		() => ({ chat: scope.tabId, bases: [scope.projectPath, ...(written ? written.split("\0") : [])], home }),
+		[scope.tabId, scope.projectPath, written, home],
 	);
 
 	// omp's first entries are session setup (model / thinking level); a chat is empty until someone talks.
@@ -939,13 +998,13 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		localRuns.length === 0 &&
 		fallbacks.size === 0 &&
 		stream === null &&
-		!view.working &&
-		!uiRequest &&
+		!working &&
+		!pendingQuestion &&
 		placedResults.top.length === 0 &&
 		placedResults.after.size === 0 &&
 		placedResults.end.length === 0 &&
 		tspNotices.length === 0 &&
-		(view.mode === "live" || (view.mode === "starting" && !view.history));
+		ready;
 
 	// Rows that arrive while the chat is open rise in. History (first render, a tab switch, an async load, an
 	// earlier window mounting above) and a streamed reply turning into its saved entry stay at rest.
@@ -960,7 +1019,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	// How omp's work lays out turn by turn: step groups (Normal view; a step joins its group the moment it appears),
 	// the board per turn, and the files each finished turn changed. Groups and summaries that appear while the chat is
 	// open rise in; history renders at rest.
-	const live = view.working || stream !== null;
+	const live = working || stream !== null;
 	const grouped = mode === "normal";
 	const laidOut = useMemo(() => liveLayoutEntries(entries, stream, tailMessage, grouped), [entries, stream, tailMessage, grouped]);
 	// Rows and groups the reader is using keep their place until they let go, so a fold never takes one out from under
@@ -974,13 +1033,13 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 			transcriptLayout(laidOut, {
 				live,
 				group: grouped,
-				context: { cwd: session.projectPath, home },
+				context: { cwd: scope.projectPath, home },
 				active: activeTools,
 				from: start,
 				hold: heldRows,
 				holdGroups: heldGroups,
 			}),
-		[laidOut, live, grouped, session.projectPath, home, start, heldRows, heldGroups, activeTools],
+		[laidOut, live, grouped, scope.projectPath, home, start, heldRows, heldGroups, activeTools],
 	);
 	const shownWorkRef = useRef<{ live: boolean; grouped: boolean; start: number; keys: ReadonlySet<string> } | null>(null);
 	const shownWork = shownWorkRef.current;
@@ -1002,22 +1061,13 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		shownWorkRef.current = { live, grouped, start, keys: workKeys };
 	}, [live, grouped, start, workKeys]);
 	const liveThinking = useApp(state => state.prefs?.liveThinking ?? true);
-	const agents = guest?.agents;
-	const progress = guest?.progress;
-	const lifecycle = guest?.lifecycle;
-	const helpersMayRun = ompRunning(view);
-	const helpers = useMemo(
-		() => helpersByCall(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, helpersMayRun),
-		[agents, progress, lifecycle, helpersMayRun],
-	);
 	const recorded = useMemo(() => transcriptHelperStates(entries), [entries]);
-	const pinned = usePinnedHelpers(view).ids;
-	const synchronizingReplies = !arrivals.armed || Boolean(view.guest && streamNeedsSync(view.guest.phase, previousGuestPhase.current));
+	const synchronizingReplies = !arrivals.armed || Boolean(phase && streamNeedsSync(phase, previousGuestPhase.current));
 	const work = useMemo(
-		(): WorkView => ({ layout, arriving: forming, openGroups, thoughts, helpers, pinned, recorded, ompRunning: helpersMayRun, hold, holdGroup, synchronizing: synchronizingReplies }),
-		[layout, forming, openGroups, thoughts, helpers, pinned, recorded, helpersMayRun, hold, holdGroup, synchronizingReplies],
+		(): WorkView => ({ layout, arriving: forming, openGroups, thoughts, helpers, pinned, recorded, ompRunning: helpersMayRun, hold, holdGroup, synchronizing: synchronizingReplies, onHelper }),
+		[layout, forming, openGroups, thoughts, helpers, pinned, recorded, helpersMayRun, hold, holdGroup, synchronizingReplies, onHelper],
 	);
-	const openFile = (path: string) => openInFiles(session.projectPath, path, { focus: true, tabId: session.tabId });
+	const openFile = (path: string) => openInFiles(scope.projectPath, path, { focus: true, tabId: scope.tabId });
 
 	// New rows, stream updates and questions: follow when pinned, otherwise offer the jump. Until the chat has loaded
 	// (and on that first loaded commit) the view goes straight to the bottom instead of gliding there.
@@ -1041,7 +1091,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 			follow.snap();
 			settledRef.current = loaded;
 		}
-	}, [follow, loaded, entries, stream, activeTools, uiRequest, view.working, tspNotices, localRuns]);
+	}, [follow, loaded, entries, stream, activeTools, pendingQuestion, working, tspNotices, localRuns]);
 	let lastSeen = -1;
 	for (let index = visible.length - 1; index >= 0; index--) {
 		if (arrivals.seen.has(visible[index]?.id ?? "")) {
@@ -1069,7 +1119,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const resultRows = (list: readonly CommandResultRecord[] | undefined) =>
 		(list ?? []).map(result => (
 			<Rise key={`result:${result.id}`} data-row play={Date.now() - result.createdAt < 1000} distance={6} tempo="snappy">
-				<CommandResultRow result={result} onDismiss={() => dismissCommandResult(session, result.id)} />
+				<CommandResultRow result={result} onDismiss={() => onDismissResult?.(result.id)} />
 			</Rise>
 		));
 	const pushResults = (list: readonly CommandResultRecord[] | undefined) => {
@@ -1102,18 +1152,18 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		const summary = layout.summaries.get(entry.id);
 		const row = (
 			<Rise key={entry.id} data-row play={arrived} distance={6} tempo="snappy" className={cn(continuesTurn && "-mt-6")}>
-				<Row
+				{isUser && renderUser ? renderUser(entry) : <Row
 					entry={entry}
 					continuesTurn={continuesTurn}
 					afterFirstPrompt={seenUser}
 					results={results}
 					active={activeTools}
 					mode={mode}
-					session={session}
+					onCommand={onCommand}
 					layout={layout.entries.get(entry.id)}
 					work={work}
 					fallback={fallbacks.get(entry.id)}
-				/>
+				/>}
 			</Rise>
 		);
 		if (entry.type === "custom_message" && entry.customType !== "collab-prompt" && noticeIsStep(parseNotice(entry))) {
@@ -1128,7 +1178,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 			endRun();
 			rows.push(
 				<Rise key={`summary:${entry.id}`} play={forming.has(`summary:${entry.id}`)} distance={6} tempo="snappy" className="-mt-4">
-					<TurnSummary totals={summary} projectPath={session.projectPath} tabId={session.tabId} onOpen={openFile} />
+					<TurnSummary totals={summary} projectPath={scope.projectPath} tabId={scope.tabId} onOpen={openFile} />
 				</Rise>,
 			);
 		}
@@ -1139,7 +1189,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	endRun();
 
 	return (
-		<TargetContextMenu projectPath={session.projectPath} tabId={session.tabId}>
+		<TargetContextMenu projectPath={scope.projectPath} tabId={scope.tabId}>
 		<div className="relative min-h-0 flex-1">
 			<div
 				ref={rootRef}
@@ -1172,7 +1222,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 					<PlayoutPaused.Provider value={outOfSight}>
 						<FileRefContext.Provider value={fileRefScope}>
 							<div ref={contentRef} className="mx-auto flex min-h-full w-full max-w-(--chat-max) flex-col gap-6 px-6 pt-6 pb-4">
-								{empty && <EmptyChat session={session} />}
+								{empty && emptyState}
 								{start > 0 && (
 									<Button variant="ghost" size="sm" className="self-center" onClick={showEarlier}>
 										{t("showEarlier", { count: start })}
@@ -1218,7 +1268,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 										/>
 									</Rise>
 								)}
-								<NativeRunRows items={localRuns} visibleEntries={visibleEntryIds} tabId={session.tabId} hidden={outOfSight} />
+								<NativeRunRows items={localRuns} visibleEntries={visibleEntryIds} tabId={scope.tabId} hidden={outOfSight} />
 								<AnimatePresence initial={false} mode="wait">
 									{pendingQuestion && (
 										<motion.div
@@ -1231,9 +1281,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 										</motion.div>
 									)}
 								</AnimatePresence>
-								{slots.map(slot => (
-									<slot.component key={slot.id} session={session} />
-								))}
+								{footer}
 							</div>
 						</FileRefContext.Provider>
 					</PlayoutPaused.Provider>
@@ -1243,8 +1291,8 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 				entries={entries}
 				stream={stream}
 				active={activeTools}
-				ready={view.guest ? view.guest.phase === "live" && view.guest.loading === null : view.history !== null}
-				session={`${view.guest?.header?.id ?? view.history?.header?.id ?? session.tabId}:${view.displayLeaf ?? ""}`}
+				ready={ready}
+				session={identity}
 			/>
 			<AnimatePresence initial={false}>
 				{unseen && (

@@ -67,3 +67,16 @@ it("does not replay a prompt whose bytes were already sent before disconnect", a
 	TestWebSocket.instances[0]!.drop(); await vi.advanceTimersByTimeAsync(2000); TestWebSocket.instances[1]!.open();
 	expect(TestWebSocket.instances[1]!.sent).toEqual([]);
 });
+
+it("reports helper dispatch only after bytes are written, and never after a refused write", async () => {
+	const gate = Promise.withResolvers<Uint8Array<ArrayBuffer>>(); encryption.seal.mockReturnValueOnce(gate.promise);
+	const dispatched = vi.fn(() => expect(TestWebSocket.instances[0]!.sent).toHaveLength(1));
+	const sending = socket.sendConnected({ t: "agent-cmd", cmd: "chat", agentId: "Atlas", text: "Follow up" }, () => {}, dispatched);
+	await flush(); expect(dispatched).not.toHaveBeenCalled();
+	gate.resolve(new Uint8Array([1])); await sending;
+	expect(dispatched).toHaveBeenCalledOnce();
+	const refused = vi.fn();
+	await expect(socket.sendConnected({ t: "agent-cmd", cmd: "chat", agentId: "Atlas", text: "Cancelled" }, () => { throw new Error("Cancelled"); }, refused)).rejects.toThrow("Cancelled");
+	expect(refused).not.toHaveBeenCalled();
+	expect(TestWebSocket.instances[0]!.sent).toHaveLength(1);
+});

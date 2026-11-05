@@ -8,31 +8,10 @@ function user(text: string): SessionEntry {
 	return { type: "message", id: `u${seq}`, parentId: null, timestamp: "2026-10-14T16:20:32.144Z", message: { role: "user", content: text, timestamp: 0 } } as SessionEntry;
 }
 
-function custom(customType: string, content: string, display: boolean): SessionEntry {
-	seq++;
-	return { type: "custom_message", id: `c${seq}`, parentId: null, timestamp: "2026-10-14T16:20:32.144Z", customType, content, display } as SessionEntry;
-}
 
 const strip = (items: HelperTranscriptItem[]) => items.map(({ id: _id, ...rest }) => rest);
 
 describe("helperTranscript", () => {
-	it("keeps narration and ordinary reply text in block order while omitting unmarked thinking", () => {
-		const entry = {
-			type: "message", id: "narrated", parentId: null, timestamp: "",
-			message: {
-				role: "assistant", model: "claude-opus-5-5", timestamp: 0, stopReason: "toolUse",
-				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } },
-				content: [
-					{ type: "text", text: "First reply.\n\n" },
-					{ type: "thinking", thinking: "Unmarked reasoning." },
-					{ type: "thinking", thinking: "Narrated reply.\n\n", narration: true },
-					{ type: "toolCall", id: "read", name: "read", arguments: {}, intent: "Reading project files" },
-					{ type: "text", text: "Last reply." },
-				],
-			},
-		} as SessionEntry;
-		expect(helperTranscript([entry])).toEqual([{ kind: "reply", id: "narrated", text: "First reply.\n\nNarrated reply.\n\nLast reply.", tools: ["Reading project files"] }]);
-	});
 
 	it("shows the first user message as the assignment without omp's preamble", () => {
 		const items = helperTranscript([user("Complete assignment thoroughly:\n\n# Target\nHelper transcript dialog.")]);
@@ -73,33 +52,9 @@ describe("helperTranscript", () => {
 		]);
 	});
 
-	it("passes displayed custom messages through and drops hidden ones", () => {
-		const shown = custom("irc:incoming", "<irc>\nIncoming IRC message from agent `Notices`:\n\nHello\n</irc>", true);
-		const items = helperTranscript([user("Complete assignment thoroughly:\n\nDo it."), shown, custom("mid-run-todo-nudge", "<system-reminder>x</system-reminder>", false)]);
-		expect(items.map(item => item.kind)).toEqual(["assignment", "custom"]);
-		expect(items[1]).toMatchObject({ kind: "custom", entry: shown });
+	it("leaves custom notices to the shared transcript renderer", () => {
+		const shown = { type: "custom_message", id: "notice", customType: "irc:incoming", content: "Hello", display: true } as SessionEntry;
+		expect(helperTranscript([shown])).toEqual([]);
 	});
 });
 
-describe("helper interim replies", () => {
-	it("shows out write content and shell reply history as prose without counting the reply write as a step", () => {
-		const entries: SessionEntry[] = [
-			{ type: "message", id: "assistant", parentId: null, timestamp: "", message: {
-				role: "assistant", model: "m", timestamp: 1000, stopReason: "toolUse",
-				usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } },
-				content: [
-					{ type: "text", text: "Before." },
-					{ type: "toolCall", id: "out", name: "write", arguments: { path: "out://", content: "Written **reply**." } },
-					{ type: "text", text: "After." },
-					{ type: "toolCall", id: "bash", name: "bash", arguments: { command: "printf report > out://" } },
-				],
-			} },
-			{ type: "message", id: "result", parentId: "assistant", timestamp: "", message: { role: "toolResult", toolCallId: "bash", toolName: "bash", timestamp: 2000, content: [], details: { replies: ["Shell **reply**.", "Next reply."] }, isError: false } },
-		];
-		expect(helperTranscript(entries)).toEqual([
-			{ kind: "reply", id: "assistant", text: "Before.\n\nWritten **reply**.\n\nAfter.", tools: ["bash"] },
-			{ kind: "reply", id: "result:reply:0", text: "Shell **reply**.", tools: [] },
-			{ kind: "reply", id: "result:reply:1", text: "Next reply.", tools: [] },
-		]);
-	});
-});
