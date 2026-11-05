@@ -5,6 +5,7 @@
 import type { ComponentType } from "react";
 import type { PreviewSequencePattern } from "@shared/contracts/preview";
 import type { LiveProgress } from "./progress";
+import type { OfficeCells, OfficeSheet } from "./formats/xlsx-model";
 
 /** How the app learns about the output while omp makes it. */
 export type LiveSubjectKind =
@@ -77,6 +78,16 @@ export interface LiveSubject {
 	updatedAt: number;
 }
 
+interface OfficeSnapshotIdentity { path: string; revision: number }
+export interface DocxFrameSnapshot extends OfficeSnapshotIdentity { format: "docx"; body: string; styles: string }
+export interface XlsxFrameSnapshot extends OfficeSnapshotIdentity { format: "xlsx"; sheets: OfficeSheet[]; window: OfficeCells }
+export type OfficeFrameSnapshot = DocxFrameSnapshot | XlsxFrameSnapshot;
+export interface OfficeFrameCache {
+	read(): OfficeFrameSnapshot | null;
+	write(snapshot: OfficeFrameSnapshot): void;
+	clear(): void;
+}
+
 export interface LiveFrameProps {
 	subject: LiveSubject;
 	/** The chat's folder, used as the protocol's asset root when it is not broad. */
@@ -85,6 +96,8 @@ export interface LiveFrameProps {
 	related: readonly string[];
 	/** Image file subjects already discovered in this turn, separate from the paths authorized for asset grants. */
 	turnImages?: readonly string[];
+	/** Stage-owned snapshots survive switching subjects; adapters still dispose their workers on unmount. */
+	officeCache?: OfficeFrameCache;
 }
 
 export interface LiveAdapter {

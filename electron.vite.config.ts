@@ -109,6 +109,8 @@ export default defineConfig({
 	renderer: {
 		plugins: [react(), tailwindcss(), phosphorWeights(), rendererChunkMetadata()],
 		worker: { plugins: () => [rendererWorkerMetadata()] },
+		// Discover Office dependencies before a fixture starts, rather than reloading away its early saved frames.
+		optimizeDeps: { include: ["docx-preview", "fflate", "@xmldom/xmldom", "xlsx"] },
 		resolve: {
 			alias: {
 				"@shared": shared,

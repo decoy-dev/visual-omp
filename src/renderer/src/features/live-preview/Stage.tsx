@@ -1,5 +1,5 @@
 import { ArrowsOut, DotsThree, FolderOpen, Square, X } from "@phosphor-icons/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LoadFailedNotice } from "../../registry/lazy";
 import type { SessionController } from "../../state/session";
@@ -11,7 +11,7 @@ import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage } from "../panes/m
 import { loadAdapter } from "./formats";
 import { useLivePreview, usePreviewChat, visibleSubjects } from "./store";
 import { stopAndRedirect, usePreviewRedirect } from "./redirect";
-import type { LiveAdapter, LiveFrameProps, LiveSubject } from "./types";
+import type { LiveAdapter, LiveFrameProps, LiveSubject, OfficeFrameSnapshot } from "./types";
 
 export function subjectName(subject: LiveSubject): string {
 	return subject.path?.split(/[\\/]/).at(-1) || subject.toolName || subject.format;
@@ -47,14 +47,14 @@ function Frame(props: LiveFrameProps) {
 	return adapter ? <adapter.Frame {...shown} /> : <p role="status" className="p-3 text-sm text-fg-muted">{t("live.loading")}</p>;
 }
 
-function ExpandedFrame({ subject, projectPath, related, turnImages, open, onOpenChange }: LiveFrameProps & { open: boolean; onOpenChange(open: boolean): void }) {
+function ExpandedFrame({ subject, projectPath, related, turnImages, officeCache, open, onOpenChange }: LiveFrameProps & { open: boolean; onOpenChange(open: boolean): void }) {
 	const name = subjectName(subject);
 	return <ExpandPreview name={name} path={subject.path} image={["svg", "image", "result-images", "sequence"].includes(subject.format)} open={open} onOpenChange={onOpenChange} hideTrigger
 		render={zoom => subject.format === "pdf" && subject.path
 			? <PdfFrame path={subject.path} revision={subject.revision} name={name} />
 			: subject.format === "image" && subject.path
 				? <PreviewImage sourceKey={`${subject.id}:${subject.revision}`} load={() => loadFileImage(subject.path!)} pdf={false} enabled alt={name} explain zoom={zoom} />
-				: <Frame subject={subject} projectPath={projectPath} related={related} turnImages={turnImages} />} />;
+				: <Frame subject={subject} projectPath={projectPath} related={related} turnImages={turnImages} officeCache={officeCache} />} />;
 }
 
 export function Stage({ session, onShowOutput }: { session: SessionController; onShowOutput(path: string): void }) {
@@ -67,6 +67,17 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 	const [expanded, setExpanded] = useState(false);
 	// Stop and redirect from the overflow menu focuses the composer, so the closing menu must not take focus back.
 	const redirecting = useRef(false);
+	const officeCache = useMemo(() => {
+		if (!subject) return undefined;
+		const { id, path, format, revision } = subject, tabId = session.tabId;
+		return {
+			read: () => useLivePreview.getState().readOffice(tabId, id, path, format, revision),
+			write: (snapshot: OfficeFrameSnapshot) => {
+				if (snapshot.path === path && snapshot.format === format && snapshot.revision <= revision) useLivePreview.getState().retainOffice(tabId, id, snapshot);
+			},
+			clear: () => useLivePreview.getState().discardOffice(tabId, id, path, format),
+		};
+	}, [session.tabId, subject?.id, subject?.path, subject?.format, subject?.revision]);
 	if (!enabled || !subject) return null;
 	const name = subjectName(subject);
 	const turnImages = subjects.filter(item => item.path && (item.format === "image" || item.format === "svg")).map(item => item.path!);
@@ -96,7 +107,7 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 		</div>
 		<div className="flex h-64 min-h-40 flex-col overflow-auto rounded-md bg-inset" data-live-subject={subject.id}>
 			{subject.kind === "render" ? <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-fg-muted">{subject.intent ?? (running ? t("live.rendering") : status)}</div>
-				: <Frame key={`${subject.id}:${subject.format}`} subject={subject} projectPath={session.projectPath} related={chat.related} turnImages={turnImages} />}
+				: <Frame key={`${subject.id}:${subject.format}`} subject={subject} projectPath={session.projectPath} related={chat.related} turnImages={turnImages} officeCache={officeCache} />}
 		</div>
 		{rendering && <Progress className="mt-2" aria-label={status} value={progress && progress.total !== null ? progress.percent ?? undefined : undefined} />}
 		<p className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs text-fg-muted">
@@ -113,7 +124,7 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 				{running && <Button size="sm" variant="ghost" disabled={stopping} onClick={redirectAction}>{t("live.redirect")}</Button>}
 				{subject.path && <IconButton size="sm" label={t("live.openFiles")} icon={<FolderOpen />} onClick={openFile} />}
 			</span>
-			{canExpand && <><span className="hidden @min-[28rem]/live:contents"><IconButton size="sm" label={t("files.expand")} icon={<ArrowsOut />} onClick={() => setExpanded(true)} /></span><ExpandedFrame key={subject.id} subject={subject} projectPath={session.projectPath} related={chat.related} turnImages={turnImages} open={expanded} onOpenChange={setExpanded} /></>}
+			{canExpand && <><span className="hidden @min-[28rem]/live:contents"><IconButton size="sm" label={t("files.expand")} icon={<ArrowsOut />} onClick={() => setExpanded(true)} /></span><ExpandedFrame key={subject.id} subject={subject} projectPath={session.projectPath} related={chat.related} turnImages={turnImages} officeCache={officeCache} open={expanded} onOpenChange={setExpanded} /></>}
 			<span className="contents @min-[28rem]/live:hidden">
 				<Menu><MenuTrigger asChild><IconButton size="sm" label={t("live.actions")} icon={<DotsThree />} /></MenuTrigger>
 					<MenuContent align="end" onCloseAutoFocus={event => { if (!redirecting.current) return; redirecting.current = false; event.preventDefault(); }}>

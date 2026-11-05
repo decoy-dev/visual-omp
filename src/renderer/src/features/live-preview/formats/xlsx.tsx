@@ -21,11 +21,13 @@ export function visibleOfficeWindow(sheet: number, meta: OfficeSheet, top: numbe
 		colStart, colEnd: Math.min(meta.cols, colStart + Math.min(30, Math.ceil(width / 160) + 3)) };
 }
 
-interface LoadedWorkbook { client: OfficeWorkerClient; sheets: OfficeSheet[]; revision: number }
-function Grid({ book, frozen }: { book: LoadedWorkbook; frozen: boolean }) {
+interface LoadedWorkbook { client: OfficeWorkerClient | null; sheets: OfficeSheet[]; revision: number; path: string; initial?: OfficeCells }
+function Grid({ book, frozen, onPresentation }: { book: LoadedWorkbook; frozen: boolean; onPresentation(window: OfficeCells): void }) {
 	const { t } = useTranslation("panes");
-	const [sheet, setSheet] = useState(0);
-	const [cells, setCells] = useState<OfficeCells | null>(null);
+	const [sheet, setSheet] = useState(book.initial?.sheet ?? 0);
+	const [cells, setCells] = useState<OfficeCells | null>(book.initial ?? null);
+	const savePresentation = useRef(onPresentation);
+	savePresentation.current = onPresentation;
 	const [failed, setFailed] = useState(false);
 	const viewport = useRef<HTMLDivElement>(null);
 	const [view, setView] = useState({ top: 0, left: 0, height: 256, width: 320, rowHeight: 32 });
@@ -40,13 +42,15 @@ function Grid({ book, frozen }: { book: LoadedWorkbook; frozen: boolean }) {
 		const observer = new ResizeObserver(measure); observer.observe(element);
 		return () => observer.disconnect();
 	}, []);
-	const window = meta ? visibleOfficeWindow(sheet, meta, view.top, view.left, view.height, view.width, view.rowHeight) : null;
-	const key = JSON.stringify(window);
+	const restored = book.client === null;
+	const window = meta ? restored ? cells : visibleOfficeWindow(sheet, meta, view.top, view.left, view.height, view.width, view.rowHeight) : null;
+	const key = window ? `${window.sheet}:${window.rowStart}:${window.rowEnd}:${window.colStart}:${window.colEnd}` : "";
 	useEffect(() => {
-		if (!window || frozen) return;
+		if (!book.client || !window || (frozen && cells !== null)) return;
 		let current = true;
-		void book.client.request<OfficeCells>({ window }).then(value => { if (current) { setCells(value); setFailed(false); } })
-			.catch(() => { if (current) setFailed(true); });
+		void book.client.request<OfficeCells>({ window }).then(value => {
+			if (current) { setCells(value); setFailed(false); savePresentation.current(value); }
+		}).catch(() => { if (current) setFailed(true); });
 		return () => { current = false; };
 	}, [book, key, frozen]);
 	const selectSheet = (next: number) => {
@@ -55,6 +59,7 @@ function Grid({ book, frozen }: { book: LoadedWorkbook; frozen: boolean }) {
 		setView(value => ({ ...value, top: 0, left: 0 }));
 	};
 	const shown = cells?.sheet === sheet ? cells : null;
+	const rowOffset = restored ? shown?.rowStart ?? 0 : 0, colOffset = restored ? shown?.colStart ?? 0 : 0;
 	return <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
 		<div role="tablist" aria-label={t("live.office.sheets")} className="flex shrink-0 gap-1 overflow-x-auto border-b border-border p-1">
 			{book.sheets.map((item, index) => <button key={index} disabled={frozen} type="button" role="tab" aria-selected={sheet === index} tabIndex={sheet === index ? 0 : -1}
@@ -84,16 +89,16 @@ function Grid({ book, frozen }: { book: LoadedWorkbook; frozen: boolean }) {
 				if (col * 160 < element.scrollLeft) element.scrollLeft = col * 160;
 				else if ((col + 1) * 160 + 48 > element.scrollLeft + element.clientWidth) element.scrollLeft = (col + 1) * 160 + 48 - element.clientWidth;
 			}}>
-			<div className="relative" style={{ width: meta.cols * 160 + 48, height: (meta.rows + 1) * view.rowHeight }}>
+			<div className="relative" style={{ width: (restored ? (shown?.colEnd ?? 0) - colOffset : meta.cols) * 160 + 48, height: ((restored ? shown?.cells.length ?? 0 : meta.rows) + 1) * view.rowHeight }}>
 				<div role="row" aria-rowindex={1} className="sticky top-0 z-10 border-b border-border bg-inset" style={{ height: view.rowHeight }}>
 					<div role="columnheader" aria-colindex={1} className="sticky left-0 z-10 h-full w-12 border-r border-border bg-inset" />
-					{window && Array.from({ length: Math.max(0, window.colEnd - window.colStart) }, (_, offset) => { const col = window.colStart + offset; return <div key={col} role="columnheader" aria-colindex={col + 2} className="absolute top-0 flex items-center border-r border-border px-2 font-medium text-fg-muted" style={{ left: col * 160 + 48, width: 160, height: view.rowHeight }}>{columnName(col)}</div>; })}
+					{window && Array.from({ length: Math.max(0, window.colEnd - window.colStart) }, (_, offset) => { const col = window.colStart + offset; return <div key={col} role="columnheader" aria-colindex={col + 2} className="absolute top-0 flex items-center border-r border-border px-2 font-medium text-fg-muted" style={{ left: (col - colOffset) * 160 + 48, width: 160, height: view.rowHeight }}>{columnName(col)}</div>; })}
 				</div>
-				{shown?.cells.map((values, offset) => { const row = shown.rowStart + offset; return <div key={row} role="row" aria-rowindex={row + 2} className="absolute left-0 w-full border-b border-border" style={{ top: (row + 1) * view.rowHeight, height: view.rowHeight }}>
+				{shown?.cells.map((values, offset) => { const row = shown.rowStart + offset; return <div key={row} role="row" aria-rowindex={row + 2} className="absolute left-0 w-full border-b border-border" style={{ top: (row - rowOffset + 1) * view.rowHeight, height: view.rowHeight }}>
 					<div role="rowheader" aria-colindex={1} className="sticky left-0 z-1 flex h-full w-12 items-center justify-end border-r border-border bg-inset px-2 tabular-nums text-fg-muted">{row + 1}</div>
 					{values.map((value, offset) => { const col = shown.colStart + offset; return <div key={col} id={`office-${book.revision}-${sheet}-${row}-${col}`} role="gridcell" aria-colindex={col + 2} title={value}
 						onClick={() => setActive({ row, col })} className={cn("absolute top-0 flex items-center overflow-hidden whitespace-pre border-r border-border px-2 text-fg", active.row === row && active.col === col ? "bg-selected outline-1 -outline-offset-1 outline-ring" : "bg-sheet")}
-						style={{ left: col * 160 + 48, width: 160, height: view.rowHeight }}><span className="truncate">{value}</span></div>; })}
+						style={{ left: (col - colOffset) * 160 + 48, width: 160, height: view.rowHeight }}><span className="truncate">{value}</span></div>; })}
 				</div>; })}
 			</div>
 		</div>}
@@ -108,28 +113,47 @@ export function Frame(props: LiveFrameProps) {
 	const [good, setGood] = useState<LoadedWorkbook | null>(null);
 	const kept = useRef<OfficeWorkerClient | null>(null);
 	const [failure, setFailure] = useState<string | null>(null);
+	const source = useRef<{ token: string; path: string | null }>({ token: "", path: null });
+	if (frame && source.current.token !== frame.grant.token) source.current = { token: frame.grant.token, path: props.subject.path };
 	useEffect(() => {
-		if (!frame) return;
+		kept.current?.dispose(); kept.current = null; setGood(null);
+		if (error) props.officeCache?.clear();
+	}, [props.subject.path, props.subject.format, error]);
+	useEffect(() => {
+		if (!frame || error || !props.subject.path || source.current.path !== props.subject.path) return;
+		const path = props.subject.path;
 		kept.current?.dispose();
 		let current = true, published = false;
-		const client = new OfficeWorkerClient(new XlsxWorker());
+		let client: OfficeWorkerClient | null = null;
 		void (async () => {
 			try {
 				const binary = await window.vomp.invoke("preview:readBinary", frame.grant.token);
 				if (!current) return;
-				if (!binary.ok) { setFailure(binary.reason); return; }
+				if (!binary.ok) {
+					if (binary.reason !== "incomplete") {
+						props.officeCache?.clear(); kept.current = null; setGood(null);
+					} else if (binary.reason === "incomplete" && !good) {
+						const cached = props.officeCache?.read();
+						if (cached?.format === "xlsx" && cached.path === path && cached.revision <= frame.revision) {
+							setGood({ client: null, sheets: cached.sheets, revision: cached.revision, path, initial: cached.window });
+						}
+					}
+					setFailure(binary.reason); return;
+				}
+				client = new OfficeWorkerClient(new XlsxWorker());
 				const result = await client.request<{ sheets: OfficeSheet[] }>({ bytes: binary.bytes }, [binary.bytes.buffer]);
 				if (!current) return;
 				kept.current?.dispose(); kept.current = client; published = true;
-				setGood({ client, sheets: result.sheets, revision: frame.revision }); setFailure(null);
+				setGood({ client, sheets: result.sheets, revision: frame.revision, path }); setFailure(null);
 			} catch (cause) { if (current) setFailure(cause instanceof Error ? cause.message : "unsafe"); }
-			finally { if (!published) client.dispose(); }
+			finally { if (!published) client?.dispose(); }
 		})();
-		return () => { current = false; if (!published) client.dispose(); };
-	}, [frame]);
+		return () => { current = false; if (!published) client?.dispose(); };
+	}, [frame, props.subject.path, props.subject.format, error]);
 	useEffect(() => () => { kept.current?.dispose(); }, []);
 	return <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-		{good && <Grid key={good.revision} book={good} frozen={good.revision !== frame?.revision} />}
+		{good && good.path === props.subject.path && good.revision <= props.subject.revision && <Grid key={`${good.path}:${good.revision}`} book={good} frozen={good.revision !== frame?.revision || !good.client}
+			onPresentation={window => props.officeCache?.write({ format: "xlsx", path: good.path, revision: good.revision, sheets: good.sheets, window })} />}
 		{(error || failure === "incomplete" || failure === "missing") && <WaitingForSave />}
 		{failure && failure !== "incomplete" && failure !== "missing" && <p role="status" className="p-3 text-sm text-fg-muted">{t(failure === "timeout" ? "live.office.timeout" : "live.office.unsafe")}{failure === "timeout" && good && <> {t("live.office.retained")}</>}</p>}
 	</div>;

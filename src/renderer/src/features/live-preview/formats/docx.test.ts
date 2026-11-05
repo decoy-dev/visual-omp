@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Frame } from "./docx";
-import type { LiveSubject } from "../types";
+import type { LiveSubject, OfficeFrameCache } from "../types";
 import copy from "../../../i18n/en/panes.json";
 
 const state = vi.hoisted(() => ({ frame: { grant: { token: "token", url: "vomp-preview://token/office.docx", assetRoot: true }, revision: 1 }, workers: [] as { terminate: ReturnType<typeof vi.fn> }[] }));
@@ -22,9 +22,9 @@ import { renderAsync } from "docx-preview";
 let host: HTMLDivElement, root: Root;
 const invoke = vi.fn();
 const subject = { id: "doc", kind: "file", format: "docx", path: "/project/office.docx", revision: 1, state: "saved" } as LiveSubject;
-async function show(revision: number) {
+async function show(revision: number, officeCache?: OfficeFrameCache) {
 	state.frame = { ...state.frame, revision };
-	await act(async () => root.render(createElement(Frame, { subject: { ...subject, revision }, projectPath: "/project", related: [] })));
+	await act(async () => root.render(createElement(Frame, { subject: { ...subject, revision }, projectPath: "/project", related: [], officeCache })));
 }
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -67,4 +67,38 @@ describe("DOCX frame lifecycle", () => {
 		expect(host.firstElementChild?.firstElementChild?.shadowRoot?.textContent).not.toContain("Stale");
 		expect(state.workers.every(worker => worker.terminate.mock.calls.length === 1)).toBe(true);
 	});
+});
+
+it("stores sanitized DOCX presentation rather than the source package", async () => {
+	const officeCache: OfficeFrameCache = { read: () => null, write: vi.fn(), clear: vi.fn() };
+	await show(1, officeCache);
+	const value = vi.mocked(officeCache.write).mock.calls[0]![0];
+	expect(value).not.toHaveProperty("bytes");
+	expect(value.format).toBe("docx");
+	if (value.format === "docx") {
+		expect(value.body).toContain("Revision 1");
+		expect(value.body).not.toMatch(/script|onerror/);
+		expect(value.body).not.toContain("https://bad.test");
+		expect(value.styles).not.toContain("https://bad.test");
+	}
+});
+
+it.each([{ path: "/project/other.docx", revision: 1 }, { path: "/project/office.docx", revision: 2 }])("refuses a retained DOCX with mismatched identity or future revision: %j", async identity => {
+	invoke.mockResolvedValueOnce({ ok: false, reason: "incomplete" });
+	const officeCache: OfficeFrameCache = { read: () => ({ ...identity, format: "docx", body: "<p>Forbidden presentation</p>", styles: "" }), write: vi.fn(), clear: vi.fn() };
+	await show(1, officeCache);
+	expect(host.firstElementChild?.firstElementChild?.shadowRoot).toBeNull();
+	expect(host.textContent).not.toContain("Forbidden presentation");
+});
+
+it("restores sanitized document markup and preserves intercepted links", async () => {
+	invoke.mockResolvedValueOnce({ ok: false, reason: "incomplete" });
+	const officeCache: OfficeFrameCache = { read: () => ({ format: "docx", path: "/project/office.docx", revision: 1,
+		body: '<section><p>Retained text</p><img src="data:image/png;base64,YQ=="><a href="https://example.test/retained">Retained link</a></section>', styles: "<style>p{font-size:12pt}</style>" }), write: vi.fn(), clear: vi.fn() };
+	await show(1, officeCache);
+	const shadow = host.querySelector('[data-theme="light"]')!.shadowRoot!;
+	expect(shadow.textContent).toContain("Retained text");
+	expect(shadow.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,YQ==");
+	await act(async () => shadow.querySelector("a")!.click());
+	expect(invoke).toHaveBeenCalledWith("app:openExternal", "https://example.test/retained");
 });

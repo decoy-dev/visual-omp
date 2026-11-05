@@ -3,7 +3,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Frame, columnName, visibleOfficeWindow } from "./xlsx";
-import type { LiveSubject } from "../types";
+import type { LiveSubject, OfficeFrameCache, OfficeFrameSnapshot } from "../types";
 import type { OfficeWindow } from "./xlsx-model";
 
 const state = vi.hoisted(() => ({ frame: { grant: { token: "token", url: "vomp-preview://token/office.xlsx", assetRoot: true }, revision: 1 }, workers: [] as { terminate: ReturnType<typeof vi.fn> }[] }));
@@ -24,9 +24,9 @@ vi.mock("./xlsx.worker?worker", () => ({ default: class {
 } }));
 let host: HTMLDivElement, root: Root;
 const subject = { id: "sheet", kind: "file", format: "xlsx", path: "/project/office.xlsx", revision: 1, state: "saved" } as LiveSubject;
-async function show(revision: number) {
+async function show(revision: number, officeCache?: OfficeFrameCache) {
 	state.frame = { ...state.frame, revision };
-	await act(async () => root.render(createElement(Frame, { subject: { ...subject, revision }, projectPath: "/project", related: [] })));
+	await act(async () => root.render(createElement(Frame, { subject: { ...subject, revision }, projectPath: "/project", related: [], officeCache })));
 }
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -64,6 +64,20 @@ describe("virtualized Office spreadsheet", () => {
 		expect((host.querySelector('[role="tab"]') as HTMLButtonElement).disabled).toBe(true);
 		expect(state.workers[0]?.terminate).toHaveBeenCalledOnce();
 	});
+	it("restores cached workbook cells after the subject is reselected with an incomplete latest save", async () => {
+		let snapshot: OfficeFrameSnapshot | null = null;
+		const officeCache = { read: () => snapshot, write: (value: OfficeFrameSnapshot) => { snapshot = value; }, clear: () => { snapshot = null; } };
+		await show(1, officeCache);
+		expect(host.textContent).toContain("<img src=x onerror=alert(1)>");
+		expect(officeCache.read()).not.toHaveProperty("bytes");
+		expect(officeCache.read()?.format).toBe("xlsx");
+		await act(async () => root.unmount()); root = createRoot(host);
+		Object.defineProperty(window, "vomp", { configurable: true, value: { invoke: vi.fn(async () => ({ ok: false, reason: "incomplete" })) } });
+		await show(2, officeCache);
+		expect(host.querySelectorAll('[role="row"]').length).toBeGreaterThan(1);
+		expect(host.textContent).toContain("<img src=x onerror=alert(1)>");
+		expect(host.textContent).toContain("live.waitingForSave");
+	});
 	it("clamps visible windows to 48 rows and 30 columns at every viewport size", () => {
 		for (const [height, width] of [[240, 320], [1200, 2500], [99999, 99999]]) {
 			const view = visibleOfficeWindow(0, { name: "Sheet", rows: 100000, cols: 200, limited: true }, 12000, 1200, height!, width!, 32);
@@ -71,4 +85,33 @@ describe("virtualized Office spreadsheet", () => {
 		}
 		expect(columnName(0)).toBe("A"); expect(columnName(199)).toBe("GR");
 	});
+});
+
+it.each(["revoked", "notFile", "missing"] as const)("clears mounted and reselected spreadsheet data after %s", async reason => {
+	let snapshot: OfficeFrameSnapshot | null = null;
+	const officeCache: OfficeFrameCache = { read: () => snapshot, write: value => { snapshot = value; }, clear: () => { snapshot = null; } };
+	await show(1, officeCache);
+	expect(host.querySelectorAll('[role="row"]').length).toBeGreaterThan(1);
+	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke: vi.fn(async () => ({ ok: false, reason })) } });
+	await show(2, officeCache);
+	expect(host.querySelector('[role="grid"]')).toBeNull(); expect(officeCache.read()).toBeNull();
+	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke: vi.fn(async () => ({ ok: true, bytes: new Uint8Array([1]), size: 1, mtimeMs: 1 })) } });
+	await show(3, officeCache);
+	expect(officeCache.read()?.revision).toBe(3);
+	await act(async () => root.unmount()); root = createRoot(host);
+	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke: vi.fn(async () => ({ ok: false, reason })) } });
+	await show(4, officeCache);
+	expect(host.querySelector('[role="grid"]')).toBeNull(); expect(officeCache.read()).toBeNull();
+});
+
+it("restores the newer successful text window after truncation and reselection", async () => {
+	let snapshot: OfficeFrameSnapshot | null = null;
+	const officeCache: OfficeFrameCache = { read: () => snapshot, write: value => { snapshot = value; }, clear: () => { snapshot = null; } };
+	await show(1, officeCache); await show(3, officeCache);
+	expect(officeCache.read()?.revision).toBe(3);
+	await act(async () => root.unmount()); root = createRoot(host);
+	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke: vi.fn(async () => ({ ok: false, reason: "incomplete" })) } });
+	await show(4, officeCache);
+	expect(host.querySelector('[id^="office-3-"]')).not.toBeNull();
+	expect(host.textContent).toContain("live.waitingForSave");
 });
