@@ -106,6 +106,25 @@ test("CLI keeps the bundled changelog out of the entry and its static dependenci
 	assert.equal(result.status, 0, result.stderr);
 });
 
+for (const module of [
+	"src/renderer/src/chat/transcript/Transcript.tsx",
+	"src/renderer/src/features/panes/HelperFocusView.tsx",
+	"src/renderer/src/features/panes/helperConversation.ts",
+	"src/renderer/src/state/sessionFiles.ts",
+	"src/renderer/src/i18n/en/helperFocus.json",
+	"C:\\checkout\\src\\renderer\\src\\features\\panes\\HelperFocusView.tsx",
+]) {
+	test(`CLI preserves the conversation lazy boundary: ${module}`, async t => {
+		const direct = await fixture(t, [entry({ modules: [module] })]);
+		failed(direct.run(), /contains conversation view modules/);
+		const chunk = entry({ fileName: "assets/conversation.js", isEntry: false, modules: [module] });
+		const shared = await fixture(t, [entry({ imports: [chunk.fileName] }), chunk]);
+		failed(shared.run(), /contains conversation view modules/);
+		const lazy = await fixture(t, [entry({ dynamicImports: [chunk.fileName] }), chunk]);
+		assert.equal(lazy.run().status, 0);
+	});
+}
+
 test("CLI rejects stale byte counts and counts UTF-8 bytes rather than characters", async t => {
 	const setup = await fixture(t, [entry({ bytes: Buffer.byteLength("🙂", "utf8") })]);
 	await writeFile(join(setup.dir, "assets/entry.js"), "🙂");

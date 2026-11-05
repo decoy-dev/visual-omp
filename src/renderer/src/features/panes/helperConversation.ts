@@ -5,6 +5,7 @@ import { type SessionController } from "../../state/session";
 import { watchSessionFile } from "../../state/sessionFiles";
 import { helpersOf, ompRunning, type Helper } from "./derive";
 import { i18n } from "../../i18n";
+const helperText = i18n.getFixedT(null, "helperFocus", "tasks.focus.errors");
 
 export interface HelperMessage { id: number; text: string; state: "queued" | "preparing" | "sending" | "error"; error?: string }
 export interface HelperConversationSnapshot {
@@ -97,7 +98,7 @@ export class HelperConversation {
 		const view = this.session.getSnapshot();
 		if (this.#scope !== this.#identity()) {
 			clearTimeout(this.#sending?.timer); this.#sending = null;
-			this.#set({ stale: true, helper: { ...this.#snapshot.helper, messageable: false, status: "stopped" }, error: i18n.t("panes:tasks.focus.errors.scope"), queue: this.#snapshot.queue.map(item => ({ ...item, state: "error", error: i18n.t("panes:tasks.focus.errors.scopeMessage") })) });
+			this.#set({ stale: true, helper: { ...this.#snapshot.helper, messageable: false, status: "stopped" }, error: helperText("scope"), queue: this.#snapshot.queue.map(item => ({ ...item, state: "error", error: helperText("scopeMessage") })) });
 			this.#offSession(); this.#offFile?.(); this.#offFile = null;
 			this.#fileRequest++; this.#looking = false;
 			return;
@@ -116,7 +117,7 @@ export class HelperConversation {
 			this.#set({ helper });
 		}
 		if (!helper.messageable && this.#snapshot.queue.some(item => item.state === "queued")) {
-			this.#set({ queue: this.#snapshot.queue.map(item => item.state === "queued" ? { ...item, state: "error", error: i18n.t("panes:tasks.focus.errors.unavailable") } : item) });
+			this.#set({ queue: this.#snapshot.queue.map(item => item.state === "queued" ? { ...item, state: "error", error: helperText("unavailable") } : item) });
 		}
 		for (const notice of view.guest?.notices ?? []) {
 			if (notice.id <= this.#noticeId) continue;
@@ -129,7 +130,7 @@ export class HelperConversation {
 		const sending = this.#sending;
 		if (sending) {
 			const aborted = guest?.agents.find(agent => agent.id === helper.id)?.status === "aborted" || guest?.lifecycle.get(helper.id)?.status === "aborted";
-			if (aborted || !this.#snapshot.helper.messageable || view.mode === "exited" || guest?.phase === "ended") this.#fail(sending.id, i18n.t("panes:tasks.focus.errors.unavailable"));
+			if (aborted || !this.#snapshot.helper.messageable || view.mode === "exited" || guest?.phase === "ended") this.#fail(sending.id, helperText("unavailable"));
 			else if (sending.phase === "dispatched") {
 				const lifecycle = view.guest?.lifecycle.get(this.#snapshot.helper.id);
 				if (helper?.status === "running") sending.started = true;
@@ -142,17 +143,17 @@ export class HelperConversation {
 	}
 	async #findFile(): Promise<void> {
 		const parent = this.session.sessionFile;
-		if (!parent) { this.#set({ error: i18n.t("panes:tasks.focus.errors.noParent") }); return; }
+		if (!parent) { this.#set({ error: helperText("noParent") }); return; }
 		this.#looking = true;
 		const request = ++this.#fileRequest;
 		try {
 			const file = await window.vomp.invoke("sessions:helperFile", parent, this.#snapshot.helper.id);
 			if (this.#disposed || request !== this.#fileRequest) return;
-			if (!file) { this.#set({ error: i18n.t("panes:tasks.focus.errors.noFile") }); return; }
+			if (!file) { this.#set({ error: helperText("noFile") }); return; }
 			this.#set({ file });
 			this.#offFile = watchSessionFile(file, (history, state) => {
 				if (this.#disposed || request !== this.#fileRequest) return;
-				this.#set({ ...(history ? { history } : {}), error: state && !state.readable ? state.error ?? i18n.t("panes:tasks.focus.errors.unreadable") : null });
+				this.#set({ ...(history ? { history } : {}), error: state && !state.readable ? state.error ?? helperText("unreadable") : null });
 			});
 		} catch (error) {
 			if (!this.#disposed && request === this.#fileRequest) this.#set({ error: String(error) });
@@ -173,12 +174,12 @@ export class HelperConversation {
 			let busy = false;
 			try {
 				await client.sendHelperPrompt(this.#snapshot.helper.id, first.text, () => {
-					if (this.#disposed || this.#sending !== sending) throw new Error(i18n.t("panes:tasks.focus.errors.cancelled"));
+					if (this.#disposed || this.#sending !== sending) throw new Error(helperText("cancelled"));
 					const current = this.session.getSnapshot();
 					const aborted = current.guest?.agents.find(agent => agent.id === this.#snapshot.helper.id)?.status === "aborted" || current.guest?.lifecycle.get(this.#snapshot.helper.id)?.status === "aborted";
-					if (aborted || current.mode === "exited" || current.guest?.phase === "ended") throw new Error(i18n.t("panes:tasks.focus.errors.unavailable"));
+					if (aborted || current.mode === "exited" || current.guest?.phase === "ended") throw new Error(helperText("unavailable"));
 					if (!this.#idle()) { busy = true; throw new Error("The helper started working before delivery."); }
-					if (this.session.guestClient() !== client) throw new Error(i18n.t("panes:tasks.focus.errors.disconnected"));
+					if (this.session.guestClient() !== client) throw new Error(helperText("disconnected"));
 					sending.lifecycle = current.guest?.lifecycle.get(this.#snapshot.helper.id);
 				}, () => {
 					if (this.#disposed || this.#sending !== sending) return;
@@ -189,7 +190,7 @@ export class HelperConversation {
 				sending.timer = window.setTimeout(() => {
 					if (this.#sending !== sending) return;
 					if (sending.started) return;
-					this.#fail(first.id, i18n.t("panes:tasks.focus.errors.unconfirmed"));
+					this.#fail(first.id, helperText("unconfirmed"));
 				}, 10_000);
 			} catch (error) {
 				if (this.#sending !== sending) return;

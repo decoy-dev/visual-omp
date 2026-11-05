@@ -1,8 +1,11 @@
 // @vitest-environment happy-dom
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionController, SessionView, SessionEvent } from "../../state/session";
 import type { Helper } from "./derive";
 import { HelperConversation } from "./helperConversation";
+import { i18n } from "../../i18n";
+
+beforeEach(async () => { await i18n.loadNamespaces(["helperFocus"]); });
 
 const models: HelperConversation[] = [];
 afterEach(() => { for (const model of models.splice(0)) model.dispose(); vi.useRealTimers(); });

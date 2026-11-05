@@ -5,28 +5,24 @@ import { BtwDrawer } from "../features/btw/BtwPane";
 import { chatActivityKey, elapsed, useNow, useSessionView } from "../shell/hooks";
 import { useApp } from "../state/app";
 import type { SessionController, SessionView } from "../state/session";
-import { Button, cn, Expand, Spinner, WorkingIndicator } from "../ui";
+import { Button, cn, Expand, WorkingIndicator } from "../ui";
 import { Composer } from "./composer/Composer";
 import { SessionHeader } from "./SessionHeader";
-import { Transcript } from "./transcript/Transcript";
 import { useHelperFocus, closeHelper } from "../features/panes/helperFocus";
 import { lazyView, LoadFailed } from "../registry/lazy";
-import { ArrowLeft } from "@phosphor-icons/react";
 import type { Helper } from "../features/panes/derive";
 
+const Transcript = lazyView(() => import("./transcript/Transcript").then(module => module.Transcript), () => <div data-transcript-frame="loading" aria-busy className="min-h-0 flex-1" />, ({ retry }) => <div data-transcript-frame="error" className="min-h-0 flex-1 overflow-y-auto"><LoadFailed retry={retry} /></div>);
 const HelperFocusView = lazyView(() => import("../features/panes/HelperFocusView").then(module => module.HelperFocusView), HelperFocusPending, HelperFocusPending);
 
 /** Back and Escape remain available while the helper chunk loads or fails. */
-function HelperFocusPending({ session, helper, retry }: { session: SessionController; helper: Helper; retry?: () => void }): ReactNode {
+function HelperFocusPending({ session, retry }: { session: SessionController; helper: Helper; retry?: () => void }): ReactNode {
 	const { t } = useTranslation("panes");
 	return <div className="absolute inset-0 z-10 flex flex-col bg-bg" onKeyDown={event => {
 		if (event.key === "Escape" && !event.defaultPrevented) { event.preventDefault(); event.stopPropagation(); closeHelper(session); }
 	}}>
-		<div className="flex min-h-12 shrink-0 items-center gap-3 border-b border-border px-6 py-2">
-			<Button autoFocus size="sm" variant="ghost" icon={<ArrowLeft />} onClick={() => closeHelper(session)}>{t("tasks.focus.back")}</Button>
-			<h2 className="truncate text-md font-medium text-fg">{t("tasks.transcriptTitle", { name: helper.name })}</h2>
-		</div>
-		{retry ? <LoadFailed retry={retry} /> : <div role="status" className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted"><Spinner />{t("tasks.transcriptLoading")}</div>}
+		<Button autoFocus size="sm" variant="ghost" className="m-3 self-start" onClick={() => closeHelper(session)}>{t("tasks.focusBack")}</Button>
+		{retry && <LoadFailed retry={retry} />}
 	</div>;
 }
 
@@ -55,7 +51,11 @@ function FollowNotice({ session, follow }: { session: SessionController; follow:
 	if (follow && !follow.readable) {
 		return (
 			<Banner tone="warn" role="alert">
-				{t("follow.unreadable", { error: follow.error ?? t("follow.unknownError") })}
+				<span className="min-w-0 flex-1">{t("follow.unreadable", { error: follow.error ?? t("follow.unknownError") })}</span>
+				<Button size="sm" className="shrink-0" disabled={checking} onClick={() => {
+					setChecking(true);
+					void session.retryFollowing().finally(() => setChecking(false));
+				}}>{t("follow.retry")}</Button>
 			</Banner>
 		);
 	}
@@ -161,7 +161,7 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 	const paused = !view.readOnly && view.host?.transport === "tsp" && (requested || view.host.tspAvailability?.available === false && view.host.tspAvailability.reasonCode === "btw");
 	return (
 		<section
-			className={cn("relative flex min-w-0 flex-1 flex-col bg-bg", !focused && "opacity-[0.97]")}
+			className={cn("relative flex min-h-0 min-w-0 flex-1 flex-col bg-bg", !focused && "opacity-[0.97]")}
 			aria-label={title ?? undefined}
 			onFocusCapture={() => {
 				const state = useApp.getState();

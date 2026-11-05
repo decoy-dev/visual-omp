@@ -975,6 +975,8 @@ Helper views: `features/panes/helperFocus.ts` holds each chat's focused helper a
 
 Helper file following: `sessions:helperFile` resolves omp's `<parent stem>/<qualified helper id>.jsonl` convention, including nested companion folders. It rejects symbolic links at the helper directory, every nested directory and the transcript file, then registers the canonical file beneath the canonical helper root. `SessionTail` receives a validation callback for registered helper files. On every reopen, it checks containment and symlink components and compares the opened handle's device and inode with the permitted file before reading bytes, so replacing a file or nested folder with a symlink does not disclose its target. `state/sessionFiles.ts` shares cached history and reference-counted subscriptions between saved-chat controllers and helper conversations. Main's follower sends the initial reset and complete appended JSONL records; a second reader receives existing history without racing an independent read. A failed read remains visible with Try again.
 
+If the deferred saved-chat reader import fails, the controller clears that attempt's sentinel while retaining its read-only state and ownership. Try following again retries the reader without starting omp or relaxing ownership. A close during import cancels the attempt before any subscription attaches. A later ownership check can also retry after a rejected import.
+
 Helper messaging: omp 18.16's collab `agent-cmd chat` calls `ensureLive(id)` and `session.prompt(text, { streamingBehavior: "steer" })`; it has no conditional idle-only or follow-up option. `IrcBus.send` can consume an active waiter or inject a prompt. The inspected `agent://` protocol handler supplies read-only output resolution, and RPC's `follow_up` applies to its own session rather than a helper id. These interfaces provide no atomic helper-id idle-only delivery. The app therefore holds messages until the latest writable guest reports registry idle or parked, with no running progress or lifecycle and no aborted lifecycle. It checks the same state, operation identity and disposal again after encryption, immediately before the socket write. Aborted or ended helpers are refused rather than revived.
 
 Preparation remains cancellable. Only the socket's post-write callback marks a message dispatched; running or completed turns observed during preparation cannot acknowledge it. Completion evidence is considered only after dispatch, with its lifecycle baseline captured at the final pre-write check. Only one message is dispatched until its helper turn finishes. The app never buffers or automatically replays across reconnect or a changed host generation. A failed or unconfirmed delivery stays visible for explicit retry; this is not an exactly-once guarantee.
@@ -1025,7 +1027,7 @@ Project instructions: `project:instructions` reads `contextFiles.extra` through 
 
 `src/renderer/src/registry/lazy.tsx` wraps dynamic imports for pages, Settings sections, views and sheets. Feature entry points register lazy components; registry slots render these chunks on demand. Idle preloading and explicit `preload()` calls load components before they are opened when possible. Usage, Settings sections, xterm, KaTeX and other heavier features have separate chunks. In the v0.5.0 build, the uncompressed initial renderer entry chunk is approximately 1.56 MB, xterm approximately 331 KB and KaTeX approximately 262 KB. These figures are uncompressed build-output sizes of individual chunks.
 
-Every side panel pane (Changes, Files, Preview, Outputs, Tasks, Plan, Terminal and the TSP side chat) loads from its own chunk, on demand or during idle preloading, while the badges (`features/panes/badges.tsx`) load with the app so the pane selector can show counts before a pane opens. The plan badge and the Plan pane share `usePlanReviewPending` from `features/panes/plan-review.ts`. The helper focus view loads separately from Tasks, so pinned helpers and transcript cards do not keep that pane in the entry chunk.
+Every side panel pane (Changes, Files, Preview, Outputs, Tasks, Plan, Terminal and the TSP side chat) loads from its own chunk, on demand or during idle preloading, while the badges (`features/panes/badges.tsx`) load with the app so the pane selector can show counts before a pane opens. The plan badge and the Plan pane share `usePlanReviewPending` from `features/panes/plan-review.ts`. ChatView loads the main transcript through `lazyView`; loading and failure retain the same flex space, and a short failure region scrolls so Try again stays reachable without moving the composer upward. The helper focus view, conversation driver and message composer load in a separate chunk; only focus state, triggers and a small Back control remain eager. Shared file-follow subscriptions load on the first read-only follow, with cancellation guarding a close during import. The bundle guard rejects conversation implementation modules, file-follow code and helper-view translations anywhere in the entry's static dependency graph.
 
 The release notes sheet loads in two stages, on first open or during idle preloading. The sheet itself comes with the update sheets chunk (`features/onboarding/UpdateSheets.tsx`) and shows nothing until that chunk loads. The release notes viewer, the bundled `CHANGELOG.md` text and its Markdown helpers come from a second chunk; until it loads, the sheet shows the notes dialog's frame with a skeleton, and closing it still reports the exit to the sheet host. The build guard rejects the changelog anywhere in the entry's static import closure, because the changelog grows with every release and would otherwise count against the entry allowance.
 
@@ -1059,8 +1061,8 @@ zod is absent from the initial renderer entry and its static imports.
 
 Translation namespaces used by startup code remain synchronous, including command titles, Settings rail
 labels, pane badges, page-loading titles and folder-picker messages. The larger Settings section bodies,
-context-tool editors and project detail screens use the deferred `settings`, `context` and `projectDetails`
-namespaces. `i18n/index.ts` supplies these through a non-eager glob-backed i18next backend and queues
+context-tool editors, project detail screens and helper conversations use the deferred `settings`, `context`,
+`projectDetails` and `helperFocus` namespaces. `i18n/index.ts` supplies these through a non-eager glob-backed i18next backend and queues
 them with the import-free `registry/idle` scheduler. Their `useDeferredTranslation(namespace)` hooks
 read the deferred namespace, then the eager namespace it was split from, and suspend within the
 existing lazy-view boundary until loading settles. Pages and Settings sections show skeletons; project
@@ -1565,8 +1567,11 @@ Node inspector. It refuses a main process whose fixture environment does not mat
 Before renderer mutations, a random challenge written through the verified main window's
 `webContents` must be readable through the selected renderer inspector. Reloading requires a
 fresh ownership check. Stop cleanup requires verified ownership and a prompt sent by this run.
-The script completes setup in the isolated profile, waits for a laid-out empty composer, sends
-the prompt and samples N seconds visible plus N seconds hidden. Without `--raise`, it never shows, restores
+The script completes setup in the isolated profile, waits for a laid-out empty composer and sends
+the prompt. Before sampling, it polls for that visible chat's mounted transcript log and rendered
+fixture assistant reply, excluding inert or hidden columns, composer text and user messages.
+Readiness has a 30-second timeout rather than a fixed startup delay. It then samples N seconds
+visible plus N seconds hidden. Without `--raise`, it never shows, restores
 or focuses a window: the caller must keep the fixture visible during the first phase, and the
 second phase calls `BrowserWindow.hide()`. It leaves the app hidden and stops the reply afterward.
 The optional `--raise` is for an isolated test machine only. It permits showing, restoring and

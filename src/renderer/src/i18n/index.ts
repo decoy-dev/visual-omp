@@ -12,8 +12,8 @@ import { LoadError } from "../registry/loadError";
 
 type Messages = Record<string, unknown>;
 
-const files = import.meta.glob<Messages>(["./*/*.json", "!./*/{settings,context,projectDetails}.json"], { eager: true, import: "default" });
-const deferred = import.meta.glob<Messages>("./*/{settings,context,projectDetails}.json", { import: "default" });
+const files = import.meta.glob<Messages>(["./*/*.json", "!./*/{settings,context,projectDetails,helperFocus}.json"], { eager: true, import: "default" });
+const deferred = import.meta.glob<Messages>("./*/{settings,context,projectDetails,helperFocus}.json", { import: "default" });
 const resources: Record<string, Record<string, Messages>> = {};
 for (const [path, messages] of Object.entries(files)) {
 	const match = /^\.\/([^/]+)\/([^/]+)\.json$/.exec(path);
@@ -25,7 +25,7 @@ for (const [path, messages] of Object.entries(files)) {
 }
 
 /** Each deferred namespace and the startup namespace it shares keys with (`nsMode: "fallback"`). */
-const deferredFallbacks = { settings: "manage", context: "extensions", projectDetails: "projects" } as const;
+const deferredFallbacks = { settings: "manage", context: "extensions", projectDetails: "projects", helperFocus: "panes" } as const;
 export type DeferredNamespace = keyof typeof deferredFallbacks;
 
 const backend: BackendModule = {

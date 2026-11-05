@@ -11,6 +11,7 @@ import { chatStatus } from "../shell/hooks";
 import { toast } from "../ui/toast";
 import type * as ToastModule from "../ui/toast";
 import { liveEntries, liveGuest, SessionController, setSlashDelivery } from "./session";
+import type * as SessionFiles from "./sessionFiles";
 
 // vi.mock is hoisted above the imports, so the controller under test builds these fakes.
 const fakes = vi.hoisted(() => {
@@ -2247,5 +2248,63 @@ describe("large saved chat warning", () => {
 		await session.ensureLive();
 		expect(asked()).toEqual(["/p/grew.jsonl"]);
 		expect(starts()).toHaveLength(2);
+	});
+});
+
+describe("deferred saved-chat file reader", () => {
+	afterEach(() => vi.doUnmock("./sessionFiles"));
+
+	it("clears a rejected import sentinel so another ownership check can follow successfully", async () => {
+		respond = channel => channel === "sessions:ownership" ? Promise.resolve("elsewhere") : undefined;
+		vi.doMock("./sessionFiles", () => { throw new Error("Reader chunk unavailable"); });
+		const session = new SessionController({ tabId: "follow-import-retry", projectPath: "/p", sessionFile: "/p/import-retry.jsonl" });
+		await session.checkOwnership();
+		expect(session.getSnapshot()).toMatchObject({ readOnly: true, follow: { readable: false, ownership: "elsewhere", error: expect.any(String) } });
+		const off = vi.fn();
+		const watchSessionFile: typeof SessionFiles.watchSessionFile = (file, listener) => {
+			listener(null, { file, readable: true, error: null, ownership: "elsewhere" });
+			return off;
+		};
+		const watch = vi.fn(watchSessionFile);
+		vi.doMock("./sessionFiles", () => ({ watchSessionFile: watch }));
+		await session.checkOwnership();
+		expect(watch).toHaveBeenCalledOnce();
+		expect(session.getSnapshot()).toMatchObject({ readOnly: true, follow: { readable: true, ownership: "elsewhere", error: null } });
+		expect(invoked.some(call => call[0] === "host:start")).toBe(false);
+		await session.dispose();
+		expect(off).toHaveBeenCalledOnce();
+	});
+
+	it("retries a failed reader without rechecking or relaxing unknown ownership", async () => {
+		respond = channel => channel === "sessions:ownership" ? Promise.resolve("unknown") : undefined;
+		vi.doMock("./sessionFiles", () => { throw new Error("Reader offline"); });
+		const session = new SessionController({ tabId: "follow-explicit-retry", projectPath: "/p", sessionFile: "/p/explicit-retry.jsonl" });
+		await session.checkOwnership();
+		const watchSessionFile: typeof SessionFiles.watchSessionFile = (file, listener) => {
+			listener(null, { file, readable: true, error: null, ownership: "unknown" });
+			return () => {};
+		};
+		vi.doMock("./sessionFiles", () => ({ watchSessionFile }));
+		await session.retryFollowing();
+		expect(session.getSnapshot()).toMatchObject({ readOnly: true, follow: { readable: true, ownership: "unknown", error: null } });
+		expect(invoked.filter(call => call[0] === "sessions:ownership")).toHaveLength(1);
+		expect(invoked.some(call => call[0] === "host:start")).toBe(false);
+		await session.dispose();
+	});
+
+	it("does not attach a reader when the chat is disposed during import", async () => {
+		respond = channel => channel === "sessions:ownership" ? Promise.resolve("elsewhere") : undefined;
+		const started = Promise.withResolvers<void>();
+		const loading = Promise.withResolvers<Pick<typeof SessionFiles, "watchSessionFile">>();
+		vi.doMock("./sessionFiles", () => { started.resolve(); return loading.promise; });
+		const session = new SessionController({ tabId: "follow-disposed-import", projectPath: "/p", sessionFile: "/p/disposed-import.jsonl" });
+		const checking = session.checkOwnership();
+		await started.promise;
+		await session.dispose();
+		const watch = vi.fn(() => () => {});
+		loading.resolve({ watchSessionFile: watch });
+		await checking;
+		expect(watch).not.toHaveBeenCalled();
+		expect(invoked.some(call => call[0] === "host:start" || call[0] === "sessions:follow")).toBe(false);
 	});
 });

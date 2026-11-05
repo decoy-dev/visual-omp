@@ -112,16 +112,22 @@ try {
   rendererVerified = true;
   if (raise) await main.evaluate(`(() => { const w = ${windowExpression}; w.show(); w.restore(); w.focus(); })()`);
   await until(`document.visibilityState === 'visible'`, "visible renderer (keep the fixture window unoccluded)");
-  const composerExpression = `[...document.querySelectorAll('textarea:not([disabled])')].find(el => el.getClientRects().length && !el.value)`;
+  const visible = `el => !!el?.isConnected && !el.closest('[inert], [hidden], [aria-hidden="true"]') && el.getClientRects().length > 0 && getComputedStyle(el).visibility === 'visible'`;
+  const composerExpression = `[...document.querySelectorAll('textarea:not([disabled])')].find(el => (${visible})(el) && !el.value)`;
   await until(`!!(${composerExpression})`, "visible, empty composer");
   await renderer.evaluate(`(() => { if (document.querySelector('button[aria-label="Stop reply"]')) throw new Error('The fixture composer already has a running reply'); })()`);
-  await renderer.evaluate(`(() => { const field = ${composerExpression}; if (!field) throw new Error('The composer is no longer ready'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(prompt)}); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
-  await until(`!!document.querySelector('button[aria-label="Send message"]:not([disabled])')`, "enabled Send message button");
-  await renderer.evaluate(`document.querySelector('button[aria-label="Send message"]:not([disabled])').click()`);
+  await renderer.evaluate(`(() => { const field = ${composerExpression}; if (!field) throw new Error('The composer is no longer ready'); window.__vompStreamComposer = field.closest('[data-tour="composer"]'); if (!window.__vompStreamComposer) throw new Error('The fixture composer has no send boundary'); Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value').set.call(field, ${JSON.stringify(prompt)}); field.dispatchEvent(new Event('input', { bubbles: true })); })()`);
+  await until(`!!window.__vompStreamComposer?.querySelector('button[aria-label="Send message"]:not([disabled])')`, "enabled Send message button");
+  await renderer.evaluate(`window.__vompStreamComposer.querySelector('button[aria-label="Send message"]:not([disabled])').click()`);
   startedTurn = true;
-  await until(`!!document.querySelector('button[aria-label="Stop reply"]')`, "running stream");
-  // Allow initial host startup, imports and transcript mounting to finish before sampling.
-  await sleep(2000);
+  await until(`(() => { const stop = [...document.querySelectorAll('[data-chat-column] button[aria-label="Stop reply"]')].find(${visible}); if (!stop) return false; window.__vompStreamChat = stop.closest('[data-chat-column]'); return true; })()`, "running stream in a visible chat");
+  const logExpression = `window.__vompStreamChat?.querySelector('[role="log"]')`;
+  await until(`(${visible})(${logExpression})`, "mounted visible transcript log");
+  // stream-provider emits six random fixture words followed by counter 0, or the first tool round.
+  const replyMarker = /stress tools/i.test(prompt) ? /Round 1: listing numbers\./
+    : /stress text/i.test(prompt) ? /\b(?:(?:the|quick|brown|fox|jumps|over|lazy|dog|while|omp|keeps|streaming|a|long|answer|with|code|and|prose)\s+){6}0\b/
+      : /Done\./;
+  await until(`(() => { const log = ${logExpression}; return (${visible})(log) && [...log.querySelectorAll('.tr-md')].some(el => (${visible})(el) && ${replyMarker}.test(el.textContent ?? '')); })()`, "rendered fixture assistant reply");
   const mainCpu = async () => {
     if (process.platform === "win32") {
       const { stdout } = await exec("powershell.exe", ["-NoProfile", "-Command", `(Get-Process -Id ${identity.pid}).TotalProcessorTime.TotalSeconds`]);

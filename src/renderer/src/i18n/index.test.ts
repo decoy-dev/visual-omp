@@ -15,6 +15,7 @@ const pairs = [
 	["settings", "manage", "general.description", "settings.title"],
 	["context", "extensions", "mcp.subtitle", "mcp.title"],
 	["projectDetails", "projects", "instructions.subtitle", "instructions.title"],
+	["helperFocus", "panes", "tasks.focus.placeholder", "tasks.send"],
 ] as const;
 
 function leaves(messages: Messages, prefix = ""): string[] {

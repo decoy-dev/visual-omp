@@ -13,6 +13,7 @@ import type {
 	AssistantMessage,
 	CollabUiRequest,
 	CollabUiResponseValue,
+	GuestFrame,
 	HostFrame,
 	ImageContent,
 	SessionEntry,
@@ -234,12 +235,7 @@ export class GuestClient {
 	}
 
 	sendPrompt(text: string, images: ImageContent[] = [], beforeSend?: () => void): Promise<void> {
-		if (this.#phase !== "live" || this.#readOnly) throw new Error("The chat is not ready to receive a message.");
-		const connection = this.#uiConnection;
-		return this.#socket.sendConnected({ t: "prompt", text, ...(images.length ? { images } : {}) }, () => {
-			if (this.#phase !== "live" || this.#readOnly || this.#uiConnection !== connection) throw new Error("The chat changed before the message was sent. Send it again.");
-			beforeSend?.();
-		});
+		return this.#sendWritable({ t: "prompt", text, ...(images.length ? { images } : {}) }, beforeSend);
 	}
 
 	sendUiResponse(reqId: number, value?: CollabUiResponseValue): void {
@@ -284,11 +280,16 @@ export class GuestClient {
 
 	/** Helper messages are held by the app until idle and never buffered across a collab reconnect. */
 	sendHelperPrompt(agentId: string, text: string, beforeSend: () => void, dispatched?: () => void): Promise<void> {
-		const connection = this.#uiConnection;
+		return this.#sendWritable({ t: "agent-cmd", cmd: "chat", agentId, text }, beforeSend, dispatched);
+	}
+
+	/** Connection authority is shared by main-chat prompts and queued helper messages. */
+	#sendWritable(frame: GuestFrame, beforeSend?: () => void, dispatched?: () => void): Promise<void> {
 		if (this.#phase !== "live" || this.#readOnly) throw new Error("The chat is not ready to receive a message.");
-		return this.#socket.sendConnected({ t: "agent-cmd", cmd: "chat", agentId, text }, () => {
+		const connection = this.#uiConnection;
+		return this.#socket.sendConnected(frame, () => {
 			if (this.#phase !== "live" || this.#readOnly || this.#uiConnection !== connection) throw new Error("The chat changed before the message was sent. Send it again.");
-			beforeSend();
+			beforeSend?.();
 		}, dispatched);
 	}
 

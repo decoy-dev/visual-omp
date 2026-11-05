@@ -43,6 +43,7 @@
 	"follow": {
 		"unreadable": "This view stopped updating because the chat file could not be read ({{error}}). It shows what loaded before that.",
 		"unknownError": "unknown error",
+		"retry": "Try following again",
 		"free": "No other omp window appears to have this chat open.",
 		"continue": "Continue here",
 		"refused": "The check found the chat may still be open elsewhere, so it stays read-only."

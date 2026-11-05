@@ -12,6 +12,7 @@ import type { Helper } from "./derive";
 import { closeHelper } from "./helperFocus";
 import { helperConversation } from "./helperConversation";
 import { helperTranscript, type HelperTranscriptItem } from "./helperTranscript";
+import { useDeferredTranslation } from "../../i18n";
 
 function HelperPrompt({ items }: { items: readonly HelperTranscriptItem[] }): ReactNode {
 	const { t } = useTranslation("panes");
@@ -33,7 +34,7 @@ function HelperPrompt({ items }: { items: readonly HelperTranscriptItem[] }): Re
 
 /** Loaded on helper focus. The normal transcript and draft remain mounted underneath this column. */
 export function HelperFocusView({ session, helper }: { session: SessionController; helper: Helper }): ReactNode {
-	const { t } = useTranslation("panes");
+	const { t } = useDeferredTranslation("helperFocus");
 	const conversation = useMemo(() => helperConversation(session, helper), [session, helper.id]);
 	const state = useVisualSnapshot(conversation.subscribe, conversation.getSnapshot);
 	const mode = useApp(app => app.prefs?.transcriptMode ?? "normal");

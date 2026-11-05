@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionController, SessionView } from "../state/session";
 import "../i18n";
 
-const actions = vi.hoisted(() => ({ newChat: vi.fn(), ensureLive: vi.fn(), restore: vi.fn() }));
+const actions = vi.hoisted(() => ({ newChat: vi.fn(), ensureLive: vi.fn(), restore: vi.fn(), retryFollowing: vi.fn(async () => {}) }));
 vi.mock("../registry/slots", () => ({ chatSlots: { use: () => [] } }));
 vi.mock("../shell/hooks", () => ({ elapsed: vi.fn(), useNow: vi.fn(), useSessionView: vi.fn() }));
 vi.mock("../state/app", () => ({ useApp: { getState: () => ({ newChat: actions.newChat }) } }));
@@ -19,7 +19,7 @@ let element: HTMLDivElement;
 let root: Root;
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
-	actions.newChat.mockClear(); actions.ensureLive.mockClear(); actions.restore.mockClear();
+	actions.newChat.mockClear(); actions.ensureLive.mockClear(); actions.restore.mockClear(); actions.retryFollowing.mockClear();
 	element = document.createElement("div");
 	document.body.append(element);
 	root = createRoot(element);
@@ -76,4 +76,20 @@ it("offers explicit crash recovery without silently choosing it for an ordinary 
 	expect(actions.restore).toHaveBeenCalledOnce();
 	expect(actions.ensureLive).not.toHaveBeenCalled();
 	expect(actions.newChat).not.toHaveBeenCalled();
+});
+
+it("offers a reader retry while a saved chat remains read-only", async () => {
+	const retry = Promise.withResolvers<void>();
+	actions.retryFollowing.mockReturnValueOnce(retry.promise);
+	const session = { retryFollowing: actions.retryFollowing } as unknown as SessionController;
+	const view = { mode: "history", readOnly: true, follow: { readable: false, ownership: "unknown", error: "Reader chunk unavailable" } } as SessionView;
+	await act(async () => root.render(createElement(StateBanner, { session, view })));
+	await clickButton("Try following again");
+	const button = [...element.querySelectorAll("button")].find(button => button.textContent === "Try following again")!;
+	expect(button.disabled).toBe(true);
+	expect(element.textContent).toContain("Reader chunk unavailable");
+	expect(actions.retryFollowing).toHaveBeenCalledOnce();
+	await act(async () => retry.resolve());
+	expect(button.disabled).toBe(false);
+	expect(actions.ensureLive).not.toHaveBeenCalled();
 });

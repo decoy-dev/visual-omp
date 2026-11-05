@@ -33,7 +33,7 @@ function Pane({ tab, which, split, focused, scope }: PaneProps): ReactNode {
 			role={split ? "group" : undefined}
 			aria-label={split ? t(which === "primary" ? "split.left" : "split.right") : undefined}
 			aria-current={split && focused ? "true" : undefined}
-			className="relative flex min-w-0 flex-1 flex-col"
+			className="relative flex min-h-0 min-w-0 flex-1 flex-col"
 			onPointerDownCapture={() => {
 				if (split && !focused) useApp.getState().focusSplit(which);
 			}}

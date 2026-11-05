@@ -19,7 +19,6 @@ import { APP_GUEST_NAME, GuestClient, type GuestSnapshot } from "../collab/lib/c
 import { confirmLargeResume, LARGE_RESUME_BYTES, ResumeDeclinedError } from "../registry/guards";
 import { toast } from "../ui/toast";
 import { parseSessionHistory, type SessionHistory } from "./history";
-import { watchSessionFile } from "./sessionFiles";
 import { TspNoticeStore } from "./tsp/notice-store";
 import { TspQuestionSync } from "./tsp-questions";
 
@@ -368,7 +367,7 @@ export class SessionController {
 			}
 			// A host adopted meanwhile (renderer reload) means this app is the writer.
 			if (this.#view.host) return;
-			if (ownership === "elsewhere" || ownership === "unknown") this.#follow(file, ownership);
+			if (ownership === "elsewhere" || ownership === "unknown") await this.#follow(file, ownership);
 		})().finally(async () => {
 			this.#ownershipCheck = null;
 			if (!this.#disposed && this.#sessionFile !== file && !this.#view.host) await this.checkOwnership();
@@ -400,19 +399,40 @@ export class SessionController {
 		return true;
 	}
 
+	/** Retry the reader without relaxing read-only ownership or starting an omp host. */
+	retryFollowing(): Promise<void> {
+		const file = this.#sessionFile;
+		const follow = this.#view.follow;
+		if (this.#disposed || !file || !this.#view.readOnly || !follow) return Promise.resolve();
+		this.#stopFollowing();
+		return this.#follow(file, follow.ownership);
+	}
+
 	/** Mirror what the other omp appends to the session file; stays read-only until continueHere(). */
-	#follow(file: string, ownership: SessionOwnership): void {
+	async #follow(file: string, ownership: SessionOwnership): Promise<void> {
 		if (this.#disposed || this.#unfollow) return;
 		this.#set({ readOnly: true, follow: { readable: true, error: null, ownership } });
 		this.#tailSynced = false;
-		this.#unfollow = watchSessionFile(file, (history, state) => {
-			if (this.#disposed) return;
-			if (history && history !== this.#view.history) {
-				this.#tailSynced = true;
-				this.#set({ history });
-			}
-			if (state) this.#set({ follow: { readable: state.readable, error: state.error, ownership: state.ownership } });
-		});
+		let cancelled = false;
+		let off: (() => void) | undefined;
+		const stop = () => { cancelled = true; off?.(); };
+		this.#unfollow = stop;
+		try {
+			const { watchSessionFile } = await import("./sessionFiles");
+			if (cancelled || this.#disposed) return;
+			off = watchSessionFile(file, (history, state) => {
+				if (cancelled || this.#disposed) return;
+				if (history && history !== this.#view.history) {
+					this.#tailSynced = true;
+					this.#set({ history });
+				}
+				if (state) this.#set({ follow: { readable: state.readable, error: state.error, ownership: state.ownership } });
+			});
+			if (cancelled || this.#disposed) off();
+		} catch (error) {
+			if (this.#unfollow === stop) { this.#unfollow = null; off?.(); }
+			if (!cancelled && !this.#disposed) this.#set({ follow: { readable: false, error: String(error), ownership } });
+		}
 	}
 
 	#stopFollowing(): void {

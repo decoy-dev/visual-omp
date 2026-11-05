@@ -9,6 +9,8 @@ const strings = value => Array.isArray(value) && value.every(item => typeof item
 const tspModule = id => /(?:^|\/)src\/renderer\/src\/features\/tsp\//.test(id.replaceAll("\\", "/"));
 /** The bundled changelog loads with the release notes viewer; in the entry, every release would grow startup. */
 const changelogModule = id => /(?:^|\/)CHANGELOG\.md(?:\?|$)/.test(id.replaceAll("\\", "/"));
+/** Transcript implementation, helper controls and their text load on demand; focus state may remain eager. */
+const conversationModule = id => /(?:^|\/)src\/renderer\/src\/(?:chat\/transcript\/Transcript\.tsx|features\/panes\/(?:HelperFocusView\.tsx|helperConversation\.ts)|state\/sessionFiles\.ts|i18n\/[^/]+\/helperFocus\.json)(?:\?|$)/.test(id.replaceAll("\\", "/"));
 
 /** Validate emitted Rollup membership, including synchronous dependencies of the entry. */
 export function inspectRendererBundle(metadata, baseline) {
@@ -31,6 +33,8 @@ export function inspectRendererBundle(metadata, baseline) {
 		if (forbidden.length) throw new Error(`Initial renderer chunk ${chunk.fileName} contains TSP view modules:\n${forbidden.join("\n")}`);
 		const changelog = chunk.modules.filter(changelogModule);
 		if (changelog.length) throw new Error(`Initial renderer chunk ${chunk.fileName} contains the bundled changelog, which must load with the release notes viewer:\n${changelog.join("\n")}`);
+		const conversations = chunk.modules.filter(conversationModule);
+		if (conversations.length) throw new Error(`Initial renderer chunk ${chunk.fileName} contains conversation view modules, which must load lazily:\n${conversations.join("\n")}`);
 		for (const name of chunk.imports) {
 			const dependency = chunks.get(name);
 			if (!dependency) throw new Error(`Missing renderer chunk metadata for static import ${name}.`);

@@ -45,7 +45,7 @@ beforeEach(async () => {
 		if (channel === "sessions:tail") fileListeners.add(listener);
 		return () => { if (channel === "sessions:tail") fileListeners.delete(listener); };
 	} } as unknown as typeof window.vomp;
-	await i18n.loadNamespaces(["panes", "chat"]);
+	await i18n.loadNamespaces(["panes", "chat", "helperFocus"]);
 	container = document.createElement("div"); document.body.append(container); root = createRoot(container);
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(FocusHost))));
 });
