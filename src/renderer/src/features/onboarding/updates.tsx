@@ -403,7 +403,8 @@ async function reportOutcome(): Promise<void> {
 	if (outcome.operation === "switch") {
 		toast({
 			tone: outcome.updated ? "ok" : "warn",
-			message: t(outcome.updated ? "update.installSwitch.succeeded" : "update.installSwitch.failed", { manager: "Homebrew" }),
+			message: t(outcome.failureKind === "cleanup" ? "update.installSwitch.cleanupFailed" : outcome.updated ? "update.installSwitch.succeeded" : "update.installSwitch.failed", { manager: outcome.method === "scoop" ? "Scoop" : "Homebrew" }),
+			...(outcome.failure ? { description: outcome.failure } : {}),
 		});
 		return;
 	}

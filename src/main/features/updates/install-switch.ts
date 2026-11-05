@@ -1,14 +1,14 @@
 import { execFile, spawn } from "node:child_process";
 import { access, readFile, realpath } from "node:fs/promises";
 import { homedir } from "node:os";
-import { join, posix } from "node:path";
+import { join, posix, win32 } from "node:path";
 import { app, shell } from "electron";
 import { z } from "zod";
 import type { AppInstallInfo, AppInstallSwitchInfo, AppInstallSwitchRun, AppInstallOperation } from "@shared/contracts/updates";
 import { userEnv } from "../../env";
 import { writeText } from "../../files";
 import { handle } from "../../ipc";
-import { BREW_CASK, PACKAGE_REPOSITORY, brewSwitchCommand } from "../../services/install-switch";
+import { BREW_CASK, PACKAGE_REPOSITORY, brewSwitchCommand, scoopRoots, scoopSwitchScript } from "../../services/install-switch";
 import { appBundlePath, brewCandidates, plistVersion } from "../../services/updates";
 import { resolveExecutable } from "../../services/executable";
 
@@ -20,7 +20,7 @@ interface SwitchProbe extends AppInstallSwitchInfo {
 	binary: string | null;
 }
 interface Prepared extends AppInstallSwitchRun {
-	manager: "brew";
+	manager: "brew" | "scoop";
 	binary: string;
 }
 
@@ -28,6 +28,7 @@ interface Prepared extends AppInstallSwitchRun {
 export function registerInstallSwitch(deps: {
 	installInfo(): Promise<AppInstallInfo>;
 	caskApps(brew: string): Promise<string[]>;
+	scoopGlobalPath(): Promise<string | undefined>;
 	beginOperation(kind: AppInstallOperation): void;
 	endOperation(kind: AppInstallOperation): void;
 }): void {
@@ -50,6 +51,20 @@ export function registerInstallSwitch(deps: {
 			}
 			return { manager: "brew", available: first !== null, binary: first, existing: false, target: null };
 		}
+		if (method === "nsis") {
+			const roots = scoopRoots(env, homedir(), await deps.scoopGlobalPath());
+			let binary: string | null = null;
+			for (const root of roots) {
+				const candidate = win32.join(root, "shims", "scoop.ps1");
+				if (await exists(candidate)) { binary = candidate; break; }
+			}
+			for (const root of roots) {
+				if (await exists(win32.join(root, "apps", "visual-omp"))) {
+					return { manager: "scoop", available: binary !== null, binary, existing: true, target: win32.join(root, "apps", "visual-omp", "current", "visual-omp.exe") };
+				}
+			}
+			return { manager: "scoop", available: binary !== null, binary, existing: false, target: binary ? win32.join(win32.dirname(win32.dirname(binary)), "apps", "visual-omp", "current", "visual-omp.exe") : null };
+		}
 		return null;
 	}
 
@@ -71,6 +86,13 @@ export function registerInstallSwitch(deps: {
 		try {
 			const info = await probe();
 			if (!info?.available || !info.binary) throw new Error("The package manager could not be found. Install it, then try again.");
+			if (info.manager === "scoop") {
+				const uninstaller = win32.join(win32.dirname(process.execPath), "Uninstall visual-omp.exe");
+				if (!await exists(uninstaller)) throw new Error("The visual-omp uninstaller is missing. The installer copy has been kept.");
+				prepared = { manager: "scoop", binary: info.binary, target: info.target!, version: null, existing: info.existing, command: null, canTrash: false };
+				deps.endOperation("switch");
+				return prepared;
+			}
 			let target = info.target;
 			let version: string | null = null;
 			if (!info.existing) {
@@ -114,6 +136,25 @@ export function registerInstallSwitch(deps: {
 		const run = prepared;
 		deps.beginOperation("switch");
 		try {
+			if (run.manager === "scoop") {
+				const profile = app.getPath("userData");
+				const scriptPath = join(profile, "scoop-switch.ps1");
+				const script = scoopSwitchScript({
+					scoop: run.binary, roots: scoopRoots(await userEnv(), homedir(), await deps.scoopGlobalPath()),
+					executable: process.execPath, profile, pendingFile,
+					resultFile: join(profile, "scoop-switch-result.json"), from: app.getVersion(), pid: process.pid,
+				});
+				await writeText(scriptPath, script);
+				const system = win32.join(process.env.SystemRoot ?? "C:\\Windows", "System32");
+				const powershell = win32.join(system, "WindowsPowerShell", "v1.0", "powershell.exe");
+				const command = `& '${scriptPath.replaceAll("'", "''")}'`;
+				const encoded = Buffer.from(command, "utf16le").toString("base64");
+				app.once("will-quit", () => {
+					spawn(win32.join(system, "cmd.exe"), ["/d", "/c", `start "" "${powershell}" -NoProfile -ExecutionPolicy Bypass -EncodedCommand ${encoded}`], { detached: true, stdio: "ignore", windowsVerbatimArguments: true }).unref();
+				});
+				app.quit();
+				return;
+			}
 			const targets = await deps.caskApps(run.binary);
 			const target = await canonical(run.target);
 			if (!targets.includes(target)) throw new Error("Homebrew has not registered the new copy. Review the install output and try again.");

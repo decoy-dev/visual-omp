@@ -38,9 +38,9 @@ export interface AppInstallInfo {
 	scoopGlobal: boolean;
 }
 
-/** A disk-image copy can transfer to Homebrew without replacing any app bundle. */
+/** Direct copies can transfer to their platform's package manager. */
 export interface AppInstallSwitchInfo {
-	manager: "brew";
+	manager: "brew" | "scoop";
 	available: boolean;
 	/** A package-managed copy already exists; reuse it rather than install another copy. */
 	existing: boolean;
@@ -91,6 +91,8 @@ export interface AppUpdateOutcome {
 	running: string;
 	updated: boolean;
 	operation?: "switch";
+	failure?: string | null;
+	failureKind?: "install" | "cleanup" | "launch" | null;
 }
 
 export interface AppReleaseNotes {
@@ -194,7 +196,7 @@ declare module "../ipc" {
 		/** How this copy was installed (Homebrew cask, disk image, Scoop, NSIS installer) and the cask's upgrade command. */
 		"updates:app:install": { args: []; result: AppInstallInfo };
 		"updates:app:switchInfo": { args: []; result: AppInstallSwitchInfo | null };
-		/** Explicitly approved Homebrew preparation; returns a safe adoption/install command. */
+		/** Explicitly approved preparation; Windows defers Scoop installation until after exit. */
 		"updates:app:switchStart": { args: []; result: AppInstallSwitchRun };
 		/** Verify the package-managed copy, then quit and reopen it. Trash applies only to a separate macOS copy. */
 		"updates:app:switchComplete": { args: [trashOld: boolean]; result: void };

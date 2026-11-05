@@ -56,11 +56,6 @@ function PackageManagerGuide({ manager }: { manager: "brew" | "scoop" }) {
 	</div>;
 }
 
-/** Windows transfers remain a manual guide, including when Scoop is already installed. */
-export function ScoopSuggestion() {
-	return <PackageManagerGuide manager="scoop" />;
-}
-
 export function PackageManagerSuggestion() {
 	const info = useResource(() => window.vomp.invoke("updates:app:switchInfo"), []);
 	return info.data && !info.data.available ? <PackageManagerGuide manager={info.data.manager} /> : null;
@@ -78,7 +73,7 @@ export function PackageManagerSwitch({ busy = false }: { busy?: boolean }) {
 	const conflicting = busy || (operation !== null && operation !== "switch");
 	const state = useSwitch();
 	const working = state.phase === "preparing" || state.phase === "running" || completing;
-	const manager = "Homebrew";
+	const manager = info.data?.manager === "scoop" ? "Scoop" : "Homebrew";
 	const start = async () => {
 		if (working || conflicting || operation) return;
 		useSwitch.setState({ phase: "preparing", error: null, terminal: null, run: null });
@@ -125,12 +120,13 @@ export function PackageManagerSwitch({ busy = false }: { busy?: boolean }) {
 				<Button ref={cancel} variant="ghost" disabled={completing} onClick={() => setConfirmation(null)}>{t(state.phase === "idle" || state.phase === "failed" ? "update.rollback.cancel" : "update.app.close")}</Button>
 				{state.phase === "idle" || state.phase === "failed" ? <Button variant="primary" disabled={conflicting} loading={working} onClick={() => void start()}>{t("update.installSwitch.action", { manager })}</Button> : state.phase === "ready" && <>
 					{state.run?.canTrash && <Button disabled={completing || conflicting} onClick={() => void complete(true)}>{t("update.installSwitch.trashRestart")}</Button>}
-					<Button variant="primary" disabled={conflicting} loading={completing} onClick={() => void complete(false)}>{t("update.installSwitch.restart")}</Button>
+					<Button variant="primary" disabled={conflicting} loading={completing} onClick={() => void complete(false)}>{t(info.data.manager === "scoop" ? "update.installSwitch.scoopRestart" : "update.installSwitch.restart")}</Button>
 				</>}
 			</div>}>
 				<div className="flex flex-col gap-stack text-md text-fg-muted">
-					<p>{t(confirmation?.existing ? "update.installSwitch.existing" : "update.installSwitch.brewBody", { manager })}</p>
+					<p>{t(confirmation?.manager === "scoop" ? "update.installSwitch.scoopBody" : confirmation?.existing ? "update.installSwitch.existing" : "update.installSwitch.brewBody", { manager })}</p>
 					<p>{t("update.installSwitch.preserved")}</p>
+					{confirmation?.manager === "scoop" && confirmation.existing && <p>{t("update.installSwitch.existing", { manager })}</p>}
 					{(state.run?.target ?? confirmation?.target) && <p className="break-all font-mono text-sm">{state.run?.target ?? confirmation?.target}</p>}
 					{state.phase === "preparing" && <WorkingIndicator label={t("update.installSwitch.preparing")} />}
 					{state.phase === "running" && <WorkingIndicator label={t("update.installSwitch.running", { manager })} />}

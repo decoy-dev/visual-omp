@@ -24,8 +24,11 @@ vi.mock("../../ui", async () => {
 let root: Root;
 let element: HTMLDivElement;
 beforeAll(async () => { await i18n.loadNamespaces("onboarding"); });
-beforeEach(() => {
+beforeEach(async () => {
 	vi.resetModules(); fake.invoke.mockReset(); fake.approved = true;
+	// Mock factories retain their stores across resetModules; reset the shared operation explicitly.
+	const { useUpdates } = await import("./updates");
+	useUpdates.setState({ operation: null });
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	Object.assign(window, { vomp: { invoke: fake.invoke, on: () => () => {}, platform: "darwin" } });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
@@ -66,14 +69,12 @@ it("shows Homebrew setup and README commands when brew is absent", async () => {
 	expect(fake.invoke).not.toHaveBeenCalledWith("updates:app:switchStart");
 });
 
-it("always shows the manual Scoop guide without probing or automating Windows installation", async () => {
-	const { ScoopSuggestion } = await import("./PackageManagerSwitch");
-	await act(async () => root.render(e(ScoopSuggestion)));
+it("shows the Scoop guide when Scoop is missing", async () => {
+	await render({ manager: "scoop", available: false, existing: false, target: null });
 	await click("Show how to switch");
 	expect(element.textContent).toContain("scoop install git");
 	await click("Open scoop.sh");
 	expect(fake.invoke).toHaveBeenCalledWith("app:openExternal", "https://scoop.sh");
-	expect(fake.invoke).not.toHaveBeenCalledWith("updates:app:switchInfo");
 	expect(fake.invoke).not.toHaveBeenCalledWith("updates:app:switchStart");
 });
 
@@ -106,6 +107,33 @@ it("disables the Homebrew transfer while another installation runs", async () =>
 	const { useUpdates } = await import("./updates");
 	const target = await button("Switch to Homebrew");
 	await act(async () => useUpdates.setState({ operation: "reinstall" }));
+	expect(target.disabled).toBe(true);
+	await act(async () => target.click());
+	expect(fake.invoke).not.toHaveBeenCalledWith("updates:app:switchStart");
+});
+
+it("confirms the Windows post-exit sequence and defers it until the quit guard approves", async () => {
+	await render({ manager: "scoop", available: true, existing: true, target: "C:\\scoop\\apps\\visual-omp\\current\\visual-omp.exe" });
+	await click("Switch to Scoop");
+	await vi.waitFor(() => expect(document.activeElement?.textContent).toBe("Cancel"));
+	expect(document.body.textContent).toContain("checks the executable, install record and version");
+	expect(document.body.textContent).toContain("reuse that copy without installing another");
+	await click("Switch to Scoop");
+	expect(fake.invoke).not.toHaveBeenCalledWith("updates:app:switchComplete", false);
+	fake.approved = false;
+	await click("Continue in PowerShell");
+	expect(fake.invoke).not.toHaveBeenCalledWith("updates:app:switchComplete", false);
+	fake.approved = true;
+	await click("Continue in PowerShell");
+	expect(fake.invoke).toHaveBeenCalledWith("updates:app:switchComplete", false);
+	expect(document.body.textContent).not.toContain("Move old copy to Trash");
+});
+
+it("disables the Scoop switch while an update owns installation", async () => {
+	await render({ manager: "scoop", available: true, existing: false, target: null });
+	const { useUpdates } = await import("./updates");
+	const target = await button("Switch to Scoop");
+	await act(async () => useUpdates.setState({ operation: "update" }));
 	expect(target.disabled).toBe(true);
 	await act(async () => target.click());
 	expect(fake.invoke).not.toHaveBeenCalledWith("updates:app:switchStart");

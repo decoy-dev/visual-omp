@@ -16,7 +16,7 @@ import { focusRing } from "../../ui/styles";
 import { ipcErrorMessage as errorText, useResource } from "../manage/shared";
 import { formatBytes } from "../projects/format";
 import { InlineTerminal } from "./InlineTerminal";
-import { PackageManagerSuggestion, ScoopSuggestion } from "./PackageManagerSwitch";
+import { PackageManagerSuggestion } from "./PackageManagerSwitch";
 import type { ReleaseNotesView, ReleaseNotesViewerProps } from "./ReleaseNotesViewer";
 import {
 	type BrewUpgrade, loadInstall, ompUpdateState, openInstaller, openReleaseNotes, quitForUpdate, restartStaleChats,
@@ -244,7 +244,7 @@ export function AppUpdateSheet({ close }: SheetProps<undefined>) {
 				>
 					{t("update.app.releaseNotes")}
 				</button>
-				{method === "nsis" ? <ScoopSuggestion /> : method === "dmg" && <PackageManagerSuggestion />}
+				{(method === "nsis" || method === "dmg") && <PackageManagerSuggestion />}
 			</DialogContent>
 		</Dialog>
 	);

@@ -296,6 +296,7 @@
 			"title": "Switch visual-omp to {{manager}}?",
 			"showProgress": "Show install switch",
 			"brewBody": "Homebrew adopts a matching app at its destination or installs into an empty destination. A different version must be updated first using its existing update flow. This switch never replaces an app bundle.",
+			"scoopBody": "After you continue, visual-omp closes and a PowerShell window installs or verifies the Scoop copy. It checks the executable, install record and version before removing the installer copy while keeping app data. An installation failure keeps and reopens the installer copy. A removal failure opens the verified Scoop copy and reports what remains.",
 			"existing": "A {{manager}} copy already exists. visual-omp will reuse that copy without installing another.",
 			"preserved": "Saved chats and omp settings remain available. This changes how visual-omp is installed; omp's installation stays unchanged.",
 			"preparing": "Preparing the install switch…",
@@ -303,10 +304,12 @@
 			"terminalLabel": "Package manager install output",
 			"commandFailed": "The install command exited with code {{code}}. Review its output, then try again.",
 			"restart": "Open Homebrew copy",
+			"scoopRestart": "Continue in PowerShell",
 			"busy": "An installation is in progress. Wait for it to finish.",
 			"trashRestart": "Move old copy to Trash and restart",
 			"trashOffer": "The current copy is in another folder. You can keep it or move it to the Trash when the Homebrew copy is verified.",
 			"succeeded": "visual-omp now uses {{manager}}",
+			"cleanupFailed": "The Scoop copy is ready, but the old copy could not be removed",
 			"failed": "The switch to {{manager}} did not finish"
 		},
 		"check": {

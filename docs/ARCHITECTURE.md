@@ -1158,7 +1158,7 @@ Available results have a null reason. Direct installers have a null command; mai
 commands for detected Homebrew and Scoop installations.
 
 `main/features/updates/install-switch.ts` registers on-demand `updates:app:switchInfo`, `switchStart`,
-`switchSettled` and `switchComplete` handlers for disk-image copies only. `features/updates.ts` calls
+`switchSettled` and `switchComplete` handlers for disk-image and Windows installer copies. `features/updates.ts` calls
 it, and it stays in a subfolder because every top-level `features/*.ts` module must export `register()`
 (`main/handlers.ts` calls each one at startup). Preparation is main-owned.
 Homebrew probes every discovered prefix for existing cask links before choosing a fresh install,
@@ -1184,8 +1184,59 @@ with separate cache, logs and temporary folders. The v0.7.6 arm64 release copied
 `install --cask --force` then replaced it with 0.7.6. The image was detached and all experiment
 folders were removed; the owner's Homebrew and `/Applications` were unchanged.
 
-Automated Windows installer-to-Scoop transfers are not shipped. Windows copies retain the
-manual `ScoopSuggestion` guide regardless of whether Scoop is installed.
+Windows discovery checks `SCOOP`, `%USERPROFILE%\scoop`, Scoop's configured `global_path`,
+`SCOOP_GLOBAL`, `%ProgramData%\scoop` and Scoop shim directories on PATH for an existing
+`apps\visual-omp` before selecting a fresh installation. Probe and preparation reuse
+`scoopGlobalPath()` from `features/updates.ts`, which reads `scoop/config.json` beneath
+`XDG_CONFIG_HOME`, or `~/.config` when unset. The post-exit script rereads the same configuration
+location and adds its current `global_path` to the roots. Main reserves the shared installation operation
+while preparing and completing the switch, writes `scoop-switch.ps1` in the profile, and starts a
+visible PowerShell console after quit using a short encoded file invocation.
+
+`main/services/install-switch.ts` generates that script. It waits for the installer copy's
+processes, adds the decoy-dev bucket when needed and installs or reuses `decoy-dev/visual-omp`.
+Before removal, it verifies `visual-omp.exe`, `scoop-install.json` or `install.json`, the installed
+manifest against the requested version and executable product version, and a resolving app path.
+The bucket currently distributes the win-x64 installer, which Windows ARM64 runs through emulation.
+Removal follows electron-builder's `installUtil.nsh`: copy the NSIS uninstaller to a unique temp
+executable, run `/S /KEEP_APP_DATA /currentuser --updated _?=<installDir>` (or `/allusers` when the
+machine registry identifies that location), wait, then delete the temp copy. `--updated` prevents
+the compile-time `deleteAppDataOnUninstall` option from removing the profile; `--delete-app-data`
+is never passed. No recursive installation-folder deletion is used as recovery.
+
+Installation or verification failures reopen the original copy. Cleanup failures start the
+verified Scoop copy and preserve the removal error. JSON result and plain phase log writes are
+best effort and cannot stop the launch attempt or console error. A started process is reported
+without claiming app readiness. The profile contains `scoop-switch-result.json` and its `.log`;
+the existing `update-pending.json` records the next launch's outcome, including failure category.
+Windows PowerShell's UTF-8 BOM is accepted by the outcome reader.
+
+For VM validation, `scripts/dev/scoop-switch-script.mjs` prints the production generator's exact
+output, without Electron, using Node 22.18 or later's native TypeScript support. Pass absolute Windows paths through `--install-dir`, `--profile`,
+`--result-file` and `--scoop-root`; `--uninstaller` overrides the filename, `--global-root`
+includes a configured global root, `--additional-root` adds another probe root, and `--pid`
+selects the old process to wait for (default `-1`).
+`--output switch.ps1` writes a file instead of stdout. Run the generated script with
+`powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\switch.ps1 -DryLaunch` to perform
+installation, verification and cleanup while skipping the final app start and interactive pause.
+The result records `waiting`, `discovering`, `installing` when needed, `verifying`, `removing`,
+`launching` and `finished` phases; the log retains the phase history.
+
+The owner tested three sequences on Windows 11 ARM64 on 2026-11-05:
+- Running the generated script with `-DryLaunch` against the released v0.7.6 NSIS installation
+  added the decoy-dev bucket, installed Scoop v0.7.6 and verified it. The temporary uninstaller
+  removed the HKCU uninstall key and installation folder, then its temporary executable was
+  deleted. A profile marker remained, and the Start menu shortcut changed to Scoop Apps.
+- A cross-built installer from this branch, with metadata version 0.7.6, completed the in-app
+  sequence: About showed **Switch to Scoop**, **Continue in PowerShell** closed the app, the
+  script completed every phase and started the Scoop copy. The profile remained and the NSIS
+  copy was removed; the result recorded `finished` with launch `started`.
+- Holding `resources.pak` open made the NSIS uninstaller return exit code 2. Electron-builder
+  restored the installation folder, the result recorded failure category `cleanup`, the script
+  selected the verified Scoop copy, and the temporary uninstaller was deleted.
+
+A leftover Scoop app folder from a failed `scoop uninstall` is treated as an existing copy.
+If it fails verification, the script keeps the installer copy. This behavior was accepted as safe.
 
 `updates:app:download` takes an optional version. A strictly earlier version or the exact running version causes main to fetch
 official GitHub release metadata again, find the requested published release on the running

@@ -453,7 +453,10 @@ async function receive(url: URL, current: AppDownload, signal: AbortSignal, dige
 	}
 }
 
-const PendingSchema = z.object({ method: z.enum(METHODS), from: z.string(), to: z.string(), at: z.number(), operation: z.literal("switch").optional() });
+const PendingSchema = z.object({
+	method: z.enum(METHODS), from: z.string(), to: z.string(), at: z.number(), operation: z.literal("switch").optional(),
+	failure: z.string().nullable().optional(), failureKind: z.enum(["install", "cleanup", "launch"]).nullable().optional(),
+});
 
 /** Remembers what the next launch should be, so it can report whether the update took. */
 async function recordPending(method: AppInstallMethod, to: string): Promise<void> {
@@ -463,14 +466,14 @@ async function recordPending(method: AppInstallMethod, to: string): Promise<void
 async function consumeOutcome(): Promise<AppUpdateOutcome | null> {
 	let pending: z.infer<typeof PendingSchema>;
 	try {
-		pending = PendingSchema.parse(JSON.parse(await readFile(pendingFile, "utf8")));
+		pending = PendingSchema.parse(JSON.parse((await readFile(pendingFile, "utf8")).replace(/^\uFEFF/, "")));
 	} catch {
 		return null;
 	}
 	const running = app.getVersion();
 	const rolledBack = compareSemver(pending.to, pending.from) < 0;
 	const updated = pending.operation === "switch"
-		? (await installInfo()).method === pending.method && compareSemver(running, pending.to) === 0
+		? !pending.failure && (await installInfo()).method === pending.method && compareSemver(running, pending.to) === 0
 		: rolledBack ? compareSemver(running, pending.to) === 0 : compareSemver(running, pending.from) > 0;
 	const expired = Date.now() - pending.at > PENDING_TTL_MS;
 	// A disk image or installer the user hasn't run yet is not a failure: stay quiet until it runs.
@@ -478,7 +481,10 @@ async function consumeOutcome(): Promise<AppUpdateOutcome | null> {
 	if (!updated && pending.method !== "brew" && pending.method !== "scoop" && !expired) return null;
 	await rm(pendingFile, { force: true });
 	if (!updated && expired) return null;
-	return { method: pending.method, from: pending.from, to: pending.to, running, updated, ...(pending.operation ? { operation: pending.operation } : {}) };
+	return {
+		method: pending.method, from: pending.from, to: pending.to, running, updated,
+		...(pending.operation ? { operation: pending.operation, failure: pending.failure, failureKind: pending.failureKind } : {}),
+	};
 }
 
 async function runInstaller(): Promise<void> {
@@ -668,7 +674,7 @@ async function spawnOmpUpdate(options: OmpUpdateOptions): Promise<OmpUpdateRun> 
 }
 
 export function register(): void {
-	registerInstallSwitch({ installInfo, caskApps, beginOperation: kind => installOperation.begin(kind), endOperation: kind => installOperation.end(kind) });
+	registerInstallSwitch({ installInfo, caskApps, scoopGlobalPath, beginOperation: kind => installOperation.begin(kind), endOperation: kind => installOperation.end(kind) });
 	handle("updates:app:operation", () => installOperation.current);
 	handle("updates:app:beginBrew", async () => {
 		installOperation.begin("update");

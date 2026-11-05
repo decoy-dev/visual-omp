@@ -85,9 +85,9 @@ Download the macOS disk image for your processor from the [latest release](https
 
 **visual-omp on Windows (installer, alternative)**
 
-Download `visual-omp-<version>-win-x64.exe` from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest) and run it. To move a copy installed this way to Scoop, run the Scoop commands above. After they finish without errors, quit visual-omp and open the Scoop copy from **Scoop Apps** in the Start menu. Check that it opens with your chats and settings, which both copies share, then close it and uninstall the installer's copy in Windows Settings under **Apps**. If the Scoop copy does not open, keep the installer's copy.
+Download `visual-omp-<version>-win-x64.exe` from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest) and run it. To move this copy to Scoop, install Scoop and Git first, then open **Settings > About**, choose **Switch to Scoop** and confirm **Continue in PowerShell**. The app closes, and a visible PowerShell window reuses an existing Scoop copy or installs `decoy-dev/visual-omp`. It verifies the executable, install record and matching manifest version before running a temporary copy of the old uninstaller with app-data retention enabled, then starts the Scoop copy.
 
-Settings > About and the update window show the manual Scoop guide, whether or not Scoop is already installed. visual-omp does not automate the Windows installation transfer.
+An installation or verification failure keeps and reopens the installer copy. If removal fails after verification, the script starts the Scoop copy and reports that the old copy may still need removal through **Windows Settings > Apps**. The PowerShell window stays open on errors. Its JSON result and plain log are saved as `scoop-switch-result.json` and `scoop-switch-result.json.log` in visual-omp's profile folder. Missing Scoop shows the manual installation guide and **Check package manager again** in About. Both copies use the same chats and settings; omp's installation stays unchanged.
 
 visual-omp supports macOS on Apple Silicon and Intel, Windows 10 and later, and omp 18.15.0 or later. An older omp opens the setup screen, where **Update omp** runs omp's updater without a separate terminal.
 

@@ -16,7 +16,7 @@ import { useDeferredTranslation } from "@/i18n";
 import { useApp } from "@/state/app";
 import { Button, Dialog, DialogContent, Mark, PageHeader, PresenceSwap, Spinner, Wordmark } from "@/ui";
 import { ipcErrorMessage, useResource } from "../shared";
-import { PackageManagerSwitch, ScoopSuggestion } from "../../onboarding/PackageManagerSwitch";
+import { PackageManagerSwitch } from "../../onboarding/PackageManagerSwitch";
 import { SettingRow } from "./parts";
 
 const DOCS_URL = "https://omp.sh";
@@ -129,7 +129,7 @@ export function AboutSection() {
 					<StatusLine row={appRow} />
 					{updates.app?.skippedThroughVersion && <p className="mt-stack text-sm text-fg-muted">{t("onboarding:update.rollback.skipped", { version: updates.app.skippedThroughVersion })}</p>}
 					<ReinstallAction busy={!!updates.operation} />
-					{updates.install?.method === "nsis" ? <ScoopSuggestion /> : <PackageManagerSwitch busy={updates.operation !== null && updates.operation !== "switch"} />}
+					<PackageManagerSwitch busy={updates.operation !== null && updates.operation !== "switch"} />
 				</dd>
 
 				<dt className="text-fg-muted">{t("about.ompVersion")}</dt>

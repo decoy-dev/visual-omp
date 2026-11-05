@@ -13,7 +13,7 @@ be able to use it, and it exposes the features that set omp apart from other cod
   a release when a `v*` tag is pushed and updates the Homebrew cask and the Scoop manifest for
   stable versions (see docs/RELEASING.md). The cask requires Homebrew 6.0.16 or later. Direct
   macOS copies offer a safe Homebrew transfer or a Homebrew installation guide from Settings > About.
-  Windows installer copies always show the manual Scoop transfer guide.
+  Windows installer copies offer a verified Scoop transfer, or the installation guide when Scoop is missing.
 - **Signing:** macOS releases are signed with the project's own self-signed certificate (no Apple
   Developer ID), so every release keeps one designated requirement; this is meant to keep
   permissions such as App Management across updates (see docs/RELEASING.md). Local builds are
@@ -224,17 +224,22 @@ Current chats, navigation shortcuts and preview release are described under Sess
   destination version blocks the switch and asks the person to update that copy first through
   its existing update flow. The switch never replaces a bundle. Existing cask copies are reused.
   Restart opens the verified target from disk; moving a separate old copy to the Trash is optional.
-- Windows installer copies always show the manual Scoop guide in About and the update window.
-  The person installs Scoop and Git as needed and runs the README bucket and install commands. Only
-  after they succeed does the guide say to quit, open the Scoop copy, check that it opens with the
-  person's chats and settings, and then remove the installer copy through Windows Settings > Apps;
-  if the Scoop copy does not open, the installer copy stays.
-- Updates, reinstalls and the Homebrew switch share one installation-operation state. Conflicting
+- Windows installer copies offer **Switch to Scoop**, then **Continue in PowerShell** through the quit
+  guard. Discovery checks configured, default user, global and PATH Scoop roots before installing.
+  After exit, a visible PowerShell script installs or reuses the package and verifies its executable,
+  install receipt, installed manifest version and resolved app path. It copies the old NSIS
+  uninstaller to a unique temporary file and runs `/S /KEEP_APP_DATA /currentuser --updated _?=<dir>`
+  (or `/allusers` for a matching machine installation), waits and deletes the temporary copy.
+  Installation failure reopens the retained installer copy. Cleanup failure starts the verified
+  Scoop copy and reports that the old copy could not be removed. Result or log write failures
+  cannot prevent the launch attempt or the visible error. The script never recursively deletes
+  the installation directory. A JSON result and plain log describe each phase.
+- Updates, reinstalls and both package-manager switches share one installation-operation state. Conflicting
   actions are disabled in the renderer and refused by main until the active operation settles.
-- The Homebrew confirmation starts on Cancel and returns focus to its trigger when closed.
+- Both switch confirmations start on Cancel and return focus to their trigger when closed.
   Footer actions wrap at narrow widths and larger text sizes. Chats and omp settings are preserved,
-  and omp's installation remains unchanged. Missing Homebrew shows brew.sh and README commands,
-  with **Check package manager again** after installation.
+  and omp's installation remains unchanged. A missing package manager shows brew.sh or scoop.sh
+  and README commands, with **Check package manager again** after installation.
 - About's **Read release notes** and **Review update** actions open the same release history. An
   earlier release with a trusted installer for this computer offers **Install v{version}**. A
   confirmation names the running and selected versions, explains the restart and preserves chats

@@ -3,6 +3,7 @@ import type { AppInstallInfo, AppInstallSwitchRun } from "@shared/contracts/upda
 
 const fake = vi.hoisted(() => ({
 	method: "dmg" as AppInstallInfo["method"], packaged: true,
+	globalRoot: undefined as string | undefined,
 	files: new Map<string, string>(), casks: new Map<string, string[]>(), brew: new Set<string>(),
 	env: {} as Record<string, string>, handlers: new Map<string, (...args: unknown[]) => unknown>(),
 	exec: vi.fn(), spawn: vi.fn(), quit: vi.fn(), once: vi.fn(), trash: vi.fn(), write: vi.fn(),
@@ -37,6 +38,7 @@ beforeEach(() => {
 	vi.clearAllMocks();
 	operation = new InstallOperation(() => {});
 	fake.method = "dmg"; fake.packaged = true; fake.files.clear(); fake.casks.clear(); fake.brew.clear(); fake.handlers.clear();
+	fake.globalRoot = undefined;
 	fake.env = { PATH: "/opt/homebrew/bin" };
 	fake.brew.add(brew);
 	process.execPath = `${target}/Contents/MacOS/visual-omp`;
@@ -44,7 +46,7 @@ beforeEach(() => {
 	fake.exec.mockImplementation((_binary: string, args: string[], _options: unknown, callback: (error: Error | null, stdout: string, stderr: string) => void) => callback(null, args[0] === "info" ? JSON.stringify({ casks: [{ version: "0.7.6" }] }) : "", ""));
 	fake.spawn.mockReturnValue({ unref: vi.fn() });
 	fake.write.mockResolvedValue(undefined); fake.trash.mockResolvedValue(undefined);
-	registerInstallSwitch({ installInfo: async () => ({ method: fake.method, appPath: target, command: null, scoopGlobal: false }), caskApps: async path => fake.casks.get(path) ?? [], beginOperation: kind => operation.begin(kind), endOperation: kind => operation.end(kind) });
+	registerInstallSwitch({ installInfo: async () => ({ method: fake.method, appPath: target, command: null, scoopGlobal: false }), caskApps: async path => fake.casks.get(path) ?? [], scoopGlobalPath: async () => fake.globalRoot, beginOperation: kind => operation.begin(kind), endOperation: kind => operation.end(kind) });
 });
 afterEach(() => { process.execPath = execPath; });
 const invoke = (name: string, ...args: unknown[]) => fake.handlers.get(`updates:app:${name}`)!(...args);
@@ -55,7 +57,7 @@ describe("install switch availability", () => {
 		expect(await invoke("switchInfo")).toMatchObject({ manager: "brew", available: false });
 		expect(fake.exec).not.toHaveBeenCalled();
 	});
-	it.each(["brew", "scoop", "manual", "nsis"] as const)("does not offer an automated switch for %s copies", async method => {
+	it.each(["brew", "scoop", "manual"] as const)("does not offer an automated switch for %s copies", async method => {
 		fake.method = method;
 		expect(await invoke("switchInfo")).toBeNull();
 		await expect(invoke("switchStart")).rejects.toThrow("could not be found");
@@ -150,5 +152,84 @@ describe("macOS switch", () => {
 		await expect(invoke("switchStart")).rejects.toThrow("Network unavailable");
 		await expect(invoke("switchComplete", true)).rejects.toThrow("Prepare");
 		expect(fake.quit).not.toHaveBeenCalled(); expect(fake.trash).not.toHaveBeenCalled();
+	});
+});
+
+describe("Windows switch", () => {
+	const root = "C:\\Users\\chris\\scoop";
+	const original = "C:\\Users\\chris\\Apps\\visual-omp\\visual-omp.exe";
+	const scoop = `${root}\\shims\\scoop.ps1`;
+	function windows() {
+		fake.method = "nsis";
+		process.execPath = original;
+		fake.env = { SCOOP: root, USERPROFILE: "C:\\Users\\chris", ProgramData: "C:\\ProgramData" };
+		fake.files.set(scoop, "script");
+		fake.files.set("C:\\Users\\chris\\Apps\\visual-omp\\Uninstall visual-omp.exe", "uninstaller");
+	}
+	it("offers Scoop setup when no manager exists", async () => {
+		windows(); fake.files.delete(scoop);
+		expect(await invoke("switchInfo")).toMatchObject({ manager: "scoop", available: false });
+		expect(fake.exec).not.toHaveBeenCalled();
+	});
+	it("checks later user and global roots before proposing a fresh installation", async () => {
+		windows();
+		fake.env.SCOOP_GLOBAL = "D:\\Global scoop";
+		fake.files.set("D:\\Global scoop\\apps\\visual-omp", "directory");
+		expect(await invoke("switchInfo")).toMatchObject({
+			manager: "scoop", available: true, existing: true,
+			target: "D:\\Global scoop\\apps\\visual-omp\\current\\visual-omp.exe",
+		});
+		expect(await invoke("switchStart")).toMatchObject({ existing: true, command: null, canTrash: false });
+		expect(operation.current).toBeNull();
+		expect(fake.quit).not.toHaveBeenCalled();
+	});
+	it("reuses a copy found only through Scoop's configured global_path and includes that root after exit", async () => {
+		windows();
+		fake.globalRoot = "E:\\Configured global scoop";
+		fake.files.set("E:\\Configured global scoop\\apps\\visual-omp", "directory");
+		const target = "E:\\Configured global scoop\\apps\\visual-omp\\current\\visual-omp.exe";
+		expect(await invoke("switchInfo")).toMatchObject({ manager: "scoop", available: true, existing: true, target });
+		expect(await invoke("switchStart")).toMatchObject({ existing: true, target, command: null });
+		// Completion must read the same shared config reader again, rather than keeping a stale probe.
+		fake.globalRoot = "F:\\New configured global scoop";
+		await invoke("switchComplete", false);
+		expect(fake.write).toHaveBeenCalledWith("/profile/scoop-switch.ps1", expect.stringContaining("'F:\\New configured global scoop'"));
+		expect(fake.write).toHaveBeenCalledWith("/profile/scoop-switch.ps1", expect.stringContaining("$config.global_path"));
+		expect(fake.exec).not.toHaveBeenCalled();
+	});
+	it("writes the exact post-exit script before quitting and runs a short encoded file command", async () => {
+		windows();
+		await invoke("switchStart");
+		await invoke("switchComplete", false);
+		expect(operation.current).toBe("switch");
+		expect(fake.write).toHaveBeenCalledWith("/profile/scoop-switch.ps1", expect.stringContaining("param([switch]$DryLaunch)"));
+		expect(fake.quit).toHaveBeenCalledOnce();
+		expect(fake.spawn).not.toHaveBeenCalled();
+		fake.once.mock.calls.find(call => call[0] === "will-quit")![1]();
+		const [binary, args, options] = fake.spawn.mock.calls[0]!;
+		expect(binary).toMatch(/System32\\cmd\.exe$/);
+		expect(options).toMatchObject({ detached: true, windowsVerbatimArguments: true });
+		const encoded = args[2].split("-EncodedCommand ")[1];
+		expect(Buffer.from(encoded, "base64").toString("utf16le")).toBe("& '/profile/scoop-switch.ps1'");
+	});
+	it.each(["update", "reinstall", "switch"] as const)("refuses preparing or completing while %s owns installation", async kind => {
+		windows();
+		await invoke("switchStart");
+		operation.begin(kind);
+		await expect(invoke("switchStart")).rejects.toThrow("in progress");
+		await expect(invoke("switchComplete", false)).rejects.toThrow("in progress");
+		expect(fake.write).not.toHaveBeenCalled();
+		expect(fake.quit).not.toHaveBeenCalled();
+	});
+	it("keeps the installer running if its uninstaller or script cannot be prepared", async () => {
+		windows();
+		fake.files.delete("C:\\Users\\chris\\Apps\\visual-omp\\Uninstall visual-omp.exe");
+		await expect(invoke("switchStart")).rejects.toThrow("uninstaller is missing");
+		windows();
+		await invoke("switchStart");
+		fake.write.mockRejectedValueOnce(new Error("disk full"));
+		await expect(invoke("switchComplete", false)).rejects.toThrow("disk full");
+		expect(operation.current).toBeNull();
+		expect(fake.quit).not.toHaveBeenCalled();
 	});
 });

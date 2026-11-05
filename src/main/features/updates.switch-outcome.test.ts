@@ -3,7 +3,8 @@ import type { AppInstallOperation, AppUpdateOutcome } from "@shared/contracts/up
 import type * as UpdateService from "../services/updates";
 
 const fake = vi.hoisted(() => ({
-	method: "brew", running: "0.7.6", pendingVersion: "0.7.6",
+	method: "brew", pendingMethod: "brew", running: "0.7.6", pendingVersion: "0.7.6",
+	failure: null as string | null, failureKind: null as "install" | "cleanup" | "launch" | null, bom: false,
 	handlers: new Map<string, (...args: unknown[]) => unknown>(), removed: vi.fn(),
 	reserve: null as ((kind: AppInstallOperation) => void) | null,
 }));
@@ -12,7 +13,7 @@ vi.mock("node:fs/promises", () => ({
 	access: async () => { throw new Error("ENOENT"); }, readdir: async () => [], realpath: async (path: string) => path,
 	readFile: async (path: string) => {
 		if (!path.endsWith("update-pending.json")) throw new Error("ENOENT");
-		return JSON.stringify({ method: "brew", operation: "switch", from: "0.7.6", to: fake.pendingVersion, at: Date.now() });
+		return (fake.bom ? "\uFEFF" : "") + JSON.stringify({ method: fake.pendingMethod, operation: "switch", from: "0.7.6", to: fake.pendingVersion, at: Date.now(), failure: fake.failure, failureKind: fake.failureKind });
 	},
 	rm: fake.removed,
 }));
@@ -34,7 +35,10 @@ async function outcome() {
 	vi.clearAllTimers(); vi.useRealTimers();
 	return fake.handlers.get("updates:app:outcome")!() as Promise<AppUpdateOutcome>;
 }
-afterEach(() => { fake.method = "brew"; fake.running = "0.7.6"; fake.pendingVersion = "0.7.6"; vi.useRealTimers(); });
+afterEach(() => {
+	fake.method = "brew"; fake.pendingMethod = "brew"; fake.running = "0.7.6"; fake.pendingVersion = "0.7.6";
+	fake.failure = null; fake.failureKind = null; fake.bom = false; vi.useRealTimers();
+});
 
 it("recognizes a same-version Homebrew adoption", async () => {
 	expect(await outcome()).toMatchObject({ operation: "switch", method: "brew", updated: true, running: "0.7.6" });
@@ -58,4 +62,15 @@ it.each(["update", "reinstall", "switch"] as const)("main refuses conflicting en
 		await expect(Promise.resolve().then(() => fake.handlers.get(channel)!())).rejects.toThrow(/progress/);
 	}
 	expect(fake.handlers.get("updates:app:operation")!()).toBe(kind);
+});
+
+it("accepts the UTF-8 BOM written by Windows PowerShell and recognizes a Scoop switch", async () => {
+	fake.method = "scoop"; fake.pendingMethod = "scoop"; fake.bom = true;
+	expect(await outcome()).toMatchObject({ operation: "switch", method: "scoop", updated: true });
+});
+it.each(["install", "cleanup", "launch"] as const)("retains the Windows %s failure without reporting success", async failureKind => {
+	fake.method = failureKind === "install" ? "nsis" : "scoop";
+	fake.pendingMethod = "scoop";
+	fake.failureKind = failureKind; fake.failure = "The switch could not finish.";
+	expect(await outcome()).toMatchObject({ updated: false, failureKind, failure: fake.failure });
 });

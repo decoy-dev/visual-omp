@@ -1,6 +1,6 @@
 import type { AppInstallOperation } from "@shared/contracts/updates";
 
-/** Updates, reinstalls and Homebrew transfers share one installation at a time. */
+/** Updates, reinstalls and package-manager transfers share one installation at a time. */
 export class InstallOperation {
 	current: AppInstallOperation | null = null;
 	constructor(private readonly changed: (operation: AppInstallOperation | null) => void) {}
