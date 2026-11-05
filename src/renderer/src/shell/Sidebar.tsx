@@ -337,7 +337,7 @@ function ChatRow(props: ChatRowProps): ReactNode {
 							)}
 							data-row-title
 							data-current-tab={current ? tabId : undefined}
-							title={current ? t("sidebar.reorderHint") : session?.preview ?? undefined}
+							title={session?.preview ?? undefined}
 							aria-current={current && active ? "true" : undefined}
 							aria-describedby={unseen ? statusId : undefined}
 							aria-keyshortcuts={current ? `${props.number ? `${MAC ? "Meta" : "Control"}+${props.number} ` : ""}Alt+ArrowUp Alt+ArrowDown` : undefined}
@@ -781,7 +781,12 @@ function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): Re
 		const groupStart = displayed.indexOf(group[0]!);
 		const actual = Math.max(groupStart, Math.min(groupStart + group.length - 1, position));
 		const chat = ordered.find(chat => chat.tabId === tabId);
-		const title = chatTitle(controllerFor(tabId)?.getSnapshot() ?? null, state.tabs.find(tab => tab.id === tabId)?.title ?? null) ?? (chat?.kind === "session" ? chat.session.title : null) ?? t("sidebar.untitled");
+		const session = chat?.kind === "session" ? chat.session : null;
+		// The same title the row shows, so the announcement names the chat the person sees.
+		const title =
+			chatTitle(controllerFor(tabId)?.getSnapshot() ?? null, session?.title ?? state.tabs.find(tab => tab.id === tabId)?.title ?? null) ??
+			session?.preview ??
+			t(session ? "sidebar.untitled" : "chat.newTitle");
 		setAnnouncement(previous => ({
 			text: from === to ? t("sidebar.groupBoundary") : t("sidebar.moved", { title, position: actual + 1, count: ordered.length }),
 			sequence: previous.sequence + 1,

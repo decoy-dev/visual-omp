@@ -59,7 +59,6 @@
 		"currentMenu": "Current chats options",
 		"moveUp": "Move up",
 		"moveDown": "Move down",
-		"reorderHint": "Drag to reorder, or use Alt+Arrow Up and Alt+Arrow Down.",
 		"moved": "{{title}} moved to position {{position}} of {{count}}.",
 		"groupBoundary": "Unopened results stay above viewed chats. This chat cannot move farther in that direction.",
 		"rename": "Rename chat…",
