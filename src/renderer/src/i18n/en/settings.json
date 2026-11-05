@@ -612,6 +612,7 @@
 		"noModels": "No models",
 		"account": {
 			"unnamed": "Signed-in account",
+			"stored": "Stored accounts for {{name}}",
 			"disabled": "omp stopped using {{account}}: {{cause}}",
 			"disabledUnnamed": "omp stopped using an account: {{cause}}"
 		},
@@ -623,8 +624,8 @@
 		},
 		"signOut": {
 			"title": "Sign out of {{name}}?",
-			"description": "omp removes the saved sign-in for every account of this provider on this computer. Keys from environment variables or omp's config files stay in place, and chats that are already running may keep the credentials they loaded. You can sign in again at any time.",
-			"confirm": "Sign out all accounts",
+			"description": "omp removes this account's saved sign-in for {{provider}}. Other stored accounts stay signed in. Keys from environment variables or omp's config files stay in place, and chats that are already running may keep the credentials they loaded.",
+			"confirm": "Sign out",
 			"done": "Signed out of {{name}}.",
 			"failed": "omp could not sign out of {{name}}."
 		},

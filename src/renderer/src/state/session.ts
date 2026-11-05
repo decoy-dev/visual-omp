@@ -926,9 +926,10 @@ export class SessionController {
 	 * keeps running (see `holdQueue`). A command does not move the queue on when it is done, because it may
 	 * have started a turn the app can't foresee: that turn's end, the caller's hold, the next send or a hold's
 	 * end does. Refused while omp's editor may still hold a failed message's images.
+	 * `beforeSubmit` rechecks operation scope after earlier writes and live readiness, immediately before submission.
 	 */
-	async command(line: string): Promise<void> {
-		await this.#command(line, false);
+	async command(line: string, beforeSubmit?: () => void): Promise<void> {
+		await this.#command(line, false, beforeSubmit);
 	}
 
 	/** `beforeSubmit` runs inside the serialized write, right before the line is typed. */

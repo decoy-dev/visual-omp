@@ -4,7 +4,7 @@ visual-omp is an Electron + React desktop app that wraps the omp (oh-my-pi) codi
 
 ## The owner's standing rules
 
-- **Wrapper first.** Reuse omp's own mechanisms instead of building parallel ones. Provider auth runs through `omp login` and `omp auth-broker logout`; the app never implements its own sign-in or credential storage.
+- **Wrapper first.** Reuse omp's own mechanisms instead of building parallel ones. Provider auth runs through `omp login` and omp's per-account `get_logout_accounts` and `logout` RPC path; the app never implements its own sign-in or credential storage.
 - **Voice.** Every user-facing string, doc, CHANGELOG entry, release note and commit message follows [docs/VOICE.md](docs/VOICE.md). Do not use em or en dashes anywhere, including chat replies to the owner.
 - **Advisor approval.** Every change is reviewed and approved by the advisor agent (`astra`) before it is committed. Resolve its required changes, and take product trade-offs it raises to the owner.
 - **Commits and releases.** Commit work as conventional commits (`feat`, `fix`, `chore`, `docs`, `build`, `ci`, `refactor`, `style`, `test`). Never push, tag or publish a release unless the owner asks, because the owner decides when a version ships. The owner tests every release first: start a development build (`npm run dev`) on the commit that will be released, leave it running for the owner, and tag only after the owner has tried it and asked for the release. Releases follow [docs/RELEASING.md](docs/RELEASING.md): the CHANGELOG section becomes the GitHub release body, and a `v*` tag starts the build.

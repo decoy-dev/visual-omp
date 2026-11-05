@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { lazyView } from "../../registry/lazy";
+import { lazyView, LoadFailedNotice } from "../../registry/lazy";
 import { setResumeGuard } from "../../registry/guards";
 import { chatSlots, globals, sheets, type ChatSlotProps } from "../../registry/slots";
 import { registerNativeOverlay } from "../palette/overlays";
@@ -13,9 +13,11 @@ import "./modes";
 
 const PlanReviewCard = lazyView(() => import("./PlanReviewCard").then(m => m.PlanReviewCard), NativeCardLoading, NativeCardFailed);
 const OmpDialogCard = lazyView(() => import("./OmpDialogCard").then(m => m.OmpDialogCard), NativeCardLoading, NativeCardFailed);
+const AccountButton = lazyView(() => import("./AccountButton").then(m => m.AccountButton), null, LoadFailedNotice);
 
 chatSlots.register({ id: "session-permission", placement: "composerTools", order: 20, component: PermissionButton });
 chatSlots.register({ id: "session-model", placement: "composerTools", order: 70, component: ModelButton });
+chatSlots.register({ id: "session-account", placement: "composerTools", order: 75, component: AccountButton });
 chatSlots.register({ id: "session-thinking", placement: "composerTools", order: 80, component: ThinkingButton });
 chatSlots.register({ id: "session-plan-review", placement: "transcriptEnd", order: 10,
 	component: (props: ChatSlotProps) => createElement(NativeCardPresentation, { ...props, kind: "plan" }, createElement(PlanReviewCard, props)) });

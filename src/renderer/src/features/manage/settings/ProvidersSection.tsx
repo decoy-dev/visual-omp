@@ -5,7 +5,7 @@
  * the selected project folder.
  */
 import { ArrowClockwise, DotsThree, DownloadSimple, SignIn, SignOut, UploadSimple, UserPlus } from "@phosphor-icons/react";
-import type { ConnectedProvider, LoginMethod } from "@shared/contracts/providers";
+import type { ConnectedProvider, LoginMethod, StoredProviderAccount } from "@shared/contracts/providers";
 import type { TFunction } from "i18next";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -23,7 +23,6 @@ import {
 	Menu,
 	MenuContent,
 	MenuItem,
-	MenuSeparator,
 	MenuTrigger,
 	Notice,
 	PageHeader,
@@ -52,11 +51,10 @@ function idleChats(): SessionController[] {
 
 export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
 	const { t } = useDeferredTranslation("settings");
-	const arg = cwd ?? undefined;
 	const state = useResource(() => window.vomp.invoke("providers:list"), []);
 	const [refreshing, setRefreshing] = useState(false);
 	const [login, setLogin] = useState<OmpLoginTarget | null>(null);
-	const [signOut, setSignOut] = useState<ConnectedProvider | null>(null);
+	const [signOut, setSignOut] = useState<{ providerName: string; account: StoredProviderAccount } | null>(null);
 	const [signingOut, setSigningOut] = useState(false);
 	const [query, setQuery] = useState("");
 	const [transfer, setTransfer] = useState<"export" | "import" | null>(null);
@@ -104,14 +102,14 @@ export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
 	);
 
 	const confirmSignOut = async () => {
-		if (!signOut) return;
+		if (!signOut || signingOut) return;
 		setSigningOut(true);
 		try {
-			await window.vomp.invoke("providers:logout", signOut.id, arg);
-			toast({ tone: "ok", message: t("providers.signOut.done", { name: signOut.name }) });
+			await window.vomp.invoke("providers:logout", signOut.account);
+			toast({ tone: "ok", message: t("providers.signOut.done", { name: signOut.account.label }) });
 			setSignOut(null);
 		} catch (error) {
-			toast({ tone: "err", message: t("providers.signOut.failed", { name: signOut.name }), description: ipcErrorMessage(error) });
+			toast({ tone: "err", message: t("providers.signOut.failed", { name: signOut.account.label }), description: ipcErrorMessage(error) });
 		} finally {
 			setSigningOut(false);
 		}
@@ -191,7 +189,7 @@ export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
 										<ConnectedRow
 											provider={provider}
 											onSignIn={() => provider.login && setLogin({ methodId: provider.login.id, name: provider.name })}
-											onSignOut={() => setSignOut(provider)}
+											onSignOut={account => setSignOut({ providerName: provider.name, account })}
 										/>
 									</motion.div>
 								))}
@@ -250,8 +248,8 @@ export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
 					<DialogContent
 						destructive
 						size="sm"
-						title={t("providers.signOut.title", { name: signOut.name })}
-						description={t("providers.signOut.description")}
+						title={t("providers.signOut.title", { name: signOut.account.label })}
+						description={t("providers.signOut.description", { provider: signOut.providerName })}
 						footer={
 							<>
 								<Button onClick={() => setSignOut(null)} disabled={signingOut}>
@@ -262,7 +260,9 @@ export function ProvidersSection({ projectPath: cwd }: SettingsSectionProps) {
 								</Button>
 							</>
 						}
-					/>
+					>
+						<p className="break-words text-sm text-fg-muted">{signOut.account.detail}</p>
+					</DialogContent>
 				)}
 			</Dialog>
 		</>
@@ -280,15 +280,15 @@ function statusChip(provider: ConnectedProvider, t: TFunction<"manage">): { tone
 	return { tone: "neutral", label: t("providers.status.models") };
 }
 
-function ConnectedRow({ provider, onSignIn, onSignOut }: { provider: ConnectedProvider; onSignIn(): void; onSignOut(): void }) {
+function ConnectedRow({ provider, onSignIn, onSignOut }: { provider: ConnectedProvider; onSignIn(): void; onSignOut(account: StoredProviderAccount): void }) {
 	const { t } = useDeferredTranslation("settings");
 	const chip = statusChip(provider, t);
 	const needsSignIn = provider.disabledAccounts.length > 0 && provider.login !== null;
 	const details = [
 		provider.modelCount > 0 ? t("providers.models", { count: provider.modelCount }) : t("providers.noModels"),
-		...provider.accounts.map(account => [account.email, account.orgName].filter(Boolean).join(" · ") || t("providers.account.unnamed")),
+		...(provider.storedAccounts.length === 0 ? provider.accounts.map(account => [account.email, account.orgName].filter(Boolean).join(" · ") || t("providers.account.unnamed")) : []),
 	];
-	const hasMenu = provider.login !== null || provider.canSignOut;
+	const hasMenu = provider.login !== null;
 
 	return (
 		<div className="flex items-start justify-between gap-6 py-3">
@@ -300,6 +300,21 @@ function ConnectedRow({ provider, onSignIn, onSignOut }: { provider: ConnectedPr
 					</Chip>
 				</div>
 				<p className="mt-1 break-words text-sm text-fg-muted">{details.join(" · ")}</p>
+				{provider.storedAccounts.length > 0 && (
+					<ul className="mt-2 divide-y divide-border" aria-label={t("providers.account.stored", { name: provider.name })}>
+						{provider.storedAccounts.map(account => (
+							<li key={account.credentialId} className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-2">
+								<div className="min-w-0 flex-1">
+									<p className="break-words text-sm font-medium text-fg">{account.label}</p>
+									<p className="mt-1 break-words text-sm text-fg-muted">{account.detail}</p>
+								</div>
+								<Button size="sm" icon={<SignOut />} aria-label={t("providers.actions.signOut", { name: `${account.label} · ${account.detail}` })} onClick={() => onSignOut(account)}>
+									{t("providers.signOut.confirm")}
+								</Button>
+							</li>
+						))}
+					</ul>
+				)}
 				{provider.disabledAccounts.map((account, index) => {
 					const name = account.email ?? account.accountId;
 					return (
@@ -328,18 +343,10 @@ function ConnectedRow({ provider, onSignIn, onSignOut }: { provider: ConnectedPr
 									{t("providers.actions.signInAgain")}
 								</MenuItem>
 							)}
-							{provider.login && provider.accounts.length > 0 && (
+							{provider.login && (provider.accounts.length > 0 || provider.storedAccounts.length > 0) && (
 								<MenuItem icon={<UserPlus />} onSelect={onSignIn}>
 									{t("providers.actions.addAccount")}
 								</MenuItem>
-							)}
-							{provider.canSignOut && (
-								<>
-									{provider.login && <MenuSeparator />}
-									<MenuItem danger icon={<SignOut />} onSelect={onSignOut}>
-										{t("providers.actions.signOut", { name: provider.name })}
-									</MenuItem>
-								</>
 							)}
 						</MenuContent>
 					</Menu>

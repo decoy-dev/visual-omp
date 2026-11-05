@@ -36,11 +36,23 @@ export const NativeJobSchema = z.object({
 	caption: z.string().max(1024).nullable(),
 });
 export type NativeJob = z.infer<typeof NativeJobSchema>;
+/** Stored OAuth identity summaries for this host's current model provider. No credentials. */
+export const SessionAccountsSchema = z.object({
+	provider: z.string().min(1),
+	sessionId: z.string().min(1),
+	accounts: z.array(z.object({
+		credentialId: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER),
+		label: z.string().min(1),
+		active: z.boolean(),
+	})),
+});
+export type SessionAccounts = z.infer<typeof SessionAccountsSchema>;
 export const NativeSnapshotSchema = z.object({
 	modes: SessionModesSchema.nullable(),
 	theme: ThemeIdentitySchema.nullable(),
 	location: z.object({ cwd: z.string(), sessionFile: z.string().nullable(), sessionId: z.string() }).optional(),
 	historyDbPath: z.string().min(1).optional(),
+	sessionAccounts: SessionAccountsSchema.nullable().optional(),
 	asyncJobs: z.array(NativeJobSchema).max(100).optional(),
 	/** Main's host generation when the bridge accepted this metadata. */
 	asyncJobsGeneration: z.number().int().nonnegative().optional(),
@@ -52,6 +64,7 @@ export interface TerminalColors { background?: string; foreground?: string; ansi
 declare module "../ipc" {
 	interface IpcInvokeMap {
 		"native:snapshot": { args: [hostId: string]; result: NativeSnapshot };
+		"native:sessionAccounts": { args: [hostId: string, generation: number]; result: SessionAccounts | null };
 		/** Fresh SDK sample, requested after a collab background wait begins. Null means unavailable. */
 		"native:asyncWork": { args: [hostId: string, generation: number]; result: boolean | null };
 		"native:setMode": { args: [hostId: string, request: ModeRequest]; result: ModeResult };

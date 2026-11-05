@@ -5,6 +5,7 @@ import { deliver } from "../chat/composer/send";
 import type { GuestSnapshot } from "../collab/lib/client";
 import { useComposerDrafts } from "../chat/composer/drafts";
 import { sendSlashCommand } from "../features/session-tools/typed";
+import { pinSessionAccount } from "../features/session-tools/accounts";
 import { LARGE_RESUME_BYTES, ResumeDeclinedError, type ResumeGuard, setResumeGuard } from "../registry/guards";
 import { chatStatus } from "../shell/hooks";
 import { toast } from "../ui/toast";
@@ -433,6 +434,34 @@ function fakeDelivery() {
 const shot = { path: "/tmp/Screen Shot.png", name: "Screen Shot.png" };
 const pasteShot = ["composer:paste", "h1", "/tmp/Screen\\ Shot.png"];
 const submit = (text: string) => ["host:submit", "h1", text, "steer", ...(!text.startsWith("/") && !/^!!?/.test(text) && !/^\$\$?\s/.test(text) ? [undefined, expect.any(String)] : [])];
+
+describe("SessionController account pin submission guard", () => {
+	it.each(["host", "generation", "session", "provider", "reply"] as const)("refuses a pin when %s changes behind an earlier serialized write", async change => {
+		const session = idle(`pin-write-${change}`);
+		const state = { isStreaming: false, queuedMessageCount: 0, cwd: "/p", participants: [], model: { provider: "anthropic", id: "model", name: "Model", contextWindow: 200000 } };
+		fakes.guests.at(-1)!.emit("live", [u1], false, { state });
+		const block = Promise.withResolvers<null>();
+		respond = channel => channel === "host:submit" ? block.promise : undefined;
+		const earlier = session.command("/hold");
+		await flush();
+		const pin = pinSessionAccount(session, { provider: "anthropic", sessionId: "s1", accounts: [
+			{ credentialId: 7, label: "first@example.com", active: true },
+			{ credentialId: 12, label: "second@example.com", active: false },
+		] }, 12);
+		const rejected = expect(pin).rejects.toThrow(change === "reply" ? "finish replying" : "chat or model changed");
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:submit")).toEqual([submit("/hold")]);
+		if (change === "host") session.attach(host({ hostId: "h2", link: "L2", tui: tui(0) }));
+		else if (change === "generation") sendHost({ link: "L1", generation: 2, tui: tui(0) });
+		else if (change === "session") sendHost({ link: "L1", sessionId: "s2", tui: tui(0) });
+		const model = change === "provider" ? { ...state.model, provider: "openai-codex" } : state.model;
+		fakes.guests.at(-1)!.emit("live", [u1], change === "reply", { state: { ...state, model } });
+		block.resolve(null);
+		await earlier;
+		await rejected;
+		expect(invoked.filter(call => call[0] === "host:submit")).toEqual([submit("/hold")]);
+	});
+});
 
 describe("SessionController rejected prompt recovery", () => {
 	afterEach(() => { vi.useRealTimers(); });

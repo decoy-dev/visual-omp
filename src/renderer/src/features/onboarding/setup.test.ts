@@ -45,7 +45,7 @@ const missing: OmpStatus = { ...ready, found: false, supported: false, path: nul
 const model: ModelInfo = { selector: "test/chat", provider: "test", id: "chat", name: "Test chat", kind: "chat", contextWindow: 200000, maxOutputTokens: null, reasoning: false, thinkingLevels: [], vision: false, cost: null };
 const provider: ConnectedProvider = {
 	id: "test", name: "Test provider", login: { id: "test", name: "Test provider" },
-	accounts: [], disabledAccounts: [], authenticated: true, modelCount: 1, kinds: ["chat"], canSignOut: true,
+	accounts: [], disabledAccounts: [], authenticated: true, modelCount: 1, kinds: ["chat"], storedAccounts: [],
 };
 const prefs = { setupCompleted: false, theme: "light" } as AppPreferences;
 let root: Root;

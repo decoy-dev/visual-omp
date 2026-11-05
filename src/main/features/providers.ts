@@ -4,7 +4,7 @@
  *
  * visual-omp never signs in by itself: the renderer runs `omp login [provider]` in a terminal, and
  * omp handles the browser, pasted codes, API keys and multiple accounts. This module only reads
- * status, deletes stored credentials through `omp auth-broker logout`, transfers sign-ins through
+ * status, removes individual stored accounts through omp's `logout` RPC, transfers sign-ins through
  * `omp auth export` and `omp auth import`, and forgets caches when credentials change.
  *
  * Chats that are already open keep the credentials and model list their omp loaded at start; they
@@ -21,6 +21,7 @@ import type {
 	LoginMethod,
 	ProviderAccount,
 	ProvidersState,
+	StoredProviderAccount,
 } from "@shared/contracts/providers";
 import { broadcast, handle } from "../ipc";
 import { runOmp } from "../omp/cli";
@@ -81,13 +82,21 @@ function loginProviders(): Promise<OmpLoginProvider[]> {
 	return loginProvidersCache;
 }
 
-/**
- * Usage omits plain API keys for providers without usage reporting. Ask omp's own logout
- * listing for stored-account evidence, retaining only canonical provider ids, never credentials.
- * Older omp builds may lack this request or return a different shape; their usage evidence remains.
- */
-async function storedProviders(providerIds: string[]): Promise<Set<string>> {
-	if (providerIds.length === 0) return new Set();
+/** Only omp's safe logout metadata is retained. Unknown credential fields are stripped. */
+const StoredAccountSchema = z.object({
+	credentialId: z.number().int().positive().max(Number.MAX_SAFE_INTEGER),
+	provider: z.string().regex(/^[A-Za-z0-9][\w.-]*$/),
+	label: z.string().min(1),
+	detail: z.string(),
+	type: z.enum(["api_key", "oauth"]),
+	active: z.boolean(),
+});
+const LogoutAccountsSchema = z.object({ accounts: z.array(StoredAccountSchema) });
+
+/** Keep provider status when the account-listing RPC is unavailable, without a provider-wide fallback. */
+async function storedAccounts(providerIds: string[]): Promise<Map<string, StoredProviderAccount[]>> {
+	const accounts = new Map<string, StoredProviderAccount[]>();
+	if (providerIds.length === 0) return accounts;
 	try {
 		const results = await rpcRequests(NEUTRAL_CWD, providerIds.map(providerId => ({
 			type: "get_logout_accounts", params: { providerId },
@@ -100,14 +109,19 @@ async function storedProviders(providerIds: string[]): Promise<Set<string>> {
 				failed: "omp did not list its stored accounts.",
 			},
 		});
-		const schema = z.object({ accounts: z.array(z.object({ provider: z.string().min(1) })) });
-		return new Set(results.flatMap(result => {
-			const parsed = schema.safeParse(result);
-			return parsed.success ? parsed.data.accounts.map(account => account.provider) : [];
-		}));
+		for (const result of results) {
+			const parsed = LogoutAccountsSchema.safeParse(result);
+			if (!parsed.success) continue;
+			for (const account of parsed.data.accounts) {
+				const provider = accounts.get(account.provider) ?? [];
+				if (!provider.some(existing => existing.credentialId === account.credentialId)) provider.push(account);
+				accounts.set(account.provider, provider);
+			}
+		}
 	} catch {
-		return new Set();
+		// Usage and login status remain useful when an older omp cannot list stored accounts.
 	}
+	return accounts;
 }
 
 // ─── Provider state ────────────────────────────────────────────────────────
@@ -154,14 +168,16 @@ async function readState(): Promise<ProvidersState> {
 
 	const candidates = new Set([
 		...byProvider.keys(),
+		...accounts.keys(),
+		...disabled.keys(),
 		...logins.filter(login => login.authenticated).map(login => login.method.id),
 	]);
-	const stored = await storedProviders([...candidates].filter(id => !accounts.has(id) && !disabled.has(id)));
+	const stored = await storedAccounts([...candidates]);
 
 	// Alias logins inherit their base provider's authenticated flag, but RPC omits storeCredentialsAs.
 	// Only independent model/account/credential evidence creates a row. All login methods remain
 	// available for signing in; an authenticated alias alone must not create a duplicate provider.
-	const ids = new Set<string>([...byProvider.keys(), ...accounts.keys(), ...disabled.keys(), ...stored]);
+	const ids = new Set<string>([...byProvider.keys(), ...accounts.keys(), ...disabled.keys(), ...stored.keys()]);
 
 	const connected: ConnectedProvider[] = [...ids].map(id => {
 		const login = logins.find(entry => entry.method.id === id);
@@ -176,7 +192,7 @@ async function readState(): Promise<ProvidersState> {
 			disabledAccounts: providerDisabled,
 			login: login?.method ?? null,
 			authenticated: login?.authenticated === true || stored.has(id),
-			canSignOut: providerAccounts.length > 0 || providerDisabled.length > 0 || stored.has(id),
+			storedAccounts: stored.get(id) ?? [],
 		} satisfies ConnectedProvider;
 	});
 	// Rows that need attention first, then signed-in ones, then the rest by name.
@@ -189,7 +205,7 @@ async function readState(): Promise<ProvidersState> {
 	return { connected, available };
 }
 
-/** Explicit terminal sign-in and sign-out retain their selected project folder. */
+/** Explicit terminal sign-in retains its selected project folder. */
 function effectiveCwd(cwd: string | undefined): string {
 	return cwd ?? NEUTRAL_CWD;
 }
@@ -222,11 +238,49 @@ function credentialsChanged(providerId: string | null): void {
 
 const PROVIDER_ID = /^[A-Za-z0-9][\w.-]*$/;
 
-async function logout(providerId: string, folder: string): Promise<void> {
-	if (!PROVIDER_ID.test(providerId)) throw new Error(`Invalid provider id: ${providerId}`);
-	const result = await runOmp(["auth-broker", "logout", providerId], { cwd: folder, timeoutMs: 30_000 });
-	if (result.code !== 0) throw new Error(ompErrorMessage(result.stderr, `omp auth-broker logout exited with ${result.code}`));
-	credentialsChanged(providerId);
+async function logout(input: StoredProviderAccount): Promise<void> {
+	const parsed = StoredAccountSchema.safeParse(input);
+	if (!parsed.success) throw new Error("The selected account is invalid. Check providers again.");
+	const target = parsed.data;
+	let stale = false;
+	let matched = false;
+	try {
+		await rpcRequests(NEUTRAL_CWD, [
+			{
+				type: "get_logout_accounts",
+				params: { providerId: target.provider },
+				validate: data => {
+					const listed = LogoutAccountsSchema.safeParse(data);
+					const matches = listed.success ? listed.data.accounts.filter(account =>
+						account.provider === target.provider && account.credentialId === target.credentialId
+						&& account.type === target.type && account.label === target.label && account.detail === target.detail,
+					) : [];
+					if (matches.length !== 1) {
+						stale = true;
+						throw new Error("The selected account changed or is no longer stored. Check providers again.");
+					}
+					matched = true;
+				},
+			},
+			{ type: "logout", params: { providerId: target.provider, credentialId: target.credentialId } },
+		], {
+			flags: RPC_FLAGS,
+			timeoutMs: LIST_TIMEOUT_MS,
+			messages: {
+				timeout: "omp did not sign out in time.",
+				exited: "omp stopped before signing out.",
+				failed: "omp could not sign out.",
+			},
+		});
+	} catch {
+		// RPC failures can include upstream credential diagnostics. Never forward those over IPC.
+		throw new Error(stale
+			? "The selected account changed or is no longer stored. Check providers again."
+			: "omp could not sign out of the selected account. Check providers and try again.");
+	} finally {
+		// A failed model refresh may follow a successful removal, so discard cached status too.
+		if (matched || stale) credentialsChanged(target.provider);
+	}
 }
 
 /**
@@ -289,7 +343,7 @@ async function importSignIns(): Promise<boolean> {
 
 export function register(): void {
 	handle("providers:list", refresh => providersState(refresh === true));
-	handle("providers:logout", (providerId, cwd) => logout(providerId, effectiveCwd(cwd)));
+	handle("providers:logout", account => logout(account));
 	handle("providers:loginCommand", (methodId, cwd) => loginCommand(methodId, effectiveCwd(cwd)));
 	handle("providers:invalidate", () => credentialsChanged(null));
 	handle("providers:export", () => exportSignIns());

@@ -3,7 +3,7 @@ import { createServer, type Server } from "node:http";
 import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
-import { ModeRequestSchema, ModeResultSchema, NativeSnapshotSchema, type ModeRequest, type ModeResult, type NativeSnapshot } from "@shared/contracts/native";
+import { ModeRequestSchema, ModeResultSchema, NativeSnapshotSchema, SessionAccountsSchema, type ModeRequest, type ModeResult, type NativeSnapshot, type SessionAccounts } from "@shared/contracts/native";
 import type { EditorDraftRequest, EditorDraftResult } from "@shared/contracts/composer";
 import { broadcast } from "../ipc";
 import { NATIVE_EXTENSION_SOURCE } from "./native-extension";
@@ -28,6 +28,7 @@ export class NativeBridge {
 	readonly #commands = new Map<string, { delivered: boolean; resolve(commands: string[]): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
 	readonly #editors = new Map<string, { request: EditorDraftRequest; delivered: boolean; resolve(result: EditorDraftResult): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
 	readonly #asyncWork = new Map<string, { delivered: boolean; resolve(pending: boolean | null): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
+	readonly #accounts = new Map<string, { delivered: boolean; resolve(accounts: SessionAccounts | null): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
 	readonly #prompts = new Map<string, PromptWatch>();
 	readonly #forgottenPrompts = new Set<string>();
 	onPromptInput: ((id: string) => void) | undefined;
@@ -56,6 +57,7 @@ export class NativeBridge {
 						...[...this.#commands].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "sideCommands" }; }),
 						...[...this.#editors].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "editorDraft", editor: item.request }; }),
 						...[...this.#asyncWork].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "asyncWork" }; }),
+						...[...this.#accounts].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "sessionAccounts" }; }),
 						...[...this.#forgottenPrompts].map(id => ({ id, kind: "forgetPrompt", epoch: this.#jobsEpoch })),
 						...[...this.#prompts].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "watchPrompt", prompt: item.watch, epoch: item.epoch }; }),
 						...(this.#shutdownRequest === "pending" ? [{ kind: "shutdown" }] : []),
@@ -103,6 +105,17 @@ export class NativeBridge {
 					} else if (result.state === "error") {
 						this.forgetPrompt(id, result.error);
 					} else { response.writeHead(409).end(); return; }
+				} else if (route.startsWith("/accounts/")) {
+					const id = route.slice("/accounts/".length);
+					const result = SessionAccountsSchema.nullable().parse(parsed);
+					const item = this.#accounts.get(id);
+					if (item?.delivered) {
+						clearTimeout(item.timer);
+						this.#accounts.delete(id);
+						this.snapshot = { ...this.snapshot, sessionAccounts: result };
+						broadcast("native:changed", { hostId, snapshot: this.snapshot });
+						item.resolve(result);
+					}
 				} else if (route.startsWith("/async-work/")) {
 					const id = route.slice("/async-work/".length);
 					const result = z.object({ pending: z.boolean().nullable() }).parse(parsed);
@@ -151,11 +164,12 @@ export class NativeBridge {
 	beginGeneration(generation: number): void {
 		this.#clearAsyncWork("omp changed rooms before reporting its background work.");
 		this.#clearPrompts("omp changed rooms before observing the prompt.");
+		this.#clearAccounts("omp changed rooms before reporting its accounts.");
 		this.#shutdownRequest = null;
 		this.#generation = generation;
 		this.#jobsEpoch = randomUUID();
 		this.#hasCurrentJobs = false;
-		this.snapshot = { ...this.snapshot, asyncJobs: [], asyncJobsGeneration: generation };
+		this.snapshot = { ...this.snapshot, sessionAccounts: null, asyncJobs: [], asyncJobsGeneration: generation };
 	}
 	async start(): Promise<void> {
 		await writeFile(this.extensionPath, NATIVE_EXTENSION_SOURCE, { mode: 0o600 });
@@ -176,6 +190,19 @@ export class NativeBridge {
 		const timer = setTimeout(() => { this.#pending.delete(id); reject(new Error("omp did not answer the mode request")); }, 10_000);
 		this.#pending.set(id, { request: valid, delivered: false, resolve, reject, timer });
 		return promise;
+	}
+	/** Reload only identity summaries on explicit reads, never refresh provider tokens. */
+	sessionAccounts(generation: number): Promise<SessionAccounts | null> {
+		if (this.#closed || generation !== this.#generation) return Promise.reject(new Error("omp's room changed."));
+		const id = randomUUID();
+		const { promise, resolve, reject } = Promise.withResolvers<SessionAccounts | null>();
+		const timer = setTimeout(() => { this.#accounts.delete(id); reject(new Error("omp did not report its accounts in time.")); }, 5000);
+		this.#accounts.set(id, { delivered: false, resolve, reject, timer });
+		return promise;
+	}
+	#clearAccounts(message: string): void {
+		for (const item of this.#accounts.values()) { clearTimeout(item.timer); item.reject(new Error(message)); }
+		this.#accounts.clear();
 	}
 	/** Sample after the caller observed a wait; cached job metadata may predate that turn. */
 	asyncWork(generation: number): Promise<boolean | null> {
@@ -241,6 +268,7 @@ export class NativeBridge {
 		this.#clearPrompts("omp stopped before observing the prompt.");
 		this.onPromptInput = undefined;
 		this.#clearAsyncWork("omp stopped before reporting its background work.");
+		this.#clearAccounts("omp stopped before reporting its accounts.");
 		for (const item of this.#pending.values()) { clearTimeout(item.timer); item.reject(new Error("omp stopped before answering the mode request")); }
 		this.#pending.clear();
 		for (const item of this.#commands.values()) { clearTimeout(item.timer); item.reject(new Error("omp stopped before reporting its side commands.")); }

@@ -63,6 +63,18 @@
     "contextWindow": "Context window: {{size}}",
     "reasoning": "Supports thinking levels"
   },
+  "account": {
+    "title": "Choose an account",
+    "aria": "Choose account for this chat. Current: {{name}}",
+    "unselected": "Choose account",
+    "scopeNote": "Prefers this account for this chat. omp can still switch accounts at usage limits.",
+    "busy": "Wait for omp to finish replying before choosing an account.",
+    "confirming": "Waiting for omp to confirm the account…",
+    "sessionChanged": "The chat or model changed before omp confirmed the account. Try again.",
+    "unavailable": "This account is no longer available. Choose another account.",
+    "notConfirmed": "omp did not confirm this account. Open the terminal sheet to see what omp reported.",
+    "notConfirmedTsp": "omp did not confirm this account. Open the omp screen to see what omp reported."
+  },
   "thinking": {
     "title": "Thinking",
     "unsupported": "This model has no thinking levels.",

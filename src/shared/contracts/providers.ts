@@ -4,13 +4,13 @@
  * Sources (omp 18.15+), all read outside projects with extension discovery disabled:
  * - Built-in sign-in entries: `get_login_providers` over `omp --mode rpc`, read only.
  * - Accounts and credentials omp disabled: `omp usage --json`.
- * - Stored accounts without usage evidence: `get_logout_accounts` over RPC, when supported.
+ * - Stored accounts: safe `get_logout_accounts` metadata over RPC (omp 18.16+).
  * - Usable models: `omp models --json --kind all`.
  *
  * Signing in is omp's own: the renderer runs `providers:loginCommand`
  * (`omp login [provider]`) in a terminal, and omp handles the browser, codes, API keys and extra
- * accounts. Sign-out runs `omp auth-broker logout <provider>`, which deletes every stored
- * credential of that provider from omp's local store.
+ * accounts. Sign-out rechecks one stored account with `get_logout_accounts`, then sends omp's
+ * `logout` RPC with its provider and credential id. Credential contents never cross IPC.
  */
 import type { ModelKind } from "./config";
 
@@ -19,6 +19,17 @@ export interface ProviderAccount {
 	accountId: string | null;
 	/** Organization/workspace the credential is scoped to. */
 	orgName: string | null;
+}
+
+/** Safe account metadata from omp's own logout listing, without credential contents. */
+export interface StoredProviderAccount {
+	credentialId: number;
+	provider: string;
+	/** omp includes the organization when accounts share an email. */
+	label: string;
+	detail: string;
+	type: "api_key" | "oauth";
+	active: boolean;
 }
 
 export interface DisabledProviderAccount {
@@ -56,8 +67,8 @@ export interface ConnectedProvider {
 	login: LoginMethod | null;
 	/** omp reports authentication through its login list or stored-account listing. */
 	authenticated: boolean;
-	/** omp reports stored accounts for it, which `providers:logout` deletes. */
-	canSignOut: boolean;
+	/** Stored accounts omp can remove individually. Empty when its listing is unavailable. */
+	storedAccounts: StoredProviderAccount[];
 }
 
 export interface ProvidersState {
@@ -78,8 +89,8 @@ declare module "../ipc" {
 		 * cached globally in main. `refresh` re-reads omp.
 		 */
 		"providers:list": { args: [refresh?: boolean]; result: ProvidersState };
-		/** Delete every stored credential of a model provider (`omp auth-broker logout`), run in `cwd`'s folder. */
-		"providers:logout": { args: [providerId: string, cwd?: string]; result: void };
+		/** Recheck and remove one exact stored account through omp RPC, outside projects. */
+		"providers:logout": { args: [account: StoredProviderAccount]; result: void };
 		/**
 		 * omp's own sign-in, `omp login <method>` (or its picker without one), plus the folder main
 		 * resolved for `cwd`. This explicit terminal action can load project extensions.

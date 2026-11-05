@@ -2,7 +2,7 @@ import { mkdtemp, readFile, readdir, rm, stat, symlink, writeFile } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ProvidersState } from "@shared/contracts/providers";
+import type { ProvidersState, StoredProviderAccount } from "@shared/contracts/providers";
 import { register } from "./providers";
 
 const fake = vi.hoisted(() => ({
@@ -19,6 +19,9 @@ vi.mock("./config", () => ({ configWritten: fake.changed }));
 register();
 const call = (channel: string, ...args: unknown[]) => fake.handlers.get(channel)!(...args);
 const usage = { reports: [], accountsWithoutUsage: [], disabledCredentials: [] };
+const storedAccount = (patch: Partial<StoredProviderAccount> = {}): StoredProviderAccount => ({
+	provider: "scaleway", credentialId: 7, type: "api_key", label: "API key #7", detail: "stored API key #7", active: false, ...patch,
+});
 const temporary: string[] = [];
 
 beforeEach(async () => {
@@ -53,7 +56,7 @@ it("keeps aliased sign-in methods without creating connected rows from inherited
 	] });
 	const state = await call("providers:list") as ProvidersState;
 	expect(state.connected.map(provider => provider.id)).toEqual(["openai-codex"]);
-	expect(state.connected[0]).toMatchObject({ modelCount: 1, authenticated: true, canSignOut: true });
+	expect(state.connected[0]).toMatchObject({ modelCount: 1, authenticated: true, storedAccounts: [] });
 	expect(state.available.map(method => method.id)).toEqual(["openai-codex-device", "future-alias"]);
 });
 
@@ -61,7 +64,7 @@ it("keeps a distinct provider when its own accounts or disabled credentials esta
 	fake.usage.mockResolvedValue({ ...usage, accountsWithoutUsage: [{ provider: "own-provider", email: "me@example.com" }], disabledCredentials: [{ provider: "disabled-provider", cause: "expired" }] });
 	const state = await call("providers:list") as ProvidersState;
 	expect(new Set(state.connected.map(provider => provider.id))).toEqual(new Set(["own-provider", "disabled-provider"]));
-	expect(state.connected.find(provider => provider.id === "own-provider")).toMatchObject({ name: "own-provider", login: null, canSignOut: true });
+	expect(state.connected.find(provider => provider.id === "own-provider")).toMatchObject({ name: "own-provider", login: null, storedAccounts: [] });
 });
 
 it("reads provider state outside the selected project without loading extensions or project context", async () => {
@@ -88,79 +91,131 @@ it("shares global discovery between reads and refreshes it only when requested",
 });
 
 
-describe("stored accounts without usage reporting", () => {
-	it("offers sign-out for a stored API key, uses omp's existing logout path, and refreshes the signed-out state", async () => {
-		let signedIn = true;
-		fake.rpc.mockImplementation(async () => ({ providers: [{ id: "scaleway", name: "Scaleway", authenticated: signedIn }] }));
-		fake.rpcs.mockImplementation(async () => [{ accounts: signedIn ? [{ provider: "scaleway", type: "api_key", credentialId: 7, label: "API key #7" }] : [] }]);
-		fake.run.mockImplementation(async (args: string[]) => {
-			if (args[0] === "auth-broker") signedIn = false;
-			return { code: 0, stdout: JSON.stringify(args[0] === "models" ? { models: [] } : usage), stderr: "" };
+describe("individual stored accounts", () => {
+	it("removes one API key through omp RPC, preserving its sibling and refreshing status", async () => {
+		const first = storedAccount();
+		const sibling = storedAccount({ credentialId: 8, label: "API key #8", detail: "stored API key #8" });
+		let accounts = [first, sibling];
+		const removed: unknown[] = [];
+		fake.rpc.mockImplementation(async () => ({ providers: [{ id: "scaleway", name: "Scaleway", authenticated: accounts.length > 0 }] }));
+		fake.rpcs.mockImplementation(async (_cwd: string, requests: { type: string; params: Record<string, unknown>; validate?: (data: unknown) => void }[]) => {
+			const results = [];
+			for (const request of requests) {
+				if (request.type === "get_logout_accounts") {
+					const data = { accounts };
+					request.validate?.(data);
+					results.push(data);
+				} else {
+					removed.push(request.params);
+					accounts = accounts.filter(account => account.credentialId !== request.params.credentialId);
+					results.push({ remainingSource: "stored API key" });
+				}
+			}
+			return results;
 		});
 		const before = await call("providers:list") as ProvidersState;
-		expect(before.connected).toEqual([expect.objectContaining({
-			id: "scaleway", authenticated: true, canSignOut: true, accounts: [], modelCount: 0,
-		})]);
-		expect(fake.rpcs).toHaveBeenCalledWith("/tmp", [{ type: "get_logout_accounts", params: { providerId: "scaleway" } }], expect.objectContaining({
-			flags: ["--no-session", "--no-lsp", "--no-title", "--no-tools", "--no-extensions", "--no-skills", "--no-rules", "--no-context-files"],
-		}));
-		await call("providers:logout", "scaleway", "/selected-project");
-		expect(fake.run).toHaveBeenCalledWith(["auth-broker", "logout", "scaleway"], { cwd: "/selected-project", timeoutMs: 30_000 });
+		expect(before.connected[0]).toMatchObject({ id: "scaleway", authenticated: true, storedAccounts: [first, sibling] });
+		await call("providers:logout", first);
+		expect(removed).toEqual([{ providerId: "scaleway", credentialId: 7 }]);
+		expect(fake.rpcs).toHaveBeenLastCalledWith("/tmp", [
+			{ type: "get_logout_accounts", params: { providerId: "scaleway" }, validate: expect.any(Function) },
+			{ type: "logout", params: { providerId: "scaleway", credentialId: 7 } },
+		], expect.objectContaining({ flags: ["--no-session", "--no-lsp", "--no-title", "--no-tools", "--no-extensions", "--no-skills", "--no-rules", "--no-context-files"] }));
 		expect(fake.broadcast).toHaveBeenCalledWith("providers:changed", { providerId: "scaleway" });
 		const after = await call("providers:list") as ProvidersState;
-		expect(after.connected).toEqual([]);
-		expect(after.available).toEqual([{ id: "scaleway", name: "Scaleway" }]);
-		expect(fake.rpc).toHaveBeenCalledTimes(2);
+		expect(after.connected[0]).toMatchObject({ authenticated: true, storedAccounts: [sibling] });
+		expect(fake.run.mock.calls.every(([args]) => args[0] !== "auth-broker")).toBe(true);
+		await call("providers:logout", sibling);
+		const empty = await call("providers:list") as ProvidersState;
+		expect(empty.connected).toEqual([]);
+		expect(empty.available).toEqual([{ id: "scaleway", name: "Scaleway" }]);
 	});
 
-	it("uses the canonical stored provider for an authenticated alias without creating a duplicate row", async () => {
+	it("lists organization-qualified identities and multiple keys without merging sibling accounts", async () => {
+		const accounts = [
+			storedAccount({ type: "oauth", credentialId: 1, label: "me@example.com (Personal)", detail: "account personal · oauth #1" }),
+			storedAccount({ type: "oauth", credentialId: 2, label: "me@example.com (Team)", detail: "account team · oauth #2" }),
+			storedAccount(),
+			storedAccount({ credentialId: 8, label: "API key #8", detail: "stored API key #8" }),
+		];
+		fake.usage.mockResolvedValue({ ...usage, accountsWithoutUsage: [{ provider: "scaleway", email: "me@example.com" }] });
+		fake.rpcs.mockResolvedValue([{ accounts }]);
+		const state = await call("providers:list") as ProvidersState;
+		expect(state.connected[0]!.storedAccounts).toEqual(accounts);
+		expect(fake.rpcs).toHaveBeenCalledWith("/tmp", [{ type: "get_logout_accounts", params: { providerId: "scaleway" } }], expect.any(Object));
+	});
+
+	it.each(["missing", "changed", "wrong-provider", "duplicate"] as const)("refuses a %s target before sending logout", async mode => {
+		const target = storedAccount();
+		const listed = mode === "missing" ? []
+			: mode === "changed" ? [{ ...target, label: "Different account" }]
+				: mode === "wrong-provider" ? [{ ...target, provider: "another" }]
+					: [target, target];
+		const sent: string[] = [];
+		fake.rpcs.mockImplementation(async (_cwd: string, requests: { type: string; validate?: (data: unknown) => void }[]) => {
+			for (const request of requests) {
+				sent.push(request.type);
+				request.validate?.({ accounts: listed });
+			}
+			return [];
+		});
+		await expect(call("providers:logout", target)).rejects.toThrow("The selected account changed or is no longer stored. Check providers again.");
+		expect(sent).toEqual(["get_logout_accounts"]);
+	});
+
+	it.each([undefined, "scaleway", { ...storedAccount(), credentialId: -1 }, { ...storedAccount(), credentialId: Number.MAX_SAFE_INTEGER + 1 }, { ...storedAccount(), provider: "../bad" }])("rejects an invalid account without RPC", async target => {
+		await expect(call("providers:logout", target)).rejects.toThrow("The selected account is invalid.");
+		expect(fake.rpcs).not.toHaveBeenCalled();
+	});
+
+	it("uses canonical stored providers for aliases and strips all non-metadata fields from IPC", async () => {
 		fake.rpc.mockResolvedValue({ providers: [
 			{ id: "mistral", name: "Mistral", authenticated: true },
 			{ id: "mistral-vibe", name: "Mistral Vibe", authenticated: true },
 		] });
-		fake.rpcs.mockResolvedValue([
-			{ accounts: [{ provider: "mistral", credentialId: 1, type: "api_key" }] },
-			{ accounts: [{ provider: "mistral", credentialId: 1, type: "api_key" }] },
-		]);
+		const safe = storedAccount({ provider: "mistral" });
+		const account = { ...safe, key: "secret-key-fixture", access: "secret-access-fixture", refresh: "secret-refresh-fixture", credential: { key: "secret-nested-fixture" } };
+		fake.rpcs.mockResolvedValue([{ accounts: [account] }, { accounts: [account] }]);
 		const state = await call("providers:list") as ProvidersState;
-		expect(state.connected).toEqual([expect.objectContaining({ id: "mistral", authenticated: true, canSignOut: true })]);
+		expect(state.connected).toEqual([expect.objectContaining({ id: "mistral", authenticated: true, storedAccounts: [safe] })]);
 		expect(state.available).toEqual([{ id: "mistral-vibe", name: "Mistral Vibe" }]);
-		expect(JSON.stringify(state)).not.toContain("credentialId");
+		expect(JSON.stringify(state)).not.toContain("secret-");
 	});
 
-	it("checks model providers without a login method and retains only provider ids from the safe listing", async () => {
+	it("lists a stored API key for a model provider without a login method", async () => {
 		fake.models.mockResolvedValue([{ provider: "legacy-key", kind: "chat", id: "model", selector: "legacy-key/model",
 			name: "Model", contextWindow: null, maxTokens: null, reasoning: false, thinking: null, input: ["text"] }]);
-		fake.rpcs.mockResolvedValue([{ accounts: [{ provider: "legacy-key", credentialId: 12, label: "API key #12", detail: "stored API key #12" }] }]);
+		const account = storedAccount({ provider: "legacy-key" });
+		fake.rpcs.mockResolvedValue([{ accounts: [account] }]);
 		const state = await call("providers:list") as ProvidersState;
-		expect(state.connected).toEqual([expect.objectContaining({ id: "legacy-key", authenticated: true, canSignOut: true, login: null })]);
-		expect(JSON.stringify(state)).not.toContain("API key #12");
+		expect(state.connected).toEqual([expect.objectContaining({ id: "legacy-key", authenticated: true, storedAccounts: [account], login: null })]);
 	});
 
-	it("does not offer sign-out for environment or config authentication without stored accounts", async () => {
+	it("suppresses credential diagnostics from RPC errors and invalidates after an attempted removal", async () => {
+		const target = storedAccount();
+		fake.rpcs.mockImplementation(async (_cwd: string, requests: { validate?: (data: unknown) => void }[]) => {
+			requests[0]!.validate?.({ accounts: [target] });
+			throw new Error("secret-refresh-fixture");
+		});
+		await expect(call("providers:logout", target)).rejects.toThrow(/^omp could not sign out of the selected account\. Check providers and try again\.$/);
+		expect(fake.broadcast).toHaveBeenCalledWith("providers:changed", { providerId: "scaleway" });
+	});
+
+	it("does not offer removal for environment or config authentication without stored accounts", async () => {
 		fake.models.mockResolvedValue([{ provider: "scaleway", kind: "chat", id: "model", selector: "scaleway/model",
 			name: "Model", contextWindow: null, maxTokens: null, reasoning: false, thinking: null, input: ["text"] }]);
 		fake.rpc.mockResolvedValue({ providers: [{ id: "scaleway", name: "Scaleway", authenticated: true }] });
 		fake.rpcs.mockResolvedValue([{ accounts: [] }]);
 		const state = await call("providers:list") as ProvidersState;
-		expect(state.connected).toEqual([expect.objectContaining({ id: "scaleway", authenticated: true, canSignOut: false })]);
+		expect(state.connected).toEqual([expect.objectContaining({ id: "scaleway", authenticated: true, storedAccounts: [] })]);
 	});
 
-	it.each(["unsupported", "different-shape"] as const)("preserves usage-backed sign-out when older omp has an %s logout listing", async mode => {
+	it.each(["unsupported", "different-shape"] as const)("preserves auth status without unsafe sign-out when the listing is %s", async mode => {
 		fake.usage.mockResolvedValue({ ...usage, accountsWithoutUsage: [{ provider: "openai-codex" }] });
-		fake.rpc.mockResolvedValue({ providers: [{ id: "legacy", name: "Legacy", authenticated: true }] });
 		if (mode === "unsupported") fake.rpcs.mockRejectedValue(new Error("Unknown command: get_logout_accounts"));
 		else fake.rpcs.mockResolvedValue([{ accounts: null }]);
 		const state = await call("providers:list") as ProvidersState;
-		expect(state.connected).toEqual([expect.objectContaining({ id: "openai-codex", canSignOut: true })]);
-		expect(state.available).toEqual([{ id: "legacy", name: "Legacy" }]);
-	});
-
-	it("does not query stored accounts when usage already establishes the provider", async () => {
-		fake.usage.mockResolvedValue({ ...usage, accountsWithoutUsage: [{ provider: "scaleway" }] });
-		fake.rpc.mockResolvedValue({ providers: [{ id: "scaleway", name: "Scaleway", authenticated: true }] });
-		await call("providers:list");
-		expect(fake.rpcs).not.toHaveBeenCalled();
+		expect(state.connected).toEqual([expect.objectContaining({ id: "openai-codex", accounts: [expect.any(Object)], storedAccounts: [] })]);
 	});
 });
 

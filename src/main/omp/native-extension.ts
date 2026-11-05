@@ -1,6 +1,7 @@
 import { resolveHistoryDbPath } from "./history-path";
 import { exactEditorDraft } from "./native-editor";
 import { expandedPromptTextMatches } from "../../shared/prompt-input";
+import { sessionAccountSnapshot } from "./native-accounts";
 
 /** Written into each app-hosted chat's private directory. omp resolves these public SDK and pi-tui exports from its compiled module map. */
 export const NATIVE_EXTENSION_SOURCE = String.raw`
@@ -14,6 +15,7 @@ import { join } from "node:path";
 const resolveHistoryDbPath = ${resolveHistoryDbPath.toString()};
 const exactEditorDraft = ${exactEditorDraft.toString()};
 const expandedPromptTextMatches = ${expandedPromptTextMatches.toString()};
+const sessionAccountSnapshot = ${sessionAccountSnapshot.toString()};
 const bridgeUrl = process.env.VOMP_NATIVE_BRIDGE;
 delete process.env.VOMP_NATIVE_BRIDGE;
 
@@ -131,7 +133,7 @@ export default function visualOmpNative(pi) {
 			themeIdentity = theme;
 		}
 		if (stopped || current !== lifecycle) return;
-		const snapshot = { modes: ctx.sessionModes?.getState() ?? null, theme, historyDbPath, asyncJobs: runningJobs(ctx), asyncJobsEpoch: jobsEpoch, location: { cwd: ctx.sessionManager.getCwd(), sessionFile: ctx.sessionManager.getSessionFile() ?? null, sessionId: ctx.sessionManager.getSessionId() } };
+		const snapshot = { modes: ctx.sessionModes?.getState() ?? null, theme, historyDbPath, sessionAccounts: sessionAccountSnapshot(ctx), asyncJobs: runningJobs(ctx), asyncJobsEpoch: jobsEpoch, location: { cwd: ctx.sessionManager.getCwd(), sessionFile: ctx.sessionManager.getSessionFile() ?? null, sessionId: ctx.sessionManager.getSessionId() } };
 		const encoded = JSON.stringify(snapshot);
 		if (encoded === last) return;
 		const response = await fetch(url + "/snapshot", { method: "POST", body: encoded, signal: AbortSignal.timeout(2000) });
@@ -153,6 +155,17 @@ export default function visualOmpNative(pi) {
 				const requests = await response.json();
 				for (const item of requests) {
 					if (stopped || current !== lifecycle) return;
+					if (item.kind === "sessionAccounts") {
+						const storage = context.modelRegistry?.authStorage;
+						let accounts = null;
+						try {
+							await storage?.credentials.reload();
+							accounts = sessionAccountSnapshot(context);
+						} catch {}
+						if (stopped || current !== lifecycle) return;
+						await fetch(url + "/accounts/" + item.id, { method: "POST", body: JSON.stringify(accounts), signal: AbortSignal.timeout(2000) });
+						continue;
+					}
 					if (item.kind === "forgetPrompt") {
 						if (item.epoch === jobsEpoch) forgetPrompt(item.id);
 						continue;
