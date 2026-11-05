@@ -3,7 +3,7 @@
  * context ring (order 90, right of the model and thinking buttons). The mic lives in the card itself
  * (Composer.tsx renders VoiceTool beside the send button).
  */
-import { useSyncExternalStore } from "react";
+import { useVisualSnapshot } from "../../state/visualSnapshot";
 import { useTranslation } from "react-i18next";
 import { isResumeDeclined } from "../../registry/guards";
 import { type ChatSlotProps, chatSlots } from "../../registry/slots";
@@ -21,7 +21,7 @@ const formatTokens = new Intl.NumberFormat(undefined, { notation: "compact", max
 
 function ContextTool({ session }: ChatSlotProps) {
 	const { t } = useTranslation("composer");
-	const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
+	const view = useVisualSnapshot(session.subscribe, session.getSnapshot);
 	const usage = view.guest?.state?.contextUsage;
 	if (!usage || usage.percent === null) return null;
 	const percent = Math.round(usage.percent);

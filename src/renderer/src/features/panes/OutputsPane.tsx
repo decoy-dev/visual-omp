@@ -24,7 +24,7 @@ import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage, ThumbnailFrame, u
 import { countOutputsMount, useChatOutputs } from "./outputs-store";
 import { Stage } from "../live-preview/Stage";
 import { TrackerLoadNotice } from "../live-preview/loader";
-import { EMPTY_CHAT, useLivePreview, visibleSubjects } from "../live-preview/store";
+import { usePreviewChat, visibleSubjects } from "../live-preview/store";
 import { useApp } from "../../state/app";
 
 function baseName(path: string): string {
@@ -343,7 +343,7 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 	const [mount] = useState(countOutputsMount);
 	const outputs = useChatOutputs(session, view)?.outputs ?? null;
 	const tabId = session?.tabId ?? null;
-	const preview = useLivePreview(state => tabId ? state.chats[tabId] ?? EMPTY_CHAT : EMPTY_CHAT);
+	const preview = usePreviewChat(tabId);
 	const hasStage = useApp(state => state.prefs?.livePreview === true) && visibleSubjects(preview).length > 0;
 	const [opened, setOpened] = useState<{ tabId: string | null; key: string } | null>(null);
 	const [restoreKey, setRestoreKey] = useState<string | null>(null);

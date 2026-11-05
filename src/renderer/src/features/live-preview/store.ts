@@ -1,3 +1,5 @@
+import { useCallback } from "react";
+import { useVisualSnapshot } from "../../state/visualSnapshot";
 import { create } from "zustand";
 import type { LiveSubject } from "./types";
 
@@ -45,6 +47,12 @@ export const useLivePreview = create<PreviewState>((set) => ({
 		set(state => { const { [tabId]: _chat, ...chats } = state.chats; return { chats }; });
 	},
 }));
+
+/** Keep tracking outputs while hidden without repainting their streaming preview. */
+export function usePreviewChat(tabId: string | null): PreviewChat {
+	const snapshot = useCallback(() => tabId ? useLivePreview.getState().chats[tabId] ?? EMPTY_CHAT : EMPTY_CHAT, [tabId]);
+	return useVisualSnapshot(useLivePreview.subscribe, snapshot);
+}
 export function visibleSubjects(chat: PreviewChat): readonly LiveSubject[] {
 	return chat.subjects.filter(subject => !chat.dismissed.includes(subject.id));
 }

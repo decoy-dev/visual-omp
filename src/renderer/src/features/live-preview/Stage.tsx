@@ -9,7 +9,7 @@ import { openInFiles } from "../panes/files-store";
 import { FileName } from "../panes/common";
 import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage } from "../panes/media";
 import { loadAdapter } from "./formats";
-import { EMPTY_CHAT, useLivePreview, visibleSubjects } from "./store";
+import { useLivePreview, usePreviewChat, visibleSubjects } from "./store";
 import { stopAndRedirect, usePreviewRedirect } from "./redirect";
 import type { LiveAdapter, LiveFrameProps, LiveSubject } from "./types";
 
@@ -60,7 +60,7 @@ function ExpandedFrame({ subject, projectPath, related, open, onOpenChange }: Li
 export function Stage({ session, onShowOutput }: { session: SessionController; onShowOutput(path: string): void }) {
 	const { t } = useTranslation("panes");
 	const enabled = useApp(state => state.prefs?.livePreview === true);
-	const chat = useLivePreview(state => state.chats[session.tabId] ?? EMPTY_CHAT);
+	const chat = usePreviewChat(session.tabId);
 	const redirect = usePreviewRedirect(state => state[session.tabId]);
 	const subjects = visibleSubjects(chat);
 	const subject = subjects.find(item => item.id === chat.selected) ?? subjects[0];

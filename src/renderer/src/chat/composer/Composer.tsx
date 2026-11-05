@@ -28,7 +28,6 @@ import {
 	useMemo,
 	useRef,
 	useState,
-	useSyncExternalStore,
 } from "react";
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
@@ -39,6 +38,7 @@ import { isResumeDeclined } from "../../registry/guards";
 import { chatSlots } from "../../registry/slots";
 import { pendingAsk, type SessionController } from "../../state/session";
 import { useApp } from "../../state/app";
+import { useVisualSnapshot } from "../../state/visualSnapshot";
 import {
 	cn,
 	duration,
@@ -194,7 +194,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const { t } = useTranslation("composer");
 	const tabId = session.tabId;
 	const projectPath = session.projectPath;
-	const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
+	const view = useVisualSnapshot(session.subscribe, session.getSnapshot);
 	const draft = useComposerDrafts(state => composerText(state, tabId));
 	const attachments = useComposerDrafts(state => state.attachments[tabId] ?? EMPTY);
 	const mode = useComposerDrafts(state => state.modes[tabId] ?? null);

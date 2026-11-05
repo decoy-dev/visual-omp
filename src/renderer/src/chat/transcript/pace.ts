@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useLayoutEffect, useState, useSyncExternalStore } from "react";
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useMotionReduced } from "../../ui/motion";
 
 /**
@@ -306,6 +306,57 @@ export interface PlayoutOptions {
 	synchronized: boolean;
 }
 
+interface PlayoutVisibility {
+	hidden: boolean;
+	resuming: boolean;
+	resume: number;
+}
+
+const serverVisibility: PlayoutVisibility = { hidden: false, resuming: false, resume: 0 };
+let visibility: PlayoutVisibility | null = null;
+let resumeFrame = 0;
+const visibilityListeners = new Set<() => void>();
+
+function readVisibility(): PlayoutVisibility {
+	if (typeof document === "undefined") return serverVisibility;
+	const hidden = document.visibilityState === "hidden";
+	if (!visibility) visibility = { hidden, resuming: false, resume: 0 };
+	else if (visibility.hidden !== hidden) {
+		visibility = { hidden, resuming: !hidden, resume: visibility.resume + (hidden ? 0 : 1) };
+	}
+	return visibility;
+}
+
+function notifyVisibility(): void {
+	const current = readVisibility();
+	if (resumeFrame) cancelAnimationFrame(resumeFrame);
+	resumeFrame = 0;
+	if (current.resuming) {
+		// Keep catching up through the return's first frame. Snapshot-gate listeners can run
+		// before or after this listener, and can commit the latest blocks in a separate render.
+		resumeFrame = requestAnimationFrame(() => {
+			resumeFrame = 0;
+			visibility = { ...readVisibility(), resuming: false };
+			for (const listener of visibilityListeners) listener();
+		});
+	}
+	for (const listener of visibilityListeners) listener();
+}
+
+function subscribeVisibility(listener: () => void): () => void {
+	if (visibilityListeners.size === 0) document.addEventListener("visibilitychange", notifyVisibility);
+	visibilityListeners.add(listener);
+	return () => {
+		visibilityListeners.delete(listener);
+		if (visibilityListeners.size === 0) {
+			document.removeEventListener("visibilitychange", notifyVisibility);
+			if (resumeFrame) cancelAnimationFrame(resumeFrame);
+			resumeFrame = 0;
+			visibility = null;
+		}
+	};
+}
+
 /**
  * The reveal for message `key`, or null when it renders in full: saved history, reduced motion,
  * or a reveal that has finished. A streaming message starts one; its saved entry picks it up.
@@ -316,8 +367,11 @@ export interface PlayoutOptions {
  */
 export function usePlayout(key: number | string, blocks: readonly PlayoutBlock[], { pending, showExisting, synchronized }: PlayoutOptions): Playout | null {
 	const registry = useContext(PlayoutRegistry);
-	const paused = useContext(PlayoutPaused);
+	const contextPaused = useContext(PlayoutPaused);
 	const reduced = useMotionReduced();
+	const visible = useSyncExternalStore(registry && !reduced ? subscribeVisibility : noSubscription, readVisibility, readVisibility);
+	const lastResume = useRef(visible.resume);
+	const paused = contextPaused || visible.hidden;
 	const [, rerender] = useState(0);
 	let playout = registry?.get(key) ?? null;
 	if (registry && reduced && playout) {
@@ -339,12 +393,13 @@ export function usePlayout(key: number | string, blocks: readonly PlayoutBlock[]
 		const revision = playout.revision;
 		const stage = playout.stage;
 		playout.receive(blocks, performance.now(), !pending);
-		if (synchronized || paused) playout.catchUp();
+		if (synchronized || paused || visible.resuming || lastResume.current !== visible.resume) playout.catchUp();
+		lastResume.current = visible.resume;
 		// Layout effects run before paint, so this render shows a caught-up or clamped cursor at once.
 		if (playout.revision !== revision) playout.notify();
 		if (playout.stage !== stage || playout.finished) rerender(count => count + 1);
 		// `signature` stands in for `blocks`, whose identity changes every render.
-	}, [playout, signature, pending, synchronized, paused]);
+	}, [playout, signature, pending, synchronized, paused, visible]);
 
 	useEffect(() => {
 		if (!playout || paused) return;

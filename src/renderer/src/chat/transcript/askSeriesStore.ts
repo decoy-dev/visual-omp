@@ -8,7 +8,7 @@
  * live snapshot, and a series ends when the room changes, omp exits or the `ask` call ends.
  */
 import type { CollabUiRequest } from "@oh-my-pi/pi-wire";
-import { useSyncExternalStore } from "react";
+import { useVisualSnapshot } from "../../state/visualSnapshot";
 import type { GuestSnapshot } from "../../collab/lib/client";
 import type { SessionController } from "../../state/session";
 import {
@@ -272,5 +272,5 @@ export function askSeriesFor(session: AskSeriesSession): AskSeriesDriver {
 
 export function useAskSeries(session: AskSeriesSession): AskSeriesState | null {
 	const driver = askSeriesFor(session);
-	return useSyncExternalStore(driver.subscribe, driver.getSnapshot, driver.getSnapshot);
+	return useVisualSnapshot(driver.subscribe, driver.getSnapshot);
 }

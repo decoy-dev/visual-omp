@@ -4,11 +4,24 @@ import { resolve, join } from "node:path";
 export function fixtureEnvironment(root) {
   root = resolve(root);
   const home = join(root, "home");
+  const windows = process.platform === "win32";
   return {
     PATH: process.env.PATH,
     HOME: home,
     USERPROFILE: home,
-    SHELL: "/bin/bash",
+    // Windows subprocesses need system paths; application data remains fixture-local.
+    ...(windows ? {
+      SystemRoot: process.env.SystemRoot,
+      WINDIR: process.env.WINDIR,
+      ComSpec: process.env.ComSpec,
+      PATHEXT: process.env.PATHEXT,
+      SystemDrive: process.env.SystemDrive,
+      ProgramFiles: process.env.ProgramFiles,
+      "ProgramFiles(x86)": process.env["ProgramFiles(x86)"],
+      ProgramData: process.env.ProgramData,
+      APPDATA: join(home, "AppData", "Roaming"),
+      LOCALAPPDATA: join(home, "AppData", "Local"),
+    } : { SHELL: "/bin/bash" }),
     LANG: "en_US.UTF-8",
     TERM: "xterm-256color",
     COLORTERM: "truecolor",
@@ -34,7 +47,7 @@ export function fixtureEnvironment(root) {
 export async function initializeFixture(root, baseUrl) {
   root = resolve(root);
   const env = fixtureEnvironment(root);
-  for (const path of [env.HOME, env.PI_CODING_AGENT_DIR, env.TMPDIR, join(root, "work"), ...["data", "state", "cache"].map(part => join(root, part, "omp"))]) {
+  for (const path of [env.HOME, env.PI_CODING_AGENT_DIR, env.TMPDIR, join(root, "work"), ...["data", "state", "cache"].map(part => join(root, part, "omp")), ...[env.APPDATA, env.LOCALAPPDATA].filter(Boolean)]) {
     await mkdir(path, { recursive: true });
   }
   const config = {

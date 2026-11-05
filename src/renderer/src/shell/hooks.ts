@@ -1,15 +1,16 @@
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 import { activityKey, friendlySummary, isReplyWrite, resolveToolCall } from "../chat/friendly";
 import { replyText } from "../chat/transcript/turns";
 import { helpersAtWork } from "../features/panes/derive";
 import type { SessionController, SessionView } from "../state/session";
+import { useVisualSnapshot } from "../state/visualSnapshot";
 
 const noSubscribe = () => () => {};
 const noSnapshot = () => null;
 
-/** Live SessionView for a controller (null when there is none). */
+/** Visual SessionView; semantic consumers subscribe directly to the controller. */
 export function useSessionView(controller: SessionController | null): SessionView | null {
-	return useSyncExternalStore(controller ? controller.subscribe : noSubscribe, controller ? controller.getSnapshot : noSnapshot);
+	return useVisualSnapshot(controller ? controller.subscribe : noSubscribe, controller ? controller.getSnapshot : noSnapshot);
 }
 
 /**

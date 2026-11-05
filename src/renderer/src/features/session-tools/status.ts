@@ -3,7 +3,7 @@
  * while subscribed and live, retaining the last status line while a dialog hides it. TSP hosts never
  * read that screen: their mode status comes from the native snapshot and change events.
  */
-import { useSyncExternalStore } from "react";
+import { useVisualSnapshot } from "../../state/visualSnapshot";
 import type { SessionModes } from "@shared/contracts/native";
 import type { SessionController, SessionView } from "../../state/session";
 import { readScreen } from "./drive";
@@ -148,10 +148,10 @@ export function screenPoller(session: SessionController): ScreenPoller {
 /** Live omp status: painted polling for classic hosts, native mode events for TSP hosts. */
 export function useOmpScreen(session: SessionController): ScreenSnapshot {
 	const poller = screenPoller(session);
-	return useSyncExternalStore(poller.subscribe, poller.getSnapshot);
+	return useVisualSnapshot(poller.subscribe, poller.getSnapshot);
 }
 
 /** Subscribe a React view to a chat's SessionView. */
 export function useSessionView(session: SessionController): SessionView {
-	return useSyncExternalStore(session.subscribe, session.getSnapshot);
+	return useVisualSnapshot(session.subscribe, session.getSnapshot);
 }

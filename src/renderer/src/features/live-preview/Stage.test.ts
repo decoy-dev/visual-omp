@@ -206,3 +206,25 @@ describe("Adapter load recovery", () => {
 		expect(env.loadAdapter).toHaveBeenCalledTimes(2);
 	});
 });
+
+it("retains the hidden preview while its store updates, then shows only the latest revision", async () => {
+	let visibility: DocumentVisibilityState = "visible";
+	const visible = vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibility);
+	try {
+		await render();
+		expect(element.querySelector("[data-frame]")?.textContent).toBe("one");
+		await act(async () => { visibility = "hidden"; document.dispatchEvent(new Event("visibilitychange")); });
+		await act(async () => {
+			useLivePreview.getState().update("chat", [{ ...env.subjects[0], revision: 2, text: "Intermediate preview" }], []);
+			useLivePreview.getState().update("chat", [{ ...env.subjects[0], revision: 3, text: "Latest preview" }], []);
+			await vi.advanceTimersByTimeAsync(1000);
+		});
+		expect(useLivePreview.getState().chats.chat.subjects[0].text).toBe("Latest preview");
+		expect(element.querySelector("[data-frame]")?.textContent).toBe("one");
+		await act(async () => { visibility = "visible"; document.dispatchEvent(new Event("visibilitychange")); });
+		await act(async () => vi.advanceTimersByTimeAsync(125));
+		expect(element.querySelector("[data-frame]")?.textContent).toBe("Latest preview");
+	} finally {
+		visible.mockRestore();
+	}
+});

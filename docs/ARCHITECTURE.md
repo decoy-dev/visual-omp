@@ -1320,6 +1320,29 @@ no longer needed and a supported omp is available. Setup never writes omp's `set
 so terminal glyph, composer and theme setup remain available. `ensureNewUserApproval`
 remains the fresh-profile approval fallback when omp has no configured mode.
 
+## Hidden-window rendering
+
+`state/visualSnapshot.ts` provides `useVisualSnapshot`, the visibility-aware React subscription
+used by chat views, composer controls, heavy panes, omp screen documents and live-output previews.
+While `document.visibilityState` is `hidden`, its snapshot retains the last rendered identity and
+source updates do not notify React. An unrelated parent render also reads that retained snapshot.
+On `visibilitychange` to visible, React reads the latest source snapshot once, without replaying
+intermediate revisions. A newly mounted view or a changed source starts from its current snapshot.
+Source subscribe and snapshot functions must have stable identities for the lifetime of that source.
+
+`chat/transcript/pace.ts` uses the same visibility predicate to suspend reveal frames. On return,
+it receives the newest blocks and catches up in a layout effect before paint. A shared resume
+epoch and first-frame catch-up window cover either subscription callback order, including a
+render with older props before the gated parent refreshes. Subsequent visible chunks retain
+normal pacing. Scroll following preserves a reader's scrolled-up position; a bottom-pinned
+view follows the newest content.
+
+This boundary does not change the stores or their ordinary subscriptions. Session controllers,
+collab processing, TSP question synchronization, ask-series replay, preview tracking, completion
+events, sounds, unopened-chat counts and native alerts continue while the window is hidden.
+Visual hooks must not drive those semantic consumers. Main still sends TSP documents normally,
+since native questions and notice bookkeeping need their current revisions while hidden.
+
 ## Crash and freeze diagnostics
 
 `main/services/diagnostics/runtime.ts` is imported immediately after the profile identity. It
@@ -1411,4 +1434,111 @@ deliberately crashes only the requesting renderer, which produces a native minid
 request before its promise resolves. The handler rejects in packaged builds, ordinary development,
 or with reporting switched off. Confirm reception in Sentry before treating ingestion as verified.
 
+### Streaming CPU and heap measurement
+
+The development-only scripts `scripts/dev/stream-provider.mjs` and `scripts/dev/measure-stream.mjs`
+make the hidden-window experiment repeatable. The provider uses the existing live-preview fixture
+environment, with all omp configuration and credentials isolated under an explicit scratch root.
+It streams about 50 varied text chunks a second for `stress text`, including a changing counter
+to avoid omp's repeated-cycle detector. `stress tools` issues up to `--rounds` bash calls that
+print 400 lines each. Both modes use the local `fixture/preview` model and require no provider key.
+
+The measurement script attaches to a running fixture app through renderer CDP and the main-process
+Node inspector. It refuses a main process whose fixture environment does not match `--root`.
+Before renderer mutations, a random challenge written through the verified main window's
+`webContents` must be readable through the selected renderer inspector. Reloading requires a
+fresh ownership check. Stop cleanup requires verified ownership and a prompt sent by this run.
+The script completes setup in the isolated profile, waits for a laid-out empty composer, sends
+the prompt and samples N seconds visible plus N seconds hidden. Without `--raise`, it never shows, restores
+or focuses a window: the caller must keep the fixture visible during the first phase, and the
+second phase calls `BrowserWindow.hide()`. It leaves the app hidden and stops the reply afterward.
+The optional `--raise` is for an isolated test machine only. It permits showing, restoring and
+focusing the fixture, including restoring its initial window state after measurement. The default
+never raises the window and leaves its final visibility unchanged. No Electron launch described
+here is safe to run on the owner's Mac while he works.
+
+Run Electron checks inside the Windows 11 VM only after the owner gives a testing window.
+The provider, launcher and measurement script must all run with Windows Node so native paths
+and process CPU sampling match the app. Use a fresh scratch root for each run. The fixture preserves
+Windows system paths and creates isolated
+`APPDATA` and `LOCALAPPDATA` folders. The launcher passes `--user-data-dir=<root>\app-profile`,
+so the normal `%APPDATA%\visual-omp` profile is untouched. Do not use an installed executable.
+The inspector ports permit code execution and must remain on loopback.
+
+Build baseline `c4c0571` and the changed checkout separately. Use the same x64 architecture in
+the ARM64 VM for both comparisons, then test an ARM64 build separately when available. The
+following PowerShell examples assume the changed scripts and their Node dependencies are
+available at `C:\vomp-tools`, and the baseline checkout is at `C:\vomp-before`:
+
+```powershell
+$Tools = 'C:\vomp-tools'
+$Checkout = 'C:\vomp-before'
+$Root = Join-Path $env:TEMP 'vomp-stream-before'
+Set-Location $Checkout
+npx electron-vite build
+npx electron-builder --win dir --x64 --publish never
+node "$Tools\scripts\dev\stream-provider.mjs" --root "$Root" --seconds 240 --rounds 1000
+```
+
+Leave the provider running. In a second PowerShell terminal, set the same variables and copy
+the unpacked app into the disposable fixture before starting it:
+
+```powershell
+Copy-Item (Join-Path $Checkout 'release\win-unpacked') (Join-Path $Root 'app') -Recurse
+node "$Tools\scripts\dev\launch-fixture-app.mjs" --root "$Root" `
+  --exe "$Root\app\visual-omp.exe" --enable-inspector
+```
+
+Release builds disable the Node CLI inspector fuse. `--enable-inspector` enables it only on a
+copied Windows executable beneath the fixture root, with symlink containment checked before
+changing it. It never changes the ordinary build output or installer. The launcher reconstructs
+the fixture environment and adds `--disable-backgrounding-occluded-windows`, so window occlusion
+cannot invalidate the visible phase. Explicitly hiding the window still changes document
+visibility and pauses requestAnimationFrame. Do not pass `--disable-renderer-backgrounding`.
+
+If launching through a scheduled task, run this in the signed-in VM user's PowerShell session.
+The task starts the same launcher, which sets the environment itself:
+
+```powershell
+$Task = 'visual-omp-stream-fixture'
+$Node = (Get-Command node).Source
+$Arguments = '"{0}" --root "{1}" --exe "{2}" --enable-inspector' -f `
+  "$Tools\scripts\dev\launch-fixture-app.mjs", $Root, "$Root\app\visual-omp.exe"
+$Action = New-ScheduledTaskAction -Execute $Node -Argument $Arguments -WorkingDirectory $Tools
+$Principal = New-ScheduledTaskPrincipal `
+  -UserId ([System.Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive
+Register-ScheduledTask -TaskName $Task -Action $Action -Principal $Principal -Force
+Start-ScheduledTask -TaskName $Task
+```
+
+With the app visible in the VM, run this in a third PowerShell terminal using the same variables:
+
+```powershell
+node "$Tools\scripts\dev\measure-stream.mjs" --root "$Root" --port 9335 `
+  --main-port 9336 --seconds 30 --prompt 'stress text' --output "$Root\measurement.json"
+```
+
+Show the hidden fixture manually in the VM afterward and check that it shows the newest text
+and tools without replaying missed frames. Check hidden completion and question alerts, sounds
+and unopened-chat badges too. Close the fixture app and stop the provider after each run; remove
+the temporary scheduled task with `Unregister-ScheduledTask -TaskName $Task -Confirm:$false`
+if used. Repeat with the changed checkout and a fresh `vomp-stream-after` root. Repeat both builds
+with fresh roots and `--classic` on the measurement command for classic hosts, then with
+`--prompt 'stress tools'` for tool-heavy replies. The provider duration must exceed both phases
+plus host startup. For two-chat measurements, start a second fixture chat manually before measuring
+a fresh composer in the first chat.
+
+Each JSON report contains one-second samples of CDP `TaskDuration`, `ScriptDuration`,
+`JSHeapUsedSize`, document visibility and main-process cumulative CPU time (`Get-Process` on
+Windows, `ps` on macOS/Linux). Phase summaries report CPU deltas divided by elapsed wall time as
+percentages of one core, plus starting and ending heap. CDP task/script durations measure the
+renderer main thread; they are not whole-renderer process CPU. A retained Stop button while hidden
+describes the frozen view and does not prove the provider is still streaming. Check the provider's
+request log and duration alongside the report.
+
+Expected effect, pending Electron measurement: hidden renderer task time should fall substantially
+when streaming no longer reconciles the transcript and previews. Visible behavior should remain
+unchanged. Main CPU and collab/TSP processing remain active, so no main-process CPU reduction is
+claimed. Heap returning to baseline and the absence of Windows crashes still require longer runs;
+this change does not establish the cause of the reported Windows freezes.
 

@@ -36,6 +36,7 @@ import { placeTspNotices, type TspNotice } from "../../state/tsp/notices";
 import { useTsp } from "../../state/tsp/useTsp";
 import { liveGuest, type SessionController, type SessionView } from "../../state/session";
 import { useApp } from "../../state/app";
+import { useVisualSnapshot } from "../../state/visualSnapshot";
 import { copyCode, StreamingMarkdown } from "../../transcript/Markdown";
 import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toast, useScrollFollow } from "../../ui";
 import { useDisplayedEntries } from "../branch";
@@ -754,7 +755,7 @@ interface Arrivals {
 function useOutOfSight(ref: RefObject<HTMLElement | null>): boolean {
 	const [hidden, setHidden] = useState(false);
 	useEffect(() => {
-		const check = () => setHidden(document.hidden || ref.current?.closest("[inert]") != null);
+		const check = () => setHidden(document.visibilityState === "hidden" || ref.current?.closest("[inert]") != null);
 		check();
 		const observer = new MutationObserver(check);
 		observer.observe(document.body, { subtree: true, attributes: true, attributeFilter: ["inert"] });
@@ -806,7 +807,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		() => placeResults(entries.map(entry => entry.id), start, commandResults, room),
 		[entries, start, commandResults, room],
 	);
-	const tspNotices = useSyncExternalStore(session.tspNotices.subscribe, session.tspNotices.getSnapshot);
+	const tspNotices = useVisualSnapshot(session.tspNotices.subscribe, session.tspNotices.getSnapshot);
 	const placedNotices = useMemo(() => placeTspNotices(entries, start, tspNotices), [entries, start, tspNotices]);
 	const results = useMemo(() => {
 		const map = new Map<string, ToolResultMessage>();

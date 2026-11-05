@@ -1,5 +1,6 @@
 import { TextAa } from "@phosphor-icons/react";
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
+import { useVisualSnapshot } from "../../state/visualSnapshot";
 import { useTranslation } from "react-i18next";
 import type { ChatSlotProps } from "../../registry/slots";
 import { ipcErrorMessage, useResource } from "../../features/manage/shared";
@@ -8,7 +9,7 @@ import { cn, toast, Tooltip } from "../../ui";
 
 export function SuggestionsTool({ session }: ChatSlotProps) {
 	const { t } = useTranslation("composer");
-	const view = useSyncExternalStore(session.subscribe, session.getSnapshot);
+	const view = useVisualSnapshot(session.subscribe, session.getSnapshot);
 	const cwd = session.projectPath;
 	const setting = useResource(() => window.vomp.invoke("config:get", "composer.predictions", cwd), [cwd]);
 	const [saving, setSaving] = useState(false);
