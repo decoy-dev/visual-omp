@@ -1,18 +1,20 @@
-/* An empty, zero-height inline box leaves copied text and line metrics unchanged. */
+/* An empty, zero-height inline box leaves copied text and line metrics unchanged. It sits on the
+   baseline, and the square is centered on the cap height (about 0.72em) so it lines up with the
+   hex digits beside it, in prose and in inline code. */
 .vomp-color-swatch {
 	display: inline-block;
 	position: relative;
 	width: 0.95em;
 	height: 0;
 	margin-inline-start: 0.25em;
-	vertical-align: middle;
+	vertical-align: baseline;
 	user-select: none;
 }
 .vomp-color-swatch::before {
 	content: "";
 	position: absolute;
 	inset-inline-start: 0;
-	top: -0.475em;
+	top: calc(-0.36em - 0.475em);
 	width: 0.95em;
 	height: 0.95em;
 	border-radius: calc(var(--radius-sm) / 2);
