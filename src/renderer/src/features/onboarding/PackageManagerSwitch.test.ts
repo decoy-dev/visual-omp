@@ -6,6 +6,9 @@ import type { AppInstallOperation, AppInstallSwitchInfo } from "@shared/contract
 import type * as Ui from "../../ui";
 import { i18n } from "../../i18n";
 
+// Each test imports the component's module graph again (see render), which takes seconds while the full suite runs.
+vi.setConfig({ testTimeout: 20_000 });
+
 const fake = vi.hoisted(() => ({ invoke: vi.fn(), approved: true }));
 vi.mock("./InlineTerminal", () => ({ InlineTerminal: () => e("div", null, "Install output") }));
 vi.mock("./quit", () => ({ quitAfterConfirm: async (action: () => Promise<void>) => { if (fake.approved) await action(); } }));
@@ -38,11 +41,18 @@ async function render(info: AppInstallSwitchInfo) {
 	const { PackageManagerSwitch } = await import("./PackageManagerSwitch");
 	await act(async () => root.render(e(PackageManagerSwitch)));
 }
+/** The switch info and dialog arrive asynchronously, so wait for the control before using it. */
+async function button(text: string): Promise<HTMLButtonElement> {
+	return vi.waitFor(() => {
+		const scope = document.body.querySelector('[role="dialog"]') ?? document.body;
+		const found = [...scope.querySelectorAll("button")].find(button => button.textContent === text);
+		expect(found, text).toBeDefined();
+		return found!;
+	}, { timeout: 10_000 });
+}
 async function click(text: string) {
-	const scope = document.body.querySelector('[role="dialog"]') ?? document.body;
-	const button = [...scope.querySelectorAll("button")].find(button => button.textContent === text);
-	expect(button, text).toBeDefined();
-	await act(async () => button!.click());
+	const target = await button(text);
+	await act(async () => target.click());
 }
 
 it("shows Homebrew setup and README commands when brew is absent", async () => {
@@ -94,9 +104,9 @@ it("reuses an existing copy and keeps Trash opt-in behind the working-chat quit 
 it("disables the Homebrew transfer while another installation runs", async () => {
 	await render({ manager: "brew", available: true, existing: false, target: null });
 	const { useUpdates } = await import("./updates");
+	const target = await button("Switch to Homebrew");
 	await act(async () => useUpdates.setState({ operation: "reinstall" }));
-	const button = [...element.querySelectorAll("button")].find(button => button.textContent === "Switch to Homebrew")!;
-	expect(button.disabled).toBe(true);
-	await act(async () => button.click());
+	expect(target.disabled).toBe(true);
+	await act(async () => target.click());
 	expect(fake.invoke).not.toHaveBeenCalledWith("updates:app:switchStart");
 });
