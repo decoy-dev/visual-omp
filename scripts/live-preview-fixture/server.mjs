@@ -5,6 +5,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { initializeFixture } from "./environment.mjs";
 import { isolationHtml } from "./isolation-page.mjs";
 import { proofCalls } from "./proof.mjs";
+import { officeCommand } from "./office.mjs";
 
 export function posterSvg() {
   const lines = [
@@ -94,7 +95,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const messages = body.messages ?? [];
       const lastUser = messages.findLast(message => message.role === "user");
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(svg|html|png|image|isolation|video|sequence|progress|prores|proof)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(svg|html|png|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !messages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -125,6 +126,8 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         { name: "bash", args: { command: videoCommand(fixture === "prores"), timeout: 30 }, slow: false },
       ] : fixture === "sequence" ? [
         { name: "bash", args: { command: sequenceCommand(), timeout: 30 }, slow: false },
+      ] : ["docx", "xlsx", "pptx"].includes(fixture) ? [
+        { name: "bash", args: { command: officeCommand(fixture), timeout: 60 }, slow: false },
       ] : fixture === "progress" ? await progressCalls() : fixture === "image" ? [
         { name: "generate_image", args: { subject: "A measured architectural poster. " + "Use a teal circle on a cream background. ".repeat(200), image_size: "1024x1024", aspect_ratio: "1:1" }, slow: true },
       ] : [{ name: "write", args: { path: "poster.svg", content: posterSvg() }, slow: true }];

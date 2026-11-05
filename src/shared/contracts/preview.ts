@@ -33,6 +33,16 @@ export interface PreviewPolicy { scripts: boolean; network: boolean }
 /** Whether main prepared the exact document bytes served for this revision under the grant's read limits. */
 export type PreviewPrepared = { ok: true; policy: PreviewPolicy; /** Main-only test gate, never a page permission. */ isolationTest?: true } | { ok: false; reason: "missing" | "tooLarge" | "notFile" | "revoked" };
 
+export type PreviewBinary =
+	| { ok: true; bytes: Uint8Array<ArrayBuffer>; size: number; mtimeMs: number }
+	| { ok: false; reason: "missing" | "tooLarge" | "notFile" | "revoked" | "incomplete" | "unsafe" };
+
+export type PreviewSlides =
+	| { ok: true; pdfPath: string; revision: number }
+	| { ok: false; reason: "noLibreOffice" | "unsafe" | "timeout" | "failed" | "tooLarge" | "revoked" | "converterUnavailable" };
+
+export interface PreviewOfficeTools { libreOffice: boolean }
+
 /** A numbered frame output declared by a recognized render command. Matches files directly inside `folder`. */
 export interface PreviewSequencePattern {
 	folder: string;
@@ -78,6 +88,11 @@ declare module "../ipc" {
 		"preview:saved": { args: [token: string]; result: void };
 		/** Snapshot the document for `?rev=<revision>` before replacing the last successfully loaded frame. */
 		"preview:prepare": { args: [token: string, revision: number]; result: PreviewPrepared };
+		/** Read only an Office subject's validated ZIP snapshot, under its original grant. */
+		"preview:readBinary": { args: [token: string]; result: PreviewBinary };
+		"preview:officeTools": { args: []; result: PreviewOfficeTools };
+		/** Convert the validated PPTX snapshot, with one newest-wins conversion queue. */
+		"preview:slides": { args: [token: string, revision: number]; result: PreviewSlides };
 		/** Revoke a token; later requests for it fail. Unknown tokens are ignored. */
 		"preview:revoke": { args: [token: string]; result: void };
 		/** Start watching for a turn; returns the watch id `preview:changed` events carry. */

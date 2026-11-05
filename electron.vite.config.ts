@@ -29,6 +29,23 @@ function phosphorWeights(): Plugin {
 	};
 }
 
+interface WorkerChunk { fileName: string; modules: string[]; imports: string[]; dynamicImports: string[]; isEntry: false }
+const workerChunks: WorkerChunk[] = [];
+
+/** Worker builds are emitted as assets, so collect their module membership in their own Rollup build. */
+function rendererWorkerMetadata(): Plugin {
+	const root = `${__dirname.replaceAll("\\", "/")}/`;
+	return {
+		name: "vomp:renderer-worker-metadata",
+		enforce: "post",
+		generateBundle(_options, bundle) {
+			for (const chunk of Object.values(bundle)) if (chunk.type === "chunk") workerChunks.push({
+				fileName: chunk.fileName, isEntry: false, imports: chunk.imports, dynamicImports: chunk.dynamicImports,
+				modules: Object.keys(chunk.modules).map(id => id.replaceAll("\\", "/").replaceAll(root, "").replace(/^.*\/node_modules\//, "node_modules/")).sort(),
+			});
+		},
+	};
+}
 /** Rollup's module membership is needed by the renderer guard; Vite's manifest omits it. */
 function rendererChunkMetadata(): Plugin {
 	const root = `${__dirname.replaceAll("\\", "/")}/`;
@@ -45,6 +62,8 @@ function rendererChunkMetadata(): Plugin {
 				dynamicImports: chunk.dynamicImports,
 				modules: Object.keys(chunk.modules).map(id => id.replaceAll("\\", "/").replaceAll(root, "").replace(/^.*\/node_modules\//, "node_modules/")).sort(),
 			})));
+			for (const worker of workerChunks) chunks.push({ ...worker, bytes: (await stat(resolve(options.dir, worker.fileName))).size });
+			workerChunks.length = 0;
 			await writeFile(resolve(options.dir, "renderer-chunks.json"), `${JSON.stringify({ schemaVersion: 1, chunks }, null, 2)}\n`);
 		},
 	};
@@ -89,6 +108,7 @@ export default defineConfig({
 	},
 	renderer: {
 		plugins: [react(), tailwindcss(), phosphorWeights(), rendererChunkMetadata()],
+		worker: { plugins: () => [rendererWorkerMetadata()] },
 		resolve: {
 			alias: {
 				"@shared": shared,

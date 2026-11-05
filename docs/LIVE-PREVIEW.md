@@ -217,6 +217,19 @@ Implemented on 2026-11-05 for 0.7.8:
 
 The integration owner must still exercise playback, seeking, unsupported ProRes, native protocol responses, stream revocation and the 320 px layout in Electron on Windows 11 ARM64. The fixture README provides the exact steps. Unit tests and headless browser checks do not establish Electron's codec support or custom-scheme range behavior. The video fixture's ffmpeg command creates an incomplete output file when rendering starts, so the check is advancing progress before the completed video is available, rather than a claim that no filesystem entry exists.
 
+#### Phase 2 Office previews
+
+DOCX, XLSX and PPTX saves are discovered by the same turn-scoped watcher. Main returns only a validated, at-most-32-MiB ZIP snapshot under the owning subject's grant. The shared validator rejects unsafe paths, encrypted packages, ZIP64 and oversized declarations; workers also count actual inflated bytes, bound each entry and verify CRCs.
+
+DOCX removes external relationships, field instructions and active embedded parts before the document renderer runs. External images become placeholder text, while safe hyperlinks are mapped through inert anchors. The detached rendered document is sanitized again before it is attached inside a shadow root. Links are intercepted through the app's external-link action. `renderAsync` itself cannot abort, so document renders are serialized and stale work never attaches.
+
+XLSX is read-only. SheetJS 0.20.3 from its pinned CDN tarball parses in a worker with formula and HTML output disabled. The worker keeps the workbook and sends formatted cell text for a small visible window, limited to 100,000 rows, 200 columns and 1,000 characters per cell. The grid virtualizes both rows and columns without another UI library. A newer revision terminates the previous worker; incomplete saves keep the last frame.
+
+PPTX conversion requires an already-installed LibreOffice. visual-omp never installs it. Main rewrites a validated snapshot in a bounded worker, rejects macros, removes external relationship targets and writes that snapshot into a private revision directory. One headless converter runs at a time with a private security profile, closed-loopback proxies, a 60-second timeout and 32-MiB input/output caps. Newer requests supersede queued conversions, and a newer revision cancels the same subject's active conversion. Revoking the grant cancels its work and deletes its output.
+
+Without LibreOffice, the stage explains the requirement and lists image file subjects discovered in the same turn, without widening the subject's asset grant. The fixture README includes exact Windows Electron acceptance and scratch LibreOffice setup. LibreOffice conversion, its no-network behavior, packaged worker loading, native PDF display and Windows process-tree termination still require that manual acceptance; unit stubs do not establish those results.
+
+
 **Phase 3**: Graphviz DOT, D2 and PlantUML, 3D models, and progressive `generate_image` frames once omp reports them.
 
 ### Phase 1 acceptance

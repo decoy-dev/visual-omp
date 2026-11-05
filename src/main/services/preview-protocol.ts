@@ -10,6 +10,8 @@ import { PREVIEW_SCHEME, type PreviewGrant, type PreviewGrantRequest, type Previ
 import { handleWithEvent } from "../ipc";
 import { broadFolders, isBroadFolder } from "./panes";
 import { isIsolationTestDocument, type IsolationReadIdentity } from "./preview-isolation-test";
+import type { PreviewBinary } from "@shared/contracts/preview";
+import { OFFICE_LIMITS, validateOfficeZip } from "@shared/preview-office-zip";
 
 const TEXT_LIMIT = 2 * 1024 * 1024;
 const IMAGE_LIMIT = 8 * 1024 * 1024;
@@ -68,6 +70,42 @@ const grants = new Map<string, GrantState>();
 let epoch = 0;
 let registered = false;
 let videoRequests = 0;
+const revokeListeners = new Set<(token: string) => void>();
+
+/** Office conversion cleanup follows the same token lifecycle as protocol streams. */
+export function onPreviewRevoke(listener: (token: string) => void): () => void {
+	revokeListeners.add(listener);
+	return () => { revokeListeners.delete(listener); };
+}
+
+export function hasPreviewGrant(token: string, owner: number | null = null): boolean {
+	return grants.get(token)?.owner === owner;
+}
+
+export async function readPreviewBinary(token: string, owner: number | null = null): Promise<PreviewBinary> {
+	const grant = grants.get(token);
+	if (!grant || grant.owner !== owner) return { ok: false, reason: "revoked" };
+	if (!/\.(?:docx|xlsx|pptx)$/i.test(grant.subject)) return { ok: false, reason: "unsafe" };
+	const opened = await openPreviewFile(token, grant, grant.subject, { cap: OFFICE_LIMITS.input, type: "application/zip", cors: false });
+	if (!opened.ok) return { ok: false, reason: opened.status === 413 ? "tooLarge" : opened.status === 403 ? "notFile" : "missing" };
+	try {
+		const before = await opened.file.stat();
+		const bytes = new Uint8Array(opened.size + 1);
+		let length = 0;
+		while (length < bytes.length) {
+			const read = await opened.file.read(bytes, length, bytes.length - length, length);
+			if (!read.bytesRead) break;
+			length += read.bytesRead;
+		}
+		const after = await opened.file.stat();
+		if (grants.get(token) !== grant) return { ok: false, reason: "revoked" };
+		if (length !== opened.size || after.size !== opened.size || before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) return { ok: false, reason: "incomplete" };
+		const snapshot = bytes.slice(0, length);
+		const checked = validateOfficeZip(snapshot);
+		return checked.ok ? { ok: true, bytes: snapshot, size: length, mtimeMs: after.mtimeMs } : checked;
+	} catch { return { ok: false, reason: "missing" }; }
+	finally { await opened.file.close(); }
+}
 
 function inside(root: string, path: string): boolean {
 	const from = relative(root, path);
@@ -148,6 +186,7 @@ export function revokePreview(token: string, owner: number | null = null): void 
 	if (!grant || grant.owner !== owner) return;
 	grants.delete(token);
 	for (const stream of grant.streams) stream.destroy(new Error("The preview was revoked."));
+	for (const listener of revokeListeners) listener(token);
 }
 export function revokeAllPreviews(): void {
 	epoch++;
@@ -404,6 +443,7 @@ export function registerPreviewProtocol(): void {
 	handleWithEvent("preview:live", (event, token, revision, text) => setPreviewLive(token, revision, text, event.sender.id));
 	handleWithEvent("preview:saved", (event, token) => savePreview(token, event.sender.id));
 	handleWithEvent("preview:prepare", (event, token, revision) => preparePreview(token, revision, event.sender.id));
+	handleWithEvent("preview:readBinary", (event, token) => readPreviewBinary(token, event.sender.id));
 	handleWithEvent("preview:revoke", (event, token) => revokePreview(token, event.sender.id));
 	// Feature registration normally runs inside whenReady; this also keeps isolated registrations safe.
 	if (app.isReady()) protocol.handle(PREVIEW_SCHEME, handlePreviewRequest);

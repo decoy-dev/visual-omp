@@ -8,6 +8,7 @@ import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { PreviewGrant } from "@shared/contracts/preview";
+import { zipSync, strToU8 } from "fflate";
 
 const electron = vi.hoisted(() => ({
 	ready: false,
@@ -51,6 +52,7 @@ vi.mock("node:fs/promises", async importOriginal => {
 import {
 	grantPreview, handlePreviewRequest, previewPolicy, previewDocumentUrl, previewNavigationRule, preparePreview,
 	registerPreviewProtocol, registerPreviewScheme, revokeAllPreviews, revokePreview, savePreview, setPreviewLive,
+	readPreviewBinary,
 } from "./preview-protocol";
 
 let folder: string;
@@ -1003,4 +1005,53 @@ it("registers scheme privileges before readiness and the request handler only on
 	electron.ipc.get("preview:revoke")!(event, grant.token);
 	expect((await get(grant.url)).status).toBe(404);
 	expect(await electron.ipc.get("preview:prepare")!(event, grant.token, 1)).toEqual({ ok: false, reason: "revoked" });
+});
+
+describe("Office binary grant snapshots", () => {
+	it("reads complete validated bytes only for the owning window", async () => {
+		const path = join(folder, "office.docx"), bytes = zipSync({ "word/document.xml": strToU8("<document/>") });
+		await writeFile(path, bytes);
+		const grant = await grantPreview({ path, root: folder, related: [] }, 44);
+		expect(await readPreviewBinary(grant.token, 45)).toEqual({ ok: false, reason: "revoked" });
+		const result = await readPreviewBinary(grant.token, 44);
+		expect(result).toMatchObject({ ok: true, size: bytes.length });
+		if (result.ok) expect(result.bytes).toEqual(bytes);
+		revokePreview(grant.token, 44);
+		expect(await readPreviewBinary(grant.token, 44)).toEqual({ ok: false, reason: "revoked" });
+	});
+	it("distinguishes incomplete saves from unsafe ZIP paths", async () => {
+		const path = join(folder, "office.xlsx"), bytes = zipSync({ "xl/workbook.xml": strToU8("<workbook/>") });
+		await writeFile(path, bytes.subarray(0, bytes.length - 4));
+		const grant = await grantPreview({ path, root: folder, related: [] });
+		expect(await readPreviewBinary(grant.token)).toEqual({ ok: false, reason: "incomplete" });
+		await writeFile(path, zipSync({ "../outside.xml": strToU8("<unsafe/>") }));
+		expect(await readPreviewBinary(grant.token)).toEqual({ ok: false, reason: "unsafe" });
+	});
+	it("refuses unsupported macro extensions, directories and oversized files", async () => {
+		const macro = await grantPreview({ path: join(folder, "macro.pptm"), root: folder, related: [] });
+		expect(await readPreviewBinary(macro.token)).toEqual({ ok: false, reason: "unsafe" });
+		const path = join(folder, "office.pptx");
+		await mkdir(path);
+		const grant = await grantPreview({ path, root: folder, related: [] });
+		expect(await readPreviewBinary(grant.token)).toEqual({ ok: false, reason: "notFile" });
+		await rm(path, { recursive: true });
+		const file = await open(path, "w"); await file.truncate(32 * 1024 * 1024 + 1); await file.close();
+		expect(await readPreviewBinary(grant.token)).toEqual({ ok: false, reason: "tooLarge" });
+	});
+	it("rechecks containment after a granted path becomes an external symlink", async () => {
+		const path = join(folder, "office.docx"), outside = await mkdtemp(join(tmpdir(), "vomp-office-outside-"));
+		cleanup.push(outside);
+		await writeFile(path, zipSync({ "word/document.xml": strToU8("<document/>") }));
+		const grant = await grantPreview({ path, root: folder, related: [] });
+		await writeFile(join(outside, "secret.docx"), zipSync({ "secret": strToU8("private") }));
+		await rm(path); await symlink(join(outside, "secret.docx"), path);
+		expect(await readPreviewBinary(grant.token)).toEqual({ ok: false, reason: "notFile" });
+	});
+	it("rejects a snapshot truncated after its handle is opened", async () => {
+		const path = join(folder, "office.docx"), bytes = zipSync({ "word/document.xml": strToU8("<document/>") });
+		await writeFile(path, bytes);
+		const grant = await grantPreview({ path, root: folder, related: [] });
+		files.afterOpen = async () => { await writeFile(path, bytes.subarray(0, 10)); };
+		expect(await readPreviewBinary(grant.token)).toEqual({ ok: false, reason: "incomplete" });
+	});
 });

@@ -41,7 +41,7 @@ test("CLI records emitted entry bytes beside the grounded classic baseline and p
 	assert.deepEqual(await setup.report(), {
 		schemaVersion: 1, entry: "assets/entry.js", entryBytes: 101,
 		classic: { tag: baseline.tag, commit: baseline.commit, entryBytes: 100 },
-		growthBytes: 1, maxGrowthBytes: 20000, acceptedGrowth: null,
+		growthBytes: 1, maxGrowthBytes: 20000, acceptedGrowth: null, lazy: [],
 	});
 	assert.match(result.stdout, /Renderer entry: 101 bytes; v0\.7\.4 classic: 100 bytes/);
 });
@@ -159,4 +159,33 @@ test("CLI fails when metadata is missing or a chunk was not emitted", async t =>
 	const missingChunk = await fixture(t);
 	await rm(join(missingChunk.dir, "assets/entry.js"));
 	failed(missingChunk.run(), /ENOENT/);
+});
+
+for (const name of ["docx-preview", "jszip", "xlsx", "fflate", "pako", "@xmldom/xmldom"]) {
+	test(`Office package ${name} cannot enter the initial renderer graph`, async t => {
+		const module = `node_modules/${name}/index.js`;
+		const direct = await fixture(t, [entry({ modules: [module] })]);
+		failed(direct.run(), /contains Office preview modules/);
+		const shared = await fixture(t, [entry({ imports: ["assets/office.js"] }), view({ fileName: "assets/office.js", modules: [module] })]);
+		failed(shared.run(), /contains Office preview modules/);
+		const lazy = await fixture(t, [entry({ dynamicImports: ["assets/office.js"] }), view({ fileName: "assets/office.js", modules: [module] })]);
+		assert.equal(lazy.run().status, 0);
+	});
+}
+
+test("lazy Office budgets measure adapters and workers and require approval for growth", async t => {
+	const module = "src/renderer/src/features/live-preview/formats/xlsx.worker.ts";
+	const chunk = view({ fileName: "assets/xlsx.worker.js", modules: [module], bytes: 1000 });
+	const budget = { name: "XLSX worker", module, bytes: 1000 };
+	const measured = await fixture(t, [entry(), chunk], { ...baseline, lazyBudgets: [budget] });
+	assert.equal(measured.run().status, 0);
+	assert.deepEqual((await measured.report()).lazy, [{ name: "XLSX worker", fileName: chunk.fileName, bytes: 1000, baselineBytes: 1000 }]);
+	const growth = await fixture(t, [entry(), { ...chunk, bytes: 1001 }], { ...baseline, lazyBudgets: [budget] });
+	failed(growth.run(), /Lazy renderer chunk XLSX worker grew/);
+	const approved = await fixture(t, [entry(), { ...chunk, bytes: 1001 }], { ...baseline, lazyBudgets: [{ ...budget, acceptedGrowth: { bytes: 1001, reason: "Owner approved measured worker growth." } }] });
+	assert.equal(approved.run().status, 0);
+	const missing = await fixture(t, [entry()], { ...baseline, lazyBudgets: [budget] });
+	failed(missing.run(), /Expected one lazy chunk/);
+	const eager = await fixture(t, [entry({ imports: [chunk.fileName] }), chunk], { ...baseline, lazyBudgets: [budget] });
+	failed(eager.run(), /is loaded initially/);
 });

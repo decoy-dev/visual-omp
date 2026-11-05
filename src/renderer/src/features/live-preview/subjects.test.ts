@@ -290,3 +290,17 @@ it("updates a declared sequence's count and remaining frame after its newest ima
 	expect(next).toHaveLength(1);
 	expect(next[0]).toMatchObject({ id: "call:draw", path: "/project/work/frames/frame0005.png", sequence: { pattern, count: 5 }, revision: first[0].revision + 1 });
 });
+
+describe("Office preview file discovery", () => {
+	it.each(["docx", "xlsx", "pptx"])("discovers %s saves with stable revision identity", format => {
+		const change = { watchId: "office", path: `/project/work/office.${format}`, size: 100, mtimeMs: 500 };
+		const first = deriveSubjects(input({ stream: null, changes: [change] }), []);
+		expect(first).toEqual([expect.objectContaining({ kind: "file", format, path: change.path })]);
+		const next = deriveSubjects(input({ stream: null, changes: [{ ...change, size: 200, mtimeMs: 600 }] }), first);
+		expect(next[0]?.id).toBe(first[0]?.id);
+		expect(next[0]?.revision).toBe(first[0]!.revision + 1);
+	});
+	it("never discovers a macro-enabled Office extension", () => {
+		expect(deriveSubjects(input({ stream: null, changes: [{ watchId: "office", path: "/project/work/macro.pptm", size: 100, mtimeMs: 500 }] }), [])).toEqual([]);
+	});
+});

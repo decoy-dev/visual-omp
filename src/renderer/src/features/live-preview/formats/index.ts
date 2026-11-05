@@ -12,6 +12,9 @@ export async function loadAdapter(format: LiveFormat): Promise<LiveAdapter> {
 		case "pdf": return (await import("./pdf")).adapter;
 		case "video": return (await import("./video")).adapter;
 		case "sequence": return (await import("./sequence")).adapter;
+		case "docx": return (await import("./docx")).adapter;
+		case "xlsx": return (await import("./xlsx")).adapter;
+		case "pptx": return (await import("./pptx")).adapter;
 		case "generate-image": return (await import("./generate-image")).adapter;
 		case "result-images": return (await import("./result-images")).adapter;
 	}

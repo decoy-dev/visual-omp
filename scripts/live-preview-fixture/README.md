@@ -312,3 +312,49 @@ Only the integration owner runs these steps. Use the isolated server and develop
 6. At the largest text size and the window's minimum width, confirm the whole switch label, description, conflict path and Check again or Update skill action remain readable and keyboard-accessible. No row may introduce horizontal scrolling. Repeat the unanswered and No path in a fresh classic-terminal chat if the integration build still offers that compatibility setting.
 7. Quit the scratch app and stop only its fixture server using the video procedure. Retain the scratch directory and screenshots until the result is recorded. Report Windows, Electron and omp versions, the conflict bytes, listing warnings, PNG-before-question result, No and Yes behavior, upgrade result and source/filter diagnostics separately from headless tests.
 
+## Office preview fixtures
+
+`fixture docx`, `fixture xlsx` and `fixture pptx` call Python 3's standard-library `zipfile` writer. No Office authoring package is required. Each scenario writes `office.<extension>` three times with one second between completed saves, then writes a truncated fourth revision. The stage must show the three revisions and retain revision three with "Waiting for omp to finish saving" after the truncated save. Each scenario also writes `bomb.<extension>`, whose central directory declares a single inflated entry of 64 MiB plus one byte. It must be refused before decompression. The fixtures deliberately contain external relationships; do not open their original files in an unrestricted Office application while testing network isolation.
+
+- DOCX contains a heading, a table, an embedded PNG, an external image and an HTTPS hyperlink. The external image must become "External image not loaded". A clicked web link opens through the app's existing external-link action and leaves the document in the stage.
+- XLSX contains two sheets, a cached formula value of `6`, literal `<img src=x onerror=alert(1)>` text and a 50,000-row sheet. No formula evaluation or HTML conversion is used.
+- PPTX contains two slides and an external image relationship targeting `http://127.0.0.1:47832/external.png`. It also writes `.pptm` and disguised `.pptx` macro-content files for refusal. Without LibreOffice, the stage explains the prerequisite and lists image file subjects discovered in the same turn.
+
+Run the generator checks with:
+
+```sh
+node --test scripts/live-preview-fixture/office.test.mjs
+```
+
+The generator tests run Python when available and report an explicit skip otherwise. Python must be available as `python3` to run an Office scenario through omp's bash tool.
+
+### Windows Electron acceptance
+
+The integration owner runs these steps in the Windows VM. Close any other development instance first. Use the scratch fixture profile and provider setup described above, then launch that build with `run.mjs`; this work did not launch Electron.
+
+1. Open the scratch `work` folder as the chat folder, enable visual outputs and send `fixture docx`. Choose Watch. Record each of the three revision headings, then the waiting note after truncation. In DevTools Network, preserve the log and filter `example.invalid`: the external DOCX image must make no request. Click the document's website link and confirm that the browser opens while the stage remains on the document.
+2. In a fresh chat send `fixture xlsx`. Select Summary and confirm the cached value `6` and literal markup, with no image element. Select Fifty thousand rows, scroll to row 50,000 and back, and check that the grid contains fewer than 200 `[role="row"]` elements. Record a DevTools Performance trace while scrolling; grid updates must keep main-thread tasks below 50 ms.
+3. Repeat both at a 320 px Outputs width and Settings' largest text size. Check that the document can wrap, the sheet names remain distinguishable through their middle-truncated labels, tabs can scroll, cells can be reached with arrow keys and Stop remains available during the fixture call.
+4. Select each bomb subject. It must show the unsafe-file note. Record renderer and worker memory in DevTools; total preview memory must remain below 300 MB. Begin parsing another revision, then save again or close the subject: its worker must terminate, and an older reply must never replace the current frame.
+5. Without LibreOffice, send `fixture pptx` and record the missing-LibreOffice note. A `.pptm` file must not become a preview subject. To test the main boundary explicitly, use the app main frame's console to grant its absolute path, call `preview:readBinary` with that token and confirm `{ ok: false, reason: "unsafe" }`, then revoke the token.
+6. With a scratch LibreOffice executable on the launch PATH, repeat `fixture pptx`. The deck must convert within 60 seconds; three saves must end on the newest complete deck. The truncated revision must retain it with the waiting note. Close the subject and confirm its private `vomp-office-*/slides/<token>` directory is deleted.
+7. Before the LibreOffice run, start a loopback listener in a second terminal:
+
+   ```sh
+   node -e "require('node:http').createServer((q,s)=>{console.error(q.method,q.url);s.end('unexpected request')}).listen(47832,'127.0.0.1')"
+   ```
+
+   Its log must stay empty during conversion. Stop it with Ctrl+C afterwards. Also inspect the converter's private `lo-profile/user/registrymodifications.xcu`: it must contain macro level `3`, disabled macros and active content, blocked untrusted links, manual HTTP/HTTPS loopback proxies and an empty no-proxy list.
+8. Use the main-frame console to request slide revisions while a conversion is running and confirm that a newer revision cancels the previous request. A deliberately suspended converter must be killed as a process tree after 60 seconds, with a timeout note and its partial input/output directory removed. Repeat subject close while conversion is active.
+
+Retain the HAR, performance trace, memory readings, Windows build, Electron version and LibreOffice version with the acceptance report. Unit tests stub conversion and cannot establish LibreOffice network behavior, native PDF rendering or process-tree teardown on Windows.
+
+### Scratch LibreOffice setup
+
+visual-omp never installs LibreOffice. The following setup is an optional manual acceptance prerequisite for the integration owner.
+
+On macOS, download the correct-architecture DMG from [LibreOffice's official download page](https://www.libreoffice.org/download/download-libreoffice/). Mount it read-only in a scratch directory with `hdiutil attach -readonly -nobrowse -mountpoint "$Scratch/mount" "$Dmg"`, copy `LibreOffice.app` into that scratch directory with `ditto`, and detach the mount with `hdiutil detach "$Scratch/mount"`. Prepend `"$Scratch/LibreOffice.app/Contents/MacOS"` to PATH before launching the fixture app. Do not copy it to `/Applications` or change the owner's installed applications. After the app quits and no scratch `soffice` process remains, remove the scratch copy.
+
+On Windows, download the official MSI into a scratch directory and use an administrative extraction, for example `msiexec.exe /a "$Msi" /qn TARGETDIR="$Scratch\LibreOffice"`. Locate the extracted executable with `Get-ChildItem "$Scratch\LibreOffice" -Recurse -Filter soffice.exe`; prepend its parent directory to `$env:PATH` before launching the scratch fixture app. No system-wide installation or PATH preference change is required. Stop the scratch app and any converter it started before removing the extracted files.
+
+The runtime uses a private profile rather than the person's LibreOffice profile. The security and proxy key names are confirmed in LibreOffice's upstream [Common.xcs](https://github.com/LibreOffice/core/blob/master/officecfg/registry/schema/org/openoffice/Office/Common.xcs) and [Inet.xcs](https://github.com/LibreOffice/core/blob/master/officecfg/registry/schema/org/openoffice/Inet.xcs) schemas. Impress has no equivalent of the proposed "Update links when opening: never" preference ([upstream issue 95380](https://bugs.documentfoundation.org/show_bug.cgi?id=95380)), so the implementation uses `BlockUntrustedRefererLinks`, removed external relationships and closed-loopback proxies. Proxy settings are a second barrier, with no claim of an operating-system network sandbox; the loopback acceptance check remains required.

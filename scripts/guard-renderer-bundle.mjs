@@ -11,6 +11,7 @@ const tspModule = id => /(?:^|\/)src\/renderer\/src\/features\/tsp\//.test(id.re
 const changelogModule = id => /(?:^|\/)CHANGELOG\.md(?:\?|$)/.test(id.replaceAll("\\", "/"));
 /** Transcript implementation, helper controls and their text load on demand; focus state may remain eager. */
 const conversationModule = id => /(?:^|\/)src\/renderer\/src\/(?:chat\/transcript\/Transcript\.tsx|features\/panes\/(?:HelperFocusView\.tsx|helperConversation\.ts)|state\/sessionFiles\.ts|i18n\/[^/]+\/helperFocus\.json)(?:\?|$)/.test(id.replaceAll("\\", "/"));
+const officeModule = id => /(?:^|\/)node_modules\/(?:docx-preview|jszip|xlsx|fflate|pako|@xmldom\/xmldom)\//.test(id.replaceAll("\\", "/"));
 
 /** Validate emitted Rollup membership, including synchronous dependencies of the entry. */
 export function inspectRendererBundle(metadata, baseline) {
@@ -35,6 +36,8 @@ export function inspectRendererBundle(metadata, baseline) {
 		if (changelog.length) throw new Error(`Initial renderer chunk ${chunk.fileName} contains the bundled changelog, which must load with the release notes viewer:\n${changelog.join("\n")}`);
 		const conversations = chunk.modules.filter(conversationModule);
 		if (conversations.length) throw new Error(`Initial renderer chunk ${chunk.fileName} contains conversation view modules, which must load lazily:\n${conversations.join("\n")}`);
+		const office = chunk.modules.filter(officeModule);
+		if (office.length) throw new Error(`Initial renderer chunk ${chunk.fileName} contains Office preview modules:\n${office.join("\n")}`);
 		for (const name of chunk.imports) {
 			const dependency = chunks.get(name);
 			if (!dependency) throw new Error(`Missing renderer chunk metadata for static import ${name}.`);
@@ -47,7 +50,20 @@ export function inspectRendererBundle(metadata, baseline) {
 	if (acceptance !== undefined && (!integer(acceptance.entryBytes) || typeof acceptance.reason !== "string" || !acceptance.reason.trim())) throw new Error("Accepted renderer growth requires entryBytes and a nonempty approval reason.");
 	const accepted = growthBytes > baseline.maxGrowthBytes && acceptance !== undefined && entry.bytes <= acceptance.entryBytes;
 	if (growthBytes > baseline.maxGrowthBytes && !accepted) throw new Error(`Renderer entry grew ${growthBytes} bytes from ${baseline.tag} (${baseline.entryBytes} bytes) to ${entry.bytes} bytes. The limit is ${baseline.maxGrowthBytes} bytes. Explicit approval must be recorded as acceptedGrowth.entryBytes and acceptedGrowth.reason in the baseline file.`);
-	return { schemaVersion: 1, entry: entry.fileName, entryBytes: entry.bytes, classic: { tag: baseline.tag, commit: baseline.commit, entryBytes: baseline.entryBytes }, growthBytes, maxGrowthBytes: baseline.maxGrowthBytes, acceptedGrowth: accepted ? acceptance : null };
+	const lazy = [];
+	if (baseline.lazyBudgets !== undefined && !Array.isArray(baseline.lazyBudgets)) throw new Error("Lazy renderer budgets must be an array.");
+	for (const budget of baseline.lazyBudgets ?? []) {
+		if (!budget || typeof budget.name !== "string" || typeof budget.module !== "string" || !integer(budget.bytes)) throw new Error("Invalid lazy renderer budget.");
+		const matching = metadata.chunks.filter(chunk => chunk.modules.includes(budget.module));
+		if (matching.length !== 1) throw new Error(`Expected one lazy chunk for ${budget.name}, received ${matching.length}.`);
+		const chunk = matching[0];
+		if (initial.has(chunk.fileName)) throw new Error(`Budgeted lazy chunk ${budget.name} is loaded initially.`);
+		const approved = budget.acceptedGrowth;
+		if (approved !== undefined && (!integer(approved.bytes) || typeof approved.reason !== "string" || !approved.reason.trim())) throw new Error("Accepted lazy growth requires bytes and a nonempty approval reason.");
+		if (chunk.bytes > budget.bytes && !(approved && chunk.bytes <= approved.bytes)) throw new Error(`Lazy renderer chunk ${budget.name} grew from ${budget.bytes} to ${chunk.bytes} bytes. Explicit approval must be recorded in lazyBudgets.acceptedGrowth.`);
+		lazy.push({ name: budget.name, fileName: chunk.fileName, bytes: chunk.bytes, baselineBytes: budget.bytes });
+	}
+	return { schemaVersion: 1, entry: entry.fileName, entryBytes: entry.bytes, classic: { tag: baseline.tag, commit: baseline.commit, entryBytes: baseline.entryBytes }, growthBytes, maxGrowthBytes: baseline.maxGrowthBytes, acceptedGrowth: accepted ? acceptance : null, lazy };
 }
 
 /** Check metadata against the emitted files so stale sizes cannot approve an oversized build. */

@@ -36,7 +36,7 @@ function Frame(props: LiveFrameProps) {
 		if (!adapter) return;
 		const update = () => setShown(previous => {
 			const next = latest.current;
-			return next.subject.revision > previous.subject.revision || next.subject.state !== previous.subject.state || next.related !== previous.related ? next : previous;
+			return next.subject.revision > previous.subject.revision || next.subject.state !== previous.subject.state || next.related !== previous.related || next.turnImages !== previous.turnImages ? next : previous;
 		});
 		update();
 		const timer = setInterval(update, 1000 / adapter.maxFps);
@@ -47,14 +47,14 @@ function Frame(props: LiveFrameProps) {
 	return adapter ? <adapter.Frame {...shown} /> : <p role="status" className="p-3 text-sm text-fg-muted">{t("live.loading")}</p>;
 }
 
-function ExpandedFrame({ subject, projectPath, related, open, onOpenChange }: LiveFrameProps & { open: boolean; onOpenChange(open: boolean): void }) {
+function ExpandedFrame({ subject, projectPath, related, turnImages, open, onOpenChange }: LiveFrameProps & { open: boolean; onOpenChange(open: boolean): void }) {
 	const name = subjectName(subject);
-	return <ExpandPreview name={name} path={subject.path} image={subject.format !== "pdf"} open={open} onOpenChange={onOpenChange} hideTrigger
+	return <ExpandPreview name={name} path={subject.path} image={["svg", "image", "result-images", "sequence"].includes(subject.format)} open={open} onOpenChange={onOpenChange} hideTrigger
 		render={zoom => subject.format === "pdf" && subject.path
 			? <PdfFrame path={subject.path} revision={subject.revision} name={name} />
 			: subject.format === "image" && subject.path
 				? <PreviewImage sourceKey={`${subject.id}:${subject.revision}`} load={() => loadFileImage(subject.path!)} pdf={false} enabled alt={name} explain zoom={zoom} />
-				: <Frame subject={subject} projectPath={projectPath} related={related} />} />;
+				: <Frame subject={subject} projectPath={projectPath} related={related} turnImages={turnImages} />} />;
 }
 
 export function Stage({ session, onShowOutput }: { session: SessionController; onShowOutput(path: string): void }) {
@@ -69,9 +69,10 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 	const redirecting = useRef(false);
 	if (!enabled || !subject) return null;
 	const name = subjectName(subject);
+	const turnImages = subjects.filter(item => item.path && (item.format === "image" || item.format === "svg")).map(item => item.path!);
 	const running = subject.state === "writing" || subject.state === "running";
 	const stopping = redirect === "stopping";
-	const canExpand = ["svg", "image", "pdf", "result-images", "sequence"].includes(subject.format) && subject.kind !== "render";
+	const canExpand = ["svg", "image", "pdf", "result-images", "sequence", "docx", "xlsx", "pptx"].includes(subject.format) && subject.kind !== "render";
 	const openFile = () => { if (subject.path) openInFiles(session.projectPath, subject.path, { tabId: session.tabId }); };
 	const redirectAction = () => stopAndRedirect(session, name, value => t("live.about", { name: value }));
 	const progress = subject.progress;
@@ -95,7 +96,7 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 		</div>
 		<div className="flex h-64 min-h-40 flex-col overflow-auto rounded-md bg-inset" data-live-subject={subject.id}>
 			{subject.kind === "render" ? <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-fg-muted">{subject.intent ?? (running ? t("live.rendering") : status)}</div>
-				: <Frame key={`${subject.id}:${subject.format}`} subject={subject} projectPath={session.projectPath} related={chat.related} />}
+				: <Frame key={`${subject.id}:${subject.format}`} subject={subject} projectPath={session.projectPath} related={chat.related} turnImages={turnImages} />}
 		</div>
 		{rendering && <Progress className="mt-2" aria-label={status} value={progress && progress.total !== null ? progress.percent ?? undefined : undefined} />}
 		<p className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs text-fg-muted">
@@ -112,7 +113,7 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 				{running && <Button size="sm" variant="ghost" disabled={stopping} onClick={redirectAction}>{t("live.redirect")}</Button>}
 				{subject.path && <IconButton size="sm" label={t("live.openFiles")} icon={<FolderOpen />} onClick={openFile} />}
 			</span>
-			{canExpand && <><span className="hidden @min-[28rem]/live:contents"><IconButton size="sm" label={t("files.expand")} icon={<ArrowsOut />} onClick={() => setExpanded(true)} /></span><ExpandedFrame key={subject.id} subject={subject} projectPath={session.projectPath} related={chat.related} open={expanded} onOpenChange={setExpanded} /></>}
+			{canExpand && <><span className="hidden @min-[28rem]/live:contents"><IconButton size="sm" label={t("files.expand")} icon={<ArrowsOut />} onClick={() => setExpanded(true)} /></span><ExpandedFrame key={subject.id} subject={subject} projectPath={session.projectPath} related={chat.related} turnImages={turnImages} open={expanded} onOpenChange={setExpanded} /></>}
 			<span className="contents @min-[28rem]/live:hidden">
 				<Menu><MenuTrigger asChild><IconButton size="sm" label={t("live.actions")} icon={<DotsThree />} /></MenuTrigger>
 					<MenuContent align="end" onCloseAutoFocus={event => { if (!redirecting.current) return; redirecting.current = false; event.preventDefault(); }}>

@@ -35,7 +35,7 @@ Each slice is vertical: code, tests and its fixture scenario land together.
 | A | Security and isolation decisions: CORS correction (A1), process isolation investigation (A2, blocking for F), exfiltration test page (A3) | none |
 | B | Minimal shared contract: per-grant policy function and per-type response table, no new served types | A1 |
 | C | Video, complete | B |
-| D | Office (DOCX, XLSX, PPTX), complete | B |
+| D | Office (DOCX, XLSX, PPTX), implemented and awaiting acceptance: bomb-memory measurement and installed-LibreOffice conversion | B |
 | E | `visual-proofs` skill | none (independent of B) |
 | F | Scripts in saved HTML and the network permission, on the architecture A2 chose | A, B |
 | G | Attach this frame, after F settles where script pages render | C, D, F |
@@ -234,6 +234,22 @@ Acceptance:
 7. Stale revisions never replace newer frames.
 8. At 320 px and the largest text size, sheet tabs, the grid and the DOCX page remain usable.
 9. `npm run build` passes the guard with the recorded budgets.
+
+Implementation notes, 2026-11-05: Office bytes use an owner-checked grant snapshot and a shared ZIP validator. The validator checks central and local records, unsafe paths, encrypted entries and ZIP64 before returning bytes. Streaming `fflate` inflation checks actual byte counts and CRCs. DOCX rewrites run in a revision-owned worker before `docx-preview`; namespace-aware XML parsing uses `@xmldom/xmldom` 0.9.12 (MIT), rejects DTDs, removes external relationships and active parts, replaces external drawings with placeholder text and maps safe hyperlinks to inert document anchors. A detached-DOM sanitizer removes active elements, unsafe attributes, non-raster image sources and external CSS resources before attachment in a shadow root. The non-abortable document render is serialized, with stale work discarded.
+
+XLSX retains its workbook in a worker and exposes bounded text windows through an in-place virtual grid. A newer revision or subject close terminates its worker. PPTX rewriting also uses a bounded Node worker, and only its rewritten snapshot reaches the single-converter, newest-wins queue. LibreOffice discovery and conversion are behind an injected interface, so the suite does not need LibreOffice installed.
+
+The plan's inferred Impress "link updates to never" preference does not exist ([upstream issue 95380](https://bugs.documentfoundation.org/show_bug.cgi?id=95380)). The private profile instead sets confirmed `Common/Security/Scripting` keys `MacroSecurityLevel=3`, `DisableMacrosExecution=true`, `DisableActiveContent=true` and `BlockUntrustedRefererLinks=true`, plus manual HTTP/HTTPS proxies to a closed loopback port and an empty proxy bypass list. The relationship rewrite is the primary network-load protection. Actual LibreOffice network behavior and Windows process-tree termination require the scratch-install acceptance procedure in the fixture README.
+
+The package pins `docx-preview` 0.4.1, `fflate` 0.8.3, SheetJS's exact 0.20.3 CDN tarball and the XML parser in devDependencies for bundling. The existing packaged `NOTICE` includes their license texts and JSZip's transitive notices. The renderer guard now forbids Office packages in the initial graph and supports measured adapter and worker budgets.
+
+Verification checkpoint after astra's security corrections, 2026-11-05: typecheck and 333 affected Vitest tests across 14 files pass. The guard, Office fixture, provider-fixture and proof-fixture Node suites passed 45 tests, including actual Python generation of all three Office scenarios. The production build succeeds after rebasing onto `f0572d3`, preserving the HTML viewer in Files, lazy transcript and conversation guard. The renderer entry is 1,361,768 bytes, below the unchanged 1,611,722-byte ceiling. Final lazy budgets are DOCX 177,498 bytes, XLSX 6,842 bytes, PPTX 2,175 bytes, DOCX worker 109,108 bytes and XLSX worker 377,176 bytes. The integration owner authorized replacing the unpublished Office budgets with these measured sizes after the required security corrections from review, using the original zero-headroom rule. No accepted-growth layer or earlier intermediate measurements are retained. Inflation remains separate from XML rewriting, so XLSX does not bundle the XML parser.
+
+A headless Chrome harness exercised the actual DOCX and SheetJS adapters at 320 px. Three DOCX revisions rendered in order, a truncated save retained revision three, the external image became placeholder text without an external request, and a web-link click reached the app handler. The document remained legible in the dark app theme after its paper container was fixed to the light document palette. XLSX showed the cached `6` and literal markup, switched sheets and reached row 50,000. At 130% text scale the traced scroll kept at most 20 row elements and produced no Long Tasks entries of 50 ms or more. The trace is available at `/tmp/vomp-office-scroll-trace.json` for integration review. This is browser evidence, with mocked IPC, rather than Electron or LibreOffice acceptance. The temporary harness, its cache, generated documents and dedicated browser profile were removed, and its headless browser and Vite server stopped.
+
+Astra's required security review corrections validate every retained XML part, including content-type-declared custom locations, and accept UTF-8 only. Internal relationship targets are canonicalized within the package root; parent-relative references remain supported, while escapes, ambiguous encodings, backslashes and missing resources are refused. Converter cancellation now awaits bounded, confirmed process-tree termination. A failed teardown quarantines the shared profile, settles queued requests and prevents another converter from starting until the app is restarted after the remaining process is stopped. Slice D remains awaiting the bomb-memory measurement and an installed-LibreOffice acceptance run.
+
+
 
 ## Slice E: `visual-proofs` skill
 

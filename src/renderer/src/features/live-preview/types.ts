@@ -19,7 +19,7 @@ export type LiveSubjectKind =
 	/** A recognized renderer, before its output is stable on disk. */
 	| "render";
 
-export type LiveFormat = "svg" | "mermaid" | "html" | "markdown" | "csv" | "image" | "pdf" | "video" | "sequence" | "generate-image" | "result-images";
+export type LiveFormat = "svg" | "mermaid" | "html" | "markdown" | "csv" | "image" | "pdf" | "video" | "sequence" | "docx" | "xlsx" | "pptx" | "generate-image" | "result-images";
 
 export type LiveSubjectState =
 	/** omp is still writing the call's arguments. */
@@ -83,6 +83,8 @@ export interface LiveFrameProps {
 	projectPath: string | null;
 	/** Absolute paths omp's calls in the same turn wrote or named, for grants in broad folders. */
 	related: readonly string[];
+	/** Image file subjects already discovered in this turn, separate from the paths authorized for asset grants. */
+	turnImages?: readonly string[];
 }
 
 export interface LiveAdapter {

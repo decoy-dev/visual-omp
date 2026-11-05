@@ -9,7 +9,7 @@ import { runGit } from "../git/run";
 import { broadcast, handleWithEvent } from "../ipc";
 import { broadFolders, isBroadFolder } from "./panes";
 
-const VISUAL_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg|pdf|html?|mp4|m4v|webm|mov)$/i;
+const VISUAL_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg|pdf|html?|mp4|m4v|webm|mov|docx|xlsx|pptx)$/i;
 const DEBOUNCE_MS = 250;
 const STABLE_MS = 150;
 const IDLE_MS = 4 * 60 * 60 * 1000;

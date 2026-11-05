@@ -32,6 +32,16 @@
 		"progressUnit": { "frame": "frame", "second": "second", "animation": "animation", "page": "page" },
 		"sequenceCount_one": "{{count}} frame",
 		"sequenceCount_other": "{{count}} frames",
+		"office": {
+			"unsafe": "This Office file cannot be previewed safely. Open it in Files to inspect it.",
+			"timeout": "This preview took too long.",
+			"retained": "The previous preview is still available.",
+			"converterUnavailable": "The slide converter could not be stopped. Close the preview's LibreOffice process before restarting visual-omp.",
+			"sheets": "Workbook sheets",
+			"limits": "Preview limited to 100,000 rows and 200 columns.",
+			"noLibreOffice": "Slide previews need LibreOffice, which is not installed. Slide images omp saves appear here.",
+			"slideImages": "Slide images from this turn"
+		},
 		"restrictedAssets": "Some assets may be unavailable. This preview can load only files named in this turn.",
 		"requestPrompt": "Prompt",
 		"requestModel": "Model",
@@ -56,6 +66,9 @@
 			"pdf": "PDF",
 			"video": "Video",
 			"sequence": "Frame sequence",
+			"docx": "Word document",
+			"xlsx": "Spreadsheet",
+			"pptx": "Slide deck",
 			"generate-image": "Image request",
 			"result-images": "Images"
 		}

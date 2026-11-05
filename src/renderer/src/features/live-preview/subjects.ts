@@ -53,6 +53,9 @@ function fileFormat(path: string): LiveFormat | null {
 	if (/\.pdf$/i.test(path)) return "pdf";
 	if (/\.html?$/i.test(path)) return "html";
 	if (/\.(?:mp4|m4v|webm|mov)$/i.test(path)) return "video";
+	if (/\.docx$/i.test(path)) return "docx";
+	if (/\.xlsx$/i.test(path)) return "xlsx";
+	if (/\.pptx$/i.test(path)) return "pptx";
 	return null;
 }
 

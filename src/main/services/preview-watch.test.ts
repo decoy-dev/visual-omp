@@ -625,3 +625,14 @@ describe("preview watch IPC lifecycle", { timeout: TEST_LIMIT_MS }, () => {
 		expect(ipc.broadcast).not.toHaveBeenCalled();
 	});
 });
+
+it("watches Office saves without admitting macro-enabled extensions", { timeout: TEST_LIMIT_MS }, async () => {
+	const controlled = controlledWatch();
+	await start(dir, [], { platform: "linux", watch: controlled.watch });
+	for (const extension of ["docx", "xlsx", "pptx", "pptm"]) {
+		await writeFile(join(dir, `office.${extension}`), "snapshot");
+		controlled.notify(dir, `office.${extension}`);
+	}
+	await eventually(3);
+	expect(changes.map(change => basename(change.path)).sort()).toEqual(["office.docx", "office.pptx", "office.xlsx"]);
+});
