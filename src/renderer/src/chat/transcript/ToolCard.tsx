@@ -146,10 +146,10 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 					aria-expanded={open}
 					onClick={() => setOpen(value => !value)}
 					title={call.intent}
-					className="-mx-2 flex h-8 w-[calc(100%+1rem)] items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring group-has-[[data-live-watch]]/watch:pr-13"
+					className="-mx-2 flex h-8 w-[calc(100%+1rem)] items-center gap-2.5 rounded-md px-2 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring group-has-[[data-live-watch]]/watch:pr-8.5"
 				>
 					<ToolIcon className={cn("size-4 shrink-0 transition-colors duration-(--dur)", running ? "text-accent" : "text-fg-faint")} aria-hidden />
-					<span className={cn("min-w-0 truncate text-md transition-colors duration-(--dur)", running ? "text-fg" : "text-fg-muted group-hover/tool:text-fg")}>
+					<span className={cn("min-w-0 flex-1 truncate text-md transition-colors duration-(--dur)", running ? "text-fg" : "text-fg-muted group-hover/tool:text-fg")}>
 						{t(summary.key, summary.values)}
 					</span>
 					<TranscriptTime timestamp={props.timestamp} previous={props.previousTime} className="ml-auto" inControl />
@@ -181,8 +181,8 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 						aria-hidden
 					/>
 				</button>
-				{/* After the row's toggle in tab order; drawn over the row's right end, which keeps room for it. */}
-				<div className="absolute top-0 right-5 z-1">
+				{/* Watch follows the caret visually and the row toggle in tab order, with the same icon-center spacing. */}
+				<div className="absolute inset-y-0 -right-1.5 z-1 flex items-center">
 					<WatchAction name={props.name} args={props.args} callId={props.engageId} />
 				</div>
 			</div>

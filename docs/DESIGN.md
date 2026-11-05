@@ -695,6 +695,7 @@ Each tool call is a borderless 32px row. Consecutive rows stack with no gap.
 - **Row**: a tool icon (`--fg-faint`, or `--accent` while running), the friendly summary in `--text-md` (`--fg-muted`, or `--fg` on hover and while running), `+N −M` for edits, and a 16px status slot.
 - **Status slot**: the pulse dot while running, a bold check in `--fg-faint` when done, and a bold cross in `--err` ("Failed") on failure. Each status has its own shape.
 - **Caret**: appears on hover and opens the row.
+- **Watch**: visual tool calls offer a separate preview button after the caret and after the row toggle in keyboard order. The status, caret and eye share one vertical center with evenly spaced icon centers. The eye uses the trailing icons' 14px size and `--fg-faint`, with ghost hover feedback and an inset focus outline. Its 28px control has 6px corners inside the 32px row's 8px corners.
 - **Open row**: shows the model's intent line and omp's own rendering of the call. Verbose adds the raw JSON arguments and starts rows open.
 - **Filtered shell output**: when omp records a bash minimizer rewrite, the expanded body shows a muted sentence below the output naming the filter and the byte sizes before and after filtering. The sentence is readable text, including for screen readers. Older results and malformed rewrite metadata add nothing. Raw artifact references stay text because the app has no artifact viewer.
 - **Running output**: a running command's last output shows in a small `--bg-inset` well under its row.
