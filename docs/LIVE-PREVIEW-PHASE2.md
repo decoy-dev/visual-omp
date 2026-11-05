@@ -124,7 +124,7 @@ export type PreviewPrepared =
 **Progress** (new `src/renderer/src/features/live-preview/progress.ts`), pure functions from a call's command and output tail to `LiveProgress | null`, returning `null` rather than a guess:
 
 - ffmpeg: last `frame=\s*(\d+)` and `time=`, total from `-frames:v`, `-t`, `-to`, or `Duration:` if still in the tail; also `-progress pipe:1` keys.
-- Remotion: rendered and encoded `N/M` counts [INFERENCE: strings vary by version; captured from real logs first].
+- Remotion: rendered and encoded `N/M` counts [INFERENCE: strings vary by version; captured from Remotion's own logs first].
 - manim: tqdm `Animation (\d+): .*?(\d+)%`; "File ready at" gives the output path.
 - LaTeX: `Output written on (.+?) \((\d+) pages?`.
 
@@ -252,7 +252,7 @@ Built on A2's chosen architecture. Streaming pages never run scripts.
 
 **Permissions Policy.** Every HTML response carries a `Permissions-Policy` header disabling `camera`, `microphone`, `geolocation`, `display-capture`, `clipboard-read`, `clipboard-write`, `fullscreen`, `payment`, `usb`, `serial`, `hid`, `bluetooth`, `midi`, `screen-wake-lock`, `web-share`, `publickey-credentials-get`, `identity-credentials-get`, `idle-detection`, `local-fonts`, `window-management`, `autoplay`, `picture-in-picture`, `encrypted-media`, `gamepad`, `xr-spatial-tracking`, `accelerometer`, `gyroscope`, `magnetometer`, `ambient-light-sensor`, `attribution-reporting`, `browsing-topics` (each `=()`). The iframe's `allow` attribute lists the same features as `'none'`. Main-process denials (finding 10, and the fallback's handlers) stay as an independent layer.
 
-**Permission store and revocation** (main): network permission is held per file realpath for the app session (Owner question 1 decides whether it is per chat). `preview:setNetwork(token, allowed)` updates it and returns the new policy; main broadcasts `preview:policyChanged { path }`.
+**Permission store and revocation** (main): network permission is held per file realpath for the app session, across chats (Owner decision 1). `preview:setNetwork(token, allowed)` updates it and returns the new policy; main broadcasts `preview:policyChanged { path }`.
 
 Revocation takes effect at once, without waiting for the renderer:
 
@@ -283,7 +283,7 @@ Acceptance:
 1. Saved page runs its inline and module scripts; with network off its `fetch`, remote image, font and stylesheet fail; the streaming version runs nothing.
 2. Allow network: the remote image loads and the computed `fetch` succeeds. Block: a `fetch` loop running in the page fails from the next request onward (no reload needed for the block to apply), and both iframe documents are replaced within one second.
 3. A second grant for the same file inherits the choice; quitting the app clears it.
-4. A3's matrix passes on the chosen architecture, with residual channels documented.
+4. A3's matrix passes on the chosen architecture, including the DNS prefetch and WebRTC shipping gates.
 5. Every Permissions Policy feature listed reports disabled (`document.featurePolicy.allowsFeature` or `document.permissionsPolicy`) inside the frame.
 6. The busy-loop button leaves the composer responsive (A2's criterion, now as a regression test).
 7. Stale revisions are rejected: a revision older than the visible one never becomes visible.
@@ -317,10 +317,12 @@ Per slice, as listed. Overall: `npm run typecheck`, `npm test`, `npm run build` 
 8. **Proofs are advisory**; the model may skip the skill.
 9. **Capture accuracy** under zoom, device scale and video overlays.
 
-## Open questions for the owner
+## Owner decisions
 
-1. **Network permission lifetime:** per file for the whole app session across chats (recommended), or per file per chat.
-2. **Accepting the network permission's reach:** allowing network also allows remote executable scripts and HTTPS services on the local network. Keep that (recommended, with the confirmation text), or limit the permission to non-script resources.
+On 2026-11-04 the owner accepted the recommendation on both questions:
+
+1. **Network permission lifetime:** per file, for the whole app session, across chats.
+2. **The network permission's reach:** allowing network also allows remote executable scripts and HTTPS services on the local network, and the confirmation text says so.
 
 Decided, not asked: the proof wait is mandatory; artifact-folder discovery is Phase 3; Quick Look thumbnails, WebAssembly and token estimates are cut; SheetJS 0.20.3 from SheetJS's CDN; `docx-preview` for DOCX, LibreOffice for PPTX only.
 

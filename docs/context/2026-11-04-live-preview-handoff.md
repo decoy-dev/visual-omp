@@ -20,14 +20,25 @@ This session ran beside another session that shipped the 0.7.6 release commit (`
 
 ## Open items
 
-- **Owner:** the bundle guard still allows the old 2,044,096-byte ceiling while the entry is now about 1.59 MB, so a large eager import could pass unnoticed. astra recommends recording a new owner-approved ceiling.
-- **Owner:** the installed visual-omp stopped joining new chats this morning (its window never connected to the new chats' relays while omp started normally). A restart was recommended; the cause was not found.
+- **Decided, not done:** the bundle guard still allows the old 2,044,096-byte ceiling while the entry is now about 1.59 MB, so a large eager import could pass unnoticed. The owner accepted astra's recommendation to record a new, tighter owner-approved ceiling; do it next session.
+- The installed 0.7.5 app's stuck chat is diagnosed in [2026-11-04-handoff.md](2026-11-04-handoff.md): symptoms consistent with the bug addressed by `a7c7343`; memory pressure may have contributed; the fix was not tested on this chat. This session's earlier reading that the renderer was idle came from this machine's replaced `ps` and `top`, which report misleadingly low CPU; use `/usr/bin/top`.
 - **Phase 2 first step:** `preview-protocol.ts` sends `Access-Control-Allow-Origin: *` on every response, while the plan says fonts only. Scripts are off in Phase 1, but narrow it before anything enables scripts.
 - Not exercised in Electron: Mermaid, Markdown and CSV streaming, a LaTeX PDF, a stream over the collab frame limit, classic (non-TSP) chats, and recovery from a failed tracker load.
 
 ## Phase 2
 
-`docs/LIVE-PREVIEW-PHASE2.md` is the implementation plan for Phase 2 (video, Office formats, scripts with per-page network permission, Attach this frame, the opt-in proofs skill). astra approved it after two revisions, with its security and isolation gates mandatory before script-enabled previews ship. Its first slice is a blocking investigation of process isolation for script-running frames and the CORS correction. Its open questions for the owner are listed at its end.
+`docs/LIVE-PREVIEW-PHASE2.md` is the implementation plan for Phase 2 (video, Office formats, scripts with per-page network permission, Attach this frame, the opt-in proofs skill). astra approved it after two revisions, with its security and isolation gates mandatory before script-enabled previews ship. Its first slice is a blocking investigation of process isolation for script-running frames and the CORS correction. The owner accepted the recommendation on both of its questions (network permission per file for the app session across chats; the permission includes remote scripts and local-network HTTPS, said in the confirmation text); they are recorded at its end. No Phase 2 work has started.
+
+## Next session: the owner's list
+
+The owner listed these for 2026-11-05 and will choose which to start. Several need feasibility testing before any plan. Pointers are where today's code already touches each item.
+
+1. **Status bar customization:** add and remove status bar items, and offer more metrics to add. Today's items are defined in `src/renderer/src/shell/StatusBar.tsx`, with app metrics from `AppMetricsItem.tsx`, `useAppMetrics.ts` and `src/main/features/app-metrics.ts`.
+2. **Mobile and remote session handling** (feasibility first). Hosted chats use a collab relay bound to loopback only (`src/main/omp/relay.ts`); omp's own collab sharing is wrapped by `src/main/features/share.ts`.
+3. **Helper conversations like the main transcript:** reflect how omp shows helpers and let the user talk to them as naturally as in the main chat. Today a helper's conversation opens in the Tasks pane's `TranscriptDialog` (`src/renderer/src/features/panes/TasksPane.tsx`), also reachable from the pinned helper strip.
+4. **Animation smoothing and general speed polish.** Motion goes through `src/renderer/src/ui/motion.tsx` (AGENTS.md rule).
+5. **Continue the live preview phases:** start Phase 2 with slice A (the CORS correction, then the process isolation investigation), plus the bundle ceiling above.
+6. **Swap the install method from the wizard to Homebrew or Scoop.** To confirm with the owner: whether this means omp's installation in the setup wizard or visual-omp's own installation (installer versus `Casks/visual-omp.rb` and `bucket/visual-omp.json`, kept current by `scripts/update-homebrew-cask.mjs` and `scripts/update-scoop-manifest.mjs`).
 
 ## Cleanup
 
