@@ -32,3 +32,13 @@ describe("ask closed by a message", () => {
 		expect(cancelled).toContain("tv-card--error");
 	});
 });
+
+it("shows colors in saved questions, choices, custom answers and notes", () => {
+	const args = { questions: [{ id: "color", question: "Use #aabbcc?", options: [{ label: "#112233", description: "Alpha #11223344" }] }] };
+	const result = { content: [], details: { results: [{ id: "color", selectedOptions: ["#112233"], customInput: "#445566", note: "Compare `#abc` with issue #123" }] } };
+	const html = renderToStaticMarkup(createElement(ToolView, { name: "ask", args, result, defaultOpen: true }));
+	expect(html.match(/class="vomp-color-swatch"/g)).toHaveLength(6);
+	expect(html).toContain('title="#11223344"');
+	expect(html).toContain('title="#445566"');
+	expect(html).toContain("issue #123");
+});

@@ -1,3 +1,27 @@
+/* An empty, zero-height inline box leaves copied text and line metrics unchanged. */
+.vomp-color-swatch {
+	display: inline-block;
+	position: relative;
+	width: 0.75em;
+	height: 0;
+	margin-inline-start: 0.25em;
+	vertical-align: baseline;
+	user-select: none;
+}
+.vomp-color-swatch::before {
+	content: "";
+	position: absolute;
+	inset-inline-start: 0;
+	bottom: -0.05em;
+	width: 0.75em;
+	height: 0.75em;
+	border: 1px solid var(--control-border);
+	border-radius: 2px;
+	background:
+		linear-gradient(var(--swatch-color), var(--swatch-color)),
+		repeating-conic-gradient(var(--panel) 0% 25%, var(--control-border) 0% 50%) 0 / 0.4em 0.4em;
+}
+
 .vomp-chart {
 	--muted: var(--fg-muted);
 	--surface: var(--selected);

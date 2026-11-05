@@ -10,6 +10,7 @@ import { Button, cn, PresenceSwap, Spinner } from "../../ui";
 import { ASK_CHAT, ASK_OTHER, isComplete } from "./askSeries";
 import { askSeriesFor, type AskSeriesState } from "./askSeriesStore";
 import { ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoices";
+import { ColorText } from "../../transcript/ColorText";
 
 export function AskSeriesCard({ session, series }: { session: SessionController; series: AskSeriesState }): ReactNode {
 	const { t } = useTranslation("chat");
@@ -80,7 +81,7 @@ export function AskSeriesCard({ session, series }: { session: SessionController;
 					<Heading icon={<Question className="text-accent" />}>
 						{/* The right padding keeps a long title clear of the progress label. */}
 						<p id={titleId} className="selectable pr-28 text-base font-medium wrap-anywhere text-fg">
-							{question.question}
+							<ColorText text={question.question} />
 						</p>
 						{question.multi && <p className="mt-0.5 text-sm text-fg-muted">{t("question.chooseMany")}</p>}
 					</Heading>

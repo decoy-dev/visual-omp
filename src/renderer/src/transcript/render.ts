@@ -2,6 +2,7 @@ import { type Links, Marked, Renderer, type Token, type Tokens } from "@oh-my-pi
 import { escapeHtml } from "../collab/lib/format";
 import { i18n } from "../i18n";
 import { MATH_PENDING, mathExtension } from "./math";
+import { decorateColors } from "./colors";
 
 function unescapeHtml(raw: string): string {
 	const parseCodePoint = (value: number): string => {
@@ -68,14 +69,21 @@ const chartTables = new WeakSet<Tokens.Table>();
 const md = new Marked({
 	gfm: true,
 	renderer: {
+		text(token) {
+			if ("tokens" in token && token.tokens) return this.parser.parseInline(token.tokens);
+			return decorateColors(plain.text.call(this, token));
+		},
+		codespan(token) {
+			return `<code>${decorateColors(escapeHtml(token.text), true)}</code>`;
+		},
 		// Raw HTML tokens (block + inline both arrive here) are escaped, never emitted.
 		html({ text }) {
 			const cleaned = text.replace(/<\/?(?:advisory|span|text)\b(?:\s[^>]*)?\s*\/?>/gi, "");
 			if (cleaned === "") return "";
 			return escapeHtml(unescapeHtml(cleaned));
 		},
-		link({ href, title, tokens }) {
-			const inner = this.parser.parseInline(tokens);
+		link({ href, title, tokens, autolink, text }) {
+			const inner = autolink ? escapeHtml(text) : this.parser.parseInline(tokens);
 			const url = safeHref(href);
 			if (url === null) return inner;
 			const titleAttr = title ? ` title="${escapeHtml(title)}"` : "";

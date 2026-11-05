@@ -18,6 +18,7 @@ import { ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoic
 import { useTsp } from "../../state/tsp/useTsp";
 import { usePresentationClaim } from "../../state/tsp/presentation-claims";
 import { useApp } from "../../state/app";
+import { ColorText } from "../../transcript/ColorText";
 
 /** A collab card claims only the exact hook main associates with this visible request. */
 function QuestionPresentationClaim({ session, reqId }: { session: SessionController; reqId: number }) {
@@ -92,7 +93,7 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 				{noteLine}
 				<Heading icon={<Question className="text-accent" />}>
 					<p id={titleId} className="selectable mb-3 text-base font-medium text-fg">
-						{request.title}
+						<ColorText text={request.title} />
 					</p>
 					<Textarea
 						aria-labelledby={titleId}
@@ -198,9 +199,9 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 			{noteLine}
 			<Heading icon={<Question className="text-accent" />}>
 				<p id={titleId} className="selectable text-base font-medium text-fg">
-					{request.title}
+					<ColorText text={request.title} />
 				</p>
-				{(multi || request.helpText) && <p className="mt-0.5 text-sm text-fg-muted">{request.helpText ?? t("question.chooseMany")}</p>}
+				{(multi || request.helpText) && <p className="mt-0.5 text-sm text-fg-muted"><ColorText text={request.helpText ?? t("question.chooseMany")} /></p>}
 			</Heading>
 			<ChoiceGrid
 				choices={choices}

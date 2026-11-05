@@ -102,3 +102,24 @@ it("explains message closure only for an identified live ask question", () => {
 	expect(html).not.toContain("Sending a message now denies this request.");
 	expect(render(["One", "Two"])).not.toContain("Sending a message closes this question");
 });
+
+it("shows swatches in question text, option labels and descriptions without changing the answer", () => {
+	const request: CollabUiRequest = {
+		reqId: 8, kind: "select", title: "Use #aabbcc or issue #123?",
+		options: [{ label: "#112233", description: "Transparent #11223344 or `#abc`" }, "#445566"],
+	};
+	const html = renderToStaticMarkup(createElement(QuestionCard, { session, request }));
+	expect(html.match(/class="vomp-color-swatch"/g)).toHaveLength(5);
+	expect(html).toContain('title="#AABBCC"');
+	expect(html).toContain('title="#11223344"');
+	expect(html).toContain("issue #123?");
+	controls.buttons.find(control => control.label === "Send answer")!.click();
+	expect(controls.answer).toHaveBeenCalledExactlyOnceWith(8, "#112233");
+});
+
+it("shows swatches in an editor question without changing its input", () => {
+	const request: CollabUiRequest = { reqId: 9, kind: "editor", title: "Describe #aabbcc", prefill: "#112233" };
+	const html = renderToStaticMarkup(createElement(QuestionCard, { session, request }));
+	expect(html.match(/class="vomp-color-swatch"/g)).toHaveLength(1);
+	expect(html).toContain(">#112233</textarea>");
+});

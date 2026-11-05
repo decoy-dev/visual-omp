@@ -3,6 +3,7 @@ import { Check } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
 import { type KeyboardEvent, type ReactNode, useId } from "react";
 import { cn, spring } from "../../ui";
+import { ColorText } from "../../transcript/ColorText";
 
 export const cardClass = "rounded-lg border border-border bg-panel p-4 shadow-(--shadow-card)";
 
@@ -134,8 +135,8 @@ export function ChoiceGrid({ choices, multi, labelledBy, describedBy, isOn, acti
 							</AnimatePresence>
 						</span>
 						<span className="relative min-w-0 wrap-anywhere">
-							<span className="block text-md font-medium text-fg">{label}</span>
-							{description && <span className="mt-0.5 block text-sm text-fg-muted">{description}</span>}
+							<span className="block text-md font-medium text-fg"><ColorText text={label} /></span>
+							{description && <span className="mt-0.5 block text-sm text-fg-muted"><ColorText text={description} /></span>}
 						</span>
 					</button>
 				);

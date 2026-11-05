@@ -39,6 +39,7 @@ import { liveGuest, type SessionController, type SessionView } from "../../state
 import { useVisualSnapshot } from "../../state/visualSnapshot";
 import { useApp } from "../../state/app";
 import { copyCode, StreamingMarkdown } from "../../transcript/Markdown";
+import { ColorText } from "../../transcript/ColorText";
 import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toast, useScrollFollow } from "../../ui";
 import { useDisplayedEntries } from "../branch";
 import { isReplyWrite, replyWriteUndecided, toolResultReplies } from "../friendly";
@@ -110,7 +111,7 @@ function UserContent({ content }: { content: string | readonly (TextContent | Im
 					))}
 				</div>
 			)}
-			<p className="selectable text-base whitespace-pre-wrap text-fg">{text}</p>
+			<p className="selectable text-base whitespace-pre-wrap text-fg"><ColorText text={text} /></p>
 		</>
 	);
 }
@@ -176,7 +177,7 @@ function ThinkingBlock({
 				<TranscriptTime timestamp={timestamp} className="ml-1" inControl />
 			</button>
 			<Expand open={open && !redacted} className="selectable pt-1 pb-2 pl-5 text-sm whitespace-pre-wrap text-fg-muted">
-				{revealedPrefix(text, shown)}
+				<ColorText text={revealedPrefix(text, shown)} />
 			</Expand>
 		</div>
 	);

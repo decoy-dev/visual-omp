@@ -292,3 +292,18 @@ it("renders a helper's file-backed conversation with shared tool cards, thoughts
 	expect(html).not.toContain("Rewind");
 	expect(html).not.toContain("Fork from");
 });
+
+it("shows the same color decorations in user messages, replies and expanded thinking", () => {
+	const entries: SessionEntry[] = [
+		{ type: "message", id: "user", parentId: null, timestamp: "2026-03-04T09:12:00Z", message: { role: "user", content: "Compare #112233 with issue #123.", timestamp: 1000 } },
+		{ type: "message", id: "reply", parentId: "user", timestamp: "2026-03-04T09:13:00Z", message: { ...message, content: [{ type: "thinking", thinking: "Try `#abc`." }, { type: "text", text: "Use #44556680." }] } },
+	];
+	const view = { mode: "saved", guest: null, host: null, history: { header: { id: "colors" }, entries }, working: false } as unknown as SessionView;
+	const session = { projectPath: "/repo", tabId: "colors", subscribe: () => () => {}, getSnapshot: () => view, guestClient: () => null, tspNotices: { subscribe: () => () => {}, getSnapshot: () => [] } } as unknown as SessionController;
+	const html = renderToStaticMarkup(createElement(Transcript, { session, view, mode: "thinking" }));
+	expect(html.match(/class="vomp-color-swatch"/g)).toHaveLength(3);
+	expect(html).toContain('title="#112233"');
+	expect(html).toContain('title="#AABBCC"');
+	expect(html).toContain('title="#44556680"');
+	expect(html).toContain("issue #123.");
+});

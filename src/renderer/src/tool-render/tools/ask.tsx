@@ -3,6 +3,7 @@ import type { ReactNode } from "react";
 import { Badge, InvalidArg, Note, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isAskClosedByMessage, isRecord, normalizeWs, num, str, truncate } from "../util";
+import { ColorText } from "../../transcript/ColorText";
 
 interface AskOption {
 	label: string;
@@ -159,7 +160,7 @@ function Summary({ args, result }: ToolRenderProps): ReactNode {
 	if (!first) return <InvalidArg what="questions" />;
 	return (
 		<>
-			<span>{truncate(normalizeWs(first.question), 70)}</span>
+			<span><ColorText text={truncate(normalizeWs(first.question), 70)} /></span>
 			{questions.length > 1 && <Badge>{questions.length} questions</Badge>}
 			{isAskClosedByMessage(result) && <Badge>Closed after a message</Badge>}
 		</>
@@ -172,7 +173,7 @@ function QuestionBlock({ q, answer }: { q: AskQuestion; answer: AskAnswer | unde
 		<div className="tv-list">
 			<Row>
 				{q.id !== "?" && <span className="tv-faint">[{q.id}] </span>}
-				{q.question ? <span>{q.question}</span> : <InvalidArg what="question" />}
+				{q.question ? <span><ColorText text={q.question} /></span> : <InvalidArg what="question" />}
 				{q.multi && <Badge>multi</Badge>}
 			</Row>
 			{q.options.map((opt, i) => {
@@ -180,20 +181,20 @@ function QuestionBlock({ q, answer }: { q: AskQuestion; answer: AskAnswer | unde
 				const marker = q.multi ? (isSelected ? "■" : "□") : isSelected ? "●" : "○";
 				return (
 					<Row key={i} k={<span className={isSelected ? "tv-ok-text" : undefined}>{marker}</span>}>
-						<span className={answer && !isSelected ? "tv-muted" : undefined}>{opt.label}</span>
+						<span className={answer && !isSelected ? "tv-muted" : undefined}><ColorText text={opt.label} /></span>
 						{i === q.recommended && <Badge tone="accent">recommended</Badge>}
-						{opt.description && <span className="tv-muted">: {opt.description}</span>}
+						{opt.description && <span className="tv-muted">: <ColorText text={opt.description} /></span>}
 					</Row>
 				);
 			})}
 			{answer?.customInput !== undefined && (
 				<Row k="✎">
-					<span className="tv-ok-text">{answer.customInput}</span>
+					<span className="tv-ok-text"><ColorText text={answer.customInput} /></span>
 				</Row>
 			)}
 			{answer?.note !== undefined && (
 				<Row k="note:">
-					<span className="tv-muted">{answer.note}</span>
+					<span className="tv-muted"><ColorText text={answer.note} /></span>
 				</Row>
 			)}
 			{answer && answer.selectedOptions.length === 0 && answer.customInput === undefined && (
