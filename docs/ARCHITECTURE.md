@@ -416,11 +416,17 @@ items are refused. Ordinary confirmation waits eight seconds. A live `omp.workin
 a progress node holds the operation until compaction ends, reports an error or loses its host,
 room or epoch scope, regardless of duration. After compaction ends, collab has a bounded
 eight-second confirmation interval. New semantic error rows end the wait.
-Thinking reads the composer's effort `level`, including Auto, and sends one `thinking.cycle`
-action at a time until the requested level appears. Repeating a level ends the cycle with an
-unsupported-level explanation. Both controls refuse pending approvals with a distinct message,
-and document waits stop after a host, room generation or protocol epoch change. Classic model
-switching and Shift+Tab cycling retain their existing paths.
+Thinking combines the composer's effort `level` with collab's configured selector and sends one
+`thinking.cycle` action at a time until the requested selector is confirmed. omp can show Auto's
+resolved effort in the semantic node. The complete selector from the latest collab thinking event
+is authoritative for Auto and concrete levels, regardless of semantic update order. After a
+reconnect, the latest thinking entry on the displayed branch supplies the selector; displayed
+effort is used only before either source reports a selection. The menu and action confirmation
+use the same reader, including when leaving Auto for the effort it already displays. Repeating
+a selector ends the cycle with an unsupported-level explanation.
+Both controls refuse pending approvals with a distinct message, and waits stop after a host,
+room generation or protocol epoch change. Classic model switching and Shift+Tab cycling retain
+their existing paths.
 
 The Advisor sheet applies project and user files for TSP chats through semantic
 `/advisor configure`. omp 18.15.0 describes roleless advisor prefs on a screen surface when

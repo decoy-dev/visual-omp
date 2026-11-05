@@ -172,9 +172,9 @@ describe.skipIf(!process.env.OMP_BIN || process.platform === "win32")("TSP paint
 					const editor = find(node => node.p?.role === TSP_ROLES.editor);
 					const node = editor && [...walkNodes(editor.node)].find(node => node.k === "effort");
 					const replica = guest!.getSnapshot();
-					// The document preserves Auto while collab state reports its resolved effort.
+					// Pending Auto is displayed literally; collab preserves the configured selector.
 					return node?.k === "effort" && node.p?.level === expectedLevel
-						&& (expectedLevel === "auto" ? replica.autoThinking === true : replica.autoThinking === false && replica.state?.thinkingLevel === expectedLevel);
+						&& replica.thinkingSelector === expectedLevel;
 				});
 			}
 			noReads("thinking change");

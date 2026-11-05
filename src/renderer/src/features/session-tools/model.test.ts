@@ -4,7 +4,8 @@ import type { SessionEntry, WireModel } from "@oh-my-pi/pi-wire";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { displayedEntries } from "../../chat/branch";
 import type { SessionController } from "../../state/session";
-import { configuredThinking, setThinking, switchModel } from "./model";
+import { setThinking, switchModel } from "./model";
+import { configuredThinking } from "./thinking";
 
 // vi.hoisted runs before the imports: model.ts subscribes to `window.vomp` when it loads.
 const vomp = vi.hoisted(() => {
@@ -230,13 +231,20 @@ describe("configuredThinking", () => {
 		({ type: "thinking_level_change", id: thinkingLevel, parentId: null, timestamp: "", thinkingLevel, configured }) as unknown as SessionEntry;
 
 	it("keeps Auto while omp paints the level Auto resolved", () => {
-		expect(configuredThinking(true, [], "high")).toBe("auto");
+		expect(configuredThinking("auto", [], "high")).toBe("auto");
 		expect(configuredThinking(null, [change("high", "auto")], "high")).toBe("auto");
 	});
 
 	it("trusts omp's latest event over an older entry", () => {
-		expect(configuredThinking(false, [change("high", "auto")], "high")).toBe("high");
+		expect(configuredThinking("high", [change("high", "auto")], "high")).toBe("high");
 		expect(configuredThinking(null, [change("high", "auto"), change("low", "low")], "low")).toBe("low");
+	});
+
+	it("trusts concrete collab selectors and branch entries over a stale displayed effort", () => {
+		expect(configuredThinking("low", [change("high", "auto")], "high")).toBe("low");
+		expect(configuredThinking("high", [change("low")], "low")).toBe("high");
+		expect(configuredThinking(null, [change("low")], "high")).toBe("low");
+		expect(configuredThinking(null, [], "high")).toBe("high");
 	});
 
 	it("falls back to the recorded level when nothing is painted", () => {
@@ -273,7 +281,7 @@ describe("setThinking", () => {
 			selected = choices[(choices.indexOf(selected) + steps) % choices.length] ?? selected;
 			paint();
 		},
-		getSnapshot: () => ({ host: { tui: { overlays: 0 } }, guest: { autoThinking: selected === "auto", entries: [], state: {} } }),
+		getSnapshot: () => ({ host: { tui: { overlays: 0 } }, guest: { thinkingSelector: selected, entries: [], state: {} } }),
 	} as unknown as SessionController;
 
 	beforeEach(() => {

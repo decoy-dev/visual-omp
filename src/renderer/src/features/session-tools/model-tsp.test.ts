@@ -8,7 +8,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { FixtureDocuments, loadFixtureRecording, type FixtureInput } from "../tsp/testing/documents";
 import type { SessionController } from "../../state/session";
-import type { CollabUiRequest } from "@oh-my-pi/pi-wire";
+import type { CollabUiRequest, SessionEntry } from "@oh-my-pi/pi-wire";
 import { switchModel, setThinking } from "./model";
 import { semanticThinking } from "./modelTsp";
 import { ModelList, ThinkingButton } from "./pickers";
@@ -42,6 +42,8 @@ class Replay {
 	revision = 0;
 	model = large;
 	requests: CollabUiRequest[] = [];
+	thinkingSelector: string | null = null;
+	entries: SessionEntry[] = [];
 	generation = 1;
 	autoConfirm = true;
 	confirmDelay = 0;
@@ -50,7 +52,7 @@ class Replay {
 	beforeEvent: ((event: TspRendererEvent) => void) | null = null;
 	view = this.readView();
 	readView() {
-		return { mode: "live", readOnly: false, host: { hostId: "host", generation: this.generation, sessionId: "session", transport: "tsp" }, guest: { phase: "live", entries: [], pendingUiRequests: this.requests, uiRequest: this.requests[0] ?? null, state: { model: this.model, contextUsage: { tokens: 0 } } } };
+		return { mode: "live", readOnly: false, host: { hostId: "host", generation: this.generation, sessionId: "session", transport: "tsp" }, guest: { phase: "live", thinkingSelector: this.thinkingSelector, entries: this.entries, pendingUiRequests: this.requests, uiRequest: this.requests[0] ?? null, state: { model: this.model, contextUsage: { tokens: 0 } } } };
 	}
 	constructor(name: string) {
 		this.recording = loadFixtureRecording(name);
@@ -230,18 +232,92 @@ describe("TSP composer model controls", () => {
 	it("replays effort actions through Auto and resolved levels without keys", async () => {
 		const replay = new Replay("thinking-cycle");
 		await expect(setThinking(replay.session, "auto", [])).resolves.toBe(true);
-		expect(semanticThinking(replay.snapshot())).toBe("auto");
+		expect(semanticThinking(replay.snapshot(), replay.thinkingSelector, replay.entries)).toBe("auto");
 		await expect(setThinking(replay.session, "high", [])).resolves.toBe(true);
-		expect(semanticThinking(replay.snapshot())).toBe("high");
+		expect(semanticThinking(replay.snapshot(), replay.thinkingSelector, replay.entries)).toBe("high");
 		expect(replay.events).toHaveLength(5);
 		expect(replay.events.every(event => event.ev === "action" && event.act === "thinking.cycle")).toBe(true);
+	});
+
+	it.each(["event", "entry"] as const)("keeps Auto selected from its %s after omp resolves it to Low without cycling", async source => {
+		const replay = new Replay("thinking-cycle");
+		if (source === "event") replay.thinkingSelector = "auto";
+		else replay.entries = [{ type: "thinking_level_change", id: "auto", parentId: null, timestamp: "", thinkingLevel: "low", configured: "auto" } as SessionEntry];
+		replay.mutate = snapshot => {
+			for (const surface of snapshot.surfaces) for (const node of walkNodes(surface.document)) {
+				if (node.k === "effort") node.p = { ...node.p, level: "low" };
+			}
+		};
+		replay.publish();
+		await expect(settle(setThinking(replay.session, "auto", []))).resolves.toBe(true);
+		expect(replay.events).toEqual([]);
+		expect(bridge.toast).not.toHaveBeenCalled();
+	});
+
+	it("leaves resolved Auto for Low and waits for collab when the effort node stays Low", async () => {
+		const replay = new Replay("thinking-cycle");
+		replay.thinkingSelector = "auto";
+		replay.mutate = snapshot => {
+			for (const surface of snapshot.surfaces) for (const node of walkNodes(surface.document)) {
+				if (node.k === "effort") node.p = { ...node.p, level: "low" };
+			}
+		};
+		replay.consume = event => {
+			replay.events.push(event);
+			setTimeout(() => { replay.thinkingSelector = "low"; replay.publish(); }, 300);
+		};
+		replay.publish();
+		let finished = false;
+		const changing = setThinking(replay.session, "low", []).then(result => { finished = true; return result; });
+		await vi.advanceTimersByTimeAsync(100);
+		expect(finished).toBe(false);
+		await expect(settle(changing)).resolves.toBe(true);
+		expect(replay.events).toHaveLength(1);
+		expect(replay.events[0]).toMatchObject({ ev: "action", act: "thinking.cycle" });
+		expect(bridge.toast).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		["high", "collab"], ["low", "collab"], ["high", "semantic"], ["low", "semantic"],
+	] as const)("selects %s from Auto resolved to High when %s updates first", async (target, first) => {
+		const replay = new Replay("thinking-cycle");
+		const levels = ["auto", "low", "medium", "high"] as const;
+		let selected: typeof levels[number] = "auto";
+		let displayed: typeof levels[number] = "high";
+		replay.thinkingSelector = "auto";
+		replay.mutate = snapshot => {
+			for (const surface of snapshot.surfaces) for (const node of walkNodes(surface.document)) {
+				if (node.k === "effort") node.p = { ...node.p, level: displayed };
+			}
+		};
+		replay.consume = event => {
+			replay.events.push(event);
+			selected = levels[(levels.indexOf(selected) + 1) % levels.length]!;
+			const next = selected;
+			setTimeout(() => {
+				replay.thinkingSelector = next;
+				replay.publish();
+			}, first === "collab" ? 100 : 300);
+			setTimeout(() => { displayed = next; replay.publish(); }, first === "semantic" ? 100 : 300);
+		};
+		replay.publish();
+		let confirmed: string | null = null;
+		const changing = setThinking(replay.session, target, []).then(result => {
+			confirmed = replay.thinkingSelector;
+			return result;
+		});
+		await expect(settle(changing)).resolves.toBe(true);
+		expect(confirmed).toBe(target);
+		expect(selected).toBe(target);
+		expect(replay.events).toHaveLength(target === "low" ? 1 : 3);
+		expect(bridge.toast).not.toHaveBeenCalled();
 	});
 
 	it("stops after one recorded cycle and explains an unsupported level distinctly", async () => {
 		const replay = new Replay("thinking-cycle");
 		await expect(setThinking(replay.session, "max", [])).resolves.toBe(false);
 		expect(replay.events).toHaveLength(7);
-		expect(semanticThinking(replay.snapshot())).toBe("off");
+		expect(semanticThinking(replay.snapshot(), replay.thinkingSelector, replay.entries)).toBe("off");
 		expect(bridge.toast).toHaveBeenCalledWith({ tone: "err", message: "This model does not offer the Max thinking level." });
 	});
 
@@ -304,6 +380,25 @@ describe("TSP composer model controls", () => {
 			expect(replay.events).toHaveLength(1);
 			expect(element.querySelector('button[aria-label=\"Thinking level: Auto\"]')).not.toBeNull();
 			expect(bridge.toast).not.toHaveBeenCalled();
+		} finally { await act(async () => root.unmount()); element.remove(); }
+	});
+
+	it.each(["event", "entry"] as const)("labels resolved Auto from its %s rather than the semantic Low effort", async source => {
+		const replay = new Replay("thinking-cycle");
+		if (source === "event") replay.thinkingSelector = "auto";
+		else replay.entries = [{ type: "thinking_level_change", id: "auto", parentId: null, timestamp: "", thinkingLevel: "low", configured: "auto" } as SessionEntry];
+		replay.mutate = snapshot => {
+			for (const surface of snapshot.surfaces) for (const node of walkNodes(surface.document)) {
+				if (node.k === "effort") node.p = { ...node.p, level: "low" };
+			}
+		};
+		replay.publish();
+		const element = document.createElement("div"); document.body.append(element);
+		const root = createRoot(element);
+		try {
+			await act(async () => root.render(createElement(TooltipProvider, null, createElement(ThinkingButton, { session: replay.session }))));
+			expect(element.querySelector('button[aria-label="Thinking level: Auto"]')).not.toBeNull();
+			expect(replay.events).toEqual([]);
 		} finally { await act(async () => root.unmount()); element.remove(); }
 	});
 });

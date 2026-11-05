@@ -7,10 +7,10 @@
  *   `/switch model:level` it does not reset the provider session (prompt cache), so the app presses it
  *   until omp shows the chosen level. In Auto, omp paints the level it resolved for the latest turn,
  *   so Auto itself is read from the selector omp records in `thinking_level_change` entries.
- * TSP hosts instead activate omp's session model picker and read the effort node's configured
- * level, sending thinking.cycle actions without keys or painted-screen reads.
+ * TSP hosts instead activate omp's session model picker and send thinking.cycle actions without
+ * keys or painted-screen reads. Both presentations can display Auto's latest resolved effort,
+ * so the configured selector comes from collab thinking events or branch entries.
  */
-import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import { useEffect, useState } from "react";
 import type { ModelInfo } from "@shared/contracts/config";
 import { toast } from "@/ui";
@@ -21,6 +21,7 @@ import { press, readyEditor, reportFailure, statusReadError, waitForScreen } fro
 import { parseStatusLine, THINKING_LEVELS, type ThinkingLevel } from "./screen";
 import { screenPoller } from "./status";
 import { refuseApproval, setThinkingSemantic, switchModelSemantic } from "./modelTsp";
+import { configuredThinking } from "./thinking";
 
 const modelCache = new Map<string, Promise<ModelInfo[]>>();
 // A sign-in or sign-out changes which models omp lists; the picker reloads the next time it opens.
@@ -52,23 +53,6 @@ export function useChatModels(cwd: string): { models: ModelInfo[] | null; error:
 export function thinkingChoices(model: ModelInfo | undefined): ThinkingLevel[] {
 	if (!model?.reasoning) return [];
 	return ["off", "auto", ...THINKING_LEVELS.filter(level => model.thinkingLevels.some(effort => effort === level))];
-}
-
-/**
- * The thinking selector the user chose. omp paints the level Auto resolved for the latest turn, so
- * Auto comes from omp's latest `thinking_level_changed` event (`autoThinking`), else from the latest
- * `thinking_level_change` entry on this branch (`configured: "auto"`); otherwise the painted level,
- * else the recorded one.
- */
-export function configuredThinking(
-	autoThinking: boolean | null | undefined,
-	entries: readonly SessionEntry[],
-	painted: ThinkingLevel | null,
-): ThinkingLevel | null {
-	const change = entries.findLast(entry => entry.type === "thinking_level_change");
-	const recorded = change?.type === "thinking_level_change" ? (change.configured ?? change.thinkingLevel ?? null) : null;
-	if (autoThinking ?? recorded === "auto") return "auto";
-	return painted ?? THINKING_LEVELS.find(level => level === recorded) ?? null;
 }
 
 /** How long omp may take to report the new model before the picker warns. */
@@ -125,7 +109,7 @@ export async function switchModel(session: SessionController, model: ModelInfo):
 	}
 }
 
-/** Set the thinking level by cycling Shift+Tab until the status line shows it. */
+/** Set the configured thinking selector, using collab to distinguish Auto from its resolved effort. */
 export async function setThinking(session: SessionController, target: ThinkingLevel, choices: readonly ThinkingLevel[]): Promise<boolean> {
 	try {
 		if (session.getSnapshot().host?.transport === "tsp") {
@@ -134,12 +118,13 @@ export async function setThinking(session: SessionController, target: ThinkingLe
 		}
 		const read = (screen: readonly string[]) => {
 			const snapshot = session.getSnapshot();
-			return configuredThinking(snapshot.guest?.autoThinking, displayedEntries(snapshot), parseStatusLine(screen)?.thinking ?? null);
+			return configuredThinking(snapshot.guest?.thinkingSelector, displayedEntries(snapshot), parseStatusLine(screen)?.thinking ?? null);
 		};
 		const screen = await readyEditor(session);
 		if (session.getSnapshot().host?.transport === "tsp") return await setThinkingSemantic(session, target);
 		let current = read(screen);
-		if (current === null) throw await statusReadError(session, screen);
+		// Collab identifies the selector; classic input still needs a readable thinking control.
+		if (current === null || parseStatusLine(screen)?.thinking == null) throw await statusReadError(session, screen);
 		// One jump by the computed distance, then single steps in case omp's list differs from ours.
 		const from = choices.indexOf(current);
 		const to = choices.indexOf(target);

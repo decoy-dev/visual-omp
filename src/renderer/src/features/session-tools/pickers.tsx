@@ -38,7 +38,8 @@ import type { SessionController } from "../../state/session";
 import { useTsp } from "../../state/tsp/useTsp";
 import { semanticThinking } from "./modelTsp";
 import { autoAcknowledged, setApprovalMode, useApprovalMode } from "./approval";
-import { configuredThinking, setThinking, switchModel, thinkingChoices, useChatModels } from "./model";
+import { setThinking, switchModel, thinkingChoices, useChatModels } from "./model";
+import { configuredThinking } from "./thinking";
 import { containsCurrent, modelRows, modelTree, searchModelTree, type ModelBranch, type ModelNode } from "./modelTree";
 import { type StatusLine, THINKING_LEVELS, type ThinkingLevel } from "./screen";
 import { useOmpScreen, useSessionView } from "./status";
@@ -506,9 +507,9 @@ function useThinking(session: SessionController): ThinkingLevel | null {
 	const view = useSessionView(session);
 	const tsp = useTsp(view.host?.transport === "tsp" ? view.host.hostId : null).snapshot;
 	const entries = useDisplayedEntries(view);
-	const configured = configuredThinking(view.guest?.autoThinking, entries, status?.thinking ?? null);
+	const configured = configuredThinking(view.guest?.thinkingSelector, entries, status?.thinking ?? null);
 	const effective = view.guest?.state?.thinkingLevel;
-	if (view.host?.transport === "tsp") return semanticThinking(tsp) ?? configured ?? THINKING_LEVELS.find(level => level === effective) ?? null;
+	if (view.host?.transport === "tsp") return semanticThinking(tsp, view.guest?.thinkingSelector, entries) ?? configured ?? THINKING_LEVELS.find(level => level === effective) ?? null;
 	return configured ?? THINKING_LEVELS.find(level => level === effective) ?? null;
 }
 

@@ -86,8 +86,8 @@ export interface GuestSnapshot {
 	uiConnection?: number;
 	/** Capped at 50, newest last. */
 	notices: readonly Notice[];
-	/** From omp's latest `thinking_level_changed` event: true in Auto, false for a fixed level, null before any. */
-	autoThinking: boolean | null;
+	/** Configured selector from omp's latest thinking event; null before any or after a reconnect. */
+	thinkingSelector: string | null;
 	/** Snapshot download progress between `welcome` and its final chunk, else null. */
 	loading: { received: number; total: number } | null;
 }
@@ -159,7 +159,7 @@ export class GuestClient {
 	#pendingUiRequests = new Map<number, CollabUiRequest>();
 	#uiConnection = 0;
 	#notices: readonly Notice[] = [];
-	#autoThinking: boolean | null = null;
+	#thinkingSelector: string | null = null;
 	#snapshot: GuestSnapshot;
 	/**
 	 * Published entries array, cached across commits: rebuilt only when
@@ -375,8 +375,8 @@ export class GuestClient {
 				this.#working = frame.state.isStreaming;
 				this.#awaitingAsyncWork = false;
 				this.#readOnly = frame.readOnly === true;
-				// The welcome's snapshot is authoritative again; later events set the flag anew.
-				this.#autoThinking = null;
+				// The welcome's snapshot is authoritative again; later events set the selector anew.
+				this.#thinkingSelector = null;
 				this.#clearUiRequests();
 				this.#welcomed = true;
 				this.#clearWelcomeTimer();
@@ -594,7 +594,7 @@ export class GuestClient {
 				}
 				break;
 			case "thinking_level_changed":
-				this.#autoThinking = event.configured === "auto";
+				this.#thinkingSelector = event.configured ?? event.thinkingLevel ?? null;
 				break;
 			default:
 				// turn_start/turn_end/unknown — ignore
@@ -682,7 +682,7 @@ export class GuestClient {
 			pendingUiRequests: [...this.#pendingUiRequests.values()],
 			uiConnection: this.#uiConnection,
 			notices: this.#notices,
-			autoThinking: this.#autoThinking,
+			thinkingSelector: this.#thinkingSelector,
 			loading: this.#pendingSnapshot && {
 				received: this.#pendingSnapshot.entries.length,
 				total: this.#pendingSnapshot.total,

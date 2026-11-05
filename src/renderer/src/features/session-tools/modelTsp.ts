@@ -1,11 +1,14 @@
+import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { ModelInfo } from "@shared/contracts/config";
 import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
 import { TSP_ACTIONS, TSP_ROLES } from "@shared/tsp/roles";
 import { walkNodes } from "@shared/tsp/view-state";
+import { displayedEntries } from "../../chat/branch";
 import { i18n } from "../../i18n";
 import { isApprovalRequest, type SessionController } from "../../state/session";
 import { OmpBusyError, TspEditorWatch } from "./drive";
 import { THINKING_LEVELS, type ThinkingLevel } from "./screen";
+import { configuredThinking } from "./thinking";
 
 /** Only the current main composer's controls can change this chat's model or effort. */
 function composerNodes(snapshot: TspHostSnapshot | null) {
@@ -17,10 +20,15 @@ function composerNodes(snapshot: TspHostSnapshot | null) {
 	return { sf: surface.open.id, nodes: [...walkNodes(composers[0]!)] };
 }
 
-/** The semantic selector preserves Auto rather than its latest resolved effort. */
-export function semanticThinking(snapshot: TspHostSnapshot | null): ThinkingLevel | null {
+/** omp's effort node can show Auto's resolved effort; collab preserves the configured selector. */
+export function semanticThinking(
+	snapshot: TspHostSnapshot | null,
+	selector: string | null | undefined,
+	entries: readonly SessionEntry[],
+): ThinkingLevel | null {
 	const effort = composerNodes(snapshot)?.nodes.find(node => node.k === "effort");
-	return effort?.k === "effort" ? THINKING_LEVELS.find(level => level === effort.p?.level) ?? null : null;
+	if (effort?.k !== "effort") return null;
+	return configuredThinking(selector, entries, THINKING_LEVELS.find(level => level === effort.p?.level) ?? null);
 }
 
 export function refuseApproval(session: SessionController): void {
@@ -132,9 +140,13 @@ export async function setThinkingSemantic(session: SessionController, target: Th
 	try {
 		refuseApproval(session);
 		await watch.ready();
+		const read = () => {
+			const view = session.getSnapshot();
+			return semanticThinking(watch.snapshot, view.guest?.thinkingSelector, displayedEntries(view));
+		};
 		const visited = new Set<ThinkingLevel>();
 		while (true) {
-			const current = semanticThinking(watch.snapshot);
+			const current = read();
 			if (current === target) return true;
 			if (current === null) throw new Error(i18n.t("session:thinking.unavailable"));
 			if (visited.has(current)) throw new Error(i18n.t("session:thinking.unsupportedLevel", { level: i18n.t(`session:thinking.levels.${target}.label`) }));
@@ -143,7 +155,7 @@ export async function setThinkingSemantic(session: SessionController, target: Th
 			const effort = composer?.nodes.find(node => node.p?.actions?.click === TSP_ACTIONS.thinkingCycle);
 			if (!effort || !composer || !watch.available) throw new OmpBusyError();
 			await send(watch, { ev: "action", sf: composer.sf, id: effort.id, act: TSP_ACTIONS.thinkingCycle });
-			if (!await waitFor(watch, () => semanticThinking(watch.snapshot) !== current, 2500)) throw new Error(i18n.t("session:thinking.failed"));
+			if (!await waitFor(watch, () => read() !== current, 2500)) throw new Error(i18n.t("session:thinking.failed"));
 		}
 	} finally { watch.dispose(); }
 }

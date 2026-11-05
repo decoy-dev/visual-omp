@@ -25,7 +25,7 @@ vi.mock("./link", () => ({
 vi.mock("./codec", () => ({ importRoomKey: () => ({}) }));
 
 const welcome = { t: "welcome", header: null, entryCount: 0, state: { isStreaming: false, participants: [] }, agents: [] };
-const thinking = (configured?: string) => ({ t: "event", event: { type: "thinking_level_changed", thinkingLevel: "high", configured } });
+const thinking = (configured?: string, thinkingLevel = "high") => ({ t: "event", event: { type: "thinking_level_changed", thinkingLevel, configured } });
 
 let client: GuestClient;
 const feed = (frame: object) => socket.current?.onFrame(frame as HostFrame);
@@ -57,22 +57,26 @@ describe("user prompts while a question waits", () => {
 	});
 });
 
-describe("autoThinking", () => {
-	it("follows omp's thinking events", () => {
-		expect(client.getSnapshot().autoThinking).toBeNull();
-		feed(thinking("auto"));
-		expect(client.getSnapshot().autoThinking).toBe(true);
-		feed(thinking());
-		expect(client.getSnapshot().autoThinking).toBe(false);
+describe("thinkingSelector", () => {
+	it("keeps the complete configured selector from omp's latest thinking event", () => {
+		expect(client.getSnapshot().thinkingSelector).toBeNull();
+		feed(thinking("auto", "low"));
+		expect(client.getSnapshot().thinkingSelector).toBe("auto");
+		feed(thinking(undefined, "low"));
+		expect(client.getSnapshot().thinkingSelector).toBe("low");
+		feed(thinking("medium", "high"));
+		expect(client.getSnapshot().thinkingSelector).toBe("medium");
+		feed(thinking(undefined, "off"));
+		expect(client.getSnapshot().thinkingSelector).toBe("off");
 	});
 
-	it("forgets what it saw before a reconnect, in both directions", () => {
+	it("forgets what it saw before a reconnect, for Auto and concrete selectors", () => {
 		feed(thinking("auto"));
 		feed(welcome);
-		expect(client.getSnapshot().autoThinking).toBeNull();
+		expect(client.getSnapshot().thinkingSelector).toBeNull();
 		feed(thinking());
 		feed(welcome);
-		expect(client.getSnapshot().autoThinking).toBeNull();
+		expect(client.getSnapshot().thinkingSelector).toBeNull();
 	});
 });
 
