@@ -140,7 +140,8 @@ function headers(type?: string): HeadersInit {
 	return {
 		...(type ? { "Content-Type": type } : {}),
 		"Content-Security-Policy": PREVIEW_CSP,
-		"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*",
+		"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store",
+		...(type?.startsWith("font/") ? { "Access-Control-Allow-Origin": "*" } : {}),
 	};
 }
 function refused(status: number): Response { return new Response(null, { status, headers: headers() }); }

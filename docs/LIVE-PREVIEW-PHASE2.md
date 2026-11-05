@@ -1,6 +1,6 @@
 # Live previews, Phase 2: implementation plan
 
-Written 2026-11-04 against `main` at `8206da5` (0.7.6, untagged), from `docs/LIVE-PREVIEW.md` (whole file, including Owner decisions and the Phase 1 notes) and the Phase 1 code. Revised the same day after astra's review ("adopt with required changes"). Paths are relative to the repository root. `[INFERENCE]` marks a claim no source, probe or command in this session confirmed. Nothing in the repository was edited; no Electron, dev server or browser was run.
+Written 2026-11-04 against `main` at `8206da5` (0.7.6, untagged), from `docs/LIVE-PREVIEW.md` (whole file, including Owner decisions and the Phase 1 notes) and the Phase 1 code. Revised the same day after astra's review ("adopt with required changes"). Paths are relative to the repository root. `[INFERENCE]` marks a claim no source, probe or command confirmed. The original plan made no repository changes and ran no Electron, dev server or browser. Slice A1 was implemented on 2026-11-05 as described below.
 
 ## Objective
 
@@ -8,7 +8,7 @@ Extend the Phase 1 stage to video (playback with range requests, parsed render p
 
 ## Findings in the Phase 1 code
 
-1. **Wildcard CORS on every response.** `headers()` sends `Access-Control-Allow-Origin: *` for every type (`src/main/services/preview-protocol.ts:139-145`), while `docs/LIVE-PREVIEW.md:153` says fonts only. This is corrected first (slice A1), before any script runs.
+1. **Wildcard CORS on every response, corrected in A1.** Phase 1's `headers()` sent `Access-Control-Allow-Origin: *` for every type, while `docs/LIVE-PREVIEW.md` specified fonts only. Since 2026-11-05, only WOFF, WOFF2, TTF and OTF font responses carry it.
 2. **One global policy.** `PREVIEW_CSP` is a constant (`preview-protocol.ts:13`). Scripts and network need a per-grant policy.
 3. **No script, module, video or Office types.** `TYPES` (`:15-24`) lacks `.js`, `.mjs`, `.mp4`, `.webm`, `.mov`, `.m4v`, `.docx`, `.xlsx`, `.pptx`; these answer 415 today. `cap()` (`:147-149`) knows PDF, raster images and text only.
 4. **Whole-file reads only.** `readPreviewDocument` buffers the file (`:152-182`); `handlePreviewRequest` ignores `Range` (`:184-201`).
@@ -45,10 +45,11 @@ C, D and E run in parallel. `preview-protocol.ts` is edited by A1, B, C and F, a
 
 ## Slice A: security and isolation decisions
 
-### A1. CORS correction (ships alone, as a Phase 1 fix)
+### A1. CORS correction (done 2026-11-05, ships alone as a Phase 1 fix)
 
-- `headers(type)` sends `Access-Control-Allow-Origin: *` only for font types (`font/*`, `application/vnd.ms-fontobject`). No other type gets it. Module scripts (slice F) get it only for `.js`/`.mjs`, added in F with its tests.
-- Tests: an image, CSS, SVG, PDF and HTML response carries no ACAO; a font does.
+- `headers(type)` sends `Access-Control-Allow-Origin: *` only for the served `font/*` types: WOFF, WOFF2, TTF and OTF. EOT retains its existing MIME type without the header. Refused requests carry no CORS permission. Module scripts (slice F) will get it only for `.js`/`.mjs`, added in F with its tests.
+- Phase 1 needs CORS permission only for fonts loaded by the opaque-origin HTML frame. Its HTML, stylesheets and images load without it. Image subjects load through the app document's `<img>` elements without `crossorigin`; PDF subjects use `panes:readPdf` and the app's Blob viewer. Neither subject needs a cross-origin response header.
+- Protocol tests cover GET and HEAD font responses, HTML, CSS, raster images, SVG, PDF, text and EOT responses without the header, refused font requests, and prepared HTML revisions without the header. Live and saved HTML retain the scripts-off CSP, no-store and nosniff policy.
 
 ### A2. Process isolation investigation (blocking for F)
 

@@ -157,7 +157,7 @@ it("caps live UTF-8 bytes and preserves the last accepted revision", async () =>
 	expect(await (await get(grant.url)).text()).toBe("accepted");
 });
 
-it("sends the scripts-off CSP, CORS, no-store and nosniff policy for live and saved HTML", async () => {
+it("sends the scripts-off CSP, no-store and nosniff policy without CORS permission for live and saved HTML", async () => {
 	const grant = await page();
 	for (const live of [true, false]) {
 		if (live) setPreviewLive(grant.token, 1, "<script>fetch('https://example.com')</script>");
@@ -167,18 +167,40 @@ it("sends the scripts-off CSP, CORS, no-store and nosniff policy for live and sa
 		expect(response.headers.get("content-security-policy")).toBe(PREVIEW_CSP);
 		expect(PREVIEW_CSP).toContain("script-src 'none'");
 		expect(PREVIEW_CSP).toContain("connect-src 'none'");
-		expect(response.headers.get("access-control-allow-origin")).toBe("*");
+		expect(response.headers.has("access-control-allow-origin")).toBe(false);
 		expect(response.headers.get("cache-control")).toBe("no-store");
 		expect(response.headers.get("x-content-type-options")).toBe("nosniff");
 	}
 });
 
-it("serves local fonts with a font MIME type and CORS permission", async () => {
+it.each(["woff", "woff2", "ttf", "otf"])("serves local %s fonts with a font MIME type and CORS permission", async extension => {
 	const grant = await page();
-	await writeFile(join(folder, "type.woff2"), "font bytes");
-	const response = await get(new URL("type.woff2", grant.url).href);
-	expect(response.headers.get("content-type")).toBe("font/woff2");
-	expect(response.headers.get("access-control-allow-origin")).toBe("*");
+	const name = `type.${extension}`;
+	await writeFile(join(folder, name), "font bytes");
+	for (const method of ["GET", "HEAD"]) {
+		const response = await handlePreviewRequest(new Request(new URL(name, grant.url), { method }));
+		expect(response.status).toBe(200);
+		expect(response.headers.get("content-type")).toBe(`font/${extension}`);
+		expect(response.headers.get("access-control-allow-origin")).toBe("*");
+	}
+});
+
+it.each(["html", "css", "png", "jpg", "webp", "svg", "pdf", "txt", "eot"])("serves %s files without CORS permission", async extension => {
+	const grant = await page();
+	const name = `asset.${extension}`;
+	await writeFile(join(folder, name), "asset bytes");
+	for (const method of ["GET", "HEAD"]) {
+		const response = await handlePreviewRequest(new Request(new URL(name, grant.url), { method }));
+		expect(response.status).toBe(200);
+		expect(response.headers.has("access-control-allow-origin")).toBe(false);
+	}
+});
+
+it("withholds CORS permission when a font request is refused", async () => {
+	const grant = await page();
+	const response = await get(new URL("missing.woff2", grant.url).href);
+	expect(response.status).toBe(404);
+	expect(response.headers.has("access-control-allow-origin")).toBe(false);
 });
 
 it("refuses unknown and revoked tokens, including all tokens after a reload", async () => {
@@ -271,6 +293,7 @@ describe("prepared document snapshots", () => {
 		expect(await response.text()).toBe("<h1>Saved</h1>");
 		expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
 		expect(response.headers.get("content-security-policy")).toBe(PREVIEW_CSP);
+		expect(response.headers.has("access-control-allow-origin")).toBe(false);
 		expect((await get(`${grant.url}?rev=999`)).status).toBe(404);
 	});
 
