@@ -138,6 +138,29 @@ it("chooses the chat root when contained, otherwise the subject folder", async (
 	expect((await get(new URL("/style.css", local.url).href)).status).toBe(404);
 });
 
+it.each(["html", "htm"])("serves saved .%s pages with their relative CSS and images under one grant", async extension => {
+	const path = join(folder, "pages", `index.${extension}`);
+	const grant = await page(path);
+	await mkdir(join(folder, "assets"));
+	const html = '<link rel="stylesheet" href="../assets/style.css"><img src="../assets/image.png"><script>window.ran = true</script>';
+	await writeFile(path, html);
+	await writeFile(join(folder, "assets", "style.css"), "body { color: teal }");
+	await writeFile(join(folder, "assets", "image.png"), Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL1sAAAAASUVORK5CYII=", "base64"));
+	savePreview(grant.token);
+	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
+	const document = await get(`${grant.url}?rev=1`);
+	expect(await document.text()).toBe(html);
+	expect(document.headers.get("content-security-policy")).toContain("script-src 'none'");
+	expect(document.headers.get("content-security-policy")).toContain("connect-src 'none'");
+	const css = await get(new URL("../assets/style.css", grant.url).href);
+	expect(css.status).toBe(200);
+	expect(await css.text()).toBe("body { color: teal }");
+	const image = await get(new URL("../assets/image.png", grant.url).href);
+	expect(image.status).toBe(200);
+	expect(image.headers.get("content-type")).toBe("image/png");
+	expect((await image.arrayBuffer()).byteLength).toBeGreaterThan(0);
+});
+
 it("resolves a missing subject through its existing symlinked ancestor", async () => {
 	const alias = join(folder, "alias");
 	const actual = join(folder, "actual");

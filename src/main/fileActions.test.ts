@@ -2,15 +2,16 @@ import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const deps = vi.hoisted(() => ({
-	realpath: vi.fn(), stat: vi.fn(), previewablePath: vi.fn(), showItemInFolder: vi.fn(), openPath: vi.fn(), showMessageBox: vi.fn(),
+	realpath: vi.fn(), stat: vi.fn(), previewablePath: vi.fn(), showItemInFolder: vi.fn(), openPath: vi.fn(), openExternal: vi.fn(), showMessageBox: vi.fn(), defaultBrowserLaunch: vi.fn(), launchBrowserCommand: vi.fn(),
 }));
 vi.mock("node:fs/promises", () => ({ realpath: deps.realpath, stat: deps.stat }));
 vi.mock("electron", () => ({
 	BrowserWindow: { getFocusedWindow: () => null },
 	dialog: { showMessageBox: deps.showMessageBox },
-	shell: { showItemInFolder: deps.showItemInFolder, openPath: deps.openPath },
+	shell: { showItemInFolder: deps.showItemInFolder, openPath: deps.openPath, openExternal: deps.openExternal },
 }));
 vi.mock("./services/panes", () => ({ previewablePath: deps.previewablePath }));
+vi.mock("./services/default-browser", () => ({ defaultBrowserLaunch: deps.defaultBrowserLaunch, launchBrowserCommand: deps.launchBrowserCommand }));
 import { localFilePath, openFile, showItem } from "./fileActions";
 
 beforeEach(() => {
@@ -19,6 +20,7 @@ beforeEach(() => {
 	deps.stat.mockResolvedValue({ isFile: () => true });
 	deps.previewablePath.mockResolvedValue(undefined);
 	deps.openPath.mockResolvedValue("");
+	deps.defaultBrowserLaunch.mockResolvedValue({ executable: "/usr/bin/open", args: ["-a", "/Applications/Browser.app", "--", "/outside-project/page.html"] });
 });
 
 const invalid: unknown[] = [null, undefined, 12, {}, "", "relative/file", "file:///tmp/file", "/tmp/\0file", "\\\\server\\share\\file", "//server/share/file", "\\\\?\\C:\\file", "\\\\.\\PhysicalDrive0", "\\??\\C:\\file", "/\\server/share/file"];
@@ -57,6 +59,38 @@ describe("file action IPC handlers", () => {
 		await openFile(resolve("/outside-project/script.sh"));
 		expect(deps.showMessageBox).toHaveBeenCalled();
 		expect(deps.openPath).not.toHaveBeenCalled();
+	});
+	it.each(["page.html", "PAGE.HTM"])("opens %s with the selected HTTPS browser only after confirmation", async name => {
+		const path = resolve(`/outside-project/space #/${name}`);
+		const launch = { executable: "/usr/bin/open", args: ["-a", "/Applications/Web browser.app", "--", path] };
+		deps.defaultBrowserLaunch.mockResolvedValue(launch);
+		deps.showMessageBox.mockResolvedValue({ response: 1 });
+		await openFile(path, "browser");
+		expect(deps.defaultBrowserLaunch).toHaveBeenCalledWith(path);
+		expect(deps.showMessageBox).toHaveBeenCalledWith(expect.objectContaining({ title: "Open in browser", defaultId: 0 }));
+		expect(deps.launchBrowserCommand).toHaveBeenCalledWith(launch);
+		expect(deps.openExternal).not.toHaveBeenCalled();
+		expect(deps.openPath).not.toHaveBeenCalled();
+	});
+	it("does not launch a browser when confirmation is cancelled", async () => {
+		deps.showMessageBox.mockResolvedValue({ response: 0 });
+		await openFile(resolve("/outside-project/page.html"), "browser");
+		expect(deps.openExternal).not.toHaveBeenCalled();
+		expect(deps.launchBrowserCommand).not.toHaveBeenCalled();
+	});
+	it("refuses a browser launch for a non-HTML file", async () => {
+		await expect(openFile(resolve("/outside-project/script.sh"), "browser")).rejects.toThrow("HTML file");
+		expect(deps.openExternal).not.toHaveBeenCalled();
+		expect(deps.showMessageBox).not.toHaveBeenCalled();
+	});
+	it("explains the file-association fallback before asking for consent", async () => {
+		deps.defaultBrowserLaunch.mockResolvedValue(null);
+		deps.showMessageBox.mockResolvedValue({ response: 1 });
+		const path = resolve("/outside-project/page.html");
+		await openFile(path, "browser");
+		expect(deps.showMessageBox).toHaveBeenCalledWith(expect.objectContaining({ detail: expect.stringContaining("may be an editor") }));
+		expect(deps.openExternal).toHaveBeenCalledOnce();
+		expect(deps.launchBrowserCommand).not.toHaveBeenCalled();
 	});
 });
 

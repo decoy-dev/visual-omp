@@ -74,7 +74,7 @@ describe("Files pane state per chat", () => {
 		files.toggle(a, `${P}/src`, true);
 		files.setTreeHidden(a, true);
 		files.setTreeWidth(a, 300);
-		expect(useFiles.getState().byView[a]).toEqual({ expanded: [`${P}/src`], tabs: [`${P}/README.md`], active: `${P}/README.md`, treeHidden: true, treeWidth: 300 });
+		expect(useFiles.getState().byView[a]).toEqual({ expanded: [`${P}/src`], tabs: [`${P}/README.md`], active: `${P}/README.md`, treeHidden: true, treeWidth: 300, sourceTabs: [] });
 		expect(useFiles.getState().byView[filesView("b", P)] ?? EMPTY_VIEW).toEqual(EMPTY_VIEW);
 	});
 
@@ -92,6 +92,26 @@ describe("Files pane state per chat", () => {
 		expect(useFiles.getState().byView.b).toMatchObject({ tabs: [`${P}/src/app.ts`], treeHidden: true });
 		expect(useFiles.getState().byView.a).toBeUndefined();
 		expect(useApp.getState().docks).toEqual({ b: { open: true, pane: "files", width: 420 } });
+	});
+	it.each(["page.html", "PAGE.HTM"])("routes an HTML chat link to its originating Files viewer: %s", async name => {
+		const { useApp, useFiles, openInFiles } = await load();
+		openInFiles(P, `${P}/${name}`, { focus: true, tabId: "b" });
+		expect(useFiles.getState().byView.b).toMatchObject({ active: `${P}/${name}`, treeHidden: true, sourceTabs: [] });
+		expect(useApp.getState().docks.b).toMatchObject({ open: true, pane: "files" });
+	});
+
+	it("remembers Source per viewer tab and clears it when that tab closes", async () => {
+		const { useFiles } = await load();
+		const files = useFiles.getState();
+		files.open("a", `${P}/one.html`);
+		files.setSource("a", `${P}/one.html`, true);
+		files.open("a", `${P}/two.html`);
+		expect(useFiles.getState().byView.a?.sourceTabs).toEqual([`${P}/one.html`]);
+		files.activate("a", `${P}/one.html`);
+		expect(useFiles.getState().byView.a?.sourceTabs).toEqual([`${P}/one.html`]);
+		files.close("a", `${P}/one.html`);
+		files.open("a", `${P}/one.html`);
+		expect(useFiles.getState().byView.a?.sourceTabs).toEqual([]);
 	});
 
 	it("gives project overviews their own Files state, apart from the chats in that project", async () => {

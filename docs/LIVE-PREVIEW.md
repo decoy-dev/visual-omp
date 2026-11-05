@@ -16,6 +16,10 @@ When omp makes something visual (an SVG, a web page, a chart, a PDF, a slide dec
 
 The preview adds no model requests: it renders data the app already receives and files omp already writes. Token savings are possible in two ways. The person can stop or redirect omp sooner, and for outputs that take long to render, omp can show a proof before the full render (see [Proofs](#proofs)). Neither is guaranteed to save tokens, because a stop that comes too late or a proof that is not needed still costs what it costs.
 
+Saved HTML file viewing is also available in the Files pane independently of live tracking. Opening an HTML or HTM file uses the same lazy adapter, narrowly granted local assets and opaque-origin sandbox. Preview is the default, Source retains the existing code viewer, and Open in browser retains a trust confirmation. The viewer states that scripts and network access are off. Phase 2's script and network permissions remain gated by its isolation and exfiltration acceptance criteria.
+
+The external action selects the default HTTPS browser explicitly on macOS, Windows and Linux. If it cannot resolve a supported browser command, the trust confirmation explains that the fallback uses the HTML file association, which may select an editor.
+
 ## What Claude Code does
 
 - The Desktop app's Browser pane runs the project's dev server, and Claude checks its own changes there after each edit ("auto-verify"). Clicking an HTML, PDF or video path in the chat opens it in the same pane.

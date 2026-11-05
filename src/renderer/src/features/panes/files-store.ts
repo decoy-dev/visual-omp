@@ -21,6 +21,8 @@ export interface ViewFiles {
 	treeHidden: boolean;
 	/** The tree's width beside an open file, as the user dragged it. */
 	treeWidth: number;
+	/** HTML tabs showing source instead of their default preview. */
+	sourceTabs: string[];
 }
 
 export const TREE_MIN_WIDTH = 120;
@@ -42,10 +44,11 @@ interface FilesState {
 	activate(view: string, path: string): void;
 	setTreeHidden(view: string, hidden: boolean): void;
 	setTreeWidth(view: string, width: number): void;
+	setSource(view: string, path: string, source: boolean): void;
 	load(dir: string): Promise<void>;
 }
 
-export const EMPTY_VIEW: ViewFiles = { expanded: [], tabs: [], active: null, treeHidden: false, treeWidth: 180 };
+export const EMPTY_VIEW: ViewFiles = { expanded: [], tabs: [], active: null, treeHidden: false, treeWidth: 180, sourceTabs: [] };
 
 export const useFiles = create<FilesState>((set, get) => {
 	const patch = (view: string, change: (current: ViewFiles) => ViewFiles) =>
@@ -71,7 +74,7 @@ export const useFiles = create<FilesState>((set, get) => {
 				const tabs = current.tabs.filter(entry => entry !== path);
 				const active = current.active === path ? (tabs[index] ?? tabs[index - 1] ?? null) : current.active;
 				// With no tab left the tree fills the pane again, so it comes back for the next file opened from it.
-				return { ...current, tabs, active, treeHidden: tabs.length > 0 && current.treeHidden };
+				return { ...current, tabs, active, treeHidden: tabs.length > 0 && current.treeHidden, sourceTabs: current.sourceTabs.filter(entry => entry !== path) };
 			});
 		},
 		activate(view, path) {
@@ -83,6 +86,9 @@ export const useFiles = create<FilesState>((set, get) => {
 		setTreeWidth(view, width) {
 			const treeWidth = Math.min(TREE_MAX_WIDTH, Math.max(TREE_MIN_WIDTH, Math.round(width)));
 			patch(view, current => (current.treeWidth === treeWidth ? current : { ...current, treeWidth }));
+		},
+		setSource(view, path, source) {
+			patch(view, current => ({ ...current, sourceTabs: source ? [...current.sourceTabs.filter(entry => entry !== path), path] : current.sourceTabs.filter(entry => entry !== path) }));
 		},
 		async load(dir) {
 			try {

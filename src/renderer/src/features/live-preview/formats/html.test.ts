@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveSubject } from "../types";
 import { Frame } from "./html";
 import copy from "../../../i18n/en/panes.json";
+const events = vi.hoisted(() => ({ listeners: new Map<string, (value: { token: string; url: string }) => void>(), toast: vi.fn() }));
+vi.mock("../../../ui/toast", () => ({ toast: events.toast }));
 
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => {
 	let value: unknown = copy;
@@ -34,8 +36,13 @@ beforeEach(() => {
 	// Happy-dom has no custom-protocol handler. Keep frames detached and dispatch their load events explicitly.
 	root = createRoot(host);
 	invoke.mockReset();
+	events.listeners.clear();
+	events.toast.mockReset();
 	invoke.mockImplementation(async (channel: string) => channel === "preview:grant" ? { token: "token", url: "vomp-preview://token/page.html", assetRoot: true } : channel === "preview:prepare" ? { ok: true } : undefined);
-	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke } });
+	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke, on: (event: string, listener: (value: { token: string; url: string }) => void) => {
+		events.listeners.set(event, listener);
+		return () => events.listeners.delete(event);
+	} } });
 });
 afterEach(async () => {
 	await act(async () => { root.unmount(); });
@@ -54,6 +61,21 @@ describe("HTML preview grants", () => {
 		await act(async () => { root.unmount(); });
 		expect(invoke).toHaveBeenCalledWith("preview:revoke", "token");
 		root = createRoot(host);
+	});
+	it("explains disabled scripts and network access", async () => {
+		await show(subject({ kind: "file", state: "saved", text: null }));
+		expect(host.textContent).toContain("Scripts and network access are off. Interactive features may not work.");
+	});
+
+	it("offers browser navigation for only its own grant without the live tracker", async () => {
+		await show(subject({ kind: "file", state: "saved", text: null }));
+		const navigate = events.listeners.get("preview:blockedNavigation")!;
+		navigate({ token: "another", url: "https://example.com/" });
+		expect(events.toast).not.toHaveBeenCalled();
+		navigate({ token: "token", url: "https://example.com/" });
+		expect(events.toast).toHaveBeenCalledOnce();
+		events.toast.mock.calls[0][0].action.onClick();
+		expect(invoke).toHaveBeenCalledWith("app:openExternal", "https://example.com/");
 	});
 
 	it("permits fixture scripts only when main's prepared revision carries the test flag", async () => {

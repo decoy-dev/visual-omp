@@ -10,6 +10,8 @@ import { useTranslation } from "react-i18next";
 import type { PaneFileContent } from "@shared/contracts/panes";
 import type { DirEntry } from "@shared/ipc";
 import type { PaneProps } from "../../registry/slots";
+import { lazyView, LoadFailed } from "../../registry/lazy";
+import type { LiveSubject } from "../live-preview/types";
 import {
 	Button,
 	cn,
@@ -19,6 +21,7 @@ import {
 	Expand,
 	IconButton,
 	PresenceSwap,
+	Segmented,
 	Spinner,
 	spring,
 } from "../../ui";
@@ -39,6 +42,9 @@ import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage, ThumbnailFrame, U
 const VIEW_LINE_BUDGET = 4000;
 /** Folder entries a folder tab lists before "Show all". */
 const FOLDER_LIMIT = 200;
+
+const HtmlPreview = lazyView(() => import("../live-preview/formats/html").then(module => module.Frame), null, LoadFailed);
+const HTML_EXT = /\.html?$/i;
 
 /** The viewer's path label: project-relative inside the project, else `~/…` under the home folder, else absolute. */
 function viewerPath(projectPath: string, path: string, home: string | null): string {
@@ -335,6 +341,12 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 	/** The image source that failed to render (an SVG that isn't well-formed, say); a reload with new bytes tries again. */
 	const [broken, setBroken] = useState<string | null>(null);
 	const listing = useFiles(state => state.children[path]);
+	const source = useFiles(state => state.byView[viewKey]?.sourceTabs.includes(path) ?? false);
+	const htmlSubject = useMemo<LiveSubject>(() => ({
+		id: `file:${path}`, kind: "file", format: "html", path, revision: version + reload + 1, state: "saved",
+		text: null, toolCallId: null, toolName: null, elided: false, intent: null, request: null, images: null,
+		progress: null, sequence: null, size: null, startedAt: 0, updatedAt: 0,
+	}), [path, version, reload]);
 	// biome-ignore lint/correctness/useExhaustiveDependencies: `version`/`reload` are refetch triggers
 	useEffect(() => {
 		let cancelled = false;
@@ -365,6 +377,7 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 	// A `.pdf` path goes to the PDF viewer once the probe above shows it is a file (a folder can be named `x.pdf`); the
 	// viewer reads and checks the bytes itself. The probe stays cheap: main sniffs a PDF as binary or too large.
 	const pdf = file && !error && PDF_EXT.test(path);
+	const html = file && !error && HTML_EXT.test(path);
 	// Inside the project the tree's menu has Show in folder; outside it, the viewer offers it.
 	const outside = relativePath(projectPath, path) === path;
 	const reveal = () => void window.vomp.invoke("app:showItem", path);
@@ -408,7 +421,14 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 				)}
 				<IconButton size="sm" label={t(folder ? "files.reloadFolder" : "files.reload")} icon={<ArrowsClockwise />} onClick={() => setReload(reload + 1)} />
 			</PaneToolbar>
-			{pdf ? (
+			{html && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-2 py-1.5">
+				<Segmented size="sm" aria-label={t("files.htmlView")} value={source ? "source" : "preview"} onValueChange={value => useFiles.getState().setSource(viewKey, path, value === "source")}
+					options={[{ value: "preview", label: t("files.htmlPreview") }, { value: "source", label: t("files.htmlSource") }]} />
+				<Button size="sm" variant="ghost" icon={<ArrowSquareOut />} onClick={() => openWithDefaultApp(path, t, "browser")}>{t("live.openBrowser")}</Button>
+			</div>}
+			{html && !source ? (
+				<HtmlPreview subject={htmlSubject} projectPath={projectPath} related={[]} fileViewer />
+			) : pdf ? (
 				<div className="flex min-h-0 flex-1 flex-col bg-inset">
 					{/* Both triggers only grow, so their sum changes whenever either does. */}
 					<PdfFrame path={path} revision={version + reload} name={name} />

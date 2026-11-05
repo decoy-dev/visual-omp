@@ -1,6 +1,9 @@
 {
 	"openTitle": "Open with default app",
 	"openMessage": "Open {{name}} with its default app?",
+	"browserTitle": "Open in browser",
+	"browserMessage": "Open {{name}} in your browser?",
+	"browserFallback": "Your default web browser could not be found. This will use the app associated with HTML files, which may be an editor.",
 	"openWarning": "Opening this file outside visual-omp may run code. Open it only if you trust its source.",
 	"cancel": "Cancel",
 	"open": "Open file",

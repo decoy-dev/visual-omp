@@ -1,10 +1,8 @@
 import type { PreviewChange } from "@shared/contracts/preview";
 import { useEffect } from "react";
-import { useTranslation } from "react-i18next";
 import { controllerFor, useApp } from "../../state/app";
 import { liveGuest, type SessionController } from "../../state/session";
 import { backgroundJobs, ompRunning } from "../panes/derive";
-import { toast } from "../../ui/toast";
 import { deriveSubjects, namedPaths, relatedPaths, sequencePatterns, type SubjectInput } from "./subjects";
 import { EMPTY_CHAT, useLivePreview } from "./store";
 import { cancelPreviewRedirect } from "./redirect";
@@ -81,7 +79,6 @@ export function trackSession(session: SessionController, autoOpen: () => boolean
 }
 
 export function Tracker() {
-	const { t } = useTranslation("panes");
 	useEffect(() => {
 		const subscriptions = new Map<string, () => void>();
 		const sync = () => {
@@ -96,11 +93,7 @@ export function Tracker() {
 		};
 		const offApp = useApp.subscribe(sync);
 		sync();
-		const offNavigation = window.vomp.on("preview:blockedNavigation", ({ url }) => {
-			if (!/^https?:\/\//i.test(url)) return;
-			toast({ message: t("live.blockedNavigation"), description: url, action: { label: t("live.openBrowser"), onClick: () => { void window.vomp.invoke("app:openExternal", url); } } });
-		});
-		return () => { offApp(); offNavigation(); for (const stop of subscriptions.values()) stop(); };
-	}, [t]);
+		return () => { offApp(); for (const stop of subscriptions.values()) stop(); };
+	}, []);
 	return null;
 }

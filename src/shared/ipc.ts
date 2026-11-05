@@ -280,8 +280,8 @@ export interface IpcInvokeMap {
 	/** Explicit developer testing only; rejects in packaged builds and without opt-in environment flags. */
 	"app:diagnosticsTest": { args: [kind: "event" | "renderer-crash"]; result: void };
 	"app:showItem": { args: [path: string]; result: void };
-	/** Open a local regular file, confirming non-previewable files before invoking its associated application. */
-	"app:openFile": { args: [path: string]; result: void };
+	/** Open a local regular file, confirming non-previewable files; browser targets accept HTML only. */
+	"app:openFile": { args: [path: string, target?: "browser"]; result: void };
 	/** Renderer-rasterized PNG data only; no network requests are made by main. */
 	"app:copyImage": { args: [dataUrl: string]; result: void };
 	"app:saveImage": { args: [options: { dataUrl: string; name: string; title: string }]; result: string | null };

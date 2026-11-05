@@ -33,8 +33,8 @@ export function openFile(path: string, projectPath: string | null, tabId: string
 	else void window.vomp.invoke("app:showItem", path);
 }
 
-export function openWithDefaultApp(path: string, t: (key: string) => string): void {
-	void window.vomp.invoke("app:openFile", path).catch((error: unknown) => toast({ tone: "err", message: t("outputs.openFailed"), description: errorText(error) }));
+export function openWithDefaultApp(path: string, t: (key: string) => string, target?: "browser"): void {
+	void (target ? window.vomp.invoke("app:openFile", path, target) : window.vomp.invoke("app:openFile", path)).catch((error: unknown) => toast({ tone: "err", message: t("outputs.openFailed"), description: errorText(error) }));
 }
 
 /** Rasterize in Chromium, including SVG and formats nativeImage cannot decode. Main receives PNG data only. */
