@@ -13,7 +13,7 @@ const renderer = resolve(import.meta.dirname, "../src/renderer/src");
 type Boundary = { file: string; shape: string; reason: string };
 const nonIconBoundaries: Boundary[] = [
 	{ file: "features/live-preview/Stage.tsx", shape: "adapter.Frame", reason: "LiveAdapter.Frame renders a file-format preview with LiveFrameProps." },
-	{ file: "registry/lazy.tsx", shape: "loaded ?? use(preload())", reason: "lazyView loads a registered view component with its generic page props." },
+	{ file: "registry/lazy.tsx", shape: "use(preload())", reason: "lazyView loads a registered view component with its generic page props." },
 	{ file: "registry/lazy.tsx", shape: "Fallback", reason: "lazyView's fallback is the caller's page or section loading component." },
 	{ file: "registry/lazy.tsx", shape: "Failure", reason: "lazyView's failure state is the caller's page or section failure component." },
 ];

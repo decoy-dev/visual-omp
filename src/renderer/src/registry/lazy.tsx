@@ -124,24 +124,29 @@ export function lazyView<P extends object>(
 	Fallback: ComponentType<P> | null = null,
 	Failure: ComponentType<P & LoadFailureProps> | null = null,
 ): LazyView<P> {
-	let loaded: ComponentType<P> | null = null;
-	let pending: Promise<ComponentType<P>> | null = null;
+	type LoadingPromise = Promise<ComponentType<P>> & { status?: "fulfilled"; value?: ComponentType<P> };
+	let pending: LoadingPromise | null = null;
 	const preload = (): Promise<ComponentType<P>> => {
-		pending ??= load().then(
-			component => {
-				loaded = component;
-				return component;
-			},
-			(error: unknown) => {
-				// A failed load reaches the nearest load boundary; the next render tries again.
-				pending = null;
-				throw new LoadError("A part of the window did not load.", { cause: error });
-			},
-		);
+		if (!pending) {
+			const promise: LoadingPromise = load().then(
+				component => {
+					// React can read an idle-preloaded view synchronously without showing its fallback.
+					promise.status = "fulfilled";
+					promise.value = component;
+					return component;
+				},
+				(error: unknown) => {
+					// A failed load reaches the nearest load boundary; the next render tries again.
+					pending = null;
+					throw new LoadError("A part of the window did not load.", { cause: error });
+				},
+			);
+			pending = promise;
+		}
 		return pending;
 	};
 	function Loaded(props: P): ReactNode {
-		return createElement(loaded ?? use(preload()), props);
+		return createElement(use(preload()), props);
 	}
 	function View(props: P): ReactNode {
 		const view = <Suspense fallback={Fallback ? createElement(Fallback, props) : null}>{createElement(Loaded, props)}</Suspense>;

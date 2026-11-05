@@ -23,12 +23,14 @@ function StatusBarChecklist({ returnFocus }: { returnFocus(): void }) {
 	const { t } = useDeferredTranslation("settings");
 	const preference = useApp(state => state.prefs?.statusBar) ?? DEFAULT_STATUS_BAR;
 	const items = orderedStatusItems(statusItems.use(), preference);
-	return <ContextMenuContent className="max-h-[min(34rem,calc(100vh-2rem))] overflow-y-auto" onCloseAutoFocus={event => { event.preventDefault(); returnFocus(); }}>
-		<ContextMenuLabel>{t("status.customize")}</ContextMenuLabel>
-		{items.map(item => <ContextMenuCheckboxItem key={item.id} checked={statusItemLocked(item) || !preference.hidden.includes(item.id)} disabled={statusItemLocked(item)} onSelect={event => event.preventDefault()} onCheckedChange={show => void useApp.getState().setPrefs({ statusBar: showStatusItem(preference, item, show) })}>
-			{t(item.title)}
-		</ContextMenuCheckboxItem>)}
-		<ContextMenuSeparator />
-		<ContextMenuItem onSelect={() => openSettings("appearance")}>{t("status.arrange")}</ContextMenuItem>
+	return <ContextMenuContent className="flex max-h-[min(34rem,var(--radix-context-menu-content-available-height))] flex-col overflow-hidden" onCloseAutoFocus={event => { event.preventDefault(); returnFocus(); }}>
+		<ContextMenuLabel className="shrink-0">{t("status.customize")}</ContextMenuLabel>
+		<div className="min-h-0 overflow-y-auto overscroll-contain">
+			{items.map(item => <ContextMenuCheckboxItem key={item.id} checked={statusItemLocked(item) || !preference.hidden.includes(item.id)} disabled={statusItemLocked(item)} onSelect={event => event.preventDefault()} onCheckedChange={show => void useApp.getState().setPrefs({ statusBar: showStatusItem(preference, item, show) })}>
+				{t(item.title)}
+			</ContextMenuCheckboxItem>)}
+		</div>
+		<ContextMenuSeparator className="shrink-0" />
+		<ContextMenuItem className="shrink-0" onSelect={() => openSettings("appearance")}>{t("status.arrange")}</ContextMenuItem>
 	</ContextMenuContent>;
 }

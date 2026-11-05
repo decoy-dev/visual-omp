@@ -1080,6 +1080,8 @@ Project instructions: `project:instructions` reads `contextFiles.extra` through 
 
 `src/renderer/src/registry/lazy.tsx` wraps dynamic imports for pages, Settings sections, views and sheets. Feature entry points register lazy components; registry slots render these chunks on demand. Idle preloading and explicit `preload()` calls load components before they are opened when possible. Usage, Settings sections, xterm, KaTeX and other heavier features have separate chunks. In the v0.5.0 build, the uncompressed initial renderer entry chunk is approximately 1.56 MB, xterm approximately 331 KB and KaTeX approximately 262 KB. These figures are uncompressed build-output sizes of individual chunks.
 
+Each lazy view always reads its cached loading promise through React's `use()`. When loading completes, the promise records React's fulfilled status and component value so idle-preloaded views render synchronously without a loading fallback. A failed load clears the cached promise and throws `LoadError`, preserving the existing retry boundary.
+
 Every side panel pane (Changes, Files, Preview, Outputs, Tasks, Plan, Terminal and the TSP side chat) loads from its own chunk, on demand or during idle preloading, while the badges (`features/panes/badges.tsx`) load with the app so the pane selector can show counts before a pane opens. The plan badge and the Plan pane share `usePlanReviewPending` from `features/panes/plan-review.ts`. ChatView loads the main transcript through `lazyView`; loading and failure retain the same flex space, and a short failure region scrolls so Try again stays reachable without moving the composer upward. The helper focus view, conversation driver and message composer load in a separate chunk; only focus state, triggers and a small Back control remain eager. Shared file-follow subscriptions load on the first read-only follow, with cancellation guarding a close during import. The bundle guard rejects conversation implementation modules, file-follow code and helper-view translations anywhere in the entry's static dependency graph.
 
 The release notes sheet loads in two stages, on first open or during idle preloading. The sheet itself comes with the update sheets chunk (`features/onboarding/UpdateSheets.tsx`) and shows nothing until that chunk loads. The release notes viewer, the bundled `CHANGELOG.md` text and its Markdown helpers come from a second chunk; until it loads, the sheet shows the notes dialog's frame with a skeleton, and closing it still reports the exit to the sheet host. The build guard rejects the changelog anywhere in the entry's static import closure, because the changelog grows with every release and would otherwise count against the entry allowance.
@@ -1099,7 +1101,7 @@ and const provider alias is checked. Ordinary chart objects with numeric weights
 the icon-construction checks. This is a source convention check, without arbitrary runtime
 or cross-module dataflow inference. Keep extra-weight rendering local and explicit.
 The check names four non-icon dynamic targets by file and exact expression: `adapter.Frame`
-in `features/live-preview/Stage.tsx`, and `loaded ?? use(preload())`, `Fallback` and `Failure` in
+in `features/live-preview/Stage.tsx`, and `use(preload())`, `Fallback` and `Failure` in
 `registry/lazy.tsx`. These existing preview and lazy-view boundaries may receive unresolved
 ordinary props, but explicit or statically known weight-bearing props remain prohibited.
 An unused boundary declaration fails the check.

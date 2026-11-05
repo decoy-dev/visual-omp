@@ -6,6 +6,7 @@ import { i18n } from "../../i18n";
 import settingsMessages from "../../i18n/en/settings.json";
 import { StatusBarSettings } from "../../features/manage/settings/StatusBarSettings";
 import { StatusBarMenu } from "./StatusBarMenu";
+import { openSettings } from "../../state/navigation";
 import type { StatusBarPreference } from "@shared/statusBar";
 import { TooltipProvider } from "../../ui";
 
@@ -75,6 +76,22 @@ it("offers a checklist in the context menu and disables both recovery rows", asy
 	expect(fake.save).toHaveBeenLastCalledWith({ statusBar: { hidden: [], order: [] } });
 	expect(document.querySelector('[role="menu"]')).not.toBeNull();
 	await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+	expect(close).toHaveBeenCalledOnce();
+	expect(document.activeElement).toBe(element);
+});
+it("reaches Arrange status bar by keyboard after the visibility choices", async () => {
+	element.tabIndex = -1;
+	const close = vi.fn();
+	vi.mocked(openSettings).mockClear();
+	await act(async () => root.render(createElement(StatusBarMenu, { point: { x: 12, y: 30, origin: element }, close })));
+	const menu = document.querySelector<HTMLElement>('[role="menu"]')!;
+	await act(async () => {
+		menu.focus();
+		menu.dispatchEvent(new KeyboardEvent("keydown", { key: "End", bubbles: true }));
+	});
+	expect(document.activeElement?.textContent).toBe(settingsMessages.status.arrange);
+	await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+	expect(openSettings).toHaveBeenCalledWith("appearance");
 	expect(close).toHaveBeenCalledOnce();
 	expect(document.activeElement).toBe(element);
 });

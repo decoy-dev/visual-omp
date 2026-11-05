@@ -4,7 +4,7 @@ import { act, createElement, type ReactNode, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { i18n, useDeferredTranslation } from "../i18n";
-import { lazySection } from "./lazy";
+import { lazySection, lazyView } from "./lazy";
 
 // Idle preloading would load the chunks and deferred texts before these tests read them cold.
 vi.mock("./idle", () => ({ preloadWhenIdle: () => {} }));
@@ -46,6 +46,35 @@ function button(label: string): HTMLButtonElement | undefined {
 	return [...container.querySelectorAll("button")].find(candidate => candidate.textContent === label);
 }
 
+
+it("finishes a suspended view without changing its use() calls", async () => {
+	const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+	const { promise, resolve } = Promise.withResolvers<() => ReactNode>();
+	const load = vi.fn(() => promise);
+	const View = lazyView(load, () => createElement("p", null, "Loading view"));
+	await act(async () => root.render(createElement(View)));
+	expect(container.textContent).toBe("Loading view");
+
+	await act(async () => {
+		resolve(() => createElement("output", null, "View content"));
+		await View.preload();
+	});
+	expect(container.textContent).toBe("View content");
+	expect(load).toHaveBeenCalledOnce();
+	expect(errors).not.toHaveBeenCalled();
+	expect(crashes).toEqual([]);
+});
+
+it("renders a preloaded view synchronously without rendering its fallback", () => {
+	const fallback = vi.fn(() => createElement("p", null, "Loading view"));
+	const View = lazyView(async () => () => createElement("output", null, "Preloaded view"), fallback);
+	return View.preload().then(() => {
+		act(() => root.render(createElement(View)));
+		expect(container.textContent).toBe("Preloaded view");
+		expect(fallback).not.toHaveBeenCalled();
+		expect(crashes).toEqual([]);
+	});
+});
 it("shows Try again instead of raw keys when a section's texts do not load, then the section once they load", async () => {
 	const backend = i18n.services.backendConnector.backend as BackendModule;
 	const read = vi.spyOn(backend, "read").mockImplementation((_language, _namespace, callback) => callback(new Error("Namespace chunk unavailable"), false));
