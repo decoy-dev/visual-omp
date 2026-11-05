@@ -16,9 +16,9 @@ import { gitTracker } from "./store";
 sheets.register({ id: "git-commit", component: lazyView(() => import("./CommitSheet").then(m => m.CommitSheet)) });
 sheets.register({ id: "git-pr", component: lazyView(() => import("./PrSheet").then(m => m.PrSheet)) });
 
-statusItems.register({ id: "git.branch", side: "left", order: 10, component: BranchItem });
-statusItems.register({ id: "git.changes", side: "left", order: 20, component: ChangesItem });
-statusItems.register({ id: "git.pr", side: "left", order: 30, component: PrItem });
+statusItems.register({ id: "git.branch", title: "settings:status.items.branch", side: "left", order: 10, component: BranchItem });
+statusItems.register({ id: "git.changes", title: "settings:status.items.changes", side: "left", order: 20, component: ChangesItem });
+statusItems.register({ id: "git.pr", title: "settings:status.items.pr", side: "left", order: 30, component: PrItem });
 
 /** Last known git state for the command's project (commands can't await, so they read the tracker). */
 const gitView = (projectPath: string | null) => (projectPath ? gitTracker(projectPath).getSnapshot() : null);

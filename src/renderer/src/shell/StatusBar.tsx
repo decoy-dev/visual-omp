@@ -1,13 +1,28 @@
 import { ArrowCounterClockwise, Copy, DownloadSimple, TerminalWindow } from "@phosphor-icons/react";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
+import { DEFAULT_STATUS_BAR, OPTIONAL_STATUS_ITEMS } from "@shared/statusBar";
 import { useTranslation } from "react-i18next";
 import { OMP_UPDATE_SHEET, useOmpUpdateStatus, useUpdates } from "../features/onboarding/updates";
+import { lazyView } from "../registry/lazy";
 import { statusItems } from "../registry/slots";
 import { focusedController, focusedTabId, useApp } from "../state/app";
 import { openSettings } from "../state/navigation";
 import { Menu, MenuContent, MenuItem, MenuTrigger, PresenceSwap, StatusDot, toast } from "../ui";
 import { AppMetricsItem } from "./AppMetricsItem";
 import { useSessionView } from "./hooks";
+import { statusItemLocked, visibleStatusItems } from "./statusbar/layout";
+
+const StatusBarMenu = lazyView(() => import("./statusbar/StatusBarMenu").then(m => m.StatusBarMenu));
+const ChatStatusItem = lazyView(() => import("./statusbar/ChatStatusItems").then(m => m.ChatStatusItem));
+
+statusItems.register({ id: "app.update", title: "settings:status.items.update", side: "right", order: 20, locked: true, component: AppUpdateItem });
+statusItems.register({ id: "omp.status", title: "settings:status.items.omp", side: "right", order: 30, locked: true, component: OmpItem });
+statusItems.register({ id: "app.cpu", title: "settings:status.items.cpu", side: "right", order: 40, compact: true, component: () => <AppMetricsItem metric="cpu" /> });
+statusItems.register({ id: "app.memory", title: "settings:status.items.memory", side: "right", order: 50, compact: true, component: () => <AppMetricsItem metric="memory" /> });
+for (const [index, id] of OPTIONAL_STATUS_ITEMS.entries()) statusItems.register({
+	id, title: `settings:status.items.${id.slice(5)}`, side: "left", order: 50 + index * 10,
+	component: props => <ChatStatusItem {...props} kind={id} />,
+});
 
 /** Shown while a newer visual-omp is published; opens Settings → About, where the update runs. */
 function AppUpdateItem(): ReactNode {
@@ -100,39 +115,41 @@ function OmpItem(): ReactNode {
 	);
 }
 
-/**
- * 28px status bar (DESIGN §3.8), part of the ink chrome. Left: git items; right: feature items, updates,
- * omp status and app-only resources. Below 52rem update and omp labels collapse. Below 40rem only
- * the first registered item on each side stays; resources collapse to their popover button.
- */
+/** App-wide status layout, with recovery controls retained at every width. */
 export function StatusBar(): ReactNode {
 	const { t } = useTranslation("shell");
-	const items = statusItems.use();
+	const preference = useApp(state => state.prefs?.statusBar) ?? DEFAULT_STATUS_BAR;
+	const items = visibleStatusItems(statusItems.use(), preference);
+	const [menuPoint, setMenuPoint] = useState<{ x: number; y: number; origin: HTMLElement } | null>(null);
 	const projectPath = useApp(state => state.activeProject);
 	useApp(focusedTabId);
 	const session = focusedController();
 	const [left, right] = (["left", "right"] as const).map(name =>
-		items
-			.filter(item => item.side === name)
-			.map((item, index) => (
-				// The wrapper owns the display switch, so an item's own display classes cannot override it.
-				<span key={item.id} className={index === 0 ? "contents" : "hidden @min-[40rem]/status:contents"}>
-					<item.component session={session} projectPath={projectPath} />
-				</span>
-			)),
+		items.filter(item => item.side === name).map((item, index) => (
+			<span key={item.id} data-status-item={item.id} className={`empty:hidden ${statusItemLocked(item) ? "flex shrink-0" : `${item.compact || index === 0 ? "flex" : "hidden @min-[40rem]/status:flex"} min-w-0 overflow-hidden`}`}>
+				<item.component session={session} projectPath={projectPath} />
+			</span>
+		)),
 	);
 	return (
-		<footer aria-label={t("status.label")} data-tour="statusbar" data-region="chrome" className="@container/status shrink-0 bg-chrome">
-			<div className="flex h-(--statusbar-h) items-center gap-4 overflow-hidden whitespace-nowrap px-3 font-mono text-xs text-fg-muted">
-				<div className="flex min-w-0 items-center gap-4">{left}</div>
-				<div className="flex-1" />
-				<div className="flex min-w-0 shrink-0 items-center gap-4">
-					{right}
-					<AppUpdateItem />
-					<OmpItem />
-					<AppMetricsItem />
-				</div>
-			</div>
-		</footer>
+		<>
+			<footer tabIndex={0} aria-label={t("status.label")} data-tour="statusbar" data-region="chrome" className="@container/status shrink-0 bg-chrome" onContextMenu={event => {
+				event.preventDefault();
+				event.stopPropagation();
+				setMenuPoint({ x: event.clientX, y: event.clientY, origin: event.currentTarget });
+			}} onKeyDown={event => {
+				if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+				event.preventDefault();
+				const box = event.currentTarget.getBoundingClientRect();
+				setMenuPoint({ x: box.left + 16, y: box.top, origin: event.currentTarget });
+			}}>
+					<div className="flex h-(--statusbar-h) items-center gap-4 overflow-hidden whitespace-nowrap px-3 font-mono text-xs text-fg-muted">
+						<div className="flex min-w-0 items-center gap-4">{left}</div>
+						<div className="flex-1" />
+						<div className="flex min-w-0 items-center gap-4">{right}</div>
+					</div>
+			</footer>
+			{menuPoint && <StatusBarMenu point={menuPoint} close={() => setMenuPoint(null)} />}
+		</>
 	);
 }

@@ -80,7 +80,7 @@ function SharedStatus({ session }: PaneProps): ReactNode {
 	);
 }
 
-statusItems.register({ id: "projects.shared", side: "left", order: 40, component: SharedStatus });
+statusItems.register({ id: "projects.shared", title: "settings:status.items.shared", side: "left", order: 40, component: SharedStatus });
 
 registerCommand({
 	id: "project.new",

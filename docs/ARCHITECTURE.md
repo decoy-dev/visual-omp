@@ -42,6 +42,18 @@ repairs the persisted layout on launch: it drops chats that can't be restored, k
 project last shown (else the focused chat's). The app then always opens on Home (`features/home`), with the open
 chats back in the sidebar; pages are not restored. Split view can show two chats, each with its own controller.
 
+The status bar uses `statusItems` for every entry, including locked omp recovery and update controls.
+`shared/statusBarPreference.ts` normalizes the single app-wide `statusBar` preference on load and write, retaining
+the existing defaults and preventing recovery ids from being hidden. `shell/statusbar/layout.ts` orders
+each side by saved ids, then registry order. Appearance and the lazy right-click checklist share those
+rules. The six optional focused-chat components load from their own chunk: context reads collab usage,
+model and thinking reuse the composer readers, queue reads `SessionView.queue`, time reads
+`workingSince` with the existing duration formatter, and helpers use the Tasks `runningHelpers` rule.
+The Appearance list, its reorder and visibility helpers, and the complete right-click menu load lazily.
+Their labels and optional metric formatting use the deferred settings translation namespace.
+Empty status-item wrappers use the CSS empty state to remove their flex box, without suppressing
+populated recovery controls. Settings' move buttons share `moveStatusItem` with keyboard and drag.
+
 New chats without an explicit project use `app:info.defaultChatFolder`, computed in main by the pure
 `shared/chatFolder.ts` rule: `/tmp` on macOS and Linux, and `os.tmpdir()` on Windows. The app store loads it
 alongside preferences; `newChat()` also requests it when called before initialization finishes. The sidebar

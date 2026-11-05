@@ -502,7 +502,7 @@ export function ModelButton({ session }: ChatSlotProps) {
 // ─── Thinking ──────────────────────────────────────────────────────────────
 
 /** Configured thinking level: Auto stays Auto (see `configuredThinking`), else the painted or effective level. */
-function useThinking(session: SessionController): ThinkingLevel | null {
+export function useThinking(session: SessionController): ThinkingLevel | null {
 	const status = useOmpScreen(session).status;
 	const view = useSessionView(session);
 	const tsp = useTsp(view.host?.transport === "tsp" ? view.host.hostId : null).snapshot;

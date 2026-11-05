@@ -218,6 +218,7 @@ Current chats, navigation shortcuts and preview release are described under Sess
 ### Settings
 - Settings is a full page with curated common sections and a searchable **Advanced** section that
   lists every omp setting.
+- Appearance offers one app-wide status-bar layout, with independent visibility and reordering within the left and right groups. Drag or keyboard moves preserve focus and announce the new position. Right-clicking the status bar offers the same visibility checklist and a link to Appearance. omp status and the app update notice cannot be hidden because they provide recovery actions. Existing Git, plan-usage, app CPU and app RAM items remain enabled by default. Context use, model, thinking level, queue length, working time and helpers running are optional focused-chat items, off by default. Working time follows the existing turn timer and omits a duration when the start was not observed.
 - About includes a **Diagnostics** row with **Open logs folder**, which opens the current profile's
   `logs` folder for reviewing local event logs and crash reports before sharing. Opening the folder
   starts no upload. The description warns that crash reports may contain sensitive information and

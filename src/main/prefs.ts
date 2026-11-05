@@ -3,6 +3,8 @@ import { mkdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 import { app } from "electron";
 import { DEFAULT_SIDEBAR_SORT, type AppPreferences, type SidebarSort } from "@shared/ipc";
+import { DEFAULT_STATUS_BAR } from "@shared/statusBar";
+import { normalizeStatusBar } from "@shared/statusBarPreference";
 import type { NewUserApproval } from "./services/approval-default";
 import { broadcast } from "./ipc";
 
@@ -30,6 +32,7 @@ const DEFAULTS: AppPreferences = {
 	tourCompleted: false,
 	pinnedProjects: [],
 	sidebarSort: DEFAULT_SIDEBAR_SORT,
+	statusBar: DEFAULT_STATUS_BAR,
 	archivedSessions: [],
 	extraProjects: [],
 	projectColors: {},
@@ -54,7 +57,7 @@ function sidebarSort(value: unknown): SidebarSort {
 function load(): StoredPreferences {
 	try {
 		const stored = JSON.parse(readFileSync(file, "utf8")) as Partial<StoredPreferences>;
-		return { appUpdateSkipThrough: null, ...DEFAULTS, ...stored, sidebarSort: sidebarSort(stored.sidebarSort), sendCrashReports: stored.sendCrashReports !== false };
+		return { appUpdateSkipThrough: null, ...DEFAULTS, ...stored, sidebarSort: sidebarSort(stored.sidebarSort), statusBar: normalizeStatusBar(stored.statusBar), sendCrashReports: stored.sendCrashReports !== false };
 	} catch (error) {
 		// No preferences file yet: a fresh profile, so the new-user approval default is still to run.
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { appUpdateSkipThrough: null, ...DEFAULTS, setupCompleted: false, newUserApproval: "pending" };
@@ -72,6 +75,7 @@ export function setPrefs(patch: Partial<StoredPreferences>): StoredPreferences {
 		...current,
 		...patch,
 		sidebarSort: sidebarSort(patch.sidebarSort === undefined ? current.sidebarSort : patch.sidebarSort),
+		statusBar: normalizeStatusBar(patch.statusBar === undefined ? current.statusBar : patch.statusBar),
 		textScale: Math.min(130, Math.max(90, patch.textScale ?? current.textScale)),
 		sendCrashReports: typeof patch.sendCrashReports === "boolean" ? patch.sendCrashReports : current.sendCrashReports,
 	};

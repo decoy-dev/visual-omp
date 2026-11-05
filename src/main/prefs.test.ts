@@ -129,6 +129,30 @@ describe("sidebar sort preferences", () => {
 	});
 });
 
+describe("status bar preferences", () => {
+	it.each([null, "{}", '{"statusBar":null}', '{"statusBar":{"hidden":"invalid","order":false}}'])("keeps existing items shown and new chat metrics hidden for %s", async contents => {
+		fake.contents = contents;
+		const { getPrefs } = await import("./prefs");
+		expect(getPrefs().statusBar).toEqual({ hidden: ["chat.context", "chat.model", "chat.thinking", "chat.queue", "chat.time", "chat.helpers"], order: [] });
+	});
+
+	it("normalizes stored ids without hiding recovery actions", async () => {
+		fake.contents = JSON.stringify({ statusBar: { hidden: ["app.cpu", "omp.status", "app.update", "app.cpu", null, ""], order: ["app.memory", 2, "app.memory", "app.cpu"] } });
+		const { getPrefs } = await import("./prefs");
+		expect(getPrefs().statusBar).toEqual({ hidden: ["app.cpu"], order: ["app.memory", "app.cpu"] });
+	});
+
+	it("persists visibility and order through unrelated writes and reload", async () => {
+		const { setPrefs, flushPrefs } = await import("./prefs");
+		setPrefs({ statusBar: { hidden: ["app.memory", "omp.status"], order: ["git.pr", "git.branch"] } });
+		setPrefs({ theme: "dark" });
+		await flushPrefs();
+		vi.resetModules();
+		const { getPrefs } = await import("./prefs");
+		expect(getPrefs().statusBar).toEqual({ hidden: ["app.memory"], order: ["git.pr", "git.branch"] });
+	});
+});
+
 // Static imports cannot exercise persisted preferences across module initialization boundaries.
 describe("rollback preferences", () => {
 	it.each([null, JSON.stringify({ theme: "dark" })])("defaults the update skip to null for a profile without it", async contents => {

@@ -82,6 +82,12 @@ export interface SettingsSectionSpec {
 
 export interface StatusItemSpec {
 	id: string;
+	/** Translation key used by the shared status-bar checklist and Appearance settings. */
+	title: string;
+	/** Recovery actions cannot be hidden or collapsed out of the narrow bar. */
+	locked?: boolean;
+	/** Keep a compact control on narrow windows (resource items supply their own icon). */
+	compact?: boolean;
 	side: "left" | "right";
 	order: number;
 	component: ComponentType<PaneProps>;

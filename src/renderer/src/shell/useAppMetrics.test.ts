@@ -112,3 +112,17 @@ it("discards a reply after unmount and remount without reviving its timer", asyn
 	await act(async () => vi.advanceTimersByTimeAsync(2000));
 	expect(invoke).toHaveBeenCalledTimes(3);
 });
+it("shares polling and history between the independent CPU and RAM items", async () => {
+	await act(async () => root.render(createElement("div", null, createElement(Probe, { key: "cpu" }), createElement(Probe, { key: "ram" }))));
+	expect(invoke).toHaveBeenCalledExactlyOnceWith("app:metrics", true);
+	await act(async () => vi.advanceTimersByTimeAsync(2000));
+	expect(invoke).toHaveBeenCalledTimes(2);
+	const outputs = element.querySelectorAll("output");
+	expect(outputs[0]?.textContent).toBe(outputs[1]?.textContent);
+	await act(async () => root.render(createElement("div", null, createElement(Probe, { key: "ram" }))));
+	await act(async () => vi.advanceTimersByTimeAsync(2000));
+	expect(invoke).toHaveBeenCalledTimes(3);
+	await act(async () => root.render(null));
+	await act(async () => vi.advanceTimersByTimeAsync(2000));
+	expect(invoke).toHaveBeenCalledTimes(3);
+});

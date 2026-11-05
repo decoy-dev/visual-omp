@@ -22,4 +22,4 @@ registerCommand({
 	run: ({ projectPath }) => openUsage({ projectPath }),
 });
 
-statusItems.register({ id: "usage-limits", side: "right", order: 10, component: PlanUsageStatus });
+statusItems.register({ id: "usage-limits", title: "settings:status.items.usage", side: "right", order: 10, component: PlanUsageStatus });

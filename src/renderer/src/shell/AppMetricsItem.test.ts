@@ -13,8 +13,8 @@ vi.mock("../state/app", () => ({
 }));
 vi.mock("./hooks", () => ({ useSessionView: () => undefined }));
 vi.mock("../features/onboarding/updates", () => ({ OMP_UPDATE_SHEET: "update", useOmpUpdateStatus: () => null, useUpdates: () => null }));
-vi.mock("../registry/slots", () => ({ statusItems: { use: () => [] } }));
 vi.mock("../state/navigation", () => ({ openSettings: vi.fn() }));
+vi.mock("../registry/lazy", () => ({ lazyView: () => () => null }));
 let root: Root;
 let element: HTMLDivElement;
 beforeEach(() => {
@@ -29,11 +29,11 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); });
 it("renders the app-only measurement beside the existing omp control and exposes scope in a shared popover", async () => {
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(StatusBar))));
-	const trigger = element.querySelector<HTMLButtonElement>('button[aria-label="App CPU unavailable, RAM 512 MiB"]')!;
+	const trigger = element.querySelector<HTMLButtonElement>('button[aria-label="App CPU unavailable"]')!;
 	expect(trigger).not.toBeNull();
 	expect(trigger.textContent).toContain("CPU ?");
-	expect(trigger.textContent).toContain("RAM 512 MiB");
-	expect(trigger.previousElementSibling?.getAttribute("aria-label")).toBe("omp status: omp 18.15.0");
+	expect(element.querySelector('button[aria-label="App RAM 512 MiB"]')?.textContent).toContain("RAM 512 MiB");
+	expect(element.querySelector('[data-status-item="omp.status"] button')?.getAttribute("aria-label")).toBe("omp status: omp 18.15.0");
 	expect(trigger.querySelector("svg[viewBox='0 0 48 16']")?.getAttribute("aria-hidden")).toBe("true");
 	await act(async () => { trigger.focus(); trigger.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
 	const popover = document.querySelector('[role="dialog"]')!;
@@ -46,10 +46,11 @@ it("renders the app-only measurement beside the existing omp control and exposes
 it("renders current values without presenting a missing metric as zero", async () => {
 	fake.invoke.mockResolvedValue({ cpuPercent: 25.5, memoryBytes: null });
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(StatusBar))));
-	const trigger = element.querySelector<HTMLButtonElement>('button[aria-label="App CPU 25.5%, RAM unavailable"]')!;
+	const trigger = element.querySelector<HTMLButtonElement>('button[aria-label="App CPU 25.5%"]')!;
 	expect(trigger.textContent).toContain("CPU 25.5%");
-	expect(trigger.textContent).toContain("RAM ?");
-	expect(trigger.textContent).not.toContain("0 MiB");
+	const memory = element.querySelector('button[aria-label="App RAM unavailable"]')!;
+	expect(memory.textContent).toContain("RAM ?");
+	expect(memory.textContent).not.toContain("0 MiB");
 });
 it("breaks the rendered CPU trend at unavailable samples while retaining current accessible text", async () => {
 	vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
@@ -60,7 +61,7 @@ it("breaks the rendered CPU trend at unavailable samples while retaining current
 		const path = element.querySelector("svg[viewBox='0 0 48 16'] path")!.getAttribute("d")!;
 		expect(path.match(/M/g)).toHaveLength(2);
 		expect(path.match(/L/g)).toHaveLength(1);
-		expect(element.querySelector('button[aria-label="App CPU 40%, RAM 512 MiB"]')).not.toBeNull();
+		expect(element.querySelector('button[aria-label="App CPU 40%"]')).not.toBeNull();
 	} finally {
 		await act(async () => root.unmount());
 		vi.useRealTimers();

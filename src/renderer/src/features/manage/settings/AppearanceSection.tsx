@@ -5,6 +5,9 @@ import { useDeferredTranslation } from "@/i18n";
 import { useApp } from "@/state/app";
 import { PageHeader, Segmented, Slider } from "@/ui";
 import { SettingRow, SettingsSection } from "./parts";
+import { lazyView, LoadFailed } from "@/registry/lazy";
+
+const StatusBarSettings = lazyView(() => import("./StatusBarSettings").then(m => m.StatusBarSettings), null, LoadFailed);
 
 const THEMES: readonly { value: ThemePreference; icon: typeof Sun }[] = [
 	{ value: "light", icon: Sun },
@@ -97,6 +100,7 @@ export function AppearanceSection() {
 					}
 				/>
 			</SettingsSection>
+			<StatusBarSettings />
 		</>
 	);
 }

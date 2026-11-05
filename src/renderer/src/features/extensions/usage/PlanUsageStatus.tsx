@@ -59,7 +59,7 @@ function useStatusBarFit(root: HTMLElement | null): void {
 			for (;;) {
 				FOLDS.forEach((attr, index) => root.toggleAttribute(attr, index < next));
 				// 1px of slack: scroll and client widths round fractional widths separately.
-				const fits = [...footer.children].every(row => [row, ...row.children].every(box => box.scrollWidth <= box.clientWidth + 1));
+				const fits = [...footer.children].every(row => [row, ...row.children, ...row.querySelectorAll("[data-status-item]")].every(box => box.scrollWidth <= box.clientWidth + 1));
 				if (next === FOLDS.length || fits) break;
 				failedAt[next] = width;
 				next++;

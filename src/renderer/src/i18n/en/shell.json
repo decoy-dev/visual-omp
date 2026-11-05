@@ -129,6 +129,8 @@
 			"hint": "View visual-omp CPU, RAM and measurement scope.",
 			"cpu": "CPU {{value}}",
 			"ram": "RAM {{value}}",
+			"cpuLabel": "App CPU {{value}}",
+			"memoryLabel": "App RAM {{value}}",
 			"percent": "{{value}}%",
 			"mib": "{{value}} MiB",
 			"gib": "{{value}} GiB",

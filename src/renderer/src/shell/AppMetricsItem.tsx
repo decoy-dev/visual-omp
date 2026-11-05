@@ -1,4 +1,4 @@
-import { Cpu } from "@phosphor-icons/react";
+import { Cpu, Memory } from "@phosphor-icons/react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Popover, PopoverContent, PopoverTrigger, Tooltip } from "../ui";
@@ -22,7 +22,7 @@ function CpuTrend({ samples }: { samples: CpuSample[] }) {
 }
 
 /** App-only native resource use, with a keyboard-accessible explanation of the measurement. */
-export function AppMetricsItem() {
+export function AppMetricsItem({ metric }: { metric: "cpu" | "memory" }) {
 	const { t, i18n } = useTranslation("shell");
 	const { cpuPercent, memoryBytes, history } = useAppMetrics();
 	const [open, setOpen] = useState(false);
@@ -33,15 +33,16 @@ export function AppMetricsItem() {
 		value: new Intl.NumberFormat(i18n.language, { maximumFractionDigits: memoryBytes < 1024 ** 3 ? 0 : 1 }).format(memoryBytes / (memoryBytes < 1024 ** 3 ? 1024 ** 2 : 1024 ** 3)),
 	});
 	const summary = t("status.resources.summary", { cpu: cpuPercent === null ? t("status.resources.unknown") : cpu, memory: memoryBytes === null ? t("status.resources.unknown") : memory });
+	const Icon = metric === "cpu" ? Cpu : Memory;
+	const label = t(metric === "cpu" ? "status.resources.cpuLabel" : "status.resources.memoryLabel", { value: metric === "cpu" ? cpuPercent === null ? t("status.resources.unknown") : cpu : memoryBytes === null ? t("status.resources.unknown") : memory });
 	return <Popover open={open} onOpenChange={setOpen}>
 		<Tooltip content={t("status.resources.hint")} open={tooltipOpen && !open} onOpenChange={setTooltipOpen}>
 			<PopoverTrigger asChild>
-				<button type="button" aria-label={summary} className={`flex h-6 shrink-0 items-center gap-toolbar rounded-sm px-1.5 tabular-nums hover:bg-hover hover:text-fg ${focusRing}`}>
-					<Cpu aria-hidden className="size-3.5 @min-[40rem]/status:hidden" />
+				<button type="button" aria-label={label} className={`flex h-6 shrink-0 items-center gap-toolbar rounded-sm px-1.5 tabular-nums hover:bg-hover hover:text-fg ${focusRing}`}>
+					<Icon aria-hidden className="size-3.5 @min-[40rem]/status:hidden" />
 					<span aria-hidden className="hidden items-center gap-toolbar @min-[40rem]/status:flex">
-						<CpuTrend samples={history} />
-						<span className="inline-block w-[9ch] text-right">{t("status.resources.cpu", { value: cpu })}</span>
-						<span className="inline-block w-[13ch] text-right">{t("status.resources.ram", { value: memory })}</span>
+						{metric === "cpu" && <CpuTrend samples={history} />}
+						<span className={`inline-block text-right ${metric === "cpu" ? "w-[9ch]" : "w-[13ch]"}`}>{t(metric === "cpu" ? "status.resources.cpu" : "status.resources.ram", { value: metric === "cpu" ? cpu : memory })}</span>
 					</span>
 				</button>
 			</PopoverTrigger>

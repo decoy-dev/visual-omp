@@ -15,6 +15,7 @@ import type { CollabQuestionState } from "./tsp/question-match";
 import type { TspHostPatch } from "./tsp/patch";
 import type { TspHookAnswer } from "./tsp/dialogs";
 import type { TspAdvisorAction } from "./tsp/advisor";
+import type { StatusBarPreference } from "./statusBar";
 
 export type Platform = "darwin" | "win32" | "linux";
 
@@ -235,6 +236,8 @@ export interface AppPreferences {
 	pinnedProjects: string[];
 	/** Projects section ordering; Current chats retains its own open order. */
 	sidebarSort: SidebarSort;
+	/** Shared status-bar visibility and item order. omp status and update notices remain available. */
+	statusBar: StatusBarPreference;
 	archivedSessions: string[];
 	/** Extra project folders the user opened that have no sessions yet. */
 	extraProjects: string[];
