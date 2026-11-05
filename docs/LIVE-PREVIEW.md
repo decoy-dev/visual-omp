@@ -1,6 +1,6 @@
 # visual-omp: live previews of visual outputs
 
-Status: plan for 0.7.6, written 2026-11-04 against `main` at `2f6256f` (0.7.5) and omp 18.16.0, then revised after astra's review. On 2026-11-04 the owner accepted astra's recommendations on every open question (see [Owner decisions](#owner-decisions)) and asked for Phase 1 to be built. Phase 1 was implemented the same day; where it differs from this plan, the difference is noted in place. Phase 2 slices A1, B and C have implementation notes below; the remaining Phase 2 work and Phase 3 are not implemented.
+Status: plan for 0.7.6, written 2026-11-04 against `main` at `2f6256f` (0.7.5) and omp 18.16.0, then revised after astra's review. On 2026-11-04 the owner accepted astra's recommendations on every open question (see [Owner decisions](#owner-decisions)) and asked for Phase 1 to be built. Phase 1 was implemented the same day; where it differs from this plan, the difference is noted in place. Phase 2 slices A1, B, C and E have implementation notes below; the remaining Phase 2 work and Phase 3 are not implemented.
 
 ## Sources and citations
 
@@ -168,16 +168,16 @@ All HTML previews, streaming and saved, load from `vomp-preview:` documents whos
 
 ### Proofs
 
-Proofs are Phase 2.
+Implemented in Phase 2 slice E for 0.7.8.
 
-- visual-omp ships a small omp skill, `visual-proofs`, and writes it to omp's user skill folder (`~/.omp/agent/skills/visual-proofs/SKILL.md`), where omp's own discovery finds it and Settings › Skills lists it (`src/main/features/skills/fixtures/list-all.json` shows that folder as a native source). A setting, "Ask omp for a proof before long renders", adds or removes the skill.
-- **Ownership.** The file visual-omp writes carries a `managed-by: visual-omp` field in its frontmatter. visual-omp never overwrites or deletes a file at that path without the field; if a person's own skill uses the name, the setting says so and stays off.
-- **Content.** The skill asks omp, before an output that takes long to render or costs credits (video, documents of many pages, decks, generated images, 3D), to make a proof first and save it in a `proofs/` folder beside the output, which the watcher previews:
-  - the first page or first two slides;
-  - three to five key frames as stills (Remotion `still`, ffmpeg `-frames:v 1` at chosen times);
-  - a low-resolution or low-quality draft of a generated image.
-- **Pause.** When the setting's "Wait for my answer" option is on, the skill also asks omp to call its `ask` tool after the proof ("The proof is ready. Continue with the full render?"), which the app already shows as a question card.
-- **Limits.** A skill requests behavior; omp's model decides whether to follow it, so proofs are not an enforced approval gate. A draft from an image provider may itself be charged and may differ from the final image generated from the same prompt.
+- visual-omp ships the `visual-proofs` skill in `src/main/services/visual-proofs.ts`. Settings > General offers "Ask omp for a proof before long renders", off by default. Turning it on writes `<omp agent directory>/skills/visual-proofs/SKILL.md`; turning it off removes that managed file. The existing `ompAgentDir()` resolver honors `PI_CODING_AGENT_DIR`, profiles and omp's configured layout. omp's normal discovery loads the skill, and Settings > Skills & plugins lists and reads it through the existing skill service. Start a new chat or restart omp in an existing chat to load skill changes.
+- **Ownership.** The file carries `managed-by: visual-omp` and `managed-version: 1` in its frontmatter. An unmarked file is left unchanged and reported as a conflict, with the preference off. Writes use a temporary file; a managed replacement is renamed atomically, and an absent target is published with an atomic no-clobber link so a new personal file cannot be overwritten. Only the marked file is deleted, leaving neighboring files alone. Linked skill files and linked skill directories are refused. When the preference is on, startup repairs a missing file or an older managed version and preserves newer versions.
+- **Availability.** The existing skill service applies omp's native user-source and name filters. Disabled skills or source settings, excluded names and unreadable configuration or files are reported beside the switch. Enabling proofs does not change omp's own skill settings.
+- **Content.** Before an output that takes long to render or costs credits, the skill requests the cheapest useful proof saved in `proofs/` beside the intended output: the first page, the first two slides, three to five representative key frames (Remotion `still` or ffmpeg `-ss <t> -frames:v 1`), or a low-resolution draft. omp prints each proof's absolute path for the watcher.
+- **Pause.** The wait is mandatory in the skill. After saving the proof, omp calls `ask` with "The proof is ready. Continue with the full render?" and Yes and No options. It continues only after an explicit Yes. No, cancellation, interruption, a missing answer or a timeout means no full render. The skill forbids starting that work in parallel or in the background while the question waits.
+- **Limits.** omp's model decides whether to follow a skill, so this requests behavior rather than enforcing an approval boundary. The setting explains that the proof costs tokens and possibly provider credits. A paid proof needs permission first, and a final generated image may differ from its draft.
+
+The deterministic `fixture proof` saves `proofs/frame-1.png`, asks the question, and runs the six-second ffmpeg render only after Yes. `node scripts/live-preview-fixture/proof-probe.mjs` checked the shipped skill against omp 18.16.0 in an isolated agent directory: its native user listing had no warnings and honored `PI_CODING_AGENT_DIR`. In headless `rpc-ui --no-ui`, both answers encountered the question only after the PNG existed, and the full video remained absent during a one-second wait. No ended with `bash, ask`; Yes completed with `bash, ask, bash` and a video. This checks the tool protocol, without establishing the Electron question card or Windows behavior. The fixture README gives the Windows Electron procedure.
 
 ### omp upstream requests
 

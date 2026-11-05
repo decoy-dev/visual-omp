@@ -31,6 +31,12 @@
  * `skills.lock.json` directly.
  */
 
+/** The opt-in skill is loaded by omp's normal native user-skill discovery. */
+export type VisualProofsStatus =
+	| { state: "off" | "on" | "outdated" }
+	| { state: "conflict"; path: string }
+	| { state: "unavailable"; reason: "skillsDisabled" | "ignored" | "unreadable" };
+
 /** Known `provider` ids (see file doc). Values outside this list come from newer omp versions. */
 export const SKILL_PROVIDERS = [
 	"native",
@@ -392,6 +398,8 @@ declare module "../ipc" {
 		"skills:settings:get": { args: []; result: SkillsSettings };
 		/** Write the given settings to the global config.yml (values checked first); resolves with the new effective values. */
 		"skills:settings:set": { args: [patch: Partial<SkillsSettings>]; result: SkillsSettings };
+		"proofs:status": { args: []; result: VisualProofsStatus };
+		"proofs:set": { args: [enabled: boolean]; result: VisualProofsStatus };
 
 		/** Search the Skillshare registry (`q` accepts `owner:<scope>` and `keyword:<kw>` filters). */
 		"skills:registry:search": { args: [query: string, sort?: SkillSearchSort]; result: SkillSearchResult };

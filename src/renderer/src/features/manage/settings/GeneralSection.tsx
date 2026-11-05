@@ -1,6 +1,7 @@
 import type { AppPreferences } from "@shared/ipc";
 import type { ApprovalMode } from "@shared/contracts/config";
 import { useDeferredTranslation } from "@/i18n";
+import { lazyView, LoadFailed } from "@/registry/lazy";
 import type { SettingsSectionProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
 import { PageHeader, Segmented, Select, SelectItem, Switch } from "@/ui";
@@ -10,6 +11,7 @@ import { ConfigNotices, SectionScope, SettingRow, SettingsSection, SourceChip } 
 import { useOmpSettings } from "./useOmpSettings";
 
 const TRANSCRIPT_MODES: readonly AppPreferences["transcriptMode"][] = ["normal", "thinking", "verbose"];
+const ProofsSetting = lazyView(() => import("../../live-preview/ProofsSetting").then(m => m.ProofsSetting), null, LoadFailed);
 
 export function GeneralSection({ projectPath, scope, setScope }: SettingsSectionProps) {
 	const { t } = useDeferredTranslation("settings");
@@ -92,6 +94,7 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 							checked={prefs.livePreview} onCheckedChange={livePreview => void setPrefs({ livePreview })} />
 						<Switch className="py-3" label={t("general.livePreviewOpenOutputs.label")} description={t("general.livePreviewOpenOutputs.description")}
 							checked={prefs.livePreviewOpenOutputs} onCheckedChange={livePreviewOpenOutputs => void setPrefs({ livePreviewOpenOutputs })} />
+						<ProofsSetting />
 					</>
 				)}
 				{prefs && (

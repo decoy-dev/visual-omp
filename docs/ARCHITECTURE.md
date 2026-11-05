@@ -102,6 +102,10 @@ Video requests reserve capacity before path checks or file opening: at most four
 
 Stop and redirect uses the controller's existing `holdQueue` before `abort`. The renderer waits for `working` to clear, then uses the composer draft API to prepend the correction prefix and focus that tab. Composer send and Escape notifications release the hold; a ten-second stop deadline releases it without modifying the draft.
 
+The opt-in `visualProofs` preference is offered by the lazy `features/live-preview/ProofsSetting.tsx` in General. `main/features/skills.ts` registers `proofs:status` and `proofs:set` beside the existing skill handlers. `services/visual-proofs.ts` writes only its marked `SKILL.md` under `ompAgentDir()/skills/visual-proofs`, so omp's normal native discovery and the existing Settings > Skills & plugins listing handle it. Availability reuses `SkillService.nativeUserAvailability` and the existing filter attribution. Managed writes are serialized, personal files and linked paths are refused, startup repairs older managed versions when opted in, and file changes broadcast `skills:changed`. The skill requests the cheapest proof, prints its absolute path and calls `ask`, waiting for an explicit Yes before a full render. This is model-followed guidance, with token and possible provider-credit costs, rather than an app-enforced gate.
+
+Host startup awaits `visualProofsReady()` through `gateHostStart`, after the skills feature starts its reconciliation. With proofs off, no reconciliation work runs. An unavailable skill remains a nonfatal diagnostic, so it does not prevent chats from starting. Every ownership-conflict path, including a status refresh after a personal replacement, persists the preference as off while preserving the personal file. Moving that file away and restarting therefore does not reinstall the managed skill without another opt-in.
+
 Each SessionHost:
 
 1. Allocates a loopback WebSocket relay on a free port (listening on `127.0.0.1` and `::1` only).

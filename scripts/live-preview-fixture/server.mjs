@@ -4,6 +4,7 @@ import { pathToFileURL } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { initializeFixture } from "./environment.mjs";
 import { isolationHtml } from "./isolation-page.mjs";
+import { proofCalls } from "./proof.mjs";
 
 export function posterSvg() {
   const lines = [
@@ -93,7 +94,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const messages = body.messages ?? [];
       const lastUser = messages.findLast(message => message.role === "user");
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(svg|html|png|image|isolation|video|sequence|progress|prores)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(svg|html|png|image|isolation|video|sequence|progress|prores|proof)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !messages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -106,12 +107,12 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       };
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
       send({ role: "assistant", content: afterTool ? "The fixture tool result was received." : fixture ? `I will prepare the ${fixture} fixture.` : "The correction was received." });
-      if ((afterTool && !htmlNeedsPage) || !fixture) {
+      if ((afterTool && !htmlNeedsPage && fixture !== "proof") || !fixture) {
         send({}, "stop");
         response.end("data: [DONE]\n\n");
         return;
       }
-      const calls = htmlNeedsPage ? [
+      const calls = fixture === "proof" ? proofCalls(messages, videoCommand()) : htmlNeedsPage ? [
         { name: "write", args: { path: "page.html", content: pageHtml() }, slow: true },
       ] : fixture === "html" ? [
         { name: "write", args: { path: "style.css", content: css }, slow: false },
@@ -138,7 +139,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
           if (call.slow) await sleep(durationMs / count);
         }
       }
-      send({}, "tool_calls");
+      send({}, calls.length ? "tool_calls" : "stop");
       response.end("data: [DONE]\n\n");
     } catch (error) {
       if (!response.headersSent) response.writeHead(500);

@@ -19,6 +19,7 @@ import { trashSessionConversation } from "./omp/session-trash";
 import { getPrefs, setPrefs } from "./prefs";
 import { gateHostStart } from "./services/approval-default";
 import { ensureNewUserApproval } from "./features/config";
+import { visualProofsReady } from "./features/skills";
 import { killTerminal, resizeTerminal, startTerminal, writeTerminal } from "./terminals";
 import { contextImageBytes } from "./services/contextImages";
 import { openFile, showItem } from "./fileActions";
@@ -115,8 +116,8 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	handle("sessions:ownership", async file => (await sessionOwnership([file])).get(file) ?? "unknown");
 	handle("sessions:follow", files => followSessions(files));
 
-	// A fresh profile's chats wait for the "Ask me first" default (services/approval-default.ts).
-	handle("host:start", gateHostStart(ensureNewUserApproval, startHost));
+	// Chats wait for startup skill repair and, on fresh profiles, the default permission level.
+	handle("host:start", gateHostStart(ensureNewUserApproval, startHost, visualProofsReady));
 	handle("host:stop", (hostId, mode) => stopHost(hostId, mode));
 	handle("host:write", (hostId, data) => getHost(hostId).write(data));
 	handle("host:paste", (hostId, text) => getHost(hostId).paste(text));

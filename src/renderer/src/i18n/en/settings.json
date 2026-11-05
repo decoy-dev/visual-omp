@@ -87,6 +87,17 @@
 			"label": "Open Outputs when omp starts a visual output",
 			"description": "Opens that chat's Outputs at its first visual output each turn. Watch on a tool card opens it whenever you choose."
 		},
+		"visualProofs": {
+			"label": "Ask omp for a proof before long renders",
+			"description": "Adds the visual-proofs skill to omp. It asks for a proof and your approval before the full render. omp's model decides whether to follow it. The proof costs tokens and possibly provider credits. Start a new chat or restart omp in an existing chat to load skill changes.",
+			"conflict": "A skill already exists at {{path}} and is not managed by visual-omp. It has been left unchanged. Move or rename it before turning this on.",
+			"skillsDisabled": "omp's user skills are disabled. Enable them in Skills & plugins, then try again.",
+			"ignored": "omp's skill filters exclude visual-proofs. Update its filters in Skills & plugins, then try again.",
+			"unreadable": "The skill or omp's configuration could not be read or changed. Check file permissions and omp's configuration, then try again.",
+			"outdated": "The managed skill is missing or needs an update.",
+			"repair": "Update skill",
+			"checkAgain": "Check again"
+		},
 		"voice": {
 			"label": "Voice input",
 			"description": "Shows a microphone button in the message box so you can talk instead of type. omp turns your speech into text using the Dictation model."

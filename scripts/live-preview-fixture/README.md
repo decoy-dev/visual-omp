@@ -35,6 +35,7 @@ Use `fixture html` or `fixture png` in place of `fixture svg` for the other scen
 - `fixture sequence` declares `frames/frame%04d.png`, writes six frames at one-second intervals, and creates `photo1.png`, `photo2.png` and `photo3.png` in the same folder. Expect one sequence chip showing its newest frame and count, plus three separate photo chips.
 - `fixture progress` replays the captured Remotion 4.0.391 and manim 0.19.0 logs from `samples/` through two bash functions, over about six seconds each. This checks the output parser without installing those renderers. It creates no rendered media. The samples retain their original version lines, commands, paths and console text; each also records the parser's expected result. ffmpeg 9.0.2 and sequence captures are included for unit tests.
 - `fixture prores` creates `unsupported.mov` with the ProRes encoder. Chromium's expected unsupported-codec result must show "This video format cannot play here" and Open in Files.
+- `fixture proof` first saves `proofs/frame-1.png` and prints its absolute path, then calls `ask` with "The proof is ready. Continue with the full render?" and Yes and No. The question waits before a full render. No ends the turn; Yes runs the same ffmpeg command as `fixture video`. This scenario needs Python 3, ffmpeg and an interactive app host or `--mode rpc-ui`; ordinary print and `rpc` modes do not expose the built-in `ask` tool.
 
 Stop the server with `kill "$FIXTURE_PID"` when finished. Scratch outputs and agent state remain available for inspection.
 
@@ -274,3 +275,40 @@ These steps are for the integration owner in the Windows VM. They have not been 
    ```
 
 Keep `$FixtureRoot` and the DevTools HAR or screenshots until the integration owner records the result. Generated clips and frame images belong in that scratch directory and must not be committed. Report Electron's version, Windows build, ffmpeg version, observed progress values, range headers, seeking, codec result and the narrow-layout result separately from unit-test results.
+
+## Verify the proof skill
+
+The setting is off by default. In Settings > General, "Ask omp for a proof before long renders" installs the managed skill through omp's native user-skill folder. The description explains its token and possible provider-credit costs and that omp's model decides whether to follow it. A person's unmarked skill at the same path is left unchanged and reported as a conflict. Disabled native skills and excluded skill names are reported without changing omp's settings. A new chat or an omp restart loads a changed skill.
+
+Run the deterministic protocol tests and the native probe without Electron:
+
+```sh
+npx vitest run src/main/services/visual-proofs.test.ts src/main/features/skills/service.test.ts src/renderer/src/features/live-preview/ProofsSetting.test.ts
+node --test scripts/live-preview-fixture/proof.test.mjs
+node scripts/live-preview-fixture/proof-probe.mjs
+```
+
+The probe requires omp 18.16.0, Python 3 and ffmpeg on PATH. It creates its own scratch home, agent directory and loopback provider, extracts the shipped skill verbatim, verifies its `native:user` listing without warnings and checks `config path` against `PI_CODING_AGENT_DIR`. It uses `rpc-ui --no-ui`, which keeps tool UI over JSON while opening no window. Both answers leave the video absent for a one-second question wait. No finishes with `bash, ask`; Yes finishes with `bash, ask, bash` and a video. The probe stops its children and server and deletes its scratch directory. This checks deterministic tool behavior, rather than whether an unprompted model follows the skill.
+
+### Windows Electron acceptance
+
+Only the integration owner runs these steps. Use the isolated server and development-app launch in the Windows video procedure above, with the same Node, omp, Python, ffmpeg and Git Bash prerequisites. Do not start a second Electron window.
+
+1. Before launching the scratch app, create a fresh proof folder and an unrelated personal skill:
+
+   ```powershell
+   $ProofWork = Join-Path $FixtureRoot "proof-no"
+   New-Item -ItemType Directory -Path $ProofWork | Out-Null
+   $SkillPath = Join-Path $FixtureRoot "home\.omp\agent\skills\visual-proofs\SKILL.md"
+   New-Item -ItemType Directory -Path (Split-Path $SkillPath) -Force | Out-Null
+   $Personal = "---`nname: visual-proofs`ndescription: A personal proof workflow.`n---`nKeep this file.`n"
+   [System.IO.File]::WriteAllText($SkillPath, $Personal)
+   ```
+
+2. Open Settings > General. The proof switch must be off and disabled, with a conflict naming `$SkillPath`. Compare `[System.IO.File]::ReadAllText($SkillPath)` with `$Personal`; they must match. Move only this scratch file to `$SkillPath.personal`, click Check again and enable the switch. The file must contain `managed-by: visual-omp` and `managed-version: 1`. Settings > Skills & plugins must list `visual-proofs` as an enabled omp user skill, and opening it must show the mandatory question and wait. No registry install is involved.
+3. Open `$ProofWork` as a new chat folder, keep live previews on, and send `fixture proof`. Open Outputs through Watch on the proof's bash card. A PNG must appear and the question card must say "The proof is ready. Continue with the full render?" Leave it unanswered for at least five seconds. In PowerShell, `Test-Path (Join-Path $ProofWork "out.mp4")` must be false while `Test-Path (Join-Path $ProofWork "proofs\frame-1.png")` is true.
+4. Choose No. The turn must finish without a full-render bash call, and `out.mp4` must remain absent. For Yes, create `$YesWork = Join-Path $FixtureRoot "proof-yes"` with `New-Item -ItemType Directory -Path $YesWork`, open a fresh chat there and send `fixture proof`. Before Yes the video must remain absent. Choose Yes and confirm the ffmpeg call starts, its progress advances, and `$YesWork\out.mp4` plays after completion.
+5. Return to General and disable the switch. `Test-Path $SkillPath` must be false; `$SkillPath.personal` must remain. Re-enable, quit this scratch development app, change only its managed header from `managed-version: 1` to `managed-version: 0`, and relaunch with the same fixture wrapper. Startup must restore version 1 and retain the on preference. For a source diagnostic, use Skills & plugins to disable omp's user skills, then return to General and confirm the disabled-source note. Turn user skills back on and click Check again. In the existing skill's row, disable `visual-proofs`, return to General, and confirm the filter note; enable that skill again afterwards.
+6. At the largest text size and the window's minimum width, confirm the whole switch label, description, conflict path and Check again or Update skill action remain readable and keyboard-accessible. No row may introduce horizontal scrolling. Repeat the unanswered and No path in a fresh classic-terminal chat if the integration build still offers that compatibility setting.
+7. Quit the scratch app and stop only its fixture server using the video procedure. Retain the scratch directory and screenshots until the result is recorded. Report Windows, Electron and omp versions, the conflict bytes, listing warnings, PNG-before-question result, No and Yes behavior, upgrade result and source/filter diagnostics separately from headless tests.
+

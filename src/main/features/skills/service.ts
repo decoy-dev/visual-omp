@@ -250,6 +250,16 @@ export class SkillService {
 		return (await this.#config()).skills;
 	}
 
+	/** The same source and name filters used to explain the effective skill listing. */
+	async nativeUserAvailability(name: string): Promise<"skillsDisabled" | "ignored" | null> {
+		const config = await this.#config();
+		const { reason } = disabledReason({ name, provider: "native", level: "user" }, {
+			config, inClaudeTree: false, claudeConfigDirSet: false,
+		});
+		if (reason === "skillsOff" || reason === "sourceDisabled") return "skillsDisabled";
+		return reason === "duplicate" ? null : "ignored";
+	}
+
 	/** Toggle `skill:<name>` in the global config's `disabledExtensions` (read-modify-write inside one locked edit). */
 	async setEnabled(name: string, enabled: boolean): Promise<SkillsSettings> {
 		await this.#editGlobalConfig(doc => setSkillEnabledInDocument(doc, name, enabled));

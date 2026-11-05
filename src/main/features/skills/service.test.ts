@@ -108,3 +108,19 @@ describe("project skill discovery ceilings", () => {
 		expect(runner.stream).toHaveBeenLastCalledWith(["skill", "install", "@test/pkg"], expect.anything());
 	});
 });
+
+describe("native user skill availability", () => {
+	it.each([
+		[{}, null],
+		[{ "skills.enabled": { value: false } }, "skillsDisabled"],
+		[{ "skills.enablePiUser": { value: false } }, "skillsDisabled"],
+		[{ disabledProviders: { value: ["native"] } }, "skillsDisabled"],
+		[{ disabledExtensions: { value: ["skill:visual-proofs"] } }, "ignored"],
+		[{ "skills.ignoredSkills": { value: ["visual-*"] } }, "ignored"],
+		[{ "skills.includeSkills": { value: ["other"] } }, "ignored"],
+		[{ "skills.includeSkills": { value: ["visual-*"] } }, null],
+	] as const)("uses omp's existing filter attribution for %j", async (config, expected) => {
+		vi.mocked(runner.run).mockResolvedValueOnce({ code: 0, stdout: JSON.stringify(config), stderr: "" });
+		expect(await service.nativeUserAvailability("visual-proofs")).toBe(expected);
+	});
+});

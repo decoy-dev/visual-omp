@@ -229,6 +229,8 @@ export interface AppPreferences {
 	livePreview: boolean;
 	/** Open the originating chat's Outputs when its first visual output starts. */
 	livePreviewOpenOutputs: boolean;
+	/** Install the managed visual-proofs omp skill, which requests approval before long renders. */
+	visualProofs: boolean;
 	/** Explicit omp executable path; null = auto-detect. */
 	ompPath: string | null;
 	/** Native first-run setup is complete; profiles created before setup count as complete. */

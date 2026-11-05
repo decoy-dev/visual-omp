@@ -26,6 +26,7 @@ const DEFAULTS: AppPreferences = {
 	liveThinking: true,
 	livePreview: true,
 	livePreviewOpenOutputs: false,
+	visualProofs: false,
 	ompPath: null,
 	// Existing or unreadable profiles keep setup complete; only a missing file starts setup.
 	setupCompleted: true,

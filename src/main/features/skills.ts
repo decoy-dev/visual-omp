@@ -1,8 +1,17 @@
 import { broadcast, handle } from "../ipc";
 import { editConfig } from "../omp/config-file";
+import { getPrefs, setPrefs } from "../prefs";
+import { VisualProofsService } from "../services/visual-proofs";
 import { appRunner } from "./plugins/runner";
 import { cancelOperation } from "./plugins/stream";
 import { SkillService } from "./skills/service";
+
+let startupReconciliation: Promise<unknown> = Promise.resolve();
+
+/** Host starts await the opted-in repair; an off setting has no filesystem or omp work. */
+export function visualProofsReady(): Promise<unknown> {
+	return startupReconciliation;
+}
 
 /** Run a mutation, then tell renderers which project (null = user/global) it affected. */
 async function changed<T>(cwd: string | null, work: Promise<T>): Promise<T> {
@@ -17,6 +26,15 @@ export function register(): void {
 		progress => broadcast("skills:progress", progress),
 		edit => editConfig("global", undefined, edit),
 	);
+	const proofs = new VisualProofsService({
+		getEnabled: () => getPrefs().visualProofs === true,
+		setEnabled: visualProofs => { if (getPrefs().visualProofs !== visualProofs) setPrefs({ visualProofs }); },
+		availability: () => skills.nativeUserAvailability("visual-proofs"),
+		changed: () => broadcast("skills:changed", { cwd: null }),
+	});
+	handle("proofs:status", () => proofs.status());
+	handle("proofs:set", enabled => proofs.set(enabled));
+	startupReconciliation = getPrefs().visualProofs ? proofs.sync().catch(() => undefined) : Promise.resolve();
 
 	handle("skills:list", cwd => skills.list(cwd));
 	handle("skills:read", filePath => skills.read(filePath));

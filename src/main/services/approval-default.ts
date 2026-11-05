@@ -91,13 +91,16 @@ export const UNVERIFIED_APPROVAL_MESSAGE =
  * Wrap the host start so every chat's omp waits for the check. Existing profiles settle at once and
  * start unchanged. When a fresh profile's check is unverified, it runs once more (the attempt it joined
  * may have started before omp was ready); still unverified, the start is rejected and nothing runs, so
- * the profile stays pending and the next start tries again.
+ * the profile stays pending and the next start tries again. Optional app startup readiness must also
+ * finish before a host starts, so omp discovers repaired managed skills from its first load.
  */
 export function gateHostStart<T>(
 	check: () => Promise<NewUserApprovalResult>,
 	start: (options: HostStartOptions) => Promise<T>,
+	ready?: () => Promise<unknown>,
 ): (options: HostStartOptions) => Promise<T> {
 	return async options => {
+		if (ready) await ready();
 		if ((await check()) === "unverified" && (await check()) === "unverified") throw new Error(UNVERIFIED_APPROVAL_MESSAGE);
 		return start(options);
 	};
