@@ -1087,6 +1087,18 @@ before the app copy. macOS targets do nothing. After packaging, `scripts/after-p
 both files in `resources/app.asar.unpacked/node_modules/node-pty/build/Release/conpty` and checks
 their PE machine fields against the target x64 or arm64 architecture before changing fuses.
 
+Windows NSIS builds produce separate `visual-omp-<version>-win-x64.exe` and
+`visual-omp-<version>-win-arm64.exe` assets through `nsis.buildUniversalInstaller: false`.
+Each download contains one Electron runtime and the target node-pty native binaries.
+Windows release builds rebuild node-pty for the target Electron and architecture into
+`build/Release`, which its loader checks before `prebuilds/win32-<arch>`. Packaging excludes
+the prebuild directories. For a macOS cross-build with `npmRebuild=false`, copy the target
+`prebuilds/win32-arm64` native files into an isolated app's `node-pty/build/Release` first;
+otherwise the host's macOS addon would be packaged. The existing ConPTY hooks stage ARM64
+`conpty.dll` and `OpenConsole.exe` beside those addons, and require ARM64 PE machine fields.
+TSP uses these bundled files on ARM64 too, with no architecture-specific system-ConPTY
+fallback. Classic hosts continue to use the system ConPTY.
+
 Windows CI runs the no-model TSP transport probe with the Node-built addon before packaging,
 then checks x64 and arm64 package layouts. The x64 smoke probe runs `visual-omp.exe` with
 `ELECTRON_RUN_AS_NODE=1` and explicitly loads the unpacked, Electron-rebuilt node-pty. It repeats
@@ -1228,7 +1240,27 @@ visible PowerShell console after quit using a short encoded file invocation.
 processes, adds the decoy-dev bucket when needed and installs or reuses `decoy-dev/visual-omp`.
 Before removal, it verifies `visual-omp.exe`, `scoop-install.json` or `install.json`, the installed
 manifest against the requested version and executable product version, and a resolving app path.
-The bucket currently distributes the win-x64 installer, which Windows ARM64 runs through emulation.
+From 0.7.8, the generated bucket has `architecture.64bit` and `architecture.arm64`, each with its
+own installer URL, checksum and extraction command for `$PLUGINSDIR\app-64.7z` or
+`$PLUGINSDIR\app-arm64.7z`. Scoop selects the architecture for install and update; the app's
+Scoop switch and update scripts do not pass an architecture override. Existing Scoop installs
+retain Scoop's recorded architecture. The checked-in 0.7.7 manifest remains x64-only until both
+next-release assets exist. Direct update, reinstall and rollback trust normally use `process.arch`;
+`installerArchitecture` chooses ARM64 when Electron reports `app.runningUnderARM64Translation`
+for x64 Windows or macOS copies. URL and name checks then require that native asset. An x64
+Scoop copy on ARM64 receives an About note only when the latest release's trusted assets
+include its ARM64 installer. The manual sequence runs `scoop update`, uninstalls visual-omp,
+then installs `decoy-dev/visual-omp --arch arm64` to override a configured x64 default.
+Global-install flags apply to uninstall and install when needed; the app never runs those
+commands. Install metadata caches platform detection but rechecks native availability against
+the latest release status, and the renderer refreshes that guidance after its release lookup.
+
+NSIS derives its GUID from the unchanged `ltd.decoy.visualomp` app id, independently of target
+architecture. `multiUser.nsh` reads the existing `InstallLocation` from that GUID's registry key
+before choosing a default directory, so an ARM64 installer reuses an x64 copy's directory.
+`deleteAppDataOnUninstall: false` keeps the app profile; `main/profile.ts` uses the same
+`visual-omp` name and default packaged user-data path for both architectures. This establishes
+the configured migration path; the owner's VM check still needs to confirm installed behavior.
 Removal follows electron-builder's `installUtil.nsh`: copy the NSIS uninstaller to a unique temp
 executable, run `/S /KEEP_APP_DATA /currentuser --updated _?=<installDir>` (or `/allusers` when the
 machine registry identifies that location), wait, then delete the temp copy. `--updated` prevents

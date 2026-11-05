@@ -36,6 +36,8 @@ export interface AppInstallInfo {
 	 * needs an administrator PowerShell, so the app shows the command instead of running it.
 	 */
 	scoopGlobal: boolean;
+	/** A translated x64 Scoop copy has a trusted ARM64 installer in the latest published release. */
+	nativeArm64Available: boolean;
 }
 
 /** Direct copies can transfer to their platform's package manager. */

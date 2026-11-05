@@ -11,7 +11,9 @@ import {
 	effectiveUpdateSkip,
 	fetchInstaller,
 	installerAsset,
+	installerArchitecture,
 	isScoopGlobal,
+	nativeScoopArm64Available,
 	parseOmpUpdateCheck,
 	plistVersion,
 	redirectTarget,
@@ -190,15 +192,77 @@ const releaseAssets = [
 	"visual-omp-0.2.0-mac-x64.dmg",
 	"visual-omp-0.2.0-win-x64.exe",
 	"visual-omp-0.2.0-win-x64.exe.blockmap",
+	"visual-omp-0.2.0-win-arm64.exe",
+	"visual-omp-0.2.0-win-arm64.exe.blockmap",
 ].map((name): ReleaseAsset => ({ name, url: `${GITHUB}/${name}`, size: 100 }));
 const packaged = { platform: "darwin" as const, arch: "arm64", anyHost: false };
+
+describe("installerArchitecture", () => {
+	it.each(["win32", "darwin"] as const)("migrates translated %s copies to native assets for updates and reinstalls", platform => {
+		const trust = { platform, arch: installerArchitecture(platform, "x64", true), anyHost: false };
+		expect(trust.arch).toBe("arm64");
+		expect(installerAsset(releaseAssets, "v0.2.0", trust)?.name).toContain(platform === "win32" ? "win-arm64.exe" : "mac-arm64.dmg");
+		const current = release("v0.2.0", {
+			assets: releaseAssets.map(asset => ({ name: asset.name, browser_download_url: asset.url, size: asset.size })),
+		});
+		expect(reinstallAvailability([current], "0.2.0", trust, true, platform === "win32" ? "nsis" : "dmg").available).toBe(true);
+		expect(installerAsset(releaseAssets.filter(asset => !asset.name.includes("arm64")), "v0.2.0", trust)).toBeNull();
+	});
+
+	it.each(["win32", "darwin", "linux"] as const)("keeps the running architecture without translation on %s", platform => {
+		expect(installerArchitecture(platform, "x64", false)).toBe("x64");
+		expect(installerArchitecture(platform, "arm64", false)).toBe("arm64");
+		expect(installerArchitecture(platform, "arm64", true)).toBe("arm64");
+		expect(installerArchitecture(platform, "ia32", true)).toBe("ia32");
+	});
+
+	it("does not infer a Linux native installer from another platform's translation flag", () => {
+		expect(installerArchitecture("linux", "x64", true)).toBe("x64");
+	});
+});
+
+describe("nativeScoopArm64Available", () => {
+	const translated = { platform: "win32" as const, arch: "arm64", anyHost: false };
+	const published = { tag: "v0.2.0", assets: releaseAssets, error: null };
+
+	it("offers migration only after the latest release publishes its trusted ARM64 installer", () => {
+		expect(nativeScoopArm64Available("scoop", "x64", translated, published)).toBe(true);
+		for (const status of [
+			{ ...published, tag: null },
+			{ ...published, assets: [] },
+			{ ...published, assets: releaseAssets.filter(asset => !asset.name.includes("win-arm64")) },
+			{ ...published, assets: releaseAssets.map(asset => ({ ...asset, url: `https://evil.test/${asset.name}` })) },
+			{ ...published, tag: "v0.1.0" },
+			{ ...published, error: "The network is unavailable" },
+		]) {
+			expect(nativeScoopArm64Available("scoop", "x64", translated, status)).toBe(false);
+		}
+	});
+
+	it.each(["v0.7.8-beta.1", "v0.7.8-rc.2+build"])("rejects trusted native prerelease assets for Scoop migration: %s", tag => {
+		const name = `visual-omp-${tag.slice(1)}-win-arm64.exe`;
+		const asset = {
+			name, url: `https://github.com/decoy-dev/visual-omp/releases/download/${tag}/${name}`, size: 100,
+		};
+		expect(installerAsset([asset], tag, translated)).toEqual(asset);
+		expect(nativeScoopArm64Available("scoop", "x64", translated, { tag, assets: [asset], error: null })).toBe(false);
+	});
+
+	it("does not offer Scoop migration for native, untranslated or other install methods", () => {
+		expect(nativeScoopArm64Available("scoop", "arm64", translated, published)).toBe(false);
+		expect(nativeScoopArm64Available("scoop", "x64", { ...translated, arch: "x64" }, published)).toBe(false);
+		expect(nativeScoopArm64Available("scoop", "x64", packaged, published)).toBe(false);
+		expect(nativeScoopArm64Available("nsis", "x64", translated, published)).toBe(false);
+	});
+});
 
 describe("installerAsset", () => {
 	it("picks the release workflow's installer for each platform and arch", () => {
 		expect(installerAsset(releaseAssets, "v0.2.0", packaged)?.name).toBe("visual-omp-0.2.0-mac-arm64.dmg");
 		expect(installerAsset(releaseAssets, "v0.2.0", { ...packaged, arch: "x64" })?.name).toBe("visual-omp-0.2.0-mac-x64.dmg");
 		expect(installerAsset(releaseAssets, "v0.2.0", { ...packaged, platform: "win32", arch: "x64" })?.name).toBe("visual-omp-0.2.0-win-x64.exe");
-		expect(installerAsset(releaseAssets, "v0.2.0", { ...packaged, platform: "win32", arch: "arm64" })).toBeNull();
+		expect(installerAsset(releaseAssets, "v0.2.0", { ...packaged, platform: "win32", arch: "arm64" })?.name).toBe("visual-omp-0.2.0-win-arm64.exe");
+		expect(installerAsset(releaseAssets, "v0.2.0", { ...packaged, platform: "win32", arch: "ia32" })).toBeNull();
 	});
 
 	it("rejects a foreign https URL, another release's URL and a non-installer file", () => {
@@ -208,6 +272,15 @@ describe("installerAsset", () => {
 		expect(installerAsset(renamed("https://github.com/decoy-dev/visual-omp/releases/download/v0.1.0/visual-omp-0.2.0-mac-arm64.dmg"), "v0.2.0", packaged)).toBeNull();
 		expect(installerAsset(renamed(`http://github.com/decoy-dev/visual-omp/releases/download/v0.2.0/visual-omp-0.2.0-mac-arm64.dmg`), "v0.2.0", packaged)).toBeNull();
 		expect(installerAsset([{ name: "visual-omp-0.2.0-mac-arm64.pkg", url: `${GITHUB}/visual-omp-0.2.0-mac-arm64.pkg`, size: 1 }], "v0.2.0", packaged)).toBeNull();
+	});
+
+	it("requires the running Windows architecture and its own trusted URL", () => {
+		const arm64 = { ...packaged, platform: "win32" as const, arch: "arm64" };
+		const name = "visual-omp-0.2.0-win-arm64.exe";
+		expect(installerAsset(releaseAssets.filter(asset => !asset.name.includes("win-arm64")), "v0.2.0", arm64)).toBeNull();
+		for (const url of [`${GITHUB}/visual-omp-0.2.0-win-x64.exe`, `https://evil.test/${name}`, `${GITHUB.replace("v0.2.0", "v0.1.0")}/${name}`]) {
+			expect(installerAsset([{ name, url, size: 100 }], "v0.2.0", arm64)).toBeNull();
+		}
 	});
 
 	it("accepts any http(s) host only for development feeds", () => {
@@ -253,6 +326,8 @@ describe("reinstallAvailability", () => {
 		{ method: "brew", trust: packaged },
 		{ method: "nsis", trust: { ...packaged, platform: "win32", arch: "x64" } },
 		{ method: "scoop", trust: { ...packaged, platform: "win32", arch: "x64" } },
+		{ method: "nsis", trust: { ...packaged, platform: "win32", arch: "arm64" } },
+		{ method: "scoop", trust: { ...packaged, platform: "win32", arch: "arm64" } },
 	] satisfies { method: AppInstallMethod; trust: InstallerTrust }[])(
 		"allows $method only with matching official release metadata, leaving commands to main",
 		({ method, trust }) => {
@@ -274,7 +349,7 @@ describe("reinstallAvailability", () => {
 		]) {
 			expect(reinstallAvailability([{ ...current, assets }], "0.2.0", packaged, true, "dmg")).toEqual(unavailable("missing-installer"));
 		}
-		expect(reinstallAvailability([current], "0.2.0", { ...packaged, platform: "win32", arch: "arm64" }, true, "nsis")).toEqual(unavailable("missing-installer"));
+		expect(reinstallAvailability([{ ...current, assets: current.assets.filter(candidate => !candidate.name.includes("win-arm64")) }], "0.2.0", { ...packaged, platform: "win32", arch: "arm64" }, true, "nsis")).toEqual(unavailable("missing-installer"));
 	});
 
 	it("applies the existing prerelease track to the exact current version and excludes drafts", () => {
@@ -315,7 +390,7 @@ describe("rollback release installers", () => {
 	it("selects the earlier release's installer separately for each supported platform", () => {
 		expect(toReleaseNotes([earlier], "0.3.0", { ...packaged, arch: "x64" })[0]?.platformAsset?.name).toBe("visual-omp-0.2.0-mac-x64.dmg");
 		expect(toReleaseNotes([earlier], "0.3.0", { ...packaged, platform: "win32", arch: "x64" })[0]?.platformAsset?.name).toBe("visual-omp-0.2.0-win-x64.exe");
-		expect(toReleaseNotes([earlier], "0.3.0", { ...packaged, platform: "win32", arch: "arm64" })[0]?.platformAsset).toBeNull();
+		expect(toReleaseNotes([earlier], "0.3.0", { ...packaged, platform: "win32", arch: "arm64" })[0]?.platformAsset?.name).toBe("visual-omp-0.2.0-win-arm64.exe");
 	});
 
 	it("keeps notes but offers no installer for a foreign host, another release or the wrong architecture", () => {

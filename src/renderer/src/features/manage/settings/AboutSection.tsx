@@ -130,6 +130,10 @@ export function AboutSection() {
 					{updates.app?.skippedThroughVersion && <p className="mt-stack text-sm text-fg-muted">{t("onboarding:update.rollback.skipped", { version: updates.app.skippedThroughVersion })}</p>}
 					<ReinstallAction busy={!!updates.operation} />
 					<PackageManagerSwitch busy={updates.operation !== null && updates.operation !== "switch"} />
+					{updates.install?.nativeArm64Available && <div className="mt-stack text-sm text-fg-muted">
+						<p>{t(updates.install.scoopGlobal ? "about.nativeArm64ScoopGlobal" : "about.nativeArm64Scoop")}</p>
+						<pre className="mt-stack whitespace-pre-wrap break-words font-mono">{`scoop update\nscoop uninstall visual-omp${updates.install.scoopGlobal ? " --global" : ""}\nscoop install decoy-dev/visual-omp --arch arm64${updates.install.scoopGlobal ? " --global" : ""}`}</pre>
+					</div>}
 				</dd>
 
 				<dt className="text-fg-muted">{t("about.ompVersion")}</dt>

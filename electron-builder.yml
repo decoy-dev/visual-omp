@@ -61,7 +61,10 @@ win:
     - target: nsis
       arch:
         - x64
+        - arm64
 nsis:
+  # Separate downloads contain only the selected architecture.
+  buildUniversalInstaller: false
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true

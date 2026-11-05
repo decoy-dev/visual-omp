@@ -6,10 +6,10 @@ be able to use it, and it exposes the features that set omp apart from other cod
 
 ## Audience and platforms
 - **Audience:** public release for anyone, including non-technical users.
-- **Platforms:** macOS (Apple Silicon + Intel) and Windows.
+- **Platforms:** macOS (Apple Silicon + Intel) and Windows (x64 + ARM64).
 - **Distribution:** Homebrew cask (`brew install --cask decoy-dev/tap/visual-omp`) on macOS; Scoop
   bucket (`scoop install decoy-dev/visual-omp`, which unpacks the app from the NSIS installer
-  without running it) and the NSIS installer on GitHub Releases for Windows. GitHub Actions builds
+  without running it) and separate x64 and ARM64 NSIS installers on GitHub Releases for Windows. Scoop selects the architecture for a fresh install and retains it for updates. Direct updates and reinstalls choose native ARM64 when Electron reports x64 translation on Windows or macOS, and match `process.arch` otherwise. Emulated Scoop copies receive manual native-reinstall instructions in About only when the latest published release has a trusted ARM64 installer; those instructions refresh Scoop and install with `--arch arm64`. Normal updates and Switch to Scoop remain architecture-neutral. GitHub Actions builds
   a release when a `v*` tag is pushed and updates the Homebrew cask and the Scoop manifest for
   stable versions (see docs/RELEASING.md). The cask requires Homebrew 6.0.16 or later. Direct
   macOS copies offer a safe Homebrew transfer or a Homebrew installation guide from Settings > About.

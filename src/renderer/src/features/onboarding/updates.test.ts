@@ -1,6 +1,6 @@
 import type { OmpUpdateRun } from "@shared/contracts/updates";
-import { describe, expect, it } from "vitest";
-import { ompUpdateState } from "./updates";
+import { describe, expect, it, vi } from "vitest";
+import { checkForUpdates, loadUpdates, ompUpdateState } from "./updates";
 
 const run: OmpUpdateRun = {
 	runId: "update", args: ["update"], startedAt: 1, finishedAt: 2,
@@ -25,4 +25,27 @@ describe("omp update outcome", () => {
 	it.each(["18.15.0", "18.15.1", "19.0.0"])("finishes only after installing supported %s", versionAfter => {
 		expect(ompUpdateState({ ...run, versionAfter }, null, "18.15.0")).toBe("done");
 	});
+});
+
+it.each([checkForUpdates, loadUpdates])("refreshes install guidance after the release lookup finishes", async check => {
+	const releaseCheck = Promise.withResolvers<null>();
+	const calls: string[] = [];
+	vi.stubGlobal("window", { vomp: { invoke: async (channel: string) => {
+		calls.push(channel);
+		if (channel === "updates:app:check") return releaseCheck.promise;
+		if (channel === "updates:app:install") return {
+			method: "scoop", appPath: null, command: null, scoopGlobal: false, nativeArm64Available: true,
+		};
+		return null;
+	} } });
+	try {
+		const pending = check();
+		await Promise.resolve();
+		expect(calls).not.toContain("updates:app:install");
+		releaseCheck.resolve(null);
+		await pending;
+		expect(calls).toContain("updates:app:install");
+	} finally {
+		vi.unstubAllGlobals();
+	}
 });

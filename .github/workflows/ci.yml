@@ -57,7 +57,7 @@ jobs:
         env:
           VOMP_TSP_WINDOWS_EVIDENCE: ${{ runner.temp }}/windows-tsp-evidence
         run: node scripts/windows-tsp-ci.mjs lifecycle
-      - name: Package Windows installer
+      - name: Package Windows installers
         if: runner.os == 'Windows' && !cancelled()
         timeout-minutes: 20
         run: npm run dist:win
@@ -72,16 +72,11 @@ jobs:
         env:
           VOMP_TSP_WINDOWS_EVIDENCE: ${{ runner.temp }}/windows-tsp-evidence
         run: node scripts/windows-tsp-ci.mjs smoke release/win-unpacked
-      - name: Package Windows arm64 layout
-        id: arm64
-        if: runner.os == 'Windows' && !cancelled()
-        timeout-minutes: 20
-        run: npx electron-builder --win dir --arm64 --publish never --config.directories.output=release-arm64
       - name: Check packaged arm64 ConPTY layout
-        if: runner.os == 'Windows' && !cancelled() && steps.arm64.outcome == 'success'
+        if: runner.os == 'Windows' && !cancelled()
         env:
           VOMP_TSP_WINDOWS_EVIDENCE: ${{ runner.temp }}/windows-tsp-evidence
-        run: node scripts/windows-tsp-ci.mjs layout release-arm64/win-arm64-unpacked arm64
+        run: node scripts/windows-tsp-ci.mjs layout release/win-arm64-unpacked arm64
       - name: Upload Windows ConPTY evidence
         if: runner.os == 'Windows' && !cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2

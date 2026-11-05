@@ -44,7 +44,9 @@ import {
 	fetchInstaller,
 	fetchReleaseHistory,
 	installerAsset,
+	installerArchitecture,
 	isScoopGlobal,
+	nativeScoopArm64Available,
 	parseOmpUpdateCheck,
 	plistVersion,
 	releaseSummary,
@@ -103,7 +105,11 @@ const SIMULATED_BREW_COMMAND =
 const devFeedFile = app.isPackaged ? undefined : process.env.VOMP_UPDATE_FEED;
 
 /** Packaged builds accept only this release's GitHub installer; development feeds may use any host. */
-const trust: InstallerTrust = { platform: process.platform as Platform, arch: process.arch, anyHost: devFeedFile !== undefined };
+const trust: InstallerTrust = {
+	platform: process.platform as Platform,
+	arch: installerArchitecture(process.platform as Platform, process.arch, app.runningUnderARM64Translation === true),
+	anyHost: devFeedFile !== undefined,
+};
 
 /** Re-read on every use so edits to the feed file apply without restarting. */
 async function devFeed(): Promise<DevFeed | null> {
@@ -294,7 +300,7 @@ async function detectInstall(): Promise<AppInstallInfo> {
 	let command: string | null = null;
 	if (method === "brew") command = feed ? (feed.brewCommand ?? SIMULATED_BREW_COMMAND) : brewUpgradeCommand(brew ?? "brew");
 	const scoopGlobal = feed?.scoopGlobal ?? (scoop && layout !== null && isScoopGlobal(layout.root, process.env, await scoopGlobalPath()));
-	return { method, appPath, command, scoopGlobal };
+	return { method, appPath, command, scoopGlobal, nativeArm64Available: false };
 }
 
 /** The `global_path` setting in Scoop's config.json, where Scoop itself reads it; undefined when unset or unreadable. */
@@ -310,10 +316,10 @@ async function scoopGlobalPath(): Promise<string | undefined> {
 }
 
 /** Packaged builds detect once; development builds re-read the feed so its `method` can change. */
-function installInfo(): Promise<AppInstallInfo> {
-	if (devFeedFile) return detectInstall();
-	installCache ??= detectInstall();
-	return installCache;
+async function installInfo(): Promise<AppInstallInfo> {
+	const install = await (devFeedFile ? detectInstall() : (installCache ??= detectInstall()));
+	if (install.method !== "scoop" || process.arch !== "x64" || trust.arch !== "arm64") return install;
+	return { ...install, nativeArm64Available: nativeScoopArm64Available(install.method, process.arch, trust, await checkApp(false)) };
 }
 
 /** Reinstall availability never changes update eligibility or the rollback boundary. */

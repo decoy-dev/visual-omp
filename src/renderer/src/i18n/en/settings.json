@@ -285,6 +285,8 @@
 		"openLogsFailed": "The logs folder could not be opened. Try again.",
 		"justNow": "Just now",
 		"never": "Not checked yet",
+		"nativeArm64Scoop": "A native ARM64 build is available. Quit visual-omp, then run these commands in PowerShell and reopen the app. Saved chats and omp settings are kept.",
+		"nativeArm64ScoopGlobal": "A native ARM64 build is available. Quit visual-omp, then run these commands in an administrator PowerShell and reopen the app. Saved chats and omp settings are kept.",
 		"method": {
 			"brew": "updates through Homebrew",
 			"dmg": "updates from a downloaded disk image",

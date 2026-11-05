@@ -122,12 +122,14 @@ export async function loadInstall(): Promise<AppInstallInfo> {
 
 /** Checks visual-omp and omp now, bypassing main's 30-minute cache. */
 export async function checkForUpdates(): Promise<void> {
-	await Promise.all([checkApp(true, true), checkOmp(true), loadInstall()]);
+	await Promise.all([checkApp(true, true), checkOmp(true)]);
+	await loadInstall();
 }
 
 /** Loads the last results (main's 30-minute cache), checking only what is stale. */
 export async function loadUpdates(): Promise<void> {
-	await Promise.all([checkApp(false), checkOmp(false), loadInstall()]);
+	await Promise.all([checkApp(false), checkOmp(false)]);
+	await loadInstall();
 	useUpdates.setState({ operation: await window.vomp.invoke("updates:app:operation") ?? null });
 }
 

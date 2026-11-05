@@ -46,7 +46,7 @@ beforeEach(() => {
 	fake.exec.mockImplementation((_binary: string, args: string[], _options: unknown, callback: (error: Error | null, stdout: string, stderr: string) => void) => callback(null, args[0] === "info" ? JSON.stringify({ casks: [{ version: "0.7.6" }] }) : "", ""));
 	fake.spawn.mockReturnValue({ unref: vi.fn() });
 	fake.write.mockResolvedValue(undefined); fake.trash.mockResolvedValue(undefined);
-	registerInstallSwitch({ installInfo: async () => ({ method: fake.method, appPath: target, command: null, scoopGlobal: false }), caskApps: async path => fake.casks.get(path) ?? [], scoopGlobalPath: async () => fake.globalRoot, beginOperation: kind => operation.begin(kind), endOperation: kind => operation.end(kind) });
+	registerInstallSwitch({ installInfo: async () => ({ method: fake.method, appPath: target, command: null, scoopGlobal: false, nativeArm64Available: false }), caskApps: async path => fake.casks.get(path) ?? [], scoopGlobalPath: async () => fake.globalRoot, beginOperation: kind => operation.begin(kind), endOperation: kind => operation.end(kind) });
 });
 afterEach(() => { process.execPath = execPath; });
 const invoke = (name: string, ...args: unknown[]) => fake.handlers.get(`updates:app:${name}`)!(...args);
