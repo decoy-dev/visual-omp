@@ -30,6 +30,7 @@ Use `fixture html` or `fixture png` in place of `fixture svg` for the other scen
 - `fixture html` first writes `style.css` and `image.svg`, then streams `page.html` over about 15 seconds. This lets the streaming page resolve its local assets before the HTML write finishes. The page also includes a remote stylesheet, font and image, a script with `fetch`, a link, a meta refresh and a form. These are test inputs for the preview's network, script and navigation restrictions. Do not open this page outside the restricted preview when checking those restrictions.
 - `fixture png` calls `bash` with a Python standard-library script. It writes three different 240 by 160 RGB images to `frames.png`, closes each write and waits one second before the next iteration. Each save prints the absolute path and save number. No Pillow installation is needed.
 - `fixture image` streams a `generate_image` request for abort testing. The scratch configuration enables the tool, but supplies no image-provider credentials. Abort before the stream finishes. This scenario does not generate an image.
+- `fixture isolation` writes `isolation.html` with an inline script that reports its opaque origin and a button that starts an infinite loop. Scripts remain off without the explicit main-process test launch below. The evidence collector clicks the button; do not click it manually.
 
 Stop the server with `kill "$FIXTURE_PID"` when finished. Scratch outputs and agent state remain available for inspection.
 
@@ -42,11 +43,109 @@ node /tmp/vomp-live-preview/scripts/live-preview-fixture/run.mjs \
   "$FIXTURE_ROOT" --cwd /tmp/vomp-live-preview npm run dev
 ```
 
-The wrapper starts the app with an explicit environment, so its inherited provider credentials, hooks and config overlays are absent. It sets `HOME` and `USERPROFILE` to `$FIXTURE_ROOT/home`, `PI_CONFIG_DIR=.omp`, `PI_CODING_AGENT_DIR=$FIXTURE_ROOT/home/.omp/agent`, `OMP_PROFILE` to the empty string, scratch XDG directories and temporary directories, and `VOMP_DEV_PROFILE=$FIXTURE_ROOT/app-profile`. `SHELL=/bin/bash` makes the app's login-shell environment lookup use the scratch home. PATH is the only value copied from the launching environment. The remaining fixed values are listed in `environment.mjs`.
+The wrapper starts the app with an explicit environment, so its inherited provider credentials, hooks and config overlays are absent. It sets `HOME` and `USERPROFILE` to `$FIXTURE_ROOT/home`, `PI_CONFIG_DIR=.omp`, `PI_CODING_AGENT_DIR=$FIXTURE_ROOT/home/.omp/agent`, `OMP_PROFILE` to the empty string, scratch XDG directories and temporary directories, and `VOMP_DEV_PROFILE=$FIXTURE_ROOT/app-profile`. `SHELL=/bin/bash` makes the app's login-shell environment lookup use the scratch home on macOS. PATH is copied from the launching environment. Windows also keeps the operating-system paths needed by subprocesses, with `APPDATA` and `LOCALAPPDATA` redirected into the scratch home. The remaining fixed values are listed in `environment.mjs`.
 
 The scratch config selects `fixture/preview` for default, smol and tiny roles and uses `tools.approvalMode: yolo`. If the app shows first-run setup, skip provider login, select the fixture model and finish setup in this scratch profile. Open `$FIXTURE_ROOT/work` as the chat folder, then send one of the fixture prompts. Watch opens Outputs explicitly; automatic opening is off by default. Use a fresh chat when comparing scenarios. The server selects a scenario from the latest user message and stops after its tool result, so a correction such as `Use a blue square instead` produces a short acknowledgment.
 
 This command is for the integration owner. The fixture probes do not launch Electron, the installed visual-omp app or a development app.
+
+## Collect packaged process isolation evidence
+
+Only the integration owner runs the packaged apps. Node.js 22 or later and omp 18.16.0 on PATH are required inside the Windows VM and on the later macOS host run. No model credentials are needed. Keep loopback ports 9229 (main inspector), 9333 (renderer CDP) and 47831 (fixture provider) free. The inspectors grant debugging access to the scratch app; quit it after collection. Normal launches open neither inspector.
+
+`run.mjs <root> --isolation <app>` sets `VOMP_PREVIEW_ISOLATION_TEST=1`, the exact absolute `<root>/work/isolation.html` path and the scratch app profile. Main captures the switch at startup in development and packaged builds. Only prepared saved revisions of that exact file gain inline scripts and `sandbox="allow-scripts"`. No `allow-same-origin` permission is added, the rest of the response CSP stays unchanged, and streaming revisions and all other files keep scripts off. A packaged launch without an absolute scratch profile fails before reading app preferences.
+
+### Build an unpacked Windows app on macOS
+
+Reuse the Windows ARM64 track's isolated native dependency staging procedure. `node_modules` in the worktree is a shared symlink and must remain untouched. Build first, then stage the Windows prebuilds in an app directory inside the worktree, because electron-builder rejects a sibling `/tmp` app directory. The existing packaging hooks copy the target ConPTY files there. This example builds ARM64 for Windows 11 ARM64:
+
+```sh
+npx electron-vite build
+(
+  set -e
+  STAGING=.arm64-package
+  test ! -e "$STAGING"
+  mkdir -p "$STAGING/node_modules"
+  trap 'rm -rf "$STAGING"' EXIT
+  cp -R out package.json LICENSE NOTICE "$STAGING/"
+  cp -R node_modules/node-pty "$STAGING/node_modules/"
+  rm -rf "$STAGING/node_modules/node-pty/build"
+  mkdir -p "$STAGING/node_modules/node-pty/build/Release"
+  cp node_modules/node-pty/prebuilds/win32-arm64/pty.node \
+    node_modules/node-pty/prebuilds/win32-arm64/conpty.node \
+    node_modules/node-pty/prebuilds/win32-arm64/conpty_console_list.node \
+    node_modules/node-pty/prebuilds/win32-arm64/winpty.dll \
+    node_modules/node-pty/prebuilds/win32-arm64/winpty-agent.exe \
+    "$STAGING/node_modules/node-pty/build/Release/"
+  npx electron-builder --win dir --arm64 --publish never \
+    -c.npmRebuild=false -c.directories.app="$STAGING" \
+    -c.directories.output=/tmp/vomp-isolation-arm64
+)
+```
+
+For an x64 run, use `.x64-package`, `prebuilds/win32-x64`, `--x64` and `/tmp/vomp-isolation-x64` in the same procedure. When Windows-native target addons are already staged in the app directory, the packaging command is `npx electron-vite build && npx electron-builder --win dir --x64 -c.npmRebuild=false --publish never` (or `--arm64`). Do not use that shorter command against the Mac's native dependency tree. Remove the scratch app directory before another Vite build, including after an interrupted shell.
+
+Copy the entire unpacked app folder from `/tmp/vomp-isolation-arm64/win-arm64-unpacked` to `C:\vomp-a2\app` in the VM. For x64 the folder is `win-unpacked`. Also copy `scripts/live-preview-fixture` from this exact source revision to `C:\vomp-a2\scripts\live-preview-fixture`. Keep the app's `resources`, DLLs and executable together. There is no installer step.
+
+### Collect in Windows PowerShell
+
+In the first VM PowerShell terminal:
+
+```powershell
+Set-Location C:\vomp-a2
+$root = Join-Path $env:TEMP ("vomp-preview-isolation-" + [guid]::NewGuid())
+Set-Content -Path .\fixture-root.txt -Value $root
+node .\scripts\live-preview-fixture\server.mjs --root $root
+```
+
+Wait for the provider's listening message, then in a second VM terminal:
+
+```powershell
+Set-Location C:\vomp-a2
+$root = (Get-Content .\fixture-root.txt -Raw).Trim()
+node .\scripts\live-preview-fixture\run.mjs $root --isolation C:\vomp-a2\app\visual-omp.exe
+```
+
+If first-run setup appears, skip provider sign-in, select `fixture/preview` and finish setup in the scratch profile. Open `<root>\work` as the chat folder and create a fresh chat. Keep its composer empty and close any existing Outputs stage. Confirm that Show visual outputs while omp makes them is on. Leave the app open and start the collector in a third VM terminal:
+
+```powershell
+Set-Location C:\vomp-a2
+$root = (Get-Content .\fixture-root.txt -Raw).Trim()
+node .\scripts\live-preview-fixture\isolation-evidence.mjs $root
+```
+
+After the collector prints `Armed`, send `fixture isolation` in that chat and choose Watch to open Outputs. Do not click Start busy loop or interact with the app during collection. Keep the scratch app visible, without minimizing or fully covering it, because the app pauses hidden React views. The collector does not raise or activate windows. Its textarea DOM focus and CDP input stay inside the app renderer. It starts the loop itself, inserts one character about every 200 ms for at least 10 seconds, then clicks the stage's Close button. The generated text remains as an unsent scratch draft.
+
+The collector writes `scripts/live-preview-fixture/evidence/isolation/win32.json` and exits with status 0 only when this packaged platform passes. Copy that file back to the same evidence directory in the integration worktree. Retain failed runs before repeating, using `--output <path>` to write a separate attempt. Quit the scratch app and stop the provider with Ctrl+C. If cleanup reports a remaining loop, quit the scratch app manually.
+
+### Repeat on macOS after hours
+
+Build the packaged app with `npm run dist:mac` in the integration scratch worktree and use its unpacked `.app` under `release/mac-arm64`. Keep the owner's installed app and running development app untouched. Run the provider in one terminal, then the packaged executable in another:
+
+```sh
+export FIXTURE_ROOT="$(mktemp -d /tmp/vomp-preview-isolation.XXXXXX)"
+printf 'Fixture root: %s\n' "$FIXTURE_ROOT"
+node scripts/live-preview-fixture/server.mjs --root "$FIXTURE_ROOT"
+# In a second terminal, set FIXTURE_ROOT to the printed scratch root.
+node scripts/live-preview-fixture/run.mjs "$FIXTURE_ROOT" --isolation \
+  "$PWD/release/mac-arm64/visual-omp.app/Contents/MacOS/visual-omp"
+# In a third terminal, after preparing an empty fresh chat in <root>/work:
+node scripts/live-preview-fixture/isolation-evidence.mjs "$FIXTURE_ROOT"
+```
+
+Follow the same Armed, prompt and Watch sequence. The result is `evidence/isolation/darwin.json`. Copy both platform JSON files into the integration worktree and fill the result table in `docs/LIVE-PREVIEW.md`.
+
+### Decision and recorded measurements
+
+The JSON includes `webFrameMain` identifiers and `osProcessId` for the preview and app main frame, `app.getAppMetrics()` before and after loading and during the loop, the exact CSP and opaque origin, every composer echo's upper-bound latency, stage-close timing and post-close CPU samples. It records the preview PID's peak busy CPU value without assuming the host's core count. Closing passes only when the stage closes without terminating JavaScript first. Idle means that PID disappears or stays at or below 1 percent CPU for three consecutive one-second samples, within 10 samples.
+
+The collector requires that explicit fixture root. It checks the root marker, the inspected main process's agent directory and fixture path, and the app's actual scratch profile before connecting to renderer CDP. A random challenge written through that verified process's `webContents.executeJavaScript` must be readable from the selected CDP target before any input, clicks or cleanup commands are permitted. A mismatch writes failed evidence without interacting with the page.
+
+
+The collector continues collecting responsiveness evidence when process IDs match, so one run records the failure and its consequences. If Close cannot run, it first records that failure, then requests `Runtime.terminateExecution` for cleanup and retries Close. Recovery never converts the failed close into a pass. Errors and partial runs write JSON and fail closed.
+
+Script-enabled iframes are permitted for slice F only if both packaged Windows and macOS runs have different app and preview OS process IDs, every echo sample is at most 100 ms for the full 10 seconds, and close and idle checks pass. Otherwise slice F uses the approved WebContentsView fallback. These A2 runs do not establish the A3 network-channel guarantees.
+
 
 ## Why this does not use the owner's omp configuration
 

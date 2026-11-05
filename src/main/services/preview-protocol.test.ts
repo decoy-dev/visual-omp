@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdir, mkdtemp, open, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, realpath, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { PreviewGrant } from "@shared/contracts/preview";
@@ -10,12 +10,15 @@ const electron = vi.hoisted(() => ({
 	handle: vi.fn(),
 	schemes: vi.fn(),
 	ipc: new Map<string, (...args: unknown[]) => unknown>(),
+	isolationFile: "",
+	rejectIsolationRead: false,
 }));
 vi.mock("electron", () => ({
 	app: { isReady: () => electron.ready, whenReady: electron.whenReady },
 	protocol: { handle: electron.handle, registerSchemesAsPrivileged: electron.schemes },
 }));
 vi.mock("../ipc", () => ({ handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) => electron.ipc.set(channel, handler) }));
+vi.mock("./preview-isolation-test", () => ({ isIsolationTestDocument: (path: string, saved: boolean, read?: unknown) => saved && electron.isolationFile === path && (!read || !electron.rejectIsolationRead) }));
 
 import {
 	grantPreview, handlePreviewRequest, PREVIEW_CSP, previewDocumentUrl, previewNavigationRule, preparePreview,
@@ -26,6 +29,8 @@ let folder: string;
 const cleanup: string[] = [];
 beforeEach(async () => {
 	folder = await mkdtemp(join(tmpdir(), "vomp-protocol-"));
+	electron.isolationFile = "";
+	electron.rejectIsolationRead = false;
 	cleanup.push(folder);
 });
 afterEach(async () => {
@@ -42,6 +47,45 @@ async function get(url: string): Promise<Response> { return handlePreviewRequest
 // WHATWG Request normalizes dot segments before a protocol sees them. This also tests unnormalized callers.
 async function raw(url: string): Promise<Response> { return handlePreviewRequest({ url, method: "GET" } as Request); }
 
+
+it("enables only the explicitly gated saved fixture snapshot and keeps its network policy closed", async () => {
+	const grant = await page();
+	electron.isolationFile = await realpath(join(folder, "index.html"));
+	setPreviewLive(grant.token, 1, "<p>Streaming fixture</p>");
+	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true });
+	expect((await get(`${grant.url}?rev=1`)).headers.get("content-security-policy")).toBe(PREVIEW_CSP);
+	savePreview(grant.token);
+	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, isolationTest: true });
+	const response = await get(`${grant.url}?rev=1`);
+	expect(await response.text()).toBe("<h1>Saved</h1>");
+	expect(response.headers.get("content-security-policy")).toBe(PREVIEW_CSP.replace("script-src 'none'", "script-src 'unsafe-inline'"));
+	expect(response.headers.get("access-control-allow-origin")).toBeNull();
+	expect((await get(grant.url)).headers.get("content-security-policy")).toBe(PREVIEW_CSP);
+	const other = await page(join(folder, "other.html"));
+	savePreview(other.token);
+	expect(await preparePreview(other.token, 1)).toEqual({ ok: true });
+	expect((await get(`${other.url}?rev=1`)).headers.get("content-security-policy")).toBe(PREVIEW_CSP);
+});
+
+it("requires the opened document identity before marking a snapshot script-enabled", async () => {
+	const grant = await page();
+	electron.isolationFile = await realpath(join(folder, "index.html"));
+	electron.rejectIsolationRead = true;
+	savePreview(grant.token);
+	expect(await preparePreview(grant.token, 1)).toEqual({ ok: false, reason: "notFile" });
+	expect((await get(`${grant.url}?rev=1`)).status).toBe(404);
+	expect((await get(grant.url)).headers.get("content-security-policy")).toBe(PREVIEW_CSP);
+});
+
+it("rejects a previously prepared script fixture when its pinned identity changes", async () => {
+	const grant = await page();
+	electron.isolationFile = await realpath(join(folder, "index.html"));
+	savePreview(grant.token);
+	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, isolationTest: true });
+	electron.rejectIsolationRead = true;
+	expect((await get(`${grant.url}?rev=1`)).status).toBe(403);
+	expect(await preparePreview(grant.token, 1)).toEqual({ ok: false, reason: "notFile" });
+});
 it("uses a lowercase hex token and encodes document path segments", async () => {
 	const grant = await page(join(folder, "a b", "poster #1.html"));
 	expect(grant.token).toMatch(/^[a-f0-9]{48}$/);

@@ -6,6 +6,7 @@ import { app, protocol } from "electron";
 import { PREVIEW_SCHEME, type PreviewGrant, type PreviewGrantRequest, type PreviewBlockedNavigation, type PreviewPrepared } from "@shared/contracts/preview";
 import { handleWithEvent } from "../ipc";
 import { broadFolders, isBroadFolder } from "./panes";
+import { isIsolationTestDocument, type IsolationReadIdentity } from "./preview-isolation-test";
 
 const TEXT_LIMIT = 2 * 1024 * 1024;
 const IMAGE_LIMIT = 8 * 1024 * 1024;
@@ -38,6 +39,8 @@ interface GrantState {
 interface DocumentSnapshot {
 	body: string | Uint8Array<ArrayBuffer>;
 	type: string;
+	isolationTest?: true;
+	readIdentity?: IsolationReadIdentity;
 }
 type DocumentRead = { ok: true; snapshot: DocumentSnapshot } | { ok: false; status: number };
 const grants = new Map<string, GrantState>();
@@ -136,10 +139,10 @@ function previewAddress(raw: string): { token: string; path: string; segments: s
 	} catch { return null; }
 }
 
-function headers(type?: string): HeadersInit {
+function headers(type?: string, isolationTest = false): HeadersInit {
 	return {
 		...(type ? { "Content-Type": type } : {}),
-		"Content-Security-Policy": PREVIEW_CSP,
+		"Content-Security-Policy": isolationTest ? PREVIEW_CSP.replace("script-src 'none'", "script-src 'unsafe-inline'") : PREVIEW_CSP,
 		"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store",
 		...(type?.startsWith("font/") ? { "Access-Control-Allow-Origin": "*" } : {}),
 	};
@@ -177,7 +180,7 @@ async function readPreviewDocument(token: string, grant: GrantState, path: strin
 			}
 			if (length > opened.size || (await file.stat()).size !== opened.size) return { ok: false, status: 409 };
 			if (grants.get(token) !== grant) return { ok: false, status: 404 };
-			return { ok: true, snapshot: { body: data.subarray(0, length), type } };
+			return { ok: true, snapshot: { body: data.subarray(0, length), type, ...(isIsolationTestDocument(grant.subject, grant.saved) ? { readIdentity: { path: checked, dev: opened.dev, ino: opened.ino } } : {}) } };
 		} finally { await file.close(); }
 	} catch { return { ok: false, status: 404 }; }
 }
@@ -195,7 +198,8 @@ export async function handlePreviewRequest(request: Request): Promise<Response> 
 	if (path === grant.subject && type.startsWith("text/html") && address.url.searchParams.has("rev")) {
 		const revision = address.url.searchParams.get("rev")!;
 		const snapshot = /^(0|[1-9]\d*)$/.test(revision) ? grant.snapshots.get(Number(revision)) : undefined;
-		return snapshot ? new Response(request.method === "HEAD" ? null : snapshot.body, { headers: headers(snapshot.type) }) : refused(404);
+		if (snapshot?.isolationTest && (!snapshot.readIdentity || !isIsolationTestDocument(grant.subject, grant.saved, snapshot.readIdentity))) return refused(403);
+		return snapshot ? new Response(request.method === "HEAD" ? null : snapshot.body, { headers: headers(snapshot.type, snapshot.isolationTest) }) : refused(404);
 	}
 	const result = await readPreviewDocument(address.token, grant, path, type);
 	return result.ok ? new Response(request.method === "HEAD" ? null : result.snapshot.body, { headers: headers(result.snapshot.type) }) : refused(result.status);
@@ -206,15 +210,26 @@ export async function preparePreview(token: string, revision: number, owner: num
 	const grant = grants.get(token);
 	if (!grant || grant.owner !== owner) return { ok: false, reason: "revoked" };
 	if (!Number.isSafeInteger(revision) || revision < 0) throw new Error("Invalid preview revision.");
-	if (grant.snapshots.has(revision)) return { ok: true };
+	const isolationTest = isIsolationTestDocument(grant.subject, grant.saved);
+	const existing = grant.snapshots.get(revision);
+	if (existing?.isolationTest && (!isolationTest || !existing.readIdentity || !isIsolationTestDocument(grant.subject, grant.saved, existing.readIdentity))) {
+		grant.snapshots.delete(revision);
+		return { ok: false, reason: "notFile" };
+	}
+	if (existing && Boolean(existing.isolationTest) === isolationTest) return { ok: true, ...(existing.isolationTest ? { isolationTest: true } : {}) };
 	const type = TYPES[extname(grant.subject).toLowerCase()];
 	if (!type?.startsWith("text/html")) return { ok: false, reason: "notFile" };
 	const result = await readPreviewDocument(token, grant, grant.subject, type);
 	if (grants.get(token) !== grant) return { ok: false, reason: "revoked" };
 	if (!result.ok) return { ok: false, reason: result.status === 413 ? "tooLarge" : result.status === 403 ? "notFile" : "missing" };
-	if (!grant.snapshots.has(revision)) grant.snapshots.set(revision, result.snapshot);
+	if (isolationTest) {
+		if (!result.snapshot.readIdentity || !isIsolationTestDocument(grant.subject, grant.saved, result.snapshot.readIdentity)) return { ok: false, reason: "notFile" };
+		result.snapshot.isolationTest = true;
+	}
+	if (!existing || isolationTest) grant.snapshots.set(revision, result.snapshot);
 	while (grant.snapshots.size > 2) grant.snapshots.delete(Math.min(...grant.snapshots.keys()));
-	return grant.snapshots.has(revision) ? { ok: true } : { ok: false, reason: "missing" };
+	const prepared = grant.snapshots.get(revision);
+	return prepared ? { ok: true, ...(prepared.isolationTest ? { isolationTest: true } : {}) } : { ok: false, reason: "missing" };
 }
 
 /** Returns only a currently granted subject address, never an asset's address. */

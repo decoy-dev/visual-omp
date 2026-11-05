@@ -28,7 +28,7 @@ export interface PreviewGrant {
 }
 
 /** Whether main prepared the exact document bytes served for this revision under the grant's read limits. */
-export type PreviewPrepared = { ok: true } | { ok: false; reason: "missing" | "tooLarge" | "notFile" | "revoked" };
+export type PreviewPrepared = { ok: true; /** Main-only test gate, never a page permission. */ isolationTest?: true } | { ok: false; reason: "missing" | "tooLarge" | "notFile" | "revoked" };
 
 export interface PreviewWatchRequest {
 	/** The chat's folder. Watched recursively unless it is broad (root, its direct children, home or temporary folders). */

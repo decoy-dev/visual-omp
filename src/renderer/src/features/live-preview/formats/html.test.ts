@@ -56,6 +56,20 @@ describe("HTML preview grants", () => {
 		root = createRoot(host);
 	});
 
+	it("permits fixture scripts only when main's prepared revision carries the test flag", async () => {
+		await show();
+		const first = host.querySelector("iframe")!;
+		expect(first.getAttribute("sandbox")).toBe("");
+		await act(() => first.dispatchEvent(new Event("load")));
+		invoke.mockImplementation(async (channel: string) => channel === "preview:prepare" ? { ok: true, isolationTest: true } : undefined);
+		await show(subject({ state: "saved" }));
+		expect(host.querySelectorAll("iframe")).toHaveLength(1);
+		const scripted = host.querySelector("iframe")!;
+		expect(scripted).not.toBe(first);
+		expect(scripted.getAttribute("sandbox")).toBe("allow-scripts");
+		expect(scripted.getAttribute("sandbox")).not.toContain("allow-same-origin");
+	});
+
 	it("coalesces streaming writes to at most four per second and still publishes the final revision", async () => {
 		await show();
 		await show(subject({ revision: 2, text: "<h1>Second</h1>" }));

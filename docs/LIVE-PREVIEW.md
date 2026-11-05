@@ -226,6 +226,25 @@ The app does not need these for Phase 1. Following the wrapper-first rule, they 
 - Unit tests for `subjects.ts` (partial arguments to subjects, format matching, elision, end states, attribution), the progress parsers, the watcher's scope and filter, and the protocol's grant checks.
 - A scripted provider fixture kept in the repository that streams a long SVG and an HTML page slowly, driven in a development build, with screenshots of the stage mid-stream and after the save.
 
+### Phase 2 process isolation evidence (A2)
+
+The fixture's `--isolation` launch option sets `VOMP_PREVIEW_ISOLATION_TEST=1` in main and names one absolute `VOMP_PREVIEW_ISOLATION_FILE`. Only a prepared, saved revision of that file receives inline-script permission and `sandbox="allow-scripts"`. Its origin stays opaque and the remaining scripts-off CSP stays unchanged, including the network restrictions. Streaming HTML, other files and normal launches retain Phase 1's policy. No page or IPC request can enable the startup switch. The switch also starts loopback-only main and renderer inspectors and applies the scratch app profile to packaged builds.
+
+Main pins the fixture's canonical parent directory and basename at startup, before the file needs to exist. It rejects later symlink retargeting and checks the opened document's path and inode identity before enabling scripts in a prepared snapshot. The evidence collector requires an explicit fixture root and validates its marker, the main process's isolated paths and the app's actual profile. A random challenge written through that verified main process must be read back over renderer CDP before page interaction or cleanup is allowed.
+
+
+Follow the [packaged isolation procedure](../scripts/live-preview-fixture/README.md#collect-packaged-process-isolation-evidence) in a Windows VM, then repeat on macOS after hours. Start `isolation-evidence.mjs` before sending `fixture isolation` and choosing Watch. It records the preview's `webFrameMain` identity and OS process ID alongside the app frame, app metrics before and after loading, and the busy loop's start. It then uses renderer CDP to insert text into the composer for 10 seconds. Each measured latency is a conservative upper bound from dispatching `Input.insertText` through reading the changed textarea value, and every sample must be at most 100 ms. The collector closes the stage and requires the busy PID to disappear or stay at or below 1 percent CPU for three consecutive one-second samples. A failed close is recorded before any JavaScript-termination recovery. The collector never activates or raises a window.
+
+Evidence is written to `scripts/live-preview-fixture/evidence/isolation/win32.json` and `darwin.json`. Failed or incomplete runs write their errors and fail closed. This collection does not replace A3's network-channel checks.
+
+| Packaged platform | App OS PID | Preview OS PID | Composer echo | Stage close and idle | Evidence |
+|---|---|---|---|---|---|
+| Windows | Pending | Pending | Pending | Pending | Pending |
+| macOS | Pending | Pending | Pending | Pending | Pending |
+
+**Decision: pending.** Slice F may use script-enabled iframes only when both packaged platforms have distinct OS process IDs and pass responsiveness, close and idle checks. Otherwise it uses the WebContentsView fallback in the approved Phase 2 plan. No runtime isolation result has been recorded by this implementation.
+
+
 ## Risks
 
 - **Recursive watching of large folders.** Mitigated by the broad-folder rule, named paths for temporary chats, per-directory subscriptions with a cap on Linux, and watching only during turns.

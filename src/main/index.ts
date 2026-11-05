@@ -18,10 +18,12 @@ import { killAllTerminals } from "./terminals";
 import { allowsAppPermission, isAppUrl, setAppRendererUrl } from "./services/app-origin";
 import { previewDocumentUrl, previewNavigationRule, registerPreviewScheme, revokeAllPreviews } from "./services/preview-protocol";
 import { flushDiagnostics } from "./services/diagnostics/events";
+import { startPreviewIsolationInspector } from "./services/preview-isolation-test";
 
 startDiagnostics({ classic: getPrefs().classicPresentation, hosts: () => listHosts().filter(host => host.phase !== "exited").length });
 
 registerPreviewScheme();
+startPreviewIsolationInspector();
 
 let mainWindow: BrowserWindow | null = null;
 /** Set once the renderer confirmed (or had nothing running) so the next quit proceeds. */

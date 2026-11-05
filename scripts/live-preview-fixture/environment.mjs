@@ -47,7 +47,7 @@ export function fixtureEnvironment(root) {
 export async function initializeFixture(root, baseUrl) {
   root = resolve(root);
   const env = fixtureEnvironment(root);
-  for (const path of [env.HOME, env.PI_CODING_AGENT_DIR, env.TMPDIR, join(root, "work"), ...["data", "state", "cache"].map(part => join(root, part, "omp")), ...[env.APPDATA, env.LOCALAPPDATA].filter(Boolean)]) {
+  for (const path of [env.HOME, env.PI_CODING_AGENT_DIR, env.VOMP_DEV_PROFILE, env.TMPDIR, join(root, "work"), ...["data", "state", "cache"].map(part => join(root, part, "omp")), ...[env.APPDATA, env.LOCALAPPDATA].filter(Boolean)]) {
     await mkdir(path, { recursive: true });
   }
   const config = {

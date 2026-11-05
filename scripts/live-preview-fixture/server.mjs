@@ -2,6 +2,7 @@ import { createServer } from "node:http";
 import { pathToFileURL } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { initializeFixture } from "./environment.mjs";
+import { isolationHtml } from "./isolation-page.mjs";
 
 export function posterSvg() {
   const lines = [
@@ -69,7 +70,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const messages = body.messages ?? [];
       const lastUser = messages.findLast(message => message.role === "user");
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(svg|html|png|image)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(svg|html|png|image|isolation)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !messages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -92,6 +93,8 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       ] : fixture === "html" ? [
         { name: "write", args: { path: "style.css", content: css }, slow: false },
         { name: "write", args: { path: "image.svg", content: image }, slow: false },
+      ] : fixture === "isolation" ? [
+        { name: "write", args: { path: "isolation.html", content: isolationHtml() }, slow: false },
       ] : fixture === "png" ? [
         { name: "bash", args: { command: pngCommand(), timeout: 30 }, slow: false },
       ] : fixture === "image" ? [
