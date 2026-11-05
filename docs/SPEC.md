@@ -210,6 +210,14 @@ Current chats, navigation shortcuts and preview release are described under Sess
 ### Settings
 - Settings is a full page with curated common sections and a searchable **Advanced** section that
   lists every omp setting.
+- About includes a **Diagnostics** row with **Open logs folder**, which opens the current profile's
+  `logs` folder for reviewing local event logs and crash reports before sharing. Opening the folder
+  starts no upload. The description warns that crash reports may contain sensitive information and
+  directs the person to Advanced for automatic reporting.
+- Advanced's visual-omp group includes **Send crash reports**, on by default. It automatically sends
+  crash reports and selected app failure events to Sentry. Event logs exclude chat contents; native
+  crash reports may contain sensitive information from process memory. Turning the switch off keeps
+  diagnostics local. Development sends only with `VOMP_SENTRY_DSN`.
 - Direct macOS copies offer **Switch to Homebrew**. The app adds the tap and checks the published
   cask. A matching app at the destination is adopted, including when it is a separate copy.
   An empty destination permits installation while the running copy remains elsewhere. A differing

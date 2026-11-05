@@ -1,4 +1,5 @@
 import "./profile";
+import { attachWindowDiagnostics, crashReportingReady, startDiagnostics } from "./services/diagnostics/runtime";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { app, BrowserWindow, Menu, nativeTheme, shell } from "electron";
@@ -16,6 +17,9 @@ import { quitAction } from "./quitFlow";
 import { killAllTerminals } from "./terminals";
 import { allowsAppPermission, isAppUrl, setAppRendererUrl } from "./services/app-origin";
 import { previewDocumentUrl, previewNavigationRule, registerPreviewScheme, revokeAllPreviews } from "./services/preview-protocol";
+import { flushDiagnostics } from "./services/diagnostics/events";
+
+startDiagnostics({ classic: getPrefs().classicPresentation, hosts: () => listHosts().filter(host => host.phase !== "exited").length });
 
 registerPreviewScheme();
 
@@ -117,6 +121,7 @@ function createWindow(): void {
 		followSessions([]);
 		revokeAllPreviews();
 	});
+	attachWindowDiagnostics(mainWindow);
 	mainWindow.webContents.on("did-finish-load", () => {
 		if (!askOnLoad) return;
 		askOnLoad = false;
@@ -145,6 +150,7 @@ async function shutdown(): Promise<void> {
 	followSessions([]);
 	killAllTerminals();
 	await stopAllHosts();
+	await flushDiagnostics();
 	app.quit();
 }
 
@@ -157,7 +163,9 @@ app.on("second-instance", () => {
 	mainWindow.focus();
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+	// Crashpad must start before renderer creation; after 1.5 seconds preparation is abandoned for this launch.
+	await crashReportingReady;
 	registerHandlers(allow => {
 		if (!allow) return;
 		quitApproved = true;

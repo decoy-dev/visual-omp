@@ -1264,3 +1264,96 @@ Exit setup or Esc persists
 no longer needed and a supported omp is available. Setup never writes omp's `setupVersion`,
 so terminal glyph, composer and theme setup remain available. `ensureNewUserApproval`
 remains the fresh-profile approval fallback when omp has no configured mode.
+
+## Crash and freeze diagnostics
+
+`main/services/diagnostics/runtime.ts` is imported immediately after the profile identity. It
+creates the profile's `logs/crashes` directory asynchronously, sets Electron's `crashDumps` path
+before starting `crashReporter`, and keeps native dumps there whether automatic sending is on
+or off. The first renderer waits at most 1.5 seconds for this setup, since Crashpad only monitors
+subsequently created processes. If preparation times out, native reporting is skipped for the
+whole launch, including when directory creation finishes later. Startup uses no Sentry SDK.
+
+`diagnostics/log.ts` projects every event onto an explicit schema before writing one ISO-timed
+plain-text line. `diagnostics.log` and its single `.1` rotation are capped at 1 MiB each, and the
+pending queue holds at most 256 lines. All filesystem work is asynchronous and serialized; disk
+failure drops pending lines rather than blocking the main thread or growing a retry queue.
+The event log never records chat text, prompts, file contents, tokens, environment variables or
+exception messages and stacks. Main exceptions retain a known error category and a hash of
+their identity. `recent()` revalidates a bounded excerpt before a sender can use it.
+Shutdown waits at most 1.5 seconds for the current log flush before continuing to quit.
+
+Events include app version, platform, architecture, Electron version, effective default transport
+and classic preference; the existing omp version lookup adds its result without another process.
+Window responsiveness records the stall duration. Renderer deaths record reason, exit code and
+the reload decision; child deaths record process type, reason, exit code and Chromium service
+identifier, including GPU and utility processes. Host start and exit record only the random chat
+id, transport, exit code or signal and uptime. Every five minutes, and on an unresponsive event,
+main samples `app.getAppMetrics()` working-set KiB per process with pid and type, plus the active
+host count. Preload observes top-level document visibility and sends only hidden or visible;
+the main-frame origin-checked handler suppresses duplicate states.
+
+An abnormal renderer death reloads the window once after existing follower and preview cleanup.
+Another death within 60 seconds of the preceding death leaves the window stopped, without an
+automatic reload loop; a later death can recover again. Clean exits never trigger recovery.
+Main exceptions are observed through `uncaughtExceptionMonitor`, preserving Electron's existing
+exception handling. Unhandled rejections are recorded and retain a console warning. Neither
+observer exits the app. Async persistence and sending are best-effort if the process terminates.
+
+`diagnostics/sentry.ts` derives the native-minidump and envelope ingestion endpoints from one
+public DSN constant. Packaged builds use that constant; development builds never send unless
+`VOMP_SENTRY_DSN` explicitly overrides it. An empty or invalid DSN disables sending. The
+`sendCrashReports` preference defaults on, is normalized to a boolean and updates both
+`crashReporter.setUploadToServer()` and the envelope sender immediately; disabling it aborts
+in-flight app-event requests. Local logging continues. The sender posts schema-filtered renderer
+and child deaths, main exceptions and stalls lasting at least ten seconds, with at most 200 log
+lines (64 KiB), a random profile installation id, release, environment and platform/architecture/
+transport/classic tags. It replaces the home directory in strings with `~`, limits reporting to
+ten distinct events per hour per launch and deduplicates repeated failures. At most three reports
+can be in flight independently of that budget. Report preparation waits at most 1.5 seconds for
+the event-log excerpt and installation id; the whole send has a five-second deadline, including
+when the underlying filesystem promise or a fetch implementation never settles. Late preparation
+cannot send a report. Requests are not retried; only their status is logged locally. The sender
+does not add a user name, machine name or IP field. The Sentry organization has server-side data
+scrubbing, default scrubbers and IP-address storage prevention enabled. These ingestion settings
+do not guarantee that native crash reports exclude sensitive information.
+Native crash uploads use Crashpad's separate one-per-hour rate limit; further dumps stay local.
+Native annotations use Sentry's `sentry[release]`, `sentry[environment]` and `sentry[tags][...]`
+keys. They retain launch-time defaults, while app-event tags follow current defaults.
+
+A confirmed ten-second stall stores a small `pending-hang.json` marker. If the app is killed
+before it becomes responsive, the next launch records and reports that confirmed duration as a
+responsive event with `recovered: true`, then removes the marker. Downtime is never added to
+the duration. Event logs exclude chat contents. Native crash reports may contain sensitive
+information from process memory. The Advanced description states that reporting is automatic,
+on by default, and can be turned off to keep diagnostics local.
+
+Settings > About reuses `SettingRow` for Diagnostics. `app:openLogs` creates and opens only the
+current profile's logs folder with `shell.openPath`; it never reads or uploads arbitrary files.
+The description asks the person to review logs and crash reports before sharing, warns of
+sensitive information and identifies Advanced as the control for automatic reporting. Opening
+failure is shown inline. Settings > Advanced reuses `Switch` for Send crash reports.
+
+### Developer reporting check
+
+Use a separate development profile and explicitly enable both the DSN override and the test gate:
+
+```sh
+VOMP_DEV_PROFILE=visual-omp-sentry-check VOMP_DIAGNOSTICS_TEST=1 \
+VOMP_SENTRY_DSN='https://f52f8fc21b3cc40f5c64a9ea23a0fd09@o4512380493037568.ingest.us.sentry.io/4512380498739200' npm run dev
+```
+
+Open View > Toggle Developer Tools and run these commands in its Console, one at a time:
+
+```js
+await window.vomp.invoke("app:diagnosticsTest", "event")
+await window.vomp.invoke("app:diagnosticsTest", "renderer-crash")
+```
+
+The first produces a `diagnostics-test` envelope in Sentry's development environment. The second
+deliberately crashes only the requesting renderer, which produces a native minidump and a
+`renderer-gone` event, then uses the normal reload rule. The crash can interrupt that Console
+request before its promise resolves. The handler rejects in packaged builds, ordinary development,
+or with reporting switched off. Confirm reception in Sentry before treating ingestion as verified.
+
+

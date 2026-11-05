@@ -245,6 +245,8 @@ export interface AppPreferences {
 	voiceInput: boolean;
 	/** New chats use omp's painted terminal instead of the omp screen (TSP). Running chats keep their presentation. */
 	classicPresentation: boolean;
+	/** Automatically send crash reports and app events. Native crash reports may contain process memory. */
+	sendCrashReports: boolean;
 }
 
 /** Unopened chat results, including other chats in a focused window (DESIGN §4.22). */
@@ -265,6 +267,10 @@ export interface IpcInvokeMap {
 	"app:prefs:get": { args: []; result: AppPreferences };
 	"app:prefs:set": { args: [patch: Partial<AppPreferences>]; result: AppPreferences };
 	"app:openExternal": { args: [url: string]; result: void };
+	"app:openLogs": { args: []; result: void };
+	"app:visibility": { args: [state: "hidden" | "visible"]; result: void };
+	/** Explicit developer testing only; rejects in packaged builds and without opt-in environment flags. */
+	"app:diagnosticsTest": { args: [kind: "event" | "renderer-crash"]; result: void };
 	"app:showItem": { args: [path: string]; result: void };
 	/** Open a local regular file, confirming non-previewable files before invoking its associated application. */
 	"app:openFile": { args: [path: string]; result: void };

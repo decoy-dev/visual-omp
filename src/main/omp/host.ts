@@ -56,6 +56,7 @@ import { BtwHistoryState } from "./tsp/btw-state";
 import { releaseWindowsConpty } from "./windows-pty-cleanup";
 import { classicPromptRejections, semanticPromptRejections, type PromptRejection } from "./prompt-rejection";
 import { expandedPromptTextMatches } from "../../shared/prompt-input";
+import { writeDiagnostic } from "../services/diagnostics/events";
 
 const CollabHosts = z.object({
 	hosts: z.array(
@@ -316,6 +317,7 @@ export class SessionHost {
 			} catch (error) {
 				throw await ompStartError(error, bin);
 			}
+			writeDiagnostic({ event: "host-start", chatId: this.id, transport: useTsp ? "tsp" : "classic" });
 			this.#debug = new TuiDebugClient(debugPath, operation => this.#assertClassicRead(`debug:${operation}`));
 			this.#pty.onData(data => {
 				if (this.#tspStream) {
@@ -325,7 +327,7 @@ export class SessionHost {
 					if (!this.#tspHandshakeTimer && !this.#tsp!.snapshot().negotiated && !this.#tspFailure) this.#armTspHandshake(Math.max(0, TSP_NEGOTIATION_MS - (Date.now() - this.#spawnedAt)), false);
 				} else this.#terminalOutput(data);
 			});
-			this.#pty.onExit(({ exitCode }) => void this.#onExit(exitCode));
+			this.#pty.onExit(({ exitCode, signal }) => void this.#onExit(exitCode, signal));
 			if (this.#tsp) this.#armTspHandshake(TSP_NEGOTIATION_MS, false);
 			this.#update({ phase: "connecting", pid: this.#pty.pid });
 			this.#focusTimer = setInterval(() => void this.#pollFocus(), FOCUS_POLL_MS);
@@ -1564,7 +1566,8 @@ export class SessionHost {
 		} finally { this.#polling = false; }
 	}
 
-	async #onExit(exitCode: number): Promise<void> {
+	async #onExit(exitCode: number, signal?: number): Promise<void> {
+		writeDiagnostic({ event: "host-exit", chatId: this.id, transport: this.#tsp ? "tsp" : "classic", exitCode, signal: signal ?? null, uptimeMs: Math.max(0, Date.now() - this.#spawnedAt) });
 		const pty = this.#pty;
 		clearTimeout(this.#tspHandshakeTimer ?? undefined);
 		this.#tspHandshakeTimer = null;

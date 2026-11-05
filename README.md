@@ -278,6 +278,26 @@ you to choose an update before they install it.
 
 </details>
 
+## Freeze and crash reports
+
+After a freeze or crash, open **Settings → About → Open logs folder** to review local event logs
+and crash reports before sharing them with your issue report. Crash reports may contain sensitive
+information. The profile's `logs` folder contains native crash reports under `crashes`. The two
+event-log files are capped at 1 MiB each and exclude chat text, prompts, file contents and tokens.
+A renderer crash reloads the window once; another crash within a minute leaves it stopped so it
+cannot enter a reload loop.
+
+Automatic reporting is controlled in **Settings → Advanced → Send crash reports**. The switch is
+on by default and automatically sends crash reports and selected app failure events to Sentry.
+Event logs exclude chat contents. Native crash reports may contain sensitive information from
+process memory. Turn the switch off to keep diagnostics local.
+
+App events include app and runtime versions, operating system, transport, failure categories and a
+bounded event-log excerpt, with a random installation id and home-directory paths replaced by `~`.
+The Sentry organization has server-side data scrubbing, default scrubbers and IP-address storage
+prevention enabled. These settings do not guarantee that native crash reports exclude sensitive
+information. Development builds send only when `VOMP_SENTRY_DSN` explicitly selects an endpoint.
+
 ## Development
 
 ```sh

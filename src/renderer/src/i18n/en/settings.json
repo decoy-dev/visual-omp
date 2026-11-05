@@ -279,6 +279,10 @@
 		"ompMissing": "Not found",
 		"ompPath": "omp location",
 		"lastCheck": "Last check",
+		"diagnostics": "Diagnostics",
+		"diagnosticsDescription": "Open local event logs and crash reports to review before sharing. Crash reports may contain sensitive information. Automatic reporting is controlled in Advanced.",
+		"openLogs": "Open logs folder",
+		"openLogsFailed": "The logs folder could not be opened. Try again.",
 		"justNow": "Just now",
 		"never": "Not checked yet",
 		"method": {
@@ -325,6 +329,10 @@
 			"classic": {
 				"label": "Classic omp terminal",
 				"description": "New chats show omp's terminal screen instead of the omp screen. Turn this on only if a chat does not work with the omp screen. Chats that are already open keep their view until omp restarts in them."
+			},
+			"crashReports": {
+				"label": "Send crash reports",
+				"description": "Automatically sends crash reports and selected app failure events to Sentry. On by default. Event logs exclude chat contents. Native crash reports may contain sensitive information from process memory. Turn this off to keep diagnostics local."
 			}
 		},
 		"search": "Search every omp setting",

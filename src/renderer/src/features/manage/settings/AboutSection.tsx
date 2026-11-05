@@ -17,6 +17,7 @@ import { useApp } from "@/state/app";
 import { Button, Dialog, DialogContent, Mark, PageHeader, PresenceSwap, Spinner, Wordmark } from "@/ui";
 import { ipcErrorMessage, useResource } from "../shared";
 import { PackageManagerSwitch, ScoopSuggestion } from "../../onboarding/PackageManagerSwitch";
+import { SettingRow } from "./parts";
 
 const DOCS_URL = "https://omp.sh";
 const ISSUES_URL = "https://github.com/decoy-dev/visual-omp/issues";
@@ -37,6 +38,8 @@ export function AboutSection() {
 	const omp = useApp(state => state.omp);
 	const updates = useUpdates();
 	const [now, setNow] = useState(Date.now);
+	const [openingLogs, setOpeningLogs] = useState(false);
+	const [logsError, setLogsError] = useState(false);
 
 	useEffect(() => {
 		void loadUpdates();
@@ -47,6 +50,13 @@ export function AboutSection() {
 	const open = (url: string) => void window.vomp.invoke("app:openExternal", url);
 	const openSheet = (id: string) => useApp.getState().openSheet(id);
 	const checking = updates.checkingApp || updates.checkingOmp;
+	const openLogs = async () => {
+		setOpeningLogs(true);
+		setLogsError(false);
+		try { await window.vomp.invoke("app:openLogs"); }
+		catch { setLogsError(true); }
+		finally { setOpeningLogs(false); }
+	};
 
 	const appRow = ((): StatusRow => {
 		const { app, brew, download } = updates;
@@ -170,6 +180,14 @@ export function AboutSection() {
 				<Button variant="ghost" icon={<Bug />} onClick={() => open(ISSUES_URL)}>
 					{t("about.reportIssue")}
 				</Button>
+			</div>
+			<div className="mt-6 border-t border-border">
+				<SettingRow
+					label={t("about.diagnostics")}
+					description={t("about.diagnosticsDescription")}
+					control={<Button size="sm" loading={openingLogs} onClick={() => void openLogs()}>{t("about.openLogs")}</Button>}
+				/>
+				{logsError && <p className="text-sm text-err" role="alert">{t("about.openLogsFailed")}</p>}
 			</div>
 		</div>
 	);

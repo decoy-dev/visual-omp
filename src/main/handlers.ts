@@ -1,5 +1,5 @@
-import { writeFile } from "node:fs/promises";
-import { basename } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { basename, join } from "node:path";
 import { homedir, tmpdir } from "node:os";
 import { app, BrowserWindow, clipboard, ClipboardItem, dialog, nativeImage, shell } from "electron";
 import { z } from "zod";
@@ -8,7 +8,7 @@ import { defaultChatFolder } from "@shared/chatFolder";
 import fileLabels from "../shared/i18n/en/fileActions.json";
 import { registerAttention } from "./attention";
 import { listDir, pathExists, projectFiles, readText, writeText } from "./files";
-import { handle } from "./ipc";
+import { handle, handleWithEvent } from "./ipc";
 import { runOmp } from "./omp/cli";
 import { getHost, listHosts, startHost, stopHost } from "./omp/host";
 import { ompStatus } from "./omp/locate";
@@ -22,6 +22,8 @@ import { ensureNewUserApproval } from "./features/config";
 import { killTerminal, resizeTerminal, startTerminal, writeTerminal } from "./terminals";
 import { contextImageBytes } from "./services/contextImages";
 import { openFile, showItem } from "./fileActions";
+import { writeDiagnostic } from "./services/diagnostics/events";
+import { runDiagnosticTest } from "./services/diagnostics/testing";
 
 const BtwScope = z.object({ generation: z.number().int(), epoch: z.number().int() }).strict();
 const BtwTopic = z.object({ id: z.string().min(1), scope: z.string().min(1).optional() }).strict();
@@ -54,6 +56,25 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 	});
 	handle("app:showItem", showItem);
 	handle("app:openFile", openFile);
+	handle("app:openLogs", async () => {
+		const folder = join(app.getPath("userData"), "logs");
+		await mkdir(folder, { recursive: true });
+		const error = await shell.openPath(folder);
+		if (error) throw new Error("The logs folder could not be opened.");
+	});
+	const visibility = new WeakMap<Electron.WebContents, "hidden" | "visible">();
+	handleWithEvent("app:visibility", (event, state) => {
+		if (state !== "hidden" && state !== "visible") return;
+		if (visibility.get(event.sender) === state) return;
+		visibility.set(event.sender, state);
+		const window = BrowserWindow.fromWebContents(event.sender);
+		if (window) writeDiagnostic({ event: "renderer-visibility", windowId: window.id, state });
+	});
+	handleWithEvent("app:diagnosticsTest", (event, kind) => runDiagnosticTest(kind, {
+		packaged: app.isPackaged, explicitTest: process.env.VOMP_DIAGNOSTICS_TEST === "1",
+		dsn: process.env.VOMP_SENTRY_DSN, enabled: getPrefs().sendCrashReports,
+		crashRenderer: () => event.sender.forcefullyCrashRenderer(),
+	}));
 	handle("app:copyImage", async dataUrl => {
 		const image = nativeImage.createFromBuffer(contextImageBytes(dataUrl));
 		if (image.isEmpty()) throw new Error("Couldn't decode the image");

@@ -24,3 +24,10 @@ const bridge: VompBridge = {
 };
 
 contextBridge.exposeInMainWorld("vomp", bridge);
+
+// Observe the app's top-level document only. No page text crosses this boundary.
+if (window.top === window) {
+	const reportVisibility = () => void ipcRenderer.invoke("app:visibility", document.visibilityState === "hidden" ? "hidden" : "visible").catch(() => {});
+	document.addEventListener("visibilitychange", reportVisibility);
+	window.addEventListener("DOMContentLoaded", reportVisibility, { once: true });
+}

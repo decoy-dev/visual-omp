@@ -6,6 +6,7 @@ import { getPrefs } from "../prefs";
 import { compareSemver } from "@shared/semver";
 import { OmpRefusedError, ompStartError } from "./refused";
 import { resolveExecutable } from "../services/executable";
+import { writeDiagnostic } from "../services/diagnostics/events";
 
 /** Oldest omp supported by visual-omp's native interface and collab handling. */
 export const MIN_OMP_VERSION = "18.15.0";
@@ -48,6 +49,7 @@ export async function ompStatus(refresh = false): Promise<OmpStatus> {
 			return cached;
 		}
 	}
+	writeDiagnostic({ event: "omp-version", version });
 	if (!version) {
 		cached = { ...base, found: false, path, version: null, supported: false, problem: `omp at ${path} did not start.` };
 		return cached;

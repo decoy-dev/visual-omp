@@ -90,6 +90,13 @@ export function AdvancedSection({ projectPath, scope, setScope, props }: Setting
 						checked={prefs.classicPresentation}
 						onCheckedChange={classicPresentation => void setPrefs({ classicPresentation })}
 					/>
+					<Switch
+						className="py-3"
+						label={t("advanced.app.crashReports.label")}
+						description={t("advanced.app.crashReports.description")}
+						checked={prefs.sendCrashReports}
+						onCheckedChange={sendCrashReports => void setPrefs({ sendCrashReports })}
+					/>
 				</SettingsSection>
 			)}
 			<div className="sticky top-0 z-(--z-sticky) -mx-1 flex items-center gap-2 bg-bg px-1 pb-2 pt-1">

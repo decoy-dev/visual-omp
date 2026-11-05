@@ -175,3 +175,21 @@ describe("rollback preferences", () => {
 		expect(JSON.parse(fake.contents!)).toMatchObject({ theme: "dark", appUpdateSkipThrough: null, futureUpdateMode: "manual" });
 	});
 });
+
+describe("crash-report preferences", () => {
+	it.each([null, "{}", '{"sendCrashReports":"invalid"}'])("defaults reporting on for a missing or invalid choice: %s", async contents => {
+		fake.contents = contents;
+		const { getPrefs } = await import("./prefs");
+		expect(getPrefs().sendCrashReports).toBe(true);
+	});
+	it("persists opt-out and preserves it through unrelated changes and reload", async () => {
+		const { getPrefs, setPrefs, flushPrefs } = await import("./prefs");
+		setPrefs({ sendCrashReports: false });
+		setPrefs({ theme: "dark" });
+		await flushPrefs();
+		expect(getPrefs().sendCrashReports).toBe(false);
+		vi.resetModules();
+		const reloaded = await import("./prefs");
+		expect(reloaded.getPrefs().sendCrashReports).toBe(false);
+	});
+});
