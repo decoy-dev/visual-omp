@@ -77,7 +77,8 @@ it("offers a checklist in the context menu and disables both recovery rows", asy
 	expect(document.querySelector('[role="menu"]')).not.toBeNull();
 	await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
 	expect(close).toHaveBeenCalledOnce();
-	expect(document.activeElement).toBe(element);
+	// Radix defers FocusScope's close autofocus to a timer after the menu unmounts.
+	await vi.waitFor(() => expect(document.activeElement).toBe(element));
 });
 it("reaches Arrange status bar by keyboard after the visibility choices", async () => {
 	element.tabIndex = -1;
@@ -93,5 +94,5 @@ it("reaches Arrange status bar by keyboard after the visibility choices", async 
 	await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
 	expect(openSettings).toHaveBeenCalledWith("appearance");
 	expect(close).toHaveBeenCalledOnce();
-	expect(document.activeElement).toBe(element);
+	await vi.waitFor(() => expect(document.activeElement).toBe(element));
 });
