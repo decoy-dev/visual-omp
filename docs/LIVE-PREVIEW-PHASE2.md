@@ -98,6 +98,8 @@ Separate protections, each tested on its own: response CSP, opaque origin, per-s
 
 ## Slice B: minimal shared contract
 
+Implemented on 2026-11-05: the response table owns MIME types, read limits and CORS, each grant owns its scripts-off and network-off policy, and successful `preview:prepare` calls return that policy. Slice B introduces no served extensions.
+
 - `preview-protocol.ts`: `previewPolicy(grant)` replaces the `PREVIEW_CSP` constant and returns Phase 1's exact string for every grant until F changes it; `headers(type, grant)` builds per-type headers (A1's CORS rule). A table `{ type, cap, cors }` replaces `cap()` so slices C, D and F each add their rows. No new extensions are served in B.
 - `src/shared/contracts/preview.ts`:
 
@@ -113,6 +115,14 @@ export type PreviewPrepared =
 - Tests: every Phase 1 protocol test passes unchanged; `preview:prepare` returns `policy: { scripts: false, network: false }`.
 
 ## Slice C: video
+
+Implementation checkpoint, 2026-11-05: B completed first (typecheck and 66 existing protocol/HTML tests passed), then C added the protocol, watcher, parsers, render subjects, sequence handling and lazy video/contact-sheet adapter together. The affected suite passed 350 tests across nine files; the final incomplete-file and sequence-deletion regressions passed with all 54 subject/video tests. Four Node fixture tests passed. Real fixture commands produced 19 distinct ffmpeg frame updates through frame 180, six sequence frames plus three unrelated photos, and successful replay of both captured renderer logs. No generated media is committed.
+
+A headless Chrome harness exercised the actual stage and video adapter over a local HTTP video, with mocked app actions and grant addresses. Playback reached six seconds, a key-frame click sought to 3.57 seconds, and six key-frame tiles used two columns. At 320 px and the maximum 130% text scale, the player was 288.8 px wide, Stop remained available and the page had no horizontal overflow. Light and dark renders were inspected. This does not establish Electron codec behavior, custom-scheme playback, CORS tainting or Windows behavior.
+
+The production build and renderer guard passed after rebasing onto main's hidden-window rendering fix. The entry was 1,601,993 bytes, below the shared 1,611,722-byte ceiling. The lazy video chunk was 3,797 bytes, sequence 234 bytes, and combined subjects/progress/command parsers 17,458 bytes. Temporary test caches, media and the headless server were removed. The integration owner still owns the final full-suite run and Windows Electron acceptance; the fixture README lists the video steps.
+
+Review corrections, 2026-11-05: video requests reserve one of four per-grant and sixteen global slots before opening a file, including pending opens. Excess requests return `429`; every refusal and descriptor-close path releases its reservation. Premature EOF errors the response body, while growth stays within its original advertised extent. FFmpeg totals now come from the recognized invocation's tokenized input/output scopes, with unknown totals for ambiguous limits. Animation-local percentages keep an unknown-total progress bar indeterminate. After rebasing onto main with A2's tooling, typecheck, 422 affected Vitest tests and 17 Node fixture/evidence tests passed. The rebase preserves the isolation-test identity checks, both fixture scenario sets and both Node test lists. No production build was rerun for these review corrections; the integration owner owns the final build and full-suite run.
 
 **Types and watcher.** Add `.mp4`, `.m4v` (`video/mp4`), `.webm`, `.mov` rows in the same change as the ranged handler, so no video is served before streaming exists. Add the extensions to `VISUAL_EXT`; skip path segments named `partial_movie_files` (manim's per-animation files [INFERENCE: manim CE layout from its docs]) the way `.git` is skipped (`preview-watch.ts:61-63`).
 
@@ -160,7 +170,7 @@ Main reports only the newest matching file per pattern per debounce, with the co
 Acceptance:
 1. Playback, seeking to middle and end; DevTools shows `206` with correct `Content-Range`; open-ended responses never exceed 8 MiB; a request without `Range` gets `200` streamed.
 2. Unit tests: explicit, suffix, open-ended, past-end (`416`), multi-range (`416`), HEAD, symlink out of grant, revoked token, and a stream destroyed by abort and by revocation with its handle closed (no open descriptor afterwards).
-3. The ffmpeg fixture shows "frame N of 180" advancing at least three times before the file exists, then the playable video.
+3. The ffmpeg fixture shows "frame N of 180" advancing at least three times while the file is incomplete, and the stage shows the video only once it is decodable. The integration owner approved this wording on 2026-11-05 because ffmpeg creates its incomplete output file before its first progress update.
 4. Parsers pass against every recorded sample; unknown output yields `null`.
 5. The declared sequence shows one chip with the newest frame and count; the three unrelated images stay separate.
 6. A ProRes `.mov` shows the unsupported note.

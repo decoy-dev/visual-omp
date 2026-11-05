@@ -21,7 +21,7 @@ vi.mock("../../panes/media", () => ({
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key === "live.waitingForSave" ? "Waiting for omp to finish saving" : key }) }));
 
 function subject(overrides: Partial<LiveSubject> = {}): LiveSubject {
-	return { id: "call:draw", kind: "source", format: "svg", toolCallId: "draw", toolName: "write", path: "/project/poster.svg", text: '<svg viewBox="0 0 100 100"><title>Poster</title><rect width="20" height="20"/>', revision: 1, state: "writing", elided: false, intent: null, request: null, images: null, size: 100, startedAt: 100, updatedAt: 100, ...overrides };
+	return { id: "call:draw", kind: "source", format: "svg", toolCallId: "draw", toolName: "write", path: "/project/poster.svg", text: '<svg viewBox="0 0 100 100"><title>Poster</title><rect width="20" height="20"/>', revision: 1, state: "writing", elided: false, intent: null, request: null, images: null, progress: null, sequence: null, size: 100, startedAt: 100, updatedAt: 100, ...overrides };
 }
 
 let root: Root;

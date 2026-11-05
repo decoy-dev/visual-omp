@@ -4,7 +4,7 @@ import { useTranslation } from "react-i18next";
 import { LoadFailedNotice } from "../../registry/lazy";
 import type { SessionController } from "../../state/session";
 import { useApp } from "../../state/app";
-import { Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuTrigger } from "../../ui";
+import { Button, cn, IconButton, Menu, MenuContent, MenuItem, MenuTrigger, Progress } from "../../ui";
 import { openInFiles } from "../panes/files-store";
 import { FileName } from "../panes/common";
 import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage } from "../panes/media";
@@ -71,10 +71,16 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 	const name = subjectName(subject);
 	const running = subject.state === "writing" || subject.state === "running";
 	const stopping = redirect === "stopping";
-	const canExpand = ["svg", "image", "pdf", "result-images"].includes(subject.format);
+	const canExpand = ["svg", "image", "pdf", "result-images", "sequence"].includes(subject.format) && subject.kind !== "render";
 	const openFile = () => { if (subject.path) openInFiles(session.projectPath, subject.path, { tabId: session.tabId }); };
 	const redirectAction = () => stopAndRedirect(session, name, value => t("live.about", { name: value }));
-	const status = stopping ? t("live.stopping") : redirect === "failed" ? t("live.stopFailed") : t(`live.state.${subject.state}`);
+	const progress = subject.progress;
+	const progressLabel = progress ? t(progress.total === null ? "live.progressUnknown" : "live.progressKnown", {
+		unit: t(`live.progressUnit.${progress.unit}`), done: Math.round(progress.done * 10) / 10, total: progress.total,
+	}) : null;
+	const rendering = running && (subject.kind === "render" || progress !== null);
+	const status = stopping ? t("live.stopping") : redirect === "failed" ? t("live.stopFailed")
+		: rendering ? t("live.rendering") : t(`live.state.${subject.state}`);
 	return <section aria-label={t("live.title")} className="@container/live shrink-0 border-b border-border px-3 py-3">
 		<div className="mb-2 flex items-center gap-2">
 			<h3 className="min-w-0 flex-1 text-sm font-semibold text-fg">{t("live.title")}</h3>
@@ -88,13 +94,17 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 			</button>)}
 		</div>
 		<div className="flex h-64 min-h-40 flex-col overflow-auto rounded-md bg-inset" data-live-subject={subject.id}>
-			<Frame key={`${subject.id}:${subject.format}`} subject={subject} projectPath={session.projectPath} related={chat.related} />
+			{subject.kind === "render" ? <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-fg-muted">{subject.intent ?? (running ? t("live.rendering") : status)}</div>
+				: <Frame key={`${subject.id}:${subject.format}`} subject={subject} projectPath={session.projectPath} related={chat.related} />}
 		</div>
+		{rendering && <Progress className="mt-2" aria-label={status} value={progress && progress.total !== null ? progress.percent ?? undefined : undefined} />}
 		<p className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs text-fg-muted">
 			<span role="status" className="font-medium">{status}</span>
+			{rendering && !stopping && redirect !== "failed" && progressLabel && <span> · {progressLabel}</span>}
 			<span className="min-w-0 break-words">{subject.intent ?? name}</span>
 			{subject.size !== null && <span className="tabular-nums">{t("live.size", { size: Math.ceil(subject.size / 1024) })}</span>}
 			<span>{t(`live.format.${subject.format}`)}</span>
+			{subject.sequence && <span className="tabular-nums">{t("live.sequenceCount", { count: subject.sequence.count })}</span>}
 		</p>
 		<div className="mt-2 flex flex-wrap items-center gap-1">
 			{(running || redirect === "failed") && <Button size="sm" variant="secondary" icon={<Square />} disabled={stopping} onClick={() => session.abort()}>{stopping ? t("live.stopping") : t("live.stop")}</Button>}

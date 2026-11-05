@@ -5,7 +5,7 @@ import { controllerFor, useApp } from "../../state/app";
 import { liveGuest, type SessionController } from "../../state/session";
 import { backgroundJobs, ompRunning } from "../panes/derive";
 import { toast } from "../../ui/toast";
-import { deriveSubjects, namedPaths, relatedPaths, type SubjectInput } from "./subjects";
+import { deriveSubjects, namedPaths, relatedPaths, sequencePatterns, type SubjectInput } from "./subjects";
 import { EMPTY_CHAT, useLivePreview } from "./store";
 import { cancelPreviewRedirect } from "./redirect";
 
@@ -53,25 +53,27 @@ export function trackSession(session: SessionController, autoOpen: () => boolean
 		}
 		watching = view.working || backgroundJobs(entries, ompRunning(view), input.activeTools, input.backgroundTools, session.projectPath, undefined, view.host?.processStartedAt).some(job => job.state === "running");
 		const named = namedPaths(input);
-		const key = JSON.stringify(named);
+		const sequences = sequencePatterns(input);
+		const key = JSON.stringify([named, sequences]);
 		if (watching && !watchId && !starting) {
 			starting = true;
 			namedKey = key;
-			void window.vomp.invoke("preview:watch", { folder: session.projectPath, named }).then(id => {
+			void window.vomp.invoke("preview:watch", { folder: session.projectPath, named, sequences }).then(id => {
 				if (!alive || !watching) { void window.vomp.invoke("preview:unwatch", id).catch(() => {}); return; }
 				watchId = id;
 				schedule();
 			}).catch(() => {}).finally(() => { starting = false; });
 		} else if (watchId && watching && key !== namedKey) {
 			namedKey = key;
-			void window.vomp.invoke("preview:watchNamed", watchId, named).catch(() => {});
+			void window.vomp.invoke("preview:watchNamed", watchId, named, sequences).catch(() => {});
 		} else if (!watching) stopWatch();
 	};
 	const schedule = () => { timer ??= setTimeout(run, 100); };
 	const offSnapshot = session.subscribe(schedule);
 	const offChange = window.vomp.on("preview:changed", change => {
 		if (change.watchId !== watchId && !retiring.has(change.watchId)) return;
-		changes = [...changes.filter(item => item.path !== change.path), change];
+		const pattern = change.sequence ? JSON.stringify(change.sequence.pattern) : null;
+		changes = [...changes.filter(item => pattern ? JSON.stringify(item.sequence?.pattern) !== pattern : item.path !== change.path), change];
 		schedule();
 	});
 	run();

@@ -21,7 +21,10 @@ export function fixtureEnvironment(root) {
       ProgramData: process.env.ProgramData,
       APPDATA: join(home, "AppData", "Roaming"),
       LOCALAPPDATA: join(home, "AppData", "Local"),
-    } : { SHELL: "/bin/bash" }),
+    } : {}),
+    SHELL: windows
+      ? process.env.VOMP_FIXTURE_SHELL ?? join(process.env.ProgramFiles ?? "C:\\Program Files", "Git", "bin", "bash.exe")
+      : "/bin/bash",
     LANG: "en_US.UTF-8",
     TERM: "xterm-256color",
     COLORTERM: "truecolor",

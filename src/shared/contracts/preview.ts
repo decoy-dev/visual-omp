@@ -27,14 +27,28 @@ export interface PreviewGrant {
 	assetRoot: boolean;
 }
 
+/** What a preview document may do; main enforces it, the renderer mirrors it. */
+export interface PreviewPolicy { scripts: boolean; network: boolean }
+
 /** Whether main prepared the exact document bytes served for this revision under the grant's read limits. */
-export type PreviewPrepared = { ok: true; /** Main-only test gate, never a page permission. */ isolationTest?: true } | { ok: false; reason: "missing" | "tooLarge" | "notFile" | "revoked" };
+export type PreviewPrepared = { ok: true; policy: PreviewPolicy; /** Main-only test gate, never a page permission. */ isolationTest?: true } | { ok: false; reason: "missing" | "tooLarge" | "notFile" | "revoked" };
+
+/** A numbered frame output declared by a recognized render command. Matches files directly inside `folder`. */
+export interface PreviewSequencePattern {
+	folder: string;
+	prefix: string;
+	/** Exact number of digits, or any positive number of digits when null. */
+	digits: number | null;
+	suffix: string;
+}
 
 export interface PreviewWatchRequest {
 	/** The chat's folder. Watched recursively unless it is broad (root, its direct children, home or temporary folders). */
 	folder: string;
 	/** Absolute files and folders running calls named. Broad folders among them are never watched recursively. */
 	named: string[];
+	/** Declared frame outputs. Main coalesces only these patterns and watches their folders without recursion. */
+	sequences: PreviewSequencePattern[];
 }
 
 /** A visual file that changed on disk and then stayed unchanged long enough to read. */
@@ -44,6 +58,8 @@ export interface PreviewChange {
 	path: string;
 	size: number;
 	mtimeMs: number;
+	/** The declared pattern and matching regular files currently present in its folder. */
+	sequence?: { pattern: PreviewSequencePattern; count: number };
 }
 
 /** A navigation a preview page started, which main cancelled. */
@@ -66,8 +82,8 @@ declare module "../ipc" {
 		"preview:revoke": { args: [token: string]; result: void };
 		/** Start watching for a turn; returns the watch id `preview:changed` events carry. */
 		"preview:watch": { args: [request: PreviewWatchRequest]; result: string };
-		/** Replace the named paths of a running watch. */
-		"preview:watchNamed": { args: [watchId: string, named: string[]]; result: void };
+		/** Replace the named paths and declared frame outputs of a running watch. */
+		"preview:watchNamed": { args: [watchId: string, named: string[], sequences: PreviewSequencePattern[]]; result: void };
 		/** Stop a watch after one final debounced read. Unknown ids are ignored. */
 		"preview:unwatch": { args: [watchId: string]; result: void };
 	}

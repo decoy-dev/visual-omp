@@ -1,0 +1,31 @@
+{
+  "tool": "manim",
+  "version": "0.19.0",
+  "command": "/tmp/vomp-render-capture.UTuQmx/manim312/bin/manim render -ql --save_pngs --disable_caching --progress_bar display scene.py Sample",
+  "output": "Manim Community v0.19.0\n\n[11/05/26 13:26:18] WARNING  --save_pngs is deprecated, please use --format=png instead!                                                                                                                                          commands.py:83\n                    INFO     Caching disabled.                                                                                                                                                                              cairo_renderer.py:79\n[11/05/26 13:26:19] INFO     Caching disabled.                                                                                                                                                                              cairo_renderer.py:79\n                    INFO                                                                                                                                                                                                scene_file_writer.py:523\n                             60 images ready at /private/tmp/vomp-render-capture.UTuQmx/media/images/scene/Sample                                                                                                                               \n                                                                                                                                                                                                                                                \n                    INFO     Rendered Sample                                                                                                                                                                                        scene.py:255\n                             Played 2 animations                                                                                                                                                                                                \nYou are using manim version v0.19.0, but version v0.22.1 is available.\nYou should consider upgrading via pip install -U manim\n\rAnimation 0: Create(Circle):   0%|          | 0/30 [00:00<?, ?it/s]\rAnimation 0: Create(Circle):  10%|█         | 3/30 [00:00<00:00, 28.72it/s]\rAnimation 0: Create(Circle):  50%|█████     | 15/30 [00:00<00:00, 72.24it/s]\rAnimation 0: Create(Circle):  83%|████████▎ | 25/30 [00:00<00:00, 83.48it/s]\r                                                                            \r\rAnimation 1: _MethodAnimation(Circle):   0%|          | 0/30 [00:00<?, ?it/s]\rAnimation 1: _MethodAnimation(Circle):  43%|████▎     | 13/30 [00:00<00:00, 122.69it/s]\rAnimation 1: _MethodAnimation(Circle):  87%|████████▋ | 26/30 [00:00<00:00, 76.43it/s] \r                                                                                      \r",
+  "files": [
+    "/private/tmp/vomp-render-capture.UTuQmx/media/images/scene/Sample0059.png"
+  ],
+  "expectedProgress": {
+    "tool": "manim",
+    "done": 2,
+    "total": 2,
+    "unit": "animation",
+    "percent": 100
+  },
+  "expectedRender": {
+    "tool": "manim",
+    "path": null,
+    "sequences": [
+      {
+        "folder": "/private/tmp/vomp-render-capture.UTuQmx/media/images/scene",
+        "prefix": "Sample",
+        "digits": 4,
+        "suffix": ".png"
+      }
+    ]
+  },
+  "capturedAt": "2026-11-05",
+  "provenance": "Executed headlessly in a disposable /tmp environment. Output bytes are preserved; separately captured stdout and stderr are concatenated for the sequence samples and FFmpeg.",
+  "source": "from manim import Circle, Create, Scene\n\nclass Sample(Scene):\n    def construct(self):\n        circle = Circle()\n        self.play(Create(circle), run_time=2)\n        self.play(circle.animate.shift([1, 0, 0]), run_time=2)\n"
+}

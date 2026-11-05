@@ -1,4 +1,5 @@
 import { createServer } from "node:http";
+import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { setTimeout as sleep } from "node:timers/promises";
 import { initializeFixture } from "./environment.mjs";
@@ -46,6 +47,28 @@ function pngCommand() {
   return `python3 - <<'PY'\nimport pathlib, struct, time, zlib\np = pathlib.Path('frames.png')\ndef chunk(kind, data):\n    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)\nfor i, rgb in enumerate([(25,127,134), (219,120,62), (24,58,64)]):\n    raw = (b'\\x00' + bytes(rgb) * 240) * 160\n    png = b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', struct.pack('>IIBBBBB',240,160,8,2,0,0,0)) + chunk(b'IDAT',zlib.compress(raw)) + chunk(b'IEND',b'')\n    p.write_bytes(png)\n    print(str(p.resolve()) + ' save ' + str(i + 1), flush=True)\n    time.sleep(1)\nPY`;
 }
 
+export function videoCommand(prores = false) {
+  const codec = prores ? "-c:v prores_ks -profile:v 3 -pix_fmt yuv422p10le" : "-c:v libx264 -pix_fmt yuv420p";
+  return `ffmpeg -hide_banner -y -re -f lavfi -i testsrc=duration=6:size=320x240:rate=30 -frames:v 180 ${codec} -stats_period 0.25 -progress pipe:1 ${prores ? "unsupported.mov" : "out.mp4"}`;
+}
+
+export function sequenceCommand() {
+  const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+a3ioAAAAASUVORK5CYII=";
+  const unrelated = `import base64,pathlib; folder=pathlib.Path('frames'); folder.mkdir(exist_ok=True); [(folder/f'photo{i}.png').write_bytes(base64.b64decode('${png}')) for i in range(1,4)]`;
+  return `python3 -c "${unrelated}" && ffmpeg -hide_banner -y -re -f lavfi -i testsrc=duration=6:size=320x240:rate=1 -frames:v 6 -stats_period 0.25 -progress pipe:1 frames/frame%04d.png`;
+}
+
+async function progressCalls() {
+  return Promise.all(["remotion-4.0.391-video.json", "manim-0.19.0-video.json"].map(async name => {
+    const sample = JSON.parse(await readFile(new URL(`./samples/${name}`, import.meta.url), "utf8"));
+    const replay = `import sys,time; lines=${JSON.stringify(sample.output)}.splitlines(); delay=6/max(1,len(lines)); [(print(line,flush=True),time.sleep(delay)) for line in lines]`;
+    // The function replays the captured tool log; this scenario does not run either renderer.
+    const quoted = `'${replay.replaceAll("'", "'\\''")}'`;
+    const invocation = sample.tool === "remotion" ? "remotion render index.jsx Sample progress.mp4" : "manim render -ql scene.py Sample";
+    return { name: "bash", args: { command: `${sample.tool}() { python3 -c ${quoted}; }\n${invocation}`, timeout: 30 }, slow: false };
+  }));
+}
+
 function textOf(message) {
   if (typeof message?.content === "string") return message.content;
   return (message?.content ?? []).map(part => part.text ?? "").join("\n");
@@ -70,7 +93,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const messages = body.messages ?? [];
       const lastUser = messages.findLast(message => message.role === "user");
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(svg|html|png|image|isolation)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(svg|html|png|image|isolation|video|sequence|progress|prores)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !messages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -97,7 +120,11 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         { name: "write", args: { path: "isolation.html", content: isolationHtml() }, slow: false },
       ] : fixture === "png" ? [
         { name: "bash", args: { command: pngCommand(), timeout: 30 }, slow: false },
-      ] : fixture === "image" ? [
+      ] : fixture === "video" || fixture === "prores" ? [
+        { name: "bash", args: { command: videoCommand(fixture === "prores"), timeout: 30 }, slow: false },
+      ] : fixture === "sequence" ? [
+        { name: "bash", args: { command: sequenceCommand(), timeout: 30 }, slow: false },
+      ] : fixture === "progress" ? await progressCalls() : fixture === "image" ? [
         { name: "generate_image", args: { subject: "A measured architectural poster. " + "Use a teal circle on a cream background. ".repeat(200), image_size: "1024x1024", aspect_ratio: "1:1" }, slow: true },
       ] : [{ name: "write", args: { path: "poster.svg", content: posterSvg() }, slow: true }];
       for (const [index, call] of calls.entries()) {

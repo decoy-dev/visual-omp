@@ -37,6 +37,7 @@ vi.mock("../../ui", () => ({
 	Button: ({ children, icon: _icon, variant: _variant, size: _size, ...props }: { children?: ReactNode; icon?: ReactNode; variant?: string; size?: string }) => createElement("button", props, children),
 	Notice: ({ children, actions }: { children: ReactNode; actions: ReactNode }) => createElement("div", { role: "status" }, children, actions),
 	IconButton: ({ label, icon: _icon, size: _size, ...props }: { label: string; icon?: ReactNode; size?: string }) => createElement("button", { ...props, "aria-label": label }, label),
+	Progress: ({ value, ...props }: { value?: number; "aria-label": string }) => createElement("div", { ...props, role: "progressbar", "aria-valuenow": value }),
 	Menu: ({ children }: { children: ReactNode }) => children,
 	MenuTrigger: ({ children }: { children: ReactNode }) => children,
 	MenuContent: ({ children }: { children: ReactNode }) => createElement("div", null, children),
@@ -46,7 +47,7 @@ vi.mock("../panes/common", () => ({ FileName: ({ name }: { name: string }) => na
 vi.mock("../panes/files-store", () => ({ openInFiles: vi.fn() }));
 vi.mock("../panes/media", () => ({ ExpandPreview: () => null, PdfFrame: () => null, PreviewImage: () => null, loadFileImage: vi.fn() }));
 vi.mock("../panes/derive", async importOriginal => ({ ...await importOriginal<typeof PanesDerive>(), backgroundJobs: () => [], ompRunning: () => true }));
-vi.mock("./subjects", () => ({ deriveSubjects: () => env.subjects, namedPaths: () => [], relatedPaths: () => [] }));
+vi.mock("./subjects", () => ({ deriveSubjects: () => env.subjects, namedPaths: () => [], relatedPaths: () => [], sequencePatterns: () => [] }));
 vi.mock("./formats", () => ({ loadAdapter: (format: string) => env.loadAdapter(format) }));
 vi.mock("../../i18n", () => ({ retryFailedNamespaces: async () => {} }));
 vi.mock("../../transcript/Markdown", () => ({ Markdown: ({ text }: { text: string }) => createElement("div", null, text) }));
@@ -66,7 +67,7 @@ let session: SessionController;
 let held: boolean;
 let focus = vi.fn<() => void>();
 let unregister: () => void;
-const subject = (id: string, text = id, state: LiveSubject["state"] = "writing"): LiveSubject => ({ id, text, state, kind: "source", format: "svg", path: `/project/${id}.svg`, toolCallId: id, toolName: "write", revision: 1, elided: false, intent: null, request: null, images: null, size: text.length, startedAt: Date.now(), updatedAt: Date.now() });
+const subject = (id: string, text = id, state: LiveSubject["state"] = "writing"): LiveSubject => ({ id, text, state, kind: "source", format: "svg", path: `/project/${id}.svg`, toolCallId: id, toolName: "write", revision: 1, elided: false, intent: null, request: null, images: null, progress: null, sequence: null, size: text.length, startedAt: Date.now(), updatedAt: Date.now() });
 const render = async (tracker = false) => { await act(async () => root.render(createElement("div", null, tracker && createElement(Tracker), createElement(Stage, { session, onShowOutput: vi.fn() })))); };
 const click = async (label: string) => { const button = [...element.querySelectorAll("button")].find(value => value.textContent === label)!; expect(button).toBeTruthy(); await act(async () => button.click()); };
 const changeWorking = async (value: boolean) => { await act(async () => { working = value; for (const listener of snapshotListeners) listener(); }); };
@@ -176,7 +177,7 @@ it.each([false, true])("auto-opens only when its preference is %s", async enable
 
 it("stops the watcher and hides the stage when the setting is turned off", async () => {
 	await render(true); await act(async () => vi.advanceTimersByTimeAsync(200));
-	expect(env.invoke).toHaveBeenCalledWith("preview:watch", { folder: "/project", named: [] });
+	expect(env.invoke).toHaveBeenCalledWith("preview:watch", { folder: "/project", named: [], sequences: [] });
 	await act(async () => useApp.setState({ prefs: { livePreview: false, livePreviewOpenOutputs: false } as AppPreferences }));
 	expect(env.invoke).toHaveBeenCalledWith("preview:unwatch", "watch"); expect(element.querySelector("section")).toBeNull();
 });
@@ -227,4 +228,45 @@ it("retains the hidden preview while its store updates, then shows only the late
 	} finally {
 		visible.mockRestore();
 	}
+});
+
+describe("render progress", () => {
+	it("shows known progress before loading a file adapter and keeps Stop available", async () => {
+		const rendering: LiveSubject = { ...subject("movie", "", "running"), kind: "render", format: "video", path: "/project/movie.mp4", toolName: "bash", progress: { tool: "ffmpeg", done: 120, total: 180, unit: "frame", percent: 120 / 180 * 100 } };
+		useLivePreview.getState().update("chat", [rendering], []);
+		await render();
+		expect(element.textContent).toContain("Rendering · frame 120 of 180");
+		expect(element.querySelector("[role='progressbar']")?.getAttribute("aria-valuenow")).toBe(String(120 / 180 * 100));
+		expect(env.loadAdapter).not.toHaveBeenCalled();
+		await click("Stop");
+		expect(session.abort).toHaveBeenCalledOnce();
+		await act(async () => useLivePreview.getState().update("chat", [{ ...rendering, kind: "file", state: "saved", revision: 2 }], []));
+		expect(env.loadAdapter).toHaveBeenCalledWith("video");
+		expect(element.textContent).toContain("Saved");
+		expect(element.querySelector("[role='progressbar']")).toBeNull();
+	});
+
+	it("uses indeterminate progress when the renderer has not reported a total", async () => {
+		useLivePreview.getState().update("chat", [{ ...subject("movie", "", "running"), kind: "render", format: "video", progress: { tool: "ffmpeg", done: 30, total: null, unit: "frame", percent: null } }], []);
+		await render();
+		expect(element.textContent).toContain("Rendering · frame 30");
+		expect(element.querySelector("[role='progressbar']")?.hasAttribute("aria-valuenow")).toBe(false);
+	});
+});
+
+it("keeps an ended render's last status without an active progress bar", async () => {
+	useLivePreview.getState().update("chat", [{ ...subject("movie", "", "stopped"), kind: "render", format: "video", progress: { tool: "ffmpeg", done: 30, total: 180, unit: "frame", percent: 30 / 180 * 100 } }], []);
+	await render();
+	expect(element.querySelector("[role='status']")?.textContent).toBe("Stopped");
+	expect(element.querySelector("[role='progressbar']")).toBeNull();
+});
+
+it("keeps animation-local percentages indeterminate while showing the animation count", async () => {
+	useLivePreview.getState().update("chat", [{
+		...subject("scene", "", "running"), kind: "render", format: "video",
+		progress: { tool: "manim", done: 2.3, total: null, unit: "animation", percent: 30 },
+	}], []);
+	await render();
+	expect(element.textContent).toContain("animation 2.3");
+	expect(element.querySelector("[role='progressbar']")?.hasAttribute("aria-valuenow")).toBe(false);
 });

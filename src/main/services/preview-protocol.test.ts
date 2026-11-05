@@ -1,5 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdir, mkdtemp, open, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, open, realpath, rename, rm, symlink, writeFile } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
+import type * as FsPromises from "node:fs/promises";
+import { constants } from "node:fs";
+import type { ReadStream } from "node:fs";
+import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
 import type { PreviewGrant } from "@shared/contracts/preview";
@@ -20,8 +25,31 @@ vi.mock("electron", () => ({
 vi.mock("../ipc", () => ({ handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) => electron.ipc.set(channel, handler) }));
 vi.mock("./preview-isolation-test", () => ({ isIsolationTestDocument: (path: string, saved: boolean, read?: unknown) => saved && electron.isolationFile === path && (!read || !electron.rejectIsolationRead) }));
 
+const files = vi.hoisted(() => ({
+	afterOpen: null as ((file: FileHandle, path: unknown, flags: unknown) => Promise<void> | void) | null,
+	onOpen: null as ((file: FileHandle) => Promise<void> | void) | null,
+	openCalls: 0,
+	openError: null as Error | null,
+}));
+vi.mock("node:fs/promises", async importOriginal => {
+	const actual = await importOriginal<typeof FsPromises>();
+	return {
+		...actual,
+		open: async (...args: Parameters<typeof actual.open>) => {
+			files.openCalls++;
+			if (files.openError) throw files.openError;
+			const file = await actual.open(...args);
+			await files.onOpen?.(file);
+			const afterOpen = files.afterOpen;
+			files.afterOpen = null;
+			await afterOpen?.(file, args[0], args[1]);
+			return file;
+		},
+	};
+});
+
 import {
-	grantPreview, handlePreviewRequest, PREVIEW_CSP, previewDocumentUrl, previewNavigationRule, preparePreview,
+	grantPreview, handlePreviewRequest, previewPolicy, previewDocumentUrl, previewNavigationRule, preparePreview,
 	registerPreviewProtocol, registerPreviewScheme, revokeAllPreviews, revokePreview, savePreview, setPreviewLive,
 } from "./preview-protocol";
 
@@ -34,6 +62,9 @@ beforeEach(async () => {
 	cleanup.push(folder);
 });
 afterEach(async () => {
+	files.afterOpen = null;
+	files.onOpen = null;
+	files.openError = null;
 	revokeAllPreviews();
 	await Promise.all(cleanup.splice(0).map(path => rm(path, { recursive: true, force: true })));
 });
@@ -52,19 +83,19 @@ it("enables only the explicitly gated saved fixture snapshot and keeps its netwo
 	const grant = await page();
 	electron.isolationFile = await realpath(join(folder, "index.html"));
 	setPreviewLive(grant.token, 1, "<p>Streaming fixture</p>");
-	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true });
-	expect((await get(`${grant.url}?rev=1`)).headers.get("content-security-policy")).toBe(PREVIEW_CSP);
+	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
+	expect((await get(`${grant.url}?rev=1`)).headers.get("content-security-policy")).toBe(previewPolicy({ scripts: false, network: false }));
 	savePreview(grant.token);
-	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, isolationTest: true });
+	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false }, isolationTest: true });
 	const response = await get(`${grant.url}?rev=1`);
 	expect(await response.text()).toBe("<h1>Saved</h1>");
-	expect(response.headers.get("content-security-policy")).toBe(PREVIEW_CSP.replace("script-src 'none'", "script-src 'unsafe-inline'"));
+	expect(response.headers.get("content-security-policy")).toBe(previewPolicy({ scripts: false, network: false }).replace("script-src 'none'", "script-src 'unsafe-inline'"));
 	expect(response.headers.get("access-control-allow-origin")).toBeNull();
-	expect((await get(grant.url)).headers.get("content-security-policy")).toBe(PREVIEW_CSP);
+	expect((await get(grant.url)).headers.get("content-security-policy")).toBe(previewPolicy({ scripts: false, network: false }));
 	const other = await page(join(folder, "other.html"));
 	savePreview(other.token);
-	expect(await preparePreview(other.token, 1)).toEqual({ ok: true });
-	expect((await get(`${other.url}?rev=1`)).headers.get("content-security-policy")).toBe(PREVIEW_CSP);
+	expect(await preparePreview(other.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
+	expect((await get(`${other.url}?rev=1`)).headers.get("content-security-policy")).toBe(previewPolicy({ scripts: false, network: false }));
 });
 
 it("requires the opened document identity before marking a snapshot script-enabled", async () => {
@@ -74,14 +105,14 @@ it("requires the opened document identity before marking a snapshot script-enabl
 	savePreview(grant.token);
 	expect(await preparePreview(grant.token, 1)).toEqual({ ok: false, reason: "notFile" });
 	expect((await get(`${grant.url}?rev=1`)).status).toBe(404);
-	expect((await get(grant.url)).headers.get("content-security-policy")).toBe(PREVIEW_CSP);
+	expect((await get(grant.url)).headers.get("content-security-policy")).toBe(previewPolicy({ scripts: false, network: false }));
 });
 
 it("rejects a previously prepared script fixture when its pinned identity changes", async () => {
 	const grant = await page();
 	electron.isolationFile = await realpath(join(folder, "index.html"));
 	savePreview(grant.token);
-	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, isolationTest: true });
+	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false }, isolationTest: true });
 	electron.rejectIsolationRead = true;
 	expect((await get(`${grant.url}?rev=1`)).status).toBe(403);
 	expect(await preparePreview(grant.token, 1)).toEqual({ ok: false, reason: "notFile" });
@@ -164,11 +195,11 @@ it("refuses symlinks leaving the root, including symlinks replaced after grantin
 	expect((await get(grant.url)).status).toBe(403);
 });
 
-it("refuses directories, unsupported video and scripts", async () => {
+it("refuses directories and unsupported scripts", async () => {
 	const grant = await page();
 	await mkdir(join(folder, "directory.html"));
 	expect((await get(new URL("directory.html", grant.url).href)).status).toBe(403);
-	for (const name of ["movie.mp4", "code.js"]) {
+	for (const name of ["code.js", "module.mjs"]) {
 		await writeFile(join(folder, name), "content");
 		expect((await get(new URL(name, grant.url).href)).status).toBe(415);
 	}
@@ -186,11 +217,11 @@ it("serves the newest live revision and then permanently switches to the saved f
 	setPreviewLive(grant.token, 2, "newest");
 	setPreviewLive(grant.token, 1, "older");
 	setPreviewLive(grant.token, 2, "duplicate");
-	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true });
+	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 	expect(await (await get(`${grant.url}?rev=1`)).text()).toBe("newest");
 	savePreview(grant.token);
 	setPreviewLive(grant.token, 3, "late stream");
-	expect(await preparePreview(grant.token, 3)).toEqual({ ok: true });
+	expect(await preparePreview(grant.token, 3)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 	expect(await (await get(`${grant.url}?rev=3`)).text()).toBe("<h1>Saved</h1>");
 });
 
@@ -208,9 +239,9 @@ it("sends the scripts-off CSP, no-store and nosniff policy without CORS permissi
 		else savePreview(grant.token);
 		const response = await get(grant.url);
 		expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
-		expect(response.headers.get("content-security-policy")).toBe(PREVIEW_CSP);
-		expect(PREVIEW_CSP).toContain("script-src 'none'");
-		expect(PREVIEW_CSP).toContain("connect-src 'none'");
+		expect(response.headers.get("content-security-policy")).toBe(previewPolicy({ scripts: false, network: false }));
+		expect(previewPolicy({ scripts: false, network: false })).toContain("script-src 'none'");
+		expect(previewPolicy({ scripts: false, network: false })).toContain("connect-src 'none'");
 		expect(response.headers.has("access-control-allow-origin")).toBe(false);
 		expect(response.headers.get("cache-control")).toBe("no-store");
 		expect(response.headers.get("x-content-type-options")).toBe("nosniff");
@@ -271,16 +302,540 @@ it("keeps live updates, saving and revocation with the granting window", async (
 	expect((await get(grant.url)).status).toBe(404);
 });
 
+describe("streamed video", () => {
+	const mib = 1024 * 1024;
+	const bytes = "0123456789abcdefghijklmnopqrstuvwxyz";
+
+	interface ObservedFile {
+		readonly file: FileHandle;
+		readonly stream: ReadStream | undefined;
+		readonly closed: Promise<void>;
+		readonly backpressured: Promise<void>;
+	}
+
+	async function movie(name = "movie.mp4", size?: number, owner: number | null = null) {
+		const path = join(folder, name);
+		await writeFile(path, bytes);
+		if (size !== undefined) {
+			const file = await open(path, "r+");
+			try { await file.truncate(size); } finally { await file.close(); }
+		}
+		const grant = await grantPreview({ path, root: folder, related: [] }, owner);
+		return { ...grant, path };
+	}
+
+	function request(url: string, range?: string, method = "GET", signal?: AbortSignal) {
+		return handlePreviewRequest(new Request(url, { method, signal, headers: range === undefined ? {} : { Range: range } }));
+	}
+
+	/** Observe the real descriptor and stream without replacing their I/O behavior. */
+	function observeFile(): ObservedFile {
+		let file!: FileHandle;
+		let stream: ReadStream | undefined;
+		let closed!: Promise<void>;
+		const { promise: backpressured, resolve: paused } = Promise.withResolvers<void>();
+		files.afterOpen = opened => {
+			file = opened;
+			const completion = Promise.withResolvers<void>();
+			closed = completion.promise;
+			const close = opened.close.bind(opened);
+			vi.spyOn(opened, "close").mockImplementation(async () => { await close(); if (!stream) completion.resolve(); });
+			const create = opened.createReadStream.bind(opened);
+			vi.spyOn(opened, "createReadStream").mockImplementation(options => {
+				stream = create(options);
+				stream.once("close", completion.resolve);
+				stream.on("pause", () => { if (stream!.bytesRead > 0) paused(); });
+				return stream;
+			});
+			vi.spyOn(opened, "readFile");
+		};
+		return {
+			get file() { return file; },
+			get stream() { return stream; },
+			get closed() { return closed; },
+			backpressured,
+		};
+	}
+
+	async function expectClosed(observed: ObservedFile) {
+		await observed.closed;
+		expect(observed.file.fd).toBe(-1);
+		await expect(observed.file.stat()).rejects.toMatchObject({ code: "EBADF" });
+	}
+
+	it.each([
+		["movie.mp4", "video/mp4"], ["movie.m4v", "video/mp4"],
+		["movie.webm", "video/webm"], ["movie.mov", "video/quicktime"], ["MOVIE.MP4", "video/mp4"],
+	])("streams %s with its MIME type, security headers and no CORS permission", async (name, type) => {
+		const grant = await movie(name);
+		const observed = observeFile();
+		const response = await request(grant.url);
+		expect(response.status).toBe(200);
+		expect(response.headers.get("content-type")).toBe(type);
+		expect(response.headers.get("content-length")).toBe(String(bytes.length));
+		expect(response.headers.get("accept-ranges")).toBe("bytes");
+		expect(response.headers.has("content-range")).toBe(false);
+		expect(response.headers.has("access-control-allow-origin")).toBe(false);
+		expect(response.headers.get("content-security-policy")).toBe(previewPolicy({ scripts: false, network: false }));
+		expect(response.headers.get("cache-control")).toBe("no-store");
+		expect(response.headers.get("x-content-type-options")).toBe("nosniff");
+		expect(await response.text()).toBe(bytes);
+		expect(observed.stream).toBeDefined();
+		await expectClosed(observed);
+	});
+
+	it.each([
+		["bytes=4-9", 4, 9], ["bytes=0-0", 0, 0], ["bytes=32-999", 32, 35],
+		["bytes=-5", 31, 35], ["bytes=-999", 0, 35], ["bytes=30-", 30, 35],
+		["bytes=0-999999999999999999999", 0, 35], ["bytes=-999999999999999999999", 0, 35],
+	])("serves range %s with the exact extent", async (range, start, end) => {
+		const grant = await movie();
+		const observed = observeFile();
+		const response = await request(grant.url, range);
+		expect(response.status).toBe(206);
+		expect(response.headers.get("content-range")).toBe(`bytes ${start}-${end}/${bytes.length}`);
+		expect(response.headers.get("content-length")).toBe(String(end - start + 1));
+		expect(response.headers.get("accept-ranges")).toBe("bytes");
+		expect(await response.text()).toBe(bytes.slice(start, end + 1));
+		await expectClosed(observed);
+	});
+
+	it.each([
+		["bytes=100-", 100, 100 + 8 * mib - 1],
+		["bytes=0-", 0, 8 * mib - 1],
+		["bytes=0-9437183", 0, 9 * mib - 1],
+		["bytes=-9437184", mib, 10 * mib - 1],
+	])("applies the 8 MiB limit only to open-ended range %s", async (range, start, end) => {
+		const grant = await movie("large.mp4", 10 * mib);
+		const observed = observeFile();
+		const response = await request(grant.url, range);
+		expect(response.status).toBe(206);
+		expect(response.headers.get("content-range")).toBe(`bytes ${start}-${end}/${10 * mib}`);
+		expect(response.headers.get("content-length")).toBe(String(end - start + 1));
+		expect((await response.arrayBuffer()).byteLength).toBe(end - start + 1);
+		await expectClosed(observed);
+	});
+
+	it("streams an uncapped whole file with byte-bounded backpressure", async () => {
+		const size = 40 * mib;
+		const grant = await movie("whole.mp4", size);
+		const observed = observeFile();
+		const response = await request(grant.url);
+		expect(response.status).toBe(200);
+		expect(response.headers.get("content-length")).toBe(String(size));
+		expect(response.headers.has("content-range")).toBe(false);
+		expect(observed.file.readFile).not.toHaveBeenCalled();
+		const stream = observed.stream!;
+		expect(stream.readableHighWaterMark).toBe(64 * 1024);
+		// Wait for the actual backpressure transition while the response has no reader.
+		await observed.backpressured;
+		expect(stream.bytesRead).toBeLessThanOrEqual(3 * 64 * 1024);
+		const reader = response.body!.getReader();
+		let length = 0;
+		for (;;) {
+			const chunk = await reader.read();
+			if (chunk.done) break;
+			length += chunk.value.byteLength;
+			expect(chunk.value.byteLength).toBeLessThanOrEqual(64 * 1024);
+		}
+		expect(length).toBe(size);
+		await expectClosed(observed);
+	});
+
+	it.each([
+		"bytes=36-", "bytes=999-1000", "bytes=9-4", "bytes=-0", "bytes=-", "bytes=0-1,4-5",
+		"items=0-1", "bytes=one-two", "bytes=1.5-2", "bytes=+1-2", "bytes=0--1",
+		"bytes=999999999999999999999-", "",
+	])("refuses invalid or unsatisfiable range %s and closes the file", async range => {
+		const grant = await movie();
+		const observed = observeFile();
+		const response = await request(grant.url, range);
+		expect(response.status).toBe(416);
+		expect(response.headers.get("content-range")).toBe(`bytes */${bytes.length}`);
+		expect(response.headers.get("accept-ranges")).toBe("bytes");
+		expect(response.headers.has("access-control-allow-origin")).toBe(false);
+		expect(response.body).toBeNull();
+		expect(observed.stream).toBeUndefined();
+		await expectClosed(observed);
+	});
+
+	it.each([undefined, "bytes=4-9", "bytes=-5", "bytes=30-", "bytes=99-"])("gives HEAD the GET headers for range %s without a body or stream", async range => {
+		const grant = await movie();
+		const getResponse = await request(grant.url, range);
+		await getResponse.arrayBuffer();
+		const observed = observeFile();
+		const response = await request(grant.url, range, "HEAD");
+		expect(response.status).toBe(getResponse.status);
+		expect([...response.headers]).toEqual([...getResponse.headers]);
+		expect(response.body).toBeNull();
+		expect(observed.stream).toBeUndefined();
+		await expectClosed(observed);
+	});
+
+	it("serves an empty whole file and refuses all ranges on it", async () => {
+		const grant = await movie("empty.mp4", 0);
+		for (const method of ["GET", "HEAD"]) {
+			for (const range of [undefined, "bytes=0-", "bytes=-1", "bytes=0-0"]) {
+				const observed = observeFile();
+				const response = await request(grant.url, range, method);
+				expect(response.status).toBe(range === undefined ? 200 : 416);
+				expect(response.headers.get(range === undefined ? "content-length" : "content-range")).toBe(range === undefined ? "0" : "bytes */0");
+				expect(response.body).toBeNull();
+				await expectClosed(observed);
+			}
+		}
+	});
+
+	it("destroys an active stream and closes its descriptor when the request aborts", async () => {
+		const grant = await movie("abort.mp4", 40 * mib);
+		const controller = new AbortController();
+		const observed = observeFile();
+		const response = await request(grant.url, undefined, "GET", controller.signal);
+		const reader = response.body!.getReader();
+		expect((await reader.read()).done).toBe(false);
+		controller.abort();
+		await expect(reader.closed).rejects.toMatchObject({ name: "AbortError" });
+		await expect(reader.read()).rejects.toMatchObject({ name: "AbortError" });
+		expect(observed.stream!.destroyed).toBe(true);
+		await expectClosed(observed);
+	});
+
+	it("closes the descriptor when a response consumer cancels", async () => {
+		const grant = await movie("cancel.mp4", 40 * mib);
+		const observed = observeFile();
+		const response = await request(grant.url);
+		await response.body!.cancel();
+		expect(observed.stream!.destroyed).toBe(true);
+		await expectClosed(observed);
+	});
+
+	it.each(["end", "error"])("closes the descriptor and releases stream tracking and the abort listener on %s", async mode => {
+		const grant = await movie("lifecycle.mp4", mode === "error" ? 40 * mib : undefined);
+		const controller = new AbortController();
+		const observed = observeFile();
+		const received = new Request(grant.url, { signal: controller.signal });
+		const remove = vi.spyOn(received.signal, "removeEventListener");
+		const response = await handlePreviewRequest(received);
+		const destroy = vi.spyOn(observed.stream!, "destroy");
+		if (mode === "error") {
+			observed.stream!.destroy(new Error("Read failed."));
+			await expect(response.arrayBuffer()).rejects.toThrow("Read failed.");
+		} else {
+			expect(await response.text()).toBe(bytes);
+		}
+		await expectClosed(observed);
+		expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+		const destroyed = destroy.mock.calls.length;
+		revokePreview(grant.token);
+		controller.abort();
+		expect(destroy).toHaveBeenCalledTimes(destroyed);
+	});
+
+	it.each(["token", "all"])("destroys every active stream on %s revocation", async mode => {
+		const grant = await movie("revoke.mp4", 40 * mib, 12);
+		const other = await movie("other.mp4", 40 * mib, 13);
+		const streams: { observed: ObservedFile; response: Response }[] = [];
+		for (const url of [grant.url, `${grant.url}?rev=2`, other.url]) {
+			const observed = observeFile();
+			streams.push({ observed, response: await request(url) });
+		}
+		revokePreview(grant.token, 13);
+		expect(streams[0]!.observed.stream!.destroyed).toBe(false);
+		if (mode === "token") revokePreview(grant.token, 12);
+		else revokeAllPreviews();
+		for (const { observed, response } of streams.slice(0, mode === "token" ? 2 : 3)) {
+			expect(observed.stream!.destroyed).toBe(true);
+			await expect(response.arrayBuffer()).rejects.toThrow();
+			await expectClosed(observed);
+		}
+		if (mode === "token") {
+			expect(streams[2]!.observed.stream!.destroyed).toBe(false);
+			await streams[2]!.response.body!.cancel();
+			await expectClosed(streams[2]!.observed);
+		}
+		expect((await request(grant.url, "bytes=0-4")).status).toBe(404);
+	});
+
+	it.each(["before", "afterOpen"])("closes without streaming when already aborted %s opening", async when => {
+		const grant = await movie();
+		const controller = new AbortController();
+		let file: FileHandle | undefined;
+		const calls = files.openCalls;
+		files.afterOpen = opened => {
+			file = opened;
+			if (when === "afterOpen") controller.abort();
+		};
+		if (when === "before") controller.abort();
+		await expect(request(grant.url, undefined, "GET", controller.signal)).rejects.toMatchObject({ name: "AbortError" });
+		if (when === "before") {
+			expect(files.openCalls).toBe(calls);
+			expect(file).toBeUndefined();
+		} else {
+			expect(file!.fd).toBe(-1);
+			await expect(file!.stat()).rejects.toMatchObject({ code: "EBADF" });
+		}
+	});
+
+	it.each(["token", "all"])("refuses a stale opened request after %s revocation and keeps a new grant independent", async mode => {
+		const grant = await movie();
+		let file!: FileHandle;
+		let replacement!: PreviewGrant;
+		files.afterOpen = async opened => {
+			file = opened;
+			if (mode === "token") revokePreview(grant.token);
+			else revokeAllPreviews();
+			replacement = await grantPreview({ path: grant.path, root: folder, related: [] });
+		};
+		expect((await request(grant.url, "bytes=0-4")).status).toBe(404);
+		expect(file.fd).toBe(-1);
+		expect(await (await request(replacement.url, "bytes=0-4")).text()).toBe("01234");
+	});
+
+	it("denies video symlinks leaving the grant and revoked tokens", async () => {
+		const grant = await movie();
+		const outside = await mkdtemp(join(tmpdir(), "vomp-video-outside-"));
+		cleanup.push(outside);
+		await writeFile(join(outside, "private.mp4"), "private");
+		await symlink(outside, join(folder, "escape"), process.platform === "win32" ? "junction" : "dir");
+		expect((await request(new URL("escape/private.mp4", grant.url).href, "bytes=0-4")).status).toBe(403);
+		await rm(grant.path);
+		await symlink(join(outside, "private.mp4"), grant.path);
+		expect((await request(grant.url)).status).toBe(403);
+		revokePreview(grant.token);
+		expect((await request(grant.url)).status).toBe(404);
+	});
+
+	it("checks the opened inode again and closes it if a save replaces the path", async () => {
+		const grant = await movie();
+		let file!: FileHandle;
+		files.afterOpen = async (opened, path, flags) => {
+			file = opened;
+			expect(path).toBe(await realpath(grant.path));
+			expect(Number(flags) & constants.O_RDONLY).toBe(constants.O_RDONLY);
+			if (constants.O_NOFOLLOW) expect(Number(flags) & constants.O_NOFOLLOW).toBe(constants.O_NOFOLLOW);
+			await rename(grant.path, join(folder, "previous.mp4"));
+			await writeFile(grant.path, "replacement");
+		};
+		expect((await request(grant.url, "bytes=0-4")).status).toBe(403);
+		expect(file.fd).toBe(-1);
+		expect(await (await request(grant.url)).text()).toBe("replacement");
+	});
+
+	it("rechecks containment and closes the opened file when its path becomes an outside symlink", async () => {
+		const grant = await movie();
+		const outside = join(tmpdir(), `${basename(folder)}-private.mp4`);
+		cleanup.push(outside);
+		await writeFile(outside, "private");
+		let file!: FileHandle;
+		files.afterOpen = async opened => {
+			file = opened;
+			await rename(grant.path, join(folder, "previous.mp4"));
+			await symlink(outside, grant.path);
+		};
+		expect((await request(grant.url)).status).toBe(403);
+		expect(file.fd).toBe(-1);
+	});
+
+	it("closes the opened descriptor when its path disappears during validation", async () => {
+		const grant = await movie();
+		let file!: FileHandle;
+		files.afterOpen = async opened => {
+			file = opened;
+			await rm(grant.path);
+		};
+		expect((await request(grant.url)).status).toBe(404);
+		expect(file.fd).toBe(-1);
+	});
+
+	it("limits many concurrent unread ranges per grant before opening descriptors", async () => {
+		const grant = await movie("limited.mp4", 40 * mib);
+		const other = await movie("independent.mp4", 40 * mib);
+		const opened: FileHandle[] = [];
+		const closed: Promise<unknown>[] = [];
+		files.onOpen = file => {
+			opened.push(file);
+			const create = file.createReadStream.bind(file);
+			vi.spyOn(file, "createReadStream").mockImplementation(options => {
+				const stream = create(options);
+				const completion = Promise.withResolvers<void>();
+				closed.push(completion.promise);
+				stream.once("close", completion.resolve);
+				return stream;
+			});
+		};
+		const calls = files.openCalls;
+		const responses = await Promise.all(Array.from({ length: 32 }, (_, index) => request(grant.url, `bytes=${index}-`)));
+		expect(responses.filter(response => response.status === 206)).toHaveLength(4);
+		expect(responses.filter(response => response.status === 429)).toHaveLength(28);
+		expect(files.openCalls - calls).toBe(4);
+		const independent = await request(other.url, "bytes=0-");
+		expect(independent.status).toBe(206);
+		await Promise.all([...responses, independent].map(response => response.body?.cancel()));
+		await Promise.all(closed);
+		expect(opened.every(file => file.fd === -1)).toBe(true);
+		// All four slots are reusable, not just the first released slot.
+		const reused = await Promise.all(Array.from({ length: 4 }, () => request(grant.url, undefined, "HEAD")));
+		expect(reused.map(response => response.status)).toEqual([200, 200, 200, 200]);
+	});
+
+	it("limits unread ranges globally across grants without opening excess descriptors", async () => {
+		const grants = await Promise.all(Array.from({ length: 5 }, (_, index) => movie(`global-${index}.mp4`, 40 * mib)));
+		const opened: FileHandle[] = [];
+		const closed: Promise<unknown>[] = [];
+		files.onOpen = file => {
+			opened.push(file);
+			const create = file.createReadStream.bind(file);
+			vi.spyOn(file, "createReadStream").mockImplementation(options => {
+				const stream = create(options);
+				const completion = Promise.withResolvers<void>();
+				closed.push(completion.promise);
+				stream.once("close", completion.resolve);
+				return stream;
+			});
+		};
+		const calls = files.openCalls;
+		const responses = await Promise.all(grants.slice(0, 4).flatMap(grant => Array.from({ length: 4 }, () => request(grant.url, "bytes=0-"))));
+		expect(responses.every(response => response.status === 206)).toBe(true);
+		expect((await request(grants[4]!.url, "bytes=0-")).status).toBe(429);
+		expect(files.openCalls - calls).toBe(16);
+		await Promise.all(responses.map(response => response.body!.cancel()));
+		await Promise.all(closed);
+		expect(opened.every(file => file.fd === -1)).toBe(true);
+		expect((await request(grants[4]!.url, undefined, "HEAD")).status).toBe(200);
+	});
+
+	it.each(["token", "all"])("keeps pending opens reserved through %s revocation until every descriptor closes", async mode => {
+		const grants = await Promise.all(Array.from({ length: 4 }, (_, index) => movie(`pending-${index}.mp4`)));
+		const opened: FileHandle[] = [];
+		const entered = Promise.withResolvers<void>();
+		const settle = Promise.withResolvers<void>();
+		files.onOpen = async file => {
+			opened.push(file);
+			if (opened.length === 16) entered.resolve();
+			await settle.promise;
+		};
+		const calls = files.openCalls;
+		const pending = grants.flatMap(grant => Array.from({ length: 4 }, () => request(grant.url)));
+		await entered.promise;
+		expect((await request(grants[0]!.url)).status).toBe(429);
+		expect(files.openCalls - calls).toBe(16);
+		if (mode === "all") revokeAllPreviews();
+		else for (const grant of grants) revokePreview(grant.token);
+		const replacements = await Promise.all(grants.map(grant => grantPreview({ path: grant.path, root: folder, related: [] })));
+		// Revocation cannot reset the global count while old opens still own descriptors.
+		expect((await request(replacements[0]!.url)).status).toBe(429);
+		expect(files.openCalls - calls).toBe(16);
+		files.onOpen = null;
+		settle.resolve();
+		expect((await Promise.all(pending)).every(response => response.status === 404)).toBe(true);
+		expect(opened.every(file => file.fd === -1)).toBe(true);
+		// Starting sixteen new requests together proves the global reservations were all released.
+		const reused = await Promise.all(replacements.flatMap(grant => Array.from({ length: 4 }, () => request(grant.url, undefined, "HEAD"))));
+		expect(reused.every(response => response.status === 200)).toBe(true);
+	});
+
+	it("releases all pending reservations when the requests abort during opening", async () => {
+		const grant = await movie("pending-abort.mp4");
+		const controller = new AbortController();
+		const entered = Promise.withResolvers<void>();
+		const settle = Promise.withResolvers<void>();
+		const opened: FileHandle[] = [];
+		files.onOpen = async file => {
+			opened.push(file);
+			if (opened.length === 4) entered.resolve();
+			await settle.promise;
+		};
+		const pending = Promise.allSettled(Array.from({ length: 4 }, () => request(grant.url, undefined, "GET", controller.signal)));
+		await entered.promise;
+		controller.abort();
+		expect((await request(grant.url)).status).toBe(429);
+		files.onOpen = null;
+		settle.resolve();
+		for (const result of await pending) {
+			expect(result.status).toBe("rejected");
+			if (result.status === "rejected") expect(result.reason).toMatchObject({ name: "AbortError" });
+		}
+		expect(opened.every(file => file.fd === -1)).toBe(true);
+		const reused = await Promise.all(Array.from({ length: 4 }, () => request(grant.url, undefined, "HEAD")));
+		expect(reused.every(response => response.status === 200)).toBe(true);
+	});
+
+	it.each(["missing", "open error", "invalid range", "HEAD", "stream error", "cancel", "EOF"])("releases every reservation after %s", async mode => {
+		const grant = await movie("release.mp4", 40 * mib);
+		const opened: FileHandle[] = [];
+		files.onOpen = file => { opened.push(file); };
+		if (mode === "missing") {
+			for (let index = 0; index < 8; index++) expect((await request(new URL("missing.mp4", grant.url).href)).status).toBe(404);
+		} else if (mode === "open error") {
+			files.openError = new Error("Open failed.");
+			const calls = files.openCalls;
+			for (let index = 0; index < 8; index++) expect((await request(grant.url)).status).toBe(404);
+			expect(files.openCalls - calls).toBe(8);
+			files.openError = null;
+		} else if (mode === "HEAD" || mode === "invalid range") {
+			for (let index = 0; index < 8; index++) {
+				expect((await request(grant.url, mode === "invalid range" ? "bytes=999999999-" : undefined, mode === "HEAD" ? "HEAD" : "GET")).status).toBe(mode === "HEAD" ? 200 : 416);
+			}
+		} else {
+			const observed = observeFile();
+			const response = await request(grant.url, mode === "EOF" ? "bytes=0-4" : undefined);
+			if (mode === "stream error") {
+				observed.stream!.destroy(new Error("Read failed."));
+				await expect(response.arrayBuffer()).rejects.toThrow("Read failed.");
+			} else if (mode === "EOF") expect(await response.text()).toBe("01234");
+			else await response.body!.cancel();
+			await expectClosed(observed);
+		}
+		expect(opened.every(file => file.fd === -1)).toBe(true);
+		const reused = await Promise.all(Array.from({ length: 4 }, () => request(grant.url, undefined, "HEAD")));
+		expect(reused.every(response => response.status === 200)).toBe(true);
+	});
+
+	it.each([undefined, "bytes=0-"])("never streams growth beyond the initial advertised extent for %s", async range => {
+		const size = 2 * mib;
+		const grant = await movie("growing.mp4", size);
+		const observed = observeFile();
+		const response = await request(grant.url, range);
+		await observed.backpressured;
+		expect(observed.stream!.bytesRead).toBeLessThanOrEqual(3 * 64 * 1024);
+		const writer = await open(grant.path, "r+");
+		try {
+			await writer.write(Buffer.alloc(mib, 0x78), 0, mib, size);
+		} finally { await writer.close(); }
+		expect(response.headers.get("content-length")).toBe(String(size));
+		const body = new Uint8Array(await response.arrayBuffer());
+		expect(body.byteLength).toBe(size);
+		expect(body.subarray(bytes.length).every(value => value === 0)).toBe(true);
+		await expectClosed(observed);
+	});
+
+	it.each([undefined, "bytes=0-"])("errors a paused response when truncation causes premature EOF for %s", async range => {
+		const size = 2 * mib;
+		const grant = await movie("truncated.mp4", size);
+		const observed = observeFile();
+		const response = await request(grant.url, range);
+		await observed.backpressured;
+		expect(observed.stream!.bytesRead).toBeLessThanOrEqual(3 * 64 * 1024);
+		const writer = await open(grant.path, "r+");
+		try { await writer.truncate(mib); } finally { await writer.close(); }
+		expect(response.headers.get("content-length")).toBe(String(size));
+		await expect(response.arrayBuffer()).rejects.toThrow("ended before its advertised length");
+		await expectClosed(observed);
+		const reused = await Promise.all(Array.from({ length: 4 }, () => request(grant.url, undefined, "HEAD")));
+		expect(reused.every(response => response.status === 200)).toBe(true);
+	});
+});
+
 describe("prepared document snapshots", () => {
 	it("accepts live text before the file exists, then reports a missing saved document", async () => {
 		const grant = await grantPreview({ path: join(folder, "pending.html"), root: folder, related: [] });
 		expect(await preparePreview(grant.token, 1)).toEqual({ ok: false, reason: "missing" });
 		setPreviewLive(grant.token, 1, "<h1>Writing</h1>");
-		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true });
+		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 		savePreview(grant.token);
 		expect(await preparePreview(grant.token, 2)).toEqual({ ok: false, reason: "missing" });
 		await writeFile(join(folder, "pending.html"), "<h1>Saved</h1>");
-		expect(await preparePreview(grant.token, 2)).toEqual({ ok: true });
+		expect(await preparePreview(grant.token, 2)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 		expect(await (await get(`${grant.url}?rev=1`)).text()).toBe("<h1>Writing</h1>");
 		expect(await (await get(`${grant.url}?rev=2`)).text()).toBe("<h1>Saved</h1>");
 	});
@@ -291,7 +846,7 @@ describe("prepared document snapshots", () => {
 		try { await file.truncate(2 * 1024 * 1024 + 1); } finally { await file.close(); }
 		expect(await preparePreview(grant.token, 1)).toEqual({ ok: false, reason: "tooLarge" });
 		setPreviewLive(grant.token, 1, "<p>Last good text</p>");
-		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true });
+		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 		savePreview(grant.token);
 		expect(await preparePreview(grant.token, 2)).toEqual({ ok: false, reason: "tooLarge" });
 		expect(await (await get(`${grant.url}?rev=1`)).text()).toBe("<p>Last good text</p>");
@@ -315,7 +870,7 @@ describe("prepared document snapshots", () => {
 		await writeFile(path, "owned");
 		const grant = await grantPreview({ path, root: folder, related: [] }, 12);
 		expect(await preparePreview(grant.token, 1, 13)).toEqual({ ok: false, reason: "revoked" });
-		expect(await preparePreview(grant.token, 1, 12)).toEqual({ ok: true });
+		expect(await preparePreview(grant.token, 1, 12)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 		revokePreview(grant.token, 12);
 		expect(await preparePreview(grant.token, 1, 12)).toEqual({ ok: false, reason: "revoked" });
 		expect(await preparePreview("unknown", 1)).toEqual({ ok: false, reason: "revoked" });
@@ -324,7 +879,7 @@ describe("prepared document snapshots", () => {
 
 	it.each(["removed", "replaced", "oversized"])("serves the prepared bytes when the saved document is later %s", async change => {
 		const grant = await page();
-		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true });
+		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 		const path = join(folder, "index.html");
 		if (change === "removed") await rm(path);
 		else if (change === "replaced") await writeFile(path, "<h1>Different document</h1>");
@@ -336,20 +891,20 @@ describe("prepared document snapshots", () => {
 		expect(response.status).toBe(200);
 		expect(await response.text()).toBe("<h1>Saved</h1>");
 		expect(response.headers.get("content-type")).toBe("text/html; charset=utf-8");
-		expect(response.headers.get("content-security-policy")).toBe(PREVIEW_CSP);
+		expect(response.headers.get("content-security-policy")).toBe(previewPolicy({ scripts: false, network: false }));
 		expect(response.headers.has("access-control-allow-origin")).toBe(false);
 		expect((await get(`${grant.url}?rev=999`)).status).toBe(404);
 	});
 
 	it("keeps snapshots immutable and releases all but the two newest revisions, then releases them on reload", async () => {
 		const grant = await page();
-		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true });
+		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 		await writeFile(join(folder, "index.html"), "second");
-		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true });
+		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 		expect(await (await get(`${grant.url}?rev=1`)).text()).toBe("<h1>Saved</h1>");
-		expect(await preparePreview(grant.token, 2)).toEqual({ ok: true });
+		expect(await preparePreview(grant.token, 2)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 		await writeFile(join(folder, "index.html"), "third");
-		expect(await preparePreview(grant.token, 3)).toEqual({ ok: true });
+		expect(await preparePreview(grant.token, 3)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 		expect((await get(`${grant.url}?rev=1`)).status).toBe(404);
 		expect(await (await get(`${grant.url}?rev=2`)).text()).toBe("second");
 		expect(await (await get(`${grant.url}?rev=3`)).text()).toBe("third");
@@ -361,7 +916,7 @@ describe("prepared document snapshots", () => {
 	it("continues checking assets on disk without retaining them as document snapshots", async () => {
 		const grant = await page();
 		await writeFile(join(folder, "style.css"), "first");
-		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true });
+		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 		const asset = new URL("style.css?rev=1", grant.url).href;
 		expect(await (await get(asset)).text()).toBe("first");
 		await writeFile(join(folder, "style.css"), "second");
@@ -418,7 +973,7 @@ it("registers scheme privileges before readiness and the request handler only on
 	const grant = await electron.ipc.get("preview:grant")!(event, { path, root: folder, related: [] }) as PreviewGrant;
 	electron.ipc.get("preview:live")!(event, grant.token, 1, "IPC live");
 	expect(await (await get(grant.url)).text()).toBe("IPC live");
-	expect(await electron.ipc.get("preview:prepare")!(event, grant.token, 1)).toEqual({ ok: true });
+	expect(await electron.ipc.get("preview:prepare")!(event, grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
 	expect(await electron.ipc.get("preview:prepare")!({ sender: { id: 45 } }, grant.token, 1)).toEqual({ ok: false, reason: "revoked" });
 	electron.ipc.get("preview:saved")!(event, grant.token);
 	expect(await (await get(grant.url)).text()).toBe("disk");

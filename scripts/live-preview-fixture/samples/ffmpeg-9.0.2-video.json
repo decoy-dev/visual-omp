@@ -1,0 +1,24 @@
+{
+  "tool": "ffmpeg",
+  "version": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers",
+  "command": "ffmpeg -hide_banner -y -f lavfi -i testsrc=duration=2:size=160x90:rate=30 -frames:v 60 -c:v libx264 -pix_fmt yuv420p -progress pipe:1 ffmpeg.mp4",
+  "output": "ffmpeg version 9.0.2 Copyright (c) 2000-2026 the FFmpeg developers\nbuilt with Apple clang version 21.0.0 (clang-2100.4.1.1)\nconfiguration: --prefix=/Users/chrishaddox/homebrew/Cellar/ffmpeg/9.0.2_1 --enable-shared --enable-pthreads --enable-version3 --cc=clang --host-cflags= --host-ldflags= --enable-ffplay --enable-gpl --enable-libsvtav1 --enable-libopus --enable-libx264 --enable-libmp3lame --enable-libdav1d --enable-libvmaf --enable-libvpx --enable-libx265 --enable-openssl --enable-videotoolbox --enable-audiotoolbox --enable-neon\nlibavutil      61.  1.102 / 61.  1.102\nlibavcodec     63.  1.102 / 63.  1.102\nlibavformat    63.  1.102 / 63.  1.102\nlibavdevice    63.  1.102 / 63.  1.102\nlibavfilter    12.  1.102 / 12.  1.102\nlibswscale     10.  1.102 / 10.  1.102\nlibswresample   7.  1.102 /  7.  1.102\n\nExiting with exit code 0\n\nInput #0, lavfi, from 'testsrc=duration=2:size=160x90:rate=30':\n  Duration: N/A, start: 0.000000, bitrate: N/A\n  Stream #0:0: Video: wrapped_avframe, rgb24, 160x90 [SAR 1:1 DAR 16:9], 30 fps, 30 tbr, 30 tbn\nStream mapping:\n  Stream #0:0 -> #0:0 (wrapped_avframe (native) -> h264 (libx264))\nPress [q] to stop, [?] for help\n[libx264 @ 0x75d480ca80] using SAR=1/1\n[libx264 @ 0x75d480ca80] using cpu capabilities: ARMv8 NEON DotProd I8MM\n[libx264 @ 0x75d480ca80] profile High, level 1.1, 4:2:0, 8-bit\n[libx264 @ 0x75d480ca80] 264 - core 165 r3222 b35605a - H.264/MPEG-4 AVC codec - Copyleft 2003-2025 - http://www.videolan.org/x264.html - options: cabac=1 ref=3 deblock=1:0:0 analyse=0x3:0x113 me=hex subme=7 psy=1 psy_rd=1.00:0.00 mixed_ref=1 me_range=16 chroma_me=1 trellis=1 8x8dct=1 cqm=0 deadzone=21,11 fast_pskip=1 chroma_qp_offset=-2 threads=3 lookahead_threads=1 sliced_threads=0 nr=0 decimate=1 interlaced=0 bluray_compat=0 constrained_intra=0 bframes=3 b_pyramid=2 b_adapt=1 b_bias=0 direct=1 weightb=1 open_gop=0 weightp=2 keyint=250 keyint_min=25 scenecut=40 intra_refresh=0 rc_lookahead=40 rc=crf mbtree=1 crf=23.0 qcomp=0.60 qpmin=0 qpmax=69 qpstep=4 ip_ratio=1.40 aq=1:1.00\nOutput #0, mp4, to 'ffmpeg.mp4':\n  Metadata:\n    encoder         : Lavf63.1.102\n  Stream #0:0: Video: h264 (avc1 / 0x31637661), yuv420p(tv, progressive), 160x90 [SAR 1:1 DAR 16:9], q=2-31, 30 fps, 15360 tbn\n    Metadata:\n      encoder         : Lavc63.1.102 libx264\n    Side data:\n      CPB properties: bitrate max/min/avg: 0/0/0 buffer size: 0 vbv_delay: N/A\n[out#0/mp4 @ 0x75d4808480] video:8KiB audio:0KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: 14.668120%\nframe=   60 fps=0.0 q=-1.0 Lsize=       9KiB time=00:00:01.93 bitrate=  39.2kbits/s speed=12.6x elapsed=0:00:00.15    \n[libx264 @ 0x75d480ca80] frame I:1     Avg QP:20.35  size:  1611\n[libx264 @ 0x75d480ca80] frame P:55    Avg QP:16.81  size:   107\n[libx264 @ 0x75d480ca80] frame B:4     Avg QP:14.00  size:    16\n[libx264 @ 0x75d480ca80] consecutive B-frames: 86.7% 13.3%  0.0%  0.0%\n[libx264 @ 0x75d480ca80] mb I  I16..4: 53.3%  0.0% 46.7%\n[libx264 @ 0x75d480ca80] mb P  I16..4:  1.0%  0.0%  0.0%  P16..4: 11.3%  5.8%  2.0%  0.0%  0.0%    skip:79.8%\n[libx264 @ 0x75d480ca80] mb B  I16..4:  1.2%  0.0%  0.0%  B16..8:  1.2%  0.0%  0.0%  direct: 0.0%  skip:97.5%  L0:66.7% L1:33.3% BI: 0.0%\n[libx264 @ 0x75d480ca80] 8x8 transform intra:1.0% inter:72.0%\n[libx264 @ 0x75d480ca80] coded y,uvDC,uvAC intra: 19.6% 36.1% 33.0% inter: 4.8% 13.5% 5.7%\n[libx264 @ 0x75d480ca80] i16 v,h,dc,p: 87%  6%  7%  0%\n[libx264 @ 0x75d480ca80] i8 v,h,dc,ddl,ddr,vr,hd,vl,hu:  0% 50% 50%  0%  0%  0%  0%  0%  0%\n[libx264 @ 0x75d480ca80] i4 v,h,dc,ddl,ddr,vr,hd,vl,hu: 57% 18% 17%  2%  1%  2%  0%  3%  0%\n[libx264 @ 0x75d480ca80] i8c dc,h,v,p: 23% 13% 62%  2%\n[libx264 @ 0x75d480ca80] Weighted P-Frames: Y:0.0% UV:0.0%\n[libx264 @ 0x75d480ca80] ref P L0: 74.9% 19.0%  5.6%  0.5%\n[libx264 @ 0x75d480ca80] ref B L0: 50.0% 50.0%\n[libx264 @ 0x75d480ca80] kb/s:30.27\n\nframe=60\nfps=0.00\nstream_0_0_q=-1.0\nbitrate=  39.2kbits/s\ntotal_size=9467\nout_time_us=1933333\nout_time_ms=1933333\nout_time=00:00:01.933333\ndup_frames=0\ndrop_frames=0\nspeed=12.6x\nprogress=end\n",
+  "files": [
+    "ffmpeg.mp4"
+  ],
+  "expectedProgress": {
+    "tool": "ffmpeg",
+    "done": 60,
+    "total": 60,
+    "unit": "frame",
+    "percent": 100
+  },
+  "expectedRender": {
+    "tool": "ffmpeg",
+    "path": "ffmpeg.mp4",
+    "sequences": []
+  },
+  "capturedAt": "2026-11-05",
+  "provenance": "Executed headlessly in a disposable /tmp environment. Output bytes are preserved; separately captured stdout and stderr are concatenated for the sequence samples and FFmpeg.",
+  "source": null
+}

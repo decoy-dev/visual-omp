@@ -3,6 +3,8 @@
  * preview watcher's changes into `LiveSubject`s; `formats/` draws them; the Outputs pane's stage arranges them.
  */
 import type { ComponentType } from "react";
+import type { PreviewSequencePattern } from "@shared/contracts/preview";
+import type { LiveProgress } from "./progress";
 
 /** How the app learns about the output while omp makes it. */
 export type LiveSubjectKind =
@@ -13,9 +15,11 @@ export type LiveSubjectKind =
 	/** A `generate_image` request while omp writes its arguments or waits for the provider. */
 	| "request"
 	/** Images a running call reported in its partial result (eval cells). */
-	| "images";
+	| "images"
+	/** A recognized renderer, before its output is stable on disk. */
+	| "render";
 
-export type LiveFormat = "svg" | "mermaid" | "html" | "markdown" | "csv" | "image" | "pdf" | "generate-image" | "result-images";
+export type LiveFormat = "svg" | "mermaid" | "html" | "markdown" | "csv" | "image" | "pdf" | "video" | "sequence" | "generate-image" | "result-images";
 
 export type LiveSubjectState =
 	/** omp is still writing the call's arguments. */
@@ -64,6 +68,8 @@ export interface LiveSubject {
 	intent: string | null;
 	request: LiveRequest | null;
 	images: readonly LiveImage[] | null;
+	progress: LiveProgress | null;
+	sequence: { pattern: PreviewSequencePattern; count: number } | null;
 	/** Byte length of `text`, or the file size the watcher reported. */
 	size: number | null;
 	/** Epoch ms of the first sighting and of the latest change. */

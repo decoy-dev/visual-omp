@@ -4,12 +4,12 @@ import { lstat, readdir, realpath } from "node:fs/promises";
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { WebContents } from "electron";
-import type { PreviewChange, PreviewWatchRequest } from "@shared/contracts/preview";
+import type { PreviewChange, PreviewSequencePattern, PreviewWatchRequest } from "@shared/contracts/preview";
 import { runGit } from "../git/run";
 import { broadcast, handleWithEvent } from "../ipc";
 import { broadFolders, isBroadFolder } from "./panes";
 
-const VISUAL_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg|pdf|html?)$/i;
+const VISUAL_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg|pdf|html?|mp4|m4v|webm|mov)$/i;
 const DEBOUNCE_MS = 250;
 const STABLE_MS = 150;
 const IDLE_MS = 4 * 60 * 60 * 1000;
@@ -23,6 +23,11 @@ interface Subscription {
 	watcher: FSWatcher;
 	users: Set<Watch>;
 }
+interface Sequence {
+	key: string;
+	folder: string;
+	pattern: PreviewSequencePattern;
+}
 interface Watch {
 	id: string;
 	folder: string;
@@ -34,6 +39,9 @@ interface Watch {
 	namedFiles: Set<string>;
 	namedFolders: Set<string>;
 	missingNamed: Set<string>;
+	sequences: Sequence[];
+	missingSequences: Set<string>;
+	sequenceSeen: Map<string, { path: string; size: number; mtimeMs: number; count: number }>;
 	roots: Root[];
 	subscriptions: Set<string>;
 	pending: Set<string>;
@@ -59,7 +67,7 @@ function inside(root: string, path: string): boolean {
 	return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 function excluded(path: string): boolean {
-	return path.split(/[\\/]/).some(part => part === ".git" || part === "node_modules");
+	return path.split(sep).some(part => part === ".git" || part === "node_modules" || part === "partial_movie_files");
 }
 function rootKey(root: Root): string {
 	return `${root.recursive ? "r" : "f"}:${root.path}`;
@@ -76,6 +84,21 @@ async function canonical(path: string): Promise<string> {
 		suffix.push(basename(ancestor));
 		ancestor = parent;
 	}
+}
+
+function matches(sequence: Sequence, path: string): boolean {
+	if (dirname(path) !== sequence.folder) return false;
+	const name = basename(path);
+	const { prefix, digits, suffix } = sequence.pattern;
+	if (!name.startsWith(prefix) || !name.endsWith(suffix)) return false;
+	const number = name.slice(prefix.length, name.length - suffix.length);
+	return /^\d+$/.test(number) && (digits === null || number.length === digits);
+}
+
+/** Modification time chooses the latest save; numeric order breaks equal timestamps for frame batches. */
+function newer(left: { path: string; mtimeMs: number }, right: { path: string; mtimeMs: number }): boolean {
+	if (left.mtimeMs !== right.mtimeMs) return left.mtimeMs > right.mtimeMs;
+	return basename(left.path).localeCompare(basename(right.path), "en", { numeric: true }) > 0;
 }
 
 async function existingParent(path: string): Promise<string> {
@@ -118,11 +141,12 @@ export class PreviewWatchService {
 		const folder = await canonical(request.folder);
 		const state: Watch = {
 			id: randomUUID(), folder, spellings: new Map([[folder, resolve(request.folder)]]), namedFiles: new Set(), namedFolders: new Set(), missingNamed: new Set(), roots: [], subscriptions: new Set(),
+			sequences: [], missingSequences: new Set(), sequenceSeen: new Map(),
 			pending: new Set(), readVersions: new Map(), seen: new Map(), updating: Promise.resolve(), ending: false, closed: false,
 		};
 		this.watches.set(state.id, state);
 		try {
-			await this.watchNamed(state.id, request.named);
+			await this.watchNamed(state.id, request.named, request.sequences);
 			return state.id;
 		} catch (error) {
 			this.close(state.id);
@@ -130,10 +154,14 @@ export class PreviewWatchService {
 		}
 	}
 
-	async watchNamed(id: string, named: string[]): Promise<void> {
+	async watchNamed(id: string, named: string[], sequences: PreviewSequencePattern[]): Promise<void> {
 		const state = this.watches.get(id);
 		if (!state || state.ending) return;
 		if (!Array.isArray(named) || named.some(path => typeof path !== "string" || !isAbsolute(path))) throw new Error("Invalid preview paths");
+		if (!Array.isArray(sequences) || sequences.some(pattern => !pattern || typeof pattern.folder !== "string" || !isAbsolute(pattern.folder)
+			|| typeof pattern.prefix !== "string" || typeof pattern.suffix !== "string"
+			|| [pattern.prefix, pattern.suffix].some(part => part.includes("\0") || basename(part) !== part)
+			|| (pattern.digits !== null && (!Number.isSafeInteger(pattern.digits) || pattern.digits < 1)))) throw new Error("Invalid preview sequences");
 		this.touch(state);
 		const update = state.updating.then(async () => {
 			if (state.closed || state.ending) return;
@@ -142,6 +170,19 @@ export class PreviewWatchService {
 			const folders = new Set<string>();
 			const missing = new Set<string>();
 			const spellings = new Map([[state.folder, state.spellings.get(state.folder)!]]);
+			const patterns: Sequence[] = [];
+			const missingSequences = new Set<string>();
+			for (const pattern of sequences) {
+				const folder = await canonical(pattern.folder);
+				if (excluded(folder)) continue;
+				const info = await lstat(folder).catch(() => null);
+				if (info && !info.isDirectory()) continue;
+				const key = JSON.stringify([folder, pattern.folder, pattern.prefix, pattern.digits, pattern.suffix]);
+				if (patterns.some(sequence => sequence.key === key)) continue;
+				patterns.push({ key, folder, pattern: { ...pattern } });
+				spellings.set(folder, resolve(pattern.folder));
+				if (!info) missingSequences.add(folder);
+			}
 			for (const raw of named) {
 				const path = await canonical(raw);
 				spellings.set(path, resolve(raw));
@@ -155,18 +196,22 @@ export class PreviewWatchService {
 				}
 			}
 			const addedFolders = [...folders].filter(path => !state.namedFolders.has(path));
-			const retiring = [...state.namedFiles].some(path => !files.has(path)) || [...state.namedFolders].some(path => !folders.has(path));
+			const retiring = [...state.namedFiles].some(path => !files.has(path)) || [...state.namedFolders].some(path => !folders.has(path))
+				|| state.sequences.some(sequence => !patterns.some(pattern => pattern.key === sequence.key));
 			if (retiring) {
 				// Overlap both scopes, retaining outgoing spellings until its last stable read finishes.
 				state.namedFiles = new Set([...state.namedFiles, ...files]);
 				state.namedFolders = new Set([...state.namedFolders, ...folders]);
 				state.missingNamed = new Set([...state.missingNamed, ...missing]);
+				state.sequences = [...state.sequences, ...patterns.filter(pattern => !state.sequences.some(sequence => sequence.key === pattern.key))];
+				state.missingSequences = new Set([...state.missingSequences, ...missingSequences]);
 				state.spellings = new Map([...spellings, ...state.spellings]);
 				await this.updateRoots(state, extra);
 				await this.subscribe(state);
 				await this.scanFolders(state, addedFolders);
 				clearTimeout(state.timer);
 				for (const path of state.namedFiles) this.queue(state, path);
+				await this.scanSequences(state);
 				await delay(DEBOUNCE_MS);
 				await state.reading;
 				clearTimeout(state.timer);
@@ -180,11 +225,14 @@ export class PreviewWatchService {
 			state.spellings = spellings;
 			state.namedFolders = folders;
 			state.missingNamed = missing;
+			state.sequences = patterns;
+			state.missingSequences = missingSequences;
 			await this.updateRoots(state, extra);
 			await this.subscribe(state);
-			if (missing.size) await this.refreshMissing(state);
+			if (missing.size || missingSequences.size) await this.refreshMissing(state);
 			else for (const path of files) this.queue(state, path);
 			if (!retiring) await this.scanFolders(state, addedFolders);
+			await this.scanSequences(state);
 		});
 		state.updating = update.catch(() => {});
 		await update;
@@ -200,6 +248,7 @@ export class PreviewWatchService {
 		await state.reading;
 		if (state.closed) return;
 		for (const path of state.namedFiles) if (VISUAL_EXT.test(path)) state.pending.add(path);
+		await this.scanSequences(state);
 		await delay(DEBOUNCE_MS);
 		await this.read(state, true);
 		this.close(id);
@@ -221,6 +270,10 @@ export class PreviewWatchService {
 			...(!isBroadFolder(state.folder, extra) ? [{ path: state.folder, recursive: true }] : []),
 			...[...state.namedFolders].map(path => ({ path, recursive: true })),
 			...await Promise.all([...state.namedFiles].map(async path => ({ path: await existingParent(path), recursive: false }))),
+			...await Promise.all(state.sequences.map(async sequence => ({
+				path: (await lstat(sequence.folder).catch(() => null))?.isDirectory() ? sequence.folder : await existingParent(sequence.folder),
+				recursive: false,
+			}))),
 		];
 	}
 
@@ -248,8 +301,26 @@ export class PreviewWatchService {
 			await this.updateRoots(state, extra);
 		}
 		await this.subscribe(state);
+		if (state.missingSequences.size) {
+			for (const folder of state.missingSequences) if ((await lstat(folder).catch(() => null))?.isDirectory()) state.missingSequences.delete(folder);
+			await this.updateRoots(state, await broadFolders());
+			await this.subscribe(state);
+		}
 		for (const path of state.namedFiles) this.queue(state, path);
 		await this.scanFolders(state, promoted);
+		await this.scanSequences(state);
+	}
+
+	/** Frame scopes are direct-child subscriptions, including when the chat folder itself is broad. */
+	private async scanSequences(state: Watch): Promise<void> {
+		for (const sequence of state.sequences) {
+			if (!(await lstat(sequence.folder).catch(() => null))?.isDirectory()) continue;
+			const entries = await readdir(sequence.folder, { withFileTypes: true }).catch(() => []);
+			for (const entry of entries) {
+				const path = join(sequence.folder, entry.name);
+				if (entry.isFile() && matches(sequence, path)) this.queue(state, path);
+			}
+		}
 	}
 
 	/** Catch saves made before a newly named folder's subscription was installed. */
@@ -280,6 +351,7 @@ export class PreviewWatchService {
 	private named(state: Watch, path: string): boolean {
 		if (state.namedFiles.has(path)) return true;
 		for (const folder of state.namedFolders) if (inside(folder, path)) return true;
+		if (state.sequences.some(sequence => matches(sequence, path))) return true;
 		return false;
 	}
 
@@ -317,17 +389,37 @@ export class PreviewWatchService {
 	}
 
 	private async read(state: Watch, final: boolean): Promise<void> {
-		const paths = [...state.pending];
-		const versions = new Map(paths.map(path => [path, state.readVersions.get(path)]));
+		const pending = [...state.pending];
+		const paths = new Set(pending);
+		const sequences = state.sequences.filter(sequence => pending.some(path => matches(sequence, path)));
+		const versions = new Map(pending.map(path => [path, state.readVersions.get(path)]));
 		state.pending.clear();
-		const ignored = await ignoredPaths(state.folder, paths.filter(path => !this.named(state, path)));
-		const candidates = paths.filter(path => !ignored.has(path) && this.allowed(state, path));
+		// Include previously seen frames so the count and latest frame describe the folder's current contents.
+		for (const sequence of sequences) {
+			if (!(await lstat(sequence.folder).catch(() => null))?.isDirectory()) {
+				for (const path of paths) if (matches(sequence, path)) paths.delete(path);
+				continue;
+			}
+			const entries = await readdir(sequence.folder, { withFileTypes: true }).catch(() => []);
+			for (const entry of entries) {
+				const path = join(sequence.folder, entry.name);
+				if (entry.isFile() && matches(sequence, path) && VISUAL_EXT.test(path)) {
+					paths.add(path);
+					if (!versions.has(path)) versions.set(path, state.readVersions.get(path));
+				}
+			}
+		}
+		const ignored = await ignoredPaths(state.folder, [...paths].filter(path => !this.named(state, path)));
+		const candidates = [...paths].filter(path => !ignored.has(path) && this.allowed(state, path));
 		const first = await Promise.all(candidates.map(path => lstat(path).catch(() => null)));
 		if (candidates.length) await delay(STABLE_MS);
+		const groups = new Map<Sequence, { count: number; latest?: { path: string; size: number; mtimeMs: number } }>(sequences.map(sequence => [sequence, { count: 0 }]));
 		for (const [index, path] of candidates.entries()) {
 			if (state.closed) return;
 			const before = first[index];
 			const after = await lstat(path).catch(() => null);
+			const matchingGroups = sequences.filter(sequence => matches(sequence, path)).map(sequence => groups.get(sequence)!);
+			if (after?.isFile()) for (const group of matchingGroups) group.count++;
 			if (!before?.isFile() || !after?.isFile()) continue;
 			if (!final && state.readVersions.get(path) !== versions.get(path)) {
 				this.queue(state, path);
@@ -337,10 +429,25 @@ export class PreviewWatchService {
 				if (!final) this.queue(state, path);
 				continue;
 			}
+			const stamp = { size: after.size, mtimeMs: after.mtimeMs };
+			if (matchingGroups.length) {
+				const frame = { path, ...stamp };
+				for (const group of matchingGroups) if (!group.latest || newer(frame, group.latest)) group.latest = frame;
+				state.seen.set(path, stamp);
+				continue;
+			}
 			const previous = state.seen.get(path);
 			if (previous?.size === after.size && previous.mtimeMs === after.mtimeMs) continue;
-			state.seen.set(path, { size: after.size, mtimeMs: after.mtimeMs });
-			this.emit({ watchId: state.id, path: this.spelled(state, path), size: after.size, mtimeMs: after.mtimeMs });
+			state.seen.set(path, stamp);
+			this.emit({ watchId: state.id, path: this.spelled(state, path), ...stamp });
+		}
+		for (const [sequence, { count, latest }] of groups) {
+			if (state.closed) return;
+			if (!latest) continue;
+			const previous = state.sequenceSeen.get(sequence.key);
+			if (previous?.path === latest.path && previous.size === latest.size && previous.mtimeMs === latest.mtimeMs && previous.count === count) continue;
+			state.sequenceSeen.set(sequence.key, { ...latest, count });
+			this.emit({ watchId: state.id, ...latest, path: this.spelled(state, latest.path), sequence: { pattern: sequence.pattern, count } });
 		}
 	}
 
@@ -412,13 +519,14 @@ export class PreviewWatchService {
 							if (filename !== null) {
 								const path = resolve(root.path, filename.toString());
 								if (inside(root.path, path)) this.queue(user, path);
-								const followsMissing = [...user.missingNamed].some(named => inside(path, named) || inside(named, path));
+								const followsMissing = [...user.missingNamed, ...user.missingSequences].some(named => inside(path, named) || inside(named, path));
 								if (!excluded(path) && (followsMissing || (this.platform === "linux" && _event === "rename"))) {
 									user.updating = user.updating.then(() => this.refreshMissing(user)).catch(() => {});
 								}
 							} else {
 								for (const path of user.namedFiles) this.queue(user, path);
-								if (user.missingNamed.size) user.updating = user.updating.then(() => this.refreshMissing(user)).catch(() => {});
+								void this.scanSequences(user);
+								if (user.missingNamed.size || user.missingSequences.size) user.updating = user.updating.then(() => this.refreshMissing(user)).catch(() => {});
 							}
 						}
 					});
@@ -473,8 +581,8 @@ export function registerPreviewWatch(options: PreviewWatchOptions = {}): void {
 		else owner.ids.add(id);
 		return id;
 	});
-	handleWithEvent("preview:watchNamed", (event, id, named) => {
-		if (owners.get(event.sender)?.ids.has(id)) return service.watchNamed(id, named);
+	handleWithEvent("preview:watchNamed", (event, id, named, sequences) => {
+		if (owners.get(event.sender)?.ids.has(id)) return service.watchNamed(id, named, sequences);
 	});
 	handleWithEvent("preview:unwatch", async (event, id) => {
 		const ids = owners.get(event.sender)?.ids;

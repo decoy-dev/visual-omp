@@ -1,6 +1,6 @@
 # visual-omp: live previews of visual outputs
 
-Status: plan for 0.7.6, written 2026-11-04 against `main` at `2f6256f` (0.7.5) and omp 18.16.0, then revised after astra's review. On 2026-11-04 the owner accepted astra's recommendations on every open question (see [Owner decisions](#owner-decisions)) and asked for Phase 1 to be built. Phase 1 was implemented the same day; where it differs from this plan, the difference is noted in place. Phases 2 and 3 are not started.
+Status: plan for 0.7.6, written 2026-11-04 against `main` at `2f6256f` (0.7.5) and omp 18.16.0, then revised after astra's review. On 2026-11-04 the owner accepted astra's recommendations on every open question (see [Owner decisions](#owner-decisions)) and asked for Phase 1 to be built. Phase 1 was implemented the same day; where it differs from this plan, the difference is noted in place. Phase 2 slices A1, B and C have implementation notes below; the remaining Phase 2 work and Phase 3 are not implemented.
 
 ## Sources and citations
 
@@ -200,6 +200,18 @@ The app does not need these for Phase 1. Following the wrapper-first rule, they 
 - `[INFERENCE]` About 7 to 10 engineer-days, with the protocol, its security tests and the watcher as the largest parts.
 
 **Phase 2**: video (range requests, progress parsers, contact sheets), DOCX, XLSX, PPTX, scripts in saved HTML, Attach this frame, and the `visual-proofs` skill with first-page and key-frame proofs. Its implementation plan, revised after astra's review, is [`LIVE-PREVIEW-PHASE2.md`](LIVE-PREVIEW-PHASE2.md). Slice A1 is complete as a Phase 1 fix: only WOFF, WOFF2, TTF and OTF responses carry the cross-origin header. The next security prerequisite is a blocking investigation of process isolation for script-running frames. Watching omp's local artifact folder moves to Phase 3.
+
+#### Phase 2 shared contract and video
+
+Implemented on 2026-11-05 for 0.7.8:
+
+- Each preview grant owns a `PreviewPolicy`; `preview:prepare` returns its scripts-off and network-off values. The response table owns MIME types, read limits and CORS rules.
+- MP4 and M4V (`video/mp4`), WebM and MOV use a streamed file handle under the existing containment, inode and `O_NOFOLLOW` checks. Whole-file GETs return `200`; single explicit, suffix and open-ended byte ranges return `206`. Only open-ended ranges are limited to 8 MiB. Invalid, multiple and unsatisfiable ranges return `416`; HEAD returns the same headers without a body. Request abort, response cancellation and grant revocation close the stream and its handle.
+- Recognized ffmpeg, Remotion, manim, LaTeX and Blender commands become render subjects before a stable file appears. Progress uses tool output only; missing totals remain unknown. The ffmpeg, Remotion and manim samples in `scripts/live-preview-fixture/samples/` are captured, versioned output. A stable save replaces the render subject without changing its identity.
+- Only frame patterns declared by recognized commands form sequences. The watcher reports the newest stable matching image and the current frame count; unrelated numbered images remain separate. Manim's `partial_movie_files` directories are excluded.
+- The lazy video adapter uses muted, inline native playback controls. Failed saves keep the last playable revision; an unsupported codec offers Open in Files. A separate video seeks six evenly spaced times and draws display-only canvases. Clicking a key frame seeks the player. Stale video and contact-sheet work is discarded.
+
+The integration owner must still exercise playback, seeking, unsupported ProRes, native protocol responses, stream revocation and the 320 px layout in Electron on Windows 11 ARM64. The fixture README provides the exact steps. Unit tests and headless browser checks do not establish Electron's codec support or custom-scheme range behavior. The video fixture's ffmpeg command creates an incomplete output file when rendering starts, so the check is advancing progress before the completed video is available, rather than a claim that no filesystem entry exists.
 
 **Phase 3**: Graphviz DOT, D2 and PlantUML, 3D models, and progressive `generate_image` frames once omp reports them.
 

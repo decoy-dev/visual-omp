@@ -10,6 +10,8 @@ export async function loadAdapter(format: LiveFormat): Promise<LiveAdapter> {
 		case "html": return (await import("./html")).adapter;
 		case "image": return (await import("./image")).adapter;
 		case "pdf": return (await import("./pdf")).adapter;
+		case "video": return (await import("./video")).adapter;
+		case "sequence": return (await import("./sequence")).adapter;
 		case "generate-image": return (await import("./generate-image")).adapter;
 		case "result-images": return (await import("./result-images")).adapter;
 	}

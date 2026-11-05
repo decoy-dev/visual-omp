@@ -1,11 +1,13 @@
 import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
-import type { PreviewChange } from "@shared/contracts/preview";
+import type { PreviewChange, PreviewSequencePattern } from "@shared/contracts/preview";
 import { outputPathInFolder, outputPathKey } from "@shared/outputPaths";
 import { resolveToolCall } from "../../chat/friendly";
 import type { ActiveTool } from "../../collab/lib/client";
 import { isRecord, resultTextOf, str } from "../../tool-render/util";
 import { commandPaths, IMAGE_EXT, isIntactBase64, resolveOutputPath } from "../panes/derive";
 import type { LiveFormat, LiveImage, LiveRequest, LiveSubject, LiveSubjectState } from "./types";
+import { parseProgress } from "./progress";
+import { parseRenderCommand } from "./render-command";
 
 export interface SubjectInput {
 	stream: AssistantMessage | null;
@@ -50,13 +52,14 @@ function fileFormat(path: string): LiveFormat | null {
 	if (IMAGE_EXT.test(path)) return "image";
 	if (/\.pdf$/i.test(path)) return "pdf";
 	if (/\.html?$/i.test(path)) return "html";
+	if (/\.(?:mp4|m4v|webm|mov)$/i.test(path)) return "video";
 	return null;
 }
 
 /** Device calls have the same identity and argument shape as their transcript card. */
 export function isVisualCall(toolName: string, args: unknown): boolean {
 	const call = resolveToolCall({ name: toolName, args, running: true });
-	return call.name === "generate_image" || call.name === "eval" || (call.name === "write" && sourceFormat(str(call.args.path ?? call.args.file_path) ?? "") !== null);
+	return call.name === "generate_image" || call.name === "eval" || (call.name === "bash" && parseRenderCommand(str(call.args.command) ?? "", "") !== null) || (call.name === "write" && sourceFormat(str(call.args.path ?? call.args.file_path) ?? "") !== null);
 }
 
 function turnStart(input: SubjectInput): { index: number; time: number } {
@@ -109,13 +112,46 @@ function callsOf(input: SubjectInput): Call[] {
 	return [...calls.values()];
 }
 
+function outputOf(call: Call): string {
+	const partial = isRecord(call.partial) && Array.isArray(call.partial.content) ? call.partial.content.filter(isRecord).map(block => block.type === "text" ? str(block.text) ?? "" : "").join("\n") : "";
+	return `${partial}\n${resultTextOf(call.result)}`;
+}
+
+function renderOf(call: Call, input: SubjectInput) {
+	if (call.name !== "bash" && call.name !== "eval") return null;
+	const command = str(call.args.command ?? call.args.code) ?? "";
+	const output = outputOf(call);
+	const parsed = parseRenderCommand(command, output);
+	if (!parsed) return null;
+	const context = { cwd: input.folder, home: null, platform: input.platform };
+	const cwd = str(call.args.cwd);
+	const base = { ...context, cwd: (cwd && resolveOutputPath(cwd, context)) || context.cwd };
+	return {
+		...parsed,
+		path: parsed.path ? resolveOutputPath(parsed.path, base) : null,
+		sequences: parsed.sequences.flatMap(pattern => {
+			const folder = resolveOutputPath(pattern.folder, base);
+			return folder ? [{ ...pattern, folder }] : [];
+		}),
+		progress: parseProgress(command, output),
+	};
+}
+
+/** Only recognized render commands declare frame sequences. Numbered files alone never form a sequence. */
+export function sequencePatterns(input: SubjectInput): PreviewSequencePattern[] {
+	const patterns = callsOf(input).filter(call => call.active).flatMap(call => renderOf(call, input)?.sequences ?? []);
+	return [...new Map(patterns.map(pattern => [JSON.stringify(pattern), pattern])).values()];
+}
+
 function pathsOf(call: Call, input: SubjectInput): string[] {
 	const context = { cwd: input.folder, home: null, platform: input.platform };
-	const partial = isRecord(call.partial) && Array.isArray(call.partial.content) ? call.partial.content.filter(isRecord).map(block => block.type === "text" ? str(block.text) ?? "" : "").join("\n") : "";
-	const paths = commandPaths(call.args, `${partial}\n${resultTextOf(call.result)}`, context);
+	const paths = commandPaths(call.args, outputOf(call), context);
+	const render = renderOf(call, input);
+	if (render?.path) paths.push(render.path);
+	if (render) paths.push(...render.sequences.map(pattern => pattern.folder));
 	const direct = str(call.args.path ?? call.args.file_path);
 	const path = direct ? resolveOutputPath(direct, context) : null;
-	return path ? uniquePaths([path, ...paths], input) : paths;
+	return uniquePaths(path ? [path, ...paths] : paths, input);
 }
 
 function uniquePaths(paths: readonly string[], input: SubjectInput): string[] {
@@ -166,7 +202,7 @@ function requestOf(args: Record<string, unknown>): LiveRequest {
 }
 
 function sameContent(a: LiveSubject, b: LiveSubject, platform?: string): boolean {
-	return a.kind === b.kind && a.format === b.format && (a.path === b.path || (a.path !== null && b.path !== null && outputPathKey(a.path, platform) === outputPathKey(b.path, platform))) && a.text === b.text && a.elided === b.elided && a.size === b.size && (a.kind !== "file" || a.updatedAt === b.updatedAt) && JSON.stringify(a.request) === JSON.stringify(b.request) && JSON.stringify(a.images) === JSON.stringify(b.images);
+	return a.kind === b.kind && a.format === b.format && (a.path === b.path || (a.path !== null && b.path !== null && outputPathKey(a.path, platform) === outputPathKey(b.path, platform))) && a.text === b.text && a.elided === b.elided && a.size === b.size && (a.kind !== "file" || a.updatedAt === b.updatedAt) && JSON.stringify(a.request) === JSON.stringify(b.request) && JSON.stringify(a.images) === JSON.stringify(b.images) && (a.kind === "file" || JSON.stringify(a.progress) === JSON.stringify(b.progress)) && JSON.stringify(a.sequence) === JSON.stringify(b.sequence);
 }
 
 /** Current-turn subjects, newest first. State-only changes preserve the rendered revision. */
@@ -177,6 +213,22 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 	for (const call of calls) {
 		const id = `call:${call.id}`;
 		const prior = old.get(id);
+		const render = renderOf(call, input);
+		if (render) {
+			const sequence = render.sequences[0];
+			const state = stateOf(call, input.working);
+			const savedFile = prior?.kind === "file";
+			subjects.set(id, {
+				id, kind: savedFile ? "file" : "render", format: savedFile ? prior.format : sequence ? "sequence" : render.path ? fileFormat(render.path) ?? "video" : render.tool === "latex" ? "pdf" : "video",
+				toolCallId: call.id, toolName: call.name, path: savedFile ? prior.path : render.path, text: null,
+				revision: 1, state, elided: false, intent: call.intent, request: null, images: null,
+				progress: render.progress ?? prior?.progress ?? null,
+				sequence: savedFile ? prior.sequence : sequence ? { pattern: sequence, count: 0 } : null,
+				size: savedFile ? prior.size : null, startedAt: prior?.startedAt ?? call.start,
+				updatedAt: savedFile ? prior.updatedAt : input.now,
+			});
+			continue;
+		}
 		const pathArg = str(call.args.path ?? call.args.file_path);
 		const path = pathArg ? resolveOutputPath(pathArg, { cwd: input.folder, home: null, platform: input.platform }) : null;
 		const format = call.name === "write" ? sourceFormat(pathArg ?? "") : null;
@@ -186,7 +238,7 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 		if (!format && call.name !== "generate_image" && !images.length && !retainedImages) continue;
 		const text = format ? str(call.args.content) ?? "" : null;
 		const kind = format ? "source" : images.length || retainedImages ? "images" : "request";
-		subjects.set(id, { id, kind, format: format ?? (kind === "images" ? "result-images" : "generate-image"), toolCallId: call.id, toolName: call.name, path, text, revision: 1, state: stateOf(call, input.working), elided: text !== null && ELIDED.test(text), intent: call.intent, request: kind === "request" ? requestOf(call.args) : null, images: kind === "images" ? (images.length ? images : retainedImages) : null, size: text === null ? null : prior?.text === text ? prior.size : new TextEncoder().encode(text).length, startedAt: prior?.startedAt ?? call.start, updatedAt: input.now });
+		subjects.set(id, { id, kind, format: format ?? (kind === "images" ? "result-images" : "generate-image"), toolCallId: call.id, toolName: call.name, path, text, revision: 1, state: stateOf(call, input.working), elided: text !== null && ELIDED.test(text), intent: call.intent, request: kind === "request" ? requestOf(call.args) : null, images: kind === "images" ? (images.length ? images : retainedImages) : null, progress: null, sequence: null, size: text === null ? null : prior?.text === text ? prior.size : new TextEncoder().encode(text).length, startedAt: prior?.startedAt ?? call.start, updatedAt: input.now });
 		const subject = subjects.get(id);
 		if (subject?.elided && subject.state === "saved" && subject.path) {
 			subjects.set(id, { ...subject, kind: "file", text: null, elided: false, size: null, updatedAt: call.end ?? input.now });
@@ -198,6 +250,22 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 		const key = outputPathKey(path, input.platform);
 		const format = fileFormat(change.path);
 		if (!format || change.mtimeMs < turn.time) continue;
+		const sequence = change.sequence ? {
+			pattern: { ...change.sequence.pattern, folder: outputPathInFolder(change.sequence.pattern.folder, input.folder, input.platform) },
+			count: change.sequence.count,
+		} : null;
+		const sequenceKey = sequence ? JSON.stringify({ ...sequence.pattern, folder: outputPathKey(sequence.pattern.folder, input.platform) }) : null;
+		const render = [...subjects.values()].find(subject => subject.kind === "render" || (subject.kind === "file" && subject.id.startsWith("call:"))
+			? sequenceKey && subject.sequence
+				? JSON.stringify({ ...subject.sequence.pattern, folder: outputPathKey(subject.sequence.pattern.folder, input.platform) }) === sequenceKey
+				: subject.path !== null && outputPathKey(subject.path, input.platform) === key
+			: false);
+		if (render && (render.kind === "render" || render.sequence)) {
+			// Sequence events describe the folder now, including an older remaining frame after deletion.
+			if (!sequence && render.kind === "file" && render.updatedAt > change.mtimeMs) continue;
+			subjects.set(render.id, { ...render, kind: "file", format: sequence ? "sequence" : format, path, sequence, size: change.size, updatedAt: change.mtimeMs });
+			continue;
+		}
 		const named = calls.filter(call => call.active && pathsOf(call, input).some(path => {
 			const namedKey = outputPathKey(path, input.platform);
 			return key === namedKey || key.startsWith(`${namedKey.replace(/[\\/]+$/, "")}/`);
@@ -211,11 +279,11 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 			subjects.set(source.id, { ...source, kind: "file", text: null, elided: false, size: change.size, updatedAt: source.kind === "file" ? Math.max(source.updatedAt, change.mtimeMs) : change.mtimeMs });
 			continue;
 		}
-		const id = `file:${key}`;
+		const id = sequenceKey ? `sequence:${sequenceKey}` : `file:${key}`;
 		const existing = subjects.get(id);
-		if (existing && existing.updatedAt > change.mtimeMs) continue;
+		if (!sequence && existing && existing.updatedAt > change.mtimeMs) continue;
 		const prior = old.get(id);
-		subjects.set(id, { id, kind: "file", format, toolCallId: owner?.id ?? null, toolName: owner?.name ?? null, path, text: null, revision: 1, state: owner ? stateOf(owner, input.working) : input.working ? "running" : "saved", elided: false, intent: owner?.intent ?? null, request: null, images: null, size: change.size, startedAt: prior?.startedAt ?? change.mtimeMs, updatedAt: change.mtimeMs });
+		subjects.set(id, { id, kind: "file", format: sequence ? "sequence" : format, toolCallId: owner?.id ?? null, toolName: owner?.name ?? null, path, text: null, revision: 1, state: owner ? stateOf(owner, input.working) : input.working ? "running" : "saved", elided: false, intent: owner?.intent ?? null, request: null, images: null, progress: null, sequence, size: change.size, startedAt: prior?.startedAt ?? change.mtimeMs, updatedAt: change.mtimeMs });
 	}
 	// An aborted stream can disappear before its committed entry arrives.
 	for (const prior of previous) if (!subjects.has(prior.id) && prior.startedAt >= turn.time && !calls.some(call => call.id === prior.toolCallId) && prior.kind !== "file") subjects.set(prior.id, { ...prior, state: "stopped" });

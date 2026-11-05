@@ -1,0 +1,32 @@
+{
+  "tool": "remotion",
+  "version": "4.0.391",
+  "command": "node /tmp/vomp-render-capture.UTuQmx/node_modules/@remotion/cli/remotion-cli.js render index.jsx Sample frames --sequence --image-format=png --concurrency=1",
+  "output": "Node.JS = v24.13.1, OS = darwin\n\nOn version: 4.0.391\n- @remotion/bundler\n- @remotion/cli\n- @remotion/compositor-darwin-arm64\n- remotion\n- @remotion/licensing\n- @remotion/media-utils\n- @remotion/player\n- @remotion/renderer\n- @remotion/streaming\n- @remotion/studio-server\n- @remotion/studio-shared\n- @remotion/studio\n- @remotion/media-parser\n- @remotion/zod-types\n- @remotion/webcodecs\n- @remotion/web-renderer\n\n✅ Great! All packages have the same version.\n\nBundling 6%\nBundling 12%\nBundling 38%\nBundling 50%\nBundling 65%\nBundling 71%\nBundling 76%\nBundling 81%\nBundling 87%\nBundling 92%\nBundling 98%\nBundling 100%\nGetting compositions\nComposition          Sample\nCodec                h264\nOutput               frames\nConcurrency          1x\nRendered 1/60\nRendered 2/60\nRendered 3/60\nRendered 4/60\nRendered 5/60\nRendered 6/60\nRendered 7/60\nRendered 8/60\nRendered 9/60\nRendered 10/60\nRendered 11/60\nRendered 12/60\nRendered 13/60\nRendered 14/60\nRendered 15/60\nRendered 16/60\nRendered 17/60\nRendered 18/60\nRendered 19/60\nRendered 20/60\nRendered 21/60\nRendered 22/60\nRendered 23/60\nRendered 24/60\nRendered 25/60\nRendered 26/60\nRendered 27/60\nRendered 28/60\nRendered 29/60\nRendered 30/60\nRendered 31/60\nRendered 32/60\nRendered 33/60\nRendered 34/60\nRendered 35/60\nRendered 36/60\nRendered 37/60\nRendered 38/60\nRendered 39/60\nRendered 40/60\nRendered 41/60\nRendered 42/60\nRendered 43/60\nRendered 44/60\nRendered 45/60\nRendered 46/60\nRendered 47/60\nRendered 48/60\nRendered 49/60\nRendered 50/60\nRendered 51/60\nRendered 52/60\nRendered 53/60\nRendered 54/60\nRendered 55/60\nRendered 56/60\nRendered 57/60\nRendered 58/60\nRendered 59/60\nRendered 60/60\n+                    frames\n",
+  "files": [
+    "frames/element-00.png",
+    "frames/element-59.png"
+  ],
+  "expectedProgress": {
+    "tool": "remotion",
+    "done": 60,
+    "total": 60,
+    "unit": "frame",
+    "percent": 100
+  },
+  "expectedRender": {
+    "tool": "remotion",
+    "path": null,
+    "sequences": [
+      {
+        "folder": "frames",
+        "prefix": "element-",
+        "digits": null,
+        "suffix": ".png"
+      }
+    ]
+  },
+  "capturedAt": "2026-11-05",
+  "provenance": "Executed headlessly in a disposable /tmp environment. Output bytes are preserved; separately captured stdout and stderr are concatenated for the sequence samples and FFmpeg.",
+  "source": "import React from 'react';\nimport {Composition, registerRoot, useCurrentFrame} from 'remotion';\nconst Sample = () => <div style={{background: '#197f86', width: '100%', height: '100%'}}>{useCurrentFrame()}</div>;\nregisterRoot(() => <Composition id=\"Sample\" component={Sample} durationInFrames={60} fps={30} width={160} height={90}/>);\n"
+}

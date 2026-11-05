@@ -16,7 +16,7 @@ let host: HTMLDivElement;
 let root: Root;
 const invoke = vi.fn();
 function subject(overrides: Partial<LiveSubject> = {}): LiveSubject {
-	return { id: "call:page", kind: "source", format: "html", toolCallId: "page", toolName: "write", path: "/project/page.html", text: "<h1>First</h1>", revision: 1, state: "writing", elided: false, intent: null, request: null, images: null, size: 14, startedAt: 1, updatedAt: 1, ...overrides };
+	return { id: "call:page", kind: "source", format: "html", toolCallId: "page", toolName: "write", path: "/project/page.html", text: "<h1>First</h1>", revision: 1, state: "writing", elided: false, intent: null, request: null, images: null, progress: null, sequence: null, size: 14, startedAt: 1, updatedAt: 1, ...overrides };
 }
 async function show(current = subject(), strict = false) {
 	await act(async () => {

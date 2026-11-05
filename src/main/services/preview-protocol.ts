@@ -1,9 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { constants } from "node:fs";
+import type { ReadStream } from "node:fs";
 import { open, realpath, stat } from "node:fs/promises";
+import type { FileHandle } from "node:fs/promises";
 import { basename, dirname, extname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
+import { Readable } from "node:stream";
 import { app, protocol } from "electron";
-import { PREVIEW_SCHEME, type PreviewGrant, type PreviewGrantRequest, type PreviewBlockedNavigation, type PreviewPrepared } from "@shared/contracts/preview";
+import { PREVIEW_SCHEME, type PreviewGrant, type PreviewGrantRequest, type PreviewBlockedNavigation, type PreviewPrepared, type PreviewPolicy } from "@shared/contracts/preview";
 import { handleWithEvent } from "../ipc";
 import { broadFolders, isBroadFolder } from "./panes";
 import { isIsolationTestDocument, type IsolationReadIdentity } from "./preview-isolation-test";
@@ -11,17 +14,32 @@ import { isIsolationTestDocument, type IsolationReadIdentity } from "./preview-i
 const TEXT_LIMIT = 2 * 1024 * 1024;
 const IMAGE_LIMIT = 8 * 1024 * 1024;
 const PDF_LIMIT = 32 * 1024 * 1024;
-export const PREVIEW_CSP = "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' vomp-preview:; img-src vomp-preview: data: blob:; font-src vomp-preview: data:; media-src vomp-preview:; connect-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; object-src 'none'; manifest-src 'none'; form-action 'none'; base-uri 'self'";
+const VIDEO_RANGE_LIMIT = 8 * 1024 * 1024;
+const VIDEO_BUFFER_SIZE = 64 * 1024;
+// Four requests allow playback, metadata and overlapping seeks; sixteen bound all preview players together.
+const VIDEO_REQUESTS_PER_GRANT = 4;
+const VIDEO_REQUESTS_GLOBAL = 16;
+/** Phase 1 policy, evaluated per grant so later permissions do not change unrelated subjects. */
+export function previewPolicy(_grant: PreviewPolicy): string {
+	return "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' vomp-preview:; img-src vomp-preview: data: blob:; font-src vomp-preview: data:; media-src vomp-preview:; connect-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; object-src 'none'; manifest-src 'none'; form-action 'none'; base-uri 'self'";
+}
 
-const TYPES: Record<string, string> = {
-	".html": "text/html; charset=utf-8", ".htm": "text/html; charset=utf-8",
-	".css": "text/css; charset=utf-8", ".svg": "image/svg+xml",
-	".txt": "text/plain; charset=utf-8", ".md": "text/plain; charset=utf-8", ".markdown": "text/plain; charset=utf-8",
-	".mmd": "text/plain; charset=utf-8", ".csv": "text/csv; charset=utf-8", ".tsv": "text/tab-separated-values; charset=utf-8",
-	".json": "application/json", ".xml": "application/xml",
-	".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
-	".webp": "image/webp", ".avif": "image/avif", ".bmp": "image/bmp", ".ico": "image/x-icon", ".apng": "image/apng",
-	".pdf": "application/pdf", ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf", ".otf": "font/otf", ".eot": "application/vnd.ms-fontobject",
+interface ResponseType { type: string; cap: number; cors: boolean }
+const text = (type: string): ResponseType => ({ type, cap: TEXT_LIMIT, cors: false });
+const image = (type: string): ResponseType => ({ type, cap: IMAGE_LIMIT, cors: false });
+const font = (type: string): ResponseType => ({ type, cap: TEXT_LIMIT, cors: true });
+const video = (type: string): ResponseType => ({ type, cap: Infinity, cors: false });
+const TYPES: Record<string, ResponseType> = {
+	".html": text("text/html; charset=utf-8"), ".htm": text("text/html; charset=utf-8"),
+	".css": text("text/css; charset=utf-8"), ".svg": text("image/svg+xml"),
+	".txt": text("text/plain; charset=utf-8"), ".md": text("text/plain; charset=utf-8"), ".markdown": text("text/plain; charset=utf-8"),
+	".mmd": text("text/plain; charset=utf-8"), ".csv": text("text/csv; charset=utf-8"), ".tsv": text("text/tab-separated-values; charset=utf-8"),
+	".json": text("application/json"), ".xml": text("application/xml"),
+	".png": image("image/png"), ".jpg": image("image/jpeg"), ".jpeg": image("image/jpeg"), ".gif": image("image/gif"),
+	".webp": image("image/webp"), ".avif": image("image/avif"), ".bmp": image("image/bmp"), ".ico": image("image/x-icon"), ".apng": image("image/apng"),
+	".pdf": { type: "application/pdf", cap: PDF_LIMIT, cors: false },
+	".mp4": video("video/mp4"), ".m4v": video("video/mp4"), ".webm": video("video/webm"), ".mov": video("video/quicktime"),
+	".woff": font("font/woff"), ".woff2": font("font/woff2"), ".ttf": font("font/ttf"), ".otf": font("font/otf"), ".eot": text("application/vnd.ms-fontobject"),
 };
 
 interface GrantState {
@@ -34,11 +52,14 @@ interface GrantState {
 	revision: number;
 	live: string | null;
 	saved: boolean;
+	policy: PreviewPolicy;
 	snapshots: Map<number, DocumentSnapshot>;
+	streams: Set<ReadStream>;
+	videoRequests: number;
 }
 interface DocumentSnapshot {
 	body: string | Uint8Array<ArrayBuffer>;
-	type: string;
+	type: ResponseType;
 	isolationTest?: true;
 	readIdentity?: IsolationReadIdentity;
 }
@@ -46,6 +67,7 @@ type DocumentRead = { ok: true; snapshot: DocumentSnapshot } | { ok: false; stat
 const grants = new Map<string, GrantState>();
 let epoch = 0;
 let registered = false;
+let videoRequests = 0;
 
 function inside(root: string, path: string): boolean {
 	const from = relative(root, path);
@@ -102,7 +124,7 @@ export async function grantPreview(request: PreviewGrantRequest, owner: number |
 	const token = randomBytes(24).toString("hex");
 	const url = `${PREVIEW_SCHEME}://${token}/${documentPath}`;
 	if (generation !== epoch) throw new Error("The preview window reloaded.");
-	grants.set(token, { owner, subject, base, root, files, url, revision: -1, live: null, saved: false, snapshots: new Map() });
+	grants.set(token, { owner, subject, base, root, files, url, revision: -1, live: null, saved: false, policy: { scripts: false, network: false }, snapshots: new Map(), streams: new Set(), videoRequests: 0 });
 	return { token, url, assetRoot: root !== null };
 }
 
@@ -122,9 +144,15 @@ export function savePreview(token: string, owner: number | null = null): void {
 }
 
 export function revokePreview(token: string, owner: number | null = null): void {
-	if (grants.get(token)?.owner === owner) grants.delete(token);
+	const grant = grants.get(token);
+	if (!grant || grant.owner !== owner) return;
+	grants.delete(token);
+	for (const stream of grant.streams) stream.destroy(new Error("The preview was revoked."));
 }
-export function revokeAllPreviews(): void { epoch++; grants.clear(); }
+export function revokeAllPreviews(): void {
+	epoch++;
+	for (const [token, grant] of grants) revokePreview(token, grant.owner);
+}
 
 function previewAddress(raw: string): { token: string; path: string; segments: string[]; url: URL } | null {
 	try {
@@ -139,50 +167,157 @@ function previewAddress(raw: string): { token: string; path: string; segments: s
 	} catch { return null; }
 }
 
-function headers(type?: string, isolationTest = false): HeadersInit {
+function headers(type?: ResponseType, grant?: GrantState, isolationTest = false): HeadersInit {
+	const policy = previewPolicy(grant?.policy ?? { scripts: false, network: false });
 	return {
-		...(type ? { "Content-Type": type } : {}),
-		"Content-Security-Policy": isolationTest ? PREVIEW_CSP.replace("script-src 'none'", "script-src 'unsafe-inline'") : PREVIEW_CSP,
+		...(type ? { "Content-Type": type.type } : {}),
+		"Content-Security-Policy": isolationTest ? policy.replace("script-src 'none'", "script-src 'unsafe-inline'") : policy,
 		"X-Content-Type-Options": "nosniff", "Cache-Control": "no-store",
-		...(type?.startsWith("font/") ? { "Access-Control-Allow-Origin": "*" } : {}),
+		...(type?.cors ? { "Access-Control-Allow-Origin": "*" } : {}),
 	};
 }
 function refused(status: number): Response { return new Response(null, { status, headers: headers() }); }
-function cap(type: string): number {
-	return type === "application/pdf" ? PDF_LIMIT : type.startsWith("image/") && type !== "image/svg+xml" ? IMAGE_LIMIT : TEXT_LIMIT;
-}
 
-/** The same bounded read serves assets and prepares immutable subject revisions. */
-async function readPreviewDocument(token: string, grant: GrantState, path: string, type: string): Promise<DocumentRead> {
-	if (path === grant.subject && grant.live !== null) return { ok: true, snapshot: { body: grant.live, type } };
+type OpenedPreview = { ok: true; file: FileHandle; size: number; readIdentity: IsolationReadIdentity } | { ok: false; status: number };
+
+/** Both bounded documents and streamed video validate the opened inode against its current granted path. */
+async function openPreviewFile(token: string, grant: GrantState, path: string, type: ResponseType): Promise<OpenedPreview> {
+	let file: FileHandle | undefined;
 	try {
 		const real = await realpath(path);
 		if (grant.root ? !inside(grant.root, real) : real !== path) return { ok: false, status: 403 };
 		const info = await stat(real);
 		if (!info.isFile()) return { ok: false, status: 403 };
-		const limit = cap(type);
-		if (info.size > limit) return { ok: false, status: 413 };
-		const file = await open(real, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
-		try {
-			const opened = await file.stat();
-			const checked = await realpath(path);
-			const current = await stat(checked);
-			if (!opened.isFile() || opened.dev !== current.dev || opened.ino !== current.ino
-				|| (grant.root ? !inside(grant.root, checked) : checked !== path)) return { ok: false, status: 403 };
-			if (opened.size > limit) return { ok: false, status: 413 };
-			// One extra byte detects growth without letting a concurrent writer bypass the cap.
-			const data = new Uint8Array(opened.size + 1);
-			let length = 0;
-			while (length < data.length) {
-				const { bytesRead } = await file.read(data, length, data.length - length, length);
-				if (!bytesRead) break;
-				length += bytesRead;
-			}
-			if (length > opened.size || (await file.stat()).size !== opened.size) return { ok: false, status: 409 };
-			if (grants.get(token) !== grant) return { ok: false, status: 404 };
-			return { ok: true, snapshot: { body: data.subarray(0, length), type, ...(isIsolationTestDocument(grant.subject, grant.saved) ? { readIdentity: { path: checked, dev: opened.dev, ino: opened.ino } } : {}) } };
-		} finally { await file.close(); }
+		if (info.size > type.cap) return { ok: false, status: 413 };
+		file = await open(real, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+		const opened = await file.stat();
+		const checked = await realpath(path);
+		const current = await stat(checked);
+		if (!opened.isFile() || opened.dev !== current.dev || opened.ino !== current.ino
+			|| (grant.root ? !inside(grant.root, checked) : checked !== path)) return { ok: false, status: 403 };
+		if (opened.size > type.cap) return { ok: false, status: 413 };
+		if (grants.get(token) !== grant) return { ok: false, status: 404 };
+		const result: OpenedPreview = { ok: true, file, size: opened.size, readIdentity: { path: checked, dev: opened.dev, ino: opened.ino } };
+		file = undefined;
+		return result;
 	} catch { return { ok: false, status: 404 }; }
+	finally { await file?.close(); }
+}
+
+/** The same bounded read serves assets and prepares immutable subject revisions. */
+async function readPreviewDocument(token: string, grant: GrantState, path: string, type: ResponseType): Promise<DocumentRead> {
+	if (path === grant.subject && grant.live !== null) return { ok: true, snapshot: { body: grant.live, type } };
+	const result = await openPreviewFile(token, grant, path, type);
+	if (!result.ok) return result;
+	const { file, size } = result;
+	try {
+		// One extra byte detects growth without letting a concurrent writer bypass the cap.
+		const data = new Uint8Array(size + 1);
+		let length = 0;
+		while (length < data.length) {
+			const { bytesRead } = await file.read(data, length, data.length - length, length);
+			if (!bytesRead) break;
+			length += bytesRead;
+		}
+		if (length > size || (await file.stat()).size !== size) return { ok: false, status: 409 };
+		if (grants.get(token) !== grant) return { ok: false, status: 404 };
+		return { ok: true, snapshot: { body: data.subarray(0, length), type, ...(isIsolationTestDocument(grant.subject, grant.saved) ? { readIdentity: result.readIdentity } : {}) } };
+	} catch { return { ok: false, status: 404 }; }
+	finally { await file.close(); }
+}
+
+/** Only an open-ended range has a response cap. Explicit and suffix ranges retain their requested extent. */
+function videoRange(range: string, size: number): { start: number; end: number } | null {
+	const match = /^bytes=(\d*)-(\d*)$/i.exec(range);
+	if (!match || (!match[1] && !match[2]) || size === 0) return null;
+	const length = BigInt(size);
+	if (!match[1]) {
+		const suffix = BigInt(match[2]!);
+		return suffix > 0n ? { start: Number(suffix >= length ? 0n : length - suffix), end: size - 1 } : null;
+	}
+	const start = BigInt(match[1]);
+	if (start >= length) return null;
+	const end = match[2] ? BigInt(match[2]) : start + BigInt(VIDEO_RANGE_LIMIT) - 1n;
+	if (end < start) return null;
+	return { start: Number(start), end: Number(end >= length ? length - 1n : end) };
+}
+
+async function streamPreviewVideo(request: Request, token: string, grant: GrantState, path: string, type: ResponseType): Promise<Response> {
+	request.signal.throwIfAborted();
+	if (grant.videoRequests >= VIDEO_REQUESTS_PER_GRANT || videoRequests >= VIDEO_REQUESTS_GLOBAL) return refused(429);
+	// Reserve before any asynchronous path validation or open, including opens still pending on revocation.
+	grant.videoRequests++;
+	videoRequests++;
+	let released = false;
+	const release = () => {
+		if (released) return;
+		released = true;
+		grant.videoRequests--;
+		videoRequests--;
+	};
+	let file: FileHandle | undefined;
+	let streaming = false;
+	try {
+		const result = await openPreviewFile(token, grant, path, type);
+		if (!result.ok) return refused(result.status);
+		file = result.file;
+		const { size } = result;
+		request.signal.throwIfAborted();
+		if (grants.get(token) !== grant) return refused(404);
+		const range = request.headers.get("range");
+		const extent = range === null ? { start: 0, end: size - 1 } : videoRange(range, size);
+		const responseHeaders = new Headers(headers(type, grant));
+		responseHeaders.set("Accept-Ranges", "bytes");
+		if (!extent) {
+			responseHeaders.set("Content-Range", `bytes */${size}`);
+			return new Response(null, { status: 416, headers: responseHeaders });
+		}
+		responseHeaders.set("Content-Length", String(extent.end - extent.start + 1));
+		if (range !== null) responseHeaders.set("Content-Range", `bytes ${extent.start}-${extent.end}/${size}`);
+		const init = { status: range === null ? 200 : 206, headers: responseHeaders };
+		if (request.method === "HEAD" || size === 0) return new Response(null, init);
+		// FileHandle owns the descriptor, so EOF, cancellation and destruction all close the same opened file.
+		const stream = file.createReadStream({ ...extent, highWaterMark: VIDEO_BUFFER_SIZE, autoClose: true });
+		// Keep the native byte-bounded queue, but reject premature EOF instead of completing a short body.
+		const source = (Readable.toWeb(stream, {
+			strategy: { highWaterMark: VIDEO_BUFFER_SIZE, size: chunk => chunk.byteLength },
+		}) as ReadableStream<Uint8Array>).getReader();
+		let received = 0;
+		const body = new ReadableStream<Uint8Array>({
+			start(controller) {
+				void source.closed.catch(error => controller.error(error));
+			},
+			async pull(controller) {
+				try {
+					const chunk = await source.read();
+					if (chunk.done) {
+						if (received !== extent.end - extent.start + 1) {
+							controller.error(new Error("The preview file ended before its advertised length."));
+						} else controller.close();
+					} else {
+						received += chunk.value.byteLength;
+						controller.enqueue(chunk.value);
+					}
+				} catch (error) { controller.error(error); }
+			},
+			cancel: reason => source.cancel(reason),
+		}, { highWaterMark: 0 });
+		const abort = () => { stream.destroy(new DOMException("The preview request was aborted.", "AbortError")); };
+		grant.streams.add(stream);
+		stream.once("close", () => {
+			grant.streams.delete(stream);
+			request.signal.removeEventListener("abort", abort);
+			release();
+		});
+		request.signal.addEventListener("abort", abort, { once: true });
+		const response = new Response(body, init);
+		streaming = true;
+		return response;
+	} finally {
+		if (!streaming) {
+			try { await file?.close(); } finally { release(); }
+		}
+	}
 }
 
 export async function handlePreviewRequest(request: Request): Promise<Response> {
@@ -195,14 +330,15 @@ export async function handlePreviewRequest(request: Request): Promise<Response> 
 	if (!path || (grant.root && !inside(grant.root, path))) return refused(403);
 	const type = TYPES[extname(path).toLowerCase()];
 	if (!type) return refused(415);
-	if (path === grant.subject && type.startsWith("text/html") && address.url.searchParams.has("rev")) {
+	if (type.type.startsWith("video/")) return streamPreviewVideo(request, address.token, grant, path, type);
+	if (path === grant.subject && type.type.startsWith("text/html") && address.url.searchParams.has("rev")) {
 		const revision = address.url.searchParams.get("rev")!;
 		const snapshot = /^(0|[1-9]\d*)$/.test(revision) ? grant.snapshots.get(Number(revision)) : undefined;
 		if (snapshot?.isolationTest && (!snapshot.readIdentity || !isIsolationTestDocument(grant.subject, grant.saved, snapshot.readIdentity))) return refused(403);
-		return snapshot ? new Response(request.method === "HEAD" ? null : snapshot.body, { headers: headers(snapshot.type, snapshot.isolationTest) }) : refused(404);
+		return snapshot ? new Response(request.method === "HEAD" ? null : snapshot.body, { headers: headers(snapshot.type, grant, snapshot.isolationTest) }) : refused(404);
 	}
 	const result = await readPreviewDocument(address.token, grant, path, type);
-	return result.ok ? new Response(request.method === "HEAD" ? null : result.snapshot.body, { headers: headers(result.snapshot.type) }) : refused(result.status);
+	return result.ok ? new Response(request.method === "HEAD" ? null : result.snapshot.body, { headers: headers(result.snapshot.type, grant) }) : refused(result.status);
 }
 
 /** Keep the latest two exact document revisions, so validation and the iframe load use the same bytes. */
@@ -216,9 +352,9 @@ export async function preparePreview(token: string, revision: number, owner: num
 		grant.snapshots.delete(revision);
 		return { ok: false, reason: "notFile" };
 	}
-	if (existing && Boolean(existing.isolationTest) === isolationTest) return { ok: true, ...(existing.isolationTest ? { isolationTest: true } : {}) };
+	if (existing && Boolean(existing.isolationTest) === isolationTest) return { ok: true, policy: { ...grant.policy }, ...(existing.isolationTest ? { isolationTest: true } : {}) };
 	const type = TYPES[extname(grant.subject).toLowerCase()];
-	if (!type?.startsWith("text/html")) return { ok: false, reason: "notFile" };
+	if (!type?.type.startsWith("text/html")) return { ok: false, reason: "notFile" };
 	const result = await readPreviewDocument(token, grant, grant.subject, type);
 	if (grants.get(token) !== grant) return { ok: false, reason: "revoked" };
 	if (!result.ok) return { ok: false, reason: result.status === 413 ? "tooLarge" : result.status === 403 ? "notFile" : "missing" };
@@ -229,7 +365,7 @@ export async function preparePreview(token: string, revision: number, owner: num
 	if (!existing || isolationTest) grant.snapshots.set(revision, result.snapshot);
 	while (grant.snapshots.size > 2) grant.snapshots.delete(Math.min(...grant.snapshots.keys()));
 	const prepared = grant.snapshots.get(revision);
-	return prepared ? { ok: true, ...(prepared.isolationTest ? { isolationTest: true } : {}) } : { ok: false, reason: "missing" };
+	return prepared ? { ok: true, policy: { ...grant.policy }, ...(prepared.isolationTest ? { isolationTest: true } : {}) } : { ok: false, reason: "missing" };
 }
 
 /** Returns only a currently granted subject address, never an asset's address. */

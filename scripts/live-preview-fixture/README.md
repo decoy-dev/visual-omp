@@ -1,6 +1,6 @@
 # Live preview fixture
 
-This loopback OpenAI Chat Completions server supplies deterministic streams to omp. It uses omp's `openai-completions` custom provider API through `models.yml`. Node.js 22 or later, omp 18.16.0 on PATH and Python 3 for the PNG scenario are required. The server binds IPv4 loopback only and does not forward requests to a model provider.
+This loopback OpenAI Chat Completions server supplies deterministic streams to omp. It uses omp's `openai-completions` custom provider API through `models.yml`. Node.js 22 or later and omp 18.16.0 on PATH are required. The PNG, sequence and recorded-progress scenarios require Python 3 as `python3`; video and sequence rendering require ffmpeg with libx264, and the ProRes scenario requires prores_ks. The server binds IPv4 loopback only and does not forward requests to a model provider.
 
 ## Start the server and save an SVG
 
@@ -31,6 +31,10 @@ Use `fixture html` or `fixture png` in place of `fixture svg` for the other scen
 - `fixture png` calls `bash` with a Python standard-library script. It writes three different 240 by 160 RGB images to `frames.png`, closes each write and waits one second before the next iteration. Each save prints the absolute path and save number. No Pillow installation is needed.
 - `fixture image` streams a `generate_image` request for abort testing. The scratch configuration enables the tool, but supplies no image-provider credentials. Abort before the stream finishes. This scenario does not generate an image.
 - `fixture isolation` writes `isolation.html` with an inline script that reports its opaque origin and a button that starts an infinite loop. Scripts remain off without the explicit main-process test launch below. The evidence collector clicks the button; do not click it manually.
+- `fixture video` runs a six-second, 320 by 240, 30 fps ffmpeg render to `out.mp4`, with libx264, yuv420p, `-frames:v 180`, `-progress pipe:1`, real-time pacing and a 250 ms progress period. The explicit frame count provides the parser's total. Progress should advance at least three times while the file is incomplete. The hidden candidate player must decode before it replaces the last playable revision.
+- `fixture sequence` declares `frames/frame%04d.png`, writes six frames at one-second intervals, and creates `photo1.png`, `photo2.png` and `photo3.png` in the same folder. Expect one sequence chip showing its newest frame and count, plus three separate photo chips.
+- `fixture progress` replays the captured Remotion 4.0.391 and manim 0.19.0 logs from `samples/` through two bash functions, over about six seconds each. This checks the output parser without installing those renderers. It creates no rendered media. The samples retain their original version lines, commands, paths and console text; each also records the parser's expected result. ffmpeg 9.0.2 and sequence captures are included for unit tests.
+- `fixture prores` creates `unsupported.mov` with the ProRes encoder. Chromium's expected unsupported-codec result must show "This video format cannot play here" and Open in Files.
 
 Stop the server with `kill "$FIXTURE_PID"` when finished. Scratch outputs and agent state remain available for inspection.
 
@@ -226,3 +230,47 @@ The uninterrupted SVG scenario writes `poster.svg` and ends with `toolUse`, then
 The documented wrapper and print command were also run against a standalone fixture server. omp exited with status 0, and `wc -lc` reported 300 lines and 14,956 bytes for the saved SVG. `print-command.txt` preserves the commands and output.
 
 These probes establish omp's stream and file behavior. They do not establish the renderer's latency, watcher delivery, preview security or screenshot acceptance criteria; those require the integration checks described in `docs/LIVE-PREVIEW.md`.
+
+## Verify video in Windows 11 ARM64 Electron
+
+These steps are for the integration owner in the Windows VM. They have not been run on the owner's Mac, and no Electron window is needed for unit or headless checks.
+
+1. In the integrated worktree, install the project's existing dependencies and have Node.js 22 or later, npm, omp 18.16.0, Git for Windows and ffmpeg available on PATH. Confirm `ffmpeg -encoders` lists `libx264` and `prores_ks`. For the sequence and recorded-progress scenarios, `python3 --version` must resolve to Python 3. A native ARM64 ffmpeg build is suitable; the app does not install it.
+2. Run the affected protocol, watcher, subject and adapter tests in PowerShell:
+
+   ```powershell
+   npm run typecheck
+   npx vitest run src/main/services/preview-protocol.test.ts src/main/services/preview-watch.test.ts src/renderer/src/features/live-preview
+   node --test scripts/live-preview-fixture/server.test.mjs
+   ```
+
+3. Start the isolated provider from the repository root in PowerShell:
+
+   ```powershell
+   $Repo = (Get-Location).Path
+   $FixtureRoot = Join-Path $env:TEMP ("vomp-preview-video-" + [guid]::NewGuid().ToString("N"))
+   $env:VOMP_FIXTURE_SHELL = Join-Path $env:ProgramFiles "Git\bin\bash.exe"
+   if (!(Test-Path $env:VOMP_FIXTURE_SHELL)) { throw "Set VOMP_FIXTURE_SHELL to Git for Windows bash.exe." }
+   $Server = Start-Process -FilePath (Get-Command node).Source -NoNewWindow -PassThru `
+     -WorkingDirectory $Repo -ArgumentList @("scripts/live-preview-fixture/server.mjs", "--root", "`"$FixtureRoot`"")
+   while (!(Test-Path (Join-Path $FixtureRoot "fixture.json"))) {
+     if ($Server.HasExited) { throw "The fixture server exited before initialization." }
+     Start-Sleep -Milliseconds 100
+   }
+   node scripts/live-preview-fixture/run.mjs "$FixtureRoot" --cwd "$Repo" "$env:ComSpec" /d /s /c "npm run dev"
+   ```
+
+   `VOMP_FIXTURE_SHELL` selects Git Bash for fixture bash calls. On Windows the integrated fixture environment also retains the operating-system variables needed to spawn programs and redirects application data into the scratch home. Provider credentials and the owner's omp configuration remain outside this environment.
+
+4. In that one development window, open `$FixtureRoot\work` as the chat folder. Keep "Show visual outputs while omp makes them" on. Open Outputs before sending `fixture video`, or use Watch on its bash card. Record at least three increasing "frame N of 180" values while `out.mp4` is incomplete. The file can exist from the first update; a player must appear only once it decodes. After completion, press Play, seek to approximately three seconds and near the end, then pause.
+5. Open DevTools with Ctrl+Shift+I, choose Network and enable Preserve log before repeating the render in a fresh chat. Filter for `vomp-preview`. Record the request's Range and the `206`, `Content-Range`, `Content-Length` and `Accept-Ranges: bytes` response headers. An open-ended response must be at most 8 MiB. This small clip may be shorter than that limit; the protocol tests exercise larger explicit, suffix, open-ended and un-ranged streams, HEAD, `416` responses, abort, response cancellation and revocation, including closed descriptors.
+6. Wait for six key-frame tiles, click the middle and final tiles, and confirm the player seeks. Start another `fixture video` in the same chat, then switch chips and close the stage during loading. No stale player or contact sheet may replace the selected newer revision. Repeat with the panel at 320 px and Settings > Appearance's largest text size. Stop must remain visible; progress wraps, native video controls fit the player, and the tiles use two columns with usable keyboard focus.
+7. In fresh chats, run `fixture sequence`, `fixture progress` and `fixture prores`. Confirm the sequence and unrelated-photo counts described above, advancing captured progress, and the unsupported-codec note with working Open in Files. Before checking ProRes, confirm the ffmpeg call succeeded, so an encoder error is not mistaken for the expected player error.
+8. Close the development app, then stop only this fixture server:
+
+   ```powershell
+   if (!$Server.HasExited) { Stop-Process -Id $Server.Id }
+   Remove-Item Env:VOMP_FIXTURE_SHELL
+   ```
+
+Keep `$FixtureRoot` and the DevTools HAR or screenshots until the integration owner records the result. Generated clips and frame images belong in that scratch directory and must not be committed. Report Electron's version, Windows build, ffmpeg version, observed progress values, range headers, seeking, codec result and the narrow-layout result separately from unit-test results.

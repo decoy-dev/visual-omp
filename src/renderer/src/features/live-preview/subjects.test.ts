@@ -1,7 +1,7 @@
 import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
 import type { ActiveTool } from "../../collab/lib/client";
-import { deriveSubjects, isVisualCall, namedPaths, relatedPaths, type SubjectInput } from "./subjects";
+import { deriveSubjects, isVisualCall, namedPaths, relatedPaths, sequencePatterns, type SubjectInput } from "./subjects";
 
 function assistant(id = "draw", name = "write", args: Record<string, unknown> = { path: "poster.svg", content: "<svg>" }, timestamp = 200): AssistantMessage {
 	return { role: "assistant", content: [{ type: "toolCall", id, name, arguments: args }], timestamp, stopReason: "toolUse", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } } };
@@ -222,4 +222,71 @@ describe("current-turn live subjects", () => {
 		expect(isVisualCall("write", { path })).toBe(false);
 		expect(deriveSubjects(input({ stream: assistant("draw", "write", { path, content: "data" }) }), [])).toEqual([]);
 	});
+});
+
+describe("recognized render subjects", () => {
+	it("shows advancing ffmpeg progress before a stable save, then keeps the same selected identity", () => {
+		const command = "ffmpeg -f lavfi -i testsrc=duration=6:size=320x240:rate=30 -frames:v 180 -progress pipe:1 out.mp4";
+		let previous = deriveSubjects(input({ stream: null, activeTools: new Map([["draw", running("draw", { command }, "bash")]]) }), []);
+		expect(previous[0]).toMatchObject({ id: "call:draw", kind: "render", format: "video", path: "/project/work/out.mp4", progress: null });
+		for (const done of [30, 60, 120]) {
+			const tool = { ...running("draw", { command }, "bash"), partialResult: { content: [{ type: "text", text: `frame=${done}\nout_time=00:00:02.000000\nprogress=continue` }] } };
+			previous = deriveSubjects(input({ stream: null, activeTools: new Map([["draw", tool]]) }), previous);
+			expect(previous[0]).toMatchObject({ id: "call:draw", kind: "render", progress: { tool: "ffmpeg", done, total: 180, unit: "frame" } });
+		}
+		const snapshot = input({ stream: null, activeTools: new Map([["draw", running("draw", { command }, "bash")]]), changes: [{ watchId: "w", path: "/project/work/out.mp4", size: 5000, mtimeMs: 900 }] });
+		const saved = deriveSubjects(snapshot, previous);
+		expect(saved).toHaveLength(1);
+		expect(saved[0]).toMatchObject({ id: "call:draw", kind: "file", format: "video", path: "/project/work/out.mp4", size: 5000 });
+		expect(deriveSubjects({ ...snapshot, now: 2000 }, saved)[0].revision).toBe(saved[0].revision);
+	});
+
+	it("recognizes bash and eval render calls while leaving unknown commands alone", () => {
+		expect(isVisualCall("bash", { command: "ffmpeg -i input.mov out.mp4" })).toBe(true);
+		expect(isVisualCall("bash", { command: "echo hello" })).toBe(false);
+		const snapshot = input({ stream: null, activeTools: new Map([["draw", running("draw", { code: 'subprocess.run(["ffmpeg", "-i", "input.mov", "out.mp4"])' }, "eval")]]) });
+		expect(deriveSubjects(snapshot, [])[0]).toMatchObject({ kind: "render", format: "video" });
+	});
+
+	it("resolves render output and sequence folders from the call's cwd", () => {
+		const snapshot = input({ stream: null, activeTools: new Map([["draw", running("draw", { command: 'ffmpeg -i input.mp4 frames/frame%04d.png', cwd: "build" }, "bash")]]) });
+		expect(sequencePatterns(snapshot)).toEqual([{ folder: "/project/work/build/frames", prefix: "frame", digits: 4, suffix: ".png" }]);
+		expect(namedPaths(snapshot)).toContain("/project/work/build/frames");
+	});
+
+	it("keeps one sequence subject with the newest frame and keeps unrelated numbered images separate", () => {
+		const pattern = { folder: "/project/work/frames", prefix: "frame", digits: 4, suffix: ".png" };
+		const snapshot = input({ stream: null, activeTools: new Map([["draw", running("draw", { command: "ffmpeg -i source.mp4 frames/frame%04d.png" }, "bash")]]), changes: [
+			{ watchId: "w", path: "/project/work/frames/frame0001.png", size: 200, mtimeMs: 500, sequence: { pattern, count: 1 } },
+			{ watchId: "w", path: "/project/work/frames/frame0006.png", size: 250, mtimeMs: 900, sequence: { pattern, count: 6 } },
+			...[1, 2, 3].map(index => ({ watchId: "w", path: `/project/work/frames/photo${index}.png`, size: 30, mtimeMs: 800 })),
+		] });
+		const subjects = deriveSubjects(snapshot, []);
+		expect(subjects).toHaveLength(4);
+		expect(subjects.find(subject => subject.sequence)).toMatchObject({ id: "call:draw", kind: "file", format: "sequence", path: "/project/work/frames/frame0006.png", sequence: { pattern, count: 6 } });
+		expect(subjects.filter(subject => !subject.sequence).map(subject => subject.path).sort()).toEqual([1, 2, 3].map(index => `/project/work/frames/photo${index}.png`));
+	});
+
+	it("does not reload a stable video just because its render progress advanced", () => {
+		const command = "ffmpeg -i input.mov -frames:v 180 out.mp4";
+		const snapshot = input({ stream: null, activeTools: new Map([["draw", running("draw", { command }, "bash")]]), changes: [{ watchId: "w", path: "/project/work/out.mp4", size: 300, mtimeMs: 500 }] });
+		const first = deriveSubjects(snapshot, []);
+		const tool = { ...running("draw", { command }, "bash"), partialResult: { content: [{ type: "text", text: "frame=120" }] } };
+		const next = deriveSubjects({ ...snapshot, activeTools: new Map([["draw", tool]]) }, first);
+		expect(next[0].progress?.done).toBe(120);
+		expect(next[0].revision).toBe(first[0].revision);
+	});
+});
+
+it("updates a declared sequence's count and remaining frame after its newest image is deleted", () => {
+	const pattern = { folder: "/project/work/frames", prefix: "frame", digits: 4, suffix: ".png" };
+	const snapshot = input({ stream: null, activeTools: new Map([["draw", running("draw", { command: "ffmpeg -i source.mp4 frames/frame%04d.png" }, "bash")]]), changes: [
+		{ watchId: "w", path: "/project/work/frames/frame0006.png", size: 250, mtimeMs: 900, sequence: { pattern, count: 6 } },
+	] });
+	const first = deriveSubjects(snapshot, []);
+	const next = deriveSubjects({ ...snapshot, changes: [
+		{ watchId: "w", path: "/project/work/frames/frame0005.png", size: 240, mtimeMs: 800, sequence: { pattern, count: 5 } },
+	] }, first);
+	expect(next).toHaveLength(1);
+	expect(next[0]).toMatchObject({ id: "call:draw", path: "/project/work/frames/frame0005.png", sequence: { pattern, count: 5 }, revision: first[0].revision + 1 });
 });

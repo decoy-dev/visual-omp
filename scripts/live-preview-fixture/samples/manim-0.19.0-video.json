@@ -1,0 +1,24 @@
+{
+  "tool": "manim",
+  "version": "0.19.0",
+  "command": "/tmp/vomp-render-capture.UTuQmx/manim312/bin/manim render -ql --disable_caching --progress_bar display scene.py Sample",
+  "output": "Manim Community v0.19.0\n\n[11/05/26 13:29:42] INFO     Caching disabled.                                                                                                                                                                              cairo_renderer.py:79\n\rAnimation 0: Create(Circle):   0%|          | 0/30 [00:00<?, ?it/s]\rAnimation 0: Create(Circle):  30%|███       | 9/30 [00:00<00:00, 72.72it/s]\rAnimation 0: Create(Circle):  80%|████████  | 24/30 [00:00<00:00, 109.85it/s]\r                                                                             \r[11/05/26 13:29:43] INFO     Animation 0 : Partial movie file written in '/private/tmp/vomp-render-capture.UTuQmx/media/videos/scene/480p15/partial_movie_files/Sample/uncached_00000.mp4'                              scene_file_writer.py:588\n                    INFO     Caching disabled.                                                                                                                                                                              cairo_renderer.py:79\n\rAnimation 1: _MethodAnimation(Circle):   0%|          | 0/30 [00:00<?, ?it/s]\rAnimation 1: _MethodAnimation(Circle):  87%|████████▋ | 26/30 [00:00<00:00, 162.49it/s]\r                                                                                       \r                    INFO     Animation 1 : Partial movie file written in '/private/tmp/vomp-render-capture.UTuQmx/media/videos/scene/480p15/partial_movie_files/Sample/uncached_00001.mp4'                              scene_file_writer.py:588\n                    INFO     Combining to Movie file.                                                                                                                                                                   scene_file_writer.py:739\n                    INFO                                                                                                                                                                                                scene_file_writer.py:886\n                             File ready at '/private/tmp/vomp-render-capture.UTuQmx/media/videos/scene/480p15/Sample.mp4'                                                                                                                       \n                                                                                                                                                                                                                                                \n                    INFO     Rendered Sample                                                                                                                                                                                        scene.py:255\n                             Played 2 animations                                                                                                                                                                                                \nYou are using manim version v0.19.0, but version v0.22.1 is available.\nYou should consider upgrading via pip install -U manim\n",
+  "files": [
+    "/private/tmp/vomp-render-capture.UTuQmx/media/videos/scene/480p15/Sample.mp4"
+  ],
+  "expectedProgress": {
+    "tool": "manim",
+    "done": 2,
+    "total": 2,
+    "unit": "animation",
+    "percent": 100
+  },
+  "expectedRender": {
+    "tool": "manim",
+    "path": "/private/tmp/vomp-render-capture.UTuQmx/media/videos/scene/480p15/Sample.mp4",
+    "sequences": []
+  },
+  "capturedAt": "2026-11-05",
+  "provenance": "Executed headlessly in a disposable /tmp environment. Output bytes are preserved; separately captured stdout and stderr are concatenated for the sequence samples and FFmpeg.",
+  "source": "from manim import Circle, Create, Scene\n\nclass Sample(Scene):\n    def construct(self):\n        circle = Circle()\n        self.play(Create(circle), run_time=2)\n        self.play(circle.animate.shift([1, 0, 0]), run_time=2)\n"
+}

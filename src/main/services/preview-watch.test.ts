@@ -1,12 +1,12 @@
 import { execFileSync } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { type FSWatcher, watch as fsWatch } from "node:fs";
-import { mkdtemp, mkdir, realpath, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { join, parse } from "node:path";
+import { basename, join, parse } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import type { IpcMainInvokeEvent, WebContents } from "electron";
-import type { PreviewChange } from "@shared/contracts/preview";
+import type { PreviewChange, PreviewSequencePattern } from "@shared/contracts/preview";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ipc = vi.hoisted(() => ({ handlers: new Map<string, (...args: unknown[]) => unknown>(), broadcast: vi.fn() }));
@@ -86,21 +86,21 @@ async function live(folders: string[]): Promise<void> {
 	}
 }
 
-async function start(folder = dir, named: string[] = [], options: ConstructorParameters<typeof PreviewWatchService>[1] = {}) {
+async function start(folder = dir, named: string[] = [], options: ConstructorParameters<typeof PreviewWatchService>[1] = {}, sequences: PreviewSequencePattern[] = []) {
 	const inner = options.watch ?? fsWatch;
 	const real = !(CONTROLLED in inner);
 	const subscribed: string[] = [];
 	const service = new PreviewWatchService(change => changes.push(change), { ...options, watch: observe(inner, subscribed) });
 	const entry = { service, ids: [] as string[] };
 	services.push(entry);
-	const id = await service.watch({ folder, named });
+	const id = await service.watch({ folder, named, sequences });
 	entry.ids.push(id);
 	if (real) {
 		await live(subscribed);
 		// Folders a later scope subscribes are waited for the same way.
 		const watchNamed = service.watchNamed.bind(service);
-		service.watchNamed = async (watchId, paths) => {
-			await watchNamed(watchId, paths);
+		service.watchNamed = async (watchId, paths, patterns) => {
+			await watchNamed(watchId, paths, patterns);
 			await live(subscribed);
 		};
 	}
@@ -257,7 +257,7 @@ describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
 		const { service, id } = await start(tmpdir(), [scope === "file" ? first : dir], { watch });
 		await writeFile(first, "completed call's final image");
 		notify(dir, "first.png");
-		await service.watchNamed(id, [second]);
+		await service.watchNamed(id, [second], []);
 		expect(changes).toHaveLength(1);
 		expect(changes[0]).toMatchObject({ path: first, size: 28 });
 		await writeFile(first, "retired scope");
@@ -273,7 +273,7 @@ describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
 		const incoming = join(dir, "incoming");
 		await mkdir(incoming);
 		const { service, id } = await start(tmpdir(), [join(dir, "outgoing.png")], { platform });
-		const replacing = service.watchNamed(id, [incoming]);
+		const replacing = service.watchNamed(id, [incoming], []);
 		const image = join(incoming, "during-handoff.png");
 		await writeFile(image, "saved before watchNamed resolves");
 		await replacing;
@@ -290,7 +290,7 @@ describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
 		await mkdir(secondDir);
 		const second = join(secondDir, "second.png");
 		const { service, id } = await start(tmpdir(), [first]);
-		await service.watchNamed(id, [second]);
+		await service.watchNamed(id, [second], []);
 		await writeFile(first, "old output");
 		await writeFile(second, "new output");
 		await eventually(1);
@@ -309,7 +309,7 @@ describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
 		await delay(700);
 		expect(changes).toHaveLength(1);
 		await service.unwatch("unknown");
-		await service.watchNamed("unknown", []);
+		await service.watchNamed("unknown", [], []);
 	});
 
 	it("includes an unnamed save whose event arrives during the final debounce", async () => {
@@ -327,7 +327,7 @@ describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
 	it("shares subscriptions until the last turn releases them", async () => {
 		const watch = vi.fn<NonNullable<PreviewWatchOptions["watch"]>>(fsWatch);
 		const { service, id } = await start(dir, [], { watch });
-		const second = await service.watch({ folder: dir, named: [] });
+		const second = await service.watch({ folder: dir, named: [], sequences: [] });
 		services[0]!.ids.push(second);
 		expect(watch).toHaveBeenCalledTimes(1);
 		await service.unwatch(id);
@@ -339,7 +339,7 @@ describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
 	it("walks Linux folders without subscribing to excluded or ignored directories", async () => {
 		execFileSync("git", ["init", "-q", dir]);
 		await writeFile(join(dir, ".gitignore"), "build/\n");
-		for (const folder of ["kept", "node_modules", "build"]) await mkdir(join(dir, folder));
+		for (const folder of ["kept", "node_modules", "build", "partial_movie_files"]) await mkdir(join(dir, folder));
 		const { watch, notify } = controlledWatch();
 		await start(dir, [], { platform: "linux", watch });
 		expect(watch.mock.calls.map(([path]) => path).sort()).toEqual([dir, join(dir, "kept")].sort());
@@ -374,6 +374,179 @@ describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
 		expect(changes[0]?.path).toBe(join(nested, "image.png"));
 	});
 
+	it.each(["mp4", "m4v", "webm", "mov"])("reports stable %s video files", async extension => {
+		const { watch, notify } = controlledWatch();
+		await start(dir, [], { watch });
+		const name = `render.${extension}`;
+		await writeFile(join(dir, name), "video bytes");
+		notify(dir, name);
+		await eventually(1);
+		expect(changes[0]).toMatchObject({ path: join(dir, name), size: 11 });
+	});
+
+	it.each(["darwin", "linux"] as const)("excludes partial_movie_files despite named paths and patterns on %s", async platform => {
+		const partial = join(dir, "partial_movie_files");
+		await mkdir(partial);
+		const { watch, notify } = controlledWatch();
+		await start(dir, [partial, join(partial, "part.mp4")], { watch, platform }, [{ folder: partial, prefix: "", digits: null, suffix: ".png" }]);
+		expect(watch.mock.calls.some(([path]) => path === partial)).toBe(false);
+		await writeFile(join(partial, "part.mp4"), "partial video");
+		await writeFile(join(partial, "1.png"), "partial image");
+		notify(dir, join("partial_movie_files", "part.mp4"));
+		notify(dir, join("partial_movie_files", "1.png"));
+		await writeFile(join(dir, "complete.mp4"), "complete");
+		notify(dir, "complete.mp4");
+		await eventually(1);
+		expect(changes.map(change => change.path)).toEqual([join(dir, "complete.mp4")]);
+	});
+
+	it("coalesces only declared frames and counts all matching files still present", async () => {
+		const { watch, notify } = controlledWatch();
+		const pattern = { folder: dir, prefix: "frame-", digits: 4, suffix: ".png" };
+		await writeFile(join(dir, "frame-0001.png"), "existing frame");
+		await start(dir, [], { watch }, [pattern]);
+		await eventually(1);
+		expect(changes[0]).toMatchObject({ path: join(dir, "frame-0001.png"), sequence: { pattern, count: 1 } });
+		for (const [index, name] of ["frame-0002.png", "frame-0003.png"].entries()) {
+			await writeFile(join(dir, name), "new frame");
+			await utimes(join(dir, name), new Date(10_000 + index * 1000), new Date(10_000 + index * 1000));
+			notify(dir, name);
+		}
+		// A later write wins even when its frame number is lower.
+		await utimes(join(dir, "frame-0002.png"), new Date(20_000), new Date(20_000));
+		await utimes(join(dir, "frame-0001.png"), new Date(1_000), new Date(1_000));
+		for (const name of ["image1.png", "image2.png", "image3.png"]) {
+			await writeFile(join(dir, name), "independent image");
+			notify(dir, name);
+		}
+		await eventually(5);
+		expect(changes.filter(change => !change.sequence).map(change => change.path).sort()).toEqual(["image1.png", "image2.png", "image3.png"].map(name => join(dir, name)));
+		expect(changes.filter(change => change.sequence)).toHaveLength(2);
+		expect(changes.filter(change => change.sequence).at(-1)).toMatchObject({ path: join(dir, "frame-0002.png"), sequence: { pattern, count: 3 } });
+		await rm(join(dir, "frame-0001.png"));
+		notify(dir, "frame-0001.png");
+		await eventually(6);
+		expect(changes[5]).toMatchObject({ path: join(dir, "frame-0002.png"), sequence: { pattern, count: 2 } });
+	});
+
+	it("uses literal pattern fragments, exact widths and direct regular files only", async () => {
+		const { watch, notify } = controlledWatch();
+		const pattern = { folder: dir, prefix: "frame[final].", digits: 2, suffix: ".png" };
+		await start(tmpdir(), [], { watch }, [pattern]);
+		await mkdir(join(dir, "nested"));
+		for (const name of ["frame[final].01.png", "frame[final].002.png", "frame[final].ab.png", "framef.03.png"]) {
+			await writeFile(join(dir, name), "image");
+			notify(dir, name);
+		}
+		await mkdir(join(dir, "frame[final].04.png"));
+		await writeFile(join(dir, "nested", "frame[final].05.png"), "nested image");
+		await symlink(join(dir, "frame[final].01.png"), join(dir, "frame[final].06.png"));
+		notify(dir, "frame[final].04.png");
+		notify(dir, join("nested", "frame[final].05.png"));
+		notify(dir, "frame[final].06.png");
+		await eventually(1);
+		expect(changes[0]).toMatchObject({ path: join(dir, "frame[final].01.png"), sequence: { pattern, count: 1 } });
+	});
+
+	it("breaks matching frame timestamp ties by numeric frame order", async () => {
+		const { watch } = controlledWatch();
+		const pattern = { folder: dir, prefix: "", digits: null, suffix: ".png" };
+		for (const name of ["9.png", "10.png"]) {
+			await writeFile(join(dir, name), "frame");
+			await utimes(join(dir, name), new Date(1000), new Date(1000));
+		}
+		await start(tmpdir(), [], { watch }, [pattern]);
+		await eventually(1);
+		expect(changes[0]).toMatchObject({ path: join(dir, "10.png"), sequence: { pattern, count: 2 } });
+	});
+
+	it.skipIf(process.platform === "win32")("treats backslashes in POSIX filenames as literal pattern text", async () => {
+		const { watch } = controlledWatch();
+		const pattern = { folder: dir, prefix: "part\\", digits: 2, suffix: ".png" };
+		await writeFile(join(dir, "part\\01.png"), "frame");
+		await start(tmpdir(), [], { watch }, [pattern]);
+		await eventually(1);
+		expect(changes[0]).toMatchObject({ path: join(dir, "part\\01.png"), sequence: { pattern, count: 1 } });
+	});
+
+	it.each([
+		{ folder: "relative", prefix: "", digits: 2, suffix: ".png" },
+		{ folder: "", prefix: "../frame", digits: 2, suffix: ".png" },
+		{ folder: "", prefix: "", digits: 0, suffix: ".png" },
+		{ folder: "", prefix: "", digits: 1.5, suffix: ".png" },
+	])("rejects invalid sequence declarations: %j", async input => {
+		const { watch } = controlledWatch();
+		const pattern = { ...input, folder: input.folder || dir };
+		await expect(start(tmpdir(), [], { watch }, [pattern])).rejects.toThrow("Invalid preview sequences");
+		expect(watch).not.toHaveBeenCalled();
+	});
+
+	it("reads a final sequence frame on unwatch when no file event arrived", async () => {
+		const { watch, watching } = controlledWatch();
+		const pattern = { folder: dir, prefix: "frame-", digits: 2, suffix: ".png" };
+		const { service, id } = await start(tmpdir(), [], { watch }, [pattern]);
+		await writeFile(join(dir, "frame-01.png"), "last frame");
+		await service.unwatch(id);
+		expect(changes).toHaveLength(1);
+		expect(changes[0]).toMatchObject({ path: join(dir, "frame-01.png"), sequence: { pattern, count: 1 } });
+		expect(watching(dir)).toBe(false);
+	});
+
+	it.each(["darwin", "linux"] as const)("promotes a missing sequence folder and preserves its spelling on %s", async platform => {
+		const real = join(dir, "real");
+		const link = join(dir, "link");
+		await mkdir(real);
+		await symlink(real, link);
+		const pattern = { folder: join(link, "new", "frames"), prefix: "", digits: null, suffix: ".png" };
+		const { watch, notify, watching } = controlledWatch();
+		await start(tmpdir(), [], { watch, platform }, [pattern]);
+		expect(watching(real)).toBe(true);
+		await mkdir(join(real, "new"));
+		notify(real, "new");
+		await expect.poll(() => watching(join(real, "new")), { timeout: EVENT_WAIT_MS }).toBe(true);
+		await mkdir(join(real, "new", "frames"));
+		await writeFile(join(real, "new", "frames", "1.png"), "first");
+		await writeFile(join(real, "new", "frames", "20.png"), "last");
+		await utimes(join(real, "new", "frames", "1.png"), new Date(1000), new Date(1000));
+		notify(join(real, "new"), "frames");
+		await eventually(1);
+		expect(changes[0]).toMatchObject({ path: join(pattern.folder, "20.png"), sequence: { pattern, count: 2 } });
+		expect(watch.mock.calls.every(([, options]) => !options.recursive)).toBe(true);
+		expect(watch.mock.calls.some(([path]) => path === tmpdir())).toBe(false);
+	});
+
+	it("watches a declared sequence directly in a broad root without recursion", async () => {
+		const { watch, notify } = controlledWatch();
+		// A declared pattern narrows the scope even when its folder is itself broad.
+		const pattern = { folder: tmpdir(), prefix: `${basename(dir)}-`, digits: 2, suffix: ".png" };
+		const output = join(tmpdir(), `${pattern.prefix}01.png`);
+		try {
+			await start(tmpdir(), [], { watch }, [pattern]);
+			expect(watch.mock.calls[0]?.slice(0, 2)).toEqual([await realpath(tmpdir()), { recursive: false, persistent: false }]);
+			await writeFile(output, "frame");
+			notify(await realpath(tmpdir()), `${pattern.prefix}01.png`);
+			await eventually(1);
+			expect(changes[0]).toMatchObject({ path: output, sequence: { pattern, count: 1 } });
+		} finally {
+			await rm(output, { force: true });
+		}
+	});
+
+	it("flushes the final sequence before replacing its scope", async () => {
+		const { watch, notify, watching } = controlledWatch();
+		const pattern = { folder: dir, prefix: "frame-", digits: 2, suffix: ".png" };
+		const { service, id } = await start(tmpdir(), [], { watch }, [pattern]);
+		await writeFile(join(dir, "frame-01.png"), "final frame");
+		notify(dir, "frame-01.png");
+		await service.watchNamed(id, [], []);
+		expect(changes).toHaveLength(1);
+		expect(changes[0]).toMatchObject({ sequence: { pattern, count: 1 } });
+		expect(watching(dir)).toBe(false);
+		await writeFile(join(dir, "frame-02.png"), "retired frame");
+		await delay(500);
+		expect(changes).toHaveLength(1);
+	});
+
 	it("closes subscriptions after four hours without activity", async () => {
 		// Any file event counts as activity and restarts the four hours. A real watcher can deliver the temp folder's own
 		// creation late, during the advance below, so this test uses a watcher that only reports what the test sends.
@@ -382,7 +555,7 @@ describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
 		const watcher = watch.mock.results[0]!.value;
 		const close = vi.spyOn(watcher, "close");
 		vi.useFakeTimers();
-		await service.watchNamed(id, [join(dir, "output.png")]);
+		await service.watchNamed(id, [join(dir, "output.png")], []);
 		await vi.advanceTimersByTimeAsync(4 * 60 * 60 * 1000);
 		expect(close).toHaveBeenCalledOnce();
 	});
@@ -394,7 +567,7 @@ describe("preview watch IPC lifecycle", { timeout: TEST_LIMIT_MS }, () => {
 		const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
 		const event = { sender: sender as unknown as WebContents } as IpcMainInvokeEvent;
 		const invoke = (channel: string, ...args: unknown[]) => ipc.handlers.get(channel)!(event, ...args);
-		const id = await invoke("preview:watch", { folder: dir, named: [] });
+		const id = await invoke("preview:watch", { folder: dir, named: [], sequences: [] });
 		if (trigger === "reload") sender.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
 		else sender.emit(trigger === "renderer exit" ? "render-process-gone" : "destroyed");
 		await writeFile(join(dir, "after.png"), "closed");
@@ -412,9 +585,9 @@ describe("preview watch IPC lifecycle", { timeout: TEST_LIMIT_MS }, () => {
 		const event = { sender: sender as unknown as WebContents } as IpcMainInvokeEvent;
 		const otherEvent = { sender: other as unknown as WebContents } as IpcMainInvokeEvent;
 		const path = join(dir, "broadcast.png");
-		const id = await ipc.handlers.get("preview:watch")!(event, { folder: tmpdir(), named: [path] });
+		const id = await ipc.handlers.get("preview:watch")!(event, { folder: tmpdir(), named: [path], sequences: [] });
 		await ipc.handlers.get("preview:unwatch")!(otherEvent, id);
-		await ipc.handlers.get("preview:watchNamed")!(otherEvent, id, []);
+		await ipc.handlers.get("preview:watchNamed")!(otherEvent, id, [], []);
 		await writeFile(path, "saved");
 		notify(dir, "broadcast.png");
 		await expect.poll(() => ipc.broadcast.mock.calls.length, { timeout: EVENT_WAIT_MS }).toBe(1);
@@ -422,11 +595,29 @@ describe("preview watch IPC lifecycle", { timeout: TEST_LIMIT_MS }, () => {
 		await ipc.handlers.get("preview:unwatch")!(event, id);
 	});
 
+	it("forwards replacement sequence patterns only for the owning renderer", async () => {
+		const { watch, notify } = controlledWatch();
+		registerPreviewWatch({ watch });
+		const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
+		const other = Object.assign(new EventEmitter(), { isDestroyed: () => false });
+		const event = { sender: sender as unknown as WebContents } as IpcMainInvokeEvent;
+		const otherEvent = { sender: other as unknown as WebContents } as IpcMainInvokeEvent;
+		const id = await ipc.handlers.get("preview:watch")!(event, { folder: tmpdir(), named: [], sequences: [] });
+		const pattern = { folder: dir, prefix: "frame-", digits: 2, suffix: ".png" };
+		await ipc.handlers.get("preview:watchNamed")!(event, id, [], [pattern]);
+		await ipc.handlers.get("preview:watchNamed")!(otherEvent, id, [], []);
+		await writeFile(join(dir, "frame-01.png"), "saved frame");
+		notify(dir, "frame-01.png");
+		await expect.poll(() => ipc.broadcast.mock.calls.length, { timeout: EVENT_WAIT_MS }).toBe(1);
+		expect(ipc.broadcast).toHaveBeenCalledWith("preview:changed", expect.objectContaining({ watchId: id, sequence: { pattern, count: 1 } }));
+		await ipc.handlers.get("preview:unwatch")!(event, id);
+	});
+
 	it("closes a watch requested just before the renderer reloads", async () => {
 		registerPreviewWatch();
 		const sender = Object.assign(new EventEmitter(), { isDestroyed: () => false });
 		const event = { sender: sender as unknown as WebContents } as IpcMainInvokeEvent;
-		const pending = ipc.handlers.get("preview:watch")!(event, { folder: dir, named: [] });
+		const pending = ipc.handlers.get("preview:watch")!(event, { folder: dir, named: [], sequences: [] });
 		sender.emit("did-start-navigation", { isMainFrame: true, isSameDocument: false });
 		await pending;
 		await writeFile(join(dir, "after.png"), "closed");
