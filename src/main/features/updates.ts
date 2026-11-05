@@ -27,7 +27,7 @@ import { flushPrefs, getPrefs, setPrefs } from "../prefs";
 import { ompPath, ompStatus } from "../omp/locate";
 import { ompStartError } from "../omp/refused";
 import { recordUpdateCheck } from "../services/update-count";
-import { registerInstallSwitch } from "./install-switch";
+import { registerInstallSwitch } from "./updates/install-switch";
 import { InstallOperation } from "../services/install-operation";
 import {
 	type GitHubRelease,

@@ -5,12 +5,12 @@ import { join, posix } from "node:path";
 import { app, shell } from "electron";
 import { z } from "zod";
 import type { AppInstallInfo, AppInstallSwitchInfo, AppInstallSwitchRun, AppInstallOperation } from "@shared/contracts/updates";
-import { userEnv } from "../env";
-import { writeText } from "../files";
-import { handle } from "../ipc";
-import { BREW_CASK, PACKAGE_REPOSITORY, brewSwitchCommand } from "../services/install-switch";
-import { appBundlePath, brewCandidates, plistVersion } from "../services/updates";
-import { resolveExecutable } from "../services/executable";
+import { userEnv } from "../../env";
+import { writeText } from "../../files";
+import { handle } from "../../ipc";
+import { BREW_CASK, PACKAGE_REPOSITORY, brewSwitchCommand } from "../../services/install-switch";
+import { appBundlePath, brewCandidates, plistVersion } from "../../services/updates";
+import { resolveExecutable } from "../../services/executable";
 
 const CaskInfo = z.object({ casks: z.array(z.object({ version: z.string() })) });
 const exists = (path: string) => access(path).then(() => true, () => false);

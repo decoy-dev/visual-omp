@@ -1151,8 +1151,10 @@ version on the existing prerelease track (`missing-release`) and its trusted pla
 Available results have a null reason. Direct installers have a null command; main supplies
 commands for detected Homebrew and Scoop installations.
 
-`main/features/install-switch.ts` registers on-demand `updates:app:switchInfo`, `switchStart`,
-`switchSettled` and `switchComplete` handlers for disk-image copies only. Preparation is main-owned.
+`main/features/updates/install-switch.ts` registers on-demand `updates:app:switchInfo`, `switchStart`,
+`switchSettled` and `switchComplete` handlers for disk-image copies only. `features/updates.ts` calls
+it, and it stays in a subfolder because every top-level `features/*.ts` module must export `register()`
+(`main/handlers.ts` calls each one at startup). Preparation is main-owned.
 Homebrew probes every discovered prefix for existing cask links before choosing a fresh install,
 so a disk-image copy beside a cask copy reuses that target. The destination version is inspected
 independently of the running copy's path. A matching destination uses `--adopt`; an empty one

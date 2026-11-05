@@ -15,12 +15,12 @@ vi.mock("node:fs/promises", () => ({
 }));
 vi.mock("node:child_process", () => ({ execFile: (...args: unknown[]) => fake.exec(...args), spawn: (...args: unknown[]) => fake.spawn(...args) }));
 vi.mock("node:os", () => ({ homedir: () => "/home/chris" }));
-vi.mock("../env", () => ({ userEnv: async () => fake.env }));
-vi.mock("../files", () => ({ writeText: fake.write }));
-vi.mock("../ipc", () => ({ handle: (channel: string, fn: (...args: unknown[]) => unknown) => fake.handlers.set(channel, fn) }));
-vi.mock("../services/executable", () => ({ resolveExecutable: async (path: string) => fake.brew.has(path) ? path : null }));
+vi.mock("../../env", () => ({ userEnv: async () => fake.env }));
+vi.mock("../../files", () => ({ writeText: fake.write }));
+vi.mock("../../ipc", () => ({ handle: (channel: string, fn: (...args: unknown[]) => unknown) => fake.handlers.set(channel, fn) }));
+vi.mock("../../services/executable", () => ({ resolveExecutable: async (path: string) => fake.brew.has(path) ? path : null }));
 import { registerInstallSwitch } from "./install-switch";
-import { InstallOperation } from "../services/install-operation";
+import { InstallOperation } from "../../services/install-operation";
 let operation: InstallOperation;
 
 const execPath = process.execPath;

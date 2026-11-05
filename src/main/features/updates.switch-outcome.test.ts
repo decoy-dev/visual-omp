@@ -17,7 +17,7 @@ vi.mock("node:fs/promises", () => ({
 	rm: fake.removed,
 }));
 vi.mock("../services/updates", async original => ({ ...(await original<typeof UpdateService>()), detectInstallMethod: () => fake.method }));
-vi.mock("./install-switch", () => ({ registerInstallSwitch: (deps: { beginOperation(kind: AppInstallOperation): void }) => { fake.reserve = deps.beginOperation; } }));
+vi.mock("./updates/install-switch", () => ({ registerInstallSwitch: (deps: { beginOperation(kind: AppInstallOperation): void }) => { fake.reserve = deps.beginOperation; } }));
 vi.mock("../attention", () => ({ tagScoopShortcut: vi.fn() }));
 vi.mock("../env", () => ({ userEnv: async () => ({}) }));
 vi.mock("../files", () => ({ writeText: vi.fn() }));
