@@ -4,6 +4,42 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.7] - 2026-11-05
+
+visual-omp 0.7.7 adds crash reporting to help investigate freezes and crashes, closes all chats at once, lets you put Current chats in your own order, moves a macOS disk-image copy to Homebrew and a Windows installer copy to Scoop from Settings, and fixes choosing Auto thinking in some chats. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **New:** visual-omp sends crash reports and app failure events to Sentry, on by default. Native crash reports may contain sensitive information from process memory; turn reporting off in Settings → Advanced to keep diagnostics local.
+- **New:** After the window's content process crashes, visual-omp reloads the window once instead of leaving it blank.
+- **New:** Close all chats from the Current chats menu or the command palette, after one confirmation.
+- **New:** Reorder Current chats by dragging or with Move up and Move down in a chat's menu. Numbered shortcuts follow the new order.
+- **New:** From Settings → About, a macOS disk-image copy can switch to the Homebrew cask, and a Windows installer copy can switch to Scoop.
+- **Fixed:** Choosing Auto thinking no longer fails in chats where Auto had already picked an effort.
+
+### Detailed changes
+
+#### New
+
+- visual-omp now keeps local diagnostics in its profile folder: crash reports and an event log that records app starts, omp starts and exits per chat, a window that stops or resumes responding, crashed processes and memory use every 5 minutes. The event log excludes chat contents, prompts and file contents. Settings → About opens the folder, so you can review the files before sharing them.
+- Crash reports and selected app failure events go to Sentry automatically, on by default. App failure events include a bounded event-log excerpt, the app version and platform, with home-directory paths replaced by `~`. They also include a random installation ID when available. Native crash reports may contain sensitive information from process memory. Turn off Send crash reports in Settings → Advanced to keep diagnostics local. Development builds send nothing unless configured to.
+- When the window's content process crashes, visual-omp records it and reloads the window once. A second crash within a minute leaves the window as it is, so a crash loop does not repeat.
+- Current chats has a menu with Close all chats, which is also in the command palette. One confirmation, with Cancel selected, names chats where omp or its helpers are still working, chats whose state could not be checked and drafts that closing would discard. Chats then close one at a time, so omp's worktree questions appear one after another. Saved chats are not deleted. Reopen closed chat keeps the last 10 saved chats with their text drafts; attachments are discarded.
+- Current chats can be reordered by dragging, with Option+Up and Option+Down (Alt+Up and Alt+Down on Windows and Linux), or with Move up and Move down in a chat's menus. The order is saved, and ⌘1 to ⌘9 (Ctrl+1 to Ctrl+9 on Windows and Linux) follow it. Chats with results you have not opened still show above the others, and a move stays within its group.
+- On macOS, Settings → About offers Switch to Homebrew for a copy installed from the disk image when Homebrew is installed. visual-omp can reuse an existing Homebrew copy, adopt an app that matches the published cask version at Homebrew's destination, or install into an empty destination. It checks the result before restarting from the Homebrew copy. It never replaces an app: if the destination contains a different version, update that copy through its existing update flow first. Moving a separate old copy to the Trash is optional. Without Homebrew, About shows how to install it.
+- On Windows, Settings → About offers Switch to Scoop for a copy installed with the Windows installer when Scoop is installed. visual-omp closes, and a PowerShell window adds the decoy-dev bucket if needed, installs visual-omp with Scoop or reuses an existing Scoop copy, and checks its executable, install record and version. Only then does it remove the installer copy, keeping saved chats and settings, and open the Scoop copy. If the installation fails, the installer copy stays and opens again; if removing the old copy fails, the Scoop copy opens and the window says what remains.
+
+#### Improved
+
+- Without Scoop, Windows installer copies show a guide to install Scoop and switch by hand. It now asks you to check that the Scoop copy opens with your chats and settings before you uninstall the installer copy.
+- Updates, reinstalls and both package-manager switches no longer run at the same time.
+- When you cancel quitting, closing a chat or closing all chats, keyboard focus returns to the control you used or its menu button when available. Otherwise, it moves to the main area or New chat.
+
+#### Fixed
+
+- Choosing Auto thinking no longer fails in chats where Auto had already picked an effort. omp shows the effort Auto picks, such as Low, and visual-omp read that effort as the chosen level. The thinking menu showed Low, and choosing Auto moved omp off Auto and reported that omp could not switch to that thinking level. visual-omp now reads the chosen level from omp's own events, so the menu shows Auto when it is set.
+- Previews of local files grant cross-origin access only to fonts, which need it. Web pages, stylesheets, images and PDFs no longer receive that permission.
+
 ## [0.7.6] - 2026-11-04
 
 visual-omp 0.7.6 makes the omp screen the default on Windows, keeps long chats responsive on macOS and in Linux builds, previews visual outputs as omp makes them and asks before resuming a very large saved chat. It requires omp 18.15.0 or later.
