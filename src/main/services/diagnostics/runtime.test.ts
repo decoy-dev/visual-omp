@@ -61,7 +61,8 @@ afterEach(async () => {
 	vi.restoreAllMocks();
 	vi.unstubAllEnvs();
 	vi.unstubAllGlobals();
-	await rm(fake.folder, { recursive: true, force: true });
+	// A log write queued before the flush can still create a file while the folder is removed.
+	await rm(fake.folder, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
 });
 async function load() {
 	const runtime = await import("./runtime");
