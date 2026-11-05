@@ -1122,16 +1122,22 @@ The deletion inventory below records the proposed scope of a possible future rem
 1. Removal release, replay: a test fails if any file under `src/` imports the deleted modules or names the deleted IPC channels. This criterion does not apply to the FLIP, which retains classic code.
 2. Replay: typecheck and the full suite pass on macOS and Windows CI; every TSP fixture replays; JSONL follow tests pass unchanged.
 3. Live: the no-model and scripted-provider suites pass against the current omp release.
-4. Packaged, bundle: a build script reads the renderer build's chunk metadata and fails if the initial renderer entry chunk includes any module under `features/tsp/`, and it records the entry chunk's uncompressed size beside the size from the last classic release build. Growth above 20 KB fails the check unless the owner accepts it.
+4. Packaged, bundle: a build script reads the renderer build's chunk metadata and fails if the initial renderer entry chunk includes any module under `features/tsp/`, and it records the entry chunk's uncompressed size beside the measured release baseline. Growth above 20,000 bytes fails the check unless the owner accepts it.
 
    The FLIP guard checks both the initial entry and its static import closure, and emits
-   `out/renderer/renderer-chunks.json` and `renderer-bundle-size.json`. Its classic baseline is
-   v0.7.4 at `233c28252a211081e30202d4b0a41e02f45cad97`, with a 2,017,581-byte entry.
-   `scripts/renderer-classic-baseline.json` records the measurement and reproduction commands.
-   `npm run build` and both distribution paths enforce the 20,000-byte growth limit.
-   The final local FLIP build passed with a 2,033,103-byte entry, 15,522 bytes above the classic baseline.
-   No growth exception was accepted. The native plan-review and omp-dialog cards use lazy slots;
-   emitted-file sizes are recorded after Rollup writes its chunks.
+   `out/renderer/renderer-chunks.json` and `renderer-bundle-size.json`. Since the owner's
+   2026-11-04 approval to preserve the entry-size reductions, its baseline is the measured
+   v0.7.6 tag at `f08786608844c54f2550c0de6b4d232634a7eafb`, with a 1,591,722-byte entry.
+   `scripts/renderer-classic-baseline.json` keeps its filename and records the approval,
+   measurement and reproduction commands. The release tag was built in a detached scratch
+   worktree on 2026-11-05; its single entry's metadata bytes matched the emitted file size.
+   `npm run build` and both distribution paths enforce the 20,000-byte growth limit, for
+   a 1,611,722-byte ceiling. The previous `acceptedGrowth` exception was removed; the guard
+   retains its explicit-approval support.
+   The historical final local FLIP build passed with a 2,033,103-byte entry, 15,522 bytes above
+   the then-current v0.7.4 classic baseline. No growth exception was accepted for that build.
+   The native plan-review and omp-dialog cards use lazy slots; emitted-file sizes are recorded
+   after Rollup writes its chunks.
 5. Manual (release candidates on each platform being flipped, per the release rule in `AGENTS.md`): a checklist covering every former terminal entry point, every Phase 4 card, `/btw`, sharing with a guest, worktree exit, quit while working, crash restore with `--restore`, `/new`, `/resume`, fork and rewind. The owner accepted Windows Phase 6 manual criteria 5 and 6 on 2026-11-04 with the VM differences above; this does not establish the complete release-candidate checklist.
 
 **Gate.** A platform's release flip requires a semantic replacement for each terminal entry point, Phase 4's zero-screen-read scripted session, and passing live suites for the current omp. Windows Phase 6 has CI evidence for criteria 1-4 and owner acceptance of manual criteria 5 and 6 on 2026-11-04 with the recorded differences and limits. The owner chose the Windows default flip for 0.7.6. Classic code remains while the Classic omp terminal setting exists; any later removal release would remove the setting too and requires a separate owner decision. The default flip does not authorize publishing a release.

@@ -1,38 +1,31 @@
 {
   "schemaVersion": 1,
-  "tag": "v0.7.4",
-  "commit": "233c28252a211081e30202d4b0a41e02f45cad97",
-  "entryFile": "assets/index-BrD4viTj.js",
-  "entryBytes": 2017581,
+  "tag": "v0.7.6",
+  "commit": "f08786608844c54f2550c0de6b4d232634a7eafb",
+  "entryFile": "assets/index-pCByq7Sq.js",
+  "entryBytes": 1591722,
   "maxGrowthBytes": 20000,
-  "acceptedGrowth": {
-    "entryBytes": 2044096,
-    "reason": "0.7.5: Side questions first-frame presentation and put-away on close (/btw opens and closes the pane without the omp screen), the Suggestions switch below the composer and open-by-default shell and Python output. After 0.7.5: the large saved chat warning's resume check, decline handling and strings (its dialog loads from its own chunk)",
-    "acceptedOn": "2026-11-04"
-  },
+  "reason": "Owner approved a tighter baseline on 2026-11-04 to preserve the renderer entry reductions. The measured v0.7.6 release replaces v0.7.4 and its accepted growth exceptions, while retaining the 20,000-byte growth allowance.",
+  "acceptedOn": "2026-11-04",
   "measurement": {
-    "metric": "Uncompressed UTF-8 bytes of the single JavaScript module entry referenced by out/renderer/index.html. CSS, dynamic chunks and source maps are excluded.",
+    "metric": "Uncompressed bytes of the single JavaScript entry identified by isEntry in out/renderer/renderer-chunks.json, checked against the emitted file size as in guard-renderer-bundle.mjs. CSS, dynamic chunks and source maps are excluded.",
     "platform": "darwin",
     "arch": "arm64",
     "node": "v24.13.1",
     "electronVite": "5.0.0",
     "vite": "7.3.7",
     "react": "19.3.0",
-    "packageLockSha256": "6a819005a0b64f7c37acca951763443a2e53f9bbc8d4319777c98d08adbbcce2",
-    "method": "Built the unmodified release tag in a detached scratch checkout. Dependencies were symlinked from the existing installation without changing its node_modules symlink. The linked Vite, electron-vite and React versions match the tag's lockfile. No Electron process was launched.",
-    "buildWorkingDirectory": "/tmp/vomp-p7-classic-baseline-v074",
+    "packageLockSha256": "f313adf4f6a4a18c2fe8c9637702b7243951ae3cecbae00298c6754cf5eae4f3",
+    "method": "The integration owner built the unmodified v0.7.6 release tag in /tmp/vomp-measure-076 on 2026-11-05 with a verified node_modules symlink and npx electron-vite build. The measurement command selected the single isEntry chunk from emitted renderer metadata, checked its bytes against stat on the emitted file and verified the commit and lockfile checksum. The original /tmp/vomp-v076-measure result was discarded: worktree creation had copied a node_modules directory, so ln -s created a nested link instead of replacing that directory. The copied dependency tree produced a different entry. The diagnostic scratch worktree was removed; the integration owner owns cleanup of /tmp/vomp-measure-076. No Electron process was launched.",
+    "buildWorkingDirectory": "/tmp/vomp-measure-076",
     "commandsRun": [
-      "git worktree add --detach /tmp/vomp-p7-classic-baseline-v074 v0.7.4",
-      "ln -s /tmp/vomp-p7-flip/node_modules /tmp/vomp-p7-classic-baseline-v074/node_modules",
-      "npm run build",
-      "stat -f '%N %z bytes' out/renderer/assets/index-BrD4viTj.js",
-      "shasum -a 256 package-lock.json"
+      "git rev-parse HEAD && shasum -a 256 package-lock.json && node --input-type=module -e 'import { readFile, stat } from \"node:fs/promises\"; import { dirname, resolve } from \"node:path\"; const path = \"out/renderer/renderer-chunks.json\"; const metadata = JSON.parse(await readFile(path, \"utf8\")); const entries = metadata.chunks.filter(chunk => chunk.isEntry); if (entries.length !== 1) throw new Error(`Expected one entry, received ${entries.length}`); const entry = entries[0]; const size = (await stat(resolve(dirname(path), entry.fileName))).size; if (size !== entry.bytes) throw new Error(\"Entry file size disagrees with metadata\"); console.log(JSON.stringify({ entryFile: entry.fileName, entryBytes: entry.bytes, emittedBytes: size }, null, 2));'"
     ],
     "cleanReproduction": [
-      "git worktree add --detach /tmp/vomp-classic-baseline v0.7.4",
+      "git worktree add --detach /tmp/vomp-classic-baseline v0.7.6",
       "npm --prefix /tmp/vomp-classic-baseline ci",
-      "npm --prefix /tmp/vomp-classic-baseline run build",
-      "node -e 'const fs=require(\"node:fs\"); const root=\"/tmp/vomp-classic-baseline/out/renderer/\"; const html=fs.readFileSync(root+\"index.html\",\"utf8\"); const file=html.match(/<script[^>]*src=\"([^\"]+)\"/)[1]; console.log(file, fs.statSync(root+file).size);'"
+      "cd /tmp/vomp-classic-baseline && npx electron-vite build",
+      "node --input-type=module -e 'import { readFile, stat } from \"node:fs/promises\"; import { resolve } from \"node:path\"; const root=\"/tmp/vomp-classic-baseline/out/renderer\"; const metadata=JSON.parse(await readFile(resolve(root,\"renderer-chunks.json\"),\"utf8\")); const entries=metadata.chunks.filter(chunk=>chunk.isEntry); if(entries.length!==1) throw new Error(\"Expected one renderer entry\"); const entry=entries[0]; const bytes=(await stat(resolve(root,entry.fileName))).size; if(bytes!==entry.bytes) throw new Error(\"Entry file size disagrees with metadata\"); console.log(entry.fileName,bytes);'"
     ]
   }
 }

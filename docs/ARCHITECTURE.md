@@ -1027,8 +1027,8 @@ the current title, body and choices without moving focus or submitting answers.
 Rollup membership is recorded after writing the build, with sizes read from the emitted files.
 `npm run build` and both distribution paths emit `out/renderer/renderer-chunks.json` and
 `renderer-bundle-size.json`, and enforce at most 20,000 bytes of entry-chunk growth over the
-last classic release, v0.7.4 (`233c28252a211081e30202d4b0a41e02f45cad97`, 2,017,581 bytes).
-`scripts/renderer-classic-baseline.json` records the baseline and its reproduction commands.
+measured release baseline, v0.7.6 (`f08786608844c54f2550c0de6b4d232634a7eafb`, 1,591,722 bytes).
+`scripts/renderer-classic-baseline.json` keeps its filename and records the baseline, owner approval and reproduction commands.
 These are guard requirements and historical baseline evidence; each build's report
 provides its measured size when verification runs.
 On 2026-11-03, the owner accepted a measured entry ceiling of 2,041,903 bytes for 0.7.5: Side questions
@@ -1036,8 +1036,11 @@ first-frame presentation and put-away on close (`/btw` opens and closes the pane
 the Suggestions switch below the composer and open-by-default shell and Python output.
 On 2026-11-04, the owner accepted 2,044,096 bytes for the large saved chat warning: the resume check in
 `state/session.ts`, its decline handling and its strings stay in the entry, and the dialog loads lazily.
-The baseline file records the current exception in `acceptedGrowth` with its reason and acceptance date;
-the 20,000-byte default and the refusal of eager TSP view modules remain enforced.
+On 2026-11-04, the owner approved a tighter baseline to preserve the renderer entry reductions. The
+v0.7.6 tag was measured in a detached scratch worktree on 2026-11-05; its entry and the 20,000-byte
+allowance set a 1,611,722-byte ceiling. This replaces the v0.7.4 baseline and both growth exceptions.
+The baseline has no `acceptedGrowth`; the guard retains support for future explicitly approved growth
+and still refuses eager TSP view modules.
 
 `electron.vite.config.ts` bundles main and preload dependencies other than externalized packages. Pure-JavaScript main-process packages are devDependencies and are bundled into `out`; native `node-pty` remains a runtime dependency and is selectively included by `electron-builder.yml`. `electronLanguages` retains `en` and `en-US`; source maps are excluded from packaged output. `node-pty`'s package contents are trimmed to runtime files.
 
