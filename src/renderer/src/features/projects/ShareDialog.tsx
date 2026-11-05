@@ -14,6 +14,7 @@ import { controllerFor, focusedTabId, useApp } from "@/state/app";
 import { Button, Chip, Dialog, DialogContent, IconButton, Input, PresenceSwap, Segmented, StatusDot, Switch, spring, toast } from "@/ui";
 import { errorText } from "@shared/errors";
 import { type ShareFileAction, useShares } from "./share-store";
+import { ShareQr } from "./ShareQr";
 
 export type ShareTab = "link" | "file" | "move" | "invite";
 
@@ -61,7 +62,7 @@ export function ShareDialog({ props, close }: SheetProps<ShareProps | undefined>
 					) : tab === "file" ? (
 						<FilePanel sessionFile={sessionFile} />
 					) : (
-						<InvitePanel hostId={view?.host?.phase === "live" ? view.host.hostId : null} participants={view?.guest?.state?.participants ?? []} />
+						<InvitePanel hostId={view?.host?.hostId ?? null} participants={view?.guest?.state?.participants ?? []} />
 					)}
 				</PresenceSwap>
 			</DialogContent>
@@ -324,6 +325,8 @@ function InvitePanel({ hostId, participants }: { hostId: string | null; particip
 		setBusy(true);
 		try {
 			await window.vomp.invoke("collab:unpublish", hostId);
+		} catch (error) {
+			toast({ tone: "err", message: t("share.invite.stopFailed"), description: errorText(error) });
 		} finally {
 			setBusy(false);
 		}
@@ -343,6 +346,7 @@ function InvitePanel({ hostId, participants }: { hostId: string | null; particip
 						</span>
 					</div>
 					<p className="text-sm text-fg-faint">{t("share.invite.privacy")}</p>
+					<p className="text-sm text-fg-muted">{t("share.invite.linkLifetime")}</p>
 					<div className="flex justify-end">
 						<Button variant="primary" icon={<Broadcast />} loading={busy} onClick={() => void start()}>
 							{t("share.invite.start")}
@@ -356,8 +360,21 @@ function InvitePanel({ hostId, participants }: { hostId: string | null; particip
 						<span className="font-medium text-fg">{t(`share.invite.phase.${share.phase}`)}</span>
 						{share.error && share.phase !== "live" && <span className="truncate text-fg-muted">({share.error})</span>}
 					</div>
-					<CopyField label={t("share.invite.control")} description={t("share.invite.controlHint")} value={share.controlLink} />
-					<CopyField label={t("share.invite.view")} description={t("share.invite.viewHint")} value={share.viewLink} />
+					{share.keepsAwake && (
+						<p className="flex items-start gap-2 text-sm text-fg-muted">
+							<Desktop className="mt-0.5 size-4 shrink-0" aria-hidden />
+							{t("share.invite.keepsAwake")}
+						</p>
+					)}
+					{share.linkChanged && <p role="status" className="text-sm text-fg-muted">{t("share.invite.linkChanged")}</p>}
+					{share.controlLink ? (
+						<>
+							<ShareQr link={share.controlLink} />
+							<CopyField label={t("share.invite.control")} description={t("share.invite.controlHint")} value={share.controlLink} />
+							<CopyField label={t("share.invite.view")} description={t("share.invite.viewHint")} value={share.viewLink} />
+							<p className="text-sm text-fg-muted">{t("share.invite.linkLifetime")}</p>
+						</>
+					) : <p role="status" className="text-sm text-fg-muted">{t("share.invite.changingRoom")}</p>}
 					<div>
 						<h3 className="mb-2 text-md font-medium text-fg">{t("share.invite.people", { count: guests.length })}</h3>
 						{guests.length === 0 ? (

@@ -193,6 +193,14 @@ The practical consequence is that visual-omp does not reimplement omp: a slash c
 
 **MCP servers, skills and plugins, memory, usage limits and cost, session sharing and live collaboration, imports from Claude Code and Codex, and the session tree have their own screens.** omp's security scan and `omp cleanse` run from the command palette. Settings offers text size, reduced motion and light or dark themes; keyboard commands, screen-reader labels, a first-launch tour and Help's glossary provide other ways to find and use the controls.
 
+**Continue a running chat on your phone from Share → Invite.** Start sharing, then scan the QR code
+to open omp's browser client. The code grants control of the chat, including messages and approvals;
+a view-only link remains available. Rooms are encrypted end to end through omp's public relay.
+The computer stays awake while sharing, though closing its lid can still put it to sleep. If omp
+changes the room, the dialog provides a new code and links for reconnecting.
+Stop sharing disconnects guests. If you share the same room again, its previous code and links
+work again. Chat content is encrypted, while the relay can see connection metadata.
+
 ## Updating
 
 visual-omp checks GitHub for a new release about ten seconds after it opens and every 30 minutes while it stays open, and it checks omp the same way through `omp update --check`. **Settings → About** shows both versions and installs either update. A Homebrew install upgrades through `brew upgrade --cask visual-omp`, and any other macOS install downloads the new disk image. On Windows, a Scoop install closes, updates through `scoop update visual-omp` in a PowerShell window and opens again, and an installer copy downloads and runs the new installer. Open chats keep the omp version they started with until they restart, so after an omp update the app offers to restart them.

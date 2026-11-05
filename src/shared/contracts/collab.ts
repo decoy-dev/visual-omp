@@ -1,6 +1,6 @@
 /**
  * Live sharing ("Invite live"): publish a chat's private collab room to omp's public relay so
- * people elsewhere can watch — or type into — the running chat from omp's web client.
+ * people elsewhere can watch or control the running chat from omp's web client.
  *
  * Every chat already hosts a collab room on the app's loopback relay. Publishing makes that relay
  * host the same room on the public relay (`wss://my.omp.sh`, or the user's `collab.relayUrl` when
@@ -12,7 +12,7 @@
 /**
  * - `connecting`: opening the connection to the public relay.
  * - `live`: people with a link can join.
- * - `reconnecting`: the connection dropped; the app retries and guests rejoin by themselves.
+ * - `reconnecting`: retrying the relay connection, or waiting for omp's replacement room.
  * - `stopped`: sharing is off (see {@link LiveShareState.endedReason}).
  */
 export type LiveSharePhase = "connecting" | "live" | "reconnecting" | "stopped";
@@ -23,15 +23,19 @@ export interface LiveShareState {
 	phase: LiveSharePhase;
 	/** Public relay origin, e.g. `wss://my.omp.sh`. */
 	relayOrigin: string;
-	/** Browser link that can watch and type (room key + write token). */
+	/** Browser link that can control the chat, empty while omp replaces its room. */
 	controlLink: string;
-	/** Browser link that can only watch (room key alone). */
+	/** Browser link that can only watch, empty while omp replaces its room. */
 	viewLink: string;
+	/** A room replacement changed the browser links during this share. */
+	linkChanged: boolean;
+	/** This share currently holds the app's idle-sleep prevention. */
+	keepsAwake: boolean;
 	/** People connected through the public relay right now. */
 	remoteGuests: number;
 	/** Latest connection problem, in plain words; null while healthy. */
 	error: string | null;
-	/** `stopped`: the user stopped sharing. `room-closed`: the chat restarted or ended, which closes its room. */
+	/** `stopped`: sharing ended. `room-closed`: omp ended or replaced the room. */
 	endedReason: "stopped" | "room-closed" | null;
 }
 

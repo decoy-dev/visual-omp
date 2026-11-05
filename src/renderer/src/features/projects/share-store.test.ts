@@ -1,10 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { LiveShareState } from "@shared/contracts/collab";
 import { useShares } from "./share-store";
 
 const fake = vi.hoisted(() => {
 	const invoke = vi.fn();
-	vi.stubGlobal("window", { vomp: { invoke, on: () => () => undefined } });
-	return { invoke };
+	let listener: (state: LiveShareState) => void = () => {};
+	vi.stubGlobal("window", { vomp: { invoke, on: (_event: string, callback: (state: LiveShareState) => void) => {
+		listener = callback;
+		return () => {};
+	} } });
+	return { invoke, emit: (state: LiveShareState) => listener(state) };
 });
 
 beforeEach(() => {
@@ -61,5 +66,36 @@ describe("local share operation state", () => {
 		await useShares.getState().runFileAction("anonymize");
 		expect(fake.invoke).not.toHaveBeenCalled();
 		expect(useShares.getState().fileAction).toBeNull();
+	});
+});
+
+describe("live-share IPC ordering", () => {
+	const original: LiveShareState = {
+		hostId: "host-a", roomId: "room-original", phase: "live", relayOrigin: "wss://my.omp.sh",
+		controlLink: "https://my.omp.sh/#original.control", viewLink: "https://my.omp.sh/#original.view",
+		linkChanged: false, keepsAwake: true, remoteGuests: 0, error: null, endedReason: null,
+	};
+
+	it.each(["load", "start"] as const)("keeps the new room when a delayed %s reply carries old links", async operation => {
+		const reply = Promise.withResolvers<LiveShareState>();
+		useShares.setState({ byHost: { "host-a": original } });
+		fake.invoke.mockReturnValue(reply.promise);
+		const pending = useShares.getState()[operation]("host-a");
+		const newer: LiveShareState = { ...original, roomId: "room-new", controlLink: "https://my.omp.sh/#new.control", viewLink: "https://my.omp.sh/#new.view", linkChanged: true };
+		fake.emit(newer);
+		reply.resolve(original);
+		await pending;
+		expect(useShares.getState().byHost["host-a"]).toEqual(newer);
+	});
+
+	it.each(["load", "start"] as const)("keeps Stop sharing when an older %s reply arrives afterwards", async operation => {
+		const reply = Promise.withResolvers<LiveShareState>();
+		fake.invoke.mockReturnValue(reply.promise);
+		const pending = useShares.getState()[operation]("host-a");
+		const stopped: LiveShareState = { ...original, phase: "stopped", keepsAwake: false, endedReason: "stopped" };
+		fake.emit(stopped);
+		reply.resolve(original);
+		await pending;
+		expect(useShares.getState().byHost["host-a"]).toEqual(stopped);
 	});
 });

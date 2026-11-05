@@ -1707,11 +1707,19 @@ export class SessionHost {
 		}
 		this.state = { ...this.state, ...patch };
 		broadcast("host:state", this.state);
+		for (const listener of hostStateListeners) listener(this.state);
 		if (this.#tsp && (patch.generation !== undefined || patch.phase !== undefined || patch.sessionFile !== undefined)) this.#publishTsp();
 	}
 }
 
 const hosts = new Map<string, SessionHost>();
+const hostStateListeners = new Set<(state: HostState) => void>();
+
+/** Main-process lifecycle observers, including live sharing across room rotations. */
+export function onHostState(listener: (state: HostState) => void): () => void {
+	hostStateListeners.add(listener);
+	return () => hostStateListeners.delete(listener);
+}
 
 // A new chat's session file appears after omp writes its first entry; keep host state current.
 onSessionsChanged(() => {

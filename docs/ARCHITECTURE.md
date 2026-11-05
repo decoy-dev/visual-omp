@@ -855,6 +855,25 @@ IPC requests are accepted only from the app's configured main-frame document. Br
 
 Sharing retains omp's project-before-global endpoint precedence. Before publishing through a relay or browser client other than the default `my.omp.sh` endpoints, main shows both endpoint URLs in a native confirmation dialog. Cancellation leaves the room private. Installer downloads retain GitHub's asset digest and validate supplied SHA256 checksums before renaming the partial file or reporting completion. Each response chunk is written completely, and a zero-progress disk write fails the download. Older assets without a digest retain their existing HTTPS trust checks.
 
+Live sharing in `main/features/collab.ts` observes `onHostState` updates in main, so it follows room
+replacement without a mounted dialog or renderer. A share retains its approved relay and browser
+endpoints across generations. Room closure clears the obsolete control and view links; the next
+resolved host link publishes a replacement bridge, replaces both browser links and marks the link
+changed. The remote browser must reconnect through that new link. Explicit Stop sharing or an exited
+host disables automatic publication. Concurrent Start sharing calls share one pending request, and
+stopping or replacing a host while endpoint consent is pending cancels publication.
+Stop sharing unpublishes the bridge without changing omp's room credentials. Publishing that unchanged
+room again restores the same control and view URLs, so previously copied links and QR codes work
+again. The Invite dialog discloses this while shared and while stopped. Chat content is encrypted;
+connection metadata remains visible to the relay.
+
+One Electron `powerSaveBlocker` with `prevent-app-suspension` covers all active shares, including
+room replacement and network reconnection. Stopping the last share, host exit or a terminal bridge
+failure releases it. It does not keep the display on or override lid-close suspension. The share
+state reports sleep prevention to the dialog. `ShareQr` and `qrcode-generator` are imported only by
+the lazy Share dialog; generation runs locally and never sends the room key to a QR service. Fixed
+QR color tokens preserve black modules and a white quiet zone in either theme.
+
 Executable selection: `main/services/executable.ts` resolves app-selected tools before spawning them. PATH discovery considers fully absolute directories and regular executable files, so an empty or relative PATH entry cannot select a program from the project folder. POSIX checks execute permission. Windows uses case-insensitive environment keys, native `.com` and `.exe` suffixes plus exact extensionless files, and rejects drive-relative and root-relative search paths. Symlinked installations remain supported. The terminal resolves its shell executable separately and passes the user's requested shell command through unchanged. An explicit omp path keeps its normalized absolute identity across version detection and later project commands.
 
 Ownership: `main/omp/elsewhere.ts` reads omp 18.14's machine-global session-id lease under `run/session-owners`, including the shared XDG state root when present. macOS observes the persistent flock sidecar's open descriptor; Linux reads the abstract socket registry; Windows opens the existing global mutex without creating or waiting on it. Linux and Windows names use pi-natives' two seeded xxh64 hashes of the absolute sidecar path. A missing or unreadable header or lease uses the existing descriptor and terminal-breadcrumb fallback; Windows reports unknown when its mutex check cannot be completed. A header id makes file aliases meet the same lease, but a matching app host id alone never establishes ownership. macOS excludes an app host only when its PID is the observed holder. omp owns the final write-time decision and creates a continuation if another process claimed the lease meanwhile. omp's public lease CLI and RPC report `held` and `unknown` without identifying the holder, so they cannot yet replace this detector's own-host attribution.

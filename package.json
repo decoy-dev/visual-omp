@@ -69,6 +69,7 @@
     "marked": "^18.0.14",
     "mermaid": "^12.2.0",
     "motion": "^13.4.6",
+    "qrcode-generator": "^2.0.4",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-i18next": "^17.0.15",

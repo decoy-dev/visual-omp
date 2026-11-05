@@ -176,6 +176,13 @@ Full timestamp tooltips open from keyboard focus and close with Escape. Existing
 - Chats can be imported from Claude Code and Codex.
 - The session tree navigator shows every branch of a chat.
 
+### Sharing
+- Share > Invite publishes the running chat through omp's public relay and browser client at my.omp.sh, with end-to-end encrypted rooms. A configured custom relay or browser client requires the existing native confirmation before publication.
+- The QR code opens the control link, so a phone can send messages, answer questions, approve actions and stop a turn through omp's browser client. The dialog explains that anyone with the code can control the chat. Copyable control and view-only links remain available.
+- Stop sharing disconnects guests without changing the room credentials. If the same room is shared again, its previous QR code and links work again. The dialog explains this beside the active links and before sharing resumes. Encryption protects chat content; the relay can see connection metadata.
+- The app prevents idle system sleep while any chat is shared, including relay reconnection and room replacement. The display may turn off, and closing a laptop lid can still suspend it. The dialog states this behavior. Stopping the last share or closing its chat releases sleep prevention.
+- When omp replaces a shared chat's room during `/new`, `/resume`, a fork or restart, sharing follows the new room using the previously approved endpoints. The dialog removes obsolete links while waiting, then updates both links and the QR code and explains that connected guests need the new link. Ending omp stops sharing. A fork opened as a separate chat does not inherit another chat's share.
+
 ### Text interactions
 - Right-clicking an editable field opens the operating system's editing menu, including spelling suggestions and Add to dictionary for a misspelled word. Undo, Redo, Cut, Copy, Paste and Select all reflect the field's available actions; Windows also offers Delete, and rich-text fields offer Paste and match style.
 - Right-clicking selected read-only text offers Copy. macOS also offers Look up. Nothing selected outside an editable field opens no native menu.

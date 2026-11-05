@@ -42,13 +42,16 @@ export const useShares = create<ShareStore>()((set, get) => ({
 		}
 	},
 	async load(hostId) {
+		const previous = get().byHost[hostId];
 		const state = await window.vomp.invoke("collab:shared", hostId);
-		if (state) set(store => ({ byHost: { ...store.byHost, [hostId]: state } }));
+		// A room-change event received while awaiting IPC takes precedence over this reply.
+		if (state && previous === get().byHost[hostId]) set(store => ({ byHost: { ...store.byHost, [hostId]: state } }));
 	},
 	async start(hostId) {
+		const previous = get().byHost[hostId];
 		const state = await window.vomp.invoke("collab:publish", hostId);
-		set(store => ({ byHost: { ...store.byHost, [hostId]: state } }));
-		return state;
+		if (previous === get().byHost[hostId]) set(store => ({ byHost: { ...store.byHost, [hostId]: state } }));
+		return get().byHost[hostId] ?? state;
 	},
 }));
 

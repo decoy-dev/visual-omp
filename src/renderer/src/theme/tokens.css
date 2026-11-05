@@ -45,6 +45,9 @@
 	--fg-muted: oklch(0.45 0.013 195);
 	--fg-faint: oklch(0.535 0.012 195);
 	--fg-inverse: oklch(0.995 0.002 195);
+	/* Camera-readable QR codes retain their light background in either app theme. */
+	--qr-bg: oklch(1 0 0);
+	--qr-fg: oklch(0 0 0);
 
 	/* 1.4 accent: one teal. The old spectrum tokens resolve to the accent so legacy callers stay single-color. */
 	--accent: oklch(0.5 0.082 192);
