@@ -21,6 +21,7 @@ import { runCommand } from "../palette/run";
 import { usePickerRequests } from "./pickers";
 import { setSessionMode } from "./nativeModes";
 import { reportFailure } from "./drive";
+import { exportChat } from "./export";
 
 // ─── Catalog ───────────────────────────────────────────────────────────────
 
@@ -166,7 +167,12 @@ const ROUTES: Record<string, Route> = {
 	advisor: (args, session) => args.toLowerCase() === "configure" && runCommand("chat.advisor", contextOf(session)),
 	new: bare(command("chat.new")),
 	share: bare(command("chat.share")),
-	export: bare(command("chat.export")),
+	export: (args, session) => {
+		if (args === "") return command("chat.export")(session);
+		if (args !== "--themes") return false;
+		void exportChat(session, true);
+		return true;
+	},
 	hotkeys: bare(settingsSection("shortcuts")),
 	fork: (args, session, typed) => {
 		if (args === "") return runCommand("chat.fork", contextOf(session));
@@ -212,7 +218,7 @@ export async function routeSlash(session: SessionController, line: string): Prom
 		return true;
 	}
 	const goalAction = parsed.name === "goal" && GOAL_ACTIONS.includes(parsed.args);
-	if ((goalAction || (NEEDS_OMP.has(parsed.name) && parsed.args === "")) && (view.mode === "history" || view.mode === "exited")) {
+	if ((goalAction || (NEEDS_OMP.has(parsed.name) && (parsed.args === "" || parsed.name === "export" && parsed.args === "--themes"))) && (view.mode === "history" || view.mode === "exited")) {
 		await session.ensureLive();
 		// For a chat without a running omp, starting it is the whole restart.
 		if (parsed.name === "restart") return true;

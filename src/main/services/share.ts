@@ -1,5 +1,5 @@
-import { isAbsolute } from "node:path";
-import type { AnonymizedCopyResult, ShareLinkResult } from "@shared/contracts/share";
+import { isAbsolute, posix, win32 } from "node:path";
+import type { AnonymizedCopyResult, DefaultExportResult, ShareLinkResult } from "@shared/contracts/share";
 
 /**
  * Parse `omp share` stdout (omp has no JSON mode for it):
@@ -17,7 +17,14 @@ export function parseShareOutput(stdout: string): ShareLinkResult | null {
 
 /** Parse `omp --export` stdout: `Exported to: <path>` (the path may contain spaces). */
 export function parseExportOutput(stdout: string): string | null {
-	return /^Exported to:\s*(.+?)\s*$/m.exec(stdout)?.[1] ?? null;
+	return /^Exported to:[ \t]+(\S[^\r\n]*?)[ \t]*\r?$/m.exec(stdout)?.[1] ?? null;
+}
+
+/** Match omp's filename while avoiding Bun's Windows mkdir(".") and whitespace slash parser. */
+export function defaultExportPlan(sessionFile: string, cwd: string, useUserThemes: boolean, platform = process.platform): DefaultExportResult {
+	const paths = platform === "win32" ? win32 : posix;
+	const path = paths.resolve(cwd, `omp-session-${paths.basename(sessionFile, ".jsonl")}.html`);
+	return { path, command: /\s/.test(path) ? null : `/export ${useUserThemes ? "--themes " : ""}${path}` };
 }
 
 /** `session pack` and `session unpack` print exactly one absolute path on stdout. */

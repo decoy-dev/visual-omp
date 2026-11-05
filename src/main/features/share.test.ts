@@ -9,9 +9,10 @@ const fake = vi.hoisted(() => ({
 	resolveSession: vi.fn(),
 	save: vi.fn(),
 	open: vi.fn(),
+	downloads: "",
 }));
 vi.mock("electron", () => ({
-	app: { getPath: () => "downloads" },
+	app: { getPath: () => fake.downloads },
 	BrowserWindow: { getFocusedWindow: () => null },
 	dialog: { showSaveDialog: (...args: unknown[]) => fake.save(...args), showOpenDialog: (...args: unknown[]) => fake.open(...args) },
 }));
@@ -29,6 +30,7 @@ const folder = join(tmpdir(), "share-regression", "project folder");
 
 beforeEach(() => {
 	vi.resetAllMocks();
+	fake.downloads = join(folder, "Downloads");
 	fake.resolveSession.mockResolvedValue(newestFile);
 	fake.save.mockResolvedValue({ canceled: false, filePath: archive });
 	fake.open.mockResolvedValue({ canceled: false, filePaths: [folder] });
@@ -100,6 +102,69 @@ describe("anonymized copies", () => {
 	it("does not invent a path after exit zero without the completion line", async () => {
 		fake.run.mockResolvedValue({ code: 0, stdout: "Review before sharing.", stderr: "" });
 		await expect(call("share:anonymize", oldFile)).rejects.toThrow("Review before sharing");
+	});
+});
+
+describe("default chat exports", () => {
+	it("returns an absolute live command without starting a second omp process", async () => {
+		const cwd = join(tmpdir(), "export-project");
+		const path = join(cwd, "omp-session-old.html");
+		await expect(call("share:defaultExport", oldFile, cwd, true)).resolves.toEqual({ path, command: `/export --themes ${path}` });
+		expect(fake.run).not.toHaveBeenCalled();
+		expect(fake.resolveSession).not.toHaveBeenCalled();
+	});
+
+	it.each([false, true])("prefers a whitespace-free Downloads path and keeps the live themes choice: %s", async themes => {
+		fake.downloads = join(tmpdir(), "Downloads");
+		const path = join(fake.downloads, "omp-session-old.html");
+		await expect(call("share:defaultExport", oldFile, folder, themes)).resolves.toEqual({ path, command: `/export ${themes ? "--themes " : ""}${path}`, fallback: "downloads" });
+		expect(fake.run).not.toHaveBeenCalled();
+		expect(fake.save).not.toHaveBeenCalled();
+	});
+
+	it("serializes overlapping CLI exports to a resolved destination and permits retry after failure", async () => {
+		const firstWrite = Promise.withResolvers<{ code: number; stdout: string; stderr: string }>();
+		const secondWrite = Promise.withResolvers<{ code: number; stdout: string; stderr: string }>();
+		fake.run.mockReturnValueOnce(firstWrite.promise).mockReturnValueOnce(secondWrite.promise);
+		const path = join(folder, "omp-session-old.html");
+		const first = call("share:defaultExport", oldFile, folder, false);
+		const failed = expect(first).rejects.toThrow("permission denied");
+		const second = call("share:defaultExport", oldFile, join(folder, "sub", ".."), true);
+		await vi.waitFor(() => expect(fake.run).toHaveBeenCalledTimes(1));
+		firstWrite.resolve({ code: 1, stdout: "", stderr: "permission denied" });
+		await failed;
+		await vi.waitFor(() => expect(fake.run).toHaveBeenCalledTimes(2));
+		secondWrite.resolve({ code: 0, stdout: `Exported to: ${path}\n`, stderr: "" });
+		await expect(second).resolves.toEqual({ path, command: null, fallback: "cli" });
+		fake.run.mockResolvedValue({ code: 0, stdout: `Exported to: ${path}\n`, stderr: "" });
+		await expect(call("share:defaultExport", oldFile, folder, false)).resolves.toEqual({ path, command: null, fallback: "cli" });
+		expect(fake.run).toHaveBeenCalledTimes(3);
+	});
+
+	it("clears a failed CLI export so a fresh request retries", async () => {
+		fake.run.mockResolvedValueOnce({ code: 1, stdout: "", stderr: "permission denied" });
+		await expect(call("share:defaultExport", oldFile, folder, false)).rejects.toThrow("permission denied");
+		const path = join(folder, "omp-session-old.html");
+		fake.run.mockResolvedValue({ code: 0, stdout: `Exported to: ${path}\n`, stderr: "" });
+		await expect(call("share:defaultExport", oldFile, folder, false)).resolves.toEqual({ path, command: null, fallback: "cli" });
+		expect(fake.run).toHaveBeenCalledTimes(2);
+	});
+
+	it.each([false, true])("exports the exact live file through argv when whitespace prevents slash parsing (themes=%s)", async themes => {
+		const path = join(folder, "omp-session-old.html");
+		fake.run.mockResolvedValue({ code: 0, stdout: `Exported to: ${path}\r\n`, stderr: "" });
+		await expect(call("share:defaultExport", oldFile, folder, themes)).resolves.toEqual({ path, command: null, fallback: "cli" });
+		expect(fake.run).toHaveBeenCalledWith(["--export", oldFile, path], { timeoutMs: 180_000, cwd: folder });
+		expect(fake.resolveSession).not.toHaveBeenCalled();
+		expect(fake.save).not.toHaveBeenCalled();
+	});
+
+	it.each([
+		{ code: 1, stdout: "", stderr: "Error: permission denied" },
+		{ code: 0, stdout: "No completion path", stderr: "" },
+	])("reports unsuccessful CLI export output: %j", async result => {
+		fake.run.mockResolvedValue(result);
+		await expect(call("share:defaultExport", oldFile, folder, false)).rejects.toThrow(result.stderr || result.stdout);
 	});
 });
 

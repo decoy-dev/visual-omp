@@ -202,6 +202,35 @@ Each SessionHost:
    restart keeps `--resume`. The collab client seeds `agent_start.resumedToolCallIds` from saved
    assistant calls, including events received before the snapshot finishes.
 
+The session menu, palette and bare typed `/export` share `session-tools/export.ts`; typed
+`/export --themes` calls the same action with the theme flag. After editor readiness, the action reads
+the controller's current session file and working folder. Main's `share:defaultExport` builds
+omp's default filename through `services/share.ts` using an absolute native path. Without whitespace,
+it returns `/export [--themes] <absolute path>` for the live host, preserving its full export state.
+When that path contains whitespace, main tries the same filename in `app.getPath("downloads")`.
+If the Downloads destination is whitespace-free, it returns a live slash command with the theme
+flag intact; the success toast explains the folder choice. If both destinations contain whitespace,
+main runs `omp --export <exact session file> <absolute chat-folder output>` through `runOmp`,
+which uses the existing binary locator, user environment and shell-free `execFile` with a three-minute
+timeout. CLI writes are serialized by resolved destination, with the in-flight entry removed in
+`finally` so failed writes permit retry. This fallback requires `Exported to: ` completion output.
+Its success toast discloses that it uses default themes and excludes the live system prompt and
+tool list. Both paths retain Show file, and slash-result parsing preserves Windows drive-letter colons.
+Explicit typed output paths remain omp-owned. The Share dialog retains its separate Save export.
+
+Persistence evidence from the installed omp 18.16.0 bundle
+(`~/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js`): in
+`packages/coding-agent/src/session/session-manager.ts`, `SessionManager.appendMessage` inserts an
+entry and invokes its persistence path before `onEntryAppended` notifies collab. The default
+disk storage in `session/session-storage.ts` supplies `appendSync`, which loops over
+`fs.writeSync` until the complete serialized entry has been written. Initial publication and
+rewrites use `writeLinesSync` and synchronous temporary-file rename. Its writer's `flush` checks
+stored errors; it does not add an `fsync` or a pending append buffer. Thus successful completed
+entries are already visible to a separate CLI reader before their collab notification. This
+establishes read visibility for the default local disk store, without a crash-durability guarantee.
+`readyEditor` only establishes input readiness; the fallback relies on omp's synchronous local
+persistence ordering, without adding a delay or copying the transcript itself.
+
 Large saved chats: before `SessionController.#start()` launches omp on a saved file, it asks main for the
 file's size (`sessions:size`, a `stat` that returns null when the file can't be read). At
 `LARGE_RESUME_BYTES` (32 MiB, `registry/guards.ts`) or more, it waits on the resume guard that

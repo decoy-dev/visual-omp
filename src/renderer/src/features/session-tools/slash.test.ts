@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
 		focusChatSearch: vi.fn(),
 		toast: vi.fn(),
 		setMode: vi.fn(),
+		exportChat: vi.fn(),
 	};
 });
 vi.mock("@/ui", () => ({ toast: mocks.toast }));
@@ -28,6 +29,7 @@ vi.mock("../../state/app", () => ({ useApp: { setState: mocks.setState, getState
 vi.mock("../../shell/Sidebar", () => ({ focusChatSearch: mocks.focusChatSearch }));
 vi.mock("./pickers", () => ({ usePickerRequests: { getState: () => ({ openThinking: mocks.openThinking }) } }));
 vi.mock("./nativeModes", () => ({ setSessionMode: mocks.setMode }));
+vi.mock("./export", () => ({ exportChat: mocks.exportChat }));
 vi.mock("../btw/BtwPane", () => ({ BtwDrawerContent: { preload: async () => {} } }));
 vi.mock("../btw/BtwPaneContent", () => ({ openBtwDrawer: async (session: { tabId: string }, host: { hostId: string; generation: number; tspEpoch: number }, question: string) => {
 	mocks.setState(state => ({ btwDrawers: { ...state.btwDrawers, [session.tabId]: true } }));
@@ -91,6 +93,14 @@ describe("routeSlash", () => {
 		expect(ranCommands()).toEqual(["app.settings", "chat.tree", "chat.model"]);
 	});
 
+	it("shares the Export command for bare export and preserves the themes flag", async () => {
+		expect(await routeSlash(session, " /export  ")).toBe(true);
+		expect(ranCommands()).toEqual(["chat.export"]);
+		expect(await routeSlash(session, "/export --themes")).toBe(true);
+		expect(mocks.exportChat).toHaveBeenCalledWith(session, true);
+		for (const line of ["/export /tmp/out.html", "/export --themes C:\\chat.html", "/export --other"]) expect(await routeSlash(session, line)).toBe(false);
+	});
+
 	it("leaves argument forms the matrix gives to omp", async () => {
 		for (const line of ["/fast on", "/goal budget 100k", "/model x", "/mcp list", "/login anthropic", "/switch @smol", "/resume abc123", "/fork elsewhere"]) {
 			expect(await routeSlash(session, line), line).toBe(false);
@@ -112,7 +122,7 @@ describe("routeSlash", () => {
 			ensureLive.mockReset().mockResolvedValue(undefined);
 		});
 
-		it.each(["/restart", "/plan", "/vibe", "/export", "/goal pause"])("returns %s to the composer when the user declines resuming the chat", async line => {
+		it.each(["/restart", "/plan", "/vibe", "/export", "/export --themes", "/goal pause"])("returns %s to the composer when the user declines resuming the chat", async line => {
 			ensureLive.mockRejectedValue(new ResumeDeclinedError());
 			await expect(routeSlash(saved, line)).rejects.toBeInstanceOf(ResumeDeclinedError);
 			expect(mocks.runCommand).not.toHaveBeenCalled();

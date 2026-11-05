@@ -7,10 +7,11 @@ import { userEnv } from "../env";
 import { handle } from "../ipc";
 import { runOmp } from "../omp/cli";
 import { allSessions, resolveSessionFile } from "../omp/sessions";
-import { exportFileName, parseAnonymizeOutput, parseExportOutput, parseShareOutput, parseTransferOutput } from "../services/share";
+import { defaultExportPlan, exportFileName, parseAnonymizeOutput, parseExportOutput, parseShareOutput, parseTransferOutput } from "../services/share";
 
 const SHARE_TIMEOUT_MS = 180_000;
 const EXPORT_TIMEOUT_MS = 180_000;
+const htmlExports = new Map<string, Promise<string>>();
 
 async function shareLink(sessionFile: string, options: ShareLinkOptions = {}): Promise<ShareLinkResult> {
 	const file = await resolveSessionFile(sessionFile);
@@ -45,13 +46,23 @@ async function exportHtml(input: string, outputPath?: string): Promise<string | 
 	const sessionFile = await resolveSessionFile(input);
 	const target = outputPath ? resolve(outputPath) : await askExportPath(sessionFile);
 	if (!target) return null;
-	// `omp --export <session> <output>`: the first positional argument is the output path.
-	const result = await runOmp(["--export", sessionFile, target], { timeoutMs: EXPORT_TIMEOUT_MS });
-	const written = result.code === 0 ? parseExportOutput(result.stdout) : null;
-	if (!written) {
-		throw new Error(result.stderr.trim() || result.stdout.trim() || `omp --export exited with ${result.code}`);
-	}
-	return resolve(written);
+	return writeHtmlExport(sessionFile, target);
+}
+
+function writeHtmlExport(sessionFile: string, target: string, cwd?: string): Promise<string> {
+	const destination = resolve(target);
+	const previous = htmlExports.get(destination);
+	const pending = (previous?.catch(() => undefined) ?? Promise.resolve()).then(async () => {
+		// argv preserves spaces without involving a shell. CLI exports use omp's default themes.
+		const result = await runOmp(["--export", sessionFile, destination], { timeoutMs: EXPORT_TIMEOUT_MS, ...(cwd ? { cwd } : {}) });
+		const written = result.code === 0 ? parseExportOutput(result.stdout) : null;
+		if (!written) throw new Error(result.stderr.trim() || result.stdout.trim() || `omp --export exited with ${result.code}`);
+		return resolve(written);
+	}).finally(() => {
+		if (htmlExports.get(destination) === pending) htmlExports.delete(destination);
+	});
+	htmlExports.set(destination, pending);
+	return pending;
 }
 
 async function askFolder(title: string): Promise<string | null> {
@@ -166,6 +177,13 @@ async function importSources(): Promise<ImportSource[]> {
 export function register(): void {
 	handle("share:link", (sessionFile, options) => shareLink(sessionFile, options));
 	handle("share:exportHtml", (sessionFile, outputPath) => exportHtml(sessionFile, outputPath));
+	handle("share:defaultExport", async (sessionFile, cwd, useUserThemes) => {
+		const plan = defaultExportPlan(sessionFile, cwd, useUserThemes);
+		if (plan.command !== null) return plan;
+		const downloads = defaultExportPlan(sessionFile, app.getPath("downloads"), useUserThemes);
+		if (downloads.command !== null) return { ...downloads, fallback: "downloads" as const };
+		return { ...plan, path: await writeHtmlExport(sessionFile, plan.path, cwd), fallback: "cli" as const };
+	});
 	handle("share:pack", sessionFile => pack(sessionFile));
 	handle("share:unpack", () => unpack());
 	handle("share:anonymize", sessionFile => anonymize(sessionFile));

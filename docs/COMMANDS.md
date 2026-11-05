@@ -68,7 +68,7 @@ The table describes the form without arguments unless it shows one.
 | `/tree`, `/branch`, `/rewind` | Native: the session tree |
 | `/goal`, `/loop` | Native: the goal and loop dialogs. `/goal pause`, `resume`, `drop`: native extension controls. Other arguments: Result, and Card for omp's goal prompts |
 | `/plan`, `/vibe` | Native: the plan and vibe toggles. With a prompt: Result (a turn) |
-| `/new`, `/share`, `/export`, `/restart` | Native: new chat, Share dialog, export, restart. `/export <args>`: Result |
+| `/new`, `/share`, `/export`, `/restart` | Native: new chat, Share dialog, export, restart. `/export` and `/export --themes` prefer an absolute chat-folder path, then Downloads for whitespace paths; CLI export is the last fallback. `/export <path>`: Result |
 | `/hotkeys` | Native: Settings → Shortcuts, which lists the app's shortcuts. In classic chats, typing `/hotkeys` directly in the terminal sheet opens omp's own key list |
 | `/fork` | Native: fork into a new chat. `/fork pane`, `window`, `tab`: Guarded, offering a fork in a new chat |
 | `/git` | Native: the Changes pane. `/git <revision>`: Sheet |

@@ -56,6 +56,13 @@ export interface ImportSource {
 	launchArgs: string[];
 }
 
+/** A live slash command, or a completed CLI export when whitespace prevents slash parsing. */
+export interface DefaultExportResult {
+	path: string;
+	command: string | null;
+	fallback?: "downloads" | "cli";
+}
+
 declare module "../ipc" {
 	interface IpcInvokeMap {
 		/**
@@ -69,6 +76,8 @@ declare module "../ipc" {
 		 * Resolves the written file path.
 		 */
 		"share:exportHtml": { args: [sessionFile: string, outputPath?: string]; result: string | null };
+		/** Export to omp's default filename in the chat folder, preferring its live slash command. */
+		"share:defaultExport": { args: [sessionFile: string, cwd: string, useUserThemes: boolean]; result: DefaultExportResult };
 		/** Pack a session, artifacts and image blobs into a tar chosen in a native Save dialog. Null on cancel. */
 		"share:pack": { args: [sessionFile: string]; result: ShareFileResult | null };
 		/** Choose a tar and its project folder, then let omp unpack it. The returned path is a saved session. Null on cancel. */

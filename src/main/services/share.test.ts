@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { exportFileName, parseAnonymizeOutput, parseExportOutput, parseShareOutput, parseTransferOutput } from "./share";
+import { defaultExportPlan, exportFileName, parseAnonymizeOutput, parseExportOutput, parseShareOutput, parseTransferOutput } from "./share";
 
 describe("parseShareOutput", () => {
 	it("reads the share URL, gist and truncation note", () => {
@@ -21,6 +21,34 @@ describe("parseShareOutput", () => {
 describe("parseExportOutput", () => {
 	it("keeps spaces in the exported path (real omp 18.4.4 output)", () => {
 		expect(parseExportOutput("Exported to: /tmp/vomp-test/out dir/x.html\n")).toBe("/tmp/vomp-test/out dir/x.html");
+	});
+	it("preserves a Windows drive and spaces with CRLF", () => {
+		expect(parseExportOutput("Exported to: C:\\Users\\A User\\chat.html\r\n")).toBe("C:\\Users\\A User\\chat.html");
+	});
+	it.each(["", "Exported to:\nnot a path", "Exported to: \r\n", "Failed to export session: EEXIST"])("rejects missing completion paths: %j", stdout => {
+		expect(parseExportOutput(stdout)).toBeNull();
+	});
+});
+
+describe("defaultExportPlan", () => {
+	it.each([
+		["darwin", "/sessions/2026-11-05_id.jsonl", "/project/sub/..", "/project/omp-session-2026-11-05_id.html"],
+		["linux", "/sessions/session.jsonl", "/project", "/project/omp-session-session.html"],
+		["win32", "C:\\sessions\\2026-11-05_id.jsonl", "C:\\project\\sub\\..", "C:\\project\\omp-session-2026-11-05_id.html"],
+		["win32", "\\\\server\\share\\sessions\\chat.jsonl", "\\\\server\\share\\project", "\\\\server\\share\\project\\omp-session-chat.html"],
+	] as const)("uses an absolute default path on %s", (platform, file, cwd, path) => {
+		expect(defaultExportPlan(file, cwd, false, platform)).toEqual({ path, command: `/export ${path}` });
+		expect(defaultExportPlan(file, cwd, true, platform)).toEqual({ path, command: `/export --themes ${path}` });
+	});
+
+	it.each([
+		["darwin", "/sessions/chat.jsonl", "/project folder", "/project folder/omp-session-chat.html"],
+		["win32", "C:\\sessions\\chat.jsonl", "C:\\Users\\A User", "C:\\Users\\A User\\omp-session-chat.html"],
+		["darwin", "/sessions/chat name.jsonl", "/project", "/project/omp-session-chat name.html"],
+		["win32", "C:\\sessions\\chat name.jsonl", "C:\\project", "C:\\project\\omp-session-chat name.html"],
+		["linux", "/sessions/chat.jsonl", "/project\tfolder", "/project\tfolder/omp-session-chat.html"],
+	] as const)("chooses CLI export for whitespace on %s", (platform, file, cwd, path) => {
+		for (const themes of [false, true]) expect(defaultExportPlan(file, cwd, themes, platform)).toEqual({ path, command: null });
 	});
 });
 
