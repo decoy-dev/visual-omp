@@ -36,6 +36,11 @@ const fakes = vi.hoisted(() => {
 			this.snapshot = { ...this.snapshot, awaitingAsyncWork: false };
 			for (const listener of this.listeners) listener();
 		}
+		settleIdle(revision: number): void {
+			if (revision !== this.snapshot.idleCheckRevision) return;
+			this.snapshot = { ...this.snapshot, working: false, idleCheckRevision: undefined };
+			for (const listener of this.listeners) listener();
+		}
 		/** What the real client publishes: `waiting` until omp's snapshot arrives, then `live`. */
 		emit(phase: GuestSnapshot["phase"], entries: readonly SessionEntry[], working = false, extra: Partial<GuestSnapshot> = {}): void {
 			this.snapshot = { phase, entries, working, uiRequest: null, agents: [], notices: [], progress: new Map(), lifecycle: new Map(), activeTools: new Map(), stream: null, ...extra } as unknown as GuestSnapshot;
@@ -306,6 +311,64 @@ describe("SessionController working start", () => {
 		expect(events).toEqual(["finished"]);
 		expect(session.getSnapshot().working).toBe(false);
 		expect(chatStatus(session.getSnapshot())).toBe("live");
+	});
+
+	it("does not finish or deliver queued work after an idle sample corrected by streaming at two seconds", async () => {
+		vi.useFakeTimers();
+		const session = new SessionController({ tabId: "idle-correction", projectPath: "/p", sessionFile: null });
+		const slash = vi.fn(async () => undefined);
+		const sample = Promise.withResolvers<boolean>();
+		const events: string[] = [];
+		session.onEvent(event => events.push(event.kind));
+		setSlashDelivery(slash);
+		respond = channel => channel === "native:asyncWork" ? sample.promise : undefined;
+		try {
+			session.attach(host({ link: "L1" }));
+			const guest = fakes.guests[0]!;
+			guest.emit("live", [u1, a1], true);
+			await session.send("/compact");
+			await vi.advanceTimersByTimeAsync(1_500);
+			guest.emit("live", [u1, a1], true, { idleCheckRevision: 1 });
+			await vi.advanceTimersByTimeAsync(500);
+			guest.emit("live", [u1, a1], true);
+			sample.resolve(false);
+			await flush();
+			expect(session.getSnapshot().working).toBe(true);
+			expect(events).toEqual([]);
+			expect(slash).not.toHaveBeenCalled();
+			expect(session.getSnapshot().queue.map(row => row.text)).toEqual(["/compact"]);
+		} finally { await session.dispose(); vi.useRealTimers(); }
+	});
+
+	it("settles a state-only idle from a fresh native sample", async () => {
+		const session = new SessionController({ tabId: "idle-confirmation", projectPath: "/p", sessionFile: null });
+		const events: string[] = [];
+		session.onEvent(event => events.push(event.kind));
+		respond = channel => channel === "native:asyncWork" ? Promise.resolve(false) : undefined;
+		try {
+			session.attach(host({ link: "L1" }));
+			fakes.guests[0]!.emit("live", [u1, a1], true, { idleCheckRevision: 1 });
+			await flush();
+			expect(session.getSnapshot().working).toBe(false);
+			expect(events).toEqual(["finished"]);
+		} finally { await session.dispose(); }
+	});
+
+	it("retains an idle candidate when the native observation is unavailable or still busy", async () => {
+		vi.useFakeTimers();
+		const session = new SessionController({ tabId: "idle-unknown", projectPath: "/p", sessionFile: null });
+		const samples = [null, true, false];
+		respond = channel => channel === "native:asyncWork" ? Promise.resolve(samples.shift()) : undefined;
+		try {
+			session.attach(host({ link: "L1" }));
+			fakes.guests[0]!.emit("live", [u1, a1], true, { idleCheckRevision: 1 });
+			await flush();
+			expect(session.getSnapshot().working).toBe(true);
+			await vi.advanceTimersByTimeAsync(250);
+			expect(session.getSnapshot().working).toBe(true);
+			await vi.advanceTimersByTimeAsync(250);
+			expect(session.getSnapshot().working).toBe(false);
+		} finally { await session.dispose(); vi.useRealTimers(); }
 	});
 
 	it.each((["classic", "tsp"] as const).flatMap(transport => ["slash cancellation", "Tasks Stop", "quiet completion"].map(source => ({ transport, source }))))("releases queued compaction after $source in $transport", async ({ transport, source }) => {

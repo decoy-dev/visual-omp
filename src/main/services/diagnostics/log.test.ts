@@ -24,6 +24,24 @@ describe("diagnostics log", () => {
 		const memory = { event: "memory", trigger: "interval", hosts: 2, processes: [{ pid: 1, type: "Browser", workingSetKiB: 123, chat: "private" }], environment: { TOKEN: "secret" } };
 		expect(formatDiagnostic(memory as DiagnosticEvent, time)).toBe('2026-11-05T12:00:00.000Z memory {"trigger":"interval","hosts":2,"processes":[{"pid":1,"type":"Browser","workingSetKiB":123}]}\n');
 	});
+	it("writes one privacy-projected completion line and drops malformed completion data", async () => {
+		const { log } = await fixture(2048);
+		const completion = {
+			event: "chat-completion", chatId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+			edgeId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", cause: "agent_end", phase: "live",
+			isTerminal: true, willContinue: false, awaitingAsyncWork: false, isStreaming: false,
+			sinceStreamingMs: 12, runningHelpers: 0, finished: "emitted", notificationRequested: true, suppressedReason: null,
+		} as const;
+		log.write({ ...completion, text: "private chat", token: "secret", prompt: { messages: ["private"] } } as DiagnosticEvent);
+		log.write({ ...completion, sinceStreamingMs: -1, text: "private invalid" } as DiagnosticEvent);
+		await log.flush();
+		const lines = (await readFile(log.file, "utf8")).trim().split("\n");
+		expect(lines).toHaveLength(1);
+		expect(lines[0]).toMatch(/^\S+ chat-completion /);
+		const fields = JSON.parse(lines[0]!.slice(lines[0]!.indexOf("{")));
+		const { event: _event, ...expected } = completion;
+		expect(fields).toEqual(expected);
+	});
 	it.each([
 		{ ...event, state: "hidden\nprivate prompt" }, { ...event, event: "unknown" },
 		{ event: "host-start", chatId: "a private filename", transport: "tsp" },

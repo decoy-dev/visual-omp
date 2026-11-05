@@ -196,7 +196,7 @@ export function isApprovalRequest(request: CollabUiRequest): boolean {
 }
 
 export type SessionEvent =
-	| { kind: "finished" }
+	| { kind: "finished"; notificationRequested?: boolean }
 	| { kind: "needsInput" }
 	| { kind: "exited"; code: number | null }
 	/** The user sent something from this window that goes to omp without waiting in the queue (`noteSent`). */
@@ -233,6 +233,7 @@ function syncFollowed(): void {
 interface AsyncWaitCheck {
 	guest: GuestClient;
 	revision: number;
+	kind: "asyncWait" | "idle";
 	hostId: string;
 	generation: number;
 	timer?: number;
@@ -283,6 +284,7 @@ export class SessionController {
 	#unsubscribeGuest: (() => void) | null = null;
 	#unsubscribeHost: (() => void) | null = null;
 	#asyncWaitCheck: AsyncWaitCheck | null = null;
+	#completionRevision = 0;
 	#starting: Promise<void> | null = null;
 	#restarting: Promise<void> | null = null;
 	#listeners = new Set<() => void>();
@@ -597,6 +599,7 @@ export class SessionController {
 		}
 		if (host.sessionFile) this.#sessionFile = host.sessionFile;
 		if (host.phase === "exited") {
+			if (this.#view.working) this.#reportCompletion(this.#view.guest, 16);
 			this.#receivePromptFailures(host);
 			this.#submissions.clear();
 			this.#submissionEntries.clear();
@@ -643,6 +646,7 @@ export class SessionController {
 		this.#submissions.clear();
 		this.#submissionEntries.clear();
 		this.#closeGuest();
+		this.#completionRevision = 0;
 		this.#guestLink = link;
 		const guest = new GuestClient(link, APP_GUEST_NAME);
 		this.#guest = guest;
@@ -686,6 +690,8 @@ export class SessionController {
 		const wasWorking = this.#view.working;
 		const hadRequest = this.#view.guest?.uiRequest?.reqId;
 		const working = snapshot.working || snapshot.awaitingAsyncWork === true;
+		const evidence = snapshot.completion && snapshot.completion[0] !== this.#completionRevision ? snapshot.completion : null;
+		if (evidence) this.#completionRevision = evidence[0];
 		const appended = snapshot.entries.length > (this.#view.guest?.entries.length ?? 0);
 		const patch: Partial<SessionView> = { guest: snapshot, working, ...(appended ? { displayLeaf: null } : {}) };
 		// A turn seen starting on a synced mirror gets a start time; one already under way when the mirror joined or
@@ -712,10 +718,21 @@ export class SessionController {
 			if (!working) this.#resumeQueue();
 		}
 		if (wasWorking && !working) {
-			if (this.#view.queue.length > 0) this.#resumeQueue();
-			else this.#emit({ kind: "finished" });
+			if (this.#view.queue.length > 0) {
+				this.#resumeQueue();
+				if (evidence) this.#reportCompletion(snapshot, 12);
+			} else {
+				const event: Extract<SessionEvent, { kind: "finished" }> = { kind: "finished", notificationRequested: false };
+				this.#emit(event);
+				if (evidence) this.#reportCompletion(snapshot, 1 | (event.notificationRequested ? 2 : 0));
+			}
 		}
+		else if (evidence?.[2]) this.#reportCompletion(snapshot, evidence[2] << 2);
 		this.#syncAsyncWait();
+	}
+
+	#reportCompletion(snapshot: GuestSnapshot | null, result: number): void {
+		void import("./completion-diagnostics").then(module => module.reportCompletion(this.tabId, snapshot, result)).catch(() => undefined);
 	}
 
 	#clearAsyncWaitCheck(): void {
@@ -723,20 +740,21 @@ export class SessionController {
 		this.#asyncWaitCheck = null;
 	}
 
-	/** Collab does not replicate job inventories or a terminal end when a wait loses its last wake. */
+	/** Native samples settle async waits and confirm state-only idle when a terminal event was missed. */
 	#syncAsyncWait(): void {
 		const guest = this.#guest;
 		const snapshot = this.#view.guest;
 		const host = this.#view.host;
-		if (!guest || snapshot?.phase !== "live" || !snapshot.awaitingAsyncWork || host?.phase !== "live") {
+		const kind = snapshot?.awaitingAsyncWork ? "asyncWait" : snapshot?.idleCheckRevision !== undefined ? "idle" : null;
+		if (!guest || snapshot?.phase !== "live" || !kind || host?.phase !== "live") {
 			this.#clearAsyncWaitCheck();
 			return;
 		}
-		const revision = snapshot.asyncWaitRevision ?? 0;
+		const revision = (kind === "asyncWait" ? snapshot.asyncWaitRevision : snapshot.idleCheckRevision) ?? 0;
 		const current = this.#asyncWaitCheck;
-		if (current?.guest === guest && current.revision === revision && current.hostId === host.hostId && current.generation === host.generation) return;
+		if (current?.guest === guest && current.kind === kind && current.revision === revision && current.hostId === host.hostId && current.generation === host.generation) return;
 		this.#clearAsyncWaitCheck();
-		const check = { guest, revision, hostId: host.hostId, generation: host.generation };
+		const check: AsyncWaitCheck = { guest, revision, kind, hostId: host.hostId, generation: host.generation };
 		this.#asyncWaitCheck = check;
 		void this.#pollAsyncWait(check);
 	}
@@ -746,7 +764,8 @@ export class SessionController {
 			const pending = await window.vomp.invoke("native:asyncWork", check.hostId, check.generation);
 			if (this.#asyncWaitCheck !== check) return;
 			if (pending === false) {
-				check.guest.settleAsyncWait(check.revision);
+				if (check.kind === "asyncWait") check.guest.settleAsyncWait(check.revision);
+				else check.guest.settleIdle(check.revision);
 				return;
 			}
 		} catch { /* Missing or interrupted SDK samples retain the wait until the next sample. */ }

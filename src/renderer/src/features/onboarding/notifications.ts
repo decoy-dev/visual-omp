@@ -68,6 +68,7 @@ function onChatEvent(controller: SessionController, event: SessionEvent): void {
 		const summary = outcomeSummary(controller.getSnapshot().guest?.entries ?? []);
 		body = programStatus?.state === "error" && programStatus.msg ? programStatus.msg : summary ? t("notify.finishedWith", { summary }) : t("notify.finished");
 	}
+	if (event.kind === "finished") event.notificationRequested = true;
 	void window.vomp.invoke("app:notify", shorten(title, NOTIFY_LIMITS.title), shorten(body, NOTIFY_LIMITS.body), controller.tabId);
 }
 

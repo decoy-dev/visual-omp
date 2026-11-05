@@ -29,6 +29,9 @@ type Timer = ReturnType<typeof setTimeout>;
 
 export type ConnectionPhase = "connecting" | "waiting" | "live" | "reconnecting" | "ended";
 
+/** Packed origin: low three bits are the cause; following bit pairs are nullable wire flags. */
+export type CompletionEvidence = readonly [revision: number, origin: number, suppression: number];
+
 export interface ActiveTool {
 	toolCallId: string;
 	toolName: string;
@@ -71,12 +74,17 @@ export interface GuestSnapshot {
 	activeTools: ReadonlyMap<string, ActiveTool>;
 	/** Updates from calls that already ended, keyed by call id. These never imply foreground activity. */
 	backgroundTools: ReadonlyMap<string, ActiveTool>;
-	/** agent_start..agent_end, reconciled by state.isStreaming. */
+	/** Foreground run, including continuations and the idle-confirmation interval. */
 	working: boolean;
 	/** A non-terminal settle whose next turn depends on background jobs. */
 	awaitingAsyncWork?: boolean;
 	/** Distinguishes waits when a native SDK check completes after a continuation. */
 	asyncWaitRevision?: number;
+	/** State-only idle awaiting a fresh owner-scoped SDK observation. */
+	idleCheckRevision?: number;
+	/** Privacy-safe provenance for the latest completion or suppressed completion candidate. */
+	completion?: CompletionEvidence | null;
+	lastStreamingAt?: number | null;
 	/** True when this guest joined through a read-only (view) link. */
 	readOnly: boolean;
 	/** Pending host-side UI request (`ask` select/editor) this guest can answer. */
@@ -93,6 +101,7 @@ export interface GuestSnapshot {
 }
 
 const MAX_NOTICES = 50;
+const IDLE_CONFIRMATION_MS = 1_500;
 const TRANSCRIPT_TIMEOUT_MS = 10_000;
 /** Mirrors the TUI guest's WELCOME_TIMEOUT_MS: a host that never answers hello ends the join. */
 const WELCOME_TIMEOUT_MS = 30_000;
@@ -151,8 +160,15 @@ export class GuestClient {
 	readonly #endedTools = new Set<string>();
 	readonly #resumedToolCallIds = new Set<string>();
 	#working = false;
+	#idleTimer: Timer | null = null;
+	#idleCandidate: { revision: number; terminal: boolean; confirmed: boolean; ready: boolean; origin: number } | null = null;
+	#idleRevision = 0;
+	#continuing = false;
 	#awaitingAsyncWork = false;
 	#asyncWaitRevision = 0;
+	#completion: CompletionEvidence | null = null;
+	#completionRevision = 0;
+	#lastStreamingAt: number | null = null;
 	#readOnly = false;
 	#uiRequest: CollabUiRequest | null = null;
 	#uiRequestQueue: CollabUiRequest[] = [];
@@ -199,6 +215,7 @@ export class GuestClient {
 	}
 
 	close(): void {
+		this.#clearIdle();
 		this.#clearWelcomeTimer();
 		this.#clearSnapshotProgressTimer();
 		this.#socket.close();
@@ -235,8 +252,11 @@ export class GuestClient {
 
 	sendAbort(): void {
 		this.#socket.send({ t: "abort" });
+		this.#continuing = false;
+		this.#scheduleIdle();
 		if (this.#awaitingAsyncWork) {
 			this.#awaitingAsyncWork = false;
+			this.#recordCompletion(3, 0);
 			this.#commit();
 		}
 	}
@@ -245,6 +265,16 @@ export class GuestClient {
 	settleAsyncWait(revision: number): void {
 		if (!this.#awaitingAsyncWork || revision !== this.#asyncWaitRevision) return;
 		this.#awaitingAsyncWork = false;
+		this.#recordCompletion(3, 0);
+		this.#commit();
+	}
+
+	/** Confirm only the state-only idle interval for which this fresh SDK sample was requested. */
+	settleIdle(revision: number): void {
+		const candidate = this.#idleCandidate;
+		if (!candidate?.ready || candidate.revision !== revision || this.#continuing) return;
+		candidate.confirmed = true;
+		this.#scheduleIdle();
 		this.#commit();
 	}
 
@@ -282,6 +312,8 @@ export class GuestClient {
 	}
 
 	#handleClose(reason: string, willReconnect: boolean): void {
+		if (this.#idleCandidate) this.#recordCompletion(this.#idleCandidate.origin, 2);
+		this.#clearIdle();
 		this.#clearSnapshotProgressTimer();
 		if (this.#phase === "ended") return;
 		if (willReconnect) {
@@ -299,6 +331,7 @@ export class GuestClient {
 		if (this.#phase === "ended") return;
 		this.#clearWelcomeTimer();
 		this.#clearSnapshotProgressTimer();
+		this.#clearIdle();
 		this.#phase = "ended";
 		this.#endedReason = reason;
 		this.#pendingSnapshot = null;
@@ -372,8 +405,14 @@ export class GuestClient {
 				this.#resumedToolCallIds.clear();
 				this.#progress = new Map();
 				this.#lifecycle = new Map();
-				this.#working = frame.state.isStreaming;
+				this.#clearIdle();
+				this.#continuing = false;
+				this.#working ||= this.#awaitingAsyncWork;
 				this.#awaitingAsyncWork = false;
+				if (frame.state.isStreaming) {
+					this.#lastStreamingAt = Date.now();
+					this.#markWorking();
+				} else this.#observeIdle(514);
 				this.#readOnly = frame.readOnly === true;
 				// The welcome's snapshot is authoritative again; later events set the selector anew.
 				this.#thinkingSelector = null;
@@ -387,6 +426,7 @@ export class GuestClient {
 					this.#armSnapshotProgressTimer();
 				}
 				this.#endedReason = null;
+				this.#scheduleIdle();
 				break;
 			case "snapshot-chunk": {
 				// Buffer fragments and publish the transcript once, when the
@@ -412,6 +452,7 @@ export class GuestClient {
 				this.#clearSnapshotProgressTimer();
 				this.#phase = "live";
 				this.#seedResumedTools();
+				this.#scheduleIdle();
 				break;
 			}
 			case "entry":
@@ -435,22 +476,12 @@ export class GuestClient {
 				break;
 			case "state":
 				this.#state = frame.state;
-				// Host state is authoritative for liveness in both directions: the
-				// payload is built at fire time, so `isStreaming` is never stale.
-				// This covers a connected guest that misses the discrete `agent_start`
-				// without receiving a new `welcome` (for example, mid-stream).
-				this.#working = frame.state.isStreaming;
-				if (frame.state.isStreaming) this.#awaitingAsyncWork = false;
-				if (!frame.state.isStreaming) {
-					// Host idle implies no tool can be running, so clear any card
-					// pinned by a dropped `tool_execution_end` off this signal.
-					for (const id of this.#activeTools.keys()) this.#endedTools.add(id);
-					this.#activeTools = new Map();
-					if (this.#streamDone) {
-						this.#stream = null;
-						this.#streamDone = false;
-					}
-				}
+				// Streaming recovers a missed agent_start. An idle sample alone
+				// remains a candidate until a fresh host observation confirms it.
+				if (frame.state.isStreaming) {
+					this.#lastStreamingAt = Date.now();
+					this.#markWorking();
+				} else this.#observeIdle(513);
 				break;
 			case "agents":
 				this.#agents = [...frame.agents];
@@ -513,17 +544,20 @@ export class GuestClient {
 			case "message_start":
 			case "message_update":
 				if (event.message.role === "assistant") {
+					this.#markWorking();
 					this.#stream = event.message;
 					this.#streamDone = false;
 				}
 				break;
 			case "message_end":
 				if (event.message.role === "assistant") {
+					this.#markWorking();
 					this.#stream = event.message;
 					this.#streamDone = true;
 				}
 				break;
 			case "tool_execution_start": {
+				this.#markWorking();
 				const tool: ActiveTool = {
 					toolCallId: event.toolCallId,
 					toolName: event.toolName,
@@ -547,7 +581,10 @@ export class GuestClient {
 							startedAt: Date.now(),
 						};
 				if (ended) this.#backgroundTools = new Map(this.#backgroundTools).set(event.toolCallId, tool);
-				else this.#activeTools = new Map(this.#activeTools).set(event.toolCallId, tool);
+				else {
+					this.#markWorking();
+					this.#activeTools = new Map(this.#activeTools).set(event.toolCallId, tool);
+				}
 				break;
 			}
 			case "tool_execution_end": {
@@ -555,8 +592,8 @@ export class GuestClient {
 				break;
 			}
 			case "agent_start":
-				this.#working = true;
-				this.#awaitingAsyncWork = false;
+				this.#continuing = false;
+				this.#markWorking();
 				this.#resumedToolCallIds.clear();
 				for (const id of event.resumedToolCallIds ?? []) {
 					this.#resumedToolCallIds.add(id);
@@ -565,9 +602,26 @@ export class GuestClient {
 				this.#seedResumedTools();
 				break;
 			case "agent_end":
-				this.#working = false;
+				this.#clearIdle();
+				this.#working ||= this.#awaitingAsyncWork;
 				this.#awaitingAsyncWork = event.awaitingAsyncWork === true;
+				this.#continuing = !this.#awaitingAsyncWork && (event.isTerminal === false || event.willContinue === true);
 				this.#asyncWaitRevision++;
+				const origin = ((event.isTerminal === undefined ? 0 : event.isTerminal ? 2 : 1)
+					| (event.willContinue === undefined ? 0 : event.willContinue ? 8 : 4)
+					| (event.awaitingAsyncWork === undefined ? 0 : event.awaitingAsyncWork ? 32 : 16)) << 3;
+				if (this.#awaitingAsyncWork) {
+					this.#working = false;
+					this.#recordCompletion(origin, 1);
+				} else if (this.#continuing) {
+					this.#working = true;
+					this.#recordCompletion(origin, 1);
+				} else {
+					// A terminal end also retires cards whose tool end was missed.
+					for (const id of this.#activeTools.keys()) this.#endedTools.add(id);
+					this.#activeTools = new Map();
+					this.#observeIdle(origin, true);
+				}
 				break;
 			case "notice":
 				this.#pushNotice(event.level, event.message);
@@ -602,6 +656,61 @@ export class GuestClient {
 		}
 	}
 
+	#clearIdleTimer(): void {
+		if (this.#idleTimer !== null) {
+			clearTimeout(this.#idleTimer);
+			this.#idleTimer = null;
+		}
+	}
+
+	#clearIdle(): void {
+		this.#clearIdleTimer();
+		this.#idleCandidate = null;
+	}
+
+	#markWorking(): void {
+		if (this.#idleCandidate) this.#recordCompletion(this.#idleCandidate.origin, 2);
+		this.#clearIdle();
+		this.#continuing = false;
+		this.#working = true;
+		this.#awaitingAsyncWork = false;
+	}
+
+	/** A second host sample can confirm state-only idle; silence cannot. */
+	#observeIdle(origin: number, terminal = false): void {
+		if (!this.#working) return;
+		if (this.#idleCandidate) {
+			if (this.#idleCandidate.ready) this.#idleCandidate.confirmed = true;
+		} else this.#idleCandidate = { revision: ++this.#idleRevision, terminal, confirmed: false, ready: false, origin };
+		this.#scheduleIdle();
+	}
+
+	#scheduleIdle(): void {
+		const candidate = this.#idleCandidate;
+		if (!candidate || !this.#working || this.#continuing || this.#awaitingAsyncWork || this.#activeTools.size > 0 || this.#phase !== "live" || this.#pendingSnapshot !== null) return;
+		if (candidate.ready) {
+			if (!candidate.terminal && !candidate.confirmed) return;
+			this.#recordCompletion(candidate.origin, 0);
+			this.#clearIdle();
+			this.#working = false;
+			if (this.#streamDone) {
+				this.#stream = null;
+				this.#streamDone = false;
+			}
+		} else if (this.#idleTimer === null) {
+			this.#idleTimer = setTimeout(() => {
+				this.#idleTimer = null;
+				candidate.ready = true;
+				this.#scheduleIdle();
+				this.#commit();
+			}, IDLE_CONFIRMATION_MS);
+		}
+	}
+
+	#recordCompletion(origin: number, suppression: number): void {
+		this.#completion = [++this.#completionRevision, origin, suppression];
+	}
+
 	/** Restored calls execute without a new assistant message or message_start event. */
 	#seedResumedTools(): void {
 		if (this.#resumedToolCallIds.size === 0) return;
@@ -629,6 +738,7 @@ export class GuestClient {
 		const next = new Map(this.#activeTools);
 		next.delete(callId);
 		this.#activeTools = next;
+		this.#scheduleIdle();
 	}
 
 	#pushNotice(level: Notice["level"], message: string): void {
@@ -677,6 +787,9 @@ export class GuestClient {
 			working: this.#working,
 			awaitingAsyncWork: this.#awaitingAsyncWork,
 			asyncWaitRevision: this.#asyncWaitRevision,
+			idleCheckRevision: this.#idleCandidate?.ready && !this.#idleCandidate.terminal && !this.#idleCandidate.confirmed ? this.#idleCandidate.revision : undefined,
+			completion: this.#completion,
+			lastStreamingAt: this.#lastStreamingAt,
 			readOnly: this.#readOnly,
 			uiRequest: this.#uiRequest,
 			pendingUiRequests: [...this.#pendingUiRequests.values()],

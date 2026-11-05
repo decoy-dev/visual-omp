@@ -172,10 +172,15 @@ describe("hidden chat notifications", () => {
 			type: "message", id: "answer", parentId: null, timestamp: "2026-11-05T00:00:00Z",
 			message: { role: "assistant", content: [{ type: "text", text: "## **Updated** the database configuration" }] },
 		} as SessionEntry;
-		await act(async () => questionGuest.emit({ uiRequest: null, working: false, entries: [reply] }));
+		await act(async () => questionGuest.emit({
+			uiRequest: null, working: false, entries: [reply],
+			completion: [1, 176, 0],
+		}));
+		await vi.dynamicImportSettled();
 		expect(document.visibilityState).toBe("hidden");
 		expect(useApp.getState().unseenChats).toEqual({ question: "finished", approval: "needsInput" });
 		expect(invoke).toHaveBeenCalledWith("app:notify", "Question chat", i18n.t("onboarding:notify.finishedWith", { summary: "Updated the database configuration" }), "question");
+		expect(invoke).toHaveBeenCalledWith("app:completionDiagnostic", ["question", expect.any(Number), expect.any(Number), 0, 2, 22, null, 0, 3]);
 		// Completion changes the existing chat's result without another badge count or bounce.
 		expect(invoke.mock.calls.filter(([channel]) => channel === "app:attention")).toEqual([
 			["app:attention", { count: 1, alert: true, overlay: null }],

@@ -16,6 +16,7 @@ import type { TspHostPatch } from "./tsp/patch";
 import type { TspHookAnswer } from "./tsp/dialogs";
 import type { TspAdvisorAction } from "./tsp/advisor";
 import type { StatusBarPreference } from "./statusBar";
+import type { CompactCompletionDiagnostic } from "./completion-diagnostics";
 
 export type Platform = "darwin" | "win32" | "linux";
 
@@ -272,6 +273,8 @@ export interface IpcInvokeMap {
 	"app:openExternal": { args: [url: string]; result: void };
 	"app:openLogs": { args: []; result: void };
 	"app:visibility": { args: [state: "hidden" | "visible"]; result: void };
+	/** Privacy-projected, bounded diagnostics for a chat's working-close decision. */
+	"app:completionDiagnostic": { args: [diagnostic: CompactCompletionDiagnostic]; result: void };
 	/** Explicit developer testing only; rejects in packaged builds and without opt-in environment flags. */
 	"app:diagnosticsTest": { args: [kind: "event" | "renderer-crash"]; result: void };
 	"app:showItem": { args: [path: string]; result: void };

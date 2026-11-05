@@ -227,7 +227,7 @@ export interface CollabPromptDetails {
 
 export type AgentEvent =
 	| { type: "agent_start"; resumedToolCallIds?: string[] }
-	| { type: "agent_end"; awaitingAsyncWork?: boolean }
+	| { type: "agent_end"; isTerminal?: boolean; willContinue?: boolean; yielded?: boolean; awaitingAsyncWork?: boolean }
 	| { type: "turn_start" }
 	| { type: "turn_end" }
 	| { type: "message_start"; message: WireMessage }

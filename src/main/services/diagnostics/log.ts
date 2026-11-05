@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { appendFile, mkdir, open, rename, rm, stat, truncate } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
+import { completionDiagnosticSchema } from "@shared/completion-diagnostics";
 
 const count = z.number().int().nonnegative().finite();
 const transport = z.enum(["tsp", "classic"]);
@@ -18,6 +19,7 @@ const schemas = {
 	"child-gone": z.object({ type: processType, reason, exitCode: z.number().int(), serviceName: z.string().regex(/^[a-zA-Z0-9_.-]{0,100}$/) }),
 	"host-start": z.object({ chatId: z.uuid(), transport }),
 	"host-exit": z.object({ chatId: z.uuid(), transport, exitCode: z.number().int(), signal: z.number().int().nullable(), uptimeMs: count }),
+	"chat-completion": completionDiagnosticSchema,
 	"renderer-visibility": z.object({ windowId: count, state: z.enum(["hidden", "visible"]) }),
 	"main-exception": z.object({ kind: z.enum(["uncaughtException", "unhandledRejection"]), errorType: z.enum(["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "AggregateError", "NonError"]), fingerprint: z.string().regex(/^[a-f0-9]{16}$/) }),
 	"report-send": z.object({ outcome: z.enum(["sent", "failed"]), status: count.nullable() }),

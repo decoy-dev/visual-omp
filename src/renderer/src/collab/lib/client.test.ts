@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostFrame } from "@oh-my-pi/pi-wire";
 import { GuestClient } from "./client";
 
@@ -13,6 +13,7 @@ vi.mock("./socket", () => ({
 			socket.current = this;
 		}
 		connect() {}
+		close() {}
 		send(frame: unknown) { socket.sent.push(frame); }
 		sendConnected(frame: unknown, beforeSend: () => void) { beforeSend(); socket.sent.push(frame); return Promise.resolve(); }
 	},
@@ -34,6 +35,249 @@ beforeEach(() => {
 	socket.sent = [];
 	client = new GuestClient("link", "visual-omp");
 	feed(welcome);
+});
+
+afterEach(() => {
+	client.close();
+	vi.useRealTimers();
+});
+
+describe("confirmed foreground completion", () => {
+	const start = () => feed({ t: "event", event: { type: "agent_start" } });
+	const idle = () => feed({ t: "state", state: welcome.state });
+	const end = (fields: object = {}) => feed({ t: "event", event: { type: "agent_end", ...fields } });
+	const call = { toolCallId: "wait-1", toolName: "wait", args: { i: "Awaiting background results" } };
+	const tool = (type: string) => feed({ t: "event", event: { type, ...call, result: {}, partialResult: {} } });
+
+	it.each([{ isTerminal: false }, { willContinue: true }])("retains a continuation through idle state frames: %o", async fields => {
+		vi.useFakeTimers();
+		start();
+		end(fields);
+		idle();
+		await vi.advanceTimersByTimeAsync(10_000);
+		expect(client.getSnapshot().working).toBe(true);
+		start();
+		end({ isTerminal: true });
+		await vi.advanceTimersByTimeAsync(1_499);
+		expect(client.getSnapshot().working).toBe(true);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(client.getSnapshot().working).toBe(false);
+	});
+
+	it("does not finish a long wait when a helper and its async result arrive", async () => {
+		vi.useFakeTimers();
+		let finished = 0;
+		let working = false;
+		client.subscribe(() => {
+			const next = client.getSnapshot().working || client.getSnapshot().awaitingAsyncWork === true;
+			if (working && !next) finished++;
+			working = next;
+		});
+		start();
+		tool("tool_execution_start");
+		feed({ t: "agents", agents: [{ id: "AstraFreeze", kind: "sub", status: "idle" }] });
+		feed({ t: "entry", entry: { type: "custom_message", id: "delivery", parentId: null, timestamp: "", customType: "async-result", content: "AstraFreeze completed", display: true } });
+		idle();
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(finished).toBe(0);
+		expect(client.getSnapshot().activeTools.has(call.toolCallId)).toBe(true);
+		tool("tool_execution_end");
+		await vi.advanceTimersByTimeAsync(800);
+		start();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(finished).toBe(0);
+		end({ isTerminal: true });
+		await vi.advanceTimersByTimeAsync(1_500);
+		expect(finished).toBe(1);
+		idle();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(finished).toBe(1);
+	});
+
+	it.each(["agent_start", "state", "tool_execution_start", "message_update"])("cancels an idle candidate on %s", async activity => {
+		vi.useFakeTimers();
+		start();
+		end();
+		await vi.advanceTimersByTimeAsync(1_000);
+		if (activity === "state") feed({ t: "state", state: { ...welcome.state, isStreaming: true } });
+		else if (activity === "message_update") feed({ t: "event", event: { type: activity, message: { role: "assistant", content: [] } } });
+		else if (activity === "tool_execution_start") tool(activity);
+		else start();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.getSnapshot().working).toBe(true);
+	});
+
+	it("keeps the request working until a full idle interval follows a terminal end", async () => {
+		vi.useFakeTimers();
+		start();
+		end({ isTerminal: true, yielded: true });
+		await vi.advanceTimersByTimeAsync(1_499);
+		expect(client.getSnapshot().working).toBe(true);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(client.getSnapshot().working).toBe(false);
+	});
+
+	it("does not reuse the welcome's idle sample after a tool finishes", async () => {
+		vi.useFakeTimers();
+		start();
+		tool("tool_execution_start");
+		tool("tool_execution_end");
+		await vi.advanceTimersByTimeAsync(5_000);
+		expect(client.getSnapshot().working).toBe(true);
+	});
+
+	it.each([500, 2_000].flatMap(downloadMs => ["state", "sdk"].map(confirmation => ({ downloadMs, confirmation }))))("requires fresh $confirmation confirmation after a $downloadMs ms reconnect snapshot", async ({ downloadMs, confirmation }) => {
+		vi.useFakeTimers();
+		start();
+		socket.current!.onClose("reconnecting", true);
+		feed({ ...welcome, entryCount: 1 });
+		idle();
+		await vi.advanceTimersByTimeAsync(downloadMs);
+		expect(client.getSnapshot().working).toBe(true);
+		expect(client.getSnapshot().idleCheckRevision).toBeUndefined();
+		feed({ t: "snapshot-chunk", entries: [], final: true });
+		await vi.advanceTimersByTimeAsync(1_499);
+		expect(client.getSnapshot().working).toBe(true);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(client.getSnapshot().working).toBe(true);
+		const revision = client.getSnapshot().idleCheckRevision!;
+		expect(revision).toBeTypeOf("number");
+		if (confirmation === "state") idle();
+		else client.settleIdle(revision);
+		expect(client.getSnapshot().working).toBe(false);
+	});
+
+	it("confirms a state-only idle once, without extending it for repeated idle frames", async () => {
+		vi.useFakeTimers();
+		start();
+		idle();
+		await vi.advanceTimersByTimeAsync(1_000);
+		idle();
+		await vi.advanceTimersByTimeAsync(500);
+		expect(client.getSnapshot().working).toBe(true);
+		expect(client.getSnapshot().idleCheckRevision).toBeTypeOf("number");
+		idle();
+		expect(client.getSnapshot().working).toBe(false);
+	});
+
+	it("does not treat silence as confirmation before corrective streaming arrives at two seconds", async () => {
+		vi.useFakeTimers();
+		start();
+		idle();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.getSnapshot().working).toBe(true);
+		expect(client.getSnapshot().idleCheckRevision).toBeTypeOf("number");
+		feed({ t: "state", state: { ...welcome.state, isStreaming: true } });
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.getSnapshot().working).toBe(true);
+		expect(client.getSnapshot().idleCheckRevision).toBeUndefined();
+	});
+
+	it("accepts only a fresh SDK confirmation for the matching idle interval", async () => {
+		vi.useFakeTimers();
+		start();
+		idle();
+		await vi.advanceTimersByTimeAsync(1_500);
+		const previous = client.getSnapshot().idleCheckRevision!;
+		start();
+		idle();
+		await vi.advanceTimersByTimeAsync(1_500);
+		client.settleIdle(previous);
+		expect(client.getSnapshot().working).toBe(true);
+		client.settleIdle(client.getSnapshot().idleCheckRevision!);
+		expect(client.getSnapshot().working).toBe(false);
+	});
+
+	it("recovers a missed continuation start and missing terminal end through host states", async () => {
+		vi.useFakeTimers();
+		start();
+		end({ isTerminal: false });
+		feed({ t: "state", state: { ...welcome.state, isStreaming: true } });
+		idle();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.getSnapshot().working).toBe(true);
+		idle();
+		expect(client.getSnapshot().working).toBe(false);
+	});
+
+	it("retains working on Stop until a fresh idle confirmation arrives", async () => {
+		vi.useFakeTimers();
+		start();
+		end({ isTerminal: false });
+		idle();
+		client.sendAbort();
+		expect(client.getSnapshot().working).toBe(true);
+		await vi.advanceTimersByTimeAsync(1_500);
+		expect(client.getSnapshot().working).toBe(true);
+		client.settleIdle(client.getSnapshot().idleCheckRevision!);
+		expect(client.getSnapshot().working).toBe(false);
+	});
+
+	it("settles an error termination through a terminal end without retaining the continuation latch", async () => {
+		vi.useFakeTimers();
+		start();
+		end({ isTerminal: false });
+		feed({ t: "event", event: { type: "message_end", message: { role: "assistant", content: [], stopReason: "error", errorMessage: "Provider failed" } } });
+		end({ isTerminal: true });
+		await vi.advanceTimersByTimeAsync(1_500);
+		expect(client.getSnapshot().working).toBe(false);
+	});
+
+	it("retains only packed completion flags and the latest streaming observation time", async () => {
+		vi.useFakeTimers();
+		start();
+		feed({ t: "state", state: { ...welcome.state, isStreaming: true } });
+		feed({ t: "agents", agents: [{ id: "Main", kind: "main", status: "running" }, { id: "One", kind: "sub", status: "running" }, { id: "Two", kind: "sub", status: "idle" }] });
+		end({ isTerminal: true, willContinue: false, awaitingAsyncWork: false, messages: [{ content: "PRIVATE CHAT TEXT" }] });
+		idle();
+		await vi.advanceTimersByTimeAsync(1_500);
+		expect(client.getSnapshot().completion).toEqual([expect.any(Number), 176, 0]);
+		expect(client.getSnapshot().lastStreamingAt).toBe(Date.now() - 1_500);
+		expect(JSON.stringify(client.getSnapshot().completion)).not.toContain("PRIVATE");
+	});
+
+	it("records a cancelled state-only idle candidate once", async () => {
+		vi.useFakeTimers();
+		start();
+		idle();
+		await vi.advanceTimersByTimeAsync(2_000);
+		feed({ t: "state", state: { ...welcome.state, isStreaming: true } });
+		const evidence = client.getSnapshot().completion;
+		expect(evidence).toEqual([expect.any(Number), 513, 2]);
+		feed({ t: "state", state: { ...welcome.state, isStreaming: true } });
+		expect(client.getSnapshot().completion).toBe(evidence);
+	});
+
+	it("reconciles a missed tool end only on a terminal end", async () => {
+		vi.useFakeTimers();
+		start();
+		tool("tool_execution_start");
+		idle();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.getSnapshot().activeTools.size).toBe(1);
+		end({ isTerminal: true });
+		expect(client.getSnapshot().activeTools.size).toBe(0);
+		await vi.advanceTimersByTimeAsync(1_500);
+		expect(client.getSnapshot().working).toBe(false);
+		tool("tool_execution_update");
+		expect(client.getSnapshot().working).toBe(false);
+		expect(client.getSnapshot().backgroundTools.size).toBe(1);
+	});
+
+	it("does not publish a pending completion after disconnect or close", async () => {
+		vi.useFakeTimers();
+		start();
+		end();
+		socket.current!.onClose("reconnecting", true);
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.getSnapshot().working).toBe(true);
+		feed(welcome);
+		await vi.advanceTimersByTimeAsync(1_499);
+		expect(client.getSnapshot().working).toBe(true);
+		client.close();
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(client.getSnapshot().working).toBe(true);
+	});
 });
 
 describe("user prompts while a question waits", () => {
