@@ -12,7 +12,7 @@ export const TSP_ROLES = {
 	queue: "omp.queue", queueItem: "omp.queue.item", approvalChoices: "omp.approval.choices", composerChips: "omp.composer.chips",
 	user: "omp.user", assistant: "omp.assistant", thinking: "omp.thinking", tool: "omp.tool", agent: "omp.agent",
 	userShell: "omp.bash", userPython: "omp.eval",
-	toastStatus: "omp.toast.status", noticeError: "omp.notice.error", noticeWarning: "omp.notice.warning",
+	toastStatus: "omp.toast.status", noticeError: "omp.notice.error", noticeWarning: "omp.notice.warning", activity: "omp.activity",
 	tree: "omp.overlay.tree", treeSelector: "omp.overlay.tree-selector", btwHistory: "omp.overlay.btwHistory",
 	hookSelect: "omp.overlay.hook-select", hookConfirm: "omp.overlay.hook-confirm", hookInput: "omp.overlay.hook-input", hookEditor: "omp.overlay.hook-editor",
 	hookInputTitle: "omp.hook-input.title", hookInputDescription: "omp.hook-input.detail",

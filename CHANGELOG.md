@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+#### Fixed
+
+- Restarting a saved chat no longer repeats its earlier "Supervised process failed" lines after the first message you send. When omp resumes a chat, it redraws process exits from the chat's history in its own wording, and visual-omp showed those redrawn lines as new notices below the chat. The chat's own process exit rows still appear where they happened.
+
 ## [0.7.7] - 2026-11-05
 
 visual-omp 0.7.7 adds crash reporting to help investigate freezes and crashes, closes all chats at once, lets you put Current chats in your own order, moves a macOS disk-image copy to Homebrew and a Windows installer copy to Scoop from Settings, and fixes choosing Auto thinking in some chats. It requires omp 18.15.0 or later.

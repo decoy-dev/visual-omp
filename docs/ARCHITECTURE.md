@@ -799,7 +799,11 @@ attribution. Reused toast nodes update their existing row without moving an assi
 Displayed custom messages are matched through their parent ancestry; collab notice events use
 the displayed turn when received. Matching text suppresses the projection within that attributed
 turn. Status notices whose exact text announces that the app's own guest name joined or left the
-collab session are omitted; other guests' notices remain visible. Epochs clear rows; room and session changes also discard pending attribution and retain
+collab session are omitted; other guests' notices remain visible. Notice rows inside an `omp.activity`
+node are skipped: omp 18.16 draws saved transcript entries there, such as a supervised process's
+exit, in its own wording, and redraws them when it resumes a chat. Collab supplies those entries,
+so projecting them repeated the chat's old process exits after the first message of a restarted
+chat. Epochs clear rows; room and session changes also discard pending attribution and retain
 observed node text to avoid repeating unchanged notices. These behaviors have recorded startup/
 usage and synthetic ordering, rewind and literal-rendering coverage. Disposing the controller removes its subscription. The role registry claims
 these notice nodes, keeping the generic omp screen from duplicating them.

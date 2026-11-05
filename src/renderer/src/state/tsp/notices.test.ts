@@ -118,4 +118,16 @@ describe("TSP transcript notices", () => {
 		projection.apply(snapshot([{ ...error("Same output."), id: "fork-error" }]));
 		expect(projection.getSnapshot()).toHaveLength(1);
 	});
+	it("ignores omp's redrawn transcript rows when it resumes a chat, before and after collab syncs", () => {
+		// omp 18.16 draws a saved launch-completion entry as main > omp.activity > status block > notice row.
+		const launch: TspNode = { id: "k", k: "col", p: { role: TSP_ROLES.activity }, c: [{ id: "m", k: "col", p: { role: "omp.status-block" }, c: [{
+			id: "m.0", k: "row", p: { role: TSP_ROLES.noticeError },
+			c: [{ id: "m.0/1", k: "text", p: { spans: [{ t: "Supervised process failed" }, { t: " " }, { t: "vomp-dev", s: "mono" }, { t: " · ", s: "dim" }, { t: "exit 1", s: "dim" }] } }],
+		}] }] };
+		const projection = new TspNoticeProjection();
+		projection.apply(snapshot([launch]));
+		projection.collab([user("u1"), custom("saved-launch", "Supervised process vomp-dev failed with exit code 1.")], []);
+		projection.apply(snapshot([launch, { ...error("Unable to load model."), id: "arrival" }]));
+		expect(projection.getSnapshot()).toMatchObject([{ content: "Unable to load model." }]);
+	});
 });

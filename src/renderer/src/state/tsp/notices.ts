@@ -126,7 +126,9 @@ export class TspNoticeProjection {
 		for (const surface of snapshot.surfaces) {
 			if (surface.closed || surface.suspended || surface.documentGeneration !== snapshot.generation) continue;
 			const visit = (node: TspNode, region?: string) => {
-				if (node.p?.hidden) return;
+				// omp.activity holds omp's own rendering of saved transcript entries (supervised-process exits, for
+				// example), which collab already supplies. omp redraws them when it resumes a chat, so they are not arrivals.
+				if (node.p?.hidden || node.p?.role === TSP_ROLES.activity) return;
 				region = node.id === "main" || node.id === "layer" || node.id === "dock" ? node.id : region;
 				const level = node.p?.role ? TSP_NOTICE_ROLES[node.p.role] : undefined;
 				if (level && (node.p?.role === TSP_ROLES.toastStatus || region === "main")) {
