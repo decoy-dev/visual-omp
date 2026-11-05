@@ -48,6 +48,9 @@ const env = vi.hoisted(() => {
 		quitListeners,
 		invoked,
 		controllers: [] as { tabId: string; getSnapshot(): unknown }[],
+		tabs: [] as { id: string; title: string; sessionFile: string | null }[],
+		drafts: {} as Record<string, string>,
+		attachments: {} as Record<string, unknown[]>,
 		/** init()'s adoption of the running omp processes, which the guard waits for. */
 		adoption: Promise.withResolvers<void>(),
 	};
@@ -55,10 +58,12 @@ const env = vi.hoisted(() => {
 
 vi.mock("../../ui", () => ({}));
 vi.mock("./chat", () => ({ chatTitle: () => null }));
+vi.mock("../../chat/composer/drafts", () => ({ useComposerDrafts: { getState: () => ({ drafts: env.drafts, attachments: env.attachments }) } }));
 vi.mock("../../state/app", () => ({
 	allControllers: () => env.controllers,
 	controllerFor: (tabId: string) => env.controllers.find(controller => controller.tabId === tabId) ?? null,
 	whenHostsAdopted: () => env.adoption.promise,
+	useApp: { getState: () => ({ tabs: env.tabs }) },
 }));
 
 const helper = (id: string, status: AgentSnapshot["status"]): AgentSnapshot =>
@@ -124,6 +129,9 @@ beforeEach(() => {
 		both: new FakeChat("both", view(true, [helper("Atlas", "running")])),
 	};
 	env.controllers = Object.values(chats);
+	env.tabs = env.controllers.map(controller => ({ id: controller.tabId, title: controller.tabId, sessionFile: null }));
+	env.drafts = {};
+	env.attachments = {};
 });
 
 afterEach(() => {
@@ -185,6 +193,76 @@ describe("closing a chat", () => {
 		answerQuitRequest(false);
 		await flush();
 		expect(confirmQuits()).toEqual([false]);
+	});
+});
+
+describe("closing all chats", () => {
+	it("always asks once and records replies, helpers, unchecked rooms and the kind of draft being discarded", async () => {
+		const { confirmCloseAllTabs, answerQuitRequest, useQuitRequest } = await loadQuit();
+		const unknown = new FakeChat("unknown", view(false, [], "connecting"));
+		env.controllers.push(unknown);
+		env.tabs = [
+			...env.tabs,
+			{ id: "unknown", title: "Unknown", sessionFile: null },
+			{ id: "saved", title: "Saved", sessionFile: "/saved.jsonl" },
+		];
+		env.drafts = { neither: "Unsent text", saved: "Preserved text" };
+		env.attachments = { saved: [{}], unknown: [{}, {}] };
+		const result = confirmCloseAllTabs(env.tabs.map(tab => tab.id));
+		await vi.advanceTimersByTimeAsync(5_000);
+		await flush();
+		expect(useQuitRequest.getState().request).toMatchObject({
+			kind: "all",
+			chats: [
+				{ controller: chats.reply, work: { replying: true, helpers: 0 } },
+				{ controller: chats.helpers, work: { replying: false, helpers: 2 } },
+				{ controller: chats.both, work: { replying: true, helpers: 1 } },
+			],
+			unchecked: [unknown],
+			drafts: [
+				{ tabId: "neither", text: true, attachments: 0 },
+				{ tabId: "unknown", text: false, attachments: 2 },
+				{ tabId: "saved", text: false, attachments: 1 },
+			],
+		});
+		answerQuitRequest(false);
+		expect(await result).toBe(false);
+		env.controllers = [chats.neither];
+		env.tabs = [{ id: "neither", title: "Neither", sessionFile: null }];
+		env.drafts = {};
+		env.attachments = {};
+		env.storage.set("visual-omp:quit.alwaysStop", "1");
+		const idle = confirmCloseAllTabs(["neither"]);
+		await flush();
+		expect(useQuitRequest.getState().request).toMatchObject({ kind: "all", chats: [], unchecked: [], drafts: [] });
+		answerQuitRequest(true);
+		expect(await idle).toBe(true);
+	});
+
+	it("names saved text that would fall beyond the ten-entry reopen stack", async () => {
+		const { confirmCloseAllTabs, answerQuitRequest, useQuitRequest } = await loadQuit();
+		env.tabs = Array.from({ length: 12 }, (_, index) => ({ id: `saved${index}`, title: `Saved ${index}`, sessionFile: `/${index}.jsonl` }));
+		env.drafts = Object.fromEntries(env.tabs.map(tab => [tab.id, "Unsent"]));
+		const result = confirmCloseAllTabs(env.tabs.map(tab => tab.id));
+		await flush();
+		expect(useQuitRequest.getState().request?.drafts?.map(draft => draft.tabId)).toEqual(["saved0", "saved1"]);
+		answerQuitRequest(false);
+		await result;
+	});
+
+	it("keeps the captured close sequence when tabs reorder during the state-check wait", async () => {
+		const { confirmCloseAllTabs, answerQuitRequest, useQuitRequest } = await loadQuit();
+		env.tabs = Array.from({ length: 12 }, (_, index) => ({ id: `saved${index}`, title: `Saved ${index}`, sessionFile: `/${index}.jsonl` }));
+		env.drafts = Object.fromEntries(env.tabs.map(tab => [tab.id, "Unsent"]));
+		env.controllers = [new FakeChat("saved0", view(false, [], "connecting"))];
+		const result = confirmCloseAllTabs(env.tabs.map(tab => tab.id));
+		await flush();
+		env.tabs = env.tabs.toReversed();
+		await vi.advanceTimersByTimeAsync(5_000);
+		await flush();
+		expect(useQuitRequest.getState().request?.drafts?.map(draft => draft.tabId)).toEqual(["saved0", "saved1"]);
+		answerQuitRequest(false);
+		await result;
 	});
 });
 

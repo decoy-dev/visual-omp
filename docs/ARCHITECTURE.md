@@ -29,7 +29,7 @@ flowchart LR
 ```
 
 Each open chat has a **SessionController**. Open chats are the `tabs` list in
-`src/renderer/src/state/app.ts`, kept in order of opening. `shell/Sidebar.tsx` presents this as Current chats and
+`src/renderer/src/state/app.ts`, initially in order of opening and manually reorderable through `moveTab`. The existing saved layout persists that order. `shell/Sidebar.tsx` presents this as Current chats and
 also lists saved chats in the Projects tree. A controller starts or adopts a **SessionHost** when omp runs for that
 chat; viewing saved history alone needs no host. `releaseKeepsNumbers` in `state/chatSelection.ts` decides release:
 when the user moves to another chat, a saved chat that was only viewed (no host, no sent input, no draft or

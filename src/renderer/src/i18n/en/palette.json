@@ -183,6 +183,11 @@
 			"keywords": "reopen, undo close, restore, closed chat",
 			"none": "None of the chats you closed can be reopened. Each one is open again or its saved file was deleted."
 		},
+		"closeAll": {
+			"title": "Close all chats",
+			"hint": "Review running work and drafts before closing every current chat.",
+			"keywords": "close all, stop, current chats"
+		},
 		"theme": {
 			"title": "Switch between light and dark",
 			"hint": "Switch between the light and dark themes.",

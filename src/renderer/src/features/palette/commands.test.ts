@@ -7,13 +7,13 @@ import "./commands";
 
 const fake = vi.hoisted(() => {
 	Object.assign(window, { vomp: { platform: "darwin" } });
-	return { transport: "classic" as "classic" | "tsp" | undefined, open: vi.fn(), terminalTabId: null as string | null };
+	return { transport: "classic" as "classic" | "tsp" | undefined, open: vi.fn(), terminalTabId: null as string | null, tabs: [] as { id: string }[], closeAll: vi.fn(), activate: vi.fn(), focused: "tab" };
 });
 vi.mock("../../state/app", () => ({
-	canReopenChat: () => false, closeChat: vi.fn(),
+	canReopenChat: () => false, closeAllChats: fake.closeAll, closeChat: vi.fn(),
 	controllerFor: () => ({ tabId: "tab", getSnapshot: () => ({ host: { transport: fake.transport } }) }),
-	focusedTabId: () => "tab",
-	useApp: { getState: () => ({ terminalTabId: fake.terminalTabId, openTerminal: fake.open }) },
+	focusedTabId: () => fake.focused,
+	useApp: { getState: () => ({ terminalTabId: fake.terminalTabId, openTerminal: fake.open, tabs: fake.tabs, activateTab: fake.activate }) },
 }));
 vi.mock("../../shell/hooks", () => ({ chatStatus: () => "idle" }));
 vi.mock("../../ui", () => ({ toast: vi.fn() }));
@@ -29,4 +29,25 @@ it.each(["tsp", "classic", undefined] as const)("names the palette entry and hin
 	const session = { tabId: "tab" } as SessionController;
 	command.run({ session, projectPath: null });
 	expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab");
+});
+
+it("offers Close all chats only with open tabs and uses the shared confirmation operation", async () => {
+	const command = getCommand("chat.closeAll")!;
+	const context = { session: null, projectPath: null };
+	fake.tabs = [];
+	expect(command.when?.(context)).toBe(false);
+	fake.tabs = [{ id: "tab" }];
+	expect(command.when?.(context)).toBe(true);
+	expect(i18n.t(command.title)).toBe("Close all chats");
+	await command.run(context);
+	expect(fake.closeAll).toHaveBeenCalledOnce();
+});
+
+it("cycles chats in the reordered tabs sequence", () => {
+	fake.tabs = [{ id: "third" }, { id: "first" }, { id: "second" }];
+	fake.focused = "first";
+	getCommand("view.nextTab")!.run({ session: null, projectPath: null });
+	expect(fake.activate).toHaveBeenLastCalledWith("second");
+	getCommand("view.prevTab")!.run({ session: null, projectPath: null });
+	expect(fake.activate).toHaveBeenLastCalledWith("third");
 });

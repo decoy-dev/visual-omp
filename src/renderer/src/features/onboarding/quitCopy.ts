@@ -39,6 +39,18 @@ export function quitCopy(work: readonly ChatWork[], unchecked: number): WarningC
 	return { title: { key: work.length > 0 ? "quit.title" : "quit.titleUnchecked" }, body };
 }
 
+/** Bulk close keeps quit's work findings, with copy naming this operation and its reopen limit. */
+export function closeAllCopy(work: readonly ChatWork[], unchecked: number): WarningCopy {
+	const replies = work.filter(chat => chat.replying).length;
+	const helpers = work.reduce((total, chat) => total + chat.helpers, 0);
+	const body: CopyKey[] = [];
+	if (replies > 0) body.push({ key: "quit.allReplies", count: replies });
+	if (helpers > 0) body.push({ key: "quit.allHelpers", count: helpers });
+	if (unchecked > 0) body.push({ key: "quit.bodyUnchecked", count: unchecked });
+	body.push({ key: "quit.allBody" });
+	return { title: { key: "quit.allTitle" }, body };
+}
+
 /** What one chat in the quit list is doing now; its work may have ended while the dialog was open. */
 export function rowCopy(work: ChatWork | null): CopyKey {
 	if (!work) return { key: "quit.noWork" };

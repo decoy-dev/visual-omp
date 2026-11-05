@@ -1,6 +1,6 @@
 /**
- * Sidebar rows in stable open order, which also defines numbered shortcuts and chat cycling. Current chats
- * visually groups unseen results first without changing those numbers. Projects lists every chat, open or
+ * Sidebar rows in manually adjustable tab order, which also defines numbered shortcuts and chat cycling. Current
+ * chats visually groups unseen results first without changing those numbers. Projects lists every chat, open or
  * saved, either under its project or in one sorted list.
  */
 import type { ProjectSummary, SessionSummary, SidebarSort } from "@shared/ipc";
@@ -192,7 +192,7 @@ function folderName(path: string): string {
 }
 
 /**
- * Every open chat in the order it was opened, matching the sidebar search when there is one. ⌘`n` opens the `n`th
+ * Every open chat in tab order, matching the sidebar search when there is one. ⌘`n` opens the `n`th
  * open chat whether or not search hides its row.
  */
 export function currentChats(input: Pick<SidebarInput, "projects" | "sessionsByProject" | "tabs" | "query" | "openTitle">): CurrentChat[] {
@@ -208,6 +208,22 @@ export function currentChats(input: Pick<SidebarInput, "projects" | "sessionsByP
 		const live = input.openTitle(tab.id)?.toLowerCase().includes(query) ?? false;
 		return live || (session && matchesSession(session, query)) || projectName.toLowerCase().includes(query) ? [row] : [];
 	});
+}
+
+/**
+ * Map a final displayed position to tab order. Unseen and viewed groups cannot cross: an out-of-group target
+ * clamps to the nearest end of the source group. Hidden search results retain their relative order.
+ */
+export function currentChatMoveIndex(order: readonly string[], displayed: readonly string[], unseen: Readonly<Record<string, unknown>>, tabId: string, toIndex: number): number {
+	const from = order.indexOf(tabId);
+	if (from < 0 || !displayed.includes(tabId)) return from;
+	const group = displayed.filter(id => Boolean(unseen[id]) === Boolean(unseen[tabId]));
+	const first = displayed.indexOf(group[0]!);
+	const target = Math.max(0, Math.min(group.length - 1, toIndex - first));
+	if (group.indexOf(tabId) === target) return from;
+	const peers = group.filter(id => id !== tabId);
+	const remaining = order.filter(id => id !== tabId);
+	return target < peers.length ? remaining.indexOf(peers[target]!) : remaining.indexOf(peers.at(-1)!) + 1;
 }
 
 /** The chat `delta` steps from `current` along `order`, wrapping around; the first chat when `current` is not in it. */

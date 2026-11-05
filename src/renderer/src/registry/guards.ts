@@ -14,6 +14,17 @@ export function confirmTabClose(tabId: string): Promise<boolean> {
 	return guard ? guard(tabId) : Promise.resolve(true);
 }
 
+/** Bulk close always asks once, including when no chat is working. */
+let allTabsGuard: ((tabIds: readonly string[]) => Promise<boolean>) | null = null;
+
+export function setAllTabsCloseGuard(next: (tabIds: readonly string[]) => Promise<boolean>): void {
+	allTabsGuard = next;
+}
+
+export function confirmAllTabsClose(tabIds: readonly string[]): Promise<boolean> {
+	return allTabsGuard ? allTabsGuard(tabIds) : Promise.resolve(false);
+}
+
 /** A pane can finish its omp-owned interaction before the panel releases its presentation. */
 type PaneLeaveGuard = () => Promise<boolean>;
 const paneLeaveGuards = new Map<string, PaneLeaveGuard>();

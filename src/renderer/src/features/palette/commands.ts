@@ -20,7 +20,7 @@ import { i18n } from "../../i18n";
 import { registerCommand } from "../../registry/commands";
 import { chatStatus } from "../../shell/hooks";
 import { nextWaitingChat, stepChat } from "../../shell/sidebarRows";
-import { canReopenChat, closeChat, controllerFor, focusedTabId, useApp } from "../../state/app";
+import { canReopenChat, closeAllChats, closeChat, controllerFor, focusedTabId, useApp } from "../../state/app";
 import { toast } from "../../ui";
 import { runCommand } from "./run";
 import { terminalSheet } from "./TerminalSheet";
@@ -210,6 +210,17 @@ registerCommand({
 	async run() {
 		if (!(await useApp.getState().reopenClosedChat()) && !canReopenChat()) toast({ tone: "info", message: i18n.t("palette:cmd.reopenClosed.none") });
 	},
+});
+
+registerCommand({
+	id: "chat.closeAll",
+	title: "palette:cmd.closeAll.title",
+	hint: "palette:cmd.closeAll.hint",
+	keywords: "palette:cmd.closeAll.keywords",
+	group: "chat",
+	icon: X,
+	when: () => useApp.getState().tabs.length > 0,
+	run: closeAllChats,
 });
 
 registerCommand({

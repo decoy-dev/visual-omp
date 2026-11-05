@@ -6,16 +6,14 @@
  * for and waits for an answer; its rows show what each chat is doing now. A quit also asks about
  * chats whose state could not be checked in time, since unknown work may be running.
  */
-import { useState, useSyncExternalStore } from "react";
-import { useTranslation } from "react-i18next";
+import { lazyView, LoadFailedDialog, type LoadFailureProps } from "../../registry/lazy";
 import { create } from "zustand";
-import { allControllers, controllerFor, whenHostsAdopted } from "../../state/app";
+import { useComposerDrafts } from "../../chat/composer/drafts";
+import { allControllers, controllerFor, MAIN_ID, useApp, whenHostsAdopted } from "../../state/app";
+import { CLOSED_LIMIT } from "../../state/closedChats";
 import { type ChatWork, workInFlight } from "../../state/chatWork";
 import type { SessionController, SessionView } from "../../state/session";
-import { Button, Checkbox, Dialog, DialogContent, PulseDot } from "../../ui";
-import { SessionTitle } from "../../ui/SessionTitle";
 import { chatTitle } from "./chat";
-import { closeCopy, quitCopy, rowCopy } from "./quitCopy";
 
 const DONT_ASK_KEY = "visual-omp:quit.alwaysStop";
 
@@ -37,7 +35,7 @@ void whenHostsAdopted().then(() => {
  * Whether the app knows what omp is doing in a chat: its omp exited, its room has synced, or it has no omp and the
  * running ones have been adopted (before that, a restored chat may still get one).
  */
-function stateKnown(view: SessionView): boolean {
+export function stateKnown(view: SessionView): boolean {
 	if (view.mode === "exited") return true;
 	if (view.host === null) return adopted;
 	const phase = view.guest?.phase;
@@ -50,16 +48,26 @@ interface BusyChat {
 	work: ChatWork;
 }
 
-/** What a request asks about: chats with work in flight, and (quitting only) chats whose state is not known. */
+/** What a request asks about: work in flight, unknown states, and drafts a bulk close would discard. */
 interface Findings {
 	chats: readonly BusyChat[];
 	unchecked: readonly SessionController[];
+	drafts?: readonly LostDraft[];
+}
+
+interface LostDraft {
+	tabId: string;
+	title: string | null;
+	text: boolean;
+	attachments: number;
 }
 
 interface QuitRequest extends Findings {
-	kind: "quit" | "tab";
+	kind: "quit" | "tab" | "all";
 	/** The chat a close asks about; null when quitting. */
 	tabId: string | null;
+	opener: HTMLElement | null;
+	allowed: boolean;
 	promise: Promise<boolean>;
 	resolve(allow: boolean): void;
 }
@@ -75,12 +83,37 @@ function busyChats(controllers: readonly SessionController[]): BusyChat[] {
 	});
 }
 
+/** Capture a menu's trigger before its item disappears, or the invoking control before any state-check wait. */
+function quitOpener(): HTMLElement | null {
+	if (typeof document === "undefined") return null;
+	const active = document.activeElement;
+	if (!(active instanceof HTMLElement) || active === document.body || active === document.documentElement) return null;
+	const label = active.closest('[role="menu"]')?.getAttribute("aria-labelledby");
+	return (label ? document.getElementById(label) : null) ?? active;
+}
+
+/** Dismissal can remove its invoking menu or palette, so keep a surviving main-area target as a fallback. */
+export function restoreQuitFocus(request: QuitRequest): void {
+	requestAnimationFrame(() => {
+		const targets = [
+			...(!request.allowed ? [request.opener] : []),
+			document.getElementById(MAIN_ID),
+			document.querySelector<HTMLElement>("[data-new-chat]"),
+		];
+		for (const target of targets) {
+			if (!target?.isConnected || target === document.body || target === document.documentElement || target.closest("[inert]")) continue;
+			target.focus();
+			if (document.activeElement === target) return;
+		}
+	});
+}
+
 /**
  * Ask before quitting (`tabId` null) or closing one chat. The same request made again while its dialog is open (⌘Q
  * twice, a second close of the same chat) shares the answer. A different one waits until that dialog is answered and
  * then asks about its own chats, so stopping one chat never approves quitting the others.
  */
-async function ask(kind: QuitRequest["kind"], tabId: string | null, find: () => Findings): Promise<boolean> {
+async function ask(kind: QuitRequest["kind"], tabId: string | null, find: () => Findings, opener = quitOpener()): Promise<boolean> {
 	for (let pending = useQuitRequest.getState().request; pending; pending = useQuitRequest.getState().request) {
 		if (pending.kind === kind && pending.tabId === tabId) return pending.promise;
 		await pending.promise;
@@ -90,13 +123,13 @@ async function ask(kind: QuitRequest["kind"], tabId: string | null, find: () => 
 		setTimeout(resolve, 0);
 		await nextTask;
 	}
-	const { chats, unchecked } = find();
-	if (chats.length === 0 && unchecked.length === 0) return true;
+	const { chats, unchecked, drafts = [] } = find();
+	if (kind !== "all" && chats.length === 0 && unchecked.length === 0) return true;
 	// "Always stop working chats when quitting" covers known work when quitting; closing a chat, and chats that could
 	// not be checked, still ask.
 	if (kind === "quit" && unchecked.length === 0 && localStorage.getItem(DONT_ASK_KEY) === "1") return true;
 	const { promise, resolve } = Promise.withResolvers<boolean>();
-	useQuitRequest.setState({ request: { kind, tabId, chats, unchecked, promise, resolve } });
+	useQuitRequest.setState({ request: { kind, tabId, chats, unchecked, drafts, opener, allowed: false, promise, resolve } });
 	return promise;
 }
 
@@ -108,6 +141,7 @@ export function answerQuitRequest(allow: boolean, alwaysStop = false): void {
 	const request = useQuitRequest.getState().request;
 	if (!request) return;
 	if (allow && alwaysStop && request.kind === "quit") localStorage.setItem(DONT_ASK_KEY, "1");
+	request.allowed = allow;
 	useQuitRequest.setState({ request: null });
 	request.resolve(allow);
 }
@@ -125,6 +159,31 @@ function quitFindings(): Findings {
 	const controllers = allControllers();
 	const unchecked = controllers.filter(controller => !stateKnown(controller.getSnapshot()));
 	return { chats: busyChats(controllers.filter(controller => !unchecked.includes(controller))), unchecked };
+}
+
+/** Always confirm a bulk close, using quit's bounded state check and the drafts closeTab would discard. */
+export async function confirmCloseAllTabs(tabIds: readonly string[]): Promise<boolean> {
+	const opener = quitOpener();
+	await chatsKnown();
+	return ask("all", null, () => {
+		const current = new Map(useApp.getState().tabs.map(tab => [tab.id, tab]));
+		const tabs = tabIds.flatMap(id => { const tab = current.get(id); return tab ? [tab] : []; });
+		const selected = new Set(tabs.map(tab => tab.id));
+		const findings = quitFindings();
+		const drafts = useComposerDrafts.getState();
+		// closeTab pushes in tab order, so only the last ten distinct saved files retain their text.
+		const retained = new Set([...new Set(tabs.flatMap(tab => tab.sessionFile ? [tab.sessionFile] : []))].slice(-CLOSED_LIMIT));
+		return {
+			chats: findings.chats.filter(chat => selected.has(chat.controller.tabId)),
+			unchecked: findings.unchecked.filter(controller => selected.has(controller.tabId)),
+			drafts: tabs.flatMap(tab => {
+				const text = Boolean(drafts.drafts[tab.id]) && (!tab.sessionFile || !retained.has(tab.sessionFile));
+				const attachments = drafts.attachments[tab.id]?.length ?? 0;
+				const controller = controllerFor(tab.id);
+				return text || attachments ? [{ tabId: tab.id, title: (controller ? chatTitle(controller) : null) ?? tab.title, text, attachments }] : [];
+			}),
+		};
+	}, opener);
 }
 
 /**
@@ -159,8 +218,9 @@ async function chatsKnown(): Promise<void> {
 
 /** Ask before quitting, once the open chats' state is known or the wait for it is over. */
 async function confirmQuit(): Promise<boolean> {
+	const opener = quitOpener();
 	await chatsKnown();
-	return ask("quit", null, quitFindings);
+	return ask("quit", null, quitFindings, opener);
 }
 
 /** Set by {@link quitAfterConfirm}: the next quit request from main is answered without asking again. */
@@ -195,77 +255,14 @@ export function installQuitGuard(): void {
 	});
 }
 
-/** One chat in the quit list, live: what it is doing now, "No work running", or "Not checked" while unknown. */
-function WorkingChat({ controller }: { controller: SessionController }) {
-	const { t } = useTranslation("onboarding");
-	const view = useSyncExternalStore(controller.subscribe, controller.getSnapshot);
-	const known = stateKnown(view);
-	const work = known ? workInFlight(view) : null;
-	const doing = known ? rowCopy(work) : { key: "quit.notChecked" };
-	return (
-		<li className="flex h-9 items-center gap-2.5 px-3">
-			{work ? <PulseDot /> : <span className={known ? "size-2 rounded-full bg-ok" : "size-2 rounded-full bg-warn"} aria-hidden />}
-			<SessionTitle title={chatTitle(controller) ?? t("notify.untitled")} className="flex-1 text-md text-fg" />
-			<span className="shrink-0 text-sm text-fg-muted">{t(doing.key, { count: doing.count })}</span>
-		</li>
-	);
+function QuitLoadFailed({ request, retry }: { request: QuitRequest } & LoadFailureProps) {
+	return <LoadFailedDialog retry={retry} onClose={() => answerQuitRequest(false)} onExited={() => restoreQuitFocus(request)} />;
 }
 
-/** Mounted once at the app root. */
+const QuitWarning = lazyView<{ request: QuitRequest }>(() => import("./QuitDialog").then(module => module.QuitDialog), null, QuitLoadFailed);
+
+/** Keep the warning's UI out of startup; its first request loads the dialog. */
 export function QuitDialog() {
-	const { t } = useTranslation("onboarding");
 	const request = useQuitRequest(state => state.request);
-	const [alwaysStop, setAlwaysStop] = useState(false);
-	if (!request) return null;
-	const tab = request.kind === "tab";
-	const first = request.chats[0];
-	const copy =
-		tab && first
-			? closeCopy(first.work)
-			: quitCopy(
-					request.chats.map(chat => chat.work),
-					request.unchecked.length,
-				);
-
-	const answer = (allow: boolean) => {
-		setAlwaysStop(false);
-		answerQuitRequest(allow, alwaysStop);
-	};
-
-	return (
-		<Dialog open onOpenChange={open => !open && answer(false)}>
-			<DialogContent
-				size="sm"
-				destructive
-				hideClose
-				title={t(copy.title.key, { count: copy.title.count })}
-				description={copy.body.map(part => t(part.key, { count: part.count })).join(" ")}
-				footer={
-					<>
-						<Button variant="ghost" onClick={() => answer(false)} autoFocus>
-							{t("quit.keepWaiting")}
-						</Button>
-						<Button variant="danger" onClick={() => answer(true)}>
-							{tab ? t("quit.stopAndClose") : t("quit.stopAndQuit")}
-						</Button>
-					</>
-				}
-			>
-				{!tab && (
-					<>
-						<ul className="mb-4 divide-y divide-border rounded-md border border-border bg-inset">
-							{[...request.chats.map(chat => chat.controller), ...request.unchecked].map(controller => (
-								<WorkingChat key={controller.tabId} controller={controller} />
-							))}
-						</ul>
-						<Checkbox
-							label={t("quit.dontAsk")}
-							checked={alwaysStop}
-							onCheckedChange={setAlwaysStop}
-						/>
-					</>
-				)}
-			</DialogContent>
-		</Dialog>
-	);
+	return request ? <QuitWarning request={request} /> : null;
 }

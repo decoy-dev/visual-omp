@@ -1,5 +1,7 @@
 import {
 	Archive,
+	ArrowDown,
+	ArrowUp,
 	BoxArrowUp,
 	CaretRight,
 	ChatCenteredDots,
@@ -24,12 +26,12 @@ import {
 	X,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type CSSProperties, createContext, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useState, useSyncExternalStore } from "react";
+import { type CSSProperties, createContext, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { DEFAULT_SIDEBAR_SORT, type SidebarSort } from "@shared/ipc";
 import { useTranslation } from "react-i18next";
 import { getCommand } from "../registry/commands";
 import { DialogLoadFailed, lazyView } from "../registry/lazy";
-import { type AppState, closeChat, controllerFor, SIDEBAR_ID, useApp } from "../state/app";
+import { type AppState, closeAllChats, closeChat, controllerFor, SIDEBAR_ID, useApp } from "../state/app";
 import { openHelp, openProjectSettings, openSettings, openUsage } from "../state/navigation";
 import {
 	Button,
@@ -72,7 +74,7 @@ import { PROJECT_COLOR_CHOICES, ProjectColorDot } from "../features/projects/Pro
 import { type ProjectColor, projectColorValue, setProjectColor, useProjectColor } from "../state/projectColors";
 import { ChatStatusMark } from "./ChatStatusMark";
 import { chatStatus, chatTitle, shortAgo, useModifierHeld, useNow, useSessionView } from "./hooks";
-import { archivedChats, type CurrentChat, currentChats, flatChats, type ProjectChat, type SidebarChat, type SidebarGroup, type SidebarInput, sidebarGroups } from "./sidebarRows";
+import { archivedChats, type CurrentChat, currentChatMoveIndex, currentChats, flatChats, type ProjectChat, type SidebarChat, type SidebarGroup, type SidebarInput, sidebarGroups } from "./sidebarRows";
 import { sidebarTitles } from "./sidebarTitles";
 import { TrashChatDialog } from "./trash";
 import { SessionTitle, toast } from "../ui";
@@ -184,7 +186,7 @@ type ChatRowProps =
 	| { variant?: "tree"; chat: SidebarChat; now: number }
 	| { variant: "flat"; chat: ProjectChat; now: number }
 	/** A Current chats row: project name as meta, ⌘1-⌘9 `number` shown while ⌘/Ctrl is held. */
-	| { variant: "current"; chat: CurrentChat; now: number; number: number | null; showNumber: boolean };
+	| { variant: "current"; chat: CurrentChat; now: number; number: number | null; showNumber: boolean; move(delta: number): void; canMoveUp: boolean; canMoveDown: boolean };
 
 /**
  * One chat. A Current chats row carries the raised selection pill and the ⌘ number; a Projects tree row of an open
@@ -207,6 +209,19 @@ function ChatRow(props: ChatRowProps): ReactNode {
 	const controller = controllerFor(tabId);
 	const liveView = useSessionView(controller);
 	const [confirmDelete, setConfirmDelete] = useState(false);
+	const titleButton = useRef<HTMLButtonElement>(null);
+	const focusMovedTitle = useRef(false);
+	const move = (delta: number, fromMenu = false) => {
+		if (!current) return;
+		focusMovedTitle.current = fromMenu;
+		props.move(delta);
+	};
+	const onMenuCloseFocus = (event: Event) => {
+		if (!focusMovedTitle.current) return;
+		focusMovedTitle.current = false;
+		event.preventDefault();
+		titleButton.current?.focus();
+	};
 	const [renameSaved, setRenameSaved] = useState(false);
 	const [changeIcon, setChangeIcon] = useState(false);
 	const scope = useContext(IndicatorScope);
@@ -247,6 +262,16 @@ function ChatRow(props: ChatRowProps): ReactNode {
 				<kit.Item icon={<X />} onSelect={() => void closeChat(tabId)}>
 					{t("sidebar.close")}
 				</kit.Item>
+			)}
+			{current && (
+				<>
+					<kit.Item icon={<ArrowUp />} disabled={!props.canMoveUp} shortcut={`${MAC ? "⌥" : "Alt+"}↑`} onSelect={() => move(-1, true)}>
+						{t("sidebar.moveUp")}
+					</kit.Item>
+					<kit.Item icon={<ArrowDown />} disabled={!props.canMoveDown} shortcut={`${MAC ? "⌥" : "Alt+"}↓`} onSelect={() => move(1, true)}>
+						{t("sidebar.moveDown")}
+					</kit.Item>
+				</>
 			)}
 			{canRename && (
 				<kit.Item icon={<PencilSimple />} onSelect={() => {
@@ -303,6 +328,7 @@ function ChatRow(props: ChatRowProps): ReactNode {
 						<ChatStatusMark id={statusId} status={status} label={t(`sidebar.status.${status}`)} quiet={!current && tabId !== null} unseen={unseen} />
 						<button
 							type="button"
+							ref={titleButton}
 							className={cn(
 								"flex-auto shrink-100 truncate text-left outline-none after:absolute after:inset-0 after:rounded-md focus-visible:after:outline-2 focus-visible:after:outline-ring",
 								// The title gives way first, down to 60% of a Current chats row; then the project name shrinks.
@@ -310,16 +336,22 @@ function ChatRow(props: ChatRowProps): ReactNode {
 								unseen && "font-semibold text-fg",
 							)}
 							data-row-title
-							title={session?.preview ?? undefined}
+							data-current-tab={current ? tabId : undefined}
+							title={current ? t("sidebar.reorderHint") : session?.preview ?? undefined}
 							aria-current={current && active ? "true" : undefined}
 							aria-describedby={unseen ? statusId : undefined}
-							aria-keyshortcuts={current && props.number ? `${MAC ? "Meta" : "Control"}+${props.number}` : undefined}
+							aria-keyshortcuts={current ? `${props.number ? `${MAC ? "Meta" : "Control"}+${props.number} ` : ""}Alt+ArrowUp Alt+ArrowDown` : undefined}
 							onClick={open}
 							onAuxClick={event => {
 								// Middle-click closes an open chat.
 								if (event.button === 1 && tabId) void closeChat(tabId);
 							}}
 							onKeyDown={event => {
+								if (current && event.altKey && !event.ctrlKey && !event.metaKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+									event.preventDefault();
+									move(event.key === "ArrowUp" ? -1 : 1);
+									return;
+								}
 								if (event.key === "Delete" && tabId) {
 									event.preventDefault();
 									void closeChat(tabId);
@@ -359,11 +391,11 @@ function ChatRow(props: ChatRowProps): ReactNode {
 									size="sm"
 								/>
 							</MenuTrigger>
-							<MenuContent align="end">{items(dropdownKit)}</MenuContent>
+							<MenuContent align="end" onCloseAutoFocus={onMenuCloseFocus}>{items(dropdownKit)}</MenuContent>
 						</Menu>
 					</div>
 				</ContextMenuTrigger>
-				<ContextMenuContent>{items(contextKit)}</ContextMenuContent>
+				<ContextMenuContent onCloseAutoFocus={onMenuCloseFocus}>{items(contextKit)}</ContextMenuContent>
 			</ContextMenu>
 			<TrashChatDialog
 				open={confirmDelete}
@@ -536,7 +568,7 @@ function AddProjectMenu(): ReactNode {
 	);
 }
 
-/** Sorting applies only to Projects; Current chats keeps its opening order and shortcut numbers. */
+/** Sorting applies only to Projects; Current chats keeps its manually adjustable tab order. */
 function SidebarSortMenu({ sort }: { sort: SidebarSort }): ReactNode {
 	const { t } = useTranslation("shell");
 	const labelId = useId();
@@ -721,7 +753,7 @@ function HeaderCard({ filled, open, onEmptied }: HeaderCardProps): ReactNode {
 	);
 }
 
-/** Unseen open chats appear first, with open order and shortcut numbers preserved within both groups. */
+/** Unseen open chats appear first; manual moves change tab order within the source group. */
 function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): ReactNode {
 	const { t } = useTranslation("shell");
 	const tabs = useApp(state => state.tabs);
@@ -734,12 +766,42 @@ function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): Re
 		return { ordered: [...unseen, ...seen], unseenCount: unseen.length };
 	}, [chats, unseenChats]);
 	const showNumbers = useModifierHeld();
+	const [dragId, setDragId] = useState<string | null>(null);
+	const [dropIndex, setDropIndex] = useState<number | null>(null);
+	const [announcement, setAnnouncement] = useState({ text: "", sequence: 0 });
+	const sectionRef = useRef<HTMLElement>(null);
+	const displayed = ordered.map(chat => chat.tabId);
+	const moveTo = (tabId: string, position: number) => {
+		const state = useApp.getState();
+		const from = state.tabs.findIndex(tab => tab.id === tabId);
+		const to = currentChatMoveIndex(state.tabs.map(tab => tab.id), displayed, state.unseenChats, tabId, position);
+		if (to < 0) return;
+		state.moveTab(tabId, to);
+		const group = displayed.filter(id => Boolean(state.unseenChats[id]) === Boolean(state.unseenChats[tabId]));
+		const groupStart = displayed.indexOf(group[0]!);
+		const actual = Math.max(groupStart, Math.min(groupStart + group.length - 1, position));
+		const chat = ordered.find(chat => chat.tabId === tabId);
+		const title = chatTitle(controllerFor(tabId)?.getSnapshot() ?? null, state.tabs.find(tab => tab.id === tabId)?.title ?? null) ?? (chat?.kind === "session" ? chat.session.title : null) ?? t("sidebar.untitled");
+		setAnnouncement(previous => ({
+			text: from === to ? t("sidebar.groupBoundary") : t("sidebar.moved", { title, position: actual + 1, count: ordered.length }),
+			sequence: previous.sequence + 1,
+		}));
+	};
 	if (chats.length === 0) return null;
 	return (
-		<section aria-label={t("sidebar.current")} className="mb-stack flex flex-col gap-px">
-			<SectionLabel as="h2" className="flex h-7 items-center px-row">
-				{t("sidebar.current")}
-			</SectionLabel>
+		<section ref={sectionRef} aria-label={t("sidebar.current")} className="mb-stack flex flex-col gap-px">
+			<div className="flex h-7 items-center gap-1 pl-row">
+				<SectionLabel as="h2" className="min-w-0 flex-1">{t("sidebar.current")}</SectionLabel>
+				<Menu>
+					<MenuTrigger asChild>
+						<IconButton size="sm" icon={<DotsThree />} label={t("sidebar.currentMenu")} />
+					</MenuTrigger>
+					<MenuContent align="end">
+						<MenuItem icon={<X />} onSelect={() => void closeAllChats()}>{t("sidebar.closeAll")}</MenuItem>
+					</MenuContent>
+				</Menu>
+			</div>
+			<div role="status" aria-live="polite" aria-atomic="true" className="sr-only"><span key={announcement.sequence}>{announcement.text}</span></div>
 			<AnimatePresence initial={false} mode="popLayout">
 				{ordered.map((chat, position) => {
 					const index = tabs.findIndex(tab => tab.id === chat.tabId);
@@ -753,7 +815,47 @@ function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): Re
 							transition={spring.snappy}
 						>
 							{unseenCount > 0 && position === unseenCount && <div aria-hidden className="mx-row my-1 h-px bg-border" />}
-							<ChatRow variant="current" chat={chat} now={now} number={index >= 0 && index < 9 ? index + 1 : null} showNumber={showNumbers} />
+							<div
+								draggable
+								onDragStart={event => {
+									setDragId(chat.tabId);
+									event.dataTransfer.effectAllowed = "move";
+									event.dataTransfer.setData("application/x-vomp-chat", chat.tabId);
+								}}
+								onDragEnd={() => { setDragId(null); setDropIndex(null); }}
+								onDragOver={event => {
+									if (!dragId) return;
+									event.preventDefault();
+									event.stopPropagation();
+									event.dataTransfer.dropEffect = "move";
+									const box = event.currentTarget.getBoundingClientRect();
+									const group = ordered.map((entry, index) => Boolean(unseenChats[entry.tabId]) === Boolean(unseenChats[dragId]) ? index : -1).filter(index => index >= 0);
+									const target = event.clientY > box.top + box.height / 2 ? position + 1 : position;
+									setDropIndex(Math.max(group[0]!, Math.min(group.at(-1)! + 1, target)));
+								}}
+								onDrop={event => {
+									if (!dragId || dropIndex === null) return;
+									event.preventDefault();
+									event.stopPropagation();
+									const from = displayed.indexOf(dragId);
+									moveTo(dragId, from < dropIndex ? dropIndex - 1 : dropIndex);
+									sectionRef.current?.querySelector<HTMLButtonElement>(`button[data-current-tab="${CSS.escape(dragId)}"]`)?.focus();
+									setDragId(null);
+									setDropIndex(null);
+								}}
+								className={cn(
+									"relative",
+									dragId === chat.tabId && "opacity-50",
+									dragId && dropIndex === position && "before:absolute before:-top-px before:inset-x-row before:h-0.5 before:bg-accent",
+									dragId && dropIndex === position + 1 && position === ordered.length - 1 && "after:absolute after:-bottom-px after:inset-x-row after:h-0.5 after:bg-accent",
+								)}
+							>
+								<ChatRow variant="current" chat={chat} now={now} number={index >= 0 && index < 9 ? index + 1 : null} showNumber={showNumbers}
+									move={delta => moveTo(chat.tabId, position + delta)}
+									canMoveUp={position > 0 && Boolean(unseenChats[ordered[position - 1]!.tabId]) === Boolean(unseenChats[chat.tabId])}
+									canMoveDown={position < ordered.length - 1 && Boolean(unseenChats[ordered[position + 1]!.tabId]) === Boolean(unseenChats[chat.tabId])}
+								/>
+							</div>
 						</motion.div>
 					);
 				})}
@@ -836,6 +938,7 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 						<div className="flex flex-col gap-1 px-3 pb-2">
 							<button
 								type="button"
+								data-new-chat
 								className="flex h-9 items-center gap-2 rounded-md px-row text-md font-semibold text-accent outline-none hover:bg-accent-muted focus-visible:outline-2 focus-visible:outline-ring"
 								onClick={() => void useApp.getState().newChat()}
 							>

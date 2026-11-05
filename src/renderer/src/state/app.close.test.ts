@@ -19,7 +19,12 @@ const env = vi.hoisted(() => {
 		vomp: { on: () => () => undefined, invoke: () => Promise.resolve([]) },
 	});
 	/** Each chat's view, by tab id; the guard's answer; the chats it was asked about. */
-	return { views: new Map<string, unknown>(), allow: true, asked: [] as string[] };
+	return {
+		views: new Map<string, unknown>(), allow: true, asked: [] as string[], storage,
+		drafts: {} as Record<string, string>,
+		attachments: {} as Record<string, unknown[]>,
+		dispose: async (_tabId: string) => {},
+	};
 });
 
 vi.mock("./session", () => ({
@@ -38,7 +43,7 @@ vi.mock("./session", () => ({
 		}
 		async loadHistory() {}
 		async checkOwnership() {}
-		async dispose() {}
+		async dispose() { await env.dispose(this.tabId); }
 	},
 }));
 vi.mock("../registry/guards", async importOriginal => ({
@@ -50,7 +55,12 @@ vi.mock("../registry/guards", async importOriginal => ({
 }));
 vi.mock("../shell/hooks", () => ({ chatTitle: () => null }));
 vi.mock("../chat/composer/drafts", () => ({
-	useComposerDrafts: { getState: () => ({ drafts: {}, attachments: {}, modes: {}, forget() {}, setDraft() {}, addAttachments() {}, setMode() {}, focus() {} }) },
+	useComposerDrafts: { getState: () => ({
+		drafts: env.drafts, attachments: env.attachments, modes: {},
+		forget(id: string) { delete env.drafts[id]; delete env.attachments[id]; },
+		setDraft(id: string, text: string) { env.drafts[id] = text; },
+		addAttachments() {}, setMode() {}, focus() {},
+	}) },
 }));
 
 const helper = (id: string, status: AgentSnapshot["status"]): AgentSnapshot =>
@@ -123,5 +133,86 @@ describe("closeChat", () => {
 		await closeChat("helpers");
 		expect(env.asked).toEqual(["helpers"]);
 		expect(useApp.getState().tabs.map(tab => tab.id)).toContain("helpers");
+	});
+});
+
+describe("bulk close and manual tab order", () => {
+	beforeEach(() => {
+		env.storage.clear();
+		env.views.clear();
+		env.drafts = {};
+		env.attachments = {};
+		env.dispose = async () => {};
+	});
+
+	async function open(count = 3) {
+		vi.resetModules();
+		const app = await import("./app");
+		const tabs = Array.from({ length: count }, (_, index) => ({ id: `saved${index}`, projectPath: "/p", sessionFile: `/${index}.jsonl`, title: `Chat ${index}` }));
+		app.useApp.setState({ tabs, activeTabId: null, splitTabId: null, view: "home" });
+		for (const tab of tabs) app.useApp.getState().activateTab(tab.id);
+		const guards = await import("../registry/guards");
+		return { ...app, tabs, guards };
+	}
+
+	it("leaves every chat and draft open on Cancel, then awaits each disposal before closing the next", async () => {
+		const { closeAllChats, useApp, tabs, guards } = await open();
+		env.drafts = { saved0: "First draft" };
+		env.attachments = { saved0: [{}] };
+		guards.setAllTabsCloseGuard(async () => false);
+		await closeAllChats();
+		expect(useApp.getState().tabs).toEqual(tabs);
+		expect(env.drafts.saved0).toBe("First draft");
+		expect(env.attachments.saved0).toHaveLength(1);
+
+		const decision = Promise.withResolvers<void>();
+		const stopped: string[] = [];
+		env.dispose = async id => { stopped.push(id); if (id === "saved0") await decision.promise; };
+		const guard = vi.fn(async () => true);
+		guards.setAllTabsCloseGuard(guard);
+		const closing = closeAllChats();
+		expect(closeAllChats()).toBe(closing);
+		await Promise.resolve();
+		expect(stopped).toEqual(["saved0"]);
+		expect(useApp.getState().tabs.map(tab => tab.id)).toEqual(["saved1", "saved2"]);
+		decision.resolve();
+		await closing;
+		expect(guard).toHaveBeenCalledOnce();
+		expect(stopped).toEqual(["saved0", "saved1", "saved2"]);
+		expect(useApp.getState().tabs).toEqual([]);
+		expect(env.attachments).toEqual({});
+		for (const file of ["/2.jsonl", "/1.jsonl", "/0.jsonl"]) {
+			expect(await useApp.getState().reopenClosedChat()).toBe(true);
+			expect(useApp.getState().tabs.at(-1)?.sessionFile).toBe(file);
+		}
+		expect(env.drafts[useApp.getState().tabs.at(-1)!.id]).toBe("First draft");
+	});
+
+	it("keeps only the last ten saved chats on the reopen stack after a larger bulk close", async () => {
+		const { closeAllChats, useApp, guards } = await open(12);
+		guards.setAllTabsCloseGuard(async () => true);
+		await closeAllChats();
+		for (let index = 11; index >= 2; index--) {
+			expect(await useApp.getState().reopenClosedChat()).toBe(true);
+			expect(useApp.getState().tabs.at(-1)?.sessionFile).toBe(`/${index}.jsonl`);
+		}
+		expect(await useApp.getState().reopenClosedChat()).toBe(false);
+	});
+
+	it("moves tabs without changing the focused chat, and restores their new saved order", async () => {
+		const { useApp } = await open();
+		const active = useApp.getState().activeTabId;
+		useApp.getState().moveTab("saved2", 0);
+		expect(useApp.getState().tabs.map(tab => tab.id)).toEqual(["saved2", "saved0", "saved1"]);
+		expect(useApp.getState().activeTabId).toBe(active);
+		const saved = env.storage.get("visual-omp:layout")!;
+		expect(JSON.parse(saved).state.tabs.map((tab: { id: string }) => tab.id)).toEqual(["saved2", "saved0", "saved1"]);
+		useApp.setState({ tabs: [] });
+		// Hydration uses the layout written by moveTab, without constructing replacement saved data.
+		env.storage.set("visual-omp:layout", saved);
+		await useApp.persist.rehydrate();
+		expect(useApp.getState().tabs.map(tab => tab.id)).toEqual(["saved2", "saved0", "saved1"]);
+		useApp.getState().moveTab("saved2", 99);
+		expect(useApp.getState().tabs.map(tab => tab.id)).toEqual(["saved0", "saved1", "saved2"]);
 	});
 });

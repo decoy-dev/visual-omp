@@ -11,7 +11,7 @@ import { persist } from "zustand/middleware";
 import type { AppPreferences, OmpStatus, ProjectSummary, SessionSummary } from "@shared/ipc";
 import { useComposerDrafts } from "../chat/composer/drafts";
 import { reconcileUnseen, type UnseenChats } from "../features/onboarding/attention";
-import { confirmTabClose, preparePaneLeave } from "../registry/guards";
+import { confirmAllTabsClose, confirmTabClose, preparePaneLeave } from "../registry/guards";
 import { chatTitle } from "../shell/hooks";
 import { normalizeRestoredChatSelection, releaseKeepsNumbers } from "./chatSelection";
 import { workInFlight } from "./chatWork";
@@ -70,7 +70,7 @@ export interface AppState {
 	recentSessions: SessionSummary[] | null;
 	activeProject: string | null;
 	view: MainView;
-	/** Open chats, in the order they were opened. */
+	/** Open chats, in manually adjustable order, also used by numbered shortcuts and cycling. */
 	tabs: ChatTab[];
 	/** Unopened results, saved with their open chats and cleared when those chats are shown with focus. */
 	unseenChats: UnseenChats;
@@ -134,6 +134,8 @@ export interface AppState {
 	 * shows it beside the chat on the left instead.
 	 */
 	activateTab(tabId: string, options?: { split?: boolean }): void;
+	/** Move an open chat to a zero-based index in the persisted tab order. */
+	moveTab(tabId: string, toIndex: number): void;
 	/**
 	 * Close an open chat and stop its omp. `closeChat` asks first while it is working. A saved chat goes on the
 	 * "Reopen closed chat" stack with its unsent text.
@@ -589,6 +591,17 @@ export const useApp = create<AppState>()(
 				});
 			},
 
+			moveTab(tabId, toIndex) {
+				const tabs = get().tabs;
+				const from = tabs.findIndex(tab => tab.id === tabId);
+				if (from < 0 || !Number.isFinite(toIndex)) return;
+				const to = Math.max(0, Math.min(tabs.length - 1, Math.trunc(toIndex)));
+				if (from === to) return;
+				const moved = [...tabs];
+				moved.splice(to, 0, moved.splice(from, 1)[0]!);
+				set({ tabs: moved });
+			},
+
 			async closeTab(tabId) {
 				const controller = controllers.get(tabId);
 				controllers.delete(tabId);
@@ -884,6 +897,22 @@ export async function closeChat(tabId: string): Promise<void> {
 	if (workInFlight(controllers.get(tabId)?.getSnapshot() ?? null) && !(await confirmTabClose(tabId))) return;
 	await useApp.getState().closeTab(tabId);
 }
+
+/** Close the chats present when asked, once approved, awaiting each omp worktree decision before the next close. */
+export function closeAllChats(): Promise<void> {
+	if (closingAll) return closingAll;
+	const tabIds = useApp.getState().tabs.map(tab => tab.id);
+	if (tabIds.length === 0) return Promise.resolve();
+	closingAll = (async () => {
+		if (!(await confirmAllTabsClose(tabIds))) return;
+		for (const tabId of tabIds) {
+			if (useApp.getState().tabs.some(tab => tab.id === tabId)) await useApp.getState().closeTab(tabId);
+		}
+	})().finally(() => { closingAll = null; });
+	return closingAll;
+}
+
+let closingAll: Promise<void> | null = null;
 
 /**
  * A chat can still move to another folder while nothing has been sent: no input sent or on its

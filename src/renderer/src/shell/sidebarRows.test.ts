@@ -1,6 +1,6 @@
 import type { ProjectSummary, SessionSummary } from "@shared/ipc";
 import { describe, expect, it } from "vitest";
-import { archivedChats, currentChats, flatChats, nextWaitingChat, type SidebarInput, sidebarGroups, stepChat } from "./sidebarRows";
+import { archivedChats, currentChatMoveIndex, currentChats, flatChats, nextWaitingChat, type SidebarInput, sidebarGroups, stepChat } from "./sidebarRows";
 
 const project = (path: string, lastActivity: number): ProjectSummary => ({ path, name: path, sessionCount: 0, lastActivity, exists: true });
 const session = (cwd: string, id: string, updatedAt: number, extra: Partial<SessionSummary> = {}): SessionSummary => ({
@@ -256,5 +256,37 @@ describe("nextWaitingChat", () => {
 	it("skips the focused chat and starts from the top without one", () => {
 		expect(nextWaitingChat(order, "t3", id => id === "t3")).toBeNull();
 		expect(nextWaitingChat(order, null, id => id === "t3" || id === "t2")).toBe("t2");
+	});
+});
+
+describe("Current chats manual ordering", () => {
+	it("matches the displayed insertion within every unseen and viewed grouping", () => {
+		const order = ["a", "b", "c", "d"];
+		for (let mask = 0; mask < 16; mask++) {
+			const unseen = Object.fromEntries(order.filter((_, index) => mask & (1 << index)).map(id => [id, "finished"]));
+			const display = (ids: string[]) => [...ids.filter(id => unseen[id]), ...ids.filter(id => !unseen[id])];
+			const displayed = display(order);
+			for (const id of order) {
+				const group = displayed.filter(peer => Boolean(unseen[peer]) === Boolean(unseen[id]));
+				for (let target = 0; target < order.length; target++) {
+					const to = currentChatMoveIndex(order, displayed, unseen, id, target);
+					const result = order.filter(peer => peer !== id);
+					result.splice(to, 0, id);
+					const expectedGroup = group.filter(peer => peer !== id);
+					expectedGroup.splice(Math.max(0, Math.min(group.length - 1, target - displayed.indexOf(group[0]!))), 0, id);
+					expect(display(result).filter(peer => Boolean(unseen[peer]) === Boolean(unseen[id]))).toEqual(expectedGroup);
+					expect(result.filter(peer => peer !== id)).toEqual(order.filter(peer => peer !== id));
+				}
+			}
+		}
+	});
+
+	it("maps searched rows through their displayed neighbor without changing hidden rows' relative order", () => {
+		const order = ["seenA", "hiddenA", "unseenA", "hiddenB", "seenB", "unseenB"];
+		const displayed = ["unseenA", "unseenB", "seenA", "seenB"];
+		const to = currentChatMoveIndex(order, displayed, { unseenA: true, unseenB: true }, "seenB", 0);
+		const result = order.filter(id => id !== "seenB");
+		result.splice(to, 0, "seenB");
+		expect(result).toEqual(["seenB", "seenA", "hiddenA", "unseenA", "hiddenB", "unseenB"]);
 	});
 });
