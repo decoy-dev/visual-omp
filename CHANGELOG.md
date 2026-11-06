@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+#### Fixed
+
+- Saved chats, prompt history, transcript images and usage discovery now follow omp's existing XDG data directory on macOS and Linux.
+
 ## [0.7.9] - 2026-11-06
 
 visual-omp 0.7.9 reduces delays in chats with many helpers, lowers CPU use while replies stream, improves document previews and fixes live video previews. It also adds support for omp 18.17 features while continuing to require omp 18.15.0 or later.
