@@ -4,6 +4,14 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+#### Improved
+
+- HTML previews in Outputs and Files default to a desktop-width page scaled to fit, with Fit width, 100% and Phone options. While omp writes a page, the preview follows changed content and highlights it briefly when a suitable element is available. Clicking the page, changing the size or choosing Pause following stops following. Scrolling inside the script-free page does not pause following on its own. After writing finishes, the preview keeps your place and offers Show latest when a newer revision is available. This behavior has not yet been checked in Electron.
+
+#### Fixed
+
+- Transcript following now accounts for layout changes when helper cards shrink above the newest entries, which could previously stop following and show "new content below". Scrolling up with the wheel, keyboard, touch or scrollbar, jumping to an earlier part of the chat, or opening a question card still stops following. This change has not yet been checked in Electron.
+
 ## [0.7.8] - 2026-11-05
 
 visual-omp 0.7.8 changes how chats confirm completion, addresses a reported Windows Export error, shows which effort Auto thinking picked, opens helper conversations and HTML files inside the app, and previews playable video and saved documents in Outputs while omp works. It requires omp 18.15.0 or later.
