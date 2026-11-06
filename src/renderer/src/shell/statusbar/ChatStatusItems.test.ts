@@ -8,12 +8,14 @@ import type { PaneProps } from "../../registry/slots";
 import type { SessionController, SessionView } from "../../state/session";
 import { TooltipProvider } from "../../ui";
 import type { ThinkingState } from "../../features/session-tools/thinking";
-import { ContextStatusItem, HelpersStatusItem, ModelStatusItem, QueueStatusItem, ThinkingStatusItem, WorkingStatusItem } from "./ChatStatusItems";
+import type { TspHostSnapshot } from "@shared/tsp-host";
+import { CacheStatusItem, ContextStatusItem, HelpersStatusItem, ModelStatusItem, QueueStatusItem, ThinkingStatusItem, WorkingStatusItem } from "./ChatStatusItems";
 
-const fake = vi.hoisted(() => ({ thinking: { configured: "auto", resolved: null, provisional: false } as ThinkingState, models: [{ provider: "fixture", id: "model", name: "Catalog model" }] }));
+const fake = vi.hoisted(() => ({ snapshot: null as TspHostSnapshot | null, thinking: { configured: "auto", resolved: null, provisional: false } as ThinkingState, models: [{ provider: "fixture", id: "model", name: "Catalog model" }] }));
 vi.mock("../../chat/branch", () => ({ useDisplayedEntries: () => [] }));
 vi.mock("../../features/session-tools/model", () => ({ useChatModels: () => ({ models: fake.models }) }));
 vi.mock("../../features/session-tools/pickers", () => ({ useThinking: () => fake.thinking }));
+vi.mock("../../state/tsp/useTsp", () => ({ useTsp: () => ({ snapshot: fake.snapshot }) }));
 let root: Root; let element: HTMLDivElement; let view: SessionView;
 const session = { projectPath: "/fixture", subscribe: () => () => {}, getSnapshot: () => view } as unknown as SessionController;
 beforeEach(() => {
@@ -21,6 +23,7 @@ beforeEach(() => {
 	i18n.addResourceBundle("en", "settings", settingsMessages);
 	view = { mode: "live", readOnly: false, follow: null, queue: [], working: false, workingSince: null, guest: { phase: "live", state: { contextUsage: { percent: 62.6 }, model: { provider: "fixture", id: "model", name: "Wire model" } }, stream: null, agents: [], progress: new Map(), lifecycle: new Map() } } as unknown as SessionView;
 	fake.thinking = { configured: "auto", resolved: null, provisional: false };
+	fake.snapshot = null;
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); vi.useRealTimers(); });
@@ -63,6 +66,18 @@ it("uses the Tasks running-helper rule and excludes idle or stopped helpers", as
 	await render(HelpersStatusItem); expect(element.textContent).toBe("1 helper running");
 	view = { ...view, mode: "exited" }; await render(HelpersStatusItem); expect(element.textContent).toBe("0 helpers running");
 });
-it.each([ContextStatusItem, ModelStatusItem, ThinkingStatusItem, QueueStatusItem, WorkingStatusItem, HelpersStatusItem])("omits focused-chat metrics without a focused chat", async component => {
+it.each([CacheStatusItem, ContextStatusItem, ModelStatusItem, ThinkingStatusItem, QueueStatusItem, WorkingStatusItem, HelpersStatusItem])("omits focused-chat metrics without a focused chat", async component => {
 	await render(component, null); expect(element.textContent).toBe("");
+});
+it("shows omp's cache prediction and removes it immediately when facts become unavailable", async () => {
+	view = { ...view, host: { hostId: "host", generation: 1, tspEpoch: 1, transport: "tsp" } } as SessionView;
+	fake.snapshot = { hostId: "host", generation: 1, epoch: 1, revision: 1, availability: { available: true, reason: null }, failure: null, negotiated: true, lifecycle: "live", documentGeneration: 1,
+		surfaces: [{ documentGeneration: 1, sequence: 1, focus: null, settled: [], closed: false, suspended: false, open: { id: "session", mode: "inline", role: "omp.session" }, document: { id: "root", k: "col", c: [{ id: "dock", k: "col", c: [{ id: "cache", k: "seg", p: { role: "omp.composer.cache", aria: "Cached until 4:53 PM", title: "Cached until 4:53 PM\nNext message reads ~42k from cache" } }] }] } }] } as TspHostSnapshot;
+	await render(CacheStatusItem);
+	expect(element.textContent).toBe("Cached until 4:53 PM");
+	expect(element.querySelector('[aria-label]')?.getAttribute("aria-label")).toBe("Cached until 4:53 PM\nNext message reads ~42k from cache");
+	fake.snapshot = null;
+	await render(CacheStatusItem); expect(element.textContent).toBe("");
+	view = { ...view, host: { ...view.host!, transport: undefined } } as SessionView;
+	await render(CacheStatusItem); expect(element.textContent).toBe("");
 });

@@ -29,7 +29,7 @@ export const TSP_ROLES = {
 	btwBody: "omp.btw.body", btwReader: "omp.btw.reader", btwHistoryList: "omp.btw.history",
 	btwEmpty: "omp.btw.empty", btwEmptyTitle: "omp.btw.empty.title", btwEmptyHint: "omp.btw.empty.hint",
 	overlayHints: "omp.overlay.hints", retryHint: "omp.hint.retry",
-	composerFact: "omp.composer.fact",
+	composerFact: "omp.composer.fact", composerCache: "omp.composer.cache", composerCacheCard: "omp.composer.cache.card",
 } as const;
 const nativeHookRoles: ReadonlySet<string> = new Set([TSP_ROLES.hookSelect, TSP_ROLES.hookConfirm, TSP_ROLES.hookInput, TSP_ROLES.hookEditor]);
 const hookPartPrefixes = ["omp.hook-input", "omp.hook-editor"] as const;
@@ -46,7 +46,7 @@ export const TSP_ACTIONS = {
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
 export function isKnownAction(action: string): boolean { return knownActions.has(action); }
 /** Recorded actions without an app interaction path stay display-only. */
-export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true, "jobs.open": true, edit: true, add: true, delete: true };
+export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 export const TSP_TREE = {
 	summaryTitle: "Summarize branch?", noSummary: "No summary",

@@ -25,7 +25,8 @@
 			"thinking": "Thinking level",
 			"queue": "Queue length",
 			"time": "Working time",
-			"helpers": "Helpers running"
+			"helpers": "Helpers running",
+			"cache": "Prompt cache"
 		},
 		"context": "Context {{percent}}%",
 		"model": "Model: {{name}}",

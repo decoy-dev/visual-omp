@@ -44,7 +44,7 @@ it("keeps null Git, sharing, resources and optional items out of the default bar
 	const populated = () => [...element.querySelectorAll<HTMLElement>("[data-status-item]:not(:empty)")].map(item => item.dataset.statusItem);
 	expect(populated()).toEqual(["omp.status"]);
 	const empty = [...element.querySelectorAll("[data-status-item]:empty")];
-	expect(empty.length).toBe(13);
+	expect(empty.length).toBe(14);
 	expect(empty.every(item => item.classList.contains("empty:hidden"))).toBe(true);
 	expect(element.querySelector('[data-status-item="omp.status"]')?.matches(":empty")).toBe(false);
 	fake.version = "0.7.8";

@@ -4,7 +4,8 @@ import type { StatusItemSpec } from "../../registry/slots";
 import { orderedStatusItems, statusItemLocked } from "./layout";
 
 export function showStatusItem(preference: StatusBarPreference, item: StatusItemSpec, show: boolean): StatusBarPreference {
-	return normalizeStatusBar({ ...preference, hidden: show || statusItemLocked(item) ? preference.hidden.filter(id => id !== item.id) : [...preference.hidden, item.id] });
+	const current = normalizeStatusBar(preference);
+	return { ...current, hidden: show || statusItemLocked(item) ? current.hidden.filter(id => id !== item.id) : [...new Set([...current.hidden, item.id])] };
 }
 
 /** Reorder within the existing left or right group, including hidden entries. */

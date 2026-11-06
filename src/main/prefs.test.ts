@@ -1,5 +1,6 @@
 import { join } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_STATUS_BAR, STATUS_BAR_KNOWN_ITEMS } from "../shared/statusBar";
 
 const fake = vi.hoisted(() => ({
 	contents: null as string | null,
@@ -133,13 +134,13 @@ describe("status bar preferences", () => {
 	it.each([null, "{}", '{"statusBar":null}', '{"statusBar":{"hidden":"invalid","order":false}}'])("keeps existing items shown and new chat metrics hidden for %s", async contents => {
 		fake.contents = contents;
 		const { getPrefs } = await import("./prefs");
-		expect(getPrefs().statusBar).toEqual({ hidden: ["chat.context", "chat.model", "chat.thinking", "chat.queue", "chat.time", "chat.helpers"], order: [] });
+		expect(getPrefs().statusBar).toEqual(DEFAULT_STATUS_BAR);
 	});
 
 	it("normalizes stored ids without hiding recovery actions", async () => {
 		fake.contents = JSON.stringify({ statusBar: { hidden: ["app.cpu", "omp.status", "app.update", "app.cpu", null, ""], order: ["app.memory", 2, "app.memory", "app.cpu"] } });
 		const { getPrefs } = await import("./prefs");
-		expect(getPrefs().statusBar).toEqual({ hidden: ["app.cpu"], order: ["app.memory", "app.cpu"] });
+		expect(getPrefs().statusBar).toEqual({ hidden: ["app.cpu", "chat.cache"], order: ["app.memory", "app.cpu"], seen: STATUS_BAR_KNOWN_ITEMS });
 	});
 
 	it("persists visibility and order through unrelated writes and reload", async () => {
@@ -149,7 +150,20 @@ describe("status bar preferences", () => {
 		await flushPrefs();
 		vi.resetModules();
 		const { getPrefs } = await import("./prefs");
-		expect(getPrefs().statusBar).toEqual({ hidden: ["app.memory"], order: ["git.pr", "git.branch"] });
+		expect(getPrefs().statusBar).toEqual({ hidden: ["app.memory", "chat.cache"], order: ["git.pr", "git.branch"], seen: STATUS_BAR_KNOWN_ITEMS });
+	});
+
+	it("keeps a new optional item hidden for a 0.7.8 layout and preserves deliberate enablement after reload", async () => {
+		fake.contents = JSON.stringify({ statusBar: { hidden: ["chat.context"], order: ["git.branch"] } });
+		const prefs = await import("./prefs");
+		const migrated = prefs.getPrefs().statusBar;
+		expect(migrated.hidden).toEqual(["chat.context", "chat.cache"]);
+		expect(migrated.seen).toEqual(STATUS_BAR_KNOWN_ITEMS);
+		prefs.setPrefs({ statusBar: { ...migrated, hidden: migrated.hidden.filter(id => id !== "chat.cache") } });
+		await prefs.flushPrefs();
+		vi.resetModules();
+		const reloaded = await import("./prefs");
+		expect(reloaded.getPrefs().statusBar).toEqual({ hidden: ["chat.context"], order: ["git.branch"], seen: STATUS_BAR_KNOWN_ITEMS });
 	});
 });
 

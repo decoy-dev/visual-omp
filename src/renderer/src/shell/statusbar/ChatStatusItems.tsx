@@ -12,6 +12,9 @@ import type { PaneProps } from "../../registry/slots";
 import { elapsed, useNow, useSessionView } from "../hooks";
 import type { SessionController } from "../../state/session";
 import { Tooltip } from "../../ui";
+import { promptCacheFact } from "@shared/tsp/prompt-cache";
+import { useTsp } from "../../state/tsp/useTsp";
+import { PromptCacheStatus } from "./PromptCacheStatus";
 
 function StatusText({ label, children }: { label: string; children: ReactNode }) {
 	return <Tooltip content={label}><span tabIndex={0} aria-label={label} className="flex h-6 min-w-0 items-center gap-1.5 rounded-sm px-1.5 tabular-nums">{children}</span></Tooltip>;
@@ -76,6 +79,13 @@ export function HelpersStatusItem({ session }: PaneProps) {
 	return <StatusText label={label}><UsersThree aria-hidden className="size-3.5 shrink-0" />{label}</StatusText>;
 }
 
+export function CacheStatusItem({ session }: PaneProps) {
+	const view = useSessionView(session);
+	const host = view?.host?.transport === "tsp" && view.mode === "live" ? view.host : null;
+	const { snapshot } = useTsp(host?.hostId ?? null);
+	return <PromptCacheStatus fact={promptCacheFact(snapshot, host)} />;
+}
+
 const COMPONENTS = {
 	"chat.context": ContextStatusItem,
 	"chat.model": ModelStatusItem,
@@ -83,6 +93,7 @@ const COMPONENTS = {
 	"chat.queue": QueueStatusItem,
 	"chat.time": WorkingStatusItem,
 	"chat.helpers": HelpersStatusItem,
+	"chat.cache": CacheStatusItem,
 };
 
 /** One lazy boundary serves every optional focused-chat item. */

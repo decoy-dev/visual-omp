@@ -160,6 +160,7 @@ describe("host overlay", () => {
 		// Interim replies, SVG, predictions, recaps and worktree exit choices follow the user's omp settings.
 		expect(overlay).not.toHaveProperty("out");
 		expect(overlay.composer).toEqual({ shape: "box" });
+		expect(overlay.statusLine.preset).toBe("default");
 		expect(overlay).not.toHaveProperty("recap");
 		expect(overlay.tui).not.toHaveProperty("renderSvg");
 		expect(overlay.worktree).not.toHaveProperty("onExit");
@@ -1663,6 +1664,10 @@ describe("semantic transport", () => {
 		expect(pty.spawnOptions?.env).toMatchObject({ TERM_PROGRAM: "tern" });
 		expect(pty.spawnOptions?.env).not.toHaveProperty("PI_TUI_NATIVE");
 		expect(pty.spawnOptions).toMatchObject({ encoding: null });
+		const overlay = parse(await readFile(pty.args[1]!, "utf8"));
+		expect(overlay.statusLine).toMatchObject({ preset: "full", compactThinkingLevel: false, segmentOptions: { model: { showThinkingLevel: true } } });
+		expect(overlay.statusLine).not.toHaveProperty("leftSegments");
+		expect(overlay.statusLine).not.toHaveProperty("rightSegments");
 		expect(pty.spawnOptions).not.toHaveProperty("useConptyDll");
 		prefs.classicPresentation = true;
 		tspMessage("q", { q: "hello", v: [1], features: ["send"] });

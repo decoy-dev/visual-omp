@@ -3,6 +3,7 @@ import { DEFAULT_STATUS_BAR } from "@shared/statusBar";
 import type { StatusItemSpec } from "../../registry/slots";
 import { orderedStatusItems, visibleStatusItems } from "./layout";
 import { moveStatusItem, showStatusItem } from "./customize";
+import { normalizeStatusBar } from "@shared/statusBarPreference";
 
 const items: StatusItemSpec[] = [
 	{ id: "git.branch", title: "branch", side: "left", order: 10, component: () => null },
@@ -26,10 +27,12 @@ describe("status registry layout", () => {
 		for (const item of items.filter(item => item.id === "omp.status" || item.id === "app.update")) expect(showStatusItem(preference, item, false).hidden).not.toContain(item.id);
 	});
 	it("shows and hides optional entries without changing the saved order", () => {
-		const initial = { hidden: ["app.cpu"], order: ["app.cpu", "omp.status"] };
+		const initial = normalizeStatusBar({ hidden: ["app.cpu"], order: ["app.cpu", "omp.status"] });
 		const shown = showStatusItem(initial, items[5]!, true);
-		expect(shown).toEqual({ hidden: [], order: initial.order });
-		expect(showStatusItem(shown, items[5]!, false)).toEqual(initial);
+		expect(shown).toEqual({ ...initial, hidden: ["chat.cache"] });
+		const hidden = showStatusItem(shown, items[5]!, false);
+		expect(new Set(hidden.hidden)).toEqual(new Set(initial.hidden));
+		expect(hidden.order).toEqual(initial.order);
 	});
 	it("reorders hidden items within their side and preserves the other side", () => {
 		const next = moveStatusItem(items, DEFAULT_STATUS_BAR, "chat.context", 0);

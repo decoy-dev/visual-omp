@@ -368,7 +368,9 @@ export class SessionHost {
 			// Classic screen readers need a stable editor frame as well as stable status segments.
 			...(!useTsp ? { composer: { shape: "box" } } : {}),
 			statusLine: {
-				preset: "default",
+				// omp owns the supported segment list. Full adds cache facts on capable TSP hosts;
+				// older omp omits them, while classic readers keep their established format.
+				preset: useTsp ? "full" : "default",
 				separator: "powerline",
 				compactThinkingLevel: false,
 				segmentOptions: { model: { showThinkingLevel: true } },

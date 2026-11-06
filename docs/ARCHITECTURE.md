@@ -45,10 +45,17 @@ chats back in the sidebar; pages are not restored. Split view can show two chats
 The status bar uses `statusItems` for every entry, including locked omp recovery and update controls.
 `shared/statusBarPreference.ts` normalizes the single app-wide `statusBar` preference on load and write, retaining
 the existing defaults and preventing recovery ids from being hidden. `shell/statusbar/layout.ts` orders
-each side by saved ids, then registry order. Appearance and the lazy right-click checklist share those
-rules. The six optional focused-chat components load from their own chunk: context reads collab usage,
+each side by saved ids, then registry order. Appearance and the lazy right-click checklist share those rules.
+Layouts also record `seen` ids. Layouts saved by 0.7.8 without that record treat its existing
+registrations as seen; new optional ids receive their hidden default once. Normalization records
+the current ids so enabling a newly introduced item remains enabled after saving and reloading.
+The optional focused-chat components load from their own chunk: context reads collab usage,
 model and thinking reuse the composer readers, queue reads `SessionView.queue`, time reads
 `workingSince` with the existing duration formatter, and helpers use the Tasks `runningHelpers` rule.
+Prompt cache reads only the current host, epoch and generation's `omp.composer.cache` segment.
+Its label and two-line tooltip quote omp's `aria` and `title`, preserving inferred predictions,
+cache-miss reasons and resend bounds without deriving them from billed usage. Missing facts,
+classic hosts and unavailable or stale documents render no item.
 The Appearance list, its reorder and visibility helpers, and the complete right-click menu load lazily.
 Their labels and optional metric formatting use the deferred settings translation namespace.
 Empty status-item wrappers use the CSS empty state to remove their flex box, without suppressing
@@ -134,14 +141,17 @@ Each SessionHost:
 1. Allocates a loopback WebSocket relay on a free port (listening on `127.0.0.1` and `::1` only).
 2. Writes a per-session config overlay (`collab.autoStart: control`,
    `collab.relayUrl: ws://localhost:<port>`, `collab.displayName`, plus a fixed status line style:
-   `symbolPreset: unicode` and `statusLine` preset `default`, separator `powerline`, thinking level
-   as a word) into a private temporary directory and spawns
+   `symbolPreset: unicode` and `statusLine` preset `full` for TSP or `default` for classic, separator
+   `powerline`, thinking level as a word) into a private temporary directory and spawns
    `omp --config <overlay> --extension <private bridge> [--resume <file>]` in a node-pty with the project as cwd. Crash recovery uses `--restore <file>` instead.
    Main selects TSP at host launch on macOS, Linux and Windows unless the app preference
    `classicPresentation` is on through Settings > Advanced > Classic omp terminal.
    `VOMP_TSP=1` forces TSP and `VOMP_TSP=0` forces classic as developer overrides on every platform.
    A running host keeps its choice until omp restarts in it. Classic session tools read the model and thinking segment
    from the painted screen, so the overlay still pins the status line for both presentations.
+   TSP uses omp's own full preset to request optional cache diagnostics without sending unsupported
+   segment ids to older engines. omp 18.15 and 18.16 omit the cache fact. The preset's other facts
+   do not become native status items or replace the app's collab and semantic composer readers.
    Classic hosts also pin `composer.shape: box`; TSP hosts keep the user's composer shape.
    The reader accepts both the boxed composer and omp's default band composer, including narrow bands
    that omit the model segment while leaving the editor usable. A theme's symbol overrides still apply

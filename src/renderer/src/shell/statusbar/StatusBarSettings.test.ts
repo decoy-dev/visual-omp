@@ -9,6 +9,7 @@ import { StatusBarMenu } from "./StatusBarMenu";
 import { openSettings } from "../../state/navigation";
 import type { StatusBarPreference } from "@shared/statusBar";
 import { TooltipProvider } from "../../ui";
+import { STATUS_BAR_KNOWN_ITEMS } from "@shared/statusBar";
 
 const fake = vi.hoisted(() => ({ preference: { hidden: ["chat.context"], order: [] } as StatusBarPreference, save: vi.fn() }));
 vi.mock("../../state/app", () => ({ useApp: Object.assign((select: (state: unknown) => unknown) => select({ prefs: { statusBar: fake.preference } }), { getState: () => ({ setPrefs: fake.save }) }) }));
@@ -23,7 +24,7 @@ let root: Root; let element: HTMLDivElement;
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	i18n.addResourceBundle("en", "settings", settingsMessages);
-	fake.preference = { hidden: ["chat.context"], order: [] }; fake.save.mockReset().mockResolvedValue(undefined);
+	fake.preference = { hidden: ["chat.context"], order: [], seen: STATUS_BAR_KNOWN_ITEMS }; fake.save.mockReset().mockResolvedValue(undefined);
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); });
@@ -32,13 +33,13 @@ it("shows visibility choices and locked recovery controls in Appearance", async 
 	const boxes = [...element.querySelectorAll<HTMLInputElement>('input[type="checkbox"]')];
 	expect(boxes.map(box => [box.checked, box.disabled])).toEqual([[true, false], [false, false], [true, true], [true, true]]);
 	await act(async () => boxes[1]!.click());
-	expect(fake.save).toHaveBeenLastCalledWith({ statusBar: { hidden: [], order: [] } });
+	expect(fake.save).toHaveBeenLastCalledWith({ statusBar: { hidden: [], order: [], seen: STATUS_BAR_KNOWN_ITEMS } });
 });
 it("reorders by keyboard, announces the new position and preserves focused handle", async () => {
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(StatusBarSettings))));
 	const handle = element.querySelector<HTMLButtonElement>('button[aria-label^="Reorder Context use"]')!;
 	await act(async () => { handle.focus(); handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })); });
-	expect(fake.save).toHaveBeenCalledWith({ statusBar: { hidden: ["chat.context"], order: ["omp.status", "app.update", "chat.context", "git.branch"] } });
+	expect(fake.save).toHaveBeenCalledWith({ statusBar: { hidden: ["chat.context"], order: ["omp.status", "app.update", "chat.context", "git.branch"], seen: STATUS_BAR_KNOWN_ITEMS } });
 	expect(element.querySelector('[aria-live="polite"]')?.textContent).toBe("Context use moved to position 1 of 2.");
 	expect(document.activeElement).toBe(handle);
 });
@@ -58,7 +59,7 @@ it.each([
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(StatusBarSettings))));
 	const button = element.querySelector<HTMLButtonElement>(`button[aria-label="${label}"]`)!;
 	await act(async () => button.click());
-	expect(fake.save).toHaveBeenLastCalledWith({ statusBar: { hidden: ["chat.context"], order } });
+	expect(fake.save).toHaveBeenLastCalledWith({ statusBar: { hidden: ["chat.context"], order, seen: STATUS_BAR_KNOWN_ITEMS } });
 	expect(element.querySelector('[aria-live="polite"]')?.textContent).toBe(`${name} moved to position ${position} of 2.`);
 	expect(document.activeElement).toBe(element.querySelector(`button[aria-label^="Reorder ${name},"]`));
 	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Move Git branch up"]')?.disabled).toBe(true);
@@ -73,7 +74,7 @@ it("offers a checklist in the context menu and disables both recovery rows", asy
 		["Git branch", "true", false], ["Context use", "false", false], ["omp status", "true", true], ["App update notice", "true", true],
 	]);
 	await act(async () => choices[1]!.dispatchEvent(new MouseEvent("click", { bubbles: true })));
-	expect(fake.save).toHaveBeenLastCalledWith({ statusBar: { hidden: [], order: [] } });
+	expect(fake.save).toHaveBeenLastCalledWith({ statusBar: { hidden: [], order: [], seen: STATUS_BAR_KNOWN_ITEMS } });
 	expect(document.querySelector('[role="menu"]')).not.toBeNull();
 	await act(async () => document.activeElement!.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
 	expect(close).toHaveBeenCalledOnce();
