@@ -69,7 +69,7 @@ If Homebrew is missing, About shows a guide to [brew.sh](https://brew.sh) and th
 
 **visual-omp on Windows (Scoop, recommended)**
 
-Scoop installs visual-omp without the setup wizard, and later updates run from **Settings → About** without it too. From version 0.7.8, Scoop selects the native x64 or ARM64 build for your computer. Install Scoop by following the instructions on [scoop.sh](https://scoop.sh) if you don't have it, then run these commands in PowerShell. The first installs Git, which Scoop needs to add the visual-omp bucket.
+Scoop installs visual-omp without the setup wizard, and later updates run from **Settings → About** without it too. Install Scoop by following the instructions on [scoop.sh](https://scoop.sh) if you don't have it, then run these commands in PowerShell. The first installs Git, which Scoop needs to add the visual-omp bucket.
 
 ```powershell
 scoop install git
@@ -79,15 +79,13 @@ scoop install decoy-dev/visual-omp
 
 visual-omp then appears under **Scoop Apps** in the Start menu. These commands install it for your user, which is what the in-app update expects. A copy installed for all users with `--global` can only be updated by an administrator, so its update window shows the command to run instead.
 
-Scoop keeps the architecture recorded when an app was first installed. Once a native ARM64 release is published, an emulated x64 Scoop copy shows migration commands in About: quit visual-omp, run `scoop update`, `scoop uninstall visual-omp` and then `scoop install decoy-dev/visual-omp --arch arm64` in PowerShell, and reopen. The explicit architecture overrides a Scoop default that forces x64. Saved chats and omp settings are kept. For an all-users copy, use administrator PowerShell and add `--global` to the uninstall and install commands.
-
 **visual-omp on macOS (disk image, alternative)**
 
 Download the macOS disk image for your processor from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest), open it, and move visual-omp to Applications.
 
 **visual-omp on Windows (installer, alternative)**
 
-Download `visual-omp-<version>-win-x64.exe` for Intel or AMD processors, or `visual-omp-<version>-win-arm64.exe` for ARM processors, from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest) and run it. The ARM64 installer is available from version 0.7.8. To move this copy to Scoop, install Scoop and Git first, then open **Settings > About**, choose **Switch to Scoop** and confirm **Continue in PowerShell**. The app closes, and a visible PowerShell window reuses an existing Scoop copy or installs `decoy-dev/visual-omp`. It verifies the executable, install record and matching manifest version before running a temporary copy of the old uninstaller with app-data retention enabled, then starts the Scoop copy.
+Download `visual-omp-<version>-win-x64.exe` from the [latest release](https://github.com/decoy-dev/visual-omp/releases/latest) and run it. To move this copy to Scoop, install Scoop and Git first, then open **Settings > About**, choose **Switch to Scoop** and confirm **Continue in PowerShell**. The app closes, and a visible PowerShell window reuses an existing Scoop copy or installs `decoy-dev/visual-omp`. It verifies the executable, install record and matching manifest version before running a temporary copy of the old uninstaller with app-data retention enabled, then starts the Scoop copy.
 
 An installation or verification failure keeps and reopens the installer copy. If removal fails after verification, the script starts the Scoop copy and reports that the old copy may still need removal through **Windows Settings > Apps**. The PowerShell window stays open on errors. Its JSON result and plain log are saved as `scoop-switch-result.json` and `scoop-switch-result.json.log` in visual-omp's profile folder. Missing Scoop shows the manual installation guide and **Check package manager again** in About. Both copies use the same chats and settings; omp's installation stays unchanged.
 

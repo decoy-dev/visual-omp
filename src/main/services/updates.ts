@@ -111,18 +111,13 @@ export function verifyInstallerDigest(actualSha256: string, expected: string | n
 /** The GitHub repository that publishes visual-omp releases. */
 export const REPO = "decoy-dev/visual-omp";
 
-/** A translated x64 app migrates to the native installer on its next direct installation. */
-export function installerArchitecture(platform: Platform, arch: string, runningUnderARM64Translation: boolean): string {
-	return arch === "x64" && runningUnderARM64Translation && (platform === "darwin" || platform === "win32") ? "arm64" : arch;
-}
-
 /**
  * The installer file electron-builder publishes for this platform/arch (`dmg`/`nsis` artifactName
  * in electron-builder.yml), or null where no installer is built.
  */
 export function installerName(version: string, platform: Platform, arch: string): string | null {
 	if (platform === "darwin" && (arch === "arm64" || arch === "x64")) return `visual-omp-${version}-mac-${arch}.dmg`;
-	if (platform === "win32" && (arch === "x64" || arch === "arm64")) return `visual-omp-${version}-win-${arch}.exe`;
+	if (platform === "win32" && arch === "x64") return `visual-omp-${version}-win-${arch}.exe`;
 	return null;
 }
 
@@ -163,16 +158,6 @@ export function installerAsset(assets: ReleaseAsset[], tag: string, trust: Insta
 	const name = installerName(tag.replace(/^v/, ""), trust.platform, trust.arch);
 	const asset = name ? assets.find(candidate => candidate.name === name) : undefined;
 	return asset && name && isReleaseDownload(asset.url, tag, name, trust.anyHost) ? asset : null;
-}
-
-/** Only a published, trusted stable installer warrants Scoop's manual migration guidance. */
-export function nativeScoopArm64Available(
-	method: AppInstallMethod, arch: string, trust: InstallerTrust,
-	status: Pick<AppUpdateStatus, "tag" | "assets" | "error">,
-): boolean {
-	return method === "scoop" && arch === "x64" && trust.platform === "win32" && trust.arch === "arm64" &&
-		status.error === null && status.tag !== null && parseSemver(status.tag)?.prerelease.length === 0 &&
-		installerAsset(status.assets, status.tag, trust) !== null;
 }
 
 /** Hosts github.com redirects release downloads to. */

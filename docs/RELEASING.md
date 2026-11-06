@@ -10,17 +10,9 @@ Changes are committed to `main` as conventional commits (`feat`, `fix`, `chore`,
 4. Give the owner a development build of that release commit with the release tour: with a clean working tree, run `npm run tour -- --release X.Y.Z` and leave it open. Prior to release, the development build should open one or more chats that display each new feature or change so the owner can interact with it and verify it quickly without doing all the steps manually. The tour starts `npm run dev` with an isolated scratch profile, ready-made chats in Current chats and a local fixture provider for interaction without model credits. Continue only after the owner has tried it and asked for the release. If the release commit changes, regenerate the tour on the new commit and obtain the owner's approval again.
 5. Push `main`, then tag the exact commit the owner tested and push the tag: `git tag vX.Y.Z <tested-commit-sha> && git push origin vX.Y.Z`.
 
-The tag starts [.github/workflows/release.yml](../.github/workflows/release.yml). It stops before building anything if the tag does not match `package.json` or if CHANGELOG.md has no section for the version, and it takes the release notes from the tagged commit, so later changes to `main` cannot alter them. After typecheck and tests pass, it builds the macOS disk images (Apple Silicon and Intel) and separate Windows x64 and ARM64 installers, then publishes them as a GitHub release with the CHANGELOG section as the notes. For a stable version it also commits the updated Homebrew cask (`Casks/visual-omp.rb`) and Scoop manifest (`bucket/visual-omp.json`) to `main`, each with the SHA-256 checksum of its installer. A file that already offers a newer version is left as it is, with a notice in the run's summary, so a stable tag published after a newer one (a fix on an older line, or a re-run of an old release) still gets its GitHub release but never moves Homebrew or Scoop users back to it. The same version is written again so the cask and manifest use the checksums of the newly published installers. Such a tag also leaves the Latest label on the releases page where it is, because a stable release is marked Latest only when no published stable release is newer (`scripts/make-latest.mjs`). GitHub reads the workflow from the tagged commit, so the Latest rule covers only tags whose commit includes it; the publish job runs the cask and manifest scripts from `main`, so their check also applies when an older release is re-run. A version with a semver prerelease part (`1.2.0-beta.1`, `1.2.0-rc.2`) is published as a GitHub prerelease and leaves the cask and the Scoop manifest alone, so `brew upgrade` and `scoop update` never install it, and the in-app check only offers it to copies that are already running a prerelease.
+The tag starts [.github/workflows/release.yml](../.github/workflows/release.yml). It stops before building anything if the tag does not match `package.json` or if CHANGELOG.md has no section for the version, and it takes the release notes from the tagged commit, so later changes to `main` cannot alter them. After typecheck and tests pass, it builds the macOS disk images (Apple Silicon and Intel) and the Windows installer and publishes them as a GitHub release with the CHANGELOG section as the notes. For a stable version it also commits the updated Homebrew cask (`Casks/visual-omp.rb`) and Scoop manifest (`bucket/visual-omp.json`) to `main`, each with the SHA-256 checksum of its installer. A file that already offers a newer version is left as it is, with a notice in the run's summary, so a stable tag published after a newer one (a fix on an older line, or a re-run of an old release) still gets its GitHub release but never moves Homebrew or Scoop users back to it. The same version is written again so the cask and manifest use the checksums of the newly published installers. Such a tag also leaves the Latest label on the releases page where it is, because a stable release is marked Latest only when no published stable release is newer (`scripts/make-latest.mjs`). GitHub reads the workflow from the tagged commit, so the Latest rule covers only tags whose commit includes it; the publish job runs the cask and manifest scripts from `main`, so their check also applies when an older release is re-run. A version with a semver prerelease part (`1.2.0-beta.1`, `1.2.0-rc.2`) is published as a GitHub prerelease and leaves the cask and the Scoop manifest alone, so `brew upgrade` and `scoop update` never install it, and the in-app check only offers it to copies that are already running a prerelease.
 
-Windows release assets are `visual-omp-<version>-win-x64.exe` and `visual-omp-<version>-win-arm64.exe`. `nsis.buildUniversalInstaller: false` keeps one architecture in each download, avoiding the extra Electron runtime and native binaries a combined installer would include. `npm run dist:win` builds both installers on Windows; the x64 runner cross-builds ARM64.
-
-The Scoop manifest does not run the NSIS installer. Its `architecture.64bit` and `architecture.arm64` entries have separate URLs, checksums and extraction commands. Scoop selects the architecture, opens that installer with 7-Zip and unpacks `$PLUGINSDIR\app-64.7z` for x64 or `$PLUGINSDIR\app-arm64.7z` for ARM64. The shared post-install command removes the installer's files. The 0.7.7 manifest stays unchanged until 0.7.8 publishes both assets, because 0.7.7 has no ARM64 installer. A change to the NSIS packaging that renames or moves either archive also needs a change to `scripts/update-scoop-manifest.mjs`. Its arguments are the version, Windows x64 SHA-256 and Windows ARM64 SHA-256, in that order. Rerunning the equal-version flat manifest with only its x64 checksum refreshes that flat manifest; an architecture-shaped manifest always requires both checksums.
-
-Direct updates, reinstalls and installer rollbacks use `app.runningUnderARM64Translation` to select ARM64 for x64 copies running under Windows ARM64 emulation or macOS Rosetta. Other copies select the asset for `process.arch`. Missing native assets remain unavailable, with no x64 fallback. Windows uses the same app id, NSIS installation registry key and remembered installation folder across architectures; the packaged app's profile remains `%APPDATA%\visual-omp`. The installer still requires the user to complete setup. Installed migration and profile retention must be checked in the Windows ARM64 VM before release.
-
-[Scoop updates reuse the architecture recorded at first install](https://github.com/ScoopInstaller/Scoop/blob/master/libexec/scoop-update.ps1), so an emulated x64 Scoop copy shows a note in About only when the latest published release has a trusted ARM64 installer. Its manual migration commands are: quit visual-omp, run `scoop update`, `scoop uninstall visual-omp` then `scoop install decoy-dev/visual-omp --arch arm64` in PowerShell, and reopen. Updating Scoop first refreshes the bucket and architecture support; the explicit architecture overrides `DEFAULT_ARCHITECTURE` when it forces x64. A global copy adds `--global` to the uninstall and install commands and needs administrator PowerShell. Saved chats and omp settings are outside Scoop's app folder and remain available. The app never runs that uninstall. Ordinary updates and Switch to Scoop remain architecture-neutral.
-
-Scoop migration guidance stays hidden for prerelease tags, including prereleases with trusted ARM64 assets, because the Scoop bucket distributes stable releases only.
+The Scoop manifest does not run the NSIS installer. Scoop opens the installer with 7-Zip, unpacks the app archive inside it (`$PLUGINSDIR\app-64.7z`) and removes the installer's own files, so the Windows build feeds both install methods. A change to the NSIS packaging that renames or moves that archive also needs a change to `scripts/update-scoop-manifest.mjs`.
 
 ### Preparing the release tour
 
@@ -31,32 +23,6 @@ Each release has a manifest in `scripts/dev/tours/<version>.mjs`. Before the rel
 The integration owner closes any existing development instance before opening the tour. The local provider stays available while the development build runs, so the owner can repeat the fixture prompts in the prepared chats. DOCX and XLSX have complete files at startup and recorded truncated-save runs; repeat the prompt while Outputs is open to check revision retention. Live question and helper interactions also require repeating their named prompts. The per-chat instructions distinguish prepared examples from checks that require the owner's interaction.
 
 The tour never copies the owner's omp profile or credentials. Its scratch root contains its HOME, omp configuration, sessions, outputs and visual-omp profile. Keep the root while reviewing evidence; remove only that printed scratch directory after closing the development app.
-
-
-### Windows ARM64 checks
-
-Before publishing, install the ARM64 build in a Windows 11 ARM64 VM over an existing x64
-installer copy. Record the old installation folder and `%APPDATA%\visual-omp` first. Confirm
-that the ARM64 setup reuses that folder and that the reopened app retains its preferences and
-saved chats. In Task Manager's Details tab, enable the Architecture column and confirm that
-`visual-omp.exe` reports ARM64. Start an omp chat and open the omp screen, then close and
-reopen the chat to exercise the bundled ConPTY and its cleanup.
-
-The packaged executable can also report its runtime architecture in the VM's PowerShell
-without opening an Electron window:
-
-```powershell
-$env:ELECTRON_RUN_AS_NODE = '1'
-& 'C:\path\to\visual-omp.exe' -e 'console.log(process.arch)' | Out-String
-Remove-Item Env:ELECTRON_RUN_AS_NODE
-```
-
-It must print `arm64`. Test a fresh Scoop install against the generated next-release manifest
-and confirm that its installed `install.json` records `arm64`. Check the About migration note
-in an emulated x64 Scoop copy, including its administrator commands for a global install.
-Scoop update and the app's Switch to Scoop must continue to retain the package manager's
-recorded architecture and existing profile. These installed checks supplement static PE
-checks; a macOS cross-build cannot establish Windows runtime behavior.
 
 ## Release workflow security
 

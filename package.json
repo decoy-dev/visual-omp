@@ -22,7 +22,7 @@
     "guard:renderer": "node scripts/guard-renderer-bundle.mjs",
     "test": "vitest run && node --test scripts/guard-renderer-bundle.test.mjs scripts/live-preview-fixture/isolation-evidence.test.mjs scripts/live-preview-fixture/server.test.mjs scripts/live-preview-fixture/proof.test.mjs scripts/live-preview-fixture/office.test.mjs scripts/dev/release-tour.test.mjs",
     "dist:mac": "npm run build && electron-builder --mac dmg --arm64 --x64 --publish never",
-    "dist:win": "npm run build && electron-builder --win nsis --x64 --arm64 --publish never"
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never"
   },
   "dependencies": {
     "node-pty": "^1.1.0"
