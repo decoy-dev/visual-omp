@@ -185,9 +185,37 @@ Each SessionHost:
    spawned pid: on Windows, a `bun install -g` omp is Bun's `omp.exe` launcher, and its `bun.exe`
    child hosts the room. So `main/omp/room-host.ts` asks hosts with the spawned pid first, then
    hosts that connected after the spawn, and skips hosts whose link names another relay.
+   One malformed registry entry does not hide the others. After 40 fast attempts the host shows
+   "Could not connect to omp's live session." and keeps retrying from 2 s, doubling to 30 s, while
+   the room stays open and current. A room omp opens while the current one is still open waits:
+   the current room's close attaches it, after the same link check. Room closes, attachments,
+   slow retries and ignored early opens write `collab-room` diagnostics.
 4. The renderer's guest client joins the room and exposes a live snapshot (header, entries,
    streaming message, active tools, subagent progress, model/thinking/context state, pending
    `select`/`editor` UI requests) through `useSyncExternalStore`.
+   **Publishing is paced by what supersedes itself.** Helper progress, `agents`, `state`,
+   `message_update`, `tool_execution_update` and non-final snapshot chunks only bring newer visual
+   state, so the client applies them at once but publishes them together: on the next display
+   frame (or within 250 ms) for a chat on screen, and within one second otherwise. Progress keeps
+   only the newest report per helper between publishes. Any frame that changes the connection
+   phase, a turn's working, continuing or async-wait state, completion evidence, the idle
+   candidate, the active or background tool set, the helper roster (`id:status`), a helper's
+   progress status (including its first report, which close and quit guards count) or the
+   thinking event publishes immediately, as do all other frame kinds (entries, questions,
+   lifecycle, notices, errors). Immediate publishes are not paced, and each carries every pending
+   change, so consumers never see state out of order. `state/app.ts` marks a chat on screen when
+   the window is visible, the view is the chat area and the chat is the active or split chat.
+   **The relay bounds what it holds for a local guest.** Before each send, `GuestBacklog` checks
+   the guest's `bufferedAmount`. Above 128 MiB it drops the guest. Above 4 MiB it measures 5-second
+   windows and drops a guest whose buffer did not shrink across one, or that has stayed above
+   4 MiB for 60 s. A guest still downloading a large welcome snapshot is kept while its buffer
+   shrinks, within those 128 MiB and 60 s limits; a guest that cannot download within them keeps
+   reconnecting. A dropped guest is terminated rather than closed, since a close frame would queue
+   behind the backlog; it reconnects as an ordinary connection loss, omp sends it current state and
+   re-sends open questions, and main writes a `collab-resync` diagnostic. The sharing bridge's
+   upstream sends are not covered. Before this, an unread backlog grew to about 800 MB in main, the
+   chat showed state 45 minutes old, and main stalled long enough for omp to drop its relay
+   connection.
 5. **Ordinary TSP input uses semantic editor state and actions.** The host sends `send` events
    where supported and uses guarded paste and key paths for attachments and other editor input.
    Shell/Python prefixes, follow-up queueing and pass-through slash commands remain omp-owned.
@@ -1549,7 +1577,9 @@ and classic preference; the existing omp version lookup adds its result without 
 Window responsiveness records the stall duration. Renderer deaths record reason, exit code and
 the reload decision; child deaths record process type, reason, exit code and Chromium service
 identifier, including GPU and utility processes. Host start and exit record only the random chat
-id, transport, exit code or signal and uptime. Every five minutes, and on an unresponsive event,
+id, transport, exit code or signal and uptime. `collab-room` records the chat id, the room state
+(closed, attached, attach-retrying or ignored) and a link attempt count; `collab-resync` records
+the chat id and how many bytes a dropped guest had waiting. Every five minutes, and on an unresponsive event,
 main samples `app.getAppMetrics()` working-set KiB per process with pid and type, plus the active
 host count. Preload observes top-level document visibility and sends only hidden or visible;
 the main-frame origin-checked handler suppresses duplicate states.

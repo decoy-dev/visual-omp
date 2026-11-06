@@ -67,6 +67,15 @@ be able to use it, and it exposes the features that set omp apart from other cod
   Input uses omp's semantic actions and guarded paste or key paths. The live transcript,
   thinking, tools, subagents and questions use omp's collab protocol over a loopback relay,
   so the app-to-omp connection never leaves the machine.
+- The app batches helper progress, streamed replies and partial tool output to reduce rendering
+  work. A chat on screen applies these batches once per screen refresh; other open chats, and every
+  chat while the window is hidden, apply them about once a second. Questions, finished turns, errors
+  and changes in a helper's status arrive at once in every chat. If the app's connection to omp
+  falls too far behind (more than 4 MiB waiting without shrinking for 5 seconds, more than 4 MiB
+  for 60 seconds, or more than 128 MiB), the relay disconnects it and the chat reconnects to omp's
+  current state, including any open question, instead of working through the backlog. If omp
+  replaces its room after a lost connection, the chat joins the replacement and keeps trying while
+  omp runs.
 - Full-screen menus and other omp content without a native app presentation open in the
   **omp screen**, a semantic sheet. Classic chats retain the painted terminal sheet.
   Settings > Advanced offers **Classic omp terminal**, off by default, to make new chats use
