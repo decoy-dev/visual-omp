@@ -1,6 +1,6 @@
 import { posix, win32 } from "node:path";
 import { describe, expect, it } from "vitest";
-import { resolveHistoryDbPath, type HistoryPathInputs } from "./history-path";
+import { resolveAgentDataDir, resolveHistoryDbPath, type HistoryPathInputs } from "./history-path";
 
 const base: HistoryPathInputs = { agentDir: "/home/user/.omp/agent", home: "/home/user", platform: "darwin", join: posix.join, exists: () => false };
 
@@ -28,9 +28,21 @@ describe("owning omp history path", () => {
 	it("does not apply XDG redirection to Windows", () => {
 		expect(resolveHistoryDbPath({ ...base, platform: "win32", home: "C:\\Users\\person", agentDir: "C:\\Users\\person\\.omp\\agent", join: win32.join, xdgDataHome: "D:\\data", exists: () => true })).toBe("C:\\Users\\person\\.omp\\agent\\history.db");
 	});
-	it("embeds the same resolver without capturing module bindings", () => {
-		// The standalone extension receives this function's compiled source, with only its input dependencies.
-		const embedded = Function(`return (${resolveHistoryDbPath.toString()});`)() as typeof resolveHistoryDbPath;
+	it.each(["darwin", "linux", "win32", "freebsd"])("shares the full data-root rule on %s", platform => {
+		for (const xdgDataHome of [undefined, "", "/xdg"]) {
+			for (const present of [false, true]) {
+				for (const agentDir of [base.agentDir, "/custom/agent"]) {
+					const input = { ...base, platform, agentDir, xdgDataHome, exists: () => present };
+					const expected = (platform === "darwin" || platform === "linux") && xdgDataHome && present && agentDir === base.agentDir
+						? "/xdg/omp" : agentDir;
+					expect(resolveAgentDataDir(input)).toBe(expected);
+					expect(resolveHistoryDbPath(input)).toBe(posix.join(expected, "history.db"));
+				}
+			}
+		}
+	});
+	it("embeds the shared resolver and history wrapper without other module bindings", () => {
+		const embedded = Function(`const resolveAgentDataDir = ${resolveAgentDataDir.toString()}; return (${resolveHistoryDbPath.toString()});`)() as typeof resolveHistoryDbPath;
 		expect(embedded({ ...base, xdgDataHome: "/xdg", exists: () => true })).toBe("/xdg/omp/history.db");
 	});
 });

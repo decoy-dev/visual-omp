@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { nativeImage } from "electron";
 import { userEnv } from "../env";
 import { handle } from "../ipc";
-import { agentDir } from "../omp/paths";
+import { agentDataDir } from "../omp/paths";
 import { findPlanFile, previewablePath, readBlobImage, readPaneFile, readPdfFile, scanMadeFiles } from "../services/panes";
 
 /** Longest side of an Outputs pane thumbnail, in pixels. */
@@ -11,7 +11,7 @@ const THUMBNAIL_SIZE = 480;
 
 export function register(): void {
 	handle("panes:readFile", path => readPaneFile(path));
-	handle("panes:readBlob", async hash => readBlobImage(join(agentDir(await userEnv()), "blobs"), hash));
+	handle("panes:readBlob", async hash => readBlobImage(join(agentDataDir(await userEnv()), "blobs"), hash));
 	handle("panes:readPdf", path => readPdfFile(path));
 	handle("panes:thumbnail", async path => {
 		try {

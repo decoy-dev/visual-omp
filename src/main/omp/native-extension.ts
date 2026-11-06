@@ -1,4 +1,4 @@
-import { resolveHistoryDbPath } from "./history-path";
+import { resolveAgentDataDir, resolveHistoryDbPath } from "./history-path";
 import { exactEditorDraft } from "./native-editor";
 import { expandedPromptTextMatches } from "../../shared/prompt-input";
 import { sessionAccountSnapshot } from "./native-accounts";
@@ -14,6 +14,7 @@ import * as ompSdk from "@oh-my-pi/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+const resolveAgentDataDir = ${resolveAgentDataDir.toString()};
 const resolveHistoryDbPath = ${resolveHistoryDbPath.toString()};
 const exactEditorDraft = ${exactEditorDraft.toString()};
 const expandedPromptTextMatches = ${expandedPromptTextMatches.toString()};

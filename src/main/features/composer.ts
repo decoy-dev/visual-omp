@@ -13,7 +13,7 @@ import { discoverCommands } from "../services/composer";
 import { mergeSlashCommands, OMP_BUILTIN_COMMANDS } from "../services/omp-builtin-commands";
 import { readPromptHistory } from "../services/prompt-history";
 import { userEnv } from "../env";
-import { agentDir } from "../omp/paths";
+import { agentDataDir } from "../omp/paths";
 import { closePredictions, predictFeedback, predictWord, releasePredictionFolder, retainPredictionFolder } from "../omp/predict";
 import { closeDictation, startDictation, stopDictation } from "../omp/dictation";
 import { nativeBridge } from "../omp/native-bridge";
@@ -133,7 +133,7 @@ async function paste(hostId: string, text: string): Promise<void> {
 }
 
 export function register(): void {
-	handle("sessions:promptHistory", async sessionId => readPromptHistory(join(agentDir(await userEnv()), "history.db"), sessionId));
+	handle("sessions:promptHistory", async sessionId => readPromptHistory(join(agentDataDir(await userEnv()), "history.db"), sessionId));
 	handle("composer:assist", (hostId, generation, request) => nativeBridge(hostId).composerAssist(generation, request));
 	handle("composer:cancelAssist", (hostId, generation, id) => nativeBridge(hostId).cancelComposerAssist(generation, id));
 	handle("composer:saveTemp", (bytes, extension) => saveTemp(bytes, extension));

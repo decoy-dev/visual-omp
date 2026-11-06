@@ -12,12 +12,11 @@ export interface HistoryPathInputs {
 }
 
 /**
- * omp 18.14 pi-utils/dirs.ts DirResolver data-root rule. Keep this function self-contained:
- * the native extension embeds this same tested function, without relying on unavailable
- * pi-utils imports in the standalone binary. getAgentDir() has already resolved CLI profiles
- * and explicit agent overrides inside that owning process.
+ * omp's data-root rule, shared by sessions, history and blobs. The native extension
+ * embeds this function too, so keep it self-contained and pass filesystem dependencies.
+ * agentDir must already resolve profiles and explicit overrides in the owning environment.
  */
-export function resolveHistoryDbPath(input: HistoryPathInputs): string {
+export function resolveAgentDataDir(input: HistoryPathInputs): string {
 	let profile = (input.ompProfile !== undefined ? input.ompProfile : input.piProfile)?.trim();
 	if (profile === "default" || profile === "") profile = undefined;
 	const root = input.join(input.home, input.configDir || ".omp");
@@ -25,7 +24,11 @@ export function resolveHistoryDbPath(input: HistoryPathInputs): string {
 	if ((input.platform === "linux" || input.platform === "darwin") && input.agentDir === defaultAgent && input.xdgDataHome) {
 		const appRoot = input.join(input.xdgDataHome, "omp");
 		const selected = profile ? input.join(appRoot, "profiles", profile) : appRoot;
-		if (input.exists(selected)) return input.join(selected, "history.db");
+		if (input.exists(selected)) return selected;
 	}
-	return input.join(input.agentDir, "history.db");
+	return input.agentDir;
+}
+
+export function resolveHistoryDbPath(input: HistoryPathInputs): string {
+	return input.join(resolveAgentDataDir(input), "history.db");
 }

@@ -49,7 +49,7 @@ function digest(value: string): string {
 // and actual app-profile are inherited unchanged; this test never patches the environment.
 // Dynamic production imports keep skipped CI runs from reading the fixture's preferences.
 describe.skipIf(!process.env.VOMP_TOOL_OUTPUT_LIVE_ROOT || !process.env.VOMP_TOOL_OUTPUT_LIVE_FILE)("live saved bash output through the registered session handler", () => {
-	it("recovers the exact XDG fixture only while main owns a current reported session file", async () => {
+	it("recovers the exact XDG fixture through the inferred root and current reports", async () => {
 		const evidence: JsonRecord = { status: "failed", handler: "sessions:toolOutput" };
 		const childSpawns: unknown[] = [];
 		const spawnChannel = channel("child_process");
@@ -109,12 +109,11 @@ describe.skipIf(!process.env.VOMP_TOOL_OUTPUT_LIVE_ROOT || !process.env.VOMP_TOO
 			// Nothing below may start any subprocess.
 			const environmentSpawns = childSpawns.length;
 
-			stage = "legacy inferred session root";
+			stage = "shared inferred session root";
 			const { sessionsDir } = await import("../omp/paths");
-			const inferredSessionDirectory = sessionsDir();
+			const inferredSessionDirectory = sessionsDir(environment);
 			const xdgSessionDirectory = join(root, "data", "omp", "sessions");
-			expect(inferredSessionDirectory).toBe(join(root, "home", ".omp", "agent", "sessions"));
-			expect(inferredSessionDirectory).not.toBe(xdgSessionDirectory);
+			expect(inferredSessionDirectory).toBe(xdgSessionDirectory);
 			const inferredRootStatus = await stat(inferredSessionDirectory).then(
 				() => ({ exists: true }),
 				error => ({ exists: false, code: record(error) && typeof error.code === "string" ? error.code : "unknown" }),
@@ -157,19 +156,19 @@ describe.skipIf(!process.env.VOMP_TOOL_OUTPUT_LIVE_ROOT || !process.env.VOMP_TOO
 			boundary.hosts = [{ sessionFile: null }];
 			boundary.followed = [];
 			for (const message of results) for (const manual of [false, true]) {
-				expect(await handler(event, file, message.toolCallId as string, manual)).toEqual({ status: "unavailable" });
+				expect((await handler(event, file, message.toolCallId as string, manual)).status).toBe("ready");
 			}
 			// Extra renderer arguments cannot supply the reader's main-only authority provider.
-			expect(await Reflect.apply(handler, undefined, [event, file, "fixture-27-0", false, () => [file]])).toEqual({ status: "unavailable" });
+			expect((await Reflect.apply(handler, undefined, [event, file, results[0]!.toolCallId, false, () => [file]])).status).toBe("ready");
 			expect(boundary.hosts).toEqual([{ sessionFile: null }]);
 			expect(boundary.followed).toEqual([]);
-			evidence.withoutReport = { status: "unavailable", requestDidNotRegisterFile: true };
+			evidence.withoutReport = { status: "ready", requestDidNotRegisterFile: true, authority: "inferred XDG root" };
 
-			stage = "existing legacy index gap";
+			stage = "shared XDG history index";
 			const { findSessionFile } = await import("../omp/sessions");
 			const indexedFile = await findSessionFile(header!.id as string);
-			expect(indexedFile).toBeNull();
-			evidence.index = { file: indexedFile, root: inferredSessionDirectory, existingXdgGap: true, helperRegistration: false };
+			expect(await realpath(indexedFile!)).toBe(await realpath(file));
+			evidence.index = { file: indexedFile, root: inferredSessionDirectory, helperRegistration: false };
 
 			const reads: JsonRecord[] = [];
 			evidence.reads = reads;
@@ -205,20 +204,20 @@ describe.skipIf(!process.env.VOMP_TOOL_OUTPUT_LIVE_ROOT || !process.env.VOMP_TOO
 			// Boundary shim for the actual sessionFile omp already reported, with no new omp process.
 			boundary.hosts = [{ sessionFile: file }];
 			await readAll("host");
-			// A production report must not authorize direct reader calls with no provider.
-			expect(await loadSavedToolOutput(file, "fixture-27-0")).toEqual({ status: "unavailable" });
+			// Inferred-root reads remain available without a report provider.
+			expect((await loadSavedToolOutput(file, results[0]!.toolCallId as string)).status).toBe("ready");
 
 			stage = "opened follower after host removal";
 			boundary.hosts = [];
 			boundary.followed = [file];
 			await readAll("follower");
 
-			stage = "closed reports revoke authority";
+			stage = "closed reports retain inferred-root authorization";
 			boundary.followed = [];
 			for (const message of results) for (const manual of [false, true]) {
-				expect(await handler(event, file, message.toolCallId as string, manual)).toEqual({ status: "unavailable" });
+				expect((await handler(event, file, message.toolCallId as string, manual)).status).toBe("ready");
 			}
-			evidence.afterClosure = { hostReports: 0, followerReports: 0, status: "unavailable" };
+			evidence.afterClosure = { hostReports: 0, followerReports: 0, status: "ready", authority: "inferred XDG root" };
 			expect(childSpawns.length - environmentSpawns).toBe(0);
 			evidence.subprocessesAfterEnvironment = childSpawns.length - environmentSpawns;
 
