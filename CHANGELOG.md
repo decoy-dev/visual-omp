@@ -22,6 +22,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - Transcript following now accounts for layout changes when helper cards shrink above the newest entries, which could previously stop following and show "new content below". Scrolling up with the wheel, keyboard, touch or scrollbar, jumping to an earlier part of the chat, or opening a question card still stops following.
 - Quitting while an Office preview is converting no longer risks deleting the converter's working folder while it is still in use, which could fail on Windows. visual-omp now cleans up after you confirm quitting and waits up to six seconds; cancelling Quit leaves previews working.
+- Outputs now updates playable video previews while rendering and replaces the previous video when another render writes to the same path. This fixes previews that stayed blank or showed the previous render in 0.7.8.
 
 ## [0.7.8] - 2026-11-05
 
