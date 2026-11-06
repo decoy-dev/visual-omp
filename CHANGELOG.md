@@ -4,17 +4,34 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.8] - 2026-11-05
+
+visual-omp 0.7.8 changes how chats confirm completion, addresses a reported Windows Export error, shows which effort Auto thinking picked, opens helper conversations and HTML files inside the app, and previews playable video and saved documents in Outputs while omp works. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **Fixed:** Chats wait for omp's completion or idle confirmation before showing as done and sending a finished notification. The reported incidents after helpers finished have not been reproduced.
+- **Fixed:** Export uses an absolute path to address the reported Windows error "EEXIST: file already exists, mkdir '.'". The change has not been verified on Windows.
+- **New:** With Auto thinking, the thinking button shows the effort omp picked for the current message, for example "Auto · Low", so you can switch to a higher level when a chat needs more reasoning.
+- **New:** A helper's conversation opens inside the chat and updates as the helper works, and helpers show an icon for their type and what they are doing.
+- **New:** HTML files open as rendered pages in the app, and hex colors in chats and questions show a color swatch.
+- **New:** Outputs shows a video while it renders when the file can already play, and previews Word documents and spreadsheets.
+- **New:** Choose the status bar's items, pick a chat's provider account, and open a shared chat on your phone with a QR code.
+
+### Detailed changes
+
 #### New
 
 - Running chats show an account button next to the model button when omp reports multiple stored OAuth accounts for their provider. While omp is idle, choose the account the chat prefers; omp can still switch accounts at usage limits. Settings → Providers can sign out one account through omp without removing other sign-ins for the same provider. These controls remain hidden when omp lacks the required account APIs.
 - Continue a shared chat on your phone by scanning the control link's QR code. While a chat is shared, visual-omp keeps the computer from sleeping when idle, and the links refresh when omp changes rooms. Stop sharing disconnects guests; sharing the same room again revives its earlier links.
 - Choose which items the status bar shows, and in what order, by right-clicking the status bar or in Settings → Appearance. New optional items show the focused chat's context use, model and thinking level, queued messages, working time and running helpers. omp status and the update notice always show.
-- Outputs plays videos (MP4, M4V, WebM and MOV) with seeking. While ffmpeg, Remotion or manim renders, it shows progress, then the video once it can play, with six key frames you can click to jump to.
-- Outputs adds Office previews, with acceptance checks still in progress. In the macOS development build, DOCX and XLSX rendered while omp saved them, and after a fix the last complete revision stayed visible after a truncated save and after switching to another output. PPTX conversion requires LibreOffice and has not been exercised with LibreOffice installed. Packaged-worker and Windows checks remain pending.
+- Outputs plays videos (MP4, M4V, WebM and MOV) with seeking, shows render progress from ffmpeg, Remotion and manim, and offers six key frames after rendering that you can click to jump to. While a render runs, Outputs plays what already exists: a video that is playable as it grows, such as a fragmented MP4, manim's finished animation clips, or the newest frame of an image sequence. Pausing or seeking stops following the render until you choose Follow render. With reduced motion, nothing plays on its own, and Load latest video loads the newest version. An ordinary MP4 may need to finish before it can play. Playback during rendering was checked in headless Chrome through an HTTP bridge; Windows Electron playback and native protocol behavior remain unverified.
+- Outputs previews Word documents and spreadsheets while omp saves them, and slides when LibreOffice is installed. Files are checked and cleaned before they render, and the last complete version stays visible while omp finishes a save. A file refused as unsafe stays available as a chip but no longer replaces a good preview. Word and spreadsheet previews were checked in a macOS development build; slide conversion with LibreOffice, packaged worker loading and Windows behavior are not verified yet.
 - Settings → General offers "Ask omp for a proof before long renders", off by default. It installs the visual-proofs skill, which asks omp to prepare a proof and request your approval before the full render. The model decides whether to follow this guidance; the app does not enforce approval. Proofs cost tokens and possibly provider credits. Start a new chat or restart omp in an existing chat to load skill changes.
 - A helper's conversation opens inside the chat from Tasks, a pinned helper or a helper card, with the same replies, thinking and tool cards as the main chat, and it updates as the helper writes. Back or Esc returns to the chat with its draft and scroll intact. A message to a helper waits until the helper is idle and can be cancelled; if the helper starts working at the moment it is sent, omp delivers it as an interruption.
+- Helpers show an icon for their type (such as scout, reviewer or designer) instead of their initial, with a small badge for what they are doing while they work: reading, writing, running commands, using the web, asking or waiting.
 - With Auto thinking, the thinking button, its menu and the optional status bar item show the effort omp picked for the current message, for example "Auto · Low", or "Auto · Pending" until omp decides. omp's Auto can choose Low for short messages, so a chat that needs more reasoning can switch to an explicit level.
-- Hex colors in chats and question dialogs show a small color swatch beside the code, including transparent colors. Six- and eight-digit codes such as #2B72E5 get swatches in prose and inline code; three- and four-digit codes such as #fff get them only in inline code, so issue numbers like #123 stay plain. Code blocks, URLs and file paths remain unchanged.
+- Hex colors in chats and question dialogs show a color swatch beside the code, including transparent colors. Six- and eight-digit codes such as #2B72E5 get swatches in prose and inline code; three- and four-digit codes such as #fff get them only in inline code, so issue numbers like #123 stay plain. Code blocks, URLs and file paths remain unchanged.
 - HTML files opened from a chat now show as a rendered page in the Files viewer, with their stylesheets and images, even with live previews off. Scripts and network access stay off, so interactive pages may not work; Source shows the file's code, and Open in browser opens it in your default browser.
 
 #### Improved
@@ -22,12 +39,14 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - While the window is hidden or minimized, chats stop redrawing; omp keeps working, and notifications and sounds still arrive. Returning to the window shows the latest reply at once. This reduces work while visual-omp is in the background and may help with the freezes some Windows users reported; its effect is not measured yet.
 - Outputs groups the frames of a declared render sequence and keeps unrelated numbered images separate.
 - The chat transcript and the helper view load when first needed, which takes about 250 KB out of the code visual-omp loads at startup. The first chat after launch can show an empty transcript area for a moment while its composer is already usable.
+
 #### Fixed
 
 - Restarting a saved chat no longer repeats its earlier "Supervised process failed" lines after the first message you send. When omp resumes a chat, it redraws process exits from the chat's history in its own wording, and visual-omp showed those redrawn lines as new notices below the chat. The chat's own process exit rows still appear where they happened.
-- visual-omp now keeps a chat working through omp's non-terminal end events and waits for a terminal end or a fresh idle observation before marking it finished. This addresses paths that could report completion too early, but the incidents reported after helpers finished have not been reproduced, and confirmation in the app is pending. Each transition from working to idle records its cause in the diagnostics event log, without chat contents.
+- visual-omp now keeps a chat working through omp's non-terminal end events and waits for a terminal end or a fresh idle observation before marking it finished. This addresses paths that could report completion too early; the incidents reported after helpers finished have not been reproduced. Each transition from working to idle records its cause in the diagnostics event log, without chat contents.
 - The Watch button on a tool card now lines up with the card's other icons instead of sitting above them at the far right.
 - Export now passes omp an absolute path to avoid the reported Windows error "EEXIST: file already exists, mkdir '.'". omp's /export can't take a path with spaces, so when the chat's folder path has spaces, the export is saved to Downloads and the confirmation says why. If the Downloads path has spaces too, the export uses omp's command-line export in the chat's folder, which leaves out the system prompt, the tool list and --themes. This change has not been verified on Windows.
+- The status bar's right-click menu now limits its height and scrolls the item list to keep Arrange status bar… available. The layout change has not yet been confirmed in Electron.
 
 ## [0.7.7] - 2026-11-05
 
