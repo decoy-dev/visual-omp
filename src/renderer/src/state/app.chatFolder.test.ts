@@ -22,6 +22,7 @@ vi.mock("./session", () => ({
 		getSnapshot() { return { mode: "history", working: false, queue: [] }; }
 		async ensureLive() {}
 		async dispose() {}
+		setForeground() {}
 	},
 }));
 vi.mock("../registry/guards", async importOriginal => ({ ...await importOriginal<Record<string, unknown>>(), confirmTabClose: async () => true }));

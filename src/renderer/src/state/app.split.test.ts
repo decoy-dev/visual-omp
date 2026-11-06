@@ -28,6 +28,8 @@ vi.mock("./session", () => ({
 		async loadHistory() {}
 		async checkOwnership() {}
 		dispose = env.dispose;
+		foreground = false;
+		setForeground(value: boolean) { this.foreground = value; }
 	},
 }));
 vi.mock("../registry/guards", async importOriginal => ({ ...await importOriginal<Record<string, unknown>>(), confirmTabClose: env.close }));
@@ -122,5 +124,23 @@ describe("closing split view", () => {
 		useApp.getState().closeSplit("secondary");
 		expect(useApp.getState()).toBe(before);
 		expect(env.frames).toHaveLength(0);
+	});
+});
+
+describe("chats on screen", () => {
+	it("marks the active and split chats on screen only while the chat area shows", async () => {
+		const third = { id: "c", projectPath: "/third", sessionFile: "/s/c.jsonl", title: "Third chat" };
+		env.storage.set("visual-omp:layout", JSON.stringify({ version: 2, state: { tabs: [...tabs, third], activeTabId: "a", splitTabId: "b", focusedSplit: "primary" } }));
+		// A fresh module load hydrates the saved chats and creates their controllers.
+		const { useApp, controllerFor } = await import("./app");
+		const onScreen = () => ["a", "b", "c"].filter(id => (controllerFor(id) as unknown as { foreground: boolean }).foreground);
+		// The app opens on Home, so no restored chat is on screen yet.
+		expect(onScreen()).toEqual([]);
+		useApp.setState({ view: "chat" });
+		expect(onScreen()).toEqual(["a", "b"]);
+		useApp.setState({ activeTabId: "c", splitTabId: null });
+		expect(onScreen()).toEqual(["c"]);
+		useApp.setState({ view: "page" });
+		expect(onScreen()).toEqual([]);
 	});
 });

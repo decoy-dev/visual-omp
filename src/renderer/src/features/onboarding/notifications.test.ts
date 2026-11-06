@@ -30,6 +30,7 @@ const transport = vi.hoisted(() => {
 		getSnapshot(): GuestSnapshot { return this.snapshot; }
 		connect(): void {}
 		close(): void {}
+		setForeground(): void {}
 		emit(patch: Partial<GuestSnapshot>): void {
 			this.snapshot = { ...this.snapshot, phase: "live", ...patch };
 			for (const listener of this.listeners) listener();

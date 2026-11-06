@@ -277,6 +277,8 @@ export class SessionController {
 	#guest: GuestClient | null = null;
 	#guestLink: string | null = null;
 	#unsubscribeGuest: (() => void) | null = null;
+	/** On screen in the chat area of a visible window; sets how often the guest publishes visual-only updates. */
+	#foreground = false;
 	#unsubscribeHost: (() => void) | null = null;
 	#asyncWaitCheck: AsyncWaitCheck | null = null;
 	#completionRevision = 0;
@@ -649,6 +651,7 @@ export class SessionController {
 		this.#completionRevision = 0;
 		this.#guestLink = link;
 		const guest = new GuestClient(link, APP_GUEST_NAME);
+		guest.setForeground(this.#foreground);
 		this.#guest = guest;
 		this.#unsubscribeGuest = guest.subscribe(() => this.#onGuest(guest.getSnapshot()));
 		if (carryover !== this.#view.carryover) this.#set({ carryover });
@@ -1007,6 +1010,12 @@ export class SessionController {
 
 	guestClient(): GuestClient | null {
 		return this.#guest;
+	}
+
+	/** Whether this chat is on screen. Off screen, updates that only change what it shows publish about once a second. */
+	setForeground(foreground: boolean): void {
+		this.#foreground = foreground;
+		this.#guest?.setForeground(foreground);
 	}
 
 	/** Explicit crash recovery can resume pending tools and helpers before requesting a model reply. */

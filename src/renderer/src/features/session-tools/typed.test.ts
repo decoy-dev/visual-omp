@@ -18,6 +18,7 @@ const fake = vi.hoisted(() => {
 		subscribe = (listener: () => void) => { this.listeners.add(listener); return () => this.listeners.delete(listener); };
 		connect() {}
 		close() {}
+		setForeground() {}
 	}
 	const app = { view: "chat", activeTabId: "chat", splitTabId: null as string | null, terminalTabId: null as string | null, openTerminal: vi.fn(), closeTerminal: vi.fn() };
 	return { Guest, app, autoOpened: { tabId: null as string | null }, toast: vi.fn() };

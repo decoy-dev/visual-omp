@@ -197,6 +197,7 @@ function ensureController(tab: ChatTab, extraArgs?: string[]): SessionController
 	if (!controller) {
 		controller = new SessionController({ tabId: tab.id, projectPath: tab.projectPath, sessionFile: tab.sessionFile, extraArgs });
 		controllers.set(tab.id, controller);
+		controller.setForeground(onScreen(useApp.getState(), tab.id));
 		if (tab.sessionFile) {
 			void controller.loadHistory();
 			void controller.checkOwnership();
@@ -850,11 +851,29 @@ export const useApp = create<AppState>()(
 // from localStorage is synchronous, so the chats are already here; init() adopts running hosts.
 for (const tab of useApp.getState().tabs) ensureController(tab);
 
+/**
+ * A chat in the chat area of a visible window publishes visual updates once per display frame. Every other open
+ * chat publishes them about once a second; questions, turn ends and errors still arrive at once.
+ */
+function onScreen(state: Pick<AppState, "view" | "activeTabId" | "splitTabId">, tabId: string): boolean {
+	if (typeof document !== "undefined" && document.visibilityState === "hidden") return false;
+	return state.view === "chat" && (tabId === state.activeTabId || tabId === state.splitTabId);
+}
+
+function syncForeground(): void {
+	const state = useApp.getState();
+	for (const [tabId, controller] of controllers) controller.setForeground(onScreen(state, tabId));
+}
+
+syncForeground();
+if (typeof document !== "undefined") document.addEventListener("visibilitychange", syncForeground);
+
 // Track which chat was shown most recently, keep the project in step with the focused chat (the side panel,
 // status bar and project commands follow `activeProject`, so focusing the other half of a split moves them to
 // that chat's project), drop the side panel layout of a chat that closed, and release a chat the user left (see
 // `releaseIfUnused`).
 useApp.subscribe((state, previous) => {
+	if (state.view !== previous.view || state.activeTabId !== previous.activeTabId || state.splitTabId !== previous.splitTabId || state.tabs !== previous.tabs) syncForeground();
 	const focused = state.focusedSplit === "secondary" && state.splitTabId ? state.splitTabId : state.activeTabId;
 	if (focused && recentTabs[0] !== focused) recentTabs = [focused, ...recentTabs.filter(id => id !== focused)];
 	if (state.tabs !== previous.tabs) {

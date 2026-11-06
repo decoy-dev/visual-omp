@@ -2,6 +2,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { HostFrame } from "@oh-my-pi/pi-wire";
 import { GuestClient } from "./client";
 import { thinkingState } from "../../features/session-tools/thinking";
+import { workInFlight } from "../../state/chatWork";
+import type { SessionView } from "../../state/session";
 
 /** The socket the client creates; frames from omp's host are fed through `onFrame`. */
 const socket = vi.hoisted(() => ({ current: null as null | { onFrame: (frame: unknown) => void; onClose: (reason: string, reconnect: boolean) => void }, sent: [] as unknown[] }));
@@ -522,5 +524,112 @@ describe("pending question authority", () => {
 		feed({ t: "ui-request", request: { reqId: 3, kind: "editor", title: "New room" } });
 		feed({ t: "ui-request-end", reqId: 3 });
 		expect(client.getSnapshot().uiRequest).toBeNull();
+	});
+});
+
+describe("paced publishing", () => {
+	const progress = (id: string, toolCount: number, status = "running") => ({ t: "bus", channel: "task:subagent:progress", data: { index: 0, agent: "task", task: "Build", progress: { id, status, toolCount } } });
+	const text = (value: string) => ({ t: "event", event: { type: "message_update", message: { role: "assistant", content: [{ type: "text", text: value }] } } });
+	let published = 0;
+	beforeEach(() => {
+		vi.useFakeTimers();
+		published = 0;
+		client.subscribe(() => published++);
+	});
+
+	it("off screen, publishes helper progress about once a second with only the newest report per helper", async () => {
+		feed(progress("A", 0));
+		feed(progress("B", 0));
+		published = 0;
+		for (let count = 1; count <= 20; count++) feed(progress("A", count));
+		feed(progress("B", 1));
+		expect(published).toBe(0);
+		expect(client.getSnapshot().progress.get("A")?.progress).toMatchObject({ toolCount: 0 });
+		await vi.advanceTimersByTimeAsync(999);
+		expect(published).toBe(0);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(published).toBe(1);
+		expect(client.getSnapshot().progress.get("A")?.progress).toMatchObject({ toolCount: 20 });
+		expect(client.getSnapshot().progress.get("B")?.progress).toMatchObject({ toolCount: 1 });
+	});
+
+	it("publishes a helper's first report and status changes at once, so close and quit guards see it running", () => {
+		feed(progress("A", 0));
+		expect(published).toBe(1);
+		const view = { mode: "live", readOnly: false, follow: null, working: false, guest: client.getSnapshot() } as unknown as SessionView;
+		expect(workInFlight(view)).toEqual({ replying: false, helpers: 1 });
+		feed(progress("A", 1));
+		expect(published).toBe(1);
+		feed(progress("A", 2, "completed"));
+		expect(published).toBe(2);
+		expect(client.getSnapshot().progress.get("A")?.progress).toMatchObject({ status: "completed", toolCount: 2 });
+	});
+
+	it("publishes a question at once, together with every update received before it", () => {
+		feed(progress("A", 0));
+		published = 0;
+		feed(progress("A", 3));
+		feed({ t: "ui-request", request: { reqId: 4, kind: "select", title: "Which database?", options: ["SQLite"] } });
+		expect(published).toBe(1);
+		expect(client.getSnapshot().uiRequest?.reqId).toBe(4);
+		expect(client.getSnapshot().progress.get("A")?.progress).toMatchObject({ toolCount: 3 });
+	});
+
+	it("publishes a turn start from streamed text at once, then paces the rest of the stream", async () => {
+		feed(text("H"));
+		expect(published).toBe(1);
+		expect(client.getSnapshot().working).toBe(true);
+		for (const value of ["He", "Hel", "Hell", "Hello"]) feed(text(value));
+		expect(published).toBe(1);
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(published).toBe(2);
+		expect(client.getSnapshot().stream?.content).toEqual([{ type: "text", text: "Hello" }]);
+	});
+
+	it("on screen, publishes within a frame, and a chat moved on screen publishes what was waiting at once", async () => {
+		feed(progress("A", 0));
+		published = 0;
+		feed(progress("A", 1));
+		expect(published).toBe(0);
+		client.setForeground(true);
+		expect(published).toBe(1);
+		feed(progress("A", 2));
+		expect(published).toBe(1);
+		await vi.advanceTimersByTimeAsync(250);
+		expect(published).toBe(2);
+		expect(client.getSnapshot().progress.get("A")?.progress).toMatchObject({ toolCount: 2 });
+	});
+
+	it("publishes once per display frame, without a second publish from the fallback timer", async () => {
+		const frames: (() => void)[] = [];
+		vi.stubGlobal("requestAnimationFrame", (callback: () => void) => frames.push(callback));
+		vi.stubGlobal("cancelAnimationFrame", () => undefined);
+		try {
+			feed(progress("A", 0));
+			published = 0;
+			client.setForeground(true);
+			feed(progress("A", 1));
+			expect(published).toBe(0);
+			frames.shift()?.();
+			expect(published).toBe(1);
+			await vi.advanceTimersByTimeAsync(250);
+			expect(published).toBe(1);
+			feed(progress("A", 2));
+			await vi.advanceTimersByTimeAsync(250);
+			expect(published).toBe(2);
+		} finally {
+			vi.unstubAllGlobals();
+		}
+	});
+
+	it("publishes a helper starting or finishing at once, but not its activity", () => {
+		const agent = (status: string, lastActivity: number) => ({ id: "Builder", displayName: "Builder", kind: "sub", status, hasSessionFile: true, createdAt: 0, lastActivity });
+		feed({ t: "agents", agents: [agent("running", 1)] });
+		expect(published).toBe(1);
+		feed({ t: "agents", agents: [agent("running", 2)] });
+		expect(published).toBe(1);
+		feed({ t: "agents", agents: [agent("idle", 3)] });
+		expect(published).toBe(2);
+		expect(client.getSnapshot().agents[0]?.lastActivity).toBe(3);
 	});
 });

@@ -43,6 +43,7 @@ vi.mock("./session", () => ({
 		async checkOwnership() {}
 		async ensureLive() {}
 		async dispose() {}
+		setForeground() {}
 	},
 }));
 vi.mock("../registry/guards", async importOriginal => ({ ...await importOriginal<Record<string, unknown>>(), confirmTabClose: async () => true }));

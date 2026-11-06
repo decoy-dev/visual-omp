@@ -44,6 +44,7 @@ vi.mock("./session", () => ({
 		async loadHistory() {}
 		async checkOwnership() {}
 		async dispose() { await env.dispose(this.tabId); }
+		setForeground() {}
 	},
 }));
 vi.mock("../registry/guards", async importOriginal => ({

@@ -5,7 +5,15 @@
  * exposes an immutable {@link GuestSnapshot} through a
  * `useSyncExternalStore`-compatible subscribe/getSnapshot pair. The snapshot
  * object (and every replaced collection inside it) gets a new reference per
- * applied frame, so React change detection is reference equality all the way.
+ * publish, so React change detection is reference equality all the way.
+ *
+ * Frames that only bring newer visual state (helper progress, streamed text,
+ * partial tool output, session state, helper activity) publish together: once
+ * per display frame while the chat is on screen, about once a second
+ * otherwise. A later frame of the same kind supersedes them, so nothing is
+ * lost. Every other frame, and any frame that changes a turn, a question, a
+ * helper's status, the thinking level or the connection, publishes as it is
+ * applied.
  */
 
 import type {
@@ -111,6 +119,10 @@ const TRANSCRIPT_TIMEOUT_MS = 10_000;
 const WELCOME_TIMEOUT_MS = 30_000;
 /** Mirrors the TUI guest's SNAPSHOT_PROGRESS_TIMEOUT_MS: every snapshot chunk must make progress. */
 const SNAPSHOT_PROGRESS_TIMEOUT_MS = 30_000;
+/** Off screen, frames that only refresh what the chat shows publish together about this often. */
+const BACKGROUND_PUBLISH_MS = 1_000;
+/** On screen, a display frame publishes them; this bounds the wait where no frame is drawn. */
+const FOREGROUND_PUBLISH_MS = 250;
 
 /**
  * One fetch-transcript round trip.
@@ -155,6 +167,15 @@ export class GuestClient {
 	#state: SessionState | null = null;
 	#agents: readonly AgentSnapshot[] = [];
 	#progress: ReadonlyMap<string, GuestProgress> = new Map();
+	/** Helper progress received since the last publish; only the newest report per helper is kept. */
+	#progressDraft: Map<string, GuestProgress> | null = null;
+	/** `id:status` of every helper, so a roster change publishes at once while activity updates wait. */
+	#agentRoster = "";
+	/** Counts progress reports that introduce a helper or change its status; close and quit guards read that status. */
+	#progressStatusRevision = 0;
+	/** The chat is on screen: superseded visual updates publish once per display frame, not about once a second. */
+	#foreground = false;
+	#scheduledPublish: { cancel(): void } | null = null;
 	#lifecycle: ReadonlyMap<string, SubagentLifecyclePayload> = new Map();
 	#stream: AssistantMessage | null = null;
 	#streamDone = false;
@@ -223,6 +244,7 @@ export class GuestClient {
 		this.#clearIdle();
 		this.#clearWelcomeTimer();
 		this.#clearSnapshotProgressTimer();
+		this.#cancelScheduledPublish();
 		this.#socket.close();
 	}
 
@@ -233,9 +255,21 @@ export class GuestClient {
 		};
 	}
 
-	/** Cached stable reference; replaced (with fresh collection refs) per applied frame. */
+	/** Cached stable reference; replaced (with fresh collection refs) per publish. */
 	getSnapshot(): GuestSnapshot {
 		return this.#snapshot;
+	}
+
+	/** Whether the chat is on screen, which sets how often superseded visual updates publish. */
+	setForeground(foreground: boolean): void {
+		if (foreground === this.#foreground) return;
+		this.#foreground = foreground;
+		if (!this.#scheduledPublish) return;
+		if (foreground) this.#commit();
+		else {
+			this.#cancelScheduledPublish();
+			this.#schedulePublish();
+		}
 	}
 
 	sendPrompt(text: string, images: ImageContent[] = [], beforeSend?: () => void): Promise<void> {
@@ -399,6 +433,7 @@ export class GuestClient {
 	}
 
 	#applyFrame(frame: HostFrame): void {
+		const before = deferrable(frame) ? this.#semanticMark() : null;
 		switch (frame.t) {
 			case "welcome":
 				// A fresh welcome (first join or reconnect) restarts the snapshot.
@@ -413,12 +448,13 @@ export class GuestClient {
 					this.#pendingSnapshot = { entries: [], live: [], total: frame.entryCount };
 				}
 				this.#state = frame.state;
-				this.#agents = [...frame.agents];
+				this.#setAgents(frame.agents);
 				this.#stream = null;
 				this.#streamDone = false;
 				this.#activeTools = new Map();
 				this.#resumedToolCallIds.clear();
 				this.#progress = new Map();
+				this.#progressDraft = null;
 				this.#lifecycle = new Map();
 				this.#clearIdle();
 				this.#continuing = false;
@@ -506,12 +542,16 @@ export class GuestClient {
 				} else this.#observeIdle(513);
 				break;
 			case "agents":
-				this.#agents = [...frame.agents];
+				this.#setAgents(frame.agents);
 				break;
 			case "bus":
 				if (frame.channel === "task:subagent:progress") {
 					const payload = frame.data as SubagentProgressPayload;
-					this.#progress = new Map(this.#progress).set(payload.progress.id, { ...payload, receivedAt: Date.now() });
+					const previous = (this.#progressDraft ?? this.#progress).get(payload.progress.id);
+					if (!previous || previous.progress.status !== payload.progress.status) this.#progressStatusRevision++;
+					// A helper reports up to 20 times a second; publish only the newest report per helper.
+					this.#progressDraft ??= new Map(this.#progress);
+					this.#progressDraft.set(payload.progress.id, { ...payload, receivedAt: Date.now() });
 				} else if (frame.channel === "task:subagent:lifecycle") {
 					const payload = frame.data as SubagentLifecyclePayload;
 					this.#lifecycle = new Map(this.#lifecycle).set(payload.id, payload);
@@ -558,7 +598,45 @@ export class GuestClient {
 				// unknown frame type from a newer host — ignore
 				break;
 		}
-		this.#commit();
+		const after = before && this.#semanticMark();
+		if (before && after && before.every((value, index) => Object.is(value, after[index]))) this.#schedulePublish();
+		else this.#commit();
+	}
+
+	#setAgents(agents: readonly AgentSnapshot[]): void {
+		this.#agents = [...agents];
+		this.#agentRoster = agents.map(agent => `${agent.id}:${agent.status}`).join("\n");
+	}
+
+	/** What turn ends, questions, the connection, helper status and the thinking menu depend on. A change here publishes at once. */
+	#semanticMark(): readonly unknown[] {
+		const idle = this.#idleCandidate;
+		return [
+			this.#phase, this.#working, this.#awaitingAsyncWork, this.#continuing, this.#completion, this.#activeTools.size,
+			this.#backgroundTools.size, idle?.revision, idle?.ready, idle?.confirmed, this.#agentRoster, this.#progressStatusRevision,
+			this.#thinkingEvent,
+		];
+	}
+
+	#schedulePublish(): void {
+		if (this.#scheduledPublish) return;
+		// Whichever of the display frame and the fallback timer fires first publishes; the commit cancels the other.
+		const publish = (): void => this.#commit();
+		const timer = setTimeout(publish, this.#foreground ? FOREGROUND_PUBLISH_MS : BACKGROUND_PUBLISH_MS);
+		if (this.#foreground && typeof requestAnimationFrame === "function") {
+			const frame = requestAnimationFrame(publish);
+			this.#scheduledPublish = {
+				cancel: () => {
+					cancelAnimationFrame(frame);
+					clearTimeout(timer);
+				},
+			};
+		} else this.#scheduledPublish = { cancel: () => clearTimeout(timer) };
+	}
+
+	#cancelScheduledPublish(): void {
+		this.#scheduledPublish?.cancel();
+		this.#scheduledPublish = null;
 	}
 
 	#applyEvent(event: Extract<HostFrame, { t: "event" }>["event"]): void {
@@ -828,7 +906,29 @@ export class GuestClient {
 	}
 
 	#commit(): void {
+		this.#cancelScheduledPublish();
+		if (this.#progressDraft) {
+			this.#progress = this.#progressDraft;
+			this.#progressDraft = null;
+		}
 		this.#snapshot = this.#buildSnapshot();
 		for (const listener of this.#listeners) listener();
+	}
+}
+
+/** Frames a later frame of the same kind supersedes: their only effect can be newer visual state. */
+function deferrable(frame: HostFrame): boolean {
+	switch (frame.t) {
+		case "bus":
+			return frame.channel === "task:subagent:progress";
+		case "agents":
+		case "state":
+			return true;
+		case "event":
+			return frame.event.type === "message_update" || frame.event.type === "tool_execution_update";
+		case "snapshot-chunk":
+			return !frame.final;
+		default:
+			return false;
 	}
 }

@@ -32,6 +32,7 @@ const fakes = vi.hoisted(() => {
 		}
 		connect(): void {}
 		close(): void {}
+		setForeground(): void {}
 		sendPrompt = vi.fn(async (_text: string, _images: unknown[], beforeSend?: () => void) => { beforeSend?.(); });
 		settleAsyncWait(revision: number): void {
 			if (!this.snapshot.awaitingAsyncWork || revision !== (this.snapshot.asyncWaitRevision ?? 0)) return;

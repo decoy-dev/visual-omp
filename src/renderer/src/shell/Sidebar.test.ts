@@ -35,6 +35,7 @@ vi.mock("../state/session", () => ({ SessionController: class {
 	async loadHistory() {}
 	async checkOwnership() {}
 	async dispose() {}
+	setForeground() {}
 } }));
 vi.mock("motion/react", async importOriginal => {
 	const actual = await importOriginal<typeof MotionModule>();
