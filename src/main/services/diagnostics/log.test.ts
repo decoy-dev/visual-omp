@@ -24,6 +24,16 @@ describe("diagnostics log", () => {
 		const memory = { event: "memory", trigger: "interval", hosts: 2, processes: [{ pid: 1, type: "Browser", workingSetKiB: 123, chat: "private" }], environment: { TOKEN: "secret" } };
 		expect(formatDiagnostic(memory as DiagnosticEvent, time)).toBe('2026-11-05T12:00:00.000Z memory {"trigger":"interval","hosts":2,"processes":[{"pid":1,"type":"Browser","workingSetKiB":123}]}\n');
 	});
+	it.each(["closed", "attached", "attach-retrying", "ignored"] as const)("projects only room counts and state for %s", state => {
+		const chatId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+		const input = { event: "collab-room", chatId, state, attempts: 40, roomId: "private-room", link: "secret-key" };
+		expect(formatDiagnostic(input as DiagnosticEvent, time)).toBe(`2026-11-05T12:00:00.000Z collab-room ${JSON.stringify({ chatId, state, attempts: 40 })}\n`);
+	});
+	it("projects resync bytes without retaining guest or room data", () => {
+		const chatId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+		const input = { event: "collab-resync", chatId, behindBytes: 1234, guest: "private", roomId: "private-room" };
+		expect(formatDiagnostic(input as DiagnosticEvent, time)).toBe(`2026-11-05T12:00:00.000Z collab-resync ${JSON.stringify({ chatId, behindBytes: 1234 })}\n`);
+	});
 	it("writes one privacy-projected completion line and drops malformed completion data", async () => {
 		const { log } = await fixture(2048);
 		const completion = {
@@ -47,6 +57,12 @@ describe("diagnostics log", () => {
 		{ event: "host-start", chatId: "a private filename", transport: "tsp" },
 		{ event: "child-gone", type: "GPU", reason: "chat text", exitCode: 1, serviceName: "" },
 		{ event: "main-exception", kind: "uncaughtException", errorType: "private token", fingerprint: "0123456789abcdef" },
+		{ event: "collab-room", chatId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", state: "unknown", attempts: 1 },
+		{ event: "collab-room", chatId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", state: "closed", attempts: -1 },
+		{ event: "collab-room", chatId: "private filename", state: "closed", attempts: 0 },
+		{ event: "collab-resync", chatId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", behindBytes: -1 },
+		{ event: "collab-resync", chatId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", behindBytes: 0.5 },
+		{ event: "collab-resync", chatId: "private filename", behindBytes: 0 },
 	])("rejects untrusted values outside the event boundary: %j", input => {
 		expect(formatDiagnostic(input as DiagnosticEvent, time)).toBeNull();
 	});
@@ -60,6 +76,8 @@ describe("diagnostics log", () => {
 			{ event: "child-gone", type: "GPU", reason: "crashed", exitCode: 1, serviceName: "gpu" },
 			{ event: "host-start", chatId, transport: "tsp" },
 			{ event: "host-exit", chatId, transport: "tsp", exitCode: 1, signal: null, uptimeMs: 1234 }, event,
+			{ event: "collab-room", chatId, state: "attached", attempts: 1 },
+			{ event: "collab-resync", chatId, behindBytes: 1234 },
 			{ event: "main-exception", kind: "uncaughtException", ...exceptionDetails(new TypeError("secret")) },
 			{ event: "memory", trigger: "unresponsive", hosts: 2, processes: [{ pid: 1, type: "Browser", workingSetKiB: 123 }] },
 			{ event: "report-send", outcome: "failed", status: 429 },

@@ -28,6 +28,42 @@ const ENVELOPE_HEADER_LENGTH = 4;
 // (collab/replication-shrink.ts). Leave envelope/chunk headroom while bounding peer allocation.
 export const MAX_RELAY_PAYLOAD = 16 * 1024 * 1024;
 
+export const GUEST_BACKLOG_LIMIT = 128 * 1024 * 1024;
+export const GUEST_BEHIND_BYTES = 4 * 1024 * 1024;
+export const GUEST_BEHIND_MS = 5_000;
+export const GUEST_STALE_MS = 60_000;
+
+/**
+ * Unbounded buffering replayed 45 minutes of old state and stalled main.
+ * A dropped guest reconnects and omp sends current state; a draining welcome snapshot gets time to download.
+ */
+export class GuestBacklog {
+	#behindSince: number | null = null;
+	#windowSince = 0;
+	#windowBytes = 0;
+
+	shouldDrop(bufferedAmount: number, nowMs: number): boolean {
+		if (bufferedAmount > GUEST_BACKLOG_LIMIT) return true;
+		if (bufferedAmount <= GUEST_BEHIND_BYTES) {
+			this.#behindSince = null;
+			return false;
+		}
+		if (this.#behindSince === null) {
+			this.#behindSince = nowMs;
+			this.#windowSince = nowMs;
+			this.#windowBytes = bufferedAmount;
+			return false;
+		}
+		if (nowMs - this.#behindSince > GUEST_STALE_MS) return true;
+		if (nowMs - this.#windowSince >= GUEST_BEHIND_MS) {
+			if (bufferedAmount >= this.#windowBytes) return true;
+			this.#windowSince = nowMs;
+			this.#windowBytes = bufferedAmount;
+		}
+		return false;
+	}
+}
+
 interface Room {
 	host: WebSocket;
 	guests: Map<number, WebSocket>;
@@ -40,6 +76,8 @@ export interface RelayEvents {
 	onHostOpen?(roomId: string): void;
 	/** The host of `roomId` disconnected (room ended, session switched, or process exited). */
 	onHostClose?(roomId: string): void;
+	/** A slow guest was terminated so it can reconnect to current state. */
+	onGuestDropped?(roomId: string, behindBytes: number): void;
 }
 
 /** Relays that are listening, so a room can be found from its id alone (rooms ids are random 16-byte values). */
@@ -57,6 +95,7 @@ export class LoopbackRelay {
 	readonly #wss = new WebSocketServer({ noServer: true, maxPayload: MAX_RELAY_PAYLOAD });
 	readonly #rooms = new Map<string, Room>();
 	readonly #openedRooms = new Set<string>();
+	readonly #guestBacklogs = new WeakMap<WebSocket, GuestBacklog>();
 	#port = 0;
 	events: RelayEvents = {};
 
@@ -190,12 +229,12 @@ export class LoopbackRelay {
 			if (frame.byteLength < ENVELOPE_HEADER_LENGTH) return;
 			const peerId = frame.readUInt32BE(0);
 			if (peerId === 0) {
-				for (const guest of room.guests.values()) guest.send(frame);
+				for (const guest of room.guests.values()) this.#sendToGuest(roomId, guest, frame);
 				room.bridge?.fromHost(frame, 0);
 				return;
 			}
 			const guest = room.guests.get(peerId);
-			if (guest) guest.send(frame);
+			if (guest) this.#sendToGuest(roomId, guest, frame);
 			else room.bridge?.fromHost(frame, peerId);
 		});
 		ws.on("close", () => {
@@ -214,6 +253,19 @@ export class LoopbackRelay {
 		this.events.onHostOpen?.(roomId);
 	}
 
+	#sendToGuest(roomId: string, guest: WebSocket, frame: Buffer): void {
+		if (guest.readyState !== WebSocket.OPEN) return;
+		const backlog = this.#guestBacklogs.get(guest);
+		if (!backlog) return;
+		const bufferedAmount = guest.bufferedAmount;
+		if (backlog.shouldDrop(bufferedAmount, Date.now())) {
+			guest.terminate();
+			this.events.onGuestDropped?.(roomId, bufferedAmount);
+			return;
+		}
+		guest.send(frame);
+	}
+
 	#openGuest(roomId: string, ws: WebSocket): void {
 		const room = this.#rooms.get(roomId);
 		if (!room) {
@@ -222,6 +274,7 @@ export class LoopbackRelay {
 		}
 		const peerId = room.nextPeerId++;
 		room.guests.set(peerId, ws);
+		this.#guestBacklogs.set(ws, new GuestBacklog());
 		room.host.send(JSON.stringify({ t: "peer-joined", peer: peerId }));
 		ws.on("message", (data, isBinary) => {
 			if (!isBinary) return;
@@ -231,6 +284,7 @@ export class LoopbackRelay {
 			room.host.send(frame);
 		});
 		ws.on("close", () => {
+			this.#guestBacklogs.delete(ws);
 			if (room.guests.delete(peerId)) room.host.send(JSON.stringify({ t: "peer-left", peer: peerId }));
 		});
 	}

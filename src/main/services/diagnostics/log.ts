@@ -19,6 +19,8 @@ const schemas = {
 	"child-gone": z.object({ type: processType, reason, exitCode: z.number().int(), serviceName: z.string().regex(/^[a-zA-Z0-9_.-]{0,100}$/) }),
 	"host-start": z.object({ chatId: z.uuid(), transport }),
 	"host-exit": z.object({ chatId: z.uuid(), transport, exitCode: z.number().int(), signal: z.number().int().nullable(), uptimeMs: count }),
+	"collab-room": z.object({ chatId: z.uuid(), state: z.enum(["closed", "attached", "attach-retrying", "ignored"]), attempts: count }),
+	"collab-resync": z.object({ chatId: z.uuid(), behindBytes: count }),
 	"chat-completion": completionDiagnosticSchema,
 	"renderer-visibility": z.object({ windowId: count, state: z.enum(["hidden", "visible"]) }),
 	"main-exception": z.object({ kind: z.enum(["uncaughtException", "unhandledRejection"]), errorType: z.enum(["Error", "TypeError", "RangeError", "ReferenceError", "SyntaxError", "URIError", "EvalError", "AggregateError", "NonError"]), fingerprint: z.string().regex(/^[a-f0-9]{16}$/) }),

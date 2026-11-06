@@ -58,23 +58,22 @@ import { classicPromptRejections, semanticPromptRejections, type PromptRejection
 import { expandedPromptTextMatches } from "../../shared/prompt-input";
 import { writeDiagnostic } from "../services/diagnostics/events";
 
-const CollabHosts = z.object({
-	hosts: z.array(
-		z.object({
-			instanceId: z.string(),
-			generation: z.number(),
-			pid: z.number(),
-			startedAt: z.number(),
-			sessionId: z.string().nullable(),
-			cwd: z.string(),
-		}),
-	),
+const CollabHost = z.object({
+	instanceId: z.string(),
+	generation: z.number(),
+	pid: z.number(),
+	startedAt: z.number(),
+	sessionId: z.string().nullable(),
+	cwd: z.string(),
 });
+const CollabHosts = z.object({ hosts: z.array(z.unknown()) });
 const CollabLink = z.object({ url: z.string(), generation: z.number() });
 
 /** omp publishes its registry entry shortly after the relay connection opens. */
 const LINK_RETRY_MS = 250;
 const LINK_RETRY_LIMIT = 40;
+const LINK_RETRY_SLOW_MS = 2_000;
+const LINK_RETRY_MAX_MS = 30_000;
 const FOCUS_POLL_MS = 500;
 const TSP_NEGOTIATION_MS = 10_000;
 /** One screen refresh: frame publishes within this window reach the renderer as one patch. */
@@ -122,6 +121,11 @@ export class SessionHost {
 	#loggedSlowWorktreeRead = false;
 	#privateDir: string | null = null;
 	#roomId: string | null = null;
+	/** A room omp opened while the current one was still open; it is attached once the current room closes. */
+	#successorRoomId: string | null = null;
+	#linkRetryAbort: AbortController | null = null;
+	#linkAttempts = 0;
+	#ended = false;
 	#hadCollabRoom = false;
 	#spawnedAt = 0;
 	#runStartedAt = 0;
@@ -224,16 +228,18 @@ export class SessionHost {
 			await this.#relay.start();
 			this.#relay.events = {
 				onHostOpen: roomId => {
-					// A second relay room must never replace the session this host already owns.
-					// Legitimate rotations close the previous room before opening its successor.
-					if (this.#roomId !== null) return;
-					this.#hadCollabRoom = true;
-					if (this.#tsp) this.#publishTsp();
-					this.#runStartedAt = Date.now();
-					this.#finishStartup();
-					void this.#resolveLink(roomId);
+					// A second relay room must never replace the session this host already owns. Legitimate rotations
+					// close the previous room first; a successor seen early waits for that close, and the link lookup
+					// still has to prove the room belongs to this omp before the chat uses it.
+					if (this.#roomId !== null) {
+						this.#successorRoomId = roomId;
+						writeDiagnostic({ event: "collab-room", chatId: this.id, state: "ignored", attempts: this.#linkAttempts });
+						return;
+					}
+					this.#openRoom(roomId);
 				},
 				onHostClose: roomId => this.#onRoomClosed(roomId),
+				onGuestDropped: (_roomId, behindBytes) => writeDiagnostic({ event: "collab-resync", chatId: this.id, behindBytes }),
 			};
 			// Owner-only directory: the debug socket accepts keystrokes, so nobody else may reach it.
 			this.#privateDir = await mkdtemp(join(tmpdir(), "vomp-"));
@@ -1484,7 +1490,13 @@ export class SessionHost {
 	}
 
 	async #resolveLink(roomId: string): Promise<void> {
+		this.#linkRetryAbort?.abort();
+		const abort = new AbortController();
+		this.#linkRetryAbort = abort;
 		this.#roomId = roomId;
+		this.#linkAttempts = 0;
+		const current = () => !abort.signal.aborted && !this.#ended && this.#roomId === roomId
+			&& this.#relay.hasRoom(roomId) && this.state.phase !== "exited";
 		const search = {
 			pid: this.#pty?.pid,
 			spawnedAt: this.#spawnedAt,
@@ -1493,39 +1505,77 @@ export class SessionHost {
 			ruledOut: new Set<string>(),
 			linkFor: async (instanceId: string) => CollabLink.parse(await runOmpJson(["collab", "link", instanceId, "--json"])).url,
 		};
-		for (let attempt = 0; attempt < LINK_RETRY_LIMIT && this.#roomId === roomId; attempt++) {
-			try {
-				const { hosts } = CollabHosts.parse(await runOmpJson(["collab", "list", "--json"]));
-				const found = await findRoomHost(hosts, search);
-				if (found) {
-					const { host, link } = found;
-					if (this.#roomId !== roomId) return;
-					const sessionFile = host.sessionId ? await findSessionFile(host.sessionId) : null;
-					if (this.#roomId !== roomId) return;
-					this.#nativeBridge?.beginGeneration(this.state.generation + 1);
-					this.#update({
-						phase: "live",
-						link,
-						generation: this.state.generation + 1,
-						processStartedAt: host.startedAt,
-						sessionId: host.sessionId,
-						cwd: host.cwd,
-						sessionFile: sessionFile ?? this.state.sessionFile,
-						error: null,
+		let retryMs = LINK_RETRY_SLOW_MS;
+		try {
+			while (current()) {
+				this.#linkAttempts++;
+				try {
+					const registry = CollabHosts.parse(await runOmpJson(["collab", "list", "--json"]));
+					const hosts = registry.hosts.flatMap(entry => {
+						const result = CollabHost.safeParse(entry);
+						return result.success ? [result.data] : [];
 					});
-					return;
+					if (!current()) return;
+					const found = await findRoomHost(hosts, search);
+					if (found) {
+						const { host, link } = found;
+						if (!current()) return;
+						const sessionFile = host.sessionId ? await findSessionFile(host.sessionId) : null;
+						if (!current()) return;
+						this.#nativeBridge?.beginGeneration(this.state.generation + 1);
+						this.#update({
+							phase: "live",
+							link,
+							generation: this.state.generation + 1,
+							processStartedAt: host.startedAt,
+							sessionId: host.sessionId,
+							cwd: host.cwd,
+							sessionFile: sessionFile ?? this.state.sessionFile,
+							error: null,
+						});
+						writeDiagnostic({ event: "collab-room", chatId: this.id, state: "attached", attempts: this.#linkAttempts });
+						return;
+					}
+				} catch {}
+				if (!current()) return;
+				if (this.#linkAttempts < LINK_RETRY_LIMIT) {
+					await sleep(LINK_RETRY_MS, undefined, { signal: abort.signal });
+				} else {
+					if (this.#linkAttempts === LINK_RETRY_LIMIT) {
+						this.#update({ error: "Could not connect to omp's live session." });
+						writeDiagnostic({ event: "collab-room", chatId: this.id, state: "attach-retrying", attempts: this.#linkAttempts });
+					}
+					await sleep(retryMs, undefined, { signal: abort.signal });
+					retryMs = Math.min(retryMs * 2, LINK_RETRY_MAX_MS);
 				}
-			} catch {}
-			await sleep(LINK_RETRY_MS);
+			}
+		} catch (error) {
+			if (!abort.signal.aborted) throw error;
+		} finally {
+			if (this.#linkRetryAbort === abort) this.#linkRetryAbort = null;
 		}
-		if (this.#roomId === roomId) this.#update({ error: "Could not connect to omp's live session." });
+	}
+
+	#openRoom(roomId: string): void {
+		if (this.#ended || this.state.phase === "exited") return;
+		this.#hadCollabRoom = true;
+		if (this.#tsp) this.#publishTsp();
+		this.#runStartedAt = Date.now();
+		this.#finishStartup();
+		void this.#resolveLink(roomId);
 	}
 
 	#onRoomClosed(roomId: string): void {
+		if (this.#successorRoomId === roomId) this.#successorRoomId = null;
 		if (this.#roomId !== roomId) return;
 		this.#roomId = null;
+		this.#linkRetryAbort?.abort();
+		writeDiagnostic({ event: "collab-room", chatId: this.id, state: "closed", attempts: this.#linkAttempts });
 		this.#captureStartupNotices = true;
 		if (this.state.phase !== "exited") this.#update({ phase: "restarting", link: null });
+		const successor = this.#successorRoomId;
+		this.#successorRoomId = null;
+		if (successor && this.#relay.hasRoom(successor)) this.#openRoom(successor);
 	}
 
 	async #pollFocus(): Promise<void> {
@@ -1569,6 +1619,8 @@ export class SessionHost {
 	}
 
 	async #onExit(exitCode: number, signal?: number): Promise<void> {
+		this.#ended = true;
+		this.#linkRetryAbort?.abort();
 		writeDiagnostic({ event: "host-exit", chatId: this.id, transport: this.#tsp ? "tsp" : "classic", exitCode, signal: signal ?? null, uptimeMs: Math.max(0, Date.now() - this.#spawnedAt) });
 		const pty = this.#pty;
 		clearTimeout(this.#tspHandshakeTimer ?? undefined);
@@ -1673,6 +1725,8 @@ export class SessionHost {
 	}
 
 	async #cleanup(): Promise<void> {
+		this.#ended = true;
+		this.#linkRetryAbort?.abort();
 		clearTimeout(this.#tspHandshakeTimer ?? undefined);
 		this.#tspHandshakeTimer = null;
 		clearTimeout(this.#tspPublishTimer ?? undefined);

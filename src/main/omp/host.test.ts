@@ -24,6 +24,12 @@ const pty = vi.hoisted(() => ({
 	events: {} as RelayEvents,
 	room: "room",
 	sessionId: "old",
+	rooms: new Set<string>(),
+	collabHosts: null as unknown[] | null,
+	linkReady: true,
+	collabListCalls: 0,
+	collabLinkCalls: 0,
+	diagnostic: vi.fn(),
 	focus: null as TuiFocus | null,
 	cwd: "/tmp",
 	location: undefined as { cwd: string; sessionFile: string | null; sessionId: string } | undefined,
@@ -56,11 +62,17 @@ vi.mock("../env", () => ({ userEnv: async () => ({}), ptyEnv: (env: unknown) => 
 vi.mock("../ipc", () => ({ broadcast: vi.fn() }));
 const prefs = vi.hoisted(() => ({ classicPresentation: false }));
 vi.mock("../prefs", () => ({ getPrefs: () => ({ archivedSessions: [], extraProjects: [], classicPresentation: prefs.classicPresentation }) }));
+vi.mock("../services/diagnostics/events", () => ({ writeDiagnostic: pty.diagnostic }));
 vi.mock("./cli", () => ({
-	runOmpJson: async (args: string[]) =>
-		args[1] === "list"
-			? { hosts: [{ instanceId: "host", generation: 1, pid: 123, startedAt: Date.now(), sessionId: pty.sessionId, cwd: pty.cwd }] }
-			: { url: `ws://localhost:9999/r/${pty.room}.key`, generation: 1 },
+	runOmpJson: async (args: string[]) => {
+		if (args[1] === "list") {
+			pty.collabListCalls++;
+			return { hosts: pty.collabHosts ?? [{ instanceId: "host", generation: 1, pid: 123, startedAt: Date.now(), sessionId: pty.sessionId, cwd: pty.cwd }] };
+		}
+		pty.collabLinkCalls++;
+		if (!pty.linkReady) throw new Error("Registry link is not ready");
+		return { url: `ws://localhost:9999/r/${pty.room}.key`, generation: 1 };
+	},
 }));
 vi.mock("./locate", () => ({ ompPath: async () => "/omp" }));
 vi.mock("./refused", () => ({ ompStartError: (error: unknown) => error }));
@@ -69,18 +81,32 @@ vi.mock("./sessions", async importOriginal => ({ ...(await importOriginal<typeof
 vi.mock("./relay", () => ({
 	LoopbackRelay: class {
 		url = "ws://localhost:9999";
-		set events(events: RelayEvents) { pty.events = events; }
+		set events(events: RelayEvents) {
+			pty.events = {
+				...events,
+				onHostOpen: room => { pty.rooms.add(room); events.onHostOpen?.(room); },
+				onHostClose: room => { pty.rooms.delete(room); events.onHostClose?.(room); },
+			};
+		}
 		start = async () => {};
-		stop() {}
+		hasRoom(room: string) { return pty.rooms.has(room); }
+		stop() { pty.rooms.clear(); }
 	},
 }));
 vi.mock("./tui-debug", () => ({ TuiDebugClient: class { info = async () => pty.focus; screen = async () => { pty.screenReads(); return pty.screen; }; values = pty.values; keys = pty.keys; close() {} } }));
 vi.mock("electron", () => ({ BrowserWindow: { getFocusedWindow: () => null, getAllWindows: () => [] }, dialog: { showMessageBox: pty.confirm }, nativeTheme: { on: vi.fn(), removeListener: vi.fn(), shouldUseDarkColors: false }, systemPreferences: { getAnimationSettings: () => ({ prefersReducedMotion: false }) } }));
 vi.mock("./native-bridge", () => ({ createNativeBridge: async () => ({ extensionPath: "/native.mjs", url: "http://127.0.0.1/native", requestShutdown: pty.requestShutdown, editorDraft: pty.editorDraft, watchPrompt: pty.watchPrompt, forgetPrompt: pty.forgetPrompt, set onPromptInput(callback: typeof pty.onPromptInput) { pty.onPromptInput = callback; }, snapshot: { get location() { return pty.location; }, get historyDbPath() { return pty.historyDbPath; }, get shutdown() { return pty.shutdown; } }, beginGeneration: vi.fn(), close: async () => {} }) }));
 // Route promise timers through the fake clock in deadline regressions.
-vi.mock("node:timers/promises", () => ({ setTimeout: (ms: number, value?: unknown) => {
-	const { promise, resolve } = Promise.withResolvers<unknown>();
-	setTimeout(() => resolve(value), ms);
+vi.mock("node:timers/promises", () => ({ setTimeout: (ms: number, value?: unknown, options?: { signal?: AbortSignal }) => {
+	const { promise, resolve, reject } = Promise.withResolvers<unknown>();
+	const signal = options?.signal;
+	if (signal?.aborted) return Promise.reject(new Error("aborted"));
+	const timer = setTimeout(() => {
+		signal?.removeEventListener("abort", abort);
+		resolve(value);
+	}, ms);
+	const abort = () => { clearTimeout(timer); reject(new Error("aborted")); };
+	signal?.addEventListener("abort", abort, { once: true });
 	return promise;
 } }));
 
@@ -93,6 +119,12 @@ beforeEach(async () => {
 	prefs.classicPresentation = false;
 	pty.root = await mkdtemp(join(tmpdir(), "vomp-host-test-"));
 	pty.events = {};
+	pty.rooms.clear();
+	pty.collabHosts = null;
+	pty.linkReady = true;
+	pty.collabListCalls = 0;
+	pty.collabLinkCalls = 0;
+	pty.diagnostic.mockClear();
 	pty.focus = null;
 	pty.cwd = "/tmp";
 	pty.location = undefined;
@@ -455,6 +487,112 @@ it("ignores a second relay room until the owning room closes", async () => {
 	pty.events.onHostClose?.("owning-room");
 	await connect("successor-room", "old");
 	expect(host.state.generation).toBe(2);
+});
+
+it("attaches a successor room that opened before its predecessor closed", async () => {
+	await connect("owning-room", "old");
+	const owned = host.state;
+	pty.room = "successor-room";
+	pty.events.onHostOpen?.("successor-room");
+	expect(host.state).toBe(owned);
+	pty.events.onHostClose?.("owning-room");
+	expect(host.state.phase).toBe("restarting");
+	await vi.waitFor(() => expect(host.state).toMatchObject({ phase: "live", generation: 2, link: "ws://localhost:9999/r/successor-room.key" }));
+});
+
+describe("collab room attachment", () => {
+	it("skips malformed registry entries and still attaches to the valid host", async () => {
+		pty.collabHosts = [
+			{ instanceId: "fixture-missing-fields", pid: 456 },
+			{ instanceId: "host", generation: 1, pid: 123, startedAt: Date.now(), sessionId: null, cwd: "/tmp" },
+		];
+		pty.events.onHostOpen?.("room");
+		await vi.waitFor(() => expect(host.state.phase).toBe("live"));
+		expect(pty.collabListCalls).toBe(1);
+		expect(pty.diagnostic).toHaveBeenCalledWith({ event: "collab-room", chatId: host.id, state: "attached", attempts: 1 });
+	});
+
+	it("keeps retrying after the fast attempts and clears the error on attachment", async () => {
+		vi.useFakeTimers();
+		pty.sessionId = "";
+		pty.linkReady = false;
+		pty.events.onHostOpen?.("room");
+		await vi.advanceTimersByTimeAsync(9_750);
+		expect(pty.collabListCalls).toBe(40);
+		expect(host.state.error).toBe("Could not connect to omp's live session.");
+		expect(pty.diagnostic.mock.calls.filter(([event]) => event.state === "attach-retrying")).toHaveLength(1);
+		await vi.advanceTimersByTimeAsync(1_999);
+		expect(pty.collabListCalls).toBe(40);
+		await vi.advanceTimersByTimeAsync(1);
+		expect(pty.collabListCalls).toBe(41);
+		await vi.advanceTimersByTimeAsync(3_999);
+		expect(pty.collabListCalls).toBe(41);
+		pty.linkReady = true;
+		await vi.advanceTimersByTimeAsync(1);
+		expect(host.state).toMatchObject({ phase: "live", error: null });
+		expect(pty.diagnostic).toHaveBeenCalledWith({ event: "collab-room", chatId: host.id, state: "attached", attempts: 42 });
+	});
+
+	it("caps slow retries at thirty seconds", async () => {
+		vi.useFakeTimers();
+		pty.linkReady = false;
+		pty.events.onHostOpen?.("room");
+		await vi.advanceTimersByTimeAsync(9_750);
+		let attempts = 40;
+		for (const delay of [2_000, 4_000, 8_000, 16_000, 30_000, 30_000]) {
+			await vi.advanceTimersByTimeAsync(delay - 1);
+			expect(pty.collabListCalls).toBe(attempts);
+			await vi.advanceTimersByTimeAsync(1);
+			expect(pty.collabListCalls).toBe(++attempts);
+		}
+		expect(pty.diagnostic.mock.calls.filter(([event]) => event.state === "attach-retrying")).toHaveLength(1);
+		pty.events.onHostClose?.("room");
+	});
+
+	it.each(["closed", "exited"] as const)("cancels pending slow retries when the host is %s", async reason => {
+		vi.useFakeTimers();
+		pty.linkReady = false;
+		pty.events.onHostOpen?.("room");
+		await vi.advanceTimersByTimeAsync(9_750);
+		expect(pty.collabListCalls).toBe(40);
+		if (reason === "closed") pty.events.onHostClose?.("room");
+		else pty.exit?.({ exitCode: 0 });
+		await vi.advanceTimersByTimeAsync(0);
+		expect(vi.getTimerCount()).toBe(0);
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(pty.collabListCalls).toBe(40);
+		if (reason === "closed") {
+			expect(host.state.phase).toBe("restarting");
+			expect(pty.diagnostic).toHaveBeenCalledWith({ event: "collab-room", chatId: host.id, state: "closed", attempts: 40 });
+		}
+	});
+
+	it("cancels old room retries when its replacement opens", async () => {
+		vi.useFakeTimers();
+		pty.sessionId = "";
+		pty.linkReady = false;
+		pty.events.onHostOpen?.("room");
+		await vi.advanceTimersByTimeAsync(9_750);
+		pty.events.onHostClose?.("room");
+		pty.room = "replacement-room";
+		pty.linkReady = true;
+		pty.events.onHostOpen?.("replacement-room");
+		await vi.advanceTimersByTimeAsync(0);
+		expect(host.state).toMatchObject({ phase: "live", link: "ws://localhost:9999/r/replacement-room.key", error: null, generation: 1 });
+		await vi.advanceTimersByTimeAsync(120_000);
+		expect(pty.collabListCalls).toBe(41);
+	});
+
+	it("records ignored rooms and guest resyncs without recording their identity", async () => {
+		await connect();
+		pty.diagnostic.mockClear();
+		pty.events.onHostOpen?.("private-injected-room");
+		pty.events.onGuestDropped?.("private-room", 1234);
+		expect(pty.diagnostic.mock.calls).toEqual([
+			[{ event: "collab-room", chatId: host.id, state: "ignored", attempts: 1 }],
+			[{ event: "collab-resync", chatId: host.id, behindBytes: 1234 }],
+		]);
+	});
 });
 
 it("answers a startup worktree question natively before typing a queued message", async () => {

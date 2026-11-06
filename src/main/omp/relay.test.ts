@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it } from "vitest";
+import type { Socket } from "node:net";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { WebSocket, WebSocketServer } from "ws";
-import { type BridgeRoom, LoopbackRelay, MAX_RELAY_PAYLOAD, RoomBridge } from "./relay";
+import { type BridgeRoom, GuestBacklog, GUEST_BACKLOG_LIMIT, GUEST_BEHIND_BYTES, GUEST_BEHIND_MS, GUEST_STALE_MS, LoopbackRelay, MAX_RELAY_PAYLOAD, RoomBridge } from "./relay";
 import { setAppRendererUrl } from "../services/app-origin";
 
 const ROOM = "room_ABCDEFGHIJ";
@@ -31,6 +32,51 @@ function frame(peerId: number, payload: string): Buffer {
 	buffer.write(payload, 4);
 	return buffer;
 }
+
+describe("GuestBacklog", () => {
+	it("allows a large welcome snapshot that drains in successive windows", () => {
+		const backlog = new GuestBacklog();
+		for (let window = 0; window <= 10; window++) {
+			expect(backlog.shouldDrop(GUEST_BACKLOG_LIMIT - window * 1024 * 1024, window * GUEST_BEHIND_MS)).toBe(false);
+		}
+	});
+
+	it.each([0, 1])("drops a flat or growing window with byte growth %i", growth => {
+		const backlog = new GuestBacklog();
+		const bytes = GUEST_BEHIND_BYTES + 1;
+		expect(backlog.shouldDrop(bytes, 0)).toBe(false);
+		expect(backlog.shouldDrop(bytes + growth, GUEST_BEHIND_MS - 1)).toBe(false);
+		expect(backlog.shouldDrop(bytes + growth, GUEST_BEHIND_MS)).toBe(true);
+	});
+
+	it("starts the next drain window at the observed amount", () => {
+		const backlog = new GuestBacklog();
+		expect(backlog.shouldDrop(GUEST_BEHIND_BYTES + 100, 0)).toBe(false);
+		expect(backlog.shouldDrop(GUEST_BEHIND_BYTES + 50, GUEST_BEHIND_MS)).toBe(false);
+		expect(backlog.shouldDrop(GUEST_BEHIND_BYTES + 50, GUEST_BEHIND_MS * 2)).toBe(true);
+	});
+
+	it("always enforces the hard ceiling, including on a first observation", () => {
+		expect(new GuestBacklog().shouldDrop(GUEST_BACKLOG_LIMIT, 0)).toBe(false);
+		expect(new GuestBacklog().shouldDrop(GUEST_BACKLOG_LIMIT + 1, 0)).toBe(true);
+	});
+
+	it("bounds continuous lag even while the snapshot keeps draining", () => {
+		const backlog = new GuestBacklog();
+		for (let window = 0; window <= GUEST_STALE_MS / GUEST_BEHIND_MS; window++) {
+			expect(backlog.shouldDrop(GUEST_BACKLOG_LIMIT - window, window * GUEST_BEHIND_MS)).toBe(false);
+		}
+		expect(backlog.shouldDrop(GUEST_BACKLOG_LIMIT - 100, GUEST_STALE_MS + 1)).toBe(true);
+	});
+
+	it.each([0, GUEST_BEHIND_BYTES])("resets both lag windows when the queue reaches %i bytes", bytes => {
+		const backlog = new GuestBacklog();
+		expect(backlog.shouldDrop(GUEST_BEHIND_BYTES + 100, 0)).toBe(false);
+		expect(backlog.shouldDrop(bytes, GUEST_STALE_MS)).toBe(false);
+		expect(backlog.shouldDrop(GUEST_BEHIND_BYTES + 100, GUEST_STALE_MS + 1)).toBe(false);
+		expect(backlog.shouldDrop(GUEST_BEHIND_BYTES + 99, GUEST_STALE_MS + GUEST_BEHIND_MS + 1)).toBe(false);
+	});
+});
 
 describe("LoopbackRelay", () => {
 	let relay: LoopbackRelay;
@@ -144,6 +190,58 @@ describe("LoopbackRelay", () => {
 		const ended = closed(host);
 		host.send(Buffer.alloc(MAX_RELAY_PAYLOAD + 1));
 		expect(await ended).toBe(1009);
+	});
+
+	it("terminates a stalled guest once while a reading guest keeps receiving broadcasts", async () => {
+		relay = new LoopbackRelay();
+		await relay.start();
+		const dropped: { room: string; bytes: number }[] = [];
+		relay.events = { onGuestDropped: (room, bytes) => dropped.push({ room, bytes }) };
+		const host = await open(relay, "host");
+		const hostInbox = inbox(host);
+		const slow = await open(relay, "guest");
+		expect(text(await hostInbox.next())).toEqual({ t: "peer-joined", peer: 1 });
+		const healthy = await open(relay, "guest");
+		expect(text(await hostInbox.next())).toEqual({ t: "peer-joined", peer: 2 });
+		const welcome = Promise.all([nextMessage(slow), nextMessage(healthy)]);
+		host.send(frame(0, "welcome"));
+		await welcome;
+		const slowClosed = closed(slow);
+		const socket = (slow as WebSocket & { _socket: Socket })._socket;
+		socket.pause();
+		let now = 0;
+		const clock = vi.spyOn(Date, "now").mockImplementation(() => now);
+		try {
+			const payload = Buffer.alloc(256 * 1024);
+			for (let sent = 0; sent < 512 && dropped.length === 0; sent++) {
+				const received = nextMessage(healthy);
+				host.send(payload);
+				await received;
+				now += 250;
+			}
+			expect(dropped).toHaveLength(1);
+			expect(dropped[0]).toMatchObject({ room: ROOM });
+			expect(dropped[0]!.bytes).toBeGreaterThan(GUEST_BEHIND_BYTES);
+			expect(text(await hostInbox.next())).toEqual({ t: "peer-left", peer: 1 });
+			for (let sent = 0; sent < 3; sent++) {
+				const received = nextMessage(healthy);
+				host.send(frame(sent === 0 ? 1 : 0, "after-drop"));
+				if (sent === 0) host.send(frame(2, "targeted-healthy"));
+				await received;
+			}
+			healthy.send(frame(0, "barrier"));
+			expect((await hostInbox.next()).binary).toBe(true);
+			expect(hostInbox.pending).toBe(0);
+			expect(dropped).toHaveLength(1);
+			expect(healthy.readyState).toBe(WebSocket.OPEN);
+		} finally {
+			clock.mockRestore();
+			socket.resume();
+			slow.terminate();
+			healthy.terminate();
+			host.terminate();
+		}
+		expect(await slowClosed).toBe(1006);
 	});
 });
 
