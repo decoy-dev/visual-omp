@@ -1190,6 +1190,11 @@ export function ompRunning(view: Pick<SessionView, "mode" | "readOnly" | "follow
 	return view.mode === "starting" || view.mode === "live" || view.mode === "reconnecting";
 }
 
+/** An ended mirror cannot establish live helper authority; transient reconnects retain it. */
+export function helpersMayRun(view: Pick<SessionView, "mode" | "readOnly" | "follow" | "guest"> | null | undefined): boolean {
+	return ompRunning(view) && view?.guest?.phase !== "ended";
+}
+
 /**
  * Each helper's last state the transcript records, by helper id: what its `task` call's result said (final results,
  * else the progress a background spawn returns with), then the task jobs in `job`/`wait` results and `async-result`
@@ -1424,7 +1429,7 @@ const runningCounts = new WeakMap<HelperSources["agents"], RunningCount>();
  */
 export function runningHelpers(view: Pick<SessionView, "guest" | "mode" | "readOnly" | "follow"> | null): number {
 	const guest = view?.guest;
-	if (!guest || !ompRunning(view)) return 0;
+	if (!guest || !helpersMayRun(view)) return 0;
 	const cached = runningCounts.get(guest.agents);
 	if (cached && cached.progress === guest.progress && cached.lifecycle === guest.lifecycle) return cached.count;
 	let count = 0;

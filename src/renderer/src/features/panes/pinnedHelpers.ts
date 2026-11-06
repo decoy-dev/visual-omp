@@ -5,7 +5,7 @@
  */
 import { useMemo } from "react";
 import type { SessionView } from "../../state/session";
-import { type Helper, helpersOf, ompRunning } from "./derive";
+import { type Helper, helpersOf, helpersMayRun } from "./derive";
 
 /** Rows the strip shows before "Show N more in Tasks". */
 export const PINNED_ROWS = 3;
@@ -42,7 +42,7 @@ export function usePinnedHelpers(view: SessionView | null | undefined): PinnedHe
 	const agents = view?.guest?.agents;
 	const progress = view?.guest?.progress;
 	const lifecycle = view?.guest?.lifecycle;
-	const live = ompRunning(view);
+	const live = helpersMayRun(view);
 	const pinned = useMemo(
 		() => pinnedHelpers(helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, live)),
 		[agents, progress, lifecycle, live],

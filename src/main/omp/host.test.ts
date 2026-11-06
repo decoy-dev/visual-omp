@@ -2192,6 +2192,109 @@ describe("semantic transport", () => {
 		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"edit"'))).toBe(false);
 	});
 
+	it.each(["ordered", "early-successor"] as const)("refreshes omp's editor after a same-process room replacement (%s)", async order => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		const epoch = host.tspSnapshot()!.epoch;
+		vi.useFakeTimers();
+		pty.writes.mockClear();
+		if (order === "early-successor") { pty.room = "replacement"; pty.events.onHostOpen?.("replacement"); }
+		pty.events.onHostClose?.("room");
+		expect(host.state.tspAvailability?.available).toBe(false);
+		if (order === "ordered") await connect("replacement");
+		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"gone","ids":["s:1"]')));
+		expect(host.tspSnapshot()).toMatchObject({ generation: 2, epoch, lifecycle: "transitioning", surfaces: [] });
+		await expect(host.submit("Not before omp refreshes")).rejects.toThrow("semantic UI is not ready");
+		tspComposer("s:2", "fresh-editor");
+		await vi.waitFor(() => expect(host.state.tspAvailability?.available).toBe(true));
+		expect(host.tspSnapshot()).toMatchObject({ generation: 2, epoch, lifecycle: "live", documentGeneration: 2 });
+		await host.submit("Fresh room input");
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"sf":"s:2","id":"fresh-editor","text":"Fresh room input"'));
+		await expect(host.tspEvent(1, { ev: "visible", sf: "s:2", visible: true }, epoch)).rejects.toThrow("session changed");
+		await vi.advanceTimersByTimeAsync(5001);
+		expect(host.state.tspFailed).toBe(false);
+	});
+
+	it.each(["session", "epoch", "process"] as const)("does not refresh or adopt a previous %s across room replacement", async changed => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		pty.events.onHostClose?.("room");
+		if (changed === "epoch") {
+			tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+			tspComposer();
+		}
+		if (changed === "process") pty.collabHosts = [{ instanceId: "replacement-process", generation: 2, pid: 456, startedAt: Date.now(), sessionId: "old", cwd: "/tmp" }];
+		pty.writes.mockClear();
+		await connect("replacement", changed === "session" ? "new" : "old");
+		await Promise.resolve();
+		expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"gone"'))).toBe(false);
+		expect(host.state.tspAvailability?.available).toBe(false);
+		await expect(host.submit("Never adopt old input")).rejects.toThrow("semantic UI is not ready");
+	});
+
+	it.each(["no-response", "open-without-frame", "fullscreen-menu"] as const)("fails bounded semantic recovery after %s and permits Restart", async response => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		if (response === "fullscreen-menu") tspMessage("o", { id: "menu", mode: "screen" });
+		vi.useFakeTimers();
+		pty.events.onHostClose?.("room");
+		await connect("replacement");
+		await vi.waitFor(() => expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"ev":"gone"')));
+		if (response === "open-without-frame") tspMessage("o", { id: "s:2", mode: "inline", role: "omp.session" });
+		expect(host.tspSnapshot()?.lifecycle).toBe("transitioning");
+		await vi.advanceTimersByTimeAsync(5001);
+		expect(host.state.tspFailed).toBe(true);
+		expect(host.tspSnapshot()).toMatchObject({ lifecycle: "failed", failure: expect.stringContaining("did not refresh"), availability: { available: false, reason: expect.stringContaining("Restart omp") } });
+		expect(await host.prepareRestart(host.state.generation, host.tspSnapshot()!.epoch)).toBe(false);
+	});
+
+	it.each(["A-to-B", "A-to-B-to-A"] as const)("invalidates a queued refresh when the native session changes %s", async change => {
+		vi.useFakeTimers();
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		const original = TspSession.prototype.refreshInlineSurface;
+		const refresh = vi.spyOn(TspSession.prototype, "refreshInlineSurface").mockImplementation(function (this: TspSession, isCurrent) {
+			original.call(this, () => {
+				pty.location = { cwd: "/tmp", sessionFile: null, sessionId: "other" };
+				vi.advanceTimersByTime(500);
+				if (change === "A-to-B-to-A") {
+					pty.location = { cwd: "/tmp", sessionFile: null, sessionId: "old" };
+					vi.advanceTimersByTime(500);
+				}
+				return isCurrent();
+			});
+		});
+		try {
+			pty.events.onHostClose?.("room");
+			pty.room = "replacement";
+			pty.events.onHostOpen?.("replacement");
+			await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+			expect(host.state.sessionId).toBe(change === "A-to-B-to-A" ? "old" : "other");
+			expect(pty.writes.mock.calls.some(([bytes]) => String(bytes).includes('"ev":"gone"'))).toBe(false);
+			expect(host.tspSnapshot()?.surfaces[0]?.open.id).toBe("s:1");
+			expect(host.state.tspAvailability?.available).toBe(false);
+			await vi.advanceTimersByTimeAsync(5001);
+			expect(host.state.tspFailed).toBe(false);
+		} finally { refresh.mockRestore(); }
+	});
+
+	it("keeps semantic input current when only the relay guest drops and resyncs", async () => {
+		await launchTsp();
+		tspMessage("q", { q: "hello", v: [1], features: ["send"] });
+		tspComposer(); await connect();
+		const before = host.tspSnapshot()!;
+		pty.writes.mockClear();
+		pty.events.onGuestDropped?.("room", 5 * 1024 * 1024);
+		expect(host.tspSnapshot()).toMatchObject({ generation: before.generation, epoch: before.epoch, lifecycle: "live", availability: { available: true } });
+		expect(pty.writes).not.toHaveBeenCalled();
+		await host.submit("Guest resynced, same editor");
+		expect(pty.writes).toHaveBeenCalledWith(expect.stringContaining('"sf":"s:1","id":"editor","text":"Guest resynced, same editor"'));
+	});
+
 	it("keeps old surface generations stale across room changes and submits only to a fresh surface", async () => {
 		await launchTsp();
 		tspMessage("q", { q: "hello", v: [1], features: ["send"] });

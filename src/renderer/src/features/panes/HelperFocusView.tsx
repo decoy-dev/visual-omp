@@ -79,9 +79,9 @@ export function HelperFocusView({ session, helper }: { session: SessionControlle
 		/>}
 		<div className="mx-auto w-full max-w-[calc(var(--chat-max)+48px)] shrink-0 px-6 pb-4 pt-2">
 			{state.queue.length > 0 && <ul aria-label={t("tasks.focus.queueLabel")} className="mb-2 max-h-44 space-y-2 overflow-y-auto">{state.queue.map(item => <li key={item.id} className="rounded-md border border-border bg-panel px-3 py-2">
-				<div className="flex items-start gap-2"><p className="min-w-0 flex-1 whitespace-pre-wrap break-words text-sm text-fg">{item.text}</p>{item.state !== "sending" && <IconButton size="sm" icon={<X />} label={t("tasks.focus.cancel")} onClick={() => conversation.cancel(item.id)} />}</div>
+				<div className="flex items-start gap-2"><p className="selectable min-w-0 flex-1 whitespace-pre-wrap break-words text-sm text-fg">{item.text}</p>{item.state !== "sending" && <IconButton size="sm" icon={<X />} label={t("tasks.focus.cancel")} onClick={() => conversation.cancel(item.id)} />}</div>
 				<p role="status" className="mt-1 text-xs text-fg-muted">{item.error ?? t(item.state === "sending" ? "tasks.focus.sending" : item.state === "preparing" ? "tasks.focus.preparing" : "tasks.focus.queued")}</p>
-				{item.state === "error" && !state.stale && <Button size="sm" variant="ghost" onClick={() => conversation.retry(item.id)}>{t("tasks.focus.retryMessage")}</Button>}
+				{item.state === "error" && !state.stale && <Button size="sm" variant="ghost" disabled={!state.helper.messageable} onClick={() => conversation.retry(item.id)}>{t("tasks.focus.retryMessage")}</Button>}
 			</li>)}</ul>}
 			<form onSubmit={send} className="rounded-lg border border-control-border bg-panel p-3 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-ring">
 				<label htmlFor={`helper-message-${session.tabId}`} className="sr-only">{t("tasks.messageTitle", { name: state.helper.name })}</label>

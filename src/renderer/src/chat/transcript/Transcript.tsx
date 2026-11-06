@@ -25,7 +25,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
 import { continuesAssistantModel, modelFallbacks, modelSetupVisible, providerFallback, type ModelFallback } from "../../collab/lib/modelFallback";
-import { type EditTotals, type Helper, type HelperStatus, helpersByCall, ompRunning, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
+import { type EditTotals, type Helper, type HelperStatus, helpersByCall, helpersMayRun as mayRunHelpers, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
 import { unpinnedRuns, usePinnedHelpers } from "../../features/panes/pinnedHelpers";
 import { openHelper } from "../../features/panes/helperFocus";
 import { openInFiles } from "../../features/panes/files-store";
@@ -844,7 +844,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const agents = guest?.agents;
 	const progress = guest?.progress;
 	const lifecycle = guest?.lifecycle;
-	const helpersMayRun = ompRunning(view);
+	const helpersMayRun = mayRunHelpers(view);
 	const helpers = useMemo(
 		() => helpersByCall(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, helpersMayRun),
 		[agents, progress, lifecycle, helpersMayRun],

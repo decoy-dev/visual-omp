@@ -1,7 +1,7 @@
 import { Columns, DotsThree, GitDiff, ListChecks, SidebarSimple } from "@phosphor-icons/react";
 import { Fragment, memo, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { backgroundJobs, helpersAtWork, helpersOf, latestTodo, ompRunning, workSummary } from "../features/panes/derive";
+import { backgroundJobs, helpersAtWork, helpersOf, helpersMayRun, latestTodo, ompRunning, workSummary } from "../features/panes/derive";
 import { type CommandSpec, useCommands } from "../registry/commands";
 import { ChatStatusMark } from "../shell/ChatStatusMark";
 import { chatStatus, chatTitle, type ChatStatus } from "../shell/hooks";
@@ -107,7 +107,7 @@ function workSelection(view: SessionView) {
 		live: liveEntries(view), history: view.history, leaf: view.displayLeaf,
 		activeTools: view.guest?.activeTools, backgroundTools: view.guest?.backgroundTools,
 		agents: view.guest?.agents, progress: view.guest?.progress, lifecycle: view.guest?.lifecycle,
-		ompLive: ompRunning(view), processStartedAt: view.host?.processStartedAt,
+		ompLive: ompRunning(view), helpersLive: helpersMayRun(view), processStartedAt: view.host?.processStartedAt,
 	};
 }
 
@@ -121,16 +121,16 @@ function WorkChip({ session }: { session: SessionController }): ReactNode {
 	const view = useVisualSelection(session.subscribe, session.getSnapshot, workSelection, shallow);
 	const shown = useBranchEntries(view.live, view.leaf, view.history);
 	const entries = view.live ?? view.history?.entries;
-	const { activeTools, backgroundTools, agents, progress, lifecycle, ompLive, processStartedAt } = view;
+	const { activeTools, backgroundTools, agents, progress, lifecycle, ompLive, helpersLive, processStartedAt } = view;
 	// Keyed on the transcript and helper maps, not the whole view, so streamed text doesn't recompute it.
 	const summary = useMemo(
 		() =>
 			workSummary(
 				latestTodo(shown),
-				helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, ompLive),
+				helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, helpersLive),
 				entries ? backgroundJobs(entries, ompLive, activeTools, backgroundTools, null, undefined, processStartedAt) : [],
 			),
-		[shown, entries, activeTools, backgroundTools, agents, progress, lifecycle, ompLive, processStartedAt],
+		[shown, entries, activeTools, backgroundTools, agents, progress, lifecycle, ompLive, helpersLive, processStartedAt],
 	);
 	// While this chat's Tasks pane is on screen, the chip reads as pressed and closes it.
 	const dockVisible = useDockVisible();

@@ -34,6 +34,7 @@ const fakes = vi.hoisted(() => {
 		close(): void {}
 		setForeground(): void {}
 		sendPrompt = vi.fn(async (_text: string, _images: unknown[], beforeSend?: () => void) => { beforeSend?.(); });
+		sendAgentCmd = vi.fn(async (_cmd: string, _agentId: string, _text?: string) => {});
 		settleAsyncWait(revision: number): void {
 			if (!this.snapshot.awaitingAsyncWork || revision !== (this.snapshot.asyncWaitRevision ?? 0)) return;
 			this.snapshot = { ...this.snapshot, awaitingAsyncWork: false };
@@ -154,6 +155,23 @@ const sendHost = (patch: Partial<HostState>) => {
 const message = (id: string, parentId: string | null, role: "user" | "assistant") =>
 	({ type: "message", id, parentId, timestamp: "", message: { role, content: [] } }) as unknown as SessionEntry;
 const ids = (entries: readonly SessionEntry[] | null) => entries?.map(entry => entry.id) ?? null;
+
+it("reports a failed helper Stop instead of silently ignoring a closed guest", async () => {
+	const session = new SessionController({ tabId: "helper-stop", projectPath: "/p", sessionFile: null });
+	session.attach(host({ link: "ws://localhost/r/room.key", transport: "tsp" }));
+	const guest = fakes.guests[0]!;
+	guest.emit("ended", []);
+	guest.sendAgentCmd.mockRejectedValueOnce(new Error("The chat connection ended. Restart omp and try again."));
+	session.agentCommand("kill", "Atlas");
+	await vi.waitFor(() => expect(toast).toHaveBeenCalledWith({ tone: "err", message: expect.stringContaining("Restart omp") }));
+	expect(guest.sendAgentCmd).toHaveBeenCalledWith("kill", "Atlas", undefined);
+});
+
+it("reports helper Stop when there is no guest connection", () => {
+	const session = new SessionController({ tabId: "no-helper-guest", projectPath: "/p", sessionFile: null });
+	session.agentCommand("kill", "Atlas");
+	expect(toast).toHaveBeenCalledWith({ tone: "err", message: expect.stringContaining("connection is unavailable") });
+});
 
 const u1 = message("u1", null, "user");
 const a1 = message("a1", "u1", "assistant");
@@ -1381,6 +1399,46 @@ describe("SessionController TSP input", () => {
 		await session.restart();
 		expect(invoked.filter(call => call[0] === "host:stop")).toEqual([["host:stop", "h1"]]);
 		expect(invoked.find(call => call[0] === "host:start")?.[1]).toMatchObject({ resumeFile: "/p/session.jsonl" });
+		expect(invoked.some(call => call[0] === "host:submit")).toBe(false);
+		expect(session.getSnapshot().host?.hostId).toBe("h2");
+	});
+
+	it.each(["tsp", "classic"] as const)("relaunches %s after its guest ends instead of waiting for a dead mirror", async transport => {
+		const session = preview(false);
+		sendHost({ transport, link: "L1", tspEpoch: 7, tspAvailability: { available: true, reason: null } });
+		fakes.guests.at(-1)!.emit("ended", [u1, a1]);
+		respond = channel => channel === "host:prepare-restart" ? Promise.resolve(true)
+			: channel === "host:start" ? Promise.resolve(host({ hostId: "h2", transport })) : undefined;
+		await session.restart();
+		expect(invoked.filter(call => call[0] === "host:stop")).toEqual([["host:stop", "h1"]]);
+		expect(invoked.find(call => call[0] === "host:start")?.[1]).toMatchObject({ resumeFile: "/p/session.jsonl" });
+		expect(invoked.some(call => call[0] === "host:prepare-restart" || call[0] === "host:submit")).toBe(false);
+		expect(session.getSnapshot().host?.hostId).toBe("h2");
+	});
+
+	it.each(["tsp", "classic"] as const)("keeps the existing %s Restart path while a guest is reconnecting", async transport => {
+		const session = preview(false);
+		sendHost({ transport, link: "L1", tspEpoch: 7 });
+		const guest = fakes.guests.at(-1)!;
+		guest.emit("reconnecting", [u1, a1]);
+		respond = channel => channel === "host:prepare-restart" ? Promise.resolve(true) : undefined;
+		const restarting = session.restart(); await flush();
+		expect(invoked.some(call => call[0] === "host:stop" || call[0] === "host:start")).toBe(false);
+		guest.emit("live", [u1, a1]); await restarting;
+		expect(invoked).toContainEqual(submit("/restart"));
+		expect(invoked.some(call => call[0] === "host:stop" || call[0] === "host:start")).toBe(false);
+	});
+
+	it("relaunches if the guest ends while semantic Restart preparation is pending", async () => {
+		const session = preview(false);
+		sendHost({ transport: "tsp", link: "L1", tspEpoch: 7 });
+		const prepared = Promise.withResolvers<boolean>();
+		respond = channel => channel === "host:prepare-restart" ? prepared.promise
+			: channel === "host:start" ? Promise.resolve(host({ hostId: "h2", transport: "tsp" })) : undefined;
+		const restarting = session.restart(); await flush();
+		fakes.guests.at(-1)!.emit("ended", [u1, a1]);
+		prepared.resolve(true); await restarting;
+		expect(invoked.filter(call => call[0] === "host:stop")).toEqual([["host:stop", "h1"]]);
 		expect(invoked.some(call => call[0] === "host:submit")).toBe(false);
 		expect(session.getSnapshot().host?.hostId).toBe("h2");
 	});

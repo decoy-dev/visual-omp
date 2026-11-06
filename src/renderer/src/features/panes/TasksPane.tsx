@@ -35,7 +35,7 @@ import {
 	useMotionReduced,
 } from "../../ui";
 import { listRowMotion, Section, usePaneVisible } from "./common";
-import { type BackgroundJob, backgroundJobs, commandSummary, foldHelpers, type Helper, helperJobSnapshots, helpersOf, latestTodo, ompRunning } from "./derive";
+import { type BackgroundJob, backgroundJobs, commandSummary, foldHelpers, type Helper, helperJobSnapshots, helpersOf, helpersMayRun, latestTodo, ompRunning } from "./derive";
 import { openHelper } from "./helperFocus";
 import { JobWidget } from "./JobWidget";
 import { helperWidgetCharts } from "./jobWidgets";
@@ -126,7 +126,7 @@ function useHelperJobs(helpers: readonly Helper[], session: SessionController): 
 	const visible = usePaneVisible("tasks");
 	const view = useSessionView(session);
 	const client = session.guestClient();
-	const live = ompRunning(view);
+	const live = helpersMayRun(view);
 	// Progress reports change often; the roster, transcript availability and whether a helper is still running are
 	// what change the readers. Running helpers ("0") sort first so their reads queue ahead of finished ones ("1").
 	const keys = helpers.filter(helper => helper.hasTranscript).map(helper => `${helper.status === "running" ? "0" : "1"}${helper.id}`).sort().join("\0");
@@ -332,6 +332,7 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 	const backgroundTools = view?.guest?.backgroundTools;
 	const phases = useMemo(() => latestTodo(shown), [shown]);
 	const running = ompRunning(view);
+	const helpersLive = helpersMayRun(view);
 	const nativeJobs = useNativeJobs(view);
 	const processStartedAt = view?.host?.processStartedAt;
 	const jobs = useMemo(() => backgroundJobs(entries ?? [], running, activeTools, backgroundTools, view?.guest?.header?.cwd ?? session?.projectPath ?? null, nativeJobs, processStartedAt), [entries, running, activeTools, backgroundTools, view?.guest?.header?.cwd, session?.projectPath, nativeJobs, processStartedAt]);
@@ -341,13 +342,13 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 	const snapshots = useMemo(() => helperJobSnapshots(entries ?? [], activeTools, backgroundTools), [entries, activeTools, backgroundTools]);
 	// Keyed on agents/progress/lifecycle, not the whole snapshot, so streaming tokens don't recompute this.
 	const helpers = useMemo(
-		() => helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, running).map(helper => {
+		() => helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, helpersLive).map(helper => {
 			const snapshot = snapshots.get(helper.id);
 			if (!snapshot) return helper;
 			const stage = [...(progress?.values() ?? [])].find(payload => payload.progress.id === helper.id)?.progress.stage;
 			return { ...helper, activity: stage ? helper.activity : snapshot.stage || helper.activity, completionPercent: helper.completionPercent ?? snapshot.completionPercent, widget: snapshot.widget };
 		}),
-		[agents, progress, lifecycle, running, snapshots],
+		[agents, progress, lifecycle, helpersLive, snapshots],
 	);
 
 	const hasChecklist = phases !== null && phases.length > 0;

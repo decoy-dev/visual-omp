@@ -80,3 +80,9 @@ it("reports helper dispatch only after bytes are written, and never after a refu
 	expect(refused).not.toHaveBeenCalled();
 	expect(TestWebSocket.instances[0]!.sent).toHaveLength(1);
 });
+
+it("rejects helper Stop on a closed socket instead of queuing it for a later connection", async () => {
+	socket.close();
+	await expect(socket.sendConnected({ t: "agent-cmd", cmd: "kill", agentId: "Atlas" }, () => {})).rejects.toThrow("disconnected");
+	expect(TestWebSocket.instances[0]!.sent).toEqual([]);
+});

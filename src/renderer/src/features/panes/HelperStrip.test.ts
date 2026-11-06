@@ -10,6 +10,7 @@ import { TooltipProvider } from "../../ui";
 import type { Helper } from "./derive";
 import { closeHelper, openHelper, useHelperFocus } from "./helperFocus";
 import { HelperFocusView } from "./HelperFocusView";
+import { helperConversation } from "./helperConversation";
 
 const render = vi.hoisted(() => ({ count: 0 }));
 vi.mock("../../chat/transcript/Transcript", () => ({ TranscriptBody: ({ entries, renderUser }: { entries: SessionEntry[]; renderUser(entry: SessionEntry): ReactNode }) => {
@@ -111,4 +112,22 @@ it("queues a working helper's composer input and permits cancelling it", async (
 	expect(container.textContent).toContain("Queued until the helper is idle.");
 	await act(async () => container.querySelector<HTMLButtonElement>('[aria-label="Cancel queued message"]')!.click());
 	expect(container.textContent).not.toContain("Keep this until idle");
+});
+
+it("retains ended-guest messages with copy guidance and disables an unavailable retry", async () => {
+	await open();
+	const conversation = helperConversation(session, helper);
+	await act(async () => { conversation.setDraft("Copy this exact text"); conversation.enqueue(); });
+	const view = session.getSnapshot();
+	view.guest = { ...view.guest!, phase: "ended" };
+	let off: (() => void) | undefined;
+	await act(async () => { off = conversation.subscribe(() => {}); });
+	expect(container.textContent).toContain("Copy this exact text");
+	expect([...container.querySelectorAll(".selectable")].some(element => element.textContent === "Copy this exact text")).toBe(true);
+	expect(container.textContent).toContain("Copy this message before restarting omp");
+	const retry = [...container.querySelectorAll("button")].find(button => button.textContent === "Try sending again")!;
+	expect(retry.disabled).toBe(true);
+	await act(async () => retry.click());
+	expect(conversation.getSnapshot().queue[0]?.state).toBe("error");
+	off?.();
 });

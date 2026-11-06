@@ -13,6 +13,7 @@ import {
 	type Helper,
 	helpersAtWork,
 	helpersByCall,
+	helpersMayRun,
 	helpersOf,
 	helperJobSnapshots,
 	isIntactBase64,
@@ -975,6 +976,18 @@ describe("helpersOf and workSummary", () => {
 			expect(cases.map(guest => runningHelpers(view(guest)))).toEqual([2, 0, 0, 2, 0]);
 			expect(cases.map(guest => runningHelpers(view(guest, false)))).toEqual([0, 0, 0, 0, 0]);
 			expect(runningHelpers(null)).toBe(0);
+		});
+
+		it("removes ended-guest helper authority without ending a transient reconnect", () => {
+			const live = view(cases[0]!);
+			expect(runningHelpers(live)).toBe(2);
+			const reconnecting = { ...live, guest: { ...live.guest, phase: "reconnecting" as const } };
+			expect(helpersMayRun(reconnecting)).toBe(true);
+			expect(runningHelpers(reconnecting)).toBe(2);
+			const ended = { ...live, guest: { ...live.guest, phase: "ended" as const } };
+			expect(helpersMayRun(ended)).toBe(false);
+			expect(runningHelpers(ended)).toBe(0);
+			expect(helpersOf(ended.guest, helpersMayRun(ended)).every(helper => helper.status === "stopped" && !helper.messageable)).toBe(true);
 		});
 
 		it("reuses the count while the helper lists stay the same, and counts again when omp replaces one", () => {

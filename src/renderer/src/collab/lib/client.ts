@@ -312,8 +312,9 @@ export class GuestClient {
 		this.#commit();
 	}
 
-	sendAgentCmd(cmd: "chat" | "kill" | "revive", agentId: string, text?: string): void {
-		this.#socket.send({ t: "agent-cmd", cmd, agentId, text });
+	async sendAgentCmd(cmd: "chat" | "kill" | "revive", agentId: string, text?: string): Promise<void> {
+		if (this.#phase === "ended") throw new Error("The chat connection ended. Restart omp and try again.");
+		await this.#sendWritable({ t: "agent-cmd", cmd, agentId, text });
 	}
 
 	/** Helper messages are held by the app until idle and never buffered across a collab reconnect. */

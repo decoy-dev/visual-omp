@@ -105,6 +105,7 @@ export class TspSession {
 	#tail: Promise<void> = Promise.resolve();
 	#negotiated = false;
 	#epoch = 0;
+	#refreshingInline: string | null = null;
 	#programFeatures = new Set<string>();
 	#cols: number;
 	#dark: boolean;
@@ -230,6 +231,7 @@ export class TspSession {
 				this.#epoch++;
 				this.#surfaces.clear();
 				this.#pendingAcks.clear();
+				this.#refreshingInline = null;
 				this.#programFeatures = new Set(query.data.features);
 				// First reply precedes every event, including acks for optimistic native frames.
 				this.#internal(this.#enqueue(() => this.#write(encodeTspJson("r", {
@@ -244,6 +246,7 @@ export class TspSession {
 			case "o": {
 				const open = Open.safeParse(body);
 				if (!open.success) { this.#report("Invalid TSP surface"); return; }
+				if (open.data.mode === "inline" && !open.data.adopt) this.#refreshingInline = null;
 				const previous = this.#surfaces.get(open.data.id);
 				if (open.data.adopt && !previous) {
 					this.#internal(this.#enqueue(() => this.#write(encodeTspJson("e", { ev: "gone", ids: [open.data.id] }))));
@@ -261,6 +264,8 @@ export class TspSession {
 			case "f": {
 				const frame = Frame.safeParse(body);
 				if (!frame.success) { this.#report("Invalid TSP frame"); return; }
+				// Frames already in the PTY before `gone` belong to the evicted inline document.
+				if (frame.data.sf === this.#refreshingInline) return;
 				const surface = this.#surfaces.get(frame.data.sf);
 				if (!surface || surface.closed) { this.#report("Frame for an unavailable TSP surface", frame.data.sf, frame.data.s); return; }
 				if (frame.data.s > surface.sequence) {
@@ -534,6 +539,24 @@ export class TspSession {
 	/** Ordinary terminal reports share the protocol queue, so DA1 never overtakes hello. */
 	terminalReply(data: string): void {
 		this.#internal(this.#enqueue(() => this.#write(data)));
+	}
+
+	/** Evict the inline document so omp's `gone` handler recreates it from its current UI, not a cached frame. */
+	refreshInlineSurface(isCurrent: () => boolean): void {
+		const epoch = this.#epoch;
+		this.#internal(this.#enqueue(async () => {
+			if (!this.#negotiated || epoch !== this.#epoch || !isCurrent()) return;
+			let inline: Surface | undefined;
+			for (const surface of this.#surfaces.values()) {
+				if (!surface.closed && surface.open.mode === "inline") { inline = surface; break; }
+			}
+			if (!inline) return;
+			this.#refreshingInline = inline.open.id;
+			this.#surfaces.delete(inline.open.id);
+			this.#pendingAcks.delete(inline.open.id);
+			this.#updated("close", inline.open.id);
+			await this.#write(encodeTspJson("e", { ev: "gone", ids: [inline.open.id] }));
+		}));
 	}
 
 	resize(cols: number): Promise<void> {

@@ -123,6 +123,9 @@ export class SessionHost {
 	#roomId: string | null = null;
 	/** A room omp opened while the current one was still open; it is attached once the current room closes. */
 	#successorRoomId: string | null = null;
+	#collabIdentity: { instanceId: string; pid: number; sessionId: string | null } | null = null;
+	#tspRoomRecovery: { instanceId: string; pid: number; sessionId: string; epoch: number } | null = null;
+	#tspRecovery: { generation: number; epoch: number; sessionId: string } | null = null;
 	#linkRetryAbort: AbortController | null = null;
 	#linkAttempts = 0;
 	#ended = false;
@@ -269,6 +272,7 @@ export class SessionHost {
 					write: data => this.#writeInput(data),
 					onUpdate: (reason, surface) => {
 						if (reason === "hello") {
+							this.#cancelTspRecovery();
 							this.#tspSurfaceGenerations.clear();
 							this.#tspFailure = null;
 							this.#update({ tspFailed: false });
@@ -276,12 +280,17 @@ export class SessionHost {
 						}
 						if (reason === "open") {
 							this.#finishStartup();
-							clearTimeout(this.#tspHandshakeTimer ?? undefined);
-							this.#tspHandshakeTimer = null;
+							if (!this.#tspRecovery) {
+								clearTimeout(this.#tspHandshakeTimer ?? undefined);
+								this.#tspHandshakeTimer = null;
+							}
 						}
-						if (reason === "close" && !this.#closing && !this.#tspFailure && !this.#tsp!.snapshot().surfaces.some(surface => !surface.closed)) this.#armTspHandshake(5000, true);
+						if (reason === "close" && !this.#closing && !this.#tspFailure && !this.#tspRecovery && !this.#tsp!.snapshot().surfaces.some(surface => !surface.closed)) this.#armTspHandshake(5000, true);
 						if (this.#closing && ((reason === "close" && surface === this.#tspExitSurface) || this.#tspClosingNotice())) this.#shutdownProgress("acknowledged");
-						if (reason === "frame" && surface && (this.state.phase === "live" || !this.#hadCollabRoom)) this.#tspSurfaceGenerations.set(surface, this.state.generation);
+						if (reason === "frame" && surface && (this.state.phase === "live" || !this.#hadCollabRoom)) {
+							this.#tspSurfaceGenerations.set(surface, this.state.generation);
+							if (this.#tspRecovery) this.#cancelTspRecovery();
+						}
 						// omp sends a frame per streamed token; other updates publish at once.
 						if (reason === "frame") this.#scheduleTspPublish();
 						else this.#publishTsp();
@@ -290,6 +299,7 @@ export class SessionHost {
 					},
 					onError: error => {
 						if (this.state.phase === "exited") return;
+						this.#cancelTspRecovery();
 						this.#tspFailure = `omp screen: ${error.message}. Restart omp to try again.`;
 						this.#publishTsp();
 					},
@@ -425,6 +435,30 @@ export class SessionHost {
 			this.#publishTsp();
 		}, delay);
 		this.#tspHandshakeTimer.unref();
+	}
+
+	#cancelTspRecovery(): void {
+		this.#tspRoomRecovery = null;
+		if (!this.#tspRecovery) return;
+		this.#tspRecovery = null;
+		clearTimeout(this.#tspHandshakeTimer ?? undefined);
+		this.#tspHandshakeTimer = null;
+	}
+
+	#refreshTspRoom(sessionId: string, epoch: number, roomCurrent: () => boolean): void {
+		const scope = { generation: this.state.generation, epoch, sessionId };
+		this.#tspRecovery = scope;
+		clearTimeout(this.#tspHandshakeTimer ?? undefined);
+		this.#tspHandshakeTimer = setTimeout(() => {
+			this.#tspHandshakeTimer = null;
+			if (this.#tspRecovery !== scope) return;
+			this.#tspRecovery = null;
+			this.#tspFailure = "omp did not refresh its semantic screen. Restart omp to try again.";
+			this.#publishTsp();
+		}, 5000);
+		this.#tspHandshakeTimer.unref();
+		this.#tsp!.refreshInlineSurface(() => this.#tspRecovery === scope && roomCurrent() && !this.#closing
+			&& this.state.phase === "live" && this.state.generation === scope.generation && this.state.sessionId === scope.sessionId);
 	}
 
 	#tspClosingNotice(): boolean {
@@ -1527,6 +1561,9 @@ export class SessionHost {
 						if (!current()) return;
 						const sessionFile = host.sessionId ? await findSessionFile(host.sessionId) : null;
 						if (!current()) return;
+						const recovery = this.#tspRoomRecovery;
+						this.#tspRoomRecovery = null;
+						this.#collabIdentity = { instanceId: host.instanceId, pid: host.pid, sessionId: host.sessionId };
 						this.#nativeBridge?.beginGeneration(this.state.generation + 1);
 						this.#update({
 							phase: "live",
@@ -1538,6 +1575,10 @@ export class SessionHost {
 							sessionFile: sessionFile ?? this.state.sessionFile,
 							error: null,
 						});
+						if (recovery && recovery.instanceId === host.instanceId && recovery.pid === host.pid
+							&& recovery.sessionId === host.sessionId && recovery.epoch === this.#tsp?.snapshot().epoch) {
+							this.#refreshTspRoom(recovery.sessionId, recovery.epoch, current);
+						}
 						writeDiagnostic({ event: "collab-room", chatId: this.id, state: "attached", attempts: this.#linkAttempts });
 						return;
 					}
@@ -1573,6 +1614,11 @@ export class SessionHost {
 	#onRoomClosed(roomId: string): void {
 		if (this.#successorRoomId === roomId) this.#successorRoomId = null;
 		if (this.#roomId !== roomId) return;
+		const identity = this.#collabIdentity;
+		const semantic = this.tspSnapshot();
+		this.#cancelTspRecovery();
+		this.#tspRoomRecovery = identity?.sessionId && identity.sessionId === this.state.sessionId && semantic?.lifecycle === "live"
+			? { ...identity, sessionId: identity.sessionId, epoch: semantic.epoch } : null;
 		this.#roomId = null;
 		this.#linkRetryAbort?.abort();
 		writeDiagnostic({ event: "collab-room", chatId: this.id, state: "closed", attempts: this.#linkAttempts });
@@ -1625,6 +1671,7 @@ export class SessionHost {
 
 	async #onExit(exitCode: number, signal?: number): Promise<void> {
 		this.#ended = true;
+		this.#cancelTspRecovery();
 		this.#linkRetryAbort?.abort();
 		writeDiagnostic({ event: "host-exit", chatId: this.id, transport: this.#tsp ? "tsp" : "classic", exitCode, signal: signal ?? null, uptimeMs: Math.max(0, Date.now() - this.#spawnedAt) });
 		const pty = this.#pty;
@@ -1751,6 +1798,7 @@ export class SessionHost {
 
 	#update(patch: Partial<HostState>): void {
 		const previousGeneration = this.state.generation;
+		if (patch.sessionId !== undefined && patch.sessionId !== this.state.sessionId) this.#cancelTspRecovery();
 		if (patch.phase === "exited" || patch.phase === "restarting" || patch.generation !== undefined && patch.generation !== previousGeneration
 			|| patch.sessionId !== undefined && patch.sessionId !== this.state.sessionId) {
 			for (const id of this.#promptSubmissions.keys()) this.#nativeBridge?.forgetPrompt(id);

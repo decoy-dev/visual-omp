@@ -454,9 +454,16 @@ input addressed to an earlier epoch, including when omp replaces itself inside t
 Collab room generations are separate: a room transition retains protocol documents but invalidates
 their input authority. Initial collab attachment may adopt the startup document. Later generations
 require a fresh frame for each surface after the new room becomes live; a frame for one surface
-cannot promote another retained tree. A protocol close with `keep: true` retains read-only main
-content. Snapshots distinguish live, transitioning, failed and exited state. Process exit invalidates
-presentation authority even when no protocol close arrived.
+cannot promote another retained tree. When a lost room is replaced by the same registry instance,
+process id and session id within the same TSP epoch, main evicts the inline surface and sends
+TSP `gone`. omp recreates it from its current UI, so an idle editor need not wait for an unrelated
+paint. Recovery waits at most five seconds for an authoritative frame, including while a fullscreen
+surface remains open; an `open` without a frame does not settle it. Failure exposes Restart omp.
+Queued refreshes recheck room, epoch and session scope; even an A to B to A session change
+invalidates the original recovery. Session switches, process replacements and new epochs never
+reuse that recovery scope. A protocol close with `keep: true` retains read-only
+main content. Snapshots distinguish live, transitioning, failed and exited state. Process exit
+invalidates presentation authority even when no protocol close arrived.
 
 Startup import menus can open before omp creates its first collab room. Main assigns framed
 documents in that state to generation zero and permits their ordinary semantic controls.
@@ -784,6 +791,11 @@ the visible history and input recall are retained while the new collab room conn
 launch errors are shown, and a failed stop prevents relaunch.
 
 TSP Restart first asks main to prepare the current host generation and protocol epoch. A live menu with an enabled declared Close or Cancel action is dismissed through that exact semantic control, then main waits for the editor to become available before the controller types `/restart`. Autocomplete without a declared dismissal, failed protocols and a semantic screen that is not live for the current generation (omp between rooms, or a closed room nothing replaced) use the existing explicit stop and saved-session relaunch path. Hook and approval controls are never answered by generic restart preparation. A failed stop prevents relaunch. A closing host, a stale host or generation, or a changed protocol epoch while the screen is live refuses preparation.
+
+When the collab guest has terminally ended, Restart skips semantic preparation and uses explicit
+stop and saved-session relaunch in both TSP and classic chats. It rechecks an ended guest after
+pending preparation, rather than sending `/restart` through `whenLive()` on a mirror that cannot
+return. Ordinary reconnecting guests retain their existing restart path.
 
 Classic image failures that require recovery also use explicit stop and saved-session relaunch, since typing `/restart` could append it to the rejected path or partially staged input. Main latches this state when its attachment helper fails, so ordinary Close and Quit also avoid editor submission. The private bridge requests the public SDK `ctx.shutdown()` path, which reaches omp's normal shutdown and worktree-exit planning without pressing Enter or writing `/exit`. Missing acknowledgement or stalled shutdown retains the existing explicit native stop decision. The fallback resumes the saved session and retains the app queue. Confirmed text-only restoration keeps the normal classic restart path.
 
@@ -1113,6 +1125,15 @@ If the deferred saved-chat reader import fails, the controller clears that attem
 Helper messaging: omp 18.16's collab `agent-cmd chat` calls `ensureLive(id)` and `session.prompt(text, { streamingBehavior: "steer" })`; it has no conditional idle-only or follow-up option. `IrcBus.send` can consume an active waiter or inject a prompt. The inspected `agent://` protocol handler supplies read-only output resolution, and RPC's `follow_up` applies to its own session rather than a helper id. These interfaces provide no atomic helper-id idle-only delivery. The app therefore holds messages until the latest writable guest reports registry idle or parked, with no running progress or lifecycle and no aborted lifecycle. It checks the same state, operation identity and disposal again after encryption, immediately before the socket write. Aborted or ended helpers are refused rather than revived.
 
 Preparation remains cancellable. Only the socket's post-write callback marks a message dispatched; running or completed turns observed during preparation cannot acknowledge it. Completion evidence is considered only after dispatch, with its lifecycle baseline captured at the final pre-write check. Only one message is dispatched until its helper turn finishes. The app never buffers or automatically replays across reconnect or a changed host generation. A failed or unconfirmed delivery stays visible for explicit retry; this is not an exactly-once guarantee.
+
+An ended collab guest invalidates retained helper running and messaging authority across Tasks,
+transcript cards, pinned rows and counts. An ordinary reconnect preserves that authority while
+the guest expects to return. Queued helper messages fail visibly on terminal connection loss and
+remain available for copying before a restart. Retry is disabled while unavailable; a restarted
+host requires reopening its helper conversation and explicitly sending the copied text in that
+new scope. Helper Stop uses the connected writable
+socket path, never buffers across reconnect, and reports rejected delivery through the existing
+session-action error toast.
 
 There remains an upstream race: a helper can start working or become aborted after the final local check but before omp handles the command. omp can then steer the newly running helper or revive the newly aborted helper. The app cannot make these two processes' checks atomic; the collab protocol would need a conditional idle-only command to remove this race. File watchers and cached helper history are released when focus closes; the independent message driver continues until its parent chat closes.
 

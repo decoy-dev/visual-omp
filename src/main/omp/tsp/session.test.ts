@@ -90,6 +90,36 @@ describe("TSP session", () => {
 		expect(h.bodies().filter(body => body.ev === "ack").at(-1)).toEqual({ ev: "ack", sf: "s:1", s: 3 });
 	});
 
+	it("asks omp to recreate an evicted inline document and ignores its already-in-flight frames", async () => {
+		const h = harness();
+		h.hello(); h.open(); h.frame(1, regions);
+		await h.flush();
+		h.session.refreshInlineSurface(() => true);
+		await h.flush();
+		expect(h.bodies().at(-1)).toEqual({ ev: "gone", ids: ["s:1"] });
+		expect(h.session.snapshot().surfaces).toEqual([]);
+		h.frame(2, [["set", "editor", { sendable: true }]]);
+		expect(h.errors).toEqual([]);
+		h.open("s:2");
+		h.frame(1, [["add", "dock", "s:2", null, { id: "dock", k: "col", p: { role: "omp.editor" }, c: [{ id: "editor", k: "editor", p: { sendable: true, text: "" } }] }], ["focus", "editor"]], "s:2");
+		expect(h.session.availability().available).toBe(true);
+		await h.session.submit("Current native document");
+		expect(h.bodies().at(-1)).toMatchObject({ ev: "send", sf: "s:2", id: "editor", text: "Current native document" });
+	});
+
+	it.each(["epoch", "scope"] as const)("cancels a queued inline refresh when its %s changes", async changed => {
+		const h = harness();
+		h.hello(); h.open(); h.frame(1, regions); await h.flush();
+		let current = true;
+		h.session.refreshInlineSurface(() => current);
+		if (changed === "epoch") { h.hello(); h.open(); h.frame(1, regions); }
+		else current = false;
+		await h.flush();
+		expect(h.bodies().some(body => body.ev === "gone")).toBe(false);
+		expect(h.session.snapshot().surfaces[0]?.open.id).toBe("s:1");
+		expect(h.errors).toEqual([]);
+	});
+
 	it("keeps sequence and acknowledgments independent per surface and never reapplies old frames", async () => {
 		const h = harness();
 		h.hello(); h.open(); h.open("screen:1");

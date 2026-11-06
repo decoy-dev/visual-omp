@@ -3,7 +3,7 @@ import type { GuestSnapshot } from "../../collab/lib/client";
 import { type SessionHistory } from "../../state/history";
 import { type SessionController } from "../../state/session";
 import { watchSessionFile } from "../../state/sessionFiles";
-import { helpersOf, ompRunning, type Helper } from "./derive";
+import { helpersOf, helpersMayRun, type Helper } from "./derive";
 import { i18n } from "../../i18n";
 const helperText = i18n.getFixedT(null, "helperFocus", "tasks.focus.errors");
 
@@ -53,7 +53,7 @@ export class HelperConversation {
 	setDraft(text: string): void { this.#set({ draft: text }); }
 	enqueue(): void {
 		const text = this.#snapshot.draft.trim();
-		if (!text || this.#disposed || this.#snapshot.stale) return;
+		if (!text || this.#disposed || this.#snapshot.stale || !this.#snapshot.helper.messageable) return;
 		this.#set({ draft: "", queue: [...this.#snapshot.queue, { id: ++this.#messageId, text, state: "queued" }] });
 		this.#drain();
 	}
@@ -66,7 +66,7 @@ export class HelperConversation {
 		this.#drain();
 	}
 	retry(id: number): void {
-		if (this.#snapshot.stale) return;
+		if (this.#snapshot.stale || !this.#snapshot.helper.messageable) return;
 		this.#set({ queue: this.#snapshot.queue.map(item => item.id === id ? { id, text: item.text, state: "queued" } : item) });
 		this.#drain();
 	}
@@ -109,7 +109,7 @@ export class HelperConversation {
 			return;
 		}
 		const guest = view.guest;
-		const running = ompRunning(view);
+		const running = helpersMayRun(view);
 		let helper = this.#snapshot.helper;
 		const sources = this.#sources;
 		if (guest && (!sources || sources.agents !== guest.agents || sources.progress !== guest.progress || sources.lifecycle !== guest.lifecycle || sources.running !== running)) {
@@ -122,7 +122,8 @@ export class HelperConversation {
 			this.#set({ helper });
 		}
 		if (!helper.messageable && this.#snapshot.queue.some(item => item.state === "queued")) {
-			this.#set({ queue: this.#snapshot.queue.map(item => item.state === "queued" ? { ...item, state: "error", error: helperText("unavailable") } : item) });
+			const error = guest?.phase === "ended" ? helperText("connectionEnded") : helperText("unavailable");
+			this.#set({ queue: this.#snapshot.queue.map(item => item.state === "queued" ? { ...item, state: "error", error } : item) });
 		}
 		for (const notice of view.guest?.notices ?? []) {
 			if (notice.id <= this.#noticeId) continue;

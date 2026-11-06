@@ -304,6 +304,22 @@ describe("user prompts while a question waits", () => {
 	});
 });
 
+describe("helper Stop commands", () => {
+	it("rejects a terminally closed guest instead of silently dropping Stop", async () => {
+		socket.current!.onClose("closed", false);
+		await expect(client.sendAgentCmd("kill", "Atlas")).rejects.toThrow("Restart omp");
+		expect(socket.sent).toEqual([]);
+	});
+	it("does not buffer Stop across a transient reconnect, and allows a fresh attempt once live", async () => {
+		socket.current!.onClose("reconnecting", true);
+		await expect(client.sendAgentCmd("kill", "Atlas")).rejects.toThrow("not ready");
+		expect(socket.sent).toEqual([]);
+		feed(welcome);
+		await client.sendAgentCmd("kill", "Atlas");
+		expect(socket.sent).toEqual([{ t: "agent-cmd", cmd: "kill", agentId: "Atlas", text: undefined }]);
+	});
+});
+
 describe("queued helper prompts", () => {
 	it("sends through the connected path only after its final idle check", async () => {
 		const check = vi.fn();

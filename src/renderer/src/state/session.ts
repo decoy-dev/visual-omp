@@ -1005,7 +1005,11 @@ export class SessionController {
 
 	/** Steer/kill/revive a running subagent. */
 	agentCommand(cmd: "chat" | "kill" | "revive", agentId: string, text?: string): void {
-		this.#guest?.sendAgentCmd(cmd, agentId, text);
+		if (!this.#guest) {
+			toast({ tone: "err", message: this.#view.readOnly ? "This chat is open elsewhere." : "The chat connection is unavailable. Restart omp and try again." });
+			return;
+		}
+		void this.#guest.sendAgentCmd(cmd, agentId, text).catch(error => toast({ tone: "err", message: error instanceof Error ? error.message : String(error) }));
 	}
 
 	guestClient(): GuestClient | null {
@@ -1029,18 +1033,19 @@ export class SessionController {
 	async restart(beforeRestart?: () => void): Promise<void> {
 		const failed = this.#view.host;
 		beforeRestart?.();
-		if (failed && (failed.transport === "tsp" || this.#strandedSince?.requiresRelaunch) && failed.phase !== "exited") {
+		const guestEnded = this.#view.guest?.phase === "ended";
+		if (failed && (failed.transport === "tsp" || this.#strandedSince?.requiresRelaunch || guestEnded) && failed.phase !== "exited") {
 			if (this.#disposed) throw new Error("This chat was closed.");
 			if (this.#view.readOnly) throw new Error("This chat is open elsewhere.");
 			this.#restarting ??= (async () => {
-				const prepared = failed.transport === "tsp" && !failed.tspFailed && await window.vomp.invoke("host:prepare-restart", failed.hostId, failed.generation, failed.tspEpoch);
+				const prepared = !guestEnded && failed.transport === "tsp" && !failed.tspFailed && await window.vomp.invoke("host:prepare-restart", failed.hostId, failed.generation, failed.tspEpoch);
 				if (this.#disposed || this.#view.host?.hostId !== failed.hostId || this.#view.host.generation !== failed.generation) throw new Error("The chat changed before omp could restart.");
 				beforeRestart?.();
-				if (prepared) {
+				if (prepared && this.#view.guest?.phase !== "ended") {
 					await this.#restartCommand(beforeRestart);
 					return;
 				}
-				// No declared dismissal, or a failed classic restore, requires an explicit saved-session relaunch.
+				// A terminal mirror cannot deliver /restart; use the same saved-session relaunch as an unavailable editor.
 				this.#starting ??= (async () => {
 					beforeRestart?.();
 					if (this.#strandedSince?.requiresRelaunch) await window.vomp.invoke("host:stop", failed.hostId, "editor-recovery");

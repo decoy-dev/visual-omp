@@ -18,6 +18,7 @@
 				"scope": "omp changed chats or restarted. Return to the chat to open its current helpers.",
 				"scopeMessage": "omp changed chats or restarted. This message was not sent again.",
 				"unavailable": "The helper is no longer available. Your message remains here.",
+				"connectionEnded": "The chat connection ended. Copy this message before restarting omp, then reopen the helper conversation to send it again.",
 				"noParent": "This chat has no saved conversation yet.",
 				"noFile": "The helper's conversation file could not be found.",
 				"unreadable": "The conversation file could not be read.",

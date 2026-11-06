@@ -14,7 +14,7 @@ import { useTerminals } from "./terminal";
 import { useGit } from "./git-store";
 import { useChatOutputs } from "./outputs-store";
 import { EMPTY_CHAT, useLivePreview } from "../live-preview/store";
-import { backgroundJobs, helpersOf, ompRunning } from "./derive";
+import { backgroundJobs, helpersOf, helpersMayRun, ompRunning } from "./derive";
 
 /** Changes: `+N −M` for the project's uncommitted changes. */
 export function DiffBadge({ projectPath }: PaneProps) {
@@ -63,12 +63,13 @@ export function TasksBadge({ session }: PaneProps) {
 	const progress = view?.guest?.progress;
 	const lifecycle = view?.guest?.lifecycle;
 	const running = ompRunning(view);
+	const helpersLive = helpersMayRun(view);
 	const processStartedAt = view?.host?.processStartedAt;
 	const count = useMemo(() => {
-		const helpers = helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, running).filter(helper => helper.status === "running").length;
+		const helpers = helpersOf(agents && progress && lifecycle ? { agents, progress, lifecycle } : null, helpersLive).filter(helper => helper.status === "running").length;
 		const jobs = entries ? backgroundJobs(entries, running, activeTools, backgroundTools, null, undefined, processStartedAt).filter(job => job.state === "running").length : 0;
 		return helpers + jobs;
-	}, [agents, progress, lifecycle, entries, activeTools, backgroundTools, running, processStartedAt]);
+	}, [agents, progress, lifecycle, entries, activeTools, backgroundTools, running, helpersLive, processStartedAt]);
 	return count > 0 ? <Badge count={count} label={t("tasks.runningCount", { count })} /> : null;
 }
 

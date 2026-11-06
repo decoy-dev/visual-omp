@@ -108,6 +108,33 @@ describe("helper message queue", () => {
 		expect(model.getSnapshot().draft).toBe("Still typing");
 		expect(send).not.toHaveBeenCalled();
 	});
+	it("fails an already queued message visibly when the guest ends, retaining it for an explicit retry", async () => {
+		const f = fixture();
+		f.model.setDraft("great, can I preview this?"); f.model.enqueue();
+		const id = f.model.getSnapshot().queue[0]!.id;
+		f.publish({ guest: { ...f.view().guest!, phase: "ended" } });
+		expect(f.model.getSnapshot()).toMatchObject({ helper: { status: "stopped", messageable: false }, queue: [{ text: "great, can I preview this?", state: "error", error: expect.stringContaining("Copy this message before restarting omp") }] });
+		f.model.retry(id);
+		expect(f.model.getSnapshot().queue[0]?.state).toBe("error");
+		expect(f.send).not.toHaveBeenCalled();
+		f.publish({ guest: { ...f.view().guest!, phase: "live", agents: [{ ...f.view().guest!.agents[0]!, status: "idle" }] } });
+		expect(f.send).not.toHaveBeenCalled();
+		f.model.retry(id); await flush();
+		expect(f.send.mock.calls[0]?.slice(0, 2)).toEqual(["Atlas", "great, can I preview this?"]);
+	});
+
+	it("keeps a queued message and running helper intact during an ordinary reconnect", async () => {
+		const f = fixture();
+		f.model.setDraft("Keep waiting"); f.model.enqueue();
+		f.publish({ guest: { ...f.view().guest!, phase: "reconnecting" } });
+		expect(f.model.getSnapshot()).toMatchObject({ helper: { status: "running", messageable: true }, queue: [{ state: "queued" }] });
+		expect(f.send).not.toHaveBeenCalled();
+		f.agent("idle"); await flush();
+		expect(f.send).not.toHaveBeenCalled();
+		f.publish({ guest: { ...f.view().guest!, phase: "live" } }); await flush();
+		expect(f.send).toHaveBeenCalledOnce();
+	});
+
 	it("refuses a helper that became busy while the socket was encrypting", async () => {
 		const f = fixture("idle");
 		f.send.mockImplementationOnce(async (_id, _text, beforeSend) => { f.agent("running"); beforeSend(); });
@@ -125,6 +152,18 @@ describe("helper message queue", () => {
 		f.publish({ guest: { ...f.view().guest!, notices: [{ id: 1, at: Date.now(), level: "error", message: "agent Atlas: revive failed" }] } });
 		expect(f.model.getSnapshot().queue[0]).toMatchObject({ state: "error", error: "agent Atlas: revive failed" });
 	});
+	it("retains a failed message for copying across restart without resending into the new helper scope", async () => {
+		const f = fixture();
+		f.model.setDraft("Keep this message for the current helper"); f.model.enqueue();
+		const id = f.model.getSnapshot().queue[0]!.id;
+		f.publish({ guest: { ...f.view().guest!, phase: "ended" } });
+		expect(f.model.getSnapshot().queue[0]?.error).toContain("Copy this message");
+		f.publish({ host: { ...f.view().host!, hostId: "restarted-host", generation: 2 }, guest: { ...f.view().guest!, phase: "live", agents: [{ ...f.view().guest!.agents[0]!, status: "idle" }] } });
+		f.model.retry(id); f.agent("idle"); await flush();
+		expect(f.model.getSnapshot()).toMatchObject({ stale: true, queue: [{ id, text: "Keep this message for the current helper", state: "error" }] });
+		expect(f.send).not.toHaveBeenCalled();
+	});
+
 	it("never sends a queued message into a later host generation", async () => {
 		const f = fixture();
 		f.model.setDraft("Old scope"); f.model.enqueue();
