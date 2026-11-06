@@ -12,6 +12,7 @@ import { broadFolders, isBroadFolder } from "./panes";
 import { isIsolationTestDocument, type IsolationReadIdentity } from "./preview-isolation-test";
 import type { PreviewBinary } from "@shared/contracts/preview";
 import { OFFICE_LIMITS, validateOfficeZip } from "@shared/preview-office-zip";
+import { markHtmlChange } from "./preview-html-follow";
 
 const TEXT_LIMIT = 2 * 1024 * 1024;
 const IMAGE_LIMIT = 8 * 1024 * 1024;
@@ -58,11 +59,14 @@ interface GrantState {
 	snapshots: Map<number, DocumentSnapshot>;
 	streams: Set<ReadStream>;
 	videoRequests: number;
+	previousHtml?: string;
 }
 interface DocumentSnapshot {
 	body: string | Uint8Array<ArrayBuffer>;
 	type: ResponseType;
 	isolationTest?: true;
+	anchor?: string;
+	saved?: boolean;
 	readIdentity?: IsolationReadIdentity;
 }
 type DocumentRead = { ok: true; snapshot: DocumentSnapshot } | { ok: false; status: number };
@@ -391,7 +395,7 @@ export async function preparePreview(token: string, revision: number, owner: num
 		grant.snapshots.delete(revision);
 		return { ok: false, reason: "notFile" };
 	}
-	if (existing && Boolean(existing.isolationTest) === isolationTest) return { ok: true, policy: { ...grant.policy }, ...(existing.isolationTest ? { isolationTest: true } : {}) };
+	if (existing && Boolean(existing.isolationTest) === isolationTest && existing.saved === grant.saved) return { ok: true, policy: { ...grant.policy }, anchor: existing.anchor, ...(existing.isolationTest ? { isolationTest: true } : {}) };
 	const type = TYPES[extname(grant.subject).toLowerCase()];
 	if (!type?.type.startsWith("text/html")) return { ok: false, reason: "notFile" };
 	const result = await readPreviewDocument(token, grant, grant.subject, type);
@@ -401,10 +405,17 @@ export async function preparePreview(token: string, revision: number, owner: num
 		if (!result.snapshot.readIdentity || !isIsolationTestDocument(grant.subject, grant.saved, result.snapshot.readIdentity)) return { ok: false, reason: "notFile" };
 		result.snapshot.isolationTest = true;
 	}
-	if (!existing || isolationTest) grant.snapshots.set(revision, result.snapshot);
+	result.snapshot.saved = grant.saved;
+	if (!isolationTest && grant.live !== null) {
+		const marked = markHtmlChange(grant.previousHtml ?? null, grant.live, `vomp-${token}-${revision}`);
+		result.snapshot.body = marked.body;
+		result.snapshot.anchor = marked.anchor;
+		grant.previousHtml = grant.live;
+	}
+	if (!existing || isolationTest || existing.saved !== grant.saved) grant.snapshots.set(revision, result.snapshot);
 	while (grant.snapshots.size > 2) grant.snapshots.delete(Math.min(...grant.snapshots.keys()));
 	const prepared = grant.snapshots.get(revision);
-	return prepared ? { ok: true, policy: { ...grant.policy }, ...(prepared.isolationTest ? { isolationTest: true } : {}) } : { ok: false, reason: "missing" };
+	return prepared ? { ok: true, policy: { ...grant.policy }, anchor: prepared.anchor, ...(prepared.isolationTest ? { isolationTest: true } : {}) } : { ok: false, reason: "missing" };
 }
 
 /** Returns only a currently granted subject address, never an asset's address. */
@@ -429,7 +440,8 @@ export function previewNavigationRule(input: PreviewNavigationInput): { cancel: 
 	if (!/^vomp-preview:/i.test(input.currentUrl) && !/^vomp-preview:/i.test(input.url)) return { cancel: false };
 	if (input.initiatedByMainFrame && target && input.documentUrl) {
 		const document = previewAddress(input.documentUrl);
-		if (document && document.token === target.token && document.path === target.path && !target.url.hash
+		if (document && document.token === target.token && document.path === target.path
+			&& (!target.url.hash || target.url.searchParams.has("rev"))
 			&& [...target.url.searchParams.keys()].every(key => key === "rev")) return { cancel: false };
 	}
 	const token = current?.token ?? target?.token;

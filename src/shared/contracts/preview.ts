@@ -31,7 +31,7 @@ export interface PreviewGrant {
 export interface PreviewPolicy { scripts: boolean; network: boolean }
 
 /** Whether main prepared the exact document bytes served for this revision under the grant's read limits. */
-export type PreviewPrepared = { ok: true; policy: PreviewPolicy; /** Main-only test gate, never a page permission. */ isolationTest?: true } | { ok: false; reason: "missing" | "tooLarge" | "notFile" | "revoked" };
+export type PreviewPrepared = { ok: true; policy: PreviewPolicy; /** App-injected script-free change target. */ anchor?: string; /** Main-only test gate, never a page permission. */ isolationTest?: true } | { ok: false; reason: "missing" | "tooLarge" | "notFile" | "revoked" };
 
 export type PreviewBinary =
 	| { ok: true; bytes: Uint8Array<ArrayBuffer>; size: number; mtimeMs: number }

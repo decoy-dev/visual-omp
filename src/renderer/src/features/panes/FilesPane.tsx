@@ -12,6 +12,7 @@ import type { DirEntry } from "@shared/ipc";
 import type { PaneProps } from "../../registry/slots";
 import { lazyView, LoadFailed } from "../../registry/lazy";
 import type { LiveSubject } from "../live-preview/types";
+import { useLivePreview } from "../live-preview/store";
 import {
 	Button,
 	cn,
@@ -342,6 +343,7 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 	const [broken, setBroken] = useState<string | null>(null);
 	const listing = useFiles(state => state.children[path]);
 	const source = useFiles(state => state.byView[viewKey]?.sourceTabs.includes(path) ?? false);
+	const liveHtmlSubject = useLivePreview(state => state.chats[viewKey]?.subjects.find(subject => subject.path === path && subject.format === "html"));
 	const htmlSubject = useMemo<LiveSubject>(() => ({
 		id: `file:${path}`, kind: "file", format: "html", path, revision: version + reload + 1, state: "saved",
 		text: null, toolCallId: null, toolName: null, elided: false, intent: null, request: null, images: null,
@@ -427,7 +429,7 @@ function Viewer({ path, projectPath, viewKey, home, version }: { path: string; p
 				<Button size="sm" variant="ghost" icon={<ArrowSquareOut />} onClick={() => openWithDefaultApp(path, t, "browser")}>{t("live.openBrowser")}</Button>
 			</div>}
 			{html && !source ? (
-				<HtmlPreview subject={htmlSubject} projectPath={projectPath} related={[]} fileViewer />
+				<HtmlPreview key={`${liveHtmlSubject?.id ?? htmlSubject.id}:${reload}`} subject={liveHtmlSubject ?? htmlSubject} projectPath={projectPath} related={[]} fileViewer />
 			) : pdf ? (
 				<div className="flex min-h-0 flex-1 flex-col bg-inset">
 					{/* Both triggers only grow, so their sum changes whenever either does. */}

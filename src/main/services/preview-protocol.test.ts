@@ -85,7 +85,7 @@ it("enables only the explicitly gated saved fixture snapshot and keeps its netwo
 	const grant = await page();
 	electron.isolationFile = await realpath(join(folder, "index.html"));
 	setPreviewLive(grant.token, 1, "<p>Streaming fixture</p>");
-	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
+	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false }, anchor: `vomp-${grant.token}-1` });
 	expect((await get(`${grant.url}?rev=1`)).headers.get("content-security-policy")).toBe(previewPolicy({ scripts: false, network: false }));
 	savePreview(grant.token);
 	expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false }, isolationTest: true });
@@ -856,12 +856,12 @@ describe("prepared document snapshots", () => {
 		const grant = await grantPreview({ path: join(folder, "pending.html"), root: folder, related: [] });
 		expect(await preparePreview(grant.token, 1)).toEqual({ ok: false, reason: "missing" });
 		setPreviewLive(grant.token, 1, "<h1>Writing</h1>");
-		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
+		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false }, anchor: `vomp-${grant.token}-1` });
 		savePreview(grant.token);
 		expect(await preparePreview(grant.token, 2)).toEqual({ ok: false, reason: "missing" });
 		await writeFile(join(folder, "pending.html"), "<h1>Saved</h1>");
 		expect(await preparePreview(grant.token, 2)).toEqual({ ok: true, policy: { scripts: false, network: false } });
-		expect(await (await get(`${grant.url}?rev=1`)).text()).toBe("<h1>Writing</h1>");
+		expect(await (await get(`${grant.url}?rev=1`)).text()).toContain(">Writing</h1>");
 		expect(await (await get(`${grant.url}?rev=2`)).text()).toBe("<h1>Saved</h1>");
 	});
 
@@ -871,10 +871,10 @@ describe("prepared document snapshots", () => {
 		try { await file.truncate(2 * 1024 * 1024 + 1); } finally { await file.close(); }
 		expect(await preparePreview(grant.token, 1)).toEqual({ ok: false, reason: "tooLarge" });
 		setPreviewLive(grant.token, 1, "<p>Last good text</p>");
-		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false } });
+		expect(await preparePreview(grant.token, 1)).toEqual({ ok: true, policy: { scripts: false, network: false }, anchor: `vomp-${grant.token}-1` });
 		savePreview(grant.token);
 		expect(await preparePreview(grant.token, 2)).toEqual({ ok: false, reason: "tooLarge" });
-		expect(await (await get(`${grant.url}?rev=1`)).text()).toBe("<p>Last good text</p>");
+		expect(await (await get(`${grant.url}?rev=1`)).text()).toContain(">Last good text</p>");
 	});
 
 	it("reports a directory or a replaced symlink outside the grant as notFile", async () => {
@@ -958,13 +958,15 @@ describe("preview navigation", () => {
 	it("allows only app-initiated valid subject documents and revisions", () => {
 		expect(previewNavigationRule(base)).toEqual({ cancel: false });
 		expect(previewNavigationRule({ ...base, url: `${url}?rev=42` })).toEqual({ cancel: false });
+		expect(previewNavigationRule({ ...base, url: `${url}?rev=42#vomp-abcd-42` })).toEqual({ cancel: false });
+		expect(previewNavigationRule({ ...base, url: `${url}?rev=42#author%20section` })).toEqual({ cancel: false });
 		for (const target of ["vomp-preview://abcd/pages/style.css", "vomp-preview://ffff/pages/index.html", `${url}?other=1`, `${url}#part`, "vomp-preview://abcd/pages/%2e%2e/index.html"]) {
 			expect(previewNavigationRule({ ...base, url: target }).cancel).toBe(true);
 		}
 		expect(previewNavigationRule({ ...base, documentUrl: null }).cancel).toBe(true);
 	});
 	it("blocks preview-page links, refreshes and forms even to the same document", () => {
-		for (const target of [url, `${url}?rev=2`, "about:blank", "data:text/html,hello", "file:///etc/passwd"]) {
+		for (const target of [url, `${url}?rev=2`, `${url}?rev=42#vomp-abcd-42`, `${url}?rev=42#author%20section`, "about:blank", "data:text/html,hello", "file:///etc/passwd"]) {
 			expect(previewNavigationRule({ ...base, currentUrl: url, initiatedByMainFrame: false, url: target }).cancel).toBe(true);
 		}
 	});

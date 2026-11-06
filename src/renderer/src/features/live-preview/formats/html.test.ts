@@ -138,6 +138,8 @@ describe("HTML preview grants", () => {
 		expect(host.textContent).toContain("Waiting for omp to finish saving");
 		invoke.mockImplementation(async (channel: string) => channel === "preview:prepare" ? { ok: true } : undefined);
 		await show(subject({ kind: "file", state: "saved", text: null, revision: 3 }));
+		expect(host.textContent).toContain("Your review position is kept.");
+		await act(() => [...host.querySelectorAll("button")].find(button => button.textContent === "Show latest")!.click());
 		const next = [...host.querySelectorAll("iframe")].find(frame => frame !== first)!;
 		expect(next.src).toBe("vomp-preview://token/page.html?rev=3");
 		expect(first.style.visibility).toBe("visible");
@@ -165,6 +167,51 @@ describe("HTML preview grants", () => {
 	it("omits the restricted-assets notice when the project assets are granted", async () => {
 		await show();
 		expect(host.textContent).not.toContain("Some assets may be unavailable.");
+	});
+
+	it("uses the app-injected change anchor without enabling scripts", async () => {
+		invoke.mockImplementation(async (channel: string) => channel === "preview:grant" ? { token: "token", url: "vomp-preview://token/page.html", assetRoot: true } : channel === "preview:prepare" ? { ok: true, anchor: "vomp-abc-1" } : undefined);
+		await show();
+		expect(host.querySelector("iframe")?.src).toBe("vomp-preview://token/page.html?rev=1#vomp-abc-1");
+		expect(host.querySelector("iframe")?.getAttribute("sandbox")).toBe("");
+		expect(host.querySelector("iframe")?.style.width).toBe("1280px");
+	});
+
+	it("pauses explicitly and preserves the mounted review through completion", async () => {
+		await show();
+		await act(() => host.querySelector("iframe")!.dispatchEvent(new Event("load")));
+		const first = host.querySelector("iframe")!;
+		expect(host.querySelector("[data-html-follow-interaction]")).toBeNull();
+		await act(() => [...host.querySelectorAll("button")].find(button => button.textContent === "Pause following")!.click());
+		await show(subject({ revision: 2, text: "<h1>Changed</h1>" }));
+		await act(async () => { await vi.advanceTimersByTimeAsync(250); });
+		expect(first.style.visibility).toBe("visible");
+		expect(host.querySelectorAll("iframe")).toHaveLength(1);
+		await show(subject({ revision: 3, state: "saved" }));
+		expect(first.style.visibility).toBe("visible");
+		expect(host.querySelectorAll("iframe")).toHaveLength(1);
+		expect(host.textContent).toContain("Show latest");
+	});
+
+	it("pauses when native frame focus blurs the parent without intercepting page input", async () => {
+		await show();
+		const iframe = host.querySelector("iframe")!;
+		await act(() => iframe.dispatchEvent(new Event("load")));
+		const active = vi.spyOn(document, "activeElement", "get").mockReturnValue(iframe);
+		await act(() => window.dispatchEvent(new Event("blur")));
+		expect(host.textContent).not.toContain("Pause following");
+		expect(host.textContent).toContain("Follow");
+		expect(host.querySelector("[data-html-follow-interaction]")).toBeNull();
+		active.mockRestore();
+	});
+
+	it("does not treat a hidden candidate's fragment focus as a request to pause", async () => {
+		await show();
+		const iframe = host.querySelector("iframe")!;
+		const active = vi.spyOn(document, "activeElement", "get").mockReturnValue(iframe);
+		await act(() => window.dispatchEvent(new Event("blur")));
+		expect(host.textContent).toContain("Pause following");
+		active.mockRestore();
 	});
 
 	it("revokes grants that finish after the frame unmounts", async () => {

@@ -96,6 +96,18 @@ describe("HTML Files viewer routing", () => {
 		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
 		expect(host.querySelector("iframe")).not.toBeNull();
 	});
+	it("reloads a saved HTML document explicitly instead of retaining its old preview", async () => {
+		await show("/project/page.html");
+		const first = host.querySelector("iframe")!;
+		await act(() => first.dispatchEvent(new Event("load")));
+		await act(() => host.querySelector<HTMLButtonElement>('button[aria-label="Reload this file"]')!.click());
+		await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+		const refreshed = host.querySelector("iframe")!;
+		expect(refreshed).not.toBe(first);
+		expect(env.invoke.mock.calls.filter(call => call[0] === "preview:grant")).toHaveLength(2);
+		expect(env.invoke).toHaveBeenCalledWith("preview:revoke", "token");
+		expect(env.invoke).toHaveBeenLastCalledWith("preview:prepare", "token", 2);
+	});
 	it("does not preview a folder whose name ends in HTML", async () => {
 		env.kind = "folder";
 		await show("/project/archive.html");

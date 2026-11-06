@@ -6,6 +6,8 @@ interface GrantedFrame {
 	grant: PreviewGrant;
 	revision: number;
 	isolationTest?: true;
+	anchor?: string;
+	saved: boolean;
 }
 
 /** Own one token and publish a revision only after main can serve its complete current contents. */
@@ -41,6 +43,7 @@ export function usePreviewGrant({ subject, projectPath, related }: LiveFrameProp
 		const publish = async () => {
 			try {
 				let isolationTest: true | undefined;
+				let anchor: string | undefined;
 				if (saved && !sent.current.saved) {
 					sent.current.saved = true;
 					await window.vomp.invoke("preview:saved", grant.token);
@@ -52,8 +55,9 @@ export function usePreviewGrant({ subject, projectPath, related }: LiveFrameProp
 					const result = await window.vomp.invoke("preview:prepare", grant.token, subject.revision);
 					if (!result.ok) { if (live) setError(true); return; }
 					isolationTest = result.isolationTest;
+					anchor = result.anchor;
 				}
-				if (live) { setFrame({ grant, revision: subject.revision, isolationTest }); setError(false); }
+				if (live) { setFrame({ grant, revision: subject.revision, isolationTest, anchor, saved }); setError(false); }
 			} catch { if (live) setError(true); }
 		};
 		const delay = saved || subject.text === null ? 0 : Math.max(0, 250 - (Date.now() - sent.current.at));
