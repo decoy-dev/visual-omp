@@ -6,6 +6,9 @@ const RASTER = /^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,[a-z\d+/=\s]+$/i;
 
 /** Generated CSS never retains escapes, imports or a non-data resource reference. */
 export function sanitizeOfficeCss(css: string): string {
+	// docx-preview terminates list-marker strings with an escaped tab. Normalize only that
+	// whitespace escape; every other escape still refuses the entire generated stylesheet.
+	css = css.replace(/\\9(?=["'])/g, " ");
 	if (/[\\\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(css)) return "";
 	return css.replace(/\/\*[\s\S]*?\*\//g, "")
 		.replace(/@import\b[^;{}]*(?:;|$)/gi, "")

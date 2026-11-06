@@ -24,9 +24,9 @@ vi.mock("./xlsx.worker?worker", () => ({ default: class {
 } }));
 let host: HTMLDivElement, root: Root;
 const subject = { id: "sheet", kind: "file", format: "xlsx", path: "/project/office.xlsx", revision: 1, state: "saved" } as LiveSubject;
-async function show(revision: number, officeCache?: OfficeFrameCache) {
+async function show(revision: number, officeCache?: OfficeFrameCache, onOfficeCheck?: (safe: boolean | null) => void) {
 	state.frame = { ...state.frame, revision };
-	await act(async () => root.render(createElement(Frame, { subject: { ...subject, revision }, projectPath: "/project", related: [], officeCache })));
+	await act(async () => root.render(createElement(Frame, { subject: { ...subject, revision }, projectPath: "/project", related: [], officeCache, onOfficeCheck })));
 }
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -113,5 +113,14 @@ it("restores the newer successful text window after truncation and reselection",
 	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke: vi.fn(async () => ({ ok: false, reason: "incomplete" })) } });
 	await show(4, officeCache);
 	expect(host.querySelector('[id^="office-3-"]')).not.toBeNull();
+	expect(host.textContent).toContain("live.waitingForSave");
+});
+
+it("defers an incomplete workbook without reporting unsafe bytes", async () => {
+	const check = vi.fn();
+	vi.mocked(window.vomp.invoke).mockResolvedValueOnce({ ok: false, reason: "incomplete" });
+	await show(1, undefined, check);
+	expect(check).toHaveBeenLastCalledWith(null);
+	expect(check).not.toHaveBeenCalledWith(false);
 	expect(host.textContent).toContain("live.waitingForSave");
 });

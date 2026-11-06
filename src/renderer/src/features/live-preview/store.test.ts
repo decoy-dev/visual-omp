@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { officeSnapshotBytes, useLivePreview } from "./store";
+import { followedSubject, officeSnapshotBytes, useLivePreview } from "./store";
 import type { DocxFrameSnapshot, LiveFormat, LiveSubject, XlsxFrameSnapshot } from "./types";
 const subject = (id: string, path = `/project/${id}.docx`, format: LiveFormat = "docx", revision = 3) => ({ id, kind: "file", format, path, revision } as LiveSubject);
 const snapshot = (path = "/project/office.docx", revision = 3, body = "<p>Safe presentation</p>"): DocxFrameSnapshot => ({ path, revision, format: "docx", body, styles: "<style>p{color:red}</style>" });
@@ -89,4 +89,45 @@ it("invalidates superseded content when a newer successful presentation is overs
 	state.retainOffice("chat", "office", first);
 	expect(state.readOffice("chat", "office", first.path, "docx", 3)).toBeNull();
 	expect(useLivePreview.getState().chats.chat!.officeHeads.office?.revision).toBe(2);
+});
+
+describe("automatic Office following", () => {
+	it.each(["docx", "xlsx", "pptx"] as const)("keeps the accepted %s visible and permits explicit selection of a refused file", format => {
+		const state = useLivePreview.getState();
+		const good = subject("office", `/project/office.${format}`, format);
+		const bomb = subject("bomb", `/project/bomb.${format}`, format);
+		state.update("chat", [good], []); state.checkOffice("chat", good, true);
+		state.update("chat", [bomb, good], []);
+		expect(followedSubject(useLivePreview.getState().chats.chat!)?.id).toBe("office");
+		state.checkOffice("chat", bomb, false);
+		expect(followedSubject(useLivePreview.getState().chats.chat!)?.id).toBe("office");
+		expect(useLivePreview.getState().chats.chat!.subjects).toContain(bomb);
+		state.select("chat", "bomb");
+		expect(followedSubject(useLivePreview.getState().chats.chat!)?.id).toBe("bomb");
+	});
+	it("follows a newly accepted candidate and rechecks a refused file after a new save", () => {
+		const state = useLivePreview.getState(), old = subject("old"), next = subject("next");
+		state.update("chat", [next, old], []); state.checkOffice("chat", old, true);
+		state.checkOffice("chat", next, false);
+		expect(followedSubject(useLivePreview.getState().chats.chat!)?.id).toBe("old");
+		const saved = { ...next, revision: 4 };
+		state.update("chat", [saved, old], []); state.checkOffice("chat", next, true);
+		expect(followedSubject(useLivePreview.getState().chats.chat!)?.id).toBe("old");
+		state.checkOffice("chat", saved, true);
+		expect(followedSubject(useLivePreview.getState().chats.chat!)?.id).toBe("next");
+	});
+});
+
+it("keeps deferred candidates selectable, skips them automatically, and invalidates deferral on a new revision", () => {
+	const state = useLivePreview.getState(), a = subject("a"), b = subject("b"), c = subject("c");
+	state.update("chat", [c, b, a], []); state.checkOffice("chat", a, true);
+	state.checkOffice("chat", c, null); state.checkOffice("chat", b, true);
+	expect(followedSubject(useLivePreview.getState().chats.chat!)?.id).toBe("b");
+	state.select("chat", c.id);
+	expect(followedSubject(useLivePreview.getState().chats.chat!)?.id).toBe("c");
+	const next = { ...c, revision: c.revision + 1 };
+	state.update("chat", [next, b, a], []);
+	expect(useLivePreview.getState().chats.chat!.officeChecks.c).toBeUndefined();
+	state.checkOffice("chat", c, null);
+	expect(useLivePreview.getState().chats.chat!.officeChecks.c).toBeUndefined();
 });

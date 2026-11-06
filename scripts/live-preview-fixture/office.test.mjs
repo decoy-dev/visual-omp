@@ -18,6 +18,8 @@ valid = package(3)
 with zipfile.ZipFile(io.BytesIO(valid)) as archive:
     names = archive.namelist()
     xml = {name:archive.read(name).decode('utf-8') for name in names if name.endswith('.xml') or name.endswith('.rels')}
+    image = archive.read('word/media/image.png') if kind == 'docx' else None
+    image_size = list(struct.unpack('>II', image[16:24])) if image else None
 try:
     zipfile.ZipFile(path).testzip()
     truncated = False
@@ -25,7 +27,7 @@ except zipfile.BadZipFile:
     truncated = True
 with zipfile.ZipFile(bomb) as archive:
     huge = archive.infolist()[0].file_size
-print(json.dumps({'names':names,'xml':xml,'truncated':truncated,'huge':huge}))
+print(json.dumps({'names':names,'xml':xml,'truncated':truncated,'huge':huge,'imageSize':image_size}))
 `;
     const result = spawnSync(python, ["-c", officePython(kind, 0) + inspect], { cwd: folder, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 30_000 });
     assert.equal(result.status, 0, result.stderr);
@@ -37,12 +39,22 @@ print(json.dumps({'names':names,'xml':xml,'truncated':truncated,'huge':huge}))
       assert.match(inspected.xml["word/document.xml"], /Office fixture revision 3/);
       assert.match(inspected.xml["word/document.xml"], /<w:tbl>/);
       assert.ok(inspected.names.includes("word/media/image.png"));
+      assert.deepEqual(inspected.imageSize, [480, 160]);
+      assert.match(inspected.xml["word/document.xml"], /Quarterly delivery review/);
+      assert.match(inspected.xml["word/document.xml"], /Figure 1/);
+      assert.match(inspected.xml["word/document.xml"], /w:shd/);
+      assert.equal((inspected.xml["word/document.xml"].match(/<w:tr>/g) ?? []).length, 4);
+      assert.match(inspected.xml["word/numbering.xml"], /w:val="bullet"/);
+      assert.match(inspected.xml["word/numbering.xml"], /w:val="decimal"/);
+      assert.match(inspected.xml["word/footer1.xml"], /Illustrative data/);
       assert.match(inspected.xml["word/_rels/document.xml.rels"], /TargetMode="External"/);
     } else if (kind === "xlsx") {
       assert.match(inspected.xml["xl/workbook.xml"], /Summary and cached values/);
       assert.match(inspected.xml["xl/worksheets/sheet1.xml"], /<f>B1\*3<\/f><v>6<\/v>/);
       assert.match(inspected.xml["xl/worksheets/sheet1.xml"], /&lt;img src=x onerror=alert\(1\)&gt;/);
       assert.match(inspected.xml["xl/worksheets/sheet2.xml"], /r="50000"/);
+      assert.match(inspected.xml["xl/worksheets/sheet1.xml"], /Delivery summary/);
+      assert.match(inspected.xml["xl/worksheets/sheet1.xml"], /<f>SUM\(C5:C7\)<\/f><v>20<\/v>/);
     } else {
       assert.ok(inspected.names.includes("ppt/slides/slide2.xml"));
       assert.match(inspected.xml["ppt/slides/_rels/slide1.xml.rels"], /127\.0\.0\.1:47832/);

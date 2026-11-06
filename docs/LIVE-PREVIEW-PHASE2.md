@@ -227,6 +227,12 @@ export type PreviewSlides =
 
 **Fixtures:** `fixture docx`, `fixture xlsx`, `fixture pptx`, each built with Python's `zipfile` only: DOCX with a heading, table, embedded image, external image and a hyperlink, saved three times plus one truncated save; XLSX with two sheets, a cached formula, `<img src=x onerror=alert(1)>` as text and a 50,000-row sheet; PPTX with two slides and an external image relationship; plus a ZIP bomb (small file, huge inflated entry) for each.
 
+Office fixture polish, 2026-11-05: the earlier embedded PNG contained one opaque white pixel, so its image area matched the document paper. The DOCX sample now includes a visible 480 by 160 raster chart, title, headings, paragraphs, both list types, a shaded multi-row table, caption and footer. The existing external-image and hyperlink checks remain. The XLSX summary includes several delivery rows and cached totals. Automatic stage selection checks new Office candidates without replacing an accepted preview. Unsafe revisions remain available as chips for explicit selection; a newer save is checked again. The 0.7.8 tour notes distinguish the deliberately unsafe bomb sample from the document or workbook being reviewed.
+
+The sanitizer also preserves docx-preview's list markers by normalizing its generated trailing escaped tab before rejecting all other CSS escapes. Embedded images continue to use raster data URLs under the existing CSP and URL allowlist; external image relationships remain removed before rendering.
+
+An incomplete, timed-out or unavailable Office candidate, including one whose adapter chunk fails to load, is deferred for its current revision, so automatic checking continues to other unchecked outputs. Deferral leaves the chip selectable with its existing status note and retry action where available, does not classify the file as unsafe, and expires when a newer revision arrives.
+
 Acceptance:
 1. DOCX renders; the link opens the browser and the app stays; the external image shows the placeholder and no `https:` request appears in DevTools.
 2. Three saves update three times; the truncated save keeps the previous frame with "Waiting for omp to finish saving".

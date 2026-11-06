@@ -12,6 +12,7 @@ export function Frame(props: LiveFrameProps) {
 	const { frame, error } = usePreviewGrant(props);
 	const [good, setGood] = useState<{ path: string; revision: number; bytes: Uint8Array<ArrayBuffer> } | null>(null);
 	const [failure, setFailure] = useState<string | null>(null);
+	useEffect(() => { if (error) props.onOfficeCheck?.(null); }, [error]);
 	useEffect(() => {
 		if (!frame) return;
 		let current = true;
@@ -19,12 +20,17 @@ export function Frame(props: LiveFrameProps) {
 			try {
 				const result = await window.vomp.invoke("preview:slides", frame.grant.token, frame.revision);
 				if (!current) return;
-				if (!result.ok) { setFailure(result.reason); return; }
+				if (!result.ok) {
+					if (result.reason === "unsafe" || result.reason === "tooLarge") props.onOfficeCheck?.(false);
+					else props.onOfficeCheck?.(null);
+					setFailure(result.reason); return;
+				}
 				if (result.revision !== frame.revision) return;
 				const bytes = await window.vomp.invoke("panes:readPdf", result.pdfPath);
 				if (!current) return;
 				setGood({ path: result.pdfPath, revision: result.revision, bytes }); setFailure(null);
-			} catch { if (current) setFailure("failed"); }
+				props.onOfficeCheck?.(true);
+			} catch { if (current) { setFailure("failed"); props.onOfficeCheck?.(null); } }
 		})();
 		return () => { current = false; };
 	}, [frame]);

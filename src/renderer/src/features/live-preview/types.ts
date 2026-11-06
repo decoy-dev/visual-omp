@@ -100,6 +100,8 @@ export interface LiveFrameProps {
 	turnImages?: readonly string[];
 	/** Stage-owned snapshots survive switching subjects; adapters still dispose their workers on unmount. */
 	officeCache?: OfficeFrameCache;
+	/** True accepts a preview, false refuses unsafe bytes, and null defers an unavailable revision. */
+	onOfficeCheck?(safe: boolean | null): void;
 }
 
 export interface LiveAdapter {

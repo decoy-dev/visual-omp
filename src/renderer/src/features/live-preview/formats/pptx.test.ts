@@ -17,9 +17,9 @@ vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => {
 let host: HTMLDivElement, root: Root;
 const invoke = vi.fn();
 const subject = { id: "slides", kind: "file", format: "pptx", path: "/project/office.pptx", revision: 1, state: "saved" } as LiveSubject;
-async function show(revision: number) {
+async function show(revision: number, onOfficeCheck?: (safe: boolean | null) => void) {
 	state.frame = { ...state.frame, revision };
-	await act(async () => root.render(createElement(Frame, { subject: { ...subject, revision }, projectPath: "/project", related: [], turnImages: ["/project/slide-1.png"] })));
+	await act(async () => root.render(createElement(Frame, { subject: { ...subject, revision }, projectPath: "/project", related: [], turnImages: ["/project/slide-1.png"], onOfficeCheck })));
 }
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -53,4 +53,12 @@ it("mentions retention after a timeout only when a successful preview exists", a
 	await show(2);
 	invoke.mockResolvedValueOnce({ ok: false, reason: "timeout" }); await show(3);
 	expect(host.textContent).toContain("The previous preview is still available.");
+});
+
+it.each(["timeout", "failed", "noLibreOffice", "converterUnavailable"])("defers an unavailable %s conversion without reporting unsafe bytes", async reason => {
+	const check = vi.fn();
+	invoke.mockResolvedValueOnce({ ok: false, reason }); await show(1, check);
+	expect(check).toHaveBeenLastCalledWith(null);
+	expect(check).not.toHaveBeenCalledWith(false);
+	expect(host.textContent).not.toContain("This Office file cannot be previewed safely");
 });

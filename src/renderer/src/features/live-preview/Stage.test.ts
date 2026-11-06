@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement, type ReactNode } from "react";
+import { act, createElement, useEffect, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppPreferences } from "@shared/ipc";
@@ -270,4 +270,90 @@ it("keeps animation-local percentages indeterminate while showing the animation 
 	await render();
 	expect(element.textContent).toContain("animation 2.3");
 	expect(element.querySelector("[role='progressbar']")?.hasAttribute("aria-valuenow")).toBe(false);
+});
+
+it.each(["docx", "xlsx", "pptx"] as const)("keeps the good %s stage visible when an unsafe candidate finishes and allows selecting its refusal", async format => {
+	env.loadAdapter.mockImplementation(async () => ({ maxFps: 8, format, Frame: (props: LiveFrameProps) => {
+		useEffect(() => { props.onOfficeCheck?.(props.subject.id !== "bomb"); }, [props.subject.id, props.subject.revision]);
+		return createElement("div", { "data-frame": props.subject.id }, props.subject.id === "bomb" ? "This Office file cannot be previewed safely." : "Complete Office presentation");
+	} }));
+	const good = { ...subject("office"), format, path: `/project/office.${format}`, kind: "file" as const };
+	const bomb = { ...subject("bomb"), format, path: `/project/bomb.${format}`, kind: "file" as const };
+	useLivePreview.getState().update("chat", [good], []); await render();
+	await act(async () => useLivePreview.getState().update("chat", [bomb, good], []));
+	expect(element.querySelector("[data-live-subject]")?.getAttribute("data-live-subject")).toBe("office");
+	expect(element.textContent).toContain("Complete Office presentation");
+	expect(element.textContent).not.toContain("cannot be previewed safely");
+	await click(`bomb.${format}`);
+	expect(element.querySelector("[data-live-subject]")?.getAttribute("data-live-subject")).toBe("bomb");
+	expect(element.textContent).toContain("cannot be previewed safely");
+	await click(`office.${format}`);
+	expect(element.textContent).toContain("Complete Office presentation");
+});
+
+it("promotes an accepted Office candidate without remounting its rendered presentation", async () => {
+	const mounted = vi.fn();
+	env.loadAdapter.mockImplementation(async () => ({ maxFps: 8, format: "docx", Frame: (props: LiveFrameProps) => {
+		useEffect(() => {
+			mounted(props.subject.id);
+			props.officeCache?.write({ format: "docx", path: props.subject.path!, revision: props.subject.revision, body: `<p>${props.subject.id}</p>`, styles: "" });
+			props.onOfficeCheck?.(true);
+		}, []);
+		return createElement("div", { "data-frame": props.subject.id }, props.subject.id);
+	} }));
+	const old = { ...subject("old"), format: "docx" as const, path: "/project/old.docx" };
+	const next = { ...subject("next"), format: "docx" as const, path: "/project/next.docx" };
+	useLivePreview.getState().update("chat", [old], []); await render();
+	await act(async () => useLivePreview.getState().update("chat", [next, old], []));
+	expect(element.querySelector("[data-live-subject]")?.getAttribute("data-live-subject")).toBe("next");
+	expect(mounted.mock.calls.filter(([id]) => id === "next")).toHaveLength(1);
+	expect(useLivePreview.getState().readOffice("chat", "next", next.path, "docx", next.revision)).toMatchObject({ body: "<p>next</p>" });
+});
+
+it.each(["docx", "xlsx", "pptx"] as const)("advances past a deferred %s candidate and follows it after a later accepted save", async format => {
+	env.loadAdapter.mockImplementation(async () => ({ maxFps: 8, format, Frame: (props: LiveFrameProps) => {
+		const deferred = props.subject.id === "c" && props.subject.revision === 1;
+		useEffect(() => { props.onOfficeCheck?.(deferred ? null : true); }, [props.subject.id, props.subject.revision]);
+		return createElement("div", { "data-frame": props.subject.id }, deferred ? "Waiting for a complete preview" : `${props.subject.id} complete`);
+	} }));
+	const office = (id: string, revision = 1) => ({ ...subject(id), revision, format, path: `/project/${id}.${format}`, kind: "file" as const });
+	const a = office("a"), b = office("b"), c = office("c");
+	useLivePreview.getState().update("chat", [a], []); await render();
+	await act(async () => useLivePreview.getState().update("chat", [c, b, a], []));
+	expect(element.querySelector("[data-live-subject]")?.getAttribute("data-live-subject")).toBe("b");
+	expect(element.textContent).toContain("b complete");
+	expect(useLivePreview.getState().chats.chat!.officeChecks.c?.safe).toBeNull();
+	expect([...element.querySelectorAll("button")].some(button => button.textContent === `c.${format}`)).toBe(true);
+	await act(async () => useLivePreview.getState().update("chat", [office("c", 2), b, a], []));
+	expect(element.querySelector("[data-live-subject]")?.getAttribute("data-live-subject")).toBe("c");
+	expect(element.textContent).toContain("c complete");
+});
+
+it.each(["retry", "new revision"])("advances past a failed DOCX chunk to a good XLSX and rechecks after %s", async recovery => {
+	let docxUnavailable = true;
+	env.loadAdapter.mockImplementation(async (format: string) => {
+		if (format === "docx" && docxUnavailable) throw new Error("DOCX chunk unavailable");
+		return { maxFps: 8, format, Frame: (props: LiveFrameProps) => {
+			useEffect(() => { props.onOfficeCheck?.(true); }, [props.subject.id, props.subject.revision]);
+			return createElement("div", { "data-frame": props.subject.id }, `${props.subject.id} complete`);
+		} };
+	});
+	const a = { ...subject("a"), format: "pptx" as const, path: "/project/a.pptx" };
+	const b = { ...subject("b"), format: "xlsx" as const, path: "/project/b.xlsx" };
+	const c = { ...subject("c"), format: "docx" as const, path: "/project/c.docx" };
+	useLivePreview.getState().update("chat", [a], []); await render();
+	await act(async () => useLivePreview.getState().update("chat", [c, b, a], []));
+	expect(element.querySelector("[data-live-subject]")?.getAttribute("data-live-subject")).toBe("b");
+	expect(element.textContent).toContain("b complete");
+	expect(useLivePreview.getState().chats.chat!.officeChecks.c?.safe).toBeNull();
+	if (recovery === "retry") {
+		await click("c.docx");
+		expect(element.textContent).toContain("Couldn't load this part of visual-omp");
+		docxUnavailable = false; await click("Try again");
+	} else {
+		docxUnavailable = false;
+		await act(async () => useLivePreview.getState().update("chat", [{ ...c, revision: 2 }, b, a], []));
+	}
+	expect(element.querySelector("[data-live-subject]")?.getAttribute("data-live-subject")).toBe("c");
+	expect(element.textContent).toContain("c complete");
 });

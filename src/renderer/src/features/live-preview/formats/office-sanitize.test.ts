@@ -31,6 +31,12 @@ describe("DOCX post-render sanitizer", () => {
 		expect(sanitizeOfficeCss('p{background:url("data:image/png;base64,YQ==");color:red}')).toContain("data:image/png");
 		expect(sanitizeOfficeCss("font-size:12pt;text-align:center")).toBe("font-size:12pt;text-align:center");
 	});
+	it("keeps generated list markers while refusing non-whitespace CSS escapes", () => {
+		const numbering = 'p.docx-num-1-0:before{content:"•\\9";counter-increment:docx-num-1-0}';
+		expect(sanitizeOfficeCss(numbering)).toContain('content:"• "');
+		expect(sanitizeOfficeCss(numbering)).toContain("counter-increment");
+		expect(sanitizeOfficeCss(numbering + 'p{background:u\\72l(https://bad.test)}')).toBe("");
+	});
 	it("does not resolve inherited object properties as hyperlink targets", () => {
 		const body = document.createElement("div");
 		body.innerHTML = '<a href="#constructor">Bookmark</a><a href="#__proto__">Other bookmark</a>';

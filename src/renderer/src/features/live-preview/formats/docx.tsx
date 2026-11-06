@@ -12,7 +12,7 @@ import type { LiveAdapter, LiveFrameProps } from "../types";
 function attachDocument(host: HTMLDivElement, body: HTMLDivElement, styles: HTMLDivElement): void {
 	const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
 	const layout = document.createElement("style");
-	layout.textContent = ":host{display:block;min-width:0}section{box-sizing:border-box;max-width:100%!important;padding:1rem!important;overflow-wrap:anywhere}img,table{max-width:100%}img{height:auto}table{table-layout:fixed}td,th{overflow-wrap:anywhere}a{cursor:pointer}";
+	layout.textContent = ":host{display:block;min-width:0}section{box-sizing:border-box;max-width:100%!important;padding:1rem!important;overflow-wrap:anywhere}img,table{max-width:100%}div:has(>img){max-width:100%!important;height:auto!important}img{height:auto!important}table{width:100%!important;table-layout:fixed}col,td,th{width:auto!important}td,th{overflow-wrap:anywhere}a{cursor:pointer}";
 	shadow.replaceChildren(styles, layout, body);
 	body.addEventListener("click", event => {
 		const link = event.composedPath().find(node => node instanceof HTMLAnchorElement) as HTMLAnchorElement | undefined;
@@ -37,7 +37,7 @@ export function Frame(props: LiveFrameProps) {
 	const [failure, setFailure] = useState<string | null>(null);
 	useEffect(() => {
 		host.current?.shadowRoot?.replaceChildren(); goodRevision.current = null;
-		if (error) props.officeCache?.clear();
+		if (error) { props.officeCache?.clear(); props.onOfficeCheck?.(null); }
 	}, [props.subject.path, props.subject.format, error]);
 	useEffect(() => {
 		if (goodRevision.current !== null && goodRevision.current > props.subject.revision) {
@@ -65,6 +65,8 @@ export function Frame(props: LiveFrameProps) {
 							attachDocument(host.current, body, styles); goodRevision.current = cached.revision;
 						}
 					}
+					if (binary.reason === "unsafe" || binary.reason === "tooLarge") props.onOfficeCheck?.(false);
+					else props.onOfficeCheck?.(goodRevision.current !== null ? true : null);
 					setFailure(binary.reason); return;
 				}
 				client = new OfficeWorkerClient(new DocxWorker());
@@ -83,11 +85,18 @@ export function Frame(props: LiveFrameProps) {
 					const snapshot = { format: "docx" as const, path, revision: frame.revision, body: body.innerHTML, styles: styles.innerHTML };
 					attachDocument(host.current, body, styles); goodRevision.current = frame.revision;
 					props.officeCache?.write(snapshot); setFailure(null);
+					props.onOfficeCheck?.(true);
 				};
 				const rendering = render();
 				renders.current = rendering.catch(() => {});
 				await rendering;
-			} catch (cause) { if (current) setFailure(cause instanceof Error ? cause.message : "unsafe"); }
+			} catch (cause) {
+				if (current) {
+					const reason = cause instanceof Error ? cause.message : "unsafe";
+					setFailure(reason);
+					props.onOfficeCheck?.(reason === "unsafe" || reason === "tooLarge" ? false : null);
+				}
+			}
 			finally { client?.dispose(); }
 		};
 		void run();

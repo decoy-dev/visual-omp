@@ -9,7 +9,7 @@ import { openInFiles } from "../panes/files-store";
 import { FileName } from "../panes/common";
 import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage } from "../panes/media";
 import { loadAdapter } from "./formats";
-import { useLivePreview, usePreviewChat, visibleSubjects } from "./store";
+import { followedSubject, isOfficeSubject, useLivePreview, usePreviewChat, visibleSubjects } from "./store";
 import { stopAndRedirect, usePreviewRedirect } from "./redirect";
 import type { LiveAdapter, LiveFrameProps, LiveSubject, OfficeFrameSnapshot } from "./types";
 
@@ -17,6 +17,17 @@ export function subjectName(subject: LiveSubject): string {
 	return subject.path?.split(/[\\/]/).at(-1) || subject.toolName || subject.format;
 }
 
+function officeCacheFor(tabId: string, subject: LiveSubject | undefined) {
+	if (!subject) return undefined;
+	const { id, path, format, revision } = subject;
+	return {
+		read: () => useLivePreview.getState().readOffice(tabId, id, path, format, revision),
+		write: (snapshot: OfficeFrameSnapshot) => {
+			if (snapshot.path === path && snapshot.format === format && snapshot.revision <= revision) useLivePreview.getState().retainOffice(tabId, id, snapshot);
+		},
+		clear: () => useLivePreview.getState().discardOffice(tabId, id, path, format),
+	};
+}
 /** Coalesce revisions while an adapter loads and between its permitted frame updates. */
 function Frame(props: LiveFrameProps) {
 	const latest = useRef(props);
@@ -29,7 +40,11 @@ function Frame(props: LiveFrameProps) {
 		if (adapter) return;
 		setFailed(false);
 		let current = true;
-		void loadAdapter(props.subject.format).then(value => { if (current) setAdapter(value); }).catch(() => { if (current) setFailed(true); });
+		void loadAdapter(props.subject.format).then(value => { if (current) setAdapter(value); }).catch(() => {
+			if (!current) return;
+			setFailed(true);
+			if (isOfficeSubject(props.subject)) props.onOfficeCheck?.(null);
+		});
 		return () => { current = false; };
 	}, [adapter, props.subject.format, props.subject.revision, attempt]);
 	useEffect(() => {
@@ -63,21 +78,14 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 	const chat = usePreviewChat(session.tabId);
 	const redirect = usePreviewRedirect(state => state[session.tabId]);
 	const subjects = visibleSubjects(chat);
-	const subject = subjects.find(item => item.id === chat.selected) ?? subjects[0];
+	const subject = followedSubject(chat);
+	const candidate = chat.selected === null ? subjects.find(item => chat.officeChecks[item.id]?.safe !== false && chat.officeChecks[item.id]?.safe !== null) : undefined;
+	const pending = candidate && candidate.id !== subject?.id && isOfficeSubject(candidate) && chat.officeChecks[candidate.id] === undefined ? candidate : undefined;
 	const [expanded, setExpanded] = useState(false);
 	// Stop and redirect from the overflow menu focuses the composer, so the closing menu must not take focus back.
 	const redirecting = useRef(false);
-	const officeCache = useMemo(() => {
-		if (!subject) return undefined;
-		const { id, path, format, revision } = subject, tabId = session.tabId;
-		return {
-			read: () => useLivePreview.getState().readOffice(tabId, id, path, format, revision),
-			write: (snapshot: OfficeFrameSnapshot) => {
-				if (snapshot.path === path && snapshot.format === format && snapshot.revision <= revision) useLivePreview.getState().retainOffice(tabId, id, snapshot);
-			},
-			clear: () => useLivePreview.getState().discardOffice(tabId, id, path, format),
-		};
-	}, [session.tabId, subject?.id, subject?.path, subject?.format, subject?.revision]);
+	const officeCache = useMemo(() => officeCacheFor(session.tabId, subject), [session.tabId, subject?.id, subject?.path, subject?.format, subject?.revision]);
+	const pendingOfficeCache = useMemo(() => officeCacheFor(session.tabId, pending), [session.tabId, pending?.id, pending?.path, pending?.format, pending?.revision]);
 	if (!enabled || !subject) return null;
 	const name = subjectName(subject);
 	const turnImages = subjects.filter(item => item.path && (item.format === "image" || item.format === "svg")).map(item => item.path!);
@@ -106,8 +114,13 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 			</button>)}
 		</div>
 		<div className="flex h-64 min-h-40 flex-col overflow-auto rounded-md bg-inset" data-live-subject={subject.id}>
-			{subject.kind === "render" && !(subject.format === "video" && subject.path) ? <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-fg-muted">{subject.intent ?? (running ? t("live.rendering") : status)}</div>
-				: <Frame key={`${subject.id}:${subject.format}`} subject={subject} projectPath={session.projectPath} related={chat.related} turnImages={turnImages} officeCache={officeCache} />}
+			{[subject, ...(pending ? [pending] : [])].map(item => <div key={`${item.id}:${item.format}`} hidden={item.id !== subject.id}
+				className="min-h-0 flex-1 flex-col overflow-auto" style={{ display: item.id === subject.id ? "flex" : "none" }}>
+				{item.kind === "render" && !(item.format === "video" && item.path) ? <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-fg-muted">{item.intent ?? (running ? t("live.rendering") : status)}</div>
+					: <Frame subject={item} projectPath={session.projectPath} related={chat.related} turnImages={turnImages}
+						officeCache={item.id === subject.id ? officeCache : pendingOfficeCache}
+						onOfficeCheck={safe => useLivePreview.getState().checkOffice(session.tabId, item, safe)} />}
+			</div>)}
 		</div>
 		{rendering && <Progress className="mt-2" aria-label={status} value={progress && progress.total !== null ? progress.percent ?? undefined : undefined} />}
 		<p className="mt-2 flex flex-wrap gap-x-2 gap-y-1 text-xs text-fg-muted">

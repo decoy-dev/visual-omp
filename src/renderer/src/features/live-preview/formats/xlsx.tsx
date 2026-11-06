@@ -117,7 +117,7 @@ export function Frame(props: LiveFrameProps) {
 	if (frame && source.current.token !== frame.grant.token) source.current = { token: frame.grant.token, path: props.subject.path };
 	useEffect(() => {
 		kept.current?.dispose(); kept.current = null; setGood(null);
-		if (error) props.officeCache?.clear();
+		if (error) { props.officeCache?.clear(); props.onOfficeCheck?.(null); }
 	}, [props.subject.path, props.subject.format, error]);
 	useEffect(() => {
 		if (!frame || error || !props.subject.path || source.current.path !== props.subject.path) return;
@@ -138,6 +138,8 @@ export function Frame(props: LiveFrameProps) {
 							setGood({ client: null, sheets: cached.sheets, revision: cached.revision, path, initial: cached.window });
 						}
 					}
+					if (binary.reason === "unsafe" || binary.reason === "tooLarge") props.onOfficeCheck?.(false);
+					else props.onOfficeCheck?.(binary.reason === "incomplete" && (good || props.officeCache?.read()) ? true : null);
 					setFailure(binary.reason); return;
 				}
 				client = new OfficeWorkerClient(new XlsxWorker());
@@ -145,7 +147,14 @@ export function Frame(props: LiveFrameProps) {
 				if (!current) return;
 				kept.current?.dispose(); kept.current = client; published = true;
 				setGood({ client, sheets: result.sheets, revision: frame.revision, path }); setFailure(null);
-			} catch (cause) { if (current) setFailure(cause instanceof Error ? cause.message : "unsafe"); }
+				props.onOfficeCheck?.(true);
+			} catch (cause) {
+				if (current) {
+					const reason = cause instanceof Error ? cause.message : "unsafe";
+					setFailure(reason);
+					props.onOfficeCheck?.(reason === "unsafe" || reason === "tooLarge" ? false : null);
+				}
+			}
 			finally { if (!published) client?.dispose(); }
 		})();
 		return () => { current = false; if (!published) client?.dispose(); };

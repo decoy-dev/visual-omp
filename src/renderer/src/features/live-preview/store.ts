@@ -8,14 +8,15 @@ interface OfficeFrameHead { path: string; format: OfficeFrameSnapshot["format"];
 export interface PreviewChat {
 	subjects: readonly LiveSubject[];
 	related: readonly string[];
-	/** Null follows the newest subject. */
+	/** Null follows the newest accepted subject, checking new Office candidates first. */
 	selected: string | null;
 	dismissed: readonly string[];
 	officeFrames: Record<string, OfficeFrameSnapshot>;
 	/** Latest successful revision, including a presentation too large to retain. */
 	officeHeads: Record<string, OfficeFrameHead>;
+	officeChecks: Record<string, { path: string | null; format: string; revision: number; safe: boolean | null }>;
 }
-export const EMPTY_CHAT: PreviewChat = { subjects: [], related: [], selected: null, dismissed: [], officeFrames: {}, officeHeads: {} };
+export const EMPTY_CHAT: PreviewChat = { subjects: [], related: [], selected: null, dismissed: [], officeFrames: {}, officeHeads: {}, officeChecks: {} };
 interface PreviewState {
 	chats: Record<string, PreviewChat>;
 	update(tabId: string, subjects: readonly LiveSubject[], related: readonly string[]): void;
@@ -25,6 +26,7 @@ interface PreviewState {
 	retainOffice(tabId: string, subjectId: string, snapshot: OfficeFrameSnapshot): void;
 	readOffice(tabId: string, subjectId: string, path: string | null, format: string, revision: number): OfficeFrameSnapshot | null;
 	discardOffice(tabId: string, subjectId: string, path: string | null, format: string): void;
+	checkOffice(tabId: string, subject: LiveSubject, safe: boolean | null): void;
 }
 
 /** Conservative UTF-16 and container accounting; retained state contains presentation data only. */
@@ -47,13 +49,17 @@ export const useLivePreview = create<PreviewState>((set, get) => ({
 				&& subject.path === snapshot.path && subject.format === snapshot.format && snapshot.revision <= subject.revision)));
 			const officeHeads = Object.fromEntries(Object.entries(before.officeHeads).filter(([id, head]) => next.some(subject => subject.id === id
 				&& subject.path === head.path && subject.format === head.format && head.revision <= subject.revision)));
-			return { chats: { ...state.chats, [tabId]: { ...before, subjects: next, related: stableRelated, officeFrames, officeHeads } } };
+			const officeChecks = Object.fromEntries(Object.entries(before.officeChecks).filter(([id, check]) => next.some(subject => subject.id === id
+				&& subject.path === check.path && subject.format === check.format && subject.revision === check.revision)));
+			return { chats: { ...state.chats, [tabId]: { ...before, subjects: next, related: stableRelated, officeFrames, officeHeads, officeChecks } } };
 		});
 	},
 	select(tabId, id) {
 		set(state => {
 			const chat = state.chats[tabId] ?? EMPTY_CHAT;
-			return { chats: { ...state.chats, [tabId]: { ...chat, selected: id === chat.subjects[0]?.id ? null : id, dismissed: chat.dismissed.filter(value => value !== id) } } };
+			const newest = chat.subjects[0];
+			const following = newest?.id === id && (!isOfficeSubject(newest) || chat.officeChecks[id]?.safe === true);
+			return { chats: { ...state.chats, [tabId]: { ...chat, selected: following ? null : id, dismissed: chat.dismissed.filter(value => value !== id) } } };
 		});
 	},
 	close(tabId) {
@@ -105,6 +111,16 @@ export const useLivePreview = create<PreviewState>((set, get) => ({
 			return { chats: { ...state.chats, [tabId]: { ...chat, officeFrames } } };
 		});
 	},
+	checkOffice(tabId, subject, safe) {
+		set(state => {
+			const chat = state.chats[tabId];
+			const current = chat?.subjects.find(item => item.id === subject.id);
+			if (!chat || !current || current.path !== subject.path || current.format !== subject.format || current.revision !== subject.revision
+				|| chat.officeChecks[subject.id]?.safe === safe) return state;
+			return { chats: { ...state.chats, [tabId]: { ...chat, officeChecks: { ...chat.officeChecks,
+				[subject.id]: { path: subject.path, format: subject.format, revision: subject.revision, safe } } } } };
+		});
+	},
 }));
 
 /** Keep tracking outputs while hidden without repainting their streaming preview. */
@@ -114,4 +130,16 @@ export function usePreviewChat(tabId: string | null): PreviewChat {
 }
 export function visibleSubjects(chat: PreviewChat): readonly LiveSubject[] {
 	return chat.subjects.filter(subject => !chat.dismissed.includes(subject.id));
+}
+
+export const isOfficeSubject = (subject: LiveSubject): boolean => ["docx", "xlsx", "pptx"].includes(subject.format);
+
+/** Unknown Office candidates are checked without displacing an already previewable output. */
+export function followedSubject(chat: PreviewChat): LiveSubject | undefined {
+	const subjects = visibleSubjects(chat);
+	const selected = subjects.find(subject => subject.id === chat.selected);
+	if (selected) return selected;
+	const candidate = subjects.find(subject => chat.officeChecks[subject.id]?.safe !== false && chat.officeChecks[subject.id]?.safe !== null);
+	if (!candidate || !isOfficeSubject(candidate) || chat.officeChecks[candidate.id]?.safe === true) return candidate ?? subjects[0];
+	return subjects.find(subject => !isOfficeSubject(subject) || chat.officeChecks[subject.id]?.safe === true) ?? candidate;
 }

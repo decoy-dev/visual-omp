@@ -22,9 +22,9 @@ import { renderAsync } from "docx-preview";
 let host: HTMLDivElement, root: Root;
 const invoke = vi.fn();
 const subject = { id: "doc", kind: "file", format: "docx", path: "/project/office.docx", revision: 1, state: "saved" } as LiveSubject;
-async function show(revision: number, officeCache?: OfficeFrameCache) {
+async function show(revision: number, officeCache?: OfficeFrameCache, onOfficeCheck?: (safe: boolean | null) => void) {
 	state.frame = { ...state.frame, revision };
-	await act(async () => root.render(createElement(Frame, { subject: { ...subject, revision }, projectPath: "/project", related: [], officeCache })));
+	await act(async () => root.render(createElement(Frame, { subject: { ...subject, revision }, projectPath: "/project", related: [], officeCache, onOfficeCheck })));
 }
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -101,4 +101,14 @@ it("restores sanitized document markup and preserves intercepted links", async (
 	expect(shadow.querySelector("img")?.getAttribute("src")).toBe("data:image/png;base64,YQ==");
 	await act(async () => shadow.querySelector("a")!.click());
 	expect(invoke).toHaveBeenCalledWith("app:openExternal", "https://example.test/retained");
+});
+
+it.each(["incomplete", "timeout"])("defers automatic following after %s without reporting an unsafe document", async reason => {
+	const check = vi.fn();
+	if (reason === "incomplete") invoke.mockResolvedValueOnce({ ok: false, reason });
+	else vi.mocked(renderAsync).mockRejectedValueOnce(new Error(reason));
+	await show(1, undefined, check);
+	expect(check).toHaveBeenLastCalledWith(null);
+	expect(check).not.toHaveBeenCalledWith(false);
+	expect(host.textContent).toContain(reason === "incomplete" ? "Waiting for omp to finish saving" : "This preview took too long.");
 });
