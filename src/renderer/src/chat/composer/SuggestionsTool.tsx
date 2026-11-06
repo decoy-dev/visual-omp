@@ -1,4 +1,4 @@
-import { TextAa } from "@phosphor-icons/react";
+import { Check, Minus, TextAa } from "@phosphor-icons/react";
 import { useEffect, useState } from "react";
 import { useVisualSnapshot } from "../../state/visualSnapshot";
 import { useTranslation } from "react-i18next";
@@ -24,7 +24,8 @@ export function SuggestionsTool({ session }: ChatSlotProps) {
 	const enabled = setting.data?.value === true;
 	const controlled = !!setting.data && setting.data.source !== "default" && setting.data.source !== "global";
 	const unavailable = setting.loading || !!setting.error || !setting.data;
-	const tip = setting.error ? t("suggestions.loadFailed", { reason: setting.error }) : `${t("suggestions.tip")} ${controlled ? t("suggestions.controlled") : t("suggestions.live")}`;
+	const state = t(unavailable ? "suggestions.unknown" : enabled ? "suggestions.on" : "suggestions.off");
+	const tip = `${t("suggestions.title")}: ${state}. ${setting.error ? t("suggestions.loadFailed", { reason: setting.error }) : `${t("suggestions.tip")} ${controlled ? t("suggestions.controlled") : t("suggestions.live")}`}`;
 	const toggle = async () => {
 		if (saving || unavailable || controlled || view.readOnly) return;
 		setSaving(true);
@@ -36,10 +37,11 @@ export function SuggestionsTool({ session }: ChatSlotProps) {
 		} finally { setSaving(false); }
 	};
 	return <Tooltip content={tip}>
-		<button type="button" role="switch" aria-label={t("suggestions.label")} aria-description={tip} aria-checked={enabled} aria-disabled={controlled || undefined} aria-busy={saving || setting.loading} disabled={view.readOnly || saving || unavailable} onClick={() => void toggle()} className={cn(rowPicker, "h-7", controlled && "opacity-45")}>
+		<button type="button" aria-label={t("suggestions.label")} aria-description={tip} aria-pressed={enabled} aria-disabled={controlled || saving || undefined} aria-busy={saving || setting.loading} disabled={view.readOnly || unavailable} onClick={() => void toggle()} className={cn(rowPicker, "relative size-7 shrink-0 justify-center aria-pressed:bg-selected aria-pressed:text-accent [&]:px-0", controlled && "opacity-45")}>
 			<TextAa className="size-4 shrink-0" aria-hidden />
-			{t("suggestions.title")}
-			<span className="text-xs text-fg-faint">{t(unavailable ? "suggestions.unknown" : enabled ? "suggestions.on" : "suggestions.off")}</span>
+			<span className="absolute -right-0.5 -bottom-0.5 flex size-3 items-center justify-center rounded-full bg-panel" aria-hidden>
+				{enabled ? <Check className="size-2.5" /> : <Minus className="size-2.5" />}
+			</span>
 		</button>
 	</Tooltip>;
 }

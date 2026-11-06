@@ -20,7 +20,6 @@
     "title": "Permission level",
     "tooltip": "How much omp may do before it asks you.",
     "aria": "Permission level and work modes: {{mode}}",
-    "autoNote": "runs without asking",
     "scopeNote": "Saved for this project, so every open chat in it follows the change.",
     "unknown": "Unknown permission mode",
     "unknownHelp": "This app does not recognize omp's permission mode ({{value}}). Your setting is unchanged.",

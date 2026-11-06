@@ -142,17 +142,16 @@ function WorkModeItems({ session, status }: { session: SessionController; status
 export interface PermissionMenuProps {
 	projectPath: string;
 	disabled?: boolean;
-	/** omp's active work mode in words, shown after the level (chats only). */
+	/** omp's active work mode in words, retained in the accessible name (chats only). */
 	workLabel?: string | null;
 	/** More menu rows after the levels: a chat's work modes. */
 	children?: ReactNode;
 }
 
 /**
- * The permission level in words (never icon-only: it says what omp may do on its own). The text wraps inside the
- * button when the row is narrow. Arrows move between rows and Enter applies one, so moving alone never writes the
- * project config (and Auto asks for confirmation first). The level is a project setting, so Home offers it before
- * a chat exists.
+ * The permission level stays visible in words; explanations belong to the tooltip and menu.
+ * Arrows move between rows and Enter applies one, so moving alone never writes the project config
+ * (and Auto asks for confirmation first). Home offers the same project setting before a chat exists.
  */
 export function PermissionMenu({ projectPath, disabled = false, workLabel = null, children }: PermissionMenuProps) {
 	const { t } = useTranslation("session");
@@ -162,21 +161,21 @@ export function PermissionMenu({ projectPath, disabled = false, workLabel = null
 	if (disabled && open) setOpen(false);
 	const Shield = mode === "yolo" || (loaded && mode === null) ? ShieldWarning : ShieldCheck;
 	const level = mode ? t(`permission.modes.${mode}.label`) : loaded ? t("permission.unknown") : t("common.loading");
+	const description = mode ? t(`permission.modes.${mode}.description`) : loaded ? t("permission.unknownHelp", { value: JSON.stringify(rawMode) }) : t("permission.tooltip");
 	return (
 		<Menu open={open} onOpenChange={setOpen}>
-			<Tooltip content={mode ? t(`permission.modes.${mode}.description`) : loaded ? t("permission.unknownHelp", { value: JSON.stringify(rawMode) }) : t("permission.tooltip")}>
+			<Tooltip content={description}>
 				<MenuTrigger asChild disabled={disabled}>
 					<button
 						type="button"
 						aria-label={t("permission.aria", { mode: workLabel ? `${level}, ${workLabel}` : level })}
+						aria-description={description}
 						data-tour="permission"
-						className={cn(rowPicker, "min-h-7 min-w-0 py-1 text-left leading-tight")}
+						className={cn(rowPicker, "h-7 shrink-0 whitespace-nowrap")}
 					>
 						{loaded ? <Shield className="size-3.5 shrink-0" aria-hidden /> : <Spinner size={12} tone="current" />}
 						<span className="min-w-0">
 							{loaded && <span>{level}</span>}
-							{mode === "yolo" && <span className="text-fg-faint"> · {t("permission.autoNote")}</span>}
-							{workLabel && <span className="text-accent"> · {workLabel}</span>}
 						</span>
 						<CaretDown className="size-3 shrink-0" aria-hidden />
 					</button>
@@ -199,7 +198,7 @@ export function PermissionMenu({ projectPath, disabled = false, workLabel = null
 	);
 }
 
-/** A chat's permission level plus the work mode omp is in; its menu changes both. */
+/** A chat's permission level, with its work modes available in the same menu. */
 export function PermissionButton({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
 	const { status } = useOmpScreen(session);
@@ -474,7 +473,7 @@ export function ModelButton({ session }: ChatSlotProps) {
 					<button
 						type="button"
 						aria-label={label}
-						className={cn(rowPicker, "h-7 min-w-0 max-w-[min(16rem,100%)] shrink-0", fallback && "text-warn")}
+						className={cn(rowPicker, "h-7 min-w-24 max-w-64 shrink @max-[40rem]/composer:max-w-36", fallback && "text-warn")}
 					>
 						{fallback && <Warning weight="fill" className="size-3.5 shrink-0" aria-hidden />}
 						<span className="truncate">{name}</span>

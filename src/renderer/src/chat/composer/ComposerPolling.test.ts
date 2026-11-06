@@ -124,15 +124,11 @@ it("mounts an idle TSP composer and shared consumers without painted screen or p
 	expect(element.querySelector('[data-plan-pending]')?.textContent).toBe("false");
 	await act(async () => { for (const listener of fake.events.get("native:changed") ?? []) listener({ hostId: "host", snapshot: { modes: { ...modes, goal: { status: "paused" } }, theme: null } }); });
 	expect(element.querySelector('[data-status="two"]')?.textContent).toContain('"goal":"paused"');
-	expect(element.querySelector('[data-tour="permission"]')?.textContent).toContain("Goal paused");
 	await act(async () => { for (const listener of fake.events.get("native:changed") ?? []) listener({ hostId: "host", snapshot: { modes: { ...modes, plan: { status: "active" }, vibe: { status: "active" }, loop: { status: "active" } }, theme: null } }); });
 	expect(element.querySelector('[data-status="one"]')?.textContent).toContain('"plan":"on"');
 	expect(element.querySelector('[data-status="one"]')?.textContent).toContain('"vibe":true');
 	expect(element.querySelector('[data-status="one"]')?.textContent).toContain('"loop":true');
-	expect(element.querySelector('[data-tour="permission"]')?.textContent).toContain("Plan mode");
 	await act(async () => { for (const listener of fake.events.get("native:changed") ?? []) listener({ hostId: "host", snapshot: { modes: { ...modes, goal: { status: "inactive" }, vibe: { status: "active" } }, theme: null } }); });
-	expect(element.querySelector('[data-tour="permission"]')?.textContent).toContain("Vibe mode");
-	expect(element.querySelector('[data-tour="permission"]')?.textContent).toContain("Ask me first");
 	expect(calls("host:screen")).toHaveLength(0);
 });
 

@@ -27,29 +27,27 @@ beforeEach(() => {
 });
 afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
 const mount = () => act(async () => root.render(createElement(TooltipProvider, null, createElement(SuggestionsTool, { session }))));
-const toggle = () => container.querySelector<HTMLButtonElement>('[role="switch"]')!;
+const toggle = () => container.querySelector<HTMLButtonElement>('button[aria-pressed]')!;
 
 it.each(["classic", "tsp"])("keeps omp's off default and saves both choices through its global settings (%s)", async transport => {
 	view = { ...view, host: { transport } } as SessionView;
 	await mount();
-	expect(toggle().getAttribute("aria-label")).toBe("Suggestions: predict my next message");
-	expect(toggle().getAttribute("aria-checked")).toBe("false");
-	expect(toggle().textContent).toBe("SuggestionsOff");
+	expect(toggle().getAttribute("aria-pressed")).toBe("false");
 	await act(async () => toggle().click());
 	expect(fake.invoke).toHaveBeenCalledWith("config:set", "composer.predictions", true, "global", "/fixture/project");
-	expect(toggle().getAttribute("aria-checked")).toBe("true");
+	expect(toggle().getAttribute("aria-pressed")).toBe("true");
 	await act(async () => toggle().click());
 	expect(fake.invoke).toHaveBeenCalledWith("config:set", "composer.predictions", false, "global", "/fixture/project");
-	expect(toggle().getAttribute("aria-checked")).toBe("false");
+	expect(toggle().getAttribute("aria-pressed")).toBe("false");
 });
 it.each([true, false])("keeps the explicit user value %s", async value => {
 	setting = { ...setting, source: "global", value, globalValue: value };
-	await mount(); expect(toggle().getAttribute("aria-checked")).toBe(String(value));
+	await mount(); expect(toggle().getAttribute("aria-pressed")).toBe(String(value));
 });
 it("explains project control without writing a config file in the project", async () => {
 	setting = { ...setting, source: "project", value: false, projectValue: false };
 	await mount();
-	expect(toggle().getAttribute("aria-checked")).toBe("false");
+	expect(toggle().getAttribute("aria-pressed")).toBe("false");
 	expect(toggle().getAttribute("aria-disabled")).toBe("true");
 	expect(toggle().getAttribute("aria-description")).toContain("project's setting");
 	await act(async () => toggle().click());
@@ -59,7 +57,7 @@ it("refreshes from omp when Settings changes and explains the extra model reques
 	await mount();
 	setting = { ...setting, source: "global", value: true };
 	await act(async () => changed?.({ scope: "global", cwd: null }));
-	expect(toggle().getAttribute("aria-checked")).toBe("true");
+	expect(toggle().getAttribute("aria-pressed")).toBe("true");
 	expect(toggle().getAttribute("aria-description")).toContain("extra model request after replies; this counts toward usage");
 	expect(toggle().getAttribute("aria-description")).not.toContain("smol");
 });
@@ -67,6 +65,20 @@ it("keeps the last value if saving fails", async () => {
 	await mount();
 	fake.invoke.mockRejectedValueOnce(new Error("Permission denied"));
 	await act(async () => toggle().click());
-	expect(toggle().getAttribute("aria-checked")).toBe("false");
+	expect(toggle().getAttribute("aria-pressed")).toBe("false");
+});
+it("keeps keyboard focus and the confirmed state while saving", async () => {
+	await mount();
+	const pending = Promise.withResolvers<{ setting: SettingInfo; shadowedBy: null }>();
+	fake.invoke.mockReturnValueOnce(pending.promise);
+	toggle().focus();
+	await act(async () => toggle().click());
+	expect(document.activeElement).toBe(toggle());
+	expect(toggle().getAttribute("aria-busy")).toBe("true");
+	expect(toggle().getAttribute("aria-disabled")).toBe("true");
+	expect(toggle().getAttribute("aria-pressed")).toBe("false");
+	await act(async () => pending.resolve({ setting: { ...setting, value: true }, shadowedBy: null }));
+	expect(document.activeElement).toBe(toggle());
+	expect(toggle().getAttribute("aria-pressed")).toBe("true");
 });
 it("disables read-only chats", async () => { view = { ...view, readOnly: true }; await mount(); expect(toggle().disabled).toBe(true); });

@@ -49,6 +49,49 @@ describe("chat account picker", () => {
 		expect(options().map(row => row.getAttribute("aria-checked"))).toEqual(["true", "false"]);
 		expect(document.body.textContent).toContain("omp can still switch accounts at usage limits");
 	});
+	it("shortens the email while retaining the complete account identity for assistive technology", async () => {
+		const label = "averylongaccountname@example.com (Work)";
+		fake.listing = { ...listing, accounts: [{ ...listing.accounts[0]!, label }, listing.accounts[1]!] };
+		await render();
+		expect(trigger().textContent).toContain("averylon…tname");
+		expect(trigger().textContent).not.toContain("@example.com");
+		expect(trigger().getAttribute("aria-label")).toContain(label);
+		await open();
+		expect(options()[0]?.textContent).toBe(label);
+	});
+	it("retains a short non-email account label", async () => {
+		fake.listing = { ...listing, accounts: [{ ...listing.accounts[0]!, label: "Personal" }, listing.accounts[1]!] };
+		await render();
+		expect(trigger().textContent).toBe("Personal");
+	});
+	it.each([
+		["same@example.com (Personal)", "same@example.com (Work)"],
+		["same@personal.example.com", "same@work.example.com"],
+		["averylongPERSONALaccountname@example.com", "averylongWORKaccountname@example.com"],
+	])("keeps colliding compact accounts visibly distinct: %s", async (first, second) => {
+		const visible: string[] = [];
+		for (const active of [7, 12]) {
+			fake.listing = { ...listing, accounts: [
+				{ credentialId: 7, label: first, active: active === 7 },
+				{ credentialId: 12, label: second, active: active === 12 },
+			] };
+			await render();
+			visible.push(trigger().textContent!);
+		}
+		expect(visible).toEqual([first, second]);
+		expect(new Set(visible).size).toBe(2);
+	});
+	it("distinguishes identical labels with omp's stored credential identity", async () => {
+		const visible: string[] = [];
+		for (const active of [7, 12]) {
+			fake.listing = { ...listing, accounts: listing.accounts.map(account => ({ ...account, label: "same@example.com", active: account.credentialId === active })) };
+			await render();
+			visible.push(trigger().textContent!);
+		}
+		expect(visible).toEqual(["same@example.com · #7", "same@example.com · #12"]);
+		await open();
+		expect(options().map(option => option.textContent)).toEqual(["same@example.com · #7", "same@example.com · #12"]);
+	});
 	it("keeps an unknown account unchecked", async () => {
 		fake.listing = { ...listing, accounts: listing.accounts.map(account => ({ ...account, active: false })) };
 		await render(); expect(trigger().textContent).toContain("Choose account"); await open();

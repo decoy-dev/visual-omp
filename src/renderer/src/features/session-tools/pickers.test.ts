@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../../i18n";
 import type { SessionController } from "../../state/session";
 import { TooltipProvider } from "../../ui/Tooltip";
-import { ModelButton, ModelList, type ModelListProps } from "./pickers";
+import { ModelButton, ModelList, PermissionMenu, type ModelListProps } from "./pickers";
 
 const fake = vi.hoisted(() => ({
 	models: [] as ModelInfo[] | null, error: null as string | null,
@@ -15,7 +15,7 @@ const fake = vi.hoisted(() => ({
 	readOnly: false, switch: vi.fn(), toast: vi.fn(), command: vi.fn(),
 }));
 vi.mock("./model", () => ({ useChatModels: () => ({ models: fake.models, error: fake.error }), switchModel: (...args: unknown[]) => fake.switch(...args) }));
-vi.mock("./approval", () => ({}));
+vi.mock("./approval", () => ({ useApprovalMode: () => ({ mode: "yolo", rawMode: "yolo", supportedModes: ["always-ask", "write", "yolo"], loaded: true, error: null }) }));
 vi.mock("./status", () => ({ useSessionView: () => ({ readOnly: fake.readOnly, guest: { state: { model: fake.model }, stream: fake.stream } }), useOmpScreen: () => ({ status: null }) }));
 vi.mock("../../chat/branch", () => ({ useDisplayedEntries: () => fake.entries }));
 vi.mock("../../registry/commands", () => ({ getCommand: () => undefined }));
@@ -24,6 +24,7 @@ vi.mock("../../state/app", () => ({ useApp: { getState: () => ({}) } }));
 vi.mock("@/ui", async () => ({
 	...await import("../../ui/Input"), ...await import("../../ui/Popover"), ...await import("../../ui/Tooltip"),
 	...await import("../../ui/Button"), ...await import("../../ui/Spinner"), ...await import("../../ui/cn"),
+	...await import("../../ui/Menu"),
 	toast: (...args: unknown[]) => fake.toast(...args),
 }));
 
@@ -50,6 +51,19 @@ beforeEach(() => {
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); });
+
+it("keeps the permission mode compact with its explanation available from the keyboard", async () => {
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(PermissionMenu, { projectPath: "/project" }))));
+	const button = element.querySelector<HTMLButtonElement>("button")!;
+	expect(button.textContent).toBe("Auto");
+	expect(button.getAttribute("aria-label")).toContain("Auto");
+	expect(button.getAttribute("aria-description")).toBeTruthy();
+	await act(async () => button.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+	const selected = document.querySelector<HTMLElement>('[role="menuitemradio"][aria-checked="true"]')!;
+	expect(selected.textContent).toContain(button.getAttribute("aria-description"));
+	await act(async () => selected.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true })));
+	expect(document.querySelector('[role="menu"]')).toBeNull();
+});
 
 async function renderList() {
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(ModelList, props))));

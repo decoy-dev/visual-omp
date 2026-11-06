@@ -5,8 +5,8 @@
  * action buttons on the right (stop while omp works; send, or "Send now" plus "Queue message" while omp
  * works). The settings for the chat sit in a quiet row under the card: the folder chip and the
  * permission button on the left, the model and thinking buttons and the context ring on the right
- * (every `composerTools` slot; order below 50 goes left). The toolbar and the row wrap when the column
- * is narrow; nothing measures them.
+ * (every `composerTools` slot; order below 50 goes left). The action toolbar may wrap; the settings
+ * stay on one line, with horizontal scrolling when compact labels cannot fit.
  *
  * Keys: Enter sends, or adds the message (images included) to the end of the queue while omp is busy
  * (`SessionController.busy`); Shift+Enter adds a line, ⌘/Ctrl+Enter sends now (steers the running
@@ -912,14 +912,16 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 				</div>
 			</div>
 			{tspReason && view.host?.tspAvailability?.reasonCode !== "btw" && <div role="status" className="px-1 pt-2 text-sm text-fg-muted">{tspReason}</div>}
-			{/* The chat's settings: a quiet row under the card that wraps rather than crowd a narrow column. */}
-			<div className="flex flex-wrap items-center gap-x-2 gap-y-1 px-1 pt-2">
-				<div className="flex min-w-0 flex-wrap items-center gap-1">
+			{/* Padding leaves the offset focus outlines inside the horizontal scroll viewport. */}
+			<div className="flex items-center gap-toolbar overflow-x-auto scroll-px-1 whitespace-nowrap px-1 pt-2 pb-1" data-composer-settings onFocusCapture={event => {
+				if (event.currentTarget.contains(event.target)) event.target.scrollIntoView({ block: "nearest", inline: "nearest" });
+			}}>
+				<div className="flex shrink-0 items-center gap-1">
 					{leadTools.map(slot => (
 						<slot.component key={slot.id} session={session} />
 					))}
 				</div>
-				<div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
+				<div className="ml-auto flex min-w-max flex-1 items-center justify-end gap-1">
 					{trailTools.map(slot => (
 						<slot.component key={slot.id} session={session} />
 					))}
