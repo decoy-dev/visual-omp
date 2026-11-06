@@ -7,6 +7,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 #### Fixed
 
 - Tool calls with missing results no longer show a success check. They now show "Result unavailable."
+- File mentions now quote paths with spaces, so omp reads the full path and the composer and transcript keep it in one chip.
 
 ## [0.7.10] - 2026-11-06
 
