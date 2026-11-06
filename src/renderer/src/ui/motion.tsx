@@ -425,13 +425,20 @@ export interface ScrollFollow {
 	shift(delta: number): void;
 }
 
+const SCROLL_FOLLOW_RELEASE = "vomp:scroll-follow-release";
+
+/** Release ancestor scroll followers before app navigation calls scrollIntoView or changes focus. */
+export function releaseScrollFollow(target: Element): void {
+	target.dispatchEvent(new Event(SCROLL_FOLLOW_RELEASE, { bubbles: true }));
+}
+
 /**
  * Keeps a scroller pinned to its bottom while content grows (DESIGN §1.12). One rAF loop reads the geometry once and
  * writes `scrollTop` once per frame, easing toward the bottom (30% of the gap per frame, at most 24px) and snapping
- * when the gap is large or motion is reduced. A move up away from the bottom (the reader's wheel, keys, scrollbar or
- * touch) unpins at once; the follow's own writes, layout moves the caller reports (`shift`) and moves down never unpin
- * (`ScrollLedger` and `pinnedAfterScroll` in scrollFollow.ts). Nothing follows until the reader returns within
- * `threshold` of the bottom or jumps there.
+ * when the gap is large or motion is reduced. Upward wheel, keyboard and touch input stop the follow immediately.
+ * Content-anchor movement and viewport clamping account for layout-driven scrolls; unexplained upward movement
+ * (including browser find and focus navigation) releases the pin. Scrollbar gestures suspend following until release.
+ * Following resumes within `threshold` of the bottom or on an explicit jump.
  */
 export function useScrollFollow(
 	ref: RefObject<HTMLElement | null>,
@@ -446,6 +453,42 @@ export function useScrollFollow(
 		let lastFrame = 0;
 		/** Where the follow left the view, to tell its own writes and layout from the reader's scrolling. */
 		const ledger = new ScrollLedger();
+		let draggingScrollbar = false;
+		let touchY: number | null = null;
+		let geometry: { anchor: Element | null; offset: number; height: number; viewport: number } | null = null;
+		const anchorOffset = (anchor: Element, el: HTMLElement) => anchor.getBoundingClientRect().top - el.getBoundingClientRect().top + el.scrollTop;
+		const remember = (el: HTMLElement) => {
+			const bounds = el.getBoundingClientRect();
+			const hit = el.ownerDocument.elementFromPoint(bounds.left + el.clientLeft + el.clientWidth / 2, bounds.top + 1);
+			const grown = content?.current;
+			let anchor = hit && hit !== grown && grown?.contains(hit) ? hit : null;
+			if (!anchor && grown) {
+				for (const child of grown.children) {
+					if (child.getBoundingClientRect().bottom <= bounds.top) continue;
+					anchor = child;
+					break;
+				}
+			}
+			geometry = { anchor, offset: anchor ? anchorOffset(anchor, el) : 0, height: el.scrollHeight, viewport: el.clientHeight };
+		};
+		const reconcile = (el: HTMLElement) => {
+			const top = el.scrollTop;
+			const distance = el.scrollHeight - top - el.clientHeight;
+			// A scrollbar gesture owns its movement, including the final read before mouseup clears the gesture.
+			if (geometry && !draggingScrollbar) {
+				const delta = geometry.anchor?.isConnected ? anchorOffset(geometry.anchor, el) - geometry.offset : 0;
+				let expected = Math.max(0, Math.min(ledger.position + delta, el.scrollHeight - el.clientHeight));
+				if (el.clientHeight > geometry.viewport) expected = Math.min(expected, Math.max(0, geometry.height - el.clientHeight));
+				const layout = expected - ledger.position;
+				const moved = top - ledger.position;
+				// Attribute only the observed movement explained by measured layout. Any remainder keeps its direction.
+				if (layout < 0 && moved < 0) ledger.shift(Math.max(layout, moved));
+				else if (layout > 0 && moved > 0) ledger.shift(Math.min(layout, moved));
+			}
+			const move = ledger.read(top, distance);
+			if (move !== "known") pinnedRef.current = pinnedAfterScroll(move, pinnedRef.current, distance, threshold);
+			remember(el);
+		};
 		const stop = () => {
 			if (frame) cancelAnimationFrame(frame);
 			frame = 0;
@@ -454,11 +497,14 @@ export function useScrollFollow(
 		const write = (el: HTMLElement, top: number) => {
 			el.scrollTop = top;
 			ledger.wrote(el.scrollTop);
+			remember(el);
 		};
 		const run = (now: number) => {
 			frame = 0;
 			const el = ref.current;
-			if (!el || !pinnedRef.current) return stop();
+			if (!el || !pinnedRef.current || draggingScrollbar) return stop();
+			reconcile(el);
+			if (!pinnedRef.current) return stop();
 			const top = el.scrollTop;
 			const target = el.scrollHeight - el.clientHeight;
 			const gap = target - top;
@@ -473,13 +519,22 @@ export function useScrollFollow(
 			frame = requestAnimationFrame(run);
 		};
 		const follow = () => {
-			if (!frame && pinnedRef.current) frame = requestAnimationFrame(run);
+			if (!frame && pinnedRef.current && !draggingScrollbar) frame = requestAnimationFrame(run);
+		};
+		const unpin = () => {
+			if (!ref.current || ref.current.scrollTop <= 0) return;
+			pinnedRef.current = false;
+			stop();
+		};
+		const release = () => {
+			pinnedRef.current = false;
+			stop();
 		};
 		return {
 			follow,
 			snap() {
 				const el = ref.current;
-				if (!el || !pinnedRef.current) return;
+				if (!el || !pinnedRef.current || draggingScrollbar) return;
 				stop();
 				write(el, el.scrollHeight - el.clientHeight);
 			},
@@ -494,23 +549,59 @@ export function useScrollFollow(
 			},
 			shift(delta: number) {
 				ledger.shift(delta);
+				if (ref.current) remember(ref.current);
 			},
 			onScroll() {
 				const el = ref.current;
 				if (!el) return;
-				const top = el.scrollTop;
-				const distance = el.scrollHeight - top - el.clientHeight;
-				const move = ledger.read(top, distance);
-				if (move === "known") return;
-				pinnedRef.current = pinnedAfterScroll(move, pinnedRef.current, distance, threshold);
+				reconcile(el);
 				if (pinnedRef.current) follow();
 				else stop();
 			},
+			release,
+			resize() {
+				if (ref.current && !draggingScrollbar) reconcile(ref.current);
+				follow();
+			},
 			/** Wheel up states intent before any scroll event; unpin immediately so no frame pulls the view back. */
 			wheel(event: WheelEvent) {
-				if (event.deltaY >= 0) return;
-				pinnedRef.current = false;
-				stop();
+				if (!event.defaultPrevented && !event.ctrlKey && event.deltaY < 0) unpin();
+			},
+			keydown(event: KeyboardEvent) {
+				if (event.defaultPrevented || event.altKey || event.metaKey || (event.ctrlKey && event.key !== "Home")) return;
+				const target = event.target instanceof Element ? event.target : null;
+				if (target?.closest('input, textarea, select, [contenteditable]:not([contenteditable="false"]), [role="slider"], [role="spinbutton"], [role="listbox"], [role="menu"]')) return;
+				const spaceUp = event.key === " " && event.shiftKey && !target?.closest('button, a, [role="button"]');
+				if (event.key === "ArrowUp" || event.key === "PageUp" || event.key === "Home" || spaceUp) unpin();
+			},
+			touchstart(event: TouchEvent) {
+				touchY = event.touches.length === 1 ? event.touches[0].clientY : null;
+			},
+			touchmove(event: TouchEvent) {
+				const next = event.touches.length === 1 ? event.touches[0].clientY : null;
+				if (!event.defaultPrevented && touchY !== null && next !== null && next > touchY) unpin();
+				touchY = next;
+			},
+			touchend() {
+				touchY = null;
+			},
+			pointerdown(event: MouseEvent) {
+				const el = ref.current;
+				if (!el || event.button !== 0) return;
+				const bounds = el.getBoundingClientRect();
+				const left = bounds.left + el.clientLeft;
+				draggingScrollbar = event.clientX >= left + el.clientWidth || event.clientX < left;
+				if (draggingScrollbar) {
+					ledger.wrote(el.scrollTop);
+					remember(el);
+					stop();
+				}
+			},
+			pointerup() {
+				if (!draggingScrollbar) return;
+				if (ref.current) reconcile(ref.current);
+				draggingScrollbar = false;
+				follow();
 			},
 			stop,
 		};
@@ -521,12 +612,39 @@ export function useScrollFollow(
 		const grown = content?.current;
 		if (!el) return;
 		el.addEventListener("wheel", api.wheel, { passive: true });
+		el.addEventListener(SCROLL_FOLLOW_RELEASE, api.release);
+		el.addEventListener("keydown", api.keydown);
+		el.addEventListener("touchstart", api.touchstart, { passive: true });
+		el.addEventListener("touchmove", api.touchmove, { passive: true });
+		el.addEventListener("touchend", api.touchend);
+		el.addEventListener("touchcancel", api.touchend);
+		el.addEventListener("pointerdown", api.pointerdown);
+		// Native scrollbar controls can deliver mouse events without pointer events.
+		el.addEventListener("mousedown", api.pointerdown);
+		const document = el.ownerDocument;
+		const window = document.defaultView;
+		document.addEventListener("pointerup", api.pointerup);
+		document.addEventListener("pointercancel", api.pointerup);
+		document.addEventListener("mouseup", api.pointerup);
+		window?.addEventListener("blur", api.pointerup);
 		// Content growth, and the scroller itself shrinking (a taller composer, a window resize), both open a gap below.
-		const observer = new ResizeObserver(() => api.follow());
+		const observer = new ResizeObserver(() => api.resize());
 		observer.observe(el);
 		if (grown) observer.observe(grown);
 		return () => {
 			el.removeEventListener("wheel", api.wheel);
+			el.removeEventListener(SCROLL_FOLLOW_RELEASE, api.release);
+			el.removeEventListener("keydown", api.keydown);
+			el.removeEventListener("touchstart", api.touchstart);
+			el.removeEventListener("touchmove", api.touchmove);
+			el.removeEventListener("touchend", api.touchend);
+			el.removeEventListener("touchcancel", api.touchend);
+			el.removeEventListener("pointerdown", api.pointerdown);
+			el.removeEventListener("mousedown", api.pointerdown);
+			document.removeEventListener("pointerup", api.pointerup);
+			document.removeEventListener("pointercancel", api.pointerup);
+			document.removeEventListener("mouseup", api.pointerup);
+			window?.removeEventListener("blur", api.pointerup);
 			observer.disconnect();
 			api.stop();
 		};

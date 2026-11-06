@@ -12,7 +12,7 @@ import { type DragEvent, type KeyboardEvent, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { isResumeDeclined } from "../../registry/guards";
 import type { QueuedMessage, SessionController } from "../../state/session";
-import { Button, Chip, cn, duration, ease, Expand, IconButton, spring, toast, useMotionReduced } from "../../ui";
+import { Button, Chip, cn, duration, ease, Expand, IconButton, releaseScrollFollow, spring, toast, useMotionReduced } from "../../ui";
 
 const VISIBLE_ROWS = 3;
 
@@ -33,6 +33,7 @@ function revealQuestion(reqId: number, reduced: boolean): void {
 		document.querySelector<HTMLElement>(`[data-question-card="${reqId}"]`) ??
 		document.querySelector<HTMLElement>("[data-question-card]");
 	if (!card) return;
+	releaseScrollFollow(card);
 	card.scrollIntoView({ block: "center", behavior: reduced ? "auto" : "smooth" });
 	card.querySelector<HTMLElement>("button, [tabindex='0'], textarea, input")?.focus({ preventScroll: true });
 }

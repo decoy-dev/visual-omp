@@ -17,6 +17,10 @@ export class ScrollLedger {
 	/** Where the last scroll event or write left the view, to tell a move up from a move down. */
 	#seen = 0;
 
+	get position(): number {
+		return this.#seen;
+	}
+
 	/** The follow set `scrollTop` to `top`. */
 	wrote(top: number): void {
 		this.#written = top;
