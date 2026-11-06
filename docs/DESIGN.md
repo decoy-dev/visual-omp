@@ -887,9 +887,11 @@ The Models & roles section (`features/manage/roles/ModelsSection.tsx`) describes
 
 The Helpers section (`features/manage/agents/HelpersSection.tsx`) lists reusable helper definitions, with the description "Reusable specialists omp can hand work to." The section holds helper definitions only; running helpers show in the chat (pinned at its bottom while they run, §3.5) and its Tasks pane (§3.7).
 
+Helper identities use regular-weight 16px Phosphor icons in neutral 32px circles (24px in pinned rows). The shared `HelperIdentity.tsx` table maps omp's agent definition names to icons; custom and unknown types use `Robot`. Running identities use `--accent` on `--accent-muted` and a 14px corner badge for the current tool category: file reading or search, writing, commands, web, a question, waiting on helpers, or thinking between tools. Finished identities retain their type icon and replace activity with a success check, failure cross or stopped cross. Name and textual status remain outside the decorative identity. Transcript cards, Tasks, pinned helpers and the conversation header share this treatment.
+
 - **Header actions** include [Reload helpers], [Create helper with omp] and primary [New helper].
 - **Toolbar**: the toolbar offers search and a "Show" switch between All, Built-in, All projects and This project.
-- **Rows** show a 32px letter tile on `--bg-inset` in mono, the name, scope and "Customized" chips, the description, a model chip and an on/off switch. Each row's menu offers Edit helper or Customize helper, Duplicate helper, Run helper now and Delete helper.
+- **Rows** show a 32px neutral type-icon tile on `--bg-inset`, the name, scope and "Customized" chips, the description, a model chip and an on/off switch. Each row's menu offers Edit helper or Customize helper, Duplicate helper, Run helper now and Delete helper.
 - **Broken files**: a broken definition file shows a warn tile, "Can't be used" and [Fix file].
 - **Editor**: Edit and New open a 400px right sheet (`AgentEditor.tsx`) that uses the leave guard.
 - **Tool access**: the editor labels the default as "Use omp's default tools". Turning it off selects a built-in allowlist, including an empty list. Supporting tools and extension tools remain subject to omp's behavior, so the editor does not promise that the list controls every capability. The tools fieldset has a wrapper to preserve the form's standard spacing before the structured-results switch.

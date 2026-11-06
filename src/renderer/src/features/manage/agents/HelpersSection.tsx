@@ -33,6 +33,7 @@ import {
 import { listRowMotion } from "../listMotion";
 import { ipcErrorMessage, useResource } from "../shared";
 import { AgentEditor, type EditorTarget } from "./AgentEditor";
+import { HelperTypeIcon } from "../../panes/HelperIdentity";
 import { copyName, createWithAiPrompt, duplicateAgentDraft } from "./agentsModel";
 import { CreateWithAiDialog } from "./CreateWithAiDialog";
 
@@ -280,8 +281,8 @@ export function HelpersSection({ projectPath: cwd, props }: SettingsSectionProps
 /** Project scope gets the accent, as in the skills and plugins lists; bundled and user read from the label. */
 const SCOPE_TONE: Record<AgentScope, "neutral" | "accent"> = { bundled: "neutral", user: "neutral", project: "accent" };
 
-/** Letter tile standing in for an avatar (same treatment as the skills and plugins lists). */
-const letterTile = "inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-inset font-mono text-sm font-semibold";
+/** Neutral type tile shared with the helper's chat identity. */
+const typeTile = "inline-flex size-8 shrink-0 items-center justify-center rounded-md border border-border bg-inset text-fg-muted";
 
 /** Columns shared by helper and broken-file rows: tile, text, model, on/off, actions. */
 const rowGrid = "grid grid-cols-[2rem_minmax(0,1fr)_auto_2.75rem_2rem] items-center gap-x-3 px-2 py-3";
@@ -309,8 +310,8 @@ function AgentRow({
 	const dim = cn("transition-opacity duration-(--dur)", !agent.enabled && "opacity-50");
 	return (
 		<motion.li ref={ref} {...listRowMotion} className={cn(rowGrid, "bg-bg")}>
-			<span aria-hidden className={cn(letterTile, "uppercase text-fg-muted", dim)}>
-				{agent.name.slice(0, 1)}
+			<span aria-hidden className={cn(typeTile, dim)}>
+				<HelperTypeIcon agentType={agent.name} />
 			</span>
 			<div className={cn("min-w-0", dim)}>
 				<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
@@ -369,7 +370,7 @@ function ErrorRow({ error, onFix, ref }: { error: AgentFileError; onFix(): void;
 	const { t } = useDeferredTranslation("settings");
 	return (
 		<motion.li ref={ref} {...listRowMotion} className="flex items-center gap-3 bg-bg px-2 py-3">
-			<span aria-hidden className={cn(letterTile, "bg-warn-bg text-warn")}>
+			<span aria-hidden className={cn(typeTile, "bg-warn-bg text-warn")}>
 				<Warning className="size-4" />
 			</span>
 			<div className="min-w-0 flex-1">

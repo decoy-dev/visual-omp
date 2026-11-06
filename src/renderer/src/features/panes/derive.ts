@@ -1131,6 +1131,10 @@ export interface Helper {
 	id: string;
 	name: string;
 	status: HelperStatus;
+	/** omp's agent definition name, independent of the spawned helper's display name. */
+	agentType?: string;
+	/** The tool running now; absent between calls, when the helper is thinking. */
+	currentTool?: string;
 	/** What it is doing now, or what it was asked to do. */
 	activity: string;
 	/** The helper's self-estimated completion. */
@@ -1348,6 +1352,8 @@ export function helpersOf(guest: HelperSources | null | undefined, ompLive: bool
 			id: agent.id,
 			name: taskIdLabel(agent.id),
 			status: statusOf(agent.id),
+			agentType: live?.agent ?? guest.lifecycle.get(agent.id)?.agent,
+			currentTool: live?.currentTool,
 			activity: activityOf(live),
 			...progressFields(live, receivedAt),
 			hasTranscript: agent.hasSessionFile,
@@ -1361,6 +1367,8 @@ export function helpersOf(guest: HelperSources | null | undefined, ompLive: bool
 			id,
 			name: taskIdLabel(id),
 			status: statusOf(id),
+			agentType: live.agent,
+			currentTool: live.currentTool,
 			activity: activityOf(live),
 			...progressFields(live, receivedAt),
 			hasTranscript: false,
@@ -1371,6 +1379,7 @@ export function helpersOf(guest: HelperSources | null | undefined, ompLive: bool
 	for (const [id, event] of guest.lifecycle) {
 		const existing = helpers.get(id);
 		if (existing) {
+			existing.agentType ??= event.agent;
 			if (!existing.activity && event.description) existing.activity = event.description;
 			continue;
 		}
@@ -1378,6 +1387,7 @@ export function helpersOf(guest: HelperSources | null | undefined, ompLive: bool
 			id,
 			name: taskIdLabel(id),
 			status: statusOf(id),
+			agentType: event.agent,
 			activity: event.description ?? "",
 			...progressFields(undefined, null),
 			hasTranscript: Boolean(event.sessionFile),

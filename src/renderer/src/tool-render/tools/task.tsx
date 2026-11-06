@@ -11,8 +11,9 @@ import type { FriendlySummary, ToolStatus } from "../../chat/friendly";
 import { fmtDuration } from "../../collab/lib/format";
 import { useNow } from "../../shell/hooks";
 import { activityOf, type Helper, type HelperStatus, progressStatus, taskIdLabel, taskResultStatus } from "../../features/panes/derive";
+import { HelperIdentity } from "../../features/panes/HelperIdentity";
 import { completionPercentOf } from "../../features/panes/jobWidgets";
-import { cn, Definition, IconButton, Meter, Progress, StatusBadge, StatusDot } from "../../ui";
+import { cn, Definition, IconButton, Meter, Progress, StatusBadge } from "../../ui";
 import { AgentLink, Badge, Note, Output, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderHost, ToolRenderProps } from "../types";
 import { detailsRecord, isRecord, normalizeWs, num, str, truncate } from "../util";
@@ -25,6 +26,7 @@ interface TaskItemView {
 	description: string | null;
 	assignment: string | null;
 	isolated: boolean;
+	agentType: string | null;
 }
 
 /** Reads both arg shapes: current omp (`name`, `task`) and the older one (`id`, `description`, `assignment`). */
@@ -34,6 +36,7 @@ function taskItem(record: Record<string, unknown>): TaskItemView {
 		description: str(record.description),
 		assignment: str(record.task) ?? str(record.assignment),
 		isolated: record.isolated === true,
+		agentType: str(record.agent),
 	};
 }
 
@@ -55,12 +58,14 @@ function positive(value: number | null): number | null {
 }
 
 /** A helper as one `details.progress` or `details.results` record describes it; unknown numbers stay null. */
-function runOf(record: Record<string, unknown>, status: HelperStatus, activity: string): Helper {
+function runOf(record: Record<string, unknown>, status: HelperStatus, activity: string, agentType?: string): Helper {
 	const id = str(record.id) ?? str(record.agent) ?? "agent";
 	return {
 		id,
 		name: taskIdLabel(id),
 		status,
+		agentType: str(record.agent) ?? agentType,
+		currentTool: str(record.currentTool) ?? undefined,
 		activity,
 		completionPercent: completionPercentOf(record.completionPercent),
 		tokens: num(record.tokens),
@@ -93,17 +98,20 @@ function recordActivity(record: Record<string, unknown>): string {
  * streams, else the batch it asked for while the call is still running.
  */
 export function taskRuns(args: Record<string, unknown>, details: Record<string, unknown> | null, running: boolean): Helper[] {
+	const tasks = taskItems(args);
+	const typeOf = (record: Record<string, unknown>): string | undefined =>
+		tasks.find(task => task.id === str(record.id))?.agentType ?? str(args.agent) ?? "task";
 	const results = details && Array.isArray(details.results) ? details.results.filter(isRecord) : [];
 	if (results.length > 0) {
 		return [...results]
 			.sort((a, b) => (num(a.durationMs) ?? 0) - (num(b.durationMs) ?? 0) || (num(a.index) ?? 0) - (num(b.index) ?? 0))
-			.map(res => runOf(res, taskResultStatus(res), recordActivity(res)));
+			.map(res => runOf(res, taskResultStatus(res), recordActivity(res), typeOf(res)));
 	}
 	const progress = details && Array.isArray(details.progress) ? details.progress.filter(isRecord) : [];
-	if (progress.length > 0) return progress.map(p => runOf(p, progressStatus(p.status), recordActivity(p)));
+	if (progress.length > 0) return progress.map(p => runOf(p, progressStatus(p.status), recordActivity(p), typeOf(p)));
 	if (!running) return [];
 	return taskItems(args).map((task, index) =>
-		runOf({ id: task.id ?? `#${index + 1}` }, "running", activityOf({ description: task.description, task: task.assignment })),
+		runOf({ id: task.id ?? `#${index + 1}` }, "running", activityOf({ description: task.description, task: task.assignment }), task.agentType ?? str(args.agent) ?? "task"),
 	);
 }
 
@@ -125,7 +133,6 @@ export function taskRowContextEqual(args: Record<string, unknown>, details: Reco
 }
 
 const BADGE_TONE: Record<HelperStatus, "ok" | "err" | "info" | "neutral"> = { running: "info", done: "ok", failed: "err", stopped: "neutral" };
-const DOT: Record<HelperStatus, "agent" | "idle" | "ok" | "err"> = { running: "agent", done: "ok", failed: "err", stopped: "idle" };
 
 /**
  * A working helper's run time, counted on each second from omp's last report: omp measures the time only when it
@@ -137,7 +144,7 @@ export function RunningTime({ durationMs, since }: { durationMs: number; since: 
 }
 
 /**
- * One helper as a card: letter avatar with a status dot, name and status badge, what it is doing now (or was asked to
+ * One helper as a card: type icon with an activity badge, name and status badge, what it is doing now (or was asked to
  * do), then the numbers omp reported (tool calls, tokens, run time, model) and a context meter when the window is
  * known. `actions` sit at the right of the name row.
  */
@@ -146,11 +153,8 @@ export function SubagentRun({ run, actions, className }: { run: Helper; actions?
 	const working = run.status === "running";
 	const context = run.contextTokens !== null && run.contextWindow !== null ? Math.min(1, run.contextTokens / run.contextWindow) : null;
 	return (
-		<div className={cn("flex items-start gap-3 rounded-lg border border-border bg-panel px-card py-3", className)}>
-			<span className="relative mt-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-full bg-inset text-xs font-semibold text-fg-muted" aria-hidden>
-				{run.name.slice(0, 1).toUpperCase()}
-				<StatusDot status={DOT[run.status]} ringed className="absolute -right-0.5 -bottom-0.5" />
-			</span>
+		<div role="group" aria-label={`${run.name}, ${t(`tasks.helperStatus.${run.status}`)}`} className={cn("flex items-start gap-3 rounded-lg border border-border bg-panel px-card py-3", className)}>
+			<HelperIdentity helper={run} className="mt-0.5" />
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
 				<div className="flex min-w-0 items-center gap-2">
 					<p className="min-w-0 truncate text-md font-medium text-fg" title={run.name}>

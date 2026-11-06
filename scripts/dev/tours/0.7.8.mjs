@@ -27,7 +27,7 @@ export default {
     },
     {
       id: "helper", title: "06 Helper conversation",
-      prompts: ["fixture helper\nThis chat contains a fixture-backed helper. Saved helper cards may have no open action. Send fixture helper again, then open TourHelper from Tasks or its live helper card. On the first helper open after a fresh launch, check that the loading state resolves and the conversation appears without reopening it. Check Back and Esc, draft and scroll retention, and a message to the idle helper. This uses the same local server without model credits."],
+      prompts: ["fixture helper\nThis chat contains a fixture-backed helper. Saved helper cards may have no open action. Send fixture helper again, then open TourHelper from Tasks or its live helper card. Check that its type icon matches across the card, Tasks, pinned row and conversation header in light and dark themes. While it runs, its corner badge shows its current activity; after completion, the badge becomes a check and Done remains visible. On the first helper open after a fresh launch, check that the loading state resolves and the conversation appears without reopening it. Check Back and Esc, draft and scroll retention, and a message to the idle helper. This uses the same local server without model credits."],
       helper: true,
     },
     {

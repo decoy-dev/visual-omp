@@ -13,6 +13,7 @@ import { closeHelper } from "./helperFocus";
 import { helperConversation } from "./helperConversation";
 import { helperTranscript, type HelperTranscriptItem } from "./helperTranscript";
 import { useDeferredTranslation } from "../../i18n";
+import { HelperIdentity } from "./HelperIdentity";
 
 function HelperPrompt({ items }: { items: readonly HelperTranscriptItem[] }): ReactNode {
 	const { t } = useTranslation("panes");
@@ -60,8 +61,9 @@ export function HelperFocusView({ session, helper }: { session: SessionControlle
 		if (event.key !== "Escape" || event.nativeEvent.isComposing || event.defaultPrevented) return;
 		event.preventDefault(); event.stopPropagation(); closeHelper(session);
 	}}>
-		<div className="flex min-h-12 shrink-0 items-center gap-3 border-b border-border px-6 py-2">
+		<div role="group" aria-label={`${state.helper.name}, ${t(`tasks.helperStatus.${state.helper.status}`)}`} className="flex min-h-12 shrink-0 items-center gap-3 border-b border-border px-6 py-2">
 			<Button ref={back} size="sm" variant="ghost" icon={<ArrowLeft />} onClick={() => closeHelper(session)}>{t("tasks.focus.back")}</Button>
+			<HelperIdentity helper={state.helper} />
 			<div className="min-w-0 flex-1"><h2 className="truncate text-md font-medium text-fg">{t("tasks.transcriptTitle", { name: state.helper.name })}</h2></div>
 			<StatusDot glyph status={state.helper.status === "running" ? "agent" : state.helper.status === "failed" ? "err" : state.helper.status === "done" ? "ok" : "idle"} label={t(`tasks.helperStatus.${state.helper.status}`)} />
 			<span className="text-sm text-fg-muted">{t(`tasks.helperStatus.${state.helper.status}`)}</span>

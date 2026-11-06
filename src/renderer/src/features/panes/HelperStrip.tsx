@@ -20,11 +20,12 @@ import { useSessionView } from "../../shell/hooks";
 import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { RunningTime } from "../../tool-render/tools/task";
-import { cn, Expand, IconButton, StatusDot } from "../../ui";
+import { cn, Expand, IconButton } from "../../ui";
 import { listRowMotion } from "./common";
 import type { Helper } from "./derive";
 import { usePinnedHelpers } from "./pinnedHelpers";
 import { openHelper } from "./helperFocus";
+import { HelperIdentity } from "./HelperIdentity";
 
 function PinnedRow({ helper, session, onOpen }: { helper: Helper; session: SessionController; onOpen(helper: Helper): void }): ReactNode {
 	const { t } = useTranslation("panes");
@@ -38,12 +39,13 @@ function PinnedRow({ helper, session, onOpen }: { helper: Helper; session: Sessi
 	);
 	return (
 		<motion.li layout="position" {...listRowMotion} data-helper-id={helper.id} className="flex h-9 items-center gap-2.5 pr-1.5 pl-3">
-			<StatusDot status="agent" glyph label={t("tasks.helperStatus.running")} />
+			<HelperIdentity helper={helper} compact />
+			<span className="sr-only">{t("tasks.helperStatus.running")}</span>
 			{helper.hasTranscript ? (
 				<button
 					type="button"
 					title={helper.activity || undefined}
-					aria-label={t("tasks.transcript", { name: helper.name })}
+					aria-label={`${t("tasks.transcript", { name: helper.name })}, ${t("tasks.helperStatus.running")}`}
 					onClick={() => onOpen(helper)}
 					className="-ml-1.5 flex min-w-0 flex-1 items-center gap-2 self-stretch rounded-md px-1.5 text-left outline-none transition-colors duration-(--dur-fast) hover:bg-hover focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
 				>
