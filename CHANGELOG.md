@@ -6,6 +6,8 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 #### Fixed
 
+- Chats recover message and command input after omp replaces a lost connection.
+- Helpers no longer appear to be running or leave messages queued after their chat connection ends. Stop reports a lost connection instead of silently doing nothing.
 - Saved chats, prompt history, transcript images and usage discovery now follow omp's existing XDG data directory on macOS and Linux.
 
 ## [0.7.9] - 2026-11-06
