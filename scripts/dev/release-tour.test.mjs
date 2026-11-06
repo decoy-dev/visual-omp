@@ -6,18 +6,39 @@ import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { parseArguments, readTourSession, tourLayout } from "./release-tour.mjs";
 import manifest from "./tours/0.7.9.mjs";
+import patch from "./tours/0.7.10.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, prepareUpdateFixture, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 import { initializeFixture } from "../live-preview-fixture/environment.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.7.9");
+  assert.equal(parseArguments([]).release, "0.7.10");
   assert.equal(parseArguments(["--prepare-only"]).prepareOnly, true);
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
   assert.throws(() => parseArguments(["--release"]));
   assert.throws(() => parseArguments(["--unknown"]));
   assert.throws(() => parseArguments(["--prepare-only", "--resume", "/tmp/example"]));
+});
+
+test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {
+  assert.equal(patch.version, parseArguments([]).release);
+  assert.deepEqual(patch.chats.map(chat => chat.id), ["xdg-data", "room-recovery"]);
+  const [data, recovery] = patch.chats;
+  assert.deepEqual(data.files, ["frames.png"]);
+  assert.equal(data.model, "fixture/xdg");
+  assert.deepEqual(patch.models[0].input, ["text", "image"]);
+  assert.match(data.prompts[0], /^fixture png\n.*Home.*Recent chats.*Projects.*Attach files.*XDG prompt history marker.*press Up.*attached image.*Usage & limits/s);
+  assert.match(data.prompts[1], /^fixture cache\n.*12,000 input tokens.*32 output tokens/s);
+  assert.match(recovery.prompts[0], /^fixture helpers\n.*relay drop or collab room replacement.*Waiting for omp to open its semantic screen.*same process, session and epoch cannot be forced.*collector/s);
+  assert.match(recovery.prompts[0], /no supported dev or fixture control.*blocks \/collab stop.*Do not kill omp/s);
+  assert.match(recovery.prompts[0], /queue exactly: Keep this helper message until reconnect.*five seconds.*Restart omp.*ordinary reconnect.*ended connection.*selectable text.*Try sending again/s);
+  assert.match(recovery.prompts[0], /helper Stop request.*lost-connection error.*select and copy.*Restart omp from the chat menu.*relaunch.*must not be sent automatically.*src\/main\/omp\/tsp\/semantic-report\.live\.test\.ts/s);
+  assert.equal(recovery.pane, "tasks");
+  assert.ok(patch.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
+  const layout = tourLayout(patch.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` })));
+  assert.equal(layout.tabs.length, 2);
+  assert.equal(layout.docks["tour-room-recovery"].pane, "tasks");
 });
 
 test("layout opens every chat with its own side panel and focuses the first", () => {

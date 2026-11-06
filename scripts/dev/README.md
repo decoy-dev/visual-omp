@@ -8,15 +8,15 @@ Before tagging a release, the owner tests a development build with ready-made ch
 npm run tour
 ```
 
-The default manifest is `tours/0.7.9.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
+The default manifest is `tours/0.7.10.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The extended 0.7.9 manifest remains available with `--release 0.7.9`. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
 
 ### Requirements
 
-Use Node.js 22 or later, the repository's existing dependencies, omp 18.17.0 or later on PATH, Python 3 as `python3`, and ffmpeg with libx264. LibreOffice is needed for the Office-conversion Quit check; without it, that chat explains the missing prerequisite. To select a different omp executable, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. An absolute path also becomes the scratch app profile's omp preference. No dependency installation or provider sign-in is part of the tour.
+Use Node.js 22 or later, the repository's existing dependencies, omp 18.17.0 or later on PATH and Python 3 as `python3`. The small 0.7.10 tour needs neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. To select a different omp executable, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. An absolute path also becomes the scratch app profile's omp preference. No dependency installation or provider sign-in is part of the tour.
 
 ### What the command prepares
 
-The command creates a new temporary root and starts the loopback fixture provider on a free port. It runs omp in `rpc-ui` mode against local fixture models to create sessions and outputs. It answers the color question during generation, gives each chat its check title through omp's `set_session_name` RPC command, parses the saved JSONL, checks expected output files, and records the nested helper transcript. Recorded tool-card examples are appended after their generator exits and checked for matching calls, results and details. It writes:
+The command creates a new temporary root and starts the loopback fixture provider on a free port. It runs omp in `rpc-ui` mode against local fixture models to create sessions and outputs. It gives each chat its check title through omp's `set_session_name` RPC command, parses the saved JSONL and checks expected output files. When a manifest includes questions, helpers or recorded tool-card examples, it also prepares their declared fixture data. It writes:
 
 - `tour.json`, containing the release, omp version, chat paths, tools and questions.
 - `tour-layout.json`, containing the app's Current chats and each chat's side panel.
@@ -24,7 +24,22 @@ The command creates a new temporary root and starts the loopback fixture provide
 
 The development app reads `VOMP_TOUR_CHATS=<absolute tour-layout.json>` through `app:info`. This startup option is ignored when `app.isPackaged` is true. It requires an absolute `VOMP_DEV_PROFILE`, a matching fixture marker, and seed file, profile, chat and session paths inside the fixture root, with symlinks resolved. Main returns an allowlisted layout whose active project comes from its validated tabs; arbitrary seed fields and expanded project paths are discarded. The renderer reuses its saved-layout parser and session controllers, opens the first chat and puts every tour chat in Current chats. The normal layout then persists through the app's own localStorage. No DevTools connection is required.
 
-The 0.7.9 tour opens 16 chats. Each first message names its checks:
+### The 0.7.10 patch tour
+
+The default tour opens two chats:
+
+| Chat | Checks |
+| --- | --- |
+| 01 Saved chats | Home's Recent chats and Projects discover the sessions under `$XDG_DATA_HOME/omp`. Reopen from Home, send a marked prompt with the supplied `frames.png` attached, recall it with Up and reopen the saved transcript image. Usage & limits discovers the prepared nonzero token usage at zero estimated cost. |
+| 02 Composer and helpers | Replay `fixture helpers`, queue a helper message and retain a main draft. After a replacement room attaches, check input recovery or the five-second Restart omp fallback. If the connection ends, check stopped helpers, a selectable failed message with copy guidance, an explicit Stop error and Restart omp relaunching the chat. |
+
+The scratch environment sets `XDG_DATA_HOME` to `<tour-root>/data` and creates `data/omp` before starting omp. On macOS and Linux, sessions use `data/omp/sessions`, prompt history uses `data/omp/history.db` and image blobs use `data/omp/blobs`; configuration remains in `home/.omp/agent`. Windows retains its agent-directory behavior. The image-capable `fixture/xdg` model accepts the attachment locally without analyzing it or using provider credits. The image and persisted prompt-history checks intentionally ask the owner to send one message through the app so omp records both through its normal input path.
+
+A same-process, same-session, same-epoch room replacement cannot be forced by the fixture, and there is no supported dev or fixture control to end only the chat connection without stopping omp. The app blocks `/collab stop` to protect its hosted room. Do not use Stop omp or kill the process as a substitute. The recovery chat distinguishes ordinary reconnecting from an ended connection, asks the owner to copy a failed helper message before restarting, and checks that old messages are not sent automatically into the replacement helper scope. Checks without a relevant connection change remain unexercised. Live room-replacement evidence comes from `src/main/omp/tsp/semantic-report.live.test.ts`; the helper ended-state and message behavior have focused regression tests. Preparation establishes saved chats and workload input only.
+
+### The 0.7.9 extended tour
+
+Select `--release 0.7.9` for its 17 chats. Each first message names its checks:
 
 | Chat | Checks |
 | --- | --- |
@@ -41,6 +56,7 @@ The 0.7.9 tour opens 16 chats. Each first message names its checks:
 | 11 Office Quit | Cancel and confirm Quit during PPTX conversion. Run this last; confirming Quit ends the tour. |
 | 12-15 Retained checks | Hex swatches and questions, image sequences, saved process exits and the previous command checklist. |
 | 16 Timestamps | Three 45-second bash calls give a collapsed tool group a first-to-latest time range, full times on hover or focus and each call's own time when expanded. |
+| 17 Many helpers | Six helpers produce local output while you check that chats stay current and respond to input. |
 
 DOCX and XLSX record a truncated-save run, then restore a complete file for startup. To check retention, keep Outputs open, send `fixture docx` or `fixture xlsx` again, select another output or chat and return. Headless preparation cannot establish rendering acceptance.
 
