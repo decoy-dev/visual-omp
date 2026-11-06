@@ -1,6 +1,6 @@
 # omp commands in visual-omp
 
-This page records how visual-omp handles each omp slash command and the menus those commands open. The list was taken from omp v18.15.0, the minimum supported version, which registers 88 builtin commands and 9 aliases, plus the skills, custom commands, extension commands, MCP prompts and file commands a project provides.
+This page records how visual-omp handles each omp slash command and the menus those commands open. The catalog follows omp v18.17.0, with 89 builtin commands and 9 aliases, plus the skills, custom commands, extension commands, MCP prompts and file commands a project provides. The minimum supported version remains omp v18.15.0; `/unpin` requires omp v18.17.0.
 
 Each app-hosted chat runs omp in a pseudo-terminal. macOS, Linux and Windows use Tern Surface Protocol (TSP) by default, with semantic editor actions, native cards and an omp screen for unclaimed menus or output. Settings > Advanced has a "Classic omp terminal" switch, off by default, for new chats that need omp's terminal screen. Main reads the choice at host launch; running hosts keep their presentation until omp restarts in them. Developer overrides `VOMP_TSP=1` and `VOMP_TSP=0` force TSP and classic respectively on every platform. Windows TSP hosts use node-pty's bundled ConPTY; classic hosts use the system ConPTY. Classic code remains while the setting exists. Both presentations use collab for the transcript and questions.
 
@@ -82,6 +82,7 @@ The table describes the form without arguments unless it shows one.
 | `/wt`, `/worktree` | Result. omp creates and owns the worktree, and the current chat follows it. Startup and exit worktree confirmations use native dialogs. |
 | `/compact`, `/handoff`, `/guided-goal`, `/rename`, `/plan-review` | Result |
 | `/advisor`, `/advisor on`, `off`, `status`, `dump` | Result. `/advisor configure`: native Advisor sheet |
+| `/unpin [session id]` | Result (omp 18.17 or later). Removes a chat's resume-list pin; `/session pin <account>` still selects its preferred OAuth account. The sidebar already shows resume-list pins. |
 | `/security`, `/fast`, `/slow`, `/skillful`, `/extended-context`, `/computer`, `/browser`, `/prewalk`, `/ratchet`, `/tan`, `/force`, `/queue`, `/retry`, `/clear`, `/fresh`, `/shake`, `/trace`, `/dump`, `/open`, `/ssh`, `/add-dir`, `/remove-dir`, `/dirs`, `/pin`, `/reload-plugins`, `/changelog`, `/tools`, `/stats`, `/todo`, `/record`, `/forget-approvals`, `/session pin <account>` | Result |
 | `/omfg`, `/cleanse` | Result, with Card for their dialogs |
 | `/seance` | Sheet for omp's session picker and its model picker, Card for "Consult this session with". `/seance <session>`: Card, then Sheet for the model picker |

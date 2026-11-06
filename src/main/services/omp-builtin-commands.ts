@@ -1,5 +1,5 @@
 /**
- * omp's builtin slash commands, taken from omp v18.15.0 (`packages/coding-agent/src/slash-commands/`
+ * omp's builtin slash commands, taken from omp v18.17.0 (`packages/coding-agent/src/slash-commands/`
  * `builtin-*.ts` and `seance.ts`, in `builtin-registry.ts` order). omp's RPC `get_available_commands`
  * lists only the builtins that also run outside its terminal UI, so this list fills in the rest
  * (settings, tree, resume and others). Descriptions are omp's own static text. omp builds three of
@@ -343,6 +343,7 @@ const BUILTINS: readonly BuiltinSpec[] = [
 	{ name: "seance", description: "Consult a saved session without resuming it", hint: "[session id|path] [--model selector]" },
 	{ name: "resume", description: "Resume a different session", hint: "[session id|@claude|@codex]" },
 	{ name: "pin", description: "Pin or unpin a session at the top of the resume list", hint: "[session id]" },
+	{ name: "unpin", description: "Unpin a session from the top of the resume list", hint: "[session id]" },
 	{ name: "btw", description: "Ask a side question, or browse this session's BTW history", hint: "[question]" },
 	{ name: "tan", description: "Run a full background agent on tangential work", hint: "<work>" },
 	{ name: "omfg", description: "Forge a TTSR rule from a complaint to stop a recurring behavior", hint: "<complaint>" },

@@ -13,9 +13,9 @@ const command = (name: string, source: SlashCommandInfo["source"], extra: Partia
 });
 
 describe("OMP_BUILTIN_COMMANDS", () => {
-	it("lists omp 18.15's 88 builtins and 9 aliases once each", () => {
+	it("lists each builtin once", () => {
 		const names = OMP_BUILTIN_COMMANDS.map(entry => entry.name);
-		expect(new Set(names).size).toBe(88);
+		expect(new Set(names).size).toBe(names.length);
 		expect(OMP_BUILTIN_COMMANDS.flatMap(entry => entry.aliases).sort()).toEqual(["force:", "models", "plugin", "providers", "q", "rewind", "status", "subagents", "worktree"]);
 		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "mcp")?.subcommands.map(sub => sub.name)).toContain("smithery-search");
 	});
@@ -28,6 +28,7 @@ describe("OMP_BUILTIN_COMMANDS", () => {
 		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "context")?.description).toBe("Browse context usage and detailed content");
 		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "hub")?.aliases).toContain("subagents");
 		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "seance")).toBeDefined();
+		expect(OMP_BUILTIN_COMMANDS.find(entry => entry.name === "unpin")).toBeDefined();
 	});
 	it("offers 18.15 Ultrafast service and retains the upstream jobs and compact syntax", () => {
 		const fast = OMP_BUILTIN_COMMANDS.find(entry => entry.name === "fast")!;

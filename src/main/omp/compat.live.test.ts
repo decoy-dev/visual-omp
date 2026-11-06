@@ -25,6 +25,7 @@ const RPC_BUILTINS_1814 = [
 	"retry", "memory", "rename", "move", "wt", "add-dir", "remove-dir", "dirs", "marketplace", "plugins", "reload-plugins",
 	"force", "forget-approvals",
 ];
+const RPC_BUILTINS_1817 = ["unpin"];
 const CommandsSchema = z.object({ commands: z.array(z.object({ name: z.string(), description: z.string(), source: z.string() })) });
 const evidence: Record<string, unknown> = {};
 let root = "";
@@ -104,7 +105,7 @@ describe.skipIf(!process.env.OMP_BIN)("live omp compatibility (no sign-in or mod
 		return { models: models.length, selectors: models.map(model => model.selector) };
 	});
 
-	check("RPC builtin commands match the app catalog and the 18.14 RPC subset", async () => {
+	check("RPC builtin commands match the app catalog and the reviewed release subset", async () => {
 		const frames: unknown[] = [];
 		const data = await rpcRequest(root, "get_available_commands", {
 			flags: ["--no-session", "--no-lsp", "--no-title", "--no-rules", "--no-extensions", "--no-skills", "--model", "anthropic/claude-sonnet-4-5"],
@@ -114,9 +115,10 @@ describe.skipIf(!process.env.OMP_BIN)("live omp compatibility (no sign-in or mod
 		});
 		const builtin = CommandsSchema.parse(data).commands.filter(command => command.source === "builtin").map(command => command.name).sort();
 		const appNames = new Set(OMP_BUILTIN_COMMANDS.map(command => command.name));
-		const baseline = new Set(RPC_BUILTINS_1814);
+		const expected = [...RPC_BUILTINS_1814, ...(version && compareSemver(version, "18.17.0") >= 0 ? RPC_BUILTINS_1817 : [])];
+		const baseline = new Set(expected);
 		const added = builtin.filter(name => !baseline.has(name));
-		const removed = RPC_BUILTINS_1814.filter(name => !builtin.includes(name));
+		const removed = expected.filter(name => !builtin.includes(name));
 		const missingFromApp = builtin.filter(name => !appNames.has(name));
 		evidence.commandDiff = { added, removed, missingFromApp, rpcBuiltins: builtin, terminalOnly: [...appNames].filter(name => !baseline.has(name)) };
 		const ready = frames.find(frame => typeof frame === "object" && frame !== null && "type" in frame && frame.type === "ready");
