@@ -17,6 +17,7 @@ import type { TspHookAnswer } from "./tsp/dialogs";
 import type { TspAdvisorAction } from "./tsp/advisor";
 import type { StatusBarPreference } from "./statusBar";
 import type { CompactCompletionDiagnostic } from "./completion-diagnostics";
+import type { SavedToolOutput } from "./session-output";
 
 export type Platform = "darwin" | "win32" | "linux";
 
@@ -303,6 +304,8 @@ export interface IpcInvokeMap {
 	"sessions:read": { args: [file: string]; result: string };
 	/** The saved file's size in bytes, or null when it can't be read (missing, not a file). */
 	"sessions:size": { args: [file: string]; result: number | null };
+	/** Bounded display content from one exact saved bash result, without details or traces. */
+	"sessions:toolOutput": { args: [file: string, toolCallId: string, manual?: boolean]; result: SavedToolOutput };
 	/** Newest linked copy that contains this file's newest conversation turn. */
 	"sessions:resolve": { args: [file: string]; result: string };
 	"sessions:summary": { args: [file: string]; result: SessionSummary | null };

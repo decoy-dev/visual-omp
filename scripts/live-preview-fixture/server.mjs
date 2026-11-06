@@ -72,6 +72,14 @@ async function progressCalls() {
   }));
 }
 
+export function bashTraceCalls() {
+  return [
+    { name: "bash", args: { i: "Exercising many shell trace producers", command: "for ((i=0; i<3500; i++)); do value=\"producer-$i\"; printf '%s:%080d\\n' \"$value\" \"$i\"; done", timeout: 120 }, slow: false },
+    { name: "bash", args: { i: "Exercising large shell trace values", command: "printf -v payload '%032768d' 0; for ((i=0; i<350; i++)); do value=\"$payload:$i\"; printf '%s\\n' \"$value\"; done", timeout: 120 }, slow: false },
+    { name: "bash", args: { i: "Exercising dense shell trace output", command: "python3 -c \"import sys; sys.stdout.write(''.join(f'{i:04d}' + 'x'*4091 + '\\n' for i in range(2048)))\"", timeout: 120 }, slow: false },
+  ];
+}
+
 function textOf(message) {
   if (typeof message?.content === "string") return message.content;
   return (message?.content ?? []).map(part => part.text ?? "").join("\n");
@@ -97,7 +105,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages.findLast(message => message.role === "user");
       const turnMessages = messages.slice(messages.findLastIndex(message => message.role === "user"));
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(helper-reply|colors|helper|notes|process|svg|html|png|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(bash-trace|helper-reply|colors|helper|notes|process|svg|html|png|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -129,7 +137,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         return;
       }
       const helperCalls = turnMessages.flatMap(message => message.tool_calls ?? []);
-      const calls = fixture === "colors" ? [
+      const calls = fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
         { name: "ask", args: { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }, slow: false },
       ] : fixture === "helper" ? !afterTool ? [
         { name: "task", args: { i: "Checking release helper conversation", context: "Use the local fixture provider. Do not run tools, checks or edit files.", tasks: [{ name: "TourHelper", task: "fixture helper-reply. Reply with the short release-tour helper check.", solutionSpace: "One fixed reply, no investigation." }] }, slow: false },

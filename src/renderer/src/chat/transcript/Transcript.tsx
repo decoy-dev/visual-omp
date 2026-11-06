@@ -59,6 +59,7 @@ import { NoticeRow } from "./NoticeRow";
 import { ModelFallbackNotice } from "./ModelFallbackNotice";
 import { contentText, noticeIsStep, noticeVisible, parseNotice } from "./notices";
 import { ToolCard } from "./ToolCard";
+import { SavedToolOutputContext } from "./savedBashOutput";
 import { ToolGroup } from "./ToolGroup";
 import { TurnSummary } from "./TurnSummary";
 import { thoughtKey, ThoughtChoices, thoughtOpen, writingThought } from "./thoughtChoices";
@@ -341,6 +342,7 @@ function ToolStep({
 	const card = (
 		<ToolCard
 			name={block.name}
+			toolCallId={block.id}
 			args={args}
 			intent={block.intent ?? live?.intent}
 			result={result}
@@ -729,6 +731,8 @@ const NO_RUNS: RunProjection["runs"] = [];
 /** File-backed conversations share the chat renderer without acquiring its controller, host or input actions. */
 export interface TranscriptBodyProps {
 	scope: TranscriptScope;
+	sessionFile?: string | null;
+	outputIdentity?: string;
 	entries: readonly SessionEntry[];
 	mode: TranscriptMode;
 	working?: boolean;
@@ -835,6 +839,8 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const onHelper = useCallback((helper: Helper) => openHelper(session, helper), [session]);
 	return <TranscriptBody
 		scope={session} entries={entries} mode={mode} working={view.working}
+		sessionFile={session.sessionFile}
+		outputIdentity={`${view.host?.hostId ?? ""}:${view.host?.generation ?? ""}:${view.guest?.header?.id ?? view.history?.header?.id ?? session.tabId}`}
 		stream={guest?.stream ?? null} streamDone={view.guest?.streamDone ?? true}
 		activeTools={guest?.activeTools ?? EMPTY_TOOLS} phase={view.guest?.phase}
 		ready={view.guest ? view.guest.phase === "live" && view.guest.loading === null : view.history !== null}
@@ -850,12 +856,13 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 }
 
 export function TranscriptBody({
-	scope, entries, mode, working = false, stream = null, streamDone = true, activeTools = EMPTY_TOOLS,
+	scope, sessionFile = null, outputIdentity, entries, mode, working = false, stream = null, streamDone = true, activeTools = EMPTY_TOOLS,
 	phase = null, ready, identity, helpers = NO_HELPERS, pinned = NO_PINNED, helpersMayRun = false,
 	commandResults = NO_RESULTS, room = "", tspNotices = NO_NOTICES, localRuns = NO_RUNS,
 	pendingQuestion = null, footer, emptyState, onCommand, onSent, onDismissResult, renderUser, onHelper,
 }: TranscriptBodyProps): ReactNode {
 	const { t } = useTranslation("chat");
+	const savedOutputScope = useMemo(() => ({ file: sessionFile, identity: outputIdentity ?? identity }), [sessionFile, outputIdentity, identity]);
 	const fallbacks = useMemo(() => modelFallbacks(entries), [entries]);
 
 	// A stream present at first synchronization, or while reconnecting, is already in progress.
@@ -1192,6 +1199,7 @@ export function TranscriptBody({
 	endRun();
 
 	return (
+		<SavedToolOutputContext.Provider value={savedOutputScope}>
 		<TargetContextMenu projectPath={scope.projectPath} tabId={scope.tabId}>
 		<div className="relative min-h-0 flex-1">
 			<div
@@ -1316,5 +1324,6 @@ export function TranscriptBody({
 			</AnimatePresence>
 		</div>
 		</TargetContextMenu>
+		</SavedToolOutputContext.Provider>
 	);
 }

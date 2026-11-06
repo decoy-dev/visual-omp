@@ -26,9 +26,10 @@ import type { ToolRenderHost, ToolResultLike } from "../../tool-render/types";
 import { detailsRecord, isRecord, replaceTabs, stripAnsi } from "../../tool-render/util";
 import { isMcpResult, mcpProgressOf, McpProgressLine } from "../../tool-render/tools/mcp";
 import "../../tool-render/tool-render.css";
-import { cn, Expand, PulseDot, Rise } from "../../ui";
+import { Button, cn, Expand, PulseDot, Rise } from "../../ui";
 import { TranscriptTime, type TranscriptTimestamp } from "./TranscriptTime";
 import { LoadFailedSilently, lazyView } from "../../registry/lazy";
+import { useSavedBashOutput } from "./savedBashOutput";
 
 // An optional action over the card row: if it does not load, the card keeps working without it.
 const WatchAction = lazyView(() => import("../../features/live-preview/WatchAction").then(module => module.WatchAction), null, LoadFailedSilently);
@@ -64,6 +65,8 @@ const ICONS: Record<string, Icon> = {
 export interface ToolCardProps {
 	name: string;
 	args: unknown;
+	/** The recorded tool call id used to recover this exact result from its saved session. */
+	toolCallId?: string;
 	result?: ToolResultLike;
 	running: boolean;
 	intent?: string;
@@ -116,7 +119,8 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 		onEngage(engageId, true);
 		return () => onEngage(engageId, false);
 	}, [onEngage, engageId, engaged]);
-	const liveResult = props.result ?? (props.running ? partialToolResult(props.partialResult) : undefined);
+	const recovered = useSavedBashOutput({ name: props.name, running: props.running, result: props.result, toolCallId: props.toolCallId });
+	const liveResult = recovered.result ?? (props.running ? partialToolResult(props.partialResult) : undefined);
 	const call = resolveToolCall({ name: props.name, args: props.args, result: liveResult, running: props.running, intent: props.intent });
 	const summary = props.summary ?? friendlySummary(call);
 	const reference = toolContextReference(call);
@@ -195,6 +199,16 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 			<Expand open={open} className="selectable pt-1 pb-3 pl-6.5">
 				{props.completedAt ? <div className="mb-2"><TranscriptTime timestamp={props.completedAt} label={tc("timestamp.finished")} /></div> : null}
 				{call.intent && <p className="mb-2 text-sm text-fg-muted">{call.intent}</p>}
+				{recovered.needed && recovered.status !== "ready" && (
+					<div className="mb-3 flex flex-wrap items-center gap-2">
+						<p role="status" className="text-sm text-fg-muted">
+							{t(recovered.loading ? "bash.savedOutput.loading" : recovered.status === "too-large" ? "bash.savedOutput.tooLarge" : "bash.savedOutput.unavailable")}
+						</p>
+						<Button size="sm" variant="ghost" loading={recovered.loading} disabled={!recovered.canLoad} onClick={recovered.load}>
+							{t("bash.savedOutput.load")}
+						</Button>
+					</div>
+				)}
 				<div className="tv-card tv-embedded">
 					{renderer.Body ? (
 						<renderer.Body name={call.name} args={call.args} result={call.result} running={call.running} host={props.host} />

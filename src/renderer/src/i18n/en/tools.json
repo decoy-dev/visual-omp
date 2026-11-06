@@ -14,7 +14,13 @@
 		"running": "Running {{command}}…",
 		"passed": "Ran {{command}}",
 		"failed": "{{command}} failed with exit code {{code}}",
-		"background": "Started {{command}} in the background"
+		"background": "Started {{command}} in the background",
+		"savedOutput": {
+			"loading": "Loading saved output…",
+			"unavailable": "The saved output could not be loaded.",
+			"tooLarge": "The saved output exceeds the current display limit.",
+			"load": "Load saved output"
+		}
 	},
 	"task": {
 		"one": {

@@ -4,12 +4,14 @@ import { forkSavedSession } from "../omp/fork";
 import { toggleConversationPin } from "../omp/session-pins";
 import { renameSavedSession } from "../omp/session-rename";
 import { helperSessionFile } from "../omp/helper-file";
+import { loadSavedToolOutput } from "../omp/session-tool-output";
 
 export function register(): void {
 	handle("sessions:resolve", resolveSessionFile);
 	handle("sessions:summary", sessionSummary);
 	handle("sessions:size", sessionFileSize);
 	handle("sessions:helperFile", helperSessionFile);
+	handle("sessions:toolOutput", loadSavedToolOutput);
 	handle("sessions:fork", forkSavedSession);
 	handle("sessions:pin", async file => {
 		const session = await sessionSummary(file);

@@ -136,3 +136,15 @@ test("process fixture starts a ready supervised process and keeps the session op
   ]);
   assert.deepEqual(done, []);
 });
+
+test("bash trace fixture runs each output shape once and finishes after their results", async () => {
+  const calls = await callsFor("fixture bash-trace");
+  assert.equal(calls.length, 3);
+  assert.ok(calls.every(call => call.name === "bash" && call.args.timeout >= 60));
+  const followUp = await callsFor("", [
+    { role: "user", content: "fixture bash-trace" },
+    { role: "assistant", tool_calls: calls.map((call, index) => ({ id: `trace-${index}`, function: { name: call.name, arguments: JSON.stringify(call.args) } })) },
+    { role: "tool", content: "Trace fixture output." },
+  ]);
+  assert.deepEqual(followUp, []);
+});

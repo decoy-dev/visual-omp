@@ -46,8 +46,37 @@ Use `fixture html` or `fixture png` in place of `fixture svg` for the other scen
 - `fixture docx complete`, `fixture xlsx complete` and `fixture pptx complete` leave the third complete package in place at the end of the Office run. The unqualified Office prompts still finish with a truncated save. The tour records the truncated run, then restores a complete startup file so the owner can replay the truncated run while Outputs is open.
 - `fixture process` starts the named `tour-process` service, waits for its readiness line, and lets it exit with code 1. A second foreground command keeps omp running while it records that exit. The release tour uses this chat to check that restarting a saved chat preserves the historical process row without repeating it as a new notice.
 - `fixture regular-video` renders the same source to `regular.mp4` without fragmentation. Its final index may remain unavailable until encoding ends; the stage keeps any earlier playable revision while waiting. This separates the container limitation from live-fragment playback.
+- `fixture bash-trace` runs 3,500 short-output assignments, 350 large-value assignments producing about 11 MB, and one Python producer emitting exactly 8 MiB. On omp 18.17, the last shape can make collab shrink displayed output to preserve shell trace data.
 
 Stop the server with `kill "$FIXTURE_PID"` when finished. Scratch outputs and agent state remain available for inspection.
+
+## Collect bash trace replication evidence
+
+This collector requires omp 18.17.0 and Python 3. It starts an isolated TSP host, the loopback provider and relay, and the app's renderer collab client. It compares saved tool results with the replicated results and renders the existing bash card to static HTML. It never opens Electron or a browser window. It preserves JSON measurements, original output artifacts and card HTML under the requested temporary evidence directory, then removes the isolated profile.
+
+Run from the repository root:
+
+```sh
+COLLECTOR_DIR="$(mktemp -d /tmp/vomp-trace-collector.XXXXXX)"
+PTY_ENTRY="$(node -p "require.resolve('node-pty')")"
+PACKAGE_JSON="$(node -p "JSON.stringify(require.resolve('./package.json'))")"
+npx esbuild scripts/live-preview-fixture/bash-trace-evidence.mjs \
+  --bundle --platform=node --format=esm --jsx=automatic \
+  --alias:node-pty="$PTY_ENTRY" --external:"$PTY_ENTRY" \
+  '--external:*/live-preview-fixture/server.mjs' \
+  '--external:*/live-preview-fixture/environment.mjs' \
+  --alias:@shared=./src/shared \
+  --alias:@oh-my-pi/pi-wire=./src/renderer/src/collab/wire/index.ts \
+  --alias:@=./src/renderer/src \
+  --banner:js="import { createRequire } from 'node:module'; const require = createRequire($PACKAGE_JSON);" \
+  --outfile="$COLLECTOR_DIR/collector.mjs"
+OMP_BIN="$(command -v omp)" \
+  OMP_TRACE_EVIDENCE=/tmp/omp-18.17.0-bash-trace \
+  node "$COLLECTOR_DIR/collector.mjs"
+rm -rf "$COLLECTOR_DIR"
+```
+
+Set `OMP_TRACE_VISUALIZATION=0` on the collector command to repeat with shell visualization disabled. That setting does not disable trace capture in omp 18.17.
 
 ## Use the fixture in a visual-omp development build
 
