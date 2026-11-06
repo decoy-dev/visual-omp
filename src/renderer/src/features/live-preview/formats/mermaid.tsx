@@ -3,13 +3,14 @@ import { useTranslation } from "react-i18next";
 import { sanitizeSvg, svgAccessibility, svgImage } from "../../../ui/diagram-source";
 import { renderMermaid } from "../../../ui/mermaid-render";
 import type { LiveAdapter, LiveFrameProps } from "../types";
-import { SizeNote, useFigurePalette, useSourceText, WaitingForSave } from "./shared";
+import { SizeNote, useFigurePalette, usePictureHeight, useSourceText, WaitingForSave } from "./shared";
 
 interface RenderJob { text: string; palette: Readonly<Record<string, string>>; revision: number }
 
-export function Frame({ subject }: LiveFrameProps) {
+export function Frame({ subject, onHeight }: LiveFrameProps) {
 	const { t } = useTranslation("chat");
 	const { ref, palette } = useFigurePalette();
+	usePictureHeight(ref, onHeight, true);
 	const { text, error } = useSourceText(subject);
 	const [good, setGood] = useState<{ src: string; name: string; description: string } | null>(null);
 	const [failed, setFailed] = useState(false);
@@ -42,8 +43,8 @@ export function Frame({ subject }: LiveFrameProps) {
 		};
 		draw();
 	}, [text, subject.revision, subject.elided, palette]);
-	return <div ref={ref} className="flex min-h-0 flex-1 flex-col overflow-auto p-4">
-		{subject.elided ? <SizeNote /> : <>{good && <img src={good.src} alt={good.name || t("visual.mermaid")} aria-description={good.description || undefined} className="m-auto max-h-full max-w-full" />}{(failed || error) && <WaitingForSave />}</>}
+	return <div ref={ref} className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
+		{subject.elided ? <SizeNote /> : <>{good && <img src={good.src} alt={good.name || t("visual.mermaid")} aria-description={good.description || undefined} className="block h-auto max-h-full w-full shrink-0 object-contain object-top" />}{(failed || error) && <WaitingForSave />}</>}
 	</div>;
 }
 

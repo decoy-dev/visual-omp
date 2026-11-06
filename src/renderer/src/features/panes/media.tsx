@@ -99,6 +99,7 @@ export function PreviewImage({
 	explain = false,
 	className,
 	zoom,
+	verticalAlign,
 }: {
 	sourceKey: string;
 	load(): Promise<string | null>;
@@ -108,6 +109,7 @@ export function PreviewImage({
 	explain?: boolean;
 	className?: string;
 	zoom?: boolean | ZoomControl;
+	verticalAlign?: "center" | "start";
 }) {
 	const { t } = useTranslation("panes");
 	const src = useImageSource(sourceKey, load, enabled);
@@ -117,7 +119,7 @@ export function PreviewImage({
 		if (pdf) return <FilePdf aria-hidden className="size-6 text-fg-faint" />;
 		return <Unavailable message={t("outputs.unavailable")} explain={explain} />;
 	}
-	if (zoom) return <ZoomImage src={src} alt={alt} className={className} control={zoom === true ? undefined : zoom} onError={() => setBroken(src)} />;
+	if (zoom) return <ZoomImage src={src} alt={alt} className={className} control={zoom === true ? undefined : zoom} verticalAlign={verticalAlign} onError={() => setBroken(src)} />;
 	return <img src={src} alt={alt} onError={() => setBroken(src)} className={className} />;
 }
 
@@ -146,7 +148,7 @@ const DRAG_SLOP = 4;
  *
  * The root is a flex item that fills its flex container (`flex-1 self-stretch`), whose height must be definite.
  */
-export function ZoomImage({ src, alt, className, control, onError }: { src: string; alt: string; className?: string; control?: ZoomControl; onError?(): void }) {
+export function ZoomImage({ src, alt, className, control, onError, verticalAlign = "center" }: { src: string; alt: string; className?: string; control?: ZoomControl; onError?(): void; verticalAlign?: "center" | "start" }) {
 	const { t } = useTranslation("panes");
 	const reduced = useMotionReduced();
 	const hintId = useId();
@@ -167,7 +169,7 @@ export function ZoomImage({ src, alt, className, control, onError }: { src: stri
 
 	const natural = loaded?.src === src ? loaded.size : null;
 	const fit = natural && view ? fitScale(natural, view, src.startsWith("data:image/svg+xml")) : 1;
-	const box = natural && view ? zoomLayout(natural, view, zoom ?? fit) : null;
+	const box = natural && view ? zoomLayout(natural, view, zoom ?? fit, verticalAlign) : null;
 	// The geometry as of the last change, so several wheel events between two renders each start from the one before.
 	const latest = useRef({ natural, view, fit, zoom, box });
 	latest.current = { natural, view, fit, zoom, box };
@@ -187,7 +189,7 @@ export function ZoomImage({ src, alt, className, control, onError }: { src: stri
 		// The box on screen now (mid-move included) is where a new move starts; the anchor math uses the laid-out box.
 		const from = animated && !reduced ? (imageRef.current?.getBoundingClientRect() ?? null) : null;
 		settle();
-		const to = zoomLayout(now.natural, now.view, next ?? now.fit);
+		const to = zoomLayout(now.natural, now.view, next ?? now.fit, verticalAlign);
 		const at = anchor ?? { x: now.view.width / 2, y: now.view.height / 2 };
 		const scroll = pending.current?.scroll ?? { x: element.scrollLeft, y: element.scrollTop };
 		pending.current = { scroll: anchoredScroll(at, scroll, now.box, to, now.view), from: pending.current?.from ?? from };
@@ -462,6 +464,10 @@ export function ExpandPreview({ name, path, image, render, open, onOpenChange, h
 			</DialogTrigger>}
 			<DialogContent
 				size="full"
+				onOpenAutoFocus={event => {
+					event.preventDefault();
+					(event.target as HTMLElement).querySelector<HTMLButtonElement>('button[aria-label="Close"]')?.focus();
+				}}
 				title={
 					<span className="block truncate" title={path ?? name}>
 						{name}

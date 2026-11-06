@@ -103,6 +103,7 @@ function OutputImage({
 			explain={explain}
 			className={className}
 			zoom={zoom}
+			verticalAlign="start"
 		/>
 	);
 }
@@ -275,9 +276,12 @@ function OutputViewer({ output, mount, projectPath, onBack }: { output: ChatOutp
 	const name = useOutputName(output);
 	const when = useWhen(output);
 	const rootRef = useRef<HTMLDivElement>(null);
+	const autoFocusing = useRef(false);
 	const path = output.path;
 	useEffect(() => {
+		autoFocusing.current = true;
 		rootRef.current?.querySelector<HTMLElement>("button")?.focus();
+		autoFocusing.current = false;
 	}, []);
 	const onKeyDown = (event: KeyboardEvent) => {
 		if (event.key !== "Escape" || event.defaultPrevented) return;
@@ -289,7 +293,7 @@ function OutputViewer({ output, mount, projectPath, onBack }: { output: ChatOutp
 		// biome-ignore lint/a11y/noStaticElementInteractions: Escape anywhere in the viewer goes back to the list
 		<div ref={rootRef} className="flex min-h-0 flex-1 flex-col" onKeyDown={onKeyDown} data-context-path={path ?? undefined} data-context-no-image={output.kind === "pdf" ? "" : undefined} data-context-surface="">
 			<PaneToolbar>
-				<IconButton size="sm" label={t("outputs.back")} shortcut="Esc" icon={<ArrowLeft />} onClick={onBack} />
+				<IconButton size="sm" label={t("outputs.back")} shortcut="Esc" icon={<ArrowLeft />} onFocus={event => { if (autoFocusing.current) event.preventDefault(); }} onClick={onBack} />
 				<span className="flex min-w-0 flex-1" title={path ?? name}>
 					<FileName name={name} className="font-mono text-xs text-fg-muted" />
 				</span>
@@ -345,7 +349,7 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 	const tabId = session?.tabId ?? null;
 	const preview = usePreviewChat(tabId);
 	const hasStage = useApp(state => state.prefs?.livePreview === true) && visibleSubjects(preview).length > 0;
-	const officeStage = hasStage && ["docx", "xlsx"].includes(followedSubject(preview)?.format ?? "");
+	const showStage = hasStage && followedSubject(preview) !== undefined;
 	const [opened, setOpened] = useState<{ tabId: string | null; key: string } | null>(null);
 	const [restoreKey, setRestoreKey] = useState<string | null>(null);
 	// Kept here, so opening a tile past the first 12 and coming back keeps it on screen.
@@ -359,14 +363,14 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 		<TargetContextMenu projectPath={project} tabId={tabId}>
 		<div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
 		<TrackerLoadNotice />
-		<Stage session={session} onShowOutput={path => {
+		{!selected && <Stage session={session} onShowOutput={path => {
 			const output = outputs?.find(item => item.path !== null && outputPathKey(item.path, window.vomp.platform) === outputPathKey(path, window.vomp.platform));
 			if (!output) return;
 			setOpened(null);
 			setRestoreKey(output.key);
 			setShowAllViewed(true);
-		}} />
-		<PresenceSwap swapKey={swapKey} className={cn("flex min-h-0 flex-col", officeStage ? "shrink-0" : "flex-1", officeStage && selected && "h-full")}>
+		}} />}
+		<PresenceSwap swapKey={swapKey} className={cn("flex min-h-0 flex-col", !selected && showStage ? "shrink-0" : "flex-1")}>
 			{selected ? (
 				<OutputViewer
 					output={selected}

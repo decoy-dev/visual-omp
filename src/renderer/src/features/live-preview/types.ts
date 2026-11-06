@@ -102,6 +102,10 @@ export interface LiveFrameProps {
 	officeCache?: OfficeFrameCache;
 	/** True accepts a preview, false refuses unsafe bytes, and null defers an unavailable revision. */
 	onOfficeCheck?(safe: boolean | null): void;
+	/** Pane height available after stage chrome, independent of the content's fitted height. */
+	availableHeight?: number;
+	/** Intrinsic content height; null retains a full viewport. Minimums may make the outer pane scroll. */
+	onHeight?(height: number | null, minimum?: number): void;
 }
 
 export interface LiveAdapter {

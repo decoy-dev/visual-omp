@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useRef, useState, type VideoHTMLAttributes } from "react";
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState, type VideoHTMLAttributes } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../../../ui";
 import { useMotionReduced } from "../../../ui/motion";
@@ -39,7 +39,7 @@ function timeLabel(seconds: number): string {
 function Tile({ frame }: { frame: KeyFrame }) {
 	const canvas = useRef<HTMLCanvasElement>(null);
 	useEffect(() => { canvas.current?.getContext("2d")?.drawImage(frame.canvas, 0, 0); }, [frame]);
-	return <canvas ref={canvas} width={frame.canvas.width} height={frame.canvas.height} className="block h-auto w-full" aria-hidden="true" />;
+	return <canvas ref={canvas} width={frame.canvas.width} height={frame.canvas.height} className="block aspect-video max-h-24 w-full object-contain" aria-hidden="true" />;
 }
 
 /** Display-only canvases never read pixels or export a cross-origin video frame. */
@@ -89,7 +89,7 @@ function KeyFrames({ source, onSeek }: { source: VideoRevision; onSeek(time: num
 	}, [source.url]);
 	return <>
 		<video ref={video} hidden muted playsInline preload="metadata" data-keyframe-source="" />
-		{frames.length > 0 && <div role="group" aria-label={t("live.keyFrames")} className="grid grid-cols-2 gap-2 p-2 @min-[28rem]/live:grid-cols-3">
+		{frames.length > 0 && <div role="group" aria-label={t("live.keyFrames")} className="grid shrink-0 grid-cols-3 gap-2 p-2">
 			{frames.map((frame, index) => <button key={index} type="button" aria-label={t("live.seekFrame", { time: timeLabel(frame.time) })} onClick={() => onSeek(frame.time)}
 				className="min-w-0 overflow-hidden rounded-sm border border-border text-xs text-fg-muted hover:border-border-strong focus-visible:outline-2 focus-visible:outline-ring">
 				<Tile frame={frame} /><span className="block px-1 py-1 tabular-nums">{timeLabel(frame.time)}</span>
@@ -132,6 +132,32 @@ export function Frame(props: LiveFrameProps) {
 	const [requested, setRequested] = useState<string | null>(null);
 	const nodes = useRef(new Map<string, HTMLVideoElement>());
 	const controlsBusy = useRef(false);
+	const viewport = useRef<HTMLDivElement>(null);
+	const beforePlayer = useRef<HTMLDivElement>(null);
+	const afterPlayer = useRef<HTMLDivElement>(null);
+	const [playerSize, setPlayerSize] = useState<{ width: number; height: number } | null>(null);
+	useLayoutEffect(() => {
+		const element = viewport.current;
+		if (!element) return;
+		const measure = () => {
+			const media = good && nodes.current.get(good.url);
+			if (!media?.videoWidth || !media.videoHeight) return;
+			const reserved = (beforePlayer.current?.clientHeight ?? 0) + (afterPlayer.current?.clientHeight ?? 0);
+			const widthScale = element.clientWidth / media.videoWidth;
+			const minimum = Math.min(media.videoHeight * widthScale, 8 * (parseFloat(getComputedStyle(document.documentElement).fontSize) || 16));
+			const height = Math.max(minimum, (props.availableHeight ?? element.clientHeight) - reserved);
+			const scale = Math.min(widthScale, height / media.videoHeight);
+			const width = media.videoWidth * scale, fittedHeight = media.videoHeight * scale;
+			setPlayerSize(previous => previous?.width === width && previous.height === fittedHeight ? previous : { width, height: fittedHeight });
+			props.onHeight?.(Math.ceil(reserved + fittedHeight), Math.ceil(reserved + minimum));
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(element);
+		if (beforePlayer.current) observer.observe(beforePlayer.current);
+		if (afterPlayer.current) observer.observe(afterPlayer.current);
+		return () => observer.disconnect();
+	}, [good?.url, props.availableHeight, props.onHeight]);
 	const running = props.subject.state === "running" || props.subject.state === "writing";
 	const { id, toolCallId, startedAt, path, size } = props.subject;
 	const timeline = useRef({ id, toolCallId, startedAt, path, size, running, generation: 0 });
@@ -174,16 +200,18 @@ export function Frame(props: LiveFrameProps) {
 	}, [reduced, good]);
 	// Keep the decoded element when promoting it. Recreating it would flash a blank player on every growth update.
 	const sources = [good, pending].filter((source): source is VideoRevision => source !== null);
-	return <div className="flex min-h-0 flex-1 flex-col">
-		{!following && !reduced && (running || latest !== good?.url) && <Button size="sm" variant="ghost" onClick={() => {
-			controlsBusy.current = false;
-			setFollowing(true);
-		}}>{t("live.followRender")}</Button>}
-		{reduced && good && latest && latest !== good.url && <Button size="sm" variant="ghost" onClick={() => {
-			controlsBusy.current = false;
-			nodes.current.get(good.url)?.pause();
-			setRequested(latest);
-		}}>{t("live.loadLatestVideo")}</Button>}
+	return <div ref={viewport} className="flex min-h-0 flex-1 flex-col">
+		<div ref={beforePlayer} className="shrink-0">
+			{!following && !reduced && (running || latest !== good?.url) && <Button size="sm" variant="ghost" onClick={() => {
+				controlsBusy.current = false;
+				setFollowing(true);
+			}}>{t("live.followRender")}</Button>}
+			{reduced && good && latest && latest !== good.url && <Button size="sm" variant="ghost" onClick={() => {
+				controlsBusy.current = false;
+				nodes.current.get(good.url)?.pause();
+				setRequested(latest);
+			}}>{t("live.loadLatestVideo")}</Button>}
+		</div>
 		{!good && props.subject.videoFrame && <Suspense fallback={null}>
 			<p className="px-2 py-1 text-xs text-fg-muted">{t("live.videoInputFrame")}</p>
 			<InputFrame {...props} subject={{ ...props.subject, kind: "file", format: "image", path: props.subject.videoFrame.path, videoFrame: undefined }} />
@@ -193,7 +221,7 @@ export function Frame(props: LiveFrameProps) {
 			return <RevisionVideo key={source.url} source={source} nodes={nodes.current} controls={visible}
 				preload={visible ? "metadata" : "auto"} muted playsInline hidden={!visible}
 				data-pending-video={visible ? undefined : ""} aria-label={visible ? t("live.videoPreview") : undefined}
-				className="block aspect-video w-full shrink-0 object-contain"
+				className="block max-w-full shrink-0 self-center object-contain" style={visible && playerSize ? playerSize : undefined}
 				onLoadedData={event => {
 					const visiblePlayer = good && nodes.current.get(good.url);
 					const ended = visiblePlayer ? atPlaybackEnd(visiblePlayer) : false;
@@ -224,14 +252,16 @@ export function Frame(props: LiveFrameProps) {
 				}}
 				onError={event => { if (source.url === newest.current) loadFailed(event.currentTarget); }} />;
 		})}
-		{good && !running && <KeyFrames key={`frames:${good.url}`} source={good} onSeek={time => {
-			setFollowing(false);
-			const media = nodes.current.get(good.url);
-			if (media) media.currentTime = time;
-		}} />}
-		{failed === "codec" && props.subject.state === "saved" ? <div role="status" className="p-2 text-sm text-fg-muted"><p>{t("live.videoUnsupported")}</p>
-			{props.projectPath && props.subject.path && <Button size="sm" variant="ghost" onClick={() => openInFiles(props.projectPath!, props.subject.path!)}>{t("live.openFiles")}</Button>}
-		</div> : (error || failed !== null) && <WaitingForSave />}
+		<div ref={afterPlayer} className="shrink-0">
+			{good && !running && <KeyFrames key={`frames:${good.url}`} source={good} onSeek={time => {
+				setFollowing(false);
+				const media = nodes.current.get(good.url);
+				if (media) media.currentTime = time;
+			}} />}
+			{failed === "codec" && props.subject.state === "saved" ? <div role="status" className="p-2 text-sm text-fg-muted"><p>{t("live.videoUnsupported")}</p>
+				{props.projectPath && props.subject.path && <Button size="sm" variant="ghost" onClick={() => openInFiles(props.projectPath!, props.subject.path!)}>{t("live.openFiles")}</Button>}
+			</div> : (error || failed !== null) && <WaitingForSave />}
+		</div>
 	</div>;
 }
 

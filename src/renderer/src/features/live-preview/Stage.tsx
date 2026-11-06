@@ -1,5 +1,5 @@
 import { ArrowsOut, DotsThree, FolderOpen, Square, X } from "@phosphor-icons/react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LoadFailedNotice } from "../../registry/lazy";
 import type { SessionController } from "../../state/session";
@@ -51,7 +51,7 @@ function Frame(props: LiveFrameProps) {
 		if (!adapter) return;
 		const update = () => setShown(previous => {
 			const next = latest.current;
-			return next.subject.revision > previous.subject.revision || next.subject.state !== previous.subject.state || next.related !== previous.related || next.turnImages !== previous.turnImages ? next : previous;
+			return next.subject.revision > previous.subject.revision || next.subject.state !== previous.subject.state || next.related !== previous.related || next.turnImages !== previous.turnImages || next.availableHeight !== previous.availableHeight ? next : previous;
 		});
 		update();
 		const timer = setInterval(update, 1000 / adapter.maxFps);
@@ -68,8 +68,8 @@ function ExpandedFrame({ subject, projectPath, related, turnImages, officeCache,
 		render={zoom => subject.format === "pdf" && subject.path
 			? <PdfFrame path={subject.path} revision={subject.revision} name={name} />
 			: subject.format === "image" && subject.path
-				? <PreviewImage sourceKey={`${subject.id}:${subject.revision}`} load={() => loadFileImage(subject.path!)} pdf={false} enabled alt={name} explain zoom={zoom} />
-				: <Frame subject={subject} projectPath={projectPath} related={related} turnImages={turnImages} officeCache={officeCache} />} />;
+				? <PreviewImage sourceKey={`${subject.id}:${subject.revision}`} load={() => loadFileImage(subject.path!)} pdf={false} enabled alt={name} explain zoom={zoom} verticalAlign="start" />
+				: <div className="flex min-h-0 min-w-0 flex-1 self-stretch flex-col"><Frame subject={subject} projectPath={projectPath} related={related} turnImages={turnImages} officeCache={officeCache} /></div>} />;
 }
 
 export function Stage({ session, onShowOutput }: { session: SessionController; onShowOutput(path: string): void }) {
@@ -86,6 +86,27 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 	const redirecting = useRef(false);
 	const officeCache = useMemo(() => officeCacheFor(session.tabId, subject), [session.tabId, subject?.id, subject?.path, subject?.format, subject?.revision]);
 	const pendingOfficeCache = useMemo(() => officeCacheFor(session.tabId, pending), [session.tabId, pending?.id, pending?.path, pending?.format, pending?.revision]);
+	const section = useRef<HTMLElement>(null);
+	const viewport = useRef<HTMLDivElement>(null);
+	const [availableHeight, setAvailableHeight] = useState(256);
+	const key = `${subject?.id}:${subject?.format}:${subject?.path}`;
+	const [size, setSize] = useState<{ key: string; height: number | null; minimum: number } | null>(null);
+	const onHeight = useCallback((height: number | null, minimum = 0) => {
+		setSize(previous => previous?.key === key && previous.height === height && previous.minimum === minimum ? previous : { key, height, minimum });
+	}, [key]);
+	useLayoutEffect(() => {
+		const element = section.current, frame = viewport.current, parent = element?.parentElement;
+		if (!element || !frame || !parent) return;
+		const measure = () => {
+			const chrome = element.getBoundingClientRect().height - frame.getBoundingClientRect().height;
+			const next = Math.max(160, parent.clientHeight - chrome);
+			setAvailableHeight(previous => previous === next ? previous : next);
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(parent); observer.observe(element); observer.observe(frame);
+		return () => observer.disconnect();
+	}, [enabled, key]);
 	if (!enabled || !subject) return null;
 	const name = subjectName(subject);
 	const turnImages = subjects.filter(item => item.path && (item.format === "image" || item.format === "svg")).map(item => item.path!);
@@ -101,7 +122,9 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 	const rendering = running && (subject.kind === "render" || progress !== null);
 	const status = stopping ? t("live.stopping") : redirect === "failed" ? t("live.stopFailed")
 		: rendering ? t("live.rendering") : t(`live.state.${subject.state}`);
-	return <section aria-label={t("live.title")} className={cn("@container/live shrink-0 border-b border-border px-3 py-3", subject.format === "xlsx" && "flex h-full min-h-64 flex-col")}>
+	const contentSize = size?.key === key ? size : null;
+	const height = Math.max(contentSize?.minimum ?? 0, Math.min(contentSize?.height ?? (subject.kind === "render" && !subject.path ? 96 : availableHeight), availableHeight));
+	return <section ref={section} aria-label={t("live.title")} className="@container/live flex shrink-0 flex-col border-b border-border px-3 py-3">
 		<div className="mb-2 flex items-center gap-2">
 			<h3 className="min-w-0 flex-1 text-sm font-semibold text-fg">{t("live.title")}</h3>
 			<IconButton size="sm" label={t("live.close")} icon={<X />} onClick={() => useLivePreview.getState().close(session.tabId)} />
@@ -113,12 +136,13 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 				<FileName name={subjectName(item)} />
 			</button>)}
 		</div>
-		<div className={cn("flex min-h-40 flex-col rounded-md bg-inset", subject.format === "docx" ? "overflow-hidden" : subject.format === "xlsx" ? "min-h-0 flex-1 overflow-hidden" : "h-64 overflow-auto")} data-live-subject={subject.id}>
+		<div ref={viewport} className="flex shrink-0 flex-col overflow-hidden rounded-md bg-inset" style={{ height }} data-live-subject={subject.id}>
 			{[subject, ...(pending ? [pending] : [])].map(item => <div key={`${item.id}:${item.format}`} hidden={item.id !== subject.id}
-				className={cn("min-h-0 flex-1 flex-col", item.format === "xlsx" ? "overflow-hidden" : "overflow-auto")} style={{ display: item.id === subject.id ? "flex" : "none" }}>
+				className="min-h-0 flex-1 flex-col overflow-hidden" style={{ display: item.id === subject.id ? "flex" : "none" }}>
 				{item.kind === "render" && !(item.format === "video" && item.path) ? <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-fg-muted">{item.intent ?? (running ? t("live.rendering") : status)}</div>
 					: <Frame subject={item} projectPath={session.projectPath} related={chat.related} turnImages={turnImages}
 						officeCache={item.id === subject.id ? officeCache : pendingOfficeCache}
+						availableHeight={availableHeight} onHeight={item.id === subject.id ? onHeight : undefined}
 						onOfficeCheck={safe => useLivePreview.getState().checkOffice(session.tabId, item, safe)} />}
 			</div>)}
 		</div>

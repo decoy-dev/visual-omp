@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from "react";
 import { useTranslation } from "react-i18next";
 import { figurePalette } from "../../../ui/diagram-source";
-import type { LiveSubject } from "../types";
+import type { LiveFrameProps, LiveSubject } from "../types";
+import { FIT_MARGIN } from "../../panes/zoom";
 
 export function SizeNote() {
 	const { t } = useTranslation("panes");
@@ -11,6 +12,45 @@ export function SizeNote() {
 export function WaitingForSave() {
 	const { t } = useTranslation("panes");
 	return <p className="p-2 text-sm text-fg-muted" role="status">{t("live.waitingForSave")}</p>;
+}
+
+/** Report natural text height without making the scrolling viewport size its own contents. */
+export function useContentHeight(onHeight: LiveFrameProps["onHeight"]) {
+	const ref = useRef<HTMLDivElement>(null);
+	useLayoutEffect(() => {
+		const element = ref.current;
+		if (!element || !onHeight) return;
+		const measure = () => {
+			const style = getComputedStyle(element.parentElement!);
+			onHeight(Math.ceil(element.getBoundingClientRect().height + parseFloat(style.paddingTop || "0") + parseFloat(style.paddingBottom || "0")));
+		};
+		measure();
+		const observer = new ResizeObserver(measure); observer.observe(element);
+		return () => observer.disconnect();
+	}, [onHeight]);
+	return ref;
+}
+
+/** Width-fitted image height stays independent of the stage's current height cap. */
+export function usePictureHeight(ref: RefObject<HTMLDivElement | null>, onHeight: LiveFrameProps["onHeight"], vector = false, minimum = 0) {
+	useLayoutEffect(() => {
+		const element = ref.current;
+		if (!element || !onHeight) return;
+		const measure = () => {
+			const images = element.querySelectorAll("img");
+			if (!images.length || Array.from(images).some(image => !image.naturalWidth || !image.naturalHeight)) return;
+			const style = getComputedStyle(element);
+			const horizontal = vector ? parseFloat(style.paddingLeft || "0") + parseFloat(style.paddingRight || "0") : FIT_MARGIN * 2;
+			const vertical = vector ? parseFloat(style.paddingTop || "0") + parseFloat(style.paddingBottom || "0") : FIT_MARGIN * 2;
+			let height = 0;
+			for (const image of images) height += Math.max(minimum, image.naturalHeight * Math.min(vector ? Infinity : 1, Math.max(1, element.clientWidth - horizontal) / image.naturalWidth) + vertical);
+			onHeight(Math.ceil(height));
+		};
+		measure();
+		const observer = new ResizeObserver(measure); observer.observe(element);
+		element.addEventListener("load", measure, true);
+		return () => { observer.disconnect(); element.removeEventListener("load", measure, true); };
+	}, [ref, onHeight, vector, minimum]);
 }
 
 /** Recompute the figure colors on the same theme changes as transcript diagrams. */

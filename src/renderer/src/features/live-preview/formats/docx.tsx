@@ -61,10 +61,13 @@ export function Frame(props: LiveFrameProps) {
 	useEffect(() => {
 		const element = host.current;
 		if (!element) return;
-		const observer = new ResizeObserver(() => fitDocumentPages(element));
+		const observer = new ResizeObserver(() => {
+			fitDocumentPages(element);
+			if (element.shadowRoot?.querySelector("section.docx")) props.onHeight?.(element.offsetHeight);
+		});
 		observer.observe(element);
 		return () => observer.disconnect();
-	}, [props.subject.path, props.subject.format]);
+	}, [props.subject.path, props.subject.format, props.onHeight]);
 	useEffect(() => {
 		host.current?.shadowRoot?.replaceChildren(); goodRevision.current = null;
 		if (error) { props.officeCache?.clear(); props.onOfficeCheck?.(null); }
@@ -132,7 +135,7 @@ export function Frame(props: LiveFrameProps) {
 		void run();
 		return () => { current = false; client?.dispose(); };
 	}, [frame, props.subject.path, props.subject.format, error]);
-	return <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-inset">
+	return <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-inset [scrollbar-gutter:stable]">
 		<div key={`${props.subject.format}:${props.subject.path}`} ref={host} data-theme="light" className="min-w-0 p-4 text-fg" />
 		{(error || failure === "incomplete" || failure === "missing") && <WaitingForSave />}
 		{failure && failure !== "incomplete" && failure !== "missing" && <p role="status" className="p-3 text-sm text-fg-muted">{t(failure === "timeout" ? "live.office.timeout" : "live.office.unsafe")}{failure === "timeout" && goodRevision.current !== null && <> {t("live.office.retained")}</>}</p>}

@@ -357,3 +357,12 @@ it.each(["retry", "new revision"])("advances past a failed DOCX chunk to a good 
 	expect(element.querySelector("[data-live-subject]")?.getAttribute("data-live-subject")).toBe("c");
 	expect(element.textContent).toContain("c complete");
 });
+
+it.each([{ height: 100, minimum: 0, expected: 100 }, { height: 600, minimum: 224, expected: 224 }])("sizes compact content and honors its usable minimum: %j", async size => {
+	env.loadAdapter.mockImplementation(async () => ({ maxFps: 8, format: "svg", Frame: (props: LiveFrameProps) => {
+		useEffect(() => { props.onHeight?.(size.height, size.minimum); }, [props.onHeight]);
+		return createElement("div", null, "Fitted content");
+	} }));
+	await render();
+	expect((element.querySelector("[data-live-subject]") as HTMLElement).style.height).toBe(`${size.expected}px`);
+});

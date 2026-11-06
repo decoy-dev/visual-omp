@@ -1,6 +1,6 @@
 import { Markdown } from "../../../transcript/Markdown";
 import type { LiveAdapter, LiveFrameProps } from "../types";
-import { SizeNote, useSourceText, WaitingForSave } from "./shared";
+import { SizeNote, useContentHeight, useSourceText, WaitingForSave } from "./shared";
 
 /** RFC 4180 quoting also applies to TSV. A streaming record is complete only after its newline. */
 export function csvMarkdown(source: string, delimiter: "," | "\t", writing: boolean): string {
@@ -27,9 +27,10 @@ export function csvMarkdown(source: string, delimiter: "," | "\t", writing: bool
 	return [line(rows[0]), `| ${Array.from({ length: columns }, () => "---").join(" | ")} |`, ...rows.slice(1).map(line)].join("\n");
 }
 
-export function Frame({ subject }: LiveFrameProps) {
+export function Frame({ subject, onHeight }: LiveFrameProps) {
 	const { text, error } = useSourceText(subject);
-	return <div className="min-h-0 flex-1 overflow-auto p-4">{subject.elided ? <SizeNote /> : <><Markdown text={csvMarkdown(text ?? "", /\.tsv$/i.test(subject.path ?? "") ? "\t" : ",", subject.state === "writing")} />{error && <WaitingForSave />}</>}</div>;
+	const content = useContentHeight(onHeight);
+	return <div className="min-h-0 flex-1 overflow-auto p-4"><div ref={content} className="flow-root">{subject.elided ? <SizeNote /> : <><Markdown text={csvMarkdown(text ?? "", /\.tsv$/i.test(subject.path ?? "") ? "\t" : ",", subject.state === "writing")} />{error && <WaitingForSave />}</>}</div></div>;
 }
 
 export const adapter: LiveAdapter = { format: "csv", maxFps: 4, Frame };

@@ -74,12 +74,12 @@ export interface ZoomLayout {
 	contentHeight: number;
 }
 
-export function zoomLayout(natural: Size, viewport: Size, scale: number): ZoomLayout {
+export function zoomLayout(natural: Size, viewport: Size, scale: number, verticalAlign: "center" | "start" = "center"): ZoomLayout {
 	const width = natural.width * scale;
 	const height = natural.height * scale;
 	const contentWidth = Math.max(viewport.width, width);
 	const contentHeight = Math.max(viewport.height, height);
-	return { width, height, left: (contentWidth - width) / 2, top: (contentHeight - height) / 2, contentWidth, contentHeight };
+	return { width, height, left: (contentWidth - width) / 2, top: verticalAlign === "start" ? Math.min(FIT_MARGIN, contentHeight - height) : (contentHeight - height) / 2, contentWidth, contentHeight };
 }
 
 function clamp(value: number, min: number, max: number): number {

@@ -66,6 +66,13 @@ describe("zoomLayout", () => {
 		expect(zoomLayout({ width: 200, height: 100 }, view, 1)).toEqual({ width: 200, height: 100, left: 116, top: 116, contentWidth: 432, contentHeight: 332 });
 		expect(zoomLayout({ width: 1000, height: 200 }, view, 1)).toEqual({ width: 1000, height: 200, left: 0, top: 66, contentWidth: 1000, contentHeight: 332 });
 	});
+	it("keeps fitted Outputs images at the top margin without changing their proportions or horizontal centering", () => {
+		const natural = { width: 1920, height: 1080 };
+		const layout = zoomLayout(natural, view, fitScale(natural, view, false), "start");
+		expect(layout.top).toBe(FIT_MARGIN);
+		expect(layout.left).toBe(FIT_MARGIN);
+		expect(layout.width / layout.height).toBeCloseTo(1920 / 1080);
+	});
 });
 
 describe("anchoredScroll", () => {

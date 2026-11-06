@@ -58,6 +58,30 @@ describe("video revisions", () => {
 		expect(player()?.hasAttribute("playsinline")).toBe(true);
 		expect(player()?.muted).toBe(true);
 	});
+	it.each([
+		{ width: 640, height: 360, fittedWidth: 496, fittedHeight: 279 },
+		{ width: 360, height: 1800, fittedWidth: 251.8, fittedHeight: 1259 },
+	])("keeps a $width by $height player at its fitted aspect ratio above the key frames", async size => {
+		await show();
+		const viewport = host.firstElementChild!;
+		Object.defineProperties(viewport, { clientWidth: { value: 496 }, clientHeight: { value: 1449 } });
+		Object.defineProperty(viewport.lastElementChild!, "clientHeight", { value: 190 });
+		Object.defineProperties(pending(), { videoWidth: { value: size.width }, videoHeight: { value: size.height } });
+		await event(pending(), "loadeddata");
+		expect(parseFloat(player()!.style.width)).toBeCloseTo(size.fittedWidth);
+		expect(parseFloat(player()!.style.height)).toBeCloseTo(size.fittedHeight);
+	});
+	it("reserves a usable player and asks the outer stage to grow when the strip exceeds its budget", async () => {
+		const onHeight = vi.fn();
+		await act(async () => root.render(createElement(Frame, { subject, projectPath: "/project", related: [], availableHeight: 200, onHeight })));
+		const viewport = host.firstElementChild!;
+		Object.defineProperties(viewport, { clientWidth: { value: 320 }, clientHeight: { value: 200 } });
+		Object.defineProperty(viewport.lastElementChild!, "clientHeight", { value: 190 });
+		Object.defineProperties(pending(), { videoWidth: { value: 640 }, videoHeight: { value: 360 } });
+		await event(pending(), "loadeddata");
+		expect(parseFloat(player()!.style.height)).toBe(128);
+		expect(onHeight).toHaveBeenLastCalledWith(318, 318);
+	});
 	it("keeps the last good player on a failed save and accepts a later good revision", async () => {
 		await show(); await event(pending(), "loadeddata");
 		env.revision = 2; await show();
@@ -370,7 +394,6 @@ describe("display-only key frames", () => {
 		expect(env.drawImage).toHaveBeenCalledTimes(12);
 		await act(async () => buttons[3]!.click());
 		expect(player()?.currentTime).toBeCloseTo(keyFrameTimes(6)[3]!);
-		expect(host.querySelector("[aria-label='Key frames']")?.className).toContain("grid-cols-2");
 	});
 	it("cancels the old extractor and discards stale key frames after a newer revision", async () => {
 		await show(); await event(pending(), "loadeddata");
