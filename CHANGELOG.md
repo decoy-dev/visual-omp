@@ -4,14 +4,30 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.11] - 2026-11-06
+
+visual-omp 0.7.11 makes release notes easier to scan and fixes file mentions for paths that contain spaces. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **Improved:** **Release notes are easier to scan.** The viewer groups highlights by type with icons and counts, places headline changes first, and gives important notices distinct formatting.
+- **Fixed:** **File mentions support spaced paths.** Files inserted through drag and drop or file selection use quoted mentions to preserve spaces in their paths.
+- **Fixed:** Settled tool calls with missing results use a neutral mark and a result-unavailable label.
+- **Fixed:** On macOS and Linux, projects opened through symlinks stay grouped with their saved chats in the sidebar.
+
+### Detailed changes
+
 #### Improved
 
-- Release notes group highlights by change type and give major changes and important notices distinct formatting.
+- The release notes viewer groups highlights by category with icons and counts. Authored headline changes appear above the groups, and important notices appear above the highlights.
+- GitHub release notes use the same category order while preserving the authored order within each category.
 
 #### Fixed
 
-- Tool calls with missing results no longer show a success check. They now show "Result unavailable."
-- File mentions now quote paths with spaces, so omp reads the full path and the composer and transcript keep it in one chip.
+- Settled tool calls with missing results no longer show a success check. They use a neutral mark labeled "Result unavailable."
+- File mentions inserted through drag and drop, the @ picker, the command palette and the Files pane quote paths containing spaces. Paths containing both single and double quotes remain plain text because omp's mention syntax cannot represent them.
+- Quoted file mentions remain complete in composer chips, sent-message chips and transcript file links.
+- On macOS and Linux, project folders use the same resolved paths as omp so their saved chats remain in one sidebar group. On macOS, this also handles equivalent `/private` paths. Windows path spelling is unchanged.
 
 ## [0.7.10] - 2026-11-06
 
