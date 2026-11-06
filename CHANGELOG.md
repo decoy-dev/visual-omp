@@ -7,6 +7,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 #### New
 
 - The composer's slash menu offers `/unpin` when omp reports it, starting with omp 18.17. It removes a chat's pin from omp's resume list without changing its preferred account.
+- Settings > Skills & plugins now lets you keep matching skills out of the model's catalog while retaining manual invocation, with "Manual only" labels reported by omp. Pattern editing requires omp 18.17 or later.
 
 #### Improved
 
