@@ -231,13 +231,14 @@ it("retains the hidden preview while its store updates, then shows only the late
 });
 
 describe("render progress", () => {
-	it("shows known progress before loading a file adapter and keeps Stop available", async () => {
+	it("shows known progress while a growing video's adapter loads and keeps Stop available", async () => {
 		const rendering: LiveSubject = { ...subject("movie", "", "running"), kind: "render", format: "video", path: "/project/movie.mp4", toolName: "bash", progress: { tool: "ffmpeg", done: 120, total: 180, unit: "frame", percent: 120 / 180 * 100 } };
 		useLivePreview.getState().update("chat", [rendering], []);
 		await render();
 		expect(element.textContent).toContain("Rendering · frame 120 of 180");
 		expect(element.querySelector("[role='progressbar']")?.getAttribute("aria-valuenow")).toBe(String(120 / 180 * 100));
-		expect(env.loadAdapter).not.toHaveBeenCalled();
+		// A render with a known output path can already play while it grows.
+		expect(env.loadAdapter).toHaveBeenCalledWith("video");
 		await click("Stop");
 		expect(session.abort).toHaveBeenCalledOnce();
 		await act(async () => useLivePreview.getState().update("chat", [{ ...rendering, kind: "file", state: "saved", revision: 2 }], []));
@@ -251,6 +252,8 @@ describe("render progress", () => {
 		await render();
 		expect(element.textContent).toContain("Rendering · frame 30");
 		expect(element.querySelector("[role='progressbar']")?.hasAttribute("aria-valuenow")).toBe(false);
+		// Without an output path there is nothing to play yet.
+		expect(env.loadAdapter).not.toHaveBeenCalled();
 	});
 });
 

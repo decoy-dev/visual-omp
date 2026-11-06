@@ -71,6 +71,8 @@ export interface LiveSubject {
 	images: readonly LiveImage[] | null;
 	progress: LiveProgress | null;
 	sequence: { pattern: PreviewSequencePattern; count: number } | null;
+	/** Latest declared input frame, shown while the movie being encoded cannot decode yet. */
+	videoFrame?: { path: string; mtimeMs: number };
 	/** Byte length of `text`, or the file size the watcher reported. */
 	size: number | null;
 	/** Epoch ms of the first sighting and of the latest change. */

@@ -34,6 +34,14 @@ test("video uses a real paced ffmpeg render with an explicit 180-frame total", a
   assert.equal(calls[0].args.command, videoCommand());
   assert.match(calls[0].args.command, /-re .*testsrc=duration=6:size=320x240:rate=30/);
   assert.match(calls[0].args.command, /-frames:v 180 .*libx264 .*yuv420p .*progress pipe:1 out\.mp4$/);
+  assert.match(calls[0].args.command, /-g 30 -bf 0 -movflags frag_keyframe\+empty_moov\+default_base_moof -flush_packets 1/);
+});
+
+test("regular MP4 remains a separate incomplete-file case", async () => {
+  const [call] = await callsFor("fixture regular-video");
+  assert.equal(call.args.command, videoCommand(false, true));
+  assert.doesNotMatch(call.args.command, /movflags/);
+  assert.match(call.args.command, /regular\.mp4$/);
 });
 
 test("sequence declares one numbered output and writes three differently named images", async () => {

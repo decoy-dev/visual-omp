@@ -129,9 +129,11 @@ function renderOf(call: Call, input: SubjectInput) {
 	const context = { cwd: input.folder, home: null, platform: input.platform };
 	const cwd = str(call.args.cwd);
 	const base = { ...context, cwd: (cwd && resolveOutputPath(cwd, context)) || context.cwd };
+	const inputFolder = parsed.inputSequence ? resolveOutputPath(parsed.inputSequence.folder, base) : null;
 	return {
 		...parsed,
 		path: parsed.path ? resolveOutputPath(parsed.path, base) : null,
+		inputSequence: parsed.inputSequence && inputFolder ? { ...parsed.inputSequence, folder: inputFolder } : undefined,
 		sequences: parsed.sequences.flatMap(pattern => {
 			const folder = resolveOutputPath(pattern.folder, base);
 			return folder ? [{ ...pattern, folder }] : [];
@@ -142,7 +144,10 @@ function renderOf(call: Call, input: SubjectInput) {
 
 /** Only recognized render commands declare frame sequences. Numbered files alone never form a sequence. */
 export function sequencePatterns(input: SubjectInput): PreviewSequencePattern[] {
-	const patterns = callsOf(input).filter(call => call.active).flatMap(call => renderOf(call, input)?.sequences ?? []);
+	const patterns = callsOf(input).filter(call => call.active).flatMap(call => {
+		const render = renderOf(call, input);
+		return render ? [...render.sequences, ...(render.inputSequence ? [render.inputSequence] : [])] : [];
+	});
 	return [...new Map(patterns.map(pattern => [JSON.stringify(pattern), pattern])).values()];
 }
 
@@ -152,6 +157,7 @@ function pathsOf(call: Call, input: SubjectInput): string[] {
 	const render = renderOf(call, input);
 	if (render?.path) paths.push(render.path);
 	if (render) paths.push(...render.sequences.map(pattern => pattern.folder));
+	if (render?.inputSequence) paths.push(render.inputSequence.folder);
 	const direct = str(call.args.path ?? call.args.file_path);
 	const path = direct ? resolveOutputPath(direct, context) : null;
 	return uniquePaths(path ? [path, ...paths] : paths, input);
@@ -220,12 +226,13 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 		if (render) {
 			const sequence = render.sequences[0];
 			const state = stateOf(call, input.working);
-			const savedFile = prior?.kind === "file";
+			const savedFile = prior?.kind === "file" && !(render.tool === "manim" && render.path && render.path !== prior.path);
 			subjects.set(id, {
 				id, kind: savedFile ? "file" : "render", format: savedFile ? prior.format : sequence ? "sequence" : render.path ? fileFormat(render.path) ?? "video" : render.tool === "latex" ? "pdf" : "video",
 				toolCallId: call.id, toolName: call.name, path: savedFile ? prior.path : render.path, text: null,
 				revision: 1, state, elided: false, intent: call.intent, request: null, images: null,
 				progress: render.progress ?? prior?.progress ?? null,
+				videoFrame: prior?.videoFrame,
 				sequence: savedFile ? prior.sequence : sequence ? { pattern: sequence, count: 0 } : null,
 				size: savedFile ? prior.size : null, startedAt: prior?.startedAt ?? call.start,
 				updatedAt: savedFile ? prior.updatedAt : input.now,
@@ -252,12 +259,29 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 		const path = outputPathInFolder(change.path, input.folder, input.platform);
 		const key = outputPathKey(path, input.platform);
 		const format = fileFormat(change.path);
-		if (!format || change.mtimeMs < turn.time) continue;
+		if (!format) continue;
+		// A completed Manim clip belongs to its render subject. Older clips must not become separate output chips.
+		if (/[\\/]partial_movie_files[\\/]/.test(path) && calls.some(call => {
+			const current = renderOf(call, input);
+			return current?.tool === "manim" && current.path !== path;
+		})) continue;
 		const sequence = change.sequence ? {
 			pattern: { ...change.sequence.pattern, folder: outputPathInFolder(change.sequence.pattern.folder, input.folder, input.platform) },
 			count: change.sequence.count,
 		} : null;
 		const sequenceKey = sequence ? JSON.stringify({ ...sequence.pattern, folder: outputPathKey(sequence.pattern.folder, input.platform) }) : null;
+		if (sequenceKey) {
+			const encoding = calls.find(call => {
+				const pattern = renderOf(call, input)?.inputSequence;
+				return pattern && JSON.stringify({ ...pattern, folder: outputPathKey(pattern.folder, input.platform) }) === sequenceKey;
+			});
+			const movie = encoding && subjects.get(`call:${encoding.id}`);
+			if (movie) {
+				subjects.set(movie.id, { ...movie, videoFrame: { path, mtimeMs: change.mtimeMs } });
+				continue;
+			}
+		}
+		if (change.mtimeMs < turn.time) continue;
 		const render = [...subjects.values()].find(subject => subject.kind === "render" || (subject.kind === "file" && subject.id.startsWith("call:"))
 			? sequenceKey && subject.sequence
 				? JSON.stringify({ ...subject.sequence.pattern, folder: outputPathKey(subject.sequence.pattern.folder, input.platform) }) === sequenceKey
@@ -293,6 +317,9 @@ export function deriveSubjects(input: SubjectInput, previous: readonly LiveSubje
 	return [...subjects.values()].map(subject => {
 		const prior = old.get(subject.id);
 		if (!prior) return subject;
+		if (subject.videoFrame?.path !== prior.videoFrame?.path || subject.videoFrame?.mtimeMs !== prior.videoFrame?.mtimeMs) {
+			return { ...subject, revision: prior.revision + 1 };
+		}
 		const same = sameContent(prior, subject, input.platform);
 		return { ...subject, revision: prior.revision + (same ? 0 : 1), updatedAt: same ? prior.updatedAt : subject.updatedAt };
 	}).sort((a, b) => b.startedAt - a.startedAt || b.id.localeCompare(a.id));

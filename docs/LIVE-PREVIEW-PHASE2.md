@@ -124,7 +124,7 @@ The production build and renderer guard passed after rebasing onto main's hidden
 
 Review corrections, 2026-11-05: video requests reserve one of four per-grant and sixteen global slots before opening a file, including pending opens. Excess requests return `429`; every refusal and descriptor-close path releases its reservation. Premature EOF errors the response body, while growth stays within its original advertised extent. FFmpeg totals now come from the recognized invocation's tokenized input/output scopes, with unknown totals for ambiguous limits. Animation-local percentages keep an unknown-total progress bar indeterminate. After rebasing onto main with A2's tooling, typecheck, 422 affected Vitest tests and 17 Node fixture/evidence tests passed. The rebase preserves the isolation-test identity checks, both fixture scenario sets and both Node test lists. No production build was rerun for these review corrections; the integration owner owns the final build and full-suite run.
 
-**Types and watcher.** Add `.mp4`, `.m4v` (`video/mp4`), `.webm`, `.mov` rows in the same change as the ranged handler, so no video is served before streaming exists. Add the extensions to `VISUAL_EXT`; skip path segments named `partial_movie_files` (manim's per-animation files [INFERENCE: manim CE layout from its docs]) the way `.git` is skipped (`preview-watch.ts:61-63`).
+**Types and watcher.** MP4, M4V, WebM and MOV use the ranged handler. The watcher coalesces growing-video changes on a 750 ms timer without requiring a stable size; the decoder decides whether the bounded file snapshot can play. Other formats retain the two-stat stability check. Manim's explicitly named completed clips under `partial_movie_files` are eligible, while unrelated cache files remain excluded.
 
 **Ranged handler** for `video/*`:
 
@@ -161,16 +161,19 @@ export interface PreviewSequencePattern { folder: string; prefix: string; digits
 
 Main reports only the newest matching file per pattern per debounce, with the count. Files matching no declared pattern are reported individually, as today, so unrelated numbered images never merge.
 
-**Adapter** (new `formats/video.tsx`): `<video controls preload="metadata" muted playsInline>` with `?rev=`; codec failure (`MEDIA_ERR_SRC_NOT_SUPPORTED`) shows "This video format cannot play here" and Open in Files; a load error keeps the last good revision. During `render`, a progress bar and "Rendering · frame 120 of 300".
+**Adapter** (`formats/video.tsx`): hidden candidates decode and seek to their newest available frame while following a render, then become the visible muted inline player without remounting. An intentional pause, seek or native-control operation suspends following until Follow render is chosen. Focused native controls keep their element. Reduced motion disables automatic playback and seeking. Same-output candidates cannot replace a player at a later decoded position; different completed Manim clips have separate timelines. Superseded and unmounted media explicitly release their source. Failed candidates keep the previous picture. Saved revisions retain the person's playback position. Explicit ffmpeg input sequences provide their newest image until the movie decodes. Codec failure after saving offers Open in Files.
+
+With reduced motion enabled, Load latest video explicitly loads a newer revision, preserves the playback position and leaves the player paused. It does not enable automatic following.
+
 
 **Key frames.** After `loadedmetadata`, a second hidden `<video>` seeks to six evenly spaced times and draws each to a small canvas (display only; tainted canvases are fine). Tiles wrap to two columns at 320 px. Clicking a tile seeks the player. The app runs no ffmpeg; key frames before the full render come from proofs (slice E).
 
-**Fixtures:** `fixture video` (bash runs `ffmpeg -f lavfi -i testsrc=duration=6:size=320x240:rate=30 -c:v libx264 -pix_fmt yuv420p -progress pipe:1 out.mp4`), `fixture sequence` (a declared `%04d.png` pattern plus three unrelated numbered images in the same folder), `fixture progress` (replays recorded Remotion and manim logs from new `scripts/live-preview-fixture/samples/`, each with its tool version line).
+**Fixtures:** `fixture video` renders six seconds in real time, with `-g 30 -bf 0 -movflags frag_keyframe+empty_moov+default_base_moof -flush_packets 1`, so fragments become playable during rendering. `fixture regular-video` keeps an ordinary MP4 case. `fixture sequence` declares `%04d.png` plus three unrelated photos; `fixture progress` replays the recorded renderer logs.
 
 Acceptance:
 1. Playback, seeking to middle and end; DevTools shows `206` with correct `Content-Range`; open-ended responses never exceed 8 MiB; a request without `Range` gets `200` streamed.
 2. Unit tests: explicit, suffix, open-ended, past-end (`416`), multi-range (`416`), HEAD, symlink out of grant, revoked token, and a stream destroyed by abort and by revocation with its handle closed (no open descriptor afterwards).
-3. The ffmpeg fixture shows "frame N of 180" advancing at least three times while the file is incomplete, and the stage shows the video only once it is decodable. The integration owner approved this wording on 2026-11-05 because ffmpeg creates its incomplete output file before its first progress update.
+3. The ffmpeg fixture shows advancing frame progress and decoded video content before its process exits. Decoded positions must advance as fragments accumulate. The ordinary MP4 case may wait for its final index, while retaining any earlier playable revision or declared input frame.
 4. Parsers pass against every recorded sample; unknown output yields `null`.
 5. The declared sequence shows one chip with the newest frame and count; the three unrelated images stay separate.
 6. A ProRes `.mov` shows the unsupported note.

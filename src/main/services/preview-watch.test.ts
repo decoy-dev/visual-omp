@@ -123,6 +123,34 @@ function controlledWatch() {
 }
 
 describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
+	it("reports a continuously growing video before writes stop", async () => {
+		const controlled = controlledWatch();
+		const file = join(dir, "growing.mp4");
+		const { service, id } = await start(dir, [file], { watch: controlled.watch });
+		for (let frame = 1; frame <= 25; frame++) {
+			await writeFile(file, "x".repeat(frame * 100));
+			controlled.notify(dir, "growing.mp4");
+			await delay(80);
+		}
+		expect(changes.length).toBeGreaterThanOrEqual(2);
+		expect(changes[0]!.size).toBeLessThan(changes.at(-1)!.size);
+		expect(changes.at(-1)!.size).toBeLessThan(2500);
+		await service.unwatch(id);
+		expect(changes.at(-1)!.size).toBe(2500);
+	});
+	it("watches a named completed Manim clip while ignoring unrelated cached clips", async () => {
+		const folder = join(dir, "partial_movie_files");
+		await mkdir(folder);
+		const file = join(folder, "completed.mp4");
+		const controlled = controlledWatch();
+		await start(dir, [file], { watch: controlled.watch });
+		await writeFile(file, "completed clip");
+		await writeFile(join(folder, "cached.mp4"), "old cached clip");
+		controlled.notify(dir, "partial_movie_files/completed.mp4");
+		controlled.notify(dir, "partial_movie_files/cached.mp4");
+		await eventually(1);
+		expect(changes[0]!.path).toBe(file);
+	});
 	it("reports a PNG once after a save becomes stable", async () => {
 		await start();
 		const file = join(dir, "poster.png");
@@ -384,20 +412,20 @@ describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
 		expect(changes[0]).toMatchObject({ path: join(dir, name), size: 11 });
 	});
 
-	it.each(["darwin", "linux"] as const)("excludes partial_movie_files despite named paths and patterns on %s", async platform => {
+	it.each(["darwin", "linux"] as const)("allows only explicitly named partial_movie_files clips on %s", async platform => {
 		const partial = join(dir, "partial_movie_files");
 		await mkdir(partial);
 		const { watch, notify } = controlledWatch();
 		await start(dir, [partial, join(partial, "part.mp4")], { watch, platform }, [{ folder: partial, prefix: "", digits: null, suffix: ".png" }]);
-		expect(watch.mock.calls.some(([path]) => path === partial)).toBe(false);
+		expect(watch.mock.calls.some(([path]) => path === partial)).toBe(platform === "linux");
 		await writeFile(join(partial, "part.mp4"), "partial video");
 		await writeFile(join(partial, "1.png"), "partial image");
 		notify(dir, join("partial_movie_files", "part.mp4"));
 		notify(dir, join("partial_movie_files", "1.png"));
 		await writeFile(join(dir, "complete.mp4"), "complete");
 		notify(dir, "complete.mp4");
-		await eventually(1);
-		expect(changes.map(change => change.path)).toEqual([join(dir, "complete.mp4")]);
+		await eventually(2);
+		expect(changes.map(change => change.path).sort()).toEqual([join(partial, "part.mp4"), join(dir, "complete.mp4")].sort());
 	});
 
 	it("coalesces only declared frames and counts all matching files still present", async () => {

@@ -49,9 +49,10 @@ function pngCommand() {
   return `python3 - <<'PY'\nimport pathlib, struct, time, zlib\np = pathlib.Path('frames.png')\ndef chunk(kind, data):\n    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)\nfor i, rgb in enumerate([(25,127,134), (219,120,62), (24,58,64)]):\n    raw = (b'\\x00' + bytes(rgb) * 240) * 160\n    png = b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', struct.pack('>IIBBBBB',240,160,8,2,0,0,0)) + chunk(b'IDAT',zlib.compress(raw)) + chunk(b'IEND',b'')\n    p.write_bytes(png)\n    print(str(p.resolve()) + ' save ' + str(i + 1), flush=True)\n    time.sleep(1)\nPY`;
 }
 
-export function videoCommand(prores = false) {
+export function videoCommand(prores = false, regular = false) {
   const codec = prores ? "-c:v prores_ks -profile:v 3 -pix_fmt yuv422p10le" : "-c:v libx264 -pix_fmt yuv420p";
-  return `ffmpeg -hide_banner -y -re -f lavfi -i testsrc=duration=6:size=320x240:rate=30 -frames:v 180 ${codec} -stats_period 0.25 -progress pipe:1 ${prores ? "unsupported.mov" : "out.mp4"}`;
+  const live = prores || regular ? "" : " -g 30 -bf 0 -movflags frag_keyframe+empty_moov+default_base_moof -flush_packets 1";
+  return `ffmpeg -hide_banner -y -re -f lavfi -i testsrc=duration=6:size=320x240:rate=30 -frames:v 180 ${codec}${live} -stats_period 0.25 -progress pipe:1 ${prores ? "unsupported.mov" : regular ? "regular.mp4" : "out.mp4"}`;
 }
 
 export function sequenceCommand() {
@@ -96,7 +97,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages.findLast(message => message.role === "user");
       const turnMessages = messages.slice(messages.findLastIndex(message => message.role === "user"));
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(helper-reply|colors|helper|notes|process|svg|html|png|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(helper-reply|colors|helper|notes|process|svg|html|png|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -147,8 +148,8 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         { name: "write", args: { path: "isolation.html", content: isolationHtml() }, slow: false },
       ] : fixture === "png" ? [
         { name: "bash", args: { command: pngCommand(), timeout: 30 }, slow: false },
-      ] : fixture === "video" || fixture === "prores" ? [
-        { name: "bash", args: { command: videoCommand(fixture === "prores"), timeout: 30 }, slow: false },
+      ] : fixture === "video" || fixture === "prores" || fixture === "regular-video" ? [
+        { name: "bash", args: { command: videoCommand(fixture === "prores", fixture === "regular-video"), timeout: 30 }, slow: false },
       ] : fixture === "sequence" ? [
         { name: "bash", args: { command: sequenceCommand(), timeout: 30 }, slow: false },
       ] : ["docx", "xlsx", "pptx"].includes(fixture) ? [

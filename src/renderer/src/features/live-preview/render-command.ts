@@ -4,6 +4,8 @@ export interface RenderCommand {
 	tool: "ffmpeg" | "remotion" | "manim" | "latex" | "blender";
 	path: string | null;
 	sequences: PreviewSequencePattern[];
+	/** Existing image frames being encoded into a movie, distinct from an image-sequence output. */
+	inputSequence?: PreviewSequencePattern;
 }
 
 export interface RenderInvocation {
@@ -165,7 +167,9 @@ function parseArgs(raw: string[], output: string): RenderCommand | null {
 		const outputs = positionals(rest, FFMPEG_SWITCHES).map(literalPath).filter((path): path is string => path !== null && (VIDEO.test(path) || IMAGE.test(path)));
 		const path = literalPath(logged) ?? (outputs.length === 1 ? outputs[0] : null);
 		const pattern = path && IMAGE.test(path) ? sequence(path, /%0?(\d*)d/) : null;
-		return { tool: "ffmpeg", path: path && !path.includes("%") ? path : null, sequences: pattern ? [pattern] : [] };
+		const input = option(rest, "-i");
+		const inputSequence = input && IMAGE.test(input) ? sequence(input, /%0?(\d*)d/) : null;
+		return { tool: "ffmpeg", path: path && !path.includes("%") ? path : null, sequences: pattern ? [pattern] : [], ...(inputSequence ? { inputSequence } : {}) };
 	}
 	if (/^remotion(?:@[^/]+)?$/.test(name) && rest[0] === "render") {
 		const values = positionals(rest.slice(1), REMOTION_SWITCHES);
@@ -206,7 +210,9 @@ function parseArgs(raw: string[], output: string): RenderCommand | null {
 			const digits = padding === null ? hasPadding ? undefined : 4 : /^\d$/.test(padding) ? Number(padding) || null : undefined;
 			return { tool: "manim", path: null, sequences: parts && digits !== undefined ? [{ folder: parts.folder, prefix: parts.name, digits, suffix: ".png" }] : [] };
 		}
-		return { tool: "manim", path: literalPath(logged), sequences: [] };
+		// Manim closes each animation clip before reporting this path. It can play before the final concatenation.
+		const partial = [...output.matchAll(/Partial movie file written in\s*['"]([^'"]+)['"]/g)].at(-1)?.[1];
+		return { tool: "manim", path: literalPath(logged) ?? literalPath(partial), sequences: [] };
 	}
 	if (/^(?:pdf|lua|xe)?latex(?:mk)?$/.test(name) || name === "tectonic") {
 		const logged = /Output written on (.+?) \(\d+ pages?\b/m.exec(output)?.[1];

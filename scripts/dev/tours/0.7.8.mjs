@@ -3,7 +3,7 @@ export default {
   chats: [
     {
       id: "video", title: "01 Outputs: video and progress", pane: "outputs",
-      prompts: ["fixture video\nOn a fresh app launch, check the first-use transcript loading: the composer should remain usable while the transcript loads, and the reply should appear without switching chats. Check Outputs: play out.mp4, seek and click each key frame. Send fixture video again to watch frame progress before playback. Hide or minimize the window during the render, then return and check that the latest reply appears."],
+      prompts: ["fixture video\nOn a fresh app launch, check the first-use transcript loading: the composer should remain usable while the transcript loads, and the reply should appear without switching chats. Check Outputs: play out.mp4, seek and click each key frame. Send fixture video again: the fragmented MP4 should show moving content and advance to newer rendered frames before the six-second render finishes. Send fixture regular-video for the ordinary MP4 case, which may wait for its final index before it can play. Hide or minimize the window during the render, then return and check that the latest reply appears."],
       files: ["out.mp4"],
     },
     ...["docx", "xlsx"].map((kind, index) => ({

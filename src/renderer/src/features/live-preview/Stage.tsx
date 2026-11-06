@@ -106,7 +106,7 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 			</button>)}
 		</div>
 		<div className="flex h-64 min-h-40 flex-col overflow-auto rounded-md bg-inset" data-live-subject={subject.id}>
-			{subject.kind === "render" ? <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-fg-muted">{subject.intent ?? (running ? t("live.rendering") : status)}</div>
+			{subject.kind === "render" && !(subject.format === "video" && subject.path) ? <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-fg-muted">{subject.intent ?? (running ? t("live.rendering") : status)}</div>
 				: <Frame key={`${subject.id}:${subject.format}`} subject={subject} projectPath={session.projectPath} related={chat.related} turnImages={turnImages} officeCache={officeCache} />}
 		</div>
 		{rendering && <Progress className="mt-2" aria-label={status} value={progress && progress.total !== null ? progress.percent ?? undefined : undefined} />}

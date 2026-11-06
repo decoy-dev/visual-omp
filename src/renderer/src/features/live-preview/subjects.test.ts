@@ -225,6 +225,36 @@ describe("current-turn live subjects", () => {
 });
 
 describe("recognized render subjects", () => {
+	it("keeps an existing input sequence frame inside its encoding movie subject", () => {
+		const command = "ffmpeg -framerate 30 -i frames/frame%04d.png out.mp4";
+		const pattern = { folder: "/project/work/frames", prefix: "frame", digits: 4, suffix: ".png" };
+		const snapshot = input({ stream: null, activeTools: new Map([["draw", running("draw", { command }, "bash")]]), changes: [
+			{ watchId: "w", path: "/project/work/frames/frame0002.png", size: 100, mtimeMs: 50, sequence: { pattern, count: 2 } },
+		] });
+		expect(sequencePatterns(snapshot)).toEqual([pattern]);
+		expect(namedPaths(snapshot)).toContain(pattern.folder);
+		const first = deriveSubjects(snapshot, []);
+		expect(first).toHaveLength(1);
+		expect(first[0]).toMatchObject({ kind: "render", format: "video", path: "/project/work/out.mp4", videoFrame: { path: "/project/work/frames/frame0002.png", mtimeMs: 50 } });
+		const second = deriveSubjects({ ...snapshot, changes: [{ ...snapshot.changes[0]!, path: "/project/work/frames/frame0003.png", mtimeMs: 60 }] }, first);
+		expect(second[0].revision).toBe(first[0].revision + 1);
+		expect(second[0].videoFrame?.path).toContain("frame0003.png");
+	});
+	it("uses the newest completed Manim animation clip and then the final movie under one identity", () => {
+		const command = "manim -ql scene.py Sample";
+		const clip1 = "/project/work/media/partial_movie_files/Sample/one.mp4";
+		const clip2 = "/project/work/media/partial_movie_files/Sample/two.mp4";
+		const snapshot = (path: string, final = false) => input({ stream: null, activeTools: new Map([["draw", {
+			...running("draw", { command }, "bash"), partialResult: { content: [{ type: "text", text: `${final ? "File ready at" : "Partial movie file written in"} '${path}'` }] },
+		}]]), changes: [clip1, clip2, "/project/work/final.mp4"].map((path, index) => ({ watchId: "w", path, size: 100, mtimeMs: 500 + index })) });
+		const first = deriveSubjects(snapshot(clip1), []);
+		const second = deriveSubjects(snapshot(clip2), first);
+		expect(second.find(subject => subject.id === "call:draw")).toMatchObject({ path: clip2, kind: "file" });
+		expect(second.filter(subject => subject.path === clip1)).toHaveLength(0);
+		const final = deriveSubjects(snapshot("/project/work/final.mp4", true), second);
+		expect(final.find(subject => subject.id === "call:draw")).toMatchObject({ path: "/project/work/final.mp4", format: "video" });
+		expect(namedPaths(snapshot(clip2))).toContain(clip2);
+	});
 	it("shows advancing ffmpeg progress before a stable save, then keeps the same selected identity", () => {
 		const command = "ffmpeg -f lavfi -i testsrc=duration=6:size=320x240:rate=30 -frames:v 180 -progress pipe:1 out.mp4";
 		let previous = deriveSubjects(input({ stream: null, activeTools: new Map([["draw", running("draw", { command }, "bash")]]) }), []);

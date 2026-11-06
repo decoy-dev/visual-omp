@@ -32,8 +32,8 @@ describe("literal render commands", () => {
 		expect(parseRenderCommand(command, "")).toEqual({ tool: "ffmpeg", path: null, sequences: [] });
 	});
 
-	it("ignores input filename numbering", () => {
-		expect(parseRenderCommand("ffmpeg -i frames/%04d.png movie.mp4", "")).toEqual({ tool: "ffmpeg", path: "movie.mp4", sequences: [] });
+	it("keeps input filename numbering as a fallback rather than an output sequence", () => {
+		expect(parseRenderCommand("ffmpeg -i frames/%04d.png movie.mp4", "")).toEqual({ tool: "ffmpeg", path: "movie.mp4", sequences: [], inputSequence: { folder: "frames", prefix: "", digits: 4, suffix: ".png" } });
 	});
 
 	it.each([
@@ -80,8 +80,9 @@ describe("literal render commands", () => {
 		expect(parseRenderCommand(command, "File ready at '/tmp/media/Sample.mp4'\n")).toEqual({ tool: "manim", path: "/tmp/media/Sample.mp4", sequences: [] });
 	});
 
-	it("never takes Manim's per-animation temporary movie as its output", () => {
-		expect(parseRenderCommand("manim -ql scene.py Sample", "Animation 0 : Partial movie file written in '/tmp/partial_movie_files/Sample/0.mp4'\n")?.path).toBeNull();
+	it("uses Manim's newest completed per-animation movie until the final output is reported", () => {
+		expect(parseRenderCommand("manim -ql scene.py Sample", "Animation 0 : Partial movie file written in '/tmp/partial_movie_files/Sample/0.mp4'\n")?.path).toBe("/tmp/partial_movie_files/Sample/0.mp4");
+		expect(parseRenderCommand("manim -ql scene.py Sample", "Partial movie file written in '/tmp/partial_movie_files/Sample/0.mp4'\nFile ready at '/tmp/final.mp4'")?.path).toBe("/tmp/final.mp4");
 	});
 
 	it("declares Manim PNG output with the captured naming convention", () => {

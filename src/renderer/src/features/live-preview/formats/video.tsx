@@ -1,19 +1,29 @@
-import { useEffect, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useRef, useState, type VideoHTMLAttributes } from "react";
 import { useTranslation } from "react-i18next";
 import { Button } from "../../../ui";
+import { useMotionReduced } from "../../../ui/motion";
 import { openInFiles } from "../../panes/files-store";
 import type { LiveAdapter, LiveFrameProps } from "../types";
 import { WaitingForSave } from "./shared";
 import { usePreviewGrant } from "./usePreviewGrant";
 
-interface VideoRevision { url: string; revision: number }
+const InputFrame = lazy(() => import("./image").then(module => ({ default: module.Frame })));
+interface VideoRevision { url: string; revision: number; path: string | null }
 interface KeyFrame { time: number; canvas: HTMLCanvasElement }
+const PLAYBACK_KEYS: Record<string, true> = { ArrowLeft: true, ArrowRight: true, ArrowUp: true, ArrowDown: true, Home: true, End: true, " ": true, k: true, j: true, l: true };
 
 /** The end sample stays inside the final decodable frame, rather than seeking past it. */
 export function keyFrameTimes(duration: number): number[] {
 	if (!Number.isFinite(duration) || duration <= 0) return [];
 	const end = Math.max(0, duration - Math.min(0.05, duration / 100));
 	return Array.from({ length: 6 }, (_, index) => end * index / 5);
+}
+
+/** Follow the newest decodable frame while rendering; retain the person's position after completion. */
+export function videoRevisionTime(duration: number, current: number, running: boolean): number {
+	if (!Number.isFinite(duration) || duration <= 0) return 0;
+	const end = Math.max(0, duration - Math.min(0.1, duration / 10));
+	return running ? end : Math.min(end, Math.max(0, Number.isFinite(current) ? current : 0));
 }
 
 function timeLabel(seconds: number): string {
@@ -82,26 +92,113 @@ function KeyFrames({ source, onSeek }: { source: VideoRevision; onSeek(time: num
 	</>;
 }
 
+/** Promotion keeps this component mounted. Only superseded media release their decoder and protocol stream. */
+function RevisionVideo({ source, nodes, ...props }: VideoHTMLAttributes<HTMLVideoElement> & {
+	source: VideoRevision; nodes: Map<string, HTMLVideoElement>;
+}) {
+	const element = useRef<HTMLVideoElement>(null);
+	useEffect(() => {
+		const media = element.current!;
+		nodes.set(source.url, media);
+		return () => {
+			nodes.delete(source.url);
+			media.pause();
+			media.removeAttribute("src");
+			media.load();
+		};
+	}, [nodes, source.url]);
+	return <video {...props} ref={element} src={source.url} />;
+}
+
 export function Frame(props: LiveFrameProps) {
 	const { t } = useTranslation("panes");
 	const { frame, error } = usePreviewGrant(props);
 	const [good, setGood] = useState<VideoRevision | null>(null);
 	const [failed, setFailed] = useState<"save" | "codec" | null>(null);
-	const player = useRef<HTMLVideoElement>(null);
+	const reduced = useMotionReduced();
+	const [following, setFollowing] = useState(true);
+	const [requested, setRequested] = useState<string | null>(null);
+	const nodes = useRef(new Map<string, HTMLVideoElement>());
+	const controlsBusy = useRef(false);
+	const running = props.subject.state === "running" || props.subject.state === "writing";
+	const follow = running && following && !reduced;
 	const latest = frame ? `${frame.grant.url}?rev=${frame.revision}` : null;
 	const newest = useRef(latest);
 	newest.current = latest;
-	const pending = latest && latest !== good?.url ? { url: latest, revision: frame!.revision } : null;
+	const manual = reduced && requested === latest;
+	const pending = latest && latest !== good?.url && (!good || (following && !reduced) || manual)
+		? { url: latest, revision: frame!.revision, path: props.subject.path } : null;
 	const loadFailed = (media: HTMLVideoElement) => setFailed(media.error?.code === 4 ? "codec" : "save");
+	const accept = (source: VideoRevision, media: HTMLVideoElement) => {
+		if (newest.current !== source.url || source.revision !== props.subject.revision) return;
+		const visible = good && nodes.current.get(good.url);
+		if (visible && (controlsBusy.current || document.activeElement === visible || ((!following || reduced) && !manual))) return;
+		// Playback may have advanced while the candidate was seeking. Compare again at promotion, not at load.
+		if (visible && good.path === source.path && (media.currentTime < visible.currentTime
+			|| (!Number.isFinite(media.duration) && media.currentTime === 0))) return;
+		setGood(source);
+		setFailed(null);
+		setRequested(null);
+		if (follow) void media.play().catch(() => {});
+	};
+	useEffect(() => {
+		if (reduced && good) nodes.current.get(good.url)?.pause();
+	}, [reduced, good]);
+	// Keep the decoded element when promoting it. Recreating it would flash a blank player on every growth update.
+	const sources = [good, pending].filter((source): source is VideoRevision => source !== null);
 	return <div className="flex min-h-0 flex-1 flex-col">
-		{good && <>
-			<video key={`player:${good.url}`} ref={player} src={good.url} controls preload="metadata" muted playsInline aria-label={t("live.videoPreview")}
-				className="block aspect-video w-full shrink-0 object-contain" onError={event => { if (good.url === newest.current) loadFailed(event.currentTarget); }} />
-			<KeyFrames key={`frames:${good.url}`} source={good} onSeek={time => { if (player.current) player.current.currentTime = time; }} />
-		</>}
-		{pending && <video key={pending.url} src={pending.url} preload="auto" muted playsInline hidden data-pending-video=""
-			onLoadedData={() => { if (newest.current === pending.url && pending.revision === props.subject.revision) { setGood(pending); setFailed(null); } }}
-			onError={event => { if (newest.current === pending.url && pending.revision === props.subject.revision) loadFailed(event.currentTarget); }} />}
+		{!following && !reduced && (running || latest !== good?.url) && <Button size="sm" variant="ghost" onClick={() => {
+			controlsBusy.current = false;
+			setFollowing(true);
+		}}>{t("live.followRender")}</Button>}
+		{reduced && good && latest && latest !== good.url && <Button size="sm" variant="ghost" onClick={() => {
+			controlsBusy.current = false;
+			nodes.current.get(good.url)?.pause();
+			setRequested(latest);
+		}}>{t("live.loadLatestVideo")}</Button>}
+		{!good && props.subject.videoFrame && <Suspense fallback={null}>
+			<p className="px-2 py-1 text-xs text-fg-muted">{t("live.videoInputFrame")}</p>
+			<InputFrame {...props} subject={{ ...props.subject, kind: "file", format: "image", path: props.subject.videoFrame.path, videoFrame: undefined }} />
+		</Suspense>}
+		{sources.map(source => {
+			const visible = source.url === good?.url;
+			return <RevisionVideo key={source.url} source={source} nodes={nodes.current} controls={visible}
+				preload={visible ? "metadata" : "auto"} muted playsInline hidden={!visible}
+				data-pending-video={visible ? undefined : ""} aria-label={visible ? t("live.videoPreview") : undefined}
+				className="block aspect-video w-full shrink-0 object-contain"
+				onLoadedData={event => {
+					if (visible || (good && (!following || reduced) && !manual)) return;
+					const media = event.currentTarget;
+					if (media.duration === 0) return;
+					const current = good && good.path === source.path ? nodes.current.get(good.url)?.currentTime ?? 0 : 0;
+					const time = !Number.isFinite(media.duration) || (reduced && !manual) ? media.currentTime : videoRevisionTime(media.duration, current, follow && !manual);
+					if (Math.abs(time - media.currentTime) > 0.05) media.currentTime = time;
+					else accept(source, media);
+				}}
+				onSeeked={event => { if (!visible) accept(source, event.currentTarget); }}
+				onFocus={() => { if (visible) controlsBusy.current = true; }}
+				onBlur={() => {
+					if (!visible) return;
+					controlsBusy.current = false;
+					const candidate = pending && nodes.current.get(pending.url);
+					if (pending && candidate && candidate.readyState >= 2 && !candidate.seeking) accept(pending, candidate);
+				}}
+				onPointerDown={() => { if (visible) { controlsBusy.current = true; setFollowing(false); } }}
+				onPointerUp={() => { if (visible) controlsBusy.current = document.activeElement === nodes.current.get(source.url); }}
+				onKeyDown={event => {
+					if (visible && PLAYBACK_KEYS[event.key]) setFollowing(false);
+				}}
+				onSeeking={() => { if (visible) setFollowing(false); }}
+				onPause={event => {
+					if (visible && nodes.current.get(source.url) === event.currentTarget && !event.currentTarget.ended) setFollowing(false);
+				}}
+				onError={event => { if (source.url === newest.current) loadFailed(event.currentTarget); }} />;
+		})}
+		{good && !running && <KeyFrames key={`frames:${good.url}`} source={good} onSeek={time => {
+			setFollowing(false);
+			const media = nodes.current.get(good.url);
+			if (media) media.currentTime = time;
+		}} />}
 		{failed === "codec" && props.subject.state === "saved" ? <div role="status" className="p-2 text-sm text-fg-muted"><p>{t("live.videoUnsupported")}</p>
 			{props.projectPath && props.subject.path && <Button size="sm" variant="ghost" onClick={() => openInFiles(props.projectPath!, props.subject.path!)}>{t("live.openFiles")}</Button>}
 		</div> : (error || failed !== null) && <WaitingForSave />}

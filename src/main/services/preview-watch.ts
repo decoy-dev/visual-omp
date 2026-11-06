@@ -10,6 +10,8 @@ import { broadcast, handleWithEvent } from "../ipc";
 import { broadFolders, isBroadFolder } from "./panes";
 
 const VISUAL_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg|pdf|html?|mp4|m4v|webm|mov|docx|xlsx|pptx)$/i;
+const VIDEO_EXT = /\.(mp4|m4v|webm|mov)$/i;
+const GROWING_MS = 750;
 const DEBOUNCE_MS = 250;
 const STABLE_MS = 150;
 const IDLE_MS = 4 * 60 * 60 * 1000;
@@ -67,7 +69,7 @@ function inside(root: string, path: string): boolean {
 	return rel !== ".." && !rel.startsWith(`..${sep}`) && !isAbsolute(rel);
 }
 function excluded(path: string): boolean {
-	return path.split(sep).some(part => part === ".git" || part === "node_modules" || part === "partial_movie_files");
+	return path.split(sep).some(part => part === ".git" || part === "node_modules");
 }
 function rootKey(root: Root): string {
 	return `${root.recursive ? "r" : "f"}:${root.path}`;
@@ -335,7 +337,7 @@ export class PreviewWatchService {
 			const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
 			for (const entry of entries) {
 				const path = join(folder, entry.name);
-				if (excluded(path)) continue;
+				if (excluded(path) || entry.name === "partial_movie_files") continue;
 				if (entry.isFile()) this.queue(state, path);
 				else if (entry.isDirectory()) pending.push(path);
 			}
@@ -365,7 +367,8 @@ export class PreviewWatchService {
 	}
 
 	private allowed(state: Watch, path: string): boolean {
-		return !excluded(path) && (this.named(state, path) || state.roots.some(root => root.recursive && inside(root.path, path)));
+		return !excluded(path) && (!path.split(sep).includes("partial_movie_files") || state.namedFiles.has(path))
+			&& (this.named(state, path) || state.roots.some(root => root.recursive && inside(root.path, path)));
 	}
 
 	private queue(state: Watch, path: string): void {
@@ -373,11 +376,13 @@ export class PreviewWatchService {
 		state.pending.add(path);
 		state.readVersions.set(path, (state.readVersions.get(path) ?? 0) + 1);
 		if (state.ending) return;
+		// Growing media needs a deadline: another write must not postpone the read forever.
+		if (state.timer && [...state.pending].some(file => VIDEO_EXT.test(file))) return;
 		clearTimeout(state.timer);
 		state.timer = setTimeout(() => {
 			state.timer = undefined;
 			void this.flush(state);
-		}, DEBOUNCE_MS);
+		}, VIDEO_EXT.test(path) ? GROWING_MS : DEBOUNCE_MS);
 	}
 
 	private async flush(state: Watch): Promise<void> {
@@ -421,11 +426,13 @@ export class PreviewWatchService {
 			const matchingGroups = sequences.filter(sequence => matches(sequence, path)).map(sequence => groups.get(sequence)!);
 			if (after?.isFile()) for (const group of matchingGroups) group.count++;
 			if (!before?.isFile() || !after?.isFile()) continue;
-			if (!final && state.readVersions.get(path) !== versions.get(path)) {
+			const growing = VIDEO_EXT.test(path);
+			if (!growing && !final && state.readVersions.get(path) !== versions.get(path)) {
 				this.queue(state, path);
 				continue;
 			}
-			if (before.size !== after.size || before.mtimeMs !== after.mtimeMs) {
+			// The ranged handler snapshots its response extent. The decoder decides whether the available bytes play.
+			if (!growing && (before.size !== after.size || before.mtimeMs !== after.mtimeMs)) {
 				if (!final) this.queue(state, path);
 				continue;
 			}
@@ -477,7 +484,7 @@ export class PreviewWatchService {
 			if (state.subscriptions.size && !state.subscriptions.has(`f:${dir}`)) {
 				for (const entry of entries) if (entry.isFile()) this.queue(state, join(dir, entry.name));
 			}
-			const dirs = entries.filter(entry => entry.isDirectory()).map(entry => join(dir, entry.name)).filter(path => !excluded(path));
+			const dirs = entries.filter(entry => entry.isDirectory() && entry.name !== "partial_movie_files").map(entry => join(dir, entry.name)).filter(path => !excluded(path));
 			const ignored = await ignoredPaths(dir, dirs.filter(path => !this.named(state, path)));
 			pending.push(...dirs.filter(path => !ignored.has(path)));
 		}
