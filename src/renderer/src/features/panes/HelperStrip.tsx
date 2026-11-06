@@ -1,9 +1,9 @@
 /**
  * The chat's running helpers, pinned at the bottom of the chat column above the working line (DESIGN §3.5, §4.6), so
  * running work stays in view while the transcript moves on. One dense row each: status mark, name, what it is doing
- * now, tool calls and live run time, and Stop. At most `PINNED_ROWS` rows, then "Show N more in Tasks". A row with a
- * conversation opens it, as the Tasks pane does. While a helper is pinned its card under its task call stays out of
- * the transcript (`unpinnedRuns`); once it stops running it leaves the strip and its card is back in the transcript.
+ * now, tool calls and live run time, and Stop. At most `PINNED_ROWS` rows, then "Show N more in Tasks". One row button
+ * opens the conversation when it exists or the helper can receive messages, as the Tasks pane does. While a helper
+ * is pinned its card under its task call stays out of the transcript (`unpinnedRuns`); once it stops running it returns.
  * Keyboard focus in a row that leaves moves to the row now in its place, else "Show N more", else the message box.
  * The strip opens and closes with `Expand`, rows rise in and fade out (`listRowMotion`), and reduced motion keeps
  * only the fades. The transcript is a flex sibling above it, so its follow keeps the bottom in view as the strip
@@ -41,7 +41,7 @@ function PinnedRow({ helper, session, onOpen }: { helper: Helper; session: Sessi
 		<motion.li layout="position" {...listRowMotion} data-helper-id={helper.id} className="flex h-9 items-center gap-2.5 pr-1.5 pl-3">
 			<HelperIdentity helper={helper} compact />
 			<span className="sr-only">{t("tasks.helperStatus.running")}</span>
-			{helper.hasTranscript ? (
+			{helper.hasTranscript || helper.messageable ? (
 				<button
 					type="button"
 					title={helper.activity || undefined}

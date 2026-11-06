@@ -333,7 +333,6 @@
 		"tokens_other": "{{formatted}} tokens",
 		"tokensHint": "How much text this helper has read and written so far.",
 		"stop": "Stop {{name}}",
-		"message": "Message {{name}}",
 		"messageTitle": "Send {{name}} a message",
 		"send": "Send message",
 		"transcript": "Open {{name}}'s conversation",

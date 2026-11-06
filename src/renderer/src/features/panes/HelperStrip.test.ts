@@ -96,6 +96,13 @@ it("appends entries live and catches up once when the hidden window becomes visi
 	expect(container.textContent).toContain("Live entry 4"); expect(render.count).toBe(before + 1);
 	await act(async () => closeHelper(session));
 });
+it("shows the waiting state with an enabled composer before the helper transcript exists", async () => {
+	vi.mocked(window.vomp.invoke).mockResolvedValueOnce(null);
+	await open();
+	expect(container.textContent).toContain("No conversation yet. You can still send a message.");
+	expect(container.querySelector("[role=alert]")).toBeNull();
+	expect(container.querySelector("textarea")!.disabled).toBe(false);
+});
 it("queues a working helper's composer input and permits cancelling it", async () => {
 	await open();
 	const textarea = container.querySelector("textarea")!;

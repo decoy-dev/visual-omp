@@ -9,9 +9,16 @@ import "../../i18n";
 import type { SessionController, SessionView } from "../../state/session";
 import { TooltipProvider } from "../../ui";
 import { TasksPane } from "./TasksPane";
+import { openHelper } from "./helperFocus";
+import { HelperStrip } from "./HelperStrip";
+import { usePinnedHelpers } from "./pinnedHelpers";
+import { TaskRuns } from "../../tool-render/tools/task";
+import type { Helper } from "./derive";
 
 vi.mock("../session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));
 vi.mock("../session-tools/drive", () => ({ reportFailure: vi.fn() }));
+vi.mock("./helperFocus", () => ({ openHelper: vi.fn() }));
+vi.mock("./pinnedHelpers", async importOriginal => ({ ...await importOriginal<object>(), usePinnedHelpers: vi.fn() }));
 vi.mock("../../ui/TargetContextMenu", () => ({ TargetContextMenu: ({ children }: { children: ReactNode }) => children }));
 vi.mock("./common", async importOriginal => ({ ...await importOriginal<object>(), usePaneVisible: () => true }));
 vi.mock("motion/react", async importOriginal => {
@@ -44,13 +51,13 @@ const childTranscript = [
 	{ type: "message", id: "result", timestamp: "2026-10-29T12:00:01Z", message: { role: "toolResult", toolCallId: "bash", toolName: "bash", timestamp: 2, content: [], details: { async: { jobId: "child-job", state: "running" } } } },
 ].map(entry => JSON.stringify(entry)).join("\n") + "\n";
 
-async function mountHelpers(ids: string[], fetchTranscript: (id: string, offset: number) => Promise<TranscriptResult | null>) {
+async function mountHelpers(ids: string[], fetchTranscript: (id: string, offset: number) => Promise<TranscriptResult | null>, options: { status?: "running" | "idle" | "parked"; transcript?: boolean; live?: boolean } = {}) {
 	const client = { fetchTranscript };
 	const view = {
-		mode: "live", working: false, history: null, displayLeaf: null, readOnly: false,
+		mode: options.live === false ? "history" : "live", working: false, history: null, displayLeaf: null, readOnly: false,
 		guest: {
-			phase: "live", entries: [], header: { cwd: "/project" },
-			agents: ids.map((id, index) => ({ id, displayName: id, kind: "sub", status: "idle", hasSessionFile: true, createdAt: 0, lastActivity: 100 - index })),
+			phase: options.live === false ? "ended" : "live", entries: [], header: { cwd: "/project" },
+			agents: ids.map((id, index) => ({ id, displayName: id, kind: "sub", status: options.status ?? "idle", hasSessionFile: options.transcript ?? true, createdAt: 0, lastActivity: 100 - index })),
 			progress: new Map(), lifecycle: new Map(), activeTools: new Map(), backgroundTools: new Map(),
 		},
 	} as unknown as SessionView;
@@ -70,6 +77,32 @@ function button(container: HTMLElement, label: string) {
 }
 
 describe("helper list controls", () => {
+	it.each([
+		{ status: "running" as const, transcript: true, live: true, opens: true, stop: true },
+		{ status: "running" as const, transcript: false, live: true, opens: true, stop: true },
+		{ status: "idle" as const, transcript: true, live: true, opens: true, stop: false },
+		{ status: "parked" as const, transcript: false, live: true, opens: true, stop: false },
+		{ status: "idle" as const, transcript: true, live: false, opens: true, stop: false },
+		{ status: "idle" as const, transcript: false, live: false, opens: false, stop: false },
+	])("offers one conversation entry and independent Stop for $status, transcript=$transcript, live=$live", async options => {
+		vi.mocked(openHelper).mockClear();
+		const container = await mountHelpers(["Atlas"], async () => ({ kind: "rows", text: "", newSize: 0 }), options);
+		const row = container.querySelector('[role="group"]')!;
+		const actions = [...row.querySelectorAll<HTMLButtonElement>("button")];
+		expect(actions).toHaveLength(Number(options.opens) + Number(options.stop));
+		const entry = actions.find(action => action.getAttribute("aria-label") === "Open Atlas's conversation");
+		expect(!!entry).toBe(options.opens);
+		if (entry) {
+			expect(entry.type).toBe("button");
+			expect(entry.disabled).toBe(false);
+			entry.focus();
+			expect(document.activeElement).toBe(entry);
+			await act(async () => entry.click());
+			expect(openHelper).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ tabId: "test" }), expect.objectContaining({ id: "Atlas" }));
+		}
+		expect(actions.some(action => action.getAttribute("aria-label") === "Stop Atlas")).toBe(options.stop);
+	});
+
 	it("keeps Show fewer available after expansion and retains an older helper with a running child on collapse", async () => {
 		const ids = ["D1", "D2", "D3", "P1", "P2", "P3"];
 		const container = await mountHelpers(ids, async (id, offset) => ({ kind: "rows", text: id === "P2" && offset === 0 ? childTranscript : "", newSize: id === "P2" ? childTranscript.length : 0 }));
@@ -90,6 +123,45 @@ describe("helper list controls", () => {
 		const unavailable = [...container.querySelectorAll('[role="status"]')].find(element => element.textContent === "Background jobs unavailable.");
 		expect(unavailable?.getAttribute("title")).toBe("no transcript available");
 		expect(fetchTranscript).toHaveBeenCalledTimes(1);
+	});
+});
+
+describe("other helper entry controls", () => {
+	const helper = (hasTranscript: boolean, messageable: boolean): Helper => ({
+		id: "Atlas", name: "Atlas", status: messageable ? "running" : "done", hasTranscript, messageable,
+		activity: "Reading the source", tokens: null, toolCount: null, durationMs: null, durationAt: null,
+		contextTokens: null, contextWindow: null, model: null,
+	});
+	async function mount(content: ReactNode) {
+		const container = document.createElement("div"); document.body.append(container);
+		const root = createRoot(container); mounted.push({ root, container });
+		await act(async () => root.render(createElement(TooltipProvider, null, content)));
+		return container;
+	}
+	it.each([[true, true], [false, true], [true, false], [false, false]])("keeps one transcript card entry for transcript=%s, messageable=%s", async (hasTranscript, messageable) => {
+		const run = helper(hasTranscript, messageable);
+		const onOpen = vi.fn();
+		const container = await mount(createElement(TaskRuns, { runs: [run], onOpen }));
+		const actions = [...container.querySelectorAll<HTMLButtonElement>("button")];
+		expect(actions).toHaveLength(hasTranscript || messageable ? 1 : 0);
+		if (actions[0]) {
+			expect(actions[0].getAttribute("aria-label")).toBe("Open Atlas's conversation");
+			await act(async () => actions[0]!.click());
+			expect(onOpen).toHaveBeenCalledExactlyOnceWith(run);
+		}
+	});
+	it.each([true, false])("keeps one pinned row entry before and after the transcript appears (%s)", async hasTranscript => {
+		const run = helper(hasTranscript, true);
+		vi.mocked(usePinnedHelpers).mockReturnValue({ all: [run], shown: [run], more: 0, ids: new Set([run.id]) });
+		vi.mocked(openHelper).mockClear();
+		const session = { tabId: "pinned", getSnapshot: () => null, subscribe: () => () => {}, agentCommand: vi.fn() } as unknown as SessionController;
+		const container = await mount(createElement(HelperStrip, { session }));
+		const actions = [...container.querySelectorAll<HTMLButtonElement>("button")];
+		expect(actions).toHaveLength(2);
+		expect(actions[0]!.getAttribute("aria-label")).toBe("Open Atlas's conversation, Working");
+		expect(actions[1]!.getAttribute("aria-label")).toBe("Stop Atlas");
+		await act(async () => actions[0]!.click());
+		expect(openHelper).toHaveBeenCalledExactlyOnceWith(session, run);
 	});
 });
 

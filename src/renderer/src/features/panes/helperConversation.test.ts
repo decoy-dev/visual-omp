@@ -10,17 +10,19 @@ beforeEach(async () => { await i18n.loadNamespaces(["helperFocus"]); });
 const models: HelperConversation[] = [];
 afterEach(() => { for (const model of models.splice(0)) model.dispose(); vi.useRealTimers(); });
 const helper = { id: "Atlas", name: "Atlas", status: "running", messageable: true, hasTranscript: true } as Helper;
-function fixture(status: "running" | "idle" | "parked" | "aborted" = "running") {
+function fixture(status: "running" | "idle" | "parked" | "aborted" = "running", hasTranscript = true) {
 	const listeners = new Set<() => void>();
 	const events = new Set<(event: SessionEvent) => void>();
 	const fileEvents = new Map<string, Set<(event: never) => void>>();
 	let view = {
 		mode: "live", readOnly: false, host: { hostId: "host", generation: 1, phase: "live" },
-		guest: { phase: "live", readOnly: false, header: { id: "parent" }, agents: [{ id: "Atlas", kind: "sub", status, hasSessionFile: true }], lifecycle: new Map(), progress: new Map(), notices: [] },
+		guest: { phase: "live", readOnly: false, header: { id: "parent" }, agents: [{ id: "Atlas", kind: "sub", status, hasSessionFile: hasTranscript }], lifecycle: new Map(), progress: new Map(), notices: [] },
 	} as unknown as SessionView;
 	const send = vi.fn(async (_id: string, _text: string, beforeSend: () => void, dispatched?: () => void) => { beforeSend(); dispatched?.(); });
 	const client = { sendHelperPrompt: send };
-	window.vomp = { invoke: vi.fn(async (channel: string) => channel === "sessions:helperFile" ? "/parent/Atlas.jsonl" : undefined), on: (channel: string, listener: (event: never) => void) => {
+	let file = hasTranscript ? "/parent/Atlas.jsonl" : null;
+	const invoke = vi.fn(async (channel: string) => channel === "sessions:helperFile" ? file : undefined);
+	window.vomp = { invoke, on: (channel: string, listener: (event: never) => void) => {
 		let set = fileEvents.get(channel); if (!set) { set = new Set(); fileEvents.set(channel, set); }
 		set.add(listener); return () => set.delete(listener);
 	} } as unknown as typeof window.vomp;
@@ -32,9 +34,55 @@ function fixture(status: "running" | "idle" | "parked" | "aborted" = "running") 
 	const model = new HelperConversation(session, helper); models.push(model);
 	const publish = (patch: Partial<SessionView>) => { view = { ...view, ...patch }; for (const listener of listeners) listener(); };
 	const agent = (status: "running" | "idle" | "parked" | "aborted") => publish({ guest: { ...view.guest!, agents: [{ ...view.guest!.agents[0]!, status }] } });
-	return { model, send, session, events, listeners, fileEvents, publish, agent, view: () => view };
+	return { model, send, session, events, listeners, fileEvents, publish, agent, invoke, makeFileAvailable: () => { file = "/parent/Atlas.jsonl"; }, view: () => view };
 }
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); };
+
+describe("helper conversation discovery", () => {
+	it("waits before a transcript exists, delivers a message, then reads the conversation automatically", async () => {
+		vi.useFakeTimers();
+		const f = fixture("running", false);
+		const off = f.model.subscribe(() => {});
+		await flush();
+		expect(f.model.getSnapshot()).toMatchObject({ file: null, history: null, error: null, waitingForFile: true, helper: { messageable: true } });
+		f.model.setDraft("Please check the tests"); f.model.enqueue();
+		expect(f.model.getSnapshot().queue[0]?.state).toBe("queued");
+		f.agent("idle"); await flush();
+		expect(f.send.mock.calls[0]?.slice(0, 2)).toEqual(["Atlas", "Please check the tests"]);
+		f.makeFileAvailable();
+		await vi.advanceTimersByTimeAsync(1_000);
+		expect(f.model.getSnapshot()).toMatchObject({ file: "/parent/Atlas.jsonl", error: null, waitingForFile: false });
+		const text = [
+			{ type: "session", id: "child", cwd: "/project" },
+			{ type: "message", id: "reply", parentId: null, timestamp: "2026-11-06T12:00:00Z", message: { role: "assistant", content: [{ type: "text", text: "The tests passed." }], timestamp: 1 } },
+		].map(entry => JSON.stringify(entry)).join("\n") + "\n";
+		for (const listener of f.fileEvents.get("sessions:tail") ?? []) listener({ file: "/parent/Atlas.jsonl", text, reset: true } as never);
+		expect(f.model.getSnapshot().history?.entries[0]).toMatchObject({ id: "reply" });
+		off();
+	});
+	it("stops waiting discovery when the view closes and preserves genuine discovery failures for explicit retry", async () => {
+		vi.useFakeTimers();
+		const f = fixture("idle", false);
+		const off = f.model.subscribe(() => {});
+		await flush();
+		off();
+		const calls = f.invoke.mock.calls.length;
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(f.invoke).toHaveBeenCalledTimes(calls);
+		f.invoke.mockRejectedValueOnce(new Error("Permission denied"));
+		const stop = f.model.subscribe(() => {});
+		await flush();
+		expect(f.model.getSnapshot()).toMatchObject({ waitingForFile: false, error: "Error: Permission denied" });
+		const failedCalls = f.invoke.mock.calls.length;
+		await vi.advanceTimersByTimeAsync(2_000);
+		expect(f.invoke).toHaveBeenCalledTimes(failedCalls);
+		f.makeFileAvailable(); f.model.reload(); await flush();
+		expect(f.model.getSnapshot()).toMatchObject({ file: "/parent/Atlas.jsonl", error: null, waitingForFile: false });
+		for (const listener of f.fileEvents.get("sessions:followState") ?? []) listener({ file: "/parent/Atlas.jsonl", readable: false, ownership: "unknown", error: "File cannot be read" } as never);
+		expect(f.model.getSnapshot().error).toBe("File cannot be read");
+		stop();
+	});
+});
 
 describe("helper message queue", () => {
 	it("holds messages while working, sends one at idle and waits for its turn to finish before the next", async () => {

@@ -1,10 +1,10 @@
 /**
  * Tasks & helpers pane (DESIGN §3.7): omp's checklist (latest `todo` board, the same TodoBoard the transcript shows),
  * helpers at work (SubagentRun cards with live activity, tool calls, tokens, run time and context use, plus Stop /
- * Message / transcript) and background shell jobs. This is where running work shows; Settings → Helpers holds only
+ * Open conversation) and background shell jobs. This is where running work shows; Settings → Helpers holds only
  * the helper definitions, and the Helpers section links there.
  */
-import { CaretRight, ChatCenteredText, FileText, GearSix, ListChecks, Square } from "@phosphor-icons/react";
+import { CaretRight, ChatCenteredText, GearSix, ListChecks, Square } from "@phosphor-icons/react";
 import type { NativeJob, NativeSnapshot } from "@shared/contracts/native";
 import { AnimatePresence, motion } from "motion/react";
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -41,14 +41,13 @@ import { helperWidgetCharts } from "./jobWidgets";
 import { type HelperJobsSnapshot, watchHelperJobs } from "./helperJobs";
 
 
-function HelperRow({ helper, jobs, error, session, onTranscript }: { helper: Helper; jobs: readonly BackgroundJob[]; error: string | null; session: SessionController; onTranscript(helper: Helper): void }) {
+function HelperRow({ helper, jobs, error, session }: { helper: Helper; jobs: readonly BackgroundJob[]; error: string | null; session: SessionController }) {
 	const { t } = useTranslation("panes");
 	const actions = (
 		<>
-			{helper.hasTranscript && (
-				<IconButton size="sm" label={t("tasks.transcript", { name: helper.name })} icon={<FileText />} onClick={() => onTranscript(helper)} />
+			{(helper.hasTranscript || helper.messageable) && (
+				<IconButton size="sm" label={t("tasks.transcript", { name: helper.name })} icon={<ChatCenteredText />} onClick={() => openHelper(session, helper)} />
 			)}
-			{helper.messageable && <IconButton size="sm" label={t("tasks.message", { name: helper.name })} icon={<ChatCenteredText />} onClick={() => openHelper(session, helper)} />}
 			{helper.status === "running" && (
 				<IconButton
 					size="sm"
@@ -75,7 +74,7 @@ function HelperRow({ helper, jobs, error, session, onTranscript }: { helper: Hel
  * Running helpers, then the latest finished ones and any older failed one (`foldHelpers`); the rest wait behind "Show
  * earlier helpers", the same way the background jobs fold.
  */
-function HelperList({ helpers, session, onTranscript }: { helpers: readonly Helper[]; session: SessionController; onTranscript(helper: Helper): void }) {
+function HelperList({ helpers, session }: { helpers: readonly Helper[]; session: SessionController }) {
 	const { t } = useTranslation("panes");
 	const [all, setAll] = useState(false);
 	const readers = useHelperJobs(helpers, session);
@@ -87,7 +86,7 @@ function HelperList({ helpers, session, onTranscript }: { helpers: readonly Help
 			<ul className="flex flex-col gap-2">
 				<AnimatePresence initial={false}>
 					{shown.map(helper => (
-						<HelperRow key={helper.id} helper={helper} jobs={jobs.get(helper.id) ?? []} error={readers.get(helper.id)?.error ?? null} session={session} onTranscript={onTranscript} />
+						<HelperRow key={helper.id} helper={helper} jobs={jobs.get(helper.id) ?? []} error={readers.get(helper.id)?.error ?? null} session={session} />
 					))}
 				</AnimatePresence>
 			</ul>
@@ -354,7 +353,7 @@ export function TasksPane({ session, projectPath }: PaneProps) {
 					</Expand>
 					<Expand open={helpers.length > 0}>
 						<Section title={t("tasks.helpers")} count={runningHelpers > 0 && <Badge count={runningHelpers} label={t("tasks.runningCount", { count: runningHelpers })} />}>
-							<HelperList helpers={helpers} session={session} onTranscript={helper => openHelper(session, helper)} />
+							<HelperList helpers={helpers} session={session} />
 							<button
 								type="button"
 								onClick={() => openSettings("helpers", { projectPath: projectPath ?? session.projectPath })}

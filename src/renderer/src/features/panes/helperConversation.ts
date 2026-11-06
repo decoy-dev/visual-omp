@@ -13,6 +13,7 @@ export interface HelperConversationSnapshot {
 	history: SessionHistory | null;
 	file: string | null;
 	error: string | null;
+	waitingForFile: boolean;
 	queue: readonly HelperMessage[];
 	stale: boolean;
 	draft: string;
@@ -29,13 +30,14 @@ export class HelperConversation {
 	#scope: string;
 	#fileRequest = 0;
 	#looking = false;
+	#retryFile: number | undefined;
 	#disposed = false;
 	#messageId = 0;
 	#sending: { id: number; phase: "preparing" | "dispatched"; lifecycle: SubagentLifecyclePayload | undefined; started: boolean; timer?: number } | null = null;
 	#noticeId = 0;
 	#sources: { agents: GuestSnapshot["agents"]; progress: GuestSnapshot["progress"]; lifecycle: GuestSnapshot["lifecycle"]; running: boolean } | null = null;
 	constructor(readonly session: SessionController, helper: Helper) {
-		this.#snapshot = { helper, history: null, file: null, error: null, queue: [], draft: "", stale: false };
+		this.#snapshot = { helper, history: null, file: null, error: null, waitingForFile: false, queue: [], draft: "", stale: false };
 		this.#scope = this.#identity();
 		this.#noticeId = session.getSnapshot().guest?.notices.at(-1)?.id ?? 0;
 		this.#offSession = session.subscribe(() => this.#update());
@@ -71,13 +73,15 @@ export class HelperConversation {
 	reload(): void {
 		if (this.#snapshot.stale) return;
 		this.#offFile?.(); this.#offFile = null;
-		this.#set({ error: null, history: null, file: null });
+		clearTimeout(this.#retryFile); this.#retryFile = undefined;
+		this.#set({ error: null, history: null, file: null, waitingForFile: false });
 		void this.#findFile();
 	}
 	dispose(): void {
 		this.#disposed = true;
 		this.#fileRequest++;
 		clearTimeout(this.#sending?.timer);
+		clearTimeout(this.#retryFile); this.#retryFile = undefined;
 		this.#sending = null;
 		this.#offSession(); this.#offEvent(); this.#offFile?.();
 		this.#listeners.clear();
@@ -98,6 +102,7 @@ export class HelperConversation {
 		const view = this.session.getSnapshot();
 		if (this.#scope !== this.#identity()) {
 			clearTimeout(this.#sending?.timer); this.#sending = null;
+			clearTimeout(this.#retryFile); this.#retryFile = undefined;
 			this.#set({ stale: true, helper: { ...this.#snapshot.helper, messageable: false, status: "stopped" }, error: helperText("scope"), queue: this.#snapshot.queue.map(item => ({ ...item, state: "error", error: helperText("scopeMessage") })) });
 			this.#offSession(); this.#offFile?.(); this.#offFile = null;
 			this.#fileRequest++; this.#looking = false;
@@ -138,25 +143,41 @@ export class HelperConversation {
 				if (this.#idle() && (sending.started || lifecycle !== sending.lifecycle && lifecycle?.status !== "started")) this.#finish(sending.id);
 			}
 		}
-		if (this.#listeners.size > 0 && !this.#snapshot.file && !this.#looking && !this.#snapshot.error) void this.#findFile();
+		if (this.#listeners.size > 0 && !this.#snapshot.file && !this.#looking && !this.#retryFile && !this.#snapshot.error) void this.#findFile();
 		this.#drain();
+	}
+	#waitForFile(): void {
+		this.#set({ waitingForFile: true });
+		if (this.#listeners.size === 0) return;
+		this.#retryFile = window.setTimeout(() => {
+			this.#retryFile = undefined;
+			this.#update();
+		}, 1_000);
 	}
 	async #findFile(): Promise<void> {
 		const parent = this.session.sessionFile;
-		if (!parent) { this.#set({ error: helperText("noParent") }); return; }
+		if (!parent) {
+			if (this.#snapshot.helper.messageable) this.#waitForFile();
+			else this.#set({ error: helperText("noParent"), waitingForFile: false });
+			return;
+		}
 		this.#looking = true;
 		const request = ++this.#fileRequest;
 		try {
 			const file = await window.vomp.invoke("sessions:helperFile", parent, this.#snapshot.helper.id);
 			if (this.#disposed || request !== this.#fileRequest) return;
-			if (!file) { this.#set({ error: helperText("noFile") }); return; }
-			this.#set({ file });
+			if (!file) {
+				if (this.#snapshot.helper.messageable) this.#waitForFile();
+				else this.#set({ error: helperText("noFile"), waitingForFile: false });
+				return;
+			}
+			this.#set({ file, waitingForFile: false });
 			this.#offFile = watchSessionFile(file, (history, state) => {
 				if (this.#disposed || request !== this.#fileRequest) return;
 				this.#set({ ...(history ? { history } : {}), error: state && !state.readable ? state.error ?? helperText("unreadable") : null });
 			});
 		} catch (error) {
-			if (!this.#disposed && request === this.#fileRequest) this.#set({ error: String(error) });
+			if (!this.#disposed && request === this.#fileRequest) this.#set({ error: String(error), waitingForFile: false });
 		} finally { if (request === this.#fileRequest) this.#looking = false; }
 	}
 	#drain(): void {
@@ -214,8 +235,9 @@ export class HelperConversation {
 	#releaseFile(): void {
 		if (this.#listeners.size > 0) return;
 		this.#fileRequest++; this.#looking = false;
+		clearTimeout(this.#retryFile); this.#retryFile = undefined;
 		this.#offFile?.(); this.#offFile = null;
-		this.#snapshot = { ...this.#snapshot, file: null, history: null };
+		this.#snapshot = { ...this.#snapshot, file: null, history: null, waitingForFile: false };
 	}
 	#set(patch: Partial<HelperConversationSnapshot>): void {
 		this.#snapshot = { ...this.#snapshot, ...patch };

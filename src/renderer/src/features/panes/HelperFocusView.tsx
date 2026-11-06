@@ -69,7 +69,7 @@ export function HelperFocusView({ session, helper }: { session: SessionControlle
 			<span className="text-sm text-fg-muted">{t(`tasks.helperStatus.${state.helper.status}`)}</span>
 		</div>
 		{state.error && <div role="alert" className="mx-6 mt-3 flex items-center gap-3 rounded-md bg-warn-bg px-3 py-2 text-sm text-warn"><p className="min-w-0 flex-1 break-words">{state.error}</p>{!state.stale && <Button size="sm" onClick={() => conversation.reload()}>{t("tasks.focus.retry")}</Button>}</div>}
-		{!state.history && !state.error ? <div role="status" className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted"><Spinner />{t("tasks.transcriptLoading")}</div> : <TranscriptBody
+		{state.waitingForFile && !state.error ? <div role="status" className="flex flex-1 items-center justify-center px-6 text-sm text-fg-muted">{t("tasks.focus.waitingForFile")}</div> : !state.history && !state.error ? <div role="status" className="flex flex-1 items-center justify-center gap-2 text-sm text-fg-muted"><Spinner />{t("tasks.transcriptLoading")}</div> : <TranscriptBody
 			key={state.file} scope={scope} entries={entries} mode={mode} ready={state.history !== null}
 			sessionFile={state.file}
 			outputIdentity={`${session.getSnapshot().host?.hostId ?? ""}:${session.getSnapshot().host?.generation ?? ""}:${state.file ?? helper.id}`}

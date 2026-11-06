@@ -4,7 +4,7 @@
  * call's helpers from its streamed progress or final results. The expanded body keeps the batch's assignments and
  * each helper's output.
  */
-import { CircleHalf, FileText } from "@phosphor-icons/react";
+import { ChatCenteredText, CircleHalf } from "@phosphor-icons/react";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import type { FriendlySummary, ToolStatus } from "../../chat/friendly";
@@ -262,7 +262,7 @@ export function TaskRuns({ runs, onOpen }: { runs: readonly Helper[]; onOpen?: (
 	return (
 		<div className="flex flex-col gap-2">
 			{runs.map(run => (
-				<SubagentRun key={run.id} run={run} actions={onOpen && run.hasTranscript ? <IconButton size="sm" label={t("tasks.transcript", { name: run.name })} icon={<FileText />} onClick={() => onOpen(run)} /> : undefined} />
+				<SubagentRun key={run.id} run={run} actions={onOpen && (run.hasTranscript || run.messageable) ? <IconButton size="sm" label={t("tasks.transcript", { name: run.name })} icon={<ChatCenteredText />} onClick={() => onOpen(run)} /> : undefined} />
 			))}
 		</div>
 	);
