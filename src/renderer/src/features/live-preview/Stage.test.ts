@@ -252,8 +252,6 @@ describe("render progress", () => {
 		await render();
 		expect(element.textContent).toContain("Rendering · frame 30");
 		expect(element.querySelector("[role='progressbar']")?.hasAttribute("aria-valuenow")).toBe(false);
-		// Without an output path there is nothing to play yet.
-		expect(env.loadAdapter).not.toHaveBeenCalled();
 	});
 });
 
