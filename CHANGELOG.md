@@ -18,6 +18,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - HTML previews in Outputs and Files default to a desktop-width page scaled to fit, with Fit width, 100% and Phone options. While omp writes a page, the preview follows changed content and highlights it briefly when a suitable element is available. Clicking the page, changing the size or choosing Pause following stops following. Scrolling inside the script-free page does not pause following on its own. After writing finishes, the preview keeps your place and offers Show latest when a newer revision is available.
 - Word previews in Outputs keep their pages' proportions and margins, scaled to the pane's width, and scroll through multi-page documents. Spreadsheet previews fill the available space, with sheet tabs staying in view while the grid scrolls.
 - The composer's settings row is more compact. The permission button shows only the mode's name, Suggestions shows its pressed state, and shortened account names remain distinguishable. The row scrolls horizontally when space is limited.
+- Helper rows in Tasks now have one conversation button for reading replies and sending messages when available.
 
 #### Fixed
 
