@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+#### Fixed
+
+- Tool calls with missing results no longer show a success check. They now show "Result unavailable."
+
 ## [0.7.10] - 2026-11-06
 
 visual-omp 0.7.10 fixes stalled chat input after a connection replacement and incorrect helper status after a connection ends. It requires omp 18.15.0 or later.
