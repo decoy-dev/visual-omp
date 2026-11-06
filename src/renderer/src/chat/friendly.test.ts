@@ -20,6 +20,22 @@ function summarize(call: { name: string; args?: unknown; result?: ReturnType<typ
 }
 
 describe("friendlySummary", () => {
+	it.each(["bash", "read", "edit", "write", "eval", "task", "lsp", "ask", "mcp__example_tool"])("marks a settled %s call without a result as neutral", name => {
+		expect(summarize({ name })).toMatchObject({
+			key: "generic.unavailable", status: "neutral", statusLabel: "generic.unavailableLabel",
+		});
+	});
+
+	it.each([false, true])("uses the recovered result's outcome (error: %s)", isError => {
+		const call = { name: "bash", args: { command: "npm test" } };
+		expect(summarize(call).status).toBe("neutral");
+		expect(summarize({ ...call, result: ok({ exitCode: isError ? 1 : 0 }, isError) }).status).toBe(isError ? "error" : "ok");
+	});
+
+	it.each([undefined, ok({}, false), ok({}, true)])("keeps running precedence with missing, successful or failed results", result => {
+		expect(summarize({ name: "bash", result, running: true })).toMatchObject({ key: "bash.running", status: "running" });
+	});
+
 	it("counts files and changed lines across a multi-file edit", () => {
 		const summary = summarize({
 			name: "edit",

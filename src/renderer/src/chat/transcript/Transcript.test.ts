@@ -94,6 +94,25 @@ describe("narration replies", () => {
 	});
 });
 
+it.each(["normal", "verbose"] as const)("keeps canonical omission notices without claiming success in %s view", mode => {
+	const entries: SessionEntry[] = [
+		{ type: "message", id: "call", parentId: null, timestamp: new Date(1000).toISOString(), message: {
+			...message, content: [{ type: "toolCall", id: "omitted", name: "bash", arguments: { command: "npm test" } }],
+		} },
+		{ type: "custom_message", id: "omission", parentId: "call", timestamp: new Date(2000).toISOString(),
+			customType: "collab-entry-too-large", display: true,
+			content: "…[message entry, 19993941 bytes omitted for collab session: too large to replicate]" },
+	];
+	const html = renderToStaticMarkup(createElement(TranscriptBody, {
+		scope: { tabId: "omitted", projectPath: "/repo" }, entries, mode, ready: true, identity: "omitted",
+	}));
+	if (mode === "verbose") expect(html).toContain('data-tool-status="neutral"');
+	expect(html).not.toContain('data-tool-status="ok"');
+	if (mode === "verbose") expect(html).toContain('aria-label="Result unavailable"');
+	expect(html).toContain("too large to replicate");
+	if (mode === "verbose") expect(html).toContain("npm test");
+});
+
 describe("stopped replies", () => {
 	const stopped = (errorMessage?: string, stopReason: AssistantMessage["stopReason"] = "aborted"): AssistantMessage => ({ ...message, stopReason, errorMessage, content: [{ type: "text", text: "Plan written." }] });
 	const render = (reply: AssistantMessage, mode: "normal" | "thinking" | "verbose" = "normal") => renderToStaticMarkup(createElement(AssistantBlocks, { message: reply, mode, results: new Map(), active: new Map(), pending: false }));

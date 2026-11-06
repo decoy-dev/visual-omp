@@ -122,7 +122,7 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 	const recovered = useSavedBashOutput({ name: props.name, running: props.running, result: props.result, toolCallId: props.toolCallId });
 	const liveResult = recovered.result ?? (props.running ? partialToolResult(props.partialResult) : undefined);
 	const call = resolveToolCall({ name: props.name, args: props.args, result: liveResult, running: props.running, intent: props.intent });
-	const summary = props.summary ?? friendlySummary(call);
+	const summary = props.summary && (call.result || props.summary.status !== "ok") ? props.summary : friendlySummary(call);
 	const reference = toolContextReference(call);
 	const renderer = resolveToolRenderer(call.name, call.result?.details);
 	const ToolIcon = ICONS[call.name] ?? Wrench;
@@ -162,7 +162,7 @@ export const ToolCard = memo(function ToolCard(props: ToolCardProps): ReactNode 
 							<span className="text-diff-add-text">+{summary.added}</span> <span className="text-diff-del-text">−{summary.removed}</span>
 						</span>
 					)}
-					<span className="inline-flex size-4 shrink-0 items-center justify-center">
+					<span data-tool-status={summary.status} className="inline-flex size-4 shrink-0 items-center justify-center">
 						{running ? (
 							<PulseDot label={t("generic.running", { tool: call.name })} />
 						) : summary.status === "error" ? (

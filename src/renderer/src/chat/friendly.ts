@@ -7,7 +7,7 @@ import { INTENT_FIELD } from "@oh-my-pi/pi-wire";
 import type { ToolResultLike } from "../tool-render/types";
 import { detailsRecord, isAskClosedByMessage, isRecord, num, resultTextOf, shortenPath, splitReadQuery, str } from "../tool-render/util";
 
-/** `neutral` is an outcome that is neither success nor failure, such as a helper that was stopped. */
+/** `neutral` is an unknown outcome or one that is neither success nor failure, such as a stopped helper. */
 export type ToolStatus = "running" | "ok" | "error" | "neutral";
 
 export interface FriendlySummary {
@@ -121,6 +121,7 @@ function editInputPaths(input: string): string[] {
 
 function statusOf(call: ToolCallView): ToolStatus {
 	if (call.running) return "running";
+	if (!call.result) return "neutral";
 	return call.result?.isError || (call.name === "lsp" && detailsRecord(call.result)?.success === false) ? "error" : "ok";
 }
 
@@ -209,6 +210,12 @@ function evalSummary(call: ToolCallView, status: ToolStatus): FriendlySummary {
 /** Plain-language summary of one resolved tool call (see `resolveToolCall`). Unknown tools fall back to "Used <name>". */
 export function friendlySummary(call: ToolCallView): FriendlySummary {
 	const status = statusOf(call);
+	if (status === "neutral") return {
+		key: "generic.unavailable",
+		values: { tool: call.name.replace(/^mcp__/, "").replace(/_/g, " ") },
+		status,
+		statusLabel: "generic.unavailableLabel",
+	};
 	const args = call.args;
 	switch (call.name) {
 		case "edit":

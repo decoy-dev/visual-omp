@@ -67,7 +67,7 @@
 	"checkpoint": { "running": "Saving a checkpoint…", "ok": "Saved a checkpoint", "error": "Couldn't save a checkpoint" },
 	"rewind": { "running": "Returning to the checkpoint…", "ok": "Returned to the checkpoint", "error": "Couldn't return to the checkpoint" },
 	"wait": { "running": "Waiting for background work…", "ok": "Finished waiting", "error": "Stopped waiting" },
-	"generic": { "running": "Using {{tool}}…", "ok": "Used {{tool}}", "error": "{{tool}} failed {{detail}}" },
+	"generic": { "running": "Using {{tool}}…", "ok": "Used {{tool}}", "error": "{{tool}} failed {{detail}}", "unavailable": "{{tool}} result unavailable", "unavailableLabel": "Result unavailable" },
 	"structured": {
 		"table": "Table output",
 		"moreEntries_one": "Show {{count}} more entry",
