@@ -31,6 +31,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Restored saved bash output and artifact instructions when collab shortens a result, within display limits.
 - Collapsed tool groups now show their first-to-latest recorded activity range, fixing timestamps that appeared stuck at the group's start during long turns. Full timestamps are available on hover and keyboard focus.
 - A chat no longer stays on "Reconnecting to omp…" while omp keeps working after their connection drops. The app now joins the replacement connection omp opens and keeps trying while omp runs.
+- Restart omp now works in a chat that lost its connection to omp. It previously failed with "omp screen: The session changed or its semantic UI is not ready." When there is no omp screen to restart from, visual-omp now stops omp and resumes the saved chat. If omp does not confirm the stop, the existing "omp is still running" choice appears.
 
 ## [0.7.8] - 2026-11-05
 
