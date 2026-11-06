@@ -4,14 +4,29 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.9] - 2026-11-06
+
+visual-omp 0.7.9 reduces delays in chats with many helpers, lowers CPU use while replies stream, improves document previews and fixes live video previews. It also adds support for omp 18.17 features while continuing to require omp 18.15.0 or later.
+
+### Highlights
+
+- **Fixed:** Chats with many helpers batch progress updates and reconnect to omp's current state when updates fall too far behind, so an accumulated backlog does not keep delaying questions.
+- **Improved:** Long chats use less renderer CPU while replies stream, including when helpers are running.
+- **Fixed:** Playable video previews in Outputs update while a video renders, and a new render of the same file replaces the previous one.
+- **Improved:** Outputs previews use more of the pane's height, Word previews retain their page proportions, and HTML previews follow changed content while omp writes.
+- **Fixed:** Chats reconnect when omp replaces a lost connection. Restart omp can also stop omp and resume the saved chat when its screen is unavailable.
+- **New:** omp update notices provide release notes and chat restart actions on all supported omp versions. With omp 18.17, you can also configure automatic updates, choose thinking levels in model tags, view prompt-cache predictions and keep selected skills available only for manual invocation.
+
+### Detailed changes
+
 #### New
 
 - The composer's slash menu offers `/unpin` when omp reports it, starting with omp 18.17. It removes a chat's pin from omp's resume list without changing its preferred account.
 - Settings > Skills & plugins now lets you keep matching skills out of the model's catalog while retaining manual invocation, with "Manual only" labels reported by omp. Pattern editing requires omp 18.17 or later.
-- Added an optional status item showing omp's next-message prompt-cache prediction and diagnostics.
-- LSP results now show source previews, diagnostic counts and server failures, and web searches list failed providers.
-- Added omp model-tag completion, including supported thinking levels, and keyword highlighting with effect tooltips in running chats.
-- Added omp automatic-update settings, a retry action when another omp installer is running, and update notices with release notes and chat restart actions.
+- Added an optional status item showing omp's next-message prompt-cache prediction and diagnostics. It requires omp 18.17 or later.
+- LSP results now display the source previews, diagnostic counts and server failures reported by omp 18.17, and web searches show which providers failed.
+- Added omp model-tag completion and keyword highlighting with effect tooltips in running chats. Thinking levels in `^model:level` tags and the `chillax` keyword require omp 18.17 or later.
+- Added automatic-update settings for omp 18.17 or later and a retry action when another omp installer is running. Update notices, What's new release notes and chat restart actions are available with any supported omp version.
 
 #### Improved
 
@@ -28,7 +43,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Transcript following now accounts for layout changes when helper cards shrink above the newest entries, which could previously stop following and show "new content below". Scrolling up with the wheel, keyboard, touch or scrollbar, jumping to an earlier part of the chat, or opening a question card still stops following.
 - Quitting while an Office preview is converting no longer risks deleting the converter's working folder while it is still in use, which could fail on Windows. visual-omp now cleans up after you confirm quitting and waits up to six seconds; cancelling Quit leaves previews working.
 - Outputs now updates playable video previews while rendering and replaces the previous video when another render writes to the same path. This fixes previews that stayed blank or showed the previous render in 0.7.8.
-- Restored saved bash output and artifact instructions when collab shortens a result, within display limits.
+- Saved bash output and instructions for reading saved artifacts are now restored when omp sends a shortened result, within display limits.
 - Collapsed tool groups now show their first-to-latest recorded activity range, fixing timestamps that appeared stuck at the group's start during long turns. Full timestamps are available on hover and keyboard focus.
 - A chat no longer stays on "Reconnecting to omp…" while omp keeps working after their connection drops. The app now joins the replacement connection omp opens and keeps trying while omp runs.
 - Restart omp now works in a chat that lost its connection to omp. It previously failed with "omp screen: The session changed or its semantic UI is not ready." When there is no omp screen to restart from, visual-omp now stops omp and resumes the saved chat. If omp does not confirm the stop, the existing "omp is still running" choice appears.

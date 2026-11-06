@@ -16,7 +16,7 @@ The Scoop manifest does not run the NSIS installer. Scoop opens the installer wi
 
 ### Preparing the release tour
 
-Each release has a manifest in `scripts/dev/tours/<version>.mjs`. Before the release commit, update it against every entry in Unreleased, including a short check note for settings, commands and checks that need another platform or an external service. The current default is 0.7.8. See [the scripts README](../scripts/dev/README.md) for prerequisites, replay prompts and the isolation boundary.
+Each release has a manifest in `scripts/dev/tours/<version>.mjs`. Before the release commit, update it against every entry in Unreleased, including a short check note for settings, commands and checks that need another platform or an external service. The current default is 0.7.9. See [the scripts README](../scripts/dev/README.md) for prerequisites, replay prompts and the isolation boundary.
 
 `npm run tour -- --prepare-only --release X.Y.Z` generates and parses omp sessions, checks expected output files and writes the startup layout seed without launching Electron. It prints an exact `npm run tour -- --resume <root>` command for the integration owner to open later. A successful preparation establishes the fixture data. Rendering and release acceptance still require interactive checks. Subagents must use preparation only.
 
