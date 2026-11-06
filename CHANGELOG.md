@@ -10,6 +10,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Settings > Skills & plugins now lets you keep matching skills out of the model's catalog while retaining manual invocation, with "Manual only" labels reported by omp. Pattern editing requires omp 18.17 or later.
 - Added an optional status item showing omp's next-message prompt-cache prediction and diagnostics.
 - LSP results now show source previews, diagnostic counts and server failures, and web searches list failed providers.
+- Added omp model-tag completion, including supported thinking levels, and keyword highlighting with effect tooltips in running chats.
 
 #### Improved
 
