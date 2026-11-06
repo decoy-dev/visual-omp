@@ -5,6 +5,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OfficePreviewService } from "./preview-office";
 import type { OfficeConversionRuntime } from "./preview-office-runtime";
 import { OFFICE_LIMITS } from "@shared/preview-office-zip";
+import type * as FileSystem from "node:fs/promises";
+
+const cleanup = vi.hoisted(() => ({ remove: vi.fn() }));
+vi.mock("node:fs/promises", async original => {
+	const fs = await original<typeof FileSystem>();
+	return { ...fs, rm: async (...args: Parameters<typeof FileSystem.rm>) => { await cleanup.remove(args[0]); return fs.rm(...args); } };
+});
 
 vi.mock("electron", () => ({ app: { on: vi.fn(), getPath: vi.fn() } }));
 vi.mock("../ipc", () => ({ handleWithEvent: vi.fn() }));
@@ -15,6 +22,7 @@ let folder: string, service: OfficePreviewService, runtime: OfficeConversionRunt
 let current: Set<string>;
 const read = vi.fn();
 beforeEach(async () => {
+	cleanup.remove.mockReset().mockResolvedValue(undefined);
 	folder = await mkdtemp(join(tmpdir(), "vomp-office-test-")); current = new Set([token, other, third]);
 	runtime = { detect: vi.fn(async () => "/scratch/soffice"), rewrite: vi.fn(async bytes => bytes), convert: vi.fn(async (_exe, input, out) => {
 		expect(await readFile(input)).toEqual(Buffer.from([1, 2, 3]));
@@ -23,7 +31,7 @@ beforeEach(async () => {
 	read.mockReset().mockImplementation(async () => ({ ok: true, bytes: new Uint8Array([1, 2, 3]), size: 3, mtimeMs: 1 }));
 	service = new OfficePreviewService({ root: async () => folder, active: (value, owner) => current.has(value) && owner === null, read, runtime });
 });
-afterEach(async () => { service.close(); vi.useRealTimers(); await rm(folder, { recursive: true, force: true }); });
+afterEach(async () => { await service.close(); vi.useRealTimers(); await rm(folder, { recursive: true, force: true }); });
 
 describe("LibreOffice slide snapshots", () => {
 	it("converts only rewritten snapshot bytes in a private revision directory and removes the input", async () => {
@@ -90,9 +98,59 @@ describe("LibreOffice slide snapshots", () => {
 	});
 	it("removes completed PDFs when the grant is revoked", async () => {
 		const result = await service.request(token, 1); expect(result.ok).toBe(true);
-		current.delete(token); service.revoke(token);
-		await vi.waitFor(async () => { await expect(stat(join(folder, "slides", token))).rejects.toThrow(); });
+		current.delete(token); await service.revoke(token);
+		await expect(stat(join(folder, "slides", token))).rejects.toThrow();
 		expect(await service.request(token, 2)).toEqual({ ok: false, reason: "revoked" });
+	});
+	it("waits for converter teardown before removing its working directory or closing", async () => {
+		const release = Promise.withResolvers<boolean>(), aborted = Promise.withResolvers<void>();
+		let directory = "";
+		vi.mocked(runtime.convert).mockImplementationOnce(async (_exe, _input, out, _profile, signal) => {
+			directory = out;
+			signal.addEventListener("abort", () => aborted.resolve(), { once: true });
+			// Model a Windows converter that still owns its working directory after abort.
+			return release.promise;
+		});
+		const request = service.request(token, 1);
+		await vi.waitFor(() => expect(runtime.convert).toHaveBeenCalledOnce());
+		const closed = service.close();
+		await aborted.promise;
+		try {
+			expect(await stat(directory)).toMatchObject({ size: expect.any(Number) });
+			await expect(service.request(other, 1)).resolves.toEqual({ ok: false, reason: "revoked" });
+		} finally { release.resolve(false); }
+		expect(await request).toEqual({ ok: false, reason: "revoked" });
+		expect(await closed).toBe(true);
+		await expect(stat(join(folder, "slides", token))).rejects.toThrow();
+	});
+	it("waits for a previously revoked token's pending removal before deleting the scratch root", async () => {
+		await service.request(token, 1);
+		const release = Promise.withResolvers<void>();
+		const tokenPath = join(folder, "slides", token);
+		cleanup.remove.mockImplementation(async path => { if (path === tokenPath) await release.promise; });
+		const removing = service.revoke(token);
+		await vi.waitFor(() => expect(cleanup.remove).toHaveBeenCalledWith(tokenPath));
+		const closing = service.close();
+		expect(cleanup.remove).not.toHaveBeenCalledWith(folder);
+		release.resolve();
+		await removing;
+		expect(await closing).toBe(true);
+		await expect(stat(folder)).rejects.toThrow();
+	});
+	it("bounds shutdown and preserves scratch files after unconfirmed converter teardown", async () => {
+		const release = Promise.withResolvers<boolean>();
+		vi.mocked(runtime.convert).mockImplementationOnce(() => release.promise);
+		const request = service.request(token, 1);
+		await vi.waitFor(() => expect(runtime.convert).toHaveBeenCalledOnce());
+		vi.useFakeTimers();
+		const closing = service.close();
+		await vi.advanceTimersByTimeAsync(6_000);
+		expect(await closing).toBe(false);
+		expect(await readFile(join(folder, "slides", token, "1", "input.pptx"))).toEqual(Buffer.from([1, 2, 3]));
+		expect(cleanup.remove).not.toHaveBeenCalledWith(folder);
+		release.resolve(false);
+		expect(await request).toEqual({ ok: false, reason: "revoked" });
+		expect(await readFile(join(folder, "slides", token, "1", "input.pptx"))).toEqual(Buffer.from([1, 2, 3]));
 	});
 });
 
@@ -110,4 +168,6 @@ it("quarantines the shared profile after uncertain teardown and settles queued r
 	expect(await queued).toEqual({ ok: false, reason: "converterUnavailable" });
 	expect(await service.request(other, 1)).toEqual({ ok: false, reason: "converterUnavailable" });
 	expect(runtime.convert).toHaveBeenCalledOnce();
+	expect(await service.close()).toBe(false);
+	expect(await readFile(join(folder, "slides", token, "1", "input.pptx"))).toEqual(Buffer.from([1, 2, 3]));
 });

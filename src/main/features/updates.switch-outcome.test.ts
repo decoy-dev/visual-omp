@@ -1,14 +1,16 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppInstallOperation, AppUpdateOutcome } from "@shared/contracts/updates";
 import type * as UpdateService from "../services/updates";
+import type * as NodePath from "node:path";
 
 const fake = vi.hoisted(() => ({
 	method: "brew", pendingMethod: "brew", running: "0.7.6", pendingVersion: "0.7.6",
+	host: "posix" as "posix" | "win32",
 	failure: null as string | null, failureKind: null as "install" | "cleanup" | "launch" | null, bom: false,
 	handlers: new Map<string, (...args: unknown[]) => unknown>(), removed: vi.fn(),
 	reserve: null as ((kind: AppInstallOperation) => void) | null,
 }));
-vi.mock("electron", () => ({ app: { isPackaged: true, getPath: () => "/profile", getVersion: () => fake.running }, shell: {} }));
+vi.mock("electron", () => ({ app: { isPackaged: true, getPath: () => fake.host === "win32" ? "C:\\profile" : "/profile", getVersion: () => fake.running }, shell: {} }));
 vi.mock("node:fs/promises", () => ({
 	access: async () => { throw new Error("ENOENT"); }, readdir: async () => [], realpath: async (path: string) => path,
 	readFile: async (path: string) => {
@@ -27,6 +29,10 @@ vi.mock("../omp/cli", () => ({ runOmp: vi.fn() }));
 vi.mock("../omp/locate", () => ({ ompPath: vi.fn(), ompStatus: vi.fn() }));
 vi.mock("../omp/refused", () => ({ ompStartError: vi.fn() }));
 vi.mock("../prefs", () => ({ getPrefs: () => ({}), setPrefs: vi.fn(), flushPrefs: vi.fn() }));
+vi.mock("node:path", async original => {
+	const path = await original<typeof NodePath>();
+	return { ...path, join: (...parts: string[]) => path[fake.host].join(...parts) };
+});
 
 async function outcome() {
 	// Each case needs a fresh install-method cache and handler registration.
@@ -35,6 +41,8 @@ async function outcome() {
 	vi.clearAllTimers(); vi.useRealTimers();
 	return fake.handlers.get("updates:app:outcome")!() as Promise<AppUpdateOutcome>;
 }
+describe.each(["posix", "win32"] as const)("switch outcomes on a %s host", host => {
+beforeEach(() => { fake.host = host; vi.clearAllMocks(); });
 afterEach(() => {
 	fake.method = "brew"; fake.pendingMethod = "brew"; fake.running = "0.7.6"; fake.pendingVersion = "0.7.6";
 	fake.failure = null; fake.failureKind = null; fake.bom = false; vi.useRealTimers();
@@ -42,7 +50,7 @@ afterEach(() => {
 
 it("recognizes a same-version Homebrew adoption", async () => {
 	expect(await outcome()).toMatchObject({ operation: "switch", method: "brew", updated: true, running: "0.7.6" });
-	expect(fake.removed).toHaveBeenCalledWith("/profile/update-pending.json", { force: true });
+	expect(fake.removed).toHaveBeenCalledWith(fake.host === "win32" ? "C:\\profile\\update-pending.json" : "/profile/update-pending.json", { force: true });
 });
 it("requires the new install method and the target version", async () => {
 	fake.method = "dmg";
@@ -73,4 +81,5 @@ it.each(["install", "cleanup", "launch"] as const)("retains the Windows %s failu
 	fake.pendingMethod = "scoop";
 	fake.failureKind = failureKind; fake.failure = "The switch could not finish.";
 	expect(await outcome()).toMatchObject({ updated: false, failureKind, failure: fake.failure });
+});
 });

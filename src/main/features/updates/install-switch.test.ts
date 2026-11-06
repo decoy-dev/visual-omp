@@ -1,14 +1,16 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppInstallInfo, AppInstallSwitchRun } from "@shared/contracts/updates";
+import type * as NodePath from "node:path";
 
 const fake = vi.hoisted(() => ({
 	method: "dmg" as AppInstallInfo["method"], packaged: true,
+	host: "posix" as "posix" | "win32",
 	globalRoot: undefined as string | undefined,
 	files: new Map<string, string>(), casks: new Map<string, string[]>(), brew: new Set<string>(),
 	env: {} as Record<string, string>, handlers: new Map<string, (...args: unknown[]) => unknown>(),
 	exec: vi.fn(), spawn: vi.fn(), quit: vi.fn(), once: vi.fn(), trash: vi.fn(), write: vi.fn(),
 }));
-vi.mock("electron", () => ({ app: { get isPackaged() { return fake.packaged; }, getPath: () => "/profile", getVersion: () => "0.7.6", quit: fake.quit, once: fake.once }, shell: { trashItem: fake.trash } }));
+vi.mock("electron", () => ({ app: { get isPackaged() { return fake.packaged; }, getPath: () => fake.host === "win32" ? "C:\\profile" : "/profile", getVersion: () => "0.7.6", quit: fake.quit, once: fake.once }, shell: { trashItem: fake.trash } }));
 vi.mock("node:fs/promises", () => ({
 	access: async (path: string) => { if (!fake.files.has(path)) throw new Error("ENOENT"); },
 	readFile: async (path: string) => { const value = fake.files.get(path); if (value === undefined) throw new Error("ENOENT"); return value; },
@@ -20,6 +22,11 @@ vi.mock("../../env", () => ({ userEnv: async () => fake.env }));
 vi.mock("../../files", () => ({ writeText: fake.write }));
 vi.mock("../../ipc", () => ({ handle: (channel: string, fn: (...args: unknown[]) => unknown) => fake.handlers.set(channel, fn) }));
 vi.mock("../../services/executable", () => ({ resolveExecutable: async (path: string) => fake.brew.has(path) ? path : null }));
+// Exercise both host path implementations on every CI runner, without changing target-platform paths.
+vi.mock("node:path", async original => {
+	const path = await original<typeof NodePath>();
+	return { ...path, join: (...parts: string[]) => path[fake.host].join(...parts) };
+});
 import { registerInstallSwitch } from "./install-switch";
 import { InstallOperation } from "../../services/install-operation";
 let operation: InstallOperation;
@@ -33,9 +40,13 @@ function installApp(path: string, version = "0.7.6") {
 	fake.files.set(`${path}/Contents/Info.plist`, plist(version));
 	fake.files.set(`${path}/Contents/MacOS/visual-omp`, "executable");
 }
+const profileFile = (name: string) => fake.host === "win32" ? `C:\\profile\\${name}` : `/profile/${name}`;
+
+describe.each(["posix", "win32"] as const)("install switch on a %s host", host => {
 
 beforeEach(() => {
 	vi.clearAllMocks();
+	fake.host = host;
 	operation = new InstallOperation(() => {});
 	fake.method = "dmg"; fake.packaged = true; fake.files.clear(); fake.casks.clear(); fake.brew.clear(); fake.handlers.clear();
 	fake.globalRoot = undefined;
@@ -90,7 +101,7 @@ describe("macOS switch", () => {
 		await expect(invoke("switchComplete", false)).rejects.toThrow("not registered");
 		fake.casks.set(brew, [target]);
 		await invoke("switchComplete", false);
-		expect(fake.write).toHaveBeenCalledWith("/profile/update-pending.json", expect.stringContaining('"operation":"switch"'));
+		expect(fake.write).toHaveBeenCalledWith(profileFile("update-pending.json"), expect.stringContaining('"operation":"switch"'));
 		expect(fake.quit).toHaveBeenCalledOnce();
 		fake.once.mock.calls.find(call => call[0] === "will-quit")![1]();
 		expect(fake.spawn).toHaveBeenCalledWith("/bin/sh", ["-c", expect.stringContaining("/usr/bin/open"), target, String(process.pid)], { detached: true, stdio: "ignore" });
@@ -193,8 +204,8 @@ describe("Windows switch", () => {
 		// Completion must read the same shared config reader again, rather than keeping a stale probe.
 		fake.globalRoot = "F:\\New configured global scoop";
 		await invoke("switchComplete", false);
-		expect(fake.write).toHaveBeenCalledWith("/profile/scoop-switch.ps1", expect.stringContaining("'F:\\New configured global scoop'"));
-		expect(fake.write).toHaveBeenCalledWith("/profile/scoop-switch.ps1", expect.stringContaining("$config.global_path"));
+		expect(fake.write).toHaveBeenCalledWith(profileFile("scoop-switch.ps1"), expect.stringContaining("'F:\\New configured global scoop'"));
+		expect(fake.write).toHaveBeenCalledWith(profileFile("scoop-switch.ps1"), expect.stringContaining("$config.global_path"));
 		expect(fake.exec).not.toHaveBeenCalled();
 	});
 	it("writes the exact post-exit script before quitting and runs a short encoded file command", async () => {
@@ -202,7 +213,7 @@ describe("Windows switch", () => {
 		await invoke("switchStart");
 		await invoke("switchComplete", false);
 		expect(operation.current).toBe("switch");
-		expect(fake.write).toHaveBeenCalledWith("/profile/scoop-switch.ps1", expect.stringContaining("param([switch]$DryLaunch)"));
+		expect(fake.write).toHaveBeenCalledWith(profileFile("scoop-switch.ps1"), expect.stringContaining("param([switch]$DryLaunch)"));
 		expect(fake.quit).toHaveBeenCalledOnce();
 		expect(fake.spawn).not.toHaveBeenCalled();
 		fake.once.mock.calls.find(call => call[0] === "will-quit")![1]();
@@ -210,7 +221,7 @@ describe("Windows switch", () => {
 		expect(binary).toMatch(/System32\\cmd\.exe$/);
 		expect(options).toMatchObject({ detached: true, windowsVerbatimArguments: true });
 		const encoded = args[2].split("-EncodedCommand ")[1];
-		expect(Buffer.from(encoded, "base64").toString("utf16le")).toBe("& '/profile/scoop-switch.ps1'");
+		expect(Buffer.from(encoded, "base64").toString("utf16le")).toBe(`& '${profileFile("scoop-switch.ps1")}'`);
 	});
 	it.each(["update", "reinstall", "switch"] as const)("refuses preparing or completing while %s owns installation", async kind => {
 		windows();
@@ -232,4 +243,5 @@ describe("Windows switch", () => {
 		expect(operation.current).toBeNull();
 		expect(fake.quit).not.toHaveBeenCalled();
 	});
+});
 });

@@ -46,7 +46,7 @@ export function registerInstallSwitch(deps: {
 				if (!await resolveExecutable(candidate, env)) continue;
 				first ??= candidate;
 				for (const target of await deps.caskApps(candidate)) {
-					if (await exists(join(target, "Contents", "MacOS", "visual-omp"))) return { manager: "brew", available: true, binary: candidate, existing: true, target };
+					if (await exists(posix.join(target, "Contents", "MacOS", "visual-omp"))) return { manager: "brew", available: true, binary: candidate, existing: true, target };
 				}
 			}
 			return { manager: "brew", available: first !== null, binary: first, existing: false, target: null };
@@ -113,8 +113,8 @@ export function registerInstallSwitch(deps: {
 			if (!target) throw new Error("The Homebrew copy could not be located.");
 			const running = appBundlePath(process.execPath);
 			const samePath = running !== null && await canonical(running) === await canonical(target);
-			if (info.existing) version = plistVersion(await readFile(join(target, "Contents", "Info.plist"), "utf8"));
-			const onDisk = await exists(target) ? plistVersion(await readFile(join(target, "Contents", "Info.plist"), "utf8")) : null;
+			if (info.existing) version = plistVersion(await readFile(posix.join(target, "Contents", "Info.plist"), "utf8"));
+			const onDisk = await exists(target) ? plistVersion(await readFile(posix.join(target, "Contents", "Info.plist"), "utf8")) : null;
 			if (!info.existing && await exists(target) && onDisk !== version) {
 				throw new Error("The app at Homebrew's destination has a different version. Update that copy first using its existing update flow, then try Switch to Homebrew again. No app files were changed.");
 			}
@@ -158,8 +158,8 @@ export function registerInstallSwitch(deps: {
 			const targets = await deps.caskApps(run.binary);
 			const target = await canonical(run.target);
 			if (!targets.includes(target)) throw new Error("Homebrew has not registered the new copy. Review the install output and try again.");
-			const version = plistVersion(await readFile(join(target, "Contents", "Info.plist"), "utf8"));
-			if (!version || version !== run.version || !await exists(join(target, "Contents", "MacOS", "visual-omp"))) throw new Error("The Homebrew copy could not be verified.");
+			const version = plistVersion(await readFile(posix.join(target, "Contents", "Info.plist"), "utf8"));
+			if (!version || version !== run.version || !await exists(posix.join(target, "Contents", "MacOS", "visual-omp"))) throw new Error("The Homebrew copy could not be verified.");
 			await writeText(pendingFile, JSON.stringify({ method: "brew", operation: "switch", from: app.getVersion(), to: version, at: Date.now() }));
 			if (trashOld && run.canTrash) {
 				const old = appBundlePath(process.execPath);

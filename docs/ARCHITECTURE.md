@@ -97,10 +97,14 @@ Live visual previews use `features/live-preview/`, whose tracker loads through `
 The Files viewer also renders saved `.html` and `.htm` files through the lazy HTML adapter, independently of the `livePreview` preference and its tracker. A normal file probe still distinguishes files from folders before choosing the adapter. Preview is the default; the existing segmented control switches to syntax-colored Source, remembered per viewer tab until it closes. The adapter owns and revokes its protocol token and handles blocked web navigation for that token, so the browser offer also works with the tracker off. Its persistent notice explains that scripts and network access are disabled. Open in browser reuses `app:openFile` with an HTML-only browser target, local-file validation and the existing native trust confirmation.
 
 `services/default-browser.ts` resolves the default HTTPS browser before that confirmation: Launch Services supplies its app bundle on macOS, Windows supplies its HTTPS ProgId and registered executable command, and Linux supplies its desktop entry through `xdg-settings`. Discovery uses `execFile`, and browser launches receive the checked file through direct argument arrays with no shell. macOS uses `open -a`; Windows and Linux launch the selected executable detached, so the browser can remain open without a timeout. Unsupported templates or unavailable browser discovery retain the file-association fallback, explicitly described in the confirmation because that association may select an editor.
+Linux desktop-entry discovery and macOS application checks use POSIX path functions explicitly.
+Linux URI fields use POSIX file URLs regardless of the test host.
 
 HTML entrypoints retain their existing intent: transcript file chips and rows, turn summaries, Files tree and folder entries, Outputs file rows, and Open in file/tool/Changes context menus all reach the same Files viewer. Changes row clicks still select a diff. The command palette's file results and non-image composer attachments insert `@` mentions; they do not open files. Explicit reveal and default-app actions remain separate. Grants use the project or the page's narrow folder for relative CSS and images; home and temporary-folder roots remain restricted.
 
 For A2's packaged process-isolation investigation only, the main-process `VOMP_PREVIEW_ISOLATION_TEST=1` startup switch and an absolute fixture-file path permit inline scripts in prepared saved revisions of that single file. Main returns the test flag with the prepared revision; the lazy HTML adapter mirrors it with `sandbox="allow-scripts"`, without same-origin permission. Other revisions and files keep the normal policy. The switch enables loopback inspectors for the evidence collector and requires an absolute scratch app profile even in packaged builds. See the A2 procedure and pending decision in `docs/LIVE-PREVIEW.md`; this does not enable Phase 2 scripts in normal use.
+The fixture pin uses native synchronous canonicalization, matching asynchronous grant reads on
+Windows when its temporary directory contains an 8.3 short-name alias.
 
 Video previews use the same grants and scripts-off policy, with MP4/M4V, WebM and MOV responses streamed from the checked file handle. Explicit and suffix byte ranges retain their requested extent; only open-ended ranges stop after at most 8 MiB. Each grant owns its active streams, which are destroyed on request abort or revocation. `subjects.ts` derives render subjects and tool-reported progress from running bash and eval calls. Growing media publishes on a 750 ms watcher deadline without requiring writes to stop. The lazy adapter seeks a hidden candidate to its newest decoded frame during rendering and promotes that same element, preserving the previous picture until it is ready. Saved playback retains the person's position and adds six display-only key frames. Frame sequences require a recognized command pattern; the watcher coalesces them to the newest stable image and current count. An explicit ffmpeg input sequence supplies a labeled image fallback until its movie decodes. Manim's logged completed animation clips use the render's identity and individual file grants; unrelated partial-movie cache files stay excluded.
 
@@ -110,6 +114,11 @@ Office previews read owner-checked grant snapshots over `preview:readBinary`, wi
 
 `preview-office.ts` owns one LibreOffice conversion and one replaceable queued request across the app. Its injected runtime detects the login-shell PATH and platform install locations. PPTX is rewritten by a bounded Node worker, then only that snapshot is written into a private token/revision directory. The converter uses an independent profile with macros and active content disabled, untrusted referer links blocked and HTTP/HTTPS proxies pointing at a closed loopback port. Input/output are capped at 32 MiB, conversion times out after 60 seconds and the runtime kills the process tree on cancellation. Grant revocation removes partial and completed output. The app does not install LibreOffice.
 Cancellation confirms process-tree termination within a separate five-second deadline. If taskkill fails, the process group remains alive or teardown does not answer, the shared profile is quarantined: queued requests settle with an unavailable result and later conversions cannot spawn. The UI asks the person to stop the remaining preview process before restarting visual-omp.
+Revocation waits for the active conversion and its file cleanup before removing the token directory.
+Only the approved shutdown coordinator closes the service, so cancelling Quit leaves previews usable.
+It awaits conversion teardown, pending removals and scratch-root deletion before the final `app.quit()`.
+A six-second deadline permits exit while preserving scratch files when teardown remains unconfirmed.
+Repeated quit requests cannot bypass the pending cleanup.
 
 
 Stop and redirect uses the controller's existing `holdQueue` before `abort`. The renderer waits for `working` to clear, then uses the composer draft API to prepend the correction prefix and focus that tab. Composer send and Escape notifications release the hold; a ten-second stop deadline releases it without modifying the draft.
@@ -1304,6 +1313,9 @@ permits installation. A differing or unreadable destination version blocks the s
 the person to update that copy through its existing update flow first. No switch command uses
 forced replacement. Completion verifies the cask link, on-disk version and executable before
 opening the target after the old process exits. Moving a separate old bundle to the Trash is opt-in.
+Homebrew bundle reads use POSIX paths explicitly, while profile files use the host's native paths.
+The switch and outcome tests exercise both POSIX and Windows host joins on every runner, with
+literal target-platform app paths and native profile paths, so cross-platform CI catches separator assumptions.
 
 `main/services/install-operation.ts` owns mutual exclusion for updates, reinstalls and transfers.
 Main broadcasts `updates:app:operation`; the renderer uses that shared state to disable conflicting

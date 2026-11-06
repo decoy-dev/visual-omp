@@ -4,7 +4,7 @@ import { promisify } from "node:util";
 import { mkdtemp, writeFile, rm, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { runInNewContext } from "node:vm";
 import { Window } from "happy-dom";
 import { WebSocketServer } from "ws";
@@ -201,7 +201,7 @@ async function readinessProbe(prompt: string, marker: string, timeoutAt?: "log" 
 		const clock = join(root, "clock.mjs");
 		if (timeoutAt) await writeFile(clock, "const now = Date.now; let tick = 0; Date.now = () => now() + tick++ * 10000;\n");
 		const result = await exec(process.execPath, [
-			...(timeoutAt ? ["--import", clock] : []),
+			...(timeoutAt ? ["--import", pathToFileURL(clock).href] : []),
 			script, "--root", root, "--port", String(renderer.port), "--main-port", String(main.port),
 			"--prompt", prompt, "--output", join(root, "report.json"),
 		]).then(

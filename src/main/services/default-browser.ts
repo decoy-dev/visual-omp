@@ -1,7 +1,7 @@
 import { execFile, spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { homedir } from "node:os";
-import { basename, isAbsolute, join, win32 } from "node:path";
+import { posix, win32 } from "node:path";
 import { pathToFileURL } from "node:url";
 import { app } from "electron";
 import { resolveExecutable } from "./executable";
@@ -106,10 +106,10 @@ async function linuxBrowser(path: string): Promise<BrowserLaunch | null> {
 	if (!settings) return null;
 	const desktop = await runBrowserCommand({ executable: settings, args: ["get", "default-web-browser"] });
 	if (!/^[\w.-]+\.desktop$/.test(desktop)) return null;
-	const roots = [process.env.XDG_DATA_HOME || join(homedir(), ".local", "share"), ...(process.env.XDG_DATA_DIRS || "/usr/local/share:/usr/share").split(":")];
+	const roots = [process.env.XDG_DATA_HOME || posix.join(homedir(), ".local", "share"), ...(process.env.XDG_DATA_DIRS || "/usr/local/share:/usr/share").split(posix.delimiter)];
 	for (const root of roots) {
-		if (!isAbsolute(root)) continue;
-		const file = join(root, "applications", desktop);
+		if (!posix.isAbsolute(root)) continue;
+		const file = posix.join(root, "applications", desktop);
 		let text: string;
 		try { text = await readFile(file, "utf8"); } catch { continue; }
 		const entry: Record<string, string> = {};
@@ -124,20 +124,20 @@ async function linuxBrowser(path: string): Promise<BrowserLaunch | null> {
 		const tokens = desktopArguments(entry.Exec);
 		if (!tokens?.length) return null;
 		const command = tokens.shift()!;
-		if (SHELL.test(basename(command)) || tokens.some(token => SHELL.test(basename(token)))) return null;
-		const executable = isAbsolute(command) ? command : await resolveExecutable(command);
+		if (SHELL.test(posix.basename(command)) || tokens.some(token => SHELL.test(posix.basename(token)))) return null;
+		const executable = posix.isAbsolute(command) ? command : await resolveExecutable(command);
 		if (!executable) return null;
 		const args: string[] = [];
 		let replaced = false;
 		for (const token of tokens) {
-			if (/^%[fFuU]$/.test(token)) { args.push(/[uU]/.test(token) ? pathToFileURL(path).href : path); replaced = true; }
+			if (/^%[fFuU]$/.test(token)) { args.push(/[uU]/.test(token) ? pathToFileURL(path, { windows: false }).href : path); replaced = true; }
 			else if (token === "%i") { if (entry.Icon) args.push("--icon", entry.Icon); }
 			else if (token === "%c") args.push(entry.Name || desktop);
 			else if (token === "%k") args.push(file);
 			else if (/%(?!%)/.test(token.replace(/%%/g, ""))) return null;
 			else args.push(token.replace(/%%/g, "%"));
 		}
-		if (!replaced) args.push(pathToFileURL(path).href);
+		if (!replaced) args.push(pathToFileURL(path, { windows: false }).href);
 		return { executable, args };
 	}
 	return null;
@@ -148,7 +148,7 @@ export async function defaultBrowserLaunch(path: string, platform: NodeJS.Platfo
 	try {
 		if (platform === "darwin") {
 			const browser = await app.getApplicationInfoForProtocol("https://");
-			return isAbsolute(browser.path) && /\.app$/i.test(browser.path) ? { executable: "/usr/bin/open", args: ["-a", browser.path, "--", path] } : null;
+			return posix.isAbsolute(browser.path) && /\.app$/i.test(browser.path) ? { executable: "/usr/bin/open", args: ["-a", browser.path, "--", path] } : null;
 		}
 		if (platform === "win32") return await windowsBrowser(path);
 		return await linuxBrowser(path);

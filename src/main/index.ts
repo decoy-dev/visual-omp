@@ -19,6 +19,7 @@ import { allowsAppPermission, isAppUrl, setAppRendererUrl } from "./services/app
 import { previewDocumentUrl, previewNavigationRule, registerPreviewScheme, revokeAllPreviews } from "./services/preview-protocol";
 import { flushDiagnostics } from "./services/diagnostics/events";
 import { startPreviewIsolationInspector } from "./services/preview-isolation-test";
+import { stopPreviewOffice } from "./services/preview-office";
 
 startDiagnostics({ classic: getPrefs().classicPresentation, hosts: () => listHosts().filter(host => host.phase !== "exited").length });
 
@@ -29,6 +30,7 @@ let mainWindow: BrowserWindow | null = null;
 /** Set once the renderer confirmed (or had nothing running) so the next quit proceeds. */
 let quitApproved = false;
 let quitting = false;
+let shutdownComplete = false;
 /** A quit came while no window was open and omp was still running: the reopened window asks once it has loaded. */
 let askOnLoad = false;
 
@@ -152,7 +154,9 @@ async function shutdown(): Promise<void> {
 	followSessions([]);
 	killAllTerminals();
 	await stopAllHosts();
+	await stopPreviewOffice();
 	await flushDiagnostics();
+	shutdownComplete = true;
 	app.quit();
 }
 
@@ -191,7 +195,13 @@ app.on("before-quit", event => {
 		ompRunning: listHosts().some(host => host.phase !== "exited"),
 		reopening: askOnLoad,
 	});
-	if (action === "proceed") return;
+	if (action === "proceed") {
+		if (shutdownComplete) return;
+		event.preventDefault();
+		quitApproved = true;
+		void shutdown();
+		return;
+	}
 	event.preventDefault();
 	if (action === "ask") broadcast("app:quitRequested", { reason: "quit" });
 	else if (action === "reopen") {

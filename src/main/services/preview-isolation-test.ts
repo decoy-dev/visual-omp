@@ -11,7 +11,7 @@ const configuredPath = previewIsolationTest && fixtureFile && isAbsolute(fixture
 const pinned = (() => {
 	if (!configuredPath) return null;
 	try {
-		const parent = realpathSync(dirname(configuredPath));
+		const parent = realpathSync.native(dirname(configuredPath));
 		const info = statSync(parent);
 		if (!info.isDirectory()) return null;
 		return { parent, path: join(parent, basename(configuredPath)), dev: info.dev, ino: info.ino };
@@ -24,7 +24,7 @@ export interface IsolationReadIdentity { path: string; dev: number; ino: number 
 export function isIsolationTestDocument(path: string, saved: boolean, read?: IsolationReadIdentity): boolean {
 	if (!saved || !configuredPath || !pinned || path !== pinned.path) return false;
 	try {
-		if (realpathSync(dirname(configuredPath)) !== pinned.parent || realpathSync(configuredPath) !== pinned.path) return false;
+		if (realpathSync.native(dirname(configuredPath)) !== pinned.parent || realpathSync.native(configuredPath) !== pinned.path) return false;
 		const parent = statSync(pinned.parent);
 		const file = lstatSync(configuredPath);
 		if (parent.dev !== pinned.dev || parent.ino !== pinned.ino || !file.isFile() || file.isSymbolicLink()) return false;

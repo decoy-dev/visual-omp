@@ -1,4 +1,4 @@
-import { pathToFileURL } from "node:url";
+import type * as NodePath from "node:path";
 import { EventEmitter } from "node:events";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -7,6 +7,11 @@ vi.mock("node:child_process", () => ({ execFile: deps.execFile, spawn: deps.spaw
 vi.mock("node:fs/promises", () => ({ readFile: deps.readFile }));
 vi.mock("electron", () => ({ app: { getApplicationInfoForProtocol: deps.application } }));
 vi.mock("./executable", () => ({ resolveExecutable: deps.resolveExecutable }));
+// A Windows host must not change the POSIX paths used by the Linux and macOS branches.
+vi.mock("node:path", async original => {
+	const path = await original<typeof NodePath>();
+	return { ...path, join: path.win32.join, basename: path.win32.basename, isAbsolute: path.win32.isAbsolute };
+});
 import { defaultBrowserLaunch, launchBrowserCommand, runBrowserCommand } from "./default-browser";
 
 beforeEach(() => {
@@ -65,7 +70,7 @@ describe("default HTTPS browser selection", () => {
 	});
 	it("reads Linux's default browser desktop entry and substitutes a URI field safely", async () => {
 		const path = '/tmp/a #; "report".html';
-		expect(await defaultBrowserLaunch(path, "linux")).toEqual({ executable: "/opt/Web browser/browser", args: ["--new-window", pathToFileURL(path).href] });
+		expect(await defaultBrowserLaunch(path, "linux")).toEqual({ executable: "/opt/Web browser/browser", args: ["--new-window", 'file:///tmp/a%20%23;%20%22report%22.html'] });
 		expect(deps.execFile.mock.calls[0]?.[1]).toEqual(["get", "default-web-browser"]);
 		expect(deps.readFile).toHaveBeenCalledWith("/home/example/.local/share/applications/web-browser.desktop", "utf8");
 	});

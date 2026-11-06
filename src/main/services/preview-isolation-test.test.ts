@@ -2,12 +2,18 @@ import { mkdir, mkdtemp, open, realpath, rename, rm, symlink, writeFile } from "
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import type * as NodeFs from "node:fs";
+import { realpathSync } from "node:fs";
 
 // Dynamic imports exercise startup-only environment capture after each module reset.
 
 const fake = vi.hoisted(() => ({ inspector: vi.fn(), appendSwitch: vi.fn() }));
 vi.mock("node:inspector", () => ({ open: fake.inspector }));
 vi.mock("electron", () => ({ app: { commandLine: { appendSwitch: fake.appendSwitch } } }));
+vi.mock("node:fs", async original => {
+	const fs = await original<typeof NodeFs>();
+	return { ...fs, realpathSync: Object.assign(vi.fn(fs.realpathSync), { native: fs.realpathSync.native }) };
+});
 let root: string;
 beforeEach(async () => {
 	root = await mkdtemp(join(tmpdir(), "vomp-isolation-"));
@@ -111,4 +117,11 @@ it("rejects read bytes from an inode replaced between authorization and reading"
 		expect(await file.readFile("utf8")).toBe("fixture");
 		expect(gate.isIsolationTestDocument(path, true, { path, dev: info.dev, ino: info.ino })).toBe(false);
 	} finally { await file.close(); }
+});
+
+it("accepts the native canonical fixture when legacy realpath retains a Windows short path", async () => {
+	vi.stubEnv("VOMP_PREVIEW_ISOLATION_TEST", "1");
+	vi.mocked(realpathSync).mockReturnValueOnce("C:\\Users\\RUNNER~1\\AppData\\Local\\Temp\\fixture");
+	const gate = await import("./preview-isolation-test");
+	expect(gate.isIsolationTestDocument(await realpath(join(root, "isolation.html")), true)).toBe(true);
 });
