@@ -1544,6 +1544,23 @@ describe("TSP side-question writer", () => {
 	});
 });
 
+describe("TSP restart preparation", () => {
+	it("asks the renderer to relaunch once the room closed, without typing anything, and refuses a stale generation", async () => {
+		await launchTsp(); tspMessage("q", { q: "hello", v: [1], features: ["send", "edit"] }); tspComposer(); await connect();
+		const { generation } = host.state;
+		const epoch = host.tspSnapshot()!.epoch;
+		expect(await host.prepareRestart(generation, epoch)).toBe(true);
+		await expect(host.prepareRestart(generation, epoch + 1)).rejects.toThrow("semantic screen restarted");
+		expect(await host.prepareRestart(generation)).toBe(false);
+		pty.events.onHostClose?.("room");
+		expect(host.state.phase).toBe("restarting");
+		pty.writes.mockClear();
+		expect(await host.prepareRestart(generation, epoch)).toBe(false);
+		expect(pty.writes).not.toHaveBeenCalled();
+		await expect(host.prepareRestart(generation - 1, epoch)).rejects.toThrow("session changed");
+	});
+});
+
 describe("TSP tree navigation writer", () => {
 	it.each(["tree-navigate", "tree-navigate-summary"])("replays %s through exact activation, guarded summary and retained editor clear", async name => {
 		await launchTsp();

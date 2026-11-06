@@ -533,17 +533,22 @@ export class SessionHost {
 		if (!this.#tsp || generation !== this.state.generation || this.tspSnapshot()?.lifecycle !== "live") throw new Error("omp screen: The session changed or its semantic UI is not ready.");
 	}
 
-	/** Restart may dismiss menus, but never confirms their selected item or invents an action. */
+	/**
+	 * Restart may dismiss menus, but never confirms their selected item or invents an action. Without a live semantic
+	 * screen for the current generation (omp is between rooms, or its room closed and none replaced it), there is
+	 * nothing to dismiss or type into: `false` tells the renderer to relaunch the saved chat instead.
+	 */
 	prepareRestart(generation: number, epoch?: number): Promise<boolean> {
 		return this.#applicationInput(async () => {
+			this.#assertApplicationInput(true);
+			if (!this.#tsp || generation !== this.state.generation) throw new Error("omp screen: The session changed or its semantic UI is not ready.");
+			if (epoch === undefined || this.tspSnapshot()?.lifecycle !== "live") return false;
 			const assertCurrent = (): void => {
 				this.#assertTspInput(generation);
 				if (epoch !== this.#tsp!.snapshot().epoch) throw new Error("omp screen: The semantic screen restarted.");
 			};
-			this.#assertTspInput(generation);
-			if (epoch === undefined) return false;
 			assertCurrent();
-			return this.#tsp!.prepareRestart(assertCurrent, surface => this.#tspSurfaceGenerations.get(surface) === generation);
+			return this.#tsp.prepareRestart(assertCurrent, surface => this.#tspSurfaceGenerations.get(surface) === generation);
 		});
 	}
 	tspEvent(generation: number, input: unknown, epoch = this.#tsp?.snapshot().epoch): Promise<void> {
