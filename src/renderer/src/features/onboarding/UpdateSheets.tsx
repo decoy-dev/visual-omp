@@ -18,10 +18,13 @@ import { formatBytes } from "../projects/format";
 import { InlineTerminal } from "./InlineTerminal";
 import { PackageManagerSuggestion } from "./PackageManagerSwitch";
 import type { ReleaseNotesView, ReleaseNotesViewerProps } from "./ReleaseNotesViewer";
+import { renderReleaseMarkdown } from "./releaseMarkdown";
 import {
 	type BrewUpgrade, loadInstall, ompUpdateState, openInstaller, openReleaseNotes, quitForUpdate, restartStaleChats,
+	acknowledgeOmpNotes,
 	retryAppDownload, startAppRollback, startAppUpdate, startBrewUpgrade, useUpdates,
 } from "./updates";
+import "../../chat/transcript/transcript.css";
 
 /** The changelog text and its viewer load on first use or in idle time, outside the startup chunk. */
 const ReleaseNotesViewer = lazyView(() => import("./ReleaseNotesViewer").then(module => module.ReleaseNotesViewer), ReleaseNotesLoading);
@@ -130,10 +133,10 @@ function ScoopGlobalSteps() {
 	);
 }
 
-function StatusLine({ text, ok = false }: { text: string; ok?: boolean }) {
+function StatusLine({ text, ok = false, waiting = false }: { text: string; ok?: boolean; waiting?: boolean }) {
 	return (
 		<span className="flex items-center gap-2">
-			{ok ? <CheckCircle className="size-4 shrink-0 text-ok" aria-hidden /> : <WarningCircle className="size-4 shrink-0 text-err" aria-hidden />}
+			{ok ? <CheckCircle className="size-4 shrink-0 text-ok" aria-hidden /> : <WarningCircle className={`size-4 shrink-0 ${waiting ? "text-warn" : "text-err"}`} aria-hidden />}
 			<span className="text-fg">{text}</span>
 		</span>
 	);
@@ -257,12 +260,15 @@ export function OmpUpdateSheet({ close }: SheetProps<undefined>) {
 	const [run, setRun] = useState<OmpUpdateRun | null>(null);
 	const [error, setError] = useState<string | null>(null);
 	const staleChats = useUpdates(state => state.staleChats.length);
+	const [attempt, setAttempt] = useState(0);
 	const restartingChats = useUpdates(state => state.restartingChats);
 	const minimum = useApp(state => state.omp?.minVersion);
 	const output = useRef<HTMLPreElement>(null);
 
 	useEffect(() => {
 		let current: OmpUpdateRun | null = null;
+		setRun(null);
+		setError(null);
 		const earlyOutput = new Map<string, string[]>();
 		const earlyFinished = new Map<string, OmpUpdateRun>();
 		const offOutput = window.vomp.on("updates:omp:output", chunk => {
@@ -301,7 +307,7 @@ export function OmpUpdateSheet({ close }: SheetProps<undefined>) {
 			offOutput();
 			offFinished();
 		};
-	}, []);
+	}, [attempt]);
 
 	useEffect(() => {
 		const element = output.current;
@@ -311,6 +317,7 @@ export function OmpUpdateSheet({ close }: SheetProps<undefined>) {
 	const state = ompUpdateState(run, error, minimum);
 	const running = state === "running";
 	const failed = state === "failed" || state === "unsupported";
+	const busy = state === "busy";
 	const latest = useUpdates.getState().omp?.latestVersion;
 
 	return (
@@ -321,12 +328,13 @@ export function OmpUpdateSheet({ close }: SheetProps<undefined>) {
 				title={latest ? t("update.omp.titleTo", { version: latest }) : t("update.omp.title")}
 				footer={
 					<>
-						{!running && !failed && staleChats > 0 && (
+						{!running && !failed && !busy && staleChats > 0 && (
 							<Button variant="primary" loading={restartingChats > 0} onClick={() => void restartStaleChats()}>
 								{t("update.omp.restartChats")}
 							</Button>
 						)}
-						<Button variant={running || staleChats > 0 ? "ghost" : "primary"} onClick={close}>
+						{busy && <Button variant="primary" onClick={() => setAttempt(value => value + 1)}>{t("update.omp.retry")}</Button>}
+						<Button variant={running || busy || staleChats > 0 ? "ghost" : "primary"} onClick={close}>
 							{t("update.omp.close")}
 						</Button>
 					</>
@@ -336,6 +344,8 @@ export function OmpUpdateSheet({ close }: SheetProps<undefined>) {
 					<PresenceSwap swapKey={state} className="flex items-center gap-2">
 						{running ? (
 							<WorkingIndicator label={t("update.omp.running")} />
+						) : busy ? (
+							<StatusLine waiting text={t("update.omp.installBusy")} />
 						) : state === "unsupported" ? (
 							<StatusLine text={t("update.omp.unsupported", { version: minimum })} />
 						) : failed ? (
@@ -353,7 +363,7 @@ export function OmpUpdateSheet({ close }: SheetProps<undefined>) {
 				>
 					{run?.output || t("update.omp.waiting")}
 				</pre>
-				{!running && !failed && staleChats > 0 && (
+				{!running && !failed && !busy && staleChats > 0 && (
 					<p role="status" className="mt-3 text-sm text-fg-muted">
 						{restartingChats > 0
 							? t("update.omp.restarting", { count: restartingChats })
@@ -363,4 +373,32 @@ export function OmpUpdateSheet({ close }: SheetProps<undefined>) {
 			</DialogContent>
 		</Dialog>
 	);
+}
+
+/** Notes are produced by the installed omp, not a chat still running the previous release. */
+export function OmpNotesSheet({ close }: SheetProps<undefined>) {
+	const { t } = useTranslation("onboarding");
+	const presence = useSheetPresence();
+	const version = useRef(useUpdates.getState().installedOmp ?? useApp.getState().omp?.version);
+	const notes = useResource(() => window.vomp.invoke("updates:omp:notes"), []);
+	useEffect(() => {
+		if (notes.data && version.current) void acknowledgeOmpNotes(version.current).catch(() => {});
+	}, [notes.data]);
+	return <Dialog open={presence.open} onOpenChange={open => !open && close()}>
+		<DialogContent size="xl" title={t("update.omp.whatsNew")} onCloseAutoFocus={presence.exited}
+			footer={<Button onClick={close}>{t("update.omp.close")}</Button>}>
+			{notes.error ? <div role="alert"><p>{t("update.omp.notesFailed", { reason: notes.error })}</p>
+				<Button className="mt-3" onClick={() => void notes.reload()}>{t("update.omp.retry")}</Button></div>
+				: notes.data === null ? <WorkingIndicator label={t("update.omp.notesLoading")} />
+				: <div className="tr-md break-words" dangerouslySetInnerHTML={{ __html: renderReleaseMarkdown(notes.data) }} onClick={event => {
+					const link = (event.target as HTMLElement).closest("a");
+					if (!link) return;
+					event.preventDefault();
+					try {
+						const url = new URL(link.getAttribute("href") ?? "", "https://github.com/can1357/oh-my-pi/releases");
+						if (["https:", "http:", "mailto:"].includes(url.protocol)) void window.vomp.invoke("app:openExternal", url.href);
+					} catch { /* Invalid links remain inert. */ }
+				}} />}
+		</DialogContent>
+	</Dialog>;
 }

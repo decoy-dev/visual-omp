@@ -11,14 +11,16 @@ import { ArrowsClockwise } from "@phosphor-icons/react";
 import { create } from "zustand";
 import type { AppDownload, AppInstallInfo, AppInstallOperation, AppUpdateStatus, OmpUpdateRun, OmpUpdateStatus } from "@shared/contracts/updates";
 import { compareSemver } from "@shared/semver";
+import type { NativeSnapshot } from "@shared/contracts/native";
 import { i18n } from "../../i18n";
 import { registerCommand } from "../../registry/commands";
 import { DialogLoadFailed, lazyView } from "../../registry/lazy";
 import { sheets } from "../../registry/slots";
 import { allControllers, controllerFor, useApp } from "../../state/app";
 import { openSettings } from "../../state/navigation";
+import { workInFlight } from "../../state/chatWork";
 import type { SessionController } from "../../state/session";
-import { dismissToast, toast } from "../../ui";
+import { dismissToast, toast, updateToast } from "../../ui";
 import { ipcErrorMessage as errorText } from "../manage/shared";
 import { quitAfterConfirm } from "./quit";
 import { CommandRun } from "./terminal";
@@ -31,6 +33,56 @@ export const OmpUpdateSheet = lazyView(() => updateSheets().then(module => modul
 export const OMP_UPDATE_SHEET = "onboarding.ompUpdate";
 export const APP_UPDATE_SHEET = "onboarding.appUpdate";
 export const RELEASE_NOTES_SHEET = "onboarding.releaseNotes";
+export const OMP_NOTES_SHEET = "onboarding.ompNotes";
+const engineSnapshots = new Map<string, NativeSnapshot>();
+const announcedEngines = new Set<string>();
+const noticeChecks = new Set<string>();
+let engineNotice: string | null = null;
+let engineNoticeVersion: string | null = null;
+let engineNoticeCount = 0;
+
+export function openOmpNotes(): void {
+	useApp.getState().openSheet(OMP_NOTES_SHEET);
+}
+
+export async function acknowledgeOmpNotes(version: string): Promise<void> {
+	await window.vomp.invoke("updates:omp:acknowledge", version);
+	if (engineNotice && engineNoticeVersion === version) {
+		dismissToast(engineNotice);
+		engineNotice = null;
+	}
+}
+
+function engineNoticeActions(version: string, count: number) {
+	const t = i18n.getFixedT(null, "onboarding");
+	return {
+		description: count ? t("update.omp.restartNote", { count }) : t("update.omp.doneVersion", { version }),
+		action: count ? { label: t("update.omp.restartChats"), onClick: () => void restartStaleChats() }
+			: { label: t("update.omp.whatsNew"), onClick: openOmpNotes },
+		secondaryAction: count ? { label: t("update.omp.whatsNew"), onClick: openOmpNotes } : undefined,
+	};
+}
+
+/** Main persists delivery independently of omp's hidden startup marker and this renderer's lifetime. */
+function checkEngineNotice(version: string, stale: boolean): void {
+	const key = `${version}:${stale}`;
+	if (noticeChecks.has(key)) return;
+	noticeChecks.add(key);
+	void window.vomp.invoke("updates:omp:notice", stale ? version : undefined).then(notice => {
+		if (!notice || notice.pendingVersion !== version || notice.acknowledgedVersion === version
+			|| useUpdates.getState().installedOmp !== version || announcedEngines.has(version)) return;
+		announcedEngines.add(version);
+		const t = i18n.getFixedT(null, "onboarding");
+		const count = useUpdates.getState().staleChats.length;
+		if (engineNotice) dismissToast(engineNotice);
+		engineNoticeVersion = version;
+		engineNoticeCount = count;
+		engineNotice = toast({
+			tone: "info", sticky: true, message: t("update.omp.updated", { version }),
+			...engineNoticeActions(version, count),
+		});
+	}).catch(() => noticeChecks.delete(key));
+}
 let appUpdateNotice: string | null = null;
 
 export function openReleaseNotes(view: ReleaseNotesView = "pending"): void {
@@ -58,6 +110,7 @@ export type BrewUpgrade =
 interface UpdatesState {
 	app: AppUpdateStatus | null;
 	omp: OmpUpdateStatus | null;
+	installedOmp: string | null;
 	install: AppInstallInfo | null;
 	operation: AppInstallOperation | null;
 	checkingApp: boolean;
@@ -69,7 +122,7 @@ interface UpdatesState {
 	downloadOperation: "update" | "rollback" | "reinstall";
 	/** The downloaded installer was opened: the disk image in Finder, or the NSIS installer (the app then quits). */
 	installerOpened: boolean;
-	/** Chat tabs whose omp started before the last successful `omp update`. */
+	/** Chat tabs whose running omp differs from the installed engine. */
 	staleChats: readonly string[];
 	/** Chats sent /restart that haven't reconnected yet. */
 	restartingChats: number;
@@ -78,6 +131,7 @@ interface UpdatesState {
 export const useUpdates = create<UpdatesState>(() => ({
 	app: null,
 	omp: null,
+	installedOmp: null,
 	install: null,
 	operation: null,
 	checkingApp: false,
@@ -109,6 +163,8 @@ async function checkOmp(force: boolean): Promise<void> {
 	useUpdates.setState({ checkingOmp: true });
 	try {
 		useUpdates.setState({ omp: await window.vomp.invoke("updates:omp:check", force) });
+		const installed = useUpdates.getState().installedOmp;
+		if (installed) reconcileInstalledOmp(installed);
 	} finally {
 		useUpdates.setState({ checkingOmp: false });
 	}
@@ -319,8 +375,8 @@ export async function quitForUpdate(relaunch: boolean): Promise<void> {
 	}
 }
 
-/** Resolves true once the chat's omp is live again on a newer host generation, false if it stops or times out. */
-function waitForRestart(controller: SessionController, generation: number): Promise<boolean> {
+/** A reconnect counts only when that host generation reports the installed engine. */
+function waitForRestart(controller: SessionController, previous: { hostId: string; generation: number }): Promise<boolean> {
 	const { promise, resolve } = Promise.withResolvers<boolean>();
 	let settled = false;
 	const settle = (ok: boolean) => {
@@ -328,59 +384,91 @@ function waitForRestart(controller: SessionController, generation: number): Prom
 		settled = true;
 		clearTimeout(timer);
 		unsubscribe();
+		unsubscribeUpdates();
 		resolve(ok);
 	};
 	const check = () => {
 		const view = controller.getSnapshot();
-		if (view.mode === "exited") settle(false);
-		else if (view.mode === "live" && (view.host?.generation ?? 0) > generation) settle(true);
+		const host = view.host;
+		const installed = useUpdates.getState().installedOmp;
+		if (!host || view.mode !== "live" || !installed || (host.hostId === previous.hostId && host.generation <= previous.generation)) return;
+		const snapshot = engineSnapshots.get(host.hostId);
+		if (snapshot?.asyncJobsGeneration === host.generation && snapshot.ompVersion) settle(snapshot.ompVersion === installed);
 	};
 	const timer = setTimeout(() => settle(false), RESTART_CONFIRM_MS);
 	const unsubscribe = controller.subscribe(check);
+	const unsubscribeUpdates = useUpdates.subscribe(check);
 	check();
 	return promise;
 }
 
 /**
- * Sends /restart (the header's "Restart omp") to every chat that was running when omp updated, and
- * counts a chat as restarted only once it reconnects. Chats in the middle of a reply are skipped;
- * they and any chat whose restart failed stay listed.
+ * Restarts idle stale chats only. Work is rechecked at the controller's final submission or stop
+ * boundary, and a reconnect must report the installed engine before it counts as successful.
  */
 export async function restartStaleChats(): Promise<void> {
 	if (useUpdates.getState().restartingChats > 0) return;
+	const ids = useUpdates.getState().staleChats;
+	if (!ids.length) return;
+	// Reserve before the first await, including preparation, so clicks cannot start overlapping batches.
+	useUpdates.setState({ restartingChats: ids.length });
 	const t = i18n.getFixedT(null, "onboarding");
-	const busy: string[] = [];
-	const failed: string[] = [];
-	const pending: Promise<{ tabId: string; ok: boolean }>[] = [];
 	let reason: string | null = null;
-	for (const tabId of useUpdates.getState().staleChats) {
-		const controller = controllerFor(tabId);
-		const view = controller?.getSnapshot();
-		// Closed or stopped chats start the new omp the next time they run.
-		if (!controller || !view?.host || view.mode === "exited" || view.mode === "history") continue;
-		if (view.working) {
-			busy.push(tabId);
-			continue;
-		}
-		const generation = view.host.generation;
-		try {
-			await controller.restart();
-			pending.push(waitForRestart(controller, generation).then(ok => ({ tabId, ok })));
-		} catch (error) {
-			failed.push(tabId);
-			reason = errorText(error);
-		}
+	try {
+		const results = await Promise.all(ids.map(async tabId => {
+			const controller = controllerFor(tabId);
+			const view = controller?.getSnapshot();
+			if (!controller || !view?.host || view.mode === "exited" || view.mode === "history") return "stopped";
+			const assertIdle = () => {
+				if (workInFlight(controller.getSnapshot())) throw new Error(t("update.omp.busyBody"));
+			};
+			if (workInFlight(view)) return "busy";
+			const previous = { hostId: view.host.hostId, generation: view.host.generation };
+			try {
+				await controller.restart(assertIdle);
+				return await waitForRestart(controller, previous) ? "confirmed" : "failed";
+			} catch (error) {
+				if (workInFlight(controller.getSnapshot())) return "busy";
+				reason = errorText(error);
+				return "failed";
+			}
+		}));
+		const installed = useUpdates.getState().installedOmp;
+		if (installed) reconcileInstalledOmp(installed);
+		const stale = useUpdates.getState().staleChats;
+		const confirmed = results.filter((result, index) => result === "confirmed" && !stale.includes(ids[index]!)).length;
+		const failed = results.filter(result => result === "failed").length;
+		const busy = results.filter(result => result === "busy").length;
+		if (confirmed) toast({ tone: "ok", message: t("update.omp.restarted", { count: confirmed }) });
+		if (failed) toast({ tone: "err", message: t("update.omp.restartFailed", { count: failed }), description: reason ?? t("update.omp.restartFailedBody") });
+		if (busy) toast({ tone: "info", message: t("update.omp.busy", { count: busy }), description: t("update.omp.busyBody") });
+	} finally {
+		const installed = useUpdates.getState().installedOmp;
+		if (installed) reconcileInstalledOmp(installed);
+		useUpdates.setState({ restartingChats: 0 });
 	}
-	useUpdates.setState({ restartingChats: pending.length });
-	const results = await Promise.all(pending);
-	const confirmed = results.filter(result => result.ok).length;
-	for (const result of results) if (!result.ok) failed.push(result.tabId);
-	useUpdates.setState({ restartingChats: 0, staleChats: [...busy, ...failed] });
-	if (confirmed > 0) toast({ tone: "ok", message: t("update.omp.restarted", { count: confirmed }) });
-	if (failed.length > 0) {
-		toast({ tone: "err", message: t("update.omp.restartFailed", { count: failed.length }), description: reason ?? t("update.omp.restartFailedBody") });
+}
+
+/** Compare the running SDK version, not chat launch times or an updater's exit code. */
+export function reconcileInstalledOmp(version: string): void {
+	const previous = useUpdates.getState();
+	const staleChats = allControllers().filter(controller => {
+		const view = controller.getSnapshot();
+		const snapshot = view.host && engineSnapshots.get(view.host.hostId);
+		if (!view.host || view.mode === "exited" || view.mode === "history") return false;
+		if (snapshot?.ompVersion && snapshot.asyncJobsGeneration === view.host.generation) return snapshot.ompVersion !== version;
+		return previous.staleChats.includes(controller.tabId);
+	}).map(controller => controller.tabId);
+	const omp = previous.omp;
+	useUpdates.setState({
+		installedOmp: version, staleChats,
+		...(omp ? { omp: { ...omp, currentVersion: version, updateAvailable: Boolean(omp.latestVersion && compareSemver(omp.latestVersion, version) > 0) } } : {}),
+	});
+	if (engineNotice && engineNoticeVersion === version && engineNoticeCount !== staleChats.length) {
+		engineNoticeCount = staleChats.length;
+		updateToast(engineNotice, engineNoticeActions(version, engineNoticeCount));
 	}
-	if (busy.length > 0) toast({ tone: "info", message: t("update.omp.busy", { count: busy.length }), description: t("update.omp.busyBody") });
+	checkEngineNotice(version, staleChats.length > 0);
 }
 
 function announceAppUpdate(status: AppUpdateStatus): void {
@@ -418,6 +506,7 @@ async function reportOutcome(): Promise<void> {
 export function installUpdateWatchers(): void {
 	sheets.register({ id: APP_UPDATE_SHEET, component: lazyView(() => updateSheets().then(module => module.AppUpdateSheet)) });
 	sheets.register({ id: RELEASE_NOTES_SHEET, component: lazyView(() => updateSheets().then(module => module.ReleaseNotesSheet)) });
+	sheets.register({ id: OMP_NOTES_SHEET, component: lazyView(() => updateSheets().then(module => module.OmpNotesSheet)) });
 	registerCommand({
 		id: "app.checkUpdates",
 		title: "onboarding:update.check.title",
@@ -438,27 +527,47 @@ export function installUpdateWatchers(): void {
 		announced.add(status.latestVersion);
 		announceAppUpdate(status);
 	});
-	window.vomp.on("updates:omp", omp => useUpdates.setState({ omp }));
+	window.vomp.on("updates:omp", omp => {
+		useUpdates.setState({ omp });
+		const installed = useUpdates.getState().installedOmp;
+		if (installed) reconcileInstalledOmp(installed);
+	});
 	window.vomp.on("updates:app:operation", operation => useUpdates.setState({ operation }));
 	window.vomp.on("updates:app:download", onDownload);
-	window.vomp.on("updates:omp:finished", run => {
-		const before = useUpdates.getState().omp?.currentVersion ?? null;
-		const changed = run.exitCode === 0 && !run.args.includes("--plugins") && (!before || !run.versionAfter || before !== run.versionAfter);
-		if (changed) {
-			const running = allControllers().filter(controller => {
-				const view = controller.getSnapshot();
-				return view.host !== null && view.mode !== "exited" && view.mode !== "history";
-			});
-			useUpdates.setState({ staleChats: running.map(controller => controller.tabId) });
+	const onInstalled = (version: string) => {
+		const changed = useUpdates.getState().installedOmp !== version;
+		reconcileInstalledOmp(version);
+		if (changed) void useApp.getState().refreshOmp();
+		if (!changed) return;
+		for (const controller of allControllers()) {
+			const host = controller.getSnapshot().host;
+			if (!host) continue;
+			void window.vomp.invoke("native:snapshot", host.hostId).then(snapshot => {
+				if (!snapshot) return;
+				engineSnapshots.set(host.hostId, snapshot);
+				if (useUpdates.getState().installedOmp === version) reconcileInstalledOmp(version);
+			}).catch(() => {});
 		}
+	};
+	window.vomp.on("updates:omp:installed", ({ version }) => onInstalled(version));
+	window.vomp.on("native:changed", ({ hostId, snapshot }) => {
+		engineSnapshots.set(hostId, snapshot);
+		const version = useUpdates.getState().installedOmp;
+		if (version) reconcileInstalledOmp(version);
 	});
+	window.vomp.on("host:state", () => {
+		const version = useUpdates.getState().installedOmp;
+		if (version) queueMicrotask(() => reconcileInstalledOmp(version));
+	});
+	void window.vomp.invoke("updates:omp:installed").then(version => { if (version) onInstalled(version); }).catch(() => {});
 	void reportOutcome();
 }
 
 /** A successful command still needs to install a supported version before setup can finish. */
-export function ompUpdateState(run: OmpUpdateRun | null, error: string | null, minimum?: string): "running" | "failed" | "unsupported" | "done" {
+export function ompUpdateState(run: OmpUpdateRun | null, error: string | null, minimum?: string): "running" | "busy" | "failed" | "unsupported" | "done" {
 	if (error) return "failed";
 	if (!run || run.finishedAt === null) return "running";
+	if (run.installBusy) return "busy";
 	if (run.exitCode !== 0) return "failed";
 	if (minimum && (!run.versionAfter || compareSemver(run.versionAfter, minimum) < 0)) return "unsupported";
 	return "done";

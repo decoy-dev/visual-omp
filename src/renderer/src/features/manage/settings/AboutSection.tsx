@@ -9,6 +9,7 @@ import {
 	quitForUpdate,
 	restartStaleChats,
 	openReleaseNotes,
+	openOmpNotes,
 	startAppReinstall,
 	useUpdates,
 } from "@/features/onboarding/updates";
@@ -174,6 +175,9 @@ export function AboutSection() {
 				<Button variant="ghost" onClick={() => openReleaseNotes(updates.app?.updateAvailable ? "pending" : "past")}>
 					{t("about.releaseNotes")}
 				</Button>
+				{ompVersion && <Button variant="ghost" onClick={openOmpNotes}>
+					{t("onboarding:update.omp.whatsNew")}
+				</Button>}
 				<Button variant="ghost" icon={<ArrowSquareOut />} onClick={() => open(DOCS_URL)}>
 					{t("about.docs")}
 				</Button>

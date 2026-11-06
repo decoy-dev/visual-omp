@@ -185,7 +185,7 @@ export class NativeBridge {
 		this.#generation = generation;
 		this.#jobsEpoch = randomUUID();
 		this.#hasCurrentJobs = false;
-		this.snapshot = { ...this.snapshot, sessionAccounts: null, asyncJobs: [], asyncJobsGeneration: generation };
+		this.snapshot = { ...this.snapshot, ompVersion: undefined, sessionAccounts: null, asyncJobs: [], asyncJobsGeneration: generation };
 	}
 	async start(): Promise<void> {
 		await writeFile(this.extensionPath, NATIVE_EXTENSION_SOURCE, { mode: 0o600 });

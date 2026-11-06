@@ -12,6 +12,7 @@ interface CommandFixture {
 	streaming?: boolean;
 	pendingMessages?: boolean;
 	shutdownUnavailable?: boolean;
+	ompVersion?: string | null;
 }
 // Exercise generated code with the public SDK exports injected; runtime integration uses the isolated binary fixture.
 function harness(options: CommandFixture = {}) {
@@ -30,10 +31,10 @@ function harness(options: CommandFixture = {}) {
 	const handlers = new Map<string, (event: unknown, ctx?: unknown) => Promise<void>>();
 	const discover = vi.fn(async (_options: { cwd: string }) => options.files ?? []);
 	const body = NATIVE_EXTENSION_SOURCE.replace(/^import .*;$/gm, "").replace("export default function", "return function");
-	const factory = new Function("process", "fetch", "setTimeout", "clearTimeout", "loadThemeJson", "getCurrentThemeName", "resolveVarRefs", "ansi256ToHex", "existsSync", "homedir", "join", "discoverSlashCommands", body)(
+	const factory = new Function("process", "fetch", "setTimeout", "clearTimeout", "loadThemeJson", "getCurrentThemeName", "resolveVarRefs", "ansi256ToHex", "existsSync", "homedir", "join", "discoverSlashCommands", "ompSdk", body)(
 		{ env, platform: "darwin" }, fetch, (callback: () => void | Promise<void>, delay: number) => { const id = ++nextTimer; timers.set(id, { callback, delay }); return id; }, (id: number) => timers.delete(id),
 		async () => ({ vars: { background: "#123456" }, terminal: { background: "background", foreground: 255, ansi: Array(16).fill("#abcdef") } }),
-		() => "custom", (value: string | number, vars: Record<string, string>) => vars[value] ?? value, () => "#eeeeee", () => false, () => "/tmp/omp-1814/agent-HostParity/home", posix.join, discover,
+		() => "custom", (value: string | number, vars: Record<string, string>) => vars[value] ?? value, () => "#eeeeee", () => false, () => "/tmp/omp-1814/agent-HostParity/home", posix.join, discover, options.ompVersion === null ? {} : { VERSION: options.ompVersion ?? "18.17.0" },
 	);
 	factory({
 		pi: { getAgentDir: () => "/tmp/omp-1814/agent-HostParity" },
@@ -58,12 +59,21 @@ describe("hosted extension lifecycle", () => {
 		expect(test.env.VOMP_NATIVE_BRIDGE).toBeUndefined();
 		await test.handlers.get("session_start")!({}, test.context);
 		const snapshot = JSON.parse(test.requests.find(item => item.url.endsWith("/snapshot"))!.body!);
+		expect(snapshot.ompVersion).toBe("18.17.0");
 		expect(snapshot.theme).toMatchObject({ name: "custom", terminal: { background: "#123456", foreground: "#eeeeee", ansi: Array(16).fill("#abcdef") } });
 		expect(snapshot.location.cwd).toBe("/project");
 		await test.handlers.get("session_shutdown")!({});
 		expect(test.env.VOMP_NATIVE_BRIDGE).toBe("http://127.0.0.1:1234/token");
 		await test.handlers.get("session_start")!({}, test.context);
 		expect(test.env.VOMP_NATIVE_BRIDGE).toBeUndefined();
+	});
+	it("keeps mode and location reports when the SDK has no VERSION export", async () => {
+		const test = harness({ ompVersion: null });
+		await test.handlers.get("session_start")!({}, test.context);
+		const snapshot = JSON.parse(test.requests.find(item => item.url.endsWith("/snapshot"))!.body!);
+		expect(snapshot.ompVersion).toBeUndefined();
+		expect(snapshot.modes).toEqual(test.context.sessionModes.getState());
+		expect(snapshot.location.cwd).toBe("/project");
 	});
 	it("never reports helper modes or restores its bridge into a helper environment", async () => {
 		const test = harness();

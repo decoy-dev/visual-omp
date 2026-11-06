@@ -182,6 +182,15 @@ export interface OmpUpdateRun {
 	output: string;
 	/** `omp --version` after the run finished; null while running or if omp no longer starts. */
 	versionAfter: string | null;
+	/** omp refused to acquire its shared installer lock. The other installer is still in charge. */
+	installBusy?: boolean;
+}
+
+/** App-owned delivery state, separate from omp's startup changelog marker. */
+export interface OmpUpdateNotice {
+	observedVersion: string | null;
+	pendingVersion: string | null;
+	acknowledgedVersion: string | null;
 }
 
 declare module "../ipc" {
@@ -244,6 +253,13 @@ declare module "../ipc" {
 		"updates:omp:run": { args: [options?: OmpUpdateOptions]; result: OmpUpdateRun };
 		/** The current or most recent `omp update` run of this app session, for views opened mid-run. */
 		"updates:omp:lastRun": { args: []; result: OmpUpdateRun | null };
+		/** Installed engine version, refreshed without a network update check. */
+		"updates:omp:installed": { args: []; result: string | null };
+		/** Installed omp renders its own latest release notes without starting a model request. */
+		"updates:omp:notes": { args: []; result: string };
+		/** Retain unseen installed-engine notes; a stale chat can establish the initial pending version. */
+		"updates:omp:notice": { args: [staleVersion?: string]; result: OmpUpdateNotice };
+		"updates:omp:acknowledge": { args: [version: string]; result: OmpUpdateNotice };
 	}
 	interface IpcEventMap {
 		/** An app release check result: every fresh check, including the background check at launch and every 30 minutes. */
@@ -251,6 +267,7 @@ declare module "../ipc" {
 		"updates:app:operation": AppInstallOperation | null;
 		/** An `omp update --check` result, on the same terms as `updates:app` (and after each `omp update`). */
 		"updates:omp": OmpUpdateStatus;
+		"updates:omp:installed": { version: string };
 		/** Installer download progress (throttled) and its final state. */
 		"updates:app:download": AppDownload;
 		/** A chunk of `omp update` output. */

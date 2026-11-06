@@ -1017,20 +1017,23 @@ export class SessionController {
 		finally { this.#restoreNext = false; }
 	}
 
-	async restart(): Promise<void> {
+	async restart(beforeRestart?: () => void): Promise<void> {
 		const failed = this.#view.host;
+		beforeRestart?.();
 		if (failed && (failed.transport === "tsp" || this.#strandedSince?.requiresRelaunch) && failed.phase !== "exited") {
 			if (this.#disposed) throw new Error("This chat was closed.");
 			if (this.#view.readOnly) throw new Error("This chat is open elsewhere.");
 			this.#restarting ??= (async () => {
 				const prepared = failed.transport === "tsp" && !failed.tspFailed && await window.vomp.invoke("host:prepare-restart", failed.hostId, failed.generation, failed.tspEpoch);
 				if (this.#disposed || this.#view.host?.hostId !== failed.hostId || this.#view.host.generation !== failed.generation) throw new Error("The chat changed before omp could restart.");
+				beforeRestart?.();
 				if (prepared) {
-					await this.#restartCommand();
+					await this.#restartCommand(beforeRestart);
 					return;
 				}
 				// No declared dismissal, or a failed classic restore, requires an explicit saved-session relaunch.
 				this.#starting ??= (async () => {
+					beforeRestart?.();
 					if (this.#strandedSince?.requiresRelaunch) await window.vomp.invoke("host:stop", failed.hostId, "editor-recovery");
 					else await window.vomp.invoke("host:stop", failed.hostId);
 					if (this.#disposed) throw new Error("This chat was closed.");
@@ -1047,14 +1050,15 @@ export class SessionController {
 			await this.ensureLive();
 			return;
 		}
-		await this.#restartCommand();
+		await this.#restartCommand(beforeRestart);
 	}
 
-	async #restartCommand(): Promise<void> {
+	async #restartCommand(beforeRestart?: () => void): Promise<void> {
 		// The restart empties omp's editor, so it is the one thing typed while a message's images may be stranded
 		// there. The hold ends only on a generation newer than the one omp had when /restart was typed (see
 		// `#onHostState`); updates in that generation, and a restart that failed to type, keep it.
 		const markRestart = () => {
+			beforeRestart?.();
 			if (this.#strandedSince) this.#strandedSince.restartFrom = this.#view.host?.generation ?? 0;
 		};
 		try {

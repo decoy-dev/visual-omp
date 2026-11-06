@@ -18,6 +18,13 @@ describe("omp update outcome", () => {
 		expect(ompUpdateState({ ...run, exitCode: 1 }, null, "18.15.0")).toBe("failed");
 	});
 
+	it("offers retry for omp's installer-lock refusal instead of failure or success", () => {
+		const busy = { ...run, exitCode: 1, installBusy: true };
+		expect(ompUpdateState(busy, null, "18.15.0")).toBe("busy");
+		expect(ompUpdateState({ ...busy, finishedAt: null }, null, "18.15.0")).toBe("running");
+		expect(ompUpdateState(run, null, "18.15.0")).toBe("done");
+	});
+
 	it.each(["18.13.3", "18.14.0", "18.14.1", "18.14.2", "18.15.0-beta.1", null])("keeps setup blocked after a clean exit with unsupported or unknown version %s", versionAfter => {
 		expect(ompUpdateState({ ...run, versionAfter }, null, "18.15.0")).toBe("unsupported");
 	});

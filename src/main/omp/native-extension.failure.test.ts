@@ -12,15 +12,16 @@ it("keeps mode requests and location reports working when a terminal variable is
 	const context = { agent: { kind: "main" }, ui: { theme, getTheme: async () => theme }, sessionModes: { getState: () => modes, set }, sessionManager: { getCwd: () => "/correct/project", getSessionFile: () => "/session.jsonl", getSessionId: () => "main-session" } };
 	const fetch = async (url: string, options?: { body: string }) => { sent.push({ url, body: options?.body }); return { ok: true, json: async () => { const result = queued; queued = []; return result; } }; };
 	const body = NATIVE_EXTENSION_SOURCE.replace(/^import .*;$/gm, "").replace("export default function", "return function");
-	const factory = new Function("process", "fetch", "setTimeout", "clearTimeout", "loadThemeJson", "getCurrentThemeName", "resolveVarRefs", "ansi256ToHex", "existsSync", "homedir", "join", body)(
+	const factory = new Function("process", "fetch", "setTimeout", "clearTimeout", "loadThemeJson", "getCurrentThemeName", "resolveVarRefs", "ansi256ToHex", "existsSync", "homedir", "join", "ompSdk", body)(
 		{ env: { VOMP_NATIVE_BRIDGE: "http://127.0.0.1:1/token" }, platform: "darwin" }, fetch, () => 1, () => undefined,
 		async () => ({ terminal: { background: "missing-variable" } }), () => "broken-terminal",
-		() => { throw new Error("Variable reference not found: missing-variable"); }, () => "#000000", () => false, () => "/tmp/omp-1814/agent-HostParity/home", posix.join,
+		() => { throw new Error("Variable reference not found: missing-variable"); }, () => "#000000", () => false, () => "/tmp/omp-1814/agent-HostParity/home", posix.join, {},
 	);
 	factory({ on: (name: string, handler: (event: unknown, context?: unknown) => Promise<void>) => handlers.set(name, handler), pi: { getAgentDir: () => "/tmp/omp-1814/agent-HostParity", discoverSlashCommands: async () => [] } });
 	await handlers.get("session_start")!({}, context);
 	expect(set).toHaveBeenCalledWith({ mode: "vibe", action: "enter" });
 	const published = JSON.parse(sent.find(item => item.url.endsWith("/snapshot"))!.body!);
+	expect(published.ompVersion).toBeUndefined();
 	expect(published.location.cwd).toBe("/correct/project");
 	expect(published.modes).toEqual(modes);
 	expect(published.theme).toMatchObject({ name: null, background: "#101010", foreground: "#ffffff" });

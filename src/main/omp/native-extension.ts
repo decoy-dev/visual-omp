@@ -10,6 +10,7 @@ import { loadThemeJson } from "@oh-my-pi/pi-tui/theme/loader";
 import { getCurrentThemeName } from "@oh-my-pi/pi-tui/theme";
 import { ansi256ToHex, resolveVarRefs } from "@oh-my-pi/pi-tui/theme/color";
 import { discoverSlashCommands } from "@oh-my-pi/pi-coding-agent";
+import * as ompSdk from "@oh-my-pi/pi-coding-agent";
 import { existsSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
@@ -151,7 +152,7 @@ export default function visualOmpNative(pi) {
 			themeIdentity = theme;
 		}
 		if (stopped || current !== lifecycle) return;
-		const snapshot = { modes: ctx.sessionModes?.getState() ?? null, theme, historyDbPath, sessionAccounts: sessionAccountSnapshot(ctx), asyncJobs: runningJobs(ctx), asyncJobsEpoch: jobsEpoch, location: { cwd: ctx.sessionManager.getCwd(), sessionFile: ctx.sessionManager.getSessionFile() ?? null, sessionId: ctx.sessionManager.getSessionId() } };
+		const snapshot = { ompVersion: typeof ompSdk.VERSION === "string" ? ompSdk.VERSION : undefined, modes: ctx.sessionModes?.getState() ?? null, theme, historyDbPath, sessionAccounts: sessionAccountSnapshot(ctx), asyncJobs: runningJobs(ctx), asyncJobsEpoch: jobsEpoch, location: { cwd: ctx.sessionManager.getCwd(), sessionFile: ctx.sessionManager.getSessionFile() ?? null, sessionId: ctx.sessionManager.getSessionId() } };
 		const encoded = JSON.stringify(snapshot);
 		if (encoded === last) return;
 		const response = await fetch(url + "/snapshot", { method: "POST", body: encoded, signal: AbortSignal.timeout(2000) });

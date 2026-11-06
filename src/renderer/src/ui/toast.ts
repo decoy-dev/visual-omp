@@ -61,6 +61,15 @@ export function toast({ tone = "info", message, description, action, secondaryAc
 	return id;
 }
 
+/** Refresh a visible notification without replacing its identity, tone or lifetime. */
+export function updateToast(id: string, patch: Partial<Pick<ToastOptions, "description" | "action" | "secondaryAction">>): void {
+	const index = toasts.findIndex(item => item.id === id);
+	if (index < 0) return;
+	const next = toasts.slice();
+	next[index] = { ...toasts[index]!, ...patch };
+	commit(next);
+}
+
 export function dismissToast(id: string): void {
 	if (!toasts.some((t) => t.id === id)) return;
 	commit(toasts.filter((t) => t.id !== id));

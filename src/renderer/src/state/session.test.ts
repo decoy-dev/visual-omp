@@ -12,6 +12,7 @@ import { toast } from "../ui/toast";
 import type * as ToastModule from "../ui/toast";
 import { liveEntries, liveGuest, SessionController, setSlashDelivery } from "./session";
 import type * as SessionFiles from "./sessionFiles";
+import { workInFlight } from "./chatWork";
 
 // vi.mock is hoisted above the imports, so the controller under test builds these fakes.
 const fakes = vi.hoisted(() => {
@@ -1354,6 +1355,22 @@ describe("SessionController TSP input", () => {
 		await restarting;
 		expect(invoked).toContainEqual(submit("/restart"));
 		expect(invoked.some(call => call[0] === "host:stop" || call[0] === "host:start")).toBe(false);
+	});
+
+	it.each([true, false])("keeps work that starts during restart preparation when dismissal returns %s", async dismissed => {
+		const session = preview(false);
+		sendHost({ transport: "tsp", link: "L1", tspEpoch: 7 });
+		const prepared = Promise.withResolvers<boolean>();
+		respond = channel => channel === "host:prepare-restart" ? prepared.promise : undefined;
+		const restarting = session.restart(() => {
+			if (workInFlight(session.getSnapshot())) throw new Error("Chat has work running");
+		});
+		const rejected = expect(restarting).rejects.toThrow("work running");
+		await flush();
+		fakes.guests.at(-1)?.emit("live", [u1, a1], true);
+		prepared.resolve(dismissed);
+		await rejected;
+		expect(invoked.some(call => call[0] === "host:submit" || call[0] === "host:stop")).toBe(false);
 	});
 
 	it("relaunches the saved TSP session when autocomplete has no declared dismissal", async () => {

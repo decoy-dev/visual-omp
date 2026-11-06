@@ -9,6 +9,7 @@ import { useResource } from "../shared";
 import { approvalModes } from "../../session-tools/approval";
 import { ConfigNotices, SectionScope, SettingRow, SettingsSection, SourceChip } from "./parts";
 import { useOmpSettings } from "./useOmpSettings";
+import { AutoUpdateSwitch } from "./AutoUpdateSetting";
 
 const TRANSCRIPT_MODES: readonly AppPreferences["transcriptMode"][] = ["normal", "thinking", "verbose"];
 const ProofsSetting = lazyView(() => import("../../live-preview/ProofsSetting").then(m => m.ProofsSetting), null, LoadFailed);
@@ -63,6 +64,9 @@ export function GeneralSection({ projectPath, scope, setScope }: SettingsSection
 					}
 				/>
 			</SettingsSection>
+			{omp.byKey.has("update.auto") && <SettingsSection title={t("general.updates")}>
+				<AutoUpdateSwitch omp={omp} />
+			</SettingsSection>}
 
 			<SettingsSection title={t("general.chats")}>
 				{prefs && (

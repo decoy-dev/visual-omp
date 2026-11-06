@@ -7,6 +7,7 @@ import { DEFAULT_STATUS_BAR } from "@shared/statusBar";
 import { normalizeStatusBar } from "@shared/statusBarPreference";
 import type { NewUserApproval } from "./services/approval-default";
 import { broadcast } from "./ipc";
+import type { OmpUpdateNotice } from "@shared/contracts/updates";
 
 /** Main-only state stored with the preferences. */
 interface StoredPreferences extends AppPreferences {
@@ -16,6 +17,7 @@ interface StoredPreferences extends AppPreferences {
 	pinnedSessions?: string[];
 	/** Highest version left by a rollback; older releases safely retain this unknown preference. */
 	appUpdateSkipThrough: string | null;
+	ompUpdateNotice?: OmpUpdateNotice;
 }
 
 const DEFAULTS: AppPreferences = {

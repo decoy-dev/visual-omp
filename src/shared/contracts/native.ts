@@ -50,6 +50,8 @@ export type SessionAccounts = z.infer<typeof SessionAccountsSchema>;
 export const NativeSnapshotSchema = z.object({
 	modes: SessionModesSchema.nullable(),
 	theme: ThemeIdentitySchema.nullable(),
+	/** Actual running engine, from omp's public VERSION export. */
+	ompVersion: z.string().optional(),
 	location: z.object({ cwd: z.string(), sessionFile: z.string().nullable(), sessionId: z.string() }).optional(),
 	historyDbPath: z.string().min(1).optional(),
 	sessionAccounts: SessionAccountsSchema.nullable().optional(),

@@ -165,6 +165,18 @@ Each SessionHost:
    `smart`, whose chart plans collab does not carry. `worktree.onStart: "off"` stays until omp exposes
    outer input readiness, because a startup worktree question could otherwise meet an early keystroke.
    Interim `out://` replies, SVG, next-message predictions, idle recaps and worktree exit choices follow the user's omp settings and appear natively. Suggestions remain off by default, as in omp. The composer's Suggestions switch writes `composer.predictions` in omp's global config through the same service as Advanced; the app does not inject a prediction overlay or keep a separate preference. omp's own config watcher applies saved changes live in either presentation.
+   omp's `update.auto` stays untouched by the host overlay. `TERM_PROGRAM=tern` selects TSP,
+   not a managed installation; omp only skips its background installer for an actual managed
+   binary, Nix or a source checkout. Update checks and a network-independent minute refresh
+   read installed omp via `ompStatus(true)`. The native extension reports its public `VERSION`;
+   the renderer compares current-generation snapshots with the installed version to track stale
+   chats, including updates outside the app. A once-per-version notice opens installed omp's
+   `/changelog last 1` through its RPC builtin dispatcher, keeping notes reachable despite quiet startup.
+   App preferences retain observed, pending and acknowledged engine versions independently of omp's
+   hidden startup marker. About keeps a permanent notes action, and notes acknowledgment never
+   clears stale-chat identity. Bulk restart reserves its operation before preparation, checks
+   `workInFlight` again at command submission or host shutdown, and confirms the replacement host's
+   current-generation `ompVersion`, not just a changed room generation.
 3. When the omp host connects to the relay (`/r/<roomId>?role=host`), SessionHost resolves the
    room key with `omp collab list --json` + `omp collab link <instanceId> --json`, matching the
    link's room id, and hands the control link to the renderer. The registry pid is not always the

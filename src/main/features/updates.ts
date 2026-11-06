@@ -26,6 +26,7 @@ import { runOmp } from "../omp/cli";
 import { flushPrefs, getPrefs, setPrefs } from "../prefs";
 import { ompPath, ompStatus } from "../omp/locate";
 import { ompStartError } from "../omp/refused";
+import { rpcRequest } from "../omp/rpc";
 import { recordUpdateCheck } from "../services/update-count";
 import { registerInstallSwitch } from "./updates/install-switch";
 import { InstallOperation } from "../services/install-operation";
@@ -571,10 +572,40 @@ async function quitApp(relaunch: boolean): Promise<void> {
 
 let ompCheck: OmpUpdateStatus | null = null;
 let ompCheckInFlight: Promise<OmpUpdateStatus> | null = null;
+let installedOmpVersion: string | null = null;
+const OmpNoticeSchema = z.object({
+	observedVersion: z.string().nullable(),
+	pendingVersion: z.string().nullable(),
+	acknowledgedVersion: z.string().nullable(),
+});
+
+function ompNotice() {
+	return OmpNoticeSchema.safeParse(getPrefs().ompUpdateNotice).data
+		?? { observedVersion: null, pendingVersion: null, acknowledgedVersion: null };
+}
+
+function publishInstalledOmp(version: string | null): void {
+	if (!version || version === installedOmpVersion) return;
+	installedOmpVersion = version;
+	const previous = ompNotice();
+	setPrefs({ ompUpdateNotice: {
+		...previous, observedVersion: version,
+		pendingVersion: previous.observedVersion && previous.observedVersion !== version ? version : previous.pendingVersion,
+	} });
+	broadcast("updates:omp:installed", { version });
+}
+
+/** Separate from network checks: auto-update and external installers replace omp too. */
+async function refreshInstalledOmp(): Promise<string | null> {
+	const status = await ompStatus(true);
+	publishInstalledOmp(status.version);
+	return status.version;
+}
 
 async function runOmpCheck(): Promise<OmpUpdateStatus> {
 	const checkedAt = Date.now();
 	try {
+		await refreshInstalledOmp();
 		const simulated: CliResult | undefined = (await devFeed().catch(() => null))?.ompCheck;
 		const parsed = parseOmpUpdateCheck(simulated ?? (await runOmp(["update", "--check"], { timeoutMs: 60_000, allowUnsupported: true })));
 		return { ...parsed, checkedAt, fromCache: false };
@@ -663,7 +694,9 @@ async function spawnOmpUpdate(options: OmpUpdateOptions): Promise<OmpUpdateRun> 
 		const status = await ompStatus(true);
 		ompCheck = null;
 		run.exitCode = code;
+		run.installBusy = code !== 0 && /Another omp update is already running; try again once it finishes\./.test(run.output);
 		run.versionAfter = feed?.ompVersionAfter ?? status.version;
+		publishInstalledOmp(run.versionAfter);
 		run.finishedAt = Date.now();
 		broadcast("updates:omp:finished", { ...run });
 		void checkOmp(true);
@@ -714,6 +747,45 @@ export function register(): void {
 	handle("updates:omp:check", force => checkOmp(force === true));
 	handle("updates:omp:run", options => startOmpUpdate(options));
 	handle("updates:omp:lastRun", () => (lastRun ? { ...lastRun } : null));
+	handle("updates:omp:installed", refreshInstalledOmp);
+	handle("updates:omp:notice", async staleVersion => {
+		let notice = ompNotice();
+		if (staleVersion && staleVersion === installedOmpVersion && notice.acknowledgedVersion !== staleVersion && notice.pendingVersion !== staleVersion) {
+			notice = { ...notice, pendingVersion: staleVersion };
+			setPrefs({ ompUpdateNotice: notice });
+		}
+		await flushPrefs();
+		return notice;
+	});
+	handle("updates:omp:acknowledge", async version => {
+		const notice = ompNotice();
+		if (version !== notice.observedVersion) return notice;
+		const acknowledged = { ...notice, pendingVersion: null, acknowledgedVersion: version };
+		setPrefs({ ompUpdateNotice: acknowledged });
+		await flushPrefs();
+		return acknowledged;
+	});
+	handle("updates:omp:notes", async () => {
+		const printed: string[] = [];
+		const result = await rpcRequest(homedir(), "prompt", {
+			flags: ["--no-session", "--no-lsp", "--no-title", "--no-tools", "--no-skills", "--no-rules", "--no-context-files", "--no-extensions"],
+			timeoutMs: 15_000,
+			messages: {
+				timeout: "omp did not return its release notes in time.",
+				exited: "omp stopped before it returned its release notes.",
+				failed: "omp could not open its release notes.",
+			},
+			onMessage: message => {
+				if (typeof message !== "object" || message === null) return;
+				if ("type" in message && message.type === "command_output" && "text" in message && typeof message.text === "string") printed.push(message.text);
+			},
+		}, { message: "/changelog last 1" });
+		if (!printed.length || typeof result !== "object" || result === null || !("agentInvoked" in result) || result.agentInvoked !== false) {
+			throw new Error("omp did not return local release notes.");
+		}
+		return printed.join("\n");
+	});
+	setInterval(() => void refreshInstalledOmp().catch(() => {}), 60_000).unref();
 
 	// Scoop rewrites its Start Menu shortcut on every update, so a per-user Scoop install restores
 	// the ID Windows needs for toasts at every launch.

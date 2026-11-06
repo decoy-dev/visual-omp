@@ -52,6 +52,11 @@
 	"general": {
 		"description": "Choose how much omp may do on its own and how your chats look.",
 		"safety": "Safety",
+		"updates": "omp updates",
+		"autoUpdate": {
+			"label": "Update omp automatically",
+			"description": "omp installs new releases in the background through your install method and uses them next launch. Open chats keep their current version until you restart them. Managed installs, Nix and source checkouts use their own update method."
+		},
 		"approvalMode": {
 			"label": "Permission mode",
 			"always-ask": "Ask me first",

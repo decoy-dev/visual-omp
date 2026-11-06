@@ -52,6 +52,16 @@ be able to use it, and it exposes the features that set omp apart from other cod
   remain visible, and the detected version is refreshed on completion. Managed installations
   direct the user to the application that updates omp. A Windows launch refusal shows the reported
   reason and offers another check after the user allows omp.
+- General settings and setup's preferences offer **Update omp automatically** only when omp reports
+  `update.auto`. The switch writes omp's own configuration. omp installs through its install method
+  in the background and uses the release next launch; open chats keep their running engine.
+  An update refused because another omp installer is active explains that state and offers Try again.
+  Installed-version refreshes also catch updates made outside the app. A single notice offers
+  Restart open chats and What's new in omp. Pending notes and acknowledgment survive app restarts;
+  About always offers What's new in omp, independently of restart availability. Replies and helpers
+  must both be idle, including after restart preparation. A reconnect counts only when its current
+  host generation reports the installed engine. Notes come from the installed omp's
+  `/changelog last 1` through its RPC builtin dispatcher without a model request.
 - Each app-hosted chat runs omp in a pseudo-terminal. On macOS, Linux and Windows, the app uses
   **Tern Surface Protocol (TSP)** documents by default for omp's menus, editor state and native controls.
   Input uses omp's semantic actions and guarded paste or key paths. The live transcript,
