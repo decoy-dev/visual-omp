@@ -4,7 +4,7 @@ Changes are committed to `main` as conventional commits (`feat`, `fix`, `chore`,
 
 ## Cutting a release
 
-1. Move the entries under `## [Unreleased]` in [CHANGELOG.md](../CHANGELOG.md) into a new `## [X.Y.Z] - YYYY-MM-DD` section, and leave an empty `## [Unreleased]` heading above it. That section becomes the GitHub release notes word for word, so write it for the people installing the update.
+1. Move the entries under `## [Unreleased]` in [CHANGELOG.md](../CHANGELOG.md) into a new `## [X.Y.Z] - YYYY-MM-DD` section, and leave an empty `## [Unreleased]` heading above it. That section supplies the GitHub release notes, with Highlights reordered as described below, so write it for the people installing the update.
 2. Set the version without creating a tag: `npm version X.Y.Z --no-git-tag-version`.
 3. Commit `CHANGELOG.md`, `package.json` and `package-lock.json` as `chore(release): vX.Y.Z`. Do not push or tag yet.
 4. Give the owner a development build of that release commit with the release tour: with a clean working tree, run `npm run tour -- --release X.Y.Z` and leave it open. Prior to release, the development build should open one or more chats that display each new feature or change so the owner can interact with it and verify it quickly without doing all the steps manually. The tour starts `npm run dev` with an isolated scratch profile, ready-made chats in Current chats and a local fixture provider for interaction without model credits. Continue only after the owner has tried it and asked for the release. If the release commit changes, regenerate the tour on the new commit and obtain the owner's approval again.
@@ -34,9 +34,15 @@ All actions in the release workflow are pinned to full commit SHAs, with version
 
 ## Release-notes format
 
-Start each version section with a one-line overview of the update's value. Follow it with `### Highlights` and short bullets grouped by bold category names, such as `New`, `Improved` and `Fixed`. Use only categories that apply. Follow those highlights with `### Detailed changes` and the complete entries under fourth-level category headings. Write complete sentences, including in bullets, and keep technical detail in the detailed entries.
+Start each version section with a one-line overview of the update's value. Follow it with `### Highlights` and short `- **Category:** sentence` bullets. Use the categories that apply, in this order: `Security`, `New`, `Improved`, `Changed`, `Fixed`, `Removed`. Keep the authored order within a category. The app groups these bullets and the release script puts them in the same category order for GitHub. Unknown categories remain readable at the end and produce a release-script warning.
 
-Use this exact hierarchy. The version heading identifies the CHANGELOG section and is omitted from the GitHub release body. Everything below it, including the overview, highlights and detailed headings, is preserved by `scripts/release-notes.mjs`. The release workflow uploads that output as `release-notes.md` and publishes the downloaded artifact at `release-notes/release-notes.md`.
+Give at most two highlights a bold lead title ending in a period: `- **New:** **Bash execution details.** See what each command did and the values it used.` Use 3-8 words in sentence case for the title. These items appear above the category groups in the app and are shown once.
+
+When an update needs particular attention, put one GitHub alert blockquote directly below `### Highlights`, before the bullets. Use `[!IMPORTANT]`, `[!WARNING]` or `[!CAUTION]`; the app gives all three a warning treatment with the matching label. `[!NOTE]` and `[!TIP]` receive a neutral treatment. Use at most one notice per release.
+
+Follow the highlights with `### Detailed changes` and the complete entries under fourth-level category headings. Write complete sentences, including in bullets, and keep technical detail in the detailed entries. A commit-time test checks the newest released section and Unreleased for known categories, at most two headlines and at most one notice. The release script warns about these issues without failing a tag.
+
+Use this exact hierarchy. The version heading identifies the CHANGELOG section and is omitted from the GitHub release body. `scripts/release-notes.mjs` reorders only Highlights blocks, keeping the notice first. The overview and everything after Highlights stay unchanged. The release workflow uploads that output as `release-notes.md` and publishes the downloaded artifact at `release-notes/release-notes.md`.
 
 ```markdown
 ## [0.8.0] - 2026-11-01
@@ -45,7 +51,10 @@ This update lets you review release notes before installing a new version.
 
 ### Highlights
 
-- **New:** Read the available update's changes inside visual-omp.
+> [!IMPORTANT]
+> Chats could stop accepting messages after a lost connection. Update if you run long chats with helpers.
+
+- **New:** **Read changes before updating.** Read the available update's changes inside visual-omp.
 - **Improved:** Browse earlier releases from Settings → About.
 - **Fixed:** Previously fetched notes remain readable when GitHub is unavailable.
 

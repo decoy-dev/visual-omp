@@ -1,17 +1,20 @@
-import { ArrowSquareOut } from "@phosphor-icons/react";
+import { ArrowSquareOut, ArrowUp, ArrowsClockwise, CircleDashed, Minus, ShieldWarning, Sparkle, WarningDiamond, Wrench } from "@phosphor-icons/react";
 import { type MouseEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import type { AppUpdateStatus } from "@shared/contracts/updates";
 import { parseChangelog } from "@shared/changelog";
+import { isReleaseHighlightCategory, parseReleaseHighlights } from "@shared/releaseHighlights";
 import { type ReleaseNotesEntry, releaseNotesForVersions } from "@shared/releaseNotes";
 import { compareSemver } from "@shared/semver";
 import type { AppInstallInfo } from "@shared/contracts/updates";
 import changelog from "../../../../../CHANGELOG.md?raw";
 import { Button, Dialog, DialogContent, PresenceSwap, Select, SelectItem, Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui";
-import { renderReleaseMarkdown } from "./releaseMarkdown";
+import { renderReleaseInlineMarkdown, renderReleaseMarkdown } from "./releaseMarkdown";
+import "./releaseNotes.css";
 
 const bundled = parseChangelog(changelog);
 const RELEASES_URL = "https://github.com/decoy-dev/visual-omp/releases";
+const highlightIcons = { Security: ShieldWarning, New: Sparkle, Improved: ArrowUp, Changed: ArrowsClockwise, Fixed: Wrench, Removed: Minus };
 export type ReleaseNotesView = "pending" | "past";
 
 export interface ReleaseNotesViewerProps {
@@ -158,7 +161,9 @@ function DowngradeSteps({ method, version, global }: { method: "brew" | "scoop";
 
 function ReleaseEntry({ entry, installed }: { entry: ReleaseNotesEntry; installed: boolean }) {
 	const { t, i18n } = useTranslation("onboarding");
-	const html = useMemo(() => renderReleaseMarkdown(entry.body), [entry.body]);
+	const highlights = useMemo(() => parseReleaseHighlights(entry.body), [entry.body]);
+	const html = useMemo(() => highlights ? null : renderReleaseMarkdown(entry.body), [entry.body, highlights]);
+	const categoryLabel = (category: string) => isReleaseHighlightCategory(category) ? t(`update.notes.categories.${category}`) : category;
 	const date = entry.publishedAt !== null && Number.isFinite(entry.publishedAt)
 		? new Intl.DateTimeFormat(i18n.language, { dateStyle: "medium" }).format(entry.publishedAt) : null;
 	const openLink = (event: MouseEvent<HTMLDivElement>) => {
@@ -180,8 +185,58 @@ function ReleaseEntry({ entry, installed }: { entry: ReleaseNotesEntry; installe
 				{date && <span className="text-sm text-fg-muted">{date}</span>}
 			</header>
 			{entry.source === "bundled" && <p className="mb-stack text-sm text-fg-muted">{t("update.notes.bundled")}</p>}
-			{entry.body ? <div className="tr-md break-words" onClick={openLink} onAuxClick={openLink} dangerouslySetInnerHTML={{ __html: html }} /> : <p className="text-fg-muted">{t("update.notes.empty")}</p>}
+			{entry.body ? <div className="break-words" onClick={openLink} onAuxClick={openLink}>
+				{highlights ? <div className="release-summary">
+					{highlights.overview && <ReleaseMarkdown source={highlights.overview} />}
+					{highlights.notice && <div role="note" className={`release-notice ${["IMPORTANT", "WARNING", "CAUTION"].includes(highlights.notice.kind) ? "release-notice-warning" : ""}`}>
+						<WarningDiamond className="size-5 shrink-0" aria-hidden />
+						<div className="min-w-0">
+							<p className="font-semibold">{t(`update.notes.notices.${highlights.notice.kind}`)}</p>
+							<ReleaseMarkdown source={highlights.notice.body} />
+						</div>
+					</div>}
+					<section className="release-highlights">
+						<h3 className="sr-only">{t("update.notes.highlights")}</h3>
+						{highlights.headlines.length > 0 && <section>
+							<h4 className="sr-only">{t("update.notes.spotlight")}</h4>
+							<ul className="release-spotlights">
+								{highlights.headlines.map((item, index) => <li key={index} className="release-spotlight">
+									<HighlightIcon category={item.category} spotlight />
+									<div className="min-w-0">
+										<span className="sr-only">{categoryLabel(item.category)}: </span>
+										<p className="text-lg font-semibold text-fg" dangerouslySetInnerHTML={{ __html: renderReleaseInlineMarkdown(item.title!.slice(0, -1)) }} />
+										<ReleaseMarkdown source={item.body} className="release-spotlight-body" />
+									</div>
+								</li>)}
+							</ul>
+						</section>}
+						{highlights.groups.map((group, index) => <section key={index} className="release-group">
+							<h4 className="release-group-heading">
+								<HighlightIcon category={group.category} />
+								<span>{categoryLabel(group.category)}<span className="font-normal text-fg-muted"> · {group.items.length}</span></span>
+							</h4>
+							<ul className="release-group-items">
+								{group.items.map((item, index) => <li key={index}><ReleaseMarkdown source={item.body} /></li>)}
+							</ul>
+						</section>)}
+						{highlights.remaining && <ReleaseMarkdown source={highlights.remaining} />}
+					</section>
+					{highlights.detailed && <ReleaseMarkdown source={highlights.detailed} />}
+				</div> : <div className="tr-md" dangerouslySetInnerHTML={{ __html: html! }} />}
+			</div> : <p className="text-fg-muted">{t("update.notes.empty")}</p>}
 			{entry.url && <Button size="sm" variant="ghost" className="mt-card" icon={<ArrowSquareOut />} onClick={() => void window.vomp.invoke("app:openExternal", entry.url!)}>{t("update.notes.onGitHub")}</Button>}
 		</article>
 	);
+}
+
+function ReleaseMarkdown({ source, className = "" }: { source: string; className?: string }) {
+	const html = useMemo(() => renderReleaseMarkdown(source), [source]);
+	return <div className={`tr-md release-highlight-copy ${className}`} dangerouslySetInnerHTML={{ __html: html }} />;
+}
+
+function HighlightIcon({ category, spotlight = false }: { category: string; spotlight?: boolean }) {
+	const Icon = isReleaseHighlightCategory(category) ? highlightIcons[category] : CircleDashed;
+	return <span aria-hidden className={`release-category-icon ${spotlight ? "release-category-icon-large" : ""} ${category === "Security" ? "release-category-security" : ""}`}>
+		<Icon className={spotlight ? "size-4" : "size-3"} aria-hidden />
+	</span>;
 }

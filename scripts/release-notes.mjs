@@ -3,6 +3,7 @@
 // without written notes.
 import { readFile } from "node:fs/promises";
 import { parseChangelog } from "../src/shared/changelog.ts";
+import { orderReleaseHighlights, releaseHighlightWarnings } from "../src/shared/releaseHighlights.ts";
 
 const version = process.argv[2]?.replace(/^v/, "");
 if (!version || !/^[0-9A-Za-z.+-]+$/.test(version)) throw new Error("Usage: node scripts/release-notes.mjs <version>");
@@ -18,4 +19,5 @@ if (!body) {
 	console.error(`The CHANGELOG.md section for ${version} is empty.`);
 	process.exit(1);
 }
-process.stdout.write(`${body}\n`);
+for (const warning of releaseHighlightWarnings(body)) console.error(`Release ${version}: ${warning}`);
+process.stdout.write(`${orderReleaseHighlights(body)}\n`);

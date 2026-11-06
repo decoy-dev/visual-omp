@@ -333,6 +333,23 @@
 			"loading": "Loading the installed version…",
 			"offline": "GitHub couldn't be reached. Previously fetched notes and the changelog included with this copy are still available.",
 			"bundled": "These notes are included with this copy of visual-omp.",
+			"highlights": "Highlights",
+			"spotlight": "Spotlight",
+			"categories": {
+				"Security": "Security",
+				"New": "New",
+				"Improved": "Improved",
+				"Changed": "Changed",
+				"Fixed": "Fixed",
+				"Removed": "Removed"
+			},
+			"notices": {
+				"IMPORTANT": "Important",
+				"WARNING": "Warning",
+				"CAUTION": "Caution",
+				"NOTE": "Note",
+				"TIP": "Tip"
+			},
 			"onGitHub": "View this release on GitHub",
 			"allReleases": "All releases on GitHub",
 			"install": "Update to v{{version}}",

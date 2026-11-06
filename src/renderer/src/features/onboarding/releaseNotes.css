@@ -1,0 +1,71 @@
+.release-summary {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-page);
+}
+.release-highlights {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-page);
+}
+.release-notice {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--spacing-stack);
+	padding: var(--spacing-card);
+	border-radius: var(--radius-md);
+	background: var(--bg-inset);
+	color: var(--fg);
+	font-size: var(--text-base);
+	line-height: var(--text-base--line-height);
+}
+.release-notice > svg { margin-top: 0.125rem; color: var(--fg-muted); }
+.release-notice-warning { background: var(--warn-bg); }
+.release-notice-warning > svg { color: var(--warn); }
+.release-spotlights {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-toolbar);
+}
+.release-spotlight {
+	display: flex;
+	align-items: flex-start;
+	gap: var(--spacing-stack);
+	padding: var(--spacing-card);
+	border-radius: var(--radius-sm);
+	background: var(--hover);
+}
+.release-spotlight-body.tr-md { margin-top: var(--spacing-menu); color: var(--fg-muted); }
+.release-category-icon {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	flex-shrink: 0;
+	width: 1.25rem;
+	height: 1.25rem;
+	border-radius: var(--radius-full);
+	background: var(--accent-muted);
+	color: var(--accent);
+}
+.release-category-icon-large { width: 2rem; height: 2rem; }
+.release-category-security { background: var(--warn-bg); color: var(--warn); }
+.release-group-heading {
+	display: flex;
+	align-items: center;
+	gap: var(--spacing-toolbar);
+	margin-bottom: var(--spacing-toolbar);
+	font-size: var(--text-base);
+	line-height: var(--text-base--line-height);
+	font-weight: 600;
+	color: var(--fg);
+}
+.release-group-items {
+	display: flex;
+	flex-direction: column;
+	gap: var(--spacing-toolbar);
+	padding-inline-start: calc(1.25rem + var(--spacing-toolbar) + var(--spacing-card));
+	list-style: disc;
+}
+.release-group-items > li { padding-inline-start: 0; }
+.release-group-items > li::marker { color: var(--fg-faint); }
+.release-highlight-copy.tr-md > :last-child { margin-bottom: 0; }

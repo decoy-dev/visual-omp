@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderReleaseMarkdown } from "./releaseMarkdown";
+import { renderReleaseInlineMarkdown, renderReleaseMarkdown } from "./releaseMarkdown";
 
 describe("release Markdown", () => {
 	it("renders the overview, categorized highlights and detailed headings", () => {
@@ -45,5 +45,15 @@ describe("release Markdown", () => {
 		expect(html).not.toContain("vomp-chart");
 		expect(html).not.toContain("vomp-diagram");
 		expect(html).toContain('class="language-mermaid"');
+	});
+
+	it("uses the document's HTML and URL policy for inline highlight content", () => {
+		const html = renderReleaseInlineMarkdown('Review `commands` and [notes](https://example.com). <img src=x onerror=alert(1)> [Unsafe](javascript:alert%281%29)');
+		expect(html).toContain("<code>commands</code>");
+		expect(html).toContain('href="https://example.com"');
+		expect(html).not.toContain("<p>");
+		expect(html).not.toContain("<img");
+		expect(html).not.toContain('href="javascript:');
+		expect(html).toContain("&lt;img");
 	});
 });

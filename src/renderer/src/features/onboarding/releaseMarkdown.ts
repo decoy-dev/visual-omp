@@ -29,3 +29,12 @@ export function renderReleaseMarkdown(source: string): string {
 		return escapeHtml(source);
 	}
 }
+
+/** Use the same escaping and URL policy for titles embedded in structured release notes. */
+export function renderReleaseInlineMarkdown(source: string): string {
+	try {
+		return markdown.parseInline(source, { async: false });
+	} catch {
+		return escapeHtml(source);
+	}
+}
