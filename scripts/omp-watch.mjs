@@ -132,7 +132,7 @@ export function reportBody(metadata, results, compat, runUrl) {
 		(metadata.metadataError ? "### Release metadata failure\n\n" + safeExcerpt(metadata.metadataError, 2_000, evidenceUrl) + "\n" : "") +
 		"### Live compatibility details\n\n" + safeExcerpt(JSON.stringify(compat, null, 2), 12_000, evidenceUrl) + "\n" +
 		"## Triage\n\n" +
-		"Use the [parity audit](https://github.com/" + metadata.repo + "/blob/main/docs/context/2026-10-29-omp-parity-audit.md) to classify each relevant change.\n\n" +
+		"Classify each relevant change against the app's documented behavior in [ARCHITECTURE.md](https://github.com/" + metadata.repo + "/blob/main/docs/ARCHITECTURE.md) and [SPEC.md](https://github.com/" + metadata.repo + "/blob/main/docs/SPEC.md).\n\n" +
 		"- [ ] Review failed checks and confirm whether CLI output or a protocol changed.\n" +
 		"- [ ] Breaking: identify changes that stop supported app behavior or make it misleading.\n" +
 		"- [ ] Unsurfaced: identify user-facing omp additions that need native app handling.\n" +
