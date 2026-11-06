@@ -59,6 +59,8 @@ export interface PreviewWatchRequest {
 	named: string[];
 	/** Declared frame outputs. Main coalesces only these patterns and watches their folders without recursion. */
 	sequences: PreviewSequencePattern[];
+	/** Recognized video outputs of currently running render calls; these alone may poll without an idle bound. */
+	rendering?: string[];
 }
 
 /** A visual file that changed on disk and then stayed unchanged long enough to read. */
@@ -98,7 +100,7 @@ declare module "../ipc" {
 		/** Start watching for a turn; returns the watch id `preview:changed` events carry. */
 		"preview:watch": { args: [request: PreviewWatchRequest]; result: string };
 		/** Replace the named paths and declared frame outputs of a running watch. */
-		"preview:watchNamed": { args: [watchId: string, named: string[], sequences: PreviewSequencePattern[]]; result: void };
+		"preview:watchNamed": { args: [watchId: string, named: string[], sequences: PreviewSequencePattern[], rendering?: string[]]; result: void };
 		/** Stop a watch after one final debounced read. Unknown ids are ignored. */
 		"preview:unwatch": { args: [watchId: string]; result: void };
 	}

@@ -1,7 +1,7 @@
 import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
 import type { ActiveTool } from "../../collab/lib/client";
-import { deriveSubjects, isVisualCall, namedPaths, relatedPaths, sequencePatterns, type SubjectInput } from "./subjects";
+import { activeVideoPaths, deriveSubjects, isVisualCall, namedPaths, relatedPaths, sequencePatterns, type SubjectInput } from "./subjects";
 
 function assistant(id = "draw", name = "write", args: Record<string, unknown> = { path: "poster.svg", content: "<svg>" }, timestamp = 200): AssistantMessage {
 	return { role: "assistant", content: [{ type: "toolCall", id, name, arguments: args }], timestamp, stopReason: "toolUse", model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } } };
@@ -225,6 +225,13 @@ describe("current-turn live subjects", () => {
 });
 
 describe("recognized render subjects", () => {
+	it("pins only outputs of active movie renders and clears them while unrelated jobs remain", () => {
+		const render = running("render", { command: "ffmpeg -i input.mov live.mp4" }, "bash");
+		const server = running("server", { command: "node server.js /project/work/old.mp4" }, "bash");
+		const snapshot = input({ stream: null, activeTools: new Map([["render", render], ["server", server]]) });
+		expect(activeVideoPaths(snapshot)).toEqual(["/project/work/live.mp4"]);
+		expect(activeVideoPaths({ ...snapshot, activeTools: new Map(), backgroundTools: new Map([["server", server]]) })).toEqual([]);
+	});
 	it("keeps an existing input sequence frame inside its encoding movie subject", () => {
 		const command = "ffmpeg -framerate 30 -i frames/frame%04d.png out.mp4";
 		const pattern = { folder: "/project/work/frames", prefix: "frame", digits: 4, suffix: ".png" };

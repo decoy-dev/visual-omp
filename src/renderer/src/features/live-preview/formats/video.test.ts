@@ -1,5 +1,5 @@
 // @vitest-environment happy-dom
-import { act, createElement } from "react";
+import { act, createElement, StrictMode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { LiveSubject } from "../types";
@@ -39,6 +39,17 @@ beforeEach(() => {
 afterEach(async () => { await act(async () => root.unmount()); host.remove(); vi.restoreAllMocks(); });
 
 describe("video revisions", () => {
+	it("reattaches src after StrictMode reruns effects on the same element", async () => {
+		await act(async () => root.render(createElement(StrictMode, null,
+			createElement(Frame, { subject: { ...subject, state: "running" }, projectPath: "/project", related: [] }))));
+		const media = pending();
+		expect(vi.mocked(HTMLMediaElement.prototype.load).mock.contexts).toContain(media);
+		expect(vi.mocked(HTMLMediaElement.prototype.pause).mock.contexts).toContain(media);
+		expect(media.getAttribute("src")).toBe("vomp-preview://token/movie.mp4?rev=1");
+		await event(media, "loadeddata");
+		expect(player()).toBe(media);
+		expect(media.getAttribute("src")).toBe("vomp-preview://token/movie.mp4?rev=1");
+	});
 	it("plays a decoded revision with native muted inline controls and metadata preload", async () => {
 		await show(); expect(player()).toBeNull();
 		await event(pending(), "loadeddata");
@@ -120,6 +131,7 @@ describe("video revisions", () => {
 	it("keeps keyboard seeking under user control across later revisions", async () => {
 		await show("running"); await event(pending(), "loadeddata");
 		const first = player()!;
+		Object.defineProperty(first, "duration", { value: 6 });
 		await act(async () => first.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true })));
 		first.currentTime = 0.5;
 		await event(first, "seeking");
@@ -181,6 +193,7 @@ describe("video revisions", () => {
 	it("does not promote the same-duration candidate behind the visible playback position", async () => {
 		await show("running"); await event(pending(), "loadeddata");
 		const first = player()!;
+		Object.defineProperties(first, { duration: { value: 2 }, paused: { value: false } });
 		first.currentTime = 2;
 		env.revision = 2; await show("running");
 		const candidate = pending();
@@ -193,6 +206,7 @@ describe("video revisions", () => {
 	it("rechecks the visible position when a delayed seek completes", async () => {
 		await show("running"); await event(pending(), "loadeddata");
 		const first = player()!;
+		Object.defineProperties(first, { duration: { value: 6 }, paused: { value: false } });
 		first.currentTime = 1;
 		env.revision = 2; await show("running");
 		const candidate = pending();
@@ -209,6 +223,101 @@ describe("video revisions", () => {
 		Object.defineProperty(pending(), "duration", { value: Infinity });
 		await event(pending(), "loadeddata");
 		expect(player()).toBe(first);
+	});
+	it("replaces speculative old-file playback when the new render reports its first saved bytes", async () => {
+		await show("running", { size: null });
+		const first = pending();
+		Object.defineProperty(first, "duration", { value: 6 });
+		await event(first, "loadeddata"); await event(first, "seeked");
+		first.currentTime = 4;
+		Object.defineProperty(first, "paused", { value: false });
+		env.revision = 2; await show("running", { size: 776 });
+		const fragment = pending();
+		Object.defineProperty(fragment, "duration", { value: 2 });
+		await event(fragment, "loadeddata"); await event(fragment, "seeked");
+		expect(player()).toBe(fragment);
+		expect(fragment.currentTime).toBeCloseTo(1.9);
+	});
+	it.each(["pause", "seeking"])("preserves deliberate %s across the first snapshot and shrinkage in one call", async interaction => {
+		await show("running", { size: null });
+		const first = pending();
+		Object.defineProperty(first, "duration", { value: 6 });
+		await event(first, "loadeddata"); await event(first, "seeked");
+		first.currentTime = 3;
+		await event(first, interaction);
+		const plays = vi.mocked(HTMLMediaElement.prototype.play).mock.calls.length;
+		env.revision = 2; await show("running", { size: 776 });
+		expect(player()).toBe(first);
+		expect(pending()).toBeNull();
+		env.revision = 3; await show("running", { size: 500 });
+		expect(player()).toBe(first);
+		expect(pending()).toBeNull();
+		expect(first.currentTime).toBe(3);
+		expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(plays);
+		const resume = [...host.querySelectorAll("button")].find(button => button.textContent === copy.live.followRender)!;
+		await act(async () => resume.click());
+		const next = pending();
+		Object.defineProperty(next, "duration", { value: 2 });
+		await event(next, "loadeddata"); await event(next, "seeked");
+		expect(player()).toBe(next);
+	});
+	it("starts another timeline when a finished movie is rendered again at the same path", async () => {
+		await show("saved", { size: 58875 });
+		const finished = pending();
+		Object.defineProperty(finished, "duration", { value: 6 });
+		await event(finished, "loadeddata");
+		finished.currentTime = 6;
+		env.revision = 2;
+		await show("running", { toolCallId: "render-again", startedAt: 2000, size: 10854 });
+		const fragment = pending();
+		Object.defineProperty(fragment, "duration", { value: 2 });
+		await event(fragment, "loadeddata"); await event(fragment, "seeked");
+		expect(player()).toBe(fragment);
+		expect(fragment.currentTime).toBeCloseTo(1.9);
+	});
+	it.each([false, true])("replaces the prior run's exact-end movie with a new fragment, native ended: %s", async ended => {
+		await show("running", { size: null });
+		const finished = pending();
+		Object.defineProperty(finished, "duration", { value: 6 });
+		await event(finished, "loadeddata"); await event(finished, "seeked");
+		finished.currentTime = 6;
+		Object.defineProperties(finished, { ended: { value: ended }, paused: { value: true } });
+		await event(finished, "pause");
+		env.revision = 2; await show("running", { size: 10854 });
+		const fragment = pending();
+		Object.defineProperty(fragment, "duration", { value: 2 });
+		await event(fragment, "loadeddata"); await event(fragment, "seeked");
+		expect(player()).toBe(fragment);
+		expect(fragment.currentTime).toBeCloseTo(1.9);
+	});
+	it.each([{ toolCallId: "render-again", size: 58875 }, { toolCallId: "render", size: 10854 }])("resets a running timeline on a new call or a shrinking file: $toolCallId/$size", async restart => {
+		await show("running", { size: 58875 });
+		const first = pending();
+		Object.defineProperty(first, "duration", { value: 6 });
+		await event(first, "loadeddata"); await event(first, "seeked");
+		first.currentTime = 4;
+		Object.defineProperty(first, "paused", { value: false });
+		env.revision = 2; await show("running", restart);
+		const fragment = pending();
+		Object.defineProperty(fragment, "duration", { value: 2 });
+		await event(fragment, "loadeddata"); await event(fragment, "seeked");
+		expect(player()).toBe(fragment);
+	});
+	it("promotes a newer complete revision when the old player is paused at the end", async () => {
+		await show("running", { size: 50000 });
+		const first = pending();
+		Object.defineProperty(first, "duration", { value: 6 });
+		await event(first, "loadeddata"); await event(first, "seeked");
+		first.currentTime = 6;
+		Object.defineProperties(first, { paused: { value: true }, ended: { value: false } });
+		await event(first, "seeking");
+		env.revision = 2; await show("saved", { size: 58875 });
+		const complete = pending();
+		Object.defineProperty(complete, "duration", { value: 6 });
+		await event(complete, "loadeddata"); await event(complete, "seeked");
+		expect(player()).toBe(complete);
+		expect(complete.currentTime).toBeCloseTo(5.9);
+		expect(HTMLMediaElement.prototype.play).toHaveBeenCalledTimes(1);
 	});
 	it("treats a different completed Manim clip as a separate timeline", async () => {
 		await show("running", { path: "/project/partial_movie_files/one.mp4" });

@@ -47,7 +47,7 @@ vi.mock("../panes/common", () => ({ FileName: ({ name }: { name: string }) => na
 vi.mock("../panes/files-store", () => ({ openInFiles: vi.fn() }));
 vi.mock("../panes/media", () => ({ ExpandPreview: () => null, PdfFrame: () => null, PreviewImage: () => null, loadFileImage: vi.fn() }));
 vi.mock("../panes/derive", async importOriginal => ({ ...await importOriginal<typeof PanesDerive>(), backgroundJobs: () => [], ompRunning: () => true }));
-vi.mock("./subjects", () => ({ deriveSubjects: () => env.subjects, namedPaths: () => [], relatedPaths: () => [], sequencePatterns: () => [] }));
+vi.mock("./subjects", () => ({ activeVideoPaths: () => [], deriveSubjects: () => env.subjects, namedPaths: () => [], relatedPaths: () => [], sequencePatterns: () => [] }));
 vi.mock("./formats", () => ({ loadAdapter: (format: string) => env.loadAdapter(format) }));
 vi.mock("../../i18n", () => ({ retryFailedNamespaces: async () => {} }));
 vi.mock("../../transcript/Markdown", () => ({ Markdown: ({ text }: { text: string }) => createElement("div", null, text) }));
@@ -177,7 +177,7 @@ it.each([false, true])("auto-opens only when its preference is %s", async enable
 
 it("stops the watcher and hides the stage when the setting is turned off", async () => {
 	await render(true); await act(async () => vi.advanceTimersByTimeAsync(200));
-	expect(env.invoke).toHaveBeenCalledWith("preview:watch", { folder: "/project", named: [], sequences: [] });
+	expect(env.invoke).toHaveBeenCalledWith("preview:watch", { folder: "/project", named: [], sequences: [], rendering: [] });
 	await act(async () => useApp.setState({ prefs: { livePreview: false, livePreviewOpenOutputs: false } as AppPreferences }));
 	expect(env.invoke).toHaveBeenCalledWith("preview:unwatch", "watch"); expect(element.querySelector("section")).toBeNull();
 });

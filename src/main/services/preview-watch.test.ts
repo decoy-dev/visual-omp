@@ -1,7 +1,9 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
-import { type FSWatcher, watch as fsWatch } from "node:fs";
-import { mkdtemp, mkdir, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { type FSWatcher, type Stats, watch as fsWatch } from "node:fs";
+import { lstat, mkdtemp, mkdir, open, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import type * as Fs from "node:fs/promises";
+import type * as Git from "../git/run";
 import { homedir, tmpdir } from "node:os";
 import { basename, join, parse } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
@@ -10,6 +12,16 @@ import type { PreviewChange, PreviewSequencePattern } from "@shared/contracts/pr
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const ipc = vi.hoisted(() => ({ handlers: new Map<string, (...args: unknown[]) => unknown>(), broadcast: vi.fn() }));
+const fsCalls = vi.hoisted(() => ({ lstat: vi.fn(), readdir: vi.fn(), realpath: vi.fn() }));
+const gitCalls = vi.hoisted(() => ({ run: vi.fn() }));
+vi.mock("node:fs/promises", async importOriginal => {
+	const actual = await importOriginal<typeof Fs>();
+	return { ...actual, ...fsCalls };
+});
+vi.mock("../git/run", async importOriginal => {
+	const actual = await importOriginal<typeof Git>();
+	return { ...actual, runGit: gitCalls.run };
+});
 vi.mock("../ipc", () => ({
 	handleWithEvent: (channel: string, handler: (...args: unknown[]) => unknown) => ipc.handlers.set(channel, handler),
 	broadcast: ipc.broadcast,
@@ -17,6 +29,7 @@ vi.mock("../ipc", () => ({
 vi.mock("../env", () => ({ userEnv: async () => ({ ...process.env }) }));
 
 import { type PreviewWatchOptions, PreviewWatchService, registerPreviewWatch } from "./preview-watch";
+import { videoCommand } from "../../../scripts/live-preview-fixture/server.mjs";
 
 let dir: string;
 let changes: PreviewChange[];
@@ -25,6 +38,12 @@ let services: { service: PreviewWatchService; ids: string[] }[];
 let reportedPaths: Set<string>;
 
 beforeEach(async () => {
+	const actualFs = await vi.importActual<typeof Fs>("node:fs/promises");
+	fsCalls.lstat.mockReset().mockImplementation(actualFs.lstat);
+	fsCalls.readdir.mockReset().mockImplementation(actualFs.readdir);
+	fsCalls.realpath.mockReset().mockImplementation(actualFs.realpath);
+	const actualGit = await vi.importActual<typeof Git>("../git/run");
+	gitCalls.run.mockReset().mockImplementation(actualGit.runGit);
 	dir = await realpath(await mkdtemp(join(tmpdir(), "vomp-preview-watch-")));
 	changes = [];
 	services = [];
@@ -86,21 +105,21 @@ async function live(folders: string[]): Promise<void> {
 	}
 }
 
-async function start(folder = dir, named: string[] = [], options: ConstructorParameters<typeof PreviewWatchService>[1] = {}, sequences: PreviewSequencePattern[] = []) {
+async function start(folder = dir, named: string[] = [], options: ConstructorParameters<typeof PreviewWatchService>[1] = {}, sequences: PreviewSequencePattern[] = [], rendering: string[] = []) {
 	const inner = options.watch ?? fsWatch;
 	const real = !(CONTROLLED in inner);
 	const subscribed: string[] = [];
 	const service = new PreviewWatchService(change => changes.push(change), { ...options, watch: observe(inner, subscribed) });
 	const entry = { service, ids: [] as string[] };
 	services.push(entry);
-	const id = await service.watch({ folder, named, sequences });
+	const id = await service.watch({ folder, named, sequences, rendering });
 	entry.ids.push(id);
 	if (real) {
 		await live(subscribed);
 		// Folders a later scope subscribes are waited for the same way.
 		const watchNamed = service.watchNamed.bind(service);
-		service.watchNamed = async (watchId, paths, patterns) => {
-			await watchNamed(watchId, paths, patterns);
+		service.watchNamed = async (watchId, paths, patterns, active) => {
+			await watchNamed(watchId, paths, patterns, active);
 			await live(subscribed);
 		};
 	}
@@ -123,6 +142,151 @@ function controlledWatch() {
 }
 
 describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
+	it("bounds discovered growing files to thirty seconds even when an ungranted polling exemption is requested", async () => {
+		vi.useFakeTimers({ toFake: ["Date"] });
+		const events = controlledWatch();
+		const file = join(dir, "discovered.mp4");
+		await writeFile(file, "first");
+		await start(dir, [], { watch: events.watch, platform: "darwin" }, [], [file]);
+		events.notify(dir, "discovered.mp4");
+		await eventually(1);
+		vi.setSystemTime(Date.now() + 31_000);
+		const writer = await open(file, "a");
+		try { await writer.write("more frames"); } finally { await writer.close(); }
+		await eventually(2);
+		const reads = fsCalls.lstat.mock.calls.length;
+		await delay(1800);
+		expect(fsCalls.lstat).toHaveBeenCalledTimes(reads);
+	});
+	it("stops polling finished files and resumes after a filesystem event", async () => {
+		const events = controlledWatch();
+		const file = join(dir, "finished.mp4");
+		await writeFile(file, "finished");
+		await start(dir, [file], { watch: events.watch });
+		fsCalls.lstat.mockClear();
+		await eventually(1);
+		await delay(5000);
+		const reads = fsCalls.lstat.mock.calls.length;
+		expect(reads).toBeGreaterThanOrEqual(8);
+		await delay(1800);
+		expect(fsCalls.lstat).toHaveBeenCalledTimes(reads);
+		await writeFile(file, "another completed video");
+		events.notify(dir, "finished.mp4");
+		await eventually(2);
+		expect(fsCalls.lstat.mock.calls.length).toBeGreaterThan(reads);
+	});
+	it("bounds missing-file polling to three samples, then resumes on creation", async () => {
+		const events = controlledWatch();
+		const file = join(dir, "missing.mp4");
+		await start(dir, [file], { watch: events.watch });
+		fsCalls.lstat.mockClear();
+		await delay(4500);
+		const reads = fsCalls.lstat.mock.calls.filter(([path]) => path === file).length;
+		expect(reads).toBe(6);
+		await delay(1800);
+		expect(fsCalls.lstat.mock.calls.filter(([path]) => path === file)).toHaveLength(reads);
+		await writeFile(file, "created");
+		events.notify(dir, "missing.mp4");
+		await eventually(1);
+	});
+	it("only keeps unchanged files polling while their render is explicitly active", async () => {
+		const events = controlledWatch();
+		const file = join(dir, "active.mp4");
+		await writeFile(file, "render header");
+		const { service, id } = await start(dir, [file], { watch: events.watch }, [], [file]);
+		fsCalls.lstat.mockClear();
+		await delay(6000);
+		expect(fsCalls.lstat.mock.calls.filter(([path]) => path === file).length).toBeGreaterThan(10);
+		await service.watchNamed(id, [file], [], []);
+		await delay(1500);
+		const reads = fsCalls.lstat.mock.calls.length;
+		await delay(1800);
+		expect(fsCalls.lstat).toHaveBeenCalledTimes(reads);
+	});
+	it.each(["ignore", "first stat", "second stat"] as const)("starts no filesystem calls after closure during %s", async phase => {
+		const events = controlledWatch();
+		const file = join(dir, "closing.mp4");
+		await writeFile(file, "header");
+		const info = await lstat(file);
+		const { service, id } = await start(dir, phase === "ignore" ? [] : [file], { watch: events.watch, platform: "darwin" });
+		const entered = Promise.withResolvers<void>();
+		const ignored = Promise.withResolvers<Git.RunResult>();
+		const stat = Promise.withResolvers<Stats>();
+		if (phase === "ignore") gitCalls.run.mockImplementationOnce(() => { entered.resolve(); return ignored.promise; });
+		else {
+			if (phase === "second stat") {
+				const actual = await vi.importActual<typeof Fs>("node:fs/promises");
+				fsCalls.lstat.mockImplementationOnce(actual.lstat);
+			}
+			fsCalls.lstat.mockImplementationOnce(() => { entered.resolve(); return stat.promise; });
+		}
+		events.notify(dir, "closing.mp4");
+		await entered.promise;
+		service.close(id);
+		const counts = [fsCalls.lstat.mock.calls.length, fsCalls.readdir.mock.calls.length, fsCalls.realpath.mock.calls.length];
+		ignored.resolve({ code: 0, stdout: "", stderr: "", aborted: false });
+		stat.resolve(info);
+		await delay(400);
+		expect([fsCalls.lstat.mock.calls.length, fsCalls.readdir.mock.calls.length, fsCalls.realpath.mock.calls.length]).toEqual(counts);
+	});
+	it.each([false, true])("reports appends through one open file before close, controlled events: %s", async controlled => {
+		const file = join(dir, "open-render.mp4");
+		const events = controlled ? controlledWatch() : null;
+		const { service, id } = await start(dir, [file], events ? { watch: events.watch } : {});
+		const writer = await open(file, "w");
+		try {
+			const chunk = Buffer.alloc(1024);
+			for (let frame = 0; frame < 12; frame++) {
+				await writer.write(chunk);
+				// Some platforms coalesce all later appends until close. Only creation is guaranteed here.
+				if (frame === 0) events?.notify(dir, "open-render.mp4");
+				await delay(300);
+			}
+			expect(changes.length).toBeGreaterThanOrEqual(3);
+			expect(changes.at(-1)!.size).toBeGreaterThan(changes[0]!.size);
+			expect(changes.at(-1)!.size).toBeGreaterThanOrEqual(9 * chunk.length);
+			service.close(id);
+			const closedCount = changes.length;
+			const closedReads = [fsCalls.lstat.mock.calls.length, fsCalls.readdir.mock.calls.length, fsCalls.realpath.mock.calls.length];
+			await writer.write(chunk);
+			await delay(1100);
+			expect(changes).toHaveLength(closedCount);
+			expect([fsCalls.lstat.mock.calls.length, fsCalls.readdir.mock.calls.length, fsCalls.realpath.mock.calls.length]).toEqual(closedReads);
+		} finally {
+			await writer.close();
+			await service.unwatch(id);
+		}
+	});
+	it("publishes growing fixture bytes before ffmpeg exits", async context => {
+		try { execFileSync("ffmpeg", ["-version"], { stdio: "ignore" }); } catch { context.skip(); }
+		const command = videoCommand();
+		const file = join(dir, "out.mp4");
+		let rendering = true;
+		const samples: { size: number; rendering: boolean }[] = [];
+		const service = new PreviewWatchService(change => {
+			changes.push(change);
+			samples.push({ size: change.size, rendering });
+		});
+		const id = await service.watch({ folder: dir, named: [file], sequences: [], rendering: [file] });
+		services.push({ service, ids: [id] });
+		const child = spawn(command, { cwd: dir, shell: true, stdio: "ignore" });
+		try {
+			const { promise, resolve, reject } = Promise.withResolvers<void>();
+			child.once("error", reject);
+			child.once("exit", code => { rendering = false; if (code === 0) resolve(); else reject(new Error(`ffmpeg exited ${code}`)); });
+			await promise;
+			const live = samples.filter(sample => sample.rendering);
+			expect(live.length).toBeGreaterThanOrEqual(3);
+			expect(live.some(sample => sample.size >= 30_000)).toBe(true);
+			for (let index = 1; index < live.length; index++) {
+				expect(live[index]!.size).toBeGreaterThan(live[index - 1]!.size);
+			}
+			console.info("Live video fixture snapshots", live);
+		} finally {
+			child.kill();
+			await service.unwatch(id);
+		}
+	});
 	it("reports a continuously growing video before writes stop", async () => {
 		const controlled = controlledWatch();
 		const file = join(dir, "growing.mp4");

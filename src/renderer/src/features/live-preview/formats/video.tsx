@@ -8,9 +8,15 @@ import { WaitingForSave } from "./shared";
 import { usePreviewGrant } from "./usePreviewGrant";
 
 const InputFrame = lazy(() => import("./image").then(module => ({ default: module.Frame })));
-interface VideoRevision { url: string; revision: number; path: string | null }
+interface VideoRevision { url: string; revision: number; path: string | null; timeline: number }
 interface KeyFrame { time: number; canvas: HTMLCanvasElement }
 const PLAYBACK_KEYS: Record<string, true> = { ArrowLeft: true, ArrowRight: true, ArrowUp: true, ArrowDown: true, Home: true, End: true, " ": true, k: true, j: true, l: true };
+
+/** Native pause can precede ended. An exact-end paused player must not pin an obsolete revision. */
+function atPlaybackEnd(media: HTMLVideoElement): boolean {
+	return media.ended || (media.paused && Number.isFinite(media.duration) && media.duration > 0
+		&& media.currentTime >= media.duration - 0.001);
+}
 
 /** The end sample stays inside the final decodable frame, rather than seeking past it. */
 export function keyFrameTimes(duration: number): number[] {
@@ -92,7 +98,12 @@ function KeyFrames({ source, onSeek }: { source: VideoRevision; onSeek(time: num
 	</>;
 }
 
-/** Promotion keeps this component mounted. Only superseded media release their decoder and protocol stream. */
+/**
+ * Promotion keeps this component mounted. Only superseded media release their decoder and protocol stream.
+ * The source is attached in the effect rather than as a JSX attribute: the cleanup removes it, and React
+ * would not put an unchanged attribute back when an effect reruns on the same element (StrictMode does
+ * this in development).
+ */
 function RevisionVideo({ source, nodes, ...props }: VideoHTMLAttributes<HTMLVideoElement> & {
 	source: VideoRevision; nodes: Map<string, HTMLVideoElement>;
 }) {
@@ -100,6 +111,7 @@ function RevisionVideo({ source, nodes, ...props }: VideoHTMLAttributes<HTMLVide
 	useEffect(() => {
 		const media = element.current!;
 		nodes.set(source.url, media);
+		media.src = source.url;
 		return () => {
 			nodes.delete(source.url);
 			media.pause();
@@ -107,7 +119,7 @@ function RevisionVideo({ source, nodes, ...props }: VideoHTMLAttributes<HTMLVide
 			media.load();
 		};
 	}, [nodes, source.url]);
-	return <video {...props} ref={element} src={source.url} />;
+	return <video {...props} ref={element} />;
 }
 
 export function Frame(props: LiveFrameProps) {
@@ -121,21 +133,37 @@ export function Frame(props: LiveFrameProps) {
 	const nodes = useRef(new Map<string, HTMLVideoElement>());
 	const controlsBusy = useRef(false);
 	const running = props.subject.state === "running" || props.subject.state === "writing";
+	const { id, toolCallId, startedAt, path, size } = props.subject;
+	const timeline = useRef({ id, toolCallId, startedAt, path, size, running, generation: 0 });
+	const previous = timeline.current;
+	const restarted = previous.id !== id || previous.toolCallId !== toolCallId || previous.startedAt !== startedAt
+		|| previous.path !== path || (!previous.running && running)
+		// Before the first watcher snapshot, the decoder may still be showing last run's file.
+		|| (running && previous.size === null && size !== null)
+		|| (size !== null && previous.size !== null && size < previous.size);
+	timeline.current = { id, toolCallId, startedAt, path, size, running, generation: previous.generation + (restarted ? 1 : 0) };
+	const generation = timeline.current.generation;
+	useEffect(() => { setFollowing(true); }, [id, toolCallId, startedAt, path]);
+	const oldPlayer = good && nodes.current.get(good.url);
+	const oldEnded = oldPlayer ? atPlaybackEnd(oldPlayer) : false;
 	const follow = running && following && !reduced;
 	const latest = frame ? `${frame.grant.url}?rev=${frame.revision}` : null;
 	const newest = useRef(latest);
 	newest.current = latest;
 	const manual = reduced && requested === latest;
-	const pending = latest && latest !== good?.url && (!good || (following && !reduced) || manual)
-		? { url: latest, revision: frame!.revision, path: props.subject.path } : null;
+	const pending = latest && latest !== good?.url && (!good || ((following || oldEnded) && !reduced) || manual)
+		? { url: latest, revision: frame!.revision, path: props.subject.path, timeline: generation } : null;
 	const loadFailed = (media: HTMLVideoElement) => setFailed(media.error?.code === 4 ? "codec" : "save");
 	const accept = (source: VideoRevision, media: HTMLVideoElement) => {
 		if (newest.current !== source.url || source.revision !== props.subject.revision) return;
 		const visible = good && nodes.current.get(good.url);
-		if (visible && (controlsBusy.current || document.activeElement === visible || ((!following || reduced) && !manual))) return;
-		// Playback may have advanced while the candidate was seeking. Compare again at promotion, not at load.
-		if (visible && good.path === source.path && (media.currentTime < visible.currentTime
-			|| (!Number.isFinite(media.duration) && media.currentTime === 0))) return;
+		const ended = visible ? atPlaybackEnd(visible) : false;
+		if (visible && (controlsBusy.current || document.activeElement === visible
+			|| ((!following || reduced) && !manual && !(ended && !reduced)))) return;
+		// Only positions within one render timeline are ordered. A replaced file starts another timeline.
+		if (visible && !Number.isFinite(media.duration) && media.currentTime === 0) return;
+		if (visible && good.path === source.path && good.timeline === source.timeline && !ended
+			&& media.currentTime < visible.currentTime) return;
 		setGood(source);
 		setFailed(null);
 		setRequested(null);
@@ -167,10 +195,12 @@ export function Frame(props: LiveFrameProps) {
 				data-pending-video={visible ? undefined : ""} aria-label={visible ? t("live.videoPreview") : undefined}
 				className="block aspect-video w-full shrink-0 object-contain"
 				onLoadedData={event => {
-					if (visible || (good && (!following || reduced) && !manual)) return;
+					const visiblePlayer = good && nodes.current.get(good.url);
+					const ended = visiblePlayer ? atPlaybackEnd(visiblePlayer) : false;
+					if (visible || (good && (!following || reduced) && !manual && !(ended && !reduced))) return;
 					const media = event.currentTarget;
 					if (media.duration === 0) return;
-					const current = good && good.path === source.path ? nodes.current.get(good.url)?.currentTime ?? 0 : 0;
+					const current = good && good.path === source.path && good.timeline === source.timeline ? visiblePlayer?.currentTime ?? 0 : 0;
 					const time = !Number.isFinite(media.duration) || (reduced && !manual) ? media.currentTime : videoRevisionTime(media.duration, current, follow && !manual);
 					if (Math.abs(time - media.currentTime) > 0.05) media.currentTime = time;
 					else accept(source, media);
@@ -190,7 +220,7 @@ export function Frame(props: LiveFrameProps) {
 				}}
 				onSeeking={() => { if (visible) setFollowing(false); }}
 				onPause={event => {
-					if (visible && nodes.current.get(source.url) === event.currentTarget && !event.currentTarget.ended) setFollowing(false);
+					if (visible && nodes.current.get(source.url) === event.currentTarget && !atPlaybackEnd(event.currentTarget)) setFollowing(false);
 				}}
 				onError={event => { if (source.url === newest.current) loadFailed(event.currentTarget); }} />;
 		})}

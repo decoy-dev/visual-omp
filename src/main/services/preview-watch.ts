@@ -12,6 +12,9 @@ import { broadFolders, isBroadFolder } from "./panes";
 const VISUAL_EXT = /\.(png|jpe?g|gif|webp|avif|bmp|svg|pdf|html?|mp4|m4v|webm|mov|docx|xlsx|pptx)$/i;
 const VIDEO_EXT = /\.(mp4|m4v|webm|mov)$/i;
 const GROWING_MS = 750;
+const VIDEO_IDLE_SAMPLES = 4;
+const VIDEO_MISSING_SAMPLES = 3;
+const VIDEO_DISCOVERY_WINDOW_MS = 30_000;
 const DEBOUNCE_MS = 250;
 const STABLE_MS = 150;
 const IDLE_MS = 4 * 60 * 60 * 1000;
@@ -49,6 +52,8 @@ interface Watch {
 	pending: Set<string>;
 	readVersions: Map<string, number>;
 	seen: Map<string, { size: number; mtimeMs: number }>;
+	rendering: Set<string>;
+	videoPolls: Map<string, { startedAt: number; size: number | null; idle: number }>;
 	timer?: NodeJS.Timeout;
 	idle?: NodeJS.Timeout;
 	reading?: Promise<void>;
@@ -74,11 +79,12 @@ function excluded(path: string): boolean {
 function rootKey(root: Root): string {
 	return `${root.recursive ? "r" : "f"}:${root.path}`;
 }
-async function canonical(path: string): Promise<string> {
+async function canonical(path: string, state?: Watch): Promise<string> {
 	const absolute = resolve(path);
 	const suffix: string[] = [];
 	let ancestor = absolute;
 	while (true) {
+		if (state?.closed) return absolute;
 		const real = await realpath(ancestor).catch(() => null);
 		if (real) return join(real, ...suffix.reverse());
 		const parent = dirname(ancestor);
@@ -103,9 +109,10 @@ function newer(left: { path: string; mtimeMs: number }, right: { path: string; m
 	return basename(left.path).localeCompare(basename(right.path), "en", { numeric: true }) > 0;
 }
 
-async function existingParent(path: string): Promise<string> {
+async function existingParent(path: string, state?: Watch): Promise<string> {
 	let parent = dirname(path);
 	while (true) {
+		if (state?.closed) return parent;
 		if ((await lstat(parent).catch(() => null))?.isDirectory()) return parent;
 		const next = dirname(parent);
 		if (next === parent) return parent;
@@ -144,11 +151,11 @@ export class PreviewWatchService {
 		const state: Watch = {
 			id: randomUUID(), folder, spellings: new Map([[folder, resolve(request.folder)]]), namedFiles: new Set(), namedFolders: new Set(), missingNamed: new Set(), roots: [], subscriptions: new Set(),
 			sequences: [], missingSequences: new Set(), sequenceSeen: new Map(),
-			pending: new Set(), readVersions: new Map(), seen: new Map(), updating: Promise.resolve(), ending: false, closed: false,
+			pending: new Set(), readVersions: new Map(), seen: new Map(), rendering: new Set(), videoPolls: new Map(), updating: Promise.resolve(), ending: false, closed: false,
 		};
 		this.watches.set(state.id, state);
 		try {
-			await this.watchNamed(state.id, request.named, request.sequences);
+			await this.watchNamed(state.id, request.named, request.sequences, request.rendering);
 			return state.id;
 		} catch (error) {
 			this.close(state.id);
@@ -156,7 +163,7 @@ export class PreviewWatchService {
 		}
 	}
 
-	async watchNamed(id: string, named: string[], sequences: PreviewSequencePattern[]): Promise<void> {
+	async watchNamed(id: string, named: string[], sequences: PreviewSequencePattern[], rendering: string[] = []): Promise<void> {
 		const state = this.watches.get(id);
 		if (!state || state.ending) return;
 		if (!Array.isArray(named) || named.some(path => typeof path !== "string" || !isAbsolute(path))) throw new Error("Invalid preview paths");
@@ -164,10 +171,12 @@ export class PreviewWatchService {
 			|| typeof pattern.prefix !== "string" || typeof pattern.suffix !== "string"
 			|| [pattern.prefix, pattern.suffix].some(part => part.includes("\0") || basename(part) !== part)
 			|| (pattern.digits !== null && (!Number.isSafeInteger(pattern.digits) || pattern.digits < 1)))) throw new Error("Invalid preview sequences");
+		if (!Array.isArray(rendering) || rendering.some(path => typeof path !== "string" || !isAbsolute(path) || !VIDEO_EXT.test(path))) throw new Error("Invalid active video paths");
 		this.touch(state);
 		const update = state.updating.then(async () => {
 			if (state.closed || state.ending) return;
 			const extra = await broadFolders();
+			if (state.closed) return;
 			const files = new Set<string>();
 			const folders = new Set<string>();
 			const missing = new Set<string>();
@@ -175,9 +184,11 @@ export class PreviewWatchService {
 			const patterns: Sequence[] = [];
 			const missingSequences = new Set<string>();
 			for (const pattern of sequences) {
-				const folder = await canonical(pattern.folder);
+				const folder = await canonical(pattern.folder, state);
+				if (state.closed) return;
 				if (excluded(folder)) continue;
 				const info = await lstat(folder).catch(() => null);
+				if (state.closed) return;
 				if (info && !info.isDirectory()) continue;
 				const key = JSON.stringify([folder, pattern.folder, pattern.prefix, pattern.digits, pattern.suffix]);
 				if (patterns.some(sequence => sequence.key === key)) continue;
@@ -186,16 +197,25 @@ export class PreviewWatchService {
 				if (!info) missingSequences.add(folder);
 			}
 			for (const raw of named) {
-				const path = await canonical(raw);
+				const path = await canonical(raw, state);
+				if (state.closed) return;
 				spellings.set(path, resolve(raw));
 				if (excluded(path)) continue;
 				const info = await lstat(path).catch(() => null);
+				if (state.closed) return;
 				if (info?.isDirectory()) {
 					if (!isBroadFolder(path, extra)) folders.add(path);
 				} else if (!info || info.isFile()) {
 					files.add(path);
 					if (!info) missing.add(path);
 				}
+			}
+			const active = new Set<string>();
+			for (const raw of rendering) {
+				if (state.closed) return;
+				const path = await canonical(raw, state);
+				if (state.closed) return;
+				if (files.has(path)) active.add(path);
 			}
 			const addedFolders = [...folders].filter(path => !state.namedFolders.has(path));
 			const retiring = [...state.namedFiles].some(path => !files.has(path)) || [...state.namedFolders].some(path => !folders.has(path))
@@ -212,7 +232,7 @@ export class PreviewWatchService {
 				await this.subscribe(state);
 				await this.scanFolders(state, addedFolders);
 				clearTimeout(state.timer);
-				for (const path of state.namedFiles) this.queue(state, path);
+				for (const path of state.namedFiles) this.queue(state, path, true);
 				await this.scanSequences(state);
 				await delay(DEBOUNCE_MS);
 				await state.reading;
@@ -229,10 +249,12 @@ export class PreviewWatchService {
 			state.missingNamed = missing;
 			state.sequences = patterns;
 			state.missingSequences = missingSequences;
+			for (const path of active) if (!state.rendering.has(path)) state.videoPolls.delete(path);
+			state.rendering = active;
 			await this.updateRoots(state, extra);
 			await this.subscribe(state);
 			if (missing.size || missingSequences.size) await this.refreshMissing(state);
-			else for (const path of files) this.queue(state, path);
+			else for (const path of files) this.queue(state, path, true);
 			if (!retiring) await this.scanFolders(state, addedFolders);
 			await this.scanSequences(state);
 		});
@@ -268,14 +290,21 @@ export class PreviewWatchService {
 	}
 
 	private async updateRoots(state: Watch, extra: ReadonlySet<string>): Promise<void> {
+		if (state.closed) return;
+		const named = await Promise.all([...state.namedFiles].map(async path => ({ path: await existingParent(path, state), recursive: false })));
+		if (state.closed) return;
+		const sequences = await Promise.all(state.sequences.map(async (sequence): Promise<Root | null> => {
+			if (state.closed) return null;
+			const info = await lstat(sequence.folder).catch(() => null);
+			if (state.closed) return null;
+			const path = info?.isDirectory() ? sequence.folder : await existingParent(sequence.folder, state);
+			return { path, recursive: false };
+		}));
+		if (state.closed) return;
 		state.roots = [
 			...(!isBroadFolder(state.folder, extra) ? [{ path: state.folder, recursive: true }] : []),
 			...[...state.namedFolders].map(path => ({ path, recursive: true })),
-			...await Promise.all([...state.namedFiles].map(async path => ({ path: await existingParent(path), recursive: false }))),
-			...await Promise.all(state.sequences.map(async sequence => ({
-				path: (await lstat(sequence.folder).catch(() => null))?.isDirectory() ? sequence.folder : await existingParent(sequence.folder),
-				recursive: false,
-			}))),
+			...named, ...sequences.filter((root): root is Root => root !== null),
 		];
 	}
 
@@ -284,11 +313,13 @@ export class PreviewWatchService {
 		const promoted: string[] = [];
 		if (state.missingNamed.size) {
 			const extra = await broadFolders();
+			if (state.closed) return;
 			// Install the closest ancestor subscription before checking for creation, so moving the watch leaves no blind spot.
 			await this.updateRoots(state, extra);
 			await this.subscribe(state);
 			if (state.closed || state.ending) return;
 			for (const path of state.missingNamed) {
+				if (state.closed) return;
 				const info = await lstat(path).catch(() => null);
 				if (!info) continue;
 				state.missingNamed.delete(path);
@@ -303,12 +334,19 @@ export class PreviewWatchService {
 			await this.updateRoots(state, extra);
 		}
 		await this.subscribe(state);
+		if (state.closed) return;
 		if (state.missingSequences.size) {
-			for (const folder of state.missingSequences) if ((await lstat(folder).catch(() => null))?.isDirectory()) state.missingSequences.delete(folder);
-			await this.updateRoots(state, await broadFolders());
+			for (const folder of state.missingSequences) {
+				if (state.closed) return;
+				if ((await lstat(folder).catch(() => null))?.isDirectory()) state.missingSequences.delete(folder);
+			}
+			if (state.closed) return;
+			const extra = await broadFolders();
+			if (state.closed) return;
+			await this.updateRoots(state, extra);
 			await this.subscribe(state);
 		}
-		for (const path of state.namedFiles) this.queue(state, path);
+		for (const path of state.namedFiles) this.queue(state, path, true);
 		await this.scanFolders(state, promoted);
 		await this.scanSequences(state);
 	}
@@ -316,11 +354,14 @@ export class PreviewWatchService {
 	/** Frame scopes are direct-child subscriptions, including when the chat folder itself is broad. */
 	private async scanSequences(state: Watch): Promise<void> {
 		for (const sequence of state.sequences) {
+			if (state.closed) return;
 			if (!(await lstat(sequence.folder).catch(() => null))?.isDirectory()) continue;
+			if (state.closed) return;
 			const entries = await readdir(sequence.folder, { withFileTypes: true }).catch(() => []);
+			if (state.closed) return;
 			for (const entry of entries) {
 				const path = join(sequence.folder, entry.name);
-				if (entry.isFile() && matches(sequence, path)) this.queue(state, path);
+				if (entry.isFile() && matches(sequence, path)) this.queue(state, path, true);
 			}
 		}
 	}
@@ -335,10 +376,11 @@ export class PreviewWatchService {
 			if (state.closed || state.ending) return;
 			const folder = pending.pop()!;
 			const entries = await readdir(folder, { withFileTypes: true }).catch(() => []);
+			if (state.closed) return;
 			for (const entry of entries) {
 				const path = join(folder, entry.name);
 				if (excluded(path) || entry.name === "partial_movie_files") continue;
-				if (entry.isFile()) this.queue(state, path);
+				if (entry.isFile()) this.queue(state, path, true);
 				else if (entry.isDirectory()) pending.push(path);
 			}
 		}
@@ -371,8 +413,9 @@ export class PreviewWatchService {
 			&& (this.named(state, path) || state.roots.some(root => root.recursive && inside(root.path, path)));
 	}
 
-	private queue(state: Watch, path: string): void {
+	private queue(state: Watch, path: string, poll = false): void {
 		if (state.closed || !VISUAL_EXT.test(path) || !this.allowed(state, path)) return;
+		if (!poll && VIDEO_EXT.test(path)) state.videoPolls.delete(path);
 		state.pending.add(path);
 		state.readVersions.set(path, (state.readVersions.get(path) ?? 0) + 1);
 		if (state.ending) return;
@@ -394,6 +437,7 @@ export class PreviewWatchService {
 	}
 
 	private async read(state: Watch, final: boolean): Promise<void> {
+		if (state.closed) return;
 		const pending = [...state.pending];
 		const paths = new Set(pending);
 		const sequences = state.sequences.filter(sequence => pending.some(path => matches(sequence, path)));
@@ -401,11 +445,14 @@ export class PreviewWatchService {
 		state.pending.clear();
 		// Include previously seen frames so the count and latest frame describe the folder's current contents.
 		for (const sequence of sequences) {
+			if (state.closed) return;
 			if (!(await lstat(sequence.folder).catch(() => null))?.isDirectory()) {
 				for (const path of paths) if (matches(sequence, path)) paths.delete(path);
 				continue;
 			}
+			if (state.closed) return;
 			const entries = await readdir(sequence.folder, { withFileTypes: true }).catch(() => []);
+			if (state.closed) return;
 			for (const entry of entries) {
 				const path = join(sequence.folder, entry.name);
 				if (entry.isFile() && matches(sequence, path) && VISUAL_EXT.test(path)) {
@@ -415,18 +462,32 @@ export class PreviewWatchService {
 			}
 		}
 		const ignored = await ignoredPaths(state.folder, [...paths].filter(path => !this.named(state, path)));
+		if (state.closed) return;
 		const candidates = [...paths].filter(path => !ignored.has(path) && this.allowed(state, path));
 		const first = await Promise.all(candidates.map(path => lstat(path).catch(() => null)));
+		if (state.closed) return;
 		if (candidates.length) await delay(STABLE_MS);
 		const groups = new Map<Sequence, { count: number; latest?: { path: string; size: number; mtimeMs: number } }>(sequences.map(sequence => [sequence, { count: 0 }]));
 		for (const [index, path] of candidates.entries()) {
 			if (state.closed) return;
 			const before = first[index];
 			const after = await lstat(path).catch(() => null);
+			if (state.closed) return;
 			const matchingGroups = sequences.filter(sequence => matches(sequence, path)).map(sequence => groups.get(sequence)!);
 			if (after?.isFile()) for (const group of matchingGroups) group.count++;
-			if (!before?.isFile() || !after?.isFile()) continue;
 			const growing = VIDEO_EXT.test(path);
+			// Missing/discovered videos have bounded sampling. Only an explicitly active render can pin an existing file.
+			if (growing && !final) {
+				const size = after?.isFile() ? after.size : null;
+				const previous = state.videoPolls.get(path);
+				const idle = previous?.size === size ? previous.idle + 1 : size === null ? 1 : 0;
+				const startedAt = previous?.startedAt ?? Date.now();
+				state.videoPolls.set(path, { startedAt, size, idle });
+				const pinned = size !== null && state.rendering.has(path);
+				if (pinned || (idle < (size === null ? VIDEO_MISSING_SAMPLES : VIDEO_IDLE_SAMPLES)
+					&& Date.now() - startedAt < VIDEO_DISCOVERY_WINDOW_MS)) this.queue(state, path, true);
+			}
+			if (!before?.isFile() || !after?.isFile()) continue;
 			if (!growing && !final && state.readVersions.get(path) !== versions.get(path)) {
 				this.queue(state, path);
 				continue;
@@ -475,32 +536,38 @@ export class PreviewWatchService {
 		for (const root of roots) if (!root.recursive) kept.add(root.path);
 		if (kept.size > this.maxDirectories) return null;
 		while (pending.length) {
+			if (state.closed) return [];
 			const dir = pending.pop()!;
 			if (traversed.has(dir)) continue;
 			if (!kept.has(dir) && kept.size >= this.maxDirectories) return null;
 			traversed.add(dir);
 			kept.add(dir);
 			const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+			if (state.closed) return [];
 			if (state.subscriptions.size && !state.subscriptions.has(`f:${dir}`)) {
-				for (const entry of entries) if (entry.isFile()) this.queue(state, join(dir, entry.name));
+				for (const entry of entries) if (entry.isFile()) this.queue(state, join(dir, entry.name), true);
 			}
 			const dirs = entries.filter(entry => entry.isDirectory() && entry.name !== "partial_movie_files").map(entry => join(dir, entry.name)).filter(path => !excluded(path));
 			const ignored = await ignoredPaths(dir, dirs.filter(path => !this.named(state, path)));
+			if (state.closed) return [];
 			pending.push(...dirs.filter(path => !ignored.has(path)));
 		}
 		return [...kept].map(path => ({ path, recursive: false }));
 	}
 
 	private async subscribe(state: Watch): Promise<void> {
+		if (state.closed || state.ending) return;
 		let roots = this.platform === "linux" ? state.roots : state.roots.filter((root, index, all) => !all.some((other, otherIndex) => otherIndex !== index && other.recursive && inside(other.path, root.path) && (other.path !== root.path || otherIndex < index)));
 		if (this.platform === "linux") {
 			const walked = await this.linuxRoots(state, roots);
+			if (state.closed) return;
 			if (walked) roots = walked;
 			else {
 				// A large project falls back to explicit paths, keeping named files inside ignored folders.
 				state.roots = state.roots.filter(root => !root.recursive || state.namedFolders.has(root.path));
 				const namedRoots = await this.linuxRoots(state, state.roots);
-				roots = namedRoots ?? await Promise.all([...state.namedFiles].map(async path => ({ path: await existingParent(path), recursive: false })));
+				if (state.closed) return;
+				roots = namedRoots ?? await Promise.all([...state.namedFiles].map(async path => ({ path: await existingParent(path, state), recursive: false })));
 				if (!namedRoots) state.roots = roots;
 			}
 			roots = roots.slice(0, this.maxDirectories);
@@ -553,8 +620,9 @@ export class PreviewWatchService {
 		}
 		if (!resubscribing || this.platform !== "linux") return;
 		for (const dir of added) {
+			if (state.closed) return;
 			const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
-			for (const entry of entries) if (entry.isFile()) this.queue(state, join(dir, entry.name));
+			for (const entry of entries) if (entry.isFile()) this.queue(state, join(dir, entry.name), true);
 		}
 	}
 }
@@ -588,8 +656,8 @@ export function registerPreviewWatch(options: PreviewWatchOptions = {}): void {
 		else owner.ids.add(id);
 		return id;
 	});
-	handleWithEvent("preview:watchNamed", (event, id, named, sequences) => {
-		if (owners.get(event.sender)?.ids.has(id)) return service.watchNamed(id, named, sequences);
+	handleWithEvent("preview:watchNamed", (event, id, named, sequences, rendering) => {
+		if (owners.get(event.sender)?.ids.has(id)) return service.watchNamed(id, named, sequences, rendering);
 	});
 	handleWithEvent("preview:unwatch", async (event, id) => {
 		const ids = owners.get(event.sender)?.ids;

@@ -151,6 +151,14 @@ export function sequencePatterns(input: SubjectInput): PreviewSequencePattern[] 
 	return [...new Map(patterns.map(pattern => [JSON.stringify(pattern), pattern])).values()];
 }
 
+/** Only active recognized movie renders can keep unchanged existing outputs polling. */
+export function activeVideoPaths(input: SubjectInput): string[] {
+	return uniquePaths(callsOf(input).filter(call => call.active).flatMap(call => {
+		const path = renderOf(call, input)?.path;
+		return path && /\.(?:mp4|m4v|webm|mov)$/i.test(path) ? [path] : [];
+	}), input);
+}
+
 function pathsOf(call: Call, input: SubjectInput): string[] {
 	const context = { cwd: input.folder, home: null, platform: input.platform };
 	const paths = commandPaths(call.args, outputOf(call), context);
