@@ -8,11 +8,11 @@ Before tagging a release, the owner tests a development build with ready-made ch
 npm run tour
 ```
 
-The default manifest is `tours/0.7.10.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The extended 0.7.9 manifest remains available with `--release 0.7.9`. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
+The default manifest is `tours/0.7.11.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.7.10 patch tour and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
 
 ### Requirements
 
-Use Node.js 22 or later, the repository's existing dependencies, omp 18.17.0 or later on PATH and Python 3 as `python3`. The small 0.7.10 tour needs neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. To select a different omp executable, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. An absolute path also becomes the scratch app profile's omp preference. No dependency installation or provider sign-in is part of the tour.
+Use Node.js 22 or later, the repository's existing dependencies, omp 18.17.0 or later on PATH and Python 3 as `python3`. The small 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. To select a different omp executable, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. An absolute path also becomes the scratch app profile's omp preference. No dependency installation or provider sign-in is part of the tour.
 
 ### What the command prepares
 
@@ -24,9 +24,23 @@ The command creates a new temporary root and starts the loopback fixture provide
 
 The development app reads `VOMP_TOUR_CHATS=<absolute tour-layout.json>` through `app:info`. This startup option is ignored when `app.isPackaged` is true. It requires an absolute `VOMP_DEV_PROFILE`, a matching fixture marker, and seed file, profile, chat and session paths inside the fixture root, with symlinks resolved. Main returns an allowlisted layout whose active project comes from its validated tabs; arbitrary seed fields and expanded project paths are discarded. The renderer reuses its saved-layout parser and session controllers, opens the first chat and puts every tour chat in Current chats. The normal layout then persists through the app's own localStorage. No DevTools connection is required.
 
+### The 0.7.11 patch tour
+
+The default tour opens one chat for each change:
+
+| Chat | Checks |
+| --- | --- |
+| 01 Release notes | Settings > About > Read release notes opens the bundled 0.7.11 notes with the two approved headline rows. Older 0.7.9 and 0.7.0 notes exercise category groups, including Changed. Review update opens a clearly labeled 0.7.12 sample with an Important notice, two headlines and shuffled categories that the viewer orders with icons and counts. |
+| 02 File mentions | Pick, drag from Finder, Cmd-click in Files and select a palette file result. The project contains a valid ZIP, text files with spaces and a name containing double quotes. Check whole quoted chips and sent-message links. Sending `fixture mentions` with a readable sample produces a local receipt only when omp supplies its marker content. |
+| 03 Tool results | The existing `fixture bash-trace` workload creates large settled results. If collab fully omits one, check the neutral mark and Result unavailable label in Verbose view, and the omission notice in Normal view. Shortened or recovered results do not establish this check. The chat names the ToolCard and Transcript regressions when no omission occurs. |
+
+The owner must run the release build versioned 0.7.11 with the approved `## [0.7.11]` CHANGELOG section before checking its installed-version notes. Preparation does not change release files. The sample feed contains only an unpublished 0.7.12 release with no installers; close the viewer without choosing installation. `prepareUpdateFixture` copies the sample's GitHub-shaped body into `update-feed.json`; the app's normal update-check path retains it for This update. The older entries in this tour use bundled notes because `VOMP_UPDATE_FEED` replaces GitHub. Ordinary development runs without that variable prefer published GitHub bodies when available and fall back to bundled notes.
+
+`fixture mentions setup` creates the samples using Python's standard ZIP library. The prepared second message sends a quoted text-file mention and preparation requires the provider's content receipt. Each chat's first message includes numbered owner steps; the file-mention message includes its exact scratch folder path for Finder. omp stores auto-reads as `fileMention` messages, which visual-omp currently does not display as separate Read rows. The receipt confirms file content reached the model request without claiming model-backed interpretation.
+
 ### The 0.7.10 patch tour
 
-The default tour opens two chats:
+This earlier tour opens two chats:
 
 | Chat | Checks |
 | --- | --- |

@@ -20,7 +20,7 @@ export async function configureTour(env, manifest) {
   }
 }
 
-export async function prepareUpdateFixture(root, version) {
+export async function prepareUpdateFixture(root, version, { releases = [] } = {}) {
   const current = /^omp\/(\d+\.\d+\.\d+)/.exec(version)?.[1];
   if (!current) throw new Error("Cannot prepare the update fixture without an omp version.");
   const [major, minor, patch] = current.split(".").map(Number);
@@ -46,7 +46,7 @@ if (!existsSync(marker)) {
 }
 `);
   await writeFile(feedPath, JSON.stringify({
-    releases: [],
+    releases,
     ompCheck: { code: 0, stdout: `Current version: ${current}\nNew version available: ${latest}\n`, stderr: "" },
     ompUpdateCommand: `${quote(process.execPath)} ${quote(scriptPath)}`,
     ompVersionAfter: current,

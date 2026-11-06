@@ -9,7 +9,7 @@ import { startFixture } from "../live-preview-fixture/server.mjs";
 import { configureTour, prepareUpdateFixture, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 
 const checkout = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-export const defaultRelease = "0.7.10";
+export const defaultRelease = "0.7.11";
 
 export function tourLayout(chats) {
   if (!chats.length) throw new Error("A release tour needs at least one chat.");
@@ -109,7 +109,7 @@ export async function generateChat({ root, env, binary, chat, signal }) {
     await ready;
     for (const message of chat.prompts) {
       const finished = event("agent_end");
-      send("prompt", { message });
+      send("prompt", { message: message.replaceAll("{{projectPath}}", cwd) });
       await finished;
     }
     await request("set_session_name", { name: chat.title });
@@ -117,6 +117,7 @@ export async function generateChat({ root, env, binary, chat, signal }) {
     const entries = await readTourSession(state.sessionFile);
     if (chat.model && !entries.some(entry => entry.message?.role === "assistant" && `${entry.message.provider}/${entry.message.model}` === chat.model)) throw new Error(`The ${chat.id} fixture did not use ${chat.model}.`);
     if (chat.expectedCacheRead && !entries.some(entry => entry.message?.usage?.cacheRead === chat.expectedCacheRead)) throw new Error(`The ${chat.id} fixture did not report the expected cache usage.`);
+    if (chat.expectedReply && !entries.some(entry => entry.message?.role === "assistant" && entry.message.content?.some(part => part.type === "text" && part.text.includes(chat.expectedReply)))) throw new Error(`The ${chat.id} fixture did not confirm its expected reply.`);
     for (const file of chat.files ?? []) if (!(await stat(join(cwd, file))).size) throw new Error(`Missing tour output: ${file}`);
     if (chat.helper) await readTourSession(join(state.sessionFile.replace(/\.jsonl$/, ""), "TourHelper.jsonl"));
     if (chat.answer && !questions.length) throw new Error(`The ${chat.id} fixture did not open its question.`);
@@ -141,7 +142,7 @@ export async function prepareTour({ root, binary, manifest, signal }) {
   const config = execFileSync(binary, ["config", "path"], { cwd: join(root, "work"), env, encoding: "utf8" }).trim();
   if (await realpath(config) !== await realpath(env.PI_CODING_AGENT_DIR)) throw new Error("omp did not select the scratch agent directory.");
   await configureTour(env, manifest);
-  const updateFeed = manifest.updateFixture ? await prepareUpdateFixture(root, version) : undefined;
+  const updateFeed = manifest.updateFixture ? await prepareUpdateFixture(root, version, manifest.updateFixture === true ? {} : manifest.updateFixture) : undefined;
   const chats = [];
   for (const chat of manifest.chats) {
     const generated = await generateChat({ root, env, binary, chat, signal });

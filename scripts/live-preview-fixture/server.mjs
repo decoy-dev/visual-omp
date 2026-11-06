@@ -102,6 +102,10 @@ export function bashTraceCalls() {
   ];
 }
 
+function mentionsCommand() {
+  return `python3 - <<'PY'\nfrom pathlib import Path\nfrom zipfile import ZipFile\nPath('Meeting notes.md').write_text('# Meeting notes\\n\\ntour-0711-content:meeting\\n')\nPath('Client files').mkdir(exist_ok=True)\nPath('Client files/Review notes.md').write_text('# Client review\\n\\ntour-0711-content:client\\n')\nPath('Client files/Review "draft".md').write_text('# Quoted review\\n\\ntour-0711-content:quoted\\n')\nwith ZipFile('Design projects.zip', 'w') as archive:\n    archive.writestr('Design brief.md', '# Design brief\\n\\nLocal archive fixture.\\n')\nprint('Created the four file-mention samples.')\nPY`;
+}
+
 function textOf(message) {
   if (typeof message?.content === "string") return message.content;
   return (message?.content ?? []).map(part => part.text ?? "").join("\n");
@@ -124,10 +128,15 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
       const id = ++sequence;
       const messages = body.messages ?? [];
-      const lastUser = messages.findLast(message => message.role === "user");
-      const turnMessages = messages.slice(messages.findLastIndex(message => message.role === "user"));
+      let userIndex = messages.findLastIndex(message => message.role === "user");
+      // OpenAI-compatible providers can receive omp's fileMention as a second user
+      // message. Keep the fixture command and its following file input in one turn.
+      const mentionIndex = messages.findLastIndex(message => message.role === "user" && /fixture\s+mentions/i.test(textOf(message)));
+      if (mentionIndex >= 0 && messages.slice(mentionIndex + 1, userIndex + 1).every(message => ["user", "developer", "system"].includes(message.role))) userIndex = mentionIndex;
+      const lastUser = messages[userIndex];
+      const turnMessages = messages.slice(userIndex);
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|helper-work|helpers|colors|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -148,6 +157,18 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
           send({ role: "assistant", content: "The three timestamp rounds finished." });
           send({}, "stop");
         }
+        response.end("data: [DONE]\n\n");
+        return;
+      }
+      if (fixture === "mentions" && !/(?:^|\n)fixture mentions setup(?:\n|$)/i.test(textOf(lastUser))) {
+        // omp converts fileMention messages to model input after the user prompt.
+        // Ignore assistant/tool history so setup commands cannot fake this receipt.
+        const supplied = turnMessages.filter(message => message.role !== "assistant" && message.role !== "tool").map(textOf).join("\n");
+        const markers = [...new Set([...supplied.matchAll(/tour-0711-content:(meeting|client|quoted)\b/g)].map(match => match[1]))];
+        send({ role: "assistant", content: markers.length
+          ? `The local provider received ${markers.join(", ")} content from omp's file-mention auto-read.`
+          : "No readable tour file content reached this provider. Check the quoted mention and send it again." });
+        send({}, "stop");
         response.end("data: [DONE]\n\n");
         return;
       }
@@ -182,7 +203,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         return;
       }
       const helperCalls = turnMessages.flatMap(message => message.tool_calls ?? []);
-      const calls = fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
+      const calls = fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
         { name: "ask", args: { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }, slow: false },
       ] : fixture === "helper" || fixture === "helpers" ? !afterTool ? [
         fixture === "helper"

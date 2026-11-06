@@ -7,12 +7,14 @@ import { spawnSync } from "node:child_process";
 import { parseArguments, readTourSession, tourLayout } from "./release-tour.mjs";
 import manifest from "./tours/0.7.9.mjs";
 import patch from "./tours/0.7.10.mjs";
+import current from "./tours/0.7.11.mjs";
 import previous from "./tours/0.7.8.mjs";
 import { configureTour, prepareUpdateFixture, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 import { initializeFixture } from "../live-preview-fixture/environment.mjs";
+import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.7.10");
+  assert.equal(parseArguments([]).release, "0.7.11");
   assert.equal(parseArguments(["--prepare-only"]).prepareOnly, true);
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
@@ -22,7 +24,7 @@ test("tour flags reject unknown options and traversal releases", () => {
 });
 
 test("the small 0.7.10 tour covers XDG discovery and states the room-replacement evidence limit", () => {
-  assert.equal(patch.version, parseArguments([]).release);
+  assert.equal(patch.version, "0.7.10");
   assert.deepEqual(patch.chats.map(chat => chat.id), ["xdg-data", "room-recovery"]);
   const [data, recovery] = patch.chats;
   assert.deepEqual(data.files, ["frames.png"]);
@@ -39,6 +41,65 @@ test("the small 0.7.10 tour covers XDG discovery and states the room-replacement
   const layout = tourLayout(patch.chats.map(chat => ({ ...chat, projectPath: `/scratch/${chat.id}`, sessionFile: `/scratch/${chat.id}.jsonl` })));
   assert.equal(layout.tabs.length, 2);
   assert.equal(layout.docks["tour-room-recovery"].pane, "tasks");
+});
+
+test("0.7.11 opens one chat per change with explicit owner checks and fixture limits", () => {
+  assert.equal(current.version, parseArguments([]).release);
+  assert.deepEqual(current.chats.map(chat => chat.id), ["release-notes", "file-mentions", "missing-result"]);
+  const [notes, mentions, missing] = current.chats;
+  assert.match(notes.prompts[0], /Settings > About > Read release notes.*Past versions.*v0.7.11.*Release notes are easier to scan.*File mentions support spaced paths/s);
+  assert.match(notes.prompts[0], /v0.7.9.*v0.7.0.*bundled.*Review update.*This update.*Important.*Security, New, Improved, Changed, Fixed, Removed/s);
+  assert.deepEqual(mentions.files, ["Design projects.zip", "Meeting notes.md", "Client files/Review notes.md", 'Client files/Review "draft".md']);
+  assert.match(mentions.prompts[0], /@ picker.*Finder.*Cmd-click.*command palette.*single quotes.*no separate Read row/s);
+  assert.equal(mentions.prompts[1], 'fixture mentions @"Meeting notes.md"');
+  assert.match(mentions.expectedReply, /received meeting content/);
+  assert.match(missing.prompts[0], /fixture bash-trace.*conditional.*collab-entry-too-large.*neutral mark.*Result unavailable.*unexercised.*ToolCard.test.ts.*Transcript.test.ts/s);
+  assert.ok(current.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
+});
+
+test("0.7.11 update feed preserves a labeled unpublished sample body for This update", async t => {
+  const root = await mkdtemp(join(tmpdir(), "vomp-tour-release-notes-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const feedPath = await prepareUpdateFixture(root, "omp/18.17.0", current.updateFixture);
+  const feed = JSON.parse(await readFile(feedPath, "utf8"));
+  assert.deepEqual(feed.releases, current.updateFixture.releases);
+  assert.equal(feed.releases[0].tag_name, "v0.7.12");
+  const body = feed.releases[0].body;
+  assert.match(body, /simulated release-notes sample.*\[!IMPORTANT\]/s);
+  assert.equal([...body.matchAll(/^- \*\*\w+:\*\* \*\*/gm)].length, 2);
+  assert.deepEqual([...body.matchAll(/^- \*\*(\w+):\*\*/gm)].map(match => match[1]), ["Fixed", "Removed", "Improved", "Changed", "New", "Security", "Fixed", "Improved", "Fixed"]);
+  assert.deepEqual(feed.releases[0].assets, []);
+});
+
+test("file-mention receipts use only content supplied for the latest prompt", async t => {
+  const root = await mkdtemp(join(tmpdir(), "vomp-tour-mentions-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const server = await startFixture({ root, port: 0, durationMs: 0 });
+  t.after(() => server.close());
+  const reply = async messages => {
+    const response = await fetch(`${server.baseUrl}/chat/completions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages }) });
+    assert.equal(response.status, 200);
+    const chunks = (await response.text()).split("\n").filter(line => line.startsWith("data: {")).map(line => JSON.parse(line.slice(6)));
+    return chunks.flatMap(chunk => chunk.choices).map(choice => choice.delta.content ?? "").join("");
+  };
+  assert.match(await reply([
+    { role: "user", content: "<system-reminder>\nToday: 2026-11-06\n</system-reminder>\nfixture mentions setup\nCreate the samples." },
+  ]), /I will prepare the mentions fixture/);
+  assert.match(await reply([
+    { role: "user", content: "fixture mentions old turn tour-0711-content:client" },
+    { role: "user", content: 'fixture mentions @"Meeting notes.md"' },
+    { role: "assistant", content: "tour-0711-content:meeting" },
+    { role: "tool", content: "tour-0711-content:quoted" },
+  ]), /No readable tour file content/);
+  for (const role of ["developer", "user"]) assert.equal(await reply([
+    { role: "user", content: 'fixture mentions @"Meeting notes.md"' },
+    { role, content: "Read Meeting notes.md\ntour-0711-content:meeting\n" },
+  ]), current.chats[1].expectedReply);
+  assert.match(await reply([
+    { role: "user", content: "fixture mentions tour-0711-content:meeting" },
+    { role: "assistant", content: "Earlier receipt." },
+    { role: "user", content: "A separate new message." },
+  ]), /The correction was received/);
 });
 
 test("layout opens every chat with its own side panel and focuses the first", () => {
