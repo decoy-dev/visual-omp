@@ -19,6 +19,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Word previews in Outputs keep their pages' proportions and margins, scaled to the pane's width, and scroll through multi-page documents. Spreadsheet previews fill the available space, with sheet tabs staying in view while the grid scrolls.
 - The composer's settings row is more compact. The permission button shows only the mode's name, Suggestions shows its pressed state, and shortened account names remain distinguishable. The row scrolls horizontally when space is limited.
 - Helper rows in Tasks now have one conversation button for reading replies and sending messages when available.
+- Outputs previews use more of the pane's height to show documents, pages and recent frames, while compact previews leave room for saved outputs.
 
 #### Fixed
 
