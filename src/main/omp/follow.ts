@@ -130,6 +130,11 @@ const followers = new Map<string, Follower>();
 let checkTimer: NodeJS.Timeout | undefined;
 let checking = false;
 
+/** Current opened read-only session files; closing a view immediately removes its report. */
+export function followedSessionFiles(): readonly string[] {
+	return [...followers.keys()];
+}
+
 /** Follow exactly these session files (the renderer's read-only tabs); others stop. `[]` stops all. */
 export function followSessions(files: readonly string[]): void {
 	const wanted = new Set(files.filter(file => file.endsWith(".jsonl")));

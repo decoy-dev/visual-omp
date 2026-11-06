@@ -20,15 +20,45 @@ function record(value: unknown): value is RecordValue {
 	return value !== null && typeof value === "object" && !Array.isArray(value);
 }
 
-/** Only indexed project files or explicitly registered helper files are eligible, never artifacts. */
-async function validationFor(file: string): Promise<(handle: FileHandle) => Promise<void>> {
+type ReportedFiles = () => readonly string[];
+type RootGrant = { root: string; canonicalRoot: string; within: string };
+
+async function rootGrant(root: string, file: string, depth: 1 | 2): Promise<RootGrant | undefined> {
+	const canonicalRoot = await realpath(root).catch(() => undefined);
+	if (!canonicalRoot) return undefined;
+	// System path aliases such as /tmp and /private/tmp must describe the same physical directory.
+	const within = relative(canonicalRoot, file);
+	const parts = within.split(sep);
+	if (isAbsolute(within) || parts.length !== depth || parts.some(part => !part || part === "." || part === "..")) return undefined;
+	return { root, canonicalRoot, within };
+}
+
+async function reportedRootGrant(file: string, reportedFiles: ReportedFiles): Promise<RootGrant | undefined> {
+	for (const reported of reportedFiles()) {
+		if (typeof reported !== "string" || !isAbsolute(reported) || reported.includes("\0") ||
+			!reported.endsWith(".jsonl") || helperFileValidation(resolve(reported))) continue;
+		const canonical = await realpath(reported).catch(() => undefined);
+		if (!canonical || helperFileValidation(canonical)) continue;
+		const candidate = await rootGrant(dirname(resolve(reported)), file, 1);
+		if (!candidate || dirname(canonical) !== candidate.canonicalRoot) continue;
+		const [source, bucket] = await Promise.all([
+			lstat(reported).catch(() => undefined),
+			lstat(dirname(reported)).catch(() => undefined),
+		]);
+		if (source?.isFile() && !source.isSymbolicLink() && bucket?.isDirectory() && !bucket.isSymbolicLink()) return candidate;
+	}
+	return undefined;
+}
+
+/** Inferred sessions use project/file depth; a current primary report grants only its own directory. */
+async function validationFor(file: string, reportedFiles?: ReportedFiles): Promise<(handle: FileHandle) => Promise<void>> {
 	const helper = helperFileValidation(file);
 	if (helper) return helper;
-	const root = resolve(sessionsDir(await userEnv()));
-	const within = relative(root, file);
-	const parts = within.split(sep);
-	if (isAbsolute(within) || parts.length !== 2 || parts.some(part => !part || part === "." || part === "..")) throw new Error("Not a project session file");
-	const canonicalRoot = await realpath(root);
+	const initialFile = await realpath(file);
+	const inferred = await rootGrant(resolve(sessionsDir(await userEnv())), initialFile, 2);
+	const grant = inferred ?? (reportedFiles ? await reportedRootGrant(initialFile, reportedFiles) : undefined);
+	if (!grant) throw new Error("Not a project session file");
+	const { root, canonicalRoot, within } = grant;
 	return async handle => {
 		const [bucket, current, opened, canonicalFile, currentRoot] = await Promise.all([
 			lstat(dirname(file)), lstat(file), handle.stat(), realpath(file), realpath(root),
@@ -36,6 +66,12 @@ async function validationFor(file: string): Promise<(handle: FileHandle) => Prom
 		if (!bucket.isDirectory() || bucket.isSymbolicLink() || !current.isFile() || current.isSymbolicLink() ||
 			!opened.isFile() || opened.dev !== current.dev || opened.ino !== current.ino ||
 			currentRoot !== canonicalRoot || canonicalFile !== join(canonicalRoot, within)) throw new Error("Session path changed");
+		if (!inferred) {
+			const currentGrant = reportedFiles && await reportedRootGrant(initialFile, reportedFiles);
+			if (!currentGrant || currentGrant.canonicalRoot !== canonicalRoot || currentGrant.within !== within) {
+				throw new Error("Session report changed");
+			}
+		}
 	};
 }
 
@@ -65,6 +101,7 @@ type OutputRequest = {
 	file: string;
 	toolCallId: string;
 	manual: boolean;
+	reportedFiles?: ReportedFiles;
 	resolve: (result: SavedToolOutput) => void;
 };
 const pendingRequests: OutputRequest[] = [];
@@ -85,7 +122,7 @@ async function scanSavedToolOutputs(file: string, requests: readonly OutputReque
 	};
 	let handle: FileHandle | undefined;
 	try {
-		const validate = await validationFor(file);
+		const validate = await validationFor(file, requests[0]!.reportedFiles);
 		// Nonblocking open also avoids hanging if a regular file is raced into a FIFO.
 		if (!(await lstat(file)).isFile()) return requests.map(() => unavailable);
 		handle = await open(file, constants.O_RDONLY | constants.O_NONBLOCK);
@@ -157,13 +194,13 @@ async function scanSavedToolOutputs(file: string, requests: readonly OutputReque
 		finishPending(initial.size > SCAN_BYTES ? tooLarge : unavailable);
 		if (header && results.some(result => result?.status === "ready")) {
 			// Reject atomic replacement, truncation and changed session identity during this read.
-			await validate(handle);
 			const current = await stat(file);
 			if (current.size < initial.size) return requests.map(() => unavailable);
 			const check = Buffer.alloc(header.length);
 			const { bytesRead } = await handle.read(check, 0, check.length, headerEnd - header.length - 1);
 			if (bytesRead !== check.length || !check.equals(header)) return requests.map(() => unavailable);
 		}
+		await validate(handle);
 		// Every index was filled by its matched record or finishPending above.
 		return results as SavedToolOutput[];
 	} catch {
@@ -176,10 +213,10 @@ async function scanSavedToolOutputs(file: string, requests: readonly OutputReque
 async function drainRequests(): Promise<void> {
 	try {
 		while (pendingRequests.length) {
-			const file = pendingRequests[0]!.file;
+			const { file, reportedFiles } = pendingRequests[0]!;
 			const batch: OutputRequest[] = [];
 			for (let index = 0; index < pendingRequests.length && batch.length < BATCH_CALLS;) {
-				if (pendingRequests[index]!.file === file) batch.push(pendingRequests.splice(index, 1)[0]!);
+				if (pendingRequests[index]!.file === file && pendingRequests[index]!.reportedFiles === reportedFiles) batch.push(pendingRequests.splice(index, 1)[0]!);
 				else index++;
 			}
 			const results = await scanSavedToolOutputs(file, batch);
@@ -190,15 +227,16 @@ async function drainRequests(): Promise<void> {
 	}
 }
 
-/** Queue bounded work globally, coalescing same-file callers before opening their exact file. */
-export async function loadSavedToolOutput(file: string, toolCallId: string, manual?: boolean): Promise<SavedToolOutput> {
+/** Queue bounded work globally, coalescing exact-file callers with the same main-owned authority provider. */
+export async function loadSavedToolOutput(file: string, toolCallId: string, manual?: boolean, reportedFiles?: ReportedFiles): Promise<SavedToolOutput> {
 	if (typeof file !== "string" || !isAbsolute(file) || file.includes("\0") || !file.endsWith(".jsonl") ||
 		typeof toolCallId !== "string" || !toolCallId || toolCallId.includes("\0") || toolCallId.length > 4096 ||
-		(manual !== undefined && typeof manual !== "boolean")) return unavailable;
+		(manual !== undefined && typeof manual !== "boolean") ||
+		(reportedFiles !== undefined && typeof reportedFiles !== "function")) return unavailable;
 	if (pendingRequests.length >= QUEUED_REQUESTS) return unavailable;
 	file = resolve(file);
 	const request = Promise.withResolvers<SavedToolOutput>();
-	pendingRequests.push({ file, toolCallId, manual: manual === true, resolve: request.resolve });
+	pendingRequests.push({ file, toolCallId, manual: manual === true, reportedFiles, resolve: request.resolve });
 	if (!draining) {
 		draining = true;
 		// Gather concurrent IPC deliveries before taking the first bounded batch.

@@ -5,13 +5,23 @@ import { toggleConversationPin } from "../omp/session-pins";
 import { renameSavedSession } from "../omp/session-rename";
 import { helperSessionFile } from "../omp/helper-file";
 import { loadSavedToolOutput } from "../omp/session-tool-output";
+import { listHosts } from "../omp/host";
+import { followedSessionFiles } from "../omp/follow";
+
+/** Current main-owned reports only; asking to read a file never registers it. */
+function reportedSessionFiles(): readonly string[] {
+	return [
+		...listHosts().flatMap(host => host.sessionFile === null ? [] : [host.sessionFile]),
+		...followedSessionFiles(),
+	];
+}
 
 export function register(): void {
 	handle("sessions:resolve", resolveSessionFile);
 	handle("sessions:summary", sessionSummary);
 	handle("sessions:size", sessionFileSize);
 	handle("sessions:helperFile", helperSessionFile);
-	handle("sessions:toolOutput", loadSavedToolOutput);
+	handle("sessions:toolOutput", (file, toolCallId, manual) => loadSavedToolOutput(file, toolCallId, manual, reportedSessionFiles));
 	handle("sessions:fork", forkSavedSession);
 	handle("sessions:pin", async file => {
 		const session = await sessionSummary(file);
