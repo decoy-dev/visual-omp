@@ -8,8 +8,10 @@ import { officeCommand, officePython } from "./office.mjs";
 
 const python = process.platform === "win32" ? "python" : "python3";
 const available = spawnSync(python, ["--version"], { encoding: "utf8" }).status === 0;
-for (const kind of ["docx", "xlsx", "pptx"]) {
-  test(`${kind} fixture uses standard-library ZIPs, saves three revisions, truncates and writes a bounded bomb`, { skip: !available }, async t => {
+const cases = ["docx", "xlsx", "pptx"].flatMap(kind =>
+  ["native", "CRLF"].map(lineEndings => ({ kind, lineEndings })));
+for (const { kind, lineEndings } of cases) {
+  test(`${kind} fixture uses standard-library ZIPs, saves three revisions, truncates and writes a bounded bomb (${lineEndings})`, { skip: !available }, async t => {
     const folder = await mkdtemp(join(tmpdir(), "vomp-office-fixture-"));
     t.after(() => rm(folder, { recursive: true, force: true }));
     const inspect = `
@@ -29,10 +31,13 @@ with zipfile.ZipFile(bomb) as archive:
     huge = archive.infolist()[0].file_size
 print(json.dumps({'names':names,'xml':xml,'truncated':truncated,'huge':huge,'imageSize':image_size}))
 `;
-    const result = spawnSync(python, ["-c", officePython(kind, 0) + inspect], { cwd: folder, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 30_000 });
+    // Native Windows Python translates print() line endings to CRLF.
+    const stdoutSetup = lineEndings === "CRLF" ? "import sys; sys.stdout.reconfigure(newline='\\r\\n')\n" : "";
+    const result = spawnSync(python, ["-c", stdoutSetup + officePython(kind, 0) + inspect], { cwd: folder, encoding: "utf8", maxBuffer: 16 * 1024 * 1024, timeout: 30_000 });
     assert.equal(result.status, 0, result.stderr);
-    assert.equal((result.stdout.match(/ save [123]\n/g) ?? []).length, 3);
-    const inspected = JSON.parse(result.stdout.trim().split("\n").at(-1));
+    if (lineEndings === "CRLF") assert.match(result.stdout, / save 1\r\n/);
+    assert.deepEqual([...result.stdout.matchAll(/ save ([123])\r?\n/g)].map(match => Number(match[1])), [1, 2, 3]);
+    const inspected = JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
     assert.equal(inspected.truncated, true);
     assert.equal(inspected.huge, 64 * 1024 * 1024 + 1);
     if (kind === "docx") {

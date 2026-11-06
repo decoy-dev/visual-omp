@@ -369,7 +369,7 @@ Run the generator checks with:
 node --test scripts/live-preview-fixture/office.test.mjs
 ```
 
-The generator tests run Python when available and report an explicit skip otherwise. Python must be available as `python3` to run an Office scenario through omp's bash tool.
+The generator tests run `python` on Windows and `python3` elsewhere when available, and report an explicit skip otherwise. They exercise native and forced CRLF stdout, check saves 1, 2 and 3 in order, and inspect the generated packages. These tests invoke Python directly without a shell; running an Office scenario through omp's bash tool still requires `python3`.
 
 ### Windows Electron acceptance
 
