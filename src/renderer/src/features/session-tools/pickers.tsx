@@ -9,6 +9,9 @@ import { Brain, CaretDown, CaretRight, Check, Eye, ShieldCheck, ShieldWarning, W
 import { type KeyboardEvent, type ReactNode, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { create } from "zustand";
+import { shallow } from "zustand/shallow";
+import { useVisualSelection } from "../../state/visualSnapshot";
+import { sameModelSelection, selectCurrentModel, selectModel, selectReadOnly, selectThinking } from "./selection";
 import {
 	Button,
 	cn,
@@ -29,7 +32,7 @@ import {
 	Tooltip,
 } from "@/ui";
 import { focusRing, menuCheckSlot, menuItem, menuItemActive, menuSeparator, rowPicker } from "@/ui/styles";
-import { useDisplayedEntries } from "../../chat/branch";
+import { useBranchEntries } from "../../chat/branch";
 import { composerModel } from "../../collab/lib/modelFallback";
 import { getCommand } from "../../registry/commands";
 import type { ChatSlotProps } from "../../registry/slots";
@@ -43,7 +46,7 @@ import { observeSessionThinking, thinkingState, type ThinkingState } from "./thi
 import { ThinkingLabel, thinkingLabel } from "./ThinkingLabel";
 import { containsCurrent, modelRows, modelTree, searchModelTree, type ModelBranch, type ModelNode } from "./modelTree";
 import { type StatusLine, THINKING_LEVELS, type ThinkingLevel } from "./screen";
-import { useOmpScreen, useSessionView } from "./status";
+import { useOmpScreen } from "./status";
 
 // ─── Open requests (⌘⇧M and `/switch` → model picker, `/effort` → thinking picker) ───
 
@@ -202,7 +205,7 @@ export function PermissionMenu({ projectPath, disabled = false, workLabel = null
 export function PermissionButton({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
 	const { status } = useOmpScreen(session);
-	const readOnly = useSessionView(session).readOnly;
+	const readOnly = useVisualSelection(session.subscribe, session.getSnapshot, selectReadOnly);
 	const work = activeWorkMode(status);
 	return (
 		<PermissionMenu projectPath={session.projectPath} disabled={readOnly} workLabel={work ? t(`modes.active.${work}`) : null}>
@@ -444,11 +447,9 @@ export function ModelList({ projectPath, current, onPick, onDone, session }: Mod
 
 export function ModelButton({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
-	const view = useSessionView(session);
-	const entries = useDisplayedEntries(view);
-	const live = view.guest?.state?.model;
-	const stream = view.guest?.stream ?? null;
-	const { model, selectedModel, fallback } = useMemo(() => composerModel(entries, live, stream), [entries, live, stream]);
+	const view = useVisualSelection(session.subscribe, session.getSnapshot, selectModel, sameModelSelection);
+	const entries = useBranchEntries(view.entries, view.leaf, view.history);
+	const { model, selectedModel, fallback } = useMemo(() => composerModel(entries, view.live, view.stream), [entries, view.live, view.stream]);
 	const [open, setOpen] = useState(false);
 	if (view.readOnly && open) setOpen(false);
 	const request = usePickerRequests(state => state.model);
@@ -504,24 +505,24 @@ export function ModelButton({ session }: ChatSlotProps) {
 /** Keep the chosen selector separate from the effort omp displays or records for Auto. */
 export function useThinking(session: SessionController): ThinkingState {
 	const status = useOmpScreen(session).status;
-	const view = useSessionView(session);
-	const tsp = useTsp(view.host?.transport === "tsp" ? view.host.hostId : null).snapshot;
-	const entries = useDisplayedEntries(view);
-	const sampled = view.host?.transport === "tsp" ? semanticThinkingEffort(tsp) : status?.thinking ?? null;
-	const event = view.guest?.thinkingEvent ?? null;
-	const current = observeSessionThinking(session, view.host, sampled, event);
+	const view = useVisualSelection(session.subscribe, session.getSnapshot, selectThinking, shallow);
+	const tsp = useTsp(view.transport === "tsp" ? view.hostId : null).snapshot;
+	const entries = useBranchEntries(view.entries, view.leaf, view.history);
+	const sampled = view.transport === "tsp" ? semanticThinkingEffort(tsp) : status?.thinking ?? null;
+	const event = view.event;
+	const current = observeSessionThinking(session, view.hostId ? { hostId: view.hostId, generation: view.generation } : null, sampled, event);
 	// A remounted reader can briefly lack its display source. Retain this session's last
 	// observed value, including Pending, until that shared source supplies another one.
 	const displayed = sampled ?? current.lastDisplayed;
-	const effective = view.guest?.state?.thinkingLevel;
+	const effective = view.effective;
 	// Ordinary live state has no marker distinguishing a provisional Auto default.
-	const selector = view.guest?.thinkingSelector ?? (entries.some(entry => entry.type === "thinking_level_change") ? null : displayed ?? THINKING_LEVELS.find(level => level === effective) ?? null);
+	const selector = view.selector ?? (entries.some(entry => entry.type === "thinking_level_change") ? null : displayed ?? THINKING_LEVELS.find(level => level === effective) ?? null);
 	return thinkingState(selector, entries, displayed, current.stale ? null : event);
 }
 
 function useCurrentModelInfo(session: SessionController): ModelInfo | undefined {
 	const { models } = useChatModels(session.projectPath);
-	const model = useSessionView(session).guest?.state?.model;
+	const model = useVisualSelection(session.subscribe, session.getSnapshot, selectCurrentModel);
 	return models?.find(entry => entry.provider === model?.provider && entry.id === model?.id);
 }
 
@@ -533,7 +534,7 @@ export function ThinkingButton({ session }: ChatSlotProps) {
 	const choices = thinkingChoices(info);
 	const [open, setOpen] = useState(false);
 	const [busy, setBusy] = useState<ThinkingLevel | null>(null);
-	const readOnly = useSessionView(session).readOnly;
+	const readOnly = useVisualSelection(session.subscribe, session.getSnapshot, selectReadOnly);
 	if (readOnly && open) setOpen(false);
 	const unsupported = info !== undefined && choices.length === 0;
 	const disabled = readOnly || unsupported;

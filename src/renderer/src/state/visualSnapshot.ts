@@ -25,3 +25,22 @@ export function useVisualSnapshot<T>(subscribe: Subscribe, getSnapshot: () => T)
 	}, [subscribe, getSnapshot]);
 	return useSyncExternalStore(visual.subscribe, visual.getSnapshot, getSnapshot);
 }
+
+/** Subscribe to a stable visual projection, without changing semantic store notifications. */
+export function useVisualSelection<T, S>(subscribe: Subscribe, getSnapshot: () => T, select: (snapshot: T) => S, equal: (previous: S, next: S) => boolean = Object.is): S {
+	const getSelection = useMemo(() => {
+		let initialized = false;
+		let source: T;
+		let selection: S;
+		return () => {
+			const next = getSnapshot();
+			if (initialized && Object.is(source, next)) return selection;
+			const selected = select(next);
+			source = next;
+			if (!initialized || !equal(selection, selected)) selection = selected;
+			initialized = true;
+			return selection;
+		};
+	}, [getSnapshot, select, equal]);
+	return useVisualSnapshot(subscribe, getSelection);
+}

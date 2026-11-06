@@ -6,7 +6,9 @@ import type { ChatSlotProps } from "../../registry/slots";
 import { Menu, MenuContent, MenuLabel, MenuRadioGroup, MenuRadioItem, MenuTrigger, Spinner, Tooltip, cn } from "@/ui";
 import { rowPicker } from "@/ui/styles";
 import { pinSessionAccount, useSessionAccounts } from "./accounts";
-import { useSessionView } from "./status";
+import { useVisualSelection } from "../../state/visualSnapshot";
+import { shallow } from "zustand/shallow";
+import { selectAccount } from "./selection";
 
 /** Shorten only when the resulting visible label distinguishes this account from its peers. */
 function compactAccountLabel(label: string): string {
@@ -27,13 +29,13 @@ function fullAccountLabel(account: SessionAccounts["accounts"][number], accounts
 /** This control is lazy-loaded and absent for providers with fewer than two stored OAuth accounts. */
 export function AccountButton({ session }: ChatSlotProps) {
 	const { t } = useTranslation("session");
-	const view = useSessionView(session);
+	const view = useVisualSelection(session.subscribe, session.getSnapshot, selectAccount, shallow);
 	const listing = useSessionAccounts(session, view);
 	const [open, setOpen] = useState(false);
 	const [busy, setBusy] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const pending = useRef(false);
-	const identity = JSON.stringify([view.host?.hostId, view.host?.generation, listing?.provider, listing?.sessionId]);
+	const identity = JSON.stringify([view.hostId, view.generation, listing?.provider, listing?.sessionId]);
 	useEffect(() => { setOpen(false); setError(null); }, [identity, view.readOnly]);
 	if (!listing || listing.accounts.length < 2) return null;
 	const current = listing.accounts.find(account => account.active);
@@ -49,7 +51,7 @@ export function AccountButton({ session }: ChatSlotProps) {
 			setOpen(next);
 			if (next) {
 				setError(null);
-				if (view.host) void window.vomp.invoke("native:sessionAccounts", view.host.hostId, view.host.generation).catch(cause => setError(cause instanceof Error ? cause.message : String(cause)));
+				if (view.hostId) void window.vomp.invoke("native:sessionAccounts", view.hostId, view.generation).catch(cause => setError(cause instanceof Error ? cause.message : String(cause)));
 			}
 		}}>
 			<Tooltip content={label}>

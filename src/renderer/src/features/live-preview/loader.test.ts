@@ -8,6 +8,12 @@ import type * as App from "../../state/app";
 import shell from "../../i18n/en/shell.json";
 
 vi.mock("../../registry/idle", () => ({ preloadWhenIdle: () => {} }));
+// Tracker retry tests do not render full-page chrome or the icon catalog.
+vi.mock("@phosphor-icons/react", () => ({ Warning: () => null }));
+vi.mock("../../ui/Page", () => ({
+	PageFrame: ({ children }: { children?: ReactNode }) => createElement("main", null, children),
+	PageSkeleton: () => null,
+}));
 vi.mock("../../i18n", () => ({ retryFailedNamespaces: async () => {} }));
 vi.mock("../../state/app", async () => {
 	const { create } = await import("zustand");
@@ -37,6 +43,7 @@ beforeEach(async () => {
 	vi.doMock("./Tracker", () => { load(); return { Tracker: () => createElement("output", null, "Tracker running") }; });
 	loader = await import("./loader");
 	app = await import("../../state/app");
+	app.useApp.setState({ prefs: { livePreview: true } as AppPreferences });
 	container = document.createElement("div"); document.body.append(container);
 	root = createRoot(container);
 	vi.spyOn(console, "error").mockImplementation(() => {});

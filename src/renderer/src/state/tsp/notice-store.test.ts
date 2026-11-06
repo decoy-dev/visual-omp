@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { GuestSnapshot } from "../../collab/lib/client";
 import type { SessionView } from "../../state/session";
 import { TspNoticeStore } from "./notice-store";
+import { TspNoticeProjection } from "./notices";
 
 const stores: TspNoticeStore[] = [];
 function setup(pending = false) {
@@ -29,7 +30,7 @@ function snapshot(content: string, revision: number, epoch = 1, generation = 1, 
 			document: { id: "surface", k: "col", c: [{ id: "main", k: "col", c: [{ id: "warning", k: "text", p: { role: "omp.notice.warning", spans: [{ t: content }] } }] }] } }],
 	};
 }
-afterEach(async () => { for (const store of stores.splice(0)) store.dispose(); await Promise.resolve(); vi.unstubAllGlobals(); });
+afterEach(async () => { for (const store of stores.splice(0)) store.dispose(); await Promise.resolve(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 it("subscribes independently of mounted UI, rejects late reads, and detaches on dispose", async () => {
 	const test = setup(true);
 	test.set({ host: host(), guest: guest("u1") });
@@ -101,5 +102,24 @@ it("uses the displayed rewind leaf before any new entry and preserves assigned a
 	test.set({ guest: { ...guest("unused"), entries: [first, answer, abandoned], stream: { role: "assistant", content: [] } as unknown as GuestSnapshot["stream"] } });
 	await test.send(snapshot("Updated warning.", 2));
 	expect(test.store.getSnapshot()).toMatchObject([{ anchor: "answer", turn: "first", content: "Updated warning." }]);
+	test.store.dispose();
+});
+
+it("reprojects collab only for transcript, notice, leaf and room changes, not streaming notifications", () => {
+	const collab = vi.spyOn(TspNoticeProjection.prototype, "collab");
+	const test = setup();
+	const initial = guest("user");
+	test.set({ host: host(), guest: initial, history: null, carryover: null, displayLeaf: null });
+	expect(collab).toHaveBeenCalledTimes(1);
+	for (let revision = 0; revision < 100; revision++) test.set({ guest: { ...initial, lastStreamingAt: revision } });
+	expect(collab).toHaveBeenCalledTimes(1);
+	test.set({ displayLeaf: "user" });
+	expect(collab).toHaveBeenCalledTimes(2);
+	const notices: GuestSnapshot["notices"] = [{ id: 1, level: "info", message: "New notice", at: 1 }];
+	test.set({ guest: { ...initial, notices } });
+	expect(collab).toHaveBeenCalledTimes(3);
+	test.set({ host: host("host", 2) });
+	test.set({ guest: { ...initial, notices } });
+	expect(collab).toHaveBeenCalledTimes(4);
 	test.store.dispose();
 });

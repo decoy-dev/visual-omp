@@ -26,8 +26,10 @@ import {
 	X,
 } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { type CSSProperties, createContext, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { type CSSProperties, createContext, memo, type MouseEvent, type ReactNode, useCallback, useContext, useEffect, useId, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { DEFAULT_SIDEBAR_SORT, type SidebarSort } from "@shared/ipc";
+import { shallow } from "zustand/shallow";
+import type { SessionView } from "../state/session";
 import { useTranslation } from "react-i18next";
 import { getCommand } from "../registry/commands";
 import { DialogLoadFailed, lazyView } from "../registry/lazy";
@@ -73,7 +75,7 @@ import {
 import { PROJECT_COLOR_CHOICES, ProjectColorDot } from "../features/projects/ProjectColor";
 import { type ProjectColor, projectColorValue, setProjectColor, useProjectColor } from "../state/projectColors";
 import { ChatStatusMark } from "./ChatStatusMark";
-import { chatStatus, chatTitle, shortAgo, useModifierHeld, useNow, useSessionView } from "./hooks";
+import { chatStatus, chatTitle, shortAgo, useModifierHeld, useNow, useSessionSelection } from "./hooks";
 import { archivedChats, type CurrentChat, currentChatMoveIndex, currentChats, flatChats, type ProjectChat, type SidebarChat, type SidebarGroup, type SidebarInput, sidebarGroups } from "./sidebarRows";
 import { sidebarTitles } from "./sidebarTitles";
 import { TrashChatDialog } from "./trash";
@@ -171,10 +173,12 @@ function runCommand(id: string): void {
 /** Chat rows slide into their new place on reorder; new rows fade and rise, removed rows fade out. */
 function RowList({ chats, now }: { chats: (SidebarChat | ProjectChat)[]; now: number }): ReactNode {
 	const reduced = useMotionReduced();
+	let layoutKey = "";
+	for (const chat of chats) layoutKey += `${chat.key}\0`;
 	return (
 		<AnimatePresence initial={false} mode="popLayout">
 			{chats.map(chat => (
-				<motion.div key={chat.key} layout={reduced ? false : "position"} initial={{ opacity: 0, y: reduced ? 0 : -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring.snappy}>
+				<motion.div key={chat.key} layout={reduced ? false : "position"} layoutDependency={layoutKey} initial={{ opacity: 0, y: reduced ? 0 : -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={spring.snappy}>
 					{"projectName" in chat ? <ChatRow variant="flat" chat={chat} now={now} /> : <ChatRow chat={chat} now={now} />}
 				</motion.div>
 			))}
@@ -188,11 +192,15 @@ type ChatRowProps =
 	/** A Current chats row: project name as meta, ⌘1-⌘9 `number` shown while ⌘/Ctrl is held. */
 	| { variant: "current"; chat: CurrentChat; now: number; number: number | null; showNumber: boolean; move(delta: number): void; canMoveUp: boolean; canMoveDown: boolean };
 
+function sidebarSelection(view: SessionView | null) {
+	return { status: chatStatus(view), title: chatTitle(view, null), host: view?.host ?? null };
+}
+
 /**
  * One chat. A Current chats row carries the raised selection pill and the ⌘ number; a Projects tree row of an open
  * chat shows only a quiet open marker, so the selection reads in one place.
  */
-function ChatRow(props: ChatRowProps): ReactNode {
+const ChatRow = memo(function ChatRow(props: ChatRowProps): ReactNode {
 	const { chat, now } = props;
 	const current = props.variant === "current";
 	const flat = props.variant === "flat";
@@ -207,7 +215,7 @@ function ChatRow(props: ChatRowProps): ReactNode {
 	const secondary = useApp(state => state.view === "chat" && tabId !== null && state.splitTabId === tabId);
 	const pinned = session?.pinned ?? false;
 	const controller = controllerFor(tabId);
-	const liveView = useSessionView(controller);
+	const liveView = useSessionSelection(controller, sidebarSelection, shallow);
 	const [confirmDelete, setConfirmDelete] = useState(false);
 	const titleButton = useRef<HTMLButtonElement>(null);
 	const focusMovedTitle = useRef(false);
@@ -225,8 +233,8 @@ function ChatRow(props: ChatRowProps): ReactNode {
 	const [renameSaved, setRenameSaved] = useState(false);
 	const [changeIcon, setChangeIcon] = useState(false);
 	const scope = useContext(IndicatorScope);
-	const status = chatStatus(liveView);
-	const title = chatTitle(liveView, session?.title ?? tab?.title ?? null) ?? session?.preview ?? t(session ? "sidebar.untitled" : "chat.newTitle");
+	const status = liveView.status;
+	const title = liveView.title ?? session?.title ?? tab?.title ?? session?.preview ?? t(session ? "sidebar.untitled" : "chat.newTitle");
 	const active = primary || secondary;
 	const rename = getCommand("chat.rename");
 	const renameContext = controller ? { session: controller, projectPath: controller.projectPath } : null;
@@ -407,16 +415,17 @@ function ChatRow(props: ChatRowProps): ReactNode {
 			{changeIcon && <ChangeChatIconDialog title={title} live={liveRename ? controller ?? null : null} session={session} close={() => setChangeIcon(false)} />}
 		</>
 	);
-}
+});
 
 interface ProjectGroupProps {
 	group: SidebarGroup;
 	now: number;
 	/** Search is on: every matching row shows and empty text stays hidden. */
 	filtering: boolean;
+	layoutKey: string;
 }
 
-function ProjectGroup({ group, now, filtering }: ProjectGroupProps): ReactNode {
+function ProjectGroup({ group, now, filtering, layoutKey }: ProjectGroupProps): ReactNode {
 	const { t } = useTranslation("shell");
 	const { project } = group;
 	const active = useApp(state => state.activeProject === project.path && state.view === "project");
@@ -475,7 +484,7 @@ function ProjectGroup({ group, now, filtering }: ProjectGroupProps): ReactNode {
 	);
 
 	return (
-		<motion.div role="group" aria-label={project.name} layout={reduced ? false : "position"} transition={spring.gentle}>
+		<motion.div role="group" aria-label={project.name} layout={reduced ? false : "position"} layoutDependency={layoutKey} transition={spring.gentle}>
 			<ContextMenu>
 				<ContextMenuTrigger asChild>
 					<div
@@ -771,6 +780,7 @@ function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): Re
 	const [announcement, setAnnouncement] = useState({ text: "", sequence: 0 });
 	const sectionRef = useRef<HTMLElement>(null);
 	const displayed = ordered.map(chat => chat.tabId);
+	const layoutKey = `${displayed.join("\0")}\0${unseenCount}`;
 	const moveTo = (tabId: string, position: number) => {
 		const state = useApp.getState();
 		const from = state.tabs.findIndex(tab => tab.id === tabId);
@@ -814,6 +824,7 @@ function CurrentChats({ chats, now }: { chats: CurrentChat[]; now: number }): Re
 						<motion.div
 							key={chat.key}
 							layout={reduced ? false : "position"}
+							layoutDependency={layoutKey}
 							initial={{ opacity: 0, y: reduced ? 0 : -4 }}
 							animate={{ opacity: 1, y: 0 }}
 							exit={{ opacity: 0 }}
@@ -895,7 +906,8 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 	// The header card stays open while its fill sweeps out after a page closes; the lists below then slide up.
 	const [cardOpen, setCardOpen] = useState(slotMode !== null);
 	if (slotMode !== null && !cardOpen) setCardOpen(true);
-	const fade = useMotionReduced() ? { duration: 0 } : { duration: duration.base, ease: ease.outQuart };
+	const reduced = useMotionReduced();
+	const fade = reduced ? { duration: 0 } : { duration: duration.base, ease: ease.outQuart };
 	const [showArchived, setShowArchived] = useState(false);
 	const now = useNow();
 	const query = search.trim().toLowerCase();
@@ -913,6 +925,14 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 		const input = sidebarInput({ projects, sessionsByProject, tabs, prefs, expandedProjects, expandedChatLists, search }, titles, labels);
 		return { groups: sidebarGroups(input), flat: sort.groupByProject ? [] : flatChats(input), archived: archivedChats(input), current: currentChats(input) };
 	}, [projects, sessionsByProject, tabs, prefs, expandedProjects, expandedChatLists, search, sort.groupByProject, titles, labels]);
+	const projectLayoutKey = useMemo(() => {
+		let key = `${filtering}\0`;
+		for (const group of groups) {
+			key += `${group.project.path}\0${group.open}\0${group.more > 0}\0${group.total === 0}\0`;
+			for (const chat of group.chats) key += `${chat.key}\0`;
+		}
+		return key;
+	}, [groups, filtering]);
 
 	return (
 		<IndicatorScope.Provider value={scope}>
@@ -933,7 +953,8 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 					 * mounted so Back finds them where they were scrolled. Under a page's Back row they slide down as the card grows.
 					 */}
 					<motion.div
-						layout="position"
+						layout={reduced ? false : "position"}
+						layoutDependency={`${cardOpen}\0${takeover}`}
 						initial={false}
 						animate={takeover ? { opacity: 0, transitionEnd: { visibility: "hidden" } } : { opacity: 1, visibility: "visible" }}
 						transition={{ ...fade, layout: fade }}
@@ -983,7 +1004,7 @@ export function Sidebar({ width }: { width: number }): ReactNode {
 							) : !sort.groupByProject ? (
 								<RowList chats={flat} now={now} />
 							) : (
-								groups.map(group => <ProjectGroup key={group.project.path} group={group} now={now} filtering={filtering} />)
+								groups.map(group => <ProjectGroup key={group.project.path} group={group} now={now} filtering={filtering} layoutKey={projectLayoutKey} />)
 							)}
 							{archived.length > 0 && (
 								<div className="mt-2">

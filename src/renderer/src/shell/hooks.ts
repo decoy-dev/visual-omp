@@ -3,7 +3,7 @@ import { activityKey, friendlySummary, isReplyWrite, resolveToolCall } from "../
 import { replyText } from "../chat/transcript/turns";
 import { helpersAtWork } from "../features/panes/derive";
 import type { SessionController, SessionView } from "../state/session";
-import { useVisualSnapshot } from "../state/visualSnapshot";
+import { useVisualSelection, useVisualSnapshot } from "../state/visualSnapshot";
 
 const noSubscribe = () => () => {};
 const noSnapshot = () => null;
@@ -11,6 +11,12 @@ const noSnapshot = () => null;
 /** Visual SessionView; semantic consumers subscribe directly to the controller. */
 export function useSessionView(controller: SessionController | null): SessionView | null {
 	return useVisualSnapshot(controller ? controller.subscribe : noSubscribe, controller ? controller.getSnapshot : noSnapshot);
+}
+
+/** Visual readers select only the data they render; semantic subscriptions stay on the controller. */
+export function useSessionSelection<T>(controller: SessionController | null, select: (view: SessionView | null) => T, equal: (previous: T, next: T) => boolean = Object.is): T {
+	const getSnapshot: () => SessionView | null = controller ? controller.getSnapshot : noSnapshot;
+	return useVisualSelection(controller ? controller.subscribe : noSubscribe, getSnapshot, select, equal);
 }
 
 /**

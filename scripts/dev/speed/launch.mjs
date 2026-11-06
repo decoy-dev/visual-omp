@@ -1,0 +1,20 @@
+// Run by the integration owner only. Workers must not launch Electron.
+import { spawn } from 'node:child_process';
+import { readFile } from 'node:fs/promises';
+import { resolve, join } from 'node:path';
+import { requireFixture } from '../../live-preview-fixture/environment.mjs';
+import { checkout } from './scenario.mjs';
+const args = process.argv.slice(2);
+const value = (flag, fallback) => args.includes(flag) ? args[args.indexOf(flag) + 1] : fallback;
+if (!args.includes('--root')) throw new Error('Usage: node scripts/dev/speed/launch.mjs --root <prepared speed root> [--port 9335] [--main-port 9336]');
+const root = resolve(value('--root'));
+const env = await requireFixture(root);
+const scenario = JSON.parse(await readFile(join(root, 'speed-scenario.json'), 'utf8'));
+if (scenario.root !== root || scenario.seed !== join(root, 'speed-layout.json')) throw new Error('Invalid speed scenario marker.');
+const rendererPort = Number(value('--port', 9335));
+const mainPort = Number(value('--main-port', 9336));
+if (![rendererPort, mainPort].every(port => Number.isInteger(port) && port > 0 && port < 65536) || rendererPort === mainPort) throw new Error('Distinct valid inspector ports are required.');
+const child = spawn(process.execPath, [join(checkout, 'node_modules/electron-vite/bin/electron-vite.js'), 'dev', '--', '--disable-backgrounding-occluded-windows'], { cwd: checkout, env: { ...env, VOMP_SPEED: '1', VOMP_TOUR_CHATS: scenario.seed, V8_INSPECTOR_PORT: String(mainPort), REMOTE_DEBUGGING_PORT: String(rendererPort) }, stdio: 'inherit' });
+child.on('error', error => { console.error(error); process.exitCode = 1; });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => child.kill(signal));
+child.on('exit', code => { process.exitCode = code ?? 1; });

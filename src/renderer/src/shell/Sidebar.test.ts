@@ -41,7 +41,7 @@ vi.mock("motion/react", async importOriginal => {
 	const actual = await importOriginal<typeof MotionModule>();
 	// Motion's animation clock is irrelevant to focus and ordering; preserve native refs and events.
 	const React = await import("react");
-	const tag = (name: string) => React.forwardRef<HTMLElement, PropsWithChildren<Record<string, unknown>>>(({ children, initial, animate, exit, transition, layout, layoutId, variants, custom, onAnimationComplete, ...props }, ref) => React.createElement(name, { ...props, ref, children }));
+	const tag = (name: string) => React.forwardRef<HTMLElement, PropsWithChildren<Record<string, unknown>>>(({ children, initial, animate, exit, transition, layout, layoutId, layoutDependency, variants, custom, onAnimationComplete, ...props }, ref) => React.createElement(name, { ...props, ref, children, "data-layout-mode": layout === false ? "off" : typeof layout === "string" ? layout : undefined, "data-layout-key": typeof layoutDependency === "string" ? layoutDependency : undefined }));
 	return { ...actual, AnimatePresence: ({ children }: PropsWithChildren) => children, motion: { ...actual.motion, div: tag("div"), span: tag("span") }, useReducedMotionConfig: () => true };
 });
 
@@ -79,6 +79,16 @@ function dragEvent(type: string, y = 0) {
 }
 
 describe("Current chats reordering", () => {
+	it("keys row measurement to order changes and disables projection for reduced motion", async () => {
+		const row = title("Seen B").closest("[data-layout-key]")!;
+		const before = row.getAttribute("data-layout-key");
+		expect(row.getAttribute("data-layout-mode")).toBe("off");
+		await act(async () => root.render(createElement(TooltipProvider, null, createElement(Sidebar, { width: 201 }))));
+		expect(row.getAttribute("data-layout-key")).toBe(before);
+		await key(title("Seen B"), "ArrowUp");
+		expect(row.getAttribute("data-layout-key")).not.toBe(before);
+		expect(row.isConnected).toBe(true);
+	});
 	it("moves a focused title by keyboard, announces the displayed position and updates shortcut numbers", async () => {
 		expect(titles()).toEqual(["Unseen A", "Unseen B", "Seen A", "Seen B"]);
 		await key(title("Seen B"), "ArrowUp");

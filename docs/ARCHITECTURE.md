@@ -1541,6 +1541,34 @@ On `visibilitychange` to visible, React reads the latest source snapshot once, w
 intermediate revisions. A newly mounted view or a changed source starts from its current snapshot.
 Source subscribe and snapshot functions must have stable identities for the lifetime of that source.
 
+`useVisualSelection` applies a stable selector and equality check before React sees a changed
+snapshot. Composer selects input, readiness, queue and history fields, not streaming text or helper
+progress. SessionHeader selects title and status; its work chip subscribes separately to task and
+helper inputs. Sidebar rows select their title, status and host availability. Memoized component
+boundaries keep a streaming parent's render from bypassing those selections. Turn summaries retain
+their local disclosure state and use a stable file-opening callback. These visual selections do not
+replace controller delivery guards or semantic subscriptions.
+
+The nested model, thinking, permission and account controls use their own selected inputs too.
+Model selection ignores text/thinking tokens but observes provider and fallback-chain changes.
+Account updates still validate native responses against the controller's current room and provider.
+
+Settled transcript entry and summary memo boundaries include their entrance wrappers. They compare
+entry identity, layout signatures, relevant tool results/progress and interaction callbacks, so a
+text-only stream does not rebuild each settled Motion row. Local disclosure state, held-group keys,
+and the existing scroll-follow and window-edge bookkeeping remain inside the same keyed tree.
+
+`chat/branch.ts` shares a read-only branch projection by immutable entry-array identity, selected leaf
+and saved-parent-map identity. It caches one leaf per source array with weak keys, rather than
+retaining every historical branch. The controller-owned TSP notice store updates its collab
+projection only when transcript, notices, displayed source, leaf or saved history changes; streaming
+text and helper progress no longer invoke branch projection or rebuild notice indexes.
+
+Sidebar, pinned-helper and Tasks list rows key Motion layout measurement to row order, presence and
+structural state, including job status, visible caption/widget/error blocks and disclosure changes.
+Progress text, counters and elapsed-time updates retain the same dependency key. Reduced motion
+explicitly disables layout projection for these rows while keeping the existing fade behavior.
+
 `chat/transcript/pace.ts` uses the same visibility predicate to suspend reveal frames. On return,
 it receives the newest blocks and catches up in a layout effect before paint. A shared resume
 epoch and first-frame catch-up window cover either subscription callback order, including a

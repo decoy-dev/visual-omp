@@ -1,12 +1,14 @@
 import { Columns, DotsThree, GitDiff, ListChecks, SidebarSimple } from "@phosphor-icons/react";
-import { Fragment, type ReactNode, useMemo } from "react";
+import { Fragment, memo, type ReactNode, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { backgroundJobs, helpersAtWork, helpersOf, latestTodo, ompRunning, workSummary } from "../features/panes/derive";
 import { type CommandSpec, useCommands } from "../registry/commands";
 import { ChatStatusMark } from "../shell/ChatStatusMark";
-import { chatStatus, chatTitle } from "../shell/hooks";
+import { chatStatus, chatTitle, type ChatStatus } from "../shell/hooks";
 import { currentDock, dockKey, useApp, useDockVisible } from "../state/app";
 import { liveEntries, type SessionController, type SessionView } from "../state/session";
+import { useVisualSelection } from "../state/visualSnapshot";
+import { shallow } from "zustand/shallow";
 import {
 	Button,
 	cn,
@@ -24,7 +26,7 @@ import {
 	Tooltip,
 } from "../ui";
 import { SessionTitle } from "../ui/SessionTitle";
-import { useDisplayedEntries } from "./branch";
+import { useBranchEntries } from "./branch";
 import type { TranscriptMode } from "./transcript/Transcript";
 
 const TRANSCRIPT_MODES: readonly TranscriptMode[] = ["normal", "thinking", "verbose"];
@@ -58,7 +60,7 @@ function headerState(view: SessionView): HeaderState {
 }
 
 /** Status shape beside the title. States the sidebar mark has no shape for use a status glyph. */
-function StateMark({ state, view }: { state: HeaderState; view: SessionView }): ReactNode {
+function StateMark({ state, status }: { state: HeaderState; status: ChatStatus }): ReactNode {
 	// Decorative: the state line beside it says the same in words.
 	return (
 		<span aria-hidden className="inline-flex shrink-0">
@@ -71,7 +73,7 @@ function StateMark({ state, view }: { state: HeaderState; view: SessionView }): 
 			) : state === "readOnly" || state === "readOnlyFree" || state === "readOnlyUnknown" ? (
 				<StatusDot status="live" glyph />
 			) : (
-				<ChatStatusMark status={chatStatus(view)} label="" />
+				<ChatStatusMark status={status} label="" />
 			)}
 		</span>
 	);
@@ -91,22 +93,35 @@ function menuSections(commands: readonly CommandSpec[]): CommandSpec[][] {
 	return sections;
 }
 
+function headerSelection(view: SessionView) {
+	return {
+		title: chatTitle(view, null), state: headerState(view), status: chatStatus(view),
+		// Menu command availability reads current input/host state, never streaming text.
+		host: view.host, mode: view.mode, working: view.working, readOnly: view.readOnly,
+		queue: view.queue, question: view.guest?.uiRequest, phase: view.guest?.phase, error: view.error,
+	};
+}
+
+function workSelection(view: SessionView) {
+	return {
+		live: liveEntries(view), history: view.history, leaf: view.displayLeaf,
+		activeTools: view.guest?.activeTools, backgroundTools: view.guest?.backgroundTools,
+		agents: view.guest?.agents, progress: view.guest?.progress, lifecycle: view.guest?.lifecycle,
+		ompLive: ompRunning(view), processStartedAt: view.host?.processStartedAt,
+	};
+}
+
 /**
  * "3 of 7 tasks · 2 helpers working · 1 job running", absent parts left out; opens the Tasks pane. Below 44rem of
  * header width it shrinks to an icon and one count (tasks done of total, else what is running).
  */
-function WorkChip({ view, tabId }: { view: SessionView; tabId: string }): ReactNode {
+function WorkChip({ session }: { session: SessionController }): ReactNode {
 	const { t } = useTranslation("panes");
-	// Tasks from the branch the chat shows; jobs from every entry omp sent, since they run whatever branch is shown.
-	const shown = useDisplayedEntries(view);
-	const entries = liveEntries(view) ?? view.history?.entries;
-	const activeTools = view.guest?.activeTools;
-	const backgroundTools = view.guest?.backgroundTools;
-	const agents = view.guest?.agents;
-	const progress = view.guest?.progress;
-	const lifecycle = view.guest?.lifecycle;
-	const ompLive = ompRunning(view);
-	const processStartedAt = view.host?.processStartedAt;
+	const tabId = session.tabId;
+	const view = useVisualSelection(session.subscribe, session.getSnapshot, workSelection, shallow);
+	const shown = useBranchEntries(view.live, view.leaf, view.history);
+	const entries = view.live ?? view.history?.entries;
+	const { activeTools, backgroundTools, agents, progress, lifecycle, ompLive, processStartedAt } = view;
 	// Keyed on the transcript and helper maps, not the whole view, so streamed text doesn't recompute it.
 	const summary = useMemo(
 		() =>
@@ -158,8 +173,9 @@ function WorkChip({ view, tabId }: { view: SessionView; tabId: string }): ReactN
  * changes, the inspector toggle, a labelled Close split view button while split, and the ⋯ session menu. Below 26rem
  * Close split view becomes a bordered icon; below 36rem Review changes becomes an icon; below 44rem the work chip shrinks.
  */
-export function SessionHeader({ session, view, fallbackTitle }: { session: SessionController; view: SessionView; fallbackTitle: string | null }): ReactNode {
+export const SessionHeader = memo(function SessionHeader({ session, fallbackTitle }: { session: SessionController; fallbackTitle: string | null }): ReactNode {
 	const { t } = useTranslation(["chat", "shell"]);
+	const view = useVisualSelection(session.subscribe, session.getSnapshot, headerSelection, shallow);
 	const commands = useCommands();
 	const transcriptMode = useApp(state => state.prefs?.transcriptMode ?? "normal");
 	const split = useApp(state => state.splitTabId !== null);
@@ -168,15 +184,15 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 	const ownDockVisible = useApp(state => dockKey(state) === session.tabId) && dockVisible;
 	const ctx = { session, projectPath: session.projectPath };
 	const sections = menuSections(commands.filter(command => command.when?.(ctx) ?? true));
-	const title = chatTitle(view, fallbackTitle) ?? t("shell:chat.newTitle");
-	const state = headerState(view);
+	const title = view.title ?? fallbackTitle ?? t("shell:chat.newTitle");
+	const state = view.state;
 	const reviewLabel = t("chat:header.review");
 	const splitCommand = commands.find(command => command.id === "view.split");
 	const splitLabel = splitCommand?.shortcut ? `${t("palette:cmd.split.title")} (${splitCommand.shortcut})` : t("palette:cmd.split.title");
 
 	return (
 		<div className="@container/header flex min-h-(--header-h) shrink-0 items-center gap-3 border-b border-border bg-panel px-4 py-2">
-			<StateMark state={state} view={view} />
+			<StateMark state={state} status={view.status} />
 			<div className="flex min-w-0 flex-1 flex-col">
 				<PresenceSwap swapKey={title} variant="rise" className="min-w-0">
 					<h1 className="min-w-0 text-base leading-5 font-semibold text-fg">
@@ -188,7 +204,7 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 				</p>
 			</div>
 			<div className="flex min-w-0 shrink-0 items-center gap-0.5">
-				<WorkChip view={view} tabId={session.tabId} />
+				<WorkChip session={session} />
 				{/* The wrappers own the display switch, so the buttons' own display classes cannot override it. */}
 				<span className="hidden @min-[36rem]/header:contents">
 					<Tooltip content={t("chat:header.reviewHint")}>
@@ -272,4 +288,4 @@ export function SessionHeader({ session, view, fallbackTitle }: { session: Sessi
 			</div>
 		</div>
 	);
-}
+});

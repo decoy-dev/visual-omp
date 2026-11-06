@@ -4,7 +4,7 @@
  * the file list; "Review changes" opens the Changes pane. Files whose counts omp did not report show no numbers.
  */
 import { CaretRight, GitDiff } from "@phosphor-icons/react";
-import { type ReactNode, useState } from "react";
+import { memo, type ReactNode, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { relativePath } from "../../features/panes/common";
 import type { EditTotals, FileEditTotal } from "../../features/panes/derive";
@@ -70,7 +70,7 @@ function FileRow({ file, projectPath, scale, onOpen }: { file: FileEditTotal; pr
 	);
 }
 
-export function TurnSummary({ totals, projectPath, tabId, onOpen }: { totals: EditTotals; projectPath: string; tabId: string; onOpen(path: string): void }): ReactNode {
+export const TurnSummary = memo(function TurnSummary({ totals, projectPath, tabId, onOpen }: { totals: EditTotals; projectPath: string; tabId: string; onOpen(path: string): void }): ReactNode {
 	const { t } = useTranslation("panes");
 	const [open, setOpen] = useState(false);
 	const counted = totals.files.some(file => file.added !== null);
@@ -116,4 +116,4 @@ export function TurnSummary({ totals, projectPath, tabId, onOpen }: { totals: Ed
 			</Expand>
 		</div>
 	);
-}
+});

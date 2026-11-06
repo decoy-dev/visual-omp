@@ -106,3 +106,54 @@ npx vitest run src/main/services/release-tour.test.ts
 ```
 
 These tests cover manifest and argument handling, layout construction, session validation, development-only startup boundaries and fixture calls. Use headless preparation as the integration check against the installed omp binary. UI acceptance belongs to the owner.
+
+## Heavy-chat speed measurement
+
+This is measurement only. It does not change application behavior or start omp. The fixture expands the recorded omp 18.16 collab messages in `src/renderer/src/collab/lib/fixtures/` into a 1,400-entry JSONL chat and four 350-entry helper files under an isolated scratch agent directory. It includes prose, code, thinking, eight tool kinds and five small images. A second 12-entry chat is used for switching.
+
+Run the renderer capture without Electron:
+
+```sh
+node scripts/dev/speed/measure.mjs --headless --seconds 30 --output /tmp/vomp-speed-headless.json
+```
+
+It starts an isolated headless Chrome and Vite server with a private dependency cache, then stops both. `CHROME_BIN` can select a Chrome executable. Node must support native TypeScript stripping. The app's full renderer and controllers run with a fixture preload; only Electron IPC and helper transcript transport are replaced.
+
+For Electron, close the existing development instance first. Prepare a fresh scratch root, then use the root printed by preparation in two terminals:
+
+```sh
+node scripts/dev/speed/scenario.mjs --prepare
+node scripts/dev/speed/launch.mjs --root /absolute/printed/root --port 9335 --main-port 9336
+```
+
+```sh
+node scripts/dev/speed/measure.mjs --root /absolute/printed/root --port 9335 --main-port 9336 --seconds 30 --output /tmp/vomp-speed-electron.json
+```
+
+Keep the fixture window visible and unoccluded. The measurement never launches or raises Electron. It checks the main process's isolated agent directory, profile and `VOMP_SPEED=1`, and binds the renderer inspector to that process with a challenge before loading the replay. Do not send messages in these synthetic chats. Quit the scratch development app when finished. Use a fresh preparation for another capture.
+
+The identical replay feeds host-shaped frames through the real `GuestClient.applyFrameForTest` and `SessionController.attach` paths: a text update every 20 ms for the requested duration, four helper progress frames every 250 ms, and a new main entry every two seconds while text arrives. Helper transcripts grow every two seconds through the later phases. A dedicated worker owns the producer clock, so renderer saturation does not silently lower the offered rate. Text production stops independently at 30 seconds by default; the capture waits for that burst to drain, then scrolls and switches chats with helpers still updating. JSON and the summary distinguish offered duration from capture wall time. Delivery lag and applied-frame counts expose backlog. This isolates renderer costs; it excludes websocket encryption, omp, disk and main-process IPC CPU. Helper reads retain the real incremental reader and parser, with an in-memory byte-sliced transport. Tasks remains open for ten seconds so repeated growing-file reads occur.
+
+Output includes JSON, a short `.txt` summary, a final Tasks screenshot and streaming, scrolling and Tasks `.cpuprofile` files. Each phase records CDP main-thread task, script, layout and style durations; frame intervals; long tasks; React commits; component render counts; collab update counts; notifications per update; and probe callback overhead. Actual React `Profiler` boundaries wrap ChatView, SessionHeader, Composer, Transcript, TranscriptBody, TasksPane, HelperList and HelperRow only in the opt-in serve transform. Their `actualDuration` measures each subtree per commit. These inclusive timings overlap and must not be added together. Render counts include StrictMode's development double invocation and cover only these named components. The injected DevTools hook records root commits without walking stale fibers. Function timers cover the backlog's helper derivation, whole-chat layout and helper-file parsing suspects.
+
+`VOMP_SPEED=1` enables the serve-only Vite transform. No probe call, replay import or Profiler wrapper is emitted into the application's production module graph. The replay module is loaded only by CDP and refuses production builds. A normal dev run does not collect data. Production bundle limits remain unchanged. The first-paint measurement starts on activating the already-loaded heavy chat, not on disk read or application startup. Timings come from development React with StrictMode and a CPU sampler, not a production build.
+
+### Production renderer comparison
+
+```sh
+node scripts/dev/speed/measure.mjs --headless --production --seconds 30 --output /tmp/vomp-speed-production.json
+```
+
+`--production` builds and serves an isolated, minified production-React measurement renderer without StrictMode. Build output, source maps and the dependency cache stay in a unique temporary directory, outside `out/`. The dedicated measurement entry imports the replay and overrides its development guard only within that harness graph; shipping builds never import it. React Profiler durations, component render counts and subscriber metrics are unavailable and omitted, not reported as zero. CDP CPU profiles, root commits, frame intervals, long tasks and replay statistics remain available.
+
+`--source-root /absolute/frozen/source` selects a preserved copy containing `src/renderer`, `src/shared` and `CHANGELOG.md`; dependencies resolve from the existing checkout without copying node_modules. JSON records React's version, renderer bundle type and root mode to establish the production/no-StrictMode boundary. Do not overlap captures with builds or other CPU measurements.
+
+### Live omp pacing capability
+
+```sh
+node scripts/dev/speed/pace-probe.mjs --seconds 30 --repeats 2 --output /tmp/vomp-pace/evidence.json
+```
+
+This starts isolated omp processes, not Electron. It compares the app's actual TSP hello `features: []` with `features: ["pace"]` in ABBA order through the production SessionHost, encrypted collab and development app renderer. It counts provider content deltas, native frames, collab updates and visible text changes, and records CPU windows and screenshots. `--omp` selects an executable; `--source` selects a frozen renderer source copy. Its default source sends 140-character bursts every 600 ms, exposing omp's native reveal work between provider bursts.
+
+The recorded omp 18.17 comparison reduced native frames and CPU, with unchanged source/collab counts and typical 16.8 ms visible-change gaps. One pace trial contained a 683 ms visible stall coincident with delayed source/collab delivery. The cause was not established, so the application continues to advertise no pacing capability. This probe is evidence for a future decision, not an opt-in or a subjective display-smoothness guarantee.

@@ -26,7 +26,7 @@ vi.mock("../state/app", () => ({
 }));
 vi.mock("../shell/hooks", () => ({ chatTitle: () => null, chatStatus: () => "saved" }));
 vi.mock("../shell/ChatStatusMark", () => ({ ChatStatusMark: () => null }));
-vi.mock("./branch", () => ({ useDisplayedEntries: () => [] }));
+vi.mock("./branch", () => ({ useBranchEntries: () => [] }));
 vi.mock("../features/palette/run", () => ({ runCommand: vi.fn() }));
 vi.mock("../features/palette/TerminalSheet", () => ({ terminalSheet: {} }));
 vi.mock("../ui", () => {
@@ -53,9 +53,9 @@ vi.mock("../ui", () => {
 import "../features/palette/commands";
 import { SessionHeader } from "./SessionHeader";
 
-const session = (tabId: string) => ({ tabId, projectPath: "/project" }) as SessionController;
-const view = { mode: "history", working: false, history: { entries: [] } } as unknown as SessionView;
-const render = (tabId = "a") => renderToStaticMarkup(createElement(SessionHeader, { session: session(tabId), view, fallbackTitle: "Chat" }));
+const view: SessionView = { mode: "history", host: null, guest: null, history: { header: null, entries: [], title: null, all: [] }, queue: [], inputHistory: [], working: false, workingSince: null, readOnly: false, follow: null, ownerUnverified: false, displayLeaf: null, carryover: null, strandedImages: false, error: null };
+const session = (tabId: string) => ({ tabId, projectPath: "/project", subscribe: () => () => {}, getSnapshot: () => view }) as unknown as SessionController;
+const render = (tabId = "a") => renderToStaticMarkup(createElement(SessionHeader, { session: session(tabId), fallbackTitle: "Chat" }));
 
 beforeEach(() => {
 	env.state.splitTabId = "b";

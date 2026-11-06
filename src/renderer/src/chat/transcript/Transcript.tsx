@@ -25,7 +25,7 @@ import {
 import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
 import { continuesAssistantModel, modelFallbacks, modelSetupVisible, providerFallback, type ModelFallback } from "../../collab/lib/modelFallback";
-import { type Helper, type HelperStatus, helpersByCall, ompRunning, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
+import { type EditTotals, type Helper, type HelperStatus, helpersByCall, ompRunning, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
 import { unpinnedRuns, usePinnedHelpers } from "../../features/panes/pinnedHelpers";
 import { openHelper } from "../../features/panes/helperFocus";
 import { openInFiles } from "../../features/panes/files-store";
@@ -582,38 +582,40 @@ interface RowProps {
 	layout: EntryLayout | undefined;
 	work: WorkView;
 	fallback?: ModelFallback;
+	/** Entrance is read only when the keyed row mounts. */
+	arrived: boolean;
+	renderUser?: (entry: SessionEntry) => ReactNode;
+}
+
+function toolInputsEqual(block: ContentBlock, prev: RowProps, next: RowProps): boolean {
+	if (block.type !== "toolCall") return true;
+	const live = next.active.get(block.id);
+	const result = next.results.get(block.id);
+	if (prev.results.get(block.id) !== result || prev.active.get(block.id) !== live) return false;
+	if (block.name !== "task") return true;
+	if (prev.work.pinned !== next.work.pinned) return false;
+	const liveRuns = next.work.helpers.get(block.id);
+	if (prev.work.helpers.get(block.id) !== liveRuns) return false;
+	if (liveRuns && liveRuns.length > 0) return true;
+	const args = live?.args ?? block.arguments;
+	const partial = isRecord(live?.partialResult) && isRecord(live.partialResult.details) ? live.partialResult.details : null;
+	return taskRowContextEqual(isRecord(args) ? args : {}, detailsRecord(result) ?? partial, prev.work, next.work);
 }
 
 function rowEqual(prev: RowProps, next: RowProps): boolean {
 	if (prev.entry !== next.entry || prev.mode !== next.mode || prev.continuesTurn !== next.continuesTurn || prev.afterFirstPrompt !== next.afterFirstPrompt) return false;
-	if (prev.layout?.sig !== next.layout?.sig) return false;
-	if (prev.fallback !== next.fallback) return false;
+	if (prev.onCommand !== next.onCommand || prev.renderUser !== next.renderUser) return false;
+	if (prev.layout?.sig !== next.layout?.sig || prev.fallback !== next.fallback) return false;
+	if (prev.work.hold !== next.work.hold || prev.work.holdGroup !== next.work.holdGroup || prev.work.onHelper !== next.work.onHelper || prev.work.synchronizing !== next.work.synchronizing || prev.work.ompRunning !== next.work.ompRunning) return false;
 	const entry = next.entry;
 	if (entry.type !== "message" || entry.message.role !== "assistant") return true;
-	// A group this row leads draws steps of later entries and of the reply still streaming in, which keep changing.
-	const calls: ContentBlock[] = [...entry.message.content];
+	for (const block of entry.message.content) if (!toolInputsEqual(block, prev, next)) return false;
+	// Leading rows also render later calls that joined their group.
 	for (const [index, plan] of next.layout?.groups ?? []) {
 		const before = prev.layout?.groups.get(index)?.items;
 		for (const [n, item] of plan.items.entries()) {
-			if (before?.[n]?.block !== item.block) return false;
-			calls.push(item.block);
+			if (before?.[n]?.block !== item.block || !toolInputsEqual(item.block, prev, next)) return false;
 		}
-	}
-	for (const block of calls) {
-		if (block.type !== "toolCall") continue;
-		const live = next.active.get(block.id);
-		const result = next.results.get(block.id);
-		if (prev.results.get(block.id) !== result || prev.active.get(block.id) !== live) return false;
-		if (block.name !== "task") continue;
-		// A task call's helpers report progress after the call itself returned, and leave its cards while pinned.
-		if (prev.work.pinned !== next.work.pinned) return false;
-		const liveRuns = next.work.helpers.get(block.id);
-		if (prev.work.helpers.get(block.id) !== liveRuns) return false;
-		if (liveRuns && liveRuns.length > 0) continue;
-		// Helpers read from the call: later wait results, deliveries and omp's exit change them (see ToolStep).
-		const args = live?.args ?? block.arguments;
-		const partial = isRecord(live?.partialResult) && isRecord(live.partialResult.details) ? live.partialResult.details : null;
-		if (!taskRowContextEqual(isRecord(args) ? args : {}, detailsRecord(result) ?? partial, prev.work, next.work)) return false;
 	}
 	return true;
 }
@@ -640,7 +642,7 @@ function rowShown(entry: SessionEntry, mode: TranscriptMode, afterFirstPrompt: b
 	}
 }
 
-const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results, active, mode, onCommand, layout, work, fallback }: RowProps): ReactNode {
+function RowContent({ entry, continuesTurn, afterFirstPrompt, results, active, mode, onCommand, layout, work, fallback }: RowProps): ReactNode {
 	const { t } = useTranslation("chat");
 	switch (entry.type) {
 		case "message": {
@@ -675,7 +677,21 @@ const Row = memo(function Row({ entry, continuesTurn, afterFirstPrompt, results,
 		default:
 			return null;
 	}
+}
+
+/** Memoize outside the entrance wrapper so settled rows do not re-run Motion for each token. */
+const Row = memo(function Row(props: RowProps): ReactNode {
+	const user = props.entry.type === "message" && props.entry.message.role === "user" || props.entry.type === "custom_message" && props.entry.customType === "collab-prompt";
+	return <Rise data-row play={props.arrived} distance={6} tempo="snappy" className={cn(props.continuesTurn && "-mt-6")}>
+		{user && props.renderUser ? props.renderUser(props.entry) : <RowContent {...props} />}
+	</Rise>;
 }, rowEqual);
+
+const SummaryRow = memo(function SummaryRow({ totals, projectPath, tabId, onOpen, arrived }: { totals: EditTotals; projectPath: string; tabId: string; onOpen(path: string): void; arrived: boolean }): ReactNode {
+	return <Rise play={arrived} distance={6} tempo="snappy" className="-mt-4">
+		<TurnSummary totals={totals} projectPath={projectPath} tabId={tabId} onOpen={onOpen} />
+	</Rise>;
+});
 
 function EmptyChat({ session }: { session: SessionController }): ReactNode {
 	const { t } = useTranslation("chat");
@@ -1077,7 +1093,7 @@ export function TranscriptBody({
 		(): WorkView => ({ layout, arriving: forming, openGroups, thoughts, helpers, pinned, recorded, ompRunning: helpersMayRun, hold, holdGroup, synchronizing: synchronizingReplies, onHelper }),
 		[layout, forming, openGroups, thoughts, helpers, pinned, recorded, helpersMayRun, hold, holdGroup, synchronizingReplies, onHelper],
 	);
-	const openFile = (path: string) => openInFiles(scope.projectPath, path, { focus: true, tabId: scope.tabId });
+	const openFile = useCallback((path: string) => openInFiles(scope.projectPath, path, { focus: true, tabId: scope.tabId }), [scope.projectPath, scope.tabId]);
 
 	// New rows, stream updates and questions: follow when pinned, otherwise offer the jump. Until the chat has loaded
 	// (and on that first loaded commit) the view goes straight to the bottom instead of gliding there.
@@ -1160,22 +1176,21 @@ export function TranscriptBody({
 		previousAssistant = message;
 		const arrived = arrivals.armed && index > lastSeen && !arrivals.seen.has(entry.id) && !(isAssistant && arrivals.streamed);
 		const summary = layout.summaries.get(entry.id);
-		const row = (
-			<Rise key={entry.id} data-row play={arrived} distance={6} tempo="snappy" className={cn(continuesTurn && "-mt-6")}>
-				{isUser && renderUser ? renderUser(entry) : <Row
-					entry={entry}
-					continuesTurn={continuesTurn}
-					afterFirstPrompt={seenUser}
-					results={results}
-					active={activeTools}
-					mode={mode}
-					onCommand={onCommand}
-					layout={layout.entries.get(entry.id)}
-					work={work}
-					fallback={fallbacks.get(entry.id)}
-				/>}
-			</Rise>
-		);
+		const row = <Row
+			key={entry.id}
+			entry={entry}
+			continuesTurn={continuesTurn}
+			afterFirstPrompt={seenUser}
+			results={results}
+			active={activeTools}
+			mode={mode}
+			onCommand={onCommand}
+			layout={layout.entries.get(entry.id)}
+			work={work}
+			fallback={fallbacks.get(entry.id)}
+			arrived={arrived}
+			renderUser={renderUser}
+		/>;
 		if (entry.type === "custom_message" && entry.customType !== "collab-prompt" && noticeIsStep(parseNotice(entry))) {
 			run ??= { key: entry.id, rows: [] };
 			run.rows.push(row);
@@ -1187,9 +1202,7 @@ export function TranscriptBody({
 		if (summary) {
 			endRun();
 			rows.push(
-				<Rise key={`summary:${entry.id}`} play={forming.has(`summary:${entry.id}`)} distance={6} tempo="snappy" className="-mt-4">
-					<TurnSummary totals={summary} projectPath={scope.projectPath} tabId={scope.tabId} onOpen={openFile} />
-				</Rise>,
+				<SummaryRow key={`summary:${entry.id}`} arrived={forming.has(`summary:${entry.id}`)} totals={summary} projectPath={scope.projectPath} tabId={scope.tabId} onOpen={openFile} />,
 			);
 		}
 		pushResults(placedResults.after.get(entry.id));

@@ -17,7 +17,7 @@ vi.mock("../../state/app", () => ({ useApp: (select: (state: unknown) => unknown
 vi.mock("../session-tools/slash", () => ({ routeSlash: vi.fn() }));
 vi.mock("../session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));
 vi.mock("../../registry/slots", () => ({ chatSlots: { use: () => [] } }));
-vi.mock("../../chat/branch", () => ({ useDisplayedEntries: () => [] }));
+vi.mock("../../chat/branch", () => ({ useBranchEntries: () => [] }));
 vi.mock("../../chat/composer/attach", () => ({ attachFiles: vi.fn(), attachPaths: vi.fn(), useThumbnail: () => null }));
 vi.mock("../../chat/composer/MentionPicker", () => ({ MentionPicker: () => null, useProjectFiles: () => null }));
 vi.mock("../../chat/composer/SlashMenu", () => ({ SlashMenu: () => null, useSlashCommands: () => [], slashOptions: () => null, slashAtCaret: () => null }));

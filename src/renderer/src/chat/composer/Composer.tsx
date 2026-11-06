@@ -22,6 +22,7 @@ import {
 	type KeyboardEvent,
 	type ReactNode,
 	type Ref,
+	memo,
 	useCallback,
 	useEffect,
 	useId,
@@ -37,9 +38,11 @@ import { sendSlashCommand } from "../../features/session-tools/typed";
 import { errorText } from "@shared/errors";
 import { isResumeDeclined } from "../../registry/guards";
 import { chatSlots } from "../../registry/slots";
-import { pendingAsk, type SessionController } from "../../state/session";
+import type { SessionController } from "../../state/session";
 import { useApp } from "../../state/app";
-import { useVisualSnapshot } from "../../state/visualSnapshot";
+import { useVisualSelection } from "../../state/visualSnapshot";
+import { shallow } from "zustand/shallow";
+import { composerSelection } from "./selection";
 import {
 	cn,
 	duration,
@@ -59,7 +62,7 @@ import {
 	Tooltip,
 } from "../../ui";
 import { attachFiles, attachPaths, useThumbnail } from "./attach";
-import { useDisplayedEntries } from "../branch";
+import { useBranchEntries } from "../branch";
 import { type HistoryDraft, historyOnVisualBoundary, promptHistory, PromptHistoryCursor } from "./history";
 import { type Attachment, appendWithSpace, composerText, notifyComposerAction, registerComposerEditor, takePendingFocus, useComposerDrafts } from "./drafts";
 import { fuzzyFiles, mentionAtCaret } from "./fuzzy";
@@ -176,16 +179,16 @@ function useDropVeil(root: HTMLElement | null, onFiles: (files: File[]) => void)
 	return active ? column : null;
 }
 
-export function Composer({ session }: { session: SessionController }): ReactNode {
+export const Composer = memo(function Composer({ session }: { session: SessionController }): ReactNode {
 	const { t } = useTranslation("composer");
 	const tabId = session.tabId;
 	const projectPath = session.projectPath;
-	const view = useVisualSnapshot(session.subscribe, session.getSnapshot);
+	const view = useVisualSelection(session.subscribe, session.getSnapshot, composerSelection, shallow);
 	const draft = useComposerDrafts(state => composerText(state, tabId));
 	const attachments = useComposerDrafts(state => state.attachments[tabId] ?? EMPTY);
 	const mode = useComposerDrafts(state => state.modes[tabId] ?? null);
-	const entries = useDisplayedEntries(view);
-	const sessionId = view.host?.sessionId ?? view.guest?.header?.id ?? view.history?.header?.id ?? null;
+	const entries = useBranchEntries(view.entries, view.displayLeaf, view.history);
+	const sessionId = view.sessionId;
 	const [storedHistory, setStoredHistory] = useState<{ sessionId: string; items: PromptHistoryItem[] } | null>(null);
 	const historyCursor = useRef(new PromptHistoryCursor());
 	const history = useMemo(
@@ -227,8 +230,8 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const [tagActive, setTagActive] = useState(0);
 	const tagId = useId();
 	const tag = focused && !mode && !tagClosed ? modelTagAtCaret(draft, caret) : null;
-	const assist = useComposerAssist(view.host?.hostId ?? null, view.host?.generation ?? 0, draft, caret, tag !== null, !mode && !view.readOnly && view.mode === "live");
-	const tagOpen = tag !== null && !!view.host && !view.readOnly && view.mode === "live" && (assist.pending || assist.items !== null);
+	const assist = useComposerAssist(view.hostId ?? null, view.generation ?? 0, draft, caret, tag !== null, !mode && !view.readOnly && view.mode === "live");
+	const tagOpen = tag !== null && view.hostId !== null && !view.readOnly && view.mode === "live" && (assist.pending || assist.items !== null);
 	const [hoverKeyword, setHoverKeyword] = useState<ComposerKeyword | null>(null);
 	const [keywordTip, setKeywordTip] = useState(false);
 	useEffect(() => {
@@ -266,11 +269,11 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 
 	const readOnly = view.readOnly;
 	const working = view.working;
-	const askWaiting = pendingAsk(view);
+	const askWaiting = view.askWaiting;
 	const queueing = working && !askWaiting;
 	const drawerOpen = useApp(state => !!state.btwDrawers[tabId]);
-	const tspReason = drawerOpen || view.host?.tspAvailability?.reasonCode === "btw" ? t("panes:btw.composerBlocked")
-		: tspComposerReason(view.host, t("question.answerBeforeSending"), askWaiting ? view.guest?.uiRequest?.reqId : undefined);
+	const tspReason = drawerOpen || view.tspAvailability?.reasonCode === "btw" ? t("panes:btw.composerBlocked")
+		: tspComposerReason(view, t("question.answerBeforeSending"), askWaiting ? view.uiRequest?.reqId : undefined);
 	const voiceOn = useApp(state => state.prefs?.voiceInput ?? false);
 	const files = useProjectFiles(projectPath, mention !== null);
 	const matches = useMemo(() => (mention && files ? fuzzyFiles(files, mention.query, 40) : null), [mention, files]);
@@ -285,9 +288,9 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		!slashClosed &&
 		(slash.kind === "name" || (slashMenu !== null && (slashMenu.items.length > 0 || (slash.token === "" && slashMenu.command?.hint != null))));
 	const ghost = useGhostText({
-		folder: projectPath, tabId, hostId: view.host?.hostId ?? null, generation: view.host?.generation ?? 0, transport: view.host?.transport, draft, caret,
-		composer: view.host?.tspComposer,
-		enabled: focused && !readOnly && !mode && !mention && !tagOpen && !slashOpen && !view.guest?.uiRequest,
+		folder: projectPath, tabId, hostId: view.hostId ?? null, generation: view.generation ?? 0, transport: view.transport, draft, caret,
+		composer: view.tspComposer,
+		enabled: focused && !readOnly && !mode && !mention && !tagOpen && !slashOpen && !view.uiRequest,
 		idle: view.mode === "live" && !working,
 	});
 
@@ -514,7 +517,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 			event.preventDefault();
 			if (acceptingGhost.current) return;
 			acceptingGhost.current = true;
-			const source = { draft, mode, hostId: view.host?.hostId ?? null, generation: view.host?.generation ?? 0 };
+			const source = { draft, mode, hostId: view.hostId ?? null, generation: view.generation ?? 0 };
 			void ghost.accept().then(async accepted => {
 				if (accepted?.capture) usePredictionCaptures.getState().merge([accepted.capture]);
 				const current = session.getSnapshot().host;
@@ -567,7 +570,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 				event.stopPropagation();
 				const original = historyCursor.current.restore();
 				if (original) recall(original);
-			} else if (view.host?.transport === "tsp" && (view.host.tspComposer?.queued.length ?? 0) > 0) {
+			} else if (view.transport === "tsp" && (view.tspComposer?.queued.length ?? 0) > 0) {
 				event.preventDefault();
 				void session.keys("escape").catch((error: unknown) => toast({ tone: "err", message: String(error) }));
 			} else if (working && !draft) {
@@ -654,7 +657,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const canSend = !readOnly && !tspReason && (draft.trim().length > 0 || attachments.length > 0);
 	const actionSet = `${queueing}:${canSend}`;
 	const mod = IS_MAC ? "⌘" : "Ctrl+";
-	const questionId = view.guest?.uiRequest?.reqId ?? null;
+	const questionId = view.uiRequest?.reqId ?? null;
 	// Slots below order 50 sit on the left of the row under the card (folder, permission); the rest on the right.
 	const leadTools = tools.filter(slot => slot.order < 50);
 	const trailTools = tools.filter(slot => slot.order >= 50);
@@ -679,8 +682,8 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					dropColumn,
 				)}
 			<PredictionRecovery session={session} readOnly={readOnly} />
-			{view.host?.tspEditorRestore && <div role="status" className="flex items-center gap-control text-sm text-fg-muted">
-				<p className="flex-1">{view.host.tspEditorRestore.error ?? t("editorRestore.saved")}</p>
+			{view.tspEditorRestore && <div role="status" className="flex items-center gap-control text-sm text-fg-muted">
+				<p className="flex-1">{view.tspEditorRestore.error ?? t("editorRestore.saved")}</p>
 				<Button size="sm" variant="secondary" disabled={readOnly} onClick={() => void session.retryEditorRestore().catch((error: unknown) => toast({ tone: "err", message: String(error) }))}>{t("editorRestore.retry")}</Button>
 			</div>}
 			<QueueTray session={session} queue={view.queue} questionId={questionId} askWaiting={askWaiting} sendBlocked={Boolean(tspReason)} strandedImages={view.strandedImages} />
@@ -895,10 +898,10 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 							<AnimatePresence initial={false} mode="popLayout">
 								{working && (
 									<motion.span key="stop" layoutDependency={actionSet} {...actionMotion}>
-										<Tooltip content={t(view.guest?.awaitingAsyncWork ? "send.stopWaiting" : "send.stop")} shortcut="Esc">
+										<Tooltip content={t(view.awaitingAsyncWork ? "send.stopWaiting" : "send.stop")} shortcut="Esc">
 											<button
 												type="button"
-												aria-label={t(view.guest?.awaitingAsyncWork ? "send.stopWaiting" : "send.stop")}
+												aria-label={t(view.awaitingAsyncWork ? "send.stopWaiting" : "send.stop")}
 												onClick={() => session.abort()}
 												className="inline-flex size-8 items-center justify-center rounded-sm bg-err-bg text-err outline-none transition-[background-color,color,scale] duration-(--dur-fast) hover:bg-err hover:text-fg-inverse active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 											>
@@ -958,7 +961,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 					</div>
 				</div>
 			</div>
-			{tspReason && view.host?.tspAvailability?.reasonCode !== "btw" && <div role="status" className="px-1 pt-2 text-sm text-fg-muted">{tspReason}</div>}
+			{tspReason && view.tspAvailability?.reasonCode !== "btw" && <div role="status" className="px-1 pt-2 text-sm text-fg-muted">{tspReason}</div>}
 			{/* Padding leaves the offset focus outlines inside the horizontal scroll viewport. */}
 			<div className="flex items-center gap-toolbar overflow-x-auto scroll-px-1 whitespace-nowrap px-1 pt-2 pb-1" data-composer-settings onFocusCapture={event => {
 				if (event.currentTarget.contains(event.target)) event.target.scrollIntoView({ block: "nearest", inline: "nearest" });
@@ -991,4 +994,4 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 			/>
 		</div>
 	);
-}
+});

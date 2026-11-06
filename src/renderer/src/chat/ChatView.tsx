@@ -169,7 +169,7 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 				else if (state.activeTabId === session.tabId) state.focusSplit("primary");
 			}}
 		>
-			<SessionHeader session={session} view={view} fallbackTitle={title} />
+			<SessionHeader session={session} fallbackTitle={title} />
 			<div data-chat-column className="relative flex min-h-0 flex-1 flex-col">
 				<div data-chat-content inert={paused || !!helper} aria-hidden={paused || !!helper || undefined} className={cn("flex min-h-0 flex-1 flex-col", helper && "invisible")}>
 				<StateBanner session={session} view={view} />

@@ -22,7 +22,7 @@ vi.mock("../../state/app", () => ({ useApp: (select: (state: { prefs: { voiceInp
 vi.mock("../../features/session-tools/slash", () => ({ routeSlash: vi.fn() }));
 vi.mock("../../features/session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));
 vi.mock("../../registry/slots", () => ({ chatSlots: { use: () => [] } }));
-vi.mock("../branch", () => ({ useDisplayedEntries: () => [] }));
+vi.mock("../branch", () => ({ useBranchEntries: () => [] }));
 vi.mock("./attach", () => ({ attachFiles: vi.fn(), attachPaths: vi.fn(), useThumbnail: () => null }));
 vi.mock("./MentionPicker", () => ({ MentionPicker: () => null, useProjectFiles: () => null }));
 vi.mock("./SlashMenu", () => ({ SlashMenu: () => null, useSlashCommands: () => [], slashOptions: () => null, slashAtCaret: () => null }));
@@ -36,17 +36,25 @@ vi.mock("../../ui/toast", async importOriginal => ({ ...await importOriginal<typ
 
 let root: Root; let element: HTMLDivElement; let view: SessionView;
 let fontsDescriptor: PropertyDescriptor | undefined;
+const subscribers = new Set<() => void>();
+async function publish(patch: Partial<SessionView>) {
+	await act(async () => {
+		view = { ...view, ...patch };
+		for (const listener of subscribers) listener();
+	});
+}
 // These tests mount Composer itself; only unrelated data sources and auxiliary tools are replaced.
-const session = { tabId: "availability", projectPath: "/tmp", subscribe: () => () => {}, getSnapshot: () => view, send: vi.fn(), steer: vi.fn(), preserveFailedMessage: vi.fn() } as unknown as SessionController;
+const session = { tabId: "availability", projectPath: "/tmp", subscribe: (listener: () => void) => { subscribers.add(listener); return () => { subscribers.delete(listener); }; }, getSnapshot: () => view, send: vi.fn(), steer: vi.fn(), preserveFailedMessage: vi.fn() } as unknown as SessionController;
 const host = (transport: HostState["transport"], tspAvailability: HostState["tspAvailability"]): HostState => ({ hostId: "host", generation: 1, transport, tspAvailability }) as HostState;
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+	subscribers.clear();
 	vi.mocked(session.send).mockReset().mockResolvedValue(undefined);
 	vi.mocked(session.preserveFailedMessage).mockReset();
 	// happy-dom omits FontFaceSet; Composer only subscribes to its loadingdone event here.
 	fontsDescriptor = Object.getOwnPropertyDescriptor(document, "fonts");
 	Object.defineProperty(document, "fonts", { configurable: true, value: new EventTarget() });
-	view = { mode: "live", readOnly: false, working: false, guest: null, history: null, inputHistory: [], queue: [], strandedImages: [], host: null } as unknown as SessionView;
+	view = { mode: "live", readOnly: false, working: false, workingSince: null, follow: null, ownerUnverified: false, guest: null, history: null, carryover: null, displayLeaf: null, inputHistory: [], queue: [], strandedImages: false, host: null, error: null };
 	useComposerDrafts.getState().setDraft("availability", "A message ready to send");
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
@@ -56,17 +64,14 @@ afterEach(async () => {
 	else Reflect.deleteProperty(document, "fonts");
 });
 it("renders the matched question instruction and keeps ordinary menu and classic composer behavior distinct", async () => {
-	const render = async () => { await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session })))); };
 	view = { ...view, host: host("tsp", { available: false, reason: "Main fallback text", reasonCode: "matched-question" }) };
-	await render();
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
 	expect(element.querySelector('[role="status"]')?.textContent).toBe("Answer the question card before sending a message.");
 	expect(element.textContent).not.toContain("Main fallback text");
 	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
-	view = { ...view, host: host("tsp", { available: false, reason: "Close the open omp menu before sending a message." }) };
-	await render();
+	await publish({ host: host("tsp", { available: false, reason: "Close the open omp menu before sending a message." }) });
 	expect(element.querySelector('[role="status"]')?.textContent).toBe("Close the open omp menu before sending a message.");
-	view = { ...view, host: host("classic", { available: false, reason: "Main fallback text", reasonCode: "matched-question" }) };
-	await render();
+	await publish({ host: host("classic", { available: false, reason: "Main fallback text", reasonCode: "matched-question" }) });
 	expect(element.querySelector('[role="status"]')).toBeNull();
 	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(false);
 });
@@ -88,8 +93,7 @@ it("leaves the side-question explanation and Done action to the chat layer", asy
 		expect([...element.querySelectorAll("button")].some(button => button.textContent?.trim() === "Put away")).toBe(false);
 		expect(useComposerDrafts.getState().drafts.availability).toBe("A message ready to send");
 		expect(session.send).not.toHaveBeenCalled();
-		view = { ...view, host: { ...view.host!, tspAvailability: { available: true, reason: null } } };
-		await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+		await publish({ host: { ...view.host!, tspAvailability: { available: true, reason: null } } });
 		expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(false);
 	} finally { window.vomp.invoke = original; }
 });
@@ -98,10 +102,11 @@ it("leaves the side-question explanation and Done action to the chat layer", asy
 it.each(["classic", "tsp"] as const)("offers Send message rather than Queue message for a live ask in %s", async transport => {
 	const args = { questions: [{ id: "db", question: "Which database?", options: [{ label: "SQLite" }] }] };
 	view = { ...view, working: true, host: host(transport, { available: false, reason: "Answer the question card before sending a message.", reasonCode: "ask-editor" }), guest: {
-		phase: "live", readOnly: false, entries: [], stream: null, working: true,
+		phase: "live", endedReason: null, header: null, readOnly: false, entries: [], state: null, stream: null, streamDone: false, working: true,
+		agents: [], progress: new Map(), lifecycle: new Map(), backgroundTools: new Map(), awaitingAsyncWork: false, notices: [], thinkingSelector: null, loading: null,
 		uiRequest: { reqId: 7, kind: "select", title: "Which database?", options: ["SQLite", "Other (type your own)", "Chat about this"] },
 		activeTools: new Map([["ask-1", { toolCallId: "ask-1", toolName: "ask", args, startedAt: 0 }]]),
-	} as unknown as SessionView["guest"] };
+	} };
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
 	const button = element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]');
 	expect(button?.disabled).toBe(false);
@@ -113,10 +118,11 @@ it.each(["classic", "tsp"] as const)("offers Send message rather than Queue mess
 it("keeps the ask exception unavailable for a different blocking hook or without a live ask", async () => {
 	const args = { questions: [{ id: "db", question: "Which database?", options: [{ label: "SQLite" }] }] };
 	view = { ...view, working: true, host: host("tsp", { available: false, reason: "Blocking extension question", reasonCode: "matched-question", questionReqId: 8 }), guest: {
-		phase: "live", readOnly: false, entries: [], stream: null, working: true,
+		phase: "live", endedReason: null, header: null, readOnly: false, entries: [], state: null, stream: null, streamDone: false, working: true,
+		agents: [], progress: new Map(), lifecycle: new Map(), backgroundTools: new Map(), awaitingAsyncWork: false, notices: [], thinkingSelector: null, loading: null,
 		uiRequest: { reqId: 7, kind: "select", title: "Which database?", options: ["SQLite", "Other (type your own)", "Chat about this"] },
 		activeTools: new Map([["ask-1", { toolCallId: "ask-1", toolName: "ask", args, startedAt: 0 }]]),
-	} as unknown as SessionView["guest"] };
+	} };
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
 	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
 	expect(element.querySelector('[role="status"]')?.textContent).toBe("Answer the question card before sending a message.");

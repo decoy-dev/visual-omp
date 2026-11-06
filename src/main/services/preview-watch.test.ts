@@ -1,7 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { type FSWatcher, type Stats, watch as fsWatch } from "node:fs";
-import { lstat, mkdtemp, mkdir, open, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
+import { appendFile, lstat, mkdtemp, mkdir, open, realpath, rm, symlink, utimes, writeFile } from "node:fs/promises";
 import type * as Fs from "node:fs/promises";
 import type * as Git from "../git/run";
 import { homedir, tmpdir } from "node:os";
@@ -291,8 +291,10 @@ describe("preview file watches", { timeout: TEST_LIMIT_MS }, () => {
 		const controlled = controlledWatch();
 		const file = join(dir, "growing.mp4");
 		const { service, id } = await start(dir, [file], { watch: controlled.watch });
+		const chunk = "x".repeat(100);
 		for (let frame = 1; frame <= 25; frame++) {
-			await writeFile(file, "x".repeat(frame * 100));
+			// A growing encoder appends; truncate-and-refill writes can expose a false zero-byte frame.
+			await appendFile(file, chunk);
 			controlled.notify(dir, "growing.mp4");
 			await delay(80);
 		}

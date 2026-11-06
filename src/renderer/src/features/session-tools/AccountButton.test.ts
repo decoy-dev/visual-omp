@@ -3,14 +3,16 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionAccounts } from "@shared/contracts/native";
-import type { SessionController } from "../../state/session";
+import type { SessionController, SessionView } from "../../state/session";
 import "../../i18n";
 import { TooltipProvider } from "../../ui/Tooltip";
 import { AccountButton } from "./AccountButton";
 
-const fake = vi.hoisted(() => ({ listing: null as SessionAccounts | null, working: false, readOnly: false, pin: vi.fn() }));
+const fake = vi.hoisted(() => {
+	Object.assign(window, { vomp: { platform: "darwin", on: () => () => {}, invoke: async () => null } });
+	return { listing: null as SessionAccounts | null, working: false, readOnly: false, pin: vi.fn() };
+});
 vi.mock("./accounts", () => ({ useSessionAccounts: () => fake.listing, pinSessionAccount: (...args: unknown[]) => fake.pin(...args) }));
-vi.mock("./status", () => ({ useSessionView: () => ({ working: fake.working, readOnly: fake.readOnly, host: { hostId: "host", generation: 1 } }) }));
 // Hoisted UI mock factories must import their actual primitives after mocks initialize.
 vi.mock("@/ui", async () => ({
 	...await import("../../ui/Menu"), ...await import("../../ui/Tooltip"),
@@ -18,7 +20,8 @@ vi.mock("@/ui", async () => ({
 }));
 let root: Root;
 let element: HTMLDivElement;
-const session = { tabId: "chat" } as SessionController;
+// The controller exposes the input fields used by the account projection.
+const session = { tabId: "chat", subscribe: () => () => {}, getSnapshot: () => ({ mode: "live", working: fake.working, readOnly: fake.readOnly, host: { hostId: "host", generation: 1, sessionId: "session" } } as unknown as SessionView) } as unknown as SessionController;
 const listing: SessionAccounts = { provider: "anthropic", sessionId: "session", accounts: [
 	{ credentialId: 7, label: "same@example.com (Personal)", active: true },
 	{ credentialId: 12, label: "same@example.com (Work)", active: false },

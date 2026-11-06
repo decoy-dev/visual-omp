@@ -5,19 +5,22 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "../../i18n";
-import type { SessionController } from "../../state/session";
+import type { SessionController, SessionView } from "../../state/session";
 import { TooltipProvider } from "../../ui/Tooltip";
 import { ModelButton, ModelList, PermissionMenu, type ModelListProps } from "./pickers";
 
-const fake = vi.hoisted(() => ({
-	models: [] as ModelInfo[] | null, error: null as string | null,
-	entries: [] as SessionEntry[], model: null as ModelInfo | null, stream: null as AssistantMessage | null,
-	readOnly: false, switch: vi.fn(), toast: vi.fn(), command: vi.fn(),
-}));
+const fake = vi.hoisted(() => {
+	Object.assign(window, { vomp: { platform: "darwin", on: () => () => {}, invoke: async () => null } });
+	return {
+		models: [] as ModelInfo[] | null, error: null as string | null,
+		entries: [] as SessionEntry[], model: null as ModelInfo | null, stream: null as AssistantMessage | null,
+		readOnly: false, switch: vi.fn(), toast: vi.fn(), command: vi.fn(),
+	};
+});
 vi.mock("./model", () => ({ useChatModels: () => ({ models: fake.models, error: fake.error }), switchModel: (...args: unknown[]) => fake.switch(...args) }));
 vi.mock("./approval", () => ({ useApprovalMode: () => ({ mode: "yolo", rawMode: "yolo", supportedModes: ["always-ask", "write", "yolo"], loaded: true, error: null }) }));
-vi.mock("./status", () => ({ useSessionView: () => ({ readOnly: fake.readOnly, guest: { state: { model: fake.model }, stream: fake.stream } }), useOmpScreen: () => ({ status: null }) }));
-vi.mock("../../chat/branch", () => ({ useDisplayedEntries: () => fake.entries }));
+vi.mock("./status", () => ({ useOmpScreen: () => ({ status: null }) }));
+vi.mock("../../chat/branch", () => ({ useBranchEntries: () => fake.entries }));
 vi.mock("../../registry/commands", () => ({ getCommand: () => undefined }));
 // Vitest hoists this mock before static imports initialize; load the real primitive modules in its factory.
 vi.mock("../../state/app", () => ({ useApp: { getState: () => ({}) } }));
@@ -37,7 +40,7 @@ const opus46 = model("claude-opus-4-6", "Claude Opus 4.6");
 const sonnet = model("claude-sonnet-5", "Claude Sonnet 5");
 const sonnet46 = model("claude-sonnet-4-6", "Claude Sonnet 4.6");
 const custom = model("workhorse-42", "Workhorse 42", "local");
-const session = { tabId: "chat", projectPath: "/project", getSnapshot: () => ({ readOnly: fake.readOnly }) } as SessionController;
+const session = { tabId: "chat", projectPath: "/project", subscribe: () => () => {}, getSnapshot: () => ({ mode: "live", readOnly: fake.readOnly, guest: { phase: "live", entries: fake.entries, state: { model: fake.model }, stream: fake.stream } } as unknown as SessionView) } as unknown as SessionController;
 let root: Root;
 let element: HTMLDivElement;
 let props: ModelListProps;

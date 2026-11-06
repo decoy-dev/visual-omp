@@ -2,9 +2,10 @@
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useVisualSnapshot } from "./visualSnapshot";
+import { useVisualSelection, useVisualSnapshot } from "./visualSnapshot";
 import { useSessionView } from "../shell/hooks";
 import type { SessionController, SessionView } from "./session";
+import { shallow } from "zustand/shallow";
 
 let root: Root;
 let container: HTMLDivElement;
@@ -148,5 +149,40 @@ describe("visual snapshot subscriptions", () => {
 		await setVisibility("visible");
 		expect(renders).toHaveBeenCalledTimes(2);
 		expect(container.textContent).toBe("finished");
+	});
+
+	it("skips unrelated source changes while selected question and input state remain current", async () => {
+		const store = source();
+		const renders = vi.fn();
+		const select = (snapshot: { question: string | null; working: boolean }) => ({ question: snapshot.question, working: snapshot.working });
+		function Controls() {
+			const selected = useVisualSelection(store.subscribe, store.getSnapshot, select, shallow);
+			renders(selected);
+			return createElement("p", null, `${selected.question ?? "none"}:${selected.working}`);
+		}
+		await act(async () => root.render(createElement(Controls)));
+		await act(async () => { for (let revision = 1; revision <= 100; revision++) store.publish(revision); });
+		expect(renders).toHaveBeenCalledTimes(1);
+		await act(async () => store.publish(101, "Approve?"));
+		expect(container.textContent).toBe("Approve?:true");
+		await act(async () => store.publish(102, null, false));
+		expect(container.textContent).toBe("none:false");
+		expect(renders).toHaveBeenCalledTimes(3);
+	});
+
+	it("retains selected state on a hidden parent render and catches up to current controls on reveal", async () => {
+		const store = source();
+		const select = (snapshot: { question: string | null; working: boolean }) => ({ question: snapshot.question, working: snapshot.working });
+		function Controls({ label }: { label: string }) {
+			const selected = useVisualSelection(store.subscribe, store.getSnapshot, select, shallow);
+			return createElement("p", null, `${label}:${selected.question ?? "none"}:${selected.working}`);
+		}
+		await act(async () => root.render(createElement(Controls, { label: "first" })));
+		await setVisibility("hidden");
+		await act(async () => store.publish(1, "Approve?", false));
+		await act(async () => root.render(createElement(Controls, { label: "parent" })));
+		expect(container.textContent).toBe("parent:none:true");
+		await setVisibility("visible");
+		expect(container.textContent).toBe("parent:Approve?:false");
 	});
 });

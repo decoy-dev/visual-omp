@@ -20,14 +20,14 @@ import { useSessionView } from "../../shell/hooks";
 import { useApp } from "../../state/app";
 import type { SessionController } from "../../state/session";
 import { RunningTime } from "../../tool-render/tools/task";
-import { cn, Expand, IconButton } from "../../ui";
+import { cn, Expand, IconButton, useMotionReduced } from "../../ui";
 import { listRowMotion } from "./common";
 import type { Helper } from "./derive";
 import { usePinnedHelpers } from "./pinnedHelpers";
 import { openHelper } from "./helperFocus";
 import { HelperIdentity } from "./HelperIdentity";
 
-function PinnedRow({ helper, session, onOpen }: { helper: Helper; session: SessionController; onOpen(helper: Helper): void }): ReactNode {
+function PinnedRow({ helper, session, onOpen, layoutKey, reduced }: { helper: Helper; session: SessionController; onOpen(helper: Helper): void; layoutKey: string; reduced: boolean }): ReactNode {
 	const { t } = useTranslation("panes");
 	const time =
 		helper.durationMs === null ? null : helper.durationAt !== null ? <RunningTime durationMs={helper.durationMs} since={helper.durationAt} /> : fmtDuration(helper.durationMs);
@@ -38,7 +38,7 @@ function PinnedRow({ helper, session, onOpen }: { helper: Helper; session: Sessi
 		</>
 	);
 	return (
-		<motion.li layout="position" {...listRowMotion} data-helper-id={helper.id} className="flex h-9 items-center gap-2.5 pr-1.5 pl-3">
+		<motion.li layout={reduced ? false : "position"} layoutDependency={layoutKey} {...listRowMotion} data-helper-id={helper.id} className="flex h-9 items-center gap-2.5 pr-1.5 pl-3">
 			<HelperIdentity helper={helper} compact />
 			<span className="sr-only">{t("tasks.helperStatus.running")}</span>
 			{helper.hasTranscript || helper.messageable ? (
@@ -74,12 +74,14 @@ function PinnedRow({ helper, session, onOpen }: { helper: Helper; session: Sessi
 
 export function HelperStrip({ session }: ChatSlotProps): ReactNode {
 	const { t } = useTranslation("panes");
+	const reduced = useMotionReduced();
 	const view = useSessionView(session);
 	const pinned = usePinnedHelpers(view);
 	const listRef = useRef<HTMLUListElement | null>(null);
 	// The row keyboard focus is in, so focus can move on when that helper stops running and its row leaves.
 	const focusedRow = useRef<{ id: string; index: number } | null>(null);
 	const shownKey = pinned.shown.map(helper => helper.id).join("\0");
+	const layoutKey = `${shownKey}\0${pinned.more > 0}`;
 	// biome-ignore lint/correctness/useExhaustiveDependencies: runs when the rows change (`shownKey`).
 	useEffect(() => {
 		const focused = focusedRow.current;
@@ -114,10 +116,10 @@ export function HelperStrip({ session }: ChatSlotProps): ReactNode {
 					>
 						<AnimatePresence initial={false}>
 							{pinned.shown.map(helper => (
-								<PinnedRow key={helper.id} helper={helper} session={session} onOpen={helper => openHelper(session, helper)} />
+								<PinnedRow key={helper.id} helper={helper} session={session} onOpen={helper => openHelper(session, helper)} layoutKey={layoutKey} reduced={reduced} />
 							))}
 							{pinned.more > 0 && (
-								<motion.li key="more" layout="position" {...listRowMotion} className="flex">
+								<motion.li key="more" layout={reduced ? false : "position"} layoutDependency={layoutKey} {...listRowMotion} className="flex">
 									<button
 										type="button"
 										data-helper-more

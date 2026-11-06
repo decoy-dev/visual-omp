@@ -32,6 +32,7 @@ import {
 	SectionLabel,
 	Spinner,
 	StatusDot,
+	useMotionReduced,
 } from "../../ui";
 import { listRowMotion, Section, usePaneVisible } from "./common";
 import { type BackgroundJob, backgroundJobs, commandSummary, foldHelpers, type Helper, helperJobSnapshots, helpersOf, latestTodo, ompRunning } from "./derive";
@@ -41,8 +42,9 @@ import { helperWidgetCharts } from "./jobWidgets";
 import { type HelperJobsSnapshot, watchHelperJobs } from "./helperJobs";
 
 
-function HelperRow({ helper, jobs, error, session }: { helper: Helper; jobs: readonly BackgroundJob[]; error: string | null; session: SessionController }) {
+function HelperRow({ helper, jobs, error, session, layoutKey }: { helper: Helper; jobs: readonly BackgroundJob[]; error: string | null; session: SessionController; layoutKey: string }) {
 	const { t } = useTranslation("panes");
+	const reduced = useMotionReduced();
 	const actions = (
 		<>
 			{(helper.hasTranscript || helper.messageable) && (
@@ -61,13 +63,18 @@ function HelperRow({ helper, jobs, error, session }: { helper: Helper; jobs: rea
 	);
 	const charts = helperWidgetCharts(helper.widget);
 	return (
-		<motion.li layout="position" {...listRowMotion}>
+		<motion.li layout={reduced ? false : "position"} layoutDependency={layoutKey} {...listRowMotion}>
 			<SubagentRun run={helper} actions={actions} />
 			{charts && <div className="mt-2 px-3"><JobWidget widget={charts} /></div>}
 			{jobs.length > 0 && <div className="mt-2 ml-4 border-l border-border pl-3"><JobList jobs={jobs} /></div>}
 			{error !== null && <p role="status" className="mt-2 px-3 text-xs text-fg-muted" title={error}>{t("tasks.helper.jobsUnavailable")}</p>}
 		</motion.li>
 	);
+}
+
+/** Rows remeasure for order and visible-row structure, not progress text or elapsed time. */
+function jobLayoutKey(job: BackgroundJob): string {
+	return `${job.jobId}\0${job.state}\0${Boolean(job.intent)}\0${Boolean(job.caption)}\0${Boolean(job.widget)}\0`;
 }
 
 /**
@@ -81,12 +88,18 @@ function HelperList({ helpers, session }: { helpers: readonly Helper[]; session:
 	const jobs = useMemo(() => new Map([...readers].map(([id, snapshot]) => [id, snapshot.jobs])), [readers]);
 	const ordered = helpers.toSorted((a, b) => (jobs.get(b.id)?.filter(job => job.state === "running").length ?? 0) - (jobs.get(a.id)?.filter(job => job.state === "running").length ?? 0));
 	const { shown, earlier } = foldHelpers(ordered, all, jobs);
+	let layoutKey = "";
+	for (const helper of shown) {
+		const error = readers.get(helper.id)?.error ?? null;
+		layoutKey += `${helper.id}\0${helper.status}\0${Boolean(helper.widget)}\0${error !== null}\0`;
+		for (const job of jobs.get(helper.id) ?? []) layoutKey += jobLayoutKey(job);
+	}
 	return (
 		<>
 			<ul className="flex flex-col gap-2">
 				<AnimatePresence initial={false}>
 					{shown.map(helper => (
-						<HelperRow key={helper.id} helper={helper} jobs={jobs.get(helper.id) ?? []} error={readers.get(helper.id)?.error ?? null} session={session} />
+						<HelperRow key={helper.id} helper={helper} jobs={jobs.get(helper.id) ?? []} error={readers.get(helper.id)?.error ?? null} session={session} layoutKey={layoutKey} />
 					))}
 				</AnimatePresence>
 			</ul>
@@ -171,8 +184,9 @@ function RunningFor({ since }: { since: number }) {
  * One background job, as omp's `/jobs` lists it (status, run time, the command dimmed underneath) but titled by what
  * the model said the command is for. Opens to the full command and the latest output.
  */
-function JobRow({ job, session }: { job: BackgroundJob; session?: SessionController }) {
+function JobRow({ job, session, layoutKey }: { job: BackgroundJob; session?: SessionController; layoutKey: string }) {
 	const { t } = useTranslation("panes");
+	const reduced = useMotionReduced();
 	const [open, setOpen] = useState(false);
 	const summary = useMemo(() => commandSummary(job.command) || job.jobId, [job.command, job.jobId]);
 	const tail = useMemo(() => job.output.trimEnd().split("\n").slice(-40).join("\n"), [job.output]);
@@ -183,7 +197,7 @@ function JobRow({ job, session }: { job: BackgroundJob; session?: SessionControl
 	].filter((part): part is string => part !== null);
 	const live = job.state === "running" && job.startedAt !== null;
 	return (
-		<motion.li layout="position" {...listRowMotion} className="border-b border-border last:border-b-0">
+		<motion.li layout={reduced ? false : "position"} layoutDependency={`${layoutKey}\0${open}`} {...listRowMotion} className="border-b border-border last:border-b-0">
 			<div className="flex items-start">
 			<button
 				type="button"
@@ -250,13 +264,15 @@ function JobList({ jobs, session }: { jobs: readonly BackgroundJob[]; session?: 
 	const settled = jobs.filter(job => job.state !== "running");
 	const hidden = all ? 0 : Math.max(0, settled.length - RECENT_JOBS);
 	const shown = [...running, ...settled.slice(0, settled.length - hidden)];
+	let layoutKey = "";
+	for (const job of shown) layoutKey += jobLayoutKey(job);
 	return (
 		<>
 			{session && running.length > 0 && <div className="mb-1 flex justify-end"><StopJobs session={session} id="all" /></div>}
 			<ul className="overflow-hidden rounded-lg border border-border bg-panel">
 				<AnimatePresence initial={false}>
 					{shown.map(job => (
-						<JobRow key={job.jobId} job={job} session={session} />
+						<JobRow key={job.jobId} job={job} session={session} layoutKey={layoutKey} />
 					))}
 				</AnimatePresence>
 			</ul>

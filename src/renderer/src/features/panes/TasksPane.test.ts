@@ -15,6 +15,7 @@ import { usePinnedHelpers } from "./pinnedHelpers";
 import { TaskRuns } from "../../tool-render/tools/task";
 import type { Helper } from "./derive";
 
+const motionPreferences = vi.hoisted(() => ({ reduced: false }));
 vi.mock("../session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));
 vi.mock("../session-tools/drive", () => ({ reportFailure: vi.fn() }));
 vi.mock("./helperFocus", () => ({ openHelper: vi.fn() }));
@@ -26,11 +27,12 @@ vi.mock("motion/react", async importOriginal => {
 	// The hoisted mock loads React before this test module's imports initialize.
 	const { createElement, forwardRef } = await import("react");
 	const Div = forwardRef<HTMLDivElement, { children?: ReactNode; className?: string; id?: string }>(({ children, className, id }, ref) => createElement("div", { ref, className, id }, children));
-	const Li = forwardRef<HTMLLIElement, { children?: ReactNode; className?: string }>(({ children, className }, ref) => createElement("li", { ref, className }, children));
+	const Li = forwardRef<HTMLLIElement, { children?: ReactNode; className?: string; layout?: unknown; layoutDependency?: unknown }>(({ children, className, layout, layoutDependency }, ref) => createElement("li", { ref, className, "data-layout-mode": layout === false ? "off" : typeof layout === "string" ? layout : undefined, "data-layout-key": typeof layoutDependency === "string" ? layoutDependency : undefined }, children));
 	return {
 		...actual,
 		motion: new Proxy(actual.motion, { get: (target, key) => key === "div" ? Div : key === "li" ? Li : Reflect.get(target, key) }),
 		AnimatePresence: ({ children }: { children: ReactNode }) => children,
+		useReducedMotionConfig: () => motionPreferences.reduced,
 	};
 });
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
@@ -43,6 +45,7 @@ afterEach(async () => {
 		container.remove();
 	}
 	window.vomp = originalVomp;
+	motionPreferences.reduced = false;
 });
 
 const childTranscript = [
@@ -263,5 +266,25 @@ describe("background job purpose and captions", () => {
 		await act(async () => initial.resolve({ modes: null, theme: null, asyncJobsGeneration: 1, asyncJobs: [{ id: "bg_1", intent: null, caption: "Initial current caption" }] }));
 		expect(test.container.textContent).toContain("Initial current caption");
 		expect(test.container.textContent).not.toContain("Old generation");
+	});
+});
+
+describe("structural list motion", () => {
+	it("does not remeasure for caption text but does for a caption entering or leaving a row", async () => {
+		const test = await mountJobs(Promise.resolve({ modes: null, theme: null, asyncJobs: [{ id: "bg_1", intent: null, caption: "Initial caption" }] }));
+		const row = [...test.container.querySelectorAll<HTMLLIElement>("li[data-layout-key]")].find(element => element.textContent?.includes("Checking the release build"))!;
+		const before = row.getAttribute("data-layout-key");
+		await test.publish({ modes: null, theme: null, asyncJobs: [{ id: "bg_1", intent: null, caption: "Changed caption" }] });
+		expect(row.getAttribute("data-layout-key")).toBe(before);
+		await test.publish({ modes: null, theme: null, asyncJobs: [] });
+		expect(row.getAttribute("data-layout-key")).not.toBe(before);
+		expect(row.isConnected).toBe(true);
+	});
+	it("disables layout projection when reduced motion is requested", async () => {
+		motionPreferences.reduced = true;
+		const test = await mountJobs();
+		const rows = [...test.container.querySelectorAll("[data-layout-mode]")];
+		expect(rows.length).toBeGreaterThan(0);
+		expect(rows.every(row => row.getAttribute("data-layout-mode") === "off")).toBe(true);
 	});
 });

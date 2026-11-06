@@ -3,6 +3,7 @@ import type { NativeSnapshot, SessionAccounts } from "@shared/contracts/native";
 import { i18n } from "../../i18n";
 import type { SessionController, SessionView } from "../../state/session";
 import { readyEditor, sleep } from "./drive";
+import type { AccountSelection } from "./selection";
 
 /** Account state is meaningful only for this room, session and omp-selected provider. */
 export function currentSessionAccounts(native: NativeSnapshot, view: SessionView): SessionAccounts | null {
@@ -13,13 +14,12 @@ export function currentSessionAccounts(native: NativeSnapshot, view: SessionView
 }
 
 /** No background timer: initial and credential-change reads use the SDK, then native change events follow routing. */
-export function useSessionAccounts(session: SessionController, view: SessionView): SessionAccounts | null {
+export function useSessionAccounts(session: SessionController, view: AccountSelection): SessionAccounts | null {
 	const [state, setState] = useState<{ scope: string; accounts: SessionAccounts | null } | null>(null);
-	const host = view.host;
-	const provider = view.guest?.state?.model?.provider;
-	const scope = JSON.stringify([host?.hostId, host?.generation, host?.sessionId, provider, view.mode]);
+	const { hostId, generation, sessionId, provider } = view;
+	const scope = JSON.stringify([hostId, generation, sessionId, provider, view.mode]);
 	useEffect(() => {
-		if (view.mode !== "live" || !host || !provider) return;
+		if (view.mode !== "live" || !hostId || !provider) return;
 		let active = true;
 		let revision = 0;
 		const publish = (native: NativeSnapshot) => {
@@ -29,12 +29,12 @@ export function useSessionAccounts(session: SessionController, view: SessionView
 		};
 		const refresh = () => {
 			const before = revision;
-			void window.vomp.invoke("native:sessionAccounts", host.hostId, host.generation).then(accounts => {
-				if (revision === before) publish({ modes: null, theme: null, asyncJobsGeneration: host.generation, sessionAccounts: accounts });
+			void window.vomp.invoke("native:sessionAccounts", hostId, generation).then(accounts => {
+				if (revision === before) publish({ modes: null, theme: null, asyncJobsGeneration: generation, sessionAccounts: accounts });
 			}).catch(() => { if (active && revision === before) setState({ scope, accounts: null }); });
 		};
 		const off = window.vomp.on("native:changed", event => {
-			if (event.hostId !== host.hostId) return;
+			if (event.hostId !== hostId) return;
 			revision++;
 			publish(event.snapshot);
 		});

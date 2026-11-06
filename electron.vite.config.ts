@@ -5,6 +5,7 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "electron-vite";
 import type { Plugin } from "vite";
 import { phosphorExtraWeights } from "./scripts/phosphor-weights";
+import { speedProbe } from "./scripts/dev/speed/plugin";
 
 const shared = resolve(__dirname, "src/shared");
 
@@ -107,7 +108,7 @@ export default defineConfig({
 		build: { rollupOptions: { output: { format: "cjs" } } },
 	},
 	renderer: {
-		plugins: [react(), tailwindcss(), phosphorWeights(), rendererChunkMetadata()],
+		plugins: [react(), tailwindcss(), phosphorWeights(), rendererChunkMetadata(), ...(process.env.VOMP_SPEED === "1" ? [speedProbe()] : [])],
 		worker: { plugins: () => [rendererWorkerMetadata()] },
 		// Discover Office dependencies before a fixture starts, rather than reloading away its early saved frames.
 		optimizeDeps: { include: ["docx-preview", "fflate", "@xmldom/xmldom", "xlsx"] },

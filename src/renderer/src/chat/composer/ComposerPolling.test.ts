@@ -38,7 +38,7 @@ vi.mock("../../ui/TargetContextMenu", () => ({ TargetContextMenu: () => null }))
 vi.mock("../../features/session-tools/slash", () => ({ routeSlash: vi.fn() }));
 vi.mock("../../features/session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));
 vi.mock("../../registry/slots", () => ({ chatSlots: { use: () => [] } }));
-vi.mock("../branch", () => ({ useDisplayedEntries: () => [] }));
+vi.mock("../branch", () => ({ useBranchEntries: () => [] }));
 vi.mock("./attach", () => ({ attachFiles: vi.fn(), attachPaths: vi.fn(), useThumbnail: () => null }));
 vi.mock("./MentionPicker", () => ({ MentionPicker: () => null, useProjectFiles: () => null }));
 vi.mock("./SlashMenu", () => ({ SlashMenu: () => null, useSlashCommands: () => [], slashOptions: () => null, slashAtCaret: () => null }));
@@ -85,7 +85,7 @@ beforeEach(() => {
 		if (channel === "config:approval") return { mode: "always-ask", supportedModes: ["always-ask", "write", "yolo"], modeSource: "project" };
 		return undefined;
 	});
-	view = { mode: "live", readOnly: false, working: false, guest: null, history: null, inputHistory: [], queue: [], strandedImages: [], host: null } as unknown as SessionView;
+	view = { mode: "live", readOnly: false, working: false, workingSince: null, follow: null, ownerUnverified: false, guest: null, history: null, carryover: null, displayLeaf: null, inputHistory: [], queue: [], strandedImages: false, host: null, error: null };
 	session = { tabId: "polling", projectPath: "/tmp", sessionFile: null, get hostId() { return view.host?.hostId ?? null; }, getSnapshot: () => view, subscribe(listener: () => void) { listeners.add(listener); return () => listeners.delete(listener); } } as unknown as SessionController;
 	useComposerDrafts.getState().setDraft("polling", "");
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
@@ -98,13 +98,17 @@ afterEach(async () => {
 
 	it.each(["classic", "tsp"] as const)("restores Send after the final background wait settles in %s", async transport => {
 		setHost(transport);
-		view = { ...view, working: true, guest: { awaitingAsyncWork: true } as SessionView["guest"] };
+		view = { ...view, working: true, guest: {
+			phase: "live", endedReason: null, header: null, entries: [], state: null, agents: [], progress: new Map(), lifecycle: new Map(),
+			stream: null, streamDone: false, activeTools: new Map(), backgroundTools: new Map(), working: false, awaitingAsyncWork: true,
+			readOnly: false, uiRequest: null, notices: [], thinkingSelector: null, loading: null,
+		} };
 		useComposerDrafts.getState().setDraft("polling", "Continue after these jobs.");
 		await mount();
 		expect(element.querySelector('button[aria-label="Stop waiting"]')).not.toBeNull();
 		expect([...element.querySelectorAll("button")].some(button => button.textContent === "Queue message")).toBe(true);
 		await act(async () => {
-			view = { ...view, working: false, guest: { awaitingAsyncWork: false } as SessionView["guest"] };
+			view = { ...view, working: false, guest: { ...view.guest!, awaitingAsyncWork: false } };
 			for (const listener of listeners) listener();
 		});
 		await advance(500);

@@ -22,7 +22,7 @@ import { Composer } from "../../chat/composer/Composer";
 import { OmpScreenSheet } from "../tsp/OmpScreenSheet";
 vi.hoisted(() => { Object.assign(window, { vomp: { platform: "darwin", invoke: async () => [], on: () => () => {} } }); });
 vi.mock("../../registry/slots", () => ({ chatSlots: { use: () => [] } }));
-vi.mock("../../chat/branch", () => ({ useDisplayedEntries: () => [] }));
+vi.mock("../../chat/branch", () => ({ useBranchEntries: () => [] }));
 vi.mock("./slash", () => ({ routeSlash: vi.fn() }));
 vi.mock("./typed", () => ({ sendSlashCommand: vi.fn() }));
 vi.mock("../../chat/composer/attach", () => ({ attachFiles: vi.fn(), attachPaths: vi.fn(), useThumbnail: () => null }));
@@ -142,7 +142,12 @@ beforeEach(() => {
 	Object.defineProperty(document, "fonts", { configurable: true, value: new EventTarget() });
 	const docs = recorded("plan-review-execute");
 	snapshot = { ...docs, hostId: "host", generation: 1, revision: 1, lifecycle: "live", documentGeneration: 1, failure: null, availability: { available: false, reason: "Plan review" }, surfaces: docs.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
-	view = { mode: "live", readOnly: false, working: false, guest: null, history: null, inputHistory: [], queue: [], strandedImages: [], host: { hostId: "host", generation: 1, transport: "tsp", tspAvailability: snapshot.availability } } as unknown as SessionView;
+	view = {
+		mode: "live", readOnly: false, working: false, workingSince: null, guest: null, history: null,
+		inputHistory: [], queue: [], strandedImages: false, follow: null, ownerUnverified: false, displayLeaf: null, carryover: null, error: null,
+		host: { hostId: "host", generation: 1, transport: "tsp", tspAvailability: snapshot.availability, cwd: "/tmp/plan-test", phase: "live",
+			link: null, sessionId: null, sessionFile: null, pid: null, exitCode: null, error: null, tui: null, cols: 80, rows: 24 },
+	};
 	controller = { hostId: "host", tabId: "plan-test", projectPath: "/tmp/plan-test", sessionFile: null, getSnapshot: () => view, subscribe: (listener: () => void) => { sessionListeners.add(listener); return () => sessionListeners.delete(listener); }, preserveFailedMessage: vi.fn() } as unknown as SessionController;
 	invoke = vi.fn(async (channel: string) => channel === "host:tsp-snapshot" ? snapshot : undefined);
 	Object.defineProperty(window, "vomp", { configurable: true, value: { platform: "darwin", invoke, on: (channel: string, listener: (patch: TspHostPatch) => void) => { if (channel === "host:tsp-patch") listeners.add(listener); return () => listeners.delete(listener); } } });
