@@ -172,6 +172,18 @@
 		"noDescription": "No description.",
 		"turnOn": "Turn on {{name}}",
 		"turnOff": "Turn off {{name}}",
+		"manual": {
+			"title": "Manual-only skills",
+			"help": "Matching skills stay available through skill://name and, when skill commands are enabled, /skill:name. omp leaves them out of the model's skill catalog. Enter a skill name or glob pattern such as docs-*.",
+			"badge": "Manual only",
+			"pattern": "Skill name or glob pattern",
+			"add": "Add pattern",
+			"remove": "Remove pattern {{pattern}}",
+			"empty": "No manual-only patterns are configured.",
+			"scope": "Patterns save for all projects. Project settings can override them. New chats or an omp restart use the changed skill catalog.",
+			"overridden": "omp reports a different effective list:",
+			"unavailable": "This omp installation does not report skills.manualSkills. Update to omp 18.17 or later to configure manual-only patterns."
+		},
 		"invalid_one": "{{count}} skill file has a problem, so omp skips it:",
 		"invalid_other": "{{count}} skill files have problems, so omp skips them:",
 		"reason": {

@@ -124,3 +124,23 @@ describe("native user skill availability", () => {
 		expect(await service.nativeUserAvailability("visual-proofs")).toBe(expected);
 	});
 });
+
+it("preserves omp's hide flags even when configured manual patterns suggest the opposite", async () => {
+	const listed = [false, true].map((hide, index) => ({
+		name: index ? "unmatched-but-hidden" : "docs-visible",
+		description: "Fixture skill",
+		filePath: join(tmpdir(), "project", String(index), "SKILL.md"),
+		baseDir: join(tmpdir(), "project", String(index)),
+		source: "native:user",
+		hide,
+	}));
+	for (const skill of listed) fake.files.set(skill.filePath, "---\nname: fixture\ndescription: Fixture skill\n---\nInstructions.");
+	vi.mocked(runner.run)
+		.mockResolvedValueOnce({ code: 0, stdout: JSON.stringify({ "skills.manualSkills": { value: ["docs-*"] } }), stderr: "" })
+		.mockResolvedValueOnce({ code: 0, stdout: JSON.stringify({ skills: listed, warnings: [] }), stderr: "" })
+		.mockResolvedValueOnce({ code: 0, stdout: JSON.stringify({ skills: listed, warnings: [] }), stderr: "" });
+	expect((await service.list(join(tmpdir(), "project"))).skills.map(skill => ({ name: skill.name, hidden: skill.hidden, enabled: skill.enabled }))).toEqual([
+		{ name: "docs-visible", hidden: false, enabled: true },
+		{ name: "unmatched-but-hidden", hidden: true, enabled: true },
+	]);
+});

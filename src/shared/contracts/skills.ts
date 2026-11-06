@@ -133,7 +133,7 @@ export interface SkillEntry {
 	level: SkillLevel;
 	/** Raw omp source label, `<provider>:<level>`. */
 	source: string;
-	/** `hide: true` / `disable-model-invocation`: loaded but not listed in the system prompt. */
+	/** omp's `hide` flag: frontmatter or manualSkills patterns keep the skill out of the model catalog. */
 	hidden: boolean;
 	/** Loaded by a session in this cwd. */
 	enabled: boolean;

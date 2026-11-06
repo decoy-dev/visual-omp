@@ -1,6 +1,6 @@
 import { BookOpenText, DownloadSimple, Trash } from "@phosphor-icons/react";
 import { AnimatePresence, motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDeferredTranslation } from "@/i18n";
 import type { RegistryInstalledSkill, SkillEntry, SkillRegistryResult, SkillSearchHit } from "@shared/contracts/skills";
 import { listRowMotion } from "@/features/manage/listMotion";
@@ -26,6 +26,7 @@ import { type BrowseFilter, lockedReason, providerLabel } from "./model";
 import { InlineProgress, OperationLog } from "./OperationLog";
 import { type Operations, useOperations } from "./operations";
 import { SkillDrawer } from "./SkillDrawer";
+import { ManualSkills } from "./ManualSkills";
 
 interface TabProps {
 	cwd: string;
@@ -44,6 +45,13 @@ export function SkillsTab({ cwd, projectPath, filter, query, onBrowse }: TabProp
 		void listing.reload();
 		void installed.reload();
 	});
+	useIpcEvent("config:changed", event => {
+		if (event.scope === "global" || event.cwd === cwd) void listing.reload();
+	});
+	useEffect(() => {
+		void window.vomp.invoke("config:watch", cwd);
+		return () => { void window.vomp.invoke("config:unwatch", cwd); };
+	}, [cwd]);
 	const ops = useOperations("skills:progress");
 	const [open, setOpen] = useState<SkillEntry | null>(null);
 	const [approval, setApproval] = useState<{ id: string; global: boolean } | null>(null);
@@ -176,6 +184,8 @@ export function SkillsTab({ cwd, projectPath, filter, query, onBrowse }: TabProp
 				</Notice>
 			)}
 
+			{filter !== "registry" && <ManualSkills />}
+
 			<OperationLog
 				ops={ops.list}
 				onCancel={opId => void window.vomp.invoke("skills:cancel", opId)}
@@ -221,7 +231,7 @@ function SkillRow({ skill, onOpen, onToggle }: { skill: SkillEntry; onOpen(): vo
 		<div className="relative flex items-center gap-3 px-3 py-3 transition-colors duration-(--dur-fast) hover:bg-hover">
 			<LetterTile name={skill.name} />
 			<div className="flex min-w-0 flex-1 flex-col gap-1">
-				<div className="flex min-w-0 items-center gap-2">
+				<div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
 					<button
 						type="button"
 						onClick={onOpen}
@@ -231,6 +241,7 @@ function SkillRow({ skill, onOpen, onToggle }: { skill: SkillEntry; onOpen(): vo
 						{skill.name}
 					</button>
 					<Chip tone={skill.level === "project" ? "accent" : "neutral"}>{t(skill.level === "project" ? "scope.project" : "scope.user")}</Chip>
+					{skill.hidden && <Chip tone="neutral">{t("skills.manual.badge")}</Chip>}
 					<span className="min-w-0 truncate text-xs text-fg-faint">{providerLabel(skill.provider)}</span>
 				</div>
 				<p className="line-clamp-1 text-sm text-fg-muted">{skill.description || t("skills.noDescription")}</p>

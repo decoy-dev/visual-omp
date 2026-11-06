@@ -220,7 +220,7 @@ async function setSetting(key: string, value: JsonValue, scope: SettingScope, cw
 	await setConfigPath(scope, cwd, leaf.key.split("."), value);
 	configWritten();
 	const result = await writeResult(leaf.key, scope, cwd);
-	if (leaf.key === "composer.predictions") broadcast("config:changed", { scope, cwd: scope === "global" ? null : cwd ?? null, file: await configFile(scope, cwd), origin: "app" });
+	if (leaf.key === "composer.predictions" || leaf.key === "skills.manualSkills") broadcast("config:changed", { scope, cwd: scope === "global" ? null : cwd ?? null, file: await configFile(scope, cwd), origin: "app" });
 	return result;
 }
 
@@ -229,7 +229,7 @@ async function resetSetting(key: string, scope: SettingScope, cwd: string | unde
 	await deleteConfigPath(scope, cwd, leaf.key.split("."));
 	configWritten();
 	const result = await writeResult(leaf.key, scope, cwd);
-	if (leaf.key === "composer.predictions") broadcast("config:changed", { scope, cwd: scope === "global" ? null : cwd ?? null, file: await configFile(scope, cwd), origin: "app" });
+	if (leaf.key === "composer.predictions" || leaf.key === "skills.manualSkills") broadcast("config:changed", { scope, cwd: scope === "global" ? null : cwd ?? null, file: await configFile(scope, cwd), origin: "app" });
 	return result;
 }
 
