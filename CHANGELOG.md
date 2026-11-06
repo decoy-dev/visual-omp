@@ -20,6 +20,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - The composer's settings row is more compact. The permission button shows only the mode's name, Suggestions shows its pressed state, and shortened account names remain distinguishable. The row scrolls horizontally when space is limited.
 - Helper rows in Tasks now have one conversation button for reading replies and sending messages when available.
 - Outputs previews use more of the pane's height to show documents, pages and recent frames, while compact previews leave room for saved outputs.
+- Long chats use less renderer CPU while replies stream, including when helpers are running.
 - visual-omp now batches helper progress, streamed replies and tool output instead of redrawing for each update: the chat you are looking at applies them once per screen refresh and other chats about once a second, while questions, finished turns, errors and helper status changes still arrive at once. If visual-omp falls far behind omp, the chat reconnects to omp's current state, including any open question, instead of working through a backlog. Previously a chat with many helpers could fall half an hour behind and hold back a question omp had already asked.
 
 #### Fixed
