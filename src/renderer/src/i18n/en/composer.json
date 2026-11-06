@@ -74,6 +74,12 @@
 		"loading": "Loading project files…",
 		"empty": "No files match"
 	},
+	"modelTags": {
+		"header": "Model for a helper",
+		"label": "Models and thinking levels",
+		"loading": "Asking omp for models…",
+		"empty": "No model or thinking level matches"
+	},
 	"slash": {
 		"header": "omp commands",
 		"label": "Slash commands",

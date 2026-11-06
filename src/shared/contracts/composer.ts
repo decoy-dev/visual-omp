@@ -89,8 +89,32 @@ export interface PredictionCapture {
 	error: string | null;
 }
 
+export interface ComposerAssistRequest {
+	/** Renderer-generated identity allows queued work to be cancelled on cleanup. */
+	id?: string;
+	/** False for caret-only model completion requests. */
+	keywords?: boolean;
+	text: string;
+	cursor: number;
+	complete: boolean;
+}
+export interface ComposerModelItem { value: string; description: string }
+export interface ComposerKeyword {
+	start: number;
+	end: number;
+	description: string;
+}
+/** Exact upstream completion rows and prose decorations, never transformed prompt text. */
+export interface ComposerAssist {
+	items: ComposerModelItem[] | null;
+	keywords: ComposerKeyword[];
+}
+
 declare module "../ipc" {
 	interface IpcInvokeMap {
+		/** Read completion rows and keyword decorations from the current hosted omp. */
+		"composer:assist": { args: [hostId: string, generation: number, request: ComposerAssistRequest]; result: ComposerAssist };
+		"composer:cancelAssist": { args: [hostId: string, generation: number, id: string]; result: void };
 		/** Save pasted bytes (a clipboard image) to a private temp file; resolves its absolute path. */
 		"composer:saveTemp": { args: [bytes: Uint8Array, extension: string]; result: string };
 		/** Native multi-file picker starting in `cwd`; resolves the chosen absolute paths (empty when cancelled). */

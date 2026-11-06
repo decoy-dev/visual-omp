@@ -9,6 +9,40 @@ let bridge: NativeBridge | undefined;
 let dir: string | undefined;
 afterEach(async () => { await bridge?.close(); if (dir) await rm(dir, { recursive: true, force: true }); });
 
+it("preserves composer rows and drops stale generation answers", async () => {
+	dir = await mkdtemp(join(tmpdir(), "composer-assist-")); bridge = await createNativeBridge("composer-test", dir);
+	bridge.beginGeneration(1);
+	const draft = { text: "^fixture/reasoner:h", cursor: 19, complete: true };
+	const first = bridge.composerAssist(1, draft);
+	const rejected = expect(first).rejects.toThrow("changed rooms");
+	const [old] = await (await fetch(bridge.url + "/requests")).json() as { id: string }[];
+	bridge.beginGeneration(2); await rejected;
+	await expect(bridge.composerAssist(1, draft)).rejects.toThrow("room changed");
+	const next = bridge.composerAssist(2, draft);
+	const result = { items: [{ value: "fixture/reasoner:high", description: "Fixture reasoner · high" }], keywords: [] };
+	await fetch(bridge.url + "/composer/" + old!.id, { method: "POST", body: JSON.stringify(result) });
+	const [current] = await (await fetch(bridge.url + "/requests")).json() as { id: string; composer: unknown }[];
+	expect(current!.composer).toEqual(draft);
+	await fetch(bridge.url + "/composer/" + current!.id, { method: "POST", body: JSON.stringify(result) });
+	await expect(next).resolves.toEqual(result);
+});
+
+it("cancels queued composer reads and ignores answers to cancelled dispatched reads", async () => {
+	dir = await mkdtemp(join(tmpdir(), "composer-cancel-")); bridge = await createNativeBridge("composer-cancel", dir);
+	bridge.beginGeneration(1);
+	const request = { id: "queued", text: "^model", cursor: 6, complete: true, keywords: false };
+	const queued = bridge.composerAssist(1, request);
+	bridge.cancelComposerAssist(1, request.id);
+	await expect(queued).resolves.toEqual({ items: null, keywords: [] });
+	expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([]);
+	const dispatched = bridge.composerAssist(1, { ...request, id: "dispatched" });
+	await fetch(bridge.url + "/requests");
+	bridge.cancelComposerAssist(1, "dispatched");
+	await expect(dispatched).resolves.toEqual({ items: null, keywords: [] });
+	await fetch(bridge.url + "/composer/dispatched", { method: "POST", body: JSON.stringify({ items: [{ value: "ignored", description: "" }], keywords: [] }) });
+	expect(await (await fetch(bridge.url + "/requests")).json()).toEqual([]);
+});
+
 describe("hosted native mode bridge", () => {
 	it("rejects other origins and wrong tokens and validates snapshots", async () => {
 		dir = await mkdtemp(join(tmpdir(), "misc-bridge-")); bridge = await createNativeBridge("test", dir);

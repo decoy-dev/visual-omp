@@ -207,6 +207,13 @@ Each SessionHost:
    The composer's slash menu lists omp's `get_available_commands` (a short-lived `omp --mode rpc`
    in the project folder, cached per folder) merged with the builtin catalog in
    `src/main/services/omp-builtin-commands.ts`.
+   Model-tag completion captures omp's own provider through the SDK `addAutocompleteProvider` hook
+   without changing it. The private bridge asks only for a whitespace-delimited `^` token, preserving
+   omp's model scope, ordering, literal colon ids and supported effort suffixes. Keyword decorations
+   use omp's optional registry, prose ranges and effective `magicKeywords.*` setting handles.
+   Decorations are keyed by draft text, host, generation and settings revision; caret movement requests
+   only completion and preserves valid decorations. Cleanup cancels queued bridge reads. Keyword and
+   completion failures are isolated, and input text is unchanged.
    TSP hook dialogs and Plan Review use semantic documents and declared actions; collab-matched
    questions keep their existing chat cards. Unclaimed content opens in the semantic omp screen.
    Classic `OmpDialogCard` reads painted dialogs and answers with keys, keeping the terminal sheet

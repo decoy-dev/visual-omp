@@ -4,7 +4,7 @@ import { writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { z } from "zod";
 import { ModeRequestSchema, ModeResultSchema, NativeSnapshotSchema, SessionAccountsSchema, type ModeRequest, type ModeResult, type NativeSnapshot, type SessionAccounts } from "@shared/contracts/native";
-import type { EditorDraftRequest, EditorDraftResult } from "@shared/contracts/composer";
+import type { ComposerAssist, ComposerAssistRequest, EditorDraftRequest, EditorDraftResult } from "@shared/contracts/composer";
 import { broadcast } from "../ipc";
 import { NATIVE_EXTENSION_SOURCE } from "./native-extension";
 
@@ -21,6 +21,10 @@ interface PromptWatch {
 	timer: NodeJS.Timeout;
 }
 
+const ComposerAssistSchema = z.object({
+	items: z.array(z.object({ value: z.string(), description: z.string() })).max(20).nullable(),
+	keywords: z.array(z.object({ start: z.number().int().nonnegative(), end: z.number().int().nonnegative(), description: z.string() })),
+});
 const bridges = new Map<string, NativeBridge>();
 export class NativeBridge {
 	readonly #token = randomUUID();
@@ -29,6 +33,7 @@ export class NativeBridge {
 	readonly #editors = new Map<string, { request: EditorDraftRequest; delivered: boolean; resolve(result: EditorDraftResult): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
 	readonly #asyncWork = new Map<string, { delivered: boolean; resolve(pending: boolean | null): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
 	readonly #accounts = new Map<string, { delivered: boolean; resolve(accounts: SessionAccounts | null): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
+	readonly #composer = new Map<string, { request: ComposerAssistRequest; delivered: boolean; resolve(result: ComposerAssist): void; reject(error: Error): void; timer: NodeJS.Timeout }>();
 	readonly #prompts = new Map<string, PromptWatch>();
 	readonly #forgottenPrompts = new Set<string>();
 	onPromptInput: ((id: string) => void) | undefined;
@@ -58,6 +63,7 @@ export class NativeBridge {
 						...[...this.#editors].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "editorDraft", editor: item.request }; }),
 						...[...this.#asyncWork].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "asyncWork" }; }),
 						...[...this.#accounts].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "sessionAccounts" }; }),
+						...[...this.#composer].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "composerAssist", composer: item.request }; }),
 						...[...this.#forgottenPrompts].map(id => ({ id, kind: "forgetPrompt", epoch: this.#jobsEpoch })),
 						...[...this.#prompts].filter(([, item]) => !item.delivered).map(([id, item]) => { item.delivered = true; return { id, kind: "watchPrompt", prompt: item.watch, epoch: item.epoch }; }),
 						...(this.#shutdownRequest === "pending" ? [{ kind: "shutdown" }] : []),
@@ -116,6 +122,15 @@ export class NativeBridge {
 						broadcast("native:changed", { hostId, snapshot: this.snapshot });
 						item.resolve(result);
 					}
+				} else if (route.startsWith("/composer/")) {
+					const id = route.slice("/composer/".length);
+					const result = ComposerAssistSchema.parse(parsed);
+					const item = this.#composer.get(id);
+					if (item?.delivered) {
+						clearTimeout(item.timer);
+						this.#composer.delete(id);
+						item.resolve(result);
+					}
 				} else if (route.startsWith("/async-work/")) {
 					const id = route.slice("/async-work/".length);
 					const result = z.object({ pending: z.boolean().nullable() }).parse(parsed);
@@ -165,6 +180,7 @@ export class NativeBridge {
 		this.#clearAsyncWork("omp changed rooms before reporting its background work.");
 		this.#clearPrompts("omp changed rooms before observing the prompt.");
 		this.#clearAccounts("omp changed rooms before reporting its accounts.");
+		this.#clearComposer("omp changed rooms before reporting its composer choices.");
 		this.#shutdownRequest = null;
 		this.#generation = generation;
 		this.#jobsEpoch = randomUUID();
@@ -190,6 +206,27 @@ export class NativeBridge {
 		const timer = setTimeout(() => { this.#pending.delete(id); reject(new Error("omp did not answer the mode request")); }, 10_000);
 		this.#pending.set(id, { request: valid, delivered: false, resolve, reject, timer });
 		return promise;
+	}
+	composerAssist(generation: number, request: ComposerAssistRequest): Promise<ComposerAssist> {
+		if (this.#closed || generation !== this.#generation) return Promise.reject(new Error("omp's room changed."));
+		const id = request.id ?? randomUUID();
+		if (this.#composer.has(id)) return Promise.reject(new Error("The composer request is already pending."));
+		const { promise, resolve, reject } = Promise.withResolvers<ComposerAssist>();
+		const timer = setTimeout(() => { this.#composer.delete(id); reject(new Error("omp did not report its composer choices.")); }, 5000);
+		this.#composer.set(id, { request, delivered: false, resolve, reject, timer });
+		return promise;
+	}
+	cancelComposerAssist(generation: number, id: string): void {
+		if (generation !== this.#generation) return;
+		const item = this.#composer.get(id);
+		if (!item) return;
+		clearTimeout(item.timer);
+		this.#composer.delete(id);
+		item.resolve({ items: null, keywords: [] });
+	}
+	#clearComposer(message: string): void {
+		for (const item of this.#composer.values()) { clearTimeout(item.timer); item.reject(new Error(message)); }
+		this.#composer.clear();
 	}
 	/** Reload only identity summaries on explicit reads, never refresh provider tokens. */
 	sessionAccounts(generation: number): Promise<SessionAccounts | null> {
@@ -269,6 +306,7 @@ export class NativeBridge {
 		this.onPromptInput = undefined;
 		this.#clearAsyncWork("omp stopped before reporting its background work.");
 		this.#clearAccounts("omp stopped before reporting its accounts.");
+		this.#clearComposer("omp stopped before reporting its composer choices.");
 		for (const item of this.#pending.values()) { clearTimeout(item.timer); item.reject(new Error("omp stopped before answering the mode request")); }
 		this.#pending.clear();
 		for (const item of this.#commands.values()) { clearTimeout(item.timer); item.reject(new Error("omp stopped before reporting its side commands.")); }

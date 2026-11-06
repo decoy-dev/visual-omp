@@ -2,6 +2,7 @@ import { resolveHistoryDbPath } from "./history-path";
 import { exactEditorDraft } from "./native-editor";
 import { expandedPromptTextMatches } from "../../shared/prompt-input";
 import { sessionAccountSnapshot } from "./native-accounts";
+import { readComposerAssist } from "./native-composer";
 
 /** Written into each app-hosted chat's private directory. omp resolves these public SDK and pi-tui exports from its compiled module map. */
 export const NATIVE_EXTENSION_SOURCE = String.raw`
@@ -16,6 +17,7 @@ const resolveHistoryDbPath = ${resolveHistoryDbPath.toString()};
 const exactEditorDraft = ${exactEditorDraft.toString()};
 const expandedPromptTextMatches = ${expandedPromptTextMatches.toString()};
 const sessionAccountSnapshot = ${sessionAccountSnapshot.toString()};
+const readComposerAssist = ${readComposerAssist.toString()};
 const bridgeUrl = process.env.VOMP_NATIVE_BRIDGE;
 delete process.env.VOMP_NATIVE_BRIDGE;
 
@@ -38,6 +40,22 @@ export default function visualOmpNative(pi) {
 	let themeRevision = 0;
 	let themeIdentity = null;
 	const promptWatches = new Map();
+	let autocomplete;
+	let keywordEngine;
+	// Optional subpath exports are capability checks, not version checks. Missing helpers disable only decorations.
+	const keywordModules = Promise.all([
+		import("@oh-my-pi/pi-coding-agent/modes/magic-keywords"),
+		import("@oh-my-pi/pi-coding-agent/modes/settings"),
+		import("@oh-my-pi/pi-coding-agent"),
+		import("@oh-my-pi/pi-tui/prompt/magic-keywords"),
+	]).then(([words, handles, sdk, prose]) => {
+		if (!Array.isArray(words.MAGIC_KEYWORDS) || typeof prose.magicKeywordRanges !== "function" || typeof handles.cfgMagicKeywordsEnabled?.get !== "function" || !handles.cfgMagicKeyword) return;
+		keywordEngine = {
+			keywords: words.MAGIC_KEYWORDS,
+			ranges: prose.magicKeywordRanges,
+			enabled: id => id === undefined ? handles.cfgMagicKeywordsEnabled.get(sdk.settings) : handles.cfgMagicKeyword[id]?.get(sdk.settings) === true,
+		};
+	}).catch(() => undefined);
 	let promptSessionId;
 	function forgetPrompt(id) {
 		const watch = promptWatches.get(id);
@@ -155,6 +173,16 @@ export default function visualOmpNative(pi) {
 				const requests = await response.json();
 				for (const item of requests) {
 					if (stopped || current !== lifecycle) return;
+					if (item.kind === "composerAssist") {
+						if (item.composer.keywords !== false) await keywordModules;
+						const result = await readComposerAssist(item.composer, {
+							...keywordEngine,
+							complete: autocomplete && ((...args) => autocomplete.getSuggestions(...args)),
+						});
+						if (stopped || current !== lifecycle) return;
+						await fetch(url + "/composer/" + item.id, { method: "POST", body: JSON.stringify(result), signal: AbortSignal.timeout(2000) });
+						continue;
+					}
 					if (item.kind === "sessionAccounts") {
 						const storage = context.modelRegistry?.authStorage;
 						let accounts = null;
@@ -260,6 +288,7 @@ export default function visualOmpNative(pi) {
 		if (ctx.agent.kind !== "main") return;
 		delete process.env.VOMP_NATIVE_BRIDGE;
 		clearPromptWatches(); promptSessionId = ctx.sessionManager.getSessionId();
+		ctx.ui.addAutocompleteProvider?.(current => { autocomplete = current; return current; });
 		context = ctx; stopped = false; last = ""; jobsEpoch = null; lifecycle++; clearTimeout(timer); await tick();
 	};
 	pi.on("session_start", startSession);

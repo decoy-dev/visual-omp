@@ -14,7 +14,7 @@ import { Composer } from "./Composer";
 import "../../i18n";
 
 vi.hoisted(() => {
-	Object.assign(window, { vomp: { platform: "darwin", invoke: async () => [], on: () => () => {} } });
+	Object.assign(window, { vomp: { platform: "darwin", invoke: async (channel: string) => channel === "composer:assist" ? { items: null, keywords: [] } : [], on: () => () => {} } });
 	// Exercise Motion's JS fallback: happy-dom's cancelled WAAPI promises reject during draft transitions.
 	Reflect.deleteProperty(Element.prototype, "animate");
 });
@@ -188,4 +188,64 @@ it("keeps a newer draft and queues the declined message without an error", async
 	expect(useComposerDrafts.getState().drafts.availability).toBe("My newer draft");
 	expect(session.preserveFailedMessage).toHaveBeenCalledExactlyOnceWith("A message ready to send", []);
 	expect(toast).not.toHaveBeenCalled();
+});
+
+it("completes model efforts with Tab without sending, then preserves the selected tag on send", async () => {
+	const original = window.vomp.invoke;
+	window.vomp.invoke = vi.fn(async () => ({ items: [{ value: "fixture/reasoner:high", description: "Fixture reasoner · high" }], keywords: [] })) as typeof window.vomp.invoke;
+	try {
+		view = { ...view, host: host("classic", { available: true, reason: null }) };
+		useComposerDrafts.getState().setDraft("availability", "use ^fixture/reasoner:h");
+		await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+		const editor = element.querySelector("textarea")!;
+		await act(async () => { editor.setSelectionRange(editor.value.length, editor.value.length); editor.focus(); });
+		await vi.waitFor(async () => { await act(async () => {}); expect(element.querySelector('[role="option"]')?.textContent).toContain("^fixture/reasoner:high"); });
+		await act(async () => editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", bubbles: true })));
+		expect(useComposerDrafts.getState().drafts.availability).toBe("use ^fixture/reasoner:high ");
+		expect(session.send).not.toHaveBeenCalled();
+		await act(async () => useComposerDrafts.getState().setDraft("availability", "use ^fixture/reasoner:high and chillax"));
+		await act(async () => { editor.blur(); editor.setSelectionRange(editor.value.length, editor.value.length); editor.focus(); });
+		await act(async () => editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+		expect(session.send).toHaveBeenCalledExactlyOnceWith("use ^fixture/reasoner:high and chillax", []);
+	} finally { window.vomp.invoke = original; }
+});
+
+it("keeps tags as ordinary editable text without a running omp", async () => {
+	const original = window.vomp.invoke;
+	const invoke = vi.fn(async (_channel: string) => []);
+	window.vomp.invoke = invoke as typeof window.vomp.invoke;
+	try {
+		view = { ...view, mode: "history", host: null };
+		useComposerDrafts.getState().setDraft("availability", "^fixture/reasoner:high chillax");
+		await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+		await act(async () => element.querySelector("textarea")!.focus());
+		expect(element.querySelector('[role="listbox"]')).toBeNull();
+		expect(invoke.mock.calls.some(([channel]) => channel === "composer:assist")).toBe(false);
+		expect(element.querySelector("textarea")!.value).toBe("^fixture/reasoner:high chillax");
+	} finally { window.vomp.invoke = original; }
+});
+
+it("keeps plain Enter from sending while model completion is awaiting omp", async () => {
+	const original = window.vomp.invoke;
+	const response = Promise.withResolvers<{ items: { value: string; description: string }[]; keywords: [] }>();
+	let completionRequested = false;
+	window.vomp.invoke = vi.fn(async (channel: string, _host: string, _generation: number, request: { complete?: boolean }) => {
+		if (channel === "composer:assist" && request.complete) { completionRequested = true; return response.promise; }
+		return { items: null, keywords: [] };
+	}) as typeof window.vomp.invoke;
+	try {
+		view = { ...view, host: host("classic", { available: true, reason: null }) };
+		useComposerDrafts.getState().setDraft("availability", "use ^fixture/reasoner:h");
+		await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+		const editor = element.querySelector("textarea")!;
+		await act(async () => { editor.setSelectionRange(editor.value.length, editor.value.length); editor.focus(); });
+		await vi.waitFor(() => expect(completionRequested).toBe(true));
+		await act(async () => editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+		expect(session.send).not.toHaveBeenCalled();
+		expect(editor.value).toBe("use ^fixture/reasoner:h");
+		await act(async () => response.resolve({ items: [{ value: "fixture/reasoner:high", description: "High" }], keywords: [] }));
+		await act(async () => editor.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+		expect(session.send).not.toHaveBeenCalled();
+		expect(useComposerDrafts.getState().drafts.availability).toBe("use ^fixture/reasoner:high ");
+	} finally { window.vomp.invoke = original; }
 });

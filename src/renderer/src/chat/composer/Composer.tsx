@@ -15,6 +15,7 @@
  */
 import { ArrowUp, At, BookBookmark, Command, GraduationCap, ImageSquare, Microphone, PaperPlaneRight, Paperclip, Plus, Square, X } from "@phosphor-icons/react";
 import type { PromptHistoryItem } from "@shared/ipc";
+import type { ComposerKeyword, ComposerModelItem } from "@shared/contracts/composer";
 import { AnimatePresence, motion } from "motion/react";
 import {
 	type ClipboardEvent,
@@ -61,7 +62,8 @@ import { attachFiles, attachPaths, useThumbnail } from "./attach";
 import { useDisplayedEntries } from "../branch";
 import { type HistoryDraft, historyOnVisualBoundary, promptHistory, PromptHistoryCursor } from "./history";
 import { type Attachment, appendWithSpace, composerText, notifyComposerAction, registerComposerEditor, takePendingFocus, useComposerDrafts } from "./drafts";
-import { fuzzyFiles, mentionAtCaret, mentionRanges } from "./fuzzy";
+import { fuzzyFiles, mentionAtCaret } from "./fuzzy";
+import { ComposerMirror, keywordAtPoint, modelTagAtCaret, ModelTagMenu, useComposerAssist } from "./ComposerTags";
 import { MentionPicker, useProjectFiles } from "./MentionPicker";
 import { type LibraryTab, PromptLibrary } from "./PromptLibrary";
 import { applyMode, deliver, tspComposerReason } from "./send";
@@ -95,22 +97,6 @@ const actionMotion = {
 const textLayout =
 	"col-start-1 row-start-1 w-full whitespace-pre-wrap break-words px-0 py-0.5 text-base leading-(--text-base--line-height) [scrollbar-gutter:stable] [overflow-wrap:anywhere]";
 
-function MentionMirror({ text }: { text: string }) {
-	const parts: ReactNode[] = [];
-	let at = 0;
-	for (const { start, end } of mentionRanges(text)) {
-		if (start > at) parts.push(text.slice(at, start));
-		parts.push(
-			<span key={start} className="rounded-sm bg-accent-muted text-accent shadow-[0_0_0_2px_var(--accent-muted)]">
-				{text.slice(start, end)}
-			</span>,
-		);
-		at = end;
-	}
-	parts.push(text.slice(at));
-	// Trailing newline needs a visible character to keep the mirror's height in step with the textarea.
-	return <>{parts}{text.endsWith("\n") ? " " : null}</>;
-}
 
 /** An image waiting to go with the message. Sits directly under a popLayout AnimatePresence, which measures a leaving chip through this ref. */
 export function AttachmentChip({ item, onRemove, ref }: { item: Attachment; onRemove(): void; ref?: Ref<HTMLLIElement> }) {
@@ -237,6 +223,22 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const [focused, setFocused] = useState(false);
 	const [caret, setCaret] = useState(0);
 	const acceptingGhost = useRef(false);
+	const [tagClosed, setTagClosed] = useState(false);
+	const [tagActive, setTagActive] = useState(0);
+	const tagId = useId();
+	const tag = focused && !mode && !tagClosed ? modelTagAtCaret(draft, caret) : null;
+	const assist = useComposerAssist(view.host?.hostId ?? null, view.host?.generation ?? 0, draft, caret, tag !== null, !mode && !view.readOnly && view.mode === "live");
+	const tagOpen = tag !== null && !!view.host && !view.readOnly && view.mode === "live" && (assist.pending || assist.items !== null);
+	const [hoverKeyword, setHoverKeyword] = useState<ComposerKeyword | null>(null);
+	const [keywordTip, setKeywordTip] = useState(false);
+	useEffect(() => {
+		setKeywordTip(false);
+		if (!hoverKeyword) return;
+		const timer = setTimeout(() => setKeywordTip(true), 400);
+		return () => clearTimeout(timer);
+	}, [hoverKeyword]);
+	useEffect(() => { setHoverKeyword(null); }, [draft]);
+	useEffect(() => { setTagActive(0); }, [tag?.start, tag?.query]);
 	const [mention, setMention] = useState<{ start: number; query: string } | null>(null);
 	const [activeMatch, setActiveMatch] = useState(0);
 	const [library, setLibrary] = useState<LibraryTab | null>(null);
@@ -251,6 +253,8 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	if (draftSeen !== draft) {
 		setDraftSeen(draft);
 		setSlashClosed(false);
+		setTagClosed(false);
+		setTagActive(0);
 	}
 	const [slashSeen, setSlashSeen] = useState<SlashContext | null>(null);
 	if (slashSeen !== slash) {
@@ -283,7 +287,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const ghost = useGhostText({
 		folder: projectPath, tabId, hostId: view.host?.hostId ?? null, generation: view.host?.generation ?? 0, transport: view.host?.transport, draft, caret,
 		composer: view.host?.tspComposer,
-		enabled: focused && !readOnly && !mode && !mention && !slashOpen && !view.guest?.uiRequest,
+		enabled: focused && !readOnly && !mode && !mention && !tagOpen && !slashOpen && !view.guest?.uiRequest,
 		idle: view.mode === "live" && !working,
 	});
 
@@ -307,6 +311,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 			const next = current.slice(0, from) + text + current.slice(to);
 			setDraft(next);
 			const caret = from + text.length;
+			setCaret(caret);
 			requestAnimationFrame(() => {
 				const el = textarea.current;
 				if (!el) return;
@@ -398,6 +403,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		store.setMode(tabId, null);
 		setMention(null);
 		setSlash(null);
+		setTagClosed(true);
 		// A slash command without attachments opens the app's own UI when there is one, else omp runs it.
 		const sending =
 			!mode && images.length === 0 && text.startsWith("/")
@@ -430,6 +436,10 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		replaceRange(mention.start, caret, `@${path} `);
 	};
 
+	const pickTag = (item: ComposerModelItem) => {
+		if (tag) replaceRange(tag.start, caret, `^${item.value} `);
+	};
+
 	const pickSlash = (item: SlashItem) => {
 		if (slash) replaceRange(slash.from, slash.to, item.insert);
 	};
@@ -446,6 +456,25 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 	const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
 		if (readOnly || event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) return;
 		if (event.key === "Escape") notifyComposerAction(tabId);
+		if (tagOpen && assist.pending && event.key === "Enter" && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey) {
+			event.preventDefault();
+			return;
+		}
+		const tagItems = tagOpen ? assist.items ?? [] : [];
+		if (tagItems.length > 0) {
+			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+				event.preventDefault();
+				const delta = event.key === "ArrowDown" ? 1 : -1;
+				setTagActive(index => (index + delta + tagItems.length) % tagItems.length);
+				return;
+			}
+			const item = tagItems[tagActive];
+			if (item && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey && (event.key === "Tab" || event.key === "Enter")) {
+				event.preventDefault();
+				pickTag(item);
+				return;
+			}
+		}
 		if (mention && matches && matches.length > 0) {
 			if (event.key === "ArrowDown" || event.key === "ArrowUp") {
 				event.preventDefault();
@@ -504,7 +533,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 		}
 		if ((event.key === "ArrowUp" || event.key === "ArrowDown") && !event.shiftKey && !event.altKey && !event.ctrlKey && !event.metaKey) {
 			// Open menus own arrows even while loading or showing no matches.
-			if (mention || slashOpen) return;
+			if (mention || tagOpen || slashOpen) return;
 			const el = event.currentTarget;
 			const direction = event.key === "ArrowUp" ? "older" : "newer";
 			const current = { text: draft, start: el.selectionStart, end: el.selectionEnd };
@@ -517,7 +546,15 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 			return;
 		}
 		if (event.key === "Escape") {
-			if (mention) {
+			if (tagOpen) {
+				event.preventDefault();
+				event.stopPropagation();
+				setTagClosed(true);
+			} else if (keywordTip) {
+				event.preventDefault();
+				event.stopPropagation();
+				setHoverKeyword(null);
+			} else if (mention) {
 				event.preventDefault();
 				event.stopPropagation();
 				setMention(null);
@@ -678,7 +715,9 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 				 * The mention and slash menus anchor above the text row.
 				 */}
 				<div className="relative flex flex-col gap-2 p-2">
-					{mention ? (
+					{tagOpen ? (
+						<ModelTagMenu id={tagId} items={assist.items} active={tagActive} onActive={setTagActive} onPick={pickTag} />
+					) : mention ? (
 						<MentionPicker id={pickerId} matches={matches} active={activeMatch} onActive={setActiveMatch} onPick={pickMention} />
 					) : (
 						slashOpen && <SlashMenu id={slashId} options={slashMenu} active={slashActive} onActive={setSlashActive} onPick={pickSlash} />
@@ -716,7 +755,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 								aria-hidden
 								className={cn(textLayout, "pointer-events-none overflow-hidden text-fg", mode && "font-mono text-code")}
 							>
-								<MentionMirror text={draft} />
+								<ComposerMirror text={draft} keywords={assist.keywords} />
 								{/*
 								 * A suggestion that completes the last word would otherwise wrap together with it, moving the typed
 								 * letters onto a line the textarea doesn't have yet, where the mirror's height clips them. The break
@@ -724,6 +763,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 								 */}
 								{ghost.suffix && <><wbr /><span className="text-fg-faint" data-composer-ghost>{ghost.suffix}</span></>}
 							</div>
+							<Tooltip content={hoverKeyword?.description ?? ""} open={keywordTip}>
 							<textarea
 								ref={textarea}
 								value={draft}
@@ -733,12 +773,14 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 								placeholder={ghost.suffix ? "" : placeholder}
 								aria-label={t("label")}
 								role="combobox"
-								aria-expanded={mention !== null || slashOpen}
-								aria-controls={mention ? pickerId : slashOpen ? slashId : undefined}
+								aria-expanded={tagOpen || mention !== null || slashOpen}
+								aria-controls={tagOpen ? tagId : mention ? pickerId : slashOpen ? slashId : undefined}
 								aria-autocomplete={ghost.suffix ? "both" : "list"}
-								aria-description={ghost.suffix ? t("prediction.available", { text: ghost.suffix }) : undefined}
+								aria-description={assist.keywords.find(keyword => caret >= keyword.start && caret <= keyword.end)?.description ?? (ghost.suffix ? t("prediction.available", { text: ghost.suffix }) : undefined)}
 								aria-activedescendant={
-									mention && matches?.length
+									tagOpen && assist.items?.length
+										? `${tagId}-${tagActive}`
+										: mention && matches?.length
 										? `${pickerId}-${activeMatch}`
 										: slashOpen && slashMenu?.items.length
 											? `${slashId}-${slashActive}`
@@ -761,8 +803,12 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 									setFocused(false);
 									setMention(null);
 									setSlash(null);
+									setHoverKeyword(null);
 								}}
+								onPointerMove={event => setHoverKeyword(keywordAtPoint(mirror.current, assist.keywords, event.clientX, event.clientY))}
+								onPointerLeave={() => setHoverKeyword(null)}
 								onScroll={event => {
+									setHoverKeyword(null);
 									if (mirror.current) mirror.current.scrollTop = event.currentTarget.scrollTop;
 								}}
 								onKeyDown={onKeyDown}
@@ -773,6 +819,7 @@ export function Composer({ session }: { session: SessionController }): ReactNode
 									mode && "font-mono text-code",
 								)}
 							/>
+							</Tooltip>
 						</div>
 					</div>
 					{/*

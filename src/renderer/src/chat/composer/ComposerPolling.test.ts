@@ -78,6 +78,7 @@ beforeEach(() => {
 	Object.defineProperty(document, "fonts", { configurable: true, value: new EventTarget() });
 	listeners.clear(); fake.invoke.mockReset(); fake.events.clear();
 	fake.invoke.mockImplementation(async (channel: string) => {
+		if (channel === "composer:assist") return { items: null, keywords: [] };
 		if (channel === "native:snapshot") return { modes, theme: null };
 		if (channel === "host:screen") return ["╭── π ▶ ⬢ Opus 5.5 · ◕ xhigh ──╮", "╰─                          ─╯"];
 		if (channel === "composer:tuiPrediction") return "Run the tests";

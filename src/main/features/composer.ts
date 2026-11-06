@@ -134,6 +134,8 @@ async function paste(hostId: string, text: string): Promise<void> {
 
 export function register(): void {
 	handle("sessions:promptHistory", async sessionId => readPromptHistory(join(agentDir(await userEnv()), "history.db"), sessionId));
+	handle("composer:assist", (hostId, generation, request) => nativeBridge(hostId).composerAssist(generation, request));
+	handle("composer:cancelAssist", (hostId, generation, id) => nativeBridge(hostId).cancelComposerAssist(generation, id));
 	handle("composer:saveTemp", (bytes, extension) => saveTemp(bytes, extension));
 	handle("composer:pickFiles", cwd => pickFiles(cwd));
 	handle("composer:thumbnail", path => thumbnail(path));
