@@ -25,6 +25,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Quitting while an Office preview is converting no longer risks deleting the converter's working folder while it is still in use, which could fail on Windows. visual-omp now cleans up after you confirm quitting and waits up to six seconds; cancelling Quit leaves previews working.
 - Outputs now updates playable video previews while rendering and replaces the previous video when another render writes to the same path. This fixes previews that stayed blank or showed the previous render in 0.7.8.
 - Restored saved bash output and artifact instructions when collab shortens a result, within display limits.
+- Collapsed tool groups now show their first-to-latest recorded activity range, fixing timestamps that appeared stuck at the group's start during long turns. Full timestamps are available on hover and keyboard focus.
 
 ## [0.7.8] - 2026-11-05
 
