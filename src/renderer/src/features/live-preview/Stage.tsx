@@ -101,7 +101,7 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 	const rendering = running && (subject.kind === "render" || progress !== null);
 	const status = stopping ? t("live.stopping") : redirect === "failed" ? t("live.stopFailed")
 		: rendering ? t("live.rendering") : t(`live.state.${subject.state}`);
-	return <section aria-label={t("live.title")} className="@container/live shrink-0 border-b border-border px-3 py-3">
+	return <section aria-label={t("live.title")} className={cn("@container/live shrink-0 border-b border-border px-3 py-3", subject.format === "xlsx" && "flex h-full min-h-64 flex-col")}>
 		<div className="mb-2 flex items-center gap-2">
 			<h3 className="min-w-0 flex-1 text-sm font-semibold text-fg">{t("live.title")}</h3>
 			<IconButton size="sm" label={t("live.close")} icon={<X />} onClick={() => useLivePreview.getState().close(session.tabId)} />
@@ -113,9 +113,9 @@ export function Stage({ session, onShowOutput }: { session: SessionController; o
 				<FileName name={subjectName(item)} />
 			</button>)}
 		</div>
-		<div className="flex h-64 min-h-40 flex-col overflow-auto rounded-md bg-inset" data-live-subject={subject.id}>
+		<div className={cn("flex min-h-40 flex-col rounded-md bg-inset", subject.format === "docx" ? "overflow-hidden" : subject.format === "xlsx" ? "min-h-0 flex-1 overflow-hidden" : "h-64 overflow-auto")} data-live-subject={subject.id}>
 			{[subject, ...(pending ? [pending] : [])].map(item => <div key={`${item.id}:${item.format}`} hidden={item.id !== subject.id}
-				className="min-h-0 flex-1 flex-col overflow-auto" style={{ display: item.id === subject.id ? "flex" : "none" }}>
+				className={cn("min-h-0 flex-1 flex-col", item.format === "xlsx" ? "overflow-hidden" : "overflow-auto")} style={{ display: item.id === subject.id ? "flex" : "none" }}>
 				{item.kind === "render" && !(item.format === "video" && item.path) ? <div className="flex min-h-0 flex-1 items-center justify-center p-4 text-sm text-fg-muted">{item.intent ?? (running ? t("live.rendering") : status)}</div>
 					: <Frame subject={item} projectPath={session.projectPath} related={chat.related} turnImages={turnImages}
 						officeCache={item.id === subject.id ? officeCache : pendingOfficeCache}

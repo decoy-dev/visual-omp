@@ -11,6 +11,17 @@ import { Frame } from "./docx";
 import { useLivePreview } from "../store";
 import type { LiveSubject, OfficeFrameSnapshot } from "../types";
 
+// happy-dom keeps the prefix in XML Attr.localName, unlike Chromium. docx-preview reads that DOM field.
+class NamespaceDOMParser extends DOMParser {
+	override parseFromString(...args: Parameters<DOMParser["parseFromString"]>) {
+		const document = super.parseFromString(...args);
+		for (const element of document.getElementsByTagName("*")) for (const attribute of element.attributes) {
+			if (attribute.name.includes(":")) Object.defineProperty(attribute, "localName", { value: attribute.name.split(":").at(-1) });
+		}
+		return document;
+	}
+}
+
 vi.mock("react-i18next", () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 vi.mock("./docx.worker?worker", () => ({ default: class {
 	onmessage: ((event: MessageEvent) => void) | null = null;
@@ -26,12 +37,12 @@ vi.mock("./docx.worker?worker", () => ({ default: class {
 	terminate() { this.closed = true; }
 } }));
 
-function fixture(revision: number) {
+function fixture(revision: number, page = { width: 12240, height: 15840 }) {
 	const word = "http://schemas.openxmlformats.org/wordprocessingml/2006/main", rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
 	const files = {
 		"[Content_Types].xml": '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
 		"_rels/.rels": `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="document" Type="${rel}/officeDocument" Target="word/document.xml"/></Relationships>`,
-		"word/document.xml": `<w:document xmlns:w="${word}"><w:body><w:p><w:r><w:t>Office fixture revision ${revision}</w:t></w:r></w:p></w:body></w:document>`,
+		"word/document.xml": `<w:document xmlns:w="${word}"><w:body><w:p><w:r><w:t>Office fixture revision ${revision}</w:t></w:r></w:p><w:sectPr><w:pgSz w:w="${page.width}" w:h="${page.height}"/><w:pgMar w:top="720" w:right="1440" w:bottom="720" w:left="1440"/></w:sectPr></w:body></w:document>`,
 	};
 	return zipSync(Object.fromEntries(Object.entries(files).map(([name, xml]) => [name, strToU8(xml)]))) as Uint8Array<ArrayBuffer>;
 }
@@ -40,6 +51,7 @@ function subject(revision: number): LiveSubject {
 }
 let host: HTMLDivElement, root: Root;
 let currentRevision = 1;
+let currentPage = { width: 12240, height: 15840 };
 let denial: "revoked" | "notFile" | "missing" | null = null;
 const cache = { read: () => useLivePreview.getState().readOffice("chat", "office", "/project/office.docx", "docx", currentRevision),
 	write: (snapshot: OfficeFrameSnapshot) => useLivePreview.getState().retainOffice("chat", "office", snapshot),
@@ -57,23 +69,37 @@ async function until(predicate: () => boolean) {
 const shadowText = () => host.querySelector('[data-theme="light"]')?.shadowRoot?.textContent ?? "";
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+	vi.stubGlobal("DOMParser", NamespaceDOMParser);
 	host = document.createElement("div"); document.body.append(host); root = createRoot(host);
 	useLivePreview.setState({ chats: {} });
+	currentPage = { width: 12240, height: 15840 };
 	denial = null;
 	Object.defineProperty(window, "vomp", { configurable: true, value: { invoke: vi.fn(async (channel: string) => {
 		if (channel === "preview:grant") return { token: "token", url: "vomp-preview://token/office.docx", assetRoot: true };
-		if (channel === "preview:readBinary") return denial ? { ok: false, reason: denial } : currentRevision === 4 || currentRevision === 6 ? { ok: false, reason: "incomplete" } : { ok: true, bytes: fixture(currentRevision), size: 100, mtimeMs: currentRevision };
+		if (channel === "preview:readBinary") return denial ? { ok: false, reason: denial } : currentRevision === 4 || currentRevision === 6 ? { ok: false, reason: "incomplete" } : { ok: true, bytes: fixture(currentRevision, currentPage), size: 100, mtimeMs: currentRevision };
 	}) } });
 });
-afterEach(async () => { await act(async () => root.unmount()); host.remove(); useLivePreview.setState({ chats: {} }); });
+afterEach(async () => { await act(async () => root.unmount()); host.remove(); useLivePreview.setState({ chats: {} }); vi.unstubAllGlobals(); });
 
 describe("real DOCX package rendering", () => {
 	it("renders the canonicalized package through docx-preview and the sanitizer", async () => {
 		const clean = rewriteOfficePackage(fixture(3), "docx");
 		const body = document.createElement("div"), styles = document.createElement("div");
-		await renderAsync(clean.bytes, body, styles, { useBase64URL: true, renderAltChunks: false, experimental: false, ignoreLastRenderedPageBreak: true, ignoreWidth: true, ignoreHeight: true, inWrapper: false });
+		await renderAsync(clean.bytes, body, styles, { useBase64URL: true, renderAltChunks: false, experimental: false, ignoreLastRenderedPageBreak: true, ignoreWidth: false, ignoreHeight: false, inWrapper: false });
 		sanitizeOfficeDom(body, styles, clean.links);
 		expect(body.textContent).toContain("Office fixture revision 3");
+	});
+	it.each([
+		{ name: "Letter", width: 12240, height: 15840 },
+		{ name: "A4", width: 11906, height: 16838 },
+	])("preserves $name page dimensions and margins through the adapter", async page => {
+		currentPage = page;
+		await show(1); await until(() => shadowText().includes("Office fixture revision 1"));
+		const rendered = host.querySelector('[data-theme="light"]')!.shadowRoot!.querySelector<HTMLElement>("section.docx")!;
+		expect(parseFloat(rendered.style.width), rendered.outerHTML).toBe(page.width / 20);
+		expect(parseFloat(rendered.style.minHeight)).toBe(page.height / 20);
+		expect(parseFloat(rendered.style.paddingLeft)).toBe(72);
+		expect(parseFloat(rendered.style.paddingTop)).toBe(36);
 	});
 	it("retains the real rendered third revision after truncation and after remounting the subject", async () => {
 		for (const revision of [1, 2, 3]) {

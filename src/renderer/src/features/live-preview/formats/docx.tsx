@@ -8,12 +8,35 @@ import { usePreviewGrant } from "./usePreviewGrant";
 import { WaitingForSave } from "./shared";
 import type { LiveAdapter, LiveFrameProps } from "../types";
 
+/** Scale the rendered page, including its margins and contents, without reflowing it. */
+function fitDocumentPages(host: HTMLDivElement): void {
+	const style = getComputedStyle(host);
+	const width = host.clientWidth - parseFloat(style.paddingLeft || "0") - parseFloat(style.paddingRight || "0");
+	if (width <= 0) return;
+	for (const page of host.shadowRoot?.querySelectorAll<HTMLElement>("section.docx") ?? []) {
+		const slot = page.parentElement;
+		if (!slot || page.offsetWidth <= 0) continue;
+		const scale = Math.min(1, width / page.offsetWidth);
+		slot.style.width = `${page.offsetWidth * scale}px`;
+		slot.style.height = `${page.offsetHeight * scale}px`;
+		page.style.transform = `scale(${scale})`;
+	}
+}
+
 /** Both fresh and retained presentations have passed the sanitizer before this attachment. */
 function attachDocument(host: HTMLDivElement, body: HTMLDivElement, styles: HTMLDivElement): void {
 	const shadow = host.shadowRoot ?? host.attachShadow({ mode: "open" });
 	const layout = document.createElement("style");
-	layout.textContent = ":host{display:block;min-width:0}section{box-sizing:border-box;max-width:100%!important;padding:1rem!important;overflow-wrap:anywhere}img,table{max-width:100%}div:has(>img){max-width:100%!important;height:auto!important}img{height:auto!important}table{width:100%!important;table-layout:fixed}col,td,th{width:auto!important}td,th{overflow-wrap:anywhere}a{cursor:pointer}";
+	layout.textContent = ":host{display:block;min-width:0}.docx-pages{display:flex;flex-direction:column;align-items:center;gap:1rem}.docx-page{position:relative;flex:none;overflow:hidden}section.docx{position:absolute;top:0;left:0;transform-origin:top left;box-sizing:border-box;margin:0;background:var(--sheet);font-size:12pt;line-height:normal}a{cursor:pointer}";
+	body.className = "docx-pages";
+	for (const page of body.querySelectorAll("section.docx")) {
+		const slot = document.createElement("div");
+		slot.className = "docx-page";
+		page.replaceWith(slot);
+		slot.append(page);
+	}
 	shadow.replaceChildren(styles, layout, body);
+	fitDocumentPages(host);
 	body.addEventListener("click", event => {
 		const link = event.composedPath().find(node => node instanceof HTMLAnchorElement) as HTMLAnchorElement | undefined;
 		if (!link) return;
@@ -35,6 +58,13 @@ export function Frame(props: LiveFrameProps) {
 	const source = useRef<{ token: string; path: string | null }>({ token: "", path: null });
 	if (frame && source.current.token !== frame.grant.token) source.current = { token: frame.grant.token, path: props.subject.path };
 	const [failure, setFailure] = useState<string | null>(null);
+	useEffect(() => {
+		const element = host.current;
+		if (!element) return;
+		const observer = new ResizeObserver(() => fitDocumentPages(element));
+		observer.observe(element);
+		return () => observer.disconnect();
+	}, [props.subject.path, props.subject.format]);
 	useEffect(() => {
 		host.current?.shadowRoot?.replaceChildren(); goodRevision.current = null;
 		if (error) { props.officeCache?.clear(); props.onOfficeCheck?.(null); }
@@ -79,7 +109,7 @@ export function Frame(props: LiveFrameProps) {
 					if (!current) return;
 					const body = document.createElement("div"), styles = document.createElement("div");
 					await renderAsync(clean.bytes, body, styles, { useBase64URL: true, renderAltChunks: false, experimental: false,
-						ignoreLastRenderedPageBreak: true, ignoreWidth: true, ignoreHeight: true, inWrapper: false });
+						ignoreLastRenderedPageBreak: true, ignoreWidth: false, ignoreHeight: false, inWrapper: false });
 					sanitizeOfficeDom(body, styles, clean.links);
 					if (!current || !host.current || frame.revision > requestedRevision.current) return;
 					const snapshot = { format: "docx" as const, path, revision: frame.revision, body: body.innerHTML, styles: styles.innerHTML };
@@ -102,8 +132,8 @@ export function Frame(props: LiveFrameProps) {
 		void run();
 		return () => { current = false; client?.dispose(); };
 	}, [frame, props.subject.path, props.subject.format, error]);
-	return <div className="min-w-0 flex-1 overflow-auto">
-		<div key={`${props.subject.format}:${props.subject.path}`} ref={host} data-theme="light" className="min-w-0 bg-sheet text-fg" />
+	return <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-inset">
+		<div key={`${props.subject.format}:${props.subject.path}`} ref={host} data-theme="light" className="min-w-0 p-4 text-fg" />
 		{(error || failure === "incomplete" || failure === "missing") && <WaitingForSave />}
 		{failure && failure !== "incomplete" && failure !== "missing" && <p role="status" className="p-3 text-sm text-fg-muted">{t(failure === "timeout" ? "live.office.timeout" : "live.office.unsafe")}{failure === "timeout" && goodRevision.current !== null && <> {t("live.office.retained")}</>}</p>}
 	</div>;

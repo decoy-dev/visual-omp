@@ -30,14 +30,15 @@ function Grid({ book, frozen, onPresentation }: { book: LoadedWorkbook; frozen: 
 	savePresentation.current = onPresentation;
 	const [failed, setFailed] = useState(false);
 	const viewport = useRef<HTMLDivElement>(null);
-	const [view, setView] = useState({ top: 0, left: 0, height: 256, width: 320, rowHeight: 32 });
+	const [view, setView] = useState({ top: 0, left: 0, height: 256, width: 320, rowHeight: 32, gutter: 48 });
 	const [active, setActive] = useState({ row: 0, col: 0 });
 	const meta = book.sheets[sheet];
 	useEffect(() => {
 		const element = viewport.current;
 		if (!element) return;
 		const measure = () => setView(previous => ({ ...previous, height: element.clientHeight, width: element.clientWidth,
-			rowHeight: Math.max(32, (parseFloat(getComputedStyle(element).fontSize) || 0) * 2.4) }));
+			rowHeight: Math.max(32, (parseFloat(getComputedStyle(element).fontSize) || 0) * 2.4),
+			gutter: element.querySelector('[role="columnheader"]')?.getBoundingClientRect().width || 48 }));
 		measure();
 		const observer = new ResizeObserver(measure); observer.observe(element);
 		return () => observer.disconnect();
@@ -71,7 +72,7 @@ function Grid({ book, frozen, onPresentation }: { book: LoadedWorkbook; frozen: 
 		</div>
 		{meta && <div ref={viewport} role="grid" aria-label={meta.name} aria-readonly="true" aria-rowcount={meta.rows + 1} aria-colcount={meta.cols + 1}
 			tabIndex={0} aria-activedescendant={shown && active.row >= shown.rowStart && active.row < shown.rowEnd && active.col >= shown.colStart && active.col < shown.colEnd ? `office-${book.revision}-${sheet}-${active.row}-${active.col}` : undefined}
-			inert={frozen} className={cn("relative min-h-0 min-w-0 flex-1 text-xs focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring", frozen ? "overflow-hidden" : "overflow-auto")}
+			inert={frozen} className={cn("relative min-h-0 min-w-0 flex-1 bg-sheet text-xs focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring", frozen ? "overflow-hidden" : "overflow-auto")}
 			onScroll={event => { const element = event.currentTarget; setView(value => ({ ...value, top: element.scrollTop, left: element.scrollLeft })); }}
 			onKeyDown={event => {
 				let { row, col } = active;
@@ -87,18 +88,18 @@ function Grid({ book, frozen, onPresentation }: { book: LoadedWorkbook; frozen: 
 				if (row * view.rowHeight < element.scrollTop) element.scrollTop = row * view.rowHeight;
 				else if ((row + 2) * view.rowHeight > element.scrollTop + element.clientHeight) element.scrollTop = (row + 2) * view.rowHeight - element.clientHeight;
 				if (col * 160 < element.scrollLeft) element.scrollLeft = col * 160;
-				else if ((col + 1) * 160 + 48 > element.scrollLeft + element.clientWidth) element.scrollLeft = (col + 1) * 160 + 48 - element.clientWidth;
+				else if ((col + 1) * 160 + view.gutter > element.scrollLeft + element.clientWidth) element.scrollLeft = (col + 1) * 160 + view.gutter - element.clientWidth;
 			}}>
-			<div className="relative" style={{ width: (restored ? (shown?.colEnd ?? 0) - colOffset : meta.cols) * 160 + 48, height: ((restored ? shown?.cells.length ?? 0 : meta.rows) + 1) * view.rowHeight }}>
+			<div className="relative min-w-full" style={{ width: (restored ? (shown?.colEnd ?? 0) - colOffset : meta.cols) * 160 + view.gutter, height: ((restored ? shown?.cells.length ?? 0 : meta.rows) + 1) * view.rowHeight }}>
 				<div role="row" aria-rowindex={1} className="sticky top-0 z-10 border-b border-border bg-inset" style={{ height: view.rowHeight }}>
 					<div role="columnheader" aria-colindex={1} className="sticky left-0 z-10 h-full w-12 border-r border-border bg-inset" />
-					{window && Array.from({ length: Math.max(0, window.colEnd - window.colStart) }, (_, offset) => { const col = window.colStart + offset; return <div key={col} role="columnheader" aria-colindex={col + 2} className="absolute top-0 flex items-center border-r border-border px-2 font-medium text-fg-muted" style={{ left: (col - colOffset) * 160 + 48, width: 160, height: view.rowHeight }}>{columnName(col)}</div>; })}
+					{window && Array.from({ length: Math.max(0, window.colEnd - window.colStart) }, (_, offset) => { const col = window.colStart + offset; return <div key={col} role="columnheader" aria-colindex={col + 2} className="absolute top-0 flex items-center border-r border-border px-2 font-medium text-fg-muted" style={{ left: (col - colOffset) * 160 + view.gutter, width: 160, height: view.rowHeight }}>{columnName(col)}</div>; })}
 				</div>
 				{shown?.cells.map((values, offset) => { const row = shown.rowStart + offset; return <div key={row} role="row" aria-rowindex={row + 2} className="absolute left-0 w-full border-b border-border" style={{ top: (row - rowOffset + 1) * view.rowHeight, height: view.rowHeight }}>
 					<div role="rowheader" aria-colindex={1} className="sticky left-0 z-1 flex h-full w-12 items-center justify-end border-r border-border bg-inset px-2 tabular-nums text-fg-muted">{row + 1}</div>
 					{values.map((value, offset) => { const col = shown.colStart + offset; return <div key={col} id={`office-${book.revision}-${sheet}-${row}-${col}`} role="gridcell" aria-colindex={col + 2} title={value}
 						onClick={() => setActive({ row, col })} className={cn("absolute top-0 flex items-center overflow-hidden whitespace-pre border-r border-border px-2 text-fg", active.row === row && active.col === col ? "bg-selected outline-1 -outline-offset-1 outline-ring" : "bg-sheet")}
-						style={{ left: (col - colOffset) * 160 + 48, width: 160, height: view.rowHeight }}><span className="truncate">{value}</span></div>; })}
+						style={{ left: (col - colOffset) * 160 + view.gutter, width: 160, height: view.rowHeight }}><span className="truncate">{value}</span></div>; })}
 				</div>; })}
 			</div>
 		</div>}

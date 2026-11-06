@@ -24,7 +24,7 @@ import { ExpandPreview, loadFileImage, PdfFrame, PreviewImage, ThumbnailFrame, u
 import { countOutputsMount, useChatOutputs } from "./outputs-store";
 import { Stage } from "../live-preview/Stage";
 import { TrackerLoadNotice } from "../live-preview/loader";
-import { usePreviewChat, visibleSubjects } from "../live-preview/store";
+import { followedSubject, usePreviewChat, visibleSubjects } from "../live-preview/store";
 import { useApp } from "../../state/app";
 
 function baseName(path: string): string {
@@ -345,6 +345,7 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 	const tabId = session?.tabId ?? null;
 	const preview = usePreviewChat(tabId);
 	const hasStage = useApp(state => state.prefs?.livePreview === true) && visibleSubjects(preview).length > 0;
+	const officeStage = hasStage && ["docx", "xlsx"].includes(followedSubject(preview)?.format ?? "");
 	const [opened, setOpened] = useState<{ tabId: string | null; key: string } | null>(null);
 	const [restoreKey, setRestoreKey] = useState<string | null>(null);
 	// Kept here, so opening a tile past the first 12 and coming back keeps it on screen.
@@ -365,7 +366,7 @@ export function OutputsPane({ session, projectPath }: PaneProps) {
 			setRestoreKey(output.key);
 			setShowAllViewed(true);
 		}} />
-		<PresenceSwap swapKey={swapKey} className="flex min-h-0 flex-1 flex-col">
+		<PresenceSwap swapKey={swapKey} className={cn("flex min-h-0 flex-col", officeStage ? "shrink-0" : "flex-1", officeStage && selected && "h-full")}>
 			{selected ? (
 				<OutputViewer
 					output={selected}

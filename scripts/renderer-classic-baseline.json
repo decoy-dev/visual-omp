@@ -8,8 +8,8 @@
   "reason": "Owner approved a tighter baseline on 2026-11-04 to preserve the renderer entry reductions. The measured v0.7.6 release replaces v0.7.4 and its accepted growth exceptions, while retaining the 20,000-byte growth allowance.",
   "acceptedOn": "2026-11-04",
   "lazyBudgets": [
-    { "name": "DOCX adapter", "module": "src/renderer/src/features/live-preview/formats/docx.tsx", "bytes": 179118 },
-    { "name": "XLSX adapter", "module": "src/renderer/src/features/live-preview/formats/xlsx.tsx", "bytes": 8222 },
+    { "name": "DOCX adapter", "module": "src/renderer/src/features/live-preview/formats/docx.tsx", "bytes": 179857 },
+    { "name": "XLSX adapter", "module": "src/renderer/src/features/live-preview/formats/xlsx.tsx", "bytes": 8365 },
     { "name": "PPTX adapter", "module": "src/renderer/src/features/live-preview/formats/pptx.tsx", "bytes": 2362 },
     { "name": "DOCX worker", "module": "src/renderer/src/features/live-preview/formats/docx.worker.ts", "bytes": 109108 },
     { "name": "XLSX worker", "module": "src/renderer/src/features/live-preview/formats/xlsx.worker.ts", "bytes": 377176 }
