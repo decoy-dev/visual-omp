@@ -7,6 +7,7 @@ const fake = vi.hoisted(() => ({
 	readError: null as Error | null,
 	temporary: "",
 	readFileSync: vi.fn(),
+	realpathSync: vi.fn(),
 	mkdir: vi.fn(),
 	writeFile: vi.fn(),
 	rename: vi.fn(),
@@ -14,7 +15,7 @@ const fake = vi.hoisted(() => ({
 }));
 
 vi.mock("electron", () => ({ app: { getPath: () => "/fixture/visual-omp-profile" } }));
-vi.mock("node:fs", () => ({ readFileSync: fake.readFileSync }));
+vi.mock("node:fs", () => ({ readFileSync: fake.readFileSync, realpathSync: fake.realpathSync }));
 vi.mock("node:fs/promises", () => ({ mkdir: fake.mkdir, writeFile: fake.writeFile, rename: fake.rename }));
 vi.mock("./ipc", () => ({ broadcast: fake.broadcast }));
 
@@ -25,6 +26,7 @@ beforeEach(() => {
 	fake.contents = null;
 	fake.readError = null;
 	fake.temporary = "";
+	fake.realpathSync.mockImplementation((path: string) => path);
 	fake.readFileSync.mockImplementation(() => {
 		if (fake.readError) throw fake.readError;
 		if (fake.contents === null) throw Object.assign(new Error("Preferences file is missing"), { code: "ENOENT" });
@@ -229,5 +231,60 @@ describe("crash-report preferences", () => {
 		vi.resetModules();
 		const reloaded = await import("./prefs");
 		expect(reloaded.getPrefs().sendCrashReports).toBe(false);
+	});
+});
+
+describe("project identity migration", () => {
+	it("normalizes only project fields in a patch and leaves unrelated settings free of path lookups", async () => {
+		fake.contents = JSON.stringify({
+			extraProjects: ["/saved/project"], pinnedProjects: ["/saved/pin"],
+			projectColors: { "/saved/color": "blue" },
+		});
+		// Fresh imports let the spy observe the normalizer used during preference module initialization.
+		const normalize = vi.spyOn(await import("./omp/project-path"), "projectPath");
+		const { getPrefs, setPrefs, flushPrefs } = await import("./prefs");
+		expect(normalize.mock.calls.map(([path]) => path)).toEqual(["/saved/project", "/saved/pin", "/saved/color"]);
+		normalize.mockClear(); fake.realpathSync.mockClear();
+		const saved = getPrefs();
+		setPrefs({ textScale: 110, theme: "dark" });
+		expect(normalize).not.toHaveBeenCalled();
+		expect(fake.realpathSync).not.toHaveBeenCalled();
+		expect(getPrefs().extraProjects).toBe(saved.extraProjects);
+		expect(getPrefs().pinnedProjects).toBe(saved.pinnedProjects);
+		expect(getPrefs().projectColors).toBe(saved.projectColors);
+		setPrefs({ pinnedProjects: ["/new/pin"] });
+		expect(normalize.mock.calls.map(([path]) => path)).toEqual(["/new/pin"]);
+		expect(getPrefs().extraProjects).toBe(saved.extraProjects);
+		expect(getPrefs().projectColors).toBe(saved.projectColors);
+		await flushPrefs();
+		normalize.mockRestore();
+	});
+	it("merges aliases in list order, prefers canonical colors and keeps unrelated data through persistence", async () => {
+		fake.realpathSync.mockImplementation((path: string) => path.replace("/alias/", "/resolved/"));
+		// The migration uses the POSIX cwd rule even when this test runs on Windows CI.
+		vi.stubGlobal("process", new Proxy(process, { get: (target, key) => key === "platform" ? "linux" : Reflect.get(target, key) }));
+		try {
+			fake.contents = JSON.stringify({
+				extraProjects: ["/alias/a", "/resolved/a", "/missing", "/alias/b"],
+				pinnedProjects: ["/alias/b", "/resolved/a", "/resolved/b"],
+				projectColors: { "/alias/a": "red", "/resolved/a": "blue", "/alias/b": "green", "/missing": "gray" },
+				futurePreference: { kept: true }, theme: "dark",
+			});
+			const { getPrefs, setPrefs, flushPrefs } = await import("./prefs");
+			expect(getPrefs()).toMatchObject({
+				extraProjects: ["/resolved/a", "/missing", "/resolved/b"],
+				pinnedProjects: ["/resolved/b", "/resolved/a"],
+				projectColors: { "/resolved/a": "blue", "/resolved/b": "green", "/missing": "gray" },
+				futurePreference: { kept: true }, theme: "dark",
+			});
+			setPrefs({ extraProjects: ["/alias/b", "/resolved/b", "/alias/a"], pinnedProjects: ["/alias/a", "/resolved/a"], projectColors: { "/alias/a": "purple" } });
+			await flushPrefs();
+			expect(JSON.parse(fake.contents!)).toMatchObject({
+				extraProjects: ["/resolved/b", "/resolved/a"], pinnedProjects: ["/resolved/a"],
+				projectColors: { "/resolved/a": "purple" }, futurePreference: { kept: true }, theme: "dark",
+			});
+			vi.resetModules();
+			expect((await import("./prefs")).getPrefs().extraProjects).toEqual(["/resolved/b", "/resolved/a"]);
+		} finally { vi.unstubAllGlobals(); }
 	});
 });

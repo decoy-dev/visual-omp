@@ -443,6 +443,28 @@ export const useApp = create<AppState>()(
 					for (const tab of layout.tabs ?? []) ensureController(tab);
 					set({ ...layout, view: "chat", pageReturn: "chat" });
 				}
+				// localStorage restores synchronously, but only main can match omp's filesystem spelling.
+				// Resolve saved references before discovery or host adoption can group their chats.
+				const restored = get();
+				const paths = [...new Set([
+					...restored.tabs.map(tab => tab.projectPath), ...restored.expandedProjects,
+					...(restored.activeProject ? [restored.activeProject] : []),
+				])];
+				if (paths.length) {
+					const canonical = await window.vomp.invoke("project:paths", paths);
+					const byPath = new Map(paths.map((path, index) => [path, canonical[index]!]));
+					const tabs = get().tabs.map(tab => {
+						const path = byPath.get(tab.projectPath) ?? tab.projectPath;
+						if (path === tab.projectPath) return tab;
+						controllers.get(tab.id)?.restoreProjectPath(path);
+						return { ...tab, projectPath: path };
+					});
+					set(state => ({
+						tabs: tabs.every((tab, index) => tab === state.tabs[index]) ? state.tabs : tabs,
+						activeProject: state.activeProject ? byPath.get(state.activeProject) ?? state.activeProject : null,
+						expandedProjects: [...new Set(state.expandedProjects.map(path => byPath.get(path) ?? path))],
+					}));
+				}
 				window.vomp.on("app:prefs", next => set({ prefs: next }));
 				window.vomp.on("sessions:changed", () => {
 					void get().refreshProjects();

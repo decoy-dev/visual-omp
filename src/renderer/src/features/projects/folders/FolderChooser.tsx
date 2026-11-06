@@ -59,8 +59,8 @@ export function FolderChooser({ props, close }: SheetProps<FolderChooserProps | 
 		try {
 			if (purpose === "open") await addProject(path);
 			else if (purpose === "pick") {
-				await registerDraftProject(path);
-				props?.onPick?.(path);
+				const canonical = await registerDraftProject(path);
+				props?.onPick?.(canonical);
 			} else await startChatIn(path, tabId);
 			close();
 		} catch (failure) {

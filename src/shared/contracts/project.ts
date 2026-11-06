@@ -186,6 +186,8 @@ export interface RuleDraft {
 
 declare module "../ipc" {
 	interface IpcInvokeMap {
+		/** Match omp's cwd spelling for restored project references; missing folders stay unchanged. */
+		"project:paths": { args: [paths: string[]]; result: string[] };
 		/** Default parent directory for new projects (`~/Projects`). */
 		"project:defaults": { args: []; result: { parentDir: string } };
 		/** Validate a new project folder name (live, as the user types). */

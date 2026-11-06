@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it } from "vitest";
 import { readReleaseTour } from "./release-tour";
+import { projectPath } from "../omp/project-path";
 
 let root: string;
 let profile: string;
@@ -72,7 +73,7 @@ it("derives project selection from validated tabs and drops outside expanded pro
 		activeTabId: "tour-one", activeProject: tmpdir(), expandedProjects: [tmpdir()], arbitraryPath: tmpdir(),
 	}));
 	const result = readReleaseTour(false, profile, env);
-	expect(result).toMatchObject({ activeProject: project, expandedProjects: [], tabs: [{ projectPath: project }] });
+	expect(result).toMatchObject({ activeProject: projectPath(project), expandedProjects: [], tabs: [{ projectPath: projectPath(project) }] });
 	expect(result).not.toHaveProperty("arbitraryPath");
 	expect(result).not.toHaveProperty("tabs.0.extraPath");
 });

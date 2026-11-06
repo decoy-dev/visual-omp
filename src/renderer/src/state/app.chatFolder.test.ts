@@ -18,6 +18,10 @@ vi.mock("./session", () => ({
 	SessionController: class {
 		hostId = null;
 		constructor(options: object) { Object.assign(this, options); }
+		projectPath = "";
+		restoreProjectPath(path: string) { this.projectPath = path; }
+		async loadHistory() {}
+		async checkOwnership() {}
 		subscribe() { return () => undefined; }
 		getSnapshot() { return { mode: "history", working: false, queue: [] }; }
 		async ensureLive() {}
@@ -89,13 +93,36 @@ describe("chat entry point folders", () => {
 		const { registerDraftProject } = await import("../features/projects/actions");
 		const { useComposerDrafts } = await import("../chat/composer/drafts");
 		env.invoke.mockImplementation(async channel => channel === "sessions:projects"
-			? [{ path: "/picked", name: "picked", sessionCount: 0, lastActivity: 0, exists: true }]
-			: []);
-		await registerDraftProject("/picked");
-		useComposerDrafts.getState().setHomeFolder("/picked");
+			? [{ path: "/canonical", name: "canonical", sessionCount: 0, lastActivity: 0, exists: true }]
+			: channel === "project:add" ? { path: "/canonical" } : []);
+		const path = await registerDraftProject("/picked");
+		useComposerDrafts.getState().setHomeFolder(path);
 		expect(env.invoke).toHaveBeenCalledWith("project:add", "/picked");
-		expect(useApp.getState().projects[0].path).toBe("/picked");
-		expect(useComposerDrafts.getState().homeFolder).toBe("/picked");
+		expect(useApp.getState().projects[0].path).toBe("/canonical");
+		expect(useComposerDrafts.getState().homeFolder).toBe("/canonical");
 		expect(useApp.getState().activeProject).toBeNull();
 	});
+});
+
+it("resolves saved project references before discovery without starting omp", async () => {
+	const { useApp, controllerFor } = await loadApp();
+	const tabs = [{ id: "restored", projectPath: "/private/tmp/project", sessionFile: "/saved/chat.jsonl", title: null }];
+	env.storage.set("visual-omp:layout", JSON.stringify({ state: { tabs, activeTabId: "restored", activeProject: tabs[0].projectPath, expandedProjects: [tabs[0].projectPath, "/tmp/project"] }, version: 2 }));
+	// Reload after seeding localStorage to exercise synchronous hydration at module initialization.
+	vi.resetModules();
+	const restored = await import("./app");
+	env.invoke.mockImplementation(async (channel, ...args: unknown[]) => {
+		if (channel === "app:info") return { defaultChatFolder: "/tmp" };
+		if (channel === "project:paths") return (args[0] as string[]).map(path => path.replace("/private/tmp/", "/tmp/"));
+		if (channel === "sessions:projects") {
+			expect(restored.useApp.getState().tabs[0].projectPath).toBe("/tmp/project");
+			expect(restored.controllerFor("restored")?.projectPath).toBe("/tmp/project");
+		}
+		return [];
+	});
+	await restored.useApp.getState().init();
+	expect(restored.useApp.getState()).toMatchObject({ tabs: [{ projectPath: "/tmp/project" }], activeProject: "/tmp/project", expandedProjects: ["/tmp/project"] });
+	expect(env.invoke).not.toHaveBeenCalledWith("host:start", expect.anything());
+	expect(useApp).not.toBe(restored.useApp);
+	expect(controllerFor("restored")).toBeNull();
 });

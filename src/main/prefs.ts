@@ -8,6 +8,7 @@ import { normalizeStatusBar } from "@shared/statusBarPreference";
 import type { NewUserApproval } from "./services/approval-default";
 import { broadcast } from "./ipc";
 import type { OmpUpdateNotice } from "@shared/contracts/updates";
+import { projectPath } from "./omp/project-path";
 
 /** Main-only state stored with the preferences. */
 interface StoredPreferences extends AppPreferences {
@@ -57,10 +58,26 @@ function sidebarSort(value: unknown): SidebarSort {
 	};
 }
 
+/** Preserve list order; canonical color entries win conflicts, then the first saved alias. */
+function projectPreferences<T extends Partial<AppPreferences>>(prefs: T): T {
+	const normalized = { ...prefs };
+	if (prefs.extraProjects !== undefined) normalized.extraProjects = [...new Set(prefs.extraProjects.map(projectPath))];
+	if (prefs.pinnedProjects !== undefined) normalized.pinnedProjects = [...new Set(prefs.pinnedProjects.map(projectPath))];
+	if (prefs.projectColors !== undefined) {
+		const colors: AppPreferences["projectColors"] = {};
+		for (const [path, color] of Object.entries(prefs.projectColors)) {
+			const canonical = projectPath(path);
+			if (!Object.hasOwn(colors, canonical) || path === canonical) colors[canonical] = color;
+		}
+		normalized.projectColors = colors;
+	}
+	return normalized;
+}
+
 function load(): StoredPreferences {
 	try {
 		const stored = JSON.parse(readFileSync(file, "utf8")) as Partial<StoredPreferences>;
-		return { appUpdateSkipThrough: null, ...DEFAULTS, ...stored, sidebarSort: sidebarSort(stored.sidebarSort), statusBar: normalizeStatusBar(stored.statusBar), sendCrashReports: stored.sendCrashReports !== false };
+		return projectPreferences({ appUpdateSkipThrough: null, ...DEFAULTS, ...stored, sidebarSort: sidebarSort(stored.sidebarSort), statusBar: normalizeStatusBar(stored.statusBar), sendCrashReports: stored.sendCrashReports !== false });
 	} catch (error) {
 		// No preferences file yet: a fresh profile, so the new-user approval default is still to run.
 		if ((error as NodeJS.ErrnoException).code === "ENOENT") return { appUpdateSkipThrough: null, ...DEFAULTS, setupCompleted: false, newUserApproval: "pending" };
@@ -76,7 +93,7 @@ export function getPrefs(): StoredPreferences {
 export function setPrefs(patch: Partial<StoredPreferences>): StoredPreferences {
 	current = {
 		...current,
-		...patch,
+		...projectPreferences(patch),
 		sidebarSort: sidebarSort(patch.sidebarSort === undefined ? current.sidebarSort : patch.sidebarSort),
 		statusBar: normalizeStatusBar(patch.statusBar === undefined ? current.statusBar : patch.statusBar),
 		textScale: Math.min(130, Math.max(90, patch.textScale ?? current.textScale)),

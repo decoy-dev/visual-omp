@@ -115,6 +115,8 @@ export async function generateChat({ root, env, binary, chat, signal }) {
     await request("set_session_name", { name: chat.title });
     const state = await request("get_state");
     const entries = await readTourSession(state.sessionFile);
+    const projectPath = entries.find(entry => entry.type === "session")?.cwd;
+    if (typeof projectPath !== "string" || !isAbsolute(projectPath)) throw new Error(`Missing project cwd in tour session: ${state.sessionFile}`);
     if (chat.model && !entries.some(entry => entry.message?.role === "assistant" && `${entry.message.provider}/${entry.message.model}` === chat.model)) throw new Error(`The ${chat.id} fixture did not use ${chat.model}.`);
     if (chat.expectedCacheRead && !entries.some(entry => entry.message?.usage?.cacheRead === chat.expectedCacheRead)) throw new Error(`The ${chat.id} fixture did not report the expected cache usage.`);
     if (chat.expectedReply && !entries.some(entry => entry.message?.role === "assistant" && entry.message.content?.some(part => part.type === "text" && part.text.includes(chat.expectedReply)))) throw new Error(`The ${chat.id} fixture did not confirm its expected reply.`);
@@ -122,7 +124,7 @@ export async function generateChat({ root, env, binary, chat, signal }) {
     if (chat.helper) await readTourSession(join(state.sessionFile.replace(/\.jsonl$/, ""), "TourHelper.jsonl"));
     if (chat.answer && !questions.length) throw new Error(`The ${chat.id} fixture did not open its question.`);
     if (chat.helper && !tools.includes("task")) throw new Error("The helper fixture did not call task.");
-    return { ...chat, projectPath: cwd, sessionFile: state.sessionFile, tools, questions };
+    return { ...chat, projectPath, sessionFile: state.sessionFile, tools, questions };
   } finally {
     clearTimeout(timeout);
     // Stop the generator before the app can claim the same omp session lease.

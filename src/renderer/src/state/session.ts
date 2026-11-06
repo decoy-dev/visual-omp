@@ -336,6 +336,11 @@ export class SessionController {
 		return this.#projectPath;
 	}
 
+	/** Main resolves a saved folder before host adoption; the controller already exists for first render. */
+	restoreProjectPath(path: string): void {
+		if (!this.#view.host) this.#projectPath = path;
+	}
+
 	get sessionFile(): string | null {
 		return this.#view.host?.sessionFile ?? this.#sessionFile;
 	}

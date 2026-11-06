@@ -143,7 +143,7 @@ export function NewProjectWizard({ props, close }: SheetProps<NewProjectProps | 
 					setProgress(null);
 				}
 			}
-			await addProject(path);
+			path = await addProject(path);
 			close();
 			if (chatNow) void startChat(path, { text: firstMessage });
 		} catch (failure) {

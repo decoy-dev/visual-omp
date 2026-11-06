@@ -4,7 +4,7 @@ import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { parseArguments, readTourSession, tourLayout } from "./release-tour.mjs";
+import { generateChat, parseArguments, readTourSession, tourLayout } from "./release-tour.mjs";
 import manifest from "./tours/0.7.9.mjs";
 import patch from "./tours/0.7.10.mjs";
 import current from "./tours/0.7.11.mjs";
@@ -232,4 +232,32 @@ test("generated session validation parses JSONL and rejects failed turns", async
   await assert.rejects(readTourSession(file), /Incomplete omp tour/);
   await writeFile(file, "broken");
   await assert.rejects(readTourSession(file), SyntaxError);
+});
+
+test("generated tour tabs use the session header cwd instead of the launch folder spelling", { skip: process.platform === "win32" }, async t => {
+  const root = await mkdtemp(join(tmpdir(), "vomp-tour-cwd-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const binary = join(root, "fixture-omp.mjs");
+  const sessionFile = join(root, "generated.jsonl");
+  const cwd = "/recorded/header/cwd";
+  const entries = [
+    { type: "session", id: "cwd-test", cwd },
+    { type: "message", message: { role: "user", content: "fixture" } },
+    { type: "message", message: { role: "assistant", content: [], stopReason: "stop" } },
+  ];
+  await writeFile(sessionFile, entries.map(entry => JSON.stringify(entry)).join("\n") + "\n");
+  await writeFile(binary, `#!${process.execPath}
+import { createInterface } from "node:readline";
+const send = value => process.stdout.write(JSON.stringify(value) + "\\n");
+createInterface({ input: process.stdin }).on("line", line => {
+  const frame = JSON.parse(line);
+  if (frame.type === "prompt") send({ type: "agent_end" });
+  else send({ type: "response", id: frame.id, success: true, data: frame.type === "get_state" ? { sessionFile: ${JSON.stringify(sessionFile)} } : {} });
+});
+send({ type: "ready" });
+`, { mode: 0o755 });
+  const chat = await generateChat({ root, env: process.env, binary, chat: { id: "cwd-test", title: "Project identity", prompts: ["fixture"] } });
+  assert.equal(chat.projectPath, cwd);
+  assert.notEqual(chat.projectPath, join(root, "chats", "cwd-test"));
+  assert.equal(tourLayout([chat]).tabs[0].projectPath, cwd);
 });

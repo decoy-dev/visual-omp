@@ -1,5 +1,6 @@
 import { readFileSync, realpathSync } from "node:fs";
 import { dirname, isAbsolute, relative, sep } from "node:path";
+import { projectPath } from "../omp/project-path";
 
 /** Development-only startup data. A tour must use its own fixture root and app profile. */
 export function readReleaseTour(packaged: boolean, userData: string, env: NodeJS.ProcessEnv = process.env): unknown {
@@ -23,7 +24,7 @@ export function readReleaseTour(packaged: boolean, userData: string, env: NodeJS
 		throw new Error("Release tour chats must use fixture-local folders and session files.");
 	}
 	const tabs = (seed.tabs as { id: string; title: string | null; projectPath: string; sessionFile: string }[]).map(tab => ({
-		id: tab.id, title: tab.title, projectPath: realpathSync(tab.projectPath), sessionFile: realpathSync(tab.sessionFile),
+		id: tab.id, title: tab.title, projectPath: projectPath(tab.projectPath), sessionFile: realpathSync(tab.sessionFile),
 	}));
 	const active = tabs.find(tab => tab.id === seed.activeTabId) ?? tabs[0]!;
 	const docks = Object.fromEntries(tabs.flatMap(tab => {

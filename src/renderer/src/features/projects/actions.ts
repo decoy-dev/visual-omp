@@ -11,16 +11,18 @@ import type { FolderChooserProps } from "./folders/FolderChooser";
 import { errorText } from "@shared/errors";
 
 /** Register a folder as a project, refresh the sidebar and show its overview. */
-export async function addProject(path: string): Promise<void> {
-	await window.vomp.invoke("project:add", path);
+export async function addProject(path: string): Promise<string> {
+	const project = await window.vomp.invoke("project:add", path);
 	await useApp.getState().refreshProjects();
-	useApp.getState().openProject(path);
+	useApp.getState().openProject(project.path);
+	return project.path;
 }
 
 /** Register a Home draft's folder without changing the project's selection elsewhere in the app. */
-export async function registerDraftProject(path: string): Promise<void> {
-	await window.vomp.invoke("project:add", path);
+export async function registerDraftProject(path: string): Promise<string> {
+	const project = await window.vomp.invoke("project:add", path);
 	await useApp.getState().refreshProjects(false);
+	return project.path;
 }
 
 /** Open the folder chooser ("Start a chat in…"); `options.purpose` "open" or "pick" goes straight to the browser. */
@@ -38,7 +40,7 @@ export function openFolder(): void {
  * instead when nothing has been sent in it yet; otherwise a new chat opens.
  */
 export async function startChatIn(path: string, tabId?: string): Promise<void> {
-	await window.vomp.invoke("project:add", path);
+	path = (await window.vomp.invoke("project:add", path)).path;
 	await useApp.getState().refreshProjects();
 	const state = useApp.getState();
 	if (!state.expandedProjects.includes(path)) state.toggleProjectExpanded(path);

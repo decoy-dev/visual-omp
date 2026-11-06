@@ -22,6 +22,7 @@ import { writeText } from "../files";
 import { handle } from "../ipc";
 import { listProjects } from "../omp/sessions";
 import { runOmpJson } from "../omp/cli";
+import { projectPath } from "../omp/project-path";
 import { parseConfigList } from "../services/omp-config";
 import { getPrefs, setPrefs } from "../prefs";
 import {
@@ -101,7 +102,7 @@ async function checkName(name: string, parentDir?: string): Promise<ProjectNameC
 }
 
 async function addProject(input: string): Promise<ProjectSummary> {
-	const path = resolve(input);
+	const path = projectPath(resolve(input));
 	const info = await stat(path).catch(() => null);
 	if (!info?.isDirectory()) throw new Error(`Not a folder: ${path}`);
 	const prefs = getPrefs();
@@ -117,8 +118,8 @@ async function createProject(name: string, parentDir?: string): Promise<ProjectC
 	const check = await checkName(name, parentDir);
 	if (!check.ok) return { ok: false, problem: check.problem ?? "empty", path: check.path };
 	await mkdir(check.path, { recursive: true });
-	await addProject(check.path);
-	return { ok: true, path: check.path };
+	const project = await addProject(check.path);
+	return { ok: true, path: project.path };
 }
 
 /** Subfolders listed per folder; bigger folders are cut off (sorted by name) and flagged `truncated`. */
@@ -211,7 +212,7 @@ async function makeFolder(parentDir: string, name: string): Promise<FolderCreate
 }
 
 async function removeProject(input: string): Promise<void> {
-	const path = resolve(input);
+	const path = projectPath(resolve(input));
 	const prefs = getPrefs();
 	const { [path]: _color, ...projectColors } = prefs.projectColors;
 	setPrefs({
@@ -398,6 +399,7 @@ async function deleteRule(input: string, ruleName: string): Promise<ProjectRule[
 }
 
 export function register(): void {
+	handle("project:paths", paths => paths.map(projectPath));
 	handle("project:defaults", () => ({ parentDir: join(homedir(), "Projects") }));
 	handle("project:checkName", (name, parentDir) => checkName(name, parentDir));
 	handle("project:create", options => createProject(options.name, options.parentDir));
