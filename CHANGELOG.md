@@ -4,6 +4,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+#### Improved
+
+- Release notes group highlights by change type and give major changes and important notices distinct formatting.
+
 #### Fixed
 
 - Tool calls with missing results no longer show a success check. They now show "Result unavailable."
