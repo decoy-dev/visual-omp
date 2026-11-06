@@ -11,6 +11,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Added an optional status item showing omp's next-message prompt-cache prediction and diagnostics.
 - LSP results now show source previews, diagnostic counts and server failures, and web searches list failed providers.
 - Added omp model-tag completion, including supported thinking levels, and keyword highlighting with effect tooltips in running chats.
+- Added omp automatic-update settings, a retry action when another omp installer is running, and update notices with release notes and chat restart actions.
 
 #### Improved
 
