@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, symlink } from "node:fs/promises";
+import { realpathSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, rm, symlink } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
@@ -31,7 +32,9 @@ it("registers aliases once and returns the same cwd to folder picker, drag and H
 	await symlink(target, alias, process.platform === "win32" ? "junction" : "dir");
 	// Exercise the POSIX cwd rule on Windows CI without needing symlink privileges beyond a junction.
 	vi.stubGlobal("process", new Proxy(process, { get: (source, key) => key === "platform" ? "linux" : Reflect.get(source, key) }));
-	const canonical = await realpath(join(target, "app"));
+	// Expect what projectPath computes: on Windows, fs.realpathSync keeps 8.3 short names (RUNNER~1) that the
+	// native fs.promises.realpath expands.
+	const canonical = realpathSync(join(target, "app"));
 	const add = fake.handlers.get("project:add")!;
 	expect((await add(join(alias, "app")) as ProjectSummary).path).toBe(canonical);
 	expect((await add(join(target, "app")) as ProjectSummary).path).toBe(canonical);
@@ -40,7 +43,7 @@ it("registers aliases once and returns the same cwd to folder picker, drag and H
 	expect(JSON.parse(await readFile(join(fake.root, "recent-folders.json"), "utf8"))).toMatchObject([{ path: canonical }]);
 	expect(fake.handlers.get("project:paths")!([join(alias, "app"), join(fake.root, "missing")])).toEqual([canonical, join(fake.root, "missing")]);
 	const created = await fake.handlers.get("project:create")!({ name: "new", parentDir: alias }) as ProjectCreateResult;
-	expect(created).toEqual({ ok: true, path: await realpath(join(target, "new")) });
+	expect(created).toEqual({ ok: true, path: realpathSync(join(target, "new")) });
 	if (!created.ok) throw new Error("Project creation failed");
 	await fake.handlers.get("project:remove")!(join(alias, "app"));
 	expect(fake.prefs.extraProjects).toEqual([created.path]);
