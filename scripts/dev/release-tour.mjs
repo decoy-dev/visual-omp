@@ -6,9 +6,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
 import { fixtureEnvironment, requireFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
+import { configureTour, prepareUpdateFixture, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 
 const checkout = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-export const defaultRelease = "0.7.8";
+export const defaultRelease = "0.7.9";
 
 export function tourLayout(chats) {
   if (!chats.length) throw new Error("A release tour needs at least one chat.");
@@ -42,6 +43,11 @@ export async function readTourSession(file) {
     throw new Error(`Incomplete omp tour session: ${file}`);
   }
   if (entries.some(entry => entry.message?.stopReason === "error" || entry.message?.isError)) throw new Error(`Failed omp turn in ${file}`);
+  for (const entry of entries) {
+    if (entry.message?.role !== "toolResult" || !entry.message.toolCallId?.startsWith("tour-recorded-")) continue;
+    const callIndex = entries.findIndex(candidate => candidate.message?.role === "assistant" && candidate.message.content?.some(part => part.type === "toolCall" && part.id === entry.message.toolCallId && part.name === entry.message.toolName));
+    if (callIndex < 0 || callIndex >= entries.indexOf(entry)) throw new Error(`Unpaired recorded tool result in ${file}`);
+  }
   return entries;
 }
 
@@ -49,7 +55,7 @@ export async function generateChat({ root, env, binary, chat, signal }) {
   const cwd = join(root, "chats", chat.folder ?? chat.id);
   await mkdir(cwd, { recursive: true });
   if (chat.sampleHtml) await writeFile(join(cwd, "sample.html"), '<!doctype html><html lang="en"><meta charset="utf-8"><title>Files viewer sample</title><link rel="stylesheet" href="style.css"><h1>Files viewer sample</h1><p>Local styles and the image should render with scripts disabled.</p><img src="image.svg" alt="Local fixture image"></html>\n');
-  const child = spawn(binary, ["--mode", "rpc-ui", "--no-ui", "--no-extensions", "--no-skills", "--no-rules", "--no-context-files", "--no-lsp", "--no-title", "--no-pty", "--tools", "write,bash,ask,task,wait", "--model", "fixture/preview", "--thinking", "off", "--auto-approve"], { cwd, env, signal, stdio: "pipe" });
+  const child = spawn(binary, ["--mode", "rpc-ui", "--no-ui", "--no-extensions", "--no-skills", "--no-rules", "--no-context-files", "--no-lsp", "--no-title", "--no-pty", "--tools", "write,bash,ask,task,wait", "--model", chat.model ?? "fixture/preview", "--thinking", "off", "--auto-approve"], { cwd, env, signal, stdio: "pipe" });
   let stderr = "";
   let sequence = 0;
   let failure;
@@ -98,7 +104,7 @@ export async function generateChat({ root, env, binary, chat, signal }) {
       for (const waiter of listeners) if (waiter.type === frame.type) { listeners.delete(waiter); waiter.resolve(frame); }
     } catch (error) { fail(error); }
   });
-  const timeout = setTimeout(() => { fail(new Error(`Timed out preparing ${chat.id}. ${stderr}`)); child.kill("SIGTERM"); }, 120_000);
+  const timeout = setTimeout(() => { fail(new Error(`Timed out preparing ${chat.id}. ${stderr}`)); child.kill("SIGTERM"); }, chat.timeoutMs ?? 120_000);
   try {
     await ready;
     for (const message of chat.prompts) {
@@ -108,7 +114,9 @@ export async function generateChat({ root, env, binary, chat, signal }) {
     }
     await request("set_session_name", { name: chat.title });
     const state = await request("get_state");
-    await readTourSession(state.sessionFile);
+    const entries = await readTourSession(state.sessionFile);
+    if (chat.model && !entries.some(entry => entry.message?.role === "assistant" && `${entry.message.provider}/${entry.message.model}` === chat.model)) throw new Error(`The ${chat.id} fixture did not use ${chat.model}.`);
+    if (chat.expectedCacheRead && !entries.some(entry => entry.message?.usage?.cacheRead === chat.expectedCacheRead)) throw new Error(`The ${chat.id} fixture did not report the expected cache usage.`);
     for (const file of chat.files ?? []) if (!(await stat(join(cwd, file))).size) throw new Error(`Missing tour output: ${file}`);
     if (chat.helper) await readTourSession(join(state.sessionFile.replace(/\.jsonl$/, ""), "TourHelper.jsonl"));
     if (chat.answer && !questions.length) throw new Error(`The ${chat.id} fixture did not open its question.`);
@@ -132,15 +140,21 @@ export async function prepareTour({ root, binary, manifest, signal }) {
   const version = execFileSync(binary, ["--version"], { env, encoding: "utf8" }).trim();
   const config = execFileSync(binary, ["config", "path"], { cwd: join(root, "work"), env, encoding: "utf8" }).trim();
   if (await realpath(config) !== await realpath(env.PI_CODING_AGENT_DIR)) throw new Error("omp did not select the scratch agent directory.");
+  await configureTour(env, manifest);
+  const updateFeed = manifest.updateFixture ? await prepareUpdateFixture(root, version) : undefined;
   const chats = [];
   for (const chat of manifest.chats) {
-    chats.push(await generateChat({ root, env, binary, chat, signal }));
+    const generated = await generateChat({ root, env, binary, chat, signal });
+    await appendRecordedTools(generated.sessionFile, await readTourSession(generated.sessionFile), chat.recordedTools);
+    validateRecordedTools(await readTourSession(generated.sessionFile), chat.recordedTools);
+    if (chat.recordedTools) generated.tools.push(...chat.recordedTools.map(tool => tool.name));
+    chats.push(generated);
     console.log(`Prepared ${chat.title}`);
   }
   const seed = join(root, "tour-layout.json");
   await writeFile(seed, JSON.stringify(tourLayout(chats), null, 2) + "\n");
-  await writeFile(join(env.VOMP_DEV_PROFILE, "preferences.json"), JSON.stringify({ setupCompleted: true, tourCompleted: true, newUserApproval: "done", livePreview: true, livePreviewOpenOutputs: true, sendCrashReports: false, ...(isAbsolute(binary) ? { ompPath: binary } : {}) }, null, 2) + "\n");
-  const summary = { release: manifest.version, ompVersion: version, root, seed, binary, chats: chats.map(({ id, title, projectPath, sessionFile, files, tools, questions }) => ({ id, title, projectPath, sessionFile, files, tools, questions })) };
+  await writeFile(join(env.VOMP_DEV_PROFILE, "preferences.json"), JSON.stringify({ setupCompleted: true, tourCompleted: true, newUserApproval: "done", livePreview: true, livePreviewOpenOutputs: true, sendCrashReports: false, ...manifest.preferences, ...(isAbsolute(binary) ? { ompPath: binary } : {}) }, null, 2) + "\n");
+  const summary = { release: manifest.version, ompVersion: version, root, seed, binary, updateFeed, chats: chats.map(({ id, title, projectPath, sessionFile, files, tools, questions, recordedTools }) => ({ id, title, projectPath, sessionFile, files, tools, questions, recordedTools })) };
   await writeFile(join(root, "tour.json"), JSON.stringify(summary, null, 2) + "\n");
   return summary;
 }
@@ -159,10 +173,14 @@ async function main() {
       await requireFixture(root);
       summary = JSON.parse(await readFile(join(root, "tour.json"), "utf8"));
       if (summary.root !== root || summary.seed !== join(root, "tour-layout.json")) throw new Error("The prepared tour marker does not match its root.");
+      if (summary.updateFeed) {
+        const path = relative(root, await realpath(summary.updateFeed));
+        if (path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) throw new Error("The update feed is outside its scratch root.");
+      }
       for (const chat of summary.chats) {
         const path = relative(root, await realpath(chat.sessionFile));
         if (path === ".." || path.startsWith(`..${sep}`) || isAbsolute(path)) throw new Error("A tour session is outside its scratch root.");
-        await readTourSession(chat.sessionFile);
+        validateRecordedTools(await readTourSession(chat.sessionFile), chat.recordedTools);
       }
       const marker = JSON.parse(await readFile(join(root, "fixture.json"), "utf8"));
       fixture = await startFixture({ root, port: Number(new URL(marker.baseUrl).port), initializeProfile: false });
@@ -176,7 +194,7 @@ async function main() {
       console.log(`Prepared without Electron. Open later with: npm run tour -- --resume ${JSON.stringify(root)}`);
       return;
     }
-    const env = { ...fixtureEnvironment(root), VOMP_TOUR_CHATS: summary.seed };
+    const env = { ...fixtureEnvironment(root), VOMP_TOUR_CHATS: summary.seed, ...(summary.updateFeed ? { VOMP_UPDATE_FEED: summary.updateFeed } : {}) };
     const npmCli = process.env.npm_execpath;
     dev = spawn(npmCli ? process.execPath : process.platform === "win32" ? "npm.cmd" : "npm", npmCli ? [npmCli, "run", "dev"] : ["run", "dev"], { cwd: checkout, env, stdio: "inherit", shell: !npmCli && process.platform === "win32" });
     console.log("The local provider stays available until the development build exits. Quit the development app when finished.");

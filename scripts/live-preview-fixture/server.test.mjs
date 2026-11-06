@@ -41,6 +41,24 @@ test("timestamps runs three separate 45-second rounds before replying", async ()
   assert.deepEqual(await callsFor("", messages), []);
 });
 
+test("PDF fixture writes a self-contained page with exact cross-reference and stream lengths", async () => {
+  const [call] = await callsFor("fixture pdf");
+  assert.equal(call.name, "write");
+  assert.equal(call.args.path, "sample.pdf");
+  const pdf = call.args.content;
+  assert.match(pdf, /^%PDF-1.4\n/);
+  assert.match(pdf, /\/Type \/Page .*\/MediaBox \[0 0 612 792\]/);
+  assert.match(pdf, /Saved PDF fixture/);
+  const xref = Number(/startxref\n(\d+)\n%%EOF\n$/.exec(pdf)[1]);
+  assert.equal(pdf.slice(xref, xref + 4), "xref");
+  const offsets = [...pdf.matchAll(/^(\d{10}) 00000 n $/gm)].map(match => Number(match[1]));
+  assert.equal(offsets.length, 5);
+  for (const [index, offset] of offsets.entries()) assert.ok(pdf.slice(offset).startsWith(`${index + 1} 0 obj\n`));
+  const stream = /\/Length (\d+) >>\nstream\n([\s\S]*?)endstream/.exec(pdf);
+  assert.equal(Buffer.byteLength(stream[2]), Number(stream[1]));
+  assert.deepEqual(await callsFor("", [{ role: "user", content: "fixture pdf" }, { role: "tool", content: "Saved sample.pdf" }]), []);
+});
+
 test("video uses a real paced ffmpeg render with an explicit 180-frame total", async () => {
   const calls = await callsFor("fixture video");
   assert.equal(calls.length, 1); assert.equal(calls[0].name, "bash");
@@ -160,4 +178,54 @@ test("bash trace fixture runs each output shape once and finishes after their re
     { role: "tool", content: "Trace fixture output." },
   ]);
   assert.deepEqual(followUp, []);
+});
+
+test("a second video render flips the test pattern while replacing the same path", async () => {
+  const [call] = await callsFor("", [
+    { role: "user", content: "fixture video" },
+    { role: "assistant", content: "Rendered." },
+    { role: "user", content: "fixture video" },
+  ]);
+  assert.equal(call.args.command, videoCommand(false, false, true));
+  assert.match(call.args.command, /-vf hflip/);
+  assert.match(call.args.command, /out\.mp4$/);
+});
+
+test("cache replies report an uncached first send and a cached second send", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vomp-cache-fixture-")); roots.push(root);
+  const server = await startFixture({ root, port: 0, durationMs: 0 });
+  try {
+    const messages = [{ role: "user", content: "fixture cache" }];
+    for (const cachedTokens of [0, 10000]) {
+      const response = await fetch(`${server.baseUrl}/chat/completions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ model: "cache", messages }) });
+      const frames = (await response.text()).split("\n").filter(line => line.startsWith("data: {")).map(line => JSON.parse(line.slice(6)));
+      const usage = frames.find(frame => frame.usage).usage;
+      assert.equal(usage.prompt_tokens_details.cached_tokens, cachedTokens);
+      assert.equal(usage.prompt_tokens, 12000);
+      assert.ok(frames.some(frame => frame.choices.some(choice => choice.finish_reason === "stop")));
+      messages.push({ role: "assistant", content: "Received." }, { role: "user", content: "fixture cache" });
+    }
+  } finally { await server.close(); }
+});
+
+test("helper replies stream multiple content chunks before completion", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vomp-helper-fixture-")); roots.push(root);
+  const server = await startFixture({ root, port: 0, durationMs: 0 });
+  try {
+    const response = await fetch(`${server.baseUrl}/chat/completions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: "fixture helper-reply" }] }) });
+    const frames = (await response.text()).split("\n").filter(line => line.startsWith("data: {")).map(line => JSON.parse(line.slice(6)));
+    assert.ok(frames.filter(frame => frame.choices[0].delta.content).length > 3);
+    assert.equal(frames.at(-1).choices[0].finish_reason, "stop");
+  } finally { await server.close(); }
+});
+
+test("helper waits again after an idle wait and stops only after its reply arrives", async () => {
+  const messages = [
+    { role: "user", content: "fixture helper" },
+    { role: "assistant", tool_calls: [{ function: { name: "task", arguments: "{}" } }, { function: { name: "wait", arguments: "{}" } }] },
+    { role: "tool", content: "[Uneventful result elided]" },
+  ];
+  assert.deepEqual((await callsFor("", messages)).map(call => call.name), ["wait"]);
+  messages.push({ role: "assistant", tool_calls: [{ function: { name: "wait", arguments: "{}" } }] }, { role: "tool", content: "The helper checked the sample. Completed." });
+  assert.deepEqual(await callsFor("", messages), []);
 });

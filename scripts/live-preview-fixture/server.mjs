@@ -23,6 +23,28 @@ export function posterSvg() {
   return lines.join("\n") + "\n";
 }
 
+// An ASCII-only, one-page PDF keeps this saved-viewer check dependency-free.
+export function samplePdf() {
+  const stream = "0.1 0.5 0.5 rg 48 620 240 72 re f\nBT /F1 20 Tf 48 730 Td (Saved PDF fixture) Tj 0 -30 Td /F1 12 Tf (Back or Escape returns to Outputs.) Tj ET\n";
+  const objects = [
+    "<< /Type /Catalog /Pages 2 0 R >>",
+    "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+    "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>",
+    "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
+    `<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}endstream`,
+  ];
+  let pdf = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const [index, object] of objects.entries()) {
+    offsets.push(Buffer.byteLength(pdf));
+    pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
+  }
+  const xref = Buffer.byteLength(pdf);
+  pdf += `xref\n0 ${offsets.length}\n0000000000 65535 f \n`;
+  pdf += offsets.slice(1).map(offset => `${String(offset).padStart(10, "0")} 00000 n \n`).join("");
+  return pdf + `trailer\n<< /Size ${offsets.length} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+}
+
 const image = '<svg xmlns="http://www.w3.org/2000/svg" width="160" height="100"><rect width="160" height="100" fill="#197f86"/><circle cx="80" cy="50" r="30" fill="#f5f4ee"/></svg>\n';
 const css = 'body { margin: 32px; font: 20px sans-serif; background: #f5f4ee; color: #183a40; } h1 { color: #197f86; } img { max-width: 320px; }\n';
 function pageHtml() {
@@ -49,10 +71,10 @@ function pngCommand() {
   return `python3 - <<'PY'\nimport pathlib, struct, time, zlib\np = pathlib.Path('frames.png')\ndef chunk(kind, data):\n    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data) & 0xffffffff)\nfor i, rgb in enumerate([(25,127,134), (219,120,62), (24,58,64)]):\n    raw = (b'\\x00' + bytes(rgb) * 240) * 160\n    png = b'\\x89PNG\\r\\n\\x1a\\n' + chunk(b'IHDR', struct.pack('>IIBBBBB',240,160,8,2,0,0,0)) + chunk(b'IDAT',zlib.compress(raw)) + chunk(b'IEND',b'')\n    p.write_bytes(png)\n    print(str(p.resolve()) + ' save ' + str(i + 1), flush=True)\n    time.sleep(1)\nPY`;
 }
 
-export function videoCommand(prores = false, regular = false) {
+export function videoCommand(prores = false, regular = false, alternate = false) {
   const codec = prores ? "-c:v prores_ks -profile:v 3 -pix_fmt yuv422p10le" : "-c:v libx264 -pix_fmt yuv420p";
   const live = prores || regular ? "" : " -g 30 -bf 0 -movflags frag_keyframe+empty_moov+default_base_moof -flush_packets 1";
-  return `ffmpeg -hide_banner -y -re -f lavfi -i testsrc=duration=6:size=320x240:rate=30 -frames:v 180 ${codec}${live} -stats_period 0.25 -progress pipe:1 ${prores ? "unsupported.mov" : regular ? "regular.mp4" : "out.mp4"}`;
+  return `ffmpeg -hide_banner -y -re -f lavfi -i testsrc=duration=6:size=320x240:rate=30 -frames:v 180${alternate ? " -vf hflip" : ""} ${codec}${live} -stats_period 0.25 -progress pipe:1 ${prores ? "unsupported.mov" : regular ? "regular.mp4" : "out.mp4"}`;
 }
 
 export function sequenceCommand() {
@@ -105,7 +127,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages.findLast(message => message.role === "user");
       const turnMessages = messages.slice(messages.findLastIndex(message => message.role === "user"));
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|colors|helper|notes|process|svg|html|png|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|colors|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -132,8 +154,19 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       if (fixture === "colors") {
         send({ role: "assistant", content: "Check prose swatches: #2B72E5 and #197f8680. Check inline swatches: `#fff`, `#1234`, `#2B72E5`, `#197f8680`. Issue #123, https://example.invalid/#2B72E5 and /tmp/#2B72E5 stay plain.\n\n```css\n/* Code blocks stay unchanged. */\ncolor: #2B72E5;\n```\n" });
       } else if (fixture === "helper-reply") {
-        send({ role: "assistant", content: "The helper checked the sample. Open this conversation from Tasks in the live chat, then send a message while the helper is idle to check delivery. The fixture provider answers locally." });
+        const reply = "The helper checked the sample. Open this conversation from Tasks in the live chat, then send a message while the helper is idle to check delivery. The fixture provider answers locally.";
+        for (const part of reply.match(/.{1,24}/g)) {
+          send({ role: "assistant", content: part });
+          await sleep(durationMs / Math.ceil(reply.length / 24));
+        }
         send({}, "stop");
+        response.end("data: [DONE]\n\n");
+        return;
+      } else if (fixture === "cache") {
+        send({ role: "assistant", content: "The local fixture reports prompt cache usage. Send fixture cache again, inspect the Prompt cache item, then wait fifteen seconds for the twelve-second entry to expire." });
+        send({}, "stop");
+        const cached = messages.filter(message => message.role === "user" && /fixture\s+cache/i.test(textOf(message))).length > 1 ? 10000 : 0;
+        response.write(`data: ${JSON.stringify({ id: `fixture-${id}`, object: "chat.completion.chunk", created: 1, model: body.model ?? "cache", choices: [], usage: { prompt_tokens: 12000, completion_tokens: 32, total_tokens: 12032, prompt_tokens_details: { cached_tokens: cached } } })}\n\n`);
         response.end("data: [DONE]\n\n");
         return;
       } else if (fixture === "notes") {
@@ -153,7 +186,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         { name: "ask", args: { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }, slow: false },
       ] : fixture === "helper" ? !afterTool ? [
         { name: "task", args: { i: "Checking release helper conversation", context: "Use the local fixture provider. Do not run tools, checks or edit files.", tasks: [{ name: "TourHelper", task: "fixture helper-reply. Reply with the short release-tour helper check.", solutionSpace: "One fixed reply, no investigation." }] }, slow: false },
-      ] : helperCalls.some(call => call.function?.name === "wait") ? [] : [
+      ] : turnMessages.some(message => message.role !== "assistant" && textOf(message).includes("The helper checked the sample.")) ? [] : [
         { name: "wait", args: { i: "Waiting for tour helper" }, slow: false },
       ] : fixture === "process" ? !afterTool ? [
         { name: "bash", args: { i: "Starting process exit example", command: "python3 -u -c \"import time; print('tour process ready', flush=True); time.sleep(1); raise SystemExit(1)\"", name: "tour-process", pty: false, timeout: 0, ready: { log: "tour process ready" } }, slow: false },
@@ -168,8 +201,10 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         { name: "write", args: { path: "isolation.html", content: isolationHtml() }, slow: false },
       ] : fixture === "png" ? [
         { name: "bash", args: { command: pngCommand(), timeout: 30 }, slow: false },
+      ] : fixture === "pdf" ? [
+        { name: "write", args: { path: "sample.pdf", content: samplePdf() }, slow: false },
       ] : fixture === "video" || fixture === "prores" || fixture === "regular-video" ? [
-        { name: "bash", args: { command: videoCommand(fixture === "prores", fixture === "regular-video"), timeout: 30 }, slow: false },
+        { name: "bash", args: { command: videoCommand(fixture === "prores", fixture === "regular-video", fixture === "video" && messages.filter(message => message.role === "user" && /fixture\s+video/i.test(textOf(message))).length % 2 === 0), timeout: 30 }, slow: false },
       ] : fixture === "sequence" ? [
         { name: "bash", args: { command: sequenceCommand(), timeout: 30 }, slow: false },
       ] : ["docx", "xlsx", "pptx"].includes(fixture) ? [
