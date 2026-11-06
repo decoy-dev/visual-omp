@@ -91,7 +91,7 @@ export function ToolGroup({
 					{time !== null && " · "}
 					{t("work.group.calls", { count: plan.calls })}
 				</span>
-				<TranscriptTime timestamp={plan.startedAt} className="ml-auto" inControl />
+				<TranscriptTime timestamp={plan.startedAt ?? plan.latestAt} through={plan.latestAt} className="ml-auto" inControl />
 				{plan.failed > 0 && <span className="shrink-0 text-sm text-err">{t("work.group.failed", { count: plan.failed })}</span>}
 				{plan.running && (
 					<span className="inline-flex size-4 shrink-0 items-center justify-center">

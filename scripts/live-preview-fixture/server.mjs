@@ -105,7 +105,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages.findLast(message => message.role === "user");
       const turnMessages = messages.slice(messages.findLastIndex(message => message.role === "user"));
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(bash-trace|helper-reply|colors|helper|notes|process|svg|html|png|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|colors|helper|notes|process|svg|html|png|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -117,6 +117,18 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         response.write(`data: ${JSON.stringify({ id: `fixture-${id}`, object: "chat.completion.chunk", created: 1, model: "preview", choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
       };
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+      if (fixture === "timestamps") {
+        const round = turnMessages.flatMap(message => message.tool_calls ?? []).length;
+        if (round < 3) {
+          send({ role: "assistant", tool_calls: [{ index: 0, id: `fixture-clock-${id}`, type: "function", function: { name: "bash", arguments: JSON.stringify({ i: `Recording timestamp round ${round + 1}`, command: "sleep 45; date -u +%Y-%m-%dT%H:%M:%SZ", timeout: 55, async: false }) } }] });
+          send({}, "tool_calls");
+        } else {
+          send({ role: "assistant", content: "The three timestamp rounds finished." });
+          send({}, "stop");
+        }
+        response.end("data: [DONE]\n\n");
+        return;
+      }
       if (fixture === "colors") {
         send({ role: "assistant", content: "Check prose swatches: #2B72E5 and #197f8680. Check inline swatches: `#fff`, `#1234`, `#2B72E5`, `#197f8680`. Issue #123, https://example.invalid/#2B72E5 and /tmp/#2B72E5 stay plain.\n\n```css\n/* Code blocks stay unchanged. */\ncolor: #2B72E5;\n```\n" });
       } else if (fixture === "helper-reply") {

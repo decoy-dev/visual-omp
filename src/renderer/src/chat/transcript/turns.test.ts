@@ -37,6 +37,26 @@ function result(toolCallId: string, toolName: string, details?: unknown, isError
 const board = (status: string) => ({ phases: [{ name: "P", tasks: [{ content: "a", status }] }] });
 
 describe("transcriptLayout", () => {
+	it("advances a long collapsed group's interval without changing its start or key", () => {
+		const start = 1_000_000;
+		const entries = [user("go"), assistant([tool("first", "read")], start, "first"), result("first", "read", undefined, false, start + 1000), assistant([tool("later", "read")], start + 30 * 60_000, "later")];
+		const options = { live: true, group: true, context };
+		const before = transcriptLayout(entries, options).entries.get("first")!;
+		expect(before.groups.get(0)).toMatchObject({ key: "first", startedAt: start, latestAt: start + 30 * 60_000, running: true });
+		const finished = [...entries, result("later", "read", undefined, false, start + 31 * 60_000)];
+		const after = transcriptLayout(finished, options).entries.get("first")!;
+		expect(after.groups.get(0)).toMatchObject({ key: "first", startedAt: start, latestAt: start + 31 * 60_000, running: false });
+		expect(after.sig).not.toBe(before.sig);
+		expect(transcriptLayout(finished, { ...options, live: false }).entries.get("first")!.groups.get(0)?.latestAt).toBe(start + 31 * 60_000);
+	});
+
+	it("uses known activity without inventing a current time when a group has missing timestamps", () => {
+		const entries = [assistant([tool("unknown", "read")], 0, "unknown"), result("unknown", "read", undefined, false, 7000)];
+		expect(transcriptLayout(entries, { live: false, group: true, context }).entries.get("unknown")?.groups.get(0)).toMatchObject({ startedAt: null, latestAt: 7000, elapsedMs: null });
+		const invalid = [assistant([tool("invalid", "read")], Number.NaN, "invalid"), result("invalid", "read", undefined, false, Number.POSITIVE_INFINITY)];
+		expect(transcriptLayout(invalid, { live: false, group: true, context }).entries.get("invalid")?.groups.get(0)?.latestAt).toBeNull();
+	});
+
 	it("keeps narration visible between separate tool groups", () => {
 		const entries = [
 			user("go"),

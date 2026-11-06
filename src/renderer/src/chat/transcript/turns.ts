@@ -51,6 +51,8 @@ export interface ToolGroupPlan {
 	running: boolean;
 	/** The first call's message time, when known: a running group counts its time from here. */
 	startedAt: number | null;
+	/** Latest call or result time, so a collapsed group describes the whole recorded interval. */
+	latestAt: number | null;
 	/** From the first call's message to the last result; null unless every timestamp is known and in order. */
 	elapsedMs: number | null;
 }
@@ -247,6 +249,7 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 					failed: ids.filter(id => results.get(id)?.isError === true).length,
 					running: !finished && ids.some(id => !results.has(id)),
 					startedAt: start !== undefined && Number.isFinite(start) && start > 0 ? start : null,
+					latestAt: latestOf(ids, messageTime, results),
 					elapsedMs: elapsedOf(ids, messageTime, results),
 				};
 				const leading = groups.get(leader.entryId) ?? new Map<number, ToolGroupPlan>();
@@ -309,13 +312,24 @@ export function transcriptLayout(entries: readonly SessionEntry[], options: Layo
 		const sig = [
 			...[...hiddenSet].map(index => `h${index}`),
 			...[...groupMap].map(
-				([index, plan]) => `g${index}:${plan.key}:${plan.items.length}:${plan.failed}:${plan.running ? "r" : ""}:${plan.startedAt ?? ""}:${plan.elapsedMs ?? ""}`,
+				([index, plan]) => `g${index}:${plan.key}:${plan.items.length}:${plan.failed}:${plan.running ? "r" : ""}:${plan.startedAt ?? ""}:${plan.latestAt ?? ""}:${plan.elapsedMs ?? ""}`,
 			),
 			...(todoMarks.get(id) ?? []),
 		].join(",");
 		layouts.set(id, { hidden: hiddenSet, groups: groupMap, sig });
 	}
 	return { entries: layouts, todos, summaries };
+}
+
+function latestOf(ids: readonly string[], messageTime: ReadonlyMap<string, number>, results: ReadonlyMap<string, ToolResultMessage>): number | null {
+	let latest = 0;
+	for (const id of ids) {
+		const call = messageTime.get(id);
+		const result = results.get(id)?.timestamp;
+		if (call !== undefined && Number.isFinite(call) && call > latest) latest = call;
+		if (result !== undefined && Number.isFinite(result) && result > latest) latest = result;
+	}
+	return latest > 0 ? latest : null;
 }
 
 /** Wall time of a group when every call has a result and the times run forward; otherwise unknown. */

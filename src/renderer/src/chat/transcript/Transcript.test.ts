@@ -197,6 +197,27 @@ describe("recorded transcript times", () => {
 		expect(current.slice(current.indexOf(">", current.indexOf("<time")) + 1)).not.toContain(" · ");
 	});
 
+	it.each([true, false])("shows a thirty-minute tool interval with each message's own time intact (live: %s)", live => {
+		const later = start + 30 * 60_000;
+		const entries = [
+			entry("first", reply(start, [call("first")])),
+			{ type: "message", id: "result", parentId: "first", timestamp: iso(later), message: { role: "toolResult", toolCallId: "first", toolName: "read", timestamp: later, content: [], isError: false } } as SessionEntry,
+			entry("later", reply(later, [call("later")])),
+		];
+		const html = renderToStaticMarkup(createElement(TooltipProvider, null, createElement(TranscriptBody, { scope: { tabId: "range", projectPath: "/repo" }, entries, mode: "normal", working: live, ready: true, identity: "range" })));
+		expect(html).toContain(`dateTime="${iso(start)}" data-through="${iso(later)}"`);
+		const first = new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).formatToParts(new Date(start)).filter(part => part.type !== "dayPeriod").map(part => part.value).join("").trim();
+		expect(html).toContain(`${first}-${new Date(later).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`);
+	});
+
+	it("keeps a single compact minute for a short interval, with both full endpoints accessible", () => {
+		const html = renderToStaticMarkup(createElement(TranscriptTime, { timestamp: start, through: start + 1000 }));
+		expect(html).toContain(`data-through="${iso(start + 1000)}"`);
+		expect(html).toContain("08");
+		expect(html).toContain("09");
+		expect(html.slice(html.indexOf(">", html.indexOf("<time")) + 1)).not.toContain(" - ");
+	});
+
 	it.each(["normal", "thinking", "verbose"] as const)("uses the assistant message for thoughts and calls, and the result for completion in %s", mode => {
 		const response = reply(start, [{ type: "thinking", thinking: "Check the source." }, call("source")]);
 		const result = { role: "toolResult" as const, toolCallId: "source", toolName: "read", timestamp: end, content: [], isError: false };

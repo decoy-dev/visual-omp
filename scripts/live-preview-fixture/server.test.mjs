@@ -28,6 +28,19 @@ async function callsFor(prompt, messages = [{ role: "user", content: prompt }]) 
   } finally { await server.close(); }
 }
 
+test("timestamps runs three separate 45-second rounds before replying", async () => {
+  const messages = [{ role: "user", content: "fixture timestamps" }];
+  for (let round = 0; round < 3; round++) {
+    const [call] = await callsFor("", messages);
+    assert.equal(call.name, "bash");
+    assert.equal(call.args.command, "sleep 45; date -u +%Y-%m-%dT%H:%M:%SZ");
+    assert.equal(call.args.async, false);
+    assert.equal(call.args.timeout, 55);
+    messages.push({ role: "assistant", tool_calls: [{ function: { name: call.name, arguments: JSON.stringify(call.args) } }] }, { role: "tool", content: "Recorded time." });
+  }
+  assert.deepEqual(await callsFor("", messages), []);
+});
+
 test("video uses a real paced ffmpeg render with an explicit 180-frame total", async () => {
   const calls = await callsFor("fixture video");
   assert.equal(calls.length, 1); assert.equal(calls[0].name, "bash");
