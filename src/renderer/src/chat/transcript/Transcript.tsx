@@ -47,6 +47,7 @@ import { useDisplayedEntries } from "../branch";
 import { isReplyWrite, replyWriteUndecided, toolResultReplies } from "../friendly";
 import { useComposerDrafts } from "../composer/drafts";
 import { FileRefContext, LinkedMarkdown, useFileRefs, writtenFolders } from "./FileLinks";
+import { MentionText } from "./MentionText";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { usePendingQuestion } from "./QuestionCard";
 import { ReplyAnnouncer } from "./ReplyAnnouncer";
@@ -114,7 +115,7 @@ function UserContent({ content }: { content: string | readonly (TextContent | Im
 					))}
 				</div>
 			)}
-			<p className="selectable text-base whitespace-pre-wrap text-fg"><ColorText text={text} /></p>
+			<p className="selectable text-base whitespace-pre-wrap text-fg"><MentionText text={text} /></p>
 		</>
 	);
 }

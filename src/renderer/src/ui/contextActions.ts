@@ -1,4 +1,5 @@
 import { useComposerDrafts } from "../chat/composer/drafts";
+import { formatFileMention } from "../chat/fileMentions";
 import { openInFiles } from "../features/panes/files-store";
 import { useFileChangesRequest } from "../features/panes/git-store";
 import { usePreview } from "../features/panes/preview-store";
@@ -25,7 +26,7 @@ export function revealLabel(t: (key: string) => string): string {
 
 export async function mentionInChat(projectPath: string, path: string, tabId: string | null): Promise<void> {
 	const target = tabId ?? (await useApp.getState().newChat(projectPath));
-	if (target) useComposerDrafts.getState().insert(target, `@${projectRelativePath(projectPath, path) ?? path} `);
+	if (target) useComposerDrafts.getState().insert(target, `${formatFileMention(projectRelativePath(projectPath, path) ?? path)} `);
 }
 
 export function openFile(path: string, projectPath: string | null, tabId: string | null = null): void {

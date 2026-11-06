@@ -4,6 +4,8 @@
  * break ties.
  */
 
+import { fileMentions, isMentionBoundary } from "../fileMentions";
+
 export interface FuzzyMatch {
 	path: string;
 	score: number;
@@ -55,23 +57,16 @@ export function fuzzyFiles(files: readonly string[], query: string, limit = 50):
 	return matches.slice(0, limit);
 }
 
-/** The `@query` being typed right before the caret, if any. `@` must start the text or follow whitespace. */
+/** The live query at the caret, including spaces inside an unclosed quoted prefix. */
 export function mentionAtCaret(text: string, caret: number): { start: number; query: string } | null {
 	const before = text.slice(0, caret);
-	const match = /(^|\s)@([^\s@]*)$/.exec(before);
-	if (!match) return null;
-	const query = match[2] ?? "";
-	return { start: caret - query.length - 1, query };
+	for (const match of before.matchAll(/@(?:"([^"]*)|'([^']*)|((?!["'])[^\s@]*))$/g)) {
+		if (isMentionBoundary(before, match.index)) return { start: match.index, query: match[1] ?? match[2] ?? match[3] ?? "" };
+	}
+	return null;
 }
 
 /** Ranges of `@path` mention tokens in `text` (for the chip highlight layer). */
 export function mentionRanges(text: string): Array<{ start: number; end: number }> {
-	const ranges: Array<{ start: number; end: number }> = [];
-	for (const match of text.matchAll(/(^|\s)(@[^\s@]+)/g)) {
-		const token = match[2];
-		if (!token || match.index === undefined) continue;
-		const start = match.index + (match[1]?.length ?? 0);
-		ranges.push({ start, end: start + token.length });
-	}
-	return ranges;
+	return fileMentions(text).map(({ start, end }) => ({ start, end }));
 }

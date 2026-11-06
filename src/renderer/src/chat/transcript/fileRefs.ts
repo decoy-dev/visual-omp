@@ -4,6 +4,7 @@
  * file or folder for it. Kept free of the DOM so main's tests can run it against real files.
  */
 import type { FileRef, FileRefRequest } from "@shared/contracts/fileRefs";
+import { fileMentions } from "../fileMentions";
 
 /** A line citation after a path: `:12`, `:12:5`, `:50-100`. */
 const LINE_SUFFIX = /:\d+(?:[-:,+]\d+)*$/;
@@ -52,12 +53,19 @@ export interface TextRef {
 
 /** References in a run of prose, in order. A sentence's closing `.` or `:` stays outside the link. */
 export function textRefs(text: string): TextRef[] {
-	const found: TextRef[] = [];
+	// Quoting explicitly supplies the path boundary. Do not infer spaces in old unquoted messages.
+	const quoted = fileMentions(text).filter(mention => mention.quoted);
+	const found: TextRef[] = quoted.flatMap(mention => {
+		const ref = fileRefOf(mention.path.trim(), false);
+		return ref ? [{ start: mention.start, end: mention.end, ref }] : [];
+	});
 	for (const match of text.matchAll(TEXT_RUN)) {
+		if (quoted.some(mention => match.index < mention.end && match.index + match[0].length > mention.start)) continue;
 		const run = match[0].replace(/[.:]+$/, "");
 		const ref = fileRefOf(run, false);
 		if (ref) found.push({ start: match.index, end: match.index + run.length, ref });
 	}
+	found.sort((a, b) => a.start - b.start);
 	return found;
 }
 

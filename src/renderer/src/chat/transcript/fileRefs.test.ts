@@ -82,4 +82,15 @@ describe("textRefs", () => {
 		expect(refs("out://progress?file=report.md#src/app.ts")).toEqual([]);
 		expect(refs("Note:CONTEXT.md mailto:a@b.co http://x.com/a.md")).toEqual([]);
 	});
+
+	it("keeps quoted mentions together and passes the path without its quote delimiters", () => {
+		const text = 'See before.md then @"/tmp/Claude Design projects.zip" and @\'C:\\Users\\Jules\\My Files\\a.pdf\' then after.md.';
+		expect(refs(text)).toEqual(["before.md", "/tmp/Claude Design projects.zip", "C:\\Users\\Jules\\My Files\\a.pdf", "after.md"]);
+		expect(textRefs(text).map(found => text.slice(found.start, found.end))).toEqual(["before.md", '@"/tmp/Claude Design projects.zip"', "@'C:\\Users\\Jules\\My Files\\a.pdf'", "after.md"]);
+		expect(refs('Read @\'/tmp/My "design".pdf\'')).toEqual(['/tmp/My "design".pdf']);
+	});
+
+	it("does not infer a spaced path from an old unquoted mention", () => {
+		expect(refs("See @/tmp/Claude Design projects.zip")).toEqual(["@/tmp/Claude", "projects.zip"]);
+	});
 });

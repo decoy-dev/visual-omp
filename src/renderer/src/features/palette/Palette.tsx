@@ -9,6 +9,7 @@ import { CaretRight, ChatCenteredText, FileText, GearSix, type Icon, MagnifyingG
 import { type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useComposerDrafts } from "../../chat/composer/drafts";
+import { formatFileMention } from "../../chat/fileMentions";
 import { type CommandSpec, useCommands } from "../../registry/commands";
 import { routeSlash } from "../session-tools/slash";
 import { sendSlashCommand } from "../session-tools/typed";
@@ -99,7 +100,7 @@ async function askOmp(text: string): Promise<void> {
 
 async function mentionFile(path: string, projectPath: string): Promise<void> {
 	const tabId = focusedTabId(useApp.getState()) ?? (await useApp.getState().newChat(projectPath));
-	if (tabId) useComposerDrafts.getState().insert(tabId, `@${path} `);
+	if (tabId) useComposerDrafts.getState().insert(tabId, `${formatFileMention(path)} `);
 }
 
 interface RowProps {

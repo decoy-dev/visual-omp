@@ -66,6 +66,7 @@ import { useBranchEntries } from "../branch";
 import { type HistoryDraft, historyOnVisualBoundary, promptHistory, PromptHistoryCursor } from "./history";
 import { type Attachment, appendWithSpace, composerText, notifyComposerAction, registerComposerEditor, takePendingFocus, useComposerDrafts } from "./drafts";
 import { fuzzyFiles, mentionAtCaret } from "./fuzzy";
+import { formatFileMention } from "../fileMentions";
 import { ComposerMirror, keywordAtPoint, modelTagAtCaret, ModelTagMenu, useComposerAssist } from "./ComposerTags";
 import { MentionPicker, useProjectFiles } from "./MentionPicker";
 import { type LibraryTab, PromptLibrary } from "./PromptLibrary";
@@ -436,7 +437,9 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 		const el = textarea.current;
 		const caret = el ? el.selectionStart : mention.start + mention.query.length + 1;
 		setMention(null);
-		replaceRange(mention.start, caret, `@${path} `);
+		const isDirectory = /[\\/]$/.test(path);
+		const isQuotedPrefix = /["']/.test(draft[mention.start + 1] ?? "");
+		replaceRange(mention.start, caret, formatFileMention(path, { isDirectory, isQuotedPrefix }) + (isDirectory ? "" : " "));
 	};
 
 	const pickTag = (item: ComposerModelItem) => {

@@ -4,7 +4,7 @@ import { fuzzyFiles, mentionAtCaret, mentionRanges } from "./fuzzy";
 import { applyMode, deliver, imageMessageBytes, tspComposerReason } from "./send";
 
 describe("mentionAtCaret", () => {
-	it("opens only for an @ at the start or after whitespace", () => {
+	it("opens for an @ at omp's boundaries and excludes email addresses", () => {
 		expect(mentionAtCaret("look at @src/ap", 15)).toEqual({ start: 8, query: "src/ap" });
 		expect(mentionAtCaret("@", 1)).toEqual({ start: 0, query: "" });
 		expect(mentionAtCaret("mail me@example", 15)).toBeNull();
@@ -13,12 +13,32 @@ describe("mentionAtCaret", () => {
 	it("closes once the caret leaves the token", () => {
 		expect(mentionAtCaret("@src/app.ts done", 16)).toBeNull();
 	});
+
+	it("keeps quoted prefixes open across spaces and excludes their quote from the query", () => {
+		for (const text of ['@"My Files/a', "@'My Files/a", 'see (@"My Files/a', '@"C:\\Users\\Jules\\My Files\\a']) {
+			expect(mentionAtCaret(text, text.length)).toEqual({ start: text.indexOf("@"), query: text.slice(text.indexOf("@") + 2) });
+		}
+		expect(mentionAtCaret('@"', 2)).toEqual({ start: 0, query: "" });
+		expect(mentionAtCaret('@"My Files/a" ', 14)).toBeNull();
+		expect(mentionAtCaret('@"My Files/a"', 13)).toBeNull();
+		expect(mentionAtCaret("me@'My Files/a", 14)).toBeNull();
+	});
 });
 
 describe("mentionRanges", () => {
 	it("finds each @path token, not email addresses", () => {
 		const text = "fix @a.ts and me@x.com\n@b/c.md";
 		expect(mentionRanges(text).map(range => text.slice(range.start, range.end))).toEqual(["@a.ts", "@b/c.md"]);
+	});
+
+	it("uses omp's quote and boundary rules for whole mention chips", () => {
+		const tokens = ['@"/tmp/My Files/a.pdf"', "@'/tmp/My Files/b.pdf'", '@"C:\\Users\\Jules\\My Files\\a.pdf"', "@src/app.ts"];
+		const text = `(${tokens[0]}) [${tokens[1]}] <${tokens[2]}> ${tokens[3]} me@x.com`;
+		expect(mentionRanges(text).map(range => text.slice(range.start, range.end))).toEqual(tokens);
+		for (const boundary of [" ", "\n", "(", "[", "{", "<", '"', "'", "`"]) {
+			expect(mentionRanges(`${boundary}@a.ts`)).toEqual([{ start: boundary.length, end: boundary.length + 5 }]);
+		}
+		for (const prefix of ["me", "/", "-", ")", "a@"]) expect(mentionRanges(`${prefix}@a.ts`)).toEqual([]);
 	});
 });
 

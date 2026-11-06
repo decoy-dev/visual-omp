@@ -5,6 +5,7 @@
 import { useEffect, useState } from "react";
 import { useComposerDrafts } from "./drafts";
 import { ATTACHABLE_IMAGE } from "./send";
+import { formatFileMention } from "../fileMentions";
 
 const MIME_EXTENSIONS: Record<string, string> = {
 	"image/png": "png",
@@ -19,10 +20,10 @@ function baseName(path: string): string {
 
 /** `@path` for a file: project-relative inside the project, absolute otherwise or with no project (Home). */
 export function mentionFor(path: string, projectPath: string | null): string {
-	if (!projectPath) return `@${path}`;
+	if (!projectPath) return formatFileMention(path);
 	const root = projectPath.replace(/[\\/]+$/, "");
 	const inside = path.startsWith(`${root}/`) || path.startsWith(`${root}\\`);
-	return `@${inside ? path.slice(root.length + 1) : path}`;
+	return formatFileMention(inside ? path.slice(root.length + 1) : path);
 }
 
 /**
