@@ -4,6 +4,18 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+## [0.7.10] - 2026-11-06
+
+visual-omp 0.7.10 fixes stalled chat input after a connection replacement and incorrect helper status after a connection ends. It requires omp 18.15.0 or later.
+
+### Highlights
+
+- **Fixed:** Chats recover message and command input after omp replaces their connection. If recovery does not finish within five seconds, the app offers Restart omp.
+- **Fixed:** Helpers no longer appear to be running after their chat's connection ends. Queued messages show an error with recovery instructions, and Stop reports when it cannot reach omp.
+- **Fixed:** On macOS and Linux, visual-omp now finds saved chats, prompt history and transcript images in omp's data directory when you have configured XDG_DATA_HOME.
+
+### Detailed changes
+
 #### Fixed
 
 - Chats recover message and command input after omp replaces a lost connection.
