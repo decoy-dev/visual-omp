@@ -52,7 +52,7 @@ test("the release manifest covers replayable outputs, questions and manual check
 test("0.7.9 covers each new area and keeps the previous useful chats", () => {
   assert.equal(manifest.version, "0.7.9");
   for (const chat of previous.chats) assert.ok(manifest.chats.some(item => item.id === chat.id));
-  for (const id of ["composer", "cache", "tool-cards", "bash-trace", "settings", "office-quit", "timestamps"]) assert.ok(manifest.chats.some(chat => chat.id === id));
+  for (const id of ["composer", "cache", "tool-cards", "bash-trace", "settings", "office-quit", "timestamps", "helpers-load"]) assert.ok(manifest.chats.some(chat => chat.id === id));
   const prompt = id => manifest.chats.find(chat => chat.id === id).prompts[0];
   const video = manifest.chats.find(chat => chat.id === "video");
   assert.equal(video.prompts.filter(prompt => prompt.startsWith("fixture video\n")).length, 2);

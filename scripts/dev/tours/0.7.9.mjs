@@ -72,5 +72,9 @@ export default {
       id: "timestamps", title: "16 Transcript: grouped tool timestamps", timeoutMs: 180_000,
       prompts: ["fixture timestamps\nCheck the collapsed tool group's timestamp as three bash calls finish about 45 seconds apart. Its first time should become a first-to-latest range, such as 10:37-10:40 AM, as the next calls appear. Hover over or keyboard-focus the timestamp to read the full start and latest times. Expand the group and check each call keeps its own timestamp. This prepared chat records all three calls; send fixture timestamps again to watch the range update live. The complete live run takes about two minutes and fifteen seconds and runs only local sleep and date commands."],
     },
+    {
+      id: "helpers-load", title: "17 Chats: many helpers stay current", timeoutMs: 180_000,
+      prompts: ["fixture helpers\nSend fixture helpers to start six helpers that each print a line ten times a second for about 45 seconds. While they run, the transcript, the Tasks pane and the elapsed times should stay current, and the window should keep responding to typing and scrolling; compare the status bar's CPU with 0.7.8 if you have it. Switch to another chat for a few seconds and come back: the helpers should show their latest progress when you return. Open another chat beside this one in split view and check both update. Minimize or hide the window briefly and return. Send fixture colors in another chat while the helpers run: its question card should appear at once. Send fixture helpers again to inspect the live workload; it uses only local echo and sleep commands."],
+    },
   ],
 };
