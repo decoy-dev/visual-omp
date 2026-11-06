@@ -53,6 +53,23 @@ describe("friendlySummary", () => {
 		expect(summary).toMatchObject({ key: "web.ok", values: { query: "vite 8 release notes" } });
 	});
 
+	it.each(["direct", "xd://lsp"])("honors unsuccessful LSP results in %s transcript headers", route => {
+		const details = { action: "hover", success: false };
+		const call = route === "direct"
+			? { name: "lsp", args: { action: "hover" }, result: ok(details) }
+			: { name: "write", args: { path: "xd://lsp", content: '{"action":"hover"}' }, result: ok({ xdev: { mode: "execute", tool: "lsp", args: { action: "hover" }, inner: details } }) };
+		expect(summarize(call)).toMatchObject({ key: "lsp.error", status: "error", values: { action: "hover" } });
+		expect(summarize({ ...call, running: true })).toMatchObject({ key: "lsp.running", status: "running" });
+	});
+
+	it("keeps older and malformed LSP success metadata and unrelated tool outcomes unchanged", () => {
+		for (const details of [undefined, {}, { success: true }, { success: "false" }, { success: null }]) {
+			expect(summarize({ name: "lsp", result: ok(details) }).status).toBe("ok");
+		}
+		expect(summarize({ name: "read", result: ok({ success: false }) }).status).toBe("ok");
+		expect(summarize({ name: "lsp", result: ok({}, true) }).status).toBe("error");
+	});
+
 	it("summarizes checklist progress from todo phases", () => {
 		const summary = summarize({
 			name: "todo",

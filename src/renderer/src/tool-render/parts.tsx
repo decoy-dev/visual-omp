@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 import { useMemo, useState } from "react";
 import { SYN_CLASS, tokenizeLines } from "../features/panes/highlight";
 import type { ToolRenderHost, ToolResultImage, ToolResultLike } from "./types";
-import { getHljs, replaceTabs, resultImagesOf, resultTextOf, shortenPath, stripAnsi } from "./util";
+import { getHljs, replaceTabs, resultImagesOf, resultTextOf, shortenPath, stripAnsi, visibleBidi } from "./util";
 
 export type Tone = "accent" | "ok" | "err" | "warn";
 
@@ -52,7 +52,7 @@ export function PathText({
 	}
 	return (
 		<span className="tv-path" data-context-path={literal ? path : undefined} data-context-tool-path={!literal && path !== "…" ? path : undefined} data-context-kind={kind} tabIndex={path === "…" ? undefined : 0}>
-			{shortenPath(path)}
+			<bdi dir="ltr">{visibleBidi(shortenPath(path))}</bdi>
 			{range && <span className="tv-lines">{range}</span>}
 			{sel && <span className="tv-lines">:{sel}</span>}
 		</span>

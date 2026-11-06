@@ -1,8 +1,9 @@
 /** `web_search` — provider-backed web search with synthesized answer and sources. */
 import type { ReactNode } from "react";
-import { Badge, Badges, InvalidArg, Kv, KvGrid, Note, ResultText, Row } from "../parts";
+import { useState } from "react";
+import { Badge, Badges, InvalidArg, Kv, KvGrid, Note, Output, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
-import { detailsRecord, isRecord, normalizeWs, num, resultTextOf, str, truncate } from "../util";
+import { detailsRecord, isRecord, normalizeWs, num, resultTextOf, str, truncate, visibleBidi } from "../util";
 
 function getDomain(url: string): string {
 	try {
@@ -61,6 +62,7 @@ function SourceRow({ source, index }: { source: Record<string, unknown>; index: 
 
 function Body({ args, result }: ToolRenderProps): ReactNode {
 	const query = str(args.query);
+	const [failureLimit, setFailureLimit] = useState(24);
 	const recency = str(args.recency);
 	const limit = num(args.limit);
 	const numResults = num(args.num_search_results);
@@ -73,6 +75,8 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 	const authMode = response ? str(response.authMode) : null;
 	const sources: Record<string, unknown>[] =
 		response && Array.isArray(response.sources) ? response.sources.filter(isRecord) : [];
+	const resultText = resultTextOf(result).trim();
+	const failures = details && Array.isArray(details.failures) ? details.failures.filter(isRecord) : [];
 
 	let providerInfo = model && provider ? `${model} @ ${provider}` : (model ?? provider ?? "");
 	if (providerInfo && authMode) {
@@ -105,12 +109,12 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 			{(query !== null || providerInfo || usageParts.length > 0) && (
 				<KvGrid>
 					{query !== null && <Kv k="query">{query}</Kv>}
-					{providerInfo && <Kv k="provider">{providerInfo}</Kv>}
+					{providerInfo && <Kv k="provider"><bdi dir="ltr">{visibleBidi(providerInfo)}</bdi></Kv>}
 					{usageParts.length > 0 && <Kv k="usage">{usageParts.join(" · ")}</Kv>}
 				</KvGrid>
 			)}
-			{errorMsg && !resultTextOf(result) && <Note tone="err">{errorMsg}</Note>}
-			<ResultText result={result} maxLines={14} lang="markdown" />
+			{errorMsg && !resultText && <Note tone="err"><bdi dir="ltr">{visibleBidi(errorMsg)}</bdi></Note>}
+			{resultText && <Output text={visibleBidi(resultText)} maxLines={14} lang={result?.isError ? null : "markdown"} error={result?.isError === true} variant="code" />}
 			{sources.length > 0 && (
 				<div className="tv-list">
 					{sources.map((source, i) => (
@@ -118,6 +122,20 @@ function Body({ args, result }: ToolRenderProps): ReactNode {
 					))}
 				</div>
 			)}
+			{failures.length > 0 && (
+				<div className="tv-list">
+					{failures.slice(0, failureLimit).map((failure, index) => {
+						const provider = str(failure.provider);
+						const reason = str(failure.reason);
+						const status = num(failure.status);
+						if (!provider && !reason && status === null) return null;
+						return <Row key={index} k={<Badge tone="warn"><bdi dir="ltr">{visibleBidi(provider ?? str(failure.label) ?? "Provider")}</bdi></Badge>}>
+							<bdi dir="ltr" className="tv-muted">Failed{status !== null ? ` (HTTP ${status})` : ""}{reason ? `: ${visibleBidi(reason)}` : ""}</bdi>
+						</Row>;
+					})}
+				</div>
+			)}
+			{failures.length > failureLimit && <button type="button" className="tv-expand" onClick={() => setFailureLimit(value => value + 24)}>Show {Math.min(24, failures.length - failureLimit)} more provider failures</button>}
 		</>
 	);
 }

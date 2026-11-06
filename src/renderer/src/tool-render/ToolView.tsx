@@ -95,7 +95,8 @@ export function ToolView(props: ToolViewProps): ReactNode {
 	};
 
 	const closed = name === "ask" && isAskClosedByMessage(result);
-	const isError = props.result?.isError === true && !closed;
+	const lspFailed = name === "lsp" && isRecord(result?.details) && result.details.success === false;
+	const isError = (props.result?.isError === true || lspFailed) && !closed;
 	const status: ToolStatus = props.running ? "run" : closed ? "closed" : isError ? "err" : props.result ? "ok" : "pending";
 	const partial = props.running && !props.result && props.partial ? stripAnsi(replaceTabs(props.partial)) : "";
 

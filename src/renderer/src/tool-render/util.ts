@@ -80,6 +80,11 @@ export function replaceTabs(s: string): string {
 	return s.replace(/\t/g, "   ");
 }
 
+/** Show directional controls literally so untrusted output cannot visually reorder identifiers. */
+export function visibleBidi(text: string): string {
+	return text.replace(/[\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, char => `\\u${char.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")}`);
+}
+
 // Control Sequence Introducer + OSC escapes.
 const ANSI_RE = /\x1b(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x07\x1b]*(?:\x07|\x1b\\))/g;
 

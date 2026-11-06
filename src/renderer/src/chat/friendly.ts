@@ -121,7 +121,7 @@ function editInputPaths(input: string): string[] {
 
 function statusOf(call: ToolCallView): ToolStatus {
 	if (call.running) return "running";
-	return call.result?.isError ? "error" : "ok";
+	return call.result?.isError || (call.name === "lsp" && detailsRecord(call.result)?.success === false) ? "error" : "ok";
 }
 
 /** The complete path behind a one-file edit summary. Shared with its context menu. */
