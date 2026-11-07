@@ -8,6 +8,10 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - Settings > About offers Roll back, and the successful update notice links to the version you used before updating. Both open Past versions with an eligible earlier release selected.
 
+### Improved
+
+- Running helpers appear in one compact row above the composer, with their duration and Stop controls. A brief teal cue marks activity updates; overflow and See all tasks open the chat's Tasks panel.
+
 ### Fixed
 
 - Homebrew and Scoop rollback guidance now offers a verified installer download and explains how to switch to it while keeping app data and omp settings. Managed downloads require a published SHA-256 checksum and never run the installer automatically.

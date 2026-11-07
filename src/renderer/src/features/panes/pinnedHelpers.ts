@@ -7,16 +7,9 @@ import { useMemo } from "react";
 import type { SessionView } from "../../state/session";
 import { type Helper, helpersOf, helpersMayRun } from "./derive";
 
-/** Rows the strip shows before "Show N more in Tasks". */
-export const PINNED_ROWS = 3;
-
 export interface PinnedHelpers {
 	/** Running helpers, in `helpersOf` order. */
 	all: readonly Helper[];
-	/** The first `PINNED_ROWS` of them, drawn as rows. */
-	shown: readonly Helper[];
-	/** How many more run than the strip shows. */
-	more: number;
 	/** Ids of every running helper: their cards stay out of the transcript while pinned. */
 	ids: ReadonlySet<string>;
 }
@@ -24,7 +17,7 @@ export interface PinnedHelpers {
 /** Which of the chat's helpers pin: the running ones. A stale mirror (`helpersOf` without a running omp) pins none. */
 export function pinnedHelpers(helpers: readonly Helper[]): PinnedHelpers {
 	const all = helpers.filter(helper => helper.status === "running");
-	return { all, shown: all.slice(0, PINNED_ROWS), more: Math.max(0, all.length - PINNED_ROWS), ids: new Set(all.map(helper => helper.id)) };
+	return { all, ids: new Set(all.map(helper => helper.id)) };
 }
 
 /** The helper cards a task call shows under it: those not pinned at the bottom of the chat. */

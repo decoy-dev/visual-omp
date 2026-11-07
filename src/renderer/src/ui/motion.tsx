@@ -103,6 +103,29 @@ export function useMotionReduced(): boolean {
 	return useReducedMotionConfig() ?? false;
 }
 
+/**
+ * One flat accent cue for changed content. Mounts and unchanged values stay at rest. Repeated updates replace
+ * the previous cue; reduced motion keeps a shorter color fade without moving or hiding the content.
+ */
+export function useUpdateCue(ref: RefObject<HTMLElement | null>, value: string): void {
+	const reduced = useMotionReduced();
+	const previous = useRef(value);
+	useEffect(() => {
+		if (previous.current === value) return;
+		previous.current = value;
+		const element = ref.current;
+		if (!element || typeof element.animate !== "function") return;
+		const animation = element.animate(
+			[
+				{ backgroundColor: "var(--accent-muted)", borderColor: "var(--accent)" },
+				{ backgroundColor: "var(--panel)", borderColor: "var(--border)" },
+			],
+			{ duration: reduced ? 140 : duration.xl * 1000, easing: "cubic-bezier(0.25, 1, 0.5, 1)" },
+		);
+		return () => animation.cancel();
+	}, [ref, value, reduced]);
+}
+
 // ---------------- Expand ----------------
 
 export interface ExpandProps {

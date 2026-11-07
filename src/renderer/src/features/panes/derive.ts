@@ -1446,7 +1446,7 @@ export function helpersAtWork(view: Pick<SessionView, "guest" | "mode" | "readOn
 /**
  * Finished helpers the Tasks pane lists before "Show earlier helpers". A finished card with omp's numbers is about
  * 127px tall in a 312px pane, so three show what just finished in about 400px and leave the running helpers and the
- * background jobs within reach. It matches the three running helpers the chat pins (`PINNED_ROWS`).
+ * background jobs within reach. The composer strip fits its running helpers independently.
  */
 export const RECENT_HELPERS = 3;
 

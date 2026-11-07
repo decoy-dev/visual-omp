@@ -478,8 +478,9 @@
 		},
 		"pinned": {
 			"label": "Helpers at work",
-			"more_one": "Show {{count}} more in Tasks",
-			"more_other": "Show {{count}} more in Tasks"
+			"more_one": "Show {{count}} more helper in Tasks",
+			"more_other": "Show {{count}} more helpers in Tasks",
+			"all": "See all tasks"
 		},
 		"group": {
 			"worked": "Worked for {{elapsed}}",

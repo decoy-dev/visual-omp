@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { type Helper, type HelperStatus, helpersOf } from "./derive";
-import { PINNED_ROWS, pinnedHelpers, unpinnedRuns } from "./pinnedHelpers";
+import { pinnedHelpers, unpinnedRuns } from "./pinnedHelpers";
 
 const helper = (id: string, status: HelperStatus, messageable = status === "running"): Helper => ({
 	id,
@@ -23,17 +23,13 @@ describe("pinnedHelpers", () => {
 		const pinned = pinnedHelpers([helper("a", "running"), helper("b", "done", true), helper("c", "done"), helper("d", "failed"), helper("e", "stopped")]);
 		expect(pinned.all.map(run => run.id)).toEqual(["a"]);
 		expect([...pinned.ids]).toEqual(["a"]);
-		expect(pinned.more).toBe(0);
 	});
 
-	it("shows the first three running helpers and counts the rest", () => {
+	it("retains every running helper in order so the strip can fit cards to its width", () => {
 		const pinned = pinnedHelpers(["a", "b", "c", "d", "e"].map(id => helper(id, "running")));
-		expect(PINNED_ROWS).toBe(3);
-		expect(pinned.shown.map(run => run.id)).toEqual(["a", "b", "c"]);
-		expect(pinned.more).toBe(2);
-		// Every running helper leaves its card, the ones behind "more" too.
+		expect(pinned.all.map(run => run.id)).toEqual(["a", "b", "c", "d", "e"]);
+		// Overflow helpers remain pinned too.
 		expect(pinned.ids.size).toBe(5);
-		expect(pinnedHelpers(["a", "b", "c"].map(id => helper(id, "running"))).more).toBe(0);
 	});
 
 	it("pins nothing from a stale mirror once omp no longer runs", () => {
