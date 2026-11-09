@@ -328,12 +328,15 @@ persistence ordering, without adding a delay or copying the transcript itself.
 Large saved chats: before `SessionController.#start()` launches omp on a saved file, it asks main for the
 file's size (`sessions:size`, a `stat` that returns null when the file can't be read). At
 `LARGE_RESUME_BYTES` (32 MiB, `registry/guards.ts`) or more, it waits on the resume guard that
-`features/session-tools/index.ts` installs. The guard and the global dialog host dynamically import
-`largeResume.tsx`, which queues one question at a time and holds the dialog, so none of it is in the
-initial renderer chunk. The threshold is a precautionary heuristic, not an omp limit.
-A declined question throws `ResumeDeclinedError`: the controller stays in its saved view, `reportFailure`,
+`features/session-tools/index.ts` installs. `largeResume.tsx` queues one question at a time;
+the dialog and replacement-chat handoff controller load from separate chunks. The threshold is a
+precautionary heuristic, not an omp limit. Start new chat offers a checked handoff option. With it,
+the replacement chat opens in the same folder and takes the submitted message and attachments exactly
+once. The controller passes the exact submitted message through the resume request, and a declined
+start consumes only that transferred send. A concurrent send sharing the start still returns unsent.
+Without a transfer, `ResumeDeclinedError` keeps the controller in its saved view; `reportFailure`,
 the command runner and the composer drop it without an error, the omp screen closes, and a window
-`unhandledrejection` listener (installed with the first question) drops it for fire-and-forget callers.
+`unhandledrejection` listener drops it for fire-and-forget callers.
 `routeSlash` starts omp before the app commands that need it (`/restart`, `/plan`, `/vibe`, `/export` and the
 `/goal` actions) in a chat without a running omp, so a decline rejects to the composer and the typed line
 comes back. A controller that saw its omp live or adopted a running host, and a file approved earlier in
@@ -341,6 +344,27 @@ this renderer, skip the question. The ownership check and the question are repea
 same file, so an approval never covers a linked copy it did not name, and closing the chat aborts a pending
 question before `dispose` waits for the start. In-process restarts, `/resume` typed to omp, the fork and
 rename RPC processes and `sessions:read` are outside the check.
+
+`largeHandoff.tsx` holds the replacement chat's pending send, blocks composer submission and shows a
+timed status row with Cancel. `sessions:handoff` runs omp's own RPC handoff on the source saved file,
+with ambient tools, LSP, extensions, skills, rules, context files and title generation disabled.
+Main checks the source identity and lease, waits for RPC exit, then writes the newly committed handoff
+compaction summary into the source chat's artifact folder as `handoff-<timestamp>.md`, replacing the
+ISO timestamp's colons and periods with hyphens. The renderer submits one quoted file mention followed
+by the pending text and its images. Changed drafts prevent automatic submission. Failure, timeout and
+cancellation retain the draft and require Send without handoff or Try again. Closing the source after
+transfer leaves the replacement operation running; closing the replacement cancels its RPC and ignores
+late results. Approved app shutdown stops active handoff processes.
+Submission uses `SessionController.sendWithOwnership`, which distinguishes host submission from the
+controller queue taking the exact text and images. Only that ownership receipt removes the duplicate
+handoff draft. Queue-owned delivery failures remain visible with the existing retry, edit, remove and
+image-recovery controls. Transferred queue entries require another explicit send after every failure,
+including a failed explicit retry; readiness, later messages and restart never resend them automatically.
+Try again confirms teardown of the previous operation id before allocating another one. Unconfirmed
+termination keeps its source reservation and process handle available for another Cancel or Quit.
+The replacement row shows "Stopping the previous handoff…" during that cleanup. Failed approved
+shutdown reports the cleanup error and permits a later Quit attempt without abandoning the child.
+
 
 Ask interruption: `pendingAsk` in `state/session.ts` requires a live writable mirror and a request matching
 a running ask's question, options and sentinels, or its custom-answer editor. Enter, Send now and queued-row

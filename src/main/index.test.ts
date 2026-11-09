@@ -4,7 +4,7 @@ const fake = vi.hoisted(() => ({
 	events: new Map<string, (event: { preventDefault(): void }) => void>(),
 	windowEvents: new Map<string, (event: { preventDefault(): void }) => void>(),
 	approve: null as ((allow: boolean) => void) | null,
-	quit: vi.fn(), stopHosts: vi.fn(), stopOffice: vi.fn(), flush: vi.fn(), broadcast: vi.fn(), loaded: vi.fn(),
+	quit: vi.fn(), stopHosts: vi.fn(), stopOffice: vi.fn(), stopHandoffs: vi.fn(), quitError: vi.fn(), flush: vi.fn(), broadcast: vi.fn(), loaded: vi.fn(),
 }));
 vi.mock("./profile", () => ({}));
 vi.mock("./services/diagnostics/runtime", () => ({ attachWindowDiagnostics: vi.fn(), crashReportingReady: Promise.resolve(), startDiagnostics: vi.fn() }));
@@ -23,7 +23,7 @@ vi.mock("electron", () => ({
 			once: vi.fn(), loadFile: fake.loaded,
 		};
 	}),
-	Menu: {}, nativeTheme: { shouldUseDarkColors: false }, shell: {},
+	Menu: {}, nativeTheme: { shouldUseDarkColors: false }, shell: {}, dialog: { showErrorBox: fake.quitError },
 }));
 vi.mock("./attention", () => ({ attachAttentionWindow: vi.fn(), setAppUserModelId: vi.fn() }));
 vi.mock("./contextMenu", () => ({ buildTextContextMenu: vi.fn() }));
@@ -41,11 +41,13 @@ vi.mock("./services/preview-protocol", () => ({ previewDocumentUrl: vi.fn(), pre
 vi.mock("./services/diagnostics/events", () => ({ flushDiagnostics: fake.flush }));
 vi.mock("./services/preview-isolation-test", () => ({ startPreviewIsolationInspector: vi.fn() }));
 vi.mock("./services/preview-office", () => ({ stopPreviewOffice: fake.stopOffice }));
+vi.mock("./omp/session-handoff", () => ({ stopSavedSessionHandoffs: fake.stopHandoffs }));
 
 beforeEach(async () => {
 	vi.clearAllMocks(); vi.resetModules(); fake.events.clear(); fake.windowEvents.clear();
 	fake.stopHosts.mockReset().mockResolvedValue(undefined);
 	fake.stopOffice.mockReset().mockResolvedValue(undefined);
+	fake.stopHandoffs.mockReset().mockResolvedValue(undefined);
 	fake.flush.mockReset().mockResolvedValue(undefined);
 	// Reload startup registration to exercise Electron's actual quit handlers without opening a window.
 	await import("./index");
@@ -61,6 +63,7 @@ it("leaves Office previews running when the user cancels Quit", async () => {
 	await Promise.resolve();
 	expect(fake.stopOffice).not.toHaveBeenCalled();
 	expect(fake.stopHosts).not.toHaveBeenCalled();
+	expect(fake.stopHandoffs).not.toHaveBeenCalled();
 	expect(fake.quit).not.toHaveBeenCalled();
 });
 
@@ -97,4 +100,38 @@ it("runs the same awaited shutdown when Quit has no window or hosts to warn abou
 	expect(fake.quit).not.toHaveBeenCalled();
 	office.resolve();
 	await vi.waitFor(() => expect(fake.quit).toHaveBeenCalledOnce());
+});
+
+it("waits for handoff process termination only after Quit is approved", async () => {
+	const handoffs = Promise.withResolvers<void>();
+	fake.stopHandoffs.mockReturnValueOnce(handoffs.promise);
+	fake.events.get("before-quit")!({ preventDefault: vi.fn() });
+	fake.approve!(false);
+	expect(fake.stopHandoffs).not.toHaveBeenCalled();
+	fake.approve!(true);
+	await vi.waitFor(() => expect(fake.stopHandoffs).toHaveBeenCalledOnce());
+	expect(fake.stopOffice).not.toHaveBeenCalled();
+	expect(fake.quit).not.toHaveBeenCalled();
+	const repeated = { preventDefault: vi.fn() };
+	fake.events.get("before-quit")!(repeated);
+	expect(repeated.preventDefault).toHaveBeenCalledOnce();
+	handoffs.resolve();
+	await vi.waitFor(() => expect(fake.quit).toHaveBeenCalledOnce());
+	expect(fake.stopHandoffs).toHaveBeenCalledOnce();
+});
+
+it("reports failed handoff cleanup and permits a later approved Quit to retry", async () => {
+	fake.stopHandoffs.mockRejectedValueOnce(new Error("omp's session lease may still be held."));
+	fake.approve!(true);
+	await vi.waitFor(() => expect(fake.quitError).toHaveBeenCalledOnce());
+	expect(fake.quitError).toHaveBeenCalledWith("Could not quit visual-omp", expect.stringContaining("Try Quit again"));
+	expect(fake.quit).not.toHaveBeenCalled();
+	expect(fake.stopHosts).not.toHaveBeenCalled();
+	const retry = { preventDefault: vi.fn() };
+	fake.events.get("before-quit")!(retry);
+	expect(retry.preventDefault).toHaveBeenCalledOnce();
+	expect(fake.broadcast).toHaveBeenCalledWith("app:quitRequested", { reason: "quit" });
+	fake.approve!(true);
+	await vi.waitFor(() => expect(fake.quit).toHaveBeenCalledOnce());
+	expect(fake.stopHandoffs).toHaveBeenCalledTimes(2);
 });

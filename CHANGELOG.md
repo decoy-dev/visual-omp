@@ -8,6 +8,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 - Settings > About offers Roll back, and the successful update notice links to the version you used before updating. Both open Past versions with an eligible earlier release selected.
 - After /handoff, the chat shows a Handed off row that opens to the handoff document omp now continues from, with Copy. Summaries from compaction open the same way from their Context summarized row.
+- Starting a new chat from the large-chat warning can bring an omp handoff and send your pending message with its attachments. The option is on by default. If you cancel the handoff or omp cannot finish writing it, the message stays as a draft in the new chat.
 
 ### Improved
 

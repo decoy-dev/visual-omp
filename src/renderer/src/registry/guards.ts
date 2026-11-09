@@ -44,11 +44,20 @@ export function preparePaneLeave(scope: string): Promise<boolean> | undefined {
  */
 export const LARGE_RESUME_BYTES = 32 * 1024 * 1024;
 
+export interface ResumeMessage {
+	text: string;
+	images: readonly { path: string; name: string }[];
+}
+
 export interface ResumeRequest {
 	tabId: string;
 	projectPath: string;
 	file: string;
 	bytes: number;
+	/** The exact submitted message waiting for this launch, if one exists. */
+	message?: ResumeMessage;
+	/** Set only after that message has moved to the replacement chat. */
+	messageTransferred?: boolean;
 	/** Aborted when the chat closes while the question is open; the guard then answers no. */
 	signal: AbortSignal;
 }
@@ -68,7 +77,7 @@ export function confirmLargeResume(request: ResumeRequest): Promise<boolean> {
 
 /** The user chose not to resume a large saved chat. Callers drop it without reporting an error. */
 export class ResumeDeclinedError extends Error {
-	constructor() {
+	constructor(readonly transferredMessage?: ResumeMessage) {
 		super("The chat was not resumed.");
 		this.name = "ResumeDeclinedError";
 	}

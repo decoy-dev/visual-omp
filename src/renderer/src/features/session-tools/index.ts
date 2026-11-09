@@ -14,11 +14,13 @@ import "./modes";
 const PlanReviewCard = lazyView(() => import("./PlanReviewCard").then(m => m.PlanReviewCard), NativeCardLoading, NativeCardFailed);
 const OmpDialogCard = lazyView(() => import("./OmpDialogCard").then(m => m.OmpDialogCard), NativeCardLoading, NativeCardFailed);
 const AccountButton = lazyView(() => import("./AccountButton").then(m => m.AccountButton), null, LoadFailedNotice);
+const LargeHandoffRow = lazyView(() => import("./largeHandoff").then(m => m.LargeHandoffRow), null, LoadFailedNotice);
 
 chatSlots.register({ id: "session-permission", placement: "composerTools", order: 20, component: PermissionButton });
 chatSlots.register({ id: "session-model", placement: "composerTools", order: 70, component: ModelButton });
 chatSlots.register({ id: "session-account", placement: "composerTools", order: 75, component: AccountButton });
 chatSlots.register({ id: "session-thinking", placement: "composerTools", order: 80, component: ThinkingButton });
+chatSlots.register({ id: "session-large-handoff", placement: "aboveComposer", order: 5, component: LargeHandoffRow });
 chatSlots.register({ id: "session-plan-review", placement: "transcriptEnd", order: 10,
 	component: (props: ChatSlotProps) => createElement(NativeCardPresentation, { ...props, kind: "plan" }, createElement(PlanReviewCard, props)) });
 chatSlots.register({ id: "session-omp-dialog", placement: "transcriptEnd", order: 20,

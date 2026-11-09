@@ -31,6 +31,8 @@ export interface RpcRequestOptions {
 	onMessage?: (message: unknown) => void;
 	/** Wait for process termination before handing a newly written session to another host. */
 	waitForExit?: boolean;
+	/** Abort before spawn or stop a running request, awaiting termination when requested. */
+	signal?: AbortSignal;
 }
 
 /** Send `{ type, ...params }` and resolve the response's `data`. */
@@ -46,7 +48,9 @@ export async function rpcRequests(
 	options: RpcRequestOptions,
 ): Promise<unknown[]> {
 	if (!requests.length) return [];
+	options.signal?.throwIfAborted();
 	const [bin, env] = await Promise.all([ompPath(), userEnv()]);
+	options.signal?.throwIfAborted();
 	let child: ChildProcessWithoutNullStreams;
 	try {
 		child = spawn(bin, ["--mode", "rpc", ...options.flags], { cwd: folder, env: { ...env, NO_COLOR: "1" }, stdio: "pipe" });
@@ -56,7 +60,12 @@ export async function rpcRequests(
 	let index = 0;
 	const results: unknown[] = [];
 	let id = `vomp-${requests[0]!.type}`;
-	const { promise, resolve, reject } = Promise.withResolvers<unknown[]>();
+	const completion = Promise.withResolvers<unknown[]>();
+	let settled = false;
+	const resolve = (value: unknown[]) => { if (!settled) { settled = true; completion.resolve(value); } };
+	const reject = (error: unknown) => { if (!settled) { settled = true; completion.reject(error); } };
+	const abort = () => reject(options.signal?.reason ?? new DOMException("Handoff cancelled.", "AbortError"));
+	options.signal?.addEventListener("abort", abort, { once: true });
 	const timer = setTimeout(() => reject(new Error(options.messages.timeout)), options.timeoutMs);
 	let stderr = "";
 	child.stderr.on("data", (chunk: Buffer) => { stderr = (stderr + chunk.toString("utf8")).slice(-8192); });
@@ -68,6 +77,7 @@ export async function rpcRequests(
 	lines.on("close", () => reject(new Error(stderr.trim() || options.messages.exited)));
 	child.on("exit", () => setTimeout(() => reject(new Error(stderr.trim() || options.messages.exited)), EXIT_DRAIN_MS).unref());
 	lines.on("line", line => {
+		if (settled) return;
 		let message: unknown;
 		try {
 			message = JSON.parse(line);
@@ -97,14 +107,18 @@ export async function rpcRequests(
 			child.stdin.write(`${JSON.stringify({ ...next.params, id, type: next.type })}\n`);
 		}
 	});
-	child.stdin.write(`${JSON.stringify({ ...requests[0]!.params, id, type: requests[0]!.type })}\n`);
+	if (options.signal?.aborted) abort();
+	else child.stdin.write(`${JSON.stringify({ ...requests[0]!.params, id, type: requests[0]!.type })}\n`);
+	let completed = false;
 	try {
-		const result = await promise;
-		if (options.waitForExit) await stopAndWait(child);
+		const result = await completion.promise;
+		completed = true;
 		return result;
 	} finally {
 		clearTimeout(timer);
-		stop(child);
+		options.signal?.removeEventListener("abort", abort);
+		if (options.waitForExit) await stopAndWait(child, !completed);
+		else stop(child);
 	}
 }
 
@@ -121,15 +135,29 @@ function stop(child: ChildProcessWithoutNullStreams): void {
 	child.stdin.end();
 }
 
+/** Termination could not be confirmed, so callers must not release the operation as cancelled. */
+export class RpcTerminationError extends Error {
+	constructor(message: string, private readonly terminate?: () => Promise<void>) { super(message); }
+
+	/** Retain the child until a later cancellation or Quit can confirm that it stopped. */
+	retryTermination(): Promise<void> {
+		return this.terminate ? this.terminate() : Promise.reject(this);
+	}
+}
+
 /** A copied session's lease must be released before its next host starts. */
-async function stopAndWait(child: ChildProcessWithoutNullStreams): Promise<void> {
+async function stopAndWait(child: ChildProcessWithoutNullStreams, immediate = false): Promise<void> {
 	if (child.exitCode !== null || child.signalCode !== null) return;
 	const { promise, resolve, reject } = Promise.withResolvers<void>();
 	const exited = () => resolve();
 	child.once("exit", exited);
-	const terminate = setTimeout(() => child.kill(), EXIT_GRACE_MS);
-	const force = setTimeout(() => child.kill("SIGKILL"), EXIT_GRACE_MS + 1000);
-	const deadline = setTimeout(() => reject(new Error("omp did not stop after saving the chat. Its session lease may still be held.")), EXIT_GRACE_MS + 2000);
+	const grace = immediate ? 0 : EXIT_GRACE_MS;
+	const terminate = setTimeout(() => child.kill(), grace);
+	const force = setTimeout(() => child.kill("SIGKILL"), grace + 1000);
+	const deadline = setTimeout(() => reject(new RpcTerminationError(
+		"omp did not stop after saving the chat. Its session lease may still be held.",
+		() => stopAndWait(child, true),
+	)), grace + 2000);
 	child.stdin.end();
 	try {
 		await promise;

@@ -315,6 +315,9 @@ export interface IpcInvokeMap {
 	"sessions:rename": { args: [file: string, title: string]; result: { title: string; file: string; id: string; movedFrom: string | null } };
 	/** Copy a session through an isolated RPC process without switching its live host. */
 	"sessions:fork": { args: [file: string, folder: string, entryId?: string]; result: { file: string; id: string } };
+	/** Let omp commit a handoff to the stopped source, then export its summary as an artifact. */
+	"sessions:handoff": { args: [operationId: string, file: string, folder: string, focus: string]; result: { file: string } };
+	"sessions:cancelHandoff": { args: [operationId: string]; result: void };
 	/** Up to 100 prompts from omp's history database, strictly scoped by session UUID. */
 	"sessions:promptHistory": { args: [sessionId: string]; result: PromptHistoryItem[] };
 	/** Session file for a session id (new sessions get their file after the first message). */

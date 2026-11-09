@@ -17,7 +17,7 @@ export type ResumeChoice = "resume" | "new-chat" | "cancel";
 
 interface PendingResume {
 	request: ResumeRequest;
-	resolve(choice: ResumeChoice): void;
+	resolve(choice: { action: ResumeChoice; handoff: boolean }): void;
 }
 
 /** The request the dialog shows (exported for tests). */
@@ -26,7 +26,7 @@ export const useLargeResume = create<{ pending: PendingResume | null }>(() => ({
 /** Requests waiting behind the one shown, oldest first. */
 const waiting: PendingResume[] = [];
 
-function settle(entry: PendingResume, choice: ResumeChoice): void {
+function settle(entry: PendingResume, choice: { action: ResumeChoice; handoff: boolean }): void {
 	const index = waiting.indexOf(entry);
 	if (index >= 0) waiting.splice(index, 1);
 	if (useLargeResume.getState().pending === entry) useLargeResume.setState({ pending: waiting.shift() ?? null });
@@ -34,14 +34,18 @@ function settle(entry: PendingResume, choice: ResumeChoice): void {
 }
 
 /** Answer the dialog that is showing. */
-export function answerLargeResume(choice: ResumeChoice): void {
+export function answerLargeResume(action: ResumeChoice, handoff = true): void {
 	const pending = useLargeResume.getState().pending;
-	if (pending) settle(pending, choice);
+	if (pending) settle(pending, { action, handoff });
 }
 
-async function startNewChat(projectPath: string): Promise<void> {
+async function startNewChat(request: ResumeRequest, handoff: boolean): Promise<void> {
 	try {
-		await useApp.getState().newChat(projectPath);
+		if (handoff) {
+			// Keep the transfer controller and its row outside the initial renderer graph, like the warning dialog.
+			const { startLargeHandoff } = await import("./largeHandoff");
+			await startLargeHandoff(request);
+		} else await useApp.getState().newChat(request.projectPath);
 	} catch (error) {
 		toast({ tone: "err", message: i18n.t("session:largeResume.newChatFailed"), description: error instanceof Error ? error.message : String(error) });
 	}
@@ -60,16 +64,16 @@ export async function askLargeResume(request: ResumeRequest): Promise<boolean> {
 		});
 	}
 	if (request.signal.aborted) return false;
-	const { promise, resolve } = Promise.withResolvers<ResumeChoice>();
+	const { promise, resolve } = Promise.withResolvers<{ action: ResumeChoice; handoff: boolean }>();
 	const entry: PendingResume = { request, resolve };
-	const abort = () => settle(entry, "cancel");
+	const abort = () => settle(entry, { action: "cancel", handoff: false });
 	request.signal.addEventListener("abort", abort, { once: true });
 	if (useLargeResume.getState().pending) waiting.push(entry);
 	else useLargeResume.setState({ pending: entry });
 	const choice = await promise;
 	request.signal.removeEventListener("abort", abort);
-	if (choice === "new-chat") void startNewChat(request.projectPath);
-	return choice === "resume";
+	if (choice.action === "new-chat" && !request.signal.aborted) await startNewChat(request, choice.handoff);
+	return choice.action === "resume";
 }
 
 /** The dialog loads from its own chunk; if it does not load, the failure dialog's Close answers no. */

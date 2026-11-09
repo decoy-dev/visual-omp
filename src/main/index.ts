@@ -2,7 +2,7 @@ import "./profile";
 import { attachWindowDiagnostics, crashReportingReady, startDiagnostics } from "./services/diagnostics/runtime";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
-import { app, BrowserWindow, Menu, nativeTheme, shell } from "electron";
+import { app, BrowserWindow, dialog, Menu, nativeTheme, shell } from "electron";
 import { attachAttentionWindow, setAppUserModelId } from "./attention";
 import { buildTextContextMenu } from "./contextMenu";
 import { registerHandlers } from "./handlers";
@@ -12,6 +12,7 @@ import { buildMenu } from "./menu";
 import { listHosts, stopAllHosts } from "./omp/host";
 import { followSessions } from "./omp/follow";
 import { stopWatchingSessions, watchSessions } from "./omp/sessions";
+import { stopSavedSessionHandoffs } from "./omp/session-handoff";
 import { getPrefs } from "./prefs";
 import { quitAction } from "./quitFlow";
 import { killAllTerminals } from "./terminals";
@@ -150,14 +151,21 @@ function createWindow(): void {
 async function shutdown(): Promise<void> {
 	if (quitting) return;
 	quitting = true;
-	stopWatchingSessions();
-	followSessions([]);
-	killAllTerminals();
-	await stopAllHosts();
-	await stopPreviewOffice();
-	await flushDiagnostics();
-	shutdownComplete = true;
-	app.quit();
+	try {
+		await stopSavedSessionHandoffs();
+		await stopAllHosts();
+		await stopPreviewOffice();
+		stopWatchingSessions();
+		followSessions([]);
+		killAllTerminals();
+		await flushDiagnostics();
+		shutdownComplete = true;
+		app.quit();
+	} catch (error) {
+		quitting = false;
+		quitApproved = false;
+		dialog.showErrorBox("Could not quit visual-omp", `omp cleanup could not be confirmed. Try Quit again to stop the remaining process.\n\n${error instanceof Error ? error.message : String(error)}`);
+	}
 }
 
 setAppUserModelId();

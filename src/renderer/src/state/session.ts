@@ -16,7 +16,8 @@ import { isAskRequest } from "../chat/transcript/askSeries";
 import { contentText } from "../chat/transcript/notices";
 import { expandedPromptTextMatches } from "@shared/prompt-input";
 import { APP_GUEST_NAME, GuestClient, type GuestSnapshot } from "../collab/lib/client";
-import { confirmLargeResume, LARGE_RESUME_BYTES, ResumeDeclinedError } from "../registry/guards";
+import { i18n } from "../i18n";
+import { confirmLargeResume, LARGE_RESUME_BYTES, ResumeDeclinedError, type ResumeMessage, type ResumeRequest } from "../registry/guards";
 import { toast } from "../ui/toast";
 import { parseSessionHistory, type SessionHistory } from "./history";
 import { TspNoticeStore } from "./tsp/notice-store";
@@ -28,9 +29,14 @@ export interface QueuedMessage {
 	text: string;
 	/** Images omp attaches with the text, in the order they were added. */
 	images: readonly Attachment[];
-	/** omp explicitly rejected this send; only an explicit retry releases it. */
+	/** A retained failure that waits for an explicit retry. */
 	error?: string;
+	/** Transferred input never retries a delivery failure without another explicit send. */
+	explicitRetry?: true;
 }
+
+/** Submission ownership, not a model-turn acknowledgement. Queue-owned input keeps the queue's recovery controls. */
+export type SendOwnership = { kind: "submitted" } | { kind: "queued"; id: string } | { kind: "empty" } | { kind: "transferred" };
 
 /** A shell or Python line omp runs itself, without a model turn, and the result entry it appends for it. */
 interface LocalRun {
@@ -476,19 +482,19 @@ export class SessionController {
 	}
 
 	/** Launch (or resume) the hidden omp for this chat. Idempotent. */
-	ensureLive(): Promise<void> {
+	ensureLive(message?: ResumeMessage): Promise<void> {
 		if (this.#disposed) return Promise.reject(new Error("This chat was closed."));
 		if (this.#view.readOnly) return Promise.reject(new Error("This chat is open elsewhere."));
 		if (this.#view.host && this.#view.host.phase !== "exited") return this.#starting ?? Promise.resolve();
-		this.#starting ??= this.#start().finally(() => {
+		this.#starting ??= this.#start(message).finally(() => {
 			this.#starting = null;
 		});
 		return this.#starting;
 	}
 
 	/** Start omp if needed and resolve once it runs and its live mirror is joined; rejects if omp exits first. */
-	async whenLive(): Promise<void> {
-		await this.ensureLive();
+	async whenLive(message?: ResumeMessage): Promise<void> {
+		await this.ensureLive(message);
 		if (this.#view.mode === "live" && this.#view.guest?.phase === "live") return;
 		// omp can exit while it starts, before anything below subscribes.
 		if (this.#view.mode === "exited") throw new Error(this.#view.error ?? "omp stopped");
@@ -522,14 +528,15 @@ export class SessionController {
 	 * that already ran omp, a file approved earlier and an unreadable size go ahead without asking, and a declined
 	 * warning throws `ResumeDeclinedError`.
 	 */
-	async #clearLargeResume(file: string | null): Promise<string | null> {
+	async #clearLargeResume(file: string | null, message?: ResumeMessage): Promise<string | null> {
 		if (!file || this.#hosted || approvedLargeResumes.has(file)) return file;
 		const bytes = await window.vomp.invoke("sessions:size", file);
 		if (bytes === null || bytes < LARGE_RESUME_BYTES || this.#disposed || this.#sessionFile !== file) return file;
 		const gate = new AbortController();
 		this.#resumeGate = gate;
+		const request: ResumeRequest = { tabId: this.tabId, projectPath: this.#projectPath, file, bytes, signal: gate.signal, message };
 		try {
-			if (!(await confirmLargeResume({ tabId: this.tabId, projectPath: this.#projectPath, file, bytes, signal: gate.signal }))) throw new ResumeDeclinedError();
+			if (!(await confirmLargeResume(request))) throw new ResumeDeclinedError(request.messageTransferred ? message : undefined);
 		} finally {
 			if (this.#resumeGate === gate) this.#resumeGate = null;
 		}
@@ -537,7 +544,7 @@ export class SessionController {
 		return file;
 	}
 
-	async #start(): Promise<void> {
+	async #start(message?: ResumeMessage): Promise<void> {
 		// The ownership check and the large-chat warning both wait, and either can see the chat close, turn read-only or
 		// move to omp's newest linked copy meanwhile, so omp starts only once every check holds for the same file.
 		let cleared: string | null | undefined;
@@ -546,7 +553,7 @@ export class SessionController {
 			if (this.#disposed) throw new Error("This chat was closed.");
 			if (this.#view.readOnly) throw new Error("This chat is open elsewhere.");
 			if (cleared === this.#sessionFile) break;
-			cleared = await this.#clearLargeResume(this.#sessionFile);
+			cleared = await this.#clearLargeResume(this.#sessionFile, message);
 		}
 		this.#set({ mode: "starting", error: null });
 		this.#unsubscribeHost?.();
@@ -849,8 +856,17 @@ export class SessionController {
 	 * (omp idle, or only starting) counts as sent now (`noteSent`).
 	 */
 	async send(text: string, images: readonly Attachment[] = []): Promise<void> {
-		const message = { text: text.trim(), images: [...images] };
-		if (!message.text && message.images.length === 0) return;
+		await this.#send(text, images, false);
+	}
+
+	/** A handoff relinquishes its draft only after the host or this controller's queue takes ownership. */
+	async sendWithOwnership(text: string, images: readonly Attachment[] = []): Promise<SendOwnership> {
+		return this.#send(text, images, true);
+	}
+
+	async #send(text: string, images: readonly Attachment[], explicitRetry: boolean): Promise<SendOwnership> {
+		const message = { text: text.trim(), images: [...images], ...(explicitRetry ? { explicitRetry: true as const } : {}) };
+		if (!message.text && message.images.length === 0) return { kind: "empty" };
 		this.#assertTspApproval(message.text);
 		// Capture ask intent before any await or listener can change the pending request.
 		const askTarget = this.#askPromptTarget(message.text);
@@ -858,8 +874,7 @@ export class SessionController {
 		if ((askTarget || approval) && !this.#view.strandedImages) {
 			this.markInput();
 			this.noteSent();
-			await this.#deliverDirect(message, askTarget);
-			return;
+			return this.#deliverDirect(message, askTarget);
 		}
 		this.markInput();
 		if (!this.#lineAhead) this.noteSent();
@@ -867,17 +882,18 @@ export class SessionController {
 			const item: QueuedMessage = { id: `q${nextQueueId++}`, ...message };
 			this.#set({ queue: [...this.#view.queue, item] });
 			try {
-				await this.whenLive();
+				await this.whenLive(message);
 				this.#assertTspApproval(message.text);
 			} catch (error) {
 				// omp did not start: the caller gets the message back (the composer restores its draft), so it leaves the queue.
 				if (!this.#disposed) this.#set({ queue: this.#view.queue.filter(entry => entry.id !== item.id) });
+				if (error instanceof ResumeDeclinedError && error.transferredMessage === message) return { kind: "transferred" };
 				throw error;
 			}
 			this.#resumeQueue();
-			return;
+			return { kind: "queued", id: item.id };
 		}
-		await this.#deliverDirect(message);
+		return this.#deliverDirect(message);
 	}
 
 	/**
@@ -892,7 +908,11 @@ export class SessionController {
 		const askTarget = this.#askPromptTarget(message.text);
 		this.markInput();
 		this.noteSent();
-		await this.whenLive();
+		try { await this.whenLive(message); }
+		catch (error) {
+			if (error instanceof ResumeDeclinedError && error.transferredMessage === message) return;
+			throw error;
+		}
 		await this.#deliverDirect(message, askTarget);
 	}
 
@@ -918,7 +938,7 @@ export class SessionController {
 			await this.#deliverMessage(item, askTarget, index);
 		} catch (error) {
 			const failure = error instanceof DeliveryFailure ? error : new DeliveryFailure(error, false);
-			this.#requeue({ ...item, error: failure.queueError }, index);
+			this.#requeue({ ...item, error: failure.queueError || (item.explicitRetry ? failure.message || i18n.t("composer:send.failed") : undefined) }, index);
 			throw failure.reason;
 		}
 	}
@@ -1218,7 +1238,7 @@ export class SessionController {
 	 * hold a failed message's images. Once the write is done, `#settle` decides what the queue waits for.
 	 * Rejects with a `DeliveryFailure` that says whether the images were pasted before it failed.
 	 */
-	async #deliverMessage(item: { id?: string; text: string; images: readonly Attachment[] }, askTarget?: AskPromptTarget, index = 0): Promise<void> {
+	async #deliverMessage(item: { id?: string; text: string; images: readonly Attachment[]; explicitRetry?: true }, askTarget?: AskPromptTarget, index = 0): Promise<void> {
 		this.markInput();
 		let pasted = false;
 		let ack: Acknowledgement;
@@ -1266,7 +1286,7 @@ export class SessionController {
 					before.submissionId = id;
 					submission = {
 						id, hostId, generation: this.#view.host!.generation,
-						item: { id: item.id ?? `q${nextQueueId++}`, text: item.text, images: [...item.images] },
+						item: { id: item.id ?? `q${nextQueueId++}`, text: item.text, images: [...item.images], ...(item.explicitRetry ? { explicitRetry: true } : {}) },
 						index, ack: before, submitted: false, rejected: false, retained: false, acking: false,
 					};
 					this.#submissions.set(id, submission);
@@ -1318,12 +1338,12 @@ export class SessionController {
 	 * with a fresh paste after omp restarts), and the promise resolves. Any other failure rejects with the
 	 * reason, and the caller gets the message back.
 	 */
-	async #deliverDirect(message: { text: string; images: readonly Attachment[] }, askTarget?: AskPromptTarget): Promise<void> {
+	async #deliverDirect(message: { text: string; images: readonly Attachment[]; explicitRetry?: true }, askTarget?: AskPromptTarget): Promise<SendOwnership> {
 		if (this.#view.host?.transport === "tsp" && message.images.length === 0 && message.text.startsWith("/")) {
 			// UI-only commands have no collab user entry or turn acknowledgement.
 			if (!slashDelivery) throw new Error(TSP_CLASSIC_ACTION_UNAVAILABLE);
 			await this.#deliverSlash({ id: `q${nextQueueId++}`, ...message }, 0, false, false);
-			return;
+			return { kind: "submitted" };
 		}
 		try {
 			await this.#deliverMessage(message, askTarget);
@@ -1331,8 +1351,12 @@ export class SessionController {
 			if (!(error instanceof DeliveryFailure)) throw error;
 			if (!error.pasted && !error.queueError) throw error.reason;
 			if (!error.queueError) console.error("Could not submit a message after pasting its images", error.reason);
-			this.#requeue({ id: `q${nextQueueId++}`, ...message, ...(error.queueError ? { error: error.queueError } : {}) }, 0);
+			const queueError = error.queueError || (message.explicitRetry ? error.message || i18n.t("composer:send.failed") : undefined);
+			const item = { id: `q${nextQueueId++}`, ...message, ...(queueError ? { error: queueError } : {}) };
+			this.#requeue(item, 0);
+			return { kind: "queued", id: item.id };
 		}
+		return { kind: "submitted" };
 	}
 
 	/**
@@ -1432,9 +1456,10 @@ export class SessionController {
 			if (isTspInputError(failure.reason)) {
 				toast({ tone: "warn", message: failure.message });
 			} else console.error("Could not deliver a queued message", failure.reason);
-			// It goes back first in line; the next send, turn end or hold end tries again (after omp restarts, when
-			// its images were pasted).
-			this.#requeue({ ...next, ...(failure.queueError ? { error: failure.queueError } : {}) }, 0);
+			// Transferred input keeps explicit recovery after a failed delivery. Other queued input retains
+			// the existing retry rule after a send, turn end or hold end.
+			const queueError = failure.queueError || (next.explicitRetry ? failure.message || i18n.t("composer:send.failed") : undefined);
+			this.#requeue({ ...next, ...(queueError ? { error: queueError } : {}) }, 0);
 		});
 	}
 
@@ -1450,7 +1475,7 @@ export class SessionController {
 			await slashDelivery(this, item.text, { report });
 		} catch (error) {
 			this.#slashDeliveries--;
-			if (requeue) this.#requeue(item, index);
+			if (requeue) this.#requeue(item.explicitRetry ? { ...item, error: (error instanceof Error ? error.message : String(error)) || i18n.t("composer:send.failed") } : item, index);
 			throw error;
 		}
 		this.#slashDeliveries--;

@@ -41,6 +41,9 @@ interface DraftState {
 	previews: Record<string, string>;
 	setPreview(tabId: string, text: string | null): void;
 	attachments: Record<string, Attachment[]>;
+	/** A pending handoff owns submission until its row resolves or the person chooses a recovery action. */
+	sendBlocks: Record<string, true>;
+	setSendBlocked(tabId: string, blocked: boolean): void;
 	/** null selects the platform's default folder. */
 	homeFolder: string | null;
 	setHomeFolder(path: string): void;
@@ -110,6 +113,13 @@ export const useComposerDrafts = create<DraftState>()(
 		(set, get) => ({
 			drafts: {},
 			attachments: {},
+			sendBlocks: {},
+			setSendBlocked(tabId, blocked) {
+				set(state => {
+					const { [tabId]: _old, ...sendBlocks } = state.sendBlocks;
+					return { sendBlocks: blocked ? { ...sendBlocks, [tabId]: true } : sendBlocks };
+				});
+			},
 			editorRestores: {},
 			restoreEditor(tabId, id, text) {
 				set(state => {
@@ -208,7 +218,8 @@ export const useComposerDrafts = create<DraftState>()(
 					const { [tabId]: _mode, ...modes } = state.modes;
 					const { [tabId]: _preview, ...previews } = state.previews;
 					const { [tabId]: _restores, ...editorRestores } = state.editorRestores;
-					return { drafts, attachments, pendingFocus, modes, previews, editorRestores };
+					const { [tabId]: _block, ...sendBlocks } = state.sendBlocks;
+					return { drafts, attachments, pendingFocus, modes, previews, editorRestores, sendBlocks };
 				});
 			},
 		}),

@@ -188,6 +188,7 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 	const draft = useComposerDrafts(state => composerText(state, tabId));
 	const attachments = useComposerDrafts(state => state.attachments[tabId] ?? EMPTY);
 	const mode = useComposerDrafts(state => state.modes[tabId] ?? null);
+	const sendBlocked = useComposerDrafts(state => !!state.sendBlocks[tabId]);
 	const entries = useBranchEntries(view.entries, view.displayLeaf, view.history);
 	const sessionId = view.sessionId;
 	const [storedHistory, setStoredHistory] = useState<{ sessionId: string; items: PromptHistoryItem[] } | null>(null);
@@ -395,7 +396,7 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 	});
 
 	const submit = (now: boolean) => {
-		if (readOnly || tspReason) return;
+		if (readOnly || tspReason || sendBlocked) return;
 		const text = applyMode(draft, mode);
 		const images = [...attachments];
 		historyCursor.current.reset();
@@ -657,7 +658,7 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 			: queueing
 				? t("placeholder.working")
 				: t("placeholder.idle");
-	const canSend = !readOnly && !tspReason && (draft.trim().length > 0 || attachments.length > 0);
+	const canSend = !readOnly && !tspReason && !sendBlocked && (draft.trim().length > 0 || attachments.length > 0);
 	const actionSet = `${queueing}:${canSend}`;
 	const mod = IS_MAC ? "⌘" : "Ctrl+";
 	const questionId = view.uiRequest?.reqId ?? null;

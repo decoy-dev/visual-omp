@@ -157,3 +157,71 @@ describe("rpcRequests", () => {
 		expect(fake.sent).toHaveLength(1);
 	});
 });
+
+describe("cancellable saved-session RPC", () => {
+	it("does not spawn or submit when cancellation already happened", async () => {
+		const controller = new AbortController();
+		controller.abort(new DOMException("Cancelled", "AbortError"));
+		await expect(rpcRequests("/tmp", [{ type: "handoff" }], options({ signal: controller.signal, waitForExit: true }))).rejects.toMatchObject({ name: "AbortError" });
+		expect(fake.sent).toEqual([]);
+	});
+
+	it("terminates an aborted process, escalates to SIGKILL and awaits its exit", async () => {
+		const controller = new AbortController();
+		const request = rpcRequests("/tmp", [{ type: "get_state" }, { type: "handoff" }], options({ signal: controller.signal, waitForExit: true }));
+		const first = await sentRequest(fake);
+		vi.useFakeTimers();
+		try {
+			let finished = false;
+			const rejected = expect(request).rejects.toMatchObject({ name: "AbortError" }).then(() => { finished = true; });
+			controller.abort(new DOMException("Cancelled", "AbortError"));
+			fake.print({ type: "response", id: first.id, success: true, data: {} });
+			await vi.advanceTimersByTimeAsync(0);
+			expect(fake.kill).toHaveBeenCalledWith();
+			expect(fake.sent).toHaveLength(1);
+			expect(finished).toBe(false);
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(fake.kill).toHaveBeenCalledWith("SIGKILL");
+			expect(finished).toBe(false);
+			fake.signalCode = "SIGKILL"; fake.emit("exit", null, "SIGKILL");
+			await rejected;
+			expect(finished).toBe(true);
+		} finally { vi.useRealTimers(); }
+	});
+
+	it("kills a timed-out handoff and does not settle before termination", async () => {
+		vi.useFakeTimers();
+		try {
+			const request = rpcRequests("/tmp", [{ type: "handoff" }], options({ timeoutMs: 600000, waitForExit: true }));
+			await sentRequest(fake);
+			let finished = false;
+			const rejected = expect(request).rejects.toThrow("too slow").then(() => { finished = true; });
+			await vi.advanceTimersByTimeAsync(600000);
+			expect(fake.kill).toHaveBeenCalledWith();
+			expect(fake.stdin.writableEnded).toBe(true);
+			expect(finished).toBe(false);
+			fake.signalCode = "SIGTERM"; fake.emit("exit", null, "SIGTERM");
+			await rejected;
+		} finally { vi.useRealTimers(); }
+	});
+
+	it("retains the child through a termination failure and confirms a later teardown retry", async () => {
+		const request = rpcRequests("/tmp", [{ type: "get_state" }], options({ waitForExit: true }));
+		const sent = await sentRequest(fake);
+		vi.useFakeTimers();
+		try {
+			const failure = request.catch(error => error);
+			fake.print({ type: "response", id: sent.id, success: true, data: {} });
+			await vi.advanceTimersByTimeAsync(5000);
+			const retained = await failure;
+			expect(retained).toHaveProperty("retryTermination", expect.any(Function));
+			let stopped = false;
+			const retry = retained.retryTermination().then(() => { stopped = true; });
+			await vi.advanceTimersByTimeAsync(1000);
+			expect(stopped).toBe(false);
+			fake.signalCode = "SIGKILL"; fake.emit("exit", null, "SIGKILL");
+			await retry;
+			expect(stopped).toBe(true);
+		} finally { vi.useRealTimers(); }
+	});
+});

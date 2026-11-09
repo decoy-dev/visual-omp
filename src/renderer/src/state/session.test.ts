@@ -1218,6 +1218,93 @@ describe("SessionController TSP input", () => {
 		return session;
 	};
 
+	it("uses the real promise-based hold and reports exact queue ownership before submission", async () => {
+		const session = preview(false);
+		const hold = Promise.withResolvers<void>();
+		session.holdQueue(hold.promise);
+		const receipt = await session.sendWithOwnership('@"/p/source/handoff.md"\n\nContinue.', [shot]);
+		expect(receipt).toMatchObject({ kind: "queued" });
+		expect(session.getSnapshot().queue).toMatchObject([{ id: receipt.kind === "queued" ? receipt.id : "", text: '@"/p/source/handoff.md"\n\nContinue.', images: [shot], explicitRetry: true }]);
+		expect(invoked.filter(call => call[0] === "host:submit")).toEqual([]);
+		hold.resolve();
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:submit")).toEqual([["host:submit", "h1", '@"/p/source/handoff.md"\n\nContinue.', "steer", "/tmp/Screen\\ Shot.png", expect.any(String)]]);
+		expect(session.getSnapshot().queue).toEqual([]);
+	});
+
+	it("rejects a pre-ownership handoff send so the caller can keep its draft", async () => {
+		const session = preview(false);
+		failOnce("host:submit", "The host stopped before submission.");
+		await expect(session.sendWithOwnership("Continue.")).rejects.toThrow("The host stopped before submission.");
+		expect(session.getSnapshot().queue).toEqual([]);
+	});
+
+	it("retains a failed queued handoff with explicit recovery and never retries on readiness", async () => {
+		const session = preview(true);
+		const text = '@"/p/source/handoff.md"\n\nContinue.';
+		const receipt = await session.sendWithOwnership(text, [shot]);
+		expect(receipt.kind).toBe("queued");
+		failOnce("host:submit", "The host rejected the pending send.");
+		fakes.guests.at(-1)?.emit("live", [u1, a1], false);
+		await flush();
+		const failed = session.getSnapshot().queue[0]!;
+		expect(failed).toMatchObject({ id: receipt.kind === "queued" ? receipt.id : "", text, images: [shot], error: "The host rejected the pending send.", explicitRetry: true });
+		sendHost({ transport: "tsp", link: "L1", tspAvailability: { available: true, reason: null } });
+		fakes.guests.at(-1)?.emit("live", [u1, a1], false);
+		await session.send("A later message");
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:submit")).toHaveLength(1);
+		failOnce("host:submit", "The retry was refused.");
+		await expect(session.sendNow(failed.id)).rejects.toThrow("The retry was refused.");
+		expect(session.getSnapshot().queue[0]).toMatchObject({ id: failed.id, text, images: [shot], error: "The retry was refused." });
+		fakes.guests.at(-1)?.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:submit")).toHaveLength(2);
+		await session.sendNow(failed.id);
+		expect(invoked.filter(call => call[0] === "host:submit")).toHaveLength(3);
+		expect(session.getSnapshot().queue.map(item => item.text)).toEqual(["A later message"]);
+	});
+
+	it("keeps the transferred retry policy after an asynchronous omp rejection and a failed explicit retry", async () => {
+		const session = preview(false);
+		const text = '@"/p/source/handoff.md"\n\nContinue.';
+		await expect(session.sendWithOwnership(text, [shot])).resolves.toEqual({ kind: "submitted" });
+		const id = invoked.filter(call => call[0] === "host:submit").at(-1)![5] as string;
+		sendHost({ transport: "tsp", link: "L1", promptFailures: [{ id, generation: 1, diagnostic: "omp rejected the transferred prompt.", cleared: true }] });
+		await flush();
+		const failed = session.getSnapshot().queue[0]!;
+		expect(failed).toMatchObject({ text, images: [shot], explicitRetry: true, error: "omp rejected the transferred prompt." });
+		failOnce("host:submit", "The retry was refused.");
+		await expect(session.sendNow(failed.id)).rejects.toThrow("The retry was refused.");
+		expect(session.getSnapshot().queue[0]).toMatchObject({ id: failed.id, text, images: [shot], explicitRetry: true, error: "The retry was refused." });
+		sendHost({ transport: "tsp", link: "L1", tspAvailability: { available: true, reason: null } });
+		fakes.guests.at(-1)?.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:submit")).toHaveLength(2);
+		expect(session.getSnapshot().queue).toHaveLength(1);
+	});
+
+	it.each(["restored", "stranded"] as const)("reports queue ownership for %s handoff images without duplicating the draft payload", async recovery => {
+		const session = preview(false);
+		const diagnostic = recovery === "restored" ? "Image submission was restored. The image could not be read." : "Image submission needs recovery. The image was staged before the host stopped.";
+		failOnce("host:submit", diagnostic);
+		const receipt = await session.sendWithOwnership("Continue with this image.", [shot]);
+		expect(receipt.kind).toBe("queued");
+		const failed = session.getSnapshot().queue[0]!;
+		expect(failed).toMatchObject({ id: receipt.kind === "queued" ? receipt.id : "", text: "Continue with this image.", images: [shot], explicitRetry: true, error: expect.any(String) });
+		expect(session.getSnapshot().strandedImages).toBe(recovery === "stranded");
+		sendHost({ transport: "tsp", link: "L1", tspAvailability: { available: true, reason: null } });
+		fakes.guests.at(-1)?.emit("live", [u1, a1], false);
+		await flush();
+		expect(invoked.filter(call => call[0] === "host:submit")).toHaveLength(1);
+		if (recovery === "stranded") await expect(session.sendNow(failed.id)).rejects.toThrow("Restart omp");
+		else {
+			await session.sendNow(failed.id);
+			expect(invoked.filter(call => call[0] === "host:submit")).toHaveLength(2);
+			expect(session.getSnapshot().queue).toEqual([]);
+		}
+	});
+
 	it.each(["send", "steer"] as const)("routes a direct TSP slash from %s through slash delivery without awaiting a collab turn", async method => {
 		const calls = fakeDelivery();
 		const session = preview(false);
@@ -2218,6 +2305,37 @@ describe("large saved chat warning", () => {
 		expect(ask).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ tabId: "/p/declined.jsonl", projectPath: "/p", file: "/p/declined.jsonl", bytes: LARGE_RESUME_BYTES }));
 		expect(starts()).toEqual([]);
 		expect(session.getSnapshot()).toMatchObject({ mode: "history", queue: [], error: null });
+	});
+
+	it("passes the submitted text and attachments to the guard and consumes only the transferred send", async () => {
+		const images = [{ path: "/p/reference.png", name: "reference.png" }];
+		ask.mockImplementation(async request => {
+			expect(request.message).toEqual({ text: "continue with this image", images });
+			request.messageTransferred = true;
+			return false;
+		});
+		const session = saved("/p/transferred.jsonl", LARGE);
+		await expect(session.send("continue with this image", images)).resolves.toBeUndefined();
+		expect(starts()).toEqual([]);
+		expect(session.getSnapshot()).toMatchObject({ mode: "history", queue: [], error: null });
+	});
+
+	it("does not consume a second send sharing the transferred send's launch", async () => {
+		const choice = Promise.withResolvers<boolean>();
+		ask.mockImplementation(request => {
+			request.messageTransferred = true;
+			return choice.promise;
+		});
+		const session = saved("/p/transferred-concurrent.jsonl", LARGE);
+		const first = session.send("same message");
+		const second = expect(session.send("same message")).rejects.toBeInstanceOf(ResumeDeclinedError);
+		await flush();
+		expect(ask).toHaveBeenCalledOnce();
+		choice.resolve(false);
+		await expect(first).resolves.toBeUndefined();
+		await second;
+		expect(session.getSnapshot().queue).toEqual([]);
+		expect(starts()).toEqual([]);
 	});
 
 	it.each([LARGE_RESUME_BYTES - 1, null])("resumes a saved chat of %s bytes without asking", async bytes => {

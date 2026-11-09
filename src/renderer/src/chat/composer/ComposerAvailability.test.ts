@@ -76,6 +76,20 @@ it("renders the matched question instruction and keeps ordinary menu and classic
 	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(false);
 });
 
+it("blocks button and keyboard submission while a handoff owns the pending draft", async () => {
+	useComposerDrafts.getState().setSendBlocked("availability", true);
+	const image = { path: "/tmp/pending.png", name: "pending.png" };
+	useComposerDrafts.getState().addAttachments("availability", [image]);
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
+	await act(async () => element.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true })));
+	expect(session.send).not.toHaveBeenCalled();
+	expect(useComposerDrafts.getState().drafts.availability).toBe("A message ready to send");
+	expect(useComposerDrafts.getState().attachments.availability).toEqual([image]);
+	await act(async () => useComposerDrafts.getState().setSendBlocked("availability", false));
+	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(false);
+});
+
 
 it("leaves the side-question explanation and Done action to the chat layer", async () => {
 	const original = window.vomp.invoke;

@@ -3,6 +3,7 @@ import { resolveSessionFile, sessionFileSize, sessionSummary } from "../omp/sess
 import { forkSavedSession } from "../omp/fork";
 import { toggleConversationPin } from "../omp/session-pins";
 import { renameSavedSession } from "../omp/session-rename";
+import { cancelSavedSessionHandoff, handoffSavedSession } from "../omp/session-handoff";
 import { helperSessionFile } from "../omp/helper-file";
 import { loadSavedToolOutput } from "../omp/session-tool-output";
 import { listHosts } from "../omp/host";
@@ -23,6 +24,12 @@ export function register(): void {
 	handle("sessions:helperFile", helperSessionFile);
 	handle("sessions:toolOutput", (file, toolCallId, manual) => loadSavedToolOutput(file, toolCallId, manual, reportedSessionFiles));
 	handle("sessions:fork", forkSavedSession);
+	handle("sessions:handoff", async (operationId, file, folder, focus) => {
+		const result = await handoffSavedSession(operationId, file, folder, focus);
+		broadcast("sessions:changed", { cwd: null });
+		return result;
+	});
+	handle("sessions:cancelHandoff", cancelSavedSessionHandoff);
 	handle("sessions:pin", async file => {
 		const session = await sessionSummary(file);
 		if (!session) throw new Error("This saved chat could not be found.");
