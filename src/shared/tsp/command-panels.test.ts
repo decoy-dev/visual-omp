@@ -7,6 +7,9 @@ import { isClaimable, TSP_ROLES } from "./roles";
 import { commandOutcome, commandOutcomeSpec } from "./command-result";
 import { openOverlay, unclaimed, walkNodes } from "./view-state";
 import { commandPanelFrames, replacePanelChild } from "./testing/command-panel-fixtures";
+import type { TspSurfaceSnapshot } from "../tsp-host";
+import formStages185 from "../../main/omp/tsp/fixtures/18.18.5/ask-fixture-form-tabs.ask.json";
+import formStages183 from "../../main/omp/tsp/fixtures/18.18.3/ask-html-form.ask.json";
 
 const reportNames = ["tools", "changelog", "jobs-full", "advisor-status", "ssh-list", "ssh-help", "mcp-help", "mcp-list", "mcp-resources", "mcp-prompts", "mcp-notifications"];
 const nodes = (name: string) => commandPanelFrames(name).flatMap(snapshot => snapshot.surfaces.flatMap(surface => [...walkNodes(surface.document)]));
@@ -108,15 +111,24 @@ it("keeps rule labels and leaves linked panel spans to fallback", () => {
 	expect(settledCommandPanel(node)).toBeNull();
 });
 
-it("finds an unclaimed HTML ask form inside its editor wrapper without treating its action bar as a second screen", () => {
+it("keeps unsupported ask content out of automatic screens without hiding it from manual views", () => {
 	const surface = structuredClone(commandPanelFrames("cleanse").at(-1)!.surfaces[0]!);
 	const form: TspNode = { id: "ask-form", k: "col", p: { role: TSP_ROLES.askForm }, c: [{ id: "ask-form/text", k: "text", p: { text: "Release choices" } }] };
 	const ask: TspNode = { id: "ask-editor", k: "col", p: { role: TSP_ROLES.editorAsk }, c: [
 		form, { id: "ask-actions", k: "row", c: [{ id: "ask-submit", k: "button", p: { text: "Submit", actions: { click: "submit" } } }] },
 	] };
 	surface.document.c = [{ id: "dock", k: "col", c: [ask] }];
-	expect(hasUnclaimedDockPanel([surface], new Map())).toBe(true);
+	expect(hasUnclaimedDockPanel([surface], new Map())).toBe(false);
 	expect(hasUnclaimedDockPanel([surface], new Map([[surface.open.id, new Set([ask.id])]]))).toBe(false);
+	expect(unclaimed(surface, "dock").flatMap(node => [...walkNodes(node)]).some(node => node.id === ask.id)).toBe(true);
 	ask.p = { ...ask.p, hidden: true };
 	expect(hasUnclaimedDockPanel([surface], new Map())).toBe(false);
+});
+
+it.each([...formStages183.stages, ...formStages185.stages].filter(stage => stage.request))("never auto-opens the recorded ask presentation at $stage", stage => {
+	const surfaces = stage.surfaces as unknown as TspSurfaceSnapshot[];
+	expect(hasUnclaimedDockPanel(surfaces, new Map())).toBe(false);
+	for (const surface of surfaces) {
+		expect(unclaimed(surface, "dock").flatMap(node => [...walkNodes(node)]).some(node => node.p?.role === TSP_ROLES.editorAsk || node.p?.role === TSP_ROLES.editorAskHidden)).toBe(true);
+	}
 });

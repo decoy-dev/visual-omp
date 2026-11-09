@@ -14,6 +14,7 @@ export const TSP_ROLES = {
 	askOptions: "omp.ask.options", askOption: "omp.ask.option", askCheck: "omp.ask.check",
 	askWell: "omp.ask.well", askWellMulti: "omp.ask.well.multi", askSummary: "omp.ask.summary",
 	askBullets: "omp.ask.bullets", askPre: "omp.ask.pre", askTable: "omp.ask.table", askError: "omp.ask.error",
+	askHead: "omp.ask.head", askQuestions: "omp.ask.questions", askAnswers: "omp.ask.answers", askNotice: "omp.ask.notice",
 	composerModel: "omp.composer.model", composerEffort: "omp.composer.effort", composerModelEffort: "omp.composer.model.effort",
 	compaction: "omp.compaction", working: "omp.working", workingLabel: "omp.working.label", loader: "omp.loader",
 	queue: "omp.queue", queueItem: "omp.queue.item", approvalChoices: "omp.approval.choices", composerChips: "omp.composer.chips",
@@ -45,16 +46,22 @@ export const TSP_ACTIONS = {
 	submit: "submit", cancel: "cancel", page: "page", scope: "scope", tab: "tab", strip: "strip",
 	confirm: "confirm", close: "close", yes: "yes", no: "no", assign: "assign", switch: "switch", summarize: "summarize",
 	label: "label", labelSave: "label-save", filter: "filter", clear: "clear", copy: "copy",
-	resume: "resume", click: "click",
+	resume: "resume", click: "click", next: "next", show: "show", hide: "hide",
 	thinkingCycle: "thinking.cycle", use: "use",
 	copyPlan: "copyPlan", externalEditor: "externalEditor", save: "save",
 	btwFollowUp: "follow-up", btwSend: "send", btwDiscard: "discard", btwStop: "stop", btwCopy: "copy-answer", btwInject: "inject",
 	context: "status.context", cost: "status.cost", model: "status.model", path: "status.path",
 } as const;
 const knownActions: ReadonlySet<string> = new Set([...Object.values(TSP_ACTIONS), "toggle", "select", "activate", "open", "zoom"]);
-export function isKnownAction(action: string): boolean { return knownActions.has(action); }
+/** Form controls are enabled only for declared targets inside a current ask root. */
+export function isAskFormAction(action: string): boolean {
+	if (action === TSP_ACTIONS.next || action === TSP_ACTIONS.show || action === TSP_ACTIONS.hide) return true;
+	const match = /^edit:(0|[1-9]\d*)$/.exec(action);
+	return match !== null && match[0] === action && Number.isSafeInteger(Number(match[1]));
+}
+export function isKnownAction(action: string): boolean { return knownActions.has(action) || isAskFormAction(action); }
 /** Recorded actions without an app interaction path stay display-only. */
-export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, hide: true, note: true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true };
+export const TSP_READ_ONLY_ACTIONS: Readonly<Record<string, true>> = { external: true, expand: true, interrupt: true, "copy-message": true, rewind: true, task: true, approve: true, deny: true, note: true, "queue.edit": true, "status.git": true, "status.cache": true, "jobs.open": true, edit: true, add: true, delete: true };
 export const TSP_STATUS = { closing: "Closing session…" } as const;
 export const TSP_TREE = {
 	summaryTitle: "Summarize branch?", noSummary: "No summary",
@@ -89,7 +96,7 @@ export const TSP_CLAIMS: Readonly<Record<string, string>> = Object.freeze(
 		...[TSP_ROLES.composerModel, TSP_ROLES.composerEffort, TSP_ROLES.composerModelEffort].map(role => [role, "composer-model"]),
 		...[...nativeHookRoles].map(role => [role, "hook-dialog-card"]),
 		[TSP_ROLES.advisor, "advisor-apply"],
-		[TSP_ROLES.editorAsk, "collab-form-card"],
+		...[TSP_ROLES.editorAsk, TSP_ROLES.editorAskHidden].map(role => [role, "collab-form-card"]),
 		...[TSP_ROLES.userShell, TSP_ROLES.userPython].map(role => [role, "transcript-user-runs"]),
 		[TSP_ROLES.report, "command-report"],
 		...[TSP_ROLES.cleanse, TSP_ROLES.omfg].map(role => [role, "command-panel-result"]),
@@ -100,6 +107,57 @@ const replicated = [TSP_ROLES.user, TSP_ROLES.assistant, TSP_ROLES.thinking, TSP
 export function isReplicatedRole(role?: string): boolean {
 	return !!role && replicated.some(prefix => role === prefix || role.startsWith(`${prefix}.`));
 }
+export interface AskFormPresentation {
+	view: "fields" | "review" | "hidden";
+	body: TspNode | null;
+	navigation?: { active: string; items: string[] };
+}
+
+function* askNodes(node: TspNode): Generator<TspNode> {
+	if (node.p?.hidden) return;
+	yield node;
+	for (const child of node.c ?? []) yield* askNodes(child);
+}
+
+/** Recorded HTML form presentations only. Legacy question lists remain generic. */
+export function askFormPresentation(node: TspNode): AskFormPresentation | null {
+	if (node.k !== "col" || node.p?.hidden || (node.p?.role !== TSP_ROLES.editorAsk && node.p?.role !== TSP_ROLES.editorAskHidden)) return null;
+	const parts = [...askNodes(node)];
+	const bodies = parts.filter(part => part.p?.role === TSP_ROLES.askForm);
+	const tabs = parts.filter(part => part.p?.role === TSP_ROLES.askQuestions);
+	const answers = parts.filter(part => part.p?.role === TSP_ROLES.askAnswers);
+	const action = (name: string): boolean => parts.some(part => part.k === "button" && part.p?.actions?.click === name);
+	if (node.p.role === TSP_ROLES.editorAskHidden) {
+		// Legacy non-HTML asks share these roles and actions, but label cancellation Skip.
+		return !bodies.length && !tabs.length && !answers.length && parts.some(part => part.k === "text" && part.p?.role === TSP_ROLES.askSummary) && action(TSP_ACTIONS.show) && parts.some(part => part.k === "button" && part.p?.actions?.click === TSP_ACTIONS.cancel && part.p.text === "Cancel")
+			? { view: "hidden", body: null } : null;
+	}
+	let navigation: AskFormPresentation["navigation"];
+	if (tabs.length) {
+		const tab = tabs[0]!;
+		if (tabs.length !== 1 || tab.k !== "tabs" || !tab.p?.active || !tab.p.items.length) return null;
+		const items = tab.p.items.map(item => item.id);
+		if (new Set(items).size !== items.length || !items.includes(tab.p.active) || !items.includes("review")) return null;
+		navigation = { active: tab.p.active, items };
+	}
+	if (bodies.length === 1 && !answers.length && navigation?.active !== "review") {
+		const body = bodies[0]!;
+		if (body.k !== "col" || !body.c?.length) return null;
+		let fields = 0;
+		for (const field of askNodes(body)) {
+			if (field.p?.role !== TSP_ROLES.askField) continue;
+			if (field.k !== "col" || ![...askNodes(field)].some(part => part.k === "input" || part.k === "editor" || part.k === "list" && part.p?.role === TSP_ROLES.askOptions || part.k === "text" && (part.p?.role === TSP_ROLES.askWell || part.p?.role === TSP_ROLES.askWellMulti))) return null;
+			fields++;
+		}
+		if (!fields) return null;
+		return { view: "fields", body, ...(navigation ? { navigation } : {}) };
+	}
+	if (!bodies.length && navigation?.active === "review" && answers.length === 1 && answers[0]!.k === "kv" && action(TSP_ACTIONS.submit) && action(TSP_ACTIONS.cancel)) {
+		return { view: "review", body: null, navigation };
+	}
+	return null;
+}
+
 export function isClaimable(node: TspNode, surface?: TspSurfaceSnapshot): boolean {
 	if (node.p?.role === TSP_ROLES.report) return commandReport(node) !== null;
 	if (node.p?.role === TSP_ROLES.cleanse || node.p?.role === TSP_ROLES.omfg) return settledCommandPanel(node) !== null;
@@ -107,7 +165,7 @@ export function isClaimable(node: TspNode, surface?: TspSurfaceSnapshot): boolea
 	if (node.k === "prefs" || node.p?.role === TSP_ROLES.advisor) return advisorScope(node, surface?.open.mode) !== null;
 	if (node.p?.role === TSP_ROLES.userShell || node.p?.role === TSP_ROLES.userPython) return isUserRunNode(node);
 	if (node.p?.role === TSP_ROLES.planReview) return projectPlanReview(node, "") !== null;
-	if (node.p?.role === TSP_ROLES.editorAsk) return node.c?.some(child => child.p?.role === TSP_ROLES.askForm) === true;
+	if (node.p?.role === TSP_ROLES.editorAsk || node.p?.role === TSP_ROLES.editorAskHidden) return askFormPresentation(node) !== null;
 	if (isHookNode(node)) {
 		if (!isNativeHookNode(node)) return false;
 		const supported = (child: TspNode): boolean => !child.p?.hidden && (child.k === "picker" && !!child.p?.items?.length || child.k === "list" && !!child.c?.some(item => item.k === "item" && !item.p?.hidden) || child.k === "input" || child.k === "editor" || !!child.c?.some(supported));

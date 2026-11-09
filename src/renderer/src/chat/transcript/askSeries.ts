@@ -295,8 +295,9 @@ function findRunningAsk(source: AskSource, matches: (args: unknown) => AskQuesti
 	}
 	return null;
 }
+export interface RunningFormAsk { toolCallId: string; html: string }
 /** The active HTML form owns one presentation across its sequential guest requests. */
-export function findRunningFormAsk(source: AskSource): { toolCallId: string; html: string } | null {
+export function findRunningFormAsk(source: AskSource): RunningFormAsk | null {
 	let html = "";
 	const call = findRunningAsk(source, args => {
 		if (!isRecord(args) || typeof args.html !== "string") return null;

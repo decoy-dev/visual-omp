@@ -905,7 +905,7 @@ The normal view never dumps node props as JSON;
 the raw outline disclosure contains that developer metadata. Hook input omits omp's inherited
 `> ` terminal prefix because the native app field already supplies its own chrome.
 
-Semantic overlays, dock forms and screen surfaces open the sheet without a painting delay.
+Other semantic overlays, dock panels and screen surfaces open the sheet without a painting delay.
 Supported hook dialogs are claimed while a mounted visible native `OmpDialogCard` presents them,
 with the same public props and presentation as classic. Matched hooks use the visible collab
 question card's exact request ownership. Without an active presentation claim, the generic omp
@@ -971,12 +971,15 @@ The recorded `18.18.3/ask-html-form` fixture contains the native dock form, all 
 requests and the saved session with one tool result. Main projects that dock's field labels,
 preceding text, section titles, field kinds and option rows for conservative request matching.
 An editor request must match a text field or a choice field with an eligible Other row.
-A visible matched collab card claims the complete `omp.editor.ask` subtree only when it
-contains the registered form role. Only HTML forms may replace a request binding while
-their native node stays unchanged; ordinary hooks keep their node-departure settlement guard.
-Claims decide suppression. An absent consumer or uncertain identity opens the unclaimed
-form in the generic omp screen. omp supplies no common form request id across the two
-channels, so this remains content matching rather than an upstream identity guarantee.
+A visible matched collab card claims the complete ask root when the shared projection
+recognizes its form, Review or collapsed view. Only HTML forms may replace a request
+binding while their native node stays unchanged; ordinary hooks keep their node-departure
+settlement guard.
+Claims decide which native form content is duplicated in a manually opened omp screen.
+Ask forms never open that screen automatically. Unsupported or uncertain forms remain
+visible in the chat with an explicit View question in omp screen action. Other native
+dialogs retain their existing automatic-opening rules. omp supplies no common form request
+id across the two channels, so matching still uses content and established node identity.
 
 The form presenter is keyed by its tool call and host generation rather than each guest
 request. After an answer, collab retires the displayed request before the next field and
@@ -984,8 +987,18 @@ main's replacement match arrive. The presenter keeps the previous field visible 
 disabled during that gap. Its established claim can follow a matched or settling binding
 on the same physical form, scoped to the host, generation, protocol epoch and source HTML.
 Missing nodes, uncertain matching, a different form or hidden/unmounted presentation release
-that ownership. This keeps selection updates out of the omp screen without a timer or a
-blanket suppression of form fallback.
+that ownership. The completed call keeps its disabled presenter until the paired native node
+departs, so result delivery cannot briefly reveal a second form. This uses no timer.
+
+omp 18.18.4 and 18.18.5 nest the form inside a scrolling list and expose only the active
+question tab's fields. `askFormPresentation` recognizes that body, Review's answers without
+a form body, and the collapsed Show/Cancel row. Established form ownership survives those
+known views as settling; new requests are not declared matched merely because a form exists.
+Collab remains the sole answer path and completes every named field even while the local
+dialog stays on tab zero or Review. Native Next, Show, Hide and indexed edit actions in the
+explicit screen path require a current declaration inside an ask root; tab ids must still
+exist. The app does not drive the paired native Submit as a second submission path.
+
 
 
 

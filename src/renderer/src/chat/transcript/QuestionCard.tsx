@@ -10,7 +10,7 @@ import { deliver } from "../composer/send";
 import { pendingAsk, type SessionController } from "../../state/session";
 import { Button, Textarea, toast } from "../../ui";
 import { AskSeriesCard } from "./AskSeriesCard";
-import { ASK_CHAT, ASK_NEXT, ASK_OTHER, CUSTOM_ANSWER_PREFIX, findRunningFormAsk } from "./askSeries";
+import { ASK_CHAT, ASK_NEXT, ASK_OTHER, CUSTOM_ANSWER_PREFIX, findRunningFormAsk, toolCallState, type RunningFormAsk } from "./askSeries";
 import { useAskSeries } from "./askSeriesStore";
 import { ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoices";
 import { useTsp } from "../../state/tsp/useTsp";
@@ -19,42 +19,61 @@ import { useApp } from "../../state/app";
 import { ColorText } from "../../transcript/ColorText";
 import { isAskFormRequest } from "../../tool-render/tools/askForm";
 import { isClaimable, TSP_ROLES } from "@shared/tsp/roles";
-import { walkNodes } from "@shared/tsp/view-state";
+import { walkNodes, type TspNodeTarget } from "@shared/tsp/view-state";
+import type { TspHostSnapshot } from "@shared/tsp-host";
 
-/** Keep an established form owner through request retirement and delayed main matching. */
-function TspFormPresentationClaim({ hostId, generation, reqId, html }: { hostId: string; generation: number; reqId: number | undefined; html: string }) {
+interface FormOwner extends PresentationTarget { generation: number; html: string; toolCallId: string }
+interface FormOwnerRef { current: FormOwner | null }
+interface NativeForms { snapshot: TspHostSnapshot; roots: TspNodeTarget[] }
+
+/** Initial ownership is exact; a known form can settle through its local presentation changes. */
+function useFormPresentation(context: NativeForms | null, reqId: number | undefined, form: RunningFormAsk, owner: FormOwnerRef): boolean {
 	const covered = useApp(state => !!state.terminalTabId || !!state.sheet);
-	const { snapshot } = useTsp(hostId);
-	const retained = useRef<(PresentationTarget & { generation: number; html: string }) | null>(null);
-	const current = snapshot?.hostId === hostId && snapshot.generation === generation && snapshot.lifecycle === "live" ? snapshot : null;
-	const forms = current?.surfaces.flatMap(surface => surface.closed || surface.suspended || surface.documentGeneration !== generation ? [] : [...walkNodes(surface.document)]
-		.filter(node => node.p?.role === TSP_ROLES.editorAsk && isClaimable(node, surface))
-		.map(node => ({ surfaceId: surface.open.id, nodeId: node.id }))) ?? [];
+	const current = context?.snapshot;
+	const forms = context?.roots.filter(({ node, surface }) => isClaimable(node, surface)) ?? [];
 	const candidates = current?.questionMatches?.filter(match => (match.status === "matched" || match.status === "settling")
-		&& forms.some(form => form.surfaceId === match.surfaceId && form.nodeId === match.nodeId)) ?? [];
+		&& forms.some(({ surface, node }) => surface.open.id === match.surfaceId && node.id === match.nodeId)) ?? [];
 	const direct = candidates.filter(match => reqId !== undefined && match.reqId === reqId);
-	const prior = retained.current;
-	const carried = prior?.hostId === hostId && prior.generation === generation && prior.epoch === current?.epoch && prior.html === html
+	const prior = owner.current;
+	const carried = prior && current && prior.hostId === current.hostId && prior.generation === current.generation && prior.epoch === current.epoch && prior.html === form.html && prior.toolCallId === form.toolCallId
 		? candidates.filter(match => match.surfaceId === prior.surfaceId && match.nodeId === prior.nodeId) : [];
 	const match = direct.length === 1 ? direct[0] : direct.length === 0 && carried.length === 1 ? carried[0] : undefined;
-	const target = current && match ? { hostId, generation, epoch: current.epoch, surfaceId: match.surfaceId, nodeId: match.nodeId, html } : null;
-	useLayoutEffect(() => { retained.current = target; }, [hostId, generation, current?.epoch, target?.surfaceId, target?.nodeId, html]);
+	const target = current && match ? { hostId: current.hostId, generation: current.generation, epoch: current.epoch, surfaceId: match.surfaceId, nodeId: match.nodeId, ...form } : null;
+	useLayoutEffect(() => {
+		owner.current = target;
+		return () => { owner.current = null; };
+	}, [owner, current?.hostId, current?.generation, current?.epoch, target?.surfaceId, target?.nodeId, form.html, form.toolCallId]);
 	usePresentationClaim(target, !covered, true);
-	return null;
+	return target !== null;
 }
 
-function FormQuestionCard({ session, request, html }: { session: SessionController; request: CollabUiRequest | null; html: string }) {
+function FormScreenAction({ session, standalone = false }: { session: SessionController; standalone?: boolean }) {
 	const { t } = useTranslation("chat");
-	const [previous, setPrevious] = useState({ html, request });
-	if (previous.html !== html || request && request !== previous.request) setPrevious({ html, request });
-	const shown = request ?? (previous.html === html ? previous.request : null);
-	const host = session.getSnapshot().host;
-	return <div data-form-question aria-busy={!request}>
-		{host?.transport === "tsp" && <TspFormPresentationClaim hostId={host.hostId} generation={host.generation} reqId={shown?.reqId} html={html} />}
-		<fieldset disabled={!request} className="m-0 min-w-0 border-0 p-0">
+	return <div data-form-fallback className={standalone ? cardClass : "mt-2 flex flex-wrap items-center justify-between gap-2 text-sm text-fg-muted"}>
+		{standalone ? <Heading icon={<Question className="text-accent" />}>
+			<p className="text-base font-medium text-fg">{t("question.formFallbackTitle")}</p>
+			<p className="mt-1 text-sm text-fg-muted">{t("question.formFallbackHelp")}</p>
+		</Heading> : <p>{t("question.formViewAlternative")}</p>}
+		<div className={standalone ? "mt-3 flex justify-end" : undefined}>
+			<Button variant="secondary" onClick={() => useApp.getState().openTerminal(session.tabId)}>{t("question.formView")}</Button>
+		</div>
+	</div>;
+}
+
+function FormQuestionCard({ session, request, form, context, owner, closing }: { session: SessionController; request: CollabUiRequest | null; form: RunningFormAsk; context: NativeForms | null; owner: FormOwnerRef; closing: boolean }) {
+	const { t } = useTranslation("chat");
+	const [previous, setPrevious] = useState({ html: form.html, request });
+	if (previous.html !== form.html || request && request !== previous.request) setPrevious({ html: form.html, request });
+	const shown = request ?? (previous.html === form.html ? previous.request : null);
+	const claimed = useFormPresentation(context, shown?.reqId, form, owner);
+	const waiting = closing || !request;
+	if (!shown && context?.roots.length && !claimed) return <FormScreenAction session={session} standalone />;
+	return <div data-form-question aria-busy={waiting}>
+		<fieldset disabled={waiting} className="m-0 min-w-0 border-0 p-0">
 			{shown && <QuestionCard key={shown.reqId} session={session} request={shown} presentation={false} />}
 		</fieldset>
-		{!request && <p role="status" className="mt-2 text-sm text-fg-muted">{t("question.formPending")}</p>}
+		{waiting && <p role="status" className="mt-2 text-sm text-fg-muted">{t(closing ? "question.formClosing" : "question.formPending")}</p>}
+		{!claimed && !!context?.roots.length && <FormScreenAction session={session} />}
 	</div>;
 }
 
@@ -89,17 +108,32 @@ export function usePendingQuestion(session: SessionController, request: CollabUi
 	const { t } = useTranslation("chat");
 	const series = useAskSeries(session);
 	const view = session.getSnapshot();
-	const form = view.mode === "live" && !view.readOnly && view.guest?.phase === "live" && !view.guest.readOnly ? findRunningFormAsk(view.guest) : null;
+	const host = view.host;
+	const { snapshot } = useTsp(host?.transport === "tsp" ? host.hostId : null);
+	const current = snapshot?.hostId === host?.hostId && snapshot?.generation === host?.generation && snapshot?.lifecycle === "live" ? snapshot : null;
+	const roots = current?.surfaces.flatMap(surface => surface.closed || surface.suspended || surface.documentGeneration !== current.generation ? [] : [...walkNodes(surface.document)]
+		.filter(node => node.p?.role === TSP_ROLES.editorAsk || node.p?.role === TSP_ROLES.editorAskHidden).map(node => ({ surface, node }))) ?? [];
+	const context = current ? { snapshot: current, roots } : null;
+	const writable = view.mode === "live" && !view.readOnly && view.guest?.phase === "live" && !view.guest.readOnly;
+	const active = writable ? findRunningFormAsk(view.guest!) : null;
+	const [lastForm, setLastForm] = useState(active);
+	if (active && (lastForm?.toolCallId !== active.toolCallId || lastForm.html !== active.html)) setLastForm(active);
+	const owner = useRef<FormOwner | null>(null);
+	const held = owner.current;
+	const closing = !active && writable && !!lastForm && !!held && held.html === lastForm.html && held.toolCallId === lastForm.toolCallId
+		&& held.hostId === current?.hostId && held.generation === current?.generation && held.epoch === current?.epoch
+		&& toolCallState(view.guest!, lastForm.toolCallId) === "done"
+		&& roots.some(({ surface, node }) => surface.open.id === held.surfaceId && node.id === held.nodeId);
+	const form = active ?? (closing ? lastForm : null);
 	if (form && (!request || isAskFormRequest(form.html, request))) {
-		return { key: `form:${view.host?.hostId}:${view.host?.generation}:${form.toolCallId}`, node: <FormQuestionCard session={session} request={request} html={form.html} /> };
+		return { key: `form:${host?.hostId}:${host?.generation}:${form.toolCallId}`, node: <FormQuestionCard session={session} request={request} form={form} context={context} owner={owner} closing={closing} /> };
 	}
 	if (series && (series.phase === "editing" || series.phase === "sending" || (series.phase === "sent" && !request))) {
 		return { key: `ask:${series.toolCallId}`, node: <AskSeriesCard session={session} series={series} /> };
 	}
-	if (!request) return null;
-	// A series that stopped before sending (another request came first) shows that request as it is, without the note.
+	if (!request) return roots.length ? { key: "omp-form-fallback", node: <FormScreenAction session={session} standalone /> } : null;
 	const note = series?.phase === "fallback" && series.fallbackWhileSending ? t("question.series.fallback") : undefined;
-	return { key: String(request.reqId), node: <QuestionCard session={session} request={request} note={note} /> };
+	return { key: String(request.reqId), node: <><QuestionCard session={session} request={request} note={note} />{roots.length > 0 && <FormScreenAction session={session} />}</> };
 }
 
 export function QuestionCard({ session, request, note, presentation = true }: { session: SessionController; request: CollabUiRequest; note?: string; presentation?: boolean }): ReactNode {

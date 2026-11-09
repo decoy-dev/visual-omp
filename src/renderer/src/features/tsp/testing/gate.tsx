@@ -3,7 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import { hookDialogTarget } from "@shared/tsp/dialogs";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
-import type { CollabUiRequest } from "@oh-my-pi/pi-wire";
+import type { CollabUiRequest, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import { usePendingQuestion } from "../../../chat/transcript/QuestionCard";
 import { ToolView } from "../../../tool-render/ToolView";
 import type { ToolResultLike } from "../../../tool-render/types";
@@ -43,7 +43,8 @@ interface Gate {
 	invoke(channel: string, args: unknown[]): TspHostSnapshot | undefined;
 	buttonVisible(button: HTMLButtonElement): boolean;
 	showPlan(snapshot: TspHostSnapshot): void;
-	showAsk(snapshot: TspHostSnapshot, request: CollabUiRequest | null, args: Record<string, unknown>, result?: ToolResultLike, classic?: boolean): Promise<void>;
+	showAsk(snapshot: TspHostSnapshot, request: CollabUiRequest | null, args: Record<string, unknown>, result?: ToolResultLike, classic?: boolean, entries?: SessionEntry[]): Promise<void>;
+	finishForm(result: ToolResultMessage): void;
 	claims(): unknown;
 	showQuestion(visible: boolean): void;
 	showCommandResults(results: CommandResultRecord[]): void;
@@ -136,7 +137,7 @@ function Harness() {
 			showPlan(snapshot) { calls.length = 0; resetModes(); update(snapshot); setShowPlan(true); },
 			claims: () => presentationClaims.getSnapshot(),
 			showQuestion: setShowQuestion,
-			async showAsk(snapshot, request, args, result, classic = false) {
+			async showAsk(snapshot, request, args, result, classic = false, entries = []) {
 				calls.length = 0;
 				resetModes();
 				if (!askController) {
@@ -153,11 +154,20 @@ function Harness() {
 					askController.answer = controller.answer;
 					askController.guestClient = () => guest as GuestClient;
 				}
-				const replica: GuestSnapshot = { phase: "live", endedReason: null, header: null, state: null, agents: [], progress: new Map(), lifecycle: new Map(), streamDone: false, backgroundTools: new Map(), notices: [], thinkingSelector: null, readOnly: false, loading: null, uiRequest: request, pendingUiRequests: request ? [request] : [], activeTools: new Map(result ? [] : [["form", { toolCallId: "form", toolName: "ask", args, intent: undefined, startedAt: 0 }]]), entries: [], stream: null, working: !result };
+				const toolCallId = entries.flatMap(entry => entry.type === "message" && entry.message.role === "assistant" ? entry.message.content : []).flatMap(part => part.type === "toolCall" && part.name === "ask" ? [part.id] : [])[0] ?? "form";
+				const replica: GuestSnapshot = { phase: "live", endedReason: null, header: null, state: null, agents: [], progress: new Map(), lifecycle: new Map(), streamDone: false, backgroundTools: new Map(), notices: [], thinkingSelector: null, readOnly: false, loading: null, uiRequest: request, pendingUiRequests: request ? [request] : [], activeTools: new Map(result ? [] : [[toolCallId, { toolCallId, toolName: "ask", args, intent: undefined, startedAt: 0 }]]), entries, stream: null, working: !result };
 				view = { ...view, working: !result, host: { ...view.host!, transport: classic ? "classic" : "tsp" }, guest: replica };
 				update(snapshot);
 				setShowPlan(false);
 				setAsk({ request, args, result });
+			},
+			finishForm(result) {
+				if (!view.guest) throw new Error("No form is open in the gate");
+				if (!view.guest.activeTools.has(result.toolCallId)) throw new Error("The recorded result must complete the gate's active form tool call");
+				const entry: SessionEntry = { type: "message", id: "gate-result", parentId: null, timestamp: new Date(0).toISOString(), message: result };
+				view = { ...view, working: false, guest: { ...view.guest, working: false, uiRequest: null, pendingUiRequests: [], activeTools: new Map(), entries: [...view.guest.entries, entry] } };
+				setAsk(previous => previous && { ...previous, request: null, result });
+				for (const listener of sessionListeners) listener();
 			},
 			showCommandResults(results) { calls.length = 0; resetModes(); setCommandResults(results); },
 			showMarkdown(text) { calls.length = 0; resetModes(); setMarkdown(text); },

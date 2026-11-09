@@ -96,20 +96,28 @@ it("retains a disabled visible card and one claim until the next field and its m
 	expect(useApp.getState().terminalTabId).toBeNull();
 });
 
-it("releases the form for uncertain matching and can claim it again after matching recovers", async () => {
+it("offers an explicit screen action for uncertain matching and recovers without opening it", async () => {
 	const matched = snapshot.questionMatches;
 	await publishMatches(matched?.map(match => ({ ...match, status: "ambiguous", reqId: undefined })));
-	await vi.waitFor(() => expect(opens).toHaveLength(1));
+	await vi.waitFor(() => expect(element.querySelector("[data-form-fallback] button")).not.toBeNull());
+	expect(opens).toEqual([]);
 	expect(presentationClaims.getSnapshot()).toEqual([]);
+	await act(async () => (element.querySelector("[data-form-fallback] button") as HTMLButtonElement).click());
+	expect(opens).toHaveLength(1);
 	await publishMatches(matched);
-	await vi.waitFor(() => expect(useApp.getState().terminalTabId).toBeNull());
-	expect(presentationClaims.getSnapshot()).toHaveLength(1);
+	expect(useApp.getState().terminalTabId).toBe(tabId);
+	await act(async () => useApp.getState().closeTerminal());
+	await vi.waitFor(() => expect(presentationClaims.getSnapshot()).toHaveLength(1));
 });
 
-it("keeps the generic fallback when a request is outside the active form", async () => {
+it("keeps unsupported requests in the chat and opens the screen only on request", async () => {
 	await updateRequest({ reqId: 99, kind: "editor", title: "Unsupported field" });
-	await vi.waitFor(() => expect(opens).toHaveLength(1));
+	await vi.waitFor(() => expect(element.querySelector("[data-form-fallback] button")).not.toBeNull());
+	expect(element.textContent).toContain("Unsupported field");
+	expect(opens).toEqual([]);
 	expect(presentationClaims.getSnapshot()).toEqual([]);
+	await act(async () => (element.querySelector("[data-form-fallback] button") as HTMLButtonElement).click());
+	expect(opens).toHaveLength(1);
 });
 
 it.each(["epoch", "form departure"])("does not carry ownership across %s", async change => {
@@ -118,4 +126,33 @@ it.each(["epoch", "form departure"])("does not carry ownership across %s", async
 		for (const listener of hostListeners) listener(tspHostPatch(null, snapshot));
 	});
 	await vi.waitFor(() => expect(presentationClaims.getSnapshot()).toEqual([]));
+});
+
+it("keeps a native-only question visible with a manual screen action", async () => {
+	await act(async () => {
+		view = { ...view, guest: { ...view.guest!, uiRequest: null, activeTools: new Map(), working: false } };
+		for (const listener of listeners) listener();
+	});
+	await vi.waitFor(() => expect(element.textContent).toContain("Question from omp"));
+	expect(element.textContent).toContain("View this question in the omp screen to answer it.");
+	expect(opens).toEqual([]);
+});
+
+it("holds the completed form presentation until its native node departs", async () => {
+	await act(async () => {
+		const result = entries.find(entry => entry.message?.role === "toolResult");
+		view = { ...view, working: false, guest: { ...view.guest!, uiRequest: null, pendingUiRequests: [], activeTools: new Map(), entries: [result], working: false } };
+		snapshot = { ...snapshot, revision: snapshot.revision + 1, questionMatches: snapshot.questionMatches?.map(match => ({ ...match, status: "settling" })) };
+		for (const listener of listeners) listener();
+		for (const listener of hostListeners) listener(tspHostPatch(null, snapshot));
+	});
+	await vi.waitFor(() => expect(element.textContent).toContain("Closing omp's question."));
+	expect(presentationClaims.getSnapshot()).toHaveLength(1);
+	expect(opens).toEqual([]);
+	await act(async () => {
+		snapshot = { ...snapshot, revision: snapshot.revision + 1, questionMatches: [], surfaces: [] };
+		for (const listener of hostListeners) listener(tspHostPatch(null, snapshot));
+	});
+	await vi.waitFor(() => expect(element.querySelector("[data-form-question]")).toBeNull());
+	expect(opens).toEqual([]);
 });

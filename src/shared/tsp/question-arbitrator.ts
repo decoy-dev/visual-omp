@@ -3,6 +3,13 @@ import { matchQuestions, type CollabQuestionState, type HookQuestion, type Quest
 
 const sameScope = (a: QuestionScope, b: QuestionScope): boolean => a.hostId === b.hostId && a.generation === b.generation && a.epoch === b.epoch;
 
+function continuesForm(prior: HookQuestion, current: HookQuestion | undefined): boolean {
+	if (prior.kind !== "form" || current?.kind !== "form" || !prior.formView || !current.formView) return false;
+	const before = prior.formNavigation?.items;
+	const after = current.formNavigation?.items;
+	return !before || !after || before.length === after.length && before.every((item, index) => item === after[index]);
+}
+
 /** Main-owned mirror. A matched node remains blocked until BOTH channels have completed. */
 export class QuestionArbitrator {
 	#scope: QuestionScope | null = null;
@@ -56,20 +63,30 @@ export class QuestionArbitrator {
 		const matches = matchQuestions(scope, this.#state, dialogs);
 		const observedAt = this.#clock();
 		const nodeKeys = new Set(dialogs.map(dialog => JSON.stringify([dialog.surfaceId, dialog.nodeId])));
-		const physicalNodeKeys = new Set(physicalDialogs.map(dialog => JSON.stringify([dialog.surfaceId, dialog.nodeId])));
+		const physicalNodeKeys = new Map(physicalDialogs.map(dialog => [JSON.stringify([dialog.surfaceId, dialog.nodeId]), dialog]));
 		for (const key of nodeKeys) if (!this.#nodeFirstSeen.has(key)) this.#nodeFirstSeen.set(key, observedAt);
 		for (const key of this.#nodeFirstSeen.keys()) if (!nodeKeys.has(key)) this.#nodeFirstSeen.delete(key);
 		for (const key of this.#answering) if (!physicalNodeKeys.has(key)) this.#answering.delete(key);
 		for (const key of this.#remoteOwned) if (!physicalNodeKeys.has(key)) this.#remoteOwned.delete(key);
 		for (const [key, binding] of this.#bindings) {
-			if (this.#state?.connected && !physicalNodeKeys.has(key) && !this.#state.requests.some(request => request.reqId === binding.reqId)) this.#bindings.delete(key);
+			if (binding.dialog.kind === "form" && !continuesForm(binding.dialog, physicalNodeKeys.get(key))) {
+				this.#bindings.delete(key);
+				this.#remoteOwned.delete(key);
+			} else if (this.#state?.connected && !physicalNodeKeys.has(key) && !this.#state.requests.some(request => request.reqId === binding.reqId)) this.#bindings.delete(key);
 		}
 		return matches.map((match, index) => {
 			const key = JSON.stringify([match.surfaceId, match.nodeId]);
 			const prior = this.#bindings.get(key);
 			let result: QuestionMatch = match;
 			if (this.#answering.has(key)) result = { surfaceId: match.surfaceId, nodeId: match.nodeId, status: "answering" };
-			else if ((dialogs[index]?.kind !== "form" || match.status !== "matched") && prior && this.#state?.connected && !this.#state.requests.some(request => request.reqId === prior.reqId)) result = { surfaceId: match.surfaceId, nodeId: match.nodeId, status: "settling", reqId: prior.reqId };
+			else if (prior && this.#state?.connected) {
+				const form = continuesForm(prior.dialog, dialogs[index]);
+				// A tab can hide the bound field before its guest request ends. Retain
+				// ownership, not a fabricated match for whichever request arrives next.
+				if (form ? match.status !== "matched" : !this.#state.requests.some(request => request.reqId === prior.reqId)) {
+					result = { surfaceId: match.surfaceId, nodeId: match.nodeId, status: "settling", reqId: prior.reqId };
+				}
+			}
 			if (result.status === "matched") {
 				this.#remoteOwned.add(key);
 				const requestFirstSeenMs = prior && prior.reqId === result.reqId ? prior.requestFirstSeenMs : this.#requestFirstSeen.get(JSON.stringify([this.#state!.connection, result.reqId]))!;

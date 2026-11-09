@@ -104,7 +104,7 @@ Diagnostic notices and provider failures reveal additional entries in pages of 2
 
 Rendered chat Markdown, user messages, thinking text and question cards show decorative color swatches beside six- and eight-digit hex codes. Markdown inline code and backtick-delimited plain text also support three- and four-digit hex codes; prose short forms stay plain so short issue and PR references are unambiguous. Six- and eight-digit issue references or hash-prefixed commit ids can also look like colors and receive swatches. Fenced code and explicit heading anchors remain unchanged. Rendered Markdown excludes URL destinations and image text; literal Markdown-like link and image syntax in plain-text messages and questions can contain swatches. Swatches show alpha over a checker pattern, retain the original visible text and add no copied text. Saved question answers use the same display.
 
-HTML-form `ask` calls from omp 18.18.3 show their fieldset legends, field labels,
+HTML-form `ask` calls from omp 18.18.3 and later show their fieldset legends, field labels,
 options and preselected values as transcript text. Images contribute alt text only.
 Finished forms show each recorded question and answer, "(no answer)" for an empty
 answer and a notice when the timeout submitted the current values. Live forms use
@@ -112,6 +112,10 @@ omp's sequential collab questions, including free-text Other answers for radio a
 checkbox groups. A matched visible question card suppresses its native TSP form.
 The previous field stays visible and disabled while omp advances to its next request,
 and the form's native presentation remains claimed through that update.
+The same cards handle omp 18.18.4 and 18.18.5 tabbed forms, Review and Hide through
+collab's complete field sequence. Ask forms never open the omp screen automatically.
+When a form cannot be presented or matched, the chat retains the question and an explicit
+View question in omp screen action.
 Saved question-list calls from older omp retain their existing presentation.
 
 omp's displayed harness notices appear in the chat in all three views, presented the way omp's terminal shows them. The normal presentation removes omp's wrapper tags, and Verbose offers the original text in a "Text sent to the model" disclosure. Finished background jobs and helpers become one tool-style row per job that opens to the result; IRC messages become message cards with the body cut to three lines; process exits, advisor notes, skill invocations and other notices each get their own row or card. Verbose initially expands job results, skill text and other-notice details, while IRC message bodies stay collapsed to three lines in every view. The session tree uses the same one-line summaries.

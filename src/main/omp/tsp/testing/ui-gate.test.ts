@@ -1,8 +1,8 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, realpathSync } from "node:fs";
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { resolve, join } from "node:path";
 import { WebSocket } from "ws";
 import { setTimeout as delay } from "node:timers/promises";
@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { FixtureDocuments, loadFixtureRecording, loadCommandFeedbackRecording, type FixtureInput, type FixtureRecording } from "../../../../renderer/src/features/tsp/testing/documents";
+import { FixtureDocuments, loadFixtureRecording, loadCommandFeedbackRecording, parseFixtureInputs, type FixtureInput, type FixtureRecording } from "../../../../renderer/src/features/tsp/testing/documents";
 import { hookQuestions } from "@shared/tsp/question-match";
 import { openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { plain } from "../../../../renderer/src/state/tsp/labels";
@@ -26,6 +26,16 @@ import type { TspSurfaceSnapshot } from "@shared/tsp-host";
 import { commandPanelFrames, replacePanelChild } from "@shared/tsp/testing/command-panel-fixtures";
 import { commandReport } from "@shared/tsp/reports";
 import { settledCommandPanel } from "@shared/tsp/command-panels";
+import formGuest185 from "../fixtures/18.18.5/ask-fixture-form-guest.ask.json";
+import formTabs185 from "../fixtures/18.18.5/ask-fixture-form-tabs.ask.json";
+import fourTabs185 from "../fixtures/18.18.5/ask-four-fieldsets-tabs.ask.json";
+import colors185 from "../fixtures/18.18.5/ask-fixture-colors.ask.json";
+import tall185 from "../fixtures/18.18.5/ask-tall-form.ask.json";
+import { QuestionArbitrator } from "@shared/tsp/question-arbitrator";
+import { askFormPresentation, TSP_ROLES } from "@shared/tsp/roles";
+import { TspSession } from "../session";
+import { TspStream } from "../stream";
+import type { CollabUiRequest, SessionEntry, ToolCallContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
 
 import { TspMainFeedback } from "../../../../renderer/src/state/tsp/main-feedback";
 import type { MainOutput } from "@shared/tsp/main-output";
@@ -127,6 +137,35 @@ function recorded(name: string, idle = false): TspHostSnapshot {
 	}
 	throw new Error(`No recorded screen in ${name}`);
 }
+interface AskEvidence {
+	stages: { stage: string; afterMessage: number; surfaces: unknown; request: CollabUiRequest | null }[];
+	sessions: { text: string }[];
+}
+function askTranscript(evidence: AskEvidence): { entries: SessionEntry[]; call: ToolCallContent; result: ToolResultMessage } {
+	const entries = evidence.sessions[0]!.text.trim().split("\n").map(line => JSON.parse(line) as SessionEntry);
+	const calls = entries.flatMap(entry => entry.type === "message" && entry.message.role === "assistant" ? entry.message.content : []).filter((part): part is ToolCallContent => part.type === "toolCall" && part.name === "ask");
+	expect(calls).toHaveLength(1);
+	const results = entries.flatMap(entry => entry.type === "message" && entry.message.role === "toolResult" && entry.message.toolCallId === calls[0]!.id ? [entry.message] : []);
+	expect(results).toHaveLength(1);
+	return { entries: entries.slice(0, entries.findIndex(entry => entry.type === "message" && entry.message.role === "toolResult")), call: calls[0]!, result: results[0]! };
+}
+function askSnapshots() {
+	const scope = { hostId: "gate", generation: 1, epoch: 1 };
+	const arbiter = new QuestionArbitrator();
+	let revision = 0;
+	return (stage: AskEvidence["stages"][number], requests = stage.request ? [stage.request] : []): TspHostSnapshot => {
+		const surfaces = structuredClone(stage.surfaces as TspSurfaceSnapshot[]).map(surface => ({ ...surface, documentGeneration: 1 }));
+		arbiter.update(scope, { ...scope, connection: 1, revision: ++revision, connected: true, requests });
+		return { ...recorded("hook-select-open"), ...scope, revision, surfaces, questionMatches: arbiter.matches(scope, hookQuestions(surfaces, 1)) };
+	};
+}
+const askCases185: { name: string; evidence: AskEvidence }[] = [
+	{ name: "ask-fixture-form-guest", evidence: formGuest185 as AskEvidence },
+	{ name: "ask-fixture-colors", evidence: colors185 as AskEvidence },
+	{ name: "ask-fixture-form-tabs", evidence: formTabs185 as AskEvidence },
+	{ name: "ask-four-fieldsets-tabs", evidence: fourTabs185 as AskEvidence },
+	{ name: "ask-tall-form", evidence: tall185 as AskEvidence },
+];
 
 type WireInput = { keys: string } | { verb: "e"; body: TspRendererEvent };
 const CapturedCalls = z.array(z.object({ channel: z.enum(["host:tsp-event", "host:tsp-answer", "host:keys"]), args: z.array(z.unknown()) }));
@@ -278,7 +317,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 	let shots: string;
 	beforeAll(async () => {
 		if (!existsSync(chrome)) throw new Error(`Chrome is required for TSP_UI_GATE=1. Set CHROME_BIN to its executable: ${chrome}`);
-		shots = process.env.TSP_GATE_SHOTS ?? await mkdtemp(join(tmpdir(), "visual-omp-tsp-gate-shots-"));
+		shots = process.env.TSP_GATE_SHOTS ?? join(homedir(), "vomp-checks/ask-18185/chrome");
 		profile = await mkdtemp(join(tmpdir(), "vomp-chrome-gate-"));
 		await mkdir(shots, { recursive: true });
 		vite = await createServer({ configFile: false, root, cacheDir: join(profile, "vite-cache"), plugins: [react(), tailwindcss()], resolve: { dedupe: ["react", "react-dom"], alias: { "@shared": resolve(root, "src/shared"), "@": resolve(root, "src/renderer/src"), "@oh-my-pi/pi-wire": resolve(root, "src/renderer/src/collab/wire/index.ts"), "@oh-my-pi/pi-utils/marked": "marked", "@oh-my-pi/pi-utils/math-delimiters": resolve(root, "src/renderer/src/collab/math-delimiters.ts") } }, server: { host: "127.0.0.1", port: 0, hmr: false, fs: { allow: [root, realpathSync(resolve(root, "node_modules"))] } } });
@@ -501,7 +540,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		await writeFile(join(shots, "ask-form-update-trace.json"), JSON.stringify({ watcher: "current", formNodes: hookQuestions(surfaces, 1).map(dialog => dialog.nodeId), phases, events }, null, 2));
 		expect(events.filter(event => event.terminalTabId !== null), "a native form stays owned between its collab fields").toEqual([]);
 		await page.evaluate("window.gate.showQuestion(false)");
-		await page.until("window.gate.claims().length === 0 && !!document.querySelector('.tsp-screen')");
+		await page.until("window.gate.claims().length === 0 && !document.querySelector('.tsp-screen')");
 		await page.evaluate("window.gate.showQuestion(true)");
 		await page.until("window.gate.claims().length === 1 && !document.querySelector('.tsp-screen')");
 	}, 30_000);
@@ -527,12 +566,16 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			if (request?.kind === "select") expect(await page.evaluate("document.querySelector('[data-question-card]').textContent")).toContain("Enter");
 			if (!classic && index === 0 && request) {
 				await page.evaluate("window.gate.showQuestion(false)");
-				await page.until("window.gate.claims().length === 0 && !!document.querySelector('.tsp-screen')");
+				await page.until("window.gate.claims().length === 0 && !document.querySelector('.tsp-screen')");
 				await page.evaluate("window.gate.showQuestion(true)");
 				await page.until("!document.querySelector('.tsp-screen') && window.gate.claims().length === 1");
 				const uncertain = { ...snapshot, revision: ++planRevision, questionMatches: snapshot.questionMatches?.map(match => ({ ...match, status: "ambiguous" as const, reqId: undefined })) };
 				await page.evaluate(`window.gate.update(${JSON.stringify(uncertain)})`);
-				await page.until("window.gate.claims().length === 0 && !!document.querySelector('.tsp-screen')");
+				await page.until("window.gate.claims().length === 0 && !document.querySelector('.tsp-screen')");
+				await page.clickElement("[...document.querySelectorAll('section[aria-label=\"Ask form\"] button')].find(button => button.textContent.trim() === 'View question in omp screen')");
+				await page.until("!!document.querySelector('.tsp-screen')");
+				await page.clickElement("document.querySelector('.vo-sheet button[aria-label=Close]')");
+				await page.until("!document.querySelector('.tsp-screen')");
 				await page.evaluate(`window.gate.update(${JSON.stringify({ ...snapshot, revision: ++planRevision })})`);
 				await page.until("!document.querySelector('.tsp-screen') && window.gate.claims().length === 1");
 			}
@@ -559,6 +602,187 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		expect(index).toBe(7);
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
 	}, 60_000);
+
+	async function paintAsk(): Promise<void> {
+		await page.evaluate("(() => { const { promise, resolve } = Promise.withResolvers(); requestAnimationFrame(() => requestAnimationFrame(resolve)); return promise; })()");
+	}
+	async function noAskScreen(): Promise<void> {
+		await paintAsk();
+		expect(await page.evaluate("!!document.querySelector('.tsp-screen')")).toBe(false);
+		expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)")).toEqual([]);
+	}
+	async function answerForm(request: CollabUiRequest, reply: string): Promise<void> {
+		await page.until(`!!document.querySelector('[data-question-card="${request.reqId}"]')`);
+		if (request.kind === "editor") {
+			await page.clickElement("document.querySelector('[data-question-card] textarea')");
+			await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
+			await page.send("Input.insertText", { text: reply });
+		} else if (reply !== "Next →") {
+			await page.clickElement(`[...document.querySelectorAll('[data-question-card] [data-choice]')].find(button => button.textContent.trim() === ${JSON.stringify(reply)})`);
+		}
+		if (request.kind === "editor" || request.selectionMarker !== "checkbox" || reply === "Next →") {
+			await page.clickElement(`[...document.querySelectorAll('[data-question-card] button')].find(button => button.textContent.trim() === ${JSON.stringify(reply === "Next →" ? "Send choices" : "Send answer")})`);
+		}
+	}
+	it.each(askCases185.filter(item => ["ask-fixture-form-guest", "ask-fixture-colors"].includes(item.name)))("answers recorded 18.18.5 $name through collab with native t0 unchanged", async ({ name, evidence }) => {
+		const { entries, call, result } = askTranscript(evidence);
+		const snapshot = askSnapshots();
+		const pending = evidence.stages.filter(stage => stage.request);
+		const first = pending[0]!;
+		await page.evaluate(`document.documentElement.dataset.motion='reduced'; window.gate.showAsk(${JSON.stringify(snapshot(first))},${JSON.stringify(first.request)},${JSON.stringify(call.arguments)},undefined,false,${JSON.stringify(entries)})`);
+		await page.until("window.gate.claims().length === 1");
+		await page.evaluate("window.gate.beginFormUpdates()");
+		const phases: unknown[] = [];
+		const replies = name === "ask-fixture-colors" ? ["#2B72E5 (opaque blue)"] : ["Beta", "Linux", "Next →", "Release fixture headline", "Full"];
+		// Color Hide/Show captures retain the same guest request. Each request is answered once.
+		const requests = pending.filter((stage, index) => index === 0 || stage.request!.reqId !== pending[index - 1]!.request!.reqId);
+		expect(requests).toHaveLength(replies.length);
+		for (let index = 0; index < requests.length; index++) {
+			const stage = requests[index]!;
+			const request = stage.request!;
+			await answerForm(request, replies[index]!);
+			await page.until("window.gate.view().guest.uiRequest === null");
+			await noAskScreen();
+			expect(await page.evaluate("document.querySelector('[data-form-question]')?.getAttribute('aria-busy')")).toBe("true");
+			expect(await page.evaluate("window.gate.claims().length")).toBe(1);
+			phases.push(await page.evaluate(`({phase:'request-gap',requestId:${request.reqId},claims:window.gate.claims()})`));
+			await page.evaluate(`window.gate.advanceFormRequest(null); window.gate.update(${JSON.stringify(snapshot(stage, []))})`);
+			const next = requests[index + 1];
+			if (next) {
+				// Collab publishes the next field before main has its new match.
+				await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(next.request)})`);
+				await noAskScreen();
+				await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(next))})`);
+				await page.until(`!!document.querySelector('[data-question-card="${next.request!.reqId}"]') && window.gate.claims().length === 1`);
+			}
+		}
+		// Delay native departure after the real saved whole-form result arrives.
+		await page.evaluate(`window.gate.finishForm(${JSON.stringify(result)})`);
+		await noAskScreen();
+		await page.until("window.gate.claims().length === 1");
+		expect(await page.evaluate("window.gate.view().guest.activeTools.size")).toBe(0);
+		expect(await page.evaluate("window.gate.view().guest.entries.filter(entry => entry.message?.role === 'toolResult').length")).toBe(1);
+		const expected = requests.map((stage, index) => ({ channel: "collab:ui-response", args: [stage.request!.reqId, replies[index]] }));
+		expect(await page.evaluate("window.gate.calls")).toEqual(expected);
+		const departure = snapshot(evidence.stages.at(-1)!);
+		expect(hookQuestions(departure.surfaces, 1)).toEqual([]);
+		await page.evaluate(`window.gate.update(${JSON.stringify(departure)})`);
+		await page.until("window.gate.claims().length === 0 && !document.querySelector('[data-form-question]')");
+		await noAskScreen();
+		await writeFile(join(shots, `${name}-guest-trace.json`), JSON.stringify({ seam: "Production pending selector and cards; recorded collab and native documents; preload answer transport captured", phases, calls: await page.evaluate("window.gate.calls"), result }, null, 2));
+	}, 60_000);
+	it.each(askCases185)("retains established 18.18.5 $name ownership through recorded native views and result arrival", async ({ name, evidence }) => {
+		const { entries, call, result } = askTranscript(evidence);
+		if (name === "ask-four-fieldsets-tabs") expect(String(call.arguments.html).match(/<fieldset>/g)).toHaveLength(4);
+		const snapshot = askSnapshots();
+		const first = evidence.stages[0]!;
+		const initial = snapshot(first);
+		expect(initial.questionMatches?.[0]?.status).toBe("matched");
+		await page.evaluate(`document.documentElement.dataset.motion='reduced'; window.gate.showAsk(${JSON.stringify(initial)},${JSON.stringify(first.request)},${JSON.stringify(call.arguments)},undefined,false,${JSON.stringify(entries)})`);
+		await page.until("window.gate.claims().length === 1");
+		await page.evaluate("window.gate.beginFormUpdates()");
+		const phases: unknown[] = [];
+		const views = new Set<string>();
+		for (const stage of evidence.stages.filter(stage => stage.request)) {
+			const current = snapshot(stage);
+			const forms = current.surfaces.flatMap(surface => [...walkNodes(surface.document)]).flatMap(node => {
+				const presentation = askFormPresentation(node);
+				return presentation ? [{ id: node.id, view: presentation.view, active: presentation.navigation?.active }] : [];
+			});
+			expect(forms).toHaveLength(1);
+			views.add(forms[0]!.view);
+			await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(stage.request)}); window.gate.update(${JSON.stringify(current)})`);
+			await noAskScreen();
+			expect(await page.evaluate("window.gate.claims().length"), stage.stage).toBe(1);
+			phases.push({ stage: stage.stage, forms, matches: current.questionMatches, claims: await page.evaluate("window.gate.claims()") });
+			const capture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+			await writeFile(join(shots, `${name}-${stage.stage}.png`), Buffer.from(capture.data, "base64"));
+		}
+		expect(views.has("hidden"), name).toBe(name !== "ask-fixture-form-guest");
+		if (name.endsWith("-tabs")) expect(views.has("review")).toBe(true);
+		const last = evidence.stages.filter(stage => stage.request).at(-1)!;
+		await page.evaluate(`window.gate.advanceFormRequest(null); window.gate.update(${JSON.stringify(snapshot(last, []))}); window.gate.finishForm(${JSON.stringify(result)})`);
+		await noAskScreen();
+		expect(await page.evaluate("window.gate.claims().length")).toBe(1);
+		// Also cover result arrival while Review, rather than only the last field tab, remains.
+		const review = evidence.stages.find(stage => (stage.surfaces as TspSurfaceSnapshot[]).some(surface => [...walkNodes(surface.document)].some(node => askFormPresentation(node)?.view === "review")));
+		if (review) {
+			await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(review, []))})`);
+			await noAskScreen();
+			expect(await page.evaluate("window.gate.claims().length")).toBe(1);
+		}
+		await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(evidence.stages.at(-1)!, []))})`);
+		await page.until("window.gate.claims().length === 0 && !document.querySelector('[data-form-question]')");
+		await noAskScreen();
+		expect(await page.evaluate("window.gate.calls")).toEqual([]);
+		await writeFile(join(shots, `${name}-view-trace.json`), JSON.stringify({ phases, resultBeforeNativeDeparture: true, events: await page.evaluate("window.gate.formPresentationEvents") }, null, 2));
+	}, 60_000);
+	it.each(["ambiguous", "unsupported"] as const)("keeps an %s form in chat until its explicit omp screen action", async mode => {
+		const evidence = formGuest185 as AskEvidence;
+		const { entries, call } = askTranscript(evidence);
+		const current = askSnapshots()(evidence.stages[0]!);
+		if (mode === "ambiguous") current.questionMatches = current.questionMatches?.map(match => ({ ...match, status: "ambiguous", reqId: undefined }));
+		else {
+			for (const surface of current.surfaces) for (const node of walkNodes(surface.document)) {
+				if (node.p?.role === TSP_ROLES.askForm) node.p.role = "fixture.unsupported-form";
+			}
+			current.questionMatches = [];
+		}
+		await page.evaluate(`window.gate.showAsk(${JSON.stringify(current)},${JSON.stringify(evidence.stages[0]!.request)},${JSON.stringify(call.arguments)},undefined,false,${JSON.stringify(entries)})`);
+		await page.until(`!![...document.querySelectorAll('section[aria-label="Ask form"] button')].find(button => button.textContent.trim() === 'View question in omp screen')`);
+		await page.evaluate("window.gate.beginFormUpdates()");
+		await noAskScreen();
+		expect(await page.evaluate("window.gate.claims().length")).toBe(0);
+		const fallback = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+		await writeFile(join(shots, `ask-${mode}-explicit-action.png`), Buffer.from(fallback.data, "base64"));
+		await page.clickElement("[...document.querySelectorAll('section[aria-label=\"Ask form\"] button')].find(button => button.textContent.trim() === 'View question in omp screen')");
+		await page.until("!!document.querySelector('.tsp-screen')");
+		expect(await page.evaluate("window.gate.calls")).toEqual([]);
+		await page.clickElement("document.querySelector('.vo-sheet button[aria-label=Close]')");
+		await page.until("!document.querySelector('.tsp-screen')");
+	}, 30_000);
+	it.each(askCases185.filter(item => item.name.endsWith("-tabs") || item.name === "ask-tall-form"))("validates recorded native $name controls through production TspSession only", async ({ name, evidence }) => {
+		const directory = join(root, "src/main/omp/tsp/fixtures/18.18.5");
+		const messages = (await readFile(join(directory, `${name}.messages.jsonl`), "utf8")).trim().split("\n").map(line => z.object({ verb: z.string(), body: z.unknown() }).parse(JSON.parse(line)));
+		const inputs = parseFixtureInputs(await readFile(join(directory, `${name}.events.jsonl`), "utf8"));
+		const writes: { verb: string; body: unknown }[] = [];
+		const decoder = new TspStream({ onData: () => {}, onMessage: message => writes.push({ verb: message.verb, body: JSON.parse(message.body) }) });
+		const session = new TspSession({ cols: 110, dark: false, reduceMotion: true, write: data => decoder.push(Buffer.from(data)), onError: error => { throw error; } });
+		let cursor = 0;
+		const advance = async (boundary: number) => {
+			while (cursor < boundary) { const message = messages[cursor++]!; session.receive({ ...message, params: {}, body: JSON.stringify(message.body) }); }
+			await session.drain();
+		};
+		const accepted: TspRendererEvent[] = [];
+		for (const input of inputs) {
+			if ("keys" in input || (input.body.ev !== "select" && input.body.ev !== "action")) continue;
+			await advance(input.afterMessage!);
+			const event = input.body;
+			const node = session.snapshot().surfaces.flatMap(surface => [...walkNodes(surface.document)]).find(node => node.id === event.id);
+			expect(node, `${name} ${JSON.stringify(event)}`).toBeDefined();
+			if (event.ev === "select") {
+				if (node?.k !== "tabs") throw new Error("Native form navigation must address recorded tabs");
+				expect(node.p?.items?.some(item => item.id === event.item)).toBe(true);
+			} else if (event.ev === "action") {
+				if (node?.k !== "button") throw new Error("Native form action must address a recorded button");
+				expect(node.p?.actions?.click).toBe(event.act);
+			}
+			writes.length = 0;
+			await session.send(event);
+			expect(writes).toEqual([{ verb: "e", body: event }]);
+			accepted.push(event);
+		}
+		await advance(evidence.stages.at(-1)!.afterMessage);
+		expect(session.snapshot().surfaces.flatMap(surface => [...walkNodes(surface.document)]).some(node => askFormPresentation(node))).toBe(false);
+		askTranscript(evidence);
+		if (name.endsWith("-tabs")) {
+			expect(accepted.some(event => event.ev === "select" && event.item === "review")).toBe(true);
+			for (const act of ["next", "hide", "submit"]) expect(accepted.some(event => event.ev === "action" && event.act === act)).toBe(true);
+		} else {
+			expect(accepted.some(event => event.ev === "action" && event.act === "show")).toBe(true);
+		}
+		await writeFile(join(shots, `${name}-native-session-trace.json`), JSON.stringify({ seam: "Recorded program frames and compatibility inputs only; never the live guest answer path", accepted }, null, 2));
+	}, 30_000);
 
 	it("keeps hostile HTML form scripts, media and URLs inert in Chromium", async () => {
 		const stage = askFormEvidence.stages.at(-1)!;

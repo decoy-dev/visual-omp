@@ -46,7 +46,7 @@ function TabWatch({ tabId }: { tabId: string }) {
 	const surfaces = snapshot?.lifecycle === "live" && snapshot.generation === view?.host?.generation
 		? snapshot.surfaces.filter(surface => surface.documentGeneration === snapshot.generation) : [];
 	const semanticScreen = hasUnpresentedScreen(surfaces, nativeConsumers);
-	const asking = Boolean(view?.guest?.uiRequest);
+	const asking = Boolean(view?.guest?.uiRequest || view?.guest && [...view.guest.activeTools.values()].some(tool => tool.toolName === "ask"));
 	const overlays = tui?.overlays ?? 0;
 	const focused = tui?.focused ?? null;
 
