@@ -49,6 +49,7 @@ export function HelpersSection({ projectPath: cwd, props }: SettingsSectionProps
 	const { t } = useDeferredTranslation("settings");
 	const list = useResource(() => window.vomp.invoke("agents:list", cwd, false), [cwd]);
 	const models = useResource(() => window.vomp.invoke("config:models", cwd ?? undefined), [cwd]);
+	useEffect(() => window.vomp.on("omp:status", () => void models.reload()), [models.reload]);
 	// Each deep link remounts the section (SettingsPage), so the linked filter applies once here.
 	const [filter, setFilter] = useState<HelpersFilter>((props as HelpersSectionProps | undefined)?.filter ?? "all");
 	const [query, setQuery] = useState("");

@@ -4,7 +4,7 @@
  */
 import type { ModelInfo, ModelPresetInfo, ModelRoleInfo, ModelRolesState, SettingScope } from "@shared/contracts/config";
 import { ArrowsClockwise, ArrowUUpLeft, FloppyDisk, Warning } from "@phosphor-icons/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useDeferredTranslation } from "@/i18n";
 import type { SettingsSectionProps } from "@/registry/slots";
 import { useLeaveGuard, whenLeaving } from "@/state/leaveGuard";
@@ -24,8 +24,21 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 	const arg = projectPath ?? undefined;
 	const omp = useOmpSettings(projectPath, scope);
 	const roles = useResource(() => window.vomp.invoke("config:roles", arg), [arg]);
-	const models = useResource(() => window.vomp.invoke("config:models", arg, true), [arg]);
+	const refreshCatalog = useRef(false);
+	const catalogRequest = useRef(0);
+	const models = useResource(async () => {
+		const refresh = refreshCatalog.current;
+		refreshCatalog.current = false;
+		const request = ++catalogRequest.current;
+		try {
+			return await window.vomp.invoke(refresh ? "config:models:refresh" : "config:models", arg, true);
+		} catch (error) {
+			if (refresh && request === catalogRequest.current) toast({ tone: "err", message: ipcErrorMessage(error) });
+			throw error;
+		}
+	}, [arg]);
 	const presets = useResource(() => window.vomp.invoke("config:presets", arg), [arg]);
+	useEffect(() => window.vomp.on("omp:status", () => void models.reload()), [models.reload]);
 
 	const [drafts, setDrafts] = useState<Record<string, RoleDraft>>({});
 	const [fallbackDrafts, setFallbackDrafts] = useState<Record<string, FallbackDraft>>({});
@@ -56,11 +69,10 @@ export function ModelsSection({ projectPath, scope, setScope }: SettingsSectionP
 	};
 
 	const refreshModels = async () => {
+		refreshCatalog.current = true;
 		setRefreshing(true);
 		try {
-			models.setData(await window.vomp.invoke("config:models:refresh", arg, true));
-		} catch (error) {
-			toast({ tone: "err", message: ipcErrorMessage(error) });
+			await models.reload();
 		} finally {
 			setRefreshing(false);
 		}

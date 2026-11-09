@@ -28,18 +28,51 @@ function readVersion(bin: string, env: NodeJS.ProcessEnv): Promise<string | null
 }
 
 let cached: OmpStatus | null = null;
+let cachedOverride: string | null | undefined;
+let checking: { override: string | null; promise: Promise<OmpStatus> } | null = null;
+const statusListeners = new Set<(status: OmpStatus) => void>();
+
+/** Observe installed identity changes found by the app's existing status checks. */
+export function onOmpStatusChange(listener: (status: OmpStatus) => void): void {
+	statusListeners.add(listener);
+}
+
+function remember(status: OmpStatus, override: string | null): OmpStatus {
+	const previous = cached;
+	cached = status;
+	cachedOverride = override;
+	if (previous && (previous.path !== status.path || previous.version !== status.version)) {
+		for (const listener of statusListeners) listener(status);
+	}
+	return status;
+}
 /** Several status checks at startup refresh at once, so the event log records a version only when it changes. */
 let loggedVersion: string | null | undefined;
 
-export async function ompStatus(refresh = false): Promise<OmpStatus> {
-	if (cached && !refresh) return cached;
-	const env = await userEnv();
+export function ompStatus(refresh = false): Promise<OmpStatus> {
 	const override = getPrefs().ompPath;
+	if (checking?.override === override) return checking.promise;
+	if (cached && !refresh && override === cachedOverride) return Promise.resolve(cached);
+	const check = {
+		override,
+		promise: readStatus(override).then(status => {
+			// A path preference may change while the old executable is still answering.
+			if (checking !== check || getPrefs().ompPath !== override) return ompStatus();
+			return remember(status, override);
+		}).finally(() => {
+			if (checking === check) checking = null;
+		}),
+	};
+	checking = check;
+	return check.promise;
+}
+
+async function readStatus(override: string | null): Promise<OmpStatus> {
+	const env = await userEnv();
 	const path = override == null ? await resolveExecutable("omp", env) : resolve(override);
 	const base = { minVersion: MIN_OMP_VERSION, installCommand: INSTALL_COMMAND, refused: false };
 	if (!path) {
-		cached = { ...base, found: false, path: null, version: null, supported: false, problem: "omp is not installed yet." };
-		return cached;
+		return { ...base, found: false, path: null, version: null, supported: false, problem: "omp is not installed yet." };
 	}
 	let version: string | null = null;
 	try {
@@ -47,8 +80,7 @@ export async function ompStatus(refresh = false): Promise<OmpStatus> {
 	} catch (error) {
 		const reason = await ompStartError(error, path);
 		if (reason instanceof OmpRefusedError) {
-			cached = { ...base, found: false, path, version: null, supported: false, refused: true, problem: reason.message };
-			return cached;
+			return { ...base, found: false, path, version: null, supported: false, refused: true, problem: reason.message };
 		}
 	}
 	if (version !== loggedVersion) {
@@ -56,11 +88,10 @@ export async function ompStatus(refresh = false): Promise<OmpStatus> {
 		writeDiagnostic({ event: "omp-version", version });
 	}
 	if (!version) {
-		cached = { ...base, found: false, path, version: null, supported: false, problem: `omp at ${path} did not start.` };
-		return cached;
+		return { ...base, found: false, path, version: null, supported: false, problem: `omp at ${path} did not start.` };
 	}
 	const supported = compareSemver(version, MIN_OMP_VERSION) >= 0;
-	cached = {
+	return {
 		...base,
 		found: true,
 		path,
@@ -68,7 +99,6 @@ export async function ompStatus(refresh = false): Promise<OmpStatus> {
 		supported,
 		problem: supported ? null : `omp ${version} is too old. visual-omp needs ${MIN_OMP_VERSION} or newer.`,
 	};
-	return cached;
 }
 
 /** Resolved omp executable path; only the updater may run an unsupported version. */

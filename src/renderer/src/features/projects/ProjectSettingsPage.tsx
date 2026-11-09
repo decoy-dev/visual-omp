@@ -5,7 +5,7 @@
  */
 import type { ApprovalMode, ApprovalState, ModelInfo, ModelRolesState } from "@shared/contracts/config";
 import { FileText, Plug, Robot, X } from "@phosphor-icons/react";
-import { type ReactNode, useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { useDeferredTranslation } from "@/i18n";
 import type { PageProps } from "@/registry/slots";
 import { useApp } from "@/state/app";
@@ -49,18 +49,21 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 	const [error, setError] = useState<string | null>(null);
 	const [confirmAuto, setConfirmAuto] = useState(false);
 	const [confirmRemove, setConfirmRemove] = useState(false);
+	const loadRequest = useRef(0);
 
 	const load = useCallback(async () => {
+		const request = ++loadRequest.current;
 		try {
 			const [roles, approval, models] = await Promise.all([
 				window.vomp.invoke("config:roles", projectPath),
 				window.vomp.invoke("config:approval", projectPath),
 				window.vomp.invoke("config:models", projectPath),
 			]);
+			if (request !== loadRequest.current) return;
 			setData({ roles, approval, models });
 			setError(null);
 		} catch (failure) {
-			setError(errorText(failure));
+			if (request === loadRequest.current) setError(errorText(failure));
 		}
 	}, [projectPath]);
 
@@ -68,8 +71,10 @@ function SettingsBody({ projectPath, close }: { projectPath: string; close(): vo
 		void load();
 		void window.vomp.invoke("config:watch", projectPath);
 		const off = window.vomp.on("config:changed", () => void load());
+		const offOmp = window.vomp.on("omp:status", () => void load());
 		return () => {
 			off();
+			offOmp();
 			void window.vomp.invoke("config:unwatch", projectPath);
 		};
 	}, [projectPath, load]);

@@ -197,6 +197,13 @@ Each SessionHost:
    clears stale-chat identity. Bulk restart reserves its operation before preparation, checks
    `workInFlight` again at command submission or host shutdown, and confirms the replacement host's
    current-generation `ompVersion`, not just a changed room generation.
+   Changes to the installed version or resolved executable path invalidate main's project model
+   catalogs before notifying the renderer. Mounted model pickers and settings reload their metadata,
+   including capabilities, thinking choices, context windows and prices. Changing the omp path
+   preference runs a status check immediately. In-app updates refresh at installer completion;
+   external updates refresh through the existing network-independent minute check or another
+   explicit status read. Running hosts retain the context and usage facts their own omp reports,
+   and recorded costs are never recalculated from a newer catalog.
 3. When the omp host connects to the relay (`/r/<roomId>?role=host`), SessionHost resolves the
    room key with `omp collab list --json` + `omp collab link <instanceId> --json`, matching the
    link's room id, and hands the control link to the renderer. The registry pid is not always the

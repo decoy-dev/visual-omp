@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { delimiter, isAbsolute, join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runOmp } from "./cli";
-import { ompPath, ompStatus } from "./locate";
+import { ompPath, ompStatus, onOmpStatusChange } from "./locate";
 
 const processState = vi.hoisted(() => ({
 	version: "18.15.0",
@@ -11,17 +11,23 @@ const processState = vi.hoisted(() => ({
 	envPath: "",
 	binaryVersions: {} as Record<string, string>,
 	executed: [] as string[],
+	hold: null as string | null,
+	pending: [] as (() => void)[],
+	changed: vi.fn(),
 }));
 vi.mock("node:child_process", () => ({
 	execFile: (bin: string, _args: string[], options: { cwd?: string }, callback: (error: Error | null, stdout: string, stderr: string) => void) => {
 		const executable = resolve(options.cwd ?? process.cwd(), bin);
 		processState.executed.push(executable);
 		const version = processState.binaryVersions[executable] ?? processState.version;
-		callback(null, version ? `omp ${version}\n` : "No version available\n", "");
+		const respond = () => callback(null, version ? `omp ${version}\n` : "No version available\n", "");
+		if (processState.hold === executable) processState.pending.push(respond);
+		else respond();
 	},
 }));
 vi.mock("../env", () => ({ userEnv: async () => ({ PATH: processState.envPath }) }));
 vi.mock("../prefs", () => ({ getPrefs: () => ({ ompPath: processState.path }) }));
+onOmpStatusChange(processState.changed);
 
 beforeEach(() => {
 	processState.version = "18.15.0";
@@ -29,6 +35,7 @@ beforeEach(() => {
 	processState.envPath = "";
 	processState.binaryVersions = {};
 	processState.executed = [];
+	processState.hold = null; processState.pending = []; processState.changed.mockClear();
 });
 
 const fixtureDirs: string[] = [];
@@ -116,5 +123,35 @@ describe("omp executable identity", () => {
 		expect(result.stdout).toContain("18.15.0");
 		expect(processState.executed).toEqual([paths.appRelative, paths.appRelative]);
 		expect(processState.executed).not.toContain(paths.projectRelative);
+	});
+	it("reports a changed path at the same version and retains the current preference after an older check completes", async () => {
+		await ompStatus(true);
+		processState.changed.mockClear();
+		processState.hold = resolve("/fixture/omp");
+		const oldCheck = ompStatus(true);
+		await Promise.resolve();
+		expect(processState.pending).toHaveLength(1);
+		processState.path = "/fixture/new-omp";
+		const current = await ompStatus();
+		expect(current).toMatchObject({ path: resolve("/fixture/new-omp"), version: "18.15.0" });
+		expect(processState.changed).toHaveBeenCalledOnce();
+		processState.pending[0]!();
+		expect(await oldCheck).toEqual(current);
+		expect(await ompStatus()).toEqual(current);
+		expect(processState.changed).toHaveBeenCalledOnce();
+	});
+
+	it("publishes version changes once and also discards metadata when omp becomes unavailable", async () => {
+		await ompStatus(true);
+		processState.changed.mockClear();
+		processState.version = "18.18.5";
+		await Promise.all([ompStatus(true), ompStatus(true)]);
+		expect(processState.changed).toHaveBeenCalledOnce();
+		expect(processState.changed).toHaveBeenLastCalledWith(expect.objectContaining({ version: "18.18.5" }));
+		await ompStatus(true);
+		expect(processState.changed).toHaveBeenCalledOnce();
+		processState.version = "";
+		await ompStatus(true);
+		expect(processState.changed).toHaveBeenLastCalledWith(expect.objectContaining({ found: false, version: null }));
 	});
 });

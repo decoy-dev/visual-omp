@@ -402,6 +402,8 @@ export interface IpcEventMap {
 	/** A followed file's health or ownership changed (first sent after main's first ownership check). */
 	"sessions:followState": FollowState;
 	"app:prefs": AppPreferences;
+	/** The installed omp path or version changed during an existing status check. */
+	"omp:status": OmpStatus;
 	/** Main asks the renderer whether quitting is OK (work in progress?). */
 	"app:quitRequested": { reason: "quit" | "close" };
 	/** Menu/accelerator actions routed to the renderer command system. */

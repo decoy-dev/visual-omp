@@ -53,7 +53,12 @@ export function registerHandlers(onQuitDecision: (allow: boolean) => void): void
 		...(app.isPackaged ? {} : { tourLayout: readReleaseTour(false, app.getPath("userData")) }),
 	}));
 	handle("app:prefs:get", () => getPrefs());
-	handle("app:prefs:set", patch => setPrefs(patch));
+	handle("app:prefs:set", async patch => {
+		const previousPath = getPrefs().ompPath;
+		const prefs = setPrefs(patch);
+		if (prefs.ompPath !== previousPath) await ompStatus(true);
+		return prefs;
+	});
 	handle("app:openExternal", async url => {
 		if (isSafeExternalUrl(url)) await shell.openExternal(url);
 	});

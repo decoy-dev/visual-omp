@@ -30,6 +30,7 @@ import {
 import { broadcast, handle } from "../ipc";
 import { getPrefs, setPrefs } from "../prefs";
 import { runOmp } from "../omp/cli";
+import { onOmpStatusChange } from "../omp/locate";
 import { rpcRequest } from "../omp/rpc";
 import {
 	configFile,
@@ -672,6 +673,10 @@ async function watchedFiles(cwd: string | undefined): Promise<{ file: string; sc
 const ScopeSchema = z.enum(["global", "project"]);
 
 export function register(): void {
+	onOmpStatusChange(status => {
+		configWritten();
+		broadcast("omp:status", status);
+	});
 	handle("config:list", cwd => listSettings(cwd));
 	handle("config:get", (key, cwd) => getSetting(key, cwd));
 	handle("config:set", (key, value, scope, cwd) => setSetting(key, value, ScopeSchema.parse(scope), cwd));

@@ -13,6 +13,7 @@ const fake = vi.hoisted(() => ({
 	rawChains: undefined as JsonValue | undefined, projectChains: null as Record<string, JsonValue> | null,
 	globalBehavior: {} as Record<string, JsonValue>, projectBehavior: {} as Record<string, JsonValue>,
 	fallbackOnChoices: ["any", "usage-limit"],
+	catalog: [] as ModelInfo[], listeners: new Map<string, Set<() => void>>(),
 }));
 // Keep the real IconButton and its focus behavior, but omit Radix tooltip trees from each editor update.
 // Button imports Tooltip directly, so mocking only the UI barrel would leave those trees mounted.
@@ -73,10 +74,11 @@ beforeEach(() => {
 	fake.fail = false; fake.rawChains = undefined; fake.projectChains = null;
 	fake.globalBehavior = { ...defaults }; fake.projectBehavior = {}; fake.fallbackOnChoices = ["any", "usage-limit"];
 	fake.invoke.mockReset();
+	fake.catalog = models; fake.listeners.clear();
 	fake.invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
 		if (channel === "config:list") return snapshot();
 		if (channel === "config:roles") return roles;
-		if (channel === "config:models") return models;
+		if (channel === "config:models") return fake.catalog;
 		if (channel === "config:presets") return [];
 		if (channel === "config:roles:fallbacks") {
 			if (fake.fail) throw new Error("Write refused");
@@ -93,7 +95,10 @@ beforeEach(() => {
 		}
 		return undefined;
 	});
-	Object.assign(window, { vomp: { invoke: fake.invoke, on: () => () => {}, platform: "darwin" } });
+	Object.assign(window, { vomp: { invoke: fake.invoke, on: (channel: string, listener: () => void) => {
+		const listeners = fake.listeners.get(channel) ?? new Set(); listeners.add(listener); fake.listeners.set(channel, listeners);
+		return () => listeners.delete(listener);
+	}, platform: "darwin" } });
 	element = document.createElement("div"); document.body.append(element); root = createRoot(element);
 });
 afterEach(async () => { await act(async () => root.unmount()); element.remove(); });
@@ -231,5 +236,23 @@ describe("Settings model fallback editor", () => {
 		expect(fake.chains.image).toBeUndefined();
 		await click("Use no fallback models for image"); await click("Save roles");
 		expect(fake.chains.image).toEqual([]);
+	});
+	it.each(["resolve", "reject"] as const)("keeps the installed catalog when an older manual refresh later %ss", async outcome => {
+		const stale = Promise.withResolvers<ModelInfo[]>();
+		const invoke = fake.invoke.getMockImplementation()!;
+		fake.invoke.mockImplementation((channel: string, ...args: unknown[]) =>
+			channel === "config:models:refresh" ? stale.promise : invoke(channel, ...args));
+		await render();
+		await click("Refresh the model list");
+		fake.catalog = models.map(model => ({ ...model, name: `Updated ${model.name}` }));
+		await act(async () => { for (const listener of fake.listeners.get("omp:status") ?? []) listener(); });
+		const chosen = () => element.querySelector<HTMLSelectElement>('select[aria-label="Fallback 1 model for Default"]')?.selectedOptions[0]?.textContent;
+		expect(chosen()).toBe("Updated gpt-6-luna");
+		await act(async () => {
+			if (outcome === "resolve") stale.resolve(models);
+			else stale.reject(new Error("Obsolete model refresh failed"));
+		});
+		expect(chosen()).toBe("Updated gpt-6-luna");
+		expect(element.textContent).not.toContain("Obsolete model refresh failed");
 	});
 });

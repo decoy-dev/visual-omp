@@ -24,26 +24,40 @@ import { refuseApproval, setThinkingSemantic, switchModelSemantic } from "./mode
 import { configuredThinking } from "./thinking";
 
 const modelCache = new Map<string, Promise<ModelInfo[]>>();
-// A sign-in or sign-out changes which models omp lists; the picker reloads the next time it opens.
-window.vomp.on("providers:changed", () => modelCache.clear());
+const modelListeners = new Set<() => void>();
+function refreshModels(): void {
+	modelCache.clear();
+	for (const listener of modelListeners) listener();
+}
+window.vomp.on("providers:changed", refreshModels);
+window.vomp.on("omp:status", refreshModels);
 
-/** Usable chat models for a project (cached per project until credentials change; main caches omp's list too). */
+/** Usable chat models for a project, refreshed for mounted readers after credentials or omp change. */
 export function useChatModels(cwd: string): { models: ModelInfo[] | null; error: string | null } {
 	const [state, setState] = useState<{ models: ModelInfo[] | null; error: string | null }>({ models: null, error: null });
 	useEffect(() => {
 		let live = true;
-		let pending = modelCache.get(cwd);
-		if (!pending) {
-			pending = window.vomp.invoke("config:models", cwd);
-			modelCache.set(cwd, pending);
-			pending.catch(() => modelCache.delete(cwd));
-		}
-		pending.then(
-			all => live && setState({ models: all.filter(model => model.kind === "chat"), error: null }),
-			error => live && setState({ models: null, error: error instanceof Error ? error.message : String(error) }),
-		);
+		let request = 0;
+		const load = () => {
+			const mine = ++request;
+			let pending = modelCache.get(cwd);
+			if (!pending) {
+				pending = window.vomp.invoke("config:models", cwd);
+				modelCache.set(cwd, pending);
+				pending.catch(() => {
+					if (modelCache.get(cwd) === pending) modelCache.delete(cwd);
+				});
+			}
+			pending.then(
+				all => live && mine === request && setState({ models: all.filter(model => model.kind === "chat"), error: null }),
+				error => live && mine === request && setState({ models: null, error: error instanceof Error ? error.message : String(error) }),
+			);
+		};
+		modelListeners.add(load);
+		load();
 		return () => {
 			live = false;
+			modelListeners.delete(load);
 		};
 	}, [cwd]);
 	return state;
