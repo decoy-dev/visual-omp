@@ -102,6 +102,38 @@ export function bashTraceCalls() {
   ];
 }
 
+/**
+ * Context summaries stream over several seconds, like a real model, so the app's progress
+ * during /handoff and /compact can be checked. omp sends both as one-shot requests whose last
+ * user message carries its own instructions (and, for /compact, the earlier conversation).
+ */
+export const FIXTURE_HANDOFF_DOCUMENT = [
+  "# Handoff",
+  "",
+  "## Goal",
+  "Continue the release-tour checks in this fixture chat.",
+  "",
+  "## State",
+  "- The local fixture provider answered every earlier message.",
+  "- No files were changed in this chat.",
+  "",
+  "## Next steps",
+  "1. Read this summary in the chat to confirm the handoff arrived.",
+  "2. Send another message to continue from the summary.",
+].join("\n");
+export const FIXTURE_COMPACTION_SUMMARY = [
+  "## Goal",
+  "Continue the release-tour checks in this fixture chat.",
+  "",
+  "## Progress",
+  "- The local fixture provider answered every earlier message.",
+].join("\n");
+export function summaryRequest(text) {
+  if (/Write a handoff document for another instance of yourself/.test(text)) return FIXTURE_HANDOFF_DOCUMENT;
+  if (/summarize the conversation above into a structured handoff summary/i.test(text)) return FIXTURE_COMPACTION_SUMMARY;
+  return null;
+}
+
 function mentionsCommand() {
   return `python3 - <<'PY'\nfrom pathlib import Path\nfrom zipfile import ZipFile\nPath('Meeting notes.md').write_text('# Meeting notes\\n\\ntour-0711-content:meeting\\n')\nPath('Client files').mkdir(exist_ok=True)\nPath('Client files/Review notes.md').write_text('# Client review\\n\\ntour-0711-content:client\\n')\nPath('Client files/Review "draft".md').write_text('# Quoted review\\n\\ntour-0711-content:quoted\\n')\nwith ZipFile('Design projects.zip', 'w') as archive:\n    archive.writestr('Design brief.md', '# Design brief\\n\\nLocal archive fixture.\\n')\nprint('Created the four file-mention samples.')\nPY`;
 }
@@ -148,6 +180,20 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         response.write(`data: ${JSON.stringify({ id: `fixture-${id}`, object: "chat.completion.chunk", created: 1, model: "preview", choices: [{ index: 0, delta, finish_reason }] })}\n\n`);
       };
       response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-cache" });
+      const summary = summaryRequest(textOf(lastUser));
+      if (summary !== null) {
+        // About eight seconds in total, so progress stays visible.
+        const words = summary.split(/(?<=\s)/);
+        send({ role: "assistant", content: "" });
+        for (const word of words) {
+          if (response.destroyed) return;
+          send({ content: word });
+          await sleep(8000 / words.length);
+        }
+        send({}, "stop");
+        response.end("data: [DONE]\n\n");
+        return;
+      }
       if (fixture === "timestamps") {
         const round = turnMessages.flatMap(message => message.tool_calls ?? []).length;
         if (round < 3) {
