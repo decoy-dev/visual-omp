@@ -6,7 +6,7 @@ import { walkNodes } from "./view-state";
 
 export type { CollabQuestion, CollabQuestionState } from "./question-match.schema";
 export interface QuestionScope { hostId: string; generation: number; epoch: number }
-export interface HookQuestion { surfaceId: string; nodeId: string; title: string; kind: "select" | "editor" | "local"; options?: { label: string; description?: string }[]; field?: string }
+export interface HookQuestion { surfaceId: string; nodeId: string; title: string; kind: "select" | "editor" | "local" | "form"; options?: { label: string; description?: string }[]; field?: string; formFields?: { title: string; kind: "choice" | "text"; other: boolean; options?: string[] }[] }
 export interface QuestionMatch {
 	surfaceId: string; nodeId: string;
 	status: "matched" | "ambiguous" | "unmatched" | "unavailable" | "settling" | "answering";
@@ -27,6 +27,24 @@ export function hookQuestions(surfaces: readonly (TspSurfaceSnapshot & { documen
 	for (const surface of surfaces) {
 		if (surface.closed || surface.suspended || (surface.documentGeneration !== undefined && surface.documentGeneration !== generation)) continue;
 		for (const node of walkNodes(surface.document)) {
+			if (node.p?.role === TSP_ROLES.editorAsk && node.c?.some(child => child.p?.role === TSP_ROLES.askForm)) {
+				const formFields: NonNullable<HookQuestion["formFields"]> = [];
+				for (const section of node.c.flatMap(child => child.p?.role === TSP_ROLES.askForm ? child.c ?? [] : [])) {
+					let preceding = "";
+					for (const block of section.c ?? []) {
+						if (block.k === "text" && (block.p?.role === TSP_ROLES.askText || block.p?.role === TSP_ROLES.askHeading)) preceding = questionText(block.p.spans);
+						else if (block.p?.role === TSP_ROLES.askField) {
+							const parts = [...walkNodes(block)];
+							const label = parts.find(part => part.p?.role === TSP_ROLES.askLabel);
+							const options = parts.flatMap(part => part.k === "item" && !part.p?.disabled ? [part.id.endsWith("/other") ? "Other (type your own)" : questionText(part.p?.label)] : []);
+							formFields.push({ title: questionText(label?.k === "text" ? label.p?.spans : undefined).replace(/ \*$/, "") || preceding || questionText(section.k === "section" ? section.p?.head : undefined), kind: parts.some(part => part.k === "list" && part.p?.role === TSP_ROLES.askOptions) ? "choice" : "text", other: parts.some(part => part.k === "item" && part.id.endsWith("/other") && !part.p?.disabled), ...(options.length ? { options } : {}) });
+							preceding = "";
+						} else preceding = "";
+					}
+				}
+				result.push({ surfaceId: surface.open.id, nodeId: node.id, kind: "form", title: "", formFields });
+				continue;
+			}
 			if (!isHookNode(node)) continue;
 			const children = [...walkNodes(node)];
 			const picker = children.find(child => child.k === "picker" || child.k === "list");
@@ -42,6 +60,13 @@ export function hookQuestions(surfaces: readonly (TspSurfaceSnapshot & { documen
 }
 
 function compatible(dialog: HookQuestion, request: CollabQuestion): boolean {
+	if (dialog.kind === "form") return dialog.formFields?.some(field => {
+		if (!text(field.title) || text(field.title) !== text(request.title)) return false;
+		if (request.kind === "editor") return field.kind === "text" || field.other;
+		const options = request.options.map(option => text(typeof option === "string" ? option : option.label));
+		if (options.at(-1) === "Next →") options.pop();
+		return field.options?.length === options.length && field.options.every((option, index) => text(option) === options[index]);
+	}) === true;
 	if (dialog.kind !== request.kind || !text(dialog.title) || text(dialog.title) !== text(request.title)) return false;
 	if (request.kind === "editor") return dialog.field === undefined || dialog.field === (request.prefill ?? "");
 	if (!dialog.options || dialog.options.length !== request.options.length) return false;

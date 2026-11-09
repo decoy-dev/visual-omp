@@ -101,6 +101,16 @@ describe("hook-collab question arbitration", () => {
 			expect(arb.matches(scope, [dialog])[0]?.status).toBe("unmatched");
 		}
 	});
+	it("keeps an ordinary hook settling when its request is replaced before the node departs", () => {
+		const arb = new QuestionArbitrator();
+		arb.update(scope, state);
+		expect(arb.matches(scope, [dialog])[0]).toMatchObject({ status: "matched", reqId: 4 });
+		arb.update(scope, { ...state, revision: 2, requests: [{ ...state.requests[0]!, reqId: 5 }] });
+		expect(arb.matches(scope, [dialog])[0]).toMatchObject({ status: "settling", reqId: 4 });
+		expect(() => arb.answer(scope, [dialog], "s", "hook")).toThrow("settling");
+		arb.matches(scope, []);
+		expect(arb.matches(scope, [dialog])[0]).toMatchObject({ status: "matched", reqId: 5 });
+	});
 	it("extracts only live current-generation hook data", () => {
 		const surface = { open: { id: "s", mode: "inline" as const }, sequence: 1, closed: false, suspended: false, focus: null, settled: [], documentGeneration: 1, document: { id: "hook", k: "overlay" as const, p: { role: "omp.overlay.hook-select", head: "Choose" }, c: [{ id: "picker", k: "picker" as const, p: { items: [{ id: "yes", label: "Yes", detail: "Continue" }, { id: "no", label: "No" }] } }] } };
 		expect(hookQuestions([surface], 1)).toEqual([{ ...dialog, field: undefined }]);

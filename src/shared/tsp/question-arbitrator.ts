@@ -69,7 +69,7 @@ export class QuestionArbitrator {
 			const prior = this.#bindings.get(key);
 			let result: QuestionMatch = match;
 			if (this.#answering.has(key)) result = { surfaceId: match.surfaceId, nodeId: match.nodeId, status: "answering" };
-			else if (prior && this.#state?.connected && !this.#state.requests.some(request => request.reqId === prior.reqId)) result = { surfaceId: match.surfaceId, nodeId: match.nodeId, status: "settling", reqId: prior.reqId };
+			else if ((dialogs[index]?.kind !== "form" || match.status !== "matched") && prior && this.#state?.connected && !this.#state.requests.some(request => request.reqId === prior.reqId)) result = { surfaceId: match.surfaceId, nodeId: match.nodeId, status: "settling", reqId: prior.reqId };
 			if (result.status === "matched") {
 				this.#remoteOwned.add(key);
 				const requestFirstSeenMs = prior && prior.reqId === result.reqId ? prior.requestFirstSeenMs : this.#requestFirstSeen.get(JSON.stringify([this.#state!.connection, result.reqId]))!;

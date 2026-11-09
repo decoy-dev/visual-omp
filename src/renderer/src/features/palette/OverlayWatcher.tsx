@@ -14,6 +14,7 @@ import { isNativeOverlay, screenName } from "./overlays";
 import { autoOpened } from "./TerminalSheet";
 import { useTsp } from "../../state/tsp/useTsp";
 import { currentPresentationConsumers, usePresentationAvailability, usePresentationClaims } from "../../state/tsp/presentation-claims";
+import { TSP_ROLES } from "@shared/tsp/roles";
 
 /** Let omp finish painting before reading the screen. */
 const SETTLE_MS = 300;
@@ -27,7 +28,7 @@ function hasUnpresentedScreen(surfaces: TspSurfaces, consumers: TspPresentationC
 	for (const surface of surfaces) {
 		if (surface.closed || surface.suspended) continue;
 		for (const root of unclaimed(surface, "dock", consumers.get(surface.open.id))) {
-			for (const node of walkNodes(root)) if (node.k === "rows" || node.k === "ansi") return true;
+			for (const node of walkNodes(root)) if (node.k === "rows" || node.k === "ansi" || node.p?.role === TSP_ROLES.askForm) return true;
 		}
 	}
 	return false;

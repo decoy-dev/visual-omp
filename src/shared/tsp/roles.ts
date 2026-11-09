@@ -7,6 +7,11 @@ import { advisorScope } from "./advisor";
 export const TSP_ROLES = {
 	session: "omp.session", editor: "omp.editor", editorShell: "omp.editor.shell", composerFocus: "omp.composer.focus",
 	editorAsk: "omp.editor.ask", editorAskHidden: "omp.editor.ask.hidden",
+	askForm: "omp.ask.form", askSection: "omp.ask.section", askField: "omp.ask.field",
+	askText: "omp.ask.text", askHeading: "omp.ask.heading", askLabel: "omp.ask.label",
+	askOptions: "omp.ask.options", askOption: "omp.ask.option", askCheck: "omp.ask.check",
+	askWell: "omp.ask.well", askWellMulti: "omp.ask.well.multi", askSummary: "omp.ask.summary",
+	askBullets: "omp.ask.bullets", askPre: "omp.ask.pre", askTable: "omp.ask.table", askError: "omp.ask.error",
 	composerModel: "omp.composer.model", composerEffort: "omp.composer.effort", composerModelEffort: "omp.composer.model.effort",
 	compaction: "omp.compaction", working: "omp.working", workingLabel: "omp.working.label", loader: "omp.loader",
 	queue: "omp.queue", queueItem: "omp.queue.item", approvalChoices: "omp.approval.choices", composerChips: "omp.composer.chips",
@@ -81,6 +86,7 @@ export const TSP_CLAIMS: Readonly<Record<string, string>> = Object.freeze(
 		...[TSP_ROLES.composerModel, TSP_ROLES.composerEffort, TSP_ROLES.composerModelEffort].map(role => [role, "composer-model"]),
 		...[...nativeHookRoles].map(role => [role, "hook-dialog-card"]),
 		[TSP_ROLES.advisor, "advisor-apply"],
+		[TSP_ROLES.editorAsk, "collab-form-card"],
 		...[TSP_ROLES.userShell, TSP_ROLES.userPython].map(role => [role, "transcript-user-runs"]),
 		[TSP_ROLES.btwHistory, "btw-pane"],
 	]),
@@ -94,6 +100,7 @@ export function isClaimable(node: TspNode, surface?: TspSurfaceSnapshot): boolea
 	if (node.k === "prefs" || node.p?.role === TSP_ROLES.advisor) return advisorScope(node, surface?.open.mode) !== null;
 	if (node.p?.role === TSP_ROLES.userShell || node.p?.role === TSP_ROLES.userPython) return isUserRunNode(node);
 	if (node.p?.role === TSP_ROLES.planReview) return projectPlanReview(node, "") !== null;
+	if (node.p?.role === TSP_ROLES.editorAsk) return node.c?.some(child => child.p?.role === TSP_ROLES.askForm) === true;
 	if (isHookNode(node)) {
 		if (!isNativeHookNode(node)) return false;
 		const supported = (child: TspNode): boolean => !child.p?.hidden && (child.k === "picker" && !!child.p?.items?.length || child.k === "list" && !!child.c?.some(item => item.k === "item" && !item.p?.hidden) || child.k === "input" || child.k === "editor" || !!child.c?.some(supported));
@@ -137,7 +144,7 @@ const knownRoles: ReadonlySet<string> = new Set([
 	// Recorded approval details and execution chrome remain visible through the generic screen.
 	"omp.approval.choice", "omp.approval.details", "omp.approval.title", "omp.editor.ask.approval",
 	"omp.run", "omp.run.foot", "omp.run.state", "omp.run.time",
-	"omp.ask.option", "omp.ask.options", "omp.ask.other", "omp.ask.question",
+	"omp.ask.other", "omp.ask.question",
 	"omp.composer.chip", "omp.composer.fact", "omp.queue.edit",
 	// Prediction alternatives retain the generic list.
 	"omp.autocomplete", "omp.select",

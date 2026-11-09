@@ -1,9 +1,10 @@
-/** `ask` — interactive questions posed to the user mid-run. */
+/** Interactive ask calls, including saved question lists and HTML forms. */
 import type { ReactNode } from "react";
 import { Badge, InvalidArg, Note, ResultText, Row } from "../parts";
 import type { ToolRenderer, ToolRenderProps } from "../types";
 import { detailsRecord, isAskClosedByMessage, isRecord, normalizeWs, num, str, truncate } from "../util";
 import { ColorText } from "../../transcript/ColorText";
+import { parseAskForm } from "./askForm";
 
 interface AskOption {
 	label: string;
@@ -155,6 +156,12 @@ function questionsFromDetails(details: Record<string, unknown>): AskQuestion[] {
 }
 
 function Summary({ args, result }: ToolRenderProps): ReactNode {
+	if (typeof args.html === "string" || Array.isArray(detailsRecord(result)?.answers)) {
+		const form = typeof args.html === "string" ? parseAskForm(args.html) : null;
+		const answers = detailsRecord(result)?.answers;
+		const count = form?.fields.length ?? (Array.isArray(answers) ? answers.length : 0);
+		return <><span><ColorText text={truncate(form?.legends.join(", ") || form?.fields[0]?.question || "Form", 70)} /></span><Badge>{count} {count === 1 ? "field" : "fields"}</Badge>{isAskClosedByMessage(result) && <Badge>Closed after a message</Badge>}</>;
+	}
 	const questions = questionsOf(args);
 	const first = questions[0];
 	if (!first) return <InvalidArg what="questions" />;
@@ -207,7 +214,27 @@ function QuestionBlock({ q, answer }: { q: AskQuestion; answer: AskAnswer | unde
 	);
 }
 
+function FormBody({ args, result }: ToolRenderProps): ReactNode {
+	const form = typeof args.html === "string" ? parseAskForm(args.html) : null;
+	const details = detailsRecord(result);
+	const answers = Array.isArray(details?.answers) ? details.answers.filter(isRecord) : null;
+	return <>
+		{answers ? answers.map((answer, index) => <div className="tv-list" key={index}>
+			<Row><ColorText text={str(answer.question) ?? str(answer.name) ?? ""} /></Row>
+			<Row k="answer"><ColorText text={str(answer.answer) || "(no answer)"} /></Row>
+		</div>) : form?.fields.map((field, index) => <div className="tv-list" key={index}>
+			<Row><ColorText text={form.legends.includes(field.question) ? field.name.replace(/[_-]+/g, " ") : field.question} /></Row>
+			{field.options.map((option, optionIndex) => <Row key={optionIndex} k={field.multi ? (option.selected ? "■" : "□") : option.selected ? "●" : "○"}><ColorText text={option.label} />{option.selected && <> <Badge tone="accent">preselected</Badge></>}</Row>)}
+			{field.value && <Row k="value"><ColorText text={field.value} /></Row>}
+		</div>)}
+		{form?.images.map((alt, index) => <Row key={`image:${index}`}><ColorText text={alt} /></Row>)}
+		{details?.timedOut === true && <Note tone="warn">Submitted the current values after the timeout.</Note>}
+		{isAskClosedByMessage(result) ? <Note>Question closed after a message. The reply can continue.</Note> : !answers && <ResultText result={result} maxLines={10} />}
+	</>;
+}
+
 function Body({ args, result }: ToolRenderProps): ReactNode {
+	if (typeof args.html === "string" || Array.isArray(detailsRecord(result)?.answers)) return <FormBody name="ask" args={args} result={result} />;
 	const details = detailsRecord(result);
 	const answers = answersOf(details);
 	let questions = questionsOf(args);

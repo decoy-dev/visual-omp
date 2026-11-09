@@ -20,11 +20,14 @@ import { TspRendererEvent } from "@shared/tsp-host.schema";
 import { hookAnswerEvents } from "@shared/tsp/dialogs";
 import { TspHookAnswer } from "@shared/tsp/dialogs.schema";
 import { planReview } from "@shared/tsp/plan-review";
+import askFormEvidence from "../fixtures/18.18.3/ask-html-form.ask.json";
+import { matchQuestions, type CollabQuestion } from "@shared/tsp/question-match";
+import type { TspSurfaceSnapshot } from "@shared/tsp-host";
 
 const root = resolve(import.meta.dirname, "../../../../..");
 const chrome = process.env.CHROME_BIN ?? (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/bin/google-chrome");
 
-const CdpMessage = z.object({ id: z.number().optional(), result: z.unknown().optional(), error: z.object({ message: z.string() }).optional() });
+const CdpMessage = z.object({ id: z.number().optional(), result: z.unknown().optional(), error: z.object({ message: z.string() }).optional(), method: z.string().optional(), params: z.unknown().optional() });
 interface AxTree { nodes: { role?: { value: string }; name?: { value: string }; properties?: { name: string; value: { value: unknown } }[] }[] }
 interface Evaluation { result: { value: unknown }; exceptionDetails?: { text: string; exception?: { description: string } } }
 
@@ -32,10 +35,14 @@ interface Evaluation { result: { value: unknown }; exceptionDetails?: { text: st
 class ChromePage {
 	#id = 0;
 	#pending = new Map<number, { resolve(value: unknown): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>();
+	readonly requests: string[] = [];
+	readonly errors: string[] = [];
 	constructor(private socket: WebSocket) {
 		socket.on("message", raw => {
 			try {
 				const message = CdpMessage.parse(JSON.parse(String(raw)));
+				if (message.method === "Network.requestWillBeSent") this.requests.push(z.object({ request: z.object({ url: z.string() }) }).parse(message.params).request.url);
+				if (message.method === "Runtime.exceptionThrown") this.errors.push(JSON.stringify(message.params));
 				const pending = message.id === undefined ? undefined : this.#pending.get(message.id);
 				if (!pending) return;
 				clearTimeout(pending.timer);
@@ -68,7 +75,7 @@ class ChromePage {
 	async until(expression: string): Promise<void> {
 		const deadline = Date.now() + 20_000;
 		// Chrome runs out of process; fake timers cannot drive its render or focus lifecycle.
-		while (!await this.evaluate(expression)) { if (Date.now() > deadline) throw new Error(`Chrome timed out: ${expression}`); await delay(25); }
+		while (!await this.evaluate(expression)) { if (Date.now() > deadline) throw new Error(`Chrome timed out: ${expression}\n${await this.evaluate("document.body.innerText.slice(0, 1600)")}\n${this.errors.join("\n")}`); await delay(25); }
 	}
 	async clickElement(expression: string): Promise<void> {
 		const point = await this.evaluate<{ x: number; y: number }>(`(() => { const element = ${expression}; if (!element) throw new Error('Missing Chrome input target'); element.scrollIntoView({block:'center',inline:'nearest'}); const box = element.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`);
@@ -224,6 +231,8 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const socket = new WebSocket(target.webSocketDebuggerUrl, { handshakeTimeout: 5_000 }); await once(socket, "open");
 		page = new ChromePage(socket);
 		await page.send("Page.enable");
+		await page.send("Network.enable");
+		await page.send("Runtime.enable");
 		await page.send("Emulation.setFocusEmulationEnabled", { enabled: true });
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
 		await page.send("Page.navigate", { url: `${vite.resolvedUrls!.local[0]}src/renderer/src/features/tsp/testing/gate.html` });
@@ -268,6 +277,73 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const label = Array.isArray(node.p?.actions) ? node.p.actions.find(action => action.id === event.act)?.label : undefined;
 		await page.clickElement(`(() => { const root = [...document.querySelectorAll('[data-tsp-id]')].find(node => node.dataset.tspId === ${JSON.stringify(event.id)}); return root && ${label ? `[...root.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(label)})` : "root.querySelector(':scope > button')"}; })()`);
 	}
+	it.each([["light", false], ["dark", false], ["light", true], ["dark", true]] as const)("answers the recorded HTML form once in %s (classic=%s)", async (theme, classic) => {
+		await page.send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false });
+		const entries = askFormEvidence.sessions[0]!.text.trim().split("\n").map(line => JSON.parse(line));
+		const calls = entries.flatMap(entry => entry.message?.content ?? []);
+		const call = calls.find(part => part.type === "toolCall");
+		const result = entries.find(entry => entry.message?.role === "toolResult").message;
+		expect(entries.filter(entry => entry.message?.role === "toolResult" && entry.message.toolCallId === call.id)).toHaveLength(1);
+		const replies = ["Other (type your own)", "Canary", "Tests", "Other (type your own)", "Accessibility", "Next →", "Reviewed once"];
+		let index = 0;
+		for (const stage of askFormEvidence.stages) {
+			const surfaces = (stage.surfaces as unknown as TspSurfaceSnapshot[]).map(surface => ({ ...surface, documentGeneration: 1 }));
+			const scope = { hostId: "gate", generation: 1, epoch: 1 };
+			const request = stage.request as CollabQuestion | null;
+			const snapshot: TspHostSnapshot = { ...recorded("hook-select-open"), ...scope, revision: ++planRevision, surfaces, questionMatches: matchQuestions(scope, { ...scope, revision: 1, connection: 1, connected: true, requests: request ? [request] : [] }, hookQuestions(surfaces, 1)) };
+			await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion='reduced'; window.gate.showAsk(${JSON.stringify(snapshot)},${JSON.stringify(request)},${JSON.stringify(call.arguments)},${request ? "undefined" : JSON.stringify(result)},${classic});`);
+			await page.until(request ? `!!document.querySelector('[data-question-card="${request.reqId}"]')` : "!document.querySelector('[data-question-card]') && document.body.textContent.includes('Other: Canary')");
+			if (request && !classic) await page.until("window.gate.claims().length === 1");
+			expect(await page.evaluate("!!document.querySelector('.tsp-screen')")).toBe(false);
+			if (request?.kind === "select") expect(await page.evaluate("document.querySelector('[data-question-card]').textContent")).toContain("Enter");
+			if (!classic && index === 0 && request) {
+				await page.evaluate("window.gate.showQuestion(false)");
+				await page.until("window.gate.claims().length === 0 && !!document.querySelector('.tsp-screen')");
+				await page.evaluate("window.gate.showQuestion(true)");
+				await page.until("!document.querySelector('.tsp-screen') && window.gate.claims().length === 1");
+				const uncertain = { ...snapshot, revision: ++planRevision, questionMatches: snapshot.questionMatches?.map(match => ({ ...match, status: "ambiguous" as const, reqId: undefined })) };
+				await page.evaluate(`window.gate.update(${JSON.stringify(uncertain)})`);
+				await page.until("window.gate.claims().length === 0 && !!document.querySelector('.tsp-screen')");
+				await page.evaluate(`window.gate.update(${JSON.stringify({ ...snapshot, revision: ++planRevision })})`);
+				await page.until("!document.querySelector('.tsp-screen') && window.gate.claims().length === 1");
+			}
+			if (index === 0 || !request) {
+				await page.evaluate("document.fonts.ready.then(() => true)");
+				const screenshot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png", captureBeyondViewport: true });
+				await writeFile(join(shots, `ask-${classic ? "classic-" : ""}${request ? "pending" : "answered"}-${theme}.png`), Buffer.from(screenshot.data, "base64"));
+			}
+			if (!request) continue;
+			const reply = replies[index++]!;
+			if (request.kind === "editor") {
+				await page.clickElement("document.querySelector('[data-question-card] textarea')");
+				await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
+				await page.send("Input.insertText", { text: reply });
+				await page.clickElement("[...document.querySelectorAll('[data-question-card] button')].find(button => button.textContent.trim() === 'Send answer')");
+			} else if (reply === "Next →") {
+				await page.clickElement("[...document.querySelectorAll('[data-question-card] button')].find(button => button.textContent.trim() === 'Send choices')");
+			} else {
+				await page.clickElement(`[...document.querySelectorAll('[data-question-card] [data-choice]')].find(button => button.textContent.trim() === ${JSON.stringify(reply)})`);
+				if (stage.request?.selectionMarker !== "checkbox") await page.clickElement("[...document.querySelectorAll('[data-question-card] button')].find(button => button.textContent.trim() === 'Send answer')");
+			}
+			expect(await page.evaluate("window.gate.calls")).toEqual([{ channel: "collab:ui-response", args: [request.reqId, reply] }]);
+		}
+		expect(index).toBe(7);
+		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
+	}, 60_000);
+
+	it("keeps hostile HTML form scripts, media and URLs inert in Chromium", async () => {
+		const stage = askFormEvidence.stages.at(-1)!;
+		const snapshot: TspHostSnapshot = { ...recorded("hook-select-open"), hostId: "gate", generation: 1, epoch: 1, revision: ++planRevision, questionMatches: [], surfaces: (stage.surfaces as unknown as TspSurfaceSnapshot[]).map(surface => ({ ...surface, documentGeneration: 1 })) };
+		const hostile = '<form action="/ask-hostile-proof/submit"><script>window.__askScriptExecuted=true;fetch("/ask-hostile-proof/script")</script><script src="/ask-hostile-proof/script.js"></script><img src="/ask-hostile-proof/image.png" onerror="window.__askScriptExecuted=true" alt="Untrusted image"><svg onload="window.__askScriptExecuted=true"><image href="/ask-hostile-proof/svg.png"></image></svg><iframe src="/ask-hostile-proof/frame"></iframe><video src="/ask-hostile-proof/video" poster="/ask-hostile-proof/poster"></video><link rel="stylesheet" href="/ask-hostile-proof/style"><label>Untrusted question<input name="answer" value="plain text"></label><a href="/ask-hostile-proof/navigation">Untrusted link</a></form>';
+		expect(page.requests.some(url => url.includes("gate.html"))).toBe(true);
+		await page.evaluate(`window.gate.showAsk(${JSON.stringify(snapshot)},null,${JSON.stringify({ html: hostile })})`);
+		await page.until("document.body.textContent.includes('Untrusted question') && document.body.textContent.includes('Untrusted image')");
+		await page.evaluate("(() => { const {promise, resolve} = Promise.withResolvers(); requestAnimationFrame(() => requestAnimationFrame(resolve)); return promise; })()");
+		expect(await page.evaluate("window.__askScriptExecuted === undefined && !document.querySelector('section[aria-label=\"Ask form\"] img, section[aria-label=\"Ask form\"] svg[onload], section[aria-label=\"Ask form\"] iframe, section[aria-label=\"Ask form\"] video, section[aria-label=\"Ask form\"] form')")).toBe(true);
+		expect(page.requests.filter(url => url.includes("ask-hostile-proof"))).toEqual([]);
+		expect(await page.evaluate("location.pathname")).toContain("gate.html");
+	}, 30_000);
+
 	let planRevision = 0;
 	it.each(["light", "dark"])("renders the recorded native plan card in %s and activates its approval", async theme => {
 		const documents = new FixtureDocuments();

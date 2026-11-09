@@ -14,6 +14,7 @@
  */
 import type { CollabUiRequest, SessionEntry, ToolCallContent, WireMessage } from "@oh-my-pi/pi-wire";
 import { isRecord } from "../../tool-render/util";
+import { isAskFormRequest } from "../../tool-render/tools/askForm";
 
 // Sentinel labels and the custom-answer title prefix appended by omp's guest ask (extension-ui-controller.ts).
 export const ASK_OTHER = "Other (type your own)";
@@ -301,6 +302,7 @@ function findRunningAsk(source: AskSource, matches: (args: unknown) => AskQuesti
  */
 export function isAskRequest(source: AskSource, request: CollabUiRequest): boolean {
 	return findRunningAsk(source, args => {
+		if (isRecord(args) && typeof args.html === "string") return isAskFormRequest(args.html, request) ? [] : null;
 		const questions = parseAskQuestions(args);
 		return questions?.some((question, index) => request.kind === "select"
 			? selectMismatch(question, request) === null

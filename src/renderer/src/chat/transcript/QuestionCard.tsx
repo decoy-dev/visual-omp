@@ -1,8 +1,6 @@
 /**
- * omp questions that reach the app as collab `ui-request`s (DESIGN §4.8): tool approvals
- * (select "Approve"/"Deny"), the `ask` tool (one select per question with Other / Chat / Next
- * sentinels; multi-select toggles one option per answer), generic extension selects, and editors.
- * An `ask` with more than one question is answered as a series instead (`AskSeriesCard`).
+ * omp questions delivered as collab requests, including field-by-field HTML forms,
+ * tool approvals and extension dialogs. Saved question-list asks can use AskSeriesCard.
  */
 import type { CollabUiRequest } from "@oh-my-pi/pi-wire";
 import { ChatCircle, Info, Question, ShieldWarning } from "@phosphor-icons/react";
@@ -30,7 +28,7 @@ function TspQuestionPresentationClaim({ hostId, generation, reqId }: { hostId: s
 	const { snapshot } = useTsp(hostId);
 	const match = snapshot?.hostId === hostId && snapshot.generation === generation && snapshot.lifecycle === "live"
 		? snapshot.questionMatches?.find(match => match.reqId === reqId && (match.status === "matched" || match.status === "settling")) : null;
-	usePresentationClaim(snapshot && match ? { hostId: snapshot.hostId, epoch: snapshot.epoch, surfaceId: match.surfaceId, nodeId: match.nodeId } : null, !covered);
+	usePresentationClaim(snapshot && match ? { hostId: snapshot.hostId, epoch: snapshot.epoch, surfaceId: match.surfaceId, nodeId: match.nodeId } : null, !covered, true);
 	return null;
 }
 
@@ -122,9 +120,10 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 	// omp may put remembered grants before the one-time choice. Never use option 0 as the default.
 	const once = labels.includes("Approve Once") ? "Approve Once" : labels.includes("Approve") ? "Approve" : null;
 	const isApproval = once !== null && labels.at(-1) === "Deny";
-	const markable = request.markableCount ?? labels.filter(label => label !== ASK_OTHER && label !== ASK_CHAT && label !== ASK_NEXT).length;
+	const legacyOther = labels.includes(ASK_CHAT);
+	const markable = request.markableCount ?? labels.filter(label => label !== ASK_CHAT && label !== ASK_NEXT && (!legacyOther || label !== ASK_OTHER)).length;
 	const choices = labels.slice(0, markable).map((_, index) => labelOf(request, index));
-	const hasOther = labels.includes(ASK_OTHER);
+	const hasOther = legacyOther && labels.includes(ASK_OTHER);
 	const hasChat = labels.includes(ASK_CHAT);
 	const hasNext = labels.includes(ASK_NEXT);
 	const multi = request.selectionMarker === "checkbox";
@@ -192,6 +191,7 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 	};
 
 	const activeIndex = other.trim() || selected >= choices.length ? -1 : selected;
+	const helpText = request.helpText?.replaceAll("\u{f0311}", "Enter").replaceAll("\u{f12b7}", "Escape");
 
 	return (
 		<div data-question-card={request.reqId} className={cardClass}>
@@ -201,7 +201,7 @@ export function QuestionCard({ session, request, note }: { session: SessionContr
 				<p id={titleId} className="selectable text-base font-medium text-fg">
 					<ColorText text={request.title} />
 				</p>
-				{(multi || request.helpText) && <p className="mt-0.5 text-sm text-fg-muted"><ColorText text={request.helpText ?? t("question.chooseMany")} /></p>}
+				{(multi || helpText) && <p className="mt-0.5 text-sm text-fg-muted"><ColorText text={helpText ?? t("question.chooseMany")} /></p>}
 			</Heading>
 			<ChoiceGrid
 				choices={choices}

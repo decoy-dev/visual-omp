@@ -1,0 +1,185 @@
+[
+  {
+    "type": "model_change",
+    "id": "d2fc12ba",
+    "parentId": null,
+    "timestamp": "2026-11-09T16:26:21.266Z",
+    "runtime": {
+      "version": "18.18.3"
+    },
+    "model": "fixture/fixture-model",
+    "resolvedModelIsFallback": false
+  },
+  {
+    "type": "thinking_level_change",
+    "id": "c002602f",
+    "parentId": "d2fc12ba",
+    "timestamp": "2026-11-09T16:26:21.266Z",
+    "runtime": {
+      "version": "18.18.3"
+    },
+    "thinkingLevel": "off",
+    "configured": null
+  },
+  {
+    "type": "message",
+    "id": "a541d912",
+    "parentId": "8793862c",
+    "timestamp": "2026-11-09T16:26:21.504Z",
+    "runtime": {
+      "version": "18.18.3"
+    },
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Ask the fixture form."
+        }
+      ],
+      "attribution": "user",
+      "timestamp": 1794241581495
+    }
+  },
+  {
+    "type": "message",
+    "id": "b23dba25",
+    "parentId": "0f0ae95a",
+    "timestamp": "2026-11-09T16:26:21.512Z",
+    "runtime": {
+      "version": "18.18.3"
+    },
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "fixture-tool-0",
+          "name": "ask",
+          "arguments": {
+            "html": "<form><fieldset><legend>Release choices</legend><p>Choose the release settings.</p><label><input type=\"radio\" name=\"channel\" value=\"stable\" checked>Stable</label><label><input type=\"radio\" name=\"channel\" value=\"preview\">Preview</label><label><input type=\"checkbox\" name=\"checks\" value=\"types\" checked>Types</label><label><input type=\"checkbox\" name=\"checks\" value=\"tests\">Tests</label><label for=\"note\">Release note</label><input id=\"note\" name=\"note\" value=\"Keep compatibility\"></fieldset></form>"
+          },
+          "partialArgs": "{\"html\":\"<form><fieldset><legend>Release choices</legend><p>Choose the release settings.</p><label><input type=\\\"radio\\\" name=\\\"channel\\\" value=\\\"stable\\\" checked>Stable</label><label><input type=\\\"radio\\\" name=\\\"channel\\\" value=\\\"preview\\\">Preview</label><label><input type=\\\"checkbox\\\" name=\\\"checks\\\" value=\\\"types\\\" checked>Types</label><label><input type=\\\"checkbox\\\" name=\\\"checks\\\" value=\\\"tests\\\">Tests</label><label for=\\\"note\\\">Release note</label><input id=\\\"note\\\" name=\\\"note\\\" value=\\\"Keep compatibility\\\"></fieldset></form>\"}",
+          "streamIndex": 0
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fixture",
+      "model": "fixture-model",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1794241581505,
+      "responseId": "fixture-0",
+      "duration": 5.471416999999974,
+      "ttft": 5.055124999999862,
+      "completedAt": 1794241581512,
+      "contextSnapshot": {
+        "promptTokens": 0,
+        "nonMessageTokens": 3079,
+        "toolSchemaTokens": 682,
+        "compactionEpoch": 0
+      }
+    }
+  },
+  {
+    "type": "message",
+    "id": "8a4e4e0b",
+    "parentId": "2b396405",
+    "timestamp": "2026-11-09T16:26:22.427Z",
+    "runtime": {
+      "version": "18.18.3"
+    },
+    "message": {
+      "role": "toolResult",
+      "toolCallId": "fixture-tool-0",
+      "toolName": "ask",
+      "content": [
+        {
+          "type": "text",
+          "text": "User answers:\n{\n  \"channel\": \"Canary\",\n  \"checks\": [\n    \"types\",\n    \"tests\",\n    \"Accessibility\"\n  ],\n  \"note\": \"Reviewed once\"\n}"
+        }
+      ],
+      "details": {
+        "answers": [
+          {
+            "name": "channel",
+            "question": "Choose the release settings.",
+            "answer": "Other: Canary"
+          },
+          {
+            "name": "checks",
+            "question": "Release choices",
+            "answer": "Types, Tests, Other: Accessibility"
+          },
+          {
+            "name": "note",
+            "question": "Release note",
+            "answer": "Reviewed once"
+          }
+        ]
+      },
+      "isError": false,
+      "timestamp": 1794241582426
+    }
+  },
+  {
+    "type": "message",
+    "id": "5b652cc7",
+    "parentId": "8a4e4e0b",
+    "timestamp": "2026-11-09T16:26:22.433Z",
+    "runtime": {
+      "version": "18.18.3"
+    },
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Fixture form answered."
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fixture",
+      "model": "fixture-model",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "stop",
+      "timestamp": 1794241582430,
+      "responseId": "fixture-1",
+      "duration": 2.4520830000001297,
+      "ttft": 2.230667000000267,
+      "completedAt": 1794241582433,
+      "contextSnapshot": {
+        "promptTokens": 0,
+        "nonMessageTokens": 3079,
+        "toolSchemaTokens": 682,
+        "compactionEpoch": 0
+      }
+    }
+  }
+]

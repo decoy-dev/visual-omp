@@ -50,6 +50,7 @@ type RecordingContext = {
   requests: object[];
   root: string;
   guest?: GuestClient;
+  captureAsk: (stage: string) => Promise<void>;
   collabAbort: () => void;
   captureBtw: (stage: string) => Promise<void>;
   btwRecords: () => Promise<BtwRecord[]>;
@@ -173,6 +174,28 @@ const scratchGit = (root: string, args: string[]) => execFileSync("git", args, {
 });
 const treeNavigationDraft = "  Add a branch for the alternate fixture answer.\nKeep café 🧭 spacing.  \n";
 const scenarios: Scenario[] = [
+  { name: "ask-html-form", command: "Ask the fixture form.", collab: true, tools: ["ask"],
+    script: [{ tool: { name: "ask", arguments: { html: '<form><fieldset><legend>Release choices</legend><p>Choose the release settings.</p><label><input type="radio" name="channel" value="stable" checked>Stable</label><label><input type="radio" name="channel" value="preview">Preview</label><label><input type="checkbox" name="checks" value="types" checked>Types</label><label><input type="checkbox" name="checks" value="tests">Tests</label><label for="note">Release note</label><input id="note" name="note" value="Keep compatibility"></fieldset></form>' } } }, { text: "Fixture form answered." }],
+    run: async ({ guest, until, captureAsk, find }) => {
+      if (!guest) throw new Error("Missing form guest");
+      const answer = async (stage: string, value: string) => {
+        await until(() => !!guest.getSnapshot().uiRequest, `missing ${stage} request`);
+        await captureAsk(stage);
+        const request = guest.getSnapshot().uiRequest!;
+        guest.sendUiResponse(request.reqId, value);
+        await until(() => guest.getSnapshot().uiRequest?.reqId !== request.reqId, `${stage} did not advance`);
+      };
+      await answer("radio", "Other (type your own)");
+      await answer("radio-other", "Canary");
+      await answer("checkbox", "Tests");
+      await answer("checkbox-other", "Other (type your own)");
+      await answer("checkbox-other-text", "Accessibility");
+      await answer("checkbox-done", "Next →");
+      await answer("text", "Reviewed once");
+      await until(() => !!find(node => node.k === "md" && node.p?.text?.includes("Fixture form answered.") === true), "form continuation missing");
+      await captureAsk("answered");
+    },
+  },
   { name: "btw-empty", command: "/btw", script: [], end: "open",
     run: async context => {
       await context.until(() => !!btwOverlay(context), "empty BTW overlay missing");
@@ -576,6 +599,7 @@ for (const scenario of scenarios) {
   const env = { PATH: process.env.PATH!, HOME: home, USERPROFILE: home, XDG_CONFIG_HOME: join(home, ".config"), XDG_CACHE_HOME: join(home, ".cache"), TMPDIR: root, PI_CODING_AGENT_DIR: agent, PI_CONFIG_DIR: agent, TERM_PROGRAM: "tern", TERM: "xterm-256color", COLORTERM: "truecolor", OMP_SKIP_SETUP: "1", PI_TUI_TSP_RECORD: journal };
   const raw: Buffer[] = []; const events: object[] = []; const messages: object[] = [];
   const btwEvidence: object[] = [];
+  const askEvidence: object[] = [];
   let child: IPty;
   let owner: IPty | undefined;
   let ownerExit: Promise<void> | undefined;
@@ -803,6 +827,10 @@ for (const scenario of scenarios) {
     }
     if (scenario.run) await scenario.run({
       session, send, keys, until, find, root, guest, requests: provider?.requests ?? [], release: provider?.release ?? (() => {}),
+      captureAsk: async stage => {
+        await session.drain();
+        askEvidence.push({ stage, afterMessage: messages.length, surfaces: structuredClone(session.snapshot().surfaces), request: guest?.getSnapshot().uiRequest ?? null });
+      },
       collabAbort: () => {
         if (!guest) throw new Error("Missing collab guest");
         events.push({ collab: { t: "abort" }, afterMessage: messages.length });
@@ -859,6 +887,11 @@ for (const scenario of scenarios) {
         version, stages: btwEvidence, files: artifacts.map(file => file.path),
         ...(name === "btw-open-main-abort" ? { observation: "Collab abort stopped the main turn with stopReason aborted. The side question remained running with its Stop answer action and completed after its scripted response was released. No side-question action was sent at abort; Close was sent only after the side answer completed." } : {}),
       }, null, 2) + "\n")));
+    }
+    if (name === "ask-html-form") {
+      const files = await readdir(join(root, "sessions"), { recursive: true });
+      const sessions = await Promise.all(files.filter(file => file.endsWith(".jsonl")).map(async file => ({ path: file, text: await readFile(join(root, "sessions", file), "utf8") })));
+      await writeFile(join(destination, `${name}.ask.json`), sanitizeFixtureBytes(Buffer.from(JSON.stringify({ version, stages: askEvidence, sessions }, null, 2) + "\n")));
     }
     await Promise.all([
       writeFile(join(destination, `${name}.raw.bin`), safeRaw),

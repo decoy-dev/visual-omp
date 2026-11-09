@@ -914,6 +914,26 @@ both its request and node have ended. Snapshots expose `questionMatches`, includ
 `nodeFirstSeenMs` and, once matched, `requestFirstSeenMs`. Both use main's single monotonic clock
 and retain first observations through completion; they do not establish input authority.
 
+omp 18.18.3 HTML `ask` forms retain the field-by-field collab question cards in both
+presentations. Radio and checkbox Other rows open omp's next editor request; their titles
+no longer use the legacy custom-answer prefix. The transcript's inert-template parser
+extracts legends, labels, options and preselected values without attaching model HTML.
+Pictures contribute accessible text only. Result details render `answers[]` question-answer
+pairs, including empty answers and timeout submissions. Saved `questions[]` calls retain
+their existing renderer and series replay.
+
+The recorded `18.18.3/ask-html-form` fixture contains the native dock form, all seven guest
+requests and the saved session with one tool result. Main projects that dock's field labels,
+preceding text, section titles, field kinds and option rows for conservative request matching.
+An editor request must match a text field or a choice field with an eligible Other row.
+A visible matched collab card claims the complete `omp.editor.ask` subtree only when it
+contains the registered form role. Only HTML forms may replace a request binding while
+their native node stays unchanged; ordinary hooks keep their node-departure settlement guard.
+Claims decide suppression. An absent consumer or uncertain identity opens the unclaimed
+form in the generic omp screen. omp supplies no common form request id across the two
+channels, so this remains content matching rather than an upstream identity guarantee.
+
+
 While the chat is open, native hook dialogs are answerable only with a connected,
 current-host, current-epoch, current-generation collab mirror reporting no pending request, a
 unique live dialog target and an `unmatched` arbitration result. Matched dialogs direct the reader to the chat's question card;

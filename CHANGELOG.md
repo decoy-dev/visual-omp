@@ -19,6 +19,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 - Saved-chat previews recover first prompts after large opening entries, within bounded transcript scan limits.
 - Unfinished native hook answers remain available when the same dialog is cancelled and reopened or shown in the omp screen.
 - While omp writes a handoff or a context summary, the chat now shows omp's progress with elapsed time and a Stop button, instead of looking idle until the command finishes.
+- Questions from omp 18.18.3 HTML forms show their fields and recorded answers, and can be answered through the chat's question cards, including free-text Other choices. Saved question-list calls from older omp remain readable.
 
 ## [0.7.11] - 2026-11-06
 
