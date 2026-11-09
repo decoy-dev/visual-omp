@@ -7,6 +7,7 @@ import type { ReadStream } from "node:fs";
 import { once } from "node:events";
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
+import { setImmediate as nextTurn } from "node:timers/promises";
 import type { PreviewGrant } from "@shared/contracts/preview";
 import { zipSync, strToU8 } from "fflate";
 
@@ -530,11 +531,11 @@ describe("streamed video", () => {
 	});
 
 	it.each([
-		["bytes=100-", 100, 100 + 8 * mib - 1],
-		["bytes=0-", 0, 8 * mib - 1],
+		["bytes=100-", 100, 10 * mib - 1],
+		["bytes=0-", 0, 10 * mib - 1],
 		["bytes=0-9437183", 0, 9 * mib - 1],
 		["bytes=-9437184", mib, 10 * mib - 1],
-	])("applies the 8 MiB limit only to open-ended range %s", async (range, start, end) => {
+	])("streams the requested extent through EOF for range %s", async (range, start, end) => {
 		const grant = await movie("large.mp4", 10 * mib);
 		const observed = observeFile();
 		const response = await request(grant.url, range);
@@ -543,6 +544,25 @@ describe("streamed video", () => {
 		expect(response.headers.get("content-length")).toBe(String(end - start + 1));
 		expect((await response.arrayBuffer()).byteLength).toBe(end - start + 1);
 		await expectClosed(observed);
+	});
+
+	it.each([0, 16 * mib, 59_981_114 - 64 * 1024])("advertises the full custom-scheme media length for an open-ended range at %s", async start => {
+		const size = 59_981_114;
+		const grant = await movie("Large video.mp4", size);
+		const observed = observeFile();
+		const response = await request(grant.url, `bytes=${start}-`);
+		try {
+			expect(response.status).toBe(206);
+			// Electron 44's ResourceMultiBufferDataProvider derives non-HTTP media length as
+			// Content-Length + byte_pos(), without consulting Content-Range.
+			// https://github.com/electron/electron/blob/v44.10.0/patches/chromium/feat_add_streaming-protocol_registry_to_multibuffer_data_source.patch
+			expect(Number(response.headers.get("content-length")) + start).toBe(size);
+			expect(response.headers.get("content-range")).toBe(`bytes ${start}-${size - 1}/${size}`);
+			expect((await response.arrayBuffer()).byteLength).toBe(size - start);
+		} finally {
+			await response.body?.cancel().catch(() => {});
+			await expectClosed(observed);
+		}
 	});
 
 	it("streams an uncapped whole file with byte-bounded backpressure", async () => {
@@ -636,6 +656,97 @@ describe("streamed video", () => {
 		await response.body!.cancel();
 		expect(observed.stream!.destroyed).toBe(true);
 		await expectClosed(observed);
+	});
+
+	it("waits for aborted seek descriptors to close before serving replacement media ranges", async () => {
+		const size = 59_981_114;
+		const grant = await movie("Large video.mp4", size);
+		const closeGate = Promise.withResolvers<void>();
+		const opened: FileHandle[] = [];
+		const closed: Promise<void>[] = [];
+		files.onOpen = file => {
+			opened.push(file);
+			const close = file.close.bind(file);
+			vi.spyOn(file, "close").mockImplementation(async () => { await closeGate.promise; await close(); });
+			const create = file.createReadStream.bind(file);
+			vi.spyOn(file, "createReadStream").mockImplementation(options => {
+				const stream = create(options);
+				const completion = Promise.withResolvers<void>();
+				closed.push(completion.promise);
+				stream.once("close", completion.resolve);
+				return stream;
+			});
+		};
+		const controller = new AbortController();
+		const active = await Promise.all([0, mib, 2 * mib, 3 * mib].map(start => request(grant.url, `bytes=${start}-`, "GET", controller.signal)));
+		files.onOpen = null;
+		const calls = files.openCalls;
+		// Chromium opens right-unbounded ranges. A seek cancels old readers before
+		// the OS necessarily finishes closing their descriptors.
+		controller.abort();
+		let settled = false;
+		const replacements = Promise.all([
+			request(grant.url, `bytes=${size - 128 * 1024}-`),
+			request(grant.url, `bytes=${size - 64 * 1024}-${size - 1}`),
+		]).then(responses => { settled = true; return responses; });
+		let settledBeforeClose: boolean;
+		try {
+			await nextTurn();
+			settledBeforeClose = settled;
+			expect(files.openCalls).toBe(calls);
+			expect(opened.every(file => file.fd !== -1)).toBe(true);
+		} finally {
+			closeGate.resolve();
+			await Promise.all(closed);
+			await Promise.all(active.map(response => response.body!.cancel().catch(() => {})));
+		}
+		const responses = await replacements;
+		try {
+			expect(responses.map(response => response.status)).toEqual([206, 206]);
+			expect(settledBeforeClose).toBe(false);
+			expect(opened.every(file => file.fd === -1)).toBe(true);
+			for (const [index, response] of responses.entries()) {
+				const length = (index === 0 ? 128 : 64) * 1024;
+				expect(response.headers.get("content-range")).toBe(`bytes ${size - length}-${size - 1}/${size}`);
+				expect(response.headers.get("content-length")).toBe(String(length));
+				expect((await response.arrayBuffer()).byteLength).toBe(length);
+			}
+		} finally {
+			await Promise.all(responses.map(response => response.body?.cancel().catch(() => {})));
+		}
+	});
+
+	it.each(["abort", "revoke"])("removes a waiting native media request on %s without opening a descriptor", async mode => {
+		const grant = await movie("waiting.mp4", 40 * mib);
+		const active: { observed: ObservedFile; response: Response }[] = [];
+		for (let index = 0; index < 4; index++) {
+			const observed = observeFile();
+			active.push({ observed, response: await request(grant.url, "bytes=0-") });
+		}
+		const controller = new AbortController();
+		const received = new Request(grant.url, { signal: controller.signal, headers: { Range: "bytes=0-" } });
+		const remove = vi.spyOn(received.signal, "removeEventListener");
+		const calls = files.openCalls;
+		const queued = handlePreviewRequest(received);
+		try {
+			expect(files.openCalls).toBe(calls);
+			if (mode === "abort") {
+				const rejected = expect(queued).rejects.toMatchObject({ name: "AbortError" });
+				controller.abort();
+				await rejected;
+			} else {
+				revokePreview(grant.token);
+				expect((await queued).status).toBe(404);
+			}
+			expect(files.openCalls).toBe(calls);
+			expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+		} finally {
+			controller.abort();
+			await Promise.all(active.map(async ({ response, observed }) => {
+				await response.body!.cancel().catch(() => {});
+				await expectClosed(observed);
+			}));
+		}
 	});
 
 	it.each(["end", "error"])("closes the descriptor and releases stream tracking and the abort listener on %s", async mode => {

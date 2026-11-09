@@ -16,11 +16,11 @@ import { OFFICE_LIMITS, validateOfficeZip } from "@shared/preview-office-zip";
 import { markHtmlChange } from "./preview-html-follow";
 
 const TEXT_LIMIT = 2 * 1024 * 1024;
-const VIDEO_RANGE_LIMIT = 8 * 1024 * 1024;
 const VIDEO_BUFFER_SIZE = 64 * 1024;
 // Four requests allow playback, metadata and overlapping seeks; sixteen bound all preview players together.
 const VIDEO_REQUESTS_PER_GRANT = 4;
 const VIDEO_REQUESTS_GLOBAL = 16;
+const VIDEO_SLOT_WAIT_MS = 1000;
 /** Phase 1 policy, evaluated per grant so later permissions do not change unrelated subjects. */
 export function previewPolicy(_grant: PreviewPolicy): string {
 	return "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' vomp-preview:; img-src vomp-preview: data: blob:; font-src vomp-preview: data:; media-src vomp-preview:; connect-src 'none'; frame-src 'none'; child-src 'none'; worker-src 'none'; object-src 'none'; manifest-src 'none'; form-action 'none'; base-uri 'self'";
@@ -316,7 +316,7 @@ async function readPreviewDocument(token: string, grant: GrantState, path: strin
 	finally { await file.close(); }
 }
 
-/** Only an open-ended range has a response cap. Explicit and suffix ranges retain their requested extent. */
+/** Open-ended ranges reach EOF: Chromium derives non-HTTP media length from this response's extent. */
 function videoRange(range: string, size: number): { start: number; end: number } | null {
 	const match = /^bytes=(\d*)-(\d*)$/i.exec(range);
 	if (!match || (!match[1] && !match[2]) || size === 0) return null;
@@ -327,18 +327,30 @@ function videoRange(range: string, size: number): { start: number; end: number }
 	}
 	const start = BigInt(match[1]);
 	if (start >= length) return null;
-	const end = match[2] ? BigInt(match[2]) : start + BigInt(VIDEO_RANGE_LIMIT) - 1n;
+	const end = match[2] ? BigInt(match[2]) : length - 1n;
 	if (end < start) return null;
 	return { start: Number(start), end: Number(end >= length ? length - 1n : end) };
 }
 
 async function streamPreviewVideo(request: Request, token: string, grant: GrantState, path: string, type: ResponseType): Promise<Response> {
 	request.signal.throwIfAborted();
+	let deadline: number | undefined;
 	while (grant.videoRequests >= VIDEO_REQUESTS_PER_GRANT || videoRequests >= VIDEO_REQUESTS_GLOBAL) {
-		// Image grids wait without opening descriptors. Native players retain the existing overload response.
-		if (!type.type.startsWith("image/") && type.type !== "application/pdf") return refused(429);
+		// A seek can replace aborted streams before their descriptors close. Wait without
+		// releasing those reservations early; native players get a bounded grace period.
+		const nativePlayer = type.type.startsWith("video/") || type.type.startsWith("audio/");
+		if (nativePlayer) {
+			deadline ??= performance.now() + VIDEO_SLOT_WAIT_MS;
+			if (performance.now() >= deadline) return refused(429);
+		}
 		const { promise, resolve } = Promise.withResolvers<void>();
-		const wake = () => { streamWaiters.delete(wake); request.signal.removeEventListener("abort", wake); resolve(); };
+		const wake = () => {
+			clearTimeout(timeout);
+			streamWaiters.delete(wake);
+			request.signal.removeEventListener("abort", wake);
+			resolve();
+		};
+		const timeout = deadline === undefined ? undefined : setTimeout(wake, Math.max(0, deadline - performance.now()));
 		streamWaiters.add(wake);
 		request.signal.addEventListener("abort", wake, { once: true });
 		if (request.signal.aborted || grants.get(token) !== grant) wake();
