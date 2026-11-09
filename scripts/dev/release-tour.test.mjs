@@ -59,6 +59,18 @@ test("0.7.11 opens one chat per change with explicit owner checks and fixture li
   assert.ok(current.chats.every(chat => !/[\u2013\u2014]/.test(chat.prompts.join(""))));
 });
 
+test("0.7.12 large-media tour checks spaced reply links and files in one spaced subfolder", () => {
+  const chat = next.chats.find(chat => chat.id === "large-media");
+  assert.deepEqual(chat.files, ["Large Media Files/Large video.mp4", "Large Media Files/Large image.png", "Large Media Files/Large document.pdf", "Large Media Files/Large notes.txt"]);
+  assert.equal(chat.expectedReply, "Created the files in `Large Media Files/`:\n\n- `Large video.mp4`\n- `Large image.png`\n- `Large document.pdf`\n- `Large notes.txt`");
+  assert.match(chat.prompts[0], /^fixture bigmedia\n.*Large Media Files\/ subfolder/);
+  assert.match(chat.prompts[0], /click a file name in the reply to open the side-panel viewer/);
+  assert.match(chat.prompts[0], /directory once, followed by four bare file names with spaces/);
+  assert.match(chat.prompts[0], /In the Files pane, open Large Media Files\/ and then Large video\.mp4/);
+  for (const name of chat.files.map(file => file.slice("Large Media Files/".length))) assert.ok(chat.prompts[0].includes(name), name);
+  assert.ok(!/[\u2013\u2014]/.test(chat.prompts.join("")));
+});
+
 test("0.7.11 update feed preserves a labeled unpublished sample body for This update", async t => {
   const root = await mkdtemp(join(tmpdir(), "vomp-tour-release-notes-"));
   t.after(() => rm(root, { recursive: true, force: true }));

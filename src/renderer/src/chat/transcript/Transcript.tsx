@@ -25,10 +25,11 @@ import {
 import { useTranslation } from "react-i18next";
 import type { ActiveTool } from "../../collab/lib/client";
 import { continuesAssistantModel, modelFallbacks, modelSetupVisible, providerFallback, type ModelFallback } from "../../collab/lib/modelFallback";
-import { type EditTotals, type Helper, type HelperStatus, helpersByCall, helpersMayRun as mayRunHelpers, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
+import { type MadeFiles, type EditTotals, type Helper, type HelperStatus, helpersByCall, helpersMayRun as mayRunHelpers, settleHelper, transcriptHelperStates } from "../../features/panes/derive";
 import { unpinnedRuns, usePinnedHelpers } from "../../features/panes/pinnedHelpers";
 import { openHelper } from "../../features/panes/helperFocus";
 import { openInFiles } from "../../features/panes/files-store";
+import { useChatOutputs } from "../../features/panes/outputs-store";
 import { useHomeDir } from "../../features/projects/folders/homeDir";
 import { getCommand } from "../../registry/commands";
 import { chatSlots } from "../../registry/slots";
@@ -46,7 +47,7 @@ import { Button, cn, duration, ease, Expand, IconButton, Mark, Rise, spring, toa
 import { useDisplayedEntries } from "../branch";
 import { isReplyWrite, replyWriteUndecided, toolResultReplies } from "../friendly";
 import { useComposerDrafts } from "../composer/drafts";
-import { FileRefContext, LinkedMarkdown, useFileRefs, writtenFolders } from "./FileLinks";
+import { FileRefContext, LinkedMarkdown, useFileRefs } from "./FileLinks";
 import { MentionText } from "./MentionText";
 import { TargetContextMenu } from "../../ui/TargetContextMenu";
 import { usePendingQuestion } from "./QuestionCard";
@@ -69,7 +70,7 @@ import { TranscriptTime, type TranscriptTimestamp } from "./TranscriptTime";
 import { isExecutionMessage, SavedRunRow } from "./RunRow";
 import { nativeRuns, type RunProjection } from "./localRuns";
 import { NativeRunRows } from "./NativeRunRows";
-import { type BlockRef, type ContentBlock, type EntryLayout, replyText, STREAM_ENTRY, stoppedVisibly, TAIL_ENTRY, type TranscriptLayout, transcriptLayout, liveLayoutEntries, unsavedToolsMessage } from "./turns";
+import { type BlockRef, type ContentBlock, type EntryLayout, replyText, STREAM_ENTRY, stoppedVisibly, TAIL_ENTRY, type TranscriptLayout, transcriptLayout, turnFiles, liveLayoutEntries, unsavedToolsMessage } from "./turns";
 import { anchorRow, tailStart, WINDOW, windowOnScroll } from "./window";
 import {
 	type PlayoutBlock,
@@ -404,6 +405,7 @@ export function AssistantBlocks({
 	layout,
 	work,
 	synthetic = false,
+	files = "",
 }: {
 	message: AssistantMessage;
 	results: ReadonlyMap<string, ToolResultMessage>;
@@ -424,6 +426,7 @@ export function AssistantBlocks({
 	work?: WorkView;
 	/** Unsaved active calls have their own recorded start until omp supplies their assistant message. */
 	synthetic?: boolean;
+	files?: string;
 }): ReactNode {
 	const { t } = useTranslation("chat");
 	const choices = useThoughtChoices(work?.thoughts);
@@ -451,7 +454,7 @@ export function AssistantBlocks({
 	let lastText = -1;
 	// A finished reply's file names become links; a growing stream is left alone until it ends.
 	const texts = blockTexts.filter((text): text is string => text !== null);
-	const refs = useFileRefs(revealing ? null : message.timestamp, texts);
+	const refs = useFileRefs(revealing ? null : message.timestamp, texts, files);
 	let textOrdinal = 0;
 	const textOrdinals = blockTexts.map(text => (text !== null ? textOrdinal++ : -1));
 	for (const [index, block] of message.content.entries()) {
@@ -587,6 +590,7 @@ interface RowProps {
 	/** Entrance is read only when the keyed row mounts. */
 	arrived: boolean;
 	renderUser?: (entry: SessionEntry) => ReactNode;
+	files?: string;
 }
 
 function toolInputsEqual(block: ContentBlock, prev: RowProps, next: RowProps): boolean {
@@ -607,6 +611,7 @@ function toolInputsEqual(block: ContentBlock, prev: RowProps, next: RowProps): b
 function rowEqual(prev: RowProps, next: RowProps): boolean {
 	if (prev.entry !== next.entry || prev.mode !== next.mode || prev.continuesTurn !== next.continuesTurn || prev.afterFirstPrompt !== next.afterFirstPrompt) return false;
 	if (prev.onCommand !== next.onCommand || prev.renderUser !== next.renderUser) return false;
+	if (prev.files !== next.files) return false;
 	if (prev.layout?.sig !== next.layout?.sig || prev.fallback !== next.fallback) return false;
 	if (prev.work.hold !== next.work.hold || prev.work.holdGroup !== next.work.holdGroup || prev.work.onHelper !== next.work.onHelper || prev.work.synchronizing !== next.work.synchronizing || prev.work.ompRunning !== next.work.ompRunning) return false;
 	const entry = next.entry;
@@ -644,7 +649,7 @@ function rowShown(entry: SessionEntry, mode: TranscriptMode, afterFirstPrompt: b
 	}
 }
 
-function RowContent({ entry, continuesTurn, afterFirstPrompt, results, active, mode, onCommand, layout, work, fallback, arrived }: RowProps): ReactNode {
+function RowContent({ entry, continuesTurn, afterFirstPrompt, results, active, mode, onCommand, layout, work, fallback, arrived, files }: RowProps): ReactNode {
 	const { t } = useTranslation("chat");
 	switch (entry.type) {
 		case "message": {
@@ -655,7 +660,7 @@ function RowContent({ entry, continuesTurn, afterFirstPrompt, results, active, m
 			return (
 				<div className="flex flex-col gap-2">
 					{!continuesTurn ? <AssistantHeader model={message.model} timestamp={message.timestamp} /> : message.content.some((block, index) => replyText(block) !== null && !layout?.hidden.has(index)) && <TranscriptTime timestamp={message.timestamp} className="self-start" />}
-					<AssistantBlocks message={message} results={results} active={active} pending={false} mode={mode} layout={layout} work={work} />
+					<AssistantBlocks message={message} results={results} active={active} pending={false} mode={mode} layout={layout} work={work} files={files} />
 				</div>
 			);
 		}
@@ -774,6 +779,7 @@ export interface TranscriptBodyProps {
 	onSent?: (listener: () => void) => () => void;
 	onDismissResult?: (id: string) => void;
 	renderUser?: (entry: SessionEntry) => ReactNode;
+	made?: MadeFiles;
 	onHelper?: (helper: Helper) => void;
 }
 
@@ -843,6 +849,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 	const pendingQuestion = usePendingQuestion(session, guest?.uiRequest ?? null);
 	const commandResults = useCommandResults(session);
 	const tspNotices = useVisualSnapshot(session.tspNotices.subscribe, session.tspNotices.getSnapshot);
+	const outputs = useChatOutputs(session, view);
 	const agents = guest?.agents;
 	const progress = guest?.progress;
 	const lifecycle = guest?.lifecycle;
@@ -865,6 +872,7 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 		identity={`${view.guest?.header?.id ?? view.history?.header?.id ?? session.tabId}:${view.displayLeaf ?? ""}`}
 		helpers={helpers} pinned={pinned} helpersMayRun={helpersMayRun}
 		commandResults={commandResults} room={roomKey(view)} tspNotices={tspNotices}
+		made={outputs?.made}
 		localRuns={runProjection.runs} pendingQuestion={pendingQuestion}
 		footer={slots.map(slot => <slot.component key={slot.id} session={session} />)}
 		emptyState={(view.mode === "live" || view.mode === "starting" && !view.history) ? <EmptyChat session={session} /> : null}
@@ -876,12 +884,13 @@ export function Transcript({ session, view, mode }: TranscriptProps): ReactNode 
 export function TranscriptBody({
 	scope, sessionFile = null, outputIdentity, entries, mode, working = false, stream = null, streamDone = true, activeTools = EMPTY_TOOLS,
 	phase = null, ready, identity, helpers = NO_HELPERS, pinned = NO_PINNED, helpersMayRun = false,
-	commandResults = NO_RESULTS, room = "", tspNotices = NO_NOTICES, localRuns = NO_RUNS,
+	commandResults = NO_RESULTS, room = "", tspNotices = NO_NOTICES, localRuns = NO_RUNS, made,
 	pendingQuestion = null, footer, emptyState, onCommand, onSent, onDismissResult, renderUser, onHelper,
 }: TranscriptBodyProps): ReactNode {
 	const { t } = useTranslation("chat");
 	const savedOutputScope = useMemo(() => ({ file: sessionFile, identity: outputIdentity ?? identity }), [sessionFile, outputIdentity, identity]);
 	const fallbacks = useMemo(() => modelFallbacks(entries), [entries]);
+	const replyFiles = useMemo(() => turnFiles(entries, { cwd: scope.projectPath, home: "~", platform: window.vomp.platform }, made, stream), [entries, scope.projectPath, made, stream?.timestamp]);
 
 	// A stream present at first synchronization, or while reconnecting, is already in progress.
 	// Keep its current text visible, then pace updates once the mirror is live.
@@ -1009,12 +1018,11 @@ export function TranscriptBody({
 		openFileLink(event.target);
 	};
 
-	// Relative names in replies are looked up in the chat's folder, then in folders omp wrote or edited files in.
-	const written = useMemo(() => writtenFolders(entries, scope.projectPath).join("\0"), [entries, scope.projectPath]);
+	// Other lookup candidates belong to the reply itself: named directories and its turn's known Outputs.
 	const home = useHomeDir();
 	const fileRefScope = useMemo(
-		() => ({ chat: scope.tabId, bases: [scope.projectPath, ...(written ? written.split("\0") : [])], home }),
-		[scope.tabId, scope.projectPath, written, home],
+		() => ({ chat: scope.tabId, bases: [scope.projectPath], home }),
+		[scope.tabId, scope.projectPath, home],
 	);
 
 	// omp's first entries are session setup (model / thinking level); a chat is empty until someone talks.
@@ -1192,6 +1200,7 @@ export function TranscriptBody({
 			fallback={fallbacks.get(entry.id)}
 			arrived={arrived}
 			renderUser={renderUser}
+			files={message ? replyFiles.get(message.timestamp) : undefined}
 		/>;
 		if (entry.type === "custom_message" && entry.customType !== "collab-prompt" && noticeIsStep(parseNotice(entry))) {
 			run ??= { key: entry.id, rows: [] };
@@ -1277,6 +1286,7 @@ export function TranscriptBody({
 											liveThinking={liveThinking}
 											layout={layout.entries.get(STREAM_ENTRY)}
 											work={work}
+											files={replyFiles.get(stream.timestamp)}
 										/>
 									</Rise>
 								)}

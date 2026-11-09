@@ -19,7 +19,7 @@ vi.mock('./pace', async importOriginal => ({ ...await importOriginal<typeof Pace
 vi.mock('./FileLinks', async () => {
 	// Vitest hoists mock factories before static value imports.
 	const { createContext, createElement } = await import('react');
-	return { FileRefContext: createContext(null), useFileRefs: () => null, writtenFolders: () => [], LinkedMarkdown: ({ text }: { text: string }) => createElement('span', null, text) };
+	return { FileRefContext: createContext(null), useFileRefs: () => null, LinkedMarkdown: ({ text }: { text: string }) => createElement('span', null, text) };
 });
 vi.mock('../../ui/motion', async importOriginal => {
 	const actual = await importOriginal<typeof MotionModule>();

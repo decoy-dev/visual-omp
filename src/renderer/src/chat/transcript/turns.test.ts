@@ -1,6 +1,6 @@
 import type { AssistantMessage, SessionEntry } from "@oh-my-pi/pi-wire";
 import { describe, expect, it } from "vitest";
-import { liveLayoutEntries, STREAM_ENTRY, TAIL_ENTRY, transcriptLayout, unsavedToolsMessage } from "./turns";
+import { liveLayoutEntries, STREAM_ENTRY, TAIL_ENTRY, transcriptLayout, turnFiles, unsavedToolsMessage } from "./turns";
 
 let seq = 0;
 const base = () => ({ id: `e${++seq}`, parentId: null, timestamp: "2026-01-01T00:00:00Z" });
@@ -33,6 +33,25 @@ const thinking = (value: string) => ({ type: "thinking" as const, thinking: valu
 function result(toolCallId: string, toolName: string, details?: unknown, isError = false, timestamp = 0): SessionEntry {
 	return { ...base(), type: "message", message: { role: "toolResult", toolCallId, toolName, content: [{ type: "text", text: "" }], details, isError, timestamp } };
 }
+
+describe("turnFiles", () => {
+	it("keeps known files with their own reply turn when later turns use the same bare name", () => {
+		const first = [user("first"), assistant([tool("write-first", "write", { path: "One Folder/Shared video.mp4" })], 10), result("write-first", "write", undefined, false, 11), assistant([text("Done")], 12)];
+		const second = [user("second"), assistant([tool("write-second", "write", { path: "Other Folder/Shared video.mp4" })], 20), result("write-second", "write", undefined, false, 21), assistant([text("Done")], 22)];
+		const before = turnFiles(first, context);
+		const after = turnFiles([...first, ...second], context);
+		expect(before.get(12)).toBe("/repo/One Folder/Shared video.mp4");
+		expect(after.get(12)).toBe(before.get(12));
+		expect(after.get(22)).toBe("/repo/Other Folder/Shared video.mp4");
+	});
+
+	it("includes only this turn's command-made files and gives a saved stream the same candidates", () => {
+		const entries = [user("render"), assistant([tool("render-video", "bash", { command: "render" })], 10), result("render-video", "bash", undefined, false, 11)];
+		const made = { "render-video": [{ path: "/media/Spaced video.mp4", size: 4, mtime: 11 }], unrelated: [{ path: "/other/Spaced video.mp4", size: 4, mtime: 11 }] };
+		expect(turnFiles(entries, context, made, { timestamp: 12 }).get(12)).toBe("/media/Spaced video.mp4");
+		expect(turnFiles([...entries, user("new turn")], context, made, { timestamp: 20 }).get(20)).toBe("");
+	});
+});
 
 const board = (status: string) => ({ phases: [{ name: "P", tasks: [{ content: "a", status }] }] });
 

@@ -53,6 +53,7 @@ describe("fileRefOf", () => {
 	it("allows spaces in code spans but refuses commands, globs and padding", () => {
 		expect(fileRefOf("~/Downloads/My Flyer.pdf", true)).toBe("~/Downloads/My Flyer.pdf");
 		expect(fileRefOf("Report (final).pdf", true)).toBe("Report (final).pdf");
+		for (const ref of ["ReadyCloud Files/ReadyReturns Chat Demos/Videos/", "FootLocker Return Chat v2.mp4", "Dicks Sporting Goods Return Chat.mp4"]) expect(fileRefOf(ref, true)).toBe(ref);
 		for (const code of ["npm run dev", "src/**/*.ts", "cd ~/x && ls", "a.md | wc", "$HOME/x.md", " a.md", "a  b.md", "x = a.md", "obj.method()"]) {
 			expect(fileRefOf(code, true), code).toBeNull();
 		}

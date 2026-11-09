@@ -1,12 +1,13 @@
 import type { Dir } from "node:fs";
 import { opendir, realpath, stat } from "node:fs/promises";
-import { basename, dirname, isAbsolute, join, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, resolve, sep } from "node:path";
 import type { FileRef, FileRefRequest } from "@shared/contracts/fileRefs";
 
 export interface FileRefLimits {
 	refs: number;
 	bases: number;
-	/** Folders named earlier in the request that a relative reference is also tried in. */
+	files: number;
+	/** Directory references in the same reply that a relative reference is also tried in. */
 	namedFolders: number;
 	/** Longest reference or base, in characters. */
 	length: number;
@@ -17,7 +18,7 @@ export interface FileRefLimits {
 }
 
 /** Hard limits for {@link resolveFileRefs}, including directory scans for abbreviated names. */
-export const FILE_REF_LIMITS: Readonly<FileRefLimits> = { refs: 100, bases: 8, namedFolders: 4, length: 1024, folderEntries: 512, totalEntries: 4096 };
+export const FILE_REF_LIMITS: Readonly<FileRefLimits> = { refs: 100, bases: 8, files: 100, namedFolders: 4, length: 1024, folderEntries: 512, totalEntries: 4096 };
 
 function isPathString(value: unknown, limits: Readonly<FileRefLimits>): value is string {
 	// UNC and `//` paths are refused because a stat there can wait on the network.
@@ -30,14 +31,15 @@ function isHomePath(path: string): boolean {
 
 function isRequest(value: unknown, limits: Readonly<FileRefLimits>): value is FileRefRequest {
 	if (typeof value !== "object" || value === null) return false;
-	const { refs, bases } = value as Record<string, unknown>;
+	const { refs, bases, files } = value as Record<string, unknown>;
 	return (
 		Array.isArray(refs) &&
 		refs.length <= limits.refs &&
 		refs.every(ref => isPathString(ref, limits)) &&
 		Array.isArray(bases) &&
 		bases.length <= limits.bases &&
-		bases.every(base => isPathString(base, limits) && (isAbsolute(base) || isHomePath(base)))
+		bases.every(base => isPathString(base, limits) && (isAbsolute(base) || isHomePath(base))) &&
+		(files === undefined || Array.isArray(files) && files.length <= limits.files && files.every(file => isPathString(file, limits) && (isAbsolute(file) || isHomePath(file))))
 	);
 }
 
@@ -117,55 +119,84 @@ const SEPARATORS = process.platform === "win32" ? /[\\/]/ : /\//;
  * chat's, as `DEEL Two Sheeter/overview.pdf` from inside `DEEL Two Sheeter`. The shortened form is skipped when the
  * rest climbs with `..`, so it cannot reach a sibling folder.
  */
-function relativeCandidates(ref: string, parents: readonly string[]): string[] {
+function relativeCandidates(ref: string, parents: readonly string[], repeated = false): string[] {
+	if (!repeated) return [...new Set(parents.map(parent => resolve(parent, ref)))];
 	const [first, ...rest] = ref.split(SEPARATORS);
 	const shortened = rest.length > 0 && !rest.includes("..");
-	const repeated = shortened ? parents.filter(parent => basename(parent) === first).map(parent => resolve(parent, ...rest)) : [];
-	return [...new Set([...parents.map(parent => resolve(parent, ref)), ...repeated])];
+	return shortened ? [...new Set(parents.filter(parent => basename(parent) === first).map(parent => resolve(parent, ...rest)))] : [];
 }
 
 /**
- * Resolves file and folder names from a reply (`fs:resolveRefs`). An absolute or `~/` reference is checked as it
- * stands. A relative one is tried in the folders that earlier references resolved to (latest first), then in each
- * base in order, then without a leading folder name that repeats one of those folders' own names; the first regular
- * file or folder wins. Exact names take precedence. Otherwise a last component containing U+2026 is matched in those
- * same parents: the first folder with matches wins only if it has one. Directory scans are bounded, skip hidden
- * entries and symlinks, and never recurse or read content. `limits` is a test seam.
+ * Resolves reply references through bounded existence checks. Exact relative names must identify one canonical
+ * target across named directories, chat bases and matching known Outputs paths. Directory spans are checked first
+ * so a later span can provide context too. Abbreviations keep their existing bounded first-folder lookup.
  */
 export async function resolveFileRefs(request: unknown, home: string, limits: Readonly<FileRefLimits> = FILE_REF_LIMITS): Promise<(FileRef | null)[]> {
 	if (!isRequest(request, limits)) throw new Error("Invalid file references");
 	const bases = [...new Set(request.bases.map(base => resolve(isHomePath(base) ? join(home, base.slice(1)) : base)))];
+	const files = [...new Set((request.files ?? []).map(file => resolve(isHomePath(file) ? join(home, file.slice(1)) : file)))];
+	const fileFolders = new Set(files.map(dirname));
+	const knownPaths = [...new Set([...files, ...fileFolders])];
 	const named: string[] = [];
+	const checked = new Map<string, Promise<FileRef | null>>();
+	const exact = async (candidates: readonly string[]) => {
+		const matches = new Map<string, FileRef>();
+		for (const candidate of new Set(candidates)) {
+			let pending = checked.get(candidate);
+			if (!pending) { pending = check(candidate); checked.set(candidate, pending); }
+			const result = await pending;
+			if (result) matches.set(result.path, result);
+		}
+		return { count: matches.size, ref: matches.size === 1 ? matches.values().next().value ?? null : null };
+	};
+	const candidatesFor = (ref: string, parents: readonly string[]): string[] => {
+		if (isHomePath(ref)) return [join(home, ref.slice(1))];
+		if (isAbsolute(ref)) return [resolve(ref)];
+		const parts = ref.split(SEPARATORS).filter(part => part !== "" && part !== ".");
+		const suffix = parts.join(sep);
+		const key = process.platform === "win32" ? suffix.toLowerCase() : suffix;
+		const known = parts.includes("..") || !suffix ? [] : knownPaths.filter(file => {
+			if (/[\\/]$/.test(ref) && !fileFolders.has(file)) return false;
+			const path = process.platform === "win32" ? file.toLowerCase() : file;
+			return path.endsWith(`${sep}${key}`);
+		});
+		return [...relativeCandidates(ref, parents), ...known];
+	};
+	const lookup = async (ref: string, parents: readonly string[]) => {
+		const candidates = candidatesFor(ref, parents);
+		let match = await exact(candidates);
+		if (match.count === 0 && !isAbsolute(ref) && !isHomePath(ref)) {
+			const repeated = relativeCandidates(ref, parents, true);
+			match = await exact(repeated);
+			candidates.push(...repeated);
+		}
+		return { ...match, candidates };
+	};
+	const remember = (folder: string) => {
+		const at = named.indexOf(folder);
+		if (at >= 0) named.splice(at, 1);
+		named.unshift(folder);
+		named.length = Math.min(named.length, limits.namedFolders);
+	};
+	for (const ref of request.refs) {
+		if (/^out:\/\//i.test(ref)) continue;
+		const found = await lookup(ref, bases);
+		if (found.ref?.kind === "folder") remember(found.ref.path);
+	}
 	const results: (FileRef | null)[] = [];
 	const budget = { remaining: limits.totalEntries };
 	for (const ref of request.refs) {
-		// Internal reply destinations never name files, including a coincidentally matching local path.
-		if (/^out:\/\//i.test(ref)) {
-			results.push(null);
-			continue;
-		}
-		const candidates = isHomePath(ref)
-			? [join(home, ref.slice(1))]
-			: isAbsolute(ref)
-				? [resolve(ref)]
-				: relativeCandidates(ref, [...named, ...bases]);
-		let found = (await Promise.all(candidates.map(check))).find(result => result !== null) ?? null;
-		if (!found && basename(ref).includes("…")) {
-			for (const candidate of candidates) {
+		if (/^out:\/\//i.test(ref)) { results.push(null); continue; }
+		const match = await lookup(ref, [...named, ...bases]);
+		let found = match.ref;
+		if (match.count === 0 && basename(ref).includes("…")) {
+			for (const candidate of match.candidates) {
 				const result = await abbreviated(candidate, limits, budget);
-				if (result.matches > 0) {
-					found = result.ref;
-					break;
-				}
+				if (result.matches > 0) { found = result.ref; break; }
 			}
 		}
 		results.push(found);
-		if (found?.kind === "folder") {
-			const at = named.indexOf(found.path);
-			if (at >= 0) named.splice(at, 1);
-			named.unshift(found.path);
-			named.length = Math.min(named.length, limits.namedFolders);
-		}
+		if (found?.kind === "folder") remember(found.path);
 	}
 	return results;
 }

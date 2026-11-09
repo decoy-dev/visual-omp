@@ -62,9 +62,10 @@ export default {
     },
     {
       id: "large-media", title: "05 Large local files in Files", pane: "files",
-      files: ["Large video.mp4", "Large image.png", "Large document.pdf", "Large notes.txt"],
+      files: ["Large Media Files/Large video.mp4", "Large Media Files/Large image.png", "Large Media Files/Large document.pdf", "Large Media Files/Large notes.txt"],
+      expectedReply: "Created the files in `Large Media Files/`:\n\n- `Large video.mp4`\n- `Large image.png`\n- `Large document.pdf`\n- `Large notes.txt`",
       prompts: [
-        "fixture bigmedia\nThis chat's folder now holds four local files larger than the Files viewer used to accept. Files shows their sizes as 57.2 MB, 22.0 MB, 104.0 MB and 3.1 MB.\n\n1. In the Files pane, open Large video.mp4. It should play, and you should be able to seek to the end; it previously said the file was too big to preview.\n2. Open Large image.png. It should show a teal and pink checkerboard.\n3. Open Large document.pdf. It should open to one page titled Large PDF preview.\n4. Open Large notes.txt. The viewer shows its first 2 MB with a note that the rest is not shown, and an Open with default app button.\n5. Close each view; reopening should load again without delay messages or errors.",
+        "fixture bigmedia\nThe Large Media Files/ subfolder in this chat's folder now holds four local files larger than the Files viewer used to accept. Files shows their sizes as 57.2 MB, 22.0 MB, 104.0 MB and 3.1 MB.\n\n1. After preparation, click a file name in the reply to open the side-panel viewer. The reply names the directory once, followed by four bare file names with spaces. Check that each file name opens its sample.\n2. In the Files pane, open Large Media Files/ and then Large video.mp4. It should play, and you should be able to seek to the end; it previously said the file was too big to preview.\n3. Open Large image.png. It should show a teal and pink checkerboard.\n4. Open Large document.pdf. It should open to one page titled Large PDF preview.\n5. Open Large notes.txt. The viewer shows its first 2 MB with a note that the rest is not shown, and an Open with default app button.\n6. Close each view; reopening should load again without delay messages or errors.",
       ],
     },
     {

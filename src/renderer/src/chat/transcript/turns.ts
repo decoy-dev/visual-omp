@@ -8,9 +8,10 @@
 import type { AssistantMessage, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import type { ActiveTool } from "../../collab/lib/client";
 import { isModelFallback } from "../../collab/lib/modelFallback";
-import { type EditTotals, editTotals, fileEdits, type OutputContext, type TodoUpdate, todoUpdates } from "../../features/panes/derive";
+import { chatOutputs, type MadeFiles, type EditTotals, editTotals, fileEdits, type OutputContext, type TodoUpdate, todoUpdates } from "../../features/panes/derive";
 import { isRecord } from "../../tool-render/util";
 import { isReplyWrite, replyWriteUndecided, resolveToolCall, toolResultReplies } from "../friendly";
+import { MAX_FILES } from "./fileRefs";
 
 export type ContentBlock = AssistantMessage["content"][number];
 
@@ -121,6 +122,27 @@ interface Turn {
 
 function isUserTurnStart(entry: SessionEntry): boolean {
 	return (entry.type === "message" && entry.message.role === "user") || (entry.type === "custom_message" && entry.customType === "collab-prompt");
+}
+
+/** Known Outputs per reply's own turn. Later turns cannot replace an earlier reply's file candidates. */
+export function turnFiles(entries: readonly SessionEntry[], context: OutputContext, made: MadeFiles = {}, stream: Pick<AssistantMessage, "timestamp"> | null = null): ReadonlyMap<number, string> {
+	const files = new Map<number, string>();
+	let start = 0;
+	let latest = "";
+	const finish = (end: number) => {
+		const turn = entries.slice(start, end);
+		const paths: string[] = [];
+		for (const output of chatOutputs(turn, context, made)) {
+			if (output.path) paths.push(output.path);
+			if (paths.length === MAX_FILES) break;
+		}
+		latest = paths.join("\0");
+		for (const entry of turn) if (entry.type === "message" && entry.message.role === "assistant") files.set(entry.message.timestamp, latest);
+	};
+	for (let index = 1; index < entries.length; index++) if (isUserTurnStart(entries[index]!)) { finish(index); start = index; }
+	finish(entries.length);
+	if (stream) files.set(stream.timestamp, latest);
+	return files;
 }
 
 /** Layout ids of the reply streaming in and of tools omp started before their call was saved (`liveLayoutEntries`). */

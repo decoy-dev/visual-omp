@@ -3,22 +3,20 @@
  * reply's references are resolved by main (`fs:resolveRefs`) in document order and cached for that chat and message
  * (`ReplyRefCache`); only names found on disk when checked are linked.
  */
-import type { SessionEntry } from "@oh-my-pi/pi-wire";
 import type { FileRef } from "@shared/contracts/fileRefs";
 import { createContext, memo, type ReactNode, useContext, useEffect, useLayoutEffect, useMemo, useReducer, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { chatOutputs } from "../../features/panes/derive";
 import { useMarkdownHtml } from "../../transcript/Markdown";
 import { renderMarkdown } from "../../transcript/render";
 import { useRichContent } from "../../ui/rich-content";
-import { MAX_BASES, ReplyRefCache, type ReplyRefs } from "./fileRefs";
+import { ReplyRefCache, type ReplyRefs } from "./fileRefs";
 import { fillThumbnails, linkHtml, occurrences, parse } from "./fileLinkMarkup";
 
 /** The chat a transcript shows and where its relative names are looked up after the folders a reply names. */
 export interface FileRefScope {
 	/** Identifies the chat (its tab), so replies in different chats never share results. */
 	chat: string;
-	/** The chat's folder, then folders omp wrote or edited files in. */
+	/** The chat's folder. Other candidates come from this reply's directory spans and known turn files. */
 	bases: readonly string[];
 	/** The home folder, shown as `~` in file rows; null until known. */
 	home: string | null;
@@ -33,15 +31,15 @@ const cache = new ReplyRefCache(request => window.vomp.invoke("fs:resolveRefs", 
  * for `reply` null (a reply still streaming). `reply` is the message's timestamp, which a streamed reply shares with
  * the saved entry that replaces it, so that entry and a remounted transcript link at once.
  */
-export function useFileRefs(reply: number | string | null, texts: readonly string[]): ReplyRefs | null {
+export function useFileRefs(reply: number | string | null, texts: readonly string[], files = ""): ReplyRefs | null {
 	const scope = useContext(FileRefContext);
 	const [, rerender] = useReducer((count: number) => count + 1, 0);
 	const key = reply !== null && scope ? `${scope.chat}\0${reply}` : null;
 	const textKey = texts.join("\0");
-	const baseKey = scope?.bases.join("\0") ?? "";
+	const baseKey = `${scope?.bases.join("\0") ?? ""}\0\0${files}`;
 	useEffect(() => {
 		if (!key || !scope) return;
-		const source = () => ({ blocks: texts.map(text => occurrences(parse(renderMarkdown(text))).map(occurrence => occurrence.ref)), bases: scope.bases });
+		const source = () => ({ blocks: texts.map(text => occurrences(parse(renderMarkdown(text))).map(occurrence => occurrence.ref)), bases: scope.bases, files: files ? files.split("\0") : [] });
 		const pending = cache.load(key, textKey, baseKey, source);
 		if (!pending) return;
 		let live = true;
@@ -51,7 +49,7 @@ export function useFileRefs(reply: number | string | null, texts: readonly strin
 		};
 		// The keys stand for `texts` and `scope`.
 	}, [key, textKey, baseKey]);
-	return key ? cache.read(key, textKey) : null;
+	return key ? cache.read(key, textKey, baseKey) : null;
 }
 
 /**
@@ -72,21 +70,3 @@ export const LinkedMarkdown = memo(function LinkedMarkdown({ text, refs }: { tex
 	return <div ref={ref} className="tr-md" dangerouslySetInnerHTML={{ __html: linked }} />;
 });
 
-const MAX_WRITTEN = MAX_BASES - 1;
-
-/**
- * Folders of the files omp wrote or edited in this chat, newest first, as bases for {@link FileRefContext}. `~/`
- * paths keep the `~` for main to expand.
- */
-export function writtenFolders(entries: readonly SessionEntry[], projectPath: string): string[] {
-	const folders: string[] = [];
-	for (const output of chatOutputs(entries, { cwd: projectPath, home: "~" })) {
-		if (!output.produced || !output.path) continue;
-		const cut = Math.max(output.path.lastIndexOf("/"), output.path.lastIndexOf("\\"));
-		const folder = cut > 0 ? output.path.slice(0, cut) : null;
-		// The file system root and drive roots (`C:`) are too broad to look names up in.
-		if (folder && !folder.endsWith(":") && folder !== projectPath && !folders.includes(folder)) folders.push(folder);
-		if (folders.length === MAX_WRITTEN) break;
-	}
-	return folders;
-}

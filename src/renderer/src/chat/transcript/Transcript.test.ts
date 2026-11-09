@@ -43,7 +43,6 @@ vi.mock("./FileLinks", async () => {
 			links.drawn.push({ text, refs });
 			return createElement("div", { dangerouslySetInnerHTML: { __html: renderMarkdown(text) } });
 		},
-		writtenFolders: () => [],
 	};
 });
 

@@ -22,7 +22,41 @@ describe("resolveFileRefs", () => {
 		expect(await resolveFileRefs({ refs: ["out://report.md", "OUT://report.md"], bases: [dir] }, dir)).toEqual([null, null]);
 	});
 
-	it("resolves names in a folder the reply named earlier before the chat's folder", async () => {
+	it("resolves the owner's spaced directory and bare video names without guessing missing files", async () => {
+		const folder = join(dir, "ReadyCloud Files", "ReadyReturns Chat Demos", "Videos");
+		await mkdir(folder, { recursive: true });
+		const names = ["FootLocker Return Chat v2.mp4", "Dicks Sporting Goods Return Chat.mp4"];
+		for (const name of names) await writeFile(join(folder, name), "fixture");
+		expect(await resolveFileRefs({ refs: ["ReadyCloud Files/ReadyReturns Chat Demos/Videos/", ...names, "Missing video.mp4"], bases: [dir] }, dir)).toEqual([
+			{ path: folder, kind: "folder" }, ...names.map(name => ({ path: join(folder, name), kind: "file" })), null,
+		]);
+		expect(await resolveFileRefs({ refs: [...names, "ReadyCloud Files/ReadyReturns Chat Demos/Videos/"], bases: [dir] }, dir)).toEqual([
+			...names.map(name => ({ path: join(folder, name), kind: "file" })), { path: folder, kind: "folder" },
+		]);
+	});
+
+	it("uses uniquely matching known turn Outputs even when the chat is in another folder", async () => {
+		const folder = join(dir, "outputs", "ReadyCloud Files", "ReadyReturns Chat Demos", "Videos");
+		const chat = join(dir, "chat");
+		await mkdir(folder, { recursive: true }); await mkdir(chat);
+		const file = join(folder, "FootLocker Return Chat v2.mp4");
+		await writeFile(file, "fixture");
+		expect(await resolveFileRefs({ refs: ["ReadyCloud Files/ReadyReturns Chat Demos/Videos/", "FootLocker Return Chat v2.mp4", "Missing video.mp4"], bases: [chat], files: [file] }, dir)).toEqual([
+			{ path: folder, kind: "folder" }, { path: file, kind: "file" }, null,
+		]);
+		expect(await resolveFileRefs({ refs: ["FootLocker Return Chat v2.mp4"], bases: [folder], files: [file, file] }, dir)).toEqual([{ path: file, kind: "file" }]);
+	});
+
+	it("leaves ambiguous spaced names unresolved across named folders and known Outputs", async () => {
+		const name = "FootLocker Return Chat v2.mp4";
+		const folders = [join(dir, "one"), join(dir, "two")];
+		for (const folder of folders) { await mkdir(folder); await writeFile(join(folder, name), "fixture"); }
+		expect(await resolveFileRefs({ refs: [name], bases: folders }, dir)).toEqual([null]);
+		expect(await resolveFileRefs({ refs: [name], bases: [], files: folders.map(folder => join(folder, name)) }, dir)).toEqual([null]);
+		expect(await resolveFileRefs({ refs: [name], bases: [], files: [join(folders[0]!, "missing.mp4")] }, dir)).toEqual([null]);
+	});
+
+	it("uses named directories but leaves duplicate exact names ambiguous", async () => {
 		// The reply that prompted this: "Files are in `~/Downloads/Flyer/`, and `CONTEXT.md` is updated: ... previews/".
 		const home = join(dir, "home");
 		const flyer = join(home, "Downloads", "Flyer");
@@ -38,14 +72,14 @@ describe("resolveFileRefs", () => {
 		);
 		expect(results).toEqual([
 			{ path: flyer, kind: "folder" },
-			{ path: join(flyer, "CONTEXT.md"), kind: "file" },
+			null,
 			{ path: join(flyer, "Flyer-DIGITAL.pdf"), kind: "file" },
 			{ path: join(flyer, "previews"), kind: "folder" },
 			null,
 		]);
 	});
 
-	it("tries bases in order, after folders named earlier in the request", async () => {
+	it("checks all eligible bases and rejects duplicate canonical targets", async () => {
 		const first = join(dir, "first");
 		const second = join(dir, "second");
 		await mkdir(first);
@@ -54,7 +88,7 @@ describe("resolveFileRefs", () => {
 		await writeFile(join(first, "b.md"), "");
 		await writeFile(join(second, "b.md"), "");
 		const results = await resolveFileRefs({ refs: ["a.md", "b.md", second, "b.md"], bases: [first, second] }, dir);
-		expect(results.map(result => result?.path ?? null)).toEqual([join(second, "a.md"), join(first, "b.md"), second, join(second, "b.md")]);
+		expect(results.map(result => result?.path ?? null)).toEqual([join(second, "a.md"), null, second, null]);
 	});
 
 	it("resolves a path that starts with the chat folder's own name, without reaching sibling folders", async () => {
@@ -114,7 +148,7 @@ describe("resolveFileRefs", () => {
 		expect(await resolveFileRefs({ refs: ["Chat/sub\\report.pdf"], bases: [chat] }, dir)).toEqual([null]);
 	});
 
-	it("tries the latest named folder first and keeps only the newest few", async () => {
+	it("bounds named directories and leaves duplicated names unresolved", async () => {
 		const folders = ["f0", "f1", "f2", "f3", "f4", "f5"].map(name => join(dir, name));
 		for (const folder of folders) {
 			await mkdir(folder);
@@ -123,7 +157,7 @@ describe("resolveFileRefs", () => {
 		const [oldest] = folders;
 		await writeFile(join(oldest ?? "", "only-oldest.md"), "");
 		const results = await resolveFileRefs({ refs: [...folders, "x.md", "only-oldest.md"], bases: [] }, dir);
-		expect(results.at(-2)?.path).toBe(join(folders[5] ?? "", "x.md"));
+		expect(results.at(-2)).toBeNull();
 		expect(results.at(-1)).toBeNull();
 	});
 
@@ -145,6 +179,8 @@ describe("resolveFileRefs", () => {
 		await expect(resolveFileRefs({ refs: ["\\\\server\\share\\a.md"], bases: [] }, dir)).rejects.toThrow();
 		await expect(resolveFileRefs({ refs: [""], bases: [] }, dir)).rejects.toThrow();
 		await expect(resolveFileRefs({ refs: [1], bases: [] }, dir)).rejects.toThrow();
+		await expect(resolveFileRefs({ refs: ["a.md"], bases: [], files: Array.from({ length: FILE_REF_LIMITS.files + 1 }, () => join(dir, "a.md")) }, dir)).rejects.toThrow();
+		await expect(resolveFileRefs({ refs: ["a.md"], bases: [], files: ["relative/a.md"] }, dir)).rejects.toThrow();
 		await expect(resolveFileRefs(null, dir)).rejects.toThrow();
 	});
 
@@ -184,7 +220,7 @@ describe("resolveFileRefs", () => {
 		expect(await resolveFileRefs({ refs: ["missing_….png", "report_….png", "ab…ba", "…"], bases: [dir] }, dir)).toEqual([null, null, null, null]);
 	});
 
-	it("uses the latest named folder, then ordered bases, and stops at an ambiguous folder", async () => {
+	it("uses same-reply directory context for abbreviations and stops at an ambiguous folder", async () => {
 		const [first, second, earlier, latest] = ["first", "second", "earlier", "latest"].map(name => join(dir, name));
 		for (const folder of [first!, second!, earlier!, latest!]) {
 			await mkdir(folder);
@@ -192,7 +228,7 @@ describe("resolveFileRefs", () => {
 		}
 		const request = { refs: ["report_….png", earlier!, latest!, "report_….png"], bases: [first!, second!] };
 		const results = await resolveFileRefs(request, dir);
-		expect(results[0]?.path).toBe(join(first!, "report_one.png"));
+		expect(results[0]?.path).toBe(join(latest!, "report_one.png"));
 		expect(results.at(-1)?.path).toBe(join(latest!, "report_one.png"));
 		await writeFile(join(latest!, "report_two.png"), "");
 		expect((await resolveFileRefs(request, dir)).at(-1)).toBeNull();
@@ -275,33 +311,49 @@ describe("ReplyRefCache against the resolver", () => {
 	});
 	const paths = (refs: ReplyRefs | null) => refs?.map(block => block.map(ref => ref?.path ?? null)) ?? null;
 
-	it("gives each occurrence of one name its own result, across text blocks", async () => {
-		const blocks = [[`${a}/`, "report.pdf", `${b}/`, "report.pdf"], ["report.pdf"]];
+	it("preserves explicit targets across text blocks without guessing an ambiguous bare name", async () => {
+		const blocks = [[`${a}/`, join(a, "report.pdf"), `${b}/`, join(b, "report.pdf")], ["report.pdf"]];
 		await cache.load("chat\x001", "text", "", () => ({ blocks, bases: [] }));
-		expect(paths(cache.read("chat\x001", "text"))).toEqual([[a, join(a, "report.pdf"), b, join(b, "report.pdf")], [join(b, "report.pdf")]]);
+		expect(paths(cache.read("chat\x001", "text", ""))).toEqual([[a, join(a, "report.pdf"), b, join(b, "report.pdf")], [null]]);
 	});
 
 	it("keeps replies with the same text in different chats apart", async () => {
 		await cache.load("one\x001", "report.pdf", a, () => ({ blocks: [["report.pdf"]], bases: [a] }));
 		await cache.load("two\x001", "report.pdf", b, () => ({ blocks: [["report.pdf"]], bases: [b] }));
-		expect(paths(cache.read("one\x001", "report.pdf"))).toEqual([[join(a, "report.pdf")]]);
-		expect(paths(cache.read("two\x001", "report.pdf"))).toEqual([[join(b, "report.pdf")]]);
+		expect(paths(cache.read("one\x001", "report.pdf", a))).toEqual([[join(a, "report.pdf")]]);
+		expect(paths(cache.read("two\x001", "report.pdf", b))).toEqual([[join(b, "report.pdf")]]);
 	});
 
-	it("reuses a reply's result for the same text and bases, and re-resolves new bases while showing the old links", async () => {
+	it("reuses matching results and hides links immediately while changed candidates resolve", async () => {
 		const source = (bases: string[]) => () => ({ blocks: [["report.pdf"]], bases });
 		await cache.load("chat\x001", "report.pdf", a, source([a]));
-		const first = cache.read("chat\x001", "report.pdf");
+		const first = cache.read("chat\x001", "report.pdf", a);
 		// The saved entry that replaces a stream row asks again with the same reply, text and bases.
 		expect(cache.load("chat\x001", "report.pdf", a, source([a]))).toBeNull();
-		expect(cache.read("chat\x001", "report.pdf")).toBe(first);
+		expect(cache.read("chat\x001", "report.pdf", a)).toBe(first);
 		expect(calls).toBe(1);
 		const pending = cache.load("chat\x001", "report.pdf", b, source([b]));
-		expect(cache.read("chat\x001", "report.pdf")).toBe(first);
+		expect(cache.read("chat\x001", "report.pdf", b)).toBeNull();
 		await pending;
-		expect(paths(cache.read("chat\x001", "report.pdf"))).toEqual([[join(b, "report.pdf")]]);
+		expect(paths(cache.read("chat\x001", "report.pdf", b))).toEqual([[join(b, "report.pdf")]]);
 		// Other text under the same key links nothing until it resolves.
 		void cache.load("chat\x001", "other", b, source([b]));
-		expect(cache.read("chat\x001", "other")).toBeNull();
+		expect(cache.read("chat\x001", "other", b)).toBeNull();
+	});
+
+	it("removes a unique link before a deferred new candidate set is found ambiguous", async () => {
+		const pending = Promise.withResolvers<({ path: string; kind: "file" } | null)[]>();
+		let initial = true;
+		const checked = new ReplyRefCache(async () => {
+			if (initial) { initial = false; return [{ path: join(a, "report.pdf"), kind: "file" }]; }
+			return pending.promise;
+		});
+		await checked.load("reply", "report.pdf", "one", () => ({ blocks: [["report.pdf"]], bases: [a] }));
+		expect(checked.read("reply", "report.pdf", "one")?.[0]?.[0]?.path).toBe(join(a, "report.pdf"));
+		const next = checked.load("reply", "report.pdf", "two", () => ({ blocks: [["report.pdf"]], bases: [a, b] }));
+		expect(checked.read("reply", "report.pdf", "two")).toBeNull();
+		expect(checked.read("reply", "report.pdf", "one")).toBeNull();
+		pending.resolve([null]); await next;
+		expect(checked.read("reply", "report.pdf", "two")).toEqual([[null]]);
 	});
 });

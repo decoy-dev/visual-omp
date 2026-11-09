@@ -4,6 +4,9 @@ import type { TspHostSnapshot } from "@shared/tsp-host";
 import { hookDialogTarget } from "@shared/tsp/dialogs";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import type { CollabUiRequest, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
+import type { FileRef, FileRefRequest } from "@shared/contracts/fileRefs";
+import { TranscriptBody } from "../../../chat/transcript/Transcript";
+import { useFiles } from "../../panes/files-store";
 import { usePendingQuestion } from "../../../chat/transcript/QuestionCard";
 import { ToolView } from "../../../tool-render/ToolView";
 import type { ToolResultLike } from "../../../tool-render/types";
@@ -40,7 +43,7 @@ interface Gate {
 	view(): SessionView;
 	open(snapshot: TspHostSnapshot): void;
 	update(snapshot: TspHostSnapshot): void;
-	invoke(channel: string, args: unknown[]): TspHostSnapshot | undefined;
+	invoke(channel: string, args: unknown[]): unknown;
 	buttonVisible(button: HTMLButtonElement): boolean;
 	showPlan(snapshot: TspHostSnapshot): void;
 	showAsk(snapshot: TspHostSnapshot, request: CollabUiRequest | null, args: Record<string, unknown>, result?: ToolResultLike, classic?: boolean, entries?: SessionEntry[]): Promise<void>;
@@ -52,6 +55,10 @@ interface Gate {
 	beginFormUpdates(): void;
 	advanceFormRequest(request: CollabUiRequest | null): void;
 	formPresentationEvents: { terminalTabId: string | null; requestId: number | null; claims: number }[];
+	showReplyFiles(entries: SessionEntry[], projectPath: string): void;
+	fileRequests: { request: FileRefRequest; resolve: (value: (FileRef | null)[]) => void }[];
+	resolveFiles(index: number, value: (FileRef | null)[]): void;
+	fileViewer(): { path: string | null; pane: string | null };
 }
 const state = window as unknown as { gateSnapshot: TspHostSnapshot; gateListeners: Set<(patch: TspHostPatch) => void>; gate: Gate };
 let view = { mode: "live", readOnly: false, host: { hostId: "gate", generation: 1, phase: "live", transport: "tsp", cols: 80, rows: 24 } } as unknown as SessionView;
@@ -104,10 +111,12 @@ function Harness() {
 	const [showQuestion, setShowQuestion] = useState(true);
 	const [commandResults, setCommandResults] = useState<CommandResultRecord[]>([]);
 	const [markdown, setMarkdown] = useState<string | null>(null);
+	const [replyFiles, setReplyFiles] = useState<{ entries: SessionEntry[]; projectPath: string } | null>(null);
 	useEffect(() => registerComposerEditor("gate", { focus: () => composer.current?.focus(), insertAtCaret: () => {} }), []);
 	useEffect(() => {
 		const calls: CapturedCall[] = [];
 		const formPresentationEvents: Gate["formPresentationEvents"] = [];
+		const fileRequests: Gate["fileRequests"] = [];
 		const unsubscribe = useApp.subscribe((next, previous) => {
 			if (next.terminalTabId !== previous.terminalTabId) formPresentationEvents.push({ terminalTabId: next.terminalTabId, requestId: view.guest?.uiRequest?.reqId ?? null, claims: presentationClaims.getSnapshot().length });
 		});
@@ -115,6 +124,7 @@ function Harness() {
 		const resetModes = () => {
 			setAsk(null); setShowPlan(false); setCommandResults([]); setShowQuestion(true);
 			setMarkdown(null);
+			setReplyFiles(null);
 			formAnswerGaps = false;
 			useApp.setState({ terminalTabId: null });
 			view = { ...view, working: false, guest: null, host: { ...view.host!, transport: "tsp" } };
@@ -171,13 +181,27 @@ function Harness() {
 			},
 			showCommandResults(results) { calls.length = 0; resetModes(); setCommandResults(results); },
 			showMarkdown(text) { calls.length = 0; resetModes(); setMarkdown(text); },
+			fileRequests,
+			resolveFiles(index, value) { fileRequests[index]!.resolve(value); },
+			fileViewer() { return { path: useFiles.getState().byView["gate-reply"]?.active ?? null, pane: useApp.getState().docks["gate-reply"]?.pane ?? null }; },
+			showReplyFiles(entries, projectPath) {
+				calls.length = 0; fileRequests.length = 0; resetModes();
+				const app = useApp.getState();
+				useApp.setState({ view: "chat", activeTabId: "gate-reply", tabs: [...app.tabs.filter(tab => tab.id !== "gate-reply"), { id: "gate-reply", projectPath, sessionFile: null, title: "Reply files" }] });
+				setReplyFiles({ entries, projectPath });
+			},
 			invoke(channel, args) {
 				if (["host:tsp-event", "host:tsp-answer", "host:keys"].includes(channel)) calls.push({ channel, args });
+				if (channel === "fs:resolveRefs") {
+					const { promise, resolve } = Promise.withResolvers<(FileRef | null)[]>();
+					fileRequests.push({ request: args[0] as FileRefRequest, resolve });
+					return promise;
+				}
 				return channel === "host:tsp-snapshot" ? state.gateSnapshot : undefined;
 			},
 		};
 		return unsubscribe;
 	}, []);
-	return <MotionProvider><TooltipProvider><main className="h-full overflow-auto bg-sheet p-4 text-fg">{markdown !== null && <section aria-label="Assistant message" className="mx-auto mt-6 max-w-3xl"><Markdown text={markdown} /></section>}{ask ? <AskHarness args={ask.args} result={ask.result} showQuestion={showQuestion} /> : <><label>Message to omp<textarea ref={composer} aria-label="Message to omp" /></label><OmpDialogCard key={cardInstance} session={controller} />{showPlan && <PlanReviewCard session={controller} />}{commandResults.length > 0 && <section aria-label="Command feedback" className="mx-auto mt-6 max-w-3xl space-y-6">{commandResults.map(result => <CommandResultRow key={result.id} result={result} onDismiss={() => setCommandResults(items => items.filter(item => item.id !== result.id))} />)}</section>}</>}{!ask && open && <TerminalSheet tabId="gate" controller={controller} />}</main></TooltipProvider></MotionProvider>;
+	return <MotionProvider><TooltipProvider><main className="h-full overflow-auto bg-sheet p-4 text-fg">{replyFiles ? <section aria-label="Reply file references" className="flex h-full flex-col"><TranscriptBody scope={{ tabId: "gate-reply", projectPath: replyFiles.projectPath }} entries={replyFiles.entries} mode="normal" ready identity={replyFiles.projectPath} /></section> : <>{markdown !== null && <section aria-label="Assistant message" className="mx-auto mt-6 max-w-3xl"><Markdown text={markdown} /></section>}{ask ? <AskHarness args={ask.args} result={ask.result} showQuestion={showQuestion} /> : <><label>Message to omp<textarea ref={composer} aria-label="Message to omp" /></label><OmpDialogCard key={cardInstance} session={controller} />{showPlan && <PlanReviewCard session={controller} />}{commandResults.length > 0 && <section aria-label="Command feedback" className="mx-auto mt-6 max-w-3xl space-y-6">{commandResults.map(result => <CommandResultRow key={result.id} result={result} onDismiss={() => setCommandResults(items => items.filter(item => item.id !== result.id))} />)}</section>}</>}{!ask && open && <TerminalSheet tabId="gate" controller={controller} />}</>}</main></TooltipProvider></MotionProvider>;
 }
 createRoot(document.getElementById("root")!).render(<Harness />);

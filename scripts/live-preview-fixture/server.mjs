@@ -190,9 +190,9 @@ export function bigMediaCommand() {
     "pdf.write(b'xref\\n0 %d\\n0000000000 65535 f \\n' % (len(offsets) + 1) + b''.join(b'%010d 00000 n \\n' % o for o in offsets))",
     "pdf.write(b'trailer\\n<< /Size %d /Root 1 0 R >>\\nstartxref\\n%d\\n%%%%EOF\\n' % (len(offsets) + 1, xref)); pdf.close()",
     "open('Large notes.txt', 'w').write(''.join(f'Line {i:06d} of the large text sample.\\n' for i in range(86000)))",
-    "print('Created Large video.mp4, Large image.png, Large document.pdf and Large notes.txt.')",
+    "print('Created Large video.mp4, Large image.png, Large document.pdf and Large notes.txt in Large Media Files/.')",
   ].join("\n");
-  return `${video} && python3 - <<'PY'\n${files}\nPY`;
+  return `mkdir -p 'Large Media Files' && cd 'Large Media Files' && ${video} && python3 - <<'PY'\n${files}\nPY`;
 }
 
 function mentionsCommand() {
@@ -299,6 +299,18 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
         return;
       } else if (fixture === "notes") {
         send({ role: "assistant", content: "The release checks are in the first message. This chat uses the local fixture model. Settings and commands still need your interaction, and platform-specific checks require the target platform." });
+        send({}, "stop");
+        response.end("data: [DONE]\n\n");
+        return;
+      }
+      if (fixture === "bigmedia" && afterTool) {
+        const result = messages.at(-1);
+        const output = textOf(result);
+        const created = !result.isError && !/(?:Error:|failed|exit code [1-9])/i.test(output)
+          && output.includes("Created Large video.mp4, Large image.png, Large document.pdf and Large notes.txt in Large Media Files/.");
+        send({ role: "assistant", content: created
+          ? "Created the files in `Large Media Files/`:\n\n- `Large video.mp4`\n- `Large image.png`\n- `Large document.pdf`\n- `Large notes.txt`"
+          : "The fixture tool result did not confirm that all four files were created. Check the tool result before opening the samples." });
         send({}, "stop");
         response.end("data: [DONE]\n\n");
         return;

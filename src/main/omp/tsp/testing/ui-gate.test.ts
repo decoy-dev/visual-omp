@@ -36,6 +36,8 @@ import { askFormPresentation, TSP_ROLES } from "@shared/tsp/roles";
 import { TspSession } from "../session";
 import { TspStream } from "../stream";
 import type { CollabUiRequest, SessionEntry, ToolCallContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
+import type { FileRefRequest } from "@shared/contracts/fileRefs";
+import { resolveFileRefs } from "../../../services/fileRefs";
 
 import { TspMainFeedback } from "../../../../renderer/src/state/tsp/main-feedback";
 import type { MainOutput } from "@shared/tsp/main-output";
@@ -362,6 +364,45 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const screenshot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
 		await writeFile(join(shots, `command-${name}-${theme}.png`), Buffer.from(screenshot.data, "base64"));
 	}, 30_000);
+	it.each(["light", "dark"])("links spaced reply files through the checked Files viewer path in %s", async theme => {
+		const root = realpathSync(await mkdtemp(join(tmpdir(), "vomp-reply-files-")));
+		try {
+			const project = join(root, "chat");
+			const folder = join(root, "ReadyCloud Files", "ReadyReturns Chat Demos", "Videos");
+			await mkdir(project); await mkdir(folder, { recursive: true });
+			const names = ["FootLocker Return Chat v2.mp4", "Dicks Sporting Goods Return Chat.mp4"];
+			const paths = names.map(name => join(folder, name));
+			for (const other of ["one", "two"]) {
+				await mkdir(join(root, other));
+				paths.push(join(root, other, "Shared Return Chat.mp4"));
+			}
+			for (const path of paths) await writeFile(path, "file-reference fixture");
+			const text = "I've rendered both videos. They're in `ReadyCloud Files/ReadyReturns Chat Demos/Videos/`:\n\n- `FootLocker Return Chat v2.mp4`\n- `Dicks Sporting Goods Return Chat.mp4`\n\nAmbiguous: `Shared Return Chat.mp4`. Missing: `Missing Return Chat.mp4`.";
+			const entries: SessionEntry[] = [{ id: "file-user", parentId: null, timestamp: "2026-11-09T20:00:00Z", type: "message", message: { role: "user", content: "Render the video fixtures.", timestamp: 1 } }];
+			const usage = { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } };
+			entries.push({ id: "file-calls", parentId: null, timestamp: "2026-11-09T20:00:01Z", type: "message", message: { role: "assistant", content: paths.map((path, index) => ({ type: "toolCall", id: `file-${index}`, name: "write", arguments: { path, content: "fixture" } })), model: "fixture", usage, stopReason: "toolUse", timestamp: 2 } });
+			paths.forEach((path, index) => entries.push({ id: `file-result-${index}`, parentId: null, timestamp: "2026-11-09T20:00:02Z", type: "message", message: { role: "toolResult", toolCallId: `file-${index}`, toolName: "write", content: [{ type: "text", text: "Written." }], details: { resolvedPath: path }, isError: false, timestamp: 3 + index } }));
+			entries.push({ id: "file-reply", parentId: null, timestamp: "2026-11-09T20:00:03Z", type: "message", message: { role: "assistant", content: [{ type: "text", text }], model: "fixture", usage, stopReason: "stop", timestamp: 10 } });
+			await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion='reduced'; window.gate.showReplyFiles(${JSON.stringify(entries)}, ${JSON.stringify(project)});`);
+			await page.until("window.gate.fileRequests.length === 1");
+			const request = await page.evaluate<FileRefRequest>("window.gate.fileRequests[0].request");
+			expect(request.refs).toEqual(["ReadyCloud Files/ReadyReturns Chat Demos/Videos/", ...names, "Shared Return Chat.mp4", "Missing Return Chat.mp4"]);
+			expect(new Set(request.files)).toEqual(new Set(paths));
+			const resolved = await resolveFileRefs(request, root);
+			await page.evaluate(`window.gate.resolveFiles(0, ${JSON.stringify(resolved)});`);
+			await page.until("document.querySelectorAll('section[aria-label=\"Reply file references\"] .tr-file-row').length === 2");
+			expect(await page.evaluate("[...document.querySelectorAll('.tr-file-row')].map(row => row.dataset.filePath)")).toEqual(paths.slice(0, 2));
+			expect(await page.evaluate("!!document.querySelector('.tr-file-list') && !!document.querySelector('.tr-file-chip[data-file-kind=\"folder\"]')")).toBe(true);
+			expect(await page.evaluate("[...document.querySelectorAll('.tr-md code')].filter(code => /^(Shared|Missing) Return Chat\\.mp4$/.test(code.textContent)).length")).toBe(2);
+			for (const [index, path] of paths.slice(0, 2).entries()) {
+				await page.clickElement(`document.querySelectorAll('.tr-file-row')[${index}]`);
+				expect(await page.evaluate("window.gate.fileViewer()")).toEqual({ path, pane: "files" });
+			}
+			await page.evaluate("document.fonts.ready.then(() => true)");
+			const capture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+			await writeFile(join(shots, `reply-files-${theme}.png`), Buffer.from(capture.data, "base64"));
+		} finally { await rm(root, { recursive: true, force: true }); }
+	}, 60_000);
 	it.each([360, 1400].flatMap(width => ["light", "dark"].map(theme => ({ width, theme }))))("keeps table tokens readable at $width pixels in $theme", async ({ width, theme }) => {
 		await page.send("Emulation.setDeviceMetricsOverride", { width: width + 64, height: 800, deviceScaleFactor: 1, mobile: false });
 		const path = `/workspace/${"long-project-folder/".repeat(30)}report.json`;

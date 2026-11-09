@@ -72,30 +72,28 @@ export function textRefs(text: string): TextRef[] {
 /** Main's limits (`FILE_REF_LIMITS`): references and bases per request. */
 export const MAX_REFS = 100;
 export const MAX_BASES = 8;
+export const MAX_FILES = 100;
 
 /**
  * Where each reference occurrence of a reply points, by text block and then by occurrence in document order; null
- * when it names nothing on disk or lies past the request limit. Occurrences keep their own results because a
- * relative name resolves against the folders named before it, so one spelling can point at different files.
+ * when it names nothing on disk, is ambiguous or lies past the request limit.
  */
 export type ReplyRefs = readonly (readonly (FileRef | null)[])[];
 
 /** The occurrences of each text block of a reply and the bases to resolve them in, computed only when needed. */
-export type ReplyRefSource = () => { blocks: readonly (readonly string[])[]; bases: readonly string[] };
+export type ReplyRefSource = () => { blocks: readonly (readonly string[])[]; bases: readonly string[]; files?: readonly string[] };
 
 interface CacheEntry {
 	texts: string;
-	bases: string;
+	candidates: string;
 	value: ReplyRefs | null;
-	/** The previous result for the same text, shown while new bases resolve so links do not blink out. */
-	stale: ReplyRefs | null;
 	promise: Promise<void>;
 }
 
 /**
  * Resolved references by reply, where a reply key names one chat and one message (a streamed reply and the saved entry
- * that replaces it share it). An entry holds the text and bases it was resolved with: other text under the same key
- * shows nothing until it resolves, and new bases re-resolve while the previous links stay visible.
+ * that replaces it share it). Text and candidate identities must both match; changed candidates show literal
+ * text until their existence and uniqueness checks finish.
  */
 export class ReplyRefCache {
 	readonly #entries = new Map<string, CacheEntry>();
@@ -107,21 +105,20 @@ export class ReplyRefCache {
 		this.#size = size;
 	}
 
-	/** The links to show for `reply` with this text (the joined text blocks), or null while none have resolved. */
-	read(reply: string, texts: string): ReplyRefs | null {
+	/** Only the exact text and candidate set that completed validation can expose links. */
+	read(reply: string, texts: string, candidates: string): ReplyRefs | null {
 		const entry = this.#entries.get(reply);
-		return entry?.texts === texts ? (entry.value ?? entry.stale) : null;
+		return entry?.texts === texts && entry.candidates === candidates ? entry.value : null;
 	}
 
 	/** Starts resolving `reply` for this text and these bases unless that is done or under way; resolves when it settles. */
-	load(reply: string, texts: string, bases: string, source: ReplyRefSource): Promise<void> | null {
+	load(reply: string, texts: string, candidates: string, source: ReplyRefSource): Promise<void> | null {
 		const previous = this.#entries.get(reply);
-		if (previous?.texts === texts && previous.bases === bases) return previous.value ? null : previous.promise;
+		if (previous?.texts === texts && previous.candidates === candidates) return previous.value ? null : previous.promise;
 		const entry: CacheEntry = {
 			texts,
-			bases,
+			candidates,
 			value: null,
-			stale: previous?.texts === texts ? (previous.value ?? previous.stale) : null,
 			promise: Promise.resolve(),
 		};
 		entry.promise = this.#lookup(source).then(
@@ -142,10 +139,10 @@ export class ReplyRefCache {
 	}
 
 	async #lookup(source: ReplyRefSource): Promise<ReplyRefs> {
-		const { blocks, bases } = source();
+		const { blocks, bases, files } = source();
 		// One request in document order across the reply's blocks, so a folder named in one block applies to the next.
 		const refs = blocks.flat().slice(0, MAX_REFS);
-		const results = refs.length > 0 ? await this.#resolve({ refs, bases: bases.slice(0, MAX_BASES) }) : [];
+		const results = refs.length > 0 ? await this.#resolve({ refs, bases: bases.slice(0, MAX_BASES), ...(files?.length ? { files: files.slice(0, MAX_FILES) } : {}) }) : [];
 		let next = 0;
 		return blocks.map(block => block.map(() => results[next++] ?? null));
 	}

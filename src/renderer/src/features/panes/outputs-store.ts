@@ -14,7 +14,7 @@ import { type ChatOutput, chatOutputs, type MadeCandidate, type MadeFiles, madeC
 
 // ── files made by commands ──────────────────────────────────────────────────────────────────────
 
-/** Files main found that each tool call made, by call id. */
+/** Files main found, keyed by session and the exact candidate paths/time window. */
 const useMade = create<Record<string, readonly PaneMadeFile[]>>(() => ({}));
 /**
  * Outputs pane mounts so far. It also numbers the scans: reopening the pane checks every call again (files that are
@@ -27,37 +27,40 @@ export function countOutputsMount(): number {
 	return ++paneMounts;
 }
 
-/** `<mount>@<window end>` each call was last checked at; a background job whose result arrived is checked again. */
-const scanned = new Map<string, string>();
+/** Last pane-mount generation checked for each exact session/candidate identity. */
+const scanned = new Map<string, number>();
 const SCAN_BATCH = 64;
 /** The scan queue: one batch in flight at a time across every chat, so main's per-request limits bound the total work. */
 let scanQueue: Promise<void> = Promise.resolve();
+const madeKey = (scope: string, candidate: MadeCandidate) => JSON.stringify([scope, candidate.id, candidate.paths, candidate.start, candidate.end]);
 
-async function scanBatch(batch: readonly MadeCandidate[]): Promise<void> {
+async function scanBatch(batch: readonly MadeCandidate[], scope: string): Promise<void> {
+	const keys = batch.map(candidate => madeKey(scope, candidate));
 	const results = await window.vomp.invoke("panes:scanMade", batch.map(({ paths, start, end }) => ({ paths, start, end })));
 	const files = { ...useMade.getState() };
-	batch.forEach((candidate, n) => {
+	batch.forEach((_, n) => {
 		const found = results[n] ?? [];
-		if (found.length > 0) files[candidate.id] = found;
-		else delete files[candidate.id];
+		if (found.length > 0) files[keys[n]!] = found;
+		else delete files[keys[n]!];
 	});
 	// Replace, so calls whose files are gone lose their entry.
 	useMade.setState(files, true);
 }
 
-function requestScan(candidates: readonly MadeCandidate[], generation: number): void {
-	const due = candidates.filter(candidate => scanned.get(candidate.id) !== `${generation}@${candidate.end}`);
-	for (const candidate of due) scanned.set(candidate.id, `${generation}@${candidate.end}`);
+function requestScan(candidates: readonly MadeCandidate[], generation: number, scope: string): void {
+	const due = candidates.filter(candidate => scanned.get(madeKey(scope, candidate)) !== generation);
+	for (const candidate of due) scanned.set(madeKey(scope, candidate), generation);
 	for (let i = 0; i < due.length; i += SCAN_BATCH) {
 		const batch = due.slice(i, i + SCAN_BATCH);
 		// A failed scan leaves the call without made files; the next reopen tries again.
-		scanQueue = scanQueue.then(() => scanBatch(batch)).catch(() => {});
+		scanQueue = scanQueue.then(() => scanBatch(batch, scope)).catch(() => {});
 	}
 }
 
 // ── outputs of the focused chat ─────────────────────────────────────────────────────────────────
 
 interface Branch {
+	scope: string;
 	leaf: string | null;
 	saved: SavedParents | undefined;
 	cwd: string | null;
@@ -75,7 +78,7 @@ export interface Derived {
 
 /** Keyed by the session's entry list (then the branch), so the pane and its tab badge share one derivation per update. */
 const branches = new WeakMap<readonly SessionEntry[], Branch>();
-const derived = new WeakMap<Branch, Derived>();
+const derived = new WeakMap<Branch, { source: MadeFiles; value: Derived }>();
 
 /**
  * The chat's outputs from the entries the transcript shows: the live stream's active branch, else the saved
@@ -89,31 +92,37 @@ export function useChatOutputs(session: SessionController | null, view: SessionV
 	const leaf = live ? (view?.displayLeaf ?? null) : null;
 	const saved = live ? savedParents(view?.history) : undefined;
 	const cwd = view?.history?.header?.cwd ?? session?.projectPath ?? null;
+	const scope = JSON.stringify([session?.tabId ?? null, view?.host?.hostId ?? null, view?.host?.generation ?? null, view?.host?.sessionId ?? view?.guest?.header?.id ?? view?.history?.header?.id ?? session?.sessionFile ?? null]);
 	const branch = useMemo(() => {
 		if (!source) return null;
 		const cached = branches.get(source);
-		if (cached && cached.leaf === leaf && cached.saved === saved && cached.cwd === cwd && cached.home === home) return cached;
+		if (cached && cached.scope === scope && cached.leaf === leaf && cached.saved === saved && cached.cwd === cwd && cached.home === home) return cached;
 		const entries = live ? activeBranch(source, leaf, saved) : source;
-		const next: Branch = { leaf, saved, cwd, home, entries, candidates: madeCandidates(entries, { cwd, home, platform: window.vomp.platform }) };
+		const next: Branch = { scope, leaf, saved, cwd, home, entries, candidates: madeCandidates(entries, { cwd, home, platform: window.vomp.platform }) };
 		branches.set(source, next);
 		return next;
-	}, [source, live, leaf, saved, cwd, home]);
+	}, [source, live, leaf, saved, cwd, home, scope]);
 	const made = useMade();
 	// Read during render: the pane counts its mount before this hook runs, so its first scan already uses it.
 	const generation = paneMounts;
 	useEffect(() => {
-		if (branch) requestScan(branch.candidates, generation);
+		if (branch) requestScan(branch.candidates, generation, branch.scope);
 	}, [branch, generation]);
 	return useMemo(() => {
 		if (!branch) return null;
 		const cached = derived.get(branch);
-		if (cached && cached.made === made) return cached;
-		const outputs = chatOutputs(branch.entries, { cwd: branch.cwd, home: branch.home, platform: window.vomp.platform }, made);
+		if (cached && cached.source === made) return cached.value;
+		const scoped: Record<string, readonly PaneMadeFile[]> = Object.create(null);
+		for (const candidate of branch.candidates) {
+			const found = made[madeKey(branch.scope, candidate)];
+			if (found) scoped[candidate.id] = found;
+		}
+		const outputs = chatOutputs(branch.entries, { cwd: branch.cwd, home: branch.home, platform: window.vomp.platform }, scoped);
 		let latest = 0;
 		for (const candidate of branch.candidates) latest = Math.max(latest, candidate.end);
 		for (const output of outputs) latest = Math.max(latest, output.time);
-		const next = { made, outputs, latest };
-		derived.set(branch, next);
+		const next = { made: scoped, outputs, latest };
+		derived.set(branch, { source: made, value: next });
 		return next;
 	}, [branch, made]);
 }

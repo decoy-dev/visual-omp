@@ -25,6 +25,7 @@ export interface Occurrence {
 /** The references in rendered reply HTML, in document order. */
 export function occurrences(root: DocumentFragment): Occurrence[] {
 	const found: Occurrence[] = [];
+	const codes = new Set<Element>();
 	const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
 	for (let node = walker.nextNode(); node; node = walker.nextNode()) {
 		const text = node as Text;
@@ -32,7 +33,9 @@ export function occurrences(root: DocumentFragment): Occurrence[] {
 		if (!parent || parent.closest(SKIP)) continue;
 		const code = parent.closest("code");
 		if (code) {
-			const ref = code.childNodes.length === 1 ? fileRefOf(text.data, true) : null;
+			if (codes.has(code)) continue;
+			codes.add(code);
+			const ref = fileRefOf(code.textContent ?? "", true);
 			if (ref) found.push({ node: code, start: 0, end: 0, ref });
 			continue;
 		}
@@ -147,7 +150,7 @@ function writtenText(occurrence: Occurrence): string {
 
 /** Whether `block` holds nothing but the occurrence, apart from whitespace and trailing punctuation. */
 function holdsOnly(block: Element, occurrence: Occurrence): boolean {
-	for (const element of block.querySelectorAll("*")) if (!element.contains(occurrence.node)) return false;
+	for (const element of block.querySelectorAll("*")) if (!element.contains(occurrence.node) && !occurrence.node.contains(element)) return false;
 	const own = writtenText(occurrence);
 	const text = block.textContent ?? "";
 	const at = text.indexOf(own);

@@ -8,24 +8,33 @@ import { COLOR_FORM, RELEASE_FORM, bigMediaCommand, startFixture, sequenceComman
 const roots = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 
-async function callsFor(prompt, messages = [{ role: "user", content: prompt }]) {
+async function replyFor(prompt, messages = [{ role: "user", content: prompt }]) {
   const root = await mkdtemp(join(tmpdir(), "vomp-video-fixture-")); roots.push(root);
   const server = await startFixture({ root, port: 0, durationMs: 0 });
   try {
     const response = await fetch(`${server.baseUrl}/chat/completions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages }) });
     assert.equal(response.status, 200);
     const calls = new Map();
+    let content = "";
+    let finishReason = null;
     for (const line of (await response.text()).split("\n")) {
       if (!line.startsWith("data: {") || line === "data: [DONE]") continue;
-      for (const call of JSON.parse(line.slice(6)).choices[0].delta.tool_calls ?? []) {
+      const choice = JSON.parse(line.slice(6)).choices[0];
+      content += choice.delta.content ?? "";
+      if (choice.finish_reason) finishReason = choice.finish_reason;
+      for (const call of choice.delta.tool_calls ?? []) {
         const prior = calls.get(call.index) ?? { name: "", arguments: "" };
         if (call.function.name) prior.name = call.function.name;
         prior.arguments += call.function.arguments ?? "";
         calls.set(call.index, prior);
       }
     }
-    return [...calls.values()].map(call => ({ name: call.name, args: JSON.parse(call.arguments) }));
+    return { calls: [...calls.values()].map(call => ({ name: call.name, args: JSON.parse(call.arguments) })), content, finishReason };
   } finally { await server.close(); }
+}
+
+async function callsFor(prompt, messages) {
+  return (await replyFor(prompt, messages)).calls;
 }
 
 test("timestamps runs three separate 45-second rounds before replying", async () => {
@@ -197,7 +206,7 @@ test("bash trace fixture runs each output shape once and finishes after their re
   assert.deepEqual(followUp, []);
 });
 
-test("bigmedia writes four large local files with one bounded command and finishes after its result", async () => {
+test("bigmedia writes four large local files in a spaced folder and lists bare file names after its result", async () => {
   const calls = await callsFor("fixture bigmedia");
   assert.equal(calls.length, 1);
   const [call] = calls;
@@ -205,13 +214,34 @@ test("bigmedia writes four large local files with one bounded command and finish
   assert.equal(call.args.timeout, 180);
   assert.equal(call.args.command, bigMediaCommand());
   for (const name of ["'Large video.mp4'", "open('Large image.png', 'wb')", "open('Large document.pdf', 'wb')", "open('Large notes.txt', 'w')"]) assert.ok(call.args.command.includes(name), name);
-  assert.match(call.args.command, /^ffmpeg .*-c:v libx264 .*&& python3 - <<'PY'\n[\s\S]*\nPY$/);
-  const followUp = await callsFor("", [
+  assert.match(call.args.command, /^mkdir -p 'Large Media Files' && cd 'Large Media Files' && ffmpeg .*-c:v libx264 .*&& python3 - <<'PY'\n[\s\S]*\nPY$/);
+  const followUp = await replyFor("", [
     { role: "user", content: "fixture bigmedia" },
     { role: "assistant", tool_calls: [{ id: "bigmedia-0", function: { name: call.name, arguments: JSON.stringify(call.args) } }] },
-    { role: "tool", content: "Created Large video.mp4, Large image.png and Large document.pdf." },
+    { role: "tool", content: "Created Large video.mp4, Large image.png, Large document.pdf and Large notes.txt in Large Media Files/." },
   ]);
-  assert.deepEqual(followUp, []);
+  assert.deepEqual(followUp.calls, []);
+  assert.equal(followUp.finishReason, "stop");
+  assert.equal(followUp.content, "Created the files in `Large Media Files/`:\n\n- `Large video.mp4`\n- `Large image.png`\n- `Large document.pdf`\n- `Large notes.txt`");
+});
+
+test("bigmedia stops without claiming creation when the tool fails or its output is unconfirmed", async () => {
+  const created = "Created Large video.mp4, Large image.png, Large document.pdf and Large notes.txt in Large Media Files/.";
+  for (const result of [
+    { content: "Error: ffmpeg failed with exit code 1" },
+    { content: "Created Large video.mp4." },
+    { content: `${created}\nCommand exited with exit code 1` },
+    { content: created, isError: true },
+  ]) {
+    const reply = await replyFor("", [
+      { role: "user", content: "fixture bigmedia" },
+      { role: "tool", ...result },
+    ]);
+    assert.deepEqual(reply.calls, []);
+    assert.equal(reply.finishReason, "stop");
+    assert.equal(reply.content, "The fixture tool result did not confirm that all four files were created. Check the tool result before opening the samples.");
+    assert.doesNotMatch(reply.content, /`Large (?:Media Files\/|video\.mp4|image\.png|document\.pdf|notes\.txt)`/);
+  }
 });
 
 test("a second video render flips the test pattern while replacing the same path", async () => {
