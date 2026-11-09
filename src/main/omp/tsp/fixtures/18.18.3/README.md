@@ -1,6 +1,6 @@
 # omp 18.18.3 HTML ask recording
 
-`ask-html-form` was recorded on macOS arm64 on 2026-11-09 with the installed `/Users/chrishaddox/.bun/bin/omp`, reporting `omp/18.18.3`. The corresponding source is upstream tag `v18.18.3`, commit `21f1188cf88b2f534c092181968cd5a4d1a9c296`. The executable was not independently rebuilt from that source.
+`ask-html-form` was recorded on macOS arm64 on 2026-11-09 with the installed Bun-managed `omp` executable, reporting `omp/18.18.3`. The corresponding source is upstream tag `v18.18.3`, commit `21f1188cf88b2f534c092181968cd5a4d1a9c296`. The executable was not independently rebuilt from that source.
 
 The scenario uses the existing Node fixture recorder and scripted loopback provider. A fresh isolated HOME, agent directory, configuration, cache, temporary directory and session directory exclude owner credentials and sessions. No Electron process or external provider is used. The assistant calls `ask` once with an HTML form containing a preselected radio group, a preselected checkbox group and a prefilled text input. An attached production collab guest answers both groups through Other, toggles an additional checkbox, finishes the checkbox group and replaces the text input.
 
