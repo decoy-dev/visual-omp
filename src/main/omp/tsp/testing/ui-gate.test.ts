@@ -281,7 +281,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		shots = process.env.TSP_GATE_SHOTS ?? await mkdtemp(join(tmpdir(), "visual-omp-tsp-gate-shots-"));
 		profile = await mkdtemp(join(tmpdir(), "vomp-chrome-gate-"));
 		await mkdir(shots, { recursive: true });
-		vite = await createServer({ configFile: false, root, cacheDir: join(profile, "vite-cache"), plugins: [react(), tailwindcss()], resolve: { alias: { "@shared": resolve(root, "src/shared"), "@": resolve(root, "src/renderer/src"), "@oh-my-pi/pi-wire": resolve(root, "src/renderer/src/collab/wire/index.ts"), "@oh-my-pi/pi-utils/marked": "marked", "@oh-my-pi/pi-utils/math-delimiters": resolve(root, "src/renderer/src/collab/math-delimiters.ts") } }, server: { host: "127.0.0.1", port: 0, hmr: false, fs: { allow: [root, realpathSync(resolve(root, "node_modules"))] } } });
+		vite = await createServer({ configFile: false, root, cacheDir: join(profile, "vite-cache"), plugins: [react(), tailwindcss()], resolve: { dedupe: ["react", "react-dom"], alias: { "@shared": resolve(root, "src/shared"), "@": resolve(root, "src/renderer/src"), "@oh-my-pi/pi-wire": resolve(root, "src/renderer/src/collab/wire/index.ts"), "@oh-my-pi/pi-utils/marked": "marked", "@oh-my-pi/pi-utils/math-delimiters": resolve(root, "src/renderer/src/collab/math-delimiters.ts") } }, server: { host: "127.0.0.1", port: 0, hmr: false, fs: { allow: [root, realpathSync(resolve(root, "node_modules"))] } } });
 		await vite.listen();
 		child = spawn(chrome, ["--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
 		const started = Promise.withResolvers<string>();
@@ -463,6 +463,49 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const label = Array.isArray(node.p?.actions) ? node.p.actions.find(action => action.id === event.act)?.label : undefined;
 		await page.clickElement(`(() => { const root = [...document.querySelectorAll('[data-tsp-id]')].find(node => node.dataset.tspId === ${JSON.stringify(event.id)}); return root && ${label ? `[...root.querySelectorAll('button')].find(button => button.textContent.trim() === ${JSON.stringify(label)})` : "root.querySelector(':scope > button')"}; })()`);
 	}
+	it("keeps form ownership through selection request gaps and delayed TSP matching", async () => {
+		const entries = askFormEvidence.sessions[0]!.text.trim().split("\n").map(line => JSON.parse(line));
+		const call = entries.flatMap(entry => entry.message?.content ?? []).find(part => part.type === "toolCall");
+		const stages = askFormEvidence.stages.slice(2, 5);
+		const scope = { hostId: "gate", generation: 1, epoch: 1 };
+		const surfaces = (stages[0]!.surfaces as unknown as TspSurfaceSnapshot[]).map(surface => ({ ...surface, documentGeneration: 1 }));
+		const snapshot = (request: CollabQuestion): TspHostSnapshot => ({ ...recorded("hook-select-open"), ...scope, revision: ++planRevision, surfaces, questionMatches: matchQuestions(scope, { ...scope, connection: 1, revision: 1, connected: true, requests: [request] }, hookQuestions(surfaces, 1)) });
+		const first = stages[0]!.request as CollabQuestion;
+		await page.evaluate(`window.gate.showAsk(${JSON.stringify(snapshot(first))},${JSON.stringify(first)},${JSON.stringify(call.arguments)})`);
+		await page.until(`!!document.querySelector('[data-question-card="${first.reqId}"]') && window.gate.claims().length === 1`);
+		await page.evaluate("window.gate.beginFormUpdates()");
+		const phases: unknown[] = [];
+		for (let index = 0; index < 2; index++) {
+			const choice = index === 0 ? "Tests" : "Other (type your own)";
+			await page.clickElement(`[...document.querySelectorAll('[data-question-card] [data-choice]')].find(button => button.textContent.trim() === ${JSON.stringify(choice)})`);
+			await page.until("window.gate.view().guest.uiRequest === null");
+			await page.evaluate("(() => { const {promise,resolve}=Promise.withResolvers(); requestAnimationFrame(()=>requestAnimationFrame(resolve)); return promise; })()");
+			expect(await page.evaluate("document.querySelector('[data-form-question]')?.getAttribute('aria-busy')")).toBe("true");
+			expect(await page.evaluate("document.querySelector('[data-form-question] fieldset')?.disabled")).toBe(true);
+			expect(await page.evaluate("window.gate.claims().length")).toBe(1);
+			await page.clickElement(`[...document.querySelectorAll('[data-question-card] [data-choice]')].find(button => button.textContent.trim() === ${JSON.stringify(choice)})`);
+			expect(await page.evaluate("window.gate.calls.length")).toBe(index + 1);
+			phases.push(await page.evaluate("({phase:'submitted',request:window.gate.view().guest.uiRequest,claims:window.gate.claims(),events:[...window.gate.formPresentationEvents]})"));
+			await page.evaluate("window.gate.advanceFormRequest(null)");
+			const settling = snapshot(stages[index]!.request as CollabQuestion);
+			settling.questionMatches = settling.questionMatches?.map(match => ({ ...match, status: "settling" }));
+			await page.evaluate(`window.gate.update(${JSON.stringify(settling)})`);
+			const next = stages[index + 1]!.request as CollabQuestion;
+			await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(next)})`);
+			await page.evaluate("(() => { const {promise,resolve}=Promise.withResolvers(); requestAnimationFrame(()=>requestAnimationFrame(resolve)); return promise; })()");
+			phases.push(await page.evaluate("({phase:'next-request-before-match',request:window.gate.view().guest.uiRequest.reqId,claims:window.gate.claims(),events:[...window.gate.formPresentationEvents]})"));
+			await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(next))})`);
+			await page.until(`!!document.querySelector('[data-question-card="${next.reqId}"]') && window.gate.claims().length === 1 && !document.querySelector('.tsp-screen')`);
+		}
+		const events = await page.evaluate<{ terminalTabId: string | null }[]>("window.gate.formPresentationEvents");
+		await writeFile(join(shots, "ask-form-update-trace.json"), JSON.stringify({ watcher: "current", formNodes: hookQuestions(surfaces, 1).map(dialog => dialog.nodeId), phases, events }, null, 2));
+		expect(events.filter(event => event.terminalTabId !== null), "a native form stays owned between its collab fields").toEqual([]);
+		await page.evaluate("window.gate.showQuestion(false)");
+		await page.until("window.gate.claims().length === 0 && !!document.querySelector('.tsp-screen')");
+		await page.evaluate("window.gate.showQuestion(true)");
+		await page.until("window.gate.claims().length === 1 && !document.querySelector('.tsp-screen')");
+	}, 30_000);
+
 	it.each([["light", false], ["dark", false], ["light", true], ["dark", true]] as const)("answers the recorded HTML form once in %s (classic=%s)", async (theme, classic) => {
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 900, deviceScaleFactor: 1, mobile: false });
 		const entries = askFormEvidence.sessions[0]!.text.trim().split("\n").map(line => JSON.parse(line));

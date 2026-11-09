@@ -126,6 +126,7 @@
 		"approvalSessionHelp": "These approvals last for this session.",
 		"messageDenies": "Sending a message now denies this request.",
 		"messageCloses": "Sending a message closes this question without stopping the reply.",
+		"formPending": "Waiting for the next question from omp.",
 		"deny": "Deny action",
 		"denyExplain": "Deny and say why",
 		"denySend": "Deny and send message",

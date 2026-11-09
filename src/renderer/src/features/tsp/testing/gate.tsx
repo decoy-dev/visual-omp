@@ -48,12 +48,26 @@ interface Gate {
 	showQuestion(visible: boolean): void;
 	showCommandResults(results: CommandResultRecord[]): void;
 	showMarkdown(text: string): void;
+	beginFormUpdates(): void;
+	advanceFormRequest(request: CollabUiRequest | null): void;
+	formPresentationEvents: { terminalTabId: string | null; requestId: number | null; claims: number }[];
 }
 const state = window as unknown as { gateSnapshot: TspHostSnapshot; gateListeners: Set<(patch: TspHostPatch) => void>; gate: Gate };
 let view = { mode: "live", readOnly: false, host: { hostId: "gate", generation: 1, phase: "live", transport: "tsp", cols: 80, rows: 24 } } as unknown as SessionView;
 let revision = 0;
 const sessionListeners = new Set<() => void>();
-const controller = { tabId: "gate", hostId: "gate", projectPath: "/tmp/vomp-fixture", sessionFile: null, getSnapshot: () => view, subscribe: (listener: () => void) => { sessionListeners.add(listener); return () => sessionListeners.delete(listener); }, ensureLive: async () => {}, restart: async () => {}, answer: (reqId: number, value?: string) => { state.gate.calls.push({ channel: "collab:ui-response", args: [reqId, value] }); } } as unknown as SessionController;
+let formAnswerGaps = false;
+function publishFormRequest(request: CollabUiRequest | null, pending = view.guest?.pendingUiRequests ?? []): void {
+	if (!view.guest) throw new Error("No form is open in the gate");
+	view = { ...view, guest: { ...view.guest, uiRequest: request, pendingUiRequests: pending } };
+	for (const listener of sessionListeners) listener();
+}
+const controller = { tabId: "gate", hostId: "gate", projectPath: "/tmp/vomp-fixture", sessionFile: null, getSnapshot: () => view, subscribe: (listener: () => void) => { sessionListeners.add(listener); return () => sessionListeners.delete(listener); }, ensureLive: async () => {}, restart: async () => {}, answer: (reqId: number, value?: string) => {
+	state.gate.calls.push({ channel: "collab:ui-response", args: [reqId, value] });
+	// GuestClient removes the displayed request immediately, retaining its pending mirror
+	// until ui-request-end. The next field and main's match arrive independently.
+	if (formAnswerGaps && view.guest?.uiRequest?.reqId === reqId) publishFormRequest(null);
+} } as unknown as SessionController;
 let askController: SessionController | null = null;
 const guest = { getSnapshot: () => view.guest! };
 
@@ -92,10 +106,15 @@ function Harness() {
 	useEffect(() => registerComposerEditor("gate", { focus: () => composer.current?.focus(), insertAtCaret: () => {} }), []);
 	useEffect(() => {
 		const calls: CapturedCall[] = [];
+		const formPresentationEvents: Gate["formPresentationEvents"] = [];
+		const unsubscribe = useApp.subscribe((next, previous) => {
+			if (next.terminalTabId !== previous.terminalTabId) formPresentationEvents.push({ terminalTabId: next.terminalTabId, requestId: view.guest?.uiRequest?.reqId ?? null, claims: presentationClaims.getSnapshot().length });
+		});
 		// Entry points select one harness mode and release the previous mode's native claims.
 		const resetModes = () => {
 			setAsk(null); setShowPlan(false); setCommandResults([]); setShowQuestion(true);
 			setMarkdown(null);
+			formAnswerGaps = false;
 			useApp.setState({ terminalTabId: null });
 			view = { ...view, working: false, guest: null, host: { ...view.host!, transport: "tsp" } };
 		};
@@ -110,6 +129,9 @@ function Harness() {
 		};
 		state.gate = {
 			calls, buttonVisible, update, view: () => view,
+			formPresentationEvents,
+			beginFormUpdates() { formPresentationEvents.length = 0; formAnswerGaps = true; },
+			advanceFormRequest(request) { publishFormRequest(request, request ? [request] : []); },
 			open(snapshot) { calls.length = 0; resetModes(); update(snapshot); setCardInstance(value => value + 1); useApp.setState({ terminalTabId: hookDialogTarget(snapshot.surfaces) ? null : "gate" }); },
 			showPlan(snapshot) { calls.length = 0; resetModes(); update(snapshot); setShowPlan(true); },
 			claims: () => presentationClaims.getSnapshot(),
@@ -131,7 +153,7 @@ function Harness() {
 					askController.answer = controller.answer;
 					askController.guestClient = () => guest as GuestClient;
 				}
-				const replica: GuestSnapshot = { phase: "live", endedReason: null, header: null, state: null, agents: [], progress: new Map(), lifecycle: new Map(), streamDone: false, backgroundTools: new Map(), notices: [], thinkingSelector: null, readOnly: false, loading: null, uiRequest: request, activeTools: new Map(result ? [] : [["form", { toolCallId: "form", toolName: "ask", args, intent: undefined, startedAt: 0 }]]), entries: [], stream: null, working: !result };
+				const replica: GuestSnapshot = { phase: "live", endedReason: null, header: null, state: null, agents: [], progress: new Map(), lifecycle: new Map(), streamDone: false, backgroundTools: new Map(), notices: [], thinkingSelector: null, readOnly: false, loading: null, uiRequest: request, pendingUiRequests: request ? [request] : [], activeTools: new Map(result ? [] : [["form", { toolCallId: "form", toolName: "ask", args, intent: undefined, startedAt: 0 }]]), entries: [], stream: null, working: !result };
 				view = { ...view, working: !result, host: { ...view.host!, transport: classic ? "classic" : "tsp" }, guest: replica };
 				update(snapshot);
 				setShowPlan(false);
@@ -144,6 +166,7 @@ function Harness() {
 				return channel === "host:tsp-snapshot" ? state.gateSnapshot : undefined;
 			},
 		};
+		return unsubscribe;
 	}, []);
 	return <MotionProvider><TooltipProvider><main className="h-full overflow-auto bg-sheet p-4 text-fg">{markdown !== null && <section aria-label="Assistant message" className="mx-auto mt-6 max-w-3xl"><Markdown text={markdown} /></section>}{ask ? <AskHarness args={ask.args} result={ask.result} showQuestion={showQuestion} /> : <><label>Message to omp<textarea ref={composer} aria-label="Message to omp" /></label><OmpDialogCard key={cardInstance} session={controller} />{showPlan && <PlanReviewCard session={controller} />}{commandResults.length > 0 && <section aria-label="Command feedback" className="mx-auto mt-6 max-w-3xl space-y-6">{commandResults.map(result => <CommandResultRow key={result.id} result={result} onDismiss={() => setCommandResults(items => items.filter(item => item.id !== result.id))} />)}</section>}</>}{!ask && open && <TerminalSheet tabId="gate" controller={controller} />}</main></TooltipProvider></MotionProvider>;
 }

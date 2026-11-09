@@ -295,6 +295,17 @@ function findRunningAsk(source: AskSource, matches: (args: unknown) => AskQuesti
 	}
 	return null;
 }
+/** The active HTML form owns one presentation across its sequential guest requests. */
+export function findRunningFormAsk(source: AskSource): { toolCallId: string; html: string } | null {
+	let html = "";
+	const call = findRunningAsk(source, args => {
+		if (!isRecord(args) || typeof args.html !== "string") return null;
+		html = args.html;
+		return [];
+	});
+	return call ? { toolCallId: call.toolCallId, html } : null;
+}
+
 
 /**
  * Only a request matching a live ask may be replaced by a user message. Sentinel labels or

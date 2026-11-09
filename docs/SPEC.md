@@ -110,6 +110,8 @@ Finished forms show each recorded question and answer, "(no answer)" for an empt
 answer and a notice when the timeout submitted the current values. Live forms use
 omp's sequential collab questions, including free-text Other answers for radio and
 checkbox groups. A matched visible question card suppresses its native TSP form.
+The previous field stays visible and disabled while omp advances to its next request,
+and the form's native presentation remains claimed through that update.
 Saved question-list calls from older omp retain their existing presentation.
 
 omp's displayed harness notices appear in the chat in all three views, presented the way omp's terminal shows them. The normal presentation removes omp's wrapper tags, and Verbose offers the original text in a "Text sent to the model" disclosure. Finished background jobs and helpers become one tool-style row per job that opens to the result; IRC messages become message cards with the body cut to three lines; process exits, advisor notes, skill invocations and other notices each get their own row or card. Verbose initially expands job results, skill text and other-notice details, while IRC message bodies stay collapsed to three lines in every view. The session tree uses the same one-line summaries.

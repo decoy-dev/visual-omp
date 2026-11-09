@@ -971,6 +971,16 @@ Claims decide suppression. An absent consumer or uncertain identity opens the un
 form in the generic omp screen. omp supplies no common form request id across the two
 channels, so this remains content matching rather than an upstream identity guarantee.
 
+The form presenter is keyed by its tool call and host generation rather than each guest
+request. After an answer, collab retires the displayed request before the next field and
+main's replacement match arrive. The presenter keeps the previous field visible and
+disabled during that gap. Its established claim can follow a matched or settling binding
+on the same physical form, scoped to the host, generation, protocol epoch and source HTML.
+Missing nodes, uncertain matching, a different form or hidden/unmounted presentation release
+that ownership. This keeps selection updates out of the omp screen without a timer or a
+blanket suppression of form fallback.
+
+
 
 While the chat is open, native hook dialogs are answerable only with a connected,
 current-host, current-epoch, current-generation collab mirror reporting no pending request, a
