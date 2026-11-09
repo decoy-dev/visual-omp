@@ -11,6 +11,7 @@ import { ArrowsClockwise } from "@phosphor-icons/react";
 import { create } from "zustand";
 import type { AppDownload, AppInstallInfo, AppInstallOperation, AppUpdateStatus, OmpUpdateRun, OmpUpdateStatus } from "@shared/contracts/updates";
 import { compareSemver } from "@shared/semver";
+import { eligibleRollbackReleases } from "@shared/rollback";
 import type { NativeSnapshot } from "@shared/contracts/native";
 import { i18n } from "../../i18n";
 import { registerCommand } from "../../registry/commands";
@@ -85,10 +86,10 @@ function checkEngineNotice(version: string, stale: boolean): void {
 }
 let appUpdateNotice: string | null = null;
 
-export function openReleaseNotes(view: ReleaseNotesView = "pending"): void {
+export function openReleaseNotes(view: ReleaseNotesView = "pending", initialVersion?: string): void {
 	if (appUpdateNotice) dismissToast(appUpdateNotice);
 	appUpdateNotice = null;
-	useApp.getState().openSheet(RELEASE_NOTES_SHEET, { view });
+	useApp.getState().openSheet(RELEASE_NOTES_SHEET, { view, ...(initialVersion ? { initialVersion } : {}) });
 }
 
 /** How long a restarted chat may take to reconnect before it counts as failed. */
@@ -237,10 +238,16 @@ export async function startAppUpdate(): Promise<void> {
 }
 
 /** Starts a confirmed earlier installer using fresh official release metadata in main. */
-export async function startAppRollback(version: string): Promise<void> {
+export async function startAppRollback(version: string, downloadOnly = false): Promise<void> {
 	const install = useUpdates.getState().install ?? (await loadInstall());
-	if (install.method !== "dmg" && install.method !== "nsis") throw new Error(i18n.t("onboarding:update.rollback.installerOnly"));
-	await startTargetedAppDownload(version, "rollback");
+	const managed = install.method === "brew" || install.method === "scoop";
+	if (install.method !== "dmg" && install.method !== "nsis" && !(managed && downloadOnly)) {
+		throw new Error(i18n.t("onboarding:update.rollback.unavailable", { defaultValue: "No earlier published installer is available for this copy." }));
+	}
+	if (!eligibleRollbackReleases(useUpdates.getState().app, install, version).length) {
+		throw new Error(i18n.t("onboarding:update.rollback.unavailable", { defaultValue: "No earlier published installer is available for this copy." }));
+	}
+	await startTargetedAppDownload(version, "rollback", downloadOnly);
 }
 
 /** Reuses the installer download without clearing the user's rollback skip. */
@@ -250,7 +257,7 @@ export async function startAppReinstall(version: string): Promise<void> {
 	await startTargetedAppDownload(version, "reinstall");
 }
 
-async function startTargetedAppDownload(version: string, operation: "rollback" | "reinstall"): Promise<void> {
+async function startTargetedAppDownload(version: string, operation: "rollback" | "reinstall", downloadOnly = false): Promise<void> {
 	if (useUpdates.getState().operation) throw new Error(i18n.t("onboarding:update.installSwitch.busy"));
 	const previousHandledDownload = handledDownload;
 	handledDownload = null;
@@ -258,9 +265,11 @@ async function startTargetedAppDownload(version: string, operation: "rollback" |
 	useUpdates.setState({ downloadTarget: version, downloadOperation: operation, download: null, installerOpened: false });
 	try {
 		useUpdates.setState({ operation: operation === "reinstall" ? "reinstall" : "update" });
-		const download = await window.vomp.invoke("updates:app:download", version);
+		const download = downloadOnly
+			? await window.vomp.invoke("updates:app:download", version, true)
+			: await window.vomp.invoke("updates:app:download", version);
 		onDownload(download);
-		useApp.getState().openSheet(APP_UPDATE_SHEET);
+		if (!downloadOnly) useApp.getState().openSheet(APP_UPDATE_SHEET);
 	} catch (error) {
 		useUpdates.setState({ operation: null });
 		handledDownload = previousHandledDownload;
@@ -275,11 +284,11 @@ async function startTargetedAppDownload(version: string, operation: "rollback" |
 }
 
 export async function retryAppDownload(): Promise<void> {
-	const { downloadTarget: target, downloadOperation } = useUpdates.getState();
+	const { downloadTarget: target, downloadOperation, download } = useUpdates.getState();
 	if (!target) return startAppUpdate();
 	try {
 		if (downloadOperation === "reinstall") await startAppReinstall(target);
-		else await startAppRollback(target);
+		else await startAppRollback(target, download?.downloadOnly);
 	} catch (error) {
 		toast({ tone: "err", message: i18n.t("onboarding:update.app.download.startFailed"), description: errorText(error) });
 	}
@@ -344,13 +353,14 @@ function onDownload(download: AppDownload): void {
 	useUpdates.setState(download.state === "downloading" ? { download, installerOpened: false } : { download, operation: null });
 	if (download.state !== "done" || handledDownload === download.filePath) return;
 	handledDownload = download.filePath;
-	void openInstaller();
+	if (!download.downloadOnly) void openInstaller();
 }
 
 /** Opens the disk image in Finder, or runs the Windows installer after confirming the app may quit. */
 export async function openInstaller(): Promise<void> {
 	const t = i18n.getFixedT(null, "onboarding");
 	if (useUpdates.getState().operation) return;
+	if (useUpdates.getState().download?.downloadOnly) return;
 	try {
 		if (useUpdates.getState().install?.method === "nsis") {
 			// True only once runInstaller resolved (it rejects when the installer can't be opened).
@@ -496,8 +506,27 @@ async function reportOutcome(): Promise<void> {
 		});
 		return;
 	}
-	if (outcome.updated) toast({ tone: "ok", message: t("update.updated", { version: outcome.running }) });
-	else {
+	if (outcome.updated) {
+		let rollbackVersion: string | undefined;
+		if (compareSemver(outcome.running, outcome.from) > 0) {
+			try {
+				await Promise.all([
+					useUpdates.getState().app ? Promise.resolve() : checkApp(false),
+					useUpdates.getState().install ? Promise.resolve() : loadInstall(),
+				]);
+				const { app, install } = useUpdates.getState();
+				rollbackVersion = eligibleRollbackReleases(app, install, outcome.from)[0]?.version;
+			} catch { /* The successful update notice remains available when metadata cannot be loaded. */ }
+		}
+		toast({
+			tone: "ok",
+			message: t("update.updated", { version: outcome.running }),
+			...(rollbackVersion ? { secondaryAction: {
+				label: t("update.rollback.toVersion", { version: rollbackVersion, defaultValue: "Roll back to v{{version}}" }),
+				onClick: () => openReleaseNotes("past", rollbackVersion),
+			} } : {}),
+		});
+	} else {
 		toast({ tone: "warn", message: t("update.notUpdated", { version: outcome.running }), description: t(`update.notUpdatedBody.${outcome.method}`) });
 	}
 }

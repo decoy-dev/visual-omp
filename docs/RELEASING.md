@@ -79,6 +79,18 @@ Use headings for the detailed part. GitHub supports `<details>` disclosures, but
 
 The update check fetches all GitHub release pages, 30 entries at a time. GitHub's ordering does not follow semantic versions, so encountering an older maintenance release cannot safely end the check. This can require additional requests during an update check; opening cached notes makes no network request. The fetched published bodies are saved with the update-check result for offline use; a failed later page keeps the previous complete result rather than presenting a partial update history. **Review update** opens notes for published versions newer than the installed version through the offered update. **Past versions** lists the installed version and earlier releases, using the bundled CHANGELOG sections where GitHub notes are missing. Unreleased entries and bundled sections newer than the installed version are excluded. Stable installations exclude prerelease notes. Release links use the app's external-link handler, Markdown images are displayed as alternative text without loading the image, and tables use the app's horizontally scrolling table frame.
 
+### Rolling back
+
+Settings > About offers **Roll back…** when an earlier published release has an installer for this computer. It opens **Past versions** with the highest eligible version selected. After a successful forward update, the update notice offers the version used before updating when it remains eligible. Development copies and installations without an eligible release cannot use these entry points.
+
+Installer copies retain the existing **Install v{version}** confirmation and download flow. Homebrew and Scoop copies instead offer **Download v{version} installer**. Main fetches the published release again, requires its platform and architecture asset and published SHA-256 digest, verifies the downloaded bytes, then reveals the file in Finder or Explorer. It never runs the managed copy's downloaded installer.
+
+The managed download saves the skipped-update boundary as the greater of the existing boundary and running version. A failed or cancelled download restores the prior boundary. Releases before 0.7.1 do not honor this preference, so the confirmation retains that warning.
+
+To use a downloaded macOS installer, quit visual-omp, run `brew uninstall --cask visual-omp` without `--zap`, then open the disk image and drag visual-omp to Applications. To return later, quit, delete `/Applications/visual-omp.app`, and run `brew install --cask decoy-dev/tap/visual-omp` to install the latest release.
+
+For Scoop, quit and run `scoop uninstall visual-omp` without `-p`, then run the downloaded installer. Global copies require `--global` in an administrator PowerShell. To return later, uninstall from Windows Settings > Apps and run `scoop install visual-omp`. The viewer offers `scoop reset visual-omp@{version}` only when detection confirms that version's folder is retained. App data and omp settings are kept. Switching to the downloaded installer stops package-manager updates from managing this copy.
+
 ## macOS signing certificate
 
 macOS keeps the permissions a person grants an app, such as App Management (which the in-app Homebrew update needs), against the app's code signature. An ad hoc signature names a hash of that one build, so every update looked like a new app and the permissions reset. Releases are therefore signed with the project's own self-signed code signing certificate, "visual-omp code signing" (SHA-1 `078ca0c88536695e0c46e2b61b43f565783af802`, valid until 2046). Each release then carries the same designated requirement, `identifier "ltd.decoy.visualomp" and certificate root = H"078ca0c8…"`, which is meant to let macOS treat it as the same app and keep its permissions; this has not yet been confirmed through an installed update. The certificate is not issued by Apple and the app is not notarized, so Gatekeeper still rejects a quarantined copy. The Homebrew cask still clears the quarantine attribute. Whether a downloaded disk image signed with the certificate offers **Open Anyway** has not been checked.
@@ -97,6 +109,8 @@ omp updates separately from visual-omp. The app runs `omp update --check` on the
 ## Testing the update flow
 
 No release has to exist to exercise these screens. Development builds (`npm run dev`, never a packaged app) read releases from the JSON file named by `VOMP_UPDATE_FEED` instead of GitHub. The file holds `releases` in the GitHub API shape, and optional fields simulate the rest: `method` (`brew`, `dmg`, `scoop`, `nsis` or `manual`), `brewCommand` (a harmless command runs by default), `installedVersion` (what the Homebrew check reads from the app on disk), `scoopGlobal` (a Scoop install for all users), `ompCheck` (`{ code, stdout, stderr }` in place of `omp update --check`), `ompUpdateCommand` (runs in place of `omp update`) and `ompVersionAfter`. Asset URLs may use plain http so a local server can stand in for GitHub. Development builds never restart themselves, so the Scoop restart itself can only be tested with packaged builds. Set `VOMP_DEV_PROFILE` to a directory name to run this instance beside another development instance.
+
+For rollback guidance fixtures, `scoopRetainedVersions` lists the earlier versions whose folders Scoop still retains. Use a release asset with a `sha256:` digest to enable managed downloads; omit the digest to exercise the unavailable state. Installer URLs may point to an isolated local server in development.
 
 ## Watching omp releases
 

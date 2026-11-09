@@ -1,14 +1,15 @@
-import { ArrowSquareOut, ArrowUp, ArrowsClockwise, CircleDashed, Minus, ShieldWarning, Sparkle, WarningDiamond, Wrench } from "@phosphor-icons/react";
+import { ArrowSquareOut, ArrowUp, ArrowsClockwise, CircleDashed, Copy, Minus, ShieldWarning, Sparkle, WarningDiamond, Wrench } from "@phosphor-icons/react";
 import { type MouseEvent, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { AppUpdateStatus } from "@shared/contracts/updates";
+import type { AppDownload, AppUpdateStatus } from "@shared/contracts/updates";
+import { eligibleRollbackReleases } from "@shared/rollback";
 import { parseChangelog } from "@shared/changelog";
 import { isReleaseHighlightCategory, parseReleaseHighlights } from "@shared/releaseHighlights";
 import { type ReleaseNotesEntry, releaseNotesForVersions } from "@shared/releaseNotes";
 import { compareSemver } from "@shared/semver";
 import type { AppInstallInfo } from "@shared/contracts/updates";
 import changelog from "../../../../../CHANGELOG.md?raw";
-import { Button, Dialog, DialogContent, PresenceSwap, Select, SelectItem, Tabs, TabsContent, TabsList, TabsTrigger } from "../../ui";
+import { Button, Dialog, DialogContent, PresenceSwap, Progress, Select, SelectItem, Tabs, TabsContent, TabsList, TabsTrigger, toast } from "../../ui";
 import { renderReleaseInlineMarkdown, renderReleaseMarkdown } from "./releaseMarkdown";
 import "./releaseNotes.css";
 
@@ -22,16 +23,18 @@ export interface ReleaseNotesViewerProps {
 	installedVersion: string | null;
 	initialView?: ReleaseNotesView;
 	installInfo?: AppInstallInfo | null;
+	initialVersion?: string;
+	download?: AppDownload | null;
 	busy?: boolean;
 	open: boolean;
 	onExited(): void;
 	close(): void;
 	onUpdate(): void;
-	onRollback(version: string): Promise<void>;
+	onRollback(version: string, downloadOnly?: boolean): Promise<void>;
 }
 
 /** A bounded update decision, with the installed version's history available in the same window. */
-export function ReleaseNotesViewer({ status, installedVersion, installInfo, initialView = "pending", open, onExited, close, onUpdate, onRollback, busy = false }: ReleaseNotesViewerProps) {
+export function ReleaseNotesViewer({ status, installedVersion, installInfo, initialView = "pending", initialVersion, download, open, onExited, close, onUpdate, onRollback, busy = false }: ReleaseNotesViewerProps) {
 	const { t } = useTranslation("onboarding");
 	const currentVersion = status?.currentVersion ?? installedVersion;
 	const skipThrough = status?.skippedThroughVersion && currentVersion && compareSemver(status.skippedThroughVersion, currentVersion) > 0 ? status.skippedThroughVersion : currentVersion;
@@ -45,7 +48,7 @@ export function ReleaseNotesViewer({ status, installedVersion, installInfo, init
 	}, [status, currentVersion, pendingVersion]);
 	const [requestedView, setView] = useState<ReleaseNotesView>(initialView);
 	const view = pendingVersion ? requestedView : "past";
-	const [selectedPast, setSelectedPast] = useState<string | null>(null);
+	const [selectedPast, setSelectedPast] = useState<string | null>(initialVersion ?? null);
 	const past = notes.past.find(entry => entry.version === selectedPast) ?? notes.past[0];
 	const [confirmVersion, setConfirmVersion] = useState<string | null>(null);
 	const [confirmOpen, setConfirmOpen] = useState(false);
@@ -57,15 +60,15 @@ export function ReleaseNotesViewer({ status, installedVersion, installInfo, init
 		(confirmOpen ? cancelButton : rollbackButton).current?.focus();
 	}, [confirmOpen]);
 	const publishedPast = past && status?.releases?.find(release => release.version.replace(/^v/, "") === past.version);
-	const eligible = !!(past && currentVersion && compareSemver(past.version, currentVersion) < 0 && publishedPast?.platformAsset);
+	const eligible = !!past && eligibleRollbackReleases(status, installInfo).some(release => release.version.replace(/^v/, "") === past.version);
 	const managed = installInfo?.method === "brew" || installInfo?.method === "scoop";
 	const installer = installInfo?.method === "dmg" || installInfo?.method === "nsis";
 	const confirm = async () => {
-		if (!confirmVersion || starting || busy) return;
+		if (!confirmVersion || starting || busy || !eligibleRollbackReleases(status, installInfo).some(release => release.version.replace(/^v/, "") === confirmVersion)) return;
 		setStarting(true);
 		setStartError(null);
 		try {
-			await onRollback(confirmVersion);
+			await onRollback(confirmVersion, managed);
 			setConfirmOpen(false);
 		} catch (error) {
 			setStartError(error instanceof Error ? error.message : String(error));
@@ -88,18 +91,18 @@ export function ReleaseNotesViewer({ status, installedVersion, installInfo, init
 				hideClose={starting}
 				footer={confirmOpen ? <>
 					<Button ref={cancelButton} variant="ghost" disabled={starting} onClick={() => setConfirmOpen(false)}>{t("update.rollback.cancel")}</Button>
-					<Button variant="primary" disabled={busy} loading={starting} onClick={() => void confirm()}>{t("update.notes.installEarlier", { version: confirmVersion })}</Button>
+					<Button variant="primary" disabled={busy || !eligible} loading={starting} onClick={() => void confirm()}>{t(managed ? "update.rollback.download" : "update.notes.installEarlier", { version: confirmVersion })}</Button>
 				</> : <>
 					<Button variant="ghost" icon={<ArrowSquareOut />} onClick={() => void window.vomp.invoke("app:openExternal", RELEASES_URL)}>{t("update.notes.allReleases")}</Button>
 					<Button variant="ghost" onClick={close}>{t("update.app.close")}</Button>
 					{view === "pending" && pendingVersion && <Button variant="primary" disabled={busy} onClick={onUpdate}>{t("update.notes.install", { version: pendingVersion })}</Button>}
-					{view === "past" && eligible && installer && past && <Button ref={rollbackButton} disabled={busy} variant="primary" onClick={() => { setStartError(null); setConfirmVersion(past.version); setConfirmOpen(true); }}>{t("update.notes.installEarlier", { version: past.version })}</Button>}
+					{view === "past" && eligible && (installer || managed) && past && <Button ref={rollbackButton} disabled={busy} variant="primary" onClick={() => { setStartError(null); setConfirmVersion(past.version); setConfirmOpen(true); }}>{t(managed ? "update.rollback.download" : "update.notes.installEarlier", { version: past.version })}</Button>}
 				</>}
 			>
 				{confirmOpen ? <div className="flex flex-col gap-stack text-md text-fg-muted">
-					<p>{t("update.rollback.preserved")}</p>
-					<p>{t(confirmVersion && compareSemver(confirmVersion, "0.7.1") < 0 ? "update.rollback.legacySkip" : "update.rollback.skip", { version: skipThrough })}</p>
-					<p>{t(installInfo?.method === "nsis" ? "update.rollback.nsis" : "update.rollback.dmg")}</p>
+					<p>{t(managed ? "update.rollback.managedConfirmation" : "update.rollback.preserved")}</p>
+					<p>{t(confirmVersion && compareSemver(confirmVersion, "0.7.1") < 0 ? managed ? "update.rollback.managedLegacySkip" : "update.rollback.legacySkip" : "update.rollback.skip", { version: skipThrough })}</p>
+					<p>{t(managed ? "update.rollback.managedLead" : installInfo?.method === "nsis" ? "update.rollback.nsis" : "update.rollback.dmg")}</p>
 					{startError && <p role="alert" className="text-err">{t("update.app.download.failed", { reason: startError })}</p>}
 				</div> : <>
 				{status?.error && <p role="status" className="mb-stack text-sm text-fg-muted">{t("update.notes.offline")}</p>}
@@ -123,7 +126,8 @@ export function ReleaseNotesViewer({ status, installedVersion, installInfo, init
 						<PresenceSwap swapKey={past?.version ?? "empty"}>
 							{past ? <ReleaseEntry entry={past} installed={past.version === currentVersion} /> : <p className="py-card text-fg-muted">{t(currentVersion ? "update.notes.empty" : "update.notes.loading")}</p>}
 						</PresenceSwap>
-						{eligible && managed && installInfo && past && <DowngradeSteps key={past.version} method={installInfo.method as "brew" | "scoop"} version={past.version} global={installInfo.scoopGlobal} />}
+						{managed && publishedPast?.platformAsset && !eligible && currentVersion && past && compareSemver(past.version, currentVersion) < 0 && <p role="status" className="mt-card text-sm text-fg-muted">{t("update.rollback.digestUnavailable")}</p>}
+						{eligible && managed && installInfo && past && <ManagedRollbackSteps key={past.version} method={installInfo.method as "brew" | "scoop"} version={past.version} global={installInfo.scoopGlobal} retained={installInfo.scoopRetainedVersions?.includes(past.version) ?? false} download={download?.version === past.version && download.downloadOnly ? download : null} />}
 					</TabsContent>
 				</Tabs>
 				</>}
@@ -132,31 +136,46 @@ export function ReleaseNotesViewer({ status, installedVersion, installInfo, init
 	);
 }
 
-function DowngradeSteps({ method, version, global }: { method: "brew" | "scoop"; version: string; global: boolean }) {
+export function ManagedRollbackSteps({ method, version, global, retained, download }: { method: "brew" | "scoop"; version: string; global: boolean; retained: boolean; download?: AppDownload | null }) {
 	const { t } = useTranslation("onboarding");
-	const [expanded, setExpanded] = useState(false);
 	return (
-		<div className="mt-card border-t border-border pt-card text-sm">
-			<p className="text-fg-muted">{t(`update.rollback.${method}Managed`)}</p>
-			<Button size="sm" variant="secondary" className="mt-stack" onClick={() => setExpanded(value => !value)} aria-expanded={expanded}>
-				{t(expanded ? "update.rollback.hideSteps" : "update.rollback.showSteps")}
-			</Button>
-			{expanded && <div className="mt-card flex flex-col gap-stack text-fg-muted">
-				{method === "brew" ? <>
-					<p>{t("update.rollback.brewHistory", { version })}</p>
-					<Button size="sm" variant="ghost" icon={<ArrowSquareOut />} className="self-start" onClick={() => void window.vomp.invoke("app:openExternal", "https://github.com/decoy-dev/visual-omp/commits/main/Casks/visual-omp.rb")}>{t("update.rollback.openHistory")}</Button>
-					<p>{t("update.rollback.brewInstall")}</p>
-					<code className="select-all whitespace-pre-wrap break-all rounded-md border border-border bg-inset px-3 py-2 font-mono text-sm text-fg">{"brew uninstall --cask visual-omp\nbrew install --cask /path/to/older/visual-omp.rb"}</code>
-				</> : <>
-					<p>{t("update.rollback.scoopHistory", { version })}</p>
-					<p>{t(global ? "update.rollback.scoopGlobal" : "update.rollback.scoopLocal")}</p>
-					<code className="select-all break-all rounded-md border border-border bg-inset px-3 py-2 font-mono text-sm text-fg">{`scoop reset visual-omp@${version}`}</code>
-					<p>{t("update.rollback.scoopUnavailable")}</p>
-					<Button size="sm" variant="ghost" icon={<ArrowSquareOut />} className="self-start" onClick={() => void window.vomp.invoke("app:openExternal", "https://github.com/decoy-dev/visual-omp/commits/main/bucket/visual-omp.json")}>{t("update.rollback.openHistory")}</Button>
-				</>}
+		<div className="mt-card border-t border-border pt-card text-sm text-fg-muted">
+			<p>{t("update.rollback.managedLead")}</p>
+			<p className="mt-stack">{t("update.rollback.managedPreserved")}</p>
+			{download && <div role="status" className="mt-card">
+				{download.state === "downloading" ? <>
+					<p className="mb-row">{t("update.rollback.downloading", { version })}</p>
+					<Progress value={download.total ? download.received / download.total * 100 : undefined} showValue aria-label={t("update.app.download.label", { file: download.fileName })} />
+					<Button size="sm" variant="ghost" className="mt-row" onClick={() => void window.vomp.invoke("updates:app:cancelDownload")}>{t("update.app.download.cancel")}</Button>
+				</> : download.state === "done" ? <p className="text-ok">{t("update.rollback.downloaded", { path: download.filePath })}</p>
+					: <p className="text-err">{t(download.state === "cancelled" ? "update.app.download.cancelled" : "update.app.download.failed", { reason: download.error })}</p>}
+			</div>}
+			<ol className="mt-card list-decimal space-y-stack pl-5">
+				<li>{t(method === "brew" ? "update.rollback.brewQuit" : global ? "update.rollback.scoopGlobalQuit" : "update.rollback.scoopQuit")}
+					<RollbackCommand command={method === "brew" ? "brew uninstall --cask visual-omp" : `scoop uninstall visual-omp${global ? " --global" : ""}`} />
+				</li>
+				<li>{t(method === "brew" ? "update.rollback.brewInstall" : "update.rollback.scoopInstall")}</li>
+			</ol>
+			<p className="mt-card">{t(method === "brew" ? "update.rollback.brewReturn" : "update.rollback.scoopReturn")}</p>
+			<RollbackCommand command={method === "brew" ? "brew install --cask decoy-dev/tap/visual-omp" : "scoop install visual-omp"} />
+			{method === "scoop" && retained && <div className="mt-card">
+				<p>{t("update.rollback.scoopRetained", { version })}</p>
+				<RollbackCommand command={`scoop reset visual-omp@${version}${global ? " --global" : ""}`} />
 			</div>}
 		</div>
 	);
+}
+
+function RollbackCommand({ command }: { command: string }) {
+	const { t } = useTranslation("onboarding");
+	const copy = () => void navigator.clipboard.writeText(command).then(
+		() => toast({ tone: "ok", message: t("update.reinstall.copied") }),
+		error => toast({ tone: "err", message: t("update.reinstall.copyFailed", { reason: String(error) }) }),
+	);
+	return <div className="mt-row">
+		<code className="block select-all whitespace-pre-wrap break-all rounded-md border border-border bg-inset px-3 py-2 font-mono text-sm text-fg">{command}</code>
+		<Button size="sm" variant="ghost" icon={<Copy aria-hidden />} className="mt-row" onClick={copy}>{t("update.reinstall.copy")}</Button>
+	</div>;
 }
 
 function ReleaseEntry({ entry, installed }: { entry: ReleaseNotesEntry; installed: boolean }) {

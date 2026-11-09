@@ -1490,9 +1490,20 @@ version's release track, and select its trusted matching installer. The renderer
 an installer URL. Rollback and reinstall reuse the existing download, trusted redirect, byte-count
 verification, optional supplied SHA256 digest validation and installer execution path. A supplied
 digest must be supported and match; an absent digest remains compatible with older releases.
-The renderer offers these targeted downloads only for disk-image and NSIS installations. The viewer
-explains package-manager downgrade or reinstall steps instead. macOS still requires a manual
+Disk-image and NSIS installations retain their installer execution path: macOS requires a manual
 copy from the disk image and app restart, and Windows runs the installer after closing the app.
+Homebrew and Scoop rollback use an explicit download-only argument. This mode accepts only an
+earlier release with a published SHA-256 digest, verifies the download and calls
+`shell.showItemInFolder`. `runInstaller` refuses download-only files. Preparation flushes
+`max(existing boundary, running version)` to preferences; download failure or cancellation restores
+the previous boundary. No pending installation outcome is recorded for this manual switch.
+The release viewer explains uninstalling the managed copy without deleting app data, installing
+the downloaded copy and returning to the latest package-manager version later.
+
+`shared/rollback.ts` defines entry-point eligibility. About preselects its highest eligible earlier
+release; a successful forward-update notice preselects its previous version when eligible.
+The viewer revalidates the selected release before confirmation, and main freshly loads its
+metadata before downloading.
 
 Package-manager reinstall instructions preserve the existing package-manager installation
 records. Homebrew's `brew reinstall --cask visual-omp` uses the currently published cask.

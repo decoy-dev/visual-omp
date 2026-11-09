@@ -142,19 +142,22 @@ function StatusLine({ text, ok = false, waiting = false }: { text: string; ok?: 
 	);
 }
 
-export function ReleaseNotesSheet({ close, props }: SheetProps<{ view?: ReleaseNotesView }>) {
+export function ReleaseNotesSheet({ close, props }: SheetProps<{ view?: ReleaseNotesView; initialVersion?: string }>) {
 	const presence = useSheetPresence();
 	const status = useUpdates(state => state.app);
 	const installInfo = useUpdates(state => state.install);
 	const busy = useUpdates(state => !!state.operation);
+	const download = useUpdates(state => state.download);
 	useEffect(() => { if (!useUpdates.getState().install) void loadInstall(); }, []);
 	const info = useResource(() => window.vomp.invoke("app:info"), []);
 	return <ReleaseNotesViewer
 		status={status}
 		installedVersion={info.data?.version ?? null}
 		installInfo={installInfo}
+		download={download}
 		busy={busy}
 		initialView={props?.view}
+		initialVersion={props?.initialVersion}
 		open={presence.open}
 		onExited={presence.exited}
 		close={close}

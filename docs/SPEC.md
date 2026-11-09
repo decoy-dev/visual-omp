@@ -290,8 +290,10 @@ Current chats, navigation shortcuts and preview release are described under Sess
   Footer actions wrap at narrow widths and larger text sizes. Chats and omp settings are preserved,
   and omp's installation remains unchanged. A missing package manager shows brew.sh or scoop.sh
   and README commands, with **Check package manager again** after installation.
-- About's **Read release notes** and **Review update** actions open the same release history. An
-  earlier release with a trusted installer for this computer offers **Install v{version}**. A
+- About's **Read release notes** and **Review update** actions open the same release history.
+  **Roll back…** opens Past versions at the highest eligible earlier published release. After a
+  successful forward update, the notice offers **Roll back to v{from}** when that release remains
+  eligible. For installer copies, an earlier release with a trusted installer offers **Install v{version}**. A
   confirmation names the running and selected versions, explains the restart and preserves chats
   and omp settings. Confirming reuses the existing download progress, cancel, error and installer
   controls. Main fetches the official release metadata again before selecting the earlier installer.
@@ -317,10 +319,14 @@ Current chats, navigation shortcuts and preview release are described under Sess
 - On macOS, completing a rollback requires opening the downloaded disk image, quitting visual-omp,
   copying the app into Applications with **Replace**, and reopening it. On Windows, running the
   downloaded installer closes visual-omp; the user completes setup and reopens the app.
-- Homebrew and Scoop installations offer **Show downgrade steps** instead of an in-app rollback
-  download. Homebrew users select an older cask from the tap's history. Scoop users can reset to a
-  previously installed version if its files remain, or consult the bucket's historical manifest
-  and available download. Package-manager installs keep their own installation records.
+- Homebrew and Scoop installations offer **Download v{version} installer** for an earlier
+  published release with a trusted platform asset and published SHA-256 digest. Main verifies
+  and reveals the download without running it. Numbered instructions explain switching to the
+  installer, uninstalling the managed copy without deleting app data, and returning to the latest
+  package-manager version later. Global Scoop copies require administrator PowerShell and
+  `--global`; `scoop reset` appears only for a version Scoop still retains.
+  Download preparation persists the greater of the existing rollback boundary and the running
+  version. Failed or cancelled downloads restore the previous boundary.
 - A confirmed installer rollback saves the version being left as `appUpdateSkipThrough` in app
   preferences. In visual-omp 0.7.1 and later, background checks suppress versions at or below this
   ceiling and offer a newer version above it. Running a version strictly newer than the ceiling

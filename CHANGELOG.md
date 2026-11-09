@@ -4,6 +4,14 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ## [Unreleased]
 
+### New
+
+- Settings > About offers Roll back, and the successful update notice links to the version you used before updating. Both open Past versions with an eligible earlier release selected.
+
+### Fixed
+
+- Homebrew and Scoop rollback guidance now offers a verified installer download and explains how to switch to it while keeping app data and omp settings. Managed downloads require a published SHA-256 checksum and never run the installer automatically.
+
 ## [0.7.11] - 2026-11-06
 
 visual-omp 0.7.11 makes release notes easier to scan and fixes file mentions for paths that contain spaces. It requires omp 18.15.0 or later.

@@ -137,6 +137,31 @@ npx vitest run src/main/services/release-tour.test.ts
 
 These tests cover manifest and argument handling, layout construction, session validation, development-only startup boundaries and fixture calls. Use headless preparation as the integration check against the installed omp binary. UI acceptance belongs to the owner.
 
+## Rollback checks without Electron
+
+Run the opt-in headless check from a worktree with its existing dependencies:
+
+```sh
+VOMP_ROLLBACK_CHECK_DIR=/absolute/evidence-folder npx vitest run scripts/dev/rollback/check.test.ts
+```
+
+The check starts Chrome with a disposable profile and Vite with a private dependency cache,
+then stops both. `CHROME_BIN` can select Chrome. It saves 24 light and dark screenshots covering
+About, the successful-update notice, Past versions for installer, Homebrew and Scoop copies,
+verified managed downloads, and global Scoop guidance with a retained version.
+
+The fixture preload forwards app update IPC to the production main handlers through a private
+loopback server. Main reads a temporary `VOMP_UPDATE_FEED`; its fetch boundary rejects external
+network requests. Four flow checks cover a verified download, an existing higher rollback boundary,
+a missing published digest, and boundary restoration after a checksum failure. `evidence.json`
+records preference transitions, persisted boundaries, download results and shell calls. Installer
+reveal is recorded at the Electron shell boundary; installers and package-manager commands never run.
+No installed copy, package-manager records or ordinary omp profile is used.
+
+Scoop screenshots use Windows platform data on macOS with the host platform's fixture asset.
+Explorer reveal and the published NSIS installer still require Windows checks. The owner reviews
+the screenshots and confirms the release's native behavior separately.
+
 ## Heavy-chat speed measurement
 
 This is measurement only. It does not change application behavior or start omp. The fixture expands the recorded omp 18.16 collab messages in `src/renderer/src/collab/lib/fixtures/` into a 1,400-entry JSONL chat and four 350-entry helper files under an isolated scratch agent directory. It includes prose, code, thinking, eight tool kinds and five small images. A second 12-entry chat is used for switching.

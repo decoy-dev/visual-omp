@@ -36,6 +36,8 @@ export interface AppInstallInfo {
 	 * needs an administrator PowerShell, so the app shows the command instead of running it.
 	 */
 	scoopGlobal: boolean;
+	/** Version directories Scoop still retains, excluding its `current` link. */
+	scoopRetainedVersions?: string[];
 }
 
 /** Direct copies can transfer to their platform's package manager. */
@@ -73,6 +75,8 @@ export interface AppDownload {
 	fileName: string;
 	/** Destination in the Downloads folder. */
 	filePath: string;
+	/** Managed rollback installers are verified and revealed, and can never be run by the app. */
+	downloadOnly?: boolean;
 	received: number;
 	/** Bytes; null when the server sent no length. */
 	total: number | null;
@@ -215,9 +219,9 @@ declare module "../ipc" {
 		"updates:app:brewSettled": { args: []; result: void };
 		/**
 		 * Download the latest installer, or a selected earlier or running release fetched from GitHub.
-		 * Uses the same trusted asset selection and download verification for either direction.
+		 * Managed rollback requires explicit download-only mode and a published SHA-256 checksum.
 		 */
-		"updates:app:download": { args: [version?: string]; result: AppDownload };
+		"updates:app:download": { args: [version?: string, downloadOnly?: boolean]; result: AppDownload };
 		/** Fresh availability and package-manager guidance for reinstalling the running version. */
 		"updates:app:reinstallInfo": { args: []; result: AppReinstallInfo };
 		/** An explicit choice to update after checking clears the rollback skip. */

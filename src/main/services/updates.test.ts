@@ -10,6 +10,7 @@ import {
 	detectInstallMethod,
 	effectiveUpdateSkip,
 	fetchInstaller,
+	hasInstallerSha256,
 	installerAsset,
 	isScoopGlobal,
 	parseOmpUpdateCheck,
@@ -18,6 +19,7 @@ import {
 	reinstallAvailability,
 	releaseSummary,
 	scoopLayout,
+	scoopRetainedVersions,
 	selectLatestRelease,
 	toReleaseNotes,
 	trustedCachedStatus,
@@ -214,6 +216,16 @@ describe("installerAsset", () => {
 		const local: ReleaseAsset[] = [{ name: "visual-omp-0.2.0-mac-arm64.dmg", url: "http://127.0.0.1:8765/x.dmg", size: 1 }];
 		expect(installerAsset(local, "v0.2.0", packaged)).toBeNull();
 		expect(installerAsset(local, "v0.2.0", { ...packaged, anyHost: true })?.url).toBe("http://127.0.0.1:8765/x.dmg");
+	});
+});
+
+describe("published installer SHA-256", () => {
+	it("requires a complete published SHA-256 digest for managed downloads", () => {
+		for (const digest of [undefined, null, "", "sha512:abc", `sha256:${"0".repeat(63)}`, `sha256:${"g".repeat(64)}`]) {
+			expect(hasInstallerSha256(digest)).toBe(false);
+		}
+		expect(hasInstallerSha256(`sha256:${"a".repeat(64)}`)).toBe(true);
+		expect(hasInstallerSha256(`sha256:${"A".repeat(64)}`)).toBe(true);
 	});
 });
 
@@ -445,6 +457,20 @@ describe("detectInstallMethod", () => {
 });
 
 describe("Scoop locations", () => {
+	it("reports only retained version directories, ordered newest first", () => {
+		const entries = [
+			{ name: "current", isDirectory: () => true },
+			{ name: "0.7.2", isDirectory: () => true },
+			{ name: "0.7.10", isDirectory: () => true },
+			{ name: "0.7.12-beta.1", isDirectory: () => true },
+			{ name: "0.7.1", isDirectory: () => false },
+			{ name: "install.json", isDirectory: () => false },
+			{ name: "old-backup", isDirectory: () => true },
+		];
+		expect(scoopRetainedVersions(entries)).toEqual(["0.7.12-beta.1", "0.7.10", "0.7.2"]);
+		expect(scoopRetainedVersions([])).toEqual([]);
+	});
+
 	it("finds the app folder and root around the current link or a version folder, in any letter case", () => {
 		const layout = { root: "C:\\Users\\me\\scoop", appDir: "C:\\Users\\me\\scoop\\apps\\visual-omp" };
 		expect(scoopLayout("C:\\Users\\me\\scoop\\apps\\visual-omp\\current\\visual-omp.exe")).toEqual(layout);

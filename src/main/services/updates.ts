@@ -99,10 +99,15 @@ export function toAssets(release: GitHubRelease): ReleaseAsset[] {
 	return release.assets.map(asset => ({ name: asset.name, url: asset.browser_download_url, size: asset.size, ...(asset.digest !== undefined ? { digest: asset.digest } : {}) }));
 }
 
+/** Managed downloads require GitHub's published SHA-256 digest before any bytes are fetched. */
+export function hasInstallerSha256(digest: string | null | undefined): boolean {
+	return typeof digest === "string" && /^sha256:[a-fA-F0-9]{64}$/.test(digest);
+}
+
 /** Missing digests remain compatible with older GitHub assets; supplied digests fail closed. */
 export function verifyInstallerDigest(actualSha256: string, expected: string | null | undefined): void {
 	if (expected == null) return;
-	if (!/^sha256:[a-fA-F0-9]{64}$/.test(expected)) throw new Error("The release supplied an unsupported installer checksum.");
+	if (!hasInstallerSha256(expected)) throw new Error("The release supplied an unsupported installer checksum.");
 	if (actualSha256.toLowerCase() !== expected.slice("sha256:".length).toLowerCase()) {
 		throw new Error("The installer checksum did not match the release. Download the installer again.");
 	}
@@ -316,6 +321,14 @@ export function scoopLayout(exePath: string): ScoopLayout | null {
 	const apps = win32.dirname(appDir);
 	if (win32.basename(appDir).toLowerCase() !== SCOOP_APP || win32.basename(apps).toLowerCase() !== "apps") return null;
 	return { root: win32.dirname(apps), appDir };
+}
+
+/** Only retained version directories authorize Scoop's reset command. */
+export function scoopRetainedVersions(entries: readonly { name: string; isDirectory(): boolean }[]): string[] {
+	return entries
+		.filter(entry => entry.isDirectory() && parseSemver(entry.name) !== null)
+		.map(entry => entry.name)
+		.sort((a, b) => compareSemver(b, a));
 }
 
 /**

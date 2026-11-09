@@ -1,6 +1,7 @@
 import { ArrowsClockwise, ArrowSquareOut, Bug, Copy } from "@phosphor-icons/react";
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { eligibleRollbackReleases } from "@shared/rollback";
 import {
 	APP_UPDATE_SHEET,
 	checkForUpdates,
@@ -51,6 +52,7 @@ export function AboutSection() {
 	const open = (url: string) => void window.vomp.invoke("app:openExternal", url);
 	const openSheet = (id: string) => useApp.getState().openSheet(id);
 	const checking = updates.checkingApp || updates.checkingOmp;
+	const rollbackVersion = eligibleRollbackReleases(updates.app, updates.install)[0]?.version;
 	const openLogs = async () => {
 		setOpeningLogs(true);
 		setLogsError(false);
@@ -77,7 +79,7 @@ export function AboutSection() {
 			return {
 				text: t("onboarding:update.rollback.aboutDownloading", { version: download.version, progress: percent === null ? "" : ` (${percent}%)` }),
 				tone: "busy",
-				action: { label: t("about.showProgress"), run: () => openSheet(APP_UPDATE_SHEET) },
+				action: { label: t("about.showProgress"), run: () => download.downloadOnly ? openReleaseNotes("past", download.version) : openSheet(APP_UPDATE_SHEET) },
 			};
 		}
 		if (!app) return { text: t("about.notChecked"), tone: "accent" };
@@ -174,6 +176,14 @@ export function AboutSection() {
 				</Button>
 				<Button variant="ghost" onClick={() => openReleaseNotes(updates.app?.updateAvailable ? "pending" : "past")}>
 					{t("about.releaseNotes")}
+				</Button>
+				<Button
+					variant="ghost"
+					disabled={!rollbackVersion || !!updates.operation}
+					title={!rollbackVersion ? t("onboarding:update.rollback.unavailable", { defaultValue: "No earlier published installer is available for this copy." }) : undefined}
+					onClick={() => openReleaseNotes("past", rollbackVersion)}
+				>
+					{t("onboarding:update.rollback.action", { defaultValue: "Roll back…" })}
 				</Button>
 				{ompVersion && <Button variant="ghost" onClick={openOmpNotes}>
 					{t("onboarding:update.omp.whatsNew")}

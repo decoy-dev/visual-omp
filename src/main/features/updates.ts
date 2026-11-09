@@ -44,6 +44,7 @@ import {
 	effectiveUpdateSkip,
 	fetchInstaller,
 	fetchReleaseHistory,
+	hasInstallerSha256,
 	installerAsset,
 	isScoopGlobal,
 	parseOmpUpdateCheck,
@@ -51,6 +52,7 @@ import {
 	releaseSummary,
 	reinstallAvailability,
 	scoopLayout,
+	scoopRetainedVersions,
 	scoopUpdateScript,
 	selectLatestRelease,
 	toAssets,
@@ -89,6 +91,7 @@ const DevFeed = z.object({
 	brewCommand: z.string().optional(),
 	installedVersion: z.string().nullable().optional(),
 	scoopGlobal: z.boolean().optional(),
+	scoopRetainedVersions: z.array(z.string()).optional(),
 	ompCheck: z
 		.object({ code: z.number().default(0), stdout: z.string().default(""), stderr: z.string().default("") })
 		.optional(),
@@ -295,7 +298,10 @@ async function detectInstall(): Promise<AppInstallInfo> {
 	let command: string | null = null;
 	if (method === "brew") command = feed ? (feed.brewCommand ?? SIMULATED_BREW_COMMAND) : brewUpgradeCommand(brew ?? "brew");
 	const scoopGlobal = feed?.scoopGlobal ?? (scoop && layout !== null && isScoopGlobal(layout.root, process.env, await scoopGlobalPath()));
-	return { method, appPath, command, scoopGlobal };
+	const retained = method === "scoop"
+		? feed?.scoopRetainedVersions ?? (scoop && layout ? scoopRetainedVersions(await readdir(layout.appDir, { withFileTypes: true }).catch(() => [])) : [])
+		: undefined;
+	return { method, appPath, command, scoopGlobal, ...(retained ? { scoopRetainedVersions: retained } : {}) };
 }
 
 /** The `global_path` setting in Scoop's config.json, where Scoop itself reads it; undefined when unset or unreadable. */
@@ -357,28 +363,31 @@ function publishDownload(): void {
 	if (download) broadcast("updates:app:download", { ...download });
 }
 
-async function startDownload(requestedVersion?: string): Promise<AppDownload> {
+async function startDownload(requestedVersion?: string, downloadOnly = false): Promise<AppDownload> {
 	if (downloadStarting) throw new Error("An installer download is already starting.");
 	installOperation.begin(requestedVersion === app.getVersion() ? "reinstall" : "update");
 	downloadStarting = true;
 	try {
-		return await prepareDownload(requestedVersion);
+		return await prepareDownload(requestedVersion, downloadOnly);
 	} finally {
 		downloadStarting = false;
 		if (download?.state !== "downloading" && installOperation.current) installOperation.end(installOperation.current);
 	}
 }
 
-async function prepareDownload(requestedVersion?: string): Promise<AppDownload> {
+async function prepareDownload(requestedVersion?: string, downloadOnly = false): Promise<AppDownload> {
 	let version: string | null;
 	let asset;
+	if (downloadOnly && requestedVersion === undefined) throw new Error("Choose an earlier release to download its installer.");
 	if (requestedVersion !== undefined) {
 		version = requestedVersion.replace(/^v/, "");
 		const runningVersion = app.getVersion().replace(/^v/, "");
 		const order = compareSemver(version, runningVersion);
 		if (!parseSemver(version) || order > 0 || (order === 0 && version !== runningVersion)) throw new Error("Choose the exact installed version or a strictly earlier release.");
 		const { method } = await installInfo();
-		if (method === "brew" || method === "scoop") throw new Error("Use the package manager that installed this copy to reinstall it or install an earlier version.");
+		const managed = method === "brew" || method === "scoop";
+		if (managed && !downloadOnly) throw new Error("Use the package manager that installed this copy to reinstall it or install an earlier version.");
+		if (downloadOnly && (!managed || order >= 0)) throw new Error("Download-only mode requires an earlier release of a package-managed copy.");
 		if (version === runningVersion && (!app.isPackaged || method === "manual")) throw new Error("This copy cannot reinstall itself.");
 		// Cached renderer metadata never authorizes an installer. Fetch the published release again.
 		const releases = toReleaseNotes(await fetchReleases(app.getVersion()), app.getVersion(), trust);
@@ -389,23 +398,42 @@ async function prepareDownload(requestedVersion?: string): Promise<AppDownload> 
 		asset = status.updateAvailable && status.tag ? installerAsset(status.assets, status.tag, trust) : null;
 	}
 	if (!version || !asset) throw new Error("This release has no installer for this computer.");
-	if (download?.state === "downloading" && download.version !== version) throw new Error("Cancel the current installer download before choosing another version.");
-	if (download?.version === version) {
+	if (downloadOnly && !hasInstallerSha256(asset.digest)) throw new Error("This release has no published SHA-256 checksum for its installer.");
+	if (download?.state === "downloading" && (download.version !== version || !!download.downloadOnly !== downloadOnly)) throw new Error("Cancel the current installer download before choosing another version.");
+	if (download?.version === version && !!download.downloadOnly === downloadOnly) {
 		if (download.state === "downloading") return { ...download };
-		if (download.state === "done" && (await exists(download.filePath))) return { ...download };
+		// Managed downloads are verified again against freshly fetched metadata, including their digest.
+		if (!downloadOnly && download.state === "done" && (await exists(download.filePath))) return { ...download };
 	}
 	const url = new URL(asset.url);
 	const fileName = basename(asset.name);
 	const filePath = join(app.getPath("downloads"), fileName);
-	const current: AppDownload = { version, fileName, filePath, received: 0, total: asset.size || null, state: "downloading", error: null };
+	const current: AppDownload = { version, fileName, filePath, ...(downloadOnly ? { downloadOnly: true } : {}), received: 0, total: asset.size || null, state: "downloading", error: null };
+	let rollbackSkip: { previous: string | null } | undefined;
+	if (downloadOnly) {
+		rollbackSkip = { previous: updateSkip() };
+		const boundary = rollbackSkip.previous && compareSemver(rollbackSkip.previous, app.getVersion()) > 0 ? rollbackSkip.previous : app.getVersion();
+		try {
+			setPrefs({ appUpdateSkipThrough: boundary });
+			await flushPrefs();
+		} catch (error) {
+			setPrefs({ appUpdateSkipThrough: rollbackSkip.previous });
+			await flushPrefs();
+			throw error;
+		}
+		if (appStatus) {
+			appStatus = applyUpdateSkip(appStatus);
+			broadcast("updates:app", appStatus);
+		}
+	}
 	const abort = new AbortController();
 	download = current;
 	downloadAbort = abort;
-	void receive(url, current, abort.signal, asset.digest, asset.size);
+	void receive(url, current, abort.signal, asset.digest, asset.size, rollbackSkip);
 	return { ...current };
 }
 
-async function receive(url: URL, current: AppDownload, signal: AbortSignal, digest: string | null | undefined, expectedSize: number): Promise<void> {
+async function receive(url: URL, current: AppDownload, signal: AbortSignal, digest: string | null | undefined, expectedSize: number, rollbackSkip?: { previous: string | null }): Promise<void> {
 	const partPath = `${current.filePath}.download`;
 	let file: FileHandle | null = null;
 	let lastEmit = 0;
@@ -439,13 +467,32 @@ async function receive(url: URL, current: AppDownload, signal: AbortSignal, dige
 			throw new Error("The installer size did not match the release. Download the installer again.");
 		}
 		verifyInstallerDigest(hash.digest("hex"), digest);
+		signal.throwIfAborted();
 		await rename(partPath, current.filePath);
+		signal.throwIfAborted();
+		if (current.downloadOnly) shell.showItemInFolder(current.filePath);
 		current.state = "done";
 	} catch (error) {
 		await file?.close().catch(() => {});
-		await rm(partPath, { force: true });
 		if (signal.aborted) current.state = "cancelled";
 		else Object.assign(current, { state: "failed", error: error instanceof Error ? error.message : String(error) });
+		try {
+			await rm(partPath, { force: true });
+		} catch (cleanupError) {
+			Object.assign(current, { state: "failed", error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError) });
+		}
+		if (rollbackSkip) {
+			setPrefs({ appUpdateSkipThrough: rollbackSkip.previous });
+			try {
+				await flushPrefs();
+			} catch (restoreError) {
+				Object.assign(current, { state: "failed", error: restoreError instanceof Error ? restoreError.message : String(restoreError) });
+			}
+			if (appStatus) {
+				appStatus = applyUpdateSkip(appStatus);
+				broadcast("updates:app", appStatus);
+			}
+		}
 	}
 	if (download === current) {
 		downloadAbort = null;
@@ -490,6 +537,7 @@ async function consumeOutcome(): Promise<AppUpdateOutcome | null> {
 
 async function runInstaller(): Promise<void> {
 	if (download?.state !== "done") throw new Error("The installer hasn't finished downloading.");
+	if (download.downloadOnly) throw new Error("This installer was downloaded for manual installation. Open it from the Downloads folder after following the package-manager steps.");
 	const { method } = await installInfo();
 	const rollback = compareSemver(download.version, app.getVersion()) < 0;
 	const reinstall = compareSemver(download.version, app.getVersion()) === 0;
@@ -724,7 +772,7 @@ export function register(): void {
 	handle("updates:app:check", (force, includeSkipped) => checkApp(force === true, includeSkipped === true));
 	handle("updates:app:install", () => installInfo());
 	handle("updates:app:reinstallInfo", () => reinstallInfo());
-	handle("updates:app:download", version => startDownload(version));
+	handle("updates:app:download", (version, downloadOnly) => startDownload(version, downloadOnly === true));
 	handle("updates:app:resume", () => {
 		if (installOperation.current) throw new Error("An installation is in progress. Wait for it to finish.");
 		return resumeUpdates();
