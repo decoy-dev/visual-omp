@@ -1165,10 +1165,19 @@ Preparation remains cancellable. Only the socket's post-write callback marks a m
 
 An ended collab guest invalidates retained helper running and messaging authority across Tasks,
 transcript cards, pinned rows and counts. An ordinary reconnect preserves that authority while
-the guest expects to return. Queued helper messages fail visibly on terminal connection loss and
-remain available for copying before a restart. Retry is disabled while unavailable; a restarted
-host requires reopening its helper conversation and explicitly sending the copied text in that
-new scope. Helper Stop uses the connected writable
+the guest expects to return. Queued helper messages fail visibly on terminal connection loss.
+After a generation changes, the conversation retains its controller subscription but releases its
+old file watcher and invalidates pending delivery. It rebinds only to the replacement client's own
+completed live snapshot for the same parent session and file, with the same helper id confirmed
+running or reported by that room's lifecycle stream. A parked transcript alone is insufficient:
+helpers omitted from recovery remain ended. Rebinding follows the helper file again and preserves
+the draft. Old queue rows remain failed and selectable, cannot be retried into the new binding and
+do not block new messages; reopening the same conversation retains those rows.
+A restored helper that finishes before the replacement guest joins can remain ended when its
+welcome contains only parked state, because omp does not replay missed lifecycle frames. The app
+does not interpret that absence as failure or as proof that recovery skipped the helper. omp still
+delivers its result to the parent through its normal restored-job mechanism.
+Helper Stop uses the connected writable
 socket path, never buffers across reconnect, and reports rejected delivery through the existing
 session-action error toast.
 

@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SessionController, SessionView, SessionEvent } from "../../state/session";
 import type { Helper } from "./derive";
-import { HelperConversation } from "./helperConversation";
+import { HelperConversation, helperConversation } from "./helperConversation";
 import { i18n } from "../../i18n";
 
 beforeEach(async () => { await i18n.loadNamespaces(["helperFocus"]); });
@@ -19,7 +19,7 @@ function fixture(status: "running" | "idle" | "parked" | "aborted" = "running", 
 		guest: { phase: "live", readOnly: false, header: { id: "parent" }, agents: [{ id: "Atlas", kind: "sub", status, hasSessionFile: hasTranscript }], lifecycle: new Map(), progress: new Map(), notices: [] },
 	} as unknown as SessionView;
 	const send = vi.fn(async (_id: string, _text: string, beforeSend: () => void, dispatched?: () => void) => { beforeSend(); dispatched?.(); });
-	const client = { sendHelperPrompt: send };
+	let client = { sendHelperPrompt: send, getSnapshot: () => view.guest };
 	let file = hasTranscript ? "/parent/Atlas.jsonl" : null;
 	const invoke = vi.fn(async (channel: string) => channel === "sessions:helperFile" ? file : undefined);
 	window.vomp = { invoke, on: (channel: string, listener: (event: never) => void) => {
@@ -34,7 +34,11 @@ function fixture(status: "running" | "idle" | "parked" | "aborted" = "running", 
 	const model = new HelperConversation(session, helper); models.push(model);
 	const publish = (patch: Partial<SessionView>) => { view = { ...view, ...patch }; for (const listener of listeners) listener(); };
 	const agent = (status: "running" | "idle" | "parked" | "aborted") => publish({ guest: { ...view.guest!, agents: [{ ...view.guest!.agents[0]!, status }] } });
-	return { model, send, session, events, listeners, fileEvents, publish, agent, invoke, makeFileAvailable: () => { file = "/parent/Atlas.jsonl"; }, view: () => view };
+	const restart = (status: "running" | "idle" | "parked" | "aborted" = "running", phase: "live" | "connecting" = "live") => {
+		client = { sendHelperPrompt: send, getSnapshot: () => view.guest };
+		publish({ host: { ...view.host!, generation: view.host!.generation + 1 }, guest: { ...view.guest!, phase, agents: [{ ...view.guest!.agents[0]!, status }], lifecycle: new Map(), progress: new Map(), notices: [] } });
+	};
+	return { model, send, session, events, listeners, fileEvents, publish, agent, restart, invoke, makeFileAvailable: () => { file = "/parent/Atlas.jsonl"; }, view: () => view };
 }
 const flush = async () => { await Promise.resolve(); await Promise.resolve(); };
 
@@ -81,6 +85,87 @@ describe("helper conversation discovery", () => {
 		for (const listener of f.fileEvents.get("sessions:followState") ?? []) listener({ file: "/parent/Atlas.jsonl", readable: false, ownership: "unknown", error: "File cannot be read" } as never);
 		expect(f.model.getSnapshot().error).toBe("File cannot be read");
 		stop();
+	});
+});
+
+describe("restored helper binding", () => {
+	it("rebinds the mounted conversation after a fresh live generation confirms the running helper", async () => {
+		const f = fixture();
+		const off = f.model.subscribe(() => {});
+		await flush();
+		expect(f.model.getSnapshot().file).toBe("/parent/Atlas.jsonl");
+		f.model.setDraft("Unfinished draft");
+		f.restart();
+		await flush();
+		expect(f.model.getSnapshot()).toMatchObject({ stale: false, error: null, file: "/parent/Atlas.jsonl", draft: "Unfinished draft", helper: { status: "running", messageable: true } });
+		f.agent("idle"); f.model.enqueue(); await flush();
+		expect(f.send.mock.calls[0]?.slice(0, 2)).toEqual(["Atlas", "Unfinished draft"]);
+		off();
+	});
+	it("waits for the replacement client's own completed snapshot instead of trusting retained live state", () => {
+		const f = fixture();
+		f.publish({ host: { ...f.view().host!, generation: 2 } });
+		expect(f.model.getSnapshot().stale).toBe(true);
+		f.restart("running", "connecting");
+		expect(f.model.getSnapshot().helper.messageable).toBe(false);
+		f.publish({ guest: { ...f.view().guest!, phase: "live" } });
+		expect(f.model.getSnapshot()).toMatchObject({ stale: false, helper: { messageable: true } });
+	});
+	it("accepts late restored lifecycle evidence after a parked roster arrives", () => {
+		const f = fixture();
+		f.restart("parked");
+		expect(f.model.getSnapshot()).toMatchObject({ stale: true, helper: { status: "stopped", messageable: false } });
+		f.publish({ guest: { ...f.view().guest!, lifecycle: new Map([["Atlas", { id: "Atlas", agent: "task", status: "completed", index: 0 }]]) } });
+		expect(f.model.getSnapshot()).toMatchObject({ stale: false, error: null, helper: { status: "done", messageable: true } });
+	});
+	it.each(["missing", "tombstoned", "isolated", "missing-session-init"] as const)("keeps a %s helper ended without restored running or lifecycle evidence", async kind => {
+		const f = fixture();
+		f.restart(kind === "tombstoned" ? "aborted" : "parked");
+		if (kind === "missing") f.publish({ guest: { ...f.view().guest!, agents: [] } });
+		expect(f.model.getSnapshot()).toMatchObject({ stale: true, helper: { status: "stopped", messageable: false }, error: expect.any(String) });
+		f.model.setDraft("Do not revive"); f.model.enqueue(); await flush();
+		expect(f.send).not.toHaveBeenCalled();
+	});
+	it("does not bind a restored id in a different parent chat", () => {
+		const f = fixture();
+		f.publish({ guest: { ...f.view().guest!, header: { ...f.view().guest!.header!, id: "another-parent" } } });
+		f.restart();
+		expect(f.model.getSnapshot()).toMatchObject({ stale: true, helper: { messageable: false } });
+	});
+	it("keeps old queued and failed messages copyable without retrying, while allowing new messages", async () => {
+		const f = fixture("idle");
+		f.send.mockRejectedValueOnce(new Error("Old failure"));
+		f.model.setDraft("Failed before restart"); f.model.enqueue(); await flush();
+		f.agent("running");
+		f.model.setDraft("Queued before restart"); f.model.enqueue();
+		const ids = f.model.getSnapshot().queue.map(item => item.id);
+		f.restart(); f.agent("idle"); await flush();
+		for (const id of ids) f.model.retry(id);
+		expect(f.model.getSnapshot()).toMatchObject({ stale: false, queue: [
+			{ text: "Failed before restart", state: "error", retryable: false },
+			{ text: "Queued before restart", state: "error", retryable: false },
+		] });
+		expect(f.send).toHaveBeenCalledTimes(1);
+		f.model.setDraft("New message"); f.model.enqueue(); await flush();
+		expect(f.send).toHaveBeenCalledTimes(2);
+		expect(f.send.mock.calls[1]?.slice(0, 2)).toEqual(["Atlas", "New message"]);
+	});
+	it("invalidates an old preparation before the restored helper becomes idle", async () => {
+		const f = fixture("idle"); const encryption = Promise.withResolvers<void>(); const writes: string[] = [];
+		f.send.mockImplementationOnce(async (_id, text, beforeSend, dispatched) => { await encryption.promise; beforeSend(); writes.push(text); dispatched?.(); });
+		f.model.setDraft("Old preparation"); f.model.enqueue();
+		f.restart(); f.agent("idle");
+		encryption.resolve(); await flush();
+		expect(writes).toEqual([]);
+		expect(f.model.getSnapshot()).toMatchObject({ stale: false, queue: [{ text: "Old preparation", state: "error", retryable: false }] });
+	});
+	it("reuses the same conversation and failed queue when its restored view is reopened", () => {
+		const f = fixture();
+		const cached = helperConversation(f.session, helper); models.push(cached);
+		cached.setDraft("Preserve across reopen"); cached.enqueue();
+		f.restart();
+		expect(helperConversation(f.session, helper)).toBe(cached);
+		expect(cached.getSnapshot().queue[0]).toMatchObject({ text: "Preserve across reopen", state: "error", retryable: false });
 	});
 });
 

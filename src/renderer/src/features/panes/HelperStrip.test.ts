@@ -131,3 +131,26 @@ it("retains ended-guest messages with copy guidance and disables an unavailable 
 	expect(conversation.getSnapshot().queue[0]?.state).toBe("error");
 	off?.();
 });
+
+it("keeps the open helper view usable after restore and retains old queue text without retry", async () => {
+	const listeners = new Set<() => void>();
+	const view = session.getSnapshot();
+	let client = { getSnapshot: () => view.guest };
+	session.subscribe = listener => { listeners.add(listener); return () => listeners.delete(listener); };
+	session.guestClient = () => client as never;
+	await open();
+	const conversation = helperConversation(session, helper);
+	await act(async () => { conversation.setDraft("Copy after restore"); conversation.enqueue(); });
+	await act(async () => {
+		view.host = { ...view.host!, generation: 2 };
+		view.guest = { ...view.guest!, agents: [{ ...view.guest!.agents[0]!, status: "running" }] };
+		client = { getSnapshot: () => view.guest };
+		for (const listener of listeners) listener();
+	});
+	expect(container.querySelector("[data-helper-focus]")).not.toBeNull();
+	expect(container.querySelector("textarea")!.disabled).toBe(false);
+	expect(container.querySelector("[role=alert]")).toBeNull();
+	expect([...container.querySelectorAll(".selectable")].some(element => element.textContent === "Copy after restore")).toBe(true);
+	expect(container.textContent).toContain("This message was not sent again.");
+	expect([...container.querySelectorAll("button")].some(button => button.textContent === "Try sending again")).toBe(false);
+});

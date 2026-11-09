@@ -15,6 +15,7 @@ Each release's section below becomes its GitHub release notes (see [docs/RELEASI
 
 ### Fixed
 
+- An open helper conversation now follows the same helper after omp restores its interrupted work. Earlier queued messages remain failed and available to copy without being sent again.
 - Homebrew and Scoop rollback guidance now offers a verified installer download and explains how to switch to it while keeping app data and omp settings. Managed downloads require a published SHA-256 checksum and never run the installer automatically.
 - Saved-chat previews recover first prompts after large opening entries, within bounded transcript scan limits.
 - Unfinished native hook answers remain available when the same dialog is cancelled and reopened or shown in the omp screen.
