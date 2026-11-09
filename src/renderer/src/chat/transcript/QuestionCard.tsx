@@ -7,10 +7,10 @@ import { ChatCircle, Info, Question, ShieldWarning } from "@phosphor-icons/react
 import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { deliver } from "../composer/send";
-import { pendingAsk, type SessionController } from "../../state/session";
+import { pendingAsk, questionPresentation, type SessionController } from "../../state/session";
 import { Button, Textarea, toast } from "../../ui";
 import { AskSeriesCard } from "./AskSeriesCard";
-import { ASK_CHAT, ASK_NEXT, ASK_OTHER, CUSTOM_ANSWER_PREFIX, findRunningFormAsk, toolCallState, type RunningFormAsk } from "./askSeries";
+import { ASK_CHAT, ASK_NEXT, ASK_OTHER, CUSTOM_ANSWER_PREFIX, toolCallState, type RunningFormAsk } from "./askSeries";
 import { useAskSeries } from "./askSeriesStore";
 import { ChoiceGrid, cardClass, Heading, otherInputClass } from "./QuestionChoices";
 import { useTsp } from "../../state/tsp/useTsp";
@@ -60,7 +60,7 @@ function FormScreenAction({ session, standalone = false }: { session: SessionCon
 	</div>;
 }
 
-function FormQuestionCard({ session, request, form, context, owner, closing }: { session: SessionController; request: CollabUiRequest | null; form: RunningFormAsk; context: NativeForms | null; owner: FormOwnerRef; closing: boolean }) {
+function FormQuestionCard({ session, request, form, context, owner, closing, questionPending }: { session: SessionController; request: CollabUiRequest | null; form: RunningFormAsk; context: NativeForms | null; owner: FormOwnerRef; closing: boolean; questionPending: boolean }) {
 	const { t } = useTranslation("chat");
 	const [previous, setPrevious] = useState({ html: form.html, request });
 	if (previous.html !== form.html || request && request !== previous.request) setPrevious({ html: form.html, request });
@@ -119,7 +119,7 @@ function FormQuestionCard({ session, request, form, context, owner, closing }: {
 		<fieldset ref={fieldsetRef} disabled={waiting} className="m-0 min-w-0 border-0 p-0">
 			{shown && <QuestionCard session={session} request={shown} presentation={false} disabled={waiting}
 				minimumHeight={measured.current.html === form.html ? minimumHeight.card : 0}
-				formStatus={t(closing ? "question.formClosing" : waiting ? "question.formPending" : "question.messageCloses")} />}
+				formStatus={t(questionPending ? "question.messageCloses" : "question.formClosing")} />}
 		</fieldset>
 		{!claimed && !!context?.roots.length && <FormScreenAction session={session} />}
 	</div>;
@@ -163,7 +163,8 @@ export function usePendingQuestion(session: SessionController, request: CollabUi
 		.filter(node => node.p?.role === TSP_ROLES.editorAsk || node.p?.role === TSP_ROLES.editorAskHidden).map(node => ({ surface, node }))) ?? [];
 	const context = current ? { snapshot: current, roots } : null;
 	const writable = view.mode === "live" && !view.readOnly && view.guest?.phase === "live" && !view.guest.readOnly;
-	const active = writable ? findRunningFormAsk(view.guest!) : null;
+	const question = questionPresentation(view);
+	const active = question.form;
 	const [lastForm, setLastForm] = useState(active);
 	if (active && (lastForm?.toolCallId !== active.toolCallId || lastForm.html !== active.html)) setLastForm(active);
 	const owner = useRef<FormOwner | null>(null);
@@ -174,7 +175,7 @@ export function usePendingQuestion(session: SessionController, request: CollabUi
 		&& roots.some(({ surface, node }) => surface.open.id === held.surfaceId && node.id === held.nodeId);
 	const form = active ?? (closing ? lastForm : null);
 	if (form && (!request || isAskFormRequest(form.html, request))) {
-		return { key: `form:${host?.hostId}:${host?.generation}:${form.toolCallId}`, inPlace: true, node: <FormQuestionCard session={session} request={request} form={form} context={context} owner={owner} closing={closing} /> };
+		return { key: `form:${host?.hostId}:${host?.generation}:${form.toolCallId}`, inPlace: true, node: <FormQuestionCard session={session} request={request} form={form} context={context} owner={owner} closing={closing} questionPending={question.pending} /> };
 	}
 	if (series && (series.phase === "editing" || series.phase === "sending" || (series.phase === "sent" && !request))) {
 		return { key: `ask:${series.toolCallId}`, node: <AskSeriesCard session={session} series={series} /> };

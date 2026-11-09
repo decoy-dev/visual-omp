@@ -4,7 +4,7 @@ import { chatSlots } from "../registry/slots";
 import { BtwDrawer } from "../features/btw/BtwPane";
 import { chatActivityKey, elapsed, useNow, useSessionView } from "../shell/hooks";
 import { useApp } from "../state/app";
-import type { SessionController, SessionView } from "../state/session";
+import { questionPresentation, type SessionController, type SessionView } from "../state/session";
 import { type ShownActivity, useOmpActivity } from "../state/tsp/activity";
 import { Button, cn, Expand, WorkingIndicator } from "../ui";
 import { Composer } from "./composer/Composer";
@@ -135,7 +135,7 @@ function OwnerNotice({ session, view }: { session: SessionController; view: Sess
  * only while working. Outside a model turn, omp's own progress for its work (`useOmpActivity`, such as /handoff
  * writing its document) takes the row with omp's label and a Stop button, because the composer has no turn to stop.
  */
-function WorkingRow({ view, session, activity, stopFocus }: { view: SessionView; session: SessionController; activity: ShownActivity | null; stopFocus: RefObject<boolean> }): ReactNode {
+export function WorkingRow({ view, session, activity, stopFocus }: { view: SessionView; session: SessionController; activity: ShownActivity | null; stopFocus: RefObject<boolean> }): ReactNode {
 	const { t } = useTranslation(["chat", "tools"]);
 	const now = useNow(1000);
 	const activityName = t(chatActivityKey(view));
@@ -202,7 +202,7 @@ export function ChatView({ session, title, focused }: { session: SessionControll
 					.map(slot => (
 						<slot.component key={slot.id} session={session} />
 					))}
-				<Expand open={view.working || view.guest?.awaitingAsyncWork === true || activity !== null}>
+				<Expand open={!questionPresentation(view).pending && (view.working || view.guest?.awaitingAsyncWork === true || activity !== null)}>
 					<WorkingRow view={view} session={session} activity={activity} stopFocus={stopFocus} />
 				</Expand>
 				<div data-tour="composer" className="mx-auto w-full max-w-[calc(var(--chat-max)+48px)] px-6 pb-4">

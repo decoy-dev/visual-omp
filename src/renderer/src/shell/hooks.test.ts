@@ -39,6 +39,15 @@ describe("chatStatus", () => {
 		expect(chatStatus(view({ uiRequest, agents: [agent("Atlas", "running")] }, { working: true }))).toBe("needsInput");
 	});
 
+	it("retains form question status through retired requests and releases it for work or cancellation", () => {
+		const current = view({ phase: "live", readOnly: false, working: true, entries: [], stream: null,
+			activeTools: new Map([["form-call", { toolCallId: "form-call", toolName: "ask", args: { html: '<form><input name="note"></form>' }, startedAt: 0 }]]) }, { working: true });
+		expect(chatStatus(current)).toBe("needsInput");
+		const ended = { ...current, guest: { ...current.guest!, activeTools: new Map() } };
+		expect(chatStatus(ended)).toBe("working");
+		expect(chatStatus({ ...ended, working: false, guest: { ...ended.guest, working: false } })).toBe("live");
+	});
+
 	it("shows no helper at work once omp is gone, whatever the mirror last recorded", () => {
 		const running = { agents: [agent("Atlas", "running")], lifecycle: new Map([started("Bolt", "started")]) };
 		expect(chatStatus(view(running, { mode: "exited" }))).toBe("idle");

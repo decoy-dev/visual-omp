@@ -36,7 +36,7 @@ vi.mock("../state/session", () => ({ SessionController: class {
 	async checkOwnership() {}
 	async dispose() {}
 	setForeground() {}
-} }));
+}, questionPresentation: () => ({ pending: false, form: null }) }));
 vi.mock("motion/react", async importOriginal => {
 	const actual = await importOriginal<typeof MotionModule>();
 	// Motion's animation clock is irrelevant to focus and ordering; preserve native refs and events.

@@ -126,7 +126,7 @@ export function QueueTray({ session, queue, questionId, askWaiting = false, send
 						<Question weight="bold" className="size-3" aria-hidden />
 						{t("question.chip")}
 					</button>
-					<span className="text-xs text-fg-faint">{t(askWaiting ? "question.askHint" : "question.hint")}</span>
+					<span data-question-hint className="text-xs text-fg-faint">{t(askWaiting ? "question.askHint" : "question.hint")}</span>
 				</div>
 			</Expand>
 			<Expand open={strandedImages}>

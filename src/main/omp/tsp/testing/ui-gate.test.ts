@@ -814,6 +814,54 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		expect(await page.evaluate("window.gate.calls")).toEqual(requests.map((stage, index) => ({ channel: "collab:ui-response", args: [stage.request!.reqId, ["Beta", "Linux", "Next →", "Release fixture headline", "Full"][index]] })));
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
 	}, 60_000);
+	it.skipIf(process.env.TSP_FORM_LAYOUT_GATE !== "1").each(["reduced", "full"])("keeps checkbox question text steady with %s motion", async motion => {
+		const baseline = process.env.TSP_FORM_TEXT_BASELINE === "1";
+		const directory = join(homedir(), "vomp-checks/toggle-text", baseline ? "before" : "after");
+		await mkdir(directory, { recursive: true });
+		await page.send("Emulation.setDeviceMetricsOverride", { width: 1568, height: 1002, deviceScaleFactor: 1, mobile: false });
+		const evidence = formGuest185 as AskEvidence;
+		const { entries, call } = askTranscript(evidence);
+		const stages = evidence.stages.filter(stage => stage.request?.kind === "select" && stage.request.selectionMarker === "checkbox");
+		const firstStage = evidence.stages.find(stage => stage.request)!;
+		const snapshot = askSnapshots();
+		await page.evaluate(`document.documentElement.dataset.motion=${JSON.stringify(motion)}; window.gate.showFormLayout(${JSON.stringify(snapshot(firstStage))},${JSON.stringify(firstStage.request)},${JSON.stringify(call.arguments)},${JSON.stringify(entries)})`);
+		await page.until("window.gate.claims().length === 1 && !!document.querySelector('[data-gate-header] [role=status]')");
+		await page.evaluate("window.gate.beginFormUpdates()");
+		await answerForm(firstStage.request!, "Beta");
+		await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(stages[0]!.request)}); window.gate.update(${JSON.stringify(snapshot(stages[0]!))})`);
+		await page.until("!!document.querySelector('[data-question-card=\"2\"]') && window.gate.claims().length === 1");
+		await delay(500);
+		await page.evaluate("window.gate.startLayoutEvidence(); window.gate.markLayoutEvidence('before-toggle')");
+		await delay(80);
+		// Select, then deselect, using the recording's two checked-state shapes with fresh wire ids.
+		for (let index = 0; index < 2; index++) {
+			await page.clickElement("[...document.querySelectorAll('[data-question-card] [data-choice]')].find(button => button.textContent.trim() === 'Linux')", false);
+			await page.until("window.gate.view().guest.uiRequest === null");
+			await page.evaluate(`window.gate.markLayoutEvidence('toggle-${index}-retired')`);
+			await delay(180);
+			const source = stages[(index + 1) % 2]!;
+			const next = { ...source, request: { ...source.request!, reqId: index + 3 } as CollabUiRequest };
+			await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(next.request)}); window.gate.markLayoutEvidence('toggle-${index}-before-match')`);
+			await delay(100);
+			await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(next))}); window.gate.markLayoutEvidence('toggle-${index}-matched')`);
+			await delay(180);
+		}
+		const captured = await page.evaluate<FormLayoutEvidence>("window.gate.stopLayoutEvidence()");
+		await writeFile(join(directory, `${motion}.json`), JSON.stringify(captured, null, 2));
+		expect(captured.viewport).toEqual({ width: 1568, height: 1002 });
+		const first = captured.frames[0]!.questionText;
+		expect(first.header).toBe("Waiting for your answer");
+		expect(first.cardHint).toContain("Sending a message closes this question");
+		for (const key of ["header", "placeholder", "composerHint", "cardHint", "working"] as const) {
+			const values = [...new Set(captured.frames.map(frame => frame.questionText[key]))];
+			if (baseline && ["header", "placeholder", "cardHint"].includes(key)) expect(values.length, `${key} reproduces the toggle text change`).toBeGreaterThan(1);
+			else if (!baseline) expect(values, `${key} remains identical through both toggles`).toEqual([first[key]]);
+		}
+		expect(captured.frames.some(frame => frame.requestId === null)).toBe(true);
+		expect(captured.frames.every(frame => frame.claims === 1 && !frame.screen)).toBe(true);
+		expect(await page.evaluate("window.gate.calls")).toEqual([{ channel: "collab:ui-response", args: [1, "Beta"] }, { channel: "collab:ui-response", args: [2, "Linux"] }, { channel: "collab:ui-response", args: [3, "Linux"] }]);
+		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
+	}, 30_000);
 	it.each(askCases185.filter(item => ["ask-fixture-form-guest", "ask-fixture-colors"].includes(item.name)))("answers recorded 18.18.5 $name through collab with native t0 unchanged", async ({ name, evidence }) => {
 		const { entries, call, result } = askTranscript(evidence);
 		const snapshot = askSnapshots();

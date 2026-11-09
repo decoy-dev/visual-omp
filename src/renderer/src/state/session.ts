@@ -12,7 +12,7 @@ import type { FollowState, HostState, SessionOwnership } from "@shared/ipc";
 import { isTspInputError, tspAllowsAskPrompt, TSP_CLASSIC_ACTION_UNAVAILABLE, type TspEditorRestore } from "@shared/tsp-host";
 import { useComposerDrafts, type Attachment } from "../chat/composer/drafts";
 import { imagePathsText } from "../chat/composer/send";
-import { isAskRequest } from "../chat/transcript/askSeries";
+import { findRunningFormAsk, isAskRequest } from "../chat/transcript/askSeries";
 import { contentText } from "../chat/transcript/notices";
 import { expandedPromptTextMatches } from "@shared/prompt-input";
 import { APP_GUEST_NAME, GuestClient, type GuestSnapshot } from "../collab/lib/client";
@@ -193,6 +193,13 @@ export function pendingAsk(view: SessionView): boolean {
 	const guest = view.guest;
 	return view.mode === "live" && guest?.phase === "live" && !view.readOnly && !guest.readOnly
 		&& guest.uiRequest !== null && isAskRequest(guest, guest.uiRequest);
+}
+
+/** Display ownership survives a live form's request gaps; pendingAsk alone grants prompt authority. */
+export function questionPresentation(view: SessionView) {
+	const guest = view.guest;
+	const form = view.mode === "live" && !view.readOnly && guest?.phase === "live" && !guest.readOnly ? findRunningFormAsk(guest) : null;
+	return { pending: form !== null || pendingAsk(view), form };
 }
 
 export function isApprovalRequest(request: CollabUiRequest): boolean {

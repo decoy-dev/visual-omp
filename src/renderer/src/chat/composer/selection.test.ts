@@ -40,9 +40,16 @@ describe('composer visual selection', () => {
 		expect(selected.formCallId).toBe('form-call');
 		expect(selected.uiRequest).toBeNull();
 		expect(selected.askWaiting).toBe(false);
+		expect(selected.questionPending).toBe(true);
 		const retired = composerSelection({ ...before, guest: { ...before.guest!, pendingUiRequests: [] } });
 		expect(retired.formCallId).toBe('form-call');
 		expect(retired.uiRequest).toBeNull();
+		expect(retired.questionPending).toBe(true);
+		expect(retired.askWaiting).toBe(false);
+		expect(composerSelection({ ...before, guest: { ...before.guest!, activeTools: new Map() } }).questionPending).toBe(false);
+		expect(composerSelection({ ...before, guest: { ...before.guest!, activeTools: new Map(), working: false } }).questionPending).toBe(false);
+		expect(composerSelection({ ...before, guest: { ...before.guest!, phase: 'connecting' } }).questionPending).toBe(false);
+		expect(composerSelection({ ...before, readOnly: true }).questionPending).toBe(false);
 		expect(composerSelection({ ...before, guest: { ...before.guest!, activeTools: new Map(), working: false } }).formCallId).toBeNull();
 		expect(composerSelection({ ...before, readOnly: true }).formCallId).toBeNull();
 	});

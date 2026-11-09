@@ -1,10 +1,9 @@
-import { liveEntries, pendingAsk, type SessionView } from '../../state/session';
-import { findRunningFormAsk } from '../transcript/askSeries';
+import { liveEntries, pendingAsk, questionPresentation, type SessionView } from '../../state/session';
 
 /** Everything the composer renders or uses to choose an input action. Streaming text and helper progress are not input state. */
 export function composerSelection(view: SessionView) {
 	const host = view.host;
-	const form = view.mode === 'live' && !view.readOnly && view.guest?.phase === 'live' && !view.guest.readOnly ? findRunningFormAsk(view.guest) : null;
+	const question = questionPresentation(view);
 	return {
 		mode: view.mode,
 		readOnly: view.readOnly,
@@ -25,7 +24,8 @@ export function composerSelection(view: SessionView) {
 		tspEditorRestore: host?.tspEditorRestore,
 		uiRequest: view.guest?.uiRequest ?? null,
 		askWaiting: pendingAsk(view),
-		formCallId: form?.toolCallId ?? null,
+		questionPending: question.pending,
+		formCallId: question.form?.toolCallId ?? null,
 		awaitingAsyncWork: view.guest?.awaitingAsyncWork === true,
 	};
 }

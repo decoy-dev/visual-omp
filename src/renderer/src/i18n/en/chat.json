@@ -126,7 +126,6 @@
 		"approvalSessionHelp": "These approvals last for this session.",
 		"messageDenies": "Sending a message now denies this request.",
 		"messageCloses": "Sending a message closes this question without stopping the reply.",
-		"formPending": "Waiting for the next question from omp.",
 		"formClosing": "Closing omp's question.",
 		"formFallbackTitle": "Question from omp",
 		"formFallbackHelp": "View this question in the omp screen to answer it.",

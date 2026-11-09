@@ -990,8 +990,12 @@ Missing nodes, uncertain matching, a different form or hidden/unmounted presenta
 that ownership. The completed call keeps its disabled presenter until the paired native node
 departs, so result delivery cannot briefly reveal a second form. This uses no timer.
 
-Form updates reuse the question card and option nodes across guest request ids. The waiting
-status replaces the in-card hint in a slot that retains its wrapped height. The visible
+Form updates reuse the question card and option nodes across guest request ids.
+`questionPresentation` derives a pending ask from its writable active form, including request
+gaps. The header subtitle, composer placeholder and question hint retain their question text,
+and the working row remains absent until the ask ends. `pendingAsk` still requires a current
+request before granting prompt authority. Completion or cancellation clears the pending
+presentation; a completed card says it is closing until its paired native node departs. The visible
 card and its full form area each retain their measured high-water height for the same
 form, including through width changes. The minima are applied to the actual card and its
 outer area and released when the form ends or its source changes. Editor focus and

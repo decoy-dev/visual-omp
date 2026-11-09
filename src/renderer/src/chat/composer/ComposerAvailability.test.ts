@@ -141,14 +141,17 @@ it("keeps form presentation through request gaps and delayed matches without gra
 	} };
 	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
 	expect(tray.questionId).toBe(7);
+	const placeholder = element.querySelector<HTMLTextAreaElement>("textarea")!.placeholder;
 	await publish({ guest: { ...view.guest!, uiRequest: null } });
 	expect(tray.questionId).toBe(7);
 	expect(tray.askWaiting).toBe(true);
+	expect(element.querySelector<HTMLTextAreaElement>("textarea")!.placeholder).toBe(placeholder);
 	expect(element.querySelector('[role="status"]')).toBeNull();
 	await act(async () => element.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
 	expect(session.send).not.toHaveBeenCalled();
 	await publish({ guest: { ...view.guest!, uiRequest: { ...request, reqId: 8 }, pendingUiRequests: [{ ...request, reqId: 8 }] } });
 	expect(tray.questionId).toBe(8);
+	expect(element.querySelector<HTMLTextAreaElement>("textarea")!.placeholder).toBe(placeholder);
 	expect(element.querySelector('[role="status"]')).toBeNull();
 	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
 	await publish({ host: host("tsp", { available: false, reason: "Question waiting", reasonCode: "matched-question", questionReqId: 8 }) });

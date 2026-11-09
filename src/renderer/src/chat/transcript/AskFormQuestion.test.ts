@@ -92,7 +92,7 @@ it("retains a disabled visible card and one claim until the next field and its m
 	await updateRequest(null);
 	await vi.waitFor(() => expect(element.querySelector("[data-form-question]")?.getAttribute("aria-busy")).toBe("true"));
 	expect(element.querySelector("fieldset")?.disabled).toBe(true);
-	expect(element.textContent).toContain("Waiting for the next question from omp.");
+	expect(element.textContent).toContain("Sending a message closes this question without stopping the reply.");
 	expect(presentationClaims.getSnapshot()).toHaveLength(1);
 	await publishMatches(snapshot.questionMatches?.map(match => ({ ...match, status: "settling" })));
 	await updateRequest(next);
@@ -157,7 +157,7 @@ it("keeps one in-card status slot and disables option actions throughout request
 	expect(element.querySelector("[data-question-card]")).toBe(card);
 	expect(element.querySelectorAll('[role="status"]')).toHaveLength(1);
 	expect(card!.querySelector('[role="status"]')).toBe(status);
-	expect(status?.querySelector("[data-form-status-text]")?.textContent).toBe("Waiting for the next question from omp.");
+	expect(status?.querySelector("[data-form-status-text]")?.textContent).toBe("Sending a message closes this question without stopping the reply.");
 	expect(options.every(option => option.disabled)).toBe(true);
 	await act(async () => {
 		options[1]!.click();

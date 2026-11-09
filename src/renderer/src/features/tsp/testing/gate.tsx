@@ -8,6 +8,9 @@ import type { CollabUiRequest, SessionEntry, ToolResultMessage } from "@oh-my-pi
 import type { FileRef, FileRefRequest } from "@shared/contracts/fileRefs";
 import { TranscriptBody } from "../../../chat/transcript/Transcript";
 import { Composer } from "../../../chat/composer/Composer";
+import { SessionHeader } from "../../../chat/SessionHeader";
+import { WorkingRow } from "../../../chat/ChatView";
+import { Expand } from "../../../ui";
 import { recordFormLayout } from "./form-layout-evidence";
 import type { FormLayoutEvidence, FormLayoutRecorder } from "./form-layout-types";
 import { useFiles } from "../../panes/files-store";
@@ -17,7 +20,7 @@ import type { ToolResultLike } from "../../../tool-render/types";
 import type { GuestClient, GuestSnapshot } from "../../../collab/lib/client";
 import { presentationClaims } from "../../../state/tsp/presentation-claims";
 import { OmpDialogCard } from "../../session-tools/OmpDialogCard";
-import { SessionController, type SessionView } from "../../../state/session";
+import { questionPresentation, SessionController, type SessionView } from "../../../state/session";
 import { controllerFor, useApp } from "../../../state/app";
 import { registerComposerEditor } from "../../../chat/composer/drafts";
 import { TerminalSheet } from "../../palette/TerminalSheet";
@@ -101,11 +104,13 @@ function FormLayoutHarness() {
 	const current = useSessionView(session)!;
 	const pending = usePendingQuestion(session, current.guest?.uiRequest ?? null);
 	const open = useApp(app => app.terminalTabId === session.tabId);
+	const stopFocus = useRef(false);
 	return <div data-form-layout className="grid h-full min-h-0 grid-cols-[236px_minmax(0,1fr)_344px] gap-3 bg-bg text-fg">
 		<aside aria-label="Fixture chats" className="bg-chrome p-4 text-chrome-fg"><h2>Current chats</h2><p className="mt-4">04 Ask form</p></aside>
 		<section data-chat-column aria-label="Form layout chat" className="flex min-h-0 min-w-0 flex-col bg-sheet">
-			<header className="shrink-0 border-b border-border px-6 py-4">04 Ask form</header>
+			<div data-gate-header><SessionHeader session={session} fallbackTitle="04 Ask form" /></div>
 			<TranscriptBody scope={session} entries={current.guest?.entries ?? []} mode="normal" working={current.working} activeTools={current.guest?.activeTools} ready identity="form-layout" pendingQuestion={pending} />
+			<div data-gate-working><Expand open={!questionPresentation(current).pending && (current.working || current.guest?.awaitingAsyncWork === true)}><WorkingRow view={current} session={session} activity={null} stopFocus={stopFocus} /></Expand></div>
 			<div data-gate-composer className="mx-auto w-full max-w-[calc(var(--chat-max)+48px)] shrink-0 px-6 pb-4"><Composer session={session} /></div>
 		</section>
 		<aside aria-label="Fixture side panel" className="my-3 mr-3 rounded-lg border border-border bg-panel p-4"><h2>Tasks</h2><p className="mt-4">Release fixture questions</p></aside>

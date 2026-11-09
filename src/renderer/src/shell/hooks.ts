@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { activityKey, friendlySummary, isReplyWrite, resolveToolCall } from "../chat/friendly";
 import { replyText } from "../chat/transcript/turns";
 import { helpersAtWork } from "../features/panes/derive";
-import type { SessionController, SessionView } from "../state/session";
+import { questionPresentation, type SessionController, type SessionView } from "../state/session";
 import { useVisualSelection, useVisualSnapshot } from "../state/visualSnapshot";
 
 const noSubscribe = () => () => {};
@@ -32,7 +32,7 @@ export type ChatStatus = "working" | "helpersWorking" | "needsInput" | "error" |
 export function chatStatus(view: SessionView | null): ChatStatus {
 	if (!view) return "idle";
 	const status = view.mode === "live" || view.mode === "starting" || view.mode === "reconnecting" ? view.host?.programStatus : null;
-	if (view.guest?.uiRequest || status?.state === "blocked") return "needsInput";
+	if (view.guest?.uiRequest || questionPresentation(view).pending || status?.state === "blocked") return "needsInput";
 	if (status?.state === "error" || view.error) return "error";
 	if (view.working) return "working";
 	if (helpersAtWork(view)) return "helpersWorking";

@@ -112,8 +112,11 @@ omp's sequential collab questions, including free-text Other answers for radio a
 checkbox groups. A matched visible question card suppresses its native TSP form.
 The previous field stays visible and disabled while omp advances to its next request,
 and the form's native presentation remains claimed through that update.
-Selections update the same card and option controls. The hint and composer question tray
-remain steady through request gaps. The visible card height never decreases while the same
+Selections update the same card and option controls. The card hint, header subtitle and
+composer question status and placeholder retain the same text through checkbox toggle
+round trips and request gaps. The working row remains absent while the ask is pending.
+Completion and cancellation release that display state without extending input authority.
+The visible card height never decreases while the same
 form remains active, including across shorter text questions and width changes. The retained
 height is released when the form ends. Field focus
 does not scroll the chat, and bottom-pinned form updates have no smooth catch-up animation.

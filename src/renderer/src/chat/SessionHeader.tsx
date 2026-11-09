@@ -6,7 +6,7 @@ import { type CommandSpec, useCommands } from "../registry/commands";
 import { ChatStatusMark } from "../shell/ChatStatusMark";
 import { chatStatus, chatTitle, type ChatStatus } from "../shell/hooks";
 import { currentDock, dockKey, useApp, useDockVisible } from "../state/app";
-import { liveEntries, type SessionController, type SessionView } from "../state/session";
+import { liveEntries, questionPresentation, type SessionController, type SessionView } from "../state/session";
 import { useOmpActivity } from "../state/tsp/activity";
 import { useVisualSelection } from "../state/visualSnapshot";
 import { shallow } from "zustand/shallow";
@@ -51,7 +51,7 @@ function headerState(view: SessionView): HeaderState {
 	if (view.readOnly) return view.follow?.ownership === "free" ? "readOnlyFree" : view.follow?.ownership === "unknown" ? "readOnlyUnknown" : "readOnly";
 	if (view.mode === "exited") return "stopped";
 	if (view.mode === "reconnecting") return "reconnecting";
-	if (view.guest?.uiRequest) return "waiting";
+	if (view.guest?.uiRequest || questionPresentation(view).pending) return "waiting";
 	if (view.guest?.awaitingAsyncWork) return "waitingJobs";
 	if (view.working) return "working";
 	if (helpersAtWork(view)) return "helpersWorking";
