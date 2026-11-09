@@ -12,6 +12,9 @@ import { loadPinnedSessionIds, migrateSessionPins } from "./session-pins";
 
 /** Bytes read from the head of each session file: title slot, header and the first user message. */
 const HEAD_BYTES = 64 * 1024;
+const PREVIEW_SCAN_BYTES = 4 * 1024 * 1024;
+const PREVIEW_SCAN_LINES = 4096;
+const PREVIEW_LINE_BYTES = 1024 * 1024;
 
 interface CacheEntry {
 	mtimeMs: number;
@@ -43,6 +46,31 @@ const UserMessage = z.object({
 function textOf(content: z.infer<typeof UserMessage>["message"]["content"]): string | null {
 	if (typeof content === "string") return content;
 	return content.find(part => part.type === "text")?.text ?? null;
+}
+
+/** Recover a late first prompt without reading an unbounded session or parsing huge records. */
+async function scanPreview(file: string): Promise<string | null> {
+	const stream = createReadStream(file, { encoding: "utf8", end: PREVIEW_SCAN_BYTES - 1, highWaterMark: HEAD_BYTES });
+	const lines = createInterface({ input: stream, crlfDelay: Infinity });
+	let count = 0;
+	try {
+		for await (const line of lines) {
+			if (++count > PREVIEW_SCAN_LINES) break;
+			if (Buffer.byteLength(line, "utf8") > PREVIEW_LINE_BYTES) continue;
+			let entry: unknown;
+			try { entry = JSON.parse(line); } catch { continue; }
+			const user = UserMessage.safeParse(entry);
+			if (!user.success) continue;
+			const preview = textOf(user.data.message.content)?.trim().slice(0, 240);
+			if (preview) return preview;
+		}
+	} catch {
+		// Listing still has the header when a file disappears during the fallback read.
+	} finally {
+		lines.close();
+		stream.destroy();
+	}
+	return null;
 }
 
 async function summarize(file: string, mtimeMs: number): Promise<SessionSummary | null> {
@@ -85,6 +113,7 @@ async function summarize(file: string, mtimeMs: number): Promise<SessionSummary 
 		}
 	}
 	if (!header) return null;
+	if (!preview && Buffer.byteLength(head, "utf8") >= HEAD_BYTES) preview = await scanPreview(file);
 	return {
 		id: header.id,
 		file,

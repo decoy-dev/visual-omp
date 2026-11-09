@@ -40,6 +40,35 @@ describe("allSessions", () => {
 		expect(await allSessions()).toEqual([]);
 	});
 
+	it.each(["memory", "image", "skill", "user"])("recovers the first prompt beyond the head after a large %s entry", async kind => {
+		const padding = "x".repeat(80 * 1024);
+		const opening = kind === "memory" ? { type: "custom_message", customType: "memory-recall", content: padding }
+			: kind === "skill" ? { type: "custom_message", customType: "skill-prompt", content: padding }
+			: { type: "message", message: { role: "user", content: [{ type: "image", data: padding }] } };
+		const prompt = kind === "user" ? `First prompt ${padding}` : "First prompt after the opening entry";
+		await appendFile(join(bucket, "chat.jsonl"), [
+			...(kind === "user" ? [] : [JSON.stringify(opening)]),
+			JSON.stringify({ type: "message", message: { role: "user", content: prompt } }), "",
+		].join("\n"));
+		expect((await allSessions())[0]?.preview).toBe(prompt.slice(0, 240));
+	});
+
+	it("stops missing-preview recovery at the byte and line budgets", async () => {
+		const user = `${JSON.stringify({ type: "message", message: { role: "user", content: "Beyond the scan budget" } })}\n`;
+		const memory = (content: string) => `${JSON.stringify({ type: "custom_message", content })}\n`;
+		await appendFile(join(bucket, "chat.jsonl"), memory("x".repeat(4 * 1024 * 1024)) + user);
+		await writeFile(join(bucket, "lines.jsonl"), `${JSON.stringify({ type: "session", id: "s2", cwd: "/project" })}\n${memory("padding".repeat(3)).repeat(4096)}${user}`);
+		expect((await allSessions()).every(session => session.preview === null)).toBe(true);
+	});
+
+	it("skips an oversized opening record within the scan budget", async () => {
+		await appendFile(join(bucket, "chat.jsonl"), [
+			JSON.stringify({ type: "custom_message", content: "x".repeat(2 * 1024 * 1024) }),
+			JSON.stringify({ type: "message", message: { role: "user", content: "Prompt after the oversized record" } }), "",
+		].join("\n"));
+		expect((await allSessions())[0]?.preview).toBe("Prompt after the oversized record");
+	});
+
 	it("folds a continuation chain for saved navigation without substituting live room identities", async () => {
 		const turn = (id: string, timestamp: string) => ({ type: "message", id, timestamp, message: { role: "user", content: id } });
 		const root = join(bucket, "chat.jsonl");
