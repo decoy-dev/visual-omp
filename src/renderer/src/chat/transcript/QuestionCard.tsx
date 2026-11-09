@@ -67,12 +67,55 @@ function FormQuestionCard({ session, request, form, context, owner, closing }: {
 	const shown = request ?? (previous.html === form.html ? previous.request : null);
 	const claimed = useFormPresentation(context, shown?.reqId, form, owner);
 	const waiting = closing || !request;
+	const fieldsetRef = useRef<HTMLFieldSetElement>(null);
+	const measured = useRef({ html: form.html, width: 0, height: 0 });
+	const [minimumHeight, setMinimumHeight] = useState(0);
+	const focusedChoice = useRef<{ html: string; request: Extract<CollabUiRequest, { kind: "select" }>; node: HTMLButtonElement } | null>(null);
+	useLayoutEffect(() => {
+		const focused = focusedChoice.current;
+		if (!focused || !request || waiting) return;
+		const prior = focused.request;
+		if (focused.html !== form.html || request.kind !== "select" || request.selectionMarker !== "checkbox"
+			|| request.title !== prior.title || request.options.length !== prior.options.length
+			|| !request.options.every((_, index) => labelOf(request, index).label === labelOf(prior, index).label)) {
+			focusedChoice.current = null;
+			return;
+		}
+		// Disabling the retired request can blur its option. Restore it only if focus has not moved elsewhere.
+		if (document.activeElement === document.body && focused.node.isConnected) focused.node.focus({ preventScroll: true });
+		else if (document.activeElement !== focused.node) focusedChoice.current = null;
+		focused.request = request;
+	}, [form.html, request, waiting]);
+	useLayoutEffect(() => {
+		const fieldset = fieldsetRef.current;
+		if (!fieldset) return;
+		const measure = () => {
+			const { width, height } = fieldset.getBoundingClientRect();
+			const previous = measured.current;
+			// Keep shorter fields from contracting the transcript's scroll range.
+			const next = previous.html === form.html && previous.width === width ? Math.max(previous.height, height) : height;
+			measured.current = { html: form.html, width, height: next };
+			setMinimumHeight(next);
+		};
+		measure();
+		const observer = new ResizeObserver(measure);
+		observer.observe(fieldset);
+		return () => observer.disconnect();
+	}, [form.html, shown, waiting]);
 	if (!shown && context?.roots.length && !claimed) return <FormScreenAction session={session} standalone />;
-	return <div data-form-question aria-busy={waiting}>
-		<fieldset disabled={waiting} className="m-0 min-w-0 border-0 p-0">
-			{shown && <QuestionCard key={shown.reqId} session={session} request={shown} presentation={false} />}
+	return <div data-form-question aria-busy={waiting} style={{ minHeight: minimumHeight }}
+		onFocusCapture={event => {
+			const node = event.target;
+			focusedChoice.current = request?.kind === "select" && request.selectionMarker === "checkbox" && node instanceof HTMLButtonElement && node.hasAttribute("data-choice")
+				? { html: form.html, request, node } : null;
+		}}
+		onBlurCapture={event => {
+			if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) focusedChoice.current = null;
+		}}>
+		<fieldset ref={fieldsetRef} disabled={waiting} className="m-0 min-w-0 border-0 p-0">
+			{shown && <QuestionCard session={session} request={shown} presentation={false} disabled={waiting}
+				formStatus={t(closing ? "question.formClosing" : waiting ? "question.formPending" : "question.messageCloses")} />}
 		</fieldset>
-		{waiting && <p role="status" className="mt-2 text-sm text-fg-muted">{t(closing ? "question.formClosing" : "question.formPending")}</p>}
 		{!claimed && !!context?.roots.length && <FormScreenAction session={session} />}
 	</div>;
 }
@@ -104,7 +147,7 @@ function labelOf(item: CollabUiRequest & { kind: "select" }, index: number): { l
  * The card to show after the transcript, keyed so it rises in once per question: the series card
  * for a multi-question ask while it is answered or sent, else omp's pending request.
  */
-export function usePendingQuestion(session: SessionController, request: CollabUiRequest | null): { key: string; node: ReactNode } | null {
+export function usePendingQuestion(session: SessionController, request: CollabUiRequest | null): { key: string; node: ReactNode; inPlace?: boolean } | null {
 	const { t } = useTranslation("chat");
 	const series = useAskSeries(session);
 	const view = session.getSnapshot();
@@ -126,7 +169,7 @@ export function usePendingQuestion(session: SessionController, request: CollabUi
 		&& roots.some(({ surface, node }) => surface.open.id === held.surfaceId && node.id === held.nodeId);
 	const form = active ?? (closing ? lastForm : null);
 	if (form && (!request || isAskFormRequest(form.html, request))) {
-		return { key: `form:${host?.hostId}:${host?.generation}:${form.toolCallId}`, node: <FormQuestionCard session={session} request={request} form={form} context={context} owner={owner} closing={closing} /> };
+		return { key: `form:${host?.hostId}:${host?.generation}:${form.toolCallId}`, inPlace: true, node: <FormQuestionCard session={session} request={request} form={form} context={context} owner={owner} closing={closing} /> };
 	}
 	if (series && (series.phase === "editing" || series.phase === "sending" || (series.phase === "sent" && !request))) {
 		return { key: `ask:${series.toolCallId}`, node: <AskSeriesCard session={session} series={series} /> };
@@ -136,15 +179,29 @@ export function usePendingQuestion(session: SessionController, request: CollabUi
 	return { key: String(request.reqId), node: <><QuestionCard session={session} request={request} note={note} />{roots.length > 0 && <FormScreenAction session={session} />}</> };
 }
 
-export function QuestionCard({ session, request, note, presentation = true }: { session: SessionController; request: CollabUiRequest; note?: string; presentation?: boolean }): ReactNode {
+export function QuestionCard({ session, request, note, presentation = true, disabled = false, formStatus }: { session: SessionController; request: CollabUiRequest; note?: string; presentation?: boolean; disabled?: boolean; formStatus?: string }): ReactNode {
 	const { t } = useTranslation("chat");
 	const [text, setText] = useState(request.kind === "editor" ? (request.prefill ?? "") : "");
 	const [selected, setSelected] = useState(request.kind === "select" ? (request.initialIndex ?? 0) : 0);
 	const [other, setOther] = useState("");
 	const [explaining, setExplaining] = useState(false);
 	const [denying, setDenying] = useState(false);
-	const rootRef = useRef<HTMLDivElement>(null);
+	const [stateRequest, setStateRequest] = useState(request);
+	if (stateRequest.reqId !== request.reqId || stateRequest.kind !== request.kind || stateRequest.title !== request.title) {
+		setStateRequest(request);
+		setText(request.kind === "editor" ? (request.prefill ?? "") : "");
+		setSelected(request.kind === "select" ? (request.initialIndex ?? 0) : 0);
+		setOther("");
+		setExplaining(false);
+		setDenying(false);
+	}
+	const editorRef = useRef<HTMLTextAreaElement>(null);
 	const titleId = useId();
+
+	// Native autofocus can scroll every ancestor when a form advances to its editor.
+	useLayoutEffect(() => {
+		if (!disabled && (request.kind === "editor" || explaining)) editorRef.current?.focus({ preventScroll: true });
+	}, [request.reqId, request.kind, explaining, disabled]);
 
 	// Answer the follow-up editor for an "Other" choice without showing a second card.
 	useEffect(() => {
@@ -161,11 +218,19 @@ export function QuestionCard({ session, request, note, presentation = true }: { 
 			{note}
 		</p>
 	);
+	const statusText = formStatus ?? (pendingAsk(session.getSnapshot()) ? t("question.messageCloses") : undefined);
+	const statusLine = statusText && <p role={formStatus === undefined ? undefined : "status"} className={formStatus === undefined ? "mt-3 text-sm text-fg-muted" : "mt-3 grid text-sm text-fg-muted"}>
+		{formStatus === undefined ? statusText : <>
+			{/* Retain the normal hint's wrapped height while omp retires a request. */}
+			<span aria-hidden className="invisible [grid-area:1/1]">{t("question.messageCloses")}</span>
+			<span data-form-status-text className="[grid-area:1/1]">{statusText}</span>
+		</>}
+	</p>;
 
 	if (request.kind === "editor") {
 		if (request.title.startsWith(CUSTOM_ANSWER_PREFIX) && pendingCustom.has(session)) return null;
 		return (
-			<div ref={rootRef} data-question-card={request.reqId} className={cardClass}>
+			<div data-question-card={request.reqId} className={cardClass}>
 				{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
 				{noteLine}
 				<Heading icon={<Question className="text-accent" />}>
@@ -173,16 +238,17 @@ export function QuestionCard({ session, request, note, presentation = true }: { 
 						<ColorText text={request.title} />
 					</p>
 					<Textarea
+						ref={editorRef}
 						aria-labelledby={titleId}
 						value={text}
 						onChange={event => setText(event.target.value)}
 						placeholder={t("question.placeholder")}
 						minRows={2}
 						maxRows={8}
-						autoFocus
+						disabled={disabled}
 					/>
 				</Heading>
-				{pendingAsk(session.getSnapshot()) && <p className="mt-3 text-sm text-fg-muted">{t("question.messageCloses")}</p>}
+				{statusLine}
 				<div className="mt-3 flex justify-end gap-2">
 					<Button variant="ghost" onClick={() => session.answer(request.reqId, undefined)}>
 						{t("question.skip")}
@@ -233,8 +299,8 @@ export function QuestionCard({ session, request, note, presentation = true }: { 
 				<p className="mt-3 text-sm text-fg-muted">{t("question.messageDenies")}</p>
 				{explaining && (
 					<div className="mt-3">
-						<Textarea aria-label={t("question.denialReason")} placeholder={t("question.denialReason")} value={other}
-							onChange={event => setOther(event.target.value)} minRows={2} maxRows={6} autoFocus disabled={denying} />
+						<Textarea ref={editorRef} aria-label={t("question.denialReason")} placeholder={t("question.denialReason")} value={other}
+							onChange={event => setOther(event.target.value)} minRows={2} maxRows={6} disabled={denying} />
 					</div>
 				)}
 				<div className="mt-3 flex flex-wrap justify-end gap-2">
@@ -286,6 +352,7 @@ export function QuestionCard({ session, request, note, presentation = true }: { 
 				choices={choices}
 				multi={multi}
 				labelledBy={titleId}
+				disabled={disabled}
 				isOn={index => (multi ? checked.has(index) : selected === index && !other.trim())}
 				activeIndex={activeIndex}
 				onSelect={index => {
@@ -309,7 +376,7 @@ export function QuestionCard({ session, request, note, presentation = true }: { 
 					className={otherInputClass}
 				/>
 			)}
-			{pendingAsk(session.getSnapshot()) && <p className="mt-3 text-sm text-fg-muted">{t("question.messageCloses")}</p>}
+			{statusLine}
 			<div className="mt-3 flex items-center gap-2">
 				{hasChat && (
 					<Button variant="ghost" icon={<ChatCircle />} onClick={() => session.answer(request.reqId, ASK_CHAT)}>

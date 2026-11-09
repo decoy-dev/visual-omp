@@ -16,11 +16,11 @@ let frames: Map<number, FrameRequestCallback>;
 let frameId: number;
 let resized: () => void;
 
-function Probe() {
+function Probe({ instant = false }: { instant?: boolean }) {
 	const ref = useRef<HTMLElement>(null);
 	const content = useRef<HTMLDivElement>(null);
 	pinned = useRef(true);
-	follow = useScrollFollow(ref, pinned, { content });
+	follow = useScrollFollow(ref, pinned, { content, instant });
 	useLayoutEffect(() => {
 		element = ref.current!;
 		// Geometry is supplied because happy-dom has no layout. The hook owns writes, pinning and event ordering.
@@ -96,6 +96,24 @@ describe("transcript bottom pin", () => {
 			settle();
 			expect(element.scrollTop).toBe(height - viewport);
 		}
+	});
+
+	it("follows in-place question changes on the next frame without an eased glide", () => {
+		act(() => root.render(createElement(Probe, { instant: true })));
+		height += 140;
+		resized();
+		const batch = [...frames.values()];
+		frames.clear();
+		for (const callback of batch) callback(1000 / 60);
+		expect(element.scrollTop).toBe(height - viewport);
+		settle(); // The follow may schedule one final no-op frame after reaching its target.
+		element.dispatchEvent(new WheelEvent("wheel", { deltaY: -30 }));
+		scroll(element.scrollTop - 30);
+		height += 100;
+		resized();
+		settle();
+		expect(pinned.current).toBe(false);
+		expect(element.scrollTop).toBe(1310);
 	});
 
 	it("keeps following when the helper strip changes the viewport during an eased append", () => {

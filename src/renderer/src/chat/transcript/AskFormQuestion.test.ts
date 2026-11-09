@@ -17,6 +17,11 @@ import { usePendingQuestion } from "./QuestionCard";
 import evidence from "../../../../main/omp/tsp/fixtures/18.18.3/ask-html-form.ask.json";
 import "../../i18n";
 
+vi.hoisted(() => {
+	// As in ComposerAvailability.test, use Motion's JS fallback for happy-dom's incomplete WAAPI.
+	Reflect.deleteProperty(Element.prototype, "animate");
+});
+
 let root: Root;
 let element: HTMLDivElement;
 let controller: SessionController;
@@ -32,11 +37,13 @@ const entries = evidence.sessions[0]!.text.trim().split("\n").map(line => JSON.p
 const call = entries.flatMap(entry => entry.message?.content ?? []).find(part => part.type === "toolCall");
 const first = evidence.stages[2]!.request as CollabUiRequest;
 const next = evidence.stages[3]!.request as CollabUiRequest;
+const radio = evidence.stages[0]!.request as Extract<CollabUiRequest, { kind: "select" }>;
+const editor = evidence.stages[6]!.request as Extract<CollabUiRequest, { kind: "editor" }>;
 
 function Harness() {
 	const current = useSessionView(controller);
 	const pending = usePendingQuestion(controller, current?.guest?.uiRequest ?? null);
-	return createElement(Fragment, null, createElement(OverlayWatcher), pending && createElement("div", { key: pending.key }, pending.node));
+	return createElement(Fragment, null, createElement(OverlayWatcher), pending && createElement("div", { key: pending.key, "data-in-place": pending.inPlace }, pending.node));
 }
 async function updateRequest(request: CollabUiRequest | null) {
 	await act(async () => {
@@ -96,6 +103,150 @@ it("retains a disabled visible card and one claim until the next field and its m
 	expect(useApp.getState().terminalTabId).toBeNull();
 });
 
+it("marks only the stable form presenter as an in-place question", async () => {
+	expect(element.querySelector('[data-in-place="true"] [data-form-question]')).not.toBeNull();
+	await updateRequest(null);
+	expect(element.querySelector('[data-in-place="true"] [data-form-question]')).not.toBeNull();
+	await updateRequest({ reqId: 99, kind: "editor", title: "Unsupported field" });
+	expect(element.querySelector("[data-in-place]")).toBeNull();
+});
+
+it("restores a checkbox blurred by retirement without scrolling or taking focus from another control", async () => {
+	const option = element.querySelector<HTMLButtonElement>('[data-choice="1"]')!;
+	option.focus();
+	await updateRequest(null);
+	// Browsers can clear focus when the fieldset disables; happy-dom keeps its old activeElement.
+	const active = vi.spyOn(document, "activeElement", "get").mockReturnValue(document.body);
+	const focus = vi.spyOn(option, "focus");
+	await updateRequest(next);
+	active.mockRestore();
+	expect(document.activeElement).toBe(option);
+	expect(focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+	await updateRequest(null);
+	const external = document.createElement("button");
+	element.append(external);
+	external.focus();
+	await updateRequest({ ...next, reqId: 105 });
+	expect(document.activeElement).toBe(external);
+	expect(focus).toHaveBeenCalledTimes(1);
+});
+
+it("keeps the same checkbox card, option nodes and focus when only the request and checked values change", async () => {
+	const card = element.querySelector("[data-question-card]");
+	const options = [...element.querySelectorAll<HTMLButtonElement>("[data-choice]")];
+	const answer = vi.spyOn(controller, "answer").mockImplementation(() => {});
+	options[1]!.focus();
+	await act(async () => options[1]!.click());
+	expect(answer).toHaveBeenCalledExactlyOnceWith(first.reqId, "Tests");
+	await updateRequest(next);
+	expect(element.querySelector("[data-question-card]")).toBe(card);
+	expect([...element.querySelectorAll("[data-choice]")]).toEqual(options);
+	expect(document.activeElement).toBe(options[1]);
+	expect(options[1]!.getAttribute("aria-checked")).toBe("true");
+	await act(async () => options[0]!.click());
+	expect(answer).toHaveBeenLastCalledWith(next.reqId, "Types");
+});
+
+it("keeps one in-card status slot and disables option actions throughout request retirement", async () => {
+	const card = element.querySelector("[data-question-card]");
+	const status = card!.querySelector('[role="status"]');
+	const options = [...element.querySelectorAll<HTMLButtonElement>("[data-choice]")];
+	const answer = vi.spyOn(controller, "answer").mockImplementation(() => {});
+	expect(status?.querySelector("[data-form-status-text]")?.textContent).toBe("Sending a message closes this question without stopping the reply.");
+	await updateRequest(null);
+	expect(element.querySelector("[data-question-card]")).toBe(card);
+	expect(element.querySelectorAll('[role="status"]')).toHaveLength(1);
+	expect(card!.querySelector('[role="status"]')).toBe(status);
+	expect(status?.querySelector("[data-form-status-text]")?.textContent).toBe("Waiting for the next question from omp.");
+	expect(options.every(option => option.disabled)).toBe(true);
+	await act(async () => {
+		options[1]!.click();
+		options[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+	});
+	expect(answer).not.toHaveBeenCalled();
+	await updateRequest(next);
+	expect(element.querySelector('[role="status"]')).toBe(status);
+	expect([...element.querySelectorAll("[data-choice]")]).toEqual(options);
+	expect(options.every(option => !option.disabled)).toBe(true);
+	expect(status?.querySelector("[data-form-status-text]")?.textContent).toBe("Sending a message closes this question without stopping the reply.");
+	expect(status?.querySelector("[aria-hidden]")?.textContent).toBe("Sending a message closes this question without stopping the reply.");
+});
+
+it("resets local radio selection for a replacement request without remounting its options", async () => {
+	await updateRequest(radio);
+	const options = [...element.querySelectorAll<HTMLButtonElement>("[data-choice]")];
+	const answer = vi.spyOn(controller, "answer").mockImplementation(() => {});
+	await act(async () => options[1]!.click());
+	expect(options[1]!.getAttribute("aria-checked")).toBe("true");
+	expect(answer).not.toHaveBeenCalled();
+	await updateRequest({ ...radio, reqId: 101, initialIndex: 0 });
+	expect([...element.querySelectorAll("[data-choice]")]).toEqual(options);
+	expect(options[0]!.getAttribute("aria-checked")).toBe("true");
+	expect(options[1]!.getAttribute("aria-checked")).toBe("false");
+	await act(async () => element.querySelector<HTMLButtonElement>("[data-question-card] > div:last-child button:last-child")!.click());
+	expect(answer).toHaveBeenCalledExactlyOnceWith(101, "Stable");
+	await updateRequest(next);
+	expect(element.querySelector('[role="checkbox"]')?.getAttribute("aria-checked")).toBe("true");
+});
+
+it("moves radio focus without scrolling and ignores keyboard selection while the form waits", async () => {
+	await updateRequest(radio);
+	const options = [...element.querySelectorAll<HTMLButtonElement>("[data-choice]")];
+	const focus = vi.spyOn(options[1]!, "focus");
+	options[0]!.focus();
+	await act(async () => options[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true, cancelable: true })));
+	expect(document.activeElement).toBe(options[1]);
+	expect(focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+	expect(options[1]!.getAttribute("aria-checked")).toBe("true");
+	await updateRequest(null);
+	await act(async () => options[0]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true, cancelable: true })));
+	expect(options[1]!.getAttribute("aria-checked")).toBe("true");
+});
+
+it("resets editor text on replacement and focuses the persistent textarea without scrolling", async () => {
+	const focus = vi.spyOn(HTMLTextAreaElement.prototype, "focus");
+	await updateRequest(editor);
+	const textarea = element.querySelector("textarea")!;
+	expect(textarea.value).toBe("Keep compatibility");
+	expect(textarea.hasAttribute("autofocus")).toBe(false);
+	expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+	await act(async () => {
+		Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(textarea, "My local answer");
+		textarea.dispatchEvent(new Event("input", { bubbles: true }));
+	});
+	const answer = vi.spyOn(controller, "answer").mockImplementation(() => {});
+	await act(async () => element.querySelector<HTMLButtonElement>("[data-question-card] > div:last-child button:last-child")!.click());
+	expect(answer).toHaveBeenCalledExactlyOnceWith(editor.reqId, "My local answer");
+	await updateRequest(null);
+	expect(textarea.disabled).toBe(true);
+	expect(element.querySelector("textarea")).toBe(textarea);
+	await updateRequest({ ...editor, reqId: 102, prefill: "New prefill" });
+	expect(element.querySelector("textarea")).toBe(textarea);
+	expect(textarea.value).toBe("New prefill");
+	expect(document.activeElement).toBe(textarea);
+	expect(focus).toHaveBeenLastCalledWith({ preventScroll: true });
+	await updateRequest(radio);
+	await updateRequest({ ...editor, reqId: 103, prefill: undefined });
+	expect(element.querySelector("textarea")!.value).toBe("");
+});
+
+it("retains the measured form height for shorter fields and releases it after a width change", async () => {
+	let width = 760;
+	let height = 300;
+	vi.spyOn(HTMLFieldSetElement.prototype, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 0, width, height));
+	await updateRequest(next);
+	const form = element.querySelector<HTMLElement>("[data-form-question]")!;
+	expect(form.style.minHeight).toBe("300px");
+	height = 200;
+	await updateRequest(editor);
+	expect(form.style.minHeight).toBe("300px");
+	await updateRequest(null);
+	expect(form.style.minHeight).toBe("300px");
+	width = 600;
+	await updateRequest({ ...editor, reqId: 104 });
+	expect(form.style.minHeight).toBe("200px");
+});
+
 it("offers an explicit screen action for uncertain matching and recovers without opening it", async () => {
 	const matched = snapshot.questionMatches;
 	await publishMatches(matched?.map(match => ({ ...match, status: "ambiguous", reqId: undefined })));
@@ -139,6 +290,8 @@ it("keeps a native-only question visible with a manual screen action", async () 
 });
 
 it("holds the completed form presentation until its native node departs", async () => {
+	const card = element.querySelector("[data-question-card]");
+	const status = element.querySelector('[role="status"]');
 	await act(async () => {
 		const result = entries.find(entry => entry.message?.role === "toolResult");
 		view = { ...view, working: false, guest: { ...view.guest!, uiRequest: null, pendingUiRequests: [], activeTools: new Map(), entries: [result], working: false } };
@@ -147,6 +300,8 @@ it("holds the completed form presentation until its native node departs", async 
 		for (const listener of hostListeners) listener(tspHostPatch(null, snapshot));
 	});
 	await vi.waitFor(() => expect(element.textContent).toContain("Closing omp's question."));
+	expect(element.querySelector("[data-question-card]")).toBe(card);
+	expect(element.querySelector('[role="status"]')).toBe(status);
 	expect(presentationClaims.getSnapshot()).toHaveLength(1);
 	expect(opens).toEqual([]);
 	await act(async () => {

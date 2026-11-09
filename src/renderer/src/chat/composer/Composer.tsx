@@ -661,7 +661,16 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 	const canSend = !readOnly && !tspReason && !sendBlocked && (draft.trim().length > 0 || attachments.length > 0);
 	const actionSet = `${queueing}:${canSend}`;
 	const mod = IS_MAC ? "⌘" : "Ctrl+";
-	const questionId = view.uiRequest?.reqId ?? null;
+	const currentQuestionId = view.uiRequest?.reqId ?? null;
+	const questionHost = `${view.hostId}:${view.generation}`;
+	const formKey = view.formCallId === null ? null : `${questionHost}:${view.formCallId}`;
+	const [questionDisplay, setQuestionDisplay] = useState({ host: questionHost, scope: formKey, id: currentQuestionId });
+	// Presentation can outlast the displayed request, but input authority always uses uiRequest.
+	const formPresented = formKey !== null || view.mode === "live" && !readOnly && questionDisplay.host === questionHost && questionDisplay.scope !== null && view.tspComposer?.blockedBy === "ask";
+	const displayScope = formKey ?? (formPresented ? questionDisplay.scope : null);
+	if (questionDisplay.host !== questionHost || questionDisplay.scope !== displayScope || currentQuestionId !== null && questionDisplay.id !== currentQuestionId) setQuestionDisplay({ host: questionHost, scope: displayScope, id: currentQuestionId });
+	const questionId = currentQuestionId ?? (displayScope !== null ? questionDisplay.id : null);
+	const formQuestionBlocked = formPresented && (view.tspAvailability?.reasonCode === "ask-editor" || view.tspAvailability?.reasonCode === "matched-question");
 	// Slots below order 50 sit on the left of the row under the card (folder, permission); the rest on the right.
 	const leadTools = tools.filter(slot => slot.order < 50);
 	const trailTools = tools.filter(slot => slot.order >= 50);
@@ -690,7 +699,7 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 				<p className="flex-1">{view.tspEditorRestore.error ?? t("editorRestore.saved")}</p>
 				<Button size="sm" variant="secondary" disabled={readOnly} onClick={() => void session.retryEditorRestore().catch((error: unknown) => toast({ tone: "err", message: String(error) }))}>{t("editorRestore.retry")}</Button>
 			</div>}
-			<QueueTray session={session} queue={view.queue} questionId={questionId} askWaiting={askWaiting} sendBlocked={Boolean(tspReason)} strandedImages={view.strandedImages} />
+			<QueueTray session={session} queue={view.queue} questionId={questionId} askWaiting={askWaiting || formPresented} sendBlocked={Boolean(tspReason)} strandedImages={view.strandedImages} />
 			<div
 				className={cn(
 					"relative rounded-xl border border-border-strong bg-panel shadow-(--shadow-card) transition-colors duration-(--dur-fast) focus-within:border-control-border has-[textarea:focus-visible]:outline-2 has-[textarea:focus-visible]:outline-offset-2 has-[textarea:focus-visible]:outline-ring",
@@ -965,7 +974,7 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 					</div>
 				</div>
 			</div>
-			{tspReason && view.tspAvailability?.reasonCode !== "btw" && <div role="status" className="px-1 pt-2 text-sm text-fg-muted">{tspReason}</div>}
+			{tspReason && !formQuestionBlocked && view.tspAvailability?.reasonCode !== "btw" && <div role="status" className="px-1 pt-2 text-sm text-fg-muted">{tspReason}</div>}
 			{/* Padding leaves the offset focus outlines inside the horizontal scroll viewport. */}
 			<div className="flex items-center gap-toolbar overflow-x-auto scroll-px-1 whitespace-nowrap px-1 pt-2 pb-1" data-composer-settings onFocusCapture={event => {
 				if (event.currentTarget.contains(event.target)) event.target.scrollIntoView({ block: "nearest", inline: "nearest" });

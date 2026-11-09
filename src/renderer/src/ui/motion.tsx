@@ -425,6 +425,8 @@ export interface ScrollFollowOptions {
 	threshold?: number;
 	/** The view is hidden: follow without easing, since nobody sees it. */
 	paused?: boolean;
+	/** In-place interaction stays pinned without starting a smooth catch-up animation. */
+	instant?: boolean;
 }
 
 export interface ScrollFollow {
@@ -466,11 +468,11 @@ export function releaseScrollFollow(target: Element): void {
 export function useScrollFollow(
 	ref: RefObject<HTMLElement | null>,
 	pinnedRef: { current: boolean },
-	{ content, threshold = 48, paused = false }: ScrollFollowOptions = {},
+	{ content, threshold = 48, paused = false, instant: immediate = false }: ScrollFollowOptions = {},
 ): ScrollFollow {
 	const reduced = useMotionReduced();
 	const instant = useRef(false);
-	instant.current = reduced || paused;
+	instant.current = reduced || paused || immediate;
 	const [api] = useState(() => {
 		let frame = 0;
 		let lastFrame = 0;

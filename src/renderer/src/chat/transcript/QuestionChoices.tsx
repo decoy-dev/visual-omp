@@ -61,7 +61,7 @@ export function ChoiceGrid({ choices, multi, labelledBy, describedBy, isOn, acti
 			next = (next + direction + choices.length) % choices.length;
 			if (!choices[next]?.disabled) {
 				onSelect(next);
-				event.currentTarget.querySelector<HTMLElement>(`[data-choice="${next}"]`)?.focus();
+				event.currentTarget.querySelector<HTMLElement>(`[data-choice="${next}"]`)?.focus({ preventScroll: true });
 				return;
 			}
 		}

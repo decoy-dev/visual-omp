@@ -32,4 +32,18 @@ describe('composer visual selection', () => {
 		expect(shallow(selected, composerSelection({ ...view, host: { ...host, tspAvailability: { available: false, reason: 'Waiting for input' } } }))).toBe(false);
 		expect(shallow(selected, composerSelection({ ...view, guest: { ...view.guest!, awaitingAsyncWork: true } }))).toBe(false);
 	});
+
+	it('keeps the form call identity through request retirement without inventing input authority', () => {
+		const before = snapshot();
+		before.guest = { ...before.guest!, activeTools: new Map([['form-call', { toolCallId: 'form-call', toolName: 'ask', args: { html: '<form><input name=\"note\"></form>' }, startedAt: 0 }]]), pendingUiRequests: [{ reqId: 7, kind: 'editor', title: 'note' }] };
+		const selected = composerSelection(before);
+		expect(selected.formCallId).toBe('form-call');
+		expect(selected.uiRequest).toBeNull();
+		expect(selected.askWaiting).toBe(false);
+		const retired = composerSelection({ ...before, guest: { ...before.guest!, pendingUiRequests: [] } });
+		expect(retired.formCallId).toBe('form-call');
+		expect(retired.uiRequest).toBeNull();
+		expect(composerSelection({ ...before, guest: { ...before.guest!, activeTools: new Map(), working: false } }).formCallId).toBeNull();
+		expect(composerSelection({ ...before, readOnly: true }).formCallId).toBeNull();
+	});
 });

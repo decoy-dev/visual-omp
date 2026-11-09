@@ -990,6 +990,17 @@ Missing nodes, uncertain matching, a different form or hidden/unmounted presenta
 that ownership. The completed call keeps its disabled presenter until the paired native node
 departs, so result delivery cannot briefly reveal a second form. This uses no timer.
 
+Form updates reuse the question card and option nodes across guest request ids. The waiting
+status replaces the in-card hint in a slot that retains its wrapped height, and a measured
+per-form minimum retains space beneath shorter later fields. Width or source changes reset
+that measurement. Editor focus and radio-key navigation use `preventScroll`.
+The composer retains only the form's displayed question id across request gaps and delayed
+native matches. Actual `uiRequest` readiness still controls submission; the cached display
+id grants no input authority. Its question tray and hint remain in place instead of showing
+a second blocked-status row. Transcript following uses instant writes for the in-place form
+presenter, without changing normal streamed-response easing or reader-controlled unpinning.
+
+
 omp 18.18.4 and 18.18.5 nest the form inside a scrolling list and expose only the active
 question tab's fields. `askFormPresentation` recognizes that body, Review's answers without
 a form body, and the collapsed Show/Cancel row. Established form ownership survives those

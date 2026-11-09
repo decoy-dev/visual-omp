@@ -772,7 +772,7 @@ export interface TranscriptBodyProps {
 	room?: string | null;
 	tspNotices?: readonly TspNotice[];
 	localRuns?: RunProjection["runs"];
-	pendingQuestion?: { key: string; node: ReactNode } | null;
+	pendingQuestion?: { key: string; node: ReactNode; inPlace?: boolean } | null;
 	footer?: ReactNode;
 	emptyState?: ReactNode;
 	onCommand?: (command: string, entryId: string) => void;
@@ -941,7 +941,7 @@ export function TranscriptBody({
 	const outOfSight = useOutOfSight(rootRef);
 	// Pinned to the bottom, the view follows new rows and the content column's own growth (a paced reply, an opening
 	// card) in one eased write per frame. Scrolled up, it stays put.
-	const follow = useScrollFollow(rootRef, pinnedRef, { content: contentRef, threshold: PINNED_PX, paused: outOfSight });
+	const follow = useScrollFollow(rootRef, pinnedRef, { content: contentRef, threshold: PINNED_PX, paused: outOfSight, instant: pendingQuestion?.inPlace === true });
 
 	const recordEdge = () => {
 		const el = rootRef.current;

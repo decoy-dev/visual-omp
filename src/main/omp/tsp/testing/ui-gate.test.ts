@@ -1,4 +1,4 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import { execFileSync, spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { existsSync, realpathSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -38,6 +38,7 @@ import { TspStream } from "../stream";
 import type { CollabUiRequest, SessionEntry, ToolCallContent, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import type { FileRefRequest } from "@shared/contracts/fileRefs";
 import { resolveFileRefs } from "../../../services/fileRefs";
+import type { FormLayoutEvidence } from "../../../../renderer/src/features/tsp/testing/form-layout-types";
 
 import { TspMainFeedback } from "../../../../renderer/src/state/tsp/main-feedback";
 import type { MainOutput } from "@shared/tsp/main-output";
@@ -46,6 +47,21 @@ import type { TspNode } from "@shared/tsp";
 interface GateResultRow { id: string; command: string; lines: string[]; tone: MainOutput["tone"]; locations?: MainOutput["locations"]; anchor: null; room: string; createdAt: number; provenance: unknown[] }
 const root = resolve(import.meta.dirname, "../../../../..");
 const chrome = process.env.CHROME_BIN ?? (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/bin/google-chrome");
+
+/** Explicit test-only baseline; production and ordinary gates always load working-tree sources. */
+function formLayoutBaseline() {
+	if (process.env.TSP_FORM_LAYOUT_GATE !== "1" || process.env.TSP_FORM_LAYOUT_BASELINE !== "1") return [];
+	const files = [
+		"chat/transcript/QuestionCard.tsx", "chat/transcript/QuestionChoices.tsx",
+		"chat/composer/Composer.tsx", "chat/composer/selection.ts", "chat/composer/QueueTray.tsx",
+		"chat/transcript/Transcript.tsx",
+	];
+	const sources = new Map(files.map(file => {
+		const path = `src/renderer/src/${file}`;
+		return [resolve(root, path), execFileSync("git", ["show", `e88bd9d:${path}`], { cwd: root, encoding: "utf8" })];
+	}));
+	return [{ name: "form-layout-e88bd9d-baseline", enforce: "pre" as const, load(id: string) { return sources.get(id.split("?")[0]!); } }];
+}
 
 const CdpMessage = z.object({ id: z.number().optional(), result: z.unknown().optional(), error: z.object({ message: z.string() }).optional(), method: z.string().optional(), params: z.unknown().optional() });
 interface AxTree { nodes: { role?: { value: string }; name?: { value: string }; properties?: { name: string; value: { value: unknown } }[] }[] }
@@ -97,8 +113,8 @@ class ChromePage {
 		// Chrome runs out of process; fake timers cannot drive its render or focus lifecycle.
 		while (!await this.evaluate(expression)) { if (Date.now() > deadline) throw new Error(`Chrome timed out: ${expression}\n${await this.evaluate("document.body.innerText.slice(0, 1600)")}\n${this.errors.join("\n")}`); await delay(25); }
 	}
-	async clickElement(expression: string): Promise<void> {
-		const point = await this.evaluate<{ x: number; y: number }>(`(() => { const element = ${expression}; if (!element) throw new Error('Missing Chrome input target'); element.scrollIntoView({block:'center',inline:'nearest'}); const box = element.getBoundingClientRect(); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`);
+	async clickElement(expression: string, scroll = true): Promise<void> {
+		const point = await this.evaluate<{ x: number; y: number }>(`(() => { const element = ${expression}; if (!element) throw new Error('Missing Chrome input target'); ${scroll ? "element.scrollIntoView({block:'center',inline:'nearest'});" : ""} const box = element.getBoundingClientRect(); if (${!scroll} && (box.top < 0 || box.bottom > innerHeight || box.left < 0 || box.right > innerWidth)) throw new Error('Layout gate input must already be visible'); return { x: box.left + box.width / 2, y: box.top + box.height / 2 }; })()`);
 		await this.send("Input.dispatchMouseEvent", { type: "mouseMoved", ...point });
 		await this.send("Input.dispatchMouseEvent", { type: "mousePressed", button: "left", clickCount: 1, ...point });
 		await this.send("Input.dispatchMouseEvent", { type: "mouseReleased", button: "left", clickCount: 1, ...point });
@@ -322,7 +338,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		shots = process.env.TSP_GATE_SHOTS ?? join(homedir(), "vomp-checks/ask-18185/chrome");
 		profile = await mkdtemp(join(tmpdir(), "vomp-chrome-gate-"));
 		await mkdir(shots, { recursive: true });
-		vite = await createServer({ configFile: false, root, cacheDir: join(profile, "vite-cache"), plugins: [react(), tailwindcss()], resolve: { dedupe: ["react", "react-dom"], alias: { "@shared": resolve(root, "src/shared"), "@": resolve(root, "src/renderer/src"), "@oh-my-pi/pi-wire": resolve(root, "src/renderer/src/collab/wire/index.ts"), "@oh-my-pi/pi-utils/marked": "marked", "@oh-my-pi/pi-utils/math-delimiters": resolve(root, "src/renderer/src/collab/math-delimiters.ts") } }, server: { host: "127.0.0.1", port: 0, hmr: false, fs: { allow: [root, realpathSync(resolve(root, "node_modules"))] } } });
+		vite = await createServer({ configFile: false, root, cacheDir: join(profile, "vite-cache"), plugins: [...formLayoutBaseline(), react(), tailwindcss()], resolve: { dedupe: ["react", "react-dom"], alias: { "@shared": resolve(root, "src/shared"), "@": resolve(root, "src/renderer/src"), "@oh-my-pi/pi-wire": resolve(root, "src/renderer/src/collab/wire/index.ts"), "@oh-my-pi/pi-utils/marked": "marked", "@oh-my-pi/pi-utils/math-delimiters": resolve(root, "src/renderer/src/collab/math-delimiters.ts") } }, server: { host: "127.0.0.1", port: 0, hmr: false, fs: { allow: [root, realpathSync(resolve(root, "node_modules"))] } } });
 		await vite.listen();
 		child = spawn(chrome, ["--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-gpu", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "about:blank"], { stdio: ["ignore", "ignore", "pipe"] });
 		const started = Promise.withResolvers<string>();
@@ -665,6 +681,124 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			await page.clickElement(`[...document.querySelectorAll('[data-question-card] button')].find(button => button.textContent.trim() === ${JSON.stringify(reply === "Next →" ? "Send choices" : "Send answer")})`);
 		}
 	}
+	it.skipIf(process.env.TSP_FORM_LAYOUT_GATE !== "1").each(
+		(["reduced", "full"] as const).flatMap(motion => (["short", "overflowing"] as const).map(history => ({ motion, history }))),
+	)("records form layout at owner dimensions with $motion motion and $history history", async ({ motion, history }) => {
+		const baseline = process.env.TSP_FORM_LAYOUT_BASELINE === "1";
+		const directory = join(homedir(), "vomp-checks/form-jump", baseline ? "before" : "after");
+		await mkdir(directory, { recursive: true });
+		await page.send("Emulation.setDeviceMetricsOverride", { width: 1568, height: 1002, deviceScaleFactor: 1, mobile: false });
+		const evidence = formGuest185 as AskEvidence;
+		const { entries, call, result } = askTranscript(evidence);
+		const historyEntries: SessionEntry[] = [];
+		if (history === "overflowing") {
+			// Public synthetic history exercises the production scroll follower without owner session data.
+			for (let index = 0; index < 12; index++) {
+				historyEntries.push({ id: `layout-prompt-${index}`, parentId: null, type: "message", timestamp: new Date(index * 2000).toISOString(), message: { role: "user", content: `Review fixture release step ${index + 1}. Keep the release questions available in the chat.`, timestamp: index * 2000 } });
+				historyEntries.push({ id: `layout-reply-${index}`, parentId: null, type: "message", timestamp: new Date(index * 2000 + 1000).toISOString(), message: { role: "assistant", content: [{ type: "text", text: `Fixture release step ${index + 1} is ready for review.\\n\\nThe form checks release channel, supported platforms, a release note headline and review depth. All answers use the collab request sequence.` }], model: "fixture", usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, totalTokens: 0, cost: { total: 0 } }, stopReason: "stop", timestamp: index * 2000 + 1000 } });
+			}
+		}
+		const requests = evidence.stages.filter(stage => stage.request);
+		const replaySnapshot = askSnapshots();
+		const snapshot = (stage: AskEvidence["stages"][number], requests = stage.request ? [stage.request] : []) => ({
+			...replaySnapshot(stage, requests),
+			availability: { available: false, reason: "Answer the question card before sending a message.", reasonCode: "matched-question" as const, questionReqId: stage.request?.reqId },
+		});
+		await page.evaluate(`document.documentElement.dataset.motion=${JSON.stringify(motion)}; document.documentElement.dataset.theme='light'; window.gate.showFormLayout(${JSON.stringify(snapshot(requests[0]!))},${JSON.stringify(requests[0]!.request)},${JSON.stringify(call.arguments)},${JSON.stringify([...historyEntries, ...entries])})`);
+		await page.until("!!document.querySelector('[data-form-layout] [role=\"log\"]') && !!document.querySelector('[data-gate-composer] textarea') && window.gate.claims().length === 1");
+		await page.evaluate("document.fonts.ready.then(() => true)");
+		await delay(1200);
+		await page.evaluate("window.gate.beginFormUpdates(); window.gate.startLayoutEvidence()");
+		const mark = async (phase: string, settle = 200) => {
+			await page.evaluate(`window.gate.markLayoutEvidence(${JSON.stringify(phase)})`);
+			await delay(settle);
+		};
+		const choice = (label: string) => `[...document.querySelectorAll('[data-question-card] [data-choice]')].find(button => button.textContent.trim() === ${JSON.stringify(label)})`;
+		const send = () => `[...document.querySelectorAll('[data-question-card] button')].find(button => /^(Send answer|Send choices)$/.test(button.textContent.trim()))`;
+		let captured: FormLayoutEvidence;
+		let stabilityEnd = 0;
+		try {
+			await mark("ready");
+			for (const [index, stage] of requests.entries()) {
+				const request = stage.request!;
+				await page.until(`!!document.querySelector('[data-question-card="${request.reqId}"]')`);
+				await mark(`request-${request.reqId}-before-click`, 50);
+				if (request.kind === "editor") {
+					await page.clickElement("document.querySelector('[data-question-card] textarea')", false);
+					await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
+					await page.send("Input.insertText", { text: "Release fixture headline" });
+					await mark(`request-${request.reqId}-text-input`);
+					await page.clickElement(send(), false);
+				} else if (index === 2) {
+					await page.clickElement(send(), false);
+				} else {
+					await page.clickElement(choice(index === 0 ? "Beta" : index === 1 ? "Linux" : "Full"), false);
+					if (request.selectionMarker === "radio") {
+						await mark(`request-${request.reqId}-radio-selected`);
+						expect(await page.evaluate("window.gate.calls.filter(call => call.channel === 'collab:ui-response').length")).toBe(index);
+						await page.key("ArrowUp"); await mark(`request-${request.reqId}-arrow-up`, 80);
+						await page.key("ArrowDown"); await mark(`request-${request.reqId}-arrow-down`, 80);
+						await page.clickElement(send(), false);
+					}
+				}
+				await page.until("window.gate.view().guest.uiRequest === null");
+				await mark(`request-${request.reqId}-retired-gap`);
+				await page.clickElement(send(), false);
+				await mark(`request-${request.reqId}-disabled-repeat`, 60);
+				expect(await page.evaluate("window.gate.calls.filter(call => call.channel === 'collab:ui-response').length")).toBe(index + 1);
+				const settling = snapshot(stage, []);
+				settling.questionMatches = settling.questionMatches?.map(match => ({ ...match, status: "settling" }));
+				await page.evaluate(`window.gate.advanceFormRequest(null); window.gate.update(${JSON.stringify(settling)})`);
+				await mark(`request-${request.reqId}-end-before-next`);
+				const next = requests[index + 1];
+				if (next) {
+					await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(next.request)})`);
+					await mark(`request-${next.request!.reqId}-before-main-match`);
+					await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(next))})`);
+					await mark(`request-${next.request!.reqId}-matched`, 450);
+				}
+			}
+			stabilityEnd = await page.evaluate<number>("performance.now()");
+			await page.evaluate(`window.gate.finishForm(${JSON.stringify(result)})`);
+			await mark("result-before-native-departure");
+			expect(await page.evaluate("window.gate.claims().length")).toBe(1);
+			await page.evaluate(`window.gate.update(${JSON.stringify(snapshot(evidence.stages.at(-1)!, []))})`);
+			await mark("native-departed", 450);
+			await page.until("window.gate.claims().length === 0 && !document.querySelector('[data-form-question]')");
+		} finally {
+			captured = await page.evaluate<FormLayoutEvidence>("window.gate.stopLayoutEvidence()");
+			const calls = await page.evaluate("window.gate.calls");
+			const events = await page.evaluate("window.gate.formPresentationEvents");
+			await writeFile(join(directory, `${history}-${motion}.json`), JSON.stringify({ baseline: baseline ? "e88bd9d" : null, fixture: "18.18.5/ask-fixture-form-guest", seam: "Production TranscriptBody, usePendingQuestion and Composer; recorded requests and native matches; captured collab answer transport", stabilityEnd, ...captured, calls, events }, null, 2));
+		}
+		const frames = captured.frames.filter(frame => frame.time <= stabilityEnd);
+		expect(frames.length).toBeGreaterThan(30);
+		expect(captured.viewport).toEqual({ width: 1568, height: 1002 });
+		expect(captured.layoutShiftSupported).toBe(true);
+		expect(captured.motion).toBe(motion);
+		for (const stage of requests) {
+			expect(frames.some(frame => frame.phase === `request-${stage.request!.reqId}-retired-gap` && frame.requestId === null && frame.busy === "true"), "every submitted field records its request-retirement gap").toBe(true);
+		}
+		expect(frames.some(frame => frame.phase === "request-4-before-main-match"), "the text-field transition includes delayed main matching").toBe(true);
+		expect(frames.every(frame => frame.card && frame.form && frame.transcript && frame.composer && frame.composerInput)).toBe(true);
+		expect(frames.some(frame => frame.transcript!.scrollHeight > frame.transcript!.clientHeight + 1)).toBe(history === "overflowing");
+		expect(captured.frames.some(frame => frame.screen), "the form must never auto-open the omp screen").toBe(false);
+		expect(await page.evaluate("window.gate.formPresentationEvents.filter(event => event.terminalTabId !== null)"), "even a brief screen open must be reported").toEqual([]);
+		expect(frames.every(frame => frame.claims === 1), "native ownership persists through every measured request gap").toBe(true);
+		const range = (values: number[]) => Math.max(...values) - Math.min(...values);
+		const movement = { cardTop: range(frames.map(frame => frame.card!.top)), composerTop: range(frames.map(frame => frame.composer!.top)), composerInputTop: range(frames.map(frame => frame.composerInput!.top)), scrollTop: range(frames.map(frame => frame.transcript!.scrollTop)), documentScroll: range(frames.map(frame => frame.documentScroll)) };
+		await writeFile(join(directory, `${history}-${motion}-summary.json`), JSON.stringify({ baseline, history, motion, frames: frames.length, movement, shifts: captured.shifts }, null, 2));
+		if (!baseline) {
+			expect(movement.cardTop, "question card top must remain stable across all request and focus transitions").toBeLessThanOrEqual(1);
+			expect(movement.composerTop, "composer top must remain stable through request retirement").toBeLessThanOrEqual(1);
+			expect(movement.composerInputTop, "composer input must not move when a blocked reason changes").toBeLessThanOrEqual(1);
+			expect(movement.scrollTop, "answering or focusing must not scroll the transcript").toBeLessThanOrEqual(1);
+			expect(movement.documentScroll).toBe(0);
+		}
+		if (baseline) expect(Math.max(movement.cardTop, movement.composerTop, movement.composerInputTop, movement.scrollTop), "the original production modules must reproduce the reported movement").toBeGreaterThan(1);
+		expect(await page.evaluate("window.gate.calls")).toEqual(requests.map((stage, index) => ({ channel: "collab:ui-response", args: [stage.request!.reqId, ["Beta", "Linux", "Next →", "Release fixture headline", "Full"][index]] })));
+		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
+	}, 60_000);
 	it.each(askCases185.filter(item => ["ask-fixture-form-guest", "ask-fixture-colors"].includes(item.name)))("answers recorded 18.18.5 $name through collab with native t0 unchanged", async ({ name, evidence }) => {
 		const { entries, call, result } = askTranscript(evidence);
 		const snapshot = askSnapshots();

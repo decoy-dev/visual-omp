@@ -18,6 +18,7 @@ vi.hoisted(() => {
 	// Exercise Motion's JS fallback: happy-dom's cancelled WAAPI promises reject during draft transitions.
 	Reflect.deleteProperty(Element.prototype, "animate");
 });
+const tray = vi.hoisted(() => ({ questionId: null as number | null, askWaiting: false }));
 vi.mock("../../state/app", () => ({ useApp: (select: (state: { prefs: { voiceInput: boolean }; btwDrawers: Record<string, boolean> }) => unknown) => select({ prefs: { voiceInput: false }, btwDrawers: {} }) }));
 vi.mock("../../features/session-tools/slash", () => ({ routeSlash: vi.fn() }));
 vi.mock("../../features/session-tools/typed", () => ({ sendSlashCommand: vi.fn() }));
@@ -27,7 +28,7 @@ vi.mock("./attach", () => ({ attachFiles: vi.fn(), attachPaths: vi.fn(), useThum
 vi.mock("./MentionPicker", () => ({ MentionPicker: () => null, useProjectFiles: () => null }));
 vi.mock("./SlashMenu", () => ({ SlashMenu: () => null, useSlashCommands: () => [], slashOptions: () => null, slashAtCaret: () => null }));
 vi.mock("./PromptLibrary", () => ({ PromptLibrary: () => null }));
-vi.mock("./QueueTray", () => ({ QueueTray: () => null }));
+vi.mock("./QueueTray", () => ({ QueueTray: (props: { questionId: number | null; askWaiting: boolean }) => { Object.assign(tray, props); return null; } }));
 vi.mock("./VoiceTool", () => ({ VoiceTool: () => null, useVoiceRequests: { getState: () => ({ requestStart: vi.fn() }) } }));
 vi.mock("./predictions", () => ({ useGhostText: () => ({ suffix: "" }), ghostSourceUnchanged: () => true }));
 vi.mock("./tools", () => ({ QUICK_MODES: [] }));
@@ -49,6 +50,7 @@ const host = (transport: HostState["transport"], tspAvailability: HostState["tsp
 beforeEach(() => {
 	Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 	subscribers.clear();
+	tray.questionId = null; tray.askWaiting = false;
 	vi.mocked(session.send).mockReset().mockResolvedValue(undefined);
 	vi.mocked(session.preserveFailedMessage).mockReset();
 	// happy-dom omits FontFaceSet; Composer only subscribes to its loadingdone event here.
@@ -127,6 +129,32 @@ it.each(["classic", "tsp"] as const)("offers Send message rather than Queue mess
 	expect(element.textContent).not.toContain("Queue message");
 	expect(element.textContent).not.toContain("Answer the question card before sending a message.");
 	expect(element.querySelector<HTMLTextAreaElement>("textarea")?.placeholder).not.toContain("Queue");
+});
+
+it("keeps form presentation through request gaps and delayed matches without granting send authority", async () => {
+	const request = { reqId: 7, kind: "editor" as const, title: "Which database?", prefill: "SQLite" };
+	const args = { html: '<form><label>Which database?<input name="db" value="SQLite"></label></form>' };
+	view = { ...view, working: true, host: host("tsp", { available: false, reason: "Question waiting", reasonCode: "matched-question", questionReqId: 7 }), guest: {
+		phase: "live", endedReason: null, header: null, readOnly: false, entries: [], state: null, stream: null, streamDone: false, working: true,
+		agents: [], progress: new Map(), lifecycle: new Map(), backgroundTools: new Map(), notices: [], thinkingSelector: null, loading: null,
+		uiRequest: request, pendingUiRequests: [request], activeTools: new Map([["form-call", { toolCallId: "form-call", toolName: "ask", args, startedAt: 0 }]]),
+	} };
+	await act(async () => root.render(createElement(TooltipProvider, null, createElement(Composer, { session }))));
+	expect(tray.questionId).toBe(7);
+	await publish({ guest: { ...view.guest!, uiRequest: null } });
+	expect(tray.questionId).toBe(7);
+	expect(tray.askWaiting).toBe(true);
+	expect(element.querySelector('[role="status"]')).toBeNull();
+	await act(async () => element.querySelector("textarea")!.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true })));
+	expect(session.send).not.toHaveBeenCalled();
+	await publish({ guest: { ...view.guest!, uiRequest: { ...request, reqId: 8 }, pendingUiRequests: [{ ...request, reqId: 8 }] } });
+	expect(tray.questionId).toBe(8);
+	expect(element.querySelector('[role="status"]')).toBeNull();
+	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(true);
+	await publish({ host: host("tsp", { available: false, reason: "Question waiting", reasonCode: "matched-question", questionReqId: 8 }) });
+	expect(element.querySelector<HTMLButtonElement>('button[aria-label="Send message"]')?.disabled).toBe(false);
+	await publish({ guest: { ...view.guest!, uiRequest: null }, host: { ...view.host!, generation: 2 } });
+	expect(tray.questionId).toBeNull();
 });
 
 it("keeps the ask exception unavailable for a different blocking hook or without a live ask", async () => {
