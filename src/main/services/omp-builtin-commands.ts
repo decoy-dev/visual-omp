@@ -1,5 +1,5 @@
 /**
- * omp's builtin slash commands, taken from omp v18.17.0 (`packages/coding-agent/src/slash-commands/`
+ * omp's builtin slash commands, taken from omp v18.18.3 (`packages/coding-agent/src/slash-commands/`
  * `builtin-*.ts` and `seance.ts`, in `builtin-registry.ts` order). omp's RPC `get_available_commands`
  * lists only the builtins that also run outside its terminal UI, so this list fills in the rest
  * (settings, tree, resume and others). Descriptions are omp's own static text. omp builds three of
@@ -380,7 +380,7 @@ const BUILTINS: readonly BuiltinSpec[] = [
 	{ name: "remove-dir", description: "Remove a workspace directory from this session", hint: "<path>" },
 	{ name: "dirs", description: "List this session's workspace directories" },
 	{ name: "exit", description: "Exit the application" },
-	{ name: "restart", description: "Restart omp with the same launch flags, resuming this session" },
+	{ name: "restart", description: "Restart omp with the same launch flags, resuming this session and its running subagents" },
 	{
 		name: "marketplace",
 		description: "Manage marketplace plugin sources and installed plugins",
