@@ -8,11 +8,11 @@ Before tagging a release, the owner tests a development build with ready-made ch
 npm run tour
 ```
 
-The default manifest is `tours/0.7.11.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.7.10 patch tour and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
+The default manifest is `tours/0.7.12.mjs`. Select another release with `npm run tour -- --release X.Y.Z` after adding its manifest. The 0.7.11 and 0.7.10 patch tours and extended 0.7.9 tour remain available with their release flags. Close any existing development instance first. The tour starts `npm run dev`; subagents must use the headless preparation command instead.
 
 ### Requirements
 
-Use Node.js 22 or later, the repository's existing dependencies, omp 18.17.0 or later on PATH and Python 3 as `python3`. The small 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. To select a different omp executable, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. An absolute path also becomes the scratch app profile's omp preference. No dependency installation or provider sign-in is part of the tour.
+Use Node.js 22 or later, the repository's existing dependencies, omp 18.17.0 or later on PATH and Python 3 as `python3`. The 0.7.12 tour needs omp 18.18.3 or later, because its question chat expects omp's HTML-form questions; older omp receives the earlier single question. The small 0.7.11 and 0.7.10 tours need neither ffmpeg nor LibreOffice. The extended 0.7.9 tour requires ffmpeg with libx264, and LibreOffice is needed for its Office-conversion Quit check. To select a different omp executable, pass `--omp /absolute/path/to/omp` or set `OMP_FIXTURE_BINARY`. An absolute path also becomes the scratch app profile's omp preference. No dependency installation or provider sign-in is part of the tour.
 
 ### What the command prepares
 
@@ -23,6 +23,17 @@ The command creates a new temporary root and starts the loopback fixture provide
 - `app-profile/preferences.json`, which skips first-run setup in this disposable profile, enables live previews and disables crash reporting.
 
 The development app reads `VOMP_TOUR_CHATS=<absolute tour-layout.json>` through `app:info`. This startup option is ignored when `app.isPackaged` is true. It requires an absolute `VOMP_DEV_PROFILE`, a matching fixture marker, and seed file, profile, chat and session paths inside the fixture root, with symlinks resolved. Main returns an allowlisted layout whose active project comes from its validated tabs; arbitrary seed fields and expanded project paths are discarded. The renderer reuses its saved-layout parser and session controllers, opens the first chat and puts every tour chat in Current chats. The normal layout then persists through the app's own localStorage. No DevTools connection is required.
+
+### The 0.7.12 tour
+
+| Chat | Checks |
+| --- | --- |
+| 01 Handoff progress and documents | /handoff shows omp's Generating handoff… label with time and Stop in the working row and header, then a Handed off row that opens to the document with Copy. Stop reports Handoff cancelled. /compact ends with a Context summarized row that opens to its summary. The fixture model streams a handoff over about eight seconds, and the scratch configuration keeps almost no recent context verbatim so a short chat has something to hand off. |
+| 02 Helper cards above the composer | Sending `fixture helpers` starts six local helpers. The compact row shows at most four cards with name, time and Stop, a +N overflow and See all tasks, and a brief cue on activity. |
+| 03 Roll back to an earlier version | The development build poses as a Homebrew copy. The successful-update notice offers Roll back to v0.7.10+rollback-tour, Settings > About offers Roll back…, and the verified download-only path saves and reveals a 26-byte sample in the scratch profile's Downloads folder. |
+| 04 Questions as forms (omp 18.18.3) | Sending `fixture form` asks a radio group, a checkbox group, a text field and a list as one HTML form. The question card asks them in turn with preselected answers and a free-text Other choice, and the ask row shows each recorded answer. `fixture colors` keeps its hex swatches. |
+
+The rollback samples come from the manifest's `updateFixture`. `{{fixtureHealth}}` in a release becomes the local provider's `/health` URL, whose fixed body matches the declared size and SHA-256, so the app's checksum verification runs without a published installer. `method` and the other optional feed fields pass into the development feed, `ompUpdate: false` reports omp as up to date, and `pendingUpdate` is written to the scratch profile's `update-pending.json` on every launch, including `--resume`, because the app consumes it when it shows the successful-update notice. The brew command in the feed only prints a refusal. A development build started with an absolute `VOMP_DEV_PROFILE`, as every tour is, keeps downloads and exports in that profile's `Downloads` folder, so the sample never reaches your own Downloads. The development build must report 0.7.12 for the notice and About checks; the release commit sets that version.
 
 ### The 0.7.11 patch tour
 

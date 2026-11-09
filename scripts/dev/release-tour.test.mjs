@@ -1,20 +1,22 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { generateChat, parseArguments, readTourSession, tourLayout } from "./release-tour.mjs";
 import manifest from "./tours/0.7.9.mjs";
 import patch from "./tours/0.7.10.mjs";
 import current from "./tours/0.7.11.mjs";
+import next from "./tours/0.7.12.mjs";
 import previous from "./tours/0.7.8.mjs";
-import { configureTour, prepareUpdateFixture, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
+import { configureTour, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 import { initializeFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
 
 test("tour flags reject unknown options and traversal releases", () => {
-  assert.equal(parseArguments([]).release, "0.7.11");
+  assert.equal(parseArguments([]).release, "0.7.12");
   assert.equal(parseArguments(["--prepare-only"]).prepareOnly, true);
   assert.equal(parseArguments(["--release", "0.7.9", "--omp", "/bin/omp"]).binary, "/bin/omp");
   assert.throws(() => parseArguments(["--release", "../server"]));
@@ -44,7 +46,7 @@ test("the small 0.7.10 tour covers XDG discovery and states the room-replacement
 });
 
 test("0.7.11 opens one chat per change with explicit owner checks and fixture limits", () => {
-  assert.equal(current.version, parseArguments([]).release);
+  assert.equal(current.version, "0.7.11");
   assert.deepEqual(current.chats.map(chat => chat.id), ["release-notes", "file-mentions", "missing-result"]);
   const [notes, mentions, missing] = current.chats;
   assert.match(notes.prompts[0], /Settings > About > Read release notes.*Past versions.*v0.7.11.*Release notes are easier to scan.*File mentions support spaced paths/s);
@@ -69,6 +71,41 @@ test("0.7.11 update feed preserves a labeled unpublished sample body for This up
   assert.equal([...body.matchAll(/^- \*\*\w+:\*\* \*\*/gm)].length, 2);
   assert.deepEqual([...body.matchAll(/^- \*\*(\w+):\*\*/gm)].map(match => match[1]), ["Fixed", "Removed", "Improved", "Changed", "New", "Security", "Fixed", "Improved", "Fixed"]);
   assert.deepEqual(feed.releases[0].assets, []);
+});
+
+test("0.7.12 rollback samples download the provider's health body with its digest and no omp update offer", async t => {
+  const root = await mkdtemp(join(tmpdir(), "vomp-tour-rollback-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  assert.equal(next.version, parseArguments([]).release);
+  await assert.rejects(prepareUpdateFixture(root, "omp/18.18.3", next.updateFixture), /needs the local provider/);
+  const server = await startFixture({ root, port: 0, durationMs: 0 });
+  t.after(() => server.close());
+  const feed = JSON.parse(await readFile(await prepareUpdateFixture(root, "omp/18.18.3", next.updateFixture, server.baseUrl), "utf8"));
+  assert.equal(feed.method, "brew");
+  assert.match(feed.ompCheck.stdout, /Already up to date/);
+  assert.equal(feed.ompUpdateCommand, undefined);
+  const assets = feed.releases.flatMap(release => release.assets);
+  assert.equal(assets.length, 4);
+  for (const asset of assets) {
+    assert.equal(asset.browser_download_url, new URL("/health", server.baseUrl).href);
+    const body = Buffer.from(await (await fetch(asset.browser_download_url)).arrayBuffer());
+    assert.equal(body.length, asset.size);
+    assert.equal(`sha256:${createHash("sha256").update(body).digest("hex")}`, asset.digest);
+  }
+});
+
+test("each tour launch reseeds the consumed successful-update record inside the scratch profile", async t => {
+  const root = await mkdtemp(join(tmpdir(), "vomp-tour-pending-"));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const profile = join(root, "app-profile");
+  await mkdir(profile);
+  const path = await seedPendingUpdate(profile, next.updateFixture.pendingUpdate, 1000);
+  assert.equal(path, join(profile, "update-pending.json"));
+  assert.deepEqual(JSON.parse(await readFile(path, "utf8")), { method: "brew", from: "0.7.10+rollback-tour", to: "0.7.12", at: 1000 });
+  await rm(path);
+  await seedPendingUpdate(profile, next.updateFixture.pendingUpdate, 2000);
+  assert.equal(JSON.parse(await readFile(path, "utf8")).at, 2000);
+  await assert.rejects(seedPendingUpdate("relative-profile", next.updateFixture.pendingUpdate), /absolute scratch profile/);
 });
 
 test("file-mention receipts use only content supplied for the latest prompt", async t => {

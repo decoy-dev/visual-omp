@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, writeFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { startFixture, sequenceCommand, videoCommand } from "./server.mjs";
+import { COLOR_FORM, RELEASE_FORM, startFixture, sequenceCommand, videoCommand } from "./server.mjs";
 
 const roots = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
@@ -103,6 +103,23 @@ test("colors includes a hex-option ask question", async () => {
   assert.equal(call.name, "ask");
   assert.deepEqual(call.args.questions[0].options.map(option => option.label), ["#2B72E5", "#197f8680"]);
   assert.match(call.args.questions[0].question, /#2B72E5/);
+});
+
+test("ask fixtures send an HTML form when omp's ask tool takes one", async () => {
+  const tools = [{ type: "function", function: { name: "ask", parameters: { type: "object", properties: { html: { type: "string" } } } } }];
+  const ask = async prompt => {
+    const root = await mkdtemp(join(tmpdir(), "vomp-form-fixture-")); roots.push(root);
+    const server = await startFixture({ root, port: 0, durationMs: 0 });
+    try {
+      const text = await (await fetch(`${server.baseUrl}/chat/completions`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ messages: [{ role: "user", content: prompt }], tools }) })).text();
+      const args = text.split("\n").filter(line => line.startsWith("data: {")).flatMap(line => JSON.parse(line.slice(6)).choices[0]?.delta.tool_calls ?? []).map(call => call.function.arguments ?? "").join("");
+      return JSON.parse(args);
+    } finally { await server.close(); }
+  };
+  assert.equal((await ask("fixture colors")).html, COLOR_FORM);
+  const form = (await ask("fixture form")).html;
+  assert.equal(form, RELEASE_FORM);
+  for (const control of ['type="radio"', 'type="checkbox"', 'type="text"', "<select"]) assert.ok(form.includes(control), control);
 });
 
 test("helper requests one fixture-backed helper with a deterministic reply", async () => {

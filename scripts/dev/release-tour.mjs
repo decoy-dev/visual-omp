@@ -6,10 +6,10 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInterface } from "node:readline";
 import { fixtureEnvironment, requireFixture } from "../live-preview-fixture/environment.mjs";
 import { startFixture } from "../live-preview-fixture/server.mjs";
-import { configureTour, prepareUpdateFixture, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
+import { configureTour, prepareUpdateFixture, seedPendingUpdate, appendRecordedTools, validateRecordedTools } from "./tour-fixtures.mjs";
 
 const checkout = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-export const defaultRelease = "0.7.11";
+export const defaultRelease = "0.7.12";
 
 export function tourLayout(chats) {
   if (!chats.length) throw new Error("A release tour needs at least one chat.");
@@ -144,7 +144,8 @@ export async function prepareTour({ root, binary, manifest, signal }) {
   const config = execFileSync(binary, ["config", "path"], { cwd: join(root, "work"), env, encoding: "utf8" }).trim();
   if (await realpath(config) !== await realpath(env.PI_CODING_AGENT_DIR)) throw new Error("omp did not select the scratch agent directory.");
   await configureTour(env, manifest);
-  const updateFeed = manifest.updateFixture ? await prepareUpdateFixture(root, version, manifest.updateFixture === true ? {} : manifest.updateFixture) : undefined;
+  const fixtureBase = manifest.updateFixture ? JSON.parse(await readFile(join(root, "fixture.json"), "utf8")).baseUrl : undefined;
+  const updateFeed = manifest.updateFixture ? await prepareUpdateFixture(root, version, manifest.updateFixture === true ? {} : manifest.updateFixture, fixtureBase) : undefined;
   const chats = [];
   for (const chat of manifest.chats) {
     const generated = await generateChat({ root, env, binary, chat, signal });
@@ -157,7 +158,7 @@ export async function prepareTour({ root, binary, manifest, signal }) {
   const seed = join(root, "tour-layout.json");
   await writeFile(seed, JSON.stringify(tourLayout(chats), null, 2) + "\n");
   await writeFile(join(env.VOMP_DEV_PROFILE, "preferences.json"), JSON.stringify({ setupCompleted: true, tourCompleted: true, newUserApproval: "done", livePreview: true, livePreviewOpenOutputs: true, sendCrashReports: false, ...manifest.preferences, ...(isAbsolute(binary) ? { ompPath: binary } : {}) }, null, 2) + "\n");
-  const summary = { release: manifest.version, ompVersion: version, root, seed, binary, updateFeed, chats: chats.map(({ id, title, projectPath, sessionFile, files, tools, questions, recordedTools }) => ({ id, title, projectPath, sessionFile, files, tools, questions, recordedTools })) };
+  const summary = { release: manifest.version, ompVersion: version, root, seed, binary, updateFeed, pendingUpdate: manifest.updateFixture?.pendingUpdate, chats: chats.map(({ id, title, projectPath, sessionFile, files, tools, questions, recordedTools }) => ({ id, title, projectPath, sessionFile, files, tools, questions, recordedTools })) };
   await writeFile(join(root, "tour.json"), JSON.stringify(summary, null, 2) + "\n");
   return summary;
 }
@@ -198,6 +199,8 @@ async function main() {
       return;
     }
     const env = { ...fixtureEnvironment(root), VOMP_TOUR_CHATS: summary.seed, ...(summary.updateFeed ? { VOMP_UPDATE_FEED: summary.updateFeed } : {}) };
+    // The app consumes this record on launch to show its successful-update notice, so each launch writes it again.
+    if (summary.pendingUpdate) await seedPendingUpdate(env.VOMP_DEV_PROFILE, summary.pendingUpdate);
     const npmCli = process.env.npm_execpath;
     dev = spawn(npmCli ? process.execPath : process.platform === "win32" ? "npm.cmd" : "npm", npmCli ? [npmCli, "run", "dev"] : ["run", "dev"], { cwd: checkout, env, stdio: "inherit", shell: !npmCli && process.platform === "win32" });
     console.log("The local provider stays available until the development build exits. Quit the development app when finished.");

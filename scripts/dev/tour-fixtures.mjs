@@ -1,6 +1,6 @@
 import { appendFile, mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 
 export async function configureTour(env, manifest) {
   const configPath = join(env.PI_CODING_AGENT_DIR, "config.yml");
@@ -20,11 +20,19 @@ export async function configureTour(env, manifest) {
   }
 }
 
-export async function prepareUpdateFixture(root, version, { releases = [] } = {}) {
+/**
+ * Writes the development update feed. `{{fixtureHealth}}` in release fields becomes the local provider's `/health`
+ * URL, a fixed 26-byte download for checksum-verified rollback samples. `method` and the other optional feed fields
+ * pass through, and `ompUpdate: false` reports omp as up to date so no omp update is offered.
+ */
+export async function prepareUpdateFixture(root, version, { releases = [], ompUpdate = true, method, brewCommand, installedVersion, scoopGlobal, scoopRetainedVersions } = {}, baseUrl) {
   const current = /^omp\/(\d+\.\d+\.\d+)/.exec(version)?.[1];
   if (!current) throw new Error("Cannot prepare the update fixture without an omp version.");
   const [major, minor, patch] = current.split(".").map(Number);
   const latest = `${major}.${minor}.${patch + 1}`;
+  const health = baseUrl ? new URL("/health", baseUrl).href : null;
+  if (!health && JSON.stringify(releases).includes("{{fixtureHealth}}")) throw new Error("The update fixture needs the local provider for {{fixtureHealth}}.");
+  releases = JSON.parse(JSON.stringify(releases).replaceAll("{{fixtureHealth}}", health ?? ""));
   const feedPath = join(root, "update-feed.json");
   const scriptPath = join(root, "simulate-omp-update.mjs");
   const marker = join(root, "update-refused");
@@ -47,11 +55,20 @@ if (!existsSync(marker)) {
 `);
   await writeFile(feedPath, JSON.stringify({
     releases,
-    ompCheck: { code: 0, stdout: `Current version: ${current}\nNew version available: ${latest}\n`, stderr: "" },
-    ompUpdateCommand: `${quote(process.execPath)} ${quote(scriptPath)}`,
+    ...Object.fromEntries(Object.entries({ method, brewCommand, installedVersion, scoopGlobal, scoopRetainedVersions }).filter(([, value]) => value !== undefined)),
+    ompCheck: { code: 0, stdout: ompUpdate ? `Current version: ${current}\nNew version available: ${latest}\n` : `Current version: ${current}\nAlready up to date\n`, stderr: "" },
+    ...(ompUpdate ? { ompUpdateCommand: `${quote(process.execPath)} ${quote(scriptPath)}` } : {}),
     ompVersionAfter: current,
   }, null, 2) + "\n");
   return feedPath;
+}
+
+/** Writes the successful-update record the app reads, and consumes, on launch; only inside an absolute scratch profile. */
+export async function seedPendingUpdate(profile, pending, now = Date.now()) {
+  if (!profile || !isAbsolute(profile) || !/^[0-9][\w.+-]*$/.test(pending.from ?? "") || !/^[0-9][\w.+-]*$/.test(pending.to ?? "")) throw new Error("The pending update needs an absolute scratch profile and versions.");
+  const path = join(profile, "update-pending.json");
+  await writeFile(path, JSON.stringify({ ...pending, at: now }) + "\n");
+  return path;
 }
 
 export async function appendRecordedTools(file, entries, recordings) {

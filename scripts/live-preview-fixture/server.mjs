@@ -134,6 +134,36 @@ export function summaryRequest(text) {
   return null;
 }
 
+/** omp 18.18.3 replaced the ask tool's `questions[]` with one HTML form; follow the schema the request offers. */
+function askArgs(body, form, legacy) {
+  const ask = (body.tools ?? []).find(tool => tool.function?.name === "ask");
+  return ask?.function?.parameters?.properties?.html ? { html: form } : legacy;
+}
+export const COLOR_FORM = [
+  "<form>",
+  "<fieldset><legend>Which color should the fixture use: #2B72E5 or #197f8680?</legend>",
+  '<label><input type="radio" name="color" value="#2B72E5" checked> #2B72E5 (opaque blue)</label>',
+  '<label><input type="radio" name="color" value="#197f8680"> #197f8680 (transparent teal)</label>',
+  "</fieldset>",
+  "</form>",
+].join("\n");
+export const RELEASE_FORM = [
+  "<form>",
+  "<p>The fixture model asks a few release questions. Your answers go back to omp as form data.</p>",
+  "<fieldset><legend>Release channel</legend>",
+  '<label><input type="radio" name="channel" value="stable" checked> Stable</label>',
+  '<label><input type="radio" name="channel" value="beta"> Beta</label>',
+  "</fieldset>",
+  "<fieldset><legend>Platforms to check</legend>",
+  '<label><input type="checkbox" name="platforms" value="macos" checked> macOS</label>',
+  '<label><input type="checkbox" name="platforms" value="windows" checked> Windows</label>',
+  '<label><input type="checkbox" name="platforms" value="linux"> Linux</label>',
+  "</fieldset>",
+  '<label>Release note headline <input type="text" name="headline" value="Handoffs are easier to follow"></label>',
+  '<label>Review depth <select name="depth"><option value="quick">Quick</option><option value="full" selected>Full</option></select></label>',
+  "</form>",
+].join("\n");
+
 function mentionsCommand() {
   return `python3 - <<'PY'\nfrom pathlib import Path\nfrom zipfile import ZipFile\nPath('Meeting notes.md').write_text('# Meeting notes\\n\\ntour-0711-content:meeting\\n')\nPath('Client files').mkdir(exist_ok=True)\nPath('Client files/Review notes.md').write_text('# Client review\\n\\ntour-0711-content:client\\n')\nPath('Client files/Review "draft".md').write_text('# Quoted review\\n\\ntour-0711-content:quoted\\n')\nwith ZipFile('Design projects.zip', 'w') as archive:\n    archive.writestr('Design brief.md', '# Design brief\\n\\nLocal archive fixture.\\n')\nprint('Created the four file-mention samples.')\nPY`;
 }
@@ -168,7 +198,7 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       const lastUser = messages[userIndex];
       const turnMessages = messages.slice(userIndex);
       const afterTool = messages.at(-1)?.role === "tool";
-      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
+      const fixture = /fixture\s+(bash-trace|timestamps|helper-reply|helper-work|helpers|mentions|colors|form|helper|notes|cache|process|svg|html|png|pdf|image|isolation|video|sequence|progress|prores|proof|docx|xlsx|pptx|regular-video)/i.exec(textOf(lastUser))?.[1]?.toLowerCase();
       const htmlNeedsPage = afterTool && fixture === "html" && !turnMessages.some(message =>
         (message.tool_calls ?? []).some(call => {
           try { return call.function?.name === "write" && JSON.parse(call.function.arguments).path === "page.html"; }
@@ -250,7 +280,9 @@ export async function startFixture({ root, port = 47831, durationMs = 15000, onR
       }
       const helperCalls = turnMessages.flatMap(message => message.tool_calls ?? []);
       const calls = fixture === "mentions" ? [{ name: "bash", args: { i: "Preparing spaced file names", command: mentionsCommand(), timeout: 30 }, slow: false }] : fixture === "bash-trace" ? bashTraceCalls() : fixture === "colors" ? [
-        { name: "ask", args: { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }, slow: false },
+        { name: "ask", args: askArgs(body, COLOR_FORM, { questions: [{ id: "color", question: "Which color should the fixture use: #2B72E5 or #197f8680?", options: [{ label: "#2B72E5", description: "Opaque blue #2B72E5" }, { label: "#197f8680", description: "Transparent teal #197f8680" }] }] }), slow: false },
+      ] : fixture === "form" ? [
+        { name: "ask", args: askArgs(body, RELEASE_FORM, { questions: [{ id: "channel", question: "Which release channel should the fixture use?", options: [{ label: "Stable" }, { label: "Beta" }] }] }), slow: false },
       ] : fixture === "helper" || fixture === "helpers" ? !afterTool ? [
         fixture === "helper"
           ? { name: "task", args: { i: "Checking release helper conversation", context: "Use the local fixture provider. Do not run tools, checks or edit files.", tasks: [{ name: "TourHelper", task: "fixture helper-reply. Reply with the short release-tour helper check.", solutionSpace: "One fixed reply, no investigation." }] }, slow: false }
