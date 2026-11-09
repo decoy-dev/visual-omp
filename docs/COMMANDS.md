@@ -36,8 +36,8 @@ waits 1.5 seconds before releasing the queue. Other pass-through commands retain
 public main-region text, Markdown, rows and links in command-labelled Result rows. This includes
 folder and worktree moves, context resets, SSH mutations, MCP connection reports and authorization
 instructions, extension or custom-command exceptions, and the bound dashboard URL from `/stats`.
-Unchanged earlier output, hidden fields and content already presented by collab or a native card
-are excluded. Output can arrive after omp's editor becomes available; attribution ends at the next
+Unchanged earlier output, hidden fields, collab-source session status toasts and content already
+presented by collab or a native card are excluded. Output can arrive after omp's editor becomes available; attribution ends at the next
 input or a host, room or protocol-epoch change. Results keep their arrival position without opening
 the omp screen or moving focus. Printed paths and URLs offer Copy, and existing local paths offer
 Show in folder through the app's existing reveal action. Dashboard and authorization URLs remain

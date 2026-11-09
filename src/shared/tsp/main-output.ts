@@ -17,6 +17,8 @@ export interface MainOutput {
 const visibleSpans = (value: TspText | undefined) => typeof value === "string" ? [{ t: value }] : value?.filter(span => !span.s?.split(" ").some(token => token === "hide" || token === "icon")) ?? [];
 const excluded = (node: TspNode): boolean => {
 	const role = node.p?.role;
+	// Collab's asynchronous session notices never belong to the command being watched.
+	if (node.k === "toast" && role === TSP_ROLES.toastStatus && node.p?.text?.startsWith("collab: ")) return true;
 	return !!node.p?.hidden || isReplicatedRole(role) || !!role && (
 		role === TSP_ROLES.activity || role === TSP_ROLES.compaction || role === TSP_ROLES.userShell || role === TSP_ROLES.userPython ||
 		/^omp\.(?:overlay|plan|btw|hook|editor|composer)(?:\.|$)/.test(role) || !!TSP_CLAIMS[role] && !TSP_NOTICE_ROLES[role]);
