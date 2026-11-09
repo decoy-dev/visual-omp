@@ -230,21 +230,33 @@ it("resets editor text on replacement and focuses the persistent textarea withou
 	expect(element.querySelector("textarea")!.value).toBe("");
 });
 
-it("retains the measured form height for shorter fields and releases it after a width change", async () => {
+it("retains the actual card height and full form area until the form ends", async () => {
 	let width = 760;
 	let height = 300;
+	let area = 340;
+	vi.spyOn(HTMLDivElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLDivElement) { return new DOMRect(0, 0, width, this.hasAttribute("data-form-question") ? area : 0); });
 	vi.spyOn(HTMLFieldSetElement.prototype, "getBoundingClientRect").mockImplementation(() => new DOMRect(0, 0, width, height));
 	await updateRequest(next);
 	const form = element.querySelector<HTMLElement>("[data-form-question]")!;
-	expect(form.style.minHeight).toBe("300px");
+	const card = () => element.querySelector<HTMLElement>("[data-question-card]")!;
+	expect(card().style.minHeight).toBe("300px");
+	expect(form.style.minHeight).toBe("340px");
 	height = 200;
+	area = 200;
 	await updateRequest(editor);
-	expect(form.style.minHeight).toBe("300px");
+	expect(card().style.minHeight).toBe("300px");
+	expect(form.style.minHeight).toBe("340px");
 	await updateRequest(null);
-	expect(form.style.minHeight).toBe("300px");
+	expect(card().style.minHeight).toBe("300px");
 	width = 600;
 	await updateRequest({ ...editor, reqId: 104 });
-	expect(form.style.minHeight).toBe("200px");
+	expect(card().style.minHeight).toBe("300px");
+	height = 360;
+	area = 400;
+	await updateRequest({ ...editor, reqId: 105 });
+	expect(card().style.minHeight).toBe("360px");
+	expect(form.style.minHeight).toBe("400px");
+	expect(form.isConnected).toBe(true);
 });
 
 it("offers an explicit screen action for uncertain matching and recovers without opening it", async () => {

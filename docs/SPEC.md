@@ -112,8 +112,10 @@ omp's sequential collab questions, including free-text Other answers for radio a
 checkbox groups. A matched visible question card suppresses its native TSP form.
 The previous field stays visible and disabled while omp advances to its next request,
 and the form's native presentation remains claimed through that update.
-Selections update the same card and option controls. The hint, composer question tray and
-form height remain steady through request gaps and shorter later questions. Field focus
+Selections update the same card and option controls. The hint and composer question tray
+remain steady through request gaps. The visible card height never decreases while the same
+form remains active, including across shorter text questions and width changes. The retained
+height is released when the form ends. Field focus
 does not scroll the chat, and bottom-pinned form updates have no smooth catch-up animation.
 The same cards handle omp 18.18.4 and 18.18.5 tabbed forms, Review and Hide through
 collab's complete field sequence. Ask forms never open the omp screen automatically.

@@ -68,8 +68,9 @@ function FormQuestionCard({ session, request, form, context, owner, closing }: {
 	const claimed = useFormPresentation(context, shown?.reqId, form, owner);
 	const waiting = closing || !request;
 	const fieldsetRef = useRef<HTMLFieldSetElement>(null);
-	const measured = useRef({ html: form.html, width: 0, height: 0 });
-	const [minimumHeight, setMinimumHeight] = useState(0);
+	const formRef = useRef<HTMLDivElement>(null);
+	const measured = useRef({ html: form.html, card: 0, form: 0 });
+	const [minimumHeight, setMinimumHeight] = useState({ card: 0, form: 0 });
 	const focusedChoice = useRef<{ html: string; request: Extract<CollabUiRequest, { kind: "select" }>; node: HTMLButtonElement } | null>(null);
 	useLayoutEffect(() => {
 		const focused = focusedChoice.current;
@@ -90,20 +91,23 @@ function FormQuestionCard({ session, request, form, context, owner, closing }: {
 		const fieldset = fieldsetRef.current;
 		if (!fieldset) return;
 		const measure = () => {
-			const { width, height } = fieldset.getBoundingClientRect();
+			const cardHeight = fieldset.getBoundingClientRect().height;
+			const formHeight = formRef.current?.getBoundingClientRect().height ?? cardHeight;
 			const previous = measured.current;
-			// Keep shorter fields from contracting the transcript's scroll range.
-			const next = previous.html === form.html && previous.width === width ? Math.max(previous.height, height) : height;
-			measured.current = { html: form.html, width, height: next };
-			setMinimumHeight(next);
+			// Both the visible card and its surrounding fallback area retain their high-water marks.
+			const sameForm = previous.html === form.html;
+			const next = { html: form.html, card: sameForm ? Math.max(previous.card, cardHeight) : cardHeight, form: sameForm ? Math.max(previous.form, formHeight) : formHeight };
+			measured.current = next;
+			setMinimumHeight({ card: next.card, form: next.form });
 		};
 		measure();
 		const observer = new ResizeObserver(measure);
 		observer.observe(fieldset);
+		if (formRef.current) observer.observe(formRef.current);
 		return () => observer.disconnect();
 	}, [form.html, shown, waiting]);
 	if (!shown && context?.roots.length && !claimed) return <FormScreenAction session={session} standalone />;
-	return <div data-form-question aria-busy={waiting} style={{ minHeight: minimumHeight }}
+	return <div ref={formRef} data-form-question aria-busy={waiting} style={{ minHeight: measured.current.html === form.html ? minimumHeight.form : 0 }}
 		onFocusCapture={event => {
 			const node = event.target;
 			focusedChoice.current = request?.kind === "select" && request.selectionMarker === "checkbox" && node instanceof HTMLButtonElement && node.hasAttribute("data-choice")
@@ -114,6 +118,7 @@ function FormQuestionCard({ session, request, form, context, owner, closing }: {
 		}}>
 		<fieldset ref={fieldsetRef} disabled={waiting} className="m-0 min-w-0 border-0 p-0">
 			{shown && <QuestionCard session={session} request={shown} presentation={false} disabled={waiting}
+				minimumHeight={measured.current.html === form.html ? minimumHeight.card : 0}
 				formStatus={t(closing ? "question.formClosing" : waiting ? "question.formPending" : "question.messageCloses")} />}
 		</fieldset>
 		{!claimed && !!context?.roots.length && <FormScreenAction session={session} />}
@@ -179,7 +184,7 @@ export function usePendingQuestion(session: SessionController, request: CollabUi
 	return { key: String(request.reqId), node: <><QuestionCard session={session} request={request} note={note} />{roots.length > 0 && <FormScreenAction session={session} />}</> };
 }
 
-export function QuestionCard({ session, request, note, presentation = true, disabled = false, formStatus }: { session: SessionController; request: CollabUiRequest; note?: string; presentation?: boolean; disabled?: boolean; formStatus?: string }): ReactNode {
+export function QuestionCard({ session, request, note, presentation = true, disabled = false, formStatus, minimumHeight }: { session: SessionController; request: CollabUiRequest; note?: string; presentation?: boolean; disabled?: boolean; formStatus?: string; minimumHeight?: number }): ReactNode {
 	const { t } = useTranslation("chat");
 	const [text, setText] = useState(request.kind === "editor" ? (request.prefill ?? "") : "");
 	const [selected, setSelected] = useState(request.kind === "select" ? (request.initialIndex ?? 0) : 0);
@@ -230,7 +235,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 	if (request.kind === "editor") {
 		if (request.title.startsWith(CUSTOM_ANSWER_PREFIX) && pendingCustom.has(session)) return null;
 		return (
-			<div data-question-card={request.reqId} className={cardClass}>
+			<div data-question-card={request.reqId} className={cardClass} style={{ minHeight: minimumHeight }}>
 				{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
 				{noteLine}
 				<Heading icon={<Question className="text-accent" />}>
@@ -276,7 +281,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 
 	if (isApproval) {
 		return (
-			<div data-question-card={request.reqId} className={cardClass}>
+			<div data-question-card={request.reqId} className={cardClass} style={{ minHeight: minimumHeight }}>
 				{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
 				{noteLine}
 				<Heading icon={<ShieldWarning className="text-warn" />}>
@@ -339,7 +344,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 	const helpText = request.helpText?.replaceAll("\u{f0311}", "Enter").replaceAll("\u{f12b7}", "Escape");
 
 	return (
-		<div data-question-card={request.reqId} className={cardClass}>
+		<div data-question-card={request.reqId} className={cardClass} style={{ minHeight: minimumHeight }}>
 			{presentation && <QuestionPresentationClaim session={session} reqId={request.reqId} />}
 			{noteLine}
 			<Heading icon={<Question className="text-accent" />}>

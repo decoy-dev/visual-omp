@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import { hookDialogTarget } from "@shared/tsp/dialogs";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
+import { composerFacts } from "../../../../../main/omp/tsp/composer";
 import type { CollabUiRequest, SessionEntry, ToolResultMessage } from "@oh-my-pi/pi-wire";
 import type { FileRef, FileRefRequest } from "@shared/contracts/fileRefs";
 import { TranscriptBody } from "../../../chat/transcript/Transcript";
@@ -162,7 +163,7 @@ function Harness() {
 			revision = Math.max(revision + 1, snapshot.revision);
 			snapshot = { ...snapshot, revision };
 			state.gateSnapshot = snapshot;
-			view = { ...view, mode: snapshot.generation === 0 ? "starting" : "live", host: { ...view.host!, generation: snapshot.generation, phase: snapshot.generation === 0 ? "connecting" : "live", link: null, tspAvailability: snapshot.availability } };
+			view = { ...view, mode: snapshot.generation === 0 ? "starting" : "live", host: { ...view.host!, generation: snapshot.generation, phase: snapshot.generation === 0 ? "connecting" : "live", link: null, tspAvailability: snapshot.availability, tspComposer: composerFacts(snapshot.surfaces) } };
 			for (const listener of sessionListeners) listener();
 			const patch = tspHostPatch(null, snapshot);
 			for (const listener of state.gateListeners) listener(patch);

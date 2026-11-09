@@ -991,9 +991,11 @@ that ownership. The completed call keeps its disabled presenter until the paired
 departs, so result delivery cannot briefly reveal a second form. This uses no timer.
 
 Form updates reuse the question card and option nodes across guest request ids. The waiting
-status replaces the in-card hint in a slot that retains its wrapped height, and a measured
-per-form minimum retains space beneath shorter later fields. Width or source changes reset
-that measurement. Editor focus and radio-key navigation use `preventScroll`.
+status replaces the in-card hint in a slot that retains its wrapped height. The visible
+card and its full form area each retain their measured high-water height for the same
+form, including through width changes. The minima are applied to the actual card and its
+outer area and released when the form ends or its source changes. Editor focus and
+radio-key navigation use `preventScroll`.
 The composer retains only the form's displayed question id across request gaps and delayed
 native matches. Actual `uiRequest` readiness still controls submission; the cached display
 id grants no input authority. Its question tray and hint remain in place instead of showing

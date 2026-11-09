@@ -702,7 +702,7 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const replaySnapshot = askSnapshots();
 		const snapshot = (stage: AskEvidence["stages"][number], requests = stage.request ? [stage.request] : []) => ({
 			...replaySnapshot(stage, requests),
-			availability: { available: false, reason: "Answer the question card before sending a message.", reasonCode: "matched-question" as const, questionReqId: stage.request?.reqId },
+			availability: stage.request ? { available: false, reason: "Answer the question card before sending a message.", reasonCode: "matched-question" as const, questionReqId: stage.request.reqId } : { available: true, reason: null },
 		});
 		await page.evaluate(`document.documentElement.dataset.motion=${JSON.stringify(motion)}; document.documentElement.dataset.theme='light'; window.gate.showFormLayout(${JSON.stringify(snapshot(requests[0]!))},${JSON.stringify(requests[0]!.request)},${JSON.stringify(call.arguments)},${JSON.stringify([...historyEntries, ...entries])})`);
 		await page.until("!!document.querySelector('[data-form-layout] [role=\"log\"]') && !!document.querySelector('[data-gate-composer] textarea') && window.gate.claims().length === 1");
@@ -789,11 +789,26 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const movement = { cardTop: range(frames.map(frame => frame.card!.top)), composerTop: range(frames.map(frame => frame.composer!.top)), composerInputTop: range(frames.map(frame => frame.composerInput!.top)), scrollTop: range(frames.map(frame => frame.transcript!.scrollTop)), documentScroll: range(frames.map(frame => frame.documentScroll)) };
 		await writeFile(join(directory, `${history}-${motion}-summary.json`), JSON.stringify({ baseline, history, motion, frames: frames.length, movement, shifts: captured.shifts }, null, 2));
 		if (!baseline) {
+			let tallestCard = 0;
+			let tallestForm = 0;
+			for (const frame of frames) {
+				expect(frame.card!.height + 1, `card height must not decrease at ${frame.phase}`).toBeGreaterThanOrEqual(tallestCard);
+				expect(frame.form!.height + 1, `form area must not decrease at ${frame.phase}`).toBeGreaterThanOrEqual(tallestForm);
+				tallestCard = Math.max(tallestCard, frame.card!.height);
+				tallestForm = Math.max(tallestForm, frame.form!.height);
+			}
+			const radioFrame = frames.find(frame => frame.phase === "request-1-before-click")!;
+			const textFrame = frames.find(frame => frame.phase === "request-4-matched")!;
+			expect(textFrame.card!.height, "the text question must retain the radio question's height").toBeGreaterThanOrEqual(radioFrame.card!.height - 1);
 			expect(movement.cardTop, "question card top must remain stable across all request and focus transitions").toBeLessThanOrEqual(1);
 			expect(movement.composerTop, "composer top must remain stable through request retirement").toBeLessThanOrEqual(1);
 			expect(movement.composerInputTop, "composer input must not move when a blocked reason changes").toBeLessThanOrEqual(1);
 			expect(movement.scrollTop, "answering or focusing must not scroll the transcript").toBeLessThanOrEqual(1);
 			expect(movement.documentScroll).toBe(0);
+		}
+		if (!baseline) {
+			const completion = captured.frames.filter(frame => frame.phase === "result-before-native-departure" || frame.phase === "native-departed");
+			for (let index = 1; index < completion.length; index++) expect(completion[index]!.composer!.top + 1, "the completed form's footer must close once without bouncing upward").toBeGreaterThanOrEqual(completion[index - 1]!.composer!.top);
 		}
 		if (baseline) expect(Math.max(movement.cardTop, movement.composerTop, movement.composerInputTop, movement.scrollTop), "the original production modules must reproduce the reported movement").toBeGreaterThan(1);
 		expect(await page.evaluate("window.gate.calls")).toEqual(requests.map((stage, index) => ({ channel: "collab:ui-response", args: [stage.request!.reqId, ["Beta", "Linux", "Next →", "Release fixture headline", "Full"][index]] })));
