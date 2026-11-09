@@ -3,6 +3,7 @@
  * main entry. Development runs (`electron-vite dev`) use their own data directory, so they get their
  * own single-instance lock, preferences and caches and can run next to an installed visual-omp.
  */
+import { mkdirSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { app } from "electron";
 
@@ -14,4 +15,11 @@ if (process.env.VOMP_PREVIEW_ISOLATION_TEST === "1" && (!process.env.VOMP_DEV_PR
 if (!app.isPackaged || process.env.VOMP_PREVIEW_ISOLATION_TEST === "1") {
 	const profile = process.env.VOMP_DEV_PROFILE;
 	app.setPath("userData", profile && isAbsolute(profile) ? profile : join(app.getPath("appData"), profile || "visual-omp-dev"));
+	// An explicit scratch profile (release tours, fixtures) also keeps downloads and exports inside it, so a tour's
+	// verified installer samples never reach the owner's Downloads folder.
+	if (profile && isAbsolute(profile)) {
+		const downloads = join(profile, "Downloads");
+		mkdirSync(downloads, { recursive: true });
+		app.setPath("downloads", downloads);
+	}
 }
