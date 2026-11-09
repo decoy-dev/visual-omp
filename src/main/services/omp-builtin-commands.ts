@@ -1,5 +1,5 @@
 /**
- * omp's builtin slash commands, taken from omp v18.18.3 (`packages/coding-agent/src/slash-commands/`
+ * omp's builtin slash commands, reviewed against omp v18.18.5 (`packages/coding-agent/src/slash-commands/`
  * `builtin-*.ts` and `seance.ts`, in `builtin-registry.ts` order). omp's RPC `get_available_commands`
  * lists only the builtins that also run outside its terminal UI, so this list fills in the rest
  * (settings, tree, resume and others). Descriptions are omp's own static text. omp builds three of
