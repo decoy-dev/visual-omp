@@ -1,0 +1,175 @@
+[
+  {
+    "type": "model_change",
+    "id": "2acac870",
+    "parentId": null,
+    "timestamp": "2026-11-09T19:44:10.226Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "model": "fixture/fixture-model",
+    "resolvedModelIsFallback": false
+  },
+  {
+    "type": "thinking_level_change",
+    "id": "3ef30e77",
+    "parentId": "2acac870",
+    "timestamp": "2026-11-09T19:44:10.226Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "thinkingLevel": "off",
+    "configured": null
+  },
+  {
+    "type": "message",
+    "id": "e2fe15c3",
+    "parentId": "0935ee7c",
+    "timestamp": "2026-11-09T19:44:10.574Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "fixture tall form"
+        }
+      ],
+      "attribution": "user",
+      "timestamp": 1794253450558
+    }
+  },
+  {
+    "type": "message",
+    "id": "9cb2da5c",
+    "parentId": "91ffa8dd",
+    "timestamp": "2026-11-09T19:44:10.804Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "fixture-tool-0",
+          "name": "ask",
+          "arguments": {
+            "html": "<form><fieldset><legend>Tall fixture form</legend><p>Fixture scrolling paragraph 1. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 2. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 3. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 4. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 5. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 6. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 7. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 8. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 9. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 10. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 11. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 12. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 13. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 14. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 15. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 16. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 17. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 18. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 19. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 20. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 21. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 22. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 23. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 24. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 25. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 26. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 27. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 28. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 29. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 30. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 31. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 32. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 33. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 34. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 35. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 36. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 37. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 38. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 39. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 40. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 41. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 42. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 43. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 44. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 45. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 46. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 47. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 48. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 49. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 50. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 51. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 52. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 53. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 54. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 55. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 56. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 57. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 58. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 59. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 60. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 61. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 62. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 63. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 64. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 65. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 66. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 67. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 68. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 69. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 70. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 71. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 72. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 73. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 74. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 75. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 76. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 77. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 78. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 79. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 80. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 81. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 82. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 83. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 84. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 85. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 86. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 87. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 88. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 89. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 90. Keep the action bar accessible.</p><label>Prefilled headline <input name=\"headline\" value=\"Handoffs are easier to follow\"></label></fieldset></form>"
+          },
+          "partialArgs": "{\"html\":\"<form><fieldset><legend>Tall fixture form</legend><p>Fixture scrolling paragraph 1. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 2. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 3. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 4. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 5. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 6. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 7. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 8. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 9. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 10. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 11. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 12. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 13. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 14. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 15. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 16. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 17. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 18. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 19. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 20. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 21. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 22. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 23. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 24. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 25. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 26. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 27. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 28. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 29. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 30. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 31. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 32. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 33. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 34. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 35. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 36. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 37. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 38. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 39. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 40. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 41. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 42. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 43. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 44. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 45. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 46. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 47. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 48. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 49. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 50. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 51. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 52. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 53. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 54. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 55. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 56. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 57. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 58. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 59. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 60. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 61. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 62. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 63. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 64. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 65. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 66. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 67. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 68. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 69. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 70. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 71. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 72. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 73. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 74. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 75. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 76. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 77. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 78. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 79. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 80. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 81. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 82. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 83. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 84. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 85. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 86. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 87. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 88. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 89. Keep the action bar accessible.</p><p>Fixture scrolling paragraph 90. Keep the action bar accessible.</p><label>Prefilled headline <input name=\\\"headline\\\" value=\\\"Handoffs are easier to follow\\\"></label></fieldset></form>\"}",
+          "streamIndex": 0
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fixture",
+      "model": "fixture-model",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1794253450574,
+      "responseId": "fixture-0",
+      "duration": 227.23583399999984,
+      "ttft": 226.9147919999998,
+      "completedAt": 1794253450803,
+      "contextSnapshot": {
+        "promptTokens": 0,
+        "nonMessageTokens": 3079,
+        "toolSchemaTokens": 682,
+        "compactionEpoch": 0
+      }
+    }
+  },
+  {
+    "type": "message",
+    "id": "71e5aa50",
+    "parentId": "3da18edf",
+    "timestamp": "2026-11-09T19:44:11.293Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "toolResult",
+      "toolCallId": "fixture-tool-0",
+      "toolName": "ask",
+      "content": [
+        {
+          "type": "text",
+          "text": "User answers:\n{\n  \"headline\": \"Handoffs are easier to follow\"\n}"
+        }
+      ],
+      "details": {
+        "answers": [
+          {
+            "name": "headline",
+            "question": "Prefilled headline",
+            "answer": "Handoffs are easier to follow"
+          }
+        ]
+      },
+      "isError": false,
+      "timestamp": 1794253451292
+    }
+  },
+  {
+    "type": "message",
+    "id": "b568b554",
+    "parentId": "71e5aa50",
+    "timestamp": "2026-11-09T19:44:11.298Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Fixture form answered."
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fixture",
+      "model": "fixture-model",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "stop",
+      "timestamp": 1794253451295,
+      "responseId": "fixture-1",
+      "duration": 1.6826659999996991,
+      "ttft": 1.455290999999761,
+      "completedAt": 1794253451298,
+      "contextSnapshot": {
+        "promptTokens": 0,
+        "nonMessageTokens": 3079,
+        "toolSchemaTokens": 682,
+        "compactionEpoch": 0
+      }
+    }
+  }
+]

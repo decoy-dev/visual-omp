@@ -1,0 +1,175 @@
+[
+  {
+    "type": "model_change",
+    "id": "db900b21",
+    "parentId": null,
+    "timestamp": "2026-11-09T19:44:06.476Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "model": "fixture/fixture-model",
+    "resolvedModelIsFallback": false
+  },
+  {
+    "type": "thinking_level_change",
+    "id": "7e4efdad",
+    "parentId": "db900b21",
+    "timestamp": "2026-11-09T19:44:06.477Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "thinkingLevel": "off",
+    "configured": null
+  },
+  {
+    "type": "message",
+    "id": "80ad7053",
+    "parentId": "6027aba1",
+    "timestamp": "2026-11-09T19:44:06.780Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "fixture colors"
+        }
+      ],
+      "attribution": "user",
+      "timestamp": 1794253446762
+    }
+  },
+  {
+    "type": "message",
+    "id": "81178760",
+    "parentId": "1b5f1dae",
+    "timestamp": "2026-11-09T19:44:06.787Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "fixture-tool-0",
+          "name": "ask",
+          "arguments": {
+            "html": "<form><fieldset><legend>Which color should the fixture use: #2B72E5 or #197f8680?</legend><label><input type=\"radio\" name=\"color\" value=\"#2B72E5\" checked> #2B72E5 (opaque blue)</label><label><input type=\"radio\" name=\"color\" value=\"#197f8680\"> #197f8680 (transparent teal)</label></fieldset></form>"
+          },
+          "partialArgs": "{\"html\":\"<form><fieldset><legend>Which color should the fixture use: #2B72E5 or #197f8680?</legend><label><input type=\\\"radio\\\" name=\\\"color\\\" value=\\\"#2B72E5\\\" checked> #2B72E5 (opaque blue)</label><label><input type=\\\"radio\\\" name=\\\"color\\\" value=\\\"#197f8680\\\"> #197f8680 (transparent teal)</label></fieldset></form>\"}",
+          "streamIndex": 0
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fixture",
+      "model": "fixture-model",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1794253446780,
+      "responseId": "fixture-0",
+      "duration": 5.6133330000000115,
+      "ttft": 5.292667000000165,
+      "completedAt": 1794253446787,
+      "contextSnapshot": {
+        "promptTokens": 0,
+        "nonMessageTokens": 3079,
+        "toolSchemaTokens": 682,
+        "compactionEpoch": 0
+      }
+    }
+  },
+  {
+    "type": "message",
+    "id": "9aef84de",
+    "parentId": "85c4c4ee",
+    "timestamp": "2026-11-09T19:44:07.628Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "toolResult",
+      "toolCallId": "fixture-tool-0",
+      "toolName": "ask",
+      "content": [
+        {
+          "type": "text",
+          "text": "User answers:\n{\n  \"color\": \"#2B72E5\"\n}"
+        }
+      ],
+      "details": {
+        "answers": [
+          {
+            "name": "color",
+            "question": "Which color should the fixture use: #2B72E5 or #197f8680?",
+            "answer": "#2B72E5 (opaque blue)"
+          }
+        ]
+      },
+      "isError": false,
+      "timestamp": 1794253447626
+    }
+  },
+  {
+    "type": "message",
+    "id": "277b64c6",
+    "parentId": "9aef84de",
+    "timestamp": "2026-11-09T19:44:07.636Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Fixture form answered."
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fixture",
+      "model": "fixture-model",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "stop",
+      "timestamp": 1794253447632,
+      "responseId": "fixture-1",
+      "duration": 2.805667000000085,
+      "ttft": 2.165791999999783,
+      "completedAt": 1794253447636,
+      "contextSnapshot": {
+        "promptTokens": 0,
+        "nonMessageTokens": 3079,
+        "toolSchemaTokens": 682,
+        "compactionEpoch": 0
+      }
+    }
+  }
+]

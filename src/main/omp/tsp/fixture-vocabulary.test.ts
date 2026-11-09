@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { expect, it } from "vitest";
@@ -55,7 +55,9 @@ it.skipIf(!live)("compares scratch no-model and scripted recordings with the com
 	expect(files).toEqual(expect.arrayContaining(["hotkeys.messages.jsonl", "jobs.messages.jsonl", "usage.messages.jsonl", "session.messages.jsonl", "changelog.messages.jsonl", "tools.messages.jsonl", "model-picker.messages.jsonl", "settings-screen.messages.jsonl", "hook-select.messages.jsonl", "hook-confirm.messages.jsonl", "hook-input.messages.jsonl", "hook-editor.messages.jsonl"]));
 	for (const file of files) {
 		const current = vocabulary(readFileSync(join(live!, file), "utf8"));
-		const baseline = vocabulary(readFileSync(new URL(file, committed), "utf8"));
+		const baselineFile = [new URL(file, committed), new URL(`./fixtures/18.18.3/${file}`, import.meta.url)].find(file => existsSync(file));
+		expect(baselineFile, `No reviewed baseline exists for ${file}`).toBeDefined();
+		const baseline = vocabulary(readFileSync(baselineFile!, "utf8"));
 		if (JSON.stringify(current) !== JSON.stringify(baseline)) console.info(`TSP live vocabulary difference: ${file}`, {
 			addedRoles: current.roles.filter(role => !baseline.roles.includes(role)), removedRoles: baseline.roles.filter(role => !current.roles.includes(role)),
 			addedActions: current.actions.filter(action => !baseline.actions.includes(action)), removedActions: baseline.actions.filter(action => !current.actions.includes(action)),

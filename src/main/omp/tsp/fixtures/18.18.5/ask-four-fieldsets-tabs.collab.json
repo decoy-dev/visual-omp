@@ -1,0 +1,190 @@
+[
+  {
+    "type": "model_change",
+    "id": "c4f76d8c",
+    "parentId": null,
+    "timestamp": "2026-11-09T19:47:06.238Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "model": "fixture/fixture-model",
+    "resolvedModelIsFallback": false
+  },
+  {
+    "type": "thinking_level_change",
+    "id": "61c4c540",
+    "parentId": "c4f76d8c",
+    "timestamp": "2026-11-09T19:47:06.239Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "thinkingLevel": "off",
+    "configured": null
+  },
+  {
+    "type": "message",
+    "id": "4a555995",
+    "parentId": "3ad246ea",
+    "timestamp": "2026-11-09T19:47:07.007Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "fixture form with four fieldsets"
+        }
+      ],
+      "attribution": "user",
+      "timestamp": 1794253626518
+    }
+  },
+  {
+    "type": "message",
+    "id": "7c482717",
+    "parentId": "77b0d00c",
+    "timestamp": "2026-11-09T19:47:07.017Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "toolCall",
+          "id": "fixture-tool-0",
+          "name": "ask",
+          "arguments": {
+            "html": "<form><p>The fixture model asks a few release questions. Your answers go back to omp as form data.</p><fieldset><legend>Release channel</legend><label><input type=\"radio\" name=\"channel\" value=\"stable\" checked> Stable</label><label><input type=\"radio\" name=\"channel\" value=\"beta\"> Beta</label></fieldset><fieldset><legend>Platforms to check</legend><label><input type=\"checkbox\" name=\"platforms\" value=\"macos\" checked> macOS</label><label><input type=\"checkbox\" name=\"platforms\" value=\"windows\" checked> Windows</label><label><input type=\"checkbox\" name=\"platforms\" value=\"linux\"> Linux</label></fieldset><fieldset><legend>Release note headline</legend><label>Release note headline <input type=\"text\" name=\"headline\" value=\"Handoffs are easier to follow\"></label></fieldset><fieldset><legend>Review depth</legend><label>Review depth <select name=\"depth\"><option value=\"quick\">Quick</option><option value=\"full\" selected>Full</option></select></label></fieldset></form>"
+          },
+          "partialArgs": "{\"html\":\"<form><p>The fixture model asks a few release questions. Your answers go back to omp as form data.</p><fieldset><legend>Release channel</legend><label><input type=\\\"radio\\\" name=\\\"channel\\\" value=\\\"stable\\\" checked> Stable</label><label><input type=\\\"radio\\\" name=\\\"channel\\\" value=\\\"beta\\\"> Beta</label></fieldset><fieldset><legend>Platforms to check</legend><label><input type=\\\"checkbox\\\" name=\\\"platforms\\\" value=\\\"macos\\\" checked> macOS</label><label><input type=\\\"checkbox\\\" name=\\\"platforms\\\" value=\\\"windows\\\" checked> Windows</label><label><input type=\\\"checkbox\\\" name=\\\"platforms\\\" value=\\\"linux\\\"> Linux</label></fieldset><fieldset><legend>Release note headline</legend><label>Release note headline <input type=\\\"text\\\" name=\\\"headline\\\" value=\\\"Handoffs are easier to follow\\\"></label></fieldset><fieldset><legend>Review depth</legend><label>Review depth <select name=\\\"depth\\\"><option value=\\\"quick\\\">Quick</option><option value=\\\"full\\\" selected>Full</option></select></label></fieldset></form>\"}",
+          "streamIndex": 0
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fixture",
+      "model": "fixture-model",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "toolUse",
+      "timestamp": 1794253627008,
+      "responseId": "fixture-0",
+      "duration": 4.660583999999972,
+      "ttft": 4.253958999999895,
+      "completedAt": 1794253627016,
+      "contextSnapshot": {
+        "promptTokens": 0,
+        "nonMessageTokens": 3079,
+        "toolSchemaTokens": 682,
+        "compactionEpoch": 0
+      }
+    }
+  },
+  {
+    "type": "message",
+    "id": "dc93868b",
+    "parentId": "ab7846a5",
+    "timestamp": "2026-11-09T19:47:07.699Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "toolResult",
+      "toolCallId": "fixture-tool-0",
+      "toolName": "ask",
+      "content": [
+        {
+          "type": "text",
+          "text": "User answers:\n{\n  \"channel\": \"stable\",\n  \"platforms\": [\n    \"macos\",\n    \"windows\"\n  ],\n  \"headline\": \"Handoffs are easier to follow\",\n  \"depth\": \"full\"\n}"
+        }
+      ],
+      "details": {
+        "answers": [
+          {
+            "name": "channel",
+            "question": "Release channel",
+            "answer": "Stable"
+          },
+          {
+            "name": "platforms",
+            "question": "Platforms to check",
+            "answer": "macOS, Windows"
+          },
+          {
+            "name": "headline",
+            "question": "Release note headline",
+            "answer": "Handoffs are easier to follow"
+          },
+          {
+            "name": "depth",
+            "question": "Review depth",
+            "answer": "Full"
+          }
+        ]
+      },
+      "isError": false,
+      "timestamp": 1794253627697
+    }
+  },
+  {
+    "type": "message",
+    "id": "79a6b797",
+    "parentId": "dc93868b",
+    "timestamp": "2026-11-09T19:47:07.706Z",
+    "runtime": {
+      "version": "18.18.5"
+    },
+    "message": {
+      "role": "assistant",
+      "content": [
+        {
+          "type": "text",
+          "text": "Fixture form answered."
+        }
+      ],
+      "api": "openai-completions",
+      "provider": "fixture",
+      "model": "fixture-model",
+      "usage": {
+        "input": 0,
+        "output": 0,
+        "cacheRead": 0,
+        "cacheWrite": 0,
+        "totalTokens": 0,
+        "cost": {
+          "input": 0,
+          "output": 0,
+          "cacheRead": 0,
+          "cacheWrite": 0,
+          "total": 0
+        }
+      },
+      "stopReason": "stop",
+      "timestamp": 1794253627702,
+      "responseId": "fixture-1",
+      "duration": 1.724333999999999,
+      "ttft": 1.4195420000000922,
+      "completedAt": 1794253627706,
+      "contextSnapshot": {
+        "promptTokens": 0,
+        "nonMessageTokens": 3079,
+        "toolSchemaTokens": 682,
+        "compactionEpoch": 0
+      }
+    }
+  }
+]

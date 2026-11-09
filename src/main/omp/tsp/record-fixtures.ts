@@ -21,6 +21,7 @@ import { LoopbackRelay } from "../relay";
 import { GuestClient } from "../../../renderer/src/collab/lib/client";
 import { recordingDestination } from "./recording-destination";
 import { scriptedProvider, type ScriptedReply } from "./testing/scripted-provider";
+import { compareSemver } from "../../../shared/semver";
 
 // Bundle beside node_modules for Node, with node-pty external and the app's wire aliases.
 // No inherited configuration or provider credentials. Model turns use the isolated scripted provider.
@@ -173,6 +174,94 @@ const scratchGit = (root: string, args: string[]) => execFileSync("git", args, {
   env: { PATH: process.env.PATH!, HOME: join(root, "home"), USERPROFILE: join(root, "home"), XDG_CONFIG_HOME: join(root, "home", ".config"), GIT_CONFIG_NOSYSTEM: "1" },
 });
 const treeNavigationDraft = "  Add a branch for the alternate fixture answer.\nKeep café 🧭 spacing.  \n";
+// Exact fixture server forms, plus explicit four-question and tall-form variants.
+const colorForm = '<form><fieldset><legend>Which color should the fixture use: #2B72E5 or #197f8680?</legend><label><input type="radio" name="color" value="#2B72E5" checked> #2B72E5 (opaque blue)</label><label><input type="radio" name="color" value="#197f8680"> #197f8680 (transparent teal)</label></fieldset></form>';
+const releaseForm = '<form><p>The fixture model asks a few release questions. Your answers go back to omp as form data.</p><fieldset><legend>Release channel</legend><label><input type="radio" name="channel" value="stable" checked> Stable</label><label><input type="radio" name="channel" value="beta"> Beta</label></fieldset><fieldset><legend>Platforms to check</legend><label><input type="checkbox" name="platforms" value="macos" checked> macOS</label><label><input type="checkbox" name="platforms" value="windows" checked> Windows</label><label><input type="checkbox" name="platforms" value="linux"> Linux</label></fieldset><label>Release note headline <input type="text" name="headline" value="Handoffs are easier to follow"></label><label>Review depth <select name="depth"><option value="quick">Quick</option><option value="full" selected>Full</option></select></label></form>';
+const fourQuestionForm = releaseForm.replace('<label>Release note headline', '<fieldset><legend>Release note headline</legend><label>Release note headline')
+  .replace('</label><label>Review depth', '</label></fieldset><fieldset><legend>Review depth</legend><label>Review depth')
+  .replace('</select></label></form>', '</select></label></fieldset></form>');
+const tallForm = `<form><fieldset><legend>Tall fixture form</legend>${Array.from({ length: 90 }, (_, index) => `<p>Fixture scrolling paragraph ${index + 1}. Keep the action bar accessible.</p>`).join("")}<label>Prefilled headline <input name="headline" value="Handoffs are easier to follow"></label></fieldset></form>`;
+
+function formAction(context: RecordingContext, act: string): void {
+  const target = context.find(node => node.k === "button" && node.p?.actions?.click === act);
+  if (!target) throw new Error(`Missing form action ${act}`);
+  context.send({ ev: "action", sf: target.surface.open.id, id: target.node.id, act });
+}
+async function formTab(context: RecordingContext, item: string): Promise<void> {
+  const target = context.find(node => node.k === "tabs" && node.p?.role === "omp.ask.questions");
+  if (target?.node.k !== "tabs" || !target.node.p?.items.some(option => option.id === item)) throw new Error(`Missing form tab ${item}`);
+  context.send({ ev: "select", sf: target.surface.open.id, id: target.node.id, item });
+  await context.until(() => !!context.find(node => node.k === "tabs" && node.p?.active === item), `form tab ${item} did not activate`);
+}
+const formScenarios: Scenario[] = [
+  ...(["ask-fixture-form-tabs", "ask-four-fieldsets-tabs"] as const).map(name => ({
+    name, command: name === "ask-fixture-form-tabs" ? "fixture form" : "fixture form with four fieldsets", collab: true, tools: ["ask"],
+    script: [{ tool: { name: "ask", arguments: { html: name === "ask-fixture-form-tabs" ? releaseForm : fourQuestionForm } } }, { text: "Fixture form answered." }],
+    run: async (context: RecordingContext) => {
+      await context.until(() => !!context.find(node => node.p?.role === "omp.ask.questions"), "question tabs missing");
+      await context.captureAsk("opened");
+      await formTab(context, "t1"); await context.captureAsk("second-tab");
+      context.keys("\x1b[6~");
+      await context.until(() => !!context.find(node => node.k === "tabs" && node.p?.active === "t2"), "Page Down did not change tab");
+      await context.captureAsk("page-down");
+      context.keys("\x1b[5~");
+      await context.until(() => !!context.find(node => node.k === "tabs" && node.p?.active === "t1"), "Page Up did not change tab");
+      await context.captureAsk("page-up");
+      context.keys("\x1b[C");
+      await context.until(() => !!context.find(node => node.k === "tabs" && node.p?.active === "t2"), "Right did not change tab");
+      await context.captureAsk("right-arrow");
+      await formTab(context, "t1");
+      context.keys("\x1b[D");
+      await context.until(() => !!context.find(node => node.k === "tabs" && node.p?.active === "t0"), "Left on a choice did not change tab");
+      await context.captureAsk("left-arrow");
+      await formTab(context, "review"); await context.captureAsk("review");
+      formAction(context, "hide");
+      await context.until(() => !!context.find(node => node.p?.role === TSP_ROLES.editorAskHidden), "form did not hide");
+      await context.captureAsk("hidden");
+      context.keys("\x1bh");
+      await context.until(() => !!context.find(node => node.p?.role === TSP_ROLES.editorAsk), "Alt+H did not restore form");
+      await context.captureAsk("shown");
+      await formTab(context, "t0"); formAction(context, "next");
+      await context.until(() => !!context.find(node => node.k === "tabs" && node.p?.active === "t1"), "Next did not change tab");
+      await context.captureAsk("next");
+      await formTab(context, "review"); formAction(context, "submit");
+      await context.until(() => !!context.find(node => node.k === "md" && node.p?.text?.includes("Fixture form answered.") === true), "form submission did not finish");
+      await context.captureAsk("submitted");
+    },
+  })),
+  { name: "ask-fixture-form-guest", command: "fixture form", collab: true, tools: ["ask"],
+    script: [{ tool: { name: "ask", arguments: { html: releaseForm } } }, { text: "Fixture form answered." }],
+    run: async ({ guest, until, captureAsk, find }) => {
+      if (!guest) throw new Error("Missing form guest");
+      for (const [stage, answer] of [["radio", "Beta"], ["checkbox", "Linux"], ["checkbox-done", "Next →"], ["text", "Release fixture headline"], ["list", "Full"]]) {
+        await until(() => !!guest.getSnapshot().uiRequest, `Missing ${stage} question`);
+        await captureAsk(stage!);
+        const request = guest.getSnapshot().uiRequest!;
+        guest.sendUiResponse(request.reqId, answer!);
+        await until(() => guest.getSnapshot().uiRequest?.reqId !== request.reqId, `${stage} did not advance`);
+      }
+      await until(() => !!find(node => node.k === "md" && node.p?.text?.includes("Fixture form answered.") === true), "guest form did not finish");
+      await captureAsk("submitted");
+    },
+  },
+  ...(["ask-fixture-colors", "ask-tall-form"] as const).map(name => ({
+    name, command: name === "ask-fixture-colors" ? "fixture colors" : "fixture tall form", collab: true, tools: ["ask"],
+    script: [{ tool: { name: "ask", arguments: { html: name === "ask-fixture-colors" ? colorForm : tallForm } } }, { text: "Fixture form answered." }],
+    run: async (context: RecordingContext) => {
+      await context.until(() => !!context.find(node => node.p?.role === TSP_ROLES.askForm), "native form missing");
+      await context.captureAsk("opened");
+      formAction(context, "hide");
+      await context.until(() => !!context.find(node => node.p?.role === TSP_ROLES.editorAskHidden), "form did not hide");
+      await context.captureAsk("hidden");
+      formAction(context, "show");
+      await context.until(() => !!context.find(node => node.p?.role === TSP_ROLES.editorAsk), "form did not show");
+      await context.captureAsk("shown");
+      formAction(context, "submit");
+      await context.until(() => !!context.find(node => node.k === "md" && node.p?.text?.includes("Fixture form answered.") === true), "form submission did not finish");
+      await context.captureAsk("submitted");
+    },
+  })),
+];
 const scenarios: Scenario[] = [
   { name: "ask-html-form", command: "Ask the fixture form.", collab: true, tools: ["ask"],
     script: [{ tool: { name: "ask", arguments: { html: '<form><fieldset><legend>Release choices</legend><p>Choose the release settings.</p><label><input type="radio" name="channel" value="stable" checked>Stable</label><label><input type="radio" name="channel" value="preview">Preview</label><label><input type="checkbox" name="checks" value="types" checked>Types</label><label><input type="checkbox" name="checks" value="tests">Tests</label><label for="note">Release note</label><input id="note" name="note" value="Keep compatibility"></fieldset></form>' } } }, { text: "Fixture form answered." }],
@@ -542,6 +631,7 @@ const scenarios: Scenario[] = [
     await until(() => readComposerFacts(session.snapshot().surfaces).text === "", "accepted prediction did not clear");
   } },
 ];
+if (compareSemver(expectedVersion, "18.18.4") >= 0) scenarios.push(...formScenarios);
 // Each positive classic capture has an independently recorded native counterpart.
 for (const name of ["selector-descriptions", "selector-descriptions-moved", "selector-windowed", "selector-search", "selector-outline", "confirm", "confirm-detail", "confirm-detail-no", "input-below-panel", "input-empty", "editor-prompt", "editor-hook", "editor-hook-empty"]) {
   const text = await readFile(resolve(`src/renderer/src/features/session-tools/fixtures/omp-dialogs/${name}.txt`), "utf8");
@@ -888,7 +978,7 @@ for (const scenario of scenarios) {
         ...(name === "btw-open-main-abort" ? { observation: "Collab abort stopped the main turn with stopReason aborted. The side question remained running with its Stop answer action and completed after its scripted response was released. No side-question action was sent at abort; Close was sent only after the side answer completed." } : {}),
       }, null, 2) + "\n")));
     }
-    if (name === "ask-html-form") {
+    if (name === "ask-html-form" || name.startsWith("ask-fixture-") || name === "ask-four-fieldsets-tabs" || name === "ask-tall-form") {
       const files = await readdir(join(root, "sessions"), { recursive: true });
       const sessions = await Promise.all(files.filter(file => file.endsWith(".jsonl")).map(async file => ({ path: file, text: await readFile(join(root, "sessions", file), "utf8") })));
       await writeFile(join(destination, `${name}.ask.json`), sanitizeFixtureBytes(Buffer.from(JSON.stringify({ version, stages: askEvidence, sessions }, null, 2) + "\n")));
