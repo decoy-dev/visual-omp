@@ -88,10 +88,10 @@ afterEach(async () => {
 	element.remove(); window.vomp = originalVomp; vi.restoreAllMocks();
 });
 
-it("retains a disabled visible card and one claim until the next field and its match arrive", async () => {
+it("retains a guarded visible card and one claim until the next field and its match arrive", async () => {
 	await updateRequest(null);
 	await vi.waitFor(() => expect(element.querySelector("[data-form-question]")?.getAttribute("aria-busy")).toBe("true"));
-	expect(element.querySelector("fieldset")?.disabled).toBe(true);
+	expect(element.querySelector("fieldset")?.getAttribute("aria-disabled")).toBe("true");
 	expect(element.textContent).toContain("Sending a message closes this question without stopping the reply.");
 	expect(presentationClaims.getSnapshot()).toHaveLength(1);
 	await publishMatches(snapshot.questionMatches?.map(match => ({ ...match, status: "settling" })));
@@ -111,24 +111,23 @@ it("marks only the stable form presenter as an in-place question", async () => {
 	expect(element.querySelector("[data-in-place]")).toBeNull();
 });
 
-it("restores a checkbox blurred by retirement without scrolling or taking focus from another control", async () => {
+it("keeps checkbox focus through retirement without refocusing or taking focus from another control", async () => {
 	const option = element.querySelector<HTMLButtonElement>('[data-choice="1"]')!;
 	option.focus();
-	await updateRequest(null);
-	// Browsers can clear focus when the fieldset disables; happy-dom keeps its old activeElement.
-	const active = vi.spyOn(document, "activeElement", "get").mockReturnValue(document.body);
 	const focus = vi.spyOn(option, "focus");
-	await updateRequest(next);
-	active.mockRestore();
+	await updateRequest(null);
+	expect(option.disabled).toBe(false);
 	expect(document.activeElement).toBe(option);
-	expect(focus).toHaveBeenCalledExactlyOnceWith({ preventScroll: true });
+	await updateRequest(next);
+	expect(document.activeElement).toBe(option);
+	expect(focus).not.toHaveBeenCalled();
 	await updateRequest(null);
 	const external = document.createElement("button");
 	element.append(external);
 	external.focus();
 	await updateRequest({ ...next, reqId: 105 });
 	expect(document.activeElement).toBe(external);
-	expect(focus).toHaveBeenCalledTimes(1);
+	expect(focus).not.toHaveBeenCalled();
 });
 
 it("keeps the same checkbox card, option nodes and focus when only the request and checked values change", async () => {
@@ -147,7 +146,7 @@ it("keeps the same checkbox card, option nodes and focus when only the request a
 	expect(answer).toHaveBeenLastCalledWith(next.reqId, "Types");
 });
 
-it("keeps one in-card status slot and disables option actions throughout request retirement", async () => {
+it("keeps normal-looking controls and guards all option and footer actions throughout retirement", async () => {
 	const card = element.querySelector("[data-question-card]");
 	const status = card!.querySelector('[role="status"]');
 	const options = [...element.querySelectorAll<HTMLButtonElement>("[data-choice]")];
@@ -158,10 +157,15 @@ it("keeps one in-card status slot and disables option actions throughout request
 	expect(element.querySelectorAll('[role="status"]')).toHaveLength(1);
 	expect(card!.querySelector('[role="status"]')).toBe(status);
 	expect(status?.querySelector("[data-form-status-text]")?.textContent).toBe("Sending a message closes this question without stopping the reply.");
-	expect(options.every(option => option.disabled)).toBe(true);
+	expect(options.every(option => !option.disabled)).toBe(true);
 	await act(async () => {
 		options[1]!.click();
 		options[1]!.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown", bubbles: true }));
+		for (const button of card!.querySelectorAll<HTMLButtonElement>("button")) {
+			expect(button.disabled).toBe(false);
+			button.click();
+			button.dispatchEvent(new MouseEvent("dblclick", { bubbles: true, cancelable: true }));
+		}
 	});
 	expect(answer).not.toHaveBeenCalled();
 	await updateRequest(next);
@@ -170,6 +174,15 @@ it("keeps one in-card status slot and disables option actions throughout request
 	expect(options.every(option => !option.disabled)).toBe(true);
 	expect(status?.querySelector("[data-form-status-text]")?.textContent).toBe("Sending a message closes this question without stopping the reply.");
 	expect(status?.querySelector("[aria-hidden]")?.textContent).toBe("Sending a message closes this question without stopping the reply.");
+});
+
+it("guards a repeated footer activation before the retired request rerenders", async () => {
+	const answer = vi.spyOn(controller, "answer").mockImplementation(() => {
+		view = { ...view, guest: { ...view.guest!, uiRequest: null } };
+	});
+	const send = element.querySelector<HTMLButtonElement>("[data-question-card] > div:last-child button:last-child")!;
+	await act(async () => { send.click(); send.click(); });
+	expect(answer).toHaveBeenCalledExactlyOnceWith(first.reqId, "Next →");
 });
 
 it("resets local radio selection for a replacement request without remounting its options", async () => {

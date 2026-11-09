@@ -4,7 +4,7 @@
  */
 import type { CollabUiRequest } from "@oh-my-pi/pi-wire";
 import { ChatCircle, Info, Question, ShieldWarning } from "@phosphor-icons/react";
-import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { type ReactNode, type SyntheticEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { deliver } from "../composer/send";
 import { pendingAsk, questionPresentation, type SessionController } from "../../state/session";
@@ -71,22 +71,6 @@ function FormQuestionCard({ session, request, form, context, owner, closing, que
 	const formRef = useRef<HTMLDivElement>(null);
 	const measured = useRef({ html: form.html, card: 0, form: 0 });
 	const [minimumHeight, setMinimumHeight] = useState({ card: 0, form: 0 });
-	const focusedChoice = useRef<{ html: string; request: Extract<CollabUiRequest, { kind: "select" }>; node: HTMLButtonElement } | null>(null);
-	useLayoutEffect(() => {
-		const focused = focusedChoice.current;
-		if (!focused || !request || waiting) return;
-		const prior = focused.request;
-		if (focused.html !== form.html || request.kind !== "select" || request.selectionMarker !== "checkbox"
-			|| request.title !== prior.title || request.options.length !== prior.options.length
-			|| !request.options.every((_, index) => labelOf(request, index).label === labelOf(prior, index).label)) {
-			focusedChoice.current = null;
-			return;
-		}
-		// Disabling the retired request can blur its option. Restore it only if focus has not moved elsewhere.
-		if (document.activeElement === document.body && focused.node.isConnected) focused.node.focus({ preventScroll: true });
-		else if (document.activeElement !== focused.node) focusedChoice.current = null;
-		focused.request = request;
-	}, [form.html, request, waiting]);
 	useLayoutEffect(() => {
 		const fieldset = fieldsetRef.current;
 		if (!fieldset) return;
@@ -106,18 +90,18 @@ function FormQuestionCard({ session, request, form, context, owner, closing, que
 		if (formRef.current) observer.observe(formRef.current);
 		return () => observer.disconnect();
 	}, [form.html, shown, waiting]);
+	const guard = (event: SyntheticEvent) => {
+		if (!waiting && session.getSnapshot().guest?.uiRequest?.reqId === request?.reqId) return;
+		event.preventDefault(); event.stopPropagation();
+	};
 	if (!shown && context?.roots.length && !claimed) return <FormScreenAction session={session} standalone />;
-	return <div ref={formRef} data-form-question aria-busy={waiting} style={{ minHeight: measured.current.html === form.html ? minimumHeight.form : 0 }}
-		onFocusCapture={event => {
-			const node = event.target;
-			focusedChoice.current = request?.kind === "select" && request.selectionMarker === "checkbox" && node instanceof HTMLButtonElement && node.hasAttribute("data-choice")
-				? { html: form.html, request, node } : null;
-		}}
-		onBlurCapture={event => {
-			if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget as Node)) focusedChoice.current = null;
-		}}>
-		<fieldset ref={fieldsetRef} disabled={waiting} className="m-0 min-w-0 border-0 p-0">
-			{shown && <QuestionCard session={session} request={shown} presentation={false} disabled={waiting}
+	return <div ref={formRef} data-form-question aria-busy={waiting} style={{ minHeight: measured.current.html === form.html ? minimumHeight.form : 0 }}>
+		<fieldset ref={fieldsetRef} disabled={closing} aria-disabled={waiting || undefined} className="m-0 min-w-0 border-0 p-0"
+			onClickCapture={guard} onDoubleClickCapture={guard}
+			onKeyDownCapture={event => {
+				if (["Enter", " ", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) guard(event);
+			}}>
+			{shown && <QuestionCard session={session} request={shown} presentation={false} disabled={waiting} steadyControls={questionPending}
 				minimumHeight={measured.current.html === form.html ? minimumHeight.card : 0}
 				formStatus={t(questionPending ? "question.messageCloses" : "question.formClosing")} />}
 		</fieldset>
@@ -185,7 +169,7 @@ export function usePendingQuestion(session: SessionController, request: CollabUi
 	return { key: String(request.reqId), node: <><QuestionCard session={session} request={request} note={note} />{roots.length > 0 && <FormScreenAction session={session} />}</> };
 }
 
-export function QuestionCard({ session, request, note, presentation = true, disabled = false, formStatus, minimumHeight }: { session: SessionController; request: CollabUiRequest; note?: string; presentation?: boolean; disabled?: boolean; formStatus?: string; minimumHeight?: number }): ReactNode {
+export function QuestionCard({ session, request, note, presentation = true, disabled = false, steadyControls = false, formStatus, minimumHeight }: { session: SessionController; request: CollabUiRequest; note?: string; presentation?: boolean; disabled?: boolean; steadyControls?: boolean; formStatus?: string; minimumHeight?: number }): ReactNode {
 	const { t } = useTranslation("chat");
 	const [text, setText] = useState(request.kind === "editor" ? (request.prefill ?? "") : "");
 	const [selected, setSelected] = useState(request.kind === "select" ? (request.initialIndex ?? 0) : 0);
@@ -358,7 +342,7 @@ export function QuestionCard({ session, request, note, presentation = true, disa
 				choices={choices}
 				multi={multi}
 				labelledBy={titleId}
-				disabled={disabled}
+				disabled={disabled && !steadyControls}
 				isOn={index => (multi ? checked.has(index) : selected === index && !other.trim())}
 				activeIndex={activeIndex}
 				onSelect={index => {

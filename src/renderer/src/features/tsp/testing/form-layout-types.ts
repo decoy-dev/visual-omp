@@ -1,5 +1,6 @@
 /** Serializable evidence shared by the renderer recorder and the Node gate runner. */
 export interface LayoutBox { top: number; left: number; width: number; height: number; bottom: number }
+export interface FormButtonEvidence { id: number; text: string; label: string; disabledAttribute: boolean; disabled: boolean; opacity: number; effectiveOpacity: number; box: LayoutBox }
 export interface FormLayoutFrame {
 	time: number;
 	phase: string;
@@ -12,6 +13,7 @@ export interface FormLayoutFrame {
 	focus: { tag: string; label: string | null; text: string; questionId: string | null } | null;
 	status: string[];
 	questionText: { header: string; placeholder: string; composerHint: string; cardHint: string; working: string };
+	buttons: { card: FormButtonEvidence[]; composer: FormButtonEvidence[] };
 	busy: string | null;
 	claims: number;
 	screen: boolean;

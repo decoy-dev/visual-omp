@@ -983,8 +983,10 @@ id across the two channels, so matching still uses content and established node 
 
 The form presenter is keyed by its tool call and host generation rather than each guest
 request. After an answer, collab retires the displayed request before the next field and
-main's replacement match arrive. The presenter keeps the previous field visible and
-disabled during that gap. Its established claim can follow a matched or settling binding
+main's replacement match arrive. The presenter keeps the previous field visible during
+that gap. A capture guard ignores pointer and activation-key events for the retired request
+without disabling or dimming its choice and footer buttons; the group reports its busy and
+unavailable state to assistive technology. Editors remain disabled while waiting. Its established claim can follow a matched or settling binding
 on the same physical form, scoped to the host, generation, protocol epoch and source HTML.
 Missing nodes, uncertain matching, a different form or hidden/unmounted presentation release
 that ownership. The completed call keeps its disabled presenter until the paired native node
@@ -1005,6 +1007,10 @@ native matches. Actual `uiRequest` readiness still controls submission; the cach
 id grants no input authority. Its question tray and hint remain in place instead of showing
 a second blocked-status row. Transcript following uses instant writes for the in-place form
 presenter, without changing normal streamed-response easing or reader-controlled unpinning.
+The composer's Stop/Send set uses the same pending presentation. A form-scoped display
+cache preserves its previous send-button appearance through ask-specific readiness gaps;
+submission independently checks the current request and native readiness, including before
+the next visual snapshot. This cache grants no input authority.
 
 
 omp 18.18.4 and 18.18.5 nest the form inside a scrolling list and expose only the active

@@ -110,11 +110,15 @@ Finished forms show each recorded question and answer, "(no answer)" for an empt
 answer and a notice when the timeout submitted the current values. Live forms use
 omp's sequential collab questions, including free-text Other answers for radio and
 checkbox groups. A matched visible question card suppresses its native TSP form.
-The previous field stays visible and disabled while omp advances to its next request,
-and the form's native presentation remains claimed through that update.
+The previous field stays visible while omp advances to its next request, and the form's
+native presentation remains claimed through that update. Choice and footer buttons retain
+their appearance while a capture guard ignores repeated activation. Busy state remains
+available to assistive technology; text editors remain disabled until their next request.
 Selections update the same card and option controls. The card hint, header subtitle and
 composer question status and placeholder retain the same text through checkbox toggle
 round trips and request gaps. The working row remains absent while the ask is pending.
+The composer's Stop/Send controls retain their text, size and appearance across those gaps.
+Retained appearance never permits submitting a retired request.
 Completion and cancellation release that display state without extending input authority.
 The visible card height never decreases while the same
 form remains active, including across shorter text questions and width changes. The retained

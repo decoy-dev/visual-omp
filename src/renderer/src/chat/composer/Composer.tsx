@@ -38,7 +38,7 @@ import { sendSlashCommand } from "../../features/session-tools/typed";
 import { errorText } from "@shared/errors";
 import { isResumeDeclined } from "../../registry/guards";
 import { chatSlots } from "../../registry/slots";
-import type { SessionController } from "../../state/session";
+import { pendingAsk, type SessionController } from "../../state/session";
 import { useApp } from "../../state/app";
 import { useVisualSelection } from "../../state/visualSnapshot";
 import { shallow } from "zustand/shallow";
@@ -272,7 +272,7 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 	const readOnly = view.readOnly;
 	const working = view.working;
 	const askWaiting = view.askWaiting;
-	const queueing = working && !askWaiting;
+	const queueing = working && !view.questionPending;
 	const drawerOpen = useApp(state => !!state.btwDrawers[tabId]);
 	const tspReason = drawerOpen || view.tspAvailability?.reasonCode === "btw" ? t("panes:btw.composerBlocked")
 		: tspComposerReason(view, t("question.answerBeforeSending"), askWaiting ? view.uiRequest?.reqId : undefined);
@@ -397,6 +397,10 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 
 	const submit = (now: boolean) => {
 		if (readOnly || tspReason || sendBlocked) return;
+		if (view.questionPending) {
+			const current = session.getSnapshot();
+			if (!pendingAsk(current) || tspComposerReason(current.host, t("question.answerBeforeSending"), current.guest?.uiRequest?.reqId)) return;
+		}
 		const text = applyMode(draft, mode);
 		const images = [...attachments];
 		historyCursor.current.reset();
@@ -655,22 +659,27 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 			)
 		: mode
 			? t(`placeholder.${mode}`)
-			: queueing && !view.questionPending
+			: queueing
 				? t("placeholder.working")
 				: t("placeholder.idle");
-	const canSend = !readOnly && !tspReason && !sendBlocked && (draft.trim().length > 0 || attachments.length > 0);
-	const actionSet = `${queueing}:${canSend}`;
+	const hasMessage = draft.trim().length > 0 || attachments.length > 0;
+	const canSend = !readOnly && !tspReason && !sendBlocked && hasMessage;
 	const mod = IS_MAC ? "⌘" : "Ctrl+";
 	const currentQuestionId = view.uiRequest?.reqId ?? null;
 	const questionHost = `${view.hostId}:${view.generation}`;
 	const formKey = view.formCallId === null ? null : `${questionHost}:${view.formCallId}`;
-	const [questionDisplay, setQuestionDisplay] = useState({ host: questionHost, scope: formKey, id: currentQuestionId });
+	const [questionDisplay, setQuestionDisplay] = useState({ host: questionHost, scope: formKey, id: currentQuestionId, sendReady: !tspReason });
 	// Presentation can outlast the displayed request, but input authority always uses uiRequest.
 	const formPresented = formKey !== null || view.mode === "live" && !readOnly && questionDisplay.host === questionHost && questionDisplay.scope !== null && view.tspComposer?.blockedBy === "ask";
 	const displayScope = formKey ?? (formPresented ? questionDisplay.scope : null);
-	if (questionDisplay.host !== questionHost || questionDisplay.scope !== displayScope || currentQuestionId !== null && questionDisplay.id !== currentQuestionId) setQuestionDisplay({ host: questionHost, scope: displayScope, id: currentQuestionId });
-	const questionId = currentQuestionId ?? (displayScope !== null ? questionDisplay.id : null);
 	const formQuestionBlocked = formPresented && (view.tspAvailability?.reasonCode === "ask-editor" || view.tspAvailability?.reasonCode === "matched-question");
+	// Retain appearance only. Submission checks the current request and native readiness again.
+	const retainSendReady = !drawerOpen && view.questionPending && formQuestionBlocked && questionDisplay.host === questionHost && questionDisplay.scope === displayScope;
+	const sendReady = !tspReason || retainSendReady && questionDisplay.sendReady;
+	if (questionDisplay.host !== questionHost || questionDisplay.scope !== displayScope || currentQuestionId !== null && questionDisplay.id !== currentQuestionId || questionDisplay.sendReady !== sendReady) setQuestionDisplay({ host: questionHost, scope: displayScope, id: currentQuestionId, sendReady });
+	const questionId = currentQuestionId ?? (displayScope !== null ? questionDisplay.id : null);
+	const visualCanSend = !readOnly && !sendBlocked && sendReady && hasMessage;
+	const actionSet = `${queueing}:${visualCanSend}`;
 	// Slots below order 50 sit on the left of the row under the card (folder, permission); the rest on the right.
 	const leadTools = tools.filter(slot => slot.order < 50);
 	const trailTools = tools.filter(slot => slot.order >= 50);
@@ -906,15 +915,15 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 								</MenuItem>
 							</MenuContent>
 						</Menu>
-						<div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
+						<div data-composer-actions className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-1">
 							<VoiceTool session={session} />
 							<AnimatePresence initial={false} mode="popLayout">
-								{working && (
+								{(working || view.questionPending) && (
 									<motion.span key="stop" layoutDependency={actionSet} {...actionMotion}>
-										<Tooltip content={t(view.awaitingAsyncWork ? "send.stopWaiting" : "send.stop")} shortcut="Esc">
+										<Tooltip content={t(!view.questionPending && view.awaitingAsyncWork ? "send.stopWaiting" : "send.stop")} shortcut="Esc">
 											<button
 												type="button"
-												aria-label={t(view.awaitingAsyncWork ? "send.stopWaiting" : "send.stop")}
+												aria-label={t(!view.questionPending && view.awaitingAsyncWork ? "send.stopWaiting" : "send.stop")}
 												onClick={() => session.abort()}
 												className="inline-flex size-8 items-center justify-center rounded-sm bg-err-bg text-err outline-none transition-[background-color,color,scale] duration-(--dur-fast) hover:bg-err hover:text-fg-inverse active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
 											>
@@ -960,7 +969,8 @@ export const Composer = memo(function Composer({ session }: { session: SessionCo
 											<button
 												type="button"
 												aria-label={t("send.label")}
-												disabled={!canSend}
+												disabled={!visualCanSend}
+												aria-disabled={!canSend || undefined}
 												onClick={() => submit(false)}
 												className="inline-flex size-8 items-center justify-center rounded-sm bg-accent text-accent-fg shadow-(--shadow-primary) outline-none transition-[background-color,scale,opacity] duration-(--dur-fast) enabled:hover:bg-accent-hover enabled:active:scale-[0.94] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring disabled:cursor-not-allowed disabled:opacity-45"
 											>

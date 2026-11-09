@@ -577,7 +577,8 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			await page.until("window.gate.view().guest.uiRequest === null");
 			await page.evaluate("(() => { const {promise,resolve}=Promise.withResolvers(); requestAnimationFrame(()=>requestAnimationFrame(resolve)); return promise; })()");
 			expect(await page.evaluate("document.querySelector('[data-form-question]')?.getAttribute('aria-busy')")).toBe("true");
-			expect(await page.evaluate("document.querySelector('[data-form-question] fieldset')?.disabled")).toBe(true);
+			// Controls keep their normal appearance through the gap; the repeated click below proves the guard instead.
+			expect(await page.evaluate("document.querySelector('[data-form-question] fieldset')?.disabled")).toBe(false);
 			expect(await page.evaluate("window.gate.claims().length")).toBe(1);
 			await page.clickElement(`[...document.querySelectorAll('[data-question-card] [data-choice]')].find(button => button.textContent.trim() === ${JSON.stringify(choice)})`);
 			expect(await page.evaluate("window.gate.calls.length")).toBe(index + 1);
@@ -814,9 +815,8 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		expect(await page.evaluate("window.gate.calls")).toEqual(requests.map((stage, index) => ({ channel: "collab:ui-response", args: [stage.request!.reqId, ["Beta", "Linux", "Next →", "Release fixture headline", "Full"][index]] })));
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
 	}, 60_000);
-	it.skipIf(process.env.TSP_FORM_LAYOUT_GATE !== "1").each(["reduced", "full"])("keeps checkbox question text steady with %s motion", async motion => {
-		const baseline = process.env.TSP_FORM_TEXT_BASELINE === "1";
-		const directory = join(homedir(), "vomp-checks/toggle-text", baseline ? "before" : "after");
+	it.skipIf(process.env.TSP_FORM_LAYOUT_GATE !== "1").each((["reduced", "full"] as const).flatMap(motion => (["empty", "present"] as const).map(draft => ({ motion, draft }))))("keeps checkbox question text and buttons steady with $motion motion and $draft draft", async ({ motion, draft }) => {
+		const directory = join(homedir(), "vomp-checks/toggle-buttons");
 		await mkdir(directory, { recursive: true });
 		await page.send("Emulation.setDeviceMetricsOverride", { width: 1568, height: 1002, deviceScaleFactor: 1, mobile: false });
 		const evidence = formGuest185 as AskEvidence;
@@ -830,6 +830,10 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		await answerForm(firstStage.request!, "Beta");
 		await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(stages[0]!.request)}); window.gate.update(${JSON.stringify(snapshot(stages[0]!))})`);
 		await page.until("!!document.querySelector('[data-question-card=\"2\"]') && window.gate.claims().length === 1");
+		await page.clickElement("document.querySelector('[data-gate-composer] textarea')", false);
+		await page.key("a", "KeyA", process.platform === "darwin" ? 4 : 2, ["selectAll"]);
+		await page.key("Backspace");
+		if (draft === "present") await page.send("Input.insertText", { text: "Keep this draft while answering." });
 		await delay(500);
 		await page.evaluate("window.gate.startLayoutEvidence(); window.gate.markLayoutEvidence('before-toggle')");
 		await delay(80);
@@ -839,6 +843,8 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			await page.until("window.gate.view().guest.uiRequest === null");
 			await page.evaluate(`window.gate.markLayoutEvidence('toggle-${index}-retired')`);
 			await delay(180);
+			await page.evaluate("document.querySelector('[data-question-card] > div:last-child button:last-child').click()");
+			expect(await page.evaluate("window.gate.calls.filter(call => call.channel === 'collab:ui-response').length")).toBe(index + 2);
 			const source = stages[(index + 1) % 2]!;
 			const next = { ...source, request: { ...source.request!, reqId: index + 3 } as CollabUiRequest };
 			await page.evaluate(`window.gate.advanceFormRequest(${JSON.stringify(next.request)}); window.gate.markLayoutEvidence('toggle-${index}-before-match')`);
@@ -847,15 +853,27 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 			await delay(180);
 		}
 		const captured = await page.evaluate<FormLayoutEvidence>("window.gate.stopLayoutEvidence()");
-		await writeFile(join(directory, `${motion}.json`), JSON.stringify(captured, null, 2));
+		await writeFile(join(directory, `${draft}-${motion}.json`), JSON.stringify(captured, null, 2));
 		expect(captured.viewport).toEqual({ width: 1568, height: 1002 });
 		const first = captured.frames[0]!.questionText;
 		expect(first.header).toBe("Waiting for your answer");
 		expect(first.cardHint).toContain("Sending a message closes this question");
 		for (const key of ["header", "placeholder", "composerHint", "cardHint", "working"] as const) {
 			const values = [...new Set(captured.frames.map(frame => frame.questionText[key]))];
-			if (baseline && ["header", "placeholder", "cardHint"].includes(key)) expect(values.length, `${key} reproduces the toggle text change`).toBeGreaterThan(1);
-			else if (!baseline) expect(values, `${key} remains identical through both toggles`).toEqual([first[key]]);
+			expect(values, `${key} remains identical through both toggles`).toEqual([first[key]]);
+		}
+		const firstButtons = captured.frames[0]!.buttons;
+		expect(firstButtons.card.map(button => button.text)).toContain("Skip question");
+		expect(firstButtons.card.map(button => button.text)).toContain("Send choices");
+		expect(firstButtons.composer.some(button => button.label === "Send message")).toBe(true);
+		for (const frame of captured.frames) for (const section of ["card", "composer"] as const) {
+			expect(frame.buttons[section].length, `${section} button count at ${frame.phase}`).toBe(firstButtons[section].length);
+			for (const [index, button] of frame.buttons[section].entries()) {
+				const { box, ...state } = button;
+				const { box: firstBox, ...firstState } = firstButtons[section][index]!;
+				expect(state, `${section} button ${index} state at ${frame.phase}`).toEqual(firstState);
+				for (const key of ["top", "left", "width", "height", "bottom"] as const) expect(Math.abs(box[key] - firstBox[key]), `${section} button ${index} ${key} at ${frame.phase}`).toBeLessThanOrEqual(0.5);
+			}
 		}
 		expect(captured.frames.some(frame => frame.requestId === null)).toBe(true);
 		expect(captured.frames.every(frame => frame.claims === 1 && !frame.screen)).toBe(true);
