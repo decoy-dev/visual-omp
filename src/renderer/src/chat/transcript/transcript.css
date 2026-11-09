@@ -413,8 +413,12 @@
 	overflow-wrap: break-word;
 }
 
-/* Long links and code (paths, URLs) may still break anywhere, so they don't widen the table into a sideways scroll. */
+/* App-owned Markdown hydration marks long tokens; short code and links retain normal word sizing. */
 .tr-md :is(th, td) :is(a, code) {
+	overflow-wrap: break-word;
+}
+
+.tr-md :is(th, td) :is(a, code)[data-wrap-long] {
 	overflow-wrap: anywhere;
 }
 

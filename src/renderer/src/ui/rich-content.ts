@@ -6,8 +6,29 @@ import { handleRemoteImage } from "./remote-images";
 import { MermaidResourceError } from "./mermaid-policy";
 import "./rich-content.css";
 
-/** Hydrate only generated diagram/chart slots. Original Markdown remains available on failure. */
+const TOKEN_WHITESPACE = /\s/u;
+
+/** Classify decoded DOM text so entity spellings and inline formatting do not change token lengths. */
+function markTableTokens(root: HTMLElement): void {
+	for (const token of root.querySelectorAll("th code, td code, th a, td a")) {
+		const walker = document.createTreeWalker(token, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT);
+		let length = 0;
+		let long = false;
+		for (let node = walker.nextNode(); node && !long; node = walker.nextNode()) {
+			if (node.nodeType === Node.ELEMENT_NODE && node.nodeName === "BR") length = 0;
+			if (node.nodeType !== Node.TEXT_NODE) continue;
+			for (const character of node.nodeValue ?? "") {
+				if (TOKEN_WHITESPACE.test(character)) length = 0;
+				else if (++length > 32) { long = true; break; }
+			}
+		}
+		token.toggleAttribute("data-wrap-long", long);
+	}
+}
+
+/** Hydrate app-owned Markdown presentation and generated figures. Original text remains unchanged. */
 export function hydrateRichContent(root: HTMLElement, streaming = false): () => void {
+	markTableTokens(root);
 	let live = true;
 	const loadImage = (event: MouseEvent) => handleRemoteImage(event, root);
 	root.addEventListener("click", loadImage);

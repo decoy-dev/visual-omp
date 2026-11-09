@@ -323,6 +323,50 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		const screenshot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
 		await writeFile(join(shots, `command-${name}-${theme}.png`), Buffer.from(screenshot.data, "base64"));
 	}, 30_000);
+	it.each([360, 1400].flatMap(width => ["light", "dark"].map(theme => ({ width, theme }))))("keeps table tokens readable at $width pixels in $theme", async ({ width, theme }) => {
+		await page.send("Emulation.setDeviceMetricsOverride", { width: width + 64, height: 800, deviceScaleFactor: 1, mobile: false });
+		const path = `/workspace/${"long-project-folder/".repeat(30)}report.json`;
+		const url = `https://example.invalid/${"long-resource-name/".repeat(30)}report`;
+		for (const name of ["tools", "changelog", "assistant"]) {
+			if (name === "assistant") {
+				const text = `## Project files\n\n| Tool | Location |\n| --- | --- |\n| \`read\` | \`${path}\` |\n| [docs](https://example.invalid/docs) | [${url}](${url}) |\n| \`grep\` | Regular words can wrap between words. |`;
+				await page.evaluate(`window.gate.showMarkdown(${JSON.stringify(text)});`);
+			} else {
+				const snapshot = structuredClone(commandPanelFrames(name).findLast(frame => frame.surfaces.some(surface => [...walkNodes(surface.document)].some(node => commandReport(node))))!);
+				snapshot.hostId = "gate";
+				const node = snapshot.surfaces.flatMap(surface => [...walkNodes(surface.document)]).find(item => commandReport(item))!;
+				const report = commandReport(node)!;
+				const row = { id: `${name}-${width}-${theme}`, command: `/${name}`, title: report.title, lines: report.lines, markdown: report.markdown, tone: "info", anchor: null, room: "gate", createdAt: Date.UTC(2026, 10, 9, 16) };
+				await page.evaluate(`window.gate.update(${JSON.stringify(snapshot)}); window.gate.showCommandResults(${JSON.stringify([row])});`);
+			}
+			const label = name === "assistant" ? "Assistant message" : "Command feedback";
+			await page.until(`!!document.querySelector('section[aria-label="${label}"] .tr-md')`);
+			await page.evaluate(`(() => { document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion='reduced'; const section = document.querySelector('section[aria-label="${label}"]'); section.style.maxWidth='none'; section.style.width='${width}px'; document.querySelector('main').scrollTop=0; })()`);
+			await page.evaluate("document.fonts.ready.then(() => true)");
+			expect(await page.evaluate(`document.querySelector('section[aria-label="${label}"]').getBoundingClientRect().width`)).toBe(width);
+			expect(await page.evaluate("document.body.scrollWidth <= innerWidth")).toBe(true);
+			if (name !== "changelog") {
+				const short = await page.evaluate<{ text: string; rows: number; marked: boolean }[]>(`[...document.querySelectorAll('section[aria-label="${label}"] tbody td:first-child :is(code,a)')].map(element => { const range = document.createRange(); range.selectNodeContents(element); return { text: element.textContent, rows: new Set([...range.getClientRects()].map(rect => Math.round(rect.y))).size, marked: element.hasAttribute('data-wrap-long') }; })`);
+				expect(short.length).toBeGreaterThan(0);
+				for (const token of short) expect(token, `${name} ${width} ${token.text}`).toMatchObject({ rows: 1, marked: false });
+			}
+			if (name === "assistant") {
+				const layout = await page.evaluate<{ scrolls: boolean; wrapped: number[]; path: string; href: string; label: string }>("(() => { const root = document.querySelector('section[aria-label=\"Assistant message\"]'); const frame = root.querySelector('.tr-table'); return { scrolls: frame.scrollWidth > frame.clientWidth + 1, wrapped: [...root.querySelectorAll('[data-wrap-long]')].map(element => { const range = document.createRange(); range.selectNodeContents(element); return range.getClientRects().length; }), path: root.querySelector('td:nth-child(2) code').textContent, href: root.querySelector('a[data-wrap-long]').getAttribute('href'), label: root.querySelector('a[data-wrap-long]').textContent }; })()");
+				expect(layout.scrolls).toBe(false);
+				expect(layout.wrapped).toHaveLength(2);
+				expect(layout.wrapped.every(lines => lines > 1)).toBe(true);
+				expect(layout.path).toBe(path); expect(layout.href).toBe(url); expect(layout.label).toBe(url);
+			}
+			const capture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+			await writeFile(join(shots, `table-${name}-${width}-${theme}.png`), Buffer.from(capture.data, "base64"));
+			if (name === "tools") {
+				await page.evaluate("(() => { const code = [...document.querySelectorAll('tbody td:first-child code')].find(element => element.textContent === 'glob'); code.scrollIntoView({block:'start'}); })()");
+				const focused = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+				await writeFile(join(shots, `table-tools-tokens-${width}-${theme}.png`), Buffer.from(focused.data, "base64"));
+			}
+		}
+		await page.send("Emulation.setDeviceMetricsOverride", { width: 960, height: 620, deviceScaleFactor: 1, mobile: false });
+	}, 60_000);
 	it.each(["light", "dark"])("presents command panels and reports in %s without losing their text", async theme => {
 		for (const name of ["tools", "changelog", "jobs-full", "advisor-status", "ssh-list", "ssh-help", "mcp-help", "mcp-list", "mcp-resources", "mcp-prompts", "mcp-notifications", "cleanse", "omfg-error-panel", "omfg-saved-source-shaped", "cleanse-clean-source-shaped", "cleanse-unresolved-source-shaped", "cleanse-cancelled-source-shaped", "cleanse-error-source-shaped"]) {
 			const source = name.startsWith("omfg-") ? "omfg-error-panel" : name.startsWith("cleanse-") ? "cleanse" : name;

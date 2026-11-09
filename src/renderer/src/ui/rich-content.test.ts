@@ -18,6 +18,46 @@ function mount(source: string, streaming = false): HTMLElement {
 }
 
 describe("rich Markdown rendering", () => {
+	it.each([
+		["`read`", false],
+		[`\`${"a".repeat(32)}\``, false],
+		[`\`${"a".repeat(33)}\``, true],
+		[`\`${"😀".repeat(32)}\``, false],
+		[`\`${"😀".repeat(33)}\``, true],
+		[`[${"a".repeat(32)}](https://example.test)`, false],
+		[`[${"a".repeat(33)}](https://example.test)`, true],
+		[`[${"😀".repeat(32)}](https://example.test)`, false],
+		[`[${"😀".repeat(33)}](https://example.test)`, true],
+		[`[${"&copy;".repeat(6)}](https://example.test)`, false],
+		[`[${"&copy;".repeat(33)}](https://example.test)`, true],
+		[`[${"a".repeat(16)}**${"b".repeat(16)}**](https://example.test)`, false],
+		[`[${"a".repeat(16)}**${"b".repeat(17)}**](https://example.test)`, true],
+		[`[many short words many short words many short words](https://example.test)`, false],
+		[`[docs](https://example.test/${"long-path/".repeat(20)})`, false],
+	] as const)("classifies decoded table token %s with long=%s", (source, long) => {
+		const root = mount(`| Token |\n| --- |\n| ${source} |`);
+		const token = root.querySelector("td :is(a,code)")!;
+		expect(token.hasAttribute("data-wrap-long")).toBe(long);
+	});
+
+	it("keeps explicit line breaks as run boundaries and text unchanged", () => {
+		const root = document.createElement("div");
+		root.innerHTML = `<table><tbody><tr><td><a href="https://example.test">${"a".repeat(20)}<br>${"b".repeat(20)}</a></td></tr></tbody></table>`;
+		document.body.append(root);
+		const before = root.textContent;
+		cleanups.push(hydrateRichContent(root));
+		expect(root.querySelector("a")?.hasAttribute("data-wrap-long")).toBe(false);
+		expect(root.textContent).toBe(before);
+	});
+
+	it.each([false, true])("marks long paths during Markdown hydration with streaming=%s", streaming => {
+		const path = `/workspace/${"project/".repeat(20)}report.json`;
+		const root = mount(`| Tool | Path |\n| --- | --- |\n| \`read\` | \`${path}\` |`, streaming);
+		expect(root.querySelector("td:first-child code")?.hasAttribute("data-wrap-long")).toBe(false);
+		expect(root.querySelector("td:nth-child(2) code")?.hasAttribute("data-wrap-long")).toBe(true);
+		expect(root.querySelector("td:nth-child(2) code")?.textContent).toBe(path);
+	});
+
 	it("renders SVG as an isolated image while retaining accessible source", () => {
 		const root = mount('```svg\n<svg viewBox="0 0 400 100"><text fill="currentColor">Request</text></svg>\n```');
 		expect(root.querySelector("img")?.alt).toBe("SVG figure");

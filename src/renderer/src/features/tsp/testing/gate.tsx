@@ -22,6 +22,7 @@ import "../../../i18n";
 import { PlanReviewCard } from "../../session-tools/PlanReviewCard";
 import { CommandResultRow } from "../../../chat/transcript/CommandResultRow";
 import type { CommandResultRecord } from "../../session-tools/results";
+import { Markdown } from "../../../transcript/Markdown";
 import "../../../theme/tokens.css";
 import "../../../theme/base.css";
 import "../../../ui/ui.css";
@@ -46,6 +47,7 @@ interface Gate {
 	claims(): unknown;
 	showQuestion(visible: boolean): void;
 	showCommandResults(results: CommandResultRecord[]): void;
+	showMarkdown(text: string): void;
 }
 const state = window as unknown as { gateSnapshot: TspHostSnapshot; gateListeners: Set<(patch: TspHostPatch) => void>; gate: Gate };
 let view = { mode: "live", readOnly: false, host: { hostId: "gate", generation: 1, phase: "live", transport: "tsp", cols: 80, rows: 24 } } as unknown as SessionView;
@@ -86,12 +88,14 @@ function Harness() {
 	const [ask, setAsk] = useState<{ request: CollabUiRequest | null; args: Record<string, unknown>; result?: ToolResultLike } | null>(null);
 	const [showQuestion, setShowQuestion] = useState(true);
 	const [commandResults, setCommandResults] = useState<CommandResultRecord[]>([]);
+	const [markdown, setMarkdown] = useState<string | null>(null);
 	useEffect(() => registerComposerEditor("gate", { focus: () => composer.current?.focus(), insertAtCaret: () => {} }), []);
 	useEffect(() => {
 		const calls: CapturedCall[] = [];
 		// Entry points select one harness mode and release the previous mode's native claims.
 		const resetModes = () => {
 			setAsk(null); setShowPlan(false); setCommandResults([]); setShowQuestion(true);
+			setMarkdown(null);
 			useApp.setState({ terminalTabId: null });
 			view = { ...view, working: false, guest: null, host: { ...view.host!, transport: "tsp" } };
 		};
@@ -134,12 +138,13 @@ function Harness() {
 				setAsk({ request, args, result });
 			},
 			showCommandResults(results) { calls.length = 0; resetModes(); setCommandResults(results); },
+			showMarkdown(text) { calls.length = 0; resetModes(); setMarkdown(text); },
 			invoke(channel, args) {
 				if (["host:tsp-event", "host:tsp-answer", "host:keys"].includes(channel)) calls.push({ channel, args });
 				return channel === "host:tsp-snapshot" ? state.gateSnapshot : undefined;
 			},
 		};
 	}, []);
-	return <MotionProvider><TooltipProvider><main className="h-full overflow-auto bg-sheet p-4 text-fg">{ask ? <AskHarness args={ask.args} result={ask.result} showQuestion={showQuestion} /> : <><label>Message to omp<textarea ref={composer} aria-label="Message to omp" /></label><OmpDialogCard key={cardInstance} session={controller} />{showPlan && <PlanReviewCard session={controller} />}{commandResults.length > 0 && <section aria-label="Command feedback" className="mx-auto mt-6 max-w-3xl space-y-6">{commandResults.map(result => <CommandResultRow key={result.id} result={result} onDismiss={() => setCommandResults(items => items.filter(item => item.id !== result.id))} />)}</section>}</>}{!ask && open && <TerminalSheet tabId="gate" controller={controller} />}</main></TooltipProvider></MotionProvider>;
+	return <MotionProvider><TooltipProvider><main className="h-full overflow-auto bg-sheet p-4 text-fg">{markdown !== null && <section aria-label="Assistant message" className="mx-auto mt-6 max-w-3xl"><Markdown text={markdown} /></section>}{ask ? <AskHarness args={ask.args} result={ask.result} showQuestion={showQuestion} /> : <><label>Message to omp<textarea ref={composer} aria-label="Message to omp" /></label><OmpDialogCard key={cardInstance} session={controller} />{showPlan && <PlanReviewCard session={controller} />}{commandResults.length > 0 && <section aria-label="Command feedback" className="mx-auto mt-6 max-w-3xl space-y-6">{commandResults.map(result => <CommandResultRow key={result.id} result={result} onDismiss={() => setCommandResults(items => items.filter(item => item.id !== result.id))} />)}</section>}</>}{!ask && open && <TerminalSheet tabId="gate" controller={controller} />}</main></TooltipProvider></MotionProvider>;
 }
 createRoot(document.getElementById("root")!).render(<Harness />);
