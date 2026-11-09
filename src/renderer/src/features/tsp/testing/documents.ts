@@ -47,6 +47,26 @@ export function loadFixtureRecording(name: string): FixtureRecording {
 	const inputs = parseFixtureInputs(source("events"));
 	return { messages, inputs };
 }
+/** Feedback recordings stop at the next submitted line, excluding the recorder's later /exit. */
+export function loadCommandFeedbackRecording(name: string, command: string): { messages: FixtureMessage[]; start: number; end: number } {
+	const source = (kind: "messages" | "events") => {
+		const value = Object.entries(recordings).find(([path]) => path.endsWith(`/18.18.3-feedback/${name}.${kind}.jsonl`))?.[1];
+		if (!value) throw new Error(`Missing command feedback recording ${name}.${kind}.jsonl`);
+		return value;
+	};
+	const messages = source("messages").trim().split("\n").map(line => Message.parse(JSON.parse(line)));
+	const sends: { text: string; afterMessage: number }[] = [];
+	for (const line of source("events").trim().split("\n")) {
+		const event = z.object({ verb: z.string().optional(), body: z.unknown().optional(), input: z.string().optional(), afterMessage: z.number().int().nonnegative() }).parse(JSON.parse(line));
+		const body = event.input?.startsWith("\x1b_tsp;e;") && event.input.endsWith("\x1b\\")
+			? JSON.parse(event.input.slice("\x1b_tsp;e;".length, -2)) as unknown : event.verb === "e" ? event.body : null;
+		const send = z.object({ ev: z.literal("send"), text: z.string() }).safeParse(body);
+		if (send.success) sends.push({ text: send.data.text, afterMessage: event.afterMessage });
+	}
+	const index = sends.findIndex(send => send.text === command);
+	if (index < 0) throw new Error(`Missing recorded submission ${command} in ${name}`);
+	return { messages, start: sends[index]!.afterMessage, end: sends[index + 1]?.afterMessage ?? messages.length };
+}
 /** Renderer fixture replay stays free of Node transports and their Buffer dependency. */
 export class FixtureDocuments {
 	#epoch = 0;

@@ -22,9 +22,9 @@ In TSP chats, an approval blocks slash routing before either app controls or
 omp commands are invoked. Ordinary messages remain available and let omp deny the approval and
 continue with that message. Open omp menus and screen-mode settings retain their separate close-menu
 and close-screen instructions.
-In TSP chats, rename, export, compact, handoff, cleanse feedback and jobs-kill results use
-new or changed semantic feedback after submission. The result keeps omp's literal text and
-printed export path. Completed compaction and handoff content stays in its collab transcript row,
+In TSP chats, rename, export, compact, handoff and jobs-kill results use
+new or changed semantic feedback after submission. Cleanse reads its settled panel outcome.
+The Result keeps omp's literal text and printed export path. Completed compaction and handoff content stays in its collab transcript row,
 which says "Handed off" or "Context summarized" and opens to the document omp continues from, with Copy.
 omp does not save a /handoff document as a separate file; it replaces the earlier context in place, and
 the messages before it stay in the chat. While omp writes a handoff or summary, the working row and session
@@ -32,8 +32,27 @@ header show omp's own label ("Generating handoff…", "Compacting context…") w
 Feedback delivered to a result row or native presentation is omitted from the separate notice
 projection, including the "Session compacted" toast that only restates a completed handoff.
 Undisplayed output returns to notices with its arrival anchor. A quiet jobs-kill
-waits 1.5 seconds before releasing the queue. Other commands retain their semantic editor watch
-and notices, while classic chats retain painted-screen result parsing.
+waits 1.5 seconds before releasing the queue. Other pass-through commands retain new or changed
+public main-region text, Markdown, rows and links in command-labelled Result rows. This includes
+folder and worktree moves, context resets, SSH mutations, MCP connection reports and authorization
+instructions, extension or custom-command exceptions, and the bound dashboard URL from `/stats`.
+Unchanged earlier output, hidden fields and content already presented by collab or a native card
+are excluded. Output can arrive after omp's editor becomes available; attribution ends at the next
+input or a host, room or protocol-epoch change. Results keep their arrival position without opening
+the omp screen or moving focus. Printed paths and URLs offer Copy, and existing local paths offer
+Show in folder through the app's existing reveal action. Dashboard and authorization URLs remain
+selectable and copyable when omp's declared browser action cannot be sent safely.
+Classic chats retain painted-screen result parsing.
+
+Read-only reports from `/tools`, `/changelog`, `/jobs full`, `/advisor status`, memory reports,
+SSH help/list and MCP listings retain omp's title and body in Result rows. The app closes the
+report through its declared Close action only after its native Result owns the exact report.
+Unsupported report content and additional actions stay in the omp screen.
+Unclaimed semantic dock panels also open that screen, including the active `/omfg` and `/cleanse`
+boards. Their questions keep their existing cards. Settled outcomes remain in Result rows after
+the boards close: cleanse distinguishes Clean, Diagnostics remain, No runnable checker, Cancelled
+and Error. Omfg retains its failure details or saved rule path, with Copy path and Show in folder
+when the file exists. Background chats retain feedback without opening the current chat's screen.
 
 In TSP chats, `/btw` is routed to the originating chat's Side questions pane. Bare `/btw` opens
 history; `/btw <question>` starts a side answer through omp's semantic editor. The pane reads
@@ -83,20 +102,20 @@ The table describes the form without arguments unless it shows one.
 | `/resume` | Native: the sidebar's chat search. `/resume <id>`: Result (the chat reconnects to that session) |
 | `/collab`, `/collab start`, `view`, `stop`, `/collab <relay URL>`, `/leave` | Guarded, offering Share → Live invite. `/collab list` and `/collab status`: Result |
 | `/join <link>` | Guarded: joining another room would replace this chat with someone else's session, and the app cannot open another person's chat as a guest yet |
-| `/move` | Result. The current chat follows omp's destination folder and session file. |
-| `/wt`, `/worktree` | Result. omp creates and owns the worktree, and the current chat follows it. Startup and exit worktree confirmations use native dialogs. |
+| `/move` | With a destination: Result with the full destination path. Without one: Sheet for omp's directory picker. The current chat follows omp's destination folder and session file. |
+| `/wt`, `/worktree` | Result with the full worktree path, branch and carried-changes summary. omp creates and owns the worktree, and the current chat follows it. Startup and exit worktree confirmations use native dialogs. |
 | `/compact`, `/handoff`, `/guided-goal`, `/rename`, `/plan-review` | Result |
 | `/advisor`, `/advisor on`, `off`, `status`, `dump` | Result. `/advisor configure`: native Advisor sheet |
 | `/unpin [session id]` | Result (omp 18.17 or later). Removes a chat's resume-list pin; `/session pin <account>` still selects its preferred OAuth account. The sidebar already shows resume-list pins. |
 | `/security`, `/fast`, `/slow`, `/skillful`, `/extended-context`, `/computer`, `/browser`, `/prewalk`, `/ratchet`, `/tan`, `/force`, `/queue`, `/retry`, `/clear`, `/fresh`, `/shake`, `/trace`, `/dump`, `/open`, `/ssh`, `/add-dir`, `/remove-dir`, `/dirs`, `/pin`, `/reload-plugins`, `/changelog`, `/tools`, `/stats`, `/todo`, `/record`, `/forget-approvals`, `/session pin <account>` | Result |
-| `/omfg`, `/cleanse` | Result, with Card for their dialogs |
+| `/omfg`, `/cleanse` | Sheet for their live boards, Card for their dialogs, then Result for their settled outcomes. Omfg keeps the saved rule path; cleanse reports omp's final diagnostic outcome. |
 | `/seance` | Sheet for omp's session picker and its model picker, Card for "Consult this session with". `/seance <session>`: Card, then Sheet for the model picker |
 | `/extensions`, `/status`, `/session`, `/session info`, `/session pin`, `/copy`, `/debug`, `/pause`, `/live`, `/annotate` | Sheet |
 | `/context` | Sheet: omp opens a read-only viewer for context usage and detailed content |
 | `/btw <question>` | TSP: opens Side questions and asks omp there; bare `/btw` opens its history. Classic: the terminal sheet opens explicitly for the inline side answer, including while the main turn runs; bare `/btw` opens omp's side-answer history |
 | `/todo edit` | Sheet: omp opens the file in the external editor set by `$VISUAL` or `$EDITOR`, which runs inside omp's terminal |
 | `/local [name]` | Sheet: omp opens a session `local://` file in `$EDITOR`, with a file picker when no name is given |
-| Skills (`/skill:<name>`), custom commands (`/review`, `/green`, `/init`, `/autoresearch`), extension commands, MCP prompts (`/<server>:<prompt>`), file commands | Listed in the slash menu and sent to omp. Their dialogs reach the app over collab and show in the question card; fullscreen screens such as `/annotate` use the sheet |
+| Skills (`/skill:<name>`), custom commands (`/review`, `/green`, `/init`, `/autoresearch`), extension commands, MCP prompts (`/<server>:<prompt>`), file commands | Listed in the slash menu and sent to omp. Their dialogs reach the app over collab and show in the question card; fullscreen screens such as `/annotate` use the sheet. Thrown handler errors printed by omp remain visible in command Result rows. |
 
 Shortcut-only features such as Shift+Tab, Ctrl+P and double Esc are covered by the thinking picker, the model picker and the session tree. Other terminal keys remain available in classic sheets and in focused TSP fallback content that forwards raw keys.
 
@@ -121,7 +140,7 @@ These notes record where a native version of each sheet screen belongs, or why t
 - **`/git <revision>`**: A Revision sheet would reuse the Changes pane's diff view as a read-only view of the chosen commit.
 - **`/seance`**: A Consult a session dialog would pick a chat with the sidebar's chat search and then a model from the composer model list, and the consultation would appear as a helper in the Tasks pane.
 - **Session toggles** (`/fast`, `/slow`, `/skillful`, `/extended-context`, `/computer`, `/browser`, `/prewalk`): A Chat options popover on the composer's control row would list each toggle as a switch, reading its state from the command's `status` form and confirming each change from what omp prints, the same way the advisor toggle works.
-- **Reports** (`/tools`, `/jobs`, `/changelog`, `/memory stats`): These already show as expandable result rows. Each would also gain a permanent home: the Tasks pane for `/jobs`, Settings → Memory for `/memory stats`, the Help page for `/changelog` and a Help dialog for `/tools`.
+- **Reports** (`/tools`, `/jobs full`, `/changelog`, `/advisor status`, memory reports, SSH help/list and MCP listings): Supported read-only reports show omp's title and complete body in expandable Result rows. Unknown content or additional actions retain the omp screen. Permanent homes remain the Tasks pane for jobs, Settings → Memory for memory reports, and Help for tools and changelog.
 - **Guarded commands**: The app hosts the collab room that mirrors omp into the chat, so starting, restarting or stopping a room from omp, or leaving it, would disconnect the app, and `/join` would replace the chat with another session. `/fork pane`, `window` and `tab` need a terminal multiplexer, which the app does not have; plain `/fork` and split view cover the same needs. Folder and worktree moves are supported through the host extension's owning-session location.
 
 ## Keeping this current

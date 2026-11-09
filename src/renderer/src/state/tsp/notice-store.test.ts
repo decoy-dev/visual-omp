@@ -26,7 +26,7 @@ const host = (hostId = "host", generation = 1, sessionId = "session") => ({ host
 const guest = (id: string) => ({ phase: "live", loading: null, entries: [{ id, parentId: null, type: "message", message: { role: "user", content: "hello" } } as SessionEntry], notices: [] }) as unknown as GuestSnapshot;
 function snapshot(content: string, revision: number, epoch = 1, generation = 1, hostId = "host"): TspHostSnapshot {
 	return { hostId, generation, revision, epoch, negotiated: true, lifecycle: "live", documentGeneration: generation, availability: { available: true, reason: null }, failure: null,
-		surfaces: [{ open: { id: "surface", mode: "inline" }, sequence: revision, closed: false, focus: null, suspended: false, settled: [], documentGeneration: generation,
+		surfaces: [{ open: { id: "surface", mode: "inline", role: "omp.session" }, sequence: revision, closed: false, focus: null, suspended: false, settled: [], documentGeneration: generation,
 			document: { id: "surface", k: "col", c: [{ id: "main", k: "col", c: [{ id: "warning", k: "text", p: { role: "omp.notice.warning", spans: [{ t: content }] } }] }] } }],
 	};
 }
@@ -122,4 +122,18 @@ it("reprojects collab only for transcript, notice, leaf and room changes, not st
 	test.set({ guest: { ...initial, notices } });
 	expect(collab).toHaveBeenCalledTimes(4);
 	test.store.dispose();
+});
+
+it("gives accepted main notices to one command Result without a second notice", async () => {
+	const test = setup();
+	test.set({ host: host(), guest: guest("u1") });
+	const before = snapshot("Earlier warning.", 1);
+	await test.send(before);
+	const accepted: string[] = [];
+	test.store.beginMainFeedback(before, "/extension", output => { accepted.push(output.text); return true; });
+	await test.send(snapshot("Extension outcome.", 2));
+	expect(accepted).toEqual(["Extension outcome."]);
+	expect(test.store.getSnapshot().some(row => row.content === "Extension outcome.")).toBe(false);
+	await test.send(snapshot("Extension outcome.", 3));
+	expect(accepted).toEqual(["Extension outcome."]);
 });

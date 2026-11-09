@@ -96,7 +96,7 @@ export function ChatArea(): ReactNode {
 				className={cn("flex min-w-0 flex-col", hidden === "primary" && "invisible absolute inset-0")}
 				style={both ? { width: left ?? "50%" } : { flex: 1 }}
 			>
-				<PresentationVisibility visible={hidden !== "primary"}><Pane tab={primary} which="primary" split={both} focused={focusedSplit === "primary"} scope={scope} /></PresentationVisibility>
+				<PresentationVisibility tabId={primary.id} visible={hidden !== "primary"}><Pane tab={primary} which="primary" split={both} focused={focusedSplit === "primary"} scope={scope} /></PresentationVisibility>
 			</div>
 			{/* popLayout takes a leaving pane out of flow at once, so the first chat widens while the second fades. */}
 			<AnimatePresence initial={false} mode="popLayout">
@@ -113,7 +113,7 @@ export function ChatArea(): ReactNode {
 							<ResizeHandle label={t("resizeSplit")} value={left} min={PANE_MIN} max={maxLeft} direction={1} onChange={setLeftWidth} />
 						)}
 						<div className={cn("flex min-w-0 flex-1 flex-col", both && "border-l border-border")}>
-							<PresentationVisibility visible={hidden !== "secondary"}><Pane tab={secondary} which="secondary" split={both} focused={focusedSplit === "secondary"} scope={scope} /></PresentationVisibility>
+							<PresentationVisibility tabId={secondary.id} visible={hidden !== "secondary"}><Pane tab={secondary} which="secondary" split={both} focused={focusedSplit === "secondary"} scope={scope} /></PresentationVisibility>
 						</div>
 					</motion.div>
 				)}

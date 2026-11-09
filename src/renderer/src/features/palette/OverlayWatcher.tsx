@@ -6,15 +6,15 @@
  * Two signals: omp's overlay count (full-screen menus), and the keyboard focus leaving omp's main
  * editor for a known dialog that replaces the editor in place (session tree, sign-in, goal prompt…).
  */
-import { openOverlay, screenSurface, unclaimed, walkNodes, type TspPresentationClaims, type TspSurfaces } from "@shared/tsp/view-state";
+import { openOverlay, screenSurface, unclaimed, type TspPresentationClaims, type TspSurfaces } from "@shared/tsp/view-state";
+import { hasUnclaimedDockPanel } from "@shared/tsp/dock-panels";
 import { useEffect, useMemo, useRef } from "react";
 import { useSessionView } from "../../shell/hooks";
 import { controllerFor, useApp } from "../../state/app";
 import { isNativeOverlay, screenName } from "./overlays";
 import { autoOpened } from "./TerminalSheet";
 import { useTsp } from "../../state/tsp/useTsp";
-import { currentPresentationConsumers, usePresentationAvailability, usePresentationClaims } from "../../state/tsp/presentation-claims";
-import { TSP_ROLES } from "@shared/tsp/roles";
+import { currentPresentationConsumers, currentTabPresentationVisible, usePresentationAvailability, usePresentationClaims, useTabPresentationVisible } from "../../state/tsp/presentation-claims";
 
 /** Let omp finish painting before reading the screen. */
 const SETTLE_MS = 300;
@@ -25,17 +25,12 @@ function hasUnpresentedScreen(surfaces: TspSurfaces, consumers: TspPresentationC
 	const screen = screenSurface(surfaces);
 	if (screen && (!consumers.get(screen.open.id)?.size
 		|| (["main", "dock", "layer"] as const).some(area => unclaimed(screen, area, consumers.get(screen.open.id)).length))) return true;
-	for (const surface of surfaces) {
-		if (surface.closed || surface.suspended) continue;
-		for (const root of unclaimed(surface, "dock", consumers.get(surface.open.id))) {
-			for (const node of walkNodes(root)) if (node.k === "rows" || node.k === "ansi" || node.p?.role === TSP_ROLES.askForm) return true;
-		}
-	}
-	return false;
+	return hasUnclaimedDockPanel(surfaces, consumers);
 }
 
 function TabWatch({ tabId }: { tabId: string }) {
 	const view = useSessionView(controllerFor(tabId));
+	const visible = useTabPresentationVisible(tabId);
 	/** Component kind that holds focus when omp sits at its main editor (names are minified per build). */
 	const editorKind = useRef<string | null>(null);
 	const live = view?.mode === "live" && !view.readOnly;
@@ -63,10 +58,11 @@ function TabWatch({ tabId }: { tabId: string }) {
 	const screenKey = `${overlays}|${focused ?? ""}|${tui?.overlayKinds.join(",") ?? ""}`;
 
 	useEffect(() => {
+		const onScreen = currentTabPresentationVisible(tabId);
 		if (tsp) {
 			// A passive effect may precede the rerender caused by a sibling's layout registration.
 			const needsSemanticScreen = hasUnpresentedScreen(surfaces, currentPresentationConsumers(hostId, snapshot?.epoch));
-			if (!live || !needsSemanticScreen) {
+			if (!live || !onScreen || !needsSemanticScreen) {
 				if (autoOpened.tabId === tabId) {
 					autoOpened.tabId = null;
 					if (useApp.getState().terminalTabId === tabId) useApp.getState().closeTerminal();
@@ -77,7 +73,7 @@ function TabWatch({ tabId }: { tabId: string }) {
 			}
 			return;
 		}
-		if (!needsSheet || !hostId) {
+		if (!needsSheet || !hostId || !onScreen) {
 			if (autoOpened.tabId === tabId) {
 				autoOpened.tabId = null;
 				if (useApp.getState().terminalTabId === tabId) useApp.getState().closeTerminal();
@@ -102,7 +98,7 @@ function TabWatch({ tabId }: { tabId: string }) {
 			cancelled = true;
 			clearTimeout(timer);
 		};
-	}, [needsSheet, hostId, tabId, screenKey, overlays, tsp, semanticScreen, live, snapshot]);
+	}, [needsSheet, hostId, tabId, screenKey, overlays, tsp, semanticScreen, live, snapshot, visible]);
 
 	return null;
 }

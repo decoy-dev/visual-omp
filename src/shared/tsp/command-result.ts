@@ -1,8 +1,11 @@
 import type { TspNode, TspText } from "../tsp";
 import type { TspHostSnapshot } from "../tsp-host";
 import { TSP_ROLES } from "./roles";
+import { settledCommandPanel } from "./command-panels";
 
 export interface CommandOutcomeSpec {
+	/** A controller-owned panel collector survives native questions and retains its settled outcome. */
+	panel?: "cleanse";
 	success?: RegExp;
 	errors?: readonly RegExp[];
 	cancelled?: RegExp;
@@ -41,6 +44,28 @@ function feedback(root: TspNode): TspNode[] {
 /** Only semantic output changes or a newly settled summary can complete the pinned command. */
 export function commandOutcome(before: TspHostSnapshot, after: TspHostSnapshot, spec: CommandOutcomeSpec): CommandOutcome | null {
 	if (before.hostId !== after.hostId || before.epoch !== after.epoch || before.generation !== after.generation || !after.negotiated || after.lifecycle !== "live" || after.closing) return null;
+	if (spec.panel) {
+		for (const surface of after.surfaces) {
+			if (surface.closed || surface.suspended || surface.documentGeneration !== after.generation) continue;
+			const previous = before.surfaces.find(item => item.open.id === surface.open.id);
+			const visit = (node: TspNode): CommandOutcome | null => {
+				if (node.p?.hidden) return null;
+				if (node.p?.role === TSP_ROLES.cleanse) {
+					const panel = settledCommandPanel(node);
+					const old = previous ? findPanel(previous.document, node.id) : null;
+					if (panel && (!old || JSON.stringify(old) !== JSON.stringify(node))) return {
+						status: panel.status === "error" ? "error" : panel.status === "cancelled" ? "cancelled" : "success",
+						lines: panel.lines, nodes: [{ sf: surface.open.id, id: node.id, text: commandNodeText(node) }],
+					};
+				}
+				for (const child of node.c ?? []) { const result = visit(child); if (result) return result; }
+				return null;
+			};
+			const result = visit(surface.document);
+			if (result) return result;
+		}
+		return null;
+	}
 	const candidates: { node: TspNode; sf: string; text: string; completed: boolean }[] = [];
 	for (const surface of after.surfaces) {
 		if (surface.closed || surface.suspended || surface.documentGeneration !== after.generation) continue;
@@ -72,6 +97,12 @@ export function commandOutcome(before: TspHostSnapshot, after: TspHostSnapshot, 
 		? { status: "success", lines: [], nodes: [] } : null;
 }
 
+function findPanel(node: TspNode, id: string): TspNode | null {
+	if (node.id === id) return node;
+	for (const child of node.c ?? []) { const found = findPanel(child, id); if (found) return found; }
+	return null;
+}
+
 /** Pinned command messages are contracts; unrelated failures and cancellations remain notices. */
 export function commandOutcomeSpec(line: string): CommandOutcomeSpec | null {
 	const command = line.trim().split(/\s+/, 1)[0]?.toLowerCase();
@@ -80,7 +111,7 @@ export function commandOutcomeSpec(line: string): CommandOutcomeSpec | null {
 		case "/export": return { success: /^Session exported to:\s+\S/, errors: [/^Failed to export session:\s*\S/i] };
 		case "/compact": return { errors: [/^Compaction failed:\s*\S/i], cancelled: /^Compaction cancelled\.?$/i, compaction: /^(?:Soft|Snap|Remote|Server)-compacted\b/i };
 		case "/handoff": return { errors: [/^Handoff failed:\s*\S/i], cancelled: /^Handoff cancelled\.?$/i, compaction: /^Handed-off\b/i, restates: /^Session compacted \d+ times?$/ };
-		case "/cleanse": return { success: /^Cleanse (?:complete|completed)\.?$/i, errors: [/^Cleanse failed:\s*\S/i], cancelled: /^Cleanse cancelled\.?$/i };
+		case "/cleanse": return { panel: "cleanse" };
 		case "/jobs": {
 			const target = /^\/jobs\s+kill\s+(\S+)\s*$/i.exec(line.trim())?.[1];
 			if (!target) return null;

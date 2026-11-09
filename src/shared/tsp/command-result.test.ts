@@ -48,7 +48,7 @@ describe("commandOutcome", () => {
 		const node = toast('Session renamed to "old".'); node.p = { ...node.p, ttl: 1200, tone: "warning" };
 		expect(commandOutcome(before, snapshot(3, [node]), spec)).toBeNull();
 	});
-	it.each([["/handoff", "Handoff cancelled"], ["/cleanse", "Cleanse cancelled"], ["/compact", "Compaction cancelled"]])("never turns %s cancellation into success", (line, message) => {
+	it.each([["/handoff", "Handoff cancelled"], ["/compact", "Compaction cancelled"]])("never turns %s cancellation into success", (line, message) => {
 		expect(commandOutcome(snapshot(2, []), snapshot(3, [toast(message!)]), commandOutcomeSpec(line!)!)).toMatchObject({ status: "cancelled" });
 	});
 	it("binds jobs-kill success and failure to the requested job", () => {

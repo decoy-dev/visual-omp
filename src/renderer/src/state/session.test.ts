@@ -67,6 +67,7 @@ vi.mock("../features/session-tools/drive", () => ({
 }));
 vi.mock("../features/session-tools/results", () => ({
 	addCommandResult: () => undefined,
+	clearCommandResults: () => undefined,
 	drawsRow: () => false,
 	linesTone: () => "info",
 	presentLines: (lines: string[]) => lines,

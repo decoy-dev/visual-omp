@@ -990,6 +990,7 @@ export class SessionController {
 			if (!overStrandedImages && this.#view.guest?.uiRequest && !isApprovalRequest(this.#view.guest.uiRequest)) {
 				throw new Error("Answer the question card before sending a command.");
 			}
+			this.tspNotices.endMainFeedback();
 			beforeSubmit?.();
 			await this.#submit(line, "steer");
 		});
@@ -1263,6 +1264,7 @@ export class SessionController {
 					steered: this.#view.working,
 				};
 				const timestamp = Date.now();
+				this.tspNotices.endMainFeedback();
 				if (target) {
 					const images = [];
 					for (const image of item.images) {

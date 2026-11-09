@@ -262,8 +262,12 @@ Each SessionHost:
    through `routeSlash` (`session-tools/slash.ts`), which opens the app's own screen for commands
    it covers and refuses the few that would break the hosted session (`/collab` and `/join`).
    The rest go through `sendSlashCommand` (`session-tools/typed.ts`). TSP hosts submit through
-   the semantic editor, collect known command outcomes from fresh document feedback, and retain
-   other output as notices. Classic hosts type the line and read results above the painted editor.
+   the semantic editor, collect known command outcomes and new public main-region text into
+   command Result rows, and retain other output as notices. Main-output capture continues after
+   editor readiness, stops at the next input or identity change, and compares visible semantic
+   versions so an unchanged replay creates no new row. Exact Result-owned versions are omitted
+   from the omp screen; an added control or unsupported action returns that content to fallback.
+   Classic hosts type the line and read results above the painted editor.
    The composer's slash menu lists omp's `get_available_commands` (a short-lived `omp --mode rpc`
    in the project folder, cached per folder) merged with the builtin catalog in
    `src/main/services/omp-builtin-commands.ts`.

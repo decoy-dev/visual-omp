@@ -1,0 +1,13 @@
+{"input":"\u001b[?62;22c","afterMessage":0}
+{"input":"\u001b[?62;22c","afterMessage":0}
+{"input":"\u001b[?62;22c","afterMessage":0}
+{"input":"\u001b[?62;22c","afterMessage":0}
+{"input":"\u001b_tsp;r;{\"r\":\"hello\",\"v\":1,\"term\":\"visual-omp\",\"kinds\":[\"col\",\"row\",\"card\",\"section\",\"rule\",\"spacer\",\"text\",\"md\",\"code\",\"diff\",\"ansi\",\"math\",\"image\",\"media\",\"kv\",\"table\",\"tree\",\"json\",\"badge\",\"kbd\",\"icon\",\"spinner\",\"shimmer\",\"elapsed\",\"progress\",\"rate\",\"list\",\"item\",\"tabs\",\"editor\",\"input\",\"button\",\"status\",\"seg\",\"overlay\",\"toast\",\"rows\",\"picker\",\"prefs\",\"tool\",\"checklist\",\"agent\",\"chart\",\"meter\",\"effort\"],\"features\":[],\"apc\":65536,\"credits\":2,\"cols\":110,\"dark\":false,\"reduceMotion\":true}\u001b\\","afterMessage":1}
+{"input":"\u001b[?62;22c","afterMessage":1}
+{"input":"\u001b_tsp;e;{\"ev\":\"ack\",\"sf\":\"s:1\",\"s\":1}\u001b\\","afterMessage":3}
+{"input":"\u001b[?62;22c","afterMessage":3}
+{"input":"\u001b_tsp;e;{\"ev\":\"ack\",\"sf\":\"s:1\",\"s\":2}\u001b\\","afterMessage":4}
+{"input":"\u001b_tsp;e;{\"ev\":\"send\",\"sf\":\"s:1\",\"id\":\"g.line/input\",\"text\":\"/ssh add fixture --host example.invalid\"}\u001b\\","afterMessage":4}
+{"input":"\u001b_tsp;e;{\"ev\":\"ack\",\"sf\":\"s:1\",\"s\":3}\u001b\\","afterMessage":5}
+{"input":"\u001b_tsp;e;{\"ev\":\"send\",\"sf\":\"s:1\",\"id\":\"g.line/input\",\"text\":\"/ssh remove fixture\"}\u001b\\","afterMessage":5}
+{"input":"\u001b_tsp;e;{\"ev\":\"ack\",\"sf\":\"s:1\",\"s\":4}\u001b\\","afterMessage":6}

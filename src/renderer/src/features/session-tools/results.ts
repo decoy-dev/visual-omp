@@ -6,9 +6,11 @@
  * in the transcript. Results live per chat in memory only: omp never saves them in the session file.
  */
 import type { SessionEntry } from "@oh-my-pi/pi-wire";
-import { useSyncExternalStore } from "react";
+import { useMemo, useSyncExternalStore } from "react";
 import type { SessionView } from "../../state/session";
 import type { CommandOutcome } from "@shared/tsp/command-result";
+import { outputLocations, type MainOutput, type OutputLocation } from "@shared/tsp/main-output";
+import type { TspHostSnapshot } from "@shared/tsp-host";
 import { messageLines } from "./screen";
 
 export type ResultTone = "info" | "warn" | "err";
@@ -242,6 +244,11 @@ export interface CommandResultRecord {
 	/** What omp printed, shaped by `presentLines`. */
 	lines: string[];
 	tone: ResultTone;
+	title?: string;
+	locations?: OutputLocation[];
+	/** Exact visible semantic fingerprint accepted into this row. */
+	provenance?: { hostId: string; epoch: number; generation: number; surfaceId: string; nodeId: string; text: string }[];
+	panel?: { hostId: string; epoch: number; generation: number; surfaceId: string; nodeId: string; text: string; close?: { id: string; act: "close" } };
 	/** Last displayed entry when the command was sent; null when the chat showed none. */
 	anchor: string | null;
 	/** `roomKey` when the command was sent. */
@@ -257,6 +264,24 @@ interface ChatResults {
 const EMPTY: readonly CommandResultRecord[] = [];
 const chats = new WeakMap<object, ChatResults>();
 let nextResultId = 0;
+const feedbackListeners = new Set<() => void>();
+const feedback = new Map<string, NonNullable<CommandResultRecord["provenance"]>>();
+let feedbackRevision = 0;
+const subscribeFeedback = (listener: () => void) => { feedbackListeners.add(listener); return () => feedbackListeners.delete(listener); };
+/** Only exact output versions retained in Result rows are omitted from the omp screen. */
+export function useCommandFeedbackClaims(hostId: string, epoch: number | undefined, generation: number): ReadonlyMap<string, ReadonlyMap<string, string>> {
+	const revision = useSyncExternalStore(subscribeFeedback, () => feedbackRevision);
+	return useMemo(() => {
+		const claims = new Map<string, Map<string, string>>();
+		for (const nodes of feedback.values()) for (const node of nodes) {
+			if (node.hostId !== hostId || node.epoch !== epoch || node.generation !== generation) continue;
+			let surface = claims.get(node.surfaceId);
+			if (!surface) claims.set(node.surfaceId, surface = new Map());
+			surface.set(node.nodeId, node.text);
+		}
+		return claims;
+	}, [hostId, epoch, generation, revision]);
+}
 
 function chatResults(chat: object): ChatResults {
 	let results = chats.get(chat);
@@ -269,18 +294,52 @@ function chatResults(chat: object): ChatResults {
 
 function update(chat: object, items: readonly CommandResultRecord[]): void {
 	const results = chatResults(chat);
+	for (const item of results.items) feedback.delete(item.id);
+	for (const item of items) if (item.provenance?.length) feedback.set(item.id, item.provenance);
 	results.items = items;
+	feedbackRevision++;
+	for (const listener of feedbackListeners) listener();
 	for (const listener of results.listeners) listener();
 }
 
 /** Record a result for `chat` (its SessionController). */
-export function addCommandResult(chat: object, result: Omit<CommandResultRecord, "id" | "createdAt">): void {
-	update(chat, [...chatResults(chat).items, { ...result, id: `r${nextResultId++}`, createdAt: Date.now() }]);
+export function addCommandResult(chat: object, result: Omit<CommandResultRecord, "id" | "createdAt">): string {
+	const id = `r${nextResultId++}`;
+	update(chat, [...chatResults(chat).items, { ...result, id, createdAt: Date.now() }]);
+	return id;
+}
+export function clearCommandResults(chat: object): void {
+	if (chats.has(chat)) update(chat, EMPTY);
+}
+export function updateCommandResult(chat: object, id: string, patch: Partial<Pick<CommandResultRecord, "lines" | "tone" | "title" | "locations" | "provenance">>): boolean {
+	const items = chatResults(chat).items;
+	if (!items.some(item => item.id === id)) return false;
+	update(chat, items.map(item => item.id === id ? { ...item, ...patch } : item));
+	return true;
+}
+/** One result per semantic subtree; changed progress replaces that subtree's previous text. */
+export function mainCommandFeedback(chat: object, command: string, anchor: () => string | null, room: string | null): (output: MainOutput, snapshot: TspHostSnapshot) => boolean {
+	const rows = new Map<string, string>();
+	return (output, snapshot) => {
+		const key = JSON.stringify([output.surfaceId, output.nodeId]);
+		const value = {
+			lines: output.text.split("\n"), tone: output.tone, title: output.title, locations: output.locations,
+			provenance: [{ hostId: snapshot.hostId, epoch: snapshot.epoch, generation: snapshot.generation, surfaceId: output.surfaceId, nodeId: output.nodeId, text: output.fingerprint }],
+		};
+		const previousKey = output.previousNodeId === undefined ? key : JSON.stringify([output.surfaceId, output.previousNodeId]);
+		const id = rows.get(previousKey);
+		if (id) {
+			rows.delete(previousKey); rows.set(key, id);
+			return updateCommandResult(chat, id, value);
+		}
+		rows.set(key, addCommandResult(chat, { command, ...value, anchor: anchor(), room }));
+		return true;
+	};
 }
 /** Semantic feedback uses the same row shaping as classic output and preserves omp's export path. */
 export function addTspCommandResult(chat: object, command: string, outcome: CommandOutcome, anchor: string | null, room: string | null): void {
 	const lines = presentLines(outcome.lines);
-	if (lines.length) addCommandResult(chat, { command, lines, tone: outcome.status === "error" ? "err" : linesTone(lines), anchor, room });
+	if (lines.length) addCommandResult(chat, { command, lines, tone: outcome.status === "error" ? "err" : linesTone(lines), anchor, room, locations: outputLocations(lines.join("\n")) });
 }
 
 export function dismissCommandResult(chat: object, id: string): void {

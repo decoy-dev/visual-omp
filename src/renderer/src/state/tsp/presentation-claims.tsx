@@ -3,10 +3,37 @@ import type { TspPresentationClaims } from "@shared/tsp/view-state";
 
 export interface PresentationTarget { hostId: string; epoch: number; surfaceId: string; nodeId: string }
 const visiblePresentation = createContext(true);
+const tabVisibility = new Map<object, { tabId: string; visible: boolean }>();
+const visibilityListeners = new Set<() => void>();
+const subscribeVisibility = (listener: () => void) => { visibilityListeners.add(listener); return () => visibilityListeners.delete(listener); };
+
+/** Global screen opening follows the same hidden-pane state as native presentation claims. */
+export function currentTabPresentationVisible(tabId: string): boolean {
+	let known = false;
+	for (const item of tabVisibility.values()) if (item.tabId === tabId) {
+		known = true;
+		if (item.visible) return true;
+	}
+	// Non-ChatArea hosts and composition harnesses retain their existing visibility contract.
+	return !known;
+}
+export function useTabPresentationVisible(tabId: string): boolean {
+	return useSyncExternalStore(subscribeVisibility, () => currentTabPresentationVisible(tabId));
+}
 
 /** Layout owners explicitly propagate hidden/inert state, including nested split panes. */
-export function PresentationVisibility({ visible, children }: PropsWithChildren<{ visible: boolean }>) {
+export function PresentationVisibility({ visible, tabId, children }: PropsWithChildren<{ visible: boolean; tabId?: string }>) {
 	const parent = useContext(visiblePresentation);
+	useLayoutEffect(() => {
+		if (!tabId) return;
+		const owner = {};
+		tabVisibility.set(owner, { tabId, visible: parent && visible });
+		for (const listener of visibilityListeners) listener();
+		return () => {
+			tabVisibility.delete(owner);
+			for (const listener of visibilityListeners) listener();
+		};
+	}, [parent, visible, tabId]);
 	return <visiblePresentation.Provider value={parent && visible}>{children}</visiblePresentation.Provider>;
 }
 

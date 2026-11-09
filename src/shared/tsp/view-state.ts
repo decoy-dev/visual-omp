@@ -1,6 +1,7 @@
 import type { TspNode } from "../tsp";
 import type { TspSurfaceSnapshot } from "../tsp-host";
 import { isClaimable, isClaimed, isHookNode, isReplicatedRole, TSP_ROLES } from "./roles";
+import { mainOutputFingerprint } from "./main-output";
 
 export interface TspNodeTarget { surface: TspSurfaceSnapshot; node: TspNode }
 export type TspSurfaces = readonly TspSurfaceSnapshot[];
@@ -59,8 +60,10 @@ export function composer(surfaces: TspSurfaces): TspNodeTarget | null {
 	return null;
 }
 /** Keep whole unclaimed subtrees; replicated transcript and the app composer never appear twice. */
-export function unclaimed(surface: TspSurfaceSnapshot, area: "main" | "dock" | "layer", presented?: ReadonlySet<string>): readonly TspNode[] {
+export function unclaimed(surface: TspSurfaceSnapshot, area: "main" | "dock" | "layer", presented?: ReadonlySet<string>, feedback?: ReadonlyMap<string, string>): readonly TspNode[] {
 	const project = (node: TspNode, inUserRun: boolean): TspNode[] => {
+		const version = area === "main" ? feedback?.get(node.id) : undefined;
+		if (version !== undefined && version === mainOutputFingerprint(node)) return [];
 		if (node.p?.hidden || isClaimed(node) || presented?.has(node.id) && isClaimable(node, surface) || (area === "main" && !inUserRun && isReplicatedRole(node.p?.role))) return [];
 		if (node.p?.role === TSP_ROLES.editor) return [];
 		// User-run bodies reuse omp.tool.* roles without being replicated assistant tool messages.

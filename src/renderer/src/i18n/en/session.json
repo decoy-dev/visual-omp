@@ -14,7 +14,15 @@
     "aria": "What omp printed for {{command}}",
     "dismiss": "Dismiss result",
     "more": "Show all {{count}} lines",
-    "less": "Show fewer lines"
+    "less": "Show fewer lines",
+    "locations": "Result locations",
+    "copyUrl": "Copy URL",
+    "copyPath": "Copy path",
+    "showInFolder": "Show in folder",
+    "urlCopied": "URL copied.",
+    "pathCopied": "Path copied.",
+    "copyFailed": "The value could not be copied. Select it and copy it manually.",
+    "revealFailed": "The path could not be shown in its folder."
   },
   "permission": {
     "title": "Permission level",

@@ -2,6 +2,8 @@ import type { TspNode } from "../tsp";
 import type { TspSurfaceSnapshot } from "../tsp-host";
 import { projectPlanReview } from "./plan-review";
 import { advisorScope } from "./advisor";
+import { commandReport } from "./reports";
+import { settledCommandPanel } from "./command-panels";
 
 /** All omp names on which visual-omp makes a behavioral decision. */
 export const TSP_ROLES = {
@@ -35,6 +37,7 @@ export const TSP_ROLES = {
 	btwEmpty: "omp.btw.empty", btwEmptyTitle: "omp.btw.empty.title", btwEmptyHint: "omp.btw.empty.hint",
 	overlayHints: "omp.overlay.hints", retryHint: "omp.hint.retry",
 	composerFact: "omp.composer.fact", composerCache: "omp.composer.cache", composerCacheCard: "omp.composer.cache.card",
+	report: "omp.overlay.report", reportBody: "omp.report.body", omfg: "omp.overlay.omfg", cleanse: "omp.overlay.cleanse", sheetHead: "omp.sheet.head",
 } as const;
 const nativeHookRoles: ReadonlySet<string> = new Set([TSP_ROLES.hookSelect, TSP_ROLES.hookConfirm, TSP_ROLES.hookInput, TSP_ROLES.hookEditor]);
 const hookPartPrefixes = ["omp.hook-input", "omp.hook-editor"] as const;
@@ -88,6 +91,8 @@ export const TSP_CLAIMS: Readonly<Record<string, string>> = Object.freeze(
 		[TSP_ROLES.advisor, "advisor-apply"],
 		[TSP_ROLES.editorAsk, "collab-form-card"],
 		...[TSP_ROLES.userShell, TSP_ROLES.userPython].map(role => [role, "transcript-user-runs"]),
+		[TSP_ROLES.report, "command-report"],
+		...[TSP_ROLES.cleanse, TSP_ROLES.omfg].map(role => [role, "command-panel-result"]),
 		[TSP_ROLES.btwHistory, "btw-pane"],
 	]),
 );
@@ -96,6 +101,8 @@ export function isReplicatedRole(role?: string): boolean {
 	return !!role && replicated.some(prefix => role === prefix || role.startsWith(`${prefix}.`));
 }
 export function isClaimable(node: TspNode, surface?: TspSurfaceSnapshot): boolean {
+	if (node.p?.role === TSP_ROLES.report) return commandReport(node) !== null;
+	if (node.p?.role === TSP_ROLES.cleanse || node.p?.role === TSP_ROLES.omfg) return settledCommandPanel(node) !== null;
 	if (isTreeSelectorNode(node)) return true;
 	if (node.k === "prefs" || node.p?.role === TSP_ROLES.advisor) return advisorScope(node, surface?.open.mode) !== null;
 	if (node.p?.role === TSP_ROLES.userShell || node.p?.role === TSP_ROLES.userPython) return isUserRunNode(node);

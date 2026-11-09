@@ -2,25 +2,27 @@
 import type { TspHostSnapshot } from "@shared/tsp-host";
 import type { QuestionMatch } from "@shared/tsp/question-match";
 import { TSP_ROLES } from "@shared/tsp/roles";
-import { act, createElement } from "react";
+import { commandPanelFrames } from "@shared/tsp/testing/command-panel-fixtures";
+import { act, createElement, Fragment } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { OverlayWatcher } from "./OverlayWatcher";
 import { autoOpened } from "./TerminalSheet";
-import { presentationClaims } from "../../state/tsp/presentation-claims";
+import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 const releaseClaims: (() => void)[] = [];
 const claimHook = () => releaseClaims.push(presentationClaims.acquire({ hostId: "host", epoch: 1, surfaceId: "s:1", nodeId: "hook" }));
-const fake = vi.hoisted(() => ({ terminal: null as string | null, snapshot: null as TspHostSnapshot | null, open: vi.fn(), close: vi.fn(), invoke: vi.fn() }));
-vi.mock("../../shell/hooks", () => ({ useSessionView: () => ({ mode: "live", readOnly: false, host: { hostId: "host", generation: 1, transport: "tsp" } }) }));
-vi.mock("../../state/tsp/useTsp", () => ({ useTsp: () => ({ snapshot: fake.snapshot }) }));
+const fake = vi.hoisted(() => ({ active: "tab", split: null as string | null, terminal: null as string | null, snapshot: null as TspHostSnapshot | null, open: vi.fn(), close: vi.fn(), invoke: vi.fn() }));
+vi.mock("../../shell/hooks", () => ({ useSessionView: (tabId: string) => ({ mode: "live", readOnly: false, host: { hostId: tabId === "tab" ? "host" : "other", generation: 1, transport: "tsp" } }) }));
+vi.mock("../../state/tsp/useTsp", () => ({ useTsp: (hostId: string) => ({ snapshot: hostId === "host" ? fake.snapshot : null }) }));
 vi.mock("./TerminalSheet", () => ({ autoOpened: { tabId: null } }));
-vi.mock("../../state/app", () => ({ controllerFor: () => ({}), useApp: Object.assign((select: (state: unknown) => unknown) => select({ view: "chat", activeTabId: "tab", splitTabId: null }), { getState: () => ({ terminalTabId: fake.terminal, openTerminal: fake.open, closeTerminal: fake.close }) }) }));
+vi.mock("../../state/app", () => ({ controllerFor: (tabId: string) => tabId, useApp: Object.assign((select: (state: unknown) => unknown) => select({ view: "chat", activeTabId: fake.active, splitTabId: fake.split }), { getState: () => ({ terminalTabId: fake.terminal, openTerminal: fake.open, closeTerminal: fake.close }) }) }));
 let root: Root; let element: HTMLDivElement;
 const render = async () => { await act(async () => root.render(createElement(OverlayWatcher))); };
 function snapshot(overlay: boolean, screen = false): TspHostSnapshot {
 	return { hostId: "host", generation: 1, epoch: 1, revision: 1, negotiated: true, lifecycle: "live", documentGeneration: 1, availability: { available: false, reason: null }, failure: null, surfaces: [{ documentGeneration: 1, open: { id: "s:1", mode: screen ? "screen" : "inline" }, sequence: 1, closed: false, focus: null, suspended: false, settled: [], document: { id: "s:1", k: "col", c: [{ id: "layer", k: "col", c: overlay ? [{ id: "menu", k: "picker", p: { title: "Options" } }] : [] }] } }] };
 }
 beforeEach(() => { Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true }); fake.terminal = null; autoOpened.tabId = null; fake.open.mockReset().mockImplementation(id => { fake.terminal = id; }); fake.close.mockReset().mockImplementation(() => { fake.terminal = null; }); fake.snapshot = snapshot(false); fake.invoke.mockClear(); Object.assign(window, { vomp: { invoke: fake.invoke } }); element = document.createElement("div"); document.body.append(element); root = createRoot(element); });
+beforeEach(() => { fake.active = "tab"; fake.split = null; });
 afterEach(async () => { await act(async () => root.unmount()); for (const release of releaseClaims.splice(0)) release(); element.remove(); });
 it.each(["overlay", "screen"])("opens an omp %s immediately and closes only its automatic sheet", async kind => {
 	fake.snapshot = snapshot(kind === "overlay", kind === "screen"); await render(); expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab"); expect(autoOpened.tabId).toBe("tab"); expect(fake.invoke).not.toHaveBeenCalled();
@@ -91,4 +93,26 @@ it("suppresses a claimed advisor screen only during apply and keeps unrelated sc
 	expect(fake.close).toHaveBeenCalledOnce();
 	await act(async () => release());
 	expect(fake.open).toHaveBeenCalledTimes(2);
+});
+
+it.each(["cleanse", "omfg-error-panel"])("opens the %s dock board after its native question closes", async name => {
+	const frames = commandPanelFrames(name);
+	fake.snapshot = frames.at(-1)!;
+	await render();
+	expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab");
+});
+
+it.each(["primary", "secondary"])("does not open a sheet for the hidden %s split pane and opens when revealed", async hidden => {
+	fake.active = hidden === "primary" ? "tab" : "other";
+	fake.split = hidden === "primary" ? "other" : "tab";
+	fake.snapshot = commandPanelFrames("omfg-error-panel").at(-1)!;
+	const layout = (visible: boolean) => createElement(Fragment, null,
+		createElement(PresentationVisibility, { tabId: "tab", visible }),
+		createElement(PresentationVisibility, { tabId: "other", visible: true }),
+		createElement(OverlayWatcher));
+	await act(async () => root.render(layout(false)));
+	expect(fake.open).not.toHaveBeenCalled();
+	expect(fake.terminal).toBeNull();
+	await act(async () => root.render(layout(true)));
+	expect(fake.open).toHaveBeenCalledExactlyOnceWith("tab");
 });

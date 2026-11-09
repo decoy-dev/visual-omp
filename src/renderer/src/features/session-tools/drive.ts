@@ -12,7 +12,9 @@ import { i18n } from "../../i18n";
 import type { TspCommandNoticeReservation } from "../../state/tsp/notices";
 import { tspHost, type TspHostSource } from "../../state/tsp/hosts";
 import type { SessionController } from "../../state/session";
-import { outputTone } from "./results";
+import { outputTone, roomKey } from "./results";
+import { displayedEntries } from "../../chat/branch";
+import { startCommandPanels } from "./command-panels";
 import { newOutput, parseStatusLine, statusBorderLine } from "./screen";
 
 const POLL_MS = 120;
@@ -251,22 +253,32 @@ export async function runCommand(session: SessionController, line: string, optio
 	if (session.getSnapshot().host?.transport === "tsp") {
 		const watch = new TspEditorWatch(session);
 		let reservation: TspCommandNoticeReservation | undefined;
+		let stopPanels: (() => void) | undefined;
 		try {
 			await watch.ready();
 			const baseline = watch.snapshot!;
 			const spec = commandOutcomeSpec(line);
-			if (spec) reservation = session.tspNotices.beginCommand(baseline, spec);
+			const pinned = spec?.panel ? null : spec;
+			if (pinned) reservation = session.tspNotices.beginCommand(baseline, pinned);
 			const startedAt = Date.now();
-			const watching = spec ? watch.outcome(baseline, spec, startedAt, options.timeoutMs).then(outcome => {
+			const watching = pinned ? watch.outcome(baseline, pinned, startedAt, options.timeoutMs).then(outcome => {
 				if (!outcome) reservation?.cancel();
 				return outcome;
 			}) : watch.watch().then(() => null);
-			await session.command(line);
+			await session.command(line, () => {
+				const current = watch.snapshot;
+				if (!current || watch.ended) return;
+				const view = session.getSnapshot();
+				stopPanels = startCommandPanels(session, line, current, displayedEntries(view).at(-1)?.id ?? null, roomKey(view));
+			});
 			session.holdQueue(watching.then(() => undefined));
 			const outcome = await watching;
 			const result: CommandResult = { output: outcome?.lines ?? [], screen: [], ...(outcome ? { status: outcome.status } : {}) };
 			if (options.present?.(result) && outcome) reservation?.commit(outcome);
 			return result;
+		} catch (error) {
+			stopPanels?.();
+			throw error;
 		} finally { reservation?.cancel(); watch.dispose(); }
 	}
 	const beforeStatus = JSON.stringify(parseStatusLine(before));

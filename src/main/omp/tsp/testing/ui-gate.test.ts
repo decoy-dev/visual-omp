@@ -11,7 +11,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createServer, type ViteDevServer } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
-import { FixtureDocuments, loadFixtureRecording, type FixtureInput, type FixtureRecording } from "../../../../renderer/src/features/tsp/testing/documents";
+import { FixtureDocuments, loadFixtureRecording, loadCommandFeedbackRecording, type FixtureInput, type FixtureRecording } from "../../../../renderer/src/features/tsp/testing/documents";
 import { hookQuestions } from "@shared/tsp/question-match";
 import { openOverlay, screenSurface, walkNodes } from "@shared/tsp/view-state";
 import { plain } from "../../../../renderer/src/state/tsp/labels";
@@ -23,7 +23,15 @@ import { planReview } from "@shared/tsp/plan-review";
 import askFormEvidence from "../fixtures/18.18.3/ask-html-form.ask.json";
 import { matchQuestions, type CollabQuestion } from "@shared/tsp/question-match";
 import type { TspSurfaceSnapshot } from "@shared/tsp-host";
+import { commandPanelFrames, replacePanelChild } from "@shared/tsp/testing/command-panel-fixtures";
+import { commandReport } from "@shared/tsp/reports";
+import { settledCommandPanel } from "@shared/tsp/command-panels";
 
+import { TspMainFeedback } from "../../../../renderer/src/state/tsp/main-feedback";
+import type { MainOutput } from "@shared/tsp/main-output";
+import type { TspNode } from "@shared/tsp";
+/** Rows the gate page renders as command results. The renderer's own record type would pull session state into this project's compile. */
+interface GateResultRow { id: string; command: string; lines: string[]; tone: MainOutput["tone"]; locations?: MainOutput["locations"]; anchor: null; room: string; createdAt: number; provenance: unknown[] }
 const root = resolve(import.meta.dirname, "../../../../..");
 const chrome = process.env.CHROME_BIN ?? (process.platform === "darwin" ? "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" : "/usr/bin/google-chrome");
 
@@ -204,6 +212,63 @@ class CompletionReplay {
 		expect(hasRecordedMenu(this.documents), `${this.name} leaves its recorded menu`).toBe(false);
 	}
 }
+const feedbackCases = [
+	["move-success", "/move /tmp/vomp-fixture/destination", "Moved to /tmp/vomp-fixture/destination"],
+	["worktree-exit-ask", "/wt fixture", "Moved to worktree /tmp/vomp-fixture/home/tmp/vomp-fixture/agent/wt/fixture-d54ba38"],
+	["clear-success", "/clear", "4 messages dropped; session continues."],
+	["ssh-add", "/ssh add fixture --host example.invalid", 'Added SSH host "fixture"'],
+	["ssh-remove", "/ssh remove fixture", 'Removed SSH host "fixture"'],
+	["mcp-reload", "/mcp reload", "MCP reload complete"],
+	["extension-throw", "/audit-feedback-throw", "Public fixture extension failure"],
+	["stats-source-shaped", "/stats", "http://127.0.0.1:51239/"],
+	["oauth-source-shaped", "/mcp reauth fixture", "Alternative if browser did not open:"],
+] as const;
+function feedbackResults(name: string, command: string): GateResultRow[] {
+	const documents = new FixtureDocuments();
+	const collector = new TspMainFeedback();
+	const rows = new Map<string, GateResultRow>();
+	const accept = (before: TspHostSnapshot, after: TspHostSnapshot[]) => {
+		collector.begin(before, (output, snapshot) => {
+			rows.set(output.nodeId, { id: output.nodeId, command, lines: output.text.split("\n"), tone: output.tone, locations: output.locations,
+				anchor: null, room: "gate", createdAt: Date.UTC(2026, 10, 9, 16),
+				provenance: [{ hostId: snapshot.hostId, epoch: snapshot.epoch, generation: snapshot.generation, surfaceId: output.surfaceId, nodeId: output.nodeId, text: output.fingerprint }] });
+			return true;
+		});
+		for (const snapshot of after) collector.apply(snapshot);
+	};
+	if (name.endsWith("-source-shaped")) {
+		// Source-shaped public examples. Authenticated OAuth and /stats were not recorded.
+		const url = name === "stats-source-shaped" ? "http://127.0.0.1:51239/" : "https://auth.example.invalid/authorize?client_id=public-fixture&state=fixture-state&scope=read%20write";
+		const nodes: TspNode[] = name === "stats-source-shaped" ? [
+			{ id: "stats", k: "row", c: [
+				{ id: "stats/message", k: "text", p: { role: "omp.stats", text: `Stats dashboard: ${url}` } },
+				{ id: "stats/open", k: "button", p: { text: "Open dashboard ↗", href: url, actions: { click: "open" } } },
+			] },
+		] : [{ id: "oauth", k: "col", c: [
+			{ id: "oauth/wait", k: "text", p: { text: "Waiting for authorization... (Press Esc to cancel, 5 minute timeout)" } },
+			{ id: "oauth/manual", k: "text", p: { text: "Headless? Paste the redirect URL or code with /login <value>." } },
+			{ id: "oauth/fallback", k: "text", p: { text: "Alternative if browser did not open:" } },
+			{ id: "oauth/link", k: "text", p: { text: "Click here to authorize", href: url, actions: { click: "open", menu: ["open", "copy"] } } },
+		] }];
+		const before: TspHostSnapshot = { hostId: "gate", generation: 1, epoch: 1, revision: 1, negotiated: true, lifecycle: "live", documentGeneration: 1, failure: null, availability: { available: true, reason: null }, surfaces: [
+			{ open: { id: "s:1", mode: "inline", role: "omp.session" }, documentGeneration: 1, sequence: 1, closed: false, suspended: false, settled: [], focus: null, document: { id: "s:1", k: "col", c: [{ id: "main", k: "col" }] } },
+		] };
+		const after = { ...before, revision: 2, surfaces: before.surfaces.map(surface => ({ ...surface, sequence: 2, document: { ...surface.document, c: [{ id: "main", k: "col" as const, c: nodes }] } })) };
+		accept(before, [after]);
+	} else {
+		const { messages, start, end } = loadCommandFeedbackRecording(name, command);
+		for (const message of messages.slice(0, start)) documents.receive({ verb: message.verb, body: JSON.stringify(message.body) });
+		const before = fixtureSnapshot(documents);
+		const after: TspHostSnapshot[] = [];
+		for (const message of messages.slice(start, end)) {
+			if (message.verb === "x") break;
+			documents.receive({ verb: message.verb, body: JSON.stringify(message.body) });
+			after.push(fixtureSnapshot(documents, 1, after.length + 2));
+		}
+		accept(before, after);
+	}
+	return [...rows.values()];
+}
 
 describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headless Chrome", () => {
 	let vite: ViteDevServer;
@@ -246,6 +311,68 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		}
 	});
 
+	it.each(feedbackCases.flatMap(([name, command, expected]) => (["light", "dark"] as const).map(theme => ({ name, command, expected, theme }))))("renders command Result $name in $theme without an omp screen", async ({ name, command, expected, theme }) => {
+		const rows = feedbackResults(name, command);
+		expect(rows.some(row => row.lines.join("\n").includes(expected) || row.locations?.some(location => location.value === expected))).toBe(true);
+		await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion='reduced'; window.gate.showCommandResults(${JSON.stringify(rows)});`);
+		await page.until(`!!document.querySelector('section[aria-label="Command feedback"]') && document.body.textContent.includes(${JSON.stringify(expected)})`);
+		await page.evaluate("document.fonts.ready.then(() => true)");
+		expect(await page.evaluate("!!document.querySelector('.tsp-screen')")).toBe(false);
+		expect(await page.evaluate(`document.querySelector('section[aria-label="Command feedback"]').textContent.split(${JSON.stringify(command)}).length - 1`)).toBe(rows.length);
+		expect(await page.evaluate("[...document.querySelectorAll('section[aria-label=\"Command feedback\"] button')].every(button => button.getBoundingClientRect().right <= innerWidth)")).toBe(true);
+		const screenshot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+		await writeFile(join(shots, `command-${name}-${theme}.png`), Buffer.from(screenshot.data, "base64"));
+	}, 30_000);
+	it.each(["light", "dark"])("presents command panels and reports in %s without losing their text", async theme => {
+		for (const name of ["tools", "changelog", "jobs-full", "advisor-status", "ssh-list", "ssh-help", "mcp-help", "mcp-list", "mcp-resources", "mcp-prompts", "mcp-notifications", "cleanse", "omfg-error-panel", "omfg-saved-source-shaped", "cleanse-clean-source-shaped", "cleanse-unresolved-source-shaped", "cleanse-cancelled-source-shaped", "cleanse-error-source-shaped"]) {
+			const source = name.startsWith("omfg-") ? "omfg-error-panel" : name.startsWith("cleanse-") ? "cleanse" : name;
+			const snapshot = structuredClone(commandPanelFrames(source).findLast(frame => frame.surfaces.some(surface => [...walkNodes(surface.document)].some(node => commandReport(node) || settledCommandPanel(node))))!);
+			snapshot.hostId = "gate";
+			const surface = snapshot.surfaces[0]!;
+			const node = [...walkNodes(surface.document)].find(item => item.p?.role === "omp.overlay.report" || item.p?.role === "omp.overlay.cleanse" || item.p?.role === "omp.overlay.omfg")!;
+			if (name === "omfg-saved-source-shaped") {
+				const path = "/tmp/vomp-fixture/.omp/rules/use-context.md";
+				replacePanelChild(node, 1, { id: "saved-status", k: "text", p: { text: `Saved ${path}` } });
+				replacePanelChild(node, 2, { id: "candidate", k: "md", p: { text: "# Use context\nConsult the project instructions before editing." } });
+				replacePanelChild(node.c!.at(-1)!, 0, { id: "saved-outcome", k: "text", p: { text: `Registered live · ${path}` } });
+			}
+			if (name.startsWith("cleanse-")) {
+				const outcome = name.includes("unresolved") ? "Diagnostics remain" : name.includes("cancelled") ? "Cancelled" : name.includes("error") ? "Error" : "Clean";
+				replacePanelChild(node, 1, { id: "checker-details", k: "text", p: { text: outcome === "Clean" ? "Checker completed without diagnostics." : outcome === "Error" ? "Fixture checker failed." : outcome === "Cancelled" ? "Checker stopped." : "Checker reported unresolved diagnostics." } });
+				replacePanelChild(node.c!.at(-1)!, 0, { id: "checker-outcome", k: "text", p: { text: outcome } });
+			}
+			const report = commandReport(node);
+			const panel = settledCommandPanel(node);
+			expect(!!report || !!panel, name).toBe(true);
+			const row = { id: name, command: panel?.command ?? `/${name.replace("-full", " full").replace("-", " ")}`, title: report?.title, lines: report?.lines ?? panel!.lines, tone: panel?.status === "error" ? "err" : panel?.status === "warning" || panel?.status === "cancelled" ? "warn" : "info", anchor: null, room: "gate", createdAt: Date.UTC(2026, 10, 9, 16),
+				...(panel?.path ? { locations: [{ kind: "path", value: panel.path }] } : {}),
+				panel: { hostId: "gate", epoch: snapshot.epoch, generation: 1, surfaceId: surface.open.id, nodeId: node.id, text: JSON.stringify(node), ...(report ? { close: report.close } : {}) } };
+			await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion='reduced'; window.gate.update(${JSON.stringify(snapshot)}); window.gate.showCommandResults(${JSON.stringify([row])});`);
+			await page.until(`!!document.querySelector('section[aria-label="Command feedback"]') && document.body.textContent.includes(${JSON.stringify(report?.title ?? panel!.lines[0])})`);
+			await page.evaluate("document.fonts.ready.then(() => true)");
+			expect(await page.evaluate("!!document.querySelector('.tsp-screen')")).toBe(false);
+			if (report) {
+				await page.until("window.gate.calls.length === 1");
+				expect(await page.evaluate("window.gate.calls[0].args[2].act")).toBe("close");
+			}
+			expect(await page.evaluate("document.body.scrollWidth <= innerWidth")).toBe(true);
+			const capture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+			await writeFile(join(shots, `panel-${name}-${theme}.png`), Buffer.from(capture.data, "base64"));
+		}
+		for (const name of ["cleanse", "omfg-error-panel"]) {
+			const snapshot = structuredClone(commandPanelFrames(name).find(frame => frame.surfaces.some(surface => [...walkNodes(surface.document)].some(node => node.k === "spinner" && node.id.includes(name === "cleanse" ? "head" : "j.0"))))!);
+			snapshot.hostId = "gate";
+			await page.evaluate(`window.gate.showCommandResults([]); window.gate.open(${JSON.stringify(snapshot)});`);
+			if (name === "cleanse") await page.evaluate("import('/src/renderer/src/state/app.ts').then(({ useApp }) => useApp.getState().openTerminal('gate'))");
+			await page.until("!!document.querySelector('.tsp-screen')");
+			await page.until("(document.querySelector('.vo-sheet')?.getBoundingClientRect().bottom ?? Infinity) <= innerHeight");
+			await page.until("(() => { for (let element = document.querySelector('.vo-sheet'); element; element = element.parentElement) if (Number(getComputedStyle(element).opacity) < 1) return false; return true; })()");
+			await page.evaluate("document.fonts.ready.then(() => true)");
+			const capture = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png" });
+			await writeFile(join(shots, `panel-${name}-progress-${theme}.png`), Buffer.from(capture.data, "base64"));
+			await close();
+		}
+	}, 120_000);
 	async function open(snapshot: TspHostSnapshot, theme = "light", scale = 100, reduced = true) {
 		await page.evaluate(`document.documentElement.dataset.theme=${JSON.stringify(theme)}; document.documentElement.dataset.motion=${JSON.stringify(reduced ? "reduced" : "full")}; document.documentElement.style.fontSize=${JSON.stringify(`${scale}%`)}; window.gate.open(${JSON.stringify(snapshot)});`);
 		await page.until("!!document.querySelector('.tsp-screen') && document.querySelector('.tsp-screen').contains(document.activeElement)");
@@ -361,7 +488,14 @@ describe.skipIf(process.env.TSP_UI_GATE !== "1")("recorded omp screen in headles
 		await page.evaluate("document.fonts.ready.then(() => true)");
 		await page.until("document.querySelector('section[aria-label=\"Plan ready for review\"]').getAnimations({subtree:true}).every(animation => animation.playState === 'finished')");
 		expect(await page.evaluate("document.body.textContent.includes('Cover the consumer-visible result.')")).toBe(true);
-		expect(await page.evaluate("[...document.querySelectorAll('button')].filter(button => ['Approve and run','Approve and compact first','More options','Save and stop'].includes(button.textContent.trim())).every(button => window.gate.buttonVisible(button))")).toBe(true);
+		await page.until(`(() => {
+			const section = document.querySelector('section[aria-label="Plan ready for review"]');
+			if (!section) return false;
+			return ['Approve and run', 'Approve and compact first', 'More options', 'Save and stop'].every(label => {
+				const matches = [...section.querySelectorAll('button')].filter(button => button.textContent.trim() === label);
+				return matches.length === 1 && window.gate.buttonVisible(matches[0]);
+			});
+		})()`);
 		const clip = await page.evaluate<{ x: number; y: number; width: number; height: number; scale: number }>("(() => { const box = document.querySelector('section[aria-label=\"Plan ready for review\"]').getBoundingClientRect(); return {x:box.x,y:box.y,width:box.width,height:box.height,scale:1}; })()");
 		const screenshot = await page.send<{ data: string }>("Page.captureScreenshot", { format: "png", clip });
 		await writeFile(join(shots, `plan-card-${theme}.png`), Buffer.from(screenshot.data, "base64"));

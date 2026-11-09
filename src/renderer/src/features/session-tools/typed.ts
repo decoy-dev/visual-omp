@@ -22,6 +22,8 @@ import { OmpBusyError, readScreen, readyEditor, reportFailure, sleep, TspEditorW
 import { addCommandResult, addTspCommandResult, drawsRow, linesTone, presentLines, roomKey, startWatch, supersededResult, WATCH, watchStep } from "./results";
 import { parseStatusLine } from "./screen";
 import { parseSlash, routeSlash } from "./slash";
+import { startCommandPanels } from "./command-panels";
+import { mainCommandFeedback } from "./results";
 
 const POLL_MS = 120;
 /** Slower polling while omp's own screen is up: it may stay open for a long time. */
@@ -159,13 +161,16 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 			if (session.getSnapshot().host?.transport === "tsp") {
 				const watch = new TspEditorWatch(session);
 				let reservation: TspCommandNoticeReservation | undefined;
+				let cancelFeedback: (() => void) | undefined;
+				let cancelPanels: (() => void) | undefined;
 				try {
 					await watch.ready();
 					watches.get(session)?.supersede();
 					const entry = { supersede: () => { reservation?.cancel(); watch.dispose(); } };
 					watches.set(session, entry);
 					const baseline = watch.snapshot!;
-					const spec = commandOutcomeSpec(line);
+					const declared = commandOutcomeSpec(line);
+					const spec = declared?.panel ? null : declared;
 					const anchor = displayedEntries(session.getSnapshot()).at(-1)?.id ?? null;
 					const room = roomKey(session.getSnapshot());
 					if (spec) reservation = session.tspNotices.beginCommand(baseline, spec);
@@ -175,7 +180,13 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 						return result;
 					}) : null;
 					const editor = watch.watch();
-					await session.command(line);
+					await session.command(line, () => {
+						session.tspNotices.endMainFeedback();
+						const current = watch.snapshot;
+						if (!current || watch.ended) return;
+						cancelPanels = startCommandPanels(session, line, current, anchor, room);
+						if (!spec && !declared?.panel) cancelFeedback = session.tspNotices.beginMainFeedback(current, line, mainCommandFeedback(session, line, () => displayedEntries(session.getSnapshot()).at(-1)?.id ?? null, room));
+					});
 					if (!watch.ended) session.recordInput(line, timestamp);
 					const watching = Promise.all([outcome, editor]).then(([result]) => {
 						if (result && !watch.ended) {
@@ -188,7 +199,7 @@ function typeAndWatch(session: SessionController, line: string): Promise<{ watch
 					});
 					return { watching };
 				} catch (error) {
-					reservation?.cancel(); watch.dispose();
+					cancelPanels?.(); cancelFeedback?.(); reservation?.cancel(); watch.dispose();
 					throw error;
 				}
 			}

@@ -3,11 +3,12 @@
  * command, and omp's lines in a monospace well below it, cut to a few lines with a control to show
  * all. Warnings and errors tone the row's icon. Ephemeral: dismissable and never saved.
  */
-import { TerminalWindow, Warning, X, XCircle } from "@phosphor-icons/react";
-import { type ReactNode, useState } from "react";
+import { Copy, FolderOpen, TerminalWindow, Warning, X, XCircle } from "@phosphor-icons/react";
+import { type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { CommandPanelOwnership } from "../../features/session-tools/command-panels";
 import type { CommandResultRecord } from "../../features/session-tools/results";
-import { cn, IconButton } from "../../ui";
+import { Button, cn, IconButton, toast } from "../../ui";
 import { TranscriptTime } from "./TranscriptTime";
 
 /** Longer output starts cut to this many lines. */
@@ -16,12 +17,58 @@ const COLLAPSED_LINES = 12;
 const TONE_ICON = { info: TerminalWindow, warn: Warning, err: XCircle };
 const TONE_CLASS = { info: "text-fg-faint", warn: "text-warn", err: "text-err" };
 
+type ResultLocation = NonNullable<CommandResultRecord["locations"]>[number];
+
+function CommandResultLocation({ location }: { location: ResultLocation }): ReactNode {
+	const { t } = useTranslation("session");
+	const [exists, setExists] = useState(false);
+	useEffect(() => {
+		let cancelled = false;
+		if (location.kind === "path") {
+			void window.vomp.invoke("fs:exists", location.value).then(
+				value => { if (!cancelled) setExists(value); },
+				() => { if (!cancelled) setExists(false); },
+			);
+		}
+		return () => { cancelled = true; };
+	}, [location.kind, location.value]);
+	return (
+		<li className="flex min-w-0 flex-col items-start gap-1">
+			<code tabIndex={0} className="selectable w-full rounded-sm font-mono text-code whitespace-pre-wrap text-fg-muted outline-none [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring">
+				{location.value}
+			</code>
+			<div className="flex flex-wrap gap-1">
+				<Button size="sm" variant="ghost" icon={<Copy />} onClick={() => void navigator.clipboard.writeText(location.value).then(
+					() => toast({ tone: "ok", message: t(location.kind === "url" ? "commandResult.urlCopied" : "commandResult.pathCopied") }),
+					() => toast({ tone: "err", message: t("commandResult.copyFailed") }),
+				)}>
+					{t(location.kind === "url" ? "commandResult.copyUrl" : "commandResult.copyPath")}
+				</Button>
+				{location.kind === "path" && exists && (
+					<Button size="sm" variant="ghost" icon={<FolderOpen />} onClick={() => void window.vomp.invoke("app:showItem", location.value).catch(
+						() => toast({ tone: "err", message: t("commandResult.revealFailed") }),
+					)}>
+						{t("commandResult.showInFolder")}
+					</Button>
+				)}
+			</div>
+		</li>
+	);
+}
+
 export function CommandResultRow({ result, onDismiss }: { result: CommandResultRecord; onDismiss: () => void }): ReactNode {
 	const { t } = useTranslation("session");
 	const [open, setOpen] = useState(false);
 	const long = result.lines.length > COLLAPSED_LINES;
 	const shown = open || !long ? result.lines : result.lines.slice(0, COLLAPSED_LINES);
 	const ToneIcon = TONE_ICON[result.tone];
+	const seenLocations = new Set<string>();
+	const locations = (result.locations ?? []).filter(location => {
+		const key = JSON.stringify([location.kind, location.value]);
+		if (seenLocations.has(key)) return false;
+		seenLocations.add(key);
+		return true;
+	});
 	return (
 		<section aria-label={t("commandResult.aria", { command: result.command })} className="group/result flex flex-col">
 			<div className="-mx-2 flex h-8 w-[calc(100%+1rem)] items-center gap-2.5 rounded-md px-2">
@@ -37,6 +84,7 @@ export function CommandResultRow({ result, onDismiss }: { result: CommandResultR
 				/>
 			</div>
 			<div className="pb-1 pl-6.5">
+				{result.title && <h3 className="selectable mb-2 text-sm font-medium text-fg [overflow-wrap:anywhere]">{result.title}</h3>}
 				<pre className="selectable max-h-96 overflow-auto rounded-md bg-inset px-3 py-2 font-mono text-code whitespace-pre text-fg-muted">
 					{shown.join("\n")}
 				</pre>
@@ -50,6 +98,14 @@ export function CommandResultRow({ result, onDismiss }: { result: CommandResultR
 						{open ? t("commandResult.less") : t("commandResult.more", { count: result.lines.length })}
 					</button>
 				)}
+				{locations.length > 0 && (
+					<ul aria-label={t("commandResult.locations")} className="mt-2 flex min-w-0 flex-col gap-2">
+						{locations.map(location => (
+							<CommandResultLocation key={JSON.stringify([result.id, location.kind, location.value])} location={location} />
+						))}
+					</ul>
+				)}
+				<CommandPanelOwnership result={result} onRelease={onDismiss} />
 			</div>
 		</section>
 	);

@@ -4,6 +4,7 @@ import type { TspHostSnapshot } from "@shared/tsp-host";
 import { TSP_NOTICE_ROLES, TSP_ROLES } from "@shared/tsp/roles";
 import { commandNodeText, commandOutcome, type CommandOutcome, type CommandOutcomeSpec } from "@shared/tsp/command-result";
 import { APP_GUEST_NAME, type Notice } from "../../collab/lib/client";
+import type { MainOutput } from "@shared/tsp/main-output";
 import { contentText } from "../../chat/transcript/notices";
 import type { SavedParents } from "../../state/history";
 
@@ -50,6 +51,31 @@ export class TspNoticeProjection {
 	#nextCommand = 0;
 	getSnapshot = (): readonly TspNotice[] => this.#snapshot;
 
+	/** A Result accepted this exact public subtree before the ordinary notice pass. */
+	consumeMainOutput(snapshot: TspHostSnapshot, output: MainOutput): void {
+		const surface = snapshot.surfaces.find(surface => surface.open.id === output.surfaceId);
+		const visit = (node: TspNode, accepted: boolean) => {
+			if (node.p?.hidden) return;
+			accepted ||= node.id === output.nodeId;
+			if (accepted && node.p?.role && TSP_NOTICE_ROLES[node.p.role]) {
+				let content = "";
+				const collect = (part: TspNode) => {
+					if (part.p?.hidden) return;
+					if (part.k === "text") content += text(part.p?.spans ?? part.p?.text);
+					else if (part.k === "md" || part.k === "ansi" || part.k === "toast") content += part.p?.text ?? "";
+					else if (part.k === "rows") content += part.p?.lines.join("\n") ?? "";
+					part.c?.forEach(collect);
+				};
+				collect(node);
+				const id = `tsp:${snapshot.epoch}:${output.surfaceId}:${node.id}`;
+				this.#observed.set(id, content);
+				this.#rows.delete(id);
+			}
+			node.c?.forEach(child => visit(child, accepted));
+		};
+		if (surface) visit(surface.document, false);
+		this.#publish();
+	}
 	/** Hold the first outcome without discarding it until a consumer confirms presentation. */
 	beginCommand(before: TspHostSnapshot, spec: CommandOutcomeSpec): TspCommandNoticeReservation {
 		const command: ReservedCommand = { before, spec, outcome: null, rows: new Map(), id: this.#nextCommand++, revision: null };

@@ -7,8 +7,8 @@ import { SessionController } from "../../state/session";
 import { commandResults } from "./results";
 import { sendSlashCommand } from "./typed";
 import { OmpBusyError, readyEditor, runCommand, TspEditorWatch } from "./drive";
-import { FixtureDocuments, loadFixtureRecording } from "../tsp/testing/documents";
-import { composer, openOverlay } from "@shared/tsp/view-state";
+import { FixtureDocuments, loadFixtureRecording, loadCommandFeedbackRecording } from "../tsp/testing/documents";
+import { composer, openOverlay, unclaimed } from "@shared/tsp/view-state";
 
 const fake = vi.hoisted(() => {
 	class Guest {
@@ -361,6 +361,109 @@ function recordedCommand(name: string): string {
 	};
 	return input.body.text;
 }
+function recordedMainCommand(name: string, line: string): void {
+	const { messages, start, end } = loadCommandFeedbackRecording(name, line);
+	const docs = new FixtureDocuments();
+	const publish = () => {
+		const current = docs.snapshot();
+		tsp = { ...semanticSnapshot(), ...current, revision: (tsp?.revision ?? 0) + 1,
+			surfaces: current.surfaces.map(surface => ({ ...surface, documentGeneration: 1 })) };
+		for (const listener of tspListeners) listener(tspHostPatch(null, tsp));
+	};
+	for (const message of messages.slice(0, start)) docs.receive({ verb: message.verb, body: JSON.stringify(message.body) });
+	publish();
+	tspSubmit = () => {
+		for (const message of messages.slice(start, end)) {
+			if (message.verb === "x") break;
+			docs.receive({ verb: message.verb, body: JSON.stringify(message.body) }); publish();
+		}
+	};
+}
+function publishMainOutput(text: string, extra: Partial<TspHostSnapshot> = {}): void {
+	const snapshot = semanticSnapshot();
+	snapshot.surfaces[0]!.document = { ...snapshot.surfaces[0]!.document, c: snapshot.surfaces[0]!.document.c!.map(node => node.id === "main"
+		? { ...node, c: [{ id: "feedback", k: "text", p: { text } }] } : node) };
+	publishTsp({ surfaces: snapshot.surfaces, ...extra });
+}
+
+describe("TSP public main-region command feedback", () => {
+	it.each([
+		["move-success", "/move /tmp/vomp-fixture/destination", "Moved to /tmp/vomp-fixture/destination"],
+		["worktree-exit-ask", "/wt fixture", "Moved to worktree /tmp/vomp-fixture/home/tmp/vomp-fixture/agent/wt/fixture-d54ba38"],
+		["clear-success", "/clear", "4 messages dropped; session continues."],
+		["ssh-add", "/ssh add fixture --host example.invalid", 'Added SSH host "fixture"'],
+		["ssh-remove", "/ssh remove fixture", 'Removed SSH host "fixture"'],
+		["mcp-reload", "/mcp reload", "MCP reload complete"],
+		["extension-throw", "/audit-feedback-throw", 'Extension "command:audit-feedback-throw" error: Public fixture extension failure'],
+	])("retains recorded %s once in its ordinary chat", async (name, command, expected) => {
+		semanticSession(); recordedMainCommand(name!, command!);
+		await sendSlashCommand(session, command!);
+		await vi.advanceTimersByTimeAsync(650);
+		const results = commandResults(session);
+		expect(results.filter(result => result.lines.join("\n").includes(expected!))).toHaveLength(1);
+		expect(results.every(result => result.command === command)).toBe(true);
+		if (name === "extension-throw") expect(results.at(-1)?.tone).toBe("err");
+		expect(session.tspNotices.getSnapshot().some(row => row.content.includes(expected!))).toBe(false);
+		expect(fake.app.openTerminal).not.toHaveBeenCalled();
+		const claimed = new Map(results.flatMap(result => result.provenance?.map(provenance => [provenance.nodeId, provenance.text] as const) ?? []));
+		for (const surface of tsp!.surfaces) expect(JSON.stringify(unclaimed(surface, "main", undefined, claimed))).not.toContain(expected);
+	});
+	it("retains delayed output after editor release and ends attribution before the next normal send", async () => {
+		semanticSession();
+		await sendSlashCommand(session, "/extension-slow");
+		await vi.advanceTimersByTimeAsync(6000);
+		expect(session.busy).toBe(false);
+		publishMainOutput("Late extension outcome");
+		expect(commandResults(session).map(result => result.lines.join("\n"))).toEqual(["Late extension outcome"]);
+		tspSubmit = text => { if (text === "next message") publishMainOutput("Unrelated later output"); };
+		await session.send("next message");
+		await vi.advanceTimersByTimeAsync(650);
+		expect(commandResults(session).map(result => result.lines.join("\n"))).toEqual(["Late extension outcome"]);
+	});
+	it("ends delayed attribution before a later native command", async () => {
+		semanticSession();
+		await sendSlashCommand(session, "/extension-slow");
+		await vi.advanceTimersByTimeAsync(650);
+		tspSubmit = () => publishMainOutput("Native command outcome");
+		await session.command("/fast status");
+		expect(commandResults(session)).toEqual([]);
+	});
+	it("cleans up both feedback collectors when submission fails", async () => {
+		semanticSession();
+		failure = new Error("Rejected command submission");
+		await expect(sendSlashCommand(session, "/extension-rejected")).rejects.toThrow("Rejected command submission");
+		failure = null;
+		publishMainOutput("Unrelated later text");
+		const after = semanticSnapshot();
+		after.surfaces[0]!.document = { ...after.surfaces[0]!.document, c: after.surfaces[0]!.document.c!.map(node => node.id === "layer"
+			? { ...node, c: [{ id: "later-report", k: "overlay", p: { role: "omp.overlay.report", head: "Later report" }, c: [
+				{ id: "later-report/body", k: "md", p: { role: "omp.report.body", text: "Unrelated later report" } },
+				{ id: "later-report/close", k: "button", p: { text: "Close", actions: { click: "close" } } },
+			] }] } : node) };
+		publishTsp({ surfaces: after.surfaces });
+		expect(commandResults(session)).toEqual([]);
+	});
+	it.each(["epoch", "room"] as const)("rejects delayed output after %s rotation", async change => {
+		semanticSession(); await sendSlashCommand(session, "/extension-slow");
+		await vi.advanceTimersByTimeAsync(650);
+		if (change === "room") session.attach({ ...session.getSnapshot().host!, sessionId: "new-room", generation: 2, link: "new-link" });
+		publishMainOutput("Old command outcome", change === "epoch" ? { epoch: 2 } : { generation: 2 });
+		expect(commandResults(session)).toEqual([]);
+	});
+	it("updates changed output once, uses its arrival anchor and leaves a background chat unfocused", async () => {
+		semanticSession();
+		fake.app.activeTabId = "another-chat";
+		await sendSlashCommand(session, "/mcp test fixture");
+		await vi.advanceTimersByTimeAsync(650);
+		publishMainOutput("Testing connection to fixture...");
+		publishMainOutput("Connected to fixture.");
+		publishMainOutput("Connected to fixture.");
+		expect(commandResults(session)).toHaveLength(1);
+		expect(commandResults(session)[0]).toMatchObject({ command: "/mcp test fixture", lines: ["Connected to fixture."], anchor: null, room: "room" });
+		expect(fake.app.activeTabId).toBe("another-chat");
+		expect(fake.app.openTerminal).not.toHaveBeenCalled();
+	});
+});
 
 describe("TSP slash delivery", () => {
 	afterEach(() => {
@@ -627,7 +730,7 @@ describe("TSP slash delivery", () => {
 		expect(session.busy).toBe(false);
 	});
 
-	it("replays cleanse's prompt and recorded cancellation without inventing a result", async () => {
+	it("replays cleanse's question and retains its recorded no-checker outcome", async () => {
 		semanticSession();
 		const line = recordedCommand("cleanse");
 		await sendSlashCommand(session, line);
@@ -637,7 +740,7 @@ describe("TSP slash delivery", () => {
 		await session.keys("escape");
 		await vi.advanceTimersByTimeAsync(650);
 		expect(session.busy).toBe(false);
-		expect(commandResults(session)).toEqual([]);
+		expect(commandResults(session).map(result => ({ command: result.command, firstLine: result.lines[0] }))).toEqual([{ command: line, firstLine: "No runnable checker" }]);
 	});
 
 	it("holds a quiet jobs-kill for its explicit 1.5 second settle interval", async () => {
