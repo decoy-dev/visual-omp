@@ -15,9 +15,11 @@ import { useTsp } from "../../state/tsp/useTsp";
 import { currentHook, dialogAnswer, nativeDialog, waitForNodeToLeave } from "./ompDialogTsp";
 import type { TspHookAnswer } from "@shared/tsp/dialogs";
 import { usePresentationClaim } from "../../state/tsp/presentation-claims";
+import { clearHookDraft, hookDraftKey, useHookDraft } from "../../state/tsp/hook-drafts";
 
 interface DialogActions {
 	disabled: boolean;
+	draftKey?: string | null;
 	choose(index: number): Promise<void>;
 	text(text: string): Promise<void>;
 	cancel(): Promise<void>;
@@ -128,7 +130,7 @@ function TextBody({ session, dialog }: { session: SessionController; dialog: Omp
 	const { t } = useTranslation("session");
 	const titleId = useId();
 	const actions = useContext(Actions);
-	const [text, setText] = useState(dialog.value);
+	const [text, setText] = useHookDraft(actions?.draftKey ?? null, dialog.value);
 	const [busy, run] = useAction(session);
 	const send = () => run("answer", () => {
 		const value = dialog.kind === "input" ? text.replace(/\s*\n\s*/g, " ") : text;
@@ -252,6 +254,7 @@ function TspDialogCard({ session }: ChatSlotProps) {
 		void completion.catch(() => {});
 		try {
 			await window.vomp.invoke("host:tsp-answer", snapshot.hostId, snapshot.generation, value, snapshot.epoch);
+			if (value.kind !== "cancel") clearHookDraft(hookDraftKey(snapshot, target.surface.open.id, target.dialog));
 			await completion;
 		} catch (error) {
 			controller.abort();
@@ -264,6 +267,7 @@ function TspDialogCard({ session }: ChatSlotProps) {
 	};
 	const actions: DialogActions = {
 		disabled: !!disabled,
+		draftKey: hookDraftKey(snapshot, target.surface.open.id, target.dialog),
 		choose: index => answer(dialogAnswer(target.surface.open.id, target.dialog, { index })),
 		text: text => answer(dialogAnswer(target.surface.open.id, target.dialog, { text })),
 		cancel: () => answer(dialogAnswer(target.surface.open.id, target.dialog, { cancel: true })),

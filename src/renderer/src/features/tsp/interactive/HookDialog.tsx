@@ -1,29 +1,34 @@
 import { walkNodes } from "@shared/tsp/view-state";
-import { declaredHookAction, type TspHookAnswer } from "@shared/tsp/dialogs";
+import { declaredHookAction, hookDialog, type TspHookAnswer } from "@shared/tsp/dialogs";
 import { TSP_ACTIONS } from "@shared/tsp/roles";
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { NodeView } from "../nodes/NodeView";
 import type { NodeContext, NodeProps } from "../nodes/context";
 import { Button } from "../../../ui/Button";
+import { clearHookDraft, hookDraftKey, useHookDraft } from "../../../state/tsp/hook-drafts";
 
 /** Arbitration comes from main. A submitted dialog stays disabled until its node departs. */
 export function HookDialog({ node, context }: NodeProps) {
 	const { t } = useTranslation("palette");
 	const field = [...walkNodes(node)].find(child => child.k === "editor" || child.k === "input");
 	const observed = field?.p?.text ?? "";
-	const [draft, setDraft] = useState(observed);
+	const dialog = hookDialog(node);
+	const key = dialog && context.hostId && context.generation !== undefined && context.epoch !== undefined
+		? hookDraftKey({ hostId: context.hostId, generation: context.generation, epoch: context.epoch }, context.sf, dialog) : null;
+	const [draft, setDraft] = useHookDraft(key, observed);
 	const [pending, setPending] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [closed, setClosed] = useState(false);
 	const inFlight = useRef(false);
-	useEffect(() => setDraft(observed), [observed]);
 	const status = context.questionMatches?.find(match => match.surfaceId === context.sf && match.nodeId === node.id)?.status ?? "unavailable";
 	const readOnly = context.readOnly || context.closing || status !== "unmatched" || pending || !context.answer;
 	const answer = (value: TspHookAnswer) => {
 		if (readOnly || inFlight.current) return;
 		inFlight.current = true; setPending(true); setError(null);
-		void context.answer!(value).catch(error => {
+		void context.answer!(value).then(() => {
+			if (value.kind !== "cancel") clearHookDraft(key);
+		}).catch(error => {
 			const message = error instanceof Error ? error.message : String(error);
 			const targetGone = message.includes("omp screen: The question node is no longer available.") || message.includes("omp screen: The target surface is no longer available.");
 			inFlight.current = targetGone; setPending(targetGone); setClosed(targetGone);

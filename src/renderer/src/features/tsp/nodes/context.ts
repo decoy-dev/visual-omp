@@ -6,6 +6,8 @@ import type { ReactNode } from "react";
 export interface NodeContext {
 	sf: string;
 	hostId?: string;
+	generation?: number;
+	epoch?: number;
 	readOnly: boolean;
 	closing?: boolean;
 	role?: string;

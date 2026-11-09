@@ -70,6 +70,14 @@ overview's folder. Home and pages use the default. Project actions and split-vie
 explicitly. Session grouping uses the header's `cwd`, not the encoded directory name: existing macOS `/tmp`
 chats have `cwd: "/tmp"` inside `--private-tmp--`, so the default keeps that spelling.
 
+Saved-chat summaries keep the existing 64 KiB head read. When that window has no
+displayable user prompt, `main/omp/sessions.ts` streams at most the first 4 MiB
+and 4,096 lines, parsing only records up to 1 MiB, and stops at the first prompt.
+The preview remains capped at 240 characters. This recovers prompts after large
+opening memory, image or skill entries without loading a whole large transcript.
+The existing per-file modification-time cache also retains fallback results.
+Files that exceed these scan limits can still have no preview.
+
 Home's folder selection is stored with its text and attachments in `useComposerDrafts`. `visitHome` keeps
 the folder of an unfinished draft and resets an empty draft to the platform default. The mounted composer
 subscribes to Home navigation too, so a quick return during its exit animation follows the same rule.
@@ -863,6 +871,13 @@ item-id activation, full-range UTF-16 edit followed by submit, or declared cance
 fallback. The card stays busy until its addressed node leaves. Losing answers whose node already
 closed receive the existing calm completion message. Full lists retain every item, without a hidden
 options notice or terminal offer. Local dialogs do not alter chat status.
+Unfinished native hook input/editor text is shared with the generic omp screen through
+the memory-only `state/tsp/hook-drafts.ts` cache. Cancel and presentation unmount retain
+the draft for reopening that exact hook. Its identity includes host, generation, epoch,
+surface, hook/field ids, field kind, title and detail; a different question or a changed
+engine prefill cannot receive an earlier answer. Successful submission clears the draft.
+The cache retains at most 64 recently edited hook drafts and does not persist them across
+app restarts. Existing question arbitration and guarded answer transactions remain unchanged.
 The shared pure helpers in `src/shared/tsp/dialogs.ts` expose role lookup, event construction,
 hook facts and node-departure predicates. `ompDialogTsp.ts` adapts presentation and provides the
 generation/epoch-scoped document-subscription completion wait. Presentation claims never remove

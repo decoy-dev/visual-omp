@@ -11,12 +11,13 @@ import type { TspHostSnapshot, TspRendererEvent } from "@shared/tsp-host";
 import { tspHostPatch, type TspHostPatch } from "@shared/tsp/patch";
 import { FixtureDocuments, loadFixtureRecording } from "../tsp/testing/documents";
 import { OmpDialogCard } from "./OmpDialogCard";
-import { currentHook, nativeDialog, waitForNodeToLeave } from "./ompDialogTsp";
+import { currentHook, dialogAnswer, nativeDialog, waitForNodeToLeave } from "./ompDialogTsp";
 import { parseOmpDialog } from "./ompDialog";
 import type { SessionController, SessionView } from "../../state/session";
 import "../../i18n";
 import { PresentationVisibility, presentationClaims } from "../../state/tsp/presentation-claims";
 import { OmpScreenSheet } from "../tsp/OmpScreenSheet";
+import { clearHookDraft, hookDraftKey } from "../../state/tsp/hook-drafts";
 
 vi.mock("motion/react", () => {
 	const tag = (name: string) => ({ children, initial, animate, exit, transition, layout, layoutId, variants, ...props }: PropsWithChildren<Record<string, unknown>>) => createElement(name, props, children);
@@ -105,6 +106,82 @@ it.each(["hook-select", "hook-confirm", "hook-input", "hook-editor", "hook-selec
 	expect([...element.querySelectorAll<HTMLButtonElement>("button")].every(button => button.disabled)).toBe(true);
 	await act(async () => complete!());
 	expect(element.querySelector("section")).toBeNull();
+});
+
+it.each(["hook-input", "hook-editor"])("keeps an unfinished %s answer after cancel and reopening the same hook", async name => {
+	capture(name);
+	const opened = structuredClone(snapshot);
+	const target = hookDialogTarget(opened.surfaces)!;
+	const draftKey = hookDraftKey(opened, target.surface.open.id, target.dialog);
+	clearHookDraft(draftKey);
+	await render();
+	const text = name === "hook-input" ? "Unfinished café answer" : "Unfinished café answer\nKeep this line";
+	await fill(text);
+	await button("Cancel");
+	expect(emitted).toEqual(hookAnswerEvents(target.node, dialogAnswer(target.surface.open.id, target.dialog, { cancel: true })));
+	await act(async () => complete!());
+	await act(async () => publish({ ...opened, revision: snapshot.revision + 1 }));
+	expect(element.querySelector<HTMLInputElement | HTMLTextAreaElement>("input,textarea")?.value).toBe(text);
+	await act(async () => clearHookDraft(draftKey));
+});
+
+it("shares an unfinished native editor answer with the omp screen and keeps another hook separate", async () => {
+	capture("hook-editor");
+	const opened = structuredClone(snapshot);
+	const target = hookDialogTarget(opened.surfaces)!;
+	const draftKey = hookDraftKey(opened, target.surface.open.id, target.dialog);
+	clearHookDraft(draftKey);
+	await render();
+	await fill("Keep this unfinished answer");
+	await act(async () => root.render(createElement(OmpScreenSheet, { hostId: snapshot.hostId, generation: snapshot.generation, snapshot, failed: false, readOnly: false })));
+	expect(element.querySelector("textarea")?.value).toBe("Keep this unfinished answer");
+	const other = structuredClone(opened);
+	const otherTarget = hookDialogTarget(other.surfaces)!;
+	otherTarget.node.id = "other-hook";
+	other.questionMatches = other.questionMatches!.map(match => ({ ...match, nodeId: "other-hook" }));
+	await act(async () => root.render(createElement(OmpScreenSheet, { hostId: other.hostId, generation: other.generation, snapshot: other, failed: false, readOnly: false })));
+	expect(element.querySelector("textarea")?.value).toBe(otherTarget.dialog.body.kind !== "select" ? otherTarget.dialog.body.value : "");
+	await act(async () => clearHookDraft(draftKey));
+});
+
+it("clears a submitted native draft when its card unmounts before the guarded reply", async () => {
+	capture("hook-editor");
+	const opened = structuredClone(snapshot);
+	const target = hookDialogTarget(opened.surfaces)!;
+	const draftKey = hookDraftKey(opened, target.surface.open.id, target.dialog);
+	clearHookDraft(draftKey);
+	const pending = Promise.withResolvers<void>();
+	const original = invoke.getMockImplementation()! as (channel: string, ...args: unknown[]) => Promise<unknown>;
+	invoke.mockImplementation(async (channel: string, ...args: unknown[]) => {
+		const result = await original(channel, ...args);
+		if (channel === "host:tsp-answer") await pending.promise;
+		return result;
+	});
+	await render();
+	await fill("Submitted answer");
+	await button("Send answer");
+	await act(async () => root.render(null));
+	await act(async () => pending.resolve());
+	await render();
+	expect(element.querySelector("textarea")?.value).toBe(target.dialog.body.kind !== "select" ? target.dialog.body.value : "");
+	await act(async () => clearHookDraft(draftKey));
+});
+
+it("clears a successfully submitted generic hook draft before reopening it", async () => {
+	capture("hook-editor");
+	const target = hookDialogTarget(snapshot.surfaces)!;
+	const draftKey = hookDraftKey(snapshot, target.surface.open.id, target.dialog);
+	clearHookDraft(draftKey);
+	const draw = () => root.render(createElement(OmpScreenSheet, { hostId: snapshot.hostId, generation: snapshot.generation, snapshot, failed: false, readOnly: false }));
+	await act(async () => draw());
+	await fill("Generic submitted answer");
+	const submit = [...element.querySelectorAll("button")].find(button => button.textContent?.startsWith("Submit"));
+	expect(submit).toBeDefined();
+	await act(async () => submit!.click());
+	await act(async () => root.render(null));
+	await act(async () => draw());
+	expect(element.querySelector("textarea")?.value).toBe(target.dialog.body.kind !== "select" ? target.dialog.body.value : "");
+	await act(async () => clearHookDraft(draftKey));
 });
 
 it.each(parity)("preserves classic %s card content with a recorded semantic counterpart", name => {
